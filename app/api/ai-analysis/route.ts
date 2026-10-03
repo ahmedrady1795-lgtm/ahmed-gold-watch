@@ -2,6 +2,7 @@ import {analyze,defaults,scalpAnalyze} from '../../../lib/engine';
 import {getMarketSnapshot,getMarketData,getQuoteData} from '../../../lib/market-hub';
 import {getBtcMarket} from '../../../lib/btc-market';
 import {aiDecision} from '../../../lib/ai-analyst';
+import {getBtcLiquidity} from '../../../lib/liquidity-intelligence';
 
 export const dynamic='force-dynamic';
 let lastDiagLog=0;
@@ -10,8 +11,7 @@ async function liveBtcSpot(){
   const providers=[
     async()=>{const r=await fetch('https://api.exchange.coinbase.com/products/BTC-USD/ticker',{cache:'no-store',signal:AbortSignal.timeout(5000),headers:{'User-Agent':'AhmedGoldCommand/1.0'}});const j=await r.json();const price=Number(j?.price),sourceTime=Date.parse(j?.time);if(!r.ok||!Number.isFinite(price)||price<=0)throw new Error('bad Coinbase Exchange btc');return {price,source:'Coinbase Exchange',sourceTime:Number.isFinite(sourceTime)?sourceTime:now};},
     async()=>{const r=await fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot',{cache:'no-store',signal:AbortSignal.timeout(5000),headers:{'User-Agent':'AhmedGoldCommand/1.0'}});const j=await r.json();const price=Number(j?.data?.amount);if(!r.ok||!Number.isFinite(price)||price<=0)throw new Error('bad Coinbase Spot btc');return {price,source:'Coinbase Spot',sourceTime:now};},
-    async()=>{const r=await fetch('https://api.kraken.com/0/public/Ticker?pair=XBTUSD',{cache:'no-store',signal:AbortSignal.timeout(5000),headers:{'User-Agent':'AhmedGoldCommand/1.0'}});const j=await r.json();const row=Object.values(j?.result||{})[0] as any,price=Number(row?.c?.[0]);if(!r.ok||!Number.isFinite(price)||price<=0)throw new Error('bad kraken live btc');return {price,source:'Kraken live ticker',sourceTime:now};},
-    async()=>{const r=await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT',{cache:'no-store',signal:AbortSignal.timeout(5000),headers:{'User-Agent':'AhmedGoldCommand/1.0'}});const j=await r.json();const price=Number(j?.price);if(!r.ok||!Number.isFinite(price)||price<=0)throw new Error('bad binance live btc');return {price,source:'Binance live ticker',sourceTime:now};}
+    async()=>{const r=await fetch('https://api.kraken.com/0/public/Ticker?pair=XBTUSD',{cache:'no-store',signal:AbortSignal.timeout(5000),headers:{'User-Agent':'AhmedGoldCommand/1.0'}});const j=await r.json();const row=Object.values(j?.result||{})[0] as any,price=Number(row?.c?.[0]);if(!r.ok||!Number.isFinite(price)||price<=0)throw new Error('bad kraken live btc');return {price,source:'Kraken live ticker',sourceTime:now};}
   ];
   for(const provider of providers){try{return await provider();}catch{}}
   return null;
@@ -25,7 +25,7 @@ export async function GET(){
   const now=Date.now();
   try{
     const actions:string[]=[],detected:string[]=[];
-    let [goldSnap,btc,liveBtc]=await Promise.all([getMarketSnapshot(),getBtcMarket(),liveBtcSpot()]);
+    let [goldSnap,btc,liveBtc,liquidity]=await Promise.all([getMarketSnapshot(),getBtcMarket(),liveBtcSpot(),getBtcLiquidity().catch(()=>null)]);
     let gm=goldSnap.market,quote=goldSnap.quote;
     if(!gm.pricesReady||!gm.newsReady){
       detected.push(...(gm.errors||[]));
@@ -53,8 +53,8 @@ export async function GET(){
     const deltaPct=base?delta/base*100:0,momentum=a1&&a1>0?Math.min(100,Math.round(Math.abs(delta)/a1*100)):0;
     const pulseDirection:'UP'|'DOWN'|'FLAT'=delta>0?'UP':delta<0?'DOWN':'FLAT';
     const livePulse={price:btcPrice,basePrice:base,delta,deltaPct,momentum,direction:pulseDirection,source:liveBtc?.source||btc.source,sourceTime:liveBtc?.sourceTime||btc.checkedAt};
-    const gold=aiDecision('GOLD',goldAnalysis,{c1:gm.c1,c5:gm.c5,c15:gm.c15,c60:gm.c60},goldPrice,{quote:quote?.source||gm.priceSource||'unknown',candles:gm.priceSource||'unknown'},now,defaults,null);
-    const bitcoin=aiDecision('BTC',btcAnalysis,{c1:btc.c1,c5:btc.c5,c15:btc.c15,c60:btc.c60},btcPrice,{quote:liveBtc?.source||btc.source,candles:btc.source},now,defaults,livePulse);
+    const gold=aiDecision('GOLD',goldAnalysis,{c1:gm.c1,c5:gm.c5,c15:gm.c15,c60:gm.c60},goldPrice,{quote:quote?.source||gm.priceSource||'unknown',candles:gm.priceSource||'unknown'},now,defaults,null,null);
+    const bitcoin=aiDecision('BTC',btcAnalysis,{c1:btc.c1,c5:btc.c5,c15:btc.c15,c60:btc.c60},btcPrice,{quote:liveBtc?.source||btc.source,candles:btc.source},now,defaults,livePulse,liquidity);
     const goldScalp=scalpAnalyze(gm.c1,gm.c5,now,goldPrice);
     const bitcoinScalp=scalpAnalyze(btc.c1,btc.c5,now,btcPrice);
     const radar=[
@@ -65,8 +65,8 @@ export async function GET(){
     const futureEvents=(gm.events||[]).filter((e:any)=>e.time>=now).sort((a:any,b:any)=>a.time-b.time);
     const warnings=[...new Set(gm.errors||[])].slice(0,8);
     const autopilot={status:recovered?'recovered':(!gm.pricesReady||!gm.newsReady)?'degraded':'healthy',detected:[...new Set(detected)].slice(0,8),warnings,actions:[...new Set(actions)].slice(0,8),newsReady:gm.newsReady,eventCount:futureEvents.length,nextEvent:futureEvents[0]?{name:futureEvents[0].name,time:futureEvents[0].time,importance:futureEvents[0].importance}:null,pricesReady:gm.pricesReady,goldSource:quote?.source||gm.priceSource||null,btcSource:liveBtc?.source||btc.source};
-    if(now-lastDiagLog>30000){lastDiagLog=now;console.info('[AI-DIAG]',JSON.stringify({newsReady:autopilot.newsReady,eventCount:autopilot.eventCount,pricesReady:autopilot.pricesReady,goldSource:autopilot.goldSource,btcSource:autopilot.btcSource,goldAction:gold.action,goldConfidence:gold.confidence,goldLong:gold.longScore,goldShort:gold.shortScore,goldScalp:goldScalp.action,goldScalpLong:goldScalp.score?.long,goldScalpShort:goldScalp.score?.short,goldScalpReason:goldScalp.reason,btcAction:bitcoin.action,btcConfidence:bitcoin.confidence,btcLong:bitcoin.longScore,btcShort:bitcoin.shortScore,btcVetoes:bitcoin.vetoes,btcScalp:bitcoinScalp.action,btcScalpLong:bitcoinScalp.score?.long,btcScalpShort:bitcoinScalp.score?.short,btcScalpReason:bitcoinScalp.reason,btcHunter:bitcoin.hunter?.status,btcHunterMode:bitcoin.hunter?.mode,btcHunterScore:bitcoin.hunter?.score,btcHunterThreshold:bitcoin.hunter?.threshold,btcHunterSide:bitcoin.hunter?.side,btcFusion:bitcoin.fusion,btcPhase:bitcoin.phase,status:autopilot.status}));}
-    return Response.json({ok:true,model:'Quant Predator v5 · Multi-Strategy Fusion',checkedAt:now,autopilot,radar,gold:{...gold,scalp:goldScalp},bitcoin:{...bitcoin,livePulse,scalp:bitcoinScalp},safety:{execution:false,guaranteed:false,failClosed:true,temporalConfirmation:true,boundedRecovery:true,adaptiveThresholds:true,multiStrategyHunter:true,indicatorFusion:true,pullbackHunter:true,newsAwareBTC:true}},{headers:{'Cache-Control':'no-store'}});
+    if(now-lastDiagLog>30000){lastDiagLog=now;console.info('[AI-DIAG]',JSON.stringify({newsReady:autopilot.newsReady,eventCount:autopilot.eventCount,pricesReady:autopilot.pricesReady,goldSource:autopilot.goldSource,btcSource:autopilot.btcSource,goldAction:gold.action,goldConfidence:gold.confidence,goldLong:gold.longScore,goldShort:gold.shortScore,goldScalp:goldScalp.action,goldScalpLong:goldScalp.score?.long,goldScalpShort:goldScalp.score?.short,goldScalpReason:goldScalp.reason,btcAction:bitcoin.action,btcConfidence:bitcoin.confidence,btcLong:bitcoin.longScore,btcShort:bitcoin.shortScore,btcVetoes:bitcoin.vetoes,btcScalp:bitcoinScalp.action,btcScalpLong:bitcoinScalp.score?.long,btcScalpShort:bitcoinScalp.score?.short,btcScalpReason:bitcoinScalp.reason,btcHunter:bitcoin.hunter?.status,btcHunterMode:bitcoin.hunter?.mode,btcHunterScore:bitcoin.hunter?.score,btcHunterThreshold:bitcoin.hunter?.threshold,btcHunterSide:bitcoin.hunter?.side,btcFusion:bitcoin.fusion,btcPhase:bitcoin.phase,btcLiquidity:bitcoin.liquidity?{side:bitcoin.liquidity.side,buy:bitcoin.liquidity.buy,sell:bitcoin.liquidity.sell,quality:bitcoin.liquidity.quality,pressure:bitcoin.liquidity.pressure,flowDeltaPct:bitcoin.liquidity.flow?.deltaPct,depthImbalance:bitcoin.liquidity.book?.depthImbalance,absorption:bitcoin.liquidity.absorption}:null,status:autopilot.status}));}
+    return Response.json({ok:true,model:'Predator Core v6 · Adaptive Liquidity Brain',checkedAt:now,autopilot,radar,gold:{...gold,scalp:goldScalp},bitcoin:{...bitcoin,livePulse,scalp:bitcoinScalp},safety:{execution:false,guaranteed:false,failClosed:true,temporalConfirmation:true,boundedRecovery:true,adaptiveThresholds:true,multiStrategyHunter:true,indicatorFusion:true,pullbackHunter:true,newsAwareBTC:true,liquidityIntelligence:true,adaptiveCore:true,liquidityConflictGate:true,spoofingAwareWalls:true}},{headers:{'Cache-Control':'no-store'}});
   }catch(e){
     return Response.json({ok:false,message:'تعذر تشغيل محرك التحليل المتقدم.',detail:e instanceof Error?e.message:'unknown'},{status:502,headers:{'Cache-Control':'no-store'}});
   }
