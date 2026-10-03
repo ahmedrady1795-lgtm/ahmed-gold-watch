@@ -4,6 +4,7 @@ import {getBtcMarket} from '../../../lib/btc-market';
 import {aiDecision} from '../../../lib/ai-analyst';
 
 export const dynamic='force-dynamic';
+let lastDiagLog=0;
 async function liveBtcSpot(){
   const now=Date.now();
   const providers=[
@@ -26,7 +27,7 @@ export async function GET(){
     const actions:string[]=[],detected:string[]=[];
     let [goldSnap,btc,liveBtc]=await Promise.all([getMarketSnapshot(),getBtcMarket(),liveBtcSpot()]);
     let gm=goldSnap.market,quote=goldSnap.quote;
-    if(!gm.pricesReady||!gm.newsReady||gm.errors?.length){
+    if(!gm.pricesReady||!gm.newsReady){
       detected.push(...(gm.errors||[]));
       const forced=await getMarketData({force:true}).catch(()=>null);
       if(forced){gm=forced;actions.push('إعادة تحميل Market Hub بالقوة');}
@@ -56,7 +57,10 @@ export async function GET(){
     const goldScalp=scalpAnalyze(gm.c1,gm.c5,now,goldPrice);
     const bitcoinScalp=scalpAnalyze(btc.c1,btc.c5,now,btcPrice);
     const recovered=actions.length>0&&gm.pricesReady&&Boolean(btc.c1.length)&&Boolean(goldPrice)&&Boolean(btcPrice);
-    const autopilot={status:recovered?'recovered':detected.length?'degraded':'healthy',detected:[...new Set(detected)].slice(0,8),actions:[...new Set(actions)].slice(0,8),newsReady:gm.newsReady,pricesReady:gm.pricesReady,goldSource:quote?.source||gm.priceSource||null,btcSource:liveBtc?.source||btc.source};
+    const futureEvents=(gm.events||[]).filter((e:any)=>e.time>=now);
+    const warnings=[...new Set(gm.errors||[])].slice(0,8);
+    const autopilot={status:recovered?'recovered':(!gm.pricesReady||!gm.newsReady)?'degraded':'healthy',detected:[...new Set(detected)].slice(0,8),warnings,actions:[...new Set(actions)].slice(0,8),newsReady:gm.newsReady,eventCount:futureEvents.length,nextEvent:futureEvents[0]?{name:futureEvents[0].name,time:futureEvents[0].time,importance:futureEvents[0].importance}:null,pricesReady:gm.pricesReady,goldSource:quote?.source||gm.priceSource||null,btcSource:liveBtc?.source||btc.source};
+    if(now-lastDiagLog>30000){lastDiagLog=now;console.info('[AI-DIAG]',JSON.stringify({newsReady:autopilot.newsReady,eventCount:autopilot.eventCount,pricesReady:autopilot.pricesReady,goldSource:autopilot.goldSource,btcSource:autopilot.btcSource,goldAction:gold.action,goldScalp:goldScalp.action,btcAction:bitcoin.action,btcScalp:bitcoinScalp.action,status:autopilot.status}));}
     return Response.json({ok:true,model:'Quant Ensemble v3 · Self-Healing',checkedAt:now,autopilot,gold:{...gold,scalp:goldScalp},bitcoin:{...bitcoin,livePulse,scalp:bitcoinScalp},safety:{execution:false,guaranteed:false,failClosed:true,temporalConfirmation:true,boundedRecovery:true}},{headers:{'Cache-Control':'no-store'}});
   }catch(e){
     return Response.json({ok:false,message:'تعذر تشغيل محرك التحليل المتقدم.',detail:e instanceof Error?e.message:'unknown'},{status:502,headers:{'Cache-Control':'no-store'}});
