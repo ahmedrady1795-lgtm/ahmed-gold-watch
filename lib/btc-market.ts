@@ -15,6 +15,15 @@ function normalize(rows:any[]):Candle[]{
     .sort((a:Candle,b:Candle)=>a.time-b.time);
   return out.filter((c,i)=>i===0||c.time!==out[i-1].time);
 }
+function latestClosedAge(c:Candle[],ms:number,now:number){
+  const last=c.filter(x=>x.time+ms<=now).at(-1);
+  return last?Math.max(0,now-(last.time+ms)):Infinity;
+}
+function assertFresh(c1:Candle[],c5:Candle[],c15:Candle[],c60:Candle[],now:number,provider:string){
+  const ages={m1:latestClosedAge(c1,60000,now),m5:latestClosedAge(c5,300000,now),m15:latestClosedAge(c15,900000,now),h1:latestClosedAge(c60,3600000,now)};
+  if(ages.m1>150000||ages.m5>480000||ages.m15>1200000||ages.h1>4500000)throw new Error(provider+' stale candles');
+  return ages;
+}
 async function coinbase(granularity:number){
   const rows=await json('https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity='+granularity);
   if(!Array.isArray(rows))throw new Error('coinbase schema');
@@ -37,9 +46,11 @@ export async function getBtcMarket(force=false):Promise<BtcMarket>{
   try{
     const [c1,c5,c15,c60]=await Promise.all([coinbase(60),coinbase(300),coinbase(900),coinbase(3600)]);
     if(c5.length<220||c15.length<220||c60.length<220)throw new Error('coinbase history short');
+    assertFresh(c1,c5,c15,c60,now,'Coinbase');
     const value={c1,c5,c15,c60,source:'Coinbase BTC-USD',checkedAt:now};cache={at:now,value};return value;
   }catch{}
   const [c1,c5,c15,c60]=await Promise.all([binance('1m'),binance('5m'),binance('15m'),binance('1h')]);
   if(c5.length<220||c15.length<220||c60.length<220)throw new Error('BTC history unavailable');
-  const value={c1,c5,c15,c60,source:'Binance BTCUSDT',checkedAt:now};cache={at:now,value};return value;
+  assertFresh(c1,c5,c15,c60,now,'Binance');
+  const value={c1,c5,c15,c60,source:'Binance BTCUSDT · fresh-candle fallback',checkedAt:now};cache={at:now,value};return value;
 }
