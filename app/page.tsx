@@ -212,7 +212,7 @@ export default function Home(){
         </>}
 
         {tab==='ai'&&<><AICommandCenter data={aiData} error={aiError} now={now}/><NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/></>} 
-        {tab==='news'&&<NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/>
+        {tab==='news'&&<NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/>}
         {tab==='lab'&&<StrategyLab signal={analysis?.signal||null} regime={analysis?.regime} quotePrice={quote?.price} quoteLive={live} latestM1={latestM1} rules={rules}/>}
         {tab==='performance'&&<PerformanceCenter/>}
         {tab==='health'&&<HealthCenter/>}
