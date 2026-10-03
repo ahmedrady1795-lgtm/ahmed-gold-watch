@@ -31,6 +31,7 @@ export default function Home(){
   const [monitor,setMonitor]=useState(false);
   const [notice,setNotice]=useState('');
   const [btc,setBtc]=useState<number|null>(null);
+  const [btcSource,setBtcSource]=useState('Coinbase');
   const [btcAt,setBtcAt]=useState(0),[goldTick,setGoldTick]=useState<any>(null);
   const seenSignal=useRef('');
   const [rules,setRules]=useState<Rules>(defaults);
@@ -67,19 +68,16 @@ export default function Home(){
   },[]);
 
   useEffect(()=>{
-    let newestAt=0;
-    const applyBtc=(price:number,at:number)=>{if(price>0&&Number.isFinite(price)&&at>=newestAt){newestAt=at;setBtc(price);setBtcAt(at);}};
-    const loadBtc=async()=>{try{const r=await fetch('/api/btc',{cache:'no-store'}),j=await r.json();const p=Number(j?.price),at=Number(j?.fetchedAt)||Date.now();if(r.ok&&j?.ok)applyBtc(p,at);}catch{}};
+    let closed=false;
+    const loadBtc=async()=>{try{
+      const r=await fetch('/api/btc?source=coinbase',{cache:'no-store'}),j=await r.json();
+      const p=Number(j?.price),at=Number(j?.fetchedAt)||Date.now();
+      if(!closed&&r.ok&&j?.ok&&Number.isFinite(p)&&p>0){setBtc(p);setBtcAt(at);setBtcSource(String(j?.source||'Coinbase'));}
+      else if(!closed&&!r.ok){setBtc(null);setBtcAt(0);setBtcSource('Coinbase unavailable');}
+    }catch{if(!closed){setBtc(null);setBtcAt(0);setBtcSource('Coinbase unavailable');}}};
     void loadBtc();
-    const restTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadBtc();},3000);
-    let ws:WebSocket|null=null,t:any,closed=false;
-    const open=()=>{if(closed)return;try{
-      ws=new WebSocket('wss://fstream.binance.com/ws/btcusdt@bookTicker');
-      ws.onmessage=e=>{try{const x=JSON.parse(e.data),b=Number(x.b),a=Number(x.a),at=Number(x.E)||Date.now();if(x.s==='BTCUSDT'&&b>0&&a>=b&&at<=Date.now()+10000)applyBtc((b+a)/2,at);}catch{}};
-      ws.onclose=()=>{if(!closed)t=setTimeout(open,1800);};
-      ws.onerror=()=>{try{ws?.close();}catch{}};
-    }catch{t=setTimeout(open,2500);}};
-    open();return()=>{closed=true;clearTimeout(t);clearInterval(restTimer);try{ws?.close();}catch{}};
+    const restTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadBtc();},1500);
+    return()=>{closed=true;clearInterval(restTimer);};
   },[]);
 
   useEffect(()=>{
@@ -151,7 +149,7 @@ export default function Home(){
       </div>
       <div className="tickerstrip">
         <div><small>{source.includes('Binance')?'XAUUSDT · عقد بديل':'XAU/USD'}</small><b>{fmt(quote?.price)}</b><em className={live?'up':'muted'}>{!marketOpen?'CLOSED':live?'LIVE':'WAIT'}</em></div>
-        <div><small>BTC/USD</small><b>{fmt(shownBtc,2)}</b><em>{shownBtcAt&&now-shownBtcAt<10000?'LIVE':'WAIT'}</em></div>
+        <div><small>BTC/USD · {btcSource.includes('Coinbase')?'COINBASE':'WAIT'}</small><b>{fmt(btc,2)}</b><em>{btcAt&&now-btcAt<5000?'LIVE':'WAIT'}</em></div>
         <div><small>SCORE</small><b>{score||'—'}</b><em>/100</em></div>
       </div>
       <button className="refresh" onClick={()=>void load()} disabled={busy}><RefreshCw size={17} className={busy?'spin':''}/><span>{busy?'تحديث':'تحديث'}</span></button>
