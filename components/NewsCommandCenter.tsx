@@ -43,12 +43,12 @@ export default function NewsCommandCenter({analysis,events=[],background=[],quot
   {e&&<><div className="newsclock"><Clock3/><strong>{since(e.time-now)}</strong><span>{active?analysis.news.phase==='released'?'POST-RELEASE':'ARMED':'CALENDAR'}</span></div><div className="levels"><div><small>Actual</small><strong>{e.actual||'لم يصدر'}</strong></div><div><small>Forecast</small><strong>{e.forecast||'—'}</strong></div><div><small>Previous</small><strong>{e.previous||'—'}</strong></div></div><p>{surprise(e)}</p></>}
   <div className="newschecks"><span><Gauge/>Spread <b>{n(quote?.spread,2)}</b></span><span><ShieldCheck/>M1 confirmation <b>{analysis?.signal?.mode==='news'?'YES':'WAIT'}</b></span><span>DXY <b>{n(b('dxy')?.value,2)}</b></span><span>US2Y <b>{n(b('us2y')?.value,3)}</b></span><span>US10Y <b>{n(b('us10y')?.value,3)}</b></span></div>
   <p className="muted">غياب الأحداث لا يعني خلو السوق من أخبار مهمة. <a href="https://www.bls.gov/schedule/" target="_blank" rel="noreferrer">جدول BLS الرسمي</a> · <a href="https://www.bea.gov/news/schedule" target="_blank" rel="noreferrer">جدول BEA الرسمي</a></p><p className="muted">DXY والعوائد عوامل تأكيد فقط. اتجاه صفقة الخبر لا يُستنتج من Actual وحده؛ يلزم رد فعل السعر وإغلاق M1 وسبريد قابل للتنفيذ.</p>
-  <h3>الأخبار القادمة خلال ٧ أيام · مرتبة حسب التأثير على الذهب · توقيت الإمارات</h3>
+  <h3>سجل الأخبار القادمة · مرتبة حسب التأثير على الذهب · توقيت الإمارات</h3>
   {!upcoming.length&&<p>المصدر لم يوفر مواعيد قادمة في هذه النافذة. هذا لا يعني عدم وجود أخبار؛ يلزم تحديث التقويم.</p>}
-  {upcoming.map((x:any)=><article key={x.id} className="rule compact" style={{display:'block'}}>
-   <strong>{x.name} · {x.importance===3?'🔥 تأثير مرتفع':x.importance===2?'⚠️ تأثير متوسط':'تأثير منخفض'}</strong>
+  {upcoming.map((x:any,index:number)=><article key={x.id} className="rule compact" style={{display:'block'}}>
+   <strong>#{index+1} · {x.name} · {x.importance===3?'🔥 تأثير مرتفع':x.importance===2?'⚠️ تأثير متوسط':'تأثير منخفض'}</strong>
    <p><b>{goldForecastBias(x).label}</b></p>
-   <p>{new Date(x.time).toLocaleString('ar-AE',{timeZone:'Asia/Dubai'})} · Forecast: {x.forecast||'غير متاح'} · Previous: {x.previous||'غير متاح'}</p>
+   <p><b>قادمة</b> · {new Date(x.time).toLocaleString('ar-AE',{timeZone:'Asia/Dubai'})} · Forecast: {x.forecast||'غير متاح'} · Previous: {x.previous||'غير متاح'}</p>
    <p>{goldForecastBias(x).why}</p>
    <p>{scenario(x.name)}</p>
    {/^https:\/\//.test(x.source)&&<a href={x.source} target="_blank" rel="noreferrer">مصدر الموعد</a>}
