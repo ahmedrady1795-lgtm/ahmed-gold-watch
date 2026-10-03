@@ -4,7 +4,8 @@ const n=(v:any,d=2)=>Number.isFinite(Number(v))?Number(v).toLocaleString('en-US'
 const countdown=(ms:number)=>{const s=Math.round(ms/1000),a=Math.abs(s),m=Math.floor(a/60),r=a%60;return `${s>=0?'بعد':'منذ'} ${m?m+'د ':''}${r}ث`;};
 export default function CommandCenter({analysis,quote,events=[],background=[],now=Date.now(),health}:any){
  const sig=analysis?.signal,news=analysis?.news,side=sig?.sideCode==='buy'?'BUY':sig?.sideCode==='sell'?'SELL':null;
- const mode=sig?.mode==='news'?'NEWS MODE':analysis?.state==='setup'?'READY':analysis?.state==='wait'?'WATCH':'NO TRADE';
+ const stopReason=String(analysis?.reason||'');
+ const mode=sig?.mode==='news'?'NEWS MODE':analysis?.state==='setup'?'READY':analysis?.state==='wait'?'WATCH':analysis?.state==='stop'&&/مغلق|متأخرة/.test(stopReason)?'MARKET CLOSED':analysis?.state==='stop'&&/بيانات|شموع|فجوات/.test(stopReason)?'DATA WAIT':'NO TRADE';
  const cls=analysis?.state==='setup'?(side==='BUY'?'cc-buy':'cc-sell'):analysis?.state==='wait'?'cc-watch':'cc-stop';
  const next=events.filter((e:any)=>e.importance===3&&e.time>now-6*3600000).sort((a:any,b:any)=>a.time-b.time)[0];
  const dxy=background.find((x:any)=>x.key==='dxy'),y2=background.find((x:any)=>x.key==='us2y'),y10=background.find((x:any)=>x.key==='us10y');
