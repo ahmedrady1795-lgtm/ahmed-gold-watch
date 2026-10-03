@@ -63,9 +63,8 @@ export function analyze(c1:Candle[],c5:Candle[],c15:Candle[],c60:Candle[],events
   const frames={m1:i1,m5:i5,m15:i15,h1:i60},last={m1:last1.close,m5:last5.close,m15:last15.close,h1:last60.close};
   const longBreak=last5.close>high||last1.close>high1,shortBreak=last5.close<low||last1.close<low1,longScore=scoreFrames('long',frames,last,longBreak),shortScore=scoreFrames('short',frames,last,shortBreak),score={long:longScore,short:shortScore,threshold:r.minScore};
   const regime=detectRegime(frames,last5.close,longBreak,shortBreak);
-  const base={metrics:i5,frames,levels,score,regime,news:null as any,signal:null as any};
+  const base={metrics:i5,frames,levels,score,regime,news:null as any,signal:null as any,newsCoverage:newsReady?'ready':'degraded'};
   if(stale)return {...base,state:'stop' as const,title:'قراءة تاريخية — السوق مغلق أو البيانات متأخرة',reason:'المؤشرات المعروضة تخص آخر شموع متاحة وليست تحليلاً لحظياً. الإشارات متوقفة حتى وصول بيانات حديثة.',signal:null};
-  if(!newsReady)return {...base,state:'stop' as const,title:'التحليل جاهز — تغطية الأخبار غير مؤكدة',reason:'المؤشرات محسوبة، لكن لا يمكن فحص اقتراب خبر قوي. تتوقف توصيات الدخول حتى استعادة التقويم.',signal:null};
   const newsEvent=newsReady?events.find(e=>e.importance===3&&e.exactTime&&now>=e.time-r.before*60000&&now<=e.time+r.after*60000):undefined;
   if(newsEvent){
     const mins=(now-newsEvent.time)/60000,news={active:true,event:newsEvent,phase:mins<0?'armed':'released',minutesFromRelease:mins};
@@ -88,8 +87,50 @@ export function analyze(c1:Candle[],c5:Candle[],c15:Candle[],c60:Candle[],events
 
   if(i5.atr<=0||i5.volatility>r.spike||last5.high-last5.low>3*i5.atr||regime.key==='shock')return {...baseStop('تذبذب غير طبيعي أو صدمة سوقية خارج نافذة خبر مؤكدة؛ انتظر عودة المدى لطبيعته.'),...base};
   if(i5.adx<r.adx)return {...baseStop('قوة الاتجاه أقل من الحد المحدد حسب ADX؛ لا دخول.'),...base};
-  const side=longScore>=shortScore?'buy':'sell',best=Math.max(longScore,shortScore),gap=Math.abs(longScore-shortScore),buySide=side==='buy',regimeThreshold=r.minScore+(regime.key==='range'?6:regime.key==='high_vol'?4:0),regimeSideOk=buySide?regime.key!=='trend_down':regime.key!=='trend_up',rangeBreakOk=regime.key!=='range'||(buySide?longBreak:shortBreak),qualified=best>=regimeThreshold&&gap>=12&&regimeSideOk&&rangeBreakOk;
+  const side=longScore>=shortScore?'buy':'sell',best=Math.max(longScore,shortScore),gap=Math.abs(longScore-shortScore),buySide=side==='buy';
+  const cleanTrend=(regime.key==='trend_up'||regime.key==='trend_down')&&i5.adx>=25&&i15.adx>=20;
+  const regimeThreshold=Math.max(68,r.minScore+(regime.key==='range'?5:regime.key==='high_vol'?3:cleanTrend?-4:0));
+  const regimeSideOk=buySide?regime.key!=='trend_down':regime.key!=='trend_up',rangeBreakOk=regime.key!=='range'||(buySide?longBreak:shortBreak),qualified=best>=regimeThreshold&&gap>=10&&regimeSideOk&&rangeBreakOk;
   if(qualified){const buy=side==='buy',entry=last1.close,recent=a5.slice(-12),swing=buy?Math.min(...recent.map(x=>x.low)):Math.max(...recent.map(x=>x.high)),raw=buy?Math.min(swing,entry-1.2*i5.atr):Math.max(swing,entry+1.2*i5.atr),cap=buy?entry-2.2*i5.atr:entry+2.2*i5.atr,sl=buy?Math.max(raw,cap):Math.min(raw,cap),risk=Math.abs(entry-sl);if(risk>0&&risk<=2.25*i5.atr){const dir=buy?1:-1;return {...base,state:'setup' as const,title:buy?'توافق قوي لمراقبة شراء':'توافق قوي لمراقبة بيع',reason:`درجة التوافق ${best}/100 مع فارق ${gap} نقطة. حالة السوق: ${regime.label}. يلزم بقاء البيانات حديثة والسبريد ضمن الحد.`,signal:{id:String(last1.time)+(buy?'buy':'sell'),mode:'standard',side:buy?'شراء':'بيع',sideCode:buy?'buy':'sell',entry,sl,tp:entry+dir*1.8*risk,time:last1.time+60000,score:best,rr:1.8}};}}
   return {...base,state:'wait' as const,title:'انتظار اكتمال التوافق',reason:`أقوى قراءة الآن ${best}/100 (${longScore} شراء مقابل ${shortScore} بيع). حالة السوق: ${regime.label}. الحد الفعلي الآن ${regimeThreshold}/100 مع فارق اتجاه واضح.`,signal:null};
 }
+
+export function scalpAnalyze(c1:Candle[],c5:Candle[],now:number,price?:number|null){
+  const a1=closed(c1,60000,now),a5=closed(c5,300000,now);
+  const wait=(reason:string,extra:any={})=>({state:'wait' as const,action:'WAIT' as const,title:'M1 SCALP · WAIT',reason,score:{long:0,short:0,threshold:66},trade:null,...extra});
+  if(a1.length<80||a5.length<80)return wait('بيانات M1/M5 غير كافية للسكالب.');
+  const l1=a1.at(-1)!,l5=a5.at(-1)!,age1=now-(l1.time+60000),age5=now-(l5.time+300000);
+  if(age1>180000||age5>600000)return wait('بيانات السكالب متأخرة.');
+  const i1=indicators(a1),i5=indicators(a5);
+  if(![i1.atr,i1.adx,i1.rsi,i1.macdHist,i1.stochK,i1.stochD,i5.ema20,i5.ema50].every(Number.isFinite)||i1.atr<=0)return wait('مؤشرات السكالب غير مكتملة.');
+  const p=Number.isFinite(Number(price))&&Number(price)>0?Number(price):l1.close;
+  const recent=a1.slice(-8,-1),hi=Math.max(...recent.map(x=>x.high)),lo=Math.min(...recent.map(x=>x.low));
+  const prev3=a1.slice(-4,-1),base=prev3.length?prev3[0].close:l1.open,momentum=(l1.close-base)/i1.atr;
+  const longBreak=l1.close>hi,shortBreak=l1.close<lo;
+  const score=(long:boolean)=>{
+    let s=0;
+    s+=add(long?i1.ema20>i1.ema50:i1.ema20<i1.ema50,14);
+    s+=add(long?i5.ema20>i5.ema50:i5.ema20<i5.ema50,14);
+    s+=add(long?i1.macdHist>0:i1.macdHist<0,12);
+    s+=add(long?i5.macdHist>0:i5.macdHist<0,8);
+    s+=add(long?i1.rsi>=51&&i1.rsi<=74:i1.rsi<=49&&i1.rsi>=26,10);
+    s+=add(i1.adx>=17&&(long?i1.plusDI>i1.minusDI:i1.minusDI>i1.plusDI),12);
+    s+=add(long?i1.stochK>i1.stochD&&i1.stochK<90:i1.stochK<i1.stochD&&i1.stochK>10,8);
+    s+=add(long?l1.close>i1.bbMid:l1.close<i1.bbMid,7);
+    s+=add(long?momentum>=.18:momentum<=-.18,7);
+    s+=add(long?longBreak:shortBreak,8);
+    return s;
+  };
+  const long=score(true),short=score(false),side=long>=short?'buy':'sell',best=Math.max(long,short),gap=Math.abs(long-short);
+  const volatilityOk=i1.volatility<=2.5&&Math.abs(l1.high-l1.low)<=3.2*i1.atr;
+  const trend5=side==='buy'?i5.ema20>=i5.ema50:i5.ema20<=i5.ema50;
+  const qualified=best>=66&&gap>=10&&volatilityOk&&trend5;
+  const diagnostics={indicators:{m1:i1,m5:i5},score:{long,short,threshold:66},momentum:Number(momentum.toFixed(2)),breakout:{long:longBreak,short:shortBreak},dataAgeMs:{m1:age1,m5:age5}};
+  if(!qualified)return wait(`أقوى Scalp ${best}/100 (شراء ${long} / بيع ${short}). يلزم ≥66 وفارق ≥10 مع توافق M5.`,diagnostics);
+  const buy=side==='buy',dir=buy?1:-1,recentSwing=buy?Math.min(...a1.slice(-6).map(x=>x.low)):Math.max(...a1.slice(-6).map(x=>x.high));
+  const minRisk=.55*i1.atr,maxRisk=1.15*i1.atr,rawRisk=Math.abs(p-recentSwing),risk=Math.min(maxRisk,Math.max(minRisk,rawRisk));
+  const sl=p-dir*risk,tp=p+dir*1.25*risk;
+  return {state:'setup' as const,action:buy?'BUY' as const:'SELL' as const,title:buy?'M1 SCALP · BUY':'M1 SCALP · SELL',reason:`توافق ${best}/100 عبر EMA + MACD + RSI + ADX/DI + Stochastic + Bollinger + Momentum على M1 مع فلتر M5.`,...diagnostics,trade:{mode:'scalp',side:side,entry:p,sl,tp,rr:1.25,score:best,validForSeconds:90,time:l1.time+60000}};
+}
+
 export function surprise(e:Event){if(!e.actual||!e.forecast)return 'لم تصدر نتيجة قابلة للمقارنة بعد.';const rx=/^\s*(-?[\d,.]+)\s*([%KMB]?)\s*$/i,a=e.actual.match(rx),f=e.forecast.match(rx);if(!a||!f||a[2].toUpperCase()!==f[2].toUpperCase())return 'نتيجة تحتاج قراءة تفصيلية؛ لا اتجاه تلقائي.';const delta=Number(a[1].replaceAll(',',''))-Number(f[1].replaceAll(',',''));return delta===0?'النتيجة توافق التوقعات؛ راقب رد فعل السعر.':`النتيجة ${delta>0?'أعلى':'أقل'} من التوقعات. أثرها على الذهب غير محسوم دون العوائد والدولار ورد فعل السعر.`;}
