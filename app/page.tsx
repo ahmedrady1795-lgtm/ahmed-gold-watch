@@ -17,6 +17,7 @@ import {analyze,defaults,type Rules} from '../lib/engine';
 type Snapshot={ok:boolean;checkedAt:number;market:any;quote:any;mt5:any;analysis:any};
 type Tab='dashboard'|'chart'|'news'|'lab'|'performance'|'health';
 const fmt=(v:any,d=2)=>Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
+const goldMarketOpen=(now:number)=>{const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;if(day===6)return false;if(day===0&&h<22)return false;if(day===5&&h>=21)return false;if(day>=1&&day<=4&&h>=21&&h<22)return false;return true;};
 
 export default function Home(){
   const [snap,setSnap]=useState<Snapshot|null>(null);
@@ -119,7 +120,9 @@ export default function Home(){
   const score=analysis?.score?Math.max(analysis.score.long,analysis.score.short):0;
   const latestM1=market?.c1?.filter((c:any)=>c.time+60000<=Date.now()).at(-1)||null;
   const quoteAge=quote?.sourceTime?Math.max(0,Date.now()-quote.sourceTime):null;
-  const live=!error&&quote?.status==='live'&&quoteAge!=null&&quoteAge<120000;
+  const marketOpen=goldMarketOpen(now);
+  const live=marketOpen&&!error&&quote?.status==='live'&&quoteAge!=null&&quoteAge<120000;
+  const priceState=!marketOpen?'MARKET CLOSED':live?'PRICE LIVE':quote?.status==='delayed'?'PRICE DELAYED':'PRICE NOT READY';
 
   const tabs=[
     ['dashboard','القيادة',LayoutDashboard],['chart','الرسم',ChartCandlestick],['news','الأخبار',Newspaper],
@@ -133,7 +136,7 @@ export default function Home(){
         <div><span>AHMED GOLD · MASTER 3.1</span><strong>COMMAND</strong></div>
       </div>
       <div className="tickerstrip">
-        <div><small>{source.includes('Binance')?'XAUUSDT · عقد بديل':'XAU/USD'}</small><b>{fmt(quote?.price)}</b><em className={live?'up':'muted'}>{live?'LIVE':'WAIT'}</em></div>
+        <div><small>{source.includes('Binance')?'XAUUSDT · عقد بديل':'XAU/USD'}</small><b>{fmt(quote?.price)}</b><em className={live?'up':'muted'}>{!marketOpen?'CLOSED':live?'LIVE':'WAIT'}</em></div>
         <div><small>BTC/USDT</small><b>{fmt(btc,0)}</b><em>{btcAt&&now-btcAt<15000?'LIVE':'WAIT'}</em></div>
         <div><small>SCORE</small><b>{score||'—'}</b><em>/100</em></div>
       </div>
@@ -141,7 +144,7 @@ export default function Home(){
     </header>
 
     <section className="statusrail">
-      <span className={live?'pill ok':'pill bad'}>{live?<Wifi size={14}/>:<WifiOff size={14}/>} {live?'PRICE LIVE':'PRICE NOT READY'}</span>
+      <span className={live?'pill ok':!marketOpen?'pill neutral':'pill bad'}>{live?<Wifi size={14}/>:<WifiOff size={14}/>} {priceState}</span>
       <span className={market?.pricesReady?'pill ok':'pill bad'}><Activity size={14}/> CANDLES {market?.pricesReady?'READY':'WAIT'}</span>
       <span className={mt5Fresh?'pill ok':'pill neutral'}><ShieldCheck size={14}/> {mt5Fresh?'MT5 READY':'MT5 OFFLINE'}</span>
       <span className={monitor?'pill watch':'pill neutral'}><Bell size={14}/> TELEGRAM {monitor?'MONITORING':'PAUSED'}</span>
@@ -192,7 +195,7 @@ export default function Home(){
         <div className="sidecard">
           <span className="eyebrow">SYSTEM</span>
           <h3>{health?.status==='healthy'?'جاهز للمراقبة':health?.status==='degraded'?'يعمل جزئيًا':'بانتظار الفحص'}</h3>
-          <div className="kv"><span>Price</span><b className={live?'green':'red'}>{live?'LIVE':'WAIT'}</b></div>
+          <div className="kv"><span>Price</span><b className={live?'green':!marketOpen?'amber':'red'}>{!marketOpen?'CLOSED':live?'LIVE':'WAIT'}</b></div>
           <div className="kv"><span>Candles</span><b className={market?.pricesReady?'green':'red'}>{market?.pricesReady?'READY':'WAIT'}</b></div>
           <div className="kv"><span>News</span><b className={market?.newsReady?'green':'amber'}>{market?.newsReady?'READY':'OPTIONAL'}</b></div>
           <div className="kv"><span>Telegram</span><b className={health?.services?.telegram?.configured?'green':'amber'}>{health?.services?.telegram?.configured?'READY':'TOKEN NEEDED'}</b></div>
