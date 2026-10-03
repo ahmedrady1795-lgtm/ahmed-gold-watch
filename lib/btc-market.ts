@@ -31,14 +31,16 @@ async function coinbase(granularity:number){
   if(c.length<80)throw new Error('coinbase insufficient');
   return c;
 }
-async function binance(interval:string){
-  const rows=await json('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval='+interval+'&limit=300');
-  if(!Array.isArray(rows))throw new Error('binance schema');
-  const out=rows.map((r:any)=>({time:Number(r[0]),open:Number(r[1]),high:Number(r[2]),low:Number(r[3]),close:Number(r[4])} as Candle))
-    .filter((c:Candle)=>Number.isFinite(c.time)&&Number.isFinite(c.open)&&Number.isFinite(c.high)&&Number.isFinite(c.low)&&Number.isFinite(c.close)&&c.low>0)
-    .sort((a:Candle,b:Candle)=>a.time-b.time);
-  if(out.length<80)throw new Error('binance insufficient');
-  return out;
+async function kraken(interval:number){
+  const j=await json('https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval='+interval);
+  const result=j?.result||{},key=Object.keys(result).find(k=>k!=='last'),rows=key?result[key]:null;
+  if(!Array.isArray(rows))throw new Error('kraken schema');
+  const out=rows.map((r:any)=>({time:Number(r[0])*1000,open:Number(r[1]),high:Number(r[2]),low:Number(r[3]),close:Number(r[4])} as Candle))
+    .filter((c:Candle)=>Number.isFinite(c.time)&&Number.isFinite(c.open)&&Number.isFinite(c.high)&&Number.isFinite(c.low)&&Number.isFinite(c.close)&&c.low>0&&c.high>=Math.max(c.open,c.close)&&c.low<=Math.min(c.open,c.close))
+    .sort((a:Candle,b:Candle)=>a.time-b.time)
+    .filter((c:Candle,i:number,a:Candle[])=>i===0||c.time!==a[i-1].time);
+  if(out.length<220)throw new Error('kraken insufficient');
+  return out.slice(-300);
 }
 export async function getBtcMarket(force=false):Promise<BtcMarket>{
   const now=Date.now();
@@ -49,8 +51,8 @@ export async function getBtcMarket(force=false):Promise<BtcMarket>{
     assertFresh(c1,c5,c15,c60,now,'Coinbase');
     const value={c1,c5,c15,c60,source:'Coinbase BTC-USD',checkedAt:now};cache={at:now,value};return value;
   }catch{}
-  const [c1,c5,c15,c60]=await Promise.all([binance('1m'),binance('5m'),binance('15m'),binance('1h')]);
+  const [c1,c5,c15,c60]=await Promise.all([kraken(1),kraken(5),kraken(15),kraken(60)]);
   if(c5.length<220||c15.length<220||c60.length<220)throw new Error('BTC history unavailable');
-  assertFresh(c1,c5,c15,c60,now,'Binance');
-  const value={c1,c5,c15,c60,source:'Binance BTCUSDT · fresh-candle fallback',checkedAt:now};cache={at:now,value};return value;
+  assertFresh(c1,c5,c15,c60,now,'Kraken');
+  const value={c1,c5,c15,c60,source:'Kraken XBT/USD · fresh-candle fallback',checkedAt:now};cache={at:now,value};return value;
 }
