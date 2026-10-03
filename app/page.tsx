@@ -61,7 +61,7 @@ export default function Home(){
     const clock=setInterval(()=>setNow(Date.now()),1000);
     const market=setInterval(()=>{if(document.visibilityState==='visible')void load(true);},15000);
     const hs=setInterval(()=>{if(document.visibilityState==='visible')void loadHealth();},30000);
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},10000);
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},3000);
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
     return()=>{clearInterval(clock);clearInterval(market);clearInterval(hs);clearInterval(aiTimer);};
   },[]);

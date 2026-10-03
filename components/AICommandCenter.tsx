@@ -3,7 +3,7 @@ import {Activity,ShieldCheck,TrendingUp,TrendingDown} from 'lucide-react';
 const fmt=(v:any,d=2)=>Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
 function Card({x}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
-  const trade=x.trade,candidate=x.candidateTrade,buy=x.action==='BUY',sell=x.action==='SELL';
+  const trade=x.trade,candidate=x.candidateTrade,buy=x.action==='BUY',sell=x.action==='SELL',pulse=x.livePulse;
   return <section className="panel">
     <div className="panelhead"><div><span className="eyebrow">{x.asset} · {x.model||'AI ENGINE'}</span><h2>{buy?'BUY SETUP':sell?'SELL SETUP':'WAIT'} · Quality {x.quality||'—'}</h2></div>{buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}</div>
     <div className="levels">
@@ -17,7 +17,12 @@ function Card({x}:any){
       <div><small>Bias</small><strong>{x.bias}</strong></div>
     </div>
     <p><b>{x.title}</b></p>
-    <p>السعر: {fmt(x.price,x.asset==='BTC'?0:2)} · السعر: {x.source} · الشموع: {x.candleSource}</p>
+    {pulse&&<div className="levels">
+      <div><small>Live Pulse</small><strong>{pulse.direction}</strong></div>
+      <div><small>Δ M1</small><strong>{Number(pulse.deltaPct).toFixed(3)}%</strong></div>
+      <div><small>Live Momentum</small><strong>{pulse.momentum}/100</strong></div>
+    </div>}
+    <p>السعر: {fmt(pulse?.price??x.price,x.asset==='BTC'?0:2)} · السعر: {pulse?.source||x.source} · الشموع: {x.candleSource}</p>
     {trade?<div className="levels">
       <div><small>Entry</small><strong>{fmt(trade.entry,x.asset==='BTC'?0:2)}</strong></div>
       <div><small>SL</small><strong>{fmt(trade.sl,x.asset==='BTC'?0:2)}</strong></div>
