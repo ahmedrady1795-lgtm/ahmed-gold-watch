@@ -1,0 +1,3 @@
+import { getQuoteData } from '../../../lib/market-hub';
+export const dynamic = 'force-dynamic';
+export async function GET(){try{return Response.json(await getQuoteData(),{headers:{'Cache-Control':'public, max-age=0, s-maxage=1, stale-while-revalidate=2','X-Market-Hub':'shared'}});}catch(e){const m=e instanceof Error?e.message:'quote hub error';return Response.json({ok:false,code:m.startsWith('PRICE_NOT_CONNECTED')?'PRICE_NOT_CONNECTED':'QUOTE_SOURCE_ERROR',message:'تعذر جلب السعر اللحظي الآن.',detail:m,fetchedAt:Date.now()},{status:m.startsWith('PRICE_NOT_CONNECTED')?503:502,headers:{'Cache-Control':'no-store'}});}}
