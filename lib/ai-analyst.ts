@@ -62,7 +62,7 @@ function reasons(a:any,mt:any,st:any,hunter:any){
   if(hunter?.mode)out.push('Hunter '+hunter.mode+' · '+hunter.score+'/100');
   return out.slice(0,8);
 }
-function frameVote(i:any,last:number){
+function frameVote(i:any,last:any){
   if(!i||!finite(last))return {buy:0,sell:0,bias:'WAIT',strength:0};
   let buy=0,sell=0;
   if(i.ema20>i.ema50)buy+=16;else sell+=16;
