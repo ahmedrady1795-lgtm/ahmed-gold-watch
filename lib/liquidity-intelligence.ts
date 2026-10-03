@@ -47,6 +47,8 @@ export type LiquidityIntelligence={
     side:Side;
     score:number;
     reason:string;
+    trapDetected:boolean;
+    followThrough:boolean;
   };
   warnings:string[];
 };
@@ -140,17 +142,31 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
   const acceleration=clamp(pressureChange*.55+(bidDepthChangePct-askDepthChangePct)*.45);
   previous={at:now,pressure:pressureBase,bidDepthUsd:rawBidUsd,askDepthUsd:rawAskUsd};
 
-  let absorptionSide:Side='WAIT',absorptionScore=0,absorptionReason='لا يوجد امتصاص واضح.';
-  if(flow.deltaPct<=-24&&flow.priceChangeBps>=-1.5){
-    absorptionSide='BUY';absorptionScore=Math.min(100,Math.round(Math.abs(flow.deltaPct)*1.8+Math.max(0,flow.priceChangeBps)*8));absorptionReason='بيع هجومي مرتفع بدون هبوط مماثل: احتمال امتصاص شراء.';
-  }else if(flow.deltaPct>=24&&flow.priceChangeBps<=1.5){
-    absorptionSide='SELL';absorptionScore=Math.min(100,Math.round(Math.abs(flow.deltaPct)*1.8+Math.max(0,-flow.priceChangeBps)*8));absorptionReason='شراء هجومي مرتفع بدون صعود مماثل: احتمال امتصاص بيع.';
+  const absDelta=Math.abs(flow.deltaPct),signedPrice=flow.priceChangeBps;
+  const sellFollowThrough=flow.deltaPct<=-18&&signedPrice<=-2.2;
+  const buyFollowThrough=flow.deltaPct>=18&&signedPrice>=2.2;
+  let absorptionSide:Side='WAIT',absorptionScore=0,absorptionReason='لا يوجد امتصاص واضح.',trapDetected=false,followThrough=sellFollowThrough||buyFollowThrough;
+  if(flow.deltaPct<=-30&&signedPrice>-2.2){
+    trapDetected=true;absorptionSide='BUY';
+    const mismatch=signedPrice>=0?20:10;
+    absorptionScore=Math.min(92,Math.round(45+absDelta*.45+mismatch));
+    absorptionReason='بيع هجومي كبير لكن السعر رفض الهبوط: فخ بيع/امتصاص شراء محتمل.';
+  }else if(flow.deltaPct>=30&&signedPrice<2.2){
+    trapDetected=true;absorptionSide='SELL';
+    const mismatch=signedPrice<=0?20:10;
+    absorptionScore=Math.min(92,Math.round(45+absDelta*.45+mismatch));
+    absorptionReason='شراء هجومي كبير لكن السعر رفض الصعود: فخ شراء/امتصاص بيع محتمل.';
+  }else if(flow.deltaPct<=-24&&signedPrice>=-1.2){
+    absorptionSide='BUY';absorptionScore=Math.min(88,Math.round(36+absDelta*.38));absorptionReason='ضغط بيع بدون متابعة سعرية كافية: امتصاص شراء محتمل.';
+  }else if(flow.deltaPct>=24&&signedPrice<=1.2){
+    absorptionSide='SELL';absorptionScore=Math.min(88,Math.round(36+absDelta*.38));absorptionReason='ضغط شراء بدون متابعة سعرية كافية: امتصاص بيع محتمل.';
   }
 
-  const absorptionAdj=absorptionSide==='BUY'?Math.min(18,absorptionScore*.18):absorptionSide==='SELL'?-Math.min(18,absorptionScore*.18):0;
-  const wallAdj=wallSide==='BUY'?Math.min(5,Math.max(0,wallDiff)*1.6):wallSide==='SELL'?-Math.min(5,Math.max(0,-wallDiff)*1.6):0;
-  const signed=clamp(weightedImbalance*.38+flow.deltaPct*.32+acceleration*.14+absorptionAdj+wallAdj);
-  const buy=Math.round(clamp(50+signed/2,0,100)),sell=100-buy,side=buy-sell>=10?'BUY':sell-buy>=10?'SELL':'WAIT';
+  const flowWeight=trapDetected?.04:followThrough?.30:.16;
+  const absorptionAdj=absorptionSide==='BUY'?Math.min(30,absorptionScore*.32):absorptionSide==='SELL'?-Math.min(30,absorptionScore*.32):0;
+  const wallAdj=wallSide==='BUY'?Math.min(4,Math.max(0,wallDiff)*1.2):wallSide==='SELL'?-Math.min(4,Math.max(0,-wallDiff)*1.2):0;
+  const signed=clamp(weightedImbalance*.40+flow.deltaPct*flowWeight+acceleration*.12+absorptionAdj+wallAdj,-84,84);
+  const buy=Math.round(clamp(50+signed/2,8,92)),sell=100-buy,side=buy-sell>=10?'BUY':sell-buy>=10?'SELL':'WAIT';
   const successCount=[bboR,depthR,tradesR].filter(x=>x.status==='fulfilled').length;
   const quality=Math.max(0,Math.min(100,Math.round(successCount/3*82+(bids.length>=20&&asks.length>=20?10:0)+(flow.tradeCount>=20?8:0))));
   const value:LiquidityIntelligence={
@@ -158,7 +174,7 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
     book:{bestBid,bestAsk,spreadBps:spreadBps==null?null:Number(spreadBps.toFixed(3)),bboImbalance:Math.round(bboImbalance),depthImbalance:Math.round(depthImbalance),weightedImbalance:Math.round(weightedImbalance),microprice:microprice==null?null:Number(microprice.toFixed(2)),microEdge:Math.round(microEdge),bidDepthUsd:Math.round(rawBidUsd),askDepthUsd:Math.round(rawAskUsd),bidWall:Number(bidWall.toFixed(2)),askWall:Number(askWall.toFixed(2)),wallSide},
     flow:{tradeCount:flow.tradeCount,buyVolume:Number(flow.buyVolume.toFixed(6)),sellVolume:Number(flow.sellVolume.toFixed(6)),deltaVolume:Number(flow.deltaVolume.toFixed(6)),deltaPct:Number(flow.deltaPct.toFixed(1)),priceChangeBps:Number(flow.priceChangeBps.toFixed(2)),cvdSide:flow.cvdSide},
     dynamics:{pressureChange:Number(pressureChange.toFixed(1)),bidDepthChangePct:Number(bidDepthChangePct.toFixed(1)),askDepthChangePct:Number(askDepthChangePct.toFixed(1)),acceleration:Number(acceleration.toFixed(1))},
-    absorption:{side:absorptionSide,score:absorptionScore,reason:absorptionReason},warnings
+    absorption:{side:absorptionSide,score:absorptionScore,reason:absorptionReason,trapDetected,followThrough},warnings
   };
   cache={at:now,value};return value;
 }
