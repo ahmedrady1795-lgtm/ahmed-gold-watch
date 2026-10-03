@@ -63,7 +63,7 @@ export default function Home(){
 
   useEffect(()=>{
     let lastWsAt=0;
-    const loadBtcFallback=async()=>{try{const r=await fetch('/api/btc',{cache:'no-store'}),j=await r.json();if(r.ok&&j?.ok&&Number(j.price)>0){setBtc(Number(j.price));setBtcAt(Number(j.sourceTime||Date.now()));}}catch{}};
+    const loadBtcFallback=async()=>{try{const r=await fetch('/api/btc',{cache:'no-store'}),j=await r.json();if(r.ok&&j?.ok&&Number(j.price)>0){setBtc(Number(j.price));setBtcAt(Number(j.sourceTime)||0);}}catch{}};
     void loadBtcFallback();
     const restTimer=setInterval(()=>{if(Date.now()-lastWsAt>15000)void loadBtcFallback();},15000);
     let ws:WebSocket|null=null,t:any,closed=false;

@@ -11,4 +11,9 @@ const broken=frames.map(a=>a.map(c=>({...c})));broken[0].splice(-3,1);assert.mat
 const future=frames.map(a=>a.map(c=>({...c})));future[0].push({...future[0].at(-1),time:now+60000});assert.match(out.analyze(...future,[],true,now).reason,/مستقبلي/);
 const nan=frames.map(a=>a.map(c=>({...c})));nan[1][10].high=NaN;assert.equal(out.analyze(...nan,[],true,now).state,'stop');
 assert.equal(out.analyze(...frames,[],true,now+86400000).signal,null);
+assert.ok(out.analyze(...frames,[],true,now+86400000).metrics,'Historical indicators remain visible without a signal');
+assert.equal(out.analyze(...frames,[],false,now).state,'stop','Unknown news coverage blocks entry');
+const upcoming={id:'test',name:'CPI',time:now+60000,importance:3,actual:'',forecast:'3%',previous:'3%',source:'test',exactTime:true};
+assert.equal(out.analyze(...frames,[upcoming],true,now).news.phase,'armed');
+assert.equal(out.analyze(...frames,[{...upcoming,time:now-60000}],true,now).signal,null,'No news signal before actual result');
 console.log('PASS: flat/rising/falling indicator references; missing bars, future timestamps, invalid OHLC, stale data and no invented signals. These are calculation tests, not profitability tests.');

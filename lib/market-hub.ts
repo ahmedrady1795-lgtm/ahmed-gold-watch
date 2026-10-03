@@ -73,7 +73,7 @@ const EXTERNAL_QUOTE_TTL_MS = 1_500;
 const MT5_TICK_MAX_AGE_MS = 8_000;
 
 const utc = (s: string) => Date.parse(/[zZ]$|[+-]\d\d:\d\d$/.test(s) ? s : s.replace(' ', 'T') + 'Z');
-function num(value: unknown): number | null {const n = Number(value);return Number.isFinite(n) ? n : null;}
+function num(value: unknown): number | null {if(value==null||value==='')return null;const n = Number(value);return Number.isFinite(n) ? n : null;}
 function statusFor(sourceTime:number|null,now:number):QuoteData['status']{if(!sourceTime||sourceTime>now+10000)return'unknown';const age=Math.max(0,now-sourceTime);if(age<=120000)return'live';if(age<=1200000)return'delayed';return'closed_or_stale';}
 function goldSessionOpen(now:number){
   const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;
@@ -137,10 +137,12 @@ export async function getQuoteData(options:{forceExternal?:boolean}={}):Promise<
   throw new Error('QUOTE_SOURCE_ERROR: '+errors.join(' | ').slice(0,320));
 }
 
+let freeCalendarCache:Cache<Event[]>|null=null;
 async function calendarFromFaireconomy():Promise<Event[]>{
+  if(freeCalendarCache&&Date.now()-freeCalendarCache.at<300000)return freeCalendarCache.value;
   const data=await getJson('https://nfs.faireconomy.media/ff_calendar_thisweek.json',{'User-Agent':'Mozilla/5.0 AhmedGoldCommand/1.0'});
   if(!Array.isArray(data))throw new Error('calendar schema');
-  return data
+  const events:Event[]=data
     .filter((v:any)=>String(v?.country||'').toUpperCase()==='USD')
     .map((v:any,i:number):Event=>({
       id:'ff:'+String(v?.date||'')+':'+String(v?.title||i),
@@ -150,11 +152,14 @@ async function calendarFromFaireconomy():Promise<Event[]>{
       actual:String(v?.actual||''),
       forecast:String(v?.forecast||''),
       previous:String(v?.previous||''),
-      source:'Forex Factory calendar feed',
+      source:'https://www.forexfactory.com/calendar',
       exactTime:true
     }))
     .filter((v:Event)=>Number.isFinite(v.time))
     .sort((a:Event,b:Event)=>a.time-b.time);
+  const sunday=new Date();sunday.setUTCHours(0,0,0,0);sunday.setUTCDate(sunday.getUTCDate()-sunday.getUTCDay());
+  if(!events.some(e=>e.time>=sunday.getTime()))throw new Error('calendar export is from a previous week');
+  freeCalendarCache={at:Date.now(),value:events};return events;
 }
 async function backgroundFromTwelve(apiKey:string):Promise<BackgroundPoint[]>{const now=Date.now(),rt=getRuntimeEnv();if(backgroundCache&&now-backgroundCache.at<BACKGROUND_TTL_MS)return backgroundCache.value;const defs=[{key:'dxy' as const,label:'DXY',symbol:String(rt.BACKGROUND_DXY_SYMBOL||'DXY')},{key:'us2y' as const,label:'US 2Y',symbol:String(rt.BACKGROUND_US2Y_SYMBOL||'US02Y')},{key:'us10y' as const,label:'US 10Y',symbol:String(rt.BACKGROUND_US10Y_SYMBOL||'US10Y')}];const values=await Promise.all(defs.map(async d=>{try{const data=await getJson('https://api.twelvedata.com/quote?symbol='+encodeURIComponent(d.symbol),{Authorization:`apikey ${apiKey}`}),value=num(data?.close??data?.price),sourceTime=sourceTimeMs(data);if(value==null)throw new Error('no value');return{...d,value,change:num(data?.change),percentChange:num(data?.percent_change),sourceTime,status:statusFor(sourceTime,now),source:'Twelve Data'} as BackgroundPoint;}catch{return{...d,value:null,change:null,percentChange:null,sourceTime:null,status:'unavailable',source:'Twelve Data'} as BackgroundPoint;}}));backgroundCache={at:now,value:values};return values;}
 

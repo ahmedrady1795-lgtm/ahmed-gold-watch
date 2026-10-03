@@ -56,7 +56,7 @@ export function analyze(c1:Candle[],c5:Candle[],c15:Candle[],c60:Candle[],events
   if(invalid(c1,60000)||invalid(c5,300000)||invalid(c15,900000)||invalid(c60,3600000))return baseStop('شموع غير صالحة أو مكررة أو بتوقيت مستقبلي؛ لا إشارة.');
   if(hasRecentGap(a1,60000)||hasRecentGap(a5,300000)||hasRecentGap(a15,900000)||hasRecentGap(a60,3600000))return baseStop('فجوات في آخر 20 شمعة؛ انتظر اكتمال السلسلة قبل تقييم الدخول.');
   if(a1.length<80||a5.length<220||a15.length<220||a60.length<220)return baseStop('بيانات M1/M5/M15/H1 غير كافية أو غير متصلة.');
-  if(now-(a1.at(-1)!.time+60000)>180000||now-(a5.at(-1)!.time+300000)>420000||now-(a15.at(-1)!.time+900000)>1020000||now-(a60.at(-1)!.time+3600000)>4200000)return baseStop('الأسعار متأخرة أو السوق مغلق. لا توجد إشارة صالحة الآن.');
+  const stale=now-(a1.at(-1)!.time+60000)>180000||now-(a5.at(-1)!.time+300000)>420000||now-(a15.at(-1)!.time+900000)>1020000||now-(a60.at(-1)!.time+3600000)>4200000;
   const i1=indicators(a1),i5=indicators(a5),i15=indicators(a15),i60=indicators(a60),last1=a1.at(-1)!,last5=a5.at(-1)!,last15=a15.at(-1)!,last60=a60.at(-1)!;
   const past=a5.slice(-21,-1),high=Math.max(...past.map(c=>c.high)),low=Math.min(...past.map(c=>c.low)),recent1=a1.slice(-11,-1),high1=Math.max(...recent1.map(c=>c.high)),low1=Math.min(...recent1.map(c=>c.low));
   const levels={high,low,high1,low1,sweep:last5.high>high&&last5.close<high?'اختراق القمة والعودة أسفلها':last5.low<low&&last5.close>low?'كسر القاع والعودة أعلاه':'لا يوجد سحب ظاهر في آخر شمعة M5'};
@@ -64,6 +64,8 @@ export function analyze(c1:Candle[],c5:Candle[],c15:Candle[],c60:Candle[],events
   const longBreak=last5.close>high||last1.close>high1,shortBreak=last5.close<low||last1.close<low1,longScore=scoreFrames('long',frames,last,longBreak),shortScore=scoreFrames('short',frames,last,shortBreak),score={long:longScore,short:shortScore,threshold:r.minScore};
   const regime=detectRegime(frames,last5.close,longBreak,shortBreak);
   const base={metrics:i5,frames,levels,score,regime,news:null as any,signal:null as any};
+  if(stale)return {...base,state:'stop' as const,title:'قراءة تاريخية — السوق مغلق أو البيانات متأخرة',reason:'المؤشرات المعروضة تخص آخر شموع متاحة وليست تحليلاً لحظياً. الإشارات متوقفة حتى وصول بيانات حديثة.',signal:null};
+  if(!newsReady)return {...base,state:'stop' as const,title:'التحليل جاهز — تغطية الأخبار غير مؤكدة',reason:'المؤشرات محسوبة، لكن لا يمكن فحص اقتراب خبر قوي. تتوقف توصيات الدخول حتى استعادة التقويم.',signal:null};
   const newsEvent=newsReady?events.find(e=>e.importance===3&&e.exactTime&&now>=e.time-r.before*60000&&now<=e.time+r.after*60000):undefined;
   if(newsEvent){
     const mins=(now-newsEvent.time)/60000,news={active:true,event:newsEvent,phase:mins<0?'armed':'released',minutesFromRelease:mins};
