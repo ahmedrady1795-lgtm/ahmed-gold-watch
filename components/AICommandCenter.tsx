@@ -3,6 +3,7 @@ import {Activity,ShieldCheck,TrendingUp,TrendingDown} from 'lucide-react';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
 const sideAr=(s:any)=>s==='BUY'?'شراء':s==='SELL'?'بيع':'انتظار';
+const calibrated=(v:any)=>Math.min(92,Math.max(0,Math.round(Number(v)||0)));
 
 function IndicatorMatrix({x}:any){
   const rows=x?.indicatorMatrix?.rows;if(!rows)return null;
@@ -11,7 +12,7 @@ function IndicatorMatrix({x}:any){
     <strong>مصفوفة المؤشرات · Fusion {x.fusion?.buy||0} شراء / {x.fusion?.sell||0} بيع</strong>
     {order.map(([key,label])=>{const r=rows[key];return <div className="kv" key={key}>
       <span>{label} · RSI {r?.rsi??'—'} · ADX {r?.adx??'—'}</span>
-      <b className={r?.bias==='BUY'?'green':r?.bias==='SELL'?'red':'amber'}>{sideAr(r?.bias)} {r?.strength||0}/100</b>
+      <b className={r?.bias==='BUY'?'green':r?.bias==='SELL'?'red':'amber'}>{sideAr(r?.bias)} · قوة {calibrated(r?.strength)}</b>
     </div>;})}
   </div>;
 }
@@ -23,14 +24,14 @@ function Card({x}:any){
     <div className="panelhead"><div><span className="eyebrow">{x.asset} · {x.phase||'SCAN'}</span><h2>{buy?'BUY STRIKE':sell?'SELL STRIKE':hunter?.status==='WATCH'?'WATCH '+sideAr(hunter?.side):'WAIT'} · Quality {x.quality||'—'}</h2></div>{buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}</div>
 
     <div className="levels">
-      <div><small>Fusion</small><strong>{x.fusion?.side||'WAIT'} · {Math.max(x.fusion?.buy||0,x.fusion?.sell||0)}/100</strong></div>
-      <div><small>Confidence</small><strong>{x.confidence}/100</strong></div>
+      <div><small>Fusion</small><strong>{x.fusion?.side||'WAIT'} · قوة {calibrated(Math.max(x.fusion?.buy||0,x.fusion?.sell||0))}</strong></div>
+      <div><small>Confidence</small><strong>{calibrated(x.confidence)}</strong></div>
       <div><small>Data</small><strong>{x.dataQuality}/100</strong></div>
     </div>
 
     {hunter&&<div className={hunter.status==='STRIKE'?'safetybox':'sidecard'}>
       <strong>🎯 {hunter.mode} · {sideAr(hunter.side)} · {hunter.status}</strong>
-      <p>Score {hunter.score}/100 · حد الهجوم {hunter.threshold} · الفارق {hunter.gap}</p>
+      <p>قوة {calibrated(hunter.score)} · حد الهجوم {hunter.threshold} · الفارق {hunter.gap}</p>
       <p>{hunter.reason}</p>
     </div>}
 
@@ -41,14 +42,14 @@ function Card({x}:any){
     </div>}
 
     {liq&&<div className="sidecard">
-      <strong>🧠 LIQUIDITY BRAIN · {sideAr(liq.side)} {Math.max(liq.buy||0,liq.sell||0)}/100 · Quality {liq.quality}/100</strong>
+      <strong>🧠 LIQUIDITY BRAIN · {sideAr(liq.side)} · قوة {calibrated(Math.max(liq.buy||0,liq.sell||0))} · Quality {liq.quality}/100</strong>
       <div className="levels">
         <div><small>Order Book</small><strong>{liq.book?.weightedImbalance??0}%</strong></div>
         <div><small>Volume Delta / CVD</small><strong>{liq.flow?.deltaPct??0}%</strong></div>
         <div><small>Acceleration</small><strong>{liq.dynamics?.acceleration??0}</strong></div>
       </div>
       <p>Bid depth $ {Number(liq.book?.bidDepthUsd||0).toLocaleString('en-US')} · Ask depth $ {Number(liq.book?.askDepthUsd||0).toLocaleString('en-US')} · Spread {liq.book?.spreadBps??'—'} bps</p>
-      <p>Microprice edge {liq.book?.microEdge??0} · Wall {sideAr(liq.book?.wallSide)} · Absorption {sideAr(liq.absorption?.side)} {liq.absorption?.score||0}/100</p>
+      <p>Microprice edge {liq.book?.microEdge??0} · Wall {sideAr(liq.book?.wallSide)} · Absorption {sideAr(liq.absorption?.side)} · قوة {calibrated(liq.absorption?.score)}</p>
       <p>{liq.absorption?.reason}</p>
       {core&&<p><b>Adaptive weights:</b> Technical {Math.round((core.technicalWeight||0)*100)}% · Liquidity {Math.round((core.liquidityWeight||0)*100)}%</p>}
     </div>}
@@ -63,7 +64,7 @@ function Card({x}:any){
 
     <div className={scalpTrade?'safetybox':'sidecard'}>
       <strong>{scalpTrade?'⚡ '+scalp.title:'⚡ M1 SCALP · WAIT'}</strong>
-      {scalpTrade?<p>Entry {fmt(scalpTrade.entry,2)} · SL {fmt(scalpTrade.sl,2)} · TP {fmt(scalpTrade.tp,2)} · Score {scalpTrade.score}/100 · صلاحية {scalpTrade.validForSeconds||75}ث</p>:<p>{scalp?.reason||'بانتظار توافق M1/M5.'}</p>}
+      {scalpTrade?<p>Entry {fmt(scalpTrade.entry,2)} · SL {fmt(scalpTrade.sl,2)} · TP {fmt(scalpTrade.tp,2)} · قوة {calibrated(scalpTrade.score)} · صلاحية {scalpTrade.validForSeconds||75}ث</p>:<p>{scalp?.reason||'بانتظار توافق M1/M5.'}</p>}
     </div>
 
     <IndicatorMatrix x={x}/>
@@ -82,7 +83,7 @@ export default function AICommandCenter({data,error}:any){
 
     {!!data?.radar?.length&&<section className="panel">
       <div className="panelhead"><div><span className="eyebrow">OPPORTUNITY RADAR</span><h2>الأولوية الآن: {data.radar[0]?.asset} · {data.radar[0]?.status}</h2></div><Activity/></div>
-      <div className="levels">{data.radar.map((r:any)=><div key={r.asset}><small>{r.asset} · {r.mode||'SCAN'}</small><strong>{sideAr(r.side)} · {r.score}/100</strong></div>)}</div>
+      <div className="levels">{data.radar.map((r:any)=><div key={r.asset}><small>{r.asset} · {r.mode||'SCAN'}</small><strong>{sideAr(r.side)} · قوة {calibrated(r.score)}</strong></div>)}</div>
     </section>}
 
     {auto&&<section className="panel">
