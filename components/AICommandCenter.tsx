@@ -3,7 +3,7 @@ import {Activity,ShieldCheck,TrendingUp,TrendingDown} from 'lucide-react';
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
 function Card({x}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
-  const trade=x.trade,candidate=x.candidateTrade,buy=x.action==='BUY',sell=x.action==='SELL',pulse=x.livePulse,scalp=x.scalp,scalpTrade=x.scalp?.trade;
+  const trade=x.trade,candidate=x.candidateTrade,buy=x.action==='BUY',sell=x.action==='SELL',pulse=x.livePulse,scalp=x.scalp,scalpTrade=x.scalp?.trade,hunter=x.hunter;
   return <section className="panel">
     <div className="panelhead"><div><span className="eyebrow">{x.asset} · {x.model||'AI ENGINE'}</span><h2>{buy?'BUY SETUP':sell?'SELL SETUP':'WAIT'} · Quality {x.quality||'—'}</h2></div>{buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}</div>
     <div className="levels">
@@ -17,6 +17,12 @@ function Card({x}:any){
       <div><small>Bias</small><strong>{x.bias}</strong></div>
     </div>
     <p><b>{x.title}</b></p>
+    {hunter&&<div className={hunter.status==='STRIKE'?'safetybox':'sidecard'}>
+      <strong>🎯 HUNTER {hunter.status} · {hunter.mode} · {hunter.side}</strong>
+      <p>Score {hunter.score}/100 · Strike threshold {hunter.threshold} · Gap {hunter.gap}</p>
+      <p>{hunter.reason}</p>
+      {hunter.trade&&<p>Candidate Entry {fmt(hunter.trade.entry,x.asset==='BTC'?0:2)} · SL {fmt(hunter.trade.sl,x.asset==='BTC'?0:2)} · TP {fmt(hunter.trade.tp,x.asset==='BTC'?0:2)} · RR {hunter.trade.rr}</p>}
+    </div>}
     {pulse&&<div className="levels">
       <div><small>Live Pulse</small><strong>{pulse.direction}</strong></div>
       <div><small>Δ M1</small><strong>{Number(pulse.deltaPct).toFixed(3)}%</strong></div>
@@ -41,12 +47,16 @@ function Card({x}:any){
 export default function AICommandCenter({data,error}:any){
   const auto=data?.autopilot;
   return <div>
-    <section className="sidecard"><strong>Quant Ensemble v3 · Self-Healing</strong><p>EMA + RSI + MACD + ADX/DI + Bollinger + Stochastic + ATR + Breakout + MTF + Regime + Data Quality. يخرج Standard وM1 Scalp، ويعيد تحميل المصادر تلقائيًا عند اكتشاف نقص في البيانات.</p></section>
+    <section className="sidecard"><strong>Quant Hunter v4 · Adaptive Strike Engine</strong><p>3 محركات صيد مستقلة: Trend Continuation + Breakout Ignition + Range Reversal، مع Live Pulse وMTF وRegime وAdaptive Thresholds. يخرج Standard + Hunter + M1 Adaptive Scalp ويعيد تحميل المصادر عند نقص البيانات.</p></section>
     {auto&&<section className="panel">
       <div className="panelhead"><div><span className="eyebrow">AI SYSTEM GUARD</span><h2>{auto.status==='healthy'?'SYSTEM HEALTHY':auto.status==='recovered'?'AUTO-RECOVERED':'DEGRADED'}</h2></div><ShieldCheck/></div>
-      <div className="levels"><div><small>Prices</small><strong>{auto.pricesReady?'READY':'WAIT'}</strong></div><div><small>News</small><strong>{auto.newsReady?'READY':'DEGRADED'}</strong></div><div><small>BTC Source</small><strong>{auto.btcSource||'—'}</strong></div></div>
+      <div className="levels"><div><small>Prices</small><strong>{auto.pricesReady?'READY':'WAIT'}</strong></div><div><small>News</small><strong>{auto.newsReady?'READY':'DEGRADED'} · {auto.eventCount??0}</strong></div><div><small>BTC Source</small><strong>{auto.btcSource||'—'}</strong></div></div>
       {!!auto.actions?.length&&<p><b>تصحيح تلقائي:</b> {auto.actions.join(' · ')}</p>}
       {!!auto.detected?.length&&<p className="muted"><b>مشاكل مكتشفة:</b> {auto.detected.join(' · ')}</p>}
+    </section>}
+    {!!data?.radar?.length&&<section className="panel">
+      <div className="panelhead"><div><span className="eyebrow">OPPORTUNITY RADAR</span><h2>أفضل فرصة الآن: {data.radar[0]?.asset} · {data.radar[0]?.status}</h2></div><Activity/></div>
+      <div className="levels">{data.radar.map((r:any)=><div key={r.asset}><small>{r.asset} · {r.mode||'SCAN'}</small><strong>{r.side} · {r.score}/100</strong></div>)}</div>
     </section>}
     {error&&<div className="fatal"><Activity size={18}/><div><strong>AI unavailable</strong><span>{error}</span></div></div>}
     <div className="dashboardgrid"><Card x={data?.gold}/><Card x={data?.bitcoin}/></div>
