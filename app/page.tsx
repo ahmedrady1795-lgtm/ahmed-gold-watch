@@ -96,6 +96,7 @@ export default function Home(){
   useEffect(()=>{if(first.current){first.current=false;return;}try{localStorage.setItem('ahmed-gold-rules',JSON.stringify(rules));}catch{}},[rules]);
 
   const toggleMonitor=()=>setMonitor(v=>{const n=!v;try{localStorage.setItem('ahmed-gold-monitor',String(n));}catch{}return n;});
+  const checkTelegram=async()=>{setNotice('جارٍ التحقق من البوت دون إرسال رسائل…');try{const r=await fetch('/api/telegram/status',{cache:'no-store'}),j=await r.json();setNotice(j.message||'تعذر التحقق');}catch{setNotice('تعذر الاتصال بفحص Telegram');}};
   const testTelegram=async()=>{
     setNotice('جارٍ إرسال اختبار Telegram...');
     try{const r=await fetch('/api/telegram/test',{method:'POST'}),j=await r.json();setNotice(r.ok&&j?.ok?'✅ تم إرسال رسالة الاختبار إلى Telegram':j?.message||'تعذر إرسال Telegram');}
@@ -144,7 +145,7 @@ export default function Home(){
       <span className={market?.pricesReady?'pill ok':'pill bad'}><Activity size={14}/> CANDLES {market?.pricesReady?'READY':'WAIT'}</span>
       <span className={mt5Fresh?'pill ok':'pill neutral'}><ShieldCheck size={14}/> {mt5Fresh?'MT5 READY':'MT5 OFFLINE'}</span>
       <span className={monitor?'pill watch':'pill neutral'}><Bell size={14}/> TELEGRAM {monitor?'MONITORING':'PAUSED'}</span>
-      <span className="source">المصدر: <b>{source}</b></span>
+      <button className="refresh" onClick={()=>void checkTelegram()}>فحص ربط Telegram</button><span className="source">المصدر: <b>{source}</b></span>
     </section>
 
     <nav className="tabs">

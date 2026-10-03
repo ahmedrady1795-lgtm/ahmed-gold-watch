@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
+const out={};vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/engine.ts','utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports:out});
+const now=Date.parse('2026-10-03T12:00:00Z');
+const series=(ms,trend=0)=>Array.from({length:300},(_,i)=>{const p=4000+trend*i;return {time:now-(300-i)*ms,open:p,close:p,high:p+1,low:p-1};});
+const flat=out.indicators(series(60000));assert.equal(flat.rsi,50);assert.equal(flat.atr,2);assert.equal(flat.adx,0);assert.equal(flat.macd,0);assert.equal(flat.ema200,4000);
+const rising=out.indicators(series(60000,1));assert.equal(rising.rsi,100);assert.ok(rising.ema20>rising.ema50);assert.ok(rising.ema50>rising.ema200);assert.ok(rising.plusDI>rising.minusDI);
+const falling=out.indicators(series(60000,-1));assert.equal(falling.rsi,0);assert.ok(falling.minusDI>falling.plusDI);
+const frames=[series(60000),series(300000),series(900000),series(3600000)];
+assert.equal(out.analyze(...frames,[],false,now).signal,null);
+const broken=frames.map(a=>a.map(c=>({...c})));broken[0].splice(-3,1);assert.match(out.analyze(...broken,[],true,now).reason,/فجوات/);
+const future=frames.map(a=>a.map(c=>({...c})));future[0].push({...future[0].at(-1),time:now+60000});assert.match(out.analyze(...future,[],true,now).reason,/مستقبلي/);
+const nan=frames.map(a=>a.map(c=>({...c})));nan[1][10].high=NaN;assert.equal(out.analyze(...nan,[],true,now).state,'stop');
+assert.equal(out.analyze(...frames,[],true,now+86400000).signal,null);
+console.log('PASS: flat/rising/falling indicator references; missing bars, future timestamps, invalid OHLC, stale data and no invented signals. These are calculation tests, not profitability tests.');

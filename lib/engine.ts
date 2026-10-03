@@ -51,6 +51,10 @@ export function detectRegime(f:{m1:IndicatorSet;m5:IndicatorSet;m15:IndicatorSet
 export function analyze(c1:Candle[],c5:Candle[],c15:Candle[],c60:Candle[],events:Event[],newsReady:boolean,now:number,r:Rules=defaults){
   const a1=closed(c1,60000,now),a5=closed(c5,300000,now),a15=closed(c15,900000,now),a60=closed(c60,3600000,now);
   const baseStop=(reason:string)=>({state:'stop' as const,title:'توقف عن فتح صفقات',reason,metrics:null,frames:null,levels:null,score:null,regime:null,news:null,signal:null});
+  const invalid=(series:Candle[],ms:number)=>series.some((c,i)=>!Object.values(c).every(Number.isFinite)||c.time>now||c.time%ms!==0||c.low<=0||c.high<Math.max(c.open,c.close)||c.low>Math.min(c.open,c.close)||(i>0&&c.time<=series[i-1].time));
+  const hasRecentGap=(series:Candle[],ms:number)=>series.slice(-20).some((c,i,recent)=>i>0&&c.time-recent[i-1].time!==ms);
+  if(invalid(c1,60000)||invalid(c5,300000)||invalid(c15,900000)||invalid(c60,3600000))return baseStop('شموع غير صالحة أو مكررة أو بتوقيت مستقبلي؛ لا إشارة.');
+  if(hasRecentGap(a1,60000)||hasRecentGap(a5,300000)||hasRecentGap(a15,900000)||hasRecentGap(a60,3600000))return baseStop('فجوات في آخر 20 شمعة؛ انتظر اكتمال السلسلة قبل تقييم الدخول.');
   if(a1.length<80||a5.length<220||a15.length<220||a60.length<220)return baseStop('بيانات M1/M5/M15/H1 غير كافية أو غير متصلة.');
   if(now-(a1.at(-1)!.time+60000)>180000||now-(a5.at(-1)!.time+300000)>420000||now-(a15.at(-1)!.time+900000)>1020000||now-(a60.at(-1)!.time+3600000)>4200000)return baseStop('الأسعار متأخرة أو السوق مغلق. لا توجد إشارة صالحة الآن.');
   const i1=indicators(a1),i5=indicators(a5),i15=indicators(a15),i60=indicators(a60),last1=a1.at(-1)!,last5=a5.at(-1)!,last15=a15.at(-1)!,last60=a60.at(-1)!;
