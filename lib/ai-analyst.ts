@@ -150,9 +150,16 @@ export function aiDecision(asset:Asset,analysis:any,candles:{c1:Candle[];c5:Cand
   const fusionSide:RawAction=fusionBuy-fusionSell>=6?'BUY':fusionSell-fusionBuy>=6?'SELL':'WAIT';
   const confluence=clamp(Math.max(best*.42+regimeConfidence*.10+multi.consensus*100*.10+st.strength*.08+dq.score*.10+Math.max(matrix.buy,matrix.sell)*.20-volatilityPenalty,hunter.score*.62+dq.score*.10+Math.min(100,Number(pulse?.momentum||0))*.08+Math.max(matrix.buy,matrix.sell)*.20));
   const uncertainty=clamp(100-(confidence*.72+dq.score*.18+Math.max(multi.consensus*100,hunter.score)*.10)),threshold=Math.max(Number(analysis?.score?.threshold||rules.minScore),rules.minScore),minConfidence=asset==='BTC'?64:66;
-  const sig=analysis?.signal||null,sigSide:RawAction=sig?.sideCode==='buy'?'BUY':sig?.sideCode==='sell'?'SELL':'WAIT',standardQualified=Boolean(sig&&analysis?.state==='setup'&&baseConfidence>=minConfidence&&dq.score>=72&&vol<=rules.spike&&(multi.side==='WAIT'||multi.side===sigSide)),hunterQualified=hunter.status==='STRIKE'&&hunter.trade&&dq.score>=78;
+  const sig=analysis?.signal||null,sigSide:RawAction=sig?.sideCode==='buy'?'BUY':sig?.sideCode==='sell'?'SELL':'WAIT';
+  const fusionGap=Math.abs(fusionBuy-fusionSell);
+  const standardConflict=Boolean(sig&&fusionSide!=='WAIT'&&fusionSide!==sigSide&&fusionGap>=10);
+  const hunterConflict=Boolean(hunter.status==='STRIKE'&&fusionSide!=='WAIT'&&fusionSide!==hunter.side&&fusionGap>=8);
+  const standardQualified=Boolean(sig&&analysis?.state==='setup'&&baseConfidence>=minConfidence&&dq.score>=72&&vol<=rules.spike&&(multi.side==='WAIT'||multi.side===sigSide)&&!standardConflict);
+  const hunterQualified=Boolean(hunter.status==='STRIKE'&&hunter.trade&&dq.score>=78&&!hunterConflict);
   const rawAction:RawAction=standardQualified?sigSide:hunterQualified?hunter.side:'WAIT',chosenTrade=standardQualified&&sig?{side:sig.sideCode,entry:sig.entry,sl:sig.sl,tp:sig.tp,rr:sig.rr,score:sig.score,mode:sig.mode||'standard'}:hunterQualified?hunter.trade:null;
   const vetoes:string[]=[];
+  if(standardConflict)vetoes.push(`Conflict Gate: Standard ${sigSide} يعارض Fusion ${fusionSide} بفارق ${fusionGap}`);
+  if(hunterConflict)vetoes.push(`Conflict Gate: Hunter ${hunter.side} يعارض Fusion ${fusionSide} بفارق ${fusionGap}`);
   if(!standardQualified&&!hunterQualified){if(analysis?.state==='stop')vetoes.push(String(analysis?.reason||'المحرك القياسي متوقف'));if(best<threshold)vetoes.push('Standard score أقل من الحد');if(hunter.score<hunter.threshold)vetoes.push('Hunter لم يصل لحد الهجوم');if(dq.score<72)vetoes.push('جودة/حداثة البيانات غير كافية');if(vol>rules.spike)vetoes.push('التذبذب أعلى من الحد الآمن');}
   const points=pushHistory(asset,rawAction,confidence,now),stability=stabilityOf(points,rawAction),isNews=sig?.mode==='news',pulseConfirm=rawAction==='BUY'?pulse?.direction==='UP':rawAction==='SELL'?pulse?.direction==='DOWN':false,fastStrike=hunterQualified&&hunter.score>=84&&dq.score>=90&&Boolean(pulseConfirm)&&Number(pulse?.momentum||0)>=35;
   const stableEnough=isNews?standardQualified:rawAction!=='WAIT'&&(fastStrike||(stability>=46&&points.filter(x=>x.action===rawAction).length>=2)),action:RawAction=stableEnough?rawAction:'WAIT';
@@ -160,7 +167,7 @@ export function aiDecision(asset:Asset,analysis:any,candles:{c1:Candle[];c5:Cand
   const bias=(hunter.status!=='WAIT'?hunter.side:direction)==='BUY'?'BULLISH':(hunter.status!=='WAIT'?hunter.side:direction)==='SELL'?'BEARISH':'NEUTRAL',quality=confidence>=86&&dq.score>=90&&uncertainty<=22?'A+':confidence>=80&&dq.score>=86?'A':confidence>=72?'B':confidence>=64?'C':'D';
   return {
     asset,model:'Quant Predator v5 · Multi-Strategy Fusion',action,bias,quality,confidence,uncertainty,confluenceScore:confluence,stability,dataQuality:dq.score,freshness:dq.freshness,longScore:long,shortScore:short,threshold,price:finite(price)?Number(price):null,source:sources.quote,candleSource:sources.candles,updatedAt:now,regime:analysis?.regime||null,state:analysis?.state||'stop',title:action!=='WAIT'?`HUNTER STRIKE · ${action}`:hunter.status==='WATCH'?`HUNTER WATCH · ${hunter.mode} ${hunter.side}`:analysis?.title||'WAIT',
-    ensemble:{mtf:multi,structure:st,technicalMargin:margin,volatility:Number.isFinite(vol)?Number(vol.toFixed(2)):null},indicatorMatrix:matrix,fusion:{buy:fusionBuy,sell:fusionSell,side:fusionSide,gap:Math.abs(fusionBuy-fusionSell)},phase:hunter.status==='STRIKE'?'ATTACK':hunter.status==='WATCH'?'STALK':hunter.score>=hunter.threshold-12?'SCAN':'WAIT',hunter,reasons:reasons(analysis,multi,st,hunter),vetoes:[...new Set(vetoes)].slice(0,7),trade:action==='WAIT'?null:chosenTrade,candidateTrade:chosenTrade||hunter.trade||null,
+    ensemble:{mtf:multi,structure:st,technicalMargin:margin,volatility:Number.isFinite(vol)?Number(vol.toFixed(2)):null},indicatorMatrix:matrix,fusion:{buy:fusionBuy,sell:fusionSell,side:fusionSide,gap:Math.abs(fusionBuy-fusionSell)},phase:(standardConflict||hunterConflict)?'CONFLICT':hunter.status==='STRIKE'?'ATTACK':hunter.status==='WATCH'?'STALK':hunter.score>=hunter.threshold-12?'SCAN':'WAIT',hunter,reasons:reasons(analysis,multi,st,hunter),vetoes:[...new Set(vetoes)].slice(0,7),trade:action==='WAIT'?null:chosenTrade,candidateTrade:chosenTrade||hunter.trade||null,
     note:'Hunter Score وConfidence مقاييس جودة/توافق وليستا احتمال نجاح أو ضمان ربح.'
   };
 }
