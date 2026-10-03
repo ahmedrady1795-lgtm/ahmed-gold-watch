@@ -12,7 +12,7 @@ import StrategyLab from '../components/StrategyLab';
 import PerformanceCenter from '../components/PerformanceCenter';
 import HealthCenter from '../components/HealthCenter';
 import TradingViewGold from '../components/TradingViewGold';
-import {defaults,type Rules} from '../lib/engine';
+import {analyze,defaults,type Rules} from '../lib/engine';
 
 type Snapshot={ok:boolean;checkedAt:number;market:any;quote:any;mt5:any;analysis:any};
 type Tab='dashboard'|'chart'|'news'|'lab'|'performance'|'health';
@@ -27,6 +27,8 @@ export default function Home(){
   const [monitor,setMonitor]=useState(false);
   const [notice,setNotice]=useState('');
   const [btc,setBtc]=useState<number|null>(null);
+  const [btcAt,setBtcAt]=useState(0),[goldTick,setGoldTick]=useState<any>(null);
+  const seenSignal=useRef('');
   const [rules,setRules]=useState<Rules>(defaults);
   const [now,setNow]=useState(Date.now());
   const first=useRef(true);
@@ -62,13 +64,27 @@ export default function Home(){
     let ws:WebSocket|null=null,t:any,closed=false;
     const open=()=>{if(closed)return;try{
       ws=new WebSocket('wss://fstream.binance.com/ws/btcusdt@bookTicker');
-      ws.onmessage=e=>{try{const x=JSON.parse(e.data),b=Number(x.b),a=Number(x.a);if(b>0&&a>=b)setBtc((b+a)/2);}catch{}};
+      ws.onmessage=e=>{try{const x=JSON.parse(e.data),b=Number(x.b),a=Number(x.a);if(x.s==='BTCUSDT'&&b>0&&a>=b&&Number.isFinite(Number(x.E))&&Number(x.E)<=Date.now()+10000){setBtc((b+a)/2);setBtcAt(Number(x.E));}}catch{}};
       ws.onclose=()=>{if(!closed)t=setTimeout(open,1800);};
       ws.onerror=()=>{try{ws?.close();}catch{}};
     }catch{t=setTimeout(open,2500);}};
     open();return()=>{closed=true;clearTimeout(t);try{ws?.close();}catch{}};
   },[]);
 
+  useEffect(()=>{
+    let closed=false,ws:WebSocket|null=null,t:ReturnType<typeof setTimeout>|undefined;
+    const open=()=>{if(closed)return;ws=new WebSocket('wss://fstream.binance.com/ws/xauusdt@bookTicker');
+      ws.onmessage=e=>{try{const x=JSON.parse(e.data),bid=Number(x.b),ask=Number(x.a),at=Number(x.E);if(x.s!=='XAUUSDT'||!Number.isFinite(at)||at>Date.now()+10000||Date.now()-at>15000||bid<=0||ask<bid)return;setGoldTick({ok:true,price:(bid+ask)/2,bid,ask,spread:ask-bid,sourceTime:at,status:'live',source:'Binance Futures · XAUUSDT proxy'});}catch{}};
+      ws.onerror=()=>ws?.close();ws.onclose=()=>{if(!closed)t=setTimeout(open,3000);};};
+    open();return()=>{closed=true;clearTimeout(t);ws?.close();};
+  },[]);
+  useEffect(()=>{
+    if(!monitor||!snap)return;const a=snap.analysis,id=a?.signal?.id||a?.state+':'+a?.reason;
+    if(!id||id===seenSignal.current)return;seenSignal.current=id;
+    if('Notification'in window&&Notification.permission==='granted'&&'serviceWorker'in navigator){
+      navigator.serviceWorker.getRegistration().then(reg=>reg?.showNotification('مرصد الذهب — '+(a?.title||'تغيّر الحالة'),{body:a?.reason||'راجع البيانات',tag:'gold-state'})).catch(()=>setNotice('تعذر إرسال إشعار الجهاز.'));
+    }
+  },[snap,monitor]);
   useEffect(()=>{
     if(!monitor)return;
     const pulse=()=>fetch('/api/telegram/pulse',{
@@ -91,15 +107,18 @@ export default function Home(){
   };
   const updateRule=(k:keyof Rules,v:number)=>setRules(r=>({...r,[k]:v}));
 
-  const quote=snap?.quote;
-  const analysis=snap?.analysis;
+  const mt5Active=Boolean(snap?.mt5?.fresh);
+  const streamed=goldTick&&now-goldTick.sourceTime<15000;
+  const quote=mt5Active?snap?.quote:streamed?goldTick:snap?.quote;
+  const m=snap?.market;
+  const analysis=m?analyze(m.c1,m.c5,m.c15,m.c60,m.events,Boolean(m.newsReady&&now-m.checkedAt<120000),now,rules):null;
   const market=snap?.market;
   const mt5Fresh=Boolean(snap?.mt5?.fresh);
   const source=mt5Fresh?'MT5 / Exness':quote?.source||market?.priceSource||'بانتظار المصدر';
   const score=analysis?.score?Math.max(analysis.score.long,analysis.score.short):0;
   const latestM1=market?.c1?.filter((c:any)=>c.time+60000<=Date.now()).at(-1)||null;
   const quoteAge=quote?.sourceTime?Math.max(0,Date.now()-quote.sourceTime):null;
-  const live=quote?.status==='live'&&(quoteAge==null||quoteAge<120000);
+  const live=!error&&quote?.status==='live'&&quoteAge!=null&&quoteAge<120000;
 
   const tabs=[
     ['dashboard','القيادة',LayoutDashboard],['chart','الرسم',ChartCandlestick],['news','الأخبار',Newspaper],
@@ -110,11 +129,11 @@ export default function Home(){
     <header className="topbar">
       <div className="brand">
         <div className="brandmark">AG</div>
-        <div><span>AHMED GOLD</span><strong>COMMAND</strong></div>
+        <div><span>AHMED GOLD · MASTER 3.1</span><strong>COMMAND</strong></div>
       </div>
       <div className="tickerstrip">
-        <div><small>XAU/USD</small><b>{fmt(quote?.price)}</b><em className={live?'up':'muted'}>{live?'LIVE':'WAIT'}</em></div>
-        <div><small>BTC/USDT</small><b>{fmt(btc,0)}</b><em>LIVE</em></div>
+        <div><small>{source.includes('Binance')?'XAUUSDT · عقد بديل':'XAU/USD'}</small><b>{fmt(quote?.price)}</b><em className={live?'up':'muted'}>{live?'LIVE':'WAIT'}</em></div>
+        <div><small>BTC/USDT</small><b>{fmt(btc,0)}</b><em>{btcAt&&now-btcAt<15000?'LIVE':'WAIT'}</em></div>
         <div><small>SCORE</small><b>{score||'—'}</b><em>/100</em></div>
       </div>
       <button className="refresh" onClick={()=>void load()} disabled={busy}><RefreshCw size={17} className={busy?'spin':''}/><span>{busy?'تحديث':'تحديث'}</span></button>
@@ -136,7 +155,7 @@ export default function Home(){
 
     <div className="workspace">
       <section className="content">
-        {tab==='dashboard'&&<>
+        {tab==='dashboard'&&<><section className="sidecard"><strong>حزمة الماستر وجسر MT5</strong><p>مؤشرات M1/M5/M15/H1، مختبر وسجل، وبث عقد XAUUSDT عند اتصال Binance. ليس سعر تنفيذ Exness. الجسر تجريبي افتراضيًا؛ لا تداول حي قبل ربط التخزين والتحقق على الديمو.</p><a href="/downloads/GoldWatch-MT5-Windows.zip" download>تنزيل جسر Windows / MT5</a></section>
           <CommandCenter analysis={analysis} quote={quote} events={market?.events||[]} background={market?.background||[]} now={now} health={health}/>
           <SignalFlow analysis={analysis} health={health} quote={quote} rules={rules}/>
           <div className="dashboardgrid">
