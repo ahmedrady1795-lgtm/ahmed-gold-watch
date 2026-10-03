@@ -62,6 +62,9 @@ export default function Home(){
   },[]);
 
   useEffect(()=>{
+    const loadBtcFallback=async()=>{try{const r=await fetch('/api/btc',{cache:'no-store'}),j=await r.json();if(r.ok&&j?.ok&&Number(j.price)>0){setBtc(Number(j.price));setBtcAt(Number(j.sourceTime||Date.now()));}}catch{}};
+    void loadBtcFallback();
+    const restTimer=setInterval(()=>{if(Date.now()-btcAt>12000)void loadBtcFallback();},10000);
     let ws:WebSocket|null=null,t:any,closed=false;
     const open=()=>{if(closed)return;try{
       ws=new WebSocket('wss://fstream.binance.com/ws/btcusdt@bookTicker');
@@ -69,8 +72,8 @@ export default function Home(){
       ws.onclose=()=>{if(!closed)t=setTimeout(open,1800);};
       ws.onerror=()=>{try{ws?.close();}catch{}};
     }catch{t=setTimeout(open,2500);}};
-    open();return()=>{closed=true;clearTimeout(t);try{ws?.close();}catch{}};
-  },[]);
+    open();return()=>{closed=true;clearTimeout(t);clearInterval(restTimer);try{ws?.close();}catch{}};
+  },[btcAt]);
 
   useEffect(()=>{
     let closed=false,ws:WebSocket|null=null,t:ReturnType<typeof setTimeout>|undefined;
