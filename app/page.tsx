@@ -17,7 +17,7 @@ import {analyze,defaults,type Rules} from '../lib/engine';
 
 type Snapshot={ok:boolean;checkedAt:number;market:any;quote:any;mt5:any;analysis:any};
 type Tab='dashboard'|'ai'|'chart'|'news'|'lab'|'performance'|'health';
-const fmt=(v:any,d=2)=>Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
+const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
 const goldMarketOpen=(now:number)=>{const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;if(day===6)return false;if(day===0&&h<22)return false;if(day===5&&h>=21)return false;if(day>=1&&day<=4&&h>=21&&h<22)return false;return true;};
 
 export default function Home(){
@@ -69,7 +69,7 @@ export default function Home(){
   useEffect(()=>{
     let newestAt=0;
     const applyBtc=(price:number,at:number)=>{if(price>0&&Number.isFinite(price)&&at>=newestAt){newestAt=at;setBtc(price);setBtcAt(at);}};
-    const loadBtc=async()=>{try{const r=await fetch('/api/btc',{cache:'no-store'}),j=await r.json();const p=Number(j?.price),at=Number(j?.sourceTime)||Date.now();if(r.ok&&j?.ok)applyBtc(p,at);}catch{}};
+    const loadBtc=async()=>{try{const r=await fetch('/api/btc',{cache:'no-store'}),j=await r.json();const p=Number(j?.price),at=Number(j?.fetchedAt)||Date.now();if(r.ok&&j?.ok)applyBtc(p,at);}catch{}};
     void loadBtc();
     const restTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadBtc();},3000);
     let ws:WebSocket|null=null,t:any,closed=false;
@@ -128,6 +128,10 @@ export default function Home(){
   const mt5Fresh=Boolean(snap?.mt5?.fresh);
   const source=mt5Fresh?'MT5 / Exness':quote?.source||market?.priceSource||'بانتظار المصدر';
   const score=analysis?.score?Math.max(analysis.score.long,analysis.score.short):0;
+  const aiBtcPrice=Number(aiData?.bitcoin?.livePulse?.price);
+  const aiBtcAt=Number(aiData?.bitcoin?.livePulse?.sourceTime)||0;
+  const shownBtc=btc??(Number.isFinite(aiBtcPrice)&&aiBtcPrice>0?aiBtcPrice:null);
+  const shownBtcAt=btcAt||aiBtcAt;
   const latestM1=market?.c1?.filter((c:any)=>c.time+60000<=Date.now()).at(-1)||null;
   const quoteAge=quote?.sourceTime?Math.max(0,Date.now()-quote.sourceTime):null;
   const marketOpen=goldMarketOpen(now);
@@ -147,7 +151,7 @@ export default function Home(){
       </div>
       <div className="tickerstrip">
         <div><small>{source.includes('Binance')?'XAUUSDT · عقد بديل':'XAU/USD'}</small><b>{fmt(quote?.price)}</b><em className={live?'up':'muted'}>{!marketOpen?'CLOSED':live?'LIVE':'WAIT'}</em></div>
-        <div><small>BTC/USD</small><b>{fmt(btc,2)}</b><em>{btcAt&&now-btcAt<10000?'LIVE':'WAIT'}</em></div>
+        <div><small>BTC/USD</small><b>{fmt(shownBtc,2)}</b><em>{shownBtcAt&&now-shownBtcAt<10000?'LIVE':'WAIT'}</em></div>
         <div><small>SCORE</small><b>{score||'—'}</b><em>/100</em></div>
       </div>
       <button className="refresh" onClick={()=>void load()} disabled={busy}><RefreshCw size={17} className={busy?'spin':''}/><span>{busy?'تحديث':'تحديث'}</span></button>
