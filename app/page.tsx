@@ -62,18 +62,19 @@ export default function Home(){
   },[]);
 
   useEffect(()=>{
+    let lastWsAt=0;
     const loadBtcFallback=async()=>{try{const r=await fetch('/api/btc',{cache:'no-store'}),j=await r.json();if(r.ok&&j?.ok&&Number(j.price)>0){setBtc(Number(j.price));setBtcAt(Number(j.sourceTime||Date.now()));}}catch{}};
     void loadBtcFallback();
-    const restTimer=setInterval(()=>{if(Date.now()-btcAt>12000)void loadBtcFallback();},10000);
+    const restTimer=setInterval(()=>{if(Date.now()-lastWsAt>15000)void loadBtcFallback();},15000);
     let ws:WebSocket|null=null,t:any,closed=false;
     const open=()=>{if(closed)return;try{
       ws=new WebSocket('wss://fstream.binance.com/ws/btcusdt@bookTicker');
-      ws.onmessage=e=>{try{const x=JSON.parse(e.data),b=Number(x.b),a=Number(x.a);if(x.s==='BTCUSDT'&&b>0&&a>=b&&Number.isFinite(Number(x.E))&&Number(x.E)<=Date.now()+10000){setBtc((b+a)/2);setBtcAt(Number(x.E));}}catch{}};
+      ws.onmessage=e=>{try{const x=JSON.parse(e.data),b=Number(x.b),a=Number(x.a);if(x.s==='BTCUSDT'&&b>0&&a>=b&&Number.isFinite(Number(x.E))&&Number(x.E)<=Date.now()+10000){lastWsAt=Number(x.E);setBtc((b+a)/2);setBtcAt(Number(x.E));}}catch{}};
       ws.onclose=()=>{if(!closed)t=setTimeout(open,1800);};
       ws.onerror=()=>{try{ws?.close();}catch{}};
     }catch{t=setTimeout(open,2500);}};
     open();return()=>{closed=true;clearTimeout(t);clearInterval(restTimer);try{ws?.close();}catch{}};
-  },[btcAt]);
+  },[]);
 
   useEffect(()=>{
     let closed=false,ws:WebSocket|null=null,t:ReturnType<typeof setTimeout>|undefined;
