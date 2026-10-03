@@ -11,17 +11,20 @@ import NewsCommandCenter from '../components/NewsCommandCenter';
 import StrategyLab from '../components/StrategyLab';
 import PerformanceCenter from '../components/PerformanceCenter';
 import HealthCenter from '../components/HealthCenter';
+import AICommandCenter from '../components/AICommandCenter';
 import TradingViewGold from '../components/TradingViewGold';
 import {analyze,defaults,type Rules} from '../lib/engine';
 
 type Snapshot={ok:boolean;checkedAt:number;market:any;quote:any;mt5:any;analysis:any};
-type Tab='dashboard'|'chart'|'news'|'lab'|'performance'|'health';
+type Tab='dashboard'|'ai'|'chart'|'news'|'lab'|'performance'|'health';
 const fmt=(v:any,d=2)=>Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
 const goldMarketOpen=(now:number)=>{const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;if(day===6)return false;if(day===0&&h<22)return false;if(day===5&&h>=21)return false;if(day>=1&&day<=4&&h>=21&&h<22)return false;return true;};
 
 export default function Home(){
   const [snap,setSnap]=useState<Snapshot|null>(null);
   const [health,setHealth]=useState<any>(null);
+  const [aiData,setAiData]=useState<any>(null);
+  const [aiError,setAiError]=useState('');
   const [tab,setTab]=useState<Tab>('dashboard');
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
@@ -46,6 +49,7 @@ export default function Home(){
     }finally{if(!silent)setBusy(false);}
   };
   const loadHealth=async()=>{try{const r=await fetch('/api/health',{cache:'no-store'});setHealth(await r.json());}catch{setHealth({status:'halted'});}};
+  const loadAi=async()=>{try{const r=await fetch('/api/ai-analysis',{cache:'no-store'}),j=await r.json();if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر تشغيل محرك AI');setAiData(j);setAiError('');}catch(e){setAiError(e instanceof Error?e.message:'تعذر تشغيل محرك AI');}};
 
   useEffect(()=>{
     try{
@@ -53,12 +57,13 @@ export default function Home(){
       if(saved)setRules({...defaults,...saved});
       setMonitor(localStorage.getItem('ahmed-gold-monitor')==='true');
     }catch{}
-    void load(); void loadHealth();
+    void load(); void loadHealth(); void loadAi();
     const clock=setInterval(()=>setNow(Date.now()),1000);
     const market=setInterval(()=>{if(document.visibilityState==='visible')void load(true);},15000);
     const hs=setInterval(()=>{if(document.visibilityState==='visible')void loadHealth();},30000);
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},10000);
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
-    return()=>{clearInterval(clock);clearInterval(market);clearInterval(hs);};
+    return()=>{clearInterval(clock);clearInterval(market);clearInterval(hs);clearInterval(aiTimer);};
   },[]);
 
   useEffect(()=>{
@@ -129,7 +134,7 @@ export default function Home(){
   const priceState=!marketOpen?'MARKET CLOSED':live?'PRICE LIVE':quote?.status==='delayed'?'PRICE DELAYED':'PRICE NOT READY';
 
   const tabs=[
-    ['dashboard','القيادة',LayoutDashboard],['chart','الرسم',ChartCandlestick],['news','الأخبار',Newspaper],
+    ['dashboard','القيادة',LayoutDashboard],['ai','AI',Activity],['chart','الرسم',ChartCandlestick],['news','الأخبار',Newspaper],
     ['lab','المختبر',FlaskConical],['performance','الأداء',BarChart3],['health','الصحة',HeartPulse]
   ] as const;
 
@@ -188,6 +193,7 @@ export default function Home(){
           </section>
         </>}
 
+        {tab==='ai'&&<AICommandCenter data={aiData} error={aiError} now={now}/>} 
         {tab==='chart'&&<TradingViewGold/>}
         {tab==='news'&&<NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/>}
         {tab==='lab'&&<StrategyLab signal={analysis?.signal||null} regime={analysis?.regime} quotePrice={quote?.price} quoteLive={live} latestM1={latestM1} rules={rules}/>}
