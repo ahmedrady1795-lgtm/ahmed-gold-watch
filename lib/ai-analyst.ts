@@ -101,7 +101,7 @@ export function aiDecision(asset:Asset,analysis:any,candles:{c1:Candle[];c5:Cand
   const confluence=clamp(best*.52+regimeConfidence*.12+multi.consensus*100*.13+st.strength*.09+dq.score*.14-volatilityPenalty);
   const uncertainty=clamp(100-(confidence*.72+dq.score*.18+multi.consensus*100*.10));
   const threshold=Math.max(Number(analysis?.score?.threshold||rules.minScore),rules.minScore);
-  const minConfidence=asset==='BTC'?72:74;
+  const minConfidence=asset==='BTC'?66:68;
   const sig=analysis?.signal||null;
   const sigSide:RawAction=sig?.sideCode==='buy'?'BUY':sig?.sideCode==='sell'?'SELL':'WAIT';
   const vetoes:string[]=[];
@@ -109,22 +109,22 @@ export function aiDecision(asset:Asset,analysis:any,candles:{c1:Candle[];c5:Cand
   if(!sig)vetoes.push(String(analysis?.reason||'التوافق غير مكتمل'));
   if(best<threshold)vetoes.push('Score أقل من الحد');
   if(confidence<minConfidence)vetoes.push('ثقة النموذج أقل من الحد');
-  if(dq.score<78)vetoes.push('جودة/حداثة البيانات غير كافية');
+  if(dq.score<72)vetoes.push('جودة/حداثة البيانات غير كافية');
   if(vol>rules.spike)vetoes.push('التذبذب أعلى من الحد');
   if(sigSide!=='WAIT'&&multi.side!=='WAIT'&&multi.side!==sigSide)vetoes.push('تعارض اتجاه الأطر الزمنية');
-  const rawQualified=Boolean(sig&&analysis?.state==='setup'&&confidence>=minConfidence&&dq.score>=78&&vol<=rules.spike&&(multi.side==='WAIT'||multi.side===sigSide));
+  const rawQualified=Boolean(sig&&analysis?.state==='setup'&&confidence>=minConfidence&&dq.score>=72&&vol<=rules.spike&&(multi.side==='WAIT'||multi.side===sigSide));
   const rawAction:RawAction=rawQualified?sigSide:'WAIT';
   const points=pushHistory(asset,rawAction,confidence,now);
   const stability=stabilityOf(points,rawAction);
   const isNews=sig?.mode==='news';
-  const stableEnough=isNews?rawQualified:rawQualified&&stability>=62&&points.filter(x=>x.action===rawAction).length>=2;
+  const stableEnough=isNews?rawQualified:rawQualified&&stability>=50&&points.filter(x=>x.action===rawAction).length>=2;
   const action:RawAction=stableEnough?rawAction:'WAIT';
   if(rawQualified&&!stableEnough)vetoes.push('الإشارة مرشحة لكن تحتاج تأكيدًا زمنيًا إضافيًا');
   const bias=direction==='BUY'?'BULLISH':direction==='SELL'?'BEARISH':'NEUTRAL';
   const quality=confidence>=84&&dq.score>=90&&uncertainty<=22?'A':confidence>=76&&dq.score>=82&&uncertainty<=32?'B':confidence>=68?'C':'D';
   const trade=sig?{side:sig.sideCode,entry:sig.entry,sl:sig.sl,tp:sig.tp,rr:sig.rr,score:sig.score,mode:sig.mode||'standard'}:null;
   return {
-    asset,model:'Quant Ensemble v2',action,bias,quality,confidence,uncertainty,confluenceScore:confluence,stability,dataQuality:dq.score,freshness:dq.freshness,
+    asset,model:'Quant Ensemble v3 · Full Indicators',action,bias,quality,confidence,uncertainty,confluenceScore:confluence,stability,dataQuality:dq.score,freshness:dq.freshness,
     longScore:long,shortScore:short,threshold,price:finite(price)?Number(price):null,source:sources.quote,candleSource:sources.candles,updatedAt:now,
     regime:analysis?.regime||null,state:analysis?.state||'stop',title:analysis?.title||'WAIT',
     ensemble:{mtf:multi,structure:st,technicalMargin:margin,volatility:Number.isFinite(vol)?Number(vol.toFixed(2)):null},
