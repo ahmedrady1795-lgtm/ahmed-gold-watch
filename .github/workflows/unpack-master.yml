@@ -3,7 +3,7 @@ name: Unpack Ahmed Gold Command
 on:
   push:
     paths:
-      - "source/ahmed-gold-command.zip"
+      - "source/ahmed-gold-command.tar.xz"
   workflow_dispatch:
 
 permissions:
@@ -22,7 +22,7 @@ jobs:
         run: |
           rm -rf /tmp/ahmed-gold-command
           mkdir -p /tmp/ahmed-gold-command
-          unzip -q source/ahmed-gold-command.zip -d /tmp/ahmed-gold-command
+          tar -xJf source/ahmed-gold-command.tar.xz -C /tmp/ahmed-gold-command
           rsync -a --delete             --exclude '.git/'             --exclude '.github/'             --exclude 'source/'             /tmp/ahmed-gold-command/ ./
 
       - name: Commit extracted source
