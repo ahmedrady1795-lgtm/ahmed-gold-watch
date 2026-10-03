@@ -1,8 +1,8 @@
 'use client';
 
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {
-  Activity,BarChart3,Bell,ChartCandlestick,FlaskConical,HeartPulse,
+  Activity,BarChart3,Bell,FlaskConical,HeartPulse,
   LayoutDashboard,Newspaper,RefreshCw,Settings2,ShieldCheck,Wifi,WifiOff
 } from 'lucide-react';
 import CommandCenter from '../components/CommandCenter';
@@ -12,11 +12,10 @@ import StrategyLab from '../components/StrategyLab';
 import PerformanceCenter from '../components/PerformanceCenter';
 import HealthCenter from '../components/HealthCenter';
 import AICommandCenter from '../components/AICommandCenter';
-import TradingViewGold from '../components/TradingViewGold';
 import {analyze,defaults,type Rules} from '../lib/engine';
 
 type Snapshot={ok:boolean;checkedAt:number;market:any;quote:any;mt5:any;analysis:any};
-type Tab='dashboard'|'ai'|'chart'|'news'|'lab'|'performance'|'health';
+type Tab='dashboard'|'ai'|'news'|'lab'|'performance'|'health';
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
 const goldMarketOpen=(now:number)=>{const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;if(day===6)return false;if(day===0&&h<22)return false;if(day===5&&h>=21)return false;if(day>=1&&day<=4&&h>=21&&h<22)return false;return true;};
 
@@ -25,7 +24,7 @@ export default function Home(){
   const [health,setHealth]=useState<any>(null);
   const [aiData,setAiData]=useState<any>(null);
   const [aiError,setAiError]=useState('');
-  const [tab,setTab]=useState<Tab>('dashboard');
+  const [tab,setTab]=useState<Tab>('ai');
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [monitor,setMonitor]=useState(false);
@@ -151,8 +150,10 @@ export default function Home(){
   const live=marketOpen&&!error&&quote?.status==='live'&&quoteAge!=null&&quoteAge<120000;
   const priceState=!marketOpen?'MARKET CLOSED':live?'PRICE LIVE':quote?.status==='delayed'?'PRICE DELAYED':'PRICE NOT READY';
 
+  const telegramReady=Boolean(health?.services?.telegram?.configured);
+  const btcLive=Boolean(btcAt&&now-btcAt<5000);
   const tabs=[
-    ['dashboard','القيادة',LayoutDashboard],['ai','AI',Activity],['chart','الرسم',ChartCandlestick],['news','الأخبار',Newspaper],
+    ['ai','AI',Activity],['dashboard','القيادة',LayoutDashboard],['news','الأخبار',Newspaper],
     ['lab','المختبر',FlaskConical],['performance','الأداء',BarChart3],['health','الصحة',HeartPulse]
   ] as const;
 
@@ -171,11 +172,12 @@ export default function Home(){
     </header>
 
     <section className="statusrail">
-      <span className={live?'pill ok':!marketOpen?'pill neutral':'pill bad'}>{live?<Wifi size={14}/>:<WifiOff size={14}/>} {priceState}</span>
-      <span className={market?.pricesReady?'pill ok':'pill bad'}><Activity size={14}/> CANDLES {market?.pricesReady?'READY':'WAIT'}</span>
-      <span className={mt5Fresh?'pill ok':'pill neutral'}><ShieldCheck size={14}/> {mt5Fresh?'MT5 READY':'MT5 OFFLINE'}</span>
-      <span className={monitor?'pill watch':'pill neutral'}><Bell size={14}/> TELEGRAM {monitor?'MONITORING':'PAUSED'}</span>
-      <button className="refresh" onClick={()=>void checkTelegram()}>فحص ربط Telegram</button><span className="source">المصدر: <b>{source}</b></span>
+      <span className={btcLive?'pill ok':'pill bad'}>{btcLive?<Wifi size={14}/>:<WifiOff size={14}/>} BTC {btcLive?'TICK LIVE':'WAIT'}</span>
+      {market?.pricesReady&&<span className="pill ok"><Activity size={14}/> CANDLES READY</span>}
+      {market?.newsReady&&<span className="pill ok"><Newspaper size={14}/> NEWS READY</span>}
+      {mt5Fresh&&<span className="pill ok"><ShieldCheck size={14}/> MT5 READY</span>}
+      {telegramReady&&<span className={monitor?'pill watch':'pill ok'}><Bell size={14}/> TELEGRAM {monitor?'MONITORING':'READY'}</span>}
+      <span className="source">المصدر الحالي للذهب: <b>{source}</b></span>
     </section>
 
     <nav className="tabs">
@@ -186,17 +188,15 @@ export default function Home(){
 
     <div className="workspace">
       <section className="content">
-        {tab==='dashboard'&&<><section className="sidecard"><strong>حزمة الماستر وجسر MT5</strong><p>مؤشرات M1/M5/M15/H1، مختبر وسجل، وبث عقد XAUUSDT عند اتصال Binance. ليس سعر تنفيذ Exness. الجسر تجريبي افتراضيًا؛ لا تداول حي قبل ربط التخزين والتحقق على الديمو.</p><a href="/downloads/GoldWatch-MT5-Windows.zip" download>تنزيل جسر Windows / MT5</a></section>
+        {tab==='dashboard'&&<>
           <CommandCenter analysis={analysis} quote={quote} events={market?.events||[]} background={market?.background||[]} now={now} health={health}/>
           <SignalFlow analysis={analysis} health={health} quote={quote} rules={rules}/>
           <div className="dashboardgrid">
             <NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/>
             <section className="panel quickpanel">
-              <div className="panelhead"><div><span className="eyebrow">LIVE CONTROLS</span><h2>التحكم السريع</h2></div><Settings2/></div>
-              <button className={monitor?'primary danger':'primary'} onClick={toggleMonitor}><Bell size={17}/>{monitor?'إيقاف مراقبة Telegram':'تشغيل مراقبة Telegram'}</button>
-              <button className="secondary" onClick={testTelegram}>اختبار Telegram</button>
+              <div className="panelhead"><div><span className="eyebrow">LIVE CONTROLS</span><h2>التحكم الفعلي</h2></div><Settings2/></div>
               <button className="secondary" onClick={enablePush}>تفعيل إشعارات الجهاز</button>
-              <div className="safetybox"><ShieldCheck/><p><b>التنفيذ الحقيقي مقفول افتراضيًا.</b><br/>MT5_AUTOTRADE_ENABLED=false وKill Switch مفعّل حتى اختبار Demo.</p></div>
+              {telegramReady&&<><button className={monitor?'primary danger':'primary'} onClick={toggleMonitor}><Bell size={17}/>{monitor?'إيقاف مراقبة Telegram':'تشغيل مراقبة Telegram'}</button><button className="secondary" onClick={testTelegram}>اختبار Telegram</button></>}
             </section>
           </div>
           <section className="panel">
@@ -211,9 +211,8 @@ export default function Home(){
           </section>
         </>}
 
-        {tab==='ai'&&<AICommandCenter data={aiData} error={aiError} now={now}/>} 
-        {tab==='chart'&&<TradingViewGold/>}
-        {tab==='news'&&<NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/>}
+        {tab==='ai'&&<><AICommandCenter data={aiData} error={aiError} now={now}/><NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/></>} 
+        {tab==='news'&&<NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/>
         {tab==='lab'&&<StrategyLab signal={analysis?.signal||null} regime={analysis?.regime} quotePrice={quote?.price} quoteLive={live} latestM1={latestM1} rules={rules}/>}
         {tab==='performance'&&<PerformanceCenter/>}
         {tab==='health'&&<HealthCenter/>}
@@ -221,22 +220,13 @@ export default function Home(){
 
       <aside className="sidebar">
         <div className="sidecard">
-          <span className="eyebrow">SYSTEM</span>
-          <h3>{health?.status==='healthy'?'جاهز للمراقبة':health?.status==='degraded'?'يعمل جزئيًا':'بانتظار الفحص'}</h3>
-          <div className="kv"><span>Price</span><b className={live?'green':!marketOpen?'amber':'red'}>{!marketOpen?'CLOSED':live?'LIVE':'WAIT'}</b></div>
-          <div className="kv"><span>Candles</span><b className={market?.pricesReady?'green':'red'}>{market?.pricesReady?'READY':'WAIT'}</b></div>
-          <div className="kv"><span>News</span><b className={market?.newsReady?'green':'amber'}>{market?.newsReady?'READY':'OPTIONAL'}</b></div>
-          <div className="kv"><span>Telegram</span><b className={health?.services?.telegram?.configured?'green':'amber'}>{health?.services?.telegram?.configured?'READY':'TOKEN NEEDED'}</b></div>
-          <div className="kv"><span>MT5</span><b className={mt5Fresh?'green':'amber'}>{mt5Fresh?'LIVE':'WAITING VPS'}</b></div>
-        </div>
-        <div className="sidecard">
-          <span className="eyebrow">PRINCIPLE</span>
-          <p>درجة التوافق ليست نسبة نجاح. النظام لا يفتح صفقة عند بيانات ناقصة أو Tick قديم.</p>
-        </div>
-        <div className="sidecard risk">
-          <span className="eyebrow">RISK LOCK</span>
-          <h3>LIVE EXECUTION OFF</h3>
-          <p>لن يتحول أي Signal لأمر حقيقي قبل تفعيل MT5 يدويًا بعد اختبار Demo.</p>
+          <span className="eyebrow">LIVE SYSTEM</span>
+          <h3>{health?.status==='healthy'?'المصادر الفعلية جاهزة':'فحص المصادر'}</h3>
+          <div className="kv"><span>BTC</span><b className={btcLive?'green':'red'}>{btcLive?'TICK LIVE':'WAIT'}</b></div>
+          {market?.pricesReady&&<div className="kv"><span>Candles</span><b className="green">READY</b></div>}
+          {market?.newsReady&&<div className="kv"><span>News</span><b className="green">READY</b></div>}
+          {mt5Fresh&&<div className="kv"><span>MT5</span><b className="green">LIVE</b></div>}
+          {telegramReady&&<div className="kv"><span>Telegram</span><b className="green">READY</b></div>}
         </div>
       </aside>
     </div>
