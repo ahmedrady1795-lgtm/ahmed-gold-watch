@@ -47,7 +47,7 @@ function Card({x}:any){
         <div><small>Volume Delta / CVD</small><strong>{liq.flow?.deltaPct??0}%</strong></div>
         <div><small>Acceleration</small><strong>{liq.dynamics?.acceleration??0}</strong></div>
       </div>
-      <p>Bid depth {Number(liq.book?.bidDepthUsd||0).toLocaleString('en-US'){'}'} · Ask depth {Number(liq.book?.askDepthUsd||0).toLocaleString('en-US'){'}'} · Spread {liq.book?.spreadBps??'—'} bps</p>
+      <p>Bid depth $ {Number(liq.book?.bidDepthUsd||0).toLocaleString('en-US')} · Ask depth $ {Number(liq.book?.askDepthUsd||0).toLocaleString('en-US')} · Spread {liq.book?.spreadBps??'—'} bps</p>
       <p>Microprice edge {liq.book?.microEdge??0} · Wall {sideAr(liq.book?.wallSide)} · Absorption {sideAr(liq.absorption?.side)} {liq.absorption?.score||0}/100</p>
       <p>{liq.absorption?.reason}</p>
       {core&&<p><b>Adaptive weights:</b> Technical {Math.round((core.technicalWeight||0)*100)}% · Liquidity {Math.round((core.liquidityWeight||0)*100)}%</p>}
