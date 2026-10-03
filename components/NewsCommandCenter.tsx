@@ -1,0 +1,15 @@
+'use client';
+import {Clock3,Gauge,Newspaper,ShieldCheck} from 'lucide-react';
+import {surprise} from '../lib/engine';
+const n=(v:any,d=2)=>Number.isFinite(Number(v))?Number(v).toFixed(d):'—';
+function since(ms:number){const s=Math.round(ms/1000),a=Math.abs(s),m=Math.floor(a/60),r=a%60;return `${s>=0?'بعد':'منذ'} ${m?m+'د ':''}${r}ث`;}
+export default function NewsCommandCenter({analysis,events=[],background=[],quote,now=Date.now()}:any){
+ const high=events.filter((e:any)=>e.importance===3&&e.time>now-12*3600000).sort((a:any,b:any)=>Math.abs(a.time-now)-Math.abs(b.time-now))[0];
+ const e=analysis?.news?.event||high,active=analysis?.news?.active;
+ const b=(k:string)=>background.find((x:any)=>x.key===k);
+ return <section className="panel newscommand"><div className="panelhead"><div><span className="eyebrow">NEWS COMMAND CENTER</span><h2>{e?.name||'لا يوجد خبر قوي داخل النافذة'}</h2></div><Newspaper/></div>
+  {e&&<><div className="newsclock"><Clock3/><strong>{since(e.time-now)}</strong><span>{active?analysis.news.phase==='released'?'POST-RELEASE':'ARMED':'CALENDAR'}</span></div><div className="levels"><div><small>Actual</small><strong>{e.actual||'لم يصدر'}</strong></div><div><small>Forecast</small><strong>{e.forecast||'—'}</strong></div><div><small>Previous</small><strong>{e.previous||'—'}</strong></div></div><p>{surprise(e)}</p></>}
+  <div className="newschecks"><span><Gauge/>Spread <b>{n(quote?.spread,2)}</b></span><span><ShieldCheck/>M1 confirmation <b>{analysis?.signal?.mode==='news'?'YES':'WAIT'}</b></span><span>DXY <b>{n(b('dxy')?.value,2)}</b></span><span>US2Y <b>{n(b('us2y')?.value,3)}</b></span><span>US10Y <b>{n(b('us10y')?.value,3)}</b></span></div>
+  <p className="muted">DXY والعوائد عوامل تأكيد فقط. اتجاه صفقة الخبر لا يُستنتج من Actual وحده؛ يلزم رد فعل السعر وإغلاق M1 وسبريد قابل للتنفيذ.</p>
+ </section>;
+}
