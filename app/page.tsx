@@ -68,16 +68,31 @@ export default function Home(){
   },[]);
 
   useEffect(()=>{
-    let closed=false;
+    let closed=false,ws:WebSocket|null=null,reconnect:ReturnType<typeof setTimeout>|undefined,lastWsTick=0;
     const loadBtc=async()=>{try{
-      const r=await fetch('/api/btc?source=coinbase',{cache:'no-store'}),j=await r.json();
-      const p=Number(j?.price),at=Number(j?.fetchedAt)||Date.now();
-      if(!closed&&r.ok&&j?.ok&&Number.isFinite(p)&&p>0){setBtc(p);setBtcAt(at);setBtcSource(String(j?.source||'Coinbase'));}
-      else if(!closed&&!r.ok){setBtc(null);setBtcAt(0);setBtcSource('Coinbase unavailable');}
-    }catch{if(!closed){setBtc(null);setBtcAt(0);setBtcSource('Coinbase unavailable');}}};
-    void loadBtc();
-    const restTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadBtc();},1500);
-    return()=>{closed=true;clearInterval(restTimer);};
+      const r=await fetch('/api/btc?source=coinbase&ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}}),j=await r.json();
+      const p=Number(j?.price),at=Number(j?.sourceTime)||Number(j?.fetchedAt)||Date.now();
+      if(!closed&&r.ok&&j?.ok&&Number.isFinite(p)&&p>0&&Date.now()-lastWsTick>4000){setBtc(p);setBtcAt(at);setBtcSource(String(j?.source||'Coinbase'));}
+      else if(!closed&&!r.ok&&Date.now()-lastWsTick>4000){setBtc(null);setBtcAt(0);setBtcSource('Coinbase unavailable');}
+    }catch{if(!closed&&Date.now()-lastWsTick>4000){setBtc(null);setBtcAt(0);setBtcSource('Coinbase unavailable');}}};
+    const connect=()=>{
+      if(closed)return;
+      ws=new WebSocket('wss://ws-feed.exchange.coinbase.com');
+      ws.onopen=()=>{try{ws?.send(JSON.stringify({type:'subscribe',product_ids:['BTC-USD'],channels:['ticker','heartbeat']}));}catch{}};
+      ws.onmessage=e=>{try{
+        const x=JSON.parse(e.data);
+        if(x?.type!=='ticker'||x?.product_id!=='BTC-USD')return;
+        const p=Number(x.price),at=Date.parse(x.time);
+        if(!Number.isFinite(p)||p<=0)return;
+        lastWsTick=Date.now();
+        if(!closed){setBtc(p);setBtcAt(Number.isFinite(at)?at:Date.now());setBtcSource('Coinbase WebSocket');}
+      }catch{}};
+      ws.onerror=()=>ws?.close();
+      ws.onclose=()=>{if(!closed)reconnect=setTimeout(connect,1500);};
+    };
+    connect();void loadBtc();
+    const restTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadBtc();},3000);
+    return()=>{closed=true;clearInterval(restTimer);clearTimeout(reconnect);ws?.close();};
   },[]);
 
   useEffect(()=>{
@@ -149,7 +164,7 @@ export default function Home(){
       </div>
       <div className="tickerstrip">
         <div><small>{source.includes('Binance')?'XAUUSDT · عقد بديل':'XAU/USD'}</small><b>{fmt(quote?.price)}</b><em className={live?'up':'muted'}>{!marketOpen?'CLOSED':live?'LIVE':'WAIT'}</em></div>
-        <div><small>BTC/USD · {btcSource.includes('Coinbase')?'COINBASE':'WAIT'}</small><b>{fmt(btc,2)}</b><em>{btcAt&&now-btcAt<5000?'LIVE':'WAIT'}</em></div>
+        <div><small>BTC/USD · {btcSource.includes('Coinbase')?'COINBASE WS':'WAIT'}</small><b>{fmt(btc,2)}</b><em className={btcAt&&now-btcAt<5000?'up':'muted'}>{btcAt&&now-btcAt<5000?'TICK LIVE':'WAIT'}</em></div>
         <div><small>SCORE</small><b>{score||'—'}</b><em>/100</em></div>
       </div>
       <button className="refresh" onClick={()=>void load()} disabled={busy}><RefreshCw size={17} className={busy?'spin':''}/><span>{busy?'تحديث':'تحديث'}</span></button>
