@@ -1,58 +1,80 @@
 'use client';
-import {Clock3,Gauge,Newspaper,ShieldCheck} from 'lucide-react';
-import {surprise} from '../lib/engine';
-const n=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v).toFixed(d):'—';
-function scenario(name:string){
- if(/claims|unemployment rate/i.test(name))return 'أعلى من المتوقع: قد يضغط على الدولار والعوائد ويدعم الذهب؛ الأقل قد يعكس ذلك.';
- if(/CPI|PCE|PPI|inflation|earnings/i.test(name))return 'تضخم أعلى من المتوقع: قد يرفع العوائد والدولار ويضغط على الذهب؛ قراءة أهدأ قد تدعم الذهب.';
- if(/payroll|employment change|GDP|PMI|retail/i.test(name))return 'قراءة أقوى من المتوقع: قد تدعم الدولار والعوائد وتضغط على الذهب؛ الأضعف قد يعكس ذلك.';
- return 'لا اتجاه مسبق موثوق؛ ننتظر تفاصيل الإصدار ورد فعل الدولار والعوائد والسعر.';
+import {Clock3,Newspaper} from 'lucide-react';
+
+const macroNumber=(v:any)=>{
+  const s=String(v??'').trim().replace(/,/g,'');
+  const m=s.match(/^(-?\d+(?:\.\d+)?)\s*([KMB%]?)$/i);
+  if(!m)return null;
+  const base=Number(m[1]);if(!Number.isFinite(base))return null;
+  const u=m[2].toUpperCase();
+  return base*(u==='K'?1e3:u==='M'?1e6:u==='B'?1e9:1);
+};
+
+function timeLeft(ts:number,now:number){
+  const d=ts-now;
+  if(d<=0&&d>-60000)return 'الآن';
+  if(d<0)return 'صدر';
+  const totalMin=Math.floor(d/60000),days=Math.floor(totalMin/1440),hours=Math.floor((totalMin%1440)/60),mins=totalMin%60;
+  if(days>0)return `متبقي ${days}ي ${hours}س`;
+  if(hours>0)return `متبقي ${hours}س ${mins}د`;
+  return `متبقي ${Math.max(1,mins)}د`;
+}
+function dateLabel(ts:number){
+  return new Date(ts).toLocaleString('ar-AE',{timeZone:'Asia/Dubai',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
 }
 
-function macroNumber(v:any){
- const s=String(v??'').trim().replace(/,/g,'');
- const m=s.match(/^(-?\d+(?:\.\d+)?)\s*([KMB%]?)$/i);
- if(!m)return null;
- const base=Number(m[1]);if(!Number.isFinite(base))return null;
- const u=m[2].toUpperCase();
- return base*(u==='K'?1e3:u==='M'?1e6:u==='B'?1e9:1);
+type Dir='up'|'down'|'mixed';
+function macroBias(e:any){
+  const name=String(e?.name||'');
+  const actual=macroNumber(e?.actual),forecast=macroNumber(e?.forecast),previous=macroNumber(e?.previous);
+  const higherGoldBullish=/claims|unemployment rate|jobless|continuing claims/i.test(name);
+  const higherGoldBearish=/CPI|PCE|PPI|inflation|average hourly|earnings|payroll|employment change|GDP|PMI|ISM|retail|consumer confidence|JOLTS|job openings|fed funds|interest rate|rate decision/i.test(name);
+  const baseA=actual!=null&&forecast!=null?actual:forecast,baseB=actual!=null&&forecast!=null?forecast:previous;
+  const diff=baseA!=null&&baseB!=null?baseA-baseB:null;
+  let gold:Dir='mixed',why='لا توجد أرقام كافية قبل الإصدار لتكوين ميل رقمي.';
+  if(diff!=null&&Math.abs(diff)>1e-12){
+    if(higherGoldBullish){
+      gold=diff>0?'up':'down';
+      why=diff>0?'قراءة أضعف لسوق العمل تميل للضغط على الدولار والعوائد ودعم الذهب.':'قراءة أقوى لسوق العمل تميل لدعم الدولار والضغط على الذهب.';
+    }else if(higherGoldBearish){
+      gold=diff>0?'down':'up';
+      why=diff>0?'قراءة أقوى/أعلى تميل لدعم الدولار أو العوائد والضغط على الذهب.':'قراءة أهدأ/أضعف تميل لتخفيف ضغط الدولار والعوائد ودعم الذهب.';
+    }
+  }
+  if(/FOMC|Powell|Fed Chair|minutes/i.test(name)&&gold==='mixed')why='حدث فدرالي: النبرة المتشددة تميل للهبوط على الذهب، والتيسيرية تميل للصعود.';
+  const importance=Math.max(1,Math.min(3,Number(e?.importance)||1));
+  const actualKnown=actual!=null&&forecast!=null;
+  const strength=gold==='mixed'?50:Math.min(76,(actualKnown?62:56)+importance*4);
+  const goldUp=gold==='up'?strength:gold==='down'?100-strength:50,goldDown=100-goldUp;
+  const btcStrength=gold==='mixed'?50:Math.max(54,strength-7);
+  const btcUp=gold==='up'?btcStrength:gold==='down'?100-btcStrength:50,btcDown=100-btcUp;
+  return {gold,why,goldUp,goldDown,btcUp,btcDown,actualKnown};
 }
-function goldForecastBias(e:any){
- const name=String(e?.name||''),f=macroNumber(e?.forecast),p=macroNumber(e?.previous);
- const diff=f!=null&&p!=null?f-p:null;
- const higherBullish=/claims|unemployment rate|jobless|continuing claims/i.test(name);
- const higherBearish=/CPI|PCE|PPI|inflation|average hourly|earnings|payroll|employment change|GDP|PMI|ISM|retail|consumer confidence|JOLTS|job openings|fed funds|interest rate|rate decision/i.test(name);
- let dir:'up'|'down'|'mixed'='mixed',why='Forecast غير كافٍ لتحديد ميل مسبق موثوق.';
- if(diff!=null&&Math.abs(diff)>1e-12){
-   if(higherBullish){dir=diff>0?'up':'down';why=diff>0?'Forecast أضعف لسوق العمل من السابق؛ ده يميل لدعم الذهب.':'Forecast أقوى لسوق العمل من السابق؛ ده يميل للضغط على الذهب.';}
-   else if(higherBearish){dir=diff>0?'down':'up';why=diff>0?'Forecast أقوى/أعلى من السابق؛ ده يميل لدعم الدولار أو العوائد والضغط على الذهب.':'Forecast أهدأ/أضعف من السابق؛ ده يميل لتخفيف ضغط الدولار أو العوائد ودعم الذهب.';}
- }else if(/FOMC|Powell|Fed Chair|minutes/i.test(name)){why='حدث فدرالي عالي الحساسية؛ الاتجاه يعتمد على النبرة ورد فعل الدولار والعوائد.';}
- const label=dir==='up'?'⬆️ ميل صعود للذهب':dir==='down'?'⬇️ ميل هبوط للذهب':'↔️ غير محسوم';
- const directional=dir==='mixed'?0:1;
- const priority=(Number(e?.importance)||1)*100+directional*10;
- return {dir,label,why,priority};
-}
+const dirLabel=(d:Dir)=>d==='up'?'صعود':d==='down'?'هبوط':'محايد';
 
-function since(ms:number){const s=Math.round(ms/1000),a=Math.abs(s),m=Math.floor(a/60),r=a%60;return `${s>=0?'بعد':'منذ'} ${m?m+'د ':''}${r}ث`;}
-export default function NewsCommandCenter({analysis,events=[],background=[],quote,now=Date.now()}:any){
- const high=events.filter((e:any)=>e.importance===3&&e.time>now-12*3600000).sort((a:any,b:any)=>Math.abs(a.time-now)-Math.abs(b.time-now))[0];
- const e=analysis?.news?.event||high,active=analysis?.news?.active;
- const b=(k:string)=>background.find((x:any)=>x.key===k);
- const upcoming=events.filter((x:any)=>x.time>=now&&x.time<=now+30*86400000).sort((a:any,b:any)=>{const impact=(Number(b.importance)||1)-(Number(a.importance)||1);if(impact)return impact;return a.time-b.time;});
- return <section className="panel newscommand"><div className="panelhead"><div><span className="eyebrow">NEWS COMMAND CENTER</span><h2>{e?.name||(events.length?'لا يوجد خبر قوي داخل النافذة':'التقويم غير متاح — لا توجد تغطية أخبار مؤكدة')}</h2></div><Newspaper/></div>
-  {e&&<><div className="newsclock"><Clock3/><strong>{since(e.time-now)}</strong><span>{active?analysis.news.phase==='released'?'POST-RELEASE':'ARMED':'CALENDAR'}</span></div><div className="levels"><div><small>Actual</small><strong>{e.actual||'لم يصدر'}</strong></div><div><small>Forecast</small><strong>{e.forecast||'—'}</strong></div><div><small>Previous</small><strong>{e.previous||'—'}</strong></div></div><p>{surprise(e)}</p></>}
-  <div className="newschecks"><span><Gauge/>Spread <b>{n(quote?.spread,2)}</b></span><span><ShieldCheck/>M1 confirmation <b>{analysis?.signal?.mode==='news'?'YES':'WAIT'}</b></span><span>DXY <b>{n(b('dxy')?.value,2)}</b></span><span>US2Y <b>{n(b('us2y')?.value,3)}</b></span><span>US10Y <b>{n(b('us10y')?.value,3)}</b></span></div>
-  <p className="muted">غياب الأحداث لا يعني خلو السوق من أخبار مهمة. <a href="https://www.bls.gov/schedule/" target="_blank" rel="noreferrer">جدول BLS الرسمي</a> · <a href="https://www.bea.gov/news/schedule" target="_blank" rel="noreferrer">جدول BEA الرسمي</a></p><p className="muted">DXY والعوائد عوامل تأكيد فقط. اتجاه صفقة الخبر لا يُستنتج من Actual وحده؛ يلزم رد فعل السعر وإغلاق M1 وسبريد قابل للتنفيذ.</p>
-  <h3>سجل الأخبار القادمة خلال 30 يوم · مرتبة حسب التأثير على الذهب · توقيت الإمارات</h3>
-  {!upcoming.length&&<p>المصدر لم يوفر مواعيد قادمة في هذه النافذة. هذا لا يعني عدم وجود أخبار؛ يلزم تحديث التقويم.</p>}
-  {upcoming.map((x:any,index:number)=><article key={x.id} className="rule compact" style={{display:'block'}}>
-   <strong>#{index+1} · {x.name} · {x.importance===3?'🔥 تأثير مرتفع':x.importance===2?'⚠️ تأثير متوسط':'تأثير منخفض'}</strong>
-   <p><b>{goldForecastBias(x).label}</b></p>
-   <p><b>قادمة</b> · {new Date(x.time).toLocaleString('ar-AE',{timeZone:'Asia/Dubai'})} · Forecast: {x.forecast||'غير متاح'} · Previous: {x.previous||'غير متاح'}</p>
-   <p>{goldForecastBias(x).why}</p>
-   <p>{scenario(x.name)}</p>
-   {/^https:\/\//.test(x.source)&&<a href={x.source} target="_blank" rel="noreferrer">مصدر الموعد</a>}
-  </article>)}
-  <p className="muted">السيناريوهات قواعد تفسير محلية مجانية وليست توقعًا مضمونًا. مصدر التقويم المجاني قد لا يوفر النتيجة الفعلية؛ يبقى تداول الخبر متوقفًا حتى وصولها وتأكيد السعر.</p>
- </section>;
+export default function NewsCommandCenter({analysis,events=[],now=Date.now()}:any){
+  const upcoming=[...events]
+    .filter((e:any)=>Number(e?.time)>=now-60000&&Number(e?.time)<=now+30*86400000)
+    .sort((a:any,b:any)=>Number(a.time)-Number(b.time));
+  const active=analysis?.news?.event;
+  return <section className="panel newscommand">
+    <div className="panelhead"><div><span className="eyebrow">UPCOMING MACRO RADAR</span><h2>الأخبار القادمة · توقيت الإمارات</h2></div><Newspaper/></div>
+    {active&&<div className="newsclock"><Clock3/><strong>{active.name}</strong><span>{timeLeft(Number(active.time),now)}</span></div>}
+    {!upcoming.length&&<p>لا توجد أحداث قادمة وصلت من المصادر الحالية.</p>}
+    {upcoming.map((e:any,index:number)=>{
+      const b=macroBias(e),impact=Number(e?.importance)||1;
+      return <article key={e.id||e.name+e.time} className="rule compact" style={{display:'block'}}>
+        <strong>#{index+1} · {e.name} · {impact===3?'🔥 مرتفع':impact===2?'⚠️ متوسط':'منخفض'}</strong>
+        <p><b>{dateLabel(Number(e.time))}</b> · <b>{timeLeft(Number(e.time),now)}</b></p>
+        {(e.forecast||e.previous||e.actual)&&<p>Actual: {e.actual||'لم يصدر'} · Forecast: {e.forecast||'—'} · Previous: {e.previous||'—'}</p>}
+        <div className="levels">
+          <div><small>الذهب · {dirLabel(b.gold)}</small><strong>↑ {b.goldUp} / ↓ {b.goldDown}</strong></div>
+          <div><small>BTC · ميل ماكرو</small><strong>↑ {b.btcUp} / ↓ {b.btcDown}</strong></div>
+        </div>
+        <p>{b.why}</p>
+        {/^https:\/\//.test(String(e.source||''))&&<a href={e.source} target="_blank" rel="noreferrer">المصدر الرسمي/التقويم</a>}
+      </article>;
+    })}
+    <p className="muted">ميزان ↑/↓ هو ترجيح اتجاهي من بيانات الخبر وليس نسبة نجاح أو ضمانًا للصفقة؛ بعد صدور الخبر يعطي رد فعل السعر أولوية أعلى.</p>
+  </section>;
 }
