@@ -18,7 +18,7 @@ function IndicatorMatrix({x}:any){
 
 function Card({x}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
-  const trade=x.trade,candidate=x.candidateTrade,buy=x.action==='BUY',sell=x.action==='SELL',pulse=x.livePulse,scalp=x.scalp,scalpTrade=x.scalp?.trade,hunter=x.hunter;
+  const trade=x.trade,candidate=x.candidateTrade,buy=x.action==='BUY',sell=x.action==='SELL',pulse=x.livePulse,scalp=x.scalp,scalpTrade=x.scalp?.trade,hunter=x.hunter,liq=x.liquidity,core=x.adaptiveCore;
   return <section className="panel">
     <div className="panelhead"><div><span className="eyebrow">{x.asset} · {x.phase||'SCAN'}</span><h2>{buy?'BUY STRIKE':sell?'SELL STRIKE':hunter?.status==='WATCH'?'WATCH '+sideAr(hunter?.side):'WAIT'} · Quality {x.quality||'—'}</h2></div>{buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}</div>
 
@@ -38,6 +38,19 @@ function Card({x}:any){
       <div><small>Live Pulse</small><strong>{pulse.direction}</strong></div>
       <div><small>Δ M1</small><strong>{Number(pulse.deltaPct||0).toFixed(3)}%</strong></div>
       <div><small>Momentum</small><strong>{pulse.momentum}/100</strong></div>
+    </div>}
+
+    {liq&&<div className="sidecard">
+      <strong>🧠 LIQUIDITY BRAIN · {sideAr(liq.side)} {Math.max(liq.buy||0,liq.sell||0)}/100 · Quality {liq.quality}/100</strong>
+      <div className="levels">
+        <div><small>Order Book</small><strong>{liq.book?.weightedImbalance??0}%</strong></div>
+        <div><small>Volume Delta / CVD</small><strong>{liq.flow?.deltaPct??0}%</strong></div>
+        <div><small>Acceleration</small><strong>{liq.dynamics?.acceleration??0}</strong></div>
+      </div>
+      <p>Bid depth {Number(liq.book?.bidDepthUsd||0).toLocaleString('en-US'){'}'} · Ask depth {Number(liq.book?.askDepthUsd||0).toLocaleString('en-US'){'}'} · Spread {liq.book?.spreadBps??'—'} bps</p>
+      <p>Microprice edge {liq.book?.microEdge??0} · Wall {sideAr(liq.book?.wallSide)} · Absorption {sideAr(liq.absorption?.side)} {liq.absorption?.score||0}/100</p>
+      <p>{liq.absorption?.reason}</p>
+      {core&&<p><b>Adaptive weights:</b> Technical {Math.round((core.technicalWeight||0)*100)}% · Liquidity {Math.round((core.liquidityWeight||0)*100)}%</p>}
     </div>}
 
     <p>السعر {fmt(pulse?.price??x.price,x.asset==='BTC'?2:2)} · {pulse?.source||x.source}</p>
@@ -63,8 +76,8 @@ export default function AICommandCenter({data,error}:any){
   const auto=data?.autopilot;
   return <div>
     <section className="sidecard">
-      <strong>Quant Predator v5 · Multi-Strategy Fusion</strong>
-      <p>Trend + Breakout + Pullback + Reversal + M1 Scalp + EMA/RSI/MACD/ADX-DI/Stochastic/Bollinger/ATR + MTF + Live Pulse + فلتر الأخبار.</p>
+      <strong>Predator Core v6 · Adaptive Liquidity Brain</strong>
+      <p>نواة تكيفية تجمع Trend + Breakout + Pullback + Reversal + M1 Scalp + المؤشرات متعددة الأطر + الأخبار + Live Pulse + Order Book + Volume Delta/CVD + Microprice + Absorption. وزن السيولة يتغير حسب حالة السوق.</p>
     </section>
 
     {!!data?.radar?.length&&<section className="panel">
