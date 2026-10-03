@@ -1,7 +1,7 @@
 'use client';
 import {Clock3,Gauge,Newspaper,ShieldCheck} from 'lucide-react';
 import {surprise} from '../lib/engine';
-const n=(v:any,d=2)=>Number.isFinite(Number(v))?Number(v).toFixed(d):'—';
+const n=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v).toFixed(d):'—';
 function scenario(name:string){
  if(/claims|unemployment rate/i.test(name))return 'أعلى من المتوقع: قد يضغط على الدولار والعوائد ويدعم الذهب؛ الأقل قد يعكس ذلك.';
  if(/CPI|PCE|PPI|inflation|earnings/i.test(name))return 'تضخم أعلى من المتوقع: قد يرفع العوائد والدولار ويضغط على الذهب؛ قراءة أهدأ قد تدعم الذهب.';
