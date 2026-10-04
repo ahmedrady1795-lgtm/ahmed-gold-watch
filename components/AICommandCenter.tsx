@@ -139,6 +139,7 @@ function AssetCard({x,fast}:any){
       <div><small>الحالة</small><strong>{recommendation?.active?'توصية':'مراقبة'}</strong></div>
     </div>
 
+    <small className="muted">نتائج توقع الحركة — ليست صفقات منفذة</small>
     <div className="ai-outcome-mini">
       <span>شراء ✓ <b>{x.expectedMoveLearning?.directionStats?.buySuccess||0}</b></span>
       <span>شراء ✕ <b>{x.expectedMoveLearning?.directionStats?.buyFail||0}</b></span>

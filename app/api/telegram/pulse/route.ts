@@ -45,13 +45,17 @@ export async function POST(request:Request){
     }
 
     const events:any[]=[];
+    let qualified=0,deduped=0;
+    const states:Record<string,any>={};
     for(const [asset,node] of [['BTC',data.bitcoin],['GOLD',data.gold]] as const){
       const rec:any=(node as any)?.recommendation;
       const confidence=Math.round(Number(rec?.confidence)||0);
       const active=Boolean(rec?.active&&(rec?.action==='BUY'||rec?.action==='SELL')&&confidence>=MIN_RECOMMENDATION_CONFIDENCE);
       const prev=lastRecommendationSignature.get(asset)||'';
+      states[asset]={active,action:rec?.action||'WAIT',confidence,masterState:(node as any)?.master?.state||null};
 
       if(active){
+        qualified++;
         const sig=signature(asset,rec);
         if(sig!==prev){
           events.push(await sendTelegramAlert({
@@ -61,7 +65,7 @@ export async function POST(request:Request){
             key:`predator:${sig}`
           }));
           lastRecommendationSignature.set(asset,sig);
-        }
+        }else deduped++;
       }else if(prev){
         const learning:any=(node as any)?.recommendationLearning;
         const failed=learning?.status==='FAILED';
@@ -79,12 +83,18 @@ export async function POST(request:Request){
       }
     }
 
+    const sent=events.some((x:any)=>x?.ok===true);
+    const reason=sent?'sent':qualified>0&&deduped>0?'deduped_active_recommendation':'no_qualified_recommendation';
     return Response.json({
       ok:true,
       configured:true,
       enabled:true,
       minimumConfidence:MIN_RECOMMENDATION_CONFIDENCE,
-      sent:events.some((x:any)=>x?.ok===true),
+      sent,
+      reason,
+      qualified,
+      deduped,
+      states,
       results:events
     },{headers:{'Cache-Control':'private, no-store'}});
   }catch(e){

@@ -50,8 +50,8 @@ export async function register(){
     }
   };
 
-  const first=setTimeout(()=>{void tick();},20000);
+  const first=setTimeout(()=>{void tick();},10000);
   first.unref?.();
-  const timer=setInterval(()=>{void tick();},60000);
+  const timer=setInterval(()=>{void tick();},30000);
   timer.unref?.();
 }
