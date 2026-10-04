@@ -29,7 +29,7 @@ export async function getMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPred
   const rows=closedM1(c1,now);
   if(rows.length<220)return {ok:false,status:'WAIT',reason:'insufficient M1 history',shadow:true};
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),1800);
+  const timer=setTimeout(()=>controller.abort(),3500);
   const started=Date.now();
   try{
     const r=await fetch(url.replace(/\/$/,'')+'/predict',{
