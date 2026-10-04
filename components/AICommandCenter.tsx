@@ -113,9 +113,8 @@ function AdvancedDetails({x}:any){
 
 function AssetCard({x,fast}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
-  const master=x.master||{action:x.action,state:x.phase||'WAIT',reason:''},hunt=x.huntForecast,trade=x.trade,recommendation=x.recommendation;
+  const master=x.master||{action:x.action,state:x.phase||'WAIT',reason:''},hunt=x.huntForecast,recommendation=x.recommendation;
   const buy=master.action==='BUY',sell=master.action==='SELL';
-  const waveHot=fast?.ok&&['WAVE_FORMING','IGNITION'].includes(String(fast.stage));
   const scalpLong=Number(x.scalp?.score?.long||0),scalpShort=Number(x.scalp?.score?.short||0);
   const scalpSide=x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:scalpLong>scalpShort?'BUY':scalpShort>scalpLong?'SELL':'WAIT';
   const scalpStrength=calibrated(Math.max(scalpLong,scalpShort));
@@ -123,119 +122,59 @@ function AssetCard({x,fast}:any){
   const quickTargets=hunt?.quickSignalTargets||{};
   const signalRows=[
     {label:'Scalp',side:scalpSide,strength:scalpStrength,target:quickTargets?.scalp?.price},
-    {label:'1 min',side:m1?.bias||'WAIT',strength:calibrated(m1?.strength),target:quickTargets?.oneMinute?.price},
-    {label:'5 min',side:m5?.bias||'WAIT',strength:calibrated(m5?.strength),target:quickTargets?.fiveMinute?.price}
+    {label:'1m',side:m1?.bias||'WAIT',strength:calibrated(m1?.strength),target:quickTargets?.oneMinute?.price},
+    {label:'5m',side:m5?.bias||'WAIT',strength:calibrated(m5?.strength),target:quickTargets?.fiveMinute?.price}
   ];
   return <section className={"panel ai-asset-card "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
-      <div><span className="eyebrow">{x.asset} · MASTER</span><h2>{buy?'شراء':sell?'بيع':'ترقب الحركة'}</h2></div>
+      <div><span className="eyebrow">{x.asset}</span><h2>{buy?'شراء':sell?'بيع':'انتظار'}</h2></div>
       {buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}
     </div>
 
     <div className="ai-price-row">
       <div><small>السعر</small><strong>{fmt(x.livePulse?.price??x.price,2)}</strong></div>
-      <div><small>الحالة</small><strong>{master.state||'WAIT'}</strong></div>
-      <div><small>الثقة</small><strong>{calibrated(x.confidence)}</strong></div>
+      <div><small>الثقة</small><strong>{calibrated(recommendation?.active?recommendation.confidence:x.confidence)}%</strong></div>
+      <div><small>الحالة</small><strong>{recommendation?.active?'توصية':'مراقبة'}</strong></div>
     </div>
 
-    <div className="quick-signals">
+    <div className="quick-signals compact-signals">
       {signalRows.map((s:any)=><div className="quick-signal-row" key={s.label}>
         <span>{s.label}</span>
-        <strong className={s.side==='BUY'?'green':s.side==='SELL'?'red':'amber'}>{sideAr(s.side)} <b>%{s.strength}</b>{s.target!=null?<em> · ≈ {fmt(s.target,2)}</em>:null}</strong>
+        <strong className={s.side==='BUY'?'green':s.side==='SELL'?'red':'amber'}>{sideAr(s.side)} · {s.strength}%{s.target!=null?<em> · ≈ {fmt(s.target,2)}</em>:null}</strong>
       </div>)}
     </div>
 
-    <div className={`decision-state-row ${x.stateGraph?'':'single'}`}>
+    <div className={"decision-state-row "+(x.stateGraph?'':'single')}>
       <div className="master-box">
         <span>{recommendation?.active?'التوصية النهائية':'القرار النهائي'}</span>
-        <strong className={buy?'green':sell?'red':'amber'}>{recommendation?.active?(recommendation.action+' · ثقة '+calibrated(recommendation.confidence)+'%'):(buy?'BUY':sell?'SELL':'WAIT')}</strong>
-        {recommendation?.active&&<p>دخول ≈ {fmt(recommendation.entry,2)} · إلغاء {fmt(recommendation.invalidation,2)}{recommendation.targets?.scalp!=null?(' · Scalp '+fmt(recommendation.targets.scalp,2)):''}{recommendation.targets?.oneMinute!=null?(' · 1m '+fmt(recommendation.targets.oneMinute,2)):''}{recommendation.targets?.fiveMinute!=null?(' · 5m '+fmt(recommendation.targets.fiveMinute,2)):''}{recommendation.targets?.fifteenMinute!=null?(' · 15m '+fmt(recommendation.targets.fifteenMinute,2)):''}</p>}
-        {!recommendation?.active&&<p>{master.reason||'النواة تراقب الحركة ولم تعتمد دخولًا بعد.'}</p>}
+        <strong className={buy?'green':sell?'red':'amber'}>{recommendation?.active?(sideAr(recommendation.action)+' · '+calibrated(recommendation.confidence)+'%'):(buy?'BUY':sell?'SELL':'WAIT')}</strong>
+        {recommendation?.active?<p>دخول {fmt(recommendation.entry,2)} · إلغاء {fmt(recommendation.invalidation,2)}{recommendation.targets?.fiveMinute!=null?(' · هدف 5m '+fmt(recommendation.targets.fiveMinute,2)):''}</p>:null}
       </div>
 
-      {x.stateGraph&&<div className="hunt-box market-state-box">
-        <div className="hunt-title"><span>🧠 فهم حركة السوق</span><strong>{x.stateGraph.current} → {x.stateGraph.nextState}</strong></div>
-        <div className="forecast-horizons">
-          <div><small>الحالة الحالية</small><strong>{x.stateGraph.current}</strong></div>
-          <div><small>الحالة التالية</small><strong>{x.stateGraph.nextState}</strong></div>
-          <div><small>احتمال الانتقال</small><strong>%{x.stateGraph.nextStateProbability||0}</strong></div>
-        </div>
-        <div className="forecast-path">
-          <div><small>اتجاه الحالة التالية</small><strong className={x.stateGraph.nextSide==='BUY'?'green':x.stateGraph.nextSide==='SELL'?'red':'amber'}>{sideAr(x.stateGraph.nextSide)} · %{x.stateGraph.nextSideProbability||0}</strong></div>
-          <div><small>Sequence Matches</small><strong>{x.stateGraph.sequenceMatches||0}</strong></div>
-        </div>
-        <p className="muted">{x.stateGraph.sequence}</p>
-        {x.stateGraph.changePoint&&<p className="amber">⚠️ Change Point {x.stateGraph.changePointScore}: السوق قد يكون بيغير نظام الحركة.</p>}
-        {x.marketLearning&&x.stateGraph.nextSide!=='WAIT'&&x.marketLearning.side!=='WAIT'&&x.stateGraph.nextSide!==x.marketLearning.side&&<p className="red">MODEL CONFLICT: State Graph {sideAr(x.stateGraph.nextSide)} بينما الذاكرة {sideAr(x.marketLearning.side)} — الثقة في الحركة القادمة لازم تكون أقل.</p>}
-        {x.marketLearning?.strongMoveMemory&&<p className="learning-line">⚡ ذاكرة موجة قوية: {sideAr(x.marketLearning.strongMoveMemory.side)} · احتمال {x.marketLearning.strongMoveMemory.probability||0}% · عينات {x.marketLearning.strongMoveMemory.samples||0}</p>}
+      {x.stateGraph&&<div className="hunt-box market-state-box compact-state">
+        <div className="hunt-title"><span>فهم حركة السوق</span><strong className={x.stateGraph.nextSide==='BUY'?'green':x.stateGraph.nextSide==='SELL'?'red':'amber'}>{sideAr(x.stateGraph.nextSide)} · {x.stateGraph.nextSideProbability||0}%</strong></div>
+        <p className="muted">{x.stateGraph.current} → {x.stateGraph.nextState}{x.stateGraph.changePoint?' · ⚠️ تغيير محتمل':''}</p>
       </div>}
     </div>
 
-    {hunt&&<div className="hunt-box">
-      <div className="hunt-title"><span>🦅 الحركة القادمة المتوقعة</span><strong>{sideAr(hunt.nextMove?.side||hunt.path?.shortSide)} · {hunt.path?.label||sideAr(hunt.side)} · {hunt.state}</strong></div>
-      {hunt.liveFailureGuard?.invalidated&&<p className="red">⚠️ تم إلغاء التوقع السابق {sideAr(hunt.liveFailureGuard.failedSide)} بعد حركة عكسية {hunt.liveFailureGuard.adverseAtr} ATR؛ لن يتكرر نفس الاتجاه مباشرة.</p>}
-
-      <div className="forecast-path">
-        <div><small>الحركة الأولى</small><strong className={hunt.path?.shortSide==='BUY'?'green':hunt.path?.shortSide==='SELL'?'red':'amber'}>{sideAr(hunt.path?.shortSide)} → {fmt(hunt.path?.firstLeg,2)}</strong></div>
-        <div><small>الحركة التالية</small><strong className={hunt.path?.followSide==='BUY'?'green':hunt.path?.followSide==='SELL'?'red':'amber'}>{sideAr(hunt.path?.followSide)} → {fmt(hunt.path?.secondLeg,2)}</strong></div>
-      </div>
-
-      <div className="forecast-horizons">
-        <div><small>بعد دقيقتين</small><strong className={hunt.horizons?.twoMinute?.side==='BUY'?'green':hunt.horizons?.twoMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.twoMinute?.side)} %{hunt.horizons?.twoMinute?.strength||0}</strong><span>≈ {fmt(hunt.movementStations?.[0]?.price??hunt.path?.firstLeg,2)}</span></div>
-        <div><small>بعد 5 دقائق</small><strong className={hunt.horizons?.fiveMinute?.side==='BUY'?'green':hunt.horizons?.fiveMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fiveMinute?.side)} %{hunt.horizons?.fiveMinute?.strength||0}</strong><span>≈ {fmt(hunt.movementStations?.[1]?.price??hunt.path?.secondLeg,2)}</span></div>
-        <div><small>بعد 15 دقيقة</small><strong className={hunt.horizons?.fifteenMinute?.side==='BUY'?'green':hunt.horizons?.fifteenMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fifteenMinute?.side)} %{hunt.horizons?.fifteenMinute?.strength||0}</strong><span>≈ {fmt(hunt.fifteenMinuteTarget?.price,2)}</span></div>
-      </div>
-
-      {hunt.strongMove&&<div className={"strong-move-box "+(hunt.strongMove.side==='BUY'?'strong-up':'strong-down')}>
-        <small>🚀 STRONG MOVE SETUP</small>
-        <strong>{sideAr(hunt.strongMove.side)} · قوة {calibrated(hunt.strongMove.score)} · جاهزية {calibrated(hunt.strongMove.readiness)}</strong>
-        <span>{hunt.strongMove.phase} · {hunt.strongMove.side==='BUY'?('كسر '+fmt(hunt.strongMove.breakoutLevel,2)):('كسر '+fmt(hunt.strongMove.breakdownLevel,2))}</span>
-        <span>Liquidity {hunt.strongMove.liquidityConfirmed?'✓':'—'} · Absorption {hunt.strongMove.absorptionConfirmed?'✓':'—'}</span>
-      </div>}
-
-      {hunt.accumulationMap&&<div className="accumulation-strip">
-        <div><small>Accumulation</small><strong>{hunt.accumulationMap.accumulationScore||0}</strong></div>
-        <div><small>Distribution</small><strong>{hunt.accumulationMap.distributionScore||0}</strong></div>
-        <div><small>Breakout Ready</small><strong>{hunt.accumulationMap.breakoutReadiness||0}</strong></div>
-      </div>}
-
-      {hunt.waveStructure&&<div className="wave-structure-strip">
-        <div><small>مرحلة M1</small><strong>{hunt.waveStructure?.m1?.phase||'—'}</strong><span>{hunt.waveStructure?.m1?.structure||''}</span></div>
-        <div><small>مرحلة M5</small><strong>{hunt.waveStructure?.m5?.phase||'—'}</strong><span>{hunt.waveStructure?.m5?.structure||''}</span></div>
-      </div>}
-
-      <div className="ai-price-row">
-        <div><small>جودة التوقع</small><strong>{calibrated(hunt.quality??hunt.confidence)}</strong></div>
-        <div><small>ثبات الاتجاه</small><strong>{hunt.persistence||0}%</strong></div>
-        <div><small>أفق التوقع</small><strong>2 / 5 / 15 د</strong></div>
-      </div>
-
-      <div className="forecast-levels">
-        <div><small>Trigger</small><strong>{fmt(hunt.trigger,2)}</strong></div>
-        <div><small>Target</small><strong>{fmt(hunt.projected,2)}</strong></div>
-        <div><small>Invalidation</small><strong>{fmt(hunt.invalidation,2)}</strong></div>
-      </div>
-
-      {hunt.alternative?.side&&hunt.alternative.side!=='WAIT'&&<div className="forecast-alt">
-        <small>السيناريو البديل</small>
-        <strong>{sideAr(hunt.alternative.side)} · قوة {calibrated(hunt.alternative.strength)}</strong>
-        <span>{hunt.alternative.condition}</span>
-      </div>}
-
-      {hunt.expectedMoveLearning&&<p className="learning-line">🎯 ذاكرة الحركة: 2m {sideAr(hunt.expectedMoveLearning.twoMinute?.side)} · 5m {sideAr(hunt.expectedMoveLearning.fiveMinute?.side)} · 15m {sideAr(hunt.expectedMoveLearning.fifteenMinute?.side)} · متوسط Calibration {hunt.expectedMoveCore?.averageCalibration||0}</p>}
-      {hunt.commitment&&<p className="muted">Direction Lock: {sideAr(hunt.commitment.side)} · {hunt.commitment.state}{hunt.commitment.pendingSide!=='WAIT'?(' · عكس محتمل '+sideAr(hunt.commitment.pendingSide)+' '+hunt.commitment.pendingCount+'/2'):''}</p>}
-      {!!hunt.reasons?.length&&<p className="muted">{hunt.reasons.slice(0,4).join(' · ')}</p>}
+    {hunt&&<div className="forecast-horizons compact-forecast">
+      <div><small>2m</small><strong className={hunt.horizons?.twoMinute?.side==='BUY'?'green':hunt.horizons?.twoMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.twoMinute?.side)} {hunt.horizons?.twoMinute?.strength||0}%</strong><span>≈ {fmt(hunt.movementStations?.[0]?.price??hunt.path?.firstLeg,2)}</span></div>
+      <div><small>5m</small><strong className={hunt.horizons?.fiveMinute?.side==='BUY'?'green':hunt.horizons?.fiveMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fiveMinute?.side)} {hunt.horizons?.fiveMinute?.strength||0}%</strong><span>≈ {fmt(hunt.movementStations?.[1]?.price??hunt.path?.secondLeg,2)}</span></div>
+      <div><small>15m</small><strong className={hunt.horizons?.fifteenMinute?.side==='BUY'?'green':hunt.horizons?.fifteenMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fifteenMinute?.side)} {hunt.horizons?.fifteenMinute?.strength||0}%</strong><span>≈ {fmt(hunt.fifteenMinuteTarget?.price,2)}</span></div>
     </div>}
 
-    {waveHot&&<div className="wave-alert">
-      <Zap size={17}/><div><strong>LIVE WAVE · {fast.stage} · {sideAr(fast.side)}</strong><span>1s {fast.velocity1s} bps · Acc {fast.acceleration} · Persistence {fast.persistence}%</span></div>
-    </div>}
-
-    {trade&&master.state==='TRADE'&&<div className="trade-strip">
-      <div><small>Entry</small><strong>{fmt(trade.entry,2)}</strong></div>
-      <div><small>SL</small><strong>{fmt(trade.sl,2)}</strong></div>
-      <div><small>TP</small><strong>{fmt(trade.tp,2)}</strong></div>
-    </div>}
+    {hunt&&<details className="advanced-details compact-details">
+      <summary><span>تحليل الحركة</span><ChevronDown size={16}/></summary>
+      <div className="advanced-content">
+        <div className="advanced-block">
+          <strong>الحركة القادمة المتوقعة</strong>
+          <p>{sideAr(hunt.nextMove?.side||hunt.path?.shortSide)} · جودة {calibrated(hunt.quality??hunt.confidence)} · ثبات {hunt.persistence||0}%</p>
+          <p>Trigger {fmt(hunt.trigger,2)} · Target {fmt(hunt.projected,2)} · Invalidation {fmt(hunt.invalidation,2)}</p>
+          {hunt.strongMove&&<p>Strong Move: {sideAr(hunt.strongMove.side)} · قوة {calibrated(hunt.strongMove.score)} · جاهزية {calibrated(hunt.strongMove.readiness)}</p>}
+          {hunt.liveFailureGuard?.invalidated&&<p className="red">تم إلغاء التوقع السابق بعد حركة عكسية؛ النواة منعت تكرار الاتجاه فورًا.</p>}
+        </div>
+      </div>
+    </details>}
 
     <AdvancedDetails x={x}/>
   </section>;
