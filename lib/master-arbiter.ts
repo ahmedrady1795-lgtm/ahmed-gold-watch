@@ -4,7 +4,7 @@ const locks=new Map<string,LockState>();
 
 const sideFrom=(x:any):Side=>x==='BUY'?'BUY':x==='SELL'?'SELL':'WAIT';
 
-export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now()){
+export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now(),learner:any=null){
   const action=sideFrom(decision?.action),phase=String(decision?.phase||'WAIT'),fusion=sideFrom(decision?.fusion?.side);
   const motion=sideFrom(decision?.motion?.side),behavior=sideFrom(decision?.behavior?.side),liq=sideFrom(decision?.liquidity?.side);
   const hunter=sideFrom(decision?.hunter?.side);
@@ -19,7 +19,11 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
 
   const fusionGap=Math.abs(Number(decision?.fusion?.buy||0)-Number(decision?.fusion?.sell||0));
   const confidence=Number(decision?.confidence||0);
-  const strongEvidence=action!=='WAIT'&&confidence>=68&&fusionGap>=8&&!conflict;
+  const learnerRequired=Boolean(learner);
+  const learnerValid=Boolean(learner?.ok&&learner?.gate?.passed&&Number(learner?.oosAccuracy)>=56&&Number(learner?.oosEdgeAtr)>=.06&&Number(learner?.profitFactor)>=1.20);
+  const learnerSide:Side=sideFrom(learner?.side);
+  const edgeAligned=Boolean(!learnerRequired||(learnerValid&&learnerSide===action));
+  const strongEvidence=action!=='WAIT'&&confidence>=68&&fusionGap>=8&&!conflict&&edgeAligned;
 
   let lock=locks.get(asset);
   if(lock&&now-lock.lastAt>120000){locks.delete(asset);lock=undefined;}
@@ -30,6 +34,12 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
   if(conflict){
     state='CONFLICT';
     reason='المحركات الداخلية متعارضة؛ تم إلغاء أي BUY/SELL حتى يختفي التعارض.';
+  }else if(action!=='WAIT'&&learnerRequired&&!learnerValid){
+    state='EDGE_BLOCKED';
+    reason='تم منع الصفقة: Scalp Learner لم يثبت أفضلية موجبة كافية على Final Holdout بعد التكلفة.';
+  }else if(action!=='WAIT'&&learnerRequired&&learnerSide!==action){
+    state='EDGE_CONFLICT';
+    reason=`تم منع الصفقة: اتجاه النواة ${action} يعارض Scalp Learner ${learnerSide}.`;
   }else if(strongEvidence){
     if(!lock||lock.side==='WAIT'||lock.side===action){
       masterAction=action;state='TRADE';
@@ -75,7 +85,7 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
     lockAgeSeconds:locked?Math.max(0,Math.round((now-locked.since)/1000)):0,
     pendingReversal:locked?.pendingSide||'WAIT',
     pendingCount:locked?.pendingCount||0,
-    evidence:{buyVotes:buys,sellVotes:sells,fusion,scalp:scalpSide,hunter,motion,behavior,liquidity:liq,confidence,fusionGap},
+    evidence:{buyVotes:buys,sellVotes:sells,fusion,scalp:scalpSide,hunter,motion,behavior,liquidity:liq,confidence,fusionGap,learner:{required:learnerRequired,valid:learnerValid,side:learnerSide,oosAccuracy:Number(learner?.oosAccuracy||0),netEdgeAtr:Number(learner?.oosEdgeAtr||0),profitFactor:Number(learner?.profitFactor||0)}},
     trade:masterAction!=='WAIT'?decision?.trade||null:null
   };
 }
