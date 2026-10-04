@@ -45,10 +45,14 @@ export async function POST(request:Request){
   }
 
   try{
-    const url=new URL('/api/ai-analysis',request.url);
-    const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(25000),headers:{'x-predator-telegram':'1'}});
-    const data:any=await r.json();
-    if(!r.ok||!data?.ok)throw new Error(data?.message||'AI analysis unavailable');
+    const supplied:any=await request.json().catch(()=>null);
+    let data:any=supplied?.analysis?.ok?supplied.analysis:null;
+    if(!data){
+      const url=new URL('/api/ai-analysis',request.url);
+      const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(25000),headers:{'x-predator-telegram':'1'}});
+      data=await r.json();
+      if(!r.ok||!data?.ok)throw new Error(data?.message||'AI analysis unavailable');
+    }
 
     const events:any[]=[];
     for(const [asset,node] of [['BTC',data.bitcoin],['GOLD',data.gold]] as const){
