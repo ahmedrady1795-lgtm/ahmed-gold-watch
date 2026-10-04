@@ -85,11 +85,12 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const evidenceOf=(name:string)=>movementEvidence.find((e:any)=>String(e?.name||'')===name)||null;
   const tickEv=evidenceOf('serverTick'),ml1Ev=evidenceOf('mlEnsemble1m');
   const tickSide:Side=tickEv?.side||'WAIT',tickScore=Number(tickEv?.score||0);
-  const validatedMlSide:Side=ml1Ev?.side||scalp?.fusionV3?.mlSide||'WAIT';
+  const scalpFusion=scalp?.fusionV5||scalp?.fusionV4||scalp?.fusionV3||{};
+  const validatedMlSide:Side=ml1Ev?.side||scalpFusion?.mlSide||'WAIT';
   const validatedMlScore=Number(ml1Ev?.score||0);
-  const scalpFusionSide:Side=scalp?.fusionV3?.side||scalp?.action||'WAIT';
-  const scalpFusionConfidence=Number(scalp?.fusionV3?.confidence||scalp?.confidence||Math.max(scalpLong,scalpShort));
-  const scalpFusionStrong=Boolean(scalp?.fusionV3?.strong);
+  const scalpFusionSide:Side=scalpFusion?.side||scalp?.action||'WAIT';
+  const scalpFusionConfidence=Number(scalpFusion?.confidence||scalp?.confidence||Math.max(scalpLong,scalpShort));
+  const scalpFusionStrong=Boolean(scalpFusion?.strong);
   const sourceWfV5=liveOutcome?.walkForwardBySource?.FAST_MICROSTRUCTURE_V5||null;
   const sourceWfV4=liveOutcome?.walkForwardBySource?.FAST_MICROSTRUCTURE_V4||null;
   const wfBase=Number(sourceWfV5?.directional||0)>=25?sourceWfV5:Number(sourceWfV4?.directional||0)>=25?sourceWfV4:(liveOutcome?.walkForward||{});
@@ -163,7 +164,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   // Next-Move v2: resolve the first 30-120s from live microstructure first.
   // Slower horizon memory calibrates confidence; it cannot dominate a strong live micro edge.
   const scalpSide:Side=scalpFusionSide!=='WAIT'?scalpFusionSide:(scalpLong-scalpShort>=4?'BUY':scalpShort-scalpLong>=4?'SELL':'WAIT');
-  const scalpEdge=Math.max(Math.abs(scalpLong-scalpShort),Number(scalp?.fusionV3?.edge||0));
+  const scalpEdge=Math.max(Math.abs(scalpLong-scalpShort),Number(scalpFusion?.edge||0));
   const reactionFast=accumulation?.nearestReaction||null;
   const reactionFastSide:Side=reactionFast?.side||'WAIT';
   const reactionFastStrength=Number(reactionFast?.strength||0);
