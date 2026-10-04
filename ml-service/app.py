@@ -246,14 +246,27 @@ def fetch_binance_vision_history(limit_rows):
     if len(df)<1000: raise RuntimeError(f"binance vision normalized history too short: {len(df)}")
     return df
 
-LIVE_FRAME={"at":0.0,"df":None}
+LIVE_FRAME={"at":0.0,"df":None,"source":"none","error":None}
 def get_live_binance_frame():
     now=time.time()
-    if LIVE_FRAME["df"] is not None and now-LIVE_FRAME["at"]<4:
-        return LIVE_FRAME["df"]
-    df=fetch_binance_vision_history(900)
-    LIVE_FRAME["at"]=now; LIVE_FRAME["df"]=df
-    return df
+    cached=LIVE_FRAME.get("df")
+    age=now-float(LIVE_FRAME.get("at") or 0)
+    if cached is not None and age<12:
+        return cached,"Binance Vision cached taker flow",None
+    try:
+        fresh=fetch_binance_vision_history(900)
+        if cached is not None:
+            fresh=pd.concat([cached,fresh]).sort_index()
+            fresh=fresh[~fresh.index.duplicated(keep="last")].tail(900)
+        LIVE_FRAME.update({"at":now,"df":fresh,"source":"Binance Vision live taker flow","error":None})
+        return fresh,"Binance Vision live taker flow",None
+    except Exception as e:
+        err=f"{type(e).__name__}: {e}"
+        LIVE_FRAME["error"]=err
+        # A recent Binance cache is preferable to switching feature distributions.
+        if cached is not None and age<120:
+            return cached,"Binance Vision cached taker flow",err
+        raise
 
 def new_models(seed):
     # Intentionally conservative trees: short-horizon market data overfits very easily.
@@ -329,6 +342,7 @@ def train_all():
         try:
             hist=fetch_binance_vision_history(TRAIN_CANDLES)
             source="Binance Vision BTCUSDT 1m + taker flow"
+            LIVE_FRAME.update({"at":time.time(),"df":hist.tail(900).copy(),"source":"Binance Vision training tail","error":None})
         except Exception as primary_error:
             print("[ML-SOURCE-FALLBACK] "+json.dumps({"primary":"Binance Vision","error":str(primary_error),"fallback":"Coinbase"}),flush=True)
             hist=fetch_coinbase_history(TRAIN_CANDLES)
@@ -427,10 +441,11 @@ def train():
 def predict(body:PredictBody):
     if not MODELS: load_model()
     if not MODELS: return {"ok":False,"status":STATE["status"],"reason":"model_not_ready","state":STATE}
-    live_source="Binance Vision BTCUSDT 1m + taker flow"
+    live_source="Binance Vision BTCUSDT 1m + taker flow"; live_error=None
     try:
-        live_df=get_live_binance_frame()
+        live_df,live_source,live_error=get_live_binance_frame()
     except Exception as e:
+        live_error=f"{type(e).__name__}: {e}"
         live_source="main-app candle fallback · neutral micro"
         live_df=frame_from_body(body.candles)
     f=build_features(live_df).dropna(subset=FEATURES)
@@ -439,7 +454,7 @@ def predict(body:PredictBody):
     m1=predict_h(MODELS["models"]["m1"],x); m5=predict_h(MODELS["models"]["m5"],x)
     aligned=m1["leanSide"]==m5["leanSide"]; consensus=m1["leanSide"] if aligned else (m1["leanSide"] if m1["edge"]>=m5["edge"] else m5["leanSide"])
     return {"ok":True,"version":APP_VERSION,"status":STATE["status"],"trainedAt":MODELS.get("trainedAt"),"source":MODELS.get("source"),
-            "liveSource":live_source,"historyRows":MODELS.get("historyRows"),"oneMinute":m1,"fiveMinute":m5,
+            "liveSource":live_source,"liveError":live_error,"historyRows":MODELS.get("historyRows"),"oneMinute":m1,"fiveMinute":m5,
             "consensus":{"side":consensus,"aligned":aligned,"confidence":max(0,min(90,round(m1["confidence"]*.55+m5["confidence"]*.45+(5 if aligned else -6)))),
                          "ready":bool(m1["ready"] and m5["ready"])},
             "shadow":not (m1["ready"] or m5["ready"])}
