@@ -1,4 +1,5 @@
 import os, json, time, threading, traceback
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -100,24 +101,39 @@ def make_dataset(df,horizon,deadzone_atr):
     ds=f.copy(); ds["target"]=(move_atr>0).astype(int); ds["move_atr"]=move_atr
     return ds.loc[move_atr.abs()>=deadzone_atr].dropna(subset=FEATURES+["target"])
 
-def fetch_binance_history(limit_rows):
-    url="https://api.binance.com/api/v3/klines"; rows=[]; end=None
-    sess=requests.Session(); sess.headers.update({"User-Agent":"PredatorMLEngine/1.0"})
+def fetch_coinbase_history(limit_rows):
+    url="https://api.exchange.coinbase.com/products/BTC-USD/candles"
+    sess=requests.Session(); sess.headers.update({"User-Agent":"PredatorMLEngine/1.0","Accept":"application/json"})
+    rows=[]; now_ms=int(time.time()*1000); end_ms=(now_ms//60000)*60000
+    chunk_minutes=280
     while len(rows)<limit_rows:
-        params={"symbol":"BTCUSDT","interval":"1m","limit":"1000"}
-        if end is not None: params["endTime"]=str(end)
-        r=sess.get(url,params=params,timeout=REQUEST_TIMEOUT); r.raise_for_status(); batch=r.json()
+        start_ms=end_ms-chunk_minutes*60000
+        params={
+            "granularity":"60",
+            "start":datetime.fromtimestamp(start_ms/1000,tz=timezone.utc).isoformat(),
+            "end":datetime.fromtimestamp(end_ms/1000,tz=timezone.utc).isoformat()
+        }
+        r=sess.get(url,params=params,timeout=REQUEST_TIMEOUT)
+        if r.status_code==429:
+            time.sleep(1.0); continue
+        r.raise_for_status(); batch=r.json()
         if not isinstance(batch,list) or not batch: break
-        rows.extend(batch); end=int(batch[0][0])-1
-        if len(batch)<1000: break
-        time.sleep(.035)
-    if len(rows)<1000: raise RuntimeError(f"binance history too short: {len(rows)}")
-    dedup={int(x[0]):x for x in rows}; ordered=[dedup[k] for k in sorted(dedup)][-limit_rows:]
-    idx=pd.to_datetime([int(x[0]) for x in ordered],unit="ms",utc=True)
-    return pd.DataFrame({
-        "open":[float(x[1]) for x in ordered],"high":[float(x[2]) for x in ordered],"low":[float(x[3]) for x in ordered],
+        rows.extend(batch)
+        oldest=min(int(x[0]) for x in batch)*1000
+        end_ms=oldest-60000
+        if len(batch)<20: break
+        time.sleep(.20)
+    if len(rows)<1000: raise RuntimeError(f"coinbase history too short: {len(rows)}")
+    dedup={int(x[0])*1000:x for x in rows}
+    ordered=[dedup[k] for k in sorted(dedup)][-limit_rows:]
+    idx=pd.to_datetime([int(x[0]) for x in ordered],unit="s",utc=True)
+    df=pd.DataFrame({
+        "open":[float(x[3]) for x in ordered],"high":[float(x[2]) for x in ordered],"low":[float(x[1]) for x in ordered],
         "close":[float(x[4]) for x in ordered],"volume":[float(x[5]) for x in ordered]
     },index=idx)
+    df=df[~df.index.duplicated(keep="last")].sort_index()
+    if len(df)<1000: raise RuntimeError(f"coinbase normalized history too short: {len(df)}")
+    return df
 
 def new_models(seed):
     x=XGBClassifier(n_estimators=280,max_depth=4,learning_rate=.035,subsample=.82,colsample_bytree=.78,min_child_weight=8,
@@ -154,18 +170,21 @@ def train_all():
         if STATE["training"]: return
         STATE.update({"training":True,"status":"TRAINING","lastError":None})
     try:
-        hist=fetch_binance_history(TRAIN_CANDLES)
+        hist=fetch_coinbase_history(TRAIN_CANDLES)
+        source="Coinbase Exchange BTC-USD 1m"
         m1=train_horizon(make_dataset(hist,1,.04),1); m5=train_horizon(make_dataset(hist,5,.10),5)
-        payload={"version":APP_VERSION,"features":FEATURES,"trainedAt":int(time.time()*1000),"historyRows":len(hist),"source":"Binance BTCUSDT 1m","models":{"m1":m1,"m5":m5}}
+        payload={"version":APP_VERSION,"features":FEATURES,"trainedAt":int(time.time()*1000),"historyRows":len(hist),"source":source,"models":{"m1":m1,"m5":m5}}
         tmp=MODEL_PATH.with_suffix(".tmp"); joblib.dump(payload,tmp); os.replace(tmp,MODEL_PATH)
         meta={"version":APP_VERSION,"trainedAt":payload["trainedAt"],"historyRows":len(hist),"source":payload["source"],
               "metrics":{"m1":m1["metrics"],"m5":m5["metrics"]},"rows":{"m1":m1["rows"],"m5":m5["rows"]}}
         META_PATH.write_text(json.dumps(meta,indent=2))
         MODELS.clear(); MODELS.update(payload)
-        STATE.update({"status":"READY" if (m1["metrics"]["ready"] or m5["metrics"]["ready"]) else "SHADOW","trainedAt":payload["trainedAt"],
+        STATE.update({"status":"READY" if (m1["metrics"]["ready"] and m5["metrics"]["ready"]) else "SHADOW","trainedAt":payload["trainedAt"],
                       "modelLoaded":True,"metrics":meta["metrics"],"historyRows":len(hist),"source":payload["source"],"lastError":None})
+        print("[ML-TRAIN] "+json.dumps({"status":STATE["status"],"trainedAt":payload["trainedAt"],"historyRows":len(hist),"source":source,"metrics":meta["metrics"],"rows":meta["rows"]}),flush=True)
     except Exception as e:
-        STATE.update({"status":"ERROR","lastError":f"{type(e).__name__}: {e}"}); traceback.print_exc()
+        STATE.update({"status":"ERROR","lastError":f"{type(e).__name__}: {e}"})
+        print("[ML-TRAIN-ERROR] "+json.dumps({"error":STATE["lastError"]}),flush=True); traceback.print_exc()
     finally:
         STATE["training"]=False
 
@@ -175,7 +194,7 @@ def load_model():
         obj=joblib.load(MODEL_PATH); MODELS.clear(); MODELS.update(obj)
         m={k:v["metrics"] for k,v in obj["models"].items()}
         STATE.update({"trainedAt":obj.get("trainedAt",0),"modelLoaded":True,"metrics":m,"historyRows":obj.get("historyRows",0),"source":obj.get("source")})
-        STATE["status"]="READY" if any(v.get("ready") for v in m.values()) else "SHADOW"
+        STATE["status"]="READY" if all(v.get("ready") for v in m.values()) else "SHADOW"
         return True
     except Exception as e:
         STATE["lastError"]=f"load: {e}"; return False
