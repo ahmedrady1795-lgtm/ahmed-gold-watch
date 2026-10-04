@@ -7,6 +7,8 @@ type Observation={
   motionSide:PredatorSide;motionStage:string;motionScore:number;preSide:PredatorSide;preScore:number;preArmed:boolean;
   late:boolean;trapSide:PredatorSide;trapScore:number;mode:string;accumulationPhase:string;accumulationReadiness:number;
   reactionAligned:boolean;accumulationAligned:boolean;
+  microAvailable:boolean;pressure:number;depthImbalance:number;weightedImbalance:number;microEdge:number;
+  flowDelta:number;priceChangeBps:number;pressureChange:number;bidDepthChange:number;askDepthChange:number;acceleration:number;
 };
 
 type PredatorState={
@@ -40,7 +42,12 @@ export function evaluatePredatorScalp(asset:string,input:any){
     late:Boolean(input?.late),trapSide:side(input?.trapSide),trapScore:Number(input?.trapScore)||0,
     mode:String(input?.mode||'FLOW').toUpperCase(),accumulationPhase:String(input?.accumulationPhase||'NEUTRAL'),
     accumulationReadiness:Number(input?.accumulationReadiness)||0,reactionAligned:Boolean(input?.reactionAligned),
-    accumulationAligned:Boolean(input?.accumulationAligned)
+    accumulationAligned:Boolean(input?.accumulationAligned),
+    microAvailable:Boolean(input?.microAvailable),pressure:Number(input?.pressure)||0,
+    depthImbalance:Number(input?.depthImbalance)||0,weightedImbalance:Number(input?.weightedImbalance)||0,
+    microEdge:Number(input?.microEdge)||0,flowDelta:Number(input?.flowDelta)||0,priceChangeBps:Number(input?.priceChangeBps)||0,
+    pressureChange:Number(input?.pressureChange)||0,bidDepthChange:Number(input?.bidDepthChange)||0,
+    askDepthChange:Number(input?.askDepthChange)||0,acceleration:Number(input?.acceleration)||0
   };
 
   const last=st.obs.at(-1);
@@ -70,6 +77,41 @@ export function evaluatePredatorScalp(asset:string,input:any){
   const firstSame=same[0]||o;
   const edgeSlope=o.edge-firstSame.edge;
   const evidenceSlope=o.evidence-firstSame.evidence;
+  const dir=o.side==='BUY'?1:-1;
+  const microDirectionalScore=(x:Observation)=>{
+    const replenish=dir>0?x.bidDepthChange-x.askDepthChange:x.askDepthChange-x.bidDepthChange;
+    const trapAlignedHere=x.trapSide===o.side&&x.trapScore>=66;
+    const flowTerm=trapAlignedHere?0:x.flowDelta*.12;
+    return cap(
+      dir*x.pressure*.22+
+      dir*x.depthImbalance*.16+
+      dir*x.weightedImbalance*.10+
+      dir*x.microEdge*.16+
+      dir*x.pressureChange*.08+
+      dir*x.acceleration*.08+
+      replenish*.08+
+      dir*flowTerm,
+      -100,100
+    );
+  };
+  const microRecent=recent.filter(x=>x.microAvailable&&now-x.at<=5000);
+  const microScores=microRecent.map(microDirectionalScore);
+  const microMean=microScores.length?microScores.reduce((s,v)=>s+v,0)/microScores.length:0;
+  const microPersistence=microScores.length?microScores.filter(v=>v>=8).length/microScores.length:0;
+  const microOpposition=microScores.length?microScores.filter(v=>v<=-8).length/microScores.length:0;
+  const microTrend=microScores.length>=2?microScores.at(-1)!-microScores[0]:0;
+  const microReady=Boolean(
+    !o.microAvailable||
+    (microScores.length>=2&&microPersistence>=.60&&microOpposition<=.25&&microMean>=10)
+  );
+  const compressionMicroReady=Boolean(
+    o.mode!=='COMPRESSION'||!o.microAvailable||
+    (microScores.length>=2&&microPersistence>=.70&&microOpposition===0&&microMean>=13)
+  );
+  const microExhausted=Boolean(
+    o.microAvailable&&Math.abs(o.priceChangeBps)>=3.5&&microScores.length>=2&&
+    (microMean<5||microTrend<=-18)
+  );
 
   const tickAligned=o.tickSide===o.side&&o.tickScore>=48;
   const liqAligned=o.liqSide===o.side&&o.liqScore>=28;
@@ -79,7 +121,14 @@ export function evaluatePredatorScalp(asset:string,input:any){
   const hardOpposition=[o.tickSide,o.liqSide,o.motionSide,o.trapSide].filter(x=>x!=='WAIT'&&x!==o.side).length;
 
   const premoveAmbush=Boolean(o.preArmed&&preAligned&&tickAligned&&liqAligned&&!o.late);
-  const trapReversal=Boolean(trapAligned&&motionAligned&&['REVERSAL_ALERT','PRE_MOVE','IGNITION'].includes(o.motionStage)&&(liqAligned||tickAligned));
+  const trapMicroReady=Boolean(
+    !o.microAvailable||
+    (microReady&&microPersistence>=.65&&microOpposition<=.20&&(liqAligned||microMean>=18))
+  );
+  const trapReversal=Boolean(
+    trapAligned&&motionAligned&&['REVERSAL_ALERT','PRE_MOVE','IGNITION'].includes(o.motionStage)&&
+    (liqAligned||tickAligned)&&trapMicroReady
+  );
   const breakoutPreload=Boolean(
     o.accumulationAligned&&o.accumulationReadiness>=56&&
     ['MARKUP_READY','MARKDOWN_READY','ACCUMULATING','DISTRIBUTING'].includes(o.accumulationPhase)&&
@@ -105,6 +154,13 @@ export function evaluatePredatorScalp(asset:string,input:any){
   score+=Math.min(18,o.liveSupport*4.2)-Math.min(20,o.liveOpposition*8);
   if(tickAligned)score+=9;if(liqAligned)score+=10;if(motionAligned)score+=9;if(preAligned)score+=8;if(trapAligned)score+=12;
   if(o.reactionAligned)score+=6;if(o.accumulationAligned)score+=5;
+  if(o.microAvailable){
+    score+=Math.min(12,Math.max(0,microMean)*.18);
+    score+=Math.min(6,Math.max(0,microPersistence-.5)*12);
+    score-=Math.min(14,Math.max(0,-microMean)*.20);
+    if(microTrend>=10)score+=3;
+    if(microExhausted)score-=16;
+  }
   score+=Math.min(10,Math.max(0,st.stableCount-1)*2.4);
   score+=Math.min(8,Math.max(0,persistence-.5)*16);
   score+=Math.min(6,Math.max(0,edgeSlope)*.18)+Math.min(4,Math.max(0,evidenceSlope)*.12);
@@ -127,8 +183,8 @@ export function evaluatePredatorScalp(asset:string,input:any){
   const shockReady=Boolean((pattern==='TRAP_REVERSAL'||pattern==='PREMOVE_AMBUSH')&&score>=84&&hardOpposition===0&&shockTemporalReady);
   const attackPattern=['PREMOVE_AMBUSH','TRAP_REVERSAL','COMPRESSION_BREAK','BREAKOUT_PRELOAD','FLOW_AMBUSH'].includes(pattern);
   const attack=Boolean(
-    !inCooldown&&!o.late&&attackPattern&&score>=74&&hardOpposition===0&&
-    o.liveOpposition===0&&(temporalReady||shockReady)
+    !inCooldown&&!o.late&&!microExhausted&&attackPattern&&score>=74&&hardOpposition===0&&
+    o.liveOpposition===0&&microReady&&compressionMicroReady&&(temporalReady||shockReady)
   );
   // AMBUSH is the single early-warning scalp: it may arm before ATTACK, but it must be coherent.
   // Require two aligned observations for ordinary flow; strong pre-move structures can arm earlier
@@ -140,14 +196,18 @@ export function evaluatePredatorScalp(asset:string,input:any){
     (same.length>=2&&persistence>=.66)||
     (ambushStructure&&same.length>=1&&persistence>=.75&&o.liveOpposition===0)
   );
+  const ambushMicroReady=Boolean(
+    !o.microAvailable||
+    (microScores.length>=2&&microPersistence>=.50&&microOpposition<=.35&&microMean>=4)
+  );
   const watch=Boolean(
-    !attack&&!inCooldown&&!o.late&&score>=58&&hardOpposition<=1&&
-    o.liveOpposition===0&&ambushTemporal
+    !attack&&!inCooldown&&!o.late&&!microExhausted&&score>=58&&hardOpposition<=1&&
+    o.liveOpposition===0&&ambushTemporal&&ambushMicroReady
   );
 
   let phase:PredatorPhase='HUNT';
   if(inCooldown)phase='COOLDOWN';
-  else if(o.late&&score>=45)phase='ABORT';
+  else if((o.late||microExhausted)&&score>=45)phase='ABORT';
   else if(attack)phase='ATTACK';
   else if(watch)phase='AMBUSH';
   else if(score>=40)phase='TRACK';
@@ -164,6 +224,9 @@ export function evaluatePredatorScalp(asset:string,input:any){
   if(motionAligned)reasons.push('MOTION');
   if(preAligned)reasons.push('PREMOVE');
   if(trapAligned)reasons.push('TRAP');
+  if(o.microAvailable&&microReady)reasons.push('MICRO_SEQUENCE');
+  if(o.microAvailable&&!microReady)reasons.push('MICRO_UNSTABLE');
+  if(microExhausted)reasons.push('MICRO_EXHAUSTED');
   if(o.late)reasons.push('NO_CHASE');
   if(hardOpposition)reasons.push('OPPOSITION_'+hardOpposition);
 
@@ -171,7 +234,12 @@ export function evaluatePredatorScalp(asset:string,input:any){
     version:'predator-scalp-v7',phase,side:o.side,score:Math.round(score),attack,watch,pattern,
     stableCount:st.stableCount,ageMs,persistence:Number(persistence.toFixed(2)),edgeSlope:Number(edgeSlope.toFixed(1)),
     evidenceSlope:Number(evidenceSlope.toFixed(1)),hardOpposition,temporalReady,shockReady,ambushTemporal,inCooldown,
-    cooldownMs:Math.max(0,st.cooldownUntil-now),late:o.late,
+    microstructure:{
+      available:o.microAvailable,ready:microReady,compressionReady:compressionMicroReady,trapReady:trapMicroReady,
+      ambushReady:ambushMicroReady,mean:Number(microMean.toFixed(1)),persistence:Number(microPersistence.toFixed(2)),
+      opposition:Number(microOpposition.toFixed(2)),trend:Number(microTrend.toFixed(1)),samples:microScores.length,exhausted:microExhausted
+    },
+    cooldownMs:Math.max(0,st.cooldownUntil-now),late:o.late||microExhausted,
     alignment:{tick:tickAligned,liquidity:liqAligned,motion:motionAligned,premove:preAligned,trap:trapAligned},
     reasons
   };
