@@ -88,6 +88,9 @@ def build_features(df):
     fivef["m5_ema5_gap"]=(fc-fc.ewm(span=5,adjust=False).mean())/fatr.replace(0,np.nan)
     fivef["m5_ema20_gap"]=(fc-fc.ewm(span=20,adjust=False).mean())/fatr.replace(0,np.nan)
     fivef["m5_rsi14"]=rsi(fc,14)/100
+    # A 5m bar is only legal after it has fully closed. Shift availability forward
+    # so an M1 training row can never see the future minutes of its own 5m bucket.
+    fivef.index=fivef.index+pd.Timedelta(minutes=5)
     f=f.join(fivef.reindex(f.index,method="ffill"))
     hour=f.index.hour+f.index.minute/60
     f["hour_sin"]=np.sin(2*np.pi*hour/24); f["hour_cos"]=np.cos(2*np.pi*hour/24)
@@ -136,10 +139,11 @@ def fetch_coinbase_history(limit_rows):
     return df
 
 def new_models(seed):
-    x=XGBClassifier(n_estimators=280,max_depth=4,learning_rate=.035,subsample=.82,colsample_bytree=.78,min_child_weight=8,
-                    reg_alpha=.25,reg_lambda=2,gamma=.05,objective="binary:logistic",eval_metric="logloss",tree_method="hist",n_jobs=2,random_state=seed)
-    l=LGBMClassifier(n_estimators=320,num_leaves=23,learning_rate=.03,subsample=.82,subsample_freq=1,colsample_bytree=.78,
-                     min_child_samples=35,reg_alpha=.25,reg_lambda=1.8,objective="binary",n_jobs=2,random_state=seed,verbosity=-1)
+    # Intentionally conservative trees: short-horizon market data overfits very easily.
+    x=XGBClassifier(n_estimators=220,max_depth=3,learning_rate=.028,subsample=.78,colsample_bytree=.72,min_child_weight=16,
+                    reg_alpha=.55,reg_lambda=4.0,gamma=.10,objective="binary:logistic",eval_metric="logloss",tree_method="hist",n_jobs=1,random_state=seed)
+    l=LGBMClassifier(n_estimators=240,num_leaves=15,max_depth=5,learning_rate=.025,subsample=.78,subsample_freq=1,colsample_bytree=.72,
+                     min_child_samples=70,min_split_gain=.02,reg_alpha=.55,reg_lambda=3.2,objective="binary",n_jobs=1,random_state=seed,verbosity=-1)
     return x,l
 
 def metrics(y,p):
@@ -151,18 +155,42 @@ def metrics(y,p):
 def train_horizon(ds,horizon):
     X=ds[FEATURES].astype(float).to_numpy(); y=ds.target.astype(int).to_numpy(); n=len(y)
     if n<MIN_TRAIN_ROWS: raise RuntimeError(f"not enough rows for h{horizon}: {n}")
-    split=int(n*.82); Xtr,Xte=X[:split],X[split:]; ytr,yte=y[:split],y[split:]
+
+    # Strict chronological split: oldest 70% train, next 15% validation,
+    # newest 15% untouched final holdout.
+    train_end=int(n*.70); val_end=int(n*.85)
+    Xtr,Xv,Xte=X[:train_end],X[train_end:val_end],X[val_end:]
+    ytr,yv,yte=y[:train_end],y[train_end:val_end],y[val_end:]
     x,l=new_models(42+horizon); x.fit(Xtr,ytr); l.fit(Xtr,ytr)
-    px=x.predict_proba(Xte)[:,1]; pl=l.predict_proba(Xte)[:,1]
-    mx,ml=metrics(yte,px),metrics(yte,pl)
-    wx,wl=1/max(mx["logLoss"],1e-6),1/max(ml["logLoss"],1e-6); wx,wl=wx/(wx+wl),wl/(wx+wl)
-    pe=px*wx+pl*wl; me=metrics(yte,pe)
+
+    # Ensemble weights are selected ONLY on validation, never final holdout.
+    pxv=x.predict_proba(Xv)[:,1]; plv=l.predict_proba(Xv)[:,1]
+    mxv,mlv=metrics(yv,pxv),metrics(yv,plv)
+    wx,wl=1/max(mxv["logLoss"],1e-6),1/max(mlv["logLoss"],1e-6)
+    wx,wl=wx/(wx+wl),wl/(wx+wl)
+    pv=pxv*wx+plv*wl; mv=metrics(yv,pv)
+
+    # Final holdout is the only number allowed to qualify production readiness.
+    pxt=x.predict_proba(Xte)[:,1]; plt=l.predict_proba(Xte)[:,1]
+    mxt,mlt=metrics(yte,pxt),metrics(yte,plt)
+    pt=pxt*wx+plt*wl; me=metrics(yte,pt)
     trainp=x.predict_proba(Xtr)[:,1]*wx+l.predict_proba(Xtr)[:,1]*wl
-    train_acc=metrics(ytr,trainp)["accuracy"]; gap=train_acc-me["accuracy"]
-    ready=bool(me["n"]>=500 and me["accuracy"]>=.535 and me["balancedAccuracy"]>=.525 and me["logLoss"]<=.705 and gap<=.14)
+    train_acc=metrics(ytr,trainp)["accuracy"]
+    gap=train_acc-me["accuracy"]; stability=abs(mv["balancedAccuracy"]-me["balancedAccuracy"])
+    ready=bool(
+        me["n"]>=500 and mv["n"]>=500 and
+        me["accuracy"]>=.53 and me["balancedAccuracy"]>=.52 and me["logLoss"]<=.705 and
+        mv["accuracy"]>=.52 and mv["balancedAccuracy"]>=.515 and mv["logLoss"]<=.715 and
+        gap<=.14 and stability<=.08
+    )
+
+    # Production models see all history only AFTER the untouched holdout is scored.
     xf,lf=new_models(142+horizon); xf.fit(X,y); lf.fit(X,y)
     return {"xgb":xf,"lgb":lf,"weights":{"xgb":float(wx),"lgb":float(wl)},
-            "metrics":{"ensemble":me,"xgb":mx,"lightgbm":ml,"trainAccuracy":float(train_acc),"overfitGap":float(gap),"ready":ready},
+            "metrics":{"ensemble":me,"validation":mv,"xgb":mxt,"lightgbm":mlt,
+                       "validationXgb":mxv,"validationLightgbm":mlv,
+                       "trainAccuracy":float(train_acc),"overfitGap":float(gap),
+                       "validationHoldoutStability":float(stability),"ready":ready},
             "rows":n,"horizon":horizon}
 
 def train_all():
@@ -214,7 +242,7 @@ def frame_from_body(candles):
 
 def predict_h(model,x):
     px=float(model["xgb"].predict_proba(x)[0,1]); pl=float(model["lgb"].predict_proba(x)[0,1]); w=model["weights"]
-    raw=px*w["xgb"]+pl*w["lgb"]; acc=float(model["metrics"]["ensemble"]["accuracy"])
+    raw=px*w["xgb"]+pl*w["lgb"]; acc=float(model["metrics"].get("validation",model["metrics"]["ensemble"])["accuracy"])
     shrink=max(.25,min(1,(acc-.5)/.10)); p=.5+(raw-.5)*shrink; edge=abs(p-.5)*2
     lean="BUY" if p>=.5 else "SELL"; threshold=.56 if model["horizon"]==5 else .57
     active=p>=threshold or p<=1-threshold
