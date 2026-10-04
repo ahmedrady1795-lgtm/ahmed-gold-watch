@@ -23,6 +23,20 @@ export async function register(){
         const j=await r.json().catch(()=>null);
         const btc=j?.bitcoin?.selfEvolution,gold=j?.gold?.selfEvolution;
         console.info('[PREDATOR-LEARN]',JSON.stringify({model:j?.model,btcGeneration:btc?.generation,btcPromoted:btc?.promoted,btcRollback:btc?.rolledBack,goldGeneration:gold?.generation,goldPromoted:gold?.promoted,goldRollback:gold?.rolledBack}));
+        if(j?.ok){
+          try{
+            const tg=await fetch('http://127.0.0.1:'+port+'/api/telegram/pulse',{
+              method:'POST',
+              cache:'no-store',
+              headers:{'Content-Type':'application/json','x-predator-background':'1'},
+              body:JSON.stringify({analysis:j}),
+              signal:AbortSignal.timeout(12000)
+            });
+            if(!tg.ok)console.warn('[PREDATOR-TG] pulse HTTP',tg.status);
+          }catch(e){
+            console.warn('[PREDATOR-TG] pulse failed',e instanceof Error?e.message:'unknown');
+          }
+        }
       }
     }catch(e){
       console.warn('[PREDATOR-LEARN] cycle failed',e instanceof Error?e.message:'unknown');
