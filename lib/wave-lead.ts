@@ -53,8 +53,10 @@ export function computeWaveLead(input:WaveTick[],now=Date.now()):WaveLead{
   const bookSide=imbalance>=10?'BUY':imbalance<=-10?'SELL':'WAIT';
   if(bookSide!=='WAIT')add(bookSide,Math.min(18,Math.abs(imbalance)*.18),'Best-book imbalance '+bookSide);
   if(burstRate>=1.35&&velSide!=='WAIT')add(velSide,Math.min(13,(burstRate-1)*10),'Tick burst x'+burstRate);
-  if(spreadCompression>=18&&(velSide!=='WAIT'||bookSide!=='WAIT'))add(velSide!=='WAIT'?velSide:bookSide,8,'Spread compression قبل الحركة');
-  if(coiled&&(bookSide!=='WAIT'||accSide!=='WAIT'))add(accSide!=='WAIT'?accSide:bookSide,9,'السوق مضغوط والضغط بدأ يتجه');
+  const spreadLead=velSide!=='WAIT'?velSide:bookSide;
+  if(spreadCompression>=18&&spreadLead!=='WAIT')add(spreadLead,8,'Spread compression قبل الحركة');
+  const coilLead=accSide!=='WAIT'?accSide:bookSide;
+  if(coiled&&coilLead!=='WAIT')add(coilLead,9,'السوق مضغوط والضغط بدأ يتجه');
 
   buy=cap(buy);sell=cap(sell);
   const gap=Math.abs(buy-sell),side:'BUY'|'SELL'|'WAIT'=buy-sell>=9?'BUY':sell-buy>=9?'SELL':'WAIT',score=Math.max(buy,sell);
