@@ -187,6 +187,20 @@ function AssetCard({x,fast}:any){
       </div>;
     })()}
 
+    {x.nextMoveLive&&<div className="next-move-copy">
+      <span>Next Move Live Tracker</span>
+      <strong className={(x.nextMoveLive?.global?.accuracy??0)>=60?'green':(x.nextMoveLive?.global?.accuracy??0)>=50?'amber':'red'}>
+        {x.nextMoveLive?.global?.accuracy==null?'يجمع النتائج الحية':('دقة '+x.nextMoveLive.global.accuracy+'%')}
+      </strong>
+      <div className="ai-outcome-mini">
+        <span>نجح ✓ <b>{x.nextMoveLive?.global?.hits||0}</b></span>
+        <span>فشل ✕ <b>{x.nextMoveLive?.global?.fails||0}</b></span>
+        <span>محايد <b>{x.nextMoveLive?.global?.neutral||0}</b></span>
+        <span>معلق <b>{x.nextMoveLive?.pending||0}</b></span>
+      </div>
+      <p>First-Passage Live · {x.nextMoveLive?.learningSamples||0} نتيجة اتجاهية{x.nextMoveLive?.readyForLearning?' · جاهز للمعايرة':' · يتعلم بعد تجميع عينة أكبر'}</p>
+    </div>}
+
     {x.asset==='BTC'&&neuralPath&&<div className="next-move-copy">
       <span>Neural Price Path</span>
       {neuralPathReady?<>
