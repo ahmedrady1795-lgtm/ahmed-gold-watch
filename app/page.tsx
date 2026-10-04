@@ -194,19 +194,16 @@ export default function Home(){
       <div className="tickerstrip">
         <div><small>{source.includes('Binance')?'XAUUSDT · عقد بديل':'XAU/USD'}</small><b>{fmt(quote?.price)}</b><em className={live?'up':'muted'}>{!marketOpen?'CLOSED':live?'LIVE':'WAIT'}</em></div>
         <div><small>BTC/USD · {btcSource.includes('Coinbase')?'COINBASE WS':'WAIT'}</small><b>{fmt(btc,2)}</b><em className={btcAt&&now-btcAt<5000?'up':'muted'}>{btcAt&&now-btcAt<5000?'TICK LIVE':'WAIT'}</em></div>
-        <div><small>SCORE</small><b>{score||'—'}</b><em>/100</em></div>
       </div>
       <button className="refresh" onClick={()=>void load()} disabled={busy}><RefreshCw size={17} className={busy?'spin':''}/><span>{busy?'تحديث':'تحديث'}</span></button>
     </header>
 
-    <section className="statusrail">
+    {tab!=='ai'&&<section className="statusrail">
       <span className={btcLive?'pill ok':'pill bad'}>{btcLive?<Wifi size={14}/>:<WifiOff size={14}/>} BTC {btcLive?'TICK LIVE':'WAIT'}</span>
-      {market?.pricesReady&&<span className="pill ok"><Activity size={14}/> CANDLES READY</span>}
-      {market?.newsReady&&<span className="pill ok"><Newspaper size={14}/> NEWS READY</span>}
       {mt5Fresh&&<span className="pill ok"><ShieldCheck size={14}/> MT5 READY</span>}
       {telegramReady&&<span className={monitor?'pill watch':'pill ok'}><Bell size={14}/> TELEGRAM {monitor?'MONITORING':'READY'}</span>}
-      <span className="source">المصدر الحالي للذهب: <b>{source}</b></span>
-    </section>
+      <span className="source">المصدر: <b>{source}</b></span>
+    </section>}
 
     <nav className="tabs">
       {tabs.map(([id,label,Icon])=><button key={id} onClick={()=>setTab(id)} className={tab===id?'active':''}><Icon size={17}/>{label}</button>)}
@@ -214,7 +211,7 @@ export default function Home(){
 
     {error&&<div className="fatal"><WifiOff size={18}/><div><strong>Fail-closed</strong><span>{error}</span></div></div>}
 
-    <div className="workspace">
+    <div className={tab==='ai'?'workspace ai-workspace':'workspace'}>
       <section className="content">
         {tab==='dashboard'&&<>
           <CommandCenter analysis={analysis} quote={quote} events={market?.events||[]} background={market?.background||[]} now={now} health={health}/>
@@ -239,24 +236,22 @@ export default function Home(){
           </section>
         </>}
 
-        {tab==='ai'&&<><AICommandCenter data={aiData} error={aiError} now={now} fastWave={fastWave}/><NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/></>} 
+        {tab==='ai'&&<AICommandCenter data={aiData} error={aiError} now={now} fastWave={fastWave}/>} 
         {tab==='news'&&<NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/>}
         {tab==='lab'&&<StrategyLab signal={analysis?.signal||null} regime={analysis?.regime} quotePrice={quote?.price} quoteLive={live} latestM1={latestM1} rules={rules}/>}
         {tab==='performance'&&<PerformanceCenter/>}
         {tab==='health'&&<HealthCenter/>}
       </section>
 
-      <aside className="sidebar">
+      {tab!=='ai'&&<aside className="sidebar">
         <div className="sidecard">
           <span className="eyebrow">LIVE SYSTEM</span>
           <h3>{health?.status==='healthy'?'المصادر الفعلية جاهزة':'فحص المصادر'}</h3>
           <div className="kv"><span>BTC</span><b className={btcLive?'green':'red'}>{btcLive?'TICK LIVE':'WAIT'}</b></div>
-          {market?.pricesReady&&<div className="kv"><span>Candles</span><b className="green">READY</b></div>}
-          {market?.newsReady&&<div className="kv"><span>News</span><b className="green">READY</b></div>}
           {mt5Fresh&&<div className="kv"><span>MT5</span><b className="green">LIVE</b></div>}
           {telegramReady&&<div className="kv"><span>Telegram</span><b className="green">READY</b></div>}
         </div>
-      </aside>
+      </aside>}
     </div>
 
     {notice&&<div className="toast" onClick={()=>setNotice('')}>{notice}</div>}
