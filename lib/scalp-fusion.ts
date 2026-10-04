@@ -231,8 +231,45 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const state=strong?'setup':watch?'watch':'wait';
 
   const p=Number(price),a=Number(atr);
+  const bid=Number(liq?.book?.bestBid),ask=Number(liq?.book?.bestAsk),microprice=Number(liq?.book?.microprice);
+  const validBid=Number.isFinite(bid)&&bid>0,validAsk=Number.isFinite(ask)&&ask>0,validMicro=Number.isFinite(microprice)&&microprice>0;
+  const spreadUsd=validBid&&validAsk&&ask>bid?ask-bid:(Number.isFinite(p)&&p>0?Math.abs(Number(liq?.book?.spreadBps||0))*p/10000:0);
+  const interceptSide:Side=fusedSide!=='WAIT'?fusedSide:rawFusedSide;
+  const dir=interceptSide==='BUY'?1:interceptSide==='SELL'?-1:0;
+  const launchLine=interceptSide==='BUY'
+    ?(validAsk?ask:validMicro?microprice:p)
+    :interceptSide==='SELL'
+      ?(validBid?bid:validMicro?microprice:p)
+      :p;
+  const zonePad=Number.isFinite(a)&&a>0?Math.max(spreadUsd*1.6,a*.045):Math.max(spreadUsd*1.6,Number.isFinite(p)&&p>0?p*.000035:0);
+  const zoneLow=dir>0?launchLine-zonePad:dir<0?launchLine-zonePad*.22:launchLine;
+  const zoneHigh=dir>0?launchLine+zonePad*.22:dir<0?launchLine+zonePad:launchLine;
+  const chaseDistance=Number.isFinite(a)&&a>0?a*.10:Math.max(spreadUsd*3,Number.isFinite(p)&&p>0?p*.00008:0);
+  const chaseBoundary=dir>0?launchLine+chaseDistance:dir<0?launchLine-chaseDistance:launchLine;
+  const inInterceptZone=Boolean(
+    dir!==0&&Number.isFinite(p)&&p>0&&Number.isFinite(zoneLow)&&Number.isFinite(zoneHigh)&&p>=zoneLow&&p<=zoneHigh
+  );
+  const priceRanAway=Boolean(
+    dir>0&&Number.isFinite(p)&&p>chaseBoundary||
+    dir<0&&Number.isFinite(p)&&p<chaseBoundary
+  );
+  const intercept={
+    side:interceptSide,
+    status:dir===0?'NO_EDGE':priceRanAway?'NO_CHASE':inInterceptZone?'READY':'WAIT_ZONE',
+    ready:Boolean(dir!==0&&inInterceptZone&&!priceRanAway&&!flipSuppressed),
+    launchLine:Number.isFinite(launchLine)?Number(launchLine.toFixed(2)):null,
+    zoneLow:Number.isFinite(zoneLow)?Number(zoneLow.toFixed(2)):null,
+    zoneHigh:Number.isFinite(zoneHigh)?Number(zoneHigh.toFixed(2)):null,
+    chaseBoundary:Number.isFinite(chaseBoundary)?Number(chaseBoundary.toFixed(2)):null,
+    etaSeconds:preMove.etaSeconds,
+    microprice:validMicro?Number(microprice.toFixed(2)):null,
+    bestBid:validBid?Number(bid.toFixed(2)):null,
+    bestAsk:validAsk?Number(ask.toFixed(2)):null,
+    priceStillCoiled:preMove.priceStillCoiled,
+    lateMomentum:preMove.lateMomentum
+  };
   let trade:any=null;
-  if(strong&&Number.isFinite(p)&&p>0&&Number.isFinite(a)&&a>0){
+  if(strong&&intercept.ready&&Number.isFinite(p)&&p>0&&Number.isFinite(a)&&a>0){
     const dir=fusedSide==='BUY'?1:-1;
     const risk=a*(mode==='BREAKOUT'||mode==='MOMENTUM'?.48:mode==='REVERSAL'?.42:.45);
     const rr=mode==='BREAKOUT'?1.35:mode==='MOMENTUM'?1.30:mode==='REVERSAL'?1.20:1.24;
@@ -255,8 +292,10 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     trade,
     early:state==='watch'||anticipatoryStrong,
     preMove,
+    intercept,
     fusionV5:{
       side:fusedSide,rawSide:rawFusedSide,confidence,strong,rawStrong,classicStrong,anticipatoryStrong,watch,earlyWatch,lateWatch,chaseRisk,flipSuppressed,commitment,
+      intercept,
       reliability:{active:activeReliability,confirmed:confirmedReliability,premove:preMoveReliability,reliabilityPenalty},
       ignitionEtaSeconds:preMove.etaSeconds,
       buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
