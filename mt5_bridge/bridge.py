@@ -115,11 +115,11 @@ def scalp_demo_step(s):
         hit_tp=exit_px>=float(pos['tp']) if side=='BUY' else exit_px<=float(pos['tp'])
         hit_sl=exit_px<=float(pos['sl']) if side=='BUY' else exit_px>=float(pos['sl'])
         timed=now-float(pos.get('opened_at',now))>=float(pos.get('max_hold_seconds',60))
-        learner_side=str((data.get('learner') or {}).get('side','WAIT'))
-        micro_side=str((data.get('micro') or {}).get('side','WAIT'))
-        flipped=learner_side in ('BUY','SELL') and micro_side==learner_side and learner_side!=side
+        committed_side=str((data.get('commitment') or {}).get('side','WAIT'))
+        committed_state=str((data.get('commitment') or {}).get('state','NEUTRAL'))
+        flipped=committed_side in ('BUY','SELL') and committed_side!=side and committed_state in ('LOCKED','FAST_FLIP')
         if hit_tp or hit_sl or timed or flipped:
-            reason='TP' if hit_tp else 'SL' if hit_sl else 'TIME' if timed else 'FLIP'
+            reason='TP' if hit_tp else 'SL' if hit_sl else 'TIME' if timed else 'COMMITTED_FLIP'
             point=float(info.point or 1);pnl=(exit_px-float(pos['entry']))/point*(1 if side=='BUY' else -1)
             pos.update({'closed_at':now,'exit':exit_px,'pnl_points':round(pnl,1),'close_reason':reason})
             st=s.get('demo_stats') or {'trades':0,'wins':0,'losses':0,'net_points':0.0};st['trades']=int(st.get('trades',0))+1;st['wins']=int(st.get('wins',0))+(1 if pnl>0 else 0);st['losses']=int(st.get('losses',0))+(1 if pnl<=0 else 0);st['net_points']=round(float(st.get('net_points',0))+pnl,1);s['demo_stats']=st
