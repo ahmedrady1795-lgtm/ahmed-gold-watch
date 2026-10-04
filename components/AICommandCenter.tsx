@@ -128,6 +128,11 @@ function AssetCard({x,fast}:any){
         <div><small>5 min</small><strong className={hunt.horizons?.fiveMinute?.side==='BUY'?'green':hunt.horizons?.fiveMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fiveMinute?.side)} %{hunt.horizons?.fiveMinute?.strength||0}</strong></div>
       </div>
 
+      {hunt.waveStructure&&<div className="wave-structure-strip">
+        <div><small>مرحلة M1</small><strong>{hunt.waveStructure?.m1?.phase||'—'}</strong><span>{hunt.waveStructure?.m1?.structure||''}</span></div>
+        <div><small>مرحلة M5</small><strong>{hunt.waveStructure?.m5?.phase||'—'}</strong><span>{hunt.waveStructure?.m5?.structure||''}</span></div>
+      </div>}
+
       <div className="ai-price-row">
         <div><small>جودة التوقع</small><strong>{calibrated(hunt.quality??hunt.confidence)}</strong></div>
         <div><small>ثبات الاتجاه</small><strong>{hunt.persistence||0}%</strong></div>
