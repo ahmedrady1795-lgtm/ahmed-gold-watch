@@ -89,17 +89,25 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
 
   const fusionGap=Math.abs(Number(decision?.fusion?.buy||0)-Number(decision?.fusion?.sell||0));
   const confidence=Number(decision?.confidence||0);
-  const learnerRequired=Boolean(learner);
-  const learnerValid=Boolean(learner?.ok&&learner?.gate?.passed&&Number(learner?.oosAccuracy)>=56&&Number(learner?.oosEdgeAtr)>=.06&&Number(learner?.profitFactor)>=1.20);
+  // The learner calibrates scalp quality but no longer hard-blocks every live scalp while it is training.
   const learnerSide:Side=sideFrom(learner?.side);
-  const edgeAligned=Boolean(!learnerRequired||(learnerValid&&learnerSide===action));
+  const learnerMature=Boolean(Number(learner?.sampleCount||0)>=180&&Number(learner?.testCount||0)>=20);
+  const learnerValid=Boolean(learner?.ok&&learner?.gate?.passed&&Number(learner?.oosAccuracy)>=54&&Number(learner?.oosEdgeAtr)>=.035&&Number(learner?.profitFactor)>=1.10);
+  const learnerRequired=Boolean(learnerMature&&learnerValid);
+  const learnerStrongOpposite=Boolean(
+    learnerMature&&learnerSide!=='WAIT'&&learnerSide!==action&&
+    Number(learner?.oosAccuracy||0)>=58&&Number(learner?.oosEdgeAtr||0)>=.07&&Number(learner?.profitFactor||0)>=1.22
+  );
+  const edgeAligned=Boolean(!learnerRequired||learnerSide===action);
   let requiredConfidence=68;
   if(perf.samples>=6&&perf.accuracy<52)requiredConfidence+=Math.min(5,Math.ceil((52-perf.accuracy)/2));
   if(exp.side===action&&exp.confidence>=68)requiredConfidence-=2;
   if(weightedConsensus===action&&weightedGap>=45)requiredConfidence-=2;
   requiredConfidence=Math.round(cap(requiredConfidence,64,78));
   const consensusAligned=weightedConsensus==='WAIT'||weightedConsensus===action;
-  const strongEvidence=action!=='WAIT'&&confidence>=requiredConfidence&&fusionGap>=8&&!conflict&&!performanceBlocked&&edgeAligned&&consensusAligned;
+  const scalpImpulse=Boolean(scalpSide===action&&Math.max(Number(scalp?.score?.long||0),Number(scalp?.score?.short||0))>=64&&Math.abs(Number(scalp?.score?.long||0)-Number(scalp?.score?.short||0))>=7);
+  if(scalpImpulse&&weightedConsensus===action)requiredConfidence=Math.max(62,requiredConfidence-3);
+  const strongEvidence=action!=='WAIT'&&confidence>=requiredConfidence&&fusionGap>=7&&!conflict&&!performanceBlocked&&edgeAligned&&!learnerStrongOpposite&&consensusAligned;
 
   let lock=locks.get(asset);
   if(lock&&now-lock.lastAt>120000){locks.delete(asset);lock=undefined;}
@@ -113,12 +121,9 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
   }else if(conflict){
     state=expectedConflict?'EXPECTED_MOVE_CONFLICT':learningConflict?'LEARNING_CONFLICT':'CONFLICT';
     reason=expectedConflict?'ذاكرة الحركة المتوقعة تعارض اتجاه الصفقة؛ تم منع الدخول حتى يتوافق المسار القصير.':learningConflict?'ذاكرة السوق المتعلمة تعارض اتجاه الصفقة بثقة كافية؛ تم منع الدخول حتى يظهر توافق جديد.':'المحركات الموثوقة ما زالت متعارضة؛ تم إلغاء BUY/SELL حتى يظهر تفوق موزون واضح.';
-  }else if(action!=='WAIT'&&learnerRequired&&!learnerValid){
-    state='EDGE_BLOCKED';
-    reason='تم منع الصفقة: Scalp Learner لم يثبت أفضلية موجبة كافية على Final Holdout بعد التكلفة.';
-  }else if(action!=='WAIT'&&learnerRequired&&learnerSide!==action){
+  }else if(action!=='WAIT'&&learnerStrongOpposite){
     state='EDGE_CONFLICT';
-    reason=`تم منع الصفقة: اتجاه النواة ${action} يعارض Scalp Learner ${learnerSide}.`;
+    reason=`Scalp Learner ناضج ويعارض ${action} بقوة إحصائية؛ تم خفض/منع القرار حتى يتغير التفوق.`;
   }else if(action!=='WAIT'&&weightedConsensus!=='WAIT'&&weightedConsensus!==action){
     state='WEIGHTED_CONFLICT';
     reason=`أوزان النواة المتعلمة ترجح ${weightedConsensus} بينما القرار الخام ${action}؛ لا دخول حتى يتوافقا.`;
@@ -176,7 +181,7 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
       expectedMove:exp,confidence,requiredConfidence,fusionGap,
       directionPerformance:perf,oppositeDirectionPerformance:oppositePerf,
       evolutionWeights:evolutionWeights,
-      learner:{required:learnerRequired,valid:learnerValid,side:learnerSide,oosAccuracy:Number(learner?.oosAccuracy||0),netEdgeAtr:Number(learner?.oosEdgeAtr||0),profitFactor:Number(learner?.profitFactor||0)}
+      learner:{required:learnerRequired,mature:learnerMature,valid:learnerValid,strongOpposite:learnerStrongOpposite,side:learnerSide,oosAccuracy:Number(learner?.oosAccuracy||0),netEdgeAtr:Number(learner?.oosEdgeAtr||0),profitFactor:Number(learner?.profitFactor||0)}
     },
     trade:masterAction!=='WAIT'?decision?.trade||null:null
   };
