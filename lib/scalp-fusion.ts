@@ -28,7 +28,7 @@ function mlStrength(ml:any){
   return {side:side(m.side),score};
 }
 
-export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,price:number|null,atr:number|null){
+export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,price:number|null,atr:number|null,liveOutcome:any=null){
   const techSide=technicalSide(raw);
   const long=Number(raw?.score?.long||0),short=Number(raw?.score?.short||0),techBest=Math.max(long,short),techGap=Math.abs(long-short);
   const liqSide=side(liq?.side),liqScore=liquidityStrength(liq);
@@ -89,14 +89,25 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const liveSupport=[liqSide,motionSide,trapSide,ml1.side].filter(s=>s!=='WAIT'&&s===fusedSide).length;
   const liveOpposition=[liqSide,motionSide,trapSide,ml1.side].filter(s=>s!=='WAIT'&&fusedSide!=='WAIT'&&s!==fusedSide).length;
 
+  const scalpWf=liveOutcome?.walkForward||{};
+  const scalpOosN=Number(scalpWf?.oos?.n||0),scalpOosAcc=Number(scalpWf?.oos?.accuracy);
+  const scalpDrift=String(scalpWf?.drift?.status||'COLLECTING'),scalpWfStatus=String(scalpWf?.status||'COLLECTING');
+  const scalpPrecisionGuard=Boolean(scalpOosN>=10&&(scalpWfStatus==='WATCH'||scalpDrift==='DEGRADING'||(Number.isFinite(scalpOosAcc)&&scalpOosAcc<53)));
+  const scalpSevereDrift=Boolean(scalpOosN>=10&&scalpDrift==='DEGRADING'&&Number(scalpWf?.drift?.delta||0)<=-15);
+
   let confidence=cap(edge*.48+Math.max(buyShare,sellShare)*.26+support*4.2+liveSupport*3.4-liveOpposition*4.2,10,88);
   if(techL2Conflict&&!livePair)confidence-=5;
   if(learner&&!learner.ok&&liveSupport<2)confidence-=3;
+  if(scalpWfStatus==='WATCH'&&scalpOosN>=10)confidence-=4;
+  if(scalpDrift==='DEGRADING'&&scalpOosN>=10)confidence-=7;
+  if(Number.isFinite(scalpOosAcc)&&scalpOosN>=10&&scalpOosAcc<50)confidence-=4;
   confidence=Math.round(cap(confidence,10,86));
 
+  const strongEdge=scalpSevereDrift?20:scalpPrecisionGuard?16:14;
   const strong=Boolean(
-    fusedSide!=='WAIT'&&edge>=14&&support>=2&&
-    (liveSupport>=2||(ml1.side===fusedSide&&liqSide===fusedSide)||(trapSide===fusedSide&&trapScore>=68))
+    fusedSide!=='WAIT'&&edge>=strongEdge&&support>=2&&
+    (liveSupport>=2||(ml1.side===fusedSide&&liqSide===fusedSide)||(trapSide===fusedSide&&trapScore>=68))&&
+    (!scalpSevereDrift||liveOpposition===0||edge>=30)
   );
   const watch=Boolean(fusedSide!=='WAIT'&&edge>=6&&support>=2);
   const action:Side=strong||watch?fusedSide:'WAIT';
@@ -132,6 +143,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
       support,opposition,liveSupport,liveOpposition,
       techSide,liqSide,motionSide,trapSide,mlSide:ml1.side,learnedSide,
       techL2Conflict,livePair,mode,
+      oos:{status:scalpWfStatus,n:scalpOosN,accuracy:Number.isFinite(scalpOosAcc)?scalpOosAcc:null,drift:scalpDrift,precisionGuard:scalpPrecisionGuard,severeDrift:scalpSevereDrift,strongEdge},
       components:rows.map(r=>({name:r.name,side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight}))
     }
   };
