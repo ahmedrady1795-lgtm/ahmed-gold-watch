@@ -85,7 +85,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const evidenceOf=(name:string)=>movementEvidence.find((e:any)=>String(e?.name||'')===name)||null;
   const tickEv=evidenceOf('serverTick'),ml1Ev=evidenceOf('mlEnsemble1m');
   const tickSide:Side=tickEv?.side||'WAIT',tickScore=Number(tickEv?.score||0);
-  const scalpFusion=scalp?.fusionV5||scalp?.fusionV4||scalp?.fusionV3||{};
+  const scalpFusion=scalp?.fusionV6||scalp?.fusionV5||scalp?.fusionV4||scalp?.fusionV3||{};
   const validatedMlSide:Side=ml1Ev?.side||scalpFusion?.mlSide||'WAIT';
   const validatedMlScore=Number(ml1Ev?.score||0);
   const scalpFusionSide:Side=scalpFusion?.side||scalp?.action||'WAIT';
@@ -574,8 +574,13 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     return Number((p+d*a*factor).toFixed(2));
   };
   const station1=movementStations?.[0]?.price??null,station2=movementStations?.[1]?.price??null;
+  const scalpTargetSide:Side=scalp?.target?.side||scalp?.action||(scalpLong>scalpShort?'BUY':scalpShort>scalpLong?'SELL':'WAIT');
+  const scalpContextPrice=Number(scalp?.target?.price);
+  const scalpTargetPrice=Number.isFinite(scalpContextPrice)&&scalpContextPrice>0
+    ?Number(scalpContextPrice.toFixed(2))
+    :quickTarget(scalpTargetSide,Math.max(scalpLong,scalpShort),.10,null);
   const quickSignalTargets={
-    scalp:{side:scalpLong>scalpShort?'BUY':scalpShort>scalpLong?'SELL':'WAIT',price:quickTarget(scalpLong>scalpShort?'BUY':scalpShort>scalpLong?'SELL':'WAIT',Math.max(scalpLong,scalpShort),.10,null),confidence:Math.round(cap(Math.max(scalpLong,scalpShort),0,88)),horizonMinutes:.5},
+    scalp:{side:scalpTargetSide,price:scalpTargetPrice,confidence:Math.round(cap(Number(scalp?.confidence||Math.max(scalpLong,scalpShort)),0,88)),horizonMinutes:.5,source:scalp?.target?.source||'DYNAMIC',contextMode:scalp?.target?.contextMode||null},
     oneMinute:{side:m1Side,price:quickTarget(m1Side,m1Strength,.14,station1),confidence:Math.round(cap(m1Strength,0,88)),horizonMinutes:1},
     fiveMinute:{side:m5Side,price:quickTarget(m5Side,m5Strength,.30,station2),confidence:Math.round(cap(m5Strength,0,88)),horizonMinutes:5}
   };
