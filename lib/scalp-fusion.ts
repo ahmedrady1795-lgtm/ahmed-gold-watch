@@ -366,12 +366,17 @@ export function buildAmbushEngine(raw:any,liq:any,motion:any,learner:any,ml:any,
     learned:Boolean(learnedSide===fusedSide)
   };
   const assistantCount=Object.values(assistants).filter(Boolean).length;
-  const reversalTradeReady=mode!=='REVERSAL'||Boolean(assistants.confirmation&&assistantCount>=4);
+  const ambushPrecisionGuard=Boolean(
+    activeReliability.n>=5&&activeReliability.score<50
+  );
+  const requiredAmbushConfidence=ambushPrecisionGuard?68:60;
+  const requiredAmbushAssistants=ambushPrecisionGuard?4:3;
+  const reversalTradeReady=mode!=='REVERSAL'||Boolean(assistants.confirmation&&assistantCount>=Math.max(4,requiredAmbushAssistants));
   const ambushTrade=Boolean(
     predator?.phase==='AMBUSH'&&predator?.ambush&&predator?.watch&&
     predator?.temporalReady&&
     (!predator?.microstructure?.available||predator?.microstructure?.ready)&&
-    confidence>=60&&assistantCount>=3&&reversalTradeReady&&
+    confidence>=requiredAmbushConfidence&&assistantCount>=requiredAmbushAssistants&&reversalTradeReady&&
     fusedSide!=='WAIT'&&!flipSuppressed&&!chaseRisk&&!unconfirmedReactionAgainstFlow
   );
   const strong=ambushTrade;
@@ -460,8 +465,11 @@ export function buildAmbushEngine(raw:any,liq:any,motion:any,learner:any,ml:any,
     },
     trigger:{
       phaseRequired:'AMBUSH',
-      microReady:Boolean(predator?.microstructure?.ambushReady),
-      temporalReady:Boolean(predator?.ambushTemporal),
+      microReady:Boolean(!predator?.microstructure?.available||predator?.microstructure?.ready),
+      temporalReady:Boolean(predator?.temporalReady),
+      minConfidence:requiredAmbushConfidence,
+      minAssistants:requiredAmbushAssistants,
+      precisionGuard:ambushPrecisionGuard,
       noChase:!chaseRisk,
       noFlip:!flipSuppressed
     },
@@ -478,21 +486,35 @@ export function buildAmbushEngine(raw:any,liq:any,motion:any,learner:any,ml:any,
     etaSeconds:preMove.etaSeconds,
     updatedAt:Date.now()
   };
+  const trackMicroOk=Boolean(
+    !predator?.microstructure?.available||
+    (
+      Number(predator?.microstructure?.samples||0)>=2&&
+      Number(predator?.microstructure?.opposition||0)<=.25&&
+      Number(predator?.microstructure?.mean||0)>=4&&
+      !predator?.microstructure?.exhausted
+    )
+  );
   const trackStable=Boolean(
     predator?.phase==='TRACK'&&
     Number(predator?.stableCount||0)>=2&&
-    Number(predator?.persistence||0)>=.60&&
-    (!predator?.microstructure?.available||Number(predator?.microstructure?.opposition||0)<=.35)
+    Number(predator?.persistence||0)>=.66&&
+    Number(predator?.score||0)>=52&&
+    assistantCount>=2&&trackMicroOk&&!chaseRisk&&!flipSuppressed&&!reactionConflict
   );
   const ambushMoveSide:Side=
     (predator?.phase==='AMBUSH'||trackStable)&&targetSide!=='WAIT'
       ?targetSide
       :'WAIT';
+  const movementConfidence=ambushMoveSide==='WAIT'?0:Math.round(cap(
+    Number(predator?.score||0)*(ambushPrecisionGuard?.86:1),
+    0,predator?.phase==='AMBUSH'?92:78
+  ));
   const movement={
     authority:'AMBUSH',
     side:ambushMoveSide,
     status:predator?.phase==='AMBUSH'?'CONFIRMED':trackStable?'FORMING':'WAIT',
-    confidence:ambushMoveSide==='WAIT'?0:Number(predator?.score||0),
+    confidence:movementConfidence,
     target:ambushMoveSide==='WAIT'?null:target,
     pattern:String(predator?.pattern||'NO_EDGE'),
     phase:String(predator?.phase||'HUNT'),
@@ -535,6 +557,7 @@ export function buildAmbushEngine(raw:any,liq:any,motion:any,learner:any,ml:any,
     reaction:{active:reaction.active,inside:Boolean(reaction.inside),side:reactionSide,strength:reactionScore,confirmed:reactionConfirmed,candidate:reactionCandidate,fastSupport:reactionFastSupport,fastOpposition:reactionFastOpposition,nearest:reaction.nearest||null,contextMode},
     fusionV8:{
       authority:'AMBUSH',side:fusedSide,rawSide:rawFusedSide,confidence,strong:ambushTrade,watch:false,ambushTrade,predator,assistants,assistantCount,ambushPlan,movement,
+      precisionGuard:ambushPrecisionGuard,requiredAmbushConfidence,requiredAmbushAssistants,
       contextMode,reactionAligned,reactionConflict,accumulationAligned,accumulationPhase,accumulationReadiness,target,intercept,
       reliability:{active:activeReliability,ambush:confirmedReliability,reliabilityPenalty},
       buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
