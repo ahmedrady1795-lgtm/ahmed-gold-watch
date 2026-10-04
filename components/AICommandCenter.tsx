@@ -143,8 +143,10 @@ function AssetCard({x,fast}:any){
   const scalpStrength=calibrated(Math.max(scalpLong,scalpShort));
   const m1=x.indicatorMatrix?.rows?.m1,m5=x.indicatorMatrix?.rows?.m5;
   const quickTargets=hunt?.quickSignalTargets||{};
+  const neuralPath=x.neuralCore?.pricePath;
+  const neuralPathReady=Boolean(neuralPath?.ready);
   const signalRows=[
-    {label:'Scalp',side:scalpSide,strength:scalpStrength,target:quickTargets?.scalp?.price},
+    {label:'Scalp',side:neuralPathReady?(neuralPath?.side||scalpSide):scalpSide,strength:scalpStrength,target:neuralPathReady?neuralPath?.firstTarget:quickTargets?.scalp?.price},
     {label:'1m',side:m1?.bias||'WAIT',strength:calibrated(m1?.strength),target:quickTargets?.oneMinute?.price},
     {label:'5m',side:m5?.bias||'WAIT',strength:calibrated(m5?.strength),target:quickTargets?.fiveMinute?.price}
   ];
@@ -184,6 +186,17 @@ function AssetCard({x,fast}:any){
         <p>{move.detail}</p>
       </div>;
     })()}
+
+    {x.asset==='BTC'&&neuralPath&&<div className="next-move-copy">
+      <span>Neural Price Path</span>
+      {neuralPathReady?<>
+        <strong className={neuralPath.side==='BUY'?'green':'red'}>{sideAr(neuralPath.side)} · الهدف الأول ≈ {fmt(neuralPath.firstTarget,2)}</strong>
+        <p>السعر المتوقع ≈ {fmt(neuralPath.expectedPrice,2)} · النطاق {fmt(neuralPath.rangeLow,2)} — {fmt(neuralPath.rangeHigh,2)} · أول لمس ≈ {fmt(neuralPath.firstHitSeconds,0)} ثانية</p>
+      </>:<>
+        <strong className="amber">Shadow · يجمع ويتحقق من Price Path</strong>
+        <p>{x.neuralCore?.samples||0} L2 snapshot · لن يستخدم السعر المتوقع في القرار قبل نجاح Validation + Final Holdout.</p>
+      </>}
+    </div>}
 
     {hunt&&<div className="forecast-horizons compact-forecast">
       <div><small>2m</small><strong className={hunt.horizons?.twoMinute?.side==='BUY'?'green':hunt.horizons?.twoMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.twoMinute?.side)} {hunt.horizons?.twoMinute?.strength||0}%</strong><span>≈ {fmt(hunt.movementStations?.[0]?.price??hunt.path?.firstLeg,2)}</span></div>
