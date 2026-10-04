@@ -90,10 +90,12 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const scalpFusionSide:Side=scalp?.fusionV3?.side||scalp?.action||'WAIT';
   const scalpFusionConfidence=Number(scalp?.fusionV3?.confidence||scalp?.confidence||Math.max(scalpLong,scalpShort));
   const scalpFusionStrong=Boolean(scalp?.fusionV3?.strong);
-  const wfStatus=String(liveOutcome?.walkForward?.status||'COLLECTING');
-  const wfDrift=String(liveOutcome?.walkForward?.drift?.status||'COLLECTING');
-  const wfOosN=Number(liveOutcome?.walkForward?.oos?.n||0);
-  const wfOosAccuracy=Number(liveOutcome?.walkForward?.oos?.accuracy);
+  const sourceWfV4=liveOutcome?.walkForwardBySource?.FAST_MICROSTRUCTURE_V4||null;
+  const wfBase=Number(sourceWfV4?.directional||0)>=25?sourceWfV4:(liveOutcome?.walkForward||{});
+  const wfStatus=String(wfBase?.status||'COLLECTING');
+  const wfDrift=String(wfBase?.drift?.status||'COLLECTING');
+  const wfOosN=Number(wfBase?.oos?.n||0);
+  const wfOosAccuracy=Number(wfBase?.oos?.accuracy);
   const precisionGuard=Boolean(wfOosN>=10&&(wfStatus==='WATCH'||wfDrift==='DEGRADING'||(Number.isFinite(wfOosAccuracy)&&wfOosAccuracy<53)));
   const severeDrift=Boolean(wfOosN>=10&&wfDrift==='DEGRADING'&&Number(liveOutcome?.walkForward?.drift?.delta||0)<=-15);
 
@@ -615,7 +617,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
         buy:Number(fastNextBuy.toFixed(2)),sell:Number(fastNextSell.toFixed(2)),edge:Number(fastNextEdge.toFixed(2)),
         support:fastNextSupport,opposition:fastNextOpposition,liveSupport:fastLiveSupport,liveOpposition:fastLiveOpposition,nearReaction,
         requiredEdge,requiredSupport,fastLeanThreshold,precisionGuard,severeDrift,historicalWeak,priorN,priorPosterior,
-        reactionConflict,validatedMlConflict,slowDoubleConflict,wfStatus,wfOosAccuracy:Number.isFinite(wfOosAccuracy)?wfOosAccuracy:null,wfDrift,
+        reactionConflict,validatedMlConflict,slowDoubleConflict,wfStatus,wfScope:Number(sourceWfV4?.directional||0)>=25?'V4_SOURCE':'GLOBAL_PRIOR',wfOosAccuracy:Number.isFinite(wfOosAccuracy)?wfOosAccuracy:null,wfDrift,
         scalp:scalpSide,scalpFusionStrong,liquidity:liqSide,tick:tickSide,motion:motionSide,ml1:validatedMlSide,trap:trapSide
       }
     },
