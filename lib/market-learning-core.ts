@@ -14,12 +14,22 @@ type Observation={
   components:Record<string,Side>;
   settled1:boolean;settled5:boolean;createdAt:number;
 };
+type RecommendationCase={
+  id:string;asset:string;side:'BUY'|'SELL';entry:number;invalidation:number;target:number|null;confidence:number;
+  atr:number;keys:string[];components:Record<string,Side>;createdAt:number;
+};
+type FailureCase={
+  id:string;asset:string;side:'BUY'|'SELL';entry:number;exit:number;invalidation:number;confidence:number;
+  adverseAtr:number;keys:string[];components:Record<string,Side>;at:number;reason:string;
+};
 type Store={
   version:number;
   patterns:Record<string,PatternBucket>;
   components:Record<string,Record<string,{h1:ComponentStats;h5:ComponentStats}>>;
   forecast:Record<string,{h1:ComponentStats;h5:ComponentStats}>;
   observations:Observation[];
+  activeRecommendations:Record<string,RecommendationCase>;
+  failures:FailureCase[];
   bootstrapped:Record<string,number>;
   totals:Record<string,{observations:number;resolved1:number;resolved5:number;updatedAt:number}>;
 };
@@ -44,7 +54,7 @@ const FALLBACK='/tmp/predator-market-learning.json';
 const SCHEMA='v3';
 const emptyStats=():Stats=>({n:0,up:0,down:0,flat:0,strongUp:0,strongDown:0,sumAtr:0,sumAbsAtr:0,lastAt:0});
 const emptyComponent=():ComponentStats=>({n:0,correct:0,wrong:0,flat:0,sumSignedAtr:0,lastAt:0});
-const emptyStore=():Store=>({version:3,patterns:{},components:{},forecast:{},observations:[],bootstrapped:{},totals:{}});
+const emptyStore=():Store=>({version:4,patterns:{},components:{},forecast:{},observations:[],activeRecommendations:{},failures:[],bootstrapped:{},totals:{}});
 const cap=(n:number,a=0,b=92)=>Math.max(a,Math.min(b,n));
 const avg=(a:number[])=>a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
 
@@ -64,7 +74,7 @@ async function load(){
       await ensureDir(file);
       const raw=await fs.readFile(file,'utf8');
       const parsed=JSON.parse(raw);
-      if(parsed&&parsed.version>=1){store={...emptyStore(),...parsed,version:3};store.patterns||={};store.components||={};store.forecast||={};store.observations||=[];store.bootstrapped||={};store.totals||={};storagePath=file;loaded=true;return;}
+      if(parsed&&parsed.version>=1){store={...emptyStore(),...parsed,version:4};store.patterns||={};store.components||={};store.forecast||={};store.observations||=[];store.activeRecommendations||={};store.failures||=[];store.bootstrapped||={};store.totals||={};storagePath=file;loaded=true;return;}
     }catch{}
   }
   storagePath=FILE;
@@ -175,6 +185,19 @@ function sideFromContext(ctx:any){
 function findClose(c:Candle[],time:number){
   const x=c.find(v=>v.time===time);return x?.close??null;
 }
+function failurePenalty(asset:string,keys:string[],side:Side,now:number){
+  if(side==='WAIT')return {penalty:0,count:0};
+  let score=0,count=0;
+  for(const f of store.failures||[]){
+    if(f.asset!==asset||f.side!==side||now-f.at>6*60*60*1000)continue;
+    const overlap=f.keys.filter(k=>keys.includes(k)).length;
+    if(overlap<2)continue;
+    const similarity=Math.min(1,overlap/Math.max(3,Math.min(keys.length,f.keys.length)));
+    const recency=Math.pow(.5,Math.max(0,now-f.at)/(2*60*60*1000));
+    score+=similarity*recency*10;count++;
+  }
+  return {penalty:Number(Math.min(20,score).toFixed(1)),count};
+}
 async function settle(asset:string,c1:Candle[],now:number){
   const closed=c1.filter(x=>x.time+60000<=now);
   if(!closed.length)return false;
@@ -237,7 +260,11 @@ export async function getMarketLearningSignal(args:{asset:string;c1:Candle[];c5:
     if(!f)return empty;
     const at=closed[i].time,keys=contextKeys(args.asset,f,args.context,at),h1=aggregate(keys,'h1',now),h5=aggregate(keys,'h5',now),forecastStats=ensureForecast(args.asset);
     const fr1=componentReliability(forecastStats.h1,now,'h1'),fr5=componentReliability(forecastStats.h5,now,'h5'),samples1=Math.round(forecastStats.h1.n),samples5=Math.round(forecastStats.h5.n),selfReliability=Math.round(fr1*.42+fr5*.58);
-    const signed=(h1.side==='BUY'?h1.confidence:h1.side==='SELL'?-h1.confidence:0)*.42+(h5.side==='BUY'?h5.confidence:h5.side==='SELL'?-h5.confidence:0)*.58,side:Side=signed>=9?'BUY':signed<=-9?'SELL':'WAIT';
+    let signed=(h1.side==='BUY'?h1.confidence:h1.side==='SELL'?-h1.confidence:0)*.42+(h5.side==='BUY'?h5.confidence:h5.side==='SELL'?-h5.confidence:0)*.58;
+    const preSide:Side=signed>=9?'BUY':signed<=-9?'SELL':'WAIT',failureMemory=failurePenalty(args.asset,keys,preSide,now);
+    if(preSide==='BUY')signed=Math.max(0,signed-failureMemory.penalty);
+    else if(preSide==='SELL')signed=Math.min(0,signed+failureMemory.penalty);
+    const side:Side=signed>=9?'BUY':signed<=-9?'SELL':'WAIT';
     const rawConfidence=cap(Math.abs(signed)*.76+Math.min(18,(h1.samples+h5.samples)/5),0,80),calFactor=samples1+samples5>=8?Math.max(.84,Math.min(1.10,.80+selfReliability/250)):1;
     const confidence=Math.round(cap(rawConfidence*calFactor,0,80)),score=Math.round(cap(50+Math.abs(signed)*.40,0,86)),buyScore=Math.round(cap(50+signed/2,8,92)),sellScore=100-buyScore;
     const comp:MarketLearningSignal['componentReliability']={},weights:Record<string,number>={};
@@ -251,6 +278,7 @@ export async function getMarketLearningSignal(args:{asset:string;c1:Candle[];c5:
     else if(h1.burstSide!=='WAIT'&&h1.burstScore>=62){burstSide=h1.burstSide;burstScore=h1.burstScore;burstProbability=h1.burstProbability;burstSamples=h1.samples;burstMean=h1.meanAtr;}
     const strongMoveMemory=burstSide!=='WAIT'?{side:burstSide,score:burstScore,probability:burstProbability,samples:burstSamples,meanAtr:burstMean}:null;
     const reasons=['ذاكرة 1m: '+h1.side+' · '+h1.samples+' عينة · mean '+h1.meanAtr+' ATR','ذاكرة 5m: '+h5.side+' · '+h5.samples+' عينة · mean '+h5.meanAtr+' ATR','Self calibration '+selfReliability+' · forecast samples '+(samples1+samples5),'Matched patterns: '+(h1.matched+h5.matched)];
+    if(failureMemory.count>0)reasons.push('Failure memory: '+failureMemory.count+' حالة مشابهة · penalty '+failureMemory.penalty);
     if(strongMoveMemory)reasons.push('Strong-move memory '+strongMoveMemory.side+' · '+strongMoveMemory.probability+'%');if(side!=='WAIT')reasons.push('الأنماط المتعلمة تميل '+side+' بثقة '+confidence);
     return {ok:true,asset:args.asset,side,score,confidence,buyScore,sellScore,effectiveSamples:h1.samples+h5.samples,horizon1:{side:h1.side,score:h1.score,confidence:h1.confidence,samples:h1.samples,meanAtr:h1.meanAtr,burstSide:h1.burstSide,burstScore:h1.burstScore,burstProbability:h1.burstProbability},horizon5:{side:h5.side,score:h5.score,confidence:h5.confidence,samples:h5.samples,meanAtr:h5.meanAtr,burstSide:h5.burstSide,burstScore:h5.burstScore,burstProbability:h5.burstProbability},strongMoveMemory,selfCalibration:{reliability:selfReliability,h1:fr1,h5:fr5,samples1,samples5},matchedPatterns:h1.matched+h5.matched,componentReliability:comp,learnedWeights:weights,totals,storage:storagePath,reasons};
   });
@@ -264,5 +292,49 @@ export async function recordMarketLearningObservation(args:{asset:string;c1:Cand
     const components=sideFromContext(args.context),prediction:Side=args.forecast?.side||'WAIT';
     store.observations.push({id,asset:args.asset,candleTime:candle.time,price:candle.close,atr:f.atr,keys:contextKeys(args.asset,f,args.context,candle.time),prediction,predictionConfidence:Number(args.forecast?.confidence||0),components,settled1:false,settled5:false,createdAt:now});
     const t=store.totals[args.asset]||{observations:0,resolved1:0,resolved5:0,updatedAt:0};t.observations++;t.updatedAt=now;store.totals[args.asset]=t;store.observations=store.observations.slice(-700);await save();return true;
+  });
+}
+
+export async function recordFinalRecommendationOutcome(args:{asset:string;c1:Candle[];price:number|null;atr:number|null;context:any;recommendation:any;now?:number}){
+  return serialized(async()=>{
+    await load();const now=args.now||Date.now(),asset=args.asset,price=Number(args.price),atr=Math.max(1e-9,Number(args.atr)||0);
+    const active=store.activeRecommendations[asset];
+    let outcome:{status:'NONE'|'TRACKING'|'SUCCESS'|'FAILED'|'EXPIRED';failure?:FailureCase}|null={status:'NONE'};
+
+    if(active&&Number.isFinite(price)){
+      const failed=active.side==='BUY'?price<=active.invalidation:price>=active.invalidation;
+      const success=active.target!=null&&(active.side==='BUY'?price>=active.target:price<=active.target);
+      const expired=now-active.createdAt>20*60*1000;
+      if(failed){
+        const adverseAtr=Math.abs(price-active.entry)/Math.max(1e-9,active.atr);
+        const failure:FailureCase={id:'FAIL:'+active.id,asset,side:active.side,entry:active.entry,exit:price,invalidation:active.invalidation,confidence:active.confidence,adverseAtr:Number(adverseAtr.toFixed(3)),keys:active.keys,components:active.components,at:now,reason:'Final recommendation invalidation was crossed before first target.'};
+        if(!store.failures.some(x=>x.id===failure.id)){
+          store.failures.push(failure);
+          const syntheticRet=active.side==='BUY'?-Math.max(.30,adverseAtr):Math.max(.30,adverseAtr);
+          for(const [name,pred] of Object.entries(active.components||{}))if(pred===active.side)updateComponent(ensureComp(asset,name).h1,pred,syntheticRet,'h1',now);
+          updateComponent(ensureForecast(asset).h1,active.side,syntheticRet,'h1',now);
+        }
+        delete store.activeRecommendations[asset];outcome={status:'FAILED',failure};
+      }else if(success){
+        delete store.activeRecommendations[asset];outcome={status:'SUCCESS'};
+      }else if(expired){
+        delete store.activeRecommendations[asset];outcome={status:'EXPIRED'};
+      }else outcome={status:'TRACKING'};
+    }
+
+    const r=args.recommendation;
+    if(!store.activeRecommendations[asset]&&r?.active&&(r.action==='BUY'||r.action==='SELL')&&Number(r.confidence)>=71&&Number.isFinite(Number(r.entry))&&Number.isFinite(Number(r.invalidation))){
+      const closed=args.c1.filter(x=>x.time+60000<=now),i=closed.length-1,f=i>=0?priceFeatures(closed,i):null;
+      if(f){
+        const keys=contextKeys(asset,f,args.context,closed[i].time),components=sideFromContext(args.context),t=r.targets||{};
+        const candidates=[t.scalp,t.oneMinute,t.fiveMinute,t.fifteenMinute].map(Number).filter(Number.isFinite);
+        const target=candidates.find((x:number)=>r.action==='BUY'?x>Number(r.entry):x<Number(r.entry))??null;
+        const rec:RecommendationCase={id:asset+':'+r.action+':'+Math.round(Number(r.entry)*100)+':'+now,asset,side:r.action,entry:Number(r.entry),invalidation:Number(r.invalidation),target,confidence:Number(r.confidence),atr:f.atr,keys,components,createdAt:now};
+        store.activeRecommendations[asset]=rec;
+        if(outcome?.status==='NONE')outcome={status:'TRACKING'};
+      }
+    }
+    store.failures=(store.failures||[]).filter(x=>now-x.at<=14*24*60*60*1000).slice(-300);
+    await save();return outcome;
   });
 }
