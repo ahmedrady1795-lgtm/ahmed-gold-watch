@@ -33,7 +33,7 @@ function expectedConsensus(expected:any){
   return {side,confidence:Math.round(cap(gap+35,0,82)),buyShare:Math.round(buyShare),sellShare:Math.round(sellShare)};
 }
 
-export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now(),learner:any=null,marketLearning:any=null,evolution:any=null,expectedLearning:any=null,movementIntel:any=null,stateGraph:any=null,tick:any=null,multiBrain:any=null){
+export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now(),learner:any=null,marketLearning:any=null,evolution:any=null,expectedLearning:any=null,movementIntel:any=null,stateGraph:any=null,tick:any=null,multiBrain:any=null,ml:any=null){
   const rawAction=sideFrom(decision?.action),phase=String(decision?.phase||'WAIT'),fusion=sideFrom(decision?.fusion?.side);
   const motion=sideFrom(decision?.motion?.side),behavior=sideFrom(decision?.behavior?.side),liq=sideFrom(decision?.liquidity?.side);
   const hunter=sideFrom(decision?.hunter?.side);
@@ -56,6 +56,18 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
   const learningUsable=Boolean(marketLearning?.ok&&learningSide!=='WAIT'&&learningConfidence>=Math.max(54,minLearningConfidence)&&learningSamples>=minLearningSamples&&learningReliability>=45);
   const scalpLong=Number(scalp?.score?.long||0),scalpShort=Number(scalp?.score?.short||0),scalpGap=Math.abs(scalpLong-scalpShort),scalpStrength=Math.max(scalpLong,scalpShort,Number(scalp?.confidence||0));
   const scalpSide:Side=scalp?.action==='BUY'?'BUY':scalp?.action==='SELL'?'SELL':scalpLong-scalpShort>=5?'BUY':scalpShort-scalpLong>=5?'SELL':'WAIT';
+  const mlSide:Side=sideFrom(ml?.consensus?.side);
+  const mlConfidence=Number(ml?.consensus?.confidence||0);
+  const ml1Ready=Boolean(ml?.ok&&ml?.oneMinute?.ready&&!ml?.shadow);
+  const ml5Ready=Boolean(ml?.ok&&ml?.fiveMinute?.ready&&!ml?.shadow);
+  const mlReady=Boolean(ml1Ready&&ml5Ready&&mlSide!=='WAIT'&&mlConfidence>=58);
+  const mlFastAligned=Boolean(
+    mlReady&&(
+      (scalpSide===mlSide&&movementSide===mlSide)||
+      (movementSide===mlSide&&tickSide===mlSide)||
+      (scalpSide===mlSide&&tickSide===mlSide)
+    )
+  );
   const exp=expectedConsensus(expectedLearning);
 
   const liveRows=[
@@ -72,11 +84,14 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
   const liveAligned=liveRows.filter(x=>x.side===liveConsensus).length;
   const liveStrong=Boolean(liveConsensus!=='WAIT'&&liveAligned>=2&&liveGap>=30&&(movementConfidence>=42||scalpStrength>=62||tickConfidence>=58));
   const fastRegime=/EXPANSION|REVERSAL|RANGE|COMPRESSION/.test(regime);
+  const mlOverride=Boolean(
+    mlFastAligned&&mlConfidence>=64&&rawAction!=='WAIT'&&mlSide!==rawAction
+  );
   const multiOverride=Boolean(
     multiDecisive&&rawAction!=='WAIT'&&multiSide!==rawAction&&
     ((scalpSide===multiSide&&movementSide===multiSide)||(movementSide===multiSide&&graphSide===multiSide)||(scalpSide===multiSide&&graphSide===multiSide))
   );
-  const action:Side=multiOverride?multiSide:rawAction!=='WAIT'?rawAction:(multiStrong?multiSide:liveStrong?liveConsensus:movementSide!=='WAIT'&&movementConfidence>=52?movementSide:'WAIT');
+  const action:Side=mlOverride?mlSide:multiOverride?multiSide:rawAction!=='WAIT'?rawAction:(mlFastAligned?mlSide:multiStrong?multiSide:liveStrong?liveConsensus:movementSide!=='WAIT'&&movementConfidence>=52?movementSide:'WAIT');
 
   const evolutionWeights=evo?.weights||{};
   const learnedWeights=marketLearning?.learnedWeights||{};
@@ -87,6 +102,7 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
   const fusionWeight=cap(1.18*((Number(evolutionWeights?.structure||1)+Number(evolutionWeights?.learning||1))/2),.65,1.75);
   const slowScale=((multiStrong||liveStrong)&&fastRegime)?0.68:1;
   const voteRows=[
+    {name:'mlCore',side:mlReady?mlSide:'WAIT',w:mlReady?cap(1.55*(mlConfidence/65),.85,1.90):0},
     {name:'multiBrain',side:multiSide,w:multiSide==='WAIT'?0:cap(1.36*(multiConfidence/62),.72,1.85)},
     {name:'fusion',side:fusion,w:fusionWeight},
     {name:'movement',side:movementSide,w:weight('motion',1.26)*Math.max(.72,Math.min(1.28,movementConfidence/60))},
@@ -109,16 +125,16 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
   const vetoes=(decision?.vetoes||[]).map(String);
   const criticalVeto=vetoes.some((v:string)=>/Conflict Gate|Liquidity Gate|Trap Gate/i.test(v));
   const phaseConflict=phase==='CONFLICT';
-  const hardConflict=(criticalVeto||(phaseConflict&&weightedGap<42))&&!(multiStrong&&multiSide===action)&&!(liveStrong&&liveConsensus===action);
+  const hardConflict=(criticalVeto||(phaseConflict&&weightedGap<42))&&!(mlFastAligned&&mlSide===action)&&!(multiStrong&&multiSide===action)&&!(liveStrong&&liveConsensus===action);
   const buys=voteRows.filter(v=>v.side==='BUY').length,sells=voteRows.filter(v=>v.side==='SELL').length;
-  const splitConflict=buyWeight>=1.45&&sellWeight>=1.45&&weightedGap<24&&!(multiStrong&&multiSide===action)&&!(liveStrong&&liveConsensus===action);
-  const learningConflict=Boolean(action!=='WAIT'&&learningUsable&&learningSide!==action&&learningConfidence>=64&&learningReliability>=52&&!(multiStrong&&multiSide===action)&&!(liveStrong&&liveConsensus===action));
-  const expectedConflict=Boolean(action!=='WAIT'&&exp.side!=='WAIT'&&exp.side!==action&&exp.confidence>=64&&!expectedLearning?.conflict&&!(multiStrong&&multiSide===action)&&!(liveStrong&&liveConsensus===action));
+  const splitConflict=buyWeight>=1.45&&sellWeight>=1.45&&weightedGap<24&&!(mlFastAligned&&mlSide===action)&&!(multiStrong&&multiSide===action)&&!(liveStrong&&liveConsensus===action);
+  const learningConflict=Boolean(action!=='WAIT'&&learningUsable&&learningSide!==action&&learningConfidence>=64&&learningReliability>=52&&!(mlFastAligned&&mlSide===action)&&!(multiStrong&&multiSide===action)&&!(liveStrong&&liveConsensus===action));
+  const expectedConflict=Boolean(action!=='WAIT'&&exp.side!=='WAIT'&&exp.side!==action&&exp.confidence>=64&&!expectedLearning?.conflict&&!(mlFastAligned&&mlSide===action)&&!(multiStrong&&multiSide===action)&&!(liveStrong&&liveConsensus===action));
 
   const perf=directionPerformance(expectedLearning,action);
   const oppositePerf=directionPerformance(expectedLearning,action==='BUY'?'SELL':action==='SELL'?'BUY':'WAIT');
   const performanceBlocked=Boolean(
-    action!=='WAIT'&&!multiStrong&&!liveStrong&&(
+    action!=='WAIT'&&!mlFastAligned&&!multiStrong&&!liveStrong&&(
       (perf.samples>=8&&perf.accuracy<=42)||
       (perf.samples>=12&&perf.accuracy<48&&oppositePerf.samples>=6&&oppositePerf.accuracy>=perf.accuracy+15)
     )
@@ -126,7 +142,7 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
   const conflict=hardConflict||splitConflict||learningConflict||expectedConflict;
 
   const fusionGap=Math.abs(Number(decision?.fusion?.buy||0)-Number(decision?.fusion?.sell||0));
-  const confidence=Math.max(Number(decision?.confidence||0),movementConfidence*.92,multiStrong?Math.min(90,multiConfidence):0,liveStrong?Math.min(86,48+liveGap*.55):0);
+  const confidence=Math.max(Number(decision?.confidence||0),movementConfidence*.92,mlFastAligned?Math.min(90,mlConfidence):0,multiStrong?Math.min(90,multiConfidence):0,liveStrong?Math.min(86,48+liveGap*.55):0);
   // The learner calibrates scalp quality but no longer hard-blocks every live scalp while it is training.
   const learnerSide:Side=sideFrom(learner?.side);
   const learnerMature=Boolean(Number(learner?.sampleCount||0)>=180&&Number(learner?.testCount||0)>=20);
@@ -144,12 +160,13 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
   if(liveStrong&&liveConsensus===action)requiredConfidence-=4;
   if(multiStrong&&multiSide===action)requiredConfidence-=5;
   if(multiDecisive&&multiSide===action)requiredConfidence-=2;
+  if(mlFastAligned&&mlSide===action)requiredConfidence-=4;
   requiredConfidence=Math.round(cap(requiredConfidence,60,78));
   const consensusAligned=weightedConsensus==='WAIT'||weightedConsensus===action;
   const scalpImpulse=Boolean(scalpSide===action&&scalpStrength>=60&&scalpGap>=6);
   if(scalpImpulse&&weightedConsensus===action)requiredConfidence=Math.max(62,requiredConfidence-3);
-  const fusionRequirement=multiStrong?0:liveStrong?3:7;
-  const strongEvidence=action!=='WAIT'&&confidence>=requiredConfidence&&fusionGap>=fusionRequirement&&!conflict&&!performanceBlocked&&edgeAligned&&!learnerStrongOpposite&&(consensusAligned||liveConsensus===action||multiSide===action);
+  const fusionRequirement=mlFastAligned?0:multiStrong?0:liveStrong?3:7;
+  const strongEvidence=action!=='WAIT'&&confidence>=requiredConfidence&&fusionGap>=fusionRequirement&&!conflict&&!performanceBlocked&&edgeAligned&&!learnerStrongOpposite&&(consensusAligned||liveConsensus===action||multiSide===action||mlSide===action);
 
   let lock=locks.get(asset);
   if(lock&&now-lock.lastAt>120000){locks.delete(asset);lock=undefined;}
@@ -166,7 +183,7 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
   }else if(action!=='WAIT'&&learnerStrongOpposite){
     state='EDGE_CONFLICT';
     reason=`Scalp Learner ناضج ويعارض ${action} بقوة إحصائية؛ تم خفض/منع القرار حتى يتغير التفوق.`;
-  }else if(action!=='WAIT'&&weightedConsensus!=='WAIT'&&weightedConsensus!==action&&!(multiStrong&&multiSide===action)){
+  }else if(action!=='WAIT'&&weightedConsensus!=='WAIT'&&weightedConsensus!==action&&!(mlFastAligned&&mlSide===action)&&!(multiStrong&&multiSide===action)){
     state='WEIGHTED_CONFLICT';
     reason=`أوزان النواة المتعلمة ترجح ${weightedConsensus} بينما القرار الخام ${action}؛ لا دخول حتى يتوافقا.`;
   }else if(strongEvidence){
@@ -177,12 +194,13 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
     }else{
       const pendingCount=lock.pendingSide===action?lock.pendingCount+1:1;
       const fastReversal=liveStrong&&liveConsensus===action&&tickSide===action&&['IGNITION','WAVE_FORMING'].includes(String(tick?.stage||''))&&pendingCount>=2;
+      const mlFastReversal=mlFastAligned&&mlSide===action&&mlConfidence>=68&&pendingCount>=1;
       const brainFastReversal=multiDecisive&&multiSide===action&&scalpSide===action&&movementSide===action&&
         (String(multiBrain?.dominantBrain||'')==='REVERSAL'||tickSide===action)&&pendingCount>=1;
-      const reversalStrong=brainFastReversal||fastReversal||(confidence>=Math.max(74,requiredConfidence+4)&&fusionGap>=9&&weightedGap>=30&&pendingCount>=3);
+      const reversalStrong=mlFastReversal||brainFastReversal||fastReversal||(confidence>=Math.max(74,requiredConfidence+4)&&fusionGap>=9&&weightedGap>=30&&pendingCount>=3);
       if(reversalStrong){
         masterAction=action;state='TRADE';
-        reason=brainFastReversal?'تم عكس الاتجاه سريعًا بعد توافق Multi-Brain + Scalp + Movement.':fastReversal?'تم عكس الاتجاه سريعًا بعد توافق Live Stack + Tick ignition.':'تم السماح بعكس الاتجاه بعد تأكيدات قوية متتالية وتوافق موزون.';
+        reason=mlFastReversal?'تم عكس الاتجاه سريعًا بعد توافق ML + الحركة الحية.':brainFastReversal?'تم عكس الاتجاه سريعًا بعد توافق Multi-Brain + Scalp + Movement.':fastReversal?'تم عكس الاتجاه سريعًا بعد توافق Live Stack + Tick ignition.':'تم السماح بعكس الاتجاه بعد تأكيدات قوية متتالية وتوافق موزون.';
         locks.set(asset,{side:action,since:now,lastAt:now,pendingSide:'WAIT',pendingCount:0});
       }else{
         state='REVERSAL_LOCK';
@@ -192,6 +210,7 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
     }
   }else{
     const candidates:[Side,number][]=[
+      [mlReady?mlSide:'WAIT',mlConfidence],
       [multiSide,multiConfidence],
       [liveConsensus,liveGap],
       [movementSide,movementConfidence],
@@ -225,7 +244,7 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
     pendingCount:locked?.pendingCount||0,
     evidence:{
       buyVotes:buys,sellVotes:sells,buyWeight:Number(buyWeight.toFixed(2)),sellWeight:Number(sellWeight.toFixed(2)),weightedGap:Math.round(weightedGap),weightedConsensus,
-      rawAction,multiBrain:{side:multiSide,confidence:multiConfidence,gap:multiGap,strong:multiStrong,decisive:multiDecisive,dominant:multiBrain?.dominantBrain||null,fastAgreement:Number(multiBrain?.fastAgreement||0),totalAgreement:Number(multiBrain?.totalAgreement||0),override:multiOverride},fusion,scalp:scalpSide,scalpStrength,hunter,motion,behavior,liquidity:liq,movement:movementSide,movementConfidence,stateGraph:graphSide,graphConfidence,tick:tickSide,tickConfidence,liveConsensus,liveGap:Math.round(liveGap),liveAligned,liveStrong,regime,learning:learningUsable?learningSide:'WAIT',learningConfidence,learningReliability,learningSamples,
+      rawAction,mlCore:{side:mlSide,confidence:mlConfidence,ready:mlReady,fastAligned:mlFastAligned,override:mlOverride,oneMinuteReady:ml1Ready,fiveMinuteReady:ml5Ready},multiBrain:{side:multiSide,confidence:multiConfidence,gap:multiGap,strong:multiStrong,decisive:multiDecisive,dominant:multiBrain?.dominantBrain||null,fastAgreement:Number(multiBrain?.fastAgreement||0),totalAgreement:Number(multiBrain?.totalAgreement||0),override:multiOverride},fusion,scalp:scalpSide,scalpStrength,hunter,motion,behavior,liquidity:liq,movement:movementSide,movementConfidence,stateGraph:graphSide,graphConfidence,tick:tickSide,tickConfidence,liveConsensus,liveGap:Math.round(liveGap),liveAligned,liveStrong,regime,learning:learningUsable?learningSide:'WAIT',learningConfidence,learningReliability,learningSamples,
       expectedMove:exp,confidence,requiredConfidence,fusionGap,
       directionPerformance:perf,oppositeDirectionPerformance:oppositePerf,
       evolutionWeights:evolutionWeights,
