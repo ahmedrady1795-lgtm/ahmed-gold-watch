@@ -267,6 +267,9 @@ export async function evolveAnalysisPolicy(args:{asset:string;learning:any;state
 
 export async function recordEvolutionAutopsy(args:{asset:string;hunt:any;learning:any;stateGraph:any;master:any;now?:number}):Promise<AutopsyResult>{
   const now=args.now||Date.now(),{root,file,store}=await load(args.asset,args.stateGraph),issues:string[]=[],focus:string[]=[];
+  if(store.recentAutopsy&&Math.floor(Number(store.recentAutopsy.at||0)/60000)===Math.floor(now/60000)){
+    return {ok:true,asset:args.asset,issues:store.recentAutopsy.issues||[],focus:store.recentAutopsy.focus||[],storedAt:path.join(root,'autopsy',args.asset.toLowerCase()+'.jsonl')};
+  }
   const side=args.hunt?.side as Side,pathSide=args.hunt?.path?.shortSide as Side,learned=args.learning?.side as Side,graph=args.stateGraph?.nextSide as Side,strong=args.hunt?.strongMove?.side as Side;
   if(side&&pathSide&&side!=='WAIT'&&pathSide!=='WAIT'&&side!==pathSide){issues.push('hunt/path contradiction');focus.push('pathConflict');}
   if(side&&learned&&side!=='WAIT'&&learned!=='WAIT'&&side!==learned){issues.push('hunt/learning contradiction');focus.push('modelConflict');}
