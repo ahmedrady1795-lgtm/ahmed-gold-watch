@@ -58,7 +58,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   if(o.side==='WAIT'){
     if(now-st.candidateSince>3500){st.candidate='WAIT';st.stableCount=0;}
     r.states[key]=st;
-    return {version:'ambush-core-v9',phase:'HUNT' as PredatorPhase,side:'WAIT' as PredatorSide,score:0,attack:false,watch:false,
+    return {version:'ambush-core-v9',phase:'HUNT' as PredatorPhase,side:'WAIT' as PredatorSide,score:0,watch:false,
       pattern:'NO_EDGE',stableCount:st.stableCount,ageMs:0,reasons:['لا يوجد اتجاه حي متماسك'],cooldownMs:Math.max(0,st.cooldownUntil-now)};
   }
 
@@ -181,7 +181,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   const shockTemporalReady=Boolean(st.stableCount>=2&&ageMs>=500&&persistence>=.75&&opposite.length===0);
   const shockReady=Boolean((pattern==='TRAP_REVERSAL'||pattern==='PREMOVE_AMBUSH')&&score>=84&&hardOpposition===0&&shockTemporalReady);
   const assistPattern=['PREMOVE_AMBUSH','TRAP_REVERSAL','COMPRESSION_BREAK','BREAKOUT_PRELOAD','FLOW_AMBUSH'].includes(pattern);
-  const attackAssist=Boolean(
+  const confirmationAssist=Boolean(
     !inCooldown&&!o.late&&!microExhausted&&assistPattern&&score>=74&&hardOpposition===0&&
     o.liveOpposition===0&&microReady&&compressionMicroReady&&(temporalReady||shockReady)
   );
@@ -222,7 +222,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   reasons.push(pattern);
   if(temporalReady)reasons.push('TEMPORAL_CONFIRM');
   if(shockReady)reasons.push('SHOCK_CONFIRM');
-  if(attackAssist)reasons.push('ATTACK_ASSIST');
+  if(confirmationAssist)reasons.push('STRONG_CONFIRM');
   if(tickAligned)reasons.push('TICK');
   if(liqAligned)reasons.push('L2');
   if(motionAligned)reasons.push('MOTION');
@@ -235,7 +235,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   if(hardOpposition)reasons.push('OPPOSITION_'+hardOpposition);
 
   return {
-    version:'ambush-core-v9',phase,side:o.side,score:Math.round(score),attack:false,attackAssist,watch,ambush,pattern,
+    version:'ambush-core-v9',phase,side:o.side,score:Math.round(score),confirmationAssist,watch,ambush,pattern,
     stableCount:st.stableCount,ageMs,persistence:Number(persistence.toFixed(2)),edgeSlope:Number(edgeSlope.toFixed(1)),
     evidenceSlope:Number(evidenceSlope.toFixed(1)),hardOpposition,temporalReady,shockReady,ambushTemporal,inCooldown,
     microstructure:{
