@@ -23,7 +23,7 @@ function IndicatorMatrix({x}:any){
 }
 
 function AdvancedDetails({x}:any){
-  const hunter=x.hunter,liq=x.liquidity,motion=x.motion,behavior=x.behavior,learner=x.scalpLearner,marketLearning=x.marketLearning,scalp=x.scalp,core=x.adaptiveCore;
+  const hunter=x.hunter,liq=x.liquidity,motion=x.motion,behavior=x.behavior,learner=x.scalpLearner,marketLearning=x.marketLearning,selfEvolution=x.selfEvolution,scalp=x.scalp,core=x.adaptiveCore;
   return <details className="advanced-details">
     <summary><span>التفاصيل المتقدمة</span><ChevronDown size={16}/></summary>
     <div className="advanced-content">
@@ -77,6 +77,16 @@ function AdvancedDetails({x}:any){
         </div>
         <p>Observations {marketLearning.totals?.observations||0} · Resolved 1m {marketLearning.totals?.resolved1||0} · Resolved 5m {marketLearning.totals?.resolved5||0} · Self {marketLearning.selfCalibration?.reliability||50}</p>
         {!!marketLearning.reasons?.length&&<p>{marketLearning.reasons.join(' · ')}</p>}
+      </div>}
+
+      {selfEvolution&&<div className="advanced-block">
+        <strong>🧬 Self-Evolution Lab</strong>
+        <div className="levels">
+          <div><small>Generation</small><strong>G{selfEvolution.generation||0}</strong></div>
+          <div><small>Active Fitness</small><strong>{selfEvolution.active?.fitness??'—'}</strong></div>
+          <div><small>Champion</small><strong>{selfEvolution.champion?.fitness??'—'}</strong></div>
+        </div>
+        <p>{selfEvolution.promoted?'✅ Candidate promoted':selfEvolution.rolledBack?'↩️ Automatic rollback':selfEvolution.reason||'Shadow monitoring'}</p>
       </div>}
 
       {scalp&&<div className="advanced-block"><strong>M1 Scalp</strong><p>{scalp.action&&scalp.action!=='WAIT'?('ميل '+sideAr(scalp.action)):scalp.reason||'WAIT'}</p></div>}
