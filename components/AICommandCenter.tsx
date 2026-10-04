@@ -139,9 +139,10 @@ function AssetCard({x,fast}:any){
   const buy=displaySide==='BUY',sell=displaySide==='SELL';
   const masterState=String(master?.state||'').toUpperCase();
   const scalpLong=Number(x.scalp?.score?.long||0),scalpShort=Number(x.scalp?.score?.short||0);
-  const predator=x.scalp?.fusionV7?.predator;
+  const scalpFusion=x.scalp?.fusionV8||x.scalp?.fusionV7;
+  const predator=scalpFusion?.predator;
   const predatorPhase=String(predator?.phase||'HUNT');
-  const predatorActive=predatorPhase==='AMBUSH'||predatorPhase==='ATTACK';
+  const predatorActive=predatorPhase==='AMBUSH';
   const scalpSide=predator
     ?(predatorActive&&(x.scalp?.action==='BUY'||x.scalp?.action==='SELL')?x.scalp.action:'WAIT')
     :(x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:'WAIT');
@@ -157,7 +158,7 @@ function AssetCard({x,fast}:any){
   const neuralPathReady=Boolean(neuralPath?.ready);
   const scalpTargetPrice=x.scalp?.target?.price??quickTargets?.scalp?.price??x.scalp?.intercept?.launchLine??null;
   const signalRows=[
-    {label:x.scalp?.fusionV7?('Scalp '+predatorPhase):'Scalp',side:liveScalpSide,strength:scalpStrength,target:scalpTargetPrice},
+    {label:x.scalp?.fusionV8?('Ambush '+predatorPhase):x.scalp?.fusionV7?('Scalp '+predatorPhase):'Scalp',side:liveScalpSide,strength:scalpStrength,target:scalpTargetPrice},
     {label:'1m',side:m1?.bias||'WAIT',strength:calibrated(m1?.strength),target:quickTargets?.oneMinute?.price},
     {label:'5m',side:m5?.bias||'WAIT',strength:calibrated(m5?.strength),target:quickTargets?.fiveMinute?.price}
   ];
@@ -196,22 +197,23 @@ function AssetCard({x,fast}:any){
     </div>}
 
     {x.asset==='BTC'&&x.scalpLive&&(()=>{
-      const attack=x.scalpLive?.bySource?.SCALP_PREDATOR_ATTACK_V7;
-      const ambush=x.scalpLive?.bySource?.SCALP_PREDATOR_AMBUSH_V7;
-      const metric=attack?.resolved?attack:ambush?.resolved?ambush:x.scalpLive?.global;
-      const attackWf=x.scalpLive?.walkForwardBySource?.SCALP_PREDATOR_ATTACK_V7;
+      const ambush=x.scalpLive?.bySource?.SCALP_AMBUSH_TRADE_V8;
+      const metric=ambush?.resolved?ambush:x.scalpLive?.global;
+      const ambushWf=x.scalpLive?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V8;
+      const helpers=x.scalp?.fusionV8?.assistants||{};
+      const helperCount=Number(x.scalp?.fusionV8?.assistantCount||0);
       return <div className="next-move-copy">
-        <span>Predator V7 Live · {predatorPhase}</span>
+        <span>Ambush V8 Live · المصدر الوحيد للصفقات</span>
         <strong className={(metric?.accuracy??0)>=58?'green':(metric?.accuracy??0)>=50?'amber':'red'}>
-          {metric?.accuracy==null?'يجمع نتائج Predator':('دقة '+metric.accuracy+'%')}
+          {metric?.accuracy==null?'يجمع نتائج Ambush':('دقة '+metric.accuracy+'%')}
         </strong>
         <div className="ai-outcome-mini">
-          <span>Attack ✓ <b>{attack?.hits||0}</b></span>
-          <span>Attack ✕ <b>{attack?.fails||0}</b></span>
-          <span>Ambush ✓ <b>{ambush?.hits||0}</b></span>
-          <span>Ambush ✕ <b>{ambush?.fails||0}</b></span>
+          <span>نجح ✓ <b>{ambush?.hits||0}</b></span>
+          <span>فشل ✕ <b>{ambush?.fails||0}</b></span>
+          <span>محايد <b>{ambush?.neutral||0}</b></span>
+          <span>مساعدين <b>{helperCount}/10</b></span>
         </div>
-        <p>{String(predator?.pattern||'HUNT')} · score {predator?.score??0} · stable {predator?.stableCount??0} · OOS {attackWf?.oos?.accuracy==null?'—':(attackWf.oos.accuracy+'%')}</p>
+        <p>{String(predator?.pattern||'HUNT')} · score {predator?.score??0} · stable {predator?.stableCount??0} · Attack {helpers.attack?'مؤكد':'مساعد غير مؤكد'} · OOS {ambushWf?.oos?.accuracy==null?'—':(ambushWf.oos.accuracy+'%')}</p>
       </div>;
     })()}
 
