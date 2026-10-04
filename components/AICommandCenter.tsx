@@ -199,6 +199,12 @@ function AssetCard({x,fast}:any){
         <span>معلق <b>{x.nextMoveLive?.pending||0}</b></span>
       </div>
       <p>First-Passage Live · {x.nextMoveLive?.learningSamples||0} نتيجة اتجاهية{x.nextMoveLive?.readyForLearning?' · جاهز للمعايرة':' · يتعلم بعد تجميع عينة أكبر'}</p>
+      {x.nextMoveLive?.walkForward&&<div className="ai-outcome-mini">
+        <span>OOS <b>{x.nextMoveLive.walkForward?.oos?.accuracy==null?'—':(x.nextMoveLive.walkForward.oos.accuracy+'%')}</b></span>
+        <span>Coverage <b>{x.nextMoveLive.walkForward?.oos?.coverage==null?'—':(x.nextMoveLive.walkForward.oos.coverage+'%')}</b></span>
+        <span>WF <b>{x.nextMoveLive.walkForward?.status||'COLLECTING'}</b></span>
+        <span>Drift <b>{x.nextMoveLive.walkForward?.drift?.delta==null?'—':((x.nextMoveLive.walkForward.drift.delta>0?'+':'')+x.nextMoveLive.walkForward.drift.delta+'%')}</b></span>
+      </div>}
     </div>}
 
     {x.asset==='BTC'&&neuralPath&&<div className="next-move-copy">
