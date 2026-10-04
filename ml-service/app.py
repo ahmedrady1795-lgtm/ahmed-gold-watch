@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss, b
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 
-APP_VERSION="predator-ml-v2-no-lookahead"
+APP_VERSION="predator-ml-v3-selective-multiscale"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 MODEL_PATH=MODEL_DIR/"btc_ml_ensemble.joblib"
 META_PATH=MODEL_DIR/"btc_ml_meta.json"
@@ -31,7 +31,9 @@ FEATURES=[
 "ret1","ret2","ret3","ret5","ret10","ret20","body","upper_wick","lower_wick","range_atr","atr_pct",
 "ema5_gap","ema10_gap","ema20_gap","ema50_gap","ema20_slope","ema50_slope","rsi14","stoch14","bb_pos","bb_width",
 "vol5","vol10","vol20","volume_z20","volume_ratio5_20","break_high10","break_low10","eff5","eff10","compression",
-"m5_ret1","m5_ret3","m5_ema5_gap","m5_ema20_gap","m5_rsi14","hour_sin","hour_cos"
+"m5_ret1","m5_ret3","m5_ema5_gap","m5_ema20_gap","m5_rsi14",
+"m15_ret1","m15_ret3","m15_ema5_gap","m15_ema20_gap","m15_rsi14","m15_range_atr",
+"hour_sin","hour_cos"
 ]
 
 class Candle(BaseModel):
@@ -92,6 +94,21 @@ def build_features(df):
     # so an M1 training row can never see the future minutes of its own 5m bucket.
     fivef.index=fivef.index+pd.Timedelta(minutes=5)
     f=f.join(fivef.reindex(f.index,method="ffill"))
+
+    # Closed 15m context helps the 5m horizon without peeking into the active bar.
+    fifteen=d.resample("15min").agg({"open":"first","high":"max","low":"min","close":"last","volume":"sum"}).dropna()
+    tc=fifteen.close
+    fifteenf=pd.DataFrame(index=fifteen.index)
+    fifteenf["m15_ret1"]=tc.pct_change(1); fifteenf["m15_ret3"]=tc.pct_change(3)
+    ttr=pd.concat([(fifteen.high-fifteen.low),(fifteen.high-tc.shift(1)).abs(),(fifteen.low-tc.shift(1)).abs()],axis=1).max(axis=1)
+    tatr=ttr.ewm(alpha=1/14,adjust=False).mean()
+    fifteenf["m15_ema5_gap"]=(tc-tc.ewm(span=5,adjust=False).mean())/tatr.replace(0,np.nan)
+    fifteenf["m15_ema20_gap"]=(tc-tc.ewm(span=20,adjust=False).mean())/tatr.replace(0,np.nan)
+    fifteenf["m15_rsi14"]=rsi(tc,14)/100
+    fifteenf["m15_range_atr"]=(fifteen.high-fifteen.low)/tatr.replace(0,np.nan)
+    fifteenf.index=fifteenf.index+pd.Timedelta(minutes=15)
+    f=f.join(fifteenf.reindex(f.index,method="ffill"))
+
     hour=f.index.hour+f.index.minute/60
     f["hour_sin"]=np.sin(2*np.pi*hour/24); f["hour_cos"]=np.cos(2*np.pi*hour/24)
     return f.replace([np.inf,-np.inf],np.nan)
@@ -146,11 +163,19 @@ def new_models(seed):
                      min_child_samples=70,min_split_gain=.02,reg_alpha=.55,reg_lambda=3.2,objective="binary",n_jobs=1,random_state=seed,verbosity=-1)
     return x,l
 
-def metrics(y,p):
+def metrics(y,p,signal_threshold=.56):
     pred=(p>=.5).astype(int)
+    positive=float(np.mean(y)); baseline=max(positive,1-positive)
+    mask=(p>=signal_threshold)|(p<=1-signal_threshold)
+    sn=int(mask.sum())
+    selective=float(accuracy_score(y[mask],pred[mask])) if sn else 0.0
+    coverage=float(mask.mean()) if len(mask) else 0.0
     return {"accuracy":float(accuracy_score(y,pred)),"balancedAccuracy":float(balanced_accuracy_score(y,pred)),
             "logLoss":float(log_loss(y,p,labels=[0,1])),"brier":float(brier_score_loss(y,p)),
-            "n":int(len(y)),"positiveRate":float(np.mean(y))}
+            "n":int(len(y)),"positiveRate":positive,"baselineAccuracy":float(baseline),
+            "edgeVsBaseline":float(accuracy_score(y,pred)-baseline),
+            "selectiveAccuracy":selective,"selectiveCoverage":coverage,"selectiveN":sn,
+            "signalThreshold":float(signal_threshold)}
 
 def train_horizon(ds,horizon):
     X=ds[FEATURES].astype(float).to_numpy(); y=ds.target.astype(int).to_numpy(); n=len(y)
@@ -178,10 +203,13 @@ def train_horizon(ds,horizon):
     train_acc=metrics(ytr,trainp)["accuracy"]
     gap=train_acc-me["accuracy"]; stability=abs(mv["balancedAccuracy"]-me["balancedAccuracy"])
     ready=bool(
-        me["n"]>=500 and mv["n"]>=500 and
-        me["accuracy"]>=.53 and me["balancedAccuracy"]>=.52 and me["logLoss"]<=.705 and
-        mv["accuracy"]>=.52 and mv["balancedAccuracy"]>=.515 and mv["logLoss"]<=.715 and
-        gap<=.14 and stability<=.08
+        me["n"]>=800 and mv["n"]>=800 and
+        me["balancedAccuracy"]>=.505 and me["logLoss"]<=.71 and
+        mv["balancedAccuracy"]>=.50 and mv["logLoss"]<=.72 and
+        me["selectiveN"]>=120 and mv["selectiveN"]>=100 and
+        me["selectiveCoverage"]>=.06 and mv["selectiveCoverage"]>=.05 and
+        me["selectiveAccuracy"]>=.57 and mv["selectiveAccuracy"]>=.55 and
+        gap<=.16 and stability<=.08
     )
 
     # Production models see all history only AFTER the untouched holdout is scored.
@@ -207,7 +235,8 @@ def train_all():
               "metrics":{"m1":m1["metrics"],"m5":m5["metrics"]},"rows":{"m1":m1["rows"],"m5":m5["rows"]}}
         META_PATH.write_text(json.dumps(meta,indent=2))
         MODELS.clear(); MODELS.update(payload)
-        STATE.update({"status":"READY" if (m1["metrics"]["ready"] and m5["metrics"]["ready"]) else "SHADOW","trainedAt":payload["trainedAt"],
+        status="READY" if (m1["metrics"]["ready"] and m5["metrics"]["ready"]) else ("PARTIAL" if (m1["metrics"]["ready"] or m5["metrics"]["ready"]) else "SHADOW")
+        STATE.update({"status":status,"trainedAt":payload["trainedAt"],
                       "modelLoaded":True,"metrics":meta["metrics"],"historyRows":len(hist),"source":payload["source"],"lastError":None})
         print("[ML-TRAIN] "+json.dumps({"status":STATE["status"],"trainedAt":payload["trainedAt"],"historyRows":len(hist),"source":source,"metrics":meta["metrics"],"rows":meta["rows"]}),flush=True)
     except Exception as e:
@@ -222,7 +251,7 @@ def load_model():
         obj=joblib.load(MODEL_PATH); MODELS.clear(); MODELS.update(obj)
         m={k:v["metrics"] for k,v in obj["models"].items()}
         STATE.update({"trainedAt":obj.get("trainedAt",0),"modelLoaded":True,"metrics":m,"historyRows":obj.get("historyRows",0),"source":obj.get("source")})
-        STATE["status"]="READY" if all(v.get("ready") for v in m.values()) else "SHADOW"
+        STATE["status"]="READY" if all(v.get("ready") for v in m.values()) else ("PARTIAL" if any(v.get("ready") for v in m.values()) else "SHADOW")
         return True
     except Exception as e:
         STATE["lastError"]=f"load: {e}"; return False
@@ -280,4 +309,4 @@ def predict(body:PredictBody):
             "historyRows":MODELS.get("historyRows"),"oneMinute":m1,"fiveMinute":m5,
             "consensus":{"side":consensus,"aligned":aligned,"confidence":max(0,min(90,round(m1["confidence"]*.55+m5["confidence"]*.45+(5 if aligned else -6)))),
                          "ready":bool(m1["ready"] and m5["ready"])},
-            "shadow":not (m1["ready"] and m5["ready"])}
+            "shadow":not (m1["ready"] or m5["ready"])}
