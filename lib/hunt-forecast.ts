@@ -18,6 +18,46 @@ function pathOf(two:Side,five:Side,fifteen:Side){
   if(short==='SELL'&&(five==='SELL'||long==='SELL'))return 'CONTINUATION_DOWN';
   return 'RANGE_OR_FAKEOUT';
 }
+function buildMovementStations(args:{price:number;atr:number;now:number;first:number|null;second:number|null;third:number|null;two:any;five:any;fifteen:any;accumulation:any;primary:Side;follow:Side}){
+  const zones=Array.isArray(args.accumulation?.reactionZones)?args.accumulation.reactionZones:[];
+  const horizonDefs=[
+    {key:'P1',raw:args.first,horizon:args.two,minutes:Math.max(.5,Number(args.two?.firstHitMinutes||0)||2),fallbackSide:args.primary},
+    {key:'P2',raw:args.second,horizon:args.five,minutes:5,fallbackSide:args.follow},
+    {key:'P3',raw:args.third,horizon:args.fifteen,minutes:15,fallbackSide:args.fifteen?.side||args.follow}
+  ];
+  return horizonDefs.map((h,index)=>{
+    const raw=Number(h.raw),hasRaw=Number.isFinite(raw)&&raw>0;
+    const candidate=hasRaw?zones
+      .map((z:any)=>({...z,d:Math.abs(Number(z.mid)-raw)/Math.max(1e-9,args.atr)}))
+      .filter((z:any)=>Number.isFinite(z.d)&&z.d<=.8)
+      .sort((a:any,b:any)=>a.d-b.d||Number(b.strength)-Number(a.strength))[0]:null;
+    const zone=candidate||null;
+    const price=zone?Number(zone.mid):hasRaw?raw:null;
+    const low=zone?Number(zone.low):price==null?null:price-args.atr*.12;
+    const high=zone?Number(zone.high):price==null?null:price+args.atr*.12;
+    const incoming:Side=price==null?'WAIT':price>=args.price?'BUY':'SELL';
+    const reactionSide:Side=zone?(zone.side as Side):(h.horizon?.side||h.fallbackSide||'WAIT');
+    const zoneKind=zone?(zone.side==='BUY'?'DEMAND_ACCUMULATION':'SUPPLY_DISTRIBUTION'):'PROJECTED_LEVEL';
+    const bounceExpected=Boolean(zone&&Number(zone.strength)>=58);
+    const actionAfter:Side=bounceExpected?reactionSide:(h.horizon?.side||reactionSide);
+    const interaction=bounceExpected?(zone.side==='BUY'?'BOUNCE_UP':'REJECT_DOWN'):(actionAfter===incoming?'BREAK_CONTINUE':'PAUSE_OR_REVERSAL');
+    const baseConf=Math.max(Number(h.horizon?.strength||0),Number(h.horizon?.confidence||0));
+    const zoneBoost=zone?Math.min(14,Number(zone.strength||0)*.14):0;
+    const confidence=Math.round(cap(baseConf*.82+zoneBoost,0,88));
+    const etaMinutes=Math.max(.5,Number(h.minutes||0));
+    return {
+      index:index+1,key:h.key,price:price==null?null:Number(price.toFixed(2)),
+      zoneLow:low==null?null:Number(low.toFixed(2)),zoneHigh:high==null?null:Number(high.toFixed(2)),
+      zoneType:zoneKind,zoneStrength:zone?Number(zone.strength||0):0,
+      touches:zone?Number(zone.touches||0):0,rejections:zone?Number(zone.rejections||0):0,
+      incomingSide:incoming,expectedReaction:interaction,actionAfter,confidence,
+      etaMinutes:Number(etaMinutes.toFixed(1)),etaAt:args.now+Math.round(etaMinutes*60000),
+      accumulationExpected:Boolean(zone&&zone.side==='BUY'),distributionExpected:Boolean(zone&&zone.side==='SELL'),
+      source:zone?'REACTION_ZONE_FUSION':'HORIZON_PROJECTION',
+      reason:zone?String(zone.reason||'منطقة تفاعل تاريخية قوية'):'مستوى متوقع من محرك الحركة ولا توجد منطقة تاريخية قريبة بما يكفي.'
+    };
+  });
+}
 function pathAr(p:string){
   if(p==='RISE_THEN_DROP')return 'صعود قصير ثم هبوط';
   if(p==='DROP_THEN_RISE')return 'هبوط قصير ثم صعود';
@@ -179,6 +219,12 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const resolved15MoveAtr=miTarget?.moveAtr!=null?Number(miTarget.moveAtr):target15Atr;
   const target15MovePct=target15Price!=null&&p>0?(target15Price-p)/p*100:0;
 
+  const movementStations=validPrice?buildMovementStations({
+    price:p,atr:a,now,first:firstLeg,second:secondLeg,third:target15Price,
+    two:{...two,firstHitMinutes:Number(em2?.firstHitMinutes||0)},five,fifteen,
+    accumulation,primary:shortSide,follow:followSide
+  }):[];
+
   const alternativeSide:Side=projectionSide==='BUY'?'SELL':projectionSide==='SELL'?'BUY':'WAIT';
   const alternativeStrength=projectionSide==='BUY'?Math.round(cap(sell)):projectionSide==='SELL'?Math.round(cap(buy)):Math.round(Math.min(buy,sell));
   const accumulationBonus=accumulationFresh&&accumulationSide===stableSide?Math.min(12,accumulationReadiness*.12):0;
@@ -219,8 +265,9 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     nextMove:{side:primaryMoveSide,confidence:primaryMoveConfidence,source:firstMoveMemoryValid?'FIRST_PASSAGE_MEMORY':'LIVE_2M_ENSEMBLE',firstHitMinutes:Number(em2?.firstHitMinutes||0),decisiveRate:Number(em2?.decisiveRate||0),conflictWithLockedDirection:primaryMoveConflict},
     buyScore:Math.round(buy),sellScore:Math.round(sell),horizonSeconds,expectedMoveAtr:Number(expAtr.toFixed(2)),
     trigger:trigger==null?null:Number(trigger.toFixed(2)),projected:projected==null?null:Number(projected.toFixed(2)),invalidation:invalidation==null?null:Number(invalidation.toFixed(2)),currentPrice:Number.isFinite(p)?p:null,
-    path:{code:path,label:pathLabel,firstLeg:firstLeg==null?null:Number(firstLeg.toFixed(2)),secondLeg:secondLeg==null?null:Number(secondLeg.toFixed(2)),shortSide,followSide,structureDriven:Boolean(structuralPath)},
+    path:{code:path,label:pathLabel,firstLeg:firstLeg==null?null:Number(firstLeg.toFixed(2)),secondLeg:secondLeg==null?null:Number(secondLeg.toFixed(2)),shortSide,followSide,structureDriven:Boolean(structuralPath),stations:movementStations},
     fifteenMinuteTarget:{side:resolved15Side,price:target15Price==null?null:Number(target15Price.toFixed(2)),low:target15Low==null?null:Number(target15Low.toFixed(2)),high:target15High==null?null:Number(target15High.toFixed(2)),confidence:resolved15Confidence,moveAtr:Number(resolved15MoveAtr.toFixed(3)),movePct:Number(target15MovePct.toFixed(3)),samples:em15Samples,source:miTarget?.source||(memory15Usable?'15M_MEMORY_BLEND':'15M_LIVE_ENSEMBLE'),targetAt:now+15*60000},
+    movementStations,
     horizons:{twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},
     forecastWindowsMinutes:[2,5,15],
     waveStructure:structureFresh?structure:null,
