@@ -689,7 +689,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     side:stableSide,state,score:rawScore,confidence,quality,persistence,samples:recent.length,
     nextMove:{
       side:primaryMoveSide,confidence:primaryMoveConfidence,
-      source:fastNextStrong?'FAST_MICROSTRUCTURE_V5':fastNextLean?'FAST_MICRO_LEAN_V5':firstMoveMemoryValid?'FIRST_PASSAGE_MEMORY':'LIVE_2M_ENSEMBLE',
+      source:fastNextStrong?'FORECAST_COUNCIL_V6':fastNextLean?'FORECAST_COUNCIL_LEAN_V6':firstMoveMemoryValid?'FIRST_PASSAGE_MEMORY':'LIVE_2M_ENSEMBLE',
       firstHitMinutes:Number(em2?.firstHitMinutes||0),decisiveRate:Number(em2?.decisiveRate||0),
       conflictWithLockedDirection:primaryMoveConflict,
       micro:{
