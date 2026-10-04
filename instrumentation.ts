@@ -14,8 +14,11 @@ export async function register(){
 
   const port=process.env.PORT||'3000';
   const url='http://127.0.0.1:'+port+'/api/ai-analysis';
+  let running=false;
 
   const tick=async()=>{
+    if(running)return;
+    running=true;
     try{
       const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(25000),headers:{'x-predator-background':'1'}});
       if(!r.ok)console.warn('[PREDATOR-LEARN] background cycle HTTP',r.status);
@@ -32,7 +35,9 @@ export async function register(){
               body:JSON.stringify({analysis:j}),
               signal:AbortSignal.timeout(12000)
             });
+            const tj:any=await tg.json().catch(()=>null);
             if(!tg.ok)console.warn('[PREDATOR-TG] pulse HTTP',tg.status);
+            else console.info('[PREDATOR-TG]',JSON.stringify({configured:Boolean(tj?.configured),enabled:Boolean(tj?.enabled),sent:Boolean(tj?.sent),reason:tj?.reason||null,minimumConfidence:tj?.minimumConfidence||null}));
           }catch(e){
             console.warn('[PREDATOR-TG] pulse failed',e instanceof Error?e.message:'unknown');
           }
@@ -40,6 +45,8 @@ export async function register(){
       }
     }catch(e){
       console.warn('[PREDATOR-LEARN] cycle failed',e instanceof Error?e.message:'unknown');
+    }finally{
+      running=false;
     }
   };
 
