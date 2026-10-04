@@ -205,28 +205,38 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   ].filter(s=>s!=='WAIT'&&fastNextSide!=='WAIT'&&s!==fastNextSide).length;
   const fastLiveSupport=[scalpSide,liqSide,tickSide,motionSide,validatedMlSide,trapSide].filter(s=>s!=='WAIT'&&s===fastNextSide).length;
   const fastLiveOpposition=[scalpSide,liqSide,tickSide,motionSide,validatedMlSide,trapSide].filter(s=>s!=='WAIT'&&fastNextSide!=='WAIT'&&s!==fastNextSide).length;
+  const v4Stats=liveOutcome?.bySource?.FAST_MICROSTRUCTURE_V4||{};
   const v3Stats=liveOutcome?.bySource?.FAST_MICROSTRUCTURE_V3||{};
   const v2Stats=liveOutcome?.bySource?.FAST_MICROSTRUCTURE_V2||{};
-  const histN3=Number(v3Stats?.hits||0)+Number(v3Stats?.fails||0),histN2=Number(v2Stats?.hits||0)+Number(v2Stats?.fails||0);
-  const priorStats=histN3>=12?v3Stats:v2Stats;
+  const histN4=Number(v4Stats?.hits||0)+Number(v4Stats?.fails||0);
+  const histN3=Number(v3Stats?.hits||0)+Number(v3Stats?.fails||0);
+  const priorStats=histN4>=8?v4Stats:histN3>=12?v3Stats:v2Stats;
   const priorN=Number(priorStats?.hits||0)+Number(priorStats?.fails||0);
   const priorPosterior=Number(priorStats?.posteriorAccuracy||50);
-  const historicalWeak=Boolean(priorN>=20&&priorPosterior<54);
-  const requiredEdge=(severeDrift?22:precisionGuard?16:10)+(historicalWeak?4:0);
-  const requiredSupport=severeDrift?4:precisionGuard?3:2;
+  const historicalWeak=Boolean((priorN>=8&&priorPosterior<50)||(priorN>=20&&priorPosterior<54));
+  // v5 precision gate: confirmed signals must be materially stronger than the old
+  // v2-v4 fast stack. Weak/mixed evidence is still surfaced as LEAN, never hidden.
+  const requiredEdge=severeDrift?68:precisionGuard?58:historicalWeak?54:46;
+  const requiredSupport=severeDrift?5:precisionGuard?4:3;
   const reactionConflict=Boolean(nearReaction&&reactionFastSide!=='WAIT'&&reactionFastSide!==fastNextSide);
   const validatedMlConflict=Boolean(validatedMlSide!=='WAIT'&&validatedMlSide!==fastNextSide);
   const slowDoubleConflict=Boolean(
     structureM1Side!=='WAIT'&&graphFresh&&
     structureM1Side!==fastNextSide&&String(stateGraph?.nextSide||'WAIT')!==fastNextSide
   );
+  const noFastConflict=fastLiveOpposition===0;
+  const tickOrMotionAligned=(tickSide===fastNextSide&&tickScore>=35)||(motionSide===fastNextSide&&motionScore>=38);
+  const scalpLiquidityPair=scalpSide===fastNextSide&&liqSide===fastNextSide;
   const fastNextStrong=Boolean(
     fastNextSide!=='WAIT'&&fastNextEdge>=requiredEdge&&fastNextSupport>=requiredSupport&&
-    fastLiveSupport>=(precisionGuard?3:2)&&
-    (!reactionConflict||fastNextEdge>=30)&&
-    (!validatedMlConflict||fastNextEdge>=32)&&
-    (!slowDoubleConflict||fastNextEdge>=28)&&
-    (!severeDrift||fastLiveOpposition===0||fastNextEdge>=34)
+    fastLiveSupport>=(precisionGuard?4:3)&&
+    scalpLiquidityPair&&
+    (tickOrMotionAligned||fastLiveSupport>=4)&&
+    (!reactionConflict||fastNextEdge>=66)&&
+    (!validatedMlConflict||fastNextEdge>=74)&&
+    (!slowDoubleConflict||fastNextEdge>=68)&&
+    (noFastConflict||fastNextEdge>=70)&&
+    (!severeDrift||noFastConflict)
   );
   const fastNextConfidence=Math.round(cap(
     Math.max(fastNextBuy,fastNextSell)*.72+
@@ -235,10 +245,11 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     Math.min(12,fastNextOpposition*3),
     18,88
   ));
-  const fastLeanThreshold=Math.max(8,requiredEdge*.58);
+  const fastLeanThreshold=Math.max(14,requiredEdge*.42);
   const fastNextLean=Boolean(
     !fastNextStrong&&fastNextSide!=='WAIT'&&fastNextEdge>=fastLeanThreshold&&
-    fastLiveSupport>=2&&fastLiveOpposition<=1&&!reactionConflict
+    fastLiveSupport>=2&&fastLiveOpposition<=1&&
+    (!reactionConflict||fastNextEdge>=42)
   );
   const fastLeanConfidence=Math.round(cap(
     fastNextConfidence*.72+
@@ -581,8 +592,8 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   if(liveInvalidated)reasons.push('LIVE RE-EVALUATION: فشل '+failedSide+' بعد حركة عكسية '+Number(Math.max(0,adverseAtr).toFixed(2))+' ATR؛ تم خفض وزنه وإعادة ترجيح الحركة بدل إيقاف التوقع');
   if(movementIntel?.ok)reasons.push('Movement Brain '+String(movementIntel.regime)+' · '+(movementIntel.side==='WAIT'?('lean '+movementIntel.leanSide):movementIntel.side)+' · '+movementConfidence);
   if(primaryMoveSide!=='WAIT')reasons.push('First-Move '+primaryMoveSide+' · confidence '+primaryMoveConfidence+' · first-hit '+Number(em2?.firstHitMinutes||0)+'m');
-  if(fastNextStrong)reasons.push('Next-Move v4 '+fastNextSide+' · micro edge '+Number(fastNextEdge.toFixed(1))+' · '+fastLiveSupport+' fast confirmations');
-  else if(fastNextLean)reasons.push('Next-Move v4 LEAN '+fastNextSide+' · micro edge '+Number(fastNextEdge.toFixed(1))+' · confidence capped '+fastLeanConfidence);
+  if(fastNextStrong)reasons.push('Next-Move v5 CONFIRMED '+fastNextSide+' · micro edge '+Number(fastNextEdge.toFixed(1))+' · '+fastLiveSupport+' fast confirmations');
+  else if(fastNextLean)reasons.push('Next-Move v5 LEAN '+fastNextSide+' · micro edge '+Number(fastNextEdge.toFixed(1))+' · confidence capped '+fastLeanConfidence);
   if(precisionGuard)reasons.push('OOS precision guard · '+wfStatus+' · OOS '+(Number.isFinite(wfOosAccuracy)?wfOosAccuracy.toFixed(1):'—')+'% · drift '+wfDrift);
   if(primaryMoveConflict)reasons.push('الاتجاه المثبت '+stableSide+' متأخر/متعارض مع الحركة الأولى '+primaryMoveSide);
   else if(stableSide!=='WAIT')reasons.push('الاتجاه المثبت '+stableSide+' · edge '+commitment.smoothedEdge);
@@ -609,7 +620,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     side:stableSide,state,score:rawScore,confidence,quality,persistence,samples:recent.length,
     nextMove:{
       side:primaryMoveSide,confidence:primaryMoveConfidence,
-      source:fastNextStrong?'FAST_MICROSTRUCTURE_V4':fastNextLean?'FAST_MICRO_LEAN_V4':firstMoveMemoryValid?'FIRST_PASSAGE_MEMORY':'LIVE_2M_ENSEMBLE',
+      source:fastNextStrong?'FAST_MICROSTRUCTURE_V5':fastNextLean?'FAST_MICRO_LEAN_V5':firstMoveMemoryValid?'FIRST_PASSAGE_MEMORY':'LIVE_2M_ENSEMBLE',
       firstHitMinutes:Number(em2?.firstHitMinutes||0),decisiveRate:Number(em2?.decisiveRate||0),
       conflictWithLockedDirection:primaryMoveConflict,
       micro:{
@@ -617,6 +628,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
         buy:Number(fastNextBuy.toFixed(2)),sell:Number(fastNextSell.toFixed(2)),edge:Number(fastNextEdge.toFixed(2)),
         support:fastNextSupport,opposition:fastNextOpposition,liveSupport:fastLiveSupport,liveOpposition:fastLiveOpposition,nearReaction,
         requiredEdge,requiredSupport,fastLeanThreshold,precisionGuard,severeDrift,historicalWeak,priorN,priorPosterior,
+        noFastConflict,tickOrMotionAligned,scalpLiquidityPair,
         reactionConflict,validatedMlConflict,slowDoubleConflict,wfStatus,wfScope:Number(sourceWfV4?.directional||0)>=25?'V4_SOURCE':'GLOBAL_PRIOR',wfOosAccuracy:Number.isFinite(wfOosAccuracy)?wfOosAccuracy:null,wfDrift,
         scalp:scalpSide,scalpFusionStrong,liquidity:liqSide,tick:tickSide,motion:motionSide,ml1:validatedMlSide,trap:trapSide
       }
