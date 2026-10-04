@@ -94,12 +94,12 @@ function buildRecommendation(master:any,hunt:any,price:number|null,now:number,ne
 }
 function waveFromParams(url:URL,prefix:'b'|'g',now:number){
   const side=url.searchParams.get(prefix+'s'),stage=url.searchParams.get(prefix+'st'),score=Number(url.searchParams.get(prefix+'sc')),confidence=Number(url.searchParams.get(prefix+'cf')),at=Number(url.searchParams.get(prefix+'at'));
-  if(!['BUY','SELL','WAIT'].includes(String(side))||!['WARMING','COILED','WAVE_FORMING','IGNITION'].includes(String(stage))||!Number.isFinite(score)||!Number.isFinite(confidence)||!Number.isFinite(at)||score<0||score>92||confidence<0||confidence>88||now-at<0||now-at>3500)return null;
+  if(!['BUY','SELL','WAIT'].includes(String(side))||!['WARMING','COILED','PRE_TRIGGER','WAVE_FORMING','IGNITION'].includes(String(stage))||!Number.isFinite(score)||!Number.isFinite(confidence)||!Number.isFinite(at)||score<0||score>92||confidence<0||confidence>88||now-at<0||now-at>3500)return null;
   return {ok:true,side,stage,score,confidence,at,source:'browser live WebSocket'};
 }
 export async function GET(request:Request){
   const now=Date.now(),url=new URL(request.url),btcWave=waveFromParams(url,'b',now),goldWave=waveFromParams(url,'g',now);
-  if(lastAiPayload&&now-lastAiPayloadAt<2200){
+  if(lastAiPayload&&now-lastAiPayloadAt<1600){
     return Response.json(lastAiPayload,{headers:{'Cache-Control':'no-store','X-AI-Cache':'fresh'}});
   }
   if(analysisBusy&&lastAiPayload&&now-lastAiPayloadAt<30000){
