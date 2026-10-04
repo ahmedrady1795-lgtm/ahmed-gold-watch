@@ -190,3 +190,5 @@ export function getNextMoveOutcome(asset:string,price?:number|null,now=Date.now(
   save();
   return summary(a);
 }
+
+// Background first-passage settlement is driven by instrumentation.ts.
