@@ -38,6 +38,7 @@ export default function Home(){
   const fastWaveRef=useRef<{btc:WaveLead|null;gold:WaveLead|null}>({btc:null,gold:null});
   const waveUiAt=useRef({btc:0,gold:0});
   const seenSignal=useRef('');
+  const aiInFlight=useRef(false),aiReady=useRef(false),aiFailureCount=useRef(0);
   const [rules,setRules]=useState<Rules>(defaults);
   const [now,setNow]=useState(Date.now());
   const first=useRef(true);
@@ -68,15 +69,23 @@ export default function Home(){
     }finally{if(!silent)setBusy(false);}
   };
   const loadHealth=async()=>{try{const r=await fetch('/api/health',{cache:'no-store'});setHealth(await r.json());}catch{setHealth({status:'halted'});}};
-  const loadAi=async()=>{try{
-    const q=new URLSearchParams(),add=(p:string,w:WaveLead|null)=>{
-      if(!w?.ok||Date.now()-w.at>2500)return;
-      q.set(p+'s',w.side);q.set(p+'st',w.stage);q.set(p+'sc',String(w.score));q.set(p+'cf',String(w.confidence));q.set(p+'at',String(w.at));
-    };
-    add('b',fastWaveRef.current.btc);add('g',fastWaveRef.current.gold);
-    const r=await fetch('/api/ai-analysis'+(q.size?'?'+q.toString():''),{cache:'no-store'}),j=await r.json();
-    if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر تشغيل محرك AI');setAiData(j);setAiError('');
-  }catch(e){setAiError(e instanceof Error?e.message:'تعذر تشغيل محرك AI');}};
+  const loadAi=async()=>{
+    if(aiInFlight.current)return;
+    aiInFlight.current=true;
+    try{
+      const q=new URLSearchParams(),add=(p:string,w:WaveLead|null)=>{
+        if(!w?.ok||Date.now()-w.at>2500)return;
+        q.set(p+'s',w.side);q.set(p+'st',w.stage);q.set(p+'sc',String(w.score));q.set(p+'cf',String(w.confidence));q.set(p+'at',String(w.at));
+      };
+      add('b',fastWaveRef.current.btc);add('g',fastWaveRef.current.gold);
+      const r=await fetch('/api/ai-analysis'+(q.size?'?'+q.toString():''),{cache:'no-store'}),j=await r.json();
+      if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر تشغيل محرك AI');
+      setAiData(j);aiReady.current=true;aiFailureCount.current=0;setAiError('');
+    }catch(e){
+      aiFailureCount.current+=1;
+      if(!aiReady.current&&aiFailureCount.current>=3)setAiError(e instanceof Error?e.message:'تعذر تشغيل محرك AI');
+    }finally{aiInFlight.current=false;}
+  };
 
   useEffect(()=>{
     try{
@@ -88,7 +97,7 @@ export default function Home(){
     const clock=setInterval(()=>setNow(Date.now()),1000);
     const market=setInterval(()=>{if(document.visibilityState==='visible')void load(true);},15000);
     const hs=setInterval(()=>{if(document.visibilityState==='visible')void loadHealth();},30000);
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},1200);
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},2500);
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
     return()=>{clearInterval(clock);clearInterval(market);clearInterval(hs);clearInterval(aiTimer);};
   },[]);
