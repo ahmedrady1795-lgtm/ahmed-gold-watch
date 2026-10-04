@@ -352,16 +352,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     askDepthChange:Number(liq?.dynamics?.askDepthChangePct||0),
     acceleration:Number(liq?.dynamics?.acceleration||0)
   });
-  // V8 architecture: AMBUSH is the only trade authority.
-  // Every other engine only supplies evidence/confirmation into AMBUSH.
-  const ambushTrade=Boolean(
-    predator?.phase==='AMBUSH'&&predator?.ambush&&predator?.watch&&
-    fusedSide!=='WAIT'&&!flipSuppressed&&!chaseRisk&&!unconfirmedReactionAgainstFlow
-  );
-  const strong=ambushTrade;
-  const watch=false;
-  const action:Side=ambushTrade?fusedSide:'WAIT';
-  const state=ambushTrade?'setup':predator?.phase==='ABORT'?'abort':'wait';
+  // Ambush is the only trade authority. Everything else is helper evidence.
   const assistants={
     confirmation:Boolean(predator?.confirmationAssist),
     fast:Boolean(preMoveAligned||tickAligned),
@@ -375,6 +366,18 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     learned:Boolean(learnedSide===fusedSide)
   };
   const assistantCount=Object.values(assistants).filter(Boolean).length;
+  const reversalTradeReady=mode!=='REVERSAL'||Boolean(assistants.confirmation&&assistantCount>=4);
+  const ambushTrade=Boolean(
+    predator?.phase==='AMBUSH'&&predator?.ambush&&predator?.watch&&
+    predator?.temporalReady&&
+    (!predator?.microstructure?.available||predator?.microstructure?.ready)&&
+    confidence>=60&&assistantCount>=3&&reversalTradeReady&&
+    fusedSide!=='WAIT'&&!flipSuppressed&&!chaseRisk&&!unconfirmedReactionAgainstFlow
+  );
+  const strong=ambushTrade;
+  const watch=false;
+  const action:Side=ambushTrade?fusedSide:'WAIT';
+  const state=ambushTrade?'setup':predator?.phase==='ABORT'?'abort':'wait';
 
   const bid=Number(liq?.book?.bestBid),ask=Number(liq?.book?.bestAsk),microprice=Number(liq?.book?.microprice);
   const validBid=Number.isFinite(bid)&&bid>0,validAsk=Number.isFinite(ask)&&ask>0,validMicro=Number.isFinite(microprice)&&microprice>0;
