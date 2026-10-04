@@ -6,7 +6,7 @@ export const dynamic='force-dynamic';
 
 async function probe<T>(fn:()=>Promise<T>){
   const started=Date.now();
-  try{return {ok:true,status:200,latencyMs:Date.now()-started,detail:null,value:await fn()};}
+  try{const value=await fn();return {ok:true,status:200,latencyMs:Date.now()-started,detail:null,value};}
   catch(e){return {ok:false,status:0,latencyMs:Date.now()-started,detail:e instanceof Error?e.message:'probe failed',value:null};}
 }
 function goldSessionOpen(now:number){
