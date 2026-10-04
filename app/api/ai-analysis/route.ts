@@ -60,7 +60,7 @@ export async function GET(){
     const motion=getMotionIntelligence(btcPrice,liquidity,btc.c1,now);
     const goldBehavior=studyMarketBehavior(gm.c1,gm.c5,now);
     const bitcoinBehavior=studyMarketBehavior(btc.c1,btc.c5,now);
-    const gold=aiDecision('GOLD',goldAnalysis,{c1:gm.c1,c5:gm.c5,c15:gm.c15,c60:gm.c60},goldPrice,{quote:quote?.source||gm.priceSource||'unknown',candles:gm.priceSource||'unknown'},now,defaults,null,null,goldScalp,null,null,goldBehavior);
+    const gold=aiDecision('GOLD',goldAnalysis,{c1:gm.c1,c5:gm.c5,c15:gm.c15,c60:gm.c60},goldPrice,{quote:quote?.source||gm.priceSource||'unknown',candles:gm.priceSource||'unknown'},now,defaults,null,null,goldScalp,null,goldBehavior);
     const bitcoin=aiDecision('BTC',btcAnalysis,{c1:btc.c1,c5:btc.c5,c15:btc.c15,c60:btc.c60},btcPrice,{quote:liveBtc?.source||btc.source,candles:btc.source},now,defaults,livePulse,liquidity,bitcoinScalp,motion,bitcoinBehavior);
     const radar=[
       {asset:'BTC',score:Math.min(92,Math.max(Number(bitcoin.fusion?.buy||0),Number(bitcoin.fusion?.sell||0),Number(bitcoin.hunter?.score||0),Number(bitcoinScalp.score?.long||0),Number(bitcoinScalp.score?.short||0))),status:bitcoin.action!=='WAIT'?'STRIKE':bitcoin.phase||bitcoin.hunter?.status||'WAIT',side:bitcoin.action!=='WAIT'?bitcoin.action:bitcoin.fusion?.side!=='WAIT'?bitcoin.fusion?.side:bitcoin.hunter?.side||bitcoinScalp.action||'WAIT',mode:bitcoin.action!=='WAIT'?bitcoin.trade?.mode:bitcoin.hunter?.mode},
