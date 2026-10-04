@@ -38,7 +38,7 @@ function tickStrength(tick:any){
 function liveReliability(live:any,primary:string,fallback:string){
   const p=live?.bySource?.[primary]||{},f=live?.bySource?.[fallback]||{};
   const pn=Number(p?.hits||0)+Number(p?.fails||0),fn=Number(f?.hits||0)+Number(f?.fails||0);
-  const source=pn>=6?primary:fn>=8?fallback:pn>0?primary:fallback;
+  const source=pn>=6?primary:fn>=8?fallback:pn>0?primary:fn>0?fallback:primary;
   const s=source===primary?p:f;
   const n=Number(s?.hits||0)+Number(s?.fails||0);
   const posterior=Number(s?.posteriorAccuracy||50);
@@ -337,7 +337,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const targetPrice=zoneTargetValid?Number(targetZone.mid):breakoutTargetValid?breakoutLevel:fallbackTarget;
   const target={
     side:fusedSide,
-    price:Number.isFinite(Number(targetPrice))?Number(Number(targetPrice).toFixed(2)):null,
+    price:targetPrice!=null&&Number.isFinite(Number(targetPrice))?Number(Number(targetPrice).toFixed(2)):null,
     zoneLow:zoneTargetValid?Number(targetZone.low.toFixed(2)):null,
     zoneHigh:zoneTargetValid?Number(targetZone.high.toFixed(2)):null,
     source:zoneTargetValid?'REACTION_ZONE':breakoutTargetValid?'RANGE_BOUNDARY':'DYNAMIC_ATR',
