@@ -137,33 +137,6 @@ function AssetCard({x,fast}:any){
       <div><small>الثقة</small><strong>{calibrated(x.confidence)}</strong></div>
     </div>
 
-    {hunt&&<div className="expected-move-primary">
-      <div className="expected-move-head">
-        <span>🎯 الحركة الأولى المتوقعة · First-Passage</span>
-        <strong className={hunt.nextMove?.side==='BUY'?'green':hunt.nextMove?.side==='SELL'?'red':'amber'}>{sideAr(hunt.nextMove?.side)} · ثقة %{calibrated(hunt.nextMove?.confidence)}</strong>
-      </div>
-      <div className="forecast-horizons">
-        {([
-          ['2 دقيقة',hunt.horizons?.twoMinute,hunt.expectedMoveLearning?.twoMinute],
-          ['5 دقائق',hunt.horizons?.fiveMinute,hunt.expectedMoveLearning?.fiveMinute],
-          ['15 دقيقة',hunt.horizons?.fifteenMinute,hunt.expectedMoveLearning?.fifteenMinute]
-        ] as any[]).map(([label,h,m]:any)=><div key={label}>
-          <small>{label}</small>
-          <strong className={h?.side==='BUY'?'green':h?.side==='SELL'?'red':'amber'}>{sideAr(h?.side)} %{h?.strength||0}</strong>
-          <span>Hit {m?.decisiveRate??0}% · أول وصول {m?.firstHitMinutes??0}د · Cal {m?.calibration??'—'} · {m?.samples||0} حالة</span>
-        </div>)}
-      </div>
-      {hunt.fifteenMinuteTarget&&<div className="forecast-levels">
-        <div><small>🎯 السعر المتوقع بعد 15 دقيقة</small><strong className={hunt.fifteenMinuteTarget.side==='BUY'?'green':hunt.fifteenMinuteTarget.side==='SELL'?'red':'amber'}>{fmt(hunt.fifteenMinuteTarget.price,2)}</strong></div>
-        <div><small>النطاق المتوقع</small><strong>{fmt(hunt.fifteenMinuteTarget.low,2)} — {fmt(hunt.fifteenMinuteTarget.high,2)}</strong></div>
-        <div><small>الثقة / الحركة</small><strong>%{calibrated(hunt.fifteenMinuteTarget.confidence)} · {hunt.fifteenMinuteTarget.movePct>=0?'+':''}{hunt.fifteenMinuteTarget.movePct||0}%</strong></div>
-      </div>}
-      {x.movementIntelligence&&<p className={x.movementIntelligence.conflict?'red':'learning-line'}>🧠 Movement Brain: {x.movementIntelligence.regime} · {sideAr(x.movementIntelligence.side==='WAIT'?x.movementIntelligence.leanSide:x.movementIntelligence.side)} · ثقة %{calibrated(x.movementIntelligence.confidence)} · توافق {x.movementIntelligence.agreement||0}%{x.movementIntelligence.conflict?' · MODEL CONFLICT':''}</p>}
-      {x.serverTickBrain&&<p className="muted">⚡ Server Tick: {x.serverTickBrain.stage} · {sideAr(x.serverTickBrain.side)} · 3s {x.serverTickBrain.velocity3s} bps · Persistence {x.serverTickBrain.persistence}%</p>}
-      {hunt.nextMove?.conflictWithLockedDirection&&<p className="red">⚠️ الحركة الأولى تختلف عن Direction Lock؛ الأولوية هنا لـFirst-Passage مع خفض الجودة.</p>}
-      {hunt.expectedMoveLearning?.conflict&&<p className="red">⚠️ ذاكرة 2/5/15 مختلفة الاتجاه؛ تم خفض جودة التوقع تلقائيًا.</p>}
-    </div>}
-
     <div className="quick-signals">
       {signalRows.map((s:any)=><div className="quick-signal-row" key={s.label}>
         <span>{s.label}</span>
@@ -265,6 +238,8 @@ function AssetCard({x,fast}:any){
 
 export default function AICommandCenter({data,error,fastWave,now=Date.now()}:any){
   const auto=data?.autopilot,next=auto?.nextEvent;
+  const nextEventDelta=Number(next?.time)-now;
+  const showNextEvent=!!next&&Number.isFinite(nextEventDelta)&&nextEventDelta>=0&&nextEventDelta<=10*60*60*1000;
   return <div className="ai-clean">
     <section className="ai-hero">
       <div><span className="eyebrow">PREDATOR CORE</span><h1>{data?.model||'AI Hunter'}</h1></div>
@@ -274,7 +249,7 @@ export default function AICommandCenter({data,error,fastWave,now=Date.now()}:any
     {auto?.status&&auto.status!=='healthy'&&<div className="fatal"><ShieldCheck size={18}/><div><strong>Data Guard: {auto.status}</strong><span>بعض المصادر تحتاج مراجعة قبل اعتماد أي صفقة.</span></div></div>}
     {error&&<div className="fatal"><Activity size={18}/><div><strong>AI unavailable</strong><span>{error}</span></div></div>}
 
-    {next&&<section className="next-news">
+    {showNextEvent&&<section className="next-news">
       <div><small>أقرب خبر</small><strong>{next.name}</strong></div>
       <span>{timeLeft(next.time,now)}</span>
     </section>}
