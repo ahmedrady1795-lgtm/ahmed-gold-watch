@@ -76,7 +76,7 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
     return cap(base*(Number.isFinite(ew)?ew:1)*(Number.isFinite(lw)?lw:1),.35,1.85);
   };
   const fusionWeight=cap(1.18*((Number(evolutionWeights?.structure||1)+Number(evolutionWeights?.learning||1))/2),.65,1.75);
-  const slowScale=liveStrong&&fastRegime?.72:1;
+  const slowScale=(liveStrong&&fastRegime)?0.72:1;
   const voteRows=[
     {name:'fusion',side:fusion,w:fusionWeight},
     {name:'movement',side:movementSide,w:weight('motion',1.26)*Math.max(.72,Math.min(1.28,movementConfidence/60))},
