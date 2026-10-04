@@ -66,6 +66,7 @@ type Cache<T> = { at: number; value: T };
 let marketCache: Cache<MarketData> | null = null;
 let externalQuoteCache: Cache<QuoteData> | null = null;
 let mt5State: Mt5BridgeStatus | null = null;
+type FastSide='BUY'|'SELL'|'WAIT';
 type Mt5FastTick={at:number;receivedAt:number;price:number;bid:number;ask:number;tickVolume:number|null;flags:number|null};
 let mt5FastTicks:Mt5FastTick[]=[];
 let backgroundCache: Cache<BackgroundPoint[]> | null = null;
@@ -128,7 +129,7 @@ export function getMt5FastSignal(now=Date.now()){
   const imbalance=bVol+aVol>0?(bVol-aVol)/(bVol+aVol)*100:0;
   const signImb=imbalance>=8?1:imbalance<=-8?-1:0,signAcc=acc>=.03?1:acc<=-.03?-1:0,signVel=v15>=.05?1:v15<=-.05?-1:0;
   const vote=signImb*1.35+signAcc*1.15+signVel*.8+(persistence>=60?(up>down?1:-1)*.55:0);
-  const side:Side=vote>=1.25?'BUY':vote<=-1.25?'SELL':'WAIT';
+  const side:FastSide=vote>=1.25?'BUY':vote<=-1.25?'SELL':'WAIT';
   const preTrigger=side!=='WAIT'&&Math.abs(v15)<=.45&&Math.abs(acc)>=.025&&Math.abs(imbalance)>=12;
   const ignition=side!=='WAIT'&&Math.abs(v05)>=.22&&Math.abs(acc)>=.06&&persistence>=60;
   const stage=ignition?'IGNITION':preTrigger?'PRE_TRIGGER':side!=='WAIT'?'BUILDING':'WAIT';
