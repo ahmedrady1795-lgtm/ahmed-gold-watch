@@ -110,9 +110,25 @@ export function buildMarketStateGraph(c1:Candle[],now=Date.now()):MarketStateGra
   const sideEntries=Object.entries(transition.sideCounts) as [Side,number][];
   sideEntries.sort((a,b)=>b[1]-a[1]);
   const directionalGap=(sideEntries[0]?.[1]||0)-(sideEntries[1]?.[1]||0);
-  const nextSide=transition.matches&&directionalGap>=Math.max(.45,transition.weightTotal*.08)?sideEntries[0][0]:'WAIT';
-  const nextSideProbability=transition.weightTotal?Math.round((sideEntries[0]?.[1]||0)/transition.weightTotal*100):0;
+  let nextSide:Side=transition.matches&&directionalGap>=Math.max(.45,transition.weightTotal*.08)?sideEntries[0][0]:'WAIT';
+  let nextSideProbability=transition.weightTotal?Math.round((sideEntries[0]?.[1]||0)/transition.weightTotal*100):0;
   const matches=transition.matches;
+
+  // v11 local resolver: exact sequence memory can be sparse in a regime shift, so blend the freshest price path.
+  const ai=atr(c,c.length-1,14),last=c.at(-1)!,c3=c.at(-4),c6=c.at(-7);
+  const r3=Number.isFinite(ai)&&ai>0&&c3?(last.close-c3.close)/ai:0;
+  const r6=Number.isFinite(ai)&&ai>0&&c6?(last.close-c6.close)/ai:0;
+  const localSigned=r3*.68+r6*.32;
+  const localSide:Side=localSigned>=.16?'BUY':localSigned<=-.16?'SELL':'WAIT';
+  const nextStateSide=stateSide(nextState),currentSide=stateSide(current);
+  if(nextSide==='WAIT'&&nextStateSide!=='WAIT'&&nextStateProbability>=38){
+    nextSide=nextStateSide;
+    nextSideProbability=Math.max(nextSideProbability,Math.min(72,42+Math.round(Math.abs(localSigned)*12)));
+  }
+  if(nextSide==='WAIT'&&localSide!=='WAIT'&&(matches<8||['RANGE','COMPRESSION','TRANSITION'].includes(current))){
+    nextSide=localSide;
+    nextSideProbability=Math.round(cap(44+Math.min(24,Math.abs(localSigned)*18)+(currentSide===localSide?5:0),0,74));
+  }
 
   const cp=changePoint(c,c.length-1);
   const sampleQuality=Math.min(1,matches/(transition.depth===3?12:transition.depth===2?16:22));
@@ -124,7 +140,8 @@ export function buildMarketStateGraph(c1:Candle[],now=Date.now()):MarketStateGra
     'Sequence: '+seq,
     'Historical sequence matches: '+matches+' · depth '+transition.depth,
     'Most common next state: '+nextState+' · '+nextStateProbability+'%',
-    'Next directional state: '+nextSide+' · '+nextSideProbability+'%'
+    'Next directional state: '+nextSide+' · '+nextSideProbability+'%',
+    'Local path bias: '+localSide+' · '+Number(localSigned.toFixed(2))+' ATR blend'
   ];
   if(cp.hit)reasons.push('Change-point detected: market regime may be shifting');
 
