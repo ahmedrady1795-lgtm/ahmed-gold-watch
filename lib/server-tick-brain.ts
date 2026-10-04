@@ -47,6 +47,6 @@ export function getServerTickSignal(asset:Asset,now=Date.now()){
   const q=latest.bidQty!=null&&latest.askQty!=null&&latest.bidQty+latest.askQty>0?(latest.bidQty-latest.askQty)/(latest.bidQty+latest.askQty)*100:0;
   const sign=v3>0?1:v3<0?-1:0,raw=cap(v3*8,-34,34)+cap(acc*10,-24,24)+sign*Math.max(0,persistence-50)*.45+cap(q*.18,-14,14);
   const side:Side=raw>=8?'BUY':raw<=-8?'SELL':'WAIT',score=Math.round(cap(43+Math.abs(raw),0,90)),confidence=Math.round(cap(28+Math.abs(raw)*.72+Math.min(20,arr.length*.8),0,86));
-  let stage='WARMING';if(side!=='WAIT'&&Math.abs(v1)>=1.1&&Math.abs(acc)>=.3&&persistence>=62)stage='IGNITION';else if(side!=='WAIT'&&Math.abs(v3)>=1.25&&persistence>=60)stage='WAVE_FORMING';
+  let stage='WARMING';if(side!=='WAIT'&&Math.abs(v1)>=1.1&&Math.abs(acc)>=.3&&persistence>=62)stage='IGNITION';else if(side!=='WAIT'&&Math.abs(v3)>=1.25&&persistence>=60)stage='WAVE_FORMING';else if(side!=='WAIT'&&Math.abs(v3)<=1.05&&Math.abs(acc)>=.16&&persistence>=58)stage='PRE_TRIGGER';
   return {ok:true,side,stage,score,confidence,at:latest.at,velocity1s:Number(v1.toFixed(3)),velocity3s:Number(v3.toFixed(3)),velocity8s:Number(v8.toFixed(3)),acceleration:Number(acc.toFixed(3)),persistence,bboImbalance:Number(q.toFixed(1)),samples:arr.length,source:latest.source};
 }
