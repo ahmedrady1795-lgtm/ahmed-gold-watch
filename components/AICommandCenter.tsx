@@ -135,7 +135,7 @@ function AssetCard({x,fast}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
   const master=x.master||{action:x.action,state:x.phase||'WAIT',reason:''},hunt=x.huntForecast,recommendation=x.recommendation;
   const buy=master.action==='BUY',sell=master.action==='SELL';
-  const masterState=String(master?.state||'').toUpperCase(),conflictBlocked=masterState==='CONFLICT'||masterState==='GUARDED';
+  const masterState=String(master?.state||'').toUpperCase();
   const scalpLong=Number(x.scalp?.score?.long||0),scalpShort=Number(x.scalp?.score?.short||0);
   const scalpSide=x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:scalpLong>scalpShort?'BUY':scalpShort>scalpLong?'SELL':'WAIT';
   const scalpStrength=calibrated(Math.max(scalpLong,scalpShort));
@@ -146,7 +146,7 @@ function AssetCard({x,fast}:any){
     {label:'1m',side:m1?.bias||'WAIT',strength:calibrated(m1?.strength),target:quickTargets?.oneMinute?.price},
     {label:'5m',side:m5?.bias||'WAIT',strength:calibrated(m5?.strength),target:quickTargets?.fiveMinute?.price}
   ];
-  const shownSignals=conflictBlocked?signalRows.map(s=>({...s,side:'WAIT',strength:0,target:null,blocked:true})):signalRows;
+  const shownSignals=signalRows;
   return <section className={"panel ai-asset-card "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
       <div><span className="eyebrow">{x.asset}</span><h2>{buy?'شراء':sell?'بيع':'انتظار'}</h2></div>
@@ -170,7 +170,7 @@ function AssetCard({x,fast}:any){
     <div className="quick-signals compact-signals">
       {shownSignals.map((s:any)=><div className="quick-signal-row" key={s.label}>
         <span>{s.label}</span>
-        <strong className={s.side==='BUY'?'green':s.side==='SELL'?'red':'amber'}>{s.blocked?'انتظار · تعارض':<>{sideAr(s.side)} · {s.strength}%{s.target!=null?<em> · ≈ {fmt(s.target,2)}</em>:null}</>}</strong>
+        <strong className={s.side==='BUY'?'green':s.side==='SELL'?'red':'amber'}><>{sideAr(s.side)} · {s.strength}%{s.target!=null?<em> · ≈ {fmt(s.target,2)}</em>:null}</></strong>
       </div>)}
     </div>
 
@@ -197,7 +197,7 @@ function AssetCard({x,fast}:any){
           <p>{sideAr(hunt.nextMove?.side||hunt.path?.shortSide)} · جودة {calibrated(hunt.quality??hunt.confidence)} · ثبات {hunt.persistence||0}%</p>
           <p>Trigger {fmt(hunt.trigger,2)} · Target {fmt(hunt.projected,2)} · Invalidation {fmt(hunt.invalidation,2)}</p>
           {hunt.strongMove&&<p>Strong Move: {sideAr(hunt.strongMove.side)} · قوة {calibrated(hunt.strongMove.score)} · جاهزية {calibrated(hunt.strongMove.readiness)}</p>}
-          {hunt.liveFailureGuard?.invalidated&&<p className="red">تم إلغاء التوقع السابق بعد حركة عكسية؛ النواة منعت تكرار الاتجاه فورًا.</p>}
+          {hunt.liveFailureGuard?.invalidated&&<p className="amber">الحركة السابقة فشلت؛ النواة خفّضت وزنها وأعادت ترجيح الاتجاه مباشرة بدل إيقاف التحليل.</p>}
         </div>
       </div>
     </details>}
