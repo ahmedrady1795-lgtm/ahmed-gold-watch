@@ -83,32 +83,46 @@ export function buildMarketStateGraph(c1:Candle[],now=Date.now()):MarketStateGra
   for(let i=24;i<c.length;i++)states.push(classify(c,i));
   const current=states.at(-1)||'TRANSITION',previous=states.slice(-4,-1);
   const seq=states.slice(-3).join('>');
-  const nextCounts=new Map<StateName,number>(),sideCounts={BUY:0,SELL:0,WAIT:0},prefixLen=2;
-  let matches=0,transitions=0;
-  for(let i=prefixLen;i<states.length-1;i++){
-    transitions++;
-    const prefix=states.slice(i-prefixLen,i).join('>');
-    const targetPrefix=states.slice(-prefixLen).join('>');
-    if(prefix!==targetPrefix)continue;
-    matches++;
-    const n=states[i] as StateName;
-    nextCounts.set(n,(nextCounts.get(n)||0)+1);
-    sideCounts[stateSide(n)]++;
-  }
+  const transitions=Math.max(0,states.length-1);
+  const collect=(depth:number)=>{
+    const nextCounts=new Map<StateName,number>(),sideCounts:{BUY:number;SELL:number;WAIT:number}={BUY:0,SELL:0,WAIT:0};
+    let matches=0,weightTotal=0;
+    const targetPrefix=states.slice(-depth).join('>');
+    for(let i=depth;i<states.length-1;i++){
+      const prefix=states.slice(i-depth,i).join('>');
+      if(prefix!==targetPrefix)continue;
+      matches++;
+      const recency=.55+.45*(i/Math.max(1,states.length-2));
+      const n=states[i] as StateName,s=stateSide(n);
+      nextCounts.set(n,(nextCounts.get(n)||0)+recency);
+      sideCounts[s]+=recency;weightTotal+=recency;
+    }
+    return {depth,nextCounts,sideCounts,matches,weightTotal};
+  };
+
+  let transition=collect(3);
+  if(transition.matches<6)transition=collect(2);
+  if(transition.matches<5)transition=collect(1);
+
   let nextState:StateName='TRANSITION',best=0;
-  for(const [s,n] of nextCounts){if(n>best){best=n;nextState=s;}}
-  const nextStateProbability=matches?Math.round(best/matches*100):0;
-  const sideEntries=Object.entries(sideCounts) as [Side,number][];
+  for(const [s,n] of transition.nextCounts){if(n>best){best=n;nextState=s;}}
+  const nextStateProbability=transition.weightTotal?Math.round(best/transition.weightTotal*100):0;
+  const sideEntries=Object.entries(transition.sideCounts) as [Side,number][];
   sideEntries.sort((a,b)=>b[1]-a[1]);
-  const nextSide=matches&&sideEntries[0][1]>sideEntries[1][1]?sideEntries[0][0]:'WAIT';
-  const nextSideProbability=matches?Math.round(sideEntries[0][1]/matches*100):0;
+  const directionalGap=(sideEntries[0]?.[1]||0)-(sideEntries[1]?.[1]||0);
+  const nextSide=transition.matches&&directionalGap>=Math.max(.45,transition.weightTotal*.08)?sideEntries[0][0]:'WAIT';
+  const nextSideProbability=transition.weightTotal?Math.round((sideEntries[0]?.[1]||0)/transition.weightTotal*100):0;
+  const matches=transition.matches;
 
   const cp=changePoint(c,c.length-1);
-  const sampleQuality=Math.min(1,matches/18),confidence=Math.round(cap((nextStateProbability*.55+nextSideProbability*.25+sampleQuality*20)*(cp.hit?.94:1),0,88));
+  const sampleQuality=Math.min(1,matches/(transition.depth===3?12:transition.depth===2?16:22));
+  const depthBonus=transition.depth===3?7:transition.depth===2?3:0;
+  const cpPenalty=cp.hit?Math.min(16,6+cp.score*.10):0;
+  const confidence=Math.round(cap(nextStateProbability*.48+nextSideProbability*.27+sampleQuality*18+depthBonus-cpPenalty,0,88));
   const reasons=[
     'Current state: '+current,
     'Sequence: '+seq,
-    'Historical sequence matches: '+matches,
+    'Historical sequence matches: '+matches+' · depth '+transition.depth,
     'Most common next state: '+nextState+' · '+nextStateProbability+'%',
     'Next directional state: '+nextSide+' · '+nextSideProbability+'%'
   ];
