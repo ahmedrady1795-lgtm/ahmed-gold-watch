@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss, b
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 
-APP_VERSION="predator-ml-v5-specialized-m5"
+APP_VERSION="predator-ml-v6-robust-m5"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 MODEL_PATH=MODEL_DIR/"btc_ml_ensemble.joblib"
 META_PATH=MODEL_DIR/"btc_ml_meta.json"
@@ -318,10 +318,12 @@ def new_models(seed,horizon=1):
                      min_child_samples=70,min_split_gain=.02,reg_alpha=.55,reg_lambda=3.2,objective="binary",n_jobs=1,random_state=seed,verbosity=-1)
     return x,l
 
-def metrics(y,p,signal_threshold=.56):
+def metrics(y,p,signal_threshold=.56,agreement=None):
     pred=(p>=.5).astype(int)
     positive=float(np.mean(y)); baseline=max(positive,1-positive)
     mask=(p>=signal_threshold)|(p<=1-signal_threshold)
+    if agreement is not None:
+        mask=mask & np.asarray(agreement,dtype=bool)
     sn=int(mask.sum())
     selective=float(accuracy_score(y[mask],pred[mask])) if sn else 0.0
     coverage=float(mask.mean()) if len(mask) else 0.0
@@ -339,16 +341,29 @@ def choose_blend(y,px,pl,horizon):
         total=wx+wl
         return wx/total,wl/total,.56
     best=None
+    agree=(px>=.5)==(pl>=.5)
+    n=len(y)
+    cuts=[(0,n//3),(n//3,2*n//3),(2*n//3,n)]
     for wx in [0.0,.2,.4,.6,.8,1.0]:
         p=px*wx+pl*(1-wx)
-        for threshold in [.55,.56,.57,.58,.59,.60,.61]:
-            m=metrics(y,p,threshold)
-            if m["selectiveN"]<250 or m["selectiveCoverage"]<.055:
+        for threshold in [.54,.55,.56,.57,.58,.59,.60]:
+            overall=metrics(y,p,threshold,agree)
+            if overall["selectiveN"]<220 or overall["selectiveCoverage"]<.04:
                 continue
-            score=m["selectiveAccuracy"]+.05*min(.25,m["selectiveCoverage"])+.03*m["balancedAccuracy"]-.015*m["logLoss"]
+            windows=[]
+            valid=True
+            for a,b in cuts:
+                wm=metrics(y[a:b],p[a:b],threshold,agree[a:b])
+                if wm["selectiveN"]<45 or wm["selectiveCoverage"]<.025:
+                    valid=False; break
+                windows.append(wm["selectiveAccuracy"])
+            if not valid:
+                continue
+            worst=min(windows); spread=max(windows)-min(windows)
+            score=.58*worst+.30*overall["selectiveAccuracy"]+.05*overall["balancedAccuracy"]+.04*min(.20,overall["selectiveCoverage"])-.12*spread-.015*overall["logLoss"]
             if best is None or score>best[0]:
-                best=(score,wx,1-wx,threshold)
-    return (best[1],best[2],best[3]) if best else (.5,.5,.58)
+                best=(score,wx,1-wx,threshold,worst,spread)
+    return (best[1],best[2],best[3]) if best else (.5,.5,.57)
 
 def train_horizon(ds,horizon,feature_names):
     X=ds[feature_names].astype(float).to_numpy(); y=ds.target.astype(int).to_numpy(); n=len(y)
@@ -365,12 +380,16 @@ def train_horizon(ds,horizon,feature_names):
     pxv=x.predict_proba(Xv)[:,1]; plv=l.predict_proba(Xv)[:,1]
     wx,wl,signal_threshold=choose_blend(yv,pxv,plv,horizon)
     mxv,mlv=metrics(yv,pxv,signal_threshold),metrics(yv,plv,signal_threshold)
-    pv=pxv*wx+plv*wl; mv=metrics(yv,pv,signal_threshold)
+    pv=pxv*wx+plv*wl
+    agreement_v=((pxv>=.5)==(plv>=.5)) if horizon==5 else None
+    mv=metrics(yv,pv,signal_threshold,agreement_v)
 
     # Final holdout is the only number allowed to qualify production readiness.
     pxt=x.predict_proba(Xte)[:,1]; plt=l.predict_proba(Xte)[:,1]
     mxt,mlt=metrics(yte,pxt,signal_threshold),metrics(yte,plt,signal_threshold)
-    pt=pxt*wx+plt*wl; me=metrics(yte,pt,signal_threshold)
+    pt=pxt*wx+plt*wl
+    agreement_t=((pxt>=.5)==(plt>=.5)) if horizon==5 else None
+    me=metrics(yte,pt,signal_threshold,agreement_t)
     trainp=x.predict_proba(Xtr)[:,1]*wx+l.predict_proba(Xtr)[:,1]*wl
     train_acc=metrics(ytr,trainp,signal_threshold)["accuracy"]
     gap=train_acc-me["accuracy"]; stability=abs(mv["balancedAccuracy"]-me["balancedAccuracy"])
@@ -379,8 +398,8 @@ def train_horizon(ds,horizon,feature_names):
         me["balancedAccuracy"]>=.505 and me["logLoss"]<=.71 and
         mv["balancedAccuracy"]>=.50 and mv["logLoss"]<=.72 and
         me["selectiveN"]>=120 and mv["selectiveN"]>=100 and
-        me["selectiveCoverage"]>=.06 and mv["selectiveCoverage"]>=.05 and
-        me["selectiveAccuracy"]>=.57 and mv["selectiveAccuracy"]>=.55 and
+        me["selectiveCoverage"]>=.035 and mv["selectiveCoverage"]>=.035 and
+        me["selectiveAccuracy"]>=.57 and mv["selectiveAccuracy"]>=.56 and
         gap<=.16 and stability<=.08
     )
 
@@ -407,7 +426,7 @@ def train_all():
             hist=fetch_coinbase_history(TRAIN_CANDLES)
             source="Coinbase Exchange BTC-USD 1m · neutral micro fallback"
         m1=train_horizon(make_dataset(hist,1,.04,M1_FEATURES),1,M1_FEATURES)
-        m5=train_horizon(make_dataset(hist,5,.12,M5_FEATURES),5,M5_FEATURES)
+        m5=train_horizon(make_dataset(hist,5,.18,M5_FEATURES),5,M5_FEATURES)
         payload={"version":APP_VERSION,"features":FEATURE_SIGNATURE,"trainedAt":int(time.time()*1000),"historyRows":len(hist),"source":source,"models":{"m1":m1,"m5":m5}}
         tmp=MODEL_PATH.with_suffix(".tmp"); joblib.dump(payload,tmp); os.replace(tmp,MODEL_PATH)
         meta={"version":APP_VERSION,"trainedAt":payload["trainedAt"],"historyRows":len(hist),"source":payload["source"],
@@ -479,11 +498,12 @@ def predict_h(model,x):
     raw=px*w["xgb"]+pl*w["lgb"]; acc=float(model["metrics"].get("validation",model["metrics"]["ensemble"])["accuracy"])
     shrink=max(.25,min(1,(acc-.5)/.10)); p=.5+(raw-.5)*shrink; edge=abs(p-.5)*2
     lean="BUY" if p>=.5 else "SELL"; threshold=float(model.get("signalThreshold",.56 if model["horizon"]==5 else .57))
-    active=p>=threshold or p<=1-threshold
+    component_agree=((px>=.5)==(pl>=.5))
+    active=(p>=threshold or p<=1-threshold) and (model["horizon"]!=5 or component_agree)
     return {"side":lean if active else "WAIT","leanSide":lean,"probUp":round(p*100,2),"probDown":round((1-p)*100,2),
             "confidence":round(min(90,max(0,50+edge*50))) if active else round(50+edge*30),"edge":round(edge*100,2),
             "ready":bool(model["metrics"]["ready"]),"metrics":model["metrics"],
-            "component":{"xgbUp":round(px*100,2),"lightgbmUp":round(pl*100,2),"weights":w}}
+            "component":{"xgbUp":round(px*100,2),"lightgbmUp":round(pl*100,2),"agree":bool(component_agree),"weights":w,"signalThreshold":threshold}}
 
 @app.on_event("startup")
 def startup(): start_train_if_needed()
