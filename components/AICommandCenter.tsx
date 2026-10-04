@@ -128,6 +128,19 @@ function AssetCard({x,fast}:any){
         <div><small>5 min</small><strong className={hunt.horizons?.fiveMinute?.side==='BUY'?'green':hunt.horizons?.fiveMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fiveMinute?.side)} %{hunt.horizons?.fiveMinute?.strength||0}</strong></div>
       </div>
 
+      {hunt.strongMove&&<div className={"strong-move-box "+(hunt.strongMove.side==='BUY'?'strong-up':'strong-down')}>
+        <small>🚀 STRONG MOVE SETUP</small>
+        <strong>{sideAr(hunt.strongMove.side)} · قوة {calibrated(hunt.strongMove.score)} · جاهزية {calibrated(hunt.strongMove.readiness)}</strong>
+        <span>{hunt.strongMove.phase} · {hunt.strongMove.side==='BUY'?('كسر '+fmt(hunt.strongMove.breakoutLevel,2)):('كسر '+fmt(hunt.strongMove.breakdownLevel,2))}</span>
+        <span>Liquidity {hunt.strongMove.liquidityConfirmed?'✓':'—'} · Absorption {hunt.strongMove.absorptionConfirmed?'✓':'—'}</span>
+      </div>}
+
+      {hunt.accumulationMap&&<div className="accumulation-strip">
+        <div><small>Accumulation</small><strong>{hunt.accumulationMap.accumulationScore||0}</strong></div>
+        <div><small>Distribution</small><strong>{hunt.accumulationMap.distributionScore||0}</strong></div>
+        <div><small>Breakout Ready</small><strong>{hunt.accumulationMap.breakoutReadiness||0}</strong></div>
+      </div>}
+
       {hunt.waveStructure&&<div className="wave-structure-strip">
         <div><small>مرحلة M1</small><strong>{hunt.waveStructure?.m1?.phase||'—'}</strong><span>{hunt.waveStructure?.m1?.structure||''}</span></div>
         <div><small>مرحلة M5</small><strong>{hunt.waveStructure?.m5?.phase||'—'}</strong><span>{hunt.waveStructure?.m5?.structure||''}</span></div>
