@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss, b
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 
-APP_VERSION="predator-ml-v3-selective-multiscale"
+APP_VERSION="predator-ml-v4-taker-flow"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 MODEL_PATH=MODEL_DIR/"btc_ml_ensemble.joblib"
 META_PATH=MODEL_DIR/"btc_ml_meta.json"
@@ -33,6 +33,9 @@ FEATURES=[
 "vol5","vol10","vol20","volume_z20","volume_ratio5_20","break_high10","break_low10","eff5","eff10","compression",
 "m5_ret1","m5_ret3","m5_ema5_gap","m5_ema20_gap","m5_rsi14",
 "m15_ret1","m15_ret3","m15_ema5_gap","m15_ema20_gap","m15_rsi14","m15_range_atr",
+"quote_volume_z20","trades_z20","trades_ratio5_20","avg_trade_size_z20",
+"taker_buy_ratio","taker_quote_ratio","taker_delta","taker_delta3","taker_delta5",
+"cvd3","cvd10","flow_price_agreement","flow_price_divergence",
 "hour_sin","hour_cos"
 ]
 
@@ -43,6 +46,10 @@ class Candle(BaseModel):
     low:float
     close:float
     volume:float|None=None
+    quote_volume:float|None=None
+    trades:float|None=None
+    taker_buy_base:float|None=None
+    taker_buy_quote:float|None=None
 
 class PredictBody(BaseModel):
     candles:list[Candle]
@@ -55,8 +62,20 @@ def rsi(close,n=14):
 def eff(close,n):
     return (close-close.shift(n)).abs()/close.diff().abs().rolling(n).sum().replace(0,np.nan)
 
+def zscore(s,n=20):
+    m=s.rolling(n).mean(); sd=s.rolling(n).std().replace(0,np.nan)
+    return ((s-m)/sd).replace([np.inf,-np.inf],np.nan).fillna(0)
+
+def ensure_micro_columns(df):
+    d=df.copy()
+    d["quote_volume"]=pd.to_numeric(d.get("quote_volume",d["volume"]*d["close"]),errors="coerce").fillna(d["volume"]*d["close"])
+    d["trades"]=pd.to_numeric(d.get("trades",pd.Series(0,index=d.index)),errors="coerce").fillna(0)
+    d["taker_buy_base"]=pd.to_numeric(d.get("taker_buy_base",d["volume"]*.5),errors="coerce").fillna(d["volume"]*.5)
+    d["taker_buy_quote"]=pd.to_numeric(d.get("taker_buy_quote",d["quote_volume"]*.5),errors="coerce").fillna(d["quote_volume"]*.5)
+    return d
+
 def build_features(df):
-    d=df.copy().sort_index(); c,o,h,l,v=d.close,d.open,d.high,d.low,d.volume.fillna(0)
+    d=ensure_micro_columns(df).sort_index(); c,o,h,l,v=d.close,d.open,d.high,d.low,d.volume.fillna(0)
     prev=c.shift(1); tr=pd.concat([(h-l),(h-prev).abs(),(l-prev).abs()],axis=1).max(axis=1); atr=tr.ewm(alpha=1/14,adjust=False).mean()
     rng=(h-l).replace(0,np.nan); f=pd.DataFrame(index=d.index)
     for n in [1,2,3,5,10,20]: f[f"ret{n}"]=c.pct_change(n)
@@ -109,6 +128,34 @@ def build_features(df):
     fifteenf.index=fifteenf.index+pd.Timedelta(minutes=15)
     f=f.join(fifteenf.reindex(f.index,method="ffill"))
 
+    # Aggregated microstructure available directly in Binance 1m klines.
+    qv=d["quote_volume"].clip(lower=0)
+    trades=d["trades"].clip(lower=0)
+    tb=d["taker_buy_base"].clip(lower=0)
+    tbq=d["taker_buy_quote"].clip(lower=0)
+    total=v.replace(0,np.nan); qtotal=qv.replace(0,np.nan)
+    taker_ratio=(tb/total).clip(0,1).fillna(.5)
+    taker_quote_ratio=(tbq/qtotal).clip(0,1).fillna(.5)
+    taker_delta=((2*tb-v)/total).clip(-1,1).fillna(0)
+    signed_volume=(2*tb-v).fillna(0)
+    f["quote_volume_z20"]=zscore(qv,20)
+    f["trades_z20"]=zscore(trades,20)
+    f["trades_ratio5_20"]=(trades.rolling(5).mean()/trades.rolling(20).mean().replace(0,np.nan)).replace([np.inf,-np.inf],np.nan).fillna(1)
+    avg_size=(v/trades.replace(0,np.nan)).replace([np.inf,-np.inf],np.nan)
+    f["avg_trade_size_z20"]=zscore(avg_size.fillna(avg_size.rolling(20).median()).fillna(0),20)
+    f["taker_buy_ratio"]=taker_ratio
+    f["taker_quote_ratio"]=taker_quote_ratio
+    f["taker_delta"]=taker_delta
+    f["taker_delta3"]=taker_delta.rolling(3).mean().fillna(0)
+    f["taker_delta5"]=taker_delta.rolling(5).mean().fillna(0)
+    f["cvd3"]=(signed_volume.rolling(3).sum()/v.rolling(3).sum().replace(0,np.nan)).clip(-1,1).fillna(0)
+    f["cvd10"]=(signed_volume.rolling(10).sum()/v.rolling(10).sum().replace(0,np.nan)).clip(-1,1).fillna(0)
+    ret1=c.pct_change().fillna(0)
+    ret_norm=(ret1/ret1.rolling(20).std().replace(0,np.nan)).clip(-3,3).fillna(0)/3
+    price_sign=np.sign(ret1)
+    f["flow_price_agreement"]=(taker_delta*price_sign).fillna(0)
+    f["flow_price_divergence"]=(taker_delta-ret_norm).clip(-2,2).fillna(0)
+
     hour=f.index.hour+f.index.minute/60
     f["hour_sin"]=np.sin(2*np.pi*hour/24); f["hour_cos"]=np.cos(2*np.pi*hour/24)
     return f.replace([np.inf,-np.inf],np.nan)
@@ -153,6 +200,59 @@ def fetch_coinbase_history(limit_rows):
     },index=idx)
     df=df[~df.index.duplicated(keep="last")].sort_index()
     if len(df)<1000: raise RuntimeError(f"coinbase normalized history too short: {len(df)}")
+    df["quote_volume"]=df["volume"]*df["close"]
+    df["trades"]=0.0
+    df["taker_buy_base"]=df["volume"]*.5
+    df["taker_buy_quote"]=df["quote_volume"]*.5
+    return df
+
+def _binance_ms(v):
+    n=int(v)
+    return n//1000 if n>10**14 else n
+
+def fetch_binance_vision_history(limit_rows):
+    url="https://data-api.binance.vision/api/v3/klines"
+    sess=requests.Session(); sess.headers.update({"User-Agent":"PredatorMLEngine/1.0","Accept":"application/json"})
+    rows=[]; end=None
+    while len(rows)<limit_rows:
+        params={"symbol":"BTCUSDT","interval":"1m","limit":"1000"}
+        if end is not None: params["endTime"]=str(end)
+        r=sess.get(url,params=params,timeout=REQUEST_TIMEOUT)
+        if r.status_code==429:
+            time.sleep(.8); continue
+        r.raise_for_status(); batch=r.json()
+        if not isinstance(batch,list) or not batch: break
+        rows.extend(batch)
+        oldest=min(_binance_ms(x[0]) for x in batch)
+        end=oldest-1
+        if len(batch)<1000: break
+        time.sleep(.04)
+    if len(rows)<1000: raise RuntimeError(f"binance vision history too short: {len(rows)}")
+    dedup={_binance_ms(x[0]):x for x in rows}
+    ordered=[dedup[k] for k in sorted(dedup)][-limit_rows:]
+    idx=pd.to_datetime([_binance_ms(x[0]) for x in ordered],unit="ms",utc=True)
+    df=pd.DataFrame({
+        "open":[float(x[1]) for x in ordered],
+        "high":[float(x[2]) for x in ordered],
+        "low":[float(x[3]) for x in ordered],
+        "close":[float(x[4]) for x in ordered],
+        "volume":[float(x[5]) for x in ordered],
+        "quote_volume":[float(x[7]) for x in ordered],
+        "trades":[float(x[8]) for x in ordered],
+        "taker_buy_base":[float(x[9]) for x in ordered],
+        "taker_buy_quote":[float(x[10]) for x in ordered]
+    },index=idx)
+    df=df[~df.index.duplicated(keep="last")].sort_index()
+    if len(df)<1000: raise RuntimeError(f"binance vision normalized history too short: {len(df)}")
+    return df
+
+LIVE_FRAME={"at":0.0,"df":None}
+def get_live_binance_frame():
+    now=time.time()
+    if LIVE_FRAME["df"] is not None and now-LIVE_FRAME["at"]<4:
+        return LIVE_FRAME["df"]
+    df=fetch_binance_vision_history(900)
+    LIVE_FRAME["at"]=now; LIVE_FRAME["df"]=df
     return df
 
 def new_models(seed):
@@ -226,8 +326,13 @@ def train_all():
         if STATE["training"]: return
         STATE.update({"training":True,"status":"TRAINING","lastError":None})
     try:
-        hist=fetch_coinbase_history(TRAIN_CANDLES)
-        source="Coinbase Exchange BTC-USD 1m"
+        try:
+            hist=fetch_binance_vision_history(TRAIN_CANDLES)
+            source="Binance Vision BTCUSDT 1m + taker flow"
+        except Exception as primary_error:
+            print("[ML-SOURCE-FALLBACK] "+json.dumps({"primary":"Binance Vision","error":str(primary_error),"fallback":"Coinbase"}),flush=True)
+            hist=fetch_coinbase_history(TRAIN_CANDLES)
+            source="Coinbase Exchange BTC-USD 1m · neutral micro fallback"
         m1=train_horizon(make_dataset(hist,1,.04),1); m5=train_horizon(make_dataset(hist,5,.10),5)
         payload={"version":APP_VERSION,"features":FEATURES,"trainedAt":int(time.time()*1000),"historyRows":len(hist),"source":source,"models":{"m1":m1,"m5":m5}}
         tmp=MODEL_PATH.with_suffix(".tmp"); joblib.dump(payload,tmp); os.replace(tmp,MODEL_PATH)
@@ -276,9 +381,24 @@ def frame_from_body(candles):
     if len(candles)<220: raise HTTPException(400,"need at least 220 M1 candles")
     rows=[x.model_dump() for x in candles]
     idx=pd.to_datetime([int(x["time"]) for x in rows],unit="ms",utc=True)
-    df=pd.DataFrame({"open":[x["open"] for x in rows],"high":[x["high"] for x in rows],"low":[x["low"] for x in rows],
-                     "close":[x["close"] for x in rows],"volume":[float(x.get("volume") or 0) for x in rows]},index=idx).sort_index()
-    return df[~df.index.duplicated(keep="last")]
+    df=pd.DataFrame({
+        "open":[x["open"] for x in rows],"high":[x["high"] for x in rows],"low":[x["low"] for x in rows],
+        "close":[x["close"] for x in rows],"volume":[float(x.get("volume") or 0) for x in rows],
+        "quote_volume":[float(x.get("quote_volume") or 0) for x in rows],
+        "trades":[float(x.get("trades") or 0) for x in rows],
+        "taker_buy_base":[float(x.get("taker_buy_base") or 0) for x in rows],
+        "taker_buy_quote":[float(x.get("taker_buy_quote") or 0) for x in rows]
+    },index=idx).sort_index()
+    df=df[~df.index.duplicated(keep="last")]
+    # Main-app fallback candles do not carry Binance taker fields: keep them neutral,
+    # never synthesize directional flow.
+    missing_micro=(df["quote_volume"]<=0).all() or (df["trades"]<=0).all()
+    if missing_micro:
+        df["quote_volume"]=df["volume"]*df["close"]
+        df["trades"]=0.0
+        df["taker_buy_base"]=df["volume"]*.5
+        df["taker_buy_quote"]=df["quote_volume"]*.5
+    return df
 
 def predict_h(model,x):
     px=float(model["xgb"].predict_proba(x)[0,1]); pl=float(model["lgb"].predict_proba(x)[0,1]); w=model["weights"]
@@ -307,13 +427,19 @@ def train():
 def predict(body:PredictBody):
     if not MODELS: load_model()
     if not MODELS: return {"ok":False,"status":STATE["status"],"reason":"model_not_ready","state":STATE}
-    f=build_features(frame_from_body(body.candles)).dropna(subset=FEATURES)
+    live_source="Binance Vision BTCUSDT 1m + taker flow"
+    try:
+        live_df=get_live_binance_frame()
+    except Exception as e:
+        live_source="main-app candle fallback · neutral micro"
+        live_df=frame_from_body(body.candles)
+    f=build_features(live_df).dropna(subset=FEATURES)
     if f.empty: raise HTTPException(400,"insufficient feature history")
     x=f[FEATURES].iloc[[-1]].astype(float).to_numpy()
     m1=predict_h(MODELS["models"]["m1"],x); m5=predict_h(MODELS["models"]["m5"],x)
     aligned=m1["leanSide"]==m5["leanSide"]; consensus=m1["leanSide"] if aligned else (m1["leanSide"] if m1["edge"]>=m5["edge"] else m5["leanSide"])
     return {"ok":True,"version":APP_VERSION,"status":STATE["status"],"trainedAt":MODELS.get("trainedAt"),"source":MODELS.get("source"),
-            "historyRows":MODELS.get("historyRows"),"oneMinute":m1,"fiveMinute":m5,
+            "liveSource":live_source,"historyRows":MODELS.get("historyRows"),"oneMinute":m1,"fiveMinute":m5,
             "consensus":{"side":consensus,"aligned":aligned,"confidence":max(0,min(90,round(m1["confidence"]*.55+m5["confidence"]*.45+(5 if aligned else -6)))),
                          "ready":bool(m1["ready"] and m5["ready"])},
             "shadow":not (m1["ready"] or m5["ready"])}
