@@ -80,6 +80,15 @@ function AssetCard({x,fast}:any){
   const master=x.master||{action:x.action,state:x.phase||'WAIT',reason:''},hunt=x.huntForecast,trade=x.trade;
   const buy=master.action==='BUY',sell=master.action==='SELL';
   const waveHot=fast?.ok&&['WAVE_FORMING','IGNITION'].includes(String(fast.stage));
+  const scalpLong=Number(x.scalp?.score?.long||0),scalpShort=Number(x.scalp?.score?.short||0);
+  const scalpSide=x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:scalpLong>scalpShort?'BUY':scalpShort>scalpLong?'SELL':'WAIT';
+  const scalpStrength=calibrated(Math.max(scalpLong,scalpShort));
+  const m1=x.indicatorMatrix?.rows?.m1,m5=x.indicatorMatrix?.rows?.m5;
+  const signalRows=[
+    {label:'Scalp',side:scalpSide,strength:scalpStrength},
+    {label:'1 min',side:m1?.bias||'WAIT',strength:calibrated(m1?.strength)},
+    {label:'5 min',side:m5?.bias||'WAIT',strength:calibrated(m5?.strength)}
+  ];
   return <section className={"panel ai-asset-card "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
       <div><span className="eyebrow">{x.asset} · MASTER</span><h2>{buy?'شراء':sell?'بيع':'ترقب الحركة'}</h2></div>
@@ -90,6 +99,13 @@ function AssetCard({x,fast}:any){
       <div><small>السعر</small><strong>{fmt(x.livePulse?.price??x.price,2)}</strong></div>
       <div><small>الحالة</small><strong>{master.state||'WAIT'}</strong></div>
       <div><small>الثقة</small><strong>{calibrated(x.confidence)}</strong></div>
+    </div>
+
+    <div className="quick-signals">
+      {signalRows.map((s:any)=><div className="quick-signal-row" key={s.label}>
+        <span>{s.label}</span>
+        <strong className={s.side==='BUY'?'green':s.side==='SELL'?'red':'amber'}>{sideAr(s.side)} <b>%{s.strength}</b></strong>
+      </div>)}
     </div>
 
     <div className="master-box">
