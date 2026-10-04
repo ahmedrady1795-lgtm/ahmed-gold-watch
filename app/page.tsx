@@ -111,11 +111,11 @@ export default function Home(){
   useEffect(()=>{
     let closed=false,ws:WebSocket|null=null,reconnect:ReturnType<typeof setTimeout>|undefined,lastWsTick=0;
     const loadBtc=async()=>{try{
-      const r=await fetch('/api/btc?source=coinbase&ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}}),j=await r.json();
+      const r=await fetch('/api/btc?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}}),j=await r.json();
       const p=Number(j?.price),at=Number(j?.sourceTime)||Number(j?.fetchedAt)||Date.now();
       if(!closed&&r.ok&&j?.ok&&Number.isFinite(p)&&p>0&&Date.now()-lastWsTick>4000){setBtc(p);setBtcAt(at);setBtcSource(String(j?.source||'Coinbase'));}
-      else if(!closed&&!r.ok&&Date.now()-lastWsTick>4000){setBtc(null);setBtcAt(0);setBtcSource('Coinbase unavailable');}
-    }catch{if(!closed&&Date.now()-lastWsTick>4000){setBtc(null);setBtcAt(0);setBtcSource('Coinbase unavailable');}}};
+      else if(!closed&&!r.ok&&Date.now()-lastWsTick>4000){setBtc(null);setBtcAt(0);setBtcSource('BTC feed unavailable');}
+    }catch{if(!closed&&Date.now()-lastWsTick>4000){setBtc(null);setBtcAt(0);setBtcSource('BTC feed unavailable');}}};
     const connect=()=>{
       if(closed)return;
       ws=new WebSocket('wss://ws-feed.exchange.coinbase.com');
@@ -200,7 +200,7 @@ export default function Home(){
       </div>
       <div className="tickerstrip">
         <div><small>{source.includes('Binance')?'XAUUSDT · عقد بديل':'XAU/USD'}</small><b>{fmt(quote?.price)}</b><em className={live?'up':'muted'}>{!marketOpen?'CLOSED':live?'LIVE':'WAIT'}</em></div>
-        <div><small>BTC/USD · {btcSource.includes('Coinbase')?'COINBASE WS':'WAIT'}</small><b>{fmt(btc,2)}</b><em className={btcAt&&now-btcAt<5000?'up':'muted'}>{btcAt&&now-btcAt<5000?'TICK LIVE':'WAIT'}</em></div>
+        <div><small>BTC/USD · {btcSource||'WAIT'}</small><b>{fmt(shownBtc,2)}</b><em className={shownBtcAt&&now-shownBtcAt<15000?'up':'muted'}>{shownBtcAt&&now-shownBtcAt<15000?'LIVE':'WAIT'}</em></div>
       </div>
       <button className="refresh" onClick={()=>void load()} disabled={busy}><RefreshCw size={17} className={busy?'spin':''}/><span>{busy?'تحديث':'تحديث'}</span></button>
     </header>
