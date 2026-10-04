@@ -679,7 +679,9 @@ def predict(body:PredictBody):
         raise HTTPException(400,"insufficient feature history")
     x1=f[M1_FEATURES].dropna().iloc[[-1]].astype(float).to_numpy()
     x5=f[M5_FEATURES].dropna().iloc[[-1]].astype(float).to_numpy()
-    m1=predict_h(MODELS["models"]["m1"],x1); m5=predict_m5(MODELS["models"]["m5"],x5)
+    m1=predict_h(MODELS["models"]["m1"],x1)
+    m5_model=MODELS["models"]["m5"]
+    m5=predict_m5(m5_model,x5) if m5_model.get("mode")=="m5_multiclass" else predict_h(m5_model,x5)
     aligned=m1["leanSide"]==m5["leanSide"]; consensus=m1["leanSide"] if aligned else (m1["leanSide"] if m1["edge"]>=m5["edge"] else m5["leanSide"])
     return {"ok":True,"version":APP_VERSION,"status":STATE["status"],"trainedAt":MODELS.get("trainedAt"),"source":MODELS.get("source"),
             "liveSource":live_source,"liveError":live_error,"historyRows":MODELS.get("historyRows"),"oneMinute":m1,"fiveMinute":m5,
