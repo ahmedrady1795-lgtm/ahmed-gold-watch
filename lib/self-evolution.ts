@@ -94,7 +94,18 @@ async function load(asset:string,stateGraph:any){
   await fs.writeFile(file,JSON.stringify(store,null,2));
   return {root,file,store,regime};
 }
-async function save(file:string,store:EvolutionStore){const tmp=file+'.tmp';await fs.writeFile(tmp,JSON.stringify(store,null,2));await fs.rename(tmp,file);}
+const saveQueues=new Map<string,Promise<void>>();
+async function save(file:string,store:EvolutionStore){
+  const snapshot=JSON.stringify(store,null,2);
+  const prev=saveQueues.get(file)||Promise.resolve();
+  const next=prev.catch(()=>{}).then(async()=>{
+    const tmp=file+'.'+process.pid+'.'+Date.now()+'.'+Math.random().toString(36).slice(2)+'.tmp';
+    await fs.writeFile(tmp,snapshot);
+    await fs.rename(tmp,file);
+  });
+  saveQueues.set(file,next);
+  try{await next;}finally{if(saveQueues.get(file)===next)saveQueues.delete(file);}
+}
 
 function reliability(learning:any,name:string){
   const r=learning?.componentReliability?.[name];if(!r)return 50;
