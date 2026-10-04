@@ -1,3 +1,5 @@
+import {commitDirection} from './direction-commitment';
+
 type Side='BUY'|'SELL'|'WAIT';
 
 const cap=(n:number,a=0,b=100)=>Math.max(a,Math.min(b,n));
@@ -33,6 +35,20 @@ function tickStrength(tick:any){
   const score=cap(Number(tick?.score||0)*.62+Number(tick?.confidence||0)*.38,0,90);
   return {side:s,score,confidence:cap(Number(tick?.confidence||0),0,90),stage:String(tick?.stage||'WARMING')};
 }
+function liveReliability(live:any,primary:string,fallback:string){
+  const p=live?.bySource?.[primary]||{},f=live?.bySource?.[fallback]||{};
+  const pn=Number(p?.hits||0)+Number(p?.fails||0),fn=Number(f?.hits||0)+Number(f?.fails||0);
+  const source=pn>=6?primary:fn>=8?fallback:pn>0?primary:fallback;
+  const s=source===primary?p:f;
+  const n=Number(s?.hits||0)+Number(s?.fails||0);
+  const posterior=Number(s?.posteriorAccuracy||50);
+  const wf=live?.walkForwardBySource?.[source]||{};
+  const wfN=Number(wf?.oos?.n||0),wfAcc=Number(wf?.oos?.accuracy);
+  const score=cap(wfN>=10&&Number.isFinite(wfAcc)?posterior*.45+wfAcc*.55:posterior,35,68);
+  const multiplier=cap(.90+(score-50)/80,.76,1.16);
+  return {source,n,posterior:Number(posterior.toFixed(1)),wfN,wfAccuracy:Number.isFinite(wfAcc)?Number(wfAcc.toFixed(1)):null,score:Number(score.toFixed(1)),multiplier:Number(multiplier.toFixed(3)),status:String(wf?.status||'COLLECTING'),drift:String(wf?.drift?.status||'COLLECTING')};
+}
+
 function preMoveSignal(liq:any,motion:any,tick:any){
   const q=cap(Number(liq?.quality||0),0,100),pressure=Number(liq?.pressure||0),micro=Number(liq?.book?.microEdge||0);
   const accel=Number(liq?.dynamics?.acceleration||0),delta=Number(liq?.flow?.deltaPct||0),priceBps=Number(liq?.flow?.priceChangeBps||0);
@@ -59,9 +75,15 @@ function preMoveSignal(liq:any,motion:any,tick:any){
   const support=sideOut==='BUY'?supportBuy:sideOut==='SELL'?supportSell:0;
   const tickVelocity3=Math.abs(Number(tick?.velocity3s||0));
   const priceStillCoiled=Math.abs(priceBps)<=2.6&&tickVelocity3<=3.8;
-  const armed=Boolean(sideOut!=='WAIT'&&priceStillCoiled&&score>=52&&support>=3&&(precursorCount>=2||compression>=60||t.side===sideOut));
+  const lateMomentum=Math.abs(priceBps)>3.2||tickVelocity3>4.8;
+  const armed=Boolean(sideOut!=='WAIT'&&priceStillCoiled&&!lateMomentum&&score>=52&&support>=3&&(precursorCount>=2||compression>=60||t.side===sideOut));
   const ignition=Boolean(sideOut!=='WAIT'&&(motionStage==='IGNITION'||(t.stage==='IGNITION'&&t.side===sideOut)));
-  return {side:sideOut,score:Number(score.toFixed(1)),gap:Number(gap.toFixed(1)),support,armed,ignition,priceStillCoiled,quality:q,pressure:Number(pressure.toFixed(1)),microEdge:Number(micro.toFixed(1)),acceleration:Number(accel.toFixed(1)),deltaPct:Number(delta.toFixed(1)),priceChangeBps:Number(priceBps.toFixed(2)),compression,precursorCount,tickSide:t.side,tickStage:t.stage,tickScore:Number(t.score.toFixed(1))};
+  const persistence=Number(tick?.persistence||0);
+  const etaSeconds=sideOut==='WAIT'?null:Math.round(cap(
+    27-Math.min(9,Math.abs(accel)*.32)-Math.min(7,Math.max(0,persistence-50)*.12)-Math.min(5,Math.max(0,compression-50)*.08),
+    4,30
+  ));
+  return {side:sideOut,score:Number(score.toFixed(1)),gap:Number(gap.toFixed(1)),support,armed,ignition,priceStillCoiled,lateMomentum,etaSeconds,quality:q,pressure:Number(pressure.toFixed(1)),microEdge:Number(micro.toFixed(1)),acceleration:Number(accel.toFixed(1)),deltaPct:Number(delta.toFixed(1)),priceChangeBps:Number(priceBps.toFixed(2)),compression,precursorCount,tickSide:t.side,tickStage:t.stage,tickScore:Number(t.score.toFixed(1))};
 }
 
 export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,price:number|null,atr:number|null,liveOutcome:any=null,tick:any=null){
@@ -74,6 +96,8 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const ml1=mlStrength(ml);
   const tick1=tickStrength(tick);
   const preMove=preMoveSignal(liq,motion,tick);
+  const confirmedReliability=liveReliability(liveOutcome,'SCALP_CONFIRMED_V5','SCALP_CONFIRMED_V4');
+  const preMoveReliability=liveReliability(liveOutcome,'SCALP_PREMOVE_WATCH_V5','SCALP_PREMOVE_WATCH_V4');
   const learnedSide:Side=learner?.ok&&learner?.gate?.passed?side(learner?.side):'WAIT';
   const learnedScore=learnedSide==='WAIT'?0:cap(Number(learner?.confidence||0)*.55+Number(learner?.oosAccuracy||0)*.45,0,82);
 
@@ -97,7 +121,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     {name:'TRAP',side:trapSide,score:trapScore,weight:weights.trap},
     {name:'LEARNED',side:learnedSide,score:learnedScore,weight:weights.learn},
     {name:'TICK',side:tick1.side,score:tick1.score,weight:weights.tick},
-    {name:'PREMOVE',side:preMove.side,score:preMove.score,weight:weights.premove}
+    {name:'PREMOVE',side:preMove.side,score:preMove.score,weight:weights.premove*preMoveReliability.multiplier}
   ].filter(x=>x.side!=='WAIT'&&x.score>0);
 
   let buy=0,sell=0;
@@ -136,13 +160,23 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const activeWeight=Math.max(.01,rows.reduce((s,r)=>s+r.weight,0));
   const buyEvidence=cap(buy/activeWeight,0,92),sellEvidence=cap(sell/activeWeight,0,92);
   const dominantEvidence=Math.max(buyEvidence,sellEvidence);
-  const fusedSide:Side=edge>=4&&dominantEvidence>=28?(buy>sell?'BUY':'SELL'):'WAIT';
-  const support=rows.filter(r=>r.side===fusedSide).length;
-  const opposition=rows.filter(r=>fusedSide!=='WAIT'&&r.side!==fusedSide).length;
-  const liveSupport=[liqSide,motionSide,trapSide,ml1.side,tick1.side,preMove.side].filter(s=>s!=='WAIT'&&s===fusedSide).length;
-  const liveOpposition=[liqSide,motionSide,trapSide,ml1.side,tick1.side,preMove.side].filter(s=>s!=='WAIT'&&fusedSide!=='WAIT'&&s!==fusedSide).length;
-  const preMoveAligned=Boolean(preMove.armed&&preMove.side===fusedSide);
-  const tickAligned=Boolean(tick1.side===fusedSide&&tick1.score>=44);
+  const rawFusedSide:Side=edge>=4&&dominantEvidence>=28?(buy>sell?'BUY':'SELL'):'WAIT';
+  const rawSupport=rows.filter(r=>r.side===rawFusedSide).length;
+  const rawOpposition=rows.filter(r=>rawFusedSide!=='WAIT'&&r.side!==rawFusedSide).length;
+  const rawLiveSupport=[liqSide,motionSide,trapSide,ml1.side,tick1.side,preMove.side].filter(s=>s!=='WAIT'&&s===rawFusedSide).length;
+  const rawLiveOpposition=[liqSide,motionSide,trapSide,ml1.side,tick1.side,preMove.side].filter(s=>s!=='WAIT'&&rawFusedSide!=='WAIT'&&s!==rawFusedSide).length;
+  const commitment=commitDirection(
+    'BTC_SCALP_FUSION_V5',buyEvidence,sellEvidence,Date.now(),
+    {side:tick1.side,stage:tick1.stage,score:tick1.score,confidence:tick1.confidence}
+  );
+  const flipSuppressed=Boolean(rawFusedSide!=='WAIT'&&commitment.side!=='WAIT'&&commitment.side!==rawFusedSide);
+  const fusedSide:Side=flipSuppressed?'WAIT':rawFusedSide;
+  const support=fusedSide==='WAIT'?0:rawSupport;
+  const opposition=fusedSide==='WAIT'?rawOpposition:rawOpposition;
+  const liveSupport=fusedSide==='WAIT'?0:rawLiveSupport;
+  const liveOpposition=fusedSide==='WAIT'?rawLiveOpposition:rawLiveOpposition;
+  const preMoveAligned=Boolean(fusedSide!=='WAIT'&&preMove.armed&&preMove.side===fusedSide);
+  const tickAligned=Boolean(fusedSide!=='WAIT'&&tick1.side===fusedSide&&tick1.score>=44);
   const mlConflict=Boolean(ml1.side!=='WAIT'&&fusedSide!=='WAIT'&&ml1.side!==fusedSide);
 
   const scalpWf=liveOutcome?.walkForward||{};
@@ -151,6 +185,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const scalpPrecisionGuard=Boolean(scalpOosN>=10&&(scalpWfStatus==='WATCH'||scalpDrift==='DEGRADING'||(Number.isFinite(scalpOosAcc)&&scalpOosAcc<53)));
   const scalpSevereDrift=Boolean(scalpOosN>=10&&scalpDrift==='DEGRADING'&&Number(scalpWf?.drift?.delta||0)<=-15);
 
+  const activeReliability=preMoveAligned?preMoveReliability:confirmedReliability;
   let confidence=cap(dominantEvidence*.54+edge*.18+support*2.4+liveSupport*3.1-liveOpposition*4.4,10,88);
   if(preMoveAligned)confidence+=5;
   if(preMove.ignition&&preMove.side===fusedSide)confidence+=3;
@@ -161,10 +196,13 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   if(scalpWfStatus==='WATCH'&&scalpOosN>=10)confidence-=4;
   if(scalpDrift==='DEGRADING'&&scalpOosN>=10)confidence-=7;
   if(Number.isFinite(scalpOosAcc)&&scalpOosN>=10&&scalpOosAcc<50)confidence-=4;
+  if(activeReliability.n>=6)confidence+=cap((activeReliability.score-50)*.16,-4,4);
+  if(flipSuppressed)confidence-=12;
   confidence=Math.round(cap(confidence,10,88));
 
-  const strongEdge=scalpSevereDrift?20:scalpPrecisionGuard?16:14;
-  const strongEvidence=scalpSevereDrift?66:scalpPrecisionGuard?62:58;
+  const reliabilityPenalty=activeReliability.n>=6?(activeReliability.score<48?7:activeReliability.score<52?4:activeReliability.score<55?2:activeReliability.score>=60?-2:0):0;
+  const strongEdge=(scalpSevereDrift?20:scalpPrecisionGuard?16:14)+reliabilityPenalty;
+  const strongEvidence=(scalpSevereDrift?66:scalpPrecisionGuard?62:58)+Math.max(0,reliabilityPenalty*.7);
   const classicStrong=Boolean(
     fusedSide!=='WAIT'&&edge>=strongEdge&&dominantEvidence>=strongEvidence&&support>=2&&
     (liveSupport>=2||(ml1.side===fusedSide&&liqSide===fusedSide)||(trapSide===fusedSide&&trapScore>=68))&&
@@ -174,13 +212,21 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     fusedSide!=='WAIT'&&preMoveAligned&&fastPair&&edge>=12&&dominantEvidence>=56&&support>=2&&liveSupport>=3&&
     (!mlConflict||edge>=20||preMove.score>=68)&&
     (!scalpPrecisionGuard||edge>=18)&&
-    (!scalpSevereDrift||liveOpposition===0)
+    (!scalpSevereDrift||liveOpposition===0)&&
+    !preMove.lateMomentum&&
+    (preMoveReliability.n<8||preMoveReliability.score>=48||edge>=24)
   );
-  const strong=classicStrong||anticipatoryStrong;
+  const chaseRisk=Boolean(
+    fusedSide!=='WAIT'&&preMove.lateMomentum&&mode!=='REVERSAL'&&
+    !(trapSide===fusedSide&&trapScore>=68)
+  );
+  const rawStrong=classicStrong||anticipatoryStrong;
+  const strong=Boolean(rawStrong&&!chaseRisk&&!flipSuppressed);
   const earlyWatch=Boolean(
     fusedSide!=='WAIT'&&preMoveAligned&&edge>=8&&dominantEvidence>=42&&support>=2&&liveSupport>=2&&liveOpposition<=1
   );
-  const watch=Boolean(fusedSide!=='WAIT'&&((edge>=6&&dominantEvidence>=46&&support>=2)||earlyWatch));
+  const lateWatch=Boolean(rawStrong&&chaseRisk);
+  const watch=Boolean(fusedSide!=='WAIT'&&((edge>=6&&dominantEvidence>=46&&support>=2)||earlyWatch||lateWatch));
   const action:Side=strong||watch?fusedSide:'WAIT';
   const state=strong?'setup':watch?'watch':'wait';
 
@@ -190,7 +236,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     const dir=fusedSide==='BUY'?1:-1;
     const risk=a*(mode==='BREAKOUT'||mode==='MOMENTUM'?.48:mode==='REVERSAL'?.42:.45);
     const rr=mode==='BREAKOUT'?1.35:mode==='MOMENTUM'?1.30:mode==='REVERSAL'?1.20:1.24;
-    trade={mode:'scalp-fusion-v4-'+(anticipatoryStrong?'premove-':'')+mode.toLowerCase(),side:fusedSide==='BUY'?'buy':'sell',entry:p,sl:p-dir*risk,tp:p+dir*risk*rr,rr,score:confidence,validForSeconds:anticipatoryStrong?24:35,time:Date.now()};
+    trade={mode:'scalp-fusion-v5-'+(anticipatoryStrong?'premove-':'')+mode.toLowerCase(),side:fusedSide==='BUY'?'buy':'sell',entry:p,sl:p-dir*risk,tp:p+dir*risk*rr,rr,score:confidence,validForSeconds:anticipatoryStrong?20:32,time:Date.now()};
   }
 
   const outLong=Math.round(cap(buyEvidence+Math.max(0,buyShare-50)*.16,0,92));
@@ -200,22 +246,37 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   return {
     ...raw,
     state,action,
-    title:action==='BUY'?'M1 PRE-MOVE SCALP · BUY':action==='SELL'?'M1 PRE-MOVE SCALP · SELL':'M1 PRE-MOVE SCALP · WAIT',
+    title:action==='BUY'?'M1 PRE-MOVE SCALP V5 · BUY':action==='SELL'?'M1 PRE-MOVE SCALP V5 · SELL':'M1 PRE-MOVE SCALP V5 · WAIT',
     reason:action==='WAIT'
-      ?'Scalp Fusion v4: لا يوجد ضغط استباقي حي كافٍ قبل الحركة.'
-      :`Scalp Fusion v4 · ${fusedSide} · edge ${edge.toFixed(1)} · ${support} دعم / ${opposition} معارضة${preMoveAligned?' · PRE-MOVE ARMED':''}${anticipatoryStrong?' · EARLY SETUP':''}${changed?' · microstructure غيّر الميل الفني':''}.`,
+      ?`Scalp Fusion v5: لا توجد أفضلية تنفيذية كافية الآن${flipSuppressed?' · FLIP FILTER':''}.`
+      :`Scalp Fusion v5 · ${fusedSide} · edge ${edge.toFixed(1)} · ${support} دعم / ${opposition} معارضة${preMoveAligned?' · PRE-MOVE ARMED':''}${anticipatoryStrong?' · EARLY SETUP':''}${chaseRisk?' · LATE-ENTRY GUARD':''}${changed?' · microstructure غيّر الميل الفني':''}.`,
     score:{long:outLong,short:outShort,threshold:58},
     confidence,
     trade,
     early:state==='watch'||anticipatoryStrong,
     preMove,
-    fusionV4:{
-      side:fusedSide,confidence,strong,classicStrong,anticipatoryStrong,watch,earlyWatch,
+    fusionV5:{
+      side:fusedSide,rawSide:rawFusedSide,confidence,strong,rawStrong,classicStrong,anticipatoryStrong,watch,earlyWatch,lateWatch,chaseRisk,flipSuppressed,commitment,
+      reliability:{active:activeReliability,confirmed:confirmedReliability,premove:preMoveReliability,reliabilityPenalty},
+      ignitionEtaSeconds:preMove.etaSeconds,
       buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
       buyEvidence:Number(buyEvidence.toFixed(1)),sellEvidence:Number(sellEvidence.toFixed(1)),dominantEvidence:Number(dominantEvidence.toFixed(1)),
       support,opposition,liveSupport,liveOpposition,
       techSide,liqSide,motionSide,trapSide,mlSide:ml1.side,learnedSide,tickSide:tick1.side,
       techL2Conflict,livePair,fastPair,preMoveAligned,tickAligned,mlConflict,mode,
+      oos:{status:scalpWfStatus,n:scalpOosN,accuracy:Number.isFinite(scalpOosAcc)?scalpOosAcc:null,drift:scalpDrift,precisionGuard:scalpPrecisionGuard,severeDrift:scalpSevereDrift,strongEdge,strongEvidence},
+      components:rows.map(r=>({name:r.name,side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight}))
+    },
+    // Compatibility aliases while downstream layers migrate to v5.
+    fusionV4:{
+      side:fusedSide,rawSide:rawFusedSide,confidence,strong,rawStrong,classicStrong,anticipatoryStrong,watch,earlyWatch,lateWatch,chaseRisk,flipSuppressed,commitment,
+      buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
+      buyEvidence:Number(buyEvidence.toFixed(1)),sellEvidence:Number(sellEvidence.toFixed(1)),dominantEvidence:Number(dominantEvidence.toFixed(1)),
+      support,opposition,liveSupport,liveOpposition,
+      techSide,liqSide,motionSide,trapSide,mlSide:ml1.side,learnedSide,tickSide:tick1.side,
+      techL2Conflict,livePair,fastPair,preMoveAligned,tickAligned,mlConflict,mode,
+      reliability:{active:activeReliability,confirmed:confirmedReliability,premove:preMoveReliability,reliabilityPenalty},
+      ignitionEtaSeconds:preMove.etaSeconds,
       oos:{status:scalpWfStatus,n:scalpOosN,accuracy:Number.isFinite(scalpOosAcc)?scalpOosAcc:null,drift:scalpDrift,precisionGuard:scalpPrecisionGuard,severeDrift:scalpSevereDrift,strongEdge,strongEvidence},
       components:rows.map(r=>({name:r.name,side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight}))
     },
