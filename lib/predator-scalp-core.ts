@@ -1,5 +1,5 @@
 export type PredatorSide='BUY'|'SELL'|'WAIT';
-export type PredatorPhase='HUNT'|'TRACK'|'AMBUSH'|'ATTACK'|'ABORT'|'COOLDOWN';
+export type PredatorPhase='HUNT'|'TRACK'|'AMBUSH'|'ABORT'|'COOLDOWN';
 
 type Observation={
   at:number;price:number;side:PredatorSide;edge:number;evidence:number;liveSupport:number;liveOpposition:number;
@@ -58,7 +58,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   if(o.side==='WAIT'){
     if(now-st.candidateSince>3500){st.candidate='WAIT';st.stableCount=0;}
     r.states[key]=st;
-    return {version:'predator-scalp-v7',phase:'HUNT' as PredatorPhase,side:'WAIT' as PredatorSide,score:0,attack:false,watch:false,
+    return {version:'ambush-core-v9',phase:'HUNT' as PredatorPhase,side:'WAIT' as PredatorSide,score:0,attack:false,watch:false,
       pattern:'NO_EDGE',stableCount:st.stableCount,ageMs:0,reasons:['لا يوجد اتجاه حي متماسك'],cooldownMs:Math.max(0,st.cooldownUntil-now)};
   }
 
@@ -177,13 +177,12 @@ export function evaluatePredatorScalp(asset:string,input:any){
   const inCooldown=now<st.cooldownUntil;
 
   const temporalReady=Boolean(st.stableCount>=2&&ageMs>=700&&persistence>=.66&&opposite.length<=1);
-  // Shock patterns may reach AMBUSH quickly, but ATTACK still needs minimum temporal evidence.
-  // This prevents one-snapshot trap/premove spikes from bypassing persistence confirmation.
+  // Strong helper patterns may support AMBUSH quickly, but they never become an independent trade authority.
   const shockTemporalReady=Boolean(st.stableCount>=2&&ageMs>=500&&persistence>=.75&&opposite.length===0);
   const shockReady=Boolean((pattern==='TRAP_REVERSAL'||pattern==='PREMOVE_AMBUSH')&&score>=84&&hardOpposition===0&&shockTemporalReady);
-  const attackPattern=['PREMOVE_AMBUSH','TRAP_REVERSAL','COMPRESSION_BREAK','BREAKOUT_PRELOAD','FLOW_AMBUSH'].includes(pattern);
+  const assistPattern=['PREMOVE_AMBUSH','TRAP_REVERSAL','COMPRESSION_BREAK','BREAKOUT_PRELOAD','FLOW_AMBUSH'].includes(pattern);
   const attackAssist=Boolean(
-    !inCooldown&&!o.late&&!microExhausted&&attackPattern&&score>=74&&hardOpposition===0&&
+    !inCooldown&&!o.late&&!microExhausted&&assistPattern&&score>=74&&hardOpposition===0&&
     o.liveOpposition===0&&microReady&&compressionMicroReady&&(temporalReady||shockReady)
   );
   // AMBUSH is the single early-warning scalp: it may arm before ATTACK, but it must be coherent.
@@ -236,7 +235,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   if(hardOpposition)reasons.push('OPPOSITION_'+hardOpposition);
 
   return {
-    version:'predator-scalp-v8-ambush',phase,side:o.side,score:Math.round(score),attack:false,attackAssist,watch,ambush,pattern,
+    version:'ambush-core-v9',phase,side:o.side,score:Math.round(score),attack:false,attackAssist,watch,ambush,pattern,
     stableCount:st.stableCount,ageMs,persistence:Number(persistence.toFixed(2)),edgeSlope:Number(edgeSlope.toFixed(1)),
     evidenceSlope:Number(evidenceSlope.toFixed(1)),hardOpposition,temporalReady,shockReady,ambushTemporal,inCooldown,
     microstructure:{
