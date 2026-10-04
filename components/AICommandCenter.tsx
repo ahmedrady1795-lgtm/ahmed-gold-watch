@@ -139,22 +139,25 @@ function AssetCard({x,fast}:any){
   const buy=displaySide==='BUY',sell=displaySide==='SELL';
   const masterState=String(master?.state||'').toUpperCase();
   const scalpLong=Number(x.scalp?.score?.long||0),scalpShort=Number(x.scalp?.score?.short||0);
-  const scalpSide=x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:scalpLong>scalpShort?'BUY':scalpShort>scalpLong?'SELL':'WAIT';
+  const predator=x.scalp?.fusionV7?.predator;
+  const predatorPhase=String(predator?.phase||'HUNT');
+  const predatorActive=predatorPhase==='AMBUSH'||predatorPhase==='ATTACK';
+  const scalpSide=predator
+    ?(predatorActive&&(x.scalp?.action==='BUY'||x.scalp?.action==='SELL')?x.scalp.action:'WAIT')
+    :(x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:'WAIT');
   const fastUsable=Boolean(
     fast?.ok&&['PRE_TRIGGER','WAVE_FORMING','IGNITION'].includes(String(fast?.stage))&&
     (fast?.side==='BUY'||fast?.side==='SELL')&&Number(fast?.confidence||0)>=34
   );
-  const liveScalpSide=fastUsable?fast.side:scalpSide;
-  const scalpStrength=calibrated(fastUsable?Math.max(Number(fast?.confidence||0),Math.max(scalpLong,scalpShort)):Math.max(scalpLong,scalpShort));
+  const liveScalpSide=scalpSide;
+  const scalpStrength=calibrated(predator?Number(predator?.score||0):Number(x.scalp?.confidence||Math.max(scalpLong,scalpShort)));
   const m1=x.indicatorMatrix?.rows?.m1,m5=x.indicatorMatrix?.rows?.m5;
   const quickTargets=hunt?.quickSignalTargets||{};
   const neuralPath=x.neuralCore?.pricePath;
   const neuralPathReady=Boolean(neuralPath?.ready);
-  const scalpTargetPrice=x.scalp?.target?.price??quickTargets?.scalp?.price??null;
-  const predator=x.scalp?.fusionV7?.predator;
-  const predatorPhase=String(predator?.phase||'HUNT');
+  const scalpTargetPrice=x.scalp?.target?.price??quickTargets?.scalp?.price??x.scalp?.intercept?.launchLine??null;
   const signalRows=[
-    {label:x.scalp?.fusionV7?('Scalp '+predatorPhase):(fastUsable?'Scalp FAST':'Scalp'),side:neuralPathReady?(neuralPath?.side||liveScalpSide):liveScalpSide,strength:scalpStrength,target:neuralPathReady?neuralPath?.firstTarget:scalpTargetPrice},
+    {label:x.scalp?.fusionV7?('Scalp '+predatorPhase):'Scalp',side:liveScalpSide,strength:scalpStrength,target:scalpTargetPrice},
     {label:'1m',side:m1?.bias||'WAIT',strength:calibrated(m1?.strength),target:quickTargets?.oneMinute?.price},
     {label:'5m',side:m5?.bias||'WAIT',strength:calibrated(m5?.strength),target:quickTargets?.fiveMinute?.price}
   ];
@@ -187,9 +190,9 @@ function AssetCard({x,fast}:any){
     </div>
 
     {fastUsable&&<div className="next-move-copy">
-      <span>Fast Pre-Trigger</span>
-      <strong className={liveScalpSide==='BUY'?'green':'red'}>{sideAr(liveScalpSide)} · {String(fast?.stage||'PRE_TRIGGER')} · {calibrated(fast?.confidence)}%</strong>
-      <p>Acceleration {fast?.acceleration??0} · Persistence {fast?.persistence??0}% · Burst x{fast?.burstRate??0}. القرار السريع يسبق التحليل الكامل، والهدف القديم يُخفى تلقائيًا إذا تعارض معه.</p>
+      <span>Fast Radar · إنذار فقط</span>
+      <strong className={fast?.side==='BUY'?'green':fast?.side==='SELL'?'red':'amber'}>{sideAr(fast?.side)} · {String(fast?.stage||'PRE_TRIGGER')} · {calibrated(fast?.confidence)}%</strong>
+      <p>Acceleration {fast?.acceleration??0} · Persistence {fast?.persistence??0}% · Burst x{fast?.burstRate??0}. لا يغيّر اتجاه Scalp الرئيسي؛ Predator وحده يرقّي الإشارة إلى AMBUSH/ATTACK.</p>
     </div>}
 
     {x.asset==='BTC'&&x.scalpLive&&(()=>{
