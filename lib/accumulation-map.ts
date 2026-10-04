@@ -2,6 +2,7 @@ import type {Candle} from './engine';
 
 type Side='BUY'|'SELL'|'WAIT';
 type Zone={low:number;high:number;mid:number;touches:number;rejections:number};
+type ReactionZone={side:'BUY'|'SELL';low:number;high:number;mid:number;strength:number;touches:number;rejections:number;volumeScore:number;impulseScore:number;distanceAtr:number;status:'NEAR'|'WATCH'|'FAR';reason:string};
 
 export type AccumulationMap={
   ok:boolean;
@@ -13,6 +14,8 @@ export type AccumulationMap={
   strongMoveSide:Side;
   strongMoveScore:number;
   zone:Zone|null;
+  reactionZones:ReactionZone[];
+  nearestReaction:ReactionZone|null;
   breakoutLevel:number|null;
   breakdownLevel:number|null;
   compression:number;
@@ -55,10 +58,56 @@ function slopes(vals:number[]){
   return n?s/n:0;
 }
 
+
+function buildReactionZones(c:Candle[],p:number,a:number){
+  const pivots:{side:'BUY'|'SELL';price:number;i:number}[]=[];
+  for(let i=2;i<c.length-2;i++){
+    const w=c.slice(i-2,i+3),x=c[i];
+    if(x.low===Math.min(...w.map(v=>v.low)))pivots.push({side:'BUY',price:x.low,i});
+    if(x.high===Math.max(...w.map(v=>v.high)))pivots.push({side:'SELL',price:x.high,i});
+  }
+  const tol=Math.max(a*.28,p*.00018),groups:{side:'BUY'|'SELL';prices:number[];idx:number[]}[]=[];
+  for(const q of pivots){
+    let g=groups.find(z=>z.side===q.side&&Math.abs(avg(z.prices)-q.price)<=tol);
+    if(!g){g={side:q.side,prices:[],idx:[]};groups.push(g);}
+    g.prices.push(q.price);g.idx.push(q.i);
+  }
+  const zones:ReactionZone[]=[];
+  for(const g of groups){
+    if(g.prices.length<2)continue;
+    const mid=avg(g.prices),low=mid-tol*.7,high=mid+tol*.7;
+    let touches=0,rejections=0,volScore=0,impulseScore=0;
+    const vols=c.map(x=>Number(x.tickVolume||x.realVolume||0)).filter(v=>Number.isFinite(v)&&v>0),volBase=vols.length?avg(vols):0;
+    for(let i=0;i<c.length;i++){
+      const x=c[i],hit=g.side==='BUY'?x.low<=high&&x.low>=low-a*.18:x.high>=low&&x.high<=high+a*.18;
+      if(!hit)continue;touches++;
+      const range=Math.max(1e-9,x.high-x.low),closePos=(x.close-x.low)/range;
+      const rejected=g.side==='BUY'?closePos>=.64:closePos<=.36;
+      if(rejected)rejections++;
+      const v=Number(x.tickVolume||x.realVolume||0);
+      if(volBase>0&&v>0)volScore+=Math.min(2.2,v/volBase);
+      const future=c[Math.min(c.length-1,i+3)];
+      if(future){
+        const move=(future.close-x.close)/a*(g.side==='BUY'?1:-1);
+        if(move>0)impulseScore+=Math.min(2,move);
+      }
+    }
+    const distanceAtr=Math.abs(p-mid)/a;
+    const volumeScore=volBase>0?cap(volScore/Math.max(1,touches)*35,0,92):0;
+    const impulse=cap(impulseScore/Math.max(1,touches)*32,0,92);
+    const rejectionRate=rejections/Math.max(1,touches);
+    const strength=Math.round(cap(touches*10+rejectionRate*35+volumeScore*.22+impulse*.28,0,94));
+    if(strength<42)continue;
+    const status:ReactionZone['status']=distanceAtr<=.55?'NEAR':distanceAtr<=1.6?'WATCH':'FAR';
+    zones.push({side:g.side,low:Number(low.toFixed(2)),high:Number(high.toFixed(2)),mid:Number(mid.toFixed(2)),strength,touches,rejections,volumeScore:Math.round(volumeScore),impulseScore:Math.round(impulse),distanceAtr:Number(distanceAtr.toFixed(2)),status,reason:g.side==='BUY'?'منطقة طلب/تجميع تاريخية ذات رفض وارتداد متكرر':'منطقة عرض/تصريف تاريخية ذات رفض وهبوط متكرر'});
+  }
+  return zones.sort((x,y)=>x.distanceAtr-y.distanceAtr||y.strength-x.strength).slice(0,6);
+}
+
 export function buildAccumulationMap(c1:Candle[],c5:Candle[],price:number|null,liquidity:any=null,now=Date.now()):AccumulationMap{
   const m1=c1.filter(x=>x.time+60000<=now).slice(-42);
   const m5=c5.filter(x=>x.time+300000<=now).slice(-24);
-  const empty:AccumulationMap={ok:false,side:'WAIT',phase:'NEUTRAL',accumulationScore:0,distributionScore:0,breakoutReadiness:0,strongMoveSide:'WAIT',strongMoveScore:0,zone:null,breakoutLevel:null,breakdownLevel:null,compression:1,rangePosition:50,higherLowScore:0,lowerHighScore:0,liquidityConfirmed:false,absorptionConfirmed:false,reasons:['بيانات غير كافية لبناء خريطة التجميع.']};
+  const empty:AccumulationMap={ok:false,side:'WAIT',phase:'NEUTRAL',accumulationScore:0,distributionScore:0,breakoutReadiness:0,strongMoveSide:'WAIT',strongMoveScore:0,zone:null,reactionZones:[],nearestReaction:null,breakoutLevel:null,breakdownLevel:null,compression:1,rangePosition:50,higherLowScore:0,lowerHighScore:0,liquidityConfirmed:false,absorptionConfirmed:false,reasons:['بيانات غير كافية لبناء خريطة التجميع.']};
   if(m1.length<28||m5.length<12)return empty;
   const a=atr(m1,14);if(!Number.isFinite(a)||a<=0)return empty;
   const p=Number(price||m1.at(-1)?.close);if(!Number.isFinite(p)||p<=0)return empty;
@@ -127,9 +176,14 @@ export function buildAccumulationMap(c1:Candle[],c5:Candle[],price:number|null,l
   const strongMoveScore=Math.round(cap(Math.max(accumulationScore,distributionScore)*.58+breakoutReadiness*.42,0,90));
 
   const zone:Zone={low:Number(lo.toFixed(2)),high:Number(hi.toFixed(2)),mid:Number(((lo+hi)/2).toFixed(2)),touches:side==='BUY'?lowTouch.touches:highTouch.touches,rejections:side==='BUY'?lowTouch.rejections:highTouch.rejections};
+  const reactionZones=buildReactionZones(m1,p,a),nearestReaction=reactionZones[0]||null;
+  if(nearestReaction&&nearestReaction.status==='NEAR'&&nearestReaction.strength>=65){
+    if(nearestReaction.side==='BUY')add('BUY',Math.min(18,nearestReaction.strength*.18),'السعر يقترب من منطقة طلب تاريخية قوية');
+    else add('SELL',Math.min(18,nearestReaction.strength*.18),'السعر يقترب من منطقة عرض تاريخية قوية');
+  }
 
   return {
-    ok:true,side,phase,accumulationScore,distributionScore,breakoutReadiness,strongMoveSide,strongMoveScore,zone,
+    ok:true,side,phase,accumulationScore,distributionScore,breakoutReadiness,strongMoveSide,strongMoveScore,zone,reactionZones,nearestReaction,
     breakoutLevel:Number(hi.toFixed(2)),breakdownLevel:Number(lo.toFixed(2)),compression:Number(compression.toFixed(2)),rangePosition,higherLowScore,lowerHighScore,
     liquidityConfirmed:liqOk&&liqSide===side,absorptionConfirmed:liqOk&&absorptionSide===side&&absorptionScore>=55,
     reasons:[...new Set(reasons)].slice(0,8)
