@@ -161,8 +161,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   const leanSide:Side=two.buyShare>two.sellShare?'BUY':two.sellShare>two.buyShare?'SELL':'WAIT';
   const softLeanUsable=Boolean(
     rangeMode&&two.side==='WAIT'&&leanSide!=='WAIT'&&
-    two.agreement>=55&&two.confidence>=34&&
-    Number(expected2?.samples||0)>=8&&Number(expected2?.calibration||50)>=54
+    two.agreement>=50.75&&two.confidence>=18
   );
   const finalSide:Side=two.side!=='WAIT'?two.side:softLeanUsable?leanSide:'WAIT';
   const directionalConfidence=Math.round(cap(
@@ -195,7 +194,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   ];
   if(tick?.stage==='IGNITION'||tick?.stage==='WAVE_FORMING')reasons.push('Server tick '+tick.stage+' '+tick.side);
   if(news?.event)reasons.push('News '+String(news.phase||'')+' · '+String(news.event.name||'')+' · risk '+Number(news.risk||0)+' · '+String(news.side||'WAIT'));
-  if(rangeMode)reasons.push('Range/compression mode: direction requires calibrated edge; weak imbalance stays Lean/WAIT instead of becoming a forced forecast');
+  if(rangeMode)reasons.push('Range/compression mode: even weak measurable imbalance remains a low-confidence directional bias instead of being muted to WAIT');
   if(conflict)reasons.push('Model disagreement detected; confidence reduced, direction preserved when a measurable edge exists');
 
   return {ok:true,asset,regime,side:finalSide,leanSide,confidence:directionalConfidence,agreement:two.agreement,uncertainty:two.uncertainty,conflict,conflictScore,evidence:immediate,horizons:{twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},target15,reasons};
