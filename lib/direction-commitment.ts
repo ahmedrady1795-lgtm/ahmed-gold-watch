@@ -31,7 +31,12 @@ export function commitDirection(
   const emaEdge=s?s.emaEdge*.62+rawEdge*.38:rawEdge;
   const emaSide=sideFromEdge(emaEdge,5);
   const fastSide:CommitmentSide=fast?.side==='BUY'||fast?.side==='SELL'?fast.side:'WAIT';
-  const fastFlip=Boolean(fastSide!=='WAIT'&&fast?.stage==='IGNITION'&&Number(fast?.score||0)>=74&&Number(fast?.confidence||0)>=64&&Math.abs(rawEdge)>=5);
+  const fastFlip=Boolean(
+    fastSide!=='WAIT'&&(
+      (fast?.stage==='IGNITION'&&Number(fast?.score||0)>=70&&Number(fast?.confidence||0)>=60&&Math.abs(rawEdge)>=4.5)||
+      (fast?.stage==='WAVE_FORMING'&&Number(fast?.score||0)>=82&&Number(fast?.confidence||0)>=68&&Math.abs(rawEdge)>=7)
+    )
+  );
 
   if(!s||s.side==='WAIT'){
     const acquire=fastSide!=='WAIT'&&fastFlip?fastSide:emaSide;
@@ -50,7 +55,8 @@ export function commitDirection(
     return {side:opposite,state:'FAST_FLIP',rawSide,rawEdge:Number(rawEdge.toFixed(2)),smoothedEdge:Number(emaEdge.toFixed(2)),strength:Math.round(cap(56+Math.abs(emaEdge)*2)),ageMs:0,pendingSide:'WAIT',pendingCount:0,heldByHysteresis:false};
   }
 
-  const oppositeEma=emaSide===opposite&&Math.abs(emaEdge)>=10,oppositeRaw=rawSide===opposite&&Math.abs(rawEdge)>=8;
+  const fastPressure=fastSide===opposite&&['IGNITION','WAVE_FORMING'].includes(String(fast?.stage||''))&&Number(fast?.confidence||0)>=58;
+  const oppositeEma=emaSide===opposite&&Math.abs(emaEdge)>=(fastPressure?8:10),oppositeRaw=rawSide===opposite&&Math.abs(rawEdge)>=(fastPressure?6.5:8);
   if(oppositeEma&&oppositeRaw&&ageMs>=5000){
     const pendingCount=s.pendingSide===opposite?s.pendingCount+1:1;
     if(pendingCount>=2){
@@ -64,8 +70,8 @@ export function commitDirection(
   const supportive=rawSide===current||emaSide===current;
   const weakNow=rawSide==='WAIT'||Math.abs(rawEdge)<3||Math.abs(emaEdge)<2.5;
   const neutralCount=weakNow?s.neutralCount+1:0;
-  const staleWeak=neutralCount>=3&&ageMs>=6000;
-  const fadingAgainst=rawSide===opposite&&Math.abs(rawEdge)>=5&&Math.abs(emaEdge)<7&&ageMs>=7000;
+  const staleWeak=neutralCount>=(fastPressure?2:3)&&ageMs>=(fastPressure?4000:6000);
+  const fadingAgainst=rawSide===opposite&&Math.abs(rawEdge)>=(fastPressure?4:5)&&Math.abs(emaEdge)<7&&ageMs>=(fastPressure?4500:7000);
   if(staleWeak||fadingAgainst){
     const ns:State={side:'WAIT',since:now,lastAt:now,emaEdge,pendingSide:'WAIT',pendingCount:0,neutralCount:0};states.set(key,ns);
     return {side:'WAIT',state:'NEUTRAL',rawSide,rawEdge:Number(rawEdge.toFixed(2)),smoothedEdge:Number(emaEdge.toFixed(2)),strength:0,ageMs:0,pendingSide:'WAIT',pendingCount:0,heldByHysteresis:false};
