@@ -3,7 +3,7 @@ export type NeuralPrediction={
   side?:'BUY'|'SELL'|'WAIT';leanSide?:'BUY'|'SELL';
   probUp?:number;probDown?:number;probNoise?:number;
   confidence?:number;edge?:number;samples?:number;metrics?:any;
-  snapshotAgeMs?:number;reason?:string;latencyMs?:number;
+  snapshotAgeMs?:number;reason?:string;latencyMs?:number;pricePath?:{status?:string;ready?:boolean;side?:'BUY'|'SELL';currentPrice?:number;expectedPrice?:number;firstTarget?:number;rangeHigh?:number;rangeLow?:number;expectedMoveBps?:number;upExcursionBps?:number;downExcursionBps?:number;firstHitSeconds?:number;horizonSeconds?:number;metrics?:any};
 };
 
 let cache:{at:number;value:NeuralPrediction}|null=null;
