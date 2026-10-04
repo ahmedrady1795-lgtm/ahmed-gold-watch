@@ -140,13 +140,19 @@ function AssetCard({x,fast}:any){
   const masterState=String(master?.state||'').toUpperCase();
   const scalpLong=Number(x.scalp?.score?.long||0),scalpShort=Number(x.scalp?.score?.short||0);
   const scalpSide=x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:scalpLong>scalpShort?'BUY':scalpShort>scalpLong?'SELL':'WAIT';
-  const scalpStrength=calibrated(Math.max(scalpLong,scalpShort));
+  const fastUsable=Boolean(
+    fast?.ok&&['PRE_TRIGGER','WAVE_FORMING','IGNITION'].includes(String(fast?.stage))&&
+    (fast?.side==='BUY'||fast?.side==='SELL')&&Number(fast?.confidence||0)>=34
+  );
+  const liveScalpSide=fastUsable?fast.side:scalpSide;
+  const scalpStrength=calibrated(fastUsable?Math.max(Number(fast?.confidence||0),Math.max(scalpLong,scalpShort)):Math.max(scalpLong,scalpShort));
   const m1=x.indicatorMatrix?.rows?.m1,m5=x.indicatorMatrix?.rows?.m5;
   const quickTargets=hunt?.quickSignalTargets||{};
   const neuralPath=x.neuralCore?.pricePath;
   const neuralPathReady=Boolean(neuralPath?.ready);
+  const contextualScalpTarget=quickTargets?.scalp?.side===liveScalpSide?quickTargets?.scalp?.price:null;
   const signalRows=[
-    {label:'Scalp',side:neuralPathReady?(neuralPath?.side||scalpSide):scalpSide,strength:scalpStrength,target:neuralPathReady?neuralPath?.firstTarget:quickTargets?.scalp?.price},
+    {label:fastUsable?'Scalp FAST':'Scalp',side:neuralPathReady?(neuralPath?.side||liveScalpSide):liveScalpSide,strength:scalpStrength,target:neuralPathReady?neuralPath?.firstTarget:contextualScalpTarget},
     {label:'1m',side:m1?.bias||'WAIT',strength:calibrated(m1?.strength),target:quickTargets?.oneMinute?.price},
     {label:'5m',side:m5?.bias||'WAIT',strength:calibrated(m5?.strength),target:quickTargets?.fiveMinute?.price}
   ];
@@ -178,10 +184,16 @@ function AssetCard({x,fast}:any){
       </div>)}
     </div>
 
+    {fastUsable&&<div className="next-move-copy">
+      <span>Fast Pre-Trigger</span>
+      <strong className={liveScalpSide==='BUY'?'green':'red'}>{sideAr(liveScalpSide)} · {String(fast?.stage||'PRE_TRIGGER')} · {calibrated(fast?.confidence)}%</strong>
+      <p>Acceleration {fast?.acceleration??0} · Persistence {fast?.persistence??0}% · Burst x{fast?.burstRate??0}. القرار السريع يسبق التحليل الكامل، والهدف القديم يُخفى تلقائيًا إذا تعارض معه.</p>
+    </div>}
+
     {x.asset==='BTC'&&x.scalpLive&&(()=>{
-      const confirmed=x.scalpLive?.bySource?.SCALP_CONFIRMED_V4;
+      const confirmed=x.scalpLive?.bySource?.SCALP_CONFIRMED_V6||x.scalpLive?.bySource?.SCALP_CONFIRMED_V5||x.scalpLive?.bySource?.SCALP_CONFIRMED_V4;
       const metric=confirmed?.resolved?confirmed:x.scalpLive?.global;
-      const confWf=x.scalpLive?.walkForwardBySource?.SCALP_CONFIRMED_V4;
+      const confWf=x.scalpLive?.walkForwardBySource?.SCALP_CONFIRMED_V6||x.scalpLive?.walkForwardBySource?.SCALP_CONFIRMED_V5||x.scalpLive?.walkForwardBySource?.SCALP_CONFIRMED_V4;
       return <div className="next-move-copy">
         <span>Scalp Fusion Live · {confirmed?.resolved?'Confirmed':'Collecting'}</span>
         <strong className={(metric?.accuracy??0)>=58?'green':(metric?.accuracy??0)>=50?'amber':'red'}>
