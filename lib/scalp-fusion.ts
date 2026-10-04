@@ -354,9 +354,22 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   });
   // V8 architecture: AMBUSH is the only trade authority.
   // Every other engine only supplies evidence/confirmation into AMBUSH.
+  // Precision guard for the only scalp authority. Weak Ambush combinations stay STALK/ARMED
+  // until temporal microstructure and helper breadth agree; helpers never publish direction.
+  const ambushTemporalReady=Boolean(predator?.ambushTemporal&&predator?.temporalReady);
+  const ambushMicroConfirmed=Boolean(
+    !predator?.microstructure?.available||
+    (predator?.microstructure?.ambushReady&&Number(predator?.microstructure?.opposition||0)<=.25)
+  );
+  const weakAmbushCombination=Boolean(
+    assistantCount<3||
+    (String(predator?.pattern||'FLOW_TRACK')==='FLOW_TRACK'&&!predator?.confirmationAssist)||
+    (mode!=='COMPRESSION'&&assistantCount<4&&!reactionAligned&&!accumulationAligned)
+  );
   const ambushTrade=Boolean(
     predator?.phase==='AMBUSH'&&predator?.ambush&&predator?.watch&&
-    fusedSide!=='WAIT'&&!flipSuppressed&&!chaseRisk&&!unconfirmedReactionAgainstFlow
+    fusedSide!=='WAIT'&&!flipSuppressed&&!chaseRisk&&!unconfirmedReactionAgainstFlow&&
+    ambushTemporalReady&&ambushMicroConfirmed&&!weakAmbushCombination
   );
   const strong=ambushTrade;
   const watch=false;
