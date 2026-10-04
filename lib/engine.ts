@@ -197,19 +197,20 @@ export function scalpAnalyze(c1:Candle[],c5:Candle[],now:number,price?:number|nu
     dataAgeMs:{m1:age1,m5:age5}
   };
 
-  if(!watch)return wait(`أقوى Scalp ${best}/100 (شراء ${long} / بيع ${short}). النواة تحتاج ${threshold} وفارق ${minGap}; M5 أصبح عامل ترجيح وليس شرط منع.`,diagnostics);
-
-  const buy=buySide,dir=buy?1:-1,recentSwing=buy?Math.min(...a1.slice(-6).map(x=>x.low)):Math.max(...a1.slice(-6).map(x=>x.high));
-  const minRisk=(mode==='REVERSAL'?.38:.42)*i1.atr,maxRisk=(mode==='BREAKOUT'?1.0:.88)*i1.atr,rawRisk=Math.abs(p-recentSwing),risk=Math.min(maxRisk,Math.max(minRisk,rawRisk));
-  const rr=mode==='BREAKOUT'?1.40:mode==='MOMENTUM'?1.32:mode==='REVERSAL'?1.22:1.25,sl=p-dir*risk,tp=p+dir*rr*risk;
-  const strengthLabel=qualified?'إشارة سكالب نشطة':'ميل سكالب مبكر';
-  const reason=`${strengthLabel} ${mode} · ${best}/100 بفارق ${gap}. M1 momentum/acceleration + candle body/wicks + breakout/reclaim + live move، وM5 للترجيح فقط.`;
-
+  const helperSide=watch?(buySide?'BUY' as const:'SELL' as const):'WAIT' as const;
+  const helperConfidence=Math.round(Math.max(0,Math.min(90,best*.72+gap*.9+(m5Aligned?5:0)+(reversalActive||breakActive?5:0))));
   return {
-    state,action,title:buy?'M1 SCALP · BUY':'M1 SCALP · SELL',reason,...diagnostics,
-    trade:qualified?{mode:'scalp-v2-'+mode.toLowerCase(),side,entry:p,sl,tp,rr,score:best,validForSeconds:45,time:l1.time+60000}:null,
-    early:!qualified&&watch,
-    confidence:Math.round(Math.max(0,Math.min(90,best*.72+gap*.9+(m5Aligned?5:0)+(reversalActive||breakActive?5:0))))
+    state:'helper' as const,
+    action:'WAIT' as const,
+    title:'AMBUSH TECH HELPER',
+    reason:`مساعد فني لـ Ambush فقط · ${mode} · شراء ${long} / بيع ${short} · لا يصدر صفقة مستقلة.`,
+    ...diagnostics,
+    trade:null,
+    early:false,
+    helperOnly:true,
+    helperSide,
+    helperConfidence,
+    confidence:helperConfidence
   };
 }
 
