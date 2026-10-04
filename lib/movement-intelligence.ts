@@ -57,7 +57,7 @@ function resolve(ev:Evidence[]):Horizon{
 function ev(name:string,s:any,score:number,weight:number,reliability=1):Evidence{return {name,side:side(s),score:cap(Number(score||0),0,92),weight,reliability:cap(reliability,.55,1.35)};}
 
 export function buildMovementIntelligence(asset:string,args:any):MovementIntelligence{
-  const expected=args?.expected||{},g=args?.stateGraph||{},liq=args?.liquidity||{},motion=args?.motion||{},structure=args?.structure||{},acc=args?.accumulation||{},behavior=args?.behavior||{},learning=args?.learning||{},tick=args?.tick||{},decision=args?.decision||{};
+  const expected=args?.expected||{},g=args?.stateGraph||{},liq=args?.liquidity||{},motion=args?.motion||{},structure=args?.structure||{},acc=args?.accumulation||{},behavior=args?.behavior||{},learning=args?.learning||{},tick=args?.tick||{},decision=args?.decision||{},news=args?.news||{};
   const policy=args?.evolution?.active||null,ew=(name:string)=>cap(Number(policy?.weights?.[name]||1),.5,1.35);
   const regime=regimeOf(g,acc),baseW=weights(regime,asset),w={...baseW,expected:baseW.expected*ew('learning'),tick:baseW.tick*ew('wave'),motion:baseW.motion*ew('motion'),liquidity:baseW.liquidity*ew('liquidity'),structure:baseW.structure*ew('structure'),stateGraph:baseW.stateGraph*ew('stateGraph'),accumulation:baseW.accumulation*ew('accumulation'),behavior:baseW.behavior*ew('behavior'),learning:baseW.learning*ew('learning')},m=decision?.indicatorMatrix?.rows||{};
   const expected2=expected?.twoMinute||{},expected5=expected?.fiveMinute||{},expected15=expected?.fifteenMinute||{};
@@ -67,6 +67,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   const stateScore=Number(g?.nextSideProbability||0)*Math.min(1,Math.max(.45,Number(g?.sequenceMatches||0)/12));
   const struct1=Number(structure?.m1?.nextScore||0),struct5=Number(structure?.m5?.nextScore||0);
   const learnScore=Number(learning?.confidence||0)*Math.max(.65,Number(learning?.selfCalibration?.reliability||50)/60);
+  const newsScore=Number(news?.confidence||0),newsWeight=Math.max(0,Math.min(.18,Number(news?.weight||0)));
 
   const immediate:Evidence[]=[
     ev('firstPassage',expected2?.side,scoreExpected(expected2),w.expected,Math.max(.72,Number(expected2?.calibration||50)/55)),
@@ -77,7 +78,8 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     ev('stateGraph',g?.nextSide,stateScore,w.stateGraph,rel(learning,'stateGraph')),
     ev('accumulation',acc?.side,accScore,w.accumulation,rel(learning,'accumulation')),
     ev('behavior',behavior?.side,behavior?.score,w.behavior,rel(learning,'behavior')),
-    ev('learning',learning?.side,learnScore,w.learning,Math.max(.72,Number(learning?.selfCalibration?.reliability||50)/55))
+    ev('learning',learning?.side,learnScore,w.learning,Math.max(.72,Number(learning?.selfCalibration?.reliability||50)/55)),
+    ev('macroNews',news?.side,newsScore,newsWeight,news?.phase==='RELEASED'?1.18:1)
   ];
   const two=resolve(immediate);
 
@@ -88,7 +90,8 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     ev('accumulation',acc?.side,accScore,.13,rel(learning,'accumulation')),
     ev('behavior',behavior?.side,behavior?.score,.10,rel(learning,'behavior')),
     ev('learning5',learning?.horizon5?.side,learning?.horizon5?.confidence,.10,Math.max(.72,Number(learning?.selfCalibration?.reliability||50)/55)),
-    ev('m5',m?.m5?.bias,m?.m5?.strength,.07,rel(learning,'m5'))
+    ev('m5',m?.m5?.bias,m?.m5?.strength,.07,rel(learning,'m5')),
+    ev('macroNews5',news?.side,newsScore,Math.min(.15,newsWeight),news?.phase==='RELEASED'?1.15:1)
   ]);
 
   const fifteen=resolve([
@@ -98,8 +101,16 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     ev('structureM5',structure?.m5?.nextSide,struct5,.11,rel(learning,'structure')),
     ev('behavior',behavior?.side,behavior?.score,.10,rel(learning,'behavior')),
     ev('accumulation',acc?.side,accScore,.07,rel(learning,'accumulation')),
-    ev('learning5',learning?.horizon5?.side,learning?.horizon5?.confidence,.06,Math.max(.72,Number(learning?.selfCalibration?.reliability||50)/55))
+    ev('learning5',learning?.horizon5?.side,learning?.horizon5?.confidence,.06,Math.max(.72,Number(learning?.selfCalibration?.reliability||50)/55)),
+    ev('macroNews15',news?.side,newsScore,Math.min(.12,newsWeight),news?.phase==='RELEASED'?1.10:1)
   ]);
+
+  if(news?.phase==='PRE_EVENT'&&Number(news?.risk||0)>=70){
+    const penalty=Math.min(22,Math.round((Number(news.risk)-60)*.55));
+    two.confidence=Math.max(0,two.confidence-penalty);two.uncertainty=Math.min(100,100-two.confidence);
+    five.confidence=Math.max(0,five.confidence-Math.round(penalty*.75));five.uncertainty=Math.min(100,100-five.confidence);
+    fifteen.confidence=Math.max(0,fifteen.confidence-Math.round(penalty*.45));fifteen.uncertainty=Math.min(100,100-fifteen.confidence);
+  }
 
   const directional=immediate.filter(e=>e.side!=='WAIT'&&e.score>=25);
   const buys=directional.filter(e=>e.side==='BUY').length,sells=directional.filter(e=>e.side==='SELL').length;
@@ -129,6 +140,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     '15m '+fifteen.side+' · '+fifteen.confidence
   ];
   if(tick?.stage==='IGNITION'||tick?.stage==='WAVE_FORMING')reasons.push('Server tick '+tick.stage+' '+tick.side);
+  if(news?.event)reasons.push('News '+String(news.phase||'')+' · '+String(news.event.name||'')+' · risk '+Number(news.risk||0)+' · '+String(news.side||'WAIT'));
   if(conflict)reasons.push('Model disagreement detected; confidence reduced');
 
   return {ok:true,asset,regime,side:finalSide,leanSide,confidence:two.confidence,agreement:two.agreement,uncertainty:two.uncertainty,conflict,conflictScore,evidence:immediate,horizons:{twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},target15,reasons};
