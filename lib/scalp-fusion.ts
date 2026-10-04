@@ -354,6 +354,20 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   });
   // V8 architecture: AMBUSH is the only trade authority.
   // Every other engine only supplies evidence/confirmation into AMBUSH.
+  const assistants={
+    confirmation:Boolean(predator?.confirmationAssist),
+    fast:Boolean(preMoveAligned||tickAligned),
+    liquidity:Boolean(liqSide===fusedSide),
+    motion:Boolean(motionSide===fusedSide),
+    trap:Boolean(trapSide===fusedSide&&trapScore>=62),
+    accumulation:Boolean(accumulationAligned),
+    reaction:Boolean(reactionAligned),
+    technical:Boolean(techSide===fusedSide),
+    ml:Boolean(ml1.side===fusedSide),
+    learned:Boolean(learnedSide===fusedSide)
+  };
+  const assistantCount=Object.values(assistants).filter(Boolean).length;
+
   // Precision guard for the only scalp authority. Weak Ambush combinations stay STALK/ARMED
   // until temporal microstructure and helper breadth agree; helpers never publish direction.
   const ambushTemporalReady=Boolean(predator?.ambushTemporal&&predator?.temporalReady);
@@ -375,20 +389,6 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const watch=false;
   const action:Side=ambushTrade?fusedSide:'WAIT';
   const state=ambushTrade?'setup':predator?.phase==='ABORT'?'abort':'wait';
-  const assistants={
-    confirmation:Boolean(predator?.confirmationAssist),
-    fast:Boolean(preMoveAligned||tickAligned),
-    liquidity:Boolean(liqSide===fusedSide),
-    motion:Boolean(motionSide===fusedSide),
-    trap:Boolean(trapSide===fusedSide&&trapScore>=62),
-    accumulation:Boolean(accumulationAligned),
-    reaction:Boolean(reactionAligned),
-    technical:Boolean(techSide===fusedSide),
-    ml:Boolean(ml1.side===fusedSide),
-    learned:Boolean(learnedSide===fusedSide)
-  };
-  const assistantCount=Object.values(assistants).filter(Boolean).length;
-
   const bid=Number(liq?.book?.bestBid),ask=Number(liq?.book?.bestAsk),microprice=Number(liq?.book?.microprice);
   const validBid=Number.isFinite(bid)&&bid>0,validAsk=Number.isFinite(ask)&&ask>0,validMicro=Number.isFinite(microprice)&&microprice>0;
   const spreadUsd=validBid&&validAsk&&ask>bid?ask-bid:(Number.isFinite(p)&&p>0?Math.abs(Number(liq?.book?.spreadBps||0))*p/10000:0);
