@@ -62,9 +62,15 @@ export function commitDirection(
   }
 
   const supportive=rawSide===current||emaSide===current;
-  const neutralNow=rawSide==='WAIT'&&Math.abs(emaEdge)<3;
-  const neutralCount=neutralNow?s.neutralCount+1:0;
-  const state:DirectionCommitment['state']=supportive?'LOCKED':neutralNow?'HOLD_WEAK':'HOLD_WEAK';
+  const weakNow=rawSide==='WAIT'||Math.abs(rawEdge)<3||Math.abs(emaEdge)<2.5;
+  const neutralCount=weakNow?s.neutralCount+1:0;
+  const staleWeak=neutralCount>=3&&ageMs>=6000;
+  const fadingAgainst=rawSide===opposite&&Math.abs(rawEdge)>=5&&Math.abs(emaEdge)<7&&ageMs>=7000;
+  if(staleWeak||fadingAgainst){
+    const ns:State={side:'WAIT',since:now,lastAt:now,emaEdge,pendingSide:'WAIT',pendingCount:0,neutralCount:0};states.set(key,ns);
+    return {side:'WAIT',state:'NEUTRAL',rawSide,rawEdge:Number(rawEdge.toFixed(2)),smoothedEdge:Number(emaEdge.toFixed(2)),strength:0,ageMs:0,pendingSide:'WAIT',pendingCount:0,heldByHysteresis:false};
+  }
+  const state:DirectionCommitment['state']=supportive?'LOCKED':'HOLD_WEAK';
   const ns:State={...s,lastAt:now,emaEdge,pendingSide:'WAIT',pendingCount:0,neutralCount};states.set(key,ns);
-  return {side:current,state,rawSide,rawEdge:Number(rawEdge.toFixed(2)),smoothedEdge:Number(emaEdge.toFixed(2)),strength:Math.round(cap((supportive?50:38)+Math.abs(emaEdge)*1.8)),ageMs,pendingSide:'WAIT',pendingCount:0,heldByHysteresis:!supportive};
+  return {side:current,state,rawSide,rawEdge:Number(rawEdge.toFixed(2)),smoothedEdge:Number(emaEdge.toFixed(2)),strength:Math.round(cap((supportive?50:34)+Math.abs(emaEdge)*1.8)),ageMs,pendingSide:'WAIT',pendingCount:0,heldByHysteresis:!supportive};
 }
