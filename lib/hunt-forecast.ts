@@ -150,9 +150,14 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   // Phase-aware understanding: continuation, reversal and compression are not treated as the same market.
   const graphDirectional:Side=graphFresh?(stateGraph?.nextSide||'WAIT'):'WAIT';
   const graphDirectionalConfidence=graphFresh?Number(stateGraph?.nextSideProbability||0):0;
-  const continuationPhase=['BREAKOUT','IMPULSE','TREND','RETEST'].includes(m1Phase);
+  const graphCurrentState=String(stateGraph?.current||'TRANSITION');
+  const graphExpectedState=String(stateGraph?.nextState||'TRANSITION');
   const reversalPhase=['SWEEP_REVERSAL','EXHAUSTION'].includes(m1Phase);
-  const compressionPhase=m1Phase==='COMPRESSION'||String(movementIntel?.regime||'')==='COMPRESSION'||String(stateGraph?.current||'')==='COMPRESSION';
+  const m5ReversalPressure=['SWEEP_REVERSAL','EXHAUSTION','PULLBACK'].includes(m5Phase);
+  const graphReversalPressure=/EXHAUSTION|PULLBACK|REVERSAL/.test(graphExpectedState);
+  const reversalPressure=reversalPhase||m5ReversalPressure||graphReversalPressure;
+  const continuationPhase=['BREAKOUT','IMPULSE','TREND','RETEST'].includes(m1Phase)&&!reversalPressure;
+  const compressionPhase=m1Phase==='COMPRESSION'||String(movementIntel?.regime||'')==='COMPRESSION'||graphCurrentState==='COMPRESSION';
   const structureAgreement=structureM1Side!=='WAIT'&&structureM1Side===primaryMoveSide;
   const graphAgreement=graphDirectional!=='WAIT'&&graphDirectional===primaryMoveSide;
   const expectedAgreement=em2Side!=='WAIT'&&em2Side===primaryMoveSide;
@@ -185,6 +190,9 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   }
   if(primaryMoveSide!=='WAIT'&&graphDirectional!=='WAIT'&&graphDirectional!==primaryMoveSide&&graphDirectionalConfidence>=62){
     primaryMoveConfidence=Math.max(20,primaryMoveConfidence-10);
+  }
+  if(reversalPressure&&graphChange){
+    primaryMoveConfidence=Math.max(18,primaryMoveConfidence-(m5ReversalPressure?8:5));
   }
 
   // Live failure guard: a forecast that is materially invalidated cannot keep repeating unchanged.
@@ -252,15 +260,29 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   ];
   let followBuy=0,followSell=0;
   for(const v of followVotes){if(v.side==='BUY')followBuy+=v.w;else if(v.side==='SELL')followSell+=v.w;}
-  const learnedFollowSide:Side=followBuy-followSell>=6?'BUY':followSell-followBuy>=6?'SELL':'WAIT';
-  const learnedFollowConfidence=Math.round(cap(Math.max(followBuy,followSell),0,86));
+  let learnedFollowSide:Side=followBuy-followSell>=6?'BUY':followSell-followBuy>=6?'SELL':'WAIT';
+  let learnedFollowConfidence=Math.round(cap(Math.max(followBuy,followSell),0,86));
+
+  const reaction=accumulation?.nearestReaction||null;
+  const reactionSide:Side=reaction?.side||'WAIT';
+  const reactionStrength=Number(reaction?.strength||0),reactionDistanceAtr=Number(reaction?.distanceAtr);
+  const reactionTurn=Boolean(
+    reactionSide!=='WAIT'&&primaryMoveSide!=='WAIT'&&reactionSide!==primaryMoveSide&&
+    reactionStrength>=72&&Number.isFinite(reactionDistanceAtr)&&reactionDistanceAtr<=2.2&&
+    (m5ReversalPressure||graphChange)
+  );
+  if(reactionTurn){
+    learnedFollowSide=reactionSide;
+    learnedFollowConfidence=Math.round(cap(reactionStrength*.62+Number(stateGraph?.changePointScore||0)*.24+Number(structureM5Score||0)*.14,0,88));
+  }
 
   const path=structuralPath||pathOf(primaryMoveSide,learnedFollowSide!=='WAIT'?learnedFollowSide:five.side,fifteen.side),pathLabel=pathAr(path);
   const understandingMode=
-    reversalPhase&&graphChange?'REVERSAL':
+    reversalPressure&&graphChange?'REVERSAL':
+    reversalPressure?'TRANSITION':
     compressionPhase?'COMPRESSION':
     continuationPhase?'CONTINUATION':
-    String(stateGraph?.current||'')==='RANGE'?'RANGE':'TRANSITION';
+    graphCurrentState==='RANGE'?'RANGE':'TRANSITION';
   const understandingAgreement=[movementSide,em2Side,structureM1Side,graphDirectional].filter(s=>s!=='WAIT'&&primaryMoveSide!=='WAIT'&&s===primaryMoveSide).length;
   const understandingConflict=[movementSide,em2Side,structureM1Side,graphDirectional].filter(s=>s!=='WAIT'&&primaryMoveSide!=='WAIT'&&s!==primaryMoveSide).length;
   const understandingConfidence=Math.round(cap(
@@ -273,16 +295,23 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     (graphChange&&understandingMode!=='REVERSAL'?5:0),
     0,88
   ));
-  const currentState=String(stateGraph?.current||m1Phase||'TRANSITION');
-  const expectedState=String(stateGraph?.nextState||m5Phase||'TRANSITION');
+  const currentState=graphCurrentState||m1Phase||'TRANSITION';
+  const expectedState=graphExpectedState||m5Phase||'TRANSITION';
   const firstWord=primaryMoveSide==='BUY'?'صعود':primaryMoveSide==='SELL'?'هبوط':'تذبذب';
   const followWord=learnedFollowSide==='BUY'?'صعود':learnedFollowSide==='SELL'?'هبوط':'غير محسوم';
+  const reactionText=reactionTurn
+    ?' قرب منطقة '+(reactionSide==='SELL'?'عرض':'طلب')+' قوية ('+Math.round(reactionStrength)+'%)'
+    :'';
   const understandingSummary=
-    understandingMode==='REVERSAL'?'السوق يُظهر علامات انعكاس؛ الحركة الأولى المرجحة '+firstWord+' ثم '+followWord+'.':
-    understandingMode==='COMPRESSION'?'السوق في ضغط/تجميع للحركة؛ أول حركة مرجحة '+firstWord+' والموجة التالية '+followWord+'.':
-    understandingMode==='CONTINUATION'?'السوق يميل لاستمرار الحركة؛ المتوقع أولًا '+firstWord+' ثم '+followWord+'.':
-    understandingMode==='RANGE'?'السوق داخل نطاق؛ المتوقع '+firstWord+' مع احتمال كسر كاذب قبل اتجاه أوضح.':
-    'السوق في انتقال بين حالتين؛ الحركة الأولى المرجحة '+firstWord+' ثم '+followWord+'.';
+    understandingMode==='REVERSAL'
+      ?'السوق قرب نقطة تحول؛ المتوقع أولًا '+firstWord+reactionText+' ثم '+followWord+' إذا ظهر رفض/تأكيد.'
+      :understandingMode==='COMPRESSION'
+        ?'السوق في ضغط/تجميع للحركة؛ أول حركة مرجحة '+firstWord+' والموجة التالية '+followWord+'.'
+        :understandingMode==='CONTINUATION'
+          ?'السوق يميل لاستمرار الحركة؛ المتوقع أولًا '+firstWord+' ثم '+followWord+'.'
+          :understandingMode==='RANGE'
+            ?'السوق داخل نطاق؛ المتوقع '+firstWord+' مع احتمال كسر كاذب قبل اتجاه أوضح.'
+            :'السوق في انتقال بين حالتين؛ الحركة الأولى المرجحة '+firstWord+reactionText+' ثم '+followWord+'.';
   let expAtr=Math.abs(behaviorExp);
   if(!Number.isFinite(expAtr)||expAtr<.2)expAtr=.42;
   expAtr=Math.min(1.7,Math.max(.28,expAtr));
