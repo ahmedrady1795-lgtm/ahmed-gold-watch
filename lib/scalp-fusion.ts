@@ -478,14 +478,20 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     etaSeconds:preMove.etaSeconds,
     updatedAt:Date.now()
   };
+  const trackStable=Boolean(
+    predator?.phase==='TRACK'&&
+    Number(predator?.stableCount||0)>=2&&
+    Number(predator?.persistence||0)>=.60&&
+    (!predator?.microstructure?.available||Number(predator?.microstructure?.opposition||0)<=.35)
+  );
   const ambushMoveSide:Side=
-    (predator?.phase==='TRACK'||predator?.phase==='AMBUSH')&&targetSide!=='WAIT'
+    (predator?.phase==='AMBUSH'||trackStable)&&targetSide!=='WAIT'
       ?targetSide
       :'WAIT';
   const movement={
     authority:'AMBUSH',
     side:ambushMoveSide,
-    status:predator?.phase==='AMBUSH'?'CONFIRMED':predator?.phase==='TRACK'?'FORMING':'WAIT',
+    status:predator?.phase==='AMBUSH'?'CONFIRMED':trackStable?'FORMING':'WAIT',
     confidence:ambushMoveSide==='WAIT'?0:Number(predator?.score||0),
     target:ambushMoveSide==='WAIT'?null:target,
     pattern:String(predator?.pattern||'NO_EDGE'),
