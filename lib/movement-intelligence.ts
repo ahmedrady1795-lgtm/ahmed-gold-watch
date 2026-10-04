@@ -7,6 +7,11 @@ export type MovementIntelligence={
   ok:boolean;asset:string;regime:Regime;side:Side;leanSide:Side;confidence:number;
   agreement:number;uncertainty:number;conflict:boolean;conflictScore:number;
   evidence:Evidence[];horizons:{twoMinute:Horizon;fiveMinute:Horizon;fifteenMinute:Horizon};
+  horizonQuality?:{
+    fiveMinute:{independentSupport:number;independentOpposition:number};
+    fifteenMinute:{independentSupport:number;independentOpposition:number};
+    changePoint:boolean;changePointScore:number;
+  };
   target15:{side:Side;price:number|null;low:number|null;high:number|null;confidence:number;moveAtr:number;source:string}|null;
   reasons:string[];
 };
