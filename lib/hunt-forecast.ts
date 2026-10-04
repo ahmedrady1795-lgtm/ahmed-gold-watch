@@ -6,15 +6,17 @@ const memory=new Map<string,ForecastSample[]>();
 const cap=(n:number,min=0,max=92)=>Math.max(min,Math.min(max,n));
 const sideScore=(s:Side,target:Side,v:number)=>s===target?v:0;
 
-export function buildHuntForecast(asset:string,decision:any,scalp:any,price:number|null,atr:number|null,now=Date.now()){
+export function buildHuntForecast(asset:string,decision:any,scalp:any,price:number|null,atr:number|null,now=Date.now(),wave:any=null){
   const p=Number(price),a=Number(atr);
   const fusionBuy=Number(decision?.fusion?.buy||0),fusionSell=Number(decision?.fusion?.sell||0);
   const motionSide:Side=decision?.motion?.side||'WAIT',behaviorSide:Side=decision?.behavior?.side||'WAIT',liqSide:Side=decision?.liquidity?.side||'WAIT',hunterSide:Side=decision?.hunter?.side||'WAIT';
   const motionScore=Number(decision?.motion?.score||0),behaviorScore=Number(decision?.behavior?.score||0),liqStrength=Number(decision?.liquidity?.strength||0),hunterScore=Number(decision?.hunter?.score||0);
   const scalpLong=Number(scalp?.score?.long||0),scalpShort=Number(scalp?.score?.short||0);
 
-  let buy=fusionBuy*.30+sideScore(motionSide,'BUY',motionScore)*.18+sideScore(behaviorSide,'BUY',behaviorScore)*.14+sideScore(liqSide,'BUY',liqStrength)*.16+sideScore(hunterSide,'BUY',hunterScore)*.10+scalpLong*.12;
-  let sell=fusionSell*.30+sideScore(motionSide,'SELL',motionScore)*.18+sideScore(behaviorSide,'SELL',behaviorScore)*.14+sideScore(liqSide,'SELL',liqStrength)*.16+sideScore(hunterSide,'SELL',hunterScore)*.10+scalpShort*.12;
+  const waveFresh=Boolean(wave?.ok&&['BUY','SELL'].includes(String(wave?.side))&&Number(wave?.score)>=35&&now-Number(wave?.at||0)<=3000);
+  const waveSide:Side=waveFresh?(wave.side as Side):'WAIT',waveScore=waveFresh?Number(wave?.score||0):0;
+  let buy=fusionBuy*.26+sideScore(motionSide,'BUY',motionScore)*.16+sideScore(behaviorSide,'BUY',behaviorScore)*.12+sideScore(liqSide,'BUY',liqStrength)*.14+sideScore(hunterSide,'BUY',hunterScore)*.09+scalpLong*.10+sideScore(waveSide,'BUY',waveScore)*.13;
+  let sell=fusionSell*.26+sideScore(motionSide,'SELL',motionScore)*.16+sideScore(behaviorSide,'SELL',behaviorScore)*.12+sideScore(liqSide,'SELL',liqStrength)*.14+sideScore(hunterSide,'SELL',hunterScore)*.09+scalpShort*.10+sideScore(waveSide,'SELL',waveScore)*.13;
 
   const trapSide:Side=decision?.liquidity?.absorption?.trapDetected?decision?.liquidity?.absorption?.side||'WAIT':'WAIT';
   const trapScore=Number(decision?.liquidity?.absorption?.score||0);
@@ -47,10 +49,12 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const velocity=Math.abs(Number(decision?.motion?.components?.liveVelocityBps||0));
   const precursorCount=Number(decision?.motion?.diagnostics?.precursorCount||0);
   let state='STALKING';
-  if(motionStage==='IGNITION'||velocity>=1.2)state='IGNITION';
+  if(waveFresh&&waveSide===stableSide&&wave?.stage==='IGNITION')state='IGNITION';
+  else if(waveFresh&&waveSide===stableSide&&wave?.stage==='WAVE_FORMING')state='WAVE_FORMING';
+  else if(motionStage==='IGNITION'||velocity>=1.2)state='IGNITION';
   else if(motionStage==='REVERSAL_ALERT'||trapSide===stableSide&&trapScore>=68)state='REVERSAL_HUNT';
   else if(motionStage==='PRE_MOVE'||precursorCount>=3)state='PRE_MOVE';
-  else if(compression>=60)state='COILED';
+  else if((waveFresh&&wave?.stage==='COILED')||compression>=60)state='COILED';
 
   let expAtr=Math.abs(behaviorExp);
   if(!Number.isFinite(expAtr)||expAtr<.2)expAtr=.45;
@@ -58,7 +62,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   if(state==='IGNITION')expAtr=Math.min(1.8,expAtr*1.15);
   if(state==='COILED')expAtr=Math.max(.55,expAtr);
 
-  const horizonSeconds=state==='IGNITION'?60:state==='PRE_MOVE'||state==='REVERSAL_HUNT'?120:state==='COILED'?180:240;
+  const horizonSeconds=state==='IGNITION'?45:state==='WAVE_FORMING'?75:state==='PRE_MOVE'||state==='REVERSAL_HUNT'?120:state==='COILED'?180:240;
   const validPrice=Number.isFinite(p)&&p>0&&Number.isFinite(a)&&a>0;
   const dir=stableSide==='BUY'?1:stableSide==='SELL'?-1:0;
   const trigger=validPrice&&dir?p+dir*a*.12:null;
@@ -72,6 +76,8 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   if(behaviorSide===stableSide&&behaviorScore>=45)reasons.push('السلوك التاريخي متوافق');
   if((stableSide==='BUY'&&scalpLong>scalpShort)||(stableSide==='SELL'&&scalpShort>scalpLong))reasons.push('Micro/Scalp يميل لنفس الاتجاه');
   if(trapSide===stableSide&&trapScore>=60)reasons.push('Trap/Absorption يدعم الانعكاس');
+  if(waveFresh&&waveSide===stableSide)reasons.push('Wave Lead tick-by-tick يسبق الحركة ومتوافق');
+  if(waveFresh&&waveSide!==stableSide)reasons.push('Wave Lead السريع يعارض التوقع؛ الثقة مخفضة');
   if(contradiction)reasons.push('التوقع تغيّر داخل نافذة الذاكرة؛ الثبات أقل');
 
   return {
@@ -90,6 +96,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     invalidation:invalidation==null?null:Number(invalidation.toFixed(2)),
     currentPrice:Number.isFinite(p)?p:null,
     reasons:reasons.slice(0,7),
+    waveLeadUsed:waveFresh?{side:waveSide,stage:wave?.stage,score:waveScore,confidence:Number(wave?.confidence||0),at:Number(wave?.at||0)}:null,
     note:'توقع استباقي للحركة وليس أمر دخول أو ضمان نتيجة.'
   };
 }
