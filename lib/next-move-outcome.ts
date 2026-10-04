@@ -18,6 +18,7 @@ type Recent={
   id:string;at:number;settledAt:number;side:'BUY'|'SELL';source:string;regime:string;confidence:number;
   entry:number;exit:number;target:number;stop:number;barrierBps:number;outcome:Outcome;
   seconds:number;mfeBps:number;maeBps:number;
+  micro?:{edge:number;support:number;opposition:number;strong:boolean};
 };
 type AssetState={
   global:Stat;
@@ -26,6 +27,7 @@ type AssetState={
   byConfidence:Record<string,Stat>;
   pending:Pending[];
   recent:Recent[];
+  history:Recent[];
   lastRecordedBucket:number;
   lastFingerprint:string;
 };
@@ -67,11 +69,12 @@ function ensure(asset:string):AssetState{
   const st=load();
   if(!st.assets[asset])st.assets[asset]={
     global:blankStat(),bySource:{},byRegime:{},byConfidence:{},
-    pending:[],recent:[],lastRecordedBucket:0,lastFingerprint:''
+    pending:[],recent:[],history:[],lastRecordedBucket:0,lastFingerprint:''
   };
   const a=st.assets[asset];
   a.global ||= blankStat();a.bySource ||= {};a.byRegime ||= {};a.byConfidence ||= {};
   a.pending ||= [];a.recent ||= [];
+  if(!Array.isArray(a.history)||!a.history.length)a.history=[...a.recent].reverse();
   return a;
 }
 function key(x:any,fallback='UNKNOWN'){
@@ -122,26 +125,111 @@ function settle(asset:string,price:number,now:number){
     updateStat(getStat(a.bySource,p.source),outcome,seconds,p.mfeBps,p.maeBps,now);
     updateStat(getStat(a.byRegime,p.regime),outcome,seconds,p.mfeBps,p.maeBps,now);
     updateStat(getStat(a.byConfidence,confidenceBand(p.confidence)),outcome,seconds,p.mfeBps,p.maeBps,now);
-    a.recent.unshift({
+    const settled:Recent={
       id:p.id,at:p.at,settledAt:now,side:p.side,source:p.source,regime:p.regime,confidence:p.confidence,
       entry:p.entry,exit:price,target:p.target,stop:p.stop,barrierBps:p.barrierBps,outcome,seconds:Number(seconds.toFixed(1)),
-      mfeBps:Number(p.mfeBps.toFixed(2)),maeBps:Number(p.maeBps.toFixed(2))
-    });
+      mfeBps:Number(p.mfeBps.toFixed(2)),maeBps:Number(p.maeBps.toFixed(2)),micro:p.micro
+    };
+    a.recent.unshift(settled);
+    a.history.push(settled);
     if(a.recent.length>120)a.recent=a.recent.slice(0,120);
+    if(a.history.length>2400)a.history=a.history.slice(-2400);
     dirty=true;
   }
   if(keep.length!==a.pending.length){a.pending=keep;dirty=true;}
 }
+
+function directionalRows(a:AssetState){
+  return (a.history||[]).filter(x=>x.outcome==='HIT'||x.outcome==='FAIL').sort((x,y)=>x.settledAt-y.settledAt);
+}
+function acc(rows:Recent[]){
+  if(!rows.length)return null;
+  const h=rows.filter(x=>x.outcome==='HIT').length;
+  return h/rows.length*100;
+}
+function chooseThreshold(train:Recent[]){
+  const candidates=[20,30,35,40,45,50,55,60,65,70];
+  let best={threshold:20,score:-1,accuracy:50,coverage:1,n:train.length};
+  for(const threshold of candidates){
+    const selected=train.filter(x=>Number(x.confidence)>=threshold);
+    const coverage=train.length?selected.length/train.length:0;
+    if(selected.length<5||coverage<.25)continue;
+    const hits=selected.filter(x=>x.outcome==='HIT').length;
+    const posterior=(hits+4)/(selected.length+8)*100;
+    const score=posterior-Math.max(0,.45-coverage)*12;
+    if(score>best.score)best={threshold,score,accuracy:hits/selected.length*100,coverage,n:selected.length};
+  }
+  return best;
+}
+function walkForward(a:AssetState){
+  const rows=directionalRows(a);
+  const minTrain=20,testSize=5;
+  if(rows.length<minTrain+testSize){
+    const recent=rows.slice(-10),prior=rows.slice(Math.max(0,rows.length-30),Math.max(0,rows.length-10));
+    return {
+      status:'COLLECTING',ready:false,directional:rows.length,minRequired:minTrain+testSize,
+      oos:{folds:0,n:0,hits:0,fails:0,accuracy:null,coverage:null},
+      drift:{recentAccuracy:acc(recent),priorAccuracy:acc(prior),delta:null,status:'COLLECTING'},
+      activeThreshold:null
+    };
+  }
+  const folds:any[]=[];let totalTest=0,totalSelected=0,totalHits=0,totalFails=0;
+  for(let start=minTrain;start<rows.length;start+=testSize){
+    const train=rows.slice(0,start);
+    const test=rows.slice(start,Math.min(rows.length,start+testSize));
+    if(!test.length)break;
+    const pick=chooseThreshold(train);
+    const selected=test.filter(x=>Number(x.confidence)>=pick.threshold);
+    const hits=selected.filter(x=>x.outcome==='HIT').length,fails=selected.filter(x=>x.outcome==='FAIL').length;
+    totalTest+=test.length;totalSelected+=selected.length;totalHits+=hits;totalFails+=fails;
+    folds.push({
+      trainN:train.length,testN:test.length,threshold:pick.threshold,
+      trainAccuracy:Number(pick.accuracy.toFixed(1)),trainCoverage:Number((pick.coverage*100).toFixed(1)),
+      selectedN:selected.length,hits,fails,
+      accuracy:selected.length?Number((hits/selected.length*100).toFixed(1)):null,
+      coverage:Number((selected.length/test.length*100).toFixed(1))
+    });
+  }
+  const recent=rows.slice(-10),prior=rows.slice(Math.max(0,rows.length-30),Math.max(0,rows.length-10));
+  const recentAccuracy=acc(recent),priorAccuracy=acc(prior);
+  const delta=recentAccuracy!=null&&priorAccuracy!=null?recentAccuracy-priorAccuracy:null;
+  const oosAcc=totalSelected?totalHits/totalSelected*100:null;
+  const oosCoverage=totalTest?totalSelected/totalTest*100:null;
+  const active=chooseThreshold(rows);
+  const driftStatus=delta==null?'COLLECTING':delta<=-15?'DEGRADING':delta>=12?'IMPROVING':'STABLE';
+  const status=totalSelected<10?'COLLECTING':oosAcc!=null&&oosAcc>=55&&Number(oosCoverage)>=25&&driftStatus!=='DEGRADING'?'PASS':'WATCH';
+  return {
+    status,ready:status==='PASS',directional:rows.length,minRequired:minTrain+testSize,
+    oos:{
+      folds:folds.length,n:totalSelected,hits:totalHits,fails:totalFails,
+      accuracy:oosAcc==null?null:Number(oosAcc.toFixed(1)),
+      coverage:oosCoverage==null?null:Number(oosCoverage.toFixed(1)),
+      recentFolds:folds.slice(-6)
+    },
+    drift:{
+      recentN:recent.length,priorN:prior.length,
+      recentAccuracy:recentAccuracy==null?null:Number(recentAccuracy.toFixed(1)),
+      priorAccuracy:priorAccuracy==null?null:Number(priorAccuracy.toFixed(1)),
+      delta:delta==null?null:Number(delta.toFixed(1)),status:driftStatus
+    },
+    activeThreshold:active.threshold,
+    activeTrainAccuracy:Number(active.accuracy.toFixed(1)),
+    activeCoverage:Number((active.coverage*100).toFixed(1))
+  };
+}
+
 function summary(asset:string){
   const a=ensure(asset),global=view(a.global);
   const bySource=Object.fromEntries(Object.entries(a.bySource).map(([k,v])=>[k,view(v)]));
   const byRegime=Object.fromEntries(Object.entries(a.byRegime).map(([k,v])=>[k,view(v)]));
   const byConfidence=Object.fromEntries(Object.entries(a.byConfidence).map(([k,v])=>[k,view(v)]));
   const directional=global.hits+global.fails;
+  const walk=walkForward(a);
   return {
     ok:true,version:'next-move-live-v2',asset,
     global,bySource,byRegime,byConfidence,
     pending:a.pending.length,recent:a.recent.slice(0,12),
+    walkForward:walk,
     readyForLearning:directional>=50,
     learningSamples:directional,
     storage:targetFile()
