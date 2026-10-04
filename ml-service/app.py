@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss, b
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 
-APP_VERSION="predator-ml-v7-m5-noise-classifier"
+APP_VERSION="predator-ml-v8-long-history-m5"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 MODEL_PATH=MODEL_DIR/"btc_ml_ensemble.joblib"
 META_PATH=MODEL_DIR/"btc_ml_meta.json"
@@ -529,7 +529,7 @@ def train_all():
             hist=fetch_coinbase_history(TRAIN_CANDLES)
             source="Coinbase Exchange BTC-USD 1m · neutral micro fallback"
         m1=train_horizon(make_dataset(hist,1,.04,M1_FEATURES),1,M1_FEATURES)
-        m5=train_m5_multiclass(make_m5_multiclass_dataset(hist,M5_FEATURES,.18),M5_FEATURES)
+        m5=train_horizon(make_dataset(hist,5,.12,M5_FEATURES),5,M5_FEATURES)
         payload={"version":APP_VERSION,"features":FEATURE_SIGNATURE,"trainedAt":int(time.time()*1000),"historyRows":len(hist),"source":source,"models":{"m1":m1,"m5":m5}}
         tmp=MODEL_PATH.with_suffix(".tmp"); joblib.dump(payload,tmp); os.replace(tmp,MODEL_PATH)
         meta={"version":APP_VERSION,"trainedAt":payload["trainedAt"],"historyRows":len(hist),"source":payload["source"],
