@@ -153,8 +153,8 @@ export async function GET(request:Request){
     const neuralPredictionPromise=getNeuralPrediction(now).catch(()=>({ok:false,status:'UNAVAILABLE',ready:false,side:'WAIT'} as any));
     const bitcoinMlRaw=await mlPredictionPromise;
     const bitcoinTick=getServerTickSignal('BTC',now)||btcWave;
-    const goldScalp=buildScalpFusion(goldScalpRaw,null,null,goldLearner,null,goldPrice,goldAtr,null,goldTick,goldAccumulation);
-    const bitcoinScalp=buildScalpFusion(bitcoinScalpRaw,liquidity,motion,bitcoinLearner,bitcoinMlRaw,btcPrice,btcAtr,bitcoinScalpPrior,bitcoinTick,bitcoinAccumulation);
+    const goldScalp=buildScalpFusion(goldScalpRaw,null,null,goldLearner,null,goldPrice,goldAtr,null,goldTick,goldAccumulation,'GOLD');
+    const bitcoinScalp=buildScalpFusion(bitcoinScalpRaw,liquidity,motion,bitcoinLearner,bitcoinMlRaw,btcPrice,btcAtr,bitcoinScalpPrior,bitcoinTick,bitcoinAccumulation,'BTC');
     const goldBehavior=studyMarketBehavior(gm.c1,gm.c5,now);
     const bitcoinBehavior=studyMarketBehavior(btc.c1,btc.c5,now);
     const goldStructure=analyzeWaveStructure(gm.c1,gm.c5,now);
