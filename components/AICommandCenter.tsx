@@ -75,7 +75,7 @@ function AdvancedDetails({x}:any){
           <div><small>1m Memory</small><strong>{sideAr(marketLearning.horizon1?.side)} · {marketLearning.horizon1?.samples||0}</strong></div>
           <div><small>5m Memory</small><strong>{sideAr(marketLearning.horizon5?.side)} · {marketLearning.horizon5?.samples||0}</strong></div>
         </div>
-        <p>Observations {marketLearning.totals?.observations||0} · Resolved 1m {marketLearning.totals?.resolved1||0} · Resolved 5m {marketLearning.totals?.resolved5||0}</p>
+        <p>Observations {marketLearning.totals?.observations||0} · Resolved 1m {marketLearning.totals?.resolved1||0} · Resolved 5m {marketLearning.totals?.resolved5||0} · Self {marketLearning.selfCalibration?.reliability||50}</p>
         {!!marketLearning.reasons?.length&&<p>{marketLearning.reasons.join(' · ')}</p>}
       </div>}
 
@@ -124,6 +124,23 @@ function AssetCard({x,fast}:any){
       <strong className={buy?'green':sell?'red':'amber'}>{buy?'BUY':sell?'SELL':'WAIT'}</strong>
       <p>{master.reason||'النواة تراقب الحركة ولم تعتمد دخولًا بعد.'}</p>
     </div>
+
+    {x.stateGraph&&<div className="hunt-box market-state-box">
+      <div className="hunt-title"><span>🧠 فهم حركة السوق</span><strong>{x.stateGraph.current} → {x.stateGraph.nextState}</strong></div>
+      <div className="forecast-horizons">
+        <div><small>الحالة الحالية</small><strong>{x.stateGraph.current}</strong></div>
+        <div><small>الحالة التالية</small><strong>{x.stateGraph.nextState}</strong></div>
+        <div><small>احتمال الانتقال</small><strong>%{x.stateGraph.nextStateProbability||0}</strong></div>
+      </div>
+      <div className="forecast-path">
+        <div><small>اتجاه الحالة التالية</small><strong className={x.stateGraph.nextSide==='BUY'?'green':x.stateGraph.nextSide==='SELL'?'red':'amber'}>{sideAr(x.stateGraph.nextSide)} · %{x.stateGraph.nextSideProbability||0}</strong></div>
+        <div><small>Sequence Matches</small><strong>{x.stateGraph.sequenceMatches||0}</strong></div>
+      </div>
+      <p className="muted">{x.stateGraph.sequence}</p>
+      {x.stateGraph.changePoint&&<p className="amber">⚠️ Change Point {x.stateGraph.changePointScore}: السوق قد يكون بيغير نظام الحركة.</p>}
+      {x.marketLearning&&x.stateGraph.nextSide!=='WAIT'&&x.marketLearning.side!=='WAIT'&&x.stateGraph.nextSide!==x.marketLearning.side&&<p className="red">MODEL CONFLICT: State Graph {sideAr(x.stateGraph.nextSide)} بينما الذاكرة {sideAr(x.marketLearning.side)} — الثقة في الحركة القادمة لازم تكون أقل.</p>}
+      {x.marketLearning?.strongMoveMemory&&<p className="learning-line">⚡ ذاكرة موجة قوية: {sideAr(x.marketLearning.strongMoveMemory.side)} · احتمال {x.marketLearning.strongMoveMemory.probability||0}% · عينات {x.marketLearning.strongMoveMemory.samples||0}</p>}
+    </div>}
 
     {hunt&&<div className="hunt-box">
       <div className="hunt-title"><span>🦅 الحركة القادمة المرجحة</span><strong>{hunt.path?.label||sideAr(hunt.side)} · {hunt.state}</strong></div>
