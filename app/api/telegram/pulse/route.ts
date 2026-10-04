@@ -1,8 +1,103 @@
-import {analyze,defaults,type Rules} from '../../../../lib/engine';
-import {getMarketSnapshot} from '../../../../lib/market-hub';
-import {getTelegramMonitorState,sendTelegramAlert,setTelegramMonitorState,telegramStatus} from '../../../../lib/telegram';
+import {sendTelegramAlert,telegramStatus} from '../../../../lib/telegram';
+
 export const dynamic='force-dynamic';
-const allowed={before:[5,15,30],after:[5,15,30],adx:[20,22,25],spike:[1.5,2,2.5],minScore:[72,76,80,84]};
-function rulesFrom(input:any):Rules{const out:any={...defaults};for(const k of Object.keys(allowed) as (keyof Rules)[]){const n=Number(input?.[k]);if((allowed as any)[k].includes(n))out[k]=n;}return out;}
-const n=(v:number|null|undefined)=>v==null||!Number.isFinite(v)?'—':v.toFixed(2);
-export async function POST(request:Request){const status=telegramStatus();if(!status.configured||!status.enabled)return Response.json({ok:true,configured:status.configured,enabled:status.enabled,sent:false,reason:'telegram_disabled'});const body=await request.json().catch(()=>({})),rules=rulesFrom(body?.rules);try{const s=await getMarketSnapshot(),m=s.market,q=s.quote,now=Date.now(),a=analyze(m.c1,m.c5,m.c15,m.c60,m.events,Boolean(m.newsReady&&now-m.checkedAt<120000),now,rules),state=await getTelegramMonitorState(),best=a.score?Math.max(a.score.long,a.score.short):0,gap=a.score?Math.abs(a.score.long-a.score.short):0,side=a.score?(a.score.long>=a.score.short?'شراء':'بيع'):'',events:any[]=[],signalId=a.signal?.id??null;if(signalId&&state.lastSignal!==signalId){const x=a.signal!;events.push(await sendTelegramAlert({level:'entry',title:`إشارة ${x.side}${x.mode==='news'?' · NEWS MODE':''}`,body:`Score ${x.score??best}/100\nEntry ${n(x.entry)} · SL ${n(x.sl)} · TP ${n(x.tp)} · R:R ${n(x.rr)}`,key:`entry:${signalId}`}));}if(!signalId&&state.lastSignal)events.push(await sendTelegramAlert({level:'cancel',title:'إلغاء الإشارة السابقة',body:a.reason,key:`cancel:${state.lastSignal}`}));await setTelegramMonitorState({lastSignal:signalId});if(!signalId&&a.state==='wait'&&best>=Math.max(0,rules.minScore-6)&&gap>=8){const candle=m.c1.filter(c=>c.time+60000<=now).at(-1)?.time||Math.floor(now/60000)*60000;events.push(await sendTelegramAlert({level:'watch',title:`راقب ${side}`,body:`التوافق ${best}/100 · الفرق ${gap}. لم يكتمل شرط الدخول بعد.`,key:`watch:${side}:${candle}`}));}if(a.state==='stop')events.push(await sendTelegramAlert({level:'warning',title:'توقف عن الدخول',body:a.reason,key:`stop:${a.reason.slice(0,60)}`}));if(!m.pricesReady)events.push(await sendTelegramAlert({level:'warning',title:'مشكلة بيانات',body:'شموع الذهب غير جاهزة؛ تجاهل أي دخول حتى عودة البيانات.',key:'market:not-ready'}));if(q?.status!=='live')events.push(await sendTelegramAlert({level:'warning',title:'السعر اللحظي غير Live',body:`الحالة: ${q?.status||'unavailable'} · المصدر: ${q?.source||'unavailable'}`,key:`quote:${q?.status||'unavailable'}`}));const mt5Configured=Boolean((s as any)?.mt5?.connected)||false,mt5Fresh=Boolean((s as any)?.mt5?.fresh);if(mt5Configured&&state.lastMt5Fresh!==null&&state.lastMt5Fresh!==mt5Fresh)events.push(await sendTelegramAlert({level:mt5Fresh?'system':'warning',title:mt5Fresh?'عاد اتصال MT5':'انقطع/تأخر MT5',body:mt5Fresh?'Tick الوسيط عاد حديثًا.':'Tick الوسيط لم يعد حديثًا؛ التنفيذ الحي يتوقف Fail-closed.',key:`mt5:${mt5Fresh}`}));if(mt5Configured)await setTelegramMonitorState({lastMt5Fresh:mt5Fresh});return Response.json({ok:true,configured:true,enabled:true,state:a.state,signalId,sent:events.some((x:any)=>x?.ok===true),results:events},{headers:{'Cache-Control':'private, no-store'}});}catch(e){try{await sendTelegramAlert({level:'warning',title:'تعذر فحص السوق',body:e instanceof Error?e.message:'خطأ غير معروف',key:'pulse:error'});}catch{}return Response.json({ok:false,message:'تعذر تشغيل Telegram pulse.'},{status:502});}}
+
+const MIN_RECOMMENDATION_CONFIDENCE=71;
+const lastRecommendationSignature=new Map<string,string>();
+
+const n=(v:any)=>Number.isFinite(Number(v))?Number(v).toFixed(2):'—';
+
+function signature(asset:string,r:any){
+  return [
+    asset,
+    r?.action||'WAIT',
+    Math.round(Number(r?.confidence)||0),
+    n(r?.entry),
+    n(r?.invalidation),
+    n(r?.targets?.scalp),
+    n(r?.targets?.oneMinute),
+    n(r?.targets?.fiveMinute),
+    n(r?.targets?.fifteenMinute)
+  ].join('|');
+}
+
+function recommendationBody(asset:string,r:any){
+  const t=r?.targets||{};
+  const targets=[
+    t.scalp!=null?`Scalp ${n(t.scalp)}`:null,
+    t.oneMinute!=null?`1m ${n(t.oneMinute)}`:null,
+    t.fiveMinute!=null?`5m ${n(t.fiveMinute)}`:null,
+    t.fifteenMinute!=null?`15m ${n(t.fifteenMinute)}`:null
+  ].filter(Boolean).join(' · ');
+  return [
+    `الثقة ${Math.round(Number(r?.confidence)||0)}%`,
+    `Entry ≈ ${n(r?.entry)}`,
+    `Invalidation / SL ${n(r?.invalidation)}`,
+    targets?`Targets: ${targets}`:null,
+    'صالحة طالما لم يُكسر مستوى الإلغاء ولم ترجع النواة WAIT.'
+  ].filter(Boolean).join('\n');
+}
+
+export async function POST(request:Request){
+  const status=telegramStatus();
+  if(!status.configured||!status.enabled){
+    return Response.json({ok:true,configured:status.configured,enabled:status.enabled,sent:false,reason:'telegram_disabled',minimumConfidence:MIN_RECOMMENDATION_CONFIDENCE});
+  }
+
+  try{
+    const url=new URL('/api/ai-analysis',request.url);
+    const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(25000),headers:{'x-predator-telegram':'1'}});
+    const data:any=await r.json();
+    if(!r.ok||!data?.ok)throw new Error(data?.message||'AI analysis unavailable');
+
+    const events:any[]=[];
+    for(const [asset,node] of [['BTC',data.bitcoin],['GOLD',data.gold]] as const){
+      const rec:any=(node as any)?.recommendation;
+      const confidence=Math.round(Number(rec?.confidence)||0);
+      const active=Boolean(rec?.active&&(rec?.action==='BUY'||rec?.action==='SELL')&&confidence>=MIN_RECOMMENDATION_CONFIDENCE);
+      const prev=lastRecommendationSignature.get(asset)||'';
+
+      if(active){
+        const sig=signature(asset,rec);
+        if(sig!==prev){
+          events.push(await sendTelegramAlert({
+            level:'entry',
+            title:`${asset} · ${rec.action} · ثقة ${confidence}%`,
+            body:recommendationBody(asset,rec),
+            key:`predator:${sig}`
+          }));
+          lastRecommendationSignature.set(asset,sig);
+        }
+      }else if(prev){
+        events.push(await sendTelegramAlert({
+          level:'cancel',
+          title:`إلغاء توصية ${asset}`,
+          body:rec?.active&&confidence<MIN_RECOMMENDATION_CONFIDENCE
+            ?`الثقة هبطت إلى ${confidence}%، أقل من حد الإرسال ${MIN_RECOMMENDATION_CONFIDENCE}%.`
+            :'النواة لم تعد تعتمد توصية دخول؛ الحالة الحالية WAIT/غير معتمدة.',
+          key:`predator-cancel:${asset}:${Date.now()}`
+        }));
+        lastRecommendationSignature.delete(asset);
+      }
+    }
+
+    return Response.json({
+      ok:true,
+      configured:true,
+      enabled:true,
+      minimumConfidence:MIN_RECOMMENDATION_CONFIDENCE,
+      sent:events.some((x:any)=>x?.ok===true),
+      results:events
+    },{headers:{'Cache-Control':'private, no-store'}});
+  }catch(e){
+    try{
+      await sendTelegramAlert({
+        level:'warning',
+        title:'تعذر فحص توصيات النواة',
+        body:e instanceof Error?e.message:'خطأ غير معروف',
+        key:'predator-pulse:error'
+      });
+    }catch{}
+    return Response.json({ok:false,message:'تعذر تشغيل Telegram recommendation pulse.',minimumConfidence:MIN_RECOMMENDATION_CONFIDENCE},{status:502});
+  }
+}
