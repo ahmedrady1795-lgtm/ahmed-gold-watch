@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss, b
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 
-APP_VERSION="predator-ml-v8-long-history-m5"
+APP_VERSION="predator-ml-v9-m5-multiclass-fixed"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 MODEL_PATH=MODEL_DIR/"btc_ml_ensemble.joblib"
 META_PATH=MODEL_DIR/"btc_ml_meta.json"
@@ -529,7 +529,7 @@ def train_all():
             hist=fetch_coinbase_history(TRAIN_CANDLES)
             source="Coinbase Exchange BTC-USD 1m · neutral micro fallback"
         m1=train_horizon(make_dataset(hist,1,.04,M1_FEATURES),1,M1_FEATURES)
-        m5=train_horizon(make_dataset(hist,5,.12,M5_FEATURES),5,M5_FEATURES)
+        m5=train_m5_multiclass(make_m5_multiclass_dataset(hist,M5_FEATURES,.18),M5_FEATURES)
         payload={"version":APP_VERSION,"features":FEATURE_SIGNATURE,"trainedAt":int(time.time()*1000),"historyRows":len(hist),"source":source,"models":{"m1":m1,"m5":m5}}
         tmp=MODEL_PATH.with_suffix(".tmp"); joblib.dump(payload,tmp); os.replace(tmp,MODEL_PATH)
         meta={"version":APP_VERSION,"trainedAt":payload["trainedAt"],"historyRows":len(hist),"source":payload["source"],
@@ -608,25 +608,46 @@ def predict_h(model,x):
             "ready":bool(model["metrics"]["ready"]),"metrics":model["metrics"],
             "component":{"xgbUp":round(px*100,2),"lightgbmUp":round(pl*100,2),"agree":bool(component_agree),"weights":w,"signalThreshold":threshold}}
 
+def _class3_probs(estimator,x):
+    raw=estimator.predict_proba(x)[0]
+    classes=list(getattr(estimator,"classes_",range(len(raw))))
+    out=np.zeros(3,dtype=float)
+    for i,cls in enumerate(classes):
+        try:
+            k=int(cls)
+        except Exception:
+            continue
+        if 0<=k<=2:
+            out[k]=float(raw[i])
+    s=float(out.sum())
+    if s<=0:
+        return np.array([0.0,1.0,0.0],dtype=float)
+    return out/s
+
 def predict_m5(model,x):
-    px=model["xgb"].predict_proba(x)[0]; pl=model["lgb"].predict_proba(x)[0]; w=model["weights"]
+    # M5 is a real 3-class model: DOWN(0) / NOISE(1) / UP(2).
+    # Map estimator classes explicitly so a missing/legacy class can never crash inference.
+    px=_class3_probs(model["xgb"],x); pl=_class3_probs(model["lgb"],x); w=model["weights"]
     p=px*w["xgb"]+pl*w["lgb"]
     down,flat,up=float(p[0]),float(p[1]),float(p[2])
     lean="BUY" if up>=down else "SELL"
     dir_prob=max(up,down); threshold=float(model.get("signalThreshold",.44)); margin=float(model.get("flatMargin",.05))
     component_agree=((px[2]>=px[0])==(pl[2]>=pl[0]))
-    active=bool(component_agree and dir_prob>=threshold and dir_prob-flat>=margin)
+    model_mode=str(model.get("mode") or "")
+    compatible=(model_mode=="m5_multiclass")
+    active=bool(compatible and component_agree and dir_prob>=threshold and dir_prob-flat>=margin)
     directional_total=max(1e-9,up+down)
     prob_up_dir=up/directional_total; edge=abs(up-down)
     confidence=round(min(90,max(0,50+(dir_prob-flat)*85+edge*35))) if active else round(min(70,max(45,50+edge*25)))
     return {
         "side":lean if active else "WAIT","leanSide":lean,
         "probUp":round(prob_up_dir*100,2),"probDown":round((1-prob_up_dir)*100,2),"probFlat":round(flat*100,2),
-        "confidence":confidence,"edge":round(edge*100,2),"ready":bool(model["metrics"]["ready"]),"metrics":model["metrics"],
+        "confidence":confidence,"edge":round(edge*100,2),"ready":bool(compatible and model["metrics"]["ready"]),"metrics":model["metrics"],
         "component":{
             "xgb":{"down":round(float(px[0])*100,2),"flat":round(float(px[1])*100,2),"up":round(float(px[2])*100,2)},
             "lightgbm":{"down":round(float(pl[0])*100,2),"flat":round(float(pl[1])*100,2),"up":round(float(pl[2])*100,2)},
-            "agree":bool(component_agree),"weights":w,"signalThreshold":threshold,"flatMargin":margin
+            "agree":bool(component_agree),"compatible":compatible,"mode":model_mode,
+            "weights":w,"signalThreshold":threshold,"flatMargin":margin
         }
     }
 
