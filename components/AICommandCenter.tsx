@@ -137,6 +137,13 @@ function AssetCard({x,fast}:any){
       <div><small>الحالة</small><strong>{recommendation?.active?'توصية':'مراقبة'}</strong></div>
     </div>
 
+    <div className="ai-outcome-mini">
+      <span>شراء ✓ <b>{x.expectedMoveLearning?.directionStats?.buySuccess||0}</b></span>
+      <span>شراء ✕ <b>{x.expectedMoveLearning?.directionStats?.buyFail||0}</b></span>
+      <span>بيع ✓ <b>{x.expectedMoveLearning?.directionStats?.sellSuccess||0}</b></span>
+      <span>بيع ✕ <b>{x.expectedMoveLearning?.directionStats?.sellFail||0}</b></span>
+    </div>
+
     <div className="quick-signals compact-signals">
       {signalRows.map((s:any)=><div className="quick-signal-row" key={s.label}>
         <span>{s.label}</span>
