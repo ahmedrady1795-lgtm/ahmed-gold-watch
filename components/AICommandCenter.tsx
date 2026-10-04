@@ -145,29 +145,31 @@ function AssetCard({x,fast}:any){
       </div>)}
     </div>
 
-    <div className="master-box">
-      <span>{recommendation?.active?'التوصية النهائية':'القرار النهائي'}</span>
-      <strong className={buy?'green':sell?'red':'amber'}>{recommendation?.active?(recommendation.action+' · ثقة '+calibrated(recommendation.confidence)+'%'):(buy?'BUY':sell?'SELL':'WAIT')}</strong>
-      {recommendation?.active&&<p>دخول ≈ {fmt(recommendation.entry,2)} · إلغاء {fmt(recommendation.invalidation,2)}{recommendation.targets?.scalp!=null?(' · Scalp '+fmt(recommendation.targets.scalp,2)):''}{recommendation.targets?.oneMinute!=null?(' · 1m '+fmt(recommendation.targets.oneMinute,2)):''}{recommendation.targets?.fiveMinute!=null?(' · 5m '+fmt(recommendation.targets.fiveMinute,2)):''}{recommendation.targets?.fifteenMinute!=null?(' · 15m '+fmt(recommendation.targets.fifteenMinute,2)):''}</p>}
-      {!recommendation?.active&&<p>{master.reason||'النواة تراقب الحركة ولم تعتمد دخولًا بعد.'}</p>}
-    </div>
+    <div className={`decision-state-row ${x.stateGraph?'':'single'}`}>
+      <div className="master-box">
+        <span>{recommendation?.active?'التوصية النهائية':'القرار النهائي'}</span>
+        <strong className={buy?'green':sell?'red':'amber'}>{recommendation?.active?(recommendation.action+' · ثقة '+calibrated(recommendation.confidence)+'%'):(buy?'BUY':sell?'SELL':'WAIT')}</strong>
+        {recommendation?.active&&<p>دخول ≈ {fmt(recommendation.entry,2)} · إلغاء {fmt(recommendation.invalidation,2)}{recommendation.targets?.scalp!=null?(' · Scalp '+fmt(recommendation.targets.scalp,2)):''}{recommendation.targets?.oneMinute!=null?(' · 1m '+fmt(recommendation.targets.oneMinute,2)):''}{recommendation.targets?.fiveMinute!=null?(' · 5m '+fmt(recommendation.targets.fiveMinute,2)):''}{recommendation.targets?.fifteenMinute!=null?(' · 15m '+fmt(recommendation.targets.fifteenMinute,2)):''}</p>}
+        {!recommendation?.active&&<p>{master.reason||'النواة تراقب الحركة ولم تعتمد دخولًا بعد.'}</p>}
+      </div>
 
-    {x.stateGraph&&<div className="hunt-box market-state-box">
-      <div className="hunt-title"><span>🧠 فهم حركة السوق</span><strong>{x.stateGraph.current} → {x.stateGraph.nextState}</strong></div>
-      <div className="forecast-horizons">
-        <div><small>الحالة الحالية</small><strong>{x.stateGraph.current}</strong></div>
-        <div><small>الحالة التالية</small><strong>{x.stateGraph.nextState}</strong></div>
-        <div><small>احتمال الانتقال</small><strong>%{x.stateGraph.nextStateProbability||0}</strong></div>
-      </div>
-      <div className="forecast-path">
-        <div><small>اتجاه الحالة التالية</small><strong className={x.stateGraph.nextSide==='BUY'?'green':x.stateGraph.nextSide==='SELL'?'red':'amber'}>{sideAr(x.stateGraph.nextSide)} · %{x.stateGraph.nextSideProbability||0}</strong></div>
-        <div><small>Sequence Matches</small><strong>{x.stateGraph.sequenceMatches||0}</strong></div>
-      </div>
-      <p className="muted">{x.stateGraph.sequence}</p>
-      {x.stateGraph.changePoint&&<p className="amber">⚠️ Change Point {x.stateGraph.changePointScore}: السوق قد يكون بيغير نظام الحركة.</p>}
-      {x.marketLearning&&x.stateGraph.nextSide!=='WAIT'&&x.marketLearning.side!=='WAIT'&&x.stateGraph.nextSide!==x.marketLearning.side&&<p className="red">MODEL CONFLICT: State Graph {sideAr(x.stateGraph.nextSide)} بينما الذاكرة {sideAr(x.marketLearning.side)} — الثقة في الحركة القادمة لازم تكون أقل.</p>}
-      {x.marketLearning?.strongMoveMemory&&<p className="learning-line">⚡ ذاكرة موجة قوية: {sideAr(x.marketLearning.strongMoveMemory.side)} · احتمال {x.marketLearning.strongMoveMemory.probability||0}% · عينات {x.marketLearning.strongMoveMemory.samples||0}</p>}
-    </div>}
+      {x.stateGraph&&<div className="hunt-box market-state-box">
+        <div className="hunt-title"><span>🧠 فهم حركة السوق</span><strong>{x.stateGraph.current} → {x.stateGraph.nextState}</strong></div>
+        <div className="forecast-horizons">
+          <div><small>الحالة الحالية</small><strong>{x.stateGraph.current}</strong></div>
+          <div><small>الحالة التالية</small><strong>{x.stateGraph.nextState}</strong></div>
+          <div><small>احتمال الانتقال</small><strong>%{x.stateGraph.nextStateProbability||0}</strong></div>
+        </div>
+        <div className="forecast-path">
+          <div><small>اتجاه الحالة التالية</small><strong className={x.stateGraph.nextSide==='BUY'?'green':x.stateGraph.nextSide==='SELL'?'red':'amber'}>{sideAr(x.stateGraph.nextSide)} · %{x.stateGraph.nextSideProbability||0}</strong></div>
+          <div><small>Sequence Matches</small><strong>{x.stateGraph.sequenceMatches||0}</strong></div>
+        </div>
+        <p className="muted">{x.stateGraph.sequence}</p>
+        {x.stateGraph.changePoint&&<p className="amber">⚠️ Change Point {x.stateGraph.changePointScore}: السوق قد يكون بيغير نظام الحركة.</p>}
+        {x.marketLearning&&x.stateGraph.nextSide!=='WAIT'&&x.marketLearning.side!=='WAIT'&&x.stateGraph.nextSide!==x.marketLearning.side&&<p className="red">MODEL CONFLICT: State Graph {sideAr(x.stateGraph.nextSide)} بينما الذاكرة {sideAr(x.marketLearning.side)} — الثقة في الحركة القادمة لازم تكون أقل.</p>}
+        {x.marketLearning?.strongMoveMemory&&<p className="learning-line">⚡ ذاكرة موجة قوية: {sideAr(x.marketLearning.strongMoveMemory.side)} · احتمال {x.marketLearning.strongMoveMemory.probability||0}% · عينات {x.marketLearning.strongMoveMemory.samples||0}</p>}
+      </div>}
+    </div>
 
     {hunt&&<div className="hunt-box">
       <div className="hunt-title"><span>🦅 الحركة القادمة المتوقعة</span><strong>{sideAr(hunt.nextMove?.side||hunt.path?.shortSide)} · {hunt.path?.label||sideAr(hunt.side)} · {hunt.state}</strong></div>
