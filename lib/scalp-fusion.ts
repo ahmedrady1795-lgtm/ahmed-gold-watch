@@ -391,20 +391,21 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     priceStillCoiled:preMove.priceStillCoiled,
     lateMomentum:preMove.lateMomentum
   };
-  const targetZone=reaction.targetFor(fusedSide);
-  const breakoutLevel=fusedSide==='BUY'?Number(accumulation?.breakoutLevel):fusedSide==='SELL'?Number(accumulation?.breakdownLevel):NaN;
-  const zoneDirectionValid=Boolean(targetZone&&((fusedSide==='BUY'&&Number(targetZone.mid)>p)||(fusedSide==='SELL'&&Number(targetZone.mid)<p)));
+  const targetSide:Side=fusedSide!=='WAIT'?fusedSide:rawFusedSide;
+  const targetZone=reaction.targetFor(targetSide);
+  const breakoutLevel=targetSide==='BUY'?Number(accumulation?.breakoutLevel):targetSide==='SELL'?Number(accumulation?.breakdownLevel):NaN;
+  const zoneDirectionValid=Boolean(targetZone&&((targetSide==='BUY'&&Number(targetZone.mid)>p)||(targetSide==='SELL'&&Number(targetZone.mid)<p)));
   const zoneDistanceAtr=zoneDirectionValid&&Number.isFinite(a)&&a>0?Math.abs(Number(targetZone.mid)-p)/a:Infinity;
   const zoneTargetValid=Boolean(zoneDirectionValid&&zoneDistanceAtr<=.72);
   const breakoutDistanceAtr=Number.isFinite(breakoutLevel)&&Number.isFinite(a)&&a>0?Math.abs(breakoutLevel-p)/a:Infinity;
-  const breakoutTargetValid=Boolean(Number.isFinite(breakoutLevel)&&breakoutDistanceAtr<=.62&&((fusedSide==='BUY'&&breakoutLevel>p)||(fusedSide==='SELL'&&breakoutLevel<p)));
-  const fallbackTarget=Number.isFinite(a)&&a>0&&fusedSide!=='WAIT'?p+(fusedSide==='BUY'?1:-1)*a*Math.max(.14,Math.min(.48,.16+dominantEvidence/260)):null;
-  const approachTarget=zoneDirectionValid&&Number.isFinite(a)&&a>0&&fusedSide!=='WAIT'
-    ?p+(fusedSide==='BUY'?1:-1)*a*.48
+  const breakoutTargetValid=Boolean(Number.isFinite(breakoutLevel)&&breakoutDistanceAtr<=.62&&((targetSide==='BUY'&&breakoutLevel>p)||(targetSide==='SELL'&&breakoutLevel<p)));
+  const fallbackTarget=Number.isFinite(a)&&a>0&&targetSide!=='WAIT'?p+(targetSide==='BUY'?1:-1)*a*Math.max(.14,Math.min(.48,.16+dominantEvidence/260)):null;
+  const approachTarget=zoneDirectionValid&&Number.isFinite(a)&&a>0&&targetSide!=='WAIT'
+    ?p+(targetSide==='BUY'?1:-1)*a*.48
     :null;
   const targetPrice=zoneTargetValid?Number(targetZone.mid):breakoutTargetValid?breakoutLevel:(approachTarget??fallbackTarget);
   const target={
-    side:fusedSide,
+    side:targetSide,
     price:targetPrice!=null&&Number.isFinite(Number(targetPrice))?Number(Number(targetPrice).toFixed(2)):null,
     zoneLow:zoneTargetValid?Number(targetZone.low.toFixed(2)):null,
     zoneHigh:zoneTargetValid?Number(targetZone.high.toFixed(2)):null,
