@@ -156,8 +156,8 @@ export async function GET(request:Request){
     const goldMovement=buildMovementIntelligence('GOLD',{expected:goldExpectedLearning,stateGraph:goldStateGraph,liquidity:null,motion:null,structure:goldStructure,accumulation:goldAccumulation,behavior:goldBehavior,learning:goldLearning,tick:goldTick,decision:gold,evolution:goldEvolution,news:goldNews,price:goldPrice,atr:goldAtr,now});
     const bitcoinMovement=buildMovementIntelligence('BTC',{expected:bitcoinExpectedLearning,stateGraph:bitcoinStateGraph,liquidity,motion,structure:bitcoinStructure,accumulation:bitcoinAccumulation,behavior:bitcoinBehavior,learning:bitcoinLearning,tick:bitcoinTick,decision:bitcoin,evolution:bitcoinEvolution,news:bitcoinNews,price:btcPrice,atr:btcAtr,now});
 
-    const goldMaster=masterArbitrate('GOLD',gold,goldScalp,now,goldLearner,goldLearning,goldEvolution);
-    const bitcoinMaster=masterArbitrate('BTC',bitcoin,bitcoinScalp,now,bitcoinLearner,bitcoinLearning,bitcoinEvolution);
+    const goldMaster=masterArbitrate('GOLD',gold,goldScalp,now,goldLearner,goldLearning,goldEvolution,goldExpectedLearning);
+    const bitcoinMaster=masterArbitrate('BTC',bitcoin,bitcoinScalp,now,bitcoinLearner,bitcoinLearning,bitcoinEvolution,bitcoinExpectedLearning);
     const goldHunt=buildHuntForecast('GOLD',{...gold,master:goldMaster},goldScalp,goldPrice,goldAtr,now,goldWave,goldLearner,goldStructure,goldAccumulation,goldLearning,goldEvolution,goldStateGraph,goldExpectedLearning,goldMovement);
     const bitcoinHunt=buildHuntForecast('BTC',{...bitcoin,master:bitcoinMaster},bitcoinScalp,btcPrice,btcAtr,now,btcWave,bitcoinLearner,bitcoinStructure,bitcoinAccumulation,bitcoinLearning,bitcoinEvolution,bitcoinStateGraph,bitcoinExpectedLearning,bitcoinMovement);
 
