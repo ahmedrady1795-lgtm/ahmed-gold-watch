@@ -19,7 +19,7 @@ function IndicatorMatrix({x}:any){
 
 function Card({x}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
-  const trade=x.trade,candidate=x.candidateTrade,buy=x.action==='BUY',sell=x.action==='SELL',pulse=x.livePulse,scalp=x.scalp,scalpTrade=x.scalp?.trade,hunter=x.hunter,liq=x.liquidity,core=x.adaptiveCore,motion=x.motion;
+  const trade=x.trade,candidate=x.candidateTrade,buy=x.action==='BUY',sell=x.action==='SELL',pulse=x.livePulse,scalp=x.scalp,scalpTrade=x.scalp?.trade,hunter=x.hunter,liq=x.liquidity,core=x.adaptiveCore,motion=x.motion,behavior=x.behavior;
   return <section className="panel">
     <div className="panelhead"><div><span className="eyebrow">{x.asset} · {x.phase||'SCAN'}</span><h2>{buy?'BUY STRIKE':sell?'SELL STRIKE':hunter?.status==='WATCH'?'WATCH '+sideAr(hunter?.side):'WAIT'} · Quality {x.quality||'—'}</h2></div>{buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}</div>
 
@@ -65,6 +65,18 @@ function Card({x}:any){
       {!!motion.reasons?.length&&<p>{motion.reasons.join(' · ')}</p>}
     </div>}
 
+    {behavior&&<div className="sidecard">
+      <strong>🧬 MARKET BEHAVIOR STUDY · {behavior.pattern} · {sideAr(behavior.side)} · قوة {calibrated(behavior.score)}</strong>
+      <div className="levels">
+        <div><small>Historical Analogs</small><strong>{behavior.analogCount||0}</strong></div>
+        <div><small>Follow-through</small><strong>↑ {behavior.votes?.buy||0} / ↓ {behavior.votes?.sell||0}</strong></div>
+        <div><small>Expected Move</small><strong>{behavior.expectedMoveAtr??0} ATR</strong></div>
+      </div>
+      <p>Confidence {calibrated(behavior.confidence)} · Horizon {behavior.horizonMinutes||0}m</p>
+      {!!behavior.reasons?.length&&<p>{behavior.reasons.join(' · ')}</p>}
+      {core&&<p><b>Behavior weight:</b> {Math.round((core.behaviorWeight||0)*100)}%</p>}
+    </div>}
+
     <p>السعر {fmt(pulse?.price??x.price,x.asset==='BTC'?2:2)} · {pulse?.source||x.source}</p>
 
     {trade?<div className="levels">
@@ -88,8 +100,8 @@ export default function AICommandCenter({data,error}:any){
   const auto=data?.autopilot;
   return <div>
     <section className="sidecard">
-      <strong>Predator Core v7 · Anticipatory Motion Brain</strong>
-      <p>نواة استباقية تجمع المؤشرات والسيولة مع ذاكرة حركة قصيرة: Pressure Trend + Divergence + Microprice Lead + Compression + Sweep/Reclaim + Trap Detection لتكوين PRE-MOVE قبل اكتمال الحركة، بدون اعتبارها ضمانًا.</p>
+      <strong>Predator Core v8 · Behavior Learning Brain</strong>
+      <p>النواة تدرس الحركة الحالية نفسها، تقارنها بحركات تاريخية مشابهة على M1/M5، وتجمع Behavior Study مع Motion + Liquidity + المؤشرات قبل أي قرار. الهدف رصد النمط المتكرر مبكرًا بدون اعتبار التشابه التاريخي ضمانًا.</p>
     </section>
 
     {!!data?.radar?.length&&<section className="panel">
