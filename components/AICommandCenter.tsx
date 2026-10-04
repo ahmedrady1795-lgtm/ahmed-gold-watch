@@ -68,6 +68,17 @@ function AdvancedDetails({x}:any){
         {!!learner.gate?.reasons?.length&&<p>{learner.gate.reasons.join(' · ')}</p>}
       </div>}
 
+      {x.expectedMoveLearning&&<div className="advanced-block">
+        <strong>🎯 Expected Move Learning · PRIMARY</strong>
+        <div className="levels">
+          <div><small>2m</small><strong>{sideAr(x.expectedMoveLearning.twoMinute?.side)} · Cal {x.expectedMoveLearning.twoMinute?.calibration||50}</strong></div>
+          <div><small>5m</small><strong>{sideAr(x.expectedMoveLearning.fiveMinute?.side)} · Cal {x.expectedMoveLearning.fiveMinute?.calibration||50}</strong></div>
+          <div><small>15m</small><strong>{sideAr(x.expectedMoveLearning.fifteenMinute?.side)} · Cal {x.expectedMoveLearning.fifteenMinute?.calibration||50}</strong></div>
+        </div>
+        <p>Resolved 2m {x.expectedMoveLearning.totals?.resolved2||0} · 5m {x.expectedMoveLearning.totals?.resolved5||0} · 15m {x.expectedMoveLearning.totals?.resolved15||0}</p>
+        <p>يتعلم من اتجاه الإغلاق + أقصى صعود/هبوط داخل كل نافذة.</p>
+      </div>}
+
       {marketLearning&&<div className="advanced-block">
         <strong>🧠 Market Learning Brain</strong>
         <div className="levels">
@@ -125,6 +136,25 @@ function AssetCard({x,fast}:any){
       <div><small>الحالة</small><strong>{master.state||'WAIT'}</strong></div>
       <div><small>الثقة</small><strong>{calibrated(x.confidence)}</strong></div>
     </div>
+
+    {hunt&&<div className="expected-move-primary">
+      <div className="expected-move-head">
+        <span>🎯 الحركة القادمة المتوقعة · أساس التحليل</span>
+        <strong>{hunt.expectedMoveCore?.conflict?'تعارض يحتاج حذر':'متابعة 2 / 5 / 15 دقيقة'}</strong>
+      </div>
+      <div className="forecast-horizons">
+        {([
+          ['2 دقيقة',hunt.horizons?.twoMinute,hunt.expectedMoveLearning?.twoMinute],
+          ['5 دقائق',hunt.horizons?.fiveMinute,hunt.expectedMoveLearning?.fiveMinute],
+          ['15 دقيقة',hunt.horizons?.fifteenMinute,hunt.expectedMoveLearning?.fifteenMinute]
+        ] as any[]).map(([label,h,m]:any)=><div key={label}>
+          <small>{label}</small>
+          <strong className={h?.side==='BUY'?'green':h?.side==='SELL'?'red':'amber'}>{sideAr(h?.side)} %{h?.strength||0}</strong>
+          <span>Cal {m?.calibration??'—'} · {m?.samples||0} حالة</span>
+        </div>)}
+      </div>
+      {hunt.expectedMoveLearning?.conflict&&<p className="red">⚠️ ذاكرة 2/5/15 مختلفة الاتجاه؛ تم خفض جودة التوقع تلقائيًا.</p>}
+    </div>}
 
     <div className="quick-signals">
       {signalRows.map((s:any)=><div className="quick-signal-row" key={s.label}>
@@ -206,7 +236,7 @@ function AssetCard({x,fast}:any){
         <span>{hunt.alternative.condition}</span>
       </div>}
 
-      {hunt.learningBrain&&<p className="learning-line">🧠 ذاكرة السوق: {sideAr(hunt.learningBrain.side)} · ثقة {calibrated(hunt.learningBrain.confidence)} · 1m {hunt.learningBrain.horizon1?.samples||0} / 5m {hunt.learningBrain.horizon5?.samples||0} عينة</p>}
+      {hunt.expectedMoveLearning&&<p className="learning-line">🎯 ذاكرة الحركة: 2m {sideAr(hunt.expectedMoveLearning.twoMinute?.side)} · 5m {sideAr(hunt.expectedMoveLearning.fiveMinute?.side)} · 15m {sideAr(hunt.expectedMoveLearning.fifteenMinute?.side)} · متوسط Calibration {hunt.expectedMoveCore?.averageCalibration||0}</p>}
       {hunt.commitment&&<p className="muted">Direction Lock: {sideAr(hunt.commitment.side)} · {hunt.commitment.state}{hunt.commitment.pendingSide!=='WAIT'?(' · عكس محتمل '+sideAr(hunt.commitment.pendingSide)+' '+hunt.commitment.pendingCount+'/2'):''}</p>}
       {!!hunt.reasons?.length&&<p className="muted">{hunt.reasons.slice(0,4).join(' · ')}</p>}
     </div>}
