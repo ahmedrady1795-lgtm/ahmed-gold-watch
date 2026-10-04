@@ -155,13 +155,12 @@ function AssetCard({x,fast}:any){
   const ambushMetric=ambushStats?.resolved?ambushStats:(x.asset==='BTC'?x.scalpLive?.global:null);
   const ambushWf=x.asset==='BTC'?x.scalpLive?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V8:null;
   const scalpTargetPrice=x.scalp?.target?.price??plan?.target?.price??x.scalp?.intercept?.launchLine??null;
+  const nextPrice=x.scalp?.nextPrice||scalpFusion?.nextPrice||{};
   const ambushStatus=invalid?.cancel?'ملغي'
     :ambushActive?'جاهز'
       :plan?.status==='ARMED'?'جاهز للمراقبة'
         :plan?.status==='STALK'?'يراقب'
           :plan?.status==='SCOUT'?'ينتظر':'ينتظر';
-  const neuralPath=x.neuralCore?.pricePath;
-  const neuralPathReady=Boolean(neuralPath?.ready);
   return <section className={"panel ai-asset-card "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
       <div><span className="eyebrow">{x.asset}</span><h2>{recommendation?.active?(buy?'شراء':sell?'بيع':'مراقبة'):(buy?'توقع صعود':sell?'توقع هبوط':'تذبذب')}</h2></div>
@@ -196,6 +195,20 @@ function AssetCard({x,fast}:any){
           {ambushSide==='BUY'?'الحركة: صعود':ambushSide==='SELL'?'الحركة: هبوط':'الحركة: انتظار'}
         </strong>
         <span>{scalpStrength}%{scalpTargetPrice!=null?<> · الهدف ≈ {fmt(scalpTargetPrice,2)}</>:null}</span>
+      </div>
+
+      <div className={"scalp-next-price "+(nextPrice?.ready?'ready':'waiting')}>
+        <div>
+          <small>السعر القادم المتوقع</small>
+          <strong className={nextPrice?.side==='BUY'?'green':nextPrice?.side==='SELL'?'red':'amber'}>
+            {nextPrice?.ready?fmt(nextPrice.price,2):'ينتظر توافق الحركة'}
+          </strong>
+        </div>
+        <span>
+          {nextPrice?.ready
+            ?<>نطاق {fmt(nextPrice.low,2)} — {fmt(nextPrice.high,2)} · خلال {nextPrice.horizonSeconds||'—'}ث · ثقة {calibrated(nextPrice.confidence)}%</>
+            :<>Ambush لن يعرض رقمًا قبل توافق السرعة والسيولة والـ microprice</>}
+        </span>
       </div>
 
       <div className="scalp-ambush-grid">
@@ -243,17 +256,6 @@ function AssetCard({x,fast}:any){
         <span>WF <b>{x.nextMoveLive.walkForward?.status||'COLLECTING'}</b></span>
         <span>Drift <b>{x.nextMoveLive.walkForward?.drift?.delta==null?'—':((x.nextMoveLive.walkForward.drift.delta>0?'+':'')+x.nextMoveLive.walkForward.drift.delta+'%')}</b></span>
       </div>}
-    </div>}
-
-    {x.asset==='BTC'&&neuralPath&&<div className="next-move-copy">
-      <span>Neural Price Path</span>
-      {neuralPathReady?<>
-        <strong className={neuralPath.side==='BUY'?'green':'red'}>{sideAr(neuralPath.side)} · الهدف الأول ≈ {fmt(neuralPath.firstTarget,2)}</strong>
-        <p>السعر المتوقع ≈ {fmt(neuralPath.expectedPrice,2)} · النطاق {fmt(neuralPath.rangeLow,2)} — {fmt(neuralPath.rangeHigh,2)} · أول لمس ≈ {fmt(neuralPath.firstHitSeconds,0)} ثانية</p>
-      </>:<>
-        <strong className="amber">Shadow · يجمع ويتحقق من Price Path</strong>
-        <p>{x.neuralCore?.samples||0} L2 snapshot · لن يستخدم السعر المتوقع في القرار قبل نجاح Validation + Final Holdout.</p>
-      </>}
     </div>}
 
     {hunt&&<div className="forecast-horizons compact-forecast">
