@@ -201,10 +201,10 @@ export function evaluatePredatorScalp(asset:string,input:any){
   );
   const ambush=Boolean(
     !inCooldown&&!o.late&&!microExhausted&&score>=58&&hardOpposition<=1&&
-    o.liveOpposition===0&&ambushTemporal&&ambushMicroReady&&
+    o.liveOpposition===0&&temporalReady&&ambushMicroReady&&
     (
-      pattern!=='FLOW_TRACK'||
-      (temporalReady&&microReady&&(tickAligned||liqAligned||motionAligned))
+      !o.microAvailable||
+      (microReady&&(tickAligned||liqAligned||motionAligned||preAligned||trapAligned))
     )
   );
   const watch=ambush;
