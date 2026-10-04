@@ -218,3 +218,15 @@ footer{display:flex;justify-content:space-between;gap:20px;color:#5f7880;font-si
   .scalp-ambush-main span{text-align:start}
   .scalp-ambush-grid,.scalp-ambush-results{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+
+.scalp-next-price{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;padding:10px 11px;border:1px solid rgba(255,255,255,.06);border-radius:10px;background:rgba(4,13,16,.42)}
+.scalp-next-price.ready{border-color:rgba(75,214,155,.18)}
+.scalp-next-price.waiting{border-color:rgba(255,203,107,.16)}
+.scalp-next-price small{display:block;color:var(--muted);font-size:8px}
+.scalp-next-price strong{display:block;margin-top:3px;font-size:18px}
+.scalp-next-price>span{max-width:58%;color:var(--muted);font-size:9px;line-height:1.55;text-align:end}
+@media(max-width:760px){
+  .scalp-next-price{align-items:flex-start;flex-direction:column;gap:5px}
+  .scalp-next-price>span{max-width:none;text-align:start}
+}
