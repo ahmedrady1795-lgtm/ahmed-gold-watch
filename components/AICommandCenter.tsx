@@ -151,8 +151,10 @@ function AssetCard({x,fast}:any){
   const neuralPath=x.neuralCore?.pricePath;
   const neuralPathReady=Boolean(neuralPath?.ready);
   const scalpTargetPrice=x.scalp?.target?.price??quickTargets?.scalp?.price??null;
+  const predator=x.scalp?.fusionV7?.predator;
+  const predatorPhase=String(predator?.phase||'HUNT');
   const signalRows=[
-    {label:fastUsable?'Scalp FAST':'Scalp',side:neuralPathReady?(neuralPath?.side||liveScalpSide):liveScalpSide,strength:scalpStrength,target:neuralPathReady?neuralPath?.firstTarget:scalpTargetPrice},
+    {label:x.scalp?.fusionV7?('Scalp '+predatorPhase):(fastUsable?'Scalp FAST':'Scalp'),side:neuralPathReady?(neuralPath?.side||liveScalpSide):liveScalpSide,strength:scalpStrength,target:neuralPathReady?neuralPath?.firstTarget:scalpTargetPrice},
     {label:'1m',side:m1?.bias||'WAIT',strength:calibrated(m1?.strength),target:quickTargets?.oneMinute?.price},
     {label:'5m',side:m5?.bias||'WAIT',strength:calibrated(m5?.strength),target:quickTargets?.fiveMinute?.price}
   ];
@@ -191,21 +193,22 @@ function AssetCard({x,fast}:any){
     </div>}
 
     {x.asset==='BTC'&&x.scalpLive&&(()=>{
-      const confirmed=x.scalpLive?.bySource?.SCALP_CONFIRMED_V6||x.scalpLive?.bySource?.SCALP_CONFIRMED_V5||x.scalpLive?.bySource?.SCALP_CONFIRMED_V4;
-      const metric=confirmed?.resolved?confirmed:x.scalpLive?.global;
-      const confWf=x.scalpLive?.walkForwardBySource?.SCALP_CONFIRMED_V6||x.scalpLive?.walkForwardBySource?.SCALP_CONFIRMED_V5||x.scalpLive?.walkForwardBySource?.SCALP_CONFIRMED_V4;
+      const attack=x.scalpLive?.bySource?.SCALP_PREDATOR_ATTACK_V7;
+      const ambush=x.scalpLive?.bySource?.SCALP_PREDATOR_AMBUSH_V7;
+      const metric=attack?.resolved?attack:ambush?.resolved?ambush:x.scalpLive?.global;
+      const attackWf=x.scalpLive?.walkForwardBySource?.SCALP_PREDATOR_ATTACK_V7;
       return <div className="next-move-copy">
-        <span>Scalp Fusion Live · {confirmed?.resolved?'Confirmed':'Collecting'}</span>
+        <span>Predator V7 Live · {predatorPhase}</span>
         <strong className={(metric?.accuracy??0)>=58?'green':(metric?.accuracy??0)>=50?'amber':'red'}>
-          {metric?.accuracy==null?'يجمع نتائج السكالب':('دقة '+metric.accuracy+'%')}
+          {metric?.accuracy==null?'يجمع نتائج Predator':('دقة '+metric.accuracy+'%')}
         </strong>
         <div className="ai-outcome-mini">
-          <span>نجح ✓ <b>{metric?.hits||0}</b></span>
-          <span>فشل ✕ <b>{metric?.fails||0}</b></span>
-          <span>محايد <b>{metric?.neutral||0}</b></span>
-          <span>معلق <b>{x.scalpLive?.pending||0}</b></span>
+          <span>Attack ✓ <b>{attack?.hits||0}</b></span>
+          <span>Attack ✕ <b>{attack?.fails||0}</b></span>
+          <span>Ambush ✓ <b>{ambush?.hits||0}</b></span>
+          <span>Ambush ✕ <b>{ambush?.fails||0}</b></span>
         </div>
-        <p>60s First-Passage · OOS {confWf?.oos?.accuracy==null?'—':(confWf.oos.accuracy+'%')} · WF {confWf?.status||'COLLECTING'}</p>
+        <p>{String(predator?.pattern||'HUNT')} · score {predator?.score??0} · stable {predator?.stableCount??0} · OOS {attackWf?.oos?.accuracy==null?'—':(attackWf.oos.accuracy+'%')}</p>
       </div>;
     })()}
 
