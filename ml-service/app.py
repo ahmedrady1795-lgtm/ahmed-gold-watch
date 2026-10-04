@@ -248,12 +248,18 @@ def train_all():
 def load_model():
     if not MODEL_PATH.exists(): return False
     try:
-        obj=joblib.load(MODEL_PATH); MODELS.clear(); MODELS.update(obj)
+        obj=joblib.load(MODEL_PATH)
+        if obj.get("version")!=APP_VERSION or list(obj.get("features") or [])!=FEATURES:
+            MODELS.clear()
+            STATE.update({"status":"TRAINING","modelLoaded":False,"metrics":None,"lastError":"stale_model_artifact"})
+            return False
+        MODELS.clear(); MODELS.update(obj)
         m={k:v["metrics"] for k,v in obj["models"].items()}
-        STATE.update({"trainedAt":obj.get("trainedAt",0),"modelLoaded":True,"metrics":m,"historyRows":obj.get("historyRows",0),"source":obj.get("source")})
+        STATE.update({"trainedAt":obj.get("trainedAt",0),"modelLoaded":True,"metrics":m,"historyRows":obj.get("historyRows",0),"source":obj.get("source"),"lastError":None})
         STATE["status"]="READY" if all(v.get("ready") for v in m.values()) else ("PARTIAL" if any(v.get("ready") for v in m.values()) else "SHADOW")
         return True
     except Exception as e:
+        MODELS.clear()
         STATE["lastError"]=f"load: {e}"; return False
 
 def start_train_if_needed():
@@ -261,7 +267,8 @@ def start_train_if_needed():
     stale=(time.time()*1000-STATE.get("trainedAt",0))>RETRAIN_SECONDS*1000
     version_mismatch=(not loaded) or MODELS.get("version")!=APP_VERSION
     if version_mismatch:
-        STATE.update({"status":"TRAINING","modelLoaded":False,"lastError":None})
+        MODELS.clear()
+        STATE.update({"status":"TRAINING","modelLoaded":False,"metrics":None})
     if version_mismatch or stale:
         threading.Thread(target=train_all,daemon=True,name="ml-trainer").start()
 
