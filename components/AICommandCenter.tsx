@@ -153,6 +153,11 @@ function AssetCard({x,fast}:any){
           <span>Hit {m?.decisiveRate??0}% · أول وصول {m?.firstHitMinutes??0}د · Cal {m?.calibration??'—'} · {m?.samples||0} حالة</span>
         </div>)}
       </div>
+      {hunt.fifteenMinuteTarget&&<div className="forecast-levels">
+        <div><small>🎯 السعر المتوقع بعد 15 دقيقة</small><strong className={hunt.fifteenMinuteTarget.side==='BUY'?'green':hunt.fifteenMinuteTarget.side==='SELL'?'red':'amber'}>{fmt(hunt.fifteenMinuteTarget.price,2)}</strong></div>
+        <div><small>النطاق المتوقع</small><strong>{fmt(hunt.fifteenMinuteTarget.low,2)} — {fmt(hunt.fifteenMinuteTarget.high,2)}</strong></div>
+        <div><small>الثقة / الحركة</small><strong>%{calibrated(hunt.fifteenMinuteTarget.confidence)} · {hunt.fifteenMinuteTarget.movePct>=0?'+':''}{hunt.fifteenMinuteTarget.movePct||0}%</strong></div>
+      </div>}
       {hunt.nextMove?.conflictWithLockedDirection&&<p className="red">⚠️ الحركة الأولى تختلف عن Direction Lock؛ الأولوية هنا لـFirst-Passage مع خفض الجودة.</p>}
       {hunt.expectedMoveLearning?.conflict&&<p className="red">⚠️ ذاكرة 2/5/15 مختلفة الاتجاه؛ تم خفض جودة التوقع تلقائيًا.</p>}
     </div>}
@@ -198,7 +203,7 @@ function AssetCard({x,fast}:any){
       <div className="forecast-horizons">
         <div><small>بعد دقيقتين</small><strong className={hunt.horizons?.twoMinute?.side==='BUY'?'green':hunt.horizons?.twoMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.twoMinute?.side)} %{hunt.horizons?.twoMinute?.strength||0}</strong></div>
         <div><small>بعد 5 دقائق</small><strong className={hunt.horizons?.fiveMinute?.side==='BUY'?'green':hunt.horizons?.fiveMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fiveMinute?.side)} %{hunt.horizons?.fiveMinute?.strength||0}</strong></div>
-        <div><small>بعد 15 دقيقة</small><strong className={hunt.horizons?.fifteenMinute?.side==='BUY'?'green':hunt.horizons?.fifteenMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fifteenMinute?.side)} %{hunt.horizons?.fifteenMinute?.strength||0}</strong></div>
+        <div><small>بعد 15 دقيقة</small><strong className={hunt.horizons?.fifteenMinute?.side==='BUY'?'green':hunt.horizons?.fifteenMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fifteenMinute?.side)} %{hunt.horizons?.fifteenMinute?.strength||0}</strong><span>≈ {fmt(hunt.fifteenMinuteTarget?.price,2)}</span></div>
       </div>
 
       {hunt.strongMove&&<div className={"strong-move-box "+(hunt.strongMove.side==='BUY'?'strong-up':'strong-down')}>
