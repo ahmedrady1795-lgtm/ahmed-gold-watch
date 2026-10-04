@@ -140,7 +140,7 @@ function hunterPlan(asset:Asset,analysis:any,candles:{c1:Candle[];c5:Candle[];c1
   return {status:qualified?'STRIKE':watch?'WATCH':'WAIT',side:best.side,mode:best.mode,score:best.score,threshold,gap:best.gap,regime,liveMomentum:liveMom,metrics:{positionM1:Math.round(pos1*100),positionM5:Math.round(pos5*100),efficiencyM1:clamp(eff1*100),efficiencyM5:clamp(eff5*100),body:clamp(body*100),volatility:Number(vol.toFixed(2))},scores:modes,reason:qualified?`Hunter وجد ${best.mode} ${best.side} بقوة ${best.score}/100 مقابل حد ${threshold} وفارق ${best.gap}.`:watch?`فرصة تحت المراقبة: ${best.mode} ${best.side} ${best.score}/100؛ تحتاج دفعة إضافية قبل الدخول.`:`أفضل نمط ${best.mode} ${best.side} ${best.score}/100؛ لم يصل بعد لحد الهجوم ${threshold}.`,trade};
 }
 
-export function aiDecision(asset:Asset,analysis:any,candles:{c1:Candle[];c5:Candle[];c15:Candle[];c60:Candle[]},price:number|null,sources:{quote:string;candles:string},now:number,rules:Rules,pulse:LivePulse=null,liquidity:any=null,microSignal:any=null,motion:any=null){
+export function aiDecision(asset:Asset,analysis:any,candles:{c1:Candle[];c5:Candle[];c15:Candle[];c60:Candle[]},price:number|null,sources:{quote:string;candles:string},now:number,rules:Rules,pulse:LivePulse=null,liquidity:any=null,microSignal:any=null,motion:any=null,behavior:any=null){
   const {c1,c5,c15,c60}=candles,long=Number(analysis?.score?.long||0),short=Number(analysis?.score?.short||0),best=Math.max(long,short),margin=Math.abs(long-short),alignment=trendAlign(analysis),regimeConfidence=Number(analysis?.regime?.confidence||0),vol=Number(analysis?.metrics?.volatility||1);
   const dq=dataQuality(c1,c5,c15,c60,now),multi=mtf(c1,c5,c15,c60),st=structure(c5),matrix=indicatorMatrix(analysis,candles),hunter=hunterPlan(asset,analysis,candles,price,dq,pulse);
   const direction:RawAction=long>short?'BUY':short>long?'SELL':'WAIT',directionAgreement=(direction!=='WAIT'&&multi.side===direction?14:multi.side==='WAIT'?0:-12)+(direction!=='WAIT'&&st.side===direction?8:0),volatilityPenalty=vol>2.1?20:vol>1.7?12:vol>1.4?6:0;
@@ -161,16 +161,25 @@ export function aiDecision(asset:Asset,analysis:any,candles:{c1:Candle[];c5:Cand
     if(Number(motion?.diagnostics?.samples||0)<3)motionWeight*=.55;
     if(Number(motion?.confidence||0)<60)motionWeight*=.70;
   }
-  const totalExternal=Math.min(.52,liquidityWeight+motionWeight);
-  if(liquidityWeight+motionWeight>totalExternal){
-    const scale=totalExternal/(liquidityWeight+motionWeight);
-    liquidityWeight*=scale;motionWeight*=scale;
+  const behaviorUsable=Boolean(behavior?.ok&&behavior?.side&&behavior.side!=='WAIT'&&Number(behavior?.score)>=50&&Number(behavior?.analogCount)>=10);
+  let behaviorWeight=0;
+  if(behaviorUsable){
+    behaviorWeight=Number(behavior?.confidence)>=72?.13:Number(behavior?.confidence)>=62?.10:.07;
+    if(Number(behavior?.analogCount)<16)behaviorWeight*=.78;
+    if(String(behavior?.pattern)==='TRANSITION')behaviorWeight*=.82;
   }
-  const techWeight=1-liquidityWeight-motionWeight,liqBuy=Number(liquidity?.buy||50),liqSell=Number(liquidity?.sell||50);
+  const totalExternal=Math.min(.58,liquidityWeight+motionWeight+behaviorWeight);
+  if(liquidityWeight+motionWeight+behaviorWeight>totalExternal){
+    const scale=totalExternal/(liquidityWeight+motionWeight+behaviorWeight);
+    liquidityWeight*=scale;motionWeight*=scale;behaviorWeight*=scale;
+  }
+  const techWeight=1-liquidityWeight-motionWeight-behaviorWeight,liqBuy=Number(liquidity?.buy||50),liqSell=Number(liquidity?.sell||50);
   const motionSigned=motionUsable?(motion.side==='BUY'?Number(motion.score||0):-Number(motion.score||0)):0;
   const motionBuy=clamp(50+motionSigned/2),motionSell=clamp(50-motionSigned/2);
-  const fusionBuy=clamp(technicalFusionBuy*techWeight+liqBuy*liquidityWeight+motionBuy*motionWeight);
-  const fusionSell=clamp(technicalFusionSell*techWeight+liqSell*liquidityWeight+motionSell*motionWeight);
+  const behaviorSigned=behaviorUsable?(behavior.side==='BUY'?Number(behavior.score||0):-Number(behavior.score||0)):0;
+  const behaviorBuy=clamp(50+behaviorSigned/2),behaviorSell=clamp(50-behaviorSigned/2);
+  const fusionBuy=clamp(technicalFusionBuy*techWeight+liqBuy*liquidityWeight+motionBuy*motionWeight+behaviorBuy*behaviorWeight);
+  const fusionSell=clamp(technicalFusionSell*techWeight+liqSell*liquidityWeight+motionSell*motionWeight+behaviorSell*behaviorWeight);
   const fusionSide:RawAction=fusionBuy-fusionSell>=6?'BUY':fusionSell-fusionBuy>=6?'SELL':'WAIT';
   const confluence=clamp(Math.max(best*.36+regimeConfidence*.08+multi.consensus*100*.09+st.strength*.07+dq.score*.10+Math.max(matrix.buy,matrix.sell)*.18+Math.max(liqBuy,liqSell)*liquidityWeight-volatilityPenalty,hunter.score*.54+dq.score*.10+Math.min(100,Number(pulse?.momentum||0))*.08+Math.max(matrix.buy,matrix.sell)*.18+Math.max(liqBuy,liqSell)*liquidityWeight));
   const uncertainty=clamp(100-(confidence*.72+dq.score*.18+Math.max(multi.consensus*100,hunter.score)*.10)),threshold=Math.max(Number(analysis?.score?.threshold||rules.minScore),rules.minScore),minConfidence=asset==='BTC'?64:66;
@@ -188,10 +197,14 @@ export function aiDecision(asset:Asset,analysis:any,candles:{c1:Candle[];c5:Cand
   const hunterMicroConflict=Boolean(hunter.status==='STRIKE'&&microStrong&&microSide!=='WAIT'&&microSide!==hunter.side);
   const motionStrong=Boolean(motionUsable&&['PRE_MOVE','IGNITION','REVERSAL_ALERT'].includes(String(motion?.stage))&&Number(motion?.confidence)>=62&&Number(motion?.score)>=58);
   const motionSide:RawAction=motionStrong?(motion?.side||'WAIT'):'WAIT';
+  const behaviorStrong=Boolean(behaviorUsable&&Number(behavior?.confidence)>=62&&Number(behavior?.score)>=58&&Number(behavior?.analogCount)>=12&&Math.abs(Number(behavior?.votes?.buy||0)-Number(behavior?.votes?.sell||0))>=16);
+  const behaviorSide:RawAction=behaviorStrong?(behavior?.side||'WAIT'):'WAIT';
   const standardMotionConflict=Boolean(sig&&motionStrong&&motionSide!=='WAIT'&&motionSide!==sigSide);
   const hunterMotionConflict=Boolean(hunter.status==='STRIKE'&&motionStrong&&motionSide!=='WAIT'&&motionSide!==hunter.side);
-  const standardQualified=Boolean(sig&&analysis?.state==='setup'&&baseConfidence>=minConfidence&&dq.score>=72&&vol<=rules.spike&&(multi.side==='WAIT'||multi.side===sigSide)&&!standardConflict&&!standardLiquidityConflict&&!standardTrapConflict&&!standardMicroConflict&&!standardMotionConflict);
-  const hunterQualified=Boolean(hunter.status==='STRIKE'&&hunter.trade&&dq.score>=78&&!hunterConflict&&!hunterLiquidityConflict&&!hunterTrapConflict&&!hunterMicroConflict&&!hunterMotionConflict);
+  const standardBehaviorConflict=Boolean(sig&&behaviorStrong&&behaviorSide!=='WAIT'&&behaviorSide!==sigSide);
+  const hunterBehaviorConflict=Boolean(hunter.status==='STRIKE'&&behaviorStrong&&behaviorSide!=='WAIT'&&behaviorSide!==hunter.side);
+  const standardQualified=Boolean(sig&&analysis?.state==='setup'&&baseConfidence>=minConfidence&&dq.score>=72&&vol<=rules.spike&&(multi.side==='WAIT'||multi.side===sigSide)&&!standardConflict&&!standardLiquidityConflict&&!standardTrapConflict&&!standardMicroConflict&&!standardMotionConflict&&!standardBehaviorConflict);
+  const hunterQualified=Boolean(hunter.status==='STRIKE'&&hunter.trade&&dq.score>=78&&!hunterConflict&&!hunterLiquidityConflict&&!hunterTrapConflict&&!hunterMicroConflict&&!hunterMotionConflict&&!hunterBehaviorConflict);
   const rawAction:RawAction=standardQualified?sigSide:hunterQualified?hunter.side:'WAIT',chosenTrade=standardQualified&&sig?{side:sig.sideCode,entry:sig.entry,sl:sig.sl,tp:sig.tp,rr:sig.rr,score:sig.score,mode:sig.mode||'standard'}:hunterQualified?hunter.trade:null;
   const vetoes:string[]=[];
   if(standardConflict)vetoes.push(`Conflict Gate: Standard ${sigSide} يعارض Core Fusion ${fusionSide} بفارق ${fusionGap}`);
@@ -204,14 +217,16 @@ export function aiDecision(asset:Asset,analysis:any,candles:{c1:Candle[];c5:Cand
   if(hunterMicroConflict)vetoes.push(`Micro Gate: M1/M5 يميل ${microSide} بقوة ويعارض Hunter ${hunter.side}`);
   if(standardMotionConflict)vetoes.push(`Motion Gate: PRE-MOVE ${motionSide} يعارض Standard ${sigSide}`);
   if(hunterMotionConflict)vetoes.push(`Motion Gate: PRE-MOVE ${motionSide} يعارض Hunter ${hunter.side}`);
+  if(standardBehaviorConflict)vetoes.push(`Behavior Gate: نمط الحركة التاريخي ${behaviorSide} يعارض Standard ${sigSide}`);
+  if(hunterBehaviorConflict)vetoes.push(`Behavior Gate: نمط الحركة التاريخي ${behaviorSide} يعارض Hunter ${hunter.side}`);
   if(!standardQualified&&!hunterQualified){if(analysis?.state==='stop')vetoes.push(String(analysis?.reason||'المحرك القياسي متوقف'));if(best<threshold)vetoes.push('Standard score أقل من الحد');if(hunter.score<hunter.threshold)vetoes.push('Hunter لم يصل لحد الهجوم');if(dq.score<72)vetoes.push('جودة/حداثة البيانات غير كافية');if(vol>rules.spike)vetoes.push('التذبذب أعلى من الحد الآمن');}
   const points=pushHistory(asset,rawAction,confidence,now),stability=stabilityOf(points,rawAction),isNews=sig?.mode==='news',pulseConfirm=rawAction==='BUY'?pulse?.direction==='UP':rawAction==='SELL'?pulse?.direction==='DOWN':false,liquidityConfirm=!liqStrong||liqSide===rawAction,fastStrike=hunterQualified&&hunter.score>=84&&dq.score>=90&&Boolean(pulseConfirm)&&Number(pulse?.momentum||0)>=35&&liquidityConfirm;
   const stableEnough=isNews?standardQualified:rawAction!=='WAIT'&&(fastStrike||(stability>=46&&points.filter(x=>x.action===rawAction).length>=2&&liquidityConfirm)),action:RawAction=stableEnough?rawAction:'WAIT';
   if(rawAction!=='WAIT'&&!stableEnough)vetoes.push('فرصة قوية مرصودة؛ ينتظر Hunter تأكيدًا زمنيًا قصيرًا');
   const bias=(hunter.status!=='WAIT'?hunter.side:direction)==='BUY'?'BULLISH':(hunter.status!=='WAIT'?hunter.side:direction)==='SELL'?'BEARISH':'NEUTRAL',quality=confidence>=86&&dq.score>=90&&uncertainty<=22?'A+':confidence>=80&&dq.score>=86?'A':confidence>=72?'B':confidence>=64?'C':'D';
   return {
-    asset,model:'Predator Core v7 · Anticipatory Motion Brain',action,bias,quality,confidence,uncertainty,confluenceScore:confluence,stability,dataQuality:dq.score,freshness:dq.freshness,longScore:long,shortScore:short,threshold,price:finite(price)?Number(price):null,source:sources.quote,candleSource:sources.candles,updatedAt:now,regime:analysis?.regime||null,state:analysis?.state||'stop',title:action!=='WAIT'?`PREDATOR STRIKE · ${action}`:hunter.status==='WATCH'?`PREDATOR STALK · ${hunter.mode} ${hunter.side}`:analysis?.title||'WAIT',
-    ensemble:{mtf:multi,structure:st,technicalMargin:margin,volatility:Number.isFinite(vol)?Number(vol.toFixed(2)):null},indicatorMatrix:matrix,technicalFusion:{buy:technicalFusionBuy,sell:technicalFusionSell,side:technicalFusionBuy-technicalFusionSell>=6?'BUY':technicalFusionSell-technicalFusionBuy>=6?'SELL':'WAIT'},fusion:{buy:fusionBuy,sell:fusionSell,side:fusionSide,gap:Math.abs(fusionBuy-fusionSell)},adaptiveCore:{technicalWeight:Number(techWeight.toFixed(2)),liquidityWeight:Number(liquidityWeight.toFixed(2)),motionWeight:Number(motionWeight.toFixed(2)),liquidityUsed:liquidityUsable,motionUsed:motionUsable,liquiditySide:liqSide,liquidityGap:liqGap,trapActive,trapSide,microSide,microGap,motionSide,motionStage:motion?.stage||'WAIT'},liquidity:liquidityUsable?liquidity:null,motion:motionUsable?motion:null,phase:(standardConflict||hunterConflict||standardLiquidityConflict||hunterLiquidityConflict||standardTrapConflict||hunterTrapConflict||standardMicroConflict||hunterMicroConflict||standardMotionConflict||hunterMotionConflict)?'CONFLICT':motion?.stage==='REVERSAL_ALERT'?'PRE_MOVE_REVERSAL':motion?.stage==='IGNITION'?'IGNITION':motion?.stage==='PRE_MOVE'?'PRE_MOVE':liquidityUsable&&liqSide!=='WAIT'&&Number(liquidity?.strength)>=66&&hunter.status!=='STRIKE'?'LIQUIDITY_LEAD':hunter.status==='STRIKE'?'ATTACK':hunter.status==='WATCH'?'STALK':hunter.score>=hunter.threshold-12?'SCAN':'WAIT',hunter,reasons:reasons(analysis,multi,st,hunter),vetoes:[...new Set(vetoes)].slice(0,9),trade:action==='WAIT'?null:chosenTrade,candidateTrade:chosenTrade||hunter.trade||null,
+    asset,model:'Predator Core v8 · Behavior Learning Brain',action,bias,quality,confidence,uncertainty,confluenceScore:confluence,stability,dataQuality:dq.score,freshness:dq.freshness,longScore:long,shortScore:short,threshold,price:finite(price)?Number(price):null,source:sources.quote,candleSource:sources.candles,updatedAt:now,regime:analysis?.regime||null,state:analysis?.state||'stop',title:action!=='WAIT'?`PREDATOR STRIKE · ${action}`:hunter.status==='WATCH'?`PREDATOR STALK · ${hunter.mode} ${hunter.side}`:analysis?.title||'WAIT',
+    ensemble:{mtf:multi,structure:st,technicalMargin:margin,volatility:Number.isFinite(vol)?Number(vol.toFixed(2)):null},indicatorMatrix:matrix,technicalFusion:{buy:technicalFusionBuy,sell:technicalFusionSell,side:technicalFusionBuy-technicalFusionSell>=6?'BUY':technicalFusionSell-technicalFusionBuy>=6?'SELL':'WAIT'},fusion:{buy:fusionBuy,sell:fusionSell,side:fusionSide,gap:Math.abs(fusionBuy-fusionSell)},adaptiveCore:{technicalWeight:Number(techWeight.toFixed(2)),liquidityWeight:Number(liquidityWeight.toFixed(2)),motionWeight:Number(motionWeight.toFixed(2)),behaviorWeight:Number(behaviorWeight.toFixed(2)),liquidityUsed:liquidityUsable,motionUsed:motionUsable,behaviorUsed:behaviorUsable,liquiditySide:liqSide,liquidityGap:liqGap,trapActive,trapSide,microSide,microGap,motionSide,motionStage:motion?.stage||'WAIT',behaviorSide,behaviorPattern:behavior?.pattern||'UNKNOWN'},liquidity:liquidityUsable?liquidity:null,motion:motionUsable?motion:null,behavior:behavior?.ok?behavior:null,phase:(standardConflict||hunterConflict||standardLiquidityConflict||hunterLiquidityConflict||standardTrapConflict||hunterTrapConflict||standardMicroConflict||hunterMicroConflict||standardMotionConflict||hunterMotionConflict||standardBehaviorConflict||hunterBehaviorConflict)?'CONFLICT':motion?.stage==='REVERSAL_ALERT'?'PRE_MOVE_REVERSAL':motion?.stage==='IGNITION'?'IGNITION':motion?.stage==='PRE_MOVE'?'PRE_MOVE':behaviorStrong?'BEHAVIOR_LEAD':liquidityUsable&&liqSide!=='WAIT'&&Number(liquidity?.strength)>=66&&hunter.status!=='STRIKE'?'LIQUIDITY_LEAD':hunter.status==='STRIKE'?'ATTACK':hunter.status==='WATCH'?'STALK':hunter.score>=hunter.threshold-12?'SCAN':'WAIT',hunter,reasons:reasons(analysis,multi,st,hunter),vetoes:[...new Set(vetoes)].slice(0,9),trade:action==='WAIT'?null:chosenTrade,candidateTrade:chosenTrade||hunter.trade||null,
     note:'Core/Fusion/Liquidity scores هي مقاييس توافق وضغط سوق وليست احتمال نجاح أو ضمان ربح.'
   };
 }
