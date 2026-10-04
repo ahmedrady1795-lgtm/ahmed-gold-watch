@@ -76,7 +76,7 @@ function AdvancedDetails({x}:any){
           <div><small>15m</small><strong>{sideAr(x.expectedMoveLearning.fifteenMinute?.side)} · Cal {x.expectedMoveLearning.fifteenMinute?.calibration||50}</strong></div>
         </div>
         <p>Resolved 2m {x.expectedMoveLearning.totals?.resolved2||0} · 5m {x.expectedMoveLearning.totals?.resolved5||0} · 15m {x.expectedMoveLearning.totals?.resolved15||0}</p>
-        <p>يتعلم من اتجاه الإغلاق + أقصى صعود/هبوط داخل كل نافذة.</p>
+        <p>يتعلم من أول جهة تصل لحركة معتبرة؛ الإغلاق بعد النافذة يُستخدم لقياس الاستمرار فقط.</p>
       </div>}
 
       {marketLearning&&<div className="advanced-block">
@@ -139,8 +139,8 @@ function AssetCard({x,fast}:any){
 
     {hunt&&<div className="expected-move-primary">
       <div className="expected-move-head">
-        <span>🎯 الحركة القادمة المتوقعة · أساس التحليل</span>
-        <strong>{hunt.expectedMoveCore?.conflict?'تعارض يحتاج حذر':'متابعة 2 / 5 / 15 دقيقة'}</strong>
+        <span>🎯 الحركة الأولى المتوقعة · First-Passage</span>
+        <strong className={hunt.nextMove?.side==='BUY'?'green':hunt.nextMove?.side==='SELL'?'red':'amber'}>{sideAr(hunt.nextMove?.side)} · ثقة %{calibrated(hunt.nextMove?.confidence)}</strong>
       </div>
       <div className="forecast-horizons">
         {([
@@ -150,9 +150,10 @@ function AssetCard({x,fast}:any){
         ] as any[]).map(([label,h,m]:any)=><div key={label}>
           <small>{label}</small>
           <strong className={h?.side==='BUY'?'green':h?.side==='SELL'?'red':'amber'}>{sideAr(h?.side)} %{h?.strength||0}</strong>
-          <span>Cal {m?.calibration??'—'} · {m?.samples||0} حالة</span>
+          <span>Hit {m?.decisiveRate??0}% · أول وصول {m?.firstHitMinutes??0}د · Cal {m?.calibration??'—'} · {m?.samples||0} حالة</span>
         </div>)}
       </div>
+      {hunt.nextMove?.conflictWithLockedDirection&&<p className="red">⚠️ الحركة الأولى تختلف عن Direction Lock؛ الأولوية هنا لـFirst-Passage مع خفض الجودة.</p>}
       {hunt.expectedMoveLearning?.conflict&&<p className="red">⚠️ ذاكرة 2/5/15 مختلفة الاتجاه؛ تم خفض جودة التوقع تلقائيًا.</p>}
     </div>}
 
@@ -187,7 +188,7 @@ function AssetCard({x,fast}:any){
     </div>}
 
     {hunt&&<div className="hunt-box">
-      <div className="hunt-title"><span>🦅 الحركة القادمة المتوقعة</span><strong>{hunt.path?.label||sideAr(hunt.side)} · {hunt.state}</strong></div>
+      <div className="hunt-title"><span>🦅 الحركة القادمة المتوقعة</span><strong>{sideAr(hunt.nextMove?.side||hunt.path?.shortSide)} · {hunt.path?.label||sideAr(hunt.side)} · {hunt.state}</strong></div>
 
       <div className="forecast-path">
         <div><small>الحركة الأولى</small><strong className={hunt.path?.shortSide==='BUY'?'green':hunt.path?.shortSide==='SELL'?'red':'amber'}>{sideAr(hunt.path?.shortSide)} → {fmt(hunt.path?.firstLeg,2)}</strong></div>
