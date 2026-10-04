@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss, b
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 
-APP_VERSION="predator-ml-v4-taker-flow"
+APP_VERSION="predator-ml-v5-specialized-m5"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 MODEL_PATH=MODEL_DIR/"btc_ml_ensemble.joblib"
 META_PATH=MODEL_DIR/"btc_ml_meta.json"
@@ -27,7 +27,7 @@ LOCK=threading.Lock()
 STATE={"status":"BOOTING","trainedAt":0,"lastError":None,"modelLoaded":False,"training":False,"metrics":None,"historyRows":0,"source":None}
 MODELS:dict[str,Any]={}
 
-FEATURES=[
+M1_FEATURES=[
 "ret1","ret2","ret3","ret5","ret10","ret20","body","upper_wick","lower_wick","range_atr","atr_pct",
 "ema5_gap","ema10_gap","ema20_gap","ema50_gap","ema20_slope","ema50_slope","rsi14","stoch14","bb_pos","bb_width",
 "vol5","vol10","vol20","volume_z20","volume_ratio5_20","break_high10","break_low10","eff5","eff10","compression",
@@ -38,6 +38,12 @@ FEATURES=[
 "cvd3","cvd10","flow_price_agreement","flow_price_divergence",
 "hour_sin","hour_cos"
 ]
+M5_EXTRA_FEATURES=[
+"m5_body","m5_range_atr","m5_volume_z20","m5_trades_z20","m5_taker_delta","m5_taker_delta3","m5_cvd3","m5_eff3",
+"m5_m15_alignment","phase5_sin","phase5_cos"
+]
+M5_FEATURES=M1_FEATURES+M5_EXTRA_FEATURES
+FEATURE_SIGNATURE={"m1":M1_FEATURES,"m5":M5_FEATURES}
 
 class Candle(BaseModel):
     time:int
@@ -100,7 +106,10 @@ def build_features(df):
     f["eff5"]=eff(c,5); f["eff10"]=eff(c,10)
     f["compression"]=tr.rolling(5).mean()/tr.rolling(20).mean().replace(0,np.nan)
 
-    five=d.resample("5min").agg({"open":"first","high":"max","low":"min","close":"last","volume":"sum"}).dropna()
+    five=d.resample("5min").agg({
+        "open":"first","high":"max","low":"min","close":"last","volume":"sum",
+        "quote_volume":"sum","trades":"sum","taker_buy_base":"sum","taker_buy_quote":"sum"
+    }).dropna()
     fc=five.close
     fivef=pd.DataFrame(index=five.index)
     fivef["m5_ret1"]=fc.pct_change(1); fivef["m5_ret3"]=fc.pct_change(3)
@@ -109,6 +118,17 @@ def build_features(df):
     fivef["m5_ema5_gap"]=(fc-fc.ewm(span=5,adjust=False).mean())/fatr.replace(0,np.nan)
     fivef["m5_ema20_gap"]=(fc-fc.ewm(span=20,adjust=False).mean())/fatr.replace(0,np.nan)
     fivef["m5_rsi14"]=rsi(fc,14)/100
+    five_rng=(five.high-five.low).replace(0,np.nan)
+    fivef["m5_body"]=(five.close-five.open)/five_rng
+    fivef["m5_range_atr"]=(five.high-five.low)/fatr.replace(0,np.nan)
+    fivef["m5_volume_z20"]=zscore(five.volume,20)
+    fivef["m5_trades_z20"]=zscore(five.trades,20)
+    five_taker=((2*five.taker_buy_base-five.volume)/five.volume.replace(0,np.nan)).clip(-1,1).fillna(0)
+    five_signed=(2*five.taker_buy_base-five.volume).fillna(0)
+    fivef["m5_taker_delta"]=five_taker
+    fivef["m5_taker_delta3"]=five_taker.rolling(3).mean().fillna(0)
+    fivef["m5_cvd3"]=(five_signed.rolling(3).sum()/five.volume.rolling(3).sum().replace(0,np.nan)).clip(-1,1).fillna(0)
+    fivef["m5_eff3"]=eff(fc,3)
     # A 5m bar is only legal after it has fully closed. Shift availability forward
     # so an M1 training row can never see the future minutes of its own 5m bucket.
     fivef.index=fivef.index+pd.Timedelta(minutes=5)
@@ -127,6 +147,10 @@ def build_features(df):
     fifteenf["m15_range_atr"]=(fifteen.high-fifteen.low)/tatr.replace(0,np.nan)
     fifteenf.index=fifteenf.index+pd.Timedelta(minutes=15)
     f=f.join(fifteenf.reindex(f.index,method="ffill"))
+    f["m5_m15_alignment"]=np.sign(f["m5_ema20_gap"].fillna(0))*np.sign(f["m15_ema20_gap"].fillna(0))
+    phase=(f.index.minute%5)/5
+    f["phase5_sin"]=np.sin(2*np.pi*phase)
+    f["phase5_cos"]=np.cos(2*np.pi*phase)
 
     # Aggregated microstructure available directly in Binance 1m klines.
     qv=d["quote_volume"].clip(lower=0)
@@ -160,13 +184,24 @@ def build_features(df):
     f["hour_sin"]=np.sin(2*np.pi*hour/24); f["hour_cos"]=np.cos(2*np.pi*hour/24)
     return f.replace([np.inf,-np.inf],np.nan)
 
-def make_dataset(df,horizon,deadzone_atr):
+def make_dataset(df,horizon,deadzone_atr,feature_names):
     f=build_features(df); c=df.close.reindex(f.index); prev=df.close.shift(1)
     tr=pd.concat([(df.high-df.low),(df.high-prev).abs(),(df.low-prev).abs()],axis=1).max(axis=1)
-    atr=tr.ewm(alpha=1/14,adjust=False).mean().reindex(f.index)
-    move_atr=(c.shift(-horizon)-c)/atr.replace(0,np.nan)
+    atr1=tr.ewm(alpha=1/14,adjust=False).mean().reindex(f.index)
+    if horizon==5:
+        # M5 learns a persistent 4-5 minute move, normalized by CLOSED 5m ATR.
+        five=df.resample("5min").agg({"open":"first","high":"max","low":"min","close":"last"}).dropna()
+        fc=five.close
+        ftr=pd.concat([(five.high-five.low),(five.high-fc.shift(1)).abs(),(five.low-fc.shift(1)).abs()],axis=1).max(axis=1)
+        fatr=ftr.ewm(alpha=1/14,adjust=False).mean()
+        fatr.index=fatr.index+pd.Timedelta(minutes=5)
+        atr=fatr.reindex(f.index,method="ffill")
+        future=(c.shift(-4)+c.shift(-5))/2
+        move_atr=(future-c)/atr.replace(0,np.nan)
+    else:
+        move_atr=(c.shift(-horizon)-c)/atr1.replace(0,np.nan)
     ds=f.copy(); ds["target"]=(move_atr>0).astype(int); ds["move_atr"]=move_atr
-    return ds.loc[move_atr.abs()>=deadzone_atr].dropna(subset=FEATURES+["target"])
+    return ds.loc[move_atr.abs()>=deadzone_atr].dropna(subset=feature_names+["target"])
 
 def fetch_coinbase_history(limit_rows):
     url="https://api.exchange.coinbase.com/products/BTC-USD/candles"
@@ -269,8 +304,14 @@ def get_live_binance_frame():
             return cached,"Binance Vision cached taker flow",err
         raise
 
-def new_models(seed):
-    # Intentionally conservative trees: short-horizon market data overfits very easily.
+def new_models(seed,horizon=1):
+    # Horizon-specific regularization: M5 is slower and gets stricter, shallower trees.
+    if horizon==5:
+        x=XGBClassifier(n_estimators=260,max_depth=3,learning_rate=.022,subsample=.80,colsample_bytree=.68,min_child_weight=24,
+                        reg_alpha=.75,reg_lambda=5.2,gamma=.14,objective="binary:logistic",eval_metric="logloss",tree_method="hist",n_jobs=1,random_state=seed)
+        l=LGBMClassifier(n_estimators=270,num_leaves=11,max_depth=4,learning_rate=.022,subsample=.80,subsample_freq=1,colsample_bytree=.68,
+                         min_child_samples=95,min_split_gain=.035,reg_alpha=.75,reg_lambda=4.2,objective="binary",n_jobs=1,random_state=seed,verbosity=-1)
+        return x,l
     x=XGBClassifier(n_estimators=220,max_depth=3,learning_rate=.028,subsample=.78,colsample_bytree=.72,min_child_weight=16,
                     reg_alpha=.55,reg_lambda=4.0,gamma=.10,objective="binary:logistic",eval_metric="logloss",tree_method="hist",n_jobs=1,random_state=seed)
     l=LGBMClassifier(n_estimators=240,num_leaves=15,max_depth=5,learning_rate=.025,subsample=.78,subsample_freq=1,colsample_bytree=.72,
@@ -291,8 +332,26 @@ def metrics(y,p,signal_threshold=.56):
             "selectiveAccuracy":selective,"selectiveCoverage":coverage,"selectiveN":sn,
             "signalThreshold":float(signal_threshold)}
 
-def train_horizon(ds,horizon):
-    X=ds[FEATURES].astype(float).to_numpy(); y=ds.target.astype(int).to_numpy(); n=len(y)
+def choose_blend(y,px,pl,horizon):
+    if horizon!=5:
+        mx,ml=metrics(y,px),metrics(y,pl)
+        wx=1/max(mx["logLoss"],1e-6); wl=1/max(ml["logLoss"],1e-6)
+        total=wx+wl
+        return wx/total,wl/total,.56
+    best=None
+    for wx in [0.0,.2,.4,.6,.8,1.0]:
+        p=px*wx+pl*(1-wx)
+        for threshold in [.55,.56,.57,.58,.59,.60,.61]:
+            m=metrics(y,p,threshold)
+            if m["selectiveN"]<250 or m["selectiveCoverage"]<.055:
+                continue
+            score=m["selectiveAccuracy"]+.05*min(.25,m["selectiveCoverage"])+.03*m["balancedAccuracy"]-.015*m["logLoss"]
+            if best is None or score>best[0]:
+                best=(score,wx,1-wx,threshold)
+    return (best[1],best[2],best[3]) if best else (.5,.5,.58)
+
+def train_horizon(ds,horizon,feature_names):
+    X=ds[feature_names].astype(float).to_numpy(); y=ds.target.astype(int).to_numpy(); n=len(y)
     if n<MIN_TRAIN_ROWS: raise RuntimeError(f"not enough rows for h{horizon}: {n}")
 
     # Strict chronological split: oldest 70% train, next 15% validation,
@@ -300,21 +359,20 @@ def train_horizon(ds,horizon):
     train_end=int(n*.70); val_end=int(n*.85)
     Xtr,Xv,Xte=X[:train_end],X[train_end:val_end],X[val_end:]
     ytr,yv,yte=y[:train_end],y[train_end:val_end],y[val_end:]
-    x,l=new_models(42+horizon); x.fit(Xtr,ytr); l.fit(Xtr,ytr)
+    x,l=new_models(42+horizon,horizon); x.fit(Xtr,ytr); l.fit(Xtr,ytr)
 
-    # Ensemble weights are selected ONLY on validation, never final holdout.
+    # Weight + threshold selection is validation-only; final holdout stays untouched.
     pxv=x.predict_proba(Xv)[:,1]; plv=l.predict_proba(Xv)[:,1]
-    mxv,mlv=metrics(yv,pxv),metrics(yv,plv)
-    wx,wl=1/max(mxv["logLoss"],1e-6),1/max(mlv["logLoss"],1e-6)
-    wx,wl=wx/(wx+wl),wl/(wx+wl)
-    pv=pxv*wx+plv*wl; mv=metrics(yv,pv)
+    wx,wl,signal_threshold=choose_blend(yv,pxv,plv,horizon)
+    mxv,mlv=metrics(yv,pxv,signal_threshold),metrics(yv,plv,signal_threshold)
+    pv=pxv*wx+plv*wl; mv=metrics(yv,pv,signal_threshold)
 
     # Final holdout is the only number allowed to qualify production readiness.
     pxt=x.predict_proba(Xte)[:,1]; plt=l.predict_proba(Xte)[:,1]
-    mxt,mlt=metrics(yte,pxt),metrics(yte,plt)
-    pt=pxt*wx+plt*wl; me=metrics(yte,pt)
+    mxt,mlt=metrics(yte,pxt,signal_threshold),metrics(yte,plt,signal_threshold)
+    pt=pxt*wx+plt*wl; me=metrics(yte,pt,signal_threshold)
     trainp=x.predict_proba(Xtr)[:,1]*wx+l.predict_proba(Xtr)[:,1]*wl
-    train_acc=metrics(ytr,trainp)["accuracy"]
+    train_acc=metrics(ytr,trainp,signal_threshold)["accuracy"]
     gap=train_acc-me["accuracy"]; stability=abs(mv["balancedAccuracy"]-me["balancedAccuracy"])
     ready=bool(
         me["n"]>=800 and mv["n"]>=800 and
@@ -327,8 +385,8 @@ def train_horizon(ds,horizon):
     )
 
     # Production models see all history only AFTER the untouched holdout is scored.
-    xf,lf=new_models(142+horizon); xf.fit(X,y); lf.fit(X,y)
-    return {"xgb":xf,"lgb":lf,"weights":{"xgb":float(wx),"lgb":float(wl)},
+    xf,lf=new_models(142+horizon,horizon); xf.fit(X,y); lf.fit(X,y)
+    return {"xgb":xf,"lgb":lf,"weights":{"xgb":float(wx),"lgb":float(wl)},"signalThreshold":float(signal_threshold),"features":feature_names,
             "metrics":{"ensemble":me,"validation":mv,"xgb":mxt,"lightgbm":mlt,
                        "validationXgb":mxv,"validationLightgbm":mlv,
                        "trainAccuracy":float(train_acc),"overfitGap":float(gap),
@@ -348,8 +406,9 @@ def train_all():
             print("[ML-SOURCE-FALLBACK] "+json.dumps({"primary":"Binance Vision","error":str(primary_error),"fallback":"Coinbase"}),flush=True)
             hist=fetch_coinbase_history(TRAIN_CANDLES)
             source="Coinbase Exchange BTC-USD 1m · neutral micro fallback"
-        m1=train_horizon(make_dataset(hist,1,.04),1); m5=train_horizon(make_dataset(hist,5,.10),5)
-        payload={"version":APP_VERSION,"features":FEATURES,"trainedAt":int(time.time()*1000),"historyRows":len(hist),"source":source,"models":{"m1":m1,"m5":m5}}
+        m1=train_horizon(make_dataset(hist,1,.04,M1_FEATURES),1,M1_FEATURES)
+        m5=train_horizon(make_dataset(hist,5,.12,M5_FEATURES),5,M5_FEATURES)
+        payload={"version":APP_VERSION,"features":FEATURE_SIGNATURE,"trainedAt":int(time.time()*1000),"historyRows":len(hist),"source":source,"models":{"m1":m1,"m5":m5}}
         tmp=MODEL_PATH.with_suffix(".tmp"); joblib.dump(payload,tmp); os.replace(tmp,MODEL_PATH)
         meta={"version":APP_VERSION,"trainedAt":payload["trainedAt"],"historyRows":len(hist),"source":payload["source"],
               "metrics":{"m1":m1["metrics"],"m5":m5["metrics"]},"rows":{"m1":m1["rows"],"m5":m5["rows"]}}
@@ -369,7 +428,7 @@ def load_model():
     if not MODEL_PATH.exists(): return False
     try:
         obj=joblib.load(MODEL_PATH)
-        if obj.get("version")!=APP_VERSION or list(obj.get("features") or [])!=FEATURES:
+        if obj.get("version")!=APP_VERSION or obj.get("features")!=FEATURE_SIGNATURE:
             MODELS.clear()
             STATE.update({"status":"TRAINING","modelLoaded":False,"metrics":None,"lastError":"stale_model_artifact"})
             return False
@@ -419,7 +478,7 @@ def predict_h(model,x):
     px=float(model["xgb"].predict_proba(x)[0,1]); pl=float(model["lgb"].predict_proba(x)[0,1]); w=model["weights"]
     raw=px*w["xgb"]+pl*w["lgb"]; acc=float(model["metrics"].get("validation",model["metrics"]["ensemble"])["accuracy"])
     shrink=max(.25,min(1,(acc-.5)/.10)); p=.5+(raw-.5)*shrink; edge=abs(p-.5)*2
-    lean="BUY" if p>=.5 else "SELL"; threshold=.56 if model["horizon"]==5 else .57
+    lean="BUY" if p>=.5 else "SELL"; threshold=float(model.get("signalThreshold",.56 if model["horizon"]==5 else .57))
     active=p>=threshold or p<=1-threshold
     return {"side":lean if active else "WAIT","leanSide":lean,"probUp":round(p*100,2),"probDown":round((1-p)*100,2),
             "confidence":round(min(90,max(0,50+edge*50))) if active else round(50+edge*30),"edge":round(edge*100,2),
@@ -449,10 +508,12 @@ def predict(body:PredictBody):
         live_error=f"{type(e).__name__}: {e}"
         live_source="main-app candle fallback · neutral micro"
         live_df=frame_from_body(body.candles)
-    f=build_features(live_df).dropna(subset=FEATURES)
-    if f.empty: raise HTTPException(400,"insufficient feature history")
-    x=f[FEATURES].iloc[[-1]].astype(float).to_numpy()
-    m1=predict_h(MODELS["models"]["m1"],x); m5=predict_h(MODELS["models"]["m5"],x)
+    f=build_features(live_df)
+    if f.dropna(subset=M1_FEATURES).empty or f.dropna(subset=M5_FEATURES).empty:
+        raise HTTPException(400,"insufficient feature history")
+    x1=f[M1_FEATURES].dropna().iloc[[-1]].astype(float).to_numpy()
+    x5=f[M5_FEATURES].dropna().iloc[[-1]].astype(float).to_numpy()
+    m1=predict_h(MODELS["models"]["m1"],x1); m5=predict_h(MODELS["models"]["m5"],x5)
     aligned=m1["leanSide"]==m5["leanSide"]; consensus=m1["leanSide"] if aligned else (m1["leanSide"] if m1["edge"]>=m5["edge"] else m5["leanSide"])
     return {"ok":True,"version":APP_VERSION,"status":STATE["status"],"trainedAt":MODELS.get("trainedAt"),"source":MODELS.get("source"),
             "liveSource":live_source,"liveError":live_error,"historyRows":MODELS.get("historyRows"),"oneMinute":m1,"fiveMinute":m5,
