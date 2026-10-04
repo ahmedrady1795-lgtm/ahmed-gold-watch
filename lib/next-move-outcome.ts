@@ -148,6 +148,64 @@ function summary(asset:string){
   };
 }
 
+
+function statReliability(v:any){
+  const hits=Number(v?.hits||0),fails=Number(v?.fails||0),neutral=Number(v?.neutral||0);
+  const directional=hits+fails,resolved=directional+neutral;
+  const posterior=directional?Number(v?.posteriorAccuracy??((hits+4)/(directional+8)*100)):50;
+  const coverage=resolved?directional/resolved:0;
+  const effective=50+(posterior-50)*Math.sqrt(Math.max(0,Math.min(1,coverage)));
+  return {effective,posterior,coverage,directional,resolved};
+}
+
+export function calibrateNextMoveConfidence(nextMove:any,live:any,regime?:string){
+  if(!nextMove||!['BUY','SELL'].includes(String(nextMove?.side)))return nextMove;
+  const raw=cap(Number(nextMove?.confidence||0),0,88);
+  const source=key(nextMove?.source||'UNKNOWN');
+  const reg=key(regime||'UNKNOWN');
+  const band=confidenceBand(raw);
+  const global=statReliability(live?.global);
+  const src=statReliability(live?.bySource?.[source]);
+  const rg=statReliability(live?.byRegime?.[reg]);
+  const bd=statReliability(live?.byConfidence?.[band]);
+
+  const rows=[
+    {r:global,w:.24*Math.min(1,global.directional/20)},
+    {r:src,w:.36*Math.min(1,src.directional/18)},
+    {r:rg,w:.24*Math.min(1,rg.directional/18)},
+    {r:bd,w:.16*Math.min(1,bd.directional/12)}
+  ].filter(x=>x.w>0);
+  const wsum=rows.reduce((a,x)=>a+x.w,0);
+  const observed=wsum?rows.reduce((a,x)=>a+x.r.effective*x.w,0)/wsum:50;
+  const samples=Number(live?.learningSamples||global.directional||0);
+  const maturity=Math.min(1,samples/60);
+  const liveWeight=.70*maturity;
+  let calibrated=raw*(1-liveWeight)+observed*liveWeight;
+  const capFromLive=observed+14+(1-maturity)*10;
+  calibrated=Math.min(calibrated,capFromLive);
+  if(Number(nextMove?.micro?.opposition||0)>=3)calibrated-=4;
+  if(nextMove?.conflictWithLockedDirection)calibrated-=3;
+  calibrated=Math.round(cap(calibrated,12,86));
+
+  return {
+    ...nextMove,
+    confidence:calibrated,
+    rawConfidence:Math.round(raw),
+    calibration:{
+      version:'confidence-v3',
+      observedReliability:Number(observed.toFixed(1)),
+      maturity:Number(maturity.toFixed(3)),
+      learningSamples:samples,
+      sourceSamples:src.directional,
+      regimeSamples:rg.directional,
+      bandSamples:bd.directional,
+      sourcePosterior:Number(src.posterior.toFixed(1)),
+      sourceCoverage:Number((src.coverage*100).toFixed(1)),
+      cap:Number(capFromLive.toFixed(1))
+    }
+  };
+}
+
 export function recordNextMoveOutcome(args:{
   asset:string;price:number|null;atr:number|null;now?:number;hunt:any;regime?:string
 }){
