@@ -339,7 +339,18 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     tickSide:tick1.side,tickStage:tick1.stage,tickScore:tick1.score,
     liqSide,liqScore,motionSide,motionStage:String(motion?.stage||'WAIT'),motionScore,
     preSide:preMove.side,preScore:preMove.score,preArmed:preMove.armed,late:chaseRisk||preMove.lateMomentum,
-    trapSide,trapScore,mode,accumulationPhase,accumulationReadiness,reactionAligned,accumulationAligned
+    trapSide,trapScore,mode,accumulationPhase,accumulationReadiness,reactionAligned,accumulationAligned,
+    microAvailable:Boolean(liq?.ok&&Number(liq?.quality||0)>=55),
+    pressure:Number(liq?.pressure||0),
+    depthImbalance:Number(liq?.book?.depthImbalance||0),
+    weightedImbalance:Number(liq?.book?.weightedImbalance||0),
+    microEdge:Number(liq?.book?.microEdge||0),
+    flowDelta:Number(liq?.flow?.deltaPct||0),
+    priceChangeBps:Number(liq?.flow?.priceChangeBps||0),
+    pressureChange:Number(liq?.dynamics?.pressureChange||0),
+    bidDepthChange:Number(liq?.dynamics?.bidDepthChangePct||0),
+    askDepthChange:Number(liq?.dynamics?.askDepthChangePct||0),
+    acceleration:Number(liq?.dynamics?.acceleration||0)
   });
   const predatorAttack=Boolean(
     predator?.attack&&fusedSide!=='WAIT'&&!flipSuppressed&&!chaseRisk&&
