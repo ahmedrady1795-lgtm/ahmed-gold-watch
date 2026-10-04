@@ -83,7 +83,10 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   }
 
   const total=Math.max(1e-9,buy+sell),buyShare=buy/total*100,sellShare=100-buyShare,edge=Math.abs(buyShare-sellShare);
-  const fusedSide:Side=edge>=4?(buy>sell?'BUY':'SELL'):'WAIT';
+  const activeWeight=Math.max(.01,rows.reduce((s,r)=>s+r.weight,0));
+  const buyEvidence=cap(buy/activeWeight,0,92),sellEvidence=cap(sell/activeWeight,0,92);
+  const dominantEvidence=Math.max(buyEvidence,sellEvidence);
+  const fusedSide:Side=edge>=4&&dominantEvidence>=28?(buy>sell?'BUY':'SELL'):'WAIT';
   const support=rows.filter(r=>r.side===fusedSide).length;
   const opposition=rows.filter(r=>fusedSide!=='WAIT'&&r.side!==fusedSide).length;
   const liveSupport=[liqSide,motionSide,trapSide,ml1.side].filter(s=>s!=='WAIT'&&s===fusedSide).length;
@@ -95,21 +98,23 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const scalpPrecisionGuard=Boolean(scalpOosN>=10&&(scalpWfStatus==='WATCH'||scalpDrift==='DEGRADING'||(Number.isFinite(scalpOosAcc)&&scalpOosAcc<53)));
   const scalpSevereDrift=Boolean(scalpOosN>=10&&scalpDrift==='DEGRADING'&&Number(scalpWf?.drift?.delta||0)<=-15);
 
-  let confidence=cap(edge*.48+Math.max(buyShare,sellShare)*.26+support*4.2+liveSupport*3.4-liveOpposition*4.2,10,88);
+  let confidence=cap(dominantEvidence*.58+edge*.20+support*2.6+liveSupport*2.8-liveOpposition*4.2,10,86);
   if(techL2Conflict&&!livePair)confidence-=5;
   if(learner&&!learner.ok&&liveSupport<2)confidence-=3;
+  if(ml1.side==='WAIT'&&learnedSide==='WAIT')confidence=Math.min(confidence,74);
   if(scalpWfStatus==='WATCH'&&scalpOosN>=10)confidence-=4;
   if(scalpDrift==='DEGRADING'&&scalpOosN>=10)confidence-=7;
   if(Number.isFinite(scalpOosAcc)&&scalpOosN>=10&&scalpOosAcc<50)confidence-=4;
   confidence=Math.round(cap(confidence,10,86));
 
   const strongEdge=scalpSevereDrift?20:scalpPrecisionGuard?16:14;
+  const strongEvidence=scalpSevereDrift?66:scalpPrecisionGuard?62:58;
   const strong=Boolean(
-    fusedSide!=='WAIT'&&edge>=strongEdge&&support>=2&&
+    fusedSide!=='WAIT'&&edge>=strongEdge&&dominantEvidence>=strongEvidence&&support>=2&&
     (liveSupport>=2||(ml1.side===fusedSide&&liqSide===fusedSide)||(trapSide===fusedSide&&trapScore>=68))&&
     (!scalpSevereDrift||liveOpposition===0||edge>=30)
   );
-  const watch=Boolean(fusedSide!=='WAIT'&&edge>=6&&support>=2);
+  const watch=Boolean(fusedSide!=='WAIT'&&edge>=6&&dominantEvidence>=46&&support>=2);
   const action:Side=strong||watch?fusedSide:'WAIT';
   const state=strong?'setup':watch?'watch':'wait';
 
@@ -122,8 +127,8 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     trade={mode:'scalp-fusion-v3-'+mode.toLowerCase(),side:fusedSide==='BUY'?'buy':'sell',entry:p,sl:p-dir*risk,tp:p+dir*risk*rr,rr,score:confidence,validForSeconds:35,time:Date.now()};
   }
 
-  const outLong=Math.round(cap(50+(buyShare-50)*.84+(fusedSide==='BUY'?Math.max(0,confidence-50)*.18:0),0,100));
-  const outShort=Math.round(cap(50+(sellShare-50)*.84+(fusedSide==='SELL'?Math.max(0,confidence-50)*.18:0),0,100));
+  const outLong=Math.round(cap(buyEvidence+Math.max(0,buyShare-50)*.16,0,92));
+  const outShort=Math.round(cap(sellEvidence+Math.max(0,sellShare-50)*.16,0,92));
   const changed=techSide!=='WAIT'&&fusedSide!=='WAIT'&&techSide!==fusedSide;
 
   return {
@@ -140,10 +145,11 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     fusionV3:{
       side:fusedSide,confidence,strong,watch,
       buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
+      buyEvidence:Number(buyEvidence.toFixed(1)),sellEvidence:Number(sellEvidence.toFixed(1)),dominantEvidence:Number(dominantEvidence.toFixed(1)),
       support,opposition,liveSupport,liveOpposition,
       techSide,liqSide,motionSide,trapSide,mlSide:ml1.side,learnedSide,
       techL2Conflict,livePair,mode,
-      oos:{status:scalpWfStatus,n:scalpOosN,accuracy:Number.isFinite(scalpOosAcc)?scalpOosAcc:null,drift:scalpDrift,precisionGuard:scalpPrecisionGuard,severeDrift:scalpSevereDrift,strongEdge},
+      oos:{status:scalpWfStatus,n:scalpOosN,accuracy:Number.isFinite(scalpOosAcc)?scalpOosAcc:null,drift:scalpDrift,precisionGuard:scalpPrecisionGuard,severeDrift:scalpSevereDrift,strongEdge,strongEvidence},
       components:rows.map(r=>({name:r.name,side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight}))
     }
   };
