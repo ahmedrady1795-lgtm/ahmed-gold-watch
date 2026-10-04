@@ -121,7 +121,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   const inCooldown=now<st.cooldownUntil;
 
   const temporalReady=Boolean(st.stableCount>=2&&ageMs>=700&&persistence>=.66&&opposite.length<=1);
-  const shockReady=Boolean((pattern==='TRAP_REVERSAL'||pattern==='PREMOVE_AMBUSH')&&score>=84&&hardOpposition===0);
+  // Shock patterns may reach AMBUSH quickly, but ATTACK still needs minimum temporal evidence.\n  // This prevents one-snapshot trap/premove spikes from bypassing persistence confirmation.\n  const shockTemporalReady=Boolean(st.stableCount>=2&&ageMs>=500&&persistence>=.75&&opposite.length===0);\n  const shockReady=Boolean((pattern==='TRAP_REVERSAL'||pattern==='PREMOVE_AMBUSH')&&score>=84&&hardOpposition===0&&shockTemporalReady);
   const attackPattern=['PREMOVE_AMBUSH','TRAP_REVERSAL','COMPRESSION_BREAK','BREAKOUT_PRELOAD','FLOW_AMBUSH'].includes(pattern);
   const attack=Boolean(
     !inCooldown&&!o.late&&attackPattern&&score>=74&&hardOpposition===0&&
