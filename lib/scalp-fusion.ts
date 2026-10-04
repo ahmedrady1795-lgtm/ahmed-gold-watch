@@ -363,7 +363,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const action:Side=ambushTrade?fusedSide:'WAIT';
   const state=ambushTrade?'setup':predator?.phase==='ABORT'?'abort':'wait';
   const assistants={
-    attack:Boolean(predator?.attackAssist),
+    confirmation:Boolean(predator?.confirmationAssist),
     fast:Boolean(preMoveAligned||tickAligned),
     liquidity:Boolean(liqSide===fusedSide),
     motion:Boolean(motionSide===fusedSide),
@@ -496,7 +496,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     title:action==='BUY'?'AMBUSH · BUY':action==='SELL'?'AMBUSH · SELL':'AMBUSH · WAIT',
     reason:action==='WAIT'
       ?`Ambush V8 · ${String(predator?.phase||'HUNT')} · ${String(predator?.pattern||'NO_EDGE')} · AMBUSH لم يعتمد صفقة${chaseRisk?' · NO CHASE':''}${reactionConflict?' · REACTION BLOCK':''}${flipSuppressed?' · FLIP FILTER':''}.`
-      :`Ambush V8 · ${fusedSide} · ${String(predator?.pattern||contextMode)} · score ${Number(predator?.score||0)} · مساعدين ${assistantCount}/10 · stable ${Number(predator?.stableCount||0)}${predator?.attackAssist?' · ATTACK CONFIRM':''}${preMoveAligned?' · PRE-MOVE':''}${changed?' · TECH CONTRARIAN':''}.`,
+      :`Ambush V8 · ${fusedSide} · ${String(predator?.pattern||contextMode)} · score ${Number(predator?.score||0)} · مساعدين ${assistantCount}/10 · stable ${Number(predator?.stableCount||0)}${predator?.confirmationAssist?' · STRONG CONFIRM':''}${preMoveAligned?' · PRE-MOVE':''}${changed?' · TECH CONTRARIAN':''}.`,
     score:{long:outLong,short:outShort,threshold:58},
     confidence,
     trade,
