@@ -12,13 +12,13 @@ type Pending={
   id:string;at:number;side:'BUY'|'SELL';source:string;regime:string;confidence:number;
   entry:number;target:number;stop:number;barrierBps:number;horizonMs:number;
   mfeBps:number;maeBps:number;
-  micro?:{edge:number;support:number;opposition:number;strong:boolean};
+  micro?:{edge:number;support:number;opposition:number;strong:boolean;[key:string]:any};
 };
 type Recent={
   id:string;at:number;settledAt:number;side:'BUY'|'SELL';source:string;regime:string;confidence:number;
   entry:number;exit:number;target:number;stop:number;barrierBps:number;outcome:Outcome;
   seconds:number;mfeBps:number;maeBps:number;
-  micro?:{edge:number;support:number;opposition:number;strong:boolean};
+  micro?:{edge:number;support:number;opposition:number;strong:boolean;[key:string]:any};
 };
 type AssetState={
   global:Stat;
@@ -358,7 +358,16 @@ export function recordNextMoveOutcome(args:{
       a.pending.push({
         id:eventId,at:now,side,source,regime,confidence,entry:price,target,stop,barrierBps,horizonMs,
         mfeBps:0,maeBps:0,
-        micro:{edge:Number(micro?.edge||0),support:Number(micro?.support||0),opposition:Number(micro?.opposition||0),strong:Boolean(micro?.strong)}
+        micro:{
+          edge:Number(micro?.edge||0),support:Number(micro?.support||0),opposition:Number(micro?.opposition||0),strong:Boolean(micro?.strong),
+          liveSupport:Number(micro?.liveSupport||0),liveOpposition:Number(micro?.liveOpposition||0),
+          requiredEdge:Number(micro?.requiredEdge||0),requiredSupport:Number(micro?.requiredSupport||0),
+          scalp:String(micro?.scalp||'WAIT'),liquidity:String(micro?.liquidity||'WAIT'),tick:String(micro?.tick||'WAIT'),
+          motion:String(micro?.motion||'WAIT'),ml1:String(micro?.ml1||'WAIT'),trap:String(micro?.trap||'WAIT'),
+          validatedMlConflict:Boolean(micro?.validatedMlConflict),reactionConflict:Boolean(micro?.reactionConflict),
+          slowDoubleConflict:Boolean(micro?.slowDoubleConflict),historicalWeak:Boolean(micro?.historicalWeak),
+          wfScope:String(micro?.wfScope||''),wfStatus:String(micro?.wfStatus||'')
+        }
       });
       if(a.pending.length>30)a.pending=a.pending.slice(-30);
       a.lastRecordedBucket=bucket;a.lastFingerprint=fingerprint;dirty=true;recorded=true;
