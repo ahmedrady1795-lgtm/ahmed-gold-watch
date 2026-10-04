@@ -37,6 +37,8 @@ TG_CHAT=os.getenv('TELEGRAM_CHAT_ID','').strip()
 TG_THREAD=os.getenv('TELEGRAM_THREAD_ID','').strip()
 TG_ENABLED=os.getenv('TELEGRAM_ALERTS_ENABLED','true').lower()=='true' and bool(TG_TOKEN and TG_CHAT)
 TG_DRY_RUN=os.getenv('TELEGRAM_NOTIFY_DRY_RUN','false').lower()=='true'
+SCALP_DEMO=os.getenv('SCALP_DEMO_MODE','false').lower()=='true'
+SCALP_DEMO_POLL=max(0.5,float(os.getenv('SCALP_DEMO_POLL_SECONDS','1.0')))
 STATE=Path(__file__).with_name('.state.json')
 KILL_SWITCH=Path(os.getenv('KILL_SWITCH_FILE',str(Path(__file__).with_name('KILL_SWITCH'))))
 
@@ -53,7 +55,7 @@ def telegram(text,silent=False):
 def state_read():
     try:
         x=json.loads(STATE.read_text('utf-8'));return x if isinstance(x,dict) else {}
-    except:return {'last_signal':'','last_trade_at':0,'last_attempt_signal':'','last_attempt_at':0,'peak_equity':0,'last_quality':{},'last_candles_push_at':0}
+    except:return {'last_signal':'','last_trade_at':0,'last_attempt_signal':'','last_attempt_at':0,'peak_equity':0,'last_quality':{},'last_candles_push_at':0,'demo_position':None,'demo_stats':{'trades':0,'wins':0,'losses':0,'net_points':0.0}}
 def state_write(s): STATE.write_text(json.dumps(s,ensure_ascii=False,indent=2),'utf-8')
 def init_mt5():
     if mt5.terminal_info() is not None:return True
@@ -89,6 +91,49 @@ def push_status(s):
 def site_signal():
     started=time.perf_counter();r=requests.get(SITE_URL+'/api/execution/signal',headers=auth_headers(),timeout=15);latency_ms=(time.perf_counter()-started)*1000
     r.raise_for_status();j=r.json();j['_site_latency_ms']=latency_ms;return j
+
+def scalp_demo_signal():
+    started=time.perf_counter();r=requests.get(SITE_URL+'/api/mt5/scalp-demo',headers=auth_headers(),timeout=6);latency_ms=(time.perf_counter()-started)*1000
+    r.raise_for_status();j=r.json();j['_site_latency_ms']=latency_ms;return j
+
+def journal_demo(event,pos,reason='',extra=None):
+    try:
+        payload={'id':f'scalp-demo:{event}:{int(time.time()*1000)}','kind':'scalp-demo','signalId':str(pos.get('id','')),'side':str(pos.get('side','')).lower(),'entry':pos.get('entry'),'sl':pos.get('sl'),'tp':pos.get('tp'),'score':pos.get('confidence'),'status':event,'source':'mt5-bridge-demo','metadata':{'reason':reason,'openedAt':pos.get('opened_at'),'closedAt':pos.get('closed_at'),'exit':pos.get('exit'),'pnlPoints':pos.get('pnl_points'),'latencyMs':pos.get('latency_ms'),**(extra or {})}}
+        requests.post(SITE_URL+'/api/journal',headers={**auth_headers(),'Content-Type':'application/json'},json=payload,timeout=5)
+    except Exception as e:log('demo journal failed',repr(e))
+
+def scalp_demo_step(s):
+    if LIVE or not SCALP_DEMO:return s
+    info=symbol_ready();tick=mt5.symbol_info_tick(SYMBOL) if info else None
+    if not info or tick is None:return s
+    data=scalp_demo_signal()
+    if not data.get('ok') or not data.get('demoOnly'):return s
+    pos=s.get('demo_position')
+    now=time.time();bid=float(tick.bid);ask=float(tick.ask)
+    if pos:
+        side=pos.get('side');exit_px=bid if side=='BUY' else ask
+        hit_tp=exit_px>=float(pos['tp']) if side=='BUY' else exit_px<=float(pos['tp'])
+        hit_sl=exit_px<=float(pos['sl']) if side=='BUY' else exit_px>=float(pos['sl'])
+        timed=now-float(pos.get('opened_at',now))>=float(pos.get('max_hold_seconds',60))
+        learner_side=str((data.get('learner') or {}).get('side','WAIT'))
+        micro_side=str((data.get('micro') or {}).get('side','WAIT'))
+        flipped=learner_side in ('BUY','SELL') and micro_side==learner_side and learner_side!=side
+        if hit_tp or hit_sl or timed or flipped:
+            reason='TP' if hit_tp else 'SL' if hit_sl else 'TIME' if timed else 'FLIP'
+            point=float(info.point or 1);pnl=(exit_px-float(pos['entry']))/point*(1 if side=='BUY' else -1)
+            pos.update({'closed_at':now,'exit':exit_px,'pnl_points':round(pnl,1),'close_reason':reason})
+            st=s.get('demo_stats') or {'trades':0,'wins':0,'losses':0,'net_points':0.0};st['trades']=int(st.get('trades',0))+1;st['wins']=int(st.get('wins',0))+(1 if pnl>0 else 0);st['losses']=int(st.get('losses',0))+(1 if pnl<=0 else 0);st['net_points']=round(float(st.get('net_points',0))+pnl,1);s['demo_stats']=st
+            log('SCALP DEMO EXIT',side,reason,'entry',pos['entry'],'exit',exit_px,'pnl_pts',round(pnl,1),'stats',st);journal_demo('closed',pos,reason,{'stats':st});s['demo_position']=None
+        return s
+    plan=data.get('plan')
+    if not plan or int(plan.get('expiresAt',0) or 0)<int(time.time()*1000):return s
+    side=str(plan.get('side','WAIT'))
+    if side not in ('BUY','SELL'):return s
+    entry=ask if side=='BUY' else bid
+    ref=float(plan.get('entry',entry));sl_ref=float(plan.get('sl'));tp_ref=float(plan.get('tp'))
+    sl_dist=abs(ref-sl_ref);tp_dist=abs(tp_ref-ref)
+    pos={'id':plan.get('id'),'side':side,'entry':entry,'sl':entry-sl_dist if side=='BUY' else entry+sl_dist,'tp':entry+tp_dist if side=='BUY' else entry-tp_dist,'opened_at':now,'max_hold_seconds':int(plan.get('maxHoldSeconds',60)),'confidence':(data.get('learner') or {}).get('confidence'),'latency_ms':round(float(data.get('_site_latency_ms',0)),1)}
+    s['demo_position']=pos;log('SCALP DEMO ENTRY',side,'entry',entry,'sl',pos['sl'],'tp',pos['tp'],'hold',pos['max_hold_seconds'],'latency_ms',pos['latency_ms']);journal_demo('opened',pos,'DEMO_ENTRY',{'learner':data.get('learner'),'micro':data.get('micro')});return s
 
 def journal_execution(signal,ok,message,s):
     try:
@@ -191,13 +236,18 @@ def send(signal,s):
 
 def main():
     if not SITE_URL.startswith('https://') or not TOKEN:sys.exit('Set SITE_URL=https://... and MT5_BRIDGE_TOKEN in .env')
-    log('bridge starting','LIVE' if LIVE else 'DRY RUN','symbol',SYMBOL,'risk',RISK_PCT,'%')
-    telegram(f'🟦 Ahmed Gold Watch MT5 Bridge started\nMode: {"LIVE" if LIVE else "DRY RUN"}\nSymbol: {SYMBOL}\nRisk: {RISK_PCT}%')
+    log('bridge starting','LIVE' if LIVE else 'DRY RUN','symbol',SYMBOL,'risk',RISK_PCT,'%','scalp_demo',SCALP_DEMO and not LIVE)
+    telegram(f'🟦 Ahmed Gold Watch MT5 Bridge started\nMode: {"LIVE" if LIVE else "DRY RUN"}\nSymbol: {SYMBOL}\nRisk: {RISK_PCT}%\nScalp Demo: {SCALP_DEMO and not LIVE}')
     failures=0
     while True:
         try:
             if not init_mt5():raise RuntimeError('MT5 not connected')
-            s=state_read();push_status(s);state_write(s)
+            s=state_read();push_status(s)
+            if SCALP_DEMO and not LIVE:
+                s=scalp_demo_step(s);state_write(s)
+                if failures>0:telegram('✅ MT5 Scalp Demo recovered and site connection is healthy.')
+                failures=0;time.sleep(SCALP_DEMO_POLL);continue
+            state_write(s)
             data=site_signal()
             if failures>0:telegram('✅ MT5 Bridge recovered and site connection is healthy.')
             failures=0
