@@ -81,12 +81,7 @@ export default function Home(){
       const r=await fetch('/api/ai-analysis'+(q.size?'?'+q.toString():''),{cache:'no-store',signal:AbortSignal.timeout(12000)}),j=await r.json();
       if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر تشغيل محرك AI');
       setAiData(j);aiReady.current=true;aiFailureCount.current=0;setAiError('');
-      void fetch('/api/telegram/pulse',{
-        method:'POST',
-        cache:'no-store',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({analysis:j})
-      }).catch(()=>{});
+
     }catch(e){
       aiFailureCount.current+=1;
       if(!aiReady.current&&aiFailureCount.current>=3)setAiError(e instanceof Error?e.message:'تعذر تشغيل محرك AI');
