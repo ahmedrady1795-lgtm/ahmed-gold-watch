@@ -65,8 +65,8 @@ export async function GET(request:Request){
     const livePulse={price:btcPrice,basePrice:base,delta,deltaPct,momentum,direction:pulseDirection,source:liveBtc?.source||btc.source,sourceTime:liveBtc?.sourceTime||btc.checkedAt};
     const goldScalp=scalpAnalyze(gm.c1,gm.c5,now,goldPrice);
     const bitcoinScalp=scalpAnalyze(btc.c1,btc.c5,now,btcPrice);
-    const goldAtr=atrNow(gm.c1),btcAtr=a1;
-    const goldCostAtr=goldAtr&&Number(goldAtr)>0&&Number.isFinite(Number(quote?.spread))?Math.max(.05,Number(quote.spread)/Number(goldAtr)+.03):.10;
+    const goldAtr=atrNow(gm.c1),btcAtr=a1,goldSpread=Number(quote?.spread);
+    const goldCostAtr=goldAtr&&Number(goldAtr)>0&&Number.isFinite(goldSpread)?Math.max(.05,goldSpread/Number(goldAtr)+.03):.10;
     const btcBookSpread=Number(liquidity?.book?.spreadBps||0),btcSpreadUsd=Number.isFinite(Number(btcPrice))?Number(btcPrice)*btcBookSpread/10000:0;
     const btcCostAtr=btcAtr&&Number(btcAtr)>0&&btcSpreadUsd>0?Math.max(.04,btcSpreadUsd/Number(btcAtr)+.03):.08;
     const goldLearner=trainScalpLearner(gm.c1,now,goldCostAtr);
