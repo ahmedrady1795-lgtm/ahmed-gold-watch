@@ -128,8 +128,9 @@ function contextKeys(asset:string,f:any,ctx:any,at:number){
   const keys=priceKeys(asset,f,at),m1=String(ctx?.structure?.m1?.phase||'NA'),m5=String(ctx?.structure?.m5?.phase||'NA');
   const acc=String(ctx?.accumulation?.phase||'NA'),liq=String(ctx?.liquidity?.side||'NA'),abs=String(ctx?.liquidity?.absorption?.side||'NA');
   const motion=String(ctx?.motion?.stage||'NA')+':'+String(ctx?.motion?.side||'NA'),beh=String(ctx?.behavior?.pattern||'NA')+':'+String(ctx?.behavior?.side||'NA'),ses=session(at);
+  const sg=String(ctx?.stateGraph?.current||'NA'),sgNext=String(ctx?.stateGraph?.nextState||'NA'),cp=ctx?.stateGraph?.changePoint?'CP':'STABLE';
   keys.unshift('CTX3|'+asset+'|'+ses+'|'+m1+'|'+m5+'|'+acc+'|'+liq+'|'+abs);
-  keys.push('MS3|'+asset+'|'+m1+'|'+m5+'|'+acc,'LM3|'+asset+'|'+liq+'|'+abs+'|'+motion,'BH3|'+asset+'|'+beh+'|'+m1);
+  keys.push('MS3|'+asset+'|'+m1+'|'+m5+'|'+acc,'LM3|'+asset+'|'+liq+'|'+abs+'|'+motion,'BH3|'+asset+'|'+beh+'|'+m1,'SG3|'+asset+'|'+ses+'|'+sg+'|'+sgNext+'|'+cp);
   return [...new Set(keys)];
 }
 function ensureBucket(k:string){if(!store.patterns[k])store.patterns[k]={h1:emptyStats(),h5:emptyStats()};normalizeStats(store.patterns[k].h1);normalizeStats(store.patterns[k].h5);return store.patterns[k];}
@@ -168,6 +169,7 @@ function sideFromContext(ctx:any){
   out.scalp=l-s>=10?'BUY':s-l>=10?'SELL':'WAIT';
   out.m1=ctx?.decision?.indicatorMatrix?.rows?.m1?.bias||'WAIT';
   out.m5=ctx?.decision?.indicatorMatrix?.rows?.m5?.bias||'WAIT';
+  out.stateGraph=ctx?.stateGraph?.nextSide||'WAIT';
   return out;
 }
 function findClose(c:Candle[],time:number){
