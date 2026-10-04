@@ -150,9 +150,9 @@ function AssetCard({x,fast}:any){
   const quickTargets=hunt?.quickSignalTargets||{};
   const neuralPath=x.neuralCore?.pricePath;
   const neuralPathReady=Boolean(neuralPath?.ready);
-  const contextualScalpTarget=quickTargets?.scalp?.side===liveScalpSide?quickTargets?.scalp?.price:null;
+  const scalpTargetPrice=x.scalp?.target?.price??quickTargets?.scalp?.price??null;
   const signalRows=[
-    {label:fastUsable?'Scalp FAST':'Scalp',side:neuralPathReady?(neuralPath?.side||liveScalpSide):liveScalpSide,strength:scalpStrength,target:neuralPathReady?neuralPath?.firstTarget:contextualScalpTarget},
+    {label:fastUsable?'Scalp FAST':'Scalp',side:neuralPathReady?(neuralPath?.side||liveScalpSide):liveScalpSide,strength:scalpStrength,target:neuralPathReady?neuralPath?.firstTarget:scalpTargetPrice},
     {label:'1m',side:m1?.bias||'WAIT',strength:calibrated(m1?.strength),target:quickTargets?.oneMinute?.price},
     {label:'5m',side:m5?.bias||'WAIT',strength:calibrated(m5?.strength),target:quickTargets?.fiveMinute?.price}
   ];
