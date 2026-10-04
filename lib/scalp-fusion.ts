@@ -461,7 +461,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     score:{long:outLong,short:outShort,threshold:58},
     confidence,
     trade,
-    early:state==='watch'||anticipatoryStrong,
+    early:Boolean(ambushTrade||anticipatoryStrong),
     preMove,
     intercept,
     target,
