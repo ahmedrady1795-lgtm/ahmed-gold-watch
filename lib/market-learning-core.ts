@@ -316,6 +316,10 @@ export async function recordFinalRecommendationOutcome(args:{asset:string;c1:Can
         }
         delete store.activeRecommendations[asset];outcome={status:'FAILED',failure};
       }else if(success){
+        const favorableAtr=Math.max(.30,Math.min(3,Math.abs(Number(active.target??price)-active.entry)/Math.max(1e-9,active.atr)));
+        const syntheticRet=active.side==='BUY'?favorableAtr:-favorableAtr;
+        for(const [name,pred] of Object.entries(active.components||{}))if(pred===active.side)updateComponent(ensureComp(asset,name).h1,pred,syntheticRet,'h1',now);
+        updateComponent(ensureForecast(asset).h1,active.side,syntheticRet,'h1',now);
         delete store.activeRecommendations[asset];outcome={status:'SUCCESS'};
       }else if(expired){
         delete store.activeRecommendations[asset];outcome={status:'EXPIRED'};
