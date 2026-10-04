@@ -67,7 +67,7 @@ export async function register(){
         headers:{'User-Agent':'Predator-NextMove-Settlement/1.0'}
       });
       const j:any=await r.json().catch(()=>null),price=Number(j?.price);
-      if(r.ok&&Number.isFinite(price)&&price>0){const t=Date.now();getNextMoveOutcome('BTC',price,t);getNextMoveOutcome('BTC_SCALP',price,t);}
+      if(r.ok&&Number.isFinite(price)&&price>0){const t=Date.now();getNextMoveOutcome('BTC',price,t);getNextMoveOutcome('BTC_SCALP_V4',price,t);}
     }catch{}finally{settleBusy=false;}
   };
   const settleFirst=setTimeout(()=>{void settleNextMove();},7000);
