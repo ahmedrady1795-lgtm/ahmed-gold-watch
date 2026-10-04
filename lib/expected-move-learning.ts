@@ -160,6 +160,39 @@ function aggregate(ks:string[],h:H,now:number){
   const burstDelta=(su-sd)*100,burstSide=sideOf(burstDelta,6),burstProbability=Math.round(cap(Math.max(su,sd)*100,0,92));
   return {side,strength,confidence,samples:Math.round(n),meanCloseAtr:Number(mean.toFixed(3)),expectedUpAtr:Number(mfeUp.toFixed(3)),expectedDownAtr:Number(mfeDown.toFixed(3)),burstSide,burstProbability,firstHitMinutes:Number(firstMinutes.toFixed(2)),decisiveRate:Math.round(cap(hitRate*100,0,100)),matched};
 }
+function analogAggregate(c:Candle[],currentIndex:number,current:any,h:H){
+  const rows:{d:number;o:any}[]=[];
+  const need=bars(h);
+  for(let i=28;i<=currentIndex-need;i++){
+    const f=features(c,i);if(!f)continue;
+    const d=
+      Math.abs(f.r3-current.r3)/.45+
+      Math.abs(f.acc-current.acc)/.30+
+      Math.abs(f.comp-current.comp)/.55+
+      Math.abs(f.pos-current.pos)/.32+
+      Math.abs(f.eff-current.eff)/.35+
+      Math.abs(Math.log(Math.max(.2,f.atrBps)/Math.max(.2,current.atrBps)))/.55;
+    const o=outcome(c,c[i].time,c[i].close,f.atr,h);if(o)rows.push({d,o});
+  }
+  rows.sort((a,b)=>a.d-b.d);
+  const top=rows.slice(0,28);if(top.length<6)return {side:'WAIT' as Side,strength:0,confidence:0,samples:0,meanCloseAtr:0,expectedUpAtr:0,expectedDownAtr:0,burstSide:'WAIT' as Side,burstProbability:0,firstHitMinutes:0,decisiveRate:0,matched:0};
+  let w=0,up=0,down=0,flat=0,mean=0,mfeUp=0,mfeDown=0,strongUp=0,strongDown=0,mins=0,hits=0;
+  for(const row of top){
+    const ww=Math.exp(-Math.min(5,row.d)*.72),o=row.o;w+=ww;mean+=o.closeAtr*ww;mfeUp+=o.mfeUp*ww;mfeDown+=o.mfeDown*ww;
+    if(o.firstSide==='BUY'){up+=ww;hits+=ww;mins+=o.firstMinutes*ww;}else if(o.firstSide==='SELL'){down+=ww;hits+=ww;mins+=o.firstMinutes*ww;}else flat+=ww;
+    const bg=burstGate(h);if(o.mfeUp>=bg||o.mfeDown>=bg){if(o.mfeUp>o.mfeDown)strongUp+=ww;else if(o.mfeDown>o.mfeUp)strongDown+=ww;}
+  }
+  if(!w)return {side:'WAIT' as Side,strength:0,confidence:0,samples:0,meanCloseAtr:0,expectedUpAtr:0,expectedDownAtr:0,burstSide:'WAIT' as Side,burstProbability:0,firstHitMinutes:0,decisiveRate:0,matched:0};
+  up/=w;down/=w;flat/=w;mean/=w;mfeUp/=w;mfeDown/=w;strongUp/=w;strongDown/=w;
+  const hitRate=hits/w,firstBias=(up-down)*100,excursionBias=Math.max(-22,Math.min(22,(mfeUp-mfeDown)*18)),followBias=Math.max(-10,Math.min(10,mean*10));
+  let signed=firstBias*.84+excursionBias*.12+followBias*.04;if(hitRate<.45)signed*=.72;
+  const side=sideOf(signed,9),strength=Math.round(cap(50+Math.abs(signed)*.40,0,88));
+  const closeness=Math.max(0,1-Math.min(1,top.slice(0,10).reduce((s,r)=>s+r.d,0)/Math.max(1,Math.min(10,top.length))/4));
+  const confidence=Math.round(cap(34+Math.abs(signed)*.20+Math.min(18,top.length*.7)+closeness*12,0,78));
+  const burstDelta=(strongUp-strongDown)*100,burstSide=sideOf(burstDelta,6),burstProbability=Math.round(cap(Math.max(strongUp,strongDown)*100,0,92));
+  return {side,strength,confidence,samples:top.length,meanCloseAtr:Number(mean.toFixed(3)),expectedUpAtr:Number(mfeUp.toFixed(3)),expectedDownAtr:Number(mfeDown.toFixed(3)),burstSide,burstProbability,firstHitMinutes:hits?Number((mins/hits).toFixed(2)):0,decisiveRate:Math.round(cap(hitRate*100,0,100)),matched:top.length};
+}
+
 async function bootstrap(asset:string,c1:Candle[],now:number){
   const key=asset+':'+SCHEMA;if(store.bootstrapped[key])return false;
   const c=c1.filter(x=>x.time+60000<=now).slice(-700);if(c.length<100)return false;
@@ -195,15 +228,16 @@ export async function getExpectedMoveLearning(args:{asset:string;c1:Candle[];con
     if(i<28)return {ok:false,asset:args.asset,twoMinute:blank,fiveMinute:blank,fifteenMinute:blank,consensusSide:'WAIT',consensusScore:0,conflict:false,totals:t,storage:storagePath,reasons:['بيانات غير كافية لذاكرة الحركة المتوقعة.']};
     const f=features(c,i);if(!f)return {ok:false,asset:args.asset,twoMinute:blank,fiveMinute:blank,fifteenMinute:blank,consensusSide:'WAIT',consensusScore:0,conflict:false,totals:t,storage:storagePath,reasons:['ATR غير كافٍ.']};
     const ks=keys(args.asset,f,args.context,c[i].time),cal=ensureCal(args.asset);
-    const r2=aggregate(ks,'m2',now),r5=aggregate(ks,'m5',now),r15=aggregate(ks,'m15',now);
+    const bucket2=aggregate(ks,'m2',now),bucket5=aggregate(ks,'m5',now),bucket15=aggregate(ks,'m15',now);
+    const r2=bucket2.samples>=6?bucket2:analogAggregate(c,i,f,'m2'),r5=bucket5.samples>=6?bucket5:analogAggregate(c,i,f,'m5'),r15=bucket15.samples>=6?bucket15:analogAggregate(c,i,f,'m15');
     const h2=decorate(r2,calScore(cal.m2,now,'m2')),h5=decorate(r5,calScore(cal.m5,now,'m5')),h15=decorate(r15,calScore(cal.m15,now,'m15'));
     const signed=(h2.side==='BUY'?h2.confidence:h2.side==='SELL'?-h2.confidence:0)*.34+(h5.side==='BUY'?h5.confidence:h5.side==='SELL'?-h5.confidence:0)*.36+(h15.side==='BUY'?h15.confidence:h15.side==='SELL'?-h15.confidence:0)*.30;
     const consensusSide=sideOf(signed,8),active=[h2.side,h5.side,h15.side].filter(x=>x!=='WAIT'),conflict=active.includes('BUY')&&active.includes('SELL');
     const consensusScore=Math.round(cap(Math.abs(signed)+(conflict?-12:8),0,88));
     return {ok:true,asset:args.asset,twoMinute:h2,fiveMinute:h5,fifteenMinute:h15,consensusSide,consensusScore,conflict,totals:t,storage:storagePath,reasons:[
-      '2m first '+h2.side+' · hit '+h2.decisiveRate+'% · '+h2.firstHitMinutes+'m · cal '+h2.calibration+' · '+h2.samples+' samples',
-      '5m first '+h5.side+' · hit '+h5.decisiveRate+'% · '+h5.firstHitMinutes+'m · cal '+h5.calibration+' · '+h5.samples+' samples',
-      '15m first '+h15.side+' · hit '+h15.decisiveRate+'% · '+h15.firstHitMinutes+'m · cal '+h15.calibration+' · '+h15.samples+' samples',
+      '2m first '+h2.side+' · hit '+h2.decisiveRate+'% · '+h2.firstHitMinutes+'m · cal '+h2.calibration+' · '+h2.samples+' samples'+(bucket2.samples<6?' · nearest analogs':' · exact memory'),
+      '5m first '+h5.side+' · hit '+h5.decisiveRate+'% · '+h5.firstHitMinutes+'m · cal '+h5.calibration+' · '+h5.samples+' samples'+(bucket5.samples<6?' · nearest analogs':' · exact memory'),
+      '15m first '+h15.side+' · hit '+h15.decisiveRate+'% · '+h15.firstHitMinutes+'m · cal '+h15.calibration+' · '+h15.samples+' samples'+(bucket15.samples<6?' · nearest analogs':' · exact memory'),
       conflict?'2/5/15 conflict detected':'2/5/15 path internally consistent'
     ]};
   });
