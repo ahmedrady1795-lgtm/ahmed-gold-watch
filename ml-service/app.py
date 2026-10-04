@@ -436,6 +436,11 @@ def new_m5_models(seed):
     return x,l
 
 def m5_metrics(y,p,threshold=.44,flat_margin=.05,agreement=None):
+    p=np.asarray(p,dtype=float)
+    row_sum=p.sum(axis=1,keepdims=True)
+    p=np.divide(p,row_sum,out=np.full_like(p,1/3),where=row_sum>0)
+    p=np.clip(p,1e-9,1-1e-9)
+    p=p/p.sum(axis=1,keepdims=True)
     pred_all=np.argmax(p,axis=1)
     up=p[:,2]; down=p[:,0]; flat=p[:,1]
     pred_dir=np.where(up>=down,2,0)
