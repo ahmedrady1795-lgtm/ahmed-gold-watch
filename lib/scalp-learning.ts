@@ -59,7 +59,7 @@ function fit(rows:FeatureRow[]):Model{
   const weights:number[]=[];
   for(let j=0;j<dims;j++){
     const vals=rows.map(r=>(r.x[j]-means[j])/sds[j]);
-    const ys=rows.map(target),num=ys.reduce((s,y,i)=>s+vals[i]*y,0),den=Math.sqrt(ys.reduce((s,y)=>s+y*y,0)*vals.reduce((s,v)=>s+v*v,0))||1;
+    const ys=rows.map(target),num=ys.reduce<number>((s,y,i)=>s+vals[i]*y,0),den=Math.sqrt(ys.reduce<number>((s,y)=>s+y*y,0)*vals.reduce<number>((s,v)=>s+v*v,0))||1;
     weights[j]=clamp(num/den,-.55,.55);
   }
   return {means,sds,weights};
