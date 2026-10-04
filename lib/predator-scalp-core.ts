@@ -182,7 +182,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   const shockTemporalReady=Boolean(st.stableCount>=2&&ageMs>=500&&persistence>=.75&&opposite.length===0);
   const shockReady=Boolean((pattern==='TRAP_REVERSAL'||pattern==='PREMOVE_AMBUSH')&&score>=84&&hardOpposition===0&&shockTemporalReady);
   const attackPattern=['PREMOVE_AMBUSH','TRAP_REVERSAL','COMPRESSION_BREAK','BREAKOUT_PRELOAD','FLOW_AMBUSH'].includes(pattern);
-  const attack=Boolean(
+  const attackAssist=Boolean(
     !inCooldown&&!o.late&&!microExhausted&&attackPattern&&score>=74&&hardOpposition===0&&
     o.liveOpposition===0&&microReady&&compressionMicroReady&&(temporalReady||shockReady)
   );
@@ -200,25 +200,30 @@ export function evaluatePredatorScalp(asset:string,input:any){
     !o.microAvailable||
     (microScores.length>=2&&microPersistence>=.50&&microOpposition<=.35&&microMean>=4)
   );
-  const watch=Boolean(
-    !attack&&!inCooldown&&!o.late&&!microExhausted&&score>=58&&hardOpposition<=1&&
-    o.liveOpposition===0&&ambushTemporal&&ambushMicroReady
+  const ambush=Boolean(
+    !inCooldown&&!o.late&&!microExhausted&&score>=58&&hardOpposition<=1&&
+    o.liveOpposition===0&&ambushTemporal&&ambushMicroReady&&
+    (
+      pattern!=='FLOW_TRACK'||
+      (temporalReady&&microReady&&(tickAligned||liqAligned||motionAligned))
+    )
   );
+  const watch=ambush;
 
   let phase:PredatorPhase='HUNT';
   if(inCooldown)phase='COOLDOWN';
   else if((o.late||microExhausted)&&score>=45)phase='ABORT';
-  else if(attack)phase='ATTACK';
-  else if(watch)phase='AMBUSH';
+  else if(ambush)phase='AMBUSH';
   else if(score>=40)phase='TRACK';
 
-  if(attack){st.lastAttackAt=now;st.lastAttackSide=o.side;}
+  if(ambush){st.lastAttackAt=now;st.lastAttackSide=o.side;}
   r.states[key]=st;
 
   const reasons:string[]=[];
   reasons.push(pattern);
   if(temporalReady)reasons.push('TEMPORAL_CONFIRM');
   if(shockReady)reasons.push('SHOCK_CONFIRM');
+  if(attackAssist)reasons.push('ATTACK_ASSIST');
   if(tickAligned)reasons.push('TICK');
   if(liqAligned)reasons.push('L2');
   if(motionAligned)reasons.push('MOTION');
@@ -231,7 +236,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   if(hardOpposition)reasons.push('OPPOSITION_'+hardOpposition);
 
   return {
-    version:'predator-scalp-v7',phase,side:o.side,score:Math.round(score),attack,watch,pattern,
+    version:'predator-scalp-v8-ambush',phase,side:o.side,score:Math.round(score),attack:false,attackAssist,watch,ambush,pattern,
     stableCount:st.stableCount,ageMs,persistence:Number(persistence.toFixed(2)),edgeSlope:Number(edgeSlope.toFixed(1)),
     evidenceSlope:Number(evidenceSlope.toFixed(1)),hardOpposition,temporalReady,shockReady,ambushTemporal,inCooldown,
     microstructure:{
