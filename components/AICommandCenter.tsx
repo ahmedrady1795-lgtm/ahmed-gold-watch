@@ -1,5 +1,5 @@
 'use client';
-import {Activity,ChevronDown,ShieldCheck,TrendingDown,TrendingUp,Zap} from 'lucide-react';
+import {Activity,ChevronDown,TrendingDown,TrendingUp,Zap} from 'lucide-react';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
 const sideAr=(s:any)=>s==='BUY'?'شراء':s==='SELL'?'بيع':'انتظار';
@@ -197,8 +197,7 @@ export default function AICommandCenter({data,error,fastWave,now=Date.now()}:any
       {!!data?.radar?.length&&<div className="radar-mini">{data.radar.slice(0,2).map((r:any)=><div key={r.asset}><small>{r.asset}</small><strong>{r.side!=='WAIT'?sideAr(r.side):('HUNT '+sideAr(r.huntSide))}</strong><span>{r.status||r.huntState}</span></div>)}</div>}
     </section>
 
-    {auto?.status&&auto.status!=='healthy'&&<div className="fatal"><ShieldCheck size={18}/><div><strong>Data Guard: {auto.status}</strong><span>بعض المصادر تحتاج مراجعة قبل اعتماد أي صفقة.</span></div></div>}
-    {error&&<div className="fatal"><Activity size={18}/><div><strong>AI unavailable</strong><span>{error}</span></div></div>}
+    {error&&!data&&<div className="fatal"><Activity size={18}/><div><strong>تعذر تحديث AI</strong><span>{error}</span></div></div>}
 
     {showNextEvent&&<section className="next-news">
       <div><small>أقرب خبر</small><strong>{next.name}</strong></div>
