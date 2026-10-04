@@ -138,29 +138,17 @@ function AssetCard({x,fast}:any){
   const displaySide=master.action==='BUY'||master.action==='SELL'?master.action:forecastSide;
   const buy=displaySide==='BUY',sell=displaySide==='SELL';
   const masterState=String(master?.state||'').toUpperCase();
-  const scalpLong=Number(x.scalp?.score?.long||0),scalpShort=Number(x.scalp?.score?.short||0);
   const scalpFusion=x.scalp?.fusionV8;
   const predator=scalpFusion?.predator;
   const predatorPhase=String(predator?.phase||'HUNT');
-  const predatorActive=predatorPhase==='AMBUSH';
-  const scalpSide=predator
-    ?(predatorActive&&(x.scalp?.action==='BUY'||x.scalp?.action==='SELL')?x.scalp.action:'WAIT')
-    :(x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:'WAIT');
-  const fastUsable=Boolean(
-    fast?.ok&&['PRE_TRIGGER','WAVE_FORMING','IGNITION'].includes(String(fast?.stage))&&
-    (fast?.side==='BUY'||fast?.side==='SELL')&&Number(fast?.confidence||0)>=34
-  );
-  const liveScalpSide=scalpSide;
-  const scalpStrength=calibrated(predator?Number(predator?.score||0):Number(x.scalp?.confidence||Math.max(scalpLong,scalpShort)));
-  const m1=x.indicatorMatrix?.rows?.m1,m5=x.indicatorMatrix?.rows?.m5;
-  const quickTargets=hunt?.quickSignalTargets||{};
+  const ambushMove=x.scalp?.movement||{};
+  const liveScalpSide=(ambushMove?.side==='BUY'||ambushMove?.side==='SELL')?ambushMove.side:'WAIT';
+  const scalpStrength=calibrated(ambushMove?.confidence??predator?.score??0);
   const neuralPath=x.neuralCore?.pricePath;
   const neuralPathReady=Boolean(neuralPath?.ready);
-  const scalpTargetPrice=x.scalp?.target?.price??quickTargets?.scalp?.price??x.scalp?.intercept?.launchLine??null;
+  const scalpTargetPrice=ambushMove?.target?.price??x.scalp?.target?.price??null;
   const signalRows=[
-    {label:x.scalp?.fusionV8?('Ambush '+predatorPhase):'Ambush',side:liveScalpSide,strength:scalpStrength,target:scalpTargetPrice},
-    {label:'1m',side:m1?.bias||'WAIT',strength:calibrated(m1?.strength),target:quickTargets?.oneMinute?.price},
-    {label:'5m',side:m5?.bias||'WAIT',strength:calibrated(m5?.strength),target:quickTargets?.fiveMinute?.price}
+    {label:'Ambush الحركة',side:liveScalpSide,strength:scalpStrength,target:scalpTargetPrice}
   ];
   const shownSignals=signalRows;
   return <section className={"panel ai-asset-card "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
@@ -189,12 +177,6 @@ function AssetCard({x,fast}:any){
         <strong className={s.side==='BUY'?'green':s.side==='SELL'?'red':'amber'}><>{sideAr(s.side)} · {s.strength}%{s.target!=null?<em> · ≈ {fmt(s.target,2)}</em>:null}</></strong>
       </div>)}
     </div>
-
-    {fastUsable&&<div className="next-move-copy">
-      <span>Fast Radar · إنذار فقط</span>
-      <strong className={fast?.side==='BUY'?'green':fast?.side==='SELL'?'red':'amber'}>{sideAr(fast?.side)} · {String(fast?.stage||'PRE_TRIGGER')} · {calibrated(fast?.confidence)}%</strong>
-      <p>Acceleration {fast?.acceleration??0} · Persistence {fast?.persistence??0}% · Burst x{fast?.burstRate??0}. لا يغيّر اتجاه Scalp الرئيسي؛ هو مساعد لخطة Ambush فقط ولا يصدر أي صفقة.</p>
-    </div>}
 
     {x.scalp?.ambushPlan&&(()=>{
       const plan=x.scalp.ambushPlan;
@@ -236,14 +218,14 @@ function AssetCard({x,fast}:any){
       </div>;
     })()}
 
-    {(()=>{
-      const move=nextMoveCopy(hunt,x.stateGraph);
-      return <div className="next-move-copy">
-        <span>توقع الحركة القادمة</span>
-        <strong className={move.tone}>{move.title}</strong>
-        <p>{move.detail}</p>
-      </div>;
-    })()}
+    <div className="next-move-copy">
+      <span>الحركة القادمة من Ambush فقط</span>
+      <strong className={liveScalpSide==='BUY'?'green':liveScalpSide==='SELL'?'red':'amber'}>
+        {liveScalpSide==='BUY'?'صعود':liveScalpSide==='SELL'?'هبوط':'انتظار'} · {scalpStrength}%
+        {scalpTargetPrice!=null?<> · الهدف ≈ {fmt(scalpTargetPrice,2)}</>:null}
+      </strong>
+      <p>{ambushMove?.status==='CONFIRMED'?'Ambush مؤكد':ambushMove?.status==='FORMING'?'Ambush بيتكوّن':'Ambush منتظر'} · {String(ambushMove?.pattern||predator?.pattern||'NO_EDGE')}</p>
+    </div>
 
     {x.nextMoveLive&&<div className="next-move-copy">
       <span>Next Move Live Tracker</span>
