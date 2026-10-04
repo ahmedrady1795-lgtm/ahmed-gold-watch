@@ -243,7 +243,8 @@ def fetch_binance_vision_history(limit_rows):
         "taker_buy_quote":[float(x[10]) for x in ordered]
     },index=idx)
     df=df[~df.index.duplicated(keep="last")].sort_index()
-    if len(df)<1000: raise RuntimeError(f"binance vision normalized history too short: {len(df)}")
+    required=max(220,min(int(limit_rows),1000))
+    if len(df)<required: raise RuntimeError(f"binance vision normalized history too short: {len(df)} < {required}")
     return df
 
 LIVE_FRAME={"at":0.0,"df":None,"source":"none","error":None}
