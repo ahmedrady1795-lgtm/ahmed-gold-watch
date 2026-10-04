@@ -90,8 +90,10 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const scalpFusionSide:Side=scalp?.fusionV3?.side||scalp?.action||'WAIT';
   const scalpFusionConfidence=Number(scalp?.fusionV3?.confidence||scalp?.confidence||Math.max(scalpLong,scalpShort));
   const scalpFusionStrong=Boolean(scalp?.fusionV3?.strong);
+  const sourceWfV5=liveOutcome?.walkForwardBySource?.FAST_MICROSTRUCTURE_V5||null;
   const sourceWfV4=liveOutcome?.walkForwardBySource?.FAST_MICROSTRUCTURE_V4||null;
-  const wfBase=Number(sourceWfV4?.directional||0)>=25?sourceWfV4:(liveOutcome?.walkForward||{});
+  const wfBase=Number(sourceWfV5?.directional||0)>=25?sourceWfV5:Number(sourceWfV4?.directional||0)>=25?sourceWfV4:(liveOutcome?.walkForward||{});
+  const wfScope=Number(sourceWfV5?.directional||0)>=25?'V5_SOURCE':Number(sourceWfV4?.directional||0)>=25?'V4_SOURCE':'GLOBAL_PRIOR';
   const wfStatus=String(wfBase?.status||'COLLECTING');
   const wfDrift=String(wfBase?.drift?.status||'COLLECTING');
   const wfOosN=Number(wfBase?.oos?.n||0);
@@ -629,7 +631,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
         support:fastNextSupport,opposition:fastNextOpposition,liveSupport:fastLiveSupport,liveOpposition:fastLiveOpposition,nearReaction,
         requiredEdge,requiredSupport,fastLeanThreshold,precisionGuard,severeDrift,historicalWeak,priorN,priorPosterior,
         noFastConflict,tickOrMotionAligned,scalpLiquidityPair,
-        reactionConflict,validatedMlConflict,slowDoubleConflict,wfStatus,wfScope:Number(sourceWfV4?.directional||0)>=25?'V4_SOURCE':'GLOBAL_PRIOR',wfOosAccuracy:Number.isFinite(wfOosAccuracy)?wfOosAccuracy:null,wfDrift,
+        reactionConflict,validatedMlConflict,slowDoubleConflict,wfStatus,wfScope,wfOosAccuracy:Number.isFinite(wfOosAccuracy)?wfOosAccuracy:null,wfDrift,
         scalp:scalpSide,scalpFusionStrong,liquidity:liqSide,tick:tickSide,motion:motionSide,ml1:validatedMlSide,trap:trapSide
       }
     },
