@@ -61,9 +61,10 @@ export function buildOpportunitySet(asset:string,master:any,hunt:any,learner:any
     confidence=Math.round(cap(confidence,0,88));
 
     const blocked=Boolean((liveFailed&&failedSide===d.side)||(d.needsLearner&&!learnerValid));
+    const horizonStrong=confidence>=d.minSetup+6&&agree>=2&&oppose<=1;
     let stage:Stage='WATCH';
     if(!blocked&&locked===d.side&&master?.state==='TRADE'&&confidence>=68)stage='ENTRY';
-    else if(!blocked&&!hardConflict&&confidence>=d.minSetup&&agree>=2)stage='SETUP';
+    else if(!blocked&&confidence>=d.minSetup&&agree>=2&&(!hardConflict||horizonStrong))stage='SETUP';
 
     if(confidence<d.minWatch&&stage==='WATCH')continue;
 
@@ -98,7 +99,7 @@ export function buildOpportunitySet(asset:string,master:any,hunt:any,learner:any
         :stage==='ENTRY'
           ?'بوابة الدخول النهائية اجتازت مع توافق نفس الاتجاه.'
           :stage==='SETUP'
-            ?'فرصة مستقلة اجتازت توافق الأفق والحركة المتوقعة.'
+            ?(hardConflict?'Setup مستقل قوي رغم تعارض الـMaster؛ يُرسل كمراقبة ولا يتحول إلى ENTRY حتى يحسم التعارض.':'فرصة مستقلة اجتازت توافق الأفق والحركة المتوقعة.')
             :'ميل مفيد للمراقبة لكنه لم يصل لبوابة Setup.'
     });
   }
