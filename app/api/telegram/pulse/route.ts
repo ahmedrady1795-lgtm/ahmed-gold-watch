@@ -73,13 +73,17 @@ export async function POST(request:Request){
           lastRecommendationSignature.set(asset,sig);
         }
       }else if(prev){
+        const learning:any=(node as any)?.recommendationLearning;
+        const failed=learning?.status==='FAILED';
         events.push(await sendTelegramAlert({
           level:'cancel',
-          title:`إلغاء توصية ${asset}`,
-          body:rec?.active&&confidence<MIN_RECOMMENDATION_CONFIDENCE
-            ?`الثقة هبطت إلى ${confidence}%، أقل من حد الإرسال ${MIN_RECOMMENDATION_CONFIDENCE}%.`
-            :'النواة لم تعد تعتمد توصية دخول؛ الحالة الحالية WAIT/غير معتمدة.',
-          key:`predator-cancel:${asset}:${Date.now()}`
+          title:failed?`فشل توصية ${asset} · تم تسجيلها للتعلم`:`إلغاء توصية ${asset}`,
+          body:failed
+            ?`تم كسر مستوى الإلغاء قبل الهدف الأول. النواة سجلت الحالة والسياق وستخفض ثقة النمط المشابه مستقبلًا. Adverse ${Number(learning?.failure?.adverseAtr||0).toFixed(2)} ATR.`
+            :rec?.active&&confidence<MIN_RECOMMENDATION_CONFIDENCE
+              ?`الثقة هبطت إلى ${confidence}%، أقل من حد الإرسال ${MIN_RECOMMENDATION_CONFIDENCE}%.`
+              :'النواة لم تعد تعتمد توصية دخول؛ الحالة الحالية WAIT/غير معتمدة.',
+          key:failed?`predator-failed:${asset}:${learning?.failure?.id||Date.now()}`:`predator-cancel:${asset}:${Date.now()}`
         }));
         lastRecommendationSignature.delete(asset);
       }
