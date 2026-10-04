@@ -49,6 +49,30 @@ function liveReliability(live:any,primary:string,fallback:string){
   return {source,n,posterior:Number(posterior.toFixed(1)),wfN,wfAccuracy:Number.isFinite(wfAcc)?Number(wfAcc.toFixed(1)):null,score:Number(score.toFixed(1)),multiplier:Number(multiplier.toFixed(3)),status:String(wf?.status||'COLLECTING'),drift:String(wf?.drift?.status||'COLLECTING')};
 }
 
+function reactionContext(accumulation:any,price:number){
+  const zones=Array.isArray(accumulation?.reactionZones)?accumulation.reactionZones:[];
+  const p=Number(price);
+  const normalized=zones
+    .map((z:any)=>({
+      side:side(z?.side),low:Number(z?.low),high:Number(z?.high),mid:Number(z?.mid),
+      strength:cap(Number(z?.strength||0),0,94),distanceAtr:Number(z?.distanceAtr),status:String(z?.status||'FAR'),
+      touches:Number(z?.touches||0),rejections:Number(z?.rejections||0),reason:String(z?.reason||'')
+    }))
+    .filter((z:any)=>z.side!=='WAIT'&&Number.isFinite(z.low)&&Number.isFinite(z.high)&&Number.isFinite(z.mid));
+  const inside=normalized.filter((z:any)=>Number.isFinite(p)&&p>=z.low&&p<=z.high).sort((a:any,b:any)=>b.strength-a.strength)[0]||null;
+  const nearest=inside||normalized.slice().sort((a:any,b:any)=>(Number.isFinite(a.distanceAtr)?a.distanceAtr:99)-(Number.isFinite(b.distanceAtr)?b.distanceAtr:99)||b.strength-a.strength)[0]||null;
+  const active=Boolean(nearest&&nearest.strength>=58&&(inside||nearest.status==='NEAR'||Number(nearest.distanceAtr)<=.65));
+  const reboundSide:Side=active?nearest.side:'WAIT';
+  const targetFor=(s:Side)=>{
+    if(s==='WAIT'||!Number.isFinite(p))return null;
+    const targetSide:Side=s==='BUY'?'SELL':'BUY';
+    return normalized
+      .filter((z:any)=>z.side===targetSide&&((s==='BUY'&&z.mid>p)||(s==='SELL'&&z.mid<p)))
+      .sort((a:any,b:any)=>Math.abs(a.mid-p)-Math.abs(b.mid-p)||b.strength-a.strength)[0]||null;
+  };
+  return {zones,normalized,inside,nearest,active,reboundSide,targetFor};
+}
+
 function preMoveSignal(liq:any,motion:any,tick:any){
   const q=cap(Number(liq?.quality||0),0,100),pressure=Number(liq?.pressure||0),micro=Number(liq?.book?.microEdge||0);
   const accel=Number(liq?.dynamics?.acceleration||0),delta=Number(liq?.flow?.deltaPct||0),priceBps=Number(liq?.flow?.priceChangeBps||0);
@@ -86,7 +110,7 @@ function preMoveSignal(liq:any,motion:any,tick:any){
   return {side:sideOut,score:Number(score.toFixed(1)),gap:Number(gap.toFixed(1)),support,armed,ignition,priceStillCoiled,lateMomentum,etaSeconds,quality:q,pressure:Number(pressure.toFixed(1)),microEdge:Number(micro.toFixed(1)),acceleration:Number(accel.toFixed(1)),deltaPct:Number(delta.toFixed(1)),priceChangeBps:Number(priceBps.toFixed(2)),compression,precursorCount,tickSide:t.side,tickStage:t.stage,tickScore:Number(t.score.toFixed(1))};
 }
 
-export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,price:number|null,atr:number|null,liveOutcome:any=null,tick:any=null){
+export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,price:number|null,atr:number|null,liveOutcome:any=null,tick:any=null,accumulation:any=null){
   const techSide=technicalSide(raw);
   const long=Number(raw?.score?.long||0),short=Number(raw?.score?.short||0),techBest=Math.max(long,short),techGap=Math.abs(long-short);
   const liqSide=side(liq?.side),liqScore=liquidityStrength(liq);
@@ -96,6 +120,14 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const ml1=mlStrength(ml);
   const tick1=tickStrength(tick);
   const preMove=preMoveSignal(liq,motion,tick);
+  const p=Number(price),a=Number(atr);
+  const reaction=reactionContext(accumulation,p);
+  const accumulationSide:Side=accumulation?.ok?side(accumulation?.side):'WAIT';
+  const accumulationScore=accumulationSide==='BUY'?Number(accumulation?.accumulationScore||0):accumulationSide==='SELL'?Number(accumulation?.distributionScore||0):0;
+  const accumulationPhase=String(accumulation?.phase||'NEUTRAL');
+  const accumulationReadiness=Number(accumulation?.breakoutReadiness||0);
+  const reactionSide:Side=reaction.active?reaction.reboundSide:'WAIT';
+  const reactionScore=reaction.active?cap(Number(reaction.nearest?.strength||0)+(reaction.inside?8:0),0,94):0;
   const confirmedReliability=liveReliability(liveOutcome,'SCALP_CONFIRMED_V5','SCALP_CONFIRMED_V4');
   const preMoveReliability=liveReliability(liveOutcome,'SCALP_PREMOVE_WATCH_V5','SCALP_PREMOVE_WATCH_V4');
   const learnedSide:Side=learner?.ok&&learner?.gate?.passed?side(learner?.side):'WAIT';
@@ -105,12 +137,12 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   // v4 deliberately shifts weight away from lagging candle confirmation toward
   // live order-flow, server tick acceleration and a dedicated pre-move precursor.
   const weights=mode==='COMPRESSION'
-    ?{tech:.12,liq:.25,ml:.19,motion:.11,trap:.10,learn:.02,tick:.11,premove:.10}
+    ?{tech:.08,liq:.20,ml:.12,motion:.10,trap:.12,learn:.02,tick:.10,premove:.10,accum:.08,reaction:.08}
     :mode==='REVERSAL'
-      ?{tech:.16,liq:.22,ml:.18,motion:.08,trap:.18,learn:.03,tick:.08,premove:.07}
+      ?{tech:.10,liq:.15,ml:.10,motion:.08,trap:.18,learn:.02,tick:.07,premove:.05,accum:.10,reaction:.15}
       :mode==='BREAKOUT'||mode==='MOMENTUM'
-        ?{tech:.17,liq:.21,ml:.18,motion:.10,trap:.05,learn:.03,tick:.13,premove:.13}
-        :{tech:.15,liq:.25,ml:.19,motion:.10,trap:.04,learn:.03,tick:.11,premove:.13};
+        ?{tech:.14,liq:.20,ml:.13,motion:.10,trap:.05,learn:.02,tick:.12,premove:.10,accum:.08,reaction:.06}
+        :{tech:.12,liq:.22,ml:.14,motion:.09,trap:.06,learn:.02,tick:.10,premove:.10,accum:.08,reaction:.07};
 
   const techSignal=techSide==='WAIT'?0:cap(42+techBest*.46+techGap*.42,0,92);
   const rows=[
@@ -121,7 +153,9 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     {name:'TRAP',side:trapSide,score:trapScore,weight:weights.trap},
     {name:'LEARNED',side:learnedSide,score:learnedScore,weight:weights.learn},
     {name:'TICK',side:tick1.side,score:tick1.score,weight:weights.tick},
-    {name:'PREMOVE',side:preMove.side,score:preMove.score,weight:weights.premove*preMoveReliability.multiplier}
+    {name:'PREMOVE',side:preMove.side,score:preMove.score,weight:weights.premove*preMoveReliability.multiplier},
+    {name:'ACCUM',side:accumulationSide,score:cap(accumulationScore*.72+accumulationReadiness*.28,0,92),weight:weights.accum},
+    {name:'REACTION',side:reactionSide,score:reactionScore,weight:weights.reaction}
   ].filter(x=>x.side!=='WAIT'&&x.score>0);
 
   let buy=0,sell=0;
@@ -156,6 +190,18 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     if(trapSide==='BUY'){buy+=8;sell*=.78;}else{sell+=8;buy*=.78;}
   }
 
+  // Reaction/accumulation authority: a strong demand/supply zone can reverse the scalp
+  // before candle-following logic catches up. Inside-zone rejection gets veto-like weight.
+  if(reactionSide!=='WAIT'&&reactionScore>=62){
+    const boost=Math.min(reaction.inside?22:15,reactionScore*(reaction.inside?.22:.14));
+    if(reactionSide==='BUY'){buy+=boost;if(reaction.inside&&reactionScore>=72)sell*=.68;}
+    else {sell+=boost;if(reaction.inside&&reactionScore>=72)buy*=.68;}
+  }
+  if(accumulationSide!=='WAIT'&&accumulationReadiness>=52){
+    const boost=Math.min(10,accumulationReadiness*.10);
+    if(accumulationSide==='BUY')buy+=boost;else sell+=boost;
+  }
+
   const total=Math.max(1e-9,buy+sell),buyShare=buy/total*100,sellShare=100-buyShare,edge=Math.abs(buyShare-sellShare);
   const activeWeight=Math.max(.01,rows.reduce((s,r)=>s+r.weight,0));
   const buyEvidence=cap(buy/activeWeight,0,92),sellEvidence=cap(sell/activeWeight,0,92);
@@ -178,6 +224,17 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const preMoveAligned=Boolean(fusedSide!=='WAIT'&&preMove.armed&&preMove.side===fusedSide);
   const tickAligned=Boolean(fusedSide!=='WAIT'&&tick1.side===fusedSide&&tick1.score>=44);
   const mlConflict=Boolean(ml1.side!=='WAIT'&&fusedSide!=='WAIT'&&ml1.side!==fusedSide);
+  const strongReaction=Boolean(reactionSide!=='WAIT'&&reactionScore>=68&&(reaction.inside||Number(reaction.nearest?.distanceAtr)<=.45));
+  const reactionConflict=Boolean(strongReaction&&fusedSide!=='WAIT'&&reactionSide!==fusedSide);
+  const reactionAligned=Boolean(strongReaction&&reactionSide===fusedSide);
+  const accumulationAligned=Boolean(accumulationSide!=='WAIT'&&accumulationSide===fusedSide&&accumulationReadiness>=48);
+  const contextMode=reactionAligned
+    ?(reactionSide==='BUY'?'DEMAND_REBOUND':'SUPPLY_REJECTION')
+    :accumulationPhase==='ACCUMULATING'?'ACCUMULATION'
+    :accumulationPhase==='DISTRIBUTING'?'DISTRIBUTION'
+    :accumulationPhase==='MARKUP_READY'?'BREAKOUT_BUILD_UP'
+    :accumulationPhase==='MARKDOWN_READY'?'BREAKOUT_BUILD_DOWN'
+    :mode;
 
   const scalpWf=liveOutcome?.walkForward||{};
   const scalpOosN=Number(scalpWf?.oos?.n||0),scalpOosAcc=Number(scalpWf?.oos?.accuracy);
@@ -197,6 +254,9 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   if(scalpDrift==='DEGRADING'&&scalpOosN>=10)confidence-=7;
   if(Number.isFinite(scalpOosAcc)&&scalpOosN>=10&&scalpOosAcc<50)confidence-=4;
   if(activeReliability.n>=6)confidence+=cap((activeReliability.score-50)*.16,-4,4);
+  if(reactionAligned)confidence+=reaction.inside?8:5;
+  if(accumulationAligned)confidence+=3;
+  if(reactionConflict)confidence-=12;
   if(flipSuppressed)confidence-=12;
   confidence=Math.round(cap(confidence,10,88));
 
@@ -206,7 +266,8 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const classicStrong=Boolean(
     fusedSide!=='WAIT'&&edge>=strongEdge&&dominantEvidence>=strongEvidence&&support>=2&&
     (liveSupport>=2||(ml1.side===fusedSide&&liqSide===fusedSide)||(trapSide===fusedSide&&trapScore>=68))&&
-    (!scalpSevereDrift||liveOpposition===0||edge>=30)
+    (!scalpSevereDrift||liveOpposition===0||edge>=30)&&
+    (!reactionConflict||edge>=30&&liveSupport>=3)
   );
   const anticipatoryStrong=Boolean(
     fusedSide!=='WAIT'&&preMoveAligned&&fastPair&&edge>=12&&dominantEvidence>=56&&support>=2&&liveSupport>=3&&
@@ -214,7 +275,8 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     (!scalpPrecisionGuard||edge>=18)&&
     (!scalpSevereDrift||liveOpposition===0)&&
     !preMove.lateMomentum&&
-    (preMoveReliability.n<8||preMoveReliability.score>=48||edge>=24)
+    (preMoveReliability.n<8||preMoveReliability.score>=48||edge>=24)&&
+    (!reactionConflict||reactionScore<76&&edge>=28)
   );
   const chaseRisk=Boolean(
     fusedSide!=='WAIT'&&preMove.lateMomentum&&mode!=='REVERSAL'&&
@@ -230,7 +292,6 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const action:Side=strong||watch?fusedSide:'WAIT';
   const state=strong?'setup':watch?'watch':'wait';
 
-  const p=Number(price),a=Number(atr);
   const bid=Number(liq?.book?.bestBid),ask=Number(liq?.book?.bestAsk),microprice=Number(liq?.book?.microprice);
   const validBid=Number.isFinite(bid)&&bid>0,validAsk=Number.isFinite(ask)&&ask>0,validMicro=Number.isFinite(microprice)&&microprice>0;
   const spreadUsd=validBid&&validAsk&&ask>bid?ask-bid:(Number.isFinite(p)&&p>0?Math.abs(Number(liq?.book?.spreadBps||0))*p/10000:0);
@@ -268,12 +329,31 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     priceStillCoiled:preMove.priceStillCoiled,
     lateMomentum:preMove.lateMomentum
   };
+  const targetZone=reaction.targetFor(fusedSide);
+  const breakoutLevel=fusedSide==='BUY'?Number(accumulation?.breakoutLevel):fusedSide==='SELL'?Number(accumulation?.breakdownLevel):NaN;
+  const zoneTargetValid=Boolean(targetZone&&((fusedSide==='BUY'&&Number(targetZone.mid)>p)||(fusedSide==='SELL'&&Number(targetZone.mid)<p)));
+  const breakoutTargetValid=Boolean(Number.isFinite(breakoutLevel)&&((fusedSide==='BUY'&&breakoutLevel>p)||(fusedSide==='SELL'&&breakoutLevel<p)));
+  const fallbackTarget=Number.isFinite(a)&&a>0&&fusedSide!=='WAIT'?p+(fusedSide==='BUY'?1:-1)*a*Math.max(.14,Math.min(.48,.16+dominantEvidence/260)):null;
+  const targetPrice=zoneTargetValid?Number(targetZone.mid):breakoutTargetValid?breakoutLevel:fallbackTarget;
+  const target={
+    side:fusedSide,
+    price:Number.isFinite(Number(targetPrice))?Number(Number(targetPrice).toFixed(2)):null,
+    zoneLow:zoneTargetValid?Number(targetZone.low.toFixed(2)):null,
+    zoneHigh:zoneTargetValid?Number(targetZone.high.toFixed(2)):null,
+    source:zoneTargetValid?'REACTION_ZONE':breakoutTargetValid?'RANGE_BOUNDARY':'DYNAMIC_ATR',
+    expectedAtTarget:zoneTargetValid?(Number(targetZone.strength)>=68?(targetZone.side==='SELL'?'REJECT_OR_BREAK':'BOUNCE_OR_BREAK'):'TEST'):'CONTINUATION',
+    zoneStrength:zoneTargetValid?Number(targetZone.strength):0,
+    contextMode
+  };
   let trade:any=null;
   if(strong&&intercept.ready&&Number.isFinite(p)&&p>0&&Number.isFinite(a)&&a>0){
     const dir=fusedSide==='BUY'?1:-1;
     const risk=a*(mode==='BREAKOUT'||mode==='MOMENTUM'?.48:mode==='REVERSAL'?.42:.45);
     const rr=mode==='BREAKOUT'?1.35:mode==='MOMENTUM'?1.30:mode==='REVERSAL'?1.20:1.24;
-    trade={mode:'scalp-fusion-v5-'+(anticipatoryStrong?'premove-':'')+mode.toLowerCase(),side:fusedSide==='BUY'?'buy':'sell',entry:p,sl:p-dir*risk,tp:p+dir*risk*rr,rr,score:confidence,validForSeconds:anticipatoryStrong?20:32,time:Date.now()};
+    const contextualTp=Number(target?.price);
+    const fallbackTp=p+dir*risk*rr;
+    const tp=Number.isFinite(contextualTp)&&((dir>0&&contextualTp>p)||(dir<0&&contextualTp<p))?contextualTp:fallbackTp;
+    trade={mode:'scalp-fusion-v6-'+contextMode.toLowerCase()+(anticipatoryStrong?'-premove':''),side:fusedSide==='BUY'?'buy':'sell',entry:p,sl:p-dir*risk,tp,rr:Number((Math.abs(tp-p)/Math.max(1e-9,risk)).toFixed(2)),score:confidence,validForSeconds:anticipatoryStrong?20:32,time:Date.now()};
   }
 
   const outLong=Math.round(cap(buyEvidence+Math.max(0,buyShare-50)*.16,0,92));
@@ -283,18 +363,35 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   return {
     ...raw,
     state,action,
-    title:action==='BUY'?'M1 PRE-MOVE SCALP V5 · BUY':action==='SELL'?'M1 PRE-MOVE SCALP V5 · SELL':'M1 PRE-MOVE SCALP V5 · WAIT',
+    title:action==='BUY'?'M1 CONTEXT SCALP V6 · BUY':action==='SELL'?'M1 CONTEXT SCALP V6 · SELL':'M1 CONTEXT SCALP V6 · WAIT',
     reason:action==='WAIT'
-      ?`Scalp Fusion v5: لا توجد أفضلية تنفيذية كافية الآن${flipSuppressed?' · FLIP FILTER':''}.`
-      :`Scalp Fusion v5 · ${fusedSide} · edge ${edge.toFixed(1)} · ${support} دعم / ${opposition} معارضة${preMoveAligned?' · PRE-MOVE ARMED':''}${anticipatoryStrong?' · EARLY SETUP':''}${chaseRisk?' · LATE-ENTRY GUARD':''}${changed?' · microstructure غيّر الميل الفني':''}.`,
+      ?`Scalp Fusion v6: لا توجد أفضلية تنفيذية كافية الآن${reactionConflict?' · REACTION BLOCK':''}${flipSuppressed?' · FLIP FILTER':''}.`
+      :`Scalp Fusion v6 · ${contextMode} · ${fusedSide} · edge ${edge.toFixed(1)} · ${support} دعم / ${opposition} معارضة${reactionAligned?' · REACTION ZONE':''}${accumulationAligned?' · ACCUMULATION':''}${preMoveAligned?' · PRE-MOVE ARMED':''}${anticipatoryStrong?' · EARLY SETUP':''}${chaseRisk?' · LATE-ENTRY GUARD':''}${changed?' · microstructure غيّر الميل الفني':''}.`,
     score:{long:outLong,short:outShort,threshold:58},
     confidence,
     trade,
     early:state==='watch'||anticipatoryStrong,
     preMove,
     intercept,
+    target,
+    reaction:{active:reaction.active,inside:Boolean(reaction.inside),side:reactionSide,strength:reactionScore,nearest:reaction.nearest||null,contextMode},
+    fusionV6:{
+      side:fusedSide,rawSide:rawFusedSide,confidence,strong,rawStrong,classicStrong,anticipatoryStrong,watch,earlyWatch,lateWatch,chaseRisk,flipSuppressed,commitment,
+      contextMode,reactionAligned,reactionConflict,accumulationAligned,accumulationPhase,accumulationReadiness,target,
+      intercept,
+      reliability:{active:activeReliability,confirmed:confirmedReliability,premove:preMoveReliability,reliabilityPenalty},
+      ignitionEtaSeconds:preMove.etaSeconds,
+      buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
+      buyEvidence:Number(buyEvidence.toFixed(1)),sellEvidence:Number(sellEvidence.toFixed(1)),dominantEvidence:Number(dominantEvidence.toFixed(1)),
+      support,opposition,liveSupport,liveOpposition,
+      techSide,liqSide,motionSide,trapSide,mlSide:ml1.side,learnedSide,tickSide:tick1.side,accumulationSide,reactionSide,
+      techL2Conflict,livePair,fastPair,preMoveAligned,tickAligned,mlConflict,mode,
+      oos:{status:scalpWfStatus,n:scalpOosN,accuracy:Number.isFinite(scalpOosAcc)?scalpOosAcc:null,drift:scalpDrift,precisionGuard:scalpPrecisionGuard,severeDrift:scalpSevereDrift,strongEdge,strongEvidence},
+      components:rows.map(r=>({name:r.name,side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight}))
+    },
     fusionV5:{
       side:fusedSide,rawSide:rawFusedSide,confidence,strong,rawStrong,classicStrong,anticipatoryStrong,watch,earlyWatch,lateWatch,chaseRisk,flipSuppressed,commitment,
+      contextMode,reactionAligned,reactionConflict,accumulationAligned,accumulationPhase,accumulationReadiness,target,
       intercept,
       reliability:{active:activeReliability,confirmed:confirmedReliability,premove:preMoveReliability,reliabilityPenalty},
       ignitionEtaSeconds:preMove.etaSeconds,
