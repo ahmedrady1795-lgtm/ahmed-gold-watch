@@ -1,4 +1,5 @@
 import {startServerTickBrain} from './lib/server-tick-brain';
+import {getNextMoveOutcome} from './lib/next-move-outcome';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -54,4 +55,23 @@ export async function register(){
   first.unref?.();
   const timer=setInterval(()=>{void tick();},30000);
   timer.unref?.();
+
+  // Lightweight first-passage settlement: observe BTC price every 6s without rerunning the heavy AI stack.
+  let settleBusy=false;
+  const settleNextMove=async()=>{
+    if(settleBusy)return;
+    settleBusy=true;
+    try{
+      const r=await fetch('https://api.exchange.coinbase.com/products/BTC-USD/ticker',{
+        cache:'no-store',signal:AbortSignal.timeout(4500),
+        headers:{'User-Agent':'Predator-NextMove-Settlement/1.0'}
+      });
+      const j:any=await r.json().catch(()=>null),price=Number(j?.price);
+      if(r.ok&&Number.isFinite(price)&&price>0)getNextMoveOutcome('BTC',price,Date.now());
+    }catch{}finally{settleBusy=false;}
+  };
+  const settleFirst=setTimeout(()=>{void settleNextMove();},7000);
+  settleFirst.unref?.();
+  const settleTimer=setInterval(()=>{void settleNextMove();},6000);
+  settleTimer.unref?.();
 }
