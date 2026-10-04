@@ -6,7 +6,7 @@ const memory=new Map<string,ForecastSample[]>();
 const cap=(n:number,min=0,max=92)=>Math.max(min,Math.min(max,n));
 const sideScore=(s:Side,target:Side,v:number)=>s===target?v:0;
 
-export function buildHuntForecast(asset:string,decision:any,scalp:any,price:number|null,atr:number|null,now=Date.now(),wave:any=null){
+export function buildHuntForecast(asset:string,decision:any,scalp:any,price:number|null,atr:number|null,now=Date.now(),wave:any=null,learner:any=null){
   const p=Number(price),a=Number(atr);
   const fusionBuy=Number(decision?.fusion?.buy||0),fusionSell=Number(decision?.fusion?.sell||0);
   const motionSide:Side=decision?.motion?.side||'WAIT',behaviorSide:Side=decision?.behavior?.side||'WAIT',liqSide:Side=decision?.liquidity?.side||'WAIT',hunterSide:Side=decision?.hunter?.side||'WAIT';
@@ -15,8 +15,10 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
 
   const waveFresh=Boolean(wave?.ok&&['BUY','SELL'].includes(String(wave?.side))&&Number(wave?.score)>=35&&now-Number(wave?.at||0)<=3000);
   const waveSide:Side=waveFresh?(wave.side as Side):'WAIT',waveScore=waveFresh?Number(wave?.score||0):0;
-  let buy=fusionBuy*.26+sideScore(motionSide,'BUY',motionScore)*.16+sideScore(behaviorSide,'BUY',behaviorScore)*.12+sideScore(liqSide,'BUY',liqStrength)*.14+sideScore(hunterSide,'BUY',hunterScore)*.09+scalpLong*.10+sideScore(waveSide,'BUY',waveScore)*.13;
-  let sell=fusionSell*.26+sideScore(motionSide,'SELL',motionScore)*.16+sideScore(behaviorSide,'SELL',behaviorScore)*.12+sideScore(liqSide,'SELL',liqStrength)*.14+sideScore(hunterSide,'SELL',hunterScore)*.09+scalpShort*.10+sideScore(waveSide,'SELL',waveScore)*.13;
+  const learnerFresh=Boolean(learner?.ok&&['BUY','SELL'].includes(String(learner?.side))&&Number(learner?.oosAccuracy)>=52&&Number(learner?.confidence)>=50);
+  const learnerSide:Side=learnerFresh?(learner.side as Side):'WAIT',learnerScore=learnerFresh?Number(learner?.confidence||0):0;
+  let buy=fusionBuy*.22+sideScore(motionSide,'BUY',motionScore)*.15+sideScore(behaviorSide,'BUY',behaviorScore)*.11+sideScore(liqSide,'BUY',liqStrength)*.13+sideScore(hunterSide,'BUY',hunterScore)*.08+scalpLong*.08+sideScore(waveSide,'BUY',waveScore)*.12+sideScore(learnerSide,'BUY',learnerScore)*.11;
+  let sell=fusionSell*.22+sideScore(motionSide,'SELL',motionScore)*.15+sideScore(behaviorSide,'SELL',behaviorScore)*.11+sideScore(liqSide,'SELL',liqStrength)*.13+sideScore(hunterSide,'SELL',hunterScore)*.08+scalpShort*.08+sideScore(waveSide,'SELL',waveScore)*.12+sideScore(learnerSide,'SELL',learnerScore)*.11;
 
   const trapSide:Side=decision?.liquidity?.absorption?.trapDetected?decision?.liquidity?.absorption?.side||'WAIT':'WAIT';
   const trapScore=Number(decision?.liquidity?.absorption?.score||0);
@@ -78,6 +80,8 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   if(trapSide===stableSide&&trapScore>=60)reasons.push('Trap/Absorption يدعم الانعكاس');
   if(waveFresh&&waveSide===stableSide)reasons.push('Wave Lead tick-by-tick يسبق الحركة ومتوافق');
   if(waveFresh&&waveSide!==stableSide)reasons.push('Wave Lead السريع يعارض التوقع؛ الثقة مخفضة');
+  if(learnerFresh&&learnerSide===stableSide)reasons.push('Scalp Learner OOS متوافق مع الحركة القادمة');
+  if(learnerFresh&&learnerSide!==stableSide)reasons.push('Scalp Learner يعارض التوقع؛ الثقة مخفضة');
   if(contradiction)reasons.push('التوقع تغيّر داخل نافذة الذاكرة؛ الثبات أقل');
 
   return {
@@ -97,6 +101,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     currentPrice:Number.isFinite(p)?p:null,
     reasons:reasons.slice(0,7),
     waveLeadUsed:waveFresh?{side:waveSide,stage:wave?.stage,score:waveScore,confidence:Number(wave?.confidence||0),at:Number(wave?.at||0)}:null,
+    scalpLearnerUsed:learnerFresh?{side:learnerSide,confidence:learnerScore,oosAccuracy:Number(learner?.oosAccuracy||0),oosEdgeAtr:Number(learner?.oosEdgeAtr||0),holdSeconds:Number(learner?.exitPlan?.maxHoldSeconds||0)}:null,
     note:'توقع استباقي للحركة وليس أمر دخول أو ضمان نتيجة.'
   };
 }
