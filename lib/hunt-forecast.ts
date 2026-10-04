@@ -141,6 +141,27 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const firstLeg=validPrice&&shortDir?p+shortDir*a*Math.min(.72,Math.max(.24,two.strength/145)):null;
   const secondLeg=validPrice&&followDir?p+followDir*a*Math.min(1.65,Math.max(.55,fifteen.strength/72)):null;
 
+  const em15Samples=Number(em15?.samples||0),em15Confidence=Number(em15?.confidence||0),em15Calibration=Number(em15?.calibration||50);
+  const em15CloseAtr=Number(em15?.meanCloseAtr||0);
+  const ensemble15Side:Side=fifteen.side!=='WAIT'?fifteen.side:em15Side;
+  const ensemble15Dir=ensemble15Side==='BUY'?1:ensemble15Side==='SELL'?-1:0;
+  const fallback15Atr=ensemble15Dir*(.28+Math.min(1.05,Number(fifteen.strength||0)/80));
+  const memory15Usable=em15Samples>=6&&Math.abs(em15CloseAtr)>=.08;
+  let target15Atr=memory15Usable?em15CloseAtr*.72+fallback15Atr*.28:fallback15Atr;
+  target15Atr=Math.max(-2.4,Math.min(2.4,target15Atr));
+  const target15Side:Side=target15Atr>=.08?'BUY':target15Atr<=-.08?'SELL':'WAIT';
+  const target15Confidence=Math.round(cap(
+    memory15Usable
+      ? em15Confidence*.48+em15Calibration*.22+Number(fifteen.strength||0)*.20+Math.min(10,em15Samples/3)
+      : Number(fifteen.strength||0)*.62+Number(em15?.decisiveRate||0)*.18+18,
+    0,86
+  ));
+  const target15Price=validPrice&&target15Side!=='WAIT'?p+a*target15Atr:null;
+  const target15BandAtr=.24+(100-target15Confidence)/100*.42;
+  const target15Low=target15Price==null?null:target15Price-a*target15BandAtr;
+  const target15High=target15Price==null?null:target15Price+a*target15BandAtr;
+  const target15MovePct=target15Price!=null&&p>0?(target15Price-p)/p*100:0;
+
   const alternativeSide:Side=projectionSide==='BUY'?'SELL':projectionSide==='SELL'?'BUY':'WAIT';
   const alternativeStrength=projectionSide==='BUY'?Math.round(cap(sell)):projectionSide==='SELL'?Math.round(cap(buy)):Math.round(Math.min(buy,sell));
   const accumulationBonus=accumulationFresh&&accumulationSide===stableSide?Math.min(12,accumulationReadiness*.12):0;
@@ -179,6 +200,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     buyScore:Math.round(buy),sellScore:Math.round(sell),horizonSeconds,expectedMoveAtr:Number(expAtr.toFixed(2)),
     trigger:trigger==null?null:Number(trigger.toFixed(2)),projected:projected==null?null:Number(projected.toFixed(2)),invalidation:invalidation==null?null:Number(invalidation.toFixed(2)),currentPrice:Number.isFinite(p)?p:null,
     path:{code:path,label:pathLabel,firstLeg:firstLeg==null?null:Number(firstLeg.toFixed(2)),secondLeg:secondLeg==null?null:Number(secondLeg.toFixed(2)),shortSide,followSide,structureDriven:Boolean(structuralPath)},
+    fifteenMinuteTarget:{side:target15Side,price:target15Price==null?null:Number(target15Price.toFixed(2)),low:target15Low==null?null:Number(target15Low.toFixed(2)),high:target15High==null?null:Number(target15High.toFixed(2)),confidence:target15Confidence,moveAtr:Number(target15Atr.toFixed(3)),movePct:Number(target15MovePct.toFixed(3)),samples:em15Samples,source:memory15Usable?'15M_MEMORY_BLEND':'15M_LIVE_ENSEMBLE',targetAt:now+15*60000},
     horizons:{twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},
     forecastWindowsMinutes:[2,5,15],
     waveStructure:structureFresh?structure:null,
@@ -192,6 +214,6 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     reasons:reasons.slice(0,8),commitment,
     waveLeadUsed:waveFresh?{side:waveSide,stage:wave?.stage,score:waveScore,confidence:waveConfidence,at:Number(wave?.at||0)}:null,
     scalpLearnerUsed:learnerFresh?{side:learnerSide,confidence:learnerScore,oosAccuracy:Number(learner?.oosAccuracy||0),oosEdgeAtr:Number(learner?.oosEdgeAtr||0),profitFactor:Number(learner?.profitFactor||0),holdSeconds:Number(learner?.exitPlan?.maxHoldSeconds||0)}:null,
-    note:'الحركة القادمة الآن تُدرَّب على أول جهة تصل لحركة معتبرة First-Passage؛ إغلاق 2/5/15 دقيقة يُستخدم للاستمرار وليس لتحديد أول حركة.'
+    note:'الحركة الأولى تُدرَّب على First-Passage، بينما سعر 15 دقيقة يقدّر مستوى نهاية النافذة من ذاكرة 15m + ATR + قوة الاتجاه؛ هو نطاق احتمالي وليس سعرًا مضمونًا.'
   };
 }
