@@ -280,6 +280,38 @@ export function calibrateNextMoveConfidence(nextMove:any,live:any,regime?:string
   if(Number(nextMove?.micro?.opposition||0)>=3)calibrated-=4;
   if(nextMove?.conflictWithLockedDirection)calibrated-=3;
 
+  // Forecast Council V6 quality calibration: confidence follows independent evidence,
+  // not the number of correlated component votes.
+  const independentSupport=Number(nextMove?.micro?.independentSupport||0);
+  const independentOpposition=Number(nextMove?.micro?.independentOpposition||0);
+  const crossFamilyConfirmed=Boolean(nextMove?.micro?.crossFamilyConfirmed);
+  const changePointConflict=Boolean(nextMove?.micro?.changePointConflict);
+  const councilSource=source==='FORECAST_COUNCIL_V6'||source==='FORECAST_COUNCIL_LEAN_V6';
+  let familyAdjustment=0;
+  if(councilSource){
+    if(independentSupport>=3)familyAdjustment+=3;
+    else if(independentSupport===2)familyAdjustment+=1;
+    else familyAdjustment-=7;
+    familyAdjustment-=Math.min(12,independentOpposition*5);
+    if(!crossFamilyConfirmed&&source==='FORECAST_COUNCIL_V6')familyAdjustment-=6;
+    if(changePointConflict)familyAdjustment-=12;
+    const familyCap=Number(nextMove?.micro?.familyConfidenceCap);
+    if(Number.isFinite(familyCap)&&familyCap>0)calibrated=Math.min(calibrated,familyCap);
+  }
+
+  let reliabilityAdjustment=0;
+  if(src.directional>=8){
+    if(src.posterior<48)reliabilityAdjustment-=8;
+    else if(src.posterior<52)reliabilityAdjustment-=4;
+    else if(src.posterior>=60)reliabilityAdjustment+=2;
+  }
+  if(rg.directional>=12){
+    if(rg.posterior<48)reliabilityAdjustment-=6;
+    else if(rg.posterior<52)reliabilityAdjustment-=3;
+    else if(rg.posterior>=60)reliabilityAdjustment+=1;
+  }
+  calibrated+=familyAdjustment+reliabilityAdjustment;
+
   const sourceWf=live?.walkForwardBySource?.[source]||null;
   const wf=Number(sourceWf?.directional||0)>=25?sourceWf:(live?.walkForward||{});
   const wfScope=Number(sourceWf?.directional||0)>=25?'SOURCE':'GLOBAL_PRIOR';
@@ -303,7 +335,7 @@ export function calibrateNextMoveConfidence(nextMove:any,live:any,regime?:string
     confidence:calibrated,
     rawConfidence:Math.round(raw),
     calibration:{
-      version:'confidence-v3',
+      version:'confidence-v4-family-council',
       observedReliability:Number(observed.toFixed(1)),
       maturity:Number(maturity.toFixed(3)),
       learningSamples:samples,
@@ -321,7 +353,13 @@ export function calibrateNextMoveConfidence(nextMove:any,live:any,regime?:string
       driftStatus:String(wf?.drift?.status||'COLLECTING'),
       driftDelta:Number.isFinite(driftDelta)?Number(driftDelta.toFixed(1)):null,
       activeThreshold:Number.isFinite(Number(wf?.activeThreshold))?Number(wf.activeThreshold):null,
-      walkForwardAdjustment
+      walkForwardAdjustment,
+      familyAdjustment,
+      reliabilityAdjustment,
+      independentSupport,
+      independentOpposition,
+      crossFamilyConfirmed,
+      changePointConflict
     }
   };
 }
@@ -366,6 +404,13 @@ export function recordNextMoveOutcome(args:{
           motion:String(micro?.motion||'WAIT'),ml1:String(micro?.ml1||'WAIT'),trap:String(micro?.trap||'WAIT'),
           validatedMlConflict:Boolean(micro?.validatedMlConflict),reactionConflict:Boolean(micro?.reactionConflict),
           slowDoubleConflict:Boolean(micro?.slowDoubleConflict),historicalWeak:Boolean(micro?.historicalWeak),
+          independentSupport:Number(micro?.independentSupport||0),independentOpposition:Number(micro?.independentOpposition||0),
+          crossFamilyConfirmed:Boolean(micro?.crossFamilyConfirmed),changePointConflict:Boolean(micro?.changePointConflict),
+          familyConfidenceCap:Number(micro?.familyConfidenceCap||0),
+          microFamilySide:String(micro?.families?.micro?.side||'WAIT'),
+          structureFamilySide:String(micro?.families?.structure?.side||'WAIT'),
+          learnedFamilySide:String(micro?.families?.learned?.side||'WAIT'),
+          ambushFamilySide:String(micro?.families?.ambush?.side||'WAIT'),
           wfScope:String(micro?.wfScope||''),wfStatus:String(micro?.wfStatus||''),
           predatorPhase:String(micro?.predator?.phase||micro?.predatorPhase||''),
           predatorPattern:String(micro?.predator?.pattern||micro?.predatorPattern||''),
