@@ -158,6 +158,8 @@ function AssetCard({x,fast}:any){
         <div><small>النطاق المتوقع</small><strong>{fmt(hunt.fifteenMinuteTarget.low,2)} — {fmt(hunt.fifteenMinuteTarget.high,2)}</strong></div>
         <div><small>الثقة / الحركة</small><strong>%{calibrated(hunt.fifteenMinuteTarget.confidence)} · {hunt.fifteenMinuteTarget.movePct>=0?'+':''}{hunt.fifteenMinuteTarget.movePct||0}%</strong></div>
       </div>}
+      {x.movementIntelligence&&<p className={x.movementIntelligence.conflict?'red':'learning-line'}>🧠 Movement Brain: {x.movementIntelligence.regime} · {sideAr(x.movementIntelligence.side==='WAIT'?x.movementIntelligence.leanSide:x.movementIntelligence.side)} · ثقة %{calibrated(x.movementIntelligence.confidence)} · توافق {x.movementIntelligence.agreement||0}%{x.movementIntelligence.conflict?' · MODEL CONFLICT':''}</p>}
+      {x.serverTickBrain&&<p className="muted">⚡ Server Tick: {x.serverTickBrain.stage} · {sideAr(x.serverTickBrain.side)} · 3s {x.serverTickBrain.velocity3s} bps · Persistence {x.serverTickBrain.persistence}%</p>}
       {hunt.nextMove?.conflictWithLockedDirection&&<p className="red">⚠️ الحركة الأولى تختلف عن Direction Lock؛ الأولوية هنا لـFirst-Passage مع خفض الجودة.</p>}
       {hunt.expectedMoveLearning?.conflict&&<p className="red">⚠️ ذاكرة 2/5/15 مختلفة الاتجاه؛ تم خفض جودة التوقع تلقائيًا.</p>}
     </div>}

@@ -1,3 +1,5 @@
+import {startServerTickBrain} from './lib/server-tick-brain';
+
 declare global {
   // eslint-disable-next-line no-var
   var __predatorLearningLoopStarted: boolean | undefined;
@@ -5,6 +7,7 @@ declare global {
 
 export async function register(){
   if(process.env.NEXT_RUNTIME==='edge')return;
+  startServerTickBrain();
   if(process.env.PREDATOR_BACKGROUND_LEARNING==='false')return;
   if(globalThis.__predatorLearningLoopStarted)return;
   globalThis.__predatorLearningLoopStarted=true;
