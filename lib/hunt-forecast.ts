@@ -81,6 +81,12 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const motionSide:Side=decision?.motion?.side||'WAIT',behaviorSide:Side=decision?.behavior?.side||'WAIT',liqSide:Side=decision?.liquidity?.side||'WAIT',hunterSide:Side=decision?.hunter?.side||'WAIT';
   const motionScore=Number(decision?.motion?.score||0),behaviorScore=Number(decision?.behavior?.score||0),liqStrength=Number(decision?.liquidity?.strength||0),hunterScore=Number(decision?.hunter?.score||0);
   const scalpLong=Number(scalp?.score?.long||0),scalpShort=Number(scalp?.score?.short||0);
+  const movementEvidence=Array.isArray(movementIntel?.evidence)?movementIntel.evidence:[];
+  const evidenceOf=(name:string)=>movementEvidence.find((e:any)=>String(e?.name||'')===name)||null;
+  const tickEv=evidenceOf('serverTick'),ml1Ev=evidenceOf('mlEnsemble1m');
+  const tickSide:Side=tickEv?.side||'WAIT',tickScore=Number(tickEv?.score||0);
+  const validatedMlSide:Side=ml1Ev?.side||scalp?.fusionV3?.mlSide||'WAIT';
+  const validatedMlScore=Number(ml1Ev?.score||0);
   const scalpFusionSide:Side=scalp?.fusionV3?.side||scalp?.action||'WAIT';
   const scalpFusionConfidence=Number(scalp?.fusionV3?.confidence||scalp?.confidence||Math.max(scalpLong,scalpShort));
   const scalpFusionStrong=Boolean(scalp?.fusionV3?.strong);
@@ -158,23 +164,22 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const reactionFastSide:Side=reactionFast?.side||'WAIT';
   const reactionFastStrength=Number(reactionFast?.strength||0);
   const reactionFastDistanceAtr=Number(reactionFast?.distanceAtr);
-  const memoryWeight=precisionGuard?.015:.05;
+  // Next-Move v4: first movement is a true fast stack.
+  // Slow structure/memory can veto/calibrate later but cannot dominate 30-120s direction.
   let fastNextBuy=
-    sideScore(scalpSide,'BUY',scalpFusionConfidence)*.34+
-    sideScore(liqSide,'BUY',liqStrength)*.25+
-    sideScore(motionSide,'BUY',motionScore)*.17+
-    sideScore(waveSide,'BUY',waveScore)*.07+
-    sideScore(structureM1Side,'BUY',structureM1Score)*.09+
-    sideScore(m1Side,'BUY',m1Strength)*.05+
-    sideScore(em2Side,'BUY',Math.min(70,Number(em2?.confidence||0)))*memoryWeight;
+    sideScore(scalpSide,'BUY',scalpFusionConfidence)*.30+
+    sideScore(liqSide,'BUY',liqStrength)*.27+
+    sideScore(tickSide,'BUY',tickScore)*.18+
+    sideScore(motionSide,'BUY',motionScore)*.12+
+    sideScore(validatedMlSide,'BUY',validatedMlScore)*.08+
+    sideScore(waveSide,'BUY',waveScore)*.05;
   let fastNextSell=
-    sideScore(scalpSide,'SELL',scalpFusionConfidence)*.34+
-    sideScore(liqSide,'SELL',liqStrength)*.25+
-    sideScore(motionSide,'SELL',motionScore)*.17+
-    sideScore(waveSide,'SELL',waveScore)*.07+
-    sideScore(structureM1Side,'SELL',structureM1Score)*.09+
-    sideScore(m1Side,'SELL',m1Strength)*.05+
-    sideScore(em2Side,'SELL',Math.min(70,Number(em2?.confidence||0)))*memoryWeight;
+    sideScore(scalpSide,'SELL',scalpFusionConfidence)*.30+
+    sideScore(liqSide,'SELL',liqStrength)*.27+
+    sideScore(tickSide,'SELL',tickScore)*.18+
+    sideScore(motionSide,'SELL',motionScore)*.12+
+    sideScore(validatedMlSide,'SELL',validatedMlScore)*.08+
+    sideScore(waveSide,'SELL',waveScore)*.05;
   if(trapSide==='BUY'&&trapScore>=55){fastNextBuy+=Math.min(16,trapScore*.16);fastNextSell*=.82;}
   if(trapSide==='SELL'&&trapScore>=55){fastNextSell+=Math.min(16,trapScore*.16);fastNextBuy*=.82;}
   const nearReaction=Boolean(
@@ -189,22 +194,37 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const fastNextSide:Side=sideOf(fastNextBuy,fastNextSell,6);
   const fastNextEdge=Math.abs(fastNextBuy-fastNextSell);
   const fastNextSupport=[
-    scalpSide,liqSide,motionSide,waveSide,structureM1Side,trapSide,
+    scalpSide,liqSide,tickSide,motionSide,validatedMlSide,waveSide,trapSide,
     nearReaction?reactionFastSide:'WAIT'
   ].filter(s=>s!=='WAIT'&&s===fastNextSide).length;
   const fastNextOpposition=[
-    scalpSide,liqSide,motionSide,waveSide,structureM1Side,trapSide,
+    scalpSide,liqSide,tickSide,motionSide,validatedMlSide,waveSide,trapSide,
     nearReaction?reactionFastSide:'WAIT'
   ].filter(s=>s!=='WAIT'&&fastNextSide!=='WAIT'&&s!==fastNextSide).length;
-  const fastLiveSupport=[scalpSide,liqSide,motionSide,trapSide].filter(s=>s!=='WAIT'&&s===fastNextSide).length;
-  const fastLiveOpposition=[scalpSide,liqSide,motionSide,trapSide].filter(s=>s!=='WAIT'&&fastNextSide!=='WAIT'&&s!==fastNextSide).length;
-  const requiredEdge=severeDrift?18:precisionGuard?13:7;
-  const requiredSupport=severeDrift?3:precisionGuard?2:2;
+  const fastLiveSupport=[scalpSide,liqSide,tickSide,motionSide,validatedMlSide,trapSide].filter(s=>s!=='WAIT'&&s===fastNextSide).length;
+  const fastLiveOpposition=[scalpSide,liqSide,tickSide,motionSide,validatedMlSide,trapSide].filter(s=>s!=='WAIT'&&fastNextSide!=='WAIT'&&s!==fastNextSide).length;
+  const v3Stats=liveOutcome?.bySource?.FAST_MICROSTRUCTURE_V3||{};
+  const v2Stats=liveOutcome?.bySource?.FAST_MICROSTRUCTURE_V2||{};
+  const histN3=Number(v3Stats?.hits||0)+Number(v3Stats?.fails||0),histN2=Number(v2Stats?.hits||0)+Number(v2Stats?.fails||0);
+  const priorStats=histN3>=12?v3Stats:v2Stats;
+  const priorN=Number(priorStats?.hits||0)+Number(priorStats?.fails||0);
+  const priorPosterior=Number(priorStats?.posteriorAccuracy||50);
+  const historicalWeak=Boolean(priorN>=20&&priorPosterior<54);
+  const requiredEdge=(severeDrift?22:precisionGuard?16:10)+(historicalWeak?4:0);
+  const requiredSupport=severeDrift?4:precisionGuard?3:2;
+  const reactionConflict=Boolean(nearReaction&&reactionFastSide!=='WAIT'&&reactionFastSide!==fastNextSide);
+  const validatedMlConflict=Boolean(validatedMlSide!=='WAIT'&&validatedMlSide!==fastNextSide);
+  const slowDoubleConflict=Boolean(
+    structureM1Side!=='WAIT'&&graphFresh&&
+    structureM1Side!==fastNextSide&&String(stateGraph?.nextSide||'WAIT')!==fastNextSide
+  );
   const fastNextStrong=Boolean(
     fastNextSide!=='WAIT'&&fastNextEdge>=requiredEdge&&fastNextSupport>=requiredSupport&&
-    (!precisionGuard||fastLiveSupport>=2)&&
-    (!severeDrift||fastLiveOpposition===0||fastNextEdge>=28)&&
-    (fastNextSupport>=2||(scalpSide===fastNextSide&&scalpEdge>=12&&liqSide===fastNextSide))
+    fastLiveSupport>=(precisionGuard?3:2)&&
+    (!reactionConflict||fastNextEdge>=30)&&
+    (!validatedMlConflict||fastNextEdge>=32)&&
+    (!slowDoubleConflict||fastNextEdge>=28)&&
+    (!severeDrift||fastLiveOpposition===0||fastNextEdge>=34)
   );
   const fastNextConfidence=Math.round(cap(
     Math.max(fastNextBuy,fastNextSell)*.72+
@@ -541,7 +561,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   if(liveInvalidated)reasons.push('LIVE RE-EVALUATION: فشل '+failedSide+' بعد حركة عكسية '+Number(Math.max(0,adverseAtr).toFixed(2))+' ATR؛ تم خفض وزنه وإعادة ترجيح الحركة بدل إيقاف التوقع');
   if(movementIntel?.ok)reasons.push('Movement Brain '+String(movementIntel.regime)+' · '+(movementIntel.side==='WAIT'?('lean '+movementIntel.leanSide):movementIntel.side)+' · '+movementConfidence);
   if(primaryMoveSide!=='WAIT')reasons.push('First-Move '+primaryMoveSide+' · confidence '+primaryMoveConfidence+' · first-hit '+Number(em2?.firstHitMinutes||0)+'m');
-  if(fastNextStrong)reasons.push('Next-Move v3 '+fastNextSide+' · micro edge '+Number(fastNextEdge.toFixed(1))+' · '+fastLiveSupport+' fast confirmations');
+  if(fastNextStrong)reasons.push('Next-Move v4 '+fastNextSide+' · micro edge '+Number(fastNextEdge.toFixed(1))+' · '+fastLiveSupport+' fast confirmations');
   if(precisionGuard)reasons.push('OOS precision guard · '+wfStatus+' · OOS '+(Number.isFinite(wfOosAccuracy)?wfOosAccuracy.toFixed(1):'—')+'% · drift '+wfDrift);
   if(primaryMoveConflict)reasons.push('الاتجاه المثبت '+stableSide+' متأخر/متعارض مع الحركة الأولى '+primaryMoveSide);
   else if(stableSide!=='WAIT')reasons.push('الاتجاه المثبت '+stableSide+' · edge '+commitment.smoothedEdge);
@@ -568,15 +588,16 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     side:stableSide,state,score:rawScore,confidence,quality,persistence,samples:recent.length,
     nextMove:{
       side:primaryMoveSide,confidence:primaryMoveConfidence,
-      source:fastNextStrong?'FAST_MICROSTRUCTURE_V3':firstMoveMemoryValid?'FIRST_PASSAGE_MEMORY':'LIVE_2M_ENSEMBLE',
+      source:fastNextStrong?'FAST_MICROSTRUCTURE_V4':firstMoveMemoryValid?'FIRST_PASSAGE_MEMORY':'LIVE_2M_ENSEMBLE',
       firstHitMinutes:Number(em2?.firstHitMinutes||0),decisiveRate:Number(em2?.decisiveRate||0),
       conflictWithLockedDirection:primaryMoveConflict,
       micro:{
         side:fastNextSide,strong:fastNextStrong,confidence:fastNextConfidence,
         buy:Number(fastNextBuy.toFixed(2)),sell:Number(fastNextSell.toFixed(2)),edge:Number(fastNextEdge.toFixed(2)),
         support:fastNextSupport,opposition:fastNextOpposition,liveSupport:fastLiveSupport,liveOpposition:fastLiveOpposition,nearReaction,
-        requiredEdge,precisionGuard,severeDrift,wfStatus,wfOosAccuracy:Number.isFinite(wfOosAccuracy)?wfOosAccuracy:null,wfDrift,
-        scalp:scalpSide,scalpFusionStrong,liquidity:liqSide,motion:motionSide,trap:trapSide
+        requiredEdge,requiredSupport,precisionGuard,severeDrift,historicalWeak,priorN,priorPosterior,
+        reactionConflict,validatedMlConflict,slowDoubleConflict,wfStatus,wfOosAccuracy:Number.isFinite(wfOosAccuracy)?wfOosAccuracy:null,wfDrift,
+        scalp:scalpSide,scalpFusionStrong,liquidity:liqSide,tick:tickSide,motion:motionSide,ml1:validatedMlSide,trap:trapSide
       }
     },
     liveFailureGuard:{invalidated:liveInvalidated,failedSide,adverseAtr:Number(Math.max(0,adverseAtr).toFixed(3)),blockedUntil:guardBlockedUntil},
