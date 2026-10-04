@@ -117,15 +117,16 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   const ml5Side:Side=ml5Ready?side(ml5?.side!=='WAIT'?ml5?.side:ml5?.leanSide):'WAIT';
   const ml1Score=ml1Ready?Math.max(Number(ml1?.confidence||0),50+Number(ml1?.edge||0)*.35):0;
   const ml5Score=ml5Ready?Math.max(Number(ml5?.confidence||0),50+Number(ml5?.edge||0)*.35):0;
-  const ml1Acc=Number(ml1?.metrics?.ensemble?.accuracy||0)*100,ml5Acc=Number(ml5?.metrics?.ensemble?.accuracy||0)*100;
-  const ml1Rel=ml1Ready?cap(.82+(ml1Acc-52)/25,.82,1.24):.82;
-  const ml5Rel=ml5Ready?cap(.82+(ml5Acc-52)/25,.82,1.24):.82;
+  const ml1Acc=Number(ml1?.metrics?.ensemble?.selectiveAccuracy||ml1?.metrics?.ensemble?.accuracy||0)*100;
+  const ml5Acc=Number(ml5?.metrics?.ensemble?.selectiveAccuracy||ml5?.metrics?.ensemble?.accuracy||0)*100;
+  const ml1Rel=ml1Ready?cap(.86+(ml1Acc-55)/18,.86,1.26):.82;
+  const ml5Rel=ml5Ready?cap(.82+(ml5Acc-55)/20,.82,1.20):.82;
   const fastRows=[
     {side:side(tick?.side),score:Math.max(Number(tick?.score||0),Number(tick?.confidence||0)),weight:1.20},
     {side:scalpSide,score:scalpScore,weight:1.25},
     {side:side(motion?.side),score:Math.max(Number(motion?.score||0),Number(motion?.confidence||0)),weight:1.05},
     {side:side(liq?.side),score:liqScore,weight:asset==='BTC'?1.00:.35},
-    {side:ml1Side,score:ml1Score,weight:ml1Ready?1.45:0}
+    {side:ml1Side,score:ml1Score,weight:ml1Ready?1.35:0}
   ].filter(x=>x.side!=='WAIT'&&x.score>=28);
   let fastBuy=0,fastSell=0,fastWeight=0;
   for(const row of fastRows){const v=row.score*row.weight;if(row.side==='BUY')fastBuy+=v;else fastSell+=v;fastWeight+=row.weight;}
@@ -138,7 +139,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     ev('firstPassage',expSide2,scoreExpected(expected2)*(rangeMode&&side(expected2?.side)==='WAIT'?.76:1),w.expected,Math.max(.72,Number(expected2?.calibration||50)/55)),
     ev('serverTick',tick?.side,tickScore,w.tick,tick?.stage==='IGNITION'?1.24:tick?.stage==='WAVE_FORMING'?1.14:1),
     ev('scalpM1',scalpSide,scalpScore,w.scalp,scalp?.state==='setup'?1.18:scalp?.state==='watch'?1.06:1),
-    ev('mlEnsemble1m',ml1Side,ml1Score,ml1Ready?.24:0,ml1Rel),
+    ev('mlEnsemble1m',ml1Side,ml1Score,ml1Ready?.30:0,ml1Rel),
     ev('motion',motion?.side,motion?.score,w.motion,relH(learning,'motion','m2')),
     ev('liquidity',liq?.side,liqScore,w.liquidity,relH(learning,'liquidity','m2')),
     ev('structureM1',structure?.m1?.nextSide,struct1,w.structure,relH(learning,'structure','m2')),
@@ -230,7 +231,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   if(tick?.stage==='IGNITION'||tick?.stage==='WAVE_FORMING')reasons.push('Server tick '+tick.stage+' '+tick.side);
   if(news?.event)reasons.push('News '+String(news.phase||'')+' · '+String(news.event.name||'')+' · risk '+Number(news.risk||0)+' · '+String(news.side||'WAIT'));
   if(fastStrong)reasons.push('Live Stack '+fastSide+' · confidence '+fastConfidence+' · '+fastRows.filter(x=>x.side===fastSide).length+'/'+fastRows.length+' fast engines aligned');
-  if(ml1Ready||ml5Ready)reasons.push('ML Ensemble '+(ml1Ready?('1m '+ml1Side+' '+Math.round(ml1Acc)+'% OOS'):'1m shadow')+' · '+(ml5Ready?('5m '+ml5Side+' '+Math.round(ml5Acc)+'% OOS'):'5m shadow'));
+  if(ml1Ready||ml5Ready)reasons.push('ML selective OOS '+(ml1Ready?('1m '+ml1Side+' '+Math.round(ml1Acc)+'%'):'1m shadow')+' · '+(ml5Ready?('5m '+ml5Side+' '+Math.round(ml5Acc)+'%'):'5m shadow'));
   if(rangeMode)reasons.push('Range/compression mode: fast price-action evidence leads; slower memory only calibrates confidence');
   if(conflict)reasons.push('Model disagreement detected; confidence reduced, direction preserved when a measurable edge exists');
 
