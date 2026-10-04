@@ -373,17 +373,7 @@ export function recordNextMoveOutcome(args:{
           predatorStableCount:Number(micro?.predator?.stableCount||micro?.predatorStableCount||0),
           predatorPersistence:Number(micro?.predator?.persistence||micro?.predatorPersistence||0),
           predatorTemporalReady:Boolean(micro?.predator?.temporalReady||micro?.predatorTemporalReady),
-          predatorShockReady:Boolean(micro?.predator?.shockReady||micro?.predatorShockReady),
-          ambushAssistantCount:Number(micro?.assistantCount||0),
-          ambushConfirmation:Boolean(micro?.assistants?.confirmation),
-          ambushPlanStatus:String(micro?.ambushPlan?.status||''),
-          ambushMicroReady:Boolean(micro?.predator?.microstructure?.ready),
-          ambushMicroMean:Number(micro?.predator?.microstructure?.mean||0),
-          ambushMicroPersistence:Number(micro?.predator?.microstructure?.persistence||0),
-          ambushMicroOpposition:Number(micro?.predator?.microstructure?.opposition||0),
-          ambushMicroTrend:Number(micro?.predator?.microstructure?.trend||0),
-          ambushMicroSamples:Number(micro?.predator?.microstructure?.samples||0),
-          ambushMicroExhausted:Boolean(micro?.predator?.microstructure?.exhausted)
+          predatorShockReady:Boolean(micro?.predator?.shockReady||micro?.predatorShockReady)
         }
       });
       if(a.pending.length>30)a.pending=a.pending.slice(-30);
