@@ -449,6 +449,128 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     zoneStrength:zoneTargetValid?Number(targetZone.strength):0,
     contextMode
   };
+  // Ambush Next-Price Interceptor:
+  // predicts the first nearby price station from independent live microstructure,
+  // not a distant candle/ATR target. If live kinematics conflict with Ambush, it waits.
+  const npSide:Side=targetSide;
+  const npDir=npSide==='BUY'?1:npSide==='SELL'?-1:0;
+  const tickV1=Number(tick?.velocity1s||0);
+  const tickV3=Number(tick?.velocity3s||0);
+  const tickV8=Number(tick?.velocity8s||0);
+  const tickAcc=Number(tick?.acceleration||0);
+  const liqPressure=Number(liq?.pressure||0);
+  const depthImbalance=Number(liq?.book?.depthImbalance||0);
+  const weightedImbalance=Number(liq?.book?.weightedImbalance||0);
+  const microEdgeNow=Number(liq?.book?.microEdge||0);
+  const flowDeltaNow=Number(liq?.flow?.deltaPct||0);
+  const predMicroMean=Number(predator?.microstructure?.mean||0);
+  const predMicroTrend=Number(predator?.microstructure?.trend||0);
+  const npHorizonSeconds=npDir===0?null:Math.round(cap(
+    Number(preMove?.etaSeconds||0)>0
+      ?Number(preMove.etaSeconds)
+      :String(tick?.stage||'')==='IGNITION'?4:String(tick?.stage||'')==='WAVE_FORMING'?6:8,
+    4,12
+  ));
+  const tickPerSecond=tickV1*.52+(tickV3/3)*.30+(tickV8/8)*.18;
+  const projectedTickBps=npHorizonSeconds==null?0:tickPerSecond*npHorizonSeconds;
+  const projectedAccelBps=npHorizonSeconds==null?0:tickAcc*npHorizonSeconds*.12;
+  const bookBiasBps=cap(
+    liqPressure*.014+
+    depthImbalance*.008+
+    weightedImbalance*.010+
+    microEdgeNow*.012+
+    flowDeltaNow*.006,
+    -3.2,3.2
+  );
+  const temporalBiasBps=cap(predMicroMean*.014+predMicroTrend*.004,-2.0,2.0);
+  const microAnchorBps=validMicro&&Number.isFinite(p)&&p>0
+    ?cap((microprice-p)/p*10000,-2.2,2.2)
+    :0;
+  const rawNextMoveBps=
+    projectedTickBps*.56+
+    projectedAccelBps*.10+
+    bookBiasBps*.16+
+    temporalBiasBps*.08+
+    microAnchorBps*.10;
+  const atrBps=Number.isFinite(a)&&a>0&&Number.isFinite(p)&&p>0?a/p*10000:0;
+  const nextMoveCap=Math.max(1.2,Math.min(10,atrBps>0?atrBps*.24:5));
+  const nextMoveBps=cap(rawNextMoveBps,-nextMoveCap,nextMoveCap);
+  const directionalNextMove=npDir*nextMoveBps;
+  const npChecks=[
+    npDir*tickPerSecond>=.08,
+    npDir*bookBiasBps>=.12,
+    npDir*microAnchorBps>=.04,
+    npDir*temporalBiasBps>=.08,
+    preMove?.side===npSide,
+    tick1.side===npSide,
+    liqSide===npSide,
+    Boolean(predator?.microstructure?.ready)
+  ];
+  const npAlignment=npChecks.filter(Boolean).length;
+  const npConflict=[
+    tick1.side!=='WAIT'&&tick1.side!==npSide,
+    liqSide!=='WAIT'&&liqSide!==npSide,
+    preMove?.side!=='WAIT'&&preMove?.side!==npSide,
+    Boolean(predator?.microstructure?.available)&&Number(predator?.microstructure?.opposition||0)>.35
+  ].filter(Boolean).length;
+  const npPhaseReady=predator?.phase==='TRACK'||predator?.phase==='AMBUSH';
+  const nextPriceReady=Boolean(
+    npDir!==0&&npPhaseReady&&Number.isFinite(p)&&p>0&&
+    directionalNextMove>=.35&&npAlignment>=3&&npConflict<=1&&
+    !chaseRisk&&!flipSuppressed&&!predator?.microstructure?.exhausted
+  );
+  const nextPriceAnchor=validMicro?p*.72+microprice*.28:p;
+  const nextPriceRaw=Number.isFinite(nextPriceAnchor)&&nextPriceAnchor>0
+    ?nextPriceAnchor*(1+nextMoveBps/10000)
+    :NaN;
+  const contextualCap=Number(target?.price);
+  const nextPriceValue=nextPriceReady&&Number.isFinite(nextPriceRaw)
+    ?(
+      Number.isFinite(contextualCap)&&
+      ((npDir>0&&contextualCap>p)||(npDir<0&&contextualCap<p))
+        ?(npDir>0?Math.min(nextPriceRaw,contextualCap):Math.max(nextPriceRaw,contextualCap))
+        :nextPriceRaw
+    )
+    :null;
+  const npUncertainty=Number.isFinite(p)&&p>0
+    ?Math.max(
+      spreadUsd*1.35,
+      Number.isFinite(a)&&a>0?a*(npConflict?0.055:0.032):p*.000035
+    )
+    :0;
+  const nextPriceConfidence=Math.round(cap(
+    Number(predator?.score||0)*.34+
+    Number(preMove?.score||0)*.18+
+    Math.min(24,npAlignment*4.5)+
+    (predator?.microstructure?.ready?10:0)+
+    (tick1.side===npSide?7:0)-
+    npConflict*12-
+    (directionalNextMove<.65?6:0),
+    0,90
+  ));
+  const nextPrice={
+    authority:'AMBUSH',
+    ready:nextPriceReady,
+    status:nextPriceReady?'LOCKED':npConflict>=2?'CONFLICT':'WAIT',
+    side:nextPriceReady?npSide:'WAIT',
+    price:nextPriceValue!=null?Number(nextPriceValue.toFixed(2)):null,
+    low:nextPriceValue!=null?Number((nextPriceValue-npUncertainty).toFixed(2)):null,
+    high:nextPriceValue!=null?Number((nextPriceValue+npUncertainty).toFixed(2)):null,
+    horizonSeconds:nextPriceReady?npHorizonSeconds:null,
+    confidence:nextPriceReady?nextPriceConfidence:0,
+    moveBps:nextPriceReady?Number(nextMoveBps.toFixed(2)):null,
+    alignment:npAlignment,
+    conflicts:npConflict,
+    microprice:validMicro?Number(microprice.toFixed(2)):null,
+    diagnostics:{
+      tickPerSecond:Number(tickPerSecond.toFixed(3)),
+      projectedTickBps:Number(projectedTickBps.toFixed(2)),
+      accelerationBps:Number(projectedAccelBps.toFixed(2)),
+      bookBiasBps:Number(bookBiasBps.toFixed(2)),
+      temporalBiasBps:Number(temporalBiasBps.toFixed(2)),
+      microAnchorBps:Number(microAnchorBps.toFixed(2))
+    }
+  };
   const ambushPlanStatus=predator?.phase==='ABORT'?'CANCEL'
     :ambushTrade?(intercept.ready?'EXECUTE':'ARMED')
       :predator?.phase==='TRACK'?'STALK':'SCOUT';
@@ -485,6 +607,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
       ].filter(Boolean)
     },
     target,
+    nextPrice,
     etaSeconds:preMove.etaSeconds,
     updatedAt:Date.now()
   };
@@ -518,9 +641,10 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     preMove,
     intercept,
     target,
+    nextPrice,
     reaction:{active:reaction.active,inside:Boolean(reaction.inside),side:reactionSide,strength:reactionScore,confirmed:reactionConfirmed,candidate:reactionCandidate,fastSupport:reactionFastSupport,fastOpposition:reactionFastOpposition,nearest:reaction.nearest||null,contextMode},
     fusionV8:{
-      authority:'AMBUSH',side:fusedSide,rawSide:rawFusedSide,confidence,strong:ambushTrade,watch:false,ambushTrade,predator,assistants,assistantCount,ambushPlan,
+      authority:'AMBUSH',side:fusedSide,rawSide:rawFusedSide,confidence,strong:ambushTrade,watch:false,ambushTrade,predator,assistants,assistantCount,ambushPlan,nextPrice,
       contextMode,reactionAligned,reactionConflict,accumulationAligned,accumulationPhase,accumulationReadiness,target,intercept,
       reliability:{active:activeReliability,ambush:confirmedReliability,reliabilityPenalty},
       buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
