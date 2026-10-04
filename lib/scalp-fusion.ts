@@ -1,4 +1,5 @@
 import {commitDirection} from './direction-commitment';
+import {evaluatePredatorScalp} from './predator-scalp-core';
 
 type Side='BUY'|'SELL'|'WAIT';
 
@@ -140,9 +141,9 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     reactionFastOpposition<=2
   );
   const reactionCandidate=Boolean(reactionSide!=='WAIT'&&reactionScore>=68&&!reactionConfirmed);
-  const confirmedReliability=liveReliability(liveOutcome,'SCALP_CONFIRMED_V6','SCALP_CONFIRMED_V5');
-  const preMoveReliability=liveReliability(liveOutcome,'SCALP_PREMOVE_WATCH_V6','SCALP_PREMOVE_WATCH_V5');
-  const confirmedStats=liveOutcome?.bySource?.SCALP_CONFIRMED_V6||{};
+  const confirmedReliability=liveReliability(liveOutcome,'SCALP_PREDATOR_ATTACK_V7','SCALP_PREDATOR_ATTACK_V7');
+  const preMoveReliability=liveReliability(liveOutcome,'SCALP_PREDATOR_AMBUSH_V7','SCALP_PREDATOR_AMBUSH_V7');
+  const confirmedStats=liveOutcome?.bySource?.SCALP_PREDATOR_ATTACK_V7||{};
   const confirmedHits=Number(confirmedStats?.hits||0),confirmedFails=Number(confirmedStats?.fails||0);
   const confirmedDirectional=confirmedHits+confirmedFails;
   const confirmedColdFailGuard=Boolean(
@@ -320,7 +321,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     (preMoveAligned||reactionAligned)
   );
   const rawStrong=classicStrong||anticipatoryStrong;
-  const strong=Boolean(
+  const legacyStrong=Boolean(
     rawStrong&&!chaseRisk&&!flipSuppressed&&compressionConfirmed&&
     (!confirmedColdFailGuard||recoveryOverride)
   );
@@ -329,12 +330,29 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   );
   const lateWatch=Boolean(rawStrong&&chaseRisk);
   const guardedWatch=Boolean(rawStrong&&(!compressionConfirmed||confirmedColdFailGuard)&&fusedSide!=='WAIT');
-  const watch=Boolean(
+  const legacyWatch=Boolean(
     fusedSide!=='WAIT'&&!unconfirmedReactionAgainstFlow&&
     ((edge>=6&&dominantEvidence>=46&&support>=2)||earlyWatch||lateWatch||guardedWatch)
   );
+  const predator=evaluatePredatorScalp(asset,{
+    now:Date.now(),price:p,side:fusedSide,edge,evidence:dominantEvidence,liveSupport,liveOpposition,
+    tickSide:tick1.side,tickStage:tick1.stage,tickScore:tick1.score,
+    liqSide,liqScore,motionSide,motionStage:String(motion?.stage||'WAIT'),motionScore,
+    preSide:preMove.side,preScore:preMove.score,preArmed:preMove.armed,late:chaseRisk||preMove.lateMomentum,
+    trapSide,trapScore,mode,accumulationPhase,accumulationReadiness,reactionAligned,accumulationAligned
+  });
+  const predatorAttack=Boolean(
+    predator?.attack&&fusedSide!=='WAIT'&&!flipSuppressed&&!chaseRisk&&
+    (legacyStrong||earlyWatch||Number(predator?.score||0)>=84)
+  );
+  const predatorWatch=Boolean(
+    !predatorAttack&&predator?.watch&&fusedSide!=='WAIT'&&
+    (legacyWatch||rawStrong||Number(predator?.score||0)>=62)
+  );
+  const strong=predatorAttack;
+  const watch=predatorWatch;
   const action:Side=strong||watch?fusedSide:'WAIT';
-  const state=strong?'setup':watch?'watch':'wait';
+  const state=strong?'setup':watch?'watch':predator?.phase==='ABORT'?'abort':'wait';
 
   const bid=Number(liq?.book?.bestBid),ask=Number(liq?.book?.bestAsk),microprice=Number(liq?.book?.microprice);
   const validBid=Number.isFinite(bid)&&bid>0,validAsk=Number.isFinite(ask)&&ask>0,validMicro=Number.isFinite(microprice)&&microprice>0;
@@ -403,7 +421,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     const contextualTp=Number(target?.price);
     const fallbackTp=p+dir*risk*rr;
     const tp=Number.isFinite(contextualTp)&&((dir>0&&contextualTp>p)||(dir<0&&contextualTp<p))?contextualTp:fallbackTp;
-    trade={mode:'scalp-fusion-v6-'+contextMode.toLowerCase()+(anticipatoryStrong?'-premove':''),side:fusedSide==='BUY'?'buy':'sell',entry:p,sl:p-dir*risk,tp,rr:Number((Math.abs(tp-p)/Math.max(1e-9,risk)).toFixed(2)),score:confidence,validForSeconds:anticipatoryStrong?20:32,time:Date.now()};
+    trade={mode:'predator-scalp-v7-'+String(predator?.pattern||contextMode).toLowerCase(),side:fusedSide==='BUY'?'buy':'sell',entry:p,sl:p-dir*risk,tp,rr:Number((Math.abs(tp-p)/Math.max(1e-9,risk)).toFixed(2)),score:confidence,validForSeconds:anticipatoryStrong?20:32,time:Date.now()};
   }
 
   const outLong=Math.round(cap(buyEvidence+Math.max(0,buyShare-50)*.16,0,92));
@@ -413,10 +431,10 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   return {
     ...raw,
     state,action,
-    title:action==='BUY'?'M1 CONTEXT SCALP V6 · BUY':action==='SELL'?'M1 CONTEXT SCALP V6 · SELL':'M1 CONTEXT SCALP V6 · WAIT',
+    title:action==='BUY'?'PREDATOR SCALP V7 · BUY':action==='SELL'?'PREDATOR SCALP V7 · SELL':'PREDATOR SCALP V7 · WAIT',
     reason:action==='WAIT'
-      ?`Scalp Fusion v6: لا توجد أفضلية تنفيذية كافية الآن${reactionConflict?' · REACTION BLOCK':''}${flipSuppressed?' · FLIP FILTER':''}.`
-      :`Scalp Fusion v6 · ${contextMode} · ${fusedSide} · edge ${edge.toFixed(1)} · ${support} دعم / ${opposition} معارضة${reactionAligned?' · REACTION ZONE':''}${accumulationAligned?' · ACCUMULATION':''}${preMoveAligned?' · PRE-MOVE ARMED':''}${anticipatoryStrong?' · EARLY SETUP':''}${chaseRisk?' · LATE-ENTRY GUARD':''}${changed?' · microstructure غيّر الميل الفني':''}.`,
+      ?`Predator V7 · ${String(predator?.phase||'HUNT')} · ${String(predator?.pattern||'NO_EDGE')} · لا هجوم الآن${chaseRisk?' · NO CHASE':''}${reactionConflict?' · REACTION BLOCK':''}${flipSuppressed?' · FLIP FILTER':''}.`
+      :`Predator V7 · ${String(predator?.phase||'AMBUSH')} · ${String(predator?.pattern||contextMode)} · ${fusedSide} · score ${Number(predator?.score||0)} · edge ${edge.toFixed(1)} · stable ${Number(predator?.stableCount||0)}${reactionAligned?' · REACTION':''}${accumulationAligned?' · ACCUMULATION':''}${preMoveAligned?' · PRE-MOVE':''}${changed?' · microstructure غيّر الميل الفني':''}.`,
     score:{long:outLong,short:outShort,threshold:58},
     confidence,
     trade,
@@ -425,6 +443,19 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     intercept,
     target,
     reaction:{active:reaction.active,inside:Boolean(reaction.inside),side:reactionSide,strength:reactionScore,confirmed:reactionConfirmed,candidate:reactionCandidate,fastSupport:reactionFastSupport,fastOpposition:reactionFastOpposition,nearest:reaction.nearest||null,contextMode},
+    fusionV7:{
+      side:fusedSide,rawSide:rawFusedSide,confidence,strong,watch,rawStrong,legacyStrong,legacyWatch,predator,
+      classicStrong,anticipatoryStrong,earlyWatch,lateWatch,chaseRisk,flipSuppressed,commitment,
+      contextMode,reactionAligned,reactionConflict,reactionConfirmed,reactionCandidate,reactionFastSupport,reactionFastOpposition,
+      accumulationAligned,accumulationPhase,accumulationReadiness,target,intercept,
+      reliability:{active:activeReliability,confirmed:confirmedReliability,premove:preMoveReliability,reliabilityPenalty},
+      buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
+      buyEvidence:Number(buyEvidence.toFixed(1)),sellEvidence:Number(sellEvidence.toFixed(1)),dominantEvidence:Number(dominantEvidence.toFixed(1)),
+      support,opposition,liveSupport,liveOpposition,
+      techSide,liqSide,motionSide,trapSide,mlSide:ml1.side,learnedSide,tickSide:tick1.side,accumulationSide,reactionSide,
+      techL2Conflict,livePair,fastPair,preMoveAligned,tickAligned,mlConflict,mode,
+      components:rows.map(r=>({name:r.name,side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight}))
+    },
     fusionV6:{
       side:fusedSide,rawSide:rawFusedSide,confidence,strong,rawStrong,classicStrong,anticipatoryStrong,watch,earlyWatch,lateWatch,chaseRisk,flipSuppressed,commitment,
       contextMode,reactionAligned,reactionConflict,reactionConfirmed,reactionCandidate,reactionFastSupport,reactionFastOpposition,unconfirmedReactionAgainstFlow,accumulationAligned,accumulationPhase,accumulationReadiness,target,confirmedColdFailGuard,confirmedHits,confirmedFails,confirmedDirectional,compressionConfirmed,recoveryOverride,
