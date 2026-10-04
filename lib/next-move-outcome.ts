@@ -273,6 +273,21 @@ export function calibrateNextMoveConfidence(nextMove:any,live:any,regime?:string
   calibrated=Math.min(calibrated,capFromLive);
   if(Number(nextMove?.micro?.opposition||0)>=3)calibrated-=4;
   if(nextMove?.conflictWithLockedDirection)calibrated-=3;
+
+  const wf=live?.walkForward||{};
+  const oosN=Number(wf?.oos?.n||0),oosAcc=Number(wf?.oos?.accuracy),oosCoverage=Number(wf?.oos?.coverage);
+  const driftDelta=Number(wf?.drift?.delta);
+  let walkForwardAdjustment=0;
+  if(oosN>=10){
+    if(wf?.drift?.status==='DEGRADING')walkForwardAdjustment-=8;
+    else if(wf?.status==='WATCH')walkForwardAdjustment-=4;
+    else if(wf?.status==='PASS'&&Number.isFinite(oosAcc)&&oosAcc>=58)walkForwardAdjustment+=2;
+    if(Number.isFinite(driftDelta)&&driftDelta<=-25)walkForwardAdjustment-=4;
+    if(Number.isFinite(oosCoverage)&&oosCoverage<25)walkForwardAdjustment-=3;
+    const threshold=Number(wf?.activeThreshold);
+    if(Number.isFinite(threshold)&&raw<threshold)walkForwardAdjustment-=5;
+  }
+  calibrated+=walkForwardAdjustment;
   calibrated=Math.round(cap(calibrated,12,86));
 
   return {
@@ -289,7 +304,15 @@ export function calibrateNextMoveConfidence(nextMove:any,live:any,regime?:string
       bandSamples:bd.directional,
       sourcePosterior:Number(src.posterior.toFixed(1)),
       sourceCoverage:Number((src.coverage*100).toFixed(1)),
-      cap:Number(capFromLive.toFixed(1))
+      cap:Number(capFromLive.toFixed(1)),
+      walkForwardStatus:String(wf?.status||'COLLECTING'),
+      walkForwardOosN:oosN,
+      walkForwardOosAccuracy:Number.isFinite(oosAcc)?Number(oosAcc.toFixed(1)):null,
+      walkForwardCoverage:Number.isFinite(oosCoverage)?Number(oosCoverage.toFixed(1)):null,
+      driftStatus:String(wf?.drift?.status||'COLLECTING'),
+      driftDelta:Number.isFinite(driftDelta)?Number(driftDelta.toFixed(1)):null,
+      activeThreshold:Number.isFinite(Number(wf?.activeThreshold))?Number(wf.activeThreshold):null,
+      walkForwardAdjustment
     }
   };
 }
