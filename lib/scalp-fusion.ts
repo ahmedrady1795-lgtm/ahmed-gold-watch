@@ -128,6 +128,18 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const accumulationReadiness=Number(accumulation?.breakoutReadiness||0);
   const reactionSide:Side=reaction.active?reaction.reboundSide:'WAIT';
   const reactionScore=reaction.active?cap(Number(reaction.nearest?.strength||0)+(reaction.inside?8:0),0,94):0;
+  const reactionFastSupport=[tick1.side,preMove.side,motionSide,liqSide,trapSide].filter(s=>s!=='WAIT'&&s===reactionSide).length;
+  const reactionFastOpposition=[motionSide,liqSide,trapSide].filter(s=>s!=='WAIT'&&reactionSide!=='WAIT'&&s!==reactionSide).length;
+  const reactionConfirmed=Boolean(
+    reactionSide!=='WAIT'&&reactionScore>=68&&
+    (
+      (tick1.side===reactionSide&&tick1.score>=54&&(preMove.side===reactionSide||motionSide===reactionSide))||
+      (motionSide===reactionSide&&liqSide===reactionSide)||
+      (trapSide===reactionSide&&trapScore>=68)
+    )&&
+    reactionFastOpposition<=2
+  );
+  const reactionCandidate=Boolean(reactionSide!=='WAIT'&&reactionScore>=68&&!reactionConfirmed);
   const confirmedReliability=liveReliability(liveOutcome,'SCALP_CONFIRMED_V6','SCALP_CONFIRMED_V5');
   const preMoveReliability=liveReliability(liveOutcome,'SCALP_PREMOVE_WATCH_V6','SCALP_PREMOVE_WATCH_V5');
   const learnedSide:Side=learner?.ok&&learner?.gate?.passed?side(learner?.side):'WAIT';
@@ -155,7 +167,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     {name:'TICK',side:tick1.side,score:tick1.score,weight:weights.tick},
     {name:'PREMOVE',side:preMove.side,score:preMove.score,weight:weights.premove*preMoveReliability.multiplier},
     {name:'ACCUM',side:accumulationSide,score:cap(accumulationScore*.72+accumulationReadiness*.28,0,92),weight:weights.accum},
-    {name:'REACTION',side:reactionSide,score:reactionScore,weight:weights.reaction}
+    {name:'REACTION',side:reactionSide,score:reactionScore,weight:weights.reaction*(reactionConfirmed?1:.22)}
   ].filter(x=>x.side!=='WAIT'&&x.score>0);
 
   let buy=0,sell=0;
@@ -190,12 +202,12 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     if(trapSide==='BUY'){buy+=8;sell*=.78;}else{sell+=8;buy*=.78;}
   }
 
-  // Reaction/accumulation authority: a strong demand/supply zone can reverse the scalp
-  // before candle-following logic catches up. Inside-zone rejection gets veto-like weight.
-  if(reactionSide!=='WAIT'&&reactionScore>=62){
-    const boost=Math.min(reaction.inside?22:15,reactionScore*(reaction.inside?.22:.14));
-    if(reactionSide==='BUY'){buy+=boost;if(reaction.inside&&reactionScore>=72)sell*=.68;}
-    else {sell+=boost;if(reaction.inside&&reactionScore>=72)buy*=.68;}
+  // A reaction zone is LOCATION evidence, not direction by itself.
+  // It only gets reversal authority after fast flow confirms the turn.
+  if(reactionConfirmed){
+    const boost=Math.min(reaction.inside?18:12,reactionScore*(reaction.inside?.18:.11));
+    if(reactionSide==='BUY'){buy+=boost;if(reaction.inside&&reactionScore>=76)sell*=.80;}
+    else {sell+=boost;if(reaction.inside&&reactionScore>=76)buy*=.80;}
   }
   if(accumulationSide!=='WAIT'&&accumulationReadiness>=52){
     const boost=Math.min(10,accumulationReadiness*.10);
@@ -225,8 +237,11 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const tickAligned=Boolean(fusedSide!=='WAIT'&&tick1.side===fusedSide&&tick1.score>=44);
   const mlConflict=Boolean(ml1.side!=='WAIT'&&fusedSide!=='WAIT'&&ml1.side!==fusedSide);
   const strongReaction=Boolean(reactionSide!=='WAIT'&&reactionScore>=68&&(reaction.inside||Number(reaction.nearest?.distanceAtr)<=.45));
-  const reactionConflict=Boolean(strongReaction&&fusedSide!=='WAIT'&&reactionSide!==fusedSide);
-  const reactionAligned=Boolean(strongReaction&&reactionSide===fusedSide);
+  const reactionConflict=Boolean(reactionConfirmed&&fusedSide!=='WAIT'&&reactionSide!==fusedSide);
+  const reactionAligned=Boolean(reactionConfirmed&&reactionSide===fusedSide);
+  const unconfirmedReactionAgainstFlow=Boolean(
+    reactionCandidate&&fusedSide===reactionSide&&reactionFastOpposition>=2
+  );
   const accumulationAligned=Boolean(accumulationSide!=='WAIT'&&accumulationSide===fusedSide&&accumulationReadiness>=48);
   const contextMode=reactionAligned
     ?(reactionSide==='BUY'?'DEMAND_REBOUND':'SUPPLY_REJECTION')
@@ -254,7 +269,8 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   if(scalpDrift==='DEGRADING'&&scalpOosN>=10)confidence-=7;
   if(Number.isFinite(scalpOosAcc)&&scalpOosN>=10&&scalpOosAcc<50)confidence-=4;
   if(activeReliability.n>=6)confidence+=cap((activeReliability.score-50)*.16,-4,4);
-  if(reactionAligned)confidence+=reaction.inside?8:5;
+  if(reactionAligned)confidence+=reaction.inside?6:4;
+  if(reactionCandidate)confidence-=reactionFastOpposition>=2?8:3;
   if(accumulationAligned)confidence+=3;
   if(reactionConflict)confidence-=12;
   if(flipSuppressed)confidence-=12;
@@ -288,7 +304,10 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     fusedSide!=='WAIT'&&preMoveAligned&&edge>=8&&dominantEvidence>=42&&support>=2&&liveSupport>=2&&liveOpposition<=1
   );
   const lateWatch=Boolean(rawStrong&&chaseRisk);
-  const watch=Boolean(fusedSide!=='WAIT'&&((edge>=6&&dominantEvidence>=46&&support>=2)||earlyWatch||lateWatch));
+  const watch=Boolean(
+    fusedSide!=='WAIT'&&!unconfirmedReactionAgainstFlow&&
+    ((edge>=6&&dominantEvidence>=46&&support>=2)||earlyWatch||lateWatch)
+  );
   const action:Side=strong||watch?fusedSide:'WAIT';
   const state=strong?'setup':watch?'watch':'wait';
 
@@ -374,10 +393,10 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     preMove,
     intercept,
     target,
-    reaction:{active:reaction.active,inside:Boolean(reaction.inside),side:reactionSide,strength:reactionScore,nearest:reaction.nearest||null,contextMode},
+    reaction:{active:reaction.active,inside:Boolean(reaction.inside),side:reactionSide,strength:reactionScore,confirmed:reactionConfirmed,candidate:reactionCandidate,fastSupport:reactionFastSupport,fastOpposition:reactionFastOpposition,nearest:reaction.nearest||null,contextMode},
     fusionV6:{
       side:fusedSide,rawSide:rawFusedSide,confidence,strong,rawStrong,classicStrong,anticipatoryStrong,watch,earlyWatch,lateWatch,chaseRisk,flipSuppressed,commitment,
-      contextMode,reactionAligned,reactionConflict,accumulationAligned,accumulationPhase,accumulationReadiness,target,
+      contextMode,reactionAligned,reactionConflict,reactionConfirmed,reactionCandidate,reactionFastSupport,reactionFastOpposition,unconfirmedReactionAgainstFlow,accumulationAligned,accumulationPhase,accumulationReadiness,target,
       intercept,
       reliability:{active:activeReliability,confirmed:confirmedReliability,premove:preMoveReliability,reliabilityPenalty},
       ignitionEtaSeconds:preMove.etaSeconds,
