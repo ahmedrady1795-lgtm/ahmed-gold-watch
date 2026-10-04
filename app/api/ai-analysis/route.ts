@@ -148,7 +148,7 @@ export async function GET(request:Request){
     const bitcoinAccumulation=buildAccumulationMap(btc.c1,btc.c5,btcPrice,liquidity,now);
     const goldTick=getServerTickSignal('GOLD',now);
     const motion=getMotionIntelligence(btcPrice,liquidity,btc.c1,now);
-    const bitcoinScalpPrior=getNextMoveOutcome('BTC_SCALP_V4',btcPrice,now);
+    const bitcoinScalpPrior=getNextMoveOutcome('BTC_SCALP_V6',btcPrice,now);
     const mlPredictionPromise=getMlPrediction(btc.c1,now).catch(()=>({ok:false,status:'UNAVAILABLE',shadow:true} as any));
     const neuralPredictionPromise=getNeuralPrediction(now).catch(()=>({ok:false,status:'UNAVAILABLE',ready:false,side:'WAIT'} as any));
     const bitcoinMlRaw=await mlPredictionPromise;
@@ -199,7 +199,7 @@ export async function GET(request:Request){
         ?'SCALP_PREMOVE_WATCH_V6'
         :'SCALP_WATCH_V6';
     const bitcoinScalpLive=recordNextMoveOutcome({
-      asset:'BTC_SCALP_V4',price:btcPrice,atr:btcAtr,now,
+      asset:'BTC_SCALP_V6',price:btcPrice,atr:btcAtr,now,
       hunt:{nextMove:{
         side:bitcoinScalp.action,confidence:Number(bitcoinScalp.confidence||0),source:scalpTrackSource,
         micro:scalpFusionDiag
