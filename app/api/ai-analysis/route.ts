@@ -190,11 +190,17 @@ export async function GET(request:Request){
     const bitcoinMultiBrain=buildMultiBrainCore('BTC',{decision:bitcoin,scalp:bitcoinScalp,movement:bitcoinMovement,stateGraph:bitcoinStateGraph,tick:bitcoinTick,expected:bitcoinExpectedLearning,learning:bitcoinLearning,brainLearning:bitcoinBrainLearning,now});
     const goldBrainRecord=recordBrainOutcomeObservation({asset:'GOLD',price:goldPrice,atr:goldAtr,now,multiBrain:goldMultiBrain});
     const bitcoinBrainRecord=recordBrainOutcomeObservation({asset:'BTC',price:btcPrice,atr:btcAtr,now,multiBrain:bitcoinMultiBrain});
+    const scalpFusionDiag=bitcoinScalp.fusionV4||bitcoinScalp.fusionV3||{};
+    const scalpTrackSource=Boolean(scalpFusionDiag?.strong)
+      ?'SCALP_CONFIRMED_V4'
+      :Boolean(scalpFusionDiag?.earlyWatch||scalpFusionDiag?.preMoveAligned)
+        ?'SCALP_PREMOVE_WATCH_V4'
+        :'SCALP_WATCH_V4';
     const bitcoinScalpLive=recordNextMoveOutcome({
       asset:'BTC_SCALP_V4',price:btcPrice,atr:btcAtr,now,
       hunt:{nextMove:{
-        side:bitcoinScalp.action,confidence:Number(bitcoinScalp.confidence||0),source:'SCALP_PREMOVE_V4',
-        micro:bitcoinScalp.fusionV4||bitcoinScalp.fusionV3||{}
+        side:bitcoinScalp.action,confidence:Number(bitcoinScalp.confidence||0),source:scalpTrackSource,
+        micro:scalpFusionDiag
       }},
       regime:bitcoinMultiBrain?.regime||bitcoinMovement?.regime,
       horizonMs:60000,barrierScale:.18,minBarrierBps:.7,maxBarrierBps:1.8
