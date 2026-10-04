@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss, b
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 
-APP_VERSION="predator-ml-v6-robust-m5"
+APP_VERSION="predator-ml-v7-m5-noise-classifier"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 MODEL_PATH=MODEL_DIR/"btc_ml_ensemble.joblib"
 META_PATH=MODEL_DIR/"btc_ml_meta.json"
@@ -202,6 +202,20 @@ def make_dataset(df,horizon,deadzone_atr,feature_names):
         move_atr=(c.shift(-horizon)-c)/atr1.replace(0,np.nan)
     ds=f.copy(); ds["target"]=(move_atr>0).astype(int); ds["move_atr"]=move_atr
     return ds.loc[move_atr.abs()>=deadzone_atr].dropna(subset=feature_names+["target"])
+
+def make_m5_multiclass_dataset(df,feature_names,neutral_atr=.18):
+    f=build_features(df); c=df.close.reindex(f.index)
+    five=df.resample("5min").agg({"open":"first","high":"max","low":"min","close":"last"}).dropna()
+    fc=five.close
+    ftr=pd.concat([(five.high-five.low),(five.high-fc.shift(1)).abs(),(five.low-fc.shift(1)).abs()],axis=1).max(axis=1)
+    fatr=ftr.ewm(alpha=1/14,adjust=False).mean()
+    fatr.index=fatr.index+pd.Timedelta(minutes=5)
+    atr=fatr.reindex(f.index,method="ffill")
+    future=(c.shift(-4)+c.shift(-5))/2
+    move_atr=(future-c)/atr.replace(0,np.nan)
+    target=np.where(move_atr>neutral_atr,2,np.where(move_atr<-neutral_atr,0,1))
+    ds=f.copy(); ds["target"]=target; ds["move_atr"]=move_atr
+    return ds.dropna(subset=feature_names+["move_atr"])
 
 def fetch_coinbase_history(limit_rows):
     url="https://api.exchange.coinbase.com/products/BTC-USD/candles"
@@ -412,6 +426,95 @@ def train_horizon(ds,horizon,feature_names):
                        "validationHoldoutStability":float(stability),"ready":ready},
             "rows":n,"horizon":horizon}
 
+def new_m5_models(seed):
+    x=XGBClassifier(n_estimators=300,max_depth=3,learning_rate=.022,subsample=.80,colsample_bytree=.70,min_child_weight=22,
+                    reg_alpha=.75,reg_lambda=5.0,gamma=.12,objective="multi:softprob",num_class=3,eval_metric="mlogloss",
+                    tree_method="hist",n_jobs=1,random_state=seed)
+    l=LGBMClassifier(n_estimators=300,num_leaves=13,max_depth=4,learning_rate=.022,subsample=.80,subsample_freq=1,colsample_bytree=.70,
+                     min_child_samples=90,min_split_gain=.03,reg_alpha=.75,reg_lambda=4.0,objective="multiclass",num_class=3,
+                     n_jobs=1,random_state=seed,verbosity=-1)
+    return x,l
+
+def m5_metrics(y,p,threshold=.44,flat_margin=.05,agreement=None):
+    pred_all=np.argmax(p,axis=1)
+    up=p[:,2]; down=p[:,0]; flat=p[:,1]
+    pred_dir=np.where(up>=down,2,0)
+    dir_prob=np.maximum(up,down)
+    mask=(dir_prob>=threshold)&((dir_prob-flat)>=flat_margin)
+    if agreement is not None:
+        mask=mask&np.asarray(agreement,dtype=bool)
+    sn=int(mask.sum())
+    selective=float(np.mean(y[mask]==pred_dir[mask])) if sn else 0.0
+    coverage=float(mask.mean()) if len(mask) else 0.0
+    counts=np.bincount(y,minlength=3)/max(1,len(y))
+    baseline=float(np.max(counts))
+    return {
+        "accuracy":float(accuracy_score(y,pred_all)),
+        "balancedAccuracy":float(balanced_accuracy_score(y,pred_all)),
+        "logLoss":float(log_loss(y,p,labels=[0,1,2])),
+        "n":int(len(y)),"classRates":{"down":float(counts[0]),"noise":float(counts[1]),"up":float(counts[2])},
+        "baselineAccuracy":baseline,
+        "selectiveAccuracy":selective,"selectiveCoverage":coverage,"selectiveN":sn,
+        "signalThreshold":float(threshold),"flatMargin":float(flat_margin)
+    }
+
+def choose_m5_multiclass(y,px,pl):
+    best=None; n=len(y); cuts=[(0,n//3),(n//3,2*n//3),(2*n//3,n)]
+    xside=px[:,2]>=px[:,0]; lside=pl[:,2]>=pl[:,0]; agree=xside==lside
+    for wx in [0.0,.2,.4,.6,.8,1.0]:
+        p=px*wx+pl*(1-wx)
+        for threshold in [.38,.40,.42,.44,.46,.48,.50,.52]:
+            for margin in [.02,.04,.06,.08,.10]:
+                overall=m5_metrics(y,p,threshold,margin,agree)
+                if overall["selectiveN"]<220 or overall["selectiveCoverage"]<.035:
+                    continue
+                windows=[]; valid=True
+                for a,b in cuts:
+                    wm=m5_metrics(y[a:b],p[a:b],threshold,margin,agree[a:b])
+                    if wm["selectiveN"]<45 or wm["selectiveCoverage"]<.02:
+                        valid=False; break
+                    windows.append(wm["selectiveAccuracy"])
+                if not valid: continue
+                worst=min(windows); spread=max(windows)-min(windows)
+                score=.62*worst+.28*overall["selectiveAccuracy"]+.04*min(.20,overall["selectiveCoverage"])-.12*spread-.01*overall["logLoss"]
+                if best is None or score>best[0]:
+                    best=(score,wx,1-wx,threshold,margin,worst,spread)
+    return (best[1],best[2],best[3],best[4]) if best else (.5,.5,.44,.05)
+
+def train_m5_multiclass(ds,feature_names):
+    X=ds[feature_names].astype(float).to_numpy(); y=ds.target.astype(int).to_numpy(); n=len(y)
+    if n<MIN_TRAIN_ROWS: raise RuntimeError(f"not enough rows for m5 multiclass: {n}")
+    train_end=int(n*.70); val_end=int(n*.85)
+    Xtr,Xv,Xte=X[:train_end],X[train_end:val_end],X[val_end:]
+    ytr,yv,yte=y[:train_end],y[train_end:val_end],y[val_end:]
+    x,l=new_m5_models(47); x.fit(Xtr,ytr); l.fit(Xtr,ytr)
+    pxv=x.predict_proba(Xv); plv=l.predict_proba(Xv)
+    wx,wl,threshold,margin=choose_m5_multiclass(yv,pxv,plv)
+    agree_v=(pxv[:,2]>=pxv[:,0])==(plv[:,2]>=plv[:,0])
+    pv=pxv*wx+plv*wl
+    mv=m5_metrics(yv,pv,threshold,margin,agree_v)
+    pxte=x.predict_proba(Xte); plte=l.predict_proba(Xte)
+    agree_t=(pxte[:,2]>=pxte[:,0])==(plte[:,2]>=plte[:,0])
+    pte=pxte*wx+plte*wl
+    me=m5_metrics(yte,pte,threshold,margin,agree_t)
+    trainp=x.predict_proba(Xtr)*wx+l.predict_proba(Xtr)*wl
+    mt=m5_metrics(ytr,trainp,threshold,margin)
+    stability=abs(mv["selectiveAccuracy"]-me["selectiveAccuracy"])
+    ready=bool(
+        me["n"]>=1200 and mv["n"]>=1200 and
+        me["selectiveN"]>=140 and mv["selectiveN"]>=120 and
+        me["selectiveCoverage"]>=.03 and mv["selectiveCoverage"]>=.03 and
+        me["selectiveAccuracy"]>=.58 and mv["selectiveAccuracy"]>=.56 and
+        stability<=.10
+    )
+    xf,lf=new_m5_models(147); xf.fit(X,y); lf.fit(X,y)
+    return {
+        "xgb":xf,"lgb":lf,"weights":{"xgb":float(wx),"lgb":float(wl)},
+        "signalThreshold":float(threshold),"flatMargin":float(margin),"features":feature_names,
+        "metrics":{"ensemble":me,"validation":mv,"train":mt,"validationHoldoutStability":float(stability),"ready":ready},
+        "rows":n,"horizon":5,"mode":"m5_multiclass"
+    }
+
 def train_all():
     with LOCK:
         if STATE["training"]: return
@@ -426,7 +529,7 @@ def train_all():
             hist=fetch_coinbase_history(TRAIN_CANDLES)
             source="Coinbase Exchange BTC-USD 1m · neutral micro fallback"
         m1=train_horizon(make_dataset(hist,1,.04,M1_FEATURES),1,M1_FEATURES)
-        m5=train_horizon(make_dataset(hist,5,.18,M5_FEATURES),5,M5_FEATURES)
+        m5=train_m5_multiclass(make_m5_multiclass_dataset(hist,M5_FEATURES,.18),M5_FEATURES)
         payload={"version":APP_VERSION,"features":FEATURE_SIGNATURE,"trainedAt":int(time.time()*1000),"historyRows":len(hist),"source":source,"models":{"m1":m1,"m5":m5}}
         tmp=MODEL_PATH.with_suffix(".tmp"); joblib.dump(payload,tmp); os.replace(tmp,MODEL_PATH)
         meta={"version":APP_VERSION,"trainedAt":payload["trainedAt"],"historyRows":len(hist),"source":payload["source"],
@@ -505,6 +608,28 @@ def predict_h(model,x):
             "ready":bool(model["metrics"]["ready"]),"metrics":model["metrics"],
             "component":{"xgbUp":round(px*100,2),"lightgbmUp":round(pl*100,2),"agree":bool(component_agree),"weights":w,"signalThreshold":threshold}}
 
+def predict_m5(model,x):
+    px=model["xgb"].predict_proba(x)[0]; pl=model["lgb"].predict_proba(x)[0]; w=model["weights"]
+    p=px*w["xgb"]+pl*w["lgb"]
+    down,flat,up=float(p[0]),float(p[1]),float(p[2])
+    lean="BUY" if up>=down else "SELL"
+    dir_prob=max(up,down); threshold=float(model.get("signalThreshold",.44)); margin=float(model.get("flatMargin",.05))
+    component_agree=((px[2]>=px[0])==(pl[2]>=pl[0]))
+    active=bool(component_agree and dir_prob>=threshold and dir_prob-flat>=margin)
+    directional_total=max(1e-9,up+down)
+    prob_up_dir=up/directional_total; edge=abs(up-down)
+    confidence=round(min(90,max(0,50+(dir_prob-flat)*85+edge*35))) if active else round(min(70,max(45,50+edge*25)))
+    return {
+        "side":lean if active else "WAIT","leanSide":lean,
+        "probUp":round(prob_up_dir*100,2),"probDown":round((1-prob_up_dir)*100,2),"probFlat":round(flat*100,2),
+        "confidence":confidence,"edge":round(edge*100,2),"ready":bool(model["metrics"]["ready"]),"metrics":model["metrics"],
+        "component":{
+            "xgb":{"down":round(float(px[0])*100,2),"flat":round(float(px[1])*100,2),"up":round(float(px[2])*100,2)},
+            "lightgbm":{"down":round(float(pl[0])*100,2),"flat":round(float(pl[1])*100,2),"up":round(float(pl[2])*100,2)},
+            "agree":bool(component_agree),"weights":w,"signalThreshold":threshold,"flatMargin":margin
+        }
+    }
+
 @app.on_event("startup")
 def startup(): start_train_if_needed()
 
@@ -533,7 +658,7 @@ def predict(body:PredictBody):
         raise HTTPException(400,"insufficient feature history")
     x1=f[M1_FEATURES].dropna().iloc[[-1]].astype(float).to_numpy()
     x5=f[M5_FEATURES].dropna().iloc[[-1]].astype(float).to_numpy()
-    m1=predict_h(MODELS["models"]["m1"],x1); m5=predict_h(MODELS["models"]["m5"],x5)
+    m1=predict_h(MODELS["models"]["m1"],x1); m5=predict_m5(MODELS["models"]["m5"],x5)
     aligned=m1["leanSide"]==m5["leanSide"]; consensus=m1["leanSide"] if aligned else (m1["leanSide"] if m1["edge"]>=m5["edge"] else m5["leanSide"])
     return {"ok":True,"version":APP_VERSION,"status":STATE["status"],"trainedAt":MODELS.get("trainedAt"),"source":MODELS.get("source"),
             "liveSource":live_source,"liveError":live_error,"historyRows":MODELS.get("historyRows"),"oneMinute":m1,"fiveMinute":m5,
