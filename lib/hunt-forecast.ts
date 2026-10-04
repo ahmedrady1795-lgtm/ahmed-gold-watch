@@ -80,22 +80,21 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const m1Strength=Number(m1?.strength||0),m5Strength=Number(m5?.strength||0),m15Strength=Number(m15?.strength||0);
   const motionSide:Side=decision?.motion?.side||'WAIT',behaviorSide:Side=decision?.behavior?.side||'WAIT',liqSide:Side=decision?.liquidity?.side||'WAIT',hunterSide:Side=decision?.hunter?.side||'WAIT';
   const motionScore=Number(decision?.motion?.score||0),behaviorScore=Number(decision?.behavior?.score||0),liqStrength=Number(decision?.liquidity?.strength||0),hunterScore=Number(decision?.hunter?.score||0);
+  const scalpLong=Number(scalp?.score?.long||0),scalpShort=Number(scalp?.score?.short||0);
   const movementEvidence=Array.isArray(movementIntel?.evidence)?movementIntel.evidence:[];
   const evidenceOf=(name:string)=>movementEvidence.find((e:any)=>String(e?.name||'')===name)||null;
   const tickEv=evidenceOf('serverTick'),ml1Ev=evidenceOf('mlEnsemble1m');
   const tickSide:Side=tickEv?.side||'WAIT',tickScore=Number(tickEv?.score||0);
   const scalpFusion=scalp?.fusionV8||{};
-  const ambushMove=scalp?.movement||{};
-  const scalpFusionSide:Side=ambushMove?.side||'WAIT';
-  const scalpFusionConfidence=Number(ambushMove?.confidence||0);
-  const scalpFusionStrong=Boolean(ambushMove?.status==='CONFIRMED'||ambushMove?.tradeReady);
-  const scalpLong=scalpFusionSide==='BUY'?scalpFusionConfidence:0;
-  const scalpShort=scalpFusionSide==='SELL'?scalpFusionConfidence:0;
-  const validatedMlSide:Side=ml1Ev?.side||'WAIT';
+  const validatedMlSide:Side=ml1Ev?.side||scalpFusion?.mlSide||'WAIT';
   const validatedMlScore=Number(ml1Ev?.score||0);
-  const ambushWf=liveOutcome?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V8||null;
-  const wfBase=Number(ambushWf?.directional||0)>=25?ambushWf:(liveOutcome?.walkForward||{});
-  const wfScope=Number(ambushWf?.directional||0)>=25?'AMBUSH_SOURCE':'GLOBAL_PRIOR';
+  const scalpFusionSide:Side=scalpFusion?.side||scalp?.action||'WAIT';
+  const scalpFusionConfidence=Number(scalpFusion?.confidence||scalp?.confidence||Math.max(scalpLong,scalpShort));
+  const scalpFusionStrong=Boolean(scalpFusion?.strong);
+  const sourceWfV5=liveOutcome?.walkForwardBySource?.FAST_MICROSTRUCTURE_V5||null;
+  const sourceWfV4=liveOutcome?.walkForwardBySource?.FAST_MICROSTRUCTURE_V4||null;
+  const wfBase=Number(sourceWfV5?.directional||0)>=25?sourceWfV5:Number(sourceWfV4?.directional||0)>=25?sourceWfV4:(liveOutcome?.walkForward||{});
+  const wfScope=Number(sourceWfV5?.directional||0)>=25?'V5_SOURCE':Number(sourceWfV4?.directional||0)>=25?'V4_SOURCE':'GLOBAL_PRIOR';
   const wfStatus=String(wfBase?.status||'COLLECTING');
   const wfDrift=String(wfBase?.drift?.status||'COLLECTING');
   const wfOosN=Number(wfBase?.oos?.n||0);
@@ -164,8 +163,8 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
 
   // Next-Move v2: resolve the first 30-120s from live microstructure first.
   // Slower horizon memory calibrates confidence; it cannot dominate a strong live micro edge.
-  const scalpSide:Side=scalpFusionSide;
-  const scalpEdge=scalpSide==='WAIT'?0:Math.max(scalpFusionConfidence,Number(scalpFusion?.edge||0));
+  const scalpSide:Side=scalpFusionSide!=='WAIT'?scalpFusionSide:(scalpLong-scalpShort>=4?'BUY':scalpShort-scalpLong>=4?'SELL':'WAIT');
+  const scalpEdge=Math.max(Math.abs(scalpLong-scalpShort),Number(scalpFusion?.edge||0));
   const reactionFast=accumulation?.nearestReaction||null;
   const reactionFastSide:Side=reactionFast?.side||'WAIT';
   const reactionFastStrength=Number(reactionFast?.strength||0);
@@ -575,13 +574,15 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     return Number((p+d*a*factor).toFixed(2));
   };
   const station1=movementStations?.[0]?.price??null,station2=movementStations?.[1]?.price??null;
-  const scalpTargetSide:Side=ambushMove?.side||'WAIT';
-  const scalpContextPrice=Number(ambushMove?.target?.price);
+  const scalpTargetSide:Side=scalp?.target?.side||scalp?.action||(scalpLong>scalpShort?'BUY':scalpShort>scalpLong?'SELL':'WAIT');
+  const scalpContextPrice=Number(scalp?.target?.price);
   const scalpTargetPrice=Number.isFinite(scalpContextPrice)&&scalpContextPrice>0
     ?Number(scalpContextPrice.toFixed(2))
-    :quickTarget(scalpTargetSide,scalpFusionConfidence,.10,null);
+    :quickTarget(scalpTargetSide,Math.max(scalpLong,scalpShort),.10,null);
   const quickSignalTargets={
-    scalp:{side:scalpTargetSide,price:scalpTargetPrice,confidence:Math.round(cap(scalpFusionConfidence,0,88)),horizonMinutes:.5,source:'AMBUSH',contextMode:scalp?.target?.contextMode||null}
+    scalp:{side:scalpTargetSide,price:scalpTargetPrice,confidence:Math.round(cap(Number(scalp?.confidence||Math.max(scalpLong,scalpShort)),0,88)),horizonMinutes:.5,source:scalp?.target?.source||'DYNAMIC',contextMode:scalp?.target?.contextMode||null},
+    oneMinute:{side:m1Side,price:quickTarget(m1Side,m1Strength,.14,station1),confidence:Math.round(cap(m1Strength,0,88)),horizonMinutes:1},
+    fiveMinute:{side:m5Side,price:quickTarget(m5Side,m5Strength,.30,station2),confidence:Math.round(cap(m5Strength,0,88)),horizonMinutes:5}
   };
 
   const alternativeSide:Side=projectionSide==='BUY'?'SELL':projectionSide==='SELL'?'BUY':'WAIT';
