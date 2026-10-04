@@ -14,6 +14,8 @@ const horizon=(buy:number,sell:number,gate=5):Horizon=>({side:sideOf(buy,sell,ga
 
 function pathOf(two:Side,five:Side,fifteen:Side){
   const short=two!=='WAIT'?two:five,long=fifteen!=='WAIT'?fifteen:five;
+  if(short==='SELL'&&five==='BUY'&&long==='SELL')return 'DROP_BOUNCE_DROP';
+  if(short==='BUY'&&five==='SELL'&&long==='BUY')return 'RISE_REJECT_RISE';
   if(short==='BUY'&&long==='SELL')return 'RISE_THEN_DROP';
   if(short==='SELL'&&long==='BUY')return 'DROP_THEN_RISE';
   if(short==='BUY'&&(five==='BUY'||long==='BUY'))return 'CONTINUATION_UP';
@@ -61,6 +63,8 @@ function buildMovementStations(args:{price:number;atr:number;now:number;first:nu
   });
 }
 function pathAr(p:string){
+  if(p==='DROP_BOUNCE_DROP')return 'هبوط قصير → ارتداد صاعد → عودة للهبوط';
+  if(p==='RISE_REJECT_RISE')return 'صعود قصير → رفض هابط → عودة للصعود';
   if(p==='RISE_THEN_DROP')return 'صعود قصير ثم هبوط';
   if(p==='DROP_THEN_RISE')return 'هبوط قصير ثم صعود';
   if(p==='CONTINUATION_UP')return 'استمرار صاعد';
@@ -278,6 +282,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
 
   const path=structuralPath||pathOf(primaryMoveSide,learnedFollowSide!=='WAIT'?learnedFollowSide:five.side,fifteen.side),pathLabel=pathAr(path);
   const understandingMode=
+    reactionTurn?'REACTION':
     reversalPressure&&graphChange?'REVERSAL':
     reversalPressure?'TRANSITION':
     compressionPhase?'COMPRESSION':
@@ -292,26 +297,31 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     Number(structure?.confidence||0)*.13+
     Math.min(10,understandingAgreement*3)-
     understandingConflict*5-
-    (graphChange&&understandingMode!=='REVERSAL'?5:0),
+    (graphChange&&!['REVERSAL','REACTION'].includes(understandingMode)?5:0)-
+    (reactionTurn?(reactionDistanceAtr<=.35?8:3):0),
     0,88
   ));
   const currentState=graphCurrentState||m1Phase||'TRANSITION';
   const expectedState=graphExpectedState||m5Phase||'TRANSITION';
   const firstWord=primaryMoveSide==='BUY'?'صعود':primaryMoveSide==='SELL'?'هبوط':'تذبذب';
   const followWord=learnedFollowSide==='BUY'?'صعود':learnedFollowSide==='SELL'?'هبوط':'غير محسوم';
+  const finalSide:Side=fifteen.side!=='WAIT'?fifteen.side:em15Side;
+  const finalWord=finalSide==='BUY'?'صعود':finalSide==='SELL'?'هبوط':'غير محسوم';
   const reactionText=reactionTurn
-    ?' قرب منطقة '+(reactionSide==='SELL'?'عرض':'طلب')+' قوية ('+Math.round(reactionStrength)+'%)'
+    ?' نحو/داخل منطقة '+(reactionSide==='SELL'?'عرض':'طلب')+' قوية ('+Math.round(reactionStrength)+'%)'
     :'';
   const understandingSummary=
-    understandingMode==='REVERSAL'
-      ?'السوق قرب نقطة تحول؛ المتوقع أولًا '+firstWord+reactionText+' ثم '+followWord+' إذا ظهر رفض/تأكيد.'
-      :understandingMode==='COMPRESSION'
-        ?'السوق في ضغط/تجميع للحركة؛ أول حركة مرجحة '+firstWord+' والموجة التالية '+followWord+'.'
-        :understandingMode==='CONTINUATION'
-          ?'السوق يميل لاستمرار الحركة؛ المتوقع أولًا '+firstWord+' ثم '+followWord+'.'
-          :understandingMode==='RANGE'
-            ?'السوق داخل نطاق؛ المتوقع '+firstWord+' مع احتمال كسر كاذب قبل اتجاه أوضح.'
-            :'السوق في انتقال بين حالتين؛ الحركة الأولى المرجحة '+firstWord+reactionText+' ثم '+followWord+'.';
+    understandingMode==='REACTION'
+      ?'المسار المرجح: '+firstWord+reactionText+' → رد فعل '+followWord+(finalSide!=='WAIT'&&finalSide!==learnedFollowSide?' → ثم ميل '+finalWord+' على 15د.':'.')
+      :understandingMode==='REVERSAL'
+        ?'السوق قرب نقطة تحول؛ المتوقع أولًا '+firstWord+reactionText+' ثم '+followWord+' إذا ظهر رفض/تأكيد.'
+        :understandingMode==='COMPRESSION'
+          ?'السوق في ضغط/تجميع للحركة؛ أول حركة مرجحة '+firstWord+' والموجة التالية '+followWord+'.'
+          :understandingMode==='CONTINUATION'
+            ?'السوق يميل لاستمرار الحركة؛ المتوقع أولًا '+firstWord+' ثم '+followWord+'.'
+            :understandingMode==='RANGE'
+              ?'السوق داخل نطاق؛ المتوقع '+firstWord+' مع احتمال كسر كاذب قبل اتجاه أوضح.'
+              :'السوق في انتقال بين حالتين؛ الحركة الأولى المرجحة '+firstWord+reactionText+' ثم '+followWord+'.';
   let expAtr=Math.abs(behaviorExp);
   if(!Number.isFinite(expAtr)||expAtr<.2)expAtr=.42;
   expAtr=Math.min(1.7,Math.max(.28,expAtr));
@@ -433,6 +443,8 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
       m5Phase,
       firstMove:{side:primaryMoveSide,confidence:understandingConfidence},
       followMove:{side:learnedFollowSide,confidence:learnedFollowConfidence},
+      finalMove:{side:finalSide,confidence:Number(fifteen.strength||em15?.confidence||0),horizonMinutes:15},
+      reactionZone:reactionTurn?{side:reactionSide,strength:reactionStrength,distanceAtr:reactionDistanceAtr,low:Number(reaction?.low||0),high:Number(reaction?.high||0)}:null,
       agreement:understandingAgreement,
       conflict:understandingConflict,
       changePoint:graphChange,
