@@ -128,8 +128,8 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const accumulationReadiness=Number(accumulation?.breakoutReadiness||0);
   const reactionSide:Side=reaction.active?reaction.reboundSide:'WAIT';
   const reactionScore=reaction.active?cap(Number(reaction.nearest?.strength||0)+(reaction.inside?8:0),0,94):0;
-  const confirmedReliability=liveReliability(liveOutcome,'SCALP_CONFIRMED_V5','SCALP_CONFIRMED_V4');
-  const preMoveReliability=liveReliability(liveOutcome,'SCALP_PREMOVE_WATCH_V5','SCALP_PREMOVE_WATCH_V4');
+  const confirmedReliability=liveReliability(liveOutcome,'SCALP_CONFIRMED_V6','SCALP_CONFIRMED_V5');
+  const preMoveReliability=liveReliability(liveOutcome,'SCALP_PREMOVE_WATCH_V6','SCALP_PREMOVE_WATCH_V5');
   const learnedSide:Side=learner?.ok&&learner?.gate?.passed?side(learner?.side):'WAIT';
   const learnedScore=learnedSide==='WAIT'?0:cap(Number(learner?.confidence||0)*.55+Number(learner?.oosAccuracy||0)*.45,0,82);
 
