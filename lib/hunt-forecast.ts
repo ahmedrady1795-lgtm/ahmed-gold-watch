@@ -1,3 +1,4 @@
+import {commitDirection} from './direction-commitment';
 type Side='BUY'|'SELL'|'WAIT';
 type ForecastSample={at:number;side:Side;score:number};
 
@@ -37,14 +38,15 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const recent=old.slice(-8);memory.set(asset,recent);
 
   const buySamples=recent.filter(x=>x.side==='BUY').length,sellSamples=recent.filter(x=>x.side==='SELL').length;
-  const dominant:Side=buySamples>sellSamples?'BUY':sellSamples>buySamples?'SELL':rawSide;
   const persistence=recent.length?Math.round(Math.max(buySamples,sellSamples)/recent.length*100):0;
-  const stableSide:Side=rawSide!=='WAIT'&&persistence>=50?dominant:rawSide;
+  const commitment=commitDirection('hunt:'+asset,buy,sell,now,waveFresh?{side:waveSide,stage:wave?.stage,score:waveScore,confidence:Number(wave?.confidence||0)}:null);
+  const stableSide:Side=commitment.side as Side;
 
   const contradiction=recent.some(x=>x.side==='BUY')&&recent.some(x=>x.side==='SELL');
   const conflictPenalty=decision?.master?.conflict?10:0;
   const flipPenalty=contradiction?Math.max(0,18-persistence*.12):0;
-  const confidence=cap(rawScore*.62+Math.min(100,rawGap*2.2)*.18+persistence*.20-conflictPenalty-flipPenalty,0,88);
+  const hysteresisPenalty=commitment.heldByHysteresis?8:0;
+  const confidence=cap(rawScore*.56+Math.min(100,rawGap*2.2)*.16+persistence*.14+commitment.strength*.14-conflictPenalty-flipPenalty-hysteresisPenalty,0,88);
 
   const motionStage=String(decision?.motion?.stage||'WAIT');
   const compression=Number(decision?.motion?.components?.compression||0);
@@ -72,7 +74,8 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const invalidation=validPrice&&dir?p-dir*a*.32:null;
 
   const reasons:string[]=[];
-  if(stableSide!=='WAIT')reasons.push('Core forecast يميل '+stableSide+' بفارق '+Math.round(rawGap));
+  if(stableSide!=='WAIT')reasons.push('Directional Commitment مثبت '+stableSide+' · smoothed edge '+commitment.smoothedEdge);
+  if(commitment.state==='REVERSAL_PENDING')reasons.push('عكس محتمل '+commitment.pendingSide+' لكن لم يكتمل التأكيد ('+commitment.pendingCount+'/2)');
   if(motionSide===stableSide&&motionScore>=50)reasons.push('Motion متوافق');
   if(liqSide===stableSide&&liqStrength>=55)reasons.push('السيولة متوافقة');
   if(behaviorSide===stableSide&&behaviorScore>=45)reasons.push('السلوك التاريخي متوافق');
@@ -100,8 +103,9 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     invalidation:invalidation==null?null:Number(invalidation.toFixed(2)),
     currentPrice:Number.isFinite(p)?p:null,
     reasons:reasons.slice(0,7),
+    commitment,
     waveLeadUsed:waveFresh?{side:waveSide,stage:wave?.stage,score:waveScore,confidence:Number(wave?.confidence||0),at:Number(wave?.at||0)}:null,
     scalpLearnerUsed:learnerFresh?{side:learnerSide,confidence:learnerScore,oosAccuracy:Number(learner?.oosAccuracy||0),oosEdgeAtr:Number(learner?.oosEdgeAtr||0),holdSeconds:Number(learner?.exitPlan?.maxHoldSeconds||0)}:null,
-    note:'توقع استباقي للحركة وليس أمر دخول أو ضمان نتيجة.'
+    note:'التوقع يستخدم Directional Commitment لمنع التذبذب؛ يظل توقعًا وليس أمر دخول أو ضمان نتيجة.'
   };
 }
