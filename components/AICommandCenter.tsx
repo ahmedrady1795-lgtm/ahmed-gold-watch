@@ -10,6 +10,23 @@ const timeLeft=(ts:any,now:number)=>{
   const m=Math.floor(d/60000),h=Math.floor(m/60),mm=m%60;
   return h>0?`بعد ${h}س ${mm}د`:`بعد ${Math.max(1,mm)}د`;
 };
+const moveAr=(s:any)=>s==='BUY'?'صعود':s==='SELL'?'هبوط':'تذبذب';
+function nextMoveCopy(hunt:any,stateGraph:any){
+  if(!hunt&&!stateGraph)return {title:'لا توجد حركة مؤكدة حاليًا',detail:'النواة تنتظر بيانات أو توافقًا أوضح قبل ترجيح الحركة القادمة.',tone:'amber'};
+  const first=hunt?.nextMove?.side||hunt?.path?.shortSide||stateGraph?.nextSide||'WAIT';
+  const pathLabel=String(hunt?.path?.label||'').trim();
+  const firstHit=Number(hunt?.nextMove?.firstHitMinutes);
+  const confidence=calibrated(hunt?.nextMove?.confidence??hunt?.quality??stateGraph?.nextSideProbability??0);
+  let title=pathLabel||(
+    first==='BUY'?'الحركة القادمة المرجحة: صعود':
+    first==='SELL'?'الحركة القادمة المرجحة: هبوط':
+    'الحركة القادمة المرجحة: تذبذب وانتظار اتجاه أوضح'
+  );
+  const h2=hunt?.horizons?.twoMinute?.side||'WAIT',h5=hunt?.horizons?.fiveMinute?.side||'WAIT',h15=hunt?.horizons?.fifteenMinute?.side||'WAIT';
+  const timing=Number.isFinite(firstHit)&&firstHit>0?`، وأول حركة معتبرة متوقعة خلال نحو ${firstHit.toFixed(1)} دقيقة`:'';
+  const detail=`الترجيح الحالي ${moveAr(first)} بثقة ${confidence}%${timing}. ميل 2د: ${moveAr(h2)} · 5د: ${moveAr(h5)} · 15د: ${moveAr(h15)}.`;
+  return {title,detail,tone:first==='BUY'?'green':first==='SELL'?'red':'amber'};
+}
 
 function IndicatorMatrix({x}:any){
   const rows=x?.indicatorMatrix?.rows;if(!rows)return null;
@@ -154,18 +171,14 @@ function AssetCard({x,fast}:any){
       </div>)}
     </div>
 
-    <div className={"decision-state-row "+(x.stateGraph?'':'single')}>
-      <div className="master-box">
-        <span>{recommendation?.active?'التوصية النهائية':'القرار النهائي'}</span>
-        <strong className={buy?'green':sell?'red':'amber'}>{recommendation?.active?(sideAr(recommendation.action)+' · '+calibrated(recommendation.confidence)+'%'):(buy?'BUY':sell?'SELL':'WAIT')}</strong>
-        {recommendation?.active?<p>دخول {fmt(recommendation.entry,2)} · إلغاء {fmt(recommendation.invalidation,2)}{recommendation.targets?.fiveMinute!=null?(' · هدف 5m '+fmt(recommendation.targets.fiveMinute,2)):''}</p>:null}
-      </div>
-
-      {x.stateGraph&&<div className="hunt-box market-state-box compact-state">
-        <div className="hunt-title"><span>فهم حركة السوق</span><strong className={x.stateGraph.nextSide==='BUY'?'green':x.stateGraph.nextSide==='SELL'?'red':'amber'}>{sideAr(x.stateGraph.nextSide)} · {x.stateGraph.nextSideProbability||0}%</strong></div>
-        <p className="muted">{x.stateGraph.current} → {x.stateGraph.nextState}{x.stateGraph.changePoint?' · ⚠️ تغيير محتمل':''}</p>
-      </div>}
-    </div>
+    {(()=>{
+      const move=nextMoveCopy(hunt,x.stateGraph);
+      return <div className="next-move-copy">
+        <span>توقع الحركة القادمة</span>
+        <strong className={move.tone}>{move.title}</strong>
+        <p>{move.detail}</p>
+      </div>;
+    })()}
 
     {hunt&&<div className="forecast-horizons compact-forecast">
       <div><small>2m</small><strong className={hunt.horizons?.twoMinute?.side==='BUY'?'green':hunt.horizons?.twoMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.twoMinute?.side)} {hunt.horizons?.twoMinute?.strength||0}%</strong><span>≈ {fmt(hunt.movementStations?.[0]?.price??hunt.path?.firstLeg,2)}</span></div>
