@@ -130,7 +130,20 @@ export function evaluatePredatorScalp(asset:string,input:any){
     !inCooldown&&!o.late&&attackPattern&&score>=74&&hardOpposition===0&&
     o.liveOpposition===0&&(temporalReady||shockReady)
   );
-  const watch=Boolean(!attack&&!inCooldown&&!o.late&&score>=56&&hardOpposition<=1&&(same.length>=2||pattern!=='FLOW_TRACK'));
+  // AMBUSH is the single early-warning scalp: it may arm before ATTACK, but it must be coherent.
+  // Require two aligned observations for ordinary flow; strong pre-move structures can arm earlier
+  // only when live opposition is absent and liquidity/tick context agrees.
+  const ambushStructure=Boolean(
+    pattern!=='FLOW_TRACK'&&(preAligned||motionAligned||o.accumulationAligned||o.reactionAligned)
+  );
+  const ambushTemporal=Boolean(
+    (same.length>=2&&persistence>=.66)||
+    (ambushStructure&&same.length>=1&&persistence>=.75&&o.liveOpposition===0)
+  );
+  const watch=Boolean(
+    !attack&&!inCooldown&&!o.late&&score>=58&&hardOpposition<=1&&
+    o.liveOpposition===0&&ambushTemporal
+  );
 
   let phase:PredatorPhase='HUNT';
   if(inCooldown)phase='COOLDOWN';
@@ -157,7 +170,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   return {
     version:'predator-scalp-v7',phase,side:o.side,score:Math.round(score),attack,watch,pattern,
     stableCount:st.stableCount,ageMs,persistence:Number(persistence.toFixed(2)),edgeSlope:Number(edgeSlope.toFixed(1)),
-    evidenceSlope:Number(evidenceSlope.toFixed(1)),hardOpposition,temporalReady,shockReady,inCooldown,
+    evidenceSlope:Number(evidenceSlope.toFixed(1)),hardOpposition,temporalReady,shockReady,ambushTemporal,inCooldown,
     cooldownMs:Math.max(0,st.cooldownUntil-now),late:o.late,
     alignment:{tick:tickAligned,liquidity:liqAligned,motion:motionAligned,premove:preAligned,trap:trapAligned},
     reasons
