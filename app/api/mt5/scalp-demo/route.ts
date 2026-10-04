@@ -1,5 +1,5 @@
 import {getRuntimeEnv} from '../../../../lib/runtime';
-import {getMarketSnapshot} from '../../../../lib/market-hub';
+import {getMarketSnapshot,getMt5FastSignal} from '../../../../lib/market-hub';
 import {scalpAnalyze} from '../../../../lib/engine';
 import {trainScalpLearner} from '../../../../lib/scalp-learning';
 import {commitDirection} from '../../../../lib/direction-commitment';
@@ -89,20 +89,34 @@ export async function GET(request:Request){
     const fresh=Boolean(mt5?.fresh&&mt5?.candlesFresh&&String(m?.priceSource||'').startsWith('Exness/MT5')&&q?.ok&&q?.status==='live');
     if(!fresh)return Response.json({ok:true,demoOnly:true,ready:false,reason:'MT5 tick/candles not fresh',checkedAt:now,liveOrderAllowed:false},{headers:{'Cache-Control':'private, no-store'}});
     const price=Number(q?.price),atr=atrNow(m.c1),spread=Number(q?.spread),costAtr=atr&&Number(atr)>0&&Number.isFinite(spread)?Math.max(.05,spread/Number(atr)+.03):.10;
-    const learner=trainScalpLearner(m.c1,now,costAtr),scalp=scalpAnalyze(m.c1,m.c5,now,price),book=bookIntel((mt5 as any)?.status||mt5);
+    const learner=trainScalpLearner(m.c1,now,costAtr),scalp=scalpAnalyze(m.c1,m.c5,now,price),book=bookIntel((mt5 as any)?.status||mt5),fast=getMt5FastSignal(now);
     const l=Number(scalp?.score?.long||0),s=Number(scalp?.score?.short||0),microSide:Side=l-s>=14?'BUY':s-l>=14?'SELL':'WAIT',microScore=Math.max(l,s);
     const learnerBuy=learner.side==='BUY'?Number(learner.confidence||0):0,learnerSell=learner.side==='SELL'?Number(learner.confidence||0):0;
     const bookBuy=book.side==='BUY'?book.score:0,bookSell=book.side==='SELL'?book.score:0;
-    const commitBuy=l*.48+learnerBuy*.30+bookBuy*.22,commitSell=s*.48+learnerSell*.30+bookSell*.22;
+    const fastBuy=fast.side==='BUY'?Number(fast.score||0):0,fastSell=fast.side==='SELL'?Number(fast.score||0):0;
+    const commitBuy=l*.34+learnerBuy*.22+bookBuy*.18+fastBuy*.26,commitSell=s*.34+learnerSell*.22+bookSell*.18+fastSell*.26;
     const commitment=commitDirection('mt5-intercept:'+String((mt5 as any)?.status?.symbol||(mt5 as any)?.symbol||'XAUUSDm'),commitBuy,commitSell,now,null);
     const side=commitment.side;
     const bookAligned=book.side==='WAIT'||book.side===side;
-    const aligned=Boolean(side!=='WAIT'&&microSide===side&&learner.side===side&&bookAligned);
-    const qualified=Boolean(aligned&&learner.ok&&learner.gate?.passed&&learner.oosAccuracy>=56&&learner.oosEdgeAtr>=.06&&learner.profitFactor>=1.20&&learner.confidence>=55&&microScore>=60&&Number.isFinite(price)&&price>0&&Number.isFinite(Number(atr))&&Number(atr)>0);
+    const fastAligned=Boolean(fast?.ok&&fast.side===side&&['PRE_TRIGGER','BUILDING','IGNITION'].includes(String(fast.stage)));
+    const classicAligned=Boolean(side!=='WAIT'&&microSide===side&&learner.side===side&&bookAligned);
+    const anticipatoryAligned=Boolean(side!=='WAIT'&&fastAligned&&bookAligned&&(microSide===side||book.side===side)&&Number(fast.score||0)>=58);
+    const qualified=Boolean(
+      Number.isFinite(price)&&price>0&&Number.isFinite(Number(atr))&&Number(atr)>0&&
+      (
+        classicAligned&&learner.ok&&learner.gate?.passed&&learner.oosAccuracy>=56&&learner.oosEdgeAtr>=.06&&learner.profitFactor>=1.20&&learner.confidence>=55&&microScore>=60
+        ||
+        anticipatoryAligned&&['PRE_TRIGGER','IGNITION'].includes(String(fast.stage))&&Number(fast.confidence||0)>=58&&microScore>=52
+      )
+    );
     const a=Number(atr||0),intercept=interceptPlan(price,a,side,book),stations=trajectoryStations(m.c1,price,a,side,book);
-    const etaSeconds=side==='WAIT'?null:Math.round(cap(22-Math.abs(book.imbalance)*.08-Math.max(0,microScore-55)*.12,4,25));
+    const etaSeconds=side==='WAIT'?null:Math.round(cap(
+      String(fast.stage)==='PRE_TRIGGER'?8:String(fast.stage)==='IGNITION'?4:22
+      -Math.abs(book.imbalance)*.08-Math.max(0,microScore-55)*.12-Math.abs(Number(fast.acceleration||0))*18,
+      2,25
+    ));
     const trajectory={
-      version:'mt5-intercept-v1',side,status:intercept.status,qualified,etaSeconds,
+      version:'mt5-intercept-v2-fast',side,status:intercept.status,qualified,etaSeconds,fastStage:String(fast.stage||'OFFLINE'),
       current:intercept,stations,
       logic:'INTERCEPT_FIRST_THEN_RECALCULATE_EACH_STATION',
       nextAction:intercept.status==='READY'?'INTERCEPT_NOW':intercept.status==='WAIT_ZONE'?'WAIT_FOR_ZONE':intercept.status==='NO_CHASE'?'SKIP_AND_RECALCULATE':'WAIT'
@@ -120,10 +134,10 @@ export async function GET(request:Request){
       ok:true,demoOnly:true,liveOrderAllowed:false,ready:true,checkedAt:now,expiresAt:now+2200,
       quote:{price:q?.price,bid:q?.bid,ask:q?.ask,spread:q?.spread,source:q?.source},
       learner:{ok:learner.ok,side:learner.side,score:learner.score,confidence:learner.confidence,oosAccuracy:learner.oosAccuracy,oosEdgeAtr:learner.oosEdgeAtr,oosGrossEdgeAtr:learner.oosGrossEdgeAtr,profitFactor:learner.profitFactor,maxDrawdownAtr:learner.maxDrawdownAtr,costAtr:learner.costAtr,gate:learner.gate,sampleCount:learner.sampleCount,preferredHoldBars:learner.preferredHoldBars,exitPlan:learner.exitPlan},
-      micro:{side:microSide,score:microScore,long:l,short:s,action:scalp?.action,reason:scalp?.reason,orderBook:book},
+      micro:{side:microSide,score:microScore,long:l,short:s,action:scalp?.action,reason:scalp?.reason,orderBook:book,fastTick:fast},
       commitment,trajectory,plan,
-      blockedBy:[...(!learner.ok?['learner_not_validated']:[]),...(!learner.gate?.passed?['final_holdout_edge_gate_failed']:[]),...(learner.side!==microSide?['learner_micro_disagree']:[]),...(!bookAligned?['orderbook_opposes_direction']:[]),...(commitment.side!==learner.side||commitment.side!==microSide?['direction_commitment_not_aligned']:[]),...(microScore<60?['micro_score_low']:[]),...(side==='WAIT'?['no_single_direction']:[]),...(intercept.status==='NO_CHASE'?['late_entry_no_chase']:[]),...(qualified&&!intercept.ready?['waiting_for_intercept_zone']:[])],
-      note:'Demo-only MT5 intercept planner. يحسب منطقة الاستقبال والمحطات التالية ويعيد الحساب عند كل محطة؛ لا يصرح بأوامر MT5 حقيقية.'
+      blockedBy:[...(!learner.ok?['learner_not_validated']:[]),...(!learner.gate?.passed?['final_holdout_edge_gate_failed']:[]),...(!anticipatoryAligned&&learner.side!==microSide?['learner_micro_disagree']:[]),...(!bookAligned?['orderbook_opposes_direction']:[]),...(!anticipatoryAligned&&(commitment.side!==learner.side||commitment.side!==microSide)?['direction_commitment_not_aligned']:[]),...(microScore<(anticipatoryAligned?52:60)?['micro_score_low']:[]),...(!fastAligned?['fast_tick_not_aligned']:[]),...(side==='WAIT'?['no_single_direction']:[]),...(intercept.status==='NO_CHASE'?['late_entry_no_chase']:[]),...(qualified&&!intercept.ready?['waiting_for_intercept_zone']:[])],
+      note:'Demo-only MT5 fast intercept planner. يقرأ ticks دون انتظار إغلاق M1، يحسب PRE_TRIGGER قبل الحركة، ثم منطقة الاستقبال والمحطات التالية ويعيد الحساب عند كل محطة؛ لا يصرح بأوامر MT5 حقيقية.'
     },{headers:{'Cache-Control':'private, no-store'}});
   }catch(e){
     return Response.json({ok:false,code:'SCALP_DEMO_SOURCE_ERROR',message:'تعذر تكوين خطة السكالب التجريبية.',detail:e instanceof Error?e.message:'unknown'},{status:502,headers:{'Cache-Control':'private, no-store'}});
