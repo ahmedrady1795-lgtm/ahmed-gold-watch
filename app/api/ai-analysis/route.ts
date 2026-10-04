@@ -144,7 +144,7 @@ export async function GET(request:Request){
     const goldLearner=trainScalpLearner(gm.c1,now,goldCostAtr);
     const bitcoinLearner=trainScalpLearner(btc.c1,now,btcCostAtr);
     const motion=getMotionIntelligence(btcPrice,liquidity,btc.c1,now);
-    const bitcoinScalpPrior=getNextMoveOutcome('BTC_SCALP',btcPrice,now);
+    const bitcoinScalpPrior=getNextMoveOutcome('BTC_SCALP_V4',btcPrice,now);
     const mlPredictionPromise=getMlPrediction(btc.c1,now).catch(()=>({ok:false,status:'UNAVAILABLE',shadow:true} as any));
     const neuralPredictionPromise=getNeuralPrediction(now).catch(()=>({ok:false,status:'UNAVAILABLE',ready:false,side:'WAIT'} as any));
     const bitcoinMlRaw=await mlPredictionPromise;
@@ -191,7 +191,7 @@ export async function GET(request:Request){
     const goldBrainRecord=recordBrainOutcomeObservation({asset:'GOLD',price:goldPrice,atr:goldAtr,now,multiBrain:goldMultiBrain});
     const bitcoinBrainRecord=recordBrainOutcomeObservation({asset:'BTC',price:btcPrice,atr:btcAtr,now,multiBrain:bitcoinMultiBrain});
     const bitcoinScalpLive=recordNextMoveOutcome({
-      asset:'BTC_SCALP',price:btcPrice,atr:btcAtr,now,
+      asset:'BTC_SCALP_V4',price:btcPrice,atr:btcAtr,now,
       hunt:{nextMove:{
         side:bitcoinScalp.action,confidence:Number(bitcoinScalp.confidence||0),source:'SCALP_PREMOVE_V4',
         micro:bitcoinScalp.fusionV4||bitcoinScalp.fusionV3||{}
