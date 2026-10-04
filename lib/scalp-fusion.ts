@@ -436,6 +436,45 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     zoneStrength:zoneTargetValid?Number(targetZone.strength):0,
     contextMode
   };
+  const ambushPlanStatus=predator?.phase==='ABORT'?'CANCEL'
+    :ambushTrade?(intercept.ready?'EXECUTE':'ARMED')
+      :predator?.phase==='TRACK'?'STALK':'SCOUT';
+  const ambushPlan={
+    authority:'AMBUSH',
+    status:ambushPlanStatus,
+    side:targetSide,
+    pattern:String(predator?.pattern||contextMode),
+    readiness:Number(predator?.score||0),
+    assistants,
+    assistantCount,
+    entry:{
+      status:intercept.status,
+      ready:intercept.ready,
+      zoneLow:intercept.zoneLow,
+      zoneHigh:intercept.zoneHigh,
+      launchLine:intercept.launchLine,
+      chaseBoundary:intercept.chaseBoundary
+    },
+    trigger:{
+      phaseRequired:'AMBUSH',
+      microReady:Boolean(predator?.microstructure?.ambushReady),
+      temporalReady:Boolean(predator?.ambushTemporal),
+      noChase:!chaseRisk,
+      noFlip:!flipSuppressed
+    },
+    invalidation:{
+      cancel:Boolean(predator?.phase==='ABORT'||chaseRisk||flipSuppressed||reactionConflict),
+      reasons:[
+        predator?.phase==='ABORT'?'ABORT':null,
+        chaseRisk?'NO_CHASE':null,
+        flipSuppressed?'FLIP_FILTER':null,
+        reactionConflict?'REACTION_CONFLICT':null
+      ].filter(Boolean)
+    },
+    target,
+    etaSeconds:preMove.etaSeconds,
+    updatedAt:Date.now()
+  };
   let trade:any=null;
   if(ambushTrade&&intercept.ready&&Number.isFinite(p)&&p>0&&Number.isFinite(a)&&a>0){
     const dir=fusedSide==='BUY'?1:-1;
@@ -454,20 +493,21 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   return {
     ...raw,
     state,action,
-    title:action==='BUY'?'AMBUSH SCALP V8 · BUY':action==='SELL'?'AMBUSH SCALP V8 · SELL':'AMBUSH SCALP V8 · WAIT',
+    title:action==='BUY'?'AMBUSH · BUY':action==='SELL'?'AMBUSH · SELL':'AMBUSH · WAIT',
     reason:action==='WAIT'
       ?`Ambush V8 · ${String(predator?.phase||'HUNT')} · ${String(predator?.pattern||'NO_EDGE')} · AMBUSH لم يعتمد صفقة${chaseRisk?' · NO CHASE':''}${reactionConflict?' · REACTION BLOCK':''}${flipSuppressed?' · FLIP FILTER':''}.`
       :`Ambush V8 · ${fusedSide} · ${String(predator?.pattern||contextMode)} · score ${Number(predator?.score||0)} · مساعدين ${assistantCount}/10 · stable ${Number(predator?.stableCount||0)}${predator?.attackAssist?' · ATTACK CONFIRM':''}${preMoveAligned?' · PRE-MOVE':''}${changed?' · TECH CONTRARIAN':''}.`,
     score:{long:outLong,short:outShort,threshold:58},
     confidence,
     trade,
-    early:Boolean(ambushTrade||anticipatoryStrong),
+    ambushPlan,
+    early:Boolean(ambushTrade),
     preMove,
     intercept,
     target,
     reaction:{active:reaction.active,inside:Boolean(reaction.inside),side:reactionSide,strength:reactionScore,confirmed:reactionConfirmed,candidate:reactionCandidate,fastSupport:reactionFastSupport,fastOpposition:reactionFastOpposition,nearest:reaction.nearest||null,contextMode},
     fusionV8:{
-      authority:'AMBUSH',side:fusedSide,rawSide:rawFusedSide,confidence,strong:ambushTrade,watch:false,ambushTrade,predator,assistants,assistantCount,
+      authority:'AMBUSH',side:fusedSide,rawSide:rawFusedSide,confidence,strong:ambushTrade,watch:false,ambushTrade,predator,assistants,assistantCount,ambushPlan,
       contextMode,reactionAligned,reactionConflict,accumulationAligned,accumulationPhase,accumulationReadiness,target,intercept,
       reliability:{active:activeReliability,ambush:confirmedReliability,reliabilityPenalty},
       buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
@@ -475,70 +515,6 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
       support,opposition,liveSupport,liveOpposition,mode,
       components:rows.map(r=>({name:r.name,role:'ASSIST',side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight}))
     },
-    fusionV7:{
-      side:fusedSide,rawSide:rawFusedSide,confidence,strong,watch,rawStrong,legacyStrong,legacyWatch,predator,
-      classicStrong,anticipatoryStrong,earlyWatch,lateWatch,chaseRisk,flipSuppressed,commitment,
-      contextMode,reactionAligned,reactionConflict,reactionConfirmed,reactionCandidate,reactionFastSupport,reactionFastOpposition,
-      accumulationAligned,accumulationPhase,accumulationReadiness,target,intercept,
-      reliability:{active:activeReliability,confirmed:confirmedReliability,premove:preMoveReliability,reliabilityPenalty},
-      buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
-      buyEvidence:Number(buyEvidence.toFixed(1)),sellEvidence:Number(sellEvidence.toFixed(1)),dominantEvidence:Number(dominantEvidence.toFixed(1)),
-      support,opposition,liveSupport,liveOpposition,
-      techSide,liqSide,motionSide,trapSide,mlSide:ml1.side,learnedSide,tickSide:tick1.side,accumulationSide,reactionSide,
-      techL2Conflict,livePair,fastPair,preMoveAligned,tickAligned,mlConflict,mode,
-      components:rows.map(r=>({name:r.name,side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight}))
-    },
-    fusionV6:{
-      side:fusedSide,rawSide:rawFusedSide,confidence,strong,rawStrong,classicStrong,anticipatoryStrong,watch,earlyWatch,lateWatch,chaseRisk,flipSuppressed,commitment,
-      contextMode,reactionAligned,reactionConflict,reactionConfirmed,reactionCandidate,reactionFastSupport,reactionFastOpposition,unconfirmedReactionAgainstFlow,accumulationAligned,accumulationPhase,accumulationReadiness,target,confirmedColdFailGuard,confirmedHits,confirmedFails,confirmedDirectional,compressionConfirmed,recoveryOverride,
-      intercept,
-      reliability:{active:activeReliability,confirmed:confirmedReliability,premove:preMoveReliability,reliabilityPenalty},
-      ignitionEtaSeconds:preMove.etaSeconds,
-      buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
-      buyEvidence:Number(buyEvidence.toFixed(1)),sellEvidence:Number(sellEvidence.toFixed(1)),dominantEvidence:Number(dominantEvidence.toFixed(1)),
-      support,opposition,liveSupport,liveOpposition,
-      techSide,liqSide,motionSide,trapSide,mlSide:ml1.side,learnedSide,tickSide:tick1.side,accumulationSide,reactionSide,
-      techL2Conflict,livePair,fastPair,preMoveAligned,tickAligned,mlConflict,mode,
-      oos:{status:scalpWfStatus,n:scalpOosN,accuracy:Number.isFinite(scalpOosAcc)?scalpOosAcc:null,drift:scalpDrift,precisionGuard:scalpPrecisionGuard,severeDrift:scalpSevereDrift,strongEdge,strongEvidence},
-      components:rows.map(r=>({name:r.name,side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight}))
-    },
-    fusionV5:{
-      side:fusedSide,rawSide:rawFusedSide,confidence,strong,rawStrong,classicStrong,anticipatoryStrong,watch,earlyWatch,lateWatch,chaseRisk,flipSuppressed,commitment,
-      contextMode,reactionAligned,reactionConflict,accumulationAligned,accumulationPhase,accumulationReadiness,target,
-      intercept,
-      reliability:{active:activeReliability,confirmed:confirmedReliability,premove:preMoveReliability,reliabilityPenalty},
-      ignitionEtaSeconds:preMove.etaSeconds,
-      buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
-      buyEvidence:Number(buyEvidence.toFixed(1)),sellEvidence:Number(sellEvidence.toFixed(1)),dominantEvidence:Number(dominantEvidence.toFixed(1)),
-      support,opposition,liveSupport,liveOpposition,
-      techSide,liqSide,motionSide,trapSide,mlSide:ml1.side,learnedSide,tickSide:tick1.side,
-      techL2Conflict,livePair,fastPair,preMoveAligned,tickAligned,mlConflict,mode,
-      oos:{status:scalpWfStatus,n:scalpOosN,accuracy:Number.isFinite(scalpOosAcc)?scalpOosAcc:null,drift:scalpDrift,precisionGuard:scalpPrecisionGuard,severeDrift:scalpSevereDrift,strongEdge,strongEvidence},
-      components:rows.map(r=>({name:r.name,side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight}))
-    },
-    // Compatibility aliases while downstream layers migrate to v5.
-    fusionV4:{
-      side:fusedSide,rawSide:rawFusedSide,confidence,strong,rawStrong,classicStrong,anticipatoryStrong,watch,earlyWatch,lateWatch,chaseRisk,flipSuppressed,commitment,
-      buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
-      buyEvidence:Number(buyEvidence.toFixed(1)),sellEvidence:Number(sellEvidence.toFixed(1)),dominantEvidence:Number(dominantEvidence.toFixed(1)),
-      support,opposition,liveSupport,liveOpposition,
-      techSide,liqSide,motionSide,trapSide,mlSide:ml1.side,learnedSide,tickSide:tick1.side,
-      techL2Conflict,livePair,fastPair,preMoveAligned,tickAligned,mlConflict,mode,
-      reliability:{active:activeReliability,confirmed:confirmedReliability,premove:preMoveReliability,reliabilityPenalty},
-      ignitionEtaSeconds:preMove.etaSeconds,
-      oos:{status:scalpWfStatus,n:scalpOosN,accuracy:Number.isFinite(scalpOosAcc)?scalpOosAcc:null,drift:scalpDrift,precisionGuard:scalpPrecisionGuard,severeDrift:scalpSevereDrift,strongEdge,strongEvidence},
-      components:rows.map(r=>({name:r.name,side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight}))
-    },
-    // Keep v3 key as a compatibility alias for the forecast/master layers while they migrate.
-    fusionV3:{
-      side:fusedSide,confidence,strong,watch,
-      buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
-      buyEvidence:Number(buyEvidence.toFixed(1)),sellEvidence:Number(sellEvidence.toFixed(1)),dominantEvidence:Number(dominantEvidence.toFixed(1)),
-      support,opposition,liveSupport,liveOpposition,
-      techSide,liqSide,motionSide,trapSide,mlSide:ml1.side,learnedSide,tickSide:tick1.side,
-      techL2Conflict,livePair,fastPair,preMoveAligned,anticipatoryStrong,mode,
-      oos:{status:scalpWfStatus,n:scalpOosN,accuracy:Number.isFinite(scalpOosAcc)?scalpOosAcc:null,drift:scalpDrift,precisionGuard:scalpPrecisionGuard,severeDrift:scalpSevereDrift,strongEdge,strongEvidence},
-      components:rows.map(r=>({name:r.name,side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight}))
-    }
+
   };
 }
