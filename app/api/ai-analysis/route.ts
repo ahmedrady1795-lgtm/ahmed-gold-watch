@@ -1,4 +1,4 @@
-import {analyze,defaults,scalpAnalyze} from '../../../lib/engine';
+import {analyze,defaults,ambushTechnicalHelper} from '../../../lib/engine';
 import {getMarketSnapshot,getMarketData,getQuoteData} from '../../../lib/market-hub';
 import {getBtcMarket} from '../../../lib/btc-market';
 import {aiDecision} from '../../../lib/ai-analyst';
@@ -22,7 +22,7 @@ import {getBrainOutcomeLearning,recordBrainOutcomeObservation} from '../../../li
 import {getServerTickSignal,startServerTickBrain} from '../../../lib/server-tick-brain';
 import {buildNewsIntelligence} from '../../../lib/news-intelligence';
 import {buildOpportunitySet} from '../../../lib/multi-opportunity';
-import {buildScalpFusion} from '../../../lib/scalp-fusion';
+import {buildAmbushEngine} from '../../../lib/scalp-fusion';
 import {recordNextMoveOutcome,getNextMoveOutcome,calibrateNextMoveConfidence} from '../../../lib/next-move-outcome';
 
 export const dynamic='force-dynamic';
@@ -136,8 +136,8 @@ export async function GET(request:Request){
     const deltaPct=base?delta/base*100:0,momentum=a1&&a1>0?Math.min(100,Math.round(Math.abs(delta)/a1*100)):0;
     const pulseDirection:'UP'|'DOWN'|'FLAT'=delta>0?'UP':delta<0?'DOWN':'FLAT';
     const livePulse={price:btcPrice,basePrice:base,delta,deltaPct,momentum,direction:pulseDirection,source:liveBtc?.source||btc.source,sourceTime:liveBtc?.sourceTime||btc.checkedAt};
-    const goldScalpRaw=scalpAnalyze(gm.c1,gm.c5,now,goldPrice);
-    const bitcoinScalpRaw=scalpAnalyze(btc.c1,btc.c5,now,btcPrice);
+    const goldScalpRaw=ambushTechnicalHelper(gm.c1,gm.c5,now,goldPrice);
+    const bitcoinScalpRaw=ambushTechnicalHelper(btc.c1,btc.c5,now,btcPrice);
     const goldAtr=atrNow(gm.c1),btcAtr=a1,goldSpread=Number(quote?.spread);
     const goldCostAtr=goldAtr&&Number(goldAtr)>0&&Number.isFinite(goldSpread)?Math.max(.05,goldSpread/Number(goldAtr)+.03):.10;
     const btcBookSpread=Number(liquidity?.book?.spreadBps||0),btcSpreadUsd=Number.isFinite(Number(btcPrice))?Number(btcPrice)*btcBookSpread/10000:0;
@@ -153,8 +153,8 @@ export async function GET(request:Request){
     const neuralPredictionPromise=getNeuralPrediction(now).catch(()=>({ok:false,status:'UNAVAILABLE',ready:false,side:'WAIT'} as any));
     const bitcoinMlRaw=await mlPredictionPromise;
     const bitcoinTick=getServerTickSignal('BTC',now)||btcWave;
-    const goldScalp=buildScalpFusion(goldScalpRaw,null,null,goldLearner,null,goldPrice,goldAtr,null,goldTick,goldAccumulation,'GOLD');
-    const bitcoinScalp=buildScalpFusion(bitcoinScalpRaw,liquidity,motion,bitcoinLearner,bitcoinMlRaw,btcPrice,btcAtr,bitcoinScalpPrior,bitcoinTick,bitcoinAccumulation,'BTC');
+    const goldScalp=buildAmbushEngine(goldScalpRaw,null,null,goldLearner,null,goldPrice,goldAtr,null,goldTick,goldAccumulation,'GOLD');
+    const bitcoinScalp=buildAmbushEngine(bitcoinScalpRaw,liquidity,motion,bitcoinLearner,bitcoinMlRaw,btcPrice,btcAtr,bitcoinScalpPrior,bitcoinTick,bitcoinAccumulation,'BTC');
     const goldBehavior=studyMarketBehavior(gm.c1,gm.c5,now);
     const bitcoinBehavior=studyMarketBehavior(btc.c1,btc.c5,now);
     const goldStructure=analyzeWaveStructure(gm.c1,gm.c5,now);
