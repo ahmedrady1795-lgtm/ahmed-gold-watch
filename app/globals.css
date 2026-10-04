@@ -110,7 +110,7 @@ footer{display:flex;justify-content:space-between;gap:20px;color:#5f7880;font-si
   .shell{padding:9px 10px 32px}.topbar{padding:10px;gap:9px;border-radius:15px}.brand{min-width:auto}.brandmark{width:39px;height:39px;border-radius:11px}.brand span{display:none}.brand strong{font-size:13px}
   .tickerstrip{gap:5px;overflow:hidden}.tickerstrip>div{min-width:0;flex:1;padding:6px 7px}.tickerstrip>div:nth-child(3){display:none}.tickerstrip b{font-size:12px}.tickerstrip small{font-size:8px}
   .refresh{padding:9px}.refresh span{display:none}.statusrail{gap:5px}.pill{font-size:9px;padding:6px 8px}.source{width:100%;margin:3px 4px 0;font-size:9px}
-  .tabs button{padding:9px 11px;font-size:11px}.workspace{gap:10px}.content{gap:10px}.panel,.signalflow,.commandcenter{border-radius:14px}.panel{padding:14px}.commandcenter{padding:15px}
+  .tabs{gap:4px}.tabs button{padding:8px 8px;font-size:10px;gap:4px}.tabs button svg{width:15px;height:15px;flex:0 0 auto}.workspace{gap:10px}.content{gap:10px}.panel,.signalflow,.commandcenter{border-radius:14px}.panel{padding:14px}.commandcenter{padding:15px}
   .cc-main h2{font-size:23px}.cc-main p{font-size:11px}.cc-score{width:82px;height:82px;flex-basis:82px;border-width:5px}.cc-score strong{font-size:24px}
   .cc-grid{grid-template-columns:1fr 1fr}.cc-trade{grid-template-columns:1fr 1fr}.flowgrid{grid-template-columns:1fr 1fr}.dashboardgrid,.grid{grid-template-columns:1fr}
   .sidebar{grid-template-columns:1fr}.healthgrid{grid-template-columns:1fr 1fr}.labcards{grid-template-columns:1fr}.rulecontrols,.rulesgrid{grid-template-columns:1fr 1fr}
@@ -119,7 +119,7 @@ footer{display:flex;justify-content:space-between;gap:20px;color:#5f7880;font-si
 @media(max-width:430px){
   .cc-main{gap:10px}.cc-score{width:72px;height:72px;flex-basis:72px}.cc-score strong{font-size:20px}
   .cc-grid,.flowgrid,.healthgrid,.rulecontrols,.rulesgrid{grid-template-columns:1fr 1fr}
-  .cc-confirm span{font-size:8px}.panel h2{font-size:17px}
+  .tabs{gap:3px}.tabs button{padding:7px 6px;font-size:9px;gap:3px}.tabs button svg{width:14px;height:14px}.cc-confirm span{font-size:8px}.panel h2{font-size:17px}
 }
 
 .ai-workspace{grid-template-columns:1fr}
