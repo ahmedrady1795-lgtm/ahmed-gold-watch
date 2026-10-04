@@ -85,6 +85,9 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const structureFresh=Boolean(structure?.ok&&structure?.side);
   const structureM1Side:Side=structureFresh?(structure?.m1?.nextSide||'WAIT'):'WAIT',structureM5Side:Side=structureFresh?(structure?.m5?.nextSide||structure?.followSide||'WAIT'):'WAIT';
   const structureM1Score=structureFresh?Number(structure?.m1?.nextScore||0):0,structureM5Score=structureFresh?Number(structure?.m5?.nextScore||0):0;
+  const m1Phase=String(structure?.m1?.phase||'TRANSITION'),m5Phase=String(structure?.m5?.phase||'TRANSITION');
+  const graphFresh=Boolean(stateGraph?.ok&&Number(stateGraph?.sequenceMatches||0)>=4);
+  const graphChange=Boolean(stateGraph?.changePoint&&Number(stateGraph?.changePointScore||0)>=58);
   const waveFresh=Boolean(wave?.ok&&['BUY','SELL'].includes(String(wave?.side))&&Number(wave?.score)>=30&&now-Number(wave?.at||0)<=3000);
   const waveSide:Side=waveFresh?(wave.side as Side):'WAIT',waveScore=waveFresh?Number(wave?.score||0):0,waveConfidence=Number(wave?.confidence||0);
   const learnerFresh=Boolean(learner?.ok&&learner?.gate?.passed&&['BUY','SELL'].includes(String(learner?.side))&&Number(learner?.oosAccuracy)>=56&&Number(learner?.oosEdgeAtr)>=.06&&Number(learner?.profitFactor)>=1.20);
@@ -144,6 +147,46 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   let primaryMoveSide:Side=movementUsable?movementSide:firstMoveMemoryValid?em2Side:(two.side!=='WAIT'?two.side:movementLean);
   let primaryMoveConfidence=Math.round(cap(movementUsable?movementConfidence:firstMoveMemoryValid?(Number(em2?.confidence||0)*.65+Number(em2?.decisiveRate||0)*.35):two.strength,0,88));
 
+  // Phase-aware understanding: continuation, reversal and compression are not treated as the same market.
+  const graphDirectional:Side=graphFresh?(stateGraph?.nextSide||'WAIT'):'WAIT';
+  const graphDirectionalConfidence=graphFresh?Number(stateGraph?.nextSideProbability||0):0;
+  const continuationPhase=['BREAKOUT','IMPULSE','TREND','RETEST'].includes(m1Phase);
+  const reversalPhase=['SWEEP_REVERSAL','EXHAUSTION'].includes(m1Phase);
+  const compressionPhase=m1Phase==='COMPRESSION'||String(movementIntel?.regime||'')==='COMPRESSION'||String(stateGraph?.current||'')==='COMPRESSION';
+  const structureAgreement=structureM1Side!=='WAIT'&&structureM1Side===primaryMoveSide;
+  const graphAgreement=graphDirectional!=='WAIT'&&graphDirectional===primaryMoveSide;
+  const expectedAgreement=em2Side!=='WAIT'&&em2Side===primaryMoveSide;
+
+  if(primaryMoveSide==='WAIT'&&structureM1Side!=='WAIT'&&graphDirectional===structureM1Side&&graphDirectionalConfidence>=55&&structureM1Score>=45){
+    primaryMoveSide=structureM1Side;
+    primaryMoveConfidence=Math.round(cap(graphDirectionalConfidence*.46+structureM1Score*.34+Number(em2?.confidence||0)*.20,0,84));
+  }
+  if(reversalPhase&&graphChange&&structureM1Side!=='WAIT'){
+    const reversalSupport=(graphDirectional===structureM1Side?1:0)+(trapSide===structureM1Side&&trapScore>=60?1:0)+(em2Side===structureM1Side?1:0);
+    if(reversalSupport>=2){
+      primaryMoveSide=structureM1Side;
+      primaryMoveConfidence=Math.round(cap(primaryMoveConfidence+8+Math.min(8,Number(stateGraph?.changePointScore||0)*.08),0,86));
+    }
+  }
+  if(continuationPhase&&structureAgreement){
+    primaryMoveConfidence=Math.round(cap(primaryMoveConfidence+5+(expectedAgreement?4:0)+(graphAgreement?3:0),0,88));
+  }
+  if(compressionPhase){
+    const directionalVotes=[movementSide,em2Side,structureM1Side,graphDirectional].filter(s=>s==='BUY'||s==='SELL');
+    const buys=directionalVotes.filter(s=>s==='BUY').length,sells=directionalVotes.filter(s=>s==='SELL').length;
+    const dominant:Side=buys>=3?'BUY':sells>=3?'SELL':'WAIT';
+    if(dominant==='WAIT'){
+      primaryMoveSide='WAIT';
+      primaryMoveConfidence=Math.min(primaryMoveConfidence,32);
+    }else{
+      primaryMoveSide=dominant;
+      primaryMoveConfidence=Math.round(cap(primaryMoveConfidence+4,0,82));
+    }
+  }
+  if(primaryMoveSide!=='WAIT'&&graphDirectional!=='WAIT'&&graphDirectional!==primaryMoveSide&&graphDirectionalConfidence>=62){
+    primaryMoveConfidence=Math.max(20,primaryMoveConfidence-10);
+  }
+
   // Live failure guard: a forecast that is materially invalidated cannot keep repeating unchanged.
   const guardValid=Number.isFinite(p)&&p>0&&Number.isFinite(a)&&a>0;
   const previousGuard=liveFailureGuards.get(asset);
@@ -200,7 +243,46 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
 
   const structurePathConsistent=Boolean(structure?.shortSide==='WAIT'||two.side==='WAIT'||structure?.shortSide===two.side)&&Boolean(structure?.followSide==='WAIT'||fifteen.side==='WAIT'||structure?.followSide===fifteen.side);
   const structuralPath=structureFresh&&Number(structure?.confidence||0)>=structurePathConfidence&&structurePathConsistent&&structure?.path&&structure.path!=='UNKNOWN'?String(structure.path):null;
-  const path=structuralPath||pathOf(primaryMoveSide,five.side,fifteen.side),pathLabel=pathAr(path);
+
+  const followVotes:{side:Side;w:number}[]=[
+    {side:five.side,w:Number(five.strength||0)*.34},
+    {side:fifteen.side,w:Number(fifteen.strength||0)*.28},
+    {side:structureM5Side,w:Number(structureM5Score||0)*.20},
+    {side:graphDirectional,w:graphDirectionalConfidence*.18}
+  ];
+  let followBuy=0,followSell=0;
+  for(const v of followVotes){if(v.side==='BUY')followBuy+=v.w;else if(v.side==='SELL')followSell+=v.w;}
+  const learnedFollowSide:Side=followBuy-followSell>=6?'BUY':followSell-followBuy>=6?'SELL':'WAIT';
+  const learnedFollowConfidence=Math.round(cap(Math.max(followBuy,followSell),0,86));
+
+  const path=structuralPath||pathOf(primaryMoveSide,learnedFollowSide!=='WAIT'?learnedFollowSide:five.side,fifteen.side),pathLabel=pathAr(path);
+  const understandingMode=
+    reversalPhase&&graphChange?'REVERSAL':
+    compressionPhase?'COMPRESSION':
+    continuationPhase?'CONTINUATION':
+    String(stateGraph?.current||'')==='RANGE'?'RANGE':'TRANSITION';
+  const understandingAgreement=[movementSide,em2Side,structureM1Side,graphDirectional].filter(s=>s!=='WAIT'&&primaryMoveSide!=='WAIT'&&s===primaryMoveSide).length;
+  const understandingConflict=[movementSide,em2Side,structureM1Side,graphDirectional].filter(s=>s!=='WAIT'&&primaryMoveSide!=='WAIT'&&s!==primaryMoveSide).length;
+  const understandingConfidence=Math.round(cap(
+    primaryMoveConfidence*.48+
+    Number(two.strength||0)*.17+
+    Number(stateGraph?.confidence||0)*.12+
+    Number(structure?.confidence||0)*.13+
+    Math.min(10,understandingAgreement*3)-
+    understandingConflict*5-
+    (graphChange&&understandingMode!=='REVERSAL'?5:0),
+    0,88
+  ));
+  const currentState=String(stateGraph?.current||m1Phase||'TRANSITION');
+  const expectedState=String(stateGraph?.nextState||m5Phase||'TRANSITION');
+  const firstWord=primaryMoveSide==='BUY'?'صعود':primaryMoveSide==='SELL'?'هبوط':'تذبذب';
+  const followWord=learnedFollowSide==='BUY'?'صعود':learnedFollowSide==='SELL'?'هبوط':'غير محسوم';
+  const understandingSummary=
+    understandingMode==='REVERSAL'?'السوق يُظهر علامات انعكاس؛ الحركة الأولى المرجحة '+firstWord+' ثم '+followWord+'.':
+    understandingMode==='COMPRESSION'?'السوق في ضغط/تجميع للحركة؛ أول حركة مرجحة '+firstWord+' والموجة التالية '+followWord+'.':
+    understandingMode==='CONTINUATION'?'السوق يميل لاستمرار الحركة؛ المتوقع أولًا '+firstWord+' ثم '+followWord+'.':
+    understandingMode==='RANGE'?'السوق داخل نطاق؛ المتوقع '+firstWord+' مع احتمال كسر كاذب قبل اتجاه أوضح.':
+    'السوق في انتقال بين حالتين؛ الحركة الأولى المرجحة '+firstWord+' ثم '+followWord+'.';
   let expAtr=Math.abs(behaviorExp);
   if(!Number.isFinite(expAtr)||expAtr<.2)expAtr=.42;
   expAtr=Math.min(1.7,Math.max(.28,expAtr));
@@ -314,6 +396,26 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     buyScore:Math.round(buy),sellScore:Math.round(sell),horizonSeconds,expectedMoveAtr:Number(expAtr.toFixed(2)),
     trigger:trigger==null?null:Number(trigger.toFixed(2)),projected:projected==null?null:Number(projected.toFixed(2)),invalidation:invalidation==null?null:Number(invalidation.toFixed(2)),currentPrice:Number.isFinite(p)?p:null,
     path:{code:path,label:pathLabel,firstLeg:firstLeg==null?null:Number(firstLeg.toFixed(2)),secondLeg:secondLeg==null?null:Number(secondLeg.toFixed(2)),shortSide,followSide,structureDriven:Boolean(structuralPath),stations:movementStations},
+    marketUnderstanding:{
+      mode:understandingMode,
+      currentState,
+      expectedState,
+      m1Phase,
+      m5Phase,
+      firstMove:{side:primaryMoveSide,confidence:understandingConfidence},
+      followMove:{side:learnedFollowSide,confidence:learnedFollowConfidence},
+      agreement:understandingAgreement,
+      conflict:understandingConflict,
+      changePoint:graphChange,
+      changePointScore:Number(stateGraph?.changePointScore||0),
+      summary:understandingSummary,
+      evidence:[
+        'Movement '+movementSide+' '+movementConfidence,
+        'Expected-2m '+em2Side+' '+Number(em2?.confidence||0),
+        'Structure-M1 '+structureM1Side+' '+structureM1Score,
+        'StateGraph '+graphDirectional+' '+graphDirectionalConfidence
+      ]
+    },
     fifteenMinuteTarget:{side:resolved15Side,price:target15Price==null?null:Number(target15Price.toFixed(2)),low:target15Low==null?null:Number(target15Low.toFixed(2)),high:target15High==null?null:Number(target15High.toFixed(2)),confidence:resolved15Confidence,moveAtr:Number(resolved15MoveAtr.toFixed(3)),movePct:Number(target15MovePct.toFixed(3)),samples:em15Samples,source:miTarget?.source||(memory15Usable?'15M_MEMORY_BLEND':'15M_LIVE_ENSEMBLE'),targetAt:now+15*60000},
     movementStations,
     quickSignalTargets,
