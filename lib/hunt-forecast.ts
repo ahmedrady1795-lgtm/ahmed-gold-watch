@@ -26,7 +26,7 @@ function pathAr(p:string){
   return 'تذبذب / كسر كاذب محتمل';
 }
 
-export function buildHuntForecast(asset:string,decision:any,scalp:any,price:number|null,atr:number|null,now=Date.now(),wave:any=null,learner:any=null,structure:any=null){
+export function buildHuntForecast(asset:string,decision:any,scalp:any,price:number|null,atr:number|null,now=Date.now(),wave:any=null,learner:any=null,structure:any=null,accumulation:any=null){
   const p=Number(price),a=Number(atr);
   const fusionBuy=Number(decision?.fusion?.buy||0),fusionSell=Number(decision?.fusion?.sell||0);
   const matrix=decision?.indicatorMatrix?.rows||{},m1=matrix?.m1||{},m5=matrix?.m5||{};
@@ -35,6 +35,10 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const motionScore=Number(decision?.motion?.score||0),behaviorScore=Number(decision?.behavior?.score||0),liqStrength=Number(decision?.liquidity?.strength||0),hunterScore=Number(decision?.hunter?.score||0);
   const scalpLong=Number(scalp?.score?.long||0),scalpShort=Number(scalp?.score?.short||0);
 
+  const accumulationFresh=Boolean(accumulation?.ok&&accumulation?.side);
+  const accumulationSide:Side=accumulationFresh?(accumulation?.side||'WAIT'):'WAIT';
+  const accumulationScore=accumulationFresh?Number(accumulationSide==='BUY'?accumulation?.accumulationScore:accumulation?.distributionScore):0;
+  const accumulationReadiness=accumulationFresh?Number(accumulation?.breakoutReadiness||0):0;
   const structureFresh=Boolean(structure?.ok&&structure?.side);
   const structureM1Side:Side=structureFresh?(structure?.m1?.nextSide||'WAIT'):'WAIT',structureM5Side:Side=structureFresh?(structure?.m5?.nextSide||structure?.followSide||'WAIT'):'WAIT';
   const structureM1Score=structureFresh?Number(structure?.m1?.nextScore||0):0,structureM5Score=structureFresh?Number(structure?.m5?.nextScore||0):0;
@@ -43,20 +47,20 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const learnerFresh=Boolean(learner?.ok&&learner?.gate?.passed&&['BUY','SELL'].includes(String(learner?.side))&&Number(learner?.oosAccuracy)>=56&&Number(learner?.oosEdgeAtr)>=.06&&Number(learner?.profitFactor)>=1.20);
   const learnerSide:Side=learnerFresh?(learner.side as Side):'WAIT',learnerScore=learnerFresh?Number(learner?.confidence||0):0;
 
-  const fastBuy=scalpLong*.23+sideScore(waveSide,'BUY',waveScore)*.28+sideScore(liqSide,'BUY',liqStrength)*.15+sideScore(motionSide,'BUY',motionScore)*.18+sideScore(structureM1Side,'BUY',structureM1Score)*.16;
-  const fastSell=scalpShort*.23+sideScore(waveSide,'SELL',waveScore)*.28+sideScore(liqSide,'SELL',liqStrength)*.15+sideScore(motionSide,'SELL',motionScore)*.18+sideScore(structureM1Side,'SELL',structureM1Score)*.16;
+  const fastBuy=scalpLong*.20+sideScore(waveSide,'BUY',waveScore)*.25+sideScore(liqSide,'BUY',liqStrength)*.13+sideScore(motionSide,'BUY',motionScore)*.16+sideScore(structureM1Side,'BUY',structureM1Score)*.14+sideScore(accumulationSide,'BUY',accumulationScore)*.12;
+  const fastSell=scalpShort*.20+sideScore(waveSide,'SELL',waveScore)*.25+sideScore(liqSide,'SELL',liqStrength)*.13+sideScore(motionSide,'SELL',motionScore)*.16+sideScore(structureM1Side,'SELL',structureM1Score)*.14+sideScore(accumulationSide,'SELL',accumulationScore)*.12;
   const fast=horizon(fastBuy,fastSell,5);
 
-  const oneBuy=m1Strength*(m1Side==='BUY'?.24:0)+scalpLong*.16+sideScore(waveSide,'BUY',waveScore)*.14+sideScore(motionSide,'BUY',motionScore)*.14+sideScore(liqSide,'BUY',liqStrength)*.12+sideScore(structureM1Side,'BUY',structureM1Score)*.20;
-  const oneSell=m1Strength*(m1Side==='SELL'?.24:0)+scalpShort*.16+sideScore(waveSide,'SELL',waveScore)*.14+sideScore(motionSide,'SELL',motionScore)*.14+sideScore(liqSide,'SELL',liqStrength)*.12+sideScore(structureM1Side,'SELL',structureM1Score)*.20;
+  const oneBuy=m1Strength*(m1Side==='BUY'?.21:0)+scalpLong*.14+sideScore(waveSide,'BUY',waveScore)*.12+sideScore(motionSide,'BUY',motionScore)*.12+sideScore(liqSide,'BUY',liqStrength)*.10+sideScore(structureM1Side,'BUY',structureM1Score)*.18+sideScore(accumulationSide,'BUY',accumulationScore)*.13;
+  const oneSell=m1Strength*(m1Side==='SELL'?.21:0)+scalpShort*.14+sideScore(waveSide,'SELL',waveScore)*.12+sideScore(motionSide,'SELL',motionScore)*.12+sideScore(liqSide,'SELL',liqStrength)*.10+sideScore(structureM1Side,'SELL',structureM1Score)*.18+sideScore(accumulationSide,'SELL',accumulationScore)*.13;
   const one=horizon(oneBuy,oneSell,6);
 
-  const fiveBuy=m5Strength*(m5Side==='BUY'?.21:0)+fusionBuy*.16+sideScore(behaviorSide,'BUY',behaviorScore)*.15+sideScore(hunterSide,'BUY',hunterScore)*.10+sideScore(learnerSide,'BUY',learnerScore)*.16+sideScore(structureM5Side,'BUY',structureM5Score)*.22;
-  const fiveSell=m5Strength*(m5Side==='SELL'?.21:0)+fusionSell*.16+sideScore(behaviorSide,'SELL',behaviorScore)*.15+sideScore(hunterSide,'SELL',hunterScore)*.10+sideScore(learnerSide,'SELL',learnerScore)*.16+sideScore(structureM5Side,'SELL',structureM5Score)*.22;
+  const fiveBuy=m5Strength*(m5Side==='BUY'?.18:0)+fusionBuy*.14+sideScore(behaviorSide,'BUY',behaviorScore)*.13+sideScore(hunterSide,'BUY',hunterScore)*.08+sideScore(learnerSide,'BUY',learnerScore)*.14+sideScore(structureM5Side,'BUY',structureM5Score)*.19+sideScore(accumulationSide,'BUY',accumulationScore)*.14;
+  const fiveSell=m5Strength*(m5Side==='SELL'?.18:0)+fusionSell*.14+sideScore(behaviorSide,'SELL',behaviorScore)*.13+sideScore(hunterSide,'SELL',hunterScore)*.08+sideScore(learnerSide,'SELL',learnerScore)*.14+sideScore(structureM5Side,'SELL',structureM5Score)*.19+sideScore(accumulationSide,'SELL',accumulationScore)*.14;
   const five=horizon(fiveBuy,fiveSell,6);
 
-  let buy=fusionBuy*.14+sideScore(motionSide,'BUY',motionScore)*.10+sideScore(behaviorSide,'BUY',behaviorScore)*.08+sideScore(liqSide,'BUY',liqStrength)*.10+sideScore(hunterSide,'BUY',hunterScore)*.06+scalpLong*.06+sideScore(waveSide,'BUY',waveScore)*.10+sideScore(learnerSide,'BUY',learnerScore)*.08+sideScore(one.side,'BUY',one.strength)*.06+sideScore(five.side,'BUY',five.strength)*.06+sideScore(structureM1Side,'BUY',structureM1Score)*.08+sideScore(structureM5Side,'BUY',structureM5Score)*.08;
-  let sell=fusionSell*.14+sideScore(motionSide,'SELL',motionScore)*.10+sideScore(behaviorSide,'SELL',behaviorScore)*.08+sideScore(liqSide,'SELL',liqStrength)*.10+sideScore(hunterSide,'SELL',hunterScore)*.06+scalpShort*.06+sideScore(waveSide,'SELL',waveScore)*.10+sideScore(learnerSide,'SELL',learnerScore)*.08+sideScore(one.side,'SELL',one.strength)*.06+sideScore(five.side,'SELL',five.strength)*.06+sideScore(structureM1Side,'SELL',structureM1Score)*.08+sideScore(structureM5Side,'SELL',structureM5Score)*.08;
+  let buy=fusionBuy*.12+sideScore(motionSide,'BUY',motionScore)*.09+sideScore(behaviorSide,'BUY',behaviorScore)*.07+sideScore(liqSide,'BUY',liqStrength)*.09+sideScore(hunterSide,'BUY',hunterScore)*.05+scalpLong*.05+sideScore(waveSide,'BUY',waveScore)*.09+sideScore(learnerSide,'BUY',learnerScore)*.07+sideScore(one.side,'BUY',one.strength)*.05+sideScore(five.side,'BUY',five.strength)*.05+sideScore(structureM1Side,'BUY',structureM1Score)*.07+sideScore(structureM5Side,'BUY',structureM5Score)*.07+sideScore(accumulationSide,'BUY',accumulationScore)*.13;
+  let sell=fusionSell*.12+sideScore(motionSide,'SELL',motionScore)*.09+sideScore(behaviorSide,'SELL',behaviorScore)*.07+sideScore(liqSide,'SELL',liqStrength)*.09+sideScore(hunterSide,'SELL',hunterScore)*.05+scalpShort*.05+sideScore(waveSide,'SELL',waveScore)*.09+sideScore(learnerSide,'SELL',learnerScore)*.07+sideScore(one.side,'SELL',one.strength)*.05+sideScore(five.side,'SELL',five.strength)*.05+sideScore(structureM1Side,'SELL',structureM1Score)*.07+sideScore(structureM5Side,'SELL',structureM5Score)*.07+sideScore(accumulationSide,'SELL',accumulationScore)*.13;
 
   const trapSide:Side=decision?.liquidity?.absorption?.trapDetected?decision?.liquidity?.absorption?.side||'WAIT':'WAIT';
   const trapScore=Number(decision?.liquidity?.absorption?.score||0);
@@ -84,7 +88,9 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
 
   const motionStage=String(decision?.motion?.stage||'WAIT'),compression=Number(decision?.motion?.components?.compression||0),velocity=Math.abs(Number(decision?.motion?.components?.liveVelocityBps||0)),precursorCount=Number(decision?.motion?.diagnostics?.precursorCount||0);
   let state='STALKING';
-  if(waveFresh&&waveSide===stableSide&&wave?.stage==='IGNITION')state='IGNITION';
+  if(accumulationFresh&&accumulation?.phase==='MARKUP_READY'&&accumulationSide==='BUY'&&stableSide==='BUY'&&accumulationReadiness>=60)state='MARKUP_READY';
+  else if(accumulationFresh&&accumulation?.phase==='MARKDOWN_READY'&&accumulationSide==='SELL'&&stableSide==='SELL'&&accumulationReadiness>=60)state='MARKDOWN_READY';
+  else if(waveFresh&&waveSide===stableSide&&wave?.stage==='IGNITION')state='IGNITION';
   else if(waveFresh&&waveSide===stableSide&&wave?.stage==='WAVE_FORMING')state='WAVE_FORMING';
   else if(motionStage==='REVERSAL_ALERT'||trapSide===stableSide&&trapScore>=68)state='REVERSAL_HUNT';
   else if(motionStage==='PRE_MOVE'||precursorCount>=3)state='PRE_MOVE';
@@ -99,11 +105,11 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   if(state==='WAVE_FORMING')expAtr=Math.max(.5,expAtr);
   if(state==='COILED')expAtr=Math.max(.58,expAtr);
 
-  const horizonSeconds=state==='IGNITION'?35:state==='WAVE_FORMING'?60:state==='PRE_MOVE'||state==='REVERSAL_HUNT'?100:state==='COILED'?150:210;
+  const horizonSeconds=state==='MARKUP_READY'||state==='MARKDOWN_READY'?75:state==='IGNITION'?35:state==='WAVE_FORMING'?60:state==='PRE_MOVE'||state==='REVERSAL_HUNT'?100:state==='COILED'?150:210;
   const validPrice=Number.isFinite(p)&&p>0&&Number.isFinite(a)&&a>0;
   const dir=stableSide==='BUY'?1:stableSide==='SELL'?-1:0;
-  const triggerAtr=state==='IGNITION'?.07:state==='WAVE_FORMING'?.09:.12;
-  const invalidAtr=state==='IGNITION'?.24:state==='WAVE_FORMING'?.28:.34;
+  const triggerAtr=state==='MARKUP_READY'||state==='MARKDOWN_READY'?.06:state==='IGNITION'?.07:state==='WAVE_FORMING'?.09:.12;
+  const invalidAtr=state==='MARKUP_READY'||state==='MARKDOWN_READY'?.30:state==='IGNITION'?.24:state==='WAVE_FORMING'?.28:.34;
   const trigger=validPrice&&dir?p+dir*a*triggerAtr:null;
   const projected=validPrice&&dir?p+dir*a*expAtr:null;
   const invalidation=validPrice&&dir?p-dir*a*invalidAtr:null;
@@ -115,12 +121,16 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
 
   const alternativeSide:Side=stableSide==='BUY'?'SELL':stableSide==='SELL'?'BUY':'WAIT';
   const alternativeStrength=stableSide==='BUY'?Math.round(cap(sell)):stableSide==='SELL'?Math.round(cap(buy)):Math.round(Math.min(buy,sell));
-  const quality=cap(confidence*.55+persistence*.20+Math.min(100,(horizonConsensus/3)*100)*.15+(learnerFresh?10:0)-horizonConflict*5,0,90);
+  const accumulationBonus=accumulationFresh&&accumulationSide===stableSide?Math.min(12,accumulationReadiness*.12):0;
+  const quality=cap(confidence*.50+persistence*.18+Math.min(100,(horizonConsensus/3)*100)*.14+(learnerFresh?8:0)+accumulationBonus-horizonConflict*5,0,90);
 
   const reasons:string[]=[];
   if(stableSide!=='WAIT')reasons.push('الاتجاه المثبت '+stableSide+' · edge '+commitment.smoothedEdge);
   reasons.push('المسار المرجح: '+pathLabel);
   if(horizonConsensus>=2)reasons.push(horizonConsensus+'/3 أطر توقيت متوافقة');
+  if(accumulationFresh)reasons.push('Accumulation Map: '+accumulation.phase+' · '+accumulationSide+' · readiness '+accumulationReadiness);
+  if(accumulationFresh&&accumulation?.liquidityConfirmed)reasons.push('السيولة تؤكد منطقة التجميع/التوزيع');
+  if(accumulationFresh&&accumulation?.absorptionConfirmed)reasons.push('الامتصاص يؤكد التجميع قبل الكسر');
   if(structureFresh&&structure?.m1)reasons.push('Wave Structure M1: '+structure.m1.phase+' · '+structure.m1.structure+' · next '+structure.m1.nextSide);
   if(structureFresh&&structure?.m5)reasons.push('Wave Structure M5: '+structure.m5.phase+' · '+structure.m5.structure+' · next '+structure.m5.nextSide);
   if(horizonConflict>=1)reasons.push('يوجد تعارض بين الحركة السريعة و5 دقائق');
@@ -138,6 +148,8 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     path:{code:path,label:pathLabel,firstLeg:firstLeg==null?null:Number(firstLeg.toFixed(2)),secondLeg:secondLeg==null?null:Number(secondLeg.toFixed(2)),shortSide,followSide,structureDriven:Boolean(structuralPath)},
     horizons:{fast,oneMinute:one,fiveMinute:five},
     waveStructure:structureFresh?structure:null,
+    accumulationMap:accumulationFresh?accumulation:null,
+    strongMove:accumulationFresh&&accumulation?.strongMoveSide!=='WAIT'?{side:accumulation.strongMoveSide,score:Number(accumulation.strongMoveScore||0),readiness:Number(accumulation.breakoutReadiness||0),phase:accumulation.phase,breakoutLevel:accumulation.breakoutLevel,breakdownLevel:accumulation.breakdownLevel,liquidityConfirmed:Boolean(accumulation.liquidityConfirmed),absorptionConfirmed:Boolean(accumulation.absorptionConfirmed)}:null,
     alternative:{side:alternativeSide,strength:alternativeStrength,condition:alternativeSide==='WAIT'?'لا يوجد بديل واضح':`يتفعل إذا فشل Trigger أو كُسر Invalidation ويتحول الالتزام إلى ${alternativeSide}`},
     reasons:reasons.slice(0,8),commitment,
     waveLeadUsed:waveFresh?{side:waveSide,stage:wave?.stage,score:waveScore,confidence:waveConfidence,at:Number(wave?.at||0)}:null,
