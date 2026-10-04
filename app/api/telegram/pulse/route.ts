@@ -8,17 +8,7 @@ const lastRecommendationSignature=new Map<string,string>();
 const n=(v:any)=>Number.isFinite(Number(v))?Number(v).toFixed(2):'—';
 
 function signature(asset:string,r:any){
-  return [
-    asset,
-    r?.action||'WAIT',
-    Math.round(Number(r?.confidence)||0),
-    n(r?.entry),
-    n(r?.invalidation),
-    n(r?.targets?.scalp),
-    n(r?.targets?.oneMinute),
-    n(r?.targets?.fiveMinute),
-    n(r?.targets?.fifteenMinute)
-  ].join('|');
+  return [asset,r?.action||'WAIT'].join('|');
 }
 
 function recommendationBody(asset:string,r:any){

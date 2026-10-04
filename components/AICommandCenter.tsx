@@ -133,7 +133,7 @@ function AssetCard({x,fast}:any){
 
     <div className="ai-price-row">
       <div><small>السعر</small><strong>{fmt(x.livePulse?.price??x.price,2)}</strong></div>
-      <div><small>الثقة</small><strong>{calibrated(recommendation?.active?recommendation.confidence:x.confidence)}%</strong></div>
+      <div><small>الثقة</small><strong>{recommendation?.active?(calibrated(recommendation.confidence)+'%'):'—'}</strong></div>
       <div><small>الحالة</small><strong>{recommendation?.active?'توصية':'مراقبة'}</strong></div>
     </div>
 
@@ -194,7 +194,7 @@ export default function AICommandCenter({data,error,fastWave,now=Date.now()}:any
   return <div className="ai-clean">
     <section className="ai-hero">
       <div><span className="eyebrow">PREDATOR CORE</span><h1>{data?.model||'AI Hunter'}</h1></div>
-      {!!data?.radar?.length&&<div className="radar-mini">{data.radar.slice(0,2).map((r:any)=><div key={r.asset}><small>{r.asset}</small><strong>{r.side!=='WAIT'?sideAr(r.side):('HUNT '+sideAr(r.huntSide))}</strong><span>{r.status||r.huntState}</span></div>)}</div>}
+      {!!data?.radar?.length&&<div className="radar-mini">{data.radar.slice(0,2).map((r:any)=><div key={r.asset}><small>{r.asset}</small><strong>{sideAr(r.side)}</strong><span>{r.side==='WAIT'?'WAIT':(r.status||'TRADE')}</span></div>)}</div>}
     </section>
 
     {error&&!data&&<div className="fatal"><Activity size={18}/><div><strong>تعذر تحديث AI</strong><span>{error}</span></div></div>}

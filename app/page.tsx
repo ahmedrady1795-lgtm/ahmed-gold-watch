@@ -38,7 +38,7 @@ export default function Home(){
   const fastWaveRef=useRef<{btc:WaveLead|null;gold:WaveLead|null}>({btc:null,gold:null});
   const waveUiAt=useRef({btc:0,gold:0});
   const seenSignal=useRef('');
-  const aiInFlight=useRef(false),aiReady=useRef(false),aiFailureCount=useRef(0);
+  const aiInFlight=useRef(false),aiReady=useRef(false),aiFailureCount=useRef(0),telegramPulseAt=useRef(0);
   const [rules,setRules]=useState<Rules>(defaults);
   const [now,setNow]=useState(Date.now());
   const first=useRef(true);
@@ -81,6 +81,10 @@ export default function Home(){
       const r=await fetch('/api/ai-analysis'+(q.size?'?'+q.toString():''),{cache:'no-store'}),j=await r.json();
       if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر تشغيل محرك AI');
       setAiData(j);aiReady.current=true;aiFailureCount.current=0;setAiError('');
+      if(Date.now()-telegramPulseAt.current>=12000){
+        telegramPulseAt.current=Date.now();
+        void fetch('/api/telegram/pulse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({analysis:j})}).catch(()=>{});
+      }
     }catch(e){
       aiFailureCount.current+=1;
       if(!aiReady.current&&aiFailureCount.current>=3)setAiError(e instanceof Error?e.message:'تعذر تشغيل محرك AI');
@@ -97,7 +101,7 @@ export default function Home(){
     const clock=setInterval(()=>setNow(Date.now()),1000);
     const market=setInterval(()=>{if(document.visibilityState==='visible')void load(true);},15000);
     const hs=setInterval(()=>{if(document.visibilityState==='visible')void loadHealth();},30000);
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},2500);
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},4000);
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
     return()=>{clearInterval(clock);clearInterval(market);clearInterval(hs);clearInterval(aiTimer);};
   },[]);
@@ -145,14 +149,6 @@ export default function Home(){
       navigator.serviceWorker.getRegistration().then(reg=>reg?.showNotification('مرصد الذهب — '+(a?.title||'تغيّر الحالة'),{body:a?.reason||'راجع البيانات',tag:'gold-state'})).catch(()=>setNotice('تعذر إرسال إشعار الجهاز.'));
     }
   },[snap,monitor]);
-  useEffect(()=>{
-    if(!monitor)return;
-    const pulse=()=>fetch('/api/telegram/pulse',{
-      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rules})
-    }).catch(()=>{});
-    void pulse(); const t=setInterval(pulse,15000); return()=>clearInterval(t);
-  },[monitor,rules]);
-
   useEffect(()=>{if(first.current){first.current=false;return;}try{localStorage.setItem('ahmed-gold-rules',JSON.stringify(rules));}catch{}},[rules]);
 
   const toggleMonitor=()=>setMonitor(v=>{const n=!v;try{localStorage.setItem('ahmed-gold-monitor',String(n));}catch{}return n;});

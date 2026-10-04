@@ -43,7 +43,7 @@ export type ExpectedMoveLearning={
 
 const FILE=process.env.PREDATOR_EXPECTED_MOVE_FILE||'/data/predator-expected-move-learning.json';
 const FALLBACK='/tmp/predator-expected-move-learning.json';
-const SCHEMA='first-move-v2';
+const SCHEMA='first-move-v3';
 const cap=(n:number,a=0,b=92)=>Math.max(a,Math.min(b,n));
 const avg=(a:number[])=>a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
 const emptyH=():HStats=>({n:0,up:0,down:0,flat:0,strongUp:0,strongDown:0,sumCloseAtr:0,sumMfeUp:0,sumMfeDown:0,sumFirstMinutes:0,firstHitCount:0,lastAt:0});
@@ -90,13 +90,13 @@ function features(c:Candle[],i:number){
 function keys(asset:string,f:any,ctx:any,at:number){
   const mom=bucket(f.r3,[-.9,-.35,-.08,.08,.35,.9]),acc=bucket(f.acc,[-.35,-.10,.10,.35]),comp=bucket(f.comp,[.55,.75,1,1.35]),pos=bucket(f.pos,[.2,.4,.6,.8]),eff=bucket(f.eff,[.25,.5,.72]),vol=bucket(f.atrBps,[2,4,7,12,20]),ses=session(at);
   const out=[
-    'FM2|'+asset+'|m'+mom+'|a'+acc+'|c'+comp+'|p'+pos+'|e'+eff+'|v'+vol,
-    'FM2S|'+asset+'|'+ses+'|m'+mom+'|c'+comp+'|v'+vol,
-    'FM2V|'+asset+'|v'+vol+'|c'+comp+'|p'+pos
+    'FM3|'+asset+'|m'+mom+'|a'+acc+'|c'+comp+'|p'+pos+'|e'+eff+'|v'+vol,
+    'FM3S|'+asset+'|'+ses+'|m'+mom+'|c'+comp+'|v'+vol,
+    'FM3V|'+asset+'|v'+vol+'|c'+comp+'|p'+pos
   ];
   if(ctx){
     const sg=String(ctx?.stateGraph?.current||'NA'),sgn=String(ctx?.stateGraph?.nextState||'NA'),m1=String(ctx?.structure?.m1?.phase||'NA'),m5=String(ctx?.structure?.m5?.phase||'NA'),ac=String(ctx?.accumulation?.phase||'NA'),liq=String(ctx?.liquidity?.side||'NA');
-    out.unshift('FM2C|'+asset+'|'+ses+'|'+sg+'|'+sgn+'|'+m1+'|'+m5+'|'+ac+'|'+liq);
+    out.unshift('FM3C|'+asset+'|'+ses+'|'+sg+'|'+sgn+'|'+m1+'|'+m5+'|'+ac+'|'+liq);
   }
   return [...new Set(out)];
 }
@@ -218,11 +218,12 @@ async function settle(asset:string,c1:Candle[],now:number){
       else if(h==='m5'){
         t.resolved5++;
         const pred=o.predictions.m5,actual=out.firstSide;
-        if((pred==='BUY'||pred==='SELL')&&(actual==='BUY'||actual==='SELL')){
-          const ds=store.directionStats[asset]||emptyDirectionStats();
+        const scoreEligible=Math.floor(o.candleTime/60000)%5===0;
+        if(scoreEligible&&(pred==='BUY'||pred==='SELL')&&(actual==='BUY'||actual==='SELL')){
+          const dk=totalsKey(asset),ds=store.directionStats[dk]||emptyDirectionStats();
           if(pred==='BUY'){if(actual==='BUY')ds.buySuccess++;else ds.buyFail++;}
           else {if(actual==='SELL')ds.sellSuccess++;else ds.sellFail++;}
-          store.directionStats[asset]=ds;
+          store.directionStats[dk]=ds;
         }
       }else t.resolved15++;
       t.updatedAt=now;store.totals[tk]=t;
@@ -250,7 +251,7 @@ export async function getExpectedMoveLearning(args:{asset:string;c1:Candle[];con
     await load();const now=args.now||Date.now(),b=await bootstrap(args.asset,args.c1,now),s=await settle(args.asset,args.c1,now);if(b||s)await save();
     const c=args.c1.filter(x=>x.time+60000<=now),i=c.length-1,t=store.totals[totalsKey(args.asset)]||{observations:0,resolved2:0,resolved5:0,resolved15:0,updatedAt:0};
     const blank:ExpectedMoveHorizon={side:'WAIT',strength:0,confidence:0,samples:0,meanCloseAtr:0,expectedUpAtr:0,expectedDownAtr:0,burstSide:'WAIT',burstProbability:0,calibration:50,firstHitMinutes:0,decisiveRate:0};
-    const directionStats=store.directionStats[args.asset]||emptyDirectionStats();
+    const directionStats=store.directionStats[totalsKey(args.asset)]||emptyDirectionStats();
     if(i<28)return {ok:false,asset:args.asset,twoMinute:blank,fiveMinute:blank,fifteenMinute:blank,consensusSide:'WAIT',consensusScore:0,conflict:false,totals:t,directionStats,storage:storagePath,reasons:['بيانات غير كافية لذاكرة الحركة المتوقعة.']};
     const f=features(c,i);if(!f)return {ok:false,asset:args.asset,twoMinute:blank,fiveMinute:blank,fifteenMinute:blank,consensusSide:'WAIT',consensusScore:0,conflict:false,totals:t,directionStats,storage:storagePath,reasons:['ATR غير كافٍ.']};
     const ks=keys(args.asset,f,args.context,c[i].time),cal=ensureCal(args.asset);
