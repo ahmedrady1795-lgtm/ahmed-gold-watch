@@ -77,16 +77,19 @@ function resolve(ev:Evidence[],gate=10,softDirectional=false):Horizon{
   const buyShare=buy/total*100,sellShare=100-buyShare,agreement=Math.max(buyShare,sellShare),edge=Math.abs(buyShare-sellShare);
   const coverage=cap(w/Math.max(.55,usable.reduce((s,e)=>s+e.weight,0)),.55,1);
   const hard=edge>=gate;
-  const soft=softDirectional&&edge>=1.5&&agreement>=50.75&&usable.length>=2;
-  const confidence=cap((edge*.72+agreement*.18+usable.length*1.6)*coverage*(soft&&!hard?.82:1),0,88);
+  const softFloor=Math.max(3.5,gate*.72);
+  const soft=softDirectional&&edge>=softFloor&&agreement>=53&&usable.length>=3;
+  const confidence=cap((edge*.72+agreement*.18+usable.length*1.6)*coverage*(soft&&!hard?.78:1),0,88);
   const out:Side=(hard||soft)?(buy>sell?'BUY':'SELL'):'WAIT';
   return {side:out,confidence:Math.round(confidence),buyShare:Math.round(buyShare),sellShare:Math.round(sellShare),agreement:Math.round(agreement),uncertainty:Math.round(100-confidence)};
 }
 function softExpectedSide(x:any):Side{
   const direct=side(x?.side);if(direct!=='WAIT')return direct;
+  const samples=Number(x?.samples||0),cal=Number(x?.calibration||50),dec=Number(x?.decisiveRate||0);
+  if(samples<8||cal<54||dec<55)return 'WAIT';
   const mean=Number(x?.meanCloseAtr||0),exc=Number(x?.expectedUpAtr||0)-Number(x?.expectedDownAtr||0);
   const signed=mean*.62+exc*.38;
-  return Math.abs(signed)>=.025?(signed>0?'BUY':'SELL'):'WAIT';
+  return Math.abs(signed)>=.12?(signed>0?'BUY':'SELL'):'WAIT';
 }
 function ev(name:string,s:any,score:number,weight:number,reliability=1):Evidence{return {name,side:side(s),score:cap(Number(score||0),0,92),weight,reliability:cap(reliability,.55,1.35)};}
 
@@ -156,11 +159,16 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   const conflictScore=directional.length?Math.round(Math.min(buys,sells)/directional.length*200):0;
   const conflict=conflictScore>=34||two.uncertainty>=62;
   const leanSide:Side=two.buyShare>two.sellShare?'BUY':two.sellShare>two.buyShare?'SELL':'WAIT';
-  const finalSide:Side=two.side!=='WAIT'?two.side:(leanSide!=='WAIT'&&(rangeMode||two.agreement>=51)?leanSide:'WAIT');
+  const softLeanUsable=Boolean(
+    rangeMode&&two.side==='WAIT'&&leanSide!=='WAIT'&&
+    two.agreement>=55&&two.confidence>=34&&
+    Number(expected2?.samples||0)>=8&&Number(expected2?.calibration||50)>=54
+  );
+  const finalSide:Side=two.side!=='WAIT'?two.side:softLeanUsable?leanSide:'WAIT';
   const directionalConfidence=Math.round(cap(
     finalSide==='WAIT'?two.confidence:
-    two.side==='WAIT'?Math.min(44,two.confidence):
-    conflict?two.confidence*(rangeMode?.84:.76):
+    two.side==='WAIT'?Math.min(40,two.confidence):
+    conflict?two.confidence*(rangeMode?.82:.76):
     two.confidence,
     0,86
   ));
@@ -187,7 +195,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   ];
   if(tick?.stage==='IGNITION'||tick?.stage==='WAVE_FORMING')reasons.push('Server tick '+tick.stage+' '+tick.side);
   if(news?.event)reasons.push('News '+String(news.phase||'')+' · '+String(news.event.name||'')+' · risk '+Number(news.risk||0)+' · '+String(news.side||'WAIT'));
-  if(rangeMode)reasons.push('Range/compression mode: direction stays active; disagreement lowers confidence instead of muting the forecast');
+  if(rangeMode)reasons.push('Range/compression mode: direction requires calibrated edge; weak imbalance stays Lean/WAIT instead of becoming a forced forecast');
   if(conflict)reasons.push('Model disagreement detected; confidence reduced, direction preserved when a measurable edge exists');
 
   return {ok:true,asset,regime,side:finalSide,leanSide,confidence:directionalConfidence,agreement:two.agreement,uncertainty:two.uncertainty,conflict,conflictScore,evidence:immediate,horizons:{twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},target15,reasons};
