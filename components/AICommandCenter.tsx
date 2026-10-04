@@ -147,10 +147,6 @@ function AssetCard({x,fast}:any){
   const neuralPath=x.neuralCore?.pricePath;
   const neuralPathReady=Boolean(neuralPath?.ready);
   const scalpTargetPrice=ambushMove?.target?.price??x.scalp?.target?.price??null;
-  const signalRows=[
-    {label:'Ambush الحركة',side:liveScalpSide,strength:scalpStrength,target:scalpTargetPrice}
-  ];
-  const shownSignals=signalRows;
   return <section className={"panel ai-asset-card "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
       <div><span className="eyebrow">{x.asset}</span><h2>{recommendation?.active?(buy?'شراء':sell?'بيع':'مراقبة'):(buy?'توقع صعود':sell?'توقع هبوط':'تذبذب')}</h2></div>
@@ -171,61 +167,40 @@ function AssetCard({x,fast}:any){
       <span>بيع ✕ <b>{x.expectedMoveLearning?.directionStats?.sellFail||0}</b></span>
     </div>
 
-    <div className="quick-signals compact-signals">
-      {shownSignals.map((s:any)=><div className="quick-signal-row" key={s.label}>
-        <span>{s.label}</span>
-        <strong className={s.side==='BUY'?'green':s.side==='SELL'?'red':'amber'}><>{sideAr(s.side)} · {s.strength}%{s.target!=null?<em> · ≈ {fmt(s.target,2)}</em>:null}</></strong>
-      </div>)}
-    </div>
-
-    {x.scalp?.ambushPlan&&(()=>{
-      const plan=x.scalp.ambushPlan;
-      const entry=plan.entry||{};
-      const invalid=plan.invalidation||{};
-      return <div className="next-move-copy">
-        <span>خطة Ambush</span>
-        <strong className={plan.status==='EXECUTE'?'green':plan.status==='CANCEL'?'red':'amber'}>
-          {String(plan.status||'SCOUT')} · {sideAr(plan.side)} · جاهزية {calibrated(plan.readiness)}%
-        </strong>
-        <div className="ai-outcome-mini">
-          <span>منطقة الدخول <b>{entry.zoneLow!=null&&entry.zoneHigh!=null?(fmt(entry.zoneLow,2)+' — '+fmt(entry.zoneHigh,2)):'—'}</b></span>
-          <span>Launch <b>{entry.launchLine!=null?fmt(entry.launchLine,2):'—'}</b></span>
-          <span>الهدف <b>{plan.target?.price!=null?fmt(plan.target.price,2):'—'}</b></span>
-          <span>مساعدين <b>{plan.assistantCount||0}/10</b></span>
-        </div>
-        <p>{invalid.cancel?('إلغاء الخطة: '+((invalid.reasons||[]).join(' · ')||'شرط الإلغاء تحقق')):('النمط '+String(plan.pattern||'—')+' · '+(entry.ready?'منطقة الدخول جاهزة':'ينتظر منطقة الدخول')+' · ETA '+(plan.etaSeconds??'—')+'s')}</p>
-      </div>;
-    })()}
-
-    {x.asset==='BTC'&&x.scalpLive&&(()=>{
-      const ambush=x.scalpLive?.bySource?.SCALP_AMBUSH_TRADE_V8;
-      const metric=ambush?.resolved?ambush:x.scalpLive?.global;
-      const ambushWf=x.scalpLive?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V8;
-      const helpers=x.scalp?.fusionV8?.assistants||{};
+    {(()=>{
+      const plan=x.scalp?.ambushPlan||{};
+      const entry=plan?.entry||{};
+      const invalid=plan?.invalidation||{};
+      const ambushStats=x.asset==='BTC'?x.scalpLive?.bySource?.SCALP_AMBUSH_TRADE_V8:null;
+      const metric=ambushStats?.resolved?ambushStats:(x.asset==='BTC'?x.scalpLive?.global:null);
+      const wf=x.asset==='BTC'?x.scalpLive?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V8:null;
       const helperCount=Number(x.scalp?.fusionV8?.assistantCount||0);
+      const guard=Boolean(x.scalp?.fusionV8?.precisionGuard);
       return <div className="next-move-copy">
-        <span>Ambush V8 Live · المصدر الوحيد للصفقات</span>
-        <strong className={(metric?.accuracy??0)>=58?'green':(metric?.accuracy??0)>=50?'amber':'red'}>
-          {metric?.accuracy==null?'يجمع نتائج Ambush':('دقة '+metric.accuracy+'%')}
+        <span>Scalp Ambush · المتحكم الوحيد</span>
+        <strong className={liveScalpSide==='BUY'?'green':liveScalpSide==='SELL'?'red':'amber'}>
+          {liveScalpSide==='BUY'?'صعود':liveScalpSide==='SELL'?'هبوط':'انتظار'} · {scalpStrength}%
+          {scalpTargetPrice!=null?<> · الهدف ≈ {fmt(scalpTargetPrice,2)}</>:null}
         </strong>
         <div className="ai-outcome-mini">
-          <span>نجح ✓ <b>{ambush?.hits||0}</b></span>
-          <span>فشل ✕ <b>{ambush?.fails||0}</b></span>
-          <span>محايد <b>{ambush?.neutral||0}</b></span>
-          <span>مساعدين <b>{helperCount}/10</b></span>
+          <span>الحالة <b>{String(plan?.status||ambushMove?.status||'SCOUT')}</b></span>
+          <span>المساعدين <b>{helperCount}/10</b></span>
+          <span>دخول <b>{entry?.ready?'جاهز':'انتظار'}</b></span>
+          <span>Guard <b>{guard?'دقة مشددة':'عادي'}</b></span>
         </div>
-        <p>{String(predator?.pattern||'HUNT')} · score {predator?.score??0} · stable {predator?.stableCount??0} · تأكيد قوي {helpers.confirmation?'نعم':'لا'} · OOS {ambushWf?.oos?.accuracy==null?'—':(ambushWf.oos.accuracy+'%')}</p>
+        <p>
+          {String(ambushMove?.pattern||predator?.pattern||'NO_EDGE')}
+          {entry?.zoneLow!=null&&entry?.zoneHigh!=null?<> · منطقة {fmt(entry.zoneLow,2)} — {fmt(entry.zoneHigh,2)}</>:null}
+          {invalid?.cancel?<> · إلغاء: {(invalid.reasons||[]).join(' · ')||'شرط إلغاء'}</>:null}
+        </p>
+        {x.asset==='BTC'&&metric&&<div className="ai-outcome-mini">
+          <span>نجح ✓ <b>{ambushStats?.hits||0}</b></span>
+          <span>فشل ✕ <b>{ambushStats?.fails||0}</b></span>
+          <span>دقة <b>{metric?.accuracy==null?'—':metric.accuracy+'%'}</b></span>
+          <span>OOS <b>{wf?.oos?.accuracy==null?'—':wf.oos.accuracy+'%'}</b></span>
+        </div>}
       </div>;
     })()}
-
-    <div className="next-move-copy">
-      <span>الحركة القادمة من Ambush فقط</span>
-      <strong className={liveScalpSide==='BUY'?'green':liveScalpSide==='SELL'?'red':'amber'}>
-        {liveScalpSide==='BUY'?'صعود':liveScalpSide==='SELL'?'هبوط':'انتظار'} · {scalpStrength}%
-        {scalpTargetPrice!=null?<> · الهدف ≈ {fmt(scalpTargetPrice,2)}</>:null}
-      </strong>
-      <p>{ambushMove?.status==='CONFIRMED'?'Ambush مؤكد':ambushMove?.status==='FORMING'?'Ambush بيتكوّن':'Ambush منتظر'} · {String(ambushMove?.pattern||predator?.pattern||'NO_EDGE')}</p>
-    </div>
 
     {x.nextMoveLive&&<div className="next-move-copy">
       <span>Next Move Live Tracker</span>
