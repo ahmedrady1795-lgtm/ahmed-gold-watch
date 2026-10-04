@@ -14,6 +14,7 @@ export type MultiBrainCore={
   selector:{buy:number;sell:number;buyShare:number;sellShare:number};
   learnedWeights:Record<BrainName,number>;
   learnedAccuracy:Record<BrainName,number>;
+  calibration:{rawConfidence:number;calibratedConfidence:number;learnedReliability:number;supportSamples:number;cap:number};
   reasons:string[];
 };
 
@@ -179,22 +180,43 @@ export function buildMultiBrainCore(asset:string,args:any):MultiBrainCore{
   const fastAgreement=side==='WAIT'?0:direct.filter(x=>x.fast&&x.side===side).length;
   const totalAgreement=side==='WAIT'?0:direct.filter(x=>x.side===side).length;
   const avgBrain=supporting.length?supporting.reduce((a,x)=>a+brains[x.name].confidence,0)/supporting.length:0;
-  const confidence=Math.round(cap(gap*.48+avgBrain*.34+fastAgreement*4.5+totalAgreement*1.8,0,91));
-  const strong=Boolean(side!=='WAIT'&&confidence>=58&&gap>=22&&(fastAgreement>=2||totalAgreement>=4));
-  const decisive=Boolean(side!=='WAIT'&&confidence>=72&&gap>=34&&fastAgreement>=3&&supporting.length>=2);
+  const rawConfidence=Math.round(cap(gap*.48+avgBrain*.34+fastAgreement*4.5+totalAgreement*1.8,0,91));
+
+  // Confidence Calibration v3:
+  // internal agreement can create a large score, but it must not claim probability
+  // far above the actually learned reliability of the brains supporting that side.
+  let relNum=0,relDen=0,supportSamples=0;
+  for(const x of supporting){
+    const rowLearned=brainLearning?.regimes?.[regime]?.[x.name];
+    const samples=Math.max(0,Number(rowLearned?.samples||0));
+    const acc=cap(Number(rowLearned?.blendedAccuracy||learnedAccuracy[x.name]||50),20,85);
+    const evidenceWeight=Math.max(.25,x.value)*(0.45+Math.min(1,samples/120)*.55);
+    relNum+=acc*evidenceWeight;relDen+=evidenceWeight;supportSamples+=samples;
+  }
+  const learnedReliability=relDen?relNum/relDen:50;
+  const maturity=Math.min(1,supportSamples/240);
+  const shrunkReliability=50+(learnedReliability-50)*maturity;
+  const agreementBonus=Math.min(6,Math.max(0,gap-20)*.06+Math.max(0,fastAgreement-2)*1.2);
+  const reliabilityCap=cap(shrunkReliability+10+agreementBonus,42,84);
+  const calibratedBase=rawConfidence*.30+shrunkReliability*.70+agreementBonus;
+  const confidence=Math.round(cap(Math.min(calibratedBase,reliabilityCap),0,88));
+  const strong=Boolean(side!=='WAIT'&&confidence>=56&&gap>=22&&(fastAgreement>=2||totalAgreement>=4));
+  const decisive=Boolean(side!=='WAIT'&&confidence>=68&&gap>=34&&fastAgreement>=3&&supporting.length>=2);
 
   const reasons=[
     'Regime '+regime,
-    'Meta '+(side==='WAIT'?'WAIT':side)+' · confidence '+confidence+' · gap '+Math.round(gap),
+    'Meta '+(side==='WAIT'?'WAIT':side)+' · confidence '+confidence+' (raw '+rawConfidence+') · gap '+Math.round(gap),
     'Brains '+Object.values(brains).map(b=>b.name+':'+b.side+'/'+b.confidence).join(' · '),
     'Agreement fast '+fastAgreement+' · total '+totalAgreement
   ];
   if(dominant)reasons.push('Dominant brain '+dominant+' · learned '+learnedAccuracy[dominant]+'% · weight x'+learnedWeights[dominant].toFixed(2));
+  reasons.push('Calibration v3 · learned reliability '+Math.round(shrunkReliability)+'% · cap '+Math.round(reliabilityCap)+' · support samples '+supportSamples);
   if(decisive)reasons.push('Decisive multi-brain alignment; stale single-engine conflicts may be overridden');
 
   return {
     ok:true,asset,regime,side,confidence,gap:Math.round(gap),strong,decisive,dominantBrain:dominant,
     fastAgreement,totalAgreement,brains,learnedWeights,learnedAccuracy,
+    calibration:{rawConfidence,calibratedConfidence:confidence,learnedReliability:Number(shrunkReliability.toFixed(1)),supportSamples,cap:Number(reliabilityCap.toFixed(1))},
     selector:{buy:Number(buy.toFixed(3)),sell:Number(sell.toFixed(3)),buyShare:Math.round(buyShare),sellShare:Math.round(sellShare)},
     reasons
   };
