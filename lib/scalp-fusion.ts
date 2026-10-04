@@ -375,10 +375,17 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     !predator?.microstructure?.available||
     (predator?.microstructure?.ambushReady&&Number(predator?.microstructure?.opposition||0)<=.25)
   );
+  const ambushRegimeGuard=Boolean(
+    mode==='EXPANSION'||mode==='TRANSITION'
+      ?(assistantCount>=5&&Boolean(predator?.confirmationAssist)&&Number(predator?.score||0)>=86&&
+        Number(predator?.microstructure?.persistence||0)>=.75&&Number(predator?.microstructure?.trend||0)>=-10)
+      :true
+  );
   const weakAmbushCombination=Boolean(
     assistantCount<3||
     (String(predator?.pattern||'FLOW_TRACK')==='FLOW_TRACK'&&!predator?.confirmationAssist)||
-    (mode!=='COMPRESSION'&&assistantCount<4&&!reactionAligned&&!accumulationAligned)
+    (mode!=='COMPRESSION'&&assistantCount<4&&!reactionAligned&&!accumulationAligned)||
+    !ambushRegimeGuard
   );
   const ambushTrade=Boolean(
     predator?.phase==='AMBUSH'&&predator?.ambush&&predator?.watch&&
@@ -595,7 +602,8 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
       microReady:Boolean(predator?.microstructure?.ambushReady),
       temporalReady:Boolean(predator?.ambushTemporal),
       noChase:!chaseRisk,
-      noFlip:!flipSuppressed
+      noFlip:!flipSuppressed,
+      regimeReady:ambushRegimeGuard
     },
     invalidation:{
       cancel:Boolean(predator?.phase==='ABORT'||chaseRisk||flipSuppressed||reactionConflict),
