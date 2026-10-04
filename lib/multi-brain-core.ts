@@ -78,9 +78,9 @@ export function buildMultiBrainCore(asset:string,args:any):MultiBrainCore{
   const d=args?.decision||{},scalp=args?.scalp||{},movement=args?.movement||{},graph=args?.stateGraph||{},tick=args?.tick||{},expected=args?.expected||{},learning=args?.learning||{},brainLearning=args?.brainLearning||{};
   const regime=regimeOf(movement);
   const motion=d?.motion||{},liq=d?.liquidity||{},hunter=d?.hunter||{},behavior=d?.behavior||{},m=d?.indicatorMatrix?.rows||{};
-  const ambushMove=scalp?.movement||{};
-  const scalpSide:Side=s(ambushMove?.side);
-  const scalpStrength=Number(ambushMove?.confidence||0);
+  const scalpLong=Number(scalp?.score?.long||0),scalpShort=Number(scalp?.score?.short||0);
+  const scalpSide:Side=scalp?.action==='BUY'||scalp?.action==='SELL'?scalp.action:scalpLong-scalpShort>=6?'BUY':scalpShort-scalpLong>=6?'SELL':'WAIT';
+  const scalpStrength=Math.max(scalpLong,scalpShort,Number(scalp?.confidence||0));
   const movementSide:Side=s(movement?.side!=='WAIT'?movement?.side:movement?.leanSide);
   const movementStrength=Number(movement?.confidence||0);
   const graphSide:Side=s(graph?.nextSide),graphStrength=Number(graph?.nextSideProbability||0);
