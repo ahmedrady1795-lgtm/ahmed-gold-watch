@@ -66,6 +66,8 @@ type Cache<T> = { at: number; value: T };
 let marketCache: Cache<MarketData> | null = null;
 let externalQuoteCache: Cache<QuoteData> | null = null;
 let mt5State: Mt5BridgeStatus | null = null;
+type Mt5FastTick={at:number;receivedAt:number;price:number;bid:number;ask:number;tickVolume:number|null;flags:number|null};
+let mt5FastTicks:Mt5FastTick[]=[];
 let backgroundCache: Cache<BackgroundPoint[]> | null = null;
 
 const MARKET_TTL_MS = 15_000;
@@ -101,10 +103,39 @@ export function setMt5BridgeStatus(input:unknown):Mt5BridgeStatus{
   const accountRaw=body.account&&typeof body.account==='object'?body.account:null;
   let candleSet=mt5State?.candles??null,candlesReceivedAt=mt5State?.candlesReceivedAt??null;
   if(body.candles&&typeof body.candles==='object'){try{const candidate={c1:mt5Candles(body.candles.c1),c5:mt5Candles(body.candles.c5),c15:mt5Candles(body.candles.c15),c60:mt5Candles(body.candles.c60)};if(candidate.c1.length>=80&&candidate.c5.length>=220&&candidate.c15.length>=220&&candidate.c60.length>=220){candleSet=candidate;candlesReceivedAt=Date.now();}}catch{}}
-  mt5State={receivedAt:Date.now(),symbol,tickTimeMs,bid,ask,last:num(body.last),mode:String(body.mode||'dry-run'),bridgeLatencyMs:num(body.bridgeLatencyMs),lastQuality:body.lastQuality&&typeof body.lastQuality==='object'?body.lastQuality:null,microstructure:body.microstructure&&typeof body.microstructure==='object'?body.microstructure:null,candles:candleSet,candlesReceivedAt,account:accountRaw?{login:num(accountRaw.login),balance:num(accountRaw.balance),equity:num(accountRaw.equity),marginLevel:num(accountRaw.marginLevel)}:null};
+  const receivedAt=Date.now(),lastPrice=num(body.last),mid=lastPrice&&lastPrice>0?lastPrice:(bid+ask)/2;
+  const tickVol=num(body?.microstructure?.tickVolume),tickFlags=num(body?.microstructure?.tickFlags);
+  const lastFast=mt5FastTicks.at(-1);
+  if(!lastFast||tickTimeMs>lastFast.at||Math.abs(mid-lastFast.price)>1e-9){
+    mt5FastTicks.push({at:tickTimeMs,receivedAt,price:mid,bid,ask,tickVolume:tickVol,flags:tickFlags});
+    const cutoff=receivedAt-20000;
+    mt5FastTicks=mt5FastTicks.filter(x=>x.receivedAt>=cutoff).slice(-500);
+  }
+  mt5State={receivedAt,symbol,tickTimeMs,bid,ask,last:lastPrice,mode:String(body.mode||'dry-run'),bridgeLatencyMs:num(body.bridgeLatencyMs),lastQuality:body.lastQuality&&typeof body.lastQuality==='object'?body.lastQuality:null,microstructure:body.microstructure&&typeof body.microstructure==='object'?body.microstructure:null,candles:candleSet,candlesReceivedAt,account:accountRaw?{login:num(accountRaw.login),balance:num(accountRaw.balance),equity:num(accountRaw.equity),marginLevel:num(accountRaw.marginLevel)}:null};
   return mt5State;
 }
 export function getMt5BridgeStatus(now=Date.now()){if(!mt5State)return{connected:false,fresh:false,candlesFresh:false,status:null as Mt5BridgeStatus|null};const tickAgeMs=Math.max(0,now-mt5State.tickTimeMs),bridgeAgeMs=Math.max(0,now-mt5State.receivedAt),candlesAgeMs=mt5State.candlesReceivedAt?Math.max(0,now-mt5State.candlesReceivedAt):null,fresh=tickAgeMs<=MT5_TICK_MAX_AGE_MS&&bridgeAgeMs<=15000,candlesFresh=Boolean(fresh&&mt5State.candles&&candlesAgeMs!=null&&candlesAgeMs<=45000);return{connected:true,fresh,candlesFresh,tickAgeMs,bridgeAgeMs,candlesAgeMs,status:mt5State};}
+export function getMt5FastSignal(now=Date.now()){
+  const rows=mt5FastTicks.filter(x=>now-x.receivedAt<=12000),latest=rows.at(-1);
+  if(!latest||rows.length<4||now-latest.receivedAt>2500)return {ok:false,side:'WAIT' as const,stage:'OFFLINE',score:0,confidence:0,samples:rows.length};
+  const older=(ms:number)=>{for(let i=rows.length-1;i>=0;i--)if(rows[i].receivedAt<=latest.receivedAt-ms)return rows[i];return rows[0]||null;};
+  const vel=(o:Mt5FastTick|null)=>o&&o.price>0?(latest.price-o.price)/o.price*10000:0;
+  const v05=vel(older(500)),v15=vel(older(1500)),v4=vel(older(4000)),acc=v05-v15/3;
+  let up=0,down=0;for(let i=1;i<rows.length;i++){if(rows[i].price>rows[i-1].price)up++;else if(rows[i].price<rows[i-1].price)down++;}
+  const persistence=Math.round(Math.max(up,down)/Math.max(1,up+down)*100);
+  const book=mt5State?.microstructure?.orderBook,bb=Array.isArray(book?.bids)?book!.bids!:[],aa=Array.isArray(book?.asks)?book!.asks!:[];
+  const bVol=bb.slice(0,12).reduce((s,x)=>s+Math.max(0,Number(x?.volume||0)),0),aVol=aa.slice(0,12).reduce((s,x)=>s+Math.max(0,Number(x?.volume||0)),0);
+  const imbalance=bVol+aVol>0?(bVol-aVol)/(bVol+aVol)*100:0;
+  const signImb=imbalance>=8?1:imbalance<=-8?-1:0,signAcc=acc>=.03?1:acc<=-.03?-1:0,signVel=v15>=.05?1:v15<=-.05?-1:0;
+  const vote=signImb*1.35+signAcc*1.15+signVel*.8+(persistence>=60?(up>down?1:-1)*.55:0);
+  const side:Side=vote>=1.25?'BUY':vote<=-1.25?'SELL':'WAIT';
+  const preTrigger=side!=='WAIT'&&Math.abs(v15)<=.45&&Math.abs(acc)>=.025&&Math.abs(imbalance)>=12;
+  const ignition=side!=='WAIT'&&Math.abs(v05)>=.22&&Math.abs(acc)>=.06&&persistence>=60;
+  const stage=ignition?'IGNITION':preTrigger?'PRE_TRIGGER':side!=='WAIT'?'BUILDING':'WAIT';
+  const score=Math.round(Math.max(0,Math.min(92,38+Math.abs(imbalance)*.28+Math.abs(acc)*55+Math.abs(v15)*9+Math.max(0,persistence-50)*.32+(preTrigger?10:0))));
+  const confidence=Math.round(Math.max(0,Math.min(90,score*.72+Math.min(18,rows.length*.55)+(stage==='PRE_TRIGGER'?6:stage==='IGNITION'?8:0))));
+  return {ok:true,side,stage,score,confidence,samples:rows.length,velocity05s:Number(v05.toFixed(4)),velocity15s:Number(v15.toFixed(4)),velocity4s:Number(v4.toFixed(4)),acceleration:Number(acc.toFixed(4)),persistence,bookImbalance:Number(imbalance.toFixed(1)),price:latest.price,bid:latest.bid,ask:latest.ask,at:latest.at,receivedAt:latest.receivedAt};
+}
 
 async function quoteFromBinanceFutures(now:number):Promise<QuoteData>{const data=await getJson('https://fapi.binance.com/fapi/v1/ticker/bookTicker?symbol=XAUUSDT'),bid=num(data?.bidPrice??data?.bid),ask=num(data?.askPrice??data?.ask);if(bid==null||ask==null||bid<=0||ask<bid)throw new Error('invalid Binance XAUUSDT quote');const sourceTime=num(data?.time);return{ok:true,symbol:'XAU/USD',price:(bid+ask)/2,source:'Binance Futures · XAUUSDT proxy',sourceTime,fetchedAt:now,status:goldStatusFor(sourceTime,now),previousClose:null,change:null,percentChange:null,bid,ask,spread:ask-bid};}
 function binanceCandles(data:any):Candle[]{if(!Array.isArray(data))throw new Error('binance schema');const parsed=data.map((v:any)=>({time:Number(v?.[0]),open:Number(v?.[1]),high:Number(v?.[2]),low:Number(v?.[3]),close:Number(v?.[4])}));if(parsed.some((v:Candle)=>!Object.values(v).every(Number.isFinite)||v.time<=0||v.low<=0||v.high<v.low||v.open<v.low||v.open>v.high||v.close<v.low||v.close>v.high))throw new Error('binance schema');return parsed.sort((a:Candle,b:Candle)=>a.time-b.time).filter((v:Candle,i:number,a:Candle[])=>i===0||v.time!==a[i-1].time);}
