@@ -134,7 +134,9 @@ function AdvancedDetails({x}:any){
 function AssetCard({x,fast}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
   const master=x.master||{action:x.action,state:x.phase||'WAIT',reason:''},hunt=x.huntForecast,recommendation=x.recommendation;
-  const buy=master.action==='BUY',sell=master.action==='SELL';
+  const forecastSide=hunt?.marketUnderstanding?.firstMove?.side||hunt?.nextMove?.side||hunt?.path?.shortSide||'WAIT';
+  const displaySide=master.action==='BUY'||master.action==='SELL'?master.action:forecastSide;
+  const buy=displaySide==='BUY',sell=displaySide==='SELL';
   const masterState=String(master?.state||'').toUpperCase();
   const scalpLong=Number(x.scalp?.score?.long||0),scalpShort=Number(x.scalp?.score?.short||0);
   const scalpSide=x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:scalpLong>scalpShort?'BUY':scalpShort>scalpLong?'SELL':'WAIT';
@@ -149,7 +151,7 @@ function AssetCard({x,fast}:any){
   const shownSignals=signalRows;
   return <section className={"panel ai-asset-card "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
-      <div><span className="eyebrow">{x.asset}</span><h2>{buy?'شراء':sell?'بيع':'انتظار'}</h2></div>
+      <div><span className="eyebrow">{x.asset}</span><h2>{recommendation?.active?(buy?'شراء':sell?'بيع':'مراقبة'):(buy?'توقع صعود':sell?'توقع هبوط':'تذبذب')}</h2></div>
       {buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}
     </div>
 
