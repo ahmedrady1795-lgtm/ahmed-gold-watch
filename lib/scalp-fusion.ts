@@ -111,7 +111,7 @@ function preMoveSignal(liq:any,motion:any,tick:any){
   return {side:sideOut,score:Number(score.toFixed(1)),gap:Number(gap.toFixed(1)),support,armed,ignition,priceStillCoiled,lateMomentum,etaSeconds,quality:q,pressure:Number(pressure.toFixed(1)),microEdge:Number(micro.toFixed(1)),acceleration:Number(accel.toFixed(1)),deltaPct:Number(delta.toFixed(1)),priceChangeBps:Number(priceBps.toFixed(2)),compression,precursorCount,tickSide:t.side,tickStage:t.stage,tickScore:Number(t.score.toFixed(1))};
 }
 
-export function buildAmbushEngine(raw:any,liq:any,motion:any,learner:any,ml:any,price:number|null,atr:number|null,liveOutcome:any=null,tick:any=null,accumulation:any=null,asset='BTC'){
+export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,price:number|null,atr:number|null,liveOutcome:any=null,tick:any=null,accumulation:any=null,asset='BTC'){
   const techSide=technicalSide(raw);
   const long=Number(raw?.score?.long||0),short=Number(raw?.score?.short||0),techBest=Math.max(long,short),techGap=Math.abs(long-short);
   const liqSide=side(liq?.side),liqScore=liquidityStrength(liq);
@@ -352,7 +352,16 @@ export function buildAmbushEngine(raw:any,liq:any,motion:any,learner:any,ml:any,
     askDepthChange:Number(liq?.dynamics?.askDepthChangePct||0),
     acceleration:Number(liq?.dynamics?.acceleration||0)
   });
-  // Ambush is the only trade authority. Everything else is helper evidence.
+  // V8 architecture: AMBUSH is the only trade authority.
+  // Every other engine only supplies evidence/confirmation into AMBUSH.
+  const ambushTrade=Boolean(
+    predator?.phase==='AMBUSH'&&predator?.ambush&&predator?.watch&&
+    fusedSide!=='WAIT'&&!flipSuppressed&&!chaseRisk&&!unconfirmedReactionAgainstFlow
+  );
+  const strong=ambushTrade;
+  const watch=false;
+  const action:Side=ambushTrade?fusedSide:'WAIT';
+  const state=ambushTrade?'setup':predator?.phase==='ABORT'?'abort':'wait';
   const assistants={
     confirmation:Boolean(predator?.confirmationAssist),
     fast:Boolean(preMoveAligned||tickAligned),
@@ -366,23 +375,6 @@ export function buildAmbushEngine(raw:any,liq:any,motion:any,learner:any,ml:any,
     learned:Boolean(learnedSide===fusedSide)
   };
   const assistantCount=Object.values(assistants).filter(Boolean).length;
-  const ambushPrecisionGuard=Boolean(
-    activeReliability.n>=5&&activeReliability.score<50
-  );
-  const requiredAmbushConfidence=ambushPrecisionGuard?68:60;
-  const requiredAmbushAssistants=ambushPrecisionGuard?4:3;
-  const reversalTradeReady=mode!=='REVERSAL'||Boolean(assistants.confirmation&&assistantCount>=Math.max(4,requiredAmbushAssistants));
-  const ambushTrade=Boolean(
-    predator?.phase==='AMBUSH'&&predator?.ambush&&predator?.watch&&
-    predator?.temporalReady&&
-    (!predator?.microstructure?.available||predator?.microstructure?.ready)&&
-    confidence>=requiredAmbushConfidence&&assistantCount>=requiredAmbushAssistants&&reversalTradeReady&&
-    fusedSide!=='WAIT'&&!flipSuppressed&&!chaseRisk&&!unconfirmedReactionAgainstFlow
-  );
-  const strong=ambushTrade;
-  const watch=false;
-  const action:Side=ambushTrade?fusedSide:'WAIT';
-  const state=ambushTrade?'setup':predator?.phase==='ABORT'?'abort':'wait';
 
   const bid=Number(liq?.book?.bestBid),ask=Number(liq?.book?.bestAsk),microprice=Number(liq?.book?.microprice);
   const validBid=Number.isFinite(bid)&&bid>0,validAsk=Number.isFinite(ask)&&ask>0,validMicro=Number.isFinite(microprice)&&microprice>0;
@@ -465,11 +457,8 @@ export function buildAmbushEngine(raw:any,liq:any,motion:any,learner:any,ml:any,
     },
     trigger:{
       phaseRequired:'AMBUSH',
-      microReady:Boolean(!predator?.microstructure?.available||predator?.microstructure?.ready),
-      temporalReady:Boolean(predator?.temporalReady),
-      minConfidence:requiredAmbushConfidence,
-      minAssistants:requiredAmbushAssistants,
-      precisionGuard:ambushPrecisionGuard,
+      microReady:Boolean(predator?.microstructure?.ambushReady),
+      temporalReady:Boolean(predator?.ambushTemporal),
       noChase:!chaseRisk,
       noFlip:!flipSuppressed
     },
@@ -486,43 +475,6 @@ export function buildAmbushEngine(raw:any,liq:any,motion:any,learner:any,ml:any,
     etaSeconds:preMove.etaSeconds,
     updatedAt:Date.now()
   };
-  const trackMicroOk=Boolean(
-    !predator?.microstructure?.available||
-    (
-      Number(predator?.microstructure?.samples||0)>=2&&
-      Number(predator?.microstructure?.opposition||0)<=.25&&
-      Number(predator?.microstructure?.mean||0)>=4&&
-      !predator?.microstructure?.exhausted
-    )
-  );
-  const trackStable=Boolean(
-    predator?.phase==='TRACK'&&
-    Number(predator?.stableCount||0)>=2&&
-    Number(predator?.persistence||0)>=.66&&
-    Number(predator?.score||0)>=52&&
-    assistantCount>=2&&trackMicroOk&&!chaseRisk&&!flipSuppressed&&!reactionConflict
-  );
-  const ambushMoveSide:Side=
-    (predator?.phase==='AMBUSH'||trackStable)&&targetSide!=='WAIT'
-      ?targetSide
-      :'WAIT';
-  const movementConfidence=ambushMoveSide==='WAIT'?0:Math.round(cap(
-    Number(predator?.score||0)*(ambushPrecisionGuard?.86:1),
-    0,predator?.phase==='AMBUSH'?92:78
-  ));
-  const movement={
-    authority:'AMBUSH',
-    side:ambushMoveSide,
-    status:predator?.phase==='AMBUSH'?'CONFIRMED':trackStable?'FORMING':'WAIT',
-    confidence:movementConfidence,
-    target:ambushMoveSide==='WAIT'?null:target,
-    pattern:String(predator?.pattern||'NO_EDGE'),
-    phase:String(predator?.phase||'HUNT'),
-    assistants,
-    assistantCount,
-    tradeReady:Boolean(ambushTrade&&intercept.ready)
-  };
-
   let trade:any=null;
   if(ambushTrade&&intercept.ready&&Number.isFinite(p)&&p>0&&Number.isFinite(a)&&a>0){
     const dir=fusedSide==='BUY'?1:-1;
@@ -549,15 +501,13 @@ export function buildAmbushEngine(raw:any,liq:any,motion:any,learner:any,ml:any,
     confidence,
     trade,
     ambushPlan,
-    movement,
     early:Boolean(ambushTrade),
     preMove,
     intercept,
     target,
     reaction:{active:reaction.active,inside:Boolean(reaction.inside),side:reactionSide,strength:reactionScore,confirmed:reactionConfirmed,candidate:reactionCandidate,fastSupport:reactionFastSupport,fastOpposition:reactionFastOpposition,nearest:reaction.nearest||null,contextMode},
     fusionV8:{
-      authority:'AMBUSH',side:fusedSide,rawSide:rawFusedSide,confidence,strong:ambushTrade,watch:false,ambushTrade,predator,assistants,assistantCount,ambushPlan,movement,
-      precisionGuard:ambushPrecisionGuard,requiredAmbushConfidence,requiredAmbushAssistants,
+      authority:'AMBUSH',side:fusedSide,rawSide:rawFusedSide,confidence,strong:ambushTrade,watch:false,ambushTrade,predator,assistants,assistantCount,ambushPlan,
       contextMode,reactionAligned,reactionConflict,accumulationAligned,accumulationPhase,accumulationReadiness,target,intercept,
       reliability:{active:activeReliability,ambush:confirmedReliability,reliabilityPenalty},
       buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
