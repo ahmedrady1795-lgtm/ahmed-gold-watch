@@ -36,6 +36,32 @@ function atrNow(c:any[]){
   for(let i=1;i<x.length;i++){const tr=Math.max(x[i].high-x[i].low,Math.abs(x[i].high-x[i-1].close),Math.abs(x[i].low-x[i-1].close));if(Number.isFinite(tr)){sum+=tr;n++;}}
   return n?sum/n:null;
 }
+
+function buildRecommendation(master:any,hunt:any,price:number|null,now:number){
+  const action=master?.action==='BUY'||master?.action==='SELL'?master.action:'WAIT';
+  if(action==='WAIT'||master?.state!=='TRADE'){
+    return {active:false,action:'WAIT',confidence:0,entry:price??null,invalidation:null,targets:{scalp:null,oneMinute:null,fiveMinute:null,fifteenMinute:null},expiresAt:null,reasons:[]};
+  }
+  const q=Number(hunt?.quality??hunt?.confidence??0),next=Number(hunt?.nextMove?.confidence||0),core=Number(master?.evidence?.confidence||0),move=Number(hunt?.movementIntelligence?.confidence||0);
+  let confidence=q*.42+next*.25+core*.18+move*.15;
+  if(hunt?.movementIntelligence?.side===action)confidence+=4;
+  if(hunt?.strongMove?.side===action)confidence+=4;
+  if(hunt?.expectedMoveCore?.conflict)confidence-=12;
+  if(hunt?.liveFailureGuard?.invalidated)confidence-=24;
+  if(hunt?.side&&hunt.side!=='WAIT'&&hunt.side!==action)confidence-=8;
+  if(master?.conflict)confidence=0;
+  confidence=Math.max(0,Math.min(92,Math.round(confidence)));
+  const aligned=(x:any)=>x?.side===action&&Number.isFinite(Number(x?.price))?Number(x.price):null;
+  const t=hunt?.quickSignalTargets||{};
+  const fifteen=hunt?.fifteenMinuteTarget?.side===action&&Number.isFinite(Number(hunt?.fifteenMinuteTarget?.price))?Number(hunt.fifteenMinuteTarget.price):null;
+  return {
+    active:true,action,confidence,entry:Number.isFinite(Number(price))?Number(price):null,
+    invalidation:Number.isFinite(Number(hunt?.invalidation))?Number(hunt.invalidation):null,
+    targets:{scalp:aligned(t?.scalp),oneMinute:aligned(t?.oneMinute),fiveMinute:aligned(t?.fiveMinute),fifteenMinute:fifteen},
+    expiresAt:now+5*60000,
+    reasons:Array.isArray(hunt?.reasons)?hunt.reasons.slice(0,3):[]
+  };
+}
 function waveFromParams(url:URL,prefix:'b'|'g',now:number){
   const side=url.searchParams.get(prefix+'s'),stage=url.searchParams.get(prefix+'st'),score=Number(url.searchParams.get(prefix+'sc')),confidence=Number(url.searchParams.get(prefix+'cf')),at=Number(url.searchParams.get(prefix+'at'));
   if(!['BUY','SELL','WAIT'].includes(String(side))||!['WARMING','COILED','WAVE_FORMING','IGNITION'].includes(String(stage))||!Number.isFinite(score)||!Number.isFinite(confidence)||!Number.isFinite(at)||score<0||score>92||confidence<0||confidence>88||now-at<0||now-at>3500)return null;
@@ -128,8 +154,10 @@ export async function GET(request:Request){
       recordEvolutionAutopsy({asset:'BTC',hunt:bitcoinHunt,learning:bitcoinLearning,stateGraph:bitcoinStateGraph,master:bitcoinMaster,now})
     ]);
 
-    const goldOut={...gold,rawAction:gold.action,action:goldMaster.action,master:goldMaster,huntForecast:goldHunt,waveStructure:goldStructure,stateGraph:goldStateGraph,accumulationMap:goldAccumulation,newsIntelligence:goldNews,marketLearning:goldLearning,expectedMoveLearning:goldExpectedLearning,movementIntelligence:goldMovement,serverTickBrain:goldTick,selfEvolution:goldEvolution,evolutionAutopsy:goldAutopsy,scalpLearner:goldLearner,trade:goldMaster.trade};
-    const bitcoinOut={...bitcoin,rawAction:bitcoin.action,action:bitcoinMaster.action,master:bitcoinMaster,huntForecast:bitcoinHunt,waveStructure:bitcoinStructure,stateGraph:bitcoinStateGraph,accumulationMap:bitcoinAccumulation,newsIntelligence:bitcoinNews,marketLearning:bitcoinLearning,expectedMoveLearning:bitcoinExpectedLearning,movementIntelligence:bitcoinMovement,serverTickBrain:bitcoinTick,selfEvolution:bitcoinEvolution,evolutionAutopsy:bitcoinAutopsy,scalpLearner:bitcoinLearner,trade:bitcoinMaster.trade};
+    const goldRecommendation=buildRecommendation(goldMaster,goldHunt,goldPrice,now);
+    const bitcoinRecommendation=buildRecommendation(bitcoinMaster,bitcoinHunt,btcPrice,now);
+    const goldOut={...gold,rawAction:gold.action,action:goldMaster.action,master:goldMaster,recommendation:goldRecommendation,huntForecast:goldHunt,waveStructure:goldStructure,stateGraph:goldStateGraph,accumulationMap:goldAccumulation,newsIntelligence:goldNews,marketLearning:goldLearning,expectedMoveLearning:goldExpectedLearning,movementIntelligence:goldMovement,serverTickBrain:goldTick,selfEvolution:goldEvolution,evolutionAutopsy:goldAutopsy,scalpLearner:goldLearner,trade:goldMaster.trade};
+    const bitcoinOut={...bitcoin,rawAction:bitcoin.action,action:bitcoinMaster.action,master:bitcoinMaster,recommendation:bitcoinRecommendation,huntForecast:bitcoinHunt,waveStructure:bitcoinStructure,stateGraph:bitcoinStateGraph,accumulationMap:bitcoinAccumulation,newsIntelligence:bitcoinNews,marketLearning:bitcoinLearning,expectedMoveLearning:bitcoinExpectedLearning,movementIntelligence:bitcoinMovement,serverTickBrain:bitcoinTick,selfEvolution:bitcoinEvolution,evolutionAutopsy:bitcoinAutopsy,scalpLearner:bitcoinLearner,trade:bitcoinMaster.trade};
     const radar=[
       {asset:'BTC',score:Math.min(92,Math.max(Number(bitcoin.fusion?.buy||0),Number(bitcoin.fusion?.sell||0),Number(bitcoin.hunter?.score||0),Number(bitcoinScalp.score?.long||0),Number(bitcoinScalp.score?.short||0))),status:bitcoinMaster.state,side:bitcoinMaster.action,watchSide:bitcoinMaster.watchSide,huntSide:bitcoinHunt.side,huntState:bitcoinHunt.state,huntConfidence:bitcoinHunt.confidence,mode:bitcoinMaster.state==='TRADE'?bitcoinMaster.trade?.mode:'MASTER'},
       {asset:'GOLD',score:Math.min(92,Math.max(Number(gold.fusion?.buy||0),Number(gold.fusion?.sell||0),Number(gold.hunter?.score||0),Number(goldScalp.score?.long||0),Number(goldScalp.score?.short||0))),status:goldMaster.state,side:goldMaster.action,watchSide:goldMaster.watchSide,huntSide:goldHunt.side,huntState:goldHunt.state,huntConfidence:goldHunt.confidence,mode:goldMaster.state==='TRADE'?goldMaster.trade?.mode:'MASTER'}
