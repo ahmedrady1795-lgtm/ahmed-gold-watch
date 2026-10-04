@@ -234,6 +234,16 @@ async function settle(asset:string,c1:Candle[],now:number){
 function decorate(raw:any,cal:number):ExpectedMoveHorizon{
   const factor=.82+cal/280;return {...raw,confidence:Math.round(cap(raw.confidence*factor,0,82)),calibration:cal,firstHitMinutes:Number(raw.firstHitMinutes||0),decisiveRate:Number(raw.decisiveRate||0)};
 }
+function applyDirectionLearning(h:ExpectedMoveHorizon,stats:DirectionStats):ExpectedMoveHorizon{
+  if(h.side==='WAIT')return h;
+  const success=h.side==='BUY'?stats.buySuccess:stats.sellSuccess;
+  const fail=h.side==='BUY'?stats.buyFail:stats.sellFail;
+  const n=success+fail;
+  if(n<4)return h;
+  const accuracy=(success+2)/(n+4),sample=Math.min(1,n/24);
+  const factor=Math.max(.88,Math.min(1.12,1+(accuracy-.5)*.34*sample));
+  return {...h,confidence:Math.round(cap(h.confidence*factor,0,82)),strength:Math.round(cap(h.strength*factor,0,90))};
+}
 
 export async function getExpectedMoveLearning(args:{asset:string;c1:Candle[];context:any;now?:number}):Promise<ExpectedMoveLearning>{
   return serialized(async()=>{
@@ -246,7 +256,7 @@ export async function getExpectedMoveLearning(args:{asset:string;c1:Candle[];con
     const ks=keys(args.asset,f,args.context,c[i].time),cal=ensureCal(args.asset);
     const bucket2=aggregate(ks,'m2',now),bucket5=aggregate(ks,'m5',now),bucket15=aggregate(ks,'m15',now);
     const r2=bucket2.samples>=6?bucket2:analogAggregate(c,i,f,'m2'),r5=bucket5.samples>=6?bucket5:analogAggregate(c,i,f,'m5'),r15=bucket15.samples>=6?bucket15:analogAggregate(c,i,f,'m15');
-    const h2=decorate(r2,calScore(cal.m2,now,'m2')),h5=decorate(r5,calScore(cal.m5,now,'m5')),h15=decorate(r15,calScore(cal.m15,now,'m15'));
+    const h2=applyDirectionLearning(decorate(r2,calScore(cal.m2,now,'m2')),directionStats),h5=applyDirectionLearning(decorate(r5,calScore(cal.m5,now,'m5')),directionStats),h15=applyDirectionLearning(decorate(r15,calScore(cal.m15,now,'m15')),directionStats);
     const signed=(h2.side==='BUY'?h2.confidence:h2.side==='SELL'?-h2.confidence:0)*.34+(h5.side==='BUY'?h5.confidence:h5.side==='SELL'?-h5.confidence:0)*.36+(h15.side==='BUY'?h15.confidence:h15.side==='SELL'?-h15.confidence:0)*.30;
     const consensusSide=sideOf(signed,8),active=[h2.side,h5.side,h15.side].filter(x=>x!=='WAIT'),conflict=active.includes('BUY')&&active.includes('SELL');
     const consensusScore=Math.round(cap(Math.abs(signed)+(conflict?-12:8),0,88));
