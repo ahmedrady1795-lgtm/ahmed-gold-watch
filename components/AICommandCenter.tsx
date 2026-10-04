@@ -23,7 +23,7 @@ function IndicatorMatrix({x}:any){
 }
 
 function AdvancedDetails({x}:any){
-  const hunter=x.hunter,liq=x.liquidity,motion=x.motion,behavior=x.behavior,learner=x.scalpLearner,scalp=x.scalp,core=x.adaptiveCore;
+  const hunter=x.hunter,liq=x.liquidity,motion=x.motion,behavior=x.behavior,learner=x.scalpLearner,marketLearning=x.marketLearning,scalp=x.scalp,core=x.adaptiveCore;
   return <details className="advanced-details">
     <summary><span>التفاصيل المتقدمة</span><ChevronDown size={16}/></summary>
     <div className="advanced-content">
@@ -66,6 +66,17 @@ function AdvancedDetails({x}:any){
           <div><small>Profit Factor</small><strong>{learner.profitFactor??'—'}</strong></div>
         </div>
         {!!learner.gate?.reasons?.length&&<p>{learner.gate.reasons.join(' · ')}</p>}
+      </div>}
+
+      {marketLearning&&<div className="advanced-block">
+        <strong>🧠 Market Learning Brain</strong>
+        <div className="levels">
+          <div><small>Learned Bias</small><strong>{sideAr(marketLearning.side)} · {calibrated(marketLearning.confidence)}</strong></div>
+          <div><small>1m Memory</small><strong>{sideAr(marketLearning.horizon1?.side)} · {marketLearning.horizon1?.samples||0}</strong></div>
+          <div><small>5m Memory</small><strong>{sideAr(marketLearning.horizon5?.side)} · {marketLearning.horizon5?.samples||0}</strong></div>
+        </div>
+        <p>Observations {marketLearning.totals?.observations||0} · Resolved 1m {marketLearning.totals?.resolved1||0} · Resolved 5m {marketLearning.totals?.resolved5||0}</p>
+        {!!marketLearning.reasons?.length&&<p>{marketLearning.reasons.join(' · ')}</p>}
       </div>}
 
       {scalp&&<div className="advanced-block"><strong>M1 Scalp</strong><p>{scalp.action&&scalp.action!=='WAIT'?('ميل '+sideAr(scalp.action)):scalp.reason||'WAIT'}</p></div>}
@@ -164,6 +175,7 @@ function AssetCard({x,fast}:any){
         <span>{hunt.alternative.condition}</span>
       </div>}
 
+      {hunt.learningBrain&&<p className="learning-line">🧠 ذاكرة السوق: {sideAr(hunt.learningBrain.side)} · ثقة {calibrated(hunt.learningBrain.confidence)} · 1m {hunt.learningBrain.horizon1?.samples||0} / 5m {hunt.learningBrain.horizon5?.samples||0} عينة</p>}
       {hunt.commitment&&<p className="muted">Direction Lock: {sideAr(hunt.commitment.side)} · {hunt.commitment.state}{hunt.commitment.pendingSide!=='WAIT'?(' · عكس محتمل '+sideAr(hunt.commitment.pendingSide)+' '+hunt.commitment.pendingCount+'/2'):''}</p>}
       {!!hunt.reasons?.length&&<p className="muted">{hunt.reasons.slice(0,4).join(' · ')}</p>}
     </div>}
