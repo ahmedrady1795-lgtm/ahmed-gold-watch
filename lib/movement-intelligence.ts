@@ -111,9 +111,9 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   const scalpLong=Number(scalp?.score?.long||0),scalpShort=Number(scalp?.score?.short||0),scalpGap=Math.abs(scalpLong-scalpShort);
   const scalpSide:Side=scalp?.action==='BUY'||scalp?.action==='SELL'?scalp.action:scalpLong-scalpShort>=5?'BUY':scalpShort-scalpLong>=5?'SELL':'WAIT';
   const scalpScore=Math.max(scalpLong,scalpShort,Number(scalp?.confidence||0));
-  const ml1=ml?.oneMinute||{},ml5=ml?.fiveMinute||{},micro=ml?.microstructure||{};
+  const ml1=ml?.oneMinute||{},ml5=ml?.fiveMinute||{},neural=ml?.neuralCore||{},micro=(neural?.ready?neural:(ml?.microstructure||{}));
   const ml1Ready=Boolean(ml?.ok&&ml1?.ready&&!ml?.shadow),ml5Ready=Boolean(ml?.ok&&ml5?.ready&&!ml?.shadow);
-  const microReady=Boolean(ml?.ok&&micro?.ready&&micro?.side!=='WAIT');
+  const microReady=Boolean((neural?.ok||ml?.ok)&&micro?.ready&&micro?.side!=='WAIT');
   const microSide:Side=microReady?side(micro?.side):'WAIT';
   const microScore=microReady?Math.max(Number(micro?.confidence||0),50+Number(micro?.edge||0)*.4):0;
   const microAcc=Number(micro?.metrics?.holdout?.selectiveAccuracy||0)*100;
@@ -238,7 +238,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   if(tick?.stage==='IGNITION'||tick?.stage==='WAVE_FORMING')reasons.push('Server tick '+tick.stage+' '+tick.side);
   if(news?.event)reasons.push('News '+String(news.phase||'')+' · '+String(news.event.name||'')+' · risk '+Number(news.risk||0)+' · '+String(news.side||'WAIT'));
   if(fastStrong)reasons.push('Live Stack '+fastSide+' · confidence '+fastConfidence+' · '+fastRows.filter(x=>x.side===fastSide).length+'/'+fastRows.length+' fast engines aligned');
-  if(microReady)reasons.push('Neural L2 '+microSide+' · holdout '+Math.round(microAcc)+'% · confidence '+Math.round(microScore));
+  if(microReady)reasons.push((neural?.ready?'Neural Fusion':'Neural L2')+' '+microSide+' · holdout '+Math.round(microAcc)+'% · confidence '+Math.round(microScore));
   if(ml1Ready||ml5Ready)reasons.push('ML selective OOS '+(ml1Ready?('1m '+ml1Side+' '+Math.round(ml1Acc)+'%'):'1m shadow')+' · '+(ml5Ready?('5m '+ml5Side+' '+Math.round(ml5Acc)+'%'):'5m shadow'));
   if(rangeMode)reasons.push('Range/compression mode: fast price-action evidence leads; slower memory only calibrates confidence');
   if(conflict)reasons.push('Model disagreement detected; confidence reduced, direction preserved when a measurable edge exists');
