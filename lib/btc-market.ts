@@ -11,7 +11,7 @@ async function json(url:string){
   return j;
 }
 function normalize(rows:any[]):Candle[]{
-  const out=rows.map((r:any)=>({time:Number(r[0])*1000,low:Number(r[1]),high:Number(r[2]),open:Number(r[3]),close:Number(r[4])}))
+  const out=rows.map((r:any)=>({time:Number(r[0])*1000,low:Number(r[1]),high:Number(r[2]),open:Number(r[3]),close:Number(r[4]),realVolume:Number(r[5]||0)}))
     .filter((c:Candle)=>Number.isFinite(c.time)&&Number.isFinite(c.open)&&Number.isFinite(c.high)&&Number.isFinite(c.low)&&Number.isFinite(c.close)&&c.low>0&&c.high>=Math.max(c.open,c.close)&&c.low<=Math.min(c.open,c.close))
     .sort((a:Candle,b:Candle)=>a.time-b.time);
   return out.filter((c,i)=>i===0||c.time!==out[i-1].time);
@@ -58,7 +58,7 @@ async function kraken(interval:number){
   const j=await json('https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval='+interval);
   const result=j?.result||{},key=Object.keys(result).find(k=>k!=='last'),rows=key?result[key]:null;
   if(!Array.isArray(rows))throw new Error('kraken schema');
-  const out=rows.map((r:any)=>({time:Number(r[0])*1000,open:Number(r[1]),high:Number(r[2]),low:Number(r[3]),close:Number(r[4])} as Candle))
+  const out=rows.map((r:any)=>({time:Number(r[0])*1000,open:Number(r[1]),high:Number(r[2]),low:Number(r[3]),close:Number(r[4]),realVolume:Number(r[6]||0)} as Candle))
     .filter((c:Candle)=>Number.isFinite(c.time)&&Number.isFinite(c.open)&&Number.isFinite(c.high)&&Number.isFinite(c.low)&&Number.isFinite(c.close)&&c.low>0&&c.high>=Math.max(c.open,c.close)&&c.low<=Math.min(c.open,c.close))
     .sort((a:Candle,b:Candle)=>a.time-b.time)
     .filter((c:Candle,i:number,a:Candle[])=>i===0||c.time!==a[i-1].time);
