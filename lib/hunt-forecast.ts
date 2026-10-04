@@ -169,35 +169,92 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const reactionFastSide:Side=reactionFast?.side||'WAIT';
   const reactionFastStrength=Number(reactionFast?.strength||0);
   const reactionFastDistanceAtr=Number(reactionFast?.distanceAtr);
-  // Next-Move v4: first movement is a true fast stack.
-  // Slow structure/memory can veto/calibrate later but cannot dominate 30-120s direction.
-  let fastNextBuy=
-    sideScore(scalpSide,'BUY',scalpFusionConfidence)*.30+
-    sideScore(liqSide,'BUY',liqStrength)*.27+
-    sideScore(tickSide,'BUY',tickScore)*.18+
-    sideScore(motionSide,'BUY',motionScore)*.12+
-    sideScore(validatedMlSide,'BUY',validatedMlScore)*.08+
-    sideScore(waveSide,'BUY',waveScore)*.05;
-  let fastNextSell=
-    sideScore(scalpSide,'SELL',scalpFusionConfidence)*.30+
-    sideScore(liqSide,'SELL',liqStrength)*.27+
-    sideScore(tickSide,'SELL',tickScore)*.18+
-    sideScore(motionSide,'SELL',motionScore)*.12+
-    sideScore(validatedMlSide,'SELL',validatedMlScore)*.08+
-    sideScore(waveSide,'SELL',waveScore)*.05;
-  if(trapSide==='BUY'&&trapScore>=55){fastNextBuy+=Math.min(16,trapScore*.16);fastNextSell*=.82;}
-  if(trapSide==='SELL'&&trapScore>=55){fastNextSell+=Math.min(16,trapScore*.16);fastNextBuy*=.82;}
+  // Forecast Council V6:
+  // correlated fast signals are compressed into one MICRO family so confidence cannot
+  // inflate just because liquidity / tick / motion / wave describe the same move.
   const nearReaction=Boolean(
     reactionFastSide!=='WAIT'&&reactionFastStrength>=70&&
     Number.isFinite(reactionFastDistanceAtr)&&reactionFastDistanceAtr<=.55
   );
-  if(nearReaction){
-    const boost=Math.min(18,reactionFastStrength*.18);
-    if(reactionFastSide==='BUY'){fastNextBuy+=boost;fastNextSell*=.78;}
-    else {fastNextSell+=boost;fastNextBuy*=.78;}
-  }
-  const fastNextSide:Side=sideOf(fastNextBuy,fastNextSell,6);
+  const microBaseBuy=Math.max(
+    sideScore(liqSide,'BUY',liqStrength)*.88,
+    sideScore(tickSide,'BUY',tickScore)*.94,
+    sideScore(motionSide,'BUY',motionScore)*.84,
+    sideScore(waveSide,'BUY',waveScore)*.72
+  );
+  const microBaseSell=Math.max(
+    sideScore(liqSide,'SELL',liqStrength)*.88,
+    sideScore(tickSide,'SELL',tickScore)*.94,
+    sideScore(motionSide,'SELL',motionScore)*.84,
+    sideScore(waveSide,'SELL',waveScore)*.72
+  );
+  const microFamilyBuy=cap(
+    microBaseBuy+
+    (trapSide==='BUY'&&trapScore>=55?Math.min(14,trapScore*.15):0)+
+    (nearReaction&&reactionFastSide==='BUY'?Math.min(10,reactionFastStrength*.12):0),
+    0,100
+  );
+  const microFamilySell=cap(
+    microBaseSell+
+    (trapSide==='SELL'&&trapScore>=55?Math.min(14,trapScore*.15):0)+
+    (nearReaction&&reactionFastSide==='SELL'?Math.min(10,reactionFastStrength*.12):0),
+    0,100
+  );
+  const structureFamilyBuy=cap(
+    sideScore(structureM1Side,'BUY',structureM1Score)*.58+
+    sideScore(graphFresh?graphSide:'WAIT','BUY',graphScore)*.42,
+    0,100
+  );
+  const structureFamilySell=cap(
+    sideScore(structureM1Side,'SELL',structureM1Score)*.58+
+    sideScore(graphFresh?graphSide:'WAIT','SELL',graphScore)*.42,
+    0,100
+  );
+  const learnedH1Side:Side=learningFresh?(learning?.horizon1?.side||'WAIT'):'WAIT';
+  const learnedH1Score=learningFresh?Number(learning?.horizon1?.confidence||0):0;
+  const learnedFamilyBuy=cap(
+    sideScore(em2Side,'BUY',em2Score)*.62+
+    sideScore(validatedMlSide,'BUY',validatedMlScore)*.22+
+    sideScore(learnedH1Side,'BUY',learnedH1Score)*.16,
+    0,100
+  );
+  const learnedFamilySell=cap(
+    sideScore(em2Side,'SELL',em2Score)*.62+
+    sideScore(validatedMlSide,'SELL',validatedMlScore)*.22+
+    sideScore(learnedH1Side,'SELL',learnedH1Score)*.16,
+    0,100
+  );
+  // Ambush can assist the general AI forecast but can never dominate it.
+  const ambushFamilyBuy=sideScore(scalpSide,'BUY',Math.min(75,scalpFusionConfidence));
+  const ambushFamilySell=sideScore(scalpSide,'SELL',Math.min(75,scalpFusionConfidence));
+
+  const fastNextBuy=
+    microFamilyBuy*.48+
+    structureFamilyBuy*.24+
+    learnedFamilyBuy*.22+
+    ambushFamilyBuy*.06;
+  const fastNextSell=
+    microFamilySell*.48+
+    structureFamilySell*.24+
+    learnedFamilySell*.22+
+    ambushFamilySell*.06;
+
+  const familySide=(buy:number,sell:number):Side=>{
+    const strength=Math.max(buy,sell),gap=Math.abs(buy-sell);
+    return strength>=28&&gap>=8?(buy>sell?'BUY':'SELL'):'WAIT';
+  };
+  const microFamilySide=familySide(microFamilyBuy,microFamilySell);
+  const structureFamilySide=familySide(structureFamilyBuy,structureFamilySell);
+  const learnedFamilySide=familySide(learnedFamilyBuy,learnedFamilySell);
+  const ambushFamilySide=familySide(ambushFamilyBuy,ambushFamilySell);
+  const fastNextSide:Side=sideOf(fastNextBuy,fastNextSell,8);
   const fastNextEdge=Math.abs(fastNextBuy-fastNextSell);
+  const independentFamilies=[microFamilySide,structureFamilySide,learnedFamilySide];
+  const independentSupport=independentFamilies.filter(s=>s!=='WAIT'&&s===fastNextSide).length;
+  const independentOpposition=independentFamilies.filter(s=>s!=='WAIT'&&fastNextSide!=='WAIT'&&s!==fastNextSide).length;
+  const changePointConflict=Boolean(
+    graphChange&&microFamilySide!=='WAIT'&&structureFamilySide!=='WAIT'&&microFamilySide!==structureFamilySide
+  );
   const fastNextSupport=[
     scalpSide,liqSide,tickSide,motionSide,validatedMlSide,waveSide,trapSide,
     nearReaction?reactionFastSide:'WAIT'
@@ -217,42 +274,46 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const priorN=Number(priorStats?.hits||0)+Number(priorStats?.fails||0);
   const priorPosterior=Number(priorStats?.posteriorAccuracy||50);
   const historicalWeak=Boolean((priorN>=8&&priorPosterior<50)||(priorN>=20&&priorPosterior<54));
-  // v5 precision gate: confirmed signals must be materially stronger than the old
-  // v2-v4 fast stack. Weak/mixed evidence is still surfaced as LEAN, never hidden.
-  const requiredEdge=severeDrift?68:precisionGuard?58:historicalWeak?54:46;
-  const requiredSupport=severeDrift?5:precisionGuard?4:3;
+  // V6 precision gate works on independent evidence families, not raw component count.
+  const requiredEdge=severeDrift?30:precisionGuard?26:historicalWeak?23:19;
+  const requiredSupport=severeDrift?3:2;
   const reactionConflict=Boolean(nearReaction&&reactionFastSide!=='WAIT'&&reactionFastSide!==fastNextSide);
   const validatedMlConflict=Boolean(validatedMlSide!=='WAIT'&&validatedMlSide!==fastNextSide);
   const slowDoubleConflict=Boolean(
     structureM1Side!=='WAIT'&&graphFresh&&
     structureM1Side!==fastNextSide&&String(stateGraph?.nextSide||'WAIT')!==fastNextSide
   );
-  const noFastConflict=fastLiveOpposition===0;
+  const noFastConflict=fastLiveOpposition<=1;
   const tickOrMotionAligned=(tickSide===fastNextSide&&tickScore>=35)||(motionSide===fastNextSide&&motionScore>=38);
   const scalpLiquidityPair=scalpSide===fastNextSide&&liqSide===fastNextSide;
-  const fastNextStrong=Boolean(
-    fastNextSide!=='WAIT'&&fastNextEdge>=requiredEdge&&fastNextSupport>=requiredSupport&&
-    fastLiveSupport>=(precisionGuard?4:3)&&
-    scalpLiquidityPair&&
-    (tickOrMotionAligned||fastLiveSupport>=4)&&
-    (!reactionConflict||fastNextEdge>=66)&&
-    (!validatedMlConflict||fastNextEdge>=74)&&
-    (!slowDoubleConflict||fastNextEdge>=68)&&
-    (noFastConflict||fastNextEdge>=70)&&
-    (!severeDrift||noFastConflict)
+  const crossFamilyConfirmed=Boolean(
+    microFamilySide===fastNextSide&&
+    (structureFamilySide===fastNextSide||learnedFamilySide===fastNextSide)
   );
+  const fastNextStrong=Boolean(
+    fastNextSide!=='WAIT'&&fastNextEdge>=requiredEdge&&
+    independentSupport>=requiredSupport&&independentOpposition<=1&&
+    crossFamilyConfirmed&&
+    (!changePointConflict||independentSupport===3)&&
+    (!reactionConflict||independentSupport===3)&&
+    (!validatedMlConflict||fastNextEdge>=28)&&
+    (!slowDoubleConflict||independentSupport===3)&&
+    (!severeDrift||independentOpposition===0)
+  );
+  const familyConfidenceCap=changePointConflict?56:independentSupport>=3?88:independentSupport===2?78:52;
   const fastNextConfidence=Math.round(cap(
-    Math.max(fastNextBuy,fastNextSell)*.72+
-    Math.min(16,fastNextEdge*.72)+
-    Math.min(10,fastNextSupport*2.5)-
-    Math.min(12,fastNextOpposition*3),
-    18,88
+    Math.max(fastNextBuy,fastNextSell)*.74+
+    Math.min(15,fastNextEdge*.62)+
+    Math.min(9,independentSupport*3)-
+    Math.min(14,independentOpposition*6),
+    18,familyConfidenceCap
   ));
-  const fastLeanThreshold=Math.max(14,requiredEdge*.42);
+  const fastLeanThreshold=Math.max(10,requiredEdge*.55);
   const fastNextLean=Boolean(
     !fastNextStrong&&fastNextSide!=='WAIT'&&fastNextEdge>=fastLeanThreshold&&
-    fastLiveSupport>=2&&fastLiveOpposition<=1&&
-    (!reactionConflict||fastNextEdge>=42)
+    independentSupport>=1&&independentOpposition<=1&&
+    !changePointConflict&&
+    (!reactionConflict||independentSupport>=2)
   );
   const fastLeanConfidence=Math.round(cap(
     fastNextConfidence*.72+
@@ -637,6 +698,13 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
         support:fastNextSupport,opposition:fastNextOpposition,liveSupport:fastLiveSupport,liveOpposition:fastLiveOpposition,nearReaction,
         requiredEdge,requiredSupport,fastLeanThreshold,precisionGuard,severeDrift,historicalWeak,priorN,priorPosterior,
         noFastConflict,tickOrMotionAligned,scalpLiquidityPair,
+        independentSupport,independentOpposition,crossFamilyConfirmed,changePointConflict,familyConfidenceCap,
+        families:{
+          micro:{side:microFamilySide,buy:Number(microFamilyBuy.toFixed(1)),sell:Number(microFamilySell.toFixed(1))},
+          structure:{side:structureFamilySide,buy:Number(structureFamilyBuy.toFixed(1)),sell:Number(structureFamilySell.toFixed(1))},
+          learned:{side:learnedFamilySide,buy:Number(learnedFamilyBuy.toFixed(1)),sell:Number(learnedFamilySell.toFixed(1))},
+          ambush:{side:ambushFamilySide,buy:Number(ambushFamilyBuy.toFixed(1)),sell:Number(ambushFamilySell.toFixed(1)),role:'ASSIST'}
+        },
         reactionConflict,validatedMlConflict,slowDoubleConflict,wfStatus,wfScope,wfOosAccuracy:Number.isFinite(wfOosAccuracy)?wfOosAccuracy:null,wfDrift,
         scalp:scalpSide,scalpFusionStrong,liquidity:liqSide,tick:tickSide,motion:motionSide,ml1:validatedMlSide,trap:trapSide
       }
