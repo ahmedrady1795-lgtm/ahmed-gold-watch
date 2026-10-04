@@ -38,7 +38,7 @@ export default function Home(){
   const fastWaveRef=useRef<{btc:WaveLead|null;gold:WaveLead|null}>({btc:null,gold:null});
   const waveUiAt=useRef({btc:0,gold:0});
   const seenSignal=useRef('');
-  const aiInFlight=useRef(false),aiReady=useRef(false),aiFailureCount=useRef(0),telegramPulseAt=useRef(0);
+  const aiInFlight=useRef(false),aiReady=useRef(false),aiFailureCount=useRef(0);
   const [rules,setRules]=useState<Rules>(defaults);
   const [now,setNow]=useState(Date.now());
   const first=useRef(true);
@@ -78,13 +78,9 @@ export default function Home(){
         q.set(p+'s',w.side);q.set(p+'st',w.stage);q.set(p+'sc',String(w.score));q.set(p+'cf',String(w.confidence));q.set(p+'at',String(w.at));
       };
       add('b',fastWaveRef.current.btc);add('g',fastWaveRef.current.gold);
-      const r=await fetch('/api/ai-analysis'+(q.size?'?'+q.toString():''),{cache:'no-store'}),j=await r.json();
+      const r=await fetch('/api/ai-analysis'+(q.size?'?'+q.toString():''),{cache:'no-store',signal:AbortSignal.timeout(12000)}),j=await r.json();
       if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر تشغيل محرك AI');
       setAiData(j);aiReady.current=true;aiFailureCount.current=0;setAiError('');
-      if(Date.now()-telegramPulseAt.current>=12000){
-        telegramPulseAt.current=Date.now();
-        void fetch('/api/telegram/pulse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({analysis:j})}).catch(()=>{});
-      }
     }catch(e){
       aiFailureCount.current+=1;
       if(!aiReady.current&&aiFailureCount.current>=3)setAiError(e instanceof Error?e.message:'تعذر تشغيل محرك AI');
@@ -101,7 +97,7 @@ export default function Home(){
     const clock=setInterval(()=>setNow(Date.now()),1000);
     const market=setInterval(()=>{if(document.visibilityState==='visible')void load(true);},15000);
     const hs=setInterval(()=>{if(document.visibilityState==='visible')void loadHealth();},30000);
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},4000);
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},8000);
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
     return()=>{clearInterval(clock);clearInterval(market);clearInterval(hs);clearInterval(aiTimer);};
   },[]);
