@@ -161,8 +161,7 @@ function chooseThreshold(train:Recent[]){
   }
   return best;
 }
-function walkForward(a:AssetState){
-  const rows=directionalRows(a);
+function walkForwardRows(rows:Recent[]){
   const minTrain=20,testSize=5;
   if(rows.length<minTrain+testSize){
     const recent=rows.slice(-10),prior=rows.slice(Math.max(0,rows.length-30),Math.max(0,rows.length-10));
@@ -217,6 +216,10 @@ function walkForward(a:AssetState){
     activeCoverage:Number((active.coverage*100).toFixed(1))
   };
 }
+function walkForward(a:AssetState,source?:string){
+  const rows=directionalRows(a).filter(x=>!source||x.source===source);
+  return walkForwardRows(rows);
+}
 
 function summary(asset:string){
   const a=ensure(asset),global=view(a.global);
@@ -225,11 +228,14 @@ function summary(asset:string){
   const byConfidence=Object.fromEntries(Object.entries(a.byConfidence).map(([k,v])=>[k,view(v)]));
   const directional=global.hits+global.fails;
   const walk=walkForward(a);
+  const walkForwardBySource=Object.fromEntries(
+    Object.keys(a.bySource||{}).map(source=>[source,walkForward(a,source)])
+  );
   return {
     ok:true,version:'next-move-live-v2',asset,
     global,bySource,byRegime,byConfidence,
     pending:a.pending.length,recent:a.recent.slice(0,12),
-    walkForward:walk,
+    walkForward:walk,walkForwardBySource,
     readyForLearning:directional>=50,
     learningSamples:directional,
     storage:targetFile()
@@ -274,7 +280,9 @@ export function calibrateNextMoveConfidence(nextMove:any,live:any,regime?:string
   if(Number(nextMove?.micro?.opposition||0)>=3)calibrated-=4;
   if(nextMove?.conflictWithLockedDirection)calibrated-=3;
 
-  const wf=live?.walkForward||{};
+  const sourceWf=live?.walkForwardBySource?.[source]||null;
+  const wf=Number(sourceWf?.directional||0)>=25?sourceWf:(live?.walkForward||{});
+  const wfScope=Number(sourceWf?.directional||0)>=25?'SOURCE':'GLOBAL_PRIOR';
   const oosN=Number(wf?.oos?.n||0),oosAcc=Number(wf?.oos?.accuracy),oosCoverage=Number(wf?.oos?.coverage);
   const driftDelta=Number(wf?.drift?.delta);
   let walkForwardAdjustment=0;
@@ -306,6 +314,7 @@ export function calibrateNextMoveConfidence(nextMove:any,live:any,regime?:string
       sourceCoverage:Number((src.coverage*100).toFixed(1)),
       cap:Number(capFromLive.toFixed(1)),
       walkForwardStatus:String(wf?.status||'COLLECTING'),
+      walkForwardScope:wfScope,
       walkForwardOosN:oosN,
       walkForwardOosAccuracy:Number.isFinite(oosAcc)?Number(oosAcc.toFixed(1)):null,
       walkForwardCoverage:Number.isFinite(oosCoverage)?Number(oosCoverage.toFixed(1)):null,
