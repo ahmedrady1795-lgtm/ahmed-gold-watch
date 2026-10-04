@@ -190,6 +190,36 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   ],rangeMode?6:10,rangeMode);
   fifteen=calibrateHorizon(fifteen,expected15,learning,'m15');
 
+  // Horizon quality guard: 5m/15m confidence needs independent confirmation.
+  // This prevents a cluster of correlated trend features from manufacturing high confidence.
+  const horizonSupport=(target:Side,rows:Side[])=>rows.filter(s=>s!=='WAIT'&&s===target).length;
+  const horizonOpposition=(target:Side,rows:Side[])=>rows.filter(s=>s!=='WAIT'&&target!=='WAIT'&&s!==target).length;
+  const graphSide5:Side=side(g?.nextSide);
+  const structure5Side:Side=side(structure?.m5?.nextSide||structure?.followSide);
+  const learning5Side:Side=side(learning?.horizon5?.side);
+  const fiveRows:Side[]=[expSide5,structure5Side,graphSide5,learning5Side,side(m?.m5?.bias)];
+  const fifteenRows:Side[]=[expSide15,side(m?.m15?.bias),graphSide5,structure5Side,side(behavior?.side),side(acc?.side)];
+  const fiveIndependentSupport=horizonSupport(five.side,fiveRows);
+  const fiveIndependentOpposition=horizonOpposition(five.side,fiveRows);
+  const fifteenIndependentSupport=horizonSupport(fifteen.side,fifteenRows);
+  const fifteenIndependentOpposition=horizonOpposition(fifteen.side,fifteenRows);
+  const graphChangePoint=Boolean(g?.changePoint&&Number(g?.changePointScore||0)>=58);
+
+  if(five.side!=='WAIT'){
+    const cap5=fiveIndependentSupport>=3?82:fiveIndependentSupport===2?70:54;
+    five.confidence=Math.min(five.confidence,cap5);
+    if(fiveIndependentOpposition>=2)five.confidence=Math.max(0,five.confidence-10);
+    if(graphChangePoint&&graphSide5!=='WAIT'&&graphSide5!==five.side)five.confidence=Math.max(0,five.confidence-9);
+    five.uncertainty=Math.min(100,100-five.confidence);
+  }
+  if(fifteen.side!=='WAIT'){
+    const cap15=fifteenIndependentSupport>=3?84:fifteenIndependentSupport===2?72:56;
+    fifteen.confidence=Math.min(fifteen.confidence,cap15);
+    if(fifteenIndependentOpposition>=2)fifteen.confidence=Math.max(0,fifteen.confidence-9);
+    if(graphChangePoint&&graphSide5!=='WAIT'&&graphSide5!==fifteen.side)fifteen.confidence=Math.max(0,fifteen.confidence-8);
+    fifteen.uncertainty=Math.min(100,100-fifteen.confidence);
+  }
+
   if(news?.phase==='PRE_EVENT'&&Number(news?.risk||0)>=70){
     const penalty=Math.min(22,Math.round((Number(news.risk)-60)*.55));
     two.confidence=Math.max(0,two.confidence-penalty);two.uncertainty=Math.min(100,100-two.confidence);
@@ -243,5 +273,15 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   if(rangeMode)reasons.push('Range/compression mode: fast price-action evidence leads; slower memory only calibrates confidence');
   if(conflict)reasons.push('Model disagreement detected; confidence reduced, direction preserved when a measurable edge exists');
 
-  return {ok:true,asset,regime,side:finalSide,leanSide,confidence:directionalConfidence,agreement:two.agreement,uncertainty:two.uncertainty,conflict,conflictScore,evidence:immediate,horizons:{twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},target15,reasons};
+  return {
+    ok:true,asset,regime,side:finalSide,leanSide,confidence:directionalConfidence,agreement:two.agreement,uncertainty:two.uncertainty,conflict,conflictScore,
+    evidence:immediate,
+    horizons:{twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},
+    horizonQuality:{
+      fiveMinute:{independentSupport:fiveIndependentSupport,independentOpposition:fiveIndependentOpposition},
+      fifteenMinute:{independentSupport:fifteenIndependentSupport,independentOpposition:fifteenIndependentOpposition},
+      changePoint:graphChangePoint,changePointScore:Number(g?.changePointScore||0)
+    },
+    target15,reasons
+  };
 }
