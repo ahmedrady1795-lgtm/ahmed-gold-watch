@@ -13,6 +13,7 @@ type Obs={
   settled:{m2:boolean;m5:boolean;m15:boolean};
   createdAt:number;
 };
+type DirectionStats={buySuccess:number;buyFail:number;sellSuccess:number;sellFail:number};
 type Store={
   version:number;
   patterns:Record<string,Bucket>;
@@ -20,6 +21,7 @@ type Store={
   observations:Obs[];
   bootstrapped:Record<string,number>;
   totals:Record<string,{observations:number;resolved2:number;resolved5:number;resolved15:number;updatedAt:number}>;
+  directionStats:Record<string,DirectionStats>;
 };
 
 export type ExpectedMoveHorizon={
@@ -35,6 +37,7 @@ export type ExpectedMoveLearning={
   fifteenMinute:ExpectedMoveHorizon;
   consensusSide:Side;consensusScore:number;conflict:boolean;
   totals:{observations:number;resolved2:number;resolved5:number;resolved15:number};
+  directionStats:DirectionStats;
   storage:string;reasons:string[];
 };
 
@@ -45,7 +48,8 @@ const cap=(n:number,a=0,b=92)=>Math.max(a,Math.min(b,n));
 const avg=(a:number[])=>a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
 const emptyH=():HStats=>({n:0,up:0,down:0,flat:0,strongUp:0,strongDown:0,sumCloseAtr:0,sumMfeUp:0,sumMfeDown:0,sumFirstMinutes:0,firstHitCount:0,lastAt:0});
 const emptyCal=():Cal=>({n:0,correct:0,wrong:0,flat:0,sumSignedAtr:0,lastAt:0});
-const emptyStore=():Store=>({version:1,patterns:{},calibration:{},observations:[],bootstrapped:{},totals:{}});
+const emptyDirectionStats=():DirectionStats=>({buySuccess:0,buyFail:0,sellSuccess:0,sellFail:0});
+const emptyStore=():Store=>({version:2,patterns:{},calibration:{},observations:[],bootstrapped:{},totals:{},directionStats:{}});
 
 let loaded=false,store:Store=emptyStore(),storagePath=FILE,queue=Promise.resolve();
 function serialized<T>(fn:()=>Promise<T>):Promise<T>{const p=queue.then(fn,fn);queue=p.then(()=>undefined,()=>undefined);return p;}
@@ -53,7 +57,7 @@ async function ensure(file:string){await fs.mkdir(path.dirname(file),{recursive:
 async function load(){
   if(loaded)return;
   for(const file of [FILE,FALLBACK]){
-    try{await ensure(file);const j=JSON.parse(await fs.readFile(file,'utf8'));if(j?.version>=1){store={...emptyStore(),...j};storagePath=file;loaded=true;return;}}catch{}
+    try{await ensure(file);const j=JSON.parse(await fs.readFile(file,'utf8'));if(j?.version>=1){store={...emptyStore(),...j,version:2};store.directionStats||={};storagePath=file;loaded=true;return;}}catch{}
   }
   storagePath=FILE;try{await ensure(FILE);await fs.writeFile(FILE,JSON.stringify(store));}catch{storagePath=FALLBACK;}loaded=true;
 }
@@ -210,7 +214,18 @@ async function settle(asset:string,c1:Candle[],now:number){
       if(o.settled[h])continue;const out=outcome(c,o.candleTime,o.price,o.atr,h);if(!out)continue;
       for(const k of o.keys)updateStats(ensureBucket(k)[h],out,h);updateCal(cal[h],o.predictions[h],out,h);o.settled[h]=true;changed=true;
       const tk=totalsKey(asset),t=store.totals[tk]||{observations:0,resolved2:0,resolved5:0,resolved15:0,updatedAt:0};
-      if(h==='m2')t.resolved2++;else if(h==='m5')t.resolved5++;else t.resolved15++;t.updatedAt=now;store.totals[tk]=t;
+      if(h==='m2')t.resolved2++;
+      else if(h==='m5'){
+        t.resolved5++;
+        const pred=o.predictions.m5,actual=out.firstSide;
+        if((pred==='BUY'||pred==='SELL')&&(actual==='BUY'||actual==='SELL')){
+          const ds=store.directionStats[asset]||emptyDirectionStats();
+          if(pred==='BUY'){if(actual==='BUY')ds.buySuccess++;else ds.buyFail++;}
+          else {if(actual==='SELL')ds.sellSuccess++;else ds.sellFail++;}
+          store.directionStats[asset]=ds;
+        }
+      }else t.resolved15++;
+      t.updatedAt=now;store.totals[tk]=t;
     }
   }
   store.observations=store.observations.filter(o=>!(o.settled.m2&&o.settled.m5&&o.settled.m15&&now-o.createdAt>12*3600000)).slice(-900);
@@ -225,8 +240,9 @@ export async function getExpectedMoveLearning(args:{asset:string;c1:Candle[];con
     await load();const now=args.now||Date.now(),b=await bootstrap(args.asset,args.c1,now),s=await settle(args.asset,args.c1,now);if(b||s)await save();
     const c=args.c1.filter(x=>x.time+60000<=now),i=c.length-1,t=store.totals[totalsKey(args.asset)]||{observations:0,resolved2:0,resolved5:0,resolved15:0,updatedAt:0};
     const blank:ExpectedMoveHorizon={side:'WAIT',strength:0,confidence:0,samples:0,meanCloseAtr:0,expectedUpAtr:0,expectedDownAtr:0,burstSide:'WAIT',burstProbability:0,calibration:50,firstHitMinutes:0,decisiveRate:0};
-    if(i<28)return {ok:false,asset:args.asset,twoMinute:blank,fiveMinute:blank,fifteenMinute:blank,consensusSide:'WAIT',consensusScore:0,conflict:false,totals:t,storage:storagePath,reasons:['بيانات غير كافية لذاكرة الحركة المتوقعة.']};
-    const f=features(c,i);if(!f)return {ok:false,asset:args.asset,twoMinute:blank,fiveMinute:blank,fifteenMinute:blank,consensusSide:'WAIT',consensusScore:0,conflict:false,totals:t,storage:storagePath,reasons:['ATR غير كافٍ.']};
+    const directionStats=store.directionStats[args.asset]||emptyDirectionStats();
+    if(i<28)return {ok:false,asset:args.asset,twoMinute:blank,fiveMinute:blank,fifteenMinute:blank,consensusSide:'WAIT',consensusScore:0,conflict:false,totals:t,directionStats,storage:storagePath,reasons:['بيانات غير كافية لذاكرة الحركة المتوقعة.']};
+    const f=features(c,i);if(!f)return {ok:false,asset:args.asset,twoMinute:blank,fiveMinute:blank,fifteenMinute:blank,consensusSide:'WAIT',consensusScore:0,conflict:false,totals:t,directionStats,storage:storagePath,reasons:['ATR غير كافٍ.']};
     const ks=keys(args.asset,f,args.context,c[i].time),cal=ensureCal(args.asset);
     const bucket2=aggregate(ks,'m2',now),bucket5=aggregate(ks,'m5',now),bucket15=aggregate(ks,'m15',now);
     const r2=bucket2.samples>=6?bucket2:analogAggregate(c,i,f,'m2'),r5=bucket5.samples>=6?bucket5:analogAggregate(c,i,f,'m5'),r15=bucket15.samples>=6?bucket15:analogAggregate(c,i,f,'m15');
@@ -234,7 +250,7 @@ export async function getExpectedMoveLearning(args:{asset:string;c1:Candle[];con
     const signed=(h2.side==='BUY'?h2.confidence:h2.side==='SELL'?-h2.confidence:0)*.34+(h5.side==='BUY'?h5.confidence:h5.side==='SELL'?-h5.confidence:0)*.36+(h15.side==='BUY'?h15.confidence:h15.side==='SELL'?-h15.confidence:0)*.30;
     const consensusSide=sideOf(signed,8),active=[h2.side,h5.side,h15.side].filter(x=>x!=='WAIT'),conflict=active.includes('BUY')&&active.includes('SELL');
     const consensusScore=Math.round(cap(Math.abs(signed)+(conflict?-12:8),0,88));
-    return {ok:true,asset:args.asset,twoMinute:h2,fiveMinute:h5,fifteenMinute:h15,consensusSide,consensusScore,conflict,totals:t,storage:storagePath,reasons:[
+    return {ok:true,asset:args.asset,twoMinute:h2,fiveMinute:h5,fifteenMinute:h15,consensusSide,consensusScore,conflict,totals:t,directionStats,storage:storagePath,reasons:[
       '2m first '+h2.side+' · hit '+h2.decisiveRate+'% · '+h2.firstHitMinutes+'m · cal '+h2.calibration+' · '+h2.samples+' samples'+(bucket2.samples<6?' · nearest analogs':' · exact memory'),
       '5m first '+h5.side+' · hit '+h5.decisiveRate+'% · '+h5.firstHitMinutes+'m · cal '+h5.calibration+' · '+h5.samples+' samples'+(bucket5.samples<6?' · nearest analogs':' · exact memory'),
       '15m first '+h15.side+' · hit '+h15.decisiveRate+'% · '+h15.firstHitMinutes+'m · cal '+h15.calibration+' · '+h15.samples+' samples'+(bucket15.samples<6?' · nearest analogs':' · exact memory'),
