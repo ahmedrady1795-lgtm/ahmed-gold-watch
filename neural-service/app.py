@@ -9,10 +9,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from fastapi import FastAPI
 
-APP_VERSION="predator-neural-v1-deeplob-tcn-ssm"
+APP_VERSION="predator-neural-v2-price-path"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 DATA_PATH=MODEL_DIR/"l2_neural.jsonl"
 MODEL_PATH=MODEL_DIR/"l2_neural.pt"
+PATH_MODEL_PATH=MODEL_DIR/"l2_price_path.pt"
 PORT=int(os.getenv("PORT","8000"))
 INTERVAL=float(os.getenv("NEURAL_DEPTH_INTERVAL","2.0"))
 SEQ_LEN=int(os.getenv("NEURAL_SEQ_LEN","32"))
@@ -23,6 +24,8 @@ MAX_SNAPSHOTS=int(os.getenv("NEURAL_MAX_SNAPSHOTS","60000"))
 RETRAIN_SECONDS=int(os.getenv("NEURAL_RETRAIN_SECONDS","1800"))
 LEVELS=10
 FEAT_DIM=50
+PATH_END_SCALE_BPS=8.0
+PATH_RANGE_SCALE_BPS=12.0
 DEVICE=torch.device("cpu")
 torch.set_num_threads(max(1,min(2,int(os.getenv("NEURAL_TORCH_THREADS","2")))))
 
@@ -34,6 +37,11 @@ MODEL=None
 METRICS=None
 TRAINING=False
 LAST_TRAIN_AT=0
+PATH_MODEL=None
+PATH_METRICS=None
+PATH_TRAINING=False
+PATH_LAST_TRAIN_AT=0
+PATH_LAST_ERROR=None
 LAST_SNAPSHOT_AT=0
 LAST_ERROR=None
 SESSION=requests.Session()
@@ -75,6 +83,18 @@ def _load_model():
         MODEL=m;METRICS=obj.get("metrics");LAST_TRAIN_AT=int(obj.get("trainedAt",0))
     except Exception as e:
         LAST_ERROR=f"load_model:{type(e).__name__}:{e}"
+
+def _load_path_model():
+    global PATH_MODEL,PATH_METRICS,PATH_LAST_TRAIN_AT,PATH_LAST_ERROR
+    if not PATH_MODEL_PATH.exists():return
+    try:
+        obj=torch.load(PATH_MODEL_PATH,map_location="cpu",weights_only=False)
+        if obj.get("version")!=APP_VERSION:return
+        m=PricePathNet()
+        m.load_state_dict(obj["state_dict"]);m.eval()
+        PATH_MODEL=m;PATH_METRICS=obj.get("metrics");PATH_LAST_TRAIN_AT=int(obj.get("trainedAt",0))
+    except Exception as e:
+        PATH_LAST_ERROR=f"load_path_model:{type(e).__name__}:{e}"
 
 def _fetch_depth():
     r=SESSION.get(
@@ -199,6 +219,25 @@ class HybridMicroNet(nn.Module):
         latest=x[:,-1,40:]
         return self.meta(torch.cat([d,t,s,latest],dim=-1))
 
+class PricePathNet(nn.Module):
+    """Separate price-path head: terminal move, upside excursion, downside excursion, first-hit time."""
+    def __init__(self):
+        super().__init__()
+        self.deep=DeepLOBBranch()
+        self.tcn=TCNBranch()
+        self.ssm=SelectiveSSM()
+        self.head=nn.Sequential(
+            nn.Linear(64*3+10,128),nn.GELU(),nn.Dropout(.12),
+            nn.Linear(128,64),nn.GELU(),nn.Dropout(.08),
+            nn.Linear(64,4)
+        )
+    def forward(self,x):
+        d=self.deep(x);t=self.tcn(x);s=self.ssm(x);latest=x[:,-1,40:]
+        raw=self.head(torch.cat([d,t,s,latest],dim=-1))
+        end=torch.tanh(raw[:,0:1])
+        positive=torch.sigmoid(raw[:,1:4])
+        return torch.cat([end,positive],dim=1)
+
 def _dataset():
     with LOCK: rows=list(ROWS)
     xs=[];ys=[]
@@ -211,6 +250,28 @@ def _dataset():
         xs.append([r["f"] for r in seq]);ys.append(y)
     if not xs:return None,None
     return np.asarray(xs,dtype=np.float32),np.asarray(ys,dtype=np.int64)
+
+def _path_dataset():
+    with LOCK: rows=list(ROWS)
+    xs=[];ys=[]
+    for i in range(SEQ_LEN-1,len(rows)-HORIZON):
+        seq=rows[i-SEQ_LEN+1:i+1]
+        if any(len(r.get("f",[]))!=FEAT_DIM for r in seq):continue
+        cur=float(rows[i]["mid"])
+        future=[float(rows[k]["mid"]) for k in range(i+1,i+HORIZON+1)]
+        moves=np.asarray([(p-cur)/cur*10000 for p in future],dtype=np.float32)
+        end=float(moves[-1]);up=max(0.0,float(moves.max()));down=max(0.0,float(-moves.min()))
+        hit=np.where(np.abs(moves)>=LABEL_BPS)[0]
+        hit_frac=float((int(hit[0])+1)/HORIZON) if len(hit) else 1.0
+        target=[
+            float(np.clip(end/PATH_END_SCALE_BPS,-1,1)),
+            float(np.clip(up/PATH_RANGE_SCALE_BPS,0,1)),
+            float(np.clip(down/PATH_RANGE_SCALE_BPS,0,1)),
+            float(np.clip(hit_frac,0,1))
+        ]
+        xs.append([r["f"] for r in seq]);ys.append(target)
+    if not xs:return None,None
+    return np.asarray(xs,dtype=np.float32),np.asarray(ys,dtype=np.float32)
 
 def _selected_metrics(y,prob,threshold=.48,margin=.05):
     p=np.asarray(prob);pred=p.argmax(1)
@@ -229,6 +290,109 @@ def _probs(model,X,batch=256):
             z=torch.from_numpy(X[i:i+batch]).to(DEVICE)
             outs.append(torch.softmax(model(z),dim=1).cpu().numpy())
     return np.concatenate(outs,axis=0) if outs else np.empty((0,3))
+
+def _path_decode(y):
+    a=np.asarray(y,dtype=np.float32)
+    return np.column_stack([
+        a[:,0]*PATH_END_SCALE_BPS,
+        a[:,1]*PATH_RANGE_SCALE_BPS,
+        a[:,2]*PATH_RANGE_SCALE_BPS,
+        a[:,3]*HORIZON*INTERVAL
+    ])
+
+def _path_metrics(y_true,y_pred,baseline):
+    yt=_path_decode(y_true);yp=_path_decode(y_pred)
+    end_mae=float(np.mean(np.abs(yt[:,0]-yp[:,0])))
+    up_mae=float(np.mean(np.abs(yt[:,1]-yp[:,1])))
+    down_mae=float(np.mean(np.abs(yt[:,2]-yp[:,2])))
+    time_mae=float(np.mean(np.abs(yt[:,3]-yp[:,3])))
+    end_base=float(np.mean(np.abs(yt[:,0]-baseline["end"]))) or 1e-9
+    up_base=float(np.mean(np.abs(yt[:,1]-baseline["up"]))) or 1e-9
+    down_base=float(np.mean(np.abs(yt[:,2]-baseline["down"]))) or 1e-9
+    time_base=float(np.mean(np.abs(yt[:,3]-baseline["time"]))) or 1e-9
+    range_mae=(up_mae+down_mae)/2
+    range_base=(up_base+down_base)/2
+    return {
+        "endMaeBps":end_mae,"upMaeBps":up_mae,"downMaeBps":down_mae,"rangeMaeBps":range_mae,
+        "timeMaeSeconds":time_mae,
+        "endSkill":1-end_mae/end_base,
+        "rangeSkill":1-range_mae/max(range_base,1e-9),
+        "timeSkill":1-time_mae/time_base,
+        "n":int(len(yt))
+    }
+
+def _path_predict_batch(model,X,batch=256):
+    model.eval();outs=[]
+    with torch.no_grad():
+        for i in range(0,len(X),batch):
+            z=torch.from_numpy(X[i:i+batch]).to(DEVICE)
+            outs.append(model(z).cpu().numpy())
+    return np.concatenate(outs,axis=0) if outs else np.empty((0,4),dtype=np.float32)
+
+def _fit_path(Xtr,ytr,Xv,yv):
+    model=PricePathNet().to(DEVICE)
+    loss_fn=nn.SmoothL1Loss(beta=.08)
+    opt=torch.optim.AdamW(model.parameters(),lr=7e-4,weight_decay=2.5e-3)
+    best=None;best_loss=1e9;bad=0
+    rng=np.random.default_rng(177)
+    for epoch in range(22):
+        model.train();idx=np.arange(len(Xtr));rng.shuffle(idx)
+        for i in range(0,len(idx),64):
+            bi=idx[i:i+64]
+            xb=torch.from_numpy(Xtr[bi]).to(DEVICE);yb=torch.from_numpy(ytr[bi]).to(DEVICE)
+            opt.zero_grad(set_to_none=True);loss=loss_fn(model(xb),yb);loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(),1.0);opt.step()
+        model.eval();losses=[]
+        with torch.no_grad():
+            for i in range(0,len(Xv),256):
+                xb=torch.from_numpy(Xv[i:i+256]).to(DEVICE);yb=torch.from_numpy(yv[i:i+256]).to(DEVICE)
+                losses.append(float(loss_fn(model(xb),yb).cpu()))
+        vl=float(np.mean(losses)) if losses else 9
+        if vl<best_loss-1e-4:
+            best_loss=vl;bad=0
+            best={k:v.detach().cpu().clone() for k,v in model.state_dict().items()}
+        else:
+            bad+=1
+            if bad>=5:break
+    if best:model.load_state_dict(best)
+    return model
+
+def _train_path():
+    global PATH_MODEL,PATH_METRICS,PATH_TRAINING,PATH_LAST_TRAIN_AT,PATH_LAST_ERROR
+    if PATH_TRAINING:return
+    PATH_TRAINING=True
+    try:
+        X,y=_path_dataset()
+        if X is None or len(y)<MIN_SNAPSHOTS:return
+        a=int(len(y)*.70);b=int(len(y)*.85)
+        Xtr,Xv,Xte=X[:a],X[a:b],X[b:];ytr,yv,yte=y[:a],y[a:b],y[b:]
+        decoded=_path_decode(ytr)
+        baseline={
+            "end":float(np.median(decoded[:,0])),
+            "up":float(np.median(decoded[:,1])),
+            "down":float(np.median(decoded[:,2])),
+            "time":float(np.median(decoded[:,3]))
+        }
+        model=_fit_path(Xtr,ytr,Xv,yv)
+        pv=_path_predict_batch(model,Xv);pt=_path_predict_batch(model,Xte)
+        vm=_path_metrics(yv,pv,baseline);tm=_path_metrics(yte,pt,baseline)
+        ready=bool(
+            vm["n"]>=150 and tm["n"]>=150 and
+            vm["endSkill"]>=.02 and tm["endSkill"]>=.03 and
+            vm["rangeSkill"]>=.03 and tm["rangeSkill"]>=.04 and
+            vm["timeSkill"]>=0 and tm["timeSkill"]>=0
+        )
+        metrics={"validation":vm,"holdout":tm,"baseline":baseline,"ready":ready,"samples":int(len(y))}
+        trained=int(time.time()*1000)
+        obj={"version":APP_VERSION,"state_dict":model.state_dict(),"metrics":metrics,"trainedAt":trained}
+        tmp=PATH_MODEL_PATH.with_suffix(".tmp");torch.save(obj,tmp);os.replace(tmp,PATH_MODEL_PATH)
+        PATH_MODEL=model.eval();PATH_METRICS=metrics;PATH_LAST_TRAIN_AT=trained;PATH_LAST_ERROR=None
+        print("[PRICE-PATH-TRAIN] "+json.dumps({"version":APP_VERSION,"metrics":metrics}),flush=True)
+    except Exception as e:
+        PATH_LAST_ERROR=f"train:{type(e).__name__}:{e}"
+        print("[PRICE-PATH-ERROR] "+json.dumps({"error":PATH_LAST_ERROR}),flush=True)
+    finally:
+        PATH_TRAINING=False
 
 def _fit_once(Xtr,ytr,Xv,yv):
     model=HybridMicroNet().to(DEVICE)
@@ -287,6 +451,7 @@ def _train():
         tmp=MODEL_PATH.with_suffix(".tmp");torch.save(obj,tmp);os.replace(tmp,MODEL_PATH)
         MODEL=model.eval();METRICS=metrics;LAST_TRAIN_AT=trained;LAST_ERROR=None
         print("[NEURAL-TRAIN] "+json.dumps({"version":APP_VERSION,"metrics":metrics}),flush=True)
+        _train_path()
     except Exception as e:
         LAST_ERROR=f"train:{type(e).__name__}:{e}"
         print("[NEURAL-TRAIN-ERROR] "+json.dumps({"error":LAST_ERROR}),flush=True)
@@ -306,15 +471,48 @@ def _collector():
             LAST_SNAPSHOT_AT=row["t"];LAST_ERROR=None
             if n>=MIN_SNAPSHOTS and not TRAINING and row["t"]-LAST_TRAIN_AT>RETRAIN_SECONDS*1000:
                 threading.Thread(target=_train,daemon=True,name="neural-trainer").start()
+            elif n>=MIN_SNAPSHOTS and not PATH_TRAINING and PATH_MODEL is None:
+                threading.Thread(target=_train_path,daemon=True,name="price-path-trainer").start()
         except Exception as e:
             LAST_ERROR=f"collector:{type(e).__name__}:{e}"
         time.sleep(max(.8,INTERVAL))
 
+def _predict_path(rows):
+    if PATH_MODEL is None or len(rows)<SEQ_LEN:
+        return {"status":"COLLECTING" if len(rows)<MIN_SNAPSHOTS else "TRAINING","ready":False,"samples":len(rows),"metrics":PATH_METRICS}
+    x=np.asarray([[r["f"] for r in rows[-SEQ_LEN:]]],dtype=np.float32)
+    pred=_path_predict_batch(PATH_MODEL,x)[0]
+    end_bps=float(pred[0]*PATH_END_SCALE_BPS)
+    up_bps=float(pred[1]*PATH_RANGE_SCALE_BPS)
+    down_bps=float(pred[2]*PATH_RANGE_SCALE_BPS)
+    hit_seconds=float(pred[3]*HORIZON*INTERVAL)
+    mid=float(rows[-1]["mid"])
+    score=(up_bps-down_bps)+end_bps*.8
+    side="BUY" if score>=0 else "SELL"
+    target_bps=max(LABEL_BPS,min(up_bps,max(LABEL_BPS,abs(end_bps)))) if side=="BUY" else max(LABEL_BPS,min(down_bps,max(LABEL_BPS,abs(end_bps))))
+    direction=1 if side=="BUY" else -1
+    ready=bool(PATH_METRICS and PATH_METRICS.get("ready"))
+    return {
+        "status":"READY" if ready else "SHADOW","ready":ready,"side":side,
+        "currentPrice":round(mid,2),
+        "expectedPrice":round(mid*(1+end_bps/10000),2),
+        "firstTarget":round(mid*(1+direction*target_bps/10000),2),
+        "rangeHigh":round(mid*(1+up_bps/10000),2),
+        "rangeLow":round(mid*(1-down_bps/10000),2),
+        "expectedMoveBps":round(end_bps,3),
+        "upExcursionBps":round(up_bps,3),
+        "downExcursionBps":round(down_bps,3),
+        "firstHitSeconds":round(max(INTERVAL,hit_seconds),1),
+        "horizonSeconds":round(HORIZON*INTERVAL,1),
+        "metrics":PATH_METRICS
+    }
+
 def _predict():
     with LOCK: rows=list(ROWS)
+    price_path=_predict_path(rows)
     if MODEL is None or len(rows)<SEQ_LEN:
         return {"ok":True,"version":APP_VERSION,"status":"COLLECTING" if len(rows)<MIN_SNAPSHOTS else "TRAINING",
-                "ready":False,"side":"WAIT","samples":len(rows),"metrics":METRICS}
+                "ready":False,"side":"WAIT","samples":len(rows),"metrics":METRICS,"pricePath":price_path}
     x=np.asarray([[r["f"] for r in rows[-SEQ_LEN:]]],dtype=np.float32)
     p=_probs(MODEL,x)[0];down,noise,up=map(float,p)
     lean="BUY" if up>=down else "SELL"
@@ -323,17 +521,17 @@ def _predict():
     return {"ok":True,"version":APP_VERSION,"status":"READY" if active else "SHADOW","ready":bool(METRICS and METRICS.get("ready")),
             "side":lean if active else "WAIT","leanSide":lean,"probUp":round(up*100,2),"probDown":round(down*100,2),
             "probNoise":round(noise*100,2),"confidence":conf,"edge":round(abs(up-down)*100,2),
-            "samples":len(rows),"metrics":METRICS,"snapshotAgeMs":max(0,int(time.time()*1000)-LAST_SNAPSHOT_AT)}
+            "samples":len(rows),"metrics":METRICS,"pricePath":price_path,"snapshotAgeMs":max(0,int(time.time()*1000)-LAST_SNAPSHOT_AT)}
 
 @app.on_event("startup")
 def startup():
-    _load_rows();_load_model()
+    _load_rows();_load_model();_load_path_model()
     threading.Thread(target=_collector,daemon=True,name="neural-l2-collector").start()
 
 @app.get("/health")
 def health():
-    return {"ok":True,"version":APP_VERSION,"training":TRAINING,"storedSnapshots":len(ROWS),"lastSnapshotAt":LAST_SNAPSHOT_AT,
-            "lastTrainAt":LAST_TRAIN_AT,"lastError":LAST_ERROR,"prediction":_predict()}
+    return {"ok":True,"version":APP_VERSION,"training":TRAINING,"pathTraining":PATH_TRAINING,"storedSnapshots":len(ROWS),"lastSnapshotAt":LAST_SNAPSHOT_AT,
+            "lastTrainAt":LAST_TRAIN_AT,"pathLastTrainAt":PATH_LAST_TRAIN_AT,"lastError":LAST_ERROR,"pathLastError":PATH_LAST_ERROR,"prediction":_predict()}
 
 @app.get("/predict")
 def predict():
