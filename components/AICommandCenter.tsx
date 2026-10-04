@@ -115,18 +115,39 @@ function AssetCard({x,fast}:any){
     </div>
 
     {hunt&&<div className="hunt-box">
-      <div className="hunt-title"><span>🦅 الحركة القادمة المرجحة</span><strong>{sideAr(hunt.side)} · {hunt.state}</strong></div>
+      <div className="hunt-title"><span>🦅 الحركة القادمة المرجحة</span><strong>{hunt.path?.label||sideAr(hunt.side)} · {hunt.state}</strong></div>
+
+      <div className="forecast-path">
+        <div><small>الحركة الأولى</small><strong className={hunt.path?.shortSide==='BUY'?'green':hunt.path?.shortSide==='SELL'?'red':'amber'}>{sideAr(hunt.path?.shortSide)} → {fmt(hunt.path?.firstLeg,2)}</strong></div>
+        <div><small>الحركة التالية</small><strong className={hunt.path?.followSide==='BUY'?'green':hunt.path?.followSide==='SELL'?'red':'amber'}>{sideAr(hunt.path?.followSide)} → {fmt(hunt.path?.secondLeg,2)}</strong></div>
+      </div>
+
+      <div className="forecast-horizons">
+        <div><small>Fast</small><strong className={hunt.horizons?.fast?.side==='BUY'?'green':hunt.horizons?.fast?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fast?.side)} %{hunt.horizons?.fast?.strength||0}</strong></div>
+        <div><small>1 min</small><strong className={hunt.horizons?.oneMinute?.side==='BUY'?'green':hunt.horizons?.oneMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.oneMinute?.side)} %{hunt.horizons?.oneMinute?.strength||0}</strong></div>
+        <div><small>5 min</small><strong className={hunt.horizons?.fiveMinute?.side==='BUY'?'green':hunt.horizons?.fiveMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fiveMinute?.side)} %{hunt.horizons?.fiveMinute?.strength||0}</strong></div>
+      </div>
+
       <div className="ai-price-row">
-        <div><small>قوة التوقع</small><strong>{calibrated(hunt.score)}</strong></div>
+        <div><small>جودة التوقع</small><strong>{calibrated(hunt.quality??hunt.confidence)}</strong></div>
         <div><small>ثبات الاتجاه</small><strong>{hunt.persistence||0}%</strong></div>
         <div><small>الزمن</small><strong>{Math.max(1,Math.round((hunt.horizonSeconds||0)/60))} د</strong></div>
       </div>
+
       <div className="forecast-levels">
         <div><small>Trigger</small><strong>{fmt(hunt.trigger,2)}</strong></div>
-        <div><small>Projected</small><strong>{fmt(hunt.projected,2)}</strong></div>
+        <div><small>Target</small><strong>{fmt(hunt.projected,2)}</strong></div>
         <div><small>Invalidation</small><strong>{fmt(hunt.invalidation,2)}</strong></div>
       </div>
+
+      {hunt.alternative?.side&&hunt.alternative.side!=='WAIT'&&<div className="forecast-alt">
+        <small>السيناريو البديل</small>
+        <strong>{sideAr(hunt.alternative.side)} · قوة {calibrated(hunt.alternative.strength)}</strong>
+        <span>{hunt.alternative.condition}</span>
+      </div>}
+
       {hunt.commitment&&<p className="muted">Direction Lock: {sideAr(hunt.commitment.side)} · {hunt.commitment.state}{hunt.commitment.pendingSide!=='WAIT'?(' · عكس محتمل '+sideAr(hunt.commitment.pendingSide)+' '+hunt.commitment.pendingCount+'/2'):''}</p>}
+      {!!hunt.reasons?.length&&<p className="muted">{hunt.reasons.slice(0,4).join(' · ')}</p>}
     </div>}
 
     {waveHot&&<div className="wave-alert">
