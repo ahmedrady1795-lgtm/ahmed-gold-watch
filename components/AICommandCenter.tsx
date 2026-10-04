@@ -19,7 +19,7 @@ function IndicatorMatrix({x}:any){
 
 function Card({x}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
-  const trade=x.trade,candidate=x.candidateTrade,buy=x.action==='BUY',sell=x.action==='SELL',pulse=x.livePulse,scalp=x.scalp,scalpTrade=x.scalp?.trade,hunter=x.hunter,liq=x.liquidity,core=x.adaptiveCore;
+  const trade=x.trade,candidate=x.candidateTrade,buy=x.action==='BUY',sell=x.action==='SELL',pulse=x.livePulse,scalp=x.scalp,scalpTrade=x.scalp?.trade,hunter=x.hunter,liq=x.liquidity,core=x.adaptiveCore,motion=x.motion;
   return <section className="panel">
     <div className="panelhead"><div><span className="eyebrow">{x.asset} · {x.phase||'SCAN'}</span><h2>{buy?'BUY STRIKE':sell?'SELL STRIKE':hunter?.status==='WATCH'?'WATCH '+sideAr(hunter?.side):'WAIT'} · Quality {x.quality||'—'}</h2></div>{buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}</div>
 
@@ -51,7 +51,18 @@ function Card({x}:any){
       <p>Bid depth $ {Number(liq.book?.bidDepthUsd||0).toLocaleString('en-US')} · Ask depth $ {Number(liq.book?.askDepthUsd||0).toLocaleString('en-US')} · Spread {liq.book?.spreadBps??'—'} bps</p>
       <p>Microprice edge {liq.book?.microEdge??0} · Wall {sideAr(liq.book?.wallSide)} · Absorption {sideAr(liq.absorption?.side)} · قوة {calibrated(liq.absorption?.score)}</p>
       <p>{liq.absorption?.reason}</p>
-      {core&&<p><b>Adaptive weights:</b> Technical {Math.round((core.technicalWeight||0)*100)}% · Liquidity {Math.round((core.liquidityWeight||0)*100)}%</p>}
+      {core&&<p><b>Adaptive weights:</b> Technical {Math.round((core.technicalWeight||0)*100)}% · Liquidity {Math.round((core.liquidityWeight||0)*100)}% · Motion {Math.round((core.motionWeight||0)*100)}%</p>}
+    </div>}
+
+    {motion&&<div className={motion.stage==='IGNITION'||motion.stage==='REVERSAL_ALERT'?'safetybox':'sidecard'}>
+      <strong>⚡ MOTION INTELLIGENCE · {motion.stage} · {sideAr(motion.side)} · قوة {calibrated(motion.score)}</strong>
+      <div className="levels">
+        <div><small>Pressure Trend</small><strong>{motion.components?.pressureTrend??0}</strong></div>
+        <div><small>Microprice Lead</small><strong>{motion.components?.micropriceLead??0}</strong></div>
+        <div><small>Compression</small><strong>{motion.components?.compression??0}</strong></div>
+      </div>
+      <p>Velocity {motion.components?.liveVelocityBps??0} bps · Persistence {motion.components?.pressurePersistence??0}% · Precursors {motion.diagnostics?.precursorCount??0}</p>
+      {!!motion.reasons?.length&&<p>{motion.reasons.join(' · ')}</p>}
     </div>}
 
     <p>السعر {fmt(pulse?.price??x.price,x.asset==='BTC'?2:2)} · {pulse?.source||x.source}</p>
@@ -77,8 +88,8 @@ export default function AICommandCenter({data,error}:any){
   const auto=data?.autopilot;
   return <div>
     <section className="sidecard">
-      <strong>Predator Core v6 · Adaptive Liquidity Brain</strong>
-      <p>نواة تكيفية تجمع Trend + Breakout + Pullback + Reversal + M1 Scalp + المؤشرات متعددة الأطر + الأخبار + Live Pulse + Order Book + Volume Delta/CVD + Microprice + Absorption. وزن السيولة يتغير حسب حالة السوق.</p>
+      <strong>Predator Core v7 · Anticipatory Motion Brain</strong>
+      <p>نواة استباقية تجمع المؤشرات والسيولة مع ذاكرة حركة قصيرة: Pressure Trend + Divergence + Microprice Lead + Compression + Sweep/Reclaim + Trap Detection لتكوين PRE-MOVE قبل اكتمال الحركة، بدون اعتبارها ضمانًا.</p>
     </section>
 
     {!!data?.radar?.length&&<section className="panel">
