@@ -35,7 +35,7 @@ const FILE='/data/predator-next-move-live.json';
 const FALLBACK='/tmp/predator-next-move-live.json';
 const cap=(n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
 const blankStat=():Stat=>({hits:0,fails:0,neutral:0,sumSeconds:0,sumMfeBps:0,sumMaeBps:0,updatedAt:0});
-const blank=():State=>({version:'next-move-live-v1',assets:{}});
+const blank=():State=>({version:'next-move-live-v2',assets:{}});
 let cache:State|null=null,dirty=false,lastSave=0;
 
 function load():State{
@@ -43,7 +43,7 @@ function load():State{
   for(const f of [FILE,FALLBACK]){
     try{
       const j=JSON.parse(fs.readFileSync(f,'utf8'));
-      if(j&&j.assets){cache=j;return j;}
+      if(j?.version==='next-move-live-v2'&&j.assets){cache=j;return j;}
     }catch{}
   }
   cache=blank();return cache;
@@ -115,8 +115,9 @@ function settle(asset:string,price:number,now:number){
     const fail=p.side==='BUY'?price<=p.stop:price>=p.stop;
     const expired=now-p.at>=p.horizonMs;
     if(!hit&&!fail&&!expired){keep.push(p);continue;}
-    const outcome:Outcome=hit?'HIT':fail?'FAIL':'NEUTRAL';
-    const seconds=Math.max(0,(now-p.at)/1000);
+    // Strict horizon: an observation arriving after expiry cannot retroactively score HIT/FAIL.
+    const outcome:Outcome=expired?'NEUTRAL':hit?'HIT':fail?'FAIL':'NEUTRAL';
+    const seconds=expired?p.horizonMs/1000:Math.max(0,(now-p.at)/1000);
     updateStat(a.global,outcome,seconds,p.mfeBps,p.maeBps,now);
     updateStat(getStat(a.bySource,p.source),outcome,seconds,p.mfeBps,p.maeBps,now);
     updateStat(getStat(a.byRegime,p.regime),outcome,seconds,p.mfeBps,p.maeBps,now);
@@ -138,7 +139,7 @@ function summary(asset:string){
   const byConfidence=Object.fromEntries(Object.entries(a.byConfidence).map(([k,v])=>[k,view(v)]));
   const directional=global.hits+global.fails;
   return {
-    ok:true,version:'next-move-live-v1',asset,
+    ok:true,version:'next-move-live-v2',asset,
     global,bySource,byRegime,byConfidence,
     pending:a.pending.length,recent:a.recent.slice(0,12),
     readyForLearning:directional>=50,
