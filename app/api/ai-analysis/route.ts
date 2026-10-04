@@ -10,7 +10,7 @@ import {buildHuntForecast} from '../../../lib/hunt-forecast';
 import {trainScalpLearner} from '../../../lib/scalp-learning';
 import {analyzeWaveStructure} from '../../../lib/wave-structure';
 import {buildAccumulationMap} from '../../../lib/accumulation-map';
-import {getMarketLearningSignal,recordMarketLearningObservation} from '../../../lib/market-learning-core';
+import {getMarketLearningSignal,recordMarketLearningObservation,recordFinalRecommendationOutcome} from '../../../lib/market-learning-core';
 import {buildMarketStateGraph} from '../../../lib/market-state-graph';
 import {evolveAnalysisPolicy,recordEvolutionAutopsy} from '../../../lib/self-evolution';
 import {getExpectedMoveLearning,recordExpectedMoveObservation} from '../../../lib/expected-move-learning';
@@ -156,8 +156,12 @@ export async function GET(request:Request){
 
     const goldRecommendation=buildRecommendation(goldMaster,goldHunt,goldPrice,now);
     const bitcoinRecommendation=buildRecommendation(bitcoinMaster,bitcoinHunt,btcPrice,now);
-    const goldOut={...gold,rawAction:gold.action,action:goldMaster.action,master:goldMaster,recommendation:goldRecommendation,huntForecast:goldHunt,waveStructure:goldStructure,stateGraph:goldStateGraph,accumulationMap:goldAccumulation,newsIntelligence:goldNews,marketLearning:goldLearning,expectedMoveLearning:goldExpectedLearning,movementIntelligence:goldMovement,serverTickBrain:goldTick,selfEvolution:goldEvolution,evolutionAutopsy:goldAutopsy,scalpLearner:goldLearner,trade:goldMaster.trade};
-    const bitcoinOut={...bitcoin,rawAction:bitcoin.action,action:bitcoinMaster.action,master:bitcoinMaster,recommendation:bitcoinRecommendation,huntForecast:bitcoinHunt,waveStructure:bitcoinStructure,stateGraph:bitcoinStateGraph,accumulationMap:bitcoinAccumulation,newsIntelligence:bitcoinNews,marketLearning:bitcoinLearning,expectedMoveLearning:bitcoinExpectedLearning,movementIntelligence:bitcoinMovement,serverTickBrain:bitcoinTick,selfEvolution:bitcoinEvolution,evolutionAutopsy:bitcoinAutopsy,scalpLearner:bitcoinLearner,trade:bitcoinMaster.trade};
+    const [goldRecommendationLearning,bitcoinRecommendationLearning]=await Promise.all([
+      recordFinalRecommendationOutcome({asset:'GOLD',c1:gm.c1,price:goldPrice,atr:goldAtr,context:goldLearningContext,recommendation:goldRecommendation,now}),
+      recordFinalRecommendationOutcome({asset:'BTC',c1:btc.c1,price:btcPrice,atr:btcAtr,context:bitcoinLearningContext,recommendation:bitcoinRecommendation,now})
+    ]);
+    const goldOut={...gold,rawAction:gold.action,action:goldMaster.action,master:goldMaster,recommendation:goldRecommendation,recommendationLearning:goldRecommendationLearning,huntForecast:goldHunt,waveStructure:goldStructure,stateGraph:goldStateGraph,accumulationMap:goldAccumulation,newsIntelligence:goldNews,marketLearning:goldLearning,expectedMoveLearning:goldExpectedLearning,movementIntelligence:goldMovement,serverTickBrain:goldTick,selfEvolution:goldEvolution,evolutionAutopsy:goldAutopsy,scalpLearner:goldLearner,trade:goldMaster.trade};
+    const bitcoinOut={...bitcoin,rawAction:bitcoin.action,action:bitcoinMaster.action,master:bitcoinMaster,recommendation:bitcoinRecommendation,recommendationLearning:bitcoinRecommendationLearning,huntForecast:bitcoinHunt,waveStructure:bitcoinStructure,stateGraph:bitcoinStateGraph,accumulationMap:bitcoinAccumulation,newsIntelligence:bitcoinNews,marketLearning:bitcoinLearning,expectedMoveLearning:bitcoinExpectedLearning,movementIntelligence:bitcoinMovement,serverTickBrain:bitcoinTick,selfEvolution:bitcoinEvolution,evolutionAutopsy:bitcoinAutopsy,scalpLearner:bitcoinLearner,trade:bitcoinMaster.trade};
     const radar=[
       {asset:'BTC',score:Math.min(92,Math.max(Number(bitcoin.fusion?.buy||0),Number(bitcoin.fusion?.sell||0),Number(bitcoin.hunter?.score||0),Number(bitcoinScalp.score?.long||0),Number(bitcoinScalp.score?.short||0))),status:bitcoinMaster.state,side:bitcoinMaster.action,watchSide:bitcoinMaster.watchSide,huntSide:bitcoinHunt.side,huntState:bitcoinHunt.state,huntConfidence:bitcoinHunt.confidence,mode:bitcoinMaster.state==='TRADE'?bitcoinMaster.trade?.mode:'MASTER'},
       {asset:'GOLD',score:Math.min(92,Math.max(Number(gold.fusion?.buy||0),Number(gold.fusion?.sell||0),Number(gold.hunter?.score||0),Number(goldScalp.score?.long||0),Number(goldScalp.score?.short||0))),status:goldMaster.state,side:goldMaster.action,watchSide:goldMaster.watchSide,huntSide:goldHunt.side,huntState:goldHunt.state,huntConfidence:goldHunt.confidence,mode:goldMaster.state==='TRADE'?goldMaster.trade?.mode:'MASTER'}
