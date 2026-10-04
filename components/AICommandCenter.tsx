@@ -196,6 +196,25 @@ function AssetCard({x,fast}:any){
       <p>Acceleration {fast?.acceleration??0} · Persistence {fast?.persistence??0}% · Burst x{fast?.burstRate??0}. لا يغيّر اتجاه Scalp الرئيسي؛ هو مساعد لخطة Ambush فقط ولا يصدر أي صفقة.</p>
     </div>}
 
+    {x.scalp?.ambushPlan&&(()=>{
+      const plan=x.scalp.ambushPlan;
+      const entry=plan.entry||{};
+      const invalid=plan.invalidation||{};
+      return <div className="next-move-copy">
+        <span>خطة Ambush</span>
+        <strong className={plan.status==='EXECUTE'?'green':plan.status==='CANCEL'?'red':'amber'}>
+          {String(plan.status||'SCOUT')} · {sideAr(plan.side)} · جاهزية {calibrated(plan.readiness)}%
+        </strong>
+        <div className="ai-outcome-mini">
+          <span>منطقة الدخول <b>{entry.zoneLow!=null&&entry.zoneHigh!=null?(fmt(entry.zoneLow,2)+' — '+fmt(entry.zoneHigh,2)):'—'}</b></span>
+          <span>Launch <b>{entry.launchLine!=null?fmt(entry.launchLine,2):'—'}</b></span>
+          <span>الهدف <b>{plan.target?.price!=null?fmt(plan.target.price,2):'—'}</b></span>
+          <span>مساعدين <b>{plan.assistantCount||0}/10</b></span>
+        </div>
+        <p>{invalid.cancel?('إلغاء الخطة: '+((invalid.reasons||[]).join(' · ')||'شرط الإلغاء تحقق')):('النمط '+String(plan.pattern||'—')+' · '+(entry.ready?'منطقة الدخول جاهزة':'ينتظر منطقة الدخول')+' · ETA '+(plan.etaSeconds??'—')+'s')}</p>
+      </div>;
+    })()}
+
     {x.asset==='BTC'&&x.scalpLive&&(()=>{
       const ambush=x.scalpLive?.bySource?.SCALP_AMBUSH_TRADE_V8;
       const metric=ambush?.resolved?ambush:x.scalpLive?.global;
@@ -213,7 +232,7 @@ function AssetCard({x,fast}:any){
           <span>محايد <b>{ambush?.neutral||0}</b></span>
           <span>مساعدين <b>{helperCount}/10</b></span>
         </div>
-        <p>{String(predator?.pattern||'HUNT')} · score {predator?.score??0} · stable {predator?.stableCount??0} · Attack {helpers.attack?'مؤكد':'مساعد غير مؤكد'} · OOS {ambushWf?.oos?.accuracy==null?'—':(ambushWf.oos.accuracy+'%')}</p>
+        <p>{String(predator?.pattern||'HUNT')} · score {predator?.score??0} · stable {predator?.stableCount??0} · تأكيد قوي {helpers.attack?'نعم':'لا'} · OOS {ambushWf?.oos?.accuracy==null?'—':(ambushWf.oos.accuracy+'%')}</p>
       </div>;
     })()}
 
