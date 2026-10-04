@@ -28,7 +28,7 @@ function Card({x,fast}:any){
     <div className={buy||sell?'safetybox':'sidecard'}>
       <strong>🧭 القرار الوحيد: {buy?'BUY':sell?'SELL':'WAIT'}</strong>
       <p>{master.reason||'بانتظار توافق النواة.'}</p>
-      {master.state==='WATCH'&&master.watchSide!=='WAIT'&&<p>ميل مراقبة فقط: {sideAr(master.watchSide)} — ليس صفقة.</p>}
+      {master.state==='WATCH'&&(hunt?.side||master.watchSide)!=='WAIT'&&<p>التوقع المثبت أثناء الانتظار: {sideAr(hunt?.side||master.watchSide)} — ليس صفقة حتى يعتمد Master.</p>}
       {master.state==='REVERSAL_LOCK'&&<p>Direction Lock: {sideAr(master.lockedSide)} · عكس محتمل {sideAr(master.pendingReversal)} ({master.pendingCount||0}/3)</p>}
       {master.state==='CONFLICT'&&<p>لا يوجد اتجاه تداول حتى ينتهي التعارض الداخلي.</p>}
     </div>
