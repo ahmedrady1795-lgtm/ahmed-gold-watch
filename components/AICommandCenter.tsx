@@ -139,7 +139,7 @@ function AssetCard({x,fast}:any){
   const buy=displaySide==='BUY',sell=displaySide==='SELL';
   const masterState=String(master?.state||'').toUpperCase();
   const scalpLong=Number(x.scalp?.score?.long||0),scalpShort=Number(x.scalp?.score?.short||0);
-  const scalpFusion=x.scalp?.fusionV8||x.scalp?.fusionV7;
+  const scalpFusion=x.scalp?.fusionV8;
   const predator=scalpFusion?.predator;
   const predatorPhase=String(predator?.phase||'HUNT');
   const predatorActive=predatorPhase==='AMBUSH';
@@ -158,7 +158,7 @@ function AssetCard({x,fast}:any){
   const neuralPathReady=Boolean(neuralPath?.ready);
   const scalpTargetPrice=x.scalp?.target?.price??quickTargets?.scalp?.price??x.scalp?.intercept?.launchLine??null;
   const signalRows=[
-    {label:x.scalp?.fusionV8?('Ambush '+predatorPhase):x.scalp?.fusionV7?('Scalp '+predatorPhase):'Scalp',side:liveScalpSide,strength:scalpStrength,target:scalpTargetPrice},
+    {label:x.scalp?.fusionV8?('Ambush '+predatorPhase):'Ambush',side:liveScalpSide,strength:scalpStrength,target:scalpTargetPrice},
     {label:'1m',side:m1?.bias||'WAIT',strength:calibrated(m1?.strength),target:quickTargets?.oneMinute?.price},
     {label:'5m',side:m5?.bias||'WAIT',strength:calibrated(m5?.strength),target:quickTargets?.fiveMinute?.price}
   ];
@@ -193,7 +193,7 @@ function AssetCard({x,fast}:any){
     {fastUsable&&<div className="next-move-copy">
       <span>Fast Radar · إنذار فقط</span>
       <strong className={fast?.side==='BUY'?'green':fast?.side==='SELL'?'red':'amber'}>{sideAr(fast?.side)} · {String(fast?.stage||'PRE_TRIGGER')} · {calibrated(fast?.confidence)}%</strong>
-      <p>Acceleration {fast?.acceleration??0} · Persistence {fast?.persistence??0}% · Burst x{fast?.burstRate??0}. لا يغيّر اتجاه Scalp الرئيسي؛ Predator وحده يرقّي الإشارة إلى AMBUSH/ATTACK.</p>
+      <p>Acceleration {fast?.acceleration??0} · Persistence {fast?.persistence??0}% · Burst x{fast?.burstRate??0}. لا يغيّر اتجاه Scalp الرئيسي؛ هو مساعد لخطة Ambush فقط ولا يصدر أي صفقة.</p>
     </div>}
 
     {x.asset==='BTC'&&x.scalpLive&&(()=>{
