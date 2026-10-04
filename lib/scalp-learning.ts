@@ -2,14 +2,14 @@ import type {Candle} from './engine';
 
 type Side='BUY'|'SELL'|'WAIT';
 type FeatureRow={x:number[];fwdAtr:number;maeAtr:number;mfeAtr:number};
-type Model={means:number[];sds:number[];weights:number[]};
-type Metrics={used:number;accuracy:number;grossEdgeAtr:number;netEdgeAtr:number;profitFactor:number;maxDrawdownAtr:number;wins:number;losses:number};
+type Model={means:number[];sds:number[];weights:number[];threshold:number};
+type Metrics={used:number;accuracy:number;grossEdgeAtr:number;netEdgeAtr:number;profitFactor:number;maxDrawdownAtr:number;wins:number;losses:number;signalRate:number};
 
 export type ScalpLearningResult={
   ok:boolean;side:Side;score:number;confidence:number;edge:number;
   sampleCount:number;trainCount:number;validationCount:number;testCount:number;
   oosAccuracy:number;oosEdgeAtr:number;oosGrossEdgeAtr:number;profitFactor:number;maxDrawdownAtr:number;costAtr:number;
-  preferredHoldBars:number;
+  preferredHoldBars:number;entryThreshold:number;validationSignalRate:number;testSignalRate:number;
   exitPlan:{maxHoldSeconds:number;takeAtr:number;stopAtr:number;exitOnFlip:boolean};
   features:{name:string;weight:number;value:number;contribution:number}[];
   gate:{passed:boolean;reasons:string[]};
@@ -51,24 +51,40 @@ function buildRows(c:Candle[],horizon:number){
   return rows;
 }
 
-function target(r:FeatureRow){return r.fwdAtr>=.24?1:r.fwdAtr<=-.24?-1:0;}
+function directionalTarget(r:FeatureRow,minMove:number){return r.fwdAtr>=minMove?1:r.fwdAtr<=-minMove?-1:0;}
 
-function fit(rows:FeatureRow[]):Model{
-  const dims=names.length,means:number[]=[],sds:number[]=[];
+function corrWeight(rows:FeatureRow[],j:number,minMove:number){
+  if(rows.length<16)return 0;
+  const vals=rows.map(r=>r.x[j]),m=avg(vals),s=sd(vals),ys=rows.map(r=>directionalTarget(r,minMove));
+  const z=vals.map(v=>(v-m)/s),num=ys.reduce<number>((sum,y,i)=>sum+z[i]*y,0);
+  const den=Math.sqrt(ys.reduce<number>((sum,y)=>sum+y*y,0)*z.reduce<number>((sum,v)=>sum+v*v,0))||1;
+  return clamp(num/den,-.55,.55);
+}
+
+function fit(rows:FeatureRow[],minMove:number):Model{
+  const dims=names.length,means:number[]=[],sds:number[]=[],weights:number[]=[];
   for(let j=0;j<dims;j++){const a=rows.map(r=>r.x[j]);means[j]=avg(a);sds[j]=sd(a);}
-  const weights:number[]=[];
+  const cut=Math.floor(rows.length*.5),left=rows.slice(0,cut),right=rows.slice(cut);
   for(let j=0;j<dims;j++){
-    const vals=rows.map(r=>(r.x[j]-means[j])/sds[j]);
-    const ys=rows.map(target),num=ys.reduce<number>((s,y,i)=>s+vals[i]*y,0),den=Math.sqrt(ys.reduce<number>((s,y)=>s+y*y,0)*vals.reduce<number>((s,v)=>s+v*v,0))||1;
-    weights[j]=clamp(num/den,-.55,.55);
+    const full=corrWeight(rows,j,minMove),a=corrWeight(left,j,minMove),b=corrWeight(right,j,minMove);
+    let stability=1;
+    if(a*b<0)stability=.22;
+    else{
+      const gap=Math.abs(a-b);
+      if(gap>.40)stability=.45;
+      else if(gap>.25)stability=.68;
+      else if(Math.min(Math.abs(a),Math.abs(b))<.035)stability=.78;
+    }
+    weights[j]=clamp(full*stability*.90,-.48,.48);
   }
-  return {means,sds,weights};
+  return {means,sds,weights,threshold:.26};
 }
 
 function predict(x:number[],m:Model){
   let z=0;for(let j=0;j<x.length;j++)z+=((x[j]-m.means[j])/m.sds[j])*m.weights[j];
-  const raw=Math.tanh(z/1.9),side:Side=raw>=.20?'BUY':raw<=-.20?'SELL':'WAIT';
-  return {raw,side,score:Math.min(88,Math.round(48+Math.abs(raw)*40))};
+  const raw=Math.tanh(z/1.9),side:Side=raw>=m.threshold?'BUY':raw<=-m.threshold?'SELL':'WAIT';
+  const score=Math.min(90,Math.round(46+Math.abs(raw)*44));
+  return {raw,side,score};
 }
 
 function evaluate(rows:FeatureRow[],m:Model,costAtr:number):Metrics{
@@ -86,64 +102,99 @@ function evaluate(rows:FeatureRow[],m:Model,costAtr:number):Metrics{
     grossEdgeAtr:used?gross/used:0,
     netEdgeAtr:used?returns.reduce((a,b)=>a+b,0)/used:0,
     profitFactor:neg>0?pos/neg:(pos>0?9.99:0),
-    maxDrawdownAtr:maxDD
+    maxDrawdownAtr:maxDD,
+    signalRate:rows.length?used/rows.length*100:0
   };
 }
 
-function splitRows(rows:FeatureRow[]){
-  const n=rows.length,a=Math.floor(n*.55),b=Math.floor(n*.78);
-  return {train:rows.slice(0,a),validation:rows.slice(a,b),test:rows.slice(b)};
+function splitRows(rows:FeatureRow[],horizon:number){
+  const n=rows.length,a=Math.floor(n*.55),b=Math.floor(n*.78),purge=Math.max(2,horizon+1);
+  return {
+    train:rows.slice(0,Math.max(0,a-purge)),
+    validation:rows.slice(Math.min(n,a+purge),Math.max(a+purge,b-purge)),
+    test:rows.slice(Math.min(n,b+purge))
+  };
 }
 
-function planFrom(rows:FeatureRow[],h:number){
-  const abs=rows.map(r=>Math.abs(r.fwdAtr)).filter(Number.isFinite).sort((a,b)=>a-b);
-  const q=(p:number)=>abs.length?abs[Math.min(abs.length-1,Math.floor((abs.length-1)*p))]:.4;
-  const take=Math.max(.34,Math.min(.85,q(.58)*.78));
-  const stop=Math.max(.24,Math.min(.52,q(.38)*.72));
+function tuneThreshold(validation:FeatureRow[],model:Model,costAtr:number){
+  const candidates=[.20,.24,.28,.32,.36,.40,.45,.50,.56];
+  let best:{threshold:number;metrics:Metrics;rank:number;stability:number}|null=null;
+  const mid=Math.floor(validation.length*.5),v1=validation.slice(0,mid),v2=validation.slice(mid);
+  for(const threshold of candidates){
+    const m={...model,threshold},metrics=evaluate(validation,m,costAtr),a=evaluate(v1,m,costAtr),b=evaluate(v2,m,costAtr);
+    const minimumUsed=Math.max(12,Math.ceil(validation.length*.12));
+    if(metrics.used<minimumUsed||a.used<5||b.used<5)continue;
+    const worstEdge=Math.min(a.netEdgeAtr,b.netEdgeAtr),stability=Math.max(0,1-Math.abs(a.netEdgeAtr-b.netEdgeAtr)/Math.max(.20,Math.abs(metrics.netEdgeAtr)+.20));
+    const rank=
+      metrics.netEdgeAtr*1.75+
+      worstEdge*1.10+
+      Math.min(2.5,metrics.profitFactor)*.10+
+      Math.max(-.12,Math.min(.12,(metrics.accuracy-50)/100))-
+      metrics.maxDrawdownAtr*.035+
+      Math.min(.08,metrics.signalRate/100*.16)+
+      stability*.05;
+    if(!best||rank>best.rank)best={threshold,metrics,rank,stability};
+  }
+  if(best)return best;
+  const fallback={...model,threshold:.32},metrics=evaluate(validation,fallback,costAtr);
+  return {threshold:.32,metrics,rank:-99,stability:0};
+}
+
+function planFrom(rows:FeatureRow[],h:number,costAtr:number){
+  const favorable=rows.map(r=>Math.max(r.mfeAtr,-r.maeAtr)).filter(Number.isFinite).sort((a,b)=>a-b);
+  const adverse=rows.map(r=>Math.min(Math.abs(r.maeAtr),Math.abs(r.mfeAtr))).filter(Number.isFinite).sort((a,b)=>a-b);
+  const q=(arr:number[],p:number,fallback:number)=>arr.length?arr[Math.min(arr.length-1,Math.floor((arr.length-1)*p))]:fallback;
+  const take=Math.max(costAtr*2.4,.34,Math.min(.90,q(favorable,.58,.5)*.72));
+  const stop=Math.max(costAtr*1.8,.22,Math.min(.48,q(adverse,.62,.35)*.90));
   return {maxHoldSeconds:h*60,takeAtr:Number(take.toFixed(2)),stopAtr:Number(stop.toFixed(2)),exitOnFlip:true};
 }
 
 export function trainScalpLearner(input:Candle[],now=Date.now(),estimatedCostAtr=.10):ScalpLearningResult{
-  const c=input.filter(x=>x.time+60000<=now).slice(-520),costAtr=Math.max(.04,Math.min(.28,Number(estimatedCostAtr)||.10));
-  const empty:ScalpLearningResult={ok:false,side:'WAIT',score:0,confidence:0,edge:0,sampleCount:0,trainCount:0,validationCount:0,testCount:0,oosAccuracy:0,oosEdgeAtr:0,oosGrossEdgeAtr:0,profitFactor:0,maxDrawdownAtr:0,costAtr,preferredHoldBars:0,exitPlan:{maxHoldSeconds:0,takeAtr:0,stopAtr:0,exitOnFlip:true},features:[],gate:{passed:false,reasons:['عينة M1 غير كافية.']},reasons:['عينة M1 غير كافية لتقييم Edge حقيقي.']};
-  if(c.length<180)return empty;
+  const c=input.filter(x=>x.time+60000<=now).slice(-760),costAtr=Math.max(.04,Math.min(.28,Number(estimatedCostAtr)||.10));
+  const empty:ScalpLearningResult={ok:false,side:'WAIT',score:0,confidence:0,edge:0,sampleCount:0,trainCount:0,validationCount:0,testCount:0,oosAccuracy:0,oosEdgeAtr:0,oosGrossEdgeAtr:0,profitFactor:0,maxDrawdownAtr:0,costAtr,preferredHoldBars:0,entryThreshold:0,validationSignalRate:0,testSignalRate:0,exitPlan:{maxHoldSeconds:0,takeAtr:0,stopAtr:0,exitOnFlip:true},features:[],gate:{passed:false,reasons:['عينة M1 غير كافية.']},reasons:['عينة M1 غير كافية لتقييم Edge حقيقي.']};
+  if(c.length<220)return empty;
 
-  let chosen:{h:number;rows:FeatureRow[];train:FeatureRow[];validation:FeatureRow[];test:FeatureRow[];model:Model;vm:Metrics;rank:number}|null=null;
+  const minMove=Math.max(.20,Math.min(.34,.12+costAtr*1.6));
+  let chosen:{h:number;rows:FeatureRow[];train:FeatureRow[];validation:FeatureRow[];test:FeatureRow[];model:Model;vm:Metrics;rank:number;stability:number}|null=null;
   for(const h of [1,2,3,4,5]){
-    const rows=buildRows(c,h);if(rows.length<130)continue;
-    const {train,validation,test}=splitRows(rows);if(train.length<70||validation.length<24||test.length<24)continue;
-    const model=fit(train),vm=evaluate(validation,model,costAtr);
+    const rows=buildRows(c,h);if(rows.length<180)continue;
+    const {train,validation,test}=splitRows(rows,h);if(train.length<90||validation.length<36||test.length<36)continue;
+    const base=fit(train,minMove),tuned=tuneThreshold(validation,base,costAtr),model={...base,threshold:tuned.threshold},vm=tuned.metrics;
     if(vm.used<12)continue;
-    const rank=vm.netEdgeAtr*1.8+Math.min(2,vm.profitFactor)*.12-vm.maxDrawdownAtr*.025;
-    if(!chosen||rank>chosen.rank)chosen={h,rows,train,validation,test,model,vm,rank};
+    const rank=tuned.rank+Math.min(.06,vm.used/Math.max(1,validation.length)*.08);
+    if(!chosen||rank>chosen.rank)chosen={h,rows,train,validation,test,model,vm,rank,stability:tuned.stability};
   }
   if(!chosen)return empty;
 
-  const refit=fit([...chosen.train,...chosen.validation]),tm=evaluate(chosen.test,refit,costAtr);
+  const refitBase=fit([...chosen.train,...chosen.validation],minMove),refit={...refitBase,threshold:chosen.model.threshold};
+  const tm=evaluate(chosen.test,refit,costAtr);
   const x=feat(c.slice(-25));if(!x)return empty;
-  const p=predict(x,refit),exitPlan=planFrom([...chosen.train,...chosen.validation],chosen.h);
+  const p=predict(x,refit),exitPlan=planFrom([...chosen.train,...chosen.validation],chosen.h,costAtr);
   const contributions=names.map((name,j)=>({name,weight:Number(refit.weights[j].toFixed(3)),value:Number(x[j].toFixed(3)),contribution:Number((((x[j]-refit.means[j])/refit.sds[j])*refit.weights[j]).toFixed(3))})).sort((a,b)=>Math.abs(b.contribution)-Math.abs(a.contribution));
 
   const gateReasons:string[]=[];
-  if(chosen.vm.netEdgeAtr<.035)gateReasons.push('Validation expectancy ضعيف بعد التكلفة');
-  if(chosen.vm.profitFactor<1.08)gateReasons.push('Validation profit factor غير كافٍ');
+  if(chosen.vm.netEdgeAtr<.04)gateReasons.push('Validation expectancy ضعيف بعد التكلفة');
+  if(chosen.vm.profitFactor<1.10)gateReasons.push('Validation profit factor غير كافٍ');
+  if(chosen.stability<.30)gateReasons.push('Validation غير مستقر بين النصفين');
   if(tm.used<20)gateReasons.push('عدد صفقات Final Holdout أقل من 20');
   if(tm.accuracy<56)gateReasons.push('Final Holdout accuracy أقل من 56%');
   if(tm.netEdgeAtr<.06)gateReasons.push('Final Holdout expectancy أقل من +0.06 ATR بعد التكلفة');
   if(tm.profitFactor<1.20)gateReasons.push('Final Holdout profit factor أقل من 1.20');
-  if(tm.maxDrawdownAtr>2.6)gateReasons.push('Final Holdout drawdown مرتفع');
-  if(p.side==='WAIT')gateReasons.push('الإشارة الحالية نفسها ضعيفة');
+  if(tm.maxDrawdownAtr>2.8)gateReasons.push('Final Holdout drawdown مرتفع');
+  if(tm.signalRate>72)gateReasons.push('النموذج يطلق إشارات أكثر من اللازم');
+  if(p.side==='WAIT')gateReasons.push('الإشارة الحالية نفسها دون العتبة المتعلمة');
   const valid=gateReasons.length===0;
 
   const edgeQuality=Math.max(0,Math.min(1,tm.netEdgeAtr/.22)),pfQuality=Math.max(0,Math.min(1,(tm.profitFactor-1)/.8)),accQuality=Math.max(0,Math.min(1,(tm.accuracy-50)/25));
-  const confidence=Math.min(84,Math.round(p.score*.42+edgeQuality*100*.24+pfQuality*100*.18+accQuality*100*.16));
+  const stabilityQuality=Math.max(0,Math.min(1,chosen.stability));
+  const confidence=Math.min(86,Math.round(p.score*.36+edgeQuality*100*.24+pfQuality*100*.16+accQuality*100*.14+stabilityQuality*100*.10));
   const side:Side=valid?p.side:'WAIT';
   const reasons=[
-    `FINAL HOLDOUT: ${tm.accuracy.toFixed(1)}% على ${tm.used} صفقة`,
+    `FINAL HOLDOUT: ${tm.accuracy.toFixed(1)}% على ${tm.used} صفقة · signal rate ${tm.signalRate.toFixed(0)}%`,
     `Net expectancy ${tm.netEdgeAtr.toFixed(3)} ATR بعد تكلفة ${costAtr.toFixed(2)} ATR`,
     `Profit factor ${tm.profitFactor.toFixed(2)} · Max DD ${tm.maxDrawdownAtr.toFixed(2)} ATR`,
-    `Validation expectancy ${chosen.vm.netEdgeAtr.toFixed(3)} ATR`,
-    `أفضل Hold من Validation: ${chosen.h} دقيقة`,
+    `Validation expectancy ${chosen.vm.netEdgeAtr.toFixed(3)} ATR · stability ${Math.round(chosen.stability*100)}%`,
+    `عتبة الدخول المتعلمة ${chosen.model.threshold.toFixed(2)} · أفضل Hold ${chosen.h} دقيقة`,
     ...contributions.slice(0,2).map(f=>`${f.name} contribution ${f.contribution}`)
   ];
 
@@ -152,6 +203,7 @@ export function trainScalpLearner(input:Candle[],now=Date.now(),estimatedCostAtr
     sampleCount:chosen.rows.length,trainCount:chosen.train.length,validationCount:chosen.validation.length,testCount:chosen.test.length,
     oosAccuracy:Number(tm.accuracy.toFixed(1)),oosEdgeAtr:Number(tm.netEdgeAtr.toFixed(3)),oosGrossEdgeAtr:Number(tm.grossEdgeAtr.toFixed(3)),
     profitFactor:Number(tm.profitFactor.toFixed(2)),maxDrawdownAtr:Number(tm.maxDrawdownAtr.toFixed(2)),costAtr:Number(costAtr.toFixed(3)),
-    preferredHoldBars:chosen.h,exitPlan,features:contributions.slice(0,6),gate:{passed:valid,reasons:gateReasons},reasons
+    preferredHoldBars:chosen.h,entryThreshold:Number(chosen.model.threshold.toFixed(2)),validationSignalRate:Number(chosen.vm.signalRate.toFixed(1)),testSignalRate:Number(tm.signalRate.toFixed(1)),
+    exitPlan,features:contributions.slice(0,6),gate:{passed:valid,reasons:gateReasons},reasons
   };
 }
