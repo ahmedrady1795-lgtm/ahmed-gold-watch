@@ -9,29 +9,39 @@ function IndicatorMatrix({x}:any){
   const rows=x?.indicatorMatrix?.rows;if(!rows)return null;
   const order=[['m1','M1'],['m5','M5'],['m15','M15'],['h1','H1']];
   return <div className="sidecard">
-    <strong>مصفوفة المؤشرات · Fusion {x.fusion?.buy||0} شراء / {x.fusion?.sell||0} بيع</strong>
+    <strong>مصفوفة مؤشرات تشخيصية · ليست أوامر</strong>
+    <p>Fusion داخلي: {x.fusion?.buy||0} شراء / {x.fusion?.sell||0} بيع</p>
     {order.map(([key,label])=>{const r=rows[key];return <div className="kv" key={key}>
       <span>{label} · RSI {r?.rsi??'—'} · ADX {r?.adx??'—'}</span>
-      <b className={r?.bias==='BUY'?'green':r?.bias==='SELL'?'red':'amber'}>{sideAr(r?.bias)} · قوة {calibrated(r?.strength)}</b>
+      <b className={r?.bias==='BUY'?'green':r?.bias==='SELL'?'red':'amber'}>ميل {sideAr(r?.bias)} · قوة {calibrated(r?.strength)}</b>
     </div>;})}
   </div>;
 }
 
 function Card({x}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
-  const trade=x.trade,candidate=x.candidateTrade,buy=x.action==='BUY',sell=x.action==='SELL',pulse=x.livePulse,scalp=x.scalp,scalpTrade=x.scalp?.trade,hunter=x.hunter,liq=x.liquidity,core=x.adaptiveCore,motion=x.motion,behavior=x.behavior;
+  const master=x.master||{action:x.action,state:x.phase||'WAIT',watchSide:'WAIT',reason:'',lockedSide:'WAIT',pendingReversal:'WAIT',pendingCount:0};
+  const trade=x.trade,buy=master.action==='BUY',sell=master.action==='SELL',pulse=x.livePulse,scalp=x.scalp,hunter=x.hunter,liq=x.liquidity,core=x.adaptiveCore,motion=x.motion,behavior=x.behavior;
   return <section className="panel">
-    <div className="panelhead"><div><span className="eyebrow">{x.asset} · {x.phase||'SCAN'}</span><h2>{buy?'BUY STRIKE':sell?'SELL STRIKE':hunter?.status==='WATCH'?'WATCH '+sideAr(hunter?.side):'WAIT'} · Quality {x.quality||'—'}</h2></div>{buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}</div>
+    <div className="panelhead"><div><span className="eyebrow">{x.asset} · MASTER DECISION</span><h2>{buy?'شراء معتمد':sell?'بيع معتمد':'انتظار'} · {master.state}</h2></div>{buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}</div>
+
+    <div className={buy||sell?'safetybox':'sidecard'}>
+      <strong>🧭 القرار الوحيد: {buy?'BUY':sell?'SELL':'WAIT'}</strong>
+      <p>{master.reason||'بانتظار توافق النواة.'}</p>
+      {master.state==='WATCH'&&master.watchSide!=='WAIT'&&<p>ميل مراقبة فقط: {sideAr(master.watchSide)} — ليس صفقة.</p>}
+      {master.state==='REVERSAL_LOCK'&&<p>Direction Lock: {sideAr(master.lockedSide)} · عكس محتمل {sideAr(master.pendingReversal)} ({master.pendingCount||0}/3)</p>}
+      {master.state==='CONFLICT'&&<p>لا يوجد اتجاه تداول حتى ينتهي التعارض الداخلي.</p>}
+    </div>
 
     <div className="levels">
-      <div><small>Fusion</small><strong>{x.fusion?.side||'WAIT'} · قوة {calibrated(Math.max(x.fusion?.buy||0,x.fusion?.sell||0))}</strong></div>
+      <div><small>Core Fusion · تشخيصي</small><strong>{x.fusion?.side||'WAIT'} · قوة {calibrated(Math.max(x.fusion?.buy||0,x.fusion?.sell||0))}</strong></div>
       <div><small>Confidence</small><strong>{calibrated(x.confidence)}</strong></div>
       <div><small>Data</small><strong>{x.dataQuality}/100</strong></div>
     </div>
 
-    {hunter&&<div className={hunter.status==='STRIKE'?'safetybox':'sidecard'}>
-      <strong>🎯 {hunter.mode} · {sideAr(hunter.side)} · {hunter.status}</strong>
-      <p>قوة {calibrated(hunter.score)} · حد الهجوم {hunter.threshold} · الفارق {hunter.gap}</p>
+    {hunter&&<div className="sidecard">
+      <strong>🎯 Hunter · قراءة فرعية فقط</strong>
+      <p>ميل {sideAr(hunter.side)} · {hunter.mode} · {hunter.status} · قوة {calibrated(hunter.score)}</p>
       <p>{hunter.reason}</p>
     </div>}
 
@@ -42,52 +52,51 @@ function Card({x}:any){
     </div>}
 
     {liq&&<div className="sidecard">
-      <strong>🧠 LIQUIDITY BRAIN · {sideAr(liq.side)} · قوة {calibrated(Math.max(liq.buy||0,liq.sell||0))} · Quality {liq.quality}/100</strong>
+      <strong>🧠 Liquidity · قراءة فرعية فقط</strong>
+      <p>ميل {sideAr(liq.side)} · قوة {calibrated(Math.max(liq.buy||0,liq.sell||0))} · Quality {liq.quality}/100</p>
       <div className="levels">
         <div><small>Order Book</small><strong>{liq.book?.weightedImbalance??0}%</strong></div>
         <div><small>Volume Delta / CVD</small><strong>{liq.flow?.deltaPct??0}%</strong></div>
         <div><small>Acceleration</small><strong>{liq.dynamics?.acceleration??0}</strong></div>
       </div>
-      <p>Bid depth $ {Number(liq.book?.bidDepthUsd||0).toLocaleString('en-US')} · Ask depth $ {Number(liq.book?.askDepthUsd||0).toLocaleString('en-US')} · Spread {liq.book?.spreadBps??'—'} bps</p>
-      <p>Microprice edge {liq.book?.microEdge??0} · Wall {sideAr(liq.book?.wallSide)} · Absorption {sideAr(liq.absorption?.side)} · قوة {calibrated(liq.absorption?.score)}</p>
+      <p>Microprice {liq.book?.microEdge??0} · Absorption {sideAr(liq.absorption?.side)} · قوة {calibrated(liq.absorption?.score)}</p>
       <p>{liq.absorption?.reason}</p>
-      {core&&<p><b>Adaptive weights:</b> Technical {Math.round((core.technicalWeight||0)*100)}% · Liquidity {Math.round((core.liquidityWeight||0)*100)}% · Motion {Math.round((core.motionWeight||0)*100)}%</p>}
+      {core&&<p>Weights: Technical {Math.round((core.technicalWeight||0)*100)}% · Liquidity {Math.round((core.liquidityWeight||0)*100)}% · Motion {Math.round((core.motionWeight||0)*100)}% · Behavior {Math.round((core.behaviorWeight||0)*100)}%</p>}
     </div>}
 
-    {motion&&<div className={motion.stage==='IGNITION'||motion.stage==='REVERSAL_ALERT'?'safetybox':'sidecard'}>
-      <strong>⚡ MOTION INTELLIGENCE · {motion.stage} · {sideAr(motion.side)} · قوة {calibrated(motion.score)}</strong>
+    {motion&&<div className="sidecard">
+      <strong>⚡ Motion · قراءة فرعية فقط</strong>
+      <p>{motion.stage} · ميل {sideAr(motion.side)} · قوة {calibrated(motion.score)}</p>
       <div className="levels">
         <div><small>Pressure Trend</small><strong>{motion.components?.pressureTrend??0}</strong></div>
         <div><small>Microprice Lead</small><strong>{motion.components?.micropriceLead??0}</strong></div>
         <div><small>Compression</small><strong>{motion.components?.compression??0}</strong></div>
       </div>
-      <p>Velocity {motion.components?.liveVelocityBps??0} bps · Persistence {motion.components?.pressurePersistence??0}% · Precursors {motion.diagnostics?.precursorCount??0}</p>
       {!!motion.reasons?.length&&<p>{motion.reasons.join(' · ')}</p>}
     </div>}
 
     {behavior&&<div className="sidecard">
-      <strong>🧬 MARKET BEHAVIOR STUDY · {behavior.pattern} · {sideAr(behavior.side)} · قوة {calibrated(behavior.score)}</strong>
+      <strong>🧬 Behavior · قراءة فرعية فقط</strong>
+      <p>{behavior.pattern} · ميل {sideAr(behavior.side)} · قوة {calibrated(behavior.score)}</p>
       <div className="levels">
         <div><small>Historical Analogs</small><strong>{behavior.analogCount||0}</strong></div>
         <div><small>Follow-through</small><strong>↑ {behavior.votes?.buy||0} / ↓ {behavior.votes?.sell||0}</strong></div>
         <div><small>Expected Move</small><strong>{behavior.expectedMoveAtr??0} ATR</strong></div>
       </div>
-      <p>Confidence {calibrated(behavior.confidence)} · Horizon {behavior.horizonMinutes||0}m</p>
       {!!behavior.reasons?.length&&<p>{behavior.reasons.join(' · ')}</p>}
-      {core&&<p><b>Behavior weight:</b> {Math.round((core.behaviorWeight||0)*100)}%</p>}
     </div>}
 
-    <p>السعر {fmt(pulse?.price??x.price,x.asset==='BTC'?2:2)} · {pulse?.source||x.source}</p>
+    <p>السعر {fmt(pulse?.price??x.price,2)} · {pulse?.source||x.source}</p>
 
-    {trade?<div className="levels">
-      <div><small>Entry</small><strong>{fmt(trade.entry,x.asset==='BTC'?2:2)}</strong></div>
-      <div><small>SL</small><strong>{fmt(trade.sl,x.asset==='BTC'?2:2)}</strong></div>
-      <div><small>TP</small><strong>{fmt(trade.tp,x.asset==='BTC'?2:2)}</strong></div>
-    </div>:candidate?<div className="sidecard"><strong>مرشح تحت المراقبة</strong><p>Entry {fmt(candidate.entry,2)} · SL {fmt(candidate.sl,2)} · TP {fmt(candidate.tp,2)} · RR {candidate.rr||'—'}</p></div>:null}
+    {trade&&master.state==='TRADE'&&<div className="levels">
+      <div><small>Entry</small><strong>{fmt(trade.entry,2)}</strong></div>
+      <div><small>SL</small><strong>{fmt(trade.sl,2)}</strong></div>
+      <div><small>TP</small><strong>{fmt(trade.tp,2)}</strong></div>
+    </div>}
 
-    <div className={scalpTrade?'safetybox':'sidecard'}>
-      <strong>{scalpTrade?'⚡ '+scalp.title:'⚡ M1 SCALP · WAIT'}</strong>
-      {scalpTrade?<p>Entry {fmt(scalpTrade.entry,2)} · SL {fmt(scalpTrade.sl,2)} · TP {fmt(scalpTrade.tp,2)} · قوة {calibrated(scalpTrade.score)} · صلاحية {scalpTrade.validForSeconds||75}ث</p>:<p>{scalp?.reason||'بانتظار توافق M1/M5.'}</p>}
+    <div className="sidecard">
+      <strong>⚡ M1 Scalp · قراءة فرعية فقط</strong>
+      <p>{scalp?.action&&scalp.action!=='WAIT'?('ميل '+sideAr(scalp.action)+' — غير معتمد إلا إذا وافق Master Decision.'):(scalp?.reason||'بانتظار توافق M1/M5.')}</p>
     </div>
 
     <IndicatorMatrix x={x}/>
@@ -100,13 +109,13 @@ export default function AICommandCenter({data,error}:any){
   const auto=data?.autopilot;
   return <div>
     <section className="sidecard">
-      <strong>Predator Core v8 · Behavior Learning Brain</strong>
-      <p>النواة تدرس الحركة الحالية نفسها، تقارنها بحركات تاريخية مشابهة على M1/M5، وتجمع Behavior Study مع Motion + Liquidity + المؤشرات قبل أي قرار. الهدف رصد النمط المتكرر مبكرًا بدون اعتبار التشابه التاريخي ضمانًا.</p>
+      <strong>Predator Core v8.1 · Exclusive Direction Arbiter</strong>
+      <p>يوجد قرار تداول واحد فقط. Hunter وScalp والسيولة وMotion وBehavior والمؤشرات أصبحت قراءات تشخيصية؛ عند التعارض يتحول القرار إلى WAIT، وعكس الاتجاه يحتاج تأكيدات متتالية عبر Reversal Lock.</p>
     </section>
 
     {!!data?.radar?.length&&<section className="panel">
-      <div className="panelhead"><div><span className="eyebrow">OPPORTUNITY RADAR</span><h2>الأولوية الآن: {data.radar[0]?.asset} · {data.radar[0]?.status}</h2></div><Activity/></div>
-      <div className="levels">{data.radar.map((r:any)=><div key={r.asset}><small>{r.asset} · {r.mode||'SCAN'}</small><strong>{sideAr(r.side)} · قوة {calibrated(r.score)}</strong></div>)}</div>
+      <div className="panelhead"><div><span className="eyebrow">MASTER OPPORTUNITY RADAR</span><h2>{data.radar[0]?.asset} · {data.radar[0]?.status}</h2></div><Activity/></div>
+      <div className="levels">{data.radar.map((r:any)=><div key={r.asset}><small>{r.asset}</small><strong>قرار {sideAr(r.side)} · {r.status}</strong></div>)}</div>
     </section>}
 
     {auto&&<section className="panel">
@@ -116,7 +125,6 @@ export default function AICommandCenter({data,error}:any){
         <div><small>News</small><strong>{auto.newsReady?'READY':'WAIT'} · {auto.eventCount??0}</strong></div>
         <div><small>BTC</small><strong>{auto.btcSource||'—'}</strong></div>
       </div>
-      {!!auto.actions?.length&&<p><b>Auto recovery:</b> {auto.actions.join(' · ')}</p>}
     </section>}
 
     {error&&<div className="fatal"><Activity size={18}/><div><strong>AI unavailable</strong><span>{error}</span></div></div>}
