@@ -2,7 +2,8 @@ import {getRuntimeEnv} from '../../../../lib/runtime';
 import {getMarketSnapshot,getMt5FastSignal} from '../../../../lib/market-hub';
 import {scalpAnalyze} from '../../../../lib/engine';
 import {trainScalpLearner} from '../../../../lib/scalp-learning';
-import {commitDirection} from '../../../../lib/direction-commitment';
+import {buildAccumulationMap} from '../../../../lib/accumulation-map';
+import {buildScalpFusion} from '../../../../lib/scalp-fusion';
 
 export const dynamic='force-dynamic';
 
@@ -19,62 +20,25 @@ function bookIntel(mt5:any){
   const imbalance=total>0?(bidUsd-askUsd)/total*100:0;
   const side:Side=imbalance>=10?'BUY':imbalance<=-10?'SELL':'WAIT';
   const bestBid=bidRows.sort((a:any,b:any)=>b.price-a.price)[0]?.price??null,bestAsk=askRows.sort((a:any,b:any)=>a.price-b.price)[0]?.price??null;
-  const bidWall=bidRows.sort((a:any,b:any)=>b.price*b.volume-a.price*a.volume)[0]||null,askWall=askRows.sort((a:any,b:any)=>b.price*b.volume-a.price*a.volume)[0]||null;
-  const score=side==='WAIT'?0:cap(48+Math.abs(imbalance)*.55,0,88);
-  return {available:Boolean(book?.available&&bidRows.length&&askRows.length),side,score:Number(score.toFixed(1)),imbalance:Number(imbalance.toFixed(1)),bestBid,bestAsk,bidWall,askWall,bidUsd,askUsd};
+  return {available:Boolean(book?.available&&bidRows.length&&askRows.length),side,imbalance:Number(imbalance.toFixed(1)),bestBid,bestAsk,bidUsd,askUsd};
 }
 
-function trajectoryStations(c1:any[],price:number,atr:number,side:Side,book:any){
-  if(side==='WAIT'||!Number.isFinite(price)||price<=0||!Number.isFinite(atr)||atr<=0)return [];
-  const rows=c1.slice(-100),avgVol=Math.max(1,rows.reduce((s:number,x:any)=>s+Number(x?.tickVolume||1),0)/Math.max(1,rows.length));
-  const candidates:any[]=[];
-  for(let i=2;i<rows.length-2;i++){
-    const x=rows[i],prev1=rows[i-1],prev2=rows[i-2],next1=rows[i+1],next2=rows[i+2];
-    const range=Math.max(1e-9,Number(x.high)-Number(x.low)),volRatio=cap(Number(x?.tickVolume||avgVol)/avgVol,.5,2.5);
-    if(side==='BUY'&&x.high>=prev1.high&&x.high>=prev2.high&&x.high>=next1.high&&x.high>=next2.high&&x.high>price+atr*.04){
-      const wick=cap((Number(x.high)-Math.max(Number(x.open),Number(x.close)))/range,0,1);
-      candidates.push({price:Number(x.high),score:45+(i/rows.length)*16+volRatio*7+wick*10,kind:'LIQUIDITY_HIGH'});
-    }
-    if(side==='SELL'&&x.low<=prev1.low&&x.low<=prev2.low&&x.low<=next1.low&&x.low<=next2.low&&x.low<price-atr*.04){
-      const wick=cap((Math.min(Number(x.open),Number(x.close))-Number(x.low))/range,0,1);
-      candidates.push({price:Number(x.low),score:45+(i/rows.length)*16+volRatio*7+wick*10,kind:'LIQUIDITY_LOW'});
-    }
-  }
-  const wall=side==='BUY'?book?.askWall:book?.bidWall;
-  if(Number(wall?.price)>0&&((side==='BUY'&&Number(wall.price)>price)||(side==='SELL'&&Number(wall.price)<price))){
-    candidates.push({price:Number(wall.price),score:82,kind:'BOOK_WALL'});
-  }
-  candidates.sort((a,b)=>side==='BUY'?a.price-b.price:b.price-a.price);
-  const clustered:any[]=[];
-  for(const x of candidates){
-    const near=clustered.find((z:any)=>Math.abs(z.price-x.price)<=atr*.09);
-    if(near){near.price=(near.price+x.price)/2;near.score=Math.max(near.score,x.score);near.kind=near.kind==='BOOK_WALL'||x.kind==='BOOK_WALL'?'BOOK_WALL':'PIVOT_CLUSTER';}
-    else clustered.push({...x});
-  }
-  const picked=clustered.slice(0,3);
-  const fallbackMult=[.22,.48,.82];
-  while(picked.length<3){
-    const idx=picked.length,base=picked.at(-1)?.price??price,mult=fallbackMult[idx]||(.22+idx*.28);
-    const projected=idx===0?price+(side==='BUY'?1:-1)*atr*mult:base+(side==='BUY'?1:-1)*atr*(.24+idx*.10);
-    picked.push({price:projected,score:38-idx*3,kind:'ATR_PROJECTION'});
-  }
-  return picked.map((x:any,i:number)=>{
-    const pad=atr*(.045+i*.01);
-    return {index:i+1,name:'P'+(i+1),center:Number(x.price.toFixed(2)),zoneLow:Number((x.price-pad).toFixed(2)),zoneHigh:Number((x.price+pad).toFixed(2)),confidence:Math.round(cap(x.score,25,88)),source:x.kind,recalcOnArrival:true};
-  });
-}
-
-function interceptPlan(price:number,atr:number,side:Side,book:any){
-  if(side==='WAIT'||!Number.isFinite(price)||price<=0||!Number.isFinite(atr)||atr<=0)return {side:'WAIT',status:'NO_EDGE',ready:false};
-  const bestBid=Number(book?.bestBid),bestAsk=Number(book?.bestAsk),dir=side==='BUY'?1:-1;
-  const spread=Number.isFinite(bestBid)&&Number.isFinite(bestAsk)&&bestAsk>bestBid?bestAsk-bestBid:atr*.02;
-  const launch=side==='BUY'?(Number.isFinite(bestAsk)&&bestAsk>0?bestAsk:price):(Number.isFinite(bestBid)&&bestBid>0?bestBid:price);
-  const pad=Math.max(spread*1.6,atr*.045),low=side==='BUY'?launch-pad:launch-pad*.20,high=side==='BUY'?launch+pad*.20:launch+pad;
-  const chaseBoundary=launch+dir*atr*.12,ranAway=side==='BUY'?price>chaseBoundary:price<chaseBoundary;
-  const inZone=price>=low&&price<=high;
+function liquidityFromMt5(book:any,fast:any,price:number){
+  const quality=book.available?72:0;
+  const buy=Math.round(cap(50+Number(book.imbalance||0)/2,8,92)),sell=100-buy;
+  const mid=Number(book.bestBid)>0&&Number(book.bestAsk)>0?(Number(book.bestBid)+Number(book.bestAsk))/2:price;
+  const spreadBps=Number(book.bestBid)>0&&Number(book.bestAsk)>0&&mid>0?(Number(book.bestAsk)-Number(book.bestBid))/mid*10000:0;
   return {
-    side,status:ranAway?'NO_CHASE':inZone?'READY':'WAIT_ZONE',ready:Boolean(inZone&&!ranAway),
-    launchLine:Number(launch.toFixed(2)),zoneLow:Number(low.toFixed(2)),zoneHigh:Number(high.toFixed(2)),chaseBoundary:Number(chaseBoundary.toFixed(2))
+    ok:quality>=55,quality,side:book.side,buy,sell,strength:Math.max(buy,sell),pressure:Number(book.imbalance||0),
+    book:{
+      bestBid:book.bestBid,bestAsk:book.bestAsk,spreadBps,
+      bboImbalance:Number(book.imbalance||0),depthImbalance:Number(book.imbalance||0),weightedImbalance:Number(book.imbalance||0),
+      microprice:mid,microEdge:0,bidDepthUsd:book.bidUsd,askDepthUsd:book.askUsd,bidWall:1,askWall:1,wallSide:book.side
+    },
+    flow:{tradeCount:0,buyVolume:0,sellVolume:0,deltaVolume:0,deltaPct:0,priceChangeBps:0,cvdSide:'WAIT'},
+    dynamics:{pressureChange:0,bidDepthChangePct:0,askDepthChangePct:0,acceleration:Number(fast?.acceleration||0)},
+    absorption:{side:'WAIT',score:0,reason:'MT5 helper only',trapDetected:false,followThrough:false},
+    warnings:[]
   };
 }
 
@@ -87,59 +51,44 @@ export async function GET(request:Request){
   try{
     const snap=await getMarketSnapshot(),m=snap.market,q=snap.quote,mt5=snap.mt5;
     const fresh=Boolean(mt5?.fresh&&mt5?.candlesFresh&&String(m?.priceSource||'').startsWith('Exness/MT5')&&q?.ok&&q?.status==='live');
-    if(!fresh)return Response.json({ok:true,demoOnly:true,ready:false,reason:'MT5 tick/candles not fresh',checkedAt:now,liveOrderAllowed:false},{headers:{'Cache-Control':'private, no-store'}});
-    const price=Number(q?.price),atr=atrNow(m.c1),spread=Number(q?.spread),costAtr=atr&&Number(atr)>0&&Number.isFinite(spread)?Math.max(.05,spread/Number(atr)+.03):.10;
-    const learner=trainScalpLearner(m.c1,now,costAtr),scalp=scalpAnalyze(m.c1,m.c5,now,price),book=bookIntel((mt5 as any)?.status||mt5),fast=getMt5FastSignal(now);
-    const l=Number(scalp?.score?.long||0),s=Number(scalp?.score?.short||0),microSide:Side=l-s>=14?'BUY':s-l>=14?'SELL':'WAIT',microScore=Math.max(l,s);
-    const learnerBuy=learner.side==='BUY'?Number(learner.confidence||0):0,learnerSell=learner.side==='SELL'?Number(learner.confidence||0):0;
-    const bookBuy=book.side==='BUY'?book.score:0,bookSell=book.side==='SELL'?book.score:0;
-    const fastBuy=fast.side==='BUY'?Number(fast.score||0):0,fastSell=fast.side==='SELL'?Number(fast.score||0):0;
-    const commitBuy=l*.34+learnerBuy*.22+bookBuy*.18+fastBuy*.26,commitSell=s*.34+learnerSell*.22+bookSell*.18+fastSell*.26;
-    const commitment=commitDirection('mt5-intercept:'+String((mt5 as any)?.status?.symbol||(mt5 as any)?.symbol||'XAUUSDm'),commitBuy,commitSell,now,null);
-    const side=commitment.side;
-    const bookAligned=book.side==='WAIT'||book.side===side;
-    const fastAligned=Boolean(fast?.ok&&fast.side===side&&['PRE_TRIGGER','BUILDING','IGNITION'].includes(String(fast.stage)));
-    const classicAligned=Boolean(side!=='WAIT'&&microSide===side&&learner.side===side&&bookAligned);
-    const anticipatoryAligned=Boolean(side!=='WAIT'&&fastAligned&&bookAligned&&(microSide===side||book.side===side)&&Number(fast.score||0)>=58);
-    const qualified=Boolean(
-      Number.isFinite(price)&&price>0&&Number.isFinite(Number(atr))&&Number(atr)>0&&
-      (
-        classicAligned&&learner.ok&&learner.gate?.passed&&learner.oosAccuracy>=56&&learner.oosEdgeAtr>=.06&&learner.profitFactor>=1.20&&learner.confidence>=55&&microScore>=60
-        ||
-        anticipatoryAligned&&['PRE_TRIGGER','IGNITION'].includes(String(fast.stage))&&Number(fast.confidence||0)>=58&&microScore>=52
-      )
-    );
-    const a=Number(atr||0),intercept=interceptPlan(price,a,side,book),stations=trajectoryStations(m.c1,price,a,side,book);
-    const etaSeconds=side==='WAIT'?null:Math.round(cap(
-      String(fast.stage)==='PRE_TRIGGER'?8:String(fast.stage)==='IGNITION'?4:22
-      -Math.abs(book.imbalance)*.08-Math.max(0,microScore-55)*.12-Math.abs(Number(fast.acceleration||0))*18,
-      2,25
-    ));
-    const trajectory={
-      version:'mt5-intercept-v2-fast',side,status:intercept.status,qualified,etaSeconds,fastStage:String(fast.stage||'OFFLINE'),
-      current:intercept,stations,
-      logic:'INTERCEPT_FIRST_THEN_RECALCULATE_EACH_STATION',
-      nextAction:intercept.status==='READY'?'INTERCEPT_NOW':intercept.status==='WAIT_ZONE'?'WAIT_FOR_ZONE':intercept.status==='NO_CHASE'?'SKIP_AND_RECALCULATE':'WAIT'
-    };
-    const dir=side==='BUY'?1:side==='SELL'?-1:0,entry=price;
-    const stopDist=a*Number(learner.exitPlan.stopAtr||.32),takeDist=a*Number(learner.exitPlan.takeAtr||.45);
-    const firstStation=stations[0]?.center;
-    const plan=qualified&&intercept.ready?{
-      id:`scalp-intercept:${side}:${Math.floor(now/1000)}`,side,entry:Number(entry.toFixed(2)),sl:Number((entry-dir*stopDist).toFixed(2)),
-      tp:Number((Number.isFinite(Number(firstStation))?Number(firstStation):entry+dir*takeDist).toFixed(2)),
-      station1:stations[0]||null,station2:stations[1]||null,station3:stations[2]||null,
-      maxHoldSeconds:learner.exitPlan.maxHoldSeconds,exitOnFlip:true,recalculateOnStation:true,expiresAt:now+2200
-    }:null;
+    if(!fresh)return Response.json({ok:true,demoOnly:true,authority:'AMBUSH',ready:false,reason:'MT5 tick/candles not fresh',checkedAt:now,liveOrderAllowed:false},{headers:{'Cache-Control':'private, no-store'}});
+
+    const price=Number(q?.price),atr=atrNow(m.c1),spread=Number(q?.spread);
+    const costAtr=atr&&atr>0&&Number.isFinite(spread)?Math.max(.05,spread/atr+.03):.10;
+    const learner=trainScalpLearner(m.c1,now,costAtr);
+    const technicalHelper=scalpAnalyze(m.c1,m.c5,now,price);
+    const fast=getMt5FastSignal(now);
+    const book=bookIntel((mt5 as any)?.status||mt5);
+    const liquidity=liquidityFromMt5(book,fast,price);
+    const accumulation=buildAccumulationMap(m.c1,m.c5,price,liquidity,now);
+    const ambush=buildScalpFusion(technicalHelper,liquidity,null,learner,null,price,atr,null,fast,accumulation,'GOLD');
+    const plan=ambush?.ambushPlan||null;
+    const trade=ambush?.trade||null;
+    const ambushActive=Boolean(ambush?.action==='BUY'||ambush?.action==='SELL');
+
     return Response.json({
-      ok:true,demoOnly:true,liveOrderAllowed:false,ready:true,checkedAt:now,expiresAt:now+2200,
+      ok:true,demoOnly:true,liveOrderAllowed:false,authority:'AMBUSH',ready:true,checkedAt:now,expiresAt:now+2200,
       quote:{price:q?.price,bid:q?.bid,ask:q?.ask,spread:q?.spread,source:q?.source},
-      learner:{ok:learner.ok,side:learner.side,score:learner.score,confidence:learner.confidence,oosAccuracy:learner.oosAccuracy,oosEdgeAtr:learner.oosEdgeAtr,oosGrossEdgeAtr:learner.oosGrossEdgeAtr,profitFactor:learner.profitFactor,maxDrawdownAtr:learner.maxDrawdownAtr,costAtr:learner.costAtr,gate:learner.gate,sampleCount:learner.sampleCount,preferredHoldBars:learner.preferredHoldBars,exitPlan:learner.exitPlan},
-      micro:{side:microSide,score:microScore,long:l,short:s,action:scalp?.action,reason:scalp?.reason,orderBook:book,fastTick:fast},
-      commitment,trajectory,plan,
-      blockedBy:[...(!learner.ok?['learner_not_validated']:[]),...(!learner.gate?.passed?['final_holdout_edge_gate_failed']:[]),...(!anticipatoryAligned&&learner.side!==microSide?['learner_micro_disagree']:[]),...(!bookAligned?['orderbook_opposes_direction']:[]),...(!anticipatoryAligned&&(commitment.side!==learner.side||commitment.side!==microSide)?['direction_commitment_not_aligned']:[]),...(microScore<(anticipatoryAligned?52:60)?['micro_score_low']:[]),...(!fastAligned?['fast_tick_not_aligned']:[]),...(side==='WAIT'?['no_single_direction']:[]),...(intercept.status==='NO_CHASE'?['late_entry_no_chase']:[]),...(qualified&&!intercept.ready?['waiting_for_intercept_zone']:[])],
-      note:'Demo-only MT5 fast intercept planner. يقرأ ticks دون انتظار إغلاق M1، يحسب PRE_TRIGGER قبل الحركة، ثم منطقة الاستقبال والمحطات التالية ويعيد الحساب عند كل محطة؛ لا يصرح بأوامر MT5 حقيقية.'
+      ambush:{
+        active:ambushActive,side:ambush?.action||'WAIT',confidence:ambush?.confidence||0,
+        phase:ambush?.fusionV8?.predator?.phase||'HUNT',pattern:ambush?.fusionV8?.predator?.pattern||'NO_EDGE',
+        plan,trade,assistants:ambush?.fusionV8?.assistants||{},assistantCount:ambush?.fusionV8?.assistantCount||0
+      },
+      helpers:{
+        technical:{side:technicalHelper?.helperSide||'WAIT',confidence:technicalHelper?.helperConfidence||0,score:technicalHelper?.score},
+        learner:{ok:learner.ok,side:learner.side,confidence:learner.confidence,oosAccuracy:learner.oosAccuracy,profitFactor:learner.profitFactor,gate:learner.gate},
+        orderBook:book,
+        fastRadar:fast,
+        accumulation:{side:accumulation?.side||'WAIT',phase:accumulation?.phase||'NEUTRAL',readiness:accumulation?.breakoutReadiness||0}
+      },
+      blockedBy:[
+        ...(!ambushActive?['ambush_not_approved']:[]),
+        ...(plan?.status==='CANCEL'?['ambush_plan_cancelled']:[]),
+        ...(plan?.entry&&!plan.entry.ready?['waiting_for_ambush_entry_zone']:[])
+      ],
+      note:'Demo-only. Ambush is the only trade authority. MT5 technicals, learner, order book, fast radar and accumulation are helpers only; no independent scalp path can create a trade.'
     },{headers:{'Cache-Control':'private, no-store'}});
   }catch(e){
-    return Response.json({ok:false,code:'SCALP_DEMO_SOURCE_ERROR',message:'تعذر تكوين خطة السكالب التجريبية.',detail:e instanceof Error?e.message:'unknown'},{status:502,headers:{'Cache-Control':'private, no-store'}});
+    return Response.json({ok:false,code:'AMBUSH_DEMO_SOURCE_ERROR',message:'تعذر تكوين خطة Ambush التجريبية.',detail:e instanceof Error?e.message:'unknown'},{status:502,headers:{'Cache-Control':'private, no-store'}});
   }
 }
