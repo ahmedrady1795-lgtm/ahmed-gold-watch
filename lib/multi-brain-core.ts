@@ -12,10 +12,13 @@ export type MultiBrainCore={
   strong:boolean;decisive:boolean;dominantBrain:BrainName|null;
   fastAgreement:number;totalAgreement:number;brains:Record<BrainName,Brain>;
   selector:{buy:number;sell:number;buyShare:number;sellShare:number};
+  learnedWeights:Record<BrainName,number>;
+  learnedAccuracy:Record<BrainName,number>;
   reasons:string[];
 };
 
 const cap=(n:number,a=0,b=100)=>Math.max(a,Math.min(b,n));
+const BRAIN_NAMES:BrainName[]=['MICRO','TREND','REVERSAL','RANGE'];
 const s=(x:any):Side=>x==='BUY'||x==='SELL'?x:'WAIT';
 const regimeOf=(x:any):Regime=>{
   const r=String(x?.regime||'TRANSITION').toUpperCase();
@@ -71,7 +74,7 @@ function regimeWeights(r:Regime):Record<BrainName,number>{
 }
 
 export function buildMultiBrainCore(asset:string,args:any):MultiBrainCore{
-  const d=args?.decision||{},scalp=args?.scalp||{},movement=args?.movement||{},graph=args?.stateGraph||{},tick=args?.tick||{},expected=args?.expected||{},learning=args?.learning||{};
+  const d=args?.decision||{},scalp=args?.scalp||{},movement=args?.movement||{},graph=args?.stateGraph||{},tick=args?.tick||{},expected=args?.expected||{},learning=args?.learning||{},brainLearning=args?.brainLearning||{};
   const regime=regimeOf(movement);
   const motion=d?.motion||{},liq=d?.liquidity||{},hunter=d?.hunter||{},behavior=d?.behavior||{},m=d?.indicatorMatrix?.rows||{};
   const scalpLong=Number(scalp?.score?.long||0),scalpShort=Number(scalp?.score?.short||0);
@@ -145,6 +148,15 @@ export function buildMultiBrainCore(asset:string,args:any):MultiBrainCore{
 
   const brains:Record<BrainName,Brain>={MICRO:micro,TREND:trend,REVERSAL:reversal,RANGE:range};
   const rw=regimeWeights(regime);
+  const learnedWeights={} as Record<BrainName,number>;
+  const learnedAccuracy={} as Record<BrainName,number>;
+  for(const name of BRAIN_NAMES){
+    const learned=brainLearning?.regimes?.[regime]?.[name];
+    const mult=cap(Number(learned?.multiplier||1),.58,1.42);
+    learnedWeights[name]=mult;
+    learnedAccuracy[name]=Number(learned?.blendedAccuracy||50);
+    rw[name]*=mult;
+  }
   let buy=0,sell=0;
   const contributions:{name:BrainName;side:Side;value:number}[]=[];
   for(const name of Object.keys(brains) as BrainName[]){
@@ -177,12 +189,12 @@ export function buildMultiBrainCore(asset:string,args:any):MultiBrainCore{
     'Brains '+Object.values(brains).map(b=>b.name+':'+b.side+'/'+b.confidence).join(' · '),
     'Agreement fast '+fastAgreement+' · total '+totalAgreement
   ];
-  if(dominant)reasons.push('Dominant brain '+dominant);
+  if(dominant)reasons.push('Dominant brain '+dominant+' · learned '+learnedAccuracy[dominant]+'% · weight x'+learnedWeights[dominant].toFixed(2));
   if(decisive)reasons.push('Decisive multi-brain alignment; stale single-engine conflicts may be overridden');
 
   return {
     ok:true,asset,regime,side,confidence,gap:Math.round(gap),strong,decisive,dominantBrain:dominant,
-    fastAgreement,totalAgreement,brains,
+    fastAgreement,totalAgreement,brains,learnedWeights,learnedAccuracy,
     selector:{buy:Number(buy.toFixed(3)),sell:Number(sell.toFixed(3)),buyShare:Math.round(buyShare),sellShare:Math.round(sellShare)},
     reasons
   };
