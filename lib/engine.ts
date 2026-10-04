@@ -1,4 +1,4 @@
-export type Candle={time:number;open:number;high:number;low:number;close:number};
+export type Candle={time:number;open:number;high:number;low:number;close:number;tickVolume?:number;realVolume?:number;spread?:number};
 export type Event={id:string;time:number;name:string;importance:number;actual:string;forecast:string;previous:string;source:string;exactTime:boolean};
 export type Rules={before:number;after:number;adx:number;spike:number;minScore:number};
 export const defaults:Rules={before:15,after:15,adx:22,spike:2,minScore:76};
@@ -51,7 +51,7 @@ export function detectRegime(f:{m1:IndicatorSet;m5:IndicatorSet;m15:IndicatorSet
 export function analyze(c1:Candle[],c5:Candle[],c15:Candle[],c60:Candle[],events:Event[],newsReady:boolean,now:number,r:Rules=defaults){
   const a1=closed(c1,60000,now),a5=closed(c5,300000,now),a15=closed(c15,900000,now),a60=closed(c60,3600000,now);
   const baseStop=(reason:string)=>({state:'stop' as const,title:'توقف عن فتح صفقات',reason,metrics:null,frames:null,levels:null,score:null,regime:null,news:null,signal:null});
-  const invalid=(series:Candle[],ms:number)=>series.some((c,i)=>!Object.values(c).every(Number.isFinite)||c.time>now||c.time%ms!==0||c.low<=0||c.high<Math.max(c.open,c.close)||c.low>Math.min(c.open,c.close)||(i>0&&c.time<=series[i-1].time));
+  const invalid=(series:Candle[],ms:number)=>series.some((c,i)=>![c.time,c.open,c.high,c.low,c.close].every(Number.isFinite)||c.time>now||c.time%ms!==0||c.low<=0||c.high<Math.max(c.open,c.close)||c.low>Math.min(c.open,c.close)||(i>0&&c.time<=series[i-1].time));
   const hasRecentGap=(series:Candle[],ms:number)=>series.slice(-20).some((c,i,recent)=>i>0&&c.time-recent[i-1].time!==ms);
   if(invalid(c1,60000)||invalid(c5,300000)||invalid(c15,900000)||invalid(c60,3600000))return baseStop('شموع غير صالحة أو مكررة أو بتوقيت مستقبلي؛ لا إشارة.');
   if(hasRecentGap(a1,60000)||hasRecentGap(a5,300000)||hasRecentGap(a15,900000)||hasRecentGap(a60,3600000))return baseStop('فجوات في آخر 20 شمعة؛ انتظر اكتمال السلسلة قبل تقييم الدخول.');
