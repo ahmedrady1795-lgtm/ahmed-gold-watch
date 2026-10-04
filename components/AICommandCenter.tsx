@@ -18,7 +18,7 @@ function IndicatorMatrix({x}:any){
   </div>;
 }
 
-function Card({x}:any){
+function Card({x,fast}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
   const master=x.master||{action:x.action,state:x.phase||'WAIT',watchSide:'WAIT',reason:'',lockedSide:'WAIT',pendingReversal:'WAIT',pendingCount:0};
   const trade=x.trade,buy=master.action==='BUY',sell=master.action==='SELL',pulse=x.livePulse,scalp=x.scalp,hunter=x.hunter,liq=x.liquidity,core=x.adaptiveCore,motion=x.motion,behavior=x.behavior,hunt=x.huntForecast;
@@ -32,6 +32,22 @@ function Card({x}:any){
       {master.state==='REVERSAL_LOCK'&&<p>Direction Lock: {sideAr(master.lockedSide)} · عكس محتمل {sideAr(master.pendingReversal)} ({master.pendingCount||0}/3)</p>}
       {master.state==='CONFLICT'&&<p>لا يوجد اتجاه تداول حتى ينتهي التعارض الداخلي.</p>}
     </div>
+
+    {fast?.ok&&<div className={fast.stage==='IGNITION'||fast.stage==='WAVE_FORMING'?'safetybox':'sidecard'}>
+      <strong>⚡ LIVE WAVE LEAD · {fast.stage} · ميل {sideAr(fast.side)} · قوة {calibrated(fast.score)}</strong>
+      <div className="levels">
+        <div><small>1s Velocity</small><strong>{fast.velocity1s} bps</strong></div>
+        <div><small>Acceleration</small><strong>{fast.acceleration}</strong></div>
+        <div><small>Persistence</small><strong>{fast.persistence}%</strong></div>
+      </div>
+      <div className="levels">
+        <div><small>Tick Burst</small><strong>x{fast.burstRate}</strong></div>
+        <div><small>Book Imbalance</small><strong>{fast.imbalance}%</strong></div>
+        <div><small>Spread Compression</small><strong>{fast.spreadCompression}%</strong></div>
+      </div>
+      {!!fast.reasons?.length&&<p>{fast.reasons.join(' · ')}</p>}
+      <p className="muted">طبقة استباقية Tick-by-Tick؛ تسبق التحليل الثقيل ولا تُعد أمر دخول منفردًا.</p>
+    </div>}
 
     {hunt&&<div className={master.action==='WAIT'?'safetybox':'sidecard'}>
       <strong>🦅 HUNT FORECAST · الحركة القادمة المرجحة: {sideAr(hunt.side)} · {hunt.state}</strong>
@@ -123,12 +139,12 @@ function Card({x}:any){
   </section>;
 }
 
-export default function AICommandCenter({data,error}:any){
+export default function AICommandCenter({data,error,fastWave}:any){
   const auto=data?.autopilot;
   return <div>
     <section className="sidecard">
-      <strong>Predator Core v8.2 · Proactive Hunt Forecast</strong>
-      <p>وقت WAIT النواة لا تتوقف: تدخل وضع HUNT وتصدر توقعًا استباقيًا للحركة القادمة مع اتجاه مرجح، نافذة زمنية، Trigger، Projected Move وInvalidation. القرار التنفيذي يظل منفصلًا ولا يتحول لصفقة إلا بعد اعتماد Master Decision.</p>
+      <strong>Predator Core v8.3 · Ultra-Fast Wave Hunter</strong>
+      <p>النواة الآن لها مسار سريع مستقل عن التحليل الثقيل: Tick-by-Tick Wave Lead من WebSocket يرصد السرعة والتسارع وBurst وثبات الاتجاه وBook Imbalance وSpread Compression، ثم يغذي HUNT FORECAST بينما يظل Master Decision هو بوابة الصفقة.</p>
     </section>
 
     {!!data?.radar?.length&&<section className="panel">
@@ -146,6 +162,6 @@ export default function AICommandCenter({data,error}:any){
     </section>}
 
     {error&&<div className="fatal"><Activity size={18}/><div><strong>AI unavailable</strong><span>{error}</span></div></div>}
-    <div className="dashboardgrid"><Card x={data?.bitcoin}/><Card x={data?.gold}/></div>
+    <div className="dashboardgrid"><Card x={data?.bitcoin} fast={fastWave?.btc}/><Card x={data?.gold} fast={fastWave?.gold}/></div>
   </div>;
 }
