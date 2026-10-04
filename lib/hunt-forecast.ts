@@ -1,111 +1,140 @@
 import {commitDirection} from './direction-commitment';
+
 type Side='BUY'|'SELL'|'WAIT';
 type ForecastSample={at:number;side:Side;score:number};
+type Horizon={side:Side;buy:number;sell:number;strength:number;gap:number};
 
 const memory=new Map<string,ForecastSample[]>();
-
 const cap=(n:number,min=0,max=92)=>Math.max(min,Math.min(max,n));
 const sideScore=(s:Side,target:Side,v:number)=>s===target?v:0;
+const sideOf=(buy:number,sell:number,gate=5):Side=>buy-sell>=gate?'BUY':sell-buy>=gate?'SELL':'WAIT';
+const horizon=(buy:number,sell:number,gate=5):Horizon=>({side:sideOf(buy,sell,gate),buy:Math.round(buy),sell:Math.round(sell),strength:Math.round(cap(Math.max(buy,sell))),gap:Math.round(Math.abs(buy-sell))});
+
+function pathOf(fast:Side,m1:Side,m5:Side){
+  const short=fast!=='WAIT'?fast:m1;
+  if(short==='BUY'&&m5==='SELL')return 'RISE_THEN_DROP';
+  if(short==='SELL'&&m5==='BUY')return 'DROP_THEN_RISE';
+  if(short==='BUY'&&(m1==='BUY'||m5==='BUY'))return 'CONTINUATION_UP';
+  if(short==='SELL'&&(m1==='SELL'||m5==='SELL'))return 'CONTINUATION_DOWN';
+  return 'RANGE_OR_FAKEOUT';
+}
+function pathAr(p:string){
+  if(p==='RISE_THEN_DROP')return 'صعود قصير ثم هبوط';
+  if(p==='DROP_THEN_RISE')return 'هبوط قصير ثم صعود';
+  if(p==='CONTINUATION_UP')return 'استمرار صاعد';
+  if(p==='CONTINUATION_DOWN')return 'استمرار هابط';
+  return 'تذبذب / كسر كاذب محتمل';
+}
 
 export function buildHuntForecast(asset:string,decision:any,scalp:any,price:number|null,atr:number|null,now=Date.now(),wave:any=null,learner:any=null){
   const p=Number(price),a=Number(atr);
   const fusionBuy=Number(decision?.fusion?.buy||0),fusionSell=Number(decision?.fusion?.sell||0);
+  const matrix=decision?.indicatorMatrix?.rows||{},m1=matrix?.m1||{},m5=matrix?.m5||{};
+  const m1Side:Side=m1?.bias||'WAIT',m5Side:Side=m5?.bias||'WAIT',m1Strength=Number(m1?.strength||0),m5Strength=Number(m5?.strength||0);
   const motionSide:Side=decision?.motion?.side||'WAIT',behaviorSide:Side=decision?.behavior?.side||'WAIT',liqSide:Side=decision?.liquidity?.side||'WAIT',hunterSide:Side=decision?.hunter?.side||'WAIT';
   const motionScore=Number(decision?.motion?.score||0),behaviorScore=Number(decision?.behavior?.score||0),liqStrength=Number(decision?.liquidity?.strength||0),hunterScore=Number(decision?.hunter?.score||0);
   const scalpLong=Number(scalp?.score?.long||0),scalpShort=Number(scalp?.score?.short||0);
 
-  const waveFresh=Boolean(wave?.ok&&['BUY','SELL'].includes(String(wave?.side))&&Number(wave?.score)>=35&&now-Number(wave?.at||0)<=3000);
-  const waveSide:Side=waveFresh?(wave.side as Side):'WAIT',waveScore=waveFresh?Number(wave?.score||0):0;
-  const learnerFresh=Boolean(learner?.ok&&['BUY','SELL'].includes(String(learner?.side))&&Number(learner?.oosAccuracy)>=52&&Number(learner?.confidence)>=50);
+  const waveFresh=Boolean(wave?.ok&&['BUY','SELL'].includes(String(wave?.side))&&Number(wave?.score)>=30&&now-Number(wave?.at||0)<=3000);
+  const waveSide:Side=waveFresh?(wave.side as Side):'WAIT',waveScore=waveFresh?Number(wave?.score||0):0,waveConfidence=Number(wave?.confidence||0);
+  const learnerFresh=Boolean(learner?.ok&&learner?.gate?.passed&&['BUY','SELL'].includes(String(learner?.side))&&Number(learner?.oosAccuracy)>=56&&Number(learner?.oosEdgeAtr)>=.06&&Number(learner?.profitFactor)>=1.20);
   const learnerSide:Side=learnerFresh?(learner.side as Side):'WAIT',learnerScore=learnerFresh?Number(learner?.confidence||0):0;
-  let buy=fusionBuy*.22+sideScore(motionSide,'BUY',motionScore)*.15+sideScore(behaviorSide,'BUY',behaviorScore)*.11+sideScore(liqSide,'BUY',liqStrength)*.13+sideScore(hunterSide,'BUY',hunterScore)*.08+scalpLong*.08+sideScore(waveSide,'BUY',waveScore)*.12+sideScore(learnerSide,'BUY',learnerScore)*.11;
-  let sell=fusionSell*.22+sideScore(motionSide,'SELL',motionScore)*.15+sideScore(behaviorSide,'SELL',behaviorScore)*.11+sideScore(liqSide,'SELL',liqStrength)*.13+sideScore(hunterSide,'SELL',hunterScore)*.08+scalpShort*.08+sideScore(waveSide,'SELL',waveScore)*.12+sideScore(learnerSide,'SELL',learnerScore)*.11;
+
+  const fastBuy=scalpLong*.28+sideScore(waveSide,'BUY',waveScore)*.30+sideScore(liqSide,'BUY',liqStrength)*.18+sideScore(motionSide,'BUY',motionScore)*.24;
+  const fastSell=scalpShort*.28+sideScore(waveSide,'SELL',waveScore)*.30+sideScore(liqSide,'SELL',liqStrength)*.18+sideScore(motionSide,'SELL',motionScore)*.24;
+  const fast=horizon(fastBuy,fastSell,5);
+
+  const oneBuy=m1Strength*(m1Side==='BUY'?.34:0)+scalpLong*.20+sideScore(waveSide,'BUY',waveScore)*.16+sideScore(motionSide,'BUY',motionScore)*.16+sideScore(liqSide,'BUY',liqStrength)*.14;
+  const oneSell=m1Strength*(m1Side==='SELL'?.34:0)+scalpShort*.20+sideScore(waveSide,'SELL',waveScore)*.16+sideScore(motionSide,'SELL',motionScore)*.16+sideScore(liqSide,'SELL',liqStrength)*.14;
+  const one=horizon(oneBuy,oneSell,6);
+
+  const fiveBuy=m5Strength*(m5Side==='BUY'?.30:0)+fusionBuy*.20+sideScore(behaviorSide,'BUY',behaviorScore)*.18+sideScore(hunterSide,'BUY',hunterScore)*.12+sideScore(learnerSide,'BUY',learnerScore)*.20;
+  const fiveSell=m5Strength*(m5Side==='SELL'?.30:0)+fusionSell*.20+sideScore(behaviorSide,'SELL',behaviorScore)*.18+sideScore(hunterSide,'SELL',hunterScore)*.12+sideScore(learnerSide,'SELL',learnerScore)*.20;
+  const five=horizon(fiveBuy,fiveSell,6);
+
+  let buy=fusionBuy*.17+sideScore(motionSide,'BUY',motionScore)*.13+sideScore(behaviorSide,'BUY',behaviorScore)*.10+sideScore(liqSide,'BUY',liqStrength)*.12+sideScore(hunterSide,'BUY',hunterScore)*.07+scalpLong*.07+sideScore(waveSide,'BUY',waveScore)*.12+sideScore(learnerSide,'BUY',learnerScore)*.10+sideScore(one.side,'BUY',one.strength)*.06+sideScore(five.side,'BUY',five.strength)*.06;
+  let sell=fusionSell*.17+sideScore(motionSide,'SELL',motionScore)*.13+sideScore(behaviorSide,'SELL',behaviorScore)*.10+sideScore(liqSide,'SELL',liqStrength)*.12+sideScore(hunterSide,'SELL',hunterScore)*.07+scalpShort*.07+sideScore(waveSide,'SELL',waveScore)*.12+sideScore(learnerSide,'SELL',learnerScore)*.10+sideScore(one.side,'SELL',one.strength)*.06+sideScore(five.side,'SELL',five.strength)*.06;
 
   const trapSide:Side=decision?.liquidity?.absorption?.trapDetected?decision?.liquidity?.absorption?.side||'WAIT':'WAIT';
   const trapScore=Number(decision?.liquidity?.absorption?.score||0);
-  if(trapSide==='BUY'){buy+=Math.min(12,trapScore*.12);sell*=.86;}
-  if(trapSide==='SELL'){sell+=Math.min(12,trapScore*.12);buy*=.86;}
+  if(trapSide==='BUY'){buy+=Math.min(12,trapScore*.12);sell*=.84;}
+  if(trapSide==='SELL'){sell+=Math.min(12,trapScore*.12);buy*=.84;}
 
   const behaviorExp=Number(decision?.behavior?.expectedMoveAtr||0);
-  if(behaviorExp>=.35)buy+=Math.min(8,Math.abs(behaviorExp)*4);
-  if(behaviorExp<=-.35)sell+=Math.min(8,Math.abs(behaviorExp)*4);
+  if(behaviorExp>=.35)buy+=Math.min(7,Math.abs(behaviorExp)*4);
+  if(behaviorExp<=-.35)sell+=Math.min(7,Math.abs(behaviorExp)*4);
 
-  const rawGap=Math.abs(buy-sell),rawSide:Side=buy-sell>=3?'BUY':sell-buy>=3?'SELL':'WAIT';
-  const rawScore=cap(Math.max(buy,sell));
-
+  const rawGap=Math.abs(buy-sell),rawSide:Side=sideOf(buy,sell,3),rawScore=cap(Math.max(buy,sell));
   const old=(memory.get(asset)||[]).filter(x=>now-x.at<=45000);
   old.push({at:now,side:rawSide,score:rawScore});
-  const recent=old.slice(-8);memory.set(asset,recent);
-
+  const recent=old.slice(-10);memory.set(asset,recent);
   const buySamples=recent.filter(x=>x.side==='BUY').length,sellSamples=recent.filter(x=>x.side==='SELL').length;
   const persistence=recent.length?Math.round(Math.max(buySamples,sellSamples)/recent.length*100):0;
-  const commitment=commitDirection('hunt:'+asset,buy,sell,now,waveFresh?{side:waveSide,stage:wave?.stage,score:waveScore,confidence:Number(wave?.confidence||0)}:null);
+  const commitment=commitDirection('hunt:'+asset,buy,sell,now,waveFresh?{side:waveSide,stage:wave?.stage,score:waveScore,confidence:waveConfidence}:null);
   const stableSide:Side=commitment.side as Side;
 
   const contradiction=recent.some(x=>x.side==='BUY')&&recent.some(x=>x.side==='SELL');
-  const conflictPenalty=decision?.master?.conflict?10:0;
-  const flipPenalty=contradiction?Math.max(0,18-persistence*.12):0;
-  const hysteresisPenalty=commitment.heldByHysteresis?8:0;
-  const confidence=cap(rawScore*.56+Math.min(100,rawGap*2.2)*.16+persistence*.14+commitment.strength*.14-conflictPenalty-flipPenalty-hysteresisPenalty,0,88);
+  const conflictPenalty=decision?.master?.conflict?10:0,flipPenalty=contradiction?Math.max(0,16-persistence*.10):0,hysteresisPenalty=commitment.heldByHysteresis?7:0;
+  const horizonConsensus=[fast.side,one.side,five.side].filter(s=>s!=='WAIT'&&s===stableSide).length;
+  const horizonConflict=[fast.side,one.side,five.side].filter(s=>s!=='WAIT'&&stableSide!=='WAIT'&&s!==stableSide).length;
+  const confidence=cap(rawScore*.43+Math.min(100,rawGap*2.4)*.14+persistence*.12+commitment.strength*.12+horizonConsensus*7-horizonConflict*6+(waveFresh&&waveSide===stableSide?5:0)-conflictPenalty-flipPenalty-hysteresisPenalty,0,88);
 
-  const motionStage=String(decision?.motion?.stage||'WAIT');
-  const compression=Number(decision?.motion?.components?.compression||0);
-  const velocity=Math.abs(Number(decision?.motion?.components?.liveVelocityBps||0));
-  const precursorCount=Number(decision?.motion?.diagnostics?.precursorCount||0);
+  const motionStage=String(decision?.motion?.stage||'WAIT'),compression=Number(decision?.motion?.components?.compression||0),velocity=Math.abs(Number(decision?.motion?.components?.liveVelocityBps||0)),precursorCount=Number(decision?.motion?.diagnostics?.precursorCount||0);
   let state='STALKING';
   if(waveFresh&&waveSide===stableSide&&wave?.stage==='IGNITION')state='IGNITION';
   else if(waveFresh&&waveSide===stableSide&&wave?.stage==='WAVE_FORMING')state='WAVE_FORMING';
-  else if(motionStage==='IGNITION'||velocity>=1.2)state='IGNITION';
   else if(motionStage==='REVERSAL_ALERT'||trapSide===stableSide&&trapScore>=68)state='REVERSAL_HUNT';
   else if(motionStage==='PRE_MOVE'||precursorCount>=3)state='PRE_MOVE';
   else if((waveFresh&&wave?.stage==='COILED')||compression>=60)state='COILED';
 
+  const path=pathOf(fast.side,one.side,five.side),pathLabel=pathAr(path);
   let expAtr=Math.abs(behaviorExp);
-  if(!Number.isFinite(expAtr)||expAtr<.2)expAtr=.45;
-  expAtr=Math.min(1.6,Math.max(.3,expAtr));
-  if(state==='IGNITION')expAtr=Math.min(1.8,expAtr*1.15);
-  if(state==='COILED')expAtr=Math.max(.55,expAtr);
+  if(!Number.isFinite(expAtr)||expAtr<.2)expAtr=.42;
+  expAtr=Math.min(1.7,Math.max(.28,expAtr));
+  if(state==='IGNITION')expAtr=Math.min(1.9,expAtr*1.18);
+  if(state==='WAVE_FORMING')expAtr=Math.max(.5,expAtr);
+  if(state==='COILED')expAtr=Math.max(.58,expAtr);
 
-  const horizonSeconds=state==='IGNITION'?45:state==='WAVE_FORMING'?75:state==='PRE_MOVE'||state==='REVERSAL_HUNT'?120:state==='COILED'?180:240;
+  const horizonSeconds=state==='IGNITION'?35:state==='WAVE_FORMING'?60:state==='PRE_MOVE'||state==='REVERSAL_HUNT'?100:state==='COILED'?150:210;
   const validPrice=Number.isFinite(p)&&p>0&&Number.isFinite(a)&&a>0;
   const dir=stableSide==='BUY'?1:stableSide==='SELL'?-1:0;
-  const trigger=validPrice&&dir?p+dir*a*.12:null;
+  const triggerAtr=state==='IGNITION'?.07:state==='WAVE_FORMING'?.09:.12;
+  const invalidAtr=state==='IGNITION'?.24:state==='WAVE_FORMING'?.28:.34;
+  const trigger=validPrice&&dir?p+dir*a*triggerAtr:null;
   const projected=validPrice&&dir?p+dir*a*expAtr:null;
-  const invalidation=validPrice&&dir?p-dir*a*.32:null;
+  const invalidation=validPrice&&dir?p-dir*a*invalidAtr:null;
+
+  const shortSide=fast.side!=='WAIT'?fast.side:one.side,followSide=five.side;
+  const shortDir=shortSide==='BUY'?1:shortSide==='SELL'?-1:0,followDir=followSide==='BUY'?1:followSide==='SELL'?-1:0;
+  const firstLeg=validPrice&&shortDir?p+shortDir*a*Math.min(.55,Math.max(.22,fast.strength/180)):null;
+  const secondLeg=validPrice&&followDir?p+followDir*a*Math.min(1.25,Math.max(.38,five.strength/105)):null;
+
+  const alternativeSide:Side=stableSide==='BUY'?'SELL':stableSide==='SELL'?'BUY':'WAIT';
+  const alternativeStrength=stableSide==='BUY'?Math.round(cap(sell)):stableSide==='SELL'?Math.round(cap(buy)):Math.round(Math.min(buy,sell));
+  const quality=cap(confidence*.55+persistence*.20+Math.min(100,(horizonConsensus/3)*100)*.15+(learnerFresh?10:0)-horizonConflict*5,0,90);
 
   const reasons:string[]=[];
-  if(stableSide!=='WAIT')reasons.push('Directional Commitment مثبت '+stableSide+' · smoothed edge '+commitment.smoothedEdge);
-  if(commitment.state==='REVERSAL_PENDING')reasons.push('عكس محتمل '+commitment.pendingSide+' لكن لم يكتمل التأكيد ('+commitment.pendingCount+'/2)');
+  if(stableSide!=='WAIT')reasons.push('الاتجاه المثبت '+stableSide+' · edge '+commitment.smoothedEdge);
+  reasons.push('المسار المرجح: '+pathLabel);
+  if(horizonConsensus>=2)reasons.push(horizonConsensus+'/3 أطر توقيت متوافقة');
+  if(horizonConflict>=1)reasons.push('يوجد تعارض بين الحركة السريعة و5 دقائق');
+  if(waveFresh&&waveSide===stableSide)reasons.push('Wave Lead متوافق قبل الحركة');
   if(motionSide===stableSide&&motionScore>=50)reasons.push('Motion متوافق');
   if(liqSide===stableSide&&liqStrength>=55)reasons.push('السيولة متوافقة');
-  if(behaviorSide===stableSide&&behaviorScore>=45)reasons.push('السلوك التاريخي متوافق');
-  if((stableSide==='BUY'&&scalpLong>scalpShort)||(stableSide==='SELL'&&scalpShort>scalpLong))reasons.push('Micro/Scalp يميل لنفس الاتجاه');
-  if(trapSide===stableSide&&trapScore>=60)reasons.push('Trap/Absorption يدعم الانعكاس');
-  if(waveFresh&&waveSide===stableSide)reasons.push('Wave Lead tick-by-tick يسبق الحركة ومتوافق');
-  if(waveFresh&&waveSide!==stableSide)reasons.push('Wave Lead السريع يعارض التوقع؛ الثقة مخفضة');
-  if(learnerFresh&&learnerSide===stableSide)reasons.push('Scalp Learner OOS متوافق مع الحركة القادمة');
-  if(learnerFresh&&learnerSide!==stableSide)reasons.push('Scalp Learner يعارض التوقع؛ الثقة مخفضة');
-  if(contradiction)reasons.push('التوقع تغيّر داخل نافذة الذاكرة؛ الثبات أقل');
+  if(behaviorSide===followSide&&behaviorScore>=45)reasons.push('Behavior يدعم الجزء التالي من المسار');
+  if(learnerFresh&&learnerSide===stableSide)reasons.push('Scalp Learner Holdout متوافق');
+  if(trapSide===stableSide&&trapScore>=60)reasons.push('Absorption/Trap يدعم الانعكاس');
 
   return {
-    side:stableSide,
-    state,
-    score:rawScore,
-    confidence,
-    persistence,
-    samples:recent.length,
-    buyScore:Math.round(buy),
-    sellScore:Math.round(sell),
-    horizonSeconds,
-    expectedMoveAtr:Number(expAtr.toFixed(2)),
-    trigger:trigger==null?null:Number(trigger.toFixed(2)),
-    projected:projected==null?null:Number(projected.toFixed(2)),
-    invalidation:invalidation==null?null:Number(invalidation.toFixed(2)),
-    currentPrice:Number.isFinite(p)?p:null,
-    reasons:reasons.slice(0,7),
-    commitment,
-    waveLeadUsed:waveFresh?{side:waveSide,stage:wave?.stage,score:waveScore,confidence:Number(wave?.confidence||0),at:Number(wave?.at||0)}:null,
-    scalpLearnerUsed:learnerFresh?{side:learnerSide,confidence:learnerScore,oosAccuracy:Number(learner?.oosAccuracy||0),oosEdgeAtr:Number(learner?.oosEdgeAtr||0),holdSeconds:Number(learner?.exitPlan?.maxHoldSeconds||0)}:null,
-    note:'التوقع يستخدم Directional Commitment لمنع التذبذب؛ يظل توقعًا وليس أمر دخول أو ضمان نتيجة.'
+    side:stableSide,state,score:rawScore,confidence,quality,persistence,samples:recent.length,
+    buyScore:Math.round(buy),sellScore:Math.round(sell),horizonSeconds,expectedMoveAtr:Number(expAtr.toFixed(2)),
+    trigger:trigger==null?null:Number(trigger.toFixed(2)),projected:projected==null?null:Number(projected.toFixed(2)),invalidation:invalidation==null?null:Number(invalidation.toFixed(2)),currentPrice:Number.isFinite(p)?p:null,
+    path:{code:path,label:pathLabel,firstLeg:firstLeg==null?null:Number(firstLeg.toFixed(2)),secondLeg:secondLeg==null?null:Number(secondLeg.toFixed(2)),shortSide,followSide},
+    horizons:{fast,oneMinute:one,fiveMinute:five},
+    alternative:{side:alternativeSide,strength:alternativeStrength,condition:alternativeSide==='WAIT'?'لا يوجد بديل واضح':`يتفعل إذا فشل Trigger أو كُسر Invalidation ويتحول الالتزام إلى ${alternativeSide}`},
+    reasons:reasons.slice(0,8),commitment,
+    waveLeadUsed:waveFresh?{side:waveSide,stage:wave?.stage,score:waveScore,confidence:waveConfidence,at:Number(wave?.at||0)}:null,
+    scalpLearnerUsed:learnerFresh?{side:learnerSide,confidence:learnerScore,oosAccuracy:Number(learner?.oosAccuracy||0),oosEdgeAtr:Number(learner?.oosEdgeAtr||0),profitFactor:Number(learner?.profitFactor||0),holdSeconds:Number(learner?.exitPlan?.maxHoldSeconds||0)}:null,
+    note:'الترجيح يقيس توافق الأدلة ومسار الحركة، وليس احتمال ربح مضمون.'
   };
 }
