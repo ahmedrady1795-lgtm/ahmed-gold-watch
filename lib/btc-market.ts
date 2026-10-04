@@ -39,7 +39,7 @@ async function coinbase(granularity:number,start?:number,end?:number){
 }
 async function coinbaseLongM1(now:number,latest:Candle[]){
   if(longM1Cache&&now-longM1Cache.at<10*60*1000&&longM1Cache.value.length>=500){
-    const merged=normalize([...longM1Cache.value,...latest].map(x=>[x.time/1000,x.low,x.high,x.open,x.close]));
+    const merged=normalize([...longM1Cache.value,...latest].map(x=>[x.time/1000,x.low,x.high,x.open,x.close,Number(x.realVolume??x.tickVolume??0)]));
     return merged.slice(-900);
   }
   try{
@@ -47,7 +47,7 @@ async function coinbaseLongM1(now:number,latest:Candle[]){
     const end1=now-285*60*1000,start1=end1-step;
     const end2=start1-60*1000,start2=end2-step;
     const [older1,older2]=await Promise.all([coinbase(60,start1,end1),coinbase(60,start2,end2)]);
-    const merged=normalize([...older2,...older1,...latest].map(x=>[x.time/1000,x.low,x.high,x.open,x.close])).slice(-900);
+    const merged=normalize([...older2,...older1,...latest].map(x=>[x.time/1000,x.low,x.high,x.open,x.close,Number(x.realVolume??x.tickVolume??0)])).slice(-900);
     if(merged.length>=500)longM1Cache={at:now,value:merged};
     return merged;
   }catch{
