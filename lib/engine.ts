@@ -95,14 +95,14 @@ export function analyze(c1:Candle[],c5:Candle[],c15:Candle[],c60:Candle[],events
   return {...base,state:'wait' as const,title:'انتظار اكتمال التوافق',reason:`أقوى قراءة الآن ${best}/100 (${longScore} شراء مقابل ${shortScore} بيع). حالة السوق: ${regime.label}. الحد الفعلي الآن ${regimeThreshold}/100 مع فارق اتجاه واضح.`,signal:null};
 }
 
-export function ambushTechnicalHelper(c1:Candle[],c5:Candle[],now:number,price?:number|null){
+export function scalpAnalyze(c1:Candle[],c5:Candle[],now:number,price?:number|null){
   const a1=closed(c1,60000,now),a5=closed(c5,300000,now);
-  const wait=(reason:string,extra:any={})=>({state:'wait' as const,action:'WAIT' as const,title:'AMBUSH TECH HELPER · WAIT',reason,score:{long:0,short:0,threshold:60},trade:null,...extra});
-  if(a1.length<80||a5.length<80)return wait('بيانات M1/M5 غير كافية لمساعد Ambush.');
+  const wait=(reason:string,extra:any={})=>({state:'wait' as const,action:'WAIT' as const,title:'M1 SCALP · WAIT',reason,score:{long:0,short:0,threshold:60},trade:null,...extra});
+  if(a1.length<80||a5.length<80)return wait('بيانات M1/M5 غير كافية للسكالب.');
   const l1=a1.at(-1)!,l5=a5.at(-1)!,age1=now-(l1.time+60000),age5=now-(l5.time+300000);
-  if(age1>180000||age5>600000)return wait('بيانات مساعد Ambush متأخرة.');
+  if(age1>180000||age5>600000)return wait('بيانات السكالب متأخرة.');
   const i1=indicators(a1),i5=indicators(a5);
-  if(![i1.atr,i1.adx,i1.rsi,i1.macdHist,i1.stochK,i1.stochD,i5.ema20,i5.ema50,i5.adx,i5.plusDI,i5.minusDI].every(Number.isFinite)||i1.atr<=0)return wait('مدخلات مساعد Ambush غير مكتملة.');
+  if(![i1.atr,i1.adx,i1.rsi,i1.macdHist,i1.stochK,i1.stochD,i5.ema20,i5.ema50,i5.adx,i5.plusDI,i5.minusDI].every(Number.isFinite)||i1.atr<=0)return wait('مؤشرات السكالب غير مكتملة.');
 
   const p=Number.isFinite(Number(price))&&Number(price)>0?Number(price):l1.close;
   const prior7=a1.slice(-8,-1),prior12=a1.slice(-13,-1),hi=Math.max(...prior7.map(x=>x.high)),lo=Math.min(...prior7.map(x=>x.low));
