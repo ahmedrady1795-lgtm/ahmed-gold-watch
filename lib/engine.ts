@@ -97,47 +97,120 @@ export function analyze(c1:Candle[],c5:Candle[],c15:Candle[],c60:Candle[],events
 
 export function scalpAnalyze(c1:Candle[],c5:Candle[],now:number,price?:number|null){
   const a1=closed(c1,60000,now),a5=closed(c5,300000,now);
-  const wait=(reason:string,extra:any={})=>({state:'wait' as const,action:'WAIT' as const,title:'M1 SCALP · WAIT',reason,score:{long:0,short:0,threshold:66},trade:null,...extra});
+  const wait=(reason:string,extra:any={})=>({state:'wait' as const,action:'WAIT' as const,title:'M1 SCALP · WAIT',reason,score:{long:0,short:0,threshold:60},trade:null,...extra});
   if(a1.length<80||a5.length<80)return wait('بيانات M1/M5 غير كافية للسكالب.');
   const l1=a1.at(-1)!,l5=a5.at(-1)!,age1=now-(l1.time+60000),age5=now-(l5.time+300000);
   if(age1>180000||age5>600000)return wait('بيانات السكالب متأخرة.');
   const i1=indicators(a1),i5=indicators(a5);
   if(![i1.atr,i1.adx,i1.rsi,i1.macdHist,i1.stochK,i1.stochD,i5.ema20,i5.ema50,i5.adx,i5.plusDI,i5.minusDI].every(Number.isFinite)||i1.atr<=0)return wait('مؤشرات السكالب غير مكتملة.');
+
   const p=Number.isFinite(Number(price))&&Number(price)>0?Number(price):l1.close;
-  const recent=a1.slice(-8,-1),hi=Math.max(...recent.map(x=>x.high)),lo=Math.min(...recent.map(x=>x.low));
-  const prev3=a1.slice(-4,-1),base=prev3.length?prev3[0].close:l1.open,momentum=(l1.close-base)/i1.atr,liveMove=(p-l1.close)/i1.atr;
+  const prior7=a1.slice(-8,-1),prior12=a1.slice(-13,-1),hi=Math.max(...prior7.map(x=>x.high)),lo=Math.min(...prior7.map(x=>x.low));
+  const hi12=Math.max(...prior12.map(x=>x.high)),lo12=Math.min(...prior12.map(x=>x.low));
+  const prev3=a1.slice(-4,-1),base3=prev3.length?prev3[0].close:l1.open;
+  const prev6=a1.slice(-7,-1),base6=prev6.length?prev6[0].close:l1.open;
+  const momentum=(l1.close-base3)/i1.atr,momentum6=(l1.close-base6)/i1.atr,liveMove=(p-l1.close)/i1.atr;
+  const accel=momentum-momentum6/2;
+  const range=Math.max(1e-9,l1.high-l1.low),body=(l1.close-l1.open)/range;
+  const upperWick=(l1.high-Math.max(l1.open,l1.close))/range,lowerWick=(Math.min(l1.open,l1.close)-l1.low)/range;
+  const wickBias=lowerWick-upperWick;
   const longBreak=l1.close>hi||p>hi,shortBreak=l1.close<lo||p<lo;
+  const rangePos=(p-lo12)/Math.max(1e-9,hi12-lo12);
+  const recentRanges=a1.slice(-5).map(x=>x.high-x.low),olderRanges=a1.slice(-15,-5).map(x=>x.high-x.low);
+  const compression=1-(avg(recentRanges)/Math.max(1e-9,avg(olderRanges)));
+  const path=a1.slice(-7).map(x=>x.close),pathLen=path.slice(1).reduce((s,v,j)=>s+Math.abs(v-path[j]),0),efficiency=pathLen?Math.abs(path.at(-1)!-path[0])/pathLen:0;
+  const reclaimUp=l1.low<lo&&l1.close>lo&&body>0;
+  const reclaimDown=l1.high>hi&&l1.close<hi&&body<0;
+  const impulseUp=(body>=.52&&momentum>=.18)||(liveMove>=.08&&momentum>=.08);
+  const impulseDown=(body<=-.52&&momentum<=-.18)||(liveMove<=-.08&&momentum<=-.08);
+  const m5Bull=i5.ema20>=i5.ema50,m5Bear=i5.ema20<=i5.ema50;
+  const m5DiBull=i5.plusDI>=i5.minusDI,m5DiBear=i5.minusDI>=i5.plusDI;
+  const trendStrength=Math.min(1.35,Math.max(.35,Number(i5.adx||0)/22));
+  const reversalUp=(rangePos<=.28||reclaimUp)&&(wickBias>=.12||Number(i1.rsi)<=43)&&(i1.stochK>=i1.stochD||body>0);
+  const reversalDown=(rangePos>=.72||reclaimDown)&&(wickBias<=-.12||Number(i1.rsi)>=57)&&(i1.stochK<=i1.stochD||body<0);
+
   const score=(long:boolean)=>{
     let s=0;
-    s+=add(long?i1.ema20>i1.ema50:i1.ema20<i1.ema50,14);
-    s+=add(long?i5.ema20>i5.ema50:i5.ema20<i5.ema50,14);
-    s+=add(long?i1.macdHist>0:i1.macdHist<0,12);
-    s+=add(long?i5.macdHist>0:i5.macdHist<0,8);
-    s+=add(long?i1.rsi>=50&&i1.rsi<=76:i1.rsi<=50&&i1.rsi>=24,10);
-    s+=add(i1.adx>=16&&(long?i1.plusDI>i1.minusDI:i1.minusDI>i1.plusDI),12);
-    s+=add(long?i1.stochK>i1.stochD&&i1.stochK<92:i1.stochK<i1.stochD&&i1.stochK>8,8);
-    s+=add(long?l1.close>i1.bbMid:l1.close<i1.bbMid,7);
-    s+=add(long?momentum>=.14:momentum<=-.14,7);
-    s+=add(long?longBreak:shortBreak,8);
-    s+=add(long?liveMove>=.06:liveMove<=-.06,6);
-    return Math.min(100,s);
+    const up=long;
+    s+=add(up?i1.ema20>i1.ema50:i1.ema20<i1.ema50,10);
+    s+=add(up?i1.macdHist>0:i1.macdHist<0,10);
+    s+=add(up?i1.plusDI>i1.minusDI:i1.minusDI>i1.plusDI,8);
+    s+=add(i1.adx>=14,4);
+    s+=add(up?i1.rsi>=48&&i1.rsi<=78:i1.rsi<=52&&i1.rsi>=22,7);
+    s+=add(up?i1.stochK>i1.stochD:i1.stochK<i1.stochD,7);
+    s+=add(up?l1.close>=i1.bbMid:l1.close<=i1.bbMid,5);
+
+    s+=add(up?momentum>=.08:momentum<=-.08,8);
+    s+=add(up?momentum>=.20:momentum<=-.20,5);
+    s+=add(up?accel>=.04:accel<=-.04,6);
+    s+=add(up?liveMove>=.035:liveMove<=-.035,5);
+    s+=add(up?body>=.28:body<=-.28,5);
+    s+=add(up?wickBias>=.12:wickBias<=-.12,5);
+    s+=add(up?longBreak:shortBreak,9);
+    s+=add(up?reclaimUp:reclaimDown,10);
+    s+=add(up?impulseUp:impulseDown,7);
+    s+=add(efficiency>=.36&&(up?momentum6>0:momentum6<0),5);
+    s+=add(compression>=.18&&(up?(impulseUp||longBreak):(impulseDown||shortBreak)),6);
+
+    // M5 confirms and boosts, but it is no longer a hard gate for fast M1 scalps.
+    s+=add(up?m5Bull:m5Bear,7);
+    s+=add(up?m5DiBull:m5DiBear,5);
+    s+=add(Number(i5.adx)>=20&&(up?m5DiBull:m5DiBear),3);
+
+    // Range reversal / sweep-reclaim can legitimately trade against M5.
+    s+=add(up?reversalUp:reversalDown,12);
+    return Math.min(100,Math.round(s));
   };
-  const long=score(true),short=score(false),side=long>=short?'buy':'sell',best=Math.max(long,short),gap=Math.abs(long-short);
-  const volatilityOk=i1.volatility<=2.5&&Math.abs(l1.high-l1.low)<=3.2*i1.atr;
-  const trend5=side==='buy'?i5.ema20>=i5.ema50:i5.ema20<=i5.ema50;
-  const diSpread=Math.abs(i5.plusDI-i5.minusDI),strongTrend=i5.adx>=22&&diSpread>=7,breakActive=side==='buy'?longBreak:shortBreak;
-  let threshold=strongTrend?62:i5.adx<18?68:65;
-  if(i1.volatility>1.65)threshold+=4;
-  if(breakActive)threshold-=2;
-  threshold=Math.max(60,Math.min(72,threshold));
-  const minGap=strongTrend||breakActive?8:10;
-  const qualified=best>=threshold&&gap>=minGap&&volatilityOk&&trend5;
-  const diagnostics={indicators:{m1:i1,m5:i5},score:{long,short,threshold},momentum:Number(momentum.toFixed(2)),liveMove:Number(liveMove.toFixed(2)),breakout:{long:longBreak,short:shortBreak},adaptive:{strongTrend,diSpread:Number(diSpread.toFixed(1)),minGap},dataAgeMs:{m1:age1,m5:age5}};
-  if(!qualified)return wait(`أقوى Scalp ${best}/100 (شراء ${long} / بيع ${short}). الحد المتكيف الآن ${threshold} وفارق مطلوب ${minGap} مع توافق M5.`,diagnostics);
-  const buy=side==='buy',dir=buy?1:-1,recentSwing=buy?Math.min(...a1.slice(-6).map(x=>x.low)):Math.max(...a1.slice(-6).map(x=>x.high));
-  const minRisk=.5*i1.atr,maxRisk=1.1*i1.atr,rawRisk=Math.abs(p-recentSwing),risk=Math.min(maxRisk,Math.max(minRisk,rawRisk));
-  const rr=breakActive?1.35:strongTrend?1.3:1.2,sl=p-dir*risk,tp=p+dir*rr*risk;
-  return {state:'setup' as const,action:buy?'BUY' as const:'SELL' as const,title:buy?'M1 SCALP · BUY':'M1 SCALP · SELL',reason:`توافق ${best}/100 بحد متكيف ${threshold}: EMA + MACD + RSI + ADX/DI + Stochastic + Bollinger + Momentum + Live Move.`,...diagnostics,trade:{mode:'scalp-adaptive',side,entry:p,sl,tp,rr,score:best,validForSeconds:75,time:l1.time+60000}};
+
+  const long=score(true),short=score(false),buySide=long>=short,best=Math.max(long,short),gap=Math.abs(long-short);
+  const side=buySide?'buy':'sell',breakActive=buySide?longBreak:shortBreak,reversalActive=buySide?reversalUp:reversalDown,impulseActive=buySide?impulseUp:impulseDown;
+  const m5Aligned=buySide?m5Bull:m5Bear,m5DiAligned=buySide?m5DiBull:m5DiBear;
+  const mode=reversalActive?'REVERSAL':breakActive?'BREAKOUT':impulseActive?'MOMENTUM':compression>=.18?'COMPRESSION':'FLOW';
+
+  const candleAtr=(l1.high-l1.low)/i1.atr;
+  const volatilityOk=i1.volatility<=3.15&&candleAtr<=4.2;
+  let threshold=60;
+  if(mode==='BREAKOUT'||mode==='MOMENTUM')threshold-=3;
+  if(mode==='REVERSAL')threshold-=2;
+  if(m5Aligned&&m5DiAligned)threshold-=2;
+  if(Number(i5.adx)<18)threshold+=2;
+  if(i1.volatility>1.8)threshold+=2;
+  if(Math.abs(liveMove)>=.10)threshold-=2;
+  threshold=Math.max(54,Math.min(66,threshold));
+
+  let minGap=(mode==='BREAKOUT'||mode==='MOMENTUM')?6:7;
+  if(reversalActive)minGap=6;
+  if(!m5Aligned&&!reversalActive&&!breakActive)minGap+=2;
+
+  const qualified=best>=threshold&&gap>=minGap&&volatilityOk;
+  const watch=best>=threshold-6&&gap>=Math.max(4,minGap-2)&&volatilityOk;
+  const action=qualified?(buySide?'BUY' as const:'SELL' as const):watch?(buySide?'BUY' as const:'SELL' as const):'WAIT' as const;
+  const state=qualified?'setup' as const:watch?'watch' as const:'wait' as const;
+
+  const diagnostics={
+    indicators:{m1:i1,m5:i5},
+    score:{long,short,threshold},
+    momentum:Number(momentum.toFixed(2)),momentum6:Number(momentum6.toFixed(2)),accel:Number(accel.toFixed(2)),liveMove:Number(liveMove.toFixed(2)),
+    priceAction:{body:Number(body.toFixed(2)),wickBias:Number(wickBias.toFixed(2)),rangePos:Number(rangePos.toFixed(2)),compression:Number(compression.toFixed(2)),efficiency:Number(efficiency.toFixed(2)),reclaimUp,reclaimDown},
+    breakout:{long:longBreak,short:shortBreak},
+    adaptive:{mode,m5Aligned,m5DiAligned,trendStrength:Number(trendStrength.toFixed(2)),minGap,volatilityOk,candleAtr:Number(candleAtr.toFixed(2))},
+    dataAgeMs:{m1:age1,m5:age5}
+  };
+
+  if(!watch)return wait(`أقوى Scalp ${best}/100 (شراء ${long} / بيع ${short}). النواة تحتاج ${threshold} وفارق ${minGap}; M5 أصبح عامل ترجيح وليس شرط منع.`,diagnostics);
+
+  const buy=buySide,dir=buy?1:-1,recentSwing=buy?Math.min(...a1.slice(-6).map(x=>x.low)):Math.max(...a1.slice(-6).map(x=>x.high));
+  const minRisk=(mode==='REVERSAL'?.38:.42)*i1.atr,maxRisk=(mode==='BREAKOUT'?1.0:.88)*i1.atr,rawRisk=Math.abs(p-recentSwing),risk=Math.min(maxRisk,Math.max(minRisk,rawRisk));
+  const rr=mode==='BREAKOUT'?1.40:mode==='MOMENTUM'?1.32:mode==='REVERSAL'?1.22:1.25,sl=p-dir*risk,tp=p+dir*rr*risk;
+  const strengthLabel=qualified?'إشارة سكالب نشطة':'ميل سكالب مبكر';
+  const reason=`${strengthLabel} ${mode} · ${best}/100 بفارق ${gap}. M1 momentum/acceleration + candle body/wicks + breakout/reclaim + live move، وM5 للترجيح فقط.`;
+
+  return {
+    state,action,title:buy?'M1 SCALP · BUY':'M1 SCALP · SELL',reason,...diagnostics,
+    trade:qualified?{mode:'scalp-v2-'+mode.toLowerCase(),side,entry:p,sl,tp,rr,score:best,validForSeconds:45,time:l1.time+60000}:null,
+    early:!qualified&&watch,
+    confidence:Math.round(Math.max(0,Math.min(90,best*.72+gap*.9+(m5Aligned?5:0)+(reversalActive||breakActive?5:0))))
+  };
 }
 
 export function surprise(e:Event){if(!e.actual||!e.forecast)return 'لم تصدر نتيجة قابلة للمقارنة بعد.';const rx=/^\s*(-?[\d,.]+)\s*([%KMB]?)\s*$/i,a=e.actual.match(rx),f=e.forecast.match(rx);if(!a||!f||a[2].toUpperCase()!==f[2].toUpperCase())return 'نتيجة تحتاج قراءة تفصيلية؛ لا اتجاه تلقائي.';const delta=Number(a[1].replaceAll(',',''))-Number(f[1].replaceAll(',',''));return delta===0?'النتيجة توافق التوقعات؛ راقب رد فعل السعر.':`النتيجة ${delta>0?'أعلى':'أقل'} من التوقعات. أثرها على الذهب غير محسوم دون العوائد والدولار ورد فعل السعر.`;}
