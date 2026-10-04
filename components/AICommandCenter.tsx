@@ -21,7 +21,7 @@ function IndicatorMatrix({x}:any){
 function Card({x}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
   const master=x.master||{action:x.action,state:x.phase||'WAIT',watchSide:'WAIT',reason:'',lockedSide:'WAIT',pendingReversal:'WAIT',pendingCount:0};
-  const trade=x.trade,buy=master.action==='BUY',sell=master.action==='SELL',pulse=x.livePulse,scalp=x.scalp,hunter=x.hunter,liq=x.liquidity,core=x.adaptiveCore,motion=x.motion,behavior=x.behavior;
+  const trade=x.trade,buy=master.action==='BUY',sell=master.action==='SELL',pulse=x.livePulse,scalp=x.scalp,hunter=x.hunter,liq=x.liquidity,core=x.adaptiveCore,motion=x.motion,behavior=x.behavior,hunt=x.huntForecast;
   return <section className="panel">
     <div className="panelhead"><div><span className="eyebrow">{x.asset} · MASTER DECISION</span><h2>{buy?'شراء معتمد':sell?'بيع معتمد':'انتظار'} · {master.state}</h2></div>{buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}</div>
 
@@ -32,6 +32,24 @@ function Card({x}:any){
       {master.state==='REVERSAL_LOCK'&&<p>Direction Lock: {sideAr(master.lockedSide)} · عكس محتمل {sideAr(master.pendingReversal)} ({master.pendingCount||0}/3)</p>}
       {master.state==='CONFLICT'&&<p>لا يوجد اتجاه تداول حتى ينتهي التعارض الداخلي.</p>}
     </div>
+
+    {hunt&&<div className={master.action==='WAIT'?'safetybox':'sidecard'}>
+      <strong>🦅 HUNT FORECAST · الحركة القادمة المرجحة: {sideAr(hunt.side)} · {hunt.state}</strong>
+      <div className="levels">
+        <div><small>Forecast Strength</small><strong>{calibrated(hunt.score)}</strong></div>
+        <div><small>Forecast Confidence</small><strong>{calibrated(hunt.confidence)}</strong></div>
+        <div><small>Persistence</small><strong>{hunt.persistence||0}%</strong></div>
+      </div>
+      <p>نافذة متوقعة: {Math.round((hunt.horizonSeconds||0)/60)} دقيقة · حركة متوقعة: {hunt.expectedMoveAtr??0} ATR</p>
+      <div className="levels">
+        <div><small>Trigger</small><strong>{fmt(hunt.trigger,2)}</strong></div>
+        <div><small>Projected</small><strong>{fmt(hunt.projected,2)}</strong></div>
+        <div><small>Invalidation</small><strong>{fmt(hunt.invalidation,2)}</strong></div>
+      </div>
+      <p>Buy pressure {hunt.buyScore||0} · Sell pressure {hunt.sellScore||0} · Samples {hunt.samples||0}</p>
+      {!!hunt.reasons?.length&&<p>{hunt.reasons.join(' · ')}</p>}
+      <p className="muted">{hunt.note}</p>
+    </div>}
 
     <div className="levels">
       <div><small>Core Fusion · تشخيصي</small><strong>{x.fusion?.side||'WAIT'} · قوة {calibrated(Math.max(x.fusion?.buy||0,x.fusion?.sell||0))}</strong></div>
@@ -109,13 +127,13 @@ export default function AICommandCenter({data,error}:any){
   const auto=data?.autopilot;
   return <div>
     <section className="sidecard">
-      <strong>Predator Core v8.1 · Exclusive Direction Arbiter</strong>
-      <p>يوجد قرار تداول واحد فقط. Hunter وScalp والسيولة وMotion وBehavior والمؤشرات أصبحت قراءات تشخيصية؛ عند التعارض يتحول القرار إلى WAIT، وعكس الاتجاه يحتاج تأكيدات متتالية عبر Reversal Lock.</p>
+      <strong>Predator Core v8.2 · Proactive Hunt Forecast</strong>
+      <p>وقت WAIT النواة لا تتوقف: تدخل وضع HUNT وتصدر توقعًا استباقيًا للحركة القادمة مع اتجاه مرجح، نافذة زمنية، Trigger، Projected Move وInvalidation. القرار التنفيذي يظل منفصلًا ولا يتحول لصفقة إلا بعد اعتماد Master Decision.</p>
     </section>
 
     {!!data?.radar?.length&&<section className="panel">
       <div className="panelhead"><div><span className="eyebrow">MASTER OPPORTUNITY RADAR</span><h2>{data.radar[0]?.asset} · {data.radar[0]?.status}</h2></div><Activity/></div>
-      <div className="levels">{data.radar.map((r:any)=><div key={r.asset}><small>{r.asset}</small><strong>قرار {sideAr(r.side)} · {r.status}</strong></div>)}</div>
+      <div className="levels">{data.radar.map((r:any)=><div key={r.asset}><small>{r.asset}</small><strong>{r.side!=='WAIT'?('قرار '+sideAr(r.side)+' · '+r.status):('HUNT '+sideAr(r.huntSide)+' · '+(r.huntState||r.status))}</strong></div>)}</div>
     </section>}
 
     {auto&&<section className="panel">
