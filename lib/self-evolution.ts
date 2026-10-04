@@ -61,25 +61,27 @@ function reliability(learning:any,name:string){
   if(n<6)return 50;
   return Number(r.h1||50)*.4+Number(r.h5||50)*.6;
 }
-function mutate(asset:string,active:EvolutionPolicy,learning:any,stateGraph:any,now:number):EvolutionPolicy{
+function mutate(asset:string,active:EvolutionPolicy,learning:any,stateGraph:any,now:number,jump=1):EvolutionPolicy{
   const rel=(name:string)=>reliability(learning,name);
+  const jumpPower=Math.max(1,Math.min(3,jump));
   const adjust=(name:keyof Weights,current:number)=>{
     const r=rel(name==='stateGraph'?'stateGraph':name);
     const sampleScale=Math.min(1,(Number(learning?.componentReliability?.[name]?.samples1||0)+Number(learning?.componentReliability?.[name]?.samples5||0))/45);
     const target=1+(r-50)/100*.5*sampleScale;
-    return round(cap(current*.7+target*.3,.72,1.28));
+    const blend=Math.min(.55,.30+.10*(jumpPower-1));
+    return round(cap(current*(1-blend)+target*blend,.68,1.32));
   };
   const self=Number(learning?.selfCalibration?.reliability||50),matches=Number(stateGraph?.sequenceMatches||0),sgProb=Number(stateGraph?.nextSideProbability||0);
   const w:Weights={
-    learning:round(cap(active.weights.learning*.72+(1+(self-50)/100*.35)*.28,.78,1.22)),
+    learning:round(cap(active.weights.learning*(.72-.08*(jumpPower-1))+(1+(self-50)/100*.35)*(.28+.08*(jumpPower-1)),.74,1.26)),
     structure:adjust('structure',active.weights.structure),
     accumulation:adjust('accumulation',active.weights.accumulation),
     liquidity:asset==='BTC'?adjust('liquidity',active.weights.liquidity):1,
     motion:adjust('motion',active.weights.motion),
     behavior:adjust('behavior',active.weights.behavior),
     scalp:adjust('scalp',active.weights.scalp),
-    stateGraph:round(cap(active.weights.stateGraph*.72+(matches>=8?(1+(sgProb-50)/100*.30):1)*.28,.80,1.22)),
-    wave:round(cap(active.weights.wave*.8+(rel('motion')>=55?1.06:.98)*.2,.82,1.18))
+    stateGraph:round(cap(active.weights.stateGraph*(.72-.08*(jumpPower-1))+(matches>=8?(1+(sgProb-50)/100*.30):1)*(.28+.08*(jumpPower-1)),.76,1.26)),
+    wave:round(cap(active.weights.wave*(.80-.06*(jumpPower-1))+(rel('motion')>=55?1.06:.98)*(.20+.06*(jumpPower-1)),.78,1.22))
   };
   const t:Thresholds={
     minLearningConfidence:Math.round(cap(active.thresholds.minLearningConfidence+(self<45?2:self>58?-1:0),44,58)),
@@ -88,7 +90,8 @@ function mutate(asset:string,active:EvolutionPolicy,learning:any,stateGraph:any,
     strongMoveReadiness:Math.round(cap(active.thresholds.strongMoveReadiness+(self<45?3:self>60?-1:0),56,72)),
     modelConflictPenalty:Math.round(cap(8+(65-self)*.16+(matches<5?2:0),6,14))
   };
-  return {id:'g'+(active.generation+1)+'-'+asset.toLowerCase()+'-'+now,generation:active.generation+1,createdAt:now,fitness:0,reason:'self-generated candidate',weights:w,thresholds:t};
+  const generation=active.generation+jumpPower;
+  return {id:'g'+generation+'-'+asset.toLowerCase()+'-'+now,generation,createdAt:now,fitness:0,reason:jumpPower>1?('self-generated jump candidate x'+jumpPower):'self-generated candidate',weights:w,thresholds:t};
 }
 function fitness(policy:EvolutionPolicy,learning:any,stateGraph:any){
   const self=Number(learning?.selfCalibration?.reliability||50),samples=Number(learning?.selfCalibration?.samples1||0)+Number(learning?.selfCalibration?.samples5||0);
@@ -145,20 +148,24 @@ export async function evolveAnalysisPolicy(args:{asset:string;learning:any;state
 
   const newOutcomes=Math.max(0,resolved-store.lastResolved);
   const cooldown=now-store.lastPromotionAt>=30*60*1000;
-  const canEvolve=samples>=20&&(newOutcomes>=8||!previousEvalAt||now-previousEvalAt>=60*60*1000);
+  const sgMatches=Number(args.stateGraph?.sequenceMatches||0);
+  const jump=samples>=55&&self>=64&&sgMatches>=12?3:samples>=32&&self>=58&&sgMatches>=8?2:1;
+  const requiredNewOutcomes=jump===3?14:jump===2?10:8;
+  const canEvolve=samples>=20&&(newOutcomes>=requiredNewOutcomes||!previousEvalAt||now-previousEvalAt>=60*60*1000);
   if(!rolledBack&&canEvolve){
-    candidate=mutate(args.asset,store.active,args.learning,args.stateGraph,now);
+    candidate=mutate(args.asset,store.active,args.learning,args.stateGraph,now,jump);
     candidate.fitness=fitness(candidate,args.learning,args.stateGraph);
     const codePath=await writeCandidate(root,args.asset,candidate,false);
     store.candidates.push({id:candidate.id,fitness:candidate.fitness,createdAt:now,promoted:false,codePath});
-    const minGain=samples<40?3.5:2.0;
-    if(cooldown&&candidate.fitness>=store.active.fitness+minGain&&self>=43){
-      const from=store.active.id;store.previous=store.active;store.active=candidate;store.generation=candidate.generation;store.lastPromotionAt=now;promoted=true;reason='candidate promoted after measured improvement';
+    const minGain=(samples<40?3.5:2.0)+(jump-1)*1.25;
+    const minSelf=jump===3?64:jump===2?58:43;
+    if(cooldown&&candidate.fitness>=store.active.fitness+minGain&&self>=minSelf){
+      const from=store.active.id;store.previous=store.active;store.active=candidate;store.generation=candidate.generation;store.lastPromotionAt=now;promoted=true;reason=jump>1?('jump promotion x'+jump+' after strong evidence'):'candidate promoted after measured improvement';
       store.candidates.at(-1)!.promoted=true;
       if(candidate.fitness>=championFitness){store.champion=candidate;await writeCandidate(root,args.asset,candidate,true);}
       store.history.push({at:now,action:'PROMOTE',from,to:candidate.id,fitness:candidate.fitness,reason});
     }else{
-      reason='candidate kept in shadow: insufficient measured gain';
+      reason=jump>1?('jump candidate x'+jump+' kept in shadow: evidence not strong enough'):'candidate kept in shadow: insufficient measured gain';
       store.history.push({at:now,action:'SHADOW',to:candidate.id,fitness:candidate.fitness,reason});
     }
     store.lastResolved=resolved;
