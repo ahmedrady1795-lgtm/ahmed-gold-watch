@@ -92,7 +92,7 @@ function buildReactionZones(c:Candle[],p:number,a:number){
         if(move>0)impulseScore+=Math.min(2,move);
       }
     }
-    const distanceAtr=Math.abs(p-mid)/a;
+    const distanceAtr=p>=low&&p<=high?0:Math.min(Math.abs(p-low),Math.abs(p-high))/a;
     const volumeScore=volBase>0?cap(volScore/Math.max(1,touches)*35,0,92):0;
     const impulse=cap(impulseScore/Math.max(1,touches)*32,0,92);
     const rejectionRate=rejections/Math.max(1,touches);
@@ -160,9 +160,11 @@ export function buildAccumulationMap(c1:Candle[],c5:Candle[],price:number|null,l
   if(bookImbalance<=-18)add('SELL',10,'Order Book ask pressure');
 
   const reactionZones=buildReactionZones(m1,p,a),nearestReaction=reactionZones[0]||null;
+  const priceInsideReaction=Boolean(nearestReaction&&p>=nearestReaction.low&&p<=nearestReaction.high);
   if(nearestReaction&&nearestReaction.status==='NEAR'&&nearestReaction.strength>=65){
-    if(nearestReaction.side==='BUY')add('BUY',Math.min(18,nearestReaction.strength*.18),'السعر يقترب من منطقة طلب تاريخية قوية');
-    else add('SELL',Math.min(18,nearestReaction.strength*.18),'السعر يقترب من منطقة عرض تاريخية قوية');
+    const zonePts=Math.min(priceInsideReaction?26:18,nearestReaction.strength*(priceInsideReaction?.26:.18));
+    if(nearestReaction.side==='BUY')add('BUY',zonePts,priceInsideReaction?'السعر داخل منطقة طلب تاريخية قوية؛ ارتداد شراء محتمل':'السعر يقترب من منطقة طلب تاريخية قوية');
+    else add('SELL',zonePts,priceInsideReaction?'السعر داخل منطقة عرض تاريخية قوية؛ رفض/هبوط محتمل':'السعر يقترب من منطقة عرض تاريخية قوية');
   }
 
   const accumulationScore=Math.round(cap(buy)),distributionScore=Math.round(cap(sell));
@@ -172,7 +174,12 @@ export function buildAccumulationMap(c1:Candle[],c5:Candle[],price:number|null,l
   const boundaryFuel=side==='BUY'?Math.max(0,(rangePosition-55)*.45):side==='SELL'?Math.max(0,(45-rangePosition)*.45):0;
   const touchFuel=side==='BUY'?Math.min(18,lowTouch.touches*3+lowTouch.rejections*4):side==='SELL'?Math.min(18,highTouch.touches*3+highTouch.rejections*4):0;
   const liqFuel=side==='BUY'?(liqSide==='BUY'?10:0)+(absorptionSide==='BUY'?12:0):side==='SELL'?(liqSide==='SELL'?10:0)+(absorptionSide==='SELL'?12:0):0;
-  const breakoutReadiness=Math.round(cap(compressionFuel+boundaryFuel+touchFuel+liqFuel+(side!=='WAIT'?Math.max(accumulationScore,distributionScore)*.25:0),0,90));
+  const oppositeReactionBlock=nearestReaction&&nearestReaction.status==='NEAR'&&nearestReaction.strength>=70&&side!=='WAIT'&&nearestReaction.side!==side
+    ? Math.min(priceInsideReaction?30:20,nearestReaction.strength*(priceInsideReaction?.30:.20))
+    : 0;
+  const breakoutReadiness=Math.round(cap(compressionFuel+boundaryFuel+touchFuel+liqFuel+(side!=='WAIT'?Math.max(accumulationScore,distributionScore)*.25:0)-oppositeReactionBlock,0,90));
+
+  if(oppositeReactionBlock>=12)reasons.push('منطقة ارتداد معاكسة قوية تخفض جاهزية الكسر '+Math.round(oppositeReactionBlock)+' نقطة');
 
   let phase:AccumulationMap['phase']='NEUTRAL';
   if(side==='BUY')phase=breakoutReadiness>=60&&rangePosition>=58?'MARKUP_READY':'ACCUMULATING';
