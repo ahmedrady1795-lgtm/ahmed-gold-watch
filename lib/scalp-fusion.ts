@@ -110,7 +110,7 @@ function preMoveSignal(liq:any,motion:any,tick:any){
   return {side:sideOut,score:Number(score.toFixed(1)),gap:Number(gap.toFixed(1)),support,armed,ignition,priceStillCoiled,lateMomentum,etaSeconds,quality:q,pressure:Number(pressure.toFixed(1)),microEdge:Number(micro.toFixed(1)),acceleration:Number(accel.toFixed(1)),deltaPct:Number(delta.toFixed(1)),priceChangeBps:Number(priceBps.toFixed(2)),compression,precursorCount,tickSide:t.side,tickStage:t.stage,tickScore:Number(t.score.toFixed(1))};
 }
 
-export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,price:number|null,atr:number|null,liveOutcome:any=null,tick:any=null,accumulation:any=null){
+export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,price:number|null,atr:number|null,liveOutcome:any=null,tick:any=null,accumulation:any=null,asset='BTC'){
   const techSide=technicalSide(raw);
   const long=Number(raw?.score?.long||0),short=Number(raw?.score?.short||0),techBest=Math.max(long,short),techGap=Math.abs(long-short);
   const liqSide=side(liq?.side),liqScore=liquidityStrength(liq);
@@ -142,6 +142,12 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const reactionCandidate=Boolean(reactionSide!=='WAIT'&&reactionScore>=68&&!reactionConfirmed);
   const confirmedReliability=liveReliability(liveOutcome,'SCALP_CONFIRMED_V6','SCALP_CONFIRMED_V5');
   const preMoveReliability=liveReliability(liveOutcome,'SCALP_PREMOVE_WATCH_V6','SCALP_PREMOVE_WATCH_V5');
+  const confirmedStats=liveOutcome?.bySource?.SCALP_CONFIRMED_V6||{};
+  const confirmedHits=Number(confirmedStats?.hits||0),confirmedFails=Number(confirmedStats?.fails||0);
+  const confirmedDirectional=confirmedHits+confirmedFails;
+  const confirmedColdFailGuard=Boolean(
+    confirmedDirectional>=3&&confirmedFails>=3&&confirmedHits===0
+  );
   const learnedSide:Side=learner?.ok&&learner?.gate?.passed?side(learner?.side):'WAIT';
   const learnedScore=learnedSide==='WAIT'?0:cap(Number(learner?.confidence||0)*.55+Number(learner?.oosAccuracy||0)*.45,0,82);
 
@@ -224,7 +230,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const rawLiveSupport=[liqSide,motionSide,trapSide,ml1.side,tick1.side,preMove.side].filter(s=>s!=='WAIT'&&s===rawFusedSide).length;
   const rawLiveOpposition=[liqSide,motionSide,trapSide,ml1.side,tick1.side,preMove.side].filter(s=>s!=='WAIT'&&rawFusedSide!=='WAIT'&&s!==rawFusedSide).length;
   const commitment=commitDirection(
-    'BTC_SCALP_FUSION_V5',buyEvidence,sellEvidence,Date.now(),
+    String(asset||'BTC').toUpperCase()+':SCALP_FUSION_V6',buyEvidence,sellEvidence,Date.now(),
     {side:tick1.side,stage:tick1.stage,score:tick1.score,confidence:tick1.confidence}
   );
   const flipSuppressed=Boolean(rawFusedSide!=='WAIT'&&commitment.side!=='WAIT'&&commitment.side!==rawFusedSide);
@@ -273,6 +279,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   if(reactionCandidate)confidence-=reactionFastOpposition>=2?8:3;
   if(accumulationAligned)confidence+=3;
   if(reactionConflict)confidence-=12;
+  if(confirmedColdFailGuard)confidence-=8;
   if(flipSuppressed)confidence-=12;
   confidence=Math.round(cap(confidence,10,88));
 
@@ -298,15 +305,33 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     fusedSide!=='WAIT'&&preMove.lateMomentum&&mode!=='REVERSAL'&&
     !(trapSide===fusedSide&&trapScore>=68)
   );
+  const compressionConfirmed=Boolean(
+    mode!=='COMPRESSION'||
+    (
+      fusedSide!=='WAIT'&&liveOpposition===0&&tickAligned&&
+      liqSide===fusedSide&&
+      (motionSide===fusedSide||preMoveAligned||reactionAligned)
+    )
+  );
+  const recoveryOverride=Boolean(
+    confirmedColdFailGuard&&fusedSide!=='WAIT'&&
+    edge>=82&&dominantEvidence>=78&&liveSupport>=4&&liveOpposition===0&&
+    tickAligned&&liqSide===fusedSide&&motionSide===fusedSide&&
+    (preMoveAligned||reactionAligned)
+  );
   const rawStrong=classicStrong||anticipatoryStrong;
-  const strong=Boolean(rawStrong&&!chaseRisk&&!flipSuppressed);
+  const strong=Boolean(
+    rawStrong&&!chaseRisk&&!flipSuppressed&&compressionConfirmed&&
+    (!confirmedColdFailGuard||recoveryOverride)
+  );
   const earlyWatch=Boolean(
     fusedSide!=='WAIT'&&preMoveAligned&&edge>=8&&dominantEvidence>=42&&support>=2&&liveSupport>=2&&liveOpposition<=1
   );
   const lateWatch=Boolean(rawStrong&&chaseRisk);
+  const guardedWatch=Boolean(rawStrong&&(!compressionConfirmed||confirmedColdFailGuard)&&fusedSide!=='WAIT');
   const watch=Boolean(
     fusedSide!=='WAIT'&&!unconfirmedReactionAgainstFlow&&
-    ((edge>=6&&dominantEvidence>=46&&support>=2)||earlyWatch||lateWatch)
+    ((edge>=6&&dominantEvidence>=46&&support>=2)||earlyWatch||lateWatch||guardedWatch)
   );
   const action:Side=strong||watch?fusedSide:'WAIT';
   const state=strong?'setup':watch?'watch':'wait';
@@ -350,16 +375,22 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   };
   const targetZone=reaction.targetFor(fusedSide);
   const breakoutLevel=fusedSide==='BUY'?Number(accumulation?.breakoutLevel):fusedSide==='SELL'?Number(accumulation?.breakdownLevel):NaN;
-  const zoneTargetValid=Boolean(targetZone&&((fusedSide==='BUY'&&Number(targetZone.mid)>p)||(fusedSide==='SELL'&&Number(targetZone.mid)<p)));
-  const breakoutTargetValid=Boolean(Number.isFinite(breakoutLevel)&&((fusedSide==='BUY'&&breakoutLevel>p)||(fusedSide==='SELL'&&breakoutLevel<p)));
+  const zoneDirectionValid=Boolean(targetZone&&((fusedSide==='BUY'&&Number(targetZone.mid)>p)||(fusedSide==='SELL'&&Number(targetZone.mid)<p)));
+  const zoneDistanceAtr=zoneDirectionValid&&Number.isFinite(a)&&a>0?Math.abs(Number(targetZone.mid)-p)/a:Infinity;
+  const zoneTargetValid=Boolean(zoneDirectionValid&&zoneDistanceAtr<=.72);
+  const breakoutDistanceAtr=Number.isFinite(breakoutLevel)&&Number.isFinite(a)&&a>0?Math.abs(breakoutLevel-p)/a:Infinity;
+  const breakoutTargetValid=Boolean(Number.isFinite(breakoutLevel)&&breakoutDistanceAtr<=.62&&((fusedSide==='BUY'&&breakoutLevel>p)||(fusedSide==='SELL'&&breakoutLevel<p)));
   const fallbackTarget=Number.isFinite(a)&&a>0&&fusedSide!=='WAIT'?p+(fusedSide==='BUY'?1:-1)*a*Math.max(.14,Math.min(.48,.16+dominantEvidence/260)):null;
-  const targetPrice=zoneTargetValid?Number(targetZone.mid):breakoutTargetValid?breakoutLevel:fallbackTarget;
+  const approachTarget=zoneDirectionValid&&Number.isFinite(a)&&a>0&&fusedSide!=='WAIT'
+    ?p+(fusedSide==='BUY'?1:-1)*a*.48
+    :null;
+  const targetPrice=zoneTargetValid?Number(targetZone.mid):breakoutTargetValid?breakoutLevel:(approachTarget??fallbackTarget);
   const target={
     side:fusedSide,
     price:targetPrice!=null&&Number.isFinite(Number(targetPrice))?Number(Number(targetPrice).toFixed(2)):null,
     zoneLow:zoneTargetValid?Number(targetZone.low.toFixed(2)):null,
     zoneHigh:zoneTargetValid?Number(targetZone.high.toFixed(2)):null,
-    source:zoneTargetValid?'REACTION_ZONE':breakoutTargetValid?'RANGE_BOUNDARY':'DYNAMIC_ATR',
+    source:zoneTargetValid?'REACTION_ZONE':breakoutTargetValid?'RANGE_BOUNDARY':zoneDirectionValid?'APPROACH_REACTION_ZONE':'DYNAMIC_ATR',
     expectedAtTarget:zoneTargetValid?(Number(targetZone.strength)>=68?(targetZone.side==='SELL'?'REJECT_OR_BREAK':'BOUNCE_OR_BREAK'):'TEST'):'CONTINUATION',
     zoneStrength:zoneTargetValid?Number(targetZone.strength):0,
     contextMode
@@ -396,7 +427,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     reaction:{active:reaction.active,inside:Boolean(reaction.inside),side:reactionSide,strength:reactionScore,confirmed:reactionConfirmed,candidate:reactionCandidate,fastSupport:reactionFastSupport,fastOpposition:reactionFastOpposition,nearest:reaction.nearest||null,contextMode},
     fusionV6:{
       side:fusedSide,rawSide:rawFusedSide,confidence,strong,rawStrong,classicStrong,anticipatoryStrong,watch,earlyWatch,lateWatch,chaseRisk,flipSuppressed,commitment,
-      contextMode,reactionAligned,reactionConflict,reactionConfirmed,reactionCandidate,reactionFastSupport,reactionFastOpposition,unconfirmedReactionAgainstFlow,accumulationAligned,accumulationPhase,accumulationReadiness,target,
+      contextMode,reactionAligned,reactionConflict,reactionConfirmed,reactionCandidate,reactionFastSupport,reactionFastOpposition,unconfirmedReactionAgainstFlow,accumulationAligned,accumulationPhase,accumulationReadiness,target,confirmedColdFailGuard,confirmedHits,confirmedFails,confirmedDirectional,compressionConfirmed,recoveryOverride,
       intercept,
       reliability:{active:activeReliability,confirmed:confirmedReliability,premove:preMoveReliability,reliabilityPenalty},
       ignitionEtaSeconds:preMove.etaSeconds,
