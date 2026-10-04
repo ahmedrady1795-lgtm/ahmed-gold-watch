@@ -318,7 +318,8 @@ export function calibrateNextMoveConfidence(nextMove:any,live:any,regime?:string
 }
 
 export function recordNextMoveOutcome(args:{
-  asset:string;price:number|null;atr:number|null;now?:number;hunt:any;regime?:string
+  asset:string;price:number|null;atr:number|null;now?:number;hunt:any;regime?:string;
+  horizonMs?:number;barrierScale?:number;minBarrierBps?:number;maxBarrierBps?:number
 }){
   const asset=key(args.asset),now=Number(args.now||Date.now()),price=Number(args.price),atr=Number(args.atr);
   if(!Number.isFinite(price)||price<=0)return {ok:false,reason:'invalid_price'};
@@ -331,9 +332,13 @@ export function recordNextMoveOutcome(args:{
   const micro=args.hunt?.nextMove?.micro||{};
   let recorded=false,eventId:string|null=null;
   if((side==='BUY'||side==='SELL')&&confidence>=20){
-    const bucket=Math.floor(now/30000);
+    const horizonMs=Math.max(30000,Math.min(180000,Number(args.horizonMs||120000)));
+    const bucket=Math.floor(now/Math.min(30000,horizonMs/2));
     const atrBps=Number.isFinite(atr)&&atr>0?atr/price*10000:0;
-    const barrierBps=Number(cap(Math.max(.8,atrBps*.24),.8,2.5).toFixed(3));
+    const scale=Number.isFinite(Number(args.barrierScale))?Number(args.barrierScale):.24;
+    const minBarrier=Number.isFinite(Number(args.minBarrierBps))?Number(args.minBarrierBps):.8;
+    const maxBarrier=Number.isFinite(Number(args.maxBarrierBps))?Number(args.maxBarrierBps):2.5;
+    const barrierBps=Number(cap(Math.max(minBarrier,atrBps*scale),minBarrier,maxBarrier).toFixed(3));
     const fingerprint=[side,source,regime,Math.round(price/(price*barrierBps/10000||1))].join(':');
     const sameLive=a.pending.some(p=>p.side===side&&p.source===source&&now-p.at<25000);
     if(a.lastRecordedBucket!==bucket&&!sameLive){
@@ -342,7 +347,7 @@ export function recordNextMoveOutcome(args:{
       const target=side==='BUY'?price+distance:price-distance;
       const stop=side==='BUY'?price-distance:price+distance;
       a.pending.push({
-        id:eventId,at:now,side,source,regime,confidence,entry:price,target,stop,barrierBps,horizonMs:120000,
+        id:eventId,at:now,side,source,regime,confidence,entry:price,target,stop,barrierBps,horizonMs,
         mfeBps:0,maeBps:0,
         micro:{edge:Number(micro?.edge||0),support:Number(micro?.support||0),opposition:Number(micro?.opposition||0),strong:Boolean(micro?.strong)}
       });
