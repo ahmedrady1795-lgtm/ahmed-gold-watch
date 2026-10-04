@@ -23,3 +23,11 @@ Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in the bridge `.env` to receive 
 
 ## Candle synchronization and minimum-lot safety
 The bridge uploads closed M1/M5/M15/H1 candles from the broker every ~15 seconds. While that snapshot is fresh, the website computes indicators from the same MT5/Exness market used for execution; Binance remains the fallback. Position sizing never rounds a risk size upward to the broker minimum lot: if the minimum lot would exceed the configured cash-risk budget, the trade is rejected. Blocked attempts are rate-limited per signal.
+
+
+## Fast scalp learning demo
+Set `SCALP_DEMO_MODE=true` while `LIVE_TRADING=false` to run the fast scalp trainer against the real MT5/Exness tick and broker candles without sending orders. The bridge polls the demo-only `/api/mt5/scalp-demo` path about once per second, opens a virtual scalp only when the learned M1 model and micro-signal agree, then closes the virtual position on TP, SL, learned maximum hold time, or a confirmed direction flip.
+
+The scalp learner uses a rolling M1 sample with an out-of-sample validation segment. It learns a preferred 1–5 minute holding horizon and ATR-based take/stop distances. These metrics are model diagnostics, not a guarantee of future performance.
+
+The demo endpoint always returns `liveOrderAllowed=false`; this fast training path does not authorize live orders even if other execution settings are enabled. Keep `LIVE_TRADING=false` while validating scalp behavior.
