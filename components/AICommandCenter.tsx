@@ -13,18 +13,21 @@ const timeLeft=(ts:any,now:number)=>{
 const moveAr=(s:any)=>s==='BUY'?'صعود':s==='SELL'?'هبوط':'تذبذب';
 function nextMoveCopy(hunt:any,stateGraph:any){
   if(!hunt&&!stateGraph)return {title:'لا توجد حركة مؤكدة حاليًا',detail:'النواة تنتظر بيانات أو توافقًا أوضح قبل ترجيح الحركة القادمة.',tone:'amber'};
-  const first=hunt?.nextMove?.side||hunt?.path?.shortSide||stateGraph?.nextSide||'WAIT';
+  const understanding=hunt?.marketUnderstanding;
+  const first=understanding?.firstMove?.side||hunt?.nextMove?.side||hunt?.path?.shortSide||stateGraph?.nextSide||'WAIT';
+  const follow=understanding?.followMove?.side||hunt?.path?.followSide||'WAIT';
   const pathLabel=String(hunt?.path?.label||'').trim();
   const firstHit=Number(hunt?.nextMove?.firstHitMinutes);
-  const confidence=calibrated(hunt?.nextMove?.confidence??hunt?.quality??stateGraph?.nextSideProbability??0);
-  let title=pathLabel||(
+  const confidence=calibrated(understanding?.firstMove?.confidence??hunt?.nextMove?.confidence??hunt?.quality??stateGraph?.nextSideProbability??0);
+  const title=String(understanding?.summary||'').trim()||pathLabel||(
     first==='BUY'?'الحركة القادمة المرجحة: صعود':
     first==='SELL'?'الحركة القادمة المرجحة: هبوط':
     'الحركة القادمة المرجحة: تذبذب وانتظار اتجاه أوضح'
   );
   const h2=hunt?.horizons?.twoMinute?.side||'WAIT',h5=hunt?.horizons?.fiveMinute?.side||'WAIT',h15=hunt?.horizons?.fifteenMinute?.side||'WAIT';
-  const timing=Number.isFinite(firstHit)&&firstHit>0?`، وأول حركة معتبرة متوقعة خلال نحو ${firstHit.toFixed(1)} دقيقة`:'';
-  const detail=`الترجيح الحالي ${moveAr(first)} بثقة ${confidence}%${timing}. ميل 2د: ${moveAr(h2)} · 5د: ${moveAr(h5)} · 15د: ${moveAr(h15)}.`;
+  const timing=Number.isFinite(firstHit)&&firstHit>0?'، وأول حركة معتبرة متوقعة خلال نحو '+firstHit.toFixed(1)+' دقيقة':'';
+  const phase=understanding?.mode?(' · فهم السوق: '+String(understanding.mode).replaceAll('_',' ')):'';
+  const detail='أول حركة '+moveAr(first)+' بثقة '+confidence+'%'+timing+'، وبعدها '+moveAr(follow)+'. ميل 2د: '+moveAr(h2)+' · 5د: '+moveAr(h5)+' · 15د: '+moveAr(h15)+phase+'.';
   return {title,detail,tone:first==='BUY'?'green':first==='SELL'?'red':'amber'};
 }
 
