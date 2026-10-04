@@ -85,7 +85,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const evidenceOf=(name:string)=>movementEvidence.find((e:any)=>String(e?.name||'')===name)||null;
   const tickEv=evidenceOf('serverTick'),ml1Ev=evidenceOf('mlEnsemble1m');
   const tickSide:Side=tickEv?.side||'WAIT',tickScore=Number(tickEv?.score||0);
-  const scalpFusion=scalp?.fusionV7||scalp?.fusionV6||scalp?.fusionV5||scalp?.fusionV4||scalp?.fusionV3||{};
+  const scalpFusion=scalp?.fusionV8||scalp?.fusionV7||scalp?.fusionV6||scalp?.fusionV5||scalp?.fusionV4||scalp?.fusionV3||{};
   const validatedMlSide:Side=ml1Ev?.side||scalpFusion?.mlSide||'WAIT';
   const validatedMlScore=Number(ml1Ev?.score||0);
   const scalpFusionSide:Side=scalpFusion?.side||scalp?.action||'WAIT';
