@@ -159,6 +159,12 @@ export function buildAccumulationMap(c1:Candle[],c5:Candle[],price:number|null,l
   if(bookImbalance>=18)add('BUY',10,'Order Book bid support');
   if(bookImbalance<=-18)add('SELL',10,'Order Book ask pressure');
 
+  const reactionZones=buildReactionZones(m1,p,a),nearestReaction=reactionZones[0]||null;
+  if(nearestReaction&&nearestReaction.status==='NEAR'&&nearestReaction.strength>=65){
+    if(nearestReaction.side==='BUY')add('BUY',Math.min(18,nearestReaction.strength*.18),'السعر يقترب من منطقة طلب تاريخية قوية');
+    else add('SELL',Math.min(18,nearestReaction.strength*.18),'السعر يقترب من منطقة عرض تاريخية قوية');
+  }
+
   const accumulationScore=Math.round(cap(buy)),distributionScore=Math.round(cap(sell));
   const side:Side=accumulationScore-distributionScore>=10?'BUY':distributionScore-accumulationScore>=10?'SELL':'WAIT';
 
@@ -176,11 +182,6 @@ export function buildAccumulationMap(c1:Candle[],c5:Candle[],price:number|null,l
   const strongMoveScore=Math.round(cap(Math.max(accumulationScore,distributionScore)*.58+breakoutReadiness*.42,0,90));
 
   const zone:Zone={low:Number(lo.toFixed(2)),high:Number(hi.toFixed(2)),mid:Number(((lo+hi)/2).toFixed(2)),touches:side==='BUY'?lowTouch.touches:highTouch.touches,rejections:side==='BUY'?lowTouch.rejections:highTouch.rejections};
-  const reactionZones=buildReactionZones(m1,p,a),nearestReaction=reactionZones[0]||null;
-  if(nearestReaction&&nearestReaction.status==='NEAR'&&nearestReaction.strength>=65){
-    if(nearestReaction.side==='BUY')add('BUY',Math.min(18,nearestReaction.strength*.18),'السعر يقترب من منطقة طلب تاريخية قوية');
-    else add('SELL',Math.min(18,nearestReaction.strength*.18),'السعر يقترب من منطقة عرض تاريخية قوية');
-  }
 
   return {
     ok:true,side,phase,accumulationScore,distributionScore,breakoutReadiness,strongMoveSide,strongMoveScore,zone,reactionZones,nearestReaction,
