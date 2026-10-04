@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss, b
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 
-APP_VERSION="predator-ml-v9-m5-multiclass-fixed"
+APP_VERSION="predator-ml-v10-hot-swap"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 MODEL_PATH=MODEL_DIR/"btc_ml_ensemble.joblib"
 META_PATH=MODEL_DIR/"btc_ml_meta.json"
@@ -555,14 +555,19 @@ def load_model():
     if not MODEL_PATH.exists(): return False
     try:
         obj=joblib.load(MODEL_PATH)
-        if obj.get("version")!=APP_VERSION or obj.get("features")!=FEATURE_SIGNATURE:
+        # Feature schema is the hard compatibility boundary. Version changes are allowed
+        # to keep the last validated model serving while the next candidate retrains.
+        if obj.get("features")!=FEATURE_SIGNATURE:
             MODELS.clear()
-            STATE.update({"status":"TRAINING","modelLoaded":False,"metrics":None,"lastError":"stale_model_artifact"})
+            STATE.update({"status":"TRAINING","modelLoaded":False,"metrics":None,"lastError":"incompatible_model_features"})
             return False
         MODELS.clear(); MODELS.update(obj)
         m={k:v["metrics"] for k,v in obj["models"].items()}
-        STATE.update({"trainedAt":obj.get("trainedAt",0),"modelLoaded":True,"metrics":m,"historyRows":obj.get("historyRows",0),"source":obj.get("source"),"lastError":None})
-        STATE["status"]="READY" if all(v.get("ready") for v in m.values()) else ("PARTIAL" if any(v.get("ready") for v in m.values()) else "SHADOW")
+        current=bool(obj.get("version")==APP_VERSION)
+        base_status="READY" if all(v.get("ready") for v in m.values()) else ("PARTIAL" if any(v.get("ready") for v in m.values()) else "SHADOW")
+        STATE.update({"trainedAt":obj.get("trainedAt",0),"modelLoaded":True,"metrics":m,"historyRows":obj.get("historyRows",0),
+                      "source":obj.get("source"),"lastError":None if current else "serving_previous_validated_model",
+                      "status":base_status if current else "HOT_SWAP_TRAINING"})
         return True
     except Exception as e:
         MODELS.clear()
@@ -572,9 +577,13 @@ def start_train_if_needed():
     loaded=load_model()
     stale=(time.time()*1000-STATE.get("trainedAt",0))>RETRAIN_SECONDS*1000
     version_mismatch=(not loaded) or MODELS.get("version")!=APP_VERSION
-    if version_mismatch:
-        MODELS.clear()
+    # Never clear a schema-compatible validated model merely because a newer
+    # training recipe is starting. train_all atomically swaps the artifact on success.
+    if not loaded:
         STATE.update({"status":"TRAINING","modelLoaded":False,"metrics":None})
+    elif version_mismatch:
+        STATE["status"]="HOT_SWAP_TRAINING"
+        STATE["training"]=False
     if version_mismatch or stale:
         threading.Thread(target=train_all,daemon=True,name="ml-trainer").start()
 
