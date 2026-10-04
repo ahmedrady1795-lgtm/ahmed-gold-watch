@@ -113,7 +113,7 @@ function AdvancedDetails({x}:any){
 
 function AssetCard({x,fast}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
-  const master=x.master||{action:x.action,state:x.phase||'WAIT',reason:''},hunt=x.huntForecast,trade=x.trade;
+  const master=x.master||{action:x.action,state:x.phase||'WAIT',reason:''},hunt=x.huntForecast,trade=x.trade,recommendation=x.recommendation;
   const buy=master.action==='BUY',sell=master.action==='SELL';
   const waveHot=fast?.ok&&['WAVE_FORMING','IGNITION'].includes(String(fast.stage));
   const scalpLong=Number(x.scalp?.score?.long||0),scalpShort=Number(x.scalp?.score?.short||0);
@@ -146,9 +146,10 @@ function AssetCard({x,fast}:any){
     </div>
 
     <div className="master-box">
-      <span>القرار النهائي</span>
-      <strong className={buy?'green':sell?'red':'amber'}>{buy?'BUY':sell?'SELL':'WAIT'}</strong>
-      <p>{master.reason||'النواة تراقب الحركة ولم تعتمد دخولًا بعد.'}</p>
+      <span>{recommendation?.active?'التوصية النهائية':'القرار النهائي'}</span>
+      <strong className={buy?'green':sell?'red':'amber'}>{recommendation?.active?(recommendation.action+' · ثقة '+calibrated(recommendation.confidence)+'%'):(buy?'BUY':sell?'SELL':'WAIT')}</strong>
+      {recommendation?.active&&<p>دخول ≈ {fmt(recommendation.entry,2)} · إلغاء {fmt(recommendation.invalidation,2)}{recommendation.targets?.scalp!=null?(' · Scalp '+fmt(recommendation.targets.scalp,2)):''}{recommendation.targets?.oneMinute!=null?(' · 1m '+fmt(recommendation.targets.oneMinute,2)):''}{recommendation.targets?.fiveMinute!=null?(' · 5m '+fmt(recommendation.targets.fiveMinute,2)):''}{recommendation.targets?.fifteenMinute!=null?(' · 15m '+fmt(recommendation.targets.fifteenMinute,2)):''}</p>}
+      {!recommendation?.active&&<p>{master.reason||'النواة تراقب الحركة ولم تعتمد دخولًا بعد.'}</p>}
     </div>
 
     {x.stateGraph&&<div className="hunt-box market-state-box">
