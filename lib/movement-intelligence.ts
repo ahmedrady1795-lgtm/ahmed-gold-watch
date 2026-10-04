@@ -108,10 +108,9 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   const struct1=Number(structure?.m1?.nextScore||0),struct5=Number(structure?.m5?.nextScore||0);
   const learnScore=Number(learning?.confidence||0)*Math.max(.65,Number(learning?.selfCalibration?.reliability||50)/60);
   const newsScore=Number(news?.confidence||0),newsWeight=Math.max(0,Math.min(.18,Number(news?.weight||0)));
-  const ambushMove=scalp?.movement||{};
-  const scalpSide:Side=side(ambushMove?.side);
-  const scalpScore=Number(ambushMove?.confidence||0);
-  const scalpGap=scalpSide==='WAIT'?0:scalpScore;
+  const scalpLong=Number(scalp?.score?.long||0),scalpShort=Number(scalp?.score?.short||0),scalpGap=Math.abs(scalpLong-scalpShort);
+  const scalpSide:Side=scalp?.action==='BUY'||scalp?.action==='SELL'?scalp.action:scalpLong-scalpShort>=5?'BUY':scalpShort-scalpLong>=5?'SELL':'WAIT';
+  const scalpScore=Math.max(scalpLong,scalpShort,Number(scalp?.confidence||0));
   const ml1=ml?.oneMinute||{},ml5=ml?.fiveMinute||{},neural=ml?.neuralCore||{},micro=(neural?.ready?neural:(ml?.microstructure||{}));
   const ml1Ready=Boolean(ml?.ok&&ml1?.ready&&!ml?.shadow),ml5Ready=Boolean(ml?.ok&&ml5?.ready&&!ml?.shadow);
   const microReady=Boolean((neural?.ok||ml?.ok)&&micro?.ready&&micro?.side!=='WAIT');
