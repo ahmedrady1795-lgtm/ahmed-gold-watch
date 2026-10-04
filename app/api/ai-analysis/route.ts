@@ -15,6 +15,7 @@ import {buildMarketStateGraph} from '../../../lib/market-state-graph';
 import {evolveAnalysisPolicy,recordEvolutionAutopsy} from '../../../lib/self-evolution';
 import {getExpectedMoveLearning,recordExpectedMoveObservation} from '../../../lib/expected-move-learning';
 import {buildMovementIntelligence} from '../../../lib/movement-intelligence';
+import {buildMultiBrainCore} from '../../../lib/multi-brain-core';
 import {getServerTickSignal} from '../../../lib/server-tick-brain';
 import {buildNewsIntelligence} from '../../../lib/news-intelligence';
 import {buildOpportunitySet} from '../../../lib/multi-opportunity';
