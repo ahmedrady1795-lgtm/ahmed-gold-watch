@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss, b
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 
-APP_VERSION="predator-ml-v1"
+APP_VERSION="predator-ml-v2-no-lookahead"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 MODEL_PATH=MODEL_DIR/"btc_ml_ensemble.joblib"
 META_PATH=MODEL_DIR/"btc_ml_meta.json"
@@ -230,7 +230,11 @@ def load_model():
 def start_train_if_needed():
     loaded=load_model()
     stale=(time.time()*1000-STATE.get("trainedAt",0))>RETRAIN_SECONDS*1000
-    if (not loaded) or stale: threading.Thread(target=train_all,daemon=True,name="ml-trainer").start()
+    version_mismatch=(not loaded) or MODELS.get("version")!=APP_VERSION
+    if version_mismatch:
+        STATE.update({"status":"TRAINING","modelLoaded":False,"lastError":None})
+    if version_mismatch or stale:
+        threading.Thread(target=train_all,daemon=True,name="ml-trainer").start()
 
 def frame_from_body(candles):
     if len(candles)<220: raise HTTPException(400,"need at least 220 M1 candles")
