@@ -13,6 +13,7 @@ import PerformanceCenter from '../components/PerformanceCenter';
 import HealthCenter from '../components/HealthCenter';
 import AICommandCenter from '../components/AICommandCenter';
 import {analyze,defaults,type Rules} from '../lib/engine';
+import {computeWaveLead,type WaveLead,type WaveTick} from '../lib/wave-lead';
 
 type Snapshot={ok:boolean;checkedAt:number;market:any;quote:any;mt5:any;analysis:any};
 type Tab='dashboard'|'ai'|'news'|'lab'|'performance'|'health';
@@ -32,10 +33,28 @@ export default function Home(){
   const [btc,setBtc]=useState<number|null>(null);
   const [btcSource,setBtcSource]=useState('Coinbase');
   const [btcAt,setBtcAt]=useState(0),[goldTick,setGoldTick]=useState<any>(null);
+  const [fastWave,setFastWave]=useState<{btc:WaveLead|null;gold:WaveLead|null}>({btc:null,gold:null});
+  const btcWaveTicks=useRef<WaveTick[]>([]),goldWaveTicks=useRef<WaveTick[]>([]);
+  const fastWaveRef=useRef<{btc:WaveLead|null;gold:WaveLead|null}>({btc:null,gold:null});
+  const waveUiAt=useRef({btc:0,gold:0});
   const seenSignal=useRef('');
   const [rules,setRules]=useState<Rules>(defaults);
   const [now,setNow]=useState(Date.now());
   const first=useRef(true);
+
+  const pushWave=(asset:'btc'|'gold',tick:WaveTick)=>{
+    const ref=asset==='btc'?btcWaveTicks:goldWaveTicks;
+    ref.current.push(tick);
+    const cutoff=tick.at-12000;
+    while(ref.current.length&&ref.current[0].at<cutoff)ref.current.shift();
+    if(ref.current.length>500)ref.current=ref.current.slice(-500);
+    const lead=computeWaveLead(ref.current,tick.at);
+    fastWaveRef.current={...fastWaveRef.current,[asset]:lead};
+    if(tick.at-waveUiAt.current[asset]>=220){
+      waveUiAt.current={...waveUiAt.current,[asset]:tick.at};
+      setFastWave({...fastWaveRef.current});
+    }
+  };
 
   const load=async(silent=false)=>{
     if(!silent)setBusy(true);
@@ -49,7 +68,15 @@ export default function Home(){
     }finally{if(!silent)setBusy(false);}
   };
   const loadHealth=async()=>{try{const r=await fetch('/api/health',{cache:'no-store'});setHealth(await r.json());}catch{setHealth({status:'halted'});}};
-  const loadAi=async()=>{try{const r=await fetch('/api/ai-analysis',{cache:'no-store'}),j=await r.json();if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر تشغيل محرك AI');setAiData(j);setAiError('');}catch(e){setAiError(e instanceof Error?e.message:'تعذر تشغيل محرك AI');}};
+  const loadAi=async()=>{try{
+    const q=new URLSearchParams(),add=(p:string,w:WaveLead|null)=>{
+      if(!w?.ok||Date.now()-w.at>2500)return;
+      q.set(p+'s',w.side);q.set(p+'st',w.stage);q.set(p+'sc',String(w.score));q.set(p+'cf',String(w.confidence));q.set(p+'at',String(w.at));
+    };
+    add('b',fastWaveRef.current.btc);add('g',fastWaveRef.current.gold);
+    const r=await fetch('/api/ai-analysis'+(q.size?'?'+q.toString():''),{cache:'no-store'}),j=await r.json();
+    if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر تشغيل محرك AI');setAiData(j);setAiError('');
+  }catch(e){setAiError(e instanceof Error?e.message:'تعذر تشغيل محرك AI');}};
 
   useEffect(()=>{
     try{
@@ -61,7 +88,7 @@ export default function Home(){
     const clock=setInterval(()=>setNow(Date.now()),1000);
     const market=setInterval(()=>{if(document.visibilityState==='visible')void load(true);},15000);
     const hs=setInterval(()=>{if(document.visibilityState==='visible')void loadHealth();},30000);
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},3000);
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},1200);
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
     return()=>{clearInterval(clock);clearInterval(market);clearInterval(hs);clearInterval(aiTimer);};
   },[]);
@@ -81,10 +108,11 @@ export default function Home(){
       ws.onmessage=e=>{try{
         const x=JSON.parse(e.data);
         if(x?.type!=='ticker'||x?.product_id!=='BTC-USD')return;
-        const p=Number(x.price),at=Date.parse(x.time);
+        const p=Number(x.price),at=Date.parse(x.time),stamp=Number.isFinite(at)?at:Date.now(),bid=Number(x.best_bid),ask=Number(x.best_ask);
         if(!Number.isFinite(p)||p<=0)return;
         lastWsTick=Date.now();
-        if(!closed){setBtc(p);setBtcAt(Number.isFinite(at)?at:Date.now());setBtcSource('Coinbase WebSocket');}
+        pushWave('btc',{at:stamp,price:p,bid:Number.isFinite(bid)?bid:undefined,ask:Number.isFinite(ask)?ask:undefined});
+        if(!closed){setBtc(p);setBtcAt(stamp);setBtcSource('Coinbase WebSocket');}
       }catch{}};
       ws.onerror=()=>ws?.close();
       ws.onclose=()=>{if(!closed)reconnect=setTimeout(connect,1500);};
@@ -97,7 +125,7 @@ export default function Home(){
   useEffect(()=>{
     let closed=false,ws:WebSocket|null=null,t:ReturnType<typeof setTimeout>|undefined;
     const open=()=>{if(closed)return;ws=new WebSocket('wss://fstream.binance.com/ws/xauusdt@bookTicker');
-      ws.onmessage=e=>{try{const x=JSON.parse(e.data),bid=Number(x.b),ask=Number(x.a),at=Number(x.E);if(x.s!=='XAUUSDT'||!Number.isFinite(at)||at>Date.now()+10000||Date.now()-at>15000||bid<=0||ask<bid)return;setGoldTick({ok:true,price:(bid+ask)/2,bid,ask,spread:ask-bid,sourceTime:at,status:'live',source:'Binance Futures · XAUUSDT proxy'});}catch{}};
+      ws.onmessage=e=>{try{const x=JSON.parse(e.data),bid=Number(x.b),ask=Number(x.a),bidQty=Number(x.B),askQty=Number(x.A),at=Number(x.E);if(x.s!=='XAUUSDT'||!Number.isFinite(at)||at>Date.now()+10000||Date.now()-at>15000||bid<=0||ask<bid)return;const price=(bid+ask)/2;pushWave('gold',{at,price,bid,ask,bidQty:Number.isFinite(bidQty)?bidQty:undefined,askQty:Number.isFinite(askQty)?askQty:undefined});setGoldTick({ok:true,price,bid,ask,spread:ask-bid,sourceTime:at,status:'live',source:'Binance Futures · XAUUSDT proxy'});}catch{}};
       ws.onerror=()=>ws?.close();ws.onclose=()=>{if(!closed)t=setTimeout(open,3000);};};
     open();return()=>{closed=true;clearTimeout(t);ws?.close();};
   },[]);
@@ -211,7 +239,7 @@ export default function Home(){
           </section>
         </>}
 
-        {tab==='ai'&&<><AICommandCenter data={aiData} error={aiError} now={now}/><NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/></>} 
+        {tab==='ai'&&<><AICommandCenter data={aiData} error={aiError} now={now} fastWave={fastWave}/><NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/></>} 
         {tab==='news'&&<NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/>}
         {tab==='lab'&&<StrategyLab signal={analysis?.signal||null} regime={analysis?.regime} quotePrice={quote?.price} quoteLive={live} latestM1={latestM1} rules={rules}/>}
         {tab==='performance'&&<PerformanceCenter/>}
