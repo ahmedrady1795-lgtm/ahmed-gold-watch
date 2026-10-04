@@ -301,7 +301,7 @@ def get_live_binance_frame():
     now=time.time()
     cached=LIVE_FRAME.get("df")
     age=now-float(LIVE_FRAME.get("at") or 0)
-    if cached is not None and age<12:
+    if cached is not None and age<24:
         return cached,"Binance Vision cached taker flow",None
     try:
         fresh=fetch_binance_vision_history(900)
