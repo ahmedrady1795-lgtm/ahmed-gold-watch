@@ -475,6 +475,23 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     etaSeconds:preMove.etaSeconds,
     updatedAt:Date.now()
   };
+  const ambushMoveSide:Side=
+    (predator?.phase==='TRACK'||predator?.phase==='AMBUSH')&&targetSide!=='WAIT'
+      ?targetSide
+      :'WAIT';
+  const movement={
+    authority:'AMBUSH',
+    side:ambushMoveSide,
+    status:predator?.phase==='AMBUSH'?'CONFIRMED':predator?.phase==='TRACK'?'FORMING':'WAIT',
+    confidence:ambushMoveSide==='WAIT'?0:Number(predator?.score||0),
+    target:ambushMoveSide==='WAIT'?null:target,
+    pattern:String(predator?.pattern||'NO_EDGE'),
+    phase:String(predator?.phase||'HUNT'),
+    assistants,
+    assistantCount,
+    tradeReady:Boolean(ambushTrade&&intercept.ready)
+  };
+
   let trade:any=null;
   if(ambushTrade&&intercept.ready&&Number.isFinite(p)&&p>0&&Number.isFinite(a)&&a>0){
     const dir=fusedSide==='BUY'?1:-1;
@@ -501,13 +518,14 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     confidence,
     trade,
     ambushPlan,
+    movement,
     early:Boolean(ambushTrade),
     preMove,
     intercept,
     target,
     reaction:{active:reaction.active,inside:Boolean(reaction.inside),side:reactionSide,strength:reactionScore,confirmed:reactionConfirmed,candidate:reactionCandidate,fastSupport:reactionFastSupport,fastOpposition:reactionFastOpposition,nearest:reaction.nearest||null,contextMode},
     fusionV8:{
-      authority:'AMBUSH',side:fusedSide,rawSide:rawFusedSide,confidence,strong:ambushTrade,watch:false,ambushTrade,predator,assistants,assistantCount,ambushPlan,
+      authority:'AMBUSH',side:fusedSide,rawSide:rawFusedSide,confidence,strong:ambushTrade,watch:false,ambushTrade,predator,assistants,assistantCount,ambushPlan,movement,
       contextMode,reactionAligned,reactionConflict,accumulationAligned,accumulationPhase,accumulationReadiness,target,intercept,
       reliability:{active:activeReliability,ambush:confirmedReliability,reliabilityPenalty},
       buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
