@@ -192,7 +192,7 @@ export async function GET(request:Request){
     const bitcoinMultiBrain=buildMultiBrainCore('BTC',{decision:bitcoin,scalp:bitcoinScalp,movement:bitcoinMovement,stateGraph:bitcoinStateGraph,tick:bitcoinTick,expected:bitcoinExpectedLearning,learning:bitcoinLearning,brainLearning:bitcoinBrainLearning,now});
     const goldBrainRecord=recordBrainOutcomeObservation({asset:'GOLD',price:goldPrice,atr:goldAtr,now,multiBrain:goldMultiBrain});
     const bitcoinBrainRecord=recordBrainOutcomeObservation({asset:'BTC',price:btcPrice,atr:btcAtr,now,multiBrain:bitcoinMultiBrain});
-    const scalpFusionDiag=bitcoinScalp.fusionV8||bitcoinScalp.fusionV8||bitcoinScalp.fusionV7||bitcoinScalp.fusionV6||bitcoinScalp.fusionV5||bitcoinScalp.fusionV4||bitcoinScalp.fusionV3||{};
+    const scalpFusionDiag=bitcoinScalp.fusionV8||{};
     const scalpTrackSource='SCALP_AMBUSH_TRADE_V8';
     const bitcoinScalpLive=recordNextMoveOutcome({
       asset:'BTC_SCALP_AMBUSH_V8',price:btcPrice,atr:btcAtr,now,
