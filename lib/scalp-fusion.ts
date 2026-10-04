@@ -111,7 +111,7 @@ function preMoveSignal(liq:any,motion:any,tick:any){
   return {side:sideOut,score:Number(score.toFixed(1)),gap:Number(gap.toFixed(1)),support,armed,ignition,priceStillCoiled,lateMomentum,etaSeconds,quality:q,pressure:Number(pressure.toFixed(1)),microEdge:Number(micro.toFixed(1)),acceleration:Number(accel.toFixed(1)),deltaPct:Number(delta.toFixed(1)),priceChangeBps:Number(priceBps.toFixed(2)),compression,precursorCount,tickSide:t.side,tickStage:t.stage,tickScore:Number(t.score.toFixed(1))};
 }
 
-export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,price:number|null,atr:number|null,liveOutcome:any=null,tick:any=null,accumulation:any=null,asset='BTC'){
+export function buildAmbushEngine(raw:any,liq:any,motion:any,learner:any,ml:any,price:number|null,atr:number|null,liveOutcome:any=null,tick:any=null,accumulation:any=null,asset='BTC'){
   const techSide=technicalSide(raw);
   const long=Number(raw?.score?.long||0),short=Number(raw?.score?.short||0),techBest=Math.max(long,short),techGap=Math.abs(long-short);
   const liqSide=side(liq?.side),liqScore=liquidityStrength(liq);
