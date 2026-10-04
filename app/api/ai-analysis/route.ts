@@ -146,13 +146,13 @@ export async function GET(request:Request){
     const bitcoinLearner=trainScalpLearner(btc.c1,now,btcCostAtr);
     const goldAccumulation=buildAccumulationMap(gm.c1,gm.c5,goldPrice,null,now);
     const bitcoinAccumulation=buildAccumulationMap(btc.c1,btc.c5,btcPrice,liquidity,now);
-    const goldTick=getServerTickSignal('GOLD',now);
+    const goldTick=getServerTickSignal('GOLD',now)||goldWave;
     const motion=getMotionIntelligence(btcPrice,liquidity,btc.c1,now);
     const bitcoinScalpPrior=getNextMoveOutcome('BTC_SCALP_V6',btcPrice,now);
     const mlPredictionPromise=getMlPrediction(btc.c1,now).catch(()=>({ok:false,status:'UNAVAILABLE',shadow:true} as any));
     const neuralPredictionPromise=getNeuralPrediction(now).catch(()=>({ok:false,status:'UNAVAILABLE',ready:false,side:'WAIT'} as any));
     const bitcoinMlRaw=await mlPredictionPromise;
-    const bitcoinTick=getServerTickSignal('BTC',now);
+    const bitcoinTick=getServerTickSignal('BTC',now)||btcWave;
     const goldScalp=buildScalpFusion(goldScalpRaw,null,null,goldLearner,null,goldPrice,goldAtr,null,goldTick,goldAccumulation);
     const bitcoinScalp=buildScalpFusion(bitcoinScalpRaw,liquidity,motion,bitcoinLearner,bitcoinMlRaw,btcPrice,btcAtr,bitcoinScalpPrior,bitcoinTick,bitcoinAccumulation);
     const goldBehavior=studyMarketBehavior(gm.c1,gm.c5,now);
