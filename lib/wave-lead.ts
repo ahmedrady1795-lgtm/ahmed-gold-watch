@@ -1,6 +1,6 @@
 export type WaveTick={at:number;price:number;bid?:number;ask?:number;bidQty?:number;askQty?:number};
 export type WaveLead={
-  ok:boolean;side:'BUY'|'SELL'|'WAIT';stage:'WARMING'|'COILED'|'WAVE_FORMING'|'IGNITION';
+  ok:boolean;side:'BUY'|'SELL'|'WAIT';stage:'WARMING'|'COILED'|'PRE_TRIGGER'|'WAVE_FORMING'|'IGNITION';
   score:number;buy:number;sell:number;confidence:number;
   velocity1s:number;velocity3s:number;velocity8s:number;acceleration:number;
   persistence:number;burstRate:number;imbalance:number;spreadBps:number|null;spreadCompression:number;
@@ -62,7 +62,13 @@ export function computeWaveLead(input:WaveTick[],now=Date.now()):WaveLead{
   const gap=Math.abs(buy-sell),side:'BUY'|'SELL'|'WAIT'=buy-sell>=9?'BUY':sell-buy>=9?'SELL':'WAIT',score=Math.max(buy,sell);
   const precursorCount=[Math.abs(v1)>=.35,Math.abs(acceleration)>=.18,persistence>=62,Math.abs(imbalance)>=18,burstRate>=1.35,spreadCompression>=18,coiled].filter(Boolean).length;
   let stage:WaveLead['stage']='WARMING';
+  const preTrigger=Boolean(
+    side!=='WAIT'&&score>=36&&precursorCount>=2&&Math.abs(v1)<=.65&&
+    (coiled||spreadCompression>=14)&&
+    ((accSide===side&&Math.abs(acceleration)>=.10)||(bookSide===side&&Math.abs(imbalance)>=14))
+  );
   if(coiled&&score>=30)stage='COILED';
+  if(preTrigger)stage='PRE_TRIGGER';
   if(side!=='WAIT'&&score>=46&&precursorCount>=3)stage='WAVE_FORMING';
   if(side!=='WAIT'&&score>=64&&Math.abs(v1)>=.7&&persistence>=62&&burstRate>=1.15)stage='IGNITION';
   const confidence=cap(score*.62+Math.min(100,gap*2)*.18+Math.min(100,precursorCount*14)*.20,0,88);
