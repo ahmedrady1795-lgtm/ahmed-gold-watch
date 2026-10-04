@@ -4,7 +4,7 @@ import type {Candle} from './engine';
 
 type Side='BUY'|'SELL'|'WAIT';
 type H='m2'|'m5'|'m15';
-type HStats={n:number;up:number;down:number;flat:number;strongUp:number;strongDown:number;sumCloseAtr:number;sumMfeUp:number;sumMfeDown:number;lastAt:number};
+type HStats={n:number;up:number;down:number;flat:number;strongUp:number;strongDown:number;sumCloseAtr:number;sumMfeUp:number;sumMfeDown:number;sumFirstMinutes:number;firstHitCount:number;lastAt:number};
 type Cal={n:number;correct:number;wrong:number;flat:number;sumSignedAtr:number;lastAt:number};
 type Bucket={m2:HStats;m5:HStats;m15:HStats};
 type Obs={
@@ -26,6 +26,7 @@ export type ExpectedMoveHorizon={
   side:Side;strength:number;confidence:number;samples:number;
   meanCloseAtr:number;expectedUpAtr:number;expectedDownAtr:number;
   burstSide:Side;burstProbability:number;calibration:number;
+  firstHitMinutes:number;decisiveRate:number;
 };
 export type ExpectedMoveLearning={
   ok:boolean;asset:string;
@@ -39,10 +40,10 @@ export type ExpectedMoveLearning={
 
 const FILE=process.env.PREDATOR_EXPECTED_MOVE_FILE||'/data/predator-expected-move-learning.json';
 const FALLBACK='/tmp/predator-expected-move-learning.json';
-const SCHEMA='expected-v1';
+const SCHEMA='first-move-v2';
 const cap=(n:number,a=0,b=92)=>Math.max(a,Math.min(b,n));
 const avg=(a:number[])=>a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
-const emptyH=():HStats=>({n:0,up:0,down:0,flat:0,strongUp:0,strongDown:0,sumCloseAtr:0,sumMfeUp:0,sumMfeDown:0,lastAt:0});
+const emptyH=():HStats=>({n:0,up:0,down:0,flat:0,strongUp:0,strongDown:0,sumCloseAtr:0,sumMfeUp:0,sumMfeDown:0,sumFirstMinutes:0,firstHitCount:0,lastAt:0});
 const emptyCal=():Cal=>({n:0,correct:0,wrong:0,flat:0,sumSignedAtr:0,lastAt:0});
 const emptyStore=():Store=>({version:1,patterns:{},calibration:{},observations:[],bootstrapped:{},totals:{}});
 
@@ -85,13 +86,13 @@ function features(c:Candle[],i:number){
 function keys(asset:string,f:any,ctx:any,at:number){
   const mom=bucket(f.r3,[-.9,-.35,-.08,.08,.35,.9]),acc=bucket(f.acc,[-.35,-.10,.10,.35]),comp=bucket(f.comp,[.55,.75,1,1.35]),pos=bucket(f.pos,[.2,.4,.6,.8]),eff=bucket(f.eff,[.25,.5,.72]),vol=bucket(f.atrBps,[2,4,7,12,20]),ses=session(at);
   const out=[
-    'EM|'+asset+'|m'+mom+'|a'+acc+'|c'+comp+'|p'+pos+'|e'+eff+'|v'+vol,
-    'EMS|'+asset+'|'+ses+'|m'+mom+'|c'+comp+'|v'+vol,
-    'EMV|'+asset+'|v'+vol+'|c'+comp+'|p'+pos
+    'FM2|'+asset+'|m'+mom+'|a'+acc+'|c'+comp+'|p'+pos+'|e'+eff+'|v'+vol,
+    'FM2S|'+asset+'|'+ses+'|m'+mom+'|c'+comp+'|v'+vol,
+    'FM2V|'+asset+'|v'+vol+'|c'+comp+'|p'+pos
   ];
   if(ctx){
     const sg=String(ctx?.stateGraph?.current||'NA'),sgn=String(ctx?.stateGraph?.nextState||'NA'),m1=String(ctx?.structure?.m1?.phase||'NA'),m5=String(ctx?.structure?.m5?.phase||'NA'),ac=String(ctx?.accumulation?.phase||'NA'),liq=String(ctx?.liquidity?.side||'NA');
-    out.unshift('EMC|'+asset+'|'+ses+'|'+sg+'|'+sgn+'|'+m1+'|'+m5+'|'+ac+'|'+liq);
+    out.unshift('FM2C|'+asset+'|'+ses+'|'+sg+'|'+sgn+'|'+m1+'|'+m5+'|'+ac+'|'+liq);
   }
   return [...new Set(out)];
 }
@@ -100,12 +101,15 @@ function ensureBucket(k:string){
   return store.patterns[k];
 }
 function ensureCal(asset:string){
-  if(!store.calibration[asset])store.calibration[asset]={m2:emptyCal(),m5:emptyCal(),m15:emptyCal()};
-  return store.calibration[asset];
+  const key=asset+':'+SCHEMA;
+  if(!store.calibration[key])store.calibration[key]={m2:emptyCal(),m5:emptyCal(),m15:emptyCal()};
+  return store.calibration[key];
 }
+function totalsKey(asset:string){return asset+':'+SCHEMA;}
+function normalizeH(s:HStats){s.sumFirstMinutes=Number(s.sumFirstMinutes||0);s.firstHitCount=Number(s.firstHitCount||0);return s;}
 function decayH(s:HStats,at:number,h:H){
-  if(!s.lastAt||at<=s.lastAt)return;const f=Math.pow(.5,(at-s.lastAt)/halfLife(h));
-  if(f<.999){s.n*=f;s.up*=f;s.down*=f;s.flat*=f;s.strongUp*=f;s.strongDown*=f;s.sumCloseAtr*=f;s.sumMfeUp*=f;s.sumMfeDown*=f;}
+  normalizeH(s);if(!s.lastAt||at<=s.lastAt)return;const f=Math.pow(.5,(at-s.lastAt)/halfLife(h));
+  if(f<.999){s.n*=f;s.up*=f;s.down*=f;s.flat*=f;s.strongUp*=f;s.strongDown*=f;s.sumCloseAtr*=f;s.sumMfeUp*=f;s.sumMfeDown*=f;s.sumFirstMinutes*=f;s.firstHitCount*=f;}
 }
 function decayCal(s:Cal,at:number,h:H){
   if(!s.lastAt||at<=s.lastAt)return;const f=Math.pow(.5,(at-s.lastAt)/halfLife(h));
@@ -115,36 +119,46 @@ function outcome(c:Candle[],startTime:number,entry:number,a:number,h:H){
   const end=startTime+bars(h)*60000,window=c.filter(x=>x.time>startTime&&x.time<=end);
   if(window.length<bars(h))return null;
   const last=window.at(-1)!,closeAtr=(last.close-entry)/a,mfeUp=(Math.max(...window.map(x=>x.high))-entry)/a,mfeDown=(entry-Math.min(...window.map(x=>x.low)))/a;
-  return {closeAtr,mfeUp,mfeDown,at:last.time};
+  const g=gate(h);let firstSide:Side='WAIT',firstMinutes=0,ambiguous=false;
+  for(const bar of window){
+    const upHit=(bar.high-entry)/a>=g,downHit=(entry-bar.low)/a>=g;
+    if(upHit&&downHit){ambiguous=true;firstSide='WAIT';firstMinutes=(bar.time-startTime)/60000;break;}
+    if(upHit){firstSide='BUY';firstMinutes=(bar.time-startTime)/60000;break;}
+    if(downHit){firstSide='SELL';firstMinutes=(bar.time-startTime)/60000;break;}
+  }
+  return {closeAtr,mfeUp,mfeDown,firstSide,firstMinutes,ambiguous,at:last.time};
 }
 function label(v:number,h:H):Side{const g=gate(h);return v>=g?'BUY':v<=-g?'SELL':'WAIT';}
-function updateStats(s:HStats,o:{closeAtr:number;mfeUp:number;mfeDown:number;at:number},h:H){
+function updateStats(s:HStats,o:{closeAtr:number;mfeUp:number;mfeDown:number;firstSide:Side;firstMinutes:number;ambiguous:boolean;at:number},h:H){
   decayH(s,o.at,h);s.n++;s.sumCloseAtr+=o.closeAtr;s.sumMfeUp+=o.mfeUp;s.sumMfeDown+=o.mfeDown;s.lastAt=o.at;
-  const y=label(o.closeAtr,h);if(y==='BUY')s.up++;else if(y==='SELL')s.down++;else s.flat++;
+  const y=o.firstSide;if(y==='BUY')s.up++;else if(y==='SELL')s.down++;else s.flat++;
+  if(y!=='WAIT'){s.firstHitCount++;s.sumFirstMinutes+=o.firstMinutes;}
   const bg=burstGate(h);
-  if(o.mfeUp>=bg||o.mfeDown>=bg){
-    if(o.mfeUp>o.mfeDown)s.strongUp++;else if(o.mfeDown>o.mfeUp)s.strongDown++;
-  }
+  if(o.mfeUp>=bg||o.mfeDown>=bg){if(o.mfeUp>o.mfeDown)s.strongUp++;else if(o.mfeDown>o.mfeUp)s.strongDown++;}
 }
-function updateCal(s:Cal,pred:Side,o:{closeAtr:number;at:number},h:H){
-  if(pred==='WAIT')return;decayCal(s,o.at,h);s.n++;const y=label(o.closeAtr,h);
+function updateCal(s:Cal,pred:Side,o:{closeAtr:number;firstSide:Side;at:number},h:H){
+  if(pred==='WAIT')return;decayCal(s,o.at,h);s.n++;const y=o.firstSide;
   if(y==='WAIT')s.flat++;else if(y===pred)s.correct++;else s.wrong++;
-  s.sumSignedAtr+=o.closeAtr*(pred==='BUY'?1:-1);s.lastAt=o.at;
+  const firstEdge=y==='BUY'?gate(h):y==='SELL'?-gate(h):0;
+  s.sumSignedAtr+=firstEdge*(pred==='BUY'?1:-1);s.lastAt=o.at;
 }
 function calScore(s:Cal,now:number,h:H){
   if(s.n<5)return 50;const dir=s.correct+s.wrong,acc=dir?(s.correct+3)/(dir+6):.5,edge=s.sumSignedAtr/Math.max(1,s.n),sample=Math.min(1,s.n/40),age=s.lastAt?now-s.lastAt:halfLife(h),rec=.65+.35*Math.pow(.5,age/halfLife(h));
   return Math.round(cap(50+((acc-.5)*72+Math.max(-.35,Math.min(.35,edge))*42)*sample*rec,30,78));
 }
 function aggregate(ks:string[],h:H,now:number){
-  let w=0,n=0,up=0,down=0,mean=0,mfeUp=0,mfeDown=0,su=0,sd=0,matched=0;
-  ks.forEach((k,idx)=>{const s=store.patterns[k]?.[h];if(!s||s.n<3)return;const rec=.35+.65*Math.pow(.5,Math.max(0,now-s.lastAt)/halfLife(h)),sw=Math.min(1,s.n/30)*(idx===0?1:.76)*rec;
-    up+=(s.up+2)/(s.n+6)*sw;down+=(s.down+2)/(s.n+6)*sw;mean+=s.sumCloseAtr/(s.n+8)*sw;mfeUp+=s.sumMfeUp/(s.n+8)*sw;mfeDown+=s.sumMfeDown/(s.n+8)*sw;su+=(s.strongUp+1)/(s.n+5)*sw;sd+=(s.strongDown+1)/(s.n+5)*sw;w+=sw;n+=s.n*sw;matched++;});
-  if(!w)return {side:'WAIT' as Side,strength:0,confidence:0,samples:0,meanCloseAtr:0,expectedUpAtr:0,expectedDownAtr:0,burstSide:'WAIT' as Side,burstProbability:0,matched:0};
-  up/=w;down/=w;mean/=w;mfeUp/=w;mfeDown/=w;su/=w;sd/=w;n/=w;
-  let signed=(up-down)*100+Math.max(-42,Math.min(42,mean*70));if((up-down)*mean<0&&Math.abs(mean)>.03)signed*=.55;
-  const side=sideOf(signed,9),strength=Math.round(cap(50+Math.abs(signed)*.38,0,88)),confidence=Math.round(cap(35+Math.min(30,n)*1.05+Math.abs(signed)*.20,0,80));
+  let w=0,n=0,up=0,down=0,mean=0,mfeUp=0,mfeDown=0,su=0,sd=0,firstMinutes=0,hitRate=0,matched=0;
+  ks.forEach((k,idx)=>{const s=store.patterns[k]?.[h];if(!s||s.n<3)return;normalizeH(s);const rec=.35+.65*Math.pow(.5,Math.max(0,now-s.lastAt)/halfLife(h)),sw=Math.min(1,s.n/30)*(idx===0?1:.76)*rec;
+    up+=(s.up+2)/(s.n+6)*sw;down+=(s.down+2)/(s.n+6)*sw;mean+=s.sumCloseAtr/(s.n+8)*sw;mfeUp+=s.sumMfeUp/(s.n+8)*sw;mfeDown+=s.sumMfeDown/(s.n+8)*sw;su+=(s.strongUp+1)/(s.n+5)*sw;sd+=(s.strongDown+1)/(s.n+5)*sw;
+    firstMinutes+=(s.firstHitCount?s.sumFirstMinutes/s.firstHitCount:bars(h))*sw;hitRate+=(s.firstHitCount/Math.max(1,s.n))*sw;w+=sw;n+=s.n*sw;matched++;});
+  if(!w)return {side:'WAIT' as Side,strength:0,confidence:0,samples:0,meanCloseAtr:0,expectedUpAtr:0,expectedDownAtr:0,burstSide:'WAIT' as Side,burstProbability:0,firstHitMinutes:0,decisiveRate:0,matched:0};
+  up/=w;down/=w;mean/=w;mfeUp/=w;mfeDown/=w;su/=w;sd/=w;firstMinutes/=w;hitRate/=w;n/=w;
+  const firstBias=(up-down)*100,excursionBias=Math.max(-22,Math.min(22,(mfeUp-mfeDown)*18)),followBias=Math.max(-10,Math.min(10,mean*10));
+  let signed=firstBias*.82+excursionBias*.13+followBias*.05;
+  if(hitRate<.45)signed*=.72;
+  const side=sideOf(signed,9),strength=Math.round(cap(50+Math.abs(signed)*.40,0,88)),confidence=Math.round(cap((32+Math.min(30,n)*1.0+Math.abs(signed)*.20)*(0.72+Math.min(.28,hitRate*.35)),0,80));
   const burstDelta=(su-sd)*100,burstSide=sideOf(burstDelta,6),burstProbability=Math.round(cap(Math.max(su,sd)*100,0,92));
-  return {side,strength,confidence,samples:Math.round(n),meanCloseAtr:Number(mean.toFixed(3)),expectedUpAtr:Number(mfeUp.toFixed(3)),expectedDownAtr:Number(mfeDown.toFixed(3)),burstSide,burstProbability,matched};
+  return {side,strength,confidence,samples:Math.round(n),meanCloseAtr:Number(mean.toFixed(3)),expectedUpAtr:Number(mfeUp.toFixed(3)),expectedDownAtr:Number(mfeDown.toFixed(3)),burstSide,burstProbability,firstHitMinutes:Number(firstMinutes.toFixed(2)),decisiveRate:Math.round(cap(hitRate*100,0,100)),matched};
 }
 async function bootstrap(asset:string,c1:Candle[],now:number){
   const key=asset+':'+SCHEMA;if(store.bootstrapped[key])return false;
@@ -158,26 +172,26 @@ async function bootstrap(asset:string,c1:Candle[],now:number){
 async function settle(asset:string,c1:Candle[],now:number){
   const c=c1.filter(x=>x.time+60000<=now),cal=ensureCal(asset);let changed=false;
   for(const o of store.observations){
-    if(o.asset!==asset)continue;
+    if(o.asset!==asset||!String(o.id||'').includes(':'+SCHEMA+':'))continue;
     for(const h of ['m2','m5','m15'] as H[]){
       if(o.settled[h])continue;const out=outcome(c,o.candleTime,o.price,o.atr,h);if(!out)continue;
       for(const k of o.keys)updateStats(ensureBucket(k)[h],out,h);updateCal(cal[h],o.predictions[h],out,h);o.settled[h]=true;changed=true;
-      const t=store.totals[asset]||{observations:0,resolved2:0,resolved5:0,resolved15:0,updatedAt:0};
-      if(h==='m2')t.resolved2++;else if(h==='m5')t.resolved5++;else t.resolved15++;t.updatedAt=now;store.totals[asset]=t;
+      const tk=totalsKey(asset),t=store.totals[tk]||{observations:0,resolved2:0,resolved5:0,resolved15:0,updatedAt:0};
+      if(h==='m2')t.resolved2++;else if(h==='m5')t.resolved5++;else t.resolved15++;t.updatedAt=now;store.totals[tk]=t;
     }
   }
   store.observations=store.observations.filter(o=>!(o.settled.m2&&o.settled.m5&&o.settled.m15&&now-o.createdAt>12*3600000)).slice(-900);
   return changed;
 }
 function decorate(raw:any,cal:number):ExpectedMoveHorizon{
-  const factor=.82+cal/280;return {...raw,confidence:Math.round(cap(raw.confidence*factor,0,82)),calibration:cal};
+  const factor=.82+cal/280;return {...raw,confidence:Math.round(cap(raw.confidence*factor,0,82)),calibration:cal,firstHitMinutes:Number(raw.firstHitMinutes||0),decisiveRate:Number(raw.decisiveRate||0)};
 }
 
 export async function getExpectedMoveLearning(args:{asset:string;c1:Candle[];context:any;now?:number}):Promise<ExpectedMoveLearning>{
   return serialized(async()=>{
     await load();const now=args.now||Date.now(),b=await bootstrap(args.asset,args.c1,now),s=await settle(args.asset,args.c1,now);if(b||s)await save();
-    const c=args.c1.filter(x=>x.time+60000<=now),i=c.length-1,t=store.totals[args.asset]||{observations:0,resolved2:0,resolved5:0,resolved15:0,updatedAt:0};
-    const blank:ExpectedMoveHorizon={side:'WAIT',strength:0,confidence:0,samples:0,meanCloseAtr:0,expectedUpAtr:0,expectedDownAtr:0,burstSide:'WAIT',burstProbability:0,calibration:50};
+    const c=args.c1.filter(x=>x.time+60000<=now),i=c.length-1,t=store.totals[totalsKey(args.asset)]||{observations:0,resolved2:0,resolved5:0,resolved15:0,updatedAt:0};
+    const blank:ExpectedMoveHorizon={side:'WAIT',strength:0,confidence:0,samples:0,meanCloseAtr:0,expectedUpAtr:0,expectedDownAtr:0,burstSide:'WAIT',burstProbability:0,calibration:50,firstHitMinutes:0,decisiveRate:0};
     if(i<28)return {ok:false,asset:args.asset,twoMinute:blank,fiveMinute:blank,fifteenMinute:blank,consensusSide:'WAIT',consensusScore:0,conflict:false,totals:t,storage:storagePath,reasons:['بيانات غير كافية لذاكرة الحركة المتوقعة.']};
     const f=features(c,i);if(!f)return {ok:false,asset:args.asset,twoMinute:blank,fiveMinute:blank,fifteenMinute:blank,consensusSide:'WAIT',consensusScore:0,conflict:false,totals:t,storage:storagePath,reasons:['ATR غير كافٍ.']};
     const ks=keys(args.asset,f,args.context,c[i].time),cal=ensureCal(args.asset);
@@ -187,9 +201,9 @@ export async function getExpectedMoveLearning(args:{asset:string;c1:Candle[];con
     const consensusSide=sideOf(signed,8),active=[h2.side,h5.side,h15.side].filter(x=>x!=='WAIT'),conflict=active.includes('BUY')&&active.includes('SELL');
     const consensusScore=Math.round(cap(Math.abs(signed)+(conflict?-12:8),0,88));
     return {ok:true,asset:args.asset,twoMinute:h2,fiveMinute:h5,fifteenMinute:h15,consensusSide,consensusScore,conflict,totals:t,storage:storagePath,reasons:[
-      '2m '+h2.side+' · cal '+h2.calibration+' · '+h2.samples+' samples',
-      '5m '+h5.side+' · cal '+h5.calibration+' · '+h5.samples+' samples',
-      '15m '+h15.side+' · cal '+h15.calibration+' · '+h15.samples+' samples',
+      '2m first '+h2.side+' · hit '+h2.decisiveRate+'% · '+h2.firstHitMinutes+'m · cal '+h2.calibration+' · '+h2.samples+' samples',
+      '5m first '+h5.side+' · hit '+h5.decisiveRate+'% · '+h5.firstHitMinutes+'m · cal '+h5.calibration+' · '+h5.samples+' samples',
+      '15m first '+h15.side+' · hit '+h15.decisiveRate+'% · '+h15.firstHitMinutes+'m · cal '+h15.calibration+' · '+h15.samples+' samples',
       conflict?'2/5/15 conflict detected':'2/5/15 path internally consistent'
     ]};
   });
@@ -201,6 +215,6 @@ export async function recordExpectedMoveObservation(args:{asset:string;c1:Candle
     const candle=c[i],f=features(c,i);if(!f)return false;const id=args.asset+':'+SCHEMA+':'+candle.time;if(store.observations.some(x=>x.id===id))return false;
     const predictions:{m2:Side;m5:Side;m15:Side}={m2:args.forecast?.horizons?.twoMinute?.side||'WAIT',m5:args.forecast?.horizons?.fiveMinute?.side||'WAIT',m15:args.forecast?.horizons?.fifteenMinute?.side||'WAIT'};
     store.observations.push({id,asset:args.asset,candleTime:candle.time,price:candle.close,atr:f.atr,keys:keys(args.asset,f,args.context,candle.time),predictions,settled:{m2:false,m5:false,m15:false},createdAt:now});
-    const t=store.totals[args.asset]||{observations:0,resolved2:0,resolved5:0,resolved15:0,updatedAt:0};t.observations++;t.updatedAt=now;store.totals[args.asset]=t;store.observations=store.observations.slice(-900);await save();return true;
+    const tk=totalsKey(args.asset),t=store.totals[tk]||{observations:0,resolved2:0,resolved5:0,resolved15:0,updatedAt:0};t.observations++;t.updatedAt=now;store.totals[tk]=t;store.observations=store.observations.slice(-900);await save();return true;
   });
 }
