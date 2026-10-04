@@ -366,7 +366,14 @@ export function recordNextMoveOutcome(args:{
           motion:String(micro?.motion||'WAIT'),ml1:String(micro?.ml1||'WAIT'),trap:String(micro?.trap||'WAIT'),
           validatedMlConflict:Boolean(micro?.validatedMlConflict),reactionConflict:Boolean(micro?.reactionConflict),
           slowDoubleConflict:Boolean(micro?.slowDoubleConflict),historicalWeak:Boolean(micro?.historicalWeak),
-          wfScope:String(micro?.wfScope||''),wfStatus:String(micro?.wfStatus||'')
+          wfScope:String(micro?.wfScope||''),wfStatus:String(micro?.wfStatus||''),
+          predatorPhase:String(micro?.predator?.phase||micro?.predatorPhase||''),
+          predatorPattern:String(micro?.predator?.pattern||micro?.predatorPattern||''),
+          predatorScore:Number(micro?.predator?.score||micro?.predatorScore||0),
+          predatorStableCount:Number(micro?.predator?.stableCount||micro?.predatorStableCount||0),
+          predatorPersistence:Number(micro?.predator?.persistence||micro?.predatorPersistence||0),
+          predatorTemporalReady:Boolean(micro?.predator?.temporalReady||micro?.predatorTemporalReady),
+          predatorShockReady:Boolean(micro?.predator?.shockReady||micro?.predatorShockReady)
         }
       });
       if(a.pending.length>30)a.pending=a.pending.slice(-30);
