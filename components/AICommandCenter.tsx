@@ -232,7 +232,7 @@ function AssetCard({x,fast}:any){
           <span>محايد <b>{ambush?.neutral||0}</b></span>
           <span>مساعدين <b>{helperCount}/10</b></span>
         </div>
-        <p>{String(predator?.pattern||'HUNT')} · score {predator?.score??0} · stable {predator?.stableCount??0} · تأكيد قوي {helpers.attack?'نعم':'لا'} · OOS {ambushWf?.oos?.accuracy==null?'—':(ambushWf.oos.accuracy+'%')}</p>
+        <p>{String(predator?.pattern||'HUNT')} · score {predator?.score??0} · stable {predator?.stableCount??0} · تأكيد قوي {helpers.confirmation?'نعم':'لا'} · OOS {ambushWf?.oos?.accuracy==null?'—':(ambushWf.oos.accuracy+'%')}</p>
       </div>;
     })()}
 
