@@ -1,9 +1,9 @@
 import {getRuntimeEnv} from '../../../../lib/runtime';
 import {getMarketSnapshot,getMt5FastSignal} from '../../../../lib/market-hub';
-import {ambushTechnicalHelper} from '../../../../lib/engine';
+import {scalpAnalyze} from '../../../../lib/engine';
 import {trainScalpLearner} from '../../../../lib/scalp-learning';
 import {buildAccumulationMap} from '../../../../lib/accumulation-map';
-import {buildAmbushEngine} from '../../../../lib/scalp-fusion';
+import {buildScalpFusion} from '../../../../lib/scalp-fusion';
 
 export const dynamic='force-dynamic';
 
@@ -56,12 +56,12 @@ export async function GET(request:Request){
     const price=Number(q?.price),atr=atrNow(m.c1),spread=Number(q?.spread);
     const costAtr=atr&&atr>0&&Number.isFinite(spread)?Math.max(.05,spread/atr+.03):.10;
     const learner=trainScalpLearner(m.c1,now,costAtr);
-    const technicalHelper=ambushTechnicalHelper(m.c1,m.c5,now,price);
+    const technicalHelper=scalpAnalyze(m.c1,m.c5,now,price);
     const fast=getMt5FastSignal(now);
     const book=bookIntel((mt5 as any)?.status||mt5);
     const liquidity=liquidityFromMt5(book,fast,price);
     const accumulation=buildAccumulationMap(m.c1,m.c5,price,liquidity,now);
-    const ambush=buildAmbushEngine(technicalHelper,liquidity,null,learner,null,price,atr,null,fast,accumulation,'GOLD');
+    const ambush=buildScalpFusion(technicalHelper,liquidity,null,learner,null,price,atr,null,fast,accumulation,'GOLD');
     const plan=ambush?.ambushPlan||null;
     const trade=ambush?.trade||null;
     const ambushActive=Boolean(ambush?.action==='BUY'||ambush?.action==='SELL');
