@@ -12,11 +12,13 @@ from pydantic import BaseModel
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss, brier_score_loss
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
+from microstructure import MicrostructureCore
 
-APP_VERSION="predator-ml-v10-hot-swap"
+APP_VERSION="predator-ml-v11-neural-micro-shadow"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 MODEL_PATH=MODEL_DIR/"btc_ml_ensemble.joblib"
 META_PATH=MODEL_DIR/"btc_ml_meta.json"
+MICRO=MicrostructureCore(MODEL_DIR)
 TRAIN_CANDLES=int(os.getenv("ML_TRAINING_CANDLES","30000"))
 RETRAIN_SECONDS=int(os.getenv("ML_RETRAIN_SECONDS",str(6*3600)))
 MIN_TRAIN_ROWS=int(os.getenv("ML_MIN_TRAIN_ROWS","5000"))
@@ -666,10 +668,12 @@ def predict_m5(model,x):
     }
 
 @app.on_event("startup")
-def startup(): start_train_if_needed()
+def startup():
+    start_train_if_needed()
+    MICRO.start()
 
 @app.get("/health")
-def health(): return {"ok":True,"version":APP_VERSION,**STATE}
+def health(): return {"ok":True,"version":APP_VERSION,"microstructure":MICRO.status(),**STATE}
 
 @app.post("/train")
 def train():
@@ -680,7 +684,7 @@ def train():
 @app.post("/predict")
 def predict(body:PredictBody):
     if not MODELS: load_model()
-    if not MODELS: return {"ok":False,"status":STATE["status"],"reason":"model_not_ready","state":STATE}
+    if not MODELS: return {"ok":False,"status":STATE["status"],"reason":"model_not_ready","state":STATE,"microstructure":MICRO.predict()}
     live_source="Binance Vision BTCUSDT 1m + taker flow"; live_error=None
     try:
         live_df,live_source,live_error=get_live_binance_frame()
@@ -696,9 +700,10 @@ def predict(body:PredictBody):
     m1=predict_h(MODELS["models"]["m1"],x1)
     m5_model=MODELS["models"]["m5"]
     m5=predict_m5(m5_model,x5) if m5_model.get("mode")=="m5_multiclass" else predict_h(m5_model,x5)
+    micro=MICRO.predict()
     aligned=m1["leanSide"]==m5["leanSide"]; consensus=m1["leanSide"] if aligned else (m1["leanSide"] if m1["edge"]>=m5["edge"] else m5["leanSide"])
     return {"ok":True,"version":APP_VERSION,"status":STATE["status"],"trainedAt":MODELS.get("trainedAt"),"source":MODELS.get("source"),
-            "liveSource":live_source,"liveError":live_error,"historyRows":MODELS.get("historyRows"),"oneMinute":m1,"fiveMinute":m5,
+            "liveSource":live_source,"liveError":live_error,"historyRows":MODELS.get("historyRows"),"oneMinute":m1,"fiveMinute":m5,"microstructure":micro,
             "consensus":{"side":consensus,"aligned":aligned,"confidence":max(0,min(90,round(m1["confidence"]*.55+m5["confidence"]*.45+(5 if aligned else -6)))),
                          "ready":bool(m1["ready"] and m5["ready"])},
             "shadow":not (m1["ready"] or m5["ready"])}
