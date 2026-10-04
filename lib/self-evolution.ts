@@ -128,6 +128,7 @@ export async function evolveAnalysisPolicy(args:{asset:string;learning:any;state
   const resolved=Number(args.learning?.totals?.resolved1||0)+Number(args.learning?.totals?.resolved5||0);
   const self=Number(args.learning?.selfCalibration?.reliability||50);
   const samples=Number(args.learning?.selfCalibration?.samples1||0)+Number(args.learning?.selfCalibration?.samples5||0);
+  const previousEvalAt=Number(store.lastEvalAt||0);
   const currentFitness=fitness(store.active,args.learning,args.stateGraph);
   store.active.fitness=currentFitness;
   store.lastEvalAt=now;
@@ -144,7 +145,7 @@ export async function evolveAnalysisPolicy(args:{asset:string;learning:any;state
 
   const newOutcomes=Math.max(0,resolved-store.lastResolved);
   const cooldown=now-store.lastPromotionAt>=30*60*1000;
-  const canEvolve=samples>=20&&(newOutcomes>=8||now-store.lastEvalAt>=60*60*1000);
+  const canEvolve=samples>=20&&(newOutcomes>=8||!previousEvalAt||now-previousEvalAt>=60*60*1000);
   if(!rolledBack&&canEvolve){
     candidate=mutate(args.asset,store.active,args.learning,args.stateGraph,now);
     candidate.fitness=fitness(candidate,args.learning,args.stateGraph);
