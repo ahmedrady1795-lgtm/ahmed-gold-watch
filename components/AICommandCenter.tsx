@@ -21,7 +21,7 @@ function IndicatorMatrix({x}:any){
 function Card({x,fast}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
   const master=x.master||{action:x.action,state:x.phase||'WAIT',watchSide:'WAIT',reason:'',lockedSide:'WAIT',pendingReversal:'WAIT',pendingCount:0};
-  const trade=x.trade,buy=master.action==='BUY',sell=master.action==='SELL',pulse=x.livePulse,scalp=x.scalp,hunter=x.hunter,liq=x.liquidity,core=x.adaptiveCore,motion=x.motion,behavior=x.behavior,hunt=x.huntForecast;
+  const trade=x.trade,buy=master.action==='BUY',sell=master.action==='SELL',pulse=x.livePulse,scalp=x.scalp,learner=x.scalpLearner,hunter=x.hunter,liq=x.liquidity,core=x.adaptiveCore,motion=x.motion,behavior=x.behavior,hunt=x.huntForecast;
   return <section className="panel">
     <div className="panelhead"><div><span className="eyebrow">{x.asset} · MASTER DECISION</span><h2>{buy?'شراء معتمد':sell?'بيع معتمد':'انتظار'} · {master.state}</h2></div>{buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}</div>
 
@@ -133,6 +133,21 @@ function Card({x,fast}:any){
       <p>{scalp?.action&&scalp.action!=='WAIT'?('ميل '+sideAr(scalp.action)+' — غير معتمد إلا إذا وافق Master Decision.'):(scalp?.reason||'بانتظار توافق M1/M5.')}</p>
     </div>
 
+    {learner&&<div className={learner.ok?'safetybox':'sidecard'}>
+      <strong>🎓 SCALP LEARNER · {learner.ok?'VALIDATED':'TRAINING'} · ميل {sideAr(learner.side)}</strong>
+      <div className="levels">
+        <div><small>OOS Accuracy</small><strong>{learner.oosAccuracy||0}%</strong></div>
+        <div><small>OOS Edge</small><strong>{learner.oosEdgeAtr??0} ATR</strong></div>
+        <div><small>Samples</small><strong>{learner.sampleCount||0}</strong></div>
+      </div>
+      <div className="levels">
+        <div><small>Preferred Hold</small><strong>{learner.exitPlan?.maxHoldSeconds||0}ث</strong></div>
+        <div><small>Take</small><strong>{learner.exitPlan?.takeAtr||0} ATR</strong></div>
+        <div><small>Stop</small><strong>{learner.exitPlan?.stopAtr||0} ATR</strong></div>
+      </div>
+      {!!learner.reasons?.length&&<p>{learner.reasons.join(' · ')}</p>}
+    </div>}
+
     <IndicatorMatrix x={x}/>
 
     {!!x.vetoes?.length&&<div className="sidecard"><ShieldCheck/><p><b>لماذا لم يدخل؟</b><br/>{x.vetoes.join(' · ')}</p></div>}
@@ -143,8 +158,8 @@ export default function AICommandCenter({data,error,fastWave}:any){
   const auto=data?.autopilot;
   return <div>
     <section className="sidecard">
-      <strong>Predator Core v8.3 · Ultra-Fast Wave Hunter</strong>
-      <p>النواة الآن لها مسار سريع مستقل عن التحليل الثقيل: Tick-by-Tick Wave Lead من WebSocket يرصد السرعة والتسارع وBurst وثبات الاتجاه وBook Imbalance وSpread Compression، ثم يغذي HUNT FORECAST بينما يظل Master Decision هو بوابة الصفقة.</p>
+      <strong>Predator Core v8.4 · Scalp Learning Hunter</strong>
+      <p>النواة تجمع Tick-by-Tick Wave Lead مع Scalp Learner يتدرب على M1 ويختبر نفسه Out-of-Sample، ويتعلم مدة الاحتفاظ والخروج بالـATR. MT5 Fast Path مخصص حاليًا للتجربة والمحاكاة فقط، وMaster Decision يظل بوابة القرار.</p>
     </section>
 
     {!!data?.radar?.length&&<section className="panel">
