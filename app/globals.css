@@ -180,3 +180,8 @@ footer{display:flex;justify-content:space-between;gap:20px;color:#5f7880;font-si
 .expected-move-head span{font-size:11px;font-weight:700}.expected-move-head strong{font-size:10px;color:var(--muted)}
 .expected-move-primary .forecast-horizons>div{background:rgba(255,255,255,.025)}
 .expected-move-primary .forecast-horizons span{display:block;margin-top:3px;color:var(--muted);font-size:8px}
+
+.ai-outcome-mini{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin:6px 0 8px}
+.ai-outcome-mini span{display:flex;align-items:center;justify-content:space-between;gap:4px;padding:5px 6px;border:1px solid rgba(255,255,255,.06);border-radius:8px;background:rgba(4,13,16,.35);font-size:9px;color:var(--muted);white-space:nowrap}
+.ai-outcome-mini b{font-size:11px;color:var(--text)}
+@media(max-width:760px){.ai-outcome-mini{gap:3px}.ai-outcome-mini span{padding:4px;font-size:8px}.ai-outcome-mini b{font-size:10px}}
