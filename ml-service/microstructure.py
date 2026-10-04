@@ -92,8 +92,8 @@ class MicrostructureCore:
         bqn=bq/total;aqn=aq/total
         prev=self.rows[-1] if self.rows else None
         prevf=(prev or {}).get("f") or []
-        prev_bid_depth=float(prevf[44]) if len(prevf)>45 else bsum/total
-        prev_ask_depth=float(prevf[45]) if len(prevf)>45 else asum/total
+        prev_bid_depth=float(prevf[46]) if len(prevf)>47 else bsum/total
+        prev_ask_depth=float(prevf[47]) if len(prevf)>47 else asum/total
         bid_depth=bsum/total;ask_depth=asum/total
         pull_bid=bid_depth-prev_bid_depth;pull_ask=ask_depth-prev_ask_depth
         vec=list(bp)+list(bqn)+list(ap)+list(aqn)+[
