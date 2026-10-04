@@ -54,8 +54,10 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
   const learningSide:Side=sideFrom(marketLearning?.side);
   const learningConfidence=Number(marketLearning?.confidence||0),learningSamples=Number(marketLearning?.effectiveSamples||0),learningReliability=Number(marketLearning?.selfCalibration?.reliability||50);
   const learningUsable=Boolean(marketLearning?.ok&&learningSide!=='WAIT'&&learningConfidence>=Math.max(54,minLearningConfidence)&&learningSamples>=minLearningSamples&&learningReliability>=45);
-  const scalpLong=Number(scalp?.score?.long||0),scalpShort=Number(scalp?.score?.short||0),scalpGap=Math.abs(scalpLong-scalpShort),scalpStrength=Math.max(scalpLong,scalpShort,Number(scalp?.confidence||0));
-  const scalpSide:Side=scalp?.action==='BUY'?'BUY':scalp?.action==='SELL'?'SELL':scalpLong-scalpShort>=5?'BUY':scalpShort-scalpLong>=5?'SELL':'WAIT';
+  const ambushMove=scalp?.movement||{};
+  const scalpSide:Side=sideFrom(ambushMove?.side);
+  const scalpStrength=Number(ambushMove?.confidence||0);
+  const scalpGap=scalpSide==='WAIT'?0:scalpStrength;
   const neural=ml?.neuralCore||{};
   const neuralReady=Boolean(neural?.ok&&neural?.ready&&sideFrom(neural?.side)!=='WAIT'&&Number(neural?.metrics?.holdout?.selectiveAccuracy||0)>=.58);
   const neuralSide:Side=neuralReady?sideFrom(neural?.side):'WAIT';
