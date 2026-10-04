@@ -149,3 +149,10 @@ footer{display:flex;justify-content:space-between;gap:20px;color:#5f7880;font-si
 .quick-signal-row span{font-weight:700;font-size:13px;letter-spacing:.15px}
 .quick-signal-row strong{font-size:16px}
 .quick-signal-row strong b{font-size:13px;margin-inline-start:4px}
+
+.forecast-path,.forecast-horizons{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:10px 0}
+.forecast-horizons{grid-template-columns:repeat(3,1fr)}
+.forecast-path>div,.forecast-horizons>div{padding:10px;border:1px solid rgba(255,255,255,.06);border-radius:10px;background:rgba(4,13,16,.45)}
+.forecast-path small,.forecast-horizons small{display:block;color:var(--muted);font-size:9px}.forecast-path strong,.forecast-horizons strong{display:block;margin-top:4px}
+.forecast-alt{margin-top:9px;padding:10px;border:1px dashed rgba(255,203,107,.24);border-radius:10px;background:rgba(255,203,107,.035)}
+.forecast-alt small,.forecast-alt span{display:block;color:var(--muted);font-size:9px}.forecast-alt strong{display:block;margin:3px 0;font-size:12px}
