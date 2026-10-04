@@ -65,7 +65,7 @@ function weights(r:Regime,asset:string){
   if(r==='RANGE')return {expected:.22,tick:.09,motion:.05,liquidity:btc?.09:0,structure:.12,stateGraph:.15,accumulation:.10,behavior:.10,learning:.08};
   return {expected:.23,tick:.13,motion:.09,liquidity:btc?.10:0,structure:.11,stateGraph:.12,accumulation:.08,behavior:.06,learning:.08};
 }
-function resolve(ev:Evidence[]):Horizon{
+function resolve(ev:Evidence[],gate=10,softDirectional=false):Horizon{
   const usable=ev.filter(e=>e.side!=='WAIT'&&e.score>0&&e.weight>0);
   if(!usable.length)return {side:'WAIT',confidence:0,buyShare:50,sellShare:50,agreement:0,uncertainty:100};
   let buy=0,sell=0,w=0;
@@ -76,9 +76,17 @@ function resolve(ev:Evidence[]):Horizon{
   const total=buy+sell;if(total<=0)return {side:'WAIT',confidence:0,buyShare:50,sellShare:50,agreement:0,uncertainty:100};
   const buyShare=buy/total*100,sellShare=100-buyShare,agreement=Math.max(buyShare,sellShare),edge=Math.abs(buyShare-sellShare);
   const coverage=cap(w/Math.max(.55,usable.reduce((s,e)=>s+e.weight,0)),.55,1);
-  const confidence=cap((edge*.72+agreement*.18+usable.length*1.6)*coverage,0,88);
-  const out:Side=edge>=10?(buy>sell?'BUY':'SELL'):'WAIT';
+  const hard=edge>=gate;
+  const soft=softDirectional&&edge>=1.5&&agreement>=50.75&&usable.length>=2;
+  const confidence=cap((edge*.72+agreement*.18+usable.length*1.6)*coverage*(soft&&!hard?.82:1),0,88);
+  const out:Side=(hard||soft)?(buy>sell?'BUY':'SELL'):'WAIT';
   return {side:out,confidence:Math.round(confidence),buyShare:Math.round(buyShare),sellShare:Math.round(sellShare),agreement:Math.round(agreement),uncertainty:Math.round(100-confidence)};
+}
+function softExpectedSide(x:any):Side{
+  const direct=side(x?.side);if(direct!=='WAIT')return direct;
+  const mean=Number(x?.meanCloseAtr||0),exc=Number(x?.expectedUpAtr||0)-Number(x?.expectedDownAtr||0);
+  const signed=mean*.62+exc*.38;
+  return Math.abs(signed)>=.025?(signed>0?'BUY':'SELL'):'WAIT';
 }
 function ev(name:string,s:any,score:number,weight:number,reliability=1):Evidence{return {name,side:side(s),score:cap(Number(score||0),0,92),weight,reliability:cap(reliability,.55,1.35)};}
 
@@ -87,6 +95,8 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   const policy=args?.evolution?.active||null,ew=(name:string)=>cap(Number(policy?.weights?.[name]||1),.5,1.35);
   const regime=regimeOf(g,acc),baseW=weights(regime,asset),w={...baseW,expected:baseW.expected*ew('learning'),tick:baseW.tick*ew('wave'),motion:baseW.motion*ew('motion'),liquidity:baseW.liquidity*ew('liquidity'),structure:baseW.structure*ew('structure'),stateGraph:baseW.stateGraph*ew('stateGraph'),accumulation:baseW.accumulation*ew('accumulation'),behavior:baseW.behavior*ew('behavior'),learning:baseW.learning*ew('learning')},m=decision?.indicatorMatrix?.rows||{};
   const expected2=expected?.twoMinute||{},expected5=expected?.fiveMinute||{},expected15=expected?.fifteenMinute||{};
+  const rangeMode=regime==='RANGE'||regime==='COMPRESSION';
+  const expSide2=rangeMode?softExpectedSide(expected2):side(expected2?.side),expSide5=rangeMode?softExpectedSide(expected5):side(expected5?.side),expSide15=rangeMode?softExpectedSide(expected15):side(expected15?.side);
   const liqScore=Math.max(Number(liq?.buy||0),Number(liq?.sell||0),Number(liq?.strength||0));
   const tickScore=Math.max(Number(tick?.score||0),Number(tick?.confidence||0));
   const accScore=Math.max(Number(acc?.accumulationScore||0),Number(acc?.distributionScore||0),Number(acc?.breakoutReadiness||0));
@@ -96,7 +106,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   const newsScore=Number(news?.confidence||0),newsWeight=Math.max(0,Math.min(.18,Number(news?.weight||0)));
 
   const immediate:Evidence[]=[
-    ev('firstPassage',expected2?.side,scoreExpected(expected2),w.expected,Math.max(.72,Number(expected2?.calibration||50)/55)),
+    ev('firstPassage',expSide2,scoreExpected(expected2)*(rangeMode&&side(expected2?.side)==='WAIT'?.76:1),w.expected,Math.max(.72,Number(expected2?.calibration||50)/55)),
     ev('serverTick',tick?.side,tickScore,w.tick,tick?.stage==='IGNITION'?1.18:tick?.stage==='WAVE_FORMING'?1.10:1),
     ev('motion',motion?.side,motion?.score,w.motion,relH(learning,'motion','m2')),
     ev('liquidity',liq?.side,liqScore,w.liquidity,relH(learning,'liquidity','m2')),
@@ -107,11 +117,11 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     ev('learning',learning?.side,learnScore,w.learning,Math.max(.72,Number(learning?.selfCalibration?.reliability||50)/55)),
     ev('macroNews',news?.side,newsScore,newsWeight,news?.phase==='RELEASED'?1.18:1)
   ];
-  let two=resolve(immediate);
+  let two=resolve(immediate,rangeMode?3.5:10,rangeMode);
   two=calibrateHorizon(two,expected2,learning,'m2');
 
   let five=resolve([
-    ev('firstPassage5',expected5?.side,scoreExpected(expected5),.30,Math.max(.72,Number(expected5?.calibration||50)/55)),
+    ev('firstPassage5',expSide5,scoreExpected(expected5)*(rangeMode&&side(expected5?.side)==='WAIT'?.78:1),.30,Math.max(.72,Number(expected5?.calibration||50)/55)),
     ev('structureM5',structure?.m5?.nextSide,struct5,.13,relH(learning,'structure','m5')),
     ev('stateGraph',g?.nextSide,stateScore,.17,relH(learning,'stateGraph','m5')),
     ev('accumulation',acc?.side,accScore,.10,relH(learning,'accumulation','m5')),
@@ -119,11 +129,11 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     ev('learning5',learning?.horizon5?.side,learning?.horizon5?.confidence,.09,Math.max(.68,Number(learning?.selfCalibration?.h5||50)/55)),
     ev('m5',m?.m5?.bias,m?.m5?.strength,.09,relH(learning,'m5','m5')),
     ev('macroNews5',news?.side,newsScore,Math.min(.15,newsWeight),news?.phase==='RELEASED'?1.15:1)
-  ]);
+  ],rangeMode?5:10,rangeMode);
   five=calibrateHorizon(five,expected5,learning,'m5');
 
   let fifteen=resolve([
-    ev('firstPassage15',expected15?.side,scoreExpected(expected15),.39,Math.max(.70,Number(expected15?.calibration||50)/55)),
+    ev('firstPassage15',expSide15,scoreExpected(expected15)*(rangeMode&&side(expected15?.side)==='WAIT'?.80:1),.39,Math.max(.70,Number(expected15?.calibration||50)/55)),
     ev('m15',m?.m15?.bias,m?.m15?.strength,.20,1),
     ev('stateGraph',g?.nextSide,stateScore,.15,relH(learning,'stateGraph','m15')),
     ev('structureM5',structure?.m5?.nextSide,struct5,.06,relH(learning,'structure','m15')),
@@ -131,7 +141,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     ev('accumulation',acc?.side,accScore,.05,relH(learning,'accumulation','m15')),
     ev('learning5',learning?.horizon5?.side,learning?.horizon5?.confidence,.04,Math.max(.66,Number(learning?.selfCalibration?.h5||50)/55)),
     ev('macroNews15',news?.side,newsScore,Math.min(.12,newsWeight),news?.phase==='RELEASED'?1.10:1)
-  ]);
+  ],rangeMode?6:10,rangeMode);
   fifteen=calibrateHorizon(fifteen,expected15,learning,'m15');
 
   if(news?.phase==='PRE_EVENT'&&Number(news?.risk||0)>=70){
@@ -146,7 +156,14 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   const conflictScore=directional.length?Math.round(Math.min(buys,sells)/directional.length*200):0;
   const conflict=conflictScore>=34||two.uncertainty>=62;
   const leanSide:Side=two.buyShare>two.sellShare?'BUY':two.sellShare>two.buyShare?'SELL':'WAIT';
-  const finalSide:Side=conflict&&two.confidence<46?'WAIT':two.side;
+  const finalSide:Side=two.side!=='WAIT'?two.side:(leanSide!=='WAIT'&&(rangeMode||two.agreement>=51)?leanSide:'WAIT');
+  const directionalConfidence=Math.round(cap(
+    finalSide==='WAIT'?two.confidence:
+    two.side==='WAIT'?Math.min(44,two.confidence):
+    conflict?two.confidence*(rangeMode?.84:.76):
+    two.confidence,
+    0,86
+  ));
 
   const p=Number(args?.price),atr=Number(args?.atr),valid=Number.isFinite(p)&&p>0&&Number.isFinite(atr)&&atr>0;
   const closeAtr=Number(expected15?.meanCloseAtr||0),samples=Number(expected15?.samples||0);
@@ -163,14 +180,15 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
 
   const reasons=[
     'Regime '+regime,
-    'Immediate '+(finalSide==='WAIT'?('uncertain · lean '+leanSide):finalSide)+' · confidence '+two.confidence,
+    'Immediate '+(finalSide==='WAIT'?('uncertain · lean '+leanSide):finalSide)+' · confidence '+directionalConfidence,
     'Agreement '+two.agreement+'% · conflict '+conflictScore+'%',
     '5m '+five.side+' · '+five.confidence,
     '15m '+fifteen.side+' · '+fifteen.confidence
   ];
   if(tick?.stage==='IGNITION'||tick?.stage==='WAVE_FORMING')reasons.push('Server tick '+tick.stage+' '+tick.side);
   if(news?.event)reasons.push('News '+String(news.phase||'')+' · '+String(news.event.name||'')+' · risk '+Number(news.risk||0)+' · '+String(news.side||'WAIT'));
-  if(conflict)reasons.push('Model disagreement detected; confidence reduced');
+  if(rangeMode)reasons.push('Range/compression mode: direction stays active; disagreement lowers confidence instead of muting the forecast');
+  if(conflict)reasons.push('Model disagreement detected; confidence reduced, direction preserved when a measurable edge exists');
 
-  return {ok:true,asset,regime,side:finalSide,leanSide,confidence:two.confidence,agreement:two.agreement,uncertainty:two.uncertainty,conflict,conflictScore,evidence:immediate,horizons:{twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},target15,reasons};
+  return {ok:true,asset,regime,side:finalSide,leanSide,confidence:directionalConfidence,agreement:two.agreement,uncertainty:two.uncertainty,conflict,conflictScore,evidence:immediate,horizons:{twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},target15,reasons};
 }
