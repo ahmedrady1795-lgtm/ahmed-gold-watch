@@ -59,11 +59,12 @@ function scoreExpected(x:any){
 }
 function weights(r:Regime,asset:string){
   const btc=asset==='BTC';
-  if(r==='EXPANSION')return {expected:.22,tick:.20,motion:.14,liquidity:btc?.13:0,structure:.10,stateGraph:.07,accumulation:.05,behavior:.04,learning:.05};
-  if(r==='COMPRESSION')return {expected:.19,tick:.12,motion:.07,liquidity:btc?.13:0,structure:.12,stateGraph:.13,accumulation:.15,behavior:.04,learning:.05};
-  if(r==='REVERSAL')return {expected:.20,tick:.12,motion:.08,liquidity:btc?.11:0,structure:.12,stateGraph:.14,accumulation:.08,behavior:.09,learning:.06};
-  if(r==='RANGE')return {expected:.22,tick:.09,motion:.05,liquidity:btc?.09:0,structure:.12,stateGraph:.15,accumulation:.10,behavior:.10,learning:.08};
-  return {expected:.23,tick:.13,motion:.09,liquidity:btc?.10:0,structure:.11,stateGraph:.12,accumulation:.08,behavior:.06,learning:.08};
+  // v11: live evidence leads short-horizon decisions; slower memory calibrates instead of dominating.
+  if(r==='EXPANSION')return {expected:.16,tick:.22,scalp:.17,motion:.14,liquidity:btc?.12:0,structure:.08,stateGraph:.05,accumulation:.03,behavior:.02,learning:.03};
+  if(r==='COMPRESSION')return {expected:.16,tick:.16,scalp:.13,motion:.09,liquidity:btc?.12:0,structure:.10,stateGraph:.10,accumulation:.12,behavior:.04,learning:.04};
+  if(r==='REVERSAL')return {expected:.15,tick:.16,scalp:.18,motion:.11,liquidity:btc?.10:0,structure:.11,stateGraph:.10,accumulation:.06,behavior:.07,learning:.04};
+  if(r==='RANGE')return {expected:.15,tick:.13,scalp:.19,motion:.07,liquidity:btc?.08:0,structure:.11,stateGraph:.11,accumulation:.07,behavior:.06,learning:.03};
+  return {expected:.18,tick:.16,scalp:.15,motion:.10,liquidity:btc?.09:0,structure:.10,stateGraph:.09,accumulation:.06,behavior:.04,learning:.03};
 }
 function resolve(ev:Evidence[],gate=10,softDirectional=false):Horizon{
   const usable=ev.filter(e=>e.side!=='WAIT'&&e.score>0&&e.weight>0);
@@ -94,9 +95,9 @@ function softExpectedSide(x:any):Side{
 function ev(name:string,s:any,score:number,weight:number,reliability=1):Evidence{return {name,side:side(s),score:cap(Number(score||0),0,92),weight,reliability:cap(reliability,.55,1.35)};}
 
 export function buildMovementIntelligence(asset:string,args:any):MovementIntelligence{
-  const expected=args?.expected||{},g=args?.stateGraph||{},liq=args?.liquidity||{},motion=args?.motion||{},structure=args?.structure||{},acc=args?.accumulation||{},behavior=args?.behavior||{},learning=args?.learning||{},tick=args?.tick||{},decision=args?.decision||{},news=args?.news||{};
+  const expected=args?.expected||{},g=args?.stateGraph||{},liq=args?.liquidity||{},motion=args?.motion||{},structure=args?.structure||{},acc=args?.accumulation||{},behavior=args?.behavior||{},learning=args?.learning||{},tick=args?.tick||{},scalp=args?.scalp||{},decision=args?.decision||{},news=args?.news||{};
   const policy=args?.evolution?.active||null,ew=(name:string)=>cap(Number(policy?.weights?.[name]||1),.5,1.35);
-  const regime=regimeOf(g,acc),baseW=weights(regime,asset),w={...baseW,expected:baseW.expected*ew('learning'),tick:baseW.tick*ew('wave'),motion:baseW.motion*ew('motion'),liquidity:baseW.liquidity*ew('liquidity'),structure:baseW.structure*ew('structure'),stateGraph:baseW.stateGraph*ew('stateGraph'),accumulation:baseW.accumulation*ew('accumulation'),behavior:baseW.behavior*ew('behavior'),learning:baseW.learning*ew('learning')},m=decision?.indicatorMatrix?.rows||{};
+  const regime=regimeOf(g,acc),baseW=weights(regime,asset),w={...baseW,expected:baseW.expected*ew('learning'),tick:baseW.tick*ew('wave'),scalp:baseW.scalp*ew('scalp'),motion:baseW.motion*ew('motion'),liquidity:baseW.liquidity*ew('liquidity'),structure:baseW.structure*ew('structure'),stateGraph:baseW.stateGraph*ew('stateGraph'),accumulation:baseW.accumulation*ew('accumulation'),behavior:baseW.behavior*ew('behavior'),learning:baseW.learning*ew('learning')},m=decision?.indicatorMatrix?.rows||{};
   const expected2=expected?.twoMinute||{},expected5=expected?.fiveMinute||{},expected15=expected?.fifteenMinute||{};
   const rangeMode=regime==='RANGE'||regime==='COMPRESSION';
   const expSide2=rangeMode?softExpectedSide(expected2):side(expected2?.side),expSide5=rangeMode?softExpectedSide(expected5):side(expected5?.side),expSide15=rangeMode?softExpectedSide(expected15):side(expected15?.side);
@@ -107,10 +108,26 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   const struct1=Number(structure?.m1?.nextScore||0),struct5=Number(structure?.m5?.nextScore||0);
   const learnScore=Number(learning?.confidence||0)*Math.max(.65,Number(learning?.selfCalibration?.reliability||50)/60);
   const newsScore=Number(news?.confidence||0),newsWeight=Math.max(0,Math.min(.18,Number(news?.weight||0)));
+  const scalpLong=Number(scalp?.score?.long||0),scalpShort=Number(scalp?.score?.short||0),scalpGap=Math.abs(scalpLong-scalpShort);
+  const scalpSide:Side=scalp?.action==='BUY'||scalp?.action==='SELL'?scalp.action:scalpLong-scalpShort>=5?'BUY':scalpShort-scalpLong>=5?'SELL':'WAIT';
+  const scalpScore=Math.max(scalpLong,scalpShort,Number(scalp?.confidence||0));
+  const fastRows=[
+    {side:side(tick?.side),score:Math.max(Number(tick?.score||0),Number(tick?.confidence||0)),weight:1.20},
+    {side:scalpSide,score:scalpScore,weight:1.25},
+    {side:side(motion?.side),score:Math.max(Number(motion?.score||0),Number(motion?.confidence||0)),weight:1.05},
+    {side:side(liq?.side),score:liqScore,weight:asset==='BTC'?1.00:.35}
+  ].filter(x=>x.side!=='WAIT'&&x.score>=28);
+  let fastBuy=0,fastSell=0,fastWeight=0;
+  for(const row of fastRows){const v=row.score*row.weight;if(row.side==='BUY')fastBuy+=v;else fastSell+=v;fastWeight+=row.weight;}
+  const fastTotal=fastBuy+fastSell,fastGap=fastTotal?Math.abs(fastBuy-fastSell)/fastTotal*100:0;
+  const fastSide:Side=fastRows.length>=2&&fastGap>=18?(fastBuy>fastSell?'BUY':'SELL'):'WAIT';
+  const fastConfidence=Math.round(cap((fastGap*.58+Math.min(32,fastRows.length*8)+Math.max(fastBuy,fastSell)/Math.max(1,fastWeight)*.22),0,90));
+  const fastStrong=fastSide!=='WAIT'&&fastRows.filter(x=>x.side===fastSide).length>=2&&fastConfidence>=48;
 
   const immediate:Evidence[]=[
     ev('firstPassage',expSide2,scoreExpected(expected2)*(rangeMode&&side(expected2?.side)==='WAIT'?.76:1),w.expected,Math.max(.72,Number(expected2?.calibration||50)/55)),
-    ev('serverTick',tick?.side,tickScore,w.tick,tick?.stage==='IGNITION'?1.18:tick?.stage==='WAVE_FORMING'?1.10:1),
+    ev('serverTick',tick?.side,tickScore,w.tick,tick?.stage==='IGNITION'?1.24:tick?.stage==='WAVE_FORMING'?1.14:1),
+    ev('scalpM1',scalpSide,scalpScore,w.scalp,scalp?.state==='setup'?1.18:scalp?.state==='watch'?1.06:1),
     ev('motion',motion?.side,motion?.score,w.motion,relH(learning,'motion','m2')),
     ev('liquidity',liq?.side,liqScore,w.liquidity,relH(learning,'liquidity','m2')),
     ev('structureM1',structure?.m1?.nextSide,struct1,w.structure,relH(learning,'structure','m2')),
@@ -120,8 +137,14 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     ev('learning',learning?.side,learnScore,w.learning,Math.max(.72,Number(learning?.selfCalibration?.reliability||50)/55)),
     ev('macroNews',news?.side,newsScore,newsWeight,news?.phase==='RELEASED'?1.18:1)
   ];
-  let two=resolve(immediate,rangeMode?3.5:10,rangeMode);
+  let two=resolve(immediate,rangeMode?3.5:9,rangeMode);
   two=calibrateHorizon(two,expected2,learning,'m2');
+  // Fast-stack override: when multiple live engines agree, preserve the live move even if slower memories lag.
+  if(fastStrong&&(two.side==='WAIT'||(two.side!==fastSide&&two.confidence<58))){
+    const buyShare=fastSide==='BUY'?Math.max(54,50+fastGap/2):Math.max(20,50-fastGap/2);
+    const resolvedBuy=Math.round(cap(buyShare,0,100));
+    two={...two,side:fastSide,confidence:Math.round(cap(two.confidence*.35+fastConfidence*.65,28,86)),buyShare:resolvedBuy,sellShare:100-resolvedBuy,agreement:Math.round(Math.max(resolvedBuy,100-resolvedBuy)),uncertainty:Math.round(cap(100-(two.confidence*.35+fastConfidence*.65),0,100))};
+  }
 
   let five=resolve([
     ev('firstPassage5',expSide5,scoreExpected(expected5)*(rangeMode&&side(expected5?.side)==='WAIT'?.78:1),.30,Math.max(.72,Number(expected5?.calibration||50)/55)),
@@ -157,7 +180,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   const directional=immediate.filter(e=>e.side!=='WAIT'&&e.score>=25);
   const buys=directional.filter(e=>e.side==='BUY').length,sells=directional.filter(e=>e.side==='SELL').length;
   const conflictScore=directional.length?Math.round(Math.min(buys,sells)/directional.length*200):0;
-  const conflict=conflictScore>=34||two.uncertainty>=62;
+  const conflict=(conflictScore>=34||two.uncertainty>=62)&&!(fastStrong&&two.side===fastSide&&fastConfidence>=58);
   const leanSide:Side=two.buyShare>two.sellShare?'BUY':two.sellShare>two.buyShare?'SELL':'WAIT';
   const softLeanUsable=Boolean(
     rangeMode&&two.side==='WAIT'&&leanSide!=='WAIT'&&
@@ -194,7 +217,8 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   ];
   if(tick?.stage==='IGNITION'||tick?.stage==='WAVE_FORMING')reasons.push('Server tick '+tick.stage+' '+tick.side);
   if(news?.event)reasons.push('News '+String(news.phase||'')+' · '+String(news.event.name||'')+' · risk '+Number(news.risk||0)+' · '+String(news.side||'WAIT'));
-  if(rangeMode)reasons.push('Range/compression mode: even weak measurable imbalance remains a low-confidence directional bias instead of being muted to WAIT');
+  if(fastStrong)reasons.push('Live Stack '+fastSide+' · confidence '+fastConfidence+' · '+fastRows.filter(x=>x.side===fastSide).length+'/'+fastRows.length+' fast engines aligned');
+  if(rangeMode)reasons.push('Range/compression mode: fast price-action evidence leads; slower memory only calibrates confidence');
   if(conflict)reasons.push('Model disagreement detected; confidence reduced, direction preserved when a measurable edge exists');
 
   return {ok:true,asset,regime,side:finalSide,leanSide,confidence:directionalConfidence,agreement:two.agreement,uncertainty:two.uncertainty,conflict,conflictScore,evidence:immediate,horizons:{twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},target15,reasons};
