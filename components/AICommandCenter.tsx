@@ -63,6 +63,7 @@ function Card({x,fast}:any){
         <div><small>Invalidation</small><strong>{fmt(hunt.invalidation,2)}</strong></div>
       </div>
       <p>Buy pressure {hunt.buyScore||0} · Sell pressure {hunt.sellScore||0} · Samples {hunt.samples||0}</p>
+      {hunt.commitment&&<p><b>Direction Lock:</b> {sideAr(hunt.commitment.side)} · {hunt.commitment.state} · Smoothed Edge {hunt.commitment.smoothedEdge}{hunt.commitment.pendingSide!=='WAIT'?(' · عكس محتمل '+sideAr(hunt.commitment.pendingSide)+' '+hunt.commitment.pendingCount+'/2'):''}</p>}
       {!!hunt.reasons?.length&&<p>{hunt.reasons.join(' · ')}</p>}
       <p className="muted">{hunt.note}</p>
     </div>}
@@ -158,8 +159,8 @@ export default function AICommandCenter({data,error,fastWave}:any){
   const auto=data?.autopilot;
   return <div>
     <section className="sidecard">
-      <strong>Predator Core v8.4 · Scalp Learning Hunter</strong>
-      <p>النواة تجمع Tick-by-Tick Wave Lead مع Scalp Learner يتدرب على M1 ويختبر نفسه Out-of-Sample، ويتعلم مدة الاحتفاظ والخروج بالـATR. MT5 Fast Path مخصص حاليًا للتجربة والمحاكاة فقط، وMaster Decision يظل بوابة القرار.</p>
+      <strong>Predator Core v8.5 · Directional Commitment Hunter</strong>
+      <p>النواة تضيف Directional Commitment فوق Wave Lead وScalp Learner: الاتجاه لا يتقلب مع كل قراءة، والعكس يحتاج تفوقًا واضحًا في قراءتين متتاليتين أو IGNITION قوي جدًا. MT5 Fast Path يطبق نفس القفل في المحاكاة.</p>
     </section>
 
     {!!data?.radar?.length&&<section className="panel">
