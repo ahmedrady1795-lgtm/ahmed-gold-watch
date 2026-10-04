@@ -73,12 +73,32 @@ def auth_headers():return {'Authorization':'Bearer '+TOKEN}
 def closed_rates(timeframe,count=CANDLE_COUNT):
     rates=mt5.copy_rates_from_pos(SYMBOL,timeframe,1,count) # start_pos=1 excludes the still-forming bar
     if rates is None:return []
-    return [{'time':int(r['time'])*1000,'open':float(r['open']),'high':float(r['high']),'low':float(r['low']),'close':float(r['close'])} for r in rates]
+    return [{'time':int(r['time'])*1000,'open':float(r['open']),'high':float(r['high']),'low':float(r['low']),'close':float(r['close']),'tickVolume':float(r['tick_volume']),'realVolume':float(r['real_volume']),'spread':float(r['spread'])} for r in rates]
+
+def order_book_snapshot():
+    try:
+        if not mt5.market_book_add(SYMBOL):return {'available':False,'reason':'market_book_add_failed','bids':[],'asks':[]}
+        rows=mt5.market_book_get(SYMBOL) or []
+        buy_types={getattr(mt5,'BOOK_TYPE_BUY',2),getattr(mt5,'BOOK_TYPE_BUY_MARKET',4)}
+        sell_types={getattr(mt5,'BOOK_TYPE_SELL',1),getattr(mt5,'BOOK_TYPE_SELL_MARKET',3)}
+        bids=[];asks=[]
+        for row in rows:
+            price=float(getattr(row,'price',0) or 0);vol=float(getattr(row,'volume_dbl',0) or getattr(row,'volume',0) or 0);typ=int(getattr(row,'type',0) or 0)
+            if price<=0 or vol<=0:continue
+            item={'price':price,'volume':vol}
+            if typ in buy_types:bids.append(item)
+            elif typ in sell_types:asks.append(item)
+        bids=sorted(bids,key=lambda x:x['price'],reverse=True)[:10];asks=sorted(asks,key=lambda x:x['price'])[:10]
+        return {'available':bool(bids or asks),'reason':None if (bids or asks) else 'empty_book','bids':bids,'asks':asks}
+    except Exception as e:return {'available':False,'reason':str(e)[:120],'bids':[],'asks':[]}
+    finally:
+        try:mt5.market_book_release(SYMBOL)
+        except Exception:pass
 
 def push_status(s):
     info=symbol_ready();tick=mt5.symbol_info_tick(SYMBOL) if info else None;account=mt5.account_info()
     if not info or tick is None or account is None:return False
-    now=time.time();payload={'symbol':SYMBOL,'tickTimeMs':int(getattr(tick,'time_msc',0) or int(time.time()*1000)),'bid':float(tick.bid),'ask':float(tick.ask),'last':float(getattr(tick,'last',0) or 0) or None,'mode':'live' if LIVE else 'dry-run','lastQuality':s.get('last_quality',{}),'account':{'login':int(getattr(account,'login',0) or 0),'balance':float(getattr(account,'balance',0) or 0),'equity':float(getattr(account,'equity',0) or 0),'marginLevel':float(getattr(account,'margin_level',0) or 0)}}
+    now=time.time();payload={'symbol':SYMBOL,'tickTimeMs':int(getattr(tick,'time_msc',0) or int(time.time()*1000)),'bid':float(tick.bid),'ask':float(tick.ask),'last':float(getattr(tick,'last',0) or 0) or None,'mode':'live' if LIVE else 'dry-run','lastQuality':s.get('last_quality',{}),'microstructure':{'orderBook':order_book_snapshot(),'tickFlags':int(getattr(tick,'flags',0) or 0),'tickVolume':float(getattr(tick,'volume_real',0) or getattr(tick,'volume',0) or 0)},'account':{'login':int(getattr(account,'login',0) or 0),'balance':float(getattr(account,'balance',0) or 0),'equity':float(getattr(account,'equity',0) or 0),'marginLevel':float(getattr(account,'margin_level',0) or 0)}}
     if now-float(s.get('last_candles_push_at',0) or 0)>=CANDLE_PUSH_SECONDS:
         candles={'c1':closed_rates(mt5.TIMEFRAME_M1),'c5':closed_rates(mt5.TIMEFRAME_M5),'c15':closed_rates(mt5.TIMEFRAME_M15),'c60':closed_rates(mt5.TIMEFRAME_H1)}
         if len(candles['c1'])>=80 and all(len(candles[k])>=220 for k in ('c5','c15','c60')):
