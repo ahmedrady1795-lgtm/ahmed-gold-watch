@@ -178,19 +178,24 @@ function AssetCard({x,fast}:any){
       </div>)}
     </div>
 
-    {x.asset==='BTC'&&x.scalpLive&&<div className="next-move-copy">
-      <span>Scalp Fusion Live</span>
-      <strong className={(x.scalpLive?.global?.accuracy??0)>=58?'green':(x.scalpLive?.global?.accuracy??0)>=50?'amber':'red'}>
-        {x.scalpLive?.global?.accuracy==null?'يجمع نتائج السكالب':('دقة '+x.scalpLive.global.accuracy+'%')}
-      </strong>
-      <div className="ai-outcome-mini">
-        <span>نجح ✓ <b>{x.scalpLive?.global?.hits||0}</b></span>
-        <span>فشل ✕ <b>{x.scalpLive?.global?.fails||0}</b></span>
-        <span>محايد <b>{x.scalpLive?.global?.neutral||0}</b></span>
-        <span>معلق <b>{x.scalpLive?.pending||0}</b></span>
-      </div>
-      <p>60s First-Passage · OOS {x.scalpLive?.walkForward?.oos?.accuracy==null?'—':(x.scalpLive.walkForward.oos.accuracy+'%')} · WF {x.scalpLive?.walkForward?.status||'COLLECTING'}</p>
-    </div>}
+    {x.asset==='BTC'&&x.scalpLive&&(()=>{
+      const confirmed=x.scalpLive?.bySource?.SCALP_CONFIRMED_V4;
+      const metric=confirmed?.resolved?confirmed:x.scalpLive?.global;
+      const confWf=x.scalpLive?.walkForwardBySource?.SCALP_CONFIRMED_V4;
+      return <div className="next-move-copy">
+        <span>Scalp Fusion Live · {confirmed?.resolved?'Confirmed':'Collecting'}</span>
+        <strong className={(metric?.accuracy??0)>=58?'green':(metric?.accuracy??0)>=50?'amber':'red'}>
+          {metric?.accuracy==null?'يجمع نتائج السكالب':('دقة '+metric.accuracy+'%')}
+        </strong>
+        <div className="ai-outcome-mini">
+          <span>نجح ✓ <b>{metric?.hits||0}</b></span>
+          <span>فشل ✕ <b>{metric?.fails||0}</b></span>
+          <span>محايد <b>{metric?.neutral||0}</b></span>
+          <span>معلق <b>{x.scalpLive?.pending||0}</b></span>
+        </div>
+        <p>60s First-Passage · OOS {confWf?.oos?.accuracy==null?'—':(confWf.oos.accuracy+'%')} · WF {confWf?.status||'COLLECTING'}</p>
+      </div>;
+    })()}
 
     {(()=>{
       const move=nextMoveCopy(hunt,x.stateGraph);
