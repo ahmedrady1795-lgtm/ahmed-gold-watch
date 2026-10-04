@@ -5,6 +5,8 @@ type ForecastSample={at:number;side:Side;score:number};
 type Horizon={side:Side;buy:number;sell:number;strength:number;gap:number};
 
 const memory=new Map<string,ForecastSample[]>();
+type LiveFailureGuard={side:Side;anchor:number;atr:number;at:number;blockedUntil:number;failures:number};
+const liveFailureGuards=new Map<string,LiveFailureGuard>();
 const cap=(n:number,min=0,max=92)=>Math.max(min,Math.min(max,n));
 const sideScore=(s:Side,target:Side,v:number)=>s===target?v:0;
 const sideOf=(buy:number,sell:number,gate=5):Side=>buy-sell>=gate?'BUY':sell-buy>=gate?'SELL':'WAIT';
@@ -139,8 +141,35 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const firstMoveMemoryValid=Boolean(expectedLearning?.ok&&['BUY','SELL'].includes(String(em2Side))&&Number(em2?.samples||0)>=6&&Number(em2?.confidence||0)>=38&&Number(em2?.decisiveRate||0)>=40);
   const movementSide:Side=movementIntel?.side||'WAIT',movementLean:Side=movementIntel?.leanSide||'WAIT',movementConfidence=Number(movementIntel?.confidence||0);
   const movementUsable=Boolean(movementIntel?.ok&&movementSide!=='WAIT'&&movementConfidence>=34);
-  const primaryMoveSide:Side=movementUsable?movementSide:firstMoveMemoryValid?em2Side:(two.side!=='WAIT'?two.side:movementLean);
-  const primaryMoveConfidence=Math.round(cap(movementUsable?movementConfidence:firstMoveMemoryValid?(Number(em2?.confidence||0)*.65+Number(em2?.decisiveRate||0)*.35):two.strength,0,88));
+  let primaryMoveSide:Side=movementUsable?movementSide:firstMoveMemoryValid?em2Side:(two.side!=='WAIT'?two.side:movementLean);
+  let primaryMoveConfidence=Math.round(cap(movementUsable?movementConfidence:firstMoveMemoryValid?(Number(em2?.confidence||0)*.65+Number(em2?.decisiveRate||0)*.35):two.strength,0,88));
+
+  // Live failure guard: a forecast that is materially invalidated cannot keep repeating unchanged.
+  const guardValid=Number.isFinite(p)&&p>0&&Number.isFinite(a)&&a>0;
+  const previousGuard=liveFailureGuards.get(asset);
+  let liveInvalidated=false,failedSide:Side='WAIT',adverseAtr=0,guardBlockedUntil=0;
+  if(guardValid&&previousGuard&&previousGuard.side!=='WAIT'){
+    const scale=Math.max(1e-9,(previousGuard.atr+a)/2);
+    adverseAtr=previousGuard.side==='BUY'?(previousGuard.anchor-p)/scale:(p-previousGuard.anchor)/scale;
+    const hardFailure=adverseAtr>=.30&&now-previousGuard.at<=15*60000;
+    const cooling=previousGuard.blockedUntil>now&&primaryMoveSide===previousGuard.side;
+    if(hardFailure||cooling){
+      liveInvalidated=true;failedSide=previousGuard.side;
+      guardBlockedUntil=hardFailure?now+90*1000:previousGuard.blockedUntil;
+      const suppress=(h:Horizon):Horizon=>h.side===failedSide?{...h,side:'WAIT',strength:Math.min(h.strength,28),gap:Math.min(h.gap,4)}:h;
+      two=suppress(two);five=suppress(five);
+      if(fifteen.side===failedSide&&Number(fifteen.strength||0)<62)fifteen=suppress(fifteen);
+      if(primaryMoveSide===failedSide){primaryMoveSide='WAIT';primaryMoveConfidence=Math.min(primaryMoveConfidence,24);}
+      liveFailureGuards.set(asset,{...previousGuard,blockedUntil:guardBlockedUntil,failures:previousGuard.failures+(hardFailure?1:0)});
+    }
+  }
+  if(guardValid&&!liveInvalidated&&primaryMoveSide!=='WAIT'&&primaryMoveConfidence>=34){
+    const g=liveFailureGuards.get(asset);
+    if(!g||g.side!==primaryMoveSide||now-g.at>15*60000||g.blockedUntil<=now){
+      liveFailureGuards.set(asset,{side:primaryMoveSide,anchor:p,atr:a,at:now,blockedUntil:0,failures:g?.failures||0});
+    }
+  }
+
   const rawGap=Math.abs(buy-sell),rawSide:Side=sideOf(buy,sell,3),rawScore=cap(Math.max(buy,sell));
   const old=(memory.get(asset)||[]).filter(x=>now-x.at<=45000);
   old.push({at:now,side:rawSide,score:rawScore});
@@ -225,6 +254,23 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     accumulation,primary:shortSide,follow:followSide
   }):[];
 
+  const quickTarget=(side:Side,strength:number,atrFactor:number,stationPrice:number|null=null)=>{
+    if(!validPrice||side==='WAIT')return null;
+    if(Number.isFinite(Number(stationPrice))&&Number(stationPrice)>0){
+      const sp=Number(stationPrice);
+      if((side==='BUY'&&sp>p)||(side==='SELL'&&sp<p))return Number(sp.toFixed(2));
+    }
+    const d=side==='BUY'?1:-1;
+    const factor=Math.max(.10,Math.min(1.05,atrFactor+Math.max(0,Number(strength||0))/230));
+    return Number((p+d*a*factor).toFixed(2));
+  };
+  const station1=movementStations?.[0]?.price??null,station2=movementStations?.[1]?.price??null;
+  const quickSignalTargets={
+    scalp:{side:scalpLong>scalpShort?'BUY':scalpShort>scalpLong?'SELL':'WAIT',price:quickTarget(scalpLong>scalpShort?'BUY':scalpShort>scalpLong?'SELL':'WAIT',Math.max(scalpLong,scalpShort),.10,null),confidence:Math.round(cap(Math.max(scalpLong,scalpShort),0,88)),horizonMinutes:.5},
+    oneMinute:{side:m1Side,price:quickTarget(m1Side,m1Strength,.14,station1),confidence:Math.round(cap(m1Strength,0,88)),horizonMinutes:1},
+    fiveMinute:{side:m5Side,price:quickTarget(m5Side,m5Strength,.30,station2),confidence:Math.round(cap(m5Strength,0,88)),horizonMinutes:5}
+  };
+
   const alternativeSide:Side=projectionSide==='BUY'?'SELL':projectionSide==='SELL'?'BUY':'WAIT';
   const alternativeStrength=projectionSide==='BUY'?Math.round(cap(sell)):projectionSide==='SELL'?Math.round(cap(buy)):Math.round(Math.min(buy,sell));
   const accumulationBonus=accumulationFresh&&accumulationSide===stableSide?Math.min(12,accumulationReadiness*.12):0;
@@ -237,6 +283,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const quality=cap(confidence*.28+persistence*.08+Math.min(100,(horizonConsensus/3)*100)*.13+expectedCal*.10+primaryMoveConfidence*.18+movementBonus+firstMoveBonus+(learnerFresh?4:0)+accumulationBonus-horizonConflict*6-learnedConflict-(expectedConflict?8:0)-(movementConflict?8:0)-(primaryMoveConflict?10:0),0,90);
 
   const reasons:string[]=[];
+  if(liveInvalidated)reasons.push('LIVE FAILURE GUARD: تم إلغاء '+failedSide+' بعد حركة عكسية '+Number(Math.max(0,adverseAtr).toFixed(2))+' ATR ومنع تكراره مؤقتًا');
   if(movementIntel?.ok)reasons.push('Movement Brain '+String(movementIntel.regime)+' · '+(movementIntel.side==='WAIT'?('lean '+movementIntel.leanSide):movementIntel.side)+' · '+movementConfidence);
   if(primaryMoveSide!=='WAIT')reasons.push('First-Move '+primaryMoveSide+' · confidence '+primaryMoveConfidence+' · first-hit '+Number(em2?.firstHitMinutes||0)+'m');
   if(primaryMoveConflict)reasons.push('الاتجاه المثبت '+stableSide+' متأخر/متعارض مع الحركة الأولى '+primaryMoveSide);
@@ -263,11 +310,13 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   return {
     side:stableSide,state,score:rawScore,confidence,quality,persistence,samples:recent.length,
     nextMove:{side:primaryMoveSide,confidence:primaryMoveConfidence,source:firstMoveMemoryValid?'FIRST_PASSAGE_MEMORY':'LIVE_2M_ENSEMBLE',firstHitMinutes:Number(em2?.firstHitMinutes||0),decisiveRate:Number(em2?.decisiveRate||0),conflictWithLockedDirection:primaryMoveConflict},
+    liveFailureGuard:{invalidated:liveInvalidated,failedSide,adverseAtr:Number(Math.max(0,adverseAtr).toFixed(3)),blockedUntil:guardBlockedUntil},
     buyScore:Math.round(buy),sellScore:Math.round(sell),horizonSeconds,expectedMoveAtr:Number(expAtr.toFixed(2)),
     trigger:trigger==null?null:Number(trigger.toFixed(2)),projected:projected==null?null:Number(projected.toFixed(2)),invalidation:invalidation==null?null:Number(invalidation.toFixed(2)),currentPrice:Number.isFinite(p)?p:null,
     path:{code:path,label:pathLabel,firstLeg:firstLeg==null?null:Number(firstLeg.toFixed(2)),secondLeg:secondLeg==null?null:Number(secondLeg.toFixed(2)),shortSide,followSide,structureDriven:Boolean(structuralPath),stations:movementStations},
     fifteenMinuteTarget:{side:resolved15Side,price:target15Price==null?null:Number(target15Price.toFixed(2)),low:target15Low==null?null:Number(target15Low.toFixed(2)),high:target15High==null?null:Number(target15High.toFixed(2)),confidence:resolved15Confidence,moveAtr:Number(resolved15MoveAtr.toFixed(3)),movePct:Number(target15MovePct.toFixed(3)),samples:em15Samples,source:miTarget?.source||(memory15Usable?'15M_MEMORY_BLEND':'15M_LIVE_ENSEMBLE'),targetAt:now+15*60000},
     movementStations,
+    quickSignalTargets,
     horizons:{twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},
     forecastWindowsMinutes:[2,5,15],
     waveStructure:structureFresh?structure:null,
