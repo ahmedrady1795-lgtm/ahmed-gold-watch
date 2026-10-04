@@ -162,6 +162,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const reversalPressure=reversalPhase||m5ReversalPressure||graphReversalPressure;
   const continuationPhase=['BREAKOUT','IMPULSE','TREND','RETEST'].includes(m1Phase)&&!reversalPressure;
   const compressionPhase=m1Phase==='COMPRESSION'||String(movementIntel?.regime||'')==='COMPRESSION'||graphCurrentState==='COMPRESSION';
+  const rangePhase=String(movementIntel?.regime||'')==='RANGE'||graphCurrentState==='RANGE'||m1Phase==='RANGE';
   const structureAgreement=structureM1Side!=='WAIT'&&structureM1Side===primaryMoveSide;
   const graphAgreement=graphDirectional!=='WAIT'&&graphDirectional===primaryMoveSide;
   const expectedAgreement=em2Side!=='WAIT'&&em2Side===primaryMoveSide;
@@ -180,16 +181,28 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   if(continuationPhase&&structureAgreement){
     primaryMoveConfidence=Math.round(cap(primaryMoveConfidence+5+(expectedAgreement?4:0)+(graphAgreement?3:0),0,88));
   }
-  if(compressionPhase){
+  if(compressionPhase||rangePhase){
     const directionalVotes=[movementSide,em2Side,structureM1Side,graphDirectional].filter(s=>s==='BUY'||s==='SELL');
     const buys=directionalVotes.filter(s=>s==='BUY').length,sells=directionalVotes.filter(s=>s==='SELL').length;
-    const dominant:Side=buys>=3?'BUY':sells>=3?'SELL':'WAIT';
-    if(dominant==='WAIT'){
-      primaryMoveSide='WAIT';
-      primaryMoveConfidence=Math.min(primaryMoveConfidence,32);
-    }else{
-      primaryMoveSide=dominant;
-      primaryMoveConfidence=Math.round(cap(primaryMoveConfidence+4,0,82));
+    const dominant:Side=buys>sells?'BUY':sells>buys?'SELL':'WAIT';
+    const candidates:{side:Side;score:number}[]=[
+      {side:movementSide!=='WAIT'?movementSide:movementLean,score:Math.max(movementConfidence,Number(movementIntel?.agreement||0)*.55)},
+      {side:em2Side,score:Number(em2?.confidence||0)*.70+Number(em2?.decisiveRate||0)*.30},
+      {side:structureM1Side,score:structureM1Score},
+      {side:graphDirectional,score:graphDirectionalConfidence},
+      {side:two.side,score:Number(two.strength||0)}
+    ].filter(x=>x.side==='BUY'||x.side==='SELL').sort((a,b)=>b.score-a.score);
+    const resolved:Side=dominant!=='WAIT'?dominant:(candidates[0]?.side||primaryMoveSide);
+    if(resolved!=='WAIT'){
+      primaryMoveSide=resolved;
+      const top=Number(candidates.find(x=>x.side===resolved)?.score||primaryMoveConfidence);
+      const voteEdge=Math.abs(buys-sells);
+      primaryMoveConfidence=Math.round(cap(
+        Math.max(primaryMoveConfidence*.68,top*.52)+(voteEdge>=2?6:voteEdge===1?3:0),
+        24,82
+      ));
+    }else if(primaryMoveSide!=='WAIT'){
+      primaryMoveConfidence=Math.round(cap(primaryMoveConfidence*.72,22,46));
     }
   }
   if(primaryMoveSide!=='WAIT'&&graphDirectional!=='WAIT'&&graphDirectional!==primaryMoveSide&&graphDirectionalConfidence>=62){
@@ -210,11 +223,25 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     const cooling=previousGuard.blockedUntil>now&&primaryMoveSide===previousGuard.side;
     if(hardFailure||cooling){
       liveInvalidated=true;failedSide=previousGuard.side;
-      guardBlockedUntil=hardFailure?now+90*1000:previousGuard.blockedUntil;
-      const suppress=(h:Horizon):Horizon=>h.side===failedSide?{...h,side:'WAIT',strength:Math.min(h.strength,28),gap:Math.min(h.gap,4)}:h;
-      two=suppress(two);five=suppress(five);
-      if(fifteen.side===failedSide&&Number(fifteen.strength||0)<62)fifteen=suppress(fifteen);
-      if(primaryMoveSide===failedSide){primaryMoveSide='WAIT';primaryMoveConfidence=Math.min(primaryMoveConfidence,24);}
+      guardBlockedUntil=hardFailure?now+45*1000:previousGuard.blockedUntil;
+      const reweight=(h:Horizon):Horizon=>h.side===failedSide?{...h,strength:Math.min(h.strength,34),gap:Math.min(h.gap,7)}:h;
+      two=reweight(two);five=reweight(five);
+      if(fifteen.side===failedSide&&Number(fifteen.strength||0)<62)fifteen=reweight(fifteen);
+      if(primaryMoveSide===failedSide){
+        const alternatives:{side:Side;score:number}[]=[
+          {side:movementSide!=='WAIT'?movementSide:movementLean,score:movementConfidence},
+          {side:graphDirectional,score:graphDirectionalConfidence},
+          {side:structureM1Side,score:structureM1Score},
+          {side:em2Side,score:Number(em2?.confidence||0)},
+          {side:two.side,score:Number(two.strength||0)}
+        ].filter(x=>x.side!=='WAIT'&&x.side!==failedSide).sort((a,b)=>b.score-a.score);
+        if(alternatives[0]){
+          primaryMoveSide=alternatives[0].side;
+          primaryMoveConfidence=Math.round(cap(alternatives[0].score*.72,24,58));
+        }else{
+          primaryMoveConfidence=Math.round(cap(primaryMoveConfidence*.55,20,38));
+        }
+      }
       liveFailureGuards.set(asset,{...previousGuard,blockedUntil:guardBlockedUntil,failures:previousGuard.failures+(hardFailure?1:0)});
     }
   }
@@ -404,7 +431,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const quality=cap(confidence*.28+persistence*.08+Math.min(100,(horizonConsensus/3)*100)*.13+expectedCal*.10+primaryMoveConfidence*.18+movementBonus+firstMoveBonus+(learnerFresh?4:0)+accumulationBonus-horizonConflict*6-learnedConflict-(expectedConflict?8:0)-(movementConflict?8:0)-(primaryMoveConflict?10:0),0,90);
 
   const reasons:string[]=[];
-  if(liveInvalidated)reasons.push('LIVE FAILURE GUARD: تم إلغاء '+failedSide+' بعد حركة عكسية '+Number(Math.max(0,adverseAtr).toFixed(2))+' ATR ومنع تكراره مؤقتًا');
+  if(liveInvalidated)reasons.push('LIVE RE-EVALUATION: فشل '+failedSide+' بعد حركة عكسية '+Number(Math.max(0,adverseAtr).toFixed(2))+' ATR؛ تم خفض وزنه وإعادة ترجيح الحركة بدل إيقاف التوقع');
   if(movementIntel?.ok)reasons.push('Movement Brain '+String(movementIntel.regime)+' · '+(movementIntel.side==='WAIT'?('lean '+movementIntel.leanSide):movementIntel.side)+' · '+movementConfidence);
   if(primaryMoveSide!=='WAIT')reasons.push('First-Move '+primaryMoveSide+' · confidence '+primaryMoveConfidence+' · first-hit '+Number(em2?.firstHitMinutes||0)+'m');
   if(primaryMoveConflict)reasons.push('الاتجاه المثبت '+stableSide+' متأخر/متعارض مع الحركة الأولى '+primaryMoveSide);
