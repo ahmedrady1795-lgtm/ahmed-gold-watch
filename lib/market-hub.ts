@@ -128,7 +128,7 @@ export function getMt5FastSignal(now=Date.now()){
   const older=(ms:number)=>{for(let i=rows.length-1;i>=0;i--)if(rows[i].receivedAt<=latest.receivedAt-ms)return rows[i];return rows[0]||null;};
   const vel=(o:Mt5FastTick|null)=>o&&o.price>0?(latest.price-o.price)/o.price*10000:0;
   const o05=older(500),o1=older(1000),o15=older(1500),o3=older(3000),o4=older(4000),o8=older(8000);
-  const v05=vel(latest,o05),v1=vel(latest,o1),v15=vel(latest,o15),v3=vel(latest,o3),v4=vel(latest,o4),v8=vel(latest,o8),acc=v05-v15/3;
+  const v05=vel(o05),v1=vel(o1),v15=vel(o15),v3=vel(o3),v4=vel(o4),v8=vel(o8),acc=v05-v15/3;
   let up=0,down=0;for(let i=1;i<rows.length;i++){if(rows[i].price>rows[i-1].price)up++;else if(rows[i].price<rows[i-1].price)down++;}
   const persistence=Math.round(Math.max(up,down)/Math.max(1,up+down)*100);
   const imbalance=Number(latest.bookImbalance||0);
