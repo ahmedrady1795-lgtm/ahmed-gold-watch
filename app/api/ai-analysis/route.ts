@@ -173,7 +173,10 @@ function goldLiveFromParams(url:URL,external:any,now:number){
 }
 export async function GET(request:Request){
   const now=Date.now(),url=new URL(request.url),btcWave=waveFromParams(url,'b',now),goldWave=waveFromParams(url,'g',now);
-  if(lastAiPayload&&now-lastAiPayloadAt<1600){
+  const clientGoldAt=Number(url.searchParams.get('gt'));
+  const clientBtcAt=Number(url.searchParams.get('bat'));
+  const hasNewLiveTick=(Number.isFinite(clientGoldAt)&&clientGoldAt>Number(lastAiPayload?.gold?.livePulse?.sourceTime||0))||(Number.isFinite(clientBtcAt)&&clientBtcAt>Number(lastAiPayload?.bitcoin?.livePulse?.sourceTime||0));
+  if(lastAiPayload&&now-lastAiPayloadAt<650&&!hasNewLiveTick){
     return Response.json(lastAiPayload,{headers:{'Cache-Control':'no-store','X-AI-Cache':'fresh'}});
   }
   if(analysisBusy&&lastAiPayload&&now-lastAiPayloadAt<30000){
