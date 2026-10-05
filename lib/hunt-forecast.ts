@@ -5,6 +5,8 @@ type ForecastSample={at:number;side:Side;score:number};
 type Horizon={side:Side;buy:number;sell:number;strength:number;gap:number};
 
 const memory=new Map<string,ForecastSample[]>();
+type ZoneCommit={forecast:any;side:Side;at:number;lastConfirmedAt:number;price:number;atr:number;flipsBlocked:number};
+const zoneCommitMemory=new Map<string,ZoneCommit>();
 type LiveFailureGuard={side:Side;anchor:number;atr:number;at:number;blockedUntil:number;failures:number};
 const liveFailureGuards=new Map<string,LiveFailureGuard>();
 const cap=(n:number,min=0,max=92)=>Math.max(min,Math.min(max,n));
@@ -160,6 +162,95 @@ function fmtZone(low:number,high:number){
   const a=Number(low),b=Number(high);
   if(!Number.isFinite(a)||!Number.isFinite(b))return '—';
   return a.toFixed(2)+'–'+b.toFixed(2);
+}
+
+function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,now:number){
+  const key=String(asset||'ASSET').toUpperCase(),prev=zoneCommitMemory.get(key);
+  const p=Number(price),a=Math.max(1e-9,Number(atr));
+  const ttl=key==='GOLD'?180000:120000;
+  const hardTtl=key==='GOLD'?360000:240000;
+  const validCurrent=Boolean(current&&['BUY','SELL'].includes(String(current.side||'')));
+  const prevFresh=Boolean(prev&&now-prev.at<=hardTtl);
+
+  const zoneBroken=(commit:ZoneCommit)=>{
+    const f=commit.forecast||{},origin=f.origin||null,target=f.target||null,side=commit.side;
+    if(side==='BUY'){
+      const originBroken=origin&&Number.isFinite(Number(origin.low))&&p<Number(origin.low)-a*.18;
+      const targetReached=target&&Number.isFinite(Number(target.high))&&p>Number(target.high)+a*.10;
+      return Boolean(originBroken||targetReached);
+    }
+    if(side==='SELL'){
+      const originBroken=origin&&Number.isFinite(Number(origin.high))&&p>Number(origin.high)+a*.18;
+      const targetReached=target&&Number.isFinite(Number(target.low))&&p<Number(target.low)-a*.10;
+      return Boolean(originBroken||targetReached);
+    }
+    return true;
+  };
+
+  if(!prevFresh||!prev||zoneBroken(prev)){
+    if(validCurrent){
+      const committed={...current,stability:{locked:true,ageSeconds:0,flipsBlocked:0,reason:'NEW_ZONE_COMMIT'}};
+      zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0});
+      return committed;
+    }
+    return current?{...current,stability:{locked:false,ageSeconds:0,flipsBlocked:0,reason:'NO_COMMIT'}}:null;
+  }
+
+  const age=now-prev.at,prevForecast=prev.forecast||{};
+  if(validCurrent&&current.side===prev.side){
+    const prevTarget=Number(prevForecast?.target?.mid),curTarget=Number(current?.target?.mid);
+    const targetClose=Number.isFinite(prevTarget)&&Number.isFinite(curTarget)?Math.abs(prevTarget-curTarget)<=a*.45:true;
+    const refresh=Number(current.confidence||0)>=Math.max(44,Number(prevForecast.confidence||0)-10)&&targetClose;
+    if(refresh){
+      const merged={
+        ...current,
+        target:targetClose&&prevForecast?.target?prevForecast.target:current.target,
+        origin:prevForecast?.origin||current.origin,
+        confidence:Math.round(cap(Number(current.confidence||0)*.62+Number(prevForecast.confidence||0)*.38,0,88)),
+        stability:{locked:true,ageSeconds:Math.round(age/1000),flipsBlocked:prev.flipsBlocked,reason:'SAME_ZONE_CONFIRMED'}
+      };
+      zoneCommitMemory.set(key,{forecast:merged,side:prev.side,at:prev.at,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:prev.flipsBlocked});
+      return merged;
+    }
+  }
+
+  if(validCurrent&&current.side!==prev.side){
+    const prevStrength=Math.max(Number(prevForecast?.target?.strength||0),Number(prevForecast?.origin?.strength||0));
+    const curStrength=Math.max(Number(current?.target?.strength||0),Number(current?.origin?.strength||0));
+    const confidenceGap=Number(current.confidence||0)-Number(prevForecast.confidence||0);
+    const structuralUpgrade=curStrength>=Math.max(64,prevStrength+8)&&Number(current.breakoutReadiness||0)>=55;
+    const decisiveFlip=confidenceGap>=14&&structuralUpgrade;
+    if(decisiveFlip){
+      const committed={...current,stability:{locked:true,ageSeconds:0,flipsBlocked:prev.flipsBlocked,reason:'DECISIVE_STRUCTURAL_FLIP'}};
+      zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:prev.flipsBlocked});
+      return committed;
+    }
+  }
+
+  if(age<=ttl||!validCurrent||current.side!==prev.side){
+    const blocked=(validCurrent&&current.side!==prev.side)?prev.flipsBlocked+1:prev.flipsBlocked;
+    const decay=Math.min(8,Math.max(0,(now-prev.lastConfirmedAt)/60000)*1.5);
+    const held={
+      ...prevForecast,
+      confidence:Math.round(cap(Number(prevForecast.confidence||0)-decay,0,88)),
+      stability:{
+        locked:true,
+        ageSeconds:Math.round(age/1000),
+        flipsBlocked:blocked,
+        reason:validCurrent&&current.side!==prev.side?'OPPOSITE_PULSE_BLOCKED':'HOLD_ZONE_WHILE_SIGNAL_WEAK'
+      }
+    };
+    zoneCommitMemory.set(key,{...prev,forecast:held,flipsBlocked:blocked});
+    return held;
+  }
+
+  if(validCurrent){
+    const committed={...current,stability:{locked:true,ageSeconds:0,flipsBlocked:prev.flipsBlocked,reason:'ZONE_COMMIT_REFRESH'}};
+    zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:prev.flipsBlocked});
+    return committed;
+  }
+
+  return {...prevForecast,stability:{locked:false,ageSeconds:Math.round(age/1000),flipsBlocked:prev.flipsBlocked,reason:'ZONE_COMMIT_EXPIRED'}};
 }
 
 function pathAr(p:string){
@@ -778,10 +869,11 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     two:{...two,firstHitMinutes:Number(em2?.firstHitMinutes||0)},five,fifteen,
     accumulation,primary:shortSide,follow:followSide
   }):[];
-  const zoneForecast=validPrice?buildZoneForecast({
+  const rawZoneForecast=validPrice?buildZoneForecast({
     price:p,atr:a,side:primaryMoveSide!=='WAIT'?primaryMoveSide:stableSide,
     confidence:primaryMoveConfidence,accumulation
   }):null;
+  const zoneForecast=validPrice?stabilizeZoneForecast(asset,rawZoneForecast,p,a,now):rawZoneForecast;
 
   const quickTarget=(side:Side,strength:number,atrFactor:number,stationPrice:number|null=null)=>{
     if(!validPrice||side==='WAIT')return null;
