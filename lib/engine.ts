@@ -27,9 +27,40 @@ function closed(c:Candle[],ms:number,now:number){return c.filter(x=>x.time+ms<=n
 function trendLong(i:IndicatorSet,last:number){return i.ema20>i.ema50&&last>i.ema200;}
 function trendShort(i:IndicatorSet,last:number){return i.ema20<i.ema50&&last<i.ema200;}
 function add(ok:boolean,w:number){return ok?w:0;}
+function unit(v:number){return Math.max(0,Math.min(1,Number.isFinite(v)?v:0));}
+function directionalStrength(v:number,scale:number){return unit(v/Math.max(1e-9,scale));}
+function indicatorFamilyPower(long:boolean,i:IndicatorSet,p:number){
+  const dir=long?1:-1,atr=Math.max(1e-9,Number(i.atr||0));
+  const emaFast=dir*(i.ema20-i.ema50)/atr;
+  const emaAnchor=dir*(p-i.ema200)/atr;
+  const trend=unit(directionalStrength(emaFast,.42)*.58+directionalStrength(emaAnchor,.75)*.42);
+  const macd=directionalStrength(dir*i.macdHist/atr,.16);
+  const diGap=dir*(i.plusDI-i.minusDI);
+  const dmi=unit(directionalStrength(diGap,22)*.68+directionalStrength(i.adx-12,24)*.32);
+  const rsiSigned=dir*(i.rsi-50);
+  const rsi=unit(directionalStrength(rsiSigned,18)*(i.rsi>=18&&i.rsi<=82?1:.72));
+  const stochSigned=dir*(i.stochK-i.stochD);
+  const stoch=unit(directionalStrength(stochSigned,16)*.70+directionalStrength(dir*(i.stochK-50),35)*.30);
+  const halfBand=Math.max(1e-9,(i.bbUpper-i.bbLower)/2);
+  const bbPos=dir*(p-i.bbMid)/halfBand;
+  const bollinger=unit((bbPos+1)/2);
+  const volQuality=unit(1-Math.abs(Math.log(Math.max(.25,i.volatility||1)))/Math.log(4));
+  return {trend,macd,dmi,rsi,stoch,bollinger,volQuality};
+}
 export function scoreFrames(side:'long'|'short',f:{m1:IndicatorSet;m5:IndicatorSet;m15:IndicatorSet;h1:IndicatorSet},last:{m1:number;m5:number;m15:number;h1:number},breakout:boolean){
-  const long=side==='long';const t=(i:IndicatorSet,p:number)=>long?trendLong(i,p):trendShort(i,p);const mac=(i:IndicatorSet)=>long?i.macdHist>0:i.macdHist<0;const di=(i:IndicatorSet)=>long?i.plusDI>i.minusDI:i.minusDI>i.plusDI;const rsi=long?f.m5.rsi>=52&&f.m5.rsi<=70:f.m5.rsi<=48&&f.m5.rsi>=30;const sto=long?f.m1.stochK>=45&&f.m1.stochK<=92:f.m1.stochK<=55&&f.m1.stochK>=8;const bb=long?last.m5>f.m5.bbMid&&last.m5<=f.m5.bbUpper*1.002:last.m5<f.m5.bbMid&&last.m5>=f.m5.bbLower*.998;
-  return Math.round(add(t(f.m5,last.m5),8)+add(t(f.m15,last.m15),8)+add(t(f.h1,last.h1),8)+add(long?f.m5.ema20>f.m5.ema50:f.m5.ema20<f.m5.ema50,5)+add(long?f.h1.ema20>f.h1.ema50:f.h1.ema20<f.h1.ema50,5)+add(mac(f.m5),9)+add(mac(f.m15),9)+add(rsi,6)+add(f.m5.adx>=20&&di(f.m5),12)+add(sto,5)+add(bb,5)+add(breakout,12)+add(t(f.m1,last.m1)&&mac(f.m1),8));
+  const long=side==='long';
+  const p1=indicatorFamilyPower(long,f.m1,last.m1),p5=indicatorFamilyPower(long,f.m5,last.m5),p15=indicatorFamilyPower(long,f.m15,last.m15),ph=indicatorFamilyPower(long,f.h1,last.h1);
+  const trend=(p5.trend*.28+p15.trend*.36+ph.trend*.36)*30;
+  const momentum=(p1.macd*.20+p5.macd*.42+p15.macd*.38)*22;
+  const directional=(p5.dmi*.52+p15.dmi*.30+ph.dmi*.18)*18;
+  const oscillators=((p5.rsi*.58+p1.rsi*.16+p15.rsi*.26)*.55+(p1.stoch*.55+p5.stoch*.45)*.45)*12;
+  const location=(p1.bollinger*.26+p5.bollinger*.52+p15.bollinger*.22)*8;
+  const timeframeAgreement=[p1.trend,p5.trend,p15.trend,ph.trend].filter(v=>v>=.55).length;
+  const agreement=Math.max(0,(timeframeAgreement-1)/3)*4;
+  const breakoutPower=breakout?6:0;
+  const quality=(p1.volQuality*.15+p5.volQuality*.45+p15.volQuality*.25+ph.volQuality*.15);
+  const raw=trend+momentum+directional+oscillators+location+agreement+breakoutPower;
+  return Math.round(Math.max(0,Math.min(100,raw*(.78+.22*quality))));
 }
 
 export type RegimeKey='trend_up'|'trend_down'|'range'|'high_vol'|'shock'|'unknown';
@@ -129,40 +160,54 @@ export function scalpAnalyze(c1:Candle[],c5:Candle[],now:number,price?:number|nu
   const reversalUp=(rangePos<=.28||reclaimUp)&&(wickBias>=.12||Number(i1.rsi)<=43)&&(i1.stochK>=i1.stochD||body>0);
   const reversalDown=(rangePos>=.72||reclaimDown)&&(wickBias<=-.12||Number(i1.rsi)>=57)&&(i1.stochK<=i1.stochD||body<0);
 
-  const score=(long:boolean)=>{
-    let s=0;
-    const up=long;
-    s+=add(up?i1.ema20>i1.ema50:i1.ema20<i1.ema50,10);
-    s+=add(up?i1.macdHist>0:i1.macdHist<0,10);
-    s+=add(up?i1.plusDI>i1.minusDI:i1.minusDI>i1.plusDI,8);
-    s+=add(i1.adx>=14,4);
-    s+=add(up?i1.rsi>=48&&i1.rsi<=78:i1.rsi<=52&&i1.rsi>=22,7);
-    s+=add(up?i1.stochK>i1.stochD:i1.stochK<i1.stochD,7);
-    s+=add(up?l1.close>=i1.bbMid:l1.close<=i1.bbMid,5);
-
-    s+=add(up?momentum>=.08:momentum<=-.08,8);
-    s+=add(up?momentum>=.20:momentum<=-.20,5);
-    s+=add(up?accel>=.04:accel<=-.04,6);
-    s+=add(up?liveMove>=.035:liveMove<=-.035,5);
-    s+=add(up?body>=.28:body<=-.28,5);
-    s+=add(up?wickBias>=.12:wickBias<=-.12,5);
-    s+=add(up?longBreak:shortBreak,9);
-    s+=add(up?reclaimUp:reclaimDown,10);
-    s+=add(up?impulseUp:impulseDown,7);
-    s+=add(efficiency>=.36&&(up?momentum6>0:momentum6<0),5);
-    s+=add(compression>=.18&&(up?(impulseUp||longBreak):(impulseDown||shortBreak)),6);
-
-    // M5 confirms and boosts, but it is no longer a hard gate for fast M1 scalps.
-    s+=add(up?m5Bull:m5Bear,7);
-    s+=add(up?m5DiBull:m5DiBear,5);
-    s+=add(Number(i5.adx)>=20&&(up?m5DiBull:m5DiBear),3);
-
-    // Range reversal / sweep-reclaim can legitimately trade against M5.
-    s+=add(up?reversalUp:reversalDown,12);
-    return Math.min(100,Math.round(s));
+  const indicatorPower=(long:boolean)=>{
+    const dir=long?1:-1;
+    const p1=indicatorFamilyPower(long,i1,l1.close),p5=indicatorFamilyPower(long,i5,l5.close);
+    const ema=unit(p1.trend*.68+p5.trend*.32);
+    const macd=unit(p1.macd*.72+p5.macd*.28);
+    const dmi=unit(p1.dmi*.70+p5.dmi*.30);
+    const oscillator=unit((p1.rsi*.52+p1.stoch*.48)*.82+(p5.rsi*.55+p5.stoch*.45)*.18);
+    const bollinger=unit(p1.bollinger*.74+p5.bollinger*.26);
+    const momentumPower=unit(
+      directionalStrength(dir*momentum,.28)*.34+
+      directionalStrength(dir*accel,.12)*.22+
+      directionalStrength(dir*liveMove,.12)*.18+
+      directionalStrength(dir*momentum6,.42)*.26
+    );
+    const candlePower=unit(
+      directionalStrength(dir*body,.55)*.30+
+      directionalStrength(dir*wickBias,.22)*.18+
+      (long?reclaimUp:reclaimDown?1:0)*.22+
+      (long?impulseUp:impulseDown?1:0)*.18+
+      ((long?longBreak:shortBreak)?1:0)*.12
+    );
+    const pathPower=unit(
+      directionalStrength(dir*momentum6,.50)*.36+
+      unit((efficiency-.18)/.62)*.34+
+      unit(Math.max(0,compression)/.42)*((long?impulseUp||longBreak:impulseDown||shortBreak)?1:.45)*.30
+    );
+    const context=unit(
+      (long?m5Bull:m5Bear?1:0)*.42+
+      (long?m5DiBull:m5DiBear?1:0)*.34+
+      directionalStrength(Number(i5.adx)-12,24)*.24
+    );
+    const reversal=(long?reversalUp:reversalDown)?1:0;
+    const quality=unit(p1.volQuality*.66+p5.volQuality*.34);
+    const families={
+      ema:Number((ema*100).toFixed(1)),macd:Number((macd*100).toFixed(1)),dmi:Number((dmi*100).toFixed(1)),
+      oscillator:Number((oscillator*100).toFixed(1)),bollinger:Number((bollinger*100).toFixed(1)),
+      momentum:Number((momentumPower*100).toFixed(1)),priceAction:Number((candlePower*100).toFixed(1)),
+      path:Number((pathPower*100).toFixed(1)),context:Number((context*100).toFixed(1)),reversal:Number((reversal*100).toFixed(1))
+    };
+    const raw=
+      ema*12+macd*11+dmi*10+oscillator*8+bollinger*5+
+      momentumPower*17+candlePower*16+pathPower*9+context*8+reversal*4;
+    const total=Math.round(Math.max(0,Math.min(100,raw*(.82+.18*quality))));
+    return {total,families,quality:Number((quality*100).toFixed(1))};
   };
 
-  const long=score(true),short=score(false),buySide=long>=short,best=Math.max(long,short),gap=Math.abs(long-short);
+  const longPower=indicatorPower(true),shortPower=indicatorPower(false);
+  const long=longPower.total,short=shortPower.total,buySide=long>=short,best=Math.max(long,short),gap=Math.abs(long-short);
   const side=buySide?'buy':'sell',breakActive=buySide?longBreak:shortBreak,reversalActive=buySide?reversalUp:reversalDown,impulseActive=buySide?impulseUp:impulseDown;
   const m5Aligned=buySide?m5Bull:m5Bear,m5DiAligned=buySide?m5DiBull:m5DiBear;
   const mode=reversalActive?'REVERSAL':breakActive?'BREAKOUT':impulseActive?'MOMENTUM':compression>=.18?'COMPRESSION':'FLOW';
@@ -194,6 +239,7 @@ export function scalpAnalyze(c1:Candle[],c5:Candle[],now:number,price?:number|nu
     priceAction:{body:Number(body.toFixed(2)),wickBias:Number(wickBias.toFixed(2)),rangePos:Number(rangePos.toFixed(2)),compression:Number(compression.toFixed(2)),efficiency:Number(efficiency.toFixed(2)),reclaimUp,reclaimDown},
     breakout:{long:longBreak,short:shortBreak},
     adaptive:{mode,m5Aligned,m5DiAligned,trendStrength:Number(trendStrength.toFixed(2)),minGap,volatilityOk,candleAtr:Number(candleAtr.toFixed(2))},
+    indicatorPower:{long:longPower,short:shortPower,dominant:buySide?longPower:shortPower},
     dataAgeMs:{m1:age1,m5:age5}
   };
 
