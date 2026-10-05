@@ -145,6 +145,8 @@ function AssetCard({x,liveQuote}:any){
   const target=recommendation?.targets?.scalp??recommendation?.targets?.oneMinute??hunt?.quickSignalTargets?.oneMinute?.price??null;
   const invalid=recommendation?.invalidation??hunt?.invalidation??null;
   const conf=recommendation?.active?calibrated(recommendation.confidence):calibrated(goldCore?.confidence??hunt?.nextMove?.confidence??hunt?.confidence??0);
+  const scalpSide=x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:(x.scalp?.nextPrice?.side||x.scalp?.fusionV8?.nextPrice?.side||'WAIT');
+  const scalpLabel=scalpSide==='BUY'?'سكالب شراء':scalpSide==='SELL'?'سكالب بيع':'سكالب انتظار';
   return <section className={"panel ai-asset-card compact-asset "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
       <div><span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span><h2>{buy?'الحركة المرجحة: صعود':sell?'الحركة المرجحة: هبوط':'انتظار اتجاه أوضح'}</h2></div>
@@ -154,7 +156,7 @@ function AssetCard({x,liveQuote}:any){
     <div className="ai-price-row compact-price">
       <div><small>السعر</small><strong>{fmt(price,2)}</strong></div>
       <div><small>الثقة</small><strong>{conf?conf+'%':'—'}</strong></div>
-      <div><small>الحالة</small><strong>{recommendation?.active?'توصية':'توقع'}</strong></div>
+      <div><small>السكالب</small><strong className={scalpSide==='BUY'?'green':scalpSide==='SELL'?'red':'amber'}>{scalpLabel}</strong></div>
     </div>
 
     <div className="next-move-copy primary-move">
