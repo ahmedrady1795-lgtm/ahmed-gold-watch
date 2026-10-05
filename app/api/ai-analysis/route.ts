@@ -444,7 +444,13 @@ export async function GET(request:Request){
           support:compactZone(hunt.zoneForecast.support),
           resistance:compactZone(hunt.zoneForecast.resistance),
           origin:compactZone(hunt.zoneForecast.origin),
-          target:compactZone(hunt.zoneForecast.target)
+          target:compactZone(hunt.zoneForecast.target),
+          stability:hunt.zoneForecast.stability?{
+            locked:Boolean(hunt.zoneForecast.stability.locked),
+            ageSeconds:Number(hunt.zoneForecast.stability.ageSeconds||0),
+            flipsBlocked:Number(hunt.zoneForecast.stability.flipsBlocked||0),
+            reason:hunt.zoneForecast.stability.reason||''
+          }:null
         }:null
       }:null,
       stateGraph:stateGraph?{
@@ -514,6 +520,15 @@ export async function GET(request:Request){
       }:null
     };
 
+    const huntZoneDiag=(h:any)=>h?.zoneForecast?{
+      side:h.zoneForecast.side||'WAIT',
+      confidence:Number(h.zoneForecast.confidence||0),
+      target:h.zoneForecast.target?{low:h.zoneForecast.target.low,high:h.zoneForecast.target.high,kind:h.zoneForecast.target.kind}:null,
+      locked:Boolean(h.zoneForecast.stability?.locked),
+      stabilityReason:h.zoneForecast.stability?.reason||'',
+      flipsBlocked:Number(h.zoneForecast.stability?.flipsBlocked||0)
+    }:null;
+
     if(now-lastDiagLog>30000){
       lastDiagLog=now;
       console.info('[AI-DIAG]',JSON.stringify({
@@ -529,6 +544,7 @@ export async function GET(request:Request){
             samples:Number((goldTick as any)?.samples||0),
             persistence:Number((goldTick as any)?.persistence||0)
           },
+          zone:huntZoneDiag(goldHunt),
           action:goldMaster.action,
           scalp:goldScalp.action,
           confidence:Number(goldHunt?.nextMove?.confidence||0),
