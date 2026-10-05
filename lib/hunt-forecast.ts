@@ -167,10 +167,16 @@ function fmtZone(low:number,high:number){
 function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,now:number){
   const key=String(asset||'ASSET').toUpperCase(),prev=zoneCommitMemory.get(key);
   const p=Number(price),a=Math.max(1e-9,Number(atr));
-  const ttl=key==='GOLD'?180000:120000;
-  const hardTtl=key==='GOLD'?360000:240000;
-  const validCurrent=Boolean(current&&['BUY','SELL'].includes(String(current.side||'')));
-  const prevFresh=Boolean(prev&&now-prev.at<=hardTtl);
+  const validCurrent=Boolean(
+    current&&['BUY','SELL'].includes(String(current.side||''))&&Number(current.confidence||0)>=24
+  );
+
+  const hasStructure=(f:any)=>Boolean(
+    f?.target||
+    (f?.origin&&Number(f.origin.strength||0)>=48)||
+    (f?.support&&Number(f.support.strength||0)>=52)||
+    (f?.resistance&&Number(f.resistance.strength||0)>=52)
+  );
 
   const zoneBroken=(commit:ZoneCommit)=>{
     const f=commit.forecast||{},origin=f.origin||null,target=f.target||null,side=commit.side;
@@ -187,52 +193,102 @@ function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,
     return true;
   };
 
-  if(!prevFresh||!prev||zoneBroken(prev)){
-    if(validCurrent){
+  if(!prev||zoneBroken(prev)){
+    if(validCurrent&&hasStructure(current)){
       const committed={...current,stability:{locked:true,ageSeconds:0,flipsBlocked:0,reason:'NEW_ZONE_COMMIT'}};
       zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0});
       return committed;
     }
-    return current?{...current,stability:{locked:false,ageSeconds:0,flipsBlocked:0,reason:'NO_COMMIT'}}:null;
+    return current?{...current,stability:{locked:false,ageSeconds:0,flipsBlocked:0,reason:'NO_STRONG_ZONE'}}:null;
   }
 
   const age=now-prev.at,prevForecast=prev.forecast||{};
-  if(validCurrent&&current.side===prev.side){
+  const prevHasTarget=Boolean(prevForecast?.target);
+  const prevStrength=Math.max(
+    Number(prevForecast?.target?.strength||0),
+    Number(prevForecast?.origin?.strength||0),
+    Number(prevForecast?.support?.strength||0),
+    Number(prevForecast?.resistance?.strength||0)
+  );
+  const prevConfidence=Number(prevForecast.confidence||0);
+
+  // Weak/targetless zones are allowed to stabilize briefly, but must not freeze the forecast.
+  const ttl=key==='GOLD'
+    ?(prevHasTarget&&prevStrength>=58?180000:60000)
+    :(prevHasTarget&&prevStrength>=58?120000:45000);
+  const hardTtl=key==='GOLD'
+    ?(prevHasTarget&&prevStrength>=58?300000:100000)
+    :(prevHasTarget&&prevStrength>=58?210000:80000);
+
+  if(age>hardTtl||prevConfidence<24||(!prevHasTarget&&prev.flipsBlocked>=4)){
+    if(validCurrent&&hasStructure(current)){
+      const committed={...current,stability:{locked:true,ageSeconds:0,flipsBlocked:0,reason:'STALE_ZONE_REPLACED'}};
+      zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0});
+      return committed;
+    }
+    zoneCommitMemory.delete(key);
+    return current?{...current,stability:{locked:false,ageSeconds:0,flipsBlocked:0,reason:'STALE_ZONE_RELEASED'}}:null;
+  }
+
+  if(validCurrent&&current.side===prev.side&&hasStructure(current)){
     const prevTarget=Number(prevForecast?.target?.mid),curTarget=Number(current?.target?.mid);
-    const targetClose=Number.isFinite(prevTarget)&&Number.isFinite(curTarget)?Math.abs(prevTarget-curTarget)<=a*.45:true;
-    const refresh=Number(current.confidence||0)>=Math.max(44,Number(prevForecast.confidence||0)-10)&&targetClose;
+    const bothTargets=Number.isFinite(prevTarget)&&Number.isFinite(curTarget);
+    const targetClose=bothTargets?Math.abs(prevTarget-curTarget)<=a*.55:true;
+    const refresh=Number(current.confidence||0)>=Math.max(36,prevConfidence-12)&&targetClose;
     if(refresh){
       const merged={
         ...current,
-        target:targetClose&&prevForecast?.target?prevForecast.target:current.target,
-        origin:prevForecast?.origin||current.origin,
-        confidence:Math.round(cap(Number(current.confidence||0)*.62+Number(prevForecast.confidence||0)*.38,0,88)),
-        stability:{locked:true,ageSeconds:Math.round(age/1000),flipsBlocked:prev.flipsBlocked,reason:'SAME_ZONE_CONFIRMED'}
+        target:bothTargets&&targetClose&&prevForecast?.target?prevForecast.target:current.target,
+        origin:current.origin||prevForecast?.origin||null,
+        confidence:Math.round(cap(Number(current.confidence||0)*.68+prevConfidence*.32,0,88)),
+        stability:{locked:true,ageSeconds:Math.round(age/1000),flipsBlocked:0,reason:'SAME_ZONE_CONFIRMED'}
       };
-      zoneCommitMemory.set(key,{forecast:merged,side:prev.side,at:prev.at,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:prev.flipsBlocked});
+      zoneCommitMemory.set(key,{forecast:merged,side:prev.side,at:prev.at,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0});
       return merged;
     }
   }
 
-  if(validCurrent&&current.side!==prev.side){
-    const prevStrength=Math.max(Number(prevForecast?.target?.strength||0),Number(prevForecast?.origin?.strength||0));
-    const curStrength=Math.max(Number(current?.target?.strength||0),Number(current?.origin?.strength||0));
-    const confidenceGap=Number(current.confidence||0)-Number(prevForecast.confidence||0);
-    const structuralUpgrade=curStrength>=Math.max(64,prevStrength+8)&&Number(current.breakoutReadiness||0)>=55;
-    const decisiveFlip=confidenceGap>=14&&structuralUpgrade;
+  if(validCurrent&&current.side!==prev.side&&hasStructure(current)){
+    const curStrength=Math.max(
+      Number(current?.target?.strength||0),
+      Number(current?.origin?.strength||0),
+      Number(current?.support?.strength||0),
+      Number(current?.resistance?.strength||0)
+    );
+    const confidenceGap=Number(current.confidence||0)-prevConfidence;
+    const repeatedOpposition=prev.flipsBlocked>=2;
+    const prevWeak=!prevHasTarget||prevStrength<54||prevConfidence<38;
+    const structuralUpgrade=Boolean(
+      current?.target||
+      curStrength>=Math.max(54,prevStrength+5)||
+      Number(current.breakoutReadiness||0)>=58
+    );
+    const decisiveFlip=Boolean(
+      structuralUpgrade&&(
+        confidenceGap>=10||
+        (repeatedOpposition&&confidenceGap>=4)||
+        (prevWeak&&Number(current.confidence||0)>=38)
+      )
+    );
     if(decisiveFlip){
-      const committed={...current,stability:{locked:true,ageSeconds:0,flipsBlocked:prev.flipsBlocked,reason:'DECISIVE_STRUCTURAL_FLIP'}};
-      zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:prev.flipsBlocked});
+      const committed={...current,stability:{locked:true,ageSeconds:0,flipsBlocked:0,reason:'DECISIVE_STRUCTURAL_FLIP'}};
+      zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0});
       return committed;
     }
   }
 
-  if(age<=ttl||!validCurrent||current.side!==prev.side){
-    const blocked=(validCurrent&&current.side!==prev.side)?prev.flipsBlocked+1:prev.flipsBlocked;
-    const decay=Math.min(8,Math.max(0,(now-prev.lastConfirmedAt)/60000)*1.5);
+  // Only hold the prior zone inside its TTL. This fixes the old freeze where an opposite side was blocked forever.
+  if(age<=ttl){
+    const blocked=(validCurrent&&current.side!==prev.side)?prev.flipsBlocked+1:Math.max(0,prev.flipsBlocked-1);
+    const decay=Math.min(14,Math.max(0,(now-prev.lastConfirmedAt)/60000)*2.5);
+    const heldConfidence=Math.round(cap(prevConfidence-decay,0,88));
+    if(heldConfidence<24){
+      zoneCommitMemory.delete(key);
+      return current?{...current,stability:{locked:false,ageSeconds:0,flipsBlocked:0,reason:'LOW_CONFIDENCE_RELEASE'}}:null;
+    }
     const held={
       ...prevForecast,
-      confidence:Math.round(cap(Number(prevForecast.confidence||0)-decay,0,88)),
+      confidence:heldConfidence,
       stability:{
         locked:true,
         ageSeconds:Math.round(age/1000),
@@ -244,13 +300,14 @@ function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,
     return held;
   }
 
-  if(validCurrent){
-    const committed={...current,stability:{locked:true,ageSeconds:0,flipsBlocked:prev.flipsBlocked,reason:'ZONE_COMMIT_REFRESH'}};
-    zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:prev.flipsBlocked});
+  if(validCurrent&&hasStructure(current)){
+    const committed={...current,stability:{locked:true,ageSeconds:0,flipsBlocked:0,reason:'ZONE_COMMIT_REFRESH'}};
+    zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0});
     return committed;
   }
 
-  return {...prevForecast,stability:{locked:false,ageSeconds:Math.round(age/1000),flipsBlocked:prev.flipsBlocked,reason:'ZONE_COMMIT_EXPIRED'}};
+  zoneCommitMemory.delete(key);
+  return current?{...current,stability:{locked:false,ageSeconds:Math.round(age/1000),flipsBlocked:0,reason:'ZONE_COMMIT_EXPIRED'}}:null;
 }
 
 function pathAr(p:string){
