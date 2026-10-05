@@ -131,7 +131,7 @@ function AdvancedDetails({x}:any){
   </details>;
 }
 
-function AssetCard({x,fast}:any){
+function AssetCard({x,fast,liveQuote}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
   const master=x.master||{action:x.action,state:x.phase||'WAIT',reason:''},hunt=x.huntForecast,recommendation=x.recommendation;
   const forecastSide=hunt?.marketUnderstanding?.firstMove?.side||hunt?.nextMove?.side||hunt?.path?.shortSide||'WAIT';
@@ -168,7 +168,7 @@ function AssetCard({x,fast}:any){
     </div>
 
     <div className="ai-price-row">
-      <div><small>السعر</small><strong>{fmt(x.livePulse?.price??x.price,2)}</strong></div>
+      <div><small>السعر{x.asset==='GOLD'&&liveQuote?.status==='live'?' · LIVE':''}</small><strong>{fmt(x.asset==='GOLD'&&liveQuote?.status==='live'?liveQuote.price:(x.livePulse?.price??x.price),2)}</strong></div>
       <div><small>الثقة</small><strong>{recommendation?.active?(calibrated(recommendation.confidence)+'%'):'—'}</strong></div>
       <div><small>الحالة</small><strong>{recommendation?.active?'توصية':'مراقبة'}</strong></div>
     </div>
@@ -281,7 +281,7 @@ function AssetCard({x,fast}:any){
   </section>;
 }
 
-export default function AICommandCenter({data,error,fastWave,now=Date.now()}:any){
+export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.now()}:any){
   const auto=data?.autopilot,next=auto?.nextEvent;
   const nextEventDelta=Number(next?.time)-now;
   const showNextEvent=!!next&&Number.isFinite(nextEventDelta)&&nextEventDelta>=0&&nextEventDelta<=10*60*60*1000;
@@ -298,6 +298,6 @@ export default function AICommandCenter({data,error,fastWave,now=Date.now()}:any
       <span>{timeLeft(next.time,now)}</span>
     </section>}
 
-    <div className="dashboardgrid"><AssetCard x={data?.bitcoin} fast={fastWave?.btc}/><AssetCard x={data?.gold} fast={fastWave?.gold}/></div>
+    <div className="dashboardgrid"><AssetCard x={data?.bitcoin} fast={fastWave?.btc}/><AssetCard x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive}/></div>
   </div>;
 }
