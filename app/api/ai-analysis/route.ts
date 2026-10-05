@@ -455,10 +455,33 @@ export async function GET(request:Request){
     const goldMarketOpen=goldMarketOpenUTC(now);
     const recovered=actions.length>0&&(!goldMarketOpen||gm.pricesReady)&&Boolean(btc.c1.length)&&Boolean(btcPrice);
     const futureEvents=(gm.events||[]).filter((e:any)=>e.time>=now).sort((a:any,b:any)=>a.time-b.time);
+    const featuredEvent=futureEvents[0]||null;
+    const featuredGoldNews=featuredEvent?buildNewsIntelligence('GOLD',[featuredEvent],now):null;
+    const featuredBtcNews=featuredEvent?buildNewsIntelligence('BTC',[featuredEvent],now):null;
+    const compactNewsImpact=(x:any)=>x?{
+      side:x.side||'WAIT',
+      confidence:Number(x.confidence||0),
+      risk:Number(x.risk||0),
+      phase:x.phase||'CALM',
+      directional:Boolean(x.directional),
+      surprise:Number.isFinite(Number(x.surprise))?Number(x.surprise):null,
+      reason:Array.isArray(x.reasons)?x.reasons.slice(0,2).join(' '):''
+    }:null;
     const degraded=(goldMarketOpen&&!gm.pricesReady)||!gm.newsReady||!btc?.c1?.length||!btcPrice;
     const autopilot={
       status:recovered?'recovered':degraded?'degraded':'healthy',
-      nextEvent:futureEvents[0]?{name:futureEvents[0].name,time:futureEvents[0].time,importance:futureEvents[0].importance}:null
+      nextEvent:featuredEvent?{
+        id:featuredEvent.id,
+        name:featuredEvent.name,
+        time:featuredEvent.time,
+        importance:featuredEvent.importance,
+        actual:featuredEvent.actual||'',
+        forecast:featuredEvent.forecast||'',
+        previous:featuredEvent.previous||'',
+        source:featuredEvent.source||'',
+        goldImpact:compactNewsImpact(featuredGoldNews),
+        btcImpact:compactNewsImpact(featuredBtcNews)
+      }:null
     };
 
     if(now-lastDiagLog>30000){
