@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from fastapi import FastAPI
 
-APP_VERSION="predator-neural-v2-price-path"
+APP_VERSION="predator-neural-v3-calibrated-l2"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 DATA_PATH=MODEL_DIR/"l2_neural.jsonl"
 MODEL_PATH=MODEL_DIR/"l2_neural.pt"
@@ -35,10 +35,14 @@ ROWS=deque(maxlen=MAX_SNAPSHOTS)
 PENDING=[]
 MODEL=None
 METRICS=None
+NORM_MEAN=None
+NORM_STD=None
 TRAINING=False
 LAST_TRAIN_AT=0
 PATH_MODEL=None
 PATH_METRICS=None
+PATH_NORM_MEAN=None
+PATH_NORM_STD=None
 PATH_TRAINING=False
 PATH_LAST_TRAIN_AT=0
 PATH_LAST_ERROR=None
@@ -73,26 +77,32 @@ def _flush():
     PENDING=[]
 
 def _load_model():
-    global MODEL,METRICS,LAST_TRAIN_AT,LAST_ERROR
+    global MODEL,METRICS,NORM_MEAN,NORM_STD,LAST_TRAIN_AT,LAST_ERROR
     if not MODEL_PATH.exists():return
     try:
         obj=torch.load(MODEL_PATH,map_location="cpu",weights_only=False)
         if obj.get("version")!=APP_VERSION:return
         m=HybridMicroNet()
         m.load_state_dict(obj["state_dict"]);m.eval()
-        MODEL=m;METRICS=obj.get("metrics");LAST_TRAIN_AT=int(obj.get("trainedAt",0))
+        nm=np.asarray(obj.get("normMean",[]),dtype=np.float32)
+        ns=np.asarray(obj.get("normStd",[]),dtype=np.float32)
+        if nm.shape!=(FEAT_DIM,) or ns.shape!=(FEAT_DIM,):return
+        MODEL=m;METRICS=obj.get("metrics");NORM_MEAN=nm;NORM_STD=ns;LAST_TRAIN_AT=int(obj.get("trainedAt",0))
     except Exception as e:
         LAST_ERROR=f"load_model:{type(e).__name__}:{e}"
 
 def _load_path_model():
-    global PATH_MODEL,PATH_METRICS,PATH_LAST_TRAIN_AT,PATH_LAST_ERROR
+    global PATH_MODEL,PATH_METRICS,PATH_NORM_MEAN,PATH_NORM_STD,PATH_LAST_TRAIN_AT,PATH_LAST_ERROR
     if not PATH_MODEL_PATH.exists():return
     try:
         obj=torch.load(PATH_MODEL_PATH,map_location="cpu",weights_only=False)
         if obj.get("version")!=APP_VERSION:return
         m=PricePathNet()
         m.load_state_dict(obj["state_dict"]);m.eval()
-        PATH_MODEL=m;PATH_METRICS=obj.get("metrics");PATH_LAST_TRAIN_AT=int(obj.get("trainedAt",0))
+        nm=np.asarray(obj.get("normMean",[]),dtype=np.float32)
+        ns=np.asarray(obj.get("normStd",[]),dtype=np.float32)
+        if nm.shape!=(FEAT_DIM,) or ns.shape!=(FEAT_DIM,):return
+        PATH_MODEL=m;PATH_METRICS=obj.get("metrics");PATH_NORM_MEAN=nm;PATH_NORM_STD=ns;PATH_LAST_TRAIN_AT=int(obj.get("trainedAt",0))
     except Exception as e:
         PATH_LAST_ERROR=f"load_path_model:{type(e).__name__}:{e}"
 
@@ -273,7 +283,7 @@ def _path_dataset():
     if not xs:return None,None
     return np.asarray(xs,dtype=np.float32),np.asarray(ys,dtype=np.float32)
 
-def _selected_metrics(y,prob,threshold=.48,margin=.05):
+def _selected_metrics(y,prob,threshold=.55,margin=.10):
     p=np.asarray(prob);pred=p.argmax(1)
     direction=np.maximum(p[:,0],p[:,2]);noise=p[:,1]
     mask=(direction>=threshold)&((direction-noise)>=margin)
@@ -281,7 +291,40 @@ def _selected_metrics(y,prob,threshold=.48,margin=.05):
     acc=float((pred[mask]==y[mask]).mean()) if n else 0.0
     cov=float(mask.mean()) if len(mask) else 0.0
     overall=float((pred==y).mean()) if len(y) else 0.0
-    return {"selectiveAccuracy":acc,"selectiveCoverage":cov,"selectiveN":n,"overallAccuracy":overall,"n":int(len(y))}
+    return {"selectiveAccuracy":acc,"selectiveCoverage":cov,"selectiveN":n,"overallAccuracy":overall,"n":int(len(y)),
+            "threshold":float(threshold),"margin":float(margin)}
+
+def _fit_normalizer(X):
+    flat=X.reshape(-1,X.shape[-1]).astype(np.float64)
+    center=np.median(flat,axis=0)
+    q25=np.percentile(flat,25,axis=0);q75=np.percentile(flat,75,axis=0)
+    scale=(q75-q25)/1.349
+    fallback=np.std(flat,axis=0)
+    scale=np.where(np.isfinite(scale)&(scale>1e-5),scale,np.where(fallback>1e-5,fallback,1.0))
+    return center.astype(np.float32),scale.astype(np.float32)
+
+def _normalize(X,center,scale):
+    return np.clip((X-center.reshape(1,1,-1))/scale.reshape(1,1,-1),-8.0,8.0).astype(np.float32)
+
+def _choose_selective_gate(y,prob):
+    best=None;n=len(y)
+    thirds=[(0,n//3),(n//3,2*n//3),(2*n//3,n)]
+    for threshold in [.50,.54,.58,.62,.66,.70]:
+        for margin in [.05,.08,.12,.16,.20]:
+            m=_selected_metrics(y,prob,threshold,margin)
+            if m["selectiveN"]<80 or m["selectiveCoverage"]<.04:continue
+            windows=[];valid=True
+            for a,b in thirds:
+                w=_selected_metrics(y[a:b],prob[a:b],threshold,margin)
+                if w["selectiveN"]<18 or w["selectiveCoverage"]<.025:
+                    valid=False;break
+                windows.append(w["selectiveAccuracy"])
+            if not valid:continue
+            worst=min(windows);spread=max(windows)-min(windows)
+            score=.62*worst+.30*m["selectiveAccuracy"]+.08*min(.20,m["selectiveCoverage"])-.14*spread
+            if best is None or score>best[0]:best=(score,threshold,margin,m,worst,spread)
+    if best:return float(best[1]),float(best[2])
+    return .62,.12
 
 def _probs(model,X,batch=256):
     model.eval();outs=[]
@@ -358,14 +401,17 @@ def _fit_path(Xtr,ytr,Xv,yv):
     return model
 
 def _train_path():
-    global PATH_MODEL,PATH_METRICS,PATH_TRAINING,PATH_LAST_TRAIN_AT,PATH_LAST_ERROR
+    global PATH_MODEL,PATH_METRICS,PATH_NORM_MEAN,PATH_NORM_STD,PATH_TRAINING,PATH_LAST_TRAIN_AT,PATH_LAST_ERROR
     if PATH_TRAINING:return
     PATH_TRAINING=True
     try:
         X,y=_path_dataset()
         if X is None or len(y)<MIN_SNAPSHOTS:return
-        a=int(len(y)*.70);b=int(len(y)*.85)
-        Xtr,Xv,Xte=X[:a],X[a:b],X[b:];ytr,yv,yte=y[:a],y[a:b],y[b:]
+        a=int(len(y)*.70);b=int(len(y)*.85);purge=HORIZON+2
+        Xtr,Xv,Xte=X[:max(1,a-purge)],X[a:max(a+1,b-purge)],X[b:]
+        ytr,yv,yte=y[:max(1,a-purge)],y[a:max(a+1,b-purge)],y[b:]
+        center,scale=_fit_normalizer(Xtr)
+        Xtr=_normalize(Xtr,center,scale);Xv=_normalize(Xv,center,scale);Xte=_normalize(Xte,center,scale)
         decoded=_path_decode(ytr)
         baseline={
             "end":float(np.median(decoded[:,0])),
@@ -384,9 +430,9 @@ def _train_path():
         )
         metrics={"validation":vm,"holdout":tm,"baseline":baseline,"ready":ready,"samples":int(len(y))}
         trained=int(time.time()*1000)
-        obj={"version":APP_VERSION,"state_dict":model.state_dict(),"metrics":metrics,"trainedAt":trained}
+        obj={"version":APP_VERSION,"state_dict":model.state_dict(),"metrics":metrics,"normMean":center.tolist(),"normStd":scale.tolist(),"trainedAt":trained}
         tmp=PATH_MODEL_PATH.with_suffix(".tmp");torch.save(obj,tmp);os.replace(tmp,PATH_MODEL_PATH)
-        PATH_MODEL=model.eval();PATH_METRICS=metrics;PATH_LAST_TRAIN_AT=trained;PATH_LAST_ERROR=None
+        PATH_MODEL=model.eval();PATH_METRICS=metrics;PATH_NORM_MEAN=center;PATH_NORM_STD=scale;PATH_LAST_TRAIN_AT=trained;PATH_LAST_ERROR=None
         print("[PRICE-PATH-TRAIN] "+json.dumps({"version":APP_VERSION,"metrics":metrics}),flush=True)
     except Exception as e:
         PATH_LAST_ERROR=f"train:{type(e).__name__}:{e}"
@@ -428,28 +474,37 @@ def _fit_once(Xtr,ytr,Xv,yv):
     return model
 
 def _train():
-    global MODEL,METRICS,TRAINING,LAST_TRAIN_AT,LAST_ERROR
+    global MODEL,METRICS,NORM_MEAN,NORM_STD,TRAINING,LAST_TRAIN_AT,LAST_ERROR
     if TRAINING:return
     TRAINING=True
     try:
         X,y=_dataset()
         if X is None or len(y)<MIN_SNAPSHOTS:return
-        a=int(len(y)*.70);b=int(len(y)*.85)
-        Xtr,Xv,Xte=X[:a],X[a:b],X[b:];ytr,yv,yte=y[:a],y[a:b],y[b:]
+        a=int(len(y)*.70);b=int(len(y)*.85);purge=HORIZON+2
+        Xtr,Xv,Xte=X[:max(1,a-purge)],X[a:max(a+1,b-purge)],X[b:]
+        ytr,yv,yte=y[:max(1,a-purge)],y[a:max(a+1,b-purge)],y[b:]
+        center,scale=_fit_normalizer(Xtr)
+        Xtr=_normalize(Xtr,center,scale);Xv=_normalize(Xv,center,scale);Xte=_normalize(Xte,center,scale)
         model=_fit_once(Xtr,ytr,Xv,yv)
-        pv=_probs(model,Xv);pt=_probs(model,Xte)
-        vm=_selected_metrics(yv,pv);tm=_selected_metrics(yte,pt)
+        pv=_probs(model,Xv)
+        threshold,margin=_choose_selective_gate(yv,pv)
+        pt=_probs(model,Xte)
+        vm=_selected_metrics(yv,pv,threshold,margin);tm=_selected_metrics(yte,pt,threshold,margin)
+        class_rates=np.bincount(y,minlength=3)/max(1,len(y))
         ready=bool(
             vm["selectiveN"]>=80 and tm["selectiveN"]>=80 and
-            vm["selectiveCoverage"]>=.05 and tm["selectiveCoverage"]>=.05 and
-            vm["selectiveAccuracy"]>=.56 and tm["selectiveAccuracy"]>=.58
+            vm["selectiveCoverage"]>=.04 and tm["selectiveCoverage"]>=.04 and
+            vm["selectiveAccuracy"]>=.57 and tm["selectiveAccuracy"]>=.59
         )
-        metrics={"validation":vm,"holdout":tm,"ready":ready,"samples":int(len(y))}
+        metrics={"validation":vm,"holdout":tm,"ready":ready,"samples":int(len(y)),
+                 "threshold":threshold,"margin":margin,
+                 "classRates":{"down":float(class_rates[0]),"noise":float(class_rates[1]),"up":float(class_rates[2])},
+                 "purge":purge,"normalization":"train-only robust median/IQR"}
         trained=int(time.time()*1000)
-        # Holdout remains untouched for qualification; production artifact keeps the qualified weights.
-        obj={"version":APP_VERSION,"state_dict":model.state_dict(),"metrics":metrics,"trainedAt":trained}
+        obj={"version":APP_VERSION,"state_dict":model.state_dict(),"metrics":metrics,
+             "normMean":center.tolist(),"normStd":scale.tolist(),"trainedAt":trained}
         tmp=MODEL_PATH.with_suffix(".tmp");torch.save(obj,tmp);os.replace(tmp,MODEL_PATH)
-        MODEL=model.eval();METRICS=metrics;LAST_TRAIN_AT=trained;LAST_ERROR=None
+        MODEL=model.eval();METRICS=metrics;NORM_MEAN=center;NORM_STD=scale;LAST_TRAIN_AT=trained;LAST_ERROR=None
         print("[NEURAL-TRAIN] "+json.dumps({"version":APP_VERSION,"metrics":metrics}),flush=True)
         _train_path()
     except Exception as e:
@@ -481,6 +536,9 @@ def _predict_path(rows):
     if PATH_MODEL is None or len(rows)<SEQ_LEN:
         return {"status":"COLLECTING" if len(rows)<MIN_SNAPSHOTS else "TRAINING","ready":False,"samples":len(rows),"metrics":PATH_METRICS}
     x=np.asarray([[r["f"] for r in rows[-SEQ_LEN:]]],dtype=np.float32)
+    if PATH_NORM_MEAN is None or PATH_NORM_STD is None:
+        return {"status":"SHADOW","ready":False,"samples":len(rows),"metrics":PATH_METRICS,"reason":"normalizer_unavailable"}
+    x=_normalize(x,PATH_NORM_MEAN,PATH_NORM_STD)
     pred=_path_predict_batch(PATH_MODEL,x)[0]
     end_bps=float(pred[0]*PATH_END_SCALE_BPS)
     up_bps=float(pred[1]*PATH_RANGE_SCALE_BPS)
@@ -514,9 +572,14 @@ def _predict():
         return {"ok":True,"version":APP_VERSION,"status":"COLLECTING" if len(rows)<MIN_SNAPSHOTS else "TRAINING",
                 "ready":False,"side":"WAIT","samples":len(rows),"metrics":METRICS,"pricePath":price_path}
     x=np.asarray([[r["f"] for r in rows[-SEQ_LEN:]]],dtype=np.float32)
+    if NORM_MEAN is None or NORM_STD is None:
+        return {"ok":True,"version":APP_VERSION,"status":"SHADOW","ready":False,"side":"WAIT","samples":len(rows),"metrics":METRICS,"pricePath":price_path,"reason":"normalizer_unavailable"}
+    x=_normalize(x,NORM_MEAN,NORM_STD)
     p=_probs(MODEL,x)[0];down,noise,up=map(float,p)
     lean="BUY" if up>=down else "SELL"
-    direction=max(up,down);active=bool(METRICS and METRICS.get("ready") and direction>=.48 and direction-noise>=.05)
+    direction=max(up,down)
+    threshold=float((METRICS or {}).get("threshold",.62));margin=float((METRICS or {}).get("margin",.12))
+    active=bool(METRICS and METRICS.get("ready") and direction>=threshold and direction-noise>=margin)
     conf=round(cap(50+(direction-noise)*85+abs(up-down)*30,45,91))
     return {"ok":True,"version":APP_VERSION,"status":"READY" if active else "SHADOW","ready":bool(METRICS and METRICS.get("ready")),
             "side":lean if active else "WAIT","leanSide":lean,"probUp":round(up*100,2),"probDown":round(down*100,2),
