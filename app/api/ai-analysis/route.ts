@@ -165,10 +165,10 @@ function goldLiveFromParams(url:URL,external:any,now:number){
   const validBook=Number.isFinite(bid)&&Number.isFinite(ask)&&bid>0&&ask>=bid&&price>=bid&&price<=ask;
   return {
     ok:true as const,symbol:'XAU/USD' as const,price,
-    source:'Binance Futures XAUUSDT WebSocket',sourceTime:at,fetchedAt:now,status:'live' as const,
+    source:'Exness/MT5 live tick',sourceTime:at,fetchedAt:now,status:'live' as const,
     previousClose:external?.previousClose??null,change:external?.change??null,percentChange:external?.percentChange??null,
     bid:validBook?bid:null,ask:validBook?ask:null,spread:validBook?ask-bid:null,
-    brokerSymbol:'XAUUSDT',bridgeLatencyMs:Math.max(0,now-at)
+    brokerSymbol:external?.brokerSymbol||'XAUUSD',bridgeLatencyMs:Math.max(0,now-at)
   };
 }
 export async function GET(request:Request){
@@ -199,7 +199,7 @@ export async function GET(request:Request){
     const browserGold=goldLiveFromParams(url,quote,now);
     if(browserGold){
       quote=browserGold;
-      actions.push('استخدام XAUUSDT WebSocket الحي داخل تحليل الذهب');
+      actions.push('استخدام XAUUSD MT5 tick الحي داخل تحليل الذهب');
     }
     if(!btc?.c1?.length){
       btc=await getBtcMarket(true);
