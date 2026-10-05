@@ -74,10 +74,10 @@ function goldMicroFromMt5(mt5:any,tick:any,quote:any,price:number|null){
   const bboImbalance=topTotal>0?(topBid-topAsk)/topTotal*100:depthImbalance;
   const microprice=bestBid>0&&bestAsk>0&&topTotal>0?(bestAsk*topBid+bestBid*topAsk)/topTotal:mid;
   const microEdge=spread>0&&Number.isFinite(microprice)?Math.max(-100,Math.min(100,(microprice-mid)/spread*200)):0;
+  const bookReady=Boolean(mt5?.fresh&&bids.length&&asks.length&&bestBid>0&&bestAsk>0);
   const fastImbalance=Number(tick?.bookImbalance||0);
   const pressure=bookReady?Math.max(-100,Math.min(100,weightedImbalance*.72+fastImbalance*.28)):0;
   const buy=Math.round(Math.max(5,Math.min(95,50+pressure/2))),sell=100-buy;
-  const bookReady=Boolean(mt5?.fresh&&bids.length&&asks.length&&bestBid>0&&bestAsk>0);
   const quality=bookReady?92:45;
   const accel=Math.max(-100,Math.min(100,Number(tick?.acceleration||0)*100));
   const pressureChange=bookReady?Math.max(-100,Math.min(100,Number(tick?.pressureChange||0))):0;
