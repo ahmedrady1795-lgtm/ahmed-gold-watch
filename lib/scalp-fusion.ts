@@ -234,9 +234,25 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
         ?{tech:.14,liq:.20,ml:.13,motion:.10,trap:.05,learn:.02,tick:.12,premove:.10,accum:.08,reaction:.06}
         :{tech:.12,liq:.22,ml:.14,motion:.09,trap:.06,learn:.02,tick:.10,premove:.10,accum:.08,reaction:.07};
 
-  const techSignal=techSide==='WAIT'?0:cap(42+techBest*.46+techGap*.42,0,92);
+  const techFamilies=raw?.indicatorPower?.dominant?.families||{};
+  const techFamilyGroups=[
+    Math.max(Number(techFamilies?.ema||0),Number(techFamilies?.dmi||0)),
+    Math.max(Number(techFamilies?.macd||0),Number(techFamilies?.momentum||0)),
+    Math.max(Number(techFamilies?.priceAction||0),Number(techFamilies?.path||0)),
+    Math.max(Number(techFamilies?.bollinger||0),Number(techFamilies?.reversal||0)),
+    Number(techFamilies?.oscillator||0)
+  ];
+  const techFamilyAgreement=techFamilyGroups.filter(v=>v>=55).length;
+  const techFamilyWeak=techFamilyGroups.filter(v=>v>0&&v<28).length;
+  const techQuality=cap(Number(raw?.indicatorPower?.dominant?.quality||50),0,100);
+  const techSignal=techSide==='WAIT'?0:cap(
+    techBest*.48+techGap*.30+techQuality*.10+
+    techFamilyAgreement*5-techFamilyWeak*2.5,
+    0,94
+  );
+  const techWeightMultiplier=cap(.76+techFamilyAgreement*.09-techFamilyWeak*.05,.68,1.18);
   const rows=[
-    {name:'TECH',side:techSide,score:techSignal,weight:weights.tech},
+    {name:'TECH',side:techSide,score:techSignal,weight:weights.tech*techWeightMultiplier},
     {name:'L2',side:liqSide,score:liqScore,weight:weights.liq},
     {name:'ML1',side:ml1.side,score:ml1.score,weight:weights.ml},
     {name:'MOTION',side:motionSide,score:motionScore,weight:weights.motion},
@@ -949,7 +965,8 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
       buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
       buyEvidence:Number(buyEvidence.toFixed(1)),sellEvidence:Number(sellEvidence.toFixed(1)),dominantEvidence:Number(dominantEvidence.toFixed(1)),
       support,opposition,liveSupport,liveOpposition,mode,
-      components:rows.map(r=>({name:r.name,role:'ASSIST',side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight}))
+      components:rows.map(r=>({name:r.name,role:'ASSIST',side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight})),
+      technicalQuality:{familyAgreement:techFamilyAgreement,weakFamilies:techFamilyWeak,quality:techQuality,weightMultiplier:Number(techWeightMultiplier.toFixed(2)),families:techFamilies}
     },
 
   };
