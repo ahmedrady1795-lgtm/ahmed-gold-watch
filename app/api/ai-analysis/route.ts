@@ -80,6 +80,9 @@ function goldMicroFromMt5(mt5:any,tick:any,quote:any,price:number|null){
   const bookReady=Boolean(mt5?.fresh&&bids.length&&asks.length&&bestBid>0&&bestAsk>0);
   const quality=bookReady?92:(quote?.status==='live'?68:45);
   const accel=Math.max(-100,Math.min(100,Number(tick?.acceleration||0)*100));
+  const pressureChange=Math.max(-100,Math.min(100,Number(tick?.pressureChange||0)));
+  const bidDepthChangePct=Math.max(-100,Math.min(100,Number(tick?.bidDepthChangePct||0)));
+  const askDepthChangePct=Math.max(-100,Math.min(100,Number(tick?.askDepthChangePct||0)));
   const priceChangeBps=Number(tick?.velocity3s||tick?.velocity4s||0);
   const liquidity={
     ok:quality>=55,source:bookReady?'Exness/MT5 DOM':'Gold live quote',checkedAt:Date.now(),quality,
@@ -92,14 +95,22 @@ function goldMicroFromMt5(mt5:any,tick:any,quote:any,price:number|null){
       bidWall:1,askWall:1,wallSide:weightedImbalance>=12?'BUY':weightedImbalance<=-12?'SELL':'WAIT'
     },
     flow:{tradeCount:0,buyVolume:0,sellVolume:0,deltaVolume:0,deltaPct:0,priceChangeBps:Number(priceChangeBps.toFixed(2)),cvdSide:'WAIT'},
-    dynamics:{pressureChange:0,bidDepthChangePct:0,askDepthChangePct:0,acceleration:Number(accel.toFixed(1))},
+    dynamics:{
+      pressureChange:Number(pressureChange.toFixed(1)),
+      bidDepthChangePct:Number(bidDepthChangePct.toFixed(1)),
+      askDepthChangePct:Number(askDepthChangePct.toFixed(1)),
+      acceleration:Number(accel.toFixed(1))
+    },
     absorption:{side:'WAIT',score:0,reason:'MT5 gold DOM helper',trapDetected:false,followThrough:false},
     warnings:bookReady?[]:['MT5 DOM unavailable; quote/tick evidence only']
   };
   const precursorCount=[
-    Math.abs(weightedImbalance)>=12,
-    Math.abs(Number(tick?.acceleration||0))>=.025,
-    Number(tick?.persistence||0)>=60
+    Math.abs(weightedImbalance)>=10,
+    Math.abs(Number(tick?.pressureChange||0))>=5,
+    Math.abs(Number(tick?.replenishDelta||0))>=7,
+    Math.abs(Number(tick?.acceleration||0))>=.018,
+    Number(tick?.persistence||0)>=58,
+    String(tick?.stage||'')==='PRE_TRIGGER'
   ].filter(Boolean).length;
   const motionSide=tick?.side==='BUY'||tick?.side==='SELL'?tick.side:'WAIT';
   const motion={
