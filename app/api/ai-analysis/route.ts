@@ -27,6 +27,7 @@ import {recordNextMoveOutcome,getNextMoveOutcome,calibrateNextMoveConfidence} fr
 import {buildGoldForecastCore} from '../../../lib/gold-forecast-core';
 import {buildPredatorFusionV2} from '../../../lib/predator-fusion-v2';
 import {getStructuralPathLearning,calibrateStructuralPathForecast,recordStructuralPathOutcome} from '../../../lib/structural-path-learning';
+import {getHorizonBrainLearning,recordHorizonBrainOutcome} from '../../../lib/horizon-brain-learning';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -324,8 +325,14 @@ export async function GET(request:Request){
     ]);
     const bitcoinNeural=await neuralPredictionPromise;
     const bitcoinMl={...bitcoinMlRaw,neuralCore:bitcoinNeural};
-    const goldMovement=buildMovementIntelligence('GOLD',{expected:goldExpectedLearning,stateGraph:goldStateGraph,liquidity:goldLiquidity,motion:goldMotion,structure:goldStructure,accumulation:goldAccumulation,behavior:goldBehavior,learning:goldLearning,tick:goldTick,scalp:goldScalp,decision:gold,evolution:goldEvolution,news:goldNews,price:goldPrice,atr:goldAtr,now});
-    const bitcoinMovement=buildMovementIntelligence('BTC',{expected:bitcoinExpectedLearning,stateGraph:bitcoinStateGraph,liquidity,motion,structure:bitcoinStructure,accumulation:bitcoinAccumulation,behavior:bitcoinBehavior,learning:bitcoinLearning,tick:bitcoinTick,scalp:bitcoinScalp,decision:bitcoin,evolution:bitcoinEvolution,news:bitcoinNews,ml:bitcoinMl,price:btcPrice,atr:btcAtr,now});
+    const goldHorizonLearning=getHorizonBrainLearning('GOLD',goldPrice,now);
+    const bitcoinHorizonLearning=getHorizonBrainLearning('BTC',btcPrice,now);
+    const goldMovement=buildMovementIntelligence('GOLD',{expected:goldExpectedLearning,stateGraph:goldStateGraph,liquidity:goldLiquidity,motion:goldMotion,structure:goldStructure,accumulation:goldAccumulation,behavior:goldBehavior,learning:goldLearning,tick:goldTick,scalp:goldScalp,decision:gold,evolution:goldEvolution,news:goldNews,price:goldPrice,atr:goldAtr,now,horizonLearning:goldHorizonLearning});
+    const bitcoinMovement=buildMovementIntelligence('BTC',{expected:bitcoinExpectedLearning,stateGraph:bitcoinStateGraph,liquidity,motion,structure:bitcoinStructure,accumulation:bitcoinAccumulation,behavior:bitcoinBehavior,learning:bitcoinLearning,tick:bitcoinTick,scalp:bitcoinScalp,decision:bitcoin,evolution:bitcoinEvolution,news:bitcoinNews,ml:bitcoinMl,price:btcPrice,atr:btcAtr,now,horizonLearning:bitcoinHorizonLearning});
+    const goldHorizonLive=recordHorizonBrainOutcome({asset:'GOLD',price:goldPrice,atr:goldAtr,now,horizons:goldMovement.horizons});
+    const bitcoinHorizonLive=recordHorizonBrainOutcome({asset:'BTC',price:btcPrice,atr:btcAtr,now,horizons:bitcoinMovement.horizons});
+    (goldMovement as any).horizonLearning=goldHorizonLive;
+    (bitcoinMovement as any).horizonLearning=bitcoinHorizonLive;
 
     const goldBrainLearning=getBrainOutcomeLearning({asset:'GOLD',price:goldPrice,now});
     const bitcoinBrainLearning=getBrainOutcomeLearning({asset:'BTC',price:btcPrice,now});
