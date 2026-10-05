@@ -246,8 +246,8 @@ export async function GET(request:Request){
     const goldAccumulation=buildAccumulationMap(gm.c1,gm.c5,goldPrice,goldLiquidity,now);
     const bitcoinAccumulation=buildAccumulationMap(btc.c1,btc.c5,btcPrice,liquidity,now);
     const motion=getMotionIntelligence(btcPrice,liquidity,btc.c1,now);
-    const goldScalpPrior=getNextMoveOutcome('GOLD_SCALP_AMBUSH_V8',goldPrice,now);
-    const bitcoinScalpPrior=getNextMoveOutcome('BTC_SCALP_AMBUSH_V8',btcPrice,now);
+    const goldScalpPrior=getNextMoveOutcome('GOLD_SCALP_AMBUSH_V10',goldPrice,now);
+    const bitcoinScalpPrior=getNextMoveOutcome('BTC_SCALP_AMBUSH_V10',btcPrice,now);
     const mlPredictionPromise=getMlPrediction(btc.c1,now).catch(()=>({ok:false,status:'UNAVAILABLE',shadow:true} as any));
     const neuralPredictionPromise=getNeuralPrediction(now).catch(()=>({ok:false,status:'UNAVAILABLE',ready:false,side:'WAIT'} as any));
     const bitcoinMlRaw=await mlPredictionPromise;
@@ -296,11 +296,11 @@ export async function GET(request:Request){
     const bitcoinMultiBrain=buildMultiBrainCore('BTC',{decision:bitcoin,scalp:bitcoinScalp,movement:bitcoinMovement,stateGraph:bitcoinStateGraph,tick:bitcoinTick,expected:bitcoinExpectedLearning,learning:bitcoinLearning,brainLearning:bitcoinBrainLearning,now});
     const goldBrainRecord=recordBrainOutcomeObservation({asset:'GOLD',price:goldPrice,atr:goldAtr,now,multiBrain:goldMultiBrain});
     const bitcoinBrainRecord=recordBrainOutcomeObservation({asset:'BTC',price:btcPrice,atr:btcAtr,now,multiBrain:bitcoinMultiBrain});
-    const scalpTrackSource='SCALP_AMBUSH_TRADE_V8';
+    const scalpTrackSource='SCALP_AMBUSH_TRADE_V10';
     const goldScalpFusionDiag=goldScalp.fusionV8||{};
     const bitcoinScalpFusionDiag=bitcoinScalp.fusionV8||{};
     const goldScalpLive=recordNextMoveOutcome({
-      asset:'GOLD_SCALP_AMBUSH_V8',price:goldPrice,atr:goldAtr,now,
+      asset:'GOLD_SCALP_AMBUSH_V10',price:goldPrice,atr:goldAtr,now,
       hunt:{nextMove:{
         side:goldScalp.action,confidence:Number(goldScalp.confidence||0),source:scalpTrackSource,
         micro:goldScalpFusionDiag
@@ -309,7 +309,7 @@ export async function GET(request:Request){
       horizonMs:60000,barrierScale:.16,minBarrierBps:.55,maxBarrierBps:1.6
     });
     const bitcoinScalpLive=recordNextMoveOutcome({
-      asset:'BTC_SCALP_AMBUSH_V8',price:btcPrice,atr:btcAtr,now,
+      asset:'BTC_SCALP_AMBUSH_V10',price:btcPrice,atr:btcAtr,now,
       hunt:{nextMove:{
         side:bitcoinScalp.action,confidence:Number(bitcoinScalp.confidence||0),source:scalpTrackSource,
         micro:bitcoinScalpFusionDiag
@@ -483,7 +483,10 @@ export async function GET(request:Request){
             liveOpposition:Number(goldScalp?.fusionV8?.liveOpposition||0),
             intercept:goldScalp?.fusionV8?.intercept?.status||null,
             assistantCount:Number(goldScalp?.fusionV8?.assistantCount||0),
-            tradeReady:Boolean(goldScalp?.fusionV8?.ambushTrade)
+            tradeReady:Boolean(goldScalp?.fusionV8?.ambushTrade),
+            pattern:String(goldScalp?.fusionV8?.predator?.pattern||'NO_EDGE'),
+            predatorScore:Number(goldScalp?.fusionV8?.predator?.score||0),
+            earlyFlowQuality:Boolean(goldScalp?.fusionV8?.liveGuard?.earlyFlowQuality)
           }
         },
         btc:{action:bitcoinMaster.action,scalp:bitcoinScalp.action,confidence:Number(bitcoinHunt?.nextMove?.confidence||0)},
