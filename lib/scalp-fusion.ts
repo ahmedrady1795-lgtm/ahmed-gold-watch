@@ -6,6 +6,8 @@ type Side='BUY'|'SELL'|'WAIT';
 const cap=(n:number,a=0,b=100)=>Math.max(a,Math.min(b,n));
 const side=(x:any):Side=>x==='BUY'||x==='SELL'?x:'WAIT';
 const signed=(s:Side,v:number)=>s==='BUY'?v:s==='SELL'?-v:0;
+const scalpSideScore=(s:Side,target:Side,v:number)=>s===target?v:0;
+const scalpSideOf=(buy:number,sell:number,gate=3):Side=>buy-sell>=gate?'BUY':sell-buy>=gate?'SELL':'WAIT';
 
 type NextPricePending={at:number;entry:number;predicted:number;horizonSeconds:number};
 type NextPriceCalibration={
@@ -552,22 +554,22 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   // V12 interception resolver: prediction side comes from the freshest independent
   // microstructure families first, then falls back to the slower fused commitment.
   const trackLiveBuy=
-    sideScore(preMove.side,'BUY',Number(preMove.score||0))*.28+
-    sideScore(tick1.side,'BUY',Number(tick1.score||0))*.23+
-    sideScore(liqSide,'BUY',liqScore)*.18+
-    sideScore(motionSide,'BUY',motionScore)*.11+
-    sideScore(trapSide,'BUY',trapScore)*.08+
-    sideScore(reactionSide,'BUY',reactionScore)*.07+
+    scalpSideScore(preMove.side,'BUY',Number(preMove.score||0))*.28+
+    scalpSideScore(tick1.side,'BUY',Number(tick1.score||0))*.23+
+    scalpSideScore(liqSide,'BUY',liqScore)*.18+
+    scalpSideScore(motionSide,'BUY',motionScore)*.11+
+    scalpSideScore(trapSide,'BUY',trapScore)*.08+
+    scalpSideScore(reactionSide,'BUY',reactionScore)*.07+
     buyShare*.05;
   const trackLiveSell=
-    sideScore(preMove.side,'SELL',Number(preMove.score||0))*.28+
-    sideScore(tick1.side,'SELL',Number(tick1.score||0))*.23+
-    sideScore(liqSide,'SELL',liqScore)*.18+
-    sideScore(motionSide,'SELL',motionScore)*.11+
-    sideScore(trapSide,'SELL',trapScore)*.08+
-    sideScore(reactionSide,'SELL',reactionScore)*.07+
+    scalpSideScore(preMove.side,'SELL',Number(preMove.score||0))*.28+
+    scalpSideScore(tick1.side,'SELL',Number(tick1.score||0))*.23+
+    scalpSideScore(liqSide,'SELL',liqScore)*.18+
+    scalpSideScore(motionSide,'SELL',motionScore)*.11+
+    scalpSideScore(trapSide,'SELL',trapScore)*.08+
+    scalpSideScore(reactionSide,'SELL',reactionScore)*.07+
     sellShare*.05;
-  const trackLiveSide:Side=sideOf(trackLiveBuy,trackLiveSell,3);
+  const trackLiveSide:Side=scalpSideOf(trackLiveBuy,trackLiveSell,3);
   const trackLiveEdge=Math.abs(trackLiveBuy-trackLiveSell);
   const trackingCandidate:Side=
     trackLiveSide!=='WAIT'?trackLiveSide:
