@@ -448,8 +448,8 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const zoneTargetValid=Boolean(zoneDirectionValid&&zoneDistanceAtr<=.72);
   const breakoutDistanceAtr=Number.isFinite(breakoutLevel)&&Number.isFinite(a)&&a>0?Math.abs(breakoutLevel-p)/a:Infinity;
   const breakoutTargetValid=Boolean(Number.isFinite(breakoutLevel)&&breakoutDistanceAtr<=.62&&((targetSide==='BUY'&&breakoutLevel>p)||(targetSide==='SELL'&&breakoutLevel<p)));
-  const fallbackTarget=Number.isFinite(a)&&a>0&&targetSide!=='WAIT'?p+(targetSide==='BUY'?1:-1)*a*Math.max(.14,Math.min(.48,.16+dominantEvidence/260)):null;
-  const approachTarget=zoneDirectionValid&&Number.isFinite(a)&&a>0&&targetSide!=='WAIT'
+  const fallbackTarget=Number.isFinite(a)&&a>0?p+(targetSide==='BUY'?1:-1)*a*Math.max(.14,Math.min(.48,.16+dominantEvidence/260)):null;
+  const approachTarget=zoneDirectionValid&&Number.isFinite(a)&&a>0
     ?p+(targetSide==='BUY'?1:-1)*a*.48
     :null;
   const targetPrice=zoneTargetValid?Number(targetZone.mid):breakoutTargetValid?breakoutLevel:(approachTarget??fallbackTarget);
