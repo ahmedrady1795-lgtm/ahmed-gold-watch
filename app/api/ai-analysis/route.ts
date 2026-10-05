@@ -473,8 +473,8 @@ export async function GET(request:Request){
             stage:String(goldTick?.stage||''),
             score:Number(goldTick?.score||0),
             confidence:Number(goldTick?.confidence||0),
-            samples:Number(goldTick?.samples||0),
-            persistence:Number(goldTick?.persistence||0)
+            samples:Number((goldTick as any)?.samples||0),
+            persistence:Number((goldTick as any)?.persistence||0)
           },
           action:goldMaster.action,
           scalp:goldScalp.action,
