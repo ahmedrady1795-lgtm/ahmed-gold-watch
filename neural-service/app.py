@@ -313,7 +313,7 @@ def _path_dataset():
     if used<=0:return None,None
     return X[:used],y[:used]
 
-def _selected_metricsdef _selected_metrics(y,prob,threshold=.55,margin=.10):
+def _selected_metrics(y,prob,threshold=.55,margin=.10):
     p=np.asarray(prob);pred=p.argmax(1)
     direction=np.maximum(p[:,0],p[:,2]);noise=p[:,1]
     mask=(direction>=threshold)&((direction-noise)>=margin)
