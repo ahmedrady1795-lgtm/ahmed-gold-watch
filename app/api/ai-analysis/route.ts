@@ -672,6 +672,12 @@ export async function GET(request:Request){
           candleClose:Number(gm.c1.at(-1)?.close||0),
           basis:{aligned:Boolean(goldBasis.aligned),offset:Number(goldBasis.basisOffset||0),bps:Number(goldBasis.basisBps||0)},
           zone:huntZoneDiag(goldHunt),
+          horizonBrains:{
+            m1:goldMovement?.horizons?.oneMinute||null,
+            m3:goldMovement?.horizons?.threeMinute||null,
+            m5:goldMovement?.horizons?.fiveMinute||null,
+            learning:(goldMovement as any)?.horizonLearning||null
+          },
           action:goldMaster.action,
           scalp:goldScalp.action,
           confidence:Number(goldHunt?.nextMove?.confidence||0),
@@ -703,6 +709,12 @@ export async function GET(request:Request){
         },
         btc:{
           zone:huntZoneDiag(bitcoinHunt),
+          horizonBrains:{
+            m1:bitcoinMovement?.horizons?.oneMinute||null,
+            m3:bitcoinMovement?.horizons?.threeMinute||null,
+            m5:bitcoinMovement?.horizons?.fiveMinute||null,
+            learning:(bitcoinMovement as any)?.horizonLearning||null
+          },
           action:bitcoinMaster.action,
           scalp:bitcoinScalp.action,
           confidence:Number(bitcoinHunt?.nextMove?.confidence||0)
