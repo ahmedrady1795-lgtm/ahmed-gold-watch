@@ -7,6 +7,26 @@ const cap=(n:number,a=0,b=100)=>Math.max(a,Math.min(b,n));
 const side=(x:any):Side=>x==='BUY'||x==='SELL'?x:'WAIT';
 const signed=(s:Side,v:number)=>s==='BUY'?v:s==='SELL'?-v:0;
 
+type NextPricePending={at:number;entry:number;predicted:number;horizonSeconds:number};
+type NextPriceCalibration={biasBps:number;maeBps:number;n:number;last:NextPricePending|null};
+const npRoot=globalThis as typeof globalThis&{__ambushNextPriceCalibration?:Map<string,NextPriceCalibration>};
+const npCalibration=npRoot.__ambushNextPriceCalibration??(npRoot.__ambushNextPriceCalibration=new Map<string,NextPriceCalibration>());
+function nextPriceCalibration(asset:string,price:number,now:number){
+  const key=String(asset||'UNKNOWN').toUpperCase();
+  const state=npCalibration.get(key)||{biasBps:0,maeBps:1.2,n:0,last:null};
+  const last=state.last;
+  if(last&&Number.isFinite(price)&&price>0&&now-last.at>=Math.max(2500,last.horizonSeconds*850)){
+    const err=(price-last.predicted)/Math.max(1e-9,last.entry)*10000;
+    const alpha=state.n<8?.26:.14;
+    state.biasBps=cap(state.biasBps*(1-alpha)+err*alpha,-4,4);
+    state.maeBps=cap(state.maeBps*(1-alpha)+Math.abs(err)*alpha,.35,12);
+    state.n+=1;
+    state.last=null;
+  }
+  npCalibration.set(key,state);
+  return state;
+}
+
 function technicalSide(raw:any):Side{
   const a=side(raw?.action);
   if(a!=='WAIT')return a;
@@ -112,6 +132,9 @@ function preMoveSignal(liq:any,motion:any,tick:any){
 }
 
 export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,price:number|null,atr:number|null,liveOutcome:any=null,tick:any=null,accumulation:any=null,asset='BTC'){
+  const nowNp=Date.now();
+  const pForCal=Number(price);
+  const npCal=nextPriceCalibration(asset,pForCal,nowNp);
   const techSide=technicalSide(raw);
   const long=Number(raw?.score?.long||0),short=Number(raw?.score?.short||0),techBest=Math.max(long,short),techGap=Math.abs(long-short);
   const liqSide=side(liq?.side),liqScore=liquidityStrength(liq);
@@ -502,58 +525,92 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     zoneStrength:zoneTargetValid?Number(targetZone.strength):0,
     contextMode
   };
-  // Ambush Next-Price Interceptor:
-  // predicts the first nearby price station from independent live microstructure,
-  // not a distant candle/ATR target. If live kinematics conflict with Ambush, it waits.
+  // Ambush Next-Price Interceptor V10:
+  // self-calibrating multi-horizon kinematics + order-book impulse + temporal microstructure.
   const npSide:Side=targetSide;
   const npDir=npSide==='BUY'?1:npSide==='SELL'?-1:0;
-  const tickV1=Number(tick?.velocity1s||0);
-  const tickV3=Number(tick?.velocity3s||0);
-  const tickV8=Number(tick?.velocity8s||0);
+  const finiteRate=(v:any)=>Number.isFinite(Number(v));
+  const rawV05=finiteRate(tick?.velocity05s)?Number(tick.velocity05s):NaN;
+  const rawV1=finiteRate(tick?.velocity1s)?Number(tick.velocity1s):NaN;
+  const rawV15=finiteRate(tick?.velocity15s)?Number(tick.velocity15s):NaN;
+  const rawV3=finiteRate(tick?.velocity3s)?Number(tick.velocity3s):NaN;
+  const rawV4=finiteRate(tick?.velocity4s)?Number(tick.velocity4s):NaN;
+  const rawV8=finiteRate(tick?.velocity8s)?Number(tick.velocity8s):NaN;
   const tickAcc=Number(tick?.acceleration||0);
+  const rates=[
+    {r:rawV05/.5,w:.26},{r:rawV1,w:.24},{r:rawV15/1.5,w:.18},
+    {r:rawV3/3,w:.14},{r:rawV4/4,w:.10},{r:rawV8/8,w:.08}
+  ].filter(x=>Number.isFinite(x.r));
+  const rateWeight=rates.reduce((s,x)=>s+x.w,0);
+  const tickPerSecond=rateWeight>0?rates.reduce((s,x)=>s+x.r*x.w,0)/rateWeight:0;
+  const nonFlatRates=rates.filter(x=>Math.abs(x.r)>=.015);
+  const kinematicConsistency=nonFlatRates.length
+    ?nonFlatRates.filter(x=>npDir*x.r>0).length/nonFlatRates.length
+    :0;
+  const shortRate=Number.isFinite(rawV05)?rawV05/.5:Number.isFinite(rawV1)?rawV1:tickPerSecond;
+  const longRate=Number.isFinite(rawV4)?rawV4/4:Number.isFinite(rawV8)?rawV8/8:tickPerSecond;
+  const curvaturePerSecond=shortRate-longRate;
+
   const liqPressure=Number(liq?.pressure||0);
   const depthImbalance=Number(liq?.book?.depthImbalance||0);
   const weightedImbalance=Number(liq?.book?.weightedImbalance||0);
   const microEdgeNow=Number(liq?.book?.microEdge||0);
   const flowDeltaNow=Number(liq?.flow?.deltaPct||0);
+  const pressureChange=Number(liq?.dynamics?.pressureChange||0);
+  const bidDepthChange=Number(liq?.dynamics?.bidDepthChangePct||0);
+  const askDepthChange=Number(liq?.dynamics?.askDepthChangePct||0);
+  const liqAcceleration=Number(liq?.dynamics?.acceleration||0);
+  const depthShift=bidDepthChange-askDepthChange;
   const predMicroMean=Number(predator?.microstructure?.mean||0);
   const predMicroTrend=Number(predator?.microstructure?.trend||0);
+
   const npHorizonSeconds=npDir===0?null:Math.round(cap(
     Number(preMove?.etaSeconds||0)>0
       ?Number(preMove.etaSeconds)
-      :String(tick?.stage||'')==='IGNITION'?4:String(tick?.stage||'')==='WAVE_FORMING'?6:8,
-    4,12
+      :String(tick?.stage||'')==='IGNITION'?4:String(tick?.stage||'')==='PRE_TRIGGER'?5:String(tick?.stage||'')==='WAVE_FORMING'?6:8,
+    3,12
   ));
-  const tickPerSecond=tickV1*.52+(tickV3/3)*.30+(tickV8/8)*.18;
   const projectedTickBps=npHorizonSeconds==null?0:tickPerSecond*npHorizonSeconds;
-  const projectedAccelBps=npHorizonSeconds==null?0:tickAcc*npHorizonSeconds*.12;
+  const curvatureBps=npHorizonSeconds==null?0:cap(curvaturePerSecond*npHorizonSeconds*.34,-3.2,3.2);
+  const projectedAccelBps=npHorizonSeconds==null?0:cap(tickAcc*npHorizonSeconds*.12,-2.4,2.4);
   const bookBiasBps=cap(
-    liqPressure*.014+
-    depthImbalance*.008+
+    liqPressure*.013+
+    depthImbalance*.007+
     weightedImbalance*.010+
-    microEdgeNow*.012+
-    flowDeltaNow*.006,
+    microEdgeNow*.011+
+    flowDeltaNow*.005,
     -3.2,3.2
+  );
+  const bookDynamicsBps=cap(
+    pressureChange*.010+
+    depthShift*.006+
+    liqAcceleration*.006,
+    -2.6,2.6
   );
   const temporalBiasBps=cap(predMicroMean*.014+predMicroTrend*.004,-2.0,2.0);
   const microAnchorBps=validMicro&&Number.isFinite(p)&&p>0
     ?cap((microprice-p)/p*10000,-2.2,2.2)
     :0;
+
   const rawNextMoveBps=
-    projectedTickBps*.56+
-    projectedAccelBps*.10+
-    bookBiasBps*.16+
-    temporalBiasBps*.08+
-    microAnchorBps*.10;
+    projectedTickBps*.43+
+    curvatureBps*.12+
+    projectedAccelBps*.08+
+    bookBiasBps*.13+
+    bookDynamicsBps*.10+
+    temporalBiasBps*.07+
+    microAnchorBps*.07;
   const atrBps=Number.isFinite(a)&&a>0&&Number.isFinite(p)&&p>0?a/p*10000:0;
   const nextMoveCap=Math.max(1.2,Math.min(10,atrBps>0?atrBps*.24:5));
-  const nextMoveBps=cap(rawNextMoveBps,-nextMoveCap,nextMoveCap);
-  const directionalNextMove=npDir*nextMoveBps;
+  const modelMoveBps=cap(rawNextMoveBps,-nextMoveCap,nextMoveCap);
+  const directionalNextMove=npDir*modelMoveBps;
   const npChecks=[
-    npDir*tickPerSecond>=.08,
-    npDir*bookBiasBps>=.12,
+    npDir*tickPerSecond>=.06,
+    kinematicConsistency>=.60,
+    npDir*bookBiasBps>=.10,
+    npDir*bookDynamicsBps>=.06,
     npDir*microAnchorBps>=.04,
-    npDir*temporalBiasBps>=.08,
+    npDir*temporalBiasBps>=.06,
     preMove?.side===npSide,
     tick1.side===npSide,
     liqSide===npSide,
@@ -561,36 +618,40 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   ];
   const npAlignment=npChecks.filter(Boolean).length;
   const npConflict=[
+    kinematicConsistency>0&&kinematicConsistency<.35,
     tick1.side!=='WAIT'&&tick1.side!==npSide,
     liqSide!=='WAIT'&&liqSide!==npSide,
     preMove?.side!=='WAIT'&&preMove?.side!==npSide,
     Boolean(predator?.microstructure?.available)&&Number(predator?.microstructure?.opposition||0)>.35
   ].filter(Boolean).length;
-  const npPhaseReady=predator?.phase==='TRACK'||predator?.phase==='AMBUSH';
+  const npPhaseReady=['TRACK','AMBUSH'].includes(String(predator?.phase||''));
   const nextPriceReady=Boolean(
     npDir!==0&&npPhaseReady&&Number.isFinite(p)&&p>0&&
-    directionalNextMove>=.35&&npAlignment>=3&&npConflict<=1&&
+    directionalNextMove>=.30&&npAlignment>=3&&npConflict<=1&&
     !chaseRisk&&!flipSuppressed&&!predator?.microstructure?.exhausted
   );
-  const nextPriceAnchor=validMicro?p*.72+microprice*.28:p;
-  const nextPriceRaw=Number.isFinite(nextPriceAnchor)&&nextPriceAnchor>0
-    ?nextPriceAnchor*(1+nextMoveBps/10000)
-    :NaN;
-  const contextualCap=Number(target?.price);
+
+  const nextPriceAnchor=validMicro?p*.68+microprice*.32:p;
   const directedFallbackBps=npDir===0?0:npDir*Math.max(
-    .22,
+    .20,
     Math.min(
       Math.max(.28,nextMoveCap*.28),
-      .35+edge*.012+Math.min(1.1,assistantCount*.12)
+      .32+edge*.011+Math.min(1.15,assistantCount*.13)
     )
   );
-  const effectiveMoveBps=
-    npDir!==0&&npDir*nextMoveBps>=.18
-      ?nextMoveBps
+  let effectiveMoveBps=
+    npDir!==0&&npDir*modelMoveBps>=.16
+      ?modelMoveBps
       :directedFallbackBps;
+
+  const calibrationWeight=Math.min(.55,npCal.n/14*.55);
+  effectiveMoveBps=cap(effectiveMoveBps+npCal.biasBps*calibrationWeight,-nextMoveCap,nextMoveCap);
+  if(npDir!==0&&npDir*effectiveMoveBps<.18)effectiveMoveBps=npDir*.18;
+
   const trackingPriceRaw=Number.isFinite(nextPriceAnchor)&&nextPriceAnchor>0
     ?nextPriceAnchor*(1+effectiveMoveBps/10000)
     :NaN;
+  const contextualCap=Number(target?.price);
   const nextPriceValue=Number.isFinite(trackingPriceRaw)
     ?(
       nextPriceReady&&Number.isFinite(contextualCap)&&
@@ -599,29 +660,37 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
         :trackingPriceRaw
     )
     :null;
+
+  const calibrationUncertainty=Number.isFinite(p)&&p>0?p*npCal.maeBps/10000*.90:0;
   const npUncertainty=Number.isFinite(p)&&p>0
     ?Math.max(
       spreadUsd*1.35,
-      Number.isFinite(a)&&a>0?a*(npConflict?0.055:0.032):p*.000035
+      calibrationUncertainty,
+      Number.isFinite(a)&&a>0?a*(npConflict?0.055:0.030):p*.000035
     )
     :0;
+  const calibrationPenalty=npCal.n>=3?Math.min(18,npCal.maeBps*2.8):0;
   const nextPriceConfidence=Math.round(cap(
-    Number(predator?.score||0)*.34+
-    Number(preMove?.score||0)*.18+
-    Math.min(24,npAlignment*4.5)+
-    (predator?.microstructure?.ready?10:0)+
-    (tick1.side===npSide?7:0)-
-    npConflict*12-
-    (directionalNextMove<.65?6:0),
-    0,90
+    Number(predator?.score||0)*.28+
+    Number(preMove?.score||0)*.14+
+    Math.min(24,npAlignment*3.8)+
+    kinematicConsistency*12+
+    (predator?.microstructure?.ready?9:0)+
+    (tick1.side===npSide?6:0)-
+    npConflict*10-
+    calibrationPenalty-
+    (directionalNextMove<.55?5:0),
+    0,92
   ));
   const trackingConfidence=Math.round(cap(
     nextPriceReady
       ?nextPriceConfidence
-      :nextPriceConfidence*.62+edge*.18+Math.min(12,assistantCount*2)-npConflict*6,
-    24,nextPriceReady?90:68
+      :nextPriceConfidence*.66+edge*.16+Math.min(12,assistantCount*2)-npConflict*5,
+    26,nextPriceReady?92:72
   ));
+
   const nextPrice={
+    model:'AMBUSH_INTERCEPT_V10',
     authority:'AMBUSH',
     ready:nextPriceReady,
     active:Boolean(npDir!==0&&Number.isFinite(p)&&p>0),
@@ -636,15 +705,31 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     alignment:npAlignment,
     conflicts:npConflict,
     microprice:validMicro?Number(microprice.toFixed(2)):null,
+    calibration:{
+      samples:npCal.n,
+      biasBps:Number(npCal.biasBps.toFixed(2)),
+      maeBps:Number(npCal.maeBps.toFixed(2)),
+      weight:Number(calibrationWeight.toFixed(2))
+    },
     diagnostics:{
       tickPerSecond:Number(tickPerSecond.toFixed(3)),
+      kinematicConsistency:Number(kinematicConsistency.toFixed(2)),
+      curvatureBps:Number(curvatureBps.toFixed(2)),
       projectedTickBps:Number(projectedTickBps.toFixed(2)),
       accelerationBps:Number(projectedAccelBps.toFixed(2)),
       bookBiasBps:Number(bookBiasBps.toFixed(2)),
+      bookDynamicsBps:Number(bookDynamicsBps.toFixed(2)),
       temporalBiasBps:Number(temporalBiasBps.toFixed(2)),
       microAnchorBps:Number(microAnchorBps.toFixed(2))
     }
   };
+  if(
+    !npCal.last&&nextPriceValue!=null&&npHorizonSeconds!=null&&
+    Number.isFinite(p)&&p>0&&trackingConfidence>=30
+  ){
+    npCal.last={at:nowNp,entry:p,predicted:nextPriceValue,horizonSeconds:npHorizonSeconds};
+  }
+
   const ambushPlanStatus=predator?.phase==='ABORT'?'CANCEL'
     :ambushTrade?(intercept.ready?'EXECUTE':'ARMED')
       :predator?.phase==='TRACK'?'STALK':'SCOUT';
