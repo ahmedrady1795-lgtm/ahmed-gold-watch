@@ -144,8 +144,6 @@ function AssetCard({x,fast,liveQuote}:any){
   const ambushActive=Boolean(
     predatorPhase==='AMBUSH'&&(x.scalp?.action==='BUY'||x.scalp?.action==='SELL')
   );
-  const ambushSide=ambushActive?x.scalp.action:'WAIT';
-  const scalpStrength=calibrated(predator?.score??x.scalp?.confidence??0);
   const plan=x.scalp?.ambushPlan||{};
   const entry=plan?.entry||{};
   const invalid=plan?.invalidation||{};
@@ -156,11 +154,18 @@ function AssetCard({x,fast,liveQuote}:any){
   const ambushWf=x.asset==='BTC'?x.scalpLive?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V8:null;
   const scalpTargetPrice=x.scalp?.target?.price??plan?.target?.price??x.scalp?.intercept?.launchLine??null;
   const nextPrice=x.scalp?.nextPrice||scalpFusion?.nextPrice||{};
+  const tracker=x.scalp?.tracking||{};
+  const ambushSide=(ambushActive?x.scalp.action:(tracker?.side||nextPrice?.side))==='BUY'
+    ?'BUY'
+    :(ambushActive?x.scalp.action:(tracker?.side||nextPrice?.side))==='SELL'
+      ?'SELL'
+      :'WAIT';
+  const scalpStrength=calibrated(ambushActive?(predator?.score??x.scalp?.confidence??0):(tracker?.confidence??nextPrice?.confidence??predator?.score??0));
   const ambushStatus=invalid?.cancel?'ملغي'
-    :ambushActive?'جاهز'
-      :plan?.status==='ARMED'?'جاهز للمراقبة'
-        :plan?.status==='STALK'?'يراقب'
-          :plan?.status==='SCOUT'?'ينتظر':'ينتظر';
+    :ambushActive?'LOCKED'
+      :nextPrice?.active?(nextPrice?.ready?'LOCKED':'TRACKING')
+        :plan?.status==='ARMED'?'جاهز للمراقبة'
+          :plan?.status==='STALK'?'يراقب':'ينتظر';
   return <section className={"panel ai-asset-card "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
       <div><span className="eyebrow">{x.asset}</span><h2>{recommendation?.active?(buy?'شراء':sell?'بيع':'مراقبة'):(buy?'توقع صعود':sell?'توقع هبوط':'تذبذب')}</h2></div>
@@ -201,13 +206,13 @@ function AssetCard({x,fast,liveQuote}:any){
         <div>
           <small>السعر القادم المتوقع</small>
           <strong className={nextPrice?.side==='BUY'?'green':nextPrice?.side==='SELL'?'red':'amber'}>
-            {nextPrice?.ready?fmt(nextPrice.price,2):'ينتظر توافق الحركة'}
+            {nextPrice?.price!=null?fmt(nextPrice.price,2):'—'}
           </strong>
         </div>
         <span>
-          {nextPrice?.ready
-            ?<>نطاق {fmt(nextPrice.low,2)} — {fmt(nextPrice.high,2)} · خلال {nextPrice.horizonSeconds||'—'}ث · ثقة {calibrated(nextPrice.confidence)}%</>
-            :<>Ambush لن يعرض رقمًا قبل توافق السرعة والسيولة والـ microprice</>}
+          {nextPrice?.price!=null
+            ?<>نطاق {fmt(nextPrice.low,2)} — {fmt(nextPrice.high,2)} · خلال {nextPrice.horizonSeconds||'—'}ث · ثقة {calibrated(nextPrice.confidence)}% · {nextPrice?.ready?'LOCKED':'TRACKING'}</>
+            :<>ينتظر فقط وصول سعر Live صالح</>}
         </span>
       </div>
 
