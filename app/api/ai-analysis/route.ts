@@ -75,18 +75,18 @@ function goldMicroFromMt5(mt5:any,tick:any,quote:any,price:number|null){
   const microprice=bestBid>0&&bestAsk>0&&topTotal>0?(bestAsk*topBid+bestBid*topAsk)/topTotal:mid;
   const microEdge=spread>0&&Number.isFinite(microprice)?Math.max(-100,Math.min(100,(microprice-mid)/spread*200)):0;
   const fastImbalance=Number(tick?.bookImbalance||0);
-  const pressure=Math.max(-100,Math.min(100,weightedImbalance*.72+fastImbalance*.28));
+  const pressure=bookReady?Math.max(-100,Math.min(100,weightedImbalance*.72+fastImbalance*.28)):0;
   const buy=Math.round(Math.max(5,Math.min(95,50+pressure/2))),sell=100-buy;
   const bookReady=Boolean(mt5?.fresh&&bids.length&&asks.length&&bestBid>0&&bestAsk>0);
-  const quality=bookReady?92:(quote?.status==='live'?68:45);
+  const quality=bookReady?92:45;
   const accel=Math.max(-100,Math.min(100,Number(tick?.acceleration||0)*100));
-  const pressureChange=Math.max(-100,Math.min(100,Number(tick?.pressureChange||0)));
-  const bidDepthChangePct=Math.max(-100,Math.min(100,Number(tick?.bidDepthChangePct||0)));
-  const askDepthChangePct=Math.max(-100,Math.min(100,Number(tick?.askDepthChangePct||0)));
+  const pressureChange=bookReady?Math.max(-100,Math.min(100,Number(tick?.pressureChange||0))):0;
+  const bidDepthChangePct=bookReady?Math.max(-100,Math.min(100,Number(tick?.bidDepthChangePct||0))):0;
+  const askDepthChangePct=bookReady?Math.max(-100,Math.min(100,Number(tick?.askDepthChangePct||0))):0;
   const priceChangeBps=Number(tick?.velocity3s||tick?.velocity4s||0);
   const liquidity={
-    ok:quality>=55,source:bookReady?'Exness/MT5 DOM':'Gold live quote',checkedAt:Date.now(),quality,
-    side:pressure>=8?'BUY':pressure<=-8?'SELL':'WAIT',buy,sell,strength:Math.max(buy,sell),pressure:Number(pressure.toFixed(1)),
+    ok:bookReady,source:bookReady?'Exness/MT5 DOM':'Gold price pulse · no DOM',checkedAt:Date.now(),quality,
+    side:bookReady?(pressure>=8?'BUY':pressure<=-8?'SELL':'WAIT'):'WAIT',buy:bookReady?buy:50,sell:bookReady?sell:50,strength:bookReady?Math.max(buy,sell):50,pressure:Number(pressure.toFixed(1)),
     book:{
       bestBid:bestBid||null,bestAsk:bestAsk||null,spreadBps:mid>0&&spread>0?spread/mid*10000:0,
       bboImbalance:Number(bboImbalance.toFixed(1)),depthImbalance:Number(depthImbalance.toFixed(1)),weightedImbalance:Number(weightedImbalance.toFixed(1)),
@@ -102,12 +102,12 @@ function goldMicroFromMt5(mt5:any,tick:any,quote:any,price:number|null){
       acceleration:Number(accel.toFixed(1))
     },
     absorption:{side:'WAIT',score:0,reason:'MT5 gold DOM helper',trapDetected:false,followThrough:false},
-    warnings:bookReady?[]:['MT5 DOM unavailable; quote/tick evidence only']
+    warnings:bookReady?[]:['MT5 DOM unavailable; price pulse is prediction-only']
   };
   const precursorCount=[
-    Math.abs(weightedImbalance)>=10,
-    Math.abs(Number(tick?.pressureChange||0))>=5,
-    Math.abs(Number(tick?.replenishDelta||0))>=7,
+    bookReady&&Math.abs(weightedImbalance)>=10,
+    bookReady&&Math.abs(Number(tick?.pressureChange||0))>=5,
+    bookReady&&Math.abs(Number(tick?.replenishDelta||0))>=7,
     Math.abs(Number(tick?.acceleration||0))>=.018,
     Number(tick?.persistence||0)>=58,
     String(tick?.stage||'')==='PRE_TRIGGER'
