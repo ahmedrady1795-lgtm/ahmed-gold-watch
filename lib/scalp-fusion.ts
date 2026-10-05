@@ -456,8 +456,30 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const assistantCount=Object.values(assistants).filter(Boolean).length;
 
   // Live precision governor: movement/next-price remain active, but trade authority
-  // adapts to the actual regime + walk-forward results instead of repeating weak regimes.
-  const regimeStats=liveOutcome?.byRegime?.[mode]||{};
+  // adapts to actual regime + pattern outcomes instead of repeating the same mistake.
+  const outcomeRegime=
+    mode==='COMPRESSION'?'COMPRESSION':
+    mode==='REVERSAL'?'REVERSAL':
+    (mode==='BREAKOUT'||mode==='MOMENTUM')?'EXPANSION':'TRANSITION';
+  const regimeStats=liveOutcome?.byRegime?.[outcomeRegime]||{};
+  const predatorPattern=String(predator?.pattern||'NO_EDGE').toUpperCase();
+  const patternStats=liveOutcome?.byPattern?.[predatorPattern]||{};
+  const patternRegimeKey=predatorPattern+'__'+outcomeRegime;
+  const patternRegimeStats=liveOutcome?.byPatternRegime?.[patternRegimeKey]||{};
+  const patternFailureStreak=Number(liveOutcome?.patternFailureStreaks?.[predatorPattern]||0);
+  const patternHits=Number(patternStats?.hits||0),patternFails=Number(patternStats?.fails||0);
+  const patternDirectional=patternHits+patternFails;
+  const patternPosterior=Number(patternStats?.posteriorAccuracy||50);
+  const prHits=Number(patternRegimeStats?.hits||0),prFails=Number(patternRegimeStats?.fails||0);
+  const prDirectional=prHits+prFails;
+  const prPosterior=Number(patternRegimeStats?.posteriorAccuracy||50);
+  const patternPenalty=
+    (prDirectional>=5&&prPosterior<46?10:prDirectional>=4&&prPosterior<50?6:0)+
+    (patternDirectional>=8&&patternPosterior<48?5:0)+
+    (patternFailureStreak>=3?8:patternFailureStreak===2?4:0);
+  const patternBonus=
+    prDirectional>=6&&prPosterior>=62?4:
+    patternDirectional>=10&&patternPosterior>=60?2:0;
   const regimeHits=Number(regimeStats?.hits||0),regimeFails=Number(regimeStats?.fails||0);
   const regimeDirectional=regimeHits+regimeFails;
   const regimePosterior=Number(regimeStats?.posteriorAccuracy||50);
@@ -477,7 +499,8 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     Number.isFinite(wfThreshold)?wfThreshold:0,
     oosWeak?72:0,
     regimeProvenWeak?80:0,
-    regimeUnprovenRisk?76:0
+    regimeUnprovenRisk?76:0,
+    65+patternPenalty-patternBonus
   );
 
   // Precision guard for the only scalp authority. Weak regimes never silence Ambush tracking;
@@ -511,11 +534,17 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     Number(predator?.microstructure?.persistence||0)>=.85&&
     Number(predator?.microstructure?.opposition||0)===0
   );
+  const patternProvenWeak=Boolean(
+    (prDirectional>=5&&prPosterior<45)||
+    (patternDirectional>=10&&patternPosterior<46)||
+    patternFailureStreak>=4
+  );
   const weakAmbushCombination=Boolean(
     assistantCount<3||
     confidence<requiredTradeConfidence||
     (oosWeak&&!exceptionalOosTrade)||
-    (String(predator?.pattern||'FLOW_TRACK')==='FLOW_TRACK'&&!predator?.confirmationAssist)||
+    (predatorPattern==='FLOW_TRACK'&&!predator?.confirmationAssist)||
+    (patternProvenWeak&&!exceptionalOosTrade)||
     (mode!=='COMPRESSION'&&assistantCount<5&&!reactionAligned&&!accumulationAligned)||
     !ambushRegimeGuard
   );
@@ -747,7 +776,11 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const directionalSkillMultiplier=npCal.directionSamples>=4
     ?cap(.72+(npCal.directionalAccuracy/100)*.56,.80,1.12)
     :1;
-  effectiveMoveBps=cap(effectiveMoveBps*directionalSkillMultiplier,-nextMoveCap,nextMoveCap);
+  const patternSkillMultiplier=cap(
+    1+(patternBonus-patternPenalty)/50,
+    .72,1.10
+  );
+  effectiveMoveBps=cap(effectiveMoveBps*directionalSkillMultiplier*patternSkillMultiplier,-nextMoveCap,nextMoveCap);
   if(npDir!==0&&npDir*effectiveMoveBps<.16)effectiveMoveBps=npDir*.16;
 
   const trackingPriceRaw=Number.isFinite(nextPriceAnchor)&&nextPriceAnchor>0
@@ -785,7 +818,9 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     kinematicConsistency*12+
     (predator?.microstructure?.ready?9:0)+
     (tick1.side===npSide?6:0)+
-    directionalSkillBonus-
+    directionalSkillBonus+
+    patternBonus-
+    patternPenalty-
     npConflict*10-
     calibrationPenalty-
     (directionalNextMove<.50?4:0),
@@ -966,7 +1001,8 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
       buyEvidence:Number(buyEvidence.toFixed(1)),sellEvidence:Number(sellEvidence.toFixed(1)),dominantEvidence:Number(dominantEvidence.toFixed(1)),
       support,opposition,liveSupport,liveOpposition,mode,
       components:rows.map(r=>({name:r.name,role:'ASSIST',side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight})),
-      technicalQuality:{familyAgreement:techFamilyAgreement,weakFamilies:techFamilyWeak,quality:techQuality,weightMultiplier:Number(techWeightMultiplier.toFixed(2)),families:techFamilies}
+      technicalQuality:{familyAgreement:techFamilyAgreement,weakFamilies:techFamilyWeak,quality:techQuality,weightMultiplier:Number(techWeightMultiplier.toFixed(2)),families:techFamilies},
+      errorLearning:{outcomeRegime,pattern:predatorPattern,patternDirectional,patternPosterior,patternRegimeDirectional:prDirectional,patternRegimePosterior:prPosterior,failureStreak:patternFailureStreak,penalty:patternPenalty,bonus:patternBonus,provenWeak:patternProvenWeak}
     },
 
   };
