@@ -204,7 +204,7 @@ function AssetCard({x,fast,liveQuote}:any){
 
       <div className={"scalp-next-price "+(nextPrice?.ready?'ready':'waiting')}>
         <div>
-          <small>السعر القادم المتوقع</small>
+          <small>السعر القادم المتوقع · V11</small>
           <strong className={nextPrice?.side==='BUY'?'green':nextPrice?.side==='SELL'?'red':'amber'}>
             {nextPrice?.price!=null?fmt(nextPrice.price,2):'—'}
           </strong>
@@ -214,11 +214,14 @@ function AssetCard({x,fast,liveQuote}:any){
             ?<>نطاق {fmt(nextPrice.low,2)} — {fmt(nextPrice.high,2)} · خلال {nextPrice.horizonSeconds||'—'}ث · ثقة {calibrated(nextPrice.confidence)}% · {nextPrice?.ready?'LOCKED':'TRACKING'}</>
             :<>ينتظر فقط وصول سعر Live صالح</>}
         </span>
+        {Array.isArray(nextPrice?.trajectory)&&nextPrice.trajectory.length>0&&<div className="scalp-trajectory">
+          {nextPrice.trajectory.map((pt:any)=><span key={pt.seconds}><small>{pt.seconds}ث</small><b>{pt.price!=null?fmt(pt.price,2):'—'}</b></span>)}
+        </div>}
       </div>
 
       <div className="scalp-ambush-grid">
         <div><small>الحالة</small><b>{ambushStatus}</b></div>
-        <div><small>الدخول</small><b>{entry?.ready?'جاهز':'انتظار'}</b></div>
+        <div><small>الصفقة</small><b>{tracker?.tradeReady?'جاهزة':'فلترة'}</b></div>
         <div><small>المساعدون</small><b>{helperCount}/10</b></div>
         <div><small>الدقة الحية</small><b>{ambushMetric?.accuracy==null?'—':ambushMetric.accuracy+'%'}</b></div>
       </div>
