@@ -34,7 +34,8 @@ export function commitDirection(
   const fastFlip=Boolean(
     fastSide!=='WAIT'&&(
       (fast?.stage==='IGNITION'&&Number(fast?.score||0)>=70&&Number(fast?.confidence||0)>=60&&Math.abs(rawEdge)>=4.5)||
-      (fast?.stage==='WAVE_FORMING'&&Number(fast?.score||0)>=82&&Number(fast?.confidence||0)>=68&&Math.abs(rawEdge)>=7)
+      (fast?.stage==='WAVE_FORMING'&&Number(fast?.score||0)>=82&&Number(fast?.confidence||0)>=68&&Math.abs(rawEdge)>=7)||
+      (fast?.stage==='PRE_TRIGGER'&&Number(fast?.score||0)>=68&&Number(fast?.confidence||0)>=58&&Math.abs(rawEdge)>=6)
     )
   );
 
@@ -55,7 +56,7 @@ export function commitDirection(
     return {side:opposite,state:'FAST_FLIP',rawSide,rawEdge:Number(rawEdge.toFixed(2)),smoothedEdge:Number(emaEdge.toFixed(2)),strength:Math.round(cap(56+Math.abs(emaEdge)*2)),ageMs:0,pendingSide:'WAIT',pendingCount:0,heldByHysteresis:false};
   }
 
-  const fastPressure=fastSide===opposite&&['IGNITION','WAVE_FORMING'].includes(String(fast?.stage||''))&&Number(fast?.confidence||0)>=58;
+  const fastPressure=fastSide===opposite&&['PRE_TRIGGER','IGNITION','WAVE_FORMING'].includes(String(fast?.stage||''))&&Number(fast?.confidence||0)>=58;
   const oppositeEma=emaSide===opposite&&Math.abs(emaEdge)>=(fastPressure?8:10),oppositeRaw=rawSide===opposite&&Math.abs(rawEdge)>=(fastPressure?6.5:8);
   if(oppositeEma&&oppositeRaw&&ageMs>=5000){
     const pendingCount=s.pendingSide===opposite?s.pendingCount+1:1;
