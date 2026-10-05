@@ -79,8 +79,8 @@ function AssetCard({x,liveQuote}:any){
       <strong className={forecastSide==='BUY'?'green':forecastSide==='SELL'?'red':'amber'}>
         {path?.side&&path.side!=='WAIT'
           ?(path.destination
-            ?`${moveAr(path.side)} نحو ${zoneName(path.destination)} ${zoneRange(path.destination)} · ${Math.round(Number(path.confidence||0))}%`
-            :`ميل ${moveAr(path.side)} · ${Math.round(Number(path.confidence||0))}% · لا توجد سيولة مؤكدة أمام السعر`)
+            ?`${path.conviction==='WEAK'?'ميل ضعيف: ':path.conviction==='STRONG'?'قوي: ':''}${moveAr(path.side)} نحو ${zoneName(path.destination)} ${zoneRange(path.destination)} · ${Math.round(Number(path.confidence||0))}%`
+            :`${path.conviction==='WEAK'?'ميل ضعيف: ':''}${moveAr(path.side)} · ${Math.round(Number(path.confidence||0))}% · لا توجد سيولة مؤكدة أمام السعر`)
           :zone
             ?(zone.decisionReady===false||zone.side==='WAIT'
               ?'بين مناطق القرار · الحركة متوازنة'
