@@ -47,8 +47,15 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
   const multiSide:Side=sideFrom(multiBrain?.side);
   const multiConfidence=Number(multiBrain?.confidence||0);
   const multiGap=Number(multiBrain?.gap||0);
-  const multiStrong=Boolean(multiBrain?.strong&&multiSide!=='WAIT'&&multiConfidence>=58&&multiGap>=22);
-  const multiDecisive=Boolean(multiBrain?.decisive&&multiSide!=='WAIT'&&multiConfidence>=72&&multiGap>=34);
+  const multiReliability=Number(multiBrain?.calibration?.learnedReliability||50);
+  const multiSupportSamples=Number(multiBrain?.calibration?.supportSamples||0);
+  const multiDominant=String(multiBrain?.dominantBrain||'');
+  const multiDominantAccuracy=Number(multiDominant?multiBrain?.learnedAccuracy?.[multiDominant]:50)||50;
+  // Reliability gate v4: internal agreement is not enough. A brain must prove
+  // positive out-of-sample reliability before it may relax production gates.
+  const multiQualityReady=Boolean(multiSupportSamples>=120&&multiReliability>=54&&multiDominantAccuracy>=52);
+  const multiStrong=Boolean(multiBrain?.strong&&multiSide!=='WAIT'&&multiConfidence>=58&&multiGap>=22&&multiQualityReady);
+  const multiDecisive=Boolean(multiBrain?.decisive&&multiSide!=='WAIT'&&multiConfidence>=72&&multiGap>=34&&multiQualityReady&&multiReliability>=56&&multiDominantAccuracy>=54);
   const evo=evolution?.active||null;
   const minLearningConfidence=Number(evo?.thresholds?.minLearningConfidence||48),minLearningSamples=Number(evo?.thresholds?.minLearningSamples||10);
   const learningSide:Side=sideFrom(marketLearning?.side);
@@ -156,9 +163,27 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
   const learnerMature=Boolean(Number(learner?.sampleCount||0)>=180&&Number(learner?.testCount||0)>=20);
   const learnerValid=Boolean(learner?.ok&&learner?.gate?.passed&&Number(learner?.oosAccuracy)>=54&&Number(learner?.oosEdgeAtr)>=.035&&Number(learner?.profitFactor)>=1.10);
   const learnerRequired=Boolean(learnerMature&&learnerValid);
+  const learnerDegraded=Boolean(
+    learnerMature&&(
+      Number(learner?.oosAccuracy||0)<50||
+      Number(learner?.oosEdgeAtr||0)<=0||
+      Number(learner?.profitFactor||0)<.98||
+      (learner?.gate&&learner?.gate?.passed===false)
+    )
+  );
   const learnerStrongOpposite=Boolean(
     learnerMature&&learnerSide!=='WAIT'&&learnerSide!==action&&
     Number(learner?.oosAccuracy||0)>=58&&Number(learner?.oosEdgeAtr||0)>=.07&&Number(learner?.profitFactor||0)>=1.22
+  );
+  const validatedFastModel=Boolean(neuralFastAligned||mlFastAligned);
+  const btcProductionGate=Boolean(
+    asset!=='BTC'||
+    validatedFastModel||
+    (liveStrong&&multiQualityReady&&perf.samples>=12&&perf.accuracy>=54&&weightedGap>=30&&confidence>=70)
+  );
+  const negativeEdgeBlock=Boolean(
+    action!=='WAIT'&&learnerDegraded&&!validatedFastModel&&
+    !(liveStrong&&multiQualityReady&&perf.samples>=12&&perf.accuracy>=55)
   );
   const edgeAligned=Boolean(!learnerRequired||learnerSide===action);
   let requiredConfidence=fastRegime?65:68;
@@ -175,7 +200,7 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
   const scalpImpulse=Boolean(scalpSide===action&&scalpStrength>=60&&scalpGap>=6);
   if(scalpImpulse&&weightedConsensus===action)requiredConfidence=Math.max(62,requiredConfidence-3);
   const fusionRequirement=neuralFastAligned?0:mlFastAligned?0:multiStrong?0:liveStrong?3:7;
-  const strongEvidence=action!=='WAIT'&&confidence>=requiredConfidence&&fusionGap>=fusionRequirement&&!conflict&&!performanceBlocked&&edgeAligned&&!learnerStrongOpposite&&(consensusAligned||liveConsensus===action||multiSide===action||mlSide===action||neuralSide===action);
+  const strongEvidence=action!=='WAIT'&&confidence>=requiredConfidence&&fusionGap>=fusionRequirement&&!conflict&&!performanceBlocked&&!negativeEdgeBlock&&btcProductionGate&&edgeAligned&&!learnerStrongOpposite&&(consensusAligned||liveConsensus===action||multiSide===action||mlSide===action||neuralSide===action);
 
   let lock=locks.get(asset);
   if(lock&&now-lock.lastAt>120000){locks.delete(asset);lock=undefined;}
@@ -186,6 +211,12 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
   if(performanceBlocked){
     state='PERFORMANCE_BLOCKED';
     reason=`تم منع ${action}: دقة النتائج المحققة لهذا الاتجاه منخفضة (${perf.accuracy}% من ${perf.samples} عينات مستقلة).`;
+  }else if(negativeEdgeBlock){
+    state='NEGATIVE_EDGE_BLOCK';
+    reason=`تم منع ${action}: سجل الـScalp Learner ناضج لكنه ذو edge سلبي/Profit Factor ضعيف؛ لا صفقة حتى يتحسن الأداء أو يؤكد نموذج OOS موثوق.`;
+  }else if(asset==='BTC'&&action!=='WAIT'&&!btcProductionGate){
+    state='MODEL_QUALITY_BLOCK';
+    reason='تم منع إشارة BTC: لا يوجد حاليًا نموذج OOS موثوق ومحاذٍ للحركة الحية، والـMulti-Brain لم يجتز بوابة الدقة المتعلمة.';
   }else if(conflict){
     state=expectedConflict?'EXPECTED_MOVE_CONFLICT':learningConflict?'LEARNING_CONFLICT':'CONFLICT';
     reason=expectedConflict?'ذاكرة الحركة المتوقعة تعارض اتجاه الصفقة؛ تم منع الدخول حتى يتوافق المسار القصير.':learningConflict?'ذاكرة السوق المتعلمة تعارض اتجاه الصفقة بثقة كافية؛ تم منع الدخول حتى يظهر توافق جديد.':'المحركات الموثوقة ما زالت متعارضة؛ تم إلغاء BUY/SELL حتى يظهر تفوق موزون واضح.';
@@ -215,7 +246,9 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
       }else{
         state='REVERSAL_LOCK';
         reason=`منع قلب الاتجاه من ${lock.side} إلى ${action} حتى 3 تأكيدات قوية متتالية (${pendingCount}/3).`;
-        locks.set(asset,{...lock,lastAt:now,pendingSide:action,pendingCount});
+        // Do not refresh lastAt while no trade is emitted; stale directional locks
+        // must expire naturally instead of being kept alive by page polling.
+        locks.set(asset,{...lock,pendingSide:action,pendingCount});
       }
     }
   }else{
@@ -239,7 +272,7 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
       state='WATCH';
       reason='يوجد ميل سوقي للمراقبة فقط، لكنه لم يجتز بوابات الدقة والتوافق.';
     }
-    if(lock)locks.set(asset,{...lock,lastAt:now,pendingSide:'WAIT',pendingCount:0});
+    if(lock)locks.set(asset,{...lock,pendingSide:'WAIT',pendingCount:0});
   }
 
   const locked=locks.get(asset);
@@ -255,11 +288,11 @@ export function masterArbitrate(asset:string,decision:any,scalp:any,now=Date.now
     pendingCount:locked?.pendingCount||0,
     evidence:{
       buyVotes:buys,sellVotes:sells,buyWeight:Number(buyWeight.toFixed(2)),sellWeight:Number(sellWeight.toFixed(2)),weightedGap:Math.round(weightedGap),weightedConsensus,
-      rawAction,neuralCore:{side:neuralSide,confidence:neuralConfidence,ready:neuralReady,fastAligned:neuralFastAligned,liveConfirmations:neuralLiveConfirmations,override:neuralOverride,holdoutSelectiveAccuracy:Number(neural?.metrics?.holdout?.selectiveAccuracy||0),holdoutSelectiveN:Number(neural?.metrics?.holdout?.selectiveN||0)},mlCore:{side:mlSide,confidence:mlConfidence,ready:mlReady,fastAligned:mlFastAligned,liveConfirmations:mlLiveConfirmations,override:mlOverride,oneMinute:{ready:ml1Ready,side:ml1Side,confidence:ml1Confidence,selectiveAccuracy:Number(ml?.oneMinute?.metrics?.ensemble?.selectiveAccuracy||0)},fiveMinute:{ready:ml5Ready,side:ml5Side,confidence:ml5Confidence,selectiveAccuracy:Number(ml?.fiveMinute?.metrics?.ensemble?.selectiveAccuracy||0)}},multiBrain:{side:multiSide,confidence:multiConfidence,gap:multiGap,strong:multiStrong,decisive:multiDecisive,dominant:multiBrain?.dominantBrain||null,fastAgreement:Number(multiBrain?.fastAgreement||0),totalAgreement:Number(multiBrain?.totalAgreement||0),override:multiOverride},fusion,scalp:scalpSide,scalpStrength,hunter,motion,behavior,liquidity:liq,movement:movementSide,movementConfidence,stateGraph:graphSide,graphConfidence,tick:tickSide,tickConfidence,liveConsensus,liveGap:Math.round(liveGap),liveAligned,liveStrong,regime,learning:learningUsable?learningSide:'WAIT',learningConfidence,learningReliability,learningSamples,
+      rawAction,neuralCore:{side:neuralSide,confidence:neuralConfidence,ready:neuralReady,fastAligned:neuralFastAligned,liveConfirmations:neuralLiveConfirmations,override:neuralOverride,holdoutSelectiveAccuracy:Number(neural?.metrics?.holdout?.selectiveAccuracy||0),holdoutSelectiveN:Number(neural?.metrics?.holdout?.selectiveN||0)},mlCore:{side:mlSide,confidence:mlConfidence,ready:mlReady,fastAligned:mlFastAligned,liveConfirmations:mlLiveConfirmations,override:mlOverride,oneMinute:{ready:ml1Ready,side:ml1Side,confidence:ml1Confidence,selectiveAccuracy:Number(ml?.oneMinute?.metrics?.ensemble?.selectiveAccuracy||0)},fiveMinute:{ready:ml5Ready,side:ml5Side,confidence:ml5Confidence,selectiveAccuracy:Number(ml?.fiveMinute?.metrics?.ensemble?.selectiveAccuracy||0)}},multiBrain:{side:multiSide,confidence:multiConfidence,gap:multiGap,strong:multiStrong,decisive:multiDecisive,qualityReady:multiQualityReady,learnedReliability:multiReliability,supportSamples:multiSupportSamples,dominantAccuracy:multiDominantAccuracy,dominant:multiBrain?.dominantBrain||null,fastAgreement:Number(multiBrain?.fastAgreement||0),totalAgreement:Number(multiBrain?.totalAgreement||0),override:multiOverride},fusion,scalp:scalpSide,scalpStrength,hunter,motion,behavior,liquidity:liq,movement:movementSide,movementConfidence,stateGraph:graphSide,graphConfidence,tick:tickSide,tickConfidence,liveConsensus,liveGap:Math.round(liveGap),liveAligned,liveStrong,regime,learning:learningUsable?learningSide:'WAIT',learningConfidence,learningReliability,learningSamples,
       expectedMove:exp,confidence,requiredConfidence,fusionGap,
       directionPerformance:perf,oppositeDirectionPerformance:oppositePerf,
       evolutionWeights:evolutionWeights,
-      learner:{required:learnerRequired,mature:learnerMature,valid:learnerValid,strongOpposite:learnerStrongOpposite,side:learnerSide,oosAccuracy:Number(learner?.oosAccuracy||0),netEdgeAtr:Number(learner?.oosEdgeAtr||0),profitFactor:Number(learner?.profitFactor||0)}
+      learner:{required:learnerRequired,mature:learnerMature,valid:learnerValid,degraded:learnerDegraded,strongOpposite:learnerStrongOpposite,side:learnerSide,oosAccuracy:Number(learner?.oosAccuracy||0),netEdgeAtr:Number(learner?.oosEdgeAtr||0),profitFactor:Number(learner?.profitFactor||0)},productionGate:{btc:btcProductionGate,negativeEdgeBlocked:negativeEdgeBlock,validatedFastModel,multiQualityReady}
     },
     trade:masterAction!=='WAIT'?decision?.trade||null:null
   };
