@@ -612,8 +612,28 @@ def frame_from_body(candles):
         df["taker_buy_quote"]=df["quote_volume"]*.5
     return df
 
+def _prediction_input(estimator,x,feature_names):
+    arr=np.asarray(x,dtype=np.float32)
+    if arr.ndim==1: arr=arr.reshape(1,-1)
+    names=None
+    try:
+        names=list(getattr(estimator,"feature_name_",None) or [])
+    except Exception:
+        names=None
+    if not names:
+        try:
+            names=list(estimator.get_booster().feature_names or [])
+        except Exception:
+            names=None
+    if names and feature_names and len(names)==len(feature_names) and names==list(feature_names):
+        return pd.DataFrame(arr,columns=feature_names)
+    return arr
+
 def predict_h(model,x):
-    px=float(model["xgb"].predict_proba(x)[0,1]); pl=float(model["lgb"].predict_proba(x)[0,1]); w=model["weights"]
+    features=model.get("features") or []
+    xi=_prediction_input(model["xgb"],x,features)
+    li=_prediction_input(model["lgb"],x,features)
+    px=float(model["xgb"].predict_proba(xi)[0,1]); pl=float(model["lgb"].predict_proba(li)[0,1]); w=model["weights"]
     raw=px*w["xgb"]+pl*w["lgb"]
     val=model["metrics"].get("validation",model["metrics"]["ensemble"]); hold=model["metrics"]["ensemble"]
     acc=float(val["accuracy"])
@@ -639,8 +659,8 @@ def predict_h(model,x):
                          "calibratedUp":round(calibrated*100,2),"agree":bool(component_agree),"weights":w,
                          "signalThreshold":threshold,"gateDomain":"validated_raw_probability"}}
 
-def _class3_probs(estimator,x):
-    raw=estimator.predict_proba(x)[0]
+def _class3_probs(estimator,x,feature_names=None):
+    raw=estimator.predict_proba(_prediction_input(estimator,x,feature_names or []))[0]
     classes=list(getattr(estimator,"classes_",range(len(raw))))
     out=np.zeros(3,dtype=float)
     for i,cls in enumerate(classes):
@@ -658,7 +678,8 @@ def _class3_probs(estimator,x):
 def predict_m5(model,x):
     # M5 is a real 3-class model: DOWN(0) / NOISE(1) / UP(2).
     # Map estimator classes explicitly so a missing/legacy class can never crash inference.
-    px=_class3_probs(model["xgb"],x); pl=_class3_probs(model["lgb"],x); w=model["weights"]
+    features=model.get("features") or []
+    px=_class3_probs(model["xgb"],x,features); pl=_class3_probs(model["lgb"],x,features); w=model["weights"]
     p=px*w["xgb"]+pl*w["lgb"]
     down,flat,up=float(p[0]),float(p[1]),float(p[2])
     lean="BUY" if up>=down else "SELL"

@@ -1,4 +1,4 @@
-import json, math, os, threading, time
+import gc, json, math, os, threading, time
 from collections import deque
 from pathlib import Path
 
@@ -20,8 +20,13 @@ SEQ_LEN=int(os.getenv("NEURAL_SEQ_LEN","32"))
 HORIZON=int(os.getenv("NEURAL_HORIZON_STEPS","30"))
 LABEL_BPS=float(os.getenv("NEURAL_LABEL_BPS","0.9"))
 MIN_SNAPSHOTS=int(os.getenv("NEURAL_MIN_SNAPSHOTS","1800"))
-MAX_SNAPSHOTS=int(os.getenv("NEURAL_MAX_SNAPSHOTS","60000"))
+MAX_SNAPSHOTS=int(os.getenv("NEURAL_MAX_SNAPSHOTS","24000"))
 RETRAIN_SECONDS=int(os.getenv("NEURAL_RETRAIN_SECONDS","1800"))
+TRAIN_MAX_SAMPLES=int(os.getenv("NEURAL_TRAIN_MAX_SAMPLES","12000"))
+TRAIN_BATCH=int(os.getenv("NEURAL_TRAIN_BATCH","32"))
+EVAL_BATCH=int(os.getenv("NEURAL_EVAL_BATCH","128"))
+MEMORY_TRAIN_START_MB=float(os.getenv("NEURAL_TRAIN_START_MAX_RSS_MB","620"))
+RUNTIME_REVISION="memorysafe-r3.1"
 LEVELS=10
 FEAT_DIM=50
 PATH_END_SCALE_BPS=8.0
@@ -52,6 +57,17 @@ SESSION=requests.Session()
 SESSION.headers.update({"User-Agent":"PredatorNeural/1.0","Accept":"application/json"})
 
 def cap(x,a,b): return max(a,min(b,x))
+
+def _rss_mb():
+    try:
+        with open("/proc/self/status","r",encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return round(float(line.split()[1])/1024,1)
+    except Exception:
+        pass
+    return 0.0
+
 
 def _load_rows():
     global LAST_ERROR
@@ -250,40 +266,54 @@ class PricePathNet(nn.Module):
 
 def _dataset():
     with LOCK: rows=list(ROWS)
-    xs=[];ys=[]
-    for i in range(SEQ_LEN-1,len(rows)-HORIZON):
+    end=len(rows)-HORIZON
+    start=max(SEQ_LEN-1,end-TRAIN_MAX_SAMPLES)
+    count=max(0,end-start)
+    if count<=0:return None,None
+    X=np.empty((count,SEQ_LEN,FEAT_DIM),dtype=np.float32)
+    y=np.empty((count,),dtype=np.int64)
+    used=0
+    for i in range(start,end):
         seq=rows[i-SEQ_LEN+1:i+1]
         if any(len(r.get("f",[]))!=FEAT_DIM for r in seq):continue
         cur=float(rows[i]["mid"]);fut=float(rows[i+HORIZON]["mid"])
         move=(fut-cur)/cur*10000
-        y=2 if move>=LABEL_BPS else 0 if move<=-LABEL_BPS else 1
-        xs.append([r["f"] for r in seq]);ys.append(y)
-    if not xs:return None,None
-    return np.asarray(xs,dtype=np.float32),np.asarray(ys,dtype=np.int64)
+        X[used]=np.asarray([r["f"] for r in seq],dtype=np.float32)
+        y[used]=2 if move>=LABEL_BPS else 0 if move<=-LABEL_BPS else 1
+        used+=1
+    if used<=0:return None,None
+    return X[:used],y[:used]
 
 def _path_dataset():
     with LOCK: rows=list(ROWS)
-    xs=[];ys=[]
-    for i in range(SEQ_LEN-1,len(rows)-HORIZON):
+    end=len(rows)-HORIZON
+    start=max(SEQ_LEN-1,end-TRAIN_MAX_SAMPLES)
+    count=max(0,end-start)
+    if count<=0:return None,None
+    X=np.empty((count,SEQ_LEN,FEAT_DIM),dtype=np.float32)
+    y=np.empty((count,4),dtype=np.float32)
+    used=0
+    for i in range(start,end):
         seq=rows[i-SEQ_LEN+1:i+1]
         if any(len(r.get("f",[]))!=FEAT_DIM for r in seq):continue
         cur=float(rows[i]["mid"])
-        future=[float(rows[k]["mid"]) for k in range(i+1,i+HORIZON+1)]
-        moves=np.asarray([(p-cur)/cur*10000 for p in future],dtype=np.float32)
-        end=float(moves[-1]);up=max(0.0,float(moves.max()));down=max(0.0,float(-moves.min()))
+        future=np.asarray([float(rows[k]["mid"]) for k in range(i+1,i+HORIZON+1)],dtype=np.float32)
+        moves=(future-cur)/cur*10000
+        end_move=float(moves[-1]);up=max(0.0,float(moves.max()));down=max(0.0,float(-moves.min()))
         hit=np.where(np.abs(moves)>=LABEL_BPS)[0]
         hit_frac=float((int(hit[0])+1)/HORIZON) if len(hit) else 1.0
-        target=[
-            float(np.clip(end/PATH_END_SCALE_BPS,-1,1)),
+        X[used]=np.asarray([r["f"] for r in seq],dtype=np.float32)
+        y[used]=[
+            float(np.clip(end_move/PATH_END_SCALE_BPS,-1,1)),
             float(np.clip(up/PATH_RANGE_SCALE_BPS,0,1)),
             float(np.clip(down/PATH_RANGE_SCALE_BPS,0,1)),
             float(np.clip(hit_frac,0,1))
         ]
-        xs.append([r["f"] for r in seq]);ys.append(target)
-    if not xs:return None,None
-    return np.asarray(xs,dtype=np.float32),np.asarray(ys,dtype=np.float32)
+        used+=1
+    if used<=0:return None,None
+    return X[:used],y[:used]
 
-def _selected_metrics(y,prob,threshold=.55,margin=.10):
+def _selected_metricsdef _selected_metrics(y,prob,threshold=.55,margin=.10):
     p=np.asarray(prob);pred=p.argmax(1)
     direction=np.maximum(p[:,0],p[:,2]);noise=p[:,1]
     mask=(direction>=threshold)&((direction-noise)>=margin)
@@ -311,6 +341,12 @@ def _normalize(X,center,scale):
     np.clip(out,-8.0,8.0,out=out)
     return out
 
+def _normalize_inplace(X,center,scale):
+    X-=center.reshape(1,1,-1)
+    X/=scale.reshape(1,1,-1)
+    np.clip(X,-8.0,8.0,out=X)
+    return X
+
 def _choose_selective_gate(y,prob):
     best=None;n=len(y)
     thirds=[(0,n//3),(n//3,2*n//3),(2*n//3,n)]
@@ -331,7 +367,7 @@ def _choose_selective_gate(y,prob):
     if best:return float(best[1]),float(best[2])
     return .62,.12
 
-def _probs(model,X,batch=256):
+def _probs(model,X,batch=EVAL_BATCH):
     model.eval();outs=[]
     with torch.no_grad():
         for i in range(0,len(X),batch):
@@ -369,7 +405,7 @@ def _path_metrics(y_true,y_pred,baseline):
         "n":int(len(yt))
     }
 
-def _path_predict_batch(model,X,batch=256):
+def _path_predict_batch(model,X,batch=EVAL_BATCH):
     model.eval();outs=[]
     with torch.no_grad():
         for i in range(0,len(X),batch):
@@ -385,15 +421,15 @@ def _fit_path(Xtr,ytr,Xv,yv):
     rng=np.random.default_rng(177)
     for epoch in range(22):
         model.train();idx=np.arange(len(Xtr));rng.shuffle(idx)
-        for i in range(0,len(idx),64):
-            bi=idx[i:i+64]
+        for i in range(0,len(idx),TRAIN_BATCH):
+            bi=idx[i:i+TRAIN_BATCH]
             xb=torch.from_numpy(Xtr[bi]).to(DEVICE);yb=torch.from_numpy(ytr[bi]).to(DEVICE)
             opt.zero_grad(set_to_none=True);loss=loss_fn(model(xb),yb);loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(),1.0);opt.step()
         model.eval();losses=[]
         with torch.no_grad():
-            for i in range(0,len(Xv),256):
-                xb=torch.from_numpy(Xv[i:i+256]).to(DEVICE);yb=torch.from_numpy(yv[i:i+256]).to(DEVICE)
+            for i in range(0,len(Xv),EVAL_BATCH):
+                xb=torch.from_numpy(Xv[i:i+EVAL_BATCH]).to(DEVICE);yb=torch.from_numpy(yv[i:i+EVAL_BATCH]).to(DEVICE)
                 losses.append(float(loss_fn(model(xb),yb).cpu()))
         vl=float(np.mean(losses)) if losses else 9
         if vl<best_loss-1e-4:
@@ -410,13 +446,16 @@ def _train_path():
     if PATH_TRAINING:return
     PATH_TRAINING=True
     try:
+        if _rss_mb()>MEMORY_TRAIN_START_MB:
+            raise RuntimeError(f"memory_guard rss={_rss_mb()}MB")
         X,y=_path_dataset()
         if X is None or len(y)<MIN_SNAPSHOTS:return
         a=int(len(y)*.70);b=int(len(y)*.85);purge=HORIZON+2
-        Xtr,Xv,Xte=X[:max(1,a-purge)],X[a:max(a+1,b-purge)],X[b:]
-        ytr,yv,yte=y[:max(1,a-purge)],y[a:max(a+1,b-purge)],y[b:]
-        center,scale=_fit_normalizer(Xtr)
-        Xtr=_normalize(Xtr,center,scale);Xv=_normalize(Xv,center,scale);Xte=_normalize(Xte,center,scale)
+        train_stop=max(1,a-purge)
+        center,scale=_fit_normalizer(X[:train_stop])
+        _normalize_inplace(X,center,scale)
+        Xtr,Xv,Xte=X[:train_stop],X[a:max(a+1,b-purge)],X[b:]
+        ytr,yv,yte=y[:train_stop],y[a:max(a+1,b-purge)],y[b:]
         decoded=_path_decode(ytr)
         baseline={
             "end":float(np.median(decoded[:,0])),
@@ -444,6 +483,7 @@ def _train_path():
         print("[PRICE-PATH-ERROR] "+json.dumps({"error":PATH_LAST_ERROR}),flush=True)
     finally:
         PATH_TRAINING=False
+        gc.collect()
 
 def _fit_once(Xtr,ytr,Xv,yv):
     model=HybridMicroNet().to(DEVICE)
@@ -456,8 +496,8 @@ def _fit_once(Xtr,ytr,Xv,yv):
     for epoch in range(24):
         model.train()
         idx=np.arange(len(Xtr));rng.shuffle(idx)
-        for i in range(0,len(idx),64):
-            bi=idx[i:i+64]
+        for i in range(0,len(idx),TRAIN_BATCH):
+            bi=idx[i:i+TRAIN_BATCH]
             xb=torch.from_numpy(Xtr[bi]).to(DEVICE);yb=torch.from_numpy(ytr[bi]).to(DEVICE)
             opt.zero_grad(set_to_none=True)
             loss=loss_fn(model(xb),yb);loss.backward()
@@ -465,8 +505,8 @@ def _fit_once(Xtr,ytr,Xv,yv):
             opt.step()
         model.eval();losses=[]
         with torch.no_grad():
-            for i in range(0,len(Xv),256):
-                xb=torch.from_numpy(Xv[i:i+256]).to(DEVICE);yb=torch.from_numpy(yv[i:i+256]).to(DEVICE)
+            for i in range(0,len(Xv),EVAL_BATCH):
+                xb=torch.from_numpy(Xv[i:i+EVAL_BATCH]).to(DEVICE);yb=torch.from_numpy(yv[i:i+EVAL_BATCH]).to(DEVICE)
                 losses.append(float(loss_fn(model(xb),yb).cpu()))
         vl=float(np.mean(losses)) if losses else 9
         if vl<best_loss-1e-4:
@@ -483,13 +523,16 @@ def _train():
     if TRAINING:return
     TRAINING=True
     try:
+        if _rss_mb()>MEMORY_TRAIN_START_MB:
+            raise RuntimeError(f"memory_guard rss={_rss_mb()}MB")
         X,y=_dataset()
         if X is None or len(y)<MIN_SNAPSHOTS:return
         a=int(len(y)*.70);b=int(len(y)*.85);purge=HORIZON+2
-        Xtr,Xv,Xte=X[:max(1,a-purge)],X[a:max(a+1,b-purge)],X[b:]
-        ytr,yv,yte=y[:max(1,a-purge)],y[a:max(a+1,b-purge)],y[b:]
-        center,scale=_fit_normalizer(Xtr)
-        Xtr=_normalize(Xtr,center,scale);Xv=_normalize(Xv,center,scale);Xte=_normalize(Xte,center,scale)
+        train_stop=max(1,a-purge)
+        center,scale=_fit_normalizer(X[:train_stop])
+        _normalize_inplace(X,center,scale)
+        Xtr,Xv,Xte=X[:train_stop],X[a:max(a+1,b-purge)],X[b:]
+        ytr,yv,yte=y[:train_stop],y[a:max(a+1,b-purge)],y[b:]
         model=_fit_once(Xtr,ytr,Xv,yv)
         pv=_probs(model,Xv)
         threshold,margin=_choose_selective_gate(yv,pv)
@@ -518,6 +561,7 @@ def _train():
         print("[NEURAL-TRAIN-ERROR] "+json.dumps({"error":LAST_ERROR}),flush=True)
     finally:
         TRAINING=False
+        gc.collect()
 
 def _collector():
     global LAST_SNAPSHOT_AT,LAST_ERROR,PENDING
@@ -530,9 +574,9 @@ def _collector():
                 if len(PENDING)>=10:_flush()
                 n=len(ROWS)
             LAST_SNAPSHOT_AT=row["t"];LAST_ERROR=None
-            if n>=MIN_SNAPSHOTS and not TRAINING and row["t"]-LAST_TRAIN_AT>RETRAIN_SECONDS*1000:
+            if n>=MIN_SNAPSHOTS and not TRAINING and row["t"]-LAST_TRAIN_AT>RETRAIN_SECONDS*1000 and _rss_mb()<=MEMORY_TRAIN_START_MB:
                 threading.Thread(target=_train,daemon=True,name="neural-trainer").start()
-            elif n>=MIN_SNAPSHOTS and not PATH_TRAINING and PATH_MODEL is None:
+            elif n>=MIN_SNAPSHOTS and not PATH_TRAINING and PATH_MODEL is None and _rss_mb()<=MEMORY_TRAIN_START_MB:
                 threading.Thread(target=_train_path,daemon=True,name="price-path-trainer").start()
         except Exception as e:
             LAST_ERROR=f"collector:{type(e).__name__}:{e}"
@@ -599,7 +643,8 @@ def startup():
 
 @app.get("/health")
 def health():
-    return {"ok":True,"version":APP_VERSION,"training":TRAINING,"pathTraining":PATH_TRAINING,"storedSnapshots":len(ROWS),"lastSnapshotAt":LAST_SNAPSHOT_AT,
+    return {"ok":True,"version":APP_VERSION,"runtimeRevision":RUNTIME_REVISION,"training":TRAINING,"pathTraining":PATH_TRAINING,
+            "storedSnapshots":len(ROWS),"trainingMaxSamples":TRAIN_MAX_SAMPLES,"rssMb":_rss_mb(),"lastSnapshotAt":LAST_SNAPSHOT_AT,
             "lastTrainAt":LAST_TRAIN_AT,"pathLastTrainAt":PATH_LAST_TRAIN_AT,"lastError":LAST_ERROR,"pathLastError":PATH_LAST_ERROR,"prediction":_predict()}
 
 @app.get("/predict")
