@@ -1,12 +1,13 @@
+import {calibrateHorizonBrain} from './horizon-brain-learning';
 type Side='BUY'|'SELL'|'WAIT';
 type Regime='EXPANSION'|'COMPRESSION'|'REVERSAL'|'RANGE'|'TRANSITION';
 type Evidence={name:string;side:Side;score:number;weight:number;reliability:number};
-type Horizon={side:Side;confidence:number;buyShare:number;sellShare:number;agreement:number;uncertainty:number};
+type Horizon={side:Side;confidence:number;buyShare:number;sellShare:number;agreement:number;uncertainty:number;independentFamilies?:number;familyOpposition?:number;familyBreakdown?:Record<string,{side:Side;score:number}>;learning?:any};
 
 export type MovementIntelligence={
   ok:boolean;asset:string;regime:Regime;side:Side;leanSide:Side;confidence:number;
   agreement:number;uncertainty:number;conflict:boolean;conflictScore:number;
-  evidence:Evidence[];horizons:{twoMinute:Horizon;fiveMinute:Horizon;fifteenMinute:Horizon};
+  evidence:Evidence[];horizons:{oneMinute:Horizon;threeMinute:Horizon;twoMinute:Horizon;fiveMinute:Horizon;fifteenMinute:Horizon};
   horizonQuality?:{
     fiveMinute:{independentSupport:number;independentOpposition:number};
     fifteenMinute:{independentSupport:number;independentOpposition:number};
@@ -98,6 +99,33 @@ function softExpectedSide(x:any):Side{
   return Math.abs(signed)>=.12?(signed>0?'BUY':'SELL'):'WAIT';
 }
 function ev(name:string,s:any,score:number,weight:number,reliability=1):Evidence{return {name,side:side(s),score:cap(Number(score||0),0,92),weight,reliability:cap(reliability,.55,1.35)};}
+function familyVote(rows:Evidence[]){
+  const usable=rows.filter(x=>x.side!=='WAIT'&&x.score>=18&&x.weight>0);
+  let buy=0,sell=0;
+  for(const x of usable){
+    const v=x.score*x.weight*x.reliability;
+    if(x.side==='BUY')buy+=v;else sell+=v;
+  }
+  const total=buy+sell;
+  if(!total)return {side:'WAIT' as Side,score:0};
+  const edge=Math.abs(buy-sell)/total*100;
+  const winner:Side=buy>sell?'BUY':'SELL';
+  return {side:(edge>=10?winner:'WAIT') as Side,score:Math.round(cap(Math.max(buy,sell)/Math.max(1,usable.length),0,92))};
+}
+function resolveFamilies(groups:Record<string,Evidence[]>,gate=12,minFamilies=2):Horizon{
+  const breakdown:Record<string,{side:Side;score:number}>={};
+  for(const [name,rows] of Object.entries(groups))breakdown[name]=familyVote(rows);
+  const active=Object.values(breakdown).filter(x=>x.side!=='WAIT'&&x.score>=18);
+  if(!active.length)return {side:'WAIT',confidence:0,buyShare:50,sellShare:50,agreement:0,uncertainty:100,independentFamilies:0,familyOpposition:0,familyBreakdown:breakdown};
+  let buy=0,sell=0;
+  for(const x of active){if(x.side==='BUY')buy+=x.score;else sell+=x.score;}
+  const total=buy+sell,buyShare=total?buy/total*100:50,sellShare=100-buyShare,edge=Math.abs(buyShare-sellShare);
+  const winner:Side=buy>sell?'BUY':'SELL';
+  const support=active.filter(x=>x.side===winner).length,opposition=active.filter(x=>x.side!==winner).length;
+  const confidence=Math.round(cap(edge*.58+Math.max(buyShare,sellShare)*.18+support*7-opposition*5,0,88));
+  const out:Side=support>=minFamilies&&edge>=gate?winner:'WAIT';
+  return {side:out,confidence,buyShare:Math.round(buyShare),sellShare:Math.round(sellShare),agreement:Math.round(Math.max(buyShare,sellShare)),uncertainty:Math.round(cap(100-confidence,0,100)),independentFamilies:support,familyOpposition:opposition,familyBreakdown:breakdown};
+}
 
 export function buildMovementIntelligence(asset:string,args:any):MovementIntelligence{
   const expected=args?.expected||{},g=args?.stateGraph||{},liq=args?.liquidity||{},motion=args?.motion||{},structure=args?.structure||{},acc=args?.accumulation||{},behavior=args?.behavior||{},learning=args?.learning||{},tick=args?.tick||{},scalp=args?.scalp||{},decision=args?.decision||{},news=args?.news||{},ml=args?.ml||{};
