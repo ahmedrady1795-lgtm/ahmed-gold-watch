@@ -351,7 +351,7 @@ function buildZoneForecast(args:{
     ?Math.round(cap(38-probabilityGap*.25,18,42))
     :Math.round(cap(
       primaryProbability+destinationQuality*.06+Math.min(8,liquidityGap*.18)+familySupport*.8-familyOpposition*1.2+
-      (pathSide===accSide&&accSide!=='WAIT'?2:0)-uncertaintyPenalty,
+      (pathSide===accSide?2:0)-uncertaintyPenalty,
       38,86
     ));
   const pathReason=[
