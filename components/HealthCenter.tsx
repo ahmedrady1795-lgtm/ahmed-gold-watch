@@ -20,7 +20,6 @@ export default function HealthCenter(){
     {label:'Backtest · Binance',state:h?.services?.backtest?.configured?'ok':'bad',text:h?.services?.backtest?.configured?'OK':'NOT READY'},
     {label:'MT5 Tick',state:!mt5?.configured?'neutral':mt5?.fresh?'ok':'bad',text:!mt5?.configured?'OPTIONAL':mt5?.fresh?'LIVE':'NOT READY'},
     {label:'MT5 Candles',state:!mt5?.configured?'neutral':mt5?.candlesFresh?'ok':'bad',text:!mt5?.configured?'OPTIONAL':mt5?.candlesFresh?'LIVE':'NOT READY'},
-    {label:'Telegram',state:h?.services?.telegram?.configured&&h?.services?.telegram?.enabled?'ok':'bad',text:h?.services?.telegram?.configured&&h?.services?.telegram?.enabled?'OK':'NOT READY'},
     {label:'Background DXY/Yields',state:!bg?.configured?'neutral':'ok',text:!bg?.configured?'OPTIONAL':'OK'}
   ];
 
