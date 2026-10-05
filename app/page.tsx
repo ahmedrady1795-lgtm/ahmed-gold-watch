@@ -238,7 +238,7 @@ export default function Home(){
           </section>
         </>}
 
-        {tab==='ai'&&<AICommandCenter data={aiData} error={aiError} now={now} fastWave={fastWave}/>} 
+        {tab==='ai'&&<AICommandCenter data={aiData} error={aiError} now={now} fastWave={fastWave} goldLive={mt5Active?snap?.quote:goldTick}/>} 
         {tab==='news'&&<NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/>}
         {tab==='lab'&&<StrategyLab signal={analysis?.signal||null} regime={analysis?.regime} quotePrice={quote?.price} quoteLive={live} latestM1={latestM1} rules={rules}/>}
         {tab==='performance'&&<PerformanceCenter/>}
