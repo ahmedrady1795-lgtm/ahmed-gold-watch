@@ -170,6 +170,25 @@ function yahooCandles(data:any):Candle[]{
   }
   return out.sort((a,b)=>a.time-b.time).filter((v,i,a)=>i===0||v.time!==a[i-1].time);
 }
+async function candlesFromBiquote(interval:'1m'|'5m'|'15m'|'1h'):Promise<Candle[]>{
+  const data=await getJson('https://biquote.io/api/XAUUSD/ohlc?interval='+encodeURIComponent(interval)+'&limit=340',{'User-Agent':'AhmedGoldCommand/1.0','Accept':'application/json'});
+  const rows=Array.isArray(data?.bars)?data.bars:[];
+  const out=rows.map((v:any)=>({time:Date.parse(String(v?.openTime||'')),open:Number(v?.open),high:Number(v?.high),low:Number(v?.low),close:Number(v?.close),tickVolume:num(v?.tickVolume)??undefined,realVolume:num(v?.volume)??undefined}))
+    .filter((v:Candle)=>Number.isFinite(v.time)&&v.time>0&&[v.open,v.high,v.low,v.close].every(Number.isFinite)&&v.low>0&&v.high>=Math.max(v.open,v.close)&&v.low<=Math.min(v.open,v.close))
+    .sort((a:Candle,b:Candle)=>a.time-b.time)
+    .filter((v:Candle,i:number,a:Candle[])=>i===0||v.time!==a[i-1].time);
+  if((interval==='1m'&&out.length<80)||(interval!=='1m'&&out.length<120))throw new Error('Biquote XAUUSD history insufficient');
+  return out;
+}
+async function quoteFromBiquote(now:number):Promise<QuoteData>{
+  const data=await getJson('https://biquote.io/api/XAUUSD?allowStale=true',{'User-Agent':'AhmedGoldCommand/1.0','Accept':'application/json'});
+  const bid=num(data?.bid),ask=num(data?.ask),mid=num(data?.mid),price=mid??(bid!=null&&ask!=null&&ask>=bid?(bid+ask)/2:null);
+  if(!price||price<=0)throw new Error('invalid Biquote XAUUSD price');
+  const rawTime=String(data?.timestamp??data?.lastQuoteAt??data?.time??''),parsed=Date.parse(rawTime),sourceTime=Number.isFinite(parsed)?parsed:null;
+  const age=Number(data?.quoteAgeSeconds),state=String(data?.marketState||'').toLowerCase(),stale=Boolean(data?.stale);
+  const status:QuoteStatus=state==='open'&&!stale&&(!Number.isFinite(age)||age<=5)?'live':state==='closed'?'closed_or_stale':'delayed';
+  return{ok:true,symbol:'XAU/USD',price,source:'Biquote · MT5 XAUUSD',sourceTime,fetchedAt:now,status,previousClose:null,change:null,percentChange:num(data?.dayDiffPercent),bid,ask,spread:bid!=null&&ask!=null&&ask>=bid?ask-bid:null,brokerSymbol:'XAUUSD'};
+}
 async function candlesFromYahoo(interval:'1m'|'5m'|'15m'|'1h'):Promise<Candle[]>{
   const map={ '1m':{i:'1m',r:'1d'},'5m':{i:'5m',r:'5d'},'15m':{i:'15m',r:'5d'},'1h':{i:'60m',r:'1mo'} } as const;
   const p=map[interval],url='https://query1.finance.yahoo.com/v8/finance/chart/GC%3DF?interval='+p.i+'&range='+p.r+'&includePrePost=false&events=div%2Csplits';
@@ -216,6 +235,7 @@ export async function getQuoteData(options:{forceExternal?:boolean}={}):Promise<
   if(externalQuoteCache&&now-externalQuoteCache.at<EXTERNAL_QUOTE_TTL_MS)return externalQuoteCache.value;
   const rt=getRuntimeEnv(),goldKey=rt.GOLD_API_KEY||rt.GOLDAPI_API_KEY||rt.GOLDAPI_TOKEN,twelveKey=rt.TWELVE_DATA_API_KEY,massiveKey=rt.MASSIVE_API_KEY||rt.POLYGON_API_KEY,errors:string[]=[];
   for(const provider of [
+    ()=>quoteFromBiquote(now),
     massiveKey?()=>quoteFromMassive(massiveKey,now):null,
     twelveKey?()=>quoteFromTwelve(twelveKey,now):null,
     goldKey?()=>quoteFromGoldApi(goldKey,now):null,
@@ -323,7 +343,7 @@ export async function getMarketData(options:{force?:boolean}={}):Promise<MarketD
   const rt=getRuntimeEnv(),priceKey=rt.TWELVE_DATA_API_KEY,massiveKey=rt.MASSIVE_API_KEY||rt.POLYGON_API_KEY,calendarKey=rt.TRADING_ECONOMICS_API_KEY,result:MarketData={checkedAt:now,pricesReady:false,newsReady:false,backgroundReady:false,c1:[],c5:[],c15:[],c60:[],events:[],background:[],errors:[],priceSource:'unavailable'};
   if(!calendarKey)result.errors.push('Trading Economics غير مربوط؛ سيستخدم النظام تقويم USD المجاني كبديل.');
   const jobs:Promise<void>[]=[];
-  jobs.push((async()=>{if(mt5CandlesNow){result.c1=mt5CandlesNow.c1;result.c5=mt5CandlesNow.c5;result.c15=mt5CandlesNow.c15;result.c60=mt5CandlesNow.c60;result.pricesReady=true;result.priceSource=`Exness/MT5 · ${getMt5BridgeStatus(now).status?.symbol||'broker'}`;return;}if(massiveKey){try{const[m1,m5,m15,h1]=await Promise.all([candlesFromMassive(massiveKey,'1m'),candlesFromMassive(massiveKey,'5m'),candlesFromMassive(massiveKey,'15m'),candlesFromMassive(massiveKey,'1h')]);result.c1=m1;result.c5=m5;result.c15=m15;result.c60=h1;result.pricesReady=true;result.priceSource='Massive · C:XAUUSD';return;}catch{result.errors.push('Massive XAUUSD غير متاح/غير مصرح للخطة؛ تجربة مصدر الذهب التالي.');}}if(priceKey){try{const base='https://api.twelvedata.com/time_series?symbol=XAU%2FUSD&outputsize=340&timezone=UTC&apikey='+encodeURIComponent(priceKey),[m1,m5,m15,h1]=await Promise.all([getJson(base+'&interval=1min'),getJson(base+'&interval=5min'),getJson(base+'&interval=15min'),getJson(base+'&interval=1h')]);result.c1=candles(m1);result.c5=candles(m5);result.c15=candles(m15);result.c60=h1;result.pricesReady=true;result.priceSource='Twelve Data · XAU/USD';return;}catch{result.errors.push('Twelve Data XAU/USD غير متاح مؤقتاً.');}}try{const[m1,m5,m15,h1]=await Promise.all([candlesFromYahoo('1m'),candlesFromYahoo('5m'),candlesFromYahoo('15m'),candlesFromYahoo('1h')]);result.c1=m1;result.c5=m5;result.c15=m15;result.c60=h1;result.pricesReady=true;result.priceSource='Yahoo Finance · COMEX GC=F proxy';result.errors.push('الشموع من عقود COMEX GC=F احتياطي تحليلي فقط وليست سعر تنفيذ XAUUSD.');return;}catch{result.errors.push('Yahoo GC=F غير متاح مؤقتاً.');}result.errors.push('تعذر الحصول على شموع MT5/Massive/Twelve Data/Yahoo للذهب.');})());
+  jobs.push((async()=>{if(mt5CandlesNow){result.c1=mt5CandlesNow.c1;result.c5=mt5CandlesNow.c5;result.c15=mt5CandlesNow.c15;result.c60=mt5CandlesNow.c60;result.pricesReady=true;result.priceSource=`Exness/MT5 · ${getMt5BridgeStatus(now).status?.symbol||'broker'}`;return;}if(massiveKey){try{const[m1,m5,m15,h1]=await Promise.all([candlesFromMassive(massiveKey,'1m'),candlesFromMassive(massiveKey,'5m'),candlesFromMassive(massiveKey,'15m'),candlesFromMassive(massiveKey,'1h')]);result.c1=m1;result.c5=m5;result.c15=m15;result.c60=h1;result.pricesReady=true;result.priceSource='Massive · C:XAUUSD';return;}catch{result.errors.push('Massive XAUUSD غير متاح/غير مصرح للخطة؛ تجربة مصدر الذهب التالي.');}}if(priceKey){try{const base='https://api.twelvedata.com/time_series?symbol=XAU%2FUSD&outputsize=340&timezone=UTC&apikey='+encodeURIComponent(priceKey),[m1,m5,m15,h1]=await Promise.all([getJson(base+'&interval=1min'),getJson(base+'&interval=5min'),getJson(base+'&interval=15min'),getJson(base+'&interval=1h')]);result.c1=candles(m1);result.c5=candles(m5);result.c15=candles(m15);result.c60=h1;result.pricesReady=true;result.priceSource='Twelve Data · XAU/USD';return;}catch{result.errors.push('Twelve Data XAU/USD غير متاح مؤقتاً.');}}try{const[m1,m5,m15,h1]=await Promise.all([candlesFromBiquote('1m'),candlesFromBiquote('5m'),candlesFromBiquote('15m'),candlesFromBiquote('1h')]);result.c1=m1;result.c5=m5;result.c15=m15;result.c60=h1;result.pricesReady=true;result.priceSource='Biquote · MT5 XAUUSD candles';return;}catch{result.errors.push('Biquote XAUUSD OHLC غير متاح مؤقتاً؛ تجربة COMEX proxy.');}try{const[m1,m5,m15,h1]=await Promise.all([candlesFromYahoo('1m'),candlesFromYahoo('5m'),candlesFromYahoo('15m'),candlesFromYahoo('1h')]);result.c1=m1;result.c5=m5;result.c15=m15;result.c60=h1;result.pricesReady=true;result.priceSource='Yahoo Finance · COMEX GC=F proxy';result.errors.push('الشموع من عقود COMEX GC=F احتياطي تحليلي فقط وليست سعر تنفيذ XAUUSD.');return;}catch{result.errors.push('Yahoo GC=F غير متاح مؤقتاً.');}result.errors.push('تعذر الحصول على شموع MT5/Massive/Twelve Data/Biquote/Yahoo للذهب.');})());
   if(priceKey)jobs.push((async()=>{try{result.background=await backgroundFromTwelve(priceKey);result.backgroundReady=result.background.filter(x=>x.value!=null&&x.status!=='unavailable').length>=2;if(!result.backgroundReady)result.errors.push('DXY والعوائد غير مكتملة؛ تستخدم كـConfirmation فقط ولن توقف الإشارة.');}catch{result.background=[];result.errors.push('تعذر تحديث DXY والعوائد؛ لن تستخدم في القرار.');}})());
   jobs.push((async()=>{
     const collected:Event[]=[];
