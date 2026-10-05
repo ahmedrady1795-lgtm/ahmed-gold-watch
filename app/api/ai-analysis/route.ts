@@ -577,8 +577,10 @@ export async function GET(request:Request){
       triggerReason:h.zoneForecast.triggerReason||'',
       target:h.zoneForecast.target?{low:h.zoneForecast.target.low,high:h.zoneForecast.target.high,kind:h.zoneForecast.target.kind}:null,
       path:h.zoneForecast.pathForecast?{
+        version:h.zoneForecast.pathForecast.version||'FORECAST_AI_V3',
         side:h.zoneForecast.pathForecast.side||'WAIT',
         confidence:Number(h.zoneForecast.pathForecast.confidence||0),
+        probabilities:h.zoneForecast.pathForecast.probabilities||null,
         destination:h.zoneForecast.pathForecast.destination?{
           low:h.zoneForecast.pathForecast.destination.low,
           high:h.zoneForecast.pathForecast.destination.high,
@@ -587,7 +589,17 @@ export async function GET(request:Request){
         rebound:h.zoneForecast.pathForecast.reboundZone?{
           low:h.zoneForecast.pathForecast.reboundZone.low,
           high:h.zoneForecast.pathForecast.reboundZone.high
-        }:null
+        }:null,
+        alternate:h.zoneForecast.pathForecast.alternate?{
+          side:h.zoneForecast.pathForecast.alternate.side||'WAIT',
+          probability:Number(h.zoneForecast.pathForecast.alternate.probability||0),
+          destination:h.zoneForecast.pathForecast.alternate.destination?{
+            low:h.zoneForecast.pathForecast.alternate.destination.low,
+            high:h.zoneForecast.pathForecast.alternate.destination.high
+          }:null
+        }:null,
+        invalidation:Number.isFinite(Number(h.zoneForecast.pathForecast.invalidation?.price))?Number(h.zoneForecast.pathForecast.invalidation.price):null,
+        learning:h.zoneForecast.pathForecast.learning||null
       }:null,
       locked:Boolean(h.zoneForecast.stability?.locked),
       stabilityReason:h.zoneForecast.stability?.reason||'',
