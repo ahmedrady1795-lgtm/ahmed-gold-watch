@@ -335,20 +335,141 @@ export async function GET(request:Request){
       recordFinalRecommendationOutcome({asset:'GOLD',c1:gm.c1,price:goldPrice,atr:goldAtr,context:goldLearningContext,recommendation:goldRecommendation,now}),
       recordFinalRecommendationOutcome({asset:'BTC',c1:btc.c1,price:btcPrice,atr:btcAtr,context:bitcoinLearningContext,recommendation:bitcoinRecommendation,now})
     ]);
-    const goldOut={...gold,rawAction:gold.action,action:goldMaster.action,goldForecastCore,predatorFusionV2,master:goldMaster,recommendation:goldRecommendation,opportunities:goldOpportunities,recommendationLearning:goldRecommendationLearning,huntForecast:goldHunt,waveStructure:goldStructure,stateGraph:goldStateGraph,accumulationMap:goldAccumulation,newsIntelligence:goldNews,marketLearning:goldLearning,expectedMoveLearning:goldExpectedLearning,movementIntelligence:goldMovement,multiBrainCore:goldMultiBrain,brainOutcomeLearning:goldBrainLearning,brainOutcomeRecord:goldBrainRecord,nextMoveLive:goldNextMoveLive,scalpLive:goldScalpLive,serverTickBrain:goldTick,selfEvolution:goldEvolution,evolutionAutopsy:goldAutopsy,scalpLearner:goldLearner,livePulse:goldLivePulse,liquidity:goldLiquidity,motion:goldMotion,trade:goldMaster.trade};
-    const bitcoinOut={...bitcoin,rawAction:bitcoin.action,action:bitcoinMaster.action,master:bitcoinMaster,recommendation:bitcoinRecommendation,opportunities:bitcoinOpportunities,recommendationLearning:bitcoinRecommendationLearning,huntForecast:bitcoinHunt,waveStructure:bitcoinStructure,stateGraph:bitcoinStateGraph,accumulationMap:bitcoinAccumulation,newsIntelligence:bitcoinNews,marketLearning:bitcoinLearning,expectedMoveLearning:bitcoinExpectedLearning,movementIntelligence:bitcoinMovement,mlCore:bitcoinMl,neuralCore:bitcoinNeural,multiBrainCore:bitcoinMultiBrain,brainOutcomeLearning:bitcoinBrainLearning,brainOutcomeRecord:bitcoinBrainRecord,nextMoveLive:bitcoinNextMoveLive,scalpLive:bitcoinScalpLive,serverTickBrain:bitcoinTick,selfEvolution:bitcoinEvolution,evolutionAutopsy:bitcoinAutopsy,scalpLearner:bitcoinLearner,trade:bitcoinMaster.trade};
-    const radar=[
-      {asset:'BTC',score:Math.min(92,Math.max(Number(bitcoin.fusion?.buy||0),Number(bitcoin.fusion?.sell||0),Number(bitcoin.hunter?.score||0),Number(bitcoinScalp.score?.long||0),Number(bitcoinScalp.score?.short||0))),status:bitcoinMaster.state,side:bitcoinMaster.action,watchSide:bitcoinMaster.watchSide,huntSide:bitcoinHunt.side,huntState:bitcoinHunt.state,huntConfidence:bitcoinHunt.confidence,mode:bitcoinMaster.state==='TRADE'?bitcoinMaster.trade?.mode:'MASTER'},
-      {asset:'GOLD',score:Math.min(92,Math.max(Number(gold.fusion?.buy||0),Number(gold.fusion?.sell||0),Number(gold.hunter?.score||0),Number(goldScalp.score?.long||0),Number(goldScalp.score?.short||0))),status:goldMaster.state,side:goldMaster.action,watchSide:goldMaster.watchSide,huntSide:goldHunt.side,huntState:goldHunt.state,huntConfidence:goldHunt.confidence,mode:goldMaster.state==='TRADE'?goldMaster.trade?.mode:'MASTER'}
-    ].sort((a,b)=>b.score-a.score);
+    const compactHorizon=(h:any)=>h?{
+      side:h.side??'WAIT',
+      confidence:Number(h.confidence??h.strength??0),
+      strength:Number(h.strength??h.confidence??0),
+      expectedMove:Number.isFinite(Number(h.expectedMove))?Number(h.expectedMove):null,
+      price:Number.isFinite(Number(h.price))?Number(h.price):null,
+      low:Number.isFinite(Number(h.low))?Number(h.low):null,
+      high:Number.isFinite(Number(h.high))?Number(h.high):null
+    }:null;
+    const compactTarget=(x:any)=>x?{
+      side:x.side??'WAIT',
+      price:Number.isFinite(Number(x.price))?Number(x.price):null,
+      confidence:Number.isFinite(Number(x.confidence))?Number(x.confidence):null
+    }:null;
+    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any)=>({
+      asset,
+      price:Number.isFinite(Number(pulse?.price??x?.price))?Number(pulse?.price??x?.price):null,
+      livePulse:pulse?{
+        price:Number.isFinite(Number(pulse.price))?Number(pulse.price):null,
+        sourceTime:Number(pulse.sourceTime||0),
+        source:pulse.source||null,
+        direction:pulse.direction||'FLAT',
+        momentum:Number(pulse.momentum||0)
+      }:null,
+      recommendation:recommendation?{
+        active:Boolean(recommendation.active),
+        action:recommendation.action||'WAIT',
+        confidence:Number(recommendation.confidence||0),
+        invalidation:Number.isFinite(Number(recommendation.invalidation))?Number(recommendation.invalidation):null,
+        targets:recommendation.targets||null
+      }:null,
+      huntForecast:hunt?{
+        confidence:Number(hunt.confidence||0),
+        quality:Number(hunt.quality||0),
+        invalidation:Number.isFinite(Number(hunt.invalidation))?Number(hunt.invalidation):null,
+        nextMove:hunt.nextMove?{
+          side:hunt.nextMove.side||'WAIT',
+          confidence:Number(hunt.nextMove.confidence||0),
+          firstHitMinutes:Number.isFinite(Number(hunt.nextMove.firstHitMinutes))?Number(hunt.nextMove.firstHitMinutes):null
+        }:null,
+        marketUnderstanding:hunt.marketUnderstanding?{
+          summary:hunt.marketUnderstanding.summary||'',
+          mode:hunt.marketUnderstanding.mode||'',
+          firstMove:hunt.marketUnderstanding.firstMove?{
+            side:hunt.marketUnderstanding.firstMove.side||'WAIT',
+            confidence:Number(hunt.marketUnderstanding.firstMove.confidence||0)
+          }:null,
+          followMove:hunt.marketUnderstanding.followMove?{
+            side:hunt.marketUnderstanding.followMove.side||'WAIT',
+            confidence:Number(hunt.marketUnderstanding.followMove.confidence||0)
+          }:null
+        }:null,
+        path:hunt.path?{
+          label:hunt.path.label||'',
+          shortSide:hunt.path.shortSide||'WAIT',
+          followSide:hunt.path.followSide||'WAIT'
+        }:null,
+        horizons:{
+          oneMinute:compactHorizon(hunt.horizons?.oneMinute),
+          twoMinute:compactHorizon(hunt.horizons?.twoMinute),
+          fiveMinute:compactHorizon(hunt.horizons?.fiveMinute),
+          fifteenMinute:compactHorizon(hunt.horizons?.fifteenMinute),
+          thirtyMinute:compactHorizon(hunt.horizons?.thirtyMinute)
+        },
+        quickSignalTargets:{
+          scalp:compactTarget(hunt.quickSignalTargets?.scalp),
+          oneMinute:compactTarget(hunt.quickSignalTargets?.oneMinute),
+          fiveMinute:compactTarget(hunt.quickSignalTargets?.fiveMinute)
+        },
+        movementStations:Array.isArray(hunt.movementStations)?hunt.movementStations.slice(0,3).map(compactTarget):[]
+      }:null,
+      stateGraph:stateGraph?{
+        nextSide:stateGraph.nextSide||'WAIT',
+        nextSideProbability:Number(stateGraph.nextSideProbability||0)
+      }:null,
+      scalp:scalp?{
+        action:scalp.action||'WAIT',
+        confidence:Number(scalp.confidence||0),
+        nextPrice:compactTarget(scalp.nextPrice),
+        target:compactTarget(scalp.target),
+        ambushPlan:scalp.ambushPlan?{target:compactTarget(scalp.ambushPlan.target)}:null,
+        fusionV8:scalp.fusionV8?{nextPrice:compactTarget(scalp.fusionV8.nextPrice)}:null
+      }:null,
+      goldForecastCore:goldCore?{
+        ok:Boolean(goldCore.ok),
+        side:goldCore.side||'WAIT',
+        confidence:Number(goldCore.confidence||0),
+        uncertainty:Number(goldCore.uncertainty||0),
+        fakeoutRisk:Number(goldCore.fakeoutRisk||0),
+        regime:goldCore.regime||null,
+        horizons:{
+          oneMinute:compactHorizon(goldCore.horizons?.oneMinute),
+          fiveMinute:compactHorizon(goldCore.horizons?.fiveMinute)
+        }
+      }:undefined,
+      predatorFusionV2:predator?{
+        ok:Boolean(predator.ok),
+        horizons:{
+          thirtySeconds:compactHorizon(predator.horizons?.thirtySeconds),
+          oneMinute:compactHorizon(predator.horizons?.oneMinute),
+          threeMinutes:compactHorizon(predator.horizons?.threeMinutes),
+          fiveMinutes:compactHorizon(predator.horizons?.fiveMinutes)
+        }
+      }:undefined
+    });
+
     const goldMarketOpen=goldMarketOpenUTC(now);
     const recovered=actions.length>0&&(!goldMarketOpen||gm.pricesReady)&&Boolean(btc.c1.length)&&Boolean(btcPrice);
     const futureEvents=(gm.events||[]).filter((e:any)=>e.time>=now).sort((a:any,b:any)=>a.time-b.time);
-    const warnings=[...new Set(gm.errors||[])].slice(0,8);
     const degraded=(goldMarketOpen&&!gm.pricesReady)||!gm.newsReady||!btc?.c1?.length||!btcPrice;
-    const autopilot={status:recovered?'recovered':degraded?'degraded':'healthy',detected:[...new Set(detected)].slice(0,8),warnings,actions:[...new Set(actions)].slice(0,8),newsReady:gm.newsReady,eventCount:futureEvents.length,nextEvent:futureEvents[0]?{name:futureEvents[0].name,time:futureEvents[0].time,importance:futureEvents[0].importance}:null,pricesReady:gm.pricesReady,goldMarketOpen,goldSource:quote?.source||gm.priceSource||null,btcSource:liveBtc?.source||btc.source};
-    if(now-lastDiagLog>30000){lastDiagLog=now;console.info('[AI-DIAG]',JSON.stringify({newsReady:autopilot.newsReady,eventCount:autopilot.eventCount,pricesReady:autopilot.pricesReady,goldSource:autopilot.goldSource,btcSource:autopilot.btcSource,goldAction:gold.action,goldConfidence:gold.confidence,goldLong:gold.longScore,goldShort:gold.shortScore,goldScalp:goldScalp.action,goldScalpLong:goldScalp.score?.long,goldScalpShort:goldScalp.score?.short,goldScalpReason:goldScalp.reason,btcAction:bitcoinMaster.action,btcMaster:bitcoinMaster,btcMl:bitcoinMl,btcNeural:bitcoinNeural,btcMultiBrain:bitcoinMultiBrain,btcBrainLearning:bitcoinBrainLearning,btcNextMoveLive:bitcoinNextMoveLive,btcHunt:bitcoinHunt,btcWaveLead:btcWave,btcLearner:{ok:bitcoinLearner.ok,side:bitcoinLearner.side,confidence:bitcoinLearner.confidence,oosAccuracy:bitcoinLearner.oosAccuracy,oosEdgeAtr:bitcoinLearner.oosEdgeAtr,profitFactor:bitcoinLearner.profitFactor,maxDrawdownAtr:bitcoinLearner.maxDrawdownAtr,costAtr:bitcoinLearner.costAtr,gate:bitcoinLearner.gate,hold:bitcoinLearner.exitPlan.maxHoldSeconds},btcConfidence:bitcoin.confidence,btcLong:bitcoin.longScore,btcShort:bitcoin.shortScore,btcVetoes:bitcoin.vetoes,btcScalp:bitcoinScalp.action,btcScalpLong:bitcoinScalp.score?.long,btcScalpShort:bitcoinScalp.score?.short,btcScalpReason:bitcoinScalp.reason,btcScalpFusion:bitcoinScalp.fusionV8||bitcoinScalp.fusionV7||bitcoinScalp.fusionV6||bitcoinScalp.fusionV5||bitcoinScalp.fusionV4||bitcoinScalp.fusionV3,btcScalpPreMove:bitcoinScalp.preMove,btcScalpLive:bitcoinScalpLive,btcScalpRaw:{action:bitcoinScalpRaw.action,long:bitcoinScalpRaw.score?.long,short:bitcoinScalpRaw.score?.short,confidence:bitcoinScalpRaw.confidence},btcHunter:bitcoin.hunter?.status,btcHunterMode:bitcoin.hunter?.mode,btcHunterScore:bitcoin.hunter?.score,btcHunterThreshold:bitcoin.hunter?.threshold,btcHunterSide:bitcoin.hunter?.side,btcFusion:bitcoin.fusion,btcPhase:bitcoin.phase,btcLiquidity:bitcoin.liquidity?{side:bitcoin.liquidity.side,buy:bitcoin.liquidity.buy,sell:bitcoin.liquidity.sell,quality:bitcoin.liquidity.quality,pressure:bitcoin.liquidity.pressure,flowDeltaPct:bitcoin.liquidity.flow?.deltaPct,priceChangeBps:bitcoin.liquidity.flow?.priceChangeBps,depthImbalance:bitcoin.liquidity.book?.depthImbalance,absorption:bitcoin.liquidity.absorption}:null,btcAdaptiveCore:bitcoin.adaptiveCore,btcMotion:bitcoin.motion?{side:bitcoin.motion.side,stage:bitcoin.motion.stage,score:bitcoin.motion.score,confidence:bitcoin.motion.confidence,components:bitcoin.motion.components,diagnostics:bitcoin.motion.diagnostics}:null,btcBehavior:bitcoin.behavior?{side:bitcoin.behavior.side,score:bitcoin.behavior.score,confidence:bitcoin.behavior.confidence,pattern:bitcoin.behavior.pattern,analogCount:bitcoin.behavior.analogCount,expectedMoveAtr:bitcoin.behavior.expectedMoveAtr,votes:bitcoin.behavior.votes}:null,status:autopilot.status}));}
-    const payload={ok:true,model:'Predator Neural Price-Path Core · DeepLOB + TCN + Selective SSM + M1 ML',checkedAt:now,autopilot,radar,gold:{...goldOut,scalp:goldScalp},bitcoin:{...bitcoinOut,livePulse,scalp:bitcoinScalp},safety:{execution:false,guaranteed:false,failClosed:true,temporalConfirmation:true,boundedRecovery:true,adaptiveThresholds:true,multiStrategyHunter:true,indicatorFusion:true,pullbackHunter:true,newsAwareBTC:true,liquidityIntelligence:true,adaptiveCore:true,liquidityConflictGate:true,spoofingAwareWalls:true,preMoveMotion:true,sequenceMemory:true,divergenceDetection:true,compressionDetection:true,sweepReclaim:true,marketBehaviorStudy:true,historicalAnalogs:true,behaviorConflictGate:true,exclusiveMasterDecision:true,reversalLock:true,singleActionOutput:false,multiOpportunityOutput:true,proactiveHuntForecast:true,waitStatePrediction:true,forecastMemory:true,tickWaveLead:true,subSecondPrecursors:true,clientWaveFusion:true,scalpLearning:true,outOfSampleValidation:true,adaptiveExitPlan:true,demoFirstMt5:true,directionalCommitment:true,hysteresisFlipControl:true,fastIgnitionOverride:true,finalHoldoutGate:true,costAwareValidation:true,profitFactorGate:true,drawdownGate:true,multiHorizonForecast:true,pathSequenceForecast:true,alternateScenario:true,waveStructureEngine:true,breakoutRetest:true,sweepReversal:true,pullbackPhase:true,exhaustionDetection:true,accumulationMap:true,distributionMap:true,liquidityAccumulationFusion:true,strongMoveReadiness:true,persistentMarketLearning:true,onlineOutcomeFeedback:true,nextMoveLiveOutcomeTracker:true,nextMoveFirstPassageSettlement:true,nextMoveEventDeduplication:true,componentReliabilityLearning:true,oneMinuteFiveMinuteMemory:true,learningExecution:false,marketStateGraph:true,sequenceTransitionLearning:true,changePointDetection:true,selfEvolutionLab:true,candidateCodeGeneration:true,shadowPromotion:true,automaticRollback:true,selfModifyingExecution:false,featureSynthesis:true,multiCandidateTournament:true,ablationTesting:true,failureAutopsy:true,regimeChampions:true,productionSourceWrite:false,expectedMoveWindows:true,twoMinuteForecast:true,fiveMinuteForecast:true,fifteenMinuteForecast:true,expectedMovePriority:true,horizonSpecificLearning:true,mfeMaeLearning:true,horizonCalibration:true,regimeMovementIntelligence:true,uncertaintyResolver:true,dynamicEvidenceWeights:true,externalMlEnsemble:true,xgboost:true,lightgbm:true,neuralMicrostructure:true,l2OrderBookSequences:true,deepLobBranch:true,tcnTemporalBranch:true,selectiveStateSpaceBranch:true,neuralMetaRouter:true,neuralPricePath:true,timeToHitForecast:true,firstPassagePrice:true,neuralHoldoutGate:true,mlHoldoutGate:true,mlM1SelectiveProduction:true,mlM5ShadowGate:true,mlShadowFallback:true,outcomeTrainedBrainRouter:true,regimeSpecificBrainReliability:true,bayesianBrainCalibration:true,confidenceCalibrationV3:true,scalpFusionV3:true,predatorScalpV7:true,temporalPredatorState:true,scalpFusionV6:true,scalpFusionV5:true,scalpFusionV4:true,preMoveScalp:true,reactionAwareScalp:true,accumulationAwareScalp:true,serverTickScalp:true,scalpInterceptV5:true,noChaseScalp:true,l2ScalpOverride:true,validatedM1MlScalp:true,nextMovePrecisionV3:true,oosPreDecisionGuard:true,scalpLiveOutcomeTracker:true,scalpFirstPassage60s:true,scalpOosSelfGuard:true,liveOutcomeConfidenceCap:true,walkForwardOosValidation:true,rollingOosThresholding:true,liveOosReconciliation:true,driftAwareConfidenceGuard:true,oosPromotionGate:true,nextMoveShadowUntilPass:true,liveStackCore:true,fastRegimeResolver:true,scalpLedMicrostructure:true,serverTickBrain:true,backgroundTickStream:true,probabilisticTargetRange:true,newsIntelligenceFusion:true,preEventRiskPenalty:true,postReleaseSurpriseFusion:true,goldDedicatedForecastCore:true,goldM1M5ProbabilityForecast:true,goldFakeoutRisk:true,goldUncertaintyGate:true,crossExchangeLiquidity:true}};
+    const autopilot={
+      status:recovered?'recovered':degraded?'degraded':'healthy',
+      nextEvent:futureEvents[0]?{name:futureEvents[0].name,time:futureEvents[0].time,importance:futureEvents[0].importance}:null
+    };
+
+    if(now-lastDiagLog>30000){
+      lastDiagLog=now;
+      console.info('[AI-DIAG]',JSON.stringify({
+        status:autopilot.status,
+        gold:{action:goldMaster.action,scalp:goldScalp.action,confidence:Number(goldHunt?.nextMove?.confidence||0)},
+        btc:{action:bitcoinMaster.action,scalp:bitcoinScalp.action,confidence:Number(bitcoinHunt?.nextMove?.confidence||0)},
+        mlM1Ready:Boolean(bitcoinMl?.oneMinute?.ready),
+        mlM5Ready:Boolean(bitcoinMl?.fiveMinute?.ready),
+        neuralReady:Boolean(bitcoinNeural?.ready)
+      }));
+    }
+
+    const payload={
+      ok:true,
+      model:'Predator AI Lite',
+      checkedAt:now,
+      autopilot,
+      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2),
+      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse)
+    };
     lastAiPayload=payload;lastAiPayloadAt=Date.now();
     return Response.json(payload,{headers:{'Cache-Control':'no-store','X-AI-Cache':'miss'}});
   }catch(e){

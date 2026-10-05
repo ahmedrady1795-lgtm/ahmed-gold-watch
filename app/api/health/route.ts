@@ -1,7 +1,6 @@
 import {getRuntimeEnv} from '../../../lib/runtime';
 import {getMarketData,getQuoteData,getMt5BridgeStatus} from '../../../lib/market-hub';
 import {getKillSwitch} from '../../../lib/admin-state';
-import {telegramStatus} from '../../../lib/telegram';
 export const dynamic='force-dynamic';
 
 async function probe<T>(fn:()=>Promise<T>){
@@ -82,8 +81,8 @@ export async function GET(){
         candlesFresh:mt5.candlesFresh,
         executionEnabled:execution,
         symbol:mt5.status?.symbol??null
-      },
-      telegram:telegramStatus()
+      }
+
     },
     safety:{failClosed:true,providerFallback:true,marketDataHub:true,mt5QuotePriority:true,mt5CandlePriority:true,autoRetry:true,marketRegimeGate:true,riskEngineLocal:true,executionQualityMonitor:true}
   },{headers:{'Cache-Control':'private, no-store'}});

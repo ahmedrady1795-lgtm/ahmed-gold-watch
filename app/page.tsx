@@ -1,47 +1,31 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {
-  Activity,BarChart3,Bell,FlaskConical,HeartPulse,
-  LayoutDashboard,Newspaper,RefreshCw,Settings2,ShieldCheck,Wifi,WifiOff
-} from 'lucide-react';
-import CommandCenter from '../components/CommandCenter';
-import SignalFlow from '../components/SignalFlow';
-import NewsCommandCenter from '../components/NewsCommandCenter';
-import StrategyLab from '../components/StrategyLab';
-import PerformanceCenter from '../components/PerformanceCenter';
-import HealthCenter from '../components/HealthCenter';
+import {Activity,RefreshCw,Wifi,WifiOff} from 'lucide-react';
 import AICommandCenter from '../components/AICommandCenter';
-import {analyze,defaults,type Rules} from '../lib/engine';
 import {computeWaveLead,type WaveLead,type WaveTick} from '../lib/wave-lead';
 
-type Snapshot={ok:boolean;checkedAt:number;market:any;quote:any;mt5:any;analysis:any};
-type Tab='dashboard'|'ai'|'news'|'lab'|'performance'|'health';
-const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
-const goldMarketOpen=(now:number)=>{const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;if(day===6)return false;if(day===0&&h<22)return false;if(day===5&&h>=21)return false;if(day>=1&&day<=4&&h>=21&&h<22)return false;return true;};
+const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))
+  ?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})
+  :'—';
 
 export default function Home(){
-  const [snap,setSnap]=useState<Snapshot|null>(null);
-  const [health,setHealth]=useState<any>(null);
   const [aiData,setAiData]=useState<any>(null);
   const [aiError,setAiError]=useState('');
-  const [tab,setTab]=useState<Tab>('ai');
   const [busy,setBusy]=useState(false);
-  const [error,setError]=useState('');
-  const [monitor,setMonitor]=useState(false);
-  const [notice,setNotice]=useState('');
   const [btc,setBtc]=useState<number|null>(null);
   const [btcSource,setBtcSource]=useState('Coinbase');
-  const [btcAt,setBtcAt]=useState(0),[goldTick,setGoldTick]=useState<any>(null);
-  const [fastWave,setFastWave]=useState<{btc:WaveLead|null;gold:WaveLead|null}>({btc:null,gold:null});
-  const btcWaveTicks=useRef<WaveTick[]>([]),goldWaveTicks=useRef<WaveTick[]>([]);
-  const fastWaveRef=useRef<{btc:WaveLead|null;gold:WaveLead|null}>({btc:null,gold:null});
-  const waveUiAt=useRef({btc:0,gold:0});
-  const seenSignal=useRef('');
-  const aiInFlight=useRef(false),aiReady=useRef(false),aiFailureCount=useRef(0);
-  const [rules,setRules]=useState<Rules>(defaults);
+  const [btcAt,setBtcAt]=useState(0);
+  const [goldTick,setGoldTick]=useState<any>(null);
   const [now,setNow]=useState(Date.now());
-  const first=useRef(true);
+
+  const btcWaveTicks=useRef<WaveTick[]>([]);
+  const goldWaveTicks=useRef<WaveTick[]>([]);
+  const fastWaveRef=useRef<{btc:WaveLead|null;gold:WaveLead|null}>({btc:null,gold:null});
+  const aiInFlight=useRef(false);
+  const aiReady=useRef(false);
+  const aiFailureCount=useRef(0);
+  const btcUiAt=useRef(0);
 
   const pushWave=(asset:'btc'|'gold',tick:WaveTick)=>{
     const ref=asset==='btc'?btcWaveTicks:goldWaveTicks;
@@ -49,35 +33,21 @@ export default function Home(){
     const cutoff=tick.at-12000;
     while(ref.current.length&&ref.current[0].at<cutoff)ref.current.shift();
     if(ref.current.length>500)ref.current=ref.current.slice(-500);
-    const lead=computeWaveLead(ref.current,tick.at);
-    fastWaveRef.current={...fastWaveRef.current,[asset]:lead};
-    if(tick.at-waveUiAt.current[asset]>=220){
-      waveUiAt.current={...waveUiAt.current,[asset]:tick.at};
-      setFastWave({...fastWaveRef.current});
-    }
+    fastWaveRef.current={...fastWaveRef.current,[asset]:computeWaveLead(ref.current,tick.at)};
   };
 
-  const load=async(silent=false)=>{
-    if(!silent)setBusy(true);
-    try{
-      const r=await fetch('/api/snapshot',{cache:'no-store'});
-      const j=await r.json();
-      if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر جلب لقطة السوق');
-      setSnap(j); setError(''); setNow(Date.now());
-    }catch(e){
-      setError(e instanceof Error?e.message:'تعذر الاتصال بالسوق');
-    }finally{if(!silent)setBusy(false);}
-  };
-  const loadHealth=async()=>{try{const r=await fetch('/api/health',{cache:'no-store'});setHealth(await r.json());}catch{setHealth({status:'halted'});}};
-  const loadAi=async()=>{
+  const loadAi=async(manual=false)=>{
     if(aiInFlight.current)return;
     aiInFlight.current=true;
+    if(manual)setBusy(true);
     try{
-      const q=new URLSearchParams(),add=(p:string,w:WaveLead|null)=>{
+      const q=new URLSearchParams();
+      const add=(p:string,w:WaveLead|null)=>{
         if(!w?.ok||Date.now()-w.at>2500)return;
         q.set(p+'s',w.side);q.set(p+'st',w.stage);q.set(p+'sc',String(w.score));q.set(p+'cf',String(w.confidence));q.set(p+'at',String(w.at));
       };
-      add('b',fastWaveRef.current.btc);add('g',fastWaveRef.current.gold);
+      add('b',fastWaveRef.current.btc);
+      add('g',fastWaveRef.current.gold);
       const bl=btcWaveTicks.current.at(-1);
       if(bl&&Date.now()-bl.at<=2500)q.set('bat',String(bl.at));
       const gl=goldWaveTicks.current.at(-1);
@@ -86,39 +56,42 @@ export default function Home(){
         if(Number.isFinite(gl.bid)&&Number(gl.bid)>0)q.set('gb',String(gl.bid));
         if(Number.isFinite(gl.ask)&&Number(gl.ask)>=Number(gl.bid||0))q.set('ga',String(gl.ask));
       }
-      const r=await fetch('/api/ai-analysis'+(q.size?'?'+q.toString():''),{cache:'no-store',signal:AbortSignal.timeout(12000)}),j=await r.json();
+      const r=await fetch('/api/ai-analysis'+(q.size?'?'+q.toString():''),{
+        cache:'no-store',
+        signal:AbortSignal.timeout(12000)
+      });
+      const j=await r.json();
       if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر تشغيل محرك AI');
-      setAiData(j);aiReady.current=true;aiFailureCount.current=0;setAiError('');
-
+      setAiData(j);
+      aiReady.current=true;
+      aiFailureCount.current=0;
+      setAiError('');
+      setNow(Date.now());
     }catch(e){
       aiFailureCount.current+=1;
       if(!aiReady.current&&aiFailureCount.current>=3)setAiError(e instanceof Error?e.message:'تعذر تشغيل محرك AI');
-    }finally{aiInFlight.current=false;}
+    }finally{
+      aiInFlight.current=false;
+      if(manual)setBusy(false);
+    }
   };
 
   useEffect(()=>{
-    try{
-      const saved=JSON.parse(localStorage.getItem('ahmed-gold-rules')||'null');
-      if(saved)setRules({...defaults,...saved});
-      setMonitor(localStorage.getItem('ahmed-gold-monitor')==='true');
-    }catch{}
-    void load(); void loadHealth(); void loadAi();
-    const clock=setInterval(()=>setNow(Date.now()),1000);
-    const market=setInterval(()=>{if(document.visibilityState==='visible')void load(true);},15000);
-    const hs=setInterval(()=>{if(document.visibilityState==='visible')void loadHealth();},30000);
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},650);
-    if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
-    return()=>{clearInterval(clock);clearInterval(market);clearInterval(hs);clearInterval(aiTimer);};
+    void loadAi();
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},1200);
+    const clock=setInterval(()=>setNow(Date.now()),5000);
+    return()=>{clearInterval(aiTimer);clearInterval(clock);};
   },[]);
 
   useEffect(()=>{
     let closed=false,ws:WebSocket|null=null,reconnect:ReturnType<typeof setTimeout>|undefined,lastWsTick=0;
     const loadBtc=async()=>{try{
-      const r=await fetch('/api/btc?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}}),j=await r.json();
-      const p=Number(j?.price),at=Number(j?.sourceTime)||Number(j?.fetchedAt)||Date.now();
-      if(!closed&&r.ok&&j?.ok&&Number.isFinite(p)&&p>0&&Date.now()-lastWsTick>4000){setBtc(p);setBtcAt(at);setBtcSource(String(j?.source||'Coinbase'));}
-      else if(!closed&&!r.ok&&Date.now()-lastWsTick>4000){setBtc(null);setBtcAt(0);setBtcSource('BTC feed unavailable');}
-    }catch{if(!closed&&Date.now()-lastWsTick>4000){setBtc(null);setBtcAt(0);setBtcSource('BTC feed unavailable');}}};
+      const r=await fetch('/api/btc?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+      const j=await r.json(),p=Number(j?.price),at=Number(j?.sourceTime)||Number(j?.fetchedAt)||Date.now();
+      if(!closed&&r.ok&&j?.ok&&Number.isFinite(p)&&p>0&&Date.now()-lastWsTick>4000){
+        setBtc(p);setBtcAt(at);setBtcSource(String(j?.source||'Coinbase'));
+      }
+    }catch{}};
     const connect=()=>{
       if(closed)return;
       ws=new WebSocket('wss://ws-feed.exchange.coinbase.com');
@@ -126,152 +99,93 @@ export default function Home(){
       ws.onmessage=e=>{try{
         const x=JSON.parse(e.data);
         if(x?.type!=='ticker'||x?.product_id!=='BTC-USD')return;
-        const p=Number(x.price),at=Date.parse(x.time),stamp=Number.isFinite(at)?at:Date.now(),bid=Number(x.best_bid),ask=Number(x.best_ask);
+        const p=Number(x.price),parsed=Date.parse(x.time),at=Number.isFinite(parsed)?parsed:Date.now(),bid=Number(x.best_bid),ask=Number(x.best_ask);
         if(!Number.isFinite(p)||p<=0)return;
         lastWsTick=Date.now();
-        pushWave('btc',{at:stamp,price:p,bid:Number.isFinite(bid)?bid:undefined,ask:Number.isFinite(ask)?ask:undefined});
-        if(!closed){setBtc(p);setBtcAt(stamp);setBtcSource('Coinbase WebSocket');}
+        pushWave('btc',{at,price:p,bid:Number.isFinite(bid)?bid:undefined,ask:Number.isFinite(ask)?ask:undefined});
+        if(!closed&&Date.now()-btcUiAt.current>=250){
+          btcUiAt.current=Date.now();
+          setBtc(p);setBtcAt(at);setBtcSource('Coinbase WebSocket');
+        }
       }catch{}};
       ws.onerror=()=>ws?.close();
       ws.onclose=()=>{if(!closed)reconnect=setTimeout(connect,1500);};
     };
     connect();void loadBtc();
-    const restTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadBtc();},3000);
+    const restTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadBtc();},5000);
     return()=>{closed=true;clearInterval(restTimer);clearTimeout(reconnect);ws?.close();};
   },[]);
 
   useEffect(()=>{
     let closed=false,inFlight=false;
-    const loadGoldTick=async()=>{if(closed||inFlight)return;inFlight=true;try{
-      const r=await fetch('/api/gold-tick?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}}),j=await r.json();
-      if(!r.ok||!j?.ok)return;
-      const price=Number(j.price),bid=Number(j.bid),ask=Number(j.ask),at=Number(j.sourceTime);
-      if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)||Date.now()-at>8000)return;
-      pushWave('gold',{at,price,bid:Number.isFinite(bid)?bid:undefined,ask:Number.isFinite(ask)?ask:undefined});
-      if(!closed)setGoldTick({ok:true,price,bid:Number.isFinite(bid)?bid:null,ask:Number.isFinite(ask)?ask:null,spread:Number.isFinite(ask-bid)?ask-bid:null,sourceTime:at,status:'live',source:'Exness/MT5 · '+String(j.brokerSymbol||'XAUUSD'),fast:j.fast||null});
-    }catch{}finally{inFlight=false;}};
-    void loadGoldTick();
-    const t=setInterval(()=>{if(document.visibilityState==='visible')void loadGoldTick();},350);
-    return()=>{closed=true;clearInterval(t);};
+    const loadGold=async()=>{
+      if(closed||inFlight)return;
+      inFlight=true;
+      try{
+        const r=await fetch('/api/gold-tick?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+        const j=await r.json();
+        if(!r.ok||!j?.ok)return;
+        const price=Number(j.price),bid=Number(j.bid),ask=Number(j.ask),at=Number(j.sourceTime);
+        if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)||Date.now()-at>8000)return;
+        pushWave('gold',{at,price,bid:Number.isFinite(bid)?bid:undefined,ask:Number.isFinite(ask)?ask:undefined});
+        if(!closed)setGoldTick({
+          ok:true,price,
+          bid:Number.isFinite(bid)?bid:null,
+          ask:Number.isFinite(ask)?ask:null,
+          sourceTime:at,status:'live',
+          source:'Exness/MT5 · '+String(j.brokerSymbol||'XAUUSD')
+        });
+      }catch{}finally{inFlight=false;}
+    };
+    void loadGold();
+    const timer=setInterval(()=>{if(document.visibilityState==='visible')void loadGold();},350);
+    return()=>{closed=true;clearInterval(timer);};
   },[]);
-  useEffect(()=>{
-    if(!monitor||!snap)return;const a=snap.analysis,id=a?.signal?.id||a?.state+':'+a?.reason;
-    if(!id||id===seenSignal.current)return;seenSignal.current=id;
-    if('Notification'in window&&Notification.permission==='granted'&&'serviceWorker'in navigator){
-      navigator.serviceWorker.getRegistration().then(reg=>reg?.showNotification('مرصد الذهب — '+(a?.title||'تغيّر الحالة'),{body:a?.reason||'راجع البيانات',tag:'gold-state'})).catch(()=>setNotice('تعذر إرسال إشعار الجهاز.'));
-    }
-  },[snap,monitor]);
-  useEffect(()=>{if(first.current){first.current=false;return;}try{localStorage.setItem('ahmed-gold-rules',JSON.stringify(rules));}catch{}},[rules]);
 
-  const toggleMonitor=()=>setMonitor(v=>{const n=!v;try{localStorage.setItem('ahmed-gold-monitor',String(n));}catch{}return n;});
-  const checkTelegram=async()=>{setNotice('جارٍ التحقق من البوت دون إرسال رسائل…');try{const r=await fetch('/api/telegram/status',{cache:'no-store'}),j=await r.json();setNotice(j.message||'تعذر التحقق');}catch{setNotice('تعذر الاتصال بفحص Telegram');}};
-  const testTelegram=async()=>{
-    setNotice('جارٍ إرسال اختبار Telegram...');
-    try{const r=await fetch('/api/telegram/test',{method:'POST'}),j=await r.json();setNotice(r.ok&&j?.ok?'✅ تم إرسال رسالة الاختبار إلى Telegram':j?.message||'تعذر إرسال Telegram');}
-    catch{setNotice('تعذر الاتصال بخدمة Telegram');}
-  };
-  const enablePush=async()=>{
-    if(!('Notification'in window)){setNotice('الإشعارات غير مدعومة هنا. على iPhone أضف الموقع للشاشة الرئيسية وافتحه من الأيقونة.');return;}
-    const p=await Notification.requestPermission();setNotice(p==='granted'?'✅ إشعارات الجهاز مفعلة':'لم يتم منح إذن الإشعارات.');
-  };
-  const updateRule=(k:keyof Rules,v:number)=>setRules(r=>({...r,[k]:v}));
-
-  const mt5Active=Boolean(snap?.mt5?.fresh);
-  const streamed=goldTick&&now-goldTick.sourceTime<15000;
-  const quote=mt5Active?snap?.quote:streamed?goldTick:snap?.quote;
-  const m=snap?.market;
-  const analysis=m?analyze(m.c1,m.c5,m.c15,m.c60,m.events,Boolean(m.newsReady&&now-m.checkedAt<120000),now,rules):null;
-  const market=snap?.market;
-  const mt5Fresh=Boolean(snap?.mt5?.fresh);
-  const source=mt5Fresh?'MT5 / Exness':quote?.source||market?.priceSource||'بانتظار المصدر';
-  const score=analysis?.score?Math.max(analysis.score.long,analysis.score.short):0;
-  const aiBtcPrice=Number(aiData?.bitcoin?.livePulse?.price);
-  const aiBtcAt=Number(aiData?.bitcoin?.livePulse?.sourceTime)||0;
-  const shownBtc=btc??(Number.isFinite(aiBtcPrice)&&aiBtcPrice>0?aiBtcPrice:null);
-  const shownBtcAt=btcAt||aiBtcAt;
-  const latestM1=market?.c1?.filter((c:any)=>c.time+60000<=Date.now()).at(-1)||null;
-  const quoteAge=quote?.sourceTime?Math.max(0,Date.now()-quote.sourceTime):null;
-  const marketOpen=goldMarketOpen(now);
-  const live=marketOpen&&!error&&quote?.status==='live'&&quoteAge!=null&&quoteAge<120000;
-  const priceState=!marketOpen?'MARKET CLOSED':live?'PRICE LIVE':quote?.status==='delayed'?'PRICE DELAYED':'PRICE NOT READY';
-
-  const telegramReady=Boolean(health?.services?.telegram?.configured);
-  const btcLive=Boolean(btcAt&&now-btcAt<5000);
-  const tabs=[
-    ['ai','AI',Activity],['dashboard','القيادة',LayoutDashboard],['news','الأخبار',Newspaper],
-    ['lab','المختبر',FlaskConical],['performance','الأداء',BarChart3],['health','الصحة',HeartPulse]
-  ] as const;
+  const aiGold=aiData?.gold?.livePulse;
+  const aiBtc=aiData?.bitcoin?.livePulse;
+  const goldPrice=goldTick?.price??aiGold?.price??aiData?.gold?.price??null;
+  const goldAt=Number(goldTick?.sourceTime||aiGold?.sourceTime||0);
+  const goldLive=Boolean(goldAt&&now-goldAt<10000);
+  const shownBtc=btc??aiBtc?.price??aiData?.bitcoin?.price??null;
+  const shownBtcAt=btcAt||Number(aiBtc?.sourceTime||0);
+  const btcLive=Boolean(shownBtcAt&&now-shownBtcAt<10000);
 
   return <main className="shell">
     <header className="topbar">
       <div className="brand">
         <div className="brandmark">AG</div>
-        <div><span>AHMED GOLD · MASTER 3.1</span><strong>COMMAND</strong></div>
+        <div><span>AHMED GOLD · AI LITE</span><strong>SCALP</strong></div>
       </div>
       <div className="tickerstrip">
-        <div><small>{source.includes('Binance')?'XAUUSDT · عقد بديل':'XAU/USD'}</small><b>{fmt(quote?.price)}</b><em className={live?'up':'muted'}>{!marketOpen?'CLOSED':live?'LIVE':'WAIT'}</em></div>
-        <div><small>BTC/USD · {btcSource||'WAIT'}</small><b>{fmt(shownBtc,2)}</b><em className={shownBtcAt&&now-shownBtcAt<15000?'up':'muted'}>{shownBtcAt&&now-shownBtcAt<15000?'LIVE':'WAIT'}</em></div>
+        <div>
+          <small>XAU/USD</small>
+          <b>{fmt(goldPrice)}</b>
+          <em className={goldLive?'up':'muted'}>{goldLive?'LIVE':'WAIT'}</em>
+        </div>
+        <div>
+          <small>BTC/USD · {btcSource}</small>
+          <b>{fmt(shownBtc,2)}</b>
+          <em className={btcLive?'up':'muted'}>{btcLive?'LIVE':'WAIT'}</em>
+        </div>
       </div>
-      <button className="refresh" onClick={()=>void load()} disabled={busy}><RefreshCw size={17} className={busy?'spin':''}/><span>{busy?'تحديث':'تحديث'}</span></button>
+      <button className="refresh" onClick={()=>void loadAi(true)} disabled={busy}>
+        <RefreshCw size={17} className={busy?'spin':''}/><span>تحديث AI</span>
+      </button>
     </header>
 
-    {tab!=='ai'&&<section className="statusrail">
-      <span className={btcLive?'pill ok':'pill bad'}>{btcLive?<Wifi size={14}/>:<WifiOff size={14}/>} BTC {btcLive?'TICK LIVE':'WAIT'}</span>
-      {mt5Fresh&&<span className="pill ok"><ShieldCheck size={14}/> MT5 READY</span>}
-      {telegramReady&&<span className={monitor?'pill watch':'pill ok'}><Bell size={14}/> TELEGRAM {monitor?'MONITORING':'READY'}</span>}
-      <span className="source">المصدر: <b>{source}</b></span>
-    </section>}
+    <section className="statusrail lite-status">
+      <span className={goldLive?'pill ok':'pill bad'}>{goldLive?<Wifi size={14}/>:<WifiOff size={14}/>} GOLD {goldLive?'LIVE':'WAIT'}</span>
+      <span className={btcLive?'pill ok':'pill bad'}>{btcLive?<Wifi size={14}/>:<WifiOff size={14}/>} BTC {btcLive?'LIVE':'WAIT'}</span>
+      <span className="pill neutral"><Activity size={14}/> AI {aiData?.ok?'ACTIVE':'SYNCING'}</span>
+    </section>
 
-    <nav className="tabs">
-      {tabs.map(([id,label,Icon])=><button key={id} onClick={()=>setTab(id)} className={tab===id?'active':''}><Icon size={17}/>{label}</button>)}
-    </nav>
+    {aiError&&!aiData&&<div className="fatal"><WifiOff size={18}/><div><strong>تعذر تحديث AI</strong><span>{aiError}</span></div></div>}
 
-    {error&&<div className="fatal"><WifiOff size={18}/><div><strong>Fail-closed</strong><span>{error}</span></div></div>}
+    <section className="content lite-content">
+      <AICommandCenter data={aiData} error={aiError} now={now} goldLive={goldTick}/>
+    </section>
 
-    <div className={tab==='ai'?'workspace ai-workspace':'workspace'}>
-      <section className="content">
-        {tab==='dashboard'&&<>
-          <CommandCenter analysis={analysis} quote={quote} events={market?.events||[]} background={market?.background||[]} now={now} health={health}/>
-          <SignalFlow analysis={analysis} health={health} quote={quote} rules={rules}/>
-          <div className="dashboardgrid">
-            <NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/>
-            <section className="panel quickpanel">
-              <div className="panelhead"><div><span className="eyebrow">LIVE CONTROLS</span><h2>التحكم الفعلي</h2></div><Settings2/></div>
-              <button className="secondary" onClick={enablePush}>تفعيل إشعارات الجهاز</button>
-              {telegramReady&&<><button className={monitor?'primary danger':'primary'} onClick={toggleMonitor}><Bell size={17}/>{monitor?'إيقاف مراقبة Telegram':'تشغيل مراقبة Telegram'}</button><button className="secondary" onClick={testTelegram}>اختبار Telegram</button></>}
-            </section>
-          </div>
-          <section className="panel">
-            <div className="panelhead"><div><span className="eyebrow">RULE ENGINE</span><h2>إعدادات الدخول</h2></div><span className="tag">محلية على جهازك</span></div>
-            <div className="rulecontrols">
-              <label>أقل Score<select value={rules.minScore} onChange={e=>updateRule('minScore',+e.target.value)}>{[72,76,80,84].map(v=><option key={v}>{v}</option>)}</select></label>
-              <label>أقل ADX<select value={rules.adx} onChange={e=>updateRule('adx',+e.target.value)}>{[20,22,25].map(v=><option key={v}>{v}</option>)}</select></label>
-              <label>حد ATR<select value={rules.spike} onChange={e=>updateRule('spike',+e.target.value)}>{[1.5,2,2.5].map(v=><option key={v}>{v}</option>)}</select></label>
-              <label>قبل الخبر<select value={rules.before} onChange={e=>updateRule('before',+e.target.value)}>{[5,15,30].map(v=><option key={v}>{v} دقيقة</option>)}</select></label>
-              <label>بعد الخبر<select value={rules.after} onChange={e=>updateRule('after',+e.target.value)}>{[5,15,30].map(v=><option key={v}>{v} دقيقة</option>)}</select></label>
-            </div>
-          </section>
-        </>}
-
-        {tab==='ai'&&<AICommandCenter data={aiData} error={aiError} now={now} fastWave={fastWave} goldLive={mt5Active?snap?.quote:goldTick}/>} 
-        {tab==='news'&&<NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/>}
-        {tab==='lab'&&<StrategyLab signal={analysis?.signal||null} regime={analysis?.regime} quotePrice={quote?.price} quoteLive={live} latestM1={latestM1} rules={rules}/>}
-        {tab==='performance'&&<PerformanceCenter/>}
-        {tab==='health'&&<HealthCenter/>}
-      </section>
-
-      {tab!=='ai'&&<aside className="sidebar">
-        <div className="sidecard">
-          <span className="eyebrow">LIVE SYSTEM</span>
-          <h3>{health?.status==='healthy'?'المصادر الفعلية جاهزة':'فحص المصادر'}</h3>
-          <div className="kv"><span>BTC</span><b className={btcLive?'green':'red'}>{btcLive?'TICK LIVE':'WAIT'}</b></div>
-          {mt5Fresh&&<div className="kv"><span>MT5</span><b className="green">LIVE</b></div>}
-          {telegramReady&&<div className="kv"><span>Telegram</span><b className="green">READY</b></div>}
-        </div>
-      </aside>}
-    </div>
-
-    {notice&&<div className="toast" onClick={()=>setNotice('')}>{notice}</div>}
-    <footer>Ahmed Gold Command · Rule-Based Market Engine · لا توجد صفقات مضمونة</footer>
+    <footer>Ahmed Gold AI Lite · السعر والسكالب والتوقع فقط</footer>
   </main>;
 }
