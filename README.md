@@ -1,6 +1,6 @@
 # Ahmed Gold Command
 
-Rule-based trading command dashboard for gold and Bitcoin monitoring, technical analysis, Telegram alerts, backtesting/paper trading, and optional MT5/Exness bridge integration.
+Rule-based trading command dashboard for gold and Bitcoin monitoring, technical analysis, backtesting/paper trading, and optional MT5/Exness bridge integration.
 
 ## Principles
 - No OpenAI API and no AI dependency.
@@ -22,9 +22,6 @@ Binance Futures XAUUSDT may be used as a temporary analytical proxy while MT5 is
 ## Secrets
 Never commit real secrets. Configure environment variables in Vercel or the MT5 VPS.
 
-Required for Telegram:
-- TELEGRAM_BOT_TOKEN
-- TELEGRAM_CHAT_ID
 
 Required for MT5 bridge:
 - MT5_BRIDGE_TOKEN
