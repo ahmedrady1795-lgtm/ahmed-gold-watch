@@ -64,7 +64,10 @@ function buildMovementStations(args:{price:number;atr:number;now:number;first:nu
     };
   });
 }
-function buildZoneForecast(args:{price:number;atr:number;side:Side;confidence:number;accumulation:any}){
+function buildZoneForecast(args:{
+  price:number;atr:number;side:Side;confidence:number;accumulation:any;
+  m1Side?:Side;m1Strength?:number;m5Side?:Side;m5Strength?:number
+}){
   const p=Number(args.price),a=Number(args.atr),acc=args.accumulation||{};
   if(!Number.isFinite(p)||p<=0||!Number.isFinite(a)||a<=0)return null;
   const raw=Array.isArray(acc?.reactionZones)?acc.reactionZones:[];
@@ -87,11 +90,69 @@ function buildZoneForecast(args:{price:number;atr:number;side:Side;confidence:nu
   const supply=rank(zones.filter(above))[0]||null;
   const inside=rank(zones.filter((z:any)=>p>=z.low&&p<=z.high))[0]||null;
 
-  let side:Side=args.side;
-  if(side==='WAIT'&&inside&&inside.strength>=58)side=inside.side;
-  if(side==='WAIT'){
-    const near=[demand,supply].filter(Boolean).sort((x:any,y:any)=>distance(x)-distance(y))[0]||null;
-    if(near&&distance(near)<=.55&&near.strength>=62)side=near.side;
+  const m1:Side=args.m1Side||'WAIT',m5:Side=args.m5Side||'WAIT';
+  const m1Strength=Number(args.m1Strength||0),m5Strength=Number(args.m5Strength||0);
+  const proposed:Side=args.side||'WAIT';
+  const proposedVotes=[m1,m5].filter(s=>s!=='WAIT'&&s===proposed).length;
+  const proposedOpposition=[m1,m5].filter(s=>s!=='WAIT'&&proposed!=='WAIT'&&s!==proposed).length;
+  const horizonsConflict=Boolean(m1!=='WAIT'&&m5!=='WAIT'&&m1!==m5);
+
+  const nearDemand=Boolean(demand&&distance(demand)<=.62);
+  const nearSupply=Boolean(supply&&distance(supply)<=.62);
+  const insideDemand=Boolean(inside?.side==='BUY');
+  const insideSupply=Boolean(inside?.side==='SELL');
+  const demandTrigger=Boolean(
+    (insideDemand&&Number(inside?.strength||0)>=58)||
+    (nearDemand&&Number(demand?.strength||0)>=60)
+  );
+  const supplyTrigger=Boolean(
+    (insideSupply&&Number(inside?.strength||0)>=58)||
+    (nearSupply&&Number(supply?.strength||0)>=60)
+  );
+
+  const accSide:Side=acc?.strongMoveSide==='BUY'?'BUY':acc?.strongMoveSide==='SELL'?'SELL':'WAIT';
+  const readiness=Number(acc?.breakoutReadiness||0);
+  const breakoutReady=Boolean(
+    accSide!=='WAIT'&&readiness>=62&&
+    (Boolean(acc?.liquidityConfirmed)||Boolean(acc?.absorptionConfirmed)||readiness>=72)
+  );
+
+  let side:Side='WAIT',triggerReason='NO_STRUCTURAL_TRIGGER';
+  const horizonSupport=(s:Side)=>[m1,m5].filter(x=>x===s).length;
+  const horizonAgainst=(s:Side)=>[m1,m5].filter(x=>x!=='WAIT'&&x!==s).length;
+  const strongHorizon=(s:Side)=>(
+    (m1===s&&m1Strength>=48)||
+    (m5===s&&m5Strength>=52)||
+    horizonSupport(s)>=2
+  );
+
+  if(demandTrigger&&(!supplyTrigger||Number(demand?.strength||inside?.strength||0)>=Number(supply?.strength||inside?.strength||0)+6)){
+    const zoneStrength=Number((insideDemand?inside:demand)?.strength||0);
+    if(strongHorizon('BUY')||zoneStrength>=72&&horizonAgainst('BUY')===0){
+      side='BUY';triggerReason=insideDemand?'INSIDE_DEMAND_REBOUND':'NEAR_DEMAND_REBOUND';
+    }
+  }
+  if(side==='WAIT'&&supplyTrigger&&(!demandTrigger||Number(supply?.strength||inside?.strength||0)>=Number(demand?.strength||inside?.strength||0)+6)){
+    const zoneStrength=Number((insideSupply?inside:supply)?.strength||0);
+    if(strongHorizon('SELL')||zoneStrength>=72&&horizonAgainst('SELL')===0){
+      side='SELL';triggerReason=insideSupply?'INSIDE_SUPPLY_REJECTION':'NEAR_SUPPLY_REJECTION';
+    }
+  }
+  if(side==='WAIT'&&breakoutReady){
+    const align=strongHorizon(accSide)||(
+      proposed===accSide&&Number(args.confidence||0)>=52&&proposedOpposition===0
+    );
+    if(align){
+      side=accSide;triggerReason=accSide==='BUY'?'ACCUMULATION_BREAKOUT':'DISTRIBUTION_BREAKDOWN';
+    }
+  }
+
+  // A model direction by itself is not enough. It can only confirm an existing structural trigger.
+  if(side!=='WAIT'&&proposed!=='WAIT'&&proposed!==side&&Number(args.confidence||0)>=58&&proposedVotes>=1){
+    side='WAIT';triggerReason='MODEL_ZONE_CONFLICT';
+  }
+  if(side!=='WAIT'&&horizonsConflict&&horizonSupport(side)===0){
+    side='WAIT';triggerReason='M1_M5_CONFLICT';
   }
 
   const zoneObj=(z:any,kind:string)=>z?{
@@ -104,7 +165,7 @@ function buildZoneForecast(args:{price:number;atr:number;side:Side;confidence:nu
 
   const support=zoneObj(demand,'DEMAND_SUPPORT');
   const resistance=zoneObj(supply,'SUPPLY_RESISTANCE');
-  const originRaw=side==='BUY'?(inside?.side==='BUY'?inside:demand):side==='SELL'?(inside?.side==='SELL'?inside:supply):inside;
+  const originRaw=side==='BUY'?(insideDemand?inside:demand):side==='SELL'?(insideSupply?inside:supply):inside;
   const origin=zoneObj(originRaw,side==='BUY'?'REBOUND_DEMAND':side==='SELL'?'REJECTION_SUPPLY':'REACTION_ZONE');
 
   let targetRaw:any=null,targetKind='';
@@ -117,7 +178,7 @@ function buildZoneForecast(args:{price:number;atr:number;side:Side;confidence:nu
   }
   let target=zoneObj(targetRaw,targetKind);
 
-  if(!target&&side!=='WAIT'){
+  if(!target&&side!=='WAIT'&&breakoutReady&&accSide===side){
     const level=side==='BUY'?Number(acc?.breakoutLevel):Number(acc?.breakdownLevel);
     const valid=Number.isFinite(level)&&level>0&&((side==='BUY'&&level>p+a*.10)||(side==='SELL'&&level<p-a*.10));
     if(valid){
@@ -125,7 +186,7 @@ function buildZoneForecast(args:{price:number;atr:number;side:Side;confidence:nu
       target={
         side:side==='BUY'?'SELL':'BUY',
         low:Number((level-pad).toFixed(2)),high:Number((level+pad).toFixed(2)),mid:Number(level.toFixed(2)),
-        strength:Math.round(cap(Number(acc?.breakoutReadiness||0)*.72+Number(acc?.strongMoveScore||0)*.28,0,88)),
+        strength:Math.round(cap(readiness*.72+Number(acc?.strongMoveScore||0)*.28,0,88)),
         touches:0,rejections:0,distanceAtr:Number((Math.abs(level-p)/a).toFixed(2)),
         kind:side==='BUY'?'BREAKOUT_LIQUIDITY_ABOVE':'BREAKDOWN_LIQUIDITY_BELOW',
         liquidityScore:Number(acc?.liquidityConfirmed)?75:45,
@@ -137,25 +198,36 @@ function buildZoneForecast(args:{price:number;atr:number;side:Side;confidence:nu
   const phase=String(acc?.phase||'NEUTRAL');
   const phaseText=phase==='ACCUMULATING'?'تجميع':phase==='DISTRIBUTING'?'تصريف':phase==='MARKUP_READY'?'تجميع جاهز للكسر الصاعد':phase==='MARKDOWN_READY'?'تصريف جاهز للكسر الهابط':'توازن';
   const targetStrength=Number(target?.strength||0),originStrength=Number(origin?.strength||0);
-  const confidence=Math.round(cap(Number(args.confidence||0)*.58+Math.max(targetStrength,originStrength)*.28+Number(acc?.breakoutReadiness||0)*.14,0,88));
+  const zoneQuality=Math.max(targetStrength,originStrength,Number(support?.strength||0),Number(resistance?.strength||0));
+  const horizonBonus=side==='WAIT'?0:horizonSupport(side)*8;
+  const conflictPenalty=horizonsConflict?10:0;
+  const confidence=side==='WAIT'
+    ?Math.round(cap(zoneQuality*.22+Math.max(m1Strength,m5Strength)*.12-conflictPenalty,0,42))
+    :Math.round(cap(
+      Number(args.confidence||0)*.34+zoneQuality*.36+readiness*.14+horizonBonus-conflictPenalty,
+      0,88
+    ));
   const range=(z:any)=>z?fmtZone(z.low,z.high):'—';
   const directionWord=side==='BUY'?'صعود':side==='SELL'?'هبوط':'تذبذب';
   const targetLabel=target?(target.kind.includes('SUPPLY')||target.kind.includes('ABOVE')?'مقاومة/سيولة':'دعم/سيولة'):'بدون منطقة مؤكدة';
   const setup=origin
     ?(side==='BUY'?'ارتداد من منطقة طلب/دعم':'رفض من منطقة عرض/مقاومة')
-    :(phase!=='NEUTRAL'?phaseText:'توجه نحو المنطقة التالية');
+    :(phase!=='NEUTRAL'?phaseText:'بين مناطق القرار');
   const summary=side==='WAIT'
-    ?'السعر بين مناطق القرار؛ لا يوجد اتجاه منطقة قوي حتى الآن.'
+    ?'السعر بين مناطق القرار؛ لا يوجد ارتداد أو كسر مؤكد كفاية لتوقع اتجاه الآن.'
     :target
       ?setup+' → '+directionWord+' نحو '+targetLabel+' '+range(target)
-      :setup+'، لكن لا توجد منطقة هدف قوية كفاية أمام السعر؛ لا نستخدم هدفًا رقميًا عشوائيًا.';
+      :setup+'، والاتجاه مؤيد هيكليًا لكن لا توجد منطقة هدف قوية كفاية أمام السعر.';
   return {
     side,confidence,phase,setup,summary,
     support,resistance,origin,target,
+    decisionReady:side!=='WAIT',
+    triggerReason,
+    horizonContext:{m1Side:m1,m1Strength,m5Side:m5,m5Strength,conflict:horizonsConflict},
     liquidityConfirmed:Boolean(acc?.liquidityConfirmed),
     absorptionConfirmed:Boolean(acc?.absorptionConfirmed),
-    breakoutReadiness:Number(acc?.breakoutReadiness||0),
-    source:'STRUCTURAL_ZONE_MAP'
+    breakoutReadiness:readiness,
+    source:'STRUCTURAL_ZONE_MAP_V2'
   };
 }
 function fmtZone(low:number,high:number){
@@ -167,8 +239,9 @@ function fmtZone(low:number,high:number){
 function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,now:number){
   const key=String(asset||'ASSET').toUpperCase(),prev=zoneCommitMemory.get(key);
   const p=Number(price),a=Math.max(1e-9,Number(atr));
+  const currentDecisionReady=current?.decisionReady!==false;
   const validCurrent=Boolean(
-    current&&['BUY','SELL'].includes(String(current.side||''))&&Number(current.confidence||0)>=24
+    currentDecisionReady&&current&&['BUY','SELL'].includes(String(current.side||''))&&Number(current.confidence||0)>=24
   );
 
   const hasStructure=(f:any)=>Boolean(
@@ -203,6 +276,13 @@ function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,
   }
 
   const age=now-prev.at,prevForecast=prev.forecast||{};
+  if(current?.decisionReady===false){
+    const grace=30000;
+    if(age>grace||Number(prevForecast.confidence||0)<46){
+      zoneCommitMemory.delete(key);
+      return {...current,stability:{locked:false,ageSeconds:Math.round(age/1000),flipsBlocked:0,reason:'NO_STRUCTURAL_TRIGGER_RELEASE'}};
+    }
+  }
   const prevHasTarget=Boolean(prevForecast?.target);
   const prevStrength=Math.max(
     Number(prevForecast?.target?.strength||0),
@@ -928,7 +1008,9 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   }):[];
   const rawZoneForecast=validPrice?buildZoneForecast({
     price:p,atr:a,side:primaryMoveSide!=='WAIT'?primaryMoveSide:stableSide,
-    confidence:primaryMoveConfidence,accumulation
+    confidence:primaryMoveConfidence,accumulation,
+    m1Side:oneMinute.side,m1Strength:Number(oneMinute.strength||0),
+    m5Side:five.side,m5Strength:Number(five.strength||0)
   }):null;
   const zoneForecast=validPrice?stabilizeZoneForecast(asset,rawZoneForecast,p,a,now):rawZoneForecast;
 
