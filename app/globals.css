@@ -230,3 +230,9 @@ footer{display:flex;justify-content:space-between;gap:20px;color:#5f7880;font-si
   .scalp-next-price{align-items:flex-start;flex-direction:column;gap:5px}
   .scalp-next-price>span{max-width:none;text-align:start}
 }
+
+.scalp-trajectory{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:9px}
+.scalp-trajectory span{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 7px;border:1px solid rgba(255,255,255,.055);border-radius:8px;background:rgba(4,13,16,.34)}
+.scalp-trajectory small{color:var(--muted);font-size:8px}
+.scalp-trajectory b{font-size:11px}
+@media(max-width:760px){.scalp-trajectory{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}.scalp-trajectory span{padding:5px}.scalp-trajectory b{font-size:10px}}
