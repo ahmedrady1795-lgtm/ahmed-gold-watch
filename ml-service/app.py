@@ -625,7 +625,9 @@ def _prediction_input(estimator,x,feature_names):
             names=list(estimator.get_booster().feature_names or [])
         except Exception:
             names=None
-    if names and feature_names and len(names)==len(feature_names) and names==list(feature_names):
+    if names and len(names)==arr.shape[1]:
+        return pd.DataFrame(arr,columns=names)
+    if feature_names and len(feature_names)==arr.shape[1]:
         return pd.DataFrame(arr,columns=feature_names)
     return arr
 
