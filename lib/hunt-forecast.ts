@@ -62,6 +62,106 @@ function buildMovementStations(args:{price:number;atr:number;now:number;first:nu
     };
   });
 }
+function buildZoneForecast(args:{price:number;atr:number;side:Side;confidence:number;accumulation:any}){
+  const p=Number(args.price),a=Number(args.atr),acc=args.accumulation||{};
+  if(!Number.isFinite(p)||p<=0||!Number.isFinite(a)||a<=0)return null;
+  const raw=Array.isArray(acc?.reactionZones)?acc.reactionZones:[];
+  const zones=raw
+    .map((z:any)=>({
+      side:(z?.side==='BUY'?'BUY':z?.side==='SELL'?'SELL':'WAIT') as Side,
+      low:Number(z?.low),high:Number(z?.high),mid:Number(z?.mid),
+      strength:Number(z?.strength||0),touches:Number(z?.touches||0),rejections:Number(z?.rejections||0),
+      volumeScore:Number(z?.volumeScore||0),impulseScore:Number(z?.impulseScore||0),
+      distanceAtr:Number(z?.distanceAtr),
+      reason:String(z?.reason||'')
+    }))
+    .filter((z:any)=>z.side!=='WAIT'&&Number.isFinite(z.low)&&Number.isFinite(z.high)&&Number.isFinite(z.mid)&&z.strength>=42);
+
+  const distance=(z:any)=>p>=z.low&&p<=z.high?0:Math.min(Math.abs(p-z.low),Math.abs(p-z.high))/a;
+  const below=(z:any)=>z.side==='BUY'&&z.mid<p+a*.12;
+  const above=(z:any)=>z.side==='SELL'&&z.mid>p-a*.12;
+  const rank=(arr:any[])=>arr.slice().sort((x,y)=>distance(x)-distance(y)||Number(y.strength)-Number(x.strength));
+  const demand=rank(zones.filter(below))[0]||null;
+  const supply=rank(zones.filter(above))[0]||null;
+  const inside=rank(zones.filter((z:any)=>p>=z.low&&p<=z.high))[0]||null;
+
+  let side:Side=args.side;
+  if(side==='WAIT'&&inside&&inside.strength>=58)side=inside.side;
+  if(side==='WAIT'){
+    const near=[demand,supply].filter(Boolean).sort((x:any,y:any)=>distance(x)-distance(y))[0]||null;
+    if(near&&distance(near)<=.55&&near.strength>=62)side=near.side;
+  }
+
+  const zoneObj=(z:any,kind:string)=>z?{
+    side:z.side,low:Number(z.low.toFixed(2)),high:Number(z.high.toFixed(2)),mid:Number(z.mid.toFixed(2)),
+    strength:Math.round(z.strength),touches:z.touches,rejections:z.rejections,
+    distanceAtr:Number(distance(z).toFixed(2)),kind,
+    liquidityScore:Math.round(Math.max(z.volumeScore||0,z.impulseScore||0)),
+    reason:z.reason
+  }:null;
+
+  const support=zoneObj(demand,'DEMAND_SUPPORT');
+  const resistance=zoneObj(supply,'SUPPLY_RESISTANCE');
+  const originRaw=side==='BUY'?(inside?.side==='BUY'?inside:demand):side==='SELL'?(inside?.side==='SELL'?inside:supply):inside;
+  const origin=zoneObj(originRaw,side==='BUY'?'REBOUND_DEMAND':side==='SELL'?'REJECTION_SUPPLY':'REACTION_ZONE');
+
+  let targetRaw:any=null,targetKind='';
+  if(side==='BUY'){
+    targetRaw=zones.filter((z:any)=>z.side==='SELL'&&z.low>p+a*.10).sort((x:any,y:any)=>x.low-y.low||y.strength-x.strength)[0]||null;
+    targetKind='SUPPLY_LIQUIDITY';
+  }else if(side==='SELL'){
+    targetRaw=zones.filter((z:any)=>z.side==='BUY'&&z.high<p-a*.10).sort((x:any,y:any)=>y.high-x.high||y.strength-x.strength)[0]||null;
+    targetKind='DEMAND_LIQUIDITY';
+  }
+  let target=zoneObj(targetRaw,targetKind);
+
+  if(!target&&side!=='WAIT'){
+    const level=side==='BUY'?Number(acc?.breakoutLevel):Number(acc?.breakdownLevel);
+    const valid=Number.isFinite(level)&&level>0&&((side==='BUY'&&level>p+a*.10)||(side==='SELL'&&level<p-a*.10));
+    if(valid){
+      const pad=Math.max(a*.08,p*.00008);
+      target={
+        side:side==='BUY'?'SELL':'BUY',
+        low:Number((level-pad).toFixed(2)),high:Number((level+pad).toFixed(2)),mid:Number(level.toFixed(2)),
+        strength:Math.round(cap(Number(acc?.breakoutReadiness||0)*.72+Number(acc?.strongMoveScore||0)*.28,0,88)),
+        touches:0,rejections:0,distanceAtr:Number((Math.abs(level-p)/a).toFixed(2)),
+        kind:side==='BUY'?'BREAKOUT_LIQUIDITY_ABOVE':'BREAKDOWN_LIQUIDITY_BELOW',
+        liquidityScore:Number(acc?.liquidityConfirmed)?75:45,
+        reason:side==='BUY'?'حد مقاومة/سيولة أعلى نطاق التجميع':'حد دعم/سيولة أسفل نطاق التوزيع'
+      };
+    }
+  }
+
+  const phase=String(acc?.phase||'NEUTRAL');
+  const phaseText=phase==='ACCUMULATING'?'تجميع':phase==='DISTRIBUTING'?'تصريف':phase==='MARKUP_READY'?'تجميع جاهز للكسر الصاعد':phase==='MARKDOWN_READY'?'تصريف جاهز للكسر الهابط':'توازن';
+  const targetStrength=Number(target?.strength||0),originStrength=Number(origin?.strength||0);
+  const confidence=Math.round(cap(Number(args.confidence||0)*.58+Math.max(targetStrength,originStrength)*.28+Number(acc?.breakoutReadiness||0)*.14,0,88));
+  const range=(z:any)=>z?fmtZone(z.low,z.high):'—';
+  const directionWord=side==='BUY'?'صعود':side==='SELL'?'هبوط':'تذبذب';
+  const targetLabel=target?(target.kind.includes('SUPPLY')||target.kind.includes('ABOVE')?'مقاومة/سيولة':'دعم/سيولة'):'بدون منطقة مؤكدة';
+  const setup=origin
+    ?(side==='BUY'?'ارتداد من منطقة طلب/دعم':'رفض من منطقة عرض/مقاومة')
+    :(phase!=='NEUTRAL'?phaseText:'توجه نحو المنطقة التالية');
+  const summary=side==='WAIT'
+    ?'السعر بين مناطق القرار؛ لا يوجد اتجاه منطقة قوي حتى الآن.'
+    :target
+      ?setup+' → '+directionWord+' نحو '+targetLabel+' '+range(target)
+      :setup+'، لكن لا توجد منطقة هدف قوية كفاية أمام السعر؛ لا نستخدم هدفًا رقميًا عشوائيًا.';
+  return {
+    side,confidence,phase,setup,summary,
+    support,resistance,origin,target,
+    liquidityConfirmed:Boolean(acc?.liquidityConfirmed),
+    absorptionConfirmed:Boolean(acc?.absorptionConfirmed),
+    breakoutReadiness:Number(acc?.breakoutReadiness||0),
+    source:'STRUCTURAL_ZONE_MAP'
+  };
+}
+function fmtZone(low:number,high:number){
+  const a=Number(low),b=Number(high);
+  if(!Number.isFinite(a)||!Number.isFinite(b))return '—';
+  return a.toFixed(2)+'–'+b.toFixed(2);
+}
+
 function pathAr(p:string){
   if(p==='DROP_BOUNCE_DROP')return 'هبوط قصير → ارتداد صاعد → عودة للهبوط';
   if(p==='RISE_REJECT_RISE')return 'صعود قصير → رفض هابط → عودة للصعود';
@@ -678,6 +778,10 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     two:{...two,firstHitMinutes:Number(em2?.firstHitMinutes||0)},five,fifteen,
     accumulation,primary:shortSide,follow:followSide
   }):[];
+  const zoneForecast=validPrice?buildZoneForecast({
+    price:p,atr:a,side:primaryMoveSide!=='WAIT'?primaryMoveSide:stableSide,
+    confidence:primaryMoveConfidence,accumulation
+  }):null;
 
   const quickTarget=(side:Side,strength:number,atrFactor:number,stationPrice:number|null=null)=>{
     if(!validPrice||side==='WAIT')return null;
@@ -695,10 +799,12 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const scalpTargetPrice=Number.isFinite(scalpContextPrice)&&scalpContextPrice>0
     ?Number(scalpContextPrice.toFixed(2))
     :quickTarget(scalpTargetSide,Math.max(scalpLong,scalpShort),.10,null);
+  const structuralTargetPrice=zoneForecast?.target?.mid??null;
+  const structuralSide:Side=zoneForecast?.side||'WAIT';
   const quickSignalTargets={
     scalp:{side:scalpTargetSide,price:scalpTargetPrice,confidence:Math.round(cap(Number(scalp?.confidence||Math.max(scalpLong,scalpShort)),0,88)),horizonMinutes:.5,source:scalp?.target?.source||'DYNAMIC',contextMode:scalp?.target?.contextMode||null},
-    oneMinute:{side:oneMinute.side,price:quickTarget(oneMinute.side,oneMinute.strength,.12,station1),confidence:Math.round(cap(oneMinute.strength,0,88)),horizonMinutes:1,source:'LIVE_FAST_STACK'},
-    fiveMinute:{side:five.side,price:quickTarget(five.side,five.strength,.30,station2),confidence:Math.round(cap(five.strength,0,88)),horizonMinutes:5,source:'FIVE_MINUTE_ENSEMBLE'},
+    oneMinute:{side:oneMinute.side,price:structuralSide===oneMinute.side&&structuralTargetPrice!=null?Number(structuralTargetPrice):quickTarget(oneMinute.side,oneMinute.strength,.12,station1),confidence:Math.round(cap(oneMinute.strength,0,88)),horizonMinutes:1,source:structuralSide===oneMinute.side&&structuralTargetPrice!=null?'STRUCTURAL_ZONE_MAP':'LIVE_FAST_STACK'},
+    fiveMinute:{side:five.side,price:structuralSide===five.side&&structuralTargetPrice!=null?Number(structuralTargetPrice):quickTarget(five.side,five.strength,.30,station2),confidence:Math.round(cap(five.strength,0,88)),horizonMinutes:5,source:structuralSide===five.side&&structuralTargetPrice!=null?'STRUCTURAL_ZONE_MAP':'FIVE_MINUTE_ENSEMBLE'},
     fifteenMinute:{side:resolved15Side,price:target15Price==null?null:Number(target15Price.toFixed(2)),confidence:resolved15Confidence,horizonMinutes:15,source:memory15Usable?'15M_MEMORY_BLEND':'15M_LIVE_ENSEMBLE'},
     thirtyMinute:{side:thirty.side,price:target30Price==null?null:Number(target30Price.toFixed(2)),confidence:target30Confidence,horizonMinutes:30,source:'30M_STRUCTURAL_EXTENSION'}
   };
@@ -795,6 +901,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     fifteenMinuteTarget:{side:resolved15Side,price:target15Price==null?null:Number(target15Price.toFixed(2)),low:target15Low==null?null:Number(target15Low.toFixed(2)),high:target15High==null?null:Number(target15High.toFixed(2)),confidence:resolved15Confidence,moveAtr:Number(resolved15MoveAtr.toFixed(3)),movePct:Number(target15MovePct.toFixed(3)),samples:em15Samples,source:miTarget?.source||(memory15Usable?'15M_MEMORY_BLEND':'15M_LIVE_ENSEMBLE'),targetAt:now+15*60000},
     thirtyMinuteTarget:{side:thirty.side,price:target30Price==null?null:Number(target30Price.toFixed(2)),low:target30Low==null?null:Number(target30Low.toFixed(2)),high:target30High==null?null:Number(target30High.toFixed(2)),confidence:target30Confidence,moveAtr:Number(target30Atr.toFixed(3)),source:'30M_STRUCTURAL_EXTENSION',targetAt:now+30*60000},
     movementStations,
+    zoneForecast,
     quickSignalTargets,
     horizons:{oneMinute,twoMinute:two,fiveMinute:five,fifteenMinute:fifteen,thirtyMinute:thirty},
     forecastWindowsMinutes:[1,5,15,30],
@@ -810,6 +917,6 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     reasons:reasons.slice(0,8),commitment,
     waveLeadUsed:waveFresh?{side:waveSide,stage:wave?.stage,score:waveScore,confidence:waveConfidence,at:Number(wave?.at||0)}:null,
     scalpLearnerUsed:learnerFresh?{side:learnerSide,confidence:learnerScore,oosAccuracy:Number(learner?.oosAccuracy||0),oosEdgeAtr:Number(learner?.oosEdgeAtr||0),profitFactor:Number(learner?.profitFactor||0),holdSeconds:Number(learner?.exitPlan?.maxHoldSeconds||0)}:null,
-    note:'الحركة الأولى تُدرَّب على First-Passage، بينما سعر 15 دقيقة يقدّر مستوى نهاية النافذة من ذاكرة 15m + ATR + قوة الاتجاه؛ هو نطاق احتمالي وليس سعرًا مضمونًا.'
+    note:'توقع الحركة القادمة الرئيسي يعتمد على مناطق الدعم/المقاومة والسيولة والتجميع. توقعات الزمن القصير تبقى إشارات مساعدة وليست هدفًا سعريًا ثابت المسافة.'
   };
 }
