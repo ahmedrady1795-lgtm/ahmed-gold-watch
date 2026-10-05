@@ -448,6 +448,19 @@ export async function GET(request:Request){
           resistance:compactZone(hunt.zoneForecast.resistance),
           origin:compactZone(hunt.zoneForecast.origin),
           target:compactZone(hunt.zoneForecast.target),
+          pathForecast:hunt.zoneForecast.pathForecast?{
+            side:hunt.zoneForecast.pathForecast.side||'WAIT',
+            confidence:Number(hunt.zoneForecast.pathForecast.confidence||0),
+            scenario:hunt.zoneForecast.pathForecast.scenario||'',
+            reason:hunt.zoneForecast.pathForecast.reason||'',
+            phase:hunt.zoneForecast.pathForecast.phase||'NEUTRAL',
+            upScore:Number(hunt.zoneForecast.pathForecast.upScore||0),
+            downScore:Number(hunt.zoneForecast.pathForecast.downScore||0),
+            destination:compactZone(hunt.zoneForecast.pathForecast.destination),
+            reboundZone:compactZone(hunt.zoneForecast.pathForecast.reboundZone),
+            upperLiquidity:compactZone(hunt.zoneForecast.pathForecast.upperLiquidity),
+            lowerLiquidity:compactZone(hunt.zoneForecast.pathForecast.lowerLiquidity)
+          }:null,
           stability:hunt.zoneForecast.stability?{
             locked:Boolean(hunt.zoneForecast.stability.locked),
             ageSeconds:Number(hunt.zoneForecast.stability.ageSeconds||0),
@@ -529,6 +542,19 @@ export async function GET(request:Request){
       decisionReady:Boolean(h.zoneForecast.decisionReady),
       triggerReason:h.zoneForecast.triggerReason||'',
       target:h.zoneForecast.target?{low:h.zoneForecast.target.low,high:h.zoneForecast.target.high,kind:h.zoneForecast.target.kind}:null,
+      path:h.zoneForecast.pathForecast?{
+        side:h.zoneForecast.pathForecast.side||'WAIT',
+        confidence:Number(h.zoneForecast.pathForecast.confidence||0),
+        destination:h.zoneForecast.pathForecast.destination?{
+          low:h.zoneForecast.pathForecast.destination.low,
+          high:h.zoneForecast.pathForecast.destination.high,
+          kind:h.zoneForecast.pathForecast.destination.kind
+        }:null,
+        rebound:h.zoneForecast.pathForecast.reboundZone?{
+          low:h.zoneForecast.pathForecast.reboundZone.low,
+          high:h.zoneForecast.pathForecast.reboundZone.high
+        }:null
+      }:null,
       locked:Boolean(h.zoneForecast.stability?.locked),
       stabilityReason:h.zoneForecast.stability?.reason||'',
       flipsBlocked:Number(h.zoneForecast.stability?.flipsBlocked||0)
