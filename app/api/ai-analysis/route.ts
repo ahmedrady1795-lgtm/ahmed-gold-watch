@@ -358,7 +358,22 @@ export async function GET(request:Request){
     const compactTarget=(x:any)=>x?{
       side:x.side??'WAIT',
       price:Number.isFinite(Number(x.price))?Number(x.price):null,
-      confidence:Number.isFinite(Number(x.confidence))?Number(x.confidence):null
+      low:Number.isFinite(Number(x.low??x.zoneLow))?Number(x.low??x.zoneLow):null,
+      high:Number.isFinite(Number(x.high??x.zoneHigh))?Number(x.high??x.zoneHigh):null,
+      confidence:Number.isFinite(Number(x.confidence))?Number(x.confidence):null,
+      source:x.source||null
+    }:null;
+    const compactZone=(z:any)=>z?{
+      side:z.side||'WAIT',
+      low:Number.isFinite(Number(z.low))?Number(z.low):null,
+      high:Number.isFinite(Number(z.high))?Number(z.high):null,
+      mid:Number.isFinite(Number(z.mid))?Number(z.mid):null,
+      strength:Number(z.strength||0),
+      distanceAtr:Number.isFinite(Number(z.distanceAtr))?Number(z.distanceAtr):null,
+      kind:z.kind||null,
+      liquidityScore:Number(z.liquidityScore||0),
+      touches:Number(z.touches||0),
+      rejections:Number(z.rejections||0)
     }:null;
     const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any)=>({
       asset,
@@ -415,7 +430,22 @@ export async function GET(request:Request){
           oneMinute:compactTarget(hunt.quickSignalTargets?.oneMinute),
           fiveMinute:compactTarget(hunt.quickSignalTargets?.fiveMinute)
         },
-        movementStations:Array.isArray(hunt.movementStations)?hunt.movementStations.slice(0,3).map(compactTarget):[]
+        movementStations:Array.isArray(hunt.movementStations)?hunt.movementStations.slice(0,3).map(compactTarget):[],
+        zoneForecast:hunt.zoneForecast?{
+          side:hunt.zoneForecast.side||'WAIT',
+          confidence:Number(hunt.zoneForecast.confidence||0),
+          phase:hunt.zoneForecast.phase||'NEUTRAL',
+          setup:hunt.zoneForecast.setup||'',
+          summary:hunt.zoneForecast.summary||'',
+          source:hunt.zoneForecast.source||'STRUCTURAL_ZONE_MAP',
+          liquidityConfirmed:Boolean(hunt.zoneForecast.liquidityConfirmed),
+          absorptionConfirmed:Boolean(hunt.zoneForecast.absorptionConfirmed),
+          breakoutReadiness:Number(hunt.zoneForecast.breakoutReadiness||0),
+          support:compactZone(hunt.zoneForecast.support),
+          resistance:compactZone(hunt.zoneForecast.resistance),
+          origin:compactZone(hunt.zoneForecast.origin),
+          target:compactZone(hunt.zoneForecast.target)
+        }:null
       }:null,
       stateGraph:stateGraph?{
         nextSide:stateGraph.nextSide||'WAIT',
