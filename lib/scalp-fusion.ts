@@ -450,6 +450,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     tickConfidence:Number(tick?.confidence||tick1.confidence||0),
     tickSamples:Number(tick?.samples||0),
     tickPersistence:Number(tick?.persistence||0),
+    tickSource:String(tick?.source||''),
     liqSide,liqScore,motionSide,motionStage:String(motion?.stage||'WAIT'),motionScore,
     preSide:preMove.side,preScore:preMove.score,preArmed:preMove.armed,late:chaseRisk||preMove.lateMomentum,
     trapSide,trapScore,mode,accumulationPhase,accumulationReadiness,reactionAligned,accumulationAligned,
