@@ -17,6 +17,7 @@ export default function Home(){
   const [btcSource,setBtcSource]=useState('Coinbase');
   const [btcAt,setBtcAt]=useState(0);
   const [goldTick,setGoldTick]=useState<any>(null);
+  const goldTickRef=useRef<any>(null);
   const [aiLastOkAt,setAiLastOkAt]=useState(0);
   const [now,setNow]=useState(Date.now());
 
@@ -51,11 +52,16 @@ export default function Home(){
       add('g',fastWaveRef.current.gold);
       const bl=btcWaveTicks.current.at(-1);
       if(bl&&Date.now()-bl.at<=2500)q.set('bat',String(bl.at));
-      const gl=goldWaveTicks.current.at(-1);
-      if(gl&&Date.now()-gl.at<=2500&&Number.isFinite(gl.price)&&gl.price>0){
-        q.set('gp',String(gl.price));q.set('gt',String(gl.at));
-        if(Number.isFinite(gl.bid)&&Number(gl.bid)>0)q.set('gb',String(gl.bid));
-        if(Number.isFinite(gl.ask)&&Number(gl.ask)>=Number(gl.bid||0))q.set('ga',String(gl.ask));
+      const gl=goldTickRef.current;
+      const gr=Number(gl?.receivedAt||0),gt=Number(gl?.sourceTime||0),gp=Number(gl?.price);
+      if(gl?.ok&&Number.isFinite(gp)&&gp>0&&Number.isFinite(gr)&&gr>0&&Date.now()-gr<=10000){
+        q.set('gp',String(gp));
+        q.set('gt',String(Number.isFinite(gt)&&gt>0?gt:gr));
+        q.set('gr',String(gr));
+        q.set('gmode',String(gl?.mode||'external'));
+        q.set('gstatus',String(gl?.status||'unknown'));
+        if(Number.isFinite(Number(gl?.bid))&&Number(gl.bid)>0)q.set('gb',String(gl.bid));
+        if(Number.isFinite(Number(gl?.ask))&&Number(gl.ask)>=Number(gl?.bid||0))q.set('ga',String(gl.ask));
       }
       const r=await fetch('/api/ai-analysis'+(q.size?'?'+q.toString():''),{
         cache:'no-store',
@@ -132,7 +138,7 @@ export default function Home(){
         const mode=String(j.mode||'external');
         nextDelay=mode==='broker'?650:mode==='external'?1600:3000;
         pushWave('gold',{at,price,bid:Number.isFinite(bid)?bid:undefined,ask:Number.isFinite(ask)?ask:undefined});
-        if(!closed)setGoldTick({
+        const nextGoldTick={
           ok:true,price,
           bid:Number.isFinite(bid)?bid:null,
           ask:Number.isFinite(ask)?ask:null,
@@ -144,7 +150,9 @@ export default function Home(){
           source:String(j.source||'Gold source'),
           brokerSymbol:j.brokerSymbol||null,
           degraded:Boolean(j.degraded)
-        });
+        };
+        goldTickRef.current=nextGoldTick;
+        if(!closed)setGoldTick(nextGoldTick);
       }catch{nextDelay=3000;}finally{inFlight=false;}
     };
     const loop=async()=>{
