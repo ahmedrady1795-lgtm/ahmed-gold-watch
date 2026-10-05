@@ -201,7 +201,11 @@ function goldLiveFromParams(url:URL,external:any,candlePrice:any,now:number){
     if(deviationBps>maxDeviation)return null;
   }
   const validBook=Number.isFinite(bid)&&Number.isFinite(ask)&&bid>0&&ask>=bid&&price>=bid&&price<=ask;
-  const status=mode==='broker'?'live':mode==='analysis_proxy'?(rawStatus==='closed_or_stale'?'closed_or_stale':'delayed'):(['live','delayed','closed_or_stale','unknown'].includes(rawStatus)?rawStatus:'unknown');
+  const status:'live'|'delayed'|'closed_or_stale'|'unknown'=mode==='broker'
+    ?'live'
+    :mode==='analysis_proxy'
+      ?(rawStatus==='closed_or_stale'?'closed_or_stale':'delayed')
+      :(rawStatus==='live'||rawStatus==='delayed'||rawStatus==='closed_or_stale'||rawStatus==='unknown'?rawStatus:'unknown');
   return {
     ok:true as const,symbol:'XAU/USD' as const,price,
     source:mode==='broker'?'Exness/MT5 live tick':mode==='analysis_proxy'?'Browser-synced analytical Gold fallback':'Browser-synced XAU/USD external quote',
