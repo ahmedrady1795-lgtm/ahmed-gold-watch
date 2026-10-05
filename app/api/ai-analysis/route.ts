@@ -56,6 +56,26 @@ function atrNow(c:any[]){
   for(let i=1;i<x.length;i++){const tr=Math.max(x[i].high-x[i].low,Math.abs(x[i].high-x[i-1].close),Math.abs(x[i].low-x[i-1].close));if(Number.isFinite(tr)){sum+=tr;n++;}}
   return n?sum/n:null;
 }
+function alignGoldMarketToAnchor(market:any,anchorPrice:number|null){
+  const p=Number(anchorPrice),last=Number(market?.c1?.at?.(-1)?.close),src=String(market?.priceSource||'');
+  const proxy=/Yahoo Finance|GC=F|COMEX/i.test(src);
+  if(!proxy||!Number.isFinite(p)||p<=0||!Number.isFinite(last)||last<=0)return {market,basisOffset:0,basisBps:0,aligned:false};
+  const offset=p-last,bps=Math.abs(offset)/p*10000;
+  if(!Number.isFinite(offset)||bps>350)return {market,basisOffset:0,basisBps:Number(bps.toFixed(1)),aligned:false};
+  const shift=(rows:any[])=>Array.isArray(rows)?rows.map((c:any)=>({
+    ...c,
+    open:Number(c.open)+offset,
+    high:Number(c.high)+offset,
+    low:Number(c.low)+offset,
+    close:Number(c.close)+offset
+  })):[];
+  return {
+    market:{...market,c1:shift(market.c1),c5:shift(market.c5),c15:shift(market.c15),c60:shift(market.c60),priceSource:src+' · basis-aligned to XAU spot'},
+    basisOffset:Number(offset.toFixed(4)),
+    basisBps:Number(bps.toFixed(1)),
+    aligned:true
+  };
+}
 
 function goldMicroFromMt5(mt5:any,tick:any,quote:any,price:number|null){
   const status=mt5?.status||null,book=status?.microstructure?.orderBook||null;
@@ -167,21 +187,29 @@ function waveFromParams(url:URL,prefix:'b'|'g',now:number){
   if(!['BUY','SELL','WAIT'].includes(String(side))||!['WARMING','COILED','PRE_TRIGGER','WAVE_FORMING','IGNITION'].includes(String(stage))||!Number.isFinite(score)||!Number.isFinite(confidence)||!Number.isFinite(at)||score<0||score>92||confidence<0||confidence>88||now-at<0||now-at>3500)return null;
   return {ok:true,side,stage,score,confidence,at,source:'browser live WebSocket'};
 }
-function goldLiveFromParams(url:URL,external:any,now:number){
-  const price=Number(url.searchParams.get('gp')),bid=Number(url.searchParams.get('gb')),ask=Number(url.searchParams.get('ga')),at=Number(url.searchParams.get('gt'));
-  if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)||now-at<0||now-at>3500)return null;
-  const ext=Number(external?.price);
-  if(Number.isFinite(ext)&&ext>0){
-    const deviationBps=Math.abs(price-ext)/ext*10000;
-    if(deviationBps>35)return null;
+function goldLiveFromParams(url:URL,external:any,candlePrice:any,now:number){
+  const price=Number(url.searchParams.get('gp')),bid=Number(url.searchParams.get('gb')),ask=Number(url.searchParams.get('ga'));
+  const sourceTime=Number(url.searchParams.get('gt')),receivedAt=Number(url.searchParams.get('gr')||sourceTime);
+  const mode=String(url.searchParams.get('gmode')||'external');
+  const rawStatus=String(url.searchParams.get('gstatus')||'unknown');
+  if(!['broker','external','analysis_proxy'].includes(mode)||!Number.isFinite(price)||price<=0||!Number.isFinite(receivedAt)||receivedAt<=0||now-receivedAt<0||now-receivedAt>10000)return null;
+  const ext=Number(external?.price),candle=Number(candlePrice);
+  const reference=mode==='analysis_proxy'?(Number.isFinite(candle)&&candle>0?candle:ext):(Number.isFinite(ext)&&ext>0?ext:candle);
+  if(Number.isFinite(reference)&&reference>0){
+    const deviationBps=Math.abs(price-reference)/reference*10000;
+    const maxDeviation=mode==='analysis_proxy'?90:45;
+    if(deviationBps>maxDeviation)return null;
   }
   const validBook=Number.isFinite(bid)&&Number.isFinite(ask)&&bid>0&&ask>=bid&&price>=bid&&price<=ask;
+  const status=mode==='broker'?'live':mode==='analysis_proxy'?(rawStatus==='closed_or_stale'?'closed_or_stale':'delayed'):(['live','delayed','closed_or_stale','unknown'].includes(rawStatus)?rawStatus:'unknown');
   return {
     ok:true as const,symbol:'XAU/USD' as const,price,
-    source:'Exness/MT5 live tick',sourceTime:at,fetchedAt:now,status:'live' as const,
+    source:mode==='broker'?'Exness/MT5 live tick':mode==='analysis_proxy'?'Browser-synced analytical Gold fallback':'Browser-synced XAU/USD external quote',
+    sourceTime:Number.isFinite(sourceTime)&&sourceTime>0?sourceTime:receivedAt,fetchedAt:receivedAt,status,
     previousClose:external?.previousClose??null,change:external?.change??null,percentChange:external?.percentChange??null,
     bid:validBook?bid:null,ask:validBook?ask:null,spread:validBook?ask-bid:null,
-    brokerSymbol:external?.brokerSymbol||'XAUUSD',bridgeLatencyMs:Math.max(0,now-at)
+    brokerSymbol:mode==='broker'?(external?.brokerSymbol||'XAUUSD'):null,
+    bridgeLatencyMs:mode==='broker'?Math.max(0,now-receivedAt):null
   };
 }
 export async function GET(request:Request){
@@ -209,11 +237,15 @@ export async function GET(request:Request){
       quote=await getQuoteData({forceExternal:true}).catch(()=>null);
       if(quote)actions.push('استعادة سعر الذهب من مصدر احتياطي');
     }
-    const browserGold=goldLiveFromParams(url,quote,now);
+    const browserGold=goldLiveFromParams(url,quote,gm.c1.at(-1)?.close??null,now);
     if(browserGold){
       quote=browserGold;
-      actions.push('استخدام XAUUSD MT5 tick الحي داخل تحليل الذهب');
+      actions.push(browserGold.source);
     }
+    const goldAnchorPrice=Number(quote?.price??gm.c1.at(-1)?.close??NaN);
+    const goldBasis=alignGoldMarketToAnchor(gm,Number.isFinite(goldAnchorPrice)?goldAnchorPrice:null);
+    gm=goldBasis.market;
+    if(goldBasis.aligned)actions.push('مواءمة شموع COMEX proxy مع سعر XAU/USD الفعلي');
     if(!btc?.c1?.length){
       btc=await getBtcMarket(true);
       actions.push('إعادة تحميل شموع BTC بالقوة');
@@ -621,6 +653,11 @@ export async function GET(request:Request){
             samples:Number((goldTick as any)?.samples||0),
             persistence:Number((goldTick as any)?.persistence||0)
           },
+          price:Number(goldPrice||0),
+          priceSource:goldLivePulse?.source||'unknown',
+          candleSource:gm.priceSource||'unknown',
+          candleClose:Number(gm.c1.at(-1)?.close||0),
+          basis:{aligned:Boolean(goldBasis.aligned),offset:Number(goldBasis.basisOffset||0),bps:Number(goldBasis.basisBps||0)},
           zone:huntZoneDiag(goldHunt),
           action:goldMaster.action,
           scalp:goldScalp.action,
