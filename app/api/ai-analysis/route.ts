@@ -454,7 +454,27 @@ export async function GET(request:Request){
       lastDiagLog=now;
       console.info('[AI-DIAG]',JSON.stringify({
         status:autopilot.status,
-        gold:{action:goldMaster.action,scalp:goldScalp.action,confidence:Number(goldHunt?.nextMove?.confidence||0)},
+        gold:{
+          action:goldMaster.action,
+          scalp:goldScalp.action,
+          confidence:Number(goldHunt?.nextMove?.confidence||0),
+          scalpReason:String(goldScalp?.reason||''),
+          scalpConfidence:Number(goldScalp?.confidence||0),
+          scalpLong:Number(goldScalp?.score?.long||0),
+          scalpShort:Number(goldScalp?.score?.short||0),
+          fusion:{
+            side:goldScalp?.fusionV8?.side||'WAIT',
+            rawSide:goldScalp?.fusionV8?.rawSide||'WAIT',
+            edge:Number(goldScalp?.fusionV8?.edge||0),
+            evidence:Number(goldScalp?.fusionV8?.dominantEvidence||0),
+            support:Number(goldScalp?.fusionV8?.support||0),
+            liveSupport:Number(goldScalp?.fusionV8?.liveSupport||0),
+            liveOpposition:Number(goldScalp?.fusionV8?.liveOpposition||0),
+            intercept:goldScalp?.fusionV8?.intercept?.status||null,
+            assistantCount:Number(goldScalp?.fusionV8?.assistantCount||0),
+            tradeReady:Boolean(goldScalp?.fusionV8?.ambushTrade)
+          }
+        },
         btc:{action:bitcoinMaster.action,scalp:bitcoinScalp.action,confidence:Number(bitcoinHunt?.nextMove?.confidence||0)},
         mlM1Ready:Boolean(bitcoinMl?.oneMinute?.ready),
         mlM5Ready:Boolean(bitcoinMl?.fiveMinute?.ready),
