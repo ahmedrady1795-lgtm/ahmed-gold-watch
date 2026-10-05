@@ -66,7 +66,9 @@ function buildMovementStations(args:{price:number;atr:number;now:number;first:nu
 }
 function buildZoneForecast(args:{
   price:number;atr:number;side:Side;confidence:number;accumulation:any;
-  m1Side?:Side;m1Strength?:number;m5Side?:Side;m5Strength?:number
+  m1Side?:Side;m1Strength?:number;m5Side?:Side;m5Strength?:number;
+  mlSide?:Side;mlStrength?:number;learnedSide?:Side;learnedStrength?:number;
+  graphSide?:Side;graphStrength?:number;precisionGuard?:boolean
 }){
   const p=Number(args.price),a=Number(args.atr),acc=args.accumulation||{};
   if(!Number.isFinite(p)||p<=0||!Number.isFinite(a)||a<=0)return null;
@@ -92,6 +94,9 @@ function buildZoneForecast(args:{
 
   const m1:Side=args.m1Side||'WAIT',m5:Side=args.m5Side||'WAIT';
   const m1Strength=Number(args.m1Strength||0),m5Strength=Number(args.m5Strength||0);
+  const mlSide:Side=args.mlSide||'WAIT',learnedSide:Side=args.learnedSide||'WAIT',graphSide:Side=args.graphSide||'WAIT';
+  const mlStrength=Number(args.mlStrength||0),learnedStrength=Number(args.learnedStrength||0),graphStrength=Number(args.graphStrength||0);
+  const precisionGuard=Boolean(args.precisionGuard);
   const proposed:Side=args.side||'WAIT';
   const proposedVotes=[m1,m5].filter(s=>s!=='WAIT'&&s===proposed).length;
   const proposedOpposition=[m1,m5].filter(s=>s!=='WAIT'&&proposed!=='WAIT'&&s!==proposed).length;
@@ -240,6 +245,9 @@ function buildZoneForecast(args:{
   vote(m5,m5Strength*.38);
   vote(proposed,Number(args.confidence||0)*.30);
   vote(accSide,readiness*.34);
+  if(mlStrength>=48)vote(mlSide,mlStrength*(precisionGuard?.10:.18));
+  if(learnedStrength>=48)vote(learnedSide,learnedStrength*.17);
+  if(graphStrength>=50)vote(graphSide,graphStrength*.14);
   if(phase==='ACCUMULATING')upScore+=10;
   if(phase==='MARKUP_READY')upScore+=18;
   if(phase==='DISTRIBUTING')downScore+=10;
@@ -259,46 +267,90 @@ function buildZoneForecast(args:{
   downScore+=attraction(lowerDestination);
 
   const pathDiff=upScore-downScore;
-  let pathSide:Side=Math.abs(pathDiff)>=4?(pathDiff>0?'BUY':'SELL'):'WAIT';
-  if(pathSide==='WAIT'&&proposed!=='WAIT'&&Number(args.confidence||0)>=38)pathSide=proposed;
-  if(pathSide==='WAIT'){
-    const upD=Number(upperDestination?.distanceAtr),downD=Number(lowerDestination?.distanceAtr);
-    if(Number.isFinite(upD)&&Number.isFinite(downD)&&Math.abs(upD-downD)>=.18)pathSide=upD<downD?'BUY':'SELL';
-    else if(Number.isFinite(upD)&&!Number.isFinite(downD))pathSide='BUY';
-    else if(Number.isFinite(downD)&&!Number.isFinite(upD))pathSide='SELL';
-  }
   const directionalUpper=upperDestination||(resistance&&Number(resistance.mid)>p?resistance:null);
   const directionalLower=lowerDestination||(support&&Number(support.mid)<p?support:null);
+  const prior=20;
+  const probabilityTotal=Math.max(1,upScore+downScore+prior*2);
+  let upProbability=(upScore+prior)/probabilityTotal*100;
+  let downProbability=(downScore+prior)/probabilityTotal*100;
+  if(horizonsConflict){upProbability=50+(upProbability-50)*.82;downProbability=100-upProbability;}
+  if(precisionGuard){upProbability=50+(upProbability-50)*.86;downProbability=100-upProbability;}
+  let pathSide:Side=upProbability>=52?'BUY':downProbability>=52?'SELL':'WAIT';
+  if(pathSide==='WAIT'){
+    const upD=Number(directionalUpper?.distanceAtr),downD=Number(directionalLower?.distanceAtr);
+    if(Number.isFinite(upD)&&Number.isFinite(downD)&&Math.abs(upD-downD)>=.22)pathSide=upD<downD?'BUY':'SELL';
+    else if(proposed!=='WAIT'&&Number(args.confidence||0)>=46)pathSide=proposed;
+  }
   const pathDestination=pathSide==='BUY'?directionalUpper:pathSide==='SELL'?directionalLower:null;
+  const alternateSide:Side=pathSide==='BUY'?'SELL':pathSide==='SELL'?'BUY':'WAIT';
+  const alternateDestination=alternateSide==='BUY'?directionalUpper:alternateSide==='SELL'?directionalLower:null;
   const pathRebound=pathSide==='BUY'?support:pathSide==='SELL'?resistance:null;
-  const pathTotal=Math.max(1,upScore+downScore),pathDominance=Math.abs(pathDiff)/pathTotal*100;
+  const invalidateZone=pathSide==='BUY'?(support||directionalLower):pathSide==='SELL'?(resistance||directionalUpper):null;
+  const invalidationPad=Math.max(a*.12,p*.00012);
+  const invalidationPrice=pathSide==='BUY'
+    ?(invalidateZone?Number((Number(invalidateZone.low)-invalidationPad).toFixed(2)):Number((p-a*.58).toFixed(2)))
+    :pathSide==='SELL'
+      ?(invalidateZone?Number((Number(invalidateZone.high)+invalidationPad).toFixed(2)):Number((p+a*.58).toFixed(2)))
+      :null;
+  const primaryProbability=pathSide==='BUY'?upProbability:pathSide==='SELL'?downProbability:50;
+  const alternateProbability=pathSide==='BUY'?downProbability:pathSide==='SELL'?upProbability:50;
   const destinationQuality=Number(pathDestination?.strength||0);
+  const evidenceFamilies=[
+    m1!=='WAIT'?m1:null,m5!=='WAIT'?m5:null,proposed!=='WAIT'?proposed:null,
+    accSide!=='WAIT'?accSide:null,mlStrength>=48?mlSide:null,learnedStrength>=48?learnedSide:null,graphStrength>=50?graphSide:null
+  ].filter(Boolean);
+  const familySupport=pathSide==='WAIT'?0:evidenceFamilies.filter(x=>x===pathSide).length;
+  const familyOpposition=pathSide==='WAIT'?0:evidenceFamilies.filter(x=>x!==pathSide).length;
   const pathConfidence=Math.round(cap(
-    34+pathDominance*.42+Math.max(m1Strength,m5Strength)*.12+destinationQuality*.10+
-    (pathSide===accSide&&accSide!=='WAIT'?5:0)-(horizonsConflict?6:0),
-    28,84
+    primaryProbability*.62+destinationQuality*.13+Math.max(m1Strength,m5Strength)*.08+
+    familySupport*2.2-familyOpposition*2.7+(pathSide===accSide&&accSide!=='WAIT'?3:0),
+    28,86
   ));
+  const uncertainty=Math.round(cap(100-Math.abs(upProbability-downProbability),12,100));
   const pathReason=[
-    pathSide==='BUY'?(phase==='ACCUMULATING'||phase==='MARKUP_READY'?'تجميع/ضغط صاعد':'ضغط الحركة يميل للصعود'):(pathSide==='SELL'?(phase==='DISTRIBUTING'||phase==='MARKDOWN_READY'?'تصريف/ضغط هابط':'ضغط الحركة يميل للهبوط'):'توازن بين المسارين'),
-    pathDestination?('الوجهة الأقرب '+fmtZone(pathDestination.low,pathDestination.high)):'',
-    pathRebound?('منطقة الارتداد المرجحة '+fmtZone(pathRebound.low,pathRebound.high)):''
+    pathSide==='BUY'?(phase==='ACCUMULATING'||phase==='MARKUP_READY'?'تجميع/ضغط صاعد':'ضغط الحركة يميل للصعود'):(pathSide==='SELL'?(phase==='DISTRIBUTING'||phase==='MARKDOWN_READY'?'تصريف/ضغط هابط':'توازن بين المسارين')),
+    pathDestination?('الوجهة الأساسية '+fmtZone(pathDestination.low,pathDestination.high)):'',
+    pathRebound?('ارتداد محتمل '+fmtZone(pathRebound.low,pathRebound.high)):'',
+    invalidationPrice?('إبطال المسار قرب '+invalidationPrice.toFixed(2)):''
   ].filter(Boolean).join(' · ');
   const pathForecast={
+    version:'FORECAST_AI_V3',
     side:pathSide,
     confidence:pathConfidence,
+    rawProbability:Number(primaryProbability.toFixed(1)),
+    probabilities:{up:Number(upProbability.toFixed(1)),down:Number(downProbability.toFixed(1)),uncertainty},
     destination:pathDestination,
     reboundZone:pathRebound,
-    upperLiquidity,
-    lowerLiquidity,
+    upperLiquidity:directionalUpper,
+    lowerLiquidity:directionalLower,
+    alternate:{
+      side:alternateSide,
+      probability:Number(alternateProbability.toFixed(1)),
+      destination:alternateDestination
+    },
+    invalidation:{
+      price:invalidationPrice,
+      zone:invalidateZone,
+      reason:pathSide==='BUY'?'كسر الدعم/الطلب يلغي المسار الصاعد':pathSide==='SELL'?'اختراق المقاومة/العرض يلغي المسار الهابط':'لا يوجد مسار مهيمن'
+    },
+    evidence:{
+      familySupport,familyOpposition,
+      m1:{side:m1,strength:m1Strength},m5:{side:m5,strength:m5Strength},
+      ml:{side:mlSide,strength:mlStrength,used:mlStrength>=48},
+      learned:{side:learnedSide,strength:learnedStrength,used:learnedStrength>=48},
+      graph:{side:graphSide,strength:graphStrength,used:graphStrength>=50},
+      accumulation:{side:accSide,readiness},
+      precisionGuard
+    },
     upScore:Number(upScore.toFixed(1)),
     downScore:Number(downScore.toFixed(1)),
     phase,
     reason:pathReason,
     scenario:pathSide==='BUY'
-      ?(pathDestination?'مرجح صعود نحو سيولة/مقاومة '+fmtZone(pathDestination.low,pathDestination.high):'ميل صاعد لكن الوجهة الهيكلية غير واضحة')
+      ?(pathDestination?'السيناريو الأساسي: صعود نحو سيولة/مقاومة '+fmtZone(pathDestination.low,pathDestination.high):'السيناريو الأساسي صاعد لكن الوجهة الهيكلية غير مؤكدة')
       :pathSide==='SELL'
-        ?(pathDestination?'مرجح هبوط نحو دعم/سيولة '+fmtZone(pathDestination.low,pathDestination.high):'ميل هابط لكن الوجهة الهيكلية غير واضحة')
-        :'الحركة متوازنة بين مناطق السيولة ولم تتفوق وجهة بوضوح'
+        ?(pathDestination?'السيناريو الأساسي: هبوط نحو دعم/سيولة '+fmtZone(pathDestination.low,pathDestination.high):'السيناريو الأساسي هابط لكن الوجهة الهيكلية غير مؤكدة')
+        :'لا يوجد مسار مهيمن؛ احتمالات الصعود والهبوط متقاربة'
   };
   const targetStrength=Number(target?.strength||0),originStrength=Number(origin?.strength||0);
   const zoneQuality=Math.max(targetStrength,originStrength,Number(support?.strength||0),Number(resistance?.strength||0));
@@ -1114,7 +1166,11 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     price:p,atr:a,side:primaryMoveSide!=='WAIT'?primaryMoveSide:stableSide,
     confidence:primaryMoveConfidence,accumulation,
     m1Side:oneMinute.side,m1Strength:Number(oneMinute.strength||0),
-    m5Side:five.side,m5Strength:Number(five.strength||0)
+    m5Side:five.side,m5Strength:Number(five.strength||0),
+    mlSide:validatedMlSide,mlStrength:validatedMlScore,
+    learnedSide:learningFresh?learningSide:'WAIT',learnedStrength:learningFresh?learningScore:0,
+    graphSide:graphFresh?graphSide:'WAIT',graphStrength:graphFresh?graphScore:0,
+    precisionGuard
   }):null;
   const stabilizedZoneForecast=validPrice?stabilizeZoneForecast(asset,rawZoneForecast,p,a,now):rawZoneForecast;
   const zoneForecast=stabilizedZoneForecast&&rawZoneForecast?{
