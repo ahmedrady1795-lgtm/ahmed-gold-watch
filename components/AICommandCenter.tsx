@@ -131,162 +131,54 @@ function AdvancedDetails({x}:any){
   </details>;
 }
 
-function AssetCard({x,fast,liveQuote}:any){
+function AssetCard({x,liveQuote}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
-  const master=x.master||{action:x.action,state:x.phase||'WAIT',reason:''},hunt=x.huntForecast,recommendation=x.recommendation;
-  const forecastSide=hunt?.marketUnderstanding?.firstMove?.side||hunt?.nextMove?.side||hunt?.path?.shortSide||'WAIT';
-  const displaySide=master.action==='BUY'||master.action==='SELL'?master.action:forecastSide;
+  const hunt=x.huntForecast,recommendation=x.recommendation,goldCore=x.asset==='GOLD'?x.goldForecastCore:null;
+  const core1=goldCore?.horizons?.oneMinute,core5=goldCore?.horizons?.fiveMinute;
+  const h1=core1||hunt?.horizons?.oneMinute||hunt?.horizons?.twoMinute||{};
+  const h5=core5||hunt?.horizons?.fiveMinute||{};
+  const forecastSide=goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT';
+  const displaySide=recommendation?.active?recommendation.action:forecastSide;
   const buy=displaySide==='BUY',sell=displaySide==='SELL';
-  const masterState=String(master?.state||'').toUpperCase();
-  const scalpFusion=x.scalp?.fusionV8;
-  const predator=scalpFusion?.predator;
-  const predatorPhase=String(predator?.phase||'');
-  const ambushActive=Boolean(
-    predatorPhase==='AMBUSH'&&(x.scalp?.action==='BUY'||x.scalp?.action==='SELL')
-  );
-  const plan=x.scalp?.ambushPlan||{};
-  const entry=plan?.entry||{};
-  const invalid=plan?.invalidation||{};
-  const helpers=scalpFusion?.assistants||{};
-  const helperCount=Number(scalpFusion?.assistantCount||0);
-  const ambushStats=x.scalpLive?.bySource?.SCALP_AMBUSH_TRADE_V8||null;
-  const ambushMetric=ambushStats?.resolved?ambushStats:(x.scalpLive?.global||null);
-  const ambushWf=x.scalpLive?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V8||null;
-  const scalpTargetPrice=x.scalp?.target?.price??plan?.target?.price??x.scalp?.intercept?.launchLine??null;
-  const nextPrice=x.scalp?.nextPrice||scalpFusion?.nextPrice||{};
-  const tracker=x.scalp?.tracking||{};
-  const ambushSide=(ambushActive?x.scalp.action:(tracker?.side||nextPrice?.side))==='BUY'
-    ?'BUY'
-    :(ambushActive?x.scalp.action:(tracker?.side||nextPrice?.side))==='SELL'
-      ?'SELL'
-      :'WAIT';
-  const scalpStrength=calibrated(ambushActive?(predator?.score??x.scalp?.confidence??0):(tracker?.confidence??nextPrice?.confidence??predator?.score??0));
-  const ambushStatus=invalid?.cancel?'ملغي'
-    :ambushActive?'LOCKED'
-      :nextPrice?.active?(nextPrice?.ready?'LOCKED':'TRACKING')
-        :plan?.status==='ARMED'?'جاهز للمراقبة'
-          :plan?.status==='STALK'?'يراقب':'ينتظر';
-  return <section className={"panel ai-asset-card "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
+  const price=x.asset==='GOLD'&&liveQuote?.status==='live'?liveQuote.price:(x.livePulse?.price??x.price);
+  const move=nextMoveCopy(hunt,x.stateGraph);
+  const target=recommendation?.targets?.scalp??recommendation?.targets?.oneMinute??hunt?.quickSignalTargets?.oneMinute?.price??null;
+  const invalid=recommendation?.invalidation??hunt?.invalidation??null;
+  const conf=recommendation?.active?calibrated(recommendation.confidence):calibrated(goldCore?.confidence??hunt?.nextMove?.confidence??hunt?.confidence??0);
+  return <section className={"panel ai-asset-card compact-asset "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
-      <div><span className="eyebrow">{x.asset}</span><h2>{recommendation?.active?(buy?'شراء':sell?'بيع':'مراقبة'):(buy?'توقع صعود':sell?'توقع هبوط':'تذبذب')}</h2></div>
+      <div><span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span><h2>{buy?'الحركة المرجحة: صعود':sell?'الحركة المرجحة: هبوط':'انتظار اتجاه أوضح'}</h2></div>
       {buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}
     </div>
 
-    <div className="ai-price-row">
-      <div><small>السعر{x.asset==='GOLD'&&liveQuote?.status==='live'?(String(liveQuote?.source||'').includes('Exness/MT5')?' · MT5 LIVE':String(liveQuote?.source||'').includes('WebSocket')||String(liveQuote?.source||'').includes('XAUUSDT')?' · WS LIVE':' · LIVE'):''}</small><strong>{fmt(x.asset==='GOLD'&&liveQuote?.status==='live'?liveQuote.price:(x.livePulse?.price??x.price),2)}</strong></div>
-      <div><small>الثقة</small><strong>{recommendation?.active?(calibrated(recommendation.confidence)+'%'):'—'}</strong></div>
-      <div><small>الحالة</small><strong>{recommendation?.active?'توصية':'مراقبة'}</strong></div>
+    <div className="ai-price-row compact-price">
+      <div><small>السعر</small><strong>{fmt(price,2)}</strong></div>
+      <div><small>الثقة</small><strong>{conf?conf+'%':'—'}</strong></div>
+      <div><small>الحالة</small><strong>{recommendation?.active?'توصية':'توقع'}</strong></div>
     </div>
 
-    <small className="muted">نتائج توقع الحركة — ليست صفقات منفذة</small>
-    <div className="ai-outcome-mini">
-      <span>شراء ✓ <b>{x.expectedMoveLearning?.directionStats?.buySuccess||0}</b></span>
-      <span>شراء ✕ <b>{x.expectedMoveLearning?.directionStats?.buyFail||0}</b></span>
-      <span>بيع ✓ <b>{x.expectedMoveLearning?.directionStats?.sellSuccess||0}</b></span>
-      <span>بيع ✕ <b>{x.expectedMoveLearning?.directionStats?.sellFail||0}</b></span>
+    <div className="next-move-copy primary-move">
+      <span>توقع الحركة القادمة</span>
+      <strong className={move.tone}>{move.title}</strong>
+      <p>{move.detail}</p>
     </div>
 
-    <div className={"scalp-ambush-card "+(ambushSide==='BUY'?'ambush-buy':ambushSide==='SELL'?'ambush-sell':'ambush-wait')}>
-      <div className="scalp-ambush-head">
-        <div>
-          <span>SCALP AMBUSH</span>
-          <small>السكالب الوحيد</small>
-        </div>
-        <b className={ambushSide==='BUY'?'green':ambushSide==='SELL'?'red':'amber'}>{sideAr(ambushSide)}</b>
-      </div>
-
-      <div className="scalp-ambush-main">
-        <strong className={ambushSide==='BUY'?'green':ambushSide==='SELL'?'red':'amber'}>
-          {ambushSide==='BUY'?'الحركة: صعود':ambushSide==='SELL'?'الحركة: هبوط':'الحركة: انتظار'}
-        </strong>
-        <span>{scalpStrength}%{scalpTargetPrice!=null?<> · الهدف ≈ {fmt(scalpTargetPrice,2)}</>:null}</span>
-      </div>
-
-      <div className={"scalp-next-price "+(nextPrice?.ready?'ready':'waiting')}>
-        <div>
-          <small>السعر القادم المتوقع · V12</small>
-          <strong className={nextPrice?.side==='BUY'?'green':nextPrice?.side==='SELL'?'red':'amber'}>
-            {nextPrice?.price!=null?fmt(nextPrice.price,2):'—'}
-          </strong>
-        </div>
-        <span>
-          {nextPrice?.price!=null
-            ?<>نطاق {fmt(nextPrice.low,2)} — {fmt(nextPrice.high,2)} · خلال {nextPrice.horizonSeconds||'—'}ث · ثقة {calibrated(nextPrice.confidence)}% · {nextPrice?.ready?'LOCKED':'TRACKING'}</>
-            :<>ينتظر فقط وصول سعر Live صالح</>}
-        </span>
-        {Array.isArray(nextPrice?.trajectory)&&nextPrice.trajectory.length>0&&<div className="scalp-trajectory">
-          {nextPrice.trajectory.map((pt:any)=><span key={pt.seconds}><small>{pt.seconds}ث</small><b>{pt.price!=null?fmt(pt.price,2):'—'}</b></span>)}
-        </div>}
-      </div>
-
-      <div className="scalp-ambush-grid">
-        <div><small>الحالة</small><b>{ambushStatus}</b></div>
-        <div><small>الصفقة</small><b>{tracker?.tradeReady?'جاهزة':'فلترة'}</b></div>
-        <div><small>المساعدون</small><b>{helperCount}/10</b></div>
-        <div><small>الدقة الحية</small><b>{ambushMetric?.accuracy==null?'—':ambushMetric.accuracy+'%'}</b></div>
-      </div>
-
-      {(entry?.zoneLow!=null&&entry?.zoneHigh!=null)&&<p>منطقة الدخول {fmt(entry.zoneLow,2)} — {fmt(entry.zoneHigh,2)}</p>}
-      {invalid?.cancel&&<p className="red">إلغاء: {(invalid.reasons||[]).join(' · ')||'شرط الإلغاء تحقق'}</p>}
-
-      {ambushStats&&<div className="scalp-ambush-results">
-        <span>نجح <b>{ambushStats?.hits||0}</b></span>
-        <span>فشل <b>{ambushStats?.fails||0}</b></span>
-        <span>محايد <b>{ambushStats?.neutral||0}</b></span>
-        <span>OOS <b>{ambushWf?.oos?.accuracy==null?'—':ambushWf.oos.accuracy+'%'}</b></span>
-      </div>}
+    <div className="forecast-horizons decision-horizons">
+      <div><small>M1</small><strong className={h1.side==='BUY'?'green':h1.side==='SELL'?'red':'amber'}>{sideAr(h1.side)} · {calibrated(h1.confidence??h1.strength)}%</strong>{core1&&<span>↑ {core1.buyProbability}% · ↓ {core1.sellProbability}%</span>}</div>
+      <div><small>M5</small><strong className={h5.side==='BUY'?'green':h5.side==='SELL'?'red':'amber'}>{sideAr(h5.side)} · {calibrated(h5.confidence??h5.strength)}%</strong>{core5&&<span>↑ {core5.buyProbability}% · ↓ {core5.sellProbability}%</span>}</div>
     </div>
 
-    {(()=>{
-      const move=nextMoveCopy(hunt,x.stateGraph);
-      return <div className="next-move-copy">
-        <span>توقع الحركة القادمة</span>
-        <strong className={move.tone}>{move.title}</strong>
-        <p>{move.detail}</p>
-      </div>;
-    })()}
-
-    {x.nextMoveLive&&<div className="next-move-copy">
-      <span>Next Move Live Tracker</span>
-      <strong className={(x.nextMoveLive?.global?.accuracy??0)>=60?'green':(x.nextMoveLive?.global?.accuracy??0)>=50?'amber':'red'}>
-        {x.nextMoveLive?.global?.accuracy==null?'يجمع النتائج الحية':('دقة '+x.nextMoveLive.global.accuracy+'%')}
-      </strong>
-      <div className="ai-outcome-mini">
-        <span>نجح ✓ <b>{x.nextMoveLive?.global?.hits||0}</b></span>
-        <span>فشل ✕ <b>{x.nextMoveLive?.global?.fails||0}</b></span>
-        <span>محايد <b>{x.nextMoveLive?.global?.neutral||0}</b></span>
-        <span>معلق <b>{x.nextMoveLive?.pending||0}</b></span>
-      </div>
-      <p>First-Passage Live · {x.nextMoveLive?.learningSamples||0} نتيجة اتجاهية{x.nextMoveLive?.readyForLearning?' · جاهز للمعايرة':' · يتعلم بعد تجميع عينة أكبر'}</p>
-      {x.nextMoveLive?.walkForward&&<div className="ai-outcome-mini">
-        <span>OOS <b>{x.nextMoveLive.walkForward?.oos?.accuracy==null?'—':(x.nextMoveLive.walkForward.oos.accuracy+'%')}</b></span>
-        <span>Coverage <b>{x.nextMoveLive.walkForward?.oos?.coverage==null?'—':(x.nextMoveLive.walkForward.oos.coverage+'%')}</b></span>
-        <span>WF <b>{x.nextMoveLive.walkForward?.status||'COLLECTING'}</b></span>
-        <span>Drift <b>{x.nextMoveLive.walkForward?.drift?.delta==null?'—':((x.nextMoveLive.walkForward.drift.delta>0?'+':'')+x.nextMoveLive.walkForward.drift.delta+'%')}</b></span>
-      </div>}
+    {goldCore?.ok&&<div className="gold-risk-line">
+      <span>عدم اليقين <b>{goldCore.uncertainty}%</b></span>
+      <span>خطر الكسر الكاذب <b>{goldCore.fakeoutRisk}%</b></span>
+      <span>السوق <b>{String(goldCore.regime||'—').replaceAll('_',' ')}</b></span>
     </div>}
 
-    {hunt&&<div className="forecast-horizons compact-forecast">
-      <div><small>1m</small><strong className={hunt.horizons?.oneMinute?.side==='BUY'?'green':hunt.horizons?.oneMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.oneMinute?.side)} {hunt.horizons?.oneMinute?.strength||0}%</strong><span>≈ {fmt(hunt.quickSignalTargets?.oneMinute?.price,2)}</span></div>
-      <div><small>5m</small><strong className={hunt.horizons?.fiveMinute?.side==='BUY'?'green':hunt.horizons?.fiveMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fiveMinute?.side)} {hunt.horizons?.fiveMinute?.strength||0}%</strong><span>≈ {fmt(hunt.quickSignalTargets?.fiveMinute?.price??hunt.movementStations?.[1]?.price??hunt.path?.secondLeg,2)}</span></div>
-      <div><small>15m</small><strong className={hunt.horizons?.fifteenMinute?.side==='BUY'?'green':hunt.horizons?.fifteenMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fifteenMinute?.side)} {hunt.horizons?.fifteenMinute?.strength||0}%</strong><span>≈ {fmt(hunt.fifteenMinuteTarget?.price,2)}</span></div>
-      <div><small>30m</small><strong className={hunt.horizons?.thirtyMinute?.side==='BUY'?'green':hunt.horizons?.thirtyMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.thirtyMinute?.side)} {hunt.horizons?.thirtyMinute?.strength||0}%</strong><span>≈ {fmt(hunt.thirtyMinuteTarget?.price,2)}</span></div>
+    {(target!=null||invalid!=null)&&<div className="trade-strip compact-levels">
+      <div><small>الهدف الأقرب</small><strong>{fmt(target,2)}</strong></div>
+      <div><small>إلغاء السيناريو</small><strong>{fmt(invalid,2)}</strong></div>
+      <div><small>القرار</small><strong className={recommendation?.active?(buy?'green':'red'):'amber'}>{recommendation?.active?sideAr(recommendation.action):'مراقبة'}</strong></div>
     </div>}
-
-    {hunt&&<details className="advanced-details compact-details">
-      <summary><span>تحليل الحركة</span><ChevronDown size={16}/></summary>
-      <div className="advanced-content">
-        <div className="advanced-block">
-          <strong>الحركة القادمة المتوقعة</strong>
-          <p>{sideAr(hunt.nextMove?.side||hunt.path?.shortSide)} · جودة {calibrated(hunt.quality??hunt.confidence)} · ثبات {hunt.persistence||0}%</p>
-          <p>Trigger {fmt(hunt.trigger,2)} · Target {fmt(hunt.projected,2)} · Invalidation {fmt(hunt.invalidation,2)}</p>
-          {hunt.strongMove&&<p>Strong Move: {sideAr(hunt.strongMove.side)} · قوة {calibrated(hunt.strongMove.score)} · جاهزية {calibrated(hunt.strongMove.readiness)}</p>}
-          {hunt.liveFailureGuard?.invalidated&&<p className="amber">الحركة السابقة فشلت؛ النواة خفّضت وزنها وأعادت ترجيح الاتجاه مباشرة بدل إيقاف التحليل.</p>}
-        </div>
-      </div>
-    </details>}
-
-    <AdvancedDetails x={x}/>
   </section>;
 }
 
