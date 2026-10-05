@@ -224,11 +224,12 @@ function buildZoneForecast(args:{
       reason:kind.includes('UPPER')?'سيولة أعلى النطاق/منطقة كسر محتملة':'سيولة أسفل النطاق/منطقة كسر محتملة'
     };
   };
-  const upperFallback=!upperLiquidity&&Number(acc?.breakoutLevel)>p+a*.10
-    ?syntheticLevel(Number(acc.breakoutLevel),'UPPER_BREAKOUT_LIQUIDITY','SELL')
+  const upperBoundary=Number(acc?.breakoutLevel),lowerBoundary=Number(acc?.breakdownLevel);
+  const upperFallback=!upperLiquidity&&Number.isFinite(upperBoundary)&&upperBoundary>p
+    ?syntheticLevel(upperBoundary,readiness>=60?'UPPER_BREAKOUT_LIQUIDITY':'UPPER_RANGE_LIQUIDITY','SELL')
     :null;
-  const lowerFallback=!lowerLiquidity&&Number(acc?.breakdownLevel)<p-a*.10
-    ?syntheticLevel(Number(acc.breakdownLevel),'LOWER_BREAKDOWN_LIQUIDITY','BUY')
+  const lowerFallback=!lowerLiquidity&&Number.isFinite(lowerBoundary)&&lowerBoundary<p
+    ?syntheticLevel(lowerBoundary,readiness>=60?'LOWER_BREAKDOWN_LIQUIDITY':'LOWER_RANGE_LIQUIDITY','BUY')
     :null;
   const upperDestination=upperLiquidity||upperFallback;
   const lowerDestination=lowerLiquidity||lowerFallback;
