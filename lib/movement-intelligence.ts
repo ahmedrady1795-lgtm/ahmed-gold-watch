@@ -1,4 +1,5 @@
 import {calibrateHorizonBrain} from './horizon-brain-learning';
+import {buildSpecializedHorizonBrains} from './horizon-brains';
 type Side='BUY'|'SELL'|'WAIT';
 type Regime='EXPANSION'|'COMPRESSION'|'REVERSAL'|'RANGE'|'TRANSITION';
 type Evidence={name:string;side:Side;score:number;weight:number;reliability:number};
@@ -260,6 +261,21 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     fifteen.confidence=Math.max(0,fifteen.confidence-Math.round(penalty*.45));fifteen.uncertainty=Math.min(100,100-fifteen.confidence);
   }
 
+  const specialized=buildSpecializedHorizonBrains({
+    asset,tick,scalp,motion,liquidity:liq,accumulation:acc,structure,stateGraph:g,
+    expected,learning,decision,ml,horizonLearning:args?.horizonLearning||{}
+  });
+  const one=specialized.oneMinute;
+  const three=specialized.threeMinute;
+  two={...three};
+  five={...specialized.fiveMinute};
+  if(news?.phase==='PRE_EVENT'&&Number(news?.risk||0)>=70){
+    const p=Math.min(22,Math.round((Number(news.risk)-60)*.55));
+    one.confidence=Math.max(0,one.confidence-p);one.uncertainty=Math.min(100,100-one.confidence);
+    two.confidence=Math.max(0,two.confidence-Math.round(p*.85));two.uncertainty=Math.min(100,100-two.confidence);
+    five.confidence=Math.max(0,five.confidence-Math.round(p*.70));five.uncertainty=Math.min(100,100-five.confidence);
+  }
+
   const directional=immediate.filter(e=>e.side!=='WAIT'&&e.score>=25);
   const buys=directional.filter(e=>e.side==='BUY').length,sells=directional.filter(e=>e.side==='SELL').length;
   const conflictScore=directional.length?Math.round(Math.min(buys,sells)/directional.length*200):0;
@@ -293,9 +309,11 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
 
   const reasons=[
     'Regime '+regime,
+    'M1 '+one.side+' · '+one.confidence+' · families '+Number(one.independentFamilies||0),
+    'M3 '+three.side+' · '+three.confidence+' · families '+Number(three.independentFamilies||0),
     'Immediate '+(finalSide==='WAIT'?('uncertain · lean '+leanSide):finalSide)+' · confidence '+directionalConfidence,
     'Agreement '+two.agreement+'% · conflict '+conflictScore+'%',
-    '5m '+five.side+' · '+five.confidence,
+    '5m '+five.side+' · '+five.confidence+' · families '+Number(five.independentFamilies||0),
     '15m '+fifteen.side+' · '+fifteen.confidence
   ];
   if(tick?.stage==='IGNITION'||tick?.stage==='WAVE_FORMING')reasons.push('Server tick '+tick.stage+' '+tick.side);
@@ -309,7 +327,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   return {
     ok:true,asset,regime,side:finalSide,leanSide,confidence:directionalConfidence,agreement:two.agreement,uncertainty:two.uncertainty,conflict,conflictScore,
     evidence:immediate,
-    horizons:{twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},
+    horizons:{oneMinute:one,threeMinute:three,twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},
     horizonQuality:{
       fiveMinute:{independentSupport:fiveIndependentSupport,independentOpposition:fiveIndependentOpposition},
       fifteenMinute:{independentSupport:fifteenIndependentSupport,independentOpposition:fifteenIndependentOpposition},
