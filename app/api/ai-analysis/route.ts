@@ -486,7 +486,13 @@ export async function GET(request:Request){
             tradeReady:Boolean(goldScalp?.fusionV8?.ambushTrade),
             pattern:String(goldScalp?.fusionV8?.predator?.pattern||'NO_EDGE'),
             predatorScore:Number(goldScalp?.fusionV8?.predator?.score||0),
-            earlyFlowQuality:Boolean(goldScalp?.fusionV8?.liveGuard?.earlyFlowQuality)
+            earlyFlowQuality:Boolean(goldScalp?.fusionV8?.liveGuard?.earlyFlowQuality),
+            tickSequenceReady:Boolean(goldScalp?.fusionV8?.liveGuard?.tickSequenceReady),
+            tickStage:String(goldScalp?.fusionV8?.predator?.tickSequence?.stage||''),
+            tickSamples:Number(goldScalp?.fusionV8?.predator?.tickSequence?.samples||0),
+            tickPersistence:Number(goldScalp?.fusionV8?.predator?.tickSequence?.persistence||0),
+            microPersistence:Number(goldScalp?.fusionV8?.predator?.microstructure?.persistence||0),
+            microSamples:Number(goldScalp?.fusionV8?.predator?.microstructure?.samples||0)
           }
         },
         btc:{action:bitcoinMaster.action,scalp:bitcoinScalp.action,confidence:Number(bitcoinHunt?.nextMove?.confidence||0)},
