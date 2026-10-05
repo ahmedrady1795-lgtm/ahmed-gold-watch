@@ -224,7 +224,8 @@ export async function GET(request:Request){
     const bitcoinNews=buildNewsIntelligence('BTC',gm.events,now);
     const goldClosedM1=gm.c1.filter((c:any)=>c.time+60000<=now).at(-1)||gm.c1.at(-1)||null;
     const goldBase=Number(goldClosedM1?.close??goldPrice),goldDelta=Number.isFinite(Number(goldPrice))&&Number.isFinite(goldBase)?Number(goldPrice)-goldBase:0;
-    const goldLivePulse={price:goldPrice,basePrice:goldBase,delta:goldDelta,deltaPct:goldBase?goldDelta/goldBase*100:0,momentum:goldAtr&&goldAtr>0?Math.min(100,Math.round(Math.abs(goldDelta)/goldAtr*100)):0,direction:goldDelta>0?'UP':goldDelta<0?'DOWN':'FLAT',source:quote?.source||gm.priceSource||'unknown',sourceTime:quote?.sourceTime||gm.checkedAt,status:quote?.status||'unknown'};
+    const goldPulseDirection:'UP'|'DOWN'|'FLAT'=goldDelta>0?'UP':goldDelta<0?'DOWN':'FLAT';
+    const goldLivePulse={price:goldPrice,basePrice:goldBase,delta:goldDelta,deltaPct:goldBase?goldDelta/goldBase*100:0,momentum:goldAtr&&goldAtr>0?Math.min(100,Math.round(Math.abs(goldDelta)/goldAtr*100)):0,direction:goldPulseDirection,source:quote?.source||gm.priceSource||'unknown',sourceTime:quote?.sourceTime||gm.checkedAt,status:quote?.status||'unknown'};
     const gold=aiDecision('GOLD',goldAnalysis,{c1:gm.c1,c5:gm.c5,c15:gm.c15,c60:gm.c60},goldPrice,{quote:quote?.source||gm.priceSource||'unknown',candles:gm.priceSource||'unknown'},now,defaults,goldLivePulse,goldLiquidity,goldScalp,goldMotion,goldBehavior);
     const bitcoin=aiDecision('BTC',btcAnalysis,{c1:btc.c1,c5:btc.c5,c15:btc.c15,c60:btc.c60},btcPrice,{quote:liveBtc?.source||btc.source,candles:btc.source},now,defaults,livePulse,liquidity,bitcoinScalp,motion,bitcoinBehavior);
 
