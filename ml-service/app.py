@@ -614,15 +614,30 @@ def frame_from_body(candles):
 
 def predict_h(model,x):
     px=float(model["xgb"].predict_proba(x)[0,1]); pl=float(model["lgb"].predict_proba(x)[0,1]); w=model["weights"]
-    raw=px*w["xgb"]+pl*w["lgb"]; acc=float(model["metrics"].get("validation",model["metrics"]["ensemble"])["accuracy"])
-    shrink=max(.25,min(1,(acc-.5)/.10)); p=.5+(raw-.5)*shrink; edge=abs(p-.5)*2
-    lean="BUY" if p>=.5 else "SELL"; threshold=float(model.get("signalThreshold",.56 if model["horizon"]==5 else .57))
+    raw=px*w["xgb"]+pl*w["lgb"]
+    val=model["metrics"].get("validation",model["metrics"]["ensemble"]); hold=model["metrics"]["ensemble"]
+    acc=float(val["accuracy"])
+    shrink=max(.25,min(1,(acc-.5)/.10))
+    calibrated=.5+(raw-.5)*shrink
+    raw_edge=abs(raw-.5)*2
+    lean="BUY" if raw>=.5 else "SELL"
+    threshold=float(model.get("signalThreshold",.56 if model["horizon"]==5 else .57))
     component_agree=((px>=.5)==(pl>=.5))
-    active=(p>=threshold or p<=1-threshold) and (model["horizon"]!=5 or component_agree)
-    return {"side":lean if active else "WAIT","leanSide":lean,"probUp":round(p*100,2),"probDown":round((1-p)*100,2),
-            "confidence":round(min(90,max(0,50+edge*50))) if active else round(50+edge*30),"edge":round(edge*100,2),
+    # IMPORTANT: the production gate must use the same probability domain that
+    # was validated on the chronological holdout. Previous code validated RAW
+    # probabilities but gated the shrunken probability, silently crushing live
+    # coverage and producing long periods with no M1 recommendations.
+    active=(raw>=threshold or raw<=1-threshold) and (model["horizon"]!=5 or component_agree)
+    excess=max(0.0,abs(raw-.5)-max(0.0,threshold-.5))
+    learned_quality=float(hold.get("selectiveAccuracy",.5))*100
+    confidence=round(min(89,max(55,learned_quality+excess*120))) if active else round(min(70,max(45,50+abs(calibrated-.5)*60)))
+    return {"side":lean if active else "WAIT","leanSide":lean,
+            "probUp":round(calibrated*100,2),"probDown":round((1-calibrated)*100,2),
+            "confidence":confidence,"edge":round(raw_edge*100,2),
             "ready":bool(model["metrics"]["ready"]),"metrics":model["metrics"],
-            "component":{"xgbUp":round(px*100,2),"lightgbmUp":round(pl*100,2),"agree":bool(component_agree),"weights":w,"signalThreshold":threshold}}
+            "component":{"xgbUp":round(px*100,2),"lightgbmUp":round(pl*100,2),"rawUp":round(raw*100,2),
+                         "calibratedUp":round(calibrated*100,2),"agree":bool(component_agree),"weights":w,
+                         "signalThreshold":threshold,"gateDomain":"validated_raw_probability"}}
 
 def _class3_probs(estimator,x):
     raw=estimator.predict_proba(x)[0]
