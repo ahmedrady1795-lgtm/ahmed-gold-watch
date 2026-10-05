@@ -466,6 +466,16 @@ export async function GET(request:Request){
       console.info('[AI-DIAG]',JSON.stringify({
         status:autopilot.status,
         gold:{
+          tick:{
+            source:String(goldTick?.source||''),
+            ok:Boolean(goldTick?.ok),
+            side:String(goldTick?.side||'WAIT'),
+            stage:String(goldTick?.stage||''),
+            score:Number(goldTick?.score||0),
+            confidence:Number(goldTick?.confidence||0),
+            samples:Number(goldTick?.samples||0),
+            persistence:Number(goldTick?.persistence||0)
+          },
           action:goldMaster.action,
           scalp:goldScalp.action,
           confidence:Number(goldHunt?.nextMove?.confidence||0),
