@@ -75,7 +75,7 @@ function AssetCard({x,liveQuote}:any){
     </div>
 
     <div className="next-move-copy primary-move zone-primary">
-      <span>توقع الحركة القادمة · مناطق</span>
+      <span>توقع الحركة القادمة · سيولة وهيكل</span>
       <strong className={forecastSide==='BUY'?'green':forecastSide==='SELL'?'red':'amber'}>
         {path?.side&&path.side!=='WAIT'
           ?(path.destination
@@ -91,11 +91,16 @@ function AssetCard({x,liveQuote}:any){
                   :move.title)
             :move.title}
       </strong>
-      <p>{path?.scenario||zone?.summary||move.detail}</p>
+      <p>{path?.reason||path?.scenario||zone?.summary||move.detail}</p>
       {path?.probabilities&&<div className="forecast-scenario-strip">
         <div><small>احتمال الصعود</small><b className="green">{Math.round(Number(path.probabilities.up||0))}%</b></div>
         <div><small>احتمال الهبوط</small><b className="red">{Math.round(Number(path.probabilities.down||0))}%</b></div>
         <div><small>الإبطال</small><b>{Number.isFinite(Number(path?.invalidation?.price))?fmt(path.invalidation.price,2):'—'}</b></div>
+      </div>}
+      {path?.evidence?.liquidity&&<div className="forecast-scenario-strip">
+        <div><small>محرك التوقع</small><b>سيولة + هيكل</b></div>
+        <div><small>جذب السيولة أعلى</small><b className="green">{Math.round(Number(path.evidence.liquidity.upperAttraction||0))}</b></div>
+        <div><small>جذب السيولة أسفل</small><b className="red">{Math.round(Number(path.evidence.liquidity.lowerAttraction||0))}</b></div>
       </div>}
       {path?.alternate?.side&&path.alternate.side!=='WAIT'&&<em className="zone-stability">
         البديل: {moveAr(path.alternate.side)}{path.alternate.destination?` نحو ${zoneRange(path.alternate.destination)}`:''} · {Math.round(Number(path.alternate.probability||0))}%
