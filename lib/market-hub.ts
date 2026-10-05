@@ -187,6 +187,15 @@ export async function getQuoteData(options:{forceExternal?:boolean}={}):Promise<
   if(externalQuoteCache&&now-externalQuoteCache.at<EXTERNAL_QUOTE_TTL_MS)return externalQuoteCache.value;
   const rt=getRuntimeEnv(),goldKey=rt.GOLD_API_KEY||rt.GOLDAPI_API_KEY||rt.GOLDAPI_TOKEN,twelveKey=rt.TWELVE_DATA_API_KEY,massiveKey=rt.MASSIVE_API_KEY||rt.POLYGON_API_KEY,errors:string[]=[];
   for(const provider of [massiveKey?()=>quoteFromMassive(massiveKey,now):null,twelveKey?()=>quoteFromTwelve(twelveKey,now):null,goldKey?()=>quoteFromGoldApi(goldKey,now):null,()=>quoteFromFreeGoldApi(now)]){if(!provider)continue;try{const value=await provider();externalQuoteCache={at:now,value};return value;}catch(e){errors.push(e instanceof Error?e.message:'provider error');}}
+  if(externalQuoteCache?.value){
+    const stale=externalQuoteCache.value;
+    return {
+      ...stale,
+      fetchedAt:now,
+      status:goldStatusFor(stale.sourceTime,now)==='closed_or_stale'?'closed_or_stale':'delayed',
+      source:String(stale.source||'Gold external quote')+' · last good fallback'
+    };
+  }
   throw new Error('QUOTE_SOURCE_ERROR: '+errors.join(' | ').slice(0,320));
 }
 
