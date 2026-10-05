@@ -78,6 +78,8 @@ export default function Home(){
         q.set(p+'s',w.side);q.set(p+'st',w.stage);q.set(p+'sc',String(w.score));q.set(p+'cf',String(w.confidence));q.set(p+'at',String(w.at));
       };
       add('b',fastWaveRef.current.btc);add('g',fastWaveRef.current.gold);
+      const bl=btcWaveTicks.current.at(-1);
+      if(bl&&Date.now()-bl.at<=2500)q.set('bat',String(bl.at));
       const gl=goldWaveTicks.current.at(-1);
       if(gl&&Date.now()-gl.at<=2500&&Number.isFinite(gl.price)&&gl.price>0){
         q.set('gp',String(gl.price));q.set('gt',String(gl.at));
@@ -104,7 +106,7 @@ export default function Home(){
     const clock=setInterval(()=>setNow(Date.now()),1000);
     const market=setInterval(()=>{if(document.visibilityState==='visible')void load(true);},15000);
     const hs=setInterval(()=>{if(document.visibilityState==='visible')void loadHealth();},30000);
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},1800);
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},650);
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
     return()=>{clearInterval(clock);clearInterval(market);clearInterval(hs);clearInterval(aiTimer);};
   },[]);
