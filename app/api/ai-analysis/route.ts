@@ -1,5 +1,5 @@
 import {analyze,defaults,scalpAnalyze} from '../../../lib/engine';
-import {getMarketSnapshot,getMarketData,getQuoteData} from '../../../lib/market-hub';
+import {getMarketSnapshot,getMarketData,getQuoteData,getMt5FastSignal} from '../../../lib/market-hub';
 import {getBtcMarket} from '../../../lib/btc-market';
 import {aiDecision} from '../../../lib/ai-analyst';
 import {getBtcLiquidity} from '../../../lib/liquidity-intelligence';
@@ -52,6 +52,62 @@ function atrNow(c:any[]){
   const x=c.slice(-15);if(x.length<3)return null;let sum=0,n=0;
   for(let i=1;i<x.length;i++){const tr=Math.max(x[i].high-x[i].low,Math.abs(x[i].high-x[i-1].close),Math.abs(x[i].low-x[i-1].close));if(Number.isFinite(tr)){sum+=tr;n++;}}
   return n?sum/n:null;
+}
+
+function goldMicroFromMt5(mt5:any,tick:any,quote:any,price:number|null){
+  const status=mt5?.status||null,book=status?.microstructure?.orderBook||null;
+  const bids=(Array.isArray(book?.bids)?book.bids:[]).map((x:any)=>({price:Number(x?.price),volume:Number(x?.volume)})).filter((x:any)=>x.price>0&&x.volume>0).slice(0,16);
+  const asks=(Array.isArray(book?.asks)?book.asks:[]).map((x:any)=>({price:Number(x?.price),volume:Number(x?.volume)})).filter((x:any)=>x.price>0&&x.volume>0).slice(0,16);
+  const sum=(rows:any[])=>rows.reduce((s:number,x:any)=>s+x.volume,0);
+  const weighted=(rows:any[])=>rows.reduce((s:number,x:any,i:number)=>s+x.volume/(1+i*.35),0);
+  const bidVol=sum(bids),askVol=sum(asks),total=bidVol+askVol;
+  const wBid=weighted(bids),wAsk=weighted(asks),wTotal=wBid+wAsk;
+  const bestBid=Number(quote?.bid)>0?Number(quote.bid):Number(bids[0]?.price||0);
+  const bestAsk=Number(quote?.ask)>0?Number(quote.ask):Number(asks[0]?.price||0);
+  const mid=bestBid>0&&bestAsk>=bestBid?(bestBid+bestAsk)/2:Number(price||0);
+  const spread=bestAsk>bestBid?bestAsk-bestBid:0;
+  const depthImbalance=total>0?(bidVol-askVol)/total*100:0;
+  const weightedImbalance=wTotal>0?(wBid-wAsk)/wTotal*100:depthImbalance;
+  const topBid=Number(bids[0]?.volume||0),topAsk=Number(asks[0]?.volume||0),topTotal=topBid+topAsk;
+  const bboImbalance=topTotal>0?(topBid-topAsk)/topTotal*100:depthImbalance;
+  const microprice=bestBid>0&&bestAsk>0&&topTotal>0?(bestAsk*topBid+bestBid*topAsk)/topTotal:mid;
+  const microEdge=spread>0&&Number.isFinite(microprice)?Math.max(-100,Math.min(100,(microprice-mid)/spread*200)):0;
+  const fastImbalance=Number(tick?.bookImbalance||0);
+  const pressure=Math.max(-100,Math.min(100,weightedImbalance*.72+fastImbalance*.28));
+  const buy=Math.round(Math.max(5,Math.min(95,50+pressure/2))),sell=100-buy;
+  const bookReady=Boolean(mt5?.fresh&&bids.length&&asks.length&&bestBid>0&&bestAsk>0);
+  const quality=bookReady?92:(quote?.status==='live'?68:45);
+  const accel=Math.max(-100,Math.min(100,Number(tick?.acceleration||0)*100));
+  const priceChangeBps=Number(tick?.velocity3s||tick?.velocity4s||0);
+  const liquidity={
+    ok:quality>=55,source:bookReady?'Exness/MT5 DOM':'Gold live quote',checkedAt:Date.now(),quality,
+    side:pressure>=8?'BUY':pressure<=-8?'SELL':'WAIT',buy,sell,strength:Math.max(buy,sell),pressure:Number(pressure.toFixed(1)),
+    book:{
+      bestBid:bestBid||null,bestAsk:bestAsk||null,spreadBps:mid>0&&spread>0?spread/mid*10000:0,
+      bboImbalance:Number(bboImbalance.toFixed(1)),depthImbalance:Number(depthImbalance.toFixed(1)),weightedImbalance:Number(weightedImbalance.toFixed(1)),
+      microprice:Number.isFinite(microprice)&&microprice>0?Number(microprice.toFixed(3)):null,microEdge:Number(microEdge.toFixed(1)),
+      bidDepthUsd:bids.reduce((s:number,x:any)=>s+x.price*x.volume,0),askDepthUsd:asks.reduce((s:number,x:any)=>s+x.price*x.volume,0),
+      bidWall:1,askWall:1,wallSide:weightedImbalance>=12?'BUY':weightedImbalance<=-12?'SELL':'WAIT'
+    },
+    flow:{tradeCount:0,buyVolume:0,sellVolume:0,deltaVolume:0,deltaPct:0,priceChangeBps:Number(priceChangeBps.toFixed(2)),cvdSide:'WAIT'},
+    dynamics:{pressureChange:0,bidDepthChangePct:0,askDepthChangePct:0,acceleration:Number(accel.toFixed(1))},
+    absorption:{side:'WAIT',score:0,reason:'MT5 gold DOM helper',trapDetected:false,followThrough:false},
+    warnings:bookReady?[]:['MT5 DOM unavailable; quote/tick evidence only']
+  };
+  const precursorCount=[
+    Math.abs(weightedImbalance)>=12,
+    Math.abs(Number(tick?.acceleration||0))>=.025,
+    Number(tick?.persistence||0)>=60
+  ].filter(Boolean).length;
+  const motionSide=tick?.side==='BUY'||tick?.side==='SELL'?tick.side:'WAIT';
+  const motion={
+    ok:Boolean(tick?.ok),side:motionSide,
+    stage:String(tick?.stage||'WAIT')==='BUILDING'?'WAVE_FORMING':String(tick?.stage||'WAIT'),
+    score:Number(tick?.score||0),confidence:Number(tick?.confidence||0),
+    components:{compression:Math.abs(Number(tick?.velocity15s||0))<=.45?68:28},
+    diagnostics:{precursorCount,velocity1s:Number(tick?.velocity1s||0),velocity3s:Number(tick?.velocity3s||0),velocity8s:Number(tick?.velocity8s||0),persistence:Number(tick?.persistence||0),bookImbalance:Number(tick?.bookImbalance||0)}
+  };
+  return {liquidity,motion};
 }
 
 function buildRecommendation(master:any,hunt:any,price:number|null,now:number,nextMoveLive?:any){
@@ -144,16 +200,19 @@ export async function GET(request:Request){
     const btcCostAtr=btcAtr&&Number(btcAtr)>0&&btcSpreadUsd>0?Math.max(.04,btcSpreadUsd/Number(btcAtr)+.03):.08;
     const goldLearner=trainScalpLearner(gm.c1,now,goldCostAtr);
     const bitcoinLearner=trainScalpLearner(btc.c1,now,btcCostAtr);
-    const goldAccumulation=buildAccumulationMap(gm.c1,gm.c5,goldPrice,null,now);
+    const mt5GoldTick=getMt5FastSignal(now);
+    const goldTick=mt5GoldTick?.ok?mt5GoldTick:(getServerTickSignal('GOLD',now)||goldWave);
+    const goldMicro=goldMicroFromMt5(goldSnap.mt5,goldTick,quote,goldPrice);
+    const goldLiquidity=goldMicro.liquidity,goldMotion=goldMicro.motion;
+    const goldAccumulation=buildAccumulationMap(gm.c1,gm.c5,goldPrice,goldLiquidity,now);
     const bitcoinAccumulation=buildAccumulationMap(btc.c1,btc.c5,btcPrice,liquidity,now);
-    const goldTick=getServerTickSignal('GOLD',now)||goldWave;
     const motion=getMotionIntelligence(btcPrice,liquidity,btc.c1,now);
     const bitcoinScalpPrior=getNextMoveOutcome('BTC_SCALP_AMBUSH_V8',btcPrice,now);
     const mlPredictionPromise=getMlPrediction(btc.c1,now).catch(()=>({ok:false,status:'UNAVAILABLE',shadow:true} as any));
     const neuralPredictionPromise=getNeuralPrediction(now).catch(()=>({ok:false,status:'UNAVAILABLE',ready:false,side:'WAIT'} as any));
     const bitcoinMlRaw=await mlPredictionPromise;
     const bitcoinTick=getServerTickSignal('BTC',now)||btcWave;
-    const goldScalp=buildScalpFusion(goldScalpRaw,null,null,goldLearner,null,goldPrice,goldAtr,null,goldTick,goldAccumulation,'GOLD');
+    const goldScalp=buildScalpFusion(goldScalpRaw,goldLiquidity,goldMotion,goldLearner,null,goldPrice,goldAtr,null,goldTick,goldAccumulation,'GOLD');
     const bitcoinScalp=buildScalpFusion(bitcoinScalpRaw,liquidity,motion,bitcoinLearner,bitcoinMlRaw,btcPrice,btcAtr,bitcoinScalpPrior,bitcoinTick,bitcoinAccumulation,'BTC');
     const goldBehavior=studyMarketBehavior(gm.c1,gm.c5,now);
     const bitcoinBehavior=studyMarketBehavior(btc.c1,btc.c5,now);
@@ -163,10 +222,13 @@ export async function GET(request:Request){
     const bitcoinStateGraph=buildMarketStateGraph(btc.c1,now);
     const goldNews=buildNewsIntelligence('GOLD',gm.events,now);
     const bitcoinNews=buildNewsIntelligence('BTC',gm.events,now);
-    const gold=aiDecision('GOLD',goldAnalysis,{c1:gm.c1,c5:gm.c5,c15:gm.c15,c60:gm.c60},goldPrice,{quote:quote?.source||gm.priceSource||'unknown',candles:gm.priceSource||'unknown'},now,defaults,null,null,goldScalp,null,goldBehavior);
+    const goldClosedM1=gm.c1.filter((c:any)=>c.time+60000<=now).at(-1)||gm.c1.at(-1)||null;
+    const goldBase=Number(goldClosedM1?.close??goldPrice),goldDelta=Number.isFinite(Number(goldPrice))&&Number.isFinite(goldBase)?Number(goldPrice)-goldBase:0;
+    const goldLivePulse={price:goldPrice,basePrice:goldBase,delta:goldDelta,deltaPct:goldBase?goldDelta/goldBase*100:0,momentum:goldAtr&&goldAtr>0?Math.min(100,Math.round(Math.abs(goldDelta)/goldAtr*100)):0,direction:goldDelta>0?'UP':goldDelta<0?'DOWN':'FLAT',source:quote?.source||gm.priceSource||'unknown',sourceTime:quote?.sourceTime||gm.checkedAt,status:quote?.status||'unknown'};
+    const gold=aiDecision('GOLD',goldAnalysis,{c1:gm.c1,c5:gm.c5,c15:gm.c15,c60:gm.c60},goldPrice,{quote:quote?.source||gm.priceSource||'unknown',candles:gm.priceSource||'unknown'},now,defaults,goldLivePulse,goldLiquidity,goldScalp,goldMotion,goldBehavior);
     const bitcoin=aiDecision('BTC',btcAnalysis,{c1:btc.c1,c5:btc.c5,c15:btc.c15,c60:btc.c60},btcPrice,{quote:liveBtc?.source||btc.source,candles:btc.source},now,defaults,livePulse,liquidity,bitcoinScalp,motion,bitcoinBehavior);
 
-    const goldLearningContext={structure:goldStructure,stateGraph:goldStateGraph,accumulation:goldAccumulation,liquidity:null,motion:null,behavior:goldBehavior,news:goldNews,scalp:goldScalp,decision:gold};
+    const goldLearningContext={structure:goldStructure,stateGraph:goldStateGraph,accumulation:goldAccumulation,liquidity:goldLiquidity,motion:goldMotion,behavior:goldBehavior,news:goldNews,scalp:goldScalp,decision:gold};
     const bitcoinLearningContext={structure:bitcoinStructure,stateGraph:bitcoinStateGraph,accumulation:bitcoinAccumulation,liquidity,motion,behavior:bitcoinBehavior,news:bitcoinNews,scalp:bitcoinScalp,decision:bitcoin};
     const [goldLearning,bitcoinLearning]=await Promise.all([
       getMarketLearningSignal({asset:'GOLD',c1:gm.c1,c5:gm.c5,price:goldPrice,atr:goldAtr,context:goldLearningContext,now}),
@@ -183,7 +245,7 @@ export async function GET(request:Request){
     ]);
     const bitcoinNeural=await neuralPredictionPromise;
     const bitcoinMl={...bitcoinMlRaw,neuralCore:bitcoinNeural};
-    const goldMovement=buildMovementIntelligence('GOLD',{expected:goldExpectedLearning,stateGraph:goldStateGraph,liquidity:null,motion:null,structure:goldStructure,accumulation:goldAccumulation,behavior:goldBehavior,learning:goldLearning,tick:goldTick,scalp:goldScalp,decision:gold,evolution:goldEvolution,news:goldNews,price:goldPrice,atr:goldAtr,now});
+    const goldMovement=buildMovementIntelligence('GOLD',{expected:goldExpectedLearning,stateGraph:goldStateGraph,liquidity:goldLiquidity,motion:goldMotion,structure:goldStructure,accumulation:goldAccumulation,behavior:goldBehavior,learning:goldLearning,tick:goldTick,scalp:goldScalp,decision:gold,evolution:goldEvolution,news:goldNews,price:goldPrice,atr:goldAtr,now});
     const bitcoinMovement=buildMovementIntelligence('BTC',{expected:bitcoinExpectedLearning,stateGraph:bitcoinStateGraph,liquidity,motion,structure:bitcoinStructure,accumulation:bitcoinAccumulation,behavior:bitcoinBehavior,learning:bitcoinLearning,tick:bitcoinTick,scalp:bitcoinScalp,decision:bitcoin,evolution:bitcoinEvolution,news:bitcoinNews,ml:bitcoinMl,price:btcPrice,atr:btcAtr,now});
 
     const goldBrainLearning=getBrainOutcomeLearning({asset:'GOLD',price:goldPrice,now});
