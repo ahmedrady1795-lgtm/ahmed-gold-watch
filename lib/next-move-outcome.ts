@@ -147,6 +147,30 @@ function acc(rows:Recent[]){
   const h=rows.filter(x=>x.outcome==='HIT').length;
   return h/rows.length*100;
 }
+function rowsView(rows:Recent[]){
+  const s=blankStat();
+  for(const r of rows)updateStat(s,r.outcome,r.seconds,r.mfeBps,r.maeBps,r.settledAt);
+  return view(s);
+}
+function groupedRowsView(rows:Recent[],selector:(r:Recent)=>string){
+  const groups:Record<string,Recent[]>={};
+  for(const r of rows){
+    const k=key(selector(r));
+    (groups[k]||=[]).push(r);
+  }
+  return Object.fromEntries(Object.entries(groups).map(([k,v])=>[k,rowsView(v)]));
+}
+function failureStreak(rows:Recent[],predicate:(r:Recent)=>boolean){
+  let streak=0,seen=0;
+  for(let i=rows.length-1;i>=0&&seen<12;i--){
+    const r=rows[i];
+    if(!predicate(r))continue;
+    seen++;
+    if(r.outcome==='FAIL')streak++;
+    else if(r.outcome==='HIT')break;
+  }
+  return streak;
+}
 function chooseThreshold(train:Recent[]){
   const candidates=[20,30,35,40,45,50,55,60,65,70];
   let best={threshold:20,score:-1,accuracy:50,coverage:1,n:train.length};
@@ -226,17 +250,36 @@ function summary(asset:string){
   const bySource=Object.fromEntries(Object.entries(a.bySource).map(([k,v])=>[k,view(v)]));
   const byRegime=Object.fromEntries(Object.entries(a.byRegime).map(([k,v])=>[k,view(v)]));
   const byConfidence=Object.fromEntries(Object.entries(a.byConfidence).map(([k,v])=>[k,view(v)]));
+  const rows=directionalRows(a);
+  const patternRows=rows.filter(r=>String(r.micro?.predatorPattern||''));
+  const byPattern=groupedRowsView(patternRows,r=>String(r.micro?.predatorPattern||'UNKNOWN'));
+  const byPatternRegime=groupedRowsView(patternRows,r=>String(r.micro?.predatorPattern||'UNKNOWN')+'__'+String(r.regime||'UNKNOWN'));
+  const bySourceRegime=groupedRowsView(rows,r=>String(r.source||'UNKNOWN')+'__'+String(r.regime||'UNKNOWN'));
   const directional=global.hits+global.fails;
   const walk=walkForward(a);
   const walkForwardBySource=Object.fromEntries(
     Object.keys(a.bySource||{}).map(source=>[source,walkForward(a,source)])
   );
+  const patternFailureStreaks=Object.fromEntries(
+    Object.keys(byPattern).map(pattern=>[
+      pattern,
+      failureStreak(rows,r=>key(r.micro?.predatorPattern||'UNKNOWN')===pattern)
+    ])
+  );
+  const sourceRegimeFailureStreaks=Object.fromEntries(
+    Object.keys(bySourceRegime).map(sr=>[
+      sr,
+      failureStreak(rows,r=>key(String(r.source||'UNKNOWN')+'__'+String(r.regime||'UNKNOWN'))===sr)
+    ])
+  );
   return {
-    ok:true,version:'next-move-live-v2',asset,
+    ok:true,version:'next-move-live-v3-error-memory',asset,
     global,bySource,byRegime,byConfidence,
+    byPattern,byPatternRegime,bySourceRegime,
+    patternFailureStreaks,sourceRegimeFailureStreaks,
     pending:a.pending.length,recent:a.recent.slice(0,12),
     walkForward:walk,walkForwardBySource,
-    readyForLearning:directional>=50,
+    readyForLearning:directional>=25,
     learningSamples:directional,
     storage:targetFile()
   };
@@ -262,12 +305,16 @@ export function calibrateNextMoveConfidence(nextMove:any,live:any,regime?:string
   const src=statReliability(live?.bySource?.[source]);
   const rg=statReliability(live?.byRegime?.[reg]);
   const bd=statReliability(live?.byConfidence?.[band]);
+  const srKey=key(source+'__'+reg);
+  const sr=statReliability(live?.bySourceRegime?.[srKey]);
+  const srFailureStreak=Number(live?.sourceRegimeFailureStreaks?.[srKey]||0);
 
   const rows=[
     {r:global,w:.24*Math.min(1,global.directional/20)},
     {r:src,w:.36*Math.min(1,src.directional/18)},
-    {r:rg,w:.24*Math.min(1,rg.directional/18)},
-    {r:bd,w:.16*Math.min(1,bd.directional/12)}
+    {r:rg,w:.19*Math.min(1,rg.directional/18)},
+    {r:bd,w:.13*Math.min(1,bd.directional/12)},
+    {r:sr,w:.20*Math.min(1,sr.directional/14)}
   ].filter(x=>x.w>0);
   const wsum=rows.reduce((a,x)=>a+x.w,0);
   const observed=wsum?rows.reduce((a,x)=>a+x.r.effective*x.w,0)/wsum:50;
@@ -310,6 +357,13 @@ export function calibrateNextMoveConfidence(nextMove:any,live:any,regime?:string
     else if(rg.posterior<52)reliabilityAdjustment-=3;
     else if(rg.posterior>=60)reliabilityAdjustment+=1;
   }
+  if(sr.directional>=6){
+    if(sr.posterior<46)reliabilityAdjustment-=10;
+    else if(sr.posterior<50)reliabilityAdjustment-=6;
+    else if(sr.posterior>=60)reliabilityAdjustment+=3;
+  }
+  if(srFailureStreak>=3)reliabilityAdjustment-=10;
+  else if(srFailureStreak===2)reliabilityAdjustment-=5;
   calibrated+=familyAdjustment+reliabilityAdjustment;
 
   const sourceWf=live?.walkForwardBySource?.[source]||null;
@@ -342,6 +396,9 @@ export function calibrateNextMoveConfidence(nextMove:any,live:any,regime?:string
       sourceSamples:src.directional,
       regimeSamples:rg.directional,
       bandSamples:bd.directional,
+      sourceRegimeSamples:sr.directional,
+      sourceRegimePosterior:Number(sr.posterior.toFixed(1)),
+      sourceRegimeFailureStreak:srFailureStreak,
       sourcePosterior:Number(src.posterior.toFixed(1)),
       sourceCoverage:Number((src.coverage*100).toFixed(1)),
       cap:Number(capFromLive.toFixed(1)),
