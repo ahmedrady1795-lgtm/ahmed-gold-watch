@@ -14,7 +14,7 @@ export type MultiBrainCore={
   selector:{buy:number;sell:number;buyShare:number;sellShare:number};
   learnedWeights:Record<BrainName,number>;
   learnedAccuracy:Record<BrainName,number>;
-  calibration:{rawConfidence:number;calibratedConfidence:number;learnedReliability:number;supportSamples:number;cap:number};
+  calibration:{rawConfidence:number;calibratedConfidence:number;learnedReliability:number;supportSamples:number;cap:number;dominantAccuracy:number;qualityReady:boolean};
   reasons:string[];
 };
 
@@ -154,9 +154,14 @@ export function buildMultiBrainCore(asset:string,args:any):MultiBrainCore{
   for(const name of BRAIN_NAMES){
     const learned=brainLearning?.regimes?.[regime]?.[name];
     const mult=cap(Number(learned?.multiplier||1),.58,1.42);
-    learnedWeights[name]=mult;
-    learnedAccuracy[name]=Number(learned?.blendedAccuracy||50);
-    rw[name]*=mult;
+    const learnedAcc=Number(learned?.blendedAccuracy||50);
+    const learnedSamples=Math.max(0,Number(learned?.samples||0));
+    // History quality gate: a large amount of ~coin-flip evidence must not become
+    // "strong" merely because several correlated internal brains agree.
+    const historyFactor=learnedSamples<60?.78:learnedAcc>=58?1.08:learnedAcc>=55?1.00:learnedAcc>=53?.84:learnedAcc>=50?.62:.40;
+    learnedWeights[name]=Number((mult*historyFactor).toFixed(3));
+    learnedAccuracy[name]=learnedAcc;
+    rw[name]*=mult*historyFactor;
   }
   let buy=0,sell=0;
   const contributions:{name:BrainName;side:Side;value:number}[]=[];
@@ -197,11 +202,13 @@ export function buildMultiBrainCore(asset:string,args:any):MultiBrainCore{
   const maturity=Math.min(1,supportSamples/240);
   const shrunkReliability=50+(learnedReliability-50)*maturity;
   const agreementBonus=Math.min(6,Math.max(0,gap-20)*.06+Math.max(0,fastAgreement-2)*1.2);
-  const reliabilityCap=cap(shrunkReliability+10+agreementBonus,42,84);
-  const calibratedBase=rawConfidence*.30+shrunkReliability*.70+agreementBonus;
-  const confidence=Math.round(cap(Math.min(calibratedBase,reliabilityCap),0,88));
-  const strong=Boolean(side!=='WAIT'&&confidence>=56&&gap>=22&&(fastAgreement>=2||totalAgreement>=4));
-  const decisive=Boolean(side!=='WAIT'&&confidence>=68&&gap>=34&&fastAgreement>=3&&supporting.length>=2);
+  const reliabilityCap=cap(shrunkReliability+7+agreementBonus*.55,42,82);
+  const calibratedBase=rawConfidence*.24+shrunkReliability*.76+agreementBonus*.55;
+  const confidence=Math.round(cap(Math.min(calibratedBase,reliabilityCap),0,86));
+  const dominantAccuracy=dominant?Number(learnedAccuracy[dominant]||50):50;
+  const qualityReady=Boolean(supportSamples>=120&&shrunkReliability>=54&&dominantAccuracy>=52);
+  const strong=Boolean(side!=='WAIT'&&qualityReady&&confidence>=58&&gap>=22&&(fastAgreement>=2||totalAgreement>=4));
+  const decisive=Boolean(side!=='WAIT'&&qualityReady&&shrunkReliability>=57&&dominantAccuracy>=55&&confidence>=70&&gap>=34&&fastAgreement>=3&&supporting.length>=2);
 
   const reasons=[
     'Regime '+regime,
@@ -210,13 +217,14 @@ export function buildMultiBrainCore(asset:string,args:any):MultiBrainCore{
     'Agreement fast '+fastAgreement+' · total '+totalAgreement
   ];
   if(dominant)reasons.push('Dominant brain '+dominant+' · learned '+learnedAccuracy[dominant]+'% · weight x'+learnedWeights[dominant].toFixed(2));
-  reasons.push('Calibration v3 · learned reliability '+Math.round(shrunkReliability)+'% · cap '+Math.round(reliabilityCap)+' · support samples '+supportSamples);
-  if(decisive)reasons.push('Decisive multi-brain alignment; stale single-engine conflicts may be overridden');
+  reasons.push('Calibration v4 · learned reliability '+Math.round(shrunkReliability)+'% · dominant '+Math.round(dominantAccuracy)+'% · cap '+Math.round(reliabilityCap)+' · '+(qualityReady?'QUALIFIED':'SHADOW'));
+  if(!qualityReady)reasons.push('Multi-Brain shadow: learned reliability is not strong enough to authorize a production trade');
+  if(decisive)reasons.push('Decisive multi-brain alignment passed learned-reliability gate');
 
   return {
     ok:true,asset,regime,side,confidence,gap:Math.round(gap),strong,decisive,dominantBrain:dominant,
     fastAgreement,totalAgreement,brains,learnedWeights,learnedAccuracy,
-    calibration:{rawConfidence,calibratedConfidence:confidence,learnedReliability:Number(shrunkReliability.toFixed(1)),supportSamples,cap:Number(reliabilityCap.toFixed(1))},
+    calibration:{rawConfidence,calibratedConfidence:confidence,learnedReliability:Number(shrunkReliability.toFixed(1)),supportSamples,cap:Number(reliabilityCap.toFixed(1)),dominantAccuracy:Number(dominantAccuracy.toFixed(1)),qualityReady},
     selector:{buy:Number(buy.toFixed(3)),sell:Number(sell.toFixed(3)),buyShare:Math.round(buyShare),sellShare:Math.round(sellShare)},
     reasons
   };
