@@ -73,7 +73,7 @@ let backgroundCache: Cache<BackgroundPoint[]> | null = null;
 
 const MARKET_TTL_MS = 15_000;
 const BACKGROUND_TTL_MS = 30_000;
-const EXTERNAL_QUOTE_TTL_MS = 1_500;
+const EXTERNAL_QUOTE_TTL_MS = 3_500;
 const MT5_TICK_MAX_AGE_MS = 8_000;
 
 const utc = (s: string) => Date.parse(/[zZ]$|[+-]\d\d:\d\d$/.test(s) ? s : s.replace(' ', 'T') + 'Z');
@@ -177,6 +177,35 @@ async function candlesFromYahoo(interval:'1m'|'5m'|'15m'|'1h'):Promise<Candle[]>
   if((interval==='1m'&&rows.length<80)||(interval!=='1m'&&rows.length<220))throw new Error('yahoo history insufficient');
   return rows;
 }
+async function quoteFromGoldPriceOrg(now:number):Promise<QuoteData>{
+  const data=await getJson('https://data-asg.goldprice.org/dbXRates/USD',{
+    'User-Agent':'Mozilla/5.0 AhmedGoldCommand/1.0',
+    'Accept':'application/json'
+  });
+  const row=Array.isArray(data?.items)?data.items[0]:null,price=num(row?.xauPrice);
+  if(!price||price<=0)throw new Error('invalid GoldPrice.org price');
+  const rawTs=Number(data?.ts??data?.tsj),sourceTime=Number.isFinite(rawTs)&&rawTs>1e12?rawTs:Number.isFinite(rawTs)&&rawTs>1e9?rawTs*1000:null;
+  return{
+    ok:true,symbol:'XAU/USD',price,source:'GoldPrice.org · XAU/USD spot',
+    sourceTime,fetchedAt:now,status:goldStatusFor(sourceTime,now),
+    previousClose:num(row?.xauClose),
+    change:num(row?.chgXau),
+    percentChange:num(row?.pcXau),
+    bid:null,ask:null,spread:null
+  };
+}
+async function quoteFromXaus(now:number):Promise<QuoteData>{
+  const data=await getJson('https://xaus.com/api/v1/spot',{'User-Agent':'Mozilla/5.0 AhmedGoldCommand/1.0','Accept':'application/json'});
+  const price=num(data?.spot_usd_oz??data?.xau?.price);
+  if(!price||price<=0)throw new Error('invalid XAUS.com spot');
+  const raw=String(data?.data_state?.as_of??data?.updated_at??''),parsed=raw?Date.parse(raw):NaN,sourceTime=Number.isFinite(parsed)?parsed:null;
+  const stale=String(data?.data_state?.status||'').toLowerCase();
+  return{
+    ok:true,symbol:'XAU/USD',price,source:'XAUS.com · XAU/USD spot',
+    sourceTime,fetchedAt:now,status:stale==='fresh'?goldStatusFor(sourceTime,now):(goldSessionOpen(now)?'delayed':'closed_or_stale'),
+    previousClose:null,change:null,percentChange:null,bid:null,ask:null,spread:null
+  };
+}
 async function quoteFromFreeGoldApi(now:number):Promise<QuoteData>{const data=await getJson('https://api.gold-api.com/price/XAU'),price=num(data?.price);if(!price||price<=0)throw new Error('invalid Gold-API.com price');const updatedAt=typeof data?.updatedAt==='string'?Date.parse(data.updatedAt):NaN,sourceTime=Number.isFinite(updatedAt)?updatedAt:null;return{ok:true,symbol:'XAU/USD',price,source:'Gold-API.com · مجاني',sourceTime,fetchedAt:now,status:goldStatusFor(sourceTime,now),previousClose:null,change:null,percentChange:null,bid:null,ask:null,spread:null};}
 async function quoteFromGoldApi(apiKey:string,now:number):Promise<QuoteData>{const data=await getJson('https://www.goldapi.io/api/price/XAU/USD',{'x-access-token':apiKey,'Content-Type':'application/json'}),price=num(data?.price);if(!price||price<=0)throw new Error('invalid GoldAPI price');const bid=num(data?.bid),ask=num(data?.ask),sourceTime=sourceTimeMs(data);return{ok:true,symbol:'XAU/USD',price,source:'GoldAPI.io',sourceTime,fetchedAt:now,status:goldStatusFor(sourceTime,now),previousClose:num(data?.prev_close_price),change:num(data?.change??data?.ch),percentChange:num(data?.change_percent??data?.chp),bid,ask,spread:bid!=null&&ask!=null&&ask>=bid?ask-bid:null};}
 async function quoteFromTwelve(apiKey:string,now:number):Promise<QuoteData>{let data=await getJson('https://api.twelvedata.com/quote?symbol=XAU%2FUSD',{Authorization:`apikey ${apiKey}`}),price=num(data?.close??data?.price),sourceTime=sourceTimeMs(data);if(!price||price<=0){data=await getJson('https://api.twelvedata.com/price?symbol=XAU%2FUSD',{Authorization:`apikey ${apiKey}`});price=num(data?.price);sourceTime=sourceTimeMs(data);}if(!price||price<=0)throw new Error('invalid Twelve Data price');return{ok:true,symbol:'XAU/USD',price,source:'Twelve Data',sourceTime,fetchedAt:now,status:goldStatusFor(sourceTime,now),previousClose:num(data?.previous_close),change:num(data?.change),percentChange:num(data?.percent_change),bid:null,ask:null,spread:null};}
@@ -186,7 +215,14 @@ export async function getQuoteData(options:{forceExternal?:boolean}={}):Promise<
   if(!options.forceExternal&&mt5.fresh&&mt5.status){const s=mt5.status,price=s.last&&s.last>0?s.last:(s.bid+s.ask)/2;return{ok:true,symbol:'XAU/USD',price,source:`Exness/MT5 · ${s.symbol}`,sourceTime:s.tickTimeMs,fetchedAt:now,status:'live',previousClose:null,change:null,percentChange:null,bid:s.bid,ask:s.ask,spread:s.ask-s.bid,brokerSymbol:s.symbol,bridgeLatencyMs:s.bridgeLatencyMs??null};}
   if(externalQuoteCache&&now-externalQuoteCache.at<EXTERNAL_QUOTE_TTL_MS)return externalQuoteCache.value;
   const rt=getRuntimeEnv(),goldKey=rt.GOLD_API_KEY||rt.GOLDAPI_API_KEY||rt.GOLDAPI_TOKEN,twelveKey=rt.TWELVE_DATA_API_KEY,massiveKey=rt.MASSIVE_API_KEY||rt.POLYGON_API_KEY,errors:string[]=[];
-  for(const provider of [massiveKey?()=>quoteFromMassive(massiveKey,now):null,twelveKey?()=>quoteFromTwelve(twelveKey,now):null,goldKey?()=>quoteFromGoldApi(goldKey,now):null,()=>quoteFromFreeGoldApi(now)]){if(!provider)continue;try{const value=await provider();externalQuoteCache={at:now,value};return value;}catch(e){errors.push(e instanceof Error?e.message:'provider error');}}
+  for(const provider of [
+    massiveKey?()=>quoteFromMassive(massiveKey,now):null,
+    twelveKey?()=>quoteFromTwelve(twelveKey,now):null,
+    goldKey?()=>quoteFromGoldApi(goldKey,now):null,
+    ()=>quoteFromGoldPriceOrg(now),
+    ()=>quoteFromFreeGoldApi(now),
+    ()=>quoteFromXaus(now)
+  ]){if(!provider)continue;try{const value=await provider();externalQuoteCache={at:now,value};return value;}catch(e){errors.push(e instanceof Error?e.message:'provider error');}}
   if(externalQuoteCache?.value){
     const stale=externalQuoteCache.value;
     return {

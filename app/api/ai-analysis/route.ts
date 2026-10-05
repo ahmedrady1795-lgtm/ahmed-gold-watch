@@ -246,8 +246,8 @@ export async function GET(request:Request){
       quote=browserGold;
       actions.push(browserGold.source);
     }
-    const goldAnchorPrice=Number(quote?.price??gm.c1.at(-1)?.close??NaN);
-    const goldBasis=alignGoldMarketToAnchor(gm,Number.isFinite(goldAnchorPrice)?goldAnchorPrice:null);
+    const goldAnchorPrice=Number(quote?.price??NaN);
+    const goldBasis=alignGoldMarketToAnchor(gm,Number.isFinite(goldAnchorPrice)&&goldAnchorPrice>0?goldAnchorPrice:null);
     gm=goldBasis.market;
     if(goldBasis.aligned)actions.push('مواءمة شموع COMEX proxy مع سعر XAU/USD الفعلي');
     if(!btc?.c1?.length){
