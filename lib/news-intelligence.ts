@@ -42,7 +42,7 @@ function eventScore(e:Event,now:number){
   return imp*35+proximity*.65;
 }
 export function buildNewsIntelligence(asset:Asset,events:Event[],now=Date.now()):NewsIntelligence{
-  const relevant=(events||[]).filter(e=>Number.isFinite(e.time)&&e.time>=now-2*3600000&&e.time<=now+6*3600000).sort((a,b)=>eventScore(b,now)-eventScore(a,now));
+  const relevant=(events||[]).filter(e=>Number.isFinite(e.time)&&e.time>=now-2*3600000&&e.time<=now+10*3600000).sort((a,b)=>eventScore(b,now)-eventScore(a,now));
   const e=relevant[0]||null;
   if(!e)return {ok:true,asset,checkedAt:now,side:'WAIT',confidence:0,risk:8,phase:'CALM',event:null,surprise:null,directional:false,weight:0,reasons:['لا يوجد خبر USD قوي قريب من نافذة الحركة.']};
   const mins=(e.time-now)/60000,importance=Math.max(1,Math.min(3,Number(e.importance)||1));
