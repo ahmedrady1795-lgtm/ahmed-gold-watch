@@ -74,6 +74,7 @@ function AssetCard({x,liveQuote}:any){
             :move.title}
       </strong>
       <p>{zone?.summary||move.detail}</p>
+      {zone?.stability?.locked&&<em className="zone-stability">سيناريو ثابت · {zone.stability.flipsBlocked>0?`تم رفض ${zone.stability.flipsBlocked} انعكاس ضعيف`:'بانتظار كسر المنطقة أو دليل أقوى'}</em>}
       {zone&&<div className="zone-map-mini">
         <div><small>الدعم</small><b>{zoneRange(zone.support)}</b></div>
         <div><small>المقاومة</small><b>{zoneRange(zone.resistance)}</b></div>
