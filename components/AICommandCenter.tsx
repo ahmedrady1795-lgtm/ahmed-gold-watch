@@ -24,10 +24,10 @@ function nextMoveCopy(hunt:any,stateGraph:any){
     first==='SELL'?'الحركة القادمة المرجحة: هبوط':
     'الحركة القادمة المرجحة: تذبذب وانتظار اتجاه أوضح'
   );
-  const h2=hunt?.horizons?.twoMinute?.side||'WAIT',h5=hunt?.horizons?.fiveMinute?.side||'WAIT',h15=hunt?.horizons?.fifteenMinute?.side||'WAIT';
+  const h1=hunt?.horizons?.oneMinute?.side||hunt?.horizons?.twoMinute?.side||'WAIT',h5=hunt?.horizons?.fiveMinute?.side||'WAIT',h15=hunt?.horizons?.fifteenMinute?.side||'WAIT',h30=hunt?.horizons?.thirtyMinute?.side||'WAIT';
   const timing=Number.isFinite(firstHit)&&firstHit>0?'، وأول حركة معتبرة متوقعة خلال نحو '+firstHit.toFixed(1)+' دقيقة':'';
   const phase=understanding?.mode?(' · فهم السوق: '+String(understanding.mode).replaceAll('_',' ')):'';
-  const detail='أول حركة '+moveAr(first)+' بثقة '+confidence+'%'+timing+'، وبعدها '+moveAr(follow)+'. ميل 2د: '+moveAr(h2)+' · 5د: '+moveAr(h5)+' · 15د: '+moveAr(h15)+phase+'.';
+  const detail='أول حركة '+moveAr(first)+' بثقة '+confidence+'%'+timing+'. 1د: '+moveAr(h1)+' · 5د: '+moveAr(h5)+' · 15د: '+moveAr(h15)+' · 30د: '+moveAr(h30)+phase+'.';
   return {title,detail,tone:first==='BUY'?'green':first==='SELL'?'red':'amber'};
 }
 
@@ -267,9 +267,10 @@ function AssetCard({x,fast,liveQuote}:any){
     </div>}
 
     {hunt&&<div className="forecast-horizons compact-forecast">
-      <div><small>2m</small><strong className={hunt.horizons?.twoMinute?.side==='BUY'?'green':hunt.horizons?.twoMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.twoMinute?.side)} {hunt.horizons?.twoMinute?.strength||0}%</strong><span>≈ {fmt(hunt.movementStations?.[0]?.price??hunt.path?.firstLeg,2)}</span></div>
-      <div><small>5m</small><strong className={hunt.horizons?.fiveMinute?.side==='BUY'?'green':hunt.horizons?.fiveMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fiveMinute?.side)} {hunt.horizons?.fiveMinute?.strength||0}%</strong><span>≈ {fmt(hunt.movementStations?.[1]?.price??hunt.path?.secondLeg,2)}</span></div>
+      <div><small>1m</small><strong className={hunt.horizons?.oneMinute?.side==='BUY'?'green':hunt.horizons?.oneMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.oneMinute?.side)} {hunt.horizons?.oneMinute?.strength||0}%</strong><span>≈ {fmt(hunt.quickSignalTargets?.oneMinute?.price,2)}</span></div>
+      <div><small>5m</small><strong className={hunt.horizons?.fiveMinute?.side==='BUY'?'green':hunt.horizons?.fiveMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fiveMinute?.side)} {hunt.horizons?.fiveMinute?.strength||0}%</strong><span>≈ {fmt(hunt.quickSignalTargets?.fiveMinute?.price??hunt.movementStations?.[1]?.price??hunt.path?.secondLeg,2)}</span></div>
       <div><small>15m</small><strong className={hunt.horizons?.fifteenMinute?.side==='BUY'?'green':hunt.horizons?.fifteenMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.fifteenMinute?.side)} {hunt.horizons?.fifteenMinute?.strength||0}%</strong><span>≈ {fmt(hunt.fifteenMinuteTarget?.price,2)}</span></div>
+      <div><small>30m</small><strong className={hunt.horizons?.thirtyMinute?.side==='BUY'?'green':hunt.horizons?.thirtyMinute?.side==='SELL'?'red':'amber'}>{sideAr(hunt.horizons?.thirtyMinute?.side)} {hunt.horizons?.thirtyMinute?.strength||0}%</strong><span>≈ {fmt(hunt.thirtyMinuteTarget?.price,2)}</span></div>
     </div>}
 
     {hunt&&<details className="advanced-details compact-details">
