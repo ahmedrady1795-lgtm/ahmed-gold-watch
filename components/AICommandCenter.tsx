@@ -13,6 +13,7 @@ const timeLeft=(ts:any,now:number)=>{
 const moveAr=(s:any)=>s==='BUY'?'صعود':s==='SELL'?'هبوط':'تذبذب';
 const zoneRange=(z:any)=>z&&Number.isFinite(Number(z.low))&&Number.isFinite(Number(z.high))?`${fmt(z.low,2)}–${fmt(z.high,2)}`:'—';
 const zoneName=(z:any)=>String(z?.kind||'').includes('DEMAND')||z?.side==='BUY'?'دعم/طلب':String(z?.kind||'').includes('SUPPLY')||z?.side==='SELL'?'مقاومة/عرض':'منطقة';
+const phaseAr=(p:any)=>p==='ACCUMULATING'?'تجميع':p==='DISTRIBUTING'?'تصريف':p==='MARKUP_READY'?'تجميع جاهز للصعود':p==='MARKDOWN_READY'?'تصريف جاهز للهبوط':'توازن';
 function nextMoveCopy(hunt:any,stateGraph:any){
   if(!hunt&&!stateGraph)return {title:'لا توجد حركة مؤكدة حاليًا',detail:'النواة تنتظر بيانات أو توافقًا أوضح قبل ترجيح الحركة القادمة.',tone:'amber'};
   const understanding=hunt?.marketUnderstanding;
@@ -72,7 +73,9 @@ function AssetCard({x,liveQuote}:any){
       <span>توقع الحركة القادمة · مناطق</span>
       <strong className={forecastSide==='BUY'?'green':forecastSide==='SELL'?'red':'amber'}>
         {path?.side&&path.side!=='WAIT'
-          ?`${moveAr(path.side)} نحو ${zoneName(path.destination)} ${zoneRange(path.destination)} · ${Math.round(Number(path.confidence||0))}%`
+          ?(path.destination
+            ?`${moveAr(path.side)} نحو ${zoneName(path.destination)} ${zoneRange(path.destination)} · ${Math.round(Number(path.confidence||0))}%`
+            :`ميل ${moveAr(path.side)} · ${Math.round(Number(path.confidence||0))}% · لا توجد سيولة مؤكدة أمام السعر`)
           :zone
             ?(zone.decisionReady===false||zone.side==='WAIT'
               ?'بين مناطق القرار · الحركة متوازنة'
@@ -92,6 +95,7 @@ function AssetCard({x,liveQuote}:any){
         <div><small>منطقة الارتداد</small><b>{zoneRange(path?.reboundZone||zone.origin)}</b></div>
         <div><small>سيولة أعلى</small><b>{zoneRange(path?.upperLiquidity)}</b></div>
         <div><small>سيولة أسفل</small><b>{zoneRange(path?.lowerLiquidity)}</b></div>
+        <div><small>الحالة الهيكلية</small><b>{phaseAr(path?.phase||zone.phase)}</b></div>
       </div>}
     </div>
 
