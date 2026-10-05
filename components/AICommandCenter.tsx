@@ -11,6 +11,8 @@ const timeLeft=(ts:any,now:number)=>{
   return h>0?`بعد ${h}س ${mm}د`:`بعد ${Math.max(1,mm)}د`;
 };
 const moveAr=(s:any)=>s==='BUY'?'صعود':s==='SELL'?'هبوط':'تذبذب';
+const zoneRange=(z:any)=>z&&Number.isFinite(Number(z.low))&&Number.isFinite(Number(z.high))?`${fmt(z.low,2)}–${fmt(z.high,2)}`:'—';
+const zoneName=(z:any)=>String(z?.kind||'').includes('DEMAND')||z?.side==='BUY'?'دعم/طلب':String(z?.kind||'').includes('SUPPLY')||z?.side==='SELL'?'مقاومة/عرض':'منطقة';
 function nextMoveCopy(hunt:any,stateGraph:any){
   if(!hunt&&!stateGraph)return {title:'لا توجد حركة مؤكدة حاليًا',detail:'النواة تنتظر بيانات أو توافقًا أوضح قبل ترجيح الحركة القادمة.',tone:'amber'};
   const understanding=hunt?.marketUnderstanding;
@@ -37,12 +39,14 @@ function AssetCard({x,liveQuote}:any){
   const core1=goldCore?.horizons?.oneMinute,core5=goldCore?.horizons?.fiveMinute;
   const h1=core1||hunt?.horizons?.oneMinute||hunt?.horizons?.twoMinute||{};
   const h5=core5||hunt?.horizons?.fiveMinute||{};
-  const forecastSide=goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT';
+  const zone=hunt?.zoneForecast||null;
+  const forecastSide=zone?.side&&zone.side!=='WAIT'?zone.side:(goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT');
   const displaySide=recommendation?.active?recommendation.action:forecastSide;
   const buy=displaySide==='BUY',sell=displaySide==='SELL';
   const price=x.asset==='GOLD'&&liveQuote?.status==='live'?liveQuote.price:(x.livePulse?.price??x.price);
   const move=nextMoveCopy(hunt,x.stateGraph);
-  const target=recommendation?.targets?.scalp??recommendation?.targets?.oneMinute??hunt?.quickSignalTargets?.oneMinute?.price??null;
+  const structuralTarget=zone?.target?.mid??null;
+  const target=structuralTarget??recommendation?.targets?.scalp??recommendation?.targets?.oneMinute??hunt?.quickSignalTargets?.oneMinute?.price??null;
   const invalid=recommendation?.invalidation??hunt?.invalidation??null;
   const conf=recommendation?.active?calibrated(recommendation.confidence):calibrated(goldCore?.confidence??hunt?.nextMove?.confidence??hunt?.confidence??0);
   const scalpNext=x.scalp?.nextPrice||x.scalp?.fusionV8?.nextPrice||{};
@@ -62,19 +66,27 @@ function AssetCard({x,liveQuote}:any){
       <div><small>السكالب المتوقع</small><strong className={scalpSide==='BUY'?'green':scalpSide==='SELL'?'red':'amber'}>{fmt(scalpPrice,2)}</strong></div>
     </div>
 
-    <div className="next-move-copy primary-move">
-      <span>توقع الحركة القادمة</span>
-      <strong className={move.tone}>{forecastPrice1!=null?('≈ '+fmt(forecastPrice1,2)):move.title}</strong>
-      <p>{move.detail}{forecastPrice5!=null?' · هدف 5د ≈ '+fmt(forecastPrice5,2):''}</p>
+    <div className="next-move-copy primary-move zone-primary">
+      <span>توقع الحركة القادمة · مناطق</span>
+      <strong className={forecastSide==='BUY'?'green':forecastSide==='SELL'?'red':'amber'}>
+        {zone?.target
+          ?`${moveAr(zone.side)} نحو ${zoneName(zone.target)} ${zoneRange(zone.target)}`
+          :zone?.origin
+            ?`${zone.setup||'تفاعل'} عند ${zoneRange(zone.origin)}`
+            :move.title}
+      </strong>
+      <p>{zone?.summary||move.detail}</p>
+      {zone&&<div className="zone-map-mini">
+        <div><small>الدعم</small><b>{zoneRange(zone.support)}</b></div>
+        <div><small>المقاومة</small><b>{zoneRange(zone.resistance)}</b></div>
+        <div><small>السيولة/الهدف</small><b>{zoneRange(zone.target)}</b></div>
+      </div>}
     </div>
 
-    {predator?.ok&&<div className="forecast-horizons decision-horizons">
-      <div><small>30ث المتوقع</small><strong className={predator.horizons.thirtySeconds.side==='BUY'?'green':predator.horizons.thirtySeconds.side==='SELL'?'red':'amber'}>{fmt(predator.horizons.thirtySeconds.price,2)}</strong><span>{predator.horizons.thirtySeconds.low}–{predator.horizons.thirtySeconds.high}</span></div>
-      <div><small>3د المتوقع</small><strong className={predator.horizons.threeMinutes.side==='BUY'?'green':predator.horizons.threeMinutes.side==='SELL'?'red':'amber'}>{fmt(predator.horizons.threeMinutes.price,2)}</strong><span>{predator.horizons.threeMinutes.low}–{predator.horizons.threeMinutes.high}</span></div>
-    </div>}
-    <div className="forecast-horizons decision-horizons">
-      <div><small>M1 المتوقع</small><strong className={h1.side==='BUY'?'green':h1.side==='SELL'?'red':'amber'}>{fmt(forecastPrice1,2)}</strong><span>{calibrated(h1.confidence??h1.strength)}%</span></div>
-      <div><small>M5 المتوقع</small><strong className={h5.side==='BUY'?'green':h5.side==='SELL'?'red':'amber'}>{fmt(forecastPrice5,2)}</strong><span>{calibrated(h5.confidence??h5.strength)}%</span></div>
+    <div className="forecast-horizons decision-horizons direction-only">
+      {predator?.ok&&<div><small>تأكيد 30ث</small><strong className={predator.horizons.thirtySeconds.side==='BUY'?'green':predator.horizons.thirtySeconds.side==='SELL'?'red':'amber'}>{moveAr(predator.horizons.thirtySeconds.side)}</strong><span>{calibrated(predator.horizons.thirtySeconds.confidence??predator.horizons.thirtySeconds.strength)}%</span></div>}
+      <div><small>اتجاه M1</small><strong className={h1.side==='BUY'?'green':h1.side==='SELL'?'red':'amber'}>{moveAr(h1.side)}</strong><span>{calibrated(h1.confidence??h1.strength)}%</span></div>
+      <div><small>اتجاه M5</small><strong className={h5.side==='BUY'?'green':h5.side==='SELL'?'red':'amber'}>{moveAr(h5.side)}</strong><span>{calibrated(h5.confidence??h5.strength)}%</span></div>
     </div>
 
     {goldCore?.ok&&<div className="gold-risk-line">
