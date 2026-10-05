@@ -301,12 +301,18 @@ function buildZoneForecast(args:{
   ].filter(Boolean);
   const familySupport=pathSide==='WAIT'?0:evidenceFamilies.filter(x=>x===pathSide).length;
   const familyOpposition=pathSide==='WAIT'?0:evidenceFamilies.filter(x=>x!==pathSide).length;
-  const pathConfidence=Math.round(cap(
-    primaryProbability*.62+destinationQuality*.13+Math.max(m1Strength,m5Strength)*.08+
-    familySupport*2.2-familyOpposition*2.7+(pathSide===accSide&&accSide!=='WAIT'?3:0),
-    28,86
-  ));
   const uncertainty=Math.round(cap(100-Math.abs(upProbability-downProbability),12,100));
+  const conviction:'STRONG'|'MODERATE'|'WEAK'=primaryProbability>=64&&uncertainty<=72
+    ?'STRONG'
+    :primaryProbability>=57&&uncertainty<=86
+      ?'MODERATE'
+      :'WEAK';
+  const uncertaintyPenalty=Math.max(0,(uncertainty-55)*.16);
+  const pathConfidence=Math.round(cap(
+    primaryProbability+destinationQuality*.05+familySupport*1.2-familyOpposition*1.7+
+    (pathSide===accSide&&accSide!=='WAIT'?2:0)-uncertaintyPenalty,
+    30,84
+  ));
   const pathReason=[
     pathSide==='BUY'
       ?(phase==='ACCUMULATING'||phase==='MARKUP_READY'?'تجميع/ضغط صاعد':'ضغط الحركة يميل للصعود')
@@ -321,6 +327,8 @@ function buildZoneForecast(args:{
     version:'FORECAST_AI_V3',
     side:pathSide,
     confidence:pathConfidence,
+    conviction,
+    clarity:Math.max(0,100-uncertainty),
     rawProbability:Number(primaryProbability.toFixed(1)),
     probabilities:{up:Number(upProbability.toFixed(1)),down:Number(downProbability.toFixed(1)),uncertainty},
     destination:pathDestination,
@@ -350,11 +358,15 @@ function buildZoneForecast(args:{
     downScore:Number(downScore.toFixed(1)),
     phase,
     reason:pathReason,
-    scenario:pathSide==='BUY'
-      ?(pathDestination?'السيناريو الأساسي: صعود نحو سيولة/مقاومة '+fmtZone(pathDestination.low,pathDestination.high):'السيناريو الأساسي صاعد لكن الوجهة الهيكلية غير مؤكدة')
-      :pathSide==='SELL'
-        ?(pathDestination?'السيناريو الأساسي: هبوط نحو دعم/سيولة '+fmtZone(pathDestination.low,pathDestination.high):'السيناريو الأساسي هابط لكن الوجهة الهيكلية غير مؤكدة')
-        :'لا يوجد مسار مهيمن؛ احتمالات الصعود والهبوط متقاربة'
+    scenario:pathSide==='WAIT'
+      ?'لا يوجد مسار مهيمن؛ احتمالات الصعود والهبوط متقاربة'
+      :conviction==='WEAK'
+        ?('ميل '+(pathSide==='BUY'?'صاعد':'هابط')+' ضعيف'+(pathDestination?' نحو '+fmtZone(pathDestination.low,pathDestination.high):'')+' · الاحتمالات متقاربة')
+        :conviction==='STRONG'
+          ?('سيناريو '+(pathSide==='BUY'?'صاعد':'هابط')+' قوي'+(pathDestination?' نحو '+fmtZone(pathDestination.low,pathDestination.high):''))
+          :(pathSide==='BUY'
+            ?(pathDestination?'مرجح صعود نحو سيولة/مقاومة '+fmtZone(pathDestination.low,pathDestination.high):'ميل صاعد لكن الوجهة الهيكلية غير مؤكدة')
+            :(pathDestination?'مرجح هبوط نحو دعم/سيولة '+fmtZone(pathDestination.low,pathDestination.high):'ميل هابط لكن الوجهة الهيكلية غير مؤكدة'))
   };
   const targetStrength=Number(target?.strength||0),originStrength=Number(origin?.strength||0);
   const zoneQuality=Math.max(targetStrength,originStrength,Number(support?.strength||0),Number(resistance?.strength||0));

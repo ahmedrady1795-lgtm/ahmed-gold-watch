@@ -139,6 +139,10 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
   else if(streak===3)confidence-=8;
   else if(streak===2)confidence-=4;
   if(gn>=12&&Number(g.posteriorAccuracy||50)<48)confidence-=5;
+  const primaryProbability=Math.max(Number(pathForecast?.probabilities?.up||0),Number(pathForecast?.probabilities?.down||0),Number(pathForecast?.rawProbability||0));
+  if(pathForecast?.conviction==='WEAK'||primaryProbability<55){
+    confidence=Math.min(confidence,Math.round(cap(primaryProbability,45,55)));
+  }
   confidence=Math.round(cap(confidence,24,84));
   return {
     ...pathForecast,
@@ -163,7 +167,8 @@ export function recordStructuralPathOutcome(args:{
   const low=Number(d.low),high=Number(d.high);
   if(!Number.isFinite(low)||!Number.isFinite(high)||high<low)return {...summary(args.asset),recorded:false};
   const confidence=Number(pf.confidence||0);
-  if(confidence<30)return {...summary(args.asset),recorded:false};
+  const primaryProbability=Math.max(Number(pf?.probabilities?.up||0),Number(pf?.probabilities?.down||0),Number(pf?.rawProbability||0));
+  if(confidence<30||pf?.conviction==='WEAK'||primaryProbability<55)return {...summary(args.asset),recorded:false,reason:'weak_or_ambiguous_path'};
   const a=ensure(args.asset),distanceAtr=Math.abs(Number(d.mid??((low+high)/2))-price)/Math.max(1e-9,atr||price*.001);
   const horizonMs=distanceAtr<=.6?180000:distanceAtr<=1.2?360000:720000;
   const bucket=Math.floor(now/60000);
