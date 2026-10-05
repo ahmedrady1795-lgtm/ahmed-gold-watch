@@ -7,6 +7,11 @@ type Horizon={side:Side;buy:number;sell:number;strength:number;gap:number};
 const memory=new Map<string,ForecastSample[]>();
 type ZoneCommit={forecast:any;side:Side;at:number;lastConfirmedAt:number;price:number;atr:number;flipsBlocked:number};
 const zoneCommitMemory=new Map<string,ZoneCommit>();
+type PathCommit={
+  path:any;side:'BUY'|'SELL';at:number;lastConfirmedAt:number;anchor:number;atr:number;
+  pendingSide:Side;pendingSince:number;pendingCount:number;
+};
+const pathCommitMemory=new Map<string,PathCommit>();
 type LiveFailureGuard={side:Side;anchor:number;atr:number;at:number;blockedUntil:number;failures:number};
 const liveFailureGuards=new Map<string,LiveFailureGuard>();
 const cap=(n:number,min=0,max=92)=>Math.max(min,Math.min(max,n));
@@ -239,48 +244,81 @@ function buildZoneForecast(args:{
   const upperDestination=upperLiquidity||upperFallback;
   const lowerDestination=lowerLiquidity||lowerFallback;
 
-  let upScore=0,downScore=0;
-  const vote=(s:Side,pts:number)=>{if(s==='BUY')upScore+=Math.max(0,pts);else if(s==='SELL')downScore+=Math.max(0,pts);};
-  vote(m1,m1Strength*.46);
-  vote(m5,m5Strength*.38);
-  vote(proposed,Number(args.confidence||0)*.30);
-  vote(accSide,readiness*.34);
-  if(mlStrength>=48)vote(mlSide,mlStrength*(precisionGuard?.10:.18));
-  if(learnedStrength>=48)vote(learnedSide,learnedStrength*.17);
-  if(graphStrength>=50)vote(graphSide,graphStrength*.14);
-  if(phase==='ACCUMULATING')upScore+=10;
-  if(phase==='MARKUP_READY')upScore+=18;
-  if(phase==='DISTRIBUTING')downScore+=10;
-  if(phase==='MARKDOWN_READY')downScore+=18;
-  if(demandTrigger)upScore+=insideDemand?20:15;
-  if(supplyTrigger)downScore+=insideSupply?20:15;
-  if(Boolean(acc?.absorptionConfirmed)){
-    if(accSide==='BUY')upScore+=8;
-    if(accSide==='SELL')downScore+=8;
-  }
+  // Liquidity-first path model: the destination and reaction structure choose the route.
+  // Fast indicators can confirm or weaken that route, but they are not allowed to invent it.
   const attraction=(z:any)=>{
     if(!z)return 0;
     const d=Math.max(0,Number(z.distanceAtr||0));
-    return Math.max(0,Math.min(28,Number(z.strength||0)*.20+Number(z.liquidityScore||0)*.10+Math.max(0,14-d*4)));
+    const strength=Math.max(0,Number(z.strength||0));
+    const liq=Math.max(0,Number(z.liquidityScore||0));
+    const touches=Math.max(0,Number(z.touches||0));
+    const rejections=Math.max(0,Number(z.rejections||0));
+    const proximity=Math.max(0,34-Math.min(34,d*12));
+    const history=Math.min(14,touches*1.5+rejections*3);
+    const syntheticPenalty=String(z.kind||'').includes('RANGE_LIQUIDITY')?4:0;
+    return cap(strength*.34+liq*.20+proximity+history-syntheticPenalty,0,86);
   };
-  upScore+=attraction(upperDestination);
-  downScore+=attraction(lowerDestination);
-
-  const pathDiff=upScore-downScore;
   const directionalUpper=upperDestination||(resistance&&Number(resistance.mid)>p?resistance:null);
   const directionalLower=lowerDestination||(support&&Number(support.mid)<p?support:null);
-  const prior=20;
+  const upperAttraction=attraction(directionalUpper);
+  const lowerAttraction=attraction(directionalLower);
+  const liquidityGap=Math.abs(upperAttraction-lowerAttraction);
+  const liquiditySide:Side=upperAttraction-lowerAttraction>=9?'BUY':lowerAttraction-upperAttraction>=9?'SELL':'WAIT';
+
+  let upScore=upperAttraction*1.18,downScore=lowerAttraction*1.18;
+  const vote=(s:Side,pts:number)=>{if(s==='BUY')upScore+=Math.max(0,pts);else if(s==='SELL')downScore+=Math.max(0,pts);};
+
+  // Structural context has meaningful weight.
+  if(phase==='ACCUMULATING')upScore+=8;
+  if(phase==='MARKUP_READY')upScore+=16;
+  if(phase==='DISTRIBUTING')downScore+=8;
+  if(phase==='MARKDOWN_READY')downScore+=16;
+  if(demandTrigger)upScore+=insideDemand?14:10;
+  if(supplyTrigger)downScore+=insideSupply?14:10;
+  vote(accSide,readiness*.18);
+  if(Boolean(acc?.absorptionConfirmed))vote(accSide,8);
+
+  // Confirmation layer only. These inputs cannot create a path without a liquidity destination.
+  vote(m1,m1Strength*.12);
+  vote(m5,m5Strength*.15);
+  vote(proposed,Number(args.confidence||0)*.08);
+  if(mlStrength>=52)vote(mlSide,mlStrength*(precisionGuard?.04:.07));
+  if(learnedStrength>=52)vote(learnedSide,learnedStrength*.07);
+  if(graphStrength>=54)vote(graphSide,graphStrength*.06);
+
+  if(!directionalUpper)upScore*=.28;
+  if(!directionalLower)downScore*=.28;
+
+  const pathDiff=upScore-downScore;
+  const structuralGap=Math.abs(pathDiff);
+  const prior=14;
   const probabilityTotal=Math.max(1,upScore+downScore+prior*2);
   let upProbability=(upScore+prior)/probabilityTotal*100;
   let downProbability=(downScore+prior)/probabilityTotal*100;
-  if(horizonsConflict){upProbability=50+(upProbability-50)*.82;downProbability=100-upProbability;}
-  if(precisionGuard){upProbability=50+(upProbability-50)*.86;downProbability=100-upProbability;}
-  let pathSide:Side=upProbability>=52?'BUY':downProbability>=52?'SELL':'WAIT';
-  if(pathSide==='WAIT'){
-    const upD=Number(directionalUpper?.distanceAtr),downD=Number(directionalLower?.distanceAtr);
-    if(Number.isFinite(upD)&&Number.isFinite(downD)&&Math.abs(upD-downD)>=.22)pathSide=upD<downD?'BUY':'SELL';
-    else if(proposed!=='WAIT'&&Number(args.confidence||0)>=46)pathSide=proposed;
+  if(horizonsConflict){upProbability=50+(upProbability-50)*.90;downProbability=100-upProbability;}
+  if(precisionGuard){upProbability=50+(upProbability-50)*.92;downProbability=100-upProbability;}
+
+  const dominantSide:Side=upProbability>=downProbability?'BUY':'SELL';
+  const dominantProbability=Math.max(upProbability,downProbability);
+  const dominantDestination=dominantSide==='BUY'?directionalUpper:directionalLower;
+  let pathSide:Side='WAIT';
+
+  // A directional forecast now needs an actual liquidity/structure destination.
+  // 52/48 is no longer a forecast; it is treated as balance.
+  if(liquiditySide!=='WAIT'){
+    const liqDestination=liquiditySide==='BUY'?directionalUpper:directionalLower;
+    const liqProbability=liquiditySide==='BUY'?upProbability:downProbability;
+    if(liqDestination&&(liqProbability>=55||liquidityGap>=16)&&structuralGap>=7)pathSide=liquiditySide;
   }
+  if(pathSide==='WAIT'&&dominantDestination&&dominantProbability>=61&&structuralGap>=12){
+    pathSide=dominantSide;
+  }
+  if(pathSide==='WAIT'&&accSide!=='WAIT'&&readiness>=68){
+    const accDestination=accSide==='BUY'?directionalUpper:directionalLower;
+    const accProbability=accSide==='BUY'?upProbability:downProbability;
+    if(accDestination&&accProbability>=58)pathSide=accSide;
+  }
+
   const pathDestination=pathSide==='BUY'?directionalUpper:pathSide==='SELL'?directionalLower:null;
   const alternateSide:Side=pathSide==='BUY'?'SELL':pathSide==='SELL'?'BUY':'WAIT';
   const alternateDestination=alternateSide==='BUY'?directionalUpper:alternateSide==='SELL'?directionalLower:null;
@@ -297,34 +335,38 @@ function buildZoneForecast(args:{
   const destinationQuality=Number(pathDestination?.strength||0);
   const evidenceFamilies=[
     m1!=='WAIT'?m1:null,m5!=='WAIT'?m5:null,proposed!=='WAIT'?proposed:null,
-    accSide!=='WAIT'?accSide:null,mlStrength>=48?mlSide:null,learnedStrength>=48?learnedSide:null,graphStrength>=50?graphSide:null
+    accSide!=='WAIT'?accSide:null,mlStrength>=52?mlSide:null,learnedStrength>=52?learnedSide:null,graphStrength>=54?graphSide:null
   ].filter(Boolean);
   const familySupport=pathSide==='WAIT'?0:evidenceFamilies.filter(x=>x===pathSide).length;
   const familyOpposition=pathSide==='WAIT'?0:evidenceFamilies.filter(x=>x!==pathSide).length;
-  const uncertainty=Math.round(cap(100-Math.abs(upProbability-downProbability),12,100));
-  const conviction:'STRONG'|'MODERATE'|'WEAK'=primaryProbability>=64&&uncertainty<=72
+  const probabilityGap=Math.abs(upProbability-downProbability);
+  const uncertainty=Math.round(cap(100-probabilityGap,12,100));
+  const conviction:'STRONG'|'MODERATE'|'WEAK'=pathSide!=='WAIT'&&primaryProbability>=67&&probabilityGap>=22&&liquidityGap>=12
     ?'STRONG'
-    :primaryProbability>=57&&uncertainty<=86
+    :pathSide!=='WAIT'&&primaryProbability>=58&&probabilityGap>=12
       ?'MODERATE'
       :'WEAK';
-  const uncertaintyPenalty=Math.max(0,(uncertainty-55)*.16);
-  const pathConfidence=Math.round(cap(
-    primaryProbability+destinationQuality*.05+familySupport*1.2-familyOpposition*1.7+
-    (pathSide===accSide&&accSide!=='WAIT'?2:0)-uncertaintyPenalty,
-    30,84
-  ));
+  const uncertaintyPenalty=Math.max(0,(uncertainty-55)*.13);
+  const pathConfidence=pathSide==='WAIT'
+    ?Math.round(cap(38-probabilityGap*.25,18,42))
+    :Math.round(cap(
+      primaryProbability+destinationQuality*.06+Math.min(8,liquidityGap*.18)+familySupport*.8-familyOpposition*1.2+
+      (pathSide===accSide&&accSide!=='WAIT'?2:0)-uncertaintyPenalty,
+      38,86
+    ));
   const pathReason=[
     pathSide==='BUY'
-      ?(phase==='ACCUMULATING'||phase==='MARKUP_READY'?'تجميع/ضغط صاعد':'ضغط الحركة يميل للصعود')
+      ?'مغناطيس السيولة الأقوى أعلى السعر'
       :pathSide==='SELL'
-        ?(phase==='DISTRIBUTING'||phase==='MARKDOWN_READY'?'تصريف/ضغط هابط':'ضغط الحركة يميل للهبوط')
-        :'توازن بين المسارين',
+        ?'مغناطيس السيولة الأقوى أسفل السعر'
+        :'السيولة متقاربة؛ لا يوجد مغناطيس مهيمن',
     pathDestination?('الوجهة الأساسية '+fmtZone(pathDestination.low,pathDestination.high)):'',
-    pathRebound?('ارتداد محتمل '+fmtZone(pathRebound.low,pathRebound.high)):'',
+    pathRebound?('منطقة رد الفعل '+fmtZone(pathRebound.low,pathRebound.high)):'',
+    ('جذب أعلى '+upperAttraction.toFixed(0)+' / أسفل '+lowerAttraction.toFixed(0)),
     invalidationPrice?('إبطال المسار قرب '+invalidationPrice.toFixed(2)):''
   ].filter(Boolean).join(' · ');
   const pathForecast={
-    version:'FORECAST_AI_V3',
+    version:'FORECAST_AI_V4_LIQUIDITY',
     side:pathSide,
     confidence:pathConfidence,
     conviction,
@@ -352,6 +394,7 @@ function buildZoneForecast(args:{
       learned:{side:learnedSide,strength:learnedStrength,used:learnedStrength>=48},
       graph:{side:graphSide,strength:graphStrength,used:graphStrength>=50},
       accumulation:{side:accSide,readiness},
+      liquidity:{driver:'LIQUIDITY_FIRST',side:liquiditySide,upperAttraction:Number(upperAttraction.toFixed(1)),lowerAttraction:Number(lowerAttraction.toFixed(1)),gap:Number(liquidityGap.toFixed(1)),structuralGap:Number(structuralGap.toFixed(1))},
       precisionGuard
     },
     upScore:Number(upScore.toFixed(1)),
@@ -402,6 +445,109 @@ function buildZoneForecast(args:{
     source:'STRUCTURAL_ZONE_MAP_V2'
   };
 }
+function stabilizeStructuralPath(asset:string,current:any,price:number,atr:number,now:number){
+  if(!current)return current;
+  const key=String(asset||'ASSET').toUpperCase(),p=Number(price),a=Math.max(1e-9,Number(atr));
+  if(!Number.isFinite(p)||p<=0||!Number.isFinite(a)||a<=0)return current;
+
+  const side:Side=current?.side||'WAIT';
+  const confidence=Number(current?.confidence||0);
+  const up=Number(current?.probabilities?.up||50),down=Number(current?.probabilities?.down||50);
+  const probabilityGap=Math.abs(up-down);
+  const liqGap=Math.abs(
+    Number(current?.evidence?.liquidity?.upperAttraction||0)-
+    Number(current?.evidence?.liquidity?.lowerAttraction||0)
+  );
+  const hasDestination=Boolean(current?.destination&&Number.isFinite(Number(current.destination.mid)));
+  const valid=Boolean(
+    (side==='BUY'||side==='SELL')&&hasDestination&&confidence>=46&&
+    (probabilityGap>=8||liqGap>=12)
+  );
+
+  let prev=pathCommitMemory.get(key);
+  const targetReached=(x:PathCommit)=>{
+    const mid=Number(x.path?.destination?.mid);
+    if(!Number.isFinite(mid))return false;
+    return x.side==='BUY'?p>=mid:p<=mid;
+  };
+  const invalidated=(x:PathCommit)=>{
+    const inv=Number(x.path?.invalidation?.price);
+    if(!Number.isFinite(inv)||inv<=0)return false;
+    const pad=a*.04;
+    return x.side==='BUY'?p<inv-pad:p>inv+pad;
+  };
+
+  if(prev&&(now-prev.lastConfirmedAt>(key==='GOLD'?240000:180000)||targetReached(prev)||invalidated(prev))){
+    pathCommitMemory.delete(key);prev=undefined;
+  }
+
+  if(!prev){
+    if(valid){
+      const locked={...current,stability:{locked:true,reason:'LIQUIDITY_PATH_ACQUIRED',ageSeconds:0,pendingSide:'WAIT',pendingSeconds:0}};
+      pathCommitMemory.set(key,{path:locked,side:side as 'BUY'|'SELL',at:now,lastConfirmedAt:now,anchor:p,atr:a,pendingSide:'WAIT',pendingSince:0,pendingCount:0});
+      return locked;
+    }
+    return {...current,side:'WAIT',confidence:Math.min(42,confidence),conviction:'WEAK',stability:{locked:false,reason:'NO_LIQUIDITY_DOMINANCE',ageSeconds:0,pendingSide:'WAIT',pendingSeconds:0}};
+  }
+
+  const ageSeconds=Math.round((now-prev.at)/1000);
+  if(valid&&side===prev.side){
+    const merged={
+      ...current,
+      confidence:Math.round(cap(confidence*.72+Number(prev.path?.confidence||0)*.28,0,86)),
+      stability:{locked:true,reason:'LIQUIDITY_PATH_CONFIRMED',ageSeconds,pendingSide:'WAIT',pendingSeconds:0}
+    };
+    pathCommitMemory.set(key,{...prev,path:merged,lastConfirmedAt:now,anchor:p,atr:a,pendingSide:'WAIT',pendingSince:0,pendingCount:0});
+    return merged;
+  }
+
+  const opposite:Side=prev.side==='BUY'?'SELL':'BUY';
+  if(valid&&side===opposite){
+    const samePending=prev.pendingSide===side;
+    const pendingSince=samePending&&prev.pendingSince?prev.pendingSince:now;
+    const pendingCount=samePending?prev.pendingCount+1:1;
+    const pendingMs=now-pendingSince;
+    const decisive=Boolean(
+      confidence>=60&&probabilityGap>=16&&liqGap>=10&&
+      String(current?.conviction||'WEAK')!=='WEAK'&&
+      (pendingMs>=8000||(confidence>=72&&probabilityGap>=24&&liqGap>=16))
+    );
+    if(decisive){
+      const flipped={...current,stability:{locked:true,reason:'DECISIVE_LIQUIDITY_REVERSAL',ageSeconds:0,pendingSide:'WAIT',pendingSeconds:0}};
+      pathCommitMemory.set(key,{path:flipped,side:side as 'BUY'|'SELL',at:now,lastConfirmedAt:now,anchor:p,atr:a,pendingSide:'WAIT',pendingSince:0,pendingCount:0});
+      return flipped;
+    }
+    const heldConfidence=Math.max(36,Math.round(Number(prev.path?.confidence||0)-Math.min(8,(now-prev.lastConfirmedAt)/60000*2)));
+    const held={
+      ...prev.path,
+      confidence:heldConfidence,
+      stability:{
+        locked:true,reason:'OPPOSITE_LIQUIDITY_PULSE_PENDING',ageSeconds,
+        pendingSide:side,pendingSeconds:Math.round(pendingMs/1000),candidateConfidence:Math.round(confidence),
+        candidateProbabilityGap:Number(probabilityGap.toFixed(1)),candidateLiquidityGap:Number(liqGap.toFixed(1))
+      }
+    };
+    pathCommitMemory.set(key,{...prev,path:held,pendingSide:side,pendingSince,pendingCount});
+    return held;
+  }
+
+  // If fresh evidence becomes balanced, keep the last valid liquidity map briefly instead of
+  // printing BUY/SELL alternately. It expires naturally if it is not reconfirmed.
+  const holdMs=key==='GOLD'?120000:90000;
+  if(now-prev.lastConfirmedAt<=holdMs){
+    const held={
+      ...prev.path,
+      confidence:Math.max(34,Math.round(Number(prev.path?.confidence||0)-Math.min(10,(now-prev.lastConfirmedAt)/60000*3))),
+      stability:{locked:true,reason:'BALANCED_FLOW_HOLDING_LAST_LIQUIDITY_MAP',ageSeconds,pendingSide:'WAIT',pendingSeconds:0}
+    };
+    pathCommitMemory.set(key,{...prev,path:held,pendingSide:'WAIT',pendingSince:0,pendingCount:0});
+    return held;
+  }
+
+  pathCommitMemory.delete(key);
+  return {...current,side:'WAIT',confidence:Math.min(42,confidence),conviction:'WEAK',stability:{locked:false,reason:'LIQUIDITY_PATH_EXPIRED',ageSeconds,pendingSide:'WAIT',pendingSeconds:0}};
+}
+
 function fmtZone(low:number,high:number){
   const a=Number(low),b=Number(high);
   if(!Number.isFinite(a)||!Number.isFinite(b))return '—';
@@ -1208,7 +1354,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     two:{...two,firstHitMinutes:Number(em2?.firstHitMinutes||0)},five,fifteen,
     accumulation,primary:shortSide,follow:followSide
   }):[];
-  const rawZoneForecast=validPrice?buildZoneForecast({
+  const rawZoneForecastBase=validPrice?buildZoneForecast({
     price:p,atr:a,side:primaryMoveSide!=='WAIT'?primaryMoveSide:stableSide,
     confidence:primaryMoveConfidence,accumulation,
     m1Side:oneMinute.side,m1Strength:Number(oneMinute.strength||0),
@@ -1218,6 +1364,10 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     graphSide:graphFresh?graphSide:'WAIT',graphStrength:graphFresh?graphScore:0,
     precisionGuard
   }):null;
+  const rawZoneForecast=rawZoneForecastBase?{
+    ...rawZoneForecastBase,
+    pathForecast:stabilizeStructuralPath(asset,rawZoneForecastBase.pathForecast,p,a,now)
+  }:null;
   const stabilizedZoneForecast=validPrice?stabilizeZoneForecast(asset,rawZoneForecast,p,a,now):rawZoneForecast;
   const zoneForecast=stabilizedZoneForecast&&rawZoneForecast?{
     ...stabilizedZoneForecast,
