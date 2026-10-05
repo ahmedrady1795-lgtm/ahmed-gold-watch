@@ -3,7 +3,7 @@ export type PredatorPhase='HUNT'|'TRACK'|'AMBUSH'|'ABORT'|'COOLDOWN';
 
 type Observation={
   at:number;price:number;side:PredatorSide;edge:number;evidence:number;liveSupport:number;liveOpposition:number;
-  tickSide:PredatorSide;tickStage:string;tickScore:number;tickConfidence:number;tickSamples:number;tickPersistence:number;liqSide:PredatorSide;liqScore:number;
+  tickSide:PredatorSide;tickStage:string;tickScore:number;tickConfidence:number;tickSamples:number;tickPersistence:number;tickSource:string;liqSide:PredatorSide;liqScore:number;
   motionSide:PredatorSide;motionStage:string;motionScore:number;preSide:PredatorSide;preScore:number;preArmed:boolean;
   late:boolean;trapSide:PredatorSide;trapScore:number;mode:string;accumulationPhase:string;accumulationReadiness:number;
   reactionAligned:boolean;accumulationAligned:boolean;
@@ -36,7 +36,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
     at:now,price:Number(input?.price)||0,side:side(input?.side),edge:Number(input?.edge)||0,evidence:Number(input?.evidence)||0,
     liveSupport:Number(input?.liveSupport)||0,liveOpposition:Number(input?.liveOpposition)||0,
     tickSide:side(input?.tickSide),tickStage:String(input?.tickStage||'WARMING'),tickScore:Number(input?.tickScore)||0,
-    tickConfidence:Number(input?.tickConfidence)||0,tickSamples:Number(input?.tickSamples)||0,tickPersistence:Number(input?.tickPersistence)||0,
+    tickConfidence:Number(input?.tickConfidence)||0,tickSamples:Number(input?.tickSamples)||0,tickPersistence:Number(input?.tickPersistence)||0,tickSource:String(input?.tickSource||''),
     liqSide:side(input?.liqSide),liqScore:Number(input?.liqScore)||0,
     motionSide:side(input?.motionSide),motionStage:String(input?.motionStage||'WAIT'),motionScore:Number(input?.motionScore)||0,
     preSide:side(input?.preSide),preScore:Number(input?.preScore)||0,preArmed:Boolean(input?.preArmed),
@@ -116,6 +116,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
 
   const tickAligned=o.tickSide===o.side&&o.tickScore>=48;
   const tickSequenceReady=Boolean(
+    o.tickSource.includes('Exness/MT5')&&
     o.tickSide===o.side&&o.tickSamples>=6&&o.tickPersistence>=66&&o.tickConfidence>=60&&o.tickScore>=64&&
     ['PRE_TRIGGER','IGNITION','WAVE_FORMING','BUILDING'].includes(o.tickStage)
   );
@@ -272,7 +273,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
       opposition:Number(microOpposition.toFixed(2)),trend:Number(microTrend.toFixed(1)),samples:microScores.length,exhausted:microExhausted
     },
     cooldownMs:Math.max(0,st.cooldownUntil-now),late:o.late||microExhausted,
-    tickSequence:{ready:tickSequenceReady,samples:o.tickSamples,persistence:o.tickPersistence,confidence:o.tickConfidence,score:o.tickScore,stage:o.tickStage},
+    tickSequence:{ready:tickSequenceReady,source:o.tickSource,samples:o.tickSamples,persistence:o.tickPersistence,confidence:o.tickConfidence,score:o.tickScore,stage:o.tickStage},
     alignment:{tick:tickAligned,liquidity:liqAligned,motion:motionAligned,premove:preAligned,trap:trapAligned},
     reasons
   };
