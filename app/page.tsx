@@ -78,6 +78,12 @@ export default function Home(){
         q.set(p+'s',w.side);q.set(p+'st',w.stage);q.set(p+'sc',String(w.score));q.set(p+'cf',String(w.confidence));q.set(p+'at',String(w.at));
       };
       add('b',fastWaveRef.current.btc);add('g',fastWaveRef.current.gold);
+      const gl=goldWaveTicks.current.at(-1);
+      if(gl&&Date.now()-gl.at<=2500&&Number.isFinite(gl.price)&&gl.price>0){
+        q.set('gp',String(gl.price));q.set('gt',String(gl.at));
+        if(Number.isFinite(gl.bid)&&Number(gl.bid)>0)q.set('gb',String(gl.bid));
+        if(Number.isFinite(gl.ask)&&Number(gl.ask)>=Number(gl.bid||0))q.set('ga',String(gl.ask));
+      }
       const r=await fetch('/api/ai-analysis'+(q.size?'?'+q.toString():''),{cache:'no-store',signal:AbortSignal.timeout(12000)}),j=await r.json();
       if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر تشغيل محرك AI');
       setAiData(j);aiReady.current=true;aiFailureCount.current=0;setAiError('');
