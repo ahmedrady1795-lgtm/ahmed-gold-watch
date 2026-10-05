@@ -173,7 +173,7 @@ function AssetCard({x,fast,liveQuote}:any){
     </div>
 
     <div className="ai-price-row">
-      <div><small>السعر{x.asset==='GOLD'&&liveQuote?.status==='live'?' · LIVE':''}</small><strong>{fmt(x.asset==='GOLD'&&liveQuote?.status==='live'?liveQuote.price:(x.livePulse?.price??x.price),2)}</strong></div>
+      <div><small>السعر{x.asset==='GOLD'&&liveQuote?.status==='live'?(String(liveQuote?.source||'').includes('Exness/MT5')?' · MT5 LIVE':String(liveQuote?.source||'').includes('WebSocket')||String(liveQuote?.source||'').includes('XAUUSDT')?' · WS LIVE':' · LIVE'):''}</small><strong>{fmt(x.asset==='GOLD'&&liveQuote?.status==='live'?liveQuote.price:(x.livePulse?.price??x.price),2)}</strong></div>
       <div><small>الثقة</small><strong>{recommendation?.active?(calibrated(recommendation.confidence)+'%'):'—'}</strong></div>
       <div><small>الحالة</small><strong>{recommendation?.active?'توصية':'مراقبة'}</strong></div>
     </div>
