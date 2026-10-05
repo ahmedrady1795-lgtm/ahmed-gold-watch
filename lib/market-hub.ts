@@ -186,7 +186,7 @@ async function quoteFromBiquote(now:number):Promise<QuoteData>{
   if(!price||price<=0)throw new Error('invalid Biquote XAUUSD price');
   const rawTime=String(data?.timestamp??data?.lastQuoteAt??data?.time??''),parsed=Date.parse(rawTime),sourceTime=Number.isFinite(parsed)?parsed:null;
   const age=Number(data?.quoteAgeSeconds),state=String(data?.marketState||'').toLowerCase(),stale=Boolean(data?.stale);
-  const status:QuoteStatus=state==='open'&&!stale&&(!Number.isFinite(age)||age<=5)?'live':state==='closed'?'closed_or_stale':'delayed';
+  const status:'live'|'delayed'|'closed_or_stale'=state==='open'&&!stale&&(!Number.isFinite(age)||age<=5)?'live':state==='closed'?'closed_or_stale':'delayed';
   return{ok:true,symbol:'XAU/USD',price,source:'Biquote · MT5 XAUUSD',sourceTime,fetchedAt:now,status,previousClose:null,change:null,percentChange:num(data?.dayDiffPercent),bid,ask,spread:bid!=null&&ask!=null&&ask>=bid?ask-bid:null,brokerSymbol:'XAUUSD'};
 }
 async function candlesFromYahoo(interval:'1m'|'5m'|'15m'|'1h'):Promise<Candle[]>{
