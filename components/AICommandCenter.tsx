@@ -52,8 +52,6 @@ function AssetCard({x,liveQuote}:any){
   const scalpNext=x.scalp?.nextPrice||x.scalp?.fusionV8?.nextPrice||{};
   const scalpSide=x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:(scalpNext?.side||'WAIT');
   const scalpPrice=scalpNext?.price??x.scalp?.target?.price??x.scalp?.ambushPlan?.target?.price??hunt?.quickSignalTargets?.oneMinute?.price??null;
-  const forecastPrice1=predator?.horizons?.oneMinute?.price??(core1?.expectedMove!=null&&price!=null?Number(price)+(core1.side==='SELL'?-1:1)*Number(core1.expectedMove):hunt?.quickSignalTargets?.oneMinute?.price??scalpPrice);
-  const forecastPrice5=predator?.horizons?.fiveMinutes?.price??(core5?.expectedMove!=null&&price!=null?Number(price)+(core5.side==='SELL'?-1:1)*Number(core5.expectedMove):hunt?.quickSignalTargets?.fiveMinute?.price??hunt?.movementStations?.[1]?.price??null);
   return <section className={"panel ai-asset-card compact-asset "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
       <div><span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span><h2>{buy?'الحركة المرجحة: صعود':sell?'الحركة المرجحة: هبوط':'انتظار اتجاه أوضح'}</h2></div>
