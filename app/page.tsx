@@ -125,9 +125,49 @@ export default function Home(){
   },[]);
 
   useEffect(()=>{
-    let closed=false,inFlight=false,timer:ReturnType<typeof setTimeout>|undefined,nextDelay=1500;
+    let closed=false,inFlight=false,timer:ReturnType<typeof setTimeout>|undefined,nextDelay=1800;
+    let stream:WebSocket|null=null,reconnect:ReturnType<typeof setTimeout>|undefined,lastStreamTick=0,subscribed=false;
+    const applyGold=(tick:any)=>{
+      const bid=Number(tick?.bid),ask=Number(tick?.ask),mid=Number(tick?.mid);
+      const price=Number.isFinite(mid)&&mid>0?mid:(Number.isFinite(bid)&&Number.isFinite(ask)&&ask>=bid?(bid+ask)/2:Number(tick?.price));
+      const parsed=Date.parse(String(tick?.timestamp??tick?.time??tick?.lastQuoteAt??'')),at=Number.isFinite(parsed)?parsed:Date.now();
+      if(!Number.isFinite(price)||price<=0)return;
+      const receivedAt=Date.now();
+      lastStreamTick=receivedAt;
+      pushWave('gold',{at,price,bid:Number.isFinite(bid)?bid:undefined,ask:Number.isFinite(ask)?ask:undefined});
+      const nextGoldTick={ok:true,price,bid:Number.isFinite(bid)&&bid>0?bid:null,ask:Number.isFinite(ask)&&ask>0?ask:null,sourceTime:at,receivedAt,ageMs:Math.max(0,receivedAt-at),status:'live',mode:'stream',source:'Biquote · MT5 XAUUSD WebSocket',brokerSymbol:'XAUUSD',degraded:false};
+      goldTickRef.current=nextGoldTick;
+      if(!closed)setGoldTick(nextGoldTick);
+    };
+    const connectStream=async()=>{
+      if(closed)return;
+      try{
+        const nr=await fetch('https://biquote.io/hubs/tick/negotiate?negotiateVersion=1',{method:'POST',cache:'no-store'});
+        const nj=await nr.json(),token=String(nj?.connectionToken||nj?.connectionId||'');
+        if(!nr.ok||!token)throw new Error('Biquote negotiate failed');
+        stream=new WebSocket('wss://biquote.io/hubs/tick?id='+encodeURIComponent(token));
+        stream.onopen=()=>{subscribed=false;try{stream?.send(JSON.stringify({protocol:'json',version:1})+'\x1e');}catch{}};
+        stream.onmessage=(event)=>{try{
+          const frames=String(event.data||'').split('\x1e').filter(Boolean);
+          for(const raw of frames){
+            const msg=JSON.parse(raw);
+            if(!subscribed&&msg&&Object.keys(msg).length===0){
+              subscribed=true;
+              stream?.send(JSON.stringify({type:1,invocationId:'gold-sub',target:'Subscribe',arguments:[['XAUUSD']]})+'\x1e');
+              continue;
+            }
+            if(msg?.type===1&&msg?.target==='ReceiveTick'&&Array.isArray(msg?.arguments)){
+              const tick=msg.arguments[0];
+              if(String(tick?.symbol||'').toUpperCase()==='XAUUSD')applyGold(tick);
+            }
+          }
+        }catch{}};
+        stream.onerror=()=>{try{stream?.close();}catch{}};
+        stream.onclose=()=>{if(!closed)reconnect=setTimeout(()=>{void connectStream();},1200);};
+      }catch{if(!closed)reconnect=setTimeout(()=>{void connectStream();},1800);}
+    };
     const loadGold=async()=>{
-      if(closed||inFlight)return;
+      if(closed||inFlight||Date.now()-lastStreamTick<3500)return;
       inFlight=true;
       try{
         const r=await fetch('/api/gold-tick?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -136,7 +176,7 @@ export default function Home(){
         const price=Number(j.price),bid=Number(j.bid),ask=Number(j.ask),at=Number(j.sourceTime)||Date.now();
         if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)){nextDelay=3000;return;}
         const mode=String(j.mode||'external');
-        nextDelay=mode==='broker'?650:mode==='external'?1600:3000;
+        nextDelay=mode==='broker'?650:mode==='external'?1800:3000;
         pushWave('gold',{at,price,bid:Number.isFinite(bid)?bid:undefined,ask:Number.isFinite(ask)?ask:undefined});
         const nextGoldTick={
           ok:true,price,
@@ -160,8 +200,9 @@ export default function Home(){
       if(document.visibilityState==='visible')await loadGold();
       if(!closed)timer=setTimeout(loop,nextDelay);
     };
+    void connectStream();
     void loop();
-    return()=>{closed=true;if(timer)clearTimeout(timer);};
+    return()=>{closed=true;if(timer)clearTimeout(timer);clearTimeout(reconnect);try{stream?.close();}catch{}};
   },[]);
 
   const aiGold=aiData?.gold?.livePulse;
@@ -170,12 +211,13 @@ export default function Home(){
   const goldAt=Number(goldTick?.sourceTime||aiGold?.sourceTime||0);
   const goldFresh=Boolean(goldTick?.ok&&Number(goldTick?.receivedAt||goldAt)&&now-Number(goldTick?.receivedAt||goldAt)<10000);
   const goldBrokerLive=Boolean(goldFresh&&goldTick?.mode==='broker'&&goldAt&&now-goldAt<10000);
+  const goldStreamLive=Boolean(goldFresh&&goldTick?.mode==='stream'&&goldAt&&now-goldAt<10000);
   const goldPulse=Boolean(goldFresh&&goldTick?.mode==='external'&&goldTick?.status==='live');
   const goldDelayed=Boolean(goldFresh&&goldTick?.mode==='external'&&goldTick?.status!=='live');
   const goldFallback=Boolean(goldFresh&&goldTick?.mode==='analysis_proxy');
-  const goldLive=goldBrokerLive||goldPulse;
+  const goldLive=goldBrokerLive||goldStreamLive||goldPulse;
   const goldUsable=goldLive||goldDelayed||goldFallback;
-  const goldBadge=goldBrokerLive?'LIVE MT5':goldPulse?'PULSE':goldDelayed?'DELAYED':goldFallback?'FALLBACK':'WAIT';
+  const goldBadge=goldBrokerLive?'LIVE EXNESS':goldStreamLive?'LIVE XAU':goldPulse?'PULSE':goldDelayed?'DELAYED':goldFallback?'FALLBACK':'WAIT';
   const aiActive=Boolean((aiData?.ok&&aiLastOkAt&&now-aiLastOkAt<20000)||aiData?.ok);
   const shownBtc=btc??aiBtc?.price??aiData?.bitcoin?.price??null;
   const shownBtcAt=btcAt||Number(aiBtc?.sourceTime||0);
