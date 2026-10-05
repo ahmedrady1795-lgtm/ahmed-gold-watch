@@ -39,6 +39,12 @@ TG_ENABLED=os.getenv('TELEGRAM_ALERTS_ENABLED','true').lower()=='true' and bool(
 TG_DRY_RUN=os.getenv('TELEGRAM_NOTIFY_DRY_RUN','false').lower()=='true'
 SCALP_DEMO=os.getenv('SCALP_DEMO_MODE','false').lower()=='true'
 SCALP_DEMO_POLL=max(0.5,float(os.getenv('SCALP_DEMO_POLL_SECONDS','1.0')))
+SCALP_QUICK_MAX_HOLD=max(5,min(30,float(os.getenv('SCALP_QUICK_MAX_HOLD_SECONDS','12'))))
+SCALP_QUICK_MIN_CONF=max(50,min(88,float(os.getenv('SCALP_QUICK_MIN_CONFIDENCE','66'))))
+SCALP_QUICK_TP_SPREAD_MULT=max(1.4,min(4.0,float(os.getenv('SCALP_QUICK_TP_SPREAD_MULT','2.2'))))
+SCALP_QUICK_SL_SPREAD_MULT=max(1.1,min(3.0,float(os.getenv('SCALP_QUICK_SL_SPREAD_MULT','1.6'))))
+SCALP_QUICK_LOCK_TRIGGER=max(1.0,min(3.0,float(os.getenv('SCALP_QUICK_LOCK_TRIGGER','1.35'))))
+SCALP_QUICK_GIVEBACK=max(0.35,min(1.5,float(os.getenv('SCALP_QUICK_GIVEBACK_SPREAD','0.65'))))
 STATE=Path(__file__).with_name('.state.json')
 KILL_SWITCH=Path(os.getenv('KILL_SWITCH_FILE',str(Path(__file__).with_name('KILL_SWITCH'))))
 
@@ -55,7 +61,7 @@ def telegram(text,silent=False):
 def state_read():
     try:
         x=json.loads(STATE.read_text('utf-8'));return x if isinstance(x,dict) else {}
-    except:return {'last_signal':'','last_trade_at':0,'last_attempt_signal':'','last_attempt_at':0,'peak_equity':0,'last_quality':{},'last_candles_push_at':0,'demo_position':None,'demo_stats':{'trades':0,'wins':0,'losses':0,'net_points':0.0}}
+    except:return {'last_signal':'','last_trade_at':0,'last_attempt_signal':'','last_attempt_at':0,'peak_equity':0,'last_quality':{},'last_candles_push_at':0,'demo_position':None,'demo_stats':{'trades':0,'wins':0,'losses':0,'net_points':0.0,'gross_win_points':0.0,'gross_loss_points':0.0,'profit_factor':0.0,'loss_streak':0}}
 def state_write(s): STATE.write_text(json.dumps(s,ensure_ascii=False,indent=2),'utf-8')
 def init_mt5():
     if mt5.terminal_info() is not None:return True
@@ -128,32 +134,90 @@ def scalp_demo_step(s):
     if not info or tick is None:return s
     data=scalp_demo_signal()
     if not data.get('ok') or not data.get('demoOnly'):return s
+    ambush=data.get('ambush') or {}
     pos=s.get('demo_position')
-    now=time.time();bid=float(tick.bid);ask=float(tick.ask)
+    now=time.time();bid=float(tick.bid);ask=float(tick.ask);point=float(info.point or 1)
+    spread_points=max(0.0,(ask-bid)/point if point else 0.0)
+
     if pos:
-        side=pos.get('side');exit_px=bid if side=='BUY' else ask
+        side=pos.get('side');entry=float(pos['entry']);exit_px=bid if side=='BUY' else ask
+        pnl=(exit_px-entry)/point*(1 if side=='BUY' else -1)
+        pos['best_points']=max(float(pos.get('best_points',-10**9)),pnl)
+        pos['worst_points']=min(float(pos.get('worst_points',10**9)),pnl)
+
         hit_tp=exit_px>=float(pos['tp']) if side=='BUY' else exit_px<=float(pos['tp'])
         hit_sl=exit_px<=float(pos['sl']) if side=='BUY' else exit_px>=float(pos['sl'])
-        timed=now-float(pos.get('opened_at',now))>=float(pos.get('max_hold_seconds',60))
-        committed_side=str((data.get('commitment') or {}).get('side','WAIT'))
-        committed_state=str((data.get('commitment') or {}).get('state','NEUTRAL'))
-        flipped=committed_side in ('BUY','SELL') and committed_side!=side and committed_state in ('LOCKED','FAST_FLIP')
-        if hit_tp or hit_sl or timed or flipped:
-            reason='TP' if hit_tp else 'SL' if hit_sl else 'TIME' if timed else 'COMMITTED_FLIP'
-            point=float(info.point or 1);pnl=(exit_px-float(pos['entry']))/point*(1 if side=='BUY' else -1)
+        timed=now-float(pos.get('opened_at',now))>=float(pos.get('max_hold_seconds',SCALP_QUICK_MAX_HOLD))
+
+        live_side=str(ambush.get('side','WAIT'))
+        live_active=bool(ambush.get('active'))
+        live_conf=float(ambush.get('confidence',0) or 0)
+        opposite=live_active and live_side in ('BUY','SELL') and live_side!=side
+        weak=not live_active or live_side=='WAIT' or live_conf<max(42.0,float(pos.get('entry_confidence',SCALP_QUICK_MIN_CONF))*.70)
+        pos['weak_polls']=int(pos.get('weak_polls',0))+1 if weak else 0
+
+        lock_trigger=max(float(pos.get('spread_points',spread_points))*SCALP_QUICK_LOCK_TRIGGER,float(pos.get('tp_points',0))*0.45)
+        giveback=max(3.0,float(pos.get('spread_points',spread_points))*SCALP_QUICK_GIVEBACK)
+        profit_lock=bool(float(pos.get('best_points',0))>=lock_trigger and pnl>0 and float(pos.get('best_points',0))-pnl>=giveback)
+        weak_exit=bool(pos.get('weak_polls',0)>=2 and now-float(pos.get('opened_at',now))>=2.0)
+        fast_loss_cut=bool(pnl<0 and pos.get('weak_polls',0)>=1 and abs(pnl)>=max(3.0,spread_points*.55))
+
+        if hit_tp or hit_sl or profit_lock or opposite or fast_loss_cut or weak_exit or timed:
+            reason='TP' if hit_tp else 'SL' if hit_sl else 'PROFIT_LOCK' if profit_lock else 'FLOW_FLIP' if opposite else 'FAST_LOSS_CUT' if fast_loss_cut else 'WEAK_FLOW' if weak_exit else 'TIME'
             pos.update({'closed_at':now,'exit':exit_px,'pnl_points':round(pnl,1),'close_reason':reason})
-            st=s.get('demo_stats') or {'trades':0,'wins':0,'losses':0,'net_points':0.0};st['trades']=int(st.get('trades',0))+1;st['wins']=int(st.get('wins',0))+(1 if pnl>0 else 0);st['losses']=int(st.get('losses',0))+(1 if pnl<=0 else 0);st['net_points']=round(float(st.get('net_points',0))+pnl,1);s['demo_stats']=st
-            log('SCALP DEMO EXIT',side,reason,'entry',pos['entry'],'exit',exit_px,'pnl_pts',round(pnl,1),'stats',st);journal_demo('closed',pos,reason,{'stats':st});s['demo_position']=None
+            st=s.get('demo_stats') or {}
+            st['trades']=int(st.get('trades',0))+1
+            if pnl>0:
+                st['wins']=int(st.get('wins',0))+1
+                st['gross_win_points']=round(float(st.get('gross_win_points',0))+pnl,1)
+                st['loss_streak']=0
+            else:
+                st['losses']=int(st.get('losses',0))+1
+                st['gross_loss_points']=round(float(st.get('gross_loss_points',0))+abs(pnl),1)
+                st['loss_streak']=int(st.get('loss_streak',0))+1
+            st['net_points']=round(float(st.get('net_points',0))+pnl,1)
+            gw=float(st.get('gross_win_points',0));gl=float(st.get('gross_loss_points',0))
+            st['profit_factor']=round(gw/gl,2) if gl>0 else (9.99 if gw>0 else 0.0)
+            st['win_rate']=round(float(st.get('wins',0))/max(1,int(st.get('trades',0)))*100,1)
+            s['demo_stats']=st
+            log('SCALP DEMO EXIT',side,reason,'entry',entry,'exit',exit_px,'pnl_pts',round(pnl,1),'best',round(float(pos.get('best_points',0)),1),'worst',round(float(pos.get('worst_points',0)),1),'stats',st)
+            journal_demo('closed',pos,reason,{'stats':st,'bestPoints':pos.get('best_points'),'worstPoints':pos.get('worst_points')})
+            s['demo_position']=None
         return s
-    plan=data.get('plan')
-    if not plan or int(plan.get('expiresAt',0) or 0)<int(time.time()*1000):return s
-    side=str(plan.get('side','WAIT'))
-    if side not in ('BUY','SELL'):return s
+
+    plan=ambush.get('plan') or data.get('plan')
+    if not ambush.get('active') or not plan:return s
+    if int(plan.get('expiresAt',0) or 0)<int(time.time()*1000):return s
+    side=str(plan.get('side',ambush.get('side','WAIT')))
+    confidence=float(ambush.get('confidence',0) or 0)
+    st=s.get('demo_stats') or {}
+    dynamic_min_conf=SCALP_QUICK_MIN_CONF+min(10.0,float(st.get('loss_streak',0))*2.5)
+    if side not in ('BUY','SELL') or confidence<dynamic_min_conf:return s
+    if spread_points<=0 or spread_points>MAX_SPREAD_POINTS:return s
+
     entry=ask if side=='BUY' else bid
-    ref=float(plan.get('entry',entry));sl_ref=float(plan.get('sl'));tp_ref=float(plan.get('tp'))
-    sl_dist=abs(ref-sl_ref);tp_dist=abs(tp_ref-ref)
-    pos={'id':plan.get('id'),'side':side,'entry':entry,'sl':entry-sl_dist if side=='BUY' else entry+sl_dist,'tp':entry+tp_dist if side=='BUY' else entry-tp_dist,'opened_at':now,'max_hold_seconds':int(plan.get('maxHoldSeconds',60)),'confidence':(data.get('learner') or {}).get('confidence'),'latency_ms':round(float(data.get('_site_latency_ms',0)),1)}
-    s['demo_position']=pos;log('SCALP DEMO ENTRY',side,'entry',entry,'sl',pos['sl'],'tp',pos['tp'],'hold',pos['max_hold_seconds'],'latency_ms',pos['latency_ms']);journal_demo('opened',pos,'DEMO_ENTRY',{'learner':data.get('learner'),'micro':data.get('micro')});return s
+    ref=float(plan.get('entry',entry));sl_ref=float(plan.get('sl',entry));tp_ref=float(plan.get('tp',entry))
+    plan_sl_points=abs(ref-sl_ref)/point if point else 0.0
+    plan_tp_points=abs(tp_ref-ref)/point if point else 0.0
+
+    # Quick-capture profile: target must clear current spread/cost, but is capped so we exit before momentum fades.
+    tp_points=max(spread_points*SCALP_QUICK_TP_SPREAD_MULT,min(plan_tp_points if plan_tp_points>0 else spread_points*3.0,spread_points*3.2))
+    sl_points=max(spread_points*SCALP_QUICK_SL_SPREAD_MULT,min(plan_sl_points if plan_sl_points>0 else spread_points*2.0,tp_points*.92))
+    tp_points=max(3.0,tp_points);sl_points=max(3.0,sl_points)
+
+    pos={
+        'id':plan.get('id'),'side':side,'entry':entry,
+        'sl':entry-sl_points*point if side=='BUY' else entry+sl_points*point,
+        'tp':entry+tp_points*point if side=='BUY' else entry-tp_points*point,
+        'opened_at':now,'max_hold_seconds':min(SCALP_QUICK_MAX_HOLD,float(plan.get('maxHoldSeconds',SCALP_QUICK_MAX_HOLD) or SCALP_QUICK_MAX_HOLD)),
+        'confidence':confidence,'entry_confidence':confidence,'latency_ms':round(float(data.get('_site_latency_ms',0)),1),
+        'spread_points':round(spread_points,1),'tp_points':round(tp_points,1),'sl_points':round(sl_points,1),
+        'best_points':-spread_points,'worst_points':-spread_points,'weak_polls':0
+    }
+    s['demo_position']=pos
+    log('SCALP DEMO ENTRY',side,'entry',entry,'sl',pos['sl'],'tp',pos['tp'],'tp_pts',round(tp_points,1),'sl_pts',round(sl_points,1),'spread_pts',round(spread_points,1),'hold',pos['max_hold_seconds'],'confidence',confidence,'latency_ms',pos['latency_ms'])
+    journal_demo('opened',pos,'QUICK_CAPTURE_ENTRY',{'ambush':ambush,'dynamicMinConfidence':dynamic_min_conf})
+    return s
 
 def journal_execution(signal,ok,message,s):
     try:
