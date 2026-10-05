@@ -153,6 +153,23 @@ function waveFromParams(url:URL,prefix:'b'|'g',now:number){
   if(!['BUY','SELL','WAIT'].includes(String(side))||!['WARMING','COILED','PRE_TRIGGER','WAVE_FORMING','IGNITION'].includes(String(stage))||!Number.isFinite(score)||!Number.isFinite(confidence)||!Number.isFinite(at)||score<0||score>92||confidence<0||confidence>88||now-at<0||now-at>3500)return null;
   return {ok:true,side,stage,score,confidence,at,source:'browser live WebSocket'};
 }
+function goldLiveFromParams(url:URL,external:any,now:number){
+  const price=Number(url.searchParams.get('gp')),bid=Number(url.searchParams.get('gb')),ask=Number(url.searchParams.get('ga')),at=Number(url.searchParams.get('gt'));
+  if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)||now-at<0||now-at>3500)return null;
+  const ext=Number(external?.price);
+  if(Number.isFinite(ext)&&ext>0){
+    const deviationBps=Math.abs(price-ext)/ext*10000;
+    if(deviationBps>35)return null;
+  }
+  const validBook=Number.isFinite(bid)&&Number.isFinite(ask)&&bid>0&&ask>=bid&&price>=bid&&price<=ask;
+  return {
+    ok:true,symbol:'XAU/USD',price,
+    source:'Binance Futures XAUUSDT WebSocket',sourceTime:at,fetchedAt:now,status:'live',
+    previousClose:external?.previousClose??null,change:external?.change??null,percentChange:external?.percentChange??null,
+    bid:validBook?bid:null,ask:validBook?ask:null,spread:validBook?ask-bid:null,
+    brokerSymbol:'XAUUSDT',bridgeLatencyMs:Math.max(0,now-at)
+  };
+}
 export async function GET(request:Request){
   const now=Date.now(),url=new URL(request.url),btcWave=waveFromParams(url,'b',now),goldWave=waveFromParams(url,'g',now);
   if(lastAiPayload&&now-lastAiPayloadAt<1600){
@@ -174,6 +191,11 @@ export async function GET(request:Request){
     if(!quote){
       quote=await getQuoteData({forceExternal:true}).catch(()=>null);
       if(quote)actions.push('استعادة سعر الذهب من مصدر احتياطي');
+    }
+    const browserGold=goldLiveFromParams(url,quote,now);
+    if(browserGold){
+      quote=browserGold;
+      actions.push('استخدام XAUUSDT WebSocket الحي داخل تحليل الذهب');
     }
     if(!btc?.c1?.length){
       btc=await getBtcMarket(true);
