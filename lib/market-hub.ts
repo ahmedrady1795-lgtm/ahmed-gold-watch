@@ -149,7 +149,7 @@ export function getMt5FastSignal(now=Date.now()){
   const score=Math.round(Math.max(0,Math.min(92,36+Math.abs(imbalance)*.24+Math.abs(pressureChange)*.34+Math.min(18,Math.abs(replenish)*.18)+Math.abs(acc)*58+Math.abs(v15)*8+Math.max(0,persistence-50)*.30+(preTrigger?11:0))));
   const confidence=Math.round(Math.max(0,Math.min(90,score*.70+Math.min(18,rows.length*.55)+(stage==='PRE_TRIGGER'?8:stage==='IGNITION'?9:0))));
   return {
-    ok:true,side,stage,score,confidence,samples:rows.length,
+    ok:true,side,stage,score,confidence,samples:rows.length,source:'Exness/MT5 bridge DOM',
     velocity05s:Number(v05.toFixed(4)),velocity1s:Number(v1.toFixed(4)),velocity15s:Number(v15.toFixed(4)),velocity3s:Number(v3.toFixed(4)),velocity4s:Number(v4.toFixed(4)),velocity8s:Number(v8.toFixed(4)),
     acceleration:Number(acc.toFixed(4)),persistence,bookImbalance:Number(imbalance.toFixed(1)),pressureChange:Number(pressureChange.toFixed(1)),
     bidDepthChangePct:Number(bidDepthChangePct.toFixed(1)),askDepthChangePct:Number(askDepthChangePct.toFixed(1)),replenishDelta:Number(replenish.toFixed(1)),
