@@ -501,6 +501,8 @@ export async function GET(request:Request){
             version:hunt.zoneForecast.pathForecast.version||'FORECAST_AI_V3',
             side:hunt.zoneForecast.pathForecast.side||'WAIT',
             confidence:Number(hunt.zoneForecast.pathForecast.confidence||0),
+            conviction:hunt.zoneForecast.pathForecast.conviction||'WEAK',
+            clarity:Number(hunt.zoneForecast.pathForecast.clarity||0),
             rawConfidence:Number(hunt.zoneForecast.pathForecast.rawConfidence||hunt.zoneForecast.pathForecast.confidence||0),
             rawProbability:Number(hunt.zoneForecast.pathForecast.rawProbability||0),
             probabilities:hunt.zoneForecast.pathForecast.probabilities||null,
