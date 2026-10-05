@@ -192,7 +192,7 @@ function goldLiveFromParams(url:URL,external:any,candlePrice:any,now:number){
   const sourceTime=Number(url.searchParams.get('gt')),receivedAt=Number(url.searchParams.get('gr')||sourceTime);
   const mode=String(url.searchParams.get('gmode')||'external');
   const rawStatus=String(url.searchParams.get('gstatus')||'unknown');
-  if(!['broker','external','analysis_proxy'].includes(mode)||!Number.isFinite(price)||price<=0||!Number.isFinite(receivedAt)||receivedAt<=0||now-receivedAt<0||now-receivedAt>10000)return null;
+  if(!['broker','stream','external','analysis_proxy'].includes(mode)||!Number.isFinite(price)||price<=0||!Number.isFinite(receivedAt)||receivedAt<=0||now-receivedAt<0||now-receivedAt>10000)return null;
   const ext=Number(external?.price),candle=Number(candlePrice);
   const reference=mode==='analysis_proxy'?(Number.isFinite(candle)&&candle>0?candle:ext):(Number.isFinite(ext)&&ext>0?ext:candle);
   if(Number.isFinite(reference)&&reference>0){
@@ -201,18 +201,18 @@ function goldLiveFromParams(url:URL,external:any,candlePrice:any,now:number){
     if(deviationBps>maxDeviation)return null;
   }
   const validBook=Number.isFinite(bid)&&Number.isFinite(ask)&&bid>0&&ask>=bid&&price>=bid&&price<=ask;
-  const status:'live'|'delayed'|'closed_or_stale'|'unknown'=mode==='broker'
+  const status:'live'|'delayed'|'closed_or_stale'|'unknown'=(mode==='broker'||mode==='stream')
     ?'live'
     :mode==='analysis_proxy'
       ?(rawStatus==='closed_or_stale'?'closed_or_stale':'delayed')
       :(rawStatus==='live'||rawStatus==='delayed'||rawStatus==='closed_or_stale'||rawStatus==='unknown'?rawStatus:'unknown');
   return {
     ok:true as const,symbol:'XAU/USD' as const,price,
-    source:mode==='broker'?'Exness/MT5 live tick':mode==='analysis_proxy'?'Browser-synced analytical Gold fallback':'Browser-synced XAU/USD external quote',
+    source:mode==='broker'?'Exness/MT5 live tick':mode==='stream'?'Biquote MT5 XAUUSD live stream':mode==='analysis_proxy'?'Browser-synced analytical Gold fallback':'Browser-synced XAU/USD external quote',
     sourceTime:Number.isFinite(sourceTime)&&sourceTime>0?sourceTime:receivedAt,fetchedAt:receivedAt,status,
     previousClose:external?.previousClose??null,change:external?.change??null,percentChange:external?.percentChange??null,
     bid:validBook?bid:null,ask:validBook?ask:null,spread:validBook?ask-bid:null,
-    brokerSymbol:mode==='broker'?(external?.brokerSymbol||'XAUUSD'):null,
+    brokerSymbol:(mode==='broker'||mode==='stream')?(external?.brokerSymbol||'XAUUSD'):null,
     bridgeLatencyMs:mode==='broker'?Math.max(0,now-receivedAt):null
   };
 }
