@@ -438,6 +438,9 @@ export async function GET(request:Request){
           setup:hunt.zoneForecast.setup||'',
           summary:hunt.zoneForecast.summary||'',
           source:hunt.zoneForecast.source||'STRUCTURAL_ZONE_MAP',
+          decisionReady:Boolean(hunt.zoneForecast.decisionReady),
+          triggerReason:hunt.zoneForecast.triggerReason||'',
+          horizonContext:hunt.zoneForecast.horizonContext||null,
           liquidityConfirmed:Boolean(hunt.zoneForecast.liquidityConfirmed),
           absorptionConfirmed:Boolean(hunt.zoneForecast.absorptionConfirmed),
           breakoutReadiness:Number(hunt.zoneForecast.breakoutReadiness||0),
@@ -523,6 +526,8 @@ export async function GET(request:Request){
     const huntZoneDiag=(h:any)=>h?.zoneForecast?{
       side:h.zoneForecast.side||'WAIT',
       confidence:Number(h.zoneForecast.confidence||0),
+      decisionReady:Boolean(h.zoneForecast.decisionReady),
+      triggerReason:h.zoneForecast.triggerReason||'',
       target:h.zoneForecast.target?{low:h.zoneForecast.target.low,high:h.zoneForecast.target.high,kind:h.zoneForecast.target.kind}:null,
       locked:Boolean(h.zoneForecast.stability?.locked),
       stabilityReason:h.zoneForecast.stability?.reason||'',
@@ -574,7 +579,12 @@ export async function GET(request:Request){
             microSamples:Number(goldScalp?.fusionV8?.predator?.microstructure?.samples||0)
           }
         },
-        btc:{action:bitcoinMaster.action,scalp:bitcoinScalp.action,confidence:Number(bitcoinHunt?.nextMove?.confidence||0)},
+        btc:{
+          zone:huntZoneDiag(bitcoinHunt),
+          action:bitcoinMaster.action,
+          scalp:bitcoinScalp.action,
+          confidence:Number(bitcoinHunt?.nextMove?.confidence||0)
+        },
         mlM1Ready:Boolean(bitcoinMl?.oneMinute?.ready),
         mlM5Ready:Boolean(bitcoinMl?.fiveMinute?.ready),
         neuralReady:Boolean(bitcoinNeural?.ready)

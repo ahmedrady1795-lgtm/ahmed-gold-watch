@@ -40,7 +40,7 @@ function AssetCard({x,liveQuote}:any){
   const h1=core1||hunt?.horizons?.oneMinute||hunt?.horizons?.twoMinute||{};
   const h5=core5||hunt?.horizons?.fiveMinute||{};
   const zone=hunt?.zoneForecast||null;
-  const forecastSide=zone?.side&&zone.side!=='WAIT'?zone.side:(goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT');
+  const forecastSide=zone?String(zone.side||'WAIT'):(goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT');
   const displaySide=recommendation?.active?recommendation.action:forecastSide;
   const buy=displaySide==='BUY',sell=displaySide==='SELL';
   const price=x.asset==='GOLD'&&liveQuote?.status==='live'?liveQuote.price:(x.livePulse?.price??x.price);
@@ -67,11 +67,15 @@ function AssetCard({x,liveQuote}:any){
     <div className="next-move-copy primary-move zone-primary">
       <span>توقع الحركة القادمة · مناطق</span>
       <strong className={forecastSide==='BUY'?'green':forecastSide==='SELL'?'red':'amber'}>
-        {zone?.target
-          ?`${moveAr(zone.side)} نحو ${zoneName(zone.target)} ${zoneRange(zone.target)}`
-          :zone?.origin
-            ?`${zone.setup||'تفاعل'} عند ${zoneRange(zone.origin)}`
-            :move.title}
+        {zone
+          ?(zone.decisionReady===false||zone.side==='WAIT'
+            ?'بين مناطق القرار · لا دخول اتجاهي الآن'
+            :zone?.target
+              ?`${moveAr(zone.side)} نحو ${zoneName(zone.target)} ${zoneRange(zone.target)}`
+              :zone?.origin
+                ?`${zone.setup||'تفاعل'} عند ${zoneRange(zone.origin)}`
+                :move.title)
+          :move.title}
       </strong>
       <p>{zone?.summary||move.detail}</p>
       {zone?.stability?.locked&&<em className="zone-stability">سيناريو ثابت · {zone.stability.flipsBlocked>0?`تم رفض ${zone.stability.flipsBlocked} انعكاس ضعيف`:'بانتظار كسر المنطقة أو دليل أقوى'}</em>}
