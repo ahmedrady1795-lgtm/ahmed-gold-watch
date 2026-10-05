@@ -142,9 +142,10 @@ export function evaluatePredatorScalp(asset:string,input:any){
     o.edge>=72&&o.evidence>=68&&!o.late
   );
   const earlyFlowVotes=[tickAligned,liqAligned,motionAligned,preAligned].filter(Boolean).length;
+  const earlyEvidenceGate=o.liveSupport>=3&&o.edge>=75?54:58;
   const earlyFlowAmbush=Boolean(
     earlyFlowVotes>=2&&o.liveSupport>=2&&o.liveOpposition===0&&
-    o.edge>=62&&o.evidence>=58&&!o.late&&
+    o.edge>=62&&o.evidence>=earlyEvidenceGate&&!o.late&&
     (o.preArmed||o.tickStage==='PRE_TRIGGER'||o.motionStage==='PRE_MOVE'||Math.abs(o.pressureChange)>=5||Math.abs(o.acceleration)>=5)
   );
 
@@ -256,7 +257,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   return {
     version:'ambush-core-v10',phase,side:o.side,score:Math.round(score),confirmationAssist,watch,ambush,pattern,
     stableCount:st.stableCount,ageMs,persistence:Number(persistence.toFixed(2)),edgeSlope:Number(edgeSlope.toFixed(1)),
-    evidenceSlope:Number(evidenceSlope.toFixed(1)),hardOpposition,temporalReady,shockReady,earlyFlowTemporal,earlyFlowVotes,ambushTemporal,inCooldown,
+    evidenceSlope:Number(evidenceSlope.toFixed(1)),hardOpposition,temporalReady,shockReady,earlyFlowTemporal,earlyFlowVotes,earlyEvidenceGate,ambushTemporal,inCooldown,
     microstructure:{
       available:o.microAvailable,ready:microReady,compressionReady:compressionMicroReady,trapReady:trapMicroReady,
       ambushReady:ambushMicroReady,mean:Number(microMean.toFixed(1)),persistence:Number(microPersistence.toFixed(2)),
