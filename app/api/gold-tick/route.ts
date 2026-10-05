@@ -1,4 +1,4 @@
-import {getMt5BridgeStatus,getMt5FastSignal,getQuoteData} from '../../../lib/market-hub';
+import {getMarketData,getMt5BridgeStatus,getMt5FastSignal,getQuoteData} from '../../../lib/market-hub';
 
 export const dynamic='force-dynamic';
 
@@ -53,6 +53,37 @@ export async function GET(){
       'X-Gold-Tick':'external'
     }});
   }catch(e){
+    try{
+      const market=await getMarketData();
+      const rows=Array.isArray(market?.c1)?market.c1:[];
+      const last=rows.at(-1);
+      const price=Number(last?.close),sourceTime=Number(last?.time);
+      if(Number.isFinite(price)&&price>0&&Number.isFinite(sourceTime)&&sourceTime>0){
+        const ageMs=Math.max(0,now-sourceTime);
+        return Response.json({
+          ok:true,
+          symbol:'XAU/USD',
+          price,
+          bid:null,
+          ask:null,
+          spread:null,
+          sourceTime,
+          providerSourceTime:sourceTime,
+          receivedAt:now,
+          ageMs,
+          status:ageMs<=120000?'delayed':'closed_or_stale',
+          mode:'analysis_proxy',
+          source:String(market?.priceSource||'Gold market history')+' · latest M1 close fallback',
+          brokerSymbol:null,
+          fast,
+          degraded:true,
+          message:'Broker/external spot quote unavailable; using latest analytical candle fallback.'
+        },{headers:{
+          'Cache-Control':'no-store, no-cache, must-revalidate',
+          'X-Gold-Tick':'analysis-fallback'
+        }});
+      }
+    }catch{}
     return Response.json({
       ok:false,
       status:'offline',
