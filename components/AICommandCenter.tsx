@@ -111,31 +111,46 @@ export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.n
 
     {showNextEvent&&<section className="next-news news-impact-card">
       <div className="news-head">
-        <div><small>أقرب خبر</small><strong>{next.name}</strong></div>
-        <span>{timeLeft(next.time,now)}</span>
+        <div className="news-title-wrap">
+          <small>الخبر القادم</small>
+          <strong>{next.name}</strong>
+          <em>تأثيره المتوقع على السوق</em>
+        </div>
+        <span className="news-countdown">{timeLeft(next.time,now)}</span>
       </div>
-      <div className="news-impact-grid">
+
+      {(next.forecast||next.previous||next.actual)&&<div className="news-values ordered">
+        {next.previous&&<span>السابق <b>{next.previous}</b></span>}
+        {next.forecast&&<span>المتوقع <b>{next.forecast}</b></span>}
+        {next.actual&&<span className="actual">الفعلي <b>{next.actual}</b></span>}
+      </div>}
+
+      <div className="news-impact-grid ordered">
         {[
-          {label:'GOLD',impact:next.goldImpact},
-          {label:'BTC',impact:next.btcImpact}
-        ].map(({label,impact}:any)=>{
+          {label:'GOLD',name:'الذهب',impact:next.goldImpact},
+          {label:'BTC',name:'البتكوين',impact:next.btcImpact}
+        ].map(({label,name,impact}:any)=>{
           const s=String(impact?.side||'WAIT');
           const released=String(impact?.phase||'')!=='PRE_EVENT';
-          return <div className="news-impact" key={label}>
-            <small>{label} · {released?'تأثير الخبر':'الميل المتوقع'}</small>
+          const confidence=Math.round(Number(impact?.confidence||0));
+          const risk=Math.round(Number(impact?.risk||0));
+          const direction=s==='BUY'?'↑ صعود':s==='SELL'?'↓ هبوط':released?'↔ محايد':'⏳ غير محسوم';
+          return <div className="news-impact ordered-impact" key={label}>
+            <div className="impact-top">
+              <small>{label}</small>
+              <b>{name}</b>
+            </div>
             <strong className={s==='BUY'?'green':s==='SELL'?'red':'amber'}>
-              {s==='BUY'?'↑ صعود':s==='SELL'?'↓ هبوط':'↔ محايد'}
-              {Number(impact?.confidence)>0?` · ${Math.round(Number(impact.confidence))}%`:''}
+              {direction}{confidence>0?` · ${confidence}%`:''}
             </strong>
-            <em>خطورة {Math.round(Number(impact?.risk||0))}%</em>
+            <div className="impact-meta">
+              <span>{released?'تأثير فعلي':'قبل الخبر'}</span>
+              <em>خطورة {risk}%</em>
+            </div>
+            <p>{impact?.reason||'سيتم تحديد الاتجاه بعد صدور البيانات ومقارنة Actual بالـ Forecast.'}</p>
           </div>;
         })}
       </div>
-      {(next.forecast||next.previous)&&<div className="news-values">
-        {next.forecast&&<span>Forecast <b>{next.forecast}</b></span>}
-        {next.previous&&<span>Previous <b>{next.previous}</b></span>}
-        {next.actual&&<span>Actual <b>{next.actual}</b></span>}
-      </div>}
     </section>}
 
     <div className="dashboardgrid"><AssetCard x={data?.bitcoin} fast={fastWave?.btc}/><AssetCard x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive}/></div>
