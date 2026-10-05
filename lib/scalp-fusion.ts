@@ -368,23 +368,62 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   };
   const assistantCount=Object.values(assistants).filter(Boolean).length;
 
-  // Precision guard for the only scalp authority. Weak Ambush combinations stay STALK/ARMED
-  // until temporal microstructure and helper breadth agree; helpers never publish direction.
+  // Live precision governor: movement/next-price remain active, but trade authority
+  // adapts to the actual regime + walk-forward results instead of repeating weak regimes.
+  const regimeStats=liveOutcome?.byRegime?.[mode]||{};
+  const regimeHits=Number(regimeStats?.hits||0),regimeFails=Number(regimeStats?.fails||0);
+  const regimeDirectional=regimeHits+regimeFails;
+  const regimePosterior=Number(regimeStats?.posteriorAccuracy||50);
+  const regimeAccuracy=Number(regimeStats?.accuracy||50);
+  const wf=liveOutcome?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V8||liveOutcome?.walkForward||{};
+  const wfThreshold=Number(wf?.activeThreshold||0);
+  const wfOosN=Number(wf?.oos?.n||0),wfOosAccuracy=Number(wf?.oos?.accuracy);
+  const oosWeak=Boolean(wfOosN>=8&&Number.isFinite(wfOosAccuracy)&&wfOosAccuracy<52);
+  const regimeProvenWeak=Boolean(
+    regimeDirectional>=4&&(regimePosterior<50||regimeAccuracy<45)
+  );
+  const regimeUnprovenRisk=Boolean(
+    mode!=='COMPRESSION'&&regimeDirectional<6
+  );
+  const requiredTradeConfidence=Math.max(
+    65,
+    Number.isFinite(wfThreshold)?wfThreshold:0,
+    oosWeak?72:0,
+    regimeProvenWeak?80:0,
+    regimeUnprovenRisk?76:0
+  );
+
+  // Precision guard for the only scalp authority. Weak regimes never silence Ambush tracking;
+  // they only block trade-ready status until independent confirmation is strong enough.
   const ambushTemporalReady=Boolean(predator?.ambushTemporal&&predator?.temporalReady);
   const ambushMicroConfirmed=Boolean(
     !predator?.microstructure?.available||
-    (predator?.microstructure?.ambushReady&&Number(predator?.microstructure?.opposition||0)<=.25)
+    (
+      predator?.microstructure?.ready&&
+      Number(predator?.microstructure?.opposition||0)<=.20&&
+      Number(predator?.microstructure?.persistence||0)>=.66
+    )
+  );
+  const exceptionalNonCompression=Boolean(
+    assistantCount>=6&&Boolean(predator?.confirmationAssist)&&Number(predator?.score||0)>=92&&
+    Number(predator?.microstructure?.persistence||0)>=.85&&
+    Number(predator?.microstructure?.trend||0)>=0&&
+    reactionFastOpposition===0
   );
   const ambushRegimeGuard=Boolean(
-    mode==='EXPANSION'||mode==='TRANSITION'
-      ?(assistantCount>=5&&Boolean(predator?.confirmationAssist)&&Number(predator?.score||0)>=86&&
-        Number(predator?.microstructure?.persistence||0)>=.75&&Number(predator?.microstructure?.trend||0)>=-10)
-      :true
+    mode==='COMPRESSION'
+      ?!regimeProvenWeak
+      :regimeProvenWeak
+        ?false
+        :regimeUnprovenRisk
+          ?exceptionalNonCompression
+          :(assistantCount>=5&&Boolean(predator?.confirmationAssist)&&Number(predator?.score||0)>=88)
   );
   const weakAmbushCombination=Boolean(
     assistantCount<3||
+    confidence<requiredTradeConfidence||
     (String(predator?.pattern||'FLOW_TRACK')==='FLOW_TRACK'&&!predator?.confirmationAssist)||
-    (mode!=='COMPRESSION'&&assistantCount<4&&!reactionAligned&&!accumulationAligned)||
+    (mode!=='COMPRESSION'&&assistantCount<5&&!reactionAligned&&!accumulationAligned)||
     !ambushRegimeGuard
   );
   const ambushTrade=Boolean(
@@ -627,11 +666,15 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     },
     trigger:{
       phaseRequired:'AMBUSH',
-      microReady:Boolean(predator?.microstructure?.ambushReady),
-      temporalReady:Boolean(predator?.ambushTemporal),
+      microReady:ambushMicroConfirmed,
+      temporalReady:ambushTemporalReady,
+      minConfidence:requiredTradeConfidence,
+      regimeReady:ambushRegimeGuard,
+      regimeSamples:regimeDirectional,
+      regimePosterior:Number(regimePosterior.toFixed(1)),
+      oosWeak,
       noChase:!chaseRisk,
-      noFlip:!flipSuppressed,
-      regimeReady:ambushRegimeGuard
+      noFlip:!flipSuppressed
     },
     invalidation:{
       cancel:Boolean(predator?.phase==='ABORT'||chaseRisk||flipSuppressed||reactionConflict),
@@ -682,6 +725,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     reaction:{active:reaction.active,inside:Boolean(reaction.inside),side:reactionSide,strength:reactionScore,confirmed:reactionConfirmed,candidate:reactionCandidate,fastSupport:reactionFastSupport,fastOpposition:reactionFastOpposition,nearest:reaction.nearest||null,contextMode},
     fusionV8:{
       authority:'AMBUSH',side:fusedSide,rawSide:rawFusedSide,confidence,strong:ambushTrade,watch:false,ambushTrade,predator,assistants,assistantCount,ambushPlan,nextPrice,
+      liveGuard:{requiredTradeConfidence,regimeDirectional,regimePosterior:Number(regimePosterior.toFixed(1)),regimeAccuracy:Number(regimeAccuracy.toFixed(1)),regimeProvenWeak,regimeUnprovenRisk,oosWeak,wfOosN,wfOosAccuracy:Number.isFinite(wfOosAccuracy)?Number(wfOosAccuracy.toFixed(1)):null},
       contextMode,reactionAligned,reactionConflict,accumulationAligned,accumulationPhase,accumulationReadiness,target,intercept,
       reliability:{active:activeReliability,ambush:confirmedReliability,reliabilityPenalty},
       buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
