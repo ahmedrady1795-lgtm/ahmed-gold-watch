@@ -433,7 +433,14 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     priceStillCoiled:preMove.priceStillCoiled,
     lateMomentum:preMove.lateMomentum
   };
-  const targetSide:Side=fusedSide!=='WAIT'?fusedSide:rawFusedSide;
+  // Ambush tracker stays directional while live price exists.
+  // Trading authority remains gated by ambushTrade; this side is prediction-only.
+  const trackingSide:Side=
+    fusedSide!=='WAIT'?fusedSide:
+    commitment.side!=='WAIT'?commitment.side:
+    rawFusedSide!=='WAIT'?rawFusedSide:
+    buyShare>=sellShare?'BUY':'SELL';
+  const targetSide:Side=trackingSide;
   const targetZone=reaction.targetFor(targetSide);
   const breakoutLevel=targetSide==='BUY'?Number(accumulation?.breakoutLevel):targetSide==='SELL'?Number(accumulation?.breakdownLevel):NaN;
   const zoneDirectionValid=Boolean(targetZone&&((targetSide==='BUY'&&Number(targetZone.mid)>p)||(targetSide==='SELL'&&Number(targetZone.mid)<p)));
@@ -531,12 +538,26 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     ?nextPriceAnchor*(1+nextMoveBps/10000)
     :NaN;
   const contextualCap=Number(target?.price);
-  const nextPriceValue=nextPriceReady&&Number.isFinite(nextPriceRaw)
+  const directedFallbackBps=npDir===0?0:npDir*Math.max(
+    .22,
+    Math.min(
+      Math.max(.28,nextMoveCap*.28),
+      .35+edge*.012+Math.min(1.1,assistantCount*.12)
+    )
+  );
+  const effectiveMoveBps=
+    npDir!==0&&npDir*nextMoveBps>=.18
+      ?nextMoveBps
+      :directedFallbackBps;
+  const trackingPriceRaw=Number.isFinite(nextPriceAnchor)&&nextPriceAnchor>0
+    ?nextPriceAnchor*(1+effectiveMoveBps/10000)
+    :NaN;
+  const nextPriceValue=Number.isFinite(trackingPriceRaw)
     ?(
-      Number.isFinite(contextualCap)&&
+      nextPriceReady&&Number.isFinite(contextualCap)&&
       ((npDir>0&&contextualCap>p)||(npDir<0&&contextualCap<p))
-        ?(npDir>0?Math.min(nextPriceRaw,contextualCap):Math.max(nextPriceRaw,contextualCap))
-        :nextPriceRaw
+        ?(npDir>0?Math.min(trackingPriceRaw,contextualCap):Math.max(trackingPriceRaw,contextualCap))
+        :trackingPriceRaw
     )
     :null;
   const npUncertainty=Number.isFinite(p)&&p>0
@@ -555,17 +576,24 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     (directionalNextMove<.65?6:0),
     0,90
   ));
+  const trackingConfidence=Math.round(cap(
+    nextPriceReady
+      ?nextPriceConfidence
+      :nextPriceConfidence*.62+edge*.18+Math.min(12,assistantCount*2)-npConflict*6,
+    24,nextPriceReady?90:68
+  ));
   const nextPrice={
     authority:'AMBUSH',
     ready:nextPriceReady,
-    status:nextPriceReady?'LOCKED':npConflict>=2?'CONFLICT':'WAIT',
-    side:nextPriceReady?npSide:'WAIT',
+    active:Boolean(npDir!==0&&Number.isFinite(p)&&p>0),
+    status:nextPriceReady?'LOCKED':npConflict>=2?'TRACKING_CONFLICT':'TRACKING',
+    side:npDir!==0?npSide:'WAIT',
     price:nextPriceValue!=null?Number(nextPriceValue.toFixed(2)):null,
     low:nextPriceValue!=null?Number((nextPriceValue-npUncertainty).toFixed(2)):null,
     high:nextPriceValue!=null?Number((nextPriceValue+npUncertainty).toFixed(2)):null,
-    horizonSeconds:nextPriceReady?npHorizonSeconds:null,
-    confidence:nextPriceReady?nextPriceConfidence:0,
-    moveBps:nextPriceReady?Number(nextMoveBps.toFixed(2)):null,
+    horizonSeconds:npHorizonSeconds,
+    confidence:trackingConfidence,
+    moveBps:Number(effectiveMoveBps.toFixed(2)),
     alignment:npAlignment,
     conflicts:npConflict,
     microprice:validMicro?Number(microprice.toFixed(2)):null,
@@ -644,6 +672,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     score:{long:outLong,short:outShort,threshold:58},
     confidence,
     trade,
+    tracking:{side:trackingSide,confidence:trackingConfidence,status:nextPrice.status,nextPrice:nextPrice.price,tradeReady:ambushTrade},
     ambushPlan,
     early:Boolean(ambushTrade),
     preMove,
