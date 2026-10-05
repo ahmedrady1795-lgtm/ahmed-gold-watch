@@ -32,11 +32,6 @@ ATTEMPT_COOLDOWN=max(20,int(os.getenv('ATTEMPT_COOLDOWN_SECONDS','90')))
 CANDLE_PUSH_SECONDS=max(10,int(os.getenv('MT5_CANDLE_PUSH_SECONDS','15')))
 CANDLE_COUNT=max(240,min(500,int(os.getenv('MT5_CANDLE_COUNT','300'))))
 MAGIC=int(os.getenv('MT5_MAGIC','5601795'))
-TG_TOKEN=os.getenv('TELEGRAM_BOT_TOKEN','').strip()
-TG_CHAT=os.getenv('TELEGRAM_CHAT_ID','').strip()
-TG_THREAD=os.getenv('TELEGRAM_THREAD_ID','').strip()
-TG_ENABLED=os.getenv('TELEGRAM_ALERTS_ENABLED','true').lower()=='true' and bool(TG_TOKEN and TG_CHAT)
-TG_DRY_RUN=os.getenv('TELEGRAM_NOTIFY_DRY_RUN','false').lower()=='true'
 SCALP_DEMO=os.getenv('SCALP_DEMO_MODE','false').lower()=='true'
 SCALP_DEMO_POLL=max(0.5,float(os.getenv('SCALP_DEMO_POLL_SECONDS','1.0')))
 SCALP_QUICK_MAX_HOLD=max(5,min(30,float(os.getenv('SCALP_QUICK_MAX_HOLD_SECONDS','12'))))
@@ -49,15 +44,6 @@ STATE=Path(__file__).with_name('.state.json')
 KILL_SWITCH=Path(os.getenv('KILL_SWITCH_FILE',str(Path(__file__).with_name('KILL_SWITCH'))))
 
 def log(*x): print(datetime.now().strftime('%Y-%m-%d %H:%M:%S'),*x,flush=True)
-def telegram(text,silent=False):
-    if not TG_ENABLED:return False
-    try:
-        payload={'chat_id':TG_CHAT,'text':str(text)[:4090],'disable_web_page_preview':True,'disable_notification':bool(silent)}
-        if TG_THREAD.isdigit() and int(TG_THREAD)>0:payload['message_thread_id']=int(TG_THREAD)
-        r=requests.post(f'https://api.telegram.org/bot{TG_TOKEN}/sendMessage',json=payload,timeout=10)
-        if not r.ok:log('telegram failed',r.status_code,r.text[:160]);return False
-        return True
-    except Exception as e:log('telegram failed',repr(e));return False
 def state_read():
     try:
         x=json.loads(STATE.read_text('utf-8'));return x if isinstance(x,dict) else {}
@@ -321,7 +307,6 @@ def send(signal,s):
 def main():
     if not SITE_URL.startswith('https://') or not TOKEN:sys.exit('Set SITE_URL=https://... and MT5_BRIDGE_TOKEN in .env')
     log('bridge starting','LIVE' if LIVE else 'DRY RUN','symbol',SYMBOL,'risk',RISK_PCT,'%','scalp_demo',SCALP_DEMO and not LIVE)
-    telegram(f'🟦 Ahmed Gold Watch MT5 Bridge started\nMode: {"LIVE" if LIVE else "DRY RUN"}\nSymbol: {SYMBOL}\nRisk: {RISK_PCT}%\nScalp Demo: {SCALP_DEMO and not LIVE}')
     failures=0
     while True:
         try:
@@ -329,11 +314,9 @@ def main():
             s=state_read();push_status(s)
             if SCALP_DEMO and not LIVE:
                 s=scalp_demo_step(s);state_write(s)
-                if failures>0:telegram('✅ MT5 Scalp Demo recovered and site connection is healthy.')
                 failures=0;time.sleep(SCALP_DEMO_POLL);continue
             state_write(s)
             data=site_signal()
-            if failures>0:telegram('✅ MT5 Bridge recovered and site connection is healthy.')
             failures=0
             if not data.get('ok'):raise RuntimeError(str(data))
             if not data.get('allowed') or not data.get('signal'):time.sleep(POLL);continue
@@ -344,16 +327,12 @@ def main():
             if sid==s.get('last_attempt_signal') and now-float(s.get('last_attempt_at',0) or 0)<ATTEMPT_COOLDOWN:time.sleep(POLL);continue
             s['last_attempt_signal']=sid;s['last_attempt_at']=now;state_write(s)
             side='BUY' if sig.get('sideCode')=='buy' else 'SELL';mode=str(sig.get('mode','standard')).upper();score=sig.get('score','—')
-            telegram(f'🟢 ENTRY SIGNAL {side} · {mode}\nScore: {score}/100\nEntry: {sig.get("entry")}\nSL: {sig.get("sl")}\nTP: {sig.get("tp")}')
             ok,msg,s=send(sig,s);log(msg);state_write(s);journal_execution(sig,ok,msg,s)
             if ok:
-                if LIVE or TG_DRY_RUN:telegram(('✅ EXECUTED' if LIVE else '🧪 DRY RUN')+f' {side} {SYMBOL}\n{msg}')
                 s['last_signal']=sid;s['last_trade_at']=now;state_write(s)
-            else:telegram(f'⚠️ EXECUTION BLOCKED {side} {SYMBOL}\n{msg}')
         except KeyboardInterrupt:break
         except Exception as e:
             failures+=1;log('watchdog error',repr(e),'failures',failures)
-            if failures in (1,3,6):telegram(f'⚠️ MT5 Bridge warning\nFailure #{failures}: {repr(e)[:600]}')
             try:mt5.shutdown()
             except:pass
             time.sleep(min(60,2**min(failures,5)))
