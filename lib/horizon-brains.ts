@@ -39,6 +39,22 @@ function resolve(groups:Record<string,Evidence[]>,gate:number,minFamilies=2):Hor
   return {side,confidence,buyShare:Math.round(buyShare),sellShare:Math.round(sellShare),agreement:Math.round(Math.max(buyShare,sellShare)),uncertainty:Math.round(cap(100-confidence,0,100)),independentFamilies:support,familyOpposition:opposition,families};
 }
 
+function qualityGate(h:HorizonBrain,minConfidence:number,requireFlow=false){
+  const flow=h.families?.FLOW;
+  const flowConflict=Boolean(requireFlow&&h.side!=='WAIT'&&flow?.side&&flow.side!=='WAIT'&&flow.side!==h.side);
+  const splitConflict=Number(h.familyOpposition||0)>=2&&Number(h.agreement||50)<68;
+  if(h.side==='WAIT'||flowConflict||splitConflict||h.confidence<minConfidence){
+    return {
+      ...h,
+      side:'WAIT' as Side,
+      confidence:Math.min(h.confidence,flowConflict?34:splitConflict?38:minConfidence-1),
+      uncertainty:Math.max(h.uncertainty,100-Math.min(h.confidence,minConfidence-1)),
+      gateReason:flowConflict?'FLOW_CONFLICT':splitConflict?'FAMILY_SPLIT':'LOW_CONFIDENCE'
+    };
+  }
+  return {...h,gateReason:'PASSED'};
+}
+
 export function buildSpecializedHorizonBrains(args:any){
   const asset=String(args?.asset||'ASSET').toUpperCase();
   const learning=args?.horizonLearning||{};
@@ -79,6 +95,7 @@ export function buildSpecializedHorizonBrains(args:any){
     MEMORY:[ev(memory1,memory1Score,1)]
   },12,2);
   one=calibrateHorizonBrain('M1',one,learning);
+  one=qualityGate(one,44,true);
 
   let three=resolve({
     FLOW:[ev(tick?.side,tickScore,.25),ev(scalpSide,scalpScore,.25),ev(motion?.side,motionScore,.50)],
@@ -88,6 +105,7 @@ export function buildSpecializedHorizonBrains(args:any){
     MEMORY:[ev(memory1,memory1Score,1)]
   },14,2);
   three=calibrateHorizonBrain('M3',three,learning);
+  three=qualityGate(three,46,false);
 
   let five=resolve({
     FLOW:[ev(motion?.side,motionScore,.65),ev(scalpSide,scalpScore,.20),ev(tick?.side,tickScore,.15)],
@@ -97,6 +115,7 @@ export function buildSpecializedHorizonBrains(args:any){
     MEMORY:[ev(memory5,memory5Score,.70),ev(memory1,memory1Score,.30)]
   },15,2);
   five=calibrateHorizonBrain('M5',five,learning);
+  five=qualityGate(five,50,false);
 
   return {oneMinute:one,threeMinute:three,fiveMinute:five};
 }
