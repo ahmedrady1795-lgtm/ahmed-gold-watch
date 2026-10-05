@@ -121,7 +121,7 @@ export function getMt5FastSignal(now=Date.now()){
   if(!latest||rows.length<4||now-latest.receivedAt>2500)return {ok:false,side:'WAIT' as const,stage:'OFFLINE',score:0,confidence:0,samples:rows.length};
   const older=(ms:number)=>{for(let i=rows.length-1;i>=0;i--)if(rows[i].receivedAt<=latest.receivedAt-ms)return rows[i];return rows[0]||null;};
   const vel=(o:Mt5FastTick|null)=>o&&o.price>0?(latest.price-o.price)/o.price*10000:0;
-  const v05=vel(older(500)),v15=vel(older(1500)),v4=vel(older(4000)),acc=v05-v15/3;
+  const v05=vel(older(500)),v1=vel(older(1000)),v15=vel(older(1500)),v3=vel(older(3000)),v4=vel(older(4000)),v8=vel(older(8000)),acc=v05-v15/3;
   let up=0,down=0;for(let i=1;i<rows.length;i++){if(rows[i].price>rows[i-1].price)up++;else if(rows[i].price<rows[i-1].price)down++;}
   const persistence=Math.round(Math.max(up,down)/Math.max(1,up+down)*100);
   const book=mt5State?.microstructure?.orderBook,bb=Array.isArray(book?.bids)?book!.bids!:[],aa=Array.isArray(book?.asks)?book!.asks!:[];
@@ -135,10 +135,10 @@ export function getMt5FastSignal(now=Date.now()){
   const stage=ignition?'IGNITION':preTrigger?'PRE_TRIGGER':side!=='WAIT'?'BUILDING':'WAIT';
   const score=Math.round(Math.max(0,Math.min(92,38+Math.abs(imbalance)*.28+Math.abs(acc)*55+Math.abs(v15)*9+Math.max(0,persistence-50)*.32+(preTrigger?10:0))));
   const confidence=Math.round(Math.max(0,Math.min(90,score*.72+Math.min(18,rows.length*.55)+(stage==='PRE_TRIGGER'?6:stage==='IGNITION'?8:0))));
-  return {ok:true,side,stage,score,confidence,samples:rows.length,velocity05s:Number(v05.toFixed(4)),velocity15s:Number(v15.toFixed(4)),velocity4s:Number(v4.toFixed(4)),acceleration:Number(acc.toFixed(4)),persistence,bookImbalance:Number(imbalance.toFixed(1)),price:latest.price,bid:latest.bid,ask:latest.ask,at:latest.at,receivedAt:latest.receivedAt};
+  return {ok:true,side,stage,score,confidence,samples:rows.length,velocity05s:Number(v05.toFixed(4)),velocity1s:Number(v1.toFixed(4)),velocity15s:Number(v15.toFixed(4)),velocity3s:Number(v3.toFixed(4)),velocity4s:Number(v4.toFixed(4)),velocity8s:Number(v8.toFixed(4)),acceleration:Number(acc.toFixed(4)),persistence,bookImbalance:Number(imbalance.toFixed(1)),price:latest.price,bid:latest.bid,ask:latest.ask,at:latest.at,receivedAt:latest.receivedAt};
 }
 
-async function quoteFromBinanceFutures(now:number):Promise<QuoteData>{const data=await getJson('https://fapi.binance.com/fapi/v1/ticker/bookTicker?symbol=XAUUSDT'),bid=num(data?.bidPrice??data?.bid),ask=num(data?.askPrice??data?.ask);if(bid==null||ask==null||bid<=0||ask<bid)throw new Error('invalid Binance XAUUSDT quote');const sourceTime=num(data?.time);return{ok:true,symbol:'XAU/USD',price:(bid+ask)/2,source:'Binance Futures · XAUUSDT proxy',sourceTime,fetchedAt:now,status:goldStatusFor(sourceTime,now),previousClose:null,change:null,percentChange:null,bid,ask,spread:ask-bid};}
+async function quoteFromBinanceFutures(now:number):Promise<QuoteData>{const data=await getJson('https://fapi.binance.com/fapi/v1/ticker/bookTicker?symbol=XAUUSDT'),bid=num(data?.bidPrice??data?.bid),ask=num(data?.askPrice??data?.ask);if(bid==null||ask==null||bid<=0||ask<bid)throw new Error('invalid Binance XAUUSDT quote');const sourceTime=num(data?.time)??now;return{ok:true,symbol:'XAU/USD',price:(bid+ask)/2,source:'Binance Futures · XAUUSDT live proxy',sourceTime,fetchedAt:now,status:statusFor(sourceTime,now),previousClose:null,change:null,percentChange:null,bid,ask,spread:ask-bid};}
 function binanceCandles(data:any):Candle[]{if(!Array.isArray(data))throw new Error('binance schema');const parsed=data.map((v:any)=>({time:Number(v?.[0]),open:Number(v?.[1]),high:Number(v?.[2]),low:Number(v?.[3]),close:Number(v?.[4])}));if(parsed.some((v:Candle)=>!Object.values(v).every(Number.isFinite)||v.time<=0||v.low<=0||v.high<v.low||v.open<v.low||v.open>v.high||v.close<v.low||v.close>v.high))throw new Error('binance schema');return parsed.sort((a:Candle,b:Candle)=>a.time-b.time).filter((v:Candle,i:number,a:Candle[])=>i===0||v.time!==a[i-1].time);}
 async function candlesFromBinance(interval:'1m'|'5m'|'15m'|'1h'):Promise<Candle[]>{return binanceCandles(await getJson('https://fapi.binance.com/fapi/v1/klines?symbol=XAUUSDT&interval='+interval+'&limit=340'));}
 function yahooCandles(data:any):Candle[]{
