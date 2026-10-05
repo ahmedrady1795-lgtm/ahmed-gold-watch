@@ -25,24 +25,7 @@ export async function register(){
       if(!r.ok)console.warn('[PREDATOR-LEARN] background cycle HTTP',r.status);
       else{
         const j=await r.json().catch(()=>null);
-        const btc=j?.bitcoin?.selfEvolution,gold=j?.gold?.selfEvolution;
-        console.info('[PREDATOR-LEARN]',JSON.stringify({model:j?.model,btcGeneration:btc?.generation,btcPromoted:btc?.promoted,btcRollback:btc?.rolledBack,goldGeneration:gold?.generation,goldPromoted:gold?.promoted,goldRollback:gold?.rolledBack}));
-        if(j?.ok){
-          try{
-            const tg=await fetch('http://127.0.0.1:'+port+'/api/telegram/pulse',{
-              method:'POST',
-              cache:'no-store',
-              headers:{'Content-Type':'application/json','x-predator-background':'1'},
-              body:JSON.stringify({analysis:j}),
-              signal:AbortSignal.timeout(12000)
-            });
-            const tj:any=await tg.json().catch(()=>null);
-            if(!tg.ok)console.warn('[PREDATOR-TG] pulse HTTP',tg.status);
-            else console.info('[PREDATOR-TG]',JSON.stringify({configured:Boolean(tj?.configured),enabled:Boolean(tj?.enabled),sent:Boolean(tj?.sent),reason:tj?.reason||null,minimumConfidence:tj?.minimumConfidence||null}));
-          }catch(e){
-            console.warn('[PREDATOR-TG] pulse failed',e instanceof Error?e.message:'unknown');
-          }
-        }
+        console.info('[PREDATOR-LEARN]',JSON.stringify({model:j?.model,status:j?.autopilot?.status||null}));
       }
     }catch(e){
       console.warn('[PREDATOR-LEARN] cycle failed',e instanceof Error?e.message:'unknown');
