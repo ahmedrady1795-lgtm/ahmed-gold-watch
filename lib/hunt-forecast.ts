@@ -308,7 +308,11 @@ function buildZoneForecast(args:{
   ));
   const uncertainty=Math.round(cap(100-Math.abs(upProbability-downProbability),12,100));
   const pathReason=[
-    pathSide==='BUY'?(phase==='ACCUMULATING'||phase==='MARKUP_READY'?'تجميع/ضغط صاعد':'ضغط الحركة يميل للصعود'):(pathSide==='SELL'?(phase==='DISTRIBUTING'||phase==='MARKDOWN_READY'?'تصريف/ضغط هابط':'توازن بين المسارين')),
+    pathSide==='BUY'
+      ?(phase==='ACCUMULATING'||phase==='MARKUP_READY'?'تجميع/ضغط صاعد':'ضغط الحركة يميل للصعود')
+      :pathSide==='SELL'
+        ?(phase==='DISTRIBUTING'||phase==='MARKDOWN_READY'?'تصريف/ضغط هابط':'ضغط الحركة يميل للهبوط')
+        :'توازن بين المسارين',
     pathDestination?('الوجهة الأساسية '+fmtZone(pathDestination.low,pathDestination.high)):'',
     pathRebound?('ارتداد محتمل '+fmtZone(pathRebound.low,pathRebound.high)):'',
     invalidationPrice?('إبطال المسار قرب '+invalidationPrice.toFixed(2)):''
