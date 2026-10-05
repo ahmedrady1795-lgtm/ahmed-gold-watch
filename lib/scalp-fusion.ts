@@ -11,6 +11,33 @@ type NextPricePending={at:number;entry:number;predicted:number;horizonSeconds:nu
 type NextPriceCalibration={biasBps:number;maeBps:number;n:number;last:NextPricePending|null};
 const npRoot=globalThis as typeof globalThis&{__ambushNextPriceCalibration?:Map<string,NextPriceCalibration>};
 const npCalibration=npRoot.__ambushNextPriceCalibration??(npRoot.__ambushNextPriceCalibration=new Map<string,NextPriceCalibration>());
+type AmbushTrackLock={side:Side;since:number;opposite:Side;oppositeCount:number;updatedAt:number};
+const trackRoot=globalThis as typeof globalThis&{__ambushTrackLocks?:Map<string,AmbushTrackLock>};
+const ambushTrackLocks=trackRoot.__ambushTrackLocks??(trackRoot.__ambushTrackLocks=new Map<string,AmbushTrackLock>());
+function stickyAmbushTracking(asset:string,candidate:Side,edge:number,now:number):Side{
+  const key=String(asset||'UNKNOWN').toUpperCase();
+  const prev=ambushTrackLocks.get(key);
+  if(!prev){
+    const initial:Side=candidate==='WAIT'?'BUY':candidate;
+    ambushTrackLocks.set(key,{side:initial,since:now,opposite:'WAIT',oppositeCount:0,updatedAt:now});
+    return initial;
+  }
+  prev.updatedAt=now;
+  if(candidate==='WAIT'||candidate===prev.side){
+    prev.opposite='WAIT';prev.oppositeCount=0;
+    ambushTrackLocks.set(key,prev);
+    return prev.side;
+  }
+  if(prev.opposite!==candidate){prev.opposite=candidate;prev.oppositeCount=1;}
+  else prev.oppositeCount+=1;
+  const heldMs=Math.max(0,now-prev.since);
+  const switchNow=edge>=30||(edge>=14&&prev.oppositeCount>=2&&heldMs>=900)||(prev.oppositeCount>=3&&heldMs>=1400);
+  if(switchNow){
+    prev.side=candidate;prev.since=now;prev.opposite='WAIT';prev.oppositeCount=0;
+  }
+  ambushTrackLocks.set(key,prev);
+  return prev.side;
+}
 function nextPriceCalibration(asset:string,price:number,now:number){
   const key=String(asset||'UNKNOWN').toUpperCase();
   const state=npCalibration.get(key)||{biasBps:0,maeBps:1.2,n:0,last:null};
@@ -442,9 +469,15 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
           ?exceptionalNonCompression
           :(assistantCount>=5&&Boolean(predator?.confirmationAssist)&&Number(predator?.score||0)>=88)
   );
+  const exceptionalOosTrade=Boolean(
+    assistantCount>=6&&Boolean(predator?.confirmationAssist)&&Number(predator?.score||0)>=94&&
+    Number(predator?.microstructure?.persistence||0)>=.85&&
+    Number(predator?.microstructure?.opposition||0)===0
+  );
   const weakAmbushCombination=Boolean(
     assistantCount<3||
     confidence<requiredTradeConfidence||
+    (oosWeak&&!exceptionalOosTrade)||
     (String(predator?.pattern||'FLOW_TRACK')==='FLOW_TRACK'&&!predator?.confirmationAssist)||
     (mode!=='COMPRESSION'&&assistantCount<5&&!reactionAligned&&!accumulationAligned)||
     !ambushRegimeGuard
@@ -497,11 +530,12 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   };
   // Ambush tracker stays directional while live price exists.
   // Trading authority remains gated by ambushTrade; this side is prediction-only.
-  const trackingSide:Side=
+  const trackingCandidate:Side=
     fusedSide!=='WAIT'?fusedSide:
     commitment.side!=='WAIT'?commitment.side:
     rawFusedSide!=='WAIT'?rawFusedSide:
     buyShare>=sellShare?'BUY':'SELL';
+  const trackingSide:Side=stickyAmbushTracking(asset,trackingCandidate,edge,nowNp);
   const targetSide:Side=trackingSide;
   const targetZone=reaction.targetFor(targetSide);
   const breakoutLevel=targetSide==='BUY'?Number(accumulation?.breakoutLevel):targetSide==='SELL'?Number(accumulation?.breakdownLevel):NaN;
@@ -525,7 +559,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     zoneStrength:zoneTargetValid?Number(targetZone.strength):0,
     contextMode
   };
-  // Ambush Next-Price Interceptor V10:
+  // Ambush Next-Price Interceptor V11:
   // self-calibrating multi-horizon kinematics + order-book impulse + temporal microstructure.
   const npSide:Side=targetSide;
   const npDir=npSide==='BUY'?1:npSide==='SELL'?-1:0;
@@ -689,8 +723,39 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     26,nextPriceReady?92:72
   ));
 
+  const trajectorySeconds=[3,6,10];
+  const baseH=Math.max(3,Number(npHorizonSeconds||8));
+  const trajectory=trajectorySeconds.map(seconds=>{
+    const scale=Math.pow(seconds/baseH,.82);
+    const curvatureAdj=curvaturePerSecond*seconds*.05;
+    const accelAdj=tickAcc*seconds*.012;
+    const moveBps=cap(
+      effectiveMoveBps*scale+curvatureAdj+accelAdj,
+      -nextMoveCap*1.35,nextMoveCap*1.35
+    );
+    const raw=Number.isFinite(nextPriceAnchor)&&nextPriceAnchor>0
+      ?nextPriceAnchor*(1+moveBps/10000)
+      :NaN;
+    const contextual=Number(target?.price);
+    const price=Number.isFinite(raw)&&Number.isFinite(contextual)&&
+      ((npDir>0&&contextual>p)||(npDir<0&&contextual<p))
+        ?(npDir>0?Math.min(raw,contextual):Math.max(raw,contextual))
+        :raw;
+    const spread=Math.max(
+      spreadUsd*1.15,
+      npUncertainty*Math.sqrt(seconds/baseH)*.82
+    );
+    return {
+      seconds,
+      price:Number.isFinite(price)?Number(price.toFixed(2)):null,
+      low:Number.isFinite(price)?Number((price-spread).toFixed(2)):null,
+      high:Number.isFinite(price)?Number((price+spread).toFixed(2)):null,
+      moveBps:Number(moveBps.toFixed(2))
+    };
+  });
+
   const nextPrice={
-    model:'AMBUSH_INTERCEPT_V10',
+    model:'AMBUSH_INTERCEPT_V11',
     authority:'AMBUSH',
     ready:nextPriceReady,
     active:Boolean(npDir!==0&&Number.isFinite(p)&&p>0),
@@ -711,7 +776,10 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
       maeBps:Number(npCal.maeBps.toFixed(2)),
       weight:Number(calibrationWeight.toFixed(2))
     },
+    trajectory,
     diagnostics:{
+      trackingCandidate,
+      stickySide:trackingSide,
       tickPerSecond:Number(tickPerSecond.toFixed(3)),
       kinematicConsistency:Number(kinematicConsistency.toFixed(2)),
       curvatureBps:Number(curvatureBps.toFixed(2)),
@@ -800,7 +868,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     score:{long:outLong,short:outShort,threshold:58},
     confidence,
     trade,
-    tracking:{side:trackingSide,confidence:trackingConfidence,status:nextPrice.status,nextPrice:nextPrice.price,tradeReady:ambushTrade},
+    tracking:{side:trackingSide,confidence:trackingConfidence,status:nextPrice.status,nextPrice:nextPrice.price,tradeReady:ambushTrade,active:true,candidate:trackingCandidate},
     ambushPlan,
     early:Boolean(ambushTrade),
     preMove,
