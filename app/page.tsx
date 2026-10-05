@@ -119,16 +119,18 @@ export default function Home(){
   },[]);
 
   useEffect(()=>{
-    let closed=false,inFlight=false;
+    let closed=false,inFlight=false,timer:ReturnType<typeof setTimeout>|undefined,nextDelay=1500;
     const loadGold=async()=>{
       if(closed||inFlight)return;
       inFlight=true;
       try{
         const r=await fetch('/api/gold-tick?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
         const j=await r.json();
-        if(!r.ok||!j?.ok)return;
+        if(!r.ok||!j?.ok){nextDelay=3000;return;}
         const price=Number(j.price),bid=Number(j.bid),ask=Number(j.ask),at=Number(j.sourceTime)||Date.now();
-        if(!Number.isFinite(price)||price<=0||!Number.isFinite(at))return;
+        if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)){nextDelay=3000;return;}
+        const mode=String(j.mode||'external');
+        nextDelay=mode==='broker'?650:mode==='external'?1600:3000;
         pushWave('gold',{at,price,bid:Number.isFinite(bid)?bid:undefined,ask:Number.isFinite(ask)?ask:undefined});
         if(!closed)setGoldTick({
           ok:true,price,
@@ -138,15 +140,20 @@ export default function Home(){
           receivedAt:Number(j.receivedAt)||Date.now(),
           ageMs:Number(j.ageMs)||0,
           status:String(j.status||'unknown'),
-          mode:String(j.mode||'external'),
+          mode,
           source:String(j.source||'Gold source'),
-          brokerSymbol:j.brokerSymbol||null
+          brokerSymbol:j.brokerSymbol||null,
+          degraded:Boolean(j.degraded)
         });
-      }catch{}finally{inFlight=false;}
+      }catch{nextDelay=3000;}finally{inFlight=false;}
     };
-    void loadGold();
-    const timer=setInterval(()=>{if(document.visibilityState==='visible')void loadGold();},650);
-    return()=>{closed=true;clearInterval(timer);};
+    const loop=async()=>{
+      if(closed)return;
+      if(document.visibilityState==='visible')await loadGold();
+      if(!closed)timer=setTimeout(loop,nextDelay);
+    };
+    void loop();
+    return()=>{closed=true;if(timer)clearTimeout(timer);};
   },[]);
 
   const aiGold=aiData?.gold?.livePulse;
@@ -155,9 +162,12 @@ export default function Home(){
   const goldAt=Number(goldTick?.sourceTime||aiGold?.sourceTime||0);
   const goldFresh=Boolean(goldTick?.ok&&Number(goldTick?.receivedAt||goldAt)&&now-Number(goldTick?.receivedAt||goldAt)<10000);
   const goldBrokerLive=Boolean(goldFresh&&goldTick?.mode==='broker'&&goldAt&&now-goldAt<10000);
-  const goldPulse=Boolean(goldFresh&&goldTick?.mode==='external');
+  const goldPulse=Boolean(goldFresh&&goldTick?.mode==='external'&&goldTick?.status==='live');
+  const goldDelayed=Boolean(goldFresh&&goldTick?.mode==='external'&&goldTick?.status!=='live');
+  const goldFallback=Boolean(goldFresh&&goldTick?.mode==='analysis_proxy');
   const goldLive=goldBrokerLive||goldPulse;
-  const goldBadge=goldBrokerLive?'LIVE MT5':goldPulse?'PULSE':'WAIT';
+  const goldUsable=goldLive||goldDelayed||goldFallback;
+  const goldBadge=goldBrokerLive?'LIVE MT5':goldPulse?'PULSE':goldDelayed?'DELAYED':goldFallback?'FALLBACK':'WAIT';
   const aiActive=Boolean((aiData?.ok&&aiLastOkAt&&now-aiLastOkAt<20000)||aiData?.ok);
   const shownBtc=btc??aiBtc?.price??aiData?.bitcoin?.price??null;
   const shownBtcAt=btcAt||Number(aiBtc?.sourceTime||0);
@@ -173,7 +183,7 @@ export default function Home(){
         <div>
           <small>XAU/USD</small>
           <b>{fmt(goldPrice)}</b>
-          <em className={goldLive?'up':'muted'}>{goldBadge}</em>
+          <em className={goldLive?'up':goldUsable?'muted':'muted'}>{goldBadge}</em>
         </div>
         <div>
           <small>BTC/USD · {btcSource}</small>
@@ -187,7 +197,7 @@ export default function Home(){
     </header>
 
     <section className="statusrail lite-status">
-      <span className={goldLive?'pill ok':'pill bad'}>{goldLive?<Wifi size={14}/>:<WifiOff size={14}/>} GOLD {goldBadge}</span>
+      <span className={goldLive?'pill ok':goldUsable?'pill':'pill bad'}>{goldLive?<Wifi size={14}/>:<WifiOff size={14}/>} GOLD {goldBadge}</span>
       <span className={btcLive?'pill ok':'pill bad'}>{btcLive?<Wifi size={14}/>:<WifiOff size={14}/>} BTC {btcLive?'LIVE':'WAIT'}</span>
       <span className={aiActive?'pill ok':'pill neutral'}><Activity size={14}/> AI {aiActive?'ACTIVE':'SYNCING'}</span>
     </section>
