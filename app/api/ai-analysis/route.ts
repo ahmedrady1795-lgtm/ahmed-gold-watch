@@ -163,8 +163,8 @@ function goldLiveFromParams(url:URL,external:any,now:number){
   }
   const validBook=Number.isFinite(bid)&&Number.isFinite(ask)&&bid>0&&ask>=bid&&price>=bid&&price<=ask;
   return {
-    ok:true,symbol:'XAU/USD',price,
-    source:'Binance Futures XAUUSDT WebSocket',sourceTime:at,fetchedAt:now,status:'live',
+    ok:true as const,symbol:'XAU/USD' as const,price,
+    source:'Binance Futures XAUUSDT WebSocket',sourceTime:at,fetchedAt:now,status:'live' as const,
     previousClose:external?.previousClose??null,change:external?.change??null,percentChange:external?.percentChange??null,
     bid:validBook?bid:null,ask:validBook?ask:null,spread:validBook?ask-bid:null,
     brokerSymbol:'XAUUSDT',bridgeLatencyMs:Math.max(0,now-at)
