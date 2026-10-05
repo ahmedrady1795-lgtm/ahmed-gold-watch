@@ -235,9 +235,9 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     reactionFastOpposition<=2
   );
   const reactionCandidate=Boolean(reactionSide!=='WAIT'&&reactionScore>=68&&!reactionConfirmed);
-  const confirmedReliability=liveReliability(liveOutcome,'SCALP_AMBUSH_TRADE_V8','SCALP_PREDATOR_AMBUSH_V7');
-  const preMoveReliability=liveReliability(liveOutcome,'SCALP_AMBUSH_TRADE_V8','SCALP_PREDATOR_AMBUSH_V7');
-  const confirmedStats=liveOutcome?.bySource?.SCALP_AMBUSH_TRADE_V8||liveOutcome?.bySource?.SCALP_PREDATOR_AMBUSH_V7||{};
+  const confirmedReliability=liveReliability(liveOutcome,'SCALP_AMBUSH_TRADE_V10','SCALP_AMBUSH_TRADE_V8');
+  const preMoveReliability=liveReliability(liveOutcome,'SCALP_AMBUSH_TRADE_V10','SCALP_AMBUSH_TRADE_V8');
+  const confirmedStats=liveOutcome?.bySource?.SCALP_AMBUSH_TRADE_V10||liveOutcome?.bySource?.SCALP_AMBUSH_TRADE_V8||{};
   const confirmedHits=Number(confirmedStats?.hits||0),confirmedFails=Number(confirmedStats?.fails||0);
   const confirmedDirectional=confirmedHits+confirmedFails;
   const confirmedColdFailGuard=Boolean(
@@ -507,7 +507,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const regimeDirectional=regimeHits+regimeFails;
   const regimePosterior=Number(regimeStats?.posteriorAccuracy||50);
   const regimeAccuracy=Number(regimeStats?.accuracy||50);
-  const wf=liveOutcome?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V8||liveOutcome?.walkForward||{};
+  const wf=liveOutcome?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V10||liveOutcome?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V8||liveOutcome?.walkForward||{};
   const wfThreshold=Number(wf?.activeThreshold||0);
   const wfOosN=Number(wf?.oos?.n||0),wfOosAccuracy=Number(wf?.oos?.accuracy);
   const oosWeak=Boolean(wfOosN>=8&&Number.isFinite(wfOosAccuracy)&&wfOosAccuracy<52);
@@ -542,9 +542,10 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
       Number(predator?.microstructure?.persistence||0)>=.66
     )
   );
+  const earlyEvidenceGate=liveSupport>=3&&edge>=75?54:58;
   const earlyFlowQuality=Boolean(
     earlyFlowPattern&&assistantCount>=2&&Number(predator?.score||0)>=66&&
-    edge>=62&&dominantEvidence>=58&&liveSupport>=2&&liveOpposition===0&&
+    edge>=62&&dominantEvidence>=earlyEvidenceGate&&liveSupport>=2&&liveOpposition===0&&
     Number(predator?.microstructure?.opposition||0)<=.20&&
     Number(predator?.microstructure?.persistence||0)>=.50&&
     (preMoveAligned||tickAligned||liqSide===fusedSide)
@@ -1023,8 +1024,8 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     state,action,
     title:action==='BUY'?'AMBUSH · BUY':action==='SELL'?'AMBUSH · SELL':'AMBUSH · WAIT',
     reason:action==='WAIT'
-      ?`Ambush V8 · ${String(predator?.phase||'HUNT')} · ${String(predator?.pattern||'NO_EDGE')} · AMBUSH لم يعتمد صفقة${chaseRisk?' · NO CHASE':''}${reactionConflict?' · REACTION BLOCK':''}${flipSuppressed?' · FLIP FILTER':''}.`
-      :`Ambush V8 · ${fusedSide} · ${String(predator?.pattern||contextMode)} · score ${Number(predator?.score||0)} · مساعدين ${assistantCount}/10 · stable ${Number(predator?.stableCount||0)}${predator?.confirmationAssist?' · STRONG CONFIRM':''}${preMoveAligned?' · PRE-MOVE':''}${changed?' · TECH CONTRARIAN':''}.`,
+      ?`Ambush V10 · ${String(predator?.phase||'HUNT')} · ${String(predator?.pattern||'NO_EDGE')} · AMBUSH لم يعتمد صفقة${chaseRisk?' · NO CHASE':''}${reactionConflict?' · REACTION BLOCK':''}${flipSuppressed?' · FLIP FILTER':''}.`
+      :`Ambush V10 · ${fusedSide} · ${String(predator?.pattern||contextMode)} · score ${Number(predator?.score||0)} · مساعدين ${assistantCount}/10 · stable ${Number(predator?.stableCount||0)}${predator?.confirmationAssist?' · STRONG CONFIRM':''}${preMoveAligned?' · PRE-MOVE':''}${changed?' · TECH CONTRARIAN':''}.`,
     score:{long:outLong,short:outShort,threshold:58},
     confidence,
     trade,
@@ -1039,7 +1040,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     fusionV8:{
       authority:'AMBUSH',side:fusedSide,rawSide:rawFusedSide,confidence,strong:ambushTrade,watch:false,ambushTrade,predator,assistants,assistantCount,ambushPlan,nextPrice,
       liveGuard:{
-        requiredTradeConfidence,effectiveTradeConfidence,earlyFlowPattern,earlyFlowQuality,
+        requiredTradeConfidence,effectiveTradeConfidence,earlyFlowPattern,earlyFlowQuality,earlyEvidenceGate,
         regimeDirectional,regimePosterior:Number(regimePosterior.toFixed(1)),regimeAccuracy:Number(regimeAccuracy.toFixed(1)),
         regimeProvenWeak,regimeUnprovenRisk,oosWeak,wfOosN,wfOosAccuracy:Number.isFinite(wfOosAccuracy)?Number(wfOosAccuracy.toFixed(1)):null
       },
