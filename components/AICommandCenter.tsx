@@ -48,12 +48,17 @@ function AssetCard({x,liveQuote}:any){
     :(goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT');
   const displaySide=recommendation?.active?recommendation.action:forecastSide;
   const buy=displaySide==='BUY',sell=displaySide==='SELL';
-  const price=x.asset==='GOLD'&&liveQuote?.status==='live'?liveQuote.price:(x.livePulse?.price??x.price);
+  const liveGoldPrice=x.asset==='GOLD'&&liveQuote?.ok&&Number.isFinite(Number(liveQuote?.price))&&Number(liveQuote.price)>0?Number(liveQuote.price):null;
+  const price=liveGoldPrice??x.livePulse?.price??x.price;
   const move=nextMoveCopy(hunt,x.stateGraph);
   const structuralTarget=path?.destination?.mid??zone?.target?.mid??null;
   const target=structuralTarget??recommendation?.targets?.scalp??recommendation?.targets?.oneMinute??hunt?.quickSignalTargets?.oneMinute?.price??null;
-  const invalid=recommendation?.invalidation??hunt?.invalidation??null;
-  const conf=recommendation?.active?calibrated(recommendation.confidence):calibrated(goldCore?.confidence??hunt?.nextMove?.confidence??hunt?.confidence??0);
+  const invalid=path?.invalidation?.price??recommendation?.invalidation??hunt?.invalidation??null;
+  const conf=recommendation?.active
+    ?calibrated(recommendation.confidence)
+    :path?.side&&path.side!=='WAIT'
+      ?calibrated(path.confidence)
+      :calibrated(goldCore?.confidence??hunt?.nextMove?.confidence??hunt?.confidence??0);
   const scalpNext=x.scalp?.nextPrice||x.scalp?.fusionV8?.nextPrice||{};
   const scalpSide=x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:(scalpNext?.side||'WAIT');
   const scalpPrice=scalpNext?.price??x.scalp?.target?.price??x.scalp?.ambushPlan?.target?.price??hunt?.quickSignalTargets?.oneMinute?.price??null;
