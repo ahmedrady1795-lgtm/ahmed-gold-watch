@@ -1,3 +1,4 @@
+import {getQuoteData} from './market-hub';
 type Asset='BTC'|'GOLD';
 type Side='BUY'|'SELL'|'WAIT';
 type Tick={at:number;price:number;bid:number|null;ask:number|null;bidQty:number|null;askQty:number|null;source:string};
@@ -33,18 +34,20 @@ export function startServerTickBrain(){
     ws=>ws.send(JSON.stringify({type:'subscribe',product_ids:['BTC-USD'],channels:['ticker']})),
     j=>{if(j?.type!=='ticker'||j?.product_id!=='BTC-USD')return;const price=Number(j.price),bid=Number(j.best_bid),ask=Number(j.best_ask);if(!Number.isFinite(price)||price<=0)return;push('BTC',{at:Date.parse(j.time)||Date.now(),price,bid:Number.isFinite(bid)?bid:null,ask:Number.isFinite(ask)?ask:null,bidQty:null,askQty:null,source:'Coinbase server WebSocket'});}
   );
-  let goldBusy=false,lastGoldAt=0,lastGoldPrice=0;
+  let goldBusy=false;
   const pollGold=async()=>{
     if(goldBusy)return;goldBusy=true;
     try{
-      const r=await fetch('https://api.gold-api.com/price/XAU',{cache:'no-store',signal:AbortSignal.timeout(3500),headers:{'User-Agent':'AhmedGold-Pulse/1.0'}});
-      const j:any=await r.json().catch(()=>null),price=Number(j?.price);
-      if(!r.ok||!Number.isFinite(price)||price<=0)return;
-      const parsed=typeof j?.updatedAt==='string'?Date.parse(j.updatedAt):NaN;
-      const at=Number.isFinite(parsed)?parsed:Date.now();
-      if(at===lastGoldAt&&Math.abs(price-lastGoldPrice)<1e-9)return;
-      lastGoldAt=at;lastGoldPrice=price;
-      push('GOLD',{at,price,bid:null,ask:null,bidQty:null,askQty:null,source:'Gold-API.com real-time'});
+      const q=await getQuoteData({forceExternal:true}),price=Number(q?.price);
+      if(q?.status!=='live'||!Number.isFinite(price)||price<=0)return;
+      const bid=Number(q?.bid),ask=Number(q?.ask);
+      push('GOLD',{
+        at:Date.now(),price,
+        bid:Number.isFinite(bid)&&bid>0?bid:null,
+        ask:Number.isFinite(ask)&&ask>0?ask:null,
+        bidQty:null,askQty:null,
+        source:String(q?.source||'Gold external quote')+' server pulse'
+      });
     }catch{}finally{goldBusy=false;}
   };
   void pollGold();
