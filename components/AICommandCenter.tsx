@@ -149,9 +149,9 @@ function AssetCard({x,fast,liveQuote}:any){
   const invalid=plan?.invalidation||{};
   const helpers=scalpFusion?.assistants||{};
   const helperCount=Number(scalpFusion?.assistantCount||0);
-  const ambushStats=x.asset==='BTC'?x.scalpLive?.bySource?.SCALP_AMBUSH_TRADE_V8:null;
-  const ambushMetric=ambushStats?.resolved?ambushStats:(x.asset==='BTC'?x.scalpLive?.global:null);
-  const ambushWf=x.asset==='BTC'?x.scalpLive?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V8:null;
+  const ambushStats=x.scalpLive?.bySource?.SCALP_AMBUSH_TRADE_V8||null;
+  const ambushMetric=ambushStats?.resolved?ambushStats:(x.scalpLive?.global||null);
+  const ambushWf=x.scalpLive?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V8||null;
   const scalpTargetPrice=x.scalp?.target?.price??plan?.target?.price??x.scalp?.intercept?.launchLine??null;
   const nextPrice=x.scalp?.nextPrice||scalpFusion?.nextPrice||{};
   const tracker=x.scalp?.tracking||{};
@@ -229,7 +229,7 @@ function AssetCard({x,fast,liveQuote}:any){
       {(entry?.zoneLow!=null&&entry?.zoneHigh!=null)&&<p>منطقة الدخول {fmt(entry.zoneLow,2)} — {fmt(entry.zoneHigh,2)}</p>}
       {invalid?.cancel&&<p className="red">إلغاء: {(invalid.reasons||[]).join(' · ')||'شرط الإلغاء تحقق'}</p>}
 
-      {x.asset==='BTC'&&ambushStats&&<div className="scalp-ambush-results">
+      {ambushStats&&<div className="scalp-ambush-results">
         <span>نجح <b>{ambushStats?.hits||0}</b></span>
         <span>فشل <b>{ambushStats?.fails||0}</b></span>
         <span>محايد <b>{ambushStats?.neutral||0}</b></span>
