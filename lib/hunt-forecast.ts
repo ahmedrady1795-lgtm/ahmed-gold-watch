@@ -322,6 +322,24 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     (slowDoubleConflict?4:0),
     24,validatedMlConflict?40:46
   ));
+  let oneMinute:Horizon={...two,strength:Math.round(cap(two.strength*.84,0,82))};
+  if(fastNextSide!=='WAIT'&&(fastNextStrong||fastNextLean)){
+    const fastBuyShare=fastNextBuy/Math.max(1e-9,fastNextBuy+fastNextSell)*100;
+    const fastSellShare=100-fastBuyShare;
+    const oneStrength=Math.round(cap(
+      fastNextStrong
+        ?fastNextConfidence*.74+Math.max(fastNextBuy,fastNextSell)*.26
+        :fastLeanConfidence*.78+Math.min(16,fastNextEdge*.22),
+      0,88
+    ));
+    oneMinute={
+      side:fastNextSide,
+      buy:Math.round(fastBuyShare),
+      sell:Math.round(fastSellShare),
+      strength:oneStrength,
+      gap:Math.round(Math.abs(fastBuyShare-fastSellShare))
+    };
+  }
   if(fastNextStrong){
     const fastBuyShare=fastNextBuy/Math.max(1e-9,fastNextBuy+fastNextSell)*100;
     const fastSellShare=100-fastBuyShare;
@@ -618,6 +636,43 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const resolved15MoveAtr=miTarget?.moveAtr!=null?Number(miTarget.moveAtr):target15Atr;
   const target15MovePct=target15Price!=null&&p>0?(target15Price-p)/p*100:0;
 
+  // 30-minute structural extension: slower than the live stack and driven by
+  // the 15m ensemble, state graph, M15 context and learned follow-through.
+  const thirtyBuy=
+    sideScore(fifteen.side,'BUY',fifteen.strength)*.38+
+    sideScore(graphSide,'BUY',graphScore)*.20+
+    sideScore(m15Side,'BUY',m15Strength)*.16+
+    sideScore(structureM5Side,'BUY',structureM5Score)*.10+
+    sideScore(behaviorSide,'BUY',behaviorScore)*.08+
+    sideScore(learning?.horizon5?.side,'BUY',Number(learning?.horizon5?.confidence||0))*.08;
+  const thirtySell=
+    sideScore(fifteen.side,'SELL',fifteen.strength)*.38+
+    sideScore(graphSide,'SELL',graphScore)*.20+
+    sideScore(m15Side,'SELL',m15Strength)*.16+
+    sideScore(structureM5Side,'SELL',structureM5Score)*.10+
+    sideScore(behaviorSide,'SELL',behaviorScore)*.08+
+    sideScore(learning?.horizon5?.side,'SELL',Number(learning?.horizon5?.confidence||0))*.08;
+  const thirty=horizon(thirtyBuy,thirtySell,5);
+  const thirtyDir=thirty.side==='BUY'?1:thirty.side==='SELL'?-1:0;
+  const sameAs15=thirty.side!=='WAIT'&&thirty.side===resolved15Side;
+  let target30Atr=thirtyDir===0?0:
+    sameAs15
+      ?resolved15MoveAtr*.72+thirtyDir*(.34+Number(thirty.strength||0)/190)
+      :thirtyDir*(.44+Number(thirty.strength||0)/150);
+  target30Atr=Math.max(-3.2,Math.min(3.2,target30Atr));
+  const target30Price=validPrice&&thirtyDir!==0?p+a*target30Atr:null;
+  const target30Confidence=Math.round(cap(
+    Number(thirty.strength||0)*.60+
+    (sameAs15?10:0)+
+    (graphSide===thirty.side?8:0)+
+    (m15Side===thirty.side?6:0)-
+    (graphChange?8:0),
+    0,84
+  ));
+  const target30BandAtr=.34+(100-target30Confidence)/100*.52;
+  const target30Low=target30Price==null?null:target30Price-a*target30BandAtr;
+  const target30High=target30Price==null?null:target30Price+a*target30BandAtr;
+
   const movementStations=validPrice?buildMovementStations({
     price:p,atr:a,now,first:firstLeg,second:secondLeg,third:target15Price,
     two:{...two,firstHitMinutes:Number(em2?.firstHitMinutes||0)},five,fifteen,
@@ -642,8 +697,10 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     :quickTarget(scalpTargetSide,Math.max(scalpLong,scalpShort),.10,null);
   const quickSignalTargets={
     scalp:{side:scalpTargetSide,price:scalpTargetPrice,confidence:Math.round(cap(Number(scalp?.confidence||Math.max(scalpLong,scalpShort)),0,88)),horizonMinutes:.5,source:scalp?.target?.source||'DYNAMIC',contextMode:scalp?.target?.contextMode||null},
-    oneMinute:{side:m1Side,price:quickTarget(m1Side,m1Strength,.14,station1),confidence:Math.round(cap(m1Strength,0,88)),horizonMinutes:1},
-    fiveMinute:{side:m5Side,price:quickTarget(m5Side,m5Strength,.30,station2),confidence:Math.round(cap(m5Strength,0,88)),horizonMinutes:5}
+    oneMinute:{side:oneMinute.side,price:quickTarget(oneMinute.side,oneMinute.strength,.12,station1),confidence:Math.round(cap(oneMinute.strength,0,88)),horizonMinutes:1,source:'LIVE_FAST_STACK'},
+    fiveMinute:{side:five.side,price:quickTarget(five.side,five.strength,.30,station2),confidence:Math.round(cap(five.strength,0,88)),horizonMinutes:5,source:'FIVE_MINUTE_ENSEMBLE'},
+    fifteenMinute:{side:resolved15Side,price:target15Price==null?null:Number(target15Price.toFixed(2)),confidence:resolved15Confidence,horizonMinutes:15,source:memory15Usable?'15M_MEMORY_BLEND':'15M_LIVE_ENSEMBLE'},
+    thirtyMinute:{side:thirty.side,price:target30Price==null?null:Number(target30Price.toFixed(2)),confidence:target30Confidence,horizonMinutes:30,source:'30M_STRUCTURAL_EXTENSION'}
   };
 
   const alternativeSide:Side=projectionSide==='BUY'?'SELL':projectionSide==='SELL'?'BUY':'WAIT';
@@ -736,16 +793,17 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
       ]
     },
     fifteenMinuteTarget:{side:resolved15Side,price:target15Price==null?null:Number(target15Price.toFixed(2)),low:target15Low==null?null:Number(target15Low.toFixed(2)),high:target15High==null?null:Number(target15High.toFixed(2)),confidence:resolved15Confidence,moveAtr:Number(resolved15MoveAtr.toFixed(3)),movePct:Number(target15MovePct.toFixed(3)),samples:em15Samples,source:miTarget?.source||(memory15Usable?'15M_MEMORY_BLEND':'15M_LIVE_ENSEMBLE'),targetAt:now+15*60000},
+    thirtyMinuteTarget:{side:thirty.side,price:target30Price==null?null:Number(target30Price.toFixed(2)),low:target30Low==null?null:Number(target30Low.toFixed(2)),high:target30High==null?null:Number(target30High.toFixed(2)),confidence:target30Confidence,moveAtr:Number(target30Atr.toFixed(3)),source:'30M_STRUCTURAL_EXTENSION',targetAt:now+30*60000},
     movementStations,
     quickSignalTargets,
-    horizons:{twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},
-    forecastWindowsMinutes:[2,5,15],
+    horizons:{oneMinute,twoMinute:two,fiveMinute:five,fifteenMinute:fifteen,thirtyMinute:thirty},
+    forecastWindowsMinutes:[1,5,15,30],
     waveStructure:structureFresh?structure:null,
     accumulationMap:accumulationFresh?accumulation:null,
     learningBrain:learning?.ok?learning:null,
     expectedMoveLearning:expectedLearning?.ok?expectedLearning:null,
     movementIntelligence:movementIntel?.ok?movementIntel:null,
-    expectedMoveCore:{primary:true,windows:[2,5,15],consensus:horizonConsensus,conflict:horizonConflict>0||expectedConflict||primaryMoveConflict,averageCalibration:expectedCal,target:'FIRST_PASSAGE',firstMoveSide:primaryMoveSide,firstMoveConfidence:primaryMoveConfidence},
+    expectedMoveCore:{primary:true,windows:[1,5,15,30],consensus:horizonConsensus,conflict:horizonConflict>0||expectedConflict||primaryMoveConflict,averageCalibration:expectedCal,target:'FIRST_PASSAGE',firstMoveSide:primaryMoveSide,firstMoveConfidence:primaryMoveConfidence},
     strongMove:accumulationFresh&&accumulation?.strongMoveSide!=='WAIT'&&Number(accumulation?.breakoutReadiness||0)>=strongMoveReadiness&&(primaryMoveSide==='WAIT'||accumulation.strongMoveSide===primaryMoveSide)?{side:accumulation.strongMoveSide,score:Number(accumulation.strongMoveScore||0),readiness:Number(accumulation.breakoutReadiness||0),phase:accumulation.phase,breakoutLevel:accumulation.breakoutLevel,breakdownLevel:accumulation.breakdownLevel,liquidityConfirmed:Boolean(accumulation.liquidityConfirmed),absorptionConfirmed:Boolean(accumulation.absorptionConfirmed)}:null,
     selfEvolution:evolution?.ok?{generation:evolution.generation,active:evolution.active,promoted:evolution.promoted,rolledBack:evolution.rolledBack,reason:evolution.reason}:null,
     alternative:{side:alternativeSide,strength:alternativeStrength,condition:alternativeSide==='WAIT'?'لا يوجد بديل واضح':`يتفعل إذا فشل Trigger أو كُسر Invalidation ويتحول الالتزام إلى ${alternativeSide}`},
