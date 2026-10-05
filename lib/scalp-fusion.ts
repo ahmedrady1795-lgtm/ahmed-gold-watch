@@ -447,6 +447,9 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   const predator=evaluatePredatorScalp(asset,{
     now:Date.now(),price:p,side:fusedSide,edge,evidence:dominantEvidence,liveSupport,liveOpposition,
     tickSide:tick1.side,tickStage:tick1.stage,tickScore:tick1.score,
+    tickConfidence:Number(tick?.confidence||tick1.confidence||0),
+    tickSamples:Number(tick?.samples||0),
+    tickPersistence:Number(tick?.persistence||0),
     liqSide,liqScore,motionSide,motionStage:String(motion?.stage||'WAIT'),motionScore,
     preSide:preMove.side,preScore:preMove.score,preArmed:preMove.armed,late:chaseRisk||preMove.lateMomentum,
     trapSide,trapScore,mode,accumulationPhase,accumulationReadiness,reactionAligned,accumulationAligned,
@@ -529,12 +532,17 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   // Precision guard for the only scalp authority. Weak regimes never silence Ambush tracking;
   // they only block trade-ready status until independent confirmation is strong enough.
   const earlyFlowPattern=String(predator?.pattern||'')==='EARLY_FLOW_AMBUSH';
+  const tickSequenceReady=Boolean(predator?.tickSequenceReady||predator?.tickSequence?.ready);
   const earlyFlowTemporal=Boolean(
-    earlyFlowPattern&&predator?.ambushTemporal&&
-    Number(predator?.stableCount||0)>=1&&Number(predator?.persistence||0)>=.75&&Number(predator?.ageMs||0)>=250
+    earlyFlowPattern&&predator?.ambushTemporal&&(
+      predator?.earlyFlowTemporal||
+      predator?.temporalReady||
+      tickSequenceReady
+    )
   );
   const ambushTemporalReady=Boolean(predator?.ambushTemporal&&(predator?.temporalReady||earlyFlowTemporal));
   const ambushMicroConfirmed=Boolean(
+    (earlyFlowPattern&&tickSequenceReady)||
     !predator?.microstructure?.available||
     (
       predator?.microstructure?.ready&&
@@ -547,7 +555,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     earlyFlowPattern&&assistantCount>=2&&Number(predator?.score||0)>=66&&
     edge>=62&&dominantEvidence>=earlyEvidenceGate&&liveSupport>=2&&liveOpposition===0&&
     Number(predator?.microstructure?.opposition||0)<=.20&&
-    Number(predator?.microstructure?.persistence||0)>=.50&&
+    (tickSequenceReady||Number(predator?.microstructure?.persistence||0)>=.50)&&
     (preMoveAligned||tickAligned||liqSide===fusedSide)
   );
   const exceptionalNonCompression=Boolean(
@@ -1040,7 +1048,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     fusionV8:{
       authority:'AMBUSH',side:fusedSide,rawSide:rawFusedSide,confidence,strong:ambushTrade,watch:false,ambushTrade,predator,assistants,assistantCount,ambushPlan,nextPrice,
       liveGuard:{
-        requiredTradeConfidence,effectiveTradeConfidence,earlyFlowPattern,earlyFlowQuality,earlyEvidenceGate,
+        requiredTradeConfidence,effectiveTradeConfidence,earlyFlowPattern,earlyFlowQuality,earlyEvidenceGate,tickSequenceReady,
         regimeDirectional,regimePosterior:Number(regimePosterior.toFixed(1)),regimeAccuracy:Number(regimeAccuracy.toFixed(1)),
         regimeProvenWeak,regimeUnprovenRisk,oosWeak,wfOosN,wfOosAccuracy:Number.isFinite(wfOosAccuracy)?Number(wfOosAccuracy.toFixed(1)):null
       },
