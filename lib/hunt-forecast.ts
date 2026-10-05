@@ -266,7 +266,9 @@ function buildZoneForecast(args:{
     else if(Number.isFinite(upD)&&!Number.isFinite(downD))pathSide='BUY';
     else if(Number.isFinite(downD)&&!Number.isFinite(upD))pathSide='SELL';
   }
-  const pathDestination=pathSide==='BUY'?upperDestination:pathSide==='SELL'?lowerDestination:null;
+  const directionalUpper=upperDestination||(resistance&&Number(resistance.mid)>p?resistance:null);
+  const directionalLower=lowerDestination||(support&&Number(support.mid)<p?support:null);
+  const pathDestination=pathSide==='BUY'?directionalUpper:pathSide==='SELL'?directionalLower:null;
   const pathRebound=pathSide==='BUY'?support:pathSide==='SELL'?resistance:null;
   const pathTotal=Math.max(1,upScore+downScore),pathDominance=Math.abs(pathDiff)/pathTotal*100;
   const destinationQuality=Number(pathDestination?.strength||0);
