@@ -177,8 +177,8 @@ export function scalpAnalyze(c1:Candle[],c5:Candle[],now:number,price?:number|nu
     const candlePower=unit(
       directionalStrength(dir*body,.55)*.30+
       directionalStrength(dir*wickBias,.22)*.18+
-      (long?reclaimUp:reclaimDown?1:0)*.22+
-      (long?impulseUp:impulseDown?1:0)*.18+
+      ((long?reclaimUp:reclaimDown)?1:0)*.22+
+      ((long?impulseUp:impulseDown)?1:0)*.18+
       ((long?longBreak:shortBreak)?1:0)*.12
     );
     const pathPower=unit(
@@ -187,8 +187,8 @@ export function scalpAnalyze(c1:Candle[],c5:Candle[],now:number,price?:number|nu
       unit(Math.max(0,compression)/.42)*((long?impulseUp||longBreak:impulseDown||shortBreak)?1:.45)*.30
     );
     const context=unit(
-      (long?m5Bull:m5Bear?1:0)*.42+
-      (long?m5DiBull:m5DiBear?1:0)*.34+
+      ((long?m5Bull:m5Bear)?1:0)*.42+
+      ((long?m5DiBull:m5DiBear)?1:0)*.34+
       directionalStrength(Number(i5.adx)-12,24)*.24
     );
     const reversal=(long?reversalUp:reversalDown)?1:0;
