@@ -290,3 +290,9 @@ footer{display:flex;justify-content:space-between;gap:20px;color:#5f7880;font-si
   .ordered-impact>strong{font-size:12px}
   .ordered-impact p{font-size:7.5px}
 }
+
+.forecast-scenario-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:9px}
+.forecast-scenario-strip>div{padding:7px 8px;border:1px solid rgba(255,255,255,.06);border-radius:9px;background:rgba(4,13,16,.35);text-align:center}
+.forecast-scenario-strip small{display:block;color:var(--muted);font-size:8px}
+.forecast-scenario-strip b{display:block;margin-top:3px;font-size:11px}
+@media(max-width:760px){.forecast-scenario-strip{gap:4px}.forecast-scenario-strip>div{padding:6px}.forecast-scenario-strip b{font-size:10px}}

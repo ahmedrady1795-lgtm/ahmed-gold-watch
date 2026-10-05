@@ -26,6 +26,7 @@ import {buildScalpFusion} from '../../../lib/scalp-fusion';
 import {recordNextMoveOutcome,getNextMoveOutcome,calibrateNextMoveConfidence} from '../../../lib/next-move-outcome';
 import {buildGoldForecastCore} from '../../../lib/gold-forecast-core';
 import {buildPredatorFusionV2} from '../../../lib/predator-fusion-v2';
+import {getStructuralPathLearning,calibrateStructuralPathForecast,recordStructuralPathOutcome} from '../../../lib/structural-path-learning';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -322,12 +323,24 @@ export async function GET(request:Request){
     const bitcoinMaster=masterArbitrate('BTC',bitcoin,bitcoinScalp,now,bitcoinLearner,bitcoinLearning,bitcoinEvolution,bitcoinExpectedLearning,bitcoinMovement,bitcoinStateGraph,bitcoinTick,bitcoinMultiBrain,bitcoinMl);
     const goldNextMovePrior=getNextMoveOutcome('GOLD',goldPrice,now);
     const bitcoinNextMovePrior=getNextMoveOutcome('BTC',btcPrice,now);
+    const goldPathPrior=getStructuralPathLearning('GOLD',goldPrice,now);
+    const bitcoinPathPrior=getStructuralPathLearning('BTC',btcPrice,now);
     const goldHunt=buildHuntForecast('GOLD',{...gold,master:goldMaster},goldScalp,goldPrice,goldAtr,now,goldWave,goldLearner,goldStructure,goldAccumulation,goldLearning,goldEvolution,goldStateGraph,goldExpectedLearning,goldMovement,goldNextMovePrior);
     const bitcoinHunt=buildHuntForecast('BTC',{...bitcoin,master:bitcoinMaster},bitcoinScalp,btcPrice,btcAtr,now,btcWave,bitcoinLearner,bitcoinStructure,bitcoinAccumulation,bitcoinLearning,bitcoinEvolution,bitcoinStateGraph,bitcoinExpectedLearning,bitcoinMovement,bitcoinNextMovePrior);
     goldHunt.nextMove=calibrateNextMoveConfidence(goldHunt.nextMove,goldNextMovePrior,goldMultiBrain?.regime||goldMovement?.regime);
     bitcoinHunt.nextMove=calibrateNextMoveConfidence(bitcoinHunt.nextMove,bitcoinNextMovePrior,bitcoinMultiBrain?.regime||bitcoinMovement?.regime);
+    if(goldHunt?.zoneForecast?.pathForecast){
+      goldHunt.zoneForecast.pathForecast=calibrateStructuralPathForecast(goldHunt.zoneForecast.pathForecast,goldPathPrior,goldHunt.zoneForecast.phase);
+    }
+    if(bitcoinHunt?.zoneForecast?.pathForecast){
+      bitcoinHunt.zoneForecast.pathForecast=calibrateStructuralPathForecast(bitcoinHunt.zoneForecast.pathForecast,bitcoinPathPrior,bitcoinHunt.zoneForecast.phase);
+    }
     const goldNextMoveLive=recordNextMoveOutcome({asset:'GOLD',price:goldPrice,atr:goldAtr,now,hunt:goldHunt,regime:goldMultiBrain?.regime||goldMovement?.regime});
     const bitcoinNextMoveLive=recordNextMoveOutcome({asset:'BTC',price:btcPrice,atr:btcAtr,now,hunt:bitcoinHunt,regime:bitcoinMultiBrain?.regime||bitcoinMovement?.regime});
+    const goldPathLive=recordStructuralPathOutcome({asset:'GOLD',price:goldPrice,atr:goldAtr,now,pathForecast:goldHunt?.zoneForecast?.pathForecast,phase:goldHunt?.zoneForecast?.phase});
+    const bitcoinPathLive=recordStructuralPathOutcome({asset:'BTC',price:btcPrice,atr:btcAtr,now,pathForecast:bitcoinHunt?.zoneForecast?.pathForecast,phase:bitcoinHunt?.zoneForecast?.phase});
+    if(goldHunt?.zoneForecast?.pathForecast)goldHunt.zoneForecast.pathForecast.liveLearning=goldPathLive;
+    if(bitcoinHunt?.zoneForecast?.pathForecast)bitcoinHunt.zoneForecast.pathForecast.liveLearning=bitcoinPathLive;
 
     const [, , , , goldAutopsy, bitcoinAutopsy]=await Promise.all([
       recordMarketLearningObservation({asset:'GOLD',c1:gm.c1,price:goldPrice,atr:goldAtr,context:goldLearningContext,forecast:goldHunt,now}),
@@ -449,8 +462,12 @@ export async function GET(request:Request){
           origin:compactZone(hunt.zoneForecast.origin),
           target:compactZone(hunt.zoneForecast.target),
           pathForecast:hunt.zoneForecast.pathForecast?{
+            version:hunt.zoneForecast.pathForecast.version||'FORECAST_AI_V3',
             side:hunt.zoneForecast.pathForecast.side||'WAIT',
             confidence:Number(hunt.zoneForecast.pathForecast.confidence||0),
+            rawConfidence:Number(hunt.zoneForecast.pathForecast.rawConfidence||hunt.zoneForecast.pathForecast.confidence||0),
+            rawProbability:Number(hunt.zoneForecast.pathForecast.rawProbability||0),
+            probabilities:hunt.zoneForecast.pathForecast.probabilities||null,
             scenario:hunt.zoneForecast.pathForecast.scenario||'',
             reason:hunt.zoneForecast.pathForecast.reason||'',
             phase:hunt.zoneForecast.pathForecast.phase||'NEUTRAL',
@@ -459,7 +476,24 @@ export async function GET(request:Request){
             destination:compactZone(hunt.zoneForecast.pathForecast.destination),
             reboundZone:compactZone(hunt.zoneForecast.pathForecast.reboundZone),
             upperLiquidity:compactZone(hunt.zoneForecast.pathForecast.upperLiquidity),
-            lowerLiquidity:compactZone(hunt.zoneForecast.pathForecast.lowerLiquidity)
+            lowerLiquidity:compactZone(hunt.zoneForecast.pathForecast.lowerLiquidity),
+            alternate:hunt.zoneForecast.pathForecast.alternate?{
+              side:hunt.zoneForecast.pathForecast.alternate.side||'WAIT',
+              probability:Number(hunt.zoneForecast.pathForecast.alternate.probability||0),
+              destination:compactZone(hunt.zoneForecast.pathForecast.alternate.destination)
+            }:null,
+            invalidation:hunt.zoneForecast.pathForecast.invalidation?{
+              price:Number.isFinite(Number(hunt.zoneForecast.pathForecast.invalidation.price))?Number(hunt.zoneForecast.pathForecast.invalidation.price):null,
+              zone:compactZone(hunt.zoneForecast.pathForecast.invalidation.zone),
+              reason:hunt.zoneForecast.pathForecast.invalidation.reason||''
+            }:null,
+            evidence:hunt.zoneForecast.pathForecast.evidence||null,
+            learning:hunt.zoneForecast.pathForecast.learning||null,
+            liveLearning:hunt.zoneForecast.pathForecast.liveLearning?{
+              readyForCalibration:Boolean(hunt.zoneForecast.pathForecast.liveLearning.readyForCalibration),
+              failureStreak:Number(hunt.zoneForecast.pathForecast.liveLearning.failureStreak||0),
+              global:hunt.zoneForecast.pathForecast.liveLearning.global||null
+            }:null
           }:null,
           stability:hunt.zoneForecast.stability?{
             locked:Boolean(hunt.zoneForecast.stability.locked),
@@ -543,8 +577,10 @@ export async function GET(request:Request){
       triggerReason:h.zoneForecast.triggerReason||'',
       target:h.zoneForecast.target?{low:h.zoneForecast.target.low,high:h.zoneForecast.target.high,kind:h.zoneForecast.target.kind}:null,
       path:h.zoneForecast.pathForecast?{
+        version:h.zoneForecast.pathForecast.version||'FORECAST_AI_V3',
         side:h.zoneForecast.pathForecast.side||'WAIT',
         confidence:Number(h.zoneForecast.pathForecast.confidence||0),
+        probabilities:h.zoneForecast.pathForecast.probabilities||null,
         destination:h.zoneForecast.pathForecast.destination?{
           low:h.zoneForecast.pathForecast.destination.low,
           high:h.zoneForecast.pathForecast.destination.high,
@@ -553,7 +589,17 @@ export async function GET(request:Request){
         rebound:h.zoneForecast.pathForecast.reboundZone?{
           low:h.zoneForecast.pathForecast.reboundZone.low,
           high:h.zoneForecast.pathForecast.reboundZone.high
-        }:null
+        }:null,
+        alternate:h.zoneForecast.pathForecast.alternate?{
+          side:h.zoneForecast.pathForecast.alternate.side||'WAIT',
+          probability:Number(h.zoneForecast.pathForecast.alternate.probability||0),
+          destination:h.zoneForecast.pathForecast.alternate.destination?{
+            low:h.zoneForecast.pathForecast.alternate.destination.low,
+            high:h.zoneForecast.pathForecast.alternate.destination.high
+          }:null
+        }:null,
+        invalidation:Number.isFinite(Number(h.zoneForecast.pathForecast.invalidation?.price))?Number(h.zoneForecast.pathForecast.invalidation.price):null,
+        learning:h.zoneForecast.pathForecast.learning||null
       }:null,
       locked:Boolean(h.zoneForecast.stability?.locked),
       stabilityReason:h.zoneForecast.stability?.reason||'',

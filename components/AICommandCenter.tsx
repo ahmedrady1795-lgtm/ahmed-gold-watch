@@ -87,6 +87,14 @@ function AssetCard({x,liveQuote}:any){
             :move.title}
       </strong>
       <p>{path?.scenario||zone?.summary||move.detail}</p>
+      {path?.probabilities&&<div className="forecast-scenario-strip">
+        <div><small>احتمال الصعود</small><b className="green">{Math.round(Number(path.probabilities.up||0))}%</b></div>
+        <div><small>احتمال الهبوط</small><b className="red">{Math.round(Number(path.probabilities.down||0))}%</b></div>
+        <div><small>الإبطال</small><b>{Number.isFinite(Number(path?.invalidation?.price))?fmt(path.invalidation.price,2):'—'}</b></div>
+      </div>}
+      {path?.alternate?.side&&path.alternate.side!=='WAIT'&&<em className="zone-stability">
+        البديل: {moveAr(path.alternate.side)}{path.alternate.destination?` نحو ${zoneRange(path.alternate.destination)}`:''} · {Math.round(Number(path.alternate.probability||0))}%
+      </em>}
       {zone?.stability?.locked&&<em className="zone-stability">سيناريو ثابت · {zone.stability.flipsBlocked>0?`تم رفض ${zone.stability.flipsBlocked} انعكاس ضعيف`:'بانتظار كسر المنطقة أو دليل أقوى'}</em>}
       {zone&&<div className="zone-map-mini">
         <div><small>الدعم/الطلب</small><b>{zoneRange(zone.support)}</b></div>
