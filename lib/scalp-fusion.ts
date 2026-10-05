@@ -144,20 +144,26 @@ function reactionContext(accumulation:any,price:number){
 
 function preMoveSignal(liq:any,motion:any,tick:any){
   const q=cap(Number(liq?.quality||0),0,100),pressure=Number(liq?.pressure||0),micro=Number(liq?.book?.microEdge||0);
-  const accel=Number(liq?.dynamics?.acceleration||0),delta=Number(liq?.flow?.deltaPct||0),priceBps=Number(liq?.flow?.priceChangeBps||0);
+  const accel=Number(liq?.dynamics?.acceleration||0),pressureChange=Number(liq?.dynamics?.pressureChange||0);
+  const bidDepthChange=Number(liq?.dynamics?.bidDepthChangePct||0),askDepthChange=Number(liq?.dynamics?.askDepthChangePct||0);
+  const replenishDelta=bidDepthChange-askDepthChange;
+  const delta=Number(liq?.flow?.deltaPct||0),priceBps=Number(liq?.flow?.priceChangeBps||0);
   const t=tickStrength(tick),motionSide=side(motion?.side),motionStage=String(motion?.stage||'WAIT');
   const precursorCount=Number(motion?.diagnostics?.precursorCount||0),compression=Number(motion?.components?.compression||0);
   let buy=0,sell=0,supportBuy=0,supportSell=0;
   const add=(s:Side,pts:number)=>{if(s==='BUY'){buy+=pts;supportBuy++;}else if(s==='SELL'){sell+=pts;supportSell++;}};
   if(q>=55&&Math.abs(pressure)>=8)add(pressure>0?'BUY':'SELL',Math.min(24,Math.abs(pressure)*.34));
   if(Math.abs(micro)>=14)add(micro>0?'BUY':'SELL',Math.min(18,Math.abs(micro)*.16));
-  if(Math.abs(accel)>=7)add(accel>0?'BUY':'SELL',Math.min(16,Math.abs(accel)*.20));
+  if(Math.abs(accel)>=5)add(accel>0?'BUY':'SELL',Math.min(17,Math.abs(accel)*.22));
+  if(Math.abs(pressureChange)>=5)add(pressureChange>0?'BUY':'SELL',Math.min(15,Math.abs(pressureChange)*.28));
+  if(Math.abs(replenishDelta)>=7)add(replenishDelta>0?'BUY':'SELL',Math.min(13,Math.abs(replenishDelta)*.18));
   if(Math.abs(delta)>=16)add(delta>0?'BUY':'SELL',Math.min(14,Math.abs(delta)*.16));
-  if(motionSide!=='WAIT'&&(motionStage==='PRE_MOVE'||motionStage==='IGNITION'))add(motionSide,Math.min(24,Number(motion?.score||0)*.28));
+  if(motionSide!=='WAIT'&&['PRE_MOVE','IGNITION','PRE_TRIGGER','WAVE_FORMING'].includes(motionStage))add(motionSide,Math.min(24,Number(motion?.score||0)*.28));
   if(t.side!=='WAIT'){
     const velocity3=Math.abs(Number(tick?.velocity3s||0)),acceleration=Math.abs(Number(tick?.acceleration||0)),persistence=Number(tick?.persistence||0);
-    const preTick=velocity3<=3.6&&acceleration>=.18&&persistence>=56;
-    if(preTick)add(t.side,Math.min(22,t.score*.24+Math.max(0,persistence-55)*.18));
+    const stageLead=['PRE_TRIGGER','IGNITION','WAVE_FORMING','BUILDING'].includes(String(t.stage||''));
+    const preTick=(velocity3<=3.8&&acceleration>=.12&&persistence>=54)||stageLead;
+    if(preTick)add(t.side,Math.min(24,t.score*.25+Math.max(0,persistence-54)*.18+(stageLead?5:0)));
   }
   const provisional:Side=buy-sell>=6?'BUY':sell-buy>=6?'SELL':'WAIT';
   if(provisional!=='WAIT'&&compression>=60){
@@ -169,14 +175,31 @@ function preMoveSignal(liq:any,motion:any,tick:any){
   const tickVelocity3=Math.abs(Number(tick?.velocity3s||0));
   const priceStillCoiled=Math.abs(priceBps)<=2.6&&tickVelocity3<=3.8;
   const lateMomentum=Math.abs(priceBps)>3.2||tickVelocity3>4.8;
-  const armed=Boolean(sideOut!=='WAIT'&&priceStillCoiled&&!lateMomentum&&score>=52&&support>=3&&(precursorCount>=2||compression>=60||t.side===sideOut));
+  const stageAligned=Boolean(t.side===sideOut&&['PRE_TRIGGER','IGNITION','WAVE_FORMING','BUILDING'].includes(String(t.stage||'')));
+  const depthLeadAligned=Boolean(sideOut!=='WAIT'&&(
+    (sideOut==='BUY'&&(pressureChange>=5||replenishDelta>=7))||
+    (sideOut==='SELL'&&(pressureChange<=-5||replenishDelta<=-7))
+  ));
+  const armed=Boolean(
+    sideOut!=='WAIT'&&priceStillCoiled&&!lateMomentum&&
+    (
+      (score>=48&&support>=2&&(stageAligned||depthLeadAligned||precursorCount>=2||compression>=60))||
+      (score>=56&&support>=2&&t.side===sideOut)
+    )
+  );
   const ignition=Boolean(sideOut!=='WAIT'&&(motionStage==='IGNITION'||(t.stage==='IGNITION'&&t.side===sideOut)));
   const persistence=Number(tick?.persistence||0);
   const etaSeconds=sideOut==='WAIT'?null:Math.round(cap(
     27-Math.min(9,Math.abs(accel)*.32)-Math.min(7,Math.max(0,persistence-50)*.12)-Math.min(5,Math.max(0,compression-50)*.08),
     4,30
   ));
-  return {side:sideOut,score:Number(score.toFixed(1)),gap:Number(gap.toFixed(1)),support,armed,ignition,priceStillCoiled,lateMomentum,etaSeconds,quality:q,pressure:Number(pressure.toFixed(1)),microEdge:Number(micro.toFixed(1)),acceleration:Number(accel.toFixed(1)),deltaPct:Number(delta.toFixed(1)),priceChangeBps:Number(priceBps.toFixed(2)),compression,precursorCount,tickSide:t.side,tickStage:t.stage,tickScore:Number(t.score.toFixed(1))};
+  return {
+    side:sideOut,score:Number(score.toFixed(1)),gap:Number(gap.toFixed(1)),support,armed,ignition,priceStillCoiled,lateMomentum,etaSeconds,
+    quality:q,pressure:Number(pressure.toFixed(1)),pressureChange:Number(pressureChange.toFixed(1)),
+    bidDepthChangePct:Number(bidDepthChange.toFixed(1)),askDepthChangePct:Number(askDepthChange.toFixed(1)),replenishDelta:Number(replenishDelta.toFixed(1)),
+    microEdge:Number(micro.toFixed(1)),acceleration:Number(accel.toFixed(1)),deltaPct:Number(delta.toFixed(1)),priceChangeBps:Number(priceBps.toFixed(2)),
+    compression,precursorCount,stageAligned,depthLeadAligned,tickSide:t.side,tickStage:t.stage,tickScore:Number(t.score.toFixed(1))
+  };
 }
 
 export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,price:number|null,atr:number|null,liveOutcome:any=null,tick:any=null,accumulation:any=null,asset='BTC'){
@@ -505,7 +528,12 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
 
   // Precision guard for the only scalp authority. Weak regimes never silence Ambush tracking;
   // they only block trade-ready status until independent confirmation is strong enough.
-  const ambushTemporalReady=Boolean(predator?.ambushTemporal&&predator?.temporalReady);
+  const earlyFlowPattern=String(predator?.pattern||'')==='EARLY_FLOW_AMBUSH';
+  const earlyFlowTemporal=Boolean(
+    earlyFlowPattern&&predator?.ambushTemporal&&
+    Number(predator?.stableCount||0)>=1&&Number(predator?.persistence||0)>=.75&&Number(predator?.ageMs||0)>=250
+  );
+  const ambushTemporalReady=Boolean(predator?.ambushTemporal&&(predator?.temporalReady||earlyFlowTemporal));
   const ambushMicroConfirmed=Boolean(
     !predator?.microstructure?.available||
     (
@@ -514,11 +542,20 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
       Number(predator?.microstructure?.persistence||0)>=.66
     )
   );
+  const earlyFlowQuality=Boolean(
+    earlyFlowPattern&&assistantCount>=2&&Number(predator?.score||0)>=66&&
+    edge>=62&&dominantEvidence>=58&&liveSupport>=2&&liveOpposition===0&&
+    Number(predator?.microstructure?.opposition||0)<=.20&&
+    Number(predator?.microstructure?.persistence||0)>=.50&&
+    (preMoveAligned||tickAligned||liqSide===fusedSide)
+  );
   const exceptionalNonCompression=Boolean(
-    assistantCount>=6&&Boolean(predator?.confirmationAssist)&&Number(predator?.score||0)>=92&&
-    Number(predator?.microstructure?.persistence||0)>=.85&&
-    Number(predator?.microstructure?.trend||0)>=0&&
-    reactionFastOpposition===0
+    (
+      assistantCount>=6&&Boolean(predator?.confirmationAssist)&&Number(predator?.score||0)>=92&&
+      Number(predator?.microstructure?.persistence||0)>=.85&&
+      Number(predator?.microstructure?.trend||0)>=0&&
+      reactionFastOpposition===0
+    )||earlyFlowQuality
   );
   const ambushRegimeGuard=Boolean(
     mode==='COMPRESSION'
@@ -539,13 +576,20 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     (patternDirectional>=10&&patternPosterior<46)||
     patternFailureStreak>=4
   );
+  const earlyFlowConfidenceFloor=Math.max(
+    66,
+    Number.isFinite(wfThreshold)?wfThreshold:0,
+    oosWeak?72:0,
+    patternProvenWeak?74:0
+  );
+  const effectiveTradeConfidence=earlyFlowQuality?Math.min(requiredTradeConfidence,earlyFlowConfidenceFloor):requiredTradeConfidence;
   const weakAmbushCombination=Boolean(
-    assistantCount<3||
-    confidence<requiredTradeConfidence||
-    (oosWeak&&!exceptionalOosTrade)||
+    (!earlyFlowQuality&&assistantCount<3)||
+    confidence<effectiveTradeConfidence||
+    (oosWeak&&!exceptionalOosTrade&&!earlyFlowQuality)||
     (predatorPattern==='FLOW_TRACK'&&!predator?.confirmationAssist)||
-    (patternProvenWeak&&!exceptionalOosTrade)||
-    (mode!=='COMPRESSION'&&assistantCount<5&&!reactionAligned&&!accumulationAligned)||
+    (patternProvenWeak&&!exceptionalOosTrade&&!earlyFlowQuality)||
+    (mode!=='COMPRESSION'&&assistantCount<5&&!reactionAligned&&!accumulationAligned&&!earlyFlowQuality)||
     !ambushRegimeGuard
   );
   const ambushTrade=Boolean(
@@ -994,7 +1038,11 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     reaction:{active:reaction.active,inside:Boolean(reaction.inside),side:reactionSide,strength:reactionScore,confirmed:reactionConfirmed,candidate:reactionCandidate,fastSupport:reactionFastSupport,fastOpposition:reactionFastOpposition,nearest:reaction.nearest||null,contextMode},
     fusionV8:{
       authority:'AMBUSH',side:fusedSide,rawSide:rawFusedSide,confidence,strong:ambushTrade,watch:false,ambushTrade,predator,assistants,assistantCount,ambushPlan,nextPrice,
-      liveGuard:{requiredTradeConfidence,regimeDirectional,regimePosterior:Number(regimePosterior.toFixed(1)),regimeAccuracy:Number(regimeAccuracy.toFixed(1)),regimeProvenWeak,regimeUnprovenRisk,oosWeak,wfOosN,wfOosAccuracy:Number.isFinite(wfOosAccuracy)?Number(wfOosAccuracy.toFixed(1)):null},
+      liveGuard:{
+        requiredTradeConfidence,effectiveTradeConfidence,earlyFlowPattern,earlyFlowQuality,
+        regimeDirectional,regimePosterior:Number(regimePosterior.toFixed(1)),regimeAccuracy:Number(regimeAccuracy.toFixed(1)),
+        regimeProvenWeak,regimeUnprovenRisk,oosWeak,wfOosN,wfOosAccuracy:Number.isFinite(wfOosAccuracy)?Number(wfOosAccuracy.toFixed(1)):null
+      },
       contextMode,reactionAligned,reactionConflict,accumulationAligned,accumulationPhase,accumulationReadiness,target,intercept,
       reliability:{active:activeReliability,ambush:confirmedReliability,reliabilityPenalty},
       buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),

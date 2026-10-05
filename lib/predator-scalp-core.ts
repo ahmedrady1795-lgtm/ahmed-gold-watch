@@ -58,7 +58,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   if(o.side==='WAIT'){
     if(now-st.candidateSince>3500){st.candidate='WAIT';st.stableCount=0;}
     r.states[key]=st;
-    return {version:'ambush-core-v9',phase:'HUNT' as PredatorPhase,side:'WAIT' as PredatorSide,score:0,watch:false,
+    return {version:'ambush-core-v10',phase:'HUNT' as PredatorPhase,side:'WAIT' as PredatorSide,score:0,watch:false,
       pattern:'NO_EDGE',stableCount:st.stableCount,ageMs:0,reasons:['لا يوجد اتجاه حي متماسك'],cooldownMs:Math.max(0,st.cooldownUntil-now)};
   }
 
@@ -141,6 +141,12 @@ export function evaluatePredatorScalp(asset:string,input:any){
     tickAligned&&liqAligned&&motionAligned&&o.liveSupport>=3&&o.liveOpposition===0&&
     o.edge>=72&&o.evidence>=68&&!o.late
   );
+  const earlyFlowVotes=[tickAligned,liqAligned,motionAligned,preAligned].filter(Boolean).length;
+  const earlyFlowAmbush=Boolean(
+    earlyFlowVotes>=2&&o.liveSupport>=2&&o.liveOpposition===0&&
+    o.edge>=62&&o.evidence>=58&&!o.late&&
+    (o.preArmed||o.tickStage==='PRE_TRIGGER'||o.motionStage==='PRE_MOVE'||Math.abs(o.pressureChange)>=5||Math.abs(o.acceleration)>=5)
+  );
 
   let pattern='FLOW_TRACK';
   if(trapReversal)pattern='TRAP_REVERSAL';
@@ -148,6 +154,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   else if(compressionBreak)pattern='COMPRESSION_BREAK';
   else if(breakoutPreload)pattern='BREAKOUT_PRELOAD';
   else if(flowAmbush)pattern='FLOW_AMBUSH';
+  else if(earlyFlowAmbush)pattern='EARLY_FLOW_AMBUSH';
 
   let score=0;
   score+=cap(o.edge,0,100)*.22+cap(o.evidence,0,92)*.20;
@@ -170,6 +177,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   if(pattern==='TRAP_REVERSAL')score+=12;
   if(pattern==='COMPRESSION_BREAK')score+=10;
   if(pattern==='BREAKOUT_PRELOAD')score+=7;
+  if(pattern==='EARLY_FLOW_AMBUSH')score+=8;
   score=cap(score,0,96);
 
   const flipAfterAttack=Boolean(st.lastAttackAt&&now-st.lastAttackAt<7000&&st.lastAttackSide!==o.side);
@@ -180,7 +188,7 @@ export function evaluatePredatorScalp(asset:string,input:any){
   // Strong helper patterns may support AMBUSH quickly, but they never become an independent trade authority.
   const shockTemporalReady=Boolean(st.stableCount>=2&&ageMs>=500&&persistence>=.75&&opposite.length===0);
   const shockReady=Boolean((pattern==='TRAP_REVERSAL'||pattern==='PREMOVE_AMBUSH')&&score>=84&&hardOpposition===0&&shockTemporalReady);
-  const assistPattern=['PREMOVE_AMBUSH','TRAP_REVERSAL','COMPRESSION_BREAK','BREAKOUT_PRELOAD','FLOW_AMBUSH'].includes(pattern);
+  const assistPattern=['PREMOVE_AMBUSH','TRAP_REVERSAL','COMPRESSION_BREAK','BREAKOUT_PRELOAD','FLOW_AMBUSH','EARLY_FLOW_AMBUSH'].includes(pattern);
   const confirmationAssist=Boolean(
     !inCooldown&&!o.late&&!microExhausted&&assistPattern&&score>=74&&hardOpposition===0&&
     o.liveOpposition===0&&microReady&&compressionMicroReady&&(temporalReady||shockReady)
@@ -191,18 +199,29 @@ export function evaluatePredatorScalp(asset:string,input:any){
   const ambushStructure=Boolean(
     pattern!=='FLOW_TRACK'&&(preAligned||motionAligned||o.accumulationAligned||o.reactionAligned)
   );
+  const earlyFlowTemporal=Boolean(
+    pattern==='EARLY_FLOW_AMBUSH'&&same.length>=1&&persistence>=.75&&o.liveOpposition===0&&
+    ageMs>=250&&st.stableCount>=1
+  );
   const ambushTemporal=Boolean(
     (same.length>=2&&persistence>=.66)||
-    (ambushStructure&&same.length>=1&&persistence>=.75&&o.liveOpposition===0)
+    (ambushStructure&&same.length>=1&&persistence>=.75&&o.liveOpposition===0)||
+    earlyFlowTemporal
   );
   const ambushMicroReady=Boolean(
     !o.microAvailable||
     (microScores.length>=2&&microPersistence>=.50&&microOpposition<=.35&&microMean>=4)
   );
+  const earlyFlowReady=Boolean(
+    pattern==='EARLY_FLOW_AMBUSH'&&score>=66&&earlyFlowVotes>=2&&
+    o.liveSupport>=2&&o.liveOpposition===0&&ambushMicroReady&&
+    (microReady||!o.microAvailable||microPersistence>=.50)
+  );
   const ambush=Boolean(
     !inCooldown&&!o.late&&!microExhausted&&score>=58&&hardOpposition<=1&&
     o.liveOpposition===0&&ambushTemporal&&ambushMicroReady&&
     (
+      earlyFlowReady||
       pattern!=='FLOW_TRACK'||
       (temporalReady&&microReady&&(tickAligned||liqAligned||motionAligned))
     )
@@ -235,9 +254,9 @@ export function evaluatePredatorScalp(asset:string,input:any){
   if(hardOpposition)reasons.push('OPPOSITION_'+hardOpposition);
 
   return {
-    version:'ambush-core-v9',phase,side:o.side,score:Math.round(score),confirmationAssist,watch,ambush,pattern,
+    version:'ambush-core-v10',phase,side:o.side,score:Math.round(score),confirmationAssist,watch,ambush,pattern,
     stableCount:st.stableCount,ageMs,persistence:Number(persistence.toFixed(2)),edgeSlope:Number(edgeSlope.toFixed(1)),
-    evidenceSlope:Number(evidenceSlope.toFixed(1)),hardOpposition,temporalReady,shockReady,ambushTemporal,inCooldown,
+    evidenceSlope:Number(evidenceSlope.toFixed(1)),hardOpposition,temporalReady,shockReady,earlyFlowTemporal,earlyFlowVotes,ambushTemporal,inCooldown,
     microstructure:{
       available:o.microAvailable,ready:microReady,compressionReady:compressionMicroReady,trapReady:trapMicroReady,
       ambushReady:ambushMicroReady,mean:Number(microMean.toFixed(1)),persistence:Number(microPersistence.toFixed(2)),

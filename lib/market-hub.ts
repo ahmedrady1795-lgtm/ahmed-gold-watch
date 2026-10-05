@@ -67,7 +67,7 @@ let marketCache: Cache<MarketData> | null = null;
 let externalQuoteCache: Cache<QuoteData> | null = null;
 let mt5State: Mt5BridgeStatus | null = null;
 type FastSide='BUY'|'SELL'|'WAIT';
-type Mt5FastTick={at:number;receivedAt:number;price:number;bid:number;ask:number;tickVolume:number|null;flags:number|null};
+type Mt5FastTick={at:number;receivedAt:number;price:number;bid:number;ask:number;tickVolume:number|null;flags:number|null;bidDepth:number;askDepth:number;bookImbalance:number};
 let mt5FastTicks:Mt5FastTick[]=[];
 let backgroundCache: Cache<BackgroundPoint[]> | null = null;
 
@@ -106,9 +106,15 @@ export function setMt5BridgeStatus(input:unknown):Mt5BridgeStatus{
   if(body.candles&&typeof body.candles==='object'){try{const candidate={c1:mt5Candles(body.candles.c1),c5:mt5Candles(body.candles.c5),c15:mt5Candles(body.candles.c15),c60:mt5Candles(body.candles.c60)};if(candidate.c1.length>=80&&candidate.c5.length>=220&&candidate.c15.length>=220&&candidate.c60.length>=220){candleSet=candidate;candlesReceivedAt=Date.now();}}catch{}}
   const receivedAt=Date.now(),lastPrice=num(body.last),mid=lastPrice&&lastPrice>0?lastPrice:(bid+ask)/2;
   const tickVol=num(body?.microstructure?.tickVolume),tickFlags=num(body?.microstructure?.tickFlags);
+  const ob=body?.microstructure?.orderBook;
+  const obBids=Array.isArray(ob?.bids)?ob.bids:[],obAsks=Array.isArray(ob?.asks)?ob.asks:[];
+  const bidDepth=obBids.slice(0,12).reduce((s:number,x:any)=>s+Math.max(0,Number(x?.volume||0)),0);
+  const askDepth=obAsks.slice(0,12).reduce((s:number,x:any)=>s+Math.max(0,Number(x?.volume||0)),0);
+  const depthTotal=bidDepth+askDepth;
+  const bookImbalance=depthTotal>0?(bidDepth-askDepth)/depthTotal*100:0;
   const lastFast=mt5FastTicks.at(-1);
-  if(!lastFast||tickTimeMs>lastFast.at||Math.abs(mid-lastFast.price)>1e-9){
-    mt5FastTicks.push({at:tickTimeMs,receivedAt,price:mid,bid,ask,tickVolume:tickVol,flags:tickFlags});
+  if(!lastFast||tickTimeMs>lastFast.at||Math.abs(mid-lastFast.price)>1e-9||Math.abs(bookImbalance-lastFast.bookImbalance)>=1){
+    mt5FastTicks.push({at:tickTimeMs,receivedAt,price:mid,bid,ask,tickVolume:tickVol,flags:tickFlags,bidDepth,askDepth,bookImbalance});
     const cutoff=receivedAt-20000;
     mt5FastTicks=mt5FastTicks.filter(x=>x.receivedAt>=cutoff).slice(-500);
   }
@@ -121,21 +127,34 @@ export function getMt5FastSignal(now=Date.now()){
   if(!latest||rows.length<4||now-latest.receivedAt>2500)return {ok:false,side:'WAIT' as const,stage:'OFFLINE',score:0,confidence:0,samples:rows.length};
   const older=(ms:number)=>{for(let i=rows.length-1;i>=0;i--)if(rows[i].receivedAt<=latest.receivedAt-ms)return rows[i];return rows[0]||null;};
   const vel=(o:Mt5FastTick|null)=>o&&o.price>0?(latest.price-o.price)/o.price*10000:0;
-  const v05=vel(older(500)),v1=vel(older(1000)),v15=vel(older(1500)),v3=vel(older(3000)),v4=vel(older(4000)),v8=vel(older(8000)),acc=v05-v15/3;
+  const o05=older(500),o1=older(1000),o15=older(1500),o3=older(3000),o4=older(4000),o8=older(8000);
+  const v05=vel(latest,o05),v1=vel(latest,o1),v15=vel(latest,o15),v3=vel(latest,o3),v4=vel(latest,o4),v8=vel(latest,o8),acc=v05-v15/3;
   let up=0,down=0;for(let i=1;i<rows.length;i++){if(rows[i].price>rows[i-1].price)up++;else if(rows[i].price<rows[i-1].price)down++;}
   const persistence=Math.round(Math.max(up,down)/Math.max(1,up+down)*100);
-  const book=mt5State?.microstructure?.orderBook,bb=Array.isArray(book?.bids)?book!.bids!:[],aa=Array.isArray(book?.asks)?book!.asks!:[];
-  const bVol=bb.slice(0,12).reduce((s,x)=>s+Math.max(0,Number(x?.volume||0)),0),aVol=aa.slice(0,12).reduce((s,x)=>s+Math.max(0,Number(x?.volume||0)),0);
-  const imbalance=bVol+aVol>0?(bVol-aVol)/(bVol+aVol)*100:0;
+  const imbalance=Number(latest.bookImbalance||0);
+  const priorBook=o15||o1||rows[0]||latest;
+  const pressureChange=imbalance-Number(priorBook.bookImbalance||0);
+  const pct=(cur:number,old:number)=>old>0?(cur-old)/old*100:0;
+  const bidDepthChangePct=pct(latest.bidDepth,priorBook.bidDepth);
+  const askDepthChangePct=pct(latest.askDepth,priorBook.askDepth);
+  const replenish=bidDepthChangePct-askDepthChangePct;
   const signImb=imbalance>=8?1:imbalance<=-8?-1:0,signAcc=acc>=.03?1:acc<=-.03?-1:0,signVel=v15>=.05?1:v15<=-.05?-1:0;
-  const vote=signImb*1.35+signAcc*1.15+signVel*.8+(persistence>=60?(up>down?1:-1)*.55:0);
-  const side:FastSide=vote>=1.25?'BUY':vote<=-1.25?'SELL':'WAIT';
-  const preTrigger=side!=='WAIT'&&Math.abs(v15)<=.45&&Math.abs(acc)>=.025&&Math.abs(imbalance)>=12;
-  const ignition=side!=='WAIT'&&Math.abs(v05)>=.22&&Math.abs(acc)>=.06&&persistence>=60;
+  const signShift=pressureChange>=6?1:pressureChange<=-6?-1:0,signReplenish=replenish>=8?1:replenish<=-8?-1:0;
+  const vote=signImb*1.15+signAcc*1.15+signVel*.72+signShift*.95+signReplenish*.62+(persistence>=60?(up>down?1:-1)*.52:0);
+  const side:FastSide=vote>=1.2?'BUY':vote<=-1.2?'SELL':'WAIT';
+  const depthLead=side==='BUY'?(pressureChange>=5||replenish>=7):side==='SELL'?(pressureChange<=-5||replenish<=-7):false;
+  const preTrigger=side!=='WAIT'&&Math.abs(v15)<=.55&&Math.abs(acc)>=.018&&(Math.abs(imbalance)>=10||depthLead);
+  const ignition=side!=='WAIT'&&Math.abs(v05)>=.20&&Math.abs(acc)>=.055&&persistence>=58;
   const stage=ignition?'IGNITION':preTrigger?'PRE_TRIGGER':side!=='WAIT'?'BUILDING':'WAIT';
-  const score=Math.round(Math.max(0,Math.min(92,38+Math.abs(imbalance)*.28+Math.abs(acc)*55+Math.abs(v15)*9+Math.max(0,persistence-50)*.32+(preTrigger?10:0))));
-  const confidence=Math.round(Math.max(0,Math.min(90,score*.72+Math.min(18,rows.length*.55)+(stage==='PRE_TRIGGER'?6:stage==='IGNITION'?8:0))));
-  return {ok:true,side,stage,score,confidence,samples:rows.length,velocity05s:Number(v05.toFixed(4)),velocity1s:Number(v1.toFixed(4)),velocity15s:Number(v15.toFixed(4)),velocity3s:Number(v3.toFixed(4)),velocity4s:Number(v4.toFixed(4)),velocity8s:Number(v8.toFixed(4)),acceleration:Number(acc.toFixed(4)),persistence,bookImbalance:Number(imbalance.toFixed(1)),price:latest.price,bid:latest.bid,ask:latest.ask,at:latest.at,receivedAt:latest.receivedAt};
+  const score=Math.round(Math.max(0,Math.min(92,36+Math.abs(imbalance)*.24+Math.abs(pressureChange)*.34+Math.min(18,Math.abs(replenish)*.18)+Math.abs(acc)*58+Math.abs(v15)*8+Math.max(0,persistence-50)*.30+(preTrigger?11:0))));
+  const confidence=Math.round(Math.max(0,Math.min(90,score*.70+Math.min(18,rows.length*.55)+(stage==='PRE_TRIGGER'?8:stage==='IGNITION'?9:0))));
+  return {
+    ok:true,side,stage,score,confidence,samples:rows.length,
+    velocity05s:Number(v05.toFixed(4)),velocity1s:Number(v1.toFixed(4)),velocity15s:Number(v15.toFixed(4)),velocity3s:Number(v3.toFixed(4)),velocity4s:Number(v4.toFixed(4)),velocity8s:Number(v8.toFixed(4)),
+    acceleration:Number(acc.toFixed(4)),persistence,bookImbalance:Number(imbalance.toFixed(1)),pressureChange:Number(pressureChange.toFixed(1)),
+    bidDepthChangePct:Number(bidDepthChangePct.toFixed(1)),askDepthChangePct:Number(askDepthChangePct.toFixed(1)),replenishDelta:Number(replenish.toFixed(1)),
+    price:latest.price,bid:latest.bid,ask:latest.ask,at:latest.at,receivedAt:latest.receivedAt
+  };
 }
 
 function massiveCandles(data:any):Candle[]{if(!Array.isArray(data?.results))throw new Error('Massive XAUUSD schema');const parsed=data.results.map((v:any)=>({time:Number(v?.t),open:Number(v?.o),high:Number(v?.h),low:Number(v?.l),close:Number(v?.c)}));if(parsed.some((v:Candle)=>!Object.values(v).every(Number.isFinite)||v.time<=0||v.low<=0||v.high<v.low||v.open<v.low||v.open>v.high||v.close<v.low||v.close>v.high))throw new Error('Massive XAUUSD schema');return parsed.sort((a:Candle,b:Candle)=>a.time-b.time).filter((v:Candle,i:number,a:Candle[])=>i===0||v.time!==a[i-1].time);}
