@@ -8,7 +8,11 @@ const side=(x:any):Side=>x==='BUY'||x==='SELL'?x:'WAIT';
 const signed=(s:Side,v:number)=>s==='BUY'?v:s==='SELL'?-v:0;
 
 type NextPricePending={at:number;entry:number;predicted:number;horizonSeconds:number};
-type NextPriceCalibration={biasBps:number;maeBps:number;n:number;last:NextPricePending|null};
+type NextPriceCalibration={
+  biasBps:number;maeBps:number;n:number;
+  directionalAccuracy:number;directionSamples:number;
+  last:NextPricePending|null;
+};
 const npRoot=globalThis as typeof globalThis&{__ambushNextPriceCalibration?:Map<string,NextPriceCalibration>};
 const npCalibration=npRoot.__ambushNextPriceCalibration??(npRoot.__ambushNextPriceCalibration=new Map<string,NextPriceCalibration>());
 type AmbushTrackLock={side:Side;since:number;opposite:Side;oppositeCount:number;updatedAt:number};
@@ -40,13 +44,28 @@ function stickyAmbushTracking(asset:string,candidate:Side,edge:number,now:number
 }
 function nextPriceCalibration(asset:string,price:number,now:number){
   const key=String(asset||'UNKNOWN').toUpperCase();
-  const state=npCalibration.get(key)||{biasBps:0,maeBps:1.2,n:0,last:null};
+  const state=npCalibration.get(key)||{
+    biasBps:0,maeBps:1.2,n:0,directionalAccuracy:50,directionSamples:0,last:null
+  };
+  state.directionalAccuracy=Number.isFinite(Number(state.directionalAccuracy))?Number(state.directionalAccuracy):50;
+  state.directionSamples=Number.isFinite(Number(state.directionSamples))?Number(state.directionSamples):0;
   const last=state.last;
   if(last&&Number.isFinite(price)&&price>0&&now-last.at>=Math.max(2500,last.horizonSeconds*850)){
     const err=(price-last.predicted)/Math.max(1e-9,last.entry)*10000;
     const alpha=state.n<8?.26:.14;
     state.biasBps=cap(state.biasBps*(1-alpha)+err*alpha,-4,4);
     state.maeBps=cap(state.maeBps*(1-alpha)+Math.abs(err)*alpha,.35,12);
+    const predictedDir=Math.sign(last.predicted-last.entry);
+    const realizedDir=Math.sign(price-last.entry);
+    if(predictedDir!==0&&realizedDir!==0){
+      const hit=predictedDir===realizedDir?100:0;
+      const dirAlpha=state.directionSamples<12?.20:.08;
+      state.directionalAccuracy=cap(
+        state.directionalAccuracy*(1-dirAlpha)+hit*dirAlpha,
+        15,85
+      );
+      state.directionSamples+=1;
+    }
     state.n+=1;
     state.last=null;
   }
@@ -530,12 +549,33 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   };
   // Ambush tracker stays directional while live price exists.
   // Trading authority remains gated by ambushTrade; this side is prediction-only.
+  // V12 interception resolver: prediction side comes from the freshest independent
+  // microstructure families first, then falls back to the slower fused commitment.
+  const trackLiveBuy=
+    sideScore(preMove.side,'BUY',Number(preMove.score||0))*.28+
+    sideScore(tick1.side,'BUY',Number(tick1.score||0))*.23+
+    sideScore(liqSide,'BUY',liqScore)*.18+
+    sideScore(motionSide,'BUY',motionScore)*.11+
+    sideScore(trapSide,'BUY',trapScore)*.08+
+    sideScore(reactionSide,'BUY',reactionScore)*.07+
+    buyShare*.05;
+  const trackLiveSell=
+    sideScore(preMove.side,'SELL',Number(preMove.score||0))*.28+
+    sideScore(tick1.side,'SELL',Number(tick1.score||0))*.23+
+    sideScore(liqSide,'SELL',liqScore)*.18+
+    sideScore(motionSide,'SELL',motionScore)*.11+
+    sideScore(trapSide,'SELL',trapScore)*.08+
+    sideScore(reactionSide,'SELL',reactionScore)*.07+
+    sellShare*.05;
+  const trackLiveSide:Side=sideOf(trackLiveBuy,trackLiveSell,3);
+  const trackLiveEdge=Math.abs(trackLiveBuy-trackLiveSell);
   const trackingCandidate:Side=
+    trackLiveSide!=='WAIT'?trackLiveSide:
     fusedSide!=='WAIT'?fusedSide:
     commitment.side!=='WAIT'?commitment.side:
     rawFusedSide!=='WAIT'?rawFusedSide:
     buyShare>=sellShare?'BUY':'SELL';
-  const trackingSide:Side=stickyAmbushTracking(asset,trackingCandidate,edge,nowNp);
+  const trackingSide:Side=stickyAmbushTracking(asset,trackingCandidate,Math.max(edge,trackLiveEdge),nowNp);
   const targetSide:Side=trackingSide;
   const targetZone=reaction.targetFor(targetSide);
   const breakoutLevel=targetSide==='BUY'?Number(accumulation?.breakoutLevel):targetSide==='SELL'?Number(accumulation?.breakdownLevel):NaN;
@@ -658,10 +698,14 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     preMove?.side!=='WAIT'&&preMove?.side!==npSide,
     Boolean(predator?.microstructure?.available)&&Number(predator?.microstructure?.opposition||0)>.35
   ].filter(Boolean).length;
-  const npPhaseReady=['TRACK','AMBUSH'].includes(String(predator?.phase||''));
+  const predatorPhaseNow=String(predator?.phase||'HUNT');
+  const npPhaseReady=Boolean(
+    predatorPhaseNow==='AMBUSH'||predatorPhaseNow==='TRACK'||
+    (predatorPhaseNow==='HUNT'&&npAlignment>=5&&npConflict===0)
+  );
   const nextPriceReady=Boolean(
     npDir!==0&&npPhaseReady&&Number.isFinite(p)&&p>0&&
-    directionalNextMove>=.30&&npAlignment>=3&&npConflict<=1&&
+    directionalNextMove>=.28&&npAlignment>=3&&npConflict<=1&&
     !chaseRisk&&!flipSuppressed&&!predator?.microstructure?.exhausted
   );
 
@@ -680,7 +724,13 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
 
   const calibrationWeight=Math.min(.55,npCal.n/14*.55);
   effectiveMoveBps=cap(effectiveMoveBps+npCal.biasBps*calibrationWeight,-nextMoveCap,nextMoveCap);
-  if(npDir!==0&&npDir*effectiveMoveBps<.18)effectiveMoveBps=npDir*.18;
+  // When recent directional skill is weak, keep Ambush active but shorten the
+  // projected distance instead of hiding the forecast behind WAIT.
+  const directionalSkillMultiplier=npCal.directionSamples>=4
+    ?cap(.72+(npCal.directionalAccuracy/100)*.56,.80,1.12)
+    :1;
+  effectiveMoveBps=cap(effectiveMoveBps*directionalSkillMultiplier,-nextMoveCap,nextMoveCap);
+  if(npDir!==0&&npDir*effectiveMoveBps<.16)effectiveMoveBps=npDir*.16;
 
   const trackingPriceRaw=Number.isFinite(nextPriceAnchor)&&nextPriceAnchor>0
     ?nextPriceAnchor*(1+effectiveMoveBps/10000)
@@ -696,24 +746,31 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
     :null;
 
   const calibrationUncertainty=Number.isFinite(p)&&p>0?p*npCal.maeBps/10000*.90:0;
+  const directionUncertaintyMultiplier=npCal.directionSamples>=4
+    ?cap(1+(55-npCal.directionalAccuracy)/70,.85,1.35)
+    :1;
   const npUncertainty=Number.isFinite(p)&&p>0
     ?Math.max(
       spreadUsd*1.35,
       calibrationUncertainty,
       Number.isFinite(a)&&a>0?a*(npConflict?0.055:0.030):p*.000035
-    )
+    )*directionUncertaintyMultiplier
     :0;
   const calibrationPenalty=npCal.n>=3?Math.min(18,npCal.maeBps*2.8):0;
+  const directionalSkillBonus=npCal.directionSamples>=4
+    ?cap((npCal.directionalAccuracy-50)*.28,-8,10)
+    :0;
   const nextPriceConfidence=Math.round(cap(
     Number(predator?.score||0)*.28+
     Number(preMove?.score||0)*.14+
     Math.min(24,npAlignment*3.8)+
     kinematicConsistency*12+
     (predator?.microstructure?.ready?9:0)+
-    (tick1.side===npSide?6:0)-
+    (tick1.side===npSide?6:0)+
+    directionalSkillBonus-
     npConflict*10-
     calibrationPenalty-
-    (directionalNextMove<.55?5:0),
+    (directionalNextMove<.50?4:0),
     0,92
   ));
   const trackingConfidence=Math.round(cap(
@@ -755,7 +812,7 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
   });
 
   const nextPrice={
-    model:'AMBUSH_INTERCEPT_V11',
+    model:'AMBUSH_INTERCEPT_V12',
     authority:'AMBUSH',
     ready:nextPriceReady,
     active:Boolean(npDir!==0&&Number.isFinite(p)&&p>0),
@@ -774,12 +831,18 @@ export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,p
       samples:npCal.n,
       biasBps:Number(npCal.biasBps.toFixed(2)),
       maeBps:Number(npCal.maeBps.toFixed(2)),
+      directionalAccuracy:Number(npCal.directionalAccuracy.toFixed(1)),
+      directionSamples:npCal.directionSamples,
       weight:Number(calibrationWeight.toFixed(2))
     },
     trajectory,
     diagnostics:{
       trackingCandidate,
       stickySide:trackingSide,
+      liveFamilySide:trackLiveSide,
+      liveFamilyBuy:Number(trackLiveBuy.toFixed(1)),
+      liveFamilySell:Number(trackLiveSell.toFixed(1)),
+      liveFamilyEdge:Number(trackLiveEdge.toFixed(1)),
       tickPerSecond:Number(tickPerSecond.toFixed(3)),
       kinematicConsistency:Number(kinematicConsistency.toFixed(2)),
       curvatureBps:Number(curvatureBps.toFixed(2)),
