@@ -295,16 +295,21 @@ def _selected_metrics(y,prob,threshold=.55,margin=.10):
             "threshold":float(threshold),"margin":float(margin)}
 
 def _fit_normalizer(X):
-    flat=X.reshape(-1,X.shape[-1]).astype(np.float64)
-    center=np.median(flat,axis=0)
-    q25=np.percentile(flat,25,axis=0);q75=np.percentile(flat,75,axis=0)
-    scale=(q75-q25)/1.349
-    fallback=np.std(flat,axis=0)
-    scale=np.where(np.isfinite(scale)&(scale>1e-5),scale,np.where(fallback>1e-5,fallback,1.0))
-    return center.astype(np.float32),scale.astype(np.float32)
+    # Memory-safe train-only scaling. Sample temporal rows instead of materializing
+    # a float64 copy / percentile workspace for the whole overlapping L2 tensor.
+    flat=X.reshape(-1,X.shape[-1])
+    stride=max(1,len(flat)//200000)
+    sample=flat[::stride].astype(np.float32,copy=False)
+    center=np.mean(sample,axis=0,dtype=np.float64).astype(np.float32)
+    scale=np.std(sample,axis=0,dtype=np.float64).astype(np.float32)
+    scale=np.where(np.isfinite(scale)&(scale>1e-5),scale,1.0).astype(np.float32)
+    return center,scale
 
 def _normalize(X,center,scale):
-    return np.clip((X-center.reshape(1,1,-1))/scale.reshape(1,1,-1),-8.0,8.0).astype(np.float32)
+    out=X.astype(np.float32,copy=True)
+    out-=center.reshape(1,1,-1);out/=scale.reshape(1,1,-1)
+    np.clip(out,-8.0,8.0,out=out)
+    return out
 
 def _choose_selective_gate(y,prob):
     best=None;n=len(y)
@@ -506,7 +511,8 @@ def _train():
         tmp=MODEL_PATH.with_suffix(".tmp");torch.save(obj,tmp);os.replace(tmp,MODEL_PATH)
         MODEL=model.eval();METRICS=metrics;NORM_MEAN=center;NORM_STD=scale;LAST_TRAIN_AT=trained;LAST_ERROR=None
         print("[NEURAL-TRAIN] "+json.dumps({"version":APP_VERSION,"metrics":metrics}),flush=True)
-        _train_path()
+        # Price-path training starts on a later collector tick, after this function
+        # releases the classifier dataset/model optimizer memory.
     except Exception as e:
         LAST_ERROR=f"train:{type(e).__name__}:{e}"
         print("[NEURAL-TRAIN-ERROR] "+json.dumps({"error":LAST_ERROR}),flush=True)
