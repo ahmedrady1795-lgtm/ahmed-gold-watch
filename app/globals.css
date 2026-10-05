@@ -236,3 +236,10 @@ footer{display:flex;justify-content:space-between;gap:20px;color:#5f7880;font-si
 .scalp-trajectory small{color:var(--muted);font-size:8px}
 .scalp-trajectory b{font-size:11px}
 @media(max-width:760px){.scalp-trajectory{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}.scalp-trajectory span{padding:5px}.scalp-trajectory b{font-size:10px}}
+
+.compact-forecast{grid-template-columns:repeat(4,minmax(0,1fr))}
+.compact-forecast>div{min-width:0}
+.compact-forecast>div span{display:block;margin-top:3px;color:var(--muted);font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:760px){
+  .compact-forecast{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
