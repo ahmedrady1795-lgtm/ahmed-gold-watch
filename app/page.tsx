@@ -141,11 +141,18 @@ export default function Home(){
   },[]);
 
   useEffect(()=>{
-    let closed=false,ws:WebSocket|null=null,t:ReturnType<typeof setTimeout>|undefined;
-    const open=()=>{if(closed)return;ws=new WebSocket('wss://fstream.binance.com/ws/xauusdt@bookTicker');
-      ws.onmessage=e=>{try{const x=JSON.parse(e.data),bid=Number(x.b),ask=Number(x.a),bidQty=Number(x.B),askQty=Number(x.A),at=Number(x.E);if(x.s!=='XAUUSDT'||!Number.isFinite(at)||at>Date.now()+10000||Date.now()-at>15000||bid<=0||ask<bid)return;const price=(bid+ask)/2;pushWave('gold',{at,price,bid,ask,bidQty:Number.isFinite(bidQty)?bidQty:undefined,askQty:Number.isFinite(askQty)?askQty:undefined});setGoldTick({ok:true,price,bid,ask,spread:ask-bid,sourceTime:at,status:'live',source:'Binance Futures · XAUUSDT proxy'});}catch{}};
-      ws.onerror=()=>ws?.close();ws.onclose=()=>{if(!closed)t=setTimeout(open,3000);};};
-    open();return()=>{closed=true;clearTimeout(t);ws?.close();};
+    let closed=false,inFlight=false;
+    const loadGoldTick=async()=>{if(closed||inFlight)return;inFlight=true;try{
+      const r=await fetch('/api/gold-tick?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}}),j=await r.json();
+      if(!r.ok||!j?.ok)return;
+      const price=Number(j.price),bid=Number(j.bid),ask=Number(j.ask),at=Number(j.sourceTime);
+      if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)||Date.now()-at>8000)return;
+      pushWave('gold',{at,price,bid:Number.isFinite(bid)?bid:undefined,ask:Number.isFinite(ask)?ask:undefined});
+      if(!closed)setGoldTick({ok:true,price,bid:Number.isFinite(bid)?bid:null,ask:Number.isFinite(ask)?ask:null,spread:Number.isFinite(ask-bid)?ask-bid:null,sourceTime:at,status:'live',source:'Exness/MT5 · '+String(j.brokerSymbol||'XAUUSD'),fast:j.fast||null});
+    }catch{}finally{inFlight=false;}};
+    void loadGoldTick();
+    const t=setInterval(()=>{if(document.visibilityState==='visible')void loadGoldTick();},350);
+    return()=>{closed=true;clearInterval(t);};
   },[]);
   useEffect(()=>{
     if(!monitor||!snap)return;const a=snap.analysis,id=a?.signal?.id||a?.state+':'+a?.reason;
