@@ -488,10 +488,40 @@ function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,
     const targetClose=bothTargets?Math.abs(prevTarget-curTarget)<=a*.55:true;
     const refresh=Number(current.confidence||0)>=Math.max(36,prevConfidence-12)&&targetClose;
     if(refresh){
+      const currentPath=current?.pathForecast||null,prevPath=prevForecast?.pathForecast||null;
+      const prevPathSide:Side=prevPath?.side||'WAIT',currentPathSide:Side=currentPath?.side||'WAIT';
+      const pathFlip=Boolean(
+        prevPath&&currentPath&&
+        (prevPathSide==='BUY'||prevPathSide==='SELL')&&
+        (currentPathSide==='BUY'||currentPathSide==='SELL')&&
+        currentPathSide!==prevPathSide
+      );
+      const pathProbabilityGap=Math.abs(
+        Number(currentPath?.probabilities?.up||50)-Number(currentPath?.probabilities?.down||50)
+      );
+      const decisivePathFlip=Boolean(
+        pathFlip&&
+        Number(currentPath?.confidence||0)>=Math.max(58,Number(prevPath?.confidence||0)+8)&&
+        pathProbabilityGap>=14&&
+        String(currentPath?.conviction||'WEAK')!=='WEAK'
+      );
+      const committedPath=pathFlip&&!decisivePathFlip
+        ?{
+          ...prevPath,
+          stability:{
+            locked:true,
+            reason:'OPPOSITE_PATH_PULSE_BLOCKED',
+            candidateSide:currentPathSide,
+            candidateConfidence:Number(currentPath?.confidence||0),
+            probabilityGap:Number(pathProbabilityGap.toFixed(1))
+          }
+        }
+        :currentPath||prevPath;
       const merged={
         ...current,
         target:bothTargets&&targetClose&&prevForecast?.target?prevForecast.target:current.target,
         origin:current.origin||prevForecast?.origin||null,
+        pathForecast:committedPath,
         confidence:Math.round(cap(Number(current.confidence||0)*.68+prevConfidence*.32,0,88)),
         stability:{locked:true,ageSeconds:Math.round(age/1000),flipsBlocked:0,reason:'SAME_ZONE_CONFIRMED'}
       };
@@ -1191,8 +1221,9 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
   const stabilizedZoneForecast=validPrice?stabilizeZoneForecast(asset,rawZoneForecast,p,a,now):rawZoneForecast;
   const zoneForecast=stabilizedZoneForecast&&rawZoneForecast?{
     ...stabilizedZoneForecast,
-    // keep trade-zone commitment stable, but let the movement path refresh every cycle
-    pathForecast:rawZoneForecast.pathForecast,
+    // Keep the structural path committed too. Fresh pulses may update a same-side
+    // path, but an opposite path must pass the decisive-flip gate in stabilizeZoneForecast.
+    pathForecast:stabilizedZoneForecast.pathForecast??rawZoneForecast.pathForecast,
     support:rawZoneForecast.support??stabilizedZoneForecast.support,
     resistance:rawZoneForecast.resistance??stabilizedZoneForecast.resistance,
     phase:rawZoneForecast.phase||stabilizedZoneForecast.phase
