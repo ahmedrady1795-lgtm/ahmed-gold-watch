@@ -204,7 +204,7 @@ function AssetCard({x,fast,liveQuote}:any){
 
       <div className={"scalp-next-price "+(nextPrice?.ready?'ready':'waiting')}>
         <div>
-          <small>السعر القادم المتوقع · V11</small>
+          <small>السعر القادم المتوقع · V12</small>
           <strong className={nextPrice?.side==='BUY'?'green':nextPrice?.side==='SELL'?'red':'amber'}>
             {nextPrice?.price!=null?fmt(nextPrice.price,2):'—'}
           </strong>
