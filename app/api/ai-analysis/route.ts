@@ -25,6 +25,7 @@ import {buildOpportunitySet} from '../../../lib/multi-opportunity';
 import {buildScalpFusion} from '../../../lib/scalp-fusion';
 import {recordNextMoveOutcome,getNextMoveOutcome,calibrateNextMoveConfidence} from '../../../lib/next-move-outcome';
 import {buildGoldForecastCore} from '../../../lib/gold-forecast-core';
+import {buildPredatorFusionV2} from '../../../lib/predator-fusion-v2';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -241,6 +242,7 @@ export async function GET(request:Request){
     const bitcoinMlRaw=await mlPredictionPromise;
     const bitcoinTick=getServerTickSignal('BTC',now)||btcWave;
     const goldScalp=buildScalpFusion(goldScalpRaw,goldLiquidity,goldMotion,goldLearner,null,goldPrice,goldAtr,goldScalpPrior,goldTick,goldAccumulation,'GOLD');
+    const predatorFusionV2=buildPredatorFusionV2({c1:gm.c1,c5:gm.c5,price:goldPrice,tick:goldTick,goldCore:goldForecastCore,now});
     const bitcoinScalp=buildScalpFusion(bitcoinScalpRaw,liquidity,motion,bitcoinLearner,bitcoinMlRaw,btcPrice,btcAtr,bitcoinScalpPrior,bitcoinTick,bitcoinAccumulation,'BTC');
     const goldBehavior=studyMarketBehavior(gm.c1,gm.c5,now);
     const bitcoinBehavior=studyMarketBehavior(btc.c1,btc.c5,now);
@@ -333,7 +335,7 @@ export async function GET(request:Request){
       recordFinalRecommendationOutcome({asset:'GOLD',c1:gm.c1,price:goldPrice,atr:goldAtr,context:goldLearningContext,recommendation:goldRecommendation,now}),
       recordFinalRecommendationOutcome({asset:'BTC',c1:btc.c1,price:btcPrice,atr:btcAtr,context:bitcoinLearningContext,recommendation:bitcoinRecommendation,now})
     ]);
-    const goldOut={...gold,rawAction:gold.action,action:goldMaster.action,goldForecastCore,master:goldMaster,recommendation:goldRecommendation,opportunities:goldOpportunities,recommendationLearning:goldRecommendationLearning,huntForecast:goldHunt,waveStructure:goldStructure,stateGraph:goldStateGraph,accumulationMap:goldAccumulation,newsIntelligence:goldNews,marketLearning:goldLearning,expectedMoveLearning:goldExpectedLearning,movementIntelligence:goldMovement,multiBrainCore:goldMultiBrain,brainOutcomeLearning:goldBrainLearning,brainOutcomeRecord:goldBrainRecord,nextMoveLive:goldNextMoveLive,scalpLive:goldScalpLive,serverTickBrain:goldTick,selfEvolution:goldEvolution,evolutionAutopsy:goldAutopsy,scalpLearner:goldLearner,livePulse:goldLivePulse,liquidity:goldLiquidity,motion:goldMotion,trade:goldMaster.trade};
+    const goldOut={...gold,rawAction:gold.action,action:goldMaster.action,goldForecastCore,predatorFusionV2,master:goldMaster,recommendation:goldRecommendation,opportunities:goldOpportunities,recommendationLearning:goldRecommendationLearning,huntForecast:goldHunt,waveStructure:goldStructure,stateGraph:goldStateGraph,accumulationMap:goldAccumulation,newsIntelligence:goldNews,marketLearning:goldLearning,expectedMoveLearning:goldExpectedLearning,movementIntelligence:goldMovement,multiBrainCore:goldMultiBrain,brainOutcomeLearning:goldBrainLearning,brainOutcomeRecord:goldBrainRecord,nextMoveLive:goldNextMoveLive,scalpLive:goldScalpLive,serverTickBrain:goldTick,selfEvolution:goldEvolution,evolutionAutopsy:goldAutopsy,scalpLearner:goldLearner,livePulse:goldLivePulse,liquidity:goldLiquidity,motion:goldMotion,trade:goldMaster.trade};
     const bitcoinOut={...bitcoin,rawAction:bitcoin.action,action:bitcoinMaster.action,master:bitcoinMaster,recommendation:bitcoinRecommendation,opportunities:bitcoinOpportunities,recommendationLearning:bitcoinRecommendationLearning,huntForecast:bitcoinHunt,waveStructure:bitcoinStructure,stateGraph:bitcoinStateGraph,accumulationMap:bitcoinAccumulation,newsIntelligence:bitcoinNews,marketLearning:bitcoinLearning,expectedMoveLearning:bitcoinExpectedLearning,movementIntelligence:bitcoinMovement,mlCore:bitcoinMl,neuralCore:bitcoinNeural,multiBrainCore:bitcoinMultiBrain,brainOutcomeLearning:bitcoinBrainLearning,brainOutcomeRecord:bitcoinBrainRecord,nextMoveLive:bitcoinNextMoveLive,scalpLive:bitcoinScalpLive,serverTickBrain:bitcoinTick,selfEvolution:bitcoinEvolution,evolutionAutopsy:bitcoinAutopsy,scalpLearner:bitcoinLearner,trade:bitcoinMaster.trade};
     const radar=[
       {asset:'BTC',score:Math.min(92,Math.max(Number(bitcoin.fusion?.buy||0),Number(bitcoin.fusion?.sell||0),Number(bitcoin.hunter?.score||0),Number(bitcoinScalp.score?.long||0),Number(bitcoinScalp.score?.short||0))),status:bitcoinMaster.state,side:bitcoinMaster.action,watchSide:bitcoinMaster.watchSide,huntSide:bitcoinHunt.side,huntState:bitcoinHunt.state,huntConfidence:bitcoinHunt.confidence,mode:bitcoinMaster.state==='TRADE'?bitcoinMaster.trade?.mode:'MASTER'},
