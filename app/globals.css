@@ -263,3 +263,5 @@ footer{display:flex;justify-content:space-between;gap:20px;color:#5f7880;font-si
 .zone-map-mini b{display:block;margin-top:3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .direction-only{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media(max-width:760px){.zone-map-mini,.direction-only{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}.zone-map-mini>div{padding:6px}.zone-map-mini b{font-size:9px}}
+
+.zone-stability{display:block;margin-top:7px;color:var(--muted);font-size:9px;font-style:normal}
