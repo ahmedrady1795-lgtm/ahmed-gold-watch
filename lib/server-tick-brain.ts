@@ -38,20 +38,22 @@ export function startServerTickBrain(){
   const pollGold=async()=>{
     if(goldBusy)return;goldBusy=true;
     try{
-      const q=await getQuoteData({forceExternal:true}),price=Number(q?.price);
-      if(q?.status!=='live'||!Number.isFinite(price)||price<=0)return;
+      const q=await getQuoteData({forceExternal:true}),price=Number(q?.price),sourceTime=Number(q?.sourceTime);
+      const sourceAge=Number.isFinite(sourceTime)&&sourceTime>0?Math.max(0,Date.now()-sourceTime):Infinity;
+      const usable=q?.status==='live'||(q?.status==='delayed'&&sourceAge<=3500);
+      if(!usable||!Number.isFinite(price)||price<=0)return;
       const bid=Number(q?.bid),ask=Number(q?.ask);
       push('GOLD',{
-        at:Date.now(),price,
+        at:Number.isFinite(sourceTime)&&sourceTime>0?sourceTime:Date.now(),price,
         bid:Number.isFinite(bid)&&bid>0?bid:null,
         ask:Number.isFinite(ask)&&ask>0?ask:null,
         bidQty:null,askQty:null,
-        source:String(q?.source||'Gold external quote')+' server pulse'
+        source:String(q?.source||'Gold external quote')+(q?.status==='delayed'?' near-live fallback':'')+' server pulse'
       });
     }catch{}finally{goldBusy=false;}
   };
   void pollGold();
-  const goldTimer=setInterval(()=>{void pollGold();},2000);
+  const goldTimer=setInterval(()=>{void pollGold();},1500);
   (goldTimer as any).unref?.();
 }
 function older(arr:Tick[],now:number,ms:number){for(let i=arr.length-1;i>=0;i--)if(arr[i].at<=now-ms)return arr[i];return arr[0]||null;}
