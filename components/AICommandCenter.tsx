@@ -145,11 +145,11 @@ function AssetCard({x,liveQuote,fast}:any){
       <div className="forecast-scenario-strip">
         <div><small>الوجهة</small><b>{forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):priceDestination?zoneRange(priceDestination):'—'}</b></div>
         <div><small>نافذة التحرك</small><b>{forwardSide!=='WAIT'?forwardWindow:'—'}</b></div>
-        <div><small>الارتداد</small><b>{zoneRange(path?.reboundZone||zone?.origin)}</b></div>
+        <div><small>الارتداد</small><b dir="ltr">{zoneRange(path?.reboundZone||zone?.origin)}</b></div>
         <div><small>نسبة السيولة</small><b>{liqText}</b></div>
         <div><small>مستويات السيولة</small>
-          <b>{upperLiquidityLevel!=='—'?`سيولة أعلى عند ${upperLiquidityLevel}`:'لا توجد سيولة علوية واضحة'}</b>
-          <span>{lowerLiquidityLevel!=='—'?`سيولة أسفل عند ${lowerLiquidityLevel}`:'لا توجد سيولة سفلية واضحة'}</span>
+          <b>{upperLiquidityLevel!=='—'?<>سيولة أعلى عند <span dir="ltr">{upperLiquidityLevel}</span></>:'لا توجد سيولة علوية واضحة'}</b>
+          <span>{lowerLiquidityLevel!=='—'?<>سيولة أسفل عند <span dir="ltr">{lowerLiquidityLevel}</span></>:'لا توجد سيولة سفلية واضحة'}</span>
         </div>
         <div><small>هيكل الحركة</small><b>{structureText}</b><span>{structurePatternAr(structure?.m1?.structure||structure?.m5?.structure)}</span></div>
       </div>
