@@ -34,6 +34,7 @@ const structurePatternAr=(v:any)=>{
   return x?'هيكل متغير':'—';
 };
 const intentPhaseAr=(p:any)=>p==='LIQUIDITY_BUILDUP'?'تجميع سيولة':p==='SWEEP_DETECTED'?'سحب سيولة':p==='TRAP_CONFIRMED'?'فخ سيولة مؤكد':p==='PRE_EXPANSION'?'استعداد قبل الحركة':p==='EXPANSION'?'الحركة بدأت':'لا يوجد سيناريو واضح';
+const momentumPhaseAr=(p:any)=>p==='BUILDING'?'يتكوّن قبل الحركة':p==='ACTIVE'?'نشط':p==='EXHAUSTING'?'منهك':p==='WEAK'?'ضعيف':'محايد';
 const intentStepAr=(v:any)=>{
   const x=String(v||'');
   if(x==='COMPRESSION')return 'ضغط';
@@ -122,6 +123,8 @@ function AssetCard({x,liveQuote,fast}:any){
   const accumulationScore=Math.max(0,Math.min(100,Math.round(Number(accumulation?.accumulationScore||0))));
   const distributionScore=Math.max(0,Math.min(100,Math.round(Number(accumulation?.distributionScore||0))));
   const intent=x?.marketMakerIntent||null;
+  const momentum=x?.momentumEngine||null;
+  const momentumSide=momentum?.side==='BUY'||momentum?.side==='SELL'?momentum.side:'WAIT';
   const intentSide=intent?.side==='BUY'||intent?.side==='SELL'?intent.side:'WAIT';
   const intentSteps=Array.isArray(intent?.sequence)?intent.sequence.map(intentStepAr).filter(Boolean).join(' → '):'';
   const intentSweep=intent?.sweepLevel!==null&&intent?.sweepLevel!==undefined&&Number.isFinite(Number(intent.sweepLevel))?fmt(Number(intent.sweepLevel),2):null;
@@ -193,6 +196,15 @@ function AssetCard({x,liveQuote,fast}:any){
           <b className={intentSide==='BUY'?'green':intentSide==='SELL'?'red':'amber'}>{intent?(intentPhaseAr(intent.phase)+' · '+moveAr(intentSide)+' · '+Math.round(Number(intent.confidence||0))+'%'):'—'}</b>
           <span>{intentSteps||'لا يوجد تسلسل سيولة مكتمل'}{intentSweep?<> · مستوى السحب <span dir="ltr">{intentSweep}</span></>:null}</span>
           {showValidation15&&<span>اختبار حي 15د · دقة {validationAccuracy.toFixed(1)}% · {validationDirectional} نتيجة</span>}
+        </div>
+        <div><small>نظام المومنتم</small>
+          <b className={momentumSide==='BUY'?'green':momentumSide==='SELL'?'red':'amber'}>
+            {momentum?(moveAr(momentumSide)+' · '+momentumPhaseAr(momentum.phase)+' · '+Math.round(Number(momentum.confidence||0))+'%'):'—'}
+          </b>
+          <span>
+            تسارع {Math.round(Number(momentum?.acceleration||0))}% · استمرار {Math.round(Number(momentum?.persistence||0))}% · اتساع {Math.round(Number(momentum?.expansion||0))}%
+          </span>
+          {Number(momentum?.exhaustion||0)>=55&&<span>إنهاك {Math.round(Number(momentum.exhaustion||0))}%</span>}
         </div>
         <div><small>هيكل الحركة</small><b>{structureText}</b><span>{structurePatternAr(structure?.m1?.structure||structure?.m5?.structure)}</span></div>
       </div>
