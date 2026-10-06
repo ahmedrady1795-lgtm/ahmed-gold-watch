@@ -63,10 +63,11 @@ export async function GET(request:Request){
     const latePrimary=await primary;
     if(latePrimary)return ok(latePrimary,now,false);
   }else{
-    const fallbackFast=await fallback;
-    if(fallbackFast)return ok(fallbackFast,now,true);
-    const latePrimary=await primary;
-    if(latePrimary)return ok(latePrimary,now,false);
+    const nextValid=await Promise.any([
+      primary.then(q=>q?{quote:q,degraded:false}:Promise.reject(new Error('primary unavailable'))),
+      fallback.then(q=>q?{quote:q,degraded:true}:Promise.reject(new Error('fallback unavailable')))
+    ]).catch(()=>null);
+    if(nextValid)return ok(nextValid.quote,now,nextValid.degraded);
   }
 
   const cachedAllowed=lastGood&&now-lastGood.at<=8000&&(!strictCoinbase||/^Coinbase/.test(lastGood.quote.source));
