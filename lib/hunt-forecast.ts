@@ -385,6 +385,76 @@ function buildZoneForecast(args:{
       (pathSide===accSide?2:0)-uncertaintyPenalty,
       38,86
     ));
+
+  // Price Destination layer: when the liquidity map is not strong enough to lock a structural
+  // path, still expose a qualified directional price area instead of returning direction only.
+  // Structural liquidity remains the preferred destination; ATR projection is clearly labelled.
+  const leanSide:Side=pathSide!=='WAIT'
+    ?pathSide
+    :dominantProbability>=54&&structuralGap>=5
+      ?dominantSide
+      :m1!=='WAIT'&&m1===m5&&Math.max(m1Strength,m5Strength)>=46
+        ?m1
+        :proposed!=='WAIT'&&Number(args.confidence||0)>=56&&proposedOpposition===0
+          ?proposed
+          :'WAIT';
+  const leanStrength=Math.max(
+    leanSide===m1?m1Strength:0,
+    leanSide===m5?m5Strength:0,
+    leanSide===proposed?Number(args.confidence||0):0,
+    leanSide===mlSide?mlStrength:0,
+    leanSide===learnedSide?learnedStrength:0,
+    leanSide===graphSide?graphStrength:0,
+    leanSide===accSide?readiness:0
+  );
+  const projectedPriceZone=(s:Side)=>{
+    if(s==='WAIT')return null;
+    const d=s==='BUY'?1:-1;
+    const travelAtr=Math.max(.32,Math.min(1.35,
+      .34+leanStrength/120+Math.max(0,dominantProbability-50)/80+readiness/500
+    ));
+    const center=p+d*a*travelAtr;
+    const halfBand=a*Math.max(.10,Math.min(.24,.10+(100-Math.min(100,leanStrength))/650));
+    return {
+      side:s==='BUY'?'SELL':'BUY',
+      low:Number((center-halfBand).toFixed(2)),
+      high:Number((center+halfBand).toFixed(2)),
+      mid:Number(center.toFixed(2)),
+      strength:Math.round(cap(leanStrength*.68+dominantProbability*.22+readiness*.10,34,82)),
+      touches:0,rejections:0,
+      distanceAtr:Number(travelAtr.toFixed(2)),
+      kind:s==='BUY'?'PROJECTED_UPPER_PRICE_ZONE':'PROJECTED_LOWER_PRICE_ZONE',
+      liquidityScore:0,
+      reason:'منطقة سعرية متوقعة من ATR وتوافق M1/M5؛ ليست تجمع سيولة مؤكداً'
+    };
+  };
+  const projectedDestination=pathDestination?null:projectedPriceZone(leanSide);
+  const effectivePriceZone=pathDestination||projectedDestination;
+  const destinationSource=pathDestination?'STRUCTURAL_LIQUIDITY':'ATR_HORIZON_PROJECTION';
+  const destinationConfidence=leanSide==='WAIT'||!effectivePriceZone
+    ?0
+    :pathDestination
+      ?pathConfidence
+      :Math.round(cap(
+        dominantProbability*.54+leanStrength*.30+
+        (m1!=='WAIT'&&m1===m5&&m1===leanSide?8:0)+(leanSide===proposed?4:0)-
+        (horizonsConflict?6:0),
+        36,78
+      ));
+  const destinationMid=Number(effectivePriceZone?.mid);
+  const priceDestination=leanSide==='WAIT'||!effectivePriceZone||!Number.isFinite(destinationMid)
+    ?null
+    :{
+      side:leanSide,
+      zone:effectivePriceZone,
+      confidence:destinationConfidence,
+      source:destinationSource,
+      projected:!pathDestination,
+      distancePrice:Number(Math.abs(destinationMid-p).toFixed(2)),
+      distancePct:Number((Math.abs(destinationMid-p)/p*100).toFixed(3)),
+      distanceAtr:Number((Math.abs(destinationMid-p)/a).toFixed(2))
+    };
+
   const oppositeSweep=pathSide==='BUY'?lowerSweep:pathSide==='SELL'?upperSweep:null;
   const sameSideSweep=pathSide==='BUY'?upperSweep:pathSide==='SELL'?lowerSweep:null;
   const sweepFirst=Boolean(
@@ -416,22 +486,28 @@ function buildZoneForecast(args:{
       ?'مغناطيس السيولة الهيكلي الأقوى أعلى السعر'
       :pathSide==='SELL'
         ?'مغناطيس السيولة الهيكلي الأقوى أسفل السعر'
-        :'السيولة متقاربة؛ لا يوجد مغناطيس مهيمن',
+        :leanSide==='BUY'
+          ?'الميل السعري الأقوى لأعلى حتى تتأكد السيولة الهيكلية'
+          :leanSide==='SELL'
+            ?'الميل السعري الأقوى لأسفل حتى تتأكد السيولة الهيكلية'
+            :'السيولة متقاربة؛ لا يوجد اتجاه مهيمن',
     sweepFirst&&oppositeSweep?('احتمال سحب سيولة أولًا '+fmtZone(oppositeSweep.low,oppositeSweep.high)):'',
-    pathDestination?('الوجهة الهيكلية '+fmtZone(pathDestination.low,pathDestination.high)):'',
+    effectivePriceZone?((pathDestination?'الوجهة الهيكلية ':'المنطقة السعرية المتوقعة ')+fmtZone(effectivePriceZone.low,effectivePriceZone.high)):'',
     pathRebound?('منطقة رد الفعل '+fmtZone(pathRebound.low,pathRebound.high)):'',
     ('جذب أعلى '+upperAttraction.toFixed(0)+' / أسفل '+lowerAttraction.toFixed(0)),
     invalidationPrice?('إبطال المسار قرب '+invalidationPrice.toFixed(2)):''
   ].filter(Boolean).join(' · ');
   const pathForecast={
-    version:'FORECAST_AI_V5_PATH_INTELLIGENCE',
+    version:'FORECAST_AI_V6_PRICE_DESTINATION',
     side:pathSide,
+    leanSide,
     confidence:pathConfidence,
     conviction,
     clarity:Math.max(0,100-uncertainty),
     rawProbability:Number(primaryProbability.toFixed(1)),
     probabilities:{up:Number(upProbability.toFixed(1)),down:Number(downProbability.toFixed(1)),uncertainty},
     destination:pathDestination,
+    priceDestination,
     reboundZone:pathRebound,
     upperLiquidity:directionalUpper,
     lowerLiquidity:directionalLower,
@@ -462,7 +538,9 @@ function buildZoneForecast(args:{
     phase,
     reason:pathReason,
     scenario:pathSide==='WAIT'
-      ?'لا يوجد مسار مهيمن؛ احتمالات الصعود والهبوط متقاربة'
+      ?priceDestination
+        ?('ميل '+(priceDestination.side==='BUY'?'صاعد':'هابط')+' نحو المنطقة السعرية '+fmtZone(priceDestination.zone.low,priceDestination.zone.high)+' · '+priceDestination.confidence+'% · بانتظار تأكيد سيولة أقوى')
+        :'لا يوجد مسار مهيمن؛ احتمالات الصعود والهبوط متقاربة'
       :sweepFirst&&oppositeSweep&&pathDestination
         ?('سحب سيولة '+(pathSide==='BUY'?'أسفل':'أعلى')+' أولًا قرب '+fmtZone(oppositeSweep.low,oppositeSweep.high)+' ثم انعكاس '+(pathSide==='BUY'?'صاعد':'هابط')+' نحو '+fmtZone(pathDestination.low,pathDestination.high))
         :conviction==='WEAK'

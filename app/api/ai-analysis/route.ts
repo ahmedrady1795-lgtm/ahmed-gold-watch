@@ -609,6 +609,7 @@ export async function GET(request:Request){
           pathForecast:hunt.zoneForecast.pathForecast?{
             version:hunt.zoneForecast.pathForecast.version||'FORECAST_AI_V3',
             side:hunt.zoneForecast.pathForecast.side||'WAIT',
+            leanSide:hunt.zoneForecast.pathForecast.leanSide||'WAIT',
             confidence:Number(hunt.zoneForecast.pathForecast.confidence||0),
             conviction:hunt.zoneForecast.pathForecast.conviction||'WEAK',
             clarity:Number(hunt.zoneForecast.pathForecast.clarity||0),
@@ -621,6 +622,16 @@ export async function GET(request:Request){
             upScore:Number(hunt.zoneForecast.pathForecast.upScore||0),
             downScore:Number(hunt.zoneForecast.pathForecast.downScore||0),
             destination:compactZone(hunt.zoneForecast.pathForecast.destination),
+            priceDestination:hunt.zoneForecast.pathForecast.priceDestination?{
+              side:hunt.zoneForecast.pathForecast.priceDestination.side||'WAIT',
+              zone:compactZone(hunt.zoneForecast.pathForecast.priceDestination.zone),
+              confidence:Number(hunt.zoneForecast.pathForecast.priceDestination.confidence||0),
+              source:hunt.zoneForecast.pathForecast.priceDestination.source||null,
+              projected:Boolean(hunt.zoneForecast.pathForecast.priceDestination.projected),
+              distancePrice:Number(hunt.zoneForecast.pathForecast.priceDestination.distancePrice||0),
+              distancePct:Number(hunt.zoneForecast.pathForecast.priceDestination.distancePct||0),
+              distanceAtr:Number(hunt.zoneForecast.pathForecast.priceDestination.distanceAtr||0)
+            }:null,
             reboundZone:compactZone(hunt.zoneForecast.pathForecast.reboundZone),
             upperLiquidity:compactZone(hunt.zoneForecast.pathForecast.upperLiquidity),
             lowerLiquidity:compactZone(hunt.zoneForecast.pathForecast.lowerLiquidity),

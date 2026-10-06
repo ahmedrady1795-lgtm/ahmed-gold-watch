@@ -58,21 +58,26 @@ function AssetCard({x,liveQuote,fast}:any){
   const path=zone?.pathForecast||null;
   const forecastSide=path?.side&&path.side!=='WAIT'
     ?String(path.side)
-    :zone?String(zone.side||'WAIT')
-    :(goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT');
+    :path?.priceDestination?.side&&path.priceDestination.side!=='WAIT'
+      ?String(path.priceDestination.side)
+      :zone?String(zone.side||'WAIT')
+      :(goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT');
   const displaySide=recommendation?.active?recommendation.action:forecastSide;
   const buy=displaySide==='BUY',sell=displaySide==='SELL';
   const liveGoldPrice=x.asset==='GOLD'&&liveQuote?.ok&&Number.isFinite(Number(liveQuote?.price))&&Number(liveQuote.price)>0?Number(liveQuote.price):null;
   const price=liveGoldPrice??x.livePulse?.price??x.price;
   const move=nextMoveCopy(hunt,x.stateGraph);
-  const structuralTarget=path?.destination?.mid??zone?.target?.mid??null;
+  const priceDestination=path?.priceDestination?.zone??path?.destination??zone?.target??null;
+  const structuralTarget=priceDestination?.mid??null;
   const target=structuralTarget??recommendation?.targets?.scalp??recommendation?.targets?.oneMinute??hunt?.quickSignalTargets?.oneMinute?.price??null;
   const invalid=path?.invalidation?.price??recommendation?.invalidation??hunt?.invalidation??null;
   const conf=recommendation?.active
     ?calibrated(recommendation.confidence)
     :path?.side&&path.side!=='WAIT'
       ?calibrated(path.confidence)
-      :calibrated(goldCore?.confidence??hunt?.nextMove?.confidence??hunt?.confidence??0);
+      :path?.priceDestination
+        ?calibrated(path.priceDestination.confidence)
+        :calibrated(goldCore?.confidence??hunt?.nextMove?.confidence??hunt?.confidence??0);
   const scalpNext=x.scalp?.nextPrice||x.scalp?.fusionV8?.nextPrice||{};
   const fastScalp=fastScalpProjection(price,fast);
   const scalpSide=fastScalp?.side??(x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:(scalpNext?.side||'WAIT'));
@@ -92,25 +97,28 @@ function AssetCard({x,liveQuote,fast}:any){
     <div className="next-move-copy primary-move zone-primary">
       <span>توقع الحركة القادمة · سيولة وهيكل</span>
       <strong className={forecastSide==='BUY'?'green':forecastSide==='SELL'?'red':'amber'}>
-        {path?.side&&path.side!=='WAIT'
-          ?(path.destination
-            ?`${path.conviction==='WEAK'?'ميل ضعيف: ':path.conviction==='STRONG'?'قوي: ':''}${moveAr(path.side)} نحو ${zoneName(path.destination)} ${zoneRange(path.destination)} · ${Math.round(Number(path.confidence||0))}%`
-            :`${path.conviction==='WEAK'?'ميل ضعيف: ':''}${moveAr(path.side)} · ${Math.round(Number(path.confidence||0))}% · لا توجد سيولة مؤكدة أمام السعر`)
-          :zone
-            ?(zone.decisionReady===false||zone.side==='WAIT'
-              ?'بين مناطق القرار · الحركة متوازنة'
-              :zone?.target
-                ?`${moveAr(zone.side)} نحو ${zoneName(zone.target)} ${zoneRange(zone.target)}`
+        {forecastSide!=='WAIT'&&priceDestination
+          ?`${moveAr(forecastSide)} → منطقة ${zoneRange(priceDestination)} · مركز ${fmt(priceDestination.mid,2)} · ${conf}%`
+          :path?.side&&path.side!=='WAIT'
+            ?`${path.conviction==='WEAK'?'ميل ضعيف: ':path.conviction==='STRONG'?'قوي: ':''}${moveAr(path.side)} · ${Math.round(Number(path.confidence||0))}%`
+            :zone
+              ?(zone.decisionReady===false||zone.side==='WAIT'
+                ?'بين مناطق القرار · الحركة متوازنة'
                 :zone?.origin
                   ?`${zone.setup||'تفاعل'} عند ${zoneRange(zone.origin)}`
                   :move.title)
-            :move.title}
+              :move.title}
       </strong>
       <p>{path?.reason||path?.scenario||zone?.summary||move.detail}</p>
       {path?.probabilities&&<div className="forecast-scenario-strip">
         <div><small>احتمال الصعود</small><b className="green">{Math.round(Number(path.probabilities.up||0))}%</b></div>
         <div><small>احتمال الهبوط</small><b className="red">{Math.round(Number(path.probabilities.down||0))}%</b></div>
         <div><small>الإبطال</small><b>{Number.isFinite(Number(path?.invalidation?.price))?fmt(path.invalidation.price,2):'—'}</b></div>
+      </div>}
+      {path?.priceDestination?.zone&&<div className="forecast-scenario-strip">
+        <div><small>الوجهة السعرية</small><b className={forecastSide==='BUY'?'green':forecastSide==='SELL'?'red':'amber'}>{zoneRange(path.priceDestination.zone)}</b></div>
+        <div><small>مركز المنطقة</small><b>{fmt(path.priceDestination.zone.mid,2)}</b></div>
+        <div><small>نوع الهدف</small><b>{path.priceDestination.projected?'توقع سعري':'سيولة/هيكل'}</b></div>
       </div>}
       {path?.evidence?.liquidity&&<div className="forecast-scenario-strip">
         <div><small>محرك التوقع</small><b>سيولة + هيكل</b></div>
