@@ -3,6 +3,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {Activity,RefreshCw,Wifi,WifiOff} from 'lucide-react';
 import AICommandCenter from '../components/AICommandCenter';
+import NewsCommandCenter from '../components/NewsCommandCenter';
 import {computeWaveLead,type WaveLead,type WaveTick} from '../lib/wave-lead';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))
@@ -309,6 +310,7 @@ export default function Home(){
 
     <section className="content lite-content">
       <AICommandCenter data={aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
+      <NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredId={aiData?.autopilot?.nextEvent?.id||null}/>
     </section>
 
     <footer>Ahmed Gold AI Lite · السعر والسكالب والتوقع فقط</footer>
