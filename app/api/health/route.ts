@@ -59,10 +59,12 @@ export async function GET(){
   const mt5BidRows=Array.isArray(mt5Book?.bids)?mt5Book.bids.length:0,mt5AskRows=Array.isArray(mt5Book?.asks)?mt5Book.asks.length:0;
   const goldDomReady=Boolean(mt5?.fresh&&mt5Book?.available&&mt5BidRows>0&&mt5AskRows>0);
   const btcLiquidityValue:any=btcLiquidityProbe.value;
+  const btcWarnings:string[]=Array.isArray(btcLiquidityValue?.warnings)?btcLiquidityValue.warnings:[];
+  const sourceHealthy=(pattern:RegExp)=>!btcWarnings.some((x:string)=>pattern.test(String(x)));
   const btcLiquidityOk=Boolean(btcLiquidityProbe.ok&&btcLiquidityValue?.ok);
   const backgroundConfigured=Boolean(env.TWELVE_DATA_API_KEY);
   const coreMarketReady=quote.ok&&(market.ok||!goldOpen);
-  const status=coreMarketReady?'healthy':quote.ok||market.ok?'degraded':'halted';
+  const status=coreMarketReady?(btcLiquidityOk?'healthy':'degraded'):quote.ok||market.ok?'degraded':'halted';
 
   return Response.json({
     ok:status!=='halted',
@@ -104,8 +106,16 @@ export async function GET(){
           source:btcLiquidityValue?.source||'Coinbase/Kraken/OKX',
           quality:Number(btcLiquidityValue?.quality||0),
           side:btcLiquidityValue?.side||'WAIT',
+          pressure:Number(btcLiquidityValue?.pressure||0),
           latencyMs:btcLiquidityProbe.latencyMs,
-          warnings:Array.isArray(btcLiquidityValue?.warnings)?btcLiquidityValue.warnings:[]
+          sources:{
+            coinbaseBbo:sourceHealthy(/Coinbase BBO/i),
+            coinbaseTrades:sourceHealthy(/Coinbase trades/i),
+            krakenDepth:sourceHealthy(/Kraken depth/i),
+            okxDepth:sourceHealthy(/OKX depth/i),
+            okxTrades:sourceHealthy(/OKX trades/i)
+          },
+          warnings:btcWarnings
         }
       }
 
