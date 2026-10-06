@@ -85,12 +85,13 @@ function buildH4Context(c60:any[],price:number|null,now=Date.now()){
     .filter((b:any)=>[b.open,b.high,b.low,b.close].every(Number.isFinite))
     .slice(-10);
   if(bars.length<4)return {ok:false,side:'WAIT',confidence:0,structure:'غير كافٍ',support:null,resistance:null,checkedAt:now};
-  const closes=bars.map((b:any)=>b.close),recent=bars.slice(-6),last=bars.at(-1),prev=bars.at(-2);
+  const closes=bars.map((b:any)=>b.close),recent=bars.slice(-6),last=bars.at(-1)!,prev=bars.at(-2)!;
   const fast=closes.slice(-3).reduce((a:number,b:number)=>a+b,0)/Math.min(3,closes.length);
   const slow=closes.slice(-6).reduce((a:number,b:number)=>a+b,0)/Math.min(6,closes.length);
   let buy=0,sell=0;
   if(fast>slow)buy+=18;else if(fast<slow)sell+=18;
-  const slope=(closes.at(-1)-closes.at(-4))/Math.max(1e-9,Math.abs(closes.at(-4)));
+  const lastClose=Number(closes.at(-1)!),baseClose=Number(closes.at(-4)!);
+  const slope=(lastClose-baseClose)/Math.max(1e-9,Math.abs(baseClose));
   if(slope>.0012)buy+=22;else if(slope<-.0012)sell+=22;else if(slope>0)buy+=9;else if(slope<0)sell+=9;
   if(last.high>prev.high&&last.low>prev.low)buy+=24;
   if(last.high<prev.high&&last.low<prev.low)sell+=24;
