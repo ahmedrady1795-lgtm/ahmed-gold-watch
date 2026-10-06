@@ -270,7 +270,7 @@ export default function Home(){
   const goldFallback=Boolean(goldFresh&&goldTick?.mode==='analysis_proxy');
   const goldLive=goldBrokerLive||goldStreamLive||goldPulse;
   const goldUsable=goldLive||goldDelayed||goldFallback;
-  const goldBadge=goldBrokerLive?'LIVE EXNESS':goldStreamLive?'LIVE XAU':goldPulse?'PULSE':goldDelayed?'DELAYED':goldFallback?'FALLBACK':'WAIT';
+  const goldBadge=goldBrokerLive?'LIVE EXNESS':goldStreamLive?'LIVE':goldPulse?'PULSE':goldDelayed?'DELAYED':goldFallback?'FALLBACK':'WAIT';
   const aiActive=Boolean((aiData?.ok&&aiLastOkAt&&now-aiLastOkAt<20000)||aiData?.ok);
   const shownBtc=btc??aiBtc?.price??aiData?.bitcoin?.price??null;
   const shownBtcAt=btcAt||Number(aiBtc?.sourceTime||0);
