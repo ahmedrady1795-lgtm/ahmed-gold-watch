@@ -7,8 +7,8 @@ const calibrated=(v:any)=>Math.min(92,Math.max(0,Math.round(Number(v)||0)));
 const timeLeft=(ts:any,now:number)=>{
   const d=Number(ts)-now;if(!Number.isFinite(d))return '';
   if(d<=0)return 'الآن';
-  const m=Math.floor(d/60000),h=Math.floor(m/60),mm=m%60;
-  return h>0?`بعد ${h}س ${mm}د`:`بعد ${Math.max(1,mm)}د`;
+  const totalSeconds=Math.ceil(d/1000),m=Math.floor(totalSeconds/60),s=totalSeconds%60,h=Math.floor(m/60),mm=m%60;
+  return h>0?`متبقي ${h}س ${mm}د`:(m>0?`متبقي ${m}د ${s}ث`:`متبقي ${s}ث`);
 };
 const moveAr=(s:any)=>s==='BUY'?'صعود':s==='SELL'?'هبوط':'تذبذب';
 const zoneRange=(z:any)=>z&&Number.isFinite(Number(z.low))&&Number.isFinite(Number(z.high))?`${fmt(z.low,2)}–${fmt(z.high,2)}`:'—';
@@ -169,7 +169,7 @@ export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.n
           <strong>{next.name}</strong>
           <em>تأثيره المتوقع على السوق</em>
         </div>
-        <span className="news-countdown">{awaitingActual?'بانتظار Actual':timeLeft(next.time,now)}</span>
+        <span className="news-countdown">{awaitingActual?`متأخر ${Math.max(1,Math.floor(Math.abs(nextEventDelta)/60000))}د · بانتظار النتيجة`:timeLeft(next.time,now)}</span>
       </div>
 
       {(next.forecast||next.previous||next.actual)&&<div className="news-values ordered">
