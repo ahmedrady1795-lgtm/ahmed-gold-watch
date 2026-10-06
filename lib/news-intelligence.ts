@@ -16,6 +16,7 @@ function num(v:any){
   const x=Number(m[1]);if(!Number.isFinite(x))return null;
   const u=m[2].toUpperCase();return x*(u==='K'?1e3:u==='M'?1e6:u==='B'?1e9:1);
 }
+function isNarrativeEvent(name:string){return /\b(speaks?|speech|remarks?|testif(?:y|ies|ied)|testimony|press conference|minutes|beige book|statement|hearing|panel discussion|interview)\b/i.test(name);}
 function family(name:string){
   if(/CPI|PCE|PPI|inflation|price index|average hourly|earnings/i.test(name))return 'inflation';
   if(/nonfarm|payroll|employment change|unemployment|jobless|claims|JOLTS|job openings|employment situation/i.test(name))return 'labor';
@@ -65,15 +66,22 @@ export function buildNewsIntelligence(asset:Asset,events:Event[],now=Date.now())
     if(directional)reasons.push(`مفاجأة الخبر تميل إلى ${side==='BUY'?'الشراء':'البيع'}، لكن يلزم تأكيد السيولة والسعر.`);
     else reasons.push('نوع الخبر أو نتيجته لا يعطي اتجاهًا آليًا موثوقًا؛ سيُستخدم كعامل مخاطرة فقط.');
   }else{
+    const narrative=isNarrativeEvent(e.name);
     const preDelta=forecast!=null&&previous!=null?(forecast-previous)/Math.max(1,Math.abs(previous)):0;
-    if(mins>0&&Math.abs(preDelta)>.002&&family(e.name)!=='fed'){
+    if(!narrative&&mins>0&&Math.abs(preDelta)>.002&&family(e.name)!=='fed'){
       side=asset==='GOLD'?goldDirection(e.name,preDelta):btcDirection(e.name,preDelta);
       confidence=side==='WAIT'?0:Math.round(cap(28+importance*6+Math.min(12,Math.abs(preDelta)*100),0,52));
       directional=side!=='WAIT';weight=directional?Math.min(.07,.025+importance*.012):0;
     }
-    reasons.push(`${e.name} خلال ${mins>0?Math.ceil(mins)+' دقيقة':'وقت الإصدار'} · تأثير ${importance}/3.`);
-    reasons.push('قبل صدور Actual، تأثير الخبر على الاتجاه محدود ويُرفع وزن المخاطرة بدل تخمين النتيجة.');
+    reasons.push(`${e.name} خلال ${mins>0?Math.ceil(mins)+' دقيقة':'وقت الحدث'} · تأثير ${importance}/3.`);
+    if(narrative){
+      reasons.push(mins>0
+        ?'حدث نصّي بلا Actual رقمي؛ قبل البداية لا يُفترض اتجاه من اسم المتحدث وحده، ويُستخدم السياق والسعر لترجيح محدود فقط.'
+        :'حدث نصّي بلا Actual رقمي؛ تُقرأ اللهجة ورد فعل الدولار والسيولة بدل انتظار نتيجة رقمية.');
+    }else{
+      reasons.push('قبل صدور Actual، تأثير الخبر على الاتجاه محدود ويُرفع وزن المخاطرة بدل تخمين النتيجة.');
+    }
   }
-  if(family(e.name)==='fed'&&!hasSurprise){side='WAIT';confidence=0;directional=false;weight=0;reasons.push('حدث فدرالي نصّي/قرار: الاتجاه لا يُستنتج من الاسم وحده؛ ينتظر رد فعل السعر والسيولة.');}
+  if(family(e.name)==='fed'&&!hasSurprise&&!isNarrativeEvent(e.name)){side='WAIT';confidence=0;directional=false;weight=0;reasons.push('قرار/حدث فدرالي غير محسوم رقميًا؛ لا يُفرض اتجاه قبل ظهور المعلومة الفعلية.');}
   return {ok:true,asset,checkedAt:now,side,confidence,risk,phase,event:{id:e.id,name:e.name,time:e.time,importance,actual:e.actual,forecast:e.forecast,previous:e.previous,source:e.source},surprise:surprise==null?null:Number(surprise.toFixed(3)),directional,weight:Number(weight.toFixed(3)),reasons};
 }
