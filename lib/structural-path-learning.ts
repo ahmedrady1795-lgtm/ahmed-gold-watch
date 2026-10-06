@@ -115,6 +115,41 @@ function qualityFromStat(v:any){
   const sample=Math.min(1,n/28);
   return 50+(posterior-50)*.72*sample+excursion*18*sample+(hit-35)*.10*sample;
 }
+function signaturePolicy(v:any){
+  const n=Number(v?.directional||0),hits=Number(v?.hits||0),fails=Number(v?.fails||0);
+  const accuracy=n?hits/n*100:50,posterior=Number(v?.posteriorAccuracy||50);
+  const edge=Number(v?.excursionEdge||0),resolved=Number(v?.resolved||0);
+  const hardBlacklist=Boolean(
+    (n>=3&&hits===0&&fails>=3&&edge<=-1)||
+    (n>=6&&accuracy<=30&&posterior<44&&edge<0)
+  );
+  const softPenalty=Boolean(
+    !hardBlacklist&&n>=4&&accuracy<46&&edge<0
+  );
+  const promoted=Boolean(
+    !hardBlacklist&&(
+      (n>=4&&hits>=4&&accuracy>=80&&posterior>=60&&edge>=.75)||
+      (n>=6&&accuracy>=70&&posterior>=58&&edge>=.5)
+    )
+  );
+  let confidenceDelta=0,weight=1;
+  if(hardBlacklist){confidenceDelta=-24;weight=.15;}
+  else if(promoted){
+    const sampleBoost=Math.min(5,Math.max(0,n-4)*.8);
+    const qualityBoost=Math.min(5,Math.max(0,posterior-58)*.45+Math.max(0,edge)*.35);
+    confidenceDelta=Math.round(4+sampleBoost+qualityBoost);
+    weight=Number(Math.min(1.35,1.08+confidenceDelta*.022).toFixed(2));
+  }else if(softPenalty){
+    confidenceDelta=-Math.min(10,Math.round(4+(46-accuracy)*.25+Math.min(4,Math.abs(edge)*.35)));
+    weight=Number(Math.max(.55,1+confidenceDelta*.035).toFixed(2));
+  }
+  return {
+    status:hardBlacklist?'AUTO_BLACKLIST':promoted?'AUTO_PROMOTE':softPenalty?'AUTO_PENALIZE':n>=3?'WATCH':'COLLECTING',
+    n,hits,fails,resolved,accuracy:Number(accuracy.toFixed(1)),posterior:Number(posterior.toFixed(1)),
+    excursionEdge:Number(edge.toFixed(2)),confidenceDelta,weight,
+    hardBlacklist,promoted,softPenalty
+  };
+}
 
 function settle(asset:string,price:number,now:number){
   if(!Number.isFinite(price)||price<=0)return;
@@ -216,6 +251,7 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
   const signatureQuality=qualityFromStat(sg);
   const targetQuality=qualityFromStat(tk);
   const distanceQuality=qualityFromStat(db);
+  const autoPolicy=signaturePolicy(sg);
   const gn=Number(g.directional||0),sn=Number(sg.directional||0);
   const maturity=Math.min(1,(gn*.35+sn*.65)/40);
   let confidence=raw*(1-.72*maturity)+observed*(.54*maturity)+signatureQuality*(.18*maturity);
@@ -226,11 +262,13 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
   if(sn>=8&&Number(sg.posteriorAccuracy||50)<46)confidence-=10;
   if(Number(tk.directional||0)>=10&&targetQuality<47)confidence-=6;
   if(Number(db.directional||0)>=10&&distanceQuality<47)confidence-=5;
+  confidence+=Number(autoPolicy.confidenceDelta||0);
   const primaryProbability=Math.max(Number(pathForecast?.probabilities?.up||0),Number(pathForecast?.probabilities?.down||0),Number(pathForecast?.rawProbability||0));
   if(conviction==='WEAK'||primaryProbability<55)confidence=Math.min(confidence,Math.round(cap(primaryProbability,42,55)));
   confidence=Math.round(cap(confidence,18,84));
   const archetypeSamples=sn;
   const hardVeto=Boolean(
+    autoPolicy.hardBlacklist||
     (archetypeSamples>=10&&Number(sg.posteriorAccuracy||50)<43)||
     (Number(tk.directional||0)>=16&&targetQuality<42)||
     (gn>=30&&Number(g.posteriorAccuracy||50)<43&&streak>=2)
@@ -243,12 +281,16 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
   const contextQualified=Boolean(
     contextReady&&Number(sg.posteriorAccuracy||50)>=54&&signatureQuality>=49&&targetQuality>=48
   );
+  const autoPromoted=Boolean(autoPolicy.promoted&&!hardVeto);
   const coldContextBlocked=Boolean(!contextReady&&!broadQualified&&gn>=30);
-  const promoted=Boolean(!hardVeto&&confidence>=54&&(contextQualified||(!contextReady&&broadQualified)));
+  const promoted=Boolean(!hardVeto&&confidence>=54&&(autoPromoted||contextQualified||(!contextReady&&broadQualified)));
   const probabilityConflict=!probabilityAligned;
   const finalBlocked=hardVeto||coldContextBlocked||probabilityConflict;
   const learningStatus=probabilityConflict?'PROBABILITY_SIDE_CONFLICT'
+    :autoPolicy.hardBlacklist?'AUTO_BLACKLIST'
     :hardVeto?'HARD_VETO'
+    :autoPromoted?'AUTO_PROMOTE'
+    :autoPolicy.softPenalty?'AUTO_PENALIZE'
     :contextQualified?'CONTEXT_PROMOTED'
     :contextReady?'CONTEXT_WATCH'
     :broadQualified?'COLLECTING_CONTEXT_WITH_STRONG_BACKSTOP'
@@ -257,10 +299,10 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
     ...pathForecast,
     side:finalBlocked?'WAIT':pathForecast.side,
     rawConfidence:Math.round(raw),
-    confidence:finalBlocked?Math.min(36,confidence):!contextReady&&broadQualified?Math.min(62,confidence):confidence,
-    conviction:finalBlocked?'WEAK':pathForecast.conviction,
+    confidence:finalBlocked?Math.min(36,confidence):autoPromoted?Math.min(84,Math.max(confidence,raw+4)):!contextReady&&broadQualified?Math.min(62,confidence):confidence,
+    conviction:finalBlocked?'WEAK':autoPromoted&&pathForecast.conviction==='WEAK'?'MODERATE':pathForecast.conviction,
     learning:{
-      version:'structural-path-learning-v2-contextual',
+      version:'structural-path-learning-v3-auto-policy',
       status:learningStatus,
       samples:gn,observedAccuracy:Number(observed.toFixed(1)),
       globalPosterior:Number(g.posteriorAccuracy||50),sidePosterior:Number(s.posteriorAccuracy||50),
@@ -269,16 +311,20 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
       distancePosterior:Number(db.posteriorAccuracy||50),signatureQuality:Number(signatureQuality.toFixed(1)),
       targetQuality:Number(targetQuality.toFixed(1)),distanceQuality:Number(distanceQuality.toFixed(1)),
       excursionEdge:Number(excursionEdge.toFixed(2)),failureStreak:streak,maturity:Number(maturity.toFixed(2)),
-      contextReady,broadQualified,contextQualified,promoted,hardVeto,coldContextBlocked,probabilityAligned,probabilityConflict
+      contextReady,broadQualified,contextQualified,promoted,autoPromoted,autoPolicy,hardVeto,coldContextBlocked,probabilityAligned,probabilityConflict
     },
     learningCandidate,
     scenario:probabilityConflict
       ?'تم إيقاف المسار لأن الاتجاه المثبت لا يطابق الاحتمالات الحالية'
-      :hardVeto
-        ?'تم رفض المسار لأن هذا النمط خاسر تاريخيًا أو جودة حركته ضعيفة'
-        :coldContextBlocked
-          ?'المسار تحت التعلم السياقي؛ التاريخ العام غير قوي بما يكفي للسماح بتوقع اتجاهي الآن'
-          :pathForecast.scenario
+      :autoPolicy.hardBlacklist
+        ?'تم حظر عائلة المسار تلقائيًا بعد تكرار الفشل وحركة سلبية ضد السيناريو؛ تستمر في Shadow للتعافي'
+        :hardVeto
+          ?'تم رفض المسار لأن هذا النمط خاسر تاريخيًا أو جودة حركته ضعيفة'
+          :autoPromoted
+            ?'عائلة مسار مثبتة إحصائيًا؛ تمت ترقية وزنها تلقائيًا مع استمرار المراقبة'
+            :coldContextBlocked
+              ?'المسار تحت التعلم السياقي؛ التاريخ العام غير قوي بما يكفي للسماح بتوقع اتجاهي الآن'
+              :pathForecast.scenario
   };
 }
 
