@@ -1519,7 +1519,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     accumulation,primary:shortSide,follow:followSide
   }):[];
   const rawZoneForecastBase=validPrice?buildZoneForecast({
-    asset,
+    asset:asset==='GOLD'?'GOLD':'BTC',
     price:p,atr:a,side:primaryMoveSide!=='WAIT'?primaryMoveSide:stableSide,
     confidence:primaryMoveConfidence,accumulation,
     m1Side:oneMinute.side,m1Strength:Number(oneMinute.strength||0),
