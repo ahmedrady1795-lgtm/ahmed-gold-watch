@@ -170,18 +170,19 @@ export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.n
   const auto=data?.autopilot,next=auto?.nextEvent;
   const nextEventDelta=Number(next?.time)-now;
   const awaitingActual=Boolean(next?.awaitingActual||next?.status==='AWAITING_ACTUAL');
-  const showNextEvent=!!next&&Number.isFinite(nextEventDelta)&&((nextEventDelta>=0&&nextEventDelta<=10*60*60*1000)||(awaitingActual&&nextEventDelta>=-30*60*1000));
+  const narrativeLive=Boolean(next?.status==='TEXT_EVENT_LIVE'||next?.eventType==='NARRATIVE'&&nextEventDelta<0);
+  const showNextEvent=!!next&&Number.isFinite(nextEventDelta)&&((nextEventDelta>=0&&nextEventDelta<=10*60*60*1000)||(awaitingActual&&nextEventDelta>=-30*60*1000)||(narrativeLive&&nextEventDelta>=-8*60*1000));
   return <div className="ai-clean">
     {error&&!data&&<div className="fatal"><Activity size={18}/><div><strong>تعذر تحديث AI</strong><span>{error}</span></div></div>}
 
     {showNextEvent&&<section className="next-news news-impact-card">
       <div className="news-head">
         <div className="news-title-wrap">
-          <small>{awaitingActual?'بانتظار نتيجة الخبر':'الخبر القادم'}</small>
+          <small>{awaitingActual?'بانتظار نتيجة الخبر':narrativeLive?'تصريحات جارية':'الخبر القادم'}</small>
           <strong>{next.name}</strong>
           <em>تأثيره المتوقع على السوق</em>
         </div>
-        <span className="news-countdown">{awaitingActual?`متأخر ${Math.max(1,Math.floor(Math.abs(nextEventDelta)/60000))}د · بانتظار النتيجة`:timeLeft(next.time,now)}</span>
+        <span className="news-countdown">{awaitingActual?`متأخر ${Math.max(1,Math.floor(Math.abs(nextEventDelta)/60000))}د · بانتظار النتيجة`:narrativeLive?`بدأ منذ ${Math.max(1,Math.floor(Math.abs(nextEventDelta)/60000))}د · متابعة التأثير`:timeLeft(next.time,now)}</span>
       </div>
 
       {(next.forecast||next.previous||next.actual)&&<div className="news-values ordered">
@@ -199,7 +200,9 @@ export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.n
           const released=!awaitingActual&&Boolean(next?.actual)&&String(impact?.phase||'')!=='PRE_EVENT';
           const confidence=Math.round(Number(impact?.confidence||0));
           const risk=Math.round(Number(impact?.risk||0));
-          const direction=s==='BUY'?'↑ صعود':s==='SELL'?'↓ هبوط':released?'↔ محايد':awaitingActual?'⏳ بانتظار النتيجة':'⏳ غير محسوم';
+          const up=Math.max(0,Math.min(100,Math.round(Number(impact?.upProbability??50))));
+          const down=Math.max(0,Math.min(100,Math.round(Number(impact?.downProbability??(100-up)))));
+          const direction=s==='BUY'?'↑ صعود':s==='SELL'?'↓ هبوط':released?'↔ محايد':narrativeLive?'↔ التأثير قيد القراءة':awaitingActual?'⏳ بانتظار النتيجة':'↔ غير محسوم';
           return <div className="news-impact ordered-impact" key={label}>
             <div className="impact-top">
               <small>{label}</small>
@@ -209,10 +212,14 @@ export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.n
               {direction}{confidence>0?` · ${confidence}%`:''}
             </strong>
             <div className="impact-meta">
-              <span>{released?'تأثير فعلي':awaitingActual?'التأثير المتوقع · بانتظار النتيجة':'التأثير المتوقع قبل الخبر'}</span>
+              <span>{released?'تأثير فعلي':narrativeLive?'قراءة اللهجة ورد فعل السوق':awaitingActual?'التأثير المتوقع · بانتظار النتيجة':'الترجيح قبل الخبر'}</span>
               <em>خطورة {risk}%</em>
             </div>
-            <p>{impact?.reason||'سيتم تحديد الاتجاه بعد صدور البيانات ومقارنة Actual بالـ Forecast.'}</p>
+            <div className="news-values ordered">
+              <span>صعود <b className="green">{up}%</b></span>
+              <span>هبوط <b className="red">{down}%</b></span>
+            </div>
+            <p>{impact?.reason||(next?.eventType==='NARRATIVE'?'لا توجد نتيجة رقمية لهذا الحدث؛ يتم تقييم التصريحات والسعر والسيولة.':'سيتم تحديد الاتجاه بعد صدور البيانات ومقارنة الفعلي بالمتوقع.')}</p>
           </div>;
         })}
       </div>
