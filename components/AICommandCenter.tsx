@@ -99,6 +99,10 @@ function AssetCard({x,liveQuote,fast}:any){
   const liqBuy=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.buy||0))));
   const liqSell=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.sell||0))));
   const liqText=(liqBuy||liqSell)?`صعود ${liqBuy}% · هبوط ${liqSell}%`:'—';
+  const accumulation=x?.accumulation||null;
+  const accumulationPhase=accumulation?.phase==='ACCUMULATING'||accumulation?.phase==='MARKUP_READY'?'تجميع':accumulation?.phase==='DISTRIBUTING'||accumulation?.phase==='MARKDOWN_READY'?'تصريف':'توازن';
+  const accumulationScore=Math.max(0,Math.min(100,Math.round(Number(accumulation?.accumulationScore||0))));
+  const distributionScore=Math.max(0,Math.min(100,Math.round(Number(accumulation?.distributionScore||0))));
   const upperLiquidity=path?.upperLiquidity||zone?.resistance||null;
   const lowerLiquidity=path?.lowerLiquidity||zone?.support||null;
   const liquidityPoint=(z:any)=>{
@@ -146,7 +150,7 @@ function AssetCard({x,liveQuote,fast}:any){
         <div><small>الوجهة</small><b>{forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):priceDestination?zoneRange(priceDestination):'—'}</b></div>
         <div><small>نافذة التحرك</small><b>{forwardSide!=='WAIT'?forwardWindow:'—'}</b></div>
         <div><small>الارتداد</small><b dir="ltr">{zoneRange(path?.reboundZone||zone?.origin)}</b></div>
-        <div><small>نسبة السيولة</small><b>{liqText}</b></div>
+        <div><small>نسبة السيولة</small><b>{liqText}</b><span>{accumulationPhase}{accumulationPhase==='تجميع'&&accumulationScore?` · ${accumulationScore}%`:accumulationPhase==='تصريف'&&distributionScore?` · ${distributionScore}%`:''}</span></div>
         <div><small>مستويات السيولة</small>
           <b>{upperLiquidityLevel!=='—'?<>سيولة أعلى عند <span dir="ltr">{upperLiquidityLevel}</span></>:'لا توجد سيولة علوية واضحة'}</b>
           <span>{lowerLiquidityLevel!=='—'?<>سيولة أسفل عند <span dir="ltr">{lowerLiquidityLevel}</span></>:'لا توجد سيولة سفلية واضحة'}</span>
