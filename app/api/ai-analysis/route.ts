@@ -783,8 +783,27 @@ export async function GET(request:Request){
             high:h.zoneForecast.pathForecast.alternate.destination.high
           }:null
         }:null,
+        priceDestination:h.zoneForecast.pathForecast.priceDestination?{
+          side:h.zoneForecast.pathForecast.priceDestination.side||'WAIT',
+          low:h.zoneForecast.pathForecast.priceDestination.zone?.low??null,
+          high:h.zoneForecast.pathForecast.priceDestination.zone?.high??null,
+          mid:h.zoneForecast.pathForecast.priceDestination.zone?.mid??null,
+          projected:Boolean(h.zoneForecast.pathForecast.priceDestination.projected),
+          confidence:Number(h.zoneForecast.pathForecast.priceDestination.confidence||0),
+          source:h.zoneForecast.pathForecast.priceDestination.source||null
+        }:null,
         invalidation:Number.isFinite(Number(h.zoneForecast.pathForecast.invalidation?.price))?Number(h.zoneForecast.pathForecast.invalidation.price):null,
-        learning:h.zoneForecast.pathForecast.learning||null,
+        learning:h.zoneForecast.pathForecast.learning?{
+          status:h.zoneForecast.pathForecast.learning.status||null,
+          samples:Number(h.zoneForecast.pathForecast.learning.samples||0),
+          observedAccuracy:Number(h.zoneForecast.pathForecast.learning.observedAccuracy||0),
+          globalPosterior:Number(h.zoneForecast.pathForecast.learning.globalPosterior||0),
+          signaturePosterior:Number(h.zoneForecast.pathForecast.learning.signaturePosterior||0),
+          targetKindPosterior:Number(h.zoneForecast.pathForecast.learning.targetKindPosterior||0),
+          distancePosterior:Number(h.zoneForecast.pathForecast.learning.distancePosterior||0),
+          hardVeto:Boolean(h.zoneForecast.pathForecast.learning.hardVeto),
+          promoted:Boolean(h.zoneForecast.pathForecast.learning.promoted)
+        }:null,
         liveLearning:h.zoneForecast.pathForecast.liveLearning?{
           recorded:Boolean(h.zoneForecast.pathForecast.liveLearning.recorded),
           reason:h.zoneForecast.pathForecast.liveLearning.reason||null,
@@ -794,8 +813,7 @@ export async function GET(request:Request){
           pendingLive:Number(h.zoneForecast.pathForecast.liveLearning.pendingLive||0),
           pendingShadow:Number(h.zoneForecast.pathForecast.liveLearning.pendingShadow||0),
           recentLive:Number(h.zoneForecast.pathForecast.liveLearning.recentLive||0),
-          recentShadow:Number(h.zoneForecast.pathForecast.liveLearning.recentShadow||0),
-          bySignature:h.zoneForecast.pathForecast.liveLearning.bySignature||null
+          recentShadow:Number(h.zoneForecast.pathForecast.liveLearning.recentShadow||0)
         }:null
       }:null,
       locked:Boolean(h.zoneForecast.stability?.locked),
