@@ -63,7 +63,8 @@ function AssetCard({x,liveQuote,fast}:any){
       :zone?String(zone.side||'WAIT')
       :(goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT');
   const displaySide=forecastSide;
-  const buy=displaySide==='BUY',sell=displaySide==='SELL';
+  const softDestination=Boolean(path?.side==='WAIT'&&path?.priceDestination?.zone);
+  const buy=displaySide==='BUY'&&!softDestination,sell=displaySide==='SELL'&&!softDestination;
   const localReactionSide=zone?.side&&zone.side!=='WAIT'?String(zone.side):'WAIT';
   const localReactionZone=zone?.origin??(localReactionSide==='BUY'?zone?.support:localReactionSide==='SELL'?zone?.resistance:null);
   const hasOppositeLocalReaction=forecastSide!=='WAIT'&&localReactionSide!=='WAIT'&&forecastSide!==localReactionSide&&localReactionZone;
@@ -87,7 +88,7 @@ function AssetCard({x,liveQuote,fast}:any){
   const scalpPrice=fastScalp?.price??scalpNext?.price??x.scalp?.target?.price??x.scalp?.ambushPlan?.target?.price??hunt?.quickSignalTargets?.oneMinute?.price??null;
   return <section className={"panel ai-asset-card compact-asset "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
-      <div><span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span><h2>{buy?'الحركة المرجحة: صعود':sell?'الحركة المرجحة: هبوط':'انتظار اتجاه أوضح'}</h2></div>
+      <div><span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span><h2>{softDestination?(forecastSide==='BUY'?'ميل مراقبة: صعود':'ميل مراقبة: هبوط'):buy?'الحركة المرجحة: صعود':sell?'الحركة المرجحة: هبوط':'انتظار اتجاه أوضح'}</h2></div>
       {buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}
     </div>
 
@@ -99,9 +100,9 @@ function AssetCard({x,liveQuote,fast}:any){
 
     <div className="next-move-copy primary-move zone-primary">
       <span>توقع الحركة القادمة · سيولة وهيكل</span>
-      <strong className={forecastSide==='BUY'?'green':forecastSide==='SELL'?'red':'amber'}>
+      <strong className={softDestination?'amber':forecastSide==='BUY'?'green':forecastSide==='SELL'?'red':'amber'}>
         {forecastSide!=='WAIT'&&priceDestination
-          ?`${moveAr(forecastSide)} → منطقة ${zoneRange(priceDestination)} · مركز ${fmt(priceDestination.mid,2)} · ${conf}%`
+          ?`${softDestination?'ميل مراقبة: ':''}${moveAr(forecastSide)} → منطقة ${zoneRange(priceDestination)} · مركز ${fmt(priceDestination.mid,2)} · ${conf}%`
           :path?.side&&path.side!=='WAIT'
             ?`${path.conviction==='WEAK'?'ميل ضعيف: ':path.conviction==='STRONG'?'قوي: ':''}${moveAr(path.side)} · ${Math.round(Number(path.confidence||0))}%`
             :zone

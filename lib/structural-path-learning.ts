@@ -319,11 +319,28 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
     :contextReady?'CONTEXT_WATCH'
     :broadQualified?'COLLECTING_CONTEXT_WITH_STRONG_BACKSTOP'
     :'COLLECTING_CONTEXT_BLOCKED';
+  const finalConfidence=finalBlocked
+    ?Math.min(36,confidence)
+    :autoPromoted
+      ?Math.min(84,Math.max(confidence,raw+4))
+      :!contextReady&&broadQualified
+        ?Math.min(62,confidence)
+        :confidence;
+  const hidePriceDestination=Boolean(hardVeto||coldContextBlocked||probabilityConflict);
+  const calibratedPriceDestination=pathForecast?.priceDestination
+    ?hidePriceDestination
+      ?null
+      :{
+        ...pathForecast.priceDestination,
+        confidence:Math.round(Math.min(Number(pathForecast.priceDestination.confidence||finalConfidence),finalConfidence))
+      }
+    :null;
   return {
     ...pathForecast,
     side:finalBlocked?'WAIT':pathForecast.side,
+    priceDestination:calibratedPriceDestination,
     rawConfidence:Math.round(raw),
-    confidence:finalBlocked?Math.min(36,confidence):autoPromoted?Math.min(84,Math.max(confidence,raw+4)):!contextReady&&broadQualified?Math.min(62,confidence):confidence,
+    confidence:finalConfidence,
     conviction:finalBlocked?'WEAK':autoPromoted&&pathForecast.conviction==='WEAK'?'MODERATE':pathForecast.conviction,
     learning:{
       version:'structural-path-learning-v4-loss-memory',
