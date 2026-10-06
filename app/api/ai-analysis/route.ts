@@ -31,6 +31,7 @@ import {buildPredatorFusionV2} from '../../../lib/predator-fusion-v2';
 import {getStructuralPathLearning,calibrateStructuralPathForecast,recordStructuralPathOutcome} from '../../../lib/structural-path-learning';
 import {getHorizonBrainLearning,recordHorizonBrainOutcome} from '../../../lib/horizon-brain-learning';
 import {buildMarketMakerIntent} from '../../../lib/market-maker-intent';
+import {setAiSnapshot} from '../../../lib/ai-snapshot-cache';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -1542,6 +1543,7 @@ export async function GET(request:Request){
     payload.bitcoin.forecastValidation15m=compact15Validation(bitcoin15Validation);
 
     lastAiPayload=payload;lastAiPayloadAt=Date.now();
+    setAiSnapshot(payload,lastAiPayloadAt);
     return Response.json(payload,{headers:{'Cache-Control':'no-store','X-AI-Cache':'miss'}});
   }catch(e){
     console.error('[AI-ERROR]',e instanceof Error?(e.stack||e.message):e);
