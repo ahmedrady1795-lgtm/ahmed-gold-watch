@@ -63,7 +63,7 @@ function AssetCard({x,liveQuote,fast}:any){
       :zone?String(zone.side||'WAIT')
       :(goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT');
   const displaySide=forecastSide;
-  const softDestination=Boolean(path?.side==='WAIT'&&path?.priceDestination?.zone);
+  const softDestination=Boolean((path?.side==='WAIT'&&path?.priceDestination?.zone)||guardWatching);
   const buy=displaySide==='BUY'&&!softDestination,sell=displaySide==='SELL'&&!softDestination;
   const localReactionSide=zone?.side&&zone.side!=='WAIT'?String(zone.side):'WAIT';
   const localReactionZone=zone?.origin??(localReactionSide==='BUY'?zone?.support:localReactionSide==='SELL'?zone?.resistance:null);
@@ -75,13 +75,14 @@ function AssetCard({x,liveQuote,fast}:any){
   const structuralTarget=priceDestination?.mid??null;
   const target=structuralTarget??recommendation?.targets?.scalp??recommendation?.targets?.oneMinute??hunt?.quickSignalTargets?.oneMinute?.price??null;
   const invalid=path?.invalidation?.price??recommendation?.invalidation??hunt?.invalidation??null;
-  const conf=recommendation?.active
-    ?calibrated(recommendation.confidence)
-    :path?.side&&path.side!=='WAIT'
-      ?calibrated(path.confidence)
-      :path?.priceDestination
-        ?calibrated(path.priceDestination.confidence)
-        :calibrated(goldCore?.confidence??hunt?.nextMove?.confidence??hunt?.confidence??0);
+  const conf=path?.side&&path.side!=='WAIT'
+    ?calibrated(path.confidence)
+    :path?.priceDestination
+      ?calibrated(path.priceDestination.confidence)
+      :calibrated(goldCore?.confidence??hunt?.nextMove?.confidence??hunt?.confidence??0);
+  const guard=path?.consensusGuard||null;
+  const guardConfirmed=guard?.status==='M1_M5_CONFIRMED';
+  const guardWatching=Boolean(guard&&guard.status!=='M1_M5_CONFIRMED');
   const scalpNext=x.scalp?.nextPrice||x.scalp?.fusionV8?.nextPrice||{};
   const fastScalp=fastScalpProjection(price,fast);
   const scalpSide=fastScalp?.side??(x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:(scalpNext?.side||'WAIT'));
@@ -122,6 +123,12 @@ function AssetCard({x,liveQuote,fast}:any){
         <div><small>احتمال الهبوط</small><b className="red">{Math.round(Number(path.probabilities.down||0))}%</b></div>
         <div><small>الإبطال</small><b>{Number.isFinite(Number(path?.invalidation?.price))?fmt(path.invalidation.price,2):'—'}</b></div>
       </div>}
+      {guard&&<div className="forecast-scenario-strip">
+        <div><small>تأكيد M1</small><b className={guard.m1?.side===forecastSide&&guard.m1?.gate==='PASSED'?'green':guard.m1?.side!=='WAIT'&&guard.m1?.gate==='PASSED'?'red':'amber'}>{guard.m1?.side||'WAIT'} · {Math.round(Number(guard.m1?.confidence||0))}%</b></div>
+        <div><small>تأكيد M5</small><b className={guard.m5?.side===forecastSide&&guard.m5?.gate==='PASSED'?'green':guard.m5?.side!=='WAIT'&&guard.m5?.gate==='PASSED'?'red':'amber'}>{guard.m5?.side||'WAIT'} · {Math.round(Number(guard.m5?.confidence||0))}%</b></div>
+        <div><small>حالة التأكيد</small><b className={guardConfirmed?'green':guard.opposed>0?'red':'amber'}>{guardConfirmed?'مؤكد M1+M5':guard.activeHorizons===0?'مراقبة':'تأكيد جزئي'}</b></div>
+      </div>}
+      {guardWatching&&<em className="zone-stability">{guard.reason}</em>}
       {path?.priceDestination?.zone&&<div className="forecast-scenario-strip">
         <div><small>الوجهة السعرية</small><b className={forecastSide==='BUY'?'green':forecastSide==='SELL'?'red':'amber'}>{zoneRange(path.priceDestination.zone)}</b></div>
         <div><small>مركز المنطقة</small><b>{fmt(path.priceDestination.zone.mid,2)}</b></div>

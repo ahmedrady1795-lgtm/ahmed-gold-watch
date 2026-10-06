@@ -302,6 +302,80 @@ function goldLiveFromParams(url:URL,external:any,candlePrice:any,now:number){
     bridgeLatencyMs:mode==='broker'?Math.max(0,now-receivedAt):null
   };
 }
+function applyHorizonConsensusGuard(pathForecast:any,movement:any){
+  if(!pathForecast)return pathForecast;
+  const pd=pathForecast.priceDestination||null;
+  const structuralSide=String(pathForecast.side||'WAIT');
+  const targetSide=structuralSide!=='WAIT'?structuralSide:String(pd?.side||pathForecast.leanSide||'WAIT');
+  if(!['BUY','SELL'].includes(targetSide))return pathForecast;
+
+  const read=(h:any)=>{
+    const side=String(h?.side||'WAIT');
+    const confidence=Number(h?.confidence||0);
+    const gate=String(h?.gateReason||'');
+    const active=(side==='BUY'||side==='SELL')&&confidence>=55&&gate==='PASSED';
+    return {side,confidence,gate,active};
+  };
+  const m1=read(movement?.horizons?.oneMinute);
+  const m5=read(movement?.horizons?.fiveMinute);
+  const rows=[m1,m5],active=rows.filter(x=>x.active);
+  const aligned=active.filter(x=>x.side===targetSide).length;
+  const opposed=active.filter(x=>x.side!==targetSide).length;
+  const bothInactive=active.length===0;
+  const split=aligned>0&&opposed>0;
+
+  let side=structuralSide;
+  let confidence=Number(pathForecast.confidence||0);
+  let status='STRUCTURAL_ONLY';
+  let reason='المسار الهيكلي يعمل بدون تأكيد زمني كافٍ';
+  let cap=confidence;
+
+  if(opposed===2){
+    side='WAIT'; cap=34; status='BOTH_HORIZONS_OPPOSE';
+    reason='M1 و M5 يعاكسان المسار؛ تم إيقاف الاتجاه القوي';
+  }else if(split){
+    side='WAIT'; cap=42; status='HORIZON_SPLIT';
+    reason='M1 و M5 منقسمان؛ المسار تحت المراقبة فقط';
+  }else if(opposed===1&&aligned===0){
+    side='WAIT'; cap=40; status='ONE_HORIZON_OPPOSES';
+    reason='إطار زمني نشط يعاكس المسار؛ خفض الثقة إلى مراقبة';
+  }else if(bothInactive){
+    side='WAIT'; cap=52; status='NO_HORIZON_CONFIRMATION';
+    reason='M1 و M5 بدون تأكيد صالح؛ الوجهة تبقى ميلًا مراقبًا';
+  }else if(aligned===1){
+    cap=Math.min(confidence,70); status='ONE_HORIZON_CONFIRMS';
+    reason='إطار زمني واحد يؤكد المسار؛ الثقة محدودة حتى يتفق الإطار الآخر';
+  }else if(aligned===2){
+    cap=Math.min(86,confidence+Math.min(5,Math.round((m1.confidence+m5.confidence-110)/12)));
+    status='M1_M5_CONFIRMED';
+    reason='M1 و M5 متفقان مع المسار';
+  }
+
+  const finalConfidence=Math.max(18,Math.min(confidence,cap));
+  const priceDestination=pd?{
+    ...pd,
+    confidence:Math.round(Math.min(Number(pd.confidence||finalConfidence),finalConfidence))
+  }:null;
+
+  return {
+    ...pathForecast,
+    side,
+    confidence:Math.round(finalConfidence),
+    priceDestination,
+    consensusGuard:{
+      version:'HORIZON_CONSENSUS_V1',
+      status,
+      reason,
+      targetSide,
+      aligned,
+      opposed,
+      activeHorizons:active.length,
+      m1:{side:m1.side,confidence:m1.confidence,gate:m1.gate},
+      m5:{side:m5.side,confidence:m5.confidence,gate:m5.gate}
+    }
+  };
+}
+
 export async function GET(request:Request){
   const now=Date.now(),url=new URL(request.url),workerCycle=url.searchParams.get('worker')==='1',btcWave=waveFromParams(url,'b',now),goldWave=waveFromParams(url,'g',now);
   const clientGoldAt=Number(url.searchParams.get('gt'));
@@ -496,6 +570,12 @@ export async function GET(request:Request){
     if(bitcoinHunt?.zoneForecast?.pathForecast){
       bitcoinHunt.zoneForecast.pathForecast=calibrateStructuralPathForecast(bitcoinHunt.zoneForecast.pathForecast,bitcoinPathPrior,bitcoinHunt.zoneForecast.phase);
     }
+    if(goldHunt?.zoneForecast?.pathForecast){
+      goldHunt.zoneForecast.pathForecast=applyHorizonConsensusGuard(goldHunt.zoneForecast.pathForecast,goldMovement);
+    }
+    if(bitcoinHunt?.zoneForecast?.pathForecast){
+      bitcoinHunt.zoneForecast.pathForecast=applyHorizonConsensusGuard(bitcoinHunt.zoneForecast.pathForecast,bitcoinMovement);
+    }
     const goldNextMoveLive=recordNextMoveOutcome({asset:'GOLD',price:goldLearningPrice,atr:goldAtr,now,hunt:goldHunt,regime:goldMultiBrain?.regime||goldMovement?.regime});
     const bitcoinNextMoveLive=recordNextMoveOutcome({asset:'BTC',price:btcPrice,atr:btcAtr,now,hunt:bitcoinHunt,regime:bitcoinMultiBrain?.regime||bitcoinMovement?.regime});
     const goldPathLive=recordStructuralPathOutcome({asset:'GOLD',price:goldLearningPrice,atr:goldAtr,now,pathForecast:goldHunt?.zoneForecast?.pathForecast,phase:goldHunt?.zoneForecast?.phase});
@@ -662,6 +742,7 @@ export async function GET(request:Request){
               reason:hunt.zoneForecast.pathForecast.invalidation.reason||''
             }:null,
             evidence:hunt.zoneForecast.pathForecast.evidence||null,
+            consensusGuard:hunt.zoneForecast.pathForecast.consensusGuard||null,
             learning:hunt.zoneForecast.pathForecast.learning||null,
             liveLearning:hunt.zoneForecast.pathForecast.liveLearning?{
               readyForCalibration:Boolean(hunt.zoneForecast.pathForecast.liveLearning.readyForCalibration),
@@ -793,6 +874,7 @@ export async function GET(request:Request){
           source:h.zoneForecast.pathForecast.priceDestination.source||null
         }:null,
         invalidation:Number.isFinite(Number(h.zoneForecast.pathForecast.invalidation?.price))?Number(h.zoneForecast.pathForecast.invalidation.price):null,
+        consensusGuard:h.zoneForecast.pathForecast.consensusGuard||null,
         learning:h.zoneForecast.pathForecast.learning?{
           status:h.zoneForecast.pathForecast.learning.status||null,
           samples:Number(h.zoneForecast.pathForecast.learning.samples||0),
