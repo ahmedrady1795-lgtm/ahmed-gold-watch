@@ -99,17 +99,22 @@ function goldMicroFromMt5(mt5:any,tick:any,quote:any,price:number|null){
   const microEdge=spread>0&&Number.isFinite(microprice)?Math.max(-100,Math.min(100,(microprice-mid)/spread*200)):0;
   const bookReady=Boolean(mt5?.fresh&&bids.length&&asks.length&&bestBid>0&&bestAsk>0);
   const fastImbalance=Number(tick?.bookImbalance||0);
-  const pressure=bookReady?Math.max(-100,Math.min(100,weightedImbalance*.72+fastImbalance*.28)):0;
+  const tickSide=tick?.side==='BUY'||tick?.side==='SELL'?tick.side:'WAIT';
+  const tickConfidence=Math.max(0,Math.min(90,Number(tick?.confidence||0)));
+  const tickPersistence=Math.max(0,Math.min(100,Number(tick?.persistence||0)));
+  const pulseSigned=tickSide==='BUY'?1:tickSide==='SELL'?-1:0;
+  const pulsePressure=pulseSigned*Math.min(46,tickConfidence*.34+Math.max(0,tickPersistence-50)*.24+Math.abs(Number(tick?.acceleration||0))*260);
+  const pressure=bookReady?Math.max(-100,Math.min(100,weightedImbalance*.72+fastImbalance*.28)):Math.max(-46,Math.min(46,pulsePressure));
   const buy=Math.round(Math.max(5,Math.min(95,50+pressure/2))),sell=100-buy;
-  const quality=bookReady?92:45;
+  const quality=bookReady?92:(tick?.ok?52:38);
   const accel=Math.max(-100,Math.min(100,Number(tick?.acceleration||0)*100));
   const pressureChange=bookReady?Math.max(-100,Math.min(100,Number(tick?.pressureChange||0))):0;
   const bidDepthChangePct=bookReady?Math.max(-100,Math.min(100,Number(tick?.bidDepthChangePct||0))):0;
   const askDepthChangePct=bookReady?Math.max(-100,Math.min(100,Number(tick?.askDepthChangePct||0))):0;
   const priceChangeBps=Number(tick?.velocity3s||tick?.velocity4s||0);
   const liquidity={
-    ok:bookReady,source:bookReady?'Exness/MT5 DOM':'Gold price pulse · no DOM',checkedAt:Date.now(),quality,
-    side:bookReady?(pressure>=8?'BUY':pressure<=-8?'SELL':'WAIT'):'WAIT',buy:bookReady?buy:50,sell:bookReady?sell:50,strength:bookReady?Math.max(buy,sell):50,pressure:Number(pressure.toFixed(1)),
+    ok:bookReady,mode:bookReady?'DOM':'QUOTE_FLOW',source:bookReady?'Exness/MT5 DOM':'Gold quote-flow proxy · no DOM',checkedAt:Date.now(),quality,
+    side:pressure>=10?'BUY':pressure<=-10?'SELL':'WAIT',buy,sell,strength:Math.max(buy,sell),pressure:Number(pressure.toFixed(1)),
     book:{
       bestBid:bestBid||null,bestAsk:bestAsk||null,spreadBps:mid>0&&spread>0?spread/mid*10000:0,
       bboImbalance:Number(bboImbalance.toFixed(1)),depthImbalance:Number(depthImbalance.toFixed(1)),weightedImbalance:Number(weightedImbalance.toFixed(1)),
@@ -125,7 +130,7 @@ function goldMicroFromMt5(mt5:any,tick:any,quote:any,price:number|null){
       acceleration:Number(accel.toFixed(1))
     },
     absorption:{side:'WAIT',score:0,reason:'MT5 gold DOM helper',trapDetected:false,followThrough:false},
-    warnings:bookReady?[]:['MT5 DOM unavailable; price pulse is prediction-only']
+    warnings:bookReady?[]:['Exness/MT5 DOM unavailable; using low-weight quote-flow proxy only']
   };
   const precursorCount=[
     bookReady&&Math.abs(weightedImbalance)>=10,
