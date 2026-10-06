@@ -8,6 +8,7 @@ type Pending={
   id:string;at:number;side:'BUY'|'SELL';phase:string;confidence:number;
   entry:number;targetLow:number;targetHigh:number;invalidPrice:number;horizonMs:number;
   targetKind:string;distanceAtr:number;liquidityGap:number;conviction:string;signature:string;
+  exactSignature:string;learningMode:'LIVE'|'SHADOW';
   bestBps:number;worstBps:number;
 };
 type Recent=Pending&{settledAt:number;exit:number;outcome:Outcome;seconds:number;};
@@ -81,7 +82,24 @@ function view(s?:Stat){
 function safeKey(x:any,fallback='UNKNOWN'){return String(x||fallback).toUpperCase().replace(/[^A-Z0-9_\-]/g,'_').slice(0,72)||fallback;}
 function distanceBand(v:number){return v<=.45?'D0_045':v<=.8?'D045_08':v<=1.2?'D08_12':v<=1.8?'D12_18':'D18_PLUS';}
 function gapBand(v:number){return v>=24?'G24_PLUS':v>=16?'G16_23':v>=10?'G10_15':'G0_9';}
+function phaseFamily(x:string){
+  const p=safeKey(x,'NEUTRAL');
+  if(p==='ACCUMULATING'||p==='MARKUP_READY')return 'ACCUMULATION';
+  if(p==='DISTRIBUTING'||p==='MARKDOWN_READY')return 'DISTRIBUTION';
+  return 'NEUTRAL';
+}
+function targetFamily(x:string){
+  const k=safeKey(x,'UNKNOWN');
+  if(k.includes('UPPER')||k.includes('SUPPLY')||k.includes('ABOVE'))return 'UPPER_LIQUIDITY';
+  if(k.includes('LOWER')||k.includes('DEMAND')||k.includes('BELOW'))return 'LOWER_LIQUIDITY';
+  return k;
+}
 function signatureOf(x:{side:string;phase:string;targetKind:string;distanceAtr:number;liquidityGap:number;conviction:string}){
+  // Stable archetype: enough context to learn market behavior, but not so granular
+  // that every cycle becomes a new signature.
+  return [safeKey(x.side),phaseFamily(x.phase),targetFamily(x.targetKind),distanceBand(Number(x.distanceAtr||0)),gapBand(Number(x.liquidityGap||0))].join('|');
+}
+function exactSignatureOf(x:{side:string;phase:string;targetKind:string;distanceAtr:number;liquidityGap:number;conviction:string}){
   return [safeKey(x.side),safeKey(x.phase),safeKey(x.targetKind),distanceBand(Number(x.distanceAtr||0)),gapBand(Number(x.liquidityGap||0)),safeKey(x.conviction)].join('|');
 }
 function weightedPosterior(rows:{n:number;acc:number;w:number}[]){
@@ -116,7 +134,11 @@ function settle(asset:string,price:number,now:number){
     update(a.global,outcome,now,seconds,p.bestBps,p.worstBps);
     update(stat(a.bySide,p.side),outcome,now,seconds,p.bestBps,p.worstBps);
     update(stat(a.byPhase,String(p.phase||'NEUTRAL')),outcome,now,seconds,p.bestBps,p.worstBps);
-    update(stat(a.bySignature,p.signature),outcome,now,seconds,p.bestBps,p.worstBps);
+    const learnedSignature=String(p.signature||signatureOf({
+      side:p.side,phase:p.phase,targetKind:p.targetKind||'LEGACY',
+      distanceAtr:Number(p.distanceAtr||0),liquidityGap:Number(p.liquidityGap||0),conviction:p.conviction||'UNKNOWN'
+    }));
+    update(stat(a.bySignature,learnedSignature),outcome,now,seconds,p.bestBps,p.worstBps);
     update(stat(a.byTargetKind,safeKey(p.targetKind)),outcome,now,seconds,p.bestBps,p.worstBps);
     update(stat(a.byDistance,distanceBand(p.distanceAtr)),outcome,now,seconds,p.bestBps,p.worstBps);
     const r:Recent={...p,settledAt:now,exit:price,outcome,seconds};
@@ -143,7 +165,13 @@ function summary(asset:string){
     bySignature:Object.fromEntries(Object.entries(a.bySignature).map(([k,v])=>[k,view(v)])),
     byTargetKind:Object.fromEntries(Object.entries(a.byTargetKind).map(([k,v])=>[k,view(v)])),
     byDistance:Object.fromEntries(Object.entries(a.byDistance).map(([k,v])=>[k,view(v)])),
-    pending:a.pending.length,recent:a.recent.slice(0,36),failureStreak:failStreak(a.recent),
+    pending:a.pending.length,
+    pendingLive:a.pending.filter(x=>x.learningMode!=='SHADOW').length,
+    pendingShadow:a.pending.filter(x=>x.learningMode==='SHADOW').length,
+    recent:a.recent.slice(0,36),
+    recentLive:a.recent.slice(0,80).filter(x=>x.learningMode!=='SHADOW').length,
+    recentShadow:a.recent.slice(0,80).filter(x=>x.learningMode==='SHADOW').length,
+    failureStreak:failStreak(a.recent),
     readyForCalibration:global.directional>=12,storage:targetFile()
   };
 }
@@ -163,7 +191,17 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
   const distanceAtr=Number(pathForecast?.destination?.distanceAtr||0);
   const liqGap=Math.abs(Number(pathForecast?.evidence?.liquidity?.gap||0));
   const conviction=String(pathForecast?.conviction||'WEAK');
-  const sig=signatureOf({side,phase:ph,targetKind:kind,distanceAtr,liquidityGap:liqGap,conviction});
+  const context={side,phase:ph,targetKind:kind,distanceAtr,liquidityGap:liqGap,conviction};
+  const sig=signatureOf(context);
+  const exactSig=exactSignatureOf(context);
+  const upProb=Number(pathForecast?.probabilities?.up||50),downProb=Number(pathForecast?.probabilities?.down||50);
+  const probabilityAligned=side==='BUY'?upProb>downProb:side==='SELL'?downProb>upProb:false;
+  const learningCandidate={
+    side,confidence:raw,conviction,phase:ph,destination:pathForecast?.destination||null,
+    probabilities:pathForecast?.probabilities||null,evidence:pathForecast?.evidence||null,
+    invalidation:pathForecast?.invalidation||null,signature:sig,exactSignature:exactSig,
+    probabilityAligned
+  };
   const g=learning?.global||{},s=learning?.bySide?.[side]||{},p=learning?.byPhase?.[ph]||{};
   const sg=learning?.bySignature?.[sig]||{},tk=learning?.byTargetKind?.[safeKey(kind)]||{},db=learning?.byDistance?.[distanceBand(distanceAtr)]||{};
   const rows=[
@@ -207,8 +245,10 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
   );
   const coldContextBlocked=Boolean(!contextReady&&!broadQualified&&gn>=30);
   const promoted=Boolean(!hardVeto&&confidence>=54&&(contextQualified||(!contextReady&&broadQualified)));
-  const finalBlocked=hardVeto||coldContextBlocked;
-  const learningStatus=hardVeto?'HARD_VETO'
+  const probabilityConflict=!probabilityAligned;
+  const finalBlocked=hardVeto||coldContextBlocked||probabilityConflict;
+  const learningStatus=probabilityConflict?'PROBABILITY_SIDE_CONFLICT'
+    :hardVeto?'HARD_VETO'
     :contextQualified?'CONTEXT_PROMOTED'
     :contextReady?'CONTEXT_WATCH'
     :broadQualified?'COLLECTING_CONTEXT_WITH_STRONG_BACKSTOP'
@@ -224,18 +264,21 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
       status:learningStatus,
       samples:gn,observedAccuracy:Number(observed.toFixed(1)),
       globalPosterior:Number(g.posteriorAccuracy||50),sidePosterior:Number(s.posteriorAccuracy||50),
-      phasePosterior:Number(p.posteriorAccuracy||50),signature:sig,signatureSamples:archetypeSamples,
+      phasePosterior:Number(p.posteriorAccuracy||50),signature:sig,exactSignature:exactSig,signatureSamples:archetypeSamples,
       signaturePosterior:Number(sg.posteriorAccuracy||50),targetKindPosterior:Number(tk.posteriorAccuracy||50),
       distancePosterior:Number(db.posteriorAccuracy||50),signatureQuality:Number(signatureQuality.toFixed(1)),
       targetQuality:Number(targetQuality.toFixed(1)),distanceQuality:Number(distanceQuality.toFixed(1)),
       excursionEdge:Number(excursionEdge.toFixed(2)),failureStreak:streak,maturity:Number(maturity.toFixed(2)),
-      contextReady,broadQualified,contextQualified,promoted,hardVeto,coldContextBlocked
+      contextReady,broadQualified,contextQualified,promoted,hardVeto,coldContextBlocked,probabilityAligned,probabilityConflict
     },
-    scenario:hardVeto
-      ?'تم رفض المسار لأن هذا النمط خاسر تاريخيًا أو جودة حركته ضعيفة'
-      :coldContextBlocked
-        ?'المسار تحت التعلم السياقي؛ التاريخ العام غير قوي بما يكفي للسماح بتوقع اتجاهي الآن'
-        :pathForecast.scenario
+    learningCandidate,
+    scenario:probabilityConflict
+      ?'تم إيقاف المسار لأن الاتجاه المثبت لا يطابق الاحتمالات الحالية'
+      :hardVeto
+        ?'تم رفض المسار لأن هذا النمط خاسر تاريخيًا أو جودة حركته ضعيفة'
+        :coldContextBlocked
+          ?'المسار تحت التعلم السياقي؛ التاريخ العام غير قوي بما يكفي للسماح بتوقع اتجاهي الآن'
+          :pathForecast.scenario
   };
 }
 
@@ -245,18 +288,34 @@ export function recordStructuralPathOutcome(args:{
   const now=Number(args.now||Date.now()),price=Number(args.price),atr=Number(args.atr);
   if(!Number.isFinite(price)||price<=0)return {ok:false,reason:'invalid_price'};
   settle(args.asset,price,now);
-  const pf=args.pathForecast||{},side=String(pf.side||'WAIT') as Side,d=pf.destination;
-  if((side!=='BUY'&&side!=='SELL')||!d)return {...summary(args.asset),recorded:false};
+  const pf=args.pathForecast||{};
+  const visibleSide=String(pf.side||'WAIT') as Side;
+  const candidate=pf?.learningCandidate||null;
+  const useShadow=Boolean(
+    (visibleSide==='WAIT')&&candidate&&
+    (candidate.side==='BUY'||candidate.side==='SELL')&&
+    candidate.destination&&candidate.probabilityAligned!==false
+  );
+  const source=useShadow?candidate:pf;
+  const side=String(source?.side||'WAIT') as Side,d=source?.destination;
+  if((side!=='BUY'&&side!=='SELL')||!d)return {...summary(args.asset),recorded:false,reason:'no_directional_candidate'};
   const low=Number(d.low),high=Number(d.high);
-  if(!Number.isFinite(low)||!Number.isFinite(high)||high<low)return {...summary(args.asset),recorded:false};
-  const confidence=Number(pf.confidence||0);
-  const primaryProbability=Math.max(Number(pf?.probabilities?.up||0),Number(pf?.probabilities?.down||0),Number(pf?.rawProbability||0));
-  if(confidence<30||pf?.conviction==='WEAK'||primaryProbability<55)return {...summary(args.asset),recorded:false,reason:'weak_or_ambiguous_path'};
+  if(!Number.isFinite(low)||!Number.isFinite(high)||high<low)return {...summary(args.asset),recorded:false,reason:'invalid_destination'};
+  const confidence=Number(source?.confidence||pf?.rawConfidence||pf?.confidence||0);
+  const probs=source?.probabilities||pf?.probabilities||{};
+  const sideProbability=side==='BUY'?Number(probs?.up||0):Number(probs?.down||0);
+  const probabilityGap=Math.abs(Number(probs?.up||50)-Number(probs?.down||50));
+  // Shadow candidates are deliberately learned even when not shown. They still need a
+  // real directional edge and destination, otherwise noise would poison the learner.
+  if(confidence<28||sideProbability<53||probabilityGap<6)return {...summary(args.asset),recorded:false,reason:'candidate_too_ambiguous'};
   const a=ensure(args.asset),distanceAtr=Math.abs(Number(d.mid??((low+high)/2))-price)/Math.max(1e-9,atr||price*.001);
   const targetKind=String(d.kind||'UNKNOWN');
-  const liquidityGap=Math.abs(Number(pf?.evidence?.liquidity?.gap||0));
-  const conviction=String(pf?.conviction||'WEAK');
-  const signature=signatureOf({side,phase:String(args.phase||pf.phase||'NEUTRAL'),targetKind,distanceAtr,liquidityGap,conviction});
+  const liquidityGap=Math.abs(Number(source?.evidence?.liquidity?.gap??pf?.evidence?.liquidity?.gap||0));
+  const conviction=String(source?.conviction||pf?.conviction||'WEAK');
+  const phase=String(source?.phase||args.phase||pf.phase||'NEUTRAL');
+  const signature=String(source?.signature||signatureOf({side,phase,targetKind,distanceAtr,liquidityGap,conviction}));
+  const exactSignature=String(source?.exactSignature||exactSignatureOf({side,phase,targetKind,distanceAtr,liquidityGap,conviction}));
+  const learningMode:'LIVE'|'SHADOW'=useShadow?'SHADOW':'LIVE';
   const horizonMs=distanceAtr<=.6?180000:distanceAtr<=1.2?360000:720000;
   const bucket=Math.floor(now/60000);
   const same=a.pending.some(x=>x.side===side&&now-x.at<45000);
@@ -266,12 +325,12 @@ export function recordStructuralPathOutcome(args:{
   const invalidPrice=Number.isFinite(inv)&&inv>0?inv:(side==='BUY'?price-fallbackDistance:price+fallbackDistance);
   const id=[String(args.asset).toUpperCase(),bucket,side].join(':');
   a.pending.push({
-    id,at:now,side:side as 'BUY'|'SELL',phase:String(args.phase||pf.phase||'NEUTRAL'),
+    id,at:now,side:side as 'BUY'|'SELL',phase,
     confidence,entry:price,targetLow:low,targetHigh:high,invalidPrice,horizonMs,
-    targetKind,distanceAtr:Number(distanceAtr.toFixed(3)),liquidityGap:Number(liquidityGap.toFixed(1)),conviction,signature,
+    targetKind,distanceAtr:Number(distanceAtr.toFixed(3)),liquidityGap:Number(liquidityGap.toFixed(1)),conviction,signature,exactSignature,learningMode,
     bestBps:0,worstBps:0
   });
   if(a.pending.length>24)a.pending=a.pending.slice(-24);
   a.lastBucket=bucket;dirty=true;save(true);
-  return {...summary(args.asset),recorded:true,eventId:id};
+  return {...summary(args.asset),recorded:true,eventId:id,learningMode,signature,exactSignature};
 }
