@@ -34,6 +34,20 @@ function nextMoveCopy(hunt:any,stateGraph:any){
   return {title,detail,tone:first==='BUY'?'green':first==='SELL'?'red':'amber'};
 }
 
+function fastScalpProjection(price:any,fast:any){
+  const p=Number(price),at=Number(fast?.at||0),age=Date.now()-at;
+  const side=fast?.side==='BUY'||fast?.side==='SELL'?fast.side:'WAIT';
+  const confidence=Number(fast?.confidence||0);
+  if(!Number.isFinite(p)||p<=0||!fast?.ok||side==='WAIT'||!Number.isFinite(at)||age<0||age>2600||confidence<28)return null;
+  const v1=Math.abs(Number(fast?.velocity1s||0)),v3=Math.abs(Number(fast?.velocity3s||0)),acc=Math.abs(Number(fast?.acceleration||0));
+  const burst=Math.max(0,Number(fast?.burstRate||1)-1);
+  const stage=String(fast?.stage||'WARMING');
+  const stageMult=stage==='IGNITION'?1.45:stage==='WAVE_FORMING'?1.18:stage==='PRE_TRIGGER'?1.0:.72;
+  const rawBps=Math.min(3.2,Math.max(.10,v1*.62+v3*.10+acc*.52+burst*.16));
+  const signedBps=(side==='BUY'?1:-1)*rawBps*stageMult;
+  return {side,price:p*(1+signedBps/10000),confidence:Math.round(confidence),stage,bps:Number(signedBps.toFixed(2))};
+}
+
 function AssetCard({x,liveQuote}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
   const hunt=x.huntForecast,recommendation=x.recommendation,goldCore=x.asset==='GOLD'?x.goldForecastCore:null,predator=x.asset==='GOLD'?x.predatorFusionV2:null;
@@ -60,8 +74,9 @@ function AssetCard({x,liveQuote}:any){
       ?calibrated(path.confidence)
       :calibrated(goldCore?.confidence??hunt?.nextMove?.confidence??hunt?.confidence??0);
   const scalpNext=x.scalp?.nextPrice||x.scalp?.fusionV8?.nextPrice||{};
-  const scalpSide=x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:(scalpNext?.side||'WAIT');
-  const scalpPrice=scalpNext?.price??x.scalp?.target?.price??x.scalp?.ambushPlan?.target?.price??hunt?.quickSignalTargets?.oneMinute?.price??null;
+  const fastScalp=fastScalpProjection(price,fast);
+  const scalpSide=fastScalp?.side??(x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:(scalpNext?.side||'WAIT'));
+  const scalpPrice=fastScalp?.price??scalpNext?.price??x.scalp?.target?.price??x.scalp?.ambushPlan?.target?.price??hunt?.quickSignalTargets?.oneMinute?.price??null;
   return <section className={"panel ai-asset-card compact-asset "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
       <div><span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span><h2>{buy?'الحركة المرجحة: صعود':sell?'الحركة المرجحة: هبوط':'انتظار اتجاه أوضح'}</h2></div>
@@ -71,7 +86,7 @@ function AssetCard({x,liveQuote}:any){
     <div className="ai-price-row compact-price">
       <div><small>السعر</small><strong>{fmt(price,2)}</strong></div>
       <div><small>الثقة</small><strong>{conf?conf+'%':'—'}</strong></div>
-      <div><small>السكالب المتوقع</small><strong className={scalpSide==='BUY'?'green':scalpSide==='SELL'?'red':'amber'}>{fmt(scalpPrice,2)}</strong></div>
+      <div><small>{fastScalp?'السكالب اللحظي':'السكالب المتوقع'}</small><strong className={scalpSide==='BUY'?'green':scalpSide==='SELL'?'red':'amber'}>{fmt(scalpPrice,2)}</strong></div>
     </div>
 
     <div className="next-move-copy primary-move zone-primary">
