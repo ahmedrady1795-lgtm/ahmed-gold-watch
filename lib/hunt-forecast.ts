@@ -209,6 +209,7 @@ function buildZoneForecast(args:{
         touches:0,rejections:0,distanceAtr:Number((Math.abs(level-p)/a).toFixed(2)),
         kind:side==='BUY'?'BREAKOUT_LIQUIDITY_ABOVE':'BREAKDOWN_LIQUIDITY_BELOW',
         liquidityScore:Number(acc?.liquidityConfirmed)?75:45,
+        institutionalScore:0,displacementScore:0,imbalanceScore:0,freshnessScore:0,mitigationCount:0,state:'SYNTHETIC',
         reason:side==='BUY'?'حد مقاومة/سيولة أعلى نطاق التجميع':'حد دعم/سيولة أسفل نطاق التوزيع'
       };
     }
