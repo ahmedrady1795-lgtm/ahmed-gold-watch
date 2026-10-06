@@ -96,11 +96,10 @@ export function buildSpecializedHorizonBrains(args:any){
   const m1Score=Number(matrix?.m1?.strength||0),m5Score=Number(matrix?.m5?.strength||0);
   const memory1=s(memory?.horizon1?.side||memory?.side),memory1Score=Math.max(Number(memory?.horizon1?.confidence||0),Number(memory?.confidence||0));
   const memory5=s(memory?.horizon5?.side),memory5Score=Number(memory?.horizon5?.confidence||0);
-  const goldLiq=asset==='GOLD'?.62:1;
-
   let one=resolve({
     FLOW:[ev(tick?.side,tickScore,.42),ev(scalpSide,scalpScore,.34),ev(motion?.side,motionScore,.24)],
-    LIQUIDITY:[ev(liq?.side,liqScore,.62*goldLiq),ev(acc?.side,accScore,.38)],
+    LIQUIDITY:[ev(liq?.side,liqScore,1)],
+    POSITIONING:[ev(acc?.side,accScore,1)],
     STRUCTURE:[ev(structure?.m1?.nextSide,struct1,.58),ev(graph?.nextSide,graphScore,.24),ev(m1Side,m1Score,.18)],
     MODEL:[ev(neuralSide,neuralScore,neuralReady?.42:0),ev(ml1Side,ml1Score,ml1Ready?.38:0),ev(exp2Side,exp2Score,.20)],
     MEMORY:[ev(memory1,memory1Score,1)]
@@ -110,7 +109,8 @@ export function buildSpecializedHorizonBrains(args:any){
 
   let three=resolve({
     FLOW:[ev(tick?.side,tickScore,.25),ev(scalpSide,scalpScore,.25),ev(motion?.side,motionScore,.50)],
-    LIQUIDITY:[ev(liq?.side,liqScore,.42*goldLiq),ev(acc?.side,accScore,.58)],
+    LIQUIDITY:[ev(liq?.side,liqScore,1)],
+    POSITIONING:[ev(acc?.side,accScore,1)],
     STRUCTURE:[ev(structure?.m1?.nextSide,struct1,.48),ev(graph?.nextSide,graphScore,.34),ev(m1Side,m1Score,.18)],
     MODEL:[ev(exp2Side,exp2Score,.50),ev(ml1Side,ml1Score,ml1Ready?.30:0),ev(neuralSide,neuralScore,neuralReady?.20:0)],
     MEMORY:[ev(memory1,memory1Score,1)]
@@ -120,7 +120,8 @@ export function buildSpecializedHorizonBrains(args:any){
 
   let five=resolve({
     FLOW:[ev(motion?.side,motionScore,.65),ev(scalpSide,scalpScore,.20),ev(tick?.side,tickScore,.15)],
-    LIQUIDITY:[ev(liq?.side,liqScore,.28*goldLiq),ev(acc?.side,accScore,.72)],
+    LIQUIDITY:[ev(liq?.side,liqScore,1)],
+    POSITIONING:[ev(acc?.side,accScore,1)],
     STRUCTURE:[ev(structure?.m5?.nextSide,struct5,.48),ev(graph?.nextSide,graphScore,.30),ev(m5Side,m5Score,.22)],
     MODEL:[ev(ml5Side,ml5Score,ml5Ready?.44:0),ev(exp5Side,exp5Score,.56)],
     MEMORY:[ev(memory5,memory5Score,.70),ev(memory1,memory1Score,.30)]
