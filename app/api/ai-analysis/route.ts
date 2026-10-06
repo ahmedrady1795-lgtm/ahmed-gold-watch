@@ -36,6 +36,8 @@ export const runtime='nodejs';
 startServerTickBrain();
 let lastDiagLog=0;
 let lastAiPayload:any=null,lastAiPayloadAt=0,analysisBusy=false;
+type ForwardCommit={side:'BUY'|'SELL';at:number;confidence:number;target:number|null;zone:any;windowSeconds:any;status:string;agreement:number;support:number};
+let forwardCommitState:Record<'GOLD'|'BTC',ForwardCommit|null>={GOLD:null,BTC:null};
 let stableGoldLiquidityState:{at:number;pressure:number;quality:number;side:'BUY'|'SELL'|'WAIT'}|null=null;
 async function liveBtcSpot(){
   const now=Date.now();
@@ -804,9 +806,69 @@ export async function GET(request:Request){
         reason:(alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':building?'ضغط مبكر يتكوّن':'تفوق قصير المدى')+' · '+sourceParts.join(' + ')
       };
     };
+    const stabilizeForwardMove=(asset:'GOLD'|'BTC',candidate:any,pulse:any)=>{
+      const prev=forwardCommitState[asset];
+      const side:('BUY'|'SELL'|'WAIT')=candidate?.side==='BUY'||candidate?.side==='SELL'?candidate.side:'WAIT';
+      const price=Number(pulse?.price);
+      const priceOk=Number.isFinite(price)&&price>0;
+      const ahead=(s:'BUY'|'SELL',target:number|null)=>{
+        if(target==null||!Number.isFinite(Number(target))||!priceOk)return true;
+        return s==='BUY'?Number(target)>price:Number(target)<price;
+      };
+      const prevAlive=Boolean(prev&&now-prev.at<=30000&&ahead(prev.side,prev.target));
+      const keepPrev=(reason:string)=>{
+        if(!prev)return candidate;
+        const age=Math.max(0,now-prev.at);
+        const decay=Math.floor(age/6000)*2;
+        return {
+          ...candidate,
+          side:prev.side,
+          confidence:Math.max(48,Math.min(86,prev.confidence-decay)),
+          status:'STABILITY_HOLD',
+          target:prev.target,
+          zone:prev.zone,
+          windowSeconds:prev.windowSeconds,
+          expiresAt:now+Math.max(8000,Number(prev.windowSeconds?.max||25)*1000),
+          agreement:Math.max(Number(candidate?.agreement||0),prev.agreement),
+          support:Math.max(Number(candidate?.support||0),prev.support),
+          stability:{locked:true,ageMs:age,flipBlocked:true},
+          reason
+        };
+      };
+
+      if(side==='WAIT'){
+        if(prevAlive&&prev&&prev.confidence>=55&&now-prev.at<=18000){
+          return keepPrev('الاتجاه السابق ما زال صالحًا؛ تم منع التردد اللحظي حتى يظهر انعكاس مؤكد');
+        }
+        if(!prevAlive)forwardCommitState[asset]=null;
+        return candidate;
+      }
+
+      const confidence=Math.max(0,Math.min(89,Math.round(Number(candidate?.confidence||0))));
+      const target=Number.isFinite(Number(candidate?.target))?Number(candidate.target):null;
+      const commit=()=>{
+        forwardCommitState[asset]={
+          side,at:now,confidence,target,zone:candidate?.zone||null,windowSeconds:candidate?.windowSeconds||null,
+          status:String(candidate?.status||'SHORT_HORIZON'),agreement:Number(candidate?.agreement||0),support:Number(candidate?.support||0)
+        };
+        return {...candidate,stability:{locked:true,ageMs:0,flipBlocked:false}};
+      };
+
+      if(!prev||!prevAlive||prev.side===side)return commit();
+
+      const age=now-prev.at;
+      const agreement=Number(candidate?.agreement||0);
+      const support=Number(candidate?.support||0);
+      const decisiveFlip=confidence>=Math.max(64,prev.confidence+8)&&agreement>=63&&support>=3;
+      const preMoveFlip=String(candidate?.status)==='PRE_MOVE'&&confidence>=62&&agreement>=62&&support>=3;
+      const agedFlip=age>=24000&&confidence>=58&&agreement>=60&&support>=2;
+      if(decisiveFlip||preMoveFlip||agedFlip)return commit();
+
+      return keepPrev('تم رفض انعكاس مؤقت؛ الاتجاه لا يتغير إلا بتفوق واضح ومستقل للإشارة العكسية');
+    };
     const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any)=>({
       asset,
-      forwardMove:buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse),
+      forwardMove:stabilizeForwardMove(asset,buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse),pulse),
       liquidity:liq?{
         side:liq.side||'WAIT',
         buy:Math.max(0,Math.min(100,Math.round(Number(liq.buy||0)))),
