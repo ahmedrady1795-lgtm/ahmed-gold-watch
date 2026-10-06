@@ -63,14 +63,8 @@ function AssetCard({x,liveQuote,fast,preMove}:any){
       :zone?String(zone.side||'WAIT')
       :(goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT');
   const displaySide=forecastSide;
-  const guard=path?.consensusGuard||null;
-  const guardConfirmed=guard?.status==='M1_M5_CONFIRMED';
-  const guardWatching=Boolean(guard&&guard.status!=='M1_M5_CONFIRMED');
   const softDestination=Boolean((path?.side==='WAIT'&&path?.priceDestination?.zone)||guardWatching);
   const buy=displaySide==='BUY'&&!softDestination,sell=displaySide==='SELL'&&!softDestination;
-  const localReactionSide=zone?.side&&zone.side!=='WAIT'?String(zone.side):'WAIT';
-  const localReactionZone=zone?.origin??(localReactionSide==='BUY'?zone?.support:localReactionSide==='SELL'?zone?.resistance:null);
-  const hasOppositeLocalReaction=forecastSide!=='WAIT'&&localReactionSide!=='WAIT'&&forecastSide!==localReactionSide&&localReactionZone;
   const liveGoldPrice=x.asset==='GOLD'&&liveQuote?.ok&&Number.isFinite(Number(liveQuote?.price))&&Number(liveQuote.price)>0?Number(liveQuote.price):null;
   const price=liveGoldPrice??x.livePulse?.price??x.price;
   const move=nextMoveCopy(hunt,x.stateGraph);
@@ -93,42 +87,39 @@ function AssetCard({x,liveQuote,fast,preMove}:any){
     metrics:{bookImbalance:Number(fast.imbalance||0),pressureChange:0,replenishDelta:0,acceleration:Number(fast.acceleration||0),persistence:Number(fast.persistence||0)}
   }:null;
   const leadView=preMove?.available?preMove:waveLeadView||preMove;
-    const scalpNext=x.scalp?.nextPrice||x.scalp?.fusionV8?.nextPrice||{};
+  const forward=x.forwardMove||null;
+  const forwardSide=forward?.side==='BUY'||forward?.side==='SELL'?forward.side:'WAIT';
+  const forwardZone=forward?.zone||null;
+  const forwardTarget=Number.isFinite(Number(forward?.target))?Number(forward.target):null;
+  const forwardWindow=forward?.windowSeconds?(`${forward.windowSeconds.min}–${forward.windowSeconds.max} ث`):'—';
+  const scalpNext=x.scalp?.nextPrice||x.scalp?.fusionV8?.nextPrice||{};
   const fastScalp=fastScalpProjection(price,fast);
   const scalpSide=fastScalp?.side??(x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:(scalpNext?.side||'WAIT'));
   const scalpPrice=fastScalp?.price??scalpNext?.price??x.scalp?.target?.price??x.scalp?.ambushPlan?.target?.price??hunt?.quickSignalTargets?.oneMinute?.price??null;
   return <section className={"panel ai-asset-card compact-asset "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
-      <div><span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span><h2>{softDestination?(forecastSide==='BUY'?'ميل مراقبة: صعود':'ميل مراقبة: هبوط'):buy?'الحركة المرجحة: صعود':sell?'الحركة المرجحة: هبوط':'انتظار اتجاه أوضح'}</h2></div>
-      {buy?<TrendingUp/>:sell?<TrendingDown/>:<Activity/>}
+      <div><span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span><h2>{forwardSide==='BUY'?'التحرك القادم: صعود':forwardSide==='SELL'?'التحرك القادم: هبوط':'انتظار قراءة أمامية أوضح'}</h2></div>
+      {forwardSide==='BUY'?<TrendingUp/>:forwardSide==='SELL'?<TrendingDown/>:<Activity/>}
     </div>
 
     <div className="ai-price-row compact-price">
-      <div><small>السعر</small><strong>{fmt(price,2)}</strong></div>
-      <div><small>الثقة</small><strong>{conf?conf+'%':'—'}</strong></div>
-      <div><small>{fastScalp?'السكالب اللحظي':'السكالب المتوقع'}</small><strong className={scalpSide==='BUY'?'green':scalpSide==='SELL'?'red':'amber'}>{fmt(scalpPrice,2)}</strong></div>
+      <div><small>السعر الآن</small><strong>{fmt(price,2)}</strong></div>
+      <div><small>ثقة القراءة المبكرة</small><strong className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>{forward?.confidence?Math.round(Number(forward.confidence))+'%':'—'}</strong></div>
+      <div><small>التحرك المتوقع</small><strong className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>{moveAr(forwardSide)}</strong></div>
     </div>
 
     <div className="next-move-copy primary-move zone-primary">
-      <span>Market Lead AI · قراءة مبكرة قبل الحركة</span>
-      <strong className={leadView?.armed?(leadView.side==='BUY'?'green':'red'):leadView?.stage==='RELEASED'?(leadView.side==='BUY'?'green':'red'):'amber'}>
-        {!leadView?.available
-          ?'لا يوجد تدفق حي كافٍ للقراءة المبكرة الآن'
-          :leadView.armed
-            ?`مسلّح قبل الحركة: ${moveAr(leadView.side)} · ثقة ${Math.round(Number(leadView.confidence||0))}%`
-            :leadView.stage==='RELEASED'
-              ?`الحركة بدأت: ${moveAr(leadView.side)} · ${Math.round(Number(leadView.confidence||0))}%`
-              :leadView.stage==='BUILDING'
-                ?`ضغط مبكر يتكوّن: ${moveAr(leadView.side)} · ${Math.round(Number(leadView.score||0))}%`
-                :leadView.stage==='REJECTED'
-                  ?'تم رفض الإشارة المبكرة'
-                  :'لا توجد قراءة مبكرة ثابتة الآن'}
+      <span>القراءة المبكرة · Forward Move</span>
+      <strong className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>
+        {forwardSide==='WAIT'
+          ?'لا يوجد تحرك أمامي واضح حتى الآن'
+          :`${moveAr(forwardSide)} ${forwardZone?`→ منطقة ${zoneRange(forwardZone)}`:forwardTarget!=null?`→ قرب ${fmt(forwardTarget,2)}`:''} · ${Math.round(Number(forward.confidence||0))}%`}
       </strong>
-      <p>{leadView?.reason||'يتم فحص microstructure والتسارع قبل تحرك السعر.'}</p>
-      {leadView?.available&&<div className="forecast-scenario-strip">
-        <div><small>ثبات الإشارة</small><b className={Number(leadView.stability||0)>=60?'green':'amber'}>{Math.round(Number(leadView.stability||0))}%</b></div>
-        <div><small>{leadView.mode==='MICRO_FLOW'?'Acceleration':'اختلال الدفتر'}</small><b className={leadView.mode==='MICRO_FLOW'?'amber':Number(leadView.metrics?.bookImbalance||0)>0?'green':Number(leadView.metrics?.bookImbalance||0)<0?'red':'amber'}>{leadView.mode==='MICRO_FLOW'?Number(leadView.metrics?.acceleration||0).toFixed(2):Number(leadView.metrics?.bookImbalance||0).toFixed(1)}</b></div>
-        <div><small>{leadView.mode==='MICRO_FLOW'?'Persistence':'Replenishment'}</small><b>{leadView.mode==='MICRO_FLOW'?Math.round(Number(leadView.metrics?.persistence||0))+'%':Number(leadView.metrics?.replenishDelta||0).toFixed(1)}</b></div>
+      <p>{forward?.reason||'المحرك ينتظر اتفاق الضغط المبكر مع M1/M3 قبل إعطاء اتجاه.'}</p>
+      {forwardSide!=='WAIT'&&<div className="forecast-scenario-strip">
+        <div><small>الوجهة</small><b className={forwardSide==='BUY'?'green':'red'}>{forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):'—'}</b></div>
+        <div><small>الزمن المتوقع</small><b>{forwardWindow}</b></div>
+        <div><small>اتفاق المحركات</small><b>{Math.round(Number(forward?.agreement||0))}%</b></div>
       </div>}
     </div>
 
@@ -148,42 +139,10 @@ function AssetCard({x,liveQuote,fast,preMove}:any){
               :move.title}
       </strong>
       <p>{path?.reason||path?.scenario||zone?.summary||move.detail}</p>
-      {hasOppositeLocalReaction&&<em className="zone-stability">
-        رد فعل محلي محتمل: {moveAr(localReactionSide)} عند {zoneRange(localReactionZone)} · المسار الرئيسي ما زال {moveAr(forecastSide)} نحو {zoneRange(priceDestination)}
-      </em>}
       {path?.probabilities&&<div className="forecast-scenario-strip">
-        <div><small>احتمال الصعود</small><b className="green">{Math.round(Number(path.probabilities.up||0))}%</b></div>
-        <div><small>احتمال الهبوط</small><b className="red">{Math.round(Number(path.probabilities.down||0))}%</b></div>
-        <div><small>الإبطال</small><b>{Number.isFinite(Number(path?.invalidation?.price))?fmt(path.invalidation.price,2):'—'}</b></div>
-      </div>}
-      {guard&&<div className="forecast-scenario-strip">
-        <div><small>تأكيد M1</small><b className={guard.m1?.side===forecastSide&&guard.m1?.gate==='PASSED'?'green':guard.m1?.side!=='WAIT'&&guard.m1?.gate==='PASSED'?'red':'amber'}>{guard.m1?.side||'WAIT'} · {Math.round(Number(guard.m1?.confidence||0))}%</b></div>
-        <div><small>تأكيد M5</small><b className={guard.m5?.side===forecastSide&&guard.m5?.gate==='PASSED'?'green':guard.m5?.side!=='WAIT'&&guard.m5?.gate==='PASSED'?'red':'amber'}>{guard.m5?.side||'WAIT'} · {Math.round(Number(guard.m5?.confidence||0))}%</b></div>
-        <div><small>حالة التأكيد</small><b className={guardConfirmed?'green':guard.opposed>0?'red':'amber'}>{guardConfirmed?'مؤكد M1+M5':guard.activeHorizons===0?'مراقبة':'تأكيد جزئي'}</b></div>
-      </div>}
-      {guardWatching&&<em className="zone-stability">{guard.reason}</em>}
-      {path?.priceDestination?.zone&&<div className="forecast-scenario-strip">
-        <div><small>الوجهة السعرية</small><b className={forecastSide==='BUY'?'green':forecastSide==='SELL'?'red':'amber'}>{zoneRange(path.priceDestination.zone)}</b></div>
-        <div><small>مركز المنطقة</small><b>{fmt(path.priceDestination.zone.mid,2)}</b></div>
-        <div><small>نوع الهدف</small><b>{path.priceDestination.projected?'توقع سعري':'سيولة/هيكل'}</b></div>
-      </div>}
-      {path?.evidence?.liquidity&&<div className="forecast-scenario-strip">
-        <div><small>مصدر السيولة</small><b>{x.asset==='GOLD'?'Biquote XAU/USD':(path.evidence.liquidity.source||'سيولة + هيكل')}</b></div>
-        <div><small>جذب السيولة أعلى</small><b className="green">{Math.round(Number(path.evidence.liquidity.upperAttraction||0))}</b></div>
-        <div><small>جذب السيولة أسفل</small><b className="red">{Math.round(Number(path.evidence.liquidity.lowerAttraction||0))}</b></div>
-      </div>}
-      {path?.alternate?.side&&path.alternate.side!=='WAIT'&&<em className="zone-stability">
-        البديل: {moveAr(path.alternate.side)}{path.alternate.destination?` نحو ${zoneRange(path.alternate.destination)}`:''} · {Math.round(Number(path.alternate.probability||0))}%
-      </em>}
-      {zone?.stability?.locked&&<em className="zone-stability">سيناريو ثابت · {zone.stability.flipsBlocked>0?`تم رفض ${zone.stability.flipsBlocked} انعكاس ضعيف`:'بانتظار كسر المنطقة أو دليل أقوى'}</em>}
-      {zone&&<div className="zone-map-mini">
-        <div><small>الدعم/الطلب</small><b>{zoneRange(zone.support)}</b></div>
-        <div><small>المقاومة/العرض</small><b>{zoneRange(zone.resistance)}</b></div>
-        <div><small>السيولة المرجحة</small><b>{zoneRange(path?.destination||zone.target)}</b></div>
-        <div><small>منطقة الارتداد</small><b>{zoneRange(path?.reboundZone||zone.origin)}</b></div>
-        <div><small>سيولة أعلى</small><b>{zoneRange(path?.upperLiquidity)}</b></div>
-        <div><small>سيولة أسفل</small><b>{zoneRange(path?.lowerLiquidity)}</b></div>
-        <div><small>الحالة الهيكلية</small><b>{phaseAr(path?.phase||zone.phase)}</b></div>
+        <div><small>صعود</small><b className="green">{Math.round(Number(path.probabilities.up||0))}%</b></div>
+        <div><small>هبوط</small><b className="red">{Math.round(Number(path.probabilities.down||0))}%</b></div>
+        <div><small>إلغاء السيناريو</small><b>{Number.isFinite(Number(path?.invalidation?.price))?fmt(path.invalidation.price,2):'—'}</b></div>
       </div>}
     </div>
 
@@ -193,11 +152,6 @@ function AssetCard({x,liveQuote,fast,preMove}:any){
       <div><small>اتجاه M5</small><strong className={h5.side==='BUY'?'green':h5.side==='SELL'?'red':'amber'}>{moveAr(h5.side)}</strong><span>{calibrated(h5.confidence??h5.strength)}%</span></div>
     </div>
 
-    {goldCore?.ok&&<div className="gold-risk-line">
-      <span>عدم اليقين <b>{goldCore.uncertainty}%</b></span>
-      <span>خطر الكسر الكاذب <b>{goldCore.fakeoutRisk}%</b></span>
-      <span>السوق <b>{String(goldCore.regime||'—').replaceAll('_',' ')}</b></span>
-    </div>}
 
     {(target!=null||invalid!=null)&&<div className="trade-strip compact-levels">
       <div><small>الهدف الأقرب</small><strong>{fmt(target,2)}</strong></div>
