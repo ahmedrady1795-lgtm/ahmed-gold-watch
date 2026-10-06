@@ -52,19 +52,20 @@ function macroBias(e:any){
 }
 const dirLabel=(d:Dir)=>d==='up'?'صعود':d==='down'?'هبوط':'محايد';
 
-export default function NewsCommandCenter({analysis,events=[],now=Date.now()}:any){
+export default function NewsCommandCenter({analysis,events=[],now=Date.now(),featuredId=null}:any){
   const upcoming=[...events]
+    .filter((e:any)=>!featuredId||String(e?.id)!==String(featuredId))
     .filter((e:any)=>{const t=Number(e?.time),hasActual=Boolean(String(e?.actual||'').trim());return t<=now+30*86400000&&(t>=now||(hasActual&&t>=now-10*60000)||(!hasActual&&t>=now-15*60000));})
     .sort((a:any,b:any)=>Number(a.time)-Number(b.time));
   const active=analysis?.news?.event;
   return <section className="panel newscommand">
-    <div className="panelhead"><div><span className="eyebrow">UPCOMING MACRO RADAR</span><h2>الأخبار القادمة · توقيت الإمارات</h2></div><Newspaper/></div>
+    <div className="panelhead"><div><span className="eyebrow">UPCOMING MACRO RADAR</span><h2>{featuredId?'الأخبار التالية بالترتيب · توقيت الإمارات':'الأخبار القادمة · توقيت الإمارات'}</h2></div><Newspaper/></div>
     {active&&<div className="newsclock"><Clock3/><strong>{active.name}</strong><span>{timeLeft(Number(active.time),now)}</span></div>}
     {!upcoming.length&&<p>لا توجد أحداث قادمة وصلت من المصادر الحالية.</p>}
     {upcoming.map((e:any,index:number)=>{
       const b=macroBias(e),impact=Number(e?.importance)||1;
       return <article key={e.id||e.name+e.time} className="rule compact" style={{display:'block'}}>
-        <strong>#{index+1} · {e.name} · {impact===3?'🔥 مرتفع':impact===2?'⚠️ متوسط':'منخفض'}</strong>
+        <strong>#{index+(featuredId?2:1)} · {e.name} · {impact===3?'🔥 مرتفع':impact===2?'⚠️ متوسط':'منخفض'}</strong>
         <p><b>موعد الخبر (الإمارات): {dateLabel(Number(e.time))}</b> · <b>{timeLeft(Number(e.time),now)}</b></p>
         {(e.forecast||e.previous||e.actual)&&<p>Actual: {e.actual||'لم يصدر'} · Forecast: {e.forecast||'—'} · Previous: {e.previous||'—'}</p>}
         <div className="levels">
