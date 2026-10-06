@@ -370,7 +370,25 @@ export async function getMarketData(options:{force?:boolean}={}):Promise<MarketD
     for(const e of collected){
       const key=e.name.toLowerCase().replace(/\s+/g,' ').trim()+'|'+Math.round(e.time/3600000);
       const prev=merged.get(key);
-      if(!prev||(!prev.actual&&e.actual)||(!prev.forecast&&e.forecast)||e.source.includes('bls.gov')||e.source.includes('bea.gov'))merged.set(key,e);
+      if(!prev){merged.set(key,e);continue;}
+      // Preserve the official release time/source when available, but never throw away
+      // richer Actual/Forecast/Previous values from the live calendar provider.
+      const eOfficial=/bls\.gov|bea\.gov/i.test(e.source);
+      const pOfficial=/bls\.gov|bea\.gov/i.test(prev.source);
+      const official=eOfficial?e:pOfficial?prev:null;
+      const rich=[prev,e].sort((a,b)=>{
+        const score=(x:Event)=>(x.actual?8:0)+(x.forecast?4:0)+(x.previous?2:0)+(x.exactTime?1:0);
+        return score(b)-score(a);
+      })[0];
+      merged.set(key,{
+        ...rich,
+        time:official?.time??rich.time,
+        exactTime:Boolean(official?.exactTime||rich.exactTime),
+        source:rich.source||official?.source||'',
+        actual:rich.actual||prev.actual||e.actual||'',
+        forecast:rich.forecast||prev.forecast||e.forecast||'',
+        previous:rich.previous||prev.previous||e.previous||''
+      });
     }
     result.events=[...merged.values()].filter(e=>e.time>=now-86400000&&e.time<=now+120*86400000).sort((a,b)=>a.time-b.time);
     result.newsReady=result.events.some(e=>e.time>=now-86400000);
