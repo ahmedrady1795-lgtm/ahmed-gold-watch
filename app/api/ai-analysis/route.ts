@@ -644,7 +644,19 @@ export async function GET(request:Request){
           }:null
         }:null,
         invalidation:Number.isFinite(Number(h.zoneForecast.pathForecast.invalidation?.price))?Number(h.zoneForecast.pathForecast.invalidation.price):null,
-        learning:h.zoneForecast.pathForecast.learning||null
+        learning:h.zoneForecast.pathForecast.learning||null,
+        liveLearning:h.zoneForecast.pathForecast.liveLearning?{
+          recorded:Boolean(h.zoneForecast.pathForecast.liveLearning.recorded),
+          reason:h.zoneForecast.pathForecast.liveLearning.reason||null,
+          learningMode:h.zoneForecast.pathForecast.liveLearning.learningMode||null,
+          signature:h.zoneForecast.pathForecast.liveLearning.signature||null,
+          pending:Number(h.zoneForecast.pathForecast.liveLearning.pending||0),
+          pendingLive:Number(h.zoneForecast.pathForecast.liveLearning.pendingLive||0),
+          pendingShadow:Number(h.zoneForecast.pathForecast.liveLearning.pendingShadow||0),
+          recentLive:Number(h.zoneForecast.pathForecast.liveLearning.recentLive||0),
+          recentShadow:Number(h.zoneForecast.pathForecast.liveLearning.recentShadow||0),
+          bySignature:h.zoneForecast.pathForecast.liveLearning.bySignature||null
+        }:null
       }:null,
       locked:Boolean(h.zoneForecast.stability?.locked),
       stabilityReason:h.zoneForecast.stability?.reason||'',
