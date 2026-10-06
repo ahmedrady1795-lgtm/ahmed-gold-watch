@@ -62,6 +62,55 @@ function atrNow(c:any[]){
   for(let i=1;i<x.length;i++){const tr=Math.max(x[i].high-x[i].low,Math.abs(x[i].high-x[i-1].close),Math.abs(x[i].low-x[i-1].close));if(Number.isFinite(tr)){sum+=tr;n++;}}
   return n?sum/n:null;
 }
+function buildH4Context(c60:any[],price:number|null,now=Date.now()){
+  const hour=60*60*1000,block=4*hour;
+  const rows=(Array.isArray(c60)?c60:[])
+    .filter((c:any)=>Number.isFinite(Number(c?.time))&&Number(c.time)+hour<=now)
+    .slice(-56);
+  const groups=new Map<number,any[]>();
+  for(const c of rows){
+    const bucket=Math.floor(Number(c.time)/block)*block;
+    const g=groups.get(bucket)||[];g.push(c);groups.set(bucket,g);
+  }
+  const bars=[...groups.entries()]
+    .sort((a,b)=>a[0]-b[0])
+    .filter(([,g])=>g.length>=4)
+    .map(([time,g])=>{
+      const x=g.slice().sort((a:any,b:any)=>Number(a.time)-Number(b.time));
+      const open=Number(x[0]?.open),close=Number(x.at(-1)?.close);
+      const high=Math.max(...x.map((v:any)=>Number(v.high)).filter(Number.isFinite));
+      const low=Math.min(...x.map((v:any)=>Number(v.low)).filter(Number.isFinite));
+      return {time,open,high,low,close};
+    })
+    .filter((b:any)=>[b.open,b.high,b.low,b.close].every(Number.isFinite))
+    .slice(-10);
+  if(bars.length<4)return {ok:false,side:'WAIT',confidence:0,structure:'غير كافٍ',support:null,resistance:null,checkedAt:now};
+  const closes=bars.map((b:any)=>b.close),recent=bars.slice(-6),last=bars.at(-1),prev=bars.at(-2);
+  const fast=closes.slice(-3).reduce((a:number,b:number)=>a+b,0)/Math.min(3,closes.length);
+  const slow=closes.slice(-6).reduce((a:number,b:number)=>a+b,0)/Math.min(6,closes.length);
+  let buy=0,sell=0;
+  if(fast>slow)buy+=18;else if(fast<slow)sell+=18;
+  const slope=(closes.at(-1)-closes.at(-4))/Math.max(1e-9,Math.abs(closes.at(-4)));
+  if(slope>.0012)buy+=22;else if(slope<-.0012)sell+=22;else if(slope>0)buy+=9;else if(slope<0)sell+=9;
+  if(last.high>prev.high&&last.low>prev.low)buy+=24;
+  if(last.high<prev.high&&last.low<prev.low)sell+=24;
+  const bodies=recent.slice(-4).map((b:any)=>(b.close-b.open)/Math.max(1e-9,b.high-b.low));
+  const bodyAvg=bodies.reduce((a:number,b:number)=>a+b,0)/Math.max(1,bodies.length);
+  if(bodyAvg>.14)buy+=16;else if(bodyAvg<-.14)sell+=16;
+  const hi=Math.max(...recent.map((b:any)=>b.high)),lo=Math.min(...recent.map((b:any)=>b.low));
+  const p=Number(price),pos=Number.isFinite(p)&&hi>lo?(p-lo)/(hi-lo):.5;
+  if(pos>=.62)buy+=8;if(pos<=.38)sell+=8;
+  const total=buy+sell,edge=total?Math.abs(buy-sell)/total*100:0;
+  const side:'BUY'|'SELL'|'WAIT'=edge>=12?(buy>sell?'BUY':'SELL'):'WAIT';
+  const confidence=Math.round(Math.max(0,Math.min(88,38+edge*.5+Math.min(10,bars.length))));
+  const structure=last.high>prev.high&&last.low>prev.low?'قمم وقيعان أعلى':last.high<prev.high&&last.low<prev.low?'قمم وقيعان أدنى':'هيكل مختلط';
+  return {
+    ok:true,side,confidence,structure,
+    support:Number(lo.toFixed(2)),resistance:Number(hi.toFixed(2)),
+    lastClose:Number(last.close.toFixed(2)),slopePct:Number((slope*100).toFixed(3)),
+    rangePosition:Math.round(pos*100),bars:bars.length,checkedAt:now
+  };
+}
 function alignGoldMarketToAnchor(market:any,anchorPrice:number|null){
   const p=Number(anchorPrice),last=Number(market?.c1?.at?.(-1)?.close),src=String(market?.priceSource||'');
   const proxy=/Yahoo Finance|GC=F|COMEX/i.test(src);
@@ -501,6 +550,8 @@ export async function GET(request:Request){
     const closedM1=btc.c1.filter((c:any)=>c.time+60000<=now).at(-1)||btc.c1.at(-1)||null;
     const btcPrice=liveBtc?.price??btc.c1.at(-1)?.close??null;
     const goldPrice=quote?.price??gm.c1.at(-1)?.close??null;
+    const goldH4=buildH4Context(gm.c60,goldPrice,now);
+    const bitcoinH4=buildH4Context(btc.c60,btcPrice,now);
     // The 24/7 worker keeps BTC learning continuously. Gold learning is paused
     // while XAU/USD is closed so stale/flat prices cannot create fake NEUTRAL/FAIL outcomes.
     const goldLearningPrice=workerCycle&&!goldMarketOpenUTC(now)?null:goldPrice;
@@ -693,7 +744,7 @@ export async function GET(request:Request){
       touches:Number(z.touches||0),
       rejections:Number(z.rejections||0)
     }:null;
-    const buildForwardMove=(asset:'GOLD'|'BTC',hunt:any,scalp:any,movement:any,marketLead:any,pulse:any,liq:any,structure:any,accumulation:any)=>{
+    const buildForwardMove=(asset:'GOLD'|'BTC',hunt:any,scalp:any,movement:any,marketLead:any,pulse:any,liq:any,structure:any,accumulation:any,h4:any)=>{
       const rows:Array<{side:'BUY'|'SELL';score:number;weight:number;name:string}>=[];
       const add=(name:string,s:any,score:any,weight:number)=>{
         if((s==='BUY'||s==='SELL')&&Number(score)>0&&weight>0)rows.push({name,side:s,score:Math.max(0,Math.min(92,Number(score))),weight});
@@ -719,6 +770,9 @@ export async function GET(request:Request){
       add('liquidity',liqSide,liqScore,1.18);
       add('accumulation',accSide,Math.max(accScore,Number(accumulation?.breakoutReadiness||0)),1.12);
       add('structure',structureSide,structureScore,1.08);
+      const h4Side=h4?.side==='BUY'||h4?.side==='SELL'?h4.side:'WAIT';
+      const h4Confidence=Math.max(0,Math.min(88,Number(h4?.confidence||0)));
+      add('H4',h4Side,h4Confidence,h4?.ok?1.02:0);
 
       let buy=0,sell=0;
       for(const r of rows){
@@ -750,6 +804,10 @@ export async function GET(request:Request){
       const m5Opposes=Boolean(m5Active&&m5Side!==winner);
       if(m5Opposes)confidence-=m5Confidence>=68?13:8;
       else if(m5Active&&m5Side===winner)confidence+=Math.min(4,Math.round((m5Confidence-48)/8));
+      const h4Active=Boolean(h4?.ok&&(h4Side==='BUY'||h4Side==='SELL')&&h4Confidence>=48);
+      const h4Opposes=Boolean(h4Active&&h4Side!==winner);
+      if(h4Active&&h4Side===winner)confidence+=Math.min(7,Math.round((h4Confidence-42)/7));
+      if(h4Opposes)confidence-=h4Confidence>=68?11:7;
 
       if(leadFresh&&marketLead?.armed&&leadSide===winner)confidence=Math.min(89,confidence+8);
       else if(leadFresh&&leadStage==='BUILDING'&&leadSide===winner)confidence=Math.min(87,confidence+4);
@@ -757,7 +815,7 @@ export async function GET(request:Request){
       confidence=Math.max(0,Math.min(89,Math.round(confidence)));
 
       const leadSupports=Boolean(leadFresh&&leadSide===winner&&(marketLead?.armed||leadStage==='BUILDING'));
-      const coreReady=coreConfirmations>=2||(coreConfirmations>=1&&leadSupports&&support>=3);
+      const coreReady=(coreConfirmations>=2||(coreConfirmations>=1&&leadSupports&&support>=3))&&(!h4Opposes||coreConfirmations>=2&&share>=61&&support>=3);
       if(share<57||support<2||confidence<47||!coreReady)return {
         side:'WAIT',confidence,status:'WAIT',target:null,zone:null,windowSeconds:null,expiresAt:null,
         confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide},
@@ -775,11 +833,13 @@ export async function GET(request:Request){
         priceNow==null||(winner==='BUY'?zoneHigh>priceNow:zoneLow<priceNow)
       ));
       const pathZone=zoneValid?rawZone:null;
-      const quick=hunt?.quickSignalTargets?.oneMinute;
+      const target15=hunt?.quickSignalTargets?.fifteenMinute||hunt?.fifteenMinuteTarget||null;
+      const target15Price=target15?.side===winner&&ahead(target15?.price)?Number(target15.price):null;
+      const quick=hunt?.quickSignalTargets?.fiveMinute||hunt?.quickSignalTargets?.oneMinute;
       const quickPrice=quick?.side===winner&&ahead(quick?.price)?Number(quick.price):null;
       const scalpNext=scalp?.nextPrice||scalp?.fusionV8?.nextPrice||scalp?.projection||null;
       const scalpPrice=(scalpNext?.side===winner||!scalpNext?.side)&&ahead(scalpNext?.price)?Number(scalpNext.price):null;
-      const target=pathZone&&ahead(pathZone.mid)?Number(pathZone.mid):quickPrice??scalpPrice??null;
+      const target=target15Price??(pathZone&&ahead(pathZone.mid)?Number(pathZone.mid):quickPrice??scalpPrice??null);
 
       // Do not label a consumed/behind destination as "the next move".
       if(priceNow!=null&&target==null){
@@ -803,9 +863,9 @@ export async function GET(request:Request){
       const status=alreadyMoving?'IN_PROGRESS':armed?'PRE_MOVE':building?'BUILDING':'SHORT_HORIZON';
       const leadWindow=marketLead?.windowSeconds;
       const hasLeadWindow=leadFresh&&leadSide===winner&&Number.isFinite(Number(leadWindow?.min))&&Number.isFinite(Number(leadWindow?.max));
-      const fallbackWindow=alreadyMoving?{min:2,max:35}:armed?{min:3,max:25}:building?{min:8,max:45}:{min:15,max:75};
+      const fallbackWindow={min:120,max:900};
       const windowSeconds=hasLeadWindow
-        ?{min:Math.max(2,Math.min(90,Math.round(Number(leadWindow?.min)))),max:Math.max(4,Math.min(120,Math.round(Number(leadWindow?.max))))}
+        ?{min:Math.max(60,Math.min(300,Math.round(Number(leadWindow?.min))*3)),max:Math.max(300,Math.min(900,Math.round(Number(leadWindow?.max))*6))}
         :fallbackWindow;
       if(windowSeconds.max<windowSeconds.min)windowSeconds.max=windowSeconds.min+5;
 
@@ -820,13 +880,13 @@ export async function GET(request:Request){
 
       const sourceParts=rows.filter(r=>r.side===winner).sort((a,b)=>b.weight-a.weight).slice(0,3).map(r=>r.name);
       return {
-        side:winner,confidence,status,target,
+        side:winner,confidence,status,target,horizonMinutes:15,h4Context:h4?.ok?{side:h4Side,confidence:h4Confidence,structure:h4.structure,support:h4.support,resistance:h4.resistance,rangePosition:h4.rangePosition}:null,
         zone:pathZone?{low:Number(pathZone.low),high:Number(pathZone.high),mid:Number(pathZone.mid)}:null,
         windowSeconds,expiresAt:now+windowSeconds.max*1000,agreement:Math.round(share),support,opposition:oppose,
         priceNow,distancePct:distancePct==null?null:Number(distancePct.toFixed(4)),
-        freshness:{leadFresh,leadAgeMs:Number.isFinite(leadAge)?leadAge:null,m5Opposes,alreadyMoving},
+        freshness:{leadFresh,leadAgeMs:Number.isFinite(leadAge)?leadAge:null,m5Opposes,h4Opposes,alreadyMoving},
         confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide},
-        reason:(alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':building?'ضغط مبكر يتكوّن':'تفوق قصير المدى')+' · تأكيد أساسي '+coreConfirmations+'/3 · '+sourceParts.join(' + ')
+        reason:(alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':building?'ضغط مبكر يتكوّن':'ترجيح 15 دقيقة')+' · H4 '+(h4Side==='BUY'?'صاعد':h4Side==='SELL'?'هابط':'محايد')+' · تأكيد أساسي '+coreConfirmations+'/3 · '+sourceParts.join(' + ')
       };
     };
     const stabilizeForwardMove=(asset:'GOLD'|'BTC',candidate:any,pulse:any)=>{
@@ -838,7 +898,7 @@ export async function GET(request:Request){
         if(target==null||!Number.isFinite(Number(target))||!priceOk)return true;
         return s==='BUY'?Number(target)>price:Number(target)<price;
       };
-      const prevAlive=Boolean(prev&&now-prev.at<=30000&&ahead(prev.side,prev.target));
+      const prevAlive=Boolean(prev&&now-prev.at<=180000&&ahead(prev.side,prev.target));
       const keepPrev=(reason:string)=>{
         if(!prev)return candidate;
         const age=Math.max(0,now-prev.at);
@@ -860,7 +920,7 @@ export async function GET(request:Request){
       };
 
       if(side==='WAIT'){
-        if(prevAlive&&prev&&prev.confidence>=55&&now-prev.at<=18000){
+        if(prevAlive&&prev&&prev.confidence>=55&&now-prev.at<=90000){
           return keepPrev('الاتجاه السابق ما زال صالحًا؛ تم منع التردد اللحظي حتى يظهر انعكاس مؤكد');
         }
         if(!prevAlive)forwardCommitState[asset]=null;
@@ -884,14 +944,15 @@ export async function GET(request:Request){
       const support=Number(candidate?.support||0);
       const decisiveFlip=confidence>=Math.max(64,prev.confidence+8)&&agreement>=63&&support>=3;
       const preMoveFlip=String(candidate?.status)==='PRE_MOVE'&&confidence>=62&&agreement>=62&&support>=3;
-      const agedFlip=age>=24000&&confidence>=58&&agreement>=60&&support>=2;
+      const agedFlip=age>=120000&&confidence>=58&&agreement>=60&&support>=2;
       if(decisiveFlip||preMoveFlip||agedFlip)return commit();
 
       return keepPrev('تم رفض انعكاس مؤقت؛ الاتجاه لا يتغير إلا بتفوق واضح ومستقل للإشارة العكسية');
     };
-    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any)=>({
+    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any,h4?:any)=>({
       asset,
-      forwardMove:stabilizeForwardMove(asset,buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse,liq,structure,accumulation),pulse),
+      forwardMove:stabilizeForwardMove(asset,buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse,liq,structure,accumulation,h4),pulse),
+      h4Context:h4||null,
       liquidity:liq?{
         side:liq.side||'WAIT',
         buy:Math.max(0,Math.min(100,Math.round(Number(liq.buy||0)))),
@@ -1403,8 +1464,8 @@ export async function GET(request:Request){
         gold:{side:webIntel.gold.side,confidence:webIntel.gold.confidence,risk:webIntel.gold.risk,sourceCount:webIntel.gold.sourceCount,freshCount:webIntel.gold.freshCount},
         btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount}
       }:null,
-      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation),
-      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity,bitcoinStructure,bitcoinAccumulation)
+      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation,goldH4),
+      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity,bitcoinStructure,bitcoinAccumulation,bitcoinH4)
     };
     lastAiPayload=payload;lastAiPayloadAt=Date.now();
     return Response.json(payload,{headers:{'Cache-Control':'no-store','X-AI-Cache':'miss'}});
