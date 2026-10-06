@@ -165,11 +165,11 @@ export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.n
     {showNextEvent&&<section className="next-news news-impact-card">
       <div className="news-head">
         <div className="news-title-wrap">
-          <small>الخبر القادم</small>
+          <small>{awaitingActual?'بانتظار نتيجة الخبر':'الخبر القادم'}</small>
           <strong>{next.name}</strong>
           <em>تأثيره المتوقع على السوق</em>
         </div>
-        <span className="news-countdown">{timeLeft(next.time,now)}</span>
+        <span className="news-countdown">{awaitingActual?'بانتظار Actual':timeLeft(next.time,now)}</span>
       </div>
 
       {(next.forecast||next.previous||next.actual)&&<div className="news-values ordered">
