@@ -812,7 +812,7 @@ export async function GET(request:Request){
       const momentumConfidence=Math.max(0,Math.min(90,Number(momentum?.confidence||0)));
       const momentumPhase=String(momentum?.phase||'NEUTRAL');
       const momentumPreMove=Boolean(momentum?.preMove&&momentumConfidence>=48);
-      const momentumWeight=momentumPhase==='BUILDING'?1.28:momentumPhase==='ACTIVE'?1.18:momentumPhase==='EXHAUSTING'?.44:.62;
+      const momentumWeight=momentumPhase==='BUILDING'?1.28:momentumPhase==='ACTIVE'?1.18:momentumPhase==='EXHAUSTING' ? .44 : .62;
       add('momentum',momentumSide,Math.max(momentumScore,momentumConfidence),momentumWeight);
 
       let buy=0,sell=0;
