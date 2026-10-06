@@ -111,7 +111,7 @@ function stabilizeGoldLiquidity(raw:any,c1:any[],price:number|null,now=Date.now(
   let mode=String(raw?.mode||'QUOTE_FLOW');
   if(!rawDirectional||Math.abs(rawPressure)<7){
     target=rawPressure*.38+proxy.pressure*.62;
-    source+=' · GoldPrice/Biquote volume proxy';
+    source+=' · Biquote candle-volume proxy · public spot fallback chain';
     mode=mode==='DOM'?'DOM':'STABLE_QUOTE_FLOW';
   }else if(proxyDirectional&&proxy.side===raw.side){
     target=rawPressure*.78+proxy.pressure*.22;
@@ -150,7 +150,7 @@ function stabilizeGoldLiquidity(raw:any,c1:any[],price:number|null,now=Date.now(
     stable:true,
     proxy:{side:proxy.side,pressure:proxy.pressure,quality:proxy.quality,volumeScore:proxy.volumeScore},
     lastKnownGoodAgeMs:prev&&age<90000?age:null,
-    warnings:Array.from(new Set([...(Array.isArray(raw?.warnings)?raw.warnings:[]),String(raw?.mode)==='DOM'?null:'Stable quote-flow uses Biquote/GoldPrice validation and candle volume proxy'].filter(Boolean)))
+    warnings:Array.from(new Set([...(Array.isArray(raw?.warnings)?raw.warnings:[]),String(raw?.mode)==='DOM'?null:'Stable quote-flow uses Biquote candle volume; public spot providers remain fallback sources'].filter(Boolean)))
   };
 }
 
