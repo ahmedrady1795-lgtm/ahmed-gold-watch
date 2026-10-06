@@ -35,6 +35,7 @@ const structurePatternAr=(v:any)=>{
 };
 const intentPhaseAr=(p:any)=>p==='LIQUIDITY_BUILDUP'?'تجميع سيولة':p==='SWEEP_DETECTED'?'سحب سيولة':p==='TRAP_CONFIRMED'?'فخ سيولة مؤكد':p==='PRE_EXPANSION'?'استعداد قبل الحركة':p==='EXPANSION'?'الحركة بدأت':'لا يوجد سيناريو واضح';
 const momentumPhaseAr=(p:any)=>p==='BUILDING'?'يتكوّن قبل الحركة':p==='ACTIVE'?'نشط':p==='EXHAUSTING'?'منهك':p==='WEAK'?'ضعيف':'محايد';
+const mVolumePhaseAr=(p:any)=>p==='BUILDING'?'حجم يتزايد':p==='CONFIRMING'?'الحجم يؤكد الحركة':p==='ABSORBING'?'امتصاص حجم':p==='CLIMAX'?'Volume Climax':'حجم هادئ';
 const intentStepAr=(v:any)=>{
   const x=String(v||'');
   if(x==='COMPRESSION')return 'ضغط';
@@ -204,6 +205,10 @@ function AssetCard({x,liveQuote,fast}:any){
           <span>
             تسارع {Math.round(Number(momentum?.acceleration||0))}% · استمرار {Math.round(Number(momentum?.persistence||0))}% · اتساع {Math.round(Number(momentum?.expansion||0))}%
           </span>
+          {momentum?.mVolume&&<span>
+            M-Volume · {mVolumePhaseAr(momentum.mVolume.phase)} · قوة {Math.round(Number(momentum.mVolume.score||0))}% · RVOL {Number(momentum.mVolume.relativeVolume||0).toFixed(2)}x
+          </span>}
+          {momentum?.mVolume&&Number(momentum.mVolume.absorption||0)>=55&&<span>امتصاص {Math.round(Number(momentum.mVolume.absorption||0))}%</span>}
           {Number(momentum?.exhaustion||0)>=55&&<span>إنهاك {Math.round(Number(momentum.exhaustion||0))}%</span>}
         </div>
         <div><small>هيكل الحركة</small><b>{structureText}</b><span>{structurePatternAr(structure?.m1?.structure||structure?.m5?.structure)}</span></div>
