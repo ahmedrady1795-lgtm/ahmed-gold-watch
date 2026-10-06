@@ -1,7 +1,9 @@
 import {getMt5FastSignal,subscribeMt5BridgeUpdates} from '../../../../lib/market-hub';
 import {updateGoldMarketLead} from '../../../../lib/market-lead-ai';
+import {getServerTickSignal,startServerTickBrain} from '../../../../lib/server-tick-brain';
 
 export const dynamic='force-dynamic';
+startServerTickBrain();
 
 export async function GET(){
   const encoder=new TextEncoder();
@@ -17,13 +19,14 @@ export async function GET(){
       };
       const push=()=>{
         const now=Date.now();
-        const lead=updateGoldMarketLead(getMt5FastSignal(now),now);
+        const fast=getMt5FastSignal(now);
+        const lead=updateGoldMarketLead(fast,now,getServerTickSignal('GOLD',now));
         send(lead);
       };
       // Send current state immediately, then every new MT5 update is pushed directly.
       push();
       const unsubscribe=subscribeMt5BridgeUpdates(()=>push());
-      const heartbeat=setInterval(()=>send({at:Date.now()},'ping'),10000);
+      const heartbeat=setInterval(()=>{push();send({at:Date.now()},'ping');},1500);
       cleanup=()=>{
         if(closed)return;
         closed=true;
