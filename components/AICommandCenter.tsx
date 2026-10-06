@@ -77,6 +77,10 @@ function AssetCard({x,liveQuote,fast}:any){
   const forwardZone=forward?.zone||null;
   const forwardTarget=Number.isFinite(Number(forward?.target))?Number(forward.target):null;
   const forwardWindow=forward?.windowSeconds?(`${forward.windowSeconds.min}–${forward.windowSeconds.max} ث`):'—';
+  const liqBuy=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.buy||0))));
+  const liqSell=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.sell||0))));
+  const liqDir=forwardSide==='BUY'?liqBuy:forwardSide==='SELL'?liqSell:Math.max(liqBuy,liqSell);
+  const liqText=(liqBuy||liqSell)?`${liqDir}% · ${forwardSide==='BUY'?'شراء':forwardSide==='SELL'?'بيع':liqBuy>=liqSell?'شراء':'بيع'}`:'—';
   const forwardStatus=String(forward?.status||'WAIT');
   const forwardHeadline=forwardSide==='WAIT'
     ?'انتظار قراءة أمامية أوضح'
@@ -110,7 +114,7 @@ function AssetCard({x,liveQuote,fast}:any){
         <div><small>الوجهة</small><b>{forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):priceDestination?zoneRange(priceDestination):'—'}</b></div>
         <div><small>نافذة التحرك</small><b>{forwardSide!=='WAIT'?forwardWindow:'—'}</b></div>
         <div><small>الارتداد</small><b>{zoneRange(path?.reboundZone||zone?.origin)}</b></div>
-        <div><small>السيولة</small><b>{zoneRange(path?.destination||zone?.target)}</b></div>
+        <div><small>نسبة السيولة</small><b className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>{liqText}</b><span>{zoneRange(path?.destination||zone?.target)}</span></div>
       </div>
       {forward?.reason&&<small className="muted">{forward.reason}</small>}
     </div>
