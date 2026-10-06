@@ -52,11 +52,11 @@ function webLearnFile(){
   try{if(fs.existsSync(path.dirname(WEB_LEARN_FILE)))return WEB_LEARN_FILE;}catch{}
   return WEB_LEARN_FALLBACK;
 }
-function loadWebLearning(){
+function loadWebLearning():SourceStore{
   if(webLearnCache)return webLearnCache;
   for(const f of [WEB_LEARN_FILE,WEB_LEARN_FALLBACK]){
     try{
-      const x=JSON.parse(fs.readFileSync(f,'utf8'));
+      const x=JSON.parse(fs.readFileSync(f,'utf8')) as SourceStore;
       if(x?.version===WEB_LEARN_VERSION&&x?.stats){webLearnCache=x;return x;}
     }catch{}
   }
