@@ -14,6 +14,16 @@ const moveAr=(s:any)=>s==='BUY'?'صعود':s==='SELL'?'هبوط':'تذبذب';
 const zoneRange=(z:any)=>z&&Number.isFinite(Number(z.low))&&Number.isFinite(Number(z.high))?`${fmt(z.low,2)}–${fmt(z.high,2)}`:'—';
 const zoneName=(z:any)=>String(z?.kind||'').includes('DEMAND')||z?.side==='BUY'?'دعم/طلب':String(z?.kind||'').includes('SUPPLY')||z?.side==='SELL'?'مقاومة/عرض':'منطقة';
 const phaseAr=(p:any)=>p==='ACCUMULATING'?'تجميع':p==='DISTRIBUTING'?'تصريف':p==='MARKUP_READY'?'تجميع جاهز للصعود':p==='MARKDOWN_READY'?'تصريف جاهز للهبوط':'توازن';
+const structurePhaseAr=(p:any)=>p==='BREAKOUT'?'اختراق':p==='RETEST'?'إعادة اختبار':p==='SWEEP_REVERSAL'?'سحب سيولة وانعكاس':p==='IMPULSE'?'اندفاع':p==='PULLBACK'?'تصحيح':p==='EXHAUSTION'?'إجهاد الحركة':p==='COMPRESSION'?'ضغط وتجميع':p==='TREND'?'اتجاه مستمر':'انتقال';
+const movementStructureLabel=(s:any)=>{
+  if(!s?.ok)return 'غير مكتمل';
+  const m=s.m1||s.m5||{};
+  const next=m.nextSide||s.shortSide||s.side||'WAIT';
+  const sideTxt=next==='BUY'?'صاعد':next==='SELL'?'هابط':'متوازن';
+  if(s.path==='RISE_THEN_DROP')return 'صعود ثم هبوط';
+  if(s.path==='DROP_THEN_RISE')return 'هبوط ثم صعود';
+  return `${structurePhaseAr(m.phase)} ${sideTxt}`;
+};
 function nextMoveCopy(hunt:any,stateGraph:any){
   if(!hunt&&!stateGraph)return {title:'لا توجد حركة مؤكدة حاليًا',detail:'النواة تنتظر بيانات أو توافقًا أوضح قبل ترجيح الحركة القادمة.',tone:'amber'};
   const understanding=hunt?.marketUnderstanding;
@@ -82,6 +92,8 @@ function AssetCard({x,liveQuote,fast}:any){
   const liqDir=forwardSide==='BUY'?liqBuy:forwardSide==='SELL'?liqSell:Math.max(liqBuy,liqSell);
   const liqText=(liqBuy||liqSell)?`${liqDir}% · ${forwardSide==='BUY'?'شراء':forwardSide==='SELL'?'بيع':liqBuy>=liqSell?'شراء':'بيع'}`:'—';
   const forwardStatus=String(forward?.status||'WAIT');
+  const structure=x?.movementStructure||null;
+  const structureText=movementStructureLabel(structure);
   const forwardHeadline=forwardSide==='WAIT'
     ?'انتظار قراءة أمامية أوضح'
     :forwardStatus==='PRE_MOVE'
@@ -115,6 +127,7 @@ function AssetCard({x,liveQuote,fast}:any){
         <div><small>نافذة التحرك</small><b>{forwardSide!=='WAIT'?forwardWindow:'—'}</b></div>
         <div><small>الارتداد</small><b>{zoneRange(path?.reboundZone||zone?.origin)}</b></div>
         <div><small>نسبة السيولة</small><b className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>{liqText}</b><span>{zoneRange(path?.destination||zone?.target)}</span></div>
+        <div><small>هيكل الحركة</small><b>{structureText}</b><span>{structure?.m1?.structure||structure?.m5?.structure||'—'}</span></div>
       </div>
       {forward?.reason&&<small className="muted">{forward.reason}</small>}
     </div>
