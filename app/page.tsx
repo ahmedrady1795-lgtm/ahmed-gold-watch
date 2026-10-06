@@ -44,6 +44,9 @@ export default function Home(){
     if(manual)setBusy(true);
     try{
       const q=new URLSearchParams();
+      // Use the lightweight worker cache window so liquidity-driven AI refreshes quickly
+      // without allowing overlapping analyses (aiInFlight still guards the client).
+      q.set('worker','1');
       const add=(p:string,w:WaveLead|null)=>{
         if(!w?.ok||Date.now()-w.at>2500)return;
         q.set(p+'s',w.side);q.set(p+'st',w.stage);q.set(p+'sc',String(w.score));q.set(p+'cf',String(w.confidence));q.set(p+'at',String(w.at));
@@ -86,7 +89,7 @@ export default function Home(){
 
   useEffect(()=>{
     void loadAi();
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},8000);
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},2000);
     const clock=setInterval(()=>setNow(Date.now()),5000);
     return()=>{clearInterval(aiTimer);clearInterval(clock);};
   },[]);
