@@ -850,8 +850,12 @@ export async function GET(request:Request){
       if(intentAligned)confidence+=intentPreMove?8:4;
       if(intentOpposes)confidence-=intentConfidence>=72?13:8;
 
+      const m1Side=movement?.horizons?.oneMinute?.side;
+      const m1Confidence=Number(movement?.horizons?.oneMinute?.confidence||0);
       const m5Side=movement?.horizons?.fiveMinute?.side;
       const m5Confidence=Number(movement?.horizons?.fiveMinute?.confidence||0);
+      const m15Side=movement?.horizons?.fifteenMinute?.side;
+      const m15Confidence=Number(movement?.horizons?.fifteenMinute?.confidence||0);
       const m5Active=(m5Side==='BUY'||m5Side==='SELL')&&m5Confidence>=50;
       const m5Opposes=Boolean(m5Active&&m5Side!==winner);
       if(m5Opposes)confidence-=m5Confidence>=68?13:8;
@@ -869,7 +873,18 @@ export async function GET(request:Request){
       const leadSupports=Boolean(leadFresh&&leadSide===winner&&(marketLead?.armed||leadStage==='BUILDING'));
       const coreReadyBase=(coreConfirmations>=2||(coreConfirmations>=1&&leadSupports&&support>=3)||(intentPreMove&&intentAligned&&coreConfirmations>=1&&support>=3))&&(!h4Opposes||coreConfirmations>=2&&share>=61&&support>=3)&&(!intentOpposes||coreConfirmations===3&&share>=64);
       const coreReady=coreReadyBase&&(!adaptiveWeak||(coreConfirmations>=2&&share>=63&&support>=4));
-      if(share<57||support<2||confidence<47||!coreReady)return {
+      const m1Aligned=m1Side===winner&&m1Confidence>=32;
+      const m5Aligned=m5Side===winner&&m5Confidence>=32;
+      const m15Aligned=m15Side===winner&&m15Confidence>=30;
+      const h4Aligned=h4Side===winner&&h4Confidence>=42;
+      const structureAligned=structureSide===winner&&structureScore>=42;
+      const hardLiquidityOpposition=liqSide!=='WAIT'&&liqSide!==winner&&liqScore>=65;
+      const conditionalReady=Boolean(
+        priceNow!=null&&share>=52&&support>=3&&confidence>=38&&
+        structureAligned&&!hardLiquidityOpposition&&!intentOpposes&&!adaptiveWeak&&
+        ((h4Aligned&&m1Aligned&&m5Aligned)||(m1Aligned&&m5Aligned&&m15Aligned))
+      );
+      if((share<57||support<2||confidence<47||!coreReady)&&!conditionalReady)return {
         side:'WAIT',confidence,status:'WAIT',target:null,zone:null,windowSeconds:null,expiresAt:null,
         confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide},
         adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3))},
@@ -881,7 +896,9 @@ export async function GET(request:Request){
         return winner==='BUY'?n>priceNow:n<priceNow;
       };
       const pd=hunt?.zoneForecast?.pathForecast?.priceDestination;
-      const rawZone=pd?.zone&&pd?.side===winner?pd.zone:null;
+      const rawZone=pd?.side===winner
+        ?(pd?.zone&&typeof pd.zone==='object'?pd.zone:pd)
+        :null;
       const zoneLow=Number(rawZone?.low),zoneHigh=Number(rawZone?.high),zoneMid=Number(rawZone?.mid);
       const zoneValid=Boolean(rawZone&&Number.isFinite(zoneLow)&&Number.isFinite(zoneHigh)&&Number.isFinite(zoneMid)&&(
         priceNow==null||(winner==='BUY'?zoneHigh>priceNow:zoneLow<priceNow)
@@ -895,6 +912,33 @@ export async function GET(request:Request){
       const scalpPrice=(scalpNext?.side===winner||!scalpNext?.side)&&ahead(scalpNext?.price)?Number(scalpNext.price):null;
       const intentTarget=intentSide===winner&&ahead(intent?.targetPrice)?Number(intent.targetPrice):null;
       const target=intentTarget??target15Price??(pathZone&&ahead(pathZone.mid)?Number(pathZone.mid):quickPrice??scalpPrice??null);
+      const invalidationRaw=Number(hunt?.zoneForecast?.pathForecast?.invalidation??hunt?.invalidation);
+      const targetDistance=priceNow!=null&&target!=null?Math.abs(target-priceNow):null;
+      const triggerBps=asset==='GOLD'?.55:1.2;
+      const triggerDistance=priceNow!=null?priceNow*triggerBps/10000:0;
+      const entryTrigger=priceNow!=null
+        ?Number((winner==='BUY'?priceNow+triggerDistance:priceNow-triggerDistance).toFixed(2))
+        :null;
+      let stopLoss:number|null=null;
+      if(priceNow!=null){
+        const invalidationValid=Number.isFinite(invalidationRaw)&&(winner==='BUY'?invalidationRaw<priceNow:invalidationRaw>priceNow);
+        if(invalidationValid)stopLoss=Number(invalidationRaw.toFixed(2));
+        else if(targetDistance!=null&&targetDistance>0){
+          stopLoss=Number((winner==='BUY'?priceNow-targetDistance*.58:priceNow+targetDistance*.58).toFixed(2));
+        }
+      }
+      const tradeSetup=target!=null&&entryTrigger!=null?{
+        mode:conditionalReady&&!coreReady?'CONDITIONAL':'READY',
+        side:winner,
+        entry:entryTrigger,
+        stopLoss,
+        takeProfit:Number(target.toFixed(2)),
+        trigger:winner==='BUY'?'اختراق وثبات أعلى سعر التفعيل':'كسر وثبات أسفل سعر التفعيل',
+        timeframe:'15m',
+        rr:stopLoss!=null&&Math.abs(entryTrigger-stopLoss)>0
+          ?Number((Math.abs(Number(target)-entryTrigger)/Math.abs(entryTrigger-stopLoss)).toFixed(2))
+          :null
+      }:null;
 
       // Do not label a consumed/behind destination as "the next move".
       if(priceNow!=null&&target==null){
@@ -916,7 +960,7 @@ export async function GET(request:Request){
       const armed=Boolean(leadFresh&&marketLead?.armed&&leadSide===winner&&!alreadyMoving);
       const intentArmed=Boolean(intentPreMove&&intentAligned&&!alreadyMoving);
       const building=Boolean(!armed&&!intentArmed&&leadFresh&&leadStage==='BUILDING'&&leadSide===winner&&!alreadyMoving);
-      const status=alreadyMoving?'IN_PROGRESS':armed||intentArmed?'PRE_MOVE':building?'BUILDING':'SHORT_HORIZON';
+      const status=conditionalReady&&!coreReady?'CONDITIONAL_ENTRY':alreadyMoving?'IN_PROGRESS':armed||intentArmed?'PRE_MOVE':building?'BUILDING':'SHORT_HORIZON';
       const leadWindow=marketLead?.windowSeconds;
       const hasLeadWindow=leadFresh&&leadSide===winner&&Number.isFinite(Number(leadWindow?.min))&&Number.isFinite(Number(leadWindow?.max));
       const fallbackWindow={min:120,max:900};
@@ -936,14 +980,14 @@ export async function GET(request:Request){
 
       const sourceParts=rows.filter(r=>r.side===winner).sort((a,b)=>b.weight-a.weight).slice(0,3).map(r=>r.name);
       return {
-        side:winner,confidence,status,target,horizonMinutes:15,h4Context:h4?.ok?{side:h4Side,confidence:h4Confidence,structure:h4.structure,support:h4.support,resistance:h4.resistance,rangePosition:h4.rangePosition}:null,
+        side:winner,confidence,status,target,tradeSetup,conditionalReady,horizonMinutes:15,h4Context:h4?.ok?{side:h4Side,confidence:h4Confidence,structure:h4.structure,support:h4.support,resistance:h4.resistance,rangePosition:h4.rangePosition}:null,
         zone:pathZone?{low:Number(pathZone.low),high:Number(pathZone.high),mid:Number(pathZone.mid)}:null,
         windowSeconds,expiresAt:now+windowSeconds.max*1000,agreement:Math.round(share),support,opposition:oppose,
         priceNow,distancePct:distancePct==null?null:Number(distancePct.toFixed(4)),
         freshness:{leadFresh,leadAgeMs:Number.isFinite(leadAge)?leadAge:null,m5Opposes,h4Opposes,intentOpposes,alreadyMoving},
         confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide},
         adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3))},
-        reason:(alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':intentArmed?'سحب سيولة/امتصاص يسبق الحركة':building?'ضغط مبكر يتكوّن':'ترجيح 15 دقيقة')+' · H4 '+(h4Side==='BUY'?'صاعد':h4Side==='SELL'?'هابط':'محايد')+' · تأكيد أساسي '+coreConfirmations+'/3 · '+sourceParts.join(' + ')
+        reason:(conditionalReady&&!coreReady?'صفقة مشروطة: توافق الفريمات والهيكل موجود لكن تأكيد السيولة الكامل لم يكتمل':alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':intentArmed?'سحب سيولة/امتصاص يسبق الحركة':building?'ضغط مبكر يتكوّن':'ترجيح 15 دقيقة')+' · H4 '+(h4Side==='BUY'?'صاعد':h4Side==='SELL'?'هابط':'محايد')+' · تأكيد أساسي '+coreConfirmations+'/3 · '+sourceParts.join(' + ')
       };
     };
     const stabilizeForwardMove=(asset:'GOLD'|'BTC',candidate:any,pulse:any)=>{
