@@ -1018,13 +1018,19 @@ export async function GET(request:Request){
     const isNarrativeEvent=(e:any)=>/\b(speaks?|speech|remarks?|testif(?:y|ies|ied)|testimony|press conference|minutes|beige book|statement|hearing|panel discussion|interview)\b/i.test(String(e?.name||''));
     const expectsActual=(e:any)=>!isNarrativeEvent(e);
     const eventsSorted=[...(gm.events||[])].sort((a:any,b:any)=>a.time-b.time);
+    const isAssetRelevantEvent=(e:any)=>{
+      const name=String(e?.name||'');
+      if(/API Weekly Statistical Bulletin|crude oil|gasoline|distillate|natural gas storage|EIA petroleum/i.test(name))return false;
+      if(/CPI|PCE|PPI|inflation|price index|nonfarm|payroll|employment|unemployment|jobless|claims|JOLTS|GDP|retail sales|ISM|PMI|consumer confidence|durable goods|industrial production|FOMC|Fed\b|Powell|interest rate|rate decision|Treasury|yield/i.test(name))return true;
+      return Number(e?.importance||0)>=2;
+    };
     const pendingReleased=eventsSorted
-      .filter((e:any)=>expectsActual(e)&&e.time<now&&now-e.time<=releaseGraceMs&&!String(e.actual||'').trim())
+      .filter((e:any)=>isAssetRelevantEvent(e)&&expectsActual(e)&&e.time<now&&now-e.time<=releaseGraceMs&&!String(e.actual||'').trim())
       .sort((a:any,b:any)=>b.time-a.time)[0]||null;
     const liveNarrative=eventsSorted
-      .filter((e:any)=>isNarrativeEvent(e)&&e.time<=now&&now-e.time<=narrativeGraceMs)
+      .filter((e:any)=>isAssetRelevantEvent(e)&&isNarrativeEvent(e)&&e.time<=now&&now-e.time<=narrativeGraceMs)
       .sort((a:any,b:any)=>b.time-a.time)[0]||null;
-    const futureEvents=eventsSorted.filter((e:any)=>e.time>=now);
+    const futureEvents=eventsSorted.filter((e:any)=>e.time>=now&&isAssetRelevantEvent(e));
     const featuredEvent=pendingReleased||liveNarrative||futureEvents[0]||null;
     const featuredNarrative=Boolean(featuredEvent&&isNarrativeEvent(featuredEvent));
     const featuredEventStatus=featuredEvent
