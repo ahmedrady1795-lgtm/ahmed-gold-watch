@@ -685,6 +685,12 @@ export async function GET(request:Request){
       lastDiagLog=now;
       console.info('[AI-DIAG]',JSON.stringify({
         status:autopilot.status,
+        webScout:webIntel?{
+          ok:Boolean(webIntel.ok),cached:Boolean(webIntel.cached),
+          sources:webIntel.sources.map((s:any)=>({id:s.id,ok:Boolean(s.ok),itemCount:Number(s.itemCount||0),error:s.error||null})),
+          gold:{side:webIntel.gold.side,confidence:webIntel.gold.confidence,risk:webIntel.gold.risk,sourceCount:webIntel.gold.sourceCount,freshCount:webIntel.gold.freshCount},
+          btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount}
+        }:null,
         gold:{
           tick:{
             source:String(goldTick?.source||''),
