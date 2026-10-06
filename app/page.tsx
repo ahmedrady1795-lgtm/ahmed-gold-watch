@@ -51,6 +51,8 @@ export default function Home(){
       const add=(p:string,w:WaveLead|null)=>{
         if(!w?.ok||Date.now()-w.at>2500)return;
         q.set(p+'s',w.side);q.set(p+'st',w.stage);q.set(p+'sc',String(w.score));q.set(p+'cf',String(w.confidence));q.set(p+'at',String(w.at));
+        q.set(p+'v1',String(w.velocity1s));q.set(p+'v3',String(w.velocity3s));q.set(p+'ac',String(w.acceleration));
+        q.set(p+'ps',String(w.persistence));q.set(p+'im',String(w.imbalance));q.set(p+'br',String(w.burstRate));q.set(p+'sp',String(w.spreadCompression));
       };
       add('b',fastWaveRef.current.btc);
       add('g',fastWaveRef.current.gold);

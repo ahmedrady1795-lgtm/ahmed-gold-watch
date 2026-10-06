@@ -83,7 +83,17 @@ function AssetCard({x,liveQuote,fast,preMove}:any){
     :path?.priceDestination
       ?calibrated(path.priceDestination.confidence)
       :calibrated(goldCore?.confidence??hunt?.nextMove?.confidence??hunt?.confidence??0);
-  const scalpNext=x.scalp?.nextPrice||x.scalp?.fusionV8?.nextPrice||{};
+  const waveLeadView=fast?.ok?{
+    available:true,armed:false,side:fast.side||'WAIT',
+    stage:fast.stage==='IGNITION'||fast.stage==='WAVE_FORMING'?'RELEASED':fast.stage==='PRE_TRIGGER'||fast.stage==='COILED'?'BUILDING':'OBSERVE',
+    mode:'MICRO_FLOW',
+    score:Number(fast.score||0),confidence:Number(fast.confidence||0),stability:Number(fast.persistence||0),
+    source:x.asset==='GOLD'?'Biquote live WebSocket micro-flow':'Coinbase live WebSocket micro-flow',
+    reason:Array.isArray(fast.reasons)&&fast.reasons.length?fast.reasons.slice(0,3).join(' · '):'قراءة micro-flow لحظية من التسارع والسبريد وتتابع الـticks.',
+    metrics:{bookImbalance:Number(fast.imbalance||0),pressureChange:0,replenishDelta:0,acceleration:Number(fast.acceleration||0),persistence:Number(fast.persistence||0)}
+  }:null;
+  const leadView=preMove?.available?preMove:waveLeadView||preMove;
+    const scalpNext=x.scalp?.nextPrice||x.scalp?.fusionV8?.nextPrice||{};
   const fastScalp=fastScalpProjection(price,fast);
   const scalpSide=fastScalp?.side??(x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:(scalpNext?.side||'WAIT'));
   const scalpPrice=fastScalp?.price??scalpNext?.price??x.scalp?.target?.price??x.scalp?.ambushPlan?.target?.price??hunt?.quickSignalTargets?.oneMinute?.price??null;
@@ -101,24 +111,24 @@ function AssetCard({x,liveQuote,fast,preMove}:any){
 
     <div className="next-move-copy primary-move zone-primary">
       <span>Market Lead AI · قراءة مبكرة قبل الحركة</span>
-      <strong className={preMove?.armed?(preMove.side==='BUY'?'green':'red'):preMove?.stage==='RELEASED'?(preMove.side==='BUY'?'green':'red'):'amber'}>
-        {!preMove?.available
-          ?(x.asset==='GOLD'?'DOM الذهب المباشر غير متاح الآن':'بيانات microstructure غير مكتملة الآن')
-          :preMove.armed
-            ?`مسلّح قبل الحركة: ${moveAr(preMove.side)} · ثقة ${Math.round(Number(preMove.confidence||0))}%`
-            :preMove.stage==='RELEASED'
-              ?`الحركة بدأت: ${moveAr(preMove.side)} · ${Math.round(Number(preMove.confidence||0))}%`
-              :preMove.stage==='BUILDING'
-                ?`ضغط مبكر يتكوّن: ${moveAr(preMove.side)} · ${Math.round(Number(preMove.score||0))}%`
-                :preMove.stage==='REJECTED'
+      <strong className={leadView?.armed?(leadView.side==='BUY'?'green':'red'):leadView?.stage==='RELEASED'?(leadView.side==='BUY'?'green':'red'):'amber'}>
+        {!leadView?.available
+          ?'لا يوجد تدفق حي كافٍ للقراءة المبكرة الآن'
+          :leadView.armed
+            ?`مسلّح قبل الحركة: ${moveAr(leadView.side)} · ثقة ${Math.round(Number(leadView.confidence||0))}%`
+            :leadView.stage==='RELEASED'
+              ?`الحركة بدأت: ${moveAr(leadView.side)} · ${Math.round(Number(leadView.confidence||0))}%`
+              :leadView.stage==='BUILDING'
+                ?`ضغط مبكر يتكوّن: ${moveAr(leadView.side)} · ${Math.round(Number(leadView.score||0))}%`
+                :leadView.stage==='REJECTED'
                   ?'تم رفض الإشارة المبكرة'
                   :'لا توجد قراءة مبكرة ثابتة الآن'}
       </strong>
-      <p>{preMove?.reason||'يتم فحص ضغط السيولة والامتصاص والتجدد قبل تحرك السعر.'}</p>
-      {preMove?.available&&<div className="forecast-scenario-strip">
-        <div><small>ثبات الإشارة</small><b className={Number(preMove.stability||0)>=60?'green':'amber'}>{Math.round(Number(preMove.stability||0))}%</b></div>
-        <div><small>اختلال الدفتر</small><b className={Number(preMove.metrics?.bookImbalance||0)>0?'green':Number(preMove.metrics?.bookImbalance||0)<0?'red':'amber'}>{Number(preMove.metrics?.bookImbalance||0).toFixed(1)}</b></div>
-        <div><small>Replenishment</small><b>{Number(preMove.metrics?.replenishDelta||0).toFixed(1)}</b></div>
+      <p>{leadView?.reason||'يتم فحص microstructure والتسارع قبل تحرك السعر.'}</p>
+      {leadView?.available&&<div className="forecast-scenario-strip">
+        <div><small>ثبات الإشارة</small><b className={Number(leadView.stability||0)>=60?'green':'amber'}>{Math.round(Number(leadView.stability||0))}%</b></div>
+        <div><small>{leadView.mode==='MICRO_FLOW'?'Acceleration':'اختلال الدفتر'}</small><b className={leadView.mode==='MICRO_FLOW'?'amber':Number(leadView.metrics?.bookImbalance||0)>0?'green':Number(leadView.metrics?.bookImbalance||0)<0?'red':'amber'}>{leadView.mode==='MICRO_FLOW'?Number(leadView.metrics?.acceleration||0).toFixed(2):Number(leadView.metrics?.bookImbalance||0).toFixed(1)}</b></div>
+        <div><small>{leadView.mode==='MICRO_FLOW'?'Persistence':'Replenishment'}</small><b>{leadView.mode==='MICRO_FLOW'?Math.round(Number(leadView.metrics?.persistence||0))+'%':Number(leadView.metrics?.replenishDelta||0).toFixed(1)}</b></div>
       </div>}
     </div>
 

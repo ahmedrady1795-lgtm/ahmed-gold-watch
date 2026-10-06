@@ -8,7 +8,7 @@ type LeadFeatures={
   absorptionSide:Side;absorptionScore:number;trapDetected:boolean;hintSide:Side;
 };
 export type MarketLeadSignal={
-  ok:boolean;available:boolean;asset:'GOLD'|'BTC';side:Side;stage:MarketLeadStage;
+  ok:boolean;available:boolean;asset:'GOLD'|'BTC';side:Side;stage:MarketLeadStage;mode:'DOM'|'MICRO_FLOW'|'CROSS_EXCHANGE'|'OFFLINE';
   score:number;confidence:number;armed:boolean;released:boolean;quiet:boolean;
   support:number;opposition:number;stability:number;source:string;sourceAt:number;
   checkedAt:number;ageMs:number;windowSeconds:{min:number;max:number}|null;
@@ -25,9 +25,9 @@ const sideOf=(v:any):Side=>v==='BUY'||v==='SELL'?v:'WAIT';
 const norm=(v:number,scale:number)=>clamp(v/Math.max(.0001,scale),-1.35,1.35);
 const signFor=(s:Side)=>s==='BUY'?1:s==='SELL'?-1:0;
 function offline(asset:'GOLD'|'BTC',source:string,reason:string,now:number):MarketLeadSignal{
-  return {ok:true,available:false,asset,side:'WAIT',stage:'OFFLINE',score:0,confidence:0,armed:false,released:false,quiet:false,support:0,opposition:0,stability:0,source,sourceAt:0,checkedAt:now,ageMs:0,windowSeconds:null,reason,evidence:[],metrics:{bookImbalance:0,pressureChange:0,replenishDelta:0,acceleration:0,flowDelta:0,priceVelocity:0,persistence:0,quality:0}};
+  return {ok:true,available:false,asset,side:'WAIT',stage:'OFFLINE',mode:'OFFLINE',score:0,confidence:0,armed:false,released:false,quiet:false,support:0,opposition:0,stability:0,source,sourceAt:0,checkedAt:now,ageMs:0,windowSeconds:null,reason,evidence:[],metrics:{bookImbalance:0,pressureChange:0,replenishDelta:0,acceleration:0,flowDelta:0,priceVelocity:0,persistence:0,quality:0}};
 }
-function evaluate(asset:'GOLD'|'BTC',f:LeadFeatures,now=Date.now()):MarketLeadSignal{
+function evaluate(asset:'GOLD'|'BTC',f:LeadFeatures,now=Date.now(),mode:'DOM'|'MICRO_FLOW'|'CROSS_EXCHANGE'='DOM'):MarketLeadSignal{
   const state=states[asset],sourceAt=Number(f.sourceAt||0);
   if(!Number.isFinite(sourceAt)||sourceAt<=0||now-sourceAt>8000||Number(f.quality||0)<30){
     const out=offline(asset,f.source,'مصدر القراءة المبكرة غير حديث أو جودته غير كافية.',now);state.signal=out;return out;
@@ -68,18 +68,50 @@ function evaluate(asset:'GOLD'|'BTC',f:LeadFeatures,now=Date.now()):MarketLeadSi
   add(f.trapDetected&&f.absorptionSide===rawSide,'امتصاص/فخ سعري يؤيد الانعكاس المبكر');
   add(quiet&&rawSide!=='WAIT','السعر ما زال هادئًا نسبيًا');
   const reason=stage==='ARMED'?'ضغط خفي ثابت قبل الحركة: '+evidence.slice(0,4).join(' · '):stage==='BUILDING'?'إشارة مبكرة تتكوّن لكنها لم تثبت بالكامل: '+evidence.slice(0,3).join(' · '):stage==='RELEASED'?'الحركة بدأت بالفعل؛ تم تحويل الإشارة من توقع مبكر إلى متابعة.':stage==='REJECTED'?'السعر تحرك عكس الضغط المبكر؛ تم رفض الإشارة.':'لا يوجد ضغط سابق للحركة قوي ومستقر بما يكفي الآن.';
-  const out:MarketLeadSignal={ok:true,available:true,asset,side:rawSide,stage,score,confidence,armed,released,quiet,support,opposition,stability,source:f.source,sourceAt,checkedAt:now,ageMs:Math.max(0,now-sourceAt),windowSeconds:armed?{min:2,max:20}:building?{min:3,max:30}:null,reason,evidence:evidence.slice(0,5),metrics:{bookImbalance:Number(f.bookImbalance.toFixed(2)),pressureChange:Number(f.pressureChange.toFixed(2)),replenishDelta:Number(f.replenishDelta.toFixed(2)),acceleration:Number(f.acceleration.toFixed(4)),flowDelta:Number(f.flowDelta.toFixed(2)),priceVelocity:Number(f.priceVelocity.toFixed(4)),persistence:Math.round(f.persistence),quality:Math.round(f.quality)}};
+  const out:MarketLeadSignal={ok:true,available:true,asset,side:rawSide,stage,mode,score,confidence,armed,released,quiet,support,opposition,stability,source:f.source,sourceAt,checkedAt:now,ageMs:Math.max(0,now-sourceAt),windowSeconds:armed?{min:2,max:20}:building?{min:3,max:30}:null,reason,evidence:evidence.slice(0,5),metrics:{bookImbalance:Number(f.bookImbalance.toFixed(2)),pressureChange:Number(f.pressureChange.toFixed(2)),replenishDelta:Number(f.replenishDelta.toFixed(2)),acceleration:Number(f.acceleration.toFixed(4)),flowDelta:Number(f.flowDelta.toFixed(2)),priceVelocity:Number(f.priceVelocity.toFixed(4)),persistence:Math.round(f.persistence),quality:Math.round(f.quality)}};
   state.signal=out;return out;
 }
-export function updateGoldMarketLead(fast:any,now=Date.now()):MarketLeadSignal{
-  if(!fast?.ok)return offline('GOLD','Exness/MT5 DOM','DOM الذهب غير متاح الآن؛ Biquote يظل مصدر السيولة الأساسية.',now);
-  const side=sideOf(fast.side);
-  return evaluate('GOLD',{source:'Exness/MT5 DOM · Market Lead AI',sourceAt:Number(fast.receivedAt||fast.at||now),quality:Math.max(Number(fast.confidence||0),Number(fast.score||0)),price:Number.isFinite(Number(fast.price))?Number(fast.price):null,bookImbalance:Number(fast.bookImbalance||0),pressureChange:Number(fast.pressureChange||0),replenishDelta:Number(fast.replenishDelta||0),acceleration:Number(fast.acceleration||0),flowDelta:(side==='BUY'?1:side==='SELL'?-1:0)*Math.max(0,Number(fast.persistence||0)-50)*.55,priceVelocity:Number(fast.velocity15s||fast.velocity1s||0),persistence:Number(fast.persistence||0),absorptionSide:'WAIT',absorptionScore:0,trapDetected:false,hintSide:side},now);
+export function updateGoldMarketLead(fast:any,now=Date.now(),wave:any=null):MarketLeadSignal{
+  if(fast?.ok){
+    const side=sideOf(fast.side);
+    return evaluate('GOLD',{
+      source:'Exness/MT5 DOM · Market Lead AI',
+      sourceAt:Number(fast.receivedAt||fast.at||now),
+      quality:Math.max(Number(fast.confidence||0),Number(fast.score||0)),
+      price:Number.isFinite(Number(fast.price))?Number(fast.price):null,
+      bookImbalance:Number(fast.bookImbalance||0),
+      pressureChange:Number(fast.pressureChange||0),
+      replenishDelta:Number(fast.replenishDelta||0),
+      acceleration:Number(fast.acceleration||0),
+      flowDelta:(side==='BUY'?1:side==='SELL'?-1:0)*Math.max(0,Number(fast.persistence||0)-50)*.55,
+      priceVelocity:Number(fast.velocity15s||fast.velocity1s||0),
+      persistence:Number(fast.persistence||0),
+      absorptionSide:'WAIT',absorptionScore:0,trapDetected:false,hintSide:side
+    },now,'DOM');
+  }
+  if(wave?.ok&&Number(wave?.at||0)>0&&now-Number(wave.at)<=4500){
+    const side=sideOf(wave.side),dir=side==='BUY'?1:side==='SELL'?-1:0;
+    return evaluate('GOLD',{
+      source:'Biquote live WebSocket micro-flow · Market Lead AI',
+      sourceAt:Number(wave.at),
+      quality:Math.max(Number(wave.confidence||0),Number(wave.score||0)),
+      price:null,
+      bookImbalance:Number(wave.imbalance||wave.bboImbalance||0),
+      pressureChange:0,
+      replenishDelta:0,
+      acceleration:Number(wave.acceleration||0),
+      flowDelta:dir*Math.max(0,Number(wave.persistence||0)-50),
+      priceVelocity:Number(wave.velocity1s||0),
+      persistence:Number(wave.persistence||0),
+      absorptionSide:'WAIT',absorptionScore:0,trapDetected:false,hintSide:side
+    },now,'MICRO_FLOW');
+  }
+  return offline('GOLD','Live gold microstructure','لا يوجد DOM أو Biquote micro-flow حديث الآن.',now);
 }
 export function updateBtcMarketLead(liq:any,now=Date.now()):MarketLeadSignal{
   if(!liq?.ok&&Number(liq?.quality||0)<45)return offline('BTC','Coinbase · Kraken · OKX microstructure','سيولة BTC غير مكتملة بما يكفي للقراءة المبكرة.',now);
   const replenish=Number(liq?.dynamics?.bidDepthChangePct||0)-Number(liq?.dynamics?.askDepthChangePct||0);
-  return evaluate('BTC',{source:'Coinbase · Kraken · OKX · Market Lead AI',sourceAt:Number(liq?.checkedAt||now),quality:Number(liq?.quality||0),price:Number.isFinite(Number(liq?.book?.microprice))?Number(liq.book.microprice):null,bookImbalance:Number(liq?.book?.weightedImbalance||liq?.book?.depthImbalance||0),pressureChange:Number(liq?.dynamics?.pressureChange||0),replenishDelta:replenish,acceleration:Number(liq?.dynamics?.acceleration||0),flowDelta:Number(liq?.flow?.deltaPct||0),priceVelocity:Number(liq?.flow?.priceChangeBps||0),persistence:Math.min(100,Math.abs(Number(liq?.flow?.deltaPct||0))*1.4),absorptionSide:sideOf(liq?.absorption?.side),absorptionScore:Number(liq?.absorption?.score||0),trapDetected:Boolean(liq?.absorption?.trapDetected),hintSide:sideOf(liq?.side)},now);
+  return evaluate('BTC',{source:'Coinbase · Kraken · OKX · Market Lead AI',sourceAt:Number(liq?.checkedAt||now),quality:Number(liq?.quality||0),price:Number.isFinite(Number(liq?.book?.microprice))?Number(liq.book.microprice):null,bookImbalance:Number(liq?.book?.weightedImbalance||liq?.book?.depthImbalance||0),pressureChange:Number(liq?.dynamics?.pressureChange||0),replenishDelta:replenish,acceleration:Number(liq?.dynamics?.acceleration||0),flowDelta:Number(liq?.flow?.deltaPct||0),priceVelocity:Number(liq?.flow?.priceChangeBps||0),persistence:Math.min(100,Math.abs(Number(liq?.flow?.deltaPct||0))*1.4),absorptionSide:sideOf(liq?.absorption?.side),absorptionScore:Number(liq?.absorption?.score||0),trapDetected:Boolean(liq?.absorption?.trapDetected),hintSide:sideOf(liq?.side)},now,'CROSS_EXCHANGE');
 }
 export function getMarketLead(asset:'GOLD'|'BTC',now=Date.now()):MarketLeadSignal|null{
   const s=states[asset].signal;if(!s)return null;

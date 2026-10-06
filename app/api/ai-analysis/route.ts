@@ -285,7 +285,14 @@ function buildRecommendation(master:any,hunt:any,price:number|null,now:number,ne
 function waveFromParams(url:URL,prefix:'b'|'g',now:number){
   const side=url.searchParams.get(prefix+'s'),stage=url.searchParams.get(prefix+'st'),score=Number(url.searchParams.get(prefix+'sc')),confidence=Number(url.searchParams.get(prefix+'cf')),at=Number(url.searchParams.get(prefix+'at'));
   if(!['BUY','SELL','WAIT'].includes(String(side))||!['WARMING','COILED','PRE_TRIGGER','WAVE_FORMING','IGNITION'].includes(String(stage))||!Number.isFinite(score)||!Number.isFinite(confidence)||!Number.isFinite(at)||score<0||score>92||confidence<0||confidence>88||now-at<0||now-at>3500)return null;
-  return {ok:true,side,stage,score,confidence,at,source:'browser live WebSocket'};
+  const finite=(k:string,min=-1000,max=1000)=>{const v=Number(url.searchParams.get(prefix+k));return Number.isFinite(v)&&v>=min&&v<=max?v:0;};
+  return {
+    ok:true,side,stage,score,confidence,at,
+    velocity1s:finite('v1',-100,100),velocity3s:finite('v3',-200,200),
+    acceleration:finite('ac',-100,100),persistence:finite('ps',0,100),
+    imbalance:finite('im',-100,100),burstRate:finite('br',0,50),spreadCompression:finite('sp',-100,100),
+    source:'browser live WebSocket'
+  };
 }
 function goldLiveFromParams(url:URL,external:any,candlePrice:any,now:number){
   const price=Number(url.searchParams.get('gp')),bid=Number(url.searchParams.get('gb')),ask=Number(url.searchParams.get('ga'));
@@ -520,7 +527,7 @@ export async function GET(request:Request){
     const neuralPredictionPromise=getNeuralPrediction(now).catch(()=>({ok:false,status:'UNAVAILABLE',ready:false,side:'WAIT'} as any));
     const bitcoinMlRaw=await mlPredictionPromise;
     const bitcoinTick=getServerTickSignal('BTC',now)||btcWave;
-    const goldMarketLead=updateGoldMarketLead(mt5GoldTick,now);
+    const goldMarketLead=updateGoldMarketLead(mt5GoldTick,now,goldWave||goldTick);
     const bitcoinMarketLead=updateBtcMarketLead(liquidity,now);
     const goldScalp=applyMarketLeadToScalp(
       buildScalpFusion(goldScalpRaw,goldLiquidity,goldMotion,goldLearner,null,goldPrice,goldAtr,goldScalpPrior,goldTick,goldAccumulation,'GOLD'),
@@ -698,6 +705,7 @@ export async function GET(request:Request){
         available:Boolean(marketLead.available),
         side:marketLead.side||'WAIT',
         stage:marketLead.stage||'OBSERVE',
+        mode:marketLead.mode||'OFFLINE',
         score:Number(marketLead.score||0),
         confidence:Number(marketLead.confidence||0),
         armed:Boolean(marketLead.armed),
