@@ -310,7 +310,7 @@ export function recordStructuralPathOutcome(args:{
   if(confidence<28||sideProbability<53||probabilityGap<6)return {...summary(args.asset),recorded:false,reason:'candidate_too_ambiguous'};
   const a=ensure(args.asset),distanceAtr=Math.abs(Number(d.mid??((low+high)/2))-price)/Math.max(1e-9,atr||price*.001);
   const targetKind=String(d.kind||'UNKNOWN');
-  const liquidityGap=Math.abs(Number(source?.evidence?.liquidity?.gap??pf?.evidence?.liquidity?.gap||0));
+  const liquidityGap=Math.abs(Number((source?.evidence?.liquidity?.gap??pf?.evidence?.liquidity?.gap)??0));
   const conviction=String(source?.conviction||pf?.conviction||'WEAK');
   const phase=String(source?.phase||args.phase||pf.phase||'NEUTRAL');
   const signature=String(source?.signature||signatureOf({side,phase,targetKind,distanceAtr,liquidityGap,conviction}));
