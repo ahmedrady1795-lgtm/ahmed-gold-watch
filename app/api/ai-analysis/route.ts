@@ -1478,7 +1478,7 @@ export async function GET(request:Request){
         eventType:isNarrativeEvent(e)?'NARRATIVE':'NUMERIC'
       }));
 
-    const payload={
+    const payload:any={
       ok:true,
       model:'Predator AI Lite',
       checkedAt:now,
@@ -1493,6 +1493,54 @@ export async function GET(request:Request){
       gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation,goldH4,goldIntent),
       bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity,bitcoinStructure,bitcoinAccumulation,bitcoinH4,bitcoinIntent)
     };
+
+    const compact15Validation=(v:any)=>v?{
+      global:v.global||null,
+      pending:Number(v.pending||0),
+      learningSamples:Number(v.learningSamples||0),
+      readyForLearning:Boolean(v.readyForLearning),
+      recent:Array.isArray(v.recent)?v.recent.slice(0,5).map((r:any)=>({
+        at:r.at,settledAt:r.settledAt,side:r.side,outcome:r.outcome,seconds:r.seconds,mfeBps:r.mfeBps,maeBps:r.maeBps,horizonLabel:r.horizonLabel
+      })):[],
+      walkForward:v.walkForward?{
+        status:v.walkForward.status||'COLLECTING',
+        ready:Boolean(v.walkForward.ready),
+        directional:Number(v.walkForward.directional||0),
+        oos:v.walkForward.oos?{n:Number(v.walkForward.oos.n||0),accuracy:v.walkForward.oos.accuracy,coverage:v.walkForward.oos.coverage}:null,
+        drift:v.walkForward.drift?{status:v.walkForward.drift.status||'COLLECTING',recentAccuracy:v.walkForward.drift.recentAccuracy,delta:v.walkForward.drift.delta}:null
+      }:null
+    }:null;
+
+    const recordForward15=(asset:'GOLD'|'BTC',node:any,price:any,atr:any,intent:any,h4:any)=>{
+      const fm=node?.forwardMove||{};
+      const s=fm?.side==='BUY'||fm?.side==='SELL'?fm.side:'WAIT';
+      const source=intent?.preMove&&intent?.side===s?'MARKET_MAKER_INTENT_15M':'H4_FORWARD_15M';
+      return recordNextMoveOutcome({
+        asset:asset+'_FORWARD_15M',price:Number(price),atr:Number(atr),now,
+        hunt:{nextMove:{
+          side:s,confidence:Number(fm?.confidence||0),source,
+          micro:{
+            intentPhase:String(intent?.phase||'NEUTRAL'),
+            liquidityTaken:String(intent?.liquidityTaken||'NONE'),
+            h4Alignment:String(intent?.h4Alignment||'NEUTRAL'),
+            intentPreMove:Boolean(intent?.preMove),
+            intentConfidence:Number(intent?.confidence||0)
+          }
+        }},
+        regime:'H4_'+String(h4?.side||'WAIT')+'__'+String(intent?.phase||'NEUTRAL'),
+        horizonMs:15*60*1000,horizonLabel:'M15_FORWARD',
+        targetPrice:Number.isFinite(Number(fm?.target))?Number(fm.target):null,
+        stopPrice:Number.isFinite(Number(node?.huntForecast?.invalidation))?Number(node.huntForecast.invalidation):null,
+        minRecordIntervalMs:3*60*1000,
+        barrierScale:.55,minBarrierBps:asset==='GOLD'?2.5:7,maxBarrierBps:asset==='GOLD'?18:35
+      });
+    };
+
+    const gold15Validation=recordForward15('GOLD',payload.gold,goldLearningPrice,goldAtr,goldIntent,goldH4);
+    const bitcoin15Validation=recordForward15('BTC',payload.bitcoin,btcPrice,btcAtr,bitcoinIntent,bitcoinH4);
+    payload.gold.forecastValidation15m=compact15Validation(gold15Validation);
+    payload.bitcoin.forecastValidation15m=compact15Validation(bitcoin15Validation);
+
     lastAiPayload=payload;lastAiPayloadAt=Date.now();
     return Response.json(payload,{headers:{'Cache-Control':'no-store','X-AI-Cache':'miss'}});
   }catch(e){
