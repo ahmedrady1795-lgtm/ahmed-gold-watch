@@ -77,9 +77,19 @@ function AssetCard({x,liveQuote,fast}:any){
   const forwardZone=forward?.zone||null;
   const forwardTarget=Number.isFinite(Number(forward?.target))?Number(forward.target):null;
   const forwardWindow=forward?.windowSeconds?(`${forward.windowSeconds.min}–${forward.windowSeconds.max} ث`):'—';
+  const forwardStatus=String(forward?.status||'WAIT');
+  const forwardHeadline=forwardSide==='WAIT'
+    ?'انتظار قراءة أمامية أوضح'
+    :forwardStatus==='PRE_MOVE'
+      ?`قبل الحركة: ${moveAr(forwardSide)}`
+      :forwardStatus==='BUILDING'
+        ?`إشارة مبكرة تتكوّن: ${moveAr(forwardSide)}`
+        :forwardStatus==='IN_PROGRESS'
+          ?`الحركة بدأت: ${moveAr(forwardSide)} نحو الهدف`
+          :`الحركة القادمة: ${moveAr(forwardSide)}`;
   return <section className={"panel ai-asset-card compact-asset "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
-      <div><span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span><h2>{forwardSide==='BUY'?'التحرك القادم: صعود':forwardSide==='SELL'?'التحرك القادم: هبوط':'انتظار قراءة أمامية أوضح'}</h2></div>
+      <div><span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span><h2>{forwardHeadline}</h2></div>
       {forwardSide==='BUY'?<TrendingUp/>:forwardSide==='SELL'?<TrendingDown/>:<Activity/>}
     </div>
 
@@ -98,10 +108,11 @@ function AssetCard({x,liveQuote,fast}:any){
       </strong>
       <div className="forecast-scenario-strip">
         <div><small>الوجهة</small><b>{forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):priceDestination?zoneRange(priceDestination):'—'}</b></div>
-        <div><small>الزمن</small><b>{forwardSide!=='WAIT'?forwardWindow:'—'}</b></div>
+        <div><small>نافذة التحرك</small><b>{forwardSide!=='WAIT'?forwardWindow:'—'}</b></div>
         <div><small>الارتداد</small><b>{zoneRange(path?.reboundZone||zone?.origin)}</b></div>
         <div><small>السيولة</small><b>{zoneRange(path?.destination||zone?.target)}</b></div>
       </div>
+      {forward?.reason&&<small className="muted">{forward.reason}</small>}
     </div>
 
     <div className="forecast-horizons decision-horizons direction-only">
