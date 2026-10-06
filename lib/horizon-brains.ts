@@ -26,7 +26,15 @@ function family(rows:Evidence[]){
 }
 function resolve(groups:Record<string,Evidence[]>,gate:number,minFamilies=2):HorizonBrain{
   const families:Record<string,{side:Side;score:number}>={};
-  for(const [name,rows] of Object.entries(groups))families[name]=family(rows);
+  for(const [name,rows] of Object.entries(groups)){
+    const voted=family(rows);
+    if(name==='LIQUIDITY'&&voted.side==='WAIT'){
+      const valid=rows.filter(x=>x.score>=18&&x.weight>0);
+      const w=valid.reduce((n,x)=>n+x.weight,0);
+      const neutral=w>0?Math.round(cap(valid.reduce((n,x)=>n+x.score*x.weight,0)/w*.72,18,68)):0;
+      families[name]={side:'WAIT',score:neutral};
+    }else families[name]=voted;
+  }
   const active=Object.values(families).filter(x=>x.side!=='WAIT'&&x.score>=18);
   if(!active.length)return {side:'WAIT',confidence:0,buyShare:50,sellShare:50,agreement:50,uncertainty:100,independentFamilies:0,familyOpposition:0,families};
   let buy=0,sell=0;
