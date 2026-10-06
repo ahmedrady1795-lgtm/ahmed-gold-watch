@@ -70,6 +70,7 @@ function buildMovementStations(args:{price:number;atr:number;now:number;first:nu
   });
 }
 function buildZoneForecast(args:{
+  asset?:'GOLD'|'BTC';
   price:number;atr:number;side:Side;confidence:number;accumulation:any;
   m1Side?:Side;m1Strength?:number;m5Side?:Side;m5Strength?:number;
   mlSide?:Side;mlStrength?:number;learnedSide?:Side;learnedStrength?:number;
@@ -249,7 +250,7 @@ function buildZoneForecast(args:{
     ?zoneObj(nearestLower,'LOWER_MICRO_SWEEP')
     :null;
 
-  const syntheticLevel=(level:number,kind:string,zoneSide:Side)=> {
+  const syntheticLevel=(level:number,kind:string,zoneSide:Side,source='STRUCTURAL_CANDLES')=> {
     if(!Number.isFinite(level)||level<=0)return null;
     const pad=Math.max(a*.08,p*.00008);
     return {
@@ -257,20 +258,34 @@ function buildZoneForecast(args:{
       low:Number((level-pad).toFixed(2)),
       high:Number((level+pad).toFixed(2)),
       mid:Number(level.toFixed(2)),
-      strength:Math.round(cap(readiness*.72+Number(acc?.strongMoveScore||0)*.28,0,88)),
+      strength:Math.round(cap(readiness*.72+Number(acc?.strongMoveScore||0)*.28,34,88)),
       touches:0,rejections:0,
       distanceAtr:Number((Math.abs(level-p)/a).toFixed(2)),
       kind,
-      liquidityScore:Number(acc?.liquidityConfirmed)?75:45,
-      reason:kind.includes('UPPER')?'سيولة أعلى النطاق/منطقة كسر محتملة':'سيولة أسفل النطاق/منطقة كسر محتملة'
+      source,
+      liquidityScore:Number(acc?.liquidityConfirmed)?75:42,
+      reason:source.includes('Biquote')
+        ?(kind.includes('UPPER')?'سيولة علوية مقدرة من هيكل شموع Biquote':'سيولة سفلية مقدرة من هيكل شموع Biquote')
+        :(kind.includes('UPPER')?'سيولة أعلى النطاق/منطقة كسر محتملة':'سيولة أسفل النطاق/منطقة كسر محتملة')
     };
   };
   const upperBoundary=Number(acc?.breakoutLevel),lowerBoundary=Number(acc?.breakdownLevel);
-  const upperFallback=!upperLiquidity&&Number.isFinite(upperBoundary)&&upperBoundary>p
-    ?syntheticLevel(upperBoundary,readiness>=60?'UPPER_BREAKOUT_LIQUIDITY':'UPPER_RANGE_LIQUIDITY','SELL')
+  const goldSingleSource=args.asset==='GOLD';
+  const goldUpperLevel=Number.isFinite(upperBoundary)&&upperBoundary>p?upperBoundary:p+a*.82;
+  const goldLowerLevel=Number.isFinite(lowerBoundary)&&lowerBoundary<p?lowerBoundary:Math.max(p-a*.82,p*.995);
+  const upperFallback=!upperLiquidity
+    ?goldSingleSource
+      ?syntheticLevel(goldUpperLevel,'UPPER_BIQUOTE_CANDLE_LIQUIDITY','SELL','Biquote XAU/USD candles')
+      :Number.isFinite(upperBoundary)&&upperBoundary>p
+        ?syntheticLevel(upperBoundary,readiness>=60?'UPPER_BREAKOUT_LIQUIDITY':'UPPER_RANGE_LIQUIDITY','SELL')
+        :null
     :null;
-  const lowerFallback=!lowerLiquidity&&Number.isFinite(lowerBoundary)&&lowerBoundary<p
-    ?syntheticLevel(lowerBoundary,readiness>=60?'LOWER_BREAKDOWN_LIQUIDITY':'LOWER_RANGE_LIQUIDITY','BUY')
+  const lowerFallback=!lowerLiquidity
+    ?goldSingleSource
+      ?syntheticLevel(goldLowerLevel,'LOWER_BIQUOTE_CANDLE_LIQUIDITY','BUY','Biquote XAU/USD candles')
+      :Number.isFinite(lowerBoundary)&&lowerBoundary<p
+        ?syntheticLevel(lowerBoundary,readiness>=60?'LOWER_BREAKDOWN_LIQUIDITY':'LOWER_RANGE_LIQUIDITY','BUY')
+        :null
     :null;
   const upperDestination=upperLiquidity||upperFallback;
   const lowerDestination=lowerLiquidity||lowerFallback;
@@ -530,7 +545,16 @@ function buildZoneForecast(args:{
       learned:{side:learnedSide,strength:learnedStrength,used:learnedStrength>=48},
       graph:{side:graphSide,strength:graphStrength,used:graphStrength>=50},
       accumulation:{side:accSide,readiness},
-      liquidity:{driver:'LIQUIDITY_FIRST',side:liquiditySide,upperAttraction:Number(upperAttraction.toFixed(1)),lowerAttraction:Number(lowerAttraction.toFixed(1)),gap:Number(liquidityGap.toFixed(1)),structuralGap:Number(structuralGap.toFixed(1))},
+      liquidity:{
+        driver:'LIQUIDITY_FIRST',
+        source:goldSingleSource?'Biquote XAU/USD candles':'STRUCTURAL_CANDLES',
+        singleSource:goldSingleSource,
+        side:liquiditySide,
+        upperAttraction:Number(upperAttraction.toFixed(1)),
+        lowerAttraction:Number(lowerAttraction.toFixed(1)),
+        gap:Number(liquidityGap.toFixed(1)),
+        structuralGap:Number(structuralGap.toFixed(1))
+      },
       precisionGuard
     },
     upScore:Number(upScore.toFixed(1)),
@@ -1495,6 +1519,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     accumulation,primary:shortSide,follow:followSide
   }):[];
   const rawZoneForecastBase=validPrice?buildZoneForecast({
+    asset,
     price:p,atr:a,side:primaryMoveSide!=='WAIT'?primaryMoveSide:stableSide,
     confidence:primaryMoveConfidence,accumulation,
     m1Side:oneMinute.side,m1Strength:Number(oneMinute.strength||0),

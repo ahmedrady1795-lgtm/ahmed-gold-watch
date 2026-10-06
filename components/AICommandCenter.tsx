@@ -135,7 +135,7 @@ function AssetCard({x,liveQuote,fast}:any){
         <div><small>نوع الهدف</small><b>{path.priceDestination.projected?'توقع سعري':'سيولة/هيكل'}</b></div>
       </div>}
       {path?.evidence?.liquidity&&<div className="forecast-scenario-strip">
-        <div><small>محرك التوقع</small><b>سيولة + هيكل</b></div>
+        <div><small>مصدر السيولة</small><b>{x.asset==='GOLD'?'Biquote XAU/USD':(path.evidence.liquidity.source||'سيولة + هيكل')}</b></div>
         <div><small>جذب السيولة أعلى</small><b className="green">{Math.round(Number(path.evidence.liquidity.upperAttraction||0))}</b></div>
         <div><small>جذب السيولة أسفل</small><b className="red">{Math.round(Number(path.evidence.liquidity.lowerAttraction||0))}</b></div>
       </div>}

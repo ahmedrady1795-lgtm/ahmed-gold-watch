@@ -82,78 +82,91 @@ function alignGoldMarketToAnchor(market:any,anchorPrice:number|null){
 
 function candleLiquidityProxy(c1:any[],price:number|null){
   const rows=(Array.isArray(c1)?c1:[]).slice(-14);
-  if(rows.length<5)return {pressure:0,quality:0,side:'WAIT' as const,volumeScore:0};
-  let signed=0,totalVol=0,volSeen=0;
+  if(rows.length<5)return {pressure:0,quality:0,side:'WAIT' as const,volumeScore:0,flow:0,momentum:0,valid:false};
+  let signed=0,totalVol=0,volSeen=0,validBars=0;
   for(const c of rows){
     const o=Number(c?.open),h=Number(c?.high),l=Number(c?.low),cl=Number(c?.close);
     if(![o,h,l,cl].every(Number.isFinite)||h<=l)continue;
+    validBars++;
     const vol=Math.max(1,Number(c?.realVolume||c?.tickVolume||1));
     const body=(cl-o)/(h-l);
     signed+=body*vol;totalVol+=vol;if(Number(c?.realVolume||c?.tickVolume)>0)volSeen++;
   }
-  const last=Number(rows.at(-1)?.close),old=Number(rows.at(-5)?.close),p=Number(price||last);
+  if(validBars<5)return {pressure:0,quality:0,side:'WAIT' as const,volumeScore:0,flow:0,momentum:0,valid:false};
+  const last=Number(rows.at(-1)?.close),old=Number(rows.at(-5)?.close);
   const flow=totalVol>0?signed/totalVol*100:0;
   const momentum=Number.isFinite(last)&&Number.isFinite(old)&&old>0?(last-old)/old*10000:0;
   const pressure=Math.max(-44,Math.min(44,flow*.72+momentum*1.7));
-  const quality=Math.round(Math.max(32,Math.min(64,38+Math.min(12,rows.length)+Math.min(14,volSeen*2))));
+  const quality=Math.round(Math.max(48,Math.min(72,44+Math.min(12,validBars)+Math.min(16,volSeen*2))));
   const side=pressure>=6?'BUY':pressure<=-6?'SELL':'WAIT';
-  const volumeScore=Math.round(Math.max(18,Math.min(70,Math.abs(flow)*.55+quality*.55)));
-  return {pressure:Number(pressure.toFixed(1)),quality,side,volumeScore};
+  const volumeScore=Math.round(Math.max(22,Math.min(74,Math.abs(flow)*.55+quality*.55)));
+  return {
+    pressure:Number(pressure.toFixed(1)),quality,side,volumeScore,
+    flow:Number(flow.toFixed(1)),momentum:Number(momentum.toFixed(2)),valid:true
+  };
 }
-function stabilizeGoldLiquidity(raw:any,c1:any[],price:number|null,now=Date.now()){
+function stabilizeGoldLiquidity(_raw:any,c1:any[],price:number|null,now=Date.now()){
   const proxy=candleLiquidityProxy(c1,price);
-  const rawPressure=Number(raw?.pressure||0);
-  const rawQuality=Math.max(0,Math.min(100,Number(raw?.quality||0)));
-  const rawDirectional=raw?.side==='BUY'||raw?.side==='SELL';
-  const proxyDirectional=proxy.side==='BUY'||proxy.side==='SELL';
-  let target=rawPressure;
-  let source=String(raw?.source||'Gold liquidity');
-  let mode=String(raw?.mode||'QUOTE_FLOW');
-  if(!rawDirectional||Math.abs(rawPressure)<7){
-    target=rawPressure*.38+proxy.pressure*.62;
-    source+=' · Biquote candle-volume proxy · public spot fallback chain';
-    mode=mode==='DOM'?'DOM':'STABLE_QUOTE_FLOW';
-  }else if(proxyDirectional&&proxy.side===raw.side){
-    target=rawPressure*.78+proxy.pressure*.22;
-  }
   const prev=stableGoldLiquidityState;
   const age=prev?Math.max(0,now-prev.at):Infinity;
-  let pressure=target;
-  if(prev&&age<90000){
-    const alpha=String(raw?.mode)==='DOM'?.56:rawDirectional?.36:.24;
-    pressure=prev.pressure*(1-alpha)+target*alpha;
-    const opposite=prev.side!=='WAIT'&&Math.sign(pressure)!==Math.sign(prev.pressure);
-    if(opposite&&Math.abs(pressure)<12)pressure=prev.pressure*.58;
-    if(Math.abs(target)<4&&Math.abs(prev.pressure)>=7)pressure=prev.pressure*Math.max(.35,1-age/110000);
+  const holdMs=5*60*1000;
+  let pressure=0,quality=48,heldLastGood=false;
+
+  if(proxy.valid){
+    const target=Number(proxy.pressure||0);
+    pressure=target;
+    if(prev&&age<holdMs){
+      const alpha=.42;
+      pressure=prev.pressure*(1-alpha)+target*alpha;
+      if(Math.abs(target)<3&&Math.abs(prev.pressure)>=6)pressure=prev.pressure*.82+target*.18;
+      const flipsSign=Math.sign(prev.pressure)!==0&&Math.sign(target)!==0&&Math.sign(prev.pressure)!==Math.sign(target);
+      if(flipsSign&&Math.abs(target)<10)pressure=prev.pressure*.64+target*.36;
+    }
+    quality=Math.max(55,Number(proxy.quality||0));
+  }else if(prev&&age<holdMs){
+    pressure=prev.pressure;
+    quality=Math.max(50,prev.quality-Math.floor(age/60000)*2);
+    heldLastGood=true;
   }
-  pressure=Math.max(-88,Math.min(88,pressure));
+
+  pressure=Math.max(-72,Math.min(72,pressure));
   const side=pressure>=6?'BUY':pressure<=-6?'SELL':'WAIT';
-  const quality=Math.round(Math.max(rawQuality,Math.min(68,proxy.quality+(proxyDirectional?5:0)),side==='WAIT'?42:48));
-  const buy=Math.round(Math.max(8,Math.min(92,50+pressure/2))),sell=100-buy;
-  if(side!=='WAIT'){
-    stableGoldLiquidityState={at:now,pressure,quality,side};
-  }else if(prev&&age<90000){
-    // Keep the original directional timestamp so old liquidity naturally expires.
-    stableGoldLiquidityState={...prev,pressure,quality,side:'WAIT'};
-  }else{
-    stableGoldLiquidityState=null;
+  const buy=Math.round(Math.max(12,Math.min(88,50+pressure/2))),sell=100-buy;
+  const stableSide=(side==='BUY'||side==='SELL')?side:(prev&&age<holdMs?prev.side:'WAIT');
+  if(proxy.valid){
+    stableGoldLiquidityState={at:now,pressure,quality,side:stableSide};
+  }else if(prev&&age<holdMs){
+    stableGoldLiquidityState=prev;
   }
+
   return {
-    ...raw,
-    ok:Boolean(raw?.ok||quality>=42),
-    mode,
-    source,
+    ok:Boolean(proxy.valid||prev&&age<holdMs),
+    mode:'BIQUOTE_CANDLE_FLOW',
+    source:'Biquote · XAU/USD candle-volume',
     checkedAt:now,
     quality,
     side,
     buy,
     sell,
-    strength:Math.max(buy,sell,proxy.volumeScore),
+    strength:Math.max(50,buy,sell,Number(proxy.volumeScore||0)),
     pressure:Number(pressure.toFixed(1)),
     stable:true,
+    singleSource:true,
+    heldLastGood,
     proxy:{side:proxy.side,pressure:proxy.pressure,quality:proxy.quality,volumeScore:proxy.volumeScore},
-    lastKnownGoodAgeMs:prev&&age<90000?age:null,
-    warnings:Array.from(new Set([...(Array.isArray(raw?.warnings)?raw.warnings:[]),String(raw?.mode)==='DOM'?null:'Stable quote-flow uses Biquote candle volume; public spot providers remain fallback sources'].filter(Boolean)))
+    lastKnownGoodAgeMs:prev&&age<holdMs?age:null,
+    book:{
+      bestBid:null,bestAsk:null,spreadBps:0,bboImbalance:0,depthImbalance:0,
+      weightedImbalance:0,microprice:null,microEdge:0,bidDepthUsd:0,askDepthUsd:0,
+      bidWall:1,askWall:1,wallSide:'WAIT'
+    },
+    flow:{
+      tradeCount:0,buyVolume:0,sellVolume:0,deltaVolume:0,
+      deltaPct:Number(proxy.flow||0),priceChangeBps:Number(proxy.momentum||0),cvdSide:side
+    },
+    dynamics:{pressureChange:0,bidDepthChangePct:0,askDepthChangePct:0,acceleration:0},
+    absorption:{side:'WAIT',score:0,reason:'Biquote single-source candle flow',trapDetected:false,followThrough:false},
+    warnings:heldLastGood?['Biquote candle update delayed briefly; holding last valid liquidity reading']:[],
   };
 }
 
