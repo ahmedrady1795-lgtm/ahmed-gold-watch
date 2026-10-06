@@ -804,7 +804,7 @@ export async function GET(request:Request){
         reason:(alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':building?'ضغط مبكر يتكوّن':'تفوق قصير المدى')+' · '+sourceParts.join(' + ')
       };
     };
-    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any)=>({
+    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any)=>({
       asset,
       forwardMove:buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse),
       liquidity:liq?{
@@ -814,6 +814,16 @@ export async function GET(request:Request){
         strength:Math.max(0,Math.min(100,Math.round(Number(liq.strength||0)))),
         quality:Math.max(0,Math.min(100,Math.round(Number(liq.quality||0)))),
         source:liq.source||null
+      }:null,
+      movementStructure:structure?{
+        ok:Boolean(structure.ok),
+        side:structure.side||'WAIT',
+        confidence:Math.max(0,Math.min(100,Math.round(Number(structure.confidence||0)))),
+        path:structure.path||'UNKNOWN',
+        shortSide:structure.shortSide||'WAIT',
+        followSide:structure.followSide||'WAIT',
+        m1:structure.m1?{phase:structure.m1.phase||'TRANSITION',structure:structure.m1.structure||'MIXED',side:structure.m1.side||'WAIT',nextSide:structure.m1.nextSide||'WAIT',confidence:Math.max(0,Math.min(100,Math.round(Number(structure.m1.confidence||0))))}:null,
+        m5:structure.m5?{phase:structure.m5.phase||'TRANSITION',structure:structure.m5.structure||'MIXED',side:structure.m5.side||'WAIT',nextSide:structure.m5.nextSide||'WAIT',confidence:Math.max(0,Math.min(100,Math.round(Number(structure.m5.confidence||0))))}:null
       }:null,
       price:Number.isFinite(Number(pulse?.price??x?.price))?Number(pulse?.price??x?.price):null,
       livePulse:pulse?{
@@ -1253,8 +1263,8 @@ export async function GET(request:Request){
         gold:{side:webIntel.gold.side,confidence:webIntel.gold.confidence,risk:webIntel.gold.risk,sourceCount:webIntel.gold.sourceCount,freshCount:webIntel.gold.freshCount},
         btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount}
       }:null,
-      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity),
-      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity)
+      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure),
+      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity,bitcoinStructure)
     };
     lastAiPayload=payload;lastAiPayloadAt=Date.now();
     return Response.json(payload,{headers:{'Cache-Control':'no-store','X-AI-Cache':'miss'}});
