@@ -44,12 +44,15 @@ function qualityGate(h:HorizonBrain,minConfidence:number,requireFlow=false){
   const flowConflict=Boolean(requireFlow&&h.side!=='WAIT'&&flow?.side&&flow.side!=='WAIT'&&flow.side!==h.side);
   const splitConflict=Number(h.familyOpposition||0)>=2&&Number(h.agreement||50)<68;
   if(h.side==='WAIT'||flowConflict||splitConflict||h.confidence<minConfidence){
+    const priorReason=String((h as any)?.gateReason||'');
     return {
       ...h,
       side:'WAIT' as Side,
       confidence:Math.min(h.confidence,flowConflict?34:splitConflict?38:minConfidence-1),
       uncertainty:Math.max(h.uncertainty,100-Math.min(h.confidence,minConfidence-1)),
-      gateReason:flowConflict?'FLOW_CONFLICT':splitConflict?'FAMILY_SPLIT':'LOW_CONFIDENCE'
+      gateReason:priorReason==='RECENT_PERFORMANCE_KILL_SWITCH'
+        ?priorReason
+        :flowConflict?'FLOW_CONFLICT':splitConflict?'FAMILY_SPLIT':'LOW_CONFIDENCE'
     };
   }
   return {...h,gateReason:'PASSED'};
