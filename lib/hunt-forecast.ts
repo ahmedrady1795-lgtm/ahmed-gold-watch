@@ -209,14 +209,36 @@ function buildZoneForecast(args:{
   const phaseText=phase==='ACCUMULATING'?'تجميع':phase==='DISTRIBUTING'?'تصريف':phase==='MARKUP_READY'?'تجميع جاهز للكسر الصاعد':phase==='MARKDOWN_READY'?'تصريف جاهز للكسر الهابط':'توازن';
 
   // Structural path forecast is separate from trade readiness: it answers "where is price most likely heading?"
-  const upperRaw=zones
-    .filter((z:any)=>z.side==='SELL'&&z.low>p+a*.08)
-    .sort((x:any,y:any)=>x.low-y.low||y.strength-x.strength)[0]||null;
-  const lowerRaw=zones
-    .filter((z:any)=>z.side==='BUY'&&z.high<p-a*.08)
-    .sort((x:any,y:any)=>y.high-x.high||y.strength-x.strength)[0]||null;
+  const zoneMagnetScore=(z:any)=>{
+    const d=Math.max(0,distance(z));
+    const liq=Math.max(Number(z?.volumeScore||0),Number(z?.impulseScore||0));
+    const structural=Math.max(0,Number(z?.strength||0))*.40+Math.max(0,liq)*.24+
+      Math.min(16,Number(z?.rejections||0)*3.6+Number(z?.touches||0)*1.25);
+    // Prefer meaningful structural travel. Tiny nearby zones are treated as sweep candidates,
+    // while extremely far zones are penalized for reachability.
+    const travel=d<.22?-9:d<.38?2:d<=1.25?18-Math.abs(d-.78)*10:d<=1.85?12-(d-1.25)*12:Math.max(-10,5-(d-1.85)*14);
+    return structural+travel;
+  };
+  const upperCandidates=zones
+    .filter((z:any)=>z.side==='SELL'&&z.low>p+a*.06&&distance(z)<=2.6)
+    .map((z:any)=>({...z,_d:distance(z),_magnet:zoneMagnetScore(z)}))
+    .sort((x:any,y:any)=>Number(y._magnet)-Number(x._magnet)||Number(x._d)-Number(y._d));
+  const lowerCandidates=zones
+    .filter((z:any)=>z.side==='BUY'&&z.high<p-a*.06&&distance(z)<=2.6)
+    .map((z:any)=>({...z,_d:distance(z),_magnet:zoneMagnetScore(z)}))
+    .sort((x:any,y:any)=>Number(y._magnet)-Number(x._magnet)||Number(x._d)-Number(y._d));
+  const nearestUpper=upperCandidates.slice().sort((x:any,y:any)=>Number(x._d)-Number(y._d))[0]||null;
+  const nearestLower=lowerCandidates.slice().sort((x:any,y:any)=>Number(x._d)-Number(y._d))[0]||null;
+  const upperRaw=upperCandidates[0]||nearestUpper||null;
+  const lowerRaw=lowerCandidates[0]||nearestLower||null;
   const upperLiquidity=zoneObj(upperRaw,'UPPER_LIQUIDITY_SUPPLY');
   const lowerLiquidity=zoneObj(lowerRaw,'LOWER_LIQUIDITY_DEMAND');
+  const upperSweep=nearestUpper&&Number(nearestUpper._d)<=.32&&upperRaw&&nearestUpper.mid!==upperRaw.mid
+    ?zoneObj(nearestUpper,'UPPER_MICRO_SWEEP')
+    :null;
+  const lowerSweep=nearestLower&&Number(nearestLower._d)<=.32&&lowerRaw&&nearestLower.mid!==lowerRaw.mid
+    ?zoneObj(nearestLower,'LOWER_MICRO_SWEEP')
+    :null;
 
   const syntheticLevel=(level:number,kind:string,zoneSide:Side)=> {
     if(!Number.isFinite(level)||level<=0)return null;
@@ -354,19 +376,46 @@ function buildZoneForecast(args:{
       (pathSide===accSide?2:0)-uncertaintyPenalty,
       38,86
     ));
+  const oppositeSweep=pathSide==='BUY'?lowerSweep:pathSide==='SELL'?upperSweep:null;
+  const sameSideSweep=pathSide==='BUY'?upperSweep:pathSide==='SELL'?lowerSweep:null;
+  const sweepFirst=Boolean(
+    oppositeSweep&&Number(oppositeSweep.distanceAtr||99)<=.30&&
+    pathDestination&&Number(pathDestination.distanceAtr||0)>=.38
+  );
+  const sequence=sweepFirst
+    ?{
+      type:'SWEEP_THEN_REVERSE',
+      firstLeg:{side:pathSide==='BUY'?'SELL':'BUY',zone:oppositeSweep},
+      secondLeg:{side:pathSide,zone:pathDestination},
+      reason:'سيولة قريبة عكس المسار قد تُسحب أولًا قبل التوجه للمغناطيس الهيكلي الأقوى'
+    }
+    :sameSideSweep&&pathDestination
+      ?{
+        type:'SWEEP_THEN_CONTINUE',
+        firstLeg:{side:pathSide,zone:sameSideSweep},
+        secondLeg:{side:pathSide,zone:pathDestination},
+        reason:'سيولة قريبة على نفس المسار مرشحة للسحب قبل استكمال الحركة للوجهة الهيكلية'
+      }
+      :{
+        type:pathSide==='WAIT'?'BALANCED':'DIRECT',
+        firstLeg:pathSide==='WAIT'?null:{side:pathSide,zone:pathDestination},
+        secondLeg:null,
+        reason:pathSide==='WAIT'?'لا يوجد تسلسل سيولة واضح':'المسار مباشر نحو أقوى مغناطيس سيولة'
+      };
   const pathReason=[
     pathSide==='BUY'
-      ?'مغناطيس السيولة الأقوى أعلى السعر'
+      ?'مغناطيس السيولة الهيكلي الأقوى أعلى السعر'
       :pathSide==='SELL'
-        ?'مغناطيس السيولة الأقوى أسفل السعر'
+        ?'مغناطيس السيولة الهيكلي الأقوى أسفل السعر'
         :'السيولة متقاربة؛ لا يوجد مغناطيس مهيمن',
-    pathDestination?('الوجهة الأساسية '+fmtZone(pathDestination.low,pathDestination.high)):'',
+    sweepFirst&&oppositeSweep?('احتمال سحب سيولة أولًا '+fmtZone(oppositeSweep.low,oppositeSweep.high)):'',
+    pathDestination?('الوجهة الهيكلية '+fmtZone(pathDestination.low,pathDestination.high)):'',
     pathRebound?('منطقة رد الفعل '+fmtZone(pathRebound.low,pathRebound.high)):'',
     ('جذب أعلى '+upperAttraction.toFixed(0)+' / أسفل '+lowerAttraction.toFixed(0)),
     invalidationPrice?('إبطال المسار قرب '+invalidationPrice.toFixed(2)):''
   ].filter(Boolean).join(' · ');
   const pathForecast={
-    version:'FORECAST_AI_V4_LIQUIDITY',
+    version:'FORECAST_AI_V5_PATH_INTELLIGENCE',
     side:pathSide,
     confidence:pathConfidence,
     conviction,
@@ -377,6 +426,8 @@ function buildZoneForecast(args:{
     reboundZone:pathRebound,
     upperLiquidity:directionalUpper,
     lowerLiquidity:directionalLower,
+    sweepZones:{upper:upperSweep,lower:lowerSweep},
+    sequence,
     alternate:{
       side:alternateSide,
       probability:Number(alternateProbability.toFixed(1)),
@@ -403,13 +454,15 @@ function buildZoneForecast(args:{
     reason:pathReason,
     scenario:pathSide==='WAIT'
       ?'لا يوجد مسار مهيمن؛ احتمالات الصعود والهبوط متقاربة'
-      :conviction==='WEAK'
-        ?('ميل '+(pathSide==='BUY'?'صاعد':'هابط')+' ضعيف'+(pathDestination?' نحو '+fmtZone(pathDestination.low,pathDestination.high):'')+' · الاحتمالات متقاربة')
-        :conviction==='STRONG'
-          ?('سيناريو '+(pathSide==='BUY'?'صاعد':'هابط')+' قوي'+(pathDestination?' نحو '+fmtZone(pathDestination.low,pathDestination.high):''))
-          :(pathSide==='BUY'
-            ?(pathDestination?'مرجح صعود نحو سيولة/مقاومة '+fmtZone(pathDestination.low,pathDestination.high):'ميل صاعد لكن الوجهة الهيكلية غير مؤكدة')
-            :(pathDestination?'مرجح هبوط نحو دعم/سيولة '+fmtZone(pathDestination.low,pathDestination.high):'ميل هابط لكن الوجهة الهيكلية غير مؤكدة'))
+      :sweepFirst&&oppositeSweep&&pathDestination
+        ?('سحب سيولة '+(pathSide==='BUY'?'أسفل':'أعلى')+' أولًا قرب '+fmtZone(oppositeSweep.low,oppositeSweep.high)+' ثم انعكاس '+(pathSide==='BUY'?'صاعد':'هابط')+' نحو '+fmtZone(pathDestination.low,pathDestination.high))
+        :conviction==='WEAK'
+          ?('ميل '+(pathSide==='BUY'?'صاعد':'هابط')+' ضعيف'+(pathDestination?' نحو '+fmtZone(pathDestination.low,pathDestination.high):'')+' · الاحتمالات متقاربة')
+          :conviction==='STRONG'
+            ?('سيناريو '+(pathSide==='BUY'?'صاعد':'هابط')+' قوي'+(pathDestination?' نحو '+fmtZone(pathDestination.low,pathDestination.high):''))
+            :(pathSide==='BUY'
+              ?(pathDestination?'مرجح صعود نحو سيولة/مقاومة '+fmtZone(pathDestination.low,pathDestination.high):'ميل صاعد لكن الوجهة الهيكلية غير مؤكدة')
+              :(pathDestination?'مرجح هبوط نحو دعم/سيولة '+fmtZone(pathDestination.low,pathDestination.high):'ميل هابط لكن الوجهة الهيكلية غير مؤكدة'))
   };
   const targetStrength=Number(target?.strength||0),originStrength=Number(origin?.strength||0);
   const zoneQuality=Math.max(targetStrength,originStrength,Number(support?.strength||0),Number(resistance?.strength||0));
