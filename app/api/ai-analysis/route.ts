@@ -696,14 +696,18 @@ export async function GET(request:Request){
       const add=(name:string,s:any,score:any,weight:number)=>{
         if((s==='BUY'||s==='SELL')&&Number(score)>0&&weight>0)rows.push({name,side:s,score:Math.max(0,Math.min(92,Number(score))),weight});
       };
+      const priceNow=Number.isFinite(Number(pulse?.price))&&Number(pulse.price)>0?Number(pulse.price):null;
       const leadSide=marketLead?.side;
       const leadStage=String(marketLead?.stage||'OBSERVE');
-      const leadWeight=marketLead?.armed?1.65:leadStage==='BUILDING'?1.15:marketLead?.available?.50:0;
+      const leadAge=Number(marketLead?.ageMs);
+      const leadFresh=Boolean(marketLead?.available&&(!Number.isFinite(leadAge)||leadAge<=5000));
+      const leadWeight=leadFresh?(marketLead?.armed?1.75:leadStage==='BUILDING'?1.25:.45):0;
       add('lead',leadSide,marketLead?.confidence||marketLead?.score,leadWeight);
-      add('m1',movement?.horizons?.oneMinute?.side,movement?.horizons?.oneMinute?.confidence,1.20);
-      add('m3',movement?.horizons?.threeMinute?.side,movement?.horizons?.threeMinute?.confidence,.82);
-      add('hunt',hunt?.nextMove?.side,hunt?.nextMove?.confidence,.72);
-      add('scalp',scalp?.action,scalp?.confidence,.92);
+      add('m1',movement?.horizons?.oneMinute?.side,movement?.horizons?.oneMinute?.confidence,1.30);
+      add('m3',movement?.horizons?.threeMinute?.side,movement?.horizons?.threeMinute?.confidence,.78);
+      add('path',hunt?.zoneForecast?.pathForecast?.side,hunt?.zoneForecast?.pathForecast?.confidence,.68);
+      add('hunt',hunt?.nextMove?.side,hunt?.nextMove?.confidence,.66);
+      add('scalp',scalp?.action,scalp?.confidence,.95);
 
       let buy=0,sell=0;
       for(const r of rows){
@@ -711,39 +715,93 @@ export async function GET(request:Request){
         if(r.side==='BUY')buy+=v;else sell+=v;
       }
       const total=buy+sell;
-      if(total<=0)return {side:'WAIT',confidence:0,status:'WAIT',target:null,zone:null,windowSeconds:null,reason:'لا يوجد ضغط مبكر متفق عليه حاليًا'};
+      if(total<=0)return {side:'WAIT',confidence:0,status:'WAIT',target:null,zone:null,windowSeconds:null,expiresAt:null,reason:'لا يوجد ضغط مبكر متفق عليه حاليًا'};
       const winner:'BUY'|'SELL'=buy>=sell?'BUY':'SELL';
       const win=Math.max(buy,sell),lose=Math.min(buy,sell);
       const share=win/total*100,edge=(win-lose)/total*100;
       const support=rows.filter(r=>r.side===winner).length;
       const oppose=rows.filter(r=>r.side!==winner).length;
-      let confidence=Math.round(Math.max(0,Math.min(86,34+edge*.42+support*4-oppose*3)));
-      if(marketLead?.armed&&leadSide===winner)confidence=Math.min(88,confidence+7);
-      else if(leadStage==='BUILDING'&&leadSide===winner)confidence=Math.min(86,confidence+3);
-      if(share<58||support<2||confidence<48)return {
-        side:'WAIT',confidence,status:'WAIT',target:null,zone:null,windowSeconds:null,
-        reason:'الإشارات المبكرة ما زالت منقسمة؛ لا يوجد اتجاه أمامي كافٍ'
+      let confidence=Math.round(Math.max(0,Math.min(86,33+edge*.43+support*4.2-oppose*3.2)));
+
+      const m5Side=movement?.horizons?.fiveMinute?.side;
+      const m5Confidence=Number(movement?.horizons?.fiveMinute?.confidence||0);
+      const m5Active=(m5Side==='BUY'||m5Side==='SELL')&&m5Confidence>=50;
+      const m5Opposes=Boolean(m5Active&&m5Side!==winner);
+      if(m5Opposes)confidence-=m5Confidence>=68?13:8;
+      else if(m5Active&&m5Side===winner)confidence+=Math.min(4,Math.round((m5Confidence-48)/8));
+
+      if(leadFresh&&marketLead?.armed&&leadSide===winner)confidence=Math.min(89,confidence+8);
+      else if(leadFresh&&leadStage==='BUILDING'&&leadSide===winner)confidence=Math.min(87,confidence+4);
+      if(!leadFresh&&marketLead?.available)confidence-=4;
+      confidence=Math.max(0,Math.min(89,Math.round(confidence)));
+
+      if(share<57||support<2||confidence<47)return {
+        side:'WAIT',confidence,status:'WAIT',target:null,zone:null,windowSeconds:null,expiresAt:null,
+        reason:m5Opposes?'M5 يعاكس الإشارة القصيرة؛ تم إيقاف التوقع المبكر حتى يتضح المسار':'الإشارات المبكرة ما زالت منقسمة؛ لا يوجد اتجاه أمامي كافٍ'
       };
 
+      const ahead=(v:any)=>{
+        const n=Number(v);if(priceNow==null||!Number.isFinite(n))return Number.isFinite(n);
+        return winner==='BUY'?n>priceNow:n<priceNow;
+      };
       const pd=hunt?.zoneForecast?.pathForecast?.priceDestination;
-      const pathZone=pd?.zone&&pd?.side===winner?pd.zone:null;
+      const rawZone=pd?.zone&&pd?.side===winner?pd.zone:null;
+      const zoneLow=Number(rawZone?.low),zoneHigh=Number(rawZone?.high),zoneMid=Number(rawZone?.mid);
+      const zoneValid=Boolean(rawZone&&Number.isFinite(zoneLow)&&Number.isFinite(zoneHigh)&&Number.isFinite(zoneMid)&&(
+        priceNow==null||(winner==='BUY'?zoneHigh>priceNow:zoneLow<priceNow)
+      ));
+      const pathZone=zoneValid?rawZone:null;
       const quick=hunt?.quickSignalTargets?.oneMinute;
-      const quickPrice=quick?.side===winner&&Number.isFinite(Number(quick?.price))?Number(quick.price):null;
+      const quickPrice=quick?.side===winner&&ahead(quick?.price)?Number(quick.price):null;
       const scalpNext=scalp?.nextPrice||scalp?.fusionV8?.nextPrice||scalp?.projection||null;
-      const scalpPrice=(scalpNext?.side===winner||!scalpNext?.side)&&Number.isFinite(Number(scalpNext?.price))?Number(scalpNext.price):null;
-      const target=Number.isFinite(Number(pathZone?.mid))?Number(pathZone.mid):quickPrice??scalpPrice??null;
+      const scalpPrice=(scalpNext?.side===winner||!scalpNext?.side)&&ahead(scalpNext?.price)?Number(scalpNext.price):null;
+      const target=pathZone&&ahead(pathZone.mid)?Number(pathZone.mid):quickPrice??scalpPrice??null;
 
-      const armed=Boolean(marketLead?.armed&&leadSide===winner);
-      const building=Boolean(!armed&&leadStage==='BUILDING'&&leadSide===winner);
-      const status=armed?'PRE_MOVE':building?'BUILDING':'SHORT_HORIZON';
-      const windowSeconds=armed?{min:3,max:25}:building?{min:8,max:45}:{min:20,max:90};
+      // Do not label a consumed/behind destination as "the next move".
+      if(priceNow!=null&&target==null){
+        confidence=Math.max(0,confidence-10);
+        return {
+          side:'WAIT',confidence,status:'WAIT',target:null,zone:null,windowSeconds:null,expiresAt:null,
+          agreement:Math.round(share),support,opposition:oppose,priceNow,
+          reason:'الاتجاه موجود لكن الهدف السابق تم استهلاكه أو أصبح خلف السعر؛ ننتظر وجهة جديدة أمامية'
+        };
+      }
+
+      const released=Boolean(leadFresh&&marketLead?.released&&leadSide===winner);
+      const momentum=Number(pulse?.momentum||0);
+      const pulseDir=String(pulse?.direction||'FLAT');
+      const pulseAligned=(winner==='BUY'&&pulseDir==='UP')||(winner==='SELL'&&pulseDir==='DOWN');
+      const alreadyMoving=Boolean(released&&pulseAligned&&momentum>=72);
+      if(alreadyMoving)confidence=Math.max(45,confidence-5);
+
+      const armed=Boolean(leadFresh&&marketLead?.armed&&leadSide===winner&&!alreadyMoving);
+      const building=Boolean(!armed&&leadFresh&&leadStage==='BUILDING'&&leadSide===winner&&!alreadyMoving);
+      const status=alreadyMoving?'IN_PROGRESS':armed?'PRE_MOVE':building?'BUILDING':'SHORT_HORIZON';
+      const leadWindow=marketLead?.windowSeconds;
+      const hasLeadWindow=leadFresh&&leadSide===winner&&Number.isFinite(Number(leadWindow?.min))&&Number.isFinite(Number(leadWindow?.max));
+      const fallbackWindow=alreadyMoving?{min:2,max:35}:armed?{min:3,max:25}:building?{min:8,max:45}:{min:15,max:75};
+      const windowSeconds=hasLeadWindow
+        ?{min:Math.max(2,Math.min(90,Math.round(Number(leadWindow.min)))),max:Math.max(4,Math.min(120,Math.round(Number(leadWindow.max))))}
+        :fallbackWindow;
+      if(windowSeconds.max<windowSeconds.min)windowSeconds.max=windowSeconds.min+5;
+
+      const distancePct=priceNow!=null&&target!=null?Math.abs(target-priceNow)/priceNow*100:null;
+      if(distancePct!=null&&distancePct<0.003&&alreadyMoving){
+        return {
+          side:'WAIT',confidence:Math.min(confidence,44),status:'TARGET_CONSUMED',target:null,zone:null,windowSeconds:null,expiresAt:null,
+          agreement:Math.round(share),support,opposition:oppose,priceNow,
+          reason:'الحركة وصلت تقريبًا للهدف؛ لا يتم عرضها كحركة قادمة جديدة'
+        };
+      }
+
       const sourceParts=rows.filter(r=>r.side===winner).sort((a,b)=>b.weight-a.weight).slice(0,3).map(r=>r.name);
       return {
         side:winner,confidence,status,target,
         zone:pathZone?{low:Number(pathZone.low),high:Number(pathZone.high),mid:Number(pathZone.mid)}:null,
-        windowSeconds,agreement:Math.round(share),support,opposition:oppose,
-        priceNow:Number.isFinite(Number(pulse?.price))?Number(pulse.price):null,
-        reason:(armed?'ضغط سابق للحركة متماسك':building?'ضغط مبكر يتكوّن':'تفوق قصير المدى')+' · '+sourceParts.join(' + ')
+        windowSeconds,expiresAt:now+windowSeconds.max*1000,agreement:Math.round(share),support,opposition:oppose,
+        priceNow,distancePct:distancePct==null?null:Number(distancePct.toFixed(4)),
+        freshness:{leadFresh,leadAgeMs:Number.isFinite(leadAge)?leadAge:null,m5Opposes,alreadyMoving},
+        reason:(alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':building?'ضغط مبكر يتكوّن':'تفوق قصير المدى')+' · '+sourceParts.join(' + ')
       };
     };
     const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any)=>({
