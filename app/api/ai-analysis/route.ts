@@ -21,7 +21,7 @@ import {getNeuralPrediction} from '../../../lib/neural-prediction';
 import {getBrainOutcomeLearning,recordBrainOutcomeObservation} from '../../../lib/brain-outcome-learning';
 import {getServerTickSignal,startServerTickBrain} from '../../../lib/server-tick-brain';
 import {buildNewsIntelligence} from '../../../lib/news-intelligence';
-import {getWebMarketIntelligence,mergeNewsWithWeb} from '../../../lib/web-market-intelligence';
+import {getWebMarketIntelligence,mergeNewsWithWeb,recordWebSourceOutcome} from '../../../lib/web-market-intelligence';
 import {buildOpportunitySet} from '../../../lib/multi-opportunity';
 import {buildScalpFusion} from '../../../lib/scalp-fusion';
 import {recordNextMoveOutcome,getNextMoveOutcome,calibrateNextMoveConfidence} from '../../../lib/next-move-outcome';
@@ -305,6 +305,12 @@ export async function GET(request:Request){
     const goldStateGraph=buildMarketStateGraph(gm.c1,now);
     const bitcoinStateGraph=buildMarketStateGraph(btc.c1,now);
     const webIntel=await webIntelPromise;
+    const goldWebLearning=webIntel?recordWebSourceOutcome({asset:'GOLD',price:goldLearningPrice,atr:goldAtr,signal:webIntel.gold,now}):null;
+    const bitcoinWebLearning=webIntel?recordWebSourceOutcome({asset:'BTC',price:btcPrice,atr:btcAtr,signal:webIntel.btc,now}):null;
+    if(webIntel){
+      (webIntel.gold as any).outcomeLearning=goldWebLearning;
+      (webIntel.btc as any).outcomeLearning=bitcoinWebLearning;
+    }
     const goldNewsBase=buildNewsIntelligence('GOLD',gm.events,now);
     const bitcoinNewsBase=buildNewsIntelligence('BTC',gm.events,now);
     const goldNews=webIntel?mergeNewsWithWeb(goldNewsBase,webIntel.gold):goldNewsBase;
@@ -688,8 +694,8 @@ export async function GET(request:Request){
         webScout:webIntel?{
           ok:Boolean(webIntel.ok),cached:Boolean(webIntel.cached),
           sources:webIntel.sources.map((s:any)=>({id:s.id,ok:Boolean(s.ok),itemCount:Number(s.itemCount||0),error:s.error||null})),
-          gold:{side:webIntel.gold.side,confidence:webIntel.gold.confidence,risk:webIntel.gold.risk,sourceCount:webIntel.gold.sourceCount,freshCount:webIntel.gold.freshCount},
-          btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount}
+          gold:{side:webIntel.gold.side,confidence:webIntel.gold.confidence,risk:webIntel.gold.risk,sourceCount:webIntel.gold.sourceCount,freshCount:webIntel.gold.freshCount,learning:(webIntel.gold as any).outcomeLearning||null},
+          btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount,learning:(webIntel.btc as any).outcomeLearning||null}
         }:null,
         gold:{
           tick:{
