@@ -607,7 +607,8 @@ export async function GET(request:Request){
     });
 
     const goldMarketOpen=goldMarketOpenUTC(now);
-    const recovered=actions.length>0&&(!goldMarketOpen||gm.pricesReady)&&Boolean(btc.c1.length)&&Boolean(btcPrice);
+    const actualRecoveryActions=actions.filter((a:string)=>/استعادة|إعادة تحميل/.test(a));
+    const recovered=actualRecoveryActions.length>0&&(!goldMarketOpen||gm.pricesReady)&&Boolean(btc.c1.length)&&Boolean(btcPrice);
     const futureEvents=(gm.events||[]).filter((e:any)=>e.time>=now).sort((a:any,b:any)=>a.time-b.time);
     const featuredEvent=futureEvents[0]||null;
     const featuredGoldNews=featuredEvent?buildNewsIntelligence('GOLD',[featuredEvent],now):null;
@@ -700,6 +701,7 @@ export async function GET(request:Request){
       lastDiagLog=now;
       console.info('[AI-DIAG]',JSON.stringify({
         status:autopilot.status,
+        recoveryActions:actualRecoveryActions.slice(0,5),
         webScout:webIntel?{
           ok:Boolean(webIntel.ok),cached:Boolean(webIntel.cached),
           sources:webIntel.sources.map((s:any)=>({id:s.id,ok:Boolean(s.ok),itemCount:Number(s.itemCount||0),error:s.error||null})),
