@@ -86,7 +86,7 @@ export default function Home(){
 
   useEffect(()=>{
     void loadAi();
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},4000);
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},8000);
     const clock=setInterval(()=>setNow(Date.now()),5000);
     return()=>{clearInterval(aiTimer);clearInterval(clock);};
   },[]);
