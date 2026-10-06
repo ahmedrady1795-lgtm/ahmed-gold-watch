@@ -12,8 +12,8 @@ const macroNumber=(v:any)=>{
 
 function timeLeft(ts:number,now:number){
   const d=ts-now;
-  if(d<=0&&d>-60000)return 'الآن';
-  if(d<0)return 'صدر';
+  if(d<=0&&d>-60000)return 'يصدر الآن';
+  if(d<0)return `صدر منذ ${Math.max(1,Math.floor(Math.abs(d)/60000))}د`;
   const totalMin=Math.floor(d/60000),days=Math.floor(totalMin/1440),hours=Math.floor((totalMin%1440)/60),mins=totalMin%60;
   if(days>0)return `متبقي ${days}ي ${hours}س`;
   if(hours>0)return `متبقي ${hours}س ${mins}د`;
@@ -54,7 +54,7 @@ const dirLabel=(d:Dir)=>d==='up'?'صعود':d==='down'?'هبوط':'محايد';
 
 export default function NewsCommandCenter({analysis,events=[],now=Date.now()}:any){
   const upcoming=[...events]
-    .filter((e:any)=>Number(e?.time)>=now-60000&&Number(e?.time)<=now+30*86400000)
+    .filter((e:any)=>{const t=Number(e?.time),hasActual=Boolean(String(e?.actual||'').trim());return t<=now+30*86400000&&(t>=now||(hasActual&&t>=now-10*60000)||(!hasActual&&t>=now-15*60000));})
     .sort((a:any,b:any)=>Number(a.time)-Number(b.time));
   const active=analysis?.news?.event;
   return <section className="panel newscommand">
@@ -65,10 +65,10 @@ export default function NewsCommandCenter({analysis,events=[],now=Date.now()}:an
       const b=macroBias(e),impact=Number(e?.importance)||1;
       return <article key={e.id||e.name+e.time} className="rule compact" style={{display:'block'}}>
         <strong>#{index+1} · {e.name} · {impact===3?'🔥 مرتفع':impact===2?'⚠️ متوسط':'منخفض'}</strong>
-        <p><b>{dateLabel(Number(e.time))}</b> · <b>{timeLeft(Number(e.time),now)}</b></p>
+        <p><b>موعد الخبر (الإمارات): {dateLabel(Number(e.time))}</b> · <b>{timeLeft(Number(e.time),now)}</b></p>
         {(e.forecast||e.previous||e.actual)&&<p>Actual: {e.actual||'لم يصدر'} · Forecast: {e.forecast||'—'} · Previous: {e.previous||'—'}</p>}
         <div className="levels">
-          <div><small>الذهب · {dirLabel(b.gold)}</small><strong>↑ {b.goldUp} / ↓ {b.goldDown}</strong></div>
+          <div><small>التأثير المرجح على الذهب · {dirLabel(b.gold)}</small><strong>↑ {b.goldUp} / ↓ {b.goldDown}</strong></div>
           <div><small>BTC · ميل ماكرو</small><strong>↑ {b.btcUp} / ↓ {b.btcDown}</strong></div>
         </div>
         <p>{b.why}</p>
