@@ -2,7 +2,7 @@ import type {Candle} from './engine';
 
 type Side='BUY'|'SELL'|'WAIT';
 type Zone={low:number;high:number;mid:number;touches:number;rejections:number};
-type ReactionZone={side:'BUY'|'SELL';low:number;high:number;mid:number;strength:number;touches:number;rejections:number;volumeScore:number;impulseScore:number;distanceAtr:number;status:'NEAR'|'WATCH'|'FAR';reason:string};
+type ReactionZone={side:'BUY'|'SELL';low:number;high:number;mid:number;strength:number;touches:number;rejections:number;volumeScore:number;impulseScore:number;displacementScore:number;imbalanceScore:number;freshnessScore:number;institutionalScore:number;mitigationCount:number;state:'FRESH'|'MITIGATED'|'SPENT';distanceAtr:number;status:'NEAR'|'WATCH'|'FAR';reason:string};
 
 export type AccumulationMap={
   ok:boolean;
@@ -66,42 +66,127 @@ function buildReactionZones(c:Candle[],p:number,a:number){
     if(x.low===Math.min(...w.map(v=>v.low)))pivots.push({side:'BUY',price:x.low,i});
     if(x.high===Math.max(...w.map(v=>v.high)))pivots.push({side:'SELL',price:x.high,i});
   }
-  const tol=Math.max(a*.28,p*.00018),groups:{side:'BUY'|'SELL';prices:number[];idx:number[]}[]=[];
+  const tol=Math.max(a*.24,p*.00016),groups:{side:'BUY'|'SELL';prices:number[];idx:number[]}[]=[];
   for(const q of pivots){
     let g=groups.find(z=>z.side===q.side&&Math.abs(avg(z.prices)-q.price)<=tol);
     if(!g){g={side:q.side,prices:[],idx:[]};groups.push(g);}
     g.prices.push(q.price);g.idx.push(q.i);
   }
+
   const zones:ReactionZone[]=[];
+  const vols=c.map(x=>Number(x.tickVolume||x.realVolume||0)).filter(v=>Number.isFinite(v)&&v>0);
+  const volBase=vols.length?avg(vols):0;
+
   for(const g of groups){
     if(g.prices.length<2)continue;
-    const mid=avg(g.prices),low=mid-tol*.7,high=mid+tol*.7;
+    const mid=avg(g.prices),low=mid-tol*.72,high=mid+tol*.72;
+    const origin=Math.max(...g.idx);
     let touches=0,rejections=0,volScore=0,impulseScore=0;
-    const vols=c.map(x=>Number(x.tickVolume||x.realVolume||0)).filter(v=>Number.isFinite(v)&&v>0),volBase=vols.length?avg(vols):0;
+    let mitigationCount=0,lastMitigation=-99,invalidated=false;
+    const departures:number[]=[];
+    const imbalances:number[]=[];
+
+    for(const pi of g.idx){
+      const originBar=c[pi];
+      if(!originBar)continue;
+      const future=c.slice(pi+1,Math.min(c.length,pi+6));
+      if(future.length){
+        const favorable=g.side==='BUY'
+          ?Math.max(...future.map(x=>Number(x.high)))-Number(originBar.low)
+          :Number(originBar.high)-Math.min(...future.map(x=>Number(x.low)));
+        if(Number.isFinite(favorable)&&favorable>0)departures.push(favorable/a);
+
+        let directionalBodies=0,rangeExpansion=0,count=0;
+        for(const x of future.slice(0,3)){
+          const range=Math.max(1e-9,Number(x.high)-Number(x.low));
+          const body=(Number(x.close)-Number(x.open))*(g.side==='BUY'?1:-1);
+          directionalBodies+=Math.max(0,body/range);
+          rangeExpansion+=range/a;
+          count++;
+        }
+        if(count){
+          const bodyDrive=directionalBodies/count;
+          const expansion=rangeExpansion/count;
+          imbalances.push(cap(bodyDrive*58+Math.max(0,expansion-.75)*34,0,92));
+        }
+      }
+
+      if(pi+2<c.length){
+        const a0=c[pi],a2=c[pi+2];
+        const fvg=g.side==='BUY'
+          ?Number(a2.low)>Number(a0.high)+a*.035
+          :Number(a2.high)<Number(a0.low)-a*.035;
+        if(fvg)imbalances.push(88);
+      }
+    }
+
     for(let i=0;i<c.length;i++){
-      const x=c[i],hit=g.side==='BUY'?x.low<=high&&x.low>=low-a*.18:x.high>=low&&x.high<=high+a*.18;
-      if(!hit)continue;touches++;
-      const range=Math.max(1e-9,x.high-x.low),closePos=(x.close-x.low)/range;
+      const x=c[i];
+      const hit=g.side==='BUY'
+        ?Number(x.low)<=high&&Number(x.high)>=low
+        :Number(x.high)>=low&&Number(x.low)<=high;
+      if(!hit)continue;
+      touches++;
+      const range=Math.max(1e-9,Number(x.high)-Number(x.low)),closePos=(Number(x.close)-Number(x.low))/range;
       const rejected=g.side==='BUY'?closePos>=.64:closePos<=.36;
       if(rejected)rejections++;
       const v=Number(x.tickVolume||x.realVolume||0);
       if(volBase>0&&v>0)volScore+=Math.min(2.2,v/volBase);
       const future=c[Math.min(c.length-1,i+3)];
       if(future){
-        const move=(future.close-x.close)/a*(g.side==='BUY'?1:-1);
-        if(move>0)impulseScore+=Math.min(2,move);
+        const move=(Number(future.close)-Number(x.close))/a*(g.side==='BUY'?1:-1);
+        if(move>0)impulseScore+=Math.min(2.4,move);
+      }
+
+      if(i>origin+3&&i-lastMitigation>=2){
+        mitigationCount++;
+        lastMitigation=i;
+      }
+      if(i>origin+2){
+        const broke=g.side==='BUY'
+          ?Number(x.close)<low-a*.10
+          :Number(x.close)>high+a*.10;
+        if(broke)invalidated=true;
       }
     }
+
     const distanceAtr=p>=low&&p<=high?0:Math.min(Math.abs(p-low),Math.abs(p-high))/a;
     const volumeScore=volBase>0?cap(volScore/Math.max(1,touches)*35,0,92):0;
     const impulse=cap(impulseScore/Math.max(1,touches)*32,0,92);
+    const displacementScore=cap((departures.length?Math.max(...departures.slice(-3)):0)*34,0,94);
+    const imbalanceScore=cap(imbalances.length?Math.max(...imbalances):0,0,94);
+    const freshnessScore=invalidated?10:mitigationCount===0?94:mitigationCount===1?76:mitigationCount===2?52:28;
+    const state:ReactionZone['state']=invalidated||mitigationCount>=3?'SPENT':mitigationCount===0?'FRESH':'MITIGATED';
     const rejectionRate=rejections/Math.max(1,touches);
-    const strength=Math.round(cap(touches*10+rejectionRate*35+volumeScore*.22+impulse*.28,0,94));
-    if(strength<42)continue;
+    const historical=cap(touches*7+rejectionRate*31+volumeScore*.18+impulse*.20,0,92);
+    const institutionalScore=cap(
+      displacementScore*.34+
+      imbalanceScore*.20+
+      freshnessScore*.24+
+      volumeScore*.10+
+      rejectionRate*100*.12,
+      0,96
+    );
+    const spentPenalty=state==='SPENT'?26:state==='MITIGATED'?6:0;
+    const strength=Math.round(cap(historical*.42+institutionalScore*.58-spentPenalty,0,96));
+    if(strength<44||institutionalScore<42||state==='SPENT')continue;
+
     const status:ReactionZone['status']=distanceAtr<=.55?'NEAR':distanceAtr<=1.6?'WATCH':'FAR';
-    zones.push({side:g.side,low:Number(low.toFixed(2)),high:Number(high.toFixed(2)),mid:Number(mid.toFixed(2)),strength,touches,rejections,volumeScore:Math.round(volumeScore),impulseScore:Math.round(impulse),distanceAtr:Number(distanceAtr.toFixed(2)),status,reason:g.side==='BUY'?'منطقة طلب/تجميع تاريخية ذات رفض وارتداد متكرر':'منطقة عرض/تصريف تاريخية ذات رفض وهبوط متكرر'});
+    const type=g.side==='BUY'?'طلب':'عرض';
+    const stateAr=state==='FRESH'?'جديدة غير مخففة':'تم تخفيفها جزئيًا';
+    const reason=`منطقة ${type} مؤسسية محتملة · خروج قوي ${Math.round(displacementScore)}% · عدم توازن ${Math.round(imbalanceScore)}% · ${stateAr}`;
+    zones.push({
+      side:g.side,low:Number(low.toFixed(2)),high:Number(high.toFixed(2)),mid:Number(mid.toFixed(2)),
+      strength,touches,rejections,volumeScore:Math.round(volumeScore),impulseScore:Math.round(impulse),
+      displacementScore:Math.round(displacementScore),imbalanceScore:Math.round(imbalanceScore),
+      freshnessScore:Math.round(freshnessScore),institutionalScore:Math.round(institutionalScore),
+      mitigationCount,state,distanceAtr:Number(distanceAtr.toFixed(2)),status,reason
+    });
   }
-  return zones.sort((x,y)=>x.distanceAtr-y.distanceAtr||y.strength-x.strength).slice(0,6);
+
+  return zones
+    .sort((x,y)=>Number(y.institutionalScore)-Number(x.institutionalScore)||x.distanceAtr-y.distanceAtr||y.strength-x.strength)
+    .slice(0,8);
 }
 
 export function buildAccumulationMap(c1:Candle[],c5:Candle[],price:number|null,liquidity:any=null,now=Date.now()):AccumulationMap{
