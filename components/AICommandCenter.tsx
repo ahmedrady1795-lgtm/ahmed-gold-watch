@@ -100,7 +100,7 @@ function AssetCard({x,liveQuote,fast}:any){
   const forwardSide=forward?.side==='BUY'||forward?.side==='SELL'?forward.side:'WAIT';
   const forwardZone=forward?.zone||null;
   const forwardTarget=Number.isFinite(Number(forward?.target))?Number(forward.target):null;
-  const forwardWindow=forward?.windowSeconds?(`${forward.windowSeconds.min}–${forward.windowSeconds.max} ث`):'—';
+  const forwardWindow=forward?.horizonMinutes===15?'خلال 15 دقيقة':forward?.windowSeconds?(`${Math.max(1,Math.round(Number(forward.windowSeconds.min||0)/60))}–${Math.max(1,Math.round(Number(forward.windowSeconds.max||0)/60))} د`):'—';
   const liqBuy=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.buy||0))));
   const liqSell=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.sell||0))));
   const hasLiquidity=Boolean(liqBuy||liqSell);
@@ -126,12 +126,12 @@ function AssetCard({x,liveQuote,fast}:any){
   const forwardHeadline=forwardSide==='WAIT'
     ?'انتظار قراءة أمامية أوضح'
     :forwardStatus==='PRE_MOVE'
-      ?`قبل الحركة: ${moveAr(forwardSide)}`
+      ?`قبل الحركة خلال 15د: ${moveAr(forwardSide)}`
       :forwardStatus==='BUILDING'
-        ?`إشارة مبكرة تتكوّن: ${moveAr(forwardSide)}`
+        ?`ترجيح 15د يتكوّن: ${moveAr(forwardSide)}`
         :forwardStatus==='IN_PROGRESS'
-          ?`الحركة بدأت: ${moveAr(forwardSide)} نحو الهدف`
-          :`الحركة القادمة: ${moveAr(forwardSide)}`;
+          ?`حركة 15د بدأت: ${moveAr(forwardSide)} نحو الهدف`
+          :`الحركة القادمة خلال 15د: ${moveAr(forwardSide)}`;
   return <section className={"panel ai-asset-card compact-asset "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
       <div><span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span><h2>{forwardHeadline}</h2></div>
@@ -145,7 +145,7 @@ function AssetCard({x,liveQuote,fast}:any){
     </div>
 
     <div className="next-move-copy primary-move zone-primary">
-      <span>الحركة القادمة</span>
+      <span>الحركة القادمة · قراءة H4 → توقع 15 دقيقة</span>
       <strong className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>
         {forwardSide==='WAIT'
           ?'لا يوجد اتجاه أمامي واضح'
