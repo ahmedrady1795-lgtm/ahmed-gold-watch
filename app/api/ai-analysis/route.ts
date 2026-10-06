@@ -1373,11 +1373,30 @@ export async function GET(request:Request){
       }));
     }
 
+    const orderedNewsEvents=eventsSorted
+      .filter((e:any)=>{
+        if(!isAssetRelevantEvent(e))return false;
+        const t=Number(e?.time);if(!Number.isFinite(t))return false;
+        if(t>=now)return t<=now+30*86400000;
+        const age=now-t,hasActual=Boolean(String(e?.actual||'').trim());
+        if(hasActual)return age<=10*60000;
+        if(isNarrativeEvent(e))return age<=narrativeGraceMs;
+        return expectsActual(e)&&age<=releaseGraceMs;
+      })
+      .sort((a:any,b:any)=>Number(a.time)-Number(b.time))
+      .slice(0,12)
+      .map((e:any)=>({
+        id:e.id,name:e.name,time:Number(e.time),importance:Number(e.importance||1),
+        actual:e.actual||'',forecast:e.forecast||'',previous:e.previous||'',source:e.source||'',
+        eventType:isNarrativeEvent(e)?'NARRATIVE':'NUMERIC'
+      }));
+
     const payload={
       ok:true,
       model:'Predator AI Lite',
       checkedAt:now,
       autopilot,
+      newsEvents:orderedNewsEvents,
       webScout:webIntel?{
         ok:Boolean(webIntel.ok),checkedAt:webIntel.checkedAt,cached:Boolean(webIntel.cached),
         sources:webIntel.sources.map((s:any)=>({id:s.id,name:s.name,ok:Boolean(s.ok),itemCount:Number(s.itemCount||0),error:s.error||null})),
