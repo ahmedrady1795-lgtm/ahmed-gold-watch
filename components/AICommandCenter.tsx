@@ -157,7 +157,8 @@ function AssetCard({x,liveQuote,fast}:any){
 export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.now()}:any){
   const auto=data?.autopilot,next=auto?.nextEvent;
   const nextEventDelta=Number(next?.time)-now;
-  const showNextEvent=!!next&&Number.isFinite(nextEventDelta)&&nextEventDelta>=0&&nextEventDelta<=10*60*60*1000;
+  const awaitingActual=Boolean(next?.awaitingActual||next?.status==='AWAITING_ACTUAL');
+  const showNextEvent=!!next&&Number.isFinite(nextEventDelta)&&((nextEventDelta>=0&&nextEventDelta<=10*60*60*1000)||(awaitingActual&&nextEventDelta>=-30*60*1000));
   return <div className="ai-clean">
     {error&&!data&&<div className="fatal"><Activity size={18}/><div><strong>تعذر تحديث AI</strong><span>{error}</span></div></div>}
 
