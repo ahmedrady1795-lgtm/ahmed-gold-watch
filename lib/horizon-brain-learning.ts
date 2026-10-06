@@ -119,7 +119,13 @@ function summary(asset:string){
         (recent.n>=10&&recent.highConfidenceFails>=5&&Number(recent.accuracy||0)<=50)
       );
       const recoveryReady=Boolean(
-        recent.last8N>=8&&Number(recent.last8Accuracy||0)>=55&&recent.recoveryHits>=3&&streak<3
+        recent.last8N>=8&&
+        Number(recent.last8Accuracy||0)>=62.5&&
+        recent.recoveryHits>=3&&
+        recent.n>=12&&
+        Number(recent.accuracy||0)>=52&&
+        recent.highConfidenceFails<=4&&
+        streak<2
       );
       return [h,{...v,failureStreak:streak,recent,recentKill,recoveryReady,ready:v.directional>=20,quality:
         recentKill?'SHADOW':
