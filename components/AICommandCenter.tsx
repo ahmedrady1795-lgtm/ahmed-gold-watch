@@ -188,17 +188,17 @@ function AssetCard({x,liveQuote,fast}:any){
         <div><small>الوجهة</small><b>{forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):priceDestination?zoneRange(priceDestination):'—'}</b></div>
         <div><small>نافذة التحرك</small><b>{forwardSide!=='WAIT'?forwardWindow:'—'}</b></div>
         <div><small>الارتداد</small><b dir="ltr">{zoneRange(path?.reboundZone||zone?.origin)}</b></div>
-        <div><small>نسبة السيولة</small><b className="green">{hasLiquidity?`صعود ${liqBuy}%`:'—'}</b><b className="red">{hasLiquidity?`هبوط ${liqSell}%`:'—'}</b><span>{accumulationPhase}{accumulationPhase==='تجميع'&&accumulationScore?` · ${accumulationScore}%`:accumulationPhase==='تصريف'&&distributionScore?` · ${distributionScore}%`:''}</span></div>
-        <div><small>مستويات السيولة</small>
+        <div className="scenario-wide"><small>نسبة السيولة</small><b className="green">{hasLiquidity?`صعود ${liqBuy}%`:'—'}</b><b className="red">{hasLiquidity?`هبوط ${liqSell}%`:'—'}</b><span>{accumulationPhase}{accumulationPhase==='تجميع'&&accumulationScore?` · ${accumulationScore}%`:accumulationPhase==='تصريف'&&distributionScore?` · ${distributionScore}%`:''}</span></div>
+        <div className="scenario-wide"><small>مستويات السيولة</small>
           <b>{upperLiquidityLevel!=='—'?<>سيولة أعلى عند <span dir="ltr">{upperLiquidityLevel}</span></>:'لا توجد سيولة علوية واضحة'}</b>
           <span>{lowerLiquidityLevel!=='—'?<>سيولة أسفل عند <span dir="ltr">{lowerLiquidityLevel}</span></>:'لا توجد سيولة سفلية واضحة'}</span>
         </div>
-        <div><small>قراءة صانع السوق</small>
+        <div className="scenario-wide"><small>قراءة صانع السوق</small>
           <b className={intentSide==='BUY'?'green':intentSide==='SELL'?'red':'amber'}>{intent?(intentPhaseAr(intent.phase)+' · '+moveAr(intentSide)+' · '+Math.round(Number(intent.confidence||0))+'%'):'—'}</b>
           <span>{intentSteps||'لا يوجد تسلسل سيولة مكتمل'}{intentSweep?<> · مستوى السحب <span dir="ltr">{intentSweep}</span></>:null}</span>
           {showValidation15&&<span>اختبار حي 15د · دقة {validationAccuracy.toFixed(1)}% · {validationDirectional} نتيجة</span>}
         </div>
-        <div><small>نظام المومنتم</small>
+        <div className="scenario-wide"><small>نظام المومنتم</small>
           <b className={momentumSide==='BUY'?'green':momentumSide==='SELL'?'red':'amber'}>
             {momentum?(moveAr(momentumSide)+' · '+momentumPhaseAr(momentum.phase)+' · '+Math.round(Number(momentum.confidence||0))+'%'):'—'}
           </b>
@@ -211,7 +211,7 @@ function AssetCard({x,liveQuote,fast}:any){
           {momentum?.mVolume&&Number(momentum.mVolume.absorption||0)>=55&&<span>امتصاص {Math.round(Number(momentum.mVolume.absorption||0))}%</span>}
           {Number(momentum?.exhaustion||0)>=55&&<span>إنهاك {Math.round(Number(momentum.exhaustion||0))}%</span>}
         </div>
-        <div><small>هيكل الحركة</small><b>{structureText}</b><span>{structurePatternAr(structure?.m1?.structure||structure?.m5?.structure)}</span></div>
+        <div className="scenario-wide"><small>هيكل الحركة</small><b>{structureText}</b><span>{structurePatternAr(structure?.m1?.structure||structure?.m5?.structure)}</span></div>
       </div>
       {tradeSetup&&tradeEntry!=null&&tradeTp!=null&&<div className="forecast-scenario-strip trade-setup-strip">
         <div><small>{tradeSetup.mode==='CONDITIONAL'?'دخول مشروط':'الدخول'}</small><b dir="ltr">{fmt(tradeEntry,2)}</b></div>
