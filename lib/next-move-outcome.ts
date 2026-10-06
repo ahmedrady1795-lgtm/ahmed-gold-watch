@@ -424,7 +424,8 @@ export function calibrateNextMoveConfidence(nextMove:any,live:any,regime?:string
 
 export function recordNextMoveOutcome(args:{
   asset:string;price:number|null;atr:number|null;now?:number;hunt:any;regime?:string;
-  horizonMs?:number;horizonLabel?:string;barrierScale?:number;minBarrierBps?:number;maxBarrierBps?:number
+  horizonMs?:number;horizonLabel?:string;barrierScale?:number;minBarrierBps?:number;maxBarrierBps?:number;
+  targetPrice?:number|null;stopPrice?:number|null;minRecordIntervalMs?:number
 }){
   const asset=key(args.asset),now=Number(args.now||Date.now()),price=Number(args.price),atr=Number(args.atr);
   if(!Number.isFinite(price)||price<=0)return {ok:false,reason:'invalid_price'};
@@ -437,20 +438,26 @@ export function recordNextMoveOutcome(args:{
   const micro=args.hunt?.nextMove?.micro||{};
   let recorded=false,eventId:string|null=null;
   if((side==='BUY'||side==='SELL')&&confidence>=20){
-    const horizonMs=Math.max(30000,Math.min(180000,Number(args.horizonMs||120000)));
+    const horizonMs=Math.max(30000,Math.min(900000,Number(args.horizonMs||120000)));
     const bucket=Math.floor(now/Math.min(30000,horizonMs/2));
     const atrBps=Number.isFinite(atr)&&atr>0?atr/price*10000:0;
     const scale=Number.isFinite(Number(args.barrierScale))?Number(args.barrierScale):.24;
     const minBarrier=Number.isFinite(Number(args.minBarrierBps))?Number(args.minBarrierBps):.8;
     const maxBarrier=Number.isFinite(Number(args.maxBarrierBps))?Number(args.maxBarrierBps):2.5;
-    const barrierBps=Number(cap(Math.max(minBarrier,atrBps*scale),minBarrier,maxBarrier).toFixed(3));
+    const fallbackBarrierBps=Number(cap(Math.max(minBarrier,atrBps*scale),minBarrier,maxBarrier).toFixed(3));
+    const requestedTarget=Number(args.targetPrice),requestedStop=Number(args.stopPrice);
+    const targetValid=Number.isFinite(requestedTarget)&&requestedTarget>0&&(side==='BUY'?requestedTarget>price:requestedTarget<price);
+    const stopValid=Number.isFinite(requestedStop)&&requestedStop>0&&(side==='BUY'?requestedStop<price:requestedStop>price);
+    const actualTargetBps=targetValid?Math.abs(requestedTarget-price)/price*10000:fallbackBarrierBps;
+    const barrierBps=Number(Math.max(.1,actualTargetBps).toFixed(3));
     const fingerprint=[side,source,regime,Math.round(price/(price*barrierBps/10000||1))].join(':');
-    const sameLive=a.pending.some(p=>p.side===side&&p.source===source&&now-p.at<25000);
+    const minRecordIntervalMs=Math.max(25000,Math.min(horizonMs,Number(args.minRecordIntervalMs||25000)));
+    const sameLive=a.pending.some(p=>p.side===side&&p.source===source&&now-p.at<minRecordIntervalMs);
     if(a.lastRecordedBucket!==bucket&&!sameLive){
       eventId=[asset,bucket,side,source].join(':');
-      const distance=price*barrierBps/10000;
-      const target=side==='BUY'?price+distance:price-distance;
-      const stop=side==='BUY'?price-distance:price+distance;
+      const distance=price*fallbackBarrierBps/10000;
+      const target=targetValid?requestedTarget:(side==='BUY'?price+distance:price-distance);
+      const stop=stopValid?requestedStop:(side==='BUY'?price-distance:price+distance);
       a.pending.push({
         id:eventId,at:now,side,source,regime,confidence,horizonLabel:key(args.horizonLabel||Math.round(horizonMs/1000)+'S'),entry:price,target,stop,barrierBps,horizonMs,
         mfeBps:0,maeBps:0,
@@ -476,7 +483,12 @@ export function recordNextMoveOutcome(args:{
           predatorStableCount:Number(micro?.predator?.stableCount||micro?.predatorStableCount||0),
           predatorPersistence:Number(micro?.predator?.persistence||micro?.predatorPersistence||0),
           predatorTemporalReady:Boolean(micro?.predator?.temporalReady||micro?.predatorTemporalReady),
-          predatorShockReady:Boolean(micro?.predator?.shockReady||micro?.predatorShockReady)
+          predatorShockReady:Boolean(micro?.predator?.shockReady||micro?.predatorShockReady),
+          intentPhase:String(micro?.intentPhase||''),
+          liquidityTaken:String(micro?.liquidityTaken||'NONE'),
+          h4Alignment:String(micro?.h4Alignment||'NEUTRAL'),
+          intentPreMove:Boolean(micro?.intentPreMove),
+          intentConfidence:Number(micro?.intentConfidence||0)
         }
       });
       if(a.pending.length>30)a.pending=a.pending.slice(-30);
