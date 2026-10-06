@@ -63,7 +63,7 @@ function AssetCard({x,liveQuote,fast}:any){
   const t1=hunt?.quickSignalTargets?.oneMinute||null;
   const t5=hunt?.quickSignalTargets?.fiveMinute||null;
   const t15=hunt?.quickSignalTargets?.fifteenMinute||hunt?.fifteenMinuteTarget||null;
-  const horizonTarget=(t:any)=>Number.isFinite(Number(t?.price))?fmt(Number(t.price),2):'—';
+  const horizonTarget=(t:any,side:any)=>(t?.side===side&&Number.isFinite(Number(t?.price)))?fmt(Number(t.price),2):'—';
   const zone=hunt?.zoneForecast||null;
   const path=zone?.pathForecast||null;
   const forecastSide=path?.side&&path.side!=='WAIT'
@@ -166,9 +166,9 @@ function AssetCard({x,liveQuote,fast}:any){
     </div>
 
     <div className="forecast-horizons decision-horizons direction-only">
-      <div><small>اتجاه M1</small><strong className={h1.side==='BUY'?'green':h1.side==='SELL'?'red':'amber'}>{moveAr(h1.side)}</strong><span>{calibrated(h1.confidence??h1.strength)}% · هدف <b dir="ltr">{horizonTarget(t1)}</b></span></div>
-      <div><small>اتجاه M5</small><strong className={h5.side==='BUY'?'green':h5.side==='SELL'?'red':'amber'}>{moveAr(h5.side)}</strong><span>{calibrated(h5.confidence??h5.strength)}% · هدف <b dir="ltr">{horizonTarget(t5)}</b></span></div>
-      <div><small>اتجاه M15</small><strong className={h15.side==='BUY'?'green':h15.side==='SELL'?'red':'amber'}>{moveAr(h15.side)}</strong><span>{calibrated(h15.confidence??h15.strength)}% · هدف <b dir="ltr">{horizonTarget(t15)}</b></span></div>
+      <div><small>اتجاه M1</small><strong className={h1.side==='BUY'?'green':h1.side==='SELL'?'red':'amber'}>{moveAr(h1.side)}</strong><span>{calibrated(h1.confidence??h1.strength)}% · هدف <b dir="ltr">{horizonTarget(t1,h1.side)}</b></span></div>
+      <div><small>اتجاه M5</small><strong className={h5.side==='BUY'?'green':h5.side==='SELL'?'red':'amber'}>{moveAr(h5.side)}</strong><span>{calibrated(h5.confidence??h5.strength)}% · هدف <b dir="ltr">{horizonTarget(t5,h5.side)}</b></span></div>
+      <div><small>اتجاه M15</small><strong className={h15.side==='BUY'?'green':h15.side==='SELL'?'red':'amber'}>{moveAr(h15.side)}</strong><span>{calibrated(h15.confidence??h15.strength)}% · هدف <b dir="ltr">{horizonTarget(t15,h15.side)}</b></span></div>
     </div>
 
 
