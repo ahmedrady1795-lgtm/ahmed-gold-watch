@@ -9,13 +9,13 @@ type Stat={
   sumSeconds:number;sumMfeBps:number;sumMaeBps:number;updatedAt:number;
 };
 type Pending={
-  id:string;at:number;side:'BUY'|'SELL';source:string;regime:string;confidence:number;
+  id:string;at:number;side:'BUY'|'SELL';source:string;regime:string;confidence:number;horizonLabel?:string;
   entry:number;target:number;stop:number;barrierBps:number;horizonMs:number;
   mfeBps:number;maeBps:number;
   micro?:{edge:number;support:number;opposition:number;strong:boolean;[key:string]:any};
 };
 type Recent={
-  id:string;at:number;settledAt:number;side:'BUY'|'SELL';source:string;regime:string;confidence:number;
+  id:string;at:number;settledAt:number;side:'BUY'|'SELL';source:string;regime:string;confidence:number;horizonLabel?:string;
   entry:number;exit:number;target:number;stop:number;barrierBps:number;outcome:Outcome;
   seconds:number;mfeBps:number;maeBps:number;
   micro?:{edge:number;support:number;opposition:number;strong:boolean;[key:string]:any};
@@ -126,7 +126,7 @@ function settle(asset:string,price:number,now:number){
     updateStat(getStat(a.byRegime,p.regime),outcome,seconds,p.mfeBps,p.maeBps,now);
     updateStat(getStat(a.byConfidence,confidenceBand(p.confidence)),outcome,seconds,p.mfeBps,p.maeBps,now);
     const settled:Recent={
-      id:p.id,at:p.at,settledAt:now,side:p.side,source:p.source,regime:p.regime,confidence:p.confidence,
+      id:p.id,at:p.at,settledAt:now,side:p.side,source:p.source,regime:p.regime,confidence:p.confidence,horizonLabel:p.horizonLabel,
       entry:p.entry,exit:price,target:p.target,stop:p.stop,barrierBps:p.barrierBps,outcome,seconds:Number(seconds.toFixed(1)),
       mfeBps:Number(p.mfeBps.toFixed(2)),maeBps:Number(p.maeBps.toFixed(2)),micro:p.micro
     };
@@ -255,6 +255,7 @@ function summary(asset:string){
   const byPattern=groupedRowsView(patternRows,r=>String(r.micro?.predatorPattern||'UNKNOWN'));
   const byPatternRegime=groupedRowsView(patternRows,r=>String(r.micro?.predatorPattern||'UNKNOWN')+'__'+String(r.regime||'UNKNOWN'));
   const bySourceRegime=groupedRowsView(rows,r=>String(r.source||'UNKNOWN')+'__'+String(r.regime||'UNKNOWN'));
+  const byHorizon=groupedRowsView(rows,r=>String(r.horizonLabel||'LEGACY'));
   const directional=global.hits+global.fails;
   const walk=walkForward(a);
   const walkForwardBySource=Object.fromEntries(
@@ -275,7 +276,7 @@ function summary(asset:string){
   return {
     ok:true,version:'next-move-live-v3-error-memory',asset,
     global,bySource,byRegime,byConfidence,
-    byPattern,byPatternRegime,bySourceRegime,
+    byPattern,byPatternRegime,bySourceRegime,byHorizon,
     patternFailureStreaks,sourceRegimeFailureStreaks,
     pending:a.pending.length,recent:a.recent.slice(0,12),
     walkForward:walk,walkForwardBySource,
@@ -423,7 +424,7 @@ export function calibrateNextMoveConfidence(nextMove:any,live:any,regime?:string
 
 export function recordNextMoveOutcome(args:{
   asset:string;price:number|null;atr:number|null;now?:number;hunt:any;regime?:string;
-  horizonMs?:number;barrierScale?:number;minBarrierBps?:number;maxBarrierBps?:number
+  horizonMs?:number;horizonLabel?:string;barrierScale?:number;minBarrierBps?:number;maxBarrierBps?:number
 }){
   const asset=key(args.asset),now=Number(args.now||Date.now()),price=Number(args.price),atr=Number(args.atr);
   if(!Number.isFinite(price)||price<=0)return {ok:false,reason:'invalid_price'};
@@ -451,7 +452,7 @@ export function recordNextMoveOutcome(args:{
       const target=side==='BUY'?price+distance:price-distance;
       const stop=side==='BUY'?price-distance:price+distance;
       a.pending.push({
-        id:eventId,at:now,side,source,regime,confidence,entry:price,target,stop,barrierBps,horizonMs,
+        id:eventId,at:now,side,source,regime,confidence,horizonLabel:key(args.horizonLabel||Math.round(horizonMs/1000)+'S'),entry:price,target,stop,barrierBps,horizonMs,
         mfeBps:0,maeBps:0,
         micro:{
           edge:Number(micro?.edge||0),support:Number(micro?.support||0),opposition:Number(micro?.opposition||0),strong:Boolean(micro?.strong),
