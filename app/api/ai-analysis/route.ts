@@ -626,11 +626,11 @@ export async function GET(request:Request){
     const goldLivePulse={price:goldPrice,basePrice:goldBase,delta:goldDelta,deltaPct:goldBase?goldDelta/goldBase*100:0,momentum:goldAtr&&goldAtr>0?Math.min(100,Math.round(Math.abs(goldDelta)/goldAtr*100)):0,direction:goldPulseDirection,source:quote?.source||gm.priceSource||'unknown',sourceTime:quote?.sourceTime||gm.checkedAt,status:quote?.status||'unknown'};
     const goldMomentum=buildMomentumEngine({
       asset:'GOLD',c1:gm.c1,c5:gm.c5,c15:gm.c15,price:goldPrice,atr:goldAtr,
-      pulse:goldLivePulse,marketLead:goldMarketLead,structure:goldStructure,now
+      pulse:goldLivePulse,marketLead:goldMarketLead,structure:goldStructure,liquidity:goldLiquidity,now
     });
     const bitcoinMomentum=buildMomentumEngine({
       asset:'BTC',c1:btc.c1,c5:btc.c5,c15:btc.c15,price:btcPrice,atr:btcAtr,
-      pulse:livePulse,marketLead:bitcoinMarketLead,structure:bitcoinStructure,now
+      pulse:livePulse,marketLead:bitcoinMarketLead,structure:bitcoinStructure,liquidity,now
     });
     const gold=aiDecision('GOLD',goldAnalysis,{c1:gm.c1,c5:gm.c5,c15:gm.c15,c60:gm.c60},goldPrice,{quote:quote?.source||gm.priceSource||'unknown',candles:gm.priceSource||'unknown'},now,defaults,goldLivePulse,goldLiquidity,goldScalp,goldMotion,goldBehavior);
     const bitcoin=aiDecision('BTC',btcAnalysis,{c1:btc.c1,c5:btc.c5,c15:btc.c15,c60:btc.c60},btcPrice,{quote:liveBtc?.source||btc.source,candles:btc.source},now,defaults,livePulse,liquidity,bitcoinScalp,motion,bitcoinBehavior);
@@ -1084,7 +1084,12 @@ export async function GET(request:Request){
         ok:Boolean(momentum.ok),side:momentum.side||'WAIT',phase:momentum.phase||'NEUTRAL',score:Number(momentum.score||0),confidence:Number(momentum.confidence||0),preMove:Boolean(momentum.preMove),
         acceleration:Number(momentum.acceleration||0),persistence:Number(momentum.persistence||0),expansion:Number(momentum.expansion||0),efficiency:Number(momentum.efficiency||0),closePressure:Number(momentum.closePressure||0),
         impulse:Number(momentum.impulse||0),exhaustion:Number(momentum.exhaustion||0),tickSupport:Number(momentum.tickSupport||0),multiTimeframe:Number(momentum.multiTimeframe||0),
-        reasons:Array.isArray(momentum.reasons)?momentum.reasons.slice(0,5):[]
+        mVolume:momentum.mVolume?{
+          available:Boolean(momentum.mVolume.available),phase:momentum.mVolume.phase||'QUIET',side:momentum.mVolume.side||'WAIT',score:Number(momentum.mVolume.score||0),
+          relativeVolume:Number(momentum.mVolume.relativeVolume||0),volumeAcceleration:Number(momentum.mVolume.volumeAcceleration||0),directionalPressure:Number(momentum.mVolume.directionalPressure||0),
+          flowDelta:Number(momentum.mVolume.flowDelta||0),absorption:Number(momentum.mVolume.absorption||0),climax:Number(momentum.mVolume.climax||0)
+        }:null,
+        reasons:Array.isArray(momentum.reasons)?momentum.reasons.slice(0,6):[]
       }:null,
       marketMakerIntent:intent?{
         ok:Boolean(intent.ok),side:intent.side||'WAIT',phase:intent.phase||'NEUTRAL',confidence:Number(intent.confidence||0),score:Number(intent.score||0),preMove:Boolean(intent.preMove),
