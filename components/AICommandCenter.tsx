@@ -90,53 +90,18 @@ function AssetCard({x,liveQuote,fast}:any){
     </div>
 
     <div className="next-move-copy primary-move zone-primary">
-      <span>التحرك القادم + التوقع القادم</span>
-
+      <span>الحركة القادمة</span>
       <strong className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>
         {forwardSide==='WAIT'
-          ?'التحرك القادم: لا يوجد اتجاه أمامي واضح حتى الآن'
-          :`التحرك القادم: ${moveAr(forwardSide)} ${forwardZone?`→ منطقة ${zoneRange(forwardZone)}`:forwardTarget!=null?`→ قرب ${fmt(forwardTarget,2)}`:''} · ${Math.round(Number(forward.confidence||0))}%`}
+          ?'لا يوجد اتجاه أمامي واضح'
+          :`${moveAr(forwardSide)} → ${forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):'—'} · ${Math.round(Number(forward.confidence||0))}%`}
       </strong>
-
-      <p>
-        {forecastSide!=='WAIT'&&priceDestination
-          ?`التوقع القادم: ${softDestination?'ميل مراقبة · ':''}${moveAr(forecastSide)} نحو ${zoneRange(priceDestination)} · مركز ${fmt(priceDestination.mid,2)} · ثقة ${conf}%`
-          :path?.side&&path.side!=='WAIT'
-            ?`التوقع القادم: ${moveAr(path.side)} · ${Math.round(Number(path.confidence||0))}%`
-            :`التوقع القادم: ${zone?.decisionReady===false||zone?.side==='WAIT'?'السوق متوازن حاليًا':move.title}`}
-      </p>
-
       <div className="forecast-scenario-strip">
-        <div>
-          <small>الوجهة القادمة</small>
-          <b className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>
-            {forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):priceDestination?zoneRange(priceDestination):'—'}
-          </b>
-        </div>
-        <div><small>الزمن المتوقع</small><b>{forwardSide!=='WAIT'?forwardWindow:'—'}</b></div>
-        <div><small>الثقة</small><b>{Math.round(Number(forward?.confidence||conf||0))}%</b></div>
+        <div><small>الوجهة</small><b>{forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):priceDestination?zoneRange(priceDestination):'—'}</b></div>
+        <div><small>الزمن</small><b>{forwardSide!=='WAIT'?forwardWindow:'—'}</b></div>
+        <div><small>الارتداد</small><b>{zoneRange(path?.reboundZone||zone?.origin)}</b></div>
+        <div><small>السيولة</small><b>{zoneRange(path?.destination||zone?.target)}</b></div>
       </div>
-
-      <div className="forecast-scenario-strip">
-        <div>
-          <small>منطقة الارتداد</small>
-          <b>{zoneRange(path?.reboundZone||zone?.origin)}</b>
-        </div>
-        <div>
-          <small>السيولة المرجحة</small>
-          <b>{zoneRange(path?.destination||zone?.target)}</b>
-        </div>
-        <div>
-          <small>إلغاء السيناريو</small>
-          <b>{Number.isFinite(Number(path?.invalidation?.price))?fmt(path.invalidation.price,2):'—'}</b>
-        </div>
-      </div>
-
-      {(path?.upperLiquidity||path?.lowerLiquidity)&&<div className="forecast-scenario-strip">
-        <div><small>سيولة أعلى</small><b className="green">{zoneRange(path?.upperLiquidity)}</b></div>
-        <div><small>سيولة أسفل</small><b className="red">{zoneRange(path?.lowerLiquidity)}</b></div>
-        <div><small>اتفاق المحركات</small><b>{Math.round(Number(forward?.agreement||0))}%</b></div>
-      </div>}
     </div>
 
     <div className="forecast-horizons decision-horizons direction-only">
@@ -146,11 +111,6 @@ function AssetCard({x,liveQuote,fast}:any){
     </div>
 
 
-    {(target!=null||invalid!=null)&&<div className="trade-strip compact-levels">
-      <div><small>الهدف الأقرب</small><strong>{fmt(target,2)}</strong></div>
-      <div><small>إلغاء السيناريو</small><strong>{fmt(invalid,2)}</strong></div>
-      <div><small>القرار</small><strong className={recommendation?.active?(recommendation.action==='BUY'?'green':recommendation.action==='SELL'?'red':'amber'):'amber'}>{recommendation?.active?sideAr(recommendation.action):'مراقبة'}</strong></div>
-    </div>}
   </section>;
 }
 
