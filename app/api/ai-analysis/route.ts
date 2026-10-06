@@ -781,7 +781,7 @@ export async function GET(request:Request){
       const hasLeadWindow=leadFresh&&leadSide===winner&&Number.isFinite(Number(leadWindow?.min))&&Number.isFinite(Number(leadWindow?.max));
       const fallbackWindow=alreadyMoving?{min:2,max:35}:armed?{min:3,max:25}:building?{min:8,max:45}:{min:15,max:75};
       const windowSeconds=hasLeadWindow
-        ?{min:Math.max(2,Math.min(90,Math.round(Number(leadWindow.min)))),max:Math.max(4,Math.min(120,Math.round(Number(leadWindow.max))))}
+        ?{min:Math.max(2,Math.min(90,Math.round(Number(leadWindow?.min)))),max:Math.max(4,Math.min(120,Math.round(Number(leadWindow?.max))))}
         :fallbackWindow;
       if(windowSeconds.max<windowSeconds.min)windowSeconds.max=windowSeconds.min+5;
 
