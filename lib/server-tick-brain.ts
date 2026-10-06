@@ -65,7 +65,9 @@ export function startServerTickBrain(){
 function older(arr:Tick[],now:number,ms:number){for(let i=arr.length-1;i>=0;i--)if(arr[i].at<=now-ms)return arr[i];return arr[0]||null;}
 function vel(latest:Tick,old:Tick|null){return old&&old.price>0?(latest.price-old.price)/old.price*10000:0;}
 export function getServerTickSignal(asset:Asset,now=Date.now()){
-  const arr=state().ticks[asset].filter(x=>now-x.at<=18000),latest=arr.at(-1);if(!latest||arr.length<5||now-latest.at>4500)return null;
+  const arr=state().ticks[asset].filter(x=>now-x.at<=(asset==='GOLD'?24000:18000)),latest=arr.at(-1);
+  const minSamples=asset==='GOLD'?3:5,maxAgeMs=asset==='GOLD'?6500:4500;
+  if(!latest||arr.length<minSamples||now-latest.at>maxAgeMs)return null;
   const v1=vel(latest,older(arr,now,1000)),v3=vel(latest,older(arr,now,3000)),v8=vel(latest,older(arr,now,8000)),acc=v1-v3/3;
   let up=0,down=0;for(let i=1;i<arr.length;i++){if(arr[i].price>arr[i-1].price)up++;else if(arr[i].price<arr[i-1].price)down++;}
   const persistence=Math.round(Math.max(up,down)/Math.max(1,up+down)*100);
