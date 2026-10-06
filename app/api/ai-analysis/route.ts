@@ -21,6 +21,7 @@ import {getNeuralPrediction} from '../../../lib/neural-prediction';
 import {getBrainOutcomeLearning,recordBrainOutcomeObservation} from '../../../lib/brain-outcome-learning';
 import {getServerTickSignal,startServerTickBrain} from '../../../lib/server-tick-brain';
 import {buildNewsIntelligence} from '../../../lib/news-intelligence';
+import {getWebMarketIntelligence,mergeNewsWithWeb} from '../../../lib/web-market-intelligence';
 import {buildOpportunitySet} from '../../../lib/multi-opportunity';
 import {buildScalpFusion} from '../../../lib/scalp-fusion';
 import {recordNextMoveOutcome,getNextMoveOutcome,calibrateNextMoveConfidence} from '../../../lib/next-move-outcome';
@@ -231,6 +232,7 @@ export async function GET(request:Request){
   analysisBusy=true;
   try{
     const actions:string[]=[],detected:string[]=[];
+    const webIntelPromise=getWebMarketIntelligence(now).catch(()=>null);
     let [goldSnap,btc,liveBtc,liquidity]=await Promise.all([getMarketSnapshot(),getBtcMarket(),liveBtcSpot(),getBtcLiquidity().catch(()=>null)]);
     let gm=goldSnap.market,quote=goldSnap.quote;
     if(!gm.pricesReady||!gm.newsReady){
@@ -302,8 +304,11 @@ export async function GET(request:Request){
     const bitcoinStructure=analyzeWaveStructure(btc.c1,btc.c5,now);
     const goldStateGraph=buildMarketStateGraph(gm.c1,now);
     const bitcoinStateGraph=buildMarketStateGraph(btc.c1,now);
-    const goldNews=buildNewsIntelligence('GOLD',gm.events,now);
-    const bitcoinNews=buildNewsIntelligence('BTC',gm.events,now);
+    const webIntel=await webIntelPromise;
+    const goldNewsBase=buildNewsIntelligence('GOLD',gm.events,now);
+    const bitcoinNewsBase=buildNewsIntelligence('BTC',gm.events,now);
+    const goldNews=webIntel?mergeNewsWithWeb(goldNewsBase,webIntel.gold):goldNewsBase;
+    const bitcoinNews=webIntel?mergeNewsWithWeb(bitcoinNewsBase,webIntel.btc):bitcoinNewsBase;
     const goldClosedM1=gm.c1.filter((c:any)=>c.time+60000<=now).at(-1)||gm.c1.at(-1)||null;
     const goldBase=Number(goldClosedM1?.close??goldPrice),goldDelta=Number.isFinite(Number(goldPrice))&&Number.isFinite(goldBase)?Number(goldPrice)-goldBase:0;
     const goldPulseDirection:'UP'|'DOWN'|'FLAT'=goldDelta>0?'UP':goldDelta<0?'DOWN':'FLAT';
@@ -599,7 +604,17 @@ export async function GET(request:Request){
       phase:x.phase||'CALM',
       directional:Boolean(x.directional),
       surprise:Number.isFinite(Number(x.surprise))?Number(x.surprise):null,
-      reason:Array.isArray(x.reasons)?x.reasons.slice(0,2).join(' '):''
+      reason:Array.isArray(x.reasons)?x.reasons.slice(0,2).join(' '):'',
+      web:x.web?{
+        side:x.web.side||'WAIT',
+        confidence:Number(x.web.confidence||0),
+        risk:Number(x.web.risk||0),
+        sourceCount:Number(x.web.sourceCount||0),
+        freshCount:Number(x.web.freshCount||0),
+        top:Array.isArray(x.web.items)?x.web.items.slice(0,3).map((i:any)=>({
+          source:i.source,title:i.title,ageMinutes:i.ageMinutes,side:i.side,impact:i.impact
+        })):[]
+      }:null
     }:null;
     const degraded=(goldMarketOpen&&!gm.pricesReady)||!gm.newsReady||!btc?.c1?.length||!btcPrice;
     const autopilot={
@@ -745,6 +760,12 @@ export async function GET(request:Request){
       model:'Predator AI Lite',
       checkedAt:now,
       autopilot,
+      webScout:webIntel?{
+        ok:Boolean(webIntel.ok),checkedAt:webIntel.checkedAt,cached:Boolean(webIntel.cached),
+        sources:webIntel.sources.map((s:any)=>({id:s.id,name:s.name,ok:Boolean(s.ok),itemCount:Number(s.itemCount||0),error:s.error||null})),
+        gold:{side:webIntel.gold.side,confidence:webIntel.gold.confidence,risk:webIntel.gold.risk,sourceCount:webIntel.gold.sourceCount,freshCount:webIntel.gold.freshCount},
+        btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount}
+      }:null,
       gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2),
       bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse)
     };
