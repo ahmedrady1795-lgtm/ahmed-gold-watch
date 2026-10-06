@@ -130,10 +130,13 @@ function stabilizeGoldLiquidity(raw:any,c1:any[],price:number|null,now=Date.now(
   const side=pressure>=6?'BUY':pressure<=-6?'SELL':'WAIT';
   const quality=Math.round(Math.max(rawQuality,Math.min(68,proxy.quality+(proxyDirectional?5:0)),side==='WAIT'?42:48));
   const buy=Math.round(Math.max(8,Math.min(92,50+pressure/2))),sell=100-buy;
-  if(side!=='WAIT'||Math.abs(pressure)>=4){
+  if(side!=='WAIT'){
     stableGoldLiquidityState={at:now,pressure,quality,side};
   }else if(prev&&age<90000){
-    stableGoldLiquidityState={...prev,at:now,pressure};
+    // Keep the original directional timestamp so old liquidity naturally expires.
+    stableGoldLiquidityState={...prev,pressure,quality,side:'WAIT'};
+  }else{
+    stableGoldLiquidityState=null;
   }
   return {
     ...raw,
