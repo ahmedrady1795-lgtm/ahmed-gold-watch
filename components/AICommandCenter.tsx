@@ -63,7 +63,7 @@ function AssetCard({x,liveQuote,fast,preMove}:any){
       :zone?String(zone.side||'WAIT')
       :(goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT');
   const displaySide=forecastSide;
-  const softDestination=Boolean((path?.side==='WAIT'&&path?.priceDestination?.zone)||guardWatching);
+  const softDestination=Boolean(path?.side==='WAIT'&&path?.priceDestination?.zone);
   const buy=displaySide==='BUY'&&!softDestination,sell=displaySide==='SELL'&&!softDestination;
   const liveGoldPrice=x.asset==='GOLD'&&liveQuote?.ok&&Number.isFinite(Number(liveQuote?.price))&&Number(liveQuote.price)>0?Number(liveQuote.price):null;
   const price=liveGoldPrice??x.livePulse?.price??x.price;
