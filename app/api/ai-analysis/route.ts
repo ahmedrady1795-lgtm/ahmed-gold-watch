@@ -30,6 +30,7 @@ import {buildGoldForecastCore} from '../../../lib/gold-forecast-core';
 import {buildPredatorFusionV2} from '../../../lib/predator-fusion-v2';
 import {getStructuralPathLearning,calibrateStructuralPathForecast,recordStructuralPathOutcome} from '../../../lib/structural-path-learning';
 import {getHorizonBrainLearning,recordHorizonBrainOutcome} from '../../../lib/horizon-brain-learning';
+import {buildMarketMakerIntent} from '../../../lib/market-maker-intent';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -598,6 +599,14 @@ export async function GET(request:Request){
     const bitcoinStructure=analyzeWaveStructure(btc.c1,btc.c5,now);
     const goldStateGraph=buildMarketStateGraph(gm.c1,now);
     const bitcoinStateGraph=buildMarketStateGraph(btc.c1,now);
+    const goldIntent=buildMarketMakerIntent({
+      asset:'GOLD',c1:gm.c1,c5:gm.c5,price:goldPrice,atr:goldAtr,liquidity:goldLiquidity,
+      accumulation:goldAccumulation,structure:goldStructure,h4:goldH4,marketLead:goldMarketLead,now
+    });
+    const bitcoinIntent=buildMarketMakerIntent({
+      asset:'BTC',c1:btc.c1,c5:btc.c5,price:btcPrice,atr:btcAtr,liquidity,
+      accumulation:bitcoinAccumulation,structure:bitcoinStructure,h4:bitcoinH4,marketLead:bitcoinMarketLead,now
+    });
     const webIntel=await webIntelPromise;
     const goldWebLearning=webIntel?recordWebSourceOutcome({asset:'GOLD',price:goldLearningPrice,atr:goldAtr,signal:webIntel.gold,now}):null;
     const bitcoinWebLearning=webIntel?recordWebSourceOutcome({asset:'BTC',price:btcPrice,atr:btcAtr,signal:webIntel.btc,now}):null;
@@ -616,8 +625,8 @@ export async function GET(request:Request){
     const gold=aiDecision('GOLD',goldAnalysis,{c1:gm.c1,c5:gm.c5,c15:gm.c15,c60:gm.c60},goldPrice,{quote:quote?.source||gm.priceSource||'unknown',candles:gm.priceSource||'unknown'},now,defaults,goldLivePulse,goldLiquidity,goldScalp,goldMotion,goldBehavior);
     const bitcoin=aiDecision('BTC',btcAnalysis,{c1:btc.c1,c5:btc.c5,c15:btc.c15,c60:btc.c60},btcPrice,{quote:liveBtc?.source||btc.source,candles:btc.source},now,defaults,livePulse,liquidity,bitcoinScalp,motion,bitcoinBehavior);
 
-    const goldLearningContext={structure:goldStructure,stateGraph:goldStateGraph,accumulation:goldAccumulation,liquidity:goldLiquidity,motion:goldMotion,behavior:goldBehavior,news:goldNews,scalp:goldScalp,decision:gold,marketLead:goldMarketLead};
-    const bitcoinLearningContext={structure:bitcoinStructure,stateGraph:bitcoinStateGraph,accumulation:bitcoinAccumulation,liquidity,motion,behavior:bitcoinBehavior,news:bitcoinNews,scalp:bitcoinScalp,decision:bitcoin,marketLead:bitcoinMarketLead};
+    const goldLearningContext={structure:goldStructure,stateGraph:goldStateGraph,accumulation:goldAccumulation,liquidity:goldLiquidity,motion:goldMotion,behavior:goldBehavior,news:goldNews,scalp:goldScalp,decision:gold,marketLead:goldMarketLead,marketMakerIntent:goldIntent};
+    const bitcoinLearningContext={structure:bitcoinStructure,stateGraph:bitcoinStateGraph,accumulation:bitcoinAccumulation,liquidity,motion,behavior:bitcoinBehavior,news:bitcoinNews,scalp:bitcoinScalp,decision:bitcoin,marketLead:bitcoinMarketLead,marketMakerIntent:bitcoinIntent};
     const [goldLearning,bitcoinLearning]=await Promise.all([
       getMarketLearningSignal({asset:'GOLD',c1:gm.c1,c5:gm.c5,price:goldLearningPrice,atr:goldAtr,context:goldLearningContext,now}),
       getMarketLearningSignal({asset:'BTC',c1:btc.c1,c5:btc.c5,price:btcPrice,atr:btcAtr,context:bitcoinLearningContext,now})
@@ -745,7 +754,7 @@ export async function GET(request:Request){
       touches:Number(z.touches||0),
       rejections:Number(z.rejections||0)
     }:null;
-    const buildForwardMove=(asset:'GOLD'|'BTC',hunt:any,scalp:any,movement:any,marketLead:any,pulse:any,liq:any,structure:any,accumulation:any,h4:any)=>{
+    const buildForwardMove=(asset:'GOLD'|'BTC',hunt:any,scalp:any,movement:any,marketLead:any,pulse:any,liq:any,structure:any,accumulation:any,h4:any,intent:any)=>{
       const rows:Array<{side:'BUY'|'SELL';score:number;weight:number;name:string}>=[];
       const add=(name:string,s:any,score:any,weight:number)=>{
         if((s==='BUY'||s==='SELL')&&Number(score)>0&&weight>0)rows.push({name,side:s,score:Math.max(0,Math.min(92,Number(score))),weight});
@@ -774,6 +783,10 @@ export async function GET(request:Request){
       const h4Side=h4?.side==='BUY'||h4?.side==='SELL'?h4.side:'WAIT';
       const h4Confidence=Math.max(0,Math.min(88,Number(h4?.confidence||0)));
       add('H4',h4Side,h4Confidence,h4?.ok?1.02:0);
+      const intentSide=intent?.side==='BUY'||intent?.side==='SELL'?intent.side:'WAIT';
+      const intentConfidence=Math.max(0,Math.min(90,Number(intent?.confidence||0)));
+      const intentPreMove=Boolean(intent?.preMove&&intentConfidence>=54);
+      add('intent',intentSide,intentConfidence,intentPreMove?1.34:intentConfidence>=58?.92:.42);
 
       let buy=0,sell=0;
       for(const r of rows){
@@ -798,6 +811,10 @@ export async function GET(request:Request){
         structureSide!=='WAIT'&&structureSide!==winner&&structureScore>=54
       ].filter(Boolean).length;
       let confidence=Math.round(Math.max(0,Math.min(86,33+edge*.43+support*4.2-oppose*3.2+coreConfirmations*3.5-coreOpposition*5)));
+      const intentAligned=Boolean(intentSide===winner&&intentConfidence>=52);
+      const intentOpposes=Boolean(intentSide!=='WAIT'&&intentSide!==winner&&intentConfidence>=60);
+      if(intentAligned)confidence+=intentPreMove?8:4;
+      if(intentOpposes)confidence-=intentConfidence>=72?13:8;
 
       const m5Side=movement?.horizons?.fiveMinute?.side;
       const m5Confidence=Number(movement?.horizons?.fiveMinute?.confidence||0);
@@ -816,10 +833,10 @@ export async function GET(request:Request){
       confidence=Math.max(0,Math.min(89,Math.round(confidence)));
 
       const leadSupports=Boolean(leadFresh&&leadSide===winner&&(marketLead?.armed||leadStage==='BUILDING'));
-      const coreReady=(coreConfirmations>=2||(coreConfirmations>=1&&leadSupports&&support>=3))&&(!h4Opposes||coreConfirmations>=2&&share>=61&&support>=3);
+      const coreReady=(coreConfirmations>=2||(coreConfirmations>=1&&leadSupports&&support>=3)||(intentPreMove&&intentAligned&&coreConfirmations>=1&&support>=3))&&(!h4Opposes||coreConfirmations>=2&&share>=61&&support>=3)&&(!intentOpposes||coreConfirmations===3&&share>=64);
       if(share<57||support<2||confidence<47||!coreReady)return {
         side:'WAIT',confidence,status:'WAIT',target:null,zone:null,windowSeconds:null,expiresAt:null,
-        confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide},
+        confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide},
         reason:m5Opposes?'M5 يعاكس الإشارة القصيرة؛ تم إيقاف التوقع المبكر حتى يتضح المسار':!coreReady?'السيولة والتجميع وهيكل الحركة لم تتفق بعد بما يكفي لاعتماد الحركة القادمة':'الإشارات المبكرة ما زالت منقسمة؛ لا يوجد اتجاه أمامي كافٍ'
       };
 
@@ -840,7 +857,8 @@ export async function GET(request:Request){
       const quickPrice=quick?.side===winner&&ahead(quick?.price)?Number(quick.price):null;
       const scalpNext=scalp?.nextPrice||scalp?.fusionV8?.nextPrice||scalp?.projection||null;
       const scalpPrice=(scalpNext?.side===winner||!scalpNext?.side)&&ahead(scalpNext?.price)?Number(scalpNext.price):null;
-      const target=target15Price??(pathZone&&ahead(pathZone.mid)?Number(pathZone.mid):quickPrice??scalpPrice??null);
+      const intentTarget=intentSide===winner&&ahead(intent?.targetPrice)?Number(intent.targetPrice):null;
+      const target=intentTarget??target15Price??(pathZone&&ahead(pathZone.mid)?Number(pathZone.mid):quickPrice??scalpPrice??null);
 
       // Do not label a consumed/behind destination as "the next move".
       if(priceNow!=null&&target==null){
@@ -860,8 +878,9 @@ export async function GET(request:Request){
       if(alreadyMoving)confidence=Math.max(45,confidence-5);
 
       const armed=Boolean(leadFresh&&marketLead?.armed&&leadSide===winner&&!alreadyMoving);
-      const building=Boolean(!armed&&leadFresh&&leadStage==='BUILDING'&&leadSide===winner&&!alreadyMoving);
-      const status=alreadyMoving?'IN_PROGRESS':armed?'PRE_MOVE':building?'BUILDING':'SHORT_HORIZON';
+      const intentArmed=Boolean(intentPreMove&&intentAligned&&!alreadyMoving);
+      const building=Boolean(!armed&&!intentArmed&&leadFresh&&leadStage==='BUILDING'&&leadSide===winner&&!alreadyMoving);
+      const status=alreadyMoving?'IN_PROGRESS':armed||intentArmed?'PRE_MOVE':building?'BUILDING':'SHORT_HORIZON';
       const leadWindow=marketLead?.windowSeconds;
       const hasLeadWindow=leadFresh&&leadSide===winner&&Number.isFinite(Number(leadWindow?.min))&&Number.isFinite(Number(leadWindow?.max));
       const fallbackWindow={min:120,max:900};
@@ -885,9 +904,9 @@ export async function GET(request:Request){
         zone:pathZone?{low:Number(pathZone.low),high:Number(pathZone.high),mid:Number(pathZone.mid)}:null,
         windowSeconds,expiresAt:now+windowSeconds.max*1000,agreement:Math.round(share),support,opposition:oppose,
         priceNow,distancePct:distancePct==null?null:Number(distancePct.toFixed(4)),
-        freshness:{leadFresh,leadAgeMs:Number.isFinite(leadAge)?leadAge:null,m5Opposes,h4Opposes,alreadyMoving},
+        freshness:{leadFresh,leadAgeMs:Number.isFinite(leadAge)?leadAge:null,m5Opposes,h4Opposes,intentOpposes,alreadyMoving},
         confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide},
-        reason:(alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':building?'ضغط مبكر يتكوّن':'ترجيح 15 دقيقة')+' · H4 '+(h4Side==='BUY'?'صاعد':h4Side==='SELL'?'هابط':'محايد')+' · تأكيد أساسي '+coreConfirmations+'/3 · '+sourceParts.join(' + ')
+        reason:(alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':intentArmed?'سحب سيولة/امتصاص يسبق الحركة':building?'ضغط مبكر يتكوّن':'ترجيح 15 دقيقة')+' · H4 '+(h4Side==='BUY'?'صاعد':h4Side==='SELL'?'هابط':'محايد')+' · تأكيد أساسي '+coreConfirmations+'/3 · '+sourceParts.join(' + ')
       };
     };
     const stabilizeForwardMove=(asset:'GOLD'|'BTC',candidate:any,pulse:any)=>{
@@ -950,10 +969,16 @@ export async function GET(request:Request){
 
       return keepPrev('تم رفض انعكاس مؤقت؛ الاتجاه لا يتغير إلا بتفوق واضح ومستقل للإشارة العكسية');
     };
-    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any,h4?:any)=>({
+    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any,h4?:any,intent?:any)=>({
       asset,
-      forwardMove:stabilizeForwardMove(asset,buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse,liq,structure,accumulation,h4),pulse),
+      forwardMove:stabilizeForwardMove(asset,buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse,liq,structure,accumulation,h4,intent),pulse),
       h4Context:h4||null,
+      marketMakerIntent:intent?{
+        ok:Boolean(intent.ok),side:intent.side||'WAIT',phase:intent.phase||'NEUTRAL',confidence:Number(intent.confidence||0),score:Number(intent.score||0),preMove:Boolean(intent.preMove),
+        liquidityTaken:intent.liquidityTaken||'NONE',sweepLevel:Number.isFinite(Number(intent.sweepLevel))?Number(intent.sweepLevel):null,targetPrice:Number.isFinite(Number(intent.targetPrice))?Number(intent.targetPrice):null,targetKind:intent.targetKind||'NONE',
+        compression:Number(intent.compression||0),rejection:Number(intent.rejection||0),absorption:Number(intent.absorption||0),institutional:Number(intent.institutional||0),h4Alignment:intent.h4Alignment||'NEUTRAL',
+        sequence:Array.isArray(intent.sequence)?intent.sequence.slice(0,8):[],reasons:Array.isArray(intent.reasons)?intent.reasons.slice(0,5):[]
+      }:null,
       liquidity:liq?{
         side:liq.side||'WAIT',
         buy:Math.max(0,Math.min(100,Math.round(Number(liq.buy||0)))),
@@ -1465,8 +1490,8 @@ export async function GET(request:Request){
         gold:{side:webIntel.gold.side,confidence:webIntel.gold.confidence,risk:webIntel.gold.risk,sourceCount:webIntel.gold.sourceCount,freshCount:webIntel.gold.freshCount},
         btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount}
       }:null,
-      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation,goldH4),
-      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity,bitcoinStructure,bitcoinAccumulation,bitcoinH4)
+      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation,goldH4,goldIntent),
+      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity,bitcoinStructure,bitcoinAccumulation,bitcoinH4,bitcoinIntent)
     };
     lastAiPayload=payload;lastAiPayloadAt=Date.now();
     return Response.json(payload,{headers:{'Cache-Control':'no-store','X-AI-Cache':'miss'}});
