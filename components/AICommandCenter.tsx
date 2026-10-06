@@ -34,21 +34,7 @@ function nextMoveCopy(hunt:any,stateGraph:any){
   return {title,detail,tone:first==='BUY'?'green':first==='SELL'?'red':'amber'};
 }
 
-function fastScalpProjection(price:any,fast:any){
-  const p=Number(price),at=Number(fast?.at||0),age=Date.now()-at;
-  const side=fast?.side==='BUY'||fast?.side==='SELL'?fast.side:'WAIT';
-  const confidence=Number(fast?.confidence||0);
-  if(!Number.isFinite(p)||p<=0||!fast?.ok||side==='WAIT'||!Number.isFinite(at)||age<0||age>2600||confidence<28)return null;
-  const v1=Math.abs(Number(fast?.velocity1s||0)),v3=Math.abs(Number(fast?.velocity3s||0)),acc=Math.abs(Number(fast?.acceleration||0));
-  const burst=Math.max(0,Number(fast?.burstRate||1)-1);
-  const stage=String(fast?.stage||'WARMING');
-  const stageMult=stage==='IGNITION'?1.45:stage==='WAVE_FORMING'?1.18:stage==='PRE_TRIGGER'?1.0:.72;
-  const rawBps=Math.min(3.2,Math.max(.10,v1*.62+v3*.10+acc*.52+burst*.16));
-  const signedBps=(side==='BUY'?1:-1)*rawBps*stageMult;
-  return {side,price:p*(1+signedBps/10000),confidence:Math.round(confidence),stage,bps:Number(signedBps.toFixed(2))};
-}
-
-function AssetCard({x,liveQuote,fast,preMove}:any){
+function AssetCard({x,liveQuote,fast}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
   const hunt=x.huntForecast,recommendation=x.recommendation,goldCore=x.asset==='GOLD'?x.goldForecastCore:null,predator=x.asset==='GOLD'?x.predatorFusionV2:null;
   const core1=goldCore?.horizons?.oneMinute,core5=goldCore?.horizons?.fiveMinute;
@@ -86,16 +72,11 @@ function AssetCard({x,liveQuote,fast,preMove}:any){
     reason:Array.isArray(fast.reasons)&&fast.reasons.length?fast.reasons.slice(0,3).join(' · '):'قراءة micro-flow لحظية من التسارع والسبريد وتتابع الـticks.',
     metrics:{bookImbalance:Number(fast.imbalance||0),pressureChange:0,replenishDelta:0,acceleration:Number(fast.acceleration||0),persistence:Number(fast.persistence||0)}
   }:null;
-  const leadView=preMove?.available?preMove:waveLeadView||preMove;
   const forward=x.forwardMove||null;
   const forwardSide=forward?.side==='BUY'||forward?.side==='SELL'?forward.side:'WAIT';
   const forwardZone=forward?.zone||null;
   const forwardTarget=Number.isFinite(Number(forward?.target))?Number(forward.target):null;
   const forwardWindow=forward?.windowSeconds?(`${forward.windowSeconds.min}–${forward.windowSeconds.max} ث`):'—';
-  const scalpNext=x.scalp?.nextPrice||x.scalp?.fusionV8?.nextPrice||{};
-  const fastScalp=fastScalpProjection(price,fast);
-  const scalpSide=fastScalp?.side??(x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:(scalpNext?.side||'WAIT'));
-  const scalpPrice=fastScalp?.price??scalpNext?.price??x.scalp?.target?.price??x.scalp?.ambushPlan?.target?.price??hunt?.quickSignalTargets?.oneMinute?.price??null;
   return <section className={"panel ai-asset-card compact-asset "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
     <div className="panelhead">
       <div><span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span><h2>{forwardSide==='BUY'?'التحرك القادم: صعود':forwardSide==='SELL'?'التحرك القادم: هبوط':'انتظار قراءة أمامية أوضح'}</h2></div>
@@ -109,40 +90,52 @@ function AssetCard({x,liveQuote,fast,preMove}:any){
     </div>
 
     <div className="next-move-copy primary-move zone-primary">
-      <span>القراءة المبكرة · Forward Move</span>
+      <span>التحرك القادم + التوقع القادم</span>
+
       <strong className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>
         {forwardSide==='WAIT'
-          ?'لا يوجد تحرك أمامي واضح حتى الآن'
-          :`${moveAr(forwardSide)} ${forwardZone?`→ منطقة ${zoneRange(forwardZone)}`:forwardTarget!=null?`→ قرب ${fmt(forwardTarget,2)}`:''} · ${Math.round(Number(forward.confidence||0))}%`}
+          ?'التحرك القادم: لا يوجد اتجاه أمامي واضح حتى الآن'
+          :`التحرك القادم: ${moveAr(forwardSide)} ${forwardZone?`→ منطقة ${zoneRange(forwardZone)}`:forwardTarget!=null?`→ قرب ${fmt(forwardTarget,2)}`:''} · ${Math.round(Number(forward.confidence||0))}%`}
       </strong>
-      <p>{forward?.reason||'المحرك ينتظر اتفاق الضغط المبكر مع M1/M3 قبل إعطاء اتجاه.'}</p>
-      {forwardSide!=='WAIT'&&<div className="forecast-scenario-strip">
-        <div><small>الوجهة</small><b className={forwardSide==='BUY'?'green':'red'}>{forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):'—'}</b></div>
-        <div><small>الزمن المتوقع</small><b>{forwardWindow}</b></div>
-        <div><small>اتفاق المحركات</small><b>{Math.round(Number(forward?.agreement||0))}%</b></div>
-      </div>}
-    </div>
 
-        <div className="next-move-copy primary-move zone-primary">
-      <span>توقع الحركة القادمة · سيولة وهيكل</span>
-      <strong className={softDestination?'amber':forecastSide==='BUY'?'green':forecastSide==='SELL'?'red':'amber'}>
+      <p>
         {forecastSide!=='WAIT'&&priceDestination
-          ?`${softDestination?'ميل مراقبة: ':''}${moveAr(forecastSide)} → منطقة ${zoneRange(priceDestination)} · مركز ${fmt(priceDestination.mid,2)} · ${conf}%`
+          ?`التوقع القادم: ${softDestination?'ميل مراقبة · ':''}${moveAr(forecastSide)} نحو ${zoneRange(priceDestination)} · مركز ${fmt(priceDestination.mid,2)} · ثقة ${conf}%`
           :path?.side&&path.side!=='WAIT'
-            ?`${path.conviction==='WEAK'?'ميل ضعيف: ':path.conviction==='STRONG'?'قوي: ':''}${moveAr(path.side)} · ${Math.round(Number(path.confidence||0))}%`
-            :zone
-              ?(zone.decisionReady===false||zone.side==='WAIT'
-                ?'بين مناطق القرار · الحركة متوازنة'
-                :zone?.origin
-                  ?`${zone.setup||'تفاعل'} عند ${zoneRange(zone.origin)}`
-                  :move.title)
-              :move.title}
-      </strong>
-      <p>{path?.reason||path?.scenario||zone?.summary||move.detail}</p>
-      {path?.probabilities&&<div className="forecast-scenario-strip">
-        <div><small>صعود</small><b className="green">{Math.round(Number(path.probabilities.up||0))}%</b></div>
-        <div><small>هبوط</small><b className="red">{Math.round(Number(path.probabilities.down||0))}%</b></div>
-        <div><small>إلغاء السيناريو</small><b>{Number.isFinite(Number(path?.invalidation?.price))?fmt(path.invalidation.price,2):'—'}</b></div>
+            ?`التوقع القادم: ${moveAr(path.side)} · ${Math.round(Number(path.confidence||0))}%`
+            :`التوقع القادم: ${zone?.decisionReady===false||zone?.side==='WAIT'?'السوق متوازن حاليًا':move.title}`}
+      </p>
+
+      <div className="forecast-scenario-strip">
+        <div>
+          <small>الوجهة القادمة</small>
+          <b className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>
+            {forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):priceDestination?zoneRange(priceDestination):'—'}
+          </b>
+        </div>
+        <div><small>الزمن المتوقع</small><b>{forwardSide!=='WAIT'?forwardWindow:'—'}</b></div>
+        <div><small>الثقة</small><b>{Math.round(Number(forward?.confidence||conf||0))}%</b></div>
+      </div>
+
+      <div className="forecast-scenario-strip">
+        <div>
+          <small>منطقة الارتداد</small>
+          <b>{zoneRange(path?.reboundZone||zone?.origin)}</b>
+        </div>
+        <div>
+          <small>السيولة المرجحة</small>
+          <b>{zoneRange(path?.destination||zone?.target)}</b>
+        </div>
+        <div>
+          <small>إلغاء السيناريو</small>
+          <b>{Number.isFinite(Number(path?.invalidation?.price))?fmt(path.invalidation.price,2):'—'}</b>
+        </div>
+      </div>
+
+      {(path?.upperLiquidity||path?.lowerLiquidity)&&<div className="forecast-scenario-strip">
+        <div><small>سيولة أعلى</small><b className="green">{zoneRange(path?.upperLiquidity)}</b></div>
+        <div><small>سيولة أسفل</small><b className="red">{zoneRange(path?.lowerLiquidity)}</b></div>
+        <div><small>اتفاق المحركات</small><b>{Math.round(Number(forward?.agreement||0))}%</b></div>
       </div>}
     </div>
 
@@ -161,7 +154,7 @@ function AssetCard({x,liveQuote,fast,preMove}:any){
   </section>;
 }
 
-export default function AICommandCenter({data,error,fastWave,goldLive,marketLead,now=Date.now()}:any){
+export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.now()}:any){
   const auto=data?.autopilot,next=auto?.nextEvent;
   const nextEventDelta=Number(next?.time)-now;
   const showNextEvent=!!next&&Number.isFinite(nextEventDelta)&&nextEventDelta>=0&&nextEventDelta<=10*60*60*1000;
@@ -212,6 +205,6 @@ export default function AICommandCenter({data,error,fastWave,goldLive,marketLead
       </div>
     </section>}
 
-    <div className="dashboardgrid"><AssetCard x={data?.bitcoin} fast={fastWave?.btc} preMove={marketLead?.btc||data?.bitcoin?.marketLead}/><AssetCard x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive} preMove={marketLead?.gold||data?.gold?.marketLead}/></div>
+    <div className="dashboardgrid"><AssetCard x={data?.bitcoin} fast={fastWave?.btc}/><AssetCard x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive}/></div>
   </div>;
 }
