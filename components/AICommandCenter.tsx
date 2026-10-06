@@ -48,7 +48,7 @@ function fastScalpProjection(price:any,fast:any){
   return {side,price:p*(1+signedBps/10000),confidence:Math.round(confidence),stage,bps:Number(signedBps.toFixed(2))};
 }
 
-function AssetCard({x,liveQuote,fast}:any){
+function AssetCard({x,liveQuote,fast,preMove}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
   const hunt=x.huntForecast,recommendation=x.recommendation,goldCore=x.asset==='GOLD'?x.goldForecastCore:null,predator=x.asset==='GOLD'?x.predatorFusionV2:null;
   const core1=goldCore?.horizons?.oneMinute,core5=goldCore?.horizons?.fiveMinute;
@@ -99,7 +99,28 @@ function AssetCard({x,liveQuote,fast}:any){
       <div><small>{fastScalp?'السكالب اللحظي':'السكالب المتوقع'}</small><strong className={scalpSide==='BUY'?'green':scalpSide==='SELL'?'red':'amber'}>{fmt(scalpPrice,2)}</strong></div>
     </div>
 
-    <div className="next-move-copy primary-move zone-primary">
+    {x.asset==='GOLD'&&<div className="next-move-copy primary-move zone-primary">
+      <span>رادار السيولة قبل الحركة · منفصل عن Biquote</span>
+      <strong className={preMove?.lead?(preMove.side==='BUY'?'green':'red'):preMove?.stage==='MOVE_STARTED'?(preMove.side==='BUY'?'green':'red'):'amber'}>
+        {!preMove?.available
+          ?'DOM المباشر غير متاح الآن'
+          :preMove.lead
+            ?`إنذار مبكر: ${moveAr(preMove.side)} · قوة ${Math.round(Number(preMove.score||0))}%`
+            :preMove.stage==='MOVE_STARTED'
+              ?`الحركة بدأت: ${moveAr(preMove.side)} · ${Math.round(Number(preMove.confidence||0))}%`
+              :preMove.stage==='WATCH'
+                ?`ضغط سيولة يتكوّن: ${moveAr(preMove.side)} · ${Math.round(Number(preMove.score||0))}%`
+                :'لا توجد إشارة قبلية واضحة'}
+      </strong>
+      <p>{preMove?.reason||'يتم فحص اختلال دفتر الأوامر والتجدد والتسارع قبل تحرك السعر.'}</p>
+      {preMove?.available&&<div className="forecast-scenario-strip">
+        <div><small>اختلال الدفتر</small><b className={Number(preMove.metrics?.bookImbalance||0)>0?'green':Number(preMove.metrics?.bookImbalance||0)<0?'red':'amber'}>{Number(preMove.metrics?.bookImbalance||0).toFixed(1)}</b></div>
+        <div><small>تغير الضغط</small><b>{Number(preMove.metrics?.pressureChange||0).toFixed(1)}</b></div>
+        <div><small>Replenishment</small><b>{Number(preMove.metrics?.replenishDelta||0).toFixed(1)}</b></div>
+      </div>}
+    </div>}
+
+        <div className="next-move-copy primary-move zone-primary">
       <span>توقع الحركة القادمة · سيولة وهيكل</span>
       <strong className={softDestination?'amber':forecastSide==='BUY'?'green':forecastSide==='SELL'?'red':'amber'}>
         {forecastSide!=='WAIT'&&priceDestination
@@ -174,7 +195,7 @@ function AssetCard({x,liveQuote,fast}:any){
   </section>;
 }
 
-export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.now()}:any){
+export default function AICommandCenter({data,error,fastWave,goldLive,goldPreMove,now=Date.now()}:any){
   const auto=data?.autopilot,next=auto?.nextEvent;
   const nextEventDelta=Number(next?.time)-now;
   const showNextEvent=!!next&&Number.isFinite(nextEventDelta)&&nextEventDelta>=0&&nextEventDelta<=10*60*60*1000;
@@ -225,6 +246,6 @@ export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.n
       </div>
     </section>}
 
-    <div className="dashboardgrid"><AssetCard x={data?.bitcoin} fast={fastWave?.btc}/><AssetCard x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive}/></div>
+    <div className="dashboardgrid"><AssetCard x={data?.bitcoin} fast={fastWave?.btc}/><AssetCard x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive} preMove={goldPreMove}/></div>
   </div>;
 }

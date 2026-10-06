@@ -17,6 +17,7 @@ export default function Home(){
   const [btcSource,setBtcSource]=useState('Coinbase');
   const [btcAt,setBtcAt]=useState(0);
   const [goldTick,setGoldTick]=useState<any>(null);
+  const [goldPreMove,setGoldPreMove]=useState<any>(null);
   const goldTickRef=useRef<any>(null);
   const [aiLastOkAt,setAiLastOkAt]=useState(0);
   const [now,setNow]=useState(Date.now());
@@ -211,7 +212,27 @@ export default function Home(){
     return()=>{closed=true;if(timer)clearTimeout(timer);clearTimeout(reconnect);try{stream?.close();}catch{}};
   },[]);
 
-  const aiGold=aiData?.gold?.livePulse;
+  useEffect(()=>{
+    let closed=false,inFlight=false,timer:ReturnType<typeof setTimeout>|undefined;
+    const loadRadar=async()=>{
+      if(closed||inFlight)return;
+      inFlight=true;
+      try{
+        const r=await fetch('/api/gold-premove?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+        const j=await r.json();
+        if(!closed&&r.ok&&j?.ok)setGoldPreMove(j);
+      }catch{}finally{inFlight=false;}
+    };
+    const loop=async()=>{
+      if(closed)return;
+      if(document.visibilityState==='visible')await loadRadar();
+      if(!closed)timer=setTimeout(loop,650);
+    };
+    void loop();
+    return()=>{closed=true;if(timer)clearTimeout(timer);};
+  },[]);
+
+    const aiGold=aiData?.gold?.livePulse;
   const aiBtc=aiData?.bitcoin?.livePulse;
   const goldPrice=goldTick?.price??aiGold?.price??aiData?.gold?.price??null;
   const goldAt=Number(goldTick?.sourceTime||aiGold?.sourceTime||0);
@@ -261,7 +282,7 @@ export default function Home(){
     {aiError&&!aiData&&<div className="fatal"><WifiOff size={18}/><div><strong>تعذر تحديث AI</strong><span>{aiError}</span></div></div>}
 
     <section className="content lite-content">
-      <AICommandCenter data={aiData} error={aiError} now={now} goldLive={goldTick} fastWave={fastWaveRef.current}/>
+      <AICommandCenter data={aiData} error={aiError} now={now} goldLive={goldTick} goldPreMove={goldPreMove} fastWave={fastWaveRef.current}/>
     </section>
 
     <footer>Ahmed Gold AI Lite · السعر والسكالب والتوقع فقط</footer>
