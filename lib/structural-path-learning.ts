@@ -197,19 +197,31 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
     (Number(tk.directional||0)>=16&&targetQuality<42)||
     (gn>=30&&Number(g.posteriorAccuracy||50)<43&&streak>=2)
   );
-  const promoted=Boolean(
-    !hardVeto&&confidence>=54&&
-    (archetypeSamples<8||Number(sg.posteriorAccuracy||50)>=52)&&
-    (Number(tk.directional||0)<10||targetQuality>=48)
+  const contextReady=Boolean(archetypeSamples>=8&&Number(tk.directional||0)>=10);
+  const broadQualified=Boolean(
+    gn>=30&&Number(g.posteriorAccuracy||50)>=55&&
+    (Number(s.directional||0)<12||Number(s.posteriorAccuracy||50)>=52)
   );
+  const contextQualified=Boolean(
+    contextReady&&Number(sg.posteriorAccuracy||50)>=54&&signatureQuality>=49&&targetQuality>=48
+  );
+  const coldContextBlocked=Boolean(!contextReady&&!broadQualified&&gn>=30);
+  const promoted=Boolean(!hardVeto&&confidence>=54&&(contextQualified||(!contextReady&&broadQualified)));
+  const finalBlocked=hardVeto||coldContextBlocked;
+  const learningStatus=hardVeto?'HARD_VETO'
+    :contextQualified?'CONTEXT_PROMOTED'
+    :contextReady?'CONTEXT_WATCH'
+    :broadQualified?'COLLECTING_CONTEXT_WITH_STRONG_BACKSTOP'
+    :'COLLECTING_CONTEXT_BLOCKED';
   return {
     ...pathForecast,
-    side:hardVeto?'WAIT':pathForecast.side,
+    side:finalBlocked?'WAIT':pathForecast.side,
     rawConfidence:Math.round(raw),
-    confidence:hardVeto?Math.min(34,confidence):confidence,
-    conviction:hardVeto?'WEAK':pathForecast.conviction,
+    confidence:finalBlocked?Math.min(36,confidence):!contextReady&&broadQualified?Math.min(62,confidence):confidence,
+    conviction:finalBlocked?'WEAK':pathForecast.conviction,
     learning:{
       version:'structural-path-learning-v2-contextual',
+      status:learningStatus,
       samples:gn,observedAccuracy:Number(observed.toFixed(1)),
       globalPosterior:Number(g.posteriorAccuracy||50),sidePosterior:Number(s.posteriorAccuracy||50),
       phasePosterior:Number(p.posteriorAccuracy||50),signature:sig,signatureSamples:archetypeSamples,
@@ -217,9 +229,13 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
       distancePosterior:Number(db.posteriorAccuracy||50),signatureQuality:Number(signatureQuality.toFixed(1)),
       targetQuality:Number(targetQuality.toFixed(1)),distanceQuality:Number(distanceQuality.toFixed(1)),
       excursionEdge:Number(excursionEdge.toFixed(2)),failureStreak:streak,maturity:Number(maturity.toFixed(2)),
-      promoted,hardVeto
+      contextReady,broadQualified,contextQualified,promoted,hardVeto,coldContextBlocked
     },
-    scenario:hardVeto?'تم رفض المسار لأن هذا النمط خاسر تاريخيًا أو جودة حركته ضعيفة':pathForecast.scenario
+    scenario:hardVeto
+      ?'تم رفض المسار لأن هذا النمط خاسر تاريخيًا أو جودة حركته ضعيفة'
+      :coldContextBlocked
+        ?'المسار تحت التعلم السياقي؛ التاريخ العام غير قوي بما يكفي للسماح بتوقع اتجاهي الآن'
+        :pathForecast.scenario
   };
 }
 
