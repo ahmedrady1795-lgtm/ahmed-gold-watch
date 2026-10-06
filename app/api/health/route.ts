@@ -108,7 +108,7 @@ export async function GET(){
           side:btcLiquidityValue?.side||'WAIT',
           pressure:Number(btcLiquidityValue?.pressure||0),
           latencyMs:btcLiquidityProbe.latencyMs,
-          sources:{
+          sources:btcLiquidityValue?.providers||{
             coinbaseBbo:sourceHealthy(/Coinbase BBO/i),
             coinbaseTrades:sourceHealthy(/Coinbase trades/i),
             krakenDepth:sourceHealthy(/Kraken depth/i),
