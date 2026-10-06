@@ -228,7 +228,11 @@ export async function GET(request:Request){
   const clientGoldAt=Number(url.searchParams.get('gt'));
   const clientBtcAt=Number(url.searchParams.get('bat'));
   const hasNewLiveTick=(Number.isFinite(clientGoldAt)&&clientGoldAt>Number(lastAiPayload?.gold?.livePulse?.sourceTime||0))||(Number.isFinite(clientBtcAt)&&clientBtcAt>Number(lastAiPayload?.bitcoin?.livePulse?.sourceTime||0));
-  if(lastAiPayload&&now-lastAiPayloadAt<650&&!hasNewLiveTick){
+  // Full AI is deliberately slower than the direct live scalp path. Browser ticks are
+  // rendered independently, so they should not force the expensive engine to rebuild.
+  const clientCacheMs=5000;
+  const cacheMs=workerCycle?650:clientCacheMs;
+  if(lastAiPayload&&now-lastAiPayloadAt<cacheMs&&(!workerCycle||!hasNewLiveTick)){
     return Response.json(lastAiPayload,{headers:{'Cache-Control':'no-store','X-AI-Cache':'fresh'}});
   }
   if(analysisBusy&&lastAiPayload&&now-lastAiPayloadAt<30000){
