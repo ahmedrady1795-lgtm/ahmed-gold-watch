@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 type Side='BUY'|'SELL'|'WAIT';
 type Asset='GOLD'|'BTC';
 type SourceKind='OFFICIAL'|'CRYPTO_MEDIA';
@@ -31,6 +33,139 @@ const SOURCES:SourceDef[]=[
 
 const CACHE_MS=120000;
 let cache:WebMarketIntelligence|null=null,lastRun=0,pending:Promise<WebMarketIntelligence>|null=null;
+
+type SourceOutcome='HIT'|'FAIL'|'NEUTRAL';
+type SourceStat={hits:number;fails:number;neutral:number;updatedAt:number};
+type SourcePending={
+  id:string;asset:Asset;sourceId:string;side:'BUY'|'SELL';at:number;dueAt:number;
+  entry:number;barrier:number;impact:number;title:string;bestBps:number;worstBps:number;
+};
+type SourceRecent=SourcePending&{settledAt:number;exit:number;outcome:SourceOutcome};
+type SourceStore={version:string;stats:Record<string,SourceStat>;pending:SourcePending[];recent:SourceRecent[]};
+
+const WEB_LEARN_FILE='/data/web-source-learning.json';
+const WEB_LEARN_FALLBACK='/tmp/web-source-learning.json';
+const WEB_LEARN_VERSION='web-source-learning-v1';
+let webLearnCache:SourceStore|null=null,webLearnDirty=false,webLearnSavedAt=0;
+const blankSourceStat=():SourceStat=>({hits:0,fails:0,neutral:0,updatedAt:0});
+function webLearnFile(){
+  try{if(fs.existsSync(path.dirname(WEB_LEARN_FILE)))return WEB_LEARN_FILE;}catch{}
+  return WEB_LEARN_FALLBACK;
+}
+function loadWebLearning(){
+  if(webLearnCache)return webLearnCache;
+  for(const f of [WEB_LEARN_FILE,WEB_LEARN_FALLBACK]){
+    try{
+      const x=JSON.parse(fs.readFileSync(f,'utf8'));
+      if(x?.version===WEB_LEARN_VERSION&&x?.stats){webLearnCache=x;return x;}
+    }catch{}
+  }
+  webLearnCache={version:WEB_LEARN_VERSION,stats:{},pending:[],recent:[]};
+  return webLearnCache;
+}
+function saveWebLearning(force=false){
+  const s=loadWebLearning(); if(!webLearnDirty)return;
+  const now=Date.now(); if(!force&&now-webLearnSavedAt<3000)return;
+  try{
+    const f=webLearnFile(),tmp=f+'.tmp';
+    fs.writeFileSync(tmp,JSON.stringify(s)); fs.renameSync(tmp,f);
+    webLearnDirty=false;webLearnSavedAt=now;
+  }catch{}
+}
+function sourceStat(asset:Asset,sourceId:string){
+  const s=loadWebLearning(),k=asset+':'+sourceId;
+  s.stats[k] ||= blankSourceStat(); return s.stats[k];
+}
+function sourceRecent(asset:Asset,sourceId:string,limit=12){
+  return loadWebLearning().recent.filter(x=>x.asset===asset&&x.sourceId===sourceId).slice(0,limit);
+}
+function sourceView(asset:Asset,sourceId:string){
+  const st=sourceStat(asset,sourceId),n=st.hits+st.fails,resolved=n+st.neutral;
+  const recent=sourceRecent(asset,sourceId,12);
+  let failureStreak=0;
+  for(const r of recent){
+    if(r.outcome==='FAIL')failureStreak++;
+    else if(r.outcome==='HIT')break;
+  }
+  const posterior=(st.hits+4)/(n+8)*100;
+  let weight=1;
+  if(n>=8&&posterior<40)weight=.45;
+  else if(n>=5&&posterior<46)weight=.65;
+  else if(n>=4&&failureStreak>=3)weight=.62;
+  else if(n>=8&&posterior>=62)weight=1.14;
+  else if(n>=5&&posterior>=58)weight=1.08;
+  return {
+    hits:st.hits,fails:st.fails,neutral:st.neutral,directional:n,resolved,
+    accuracy:n?Number((st.hits/n*100).toFixed(1)):null,
+    posterior:Number(posterior.toFixed(1)),failureStreak,
+    performanceWeight:weight,
+    status:weight<=.5?'BLACKLISTED':weight<.8?'PENALIZED':weight>1?'PROMOTED':n>=4?'WATCH':'COLLECTING'
+  };
+}
+function settleWebLearning(asset:Asset,price:number,now:number){
+  if(!Number.isFinite(price)||price<=0)return;
+  const s=loadWebLearning(),keep:SourcePending[]=[];
+  for(const p of s.pending){
+    if(p.asset!==asset){keep.push(p);continue;}
+    const signed=(price-p.entry)*(p.side==='BUY'?1:-1);
+    const bps=signed/Math.max(1e-9,p.entry)*10000;
+    p.bestBps=Math.max(Number(p.bestBps||0),bps);
+    p.worstBps=Math.max(Number(p.worstBps||0),-bps);
+    const hit=signed>=p.barrier,fail=signed<=-p.barrier,expired=now>=p.dueAt;
+    if(!hit&&!fail&&!expired){keep.push(p);continue;}
+    const outcome:SourceOutcome=hit?'HIT':fail?'FAIL':'NEUTRAL';
+    const st=sourceStat(p.asset,p.sourceId);
+    if(outcome==='HIT')st.hits++; else if(outcome==='FAIL')st.fails++; else st.neutral++;
+    st.updatedAt=now;
+    s.recent.unshift({...p,settledAt:now,exit:price,outcome});
+    if(s.recent.length>300)s.recent=s.recent.slice(0,300);
+    webLearnDirty=true;
+  }
+  if(keep.length!==s.pending.length){s.pending=keep;webLearnDirty=true;}
+}
+function headlineId(asset:Asset,sourceId:string,publishedAt:number|null,title:string){
+  let h=2166136261;
+  const raw=asset+'|'+sourceId+'|'+String(publishedAt||0)+'|'+title.slice(0,140);
+  for(let i=0;i<raw.length;i++){h^=raw.charCodeAt(i);h=Math.imul(h,16777619);}
+  return (h>>>0).toString(36);
+}
+export function recordWebSourceOutcome(args:{asset:Asset;price:number|null;atr:number|null;signal:WebMarketSignal|null|undefined;now?:number}){
+  const now=Number(args.now||Date.now()),price=Number(args.price),atr=Number(args.atr);
+  if(!Number.isFinite(price)||price<=0)return {ok:false,reason:'invalid_price'};
+  settleWebLearning(args.asset,price,now);
+  const s=loadWebLearning(),signal=args.signal;
+  if(signal?.items?.length){
+    const seen=new Set<string>();
+    for(const item of signal.items){
+      if(item.side!=='BUY'&&item.side!=='SELL')continue;
+      if(Number(item.impact||0)<30)continue;
+      if(item.ageMinutes!=null&&Number(item.ageMinutes)>180)continue;
+      if(seen.has(item.sourceId))continue;
+      seen.add(item.sourceId);
+      const id=headlineId(args.asset,item.sourceId,item.publishedAt,item.title);
+      if(s.pending.some(x=>x.id===id)||s.recent.some(x=>x.id===id))continue;
+      const baseAtr=Number.isFinite(atr)&&atr>0?atr:price*(args.asset==='BTC'?.0012:.0007);
+      const barrier=Math.max(baseAtr*(args.asset==='BTC'?.28:.24),price*(args.asset==='BTC'?.00055:.00020));
+      const horizonMs=item.sourceId==='fed'?30*60000:item.sourceId==='cftc'?20*60000:15*60000;
+      s.pending.push({
+        id,asset:args.asset,sourceId:item.sourceId,side:item.side as 'BUY'|'SELL',at:now,dueAt:now+horizonMs,
+        entry:price,barrier,impact:Number(item.impact||0),title:item.title,bestBps:0,worstBps:0
+      });
+      webLearnDirty=true;
+    }
+  }
+  if(s.pending.length>80)s.pending=s.pending.slice(-80);
+  saveWebLearning(true);
+  const sources=Object.fromEntries(SOURCES.filter(x=>x.assets.includes(args.asset)).map(x=>[x.id,sourceView(args.asset,x.id)]));
+  return {
+    ok:true,asset:args.asset,pending:s.pending.filter(x=>x.asset===args.asset).length,
+    sources,storage:webLearnFile()
+  };
+}
+function performanceReliability(asset:Asset,source:SourceDef){
+  const v=sourceView(asset,source.id);
+  return {view:v,effective:Number(cap(source.reliability*Number(v.performanceWeight||1),.32,1.12).toFixed(3))};
+}
 
 const cap=(n:number,a=0,b=100)=>Math.max(a,Math.min(b,n));
 const strip=(s:string)=>String(s||'').replace(/<!\[CDATA\[|\]\]>/g,'').replace(/<[^>]+>/g,' ').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/\s+/g,' ').trim();
@@ -120,8 +255,10 @@ async function fetchSource(source:SourceDef,now:number){
 function buildSignal(asset:Asset,results:any[],now:number):WebMarketSignal{
   const items:WebItem[]=[];
   for(const res of results){
-    const source:SourceDef=res.source;
-    if(!source.assets.includes(asset)||!res.ok)continue;
+    const baseSource:SourceDef=res.source;
+    if(!baseSource.assets.includes(asset)||!res.ok)continue;
+    const perf=performanceReliability(asset,baseSource);
+    const source:SourceDef={...baseSource,reliability:perf.effective};
     for(const row of res.rows){
       const age=row.publishedAt!=null?Math.max(0,(now-row.publishedAt)/60000):null;
       if(age!=null&&age>source.maxAgeMinutes)continue;
