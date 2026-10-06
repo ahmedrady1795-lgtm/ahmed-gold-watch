@@ -1030,11 +1030,24 @@ export async function GET(request:Request){
     const featuredEventStatus=featuredEvent
       ?(featuredEvent.time<now&&featuredNarrative?'TEXT_EVENT_LIVE':featuredEvent.time<now&&!String(featuredEvent.actual||'').trim()?'AWAITING_ACTUAL':String(featuredEvent.actual||'').trim()?'RELEASED':'UPCOMING')
       :null;
-    const featuredGoldNews=featuredEvent?buildNewsIntelligence('GOLD',[featuredEvent],now):null;
-    const featuredBtcNews=featuredEvent?buildNewsIntelligence('BTC',[featuredEvent],now):null;
-    const compactNewsImpact=(x:any)=>x?{
+    const featuredGoldBase=featuredEvent?buildNewsIntelligence('GOLD',[featuredEvent],now):null;
+    const featuredBtcBase=featuredEvent?buildNewsIntelligence('BTC',[featuredEvent],now):null;
+    const featuredGoldNews=featuredGoldBase&&webIntel?mergeNewsWithWeb(featuredGoldBase,webIntel.gold):featuredGoldBase;
+    const featuredBtcNews=featuredBtcBase&&webIntel?mergeNewsWithWeb(featuredBtcBase,webIntel.btc):featuredBtcBase;
+    const compactNewsImpact=(x:any)=>{if(!x)return null;
+      const side=String(x.side||'WAIT');
+      const confidence=Math.max(0,Math.min(88,Number(x.confidence||0)));
+      const preEvent=String(x.phase||'')==='PRE_EVENT';
+      const edgeCap=featuredNarrative&&preEvent?8:preEvent?16:22;
+      const edge=side==='BUY'||side==='SELL'?Math.min(edgeCap,confidence*.28):0;
+      const upProbability=Math.round(Math.max(0,Math.min(100,50+(side==='BUY'?edge:side==='SELL'?-edge:0))));
+      const downProbability=100-upProbability;
+      return {
       side:x.side||'WAIT',
       confidence:Number(x.confidence||0),
+      upProbability,
+      downProbability,
+      probabilityMode:preEvent?'PRE_EVENT':'LIVE_IMPACT',
       risk:Number(x.risk||0),
       phase:x.phase||'CALM',
       directional:Boolean(x.directional),
@@ -1050,7 +1063,7 @@ export async function GET(request:Request){
           source:i.source,title:i.title,ageMinutes:i.ageMinutes,side:i.side,impact:i.impact
         })):[]
       }:null
-    }:null;
+    };};
     const degraded=(goldMarketOpen&&!gm.pricesReady)||!gm.newsReady||!btc?.c1?.length||!btcPrice;
     const autopilot={
       status:recovered?'recovered':degraded?'degraded':'healthy',
