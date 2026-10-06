@@ -1011,17 +1011,24 @@ export async function GET(request:Request){
     const goldMarketOpen=goldMarketOpenUTC(now);
     const actualRecoveryActions=actions.filter((a:string)=>/استعادة|إعادة تحميل/.test(a));
     const recovered=actualRecoveryActions.length>0&&(!goldMarketOpen||gm.pricesReady)&&Boolean(btc.c1.length)&&Boolean(btcPrice);
-    // Keep a just-released event visible while providers are still waiting for Actual.
-    // Previously e.time>=now dropped the event at release time and immediately jumped to the next one.
+    // Numeric releases may legitimately wait for Actual. Speeches/remarks/minutes never do.
+    // Narrative events are followed briefly for market reaction, then removed from the featured card.
     const releaseGraceMs=30*60*1000;
+    const narrativeGraceMs=8*60*1000;
+    const isNarrativeEvent=(e:any)=>/\b(speaks?|speech|remarks?|testif(?:y|ies|ied)|testimony|press conference|minutes|beige book|statement|hearing|panel discussion|interview)\b/i.test(String(e?.name||''));
+    const expectsActual=(e:any)=>!isNarrativeEvent(e);
     const eventsSorted=[...(gm.events||[])].sort((a:any,b:any)=>a.time-b.time);
     const pendingReleased=eventsSorted
-      .filter((e:any)=>e.time<now&&now-e.time<=releaseGraceMs&&!String(e.actual||'').trim())
+      .filter((e:any)=>expectsActual(e)&&e.time<now&&now-e.time<=releaseGraceMs&&!String(e.actual||'').trim())
+      .sort((a:any,b:any)=>b.time-a.time)[0]||null;
+    const liveNarrative=eventsSorted
+      .filter((e:any)=>isNarrativeEvent(e)&&e.time<=now&&now-e.time<=narrativeGraceMs)
       .sort((a:any,b:any)=>b.time-a.time)[0]||null;
     const futureEvents=eventsSorted.filter((e:any)=>e.time>=now);
-    const featuredEvent=pendingReleased||futureEvents[0]||null;
+    const featuredEvent=pendingReleased||liveNarrative||futureEvents[0]||null;
+    const featuredNarrative=Boolean(featuredEvent&&isNarrativeEvent(featuredEvent));
     const featuredEventStatus=featuredEvent
-      ?(featuredEvent.time<now&&!String(featuredEvent.actual||'').trim()?'AWAITING_ACTUAL':String(featuredEvent.actual||'').trim()?'RELEASED':'UPCOMING')
+      ?(featuredEvent.time<now&&featuredNarrative?'TEXT_EVENT_LIVE':featuredEvent.time<now&&!String(featuredEvent.actual||'').trim()?'AWAITING_ACTUAL':String(featuredEvent.actual||'').trim()?'RELEASED':'UPCOMING')
       :null;
     const featuredGoldNews=featuredEvent?buildNewsIntelligence('GOLD',[featuredEvent],now):null;
     const featuredBtcNews=featuredEvent?buildNewsIntelligence('BTC',[featuredEvent],now):null;
@@ -1057,6 +1064,8 @@ export async function GET(request:Request){
         previous:featuredEvent.previous||'',
         source:featuredEvent.source||'',
         status:featuredEventStatus,
+        eventType:featuredNarrative?'NARRATIVE':'NUMERIC',
+        expectsActual:featuredEvent?expectsActual(featuredEvent):false,
         awaitingActual:featuredEventStatus==='AWAITING_ACTUAL',
         releaseAgeSeconds:featuredEvent.time<now?Math.round((now-featuredEvent.time)/1000):0,
         goldImpact:compactNewsImpact(featuredGoldNews),
