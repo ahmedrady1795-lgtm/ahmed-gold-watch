@@ -85,6 +85,9 @@ function buildZoneForecast(args:{
       low:Number(z?.low),high:Number(z?.high),mid:Number(z?.mid),
       strength:Number(z?.strength||0),touches:Number(z?.touches||0),rejections:Number(z?.rejections||0),
       volumeScore:Number(z?.volumeScore||0),impulseScore:Number(z?.impulseScore||0),
+      displacementScore:Number(z?.displacementScore||0),imbalanceScore:Number(z?.imbalanceScore||0),
+      freshnessScore:Number(z?.freshnessScore||0),institutionalScore:Number(z?.institutionalScore||0),
+      mitigationCount:Number(z?.mitigationCount||0),state:String(z?.state||'MITIGATED'),
       distanceAtr:Number(z?.distanceAtr),
       reason:String(z?.reason||'')
     }))
@@ -170,7 +173,12 @@ function buildZoneForecast(args:{
     side:z.side,low:Number(z.low.toFixed(2)),high:Number(z.high.toFixed(2)),mid:Number(z.mid.toFixed(2)),
     strength:Math.round(z.strength),touches:z.touches,rejections:z.rejections,
     distanceAtr:Number(distance(z).toFixed(2)),kind,
-    liquidityScore:Math.round(Math.max(z.volumeScore||0,z.impulseScore||0)),
+    liquidityScore:Math.round(Math.max(z.volumeScore||0,z.impulseScore||0,z.institutionalScore||0)),
+    institutionalScore:Math.round(Number(z.institutionalScore||0)),
+    displacementScore:Math.round(Number(z.displacementScore||0)),
+    imbalanceScore:Math.round(Number(z.imbalanceScore||0)),
+    freshnessScore:Math.round(Number(z.freshnessScore||0)),
+    mitigationCount:Number(z.mitigationCount||0),state:String(z.state||'MITIGATED'),
     reason:z.reason
   }:null;
 
@@ -213,8 +221,11 @@ function buildZoneForecast(args:{
   const zoneMagnetScore=(z:any)=>{
     const d=Math.max(0,distance(z));
     const liq=Math.max(Number(z?.volumeScore||0),Number(z?.impulseScore||0));
-    const structural=Math.max(0,Number(z?.strength||0))*.40+Math.max(0,liq)*.24+
-      Math.min(16,Number(z?.rejections||0)*3.6+Number(z?.touches||0)*1.25);
+    const institutional=Math.max(0,Number(z?.institutionalScore||0));
+    const fresh=Math.max(0,Number(z?.freshnessScore||0));
+    const displacement=Math.max(0,Number(z?.displacementScore||0));
+    const structural=Math.max(0,Number(z?.strength||0))*.26+Math.max(0,liq)*.18+institutional*.28+fresh*.12+displacement*.08+
+      Math.min(10,Number(z?.rejections||0)*2.4);
     // Prefer meaningful structural travel. Tiny nearby zones are treated as sweep candidates,
     // while extremely far zones are penalized for reachability.
     const travel=d<.22?-9:d<.38?2:d<=1.25?18-Math.abs(d-.78)*10:d<=1.85?12-(d-1.25)*12:Math.max(-10,5-(d-1.85)*14);
@@ -300,9 +311,13 @@ function buildZoneForecast(args:{
     const touches=Math.max(0,Number(z.touches||0));
     const rejections=Math.max(0,Number(z.rejections||0));
     const proximity=Math.max(0,34-Math.min(34,d*12));
-    const history=Math.min(14,touches*1.5+rejections*3);
+    const institutional=Math.max(0,Number(z.institutionalScore||0));
+    const freshness=Math.max(0,Number(z.freshnessScore||0));
+    const mitigation=Math.max(0,Number(z.mitigationCount||0));
+    const history=Math.min(10,rejections*2.6+touches*.6);
     const syntheticPenalty=String(z.kind||'').includes('RANGE_LIQUIDITY')?4:0;
-    return cap(strength*.34+liq*.20+proximity+history-syntheticPenalty,0,86);
+    const mitigationPenalty=Math.min(18,mitigation*6);
+    return cap(strength*.24+liq*.16+institutional*.28+freshness*.10+proximity+history-syntheticPenalty-mitigationPenalty,0,90);
   };
   const directionalUpper=upperDestination||(resistance&&Number(resistance.mid)>p?resistance:null);
   const directionalLower=lowerDestination||(support&&Number(support.mid)<p?support:null);
