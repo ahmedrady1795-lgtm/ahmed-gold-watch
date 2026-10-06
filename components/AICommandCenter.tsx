@@ -48,7 +48,7 @@ function fastScalpProjection(price:any,fast:any){
   return {side,price:p*(1+signedBps/10000),confidence:Math.round(confidence),stage,bps:Number(signedBps.toFixed(2))};
 }
 
-function AssetCard({x,liveQuote}:any){
+function AssetCard({x,liveQuote,fast}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
   const hunt=x.huntForecast,recommendation=x.recommendation,goldCore=x.asset==='GOLD'?x.goldForecastCore:null,predator=x.asset==='GOLD'?x.predatorFusionV2:null;
   const core1=goldCore?.horizons?.oneMinute,core5=goldCore?.horizons?.fiveMinute;
