@@ -39,14 +39,18 @@ export function startServerTickBrain(){
     if(goldBusy)return;goldBusy=true;
     try{
       const q=await getQuoteData({forceExternal:true}),price=Number(q?.price),sourceTime=Number(q?.sourceTime);
-      const sourceAge=Number.isFinite(sourceTime)&&sourceTime>0?Math.max(0,Date.now()-sourceTime):Infinity;
-      const usable=q?.status==='live'||(q?.status==='delayed'&&sourceAge<=3500);
+      const observedAt=Date.now(),fetchedAt=Number(q?.fetchedAt||observedAt);
+      const sourceAge=Number.isFinite(sourceTime)&&sourceTime>0?Math.max(0,observedAt-sourceTime):Infinity;
+      const fetchAge=Number.isFinite(fetchedAt)&&fetchedAt>0?Math.max(0,observedAt-fetchedAt):Infinity;
+      // Biquote/provider timestamps can arrive in coarse batches. A quote freshly fetched by
+      // this server is still usable for micro-flow as long as the provider did not mark it closed/stale.
+      const usable=q?.status!=='closed_or_stale'&&(q?.status==='live'||sourceAge<=10000||fetchAge<=5000);
       if(!usable||!Number.isFinite(price)||price<=0)return;
       const bid=Number(q?.bid),ask=Number(q?.ask);
       push('GOLD',{
         // The wave engine measures when this server observed each quote.
         // Provider timestamps can update in coarse batches and should only be used as a freshness gate above.
-        at:Date.now(),price,
+        at:observedAt,price,
         bid:Number.isFinite(bid)&&bid>0?bid:null,
         ask:Number.isFinite(ask)&&ask>0?ask:null,
         bidQty:null,askQty:null,
