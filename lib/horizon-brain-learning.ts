@@ -113,9 +113,10 @@ function summary(asset:string){
     horizons:Object.fromEntries(HORIZONS.map(h=>{
       const v=view(a.stats[h]),streak=failureStreak(a.recent,h),recent=recentPerformance(a.recent,h,20);
       const recentKill=Boolean(
+        (recent.last8N>=8&&Number(recent.last8Accuracy||0)<40&&recent.last8Fails>=5)||
         (recent.n>=8&&Number(recent.accuracy||0)<42)||
         (streak>=4&&recent.n>=6&&Number(recent.accuracy||0)<50)||
-        (recent.n>=10&&recent.highConfidenceFails>=5&&Number(recent.accuracy||0)<50)
+        (recent.n>=10&&recent.highConfidenceFails>=5&&Number(recent.accuracy||0)<=50)
       );
       const recoveryReady=Boolean(
         recent.last8N>=8&&Number(recent.last8Accuracy||0)>=55&&recent.recoveryHits>=3&&streak<3
