@@ -125,6 +125,10 @@ function AssetCard({x,liveQuote,fast}:any){
   const intentSide=intent?.side==='BUY'||intent?.side==='SELL'?intent.side:'WAIT';
   const intentSteps=Array.isArray(intent?.sequence)?intent.sequence.map(intentStepAr).filter(Boolean).join(' → '):'';
   const intentSweep=Number.isFinite(Number(intent?.sweepLevel))?fmt(Number(intent.sweepLevel),2):null;
+  const validation15=x?.forecastValidation15m||null;
+  const validationDirectional=Number(validation15?.global?.hits||0)+Number(validation15?.global?.fails||0);
+  const validationAccuracy=Number(validation15?.global?.accuracy);
+  const showValidation15=validationDirectional>=5&&Number.isFinite(validationAccuracy);
   const upperLiquidity=path?.upperLiquidity||zone?.resistance||null;
   const lowerLiquidity=path?.lowerLiquidity||zone?.support||null;
   const liquidityPoint=(z:any)=>{
@@ -180,6 +184,7 @@ function AssetCard({x,liveQuote,fast}:any){
         <div><small>قراءة صانع السوق</small>
           <b className={intentSide==='BUY'?'green':intentSide==='SELL'?'red':'amber'}>{intent?(intentPhaseAr(intent.phase)+' · '+moveAr(intentSide)+' · '+Math.round(Number(intent.confidence||0))+'%'):'—'}</b>
           <span>{intentSteps||'لا يوجد تسلسل سيولة مكتمل'}{intentSweep?<> · مستوى السحب <span dir="ltr">{intentSweep}</span></>:null}</span>
+          {showValidation15&&<span>اختبار حي 15د · دقة {validationAccuracy.toFixed(1)}% · {validationDirectional} نتيجة</span>}
         </div>
         <div><small>هيكل الحركة</small><b>{structureText}</b><span>{structurePatternAr(structure?.m1?.structure||structure?.m5?.structure)}</span></div>
       </div>
