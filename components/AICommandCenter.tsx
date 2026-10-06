@@ -184,10 +184,10 @@ export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.n
           {label:'BTC',name:'البتكوين',impact:next.btcImpact}
         ].map(({label,name,impact}:any)=>{
           const s=String(impact?.side||'WAIT');
-          const released=String(impact?.phase||'')!=='PRE_EVENT';
+          const released=!awaitingActual&&Boolean(next?.actual)&&String(impact?.phase||'')!=='PRE_EVENT';
           const confidence=Math.round(Number(impact?.confidence||0));
           const risk=Math.round(Number(impact?.risk||0));
-          const direction=s==='BUY'?'↑ صعود':s==='SELL'?'↓ هبوط':released?'↔ محايد':'⏳ غير محسوم';
+          const direction=s==='BUY'?'↑ صعود':s==='SELL'?'↓ هبوط':released?'↔ محايد':awaitingActual?'⏳ بانتظار النتيجة':'⏳ غير محسوم';
           return <div className="news-impact ordered-impact" key={label}>
             <div className="impact-top">
               <small>{label}</small>
@@ -197,7 +197,7 @@ export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.n
               {direction}{confidence>0?` · ${confidence}%`:''}
             </strong>
             <div className="impact-meta">
-              <span>{released?'تأثير فعلي':'قبل الخبر'}</span>
+              <span>{released?'تأثير فعلي':awaitingActual?'التأثير المتوقع · بانتظار النتيجة':'التأثير المتوقع قبل الخبر'}</span>
               <em>خطورة {risk}%</em>
             </div>
             <p>{impact?.reason||'سيتم تحديد الاتجاه بعد صدور البيانات ومقارنة Actual بالـ Forecast.'}</p>
