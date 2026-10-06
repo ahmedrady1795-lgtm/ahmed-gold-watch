@@ -976,10 +976,10 @@ export async function GET(request:Request){
       }
 
       const released=Boolean(leadFresh&&marketLead?.released&&leadSide===winner);
-      const momentum=Number(pulse?.momentum||0);
+      const pulseMomentum=Number(pulse?.momentum||0);
       const pulseDir=String(pulse?.direction||'FLAT');
       const pulseAligned=(winner==='BUY'&&pulseDir==='UP')||(winner==='SELL'&&pulseDir==='DOWN');
-      const alreadyMoving=Boolean(released&&pulseAligned&&momentum>=72);
+      const alreadyMoving=Boolean(released&&pulseAligned&&pulseMomentum>=72);
       if(alreadyMoving)confidence=Math.max(45,confidence-5);
 
       const armed=Boolean(leadFresh&&marketLead?.armed&&leadSide===winner&&!alreadyMoving);
