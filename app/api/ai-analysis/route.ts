@@ -693,7 +693,7 @@ export async function GET(request:Request){
       touches:Number(z.touches||0),
       rejections:Number(z.rejections||0)
     }:null;
-    const buildForwardMove=(asset:'GOLD'|'BTC',hunt:any,scalp:any,movement:any,marketLead:any,pulse:any)=>{
+    const buildForwardMove=(asset:'GOLD'|'BTC',hunt:any,scalp:any,movement:any,marketLead:any,pulse:any,liq:any,structure:any,accumulation:any)=>{
       const rows:Array<{side:'BUY'|'SELL';score:number;weight:number;name:string}>=[];
       const add=(name:string,s:any,score:any,weight:number)=>{
         if((s==='BUY'||s==='SELL')&&Number(score)>0&&weight>0)rows.push({name,side:s,score:Math.max(0,Math.min(92,Number(score))),weight});
@@ -710,6 +710,15 @@ export async function GET(request:Request){
       add('path',hunt?.zoneForecast?.pathForecast?.side,hunt?.zoneForecast?.pathForecast?.confidence,.68);
       add('hunt',hunt?.nextMove?.side,hunt?.nextMove?.confidence,.66);
       add('scalp',scalp?.action,scalp?.confidence,.95);
+      const liqSide=liq?.side==='BUY'||liq?.side==='SELL'?liq.side:'WAIT';
+      const liqScore=Math.max(Number(liq?.strength||0),Number(liq?.quality||0),Number(liq?.buy||0),Number(liq?.sell||0));
+      const accSide=accumulation?.side==='BUY'||accumulation?.side==='SELL'?accumulation.side:'WAIT';
+      const accScore=accSide==='BUY'?Number(accumulation?.accumulationScore||0):accSide==='SELL'?Number(accumulation?.distributionScore||0):Math.max(Number(accumulation?.accumulationScore||0),Number(accumulation?.distributionScore||0));
+      const structureSide=structure?.m1?.nextSide==='BUY'||structure?.m1?.nextSide==='SELL'?structure.m1.nextSide:(structure?.shortSide==='BUY'||structure?.shortSide==='SELL'?structure.shortSide:'WAIT');
+      const structureScore=Math.max(Number(structure?.m1?.confidence||0),Number(structure?.m1?.nextScore||0),Number(structure?.confidence||0));
+      add('liquidity',liqSide,liqScore,1.18);
+      add('accumulation',accSide,Math.max(accScore,Number(accumulation?.breakoutReadiness||0)),1.12);
+      add('structure',structureSide,structureScore,1.08);
 
       let buy=0,sell=0;
       for(const r of rows){
@@ -723,7 +732,17 @@ export async function GET(request:Request){
       const share=win/total*100,edge=(win-lose)/total*100;
       const support=rows.filter(r=>r.side===winner).length;
       const oppose=rows.filter(r=>r.side!==winner).length;
-      let confidence=Math.round(Math.max(0,Math.min(86,33+edge*.43+support*4.2-oppose*3.2)));
+      const coreConfirmations=[
+        liqSide===winner&&liqScore>=55,
+        accSide===winner&&Math.max(accScore,Number(accumulation?.breakoutReadiness||0))>=52,
+        structureSide===winner&&structureScore>=50
+      ].filter(Boolean).length;
+      const coreOpposition=[
+        liqSide!=='WAIT'&&liqSide!==winner&&liqScore>=58,
+        accSide!=='WAIT'&&accSide!==winner&&Math.max(accScore,Number(accumulation?.breakoutReadiness||0))>=56,
+        structureSide!=='WAIT'&&structureSide!==winner&&structureScore>=54
+      ].filter(Boolean).length;
+      let confidence=Math.round(Math.max(0,Math.min(86,33+edge*.43+support*4.2-oppose*3.2+coreConfirmations*3.5-coreOpposition*5)));
 
       const m5Side=movement?.horizons?.fiveMinute?.side;
       const m5Confidence=Number(movement?.horizons?.fiveMinute?.confidence||0);
@@ -737,9 +756,12 @@ export async function GET(request:Request){
       if(!leadFresh&&marketLead?.available)confidence-=4;
       confidence=Math.max(0,Math.min(89,Math.round(confidence)));
 
-      if(share<57||support<2||confidence<47)return {
+      const leadSupports=Boolean(leadFresh&&leadSide===winner&&(marketLead?.armed||leadStage==='BUILDING'));
+      const coreReady=coreConfirmations>=2||(coreConfirmations>=1&&leadSupports&&support>=3);
+      if(share<57||support<2||confidence<47||!coreReady)return {
         side:'WAIT',confidence,status:'WAIT',target:null,zone:null,windowSeconds:null,expiresAt:null,
-        reason:m5Opposes?'M5 يعاكس الإشارة القصيرة؛ تم إيقاف التوقع المبكر حتى يتضح المسار':'الإشارات المبكرة ما زالت منقسمة؛ لا يوجد اتجاه أمامي كافٍ'
+        confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide},
+        reason:m5Opposes?'M5 يعاكس الإشارة القصيرة؛ تم إيقاف التوقع المبكر حتى يتضح المسار':!coreReady?'السيولة والتجميع وهيكل الحركة لم تتفق بعد بما يكفي لاعتماد الحركة القادمة':'الإشارات المبكرة ما زالت منقسمة؛ لا يوجد اتجاه أمامي كافٍ'
       };
 
       const ahead=(v:any)=>{
@@ -803,7 +825,8 @@ export async function GET(request:Request){
         windowSeconds,expiresAt:now+windowSeconds.max*1000,agreement:Math.round(share),support,opposition:oppose,
         priceNow,distancePct:distancePct==null?null:Number(distancePct.toFixed(4)),
         freshness:{leadFresh,leadAgeMs:Number.isFinite(leadAge)?leadAge:null,m5Opposes,alreadyMoving},
-        reason:(alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':building?'ضغط مبكر يتكوّن':'تفوق قصير المدى')+' · '+sourceParts.join(' + ')
+        confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide},
+        reason:(alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':building?'ضغط مبكر يتكوّن':'تفوق قصير المدى')+' · تأكيد أساسي '+coreConfirmations+'/3 · '+sourceParts.join(' + ')
       };
     };
     const stabilizeForwardMove=(asset:'GOLD'|'BTC',candidate:any,pulse:any)=>{
@@ -868,7 +891,7 @@ export async function GET(request:Request){
     };
     const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any)=>({
       asset,
-      forwardMove:stabilizeForwardMove(asset,buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse),pulse),
+      forwardMove:stabilizeForwardMove(asset,buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse,liq,structure,accumulation),pulse),
       liquidity:liq?{
         side:liq.side||'WAIT',
         buy:Math.max(0,Math.min(100,Math.round(Number(liq.buy||0)))),
