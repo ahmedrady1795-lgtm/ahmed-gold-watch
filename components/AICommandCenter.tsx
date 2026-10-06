@@ -112,7 +112,7 @@ function AssetCard({x,liveQuote,fast}:any){
   const forward=x.forwardMove||null;
   const forwardSide=forward?.side==='BUY'||forward?.side==='SELL'?forward.side:'WAIT';
   const forwardZone=forward?.zone||null;
-  const forwardTarget=Number.isFinite(Number(forward?.target))?Number(forward.target):null;
+  const forwardTarget=forward?.target!==null&&forward?.target!==undefined&&Number.isFinite(Number(forward.target))?Number(forward.target):null;
   const forwardWindow=forward?.horizonMinutes===15?'خلال 15 دقيقة':forward?.windowSeconds?(`${Math.max(1,Math.round(Number(forward.windowSeconds.min||0)/60))}–${Math.max(1,Math.round(Number(forward.windowSeconds.max||0)/60))} د`):'—';
   const liqBuy=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.buy||0))));
   const liqSell=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.sell||0))));
@@ -124,7 +124,7 @@ function AssetCard({x,liveQuote,fast}:any){
   const intent=x?.marketMakerIntent||null;
   const intentSide=intent?.side==='BUY'||intent?.side==='SELL'?intent.side:'WAIT';
   const intentSteps=Array.isArray(intent?.sequence)?intent.sequence.map(intentStepAr).filter(Boolean).join(' → '):'';
-  const intentSweep=Number.isFinite(Number(intent?.sweepLevel))?fmt(Number(intent.sweepLevel),2):null;
+  const intentSweep=intent?.sweepLevel!==null&&intent?.sweepLevel!==undefined&&Number.isFinite(Number(intent.sweepLevel))?fmt(Number(intent.sweepLevel),2):null;
   const validation15=x?.forecastValidation15m||null;
   const validationDirectional=Number(validation15?.global?.hits||0)+Number(validation15?.global?.fails||0);
   const validationAccuracy=Number(validation15?.global?.accuracy);
@@ -142,12 +142,18 @@ function AssetCard({x,liveQuote,fast}:any){
   const upperLiquidityLevel=liquidityPoint(upperLiquidity);
   const lowerLiquidityLevel=liquidityPoint(lowerLiquidity);
   const forwardStatus=String(forward?.status||'WAIT');
+  const tradeSetup=forward?.tradeSetup||null;
+  const tradeEntry=tradeSetup?.entry!==null&&tradeSetup?.entry!==undefined&&Number.isFinite(Number(tradeSetup.entry))?Number(tradeSetup.entry):null;
+  const tradeSl=tradeSetup?.stopLoss!==null&&tradeSetup?.stopLoss!==undefined&&Number.isFinite(Number(tradeSetup.stopLoss))?Number(tradeSetup.stopLoss):null;
+  const tradeTp=tradeSetup?.takeProfit!==null&&tradeSetup?.takeProfit!==undefined&&Number.isFinite(Number(tradeSetup.takeProfit))?Number(tradeSetup.takeProfit):null;
   const structure=x?.movementStructure||null;
   const structureText=movementStructureLabel(structure);
   const forwardHeadline=forwardSide==='WAIT'
     ?'انتظار قراءة أمامية أوضح'
     :forwardStatus==='PRE_MOVE'
       ?`قبل الحركة خلال 15د: ${moveAr(forwardSide)}`
+      :forwardStatus==='CONDITIONAL_ENTRY'
+        ?`صفقة مشروطة 15د: ${moveAr(forwardSide)}`
       :forwardStatus==='BUILDING'
         ?`ترجيح 15د يتكوّن: ${moveAr(forwardSide)}`
         :forwardStatus==='IN_PROGRESS'
@@ -170,7 +176,9 @@ function AssetCard({x,liveQuote,fast}:any){
       <strong className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>
         {forwardSide==='WAIT'
           ?'لا يوجد اتجاه أمامي واضح'
-          :`${moveAr(forwardSide)} → ${forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):'—'} · ${Math.round(Number(forward.confidence||0))}%`}
+          :forwardStatus==='CONDITIONAL_ENTRY'&&tradeEntry!=null
+            ?`${moveAr(forwardSide)} مشروط فوق/تحت ${fmt(tradeEntry,2)} → ${tradeTp!=null?fmt(tradeTp,2):forwardTarget!=null?fmt(forwardTarget,2):'—'} · ${Math.round(Number(forward.confidence||0))}%`
+            :`${moveAr(forwardSide)} → ${forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):'—'} · ${Math.round(Number(forward.confidence||0))}%`}
       </strong>
       <div className="forecast-scenario-strip">
         <div><small>الوجهة</small><b>{forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):priceDestination?zoneRange(priceDestination):'—'}</b></div>
@@ -188,6 +196,12 @@ function AssetCard({x,liveQuote,fast}:any){
         </div>
         <div><small>هيكل الحركة</small><b>{structureText}</b><span>{structurePatternAr(structure?.m1?.structure||structure?.m5?.structure)}</span></div>
       </div>
+      {tradeSetup&&tradeEntry!=null&&tradeTp!=null&&<div className="forecast-scenario-strip trade-setup-strip">
+        <div><small>{tradeSetup.mode==='CONDITIONAL'?'دخول مشروط':'الدخول'}</small><b dir="ltr">{fmt(tradeEntry,2)}</b></div>
+        <div><small>وقف الخسارة</small><b dir="ltr">{tradeSl!=null?fmt(tradeSl,2):'—'}</b></div>
+        <div><small>الهدف</small><b dir="ltr">{fmt(tradeTp,2)}</b></div>
+        <div><small>التفعيل</small><b>{tradeSetup.trigger||'—'}</b>{Number.isFinite(Number(tradeSetup.rr))&&<span>R:R {Number(tradeSetup.rr).toFixed(2)}</span>}</div>
+      </div>}
       {forward?.reason&&<small className="muted">{forward.reason}</small>}
     </div>
 
