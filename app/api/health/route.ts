@@ -1,6 +1,7 @@
 import {getRuntimeEnv} from '../../../lib/runtime';
 import {getMarketData,getQuoteData,getMt5BridgeStatus} from '../../../lib/market-hub';
 import {getKillSwitch} from '../../../lib/admin-state';
+import {getBtcLiquidity} from '../../../lib/liquidity-intelligence';
 export const dynamic='force-dynamic';
 
 async function probe<T>(fn:()=>Promise<T>){
@@ -19,9 +20,10 @@ function goldSessionOpen(now:number){
 
 export async function GET(){
   const env=getRuntimeEnv(),started=Date.now(),now=Date.now(),goldOpen=goldSessionOpen(now);
-  const [quoteProbe,marketRaw,kill]=await Promise.all([
+  const [quoteProbe,marketRaw,btcLiquidityProbe,kill]=await Promise.all([
     probe(()=>getQuoteData()),
     probe(()=>getMarketData({force:true})),
+    probe(()=>getBtcLiquidity(true)),
     getKillSwitch()
   ]);
 
@@ -53,6 +55,11 @@ export async function GET(){
   };
 
   const bridgeConfigured=Boolean(env.MT5_BRIDGE_TOKEN),execution=env.MT5_AUTOTRADE_ENABLED==='true',mt5=getMt5BridgeStatus();
+  const mt5Book:any=(mt5 as any)?.status?.microstructure?.orderBook||null;
+  const mt5BidRows=Array.isArray(mt5Book?.bids)?mt5Book.bids.length:0,mt5AskRows=Array.isArray(mt5Book?.asks)?mt5Book.asks.length:0;
+  const goldDomReady=Boolean(mt5?.fresh&&mt5Book?.available&&mt5BidRows>0&&mt5AskRows>0);
+  const btcLiquidityValue:any=btcLiquidityProbe.value;
+  const btcLiquidityOk=Boolean(btcLiquidityProbe.ok&&btcLiquidityValue?.ok);
   const backgroundConfigured=Boolean(env.TWELVE_DATA_API_KEY);
   const coreMarketReady=quote.ok&&(market.ok||!goldOpen);
   const status=coreMarketReady?'healthy':quote.ok||market.ok?'degraded':'halted';
@@ -81,6 +88,25 @@ export async function GET(){
         candlesFresh:mt5.candlesFresh,
         executionEnabled:execution,
         symbol:mt5.status?.symbol??null
+      },
+      liquidity:{
+        gold:{
+          ok:goldDomReady||quote.ok,
+          mode:goldDomReady?'DOM':'QUOTE_FLOW',
+          source:goldDomReady?'Exness/MT5 DOM':(quote.source||'XAU/USD quote flow'),
+          domReady:goldDomReady,
+          bidLevels:mt5BidRows,
+          askLevels:mt5AskRows,
+          note:goldDomReady?'Broker depth is live':'DOM unavailable; low-weight quote-flow proxy only'
+        },
+        bitcoin:{
+          ok:btcLiquidityOk,
+          source:btcLiquidityValue?.source||'Coinbase/Kraken/OKX',
+          quality:Number(btcLiquidityValue?.quality||0),
+          side:btcLiquidityValue?.side||'WAIT',
+          latencyMs:btcLiquidityProbe.latencyMs,
+          warnings:Array.isArray(btcLiquidityValue?.warnings)?btcLiquidityValue.warnings:[]
+        }
       }
 
     },
