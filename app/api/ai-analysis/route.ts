@@ -804,9 +804,17 @@ export async function GET(request:Request){
         reason:(alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':building?'ضغط مبكر يتكوّن':'تفوق قصير المدى')+' · '+sourceParts.join(' + ')
       };
     };
-    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any)=>({
+    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any)=>({
       asset,
       forwardMove:buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse),
+      liquidity:liq?{
+        side:liq.side||'WAIT',
+        buy:Math.max(0,Math.min(100,Math.round(Number(liq.buy||0)))),
+        sell:Math.max(0,Math.min(100,Math.round(Number(liq.sell||0)))),
+        strength:Math.max(0,Math.min(100,Math.round(Number(liq.strength||0)))),
+        quality:Math.max(0,Math.min(100,Math.round(Number(liq.quality||0)))),
+        source:liq.source||null
+      }:null,
       price:Number.isFinite(Number(pulse?.price??x?.price))?Number(pulse?.price??x?.price):null,
       livePulse:pulse?{
         price:Number.isFinite(Number(pulse.price))?Number(pulse.price):null,
@@ -1245,8 +1253,8 @@ export async function GET(request:Request){
         gold:{side:webIntel.gold.side,confidence:webIntel.gold.confidence,risk:webIntel.gold.risk,sourceCount:webIntel.gold.sourceCount,freshCount:webIntel.gold.freshCount},
         btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount}
       }:null,
-      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement),
-      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement)
+      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity),
+      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity)
     };
     lastAiPayload=payload;lastAiPayloadAt=Date.now();
     return Response.json(payload,{headers:{'Cache-Control':'no-store','X-AI-Cache':'miss'}});
