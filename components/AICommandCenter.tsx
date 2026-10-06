@@ -99,9 +99,18 @@ function AssetCard({x,liveQuote,fast}:any){
   const liqBuy=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.buy||0))));
   const liqSell=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.sell||0))));
   const liqText=(liqBuy||liqSell)?`صعود ${liqBuy}% · هبوط ${liqSell}%`:'—';
-  const liqZone=path?.destination||zone?.target||forwardZone||priceDestination||null;
-  const liqMid=Number(liqZone?.mid);
-  const liqLevel=Number.isFinite(liqMid)?fmt(liqMid,2):zoneRange(liqZone);
+  const upperLiquidity=path?.upperLiquidity||zone?.resistance||null;
+  const lowerLiquidity=path?.lowerLiquidity||zone?.support||null;
+  const liquidityPoint=(z:any)=>{
+    if(!z)return '—';
+    const mid=Number(z?.mid);
+    if(Number.isFinite(mid))return fmt(mid,2);
+    const low=Number(z?.low),high=Number(z?.high);
+    if(Number.isFinite(low)&&Number.isFinite(high))return fmt((low+high)/2,2);
+    return '—';
+  };
+  const upperLiquidityLevel=liquidityPoint(upperLiquidity);
+  const lowerLiquidityLevel=liquidityPoint(lowerLiquidity);
   const forwardStatus=String(forward?.status||'WAIT');
   const structure=x?.movementStructure||null;
   const structureText=movementStructureLabel(structure);
@@ -138,7 +147,10 @@ function AssetCard({x,liveQuote,fast}:any){
         <div><small>نافذة التحرك</small><b>{forwardSide!=='WAIT'?forwardWindow:'—'}</b></div>
         <div><small>الارتداد</small><b>{zoneRange(path?.reboundZone||zone?.origin)}</b></div>
         <div><small>نسبة السيولة</small><b>{liqText}</b></div>
-        <div><small>مستوى السيولة</small><b>{liqLevel}</b><span>{liqZone?`منطقة ${zoneRange(liqZone)}`:'—'}</span></div>
+        <div><small>مستويات السيولة</small>
+          <b>{upperLiquidityLevel!=='—'?`سيولة أعلى عند ${upperLiquidityLevel}`:'لا توجد سيولة علوية واضحة'}</b>
+          <span>{lowerLiquidityLevel!=='—'?`سيولة أسفل عند ${lowerLiquidityLevel}`:'لا توجد سيولة سفلية واضحة'}</span>
+        </div>
         <div><small>هيكل الحركة</small><b>{structureText}</b><span>{structurePatternAr(structure?.m1?.structure||structure?.m5?.structure)}</span></div>
       </div>
       {forward?.reason&&<small className="muted">{forward.reason}</small>}
