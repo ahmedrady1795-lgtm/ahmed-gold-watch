@@ -17,7 +17,7 @@ export default function Home(){
   const [btcSource,setBtcSource]=useState('Coinbase');
   const [btcAt,setBtcAt]=useState(0);
   const [goldTick,setGoldTick]=useState<any>(null);
-  const [goldPreMove,setGoldPreMove]=useState<any>(null);
+  const [marketLead,setMarketLead]=useState<{gold:any;btc:any}>({gold:null,btc:null});
   const goldTickRef=useRef<any>(null);
   const [aiLastOkAt,setAiLastOkAt]=useState(0);
   const [now,setNow]=useState(Date.now());
@@ -213,23 +213,23 @@ export default function Home(){
   },[]);
 
   useEffect(()=>{
-    let closed=false,inFlight=false,timer:ReturnType<typeof setTimeout>|undefined;
-    const loadRadar=async()=>{
-      if(closed||inFlight)return;
-      inFlight=true;
+    let closed=false;
+    const inFlight:{gold:boolean;btc:boolean}={gold:false,btc:false};
+    let goldTimer:ReturnType<typeof setTimeout>|undefined,btcTimer:ReturnType<typeof setTimeout>|undefined;
+    const loadLead=async(asset:'GOLD'|'BTC')=>{
+      const key=asset==='GOLD'?'gold':'btc';
+      if(closed||inFlight[key])return;
+      inFlight[key]=true;
       try{
-        const r=await fetch('/api/gold-premove?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+        const r=await fetch('/api/market-lead?asset='+asset+'&ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
         const j=await r.json();
-        if(!closed&&r.ok&&j?.ok)setGoldPreMove(j);
-      }catch{}finally{inFlight=false;}
+        if(!closed&&r.ok&&j?.ok)setMarketLead(prev=>({...prev,[key]:j}));
+      }catch{}finally{inFlight[key]=false;}
     };
-    const loop=async()=>{
-      if(closed)return;
-      if(document.visibilityState==='visible')await loadRadar();
-      if(!closed)timer=setTimeout(loop,650);
-    };
-    void loop();
-    return()=>{closed=true;if(timer)clearTimeout(timer);};
+    const goldLoop=async()=>{if(closed)return;if(document.visibilityState==='visible')await loadLead('GOLD');if(!closed)goldTimer=setTimeout(goldLoop,650);};
+    const btcLoop=async()=>{if(closed)return;if(document.visibilityState==='visible')await loadLead('BTC');if(!closed)btcTimer=setTimeout(btcLoop,1200);};
+    void goldLoop();void btcLoop();
+    return()=>{closed=true;if(goldTimer)clearTimeout(goldTimer);if(btcTimer)clearTimeout(btcTimer);};
   },[]);
 
     const aiGold=aiData?.gold?.livePulse;
@@ -282,7 +282,7 @@ export default function Home(){
     {aiError&&!aiData&&<div className="fatal"><WifiOff size={18}/><div><strong>تعذر تحديث AI</strong><span>{aiError}</span></div></div>}
 
     <section className="content lite-content">
-      <AICommandCenter data={aiData} error={aiError} now={now} goldLive={goldTick} goldPreMove={goldPreMove} fastWave={fastWaveRef.current}/>
+      <AICommandCenter data={aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
     </section>
 
     <footer>Ahmed Gold AI Lite · السعر والسكالب والتوقع فقط</footer>

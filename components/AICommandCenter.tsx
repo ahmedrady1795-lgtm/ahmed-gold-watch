@@ -99,26 +99,28 @@ function AssetCard({x,liveQuote,fast,preMove}:any){
       <div><small>{fastScalp?'السكالب اللحظي':'السكالب المتوقع'}</small><strong className={scalpSide==='BUY'?'green':scalpSide==='SELL'?'red':'amber'}>{fmt(scalpPrice,2)}</strong></div>
     </div>
 
-    {x.asset==='GOLD'&&<div className="next-move-copy primary-move zone-primary">
-      <span>رادار السيولة قبل الحركة · منفصل عن Biquote</span>
-      <strong className={preMove?.lead?(preMove.side==='BUY'?'green':'red'):preMove?.stage==='MOVE_STARTED'?(preMove.side==='BUY'?'green':'red'):'amber'}>
+    <div className="next-move-copy primary-move zone-primary">
+      <span>Market Lead AI · قراءة مبكرة قبل الحركة</span>
+      <strong className={preMove?.armed?(preMove.side==='BUY'?'green':'red'):preMove?.stage==='RELEASED'?(preMove.side==='BUY'?'green':'red'):'amber'}>
         {!preMove?.available
-          ?'DOM المباشر غير متاح الآن'
-          :preMove.lead
-            ?`إنذار مبكر: ${moveAr(preMove.side)} · قوة ${Math.round(Number(preMove.score||0))}%`
-            :preMove.stage==='MOVE_STARTED'
+          ?(x.asset==='GOLD'?'DOM الذهب المباشر غير متاح الآن':'بيانات microstructure غير مكتملة الآن')
+          :preMove.armed
+            ?`مسلّح قبل الحركة: ${moveAr(preMove.side)} · ثقة ${Math.round(Number(preMove.confidence||0))}%`
+            :preMove.stage==='RELEASED'
               ?`الحركة بدأت: ${moveAr(preMove.side)} · ${Math.round(Number(preMove.confidence||0))}%`
-              :preMove.stage==='WATCH'
-                ?`ضغط سيولة يتكوّن: ${moveAr(preMove.side)} · ${Math.round(Number(preMove.score||0))}%`
-                :'لا توجد إشارة قبلية واضحة'}
+              :preMove.stage==='BUILDING'
+                ?`ضغط مبكر يتكوّن: ${moveAr(preMove.side)} · ${Math.round(Number(preMove.score||0))}%`
+                :preMove.stage==='REJECTED'
+                  ?'تم رفض الإشارة المبكرة'
+                  :'لا توجد قراءة مبكرة ثابتة الآن'}
       </strong>
-      <p>{preMove?.reason||'يتم فحص اختلال دفتر الأوامر والتجدد والتسارع قبل تحرك السعر.'}</p>
+      <p>{preMove?.reason||'يتم فحص ضغط السيولة والامتصاص والتجدد قبل تحرك السعر.'}</p>
       {preMove?.available&&<div className="forecast-scenario-strip">
+        <div><small>ثبات الإشارة</small><b className={Number(preMove.stability||0)>=60?'green':'amber'}>{Math.round(Number(preMove.stability||0))}%</b></div>
         <div><small>اختلال الدفتر</small><b className={Number(preMove.metrics?.bookImbalance||0)>0?'green':Number(preMove.metrics?.bookImbalance||0)<0?'red':'amber'}>{Number(preMove.metrics?.bookImbalance||0).toFixed(1)}</b></div>
-        <div><small>تغير الضغط</small><b>{Number(preMove.metrics?.pressureChange||0).toFixed(1)}</b></div>
         <div><small>Replenishment</small><b>{Number(preMove.metrics?.replenishDelta||0).toFixed(1)}</b></div>
       </div>}
-    </div>}
+    </div>
 
         <div className="next-move-copy primary-move zone-primary">
       <span>توقع الحركة القادمة · سيولة وهيكل</span>
@@ -195,7 +197,7 @@ function AssetCard({x,liveQuote,fast,preMove}:any){
   </section>;
 }
 
-export default function AICommandCenter({data,error,fastWave,goldLive,goldPreMove,now=Date.now()}:any){
+export default function AICommandCenter({data,error,fastWave,goldLive,marketLead,now=Date.now()}:any){
   const auto=data?.autopilot,next=auto?.nextEvent;
   const nextEventDelta=Number(next?.time)-now;
   const showNextEvent=!!next&&Number.isFinite(nextEventDelta)&&nextEventDelta>=0&&nextEventDelta<=10*60*60*1000;
@@ -246,6 +248,6 @@ export default function AICommandCenter({data,error,fastWave,goldLive,goldPreMov
       </div>
     </section>}
 
-    <div className="dashboardgrid"><AssetCard x={data?.bitcoin} fast={fastWave?.btc}/><AssetCard x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive} preMove={goldPreMove}/></div>
+    <div className="dashboardgrid"><AssetCard x={data?.bitcoin} fast={fastWave?.btc} preMove={marketLead?.btc||data?.bitcoin?.marketLead}/><AssetCard x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive} preMove={marketLead?.gold||data?.gold?.marketLead}/></div>
   </div>;
 }
