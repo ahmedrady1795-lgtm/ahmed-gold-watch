@@ -39,16 +39,38 @@ function ok(quote:BtcQuote,now:number,degraded=false){
 }
 export async function GET(request:Request){
   const now=Date.now(),strictCoinbase=new URL(request.url).searchParams.get('source')==='coinbase';
-  const providers=strictCoinbase
-    ?[()=>coinbaseExchange(now),()=>coinbaseSpot()]
-    :[()=>coinbaseExchange(now),()=>coinbaseSpot(),()=>kraken(),()=>coingecko()];
   const errors:string[]=[];
-  const wrapped=providers.map((fn,i)=>fn().then(q=>({q,i})).catch(e=>{errors.push(String(e instanceof Error?e.message:e));throw e;}));
-  try{
-    const {q}=await Promise.any(wrapped);
-    return ok(q,now,false);
-  }catch{}
-  if(lastGood&&now-lastGood.at<=30000){
+  const primary=Promise.any([
+    coinbaseExchange(now),
+    coinbaseSpot()
+  ]).catch(e=>{errors.push('Coinbase '+String(e instanceof Error?e.message:e));return null;});
+  const fallback=strictCoinbase
+    ?Promise.resolve(null)
+    :Promise.any([
+      kraken(),
+      coingecko()
+    ]).catch(e=>{errors.push('Fallback '+String(e instanceof Error?e.message:e));return null;});
+
+  // Coinbase is the preferred scalp feed. Give it a short exclusive window;
+  // fallback requests are already in flight, so a Coinbase miss does not add another network round-trip.
+  const primaryFast=await Promise.race([
+    primary,
+    new Promise<null>(resolve=>setTimeout(()=>resolve(null),700))
+  ]);
+  if(primaryFast)return ok(primaryFast,now,false);
+
+  if(strictCoinbase){
+    const latePrimary=await primary;
+    if(latePrimary)return ok(latePrimary,now,false);
+  }else{
+    const fallbackFast=await fallback;
+    if(fallbackFast)return ok(fallbackFast,now,true);
+    const latePrimary=await primary;
+    if(latePrimary)return ok(latePrimary,now,false);
+  }
+
+  const cachedAllowed=lastGood&&now-lastGood.at<=8000&&(!strictCoinbase||/^Coinbase/.test(lastGood.quote.source));
+  if(cachedAllowed&&lastGood){
     const ageMs=now-lastGood.at;
     return Response.json({
       ok:true,symbol:'BTC/USD',...lastGood.quote,
@@ -57,8 +79,13 @@ export async function GET(request:Request){
       status:'delayed',
       degraded:true,
       cacheAgeMs:ageMs,
-      warning:'All live BTC providers missed this request; serving last good quote briefly.'
+      warning:'Live BTC providers missed this request; serving a very short last-good quote.'
     },{headers:{'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0','X-BTC-Failover':'cache'}});
   }
-  return Response.json({ok:false,message:strictCoinbase?'Coinbase unavailable':'BTC sources unavailable',detail:errors.join(' | ').slice(0,420),fetchedAt:now},{status:502,headers:{'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0'}});
+  return Response.json({
+    ok:false,
+    message:strictCoinbase?'Coinbase unavailable':'BTC sources unavailable',
+    detail:errors.join(' | ').slice(0,420),
+    fetchedAt:now
+  },{status:502,headers:{'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0'}});
 }
