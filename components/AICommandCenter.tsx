@@ -63,6 +63,9 @@ function AssetCard({x,liveQuote,fast}:any){
       :zone?String(zone.side||'WAIT')
       :(goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT');
   const displaySide=forecastSide;
+  const guard=path?.consensusGuard||null;
+  const guardConfirmed=guard?.status==='M1_M5_CONFIRMED';
+  const guardWatching=Boolean(guard&&guard.status!=='M1_M5_CONFIRMED');
   const softDestination=Boolean((path?.side==='WAIT'&&path?.priceDestination?.zone)||guardWatching);
   const buy=displaySide==='BUY'&&!softDestination,sell=displaySide==='SELL'&&!softDestination;
   const localReactionSide=zone?.side&&zone.side!=='WAIT'?String(zone.side):'WAIT';
@@ -80,9 +83,6 @@ function AssetCard({x,liveQuote,fast}:any){
     :path?.priceDestination
       ?calibrated(path.priceDestination.confidence)
       :calibrated(goldCore?.confidence??hunt?.nextMove?.confidence??hunt?.confidence??0);
-  const guard=path?.consensusGuard||null;
-  const guardConfirmed=guard?.status==='M1_M5_CONFIRMED';
-  const guardWatching=Boolean(guard&&guard.status!=='M1_M5_CONFIRMED');
   const scalpNext=x.scalp?.nextPrice||x.scalp?.fusionV8?.nextPrice||{};
   const fastScalp=fastScalpProjection(price,fast);
   const scalpSide=fastScalp?.side??(x.scalp?.action==='BUY'||x.scalp?.action==='SELL'?x.scalp.action:(scalpNext?.side||'WAIT'));
