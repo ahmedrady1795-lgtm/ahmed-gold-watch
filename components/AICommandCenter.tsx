@@ -24,6 +24,15 @@ const movementStructureLabel=(s:any)=>{
   if(s.path==='DROP_THEN_RISE')return 'هبوط ثم صعود';
   return `${structurePhaseAr(m.phase)} ${sideTxt}`;
 };
+const structurePatternAr=(v:any)=>{
+  const x=String(v||'').toUpperCase().trim();
+  if(x==='HH + HL')return 'قمم أعلى + قيعان أعلى';
+  if(x==='LH + LL')return 'قمم أدنى + قيعان أدنى';
+  if(x==='EXPANDING RANGE')return 'نطاق متسع';
+  if(x==='COMPRESSION / RANGE')return 'ضغط داخل نطاق';
+  if(x==='MIXED')return 'هيكل مختلط';
+  return x?'هيكل متغير':'—';
+};
 function nextMoveCopy(hunt:any,stateGraph:any){
   if(!hunt&&!stateGraph)return {title:'لا توجد حركة مؤكدة حاليًا',detail:'النواة تنتظر بيانات أو توافقًا أوضح قبل ترجيح الحركة القادمة.',tone:'amber'};
   const understanding=hunt?.marketUnderstanding;
@@ -89,8 +98,10 @@ function AssetCard({x,liveQuote,fast}:any){
   const forwardWindow=forward?.windowSeconds?(`${forward.windowSeconds.min}–${forward.windowSeconds.max} ث`):'—';
   const liqBuy=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.buy||0))));
   const liqSell=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.sell||0))));
-  const liqDir=forwardSide==='BUY'?liqBuy:forwardSide==='SELL'?liqSell:Math.max(liqBuy,liqSell);
-  const liqText=(liqBuy||liqSell)?`${liqDir}% · ${forwardSide==='BUY'?'شراء':forwardSide==='SELL'?'بيع':liqBuy>=liqSell?'شراء':'بيع'}`:'—';
+  const liqText=(liqBuy||liqSell)?`صعود ${liqBuy}% · هبوط ${liqSell}%`:'—';
+  const liqZone=path?.destination||zone?.target||forwardZone||priceDestination||null;
+  const liqMid=Number(liqZone?.mid);
+  const liqLevel=Number.isFinite(liqMid)?fmt(liqMid,2):zoneRange(liqZone);
   const forwardStatus=String(forward?.status||'WAIT');
   const structure=x?.movementStructure||null;
   const structureText=movementStructureLabel(structure);
@@ -126,8 +137,9 @@ function AssetCard({x,liveQuote,fast}:any){
         <div><small>الوجهة</small><b>{forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):priceDestination?zoneRange(priceDestination):'—'}</b></div>
         <div><small>نافذة التحرك</small><b>{forwardSide!=='WAIT'?forwardWindow:'—'}</b></div>
         <div><small>الارتداد</small><b>{zoneRange(path?.reboundZone||zone?.origin)}</b></div>
-        <div><small>نسبة السيولة</small><b className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>{liqText}</b><span>{zoneRange(path?.destination||zone?.target)}</span></div>
-        <div><small>هيكل الحركة</small><b>{structureText}</b><span>{structure?.m1?.structure||structure?.m5?.structure||'—'}</span></div>
+        <div><small>نسبة السيولة</small><b>{liqText}</b></div>
+        <div><small>مستوى السيولة</small><b>{liqLevel}</b><span>{liqZone?`منطقة ${zoneRange(liqZone)}`:'—'}</span></div>
+        <div><small>هيكل الحركة</small><b>{structureText}</b><span>{structurePatternAr(structure?.m1?.structure||structure?.m5?.structure)}</span></div>
       </div>
       {forward?.reason&&<small className="muted">{forward.reason}</small>}
     </div>
