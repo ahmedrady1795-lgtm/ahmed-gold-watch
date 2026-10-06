@@ -86,7 +86,7 @@ export default function Home(){
 
   useEffect(()=>{
     void loadAi();
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},1200);
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},4000);
     const clock=setInterval(()=>setNow(Date.now()),5000);
     return()=>{clearInterval(aiTimer);clearInterval(clock);};
   },[]);
@@ -255,7 +255,7 @@ export default function Home(){
     {aiError&&!aiData&&<div className="fatal"><WifiOff size={18}/><div><strong>تعذر تحديث AI</strong><span>{aiError}</span></div></div>}
 
     <section className="content lite-content">
-      <AICommandCenter data={aiData} error={aiError} now={now} goldLive={goldTick}/>
+      <AICommandCenter data={aiData} error={aiError} now={now} goldLive={goldTick} fastWave={fastWaveRef.current}/>
     </section>
 
     <footer>Ahmed Gold AI Lite · السعر والسكالب والتوقع فقط</footer>
