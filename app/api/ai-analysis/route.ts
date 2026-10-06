@@ -1460,9 +1460,29 @@ export async function GET(request:Request){
           recentKill:Boolean(x.horizons.M5.recentKill)
         }:null
       }:null;
+      const diag15=(v:any)=>{
+        const g=v?.global||{},hits=Number(g.hits||0),fails=Number(g.fails||0),neutral=Number(g.neutral||0),directional=hits+fails;
+        return {
+          hits,fails,neutral,directional,
+          accuracy:directional?Number((hits/directional*100).toFixed(1)):null,
+          posterior:Number.isFinite(Number(g.posteriorAccuracy))?Number(Number(g.posteriorAccuracy).toFixed(1)):null,
+          pending:Number(v?.pending||0),
+          samples:Number(v?.learningSamples||directional),
+          walkForward:v?.walkForward?{
+            status:String(v.walkForward.status||'COLLECTING'),
+            oosN:Number(v.walkForward?.oos?.n||0),
+            oosAccuracy:Number.isFinite(Number(v.walkForward?.oos?.accuracy))?Number(v.walkForward.oos.accuracy):null,
+            coverage:Number.isFinite(Number(v.walkForward?.oos?.coverage))?Number(v.walkForward.oos.coverage):null,
+            drift:String(v.walkForward?.drift?.status||'COLLECTING')
+          }:null
+        };
+      };
+      const gold15Diag=diag15(getNextMoveOutcome('GOLD_FORWARD_15M',goldLearningPrice,now));
+      const btc15Diag=diag15(getNextMoveOutcome('BTC_FORWARD_15M',btcPrice,now));
       console.info('[AI-DIAG]',JSON.stringify({
         status:autopilot.status,
         recoveryActions:actualRecoveryActions.slice(0,5),
+        forward15:{gold:gold15Diag,btc:btc15Diag},
         webScout:webIntel?{
           ok:Boolean(webIntel.ok),cached:Boolean(webIntel.cached),
           sources:webIntel.sources.map((s:any)=>({id:s.id,ok:Boolean(s.ok),itemCount:Number(s.itemCount||0),error:s.error||null})),
