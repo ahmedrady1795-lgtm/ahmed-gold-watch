@@ -306,13 +306,29 @@ export async function GET(request:Request){
   const now=Date.now(),url=new URL(request.url),workerCycle=url.searchParams.get('worker')==='1',btcWave=waveFromParams(url,'b',now),goldWave=waveFromParams(url,'g',now);
   const clientGoldAt=Number(url.searchParams.get('gt'));
   const clientBtcAt=Number(url.searchParams.get('bat'));
+  const clientGoldPrice=Number(url.searchParams.get('gp'));
+  const clientBtcPrice=Number(url.searchParams.get('bp'));
   const hasNewLiveTick=(Number.isFinite(clientGoldAt)&&clientGoldAt>Number(lastAiPayload?.gold?.livePulse?.sourceTime||0))||(Number.isFinite(clientBtcAt)&&clientBtcAt>Number(lastAiPayload?.bitcoin?.livePulse?.sourceTime||0));
-  // Full AI is deliberately slower than the direct live scalp path. Browser ticks are
-  // rendered independently, so they should not force the expensive engine to rebuild.
+  const moveBps=(live:number,prev:any)=>{
+    const p=Number(prev);
+    return Number.isFinite(live)&&live>0&&Number.isFinite(p)&&p>0?Math.abs(live-p)/p*10000:0;
+  };
+  const goldMoveBps=moveBps(clientGoldPrice,lastAiPayload?.gold?.price??lastAiPayload?.gold?.livePulse?.price);
+  const btcMoveBps=moveBps(clientBtcPrice,lastAiPayload?.bitcoin?.price??lastAiPayload?.bitcoin?.livePulse?.price);
+  const significantLiveMove=Boolean(hasNewLiveTick&&(goldMoveBps>=1.15||btcMoveBps>=1.50));
+  // Prices and fast scalp stay live on their own streams. Rebuild the expensive AI at a
+  // controlled cadence, except when price actually moves enough to justify an early rebuild.
   const clientCacheMs=5000;
-  const cacheMs=workerCycle?650:clientCacheMs;
-  if(lastAiPayload&&now-lastAiPayloadAt<cacheMs&&(!workerCycle||!hasNewLiveTick)){
-    return Response.json(lastAiPayload,{headers:{'Cache-Control':'no-store','X-AI-Cache':'fresh'}});
+  const cacheMs=workerCycle?3200:clientCacheMs;
+  const payloadAge=now-lastAiPayloadAt;
+  const earlyRebuild=workerCycle&&significantLiveMove&&payloadAge>=1200;
+  if(lastAiPayload&&payloadAge<cacheMs&&!earlyRebuild){
+    return Response.json(lastAiPayload,{headers:{
+      'Cache-Control':'no-store',
+      'X-AI-Cache':significantLiveMove?'move-buffered':'fresh',
+      'X-AI-Gold-Move-Bps':goldMoveBps.toFixed(2),
+      'X-AI-Btc-Move-Bps':btcMoveBps.toFixed(2)
+    }});
   }
   if(analysisBusy&&lastAiPayload&&now-lastAiPayloadAt<30000){
     return Response.json({...lastAiPayload,stale:true},{headers:{'Cache-Control':'no-store','X-AI-Cache':'busy'}});
@@ -789,14 +805,52 @@ export async function GET(request:Request){
 
     if(now-lastDiagLog>30000){
       lastDiagLog=now;
+      const compactHorizonDiag=(h:any)=>h?{
+        side:h.side||'WAIT',
+        confidence:Number(h.confidence||0),
+        agreement:Number(h.agreement||0),
+        uncertainty:Number(h.uncertainty||0),
+        independentFamilies:Number(h.independentFamilies||0),
+        familyOpposition:Number(h.familyOpposition||0),
+        gateReason:h.gateReason||null,
+        learning:h.learning?{
+          accuracy:Number(h.learning.accuracy||0),
+          posterior:Number(h.learning.posterior||0),
+          recentAccuracy:Number(h.learning.recent?.accuracy||0),
+          last8Accuracy:Number(h.learning.recent?.last8Accuracy||0),
+          failureStreak:Number(h.learning.failureStreak||0),
+          recentKill:Boolean(h.learning.recentKill),
+          recoveryReady:Boolean(h.learning.recoveryReady),
+          quality:h.learning.quality||null
+        }:null
+      }:null;
+      const compactHorizonLearningDiag=(x:any)=>x?{
+        pending:Number(x.pending||0),
+        pendingLive:Number(x.pendingLive||0),
+        pendingShadow:Number(x.pendingShadow||0),
+        m1:x.horizons?.M1?{
+          accuracy:Number(x.horizons.M1.accuracy||0),
+          posterior:Number(x.horizons.M1.posterior||0),
+          recentAccuracy:Number(x.horizons.M1.recent?.accuracy||0),
+          last8Accuracy:Number(x.horizons.M1.recent?.last8Accuracy||0),
+          recentKill:Boolean(x.horizons.M1.recentKill)
+        }:null,
+        m5:x.horizons?.M5?{
+          accuracy:Number(x.horizons.M5.accuracy||0),
+          posterior:Number(x.horizons.M5.posterior||0),
+          recentAccuracy:Number(x.horizons.M5.recent?.accuracy||0),
+          last8Accuracy:Number(x.horizons.M5.recent?.last8Accuracy||0),
+          recentKill:Boolean(x.horizons.M5.recentKill)
+        }:null
+      }:null;
       console.info('[AI-DIAG]',JSON.stringify({
         status:autopilot.status,
         recoveryActions:actualRecoveryActions.slice(0,5),
         webScout:webIntel?{
           ok:Boolean(webIntel.ok),cached:Boolean(webIntel.cached),
           sources:webIntel.sources.map((s:any)=>({id:s.id,ok:Boolean(s.ok),itemCount:Number(s.itemCount||0),error:s.error||null})),
-          gold:{side:webIntel.gold.side,confidence:webIntel.gold.confidence,risk:webIntel.gold.risk,sourceCount:webIntel.gold.sourceCount,freshCount:webIntel.gold.freshCount,learning:(webIntel.gold as any).outcomeLearning||null},
-          btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount,learning:(webIntel.btc as any).outcomeLearning||null}
+          gold:{side:webIntel.gold.side,confidence:webIntel.gold.confidence,risk:webIntel.gold.risk,sourceCount:webIntel.gold.sourceCount,freshCount:webIntel.gold.freshCount},
+          btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount}
         }:null,
         gold:{
           tick:{
@@ -816,10 +870,10 @@ export async function GET(request:Request){
           basis:{aligned:Boolean(goldBasis.aligned),offset:Number(goldBasis.basisOffset||0),bps:Number(goldBasis.basisBps||0)},
           zone:huntZoneDiag(goldHunt),
           horizonBrains:{
-            m1:goldMovement?.horizons?.oneMinute||null,
-            m3:goldMovement?.horizons?.threeMinute||null,
-            m5:goldMovement?.horizons?.fiveMinute||null,
-            learning:(goldMovement as any)?.horizonLearning||null
+            m1:compactHorizonDiag(goldMovement?.horizons?.oneMinute),
+            m3:compactHorizonDiag(goldMovement?.horizons?.threeMinute),
+            m5:compactHorizonDiag(goldMovement?.horizons?.fiveMinute),
+            learning:compactHorizonLearningDiag((goldMovement as any)?.horizonLearning)
           },
           action:goldMaster.action,
           scalp:goldScalp.action,
@@ -853,10 +907,10 @@ export async function GET(request:Request){
         btc:{
           zone:huntZoneDiag(bitcoinHunt),
           horizonBrains:{
-            m1:bitcoinMovement?.horizons?.oneMinute||null,
-            m3:bitcoinMovement?.horizons?.threeMinute||null,
-            m5:bitcoinMovement?.horizons?.fiveMinute||null,
-            learning:(bitcoinMovement as any)?.horizonLearning||null
+            m1:compactHorizonDiag(bitcoinMovement?.horizons?.oneMinute),
+            m3:compactHorizonDiag(bitcoinMovement?.horizons?.threeMinute),
+            m5:compactHorizonDiag(bitcoinMovement?.horizons?.fiveMinute),
+            learning:compactHorizonLearningDiag((bitcoinMovement as any)?.horizonLearning)
           },
           action:bitcoinMaster.action,
           scalp:bitcoinScalp.action,

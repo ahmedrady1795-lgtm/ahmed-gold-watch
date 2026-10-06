@@ -54,7 +54,10 @@ export default function Home(){
       add('b',fastWaveRef.current.btc);
       add('g',fastWaveRef.current.gold);
       const bl=btcWaveTicks.current.at(-1);
-      if(bl&&Date.now()-bl.at<=2500)q.set('bat',String(bl.at));
+      if(bl&&Date.now()-bl.at<=2500){
+        q.set('bat',String(bl.at));
+        if(Number.isFinite(Number(bl.price))&&Number(bl.price)>0)q.set('bp',String(bl.price));
+      }
       const gl=goldTickRef.current;
       const gr=Number(gl?.receivedAt||0),gt=Number(gl?.sourceTime||0),gp=Number(gl?.price);
       if(gl?.ok&&Number.isFinite(gp)&&gp>0&&Number.isFinite(gr)&&gr>0&&Date.now()-gr<=10000){

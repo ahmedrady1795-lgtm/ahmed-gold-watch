@@ -62,8 +62,11 @@ function AssetCard({x,liveQuote,fast}:any){
       ?String(path.priceDestination.side)
       :zone?String(zone.side||'WAIT')
       :(goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT');
-  const displaySide=recommendation?.active?recommendation.action:forecastSide;
+  const displaySide=forecastSide;
   const buy=displaySide==='BUY',sell=displaySide==='SELL';
+  const localReactionSide=zone?.side&&zone.side!=='WAIT'?String(zone.side):'WAIT';
+  const localReactionZone=zone?.origin??(localReactionSide==='BUY'?zone?.support:localReactionSide==='SELL'?zone?.resistance:null);
+  const hasOppositeLocalReaction=forecastSide!=='WAIT'&&localReactionSide!=='WAIT'&&forecastSide!==localReactionSide&&localReactionZone;
   const liveGoldPrice=x.asset==='GOLD'&&liveQuote?.ok&&Number.isFinite(Number(liveQuote?.price))&&Number(liveQuote.price)>0?Number(liveQuote.price):null;
   const price=liveGoldPrice??x.livePulse?.price??x.price;
   const move=nextMoveCopy(hunt,x.stateGraph);
@@ -110,6 +113,9 @@ function AssetCard({x,liveQuote,fast}:any){
               :move.title}
       </strong>
       <p>{path?.reason||path?.scenario||zone?.summary||move.detail}</p>
+      {hasOppositeLocalReaction&&<em className="zone-stability">
+        رد فعل محلي محتمل: {moveAr(localReactionSide)} عند {zoneRange(localReactionZone)} · المسار الرئيسي ما زال {moveAr(forecastSide)} نحو {zoneRange(priceDestination)}
+      </em>}
       {path?.probabilities&&<div className="forecast-scenario-strip">
         <div><small>احتمال الصعود</small><b className="green">{Math.round(Number(path.probabilities.up||0))}%</b></div>
         <div><small>احتمال الهبوط</small><b className="red">{Math.round(Number(path.probabilities.down||0))}%</b></div>
@@ -155,7 +161,7 @@ function AssetCard({x,liveQuote,fast}:any){
     {(target!=null||invalid!=null)&&<div className="trade-strip compact-levels">
       <div><small>الهدف الأقرب</small><strong>{fmt(target,2)}</strong></div>
       <div><small>إلغاء السيناريو</small><strong>{fmt(invalid,2)}</strong></div>
-      <div><small>القرار</small><strong className={recommendation?.active?(buy?'green':'red'):'amber'}>{recommendation?.active?sideAr(recommendation.action):'مراقبة'}</strong></div>
+      <div><small>القرار</small><strong className={recommendation?.active?(recommendation.action==='BUY'?'green':recommendation.action==='SELL'?'red':'amber'):'amber'}>{recommendation?.active?sideAr(recommendation.action):'مراقبة'}</strong></div>
     </div>}
   </section>;
 }
