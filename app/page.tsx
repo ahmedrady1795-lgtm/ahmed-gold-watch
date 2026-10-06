@@ -45,40 +45,18 @@ export default function Home(){
     aiInFlight.current=true;
     if(manual)setBusy(true);
     try{
-      const q=new URLSearchParams();
-      // Use the lightweight worker cache window so liquidity-driven AI refreshes quickly
-      // without allowing overlapping analyses (aiInFlight still guards the client).
-      q.set('worker','1');
-      const add=(p:string,w:WaveLead|null)=>{
-        if(!w?.ok||Date.now()-w.at>2500)return;
-        q.set(p+'s',w.side);q.set(p+'st',w.stage);q.set(p+'sc',String(w.score));q.set(p+'cf',String(w.confidence));q.set(p+'at',String(w.at));
-        q.set(p+'v1',String(w.velocity1s));q.set(p+'v3',String(w.velocity3s));q.set(p+'ac',String(w.acceleration));
-        q.set(p+'ps',String(w.persistence));q.set(p+'im',String(w.imbalance));q.set(p+'br',String(w.burstRate));q.set(p+'sp',String(w.spreadCompression));
-      };
-      add('b',fastWaveRef.current.btc);
-      add('g',fastWaveRef.current.gold);
-      const bl=btcWaveTicks.current.at(-1);
-      if(bl&&Date.now()-bl.at<=2500){
-        q.set('bat',String(bl.at));
-        if(Number.isFinite(Number(bl.price))&&Number(bl.price)>0)q.set('bp',String(bl.price));
+      // Normal UI refreshes are read-only and never start the expensive analysis.
+      // A manual refresh is the only browser action allowed to request a heavy cycle.
+      const endpoint=manual
+        ?'/api/ai-analysis?worker=1&manual=1&_='+Date.now()
+        :'/api/ai-snapshot?_='+Date.now();
+      const r=await fetch(endpoint,{cache:'no-store',signal:AbortSignal.timeout(manual?12000:3500)});
+      const j=await r.json().catch(()=>null);
+      if(r.status===503&&j?.warming){
+        if(!aiReady.current)setAiError('');
+        return;
       }
-      const gl=goldTickRef.current;
-      const gr=Number(gl?.receivedAt||0),gt=Number(gl?.sourceTime||0),gp=Number(gl?.price);
-      if(gl?.ok&&Number.isFinite(gp)&&gp>0&&Number.isFinite(gr)&&gr>0&&Date.now()-gr<=10000){
-        q.set('gp',String(gp));
-        q.set('gt',String(Number.isFinite(gt)&&gt>0?gt:gr));
-        q.set('gr',String(gr));
-        q.set('gmode',String(gl?.mode||'external'));
-        q.set('gstatus',String(gl?.status||'unknown'));
-        if(Number.isFinite(Number(gl?.bid))&&Number(gl.bid)>0)q.set('gb',String(gl.bid));
-        if(Number.isFinite(Number(gl?.ask))&&Number(gl.ask)>=Number(gl?.bid||0))q.set('ga',String(gl.ask));
-      }
-      const r=await fetch('/api/ai-analysis'+(q.size?'?'+q.toString():''),{
-        cache:'no-store',
-        signal:AbortSignal.timeout(12000)
-      });
-      const j=await r.json();
-      if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر تشغيل محرك AI');
+      if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر قراءة محرك AI');
       setAiData(j);
       setAiLastOkAt(Date.now());
       aiReady.current=true;
@@ -87,7 +65,7 @@ export default function Home(){
       setNow(Date.now());
     }catch(e){
       aiFailureCount.current+=1;
-      if(!aiReady.current&&aiFailureCount.current>=3)setAiError(e instanceof Error?e.message:'تعذر تشغيل محرك AI');
+      if(!aiReady.current&&aiFailureCount.current>=4)setAiError(e instanceof Error?e.message:'تعذر قراءة محرك AI');
     }finally{
       aiInFlight.current=false;
       if(manual)setBusy(false);
@@ -96,7 +74,7 @@ export default function Home(){
 
   useEffect(()=>{
     void loadAi();
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},2000);
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},1000);
     const clock=setInterval(()=>setNow(Date.now()),5000);
     return()=>{clearInterval(aiTimer);clearInterval(clock);};
   },[]);
@@ -272,7 +250,8 @@ export default function Home(){
   const goldLive=goldBrokerLive||goldStreamLive||goldPulse;
   const goldUsable=goldLive||goldDelayed||goldFallback;
   const goldBadge=goldBrokerLive?'LIVE EXNESS':goldStreamLive?'LIVE':goldPulse?'PULSE':goldDelayed?'DELAYED':goldFallback?'FALLBACK':'WAIT';
-  const aiActive=Boolean((aiData?.ok&&aiLastOkAt&&now-aiLastOkAt<20000)||aiData?.ok);
+  const snapshotAge=Number(aiData?.snapshot?.ageMs??(aiData?.checkedAt?now-Number(aiData.checkedAt):Infinity));
+  const aiActive=Boolean(aiData?.ok&&aiLastOkAt&&now-aiLastOkAt<10000&&Number.isFinite(snapshotAge)&&snapshotAge<20000);
   const shownBtc=btc??aiBtc?.price??aiData?.bitcoin?.price??null;
   const shownBtcAt=btcAt||Number(aiBtc?.sourceTime||0);
   const btcLive=Boolean(shownBtcAt&&now-shownBtcAt<10000);
