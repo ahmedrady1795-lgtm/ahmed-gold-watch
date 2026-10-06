@@ -229,14 +229,23 @@ function buildZoneForecast(args:{
     .sort((x:any,y:any)=>Number(y._magnet)-Number(x._magnet)||Number(x._d)-Number(y._d));
   const nearestUpper=upperCandidates.slice().sort((x:any,y:any)=>Number(x._d)-Number(y._d))[0]||null;
   const nearestLower=lowerCandidates.slice().sort((x:any,y:any)=>Number(x._d)-Number(y._d))[0]||null;
-  const upperRaw=upperCandidates[0]||nearestUpper||null;
-  const lowerRaw=lowerCandidates[0]||nearestLower||null;
+  const chooseStructural=(arr:any[])=>{
+    const top=arr[0]||null;
+    if(!top)return null;
+    if(Number(top._d)>=.38)return top;
+    const farther=arr.find((z:any)=>Number(z._d)>=.38&&Number(z._d)<=2.2&&Number(z._magnet)>=Number(top._magnet)-14);
+    if(farther)return farther;
+    // A tiny pool is a sweep candidate, not a structural destination.
+    return null;
+  };
+  const upperRaw=chooseStructural(upperCandidates);
+  const lowerRaw=chooseStructural(lowerCandidates);
   const upperLiquidity=zoneObj(upperRaw,'UPPER_LIQUIDITY_SUPPLY');
   const lowerLiquidity=zoneObj(lowerRaw,'LOWER_LIQUIDITY_DEMAND');
-  const upperSweep=nearestUpper&&Number(nearestUpper._d)<=.32&&upperRaw&&nearestUpper.mid!==upperRaw.mid
+  const upperSweep=nearestUpper&&Number(nearestUpper._d)<=.35
     ?zoneObj(nearestUpper,'UPPER_MICRO_SWEEP')
     :null;
-  const lowerSweep=nearestLower&&Number(nearestLower._d)<=.32&&lowerRaw&&nearestLower.mid!==lowerRaw.mid
+  const lowerSweep=nearestLower&&Number(nearestLower._d)<=.35
     ?zoneObj(nearestLower,'LOWER_MICRO_SWEEP')
     :null;
 
