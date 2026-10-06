@@ -16,6 +16,7 @@ export type MovementIntelligence={
   };
   target15:{side:Side;price:number|null;low:number|null;high:number|null;confidence:number;moveAtr:number;source:string}|null;
   reasons:string[];
+  marketLead?:any;
 };
 
 const cap=(n:number,a=0,b=100)=>Math.max(a,Math.min(b,n));
@@ -129,7 +130,7 @@ function resolveFamilies(groups:Record<string,Evidence[]>,gate=12,minFamilies=2)
 }
 
 export function buildMovementIntelligence(asset:string,args:any):MovementIntelligence{
-  const expected=args?.expected||{},g=args?.stateGraph||{},liq=args?.liquidity||{},motion=args?.motion||{},structure=args?.structure||{},acc=args?.accumulation||{},behavior=args?.behavior||{},learning=args?.learning||{},tick=args?.tick||{},scalp=args?.scalp||{},decision=args?.decision||{},news=args?.news||{},ml=args?.ml||{};
+  const expected=args?.expected||{},g=args?.stateGraph||{},liq=args?.liquidity||{},motion=args?.motion||{},structure=args?.structure||{},acc=args?.accumulation||{},behavior=args?.behavior||{},learning=args?.learning||{},tick=args?.tick||{},scalp=args?.scalp||{},decision=args?.decision||{},news=args?.news||{},ml=args?.ml||{},marketLead=args?.marketLead||{};
   const policy=args?.evolution?.active||null,ew=(name:string)=>cap(Number(policy?.weights?.[name]||1),.5,1.35);
   const regime=regimeOf(g,acc),baseW=weights(regime,asset),w={...baseW,expected:baseW.expected*ew('learning'),tick:baseW.tick*ew('wave'),scalp:baseW.scalp*ew('scalp'),motion:baseW.motion*ew('motion'),liquidity:baseW.liquidity*ew('liquidity'),structure:baseW.structure*ew('structure'),stateGraph:baseW.stateGraph*ew('stateGraph'),accumulation:baseW.accumulation*ew('accumulation'),behavior:baseW.behavior*ew('behavior'),learning:baseW.learning*ew('learning')},m=decision?.indicatorMatrix?.rows||{};
   const expected2=expected?.twoMinute||{},expected5=expected?.fiveMinute||{},expected15=expected?.fifteenMinute||{};
@@ -145,6 +146,11 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   const scalpLong=Number(scalp?.score?.long||0),scalpShort=Number(scalp?.score?.short||0),scalpGap=Math.abs(scalpLong-scalpShort);
   const scalpSide:Side=scalp?.action==='BUY'||scalp?.action==='SELL'?scalp.action:scalpLong-scalpShort>=5?'BUY':scalpShort-scalpLong>=5?'SELL':'WAIT';
   const scalpScore=Math.max(scalpLong,scalpShort,Number(scalp?.confidence||0));
+  const leadSide:Side=side(marketLead?.side);
+  const leadStage=String(marketLead?.stage||'OBSERVE');
+  const leadArmed=Boolean(marketLead?.available&&marketLead?.armed&&leadSide!=='WAIT'&&Number(marketLead?.confidence||0)>=60);
+  const leadBuilding=Boolean(marketLead?.available&&leadStage==='BUILDING'&&leadSide!=='WAIT'&&Number(marketLead?.confidence||0)>=48);
+  const leadScore=Math.max(Number(marketLead?.score||0),Number(marketLead?.confidence||0));
   const ml1=ml?.oneMinute||{},ml5=ml?.fiveMinute||{},neural=ml?.neuralCore||{},micro=(neural?.ready?neural:(ml?.microstructure||{}));
   const ml1Ready=Boolean(ml?.ok&&ml1?.ready&&!ml?.shadow),ml5Ready=Boolean(ml?.ok&&ml5?.ready&&!ml?.shadow);
   const microReady=Boolean((neural?.ok||ml?.ok)&&micro?.ready&&micro?.side!=='WAIT');
@@ -165,6 +171,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     {side:scalpSide,score:scalpScore,weight:1.25},
     {side:side(motion?.side),score:Math.max(Number(motion?.score||0),Number(motion?.confidence||0)),weight:1.05},
     {side:side(liq?.side),score:liqScore,weight:asset==='BTC'?1.00:.35},
+    {side:leadSide,score:leadScore,weight:leadArmed?1.55:leadBuilding?.82:0},
     {side:microSide,score:microScore,weight:microReady?1.55:0},
     {side:ml1Side,score:ml1Score,weight:ml1Ready?1.35:0}
   ].filter(x=>x.side!=='WAIT'&&x.score>=28);
@@ -183,6 +190,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     ev('mlEnsemble1m',ml1Side,ml1Score,ml1Ready?.30:0,ml1Rel),
     ev('motion',motion?.side,motion?.score,w.motion,relH(learning,'motion','m2')),
     ev('liquidity',liq?.side,liqScore,w.liquidity,relH(learning,'liquidity','m2')),
+    ev('marketLead',leadSide,leadScore,leadArmed?.30:leadBuilding?.13:0,leadArmed?1.22:1.0),
     ev('structureM1',structure?.m1?.nextSide,struct1,w.structure,relH(learning,'structure','m2')),
     ev('stateGraph',g?.nextSide,stateScore,w.stateGraph,relH(learning,'stateGraph','m2')),
     ev('accumulation',acc?.side,accScore,w.accumulation,relH(learning,'accumulation','m2')),
@@ -265,10 +273,34 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     asset,tick,scalp,motion,liquidity:liq,accumulation:acc,structure,stateGraph:g,
     expected,learning,decision,ml,horizonLearning:args?.horizonLearning||{}
   });
-  const one=specialized.oneMinute;
-  const three=specialized.threeMinute;
+  let one={...specialized.oneMinute};
+  let three={...specialized.threeMinute};
   two={...three};
   five={...specialized.fiveMinute};
+  if(leadArmed){
+    const applyLead=(h:any,waitCap:number,alignedBoost:number)=>{
+      if(h.side==='WAIT'){
+        const c=Math.round(cap(Number(h.confidence||0)*.35+Number(marketLead.confidence||0)*.65,38,waitCap));
+        return {...h,side:leadSide,confidence:c,uncertainty:Math.max(0,100-c),gateReason:'MARKET_LEAD_ARMED'};
+      }
+      if(h.side===leadSide){
+        const c=Math.round(cap(Number(h.confidence||0)+alignedBoost,0,86));
+        return {...h,confidence:c,uncertainty:Math.max(0,100-c)};
+      }
+      const c=Math.max(0,Number(h.confidence||0)-10);
+      return {...h,confidence:c,uncertainty:Math.min(100,100-c),gateReason:'MARKET_LEAD_OPPOSITION'};
+    };
+    one=applyLead(one,68,5);
+    three=applyLead(three,62,4);
+    two={...three};
+    if(five.side===leadSide){
+      const c=Math.min(78,Number(five.confidence||0)+3);
+      five={...five,confidence:c,uncertainty:Math.max(0,100-c)};
+    }else if(five.side!=='WAIT'){
+      const c=Math.max(0,Number(five.confidence||0)-6);
+      five={...five,confidence:c,uncertainty:Math.min(100,100-c)};
+    }
+  }
   if(news?.phase==='PRE_EVENT'&&Number(news?.risk||0)>=70){
     const p=Math.min(22,Math.round((Number(news.risk)-60)*.55));
     one.confidence=Math.max(0,one.confidence-p);one.uncertainty=Math.min(100,100-one.confidence);
@@ -318,6 +350,8 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   ];
   if(tick?.stage==='IGNITION'||tick?.stage==='WAVE_FORMING')reasons.push('Server tick '+tick.stage+' '+tick.side);
   if(news?.event)reasons.push('News '+String(news.phase||'')+' · '+String(news.event.name||'')+' · risk '+Number(news.risk||0)+' · '+String(news.side||'WAIT'));
+  if(leadArmed)reasons.push('Market Lead AI ARMED '+leadSide+' · confidence '+Number(marketLead.confidence||0)+' · stability '+Number(marketLead.stability||0)+'%');
+  else if(leadBuilding)reasons.push('Market Lead AI BUILDING '+leadSide+' · '+Number(marketLead.confidence||0));
   if(fastStrong)reasons.push('Live Stack '+fastSide+' · confidence '+fastConfidence+' · '+fastRows.filter(x=>x.side===fastSide).length+'/'+fastRows.length+' fast engines aligned');
   if(microReady)reasons.push((neural?.ready?'Neural Fusion':'Neural L2')+' '+microSide+' · holdout '+Math.round(microAcc)+'% · confidence '+Math.round(microScore));
   if(ml1Ready||ml5Ready)reasons.push('ML selective OOS '+(ml1Ready?('1m '+ml1Side+' '+Math.round(ml1Acc)+'%'):'1m shadow')+' · '+(ml5Ready?('5m '+ml5Side+' '+Math.round(ml5Acc)+'%'):'5m shadow'));
@@ -327,6 +361,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   return {
     ok:true,asset,regime,side:finalSide,leanSide,confidence:directionalConfidence,agreement:two.agreement,uncertainty:two.uncertainty,conflict,conflictScore,
     evidence:immediate,
+    marketLead:marketLead?.available?marketLead:null,
     horizons:{oneMinute:one,threeMinute:three,twoMinute:two,fiveMinute:five,fifteenMinute:fifteen},
     horizonQuality:{
       fiveMinute:{independentSupport:fiveIndependentSupport,independentOpposition:fiveIndependentOpposition},
