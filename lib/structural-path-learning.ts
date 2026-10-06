@@ -305,8 +305,10 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
   const coldContextBlocked=Boolean(!contextReady&&!broadQualified&&gn>=30);
   const promoted=Boolean(!hardVeto&&confidence>=54&&(autoPromoted||contextQualified||(!contextReady&&broadQualified)));
   const probabilityConflict=!probabilityAligned;
-  const finalBlocked=hardVeto||coldContextBlocked||probabilityConflict;
+  const backstopBelowGate=Boolean(!contextReady&&broadQualified&&!promoted);
+  const finalBlocked=hardVeto||coldContextBlocked||probabilityConflict||backstopBelowGate;
   const learningStatus=probabilityConflict?'PROBABILITY_SIDE_CONFLICT'
+    :backstopBelowGate?'BACKSTOP_BELOW_GATE'
     :autoPolicy.hardBlacklist?'AUTO_BLACKLIST'
     :hardVeto?'HARD_VETO'
     :autoPromoted?'AUTO_PROMOTE'
@@ -333,12 +335,14 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
       distancePosterior:Number(db.posteriorAccuracy||50),signatureQuality:Number(signatureQuality.toFixed(1)),
       targetQuality:Number(targetQuality.toFixed(1)),distanceQuality:Number(distanceQuality.toFixed(1)),
       excursionEdge:Number(excursionEdge.toFixed(2)),failureStreak:streak,maturity:Number(maturity.toFixed(2)),
-      contextReady,broadQualified,contextQualified,promoted,autoPromoted,autoPolicy,hardVeto,coldContextBlocked,probabilityAligned,probabilityConflict
+      contextReady,broadQualified,contextQualified,promoted,autoPromoted,autoPolicy,hardVeto,coldContextBlocked,backstopBelowGate,probabilityAligned,probabilityConflict
     },
     learningCandidate,
     scenario:probabilityConflict
       ?'تم إيقاف المسار لأن الاتجاه المثبت لا يطابق الاحتمالات الحالية'
-      :autoPolicy.hardBlacklist
+      :backstopBelowGate
+        ?'التاريخ العام يدعم السيناريو لكن الثقة السياقية الحالية أقل من بوابة الاعتماد؛ المسار تحت المراقبة فقط'
+        :autoPolicy.hardBlacklist
         ?'تم حظر عائلة المسار تلقائيًا بعد تكرار الفشل وحركة سلبية ضد السيناريو؛ تستمر في Shadow للتعافي'
         :autoPolicy.earlyPenalty
           ?'تم إيقاف دعم التاريخ العام لهذا السيناريو بعد أداء مبكر ضعيف؛ يستمر Shadow حتى تتضح العينة'
