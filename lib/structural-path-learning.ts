@@ -119,15 +119,26 @@ function signaturePolicy(v:any){
   const n=Number(v?.directional||0),hits=Number(v?.hits||0),fails=Number(v?.fails||0);
   const accuracy=n?hits/n*100:50,posterior=Number(v?.posteriorAccuracy||50);
   const edge=Number(v?.excursionEdge||0),resolved=Number(v?.resolved||0);
+  const neutral=Number(v?.neutral||0);
+  const earlyPenalty=Boolean(
+    n>=3&&accuracy<=34&&edge<0
+  );
+  const adverseNeutralPenalty=Boolean(
+    resolved>=4&&neutral>=3&&edge<=-4
+  );
   const hardBlacklist=Boolean(
     (n>=3&&hits===0&&fails>=3&&edge<=-1)||
     (n>=6&&accuracy<=30&&posterior<44&&edge<0)
   );
   const softPenalty=Boolean(
-    !hardBlacklist&&n>=4&&accuracy<46&&edge<0
+    !hardBlacklist&&(
+      (n>=4&&accuracy<46&&edge<0)||
+      earlyPenalty||
+      adverseNeutralPenalty
+    )
   );
   const promoted=Boolean(
-    !hardBlacklist&&(
+    !hardBlacklist&&!softPenalty&&(
       (n>=4&&hits>=4&&accuracy>=80&&posterior>=60&&edge>=.75)||
       (n>=6&&accuracy>=70&&posterior>=58&&edge>=.5)
     )
@@ -140,14 +151,22 @@ function signaturePolicy(v:any){
     confidenceDelta=Math.round(4+sampleBoost+qualityBoost);
     weight=Number(Math.min(1.35,1.08+confidenceDelta*.022).toFixed(2));
   }else if(softPenalty){
-    confidenceDelta=-Math.min(10,Math.round(4+(46-accuracy)*.25+Math.min(4,Math.abs(edge)*.35)));
-    weight=Number(Math.max(.55,1+confidenceDelta*.035).toFixed(2));
+    const earlyExtra=earlyPenalty?3:0;
+    const neutralExtra=adverseNeutralPenalty?Math.min(5,Math.round(Math.abs(edge)*.35)):0;
+    confidenceDelta=-Math.min(14,Math.round(4+(46-accuracy)*.22+Math.min(4,Math.abs(edge)*.30)+earlyExtra+neutralExtra));
+    weight=Number(Math.max(.45,1+confidenceDelta*.038).toFixed(2));
   }
   return {
-    status:hardBlacklist?'AUTO_BLACKLIST':promoted?'AUTO_PROMOTE':softPenalty?'AUTO_PENALIZE':n>=3?'WATCH':'COLLECTING',
-    n,hits,fails,resolved,accuracy:Number(accuracy.toFixed(1)),posterior:Number(posterior.toFixed(1)),
+    status:hardBlacklist?'AUTO_BLACKLIST'
+      :promoted?'AUTO_PROMOTE'
+      :earlyPenalty?'EARLY_PENALIZE'
+      :adverseNeutralPenalty?'ADVERSE_NEUTRAL_PENALIZE'
+      :softPenalty?'AUTO_PENALIZE'
+      :n>=3?'WATCH':'COLLECTING',
+    n,hits,fails,neutral,resolved,accuracy:Number(accuracy.toFixed(1)),posterior:Number(posterior.toFixed(1)),
     excursionEdge:Number(edge.toFixed(2)),confidenceDelta,weight,
-    hardBlacklist,promoted,softPenalty
+    hardBlacklist,promoted,softPenalty,earlyPenalty,adverseNeutralPenalty,
+    negativeContext:Boolean(hardBlacklist||softPenalty)
   };
 }
 
@@ -275,6 +294,7 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
   );
   const contextReady=Boolean(archetypeSamples>=8&&Number(tk.directional||0)>=10);
   const broadQualified=Boolean(
+    !autoPolicy.negativeContext&&
     gn>=30&&Number(g.posteriorAccuracy||50)>=55&&
     (Number(s.directional||0)<12||Number(s.posteriorAccuracy||50)>=52)
   );
@@ -290,6 +310,8 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
     :autoPolicy.hardBlacklist?'AUTO_BLACKLIST'
     :hardVeto?'HARD_VETO'
     :autoPromoted?'AUTO_PROMOTE'
+    :autoPolicy.earlyPenalty?'EARLY_PENALIZE'
+    :autoPolicy.adverseNeutralPenalty?'ADVERSE_NEUTRAL_PENALIZE'
     :autoPolicy.softPenalty?'AUTO_PENALIZE'
     :contextQualified?'CONTEXT_PROMOTED'
     :contextReady?'CONTEXT_WATCH'
@@ -302,7 +324,7 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
     confidence:finalBlocked?Math.min(36,confidence):autoPromoted?Math.min(84,Math.max(confidence,raw+4)):!contextReady&&broadQualified?Math.min(62,confidence):confidence,
     conviction:finalBlocked?'WEAK':autoPromoted&&pathForecast.conviction==='WEAK'?'MODERATE':pathForecast.conviction,
     learning:{
-      version:'structural-path-learning-v3-auto-policy',
+      version:'structural-path-learning-v4-loss-memory',
       status:learningStatus,
       samples:gn,observedAccuracy:Number(observed.toFixed(1)),
       globalPosterior:Number(g.posteriorAccuracy||50),sidePosterior:Number(s.posteriorAccuracy||50),
@@ -318,9 +340,13 @@ export function calibrateStructuralPathForecast(pathForecast:any,learning:any,ph
       ?'تم إيقاف المسار لأن الاتجاه المثبت لا يطابق الاحتمالات الحالية'
       :autoPolicy.hardBlacklist
         ?'تم حظر عائلة المسار تلقائيًا بعد تكرار الفشل وحركة سلبية ضد السيناريو؛ تستمر في Shadow للتعافي'
-        :hardVeto
-          ?'تم رفض المسار لأن هذا النمط خاسر تاريخيًا أو جودة حركته ضعيفة'
-          :autoPromoted
+        :autoPolicy.earlyPenalty
+          ?'تم إيقاف دعم التاريخ العام لهذا السيناريو بعد أداء مبكر ضعيف؛ يستمر Shadow حتى تتضح العينة'
+          :autoPolicy.adverseNeutralPenalty
+            ?'السيناريو يكرر حركة سلبية رغم انتهاء النتائج كمحايدة؛ تم خفضه وإبقاؤه تحت المراقبة'
+            :hardVeto
+              ?'تم رفض المسار لأن هذا النمط خاسر تاريخيًا أو جودة حركته ضعيفة'
+              :autoPromoted
             ?'عائلة مسار مثبتة إحصائيًا؛ تمت ترقية وزنها تلقائيًا مع استمرار المراقبة'
             :coldContextBlocked
               ?'المسار تحت التعلم السياقي؛ التاريخ العام غير قوي بما يكفي للسماح بتوقع اتجاهي الآن'
