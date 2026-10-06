@@ -935,8 +935,18 @@ export async function GET(request:Request){
     const goldMarketOpen=goldMarketOpenUTC(now);
     const actualRecoveryActions=actions.filter((a:string)=>/استعادة|إعادة تحميل/.test(a));
     const recovered=actualRecoveryActions.length>0&&(!goldMarketOpen||gm.pricesReady)&&Boolean(btc.c1.length)&&Boolean(btcPrice);
-    const futureEvents=(gm.events||[]).filter((e:any)=>e.time>=now).sort((a:any,b:any)=>a.time-b.time);
-    const featuredEvent=futureEvents[0]||null;
+    // Keep a just-released event visible while providers are still waiting for Actual.
+    // Previously e.time>=now dropped the event at release time and immediately jumped to the next one.
+    const releaseGraceMs=30*60*1000;
+    const eventsSorted=[...(gm.events||[])].sort((a:any,b:any)=>a.time-b.time);
+    const pendingReleased=eventsSorted
+      .filter((e:any)=>e.time<now&&now-e.time<=releaseGraceMs&&!String(e.actual||'').trim())
+      .sort((a:any,b:any)=>b.time-a.time)[0]||null;
+    const futureEvents=eventsSorted.filter((e:any)=>e.time>=now);
+    const featuredEvent=pendingReleased||futureEvents[0]||null;
+    const featuredEventStatus=featuredEvent
+      ?(featuredEvent.time<now&&!String(featuredEvent.actual||'').trim()?'AWAITING_ACTUAL':String(featuredEvent.actual||'').trim()?'RELEASED':'UPCOMING')
+      :null;
     const featuredGoldNews=featuredEvent?buildNewsIntelligence('GOLD',[featuredEvent],now):null;
     const featuredBtcNews=featuredEvent?buildNewsIntelligence('BTC',[featuredEvent],now):null;
     const compactNewsImpact=(x:any)=>x?{
@@ -970,6 +980,9 @@ export async function GET(request:Request){
         forecast:featuredEvent.forecast||'',
         previous:featuredEvent.previous||'',
         source:featuredEvent.source||'',
+        status:featuredEventStatus,
+        awaitingActual:featuredEventStatus==='AWAITING_ACTUAL',
+        releaseAgeSeconds:featuredEvent.time<now?Math.round((now-featuredEvent.time)/1000):0,
         goldImpact:compactNewsImpact(featuredGoldNews),
         btcImpact:compactNewsImpact(featuredBtcNews)
       }:null
