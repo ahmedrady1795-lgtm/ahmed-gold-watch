@@ -33,6 +33,19 @@ const structurePatternAr=(v:any)=>{
   if(x==='MIXED')return 'هيكل مختلط';
   return x?'هيكل متغير':'—';
 };
+const intentPhaseAr=(p:any)=>p==='LIQUIDITY_BUILDUP'?'تجميع سيولة':p==='SWEEP_DETECTED'?'سحب سيولة':p==='TRAP_CONFIRMED'?'فخ سيولة مؤكد':p==='PRE_EXPANSION'?'استعداد قبل الحركة':p==='EXPANSION'?'الحركة بدأت':'لا يوجد سيناريو واضح';
+const intentStepAr=(v:any)=>{
+  const x=String(v||'');
+  if(x==='COMPRESSION')return 'ضغط';
+  if(x==='LOWER_LIQUIDITY_SWEEP')return 'سحب سيولة أسفل';
+  if(x==='UPPER_LIQUIDITY_SWEEP')return 'سحب سيولة أعلى';
+  if(x==='RECLAIM')return 'استعادة المستوى';
+  if(x==='ABSORPTION')return 'امتصاص';
+  if(x==='INSTITUTIONAL_ZONE')return 'منطقة مؤسسية';
+  if(x==='PRE_EXPANSION')return 'استعداد للاندفاع';
+  if(x==='EXPANSION')return 'اندفاع';
+  return '';
+};
 function nextMoveCopy(hunt:any,stateGraph:any){
   if(!hunt&&!stateGraph)return {title:'لا توجد حركة مؤكدة حاليًا',detail:'النواة تنتظر بيانات أو توافقًا أوضح قبل ترجيح الحركة القادمة.',tone:'amber'};
   const understanding=hunt?.marketUnderstanding;
@@ -108,6 +121,10 @@ function AssetCard({x,liveQuote,fast}:any){
   const accumulationPhase=accumulation?.phase==='ACCUMULATING'||accumulation?.phase==='MARKUP_READY'?'تجميع':accumulation?.phase==='DISTRIBUTING'||accumulation?.phase==='MARKDOWN_READY'?'تصريف':'توازن';
   const accumulationScore=Math.max(0,Math.min(100,Math.round(Number(accumulation?.accumulationScore||0))));
   const distributionScore=Math.max(0,Math.min(100,Math.round(Number(accumulation?.distributionScore||0))));
+  const intent=x?.marketMakerIntent||null;
+  const intentSide=intent?.side==='BUY'||intent?.side==='SELL'?intent.side:'WAIT';
+  const intentSteps=Array.isArray(intent?.sequence)?intent.sequence.map(intentStepAr).filter(Boolean).join(' → '):'';
+  const intentSweep=Number.isFinite(Number(intent?.sweepLevel))?fmt(Number(intent.sweepLevel),2):null;
   const upperLiquidity=path?.upperLiquidity||zone?.resistance||null;
   const lowerLiquidity=path?.lowerLiquidity||zone?.support||null;
   const liquidityPoint=(z:any)=>{
@@ -159,6 +176,10 @@ function AssetCard({x,liveQuote,fast}:any){
         <div><small>مستويات السيولة</small>
           <b>{upperLiquidityLevel!=='—'?<>سيولة أعلى عند <span dir="ltr">{upperLiquidityLevel}</span></>:'لا توجد سيولة علوية واضحة'}</b>
           <span>{lowerLiquidityLevel!=='—'?<>سيولة أسفل عند <span dir="ltr">{lowerLiquidityLevel}</span></>:'لا توجد سيولة سفلية واضحة'}</span>
+        </div>
+        <div><small>قراءة صانع السوق</small>
+          <b className={intentSide==='BUY'?'green':intentSide==='SELL'?'red':'amber'}>{intent?(intentPhaseAr(intent.phase)+' · '+moveAr(intentSide)+' · '+Math.round(Number(intent.confidence||0))+'%'):'—'}</b>
+          <span>{intentSteps||'لا يوجد تسلسل سيولة مكتمل'}{intentSweep?<> · مستوى السحب <span dir="ltr">{intentSweep}</span></>:null}</span>
         </div>
         <div><small>هيكل الحركة</small><b>{structureText}</b><span>{structurePatternAr(structure?.m1?.structure||structure?.m5?.structure)}</span></div>
       </div>
