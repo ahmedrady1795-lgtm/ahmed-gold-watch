@@ -213,26 +213,50 @@ export default function Home(){
   },[]);
 
   useEffect(()=>{
-    let closed=false;
-    const inFlight:{gold:boolean;btc:boolean}={gold:false,btc:false};
-    let goldTimer:ReturnType<typeof setTimeout>|undefined,btcTimer:ReturnType<typeof setTimeout>|undefined;
-    const loadLead=async(asset:'GOLD'|'BTC')=>{
-      const key=asset==='GOLD'?'gold':'btc';
-      if(closed||inFlight[key])return;
-      inFlight[key]=true;
-      try{
-        const r=await fetch('/api/market-lead?asset='+asset+'&ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
-        const j=await r.json();
-        if(!closed&&r.ok&&j?.ok)setMarketLead(prev=>({...prev,[key]:j}));
-      }catch{}finally{inFlight[key]=false;}
+    let closed=false,source:EventSource|null=null,reconnect:ReturnType<typeof setTimeout>|undefined;
+    let btcInFlight=false,btcTimer:ReturnType<typeof setTimeout>|undefined;
+
+    const connectGoldLead=()=>{
+      if(closed)return;
+      source=new EventSource('/api/market-lead/stream');
+      source.addEventListener('lead',(event:any)=>{
+        try{
+          const j=JSON.parse(String(event?.data||'{}'));
+          if(!closed&&j?.ok)setMarketLead(prev=>({...prev,gold:j}));
+        }catch{}
+      });
+      source.onerror=()=>{
+        try{source?.close();}catch{}
+        if(!closed)reconnect=setTimeout(connectGoldLead,500);
+      };
     };
-    const goldLoop=async()=>{if(closed)return;if(document.visibilityState==='visible')await loadLead('GOLD');if(!closed)goldTimer=setTimeout(goldLoop,650);};
-    const btcLoop=async()=>{if(closed)return;if(document.visibilityState==='visible')await loadLead('BTC');if(!closed)btcTimer=setTimeout(btcLoop,1200);};
-    void goldLoop();void btcLoop();
-    return()=>{closed=true;if(goldTimer)clearTimeout(goldTimer);if(btcTimer)clearTimeout(btcTimer);};
+
+    const loadBtcLead=async()=>{
+      if(closed||btcInFlight)return;
+      btcInFlight=true;
+      try{
+        const r=await fetch('/api/market-lead?asset=BTC&ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+        const j=await r.json();
+        if(!closed&&r.ok&&j?.ok)setMarketLead(prev=>({...prev,btc:j}));
+      }catch{}finally{btcInFlight=false;}
+    };
+    const btcLoop=async()=>{
+      if(closed)return;
+      if(document.visibilityState==='visible')await loadBtcLead();
+      if(!closed)btcTimer=setTimeout(btcLoop,1200);
+    };
+
+    connectGoldLead();
+    void btcLoop();
+    return()=>{
+      closed=true;
+      clearTimeout(reconnect);
+      if(btcTimer)clearTimeout(btcTimer);
+      try{source?.close();}catch{}
+    };
   },[]);
 
-    const aiGold=aiData?.gold?.livePulse;
+  const aiGold=aiData?.gold?.livePulse;
   const aiBtc=aiData?.bitcoin?.livePulse;
   const goldPrice=goldTick?.price??aiGold?.price??aiData?.gold?.price??null;
   const goldAt=Number(goldTick?.sourceTime||aiGold?.sourceTime||0);

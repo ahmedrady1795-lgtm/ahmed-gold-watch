@@ -66,6 +66,16 @@ type Cache<T> = { at: number; value: T };
 let marketCache: Cache<MarketData> | null = null;
 let externalQuoteCache: Cache<QuoteData> | null = null;
 let mt5State: Mt5BridgeStatus | null = null;
+const mt5UpdateListeners=new Set<(status:Mt5BridgeStatus)=>void>();
+export function subscribeMt5BridgeUpdates(listener:(status:Mt5BridgeStatus)=>void){
+  mt5UpdateListeners.add(listener);
+  return()=>{mt5UpdateListeners.delete(listener);};
+}
+function emitMt5BridgeUpdate(status:Mt5BridgeStatus){
+  for(const listener of mt5UpdateListeners){
+    try{listener(status);}catch{}
+  }
+}
 type FastSide='BUY'|'SELL'|'WAIT';
 type Mt5FastTick={at:number;receivedAt:number;price:number;bid:number;ask:number;tickVolume:number|null;flags:number|null;bidDepth:number;askDepth:number;bookImbalance:number};
 let mt5FastTicks:Mt5FastTick[]=[];
@@ -119,6 +129,7 @@ export function setMt5BridgeStatus(input:unknown):Mt5BridgeStatus{
     mt5FastTicks=mt5FastTicks.filter(x=>x.receivedAt>=cutoff).slice(-500);
   }
   mt5State={receivedAt,symbol,tickTimeMs,bid,ask,last:lastPrice,mode:String(body.mode||'dry-run'),bridgeLatencyMs:num(body.bridgeLatencyMs),lastQuality:body.lastQuality&&typeof body.lastQuality==='object'?body.lastQuality:null,microstructure:body.microstructure&&typeof body.microstructure==='object'?body.microstructure:null,candles:candleSet,candlesReceivedAt,account:accountRaw?{login:num(accountRaw.login),balance:num(accountRaw.balance),equity:num(accountRaw.equity),marginLevel:num(accountRaw.marginLevel)}:null};
+  emitMt5BridgeUpdate(mt5State);
   return mt5State;
 }
 export function getMt5BridgeStatus(now=Date.now()){if(!mt5State)return{connected:false,fresh:false,candlesFresh:false,status:null as Mt5BridgeStatus|null};const tickAgeMs=Math.max(0,now-mt5State.tickTimeMs),bridgeAgeMs=Math.max(0,now-mt5State.receivedAt),candlesAgeMs=mt5State.candlesReceivedAt?Math.max(0,now-mt5State.candlesReceivedAt):null,fresh=tickAgeMs<=MT5_TICK_MAX_AGE_MS&&bridgeAgeMs<=15000,candlesFresh=Boolean(fresh&&mt5State.candles&&candlesAgeMs!=null&&candlesAgeMs<=45000);return{connected:true,fresh,candlesFresh,tickAgeMs,bridgeAgeMs,candlesAgeMs,status:mt5State};}
