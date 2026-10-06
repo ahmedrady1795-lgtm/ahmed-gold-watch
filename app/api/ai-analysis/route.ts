@@ -804,7 +804,7 @@ export async function GET(request:Request){
         reason:(alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':building?'ضغط مبكر يتكوّن':'تفوق قصير المدى')+' · '+sourceParts.join(' + ')
       };
     };
-    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any)=>({
+    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any)=>({
       asset,
       forwardMove:buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse),
       liquidity:liq?{
@@ -814,6 +814,14 @@ export async function GET(request:Request){
         strength:Math.max(0,Math.min(100,Math.round(Number(liq.strength||0)))),
         quality:Math.max(0,Math.min(100,Math.round(Number(liq.quality||0)))),
         source:liq.source||null
+      }:null,
+      accumulation:accumulation?{
+        ok:Boolean(accumulation.ok),
+        phase:accumulation.phase||'NEUTRAL',
+        side:accumulation.side||'WAIT',
+        accumulationScore:Math.max(0,Math.min(100,Math.round(Number(accumulation.accumulationScore||0)))),
+        distributionScore:Math.max(0,Math.min(100,Math.round(Number(accumulation.distributionScore||0)))),
+        breakoutReadiness:Math.max(0,Math.min(100,Math.round(Number(accumulation.breakoutReadiness||0))))
       }:null,
       movementStructure:structure?{
         ok:Boolean(structure.ok),
@@ -1291,8 +1299,8 @@ export async function GET(request:Request){
         gold:{side:webIntel.gold.side,confidence:webIntel.gold.confidence,risk:webIntel.gold.risk,sourceCount:webIntel.gold.sourceCount,freshCount:webIntel.gold.freshCount},
         btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount}
       }:null,
-      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure),
-      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity,bitcoinStructure)
+      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation),
+      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity,bitcoinStructure,bitcoinAccumulation)
     };
     lastAiPayload=payload;lastAiPayloadAt=Date.now();
     return Response.json(payload,{headers:{'Cache-Control':'no-store','X-AI-Cache':'miss'}});
