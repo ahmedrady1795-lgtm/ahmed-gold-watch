@@ -771,6 +771,17 @@ export async function GET(request:Request){
       };
       const priceNow=Number.isFinite(Number(pulse?.price))&&Number(pulse.price)>0?Number(pulse.price):null;
       const adaptive15=getNextMoveOutcome(asset+'_FORWARD_15M_V2',priceNow,now);
+      const cleanGlobal=adaptive15?.global||{};
+      const cleanDirectional=Number(cleanGlobal?.hits||0)+Number(cleanGlobal?.fails||0);
+      const cleanPosterior=Number.isFinite(Number(cleanGlobal?.posteriorAccuracy))?Number(cleanGlobal.posteriorAccuracy):50;
+      const cleanWf=adaptive15?.walkForward||null;
+      const cleanOosN=Number(cleanWf?.oos?.n||0);
+      const cleanOosAccuracy=Number(cleanWf?.oos?.accuracy);
+      const executionValidated=Boolean(
+        cleanDirectional>=30&&cleanPosterior>=54&&
+        cleanOosN>=10&&Number.isFinite(cleanOosAccuracy)&&cleanOosAccuracy>=52&&
+        String(cleanWf?.drift?.status||'COLLECTING')!=='DEGRADING'
+      );
       const statDirectional=(v:any)=>Number(v?.hits||0)+Number(v?.fails||0);
       const statPosterior=(v:any)=>Number.isFinite(Number(v?.posteriorAccuracy))?Number(v.posteriorAccuracy):50;
       const adaptiveKey=(v:any)=>String(v||'UNKNOWN').toUpperCase().replace(/[^A-Z0-9_\\-]/g,'_').slice(0,64)||'UNKNOWN';
@@ -1000,17 +1011,6 @@ export async function GET(request:Request){
         :null;
       const targetDistanceBps=priceNow!=null&&target!=null?Math.abs(target-priceNow)/priceNow*10000:0;
       const minTradeDistanceBps=asset==='GOLD'?3.5:8;
-      const cleanGlobal=adaptive15?.global||{};
-      const cleanDirectional=Number(cleanGlobal?.hits||0)+Number(cleanGlobal?.fails||0);
-      const cleanPosterior=Number.isFinite(Number(cleanGlobal?.posteriorAccuracy))?Number(cleanGlobal.posteriorAccuracy):50;
-      const cleanWf=adaptive15?.walkForward||null;
-      const cleanOosN=Number(cleanWf?.oos?.n||0);
-      const cleanOosAccuracy=Number(cleanWf?.oos?.accuracy);
-      const executionValidated=Boolean(
-        cleanDirectional>=30&&cleanPosterior>=54&&
-        cleanOosN>=10&&Number.isFinite(cleanOosAccuracy)&&cleanOosAccuracy>=52&&
-        String(cleanWf?.drift?.status||'COLLECTING')!=='DEGRADING'
-      );
       const tradeEligible=Boolean(
         executionValidated&&target!=null&&entryTrigger!=null&&stopLoss!=null&&rr!=null&&rr>=1.20&&
         targetDistanceBps>=minTradeDistanceBps&&higherTfPair&&!m5Opposes&&!m15Opposes
