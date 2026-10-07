@@ -1120,14 +1120,6 @@ export async function GET(request:Request){
         acceleration:Number(momentum.acceleration||0),persistence:Number(momentum.persistence||0),expansion:Number(momentum.expansion||0),efficiency:Number(momentum.efficiency||0),closePressure:Number(momentum.closePressure||0),
         impulse:Number(momentum.impulse||0),exhaustion:Number(momentum.exhaustion||0),tickSupport:Number(momentum.tickSupport||0),multiTimeframe:Number(momentum.multiTimeframe||0),
         stability:Number(momentum.stability||0),stateAgeSeconds:Number(momentum.stateAgeSeconds||0),flipPending:Boolean(momentum.flipPending),
-        mVolume:momentum.mVolume?{
-          available:Boolean(momentum.mVolume.available),phase:momentum.mVolume.phase||'QUIET',side:momentum.mVolume.side||'WAIT',score:Number(momentum.mVolume.score||0),
-          confidence:Number(momentum.mVolume.confidence||0),quality:Number(momentum.mVolume.quality||0),reliability:Number(momentum.mVolume.reliability||0),
-          stability:Number(momentum.mVolume.stability||0),stateAgeSeconds:Number(momentum.mVolume.stateAgeSeconds||0),flipPending:Boolean(momentum.mVolume.flipPending),
-          relativeVolume:Number(momentum.mVolume.relativeVolume||0),volumeAcceleration:Number(momentum.mVolume.volumeAcceleration||0),directionalPressure:Number(momentum.mVolume.directionalPressure||0),
-          flowDelta:Number(momentum.mVolume.flowDelta||0),absorption:Number(momentum.mVolume.absorption||0),climax:Number(momentum.mVolume.climax||0),
-          effortResult:Number(momentum.mVolume.effortResult||0),followThrough:Number(momentum.mVolume.followThrough||0),divergence:Number(momentum.mVolume.divergence||0),cvdSide:momentum.mVolume.cvdSide||'WAIT'
-        }:null,
         targets:momentum.targets?{
           target1:momentum.targets.target1!=null&&Number.isFinite(Number(momentum.targets.target1))?Number(momentum.targets.target1):null,
           target2:momentum.targets.target2!=null&&Number.isFinite(Number(momentum.targets.target2))?Number(momentum.targets.target2):null,
