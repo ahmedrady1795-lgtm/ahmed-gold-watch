@@ -23,7 +23,8 @@ export type MomentumEngine={
   flipPending:boolean;
   mVolume:{
     available:boolean;phase:'QUIET'|'BUILDING'|'CONFIRMING'|'ABSORBING'|'CLIMAX'|'DIVERGENCE';side:Side;score:number;
-    confidence:number;quality:number;relativeVolume:number;volumeAcceleration:number;directionalPressure:number;flowDelta:number;
+    confidence:number;quality:number;reliability:number;stability:number;stateAgeSeconds:number;flipPending:boolean;
+    relativeVolume:number;volumeAcceleration:number;directionalPressure:number;flowDelta:number;
     absorption:number;climax:number;effortResult:number;followThrough:number;divergence:number;cvdSide:Side;
   };
   targets:{
@@ -65,6 +66,10 @@ type MomentumMemory={
   pendingSide:Side;
   pendingCount:number;
   pendingSince:number;
+  volumeSideSince:number;
+  volumePendingSide:Side;
+  volumePendingCount:number;
+  volumePendingSince:number;
 };
 function momentumMemory(){
   const g=globalThis as any;
@@ -84,8 +89,9 @@ function stabilizeMomentum(raw:MomentumEngine,price:number,atr:number,now:number
   if(!raw.ok||!Number.isFinite(price)||!Number.isFinite(atr)||atr<=0)return raw;
   const mem=momentumMemory(),prev=mem[raw.asset];
   const commit=(value:MomentumEngine,sideSince=now)=>{
-    const out={...value,stability:value.side==='WAIT'?32:58,stateAgeSeconds:0,flipPending:false};
-    mem[raw.asset]={value:out,at:now,sideSince,pendingSide:'WAIT',pendingCount:0,pendingSince:0};
+    const mv={...value.mVolume,stability:value.mVolume?.side==='WAIT'?30:56,stateAgeSeconds:0,flipPending:false};
+    const out={...value,mVolume:mv,stability:value.side==='WAIT'?32:58,stateAgeSeconds:0,flipPending:false};
+    mem[raw.asset]={value:out,at:now,sideSince,pendingSide:'WAIT',pendingCount:0,pendingSince:0,volumeSideSince:now,volumePendingSide:'WAIT',volumePendingCount:0,volumePendingSince:0};
     return out;
   };
   if(!prev||now-prev.at>10*60*1000)return commit(raw);
@@ -97,6 +103,47 @@ function stabilizeMomentum(raw:MomentumEngine,price:number,atr:number,now:number
 
   if(raw.side===prevSide){
     const k=.28,kFast=.34;
+    const rawMv=raw.mVolume,prevMv=prev.value.mVolume;
+    let stableMvSide:Side=rawMv.side;
+    let stableMvPhase=rawMv.phase;
+    let volumeFlipPending=false;
+    let volumePendingSide:Side='WAIT',volumePendingCount=0,volumePendingSince=0;
+    let volumeSideSince=prev.volumeSideSince||prev.sideSince||now;
+    const prevMvSide=prevMv?.side||'WAIT';
+
+    if(prevMvSide!=='WAIT'&&rawMv.side==='WAIT'&&now-prev.at<=18000&&Number(prevMv?.confidence||0)>=48){
+      stableMvSide=prevMvSide;
+      stableMvPhase='QUIET';
+      volumeSideSince=prev.volumeSideSince||now;
+    }else if(prevMvSide!=='WAIT'&&rawMv.side!=='WAIT'&&rawMv.side!==prevMvSide){
+      const sameVolPending=prev.volumePendingSide===rawMv.side&&now-prev.at<=12000;
+      volumePendingCount=sameVolPending?(prev.volumePendingCount||0)+1:1;
+      volumePendingSide=rawMv.side;
+      volumePendingSince=sameVolPending&&prev.volumePendingSince?prev.volumePendingSince:now;
+      const volPendingAge=now-volumePendingSince;
+      const decisiveVolume=Number(rawMv.confidence||0)>=76&&Number(rawMv.quality||0)>=48&&(
+        rawMv.phase==='CONFIRMING'||
+        rawMv.phase==='DIVERGENCE'&&Number(rawMv.divergence||0)>=72||
+        rawMv.phase==='ABSORBING'&&Number(rawMv.absorption||0)>=74
+      );
+      const confirmedVolume=volumePendingCount>=2&&volPendingAge>=4500&&Number(rawMv.confidence||0)>=58&&Number(rawMv.quality||0)>=40;
+      if(decisiveVolume||confirmedVolume){
+        stableMvSide=rawMv.side;
+        stableMvPhase=rawMv.phase;
+        volumeSideSince=now;
+        volumePendingSide='WAIT';volumePendingCount=0;volumePendingSince=0;
+      }else{
+        stableMvSide=prevMvSide;
+        stableMvPhase=rawMv.phase==='ABSORBING'?'ABSORBING':'DIVERGENCE';
+        volumeFlipPending=true;
+        volumeSideSince=prev.volumeSideSince||now;
+      }
+    }else if(rawMv.side===prevMvSide&&rawMv.side!=='WAIT'){
+      volumeSideSince=prev.volumeSideSince||now;
+    }else if(prevMvSide==='WAIT'&&rawMv.side!=='WAIT'){
+      volumeSideSince=now;
+    }
+
     const phase:Phase=
       raw.phase==='EXHAUSTING'?'EXHAUSTING':
       prev.value.phase==='ACTIVE'&&raw.phase==='WEAK'&&raw.score>=45&&raw.exhaustion<58?'ACTIVE':
@@ -125,22 +172,27 @@ function stabilizeMomentum(raw:MomentumEngine,price:number,atr:number,now:number
       stability,stateAgeSeconds:Math.round(age/1000),flipPending:false,
       mVolume:{
         ...raw.mVolume,
+        side:stableMvSide,phase:stableMvPhase,
         score:Math.round(lerp(prev.value.mVolume?.score||0,raw.mVolume?.score||0,.30)),
         relativeVolume:Number(lerp(prev.value.mVolume?.relativeVolume||0,raw.mVolume?.relativeVolume||0,.32).toFixed(2)),
         volumeAcceleration:Math.round(lerp(prev.value.mVolume?.volumeAcceleration||0,raw.mVolume?.volumeAcceleration||0,.35)),
         directionalPressure:Math.round(lerp(prev.value.mVolume?.directionalPressure||0,raw.mVolume?.directionalPressure||0,.35)),
         confidence:Math.round(lerp(prev.value.mVolume?.confidence||0,raw.mVolume?.confidence||0,.32)),
         quality:Math.round(lerp(prev.value.mVolume?.quality||0,raw.mVolume?.quality||0,.22)),
+        reliability:Math.round(lerp(prev.value.mVolume?.reliability||0,raw.mVolume?.reliability||0,.24)),
         absorption:Math.round(lerp(prev.value.mVolume?.absorption||0,raw.mVolume?.absorption||0,.34)),
         climax:Math.round(lerp(prev.value.mVolume?.climax||0,raw.mVolume?.climax||0,.34)),
         effortResult:Math.round(lerp(prev.value.mVolume?.effortResult||0,raw.mVolume?.effortResult||0,.32)),
         followThrough:Math.round(lerp(prev.value.mVolume?.followThrough||0,raw.mVolume?.followThrough||0,.32)),
-        divergence:Math.round(lerp(prev.value.mVolume?.divergence||0,raw.mVolume?.divergence||0,.32))
+        divergence:Math.round(lerp(prev.value.mVolume?.divergence||0,raw.mVolume?.divergence||0,.32)),
+        stability:Math.round(cap(54+Math.min(28,(now-volumeSideSince)/1000*.65)+(stableMvPhase==='CONFIRMING'?8:0)-Number(raw.mVolume?.divergence||0)*.08,30,96)),
+        stateAgeSeconds:Math.round(Math.max(0,now-volumeSideSince)/1000),
+        flipPending:volumeFlipPending
       },
       targets:{...raw.targets,target1:t1,target2:t2,invalidation:inv},
       reasons:[...raw.reasons.slice(0,6),'اتجاه المومنتم مثبت بذاكرة زمنية ويحتاج تفوقًا واضحًا للانعكاس.'].slice(0,7)
     };
-    mem[raw.asset]={value:out,at:now,sideSince:prev.sideSince,pendingSide:'WAIT',pendingCount:0,pendingSince:0};
+    mem[raw.asset]={value:out,at:now,sideSince:prev.sideSince,pendingSide:'WAIT',pendingCount:0,pendingSince:0,volumeSideSince,volumePendingSide,volumePendingCount,volumePendingSince};
     return out;
   }
 
@@ -208,7 +260,7 @@ export function buildMomentumEngine(args:{
     ok:false,asset:args.asset,side:'WAIT',phase:'NEUTRAL',score:0,confidence:0,preMove:false,
     acceleration:0,persistence:0,expansion:0,efficiency:0,closePressure:0,impulse:0,exhaustion:0,
     tickSupport:0,multiTimeframe:0,stability:0,stateAgeSeconds:0,flipPending:false,
-    mVolume:{available:false,phase:'QUIET',side:'WAIT',score:0,confidence:0,quality:0,relativeVolume:0,volumeAcceleration:0,directionalPressure:0,flowDelta:0,absorption:0,climax:0,effortResult:0,followThrough:0,divergence:0,cvdSide:'WAIT'},
+    mVolume:{available:false,phase:'QUIET',side:'WAIT',score:0,confidence:0,quality:0,reliability:0,stability:0,stateAgeSeconds:0,flipPending:false,relativeVolume:0,volumeAcceleration:0,directionalPressure:0,flowDelta:0,absorption:0,climax:0,effortResult:0,followThrough:0,divergence:0,cvdSide:'WAIT'},
     targets:{target1:null,target2:null,invalidation:null,target1Kind:'NONE',target2Kind:'NONE',horizonMinutes:15,projectionAtr:0,confidence:0},
     reasons:['بيانات غير كافية لقراءة المومنتم.']
   };
@@ -392,6 +444,12 @@ export function buildMomentumEngine(args:{
     (externalAbsorption>0?12:0),
     0,100
   );
+  const volumeReliability=Math.round(cap(
+    args.asset==='BTC'
+      ?volumeQuality+12+(Math.abs(flowDelta)>0?8:0)+(cvdSide!=='WAIT'?6:0)
+      :volumeQuality*.82+(usableVolumes.length>=12?10:0),
+    0,args.asset==='BTC'?98:82
+  ));
 
   const volumeScore=volumeAvailable?cap(
     Math.min(100,Math.abs(combinedVolumePressure))*.26+
@@ -413,8 +471,9 @@ export function buildMomentumEngine(args:{
   else if(volumeAvailable&&relativeVolume>=.88&&volumeAcceleration>=54&&volumeAbsorption<52)volumePhase='BUILDING';
 
   const volumeConfidence=Math.round(cap(
-    volumeScore*.62+
-    volumeQuality*.22+
+    volumeScore*.54+
+    volumeQuality*.16+
+    volumeReliability*.16+
     (volumePhase==='CONFIRMING'?10:0)+
     (volumePhase==='BUILDING'?6:0)-
     (volumePhase==='ABSORBING'?10:0)-
@@ -559,7 +618,7 @@ export function buildMomentumEngine(args:{
     stability:0,stateAgeSeconds:0,flipPending:false,
     mVolume:{
       available:volumeAvailable,phase:volumePhase,side:volumeSide,score:Math.round(volumeScore),
-      confidence:volumeConfidence,quality:Math.round(volumeQuality),
+      confidence:volumeConfidence,quality:Math.round(volumeQuality),reliability:volumeReliability,stability:0,stateAgeSeconds:0,flipPending:false,
       relativeVolume:Number(relativeVolume.toFixed(2)),volumeAcceleration:Math.round(volumeAcceleration),
       directionalPressure:Math.round(combinedVolumePressure),flowDelta:Number(flowDelta.toFixed(1)),
       absorption:Math.round(volumeAbsorption),climax:Math.round(volumeClimax),
