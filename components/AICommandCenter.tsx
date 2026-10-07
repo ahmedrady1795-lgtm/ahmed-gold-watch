@@ -125,6 +125,10 @@ function AssetCard({x,liveQuote,fast}:any){
   const distributionScore=Math.max(0,Math.min(100,Math.round(Number(accumulation?.distributionScore||0))));
   const intent=x?.marketMakerIntent||null;
   const momentum=x?.momentumEngine||null;
+  const momentumTargets=momentum?.targets||null;
+  const momentumT1=momentumTargets?.target1!=null&&Number.isFinite(Number(momentumTargets.target1))?Number(momentumTargets.target1):null;
+  const momentumT2=momentumTargets?.target2!=null&&Number.isFinite(Number(momentumTargets.target2))?Number(momentumTargets.target2):null;
+  const momentumInvalidation=momentumTargets?.invalidation!=null&&Number.isFinite(Number(momentumTargets.invalidation))?Number(momentumTargets.invalidation):null;
   const momentumSide=momentum?.side==='BUY'||momentum?.side==='SELL'?momentum.side:'WAIT';
   const intentSide=intent?.side==='BUY'||intent?.side==='SELL'?intent.side:'WAIT';
   const intentSteps=Array.isArray(intent?.sequence)?intent.sequence.map(intentStepAr).filter(Boolean).join(' → '):'';
@@ -208,6 +212,10 @@ function AssetCard({x,liveQuote,fast}:any){
           {momentum?.mVolume&&<span>
             M-Volume · {mVolumePhaseAr(momentum.mVolume.phase)} · قوة {Math.round(Number(momentum.mVolume.score||0))}% · RVOL {Number(momentum.mVolume.relativeVolume||0).toFixed(2)}x
           </span>}
+          {(momentumT1!=null||momentumT2!=null)&&<span className="momentum-targets">
+            هدف 1 <b dir="ltr">{momentumT1!=null?fmt(momentumT1,2):'—'}</b> · هدف 2 <b dir="ltr">{momentumT2!=null?fmt(momentumT2,2):'—'}</b>
+          </span>}
+          {momentumInvalidation!=null&&<span>إلغاء المومنتم <b dir="ltr">{fmt(momentumInvalidation,2)}</b> · أفق {Math.round(Number(momentumTargets?.horizonMinutes||15))}د</span>}
           {momentum?.mVolume&&Number(momentum.mVolume.absorption||0)>=55&&<span>امتصاص {Math.round(Number(momentum.mVolume.absorption||0))}%</span>}
           {Number(momentum?.exhaustion||0)>=55&&<span>إنهاك {Math.round(Number(momentum.exhaustion||0))}%</span>}
         </div>
