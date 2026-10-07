@@ -35,7 +35,7 @@ const structurePatternAr=(v:any)=>{
 };
 const intentPhaseAr=(p:any)=>p==='LIQUIDITY_BUILDUP'?'تجميع سيولة':p==='SWEEP_DETECTED'?'سحب سيولة':p==='TRAP_CONFIRMED'?'فخ سيولة مؤكد':p==='PRE_EXPANSION'?'استعداد قبل الحركة':p==='EXPANSION'?'الحركة بدأت':'لا يوجد سيناريو واضح';
 const momentumPhaseAr=(p:any)=>p==='BUILDING'?'يتكوّن قبل الحركة':p==='ACTIVE'?'نشط':p==='EXHAUSTING'?'منهك':p==='WEAK'?'ضعيف':'محايد';
-const mVolumePhaseAr=(p:any)=>p==='BUILDING'?'حجم يتزايد':p==='CONFIRMING'?'الحجم يؤكد الحركة':p==='ABSORBING'?'امتصاص حجم':p==='CLIMAX'?'Volume Climax':'حجم هادئ';
+const mVolumePhaseAr=(p:any)=>p==='BUILDING'?'حجم يتزايد قبل الحركة':p==='CONFIRMING'?'الحجم يؤكد الحركة':p==='ABSORBING'?'امتصاص حجم':p==='DIVERGENCE'?'اختلاف سعر/حجم':p==='CLIMAX'?'Volume Climax':'حجم هادئ';
 const intentStepAr=(v:any)=>{
   const x=String(v||'');
   if(x==='COMPRESSION')return 'ضغط';
@@ -211,7 +211,14 @@ function AssetCard({x,liveQuote,fast}:any){
           </span>
           {momentum?.flipPending&&<span className="amber">انعكاس مومنتم تحت الاختبار · لن يتم قلب الاتجاه قبل التأكيد</span>}
           {momentum?.mVolume&&<span>
-            M-Volume · {mVolumePhaseAr(momentum.mVolume.phase)} · قوة {Math.round(Number(momentum.mVolume.score||0))}% · RVOL {Number(momentum.mVolume.relativeVolume||0).toFixed(2)}x
+            M-Volume · <b className={momentum.mVolume.side==='BUY'?'green':momentum.mVolume.side==='SELL'?'red':'amber'}>{moveAr(momentum.mVolume.side)}</b>
+            {' · '}{mVolumePhaseAr(momentum.mVolume.phase)} · ثقة {Math.round(Number(momentum.mVolume.confidence||0))}% · قوة {Math.round(Number(momentum.mVolume.score||0))}%
+          </span>}
+          {momentum?.mVolume&&<span>
+            RVOL {Number(momentum.mVolume.relativeVolume||0).toFixed(2)}x · Follow-through {Math.round(Number(momentum.mVolume.followThrough||0))}% · Effort/Result {Math.round(Number(momentum.mVolume.effortResult||0))}%
+          </span>}
+          {momentum?.mVolume&&Number(momentum.mVolume.divergence||0)>=45&&<span className="amber">
+            Divergence سعر/حجم {Math.round(Number(momentum.mVolume.divergence||0))}% · الإشارة تحتاج حذر
           </span>}
           {(momentumT1!=null||momentumT2!=null)&&<span className="momentum-targets">
             هدف 1 <b dir="ltr">{momentumT1!=null?fmt(momentumT1,2):'—'}</b> · هدف 2 <b dir="ltr">{momentumT2!=null?fmt(momentumT2,2):'—'}</b>
