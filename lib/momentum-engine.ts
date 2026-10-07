@@ -280,9 +280,10 @@ export function buildMomentumEngine(args:{
       Number(args.liquidity?.book?.bidWall)
     );
   }
-  const uniqueLevels=[...new Set(structuralLevels.filter(ahead).map(v=>Number(v.toFixed(6))))]
-    .sort((x,y)=>momentumSide==='BUY'?x-y:y-x)
-    .filter((v,i,arr)=>i===0||Math.abs(v-arr[i-1])>=Math.max(a*.10,p*.00004));
+  const minLevelGap=Math.max(Number(a)*.10,Number(p)*.00004);
+  const uniqueLevels=[...new Set<number>(structuralLevels.filter(ahead).map(v=>Number(v.toFixed(6))))]
+    .sort((x:number,y:number)=>momentumSide==='BUY'?x-y:y-x)
+    .filter((v:number,i:number,arr:number[])=>i===0||Math.abs(v-Number(arr[i-1]))>=minLevelGap);
 
   const volumeBoost=volumePhase==='CONFIRMING'?0.18:volumePhase==='BUILDING'?0.10:volumePhase==='ABSORBING'?-0.14:volumePhase==='CLIMAX'?-0.08:0;
   const phaseBoost=phase==='ACTIVE'?0.16:phase==='BUILDING'?0.10:phase==='EXHAUSTING'?-0.18:0;
