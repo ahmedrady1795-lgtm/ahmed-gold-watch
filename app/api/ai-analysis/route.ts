@@ -814,6 +814,20 @@ export async function GET(request:Request){
       const momentumPreMove=Boolean(momentum?.preMove&&momentumConfidence>=48);
       const momentumWeight=momentumPhase==='BUILDING'?1.28:momentumPhase==='ACTIVE'?1.18:momentumPhase==='EXHAUSTING' ? .44 : .62;
       add('momentum',momentumSide,Math.max(momentumScore,momentumConfidence),momentumWeight);
+      const volumeSide=momentum?.mVolume?.side==='BUY'||momentum?.mVolume?.side==='SELL'?momentum.mVolume.side:'WAIT';
+      const volumeConfidence=Math.max(0,Math.min(92,Number(momentum?.mVolume?.confidence||0)));
+      const volumeScore=Math.max(0,Math.min(96,Number(momentum?.mVolume?.score||0)));
+      const volumePhase=String(momentum?.mVolume?.phase||'QUIET');
+      const volumeAbsorption=Math.max(0,Math.min(100,Number(momentum?.mVolume?.absorption||0)));
+      const volumeDivergence=Math.max(0,Math.min(100,Number(momentum?.mVolume?.divergence||0)));
+      const volumeFollowThrough=Math.max(0,Math.min(100,Number(momentum?.mVolume?.followThrough||0)));
+      const volumeWeight=
+        volumePhase==='CONFIRMING'?1.48:
+        volumePhase==='BUILDING'?1.34:
+        volumePhase==='ABSORBING'?1.16:
+        volumePhase==='DIVERGENCE'?1.08:
+        volumePhase==='CLIMAX' ? .70 : .52;
+      add('M-Volume',volumeSide,Math.max(volumeScore,volumeConfidence),volumeWeight);
 
       let buy=0,sell=0;
       for(const r of rows){
@@ -870,6 +884,15 @@ export async function GET(request:Request){
       if(momentumAligned)confidence+=momentumPreMove?7:momentumPhase==='ACTIVE'?5:3;
       if(momentumOpposes)confidence-=momentumConfidence>=70?11:7;
       if(momentumSide===winner&&momentumPhase==='EXHAUSTING')confidence-=6;
+      const volumeAligned=Boolean(volumeSide===winner&&volumeConfidence>=48&&(volumePhase==='BUILDING'||volumePhase==='CONFIRMING'));
+      const volumeOpposes=Boolean(volumeSide!=='WAIT'&&volumeSide!==winner&&volumeConfidence>=55);
+      const volumeHardOpposes=Boolean(volumeOpposes&&(volumeConfidence>=68||volumeDivergence>=62||volumeAbsorption>=68));
+      const volumePreMove=Boolean(volumeAligned&&volumePhase==='BUILDING'&&volumeFollowThrough<72);
+      if(volumeAligned)confidence+=volumePhase==='CONFIRMING'?7:5;
+      if(volumeOpposes)confidence-=volumeHardOpposes?12:7;
+      if(volumePhase==='DIVERGENCE')confidence-=6;
+      if(volumePhase==='ABSORBING'&&volumeSide!==winner)confidence-=8;
+      if(volumePhase==='CLIMAX'&&volumeSide===winner)confidence-=3;
 
       const m1Side=movement?.horizons?.oneMinute?.side;
       const m1Confidence=Number(movement?.horizons?.oneMinute?.confidence||0);
@@ -892,7 +915,7 @@ export async function GET(request:Request){
       confidence=Math.max(0,Math.min(89,Math.round(confidence)));
 
       const leadSupports=Boolean(leadFresh&&leadSide===winner&&(marketLead?.armed||leadStage==='BUILDING'));
-      const coreReadyBase=(coreConfirmations>=2||(coreConfirmations>=1&&leadSupports&&support>=3)||(intentPreMove&&intentAligned&&coreConfirmations>=1&&support>=3)||(momentumPreMove&&momentumAligned&&coreConfirmations>=1&&support>=3))&&(!h4Opposes||coreConfirmations>=2&&share>=61&&support>=3)&&(!intentOpposes||coreConfirmations===3&&share>=64)&&(!momentumOpposes||coreConfirmations>=2&&share>=62);
+      const coreReadyBase=(coreConfirmations>=2||(coreConfirmations>=1&&leadSupports&&support>=3)||(intentPreMove&&intentAligned&&coreConfirmations>=1&&support>=3)||(momentumPreMove&&momentumAligned&&coreConfirmations>=1&&support>=3)||(volumePreMove&&coreConfirmations>=1&&support>=3))&&(!h4Opposes||coreConfirmations>=2&&share>=61&&support>=3)&&(!intentOpposes||coreConfirmations===3&&share>=64)&&(!momentumOpposes||coreConfirmations>=2&&share>=62)&&(!volumeHardOpposes||coreConfirmations===3&&share>=66);
       const coreReady=coreReadyBase&&(!adaptiveWeak||(coreConfirmations>=2&&share>=63&&support>=4));
       const m1Aligned=m1Side===winner&&m1Confidence>=32;
       const m5Aligned=m5Side===winner&&m5Confidence>=32;
@@ -902,16 +925,17 @@ export async function GET(request:Request){
       const hardLiquidityOpposition=liqSide!=='WAIT'&&liqSide!==winner&&liqScore>=65;
       const conditionalReady=Boolean(
         priceNow!=null&&share>=52&&support>=3&&confidence>=38&&
-        structureAligned&&!hardLiquidityOpposition&&!intentOpposes&&!momentumOpposes&&!adaptiveWeak&&
+        structureAligned&&!hardLiquidityOpposition&&!intentOpposes&&!momentumOpposes&&!volumeHardOpposes&&!adaptiveWeak&&
         (
           (h4Aligned&&m1Aligned&&m5Aligned)||
           (m1Aligned&&m5Aligned&&m15Aligned)||
-          (momentumPreMove&&momentumAligned&&h4Aligned&&m1Aligned)
+          (momentumPreMove&&momentumAligned&&h4Aligned&&m1Aligned)||
+          (volumePreMove&&h4Aligned&&structureAligned&&m1Aligned)
         )
       );
       if((share<57||support<2||confidence<47||!coreReady)&&!conditionalReady)return {
         side:'WAIT',confidence,status:'WAIT',target:null,zone:null,windowSeconds:null,expiresAt:null,
-        confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide,momentum:momentumSide},
+        confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide,momentum:momentumSide,volume:volumeSide},
         adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3))},
         reason:m5Opposes?'M5 يعاكس الإشارة القصيرة؛ تم إيقاف التوقع المبكر حتى يتضح المسار':!coreReady?'السيولة والتجميع وهيكل الحركة لم تتفق بعد بما يكفي لاعتماد الحركة القادمة':'الإشارات المبكرة ما زالت منقسمة؛ لا يوجد اتجاه أمامي كافٍ'
       };
@@ -991,8 +1015,9 @@ export async function GET(request:Request){
       const armed=Boolean(leadFresh&&marketLead?.armed&&leadSide===winner&&!alreadyMoving);
       const intentArmed=Boolean(intentPreMove&&intentAligned&&!alreadyMoving);
       const momentumArmed=Boolean(momentumPreMove&&momentumAligned&&!alreadyMoving);
-      const building=Boolean(!armed&&!intentArmed&&!momentumArmed&&leadFresh&&leadStage==='BUILDING'&&leadSide===winner&&!alreadyMoving);
-      const status=conditionalReady&&!coreReady?'CONDITIONAL_ENTRY':alreadyMoving?'IN_PROGRESS':armed||intentArmed||momentumArmed?'PRE_MOVE':building?'BUILDING':'SHORT_HORIZON';
+      const volumeArmed=Boolean(volumePreMove&&!volumeHardOpposes&&!alreadyMoving);
+      const building=Boolean(!armed&&!intentArmed&&!momentumArmed&&!volumeArmed&&leadFresh&&leadStage==='BUILDING'&&leadSide===winner&&!alreadyMoving);
+      const status=conditionalReady&&!coreReady?'CONDITIONAL_ENTRY':alreadyMoving?'IN_PROGRESS':armed||intentArmed||momentumArmed||volumeArmed?'PRE_MOVE':building?'BUILDING':'SHORT_HORIZON';
       const leadWindow=marketLead?.windowSeconds;
       const hasLeadWindow=leadFresh&&leadSide===winner&&Number.isFinite(Number(leadWindow?.min))&&Number.isFinite(Number(leadWindow?.max));
       const fallbackWindow={min:120,max:900};
@@ -1016,10 +1041,10 @@ export async function GET(request:Request){
         zone:pathZone?{low:Number(pathZone.low),high:Number(pathZone.high),mid:Number(pathZone.mid)}:null,
         windowSeconds,expiresAt:now+windowSeconds.max*1000,agreement:Math.round(share),support,opposition:oppose,
         priceNow,distancePct:distancePct==null?null:Number(distancePct.toFixed(4)),
-        freshness:{leadFresh,leadAgeMs:Number.isFinite(leadAge)?leadAge:null,m5Opposes,h4Opposes,intentOpposes,momentumOpposes,alreadyMoving},
-        confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide,momentum:momentumSide},
+        freshness:{leadFresh,leadAgeMs:Number.isFinite(leadAge)?leadAge:null,m5Opposes,h4Opposes,intentOpposes,momentumOpposes,volumeOpposes,volumePhase,alreadyMoving},
+        confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide,momentum:momentumSide,volume:volumeSide},
         adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3))},
-        reason:(conditionalReady&&!coreReady?'صفقة مشروطة: توافق الفريمات والهيكل موجود لكن تأكيد السيولة الكامل لم يكتمل':alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':intentArmed?'سحب سيولة/امتصاص يسبق الحركة':momentumArmed?'المومنتم يتسارع قبل اتساع الحركة':building?'ضغط مبكر يتكوّن':'ترجيح 15 دقيقة')+' · H4 '+(h4Side==='BUY'?'صاعد':h4Side==='SELL'?'هابط':'محايد')+' · تأكيد أساسي '+coreConfirmations+'/3 · '+sourceParts.join(' + ')
+        reason:(conditionalReady&&!coreReady?'صفقة مشروطة: توافق الفريمات والهيكل موجود لكن تأكيد السيولة الكامل لم يكتمل':alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':intentArmed?'سحب سيولة/امتصاص يسبق الحركة':momentumArmed?'المومنتم يتسارع قبل اتساع الحركة':volumeArmed?'الحجم يتراكم ويؤكد ضغطًا سابقًا للحركة':building?'ضغط مبكر يتكوّن':'ترجيح 15 دقيقة')+' · H4 '+(h4Side==='BUY'?'صاعد':h4Side==='SELL'?'هابط':'محايد')+' · تأكيد أساسي '+coreConfirmations+'/3 · '+sourceParts.join(' + ')
       };
     };
     const stabilizeForwardMove=(asset:'GOLD'|'BTC',candidate:any,pulse:any)=>{
@@ -1093,8 +1118,10 @@ export async function GET(request:Request){
         stability:Number(momentum.stability||0),stateAgeSeconds:Number(momentum.stateAgeSeconds||0),flipPending:Boolean(momentum.flipPending),
         mVolume:momentum.mVolume?{
           available:Boolean(momentum.mVolume.available),phase:momentum.mVolume.phase||'QUIET',side:momentum.mVolume.side||'WAIT',score:Number(momentum.mVolume.score||0),
+          confidence:Number(momentum.mVolume.confidence||0),quality:Number(momentum.mVolume.quality||0),
           relativeVolume:Number(momentum.mVolume.relativeVolume||0),volumeAcceleration:Number(momentum.mVolume.volumeAcceleration||0),directionalPressure:Number(momentum.mVolume.directionalPressure||0),
-          flowDelta:Number(momentum.mVolume.flowDelta||0),absorption:Number(momentum.mVolume.absorption||0),climax:Number(momentum.mVolume.climax||0)
+          flowDelta:Number(momentum.mVolume.flowDelta||0),absorption:Number(momentum.mVolume.absorption||0),climax:Number(momentum.mVolume.climax||0),
+          effortResult:Number(momentum.mVolume.effortResult||0),followThrough:Number(momentum.mVolume.followThrough||0),divergence:Number(momentum.mVolume.divergence||0),cvdSide:momentum.mVolume.cvdSide||'WAIT'
         }:null,
         targets:momentum.targets?{
           target1:momentum.targets.target1!=null&&Number.isFinite(Number(momentum.targets.target1))?Number(momentum.targets.target1):null,
