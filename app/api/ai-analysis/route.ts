@@ -1007,7 +1007,7 @@ export async function GET(request:Request){
         side:winner,
         entry:entryTrigger,
         stopLoss,
-        takeProfit:Number(target.toFixed(2)),
+        takeProfit:Number(Number(target).toFixed(2)),
         trigger:winner==='BUY'?'اختراق وثبات أعلى سعر التفعيل':'كسر وثبات أسفل سعر التفعيل',
         timeframe:'15m',
         rr,
