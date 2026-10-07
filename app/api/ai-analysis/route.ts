@@ -899,7 +899,7 @@ export async function GET(request:Request){
       const m5Opposes=Boolean(m5Active&&m5Side!==winner);
       if(m5Opposes)confidence-=m5Confidence>=68?13:8;
       else if(m5Active&&m5Side===winner)confidence+=Math.min(4,Math.round((m5Confidence-48)/8));
-      const m15Active=(m15Side==='BUY'||m15Side==='SELL')&&m15Confidence>=48;
+      const m15Active=(m15Side==='BUY'||m15Side==='SELL')&&m15Confidence>=50&&(Number(movement?.horizonQuality?.fifteenMinute?.independentSupport||0)>=2||m15Confidence>=64);
       const m15Opposes=Boolean(m15Active&&m15Side!==winner);
       if(m15Opposes)confidence-=m15Confidence>=65?15:9;
       else if(m15Active&&m15Side===winner)confidence+=Math.min(7,Math.round((m15Confidence-44)/6));
@@ -915,8 +915,12 @@ export async function GET(request:Request){
 
       const leadSupports=Boolean(leadFresh&&leadSide===winner&&(marketLead?.armed||leadStage==='BUILDING'));
       const m1Aligned=m1Side===winner&&m1Confidence>=38;
-      const m5Aligned=m5Side===winner&&m5Confidence>=45;
-      const m15Aligned=m15Side===winner&&m15Confidence>=44;
+      const m5IndependentSupport=Number(movement?.horizonQuality?.fiveMinute?.independentSupport||0);
+      const m5IndependentOpposition=Number(movement?.horizonQuality?.fiveMinute?.independentOpposition||0);
+      const m15IndependentSupport=Number(movement?.horizonQuality?.fifteenMinute?.independentSupport||0);
+      const m15IndependentOpposition=Number(movement?.horizonQuality?.fifteenMinute?.independentOpposition||0);
+      const m5Aligned=m5Side===winner&&m5Confidence>=48&&(m5IndependentSupport>=2||m5Confidence>=62);
+      const m15Aligned=m15Side===winner&&m15Confidence>=50&&(m15IndependentSupport>=2||m15Confidence>=64);
       const h4Aligned=h4Side===winner&&h4Confidence>=44;
       const structureAligned=structureSide===winner&&structureScore>=46;
       const higherTfAligned=Boolean(m15Aligned||m5Aligned||h4Aligned);
@@ -945,7 +949,7 @@ export async function GET(request:Request){
       const conditionalBypass=Boolean(!strictForwardReady&&conditionalReady);
       if(!strictForwardReady&&!conditionalReady)return {
         side:'WAIT',confidence,status:'WAIT',target:null,zone:null,windowSeconds:null,expiresAt:null,
-        confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide,momentum:momentumSide,m5:m5Side,m15:m15Side,h4:h4Side},
+        confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide,momentum:momentumSide,m5:m5Side,m15:m15Side,h4:h4Side,m5IndependentSupport,m5IndependentOpposition,m15IndependentSupport,m15IndependentOpposition},
         adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3))},
         reason:m15Opposes?'M15 يعاكس الاتجاه؛ تم إيقاف التوقع':m5Opposes?'M5 يعاكس الاتجاه؛ تم إيقاف التوقع حتى يتضح المسار':!higherTfAligned?'لا يوجد تأكيد كافٍ من M5/M15/H4':'السيولة والهيكل والفريمات الأعلى لم تتفق بما يكفي'
       };
@@ -1048,7 +1052,7 @@ export async function GET(request:Request){
         windowSeconds,expiresAt:now+windowSeconds.max*1000,agreement:Math.round(share),support,opposition:oppose,
         priceNow,distancePct:distancePct==null?null:Number(distancePct.toFixed(4)),
         freshness:{leadFresh,leadAgeMs:Number.isFinite(leadAge)?leadAge:null,m5Opposes,m15Opposes,h4Opposes,intentOpposes,momentumOpposes,alreadyMoving},
-        confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide,momentum:momentumSide,m5:m5Side,m15:m15Side,h4:h4Side},
+        confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide,momentum:momentumSide,m5:m5Side,m15:m15Side,h4:h4Side,m5IndependentSupport,m5IndependentOpposition,m15IndependentSupport,m15IndependentOpposition},
         adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3))},
         reason:(conditionalBypass?'صفقة مشروطة: M5/M15/H4 والهيكل متفقون لكن التأكيد الكامل لم يكتمل':alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':intentArmed?'سحب سيولة/امتصاص يسبق الحركة':momentumArmed?'المومنتم يتسارع قبل اتساع الحركة':building?'ضغط مبكر يتكوّن':'ترجيح 15 دقيقة')+' · H4 '+(h4Side==='BUY'?'صاعد':h4Side==='SELL'?'هابط':'محايد')+' · تأكيد أساسي '+coreConfirmations+'/3 · '+sourceParts.join(' + ')
       };
