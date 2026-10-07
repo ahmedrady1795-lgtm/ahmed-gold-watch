@@ -1567,8 +1567,18 @@ export async function GET(request:Request){
         recoveryActions:actualRecoveryActions.slice(0,5),
         forward15:{gold:gold15Diag,btc:btc15Diag},
         evolution:{
-          gold:{generation:goldEvolution?.generation,regime:goldEvolution?.regime,reason:goldEvolution?.reason,promoted:Boolean(goldEvolution?.promoted),rolledBack:Boolean(goldEvolution?.rolledBack),performance:goldEvolution?.performance,tournament:goldEvolution?.tournament},tools:goldAutonomousTools?{capabilities:goldAutonomousTools.capabilities,toolCount:goldAutonomousTools.tools.length,query:goldAutonomousTools.research.query}:null,
-          btc:{generation:bitcoinEvolution?.generation,regime:bitcoinEvolution?.regime,reason:bitcoinEvolution?.reason,promoted:Boolean(bitcoinEvolution?.promoted),rolledBack:Boolean(bitcoinEvolution?.rolledBack),performance:bitcoinEvolution?.performance,tournament:bitcoinEvolution?.tournament},tools:bitcoinAutonomousTools?{capabilities:bitcoinAutonomousTools.capabilities,toolCount:bitcoinAutonomousTools.tools.length,query:bitcoinAutonomousTools.research.query}:null
+          gold:{
+            generation:goldEvolution?.generation,regime:goldEvolution?.regime,reason:goldEvolution?.reason,
+            promoted:Boolean(goldEvolution?.promoted),rolledBack:Boolean(goldEvolution?.rolledBack),
+            performance:goldEvolution?.performance,tournament:goldEvolution?.tournament,
+            tools:goldAutonomousTools?{capabilities:goldAutonomousTools.capabilities,toolCount:goldAutonomousTools.tools.length,query:goldAutonomousTools.research.query}:null
+          },
+          btc:{
+            generation:bitcoinEvolution?.generation,regime:bitcoinEvolution?.regime,reason:bitcoinEvolution?.reason,
+            promoted:Boolean(bitcoinEvolution?.promoted),rolledBack:Boolean(bitcoinEvolution?.rolledBack),
+            performance:bitcoinEvolution?.performance,tournament:bitcoinEvolution?.tournament,
+            tools:bitcoinAutonomousTools?{capabilities:bitcoinAutonomousTools.capabilities,toolCount:bitcoinAutonomousTools.tools.length,query:bitcoinAutonomousTools.research.query}:null
+          }
         },
         webScout:webIntel?{
           ok:Boolean(webIntel.ok),cached:Boolean(webIntel.cached),
