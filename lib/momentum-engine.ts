@@ -22,6 +22,12 @@ export type MomentumEngine={
     available:boolean;phase:'QUIET'|'BUILDING'|'CONFIRMING'|'ABSORBING'|'CLIMAX';side:Side;score:number;
     relativeVolume:number;volumeAcceleration:number;directionalPressure:number;flowDelta:number;absorption:number;climax:number;
   };
+  targets:{
+    target1:number|null;target2:number|null;invalidation:number|null;
+    target1Kind:'LIQUIDITY'|'STRUCTURE'|'MOMENTUM'|'NONE';
+    target2Kind:'LIQUIDITY'|'STRUCTURE'|'MOMENTUM'|'NONE';
+    horizonMinutes:number;projectionAtr:number;confidence:number;
+  };
   reasons:string[];
 };
 
@@ -66,6 +72,7 @@ export function buildMomentumEngine(args:{
     acceleration:0,persistence:0,expansion:0,efficiency:0,closePressure:0,impulse:0,exhaustion:0,
     tickSupport:0,multiTimeframe:0,
     mVolume:{available:false,phase:'QUIET',side:'WAIT',score:0,relativeVolume:0,volumeAcceleration:0,directionalPressure:0,flowDelta:0,absorption:0,climax:0},
+    targets:{target1:null,target2:null,invalidation:null,target1Kind:'NONE',target2Kind:'NONE',horizonMinutes:15,projectionAtr:0,confidence:0},
     reasons:['بيانات غير كافية لقراءة المومنتم.']
   };
   if(c1.length<16||!Number.isFinite(a)||a<=0)return empty;
@@ -253,6 +260,67 @@ export function buildMomentumEngine(args:{
   if(phase==='EXHAUSTING')confidence=Math.min(confidence,58);
   if(momentumSide==='WAIT')confidence=Math.min(confidence,35);
 
+  const p=Number(args.price??c1.at(-1)?.close);
+  const ahead=(v:number)=>Number.isFinite(v)&&v>0&&(
+    momentumSide==='BUY'?v>p+a*.06:
+    momentumSide==='SELL'?v<p-a*.06:false
+  );
+  const recentC1=c1.slice(-18),recentC5=c5.slice(-10);
+  const structuralLevels:number[]=[];
+  if(momentumSide==='BUY'){
+    structuralLevels.push(
+      ...recentC1.map(x=>Number(x.high)),
+      ...recentC5.map(x=>Number(x.high)),
+      Number(args.liquidity?.book?.askWall)
+    );
+  }else if(momentumSide==='SELL'){
+    structuralLevels.push(
+      ...recentC1.map(x=>Number(x.low)),
+      ...recentC5.map(x=>Number(x.low)),
+      Number(args.liquidity?.book?.bidWall)
+    );
+  }
+  const uniqueLevels=[...new Set(structuralLevels.filter(ahead).map(v=>Number(v.toFixed(6))))]
+    .sort((x,y)=>momentumSide==='BUY'?x-y:y-x)
+    .filter((v,i,a)=>i===0||Math.abs(v-a[i-1])>=Math.max(a*.10,p*.00004));
+
+  const volumeBoost=volumePhase==='CONFIRMING'?0.18:volumePhase==='BUILDING'?0.10:volumePhase==='ABSORBING'?-0.14:volumePhase==='CLIMAX'?-0.08:0;
+  const phaseBoost=phase==='ACTIVE'?0.16:phase==='BUILDING'?0.10:phase==='EXHAUSTING'?-0.18:0;
+  const strengthFactor=cap((score-40)/100,0,.45);
+  const projectionAtr=cap(.52+strengthFactor+volumeBoost+phaseBoost,0.28,1.28);
+  const t1Distance=a*projectionAtr;
+  const t2Distance=a*cap(projectionAtr*1.72,0.62,2.05);
+  const projected1=momentumSide==='BUY'?p+t1Distance:momentumSide==='SELL'?p-t1Distance:NaN;
+  const projected2=momentumSide==='BUY'?p+t2Distance:momentumSide==='SELL'?p-t2Distance:NaN;
+
+  const pickLevel=(projected:number,minAtr:number,maxAtr:number)=>{
+    if(momentumSide==='WAIT')return null;
+    const candidates=uniqueLevels
+      .map(v=>({v,d:Math.abs(v-p)/Math.max(a,1e-9)}))
+      .filter(x=>x.d>=minAtr&&x.d<=maxAtr);
+    if(!candidates.length)return null;
+    return candidates.sort((x,y)=>Math.abs(x.v-projected)-Math.abs(y.v-projected))[0].v;
+  };
+  const level1=pickLevel(projected1,.12,1.35);
+  const target1Raw=level1??projected1;
+  const level2=pickLevel(projected2,Math.max(.45,Math.abs(target1Raw-p)/Math.max(a,1e-9)+.18),2.25);
+  let target2Raw=level2??projected2;
+  if(momentumSide==='BUY'&&Number.isFinite(target1Raw)&&target2Raw<=target1Raw+a*.08)target2Raw=target1Raw+a*Math.max(.35,projectionAtr*.55);
+  if(momentumSide==='SELL'&&Number.isFinite(target1Raw)&&target2Raw>=target1Raw-a*.08)target2Raw=target1Raw-a*Math.max(.35,projectionAtr*.55);
+
+  const invalidationDistance=a*cap(.38+(100-efficiency)/260+exhaustion/500,0.34,.82);
+  const invalidationRaw=momentumSide==='BUY'?p-invalidationDistance:momentumSide==='SELL'?p+invalidationDistance:NaN;
+  const targets={
+    target1:momentumSide!=='WAIT'&&Number.isFinite(target1Raw)?Number(target1Raw.toFixed(2)):null,
+    target2:momentumSide!=='WAIT'&&Number.isFinite(target2Raw)?Number(target2Raw.toFixed(2)):null,
+    invalidation:momentumSide!=='WAIT'&&Number.isFinite(invalidationRaw)?Number(invalidationRaw.toFixed(2)):null,
+    target1Kind:(momentumSide==='WAIT'?'NONE':level1!=null?'STRUCTURE':'MOMENTUM') as 'LIQUIDITY'|'STRUCTURE'|'MOMENTUM'|'NONE',
+    target2Kind:(momentumSide==='WAIT'?'NONE':level2!=null?'STRUCTURE':'MOMENTUM') as 'LIQUIDITY'|'STRUCTURE'|'MOMENTUM'|'NONE',
+    horizonMinutes:15,
+    projectionAtr:Number(projectionAtr.toFixed(2)),
+    confidence:Math.round(cap(confidence-(phase==='EXHAUSTING'?10:0)-(volumePhase==='ABSORBING'?8:0),0,90))
+  };
+
   const reasons:string[]=[];
   if(preMove)reasons.push('التسارع يتكوّن قبل اتساع الحركة.');
   if(persistence>=66)reasons.push('استمرار الدفع في نفس الاتجاه مرتفع.');
@@ -264,6 +332,7 @@ export function buildMomentumEngine(args:{
   if(volumePhase==='CONFIRMING')reasons.push('M-Volume يؤكد الدفع في نفس اتجاه المومنتم.');
   if(volumePhase==='ABSORBING')reasons.push('الحجم مرتفع لكن تقدم السعر ضعيف؛ احتمال امتصاص قائم.');
   if(volumePhase==='CLIMAX')reasons.push('حجم واندفاع مرتفعان جدًا؛ احتمال Volume Climax يحتاج حذرًا.');
+  if(targets.target1!=null)reasons.push('هدف المومنتم الأول '+targets.target1.toFixed(2)+(targets.target1Kind==='STRUCTURE'?' مرتبط بمستوى سعري أمام الحركة.':' مبني على قوة الدفع الحالية.'));
   if(exhaustion>=60)reasons.push('توجد علامات إنهاك/رفض تقلل استمرار المومنتم.');
 
   return {
@@ -284,6 +353,7 @@ export function buildMomentumEngine(args:{
       directionalPressure:Math.round(combinedVolumePressure),flowDelta:Number(flowDelta.toFixed(1)),
       absorption:Math.round(volumeAbsorption),climax:Math.round(volumeClimax)
     },
-    reasons:reasons.slice(0,6)
+    targets,
+    reasons:reasons.slice(0,7)
   };
 }
