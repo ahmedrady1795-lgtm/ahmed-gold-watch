@@ -1090,6 +1090,7 @@ export async function GET(request:Request){
         ok:Boolean(momentum.ok),side:momentum.side||'WAIT',phase:momentum.phase||'NEUTRAL',score:Number(momentum.score||0),confidence:Number(momentum.confidence||0),preMove:Boolean(momentum.preMove),
         acceleration:Number(momentum.acceleration||0),persistence:Number(momentum.persistence||0),expansion:Number(momentum.expansion||0),efficiency:Number(momentum.efficiency||0),closePressure:Number(momentum.closePressure||0),
         impulse:Number(momentum.impulse||0),exhaustion:Number(momentum.exhaustion||0),tickSupport:Number(momentum.tickSupport||0),multiTimeframe:Number(momentum.multiTimeframe||0),
+        stability:Number(momentum.stability||0),stateAgeSeconds:Number(momentum.stateAgeSeconds||0),flipPending:Boolean(momentum.flipPending),
         mVolume:momentum.mVolume?{
           available:Boolean(momentum.mVolume.available),phase:momentum.mVolume.phase||'QUIET',side:momentum.mVolume.side||'WAIT',score:Number(momentum.mVolume.score||0),
           relativeVolume:Number(momentum.mVolume.relativeVolume||0),volumeAcceleration:Number(momentum.mVolume.volumeAcceleration||0),directionalPressure:Number(momentum.mVolume.directionalPressure||0),
