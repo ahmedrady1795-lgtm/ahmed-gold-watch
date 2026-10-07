@@ -32,6 +32,7 @@ import {getStructuralPathLearning,calibrateStructuralPathForecast,recordStructur
 import {getHorizonBrainLearning,recordHorizonBrainOutcome} from '../../../lib/horizon-brain-learning';
 import {buildMarketMakerIntent} from '../../../lib/market-maker-intent';
 import {setAiSnapshot} from '../../../lib/ai-snapshot-cache';
+import {runAutonomousToolCycle} from '../../../lib/autonomous-tool-broker';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -643,12 +644,22 @@ export async function GET(request:Request){
       evolveAnalysisPolicy({asset:'GOLD',learning:goldLearning,stateGraph:goldStateGraph,performance:goldEvolutionPerformance,now}),
       evolveAnalysisPolicy({asset:'BTC',learning:bitcoinLearning,stateGraph:bitcoinStateGraph,performance:bitcoinEvolutionPerformance,now})
     ]);
+    const [goldAutonomousTools,bitcoinAutonomousTools]=await Promise.all([
+      runAutonomousToolCycle({
+        asset:'GOLD',now,policy:goldEvolution?.active,
+        context:{regime:goldEvolution?.regime,h4Side:goldH4?.side,intentSide:goldIntent?.side,marketLead:goldMarketLead?.side,price:goldPrice}
+      }).catch(()=>null),
+      runAutonomousToolCycle({
+        asset:'BTC',now,policy:bitcoinEvolution?.active,
+        context:{regime:bitcoinEvolution?.regime,h4Side:bitcoinH4?.side,intentSide:bitcoinIntent?.side,marketLead:bitcoinMarketLead?.side,price:btcPrice}
+      }).catch(()=>null)
+    ]);
     const bitcoinNeural=await neuralPredictionPromise;
     const bitcoinMl={...bitcoinMlRaw,neuralCore:bitcoinNeural};
     const goldHorizonLearning=getHorizonBrainLearning('GOLD',goldLearningPrice,now);
     const bitcoinHorizonLearning=getHorizonBrainLearning('BTC',btcPrice,now);
-    const goldMovement=buildMovementIntelligence('GOLD',{expected:goldExpectedLearning,stateGraph:goldStateGraph,liquidity:goldLiquidity,motion:goldMotion,structure:goldStructure,accumulation:goldAccumulation,behavior:goldBehavior,learning:goldLearning,tick:goldTick,scalp:goldScalp,decision:gold,evolution:goldEvolution,news:goldNews,price:goldPrice,atr:goldAtr,now,horizonLearning:goldHorizonLearning,marketLead:goldMarketLead});
-    const bitcoinMovement=buildMovementIntelligence('BTC',{expected:bitcoinExpectedLearning,stateGraph:bitcoinStateGraph,liquidity,motion,structure:bitcoinStructure,accumulation:bitcoinAccumulation,behavior:bitcoinBehavior,learning:bitcoinLearning,tick:bitcoinTick,scalp:bitcoinScalp,decision:bitcoin,evolution:bitcoinEvolution,news:bitcoinNews,ml:bitcoinMl,price:btcPrice,atr:btcAtr,now,horizonLearning:bitcoinHorizonLearning,marketLead:bitcoinMarketLead});
+    const goldMovement=buildMovementIntelligence('GOLD',{expected:goldExpectedLearning,stateGraph:goldStateGraph,liquidity:goldLiquidity,motion:goldMotion,structure:goldStructure,accumulation:goldAccumulation,behavior:goldBehavior,learning:goldLearning,tick:goldTick,scalp:goldScalp,decision:gold,evolution:goldEvolution,autonomousTools:goldAutonomousTools,news:goldNews,price:goldPrice,atr:goldAtr,now,horizonLearning:goldHorizonLearning,marketLead:goldMarketLead});
+    const bitcoinMovement=buildMovementIntelligence('BTC',{expected:bitcoinExpectedLearning,stateGraph:bitcoinStateGraph,liquidity,motion,structure:bitcoinStructure,accumulation:bitcoinAccumulation,behavior:bitcoinBehavior,learning:bitcoinLearning,tick:bitcoinTick,scalp:bitcoinScalp,decision:bitcoin,evolution:bitcoinEvolution,autonomousTools:bitcoinAutonomousTools,news:bitcoinNews,ml:bitcoinMl,price:btcPrice,atr:btcAtr,now,horizonLearning:bitcoinHorizonLearning,marketLead:bitcoinMarketLead});
     const goldHorizonLive=recordHorizonBrainOutcome({asset:'GOLD',price:goldLearningPrice,atr:goldAtr,now,horizons:goldMovement.horizons});
     const bitcoinHorizonLive=recordHorizonBrainOutcome({asset:'BTC',price:btcPrice,atr:btcAtr,now,horizons:bitcoinMovement.horizons});
     (goldMovement as any).horizonLearning=goldHorizonLive;
@@ -1556,8 +1567,8 @@ export async function GET(request:Request){
         recoveryActions:actualRecoveryActions.slice(0,5),
         forward15:{gold:gold15Diag,btc:btc15Diag},
         evolution:{
-          gold:{generation:goldEvolution?.generation,regime:goldEvolution?.regime,reason:goldEvolution?.reason,promoted:Boolean(goldEvolution?.promoted),rolledBack:Boolean(goldEvolution?.rolledBack),performance:goldEvolution?.performance,tournament:goldEvolution?.tournament},
-          btc:{generation:bitcoinEvolution?.generation,regime:bitcoinEvolution?.regime,reason:bitcoinEvolution?.reason,promoted:Boolean(bitcoinEvolution?.promoted),rolledBack:Boolean(bitcoinEvolution?.rolledBack),performance:bitcoinEvolution?.performance,tournament:bitcoinEvolution?.tournament}
+          gold:{generation:goldEvolution?.generation,regime:goldEvolution?.regime,reason:goldEvolution?.reason,promoted:Boolean(goldEvolution?.promoted),rolledBack:Boolean(goldEvolution?.rolledBack),performance:goldEvolution?.performance,tournament:goldEvolution?.tournament},tools:goldAutonomousTools?{capabilities:goldAutonomousTools.capabilities,toolCount:goldAutonomousTools.tools.length,query:goldAutonomousTools.research.query}:null,
+          btc:{generation:bitcoinEvolution?.generation,regime:bitcoinEvolution?.regime,reason:bitcoinEvolution?.reason,promoted:Boolean(bitcoinEvolution?.promoted),rolledBack:Boolean(bitcoinEvolution?.rolledBack),performance:bitcoinEvolution?.performance,tournament:bitcoinEvolution?.tournament},tools:bitcoinAutonomousTools?{capabilities:bitcoinAutonomousTools.capabilities,toolCount:bitcoinAutonomousTools.tools.length,query:bitcoinAutonomousTools.research.query}:null
         },
         webScout:webIntel?{
           ok:Boolean(webIntel.ok),cached:Boolean(webIntel.cached),
@@ -1673,11 +1684,11 @@ export async function GET(request:Request){
         executionCodeWrite:false,
         gold:{
           generation:Number(goldEvolution?.generation||0),regime:goldEvolution?.regime||'TRANSITION',promoted:Boolean(goldEvolution?.promoted),rolledBack:Boolean(goldEvolution?.rolledBack),
-          reason:goldEvolution?.reason||'',performance:goldEvolution?.performance||null,tournament:goldEvolution?.tournament||null
+          reason:goldEvolution?.reason||'',performance:goldEvolution?.performance||null,tournament:goldEvolution?.tournament||null,tools:goldAutonomousTools?{capabilities:goldAutonomousTools.capabilities,used:goldAutonomousTools.tools,research:goldAutonomousTools.research}:null
         },
         btc:{
           generation:Number(bitcoinEvolution?.generation||0),regime:bitcoinEvolution?.regime||'TRANSITION',promoted:Boolean(bitcoinEvolution?.promoted),rolledBack:Boolean(bitcoinEvolution?.rolledBack),
-          reason:bitcoinEvolution?.reason||'',performance:bitcoinEvolution?.performance||null,tournament:bitcoinEvolution?.tournament||null
+          reason:bitcoinEvolution?.reason||'',performance:bitcoinEvolution?.performance||null,tournament:bitcoinEvolution?.tournament||null,tools:bitcoinAutonomousTools?{capabilities:bitcoinAutonomousTools.capabilities,used:bitcoinAutonomousTools.tools,research:bitcoinAutonomousTools.research}:null
         }
       },
       gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation,goldH4,goldIntent),
