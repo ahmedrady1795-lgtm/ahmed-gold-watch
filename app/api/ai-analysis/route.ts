@@ -942,16 +942,18 @@ export async function GET(request:Request){
       const coreReady=coreReadyBase&&(!adaptiveWeak||(coreConfirmations>=2&&share>=65&&support>=4));
       const conditionalReady=Boolean(
         priceNow!=null&&share>=55&&support>=3&&confidence>=43&&
-        structureAligned&&!hardLiquidityOpposition&&!intentOpposes&&!momentumOpposes&&!adaptiveWeak&&!m15Opposes&&
+        structureAligned&&!hardLiquidityOpposition&&!intentOpposes&&!momentumOpposes&&!adaptiveWeak&&!m5Opposes&&!m15Opposes&&
         higherTfPair
       );
-      const strictForwardReady=Boolean(share>=60&&support>=3&&confidence>=50&&coreReady&&higherTfAligned&&!m15Opposes);
+      const strictForwardReady=Boolean(
+        share>=60&&support>=3&&confidence>=50&&coreReady&&higherTfPair&&!m5Opposes&&!m15Opposes
+      );
       const conditionalBypass=Boolean(!strictForwardReady&&conditionalReady);
       if(!strictForwardReady&&!conditionalReady)return {
         side:'WAIT',confidence,status:'WAIT',target:null,zone:null,windowSeconds:null,expiresAt:null,
         confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide,momentum:momentumSide,m5:m5Side,m15:m15Side,h4:h4Side,m5IndependentSupport,m5IndependentOpposition,m15IndependentSupport,m15IndependentOpposition},
         adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3))},
-        reason:m15Opposes?'M15 يعاكس الاتجاه؛ تم إيقاف التوقع':m5Opposes?'M5 يعاكس الاتجاه؛ تم إيقاف التوقع حتى يتضح المسار':!higherTfAligned?'لا يوجد تأكيد كافٍ من M5/M15/H4':'السيولة والهيكل والفريمات الأعلى لم تتفق بما يكفي'
+        reason:m15Opposes?'M15 يعاكس الاتجاه؛ تم إيقاف التوقع':m5Opposes?'M5 يعاكس الاتجاه؛ تم إيقاف التوقع بدل المخاطرة بإشارة H4 منفردة':!higherTfPair?'يلزم اتفاق اثنين على الأقل من M5/M15/H4 قبل اعتماد توقع 15 دقيقة':'السيولة والهيكل والفريمات الأعلى لم تتفق بما يكفي'
       };
 
       const ahead=(v:any)=>{
