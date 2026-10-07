@@ -425,10 +425,13 @@ export async function evolveAnalysisPolicy(args:{asset:string;learning:any;state
 
   const newOutcomes=Math.max(0,resolved-store.lastResolved),cooldown=now-store.lastPromotionAt>=30*60*1000,sgMatches=Number(args.stateGraph?.sequenceMatches||0);
   const jump=samples>=55&&self>=64&&sgMatches>=12?3:samples>=32&&self>=58&&sgMatches>=8?2:1,requiredNewOutcomes=jump===3?14:jump===2?10:8;
-  // Bootstrap exactly once: if this asset has never produced candidates, run the tournament immediately.
-  // After candidates exist, revert to the normal outcome/time cadence so the learning worker cannot spam generations.
+  // Bootstrap exactly once when there are no candidates.
   const bootstrapEvolution=store.candidates.length===0;
-  const canEvolve=samples>=20&&(bootstrapEvolution||newOutcomes>=requiredNewOutcomes||!previousEvalAt||now-previousEvalAt>=30*60*1000);
+  // A force nonce gives operators one deterministic immediate tournament without creating a rapid loop.
+  // Once consumed it is written to history, so the same nonce can never trigger again.
+  const forceNonce=String(process.env.AUTONOMOUS_EVOLUTION_FORCE_NONCE||'').trim();
+  const forceEvolution=Boolean(forceNonce&&!store.history.some(x=>x.action==='FORCED_EVOLUTION'&&x.reason===forceNonce));
+  const canEvolve=samples>=20&&(forceEvolution||bootstrapEvolution||newOutcomes>=requiredNewOutcomes||!previousEvalAt||now-previousEvalAt>=30*60*1000);
   const variants=['balanced','state-heavy','micro-heavy','conservative','ablation'];
   let winner:EvolutionPolicy|null=null;
   if(!rolledBack&&canEvolve){
@@ -456,6 +459,7 @@ export async function evolveAnalysisPolicy(args:{asset:string;learning:any;state
       reason=performance.killSwitch?'performance kill-switch: candidates remain shadow':!performance.promotionReady?'live Walk-Forward gate not passed; candidates remain shadow':bootstrapEvolution?'bootstrap tournament completed; winner stayed shadow':'5-candidate tournament stayed in shadow';
       if(winner)store.history.push({at:now,action:'SHADOW',to:winner.id,fitness:winner.fitness,reason});
     }
+    if(forceEvolution)store.history.push({at:now,action:'FORCED_EVOLUTION',reason:forceNonce});
     store.lastResolved=resolved;
   }
 
