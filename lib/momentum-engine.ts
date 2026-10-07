@@ -22,8 +22,9 @@ export type MomentumEngine={
   stateAgeSeconds:number;
   flipPending:boolean;
   mVolume:{
-    available:boolean;phase:'QUIET'|'BUILDING'|'CONFIRMING'|'ABSORBING'|'CLIMAX';side:Side;score:number;
-    relativeVolume:number;volumeAcceleration:number;directionalPressure:number;flowDelta:number;absorption:number;climax:number;
+    available:boolean;phase:'QUIET'|'BUILDING'|'CONFIRMING'|'ABSORBING'|'CLIMAX'|'DIVERGENCE';side:Side;score:number;
+    confidence:number;quality:number;relativeVolume:number;volumeAcceleration:number;directionalPressure:number;flowDelta:number;
+    absorption:number;climax:number;effortResult:number;followThrough:number;divergence:number;cvdSide:Side;
   };
   targets:{
     target1:number|null;target2:number|null;invalidation:number|null;
@@ -128,8 +129,13 @@ function stabilizeMomentum(raw:MomentumEngine,price:number,atr:number,now:number
         relativeVolume:Number(lerp(prev.value.mVolume?.relativeVolume||0,raw.mVolume?.relativeVolume||0,.32).toFixed(2)),
         volumeAcceleration:Math.round(lerp(prev.value.mVolume?.volumeAcceleration||0,raw.mVolume?.volumeAcceleration||0,.35)),
         directionalPressure:Math.round(lerp(prev.value.mVolume?.directionalPressure||0,raw.mVolume?.directionalPressure||0,.35)),
+        confidence:Math.round(lerp(prev.value.mVolume?.confidence||0,raw.mVolume?.confidence||0,.32)),
+        quality:Math.round(lerp(prev.value.mVolume?.quality||0,raw.mVolume?.quality||0,.22)),
         absorption:Math.round(lerp(prev.value.mVolume?.absorption||0,raw.mVolume?.absorption||0,.34)),
-        climax:Math.round(lerp(prev.value.mVolume?.climax||0,raw.mVolume?.climax||0,.34))
+        climax:Math.round(lerp(prev.value.mVolume?.climax||0,raw.mVolume?.climax||0,.34)),
+        effortResult:Math.round(lerp(prev.value.mVolume?.effortResult||0,raw.mVolume?.effortResult||0,.32)),
+        followThrough:Math.round(lerp(prev.value.mVolume?.followThrough||0,raw.mVolume?.followThrough||0,.32)),
+        divergence:Math.round(lerp(prev.value.mVolume?.divergence||0,raw.mVolume?.divergence||0,.32))
       },
       targets:{...raw.targets,target1:t1,target2:t2,invalidation:inv},
       reasons:[...raw.reasons.slice(0,6),'اتجاه المومنتم مثبت بذاكرة زمنية ويحتاج تفوقًا واضحًا للانعكاس.'].slice(0,7)
@@ -202,7 +208,7 @@ export function buildMomentumEngine(args:{
     ok:false,asset:args.asset,side:'WAIT',phase:'NEUTRAL',score:0,confidence:0,preMove:false,
     acceleration:0,persistence:0,expansion:0,efficiency:0,closePressure:0,impulse:0,exhaustion:0,
     tickSupport:0,multiTimeframe:0,stability:0,stateAgeSeconds:0,flipPending:false,
-    mVolume:{available:false,phase:'QUIET',side:'WAIT',score:0,relativeVolume:0,volumeAcceleration:0,directionalPressure:0,flowDelta:0,absorption:0,climax:0},
+    mVolume:{available:false,phase:'QUIET',side:'WAIT',score:0,confidence:0,quality:0,relativeVolume:0,volumeAcceleration:0,directionalPressure:0,flowDelta:0,absorption:0,climax:0,effortResult:0,followThrough:0,divergence:0,cvdSide:'WAIT'},
     targets:{target1:null,target2:null,invalidation:null,target1Kind:'NONE',target2Kind:'NONE',horizonMinutes:15,projectionAtr:0,confidence:0},
     reasons:['بيانات غير كافية لقراءة المومنتم.']
   };
@@ -251,9 +257,16 @@ export function buildMomentumEngine(args:{
   const candleVolumePressure=totalVolume>0?cap(signedVolume/totalVolume*100,-100,100):0;
   const btcFlowDelta=Number(args.liquidity?.flow?.deltaPct);
   const flowDelta=Number.isFinite(btcFlowDelta)?cap(btcFlowDelta,-100,100):0;
+  const flowPriceChangeBps=Number(args.liquidity?.flow?.priceChangeBps||0);
+  const cvdSide=sideOf(args.liquidity?.flow?.cvdSide);
+  const flowAcceleration=cap(Number(args.liquidity?.dynamics?.acceleration||0),-100,100);
+  const absorptionSide=sideOf(args.liquidity?.absorption?.side);
+  const externalAbsorption=cap(Number(args.liquidity?.absorption?.score||0),0,100);
   const combinedVolumePressure=usableVolumes.length>=6&&Number.isFinite(btcFlowDelta)
-    ?candleVolumePressure*.58+flowDelta*.42
-    :Number.isFinite(btcFlowDelta)&&Math.abs(flowDelta)>0?flowDelta:candleVolumePressure;
+    ?candleVolumePressure*.48+flowDelta*.38+flowAcceleration*.14
+    :Number.isFinite(btcFlowDelta)&&Math.abs(flowDelta)>0
+      ?flowDelta*.78+flowAcceleration*.22
+      :candleVolumePressure;
 
 
   const drives=c1.slice(-4).map(candleDrive);
@@ -330,65 +343,127 @@ export function buildMomentumEngine(args:{
     0,100
   );
 
-  const volumeAvailable=usableVolumes.length>=6||Math.abs(flowDelta)>0;
-  const volumeSide:Side=combinedVolumePressure>=10?'BUY':combinedVolumePressure<=-10?'SELL':'WAIT';
-  const volumeDirectional=sideSign===0?0:cap(50+combinedVolumePressure*sideSign*.5,0,100);
-  const relativeVolumeScore=relativeVolume>0?cap((relativeVolume-.65)*78,0,100):0;
+  const volumeAvailable=usableVolumes.length>=6||Math.abs(flowDelta)>0||externalAbsorption>=35;
+  let volumeSide:Side=combinedVolumePressure>=9?'BUY':combinedVolumePressure<=-9?'SELL':'WAIT';
+  if(absorptionSide!=='WAIT'&&externalAbsorption>=62)volumeSide=absorptionSide;
+
+  const volumeDirectional=sideSign===0?50:cap(50+combinedVolumePressure*sideSign*.5,0,100);
+  const relativeVolumeScore=relativeVolume>0?cap((relativeVolume-.62)*82,0,100):0;
   const priceProgress=Math.abs(vNow)*100;
-  const volumeAbsorption=volumeAvailable?cap(
-    Math.max(0,relativeVolumeScore-42)*.58+
-    Math.max(0,62-efficiency)*.42+
-    Math.max(0,38-priceProgress)*.35+
-    opposingWick*100*.28,
+  const effort=Math.max(relativeVolumeScore,cap(Math.abs(combinedVolumePressure),0,100));
+  const result=cap(priceProgress*.75+efficiency*.35+expansion*.20,0,100);
+  const effortResult=volumeAvailable?cap(result-effort*.38+50,0,100):0;
+
+  const inferredAbsorption=volumeAvailable?cap(
+    Math.max(0,relativeVolumeScore-38)*.54+
+    Math.max(0,60-efficiency)*.40+
+    Math.max(0,35-priceProgress)*.34+
+    opposingWick*100*.26,
     0,100
   ):0;
+  const volumeAbsorption=Math.round(cap(Math.max(inferredAbsorption,externalAbsorption),0,100));
+
   const volumeClimax=volumeAvailable?cap(
-    Math.max(0,relativeVolume-1.45)*62+
-    Math.max(0,expansion-62)*.52+
-    Math.max(0,Math.abs(combinedVolumePressure)-55)*.36,
+    Math.max(0,relativeVolume-1.38)*64+
+    Math.max(0,expansion-58)*.48+
+    Math.max(0,Math.abs(combinedVolumePressure)-52)*.34,
     0,100
   ):0;
+
+  const priceSide:Side=vNow>.025?'BUY':vNow<-.025?'SELL':'WAIT';
+  const flowSide:Side=flowDelta>=12?'BUY':flowDelta<=-12?'SELL':cvdSide;
+  const divergence=volumeAvailable&&priceSide!=='WAIT'&&volumeSide!=='WAIT'&&priceSide!==volumeSide
+    ?cap(Math.abs(combinedVolumePressure)*.72+Math.abs(vNow)*38+(cvdSide!== 'WAIT'&&cvdSide!==priceSide?16:0),0,100)
+    :0;
+
+  const followThrough=volumeAvailable?cap(
+    (volumeSide===priceSide&&priceSide!=='WAIT'?38:0)+
+    Math.min(28,Math.abs(flowPriceChangeBps)*3.4)+
+    Math.max(0,efficiency-40)*.48+
+    Math.max(0,expansion-30)*.30,
+    0,100
+  ):0;
+
+  const volumeQuality=cap(
+    (usableVolumes.length>=12?34:usableVolumes.length>=6?24:0)+
+    (Math.abs(flowDelta)>0?24:0)+
+    (cvdSide!=='WAIT'?12:0)+
+    (Number(args.liquidity?.quality||0)>=60?18:0)+
+    (externalAbsorption>0?12:0),
+    0,100
+  );
+
   const volumeScore=volumeAvailable?cap(
-    volumeDirectional*.38+
-    relativeVolumeScore*.24+
-    volumeAcceleration*.17+
-    Math.min(100,Math.abs(combinedVolumePressure))*.21-
-    volumeAbsorption*.24,
+    Math.min(100,Math.abs(combinedVolumePressure))*.26+
+    relativeVolumeScore*.20+
+    volumeAcceleration*.14+
+    followThrough*.18+
+    effortResult*.12+
+    volumeQuality*.10-
+    volumeAbsorption*.18-
+    divergence*.16,
     0,96
   ):0;
-  let volumePhase:'QUIET'|'BUILDING'|'CONFIRMING'|'ABSORBING'|'CLIMAX'='QUIET';
-  if(volumeAbsorption>=62)volumePhase='ABSORBING';
-  else if(volumeClimax>=72)volumePhase='CLIMAX';
-  else if(volumeScore>=60&&volumeSide===momentumSide)volumePhase='CONFIRMING';
-  else if(volumeAvailable&&relativeVolume>=.92&&volumeAcceleration>=56)volumePhase='BUILDING';
 
+  let volumePhase:'QUIET'|'BUILDING'|'CONFIRMING'|'ABSORBING'|'CLIMAX'|'DIVERGENCE'='QUIET';
+  if(volumeAbsorption>=64)volumePhase='ABSORBING';
+  else if(divergence>=62)volumePhase='DIVERGENCE';
+  else if(volumeClimax>=74)volumePhase='CLIMAX';
+  else if(volumeScore>=58&&volumeSide===momentumSide&&followThrough>=42)volumePhase='CONFIRMING';
+  else if(volumeAvailable&&relativeVolume>=.88&&volumeAcceleration>=54&&volumeAbsorption<52)volumePhase='BUILDING';
+
+  const volumeConfidence=Math.round(cap(
+    volumeScore*.62+
+    volumeQuality*.22+
+    (volumePhase==='CONFIRMING'?10:0)+
+    (volumePhase==='BUILDING'?6:0)-
+    (volumePhase==='ABSORBING'?10:0)-
+    (volumePhase==='DIVERGENCE'?8:0),
+    0,92
+  ));
+
+  // Volume is now a first-class gate for price momentum.
+  if(volumeAvailable&&volumeConfidence>=58){
+    if(volumePhase==='CONFIRMING'&&volumeSide!=='WAIT'&&momentumSide==='WAIT')momentumSide=volumeSide;
+    if(volumePhase==='DIVERGENCE'&&volumeSide!=='WAIT'&&momentumSide!==volumeSide){
+      // do not flip immediately; neutralize weak price momentum until volume/price resolve
+      if(absSigned<34)momentumSide='WAIT';
+    }
+    if(volumePhase==='ABSORBING'&&absorptionSide!=='WAIT'&&externalAbsorption>=68&&absSigned<40){
+      momentumSide=absorptionSide;
+    }
+  }
 
   const score=cap(
-    impulse*.45+
-    persistence*.18+
-    accelDirectional*.14+
-    efficiency*.10+
-    tickSupport*.07+
-    multiTimeframe*.12+
-    volumeScore*.13-
-    exhaustion*.16-
-    (volumePhase==='ABSORBING'?6:0)-
-    (volumePhase==='CLIMAX'&&volumeSide===momentumSide?3:0),
+    impulse*.30+
+    persistence*.13+
+    accelDirectional*.10+
+    efficiency*.07+
+    tickSupport*.05+
+    multiTimeframe*.10+
+    volumeScore*.28+
+    volumeConfidence*.08-
+    exhaustion*.13-
+    (volumePhase==='ABSORBING'&&absorptionSide!==momentumSide?10:0)-
+    (volumePhase==='DIVERGENCE'?8:0)-
+    (volumePhase==='CLIMAX'&&volumeSide===momentumSide?4:0),
     0,96
   );
 
   let phase:Phase='NEUTRAL';
-  const building=momentumSide!=='WAIT'&&score>=42&&score<68&&accelDirectional>=58&&expansion<68&&exhaustion<58&&(volumePhase!=='ABSORBING');
-  const active=momentumSide!=='WAIT'&&score>=58&&persistence>=50&&expansion>=36&&exhaustion<66&&volumePhase!=='ABSORBING';
+  const building=momentumSide!=='WAIT'&&score>=42&&score<70&&accelDirectional>=54&&expansion<70&&exhaustion<60&&(!volumeAvailable||volumePhase==='BUILDING'||volumePhase==='CONFIRMING'||volumeConfidence<48);
+  const active=momentumSide!=='WAIT'&&score>=58&&persistence>=50&&expansion>=34&&exhaustion<66&&(!volumeAvailable||volumePhase==='CONFIRMING'||volumeConfidence<50);
   if(momentumSide==='WAIT')phase='NEUTRAL';
   else if(exhaustion>=64&&score<72)phase='EXHAUSTING';
   else if(active)phase='ACTIVE';
   else if(building)phase='BUILDING';
   else phase='WEAK';
 
-  const preMove=Boolean(phase==='BUILDING'&&multiTimeframe>=50&&(tickSupport>=35||structureSide===momentumSide)&&(!volumeAvailable||volumePhase==='BUILDING'||volumePhase==='CONFIRMING'));
-  let confidence=Math.round(cap(score*.72+multiTimeframe*.16+(tickAligned?6:0)+(preMove?5:0),0,90));
+  const preMove=Boolean(phase==='BUILDING'&&multiTimeframe>=50&&(tickSupport>=30||structureSide===momentumSide)&&(volumePhase==='BUILDING'||volumePhase==='CONFIRMING'||(!volumeAvailable&&score>=58)));
+  let confidence=Math.round(cap(score*.58+multiTimeframe*.12+volumeConfidence*.22+(tickAligned?4:0)+(preMove?6:0),0,90));
   if(phase==='EXHAUSTING')confidence=Math.min(confidence,58);
+  if(volumePhase==='DIVERGENCE')confidence=Math.min(confidence,54);
+  if(volumePhase==='ABSORBING'&&absorptionSide!==momentumSide)confidence=Math.min(confidence,50);
   if(momentumSide==='WAIT')confidence=Math.min(confidence,35);
 
   const p=Number(args.price??c1.at(-1)?.close);
@@ -464,6 +539,8 @@ export function buildMomentumEngine(args:{
   if(volumePhase==='CONFIRMING')reasons.push('M-Volume يؤكد الدفع في نفس اتجاه المومنتم.');
   if(volumePhase==='ABSORBING')reasons.push('الحجم مرتفع لكن تقدم السعر ضعيف؛ احتمال امتصاص قائم.');
   if(volumePhase==='CLIMAX')reasons.push('حجم واندفاع مرتفعان جدًا؛ احتمال Volume Climax يحتاج حذرًا.');
+  if(volumePhase==='DIVERGENCE')reasons.push('يوجد Divergence بين السعر والحجم؛ الحركة السعرية غير مؤكدة بالحجم.');
+  if(effortResult<=38&&volumeAvailable)reasons.push('Effort vs Result ضعيف: حجم ملحوظ لكن النتيجة السعرية محدودة.');
   if(targets.target1!=null)reasons.push('هدف المومنتم الأول '+targets.target1.toFixed(2)+(targets.target1Kind==='STRUCTURE'?' مرتبط بمستوى سعري أمام الحركة.':' مبني على قوة الدفع الحالية.'));
   if(exhaustion>=60)reasons.push('توجد علامات إنهاك/رفض تقلل استمرار المومنتم.');
 
@@ -482,9 +559,11 @@ export function buildMomentumEngine(args:{
     stability:0,stateAgeSeconds:0,flipPending:false,
     mVolume:{
       available:volumeAvailable,phase:volumePhase,side:volumeSide,score:Math.round(volumeScore),
+      confidence:volumeConfidence,quality:Math.round(volumeQuality),
       relativeVolume:Number(relativeVolume.toFixed(2)),volumeAcceleration:Math.round(volumeAcceleration),
       directionalPressure:Math.round(combinedVolumePressure),flowDelta:Number(flowDelta.toFixed(1)),
-      absorption:Math.round(volumeAbsorption),climax:Math.round(volumeClimax)
+      absorption:Math.round(volumeAbsorption),climax:Math.round(volumeClimax),
+      effortResult:Math.round(effortResult),followThrough:Math.round(followThrough),divergence:Math.round(divergence),cvdSide
     },
     targets,
     reasons:reasons.slice(0,7)
