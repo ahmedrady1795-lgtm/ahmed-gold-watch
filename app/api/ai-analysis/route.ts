@@ -908,9 +908,9 @@ export async function GET(request:Request){
       if(h4Active&&h4Side===winner)confidence+=Math.min(7,Math.round((h4Confidence-42)/7));
       if(h4Opposes)confidence-=h4Confidence>=68?11:7;
 
-      if(leadFresh&&marketLead?.armed&&leadSide===winner)confidence=Math.min(89,confidence+8);
-      else if(leadFresh&&leadStage==='BUILDING'&&leadSide===winner)confidence=Math.min(87,confidence+4);
-      if(!leadFresh&&marketLead?.available)confidence-=4;
+      if(leadFresh&&marketLead?.armed&&leadSide===winner)confidence=Math.min(89,confidence+3);
+      else if(leadFresh&&leadStage==='BUILDING'&&leadSide===winner)confidence=Math.min(87,confidence+2);
+      if(!leadFresh&&marketLead?.available)confidence-=2;
       confidence=Math.max(0,Math.min(89,Math.round(confidence)));
 
       const leadSupports=Boolean(leadFresh&&leadSide===winner&&(marketLead?.armed||leadStage==='BUILDING'));
@@ -1000,7 +1000,7 @@ export async function GET(request:Request){
       const minTradeDistanceBps=asset==='GOLD'?3.5:8;
       const tradeEligible=Boolean(
         target!=null&&entryTrigger!=null&&stopLoss!=null&&rr!=null&&rr>=1.20&&
-        targetDistanceBps>=minTradeDistanceBps&&higherTfAligned&&!m15Opposes
+        targetDistanceBps>=minTradeDistanceBps&&higherTfPair&&!m15Opposes
       );
       const tradeSetup=tradeEligible?{
         mode:conditionalBypass?'CONDITIONAL':'READY',
@@ -1055,7 +1055,7 @@ export async function GET(request:Request){
 
       const sourceParts=rows.filter(r=>r.side===winner).sort((a,b)=>b.weight-a.weight).slice(0,3).map(r=>r.name);
       return {
-        side:winner,confidence,status,target,tradeSetup,conditionalReady,horizonMinutes:15,h4Context:h4?.ok?{side:h4Side,confidence:h4Confidence,structure:h4.structure,support:h4.support,resistance:h4.resistance,rangePosition:h4.rangePosition}:null,
+        side:winner,confidence,status,target,tradeSetup:alreadyMoving?null:tradeSetup,conditionalReady,horizonMinutes:15,h4Context:h4?.ok?{side:h4Side,confidence:h4Confidence,structure:h4.structure,support:h4.support,resistance:h4.resistance,rangePosition:h4.rangePosition}:null,
         zone:pathZone?{low:Number(pathZone.low),high:Number(pathZone.high),mid:Number(pathZone.mid)}:null,
         windowSeconds,expiresAt:now+windowSeconds.max*1000,agreement:Math.round(share),support,opposition:oppose,
         priceNow,distancePct:distancePct==null?null:Number(distancePct.toFixed(4)),
