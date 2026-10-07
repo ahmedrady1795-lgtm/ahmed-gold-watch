@@ -1024,15 +1024,16 @@ export async function GET(request:Request){
         target!=null&&entryTrigger!=null&&stopLoss!=null&&rr!=null&&rr>=1.80&&
         targetDistanceBps>=minTradeDistanceBps&&higherTfPair&&!m5Opposes&&!m15Opposes
       );
-      const riskDistance=entryTrigger!=null&&stopLoss!=null?Math.abs(entryTrigger-stopLoss):null;
-      const breakEvenTrigger=riskDistance!=null
-        ?Number((winner==='BUY'?entryTrigger+riskDistance*.45:entryTrigger-riskDistance*.45).toFixed(2))
+      const safeEntry=entryTrigger!=null?Number(entryTrigger):null;
+      const riskDistance=safeEntry!=null&&stopLoss!=null?Math.abs(safeEntry-stopLoss):null;
+      const breakEvenTrigger=riskDistance!=null&&safeEntry!=null
+        ?Number((winner==='BUY'?safeEntry+riskDistance*.45:safeEntry-riskDistance*.45).toFixed(2))
         :null;
-      const lockProfitTrigger=riskDistance!=null
-        ?Number((winner==='BUY'?entryTrigger+riskDistance*.80:entryTrigger-riskDistance*.80).toFixed(2))
+      const lockProfitTrigger=riskDistance!=null&&safeEntry!=null
+        ?Number((winner==='BUY'?safeEntry+riskDistance*.80:safeEntry-riskDistance*.80).toFixed(2))
         :null;
-      const lockProfitStop=riskDistance!=null
-        ?Number((winner==='BUY'?entryTrigger+riskDistance*.10:entryTrigger-riskDistance*.10).toFixed(2))
+      const lockProfitStop=riskDistance!=null&&safeEntry!=null
+        ?Number((winner==='BUY'?safeEntry+riskDistance*.10:safeEntry-riskDistance*.10).toFixed(2))
         :null;
       const tradeSetup=tradeEligible?{
         mode:conditionalBypass?'CONDITIONAL':'READY',
