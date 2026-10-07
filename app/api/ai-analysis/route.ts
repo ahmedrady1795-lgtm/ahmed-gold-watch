@@ -808,8 +808,10 @@ export async function GET(request:Request){
       );
       const accSide=accumulation?.side==='BUY'||accumulation?.side==='SELL'?accumulation.side:'WAIT';
       const accScore=accSide==='BUY'?Number(accumulation?.accumulationScore||0):accSide==='SELL'?Number(accumulation?.distributionScore||0):Math.max(Number(accumulation?.accumulationScore||0),Number(accumulation?.distributionScore||0));
-      const structureSide=structure?.m1?.nextSide==='BUY'||structure?.m1?.nextSide==='SELL'?structure.m1.nextSide:(structure?.shortSide==='BUY'||structure?.shortSide==='SELL'?structure.shortSide:'WAIT');
-      const structureScore=Math.max(Number(structure?.m1?.confidence||0),Number(structure?.m1?.nextScore||0),Number(structure?.confidence||0));
+      const structureM5Side=structure?.m5?.nextSide==='BUY'||structure?.m5?.nextSide==='SELL'?structure.m5.nextSide:(structure?.m5?.side==='BUY'||structure?.m5?.side==='SELL'?structure.m5.side:'WAIT');
+      const structureM1Side=structure?.m1?.nextSide==='BUY'||structure?.m1?.nextSide==='SELL'?structure.m1.nextSide:(structure?.m1?.side==='BUY'||structure?.m1?.side==='SELL'?structure.m1.side:'WAIT');
+      const structureSide=structureM5Side!=='WAIT'?structureM5Side:(structure?.shortSide==='BUY'||structure?.shortSide==='SELL'?structure.shortSide:structureM1Side);
+      const structureScore=structureM5Side!=='WAIT'?Math.max(Number(structure?.m5?.confidence||0),Number(structure?.confidence||0)):Math.max(Number(structure?.m1?.confidence||0),Number(structure?.m1?.nextScore||0),Number(structure?.confidence||0));
       add('liquidity',liqSide,liqScore,1.10);
       add('accumulation',accSide,Math.max(accScore,Number(accumulation?.breakoutReadiness||0)),1.08);
       add('structure',structureSide,structureScore,1.22);
@@ -847,8 +849,8 @@ export async function GET(request:Request){
       const winner:'BUY'|'SELL'=buy>=sell?'BUY':'SELL';
       const win=Math.max(buy,sell),lose=Math.min(buy,sell);
       const share=win/total*100,edge=(win-lose)/total*100;
-      const support=rows.filter(r=>r.side===winner).length;
-      const oppose=rows.filter(r=>r.side!==winner).length;
+      const support=rows.filter(r=>r.side===winner&&r.weight>=.70&&r.score>=44).length;
+      const oppose=rows.filter(r=>r.side!==winner&&r.weight>=.70&&r.score>=48).length;
       const coreConfirmations=[
         liqSide===winner&&liqScore>=55,
         accSide===winner&&Math.max(accScore,Number(accumulation?.breakoutReadiness||0))>=52,
@@ -1696,6 +1698,10 @@ export async function GET(request:Request){
     const recordForward15=(asset:'GOLD'|'BTC',node:any,price:any,atr:any,intent:any,h4:any,momentum:any)=>{
       const fm=node?.forwardMove||{};
       const side=fm?.side==='BUY'||fm?.side==='SELL'?fm.side:'WAIT';
+      const ledgerKey=asset+'_FORWARD_15M_V2';
+      const existing=getNextMoveOutcome(ledgerKey,Number(price),now);
+      const status=String(fm?.status||'WAIT');
+      if(Number(existing?.pending||0)>0||status==='STABILITY_HOLD'||status==='IN_PROGRESS')return existing;
       const setup=fm?.tradeSetup||null;
       const entry=setup?.entry!==null&&setup?.entry!==undefined&&Number.isFinite(Number(setup.entry))?Number(setup.entry):null;
       const conditional=String(setup?.mode||'')==='CONDITIONAL';
@@ -1703,11 +1709,11 @@ export async function GET(request:Request){
         side==='BUY'?Number(price)>=entry:Number(price)<=entry
       );
       if(side==='WAIT'||!activated){
-        return getNextMoveOutcome(asset+'_FORWARD_15M_V2',Number(price),now);
+        return existing;
       }
       const source=intent?.preMove&&intent?.side===side?'MARKET_MAKER_INTENT_15M':momentum?.preMove&&momentum?.side===side?'MOMENTUM_PREMOVE_15M':'H4_FORWARD_15M';
       return recordNextMoveOutcome({
-        asset:asset+'_FORWARD_15M_V2',price:Number(price),atr:Number(atr),now,
+        asset:ledgerKey,price:Number(price),atr:Number(atr),now,
         hunt:{nextMove:{
           side,confidence:Number(fm?.confidence||0),source,
           micro:{
@@ -1727,7 +1733,7 @@ export async function GET(request:Request){
         horizonMs:15*60*1000,horizonLabel:conditional?'M15_CONDITIONAL_ACTIVATED':'M15_FORWARD_V2',
         targetPrice:Number.isFinite(Number(fm?.target))?Number(fm.target):null,
         stopPrice:Number.isFinite(Number(setup?.stopLoss))?Number(setup.stopLoss):null,
-        minRecordIntervalMs:3*60*1000,
+        minRecordIntervalMs:15*60*1000,
         barrierScale:.55,minBarrierBps:asset==='GOLD'?2.5:7,maxBarrierBps:asset==='GOLD'?18:35
       });
     };
