@@ -936,8 +936,14 @@ export async function GET(request:Request){
       const scalpNext=scalp?.nextPrice||scalp?.fusionV8?.nextPrice||scalp?.projection||null;
       const scalpPrice=(scalpNext?.side===winner||!scalpNext?.side)&&ahead(scalpNext?.price)?Number(scalpNext.price):null;
       const intentTarget=intentSide===winner&&ahead(intent?.targetPrice)?Number(intent.targetPrice):null;
-      const target=intentTarget??target15Price??(pathZone&&ahead(pathZone.mid)?Number(pathZone.mid):quickPrice??scalpPrice??null);
-      const invalidationRaw=Number(hunt?.zoneForecast?.pathForecast?.invalidation??hunt?.invalidation);
+      const momentumTarget=momentumSide===winner&&ahead(momentum?.targets?.target1)&&momentumConfidence>=40
+        ?Number(momentum.targets.target1):null;
+      const target=intentTarget??target15Price??(pathZone&&ahead(pathZone.mid)?Number(pathZone.mid):quickPrice??scalpPrice??momentumTarget??null);
+      const huntInvalidation=Number(hunt?.zoneForecast?.pathForecast?.invalidation??hunt?.invalidation);
+      const momentumInvalidation=Number(momentum?.targets?.invalidation);
+      const invalidationRaw=Number.isFinite(huntInvalidation)
+        ?huntInvalidation
+        :Number.isFinite(momentumInvalidation)?momentumInvalidation:NaN;
       const targetDistance=priceNow!=null&&target!=null?Math.abs(target-priceNow):null;
       const triggerBps=asset==='GOLD'?.55:1.2;
       const triggerDistance=priceNow!=null?priceNow*triggerBps/10000:0;
@@ -1089,7 +1095,14 @@ export async function GET(request:Request){
           relativeVolume:Number(momentum.mVolume.relativeVolume||0),volumeAcceleration:Number(momentum.mVolume.volumeAcceleration||0),directionalPressure:Number(momentum.mVolume.directionalPressure||0),
           flowDelta:Number(momentum.mVolume.flowDelta||0),absorption:Number(momentum.mVolume.absorption||0),climax:Number(momentum.mVolume.climax||0)
         }:null,
-        reasons:Array.isArray(momentum.reasons)?momentum.reasons.slice(0,6):[]
+        targets:momentum.targets?{
+          target1:momentum.targets.target1!=null&&Number.isFinite(Number(momentum.targets.target1))?Number(momentum.targets.target1):null,
+          target2:momentum.targets.target2!=null&&Number.isFinite(Number(momentum.targets.target2))?Number(momentum.targets.target2):null,
+          invalidation:momentum.targets.invalidation!=null&&Number.isFinite(Number(momentum.targets.invalidation))?Number(momentum.targets.invalidation):null,
+          target1Kind:momentum.targets.target1Kind||'NONE',target2Kind:momentum.targets.target2Kind||'NONE',
+          horizonMinutes:Number(momentum.targets.horizonMinutes||15),projectionAtr:Number(momentum.targets.projectionAtr||0),confidence:Number(momentum.targets.confidence||0)
+        }:null,
+        reasons:Array.isArray(momentum.reasons)?momentum.reasons.slice(0,7):[]
       }:null,
       marketMakerIntent:intent?{
         ok:Boolean(intent.ok),side:intent.side||'WAIT',phase:intent.phase||'NEUTRAL',confidence:Number(intent.confidence||0),score:Number(intent.score||0),preMove:Boolean(intent.preMove),
