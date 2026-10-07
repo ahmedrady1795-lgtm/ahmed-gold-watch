@@ -980,7 +980,7 @@ export async function GET(request:Request){
       const momentumInvalidation=momentumInvalidationValue!==null&&momentumInvalidationValue!==undefined&&Number.isFinite(Number(momentumInvalidationValue))?Number(momentumInvalidationValue):null;
       const invalidationRaw=huntInvalidation??momentumInvalidation;
       const targetDistance=priceNow!=null&&target!=null?Math.abs(target-priceNow):null;
-      const triggerBps=asset==='GOLD'?.55:1.2;
+      const triggerBps=asset==='GOLD'?1.5:2.5;
       const triggerDistance=priceNow!=null?priceNow*triggerBps/10000:0;
       const entryTrigger=priceNow!=null
         ?Number((winner==='BUY'?priceNow+triggerDistance:priceNow-triggerDistance).toFixed(2))
@@ -993,7 +993,16 @@ export async function GET(request:Request){
           stopLoss=Number((winner==='BUY'?priceNow-targetDistance*.58:priceNow+targetDistance*.58).toFixed(2));
         }
       }
-      const tradeSetup=target!=null&&entryTrigger!=null?{
+      const rr=stopLoss!=null&&entryTrigger!=null&&Math.abs(entryTrigger-stopLoss)>0
+        ?Number((Math.abs(Number(target)-entryTrigger)/Math.abs(entryTrigger-stopLoss)).toFixed(2))
+        :null;
+      const targetDistanceBps=priceNow!=null&&target!=null?Math.abs(target-priceNow)/priceNow*10000:0;
+      const minTradeDistanceBps=asset==='GOLD'?3.5:8;
+      const tradeEligible=Boolean(
+        target!=null&&entryTrigger!=null&&stopLoss!=null&&rr!=null&&rr>=1.20&&
+        targetDistanceBps>=minTradeDistanceBps&&higherTfAligned&&!m15Opposes
+      );
+      const tradeSetup=tradeEligible?{
         mode:conditionalBypass?'CONDITIONAL':'READY',
         side:winner,
         entry:entryTrigger,
@@ -1001,9 +1010,8 @@ export async function GET(request:Request){
         takeProfit:Number(target.toFixed(2)),
         trigger:winner==='BUY'?'اختراق وثبات أعلى سعر التفعيل':'كسر وثبات أسفل سعر التفعيل',
         timeframe:'15m',
-        rr:stopLoss!=null&&Math.abs(entryTrigger-stopLoss)>0
-          ?Number((Math.abs(Number(target)-entryTrigger)/Math.abs(entryTrigger-stopLoss)).toFixed(2))
-          :null
+        rr,
+        targetDistanceBps:Number(targetDistanceBps.toFixed(2))
       }:null;
 
       // Do not label a consumed/behind destination as "the next move".
