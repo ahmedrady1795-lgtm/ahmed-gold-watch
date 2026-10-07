@@ -1694,11 +1694,11 @@ export async function GET(request:Request){
         executionCodeWrite:false,
         gold:{
           generation:Number(goldEvolution?.generation||0),regime:goldEvolution?.regime||'TRANSITION',promoted:Boolean(goldEvolution?.promoted),rolledBack:Boolean(goldEvolution?.rolledBack),
-          reason:goldEvolution?.reason||'',performance:goldEvolution?.performance||null,tournament:goldEvolution?.tournament||null,tools:goldAutonomousTools?{capabilities:goldAutonomousTools.capabilities,used:goldAutonomousTools.tools,research:goldAutonomousTools.research}:null
+          reason:goldEvolution?.reason||'',performance:goldEvolution?.performance||null,runtimePlugin:goldEvolution?.runtimePlugin||null,tournament:goldEvolution?.tournament||null,tools:goldAutonomousTools?{capabilities:goldAutonomousTools.capabilities,used:goldAutonomousTools.tools,research:goldAutonomousTools.research}:null
         },
         btc:{
           generation:Number(bitcoinEvolution?.generation||0),regime:bitcoinEvolution?.regime||'TRANSITION',promoted:Boolean(bitcoinEvolution?.promoted),rolledBack:Boolean(bitcoinEvolution?.rolledBack),
-          reason:bitcoinEvolution?.reason||'',performance:bitcoinEvolution?.performance||null,tournament:bitcoinEvolution?.tournament||null,tools:bitcoinAutonomousTools?{capabilities:bitcoinAutonomousTools.capabilities,used:bitcoinAutonomousTools.tools,research:bitcoinAutonomousTools.research}:null
+          reason:bitcoinEvolution?.reason||'',performance:bitcoinEvolution?.performance||null,runtimePlugin:bitcoinEvolution?.runtimePlugin||null,tournament:bitcoinEvolution?.tournament||null,tools:bitcoinAutonomousTools?{capabilities:bitcoinAutonomousTools.capabilities,used:bitcoinAutonomousTools.tools,research:bitcoinAutonomousTools.research}:null
         }
       },
       gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation,goldH4,goldIntent),
