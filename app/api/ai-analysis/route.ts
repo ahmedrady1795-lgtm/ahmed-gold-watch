@@ -1561,12 +1561,28 @@ export async function GET(request:Request){
       }:null;
       const diag15=(v:any)=>{
         const g=v?.global||{},hits=Number(g.hits||0),fails=Number(g.fails||0),neutral=Number(g.neutral||0),directional=hits+fails;
+        const mv=v?.bySource?.M_VOLUME_SIGNAL_15M||{};
+        const mvHits=Number(mv.hits||0),mvFails=Number(mv.fails||0),mvNeutral=Number(mv.neutral||0),mvDirectional=mvHits+mvFails;
+        const mvWf=v?.walkForwardBySource?.M_VOLUME_SIGNAL_15M||null;
         return {
           hits,fails,neutral,directional,
           accuracy:directional?Number((hits/directional*100).toFixed(1)):null,
           posterior:Number.isFinite(Number(g.posteriorAccuracy))?Number(Number(g.posteriorAccuracy).toFixed(1)):null,
           pending:Number(v?.pending||0),
           samples:Number(v?.learningSamples||directional),
+          mVolume:{
+            hits:mvHits,fails:mvFails,neutral:mvNeutral,directional:mvDirectional,
+            accuracy:mvDirectional?Number((mvHits/mvDirectional*100).toFixed(1)):null,
+            posterior:Number.isFinite(Number(mv.posteriorAccuracy))?Number(Number(mv.posteriorAccuracy).toFixed(1)):50,
+            avgSeconds:Number.isFinite(Number(mv.avgSeconds))?Number(Number(mv.avgSeconds).toFixed(1)):null,
+            walkForward:mvWf?{
+              status:String(mvWf.status||'COLLECTING'),
+              oosN:Number(mvWf?.oos?.n||0),
+              oosAccuracy:Number.isFinite(Number(mvWf?.oos?.accuracy))?Number(mvWf.oos.accuracy):null,
+              coverage:Number.isFinite(Number(mvWf?.oos?.coverage))?Number(mvWf.oos.coverage):null,
+              drift:String(mvWf?.drift?.status||'COLLECTING')
+            }:null
+          },
           walkForward:v?.walkForward?{
             status:String(v.walkForward.status||'COLLECTING'),
             oosN:Number(v.walkForward?.oos?.n||0),
