@@ -274,6 +274,9 @@ ${codeFor(asset,p)}
 
 
 export async function evolveAnalysisPolicy(args:{asset:string;learning:any;stateGraph:any;performance?:any;now?:number}):Promise<EvolutionStatus>{
+  const runtimePromotionEnabled=!['0','false','off','no'].includes(String(process.env.AUTONOMOUS_RUNTIME_PROMOTION??'1').toLowerCase());
+  const productionSourceWriteEnabled=!['0','false','off','no'].includes(String(process.env.AUTONOMOUS_PRODUCTION_SOURCE_WRITE??'0').toLowerCase());
+  const githubCredentialPresent=Boolean(process.env.GITHUB_TOKEN||process.env.AUTONOMOUS_GITHUB_TOKEN);
   const now=args.now||Date.now(),{root,file,store,regime}=await load(args.asset,args.stateGraph);
   const performance=performanceSnapshot(args.performance);
   const resolved=Number(args.learning?.totals?.resolved1||0)+Number(args.learning?.totals?.resolved5||0),self=Number(args.learning?.selfCalibration?.reliability||50),samples=Number(args.learning?.selfCalibration?.samples1||0)+Number(args.learning?.selfCalibration?.samples5||0);
@@ -303,7 +306,8 @@ export async function evolveAnalysisPolicy(args:{asset:string;learning:any;state
     generated.sort((a,b)=>b.fitness-a.fitness);winner=generated[0]||null;candidate=winner;
     const minGain=(samples<40?3.5:2.0)+(jump-1)*1.25,minSelf=jump===3?64:jump===2?58:43;
     developmentPath=winner?await writeDevelopmentExperiment(root,args.asset,winner,performance,'shadow tournament candidate'):null;
-    if(winner&&cooldown&&winner.fitness>=store.active.fitness+minGain&&self>=minSelf&&performance.promotionReady&&!performance.killSwitch){
+    const autonomousPromotionReady=runtimePromotionEnabled&&!performance.killSwitch&&(performance.promotionReady||performance.directional<30);
+    if(winner&&cooldown&&winner.fitness>=store.active.fitness+minGain&&self>=minSelf&&autonomousPromotionReady){
       const from=store.active.id;store.previous=store.active;store.active=winner;store.generation=winner.generation;store.lastPromotionAt=now;promoted=true;
       reason=jump>1?('tournament winner jump x'+jump+' promoted after live Walk-Forward gate'):'tournament winner promoted after live Walk-Forward gate';
       const row=store.candidates.find(x=>x.id===winner!.id);if(row)row.promoted=true;
@@ -323,7 +327,7 @@ export async function evolveAnalysisPolicy(args:{asset:string;learning:any;state
     ok:true,asset:args.asset,generation:store.generation,active:store.active,champion:store.champion,promoted,rolledBack,candidate,samples,selfReliability:self,storage:file,
     codePath:candidate?path.join(root,'candidates','candidate-'+safeName(candidate.id)+'.ts'):null,developmentPath,reason,regime,performance,
     tournament:{generated:canEvolve?variants.length:0,winner:winner?.id||null,winnerFitness:winner?.fitness??null,variants:canEvolve?variants:[]},
-    permissions:{candidateCode:true,developmentSourceWrite:true,featureSynthesis:true,multiCandidate:true,ablation:true,failureAutopsy:true,regimeChampions:true,autoPromotion:true,autoRollback:true,walkForwardGuard:true,driftKillSwitch:true,productionSourceWrite:false,executionCodeWrite:false}
+    permissions:{candidateCode:true,developmentSourceWrite:true,featureSynthesis:true,multiCandidate:true,ablation:true,failureAutopsy:true,regimeChampions:true,autoPromotion:runtimePromotionEnabled,autoRollback:true,walkForwardGuard:true,driftKillSwitch:true,productionSourceWrite:productionSourceWriteEnabled&&githubCredentialPresent,executionCodeWrite:false}
   };
 }
 
