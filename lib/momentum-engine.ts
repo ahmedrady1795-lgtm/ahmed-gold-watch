@@ -282,7 +282,7 @@ export function buildMomentumEngine(args:{
   }
   const uniqueLevels=[...new Set(structuralLevels.filter(ahead).map(v=>Number(v.toFixed(6))))]
     .sort((x,y)=>momentumSide==='BUY'?x-y:y-x)
-    .filter((v,i,a)=>i===0||Math.abs(v-a[i-1])>=Math.max(a*.10,p*.00004));
+    .filter((v,i,arr)=>i===0||Math.abs(v-arr[i-1])>=Math.max(a*.10,p*.00004));
 
   const volumeBoost=volumePhase==='CONFIRMING'?0.18:volumePhase==='BUILDING'?0.10:volumePhase==='ABSORBING'?-0.14:volumePhase==='CLIMAX'?-0.08:0;
   const phaseBoost=phase==='ACTIVE'?0.16:phase==='BUILDING'?0.10:phase==='EXHAUSTING'?-0.18:0;
