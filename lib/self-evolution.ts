@@ -33,8 +33,9 @@ export type EvolutionStatus={
   ok:boolean;asset:string;generation:number;active:EvolutionPolicy;champion:EvolutionPolicy;
   promoted:boolean;rolledBack:boolean;candidate:EvolutionPolicy|null;
   tournament:{generated:number;winner:string|null;winnerFitness:number|null;variants:string[]};
-  permissions:{candidateCode:boolean;developmentSourceWrite:boolean;featureSynthesis:boolean;multiCandidate:boolean;ablation:boolean;failureAutopsy:boolean;regimeChampions:boolean;autoPromotion:boolean;autoRollback:boolean;walkForwardGuard:boolean;driftKillSwitch:boolean;productionSourceWrite:boolean;executionCodeWrite:boolean};
+  permissions:{candidateCode:boolean;developmentSourceWrite:boolean;runtimePolicyWrite:boolean;featureSynthesis:boolean;multiCandidate:boolean;ablation:boolean;failureAutopsy:boolean;regimeChampions:boolean;autoPromotion:boolean;autoRollback:boolean;walkForwardGuard:boolean;driftKillSwitch:boolean;productionSourceWrite:boolean;executionCodeWrite:boolean};
   performance:{directional:number;posterior:number;oosN:number;oosAccuracy:number|null;coverage:number|null;drift:string;promotionReady:boolean;killSwitch:boolean};
+  runtimePlugin:{enabled:boolean;activePath:string;activeId:string;lastActivatedAt:number|null;transport:'RAILWAY_VOLUME'};
   samples:number;selfReliability:number;storage:string;codePath:string|null;developmentPath:string|null;reason:string;regime:string;
 };
 export type AutopsyResult={ok:boolean;asset:string;issues:string[];focus:string[];storedAt:string};
@@ -102,6 +103,47 @@ async function ensureDir(root:string){
   await fs.mkdir(path.join(root,'champions'),{recursive:true});
   await fs.mkdir(path.join(root,'autopsy'),{recursive:true});
   await fs.mkdir(path.join(root,'development'),{recursive:true});
+  await fs.mkdir(path.join(root,'runtime'),{recursive:true});
+  await fs.mkdir(path.join(root,'runtime','candidates'),{recursive:true});
+  await fs.mkdir(path.join(root,'runtime','history'),{recursive:true});
+}
+
+function runtimeActivePath(root:string,asset:string){return path.join(root,'runtime',asset.toLowerCase()+'-active.json');}
+function sanitizeRuntimePolicy(p:any,asset:string,regime:string):EvolutionPolicy{
+  const n=normalizePolicy(p,asset,regime),b=basePolicy(asset,regime);
+  const weights:any={};
+  for(const k of Object.keys(b.weights))weights[k]=round(cap(Number((n.weights as any)?.[k]??1),.50,1.34));
+  const thresholds:Thresholds={
+    minLearningConfidence:Math.round(cap(Number(n.thresholds?.minLearningConfidence||48),44,60)),
+    minLearningSamples:Math.round(cap(Number(n.thresholds?.minLearningSamples||10),8,28)),
+    structurePathConfidence:Math.round(cap(Number(n.thresholds?.structurePathConfidence||48),44,66)),
+    strongMoveReadiness:Math.round(cap(Number(n.thresholds?.strongMoveReadiness||60),56,76)),
+    modelConflictPenalty:Math.round(cap(Number(n.thresholds?.modelConflictPenalty||8),6,16))
+  };
+  return {...n,weights,thresholds,features:(n.features||[]).slice(0,12),disabledComponents:(n.disabledComponents||[]).slice(0,3)};
+}
+async function readRuntimePolicy(root:string,asset:string,regime:string){
+  const file=runtimeActivePath(root,asset);
+  try{
+    const j=JSON.parse(await fs.readFile(file,'utf8'));
+    const raw=j?.policy||j;
+    if(!raw?.id||!raw?.weights||!raw?.thresholds)return null;
+    return {policy:sanitizeRuntimePolicy(raw,asset,regime),file,activatedAt:Number(j?.activatedAt||0)||null};
+  }catch{return null;}
+}
+async function writeRuntimePolicy(root:string,asset:string,p:EvolutionPolicy,reason:string,active=false){
+  const safe=sanitizeRuntimePolicy(p,asset,p.regime||'TRANSITION'),now=Date.now();
+  const payload={version:'runtime-policy-v1',asset,activatedAt:active?now:null,createdAt:now,reason,policy:safe};
+  const candidate=path.join(root,'runtime','candidates',safeName(safe.id)+'.json');
+  const ctmp=candidate+'.tmp';await fs.writeFile(ctmp,JSON.stringify(payload,null,2));await fs.rename(ctmp,candidate);
+  if(active){
+    const file=runtimeActivePath(root,asset),tmp=file+'.tmp';
+    await fs.writeFile(tmp,JSON.stringify({...payload,activatedAt:now},null,2));await fs.rename(tmp,file);
+    const hist=path.join(root,'runtime','history',asset.toLowerCase()+'.jsonl');
+    await fs.appendFile(hist,JSON.stringify({at:now,asset,policyId:safe.id,generation:safe.generation,reason})+'\n').catch(()=>{});
+    return file;
+  }
+  return candidate;
 }
 async function resolveRoot(){try{await ensureDir(ROOT);return ROOT;}catch{await ensureDir(FALLBACK);return FALLBACK;}}
 async function load(asset:string,stateGraph:any){
@@ -113,13 +155,19 @@ async function load(asset:string,stateGraph:any){
       const champions:Record<string,EvolutionPolicy>={};
       for(const [k,v] of Object.entries(j.championByRegime||{}))champions[k]=normalizePolicy(v,asset,k);
       const store:EvolutionStore={version:2,asset,generation:Number(j.generation||0),active,champion,championByRegime:champions,previous:j.previous?normalizePolicy(j.previous,asset,regime):null,lastPromotionAt:Number(j.lastPromotionAt||0),lastEvalAt:Number(j.lastEvalAt||0),lastResolved:Number(j.lastResolved||0),candidates:Array.isArray(j.candidates)?j.candidates:[],failureFocus:j.failureFocus||{},recentAutopsy:j.recentAutopsy||null,history:Array.isArray(j.history)?j.history:[]};
-      return {root,file,store,regime};
+      const runtime=await readRuntimePolicy(root,asset,regime);
+      if(runtime?.policy){
+        store.active=runtime.policy;
+        store.generation=Math.max(store.generation,Number(runtime.policy.generation||0));
+      }
+      return {root,file,store,regime,runtime};
     }
   }catch{}
   const p=basePolicy(asset,regime);
   const store:EvolutionStore={version:2,asset,generation:0,active:p,champion:p,championByRegime:{[regime]:p},previous:null,lastPromotionAt:0,lastEvalAt:0,lastResolved:0,candidates:[],failureFocus:{},recentAutopsy:null,history:[]};
   await fs.writeFile(file,JSON.stringify(store,null,2));
-  return {root,file,store,regime};
+  const activePath=await writeRuntimePolicy(root,asset,p,'genesis runtime policy',true);
+  return {root,file,store,regime,runtime:{policy:p,file:activePath,activatedAt:Date.now()}};
 }
 const saveQueues=new Map<string,Promise<void>>();
 async function save(file:string,store:EvolutionStore){
@@ -277,7 +325,9 @@ export async function evolveAnalysisPolicy(args:{asset:string;learning:any;state
   const runtimePromotionEnabled=!['0','false','off','no'].includes(String(process.env.AUTONOMOUS_RUNTIME_PROMOTION??'1').toLowerCase());
   const productionSourceWriteEnabled=!['0','false','off','no'].includes(String(process.env.AUTONOMOUS_PRODUCTION_SOURCE_WRITE??'0').toLowerCase());
   const githubCredentialPresent=Boolean(process.env.GITHUB_TOKEN||process.env.AUTONOMOUS_GITHUB_TOKEN);
-  const now=args.now||Date.now(),{root,file,store,regime}=await load(args.asset,args.stateGraph);
+  const now=args.now||Date.now(),loaded=await load(args.asset,args.stateGraph),{root,file,store,regime}=loaded;
+  let runtimeActivePathValue=loaded.runtime?.file||runtimeActivePath(root,args.asset);
+  let runtimeActivatedAt=loaded.runtime?.activatedAt||null;
   const performance=performanceSnapshot(args.performance);
   const resolved=Number(args.learning?.totals?.resolved1||0)+Number(args.learning?.totals?.resolved5||0),self=Number(args.learning?.selfCalibration?.reliability||50),samples=Number(args.learning?.selfCalibration?.samples1||0)+Number(args.learning?.selfCalibration?.samples5||0);
   const previousEvalAt=Number(store.lastEvalAt||0),regimeChampion=store.championByRegime[regime]||store.champion;
@@ -288,6 +338,7 @@ export async function evolveAnalysisPolicy(args:{asset:string;learning:any;state
   const rollbackReady=Boolean(store.previous&&samples>=18&&((self<40)||(activeFitness+5<regimeChampion.fitness)||performance.killSwitch));
   if(rollbackReady){
     const from=store.active.id;store.active=regimeChampion;rolledBack=true;reason='automatic rollback to regime champion';
+    runtimeActivePathValue=await writeRuntimePolicy(root,args.asset,store.active,reason,true);runtimeActivatedAt=Date.now();
     store.history.push({at:now,action:'ROLLBACK',from,to:store.active.id,fitness:activeFitness,reason});
   }
 
@@ -301,6 +352,7 @@ export async function evolveAnalysisPolicy(args:{asset:string;learning:any;state
     for(const variant of variants){
       const p=mutate(args.asset,store.active,args.learning,args.stateGraph,store.failureFocus,now,jump,variant);p.fitness=fitness(p,args.learning,args.stateGraph);
       const codePath=await writeCandidate(root,args.asset,p,false);
+      await writeRuntimePolicy(root,args.asset,p,'shadow candidate '+variant,false);
       store.candidates.push({id:p.id,fitness:p.fitness,createdAt:now,promoted:false,codePath,generation:p.generation,regime:p.regime,variant});generated.push(p);
     }
     generated.sort((a,b)=>b.fitness-a.fitness);winner=generated[0]||null;candidate=winner;
@@ -314,6 +366,7 @@ export async function evolveAnalysisPolicy(args:{asset:string;learning:any;state
       const oldRegime=store.championByRegime[regime];
       if(!oldRegime||winner.fitness>=fitness(oldRegime,args.learning,args.stateGraph)){store.championByRegime[regime]=winner;await writeCandidate(root,args.asset,winner,true);}
       if(winner.fitness>=store.champion.fitness)store.champion=winner;
+      runtimeActivePathValue=await writeRuntimePolicy(root,args.asset,winner,reason,true);runtimeActivatedAt=Date.now();
       store.history.push({at:now,action:'PROMOTE',from,to:winner.id,fitness:winner.fitness,reason});
     }else{
       reason=performance.killSwitch?'performance kill-switch: candidates remain shadow':!performance.promotionReady?'live Walk-Forward gate not passed; candidates remain shadow':'5-candidate tournament stayed in shadow';
@@ -326,8 +379,9 @@ export async function evolveAnalysisPolicy(args:{asset:string;learning:any;state
   return {
     ok:true,asset:args.asset,generation:store.generation,active:store.active,champion:store.champion,promoted,rolledBack,candidate,samples,selfReliability:self,storage:file,
     codePath:candidate?path.join(root,'candidates','candidate-'+safeName(candidate.id)+'.ts'):null,developmentPath,reason,regime,performance,
+    runtimePlugin:{enabled:true,activePath:runtimeActivePathValue,activeId:store.active.id,lastActivatedAt:runtimeActivatedAt,transport:'RAILWAY_VOLUME'},
     tournament:{generated:canEvolve?variants.length:0,winner:winner?.id||null,winnerFitness:winner?.fitness??null,variants:canEvolve?variants:[]},
-    permissions:{candidateCode:true,developmentSourceWrite:true,featureSynthesis:true,multiCandidate:true,ablation:true,failureAutopsy:true,regimeChampions:true,autoPromotion:runtimePromotionEnabled,autoRollback:true,walkForwardGuard:true,driftKillSwitch:true,productionSourceWrite:productionSourceWriteEnabled&&githubCredentialPresent,executionCodeWrite:false}
+    permissions:{candidateCode:true,developmentSourceWrite:true,runtimePolicyWrite:true,featureSynthesis:true,multiCandidate:true,ablation:true,failureAutopsy:true,regimeChampions:true,autoPromotion:runtimePromotionEnabled,autoRollback:true,walkForwardGuard:true,driftKillSwitch:true,productionSourceWrite:productionSourceWriteEnabled&&githubCredentialPresent,executionCodeWrite:false}
   };
 }
 
