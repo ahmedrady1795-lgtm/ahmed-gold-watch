@@ -58,7 +58,7 @@ function calibrateHorizon(h:Horizon,expected:any,learning:any,horizon:'m2'|'m5'|
   if(h.agreement<65)confidence-=6;
   if(Number(expected?.decisiveRate||0)<50)confidence-=5;
   if(historical<45&&confidence>64)confidence=64;
-  confidence=Math.round(cap(confidence,0,confidenceCeiling));
+  confidence=Math.round(cap(confidence,0,86));
   return {...h,confidence,uncertainty:Math.round(cap(100-confidence,0,100))};
 }
 function scoreExpected(x:any){
