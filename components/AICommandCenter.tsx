@@ -34,6 +34,7 @@ const structurePatternAr=(v:any)=>{
   return x?'هيكل متغير':'—';
 };
 const intentPhaseAr=(p:any)=>p==='LIQUIDITY_BUILDUP'?'تجميع سيولة':p==='SWEEP_DETECTED'?'سحب سيولة':p==='TRAP_CONFIRMED'?'فخ سيولة مؤكد':p==='PRE_EXPANSION'?'استعداد قبل الحركة':p==='EXPANSION'?'الحركة بدأت':'لا يوجد سيناريو واضح';
+const professionalPhaseAr=(p:any)=>p==='PREPARE'?'تحضير':p==='ARMED'?'مسلّح قبل الحركة':p==='EXECUTE'?'جاهز للتنفيذ':p==='MANAGE'?'إدارة الصفقة':p==='NO_TRADE'?'لا صفقة':'مراقبة';
 const intentStepAr=(v:any)=>{
   const x=String(v||'');
   if(x==='COMPRESSION')return 'ضغط';
