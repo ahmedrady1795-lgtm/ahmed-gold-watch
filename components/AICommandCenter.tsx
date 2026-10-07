@@ -137,6 +137,10 @@ function AssetCard({x,liveQuote,fast}:any){
   const validationDirectional=Number(validation15?.global?.hits||0)+Number(validation15?.global?.fails||0);
   const validationAccuracy=Number(validation15?.global?.accuracy);
   const showValidation15=validationDirectional>=5&&Number.isFinite(validationAccuracy);
+  const volumeValidation=validation15?.mVolume||null;
+  const volumeValidationDirectional=Number(volumeValidation?.directional||0);
+  const volumeValidationAccuracy=Number(volumeValidation?.accuracy);
+  const showVolumeValidation=volumeValidationDirectional>=5&&Number.isFinite(volumeValidationAccuracy);
   const upperLiquidity=path?.upperLiquidity||zone?.resistance||null;
   const lowerLiquidity=path?.lowerLiquidity||zone?.support||null;
   const liquidityPoint=(z:any)=>{
@@ -216,6 +220,14 @@ function AssetCard({x,liveQuote,fast}:any){
           </span>}
           {momentum?.mVolume&&<span>
             RVOL {Number(momentum.mVolume.relativeVolume||0).toFixed(2)}x · Follow-through {Math.round(Number(momentum.mVolume.followThrough||0))}% · Effort/Result {Math.round(Number(momentum.mVolume.effortResult||0))}%
+          </span>}
+          {momentum?.mVolume&&<span>
+            ثبات الحجم {Math.round(Number(momentum.mVolume.stability||0))}% · موثوقية المصدر {Math.round(Number(momentum.mVolume.reliability||0))}% · جودة {Math.round(Number(momentum.mVolume.quality||0))}%
+          </span>}
+          {momentum?.mVolume?.flipPending&&<span className="amber">انعكاس Volume تحت الاختبار · لن يتم قلب اتجاه الحجم قبل التأكيد</span>}
+          {showVolumeValidation&&<span>
+            اختبار M-Volume 15د · دقة {volumeValidationAccuracy.toFixed(1)}% · {volumeValidationDirectional} نتيجة
+            {volumeValidation?.walkForward?.status&&volumeValidation.walkForward.status!=='COLLECTING'?(' · '+String(volumeValidation.walkForward.status)):''}
           </span>}
           {momentum?.mVolume&&Number(momentum.mVolume.divergence||0)>=45&&<span className="amber">
             Divergence سعر/حجم {Math.round(Number(momentum.mVolume.divergence||0))}% · الإشارة تحتاج حذر
