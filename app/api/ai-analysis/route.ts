@@ -768,8 +768,18 @@ export async function GET(request:Request){
       touches:Number(z.touches||0),
       rejections:Number(z.rejections||0)
     }:null;
-    const buildForwardMove=(asset:'GOLD'|'BTC',hunt:any,scalp:any,movement:any,marketLead:any,pulse:any,liq:any,structure:any,accumulation:any,h4:any,intent:any)=>{
+    const buildForwardMove=(asset:'GOLD'|'BTC',hunt:any,scalp:any,movement:any,marketLead:any,pulse:any,liq:any,structure:any,accumulation:any,h4:any,intent:any,evolution:any)=>{
       const rows:Array<{side:'BUY'|'SELL';score:number;weight:number;name:string}>=[];
+      const policy=evolution?.active||{},controls=policy?.controls||{};
+      const fc=(name:string,fallback:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,Number(controls?.[name]??fallback)));
+      const forwardMinShare=fc('forwardMinShare',58,50,80);
+      const forwardMinSupport=Math.round(fc('forwardMinSupport',3,1,7));
+      const forwardMinConfidence=fc('forwardMinConfidence',52,25,85);
+      const conditionalMinConfidence=fc('conditionalMinConfidence',45,20,80);
+      const confidenceCeiling=fc('confidenceCeiling',89,45,96);
+      const h4OppositionPenalty=fc('h4OppositionPenalty',8,0,25);
+      const m5OppositionPenalty=fc('m5OppositionPenalty',8,0,25);
+      const m15OppositionPenalty=fc('m15OppositionPenalty',9,0,25);
       const add=(name:string,s:any,score:any,weight:number)=>{
         if((s==='BUY'||s==='SELL')&&Number(score)>0&&weight>0)rows.push({name,side:s,score:Math.max(0,Math.min(92,Number(score))),weight});
       };
@@ -868,7 +878,7 @@ export async function GET(request:Request){
         accSide!=='WAIT'&&accSide!==winner&&Math.max(accScore,Number(accumulation?.breakoutReadiness||0))>=56,
         structureSide!=='WAIT'&&structureSide!==winner&&structureScore>=54
       ].filter(Boolean).length;
-      let confidence=Math.round(Math.max(0,Math.min(86,33+edge*.43+support*4.2-oppose*3.2+coreConfirmations*3.5-coreOpposition*5)));
+      let confidence=Math.round(Math.max(0,Math.min(confidenceCeiling,33+edge*.43+support*4.2-oppose*3.2+coreConfirmations*3.5-coreOpposition*5)));
       const adaptiveSource=intentPreMove&&intentSide===winner?'MARKET_MAKER_INTENT_15M':'H4_FORWARD_15M';
       const adaptiveRegime=adaptiveKey('H4_'+String(h4Side||'WAIT')+'__M15_'+String(m15Side||'WAIT')+'__M5_'+String(m5Side||'WAIT')+'__'+String(intent?.phase||'NEUTRAL'));
       const adaptiveSourceStats=adaptive15?.bySource?.[adaptiveSource]||null;
@@ -898,21 +908,21 @@ export async function GET(request:Request){
       if(intentOpposes)confidence-=intentConfidence>=72?13:8;
       const m5Active=(m5Side==='BUY'||m5Side==='SELL')&&m5Confidence>=50;
       const m5Opposes=Boolean(m5Active&&m5Side!==winner);
-      if(m5Opposes)confidence-=m5Confidence>=68?13:8;
+      if(m5Opposes)confidence-=m5OppositionPenalty+(m5Confidence>=68?5:0);
       else if(m5Active&&m5Side===winner)confidence+=Math.min(4,Math.round((m5Confidence-48)/8));
       const m15Active=(m15Side==='BUY'||m15Side==='SELL')&&m15Confidence>=50&&(Number(movement?.horizonQuality?.fifteenMinute?.independentSupport||0)>=2||m15Confidence>=64);
       const m15Opposes=Boolean(m15Active&&m15Side!==winner);
-      if(m15Opposes)confidence-=m15Confidence>=65?15:9;
+      if(m15Opposes)confidence-=m15OppositionPenalty+(m15Confidence>=65?6:0);
       else if(m15Active&&m15Side===winner)confidence+=Math.min(7,Math.round((m15Confidence-44)/6));
       const h4Active=Boolean(h4?.ok&&(h4Side==='BUY'||h4Side==='SELL')&&h4Confidence>=48);
       const h4Opposes=Boolean(h4Active&&h4Side!==winner);
       if(h4Active&&h4Side===winner)confidence+=Math.min(7,Math.round((h4Confidence-42)/7));
-      if(h4Opposes)confidence-=h4Confidence>=68?11:7;
+      if(h4Opposes)confidence-=h4OppositionPenalty+(h4Confidence>=68?4:0);
 
-      if(leadFresh&&marketLead?.armed&&leadSide===winner)confidence=Math.min(89,confidence+3);
-      else if(leadFresh&&leadStage==='BUILDING'&&leadSide===winner)confidence=Math.min(87,confidence+2);
+      if(leadFresh&&marketLead?.armed&&leadSide===winner)confidence=Math.min(confidenceCeiling,confidence+3);
+      else if(leadFresh&&leadStage==='BUILDING'&&leadSide===winner)confidence=Math.min(confidenceCeiling,confidence+2);
       if(!leadFresh&&marketLead?.available)confidence-=2;
-      confidence=Math.max(0,Math.min(89,Math.round(confidence)));
+      confidence=Math.max(0,Math.min(confidenceCeiling,Math.round(confidence)));
 
       const leadSupports=Boolean(leadFresh&&leadSide===winner&&(marketLead?.armed||leadStage==='BUILDING'));
       const m1Aligned=m1Side===winner&&m1Confidence>=38;
@@ -932,26 +942,26 @@ export async function GET(request:Request){
         higherTfAligned&&!m15Opposes&&
         (
           coreConfirmations>=2||
-          (coreConfirmations>=1&&higherTfPair&&support>=3)||
-          (intentPreMove&&intentAligned&&coreConfirmations>=1&&higherTfAligned&&support>=3)
+          (coreConfirmations>=1&&higherTfPair&&support>=forwardMinSupport)||
+          (intentPreMove&&intentAligned&&coreConfirmations>=1&&higherTfAligned&&support>=forwardMinSupport)
         )&&
-        (!h4Opposes||coreConfirmations>=2&&share>=64&&support>=3)&&
-        (!intentOpposes||coreConfirmations===3&&share>=66)
+        (!h4Opposes||coreConfirmations>=2&&share>=Math.min(78,forwardMinShare+6)&&support>=forwardMinSupport)&&
+        (!intentOpposes||coreConfirmations===3&&share>=Math.min(82,forwardMinShare+8))
       );
-      const coreReady=coreReadyBase&&(!adaptiveWeak||(coreConfirmations>=2&&share>=65&&support>=4));
+      const coreReady=coreReadyBase&&(!adaptiveWeak||(coreConfirmations>=2&&share>=Math.min(82,forwardMinShare+7)&&support>=Math.min(7,forwardMinSupport+1)));
       const conditionalReady=Boolean(
-        priceNow!=null&&share>=55&&support>=3&&confidence>=43&&
+        priceNow!=null&&share>=Math.max(50,forwardMinShare-5)&&support>=Math.max(2,forwardMinSupport)&&confidence>=conditionalMinConfidence&&
         structureAligned&&!hardLiquidityOpposition&&!intentOpposes&&!adaptiveWeak&&!m5Opposes&&!m15Opposes&&
         higherTfPair
       );
       const strictForwardReady=Boolean(
-        share>=60&&support>=3&&confidence>=50&&coreReady&&higherTfPair&&!m5Opposes&&!m15Opposes
+        share>=forwardMinShare&&support>=forwardMinSupport&&confidence>=forwardMinConfidence&&coreReady&&higherTfPair&&!m5Opposes&&!m15Opposes
       );
       const conditionalBypass=Boolean(!strictForwardReady&&conditionalReady);
       if(!strictForwardReady&&!conditionalReady)return {
         side:'WAIT',confidence,status:'WAIT',target:null,zone:null,windowSeconds:null,expiresAt:null,
         confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide,m5:m5Side,m15:m15Side,h4:h4Side,m5IndependentSupport,m5IndependentOpposition,m15IndependentSupport,m15IndependentOpposition},
-        adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3)),execution:{validated:executionValidated,samples:cleanDirectional,posterior:Number(cleanPosterior.toFixed(1)),oosN:cleanOosN,oosAccuracy:Number.isFinite(cleanOosAccuracy)?Number(cleanOosAccuracy.toFixed(1)):null,drift:String(cleanWf?.drift?.status||'COLLECTING')}},
+        adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3)),policy:{id:policy?.id||null,generation:Number(policy?.generation||0),forwardMinShare,forwardMinSupport,forwardMinConfidence,conditionalMinConfidence,confidenceCeiling,h4OppositionPenalty,m5OppositionPenalty,m15OppositionPenalty},execution:{validated:executionValidated,samples:cleanDirectional,posterior:Number(cleanPosterior.toFixed(1)),oosN:cleanOosN,oosAccuracy:Number.isFinite(cleanOosAccuracy)?Number(cleanOosAccuracy.toFixed(1)):null,drift:String(cleanWf?.drift?.status||'COLLECTING')}},
         reason:m15Opposes?'M15 يعاكس الاتجاه؛ تم إيقاف التوقع':m5Opposes?'M5 يعاكس الاتجاه؛ تم إيقاف التوقع بدل المخاطرة بإشارة H4 منفردة':!higherTfPair?'يلزم اتفاق اثنين على الأقل من M5/M15/H4 قبل اعتماد توقع 15 دقيقة':'السيولة والهيكل والفريمات الأعلى لم تتفق بما يكفي'
       };
 
@@ -1057,7 +1067,7 @@ export async function GET(request:Request){
         priceNow,distancePct:distancePct==null?null:Number(distancePct.toFixed(4)),
         freshness:{leadFresh,leadAgeMs:Number.isFinite(leadAge)?leadAge:null,m5Opposes,m15Opposes,h4Opposes,intentOpposes,alreadyMoving},
         confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide,m5:m5Side,m15:m15Side,h4:h4Side,m5IndependentSupport,m5IndependentOpposition,m15IndependentSupport,m15IndependentOpposition},
-        adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3)),execution:{validated:executionValidated,samples:cleanDirectional,posterior:Number(cleanPosterior.toFixed(1)),oosN:cleanOosN,oosAccuracy:Number.isFinite(cleanOosAccuracy)?Number(cleanOosAccuracy.toFixed(1)):null,drift:String(cleanWf?.drift?.status||'COLLECTING')}},
+        adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3)),policy:{id:policy?.id||null,generation:Number(policy?.generation||0),forwardMinShare,forwardMinSupport,forwardMinConfidence,conditionalMinConfidence,confidenceCeiling,h4OppositionPenalty,m5OppositionPenalty,m15OppositionPenalty},execution:{validated:executionValidated,samples:cleanDirectional,posterior:Number(cleanPosterior.toFixed(1)),oosN:cleanOosN,oosAccuracy:Number.isFinite(cleanOosAccuracy)?Number(cleanOosAccuracy.toFixed(1)):null,drift:String(cleanWf?.drift?.status||'COLLECTING')}},
         reason:(!executionValidated?'اختبار Shadow V2؛ لا دخول حقيقي قبل إثبات الدقة':conditionalBypass?'صفقة مشروطة: M5/M15/H4 والهيكل متفقون لكن التأكيد الكامل لم يكتمل':alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':intentArmed?'سحب سيولة/امتصاص يسبق الحركة':building?'ضغط مبكر يتكوّن':'ترجيح 15 دقيقة')+' · H4 '+(h4Side==='BUY'?'صاعد':h4Side==='SELL'?'هابط':'محايد')+' · تأكيد أساسي '+coreConfirmations+'/3 · '+sourceParts.join(' + ')
       };
     };
@@ -1127,9 +1137,9 @@ export async function GET(request:Request){
 
       return keepPrev('تم رفض انعكاس مؤقت؛ الاتجاه لا يتغير إلا بتفوق واضح ومستقل للإشارة العكسية');
     };
-    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any,h4?:any,intent?:any)=>({
+    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any,h4?:any,intent?:any,evolution?:any)=>({
       asset,
-      forwardMove:stabilizeForwardMove(asset,buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse,liq,structure,accumulation,h4,intent),pulse),
+      forwardMove:stabilizeForwardMove(asset,buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse,liq,structure,accumulation,h4,intent,evolution),pulse),
       h4Context:h4||null,
       marketMakerIntent:intent?{
         ok:Boolean(intent.ok),side:intent.side||'WAIT',phase:intent.phase||'NEUTRAL',confidence:Number(intent.confidence||0),score:Number(intent.score||0),preMove:Boolean(intent.preMove),
@@ -1689,8 +1699,10 @@ export async function GET(request:Request){
         btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount}
       }:null,
       developmentLab:{
-        mode:'GUARDED_AUTO_DEVELOPMENT',
+        mode:'AUTONOMOUS_RUNTIME_EVOLUTION',
         productionSourceWrite:false,
+        runtimePolicyWrite:true,
+        marketLogicFullyAdaptive:true,
         executionCodeWrite:false,
         gold:{
           generation:Number(goldEvolution?.generation||0),regime:goldEvolution?.regime||'TRANSITION',promoted:Boolean(goldEvolution?.promoted),rolledBack:Boolean(goldEvolution?.rolledBack),
@@ -1701,8 +1713,8 @@ export async function GET(request:Request){
           reason:bitcoinEvolution?.reason||'',performance:bitcoinEvolution?.performance||null,runtimePlugin:bitcoinEvolution?.runtimePlugin||null,tournament:bitcoinEvolution?.tournament||null,tools:bitcoinAutonomousTools?{capabilities:bitcoinAutonomousTools.capabilities,used:bitcoinAutonomousTools.tools,research:bitcoinAutonomousTools.research}:null
         }
       },
-      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation,goldH4,goldIntent),
-      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity,bitcoinStructure,bitcoinAccumulation,bitcoinH4,bitcoinIntent)
+      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation,goldH4,goldIntent,goldEvolution),
+      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity,bitcoinStructure,bitcoinAccumulation,bitcoinH4,bitcoinIntent,bitcoinEvolution)
     };
 
     const compact15Validation=(v:any)=>v?{
