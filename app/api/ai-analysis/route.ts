@@ -952,7 +952,7 @@ export async function GET(request:Request){
       if(!strictForwardReady&&!conditionalReady)return {
         side:'WAIT',confidence,status:'WAIT',target:null,zone:null,windowSeconds:null,expiresAt:null,
         confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide,momentum:momentumSide,m5:m5Side,m15:m15Side,h4:h4Side,m5IndependentSupport,m5IndependentOpposition,m15IndependentSupport,m15IndependentOpposition},
-        adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3))},
+        adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3)),execution:{validated:executionValidated,samples:cleanDirectional,posterior:Number(cleanPosterior.toFixed(1)),oosN:cleanOosN,oosAccuracy:Number.isFinite(cleanOosAccuracy)?Number(cleanOosAccuracy.toFixed(1)):null,drift:String(cleanWf?.drift?.status||'COLLECTING')}},
         reason:m15Opposes?'M15 يعاكس الاتجاه؛ تم إيقاف التوقع':m5Opposes?'M5 يعاكس الاتجاه؛ تم إيقاف التوقع بدل المخاطرة بإشارة H4 منفردة':!higherTfPair?'يلزم اتفاق اثنين على الأقل من M5/M15/H4 قبل اعتماد توقع 15 دقيقة':'السيولة والهيكل والفريمات الأعلى لم تتفق بما يكفي'
       };
 
@@ -1000,9 +1000,20 @@ export async function GET(request:Request){
         :null;
       const targetDistanceBps=priceNow!=null&&target!=null?Math.abs(target-priceNow)/priceNow*10000:0;
       const minTradeDistanceBps=asset==='GOLD'?3.5:8;
+      const cleanGlobal=adaptive15?.global||{};
+      const cleanDirectional=Number(cleanGlobal?.hits||0)+Number(cleanGlobal?.fails||0);
+      const cleanPosterior=Number.isFinite(Number(cleanGlobal?.posteriorAccuracy))?Number(cleanGlobal.posteriorAccuracy):50;
+      const cleanWf=adaptive15?.walkForward||null;
+      const cleanOosN=Number(cleanWf?.oos?.n||0);
+      const cleanOosAccuracy=Number(cleanWf?.oos?.accuracy);
+      const executionValidated=Boolean(
+        cleanDirectional>=30&&cleanPosterior>=54&&
+        cleanOosN>=10&&Number.isFinite(cleanOosAccuracy)&&cleanOosAccuracy>=52&&
+        String(cleanWf?.drift?.status||'COLLECTING')!=='DEGRADING'
+      );
       const tradeEligible=Boolean(
-        target!=null&&entryTrigger!=null&&stopLoss!=null&&rr!=null&&rr>=1.20&&
-        targetDistanceBps>=minTradeDistanceBps&&higherTfPair&&!m15Opposes
+        executionValidated&&target!=null&&entryTrigger!=null&&stopLoss!=null&&rr!=null&&rr>=1.20&&
+        targetDistanceBps>=minTradeDistanceBps&&higherTfPair&&!m5Opposes&&!m15Opposes
       );
       const tradeSetup=tradeEligible?{
         mode:conditionalBypass?'CONDITIONAL':'READY',
@@ -1063,8 +1074,8 @@ export async function GET(request:Request){
         priceNow,distancePct:distancePct==null?null:Number(distancePct.toFixed(4)),
         freshness:{leadFresh,leadAgeMs:Number.isFinite(leadAge)?leadAge:null,m5Opposes,m15Opposes,h4Opposes,intentOpposes,momentumOpposes,alreadyMoving},
         confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide,momentum:momentumSide,m5:m5Side,m15:m15Side,h4:h4Side,m5IndependentSupport,m5IndependentOpposition,m15IndependentSupport,m15IndependentOpposition},
-        adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3))},
-        reason:(conditionalBypass?'صفقة مشروطة: M5/M15/H4 والهيكل متفقون لكن التأكيد الكامل لم يكتمل':alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':intentArmed?'سحب سيولة/امتصاص يسبق الحركة':momentumArmed?'المومنتم يتسارع قبل اتساع الحركة':building?'ضغط مبكر يتكوّن':'ترجيح 15 دقيقة')+' · H4 '+(h4Side==='BUY'?'صاعد':h4Side==='SELL'?'هابط':'محايد')+' · تأكيد أساسي '+coreConfirmations+'/3 · '+sourceParts.join(' + ')
+        adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3)),execution:{validated:executionValidated,samples:cleanDirectional,posterior:Number(cleanPosterior.toFixed(1)),oosN:cleanOosN,oosAccuracy:Number.isFinite(cleanOosAccuracy)?Number(cleanOosAccuracy.toFixed(1)):null,drift:String(cleanWf?.drift?.status||'COLLECTING')}},
+        reason:(!executionValidated?'اختبار Shadow V2؛ لا دخول حقيقي قبل إثبات الدقة':conditionalBypass?'صفقة مشروطة: M5/M15/H4 والهيكل متفقون لكن التأكيد الكامل لم يكتمل':alreadyMoving?'الحركة بدأت ولم تصل للوجهة بعد':armed?'ضغط سابق للحركة متماسك':intentArmed?'سحب سيولة/امتصاص يسبق الحركة':momentumArmed?'المومنتم يتسارع قبل اتساع الحركة':building?'ضغط مبكر يتكوّن':'ترجيح 15 دقيقة')+' · H4 '+(h4Side==='BUY'?'صاعد':h4Side==='SELL'?'هابط':'محايد')+' · تأكيد أساسي '+coreConfirmations+'/3 · '+sourceParts.join(' + ')
       };
     };
     const stabilizeForwardMove=(asset:'GOLD'|'BTC',candidate:any,pulse:any)=>{
