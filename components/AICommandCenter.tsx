@@ -148,6 +148,14 @@ function AssetCard({x,liveQuote,fast}:any){
   const tradeTp=tradeSetup?.takeProfit!==null&&tradeSetup?.takeProfit!==undefined&&Number.isFinite(Number(tradeSetup.takeProfit))?Number(tradeSetup.takeProfit):null;
   const structure=x?.movementStructure||null;
   const structureText=movementStructureLabel(structure);
+  const plan=x?.professionalPlan||null;
+  const planPrimary=plan?.primary||null;
+  const planAlt=plan?.alternate||null;
+  const planBias=plan?.bias==='BUY'||plan?.bias==='SELL'?plan.bias:'WAIT';
+  const planEntry=planPrimary?.entry!=null&&Number.isFinite(Number(planPrimary.entry))?Number(planPrimary.entry):null;
+  const planInvalid=planPrimary?.invalidation!=null&&Number.isFinite(Number(planPrimary.invalidation))?Number(planPrimary.invalidation):null;
+  const planT1=planPrimary?.target1!=null&&Number.isFinite(Number(planPrimary.target1))?Number(planPrimary.target1):null;
+  const planT2=planPrimary?.target2!=null&&Number.isFinite(Number(planPrimary.target2))?Number(planPrimary.target2):null;
   const forwardHeadline=forwardSide==='WAIT'
     ?'انتظار قراءة أمامية أوضح'
     :forwardStatus==='PRE_MOVE'
@@ -204,6 +212,40 @@ function AssetCard({x,liveQuote,fast}:any){
       </div>}
       {forward?.reason&&<small className="muted">{forward.reason}</small>}
     </div>
+
+    {plan&&<div className="next-move-copy primary-move zone-primary professional-plan">
+      <span>خطة السوق الاحترافية · قبل التنفيذ</span>
+      <strong className={planBias==='BUY'?'green':planBias==='SELL'?'red':'amber'}>
+        {professionalPhaseAr(plan.phase)} · {moveAr(planBias)} · جاهزية {Math.round(Number(plan.readiness||0))}%
+      </strong>
+      <div className="forecast-scenario-strip">
+        <div className="scenario-wide"><small>فهم السوق</small>
+          <b>{plan.marketStory||'انتظار سياق أوضح'}</b>
+          <span>{Array.isArray(plan.earlySignals)&&plan.earlySignals.length?plan.earlySignals.join(' · '):'لا توجد إشارة مبكرة مكتملة'}</span>
+        </div>
+        <div><small>التفعيل</small><b dir="ltr">{planEntry!=null?fmt(planEntry,2):'—'}</b></div>
+        <div><small>الإبطال</small><b dir="ltr">{planInvalid!=null?fmt(planInvalid,2):'—'}</b></div>
+        <div><small>الهدف 1</small><b dir="ltr">{planT1!=null?fmt(planT1,2):'—'}</b></div>
+        <div><small>الهدف 2</small><b dir="ltr">{planT2!=null?fmt(planT2,2):'—'}</b></div>
+        <div><small>احتمال الرئيسي</small><b>{Math.round(Number(planPrimary?.probability||0))}%</b></div>
+        <div><small>R:R</small><b>{Number.isFinite(Number(planPrimary?.rr))?Number(planPrimary.rr).toFixed(2):'—'}</b></div>
+        <div className="scenario-wide"><small>مسار الخطة</small>
+          <b>{Array.isArray(plan.route)&&plan.route.length?plan.route.join(' → '):'انتظار'}</b>
+          <span>{planPrimary?.trigger||'انتظار تفعيل واضح'}</span>
+        </div>
+        {planAlt&&<div className="scenario-wide"><small>السيناريو البديل</small>
+          <b className={planAlt.side==='BUY'?'green':planAlt.side==='SELL'?'red':'amber'}>{moveAr(planAlt.side)} · {Math.round(Number(planAlt.probability||0))}%</b>
+          <span>{planAlt.destinationLow!=null&&planAlt.destinationHigh!=null?('وجهة '+fmt(Number(planAlt.destinationLow),2)+'–'+fmt(Number(planAlt.destinationHigh),2)+' · '):''}{planAlt.trigger}</span>
+        </div>}
+        <div className="scenario-wide"><small>حماية الصفقة</small>
+          <b>{plan.protection?.breakEvenTrigger!=null?<>Break-even عند <span dir="ltr">{fmt(Number(plan.protection.breakEvenTrigger),2)}</span></>:'Break-even بعد تحرك صالح'}</b>
+          <span>{Array.isArray(plan.protection?.cancelOn)?'إلغاء عند: '+plan.protection.cancelOn.join(' · '):'إلغاء عند فشل السيناريو'}</span>
+        </div>
+        {Array.isArray(plan.noTradeReasons)&&plan.noTradeReasons.length>0&&<div className="scenario-wide"><small>لماذا لا ندخل الآن</small>
+          <b className="amber">{plan.noTradeReasons.slice(0,3).join(' · ')}</b>
+        </div>}
+      </div>
+    </div>}
 
     <div className="forecast-horizons decision-horizons direction-only">
       <div><small>اتجاه M1</small><strong className={h1.side==='BUY'?'green':h1.side==='SELL'?'red':'amber'}>{moveAr(h1.side)}</strong><span>{calibrated(h1.confidence??h1.strength)}% · هدف <b dir="ltr">{horizonTarget(t1,h1.side)}</b></span></div>
