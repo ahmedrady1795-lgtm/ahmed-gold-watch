@@ -207,8 +207,9 @@ function AssetCard({x,liveQuote,fast}:any){
             {momentum?(moveAr(momentumSide)+' · '+momentumPhaseAr(momentum.phase)+' · '+Math.round(Number(momentum.confidence||0))+'%'):'—'}
           </b>
           <span>
-            تسارع {Math.round(Number(momentum?.acceleration||0))}% · استمرار {Math.round(Number(momentum?.persistence||0))}% · اتساع {Math.round(Number(momentum?.expansion||0))}%
+            ثبات {Math.round(Number(momentum?.stability||0))}% · تسارع {Math.round(Number(momentum?.acceleration||0))}% · استمرار {Math.round(Number(momentum?.persistence||0))}% · اتساع {Math.round(Number(momentum?.expansion||0))}%
           </span>
+          {momentum?.flipPending&&<span className="amber">انعكاس مومنتم تحت الاختبار · لن يتم قلب الاتجاه قبل التأكيد</span>}
           {momentum?.mVolume&&<span>
             M-Volume · {mVolumePhaseAr(momentum.mVolume.phase)} · قوة {Math.round(Number(momentum.mVolume.score||0))}% · RVOL {Number(momentum.mVolume.relativeVolume||0).toFixed(2)}x
           </span>}
