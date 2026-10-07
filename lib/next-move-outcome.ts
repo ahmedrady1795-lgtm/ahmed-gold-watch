@@ -492,14 +492,7 @@ export function recordNextMoveOutcome(args:{
           momentumPhase:String(micro?.momentumPhase||'NEUTRAL'),
           momentumPreMove:Boolean(micro?.momentumPreMove),
           momentumConfidence:Number(micro?.momentumConfidence||0),
-          momentumScore:Number(micro?.momentumScore||0),
-          volumePhase:String(micro?.volumePhase||'QUIET'),
-          volumeSide:String(micro?.volumeSide||'WAIT'),
-          volumeConfidence:Number(micro?.volumeConfidence||0),
-          volumeReliability:Number(micro?.volumeReliability||0),
-          volumeFollowThrough:Number(micro?.volumeFollowThrough||0),
-          volumeAbsorption:Number(micro?.volumeAbsorption||0),
-          volumeDivergence:Number(micro?.volumeDivergence||0)
+          momentumScore:Number(micro?.momentumScore||0)
         }
       });
       if(a.pending.length>30)a.pending=a.pending.slice(-30);
