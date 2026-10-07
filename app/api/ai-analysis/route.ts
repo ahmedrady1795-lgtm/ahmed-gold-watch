@@ -1575,6 +1575,8 @@ export async function GET(request:Request){
             accuracy:mvDirectional?Number((mvHits/mvDirectional*100).toFixed(1)):null,
             posterior:Number.isFinite(Number(mv.posteriorAccuracy))?Number(Number(mv.posteriorAccuracy).toFixed(1)):50,
             avgSeconds:Number.isFinite(Number(mv.avgSeconds))?Number(Number(mv.avgSeconds).toFixed(1)):null,
+            avgMfeBps:Number.isFinite(Number(mv.avgMfeBps))?Number(Number(mv.avgMfeBps).toFixed(2)):null,
+            avgMaeBps:Number.isFinite(Number(mv.avgMaeBps))?Number(Number(mv.avgMaeBps).toFixed(2)):null,
             walkForward:mvWf?{
               status:String(mvWf.status||'COLLECTING'),
               oosN:Number(mvWf?.oos?.n||0),
