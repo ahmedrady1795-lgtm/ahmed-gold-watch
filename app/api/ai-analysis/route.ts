@@ -1060,7 +1060,7 @@ export async function GET(request:Request){
         if(target==null||!Number.isFinite(Number(target))||!priceOk)return true;
         return s==='BUY'?Number(target)>price:Number(target)<price;
       };
-      const prevAlive=Boolean(prev&&now-prev.at<=180000&&ahead(prev.side,prev.target));
+      const prevAlive=Boolean(prev&&now-prev.at<=120000&&ahead(prev.side,prev.target));
       const keepPrev=(reason:string)=>{
         if(!prev)return candidate;
         const age=Math.max(0,now-prev.at);
@@ -1070,6 +1070,8 @@ export async function GET(request:Request){
           side:prev.side,
           confidence:Math.max(48,Math.min(86,prev.confidence-decay)),
           status:'STABILITY_HOLD',
+          tradeSetup:null,
+          conditionalReady:false,
           target:prev.target,
           zone:prev.zone,
           windowSeconds:prev.windowSeconds,
@@ -1082,7 +1084,7 @@ export async function GET(request:Request){
       };
 
       if(side==='WAIT'){
-        if(prevAlive&&prev&&prev.confidence>=55&&now-prev.at<=90000){
+        if(prevAlive&&prev&&prev.confidence>=58&&now-prev.at<=45000){
           return keepPrev('الاتجاه السابق ما زال صالحًا؛ تم منع التردد اللحظي حتى يظهر انعكاس مؤكد');
         }
         if(!prevAlive)forwardCommitState[asset]=null;
@@ -1104,10 +1106,14 @@ export async function GET(request:Request){
       const age=now-prev.at;
       const agreement=Number(candidate?.agreement||0);
       const support=Number(candidate?.support||0);
-      const decisiveFlip=confidence>=Math.max(64,prev.confidence+8)&&agreement>=63&&support>=3;
-      const preMoveFlip=String(candidate?.status)==='PRE_MOVE'&&confidence>=62&&agreement>=62&&support>=3;
-      const agedFlip=age>=120000&&confidence>=58&&agreement>=60&&support>=2;
-      if(decisiveFlip||preMoveFlip||agedFlip)return commit();
+      const confs=candidate?.confirmations||{};
+      const higherTfVotes=[confs?.m5,confs?.m15,confs?.h4].filter((x:any)=>x===side).length;
+      const higherTfOppose=[confs?.m5,confs?.m15,confs?.h4].filter((x:any)=>x&&x!=='WAIT'&&x!==side).length;
+      const higherTfFlip=higherTfVotes>=2&&higherTfOppose<=1&&confidence>=54&&agreement>=57&&support>=3;
+      const decisiveFlip=confidence>=Math.max(62,prev.confidence+6)&&agreement>=61&&support>=3;
+      const preMoveFlip=String(candidate?.status)==='PRE_MOVE'&&higherTfVotes>=2&&confidence>=58&&agreement>=59&&support>=3;
+      const agedFlip=age>=60000&&confidence>=55&&agreement>=58&&support>=2;
+      if(higherTfFlip||decisiveFlip||preMoveFlip||agedFlip)return commit();
 
       return keepPrev('تم رفض انعكاس مؤقت؛ الاتجاه لا يتغير إلا بتفوق واضح ومستقل للإشارة العكسية');
     };
