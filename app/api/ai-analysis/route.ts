@@ -33,6 +33,7 @@ import {getHorizonBrainLearning,recordHorizonBrainOutcome} from '../../../lib/ho
 import {buildMarketMakerIntent} from '../../../lib/market-maker-intent';
 import {setAiSnapshot} from '../../../lib/ai-snapshot-cache';
 import {runAutonomousToolCycle} from '../../../lib/autonomous-tool-broker';
+import {buildProfessionalTradePlan} from '../../../lib/professional-trade-plan';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -1755,6 +1756,17 @@ export async function GET(request:Request){
       gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation,goldH4,goldIntent,goldEvolution),
       bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity,bitcoinStructure,bitcoinAccumulation,bitcoinH4,bitcoinIntent,bitcoinEvolution)
     };
+
+    payload.gold.professionalPlan=buildProfessionalTradePlan({
+      asset:'GOLD',now,price:goldLearningPrice,forward:payload.gold.forwardMove,hunt:goldHunt,h4:goldH4,
+      movement:goldMovement,structure:goldStructure,liquidity:goldLiquidity,intent:goldIntent,marketLead:goldMarketLead,
+      news:goldNews,accumulation:goldAccumulation
+    });
+    payload.bitcoin.professionalPlan=buildProfessionalTradePlan({
+      asset:'BTC',now,price:btcPrice,forward:payload.bitcoin.forwardMove,hunt:bitcoinHunt,h4:bitcoinH4,
+      movement:bitcoinMovement,structure:bitcoinStructure,liquidity,intent:bitcoinIntent,marketLead:bitcoinMarketLead,
+      news:bitcoinNews,accumulation:bitcoinAccumulation
+    });
 
     const compact15Validation=(v:any)=>v?{
       global:v.global||null,
