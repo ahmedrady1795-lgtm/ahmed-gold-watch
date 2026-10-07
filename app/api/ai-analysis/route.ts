@@ -1551,6 +1551,12 @@ export async function GET(request:Request){
           posterior:Number.isFinite(Number(g.posteriorAccuracy))?Number(Number(g.posteriorAccuracy).toFixed(1)):null,
           pending:Number(v?.pending||0),
           samples:Number(v?.learningSamples||directional),
+          recent:Array.isArray(v?.recent)?v.recent.slice(0,5).map((r:any)=>({
+            side:r.side,outcome:r.outcome,source:r.source,horizon:r.horizonLabel,
+            entry:Number(r.entry||0),exit:Number(r.exit||0),target:Number(r.target||0),stop:Number(r.stop||0),
+            confidence:Number(r.confidence||0),seconds:Number(r.seconds||0),mfeBps:Number(r.mfeBps||0),maeBps:Number(r.maeBps||0),
+            setupMode:r?.micro?.setupMode||null
+          })):[],
           walkForward:v?.walkForward?{
             status:String(v.walkForward.status||'COLLECTING'),
             oosN:Number(v.walkForward?.oos?.n||0),
