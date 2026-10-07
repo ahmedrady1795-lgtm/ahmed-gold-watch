@@ -36,7 +36,7 @@ async function timedJson(url:string,timeout=1800){
 function p(args:Partial<MarketToolProbe>&Pick<MarketToolProbe,'id'|'name'|'category'|'asset'>):MarketToolProbe{
   return {ok:false,quality:0,latencyMs:null,freshnessMs:null,side:'WAIT',score:0,value:null,unit:null,detail:'',source:'',...args};
 }
-function priceSide(changePct:number|null){
+function priceSide(changePct:number|null):{side:Side;score:number}{
   if(changePct==null||!Number.isFinite(changePct))return {side:'WAIT' as Side,score:0};
   const s=cap(Math.abs(changePct)*18,0,70);
   return {side:changePct>.02?'BUY':changePct<-.02?'SELL':'WAIT',score:s};
@@ -90,7 +90,7 @@ async function btcExternal():Promise<MarketToolProbe[]>{
   }
   {
     const r=rows[3],x=r.j?.data?.[0],fund=Number(x?.fundingRate),v=Number.isFinite(fund)?fund*100:null;
-    const s=v==null?'WAIT':v>.015?'SELL':v<-.015?'BUY':'WAIT',score=v==null?0:cap(Math.abs(v)*1600,0,70);
+    const s:Side=v==null?'WAIT':v>.015?'SELL':v<-.015?'BUY':'WAIT',score=v==null?0:cap(Math.abs(v)*1600,0,70);
     out.push(p({id:'okx_funding',name:'OKX BTC funding',category:'DERIVATIVES',asset:'BTC',ok:r.ok&&v!=null,quality:r.ok?78:0,latencyMs:r.latency,side:s,score,value:v,unit:'%',detail:r.ok?'crowding/contrarian context':r.error,source:'OKX perpetual'}));
   }
   {
