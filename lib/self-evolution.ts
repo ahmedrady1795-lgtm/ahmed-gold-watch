@@ -8,6 +8,16 @@ type Weights={
 type Thresholds={
   minLearningConfidence:number;minLearningSamples:number;structurePathConfidence:number;strongMoveReadiness:number;modelConflictPenalty:number;
 };
+type AdaptiveControls={
+  fastGap:number;fastMinFamilies:number;fastStrongConfidence:number;fastEvidenceMinScore:number;
+  m2Gate:number;m2RangeGate:number;m5Gate:number;m5RangeGate:number;m15Gate:number;m15RangeGate:number;
+  leadArmedConfidence:number;leadBuildingConfidence:number;leadArmedWeight:number;leadBuildingWeight:number;
+  neuralWeight:number;ml1Weight:number;ml5Weight:number;newsWeightCap:number;
+  newsRiskGate:number;newsPenaltyScale:number;confidenceCeiling:number;
+  m5CapOne:number;m5CapTwo:number;m5CapThree:number;m15CapOne:number;m15CapTwo:number;m15CapThree:number;
+  forwardMinShare:number;forwardMinSupport:number;forwardMinConfidence:number;conditionalMinConfidence:number;
+  h4OppositionPenalty:number;m5OppositionPenalty:number;m15OppositionPenalty:number;
+};
 type FeatureRecipe={
   id:string;
   kind:'AGREEMENT'|'CONTRADICTION'|'BURST'|'REGIME'|'ABLATION';
@@ -17,7 +27,7 @@ type FeatureRecipe={
 };
 export type EvolutionPolicy={
   id:string;generation:number;createdAt:number;fitness:number;reason:string;regime:string;
-  weights:Weights;thresholds:Thresholds;features:FeatureRecipe[];disabledComponents:string[];
+  weights:Weights;thresholds:Thresholds;controls:AdaptiveControls;features:FeatureRecipe[];disabledComponents:string[];
 };
 type CandidateRow={id:string;fitness:number;createdAt:number;promoted:boolean;codePath:string;generation:number;regime:string;variant:string};
 type EvolutionStore={
@@ -83,6 +93,16 @@ function basePolicy(asset:string,regime='TRANSITION'):EvolutionPolicy{
     id:'genesis-'+asset.toLowerCase(),generation:0,createdAt:Date.now(),fitness:50,reason:'baseline',regime,
     weights:{learning:1,structure:1,accumulation:1,liquidity:1,motion:1,behavior:1,scalp:1,stateGraph:1,wave:1},
     thresholds:{minLearningConfidence:48,minLearningSamples:10,structurePathConfidence:48,strongMoveReadiness:60,modelConflictPenalty:8},
+    controls:{
+      fastGap:18,fastMinFamilies:2,fastStrongConfidence:48,fastEvidenceMinScore:28,
+      m2Gate:9,m2RangeGate:3.5,m5Gate:10,m5RangeGate:5,m15Gate:10,m15RangeGate:6,
+      leadArmedConfidence:60,leadBuildingConfidence:48,leadArmedWeight:1.55,leadBuildingWeight:.82,
+      neuralWeight:.34,ml1Weight:.30,ml5Weight:.28,newsWeightCap:.18,
+      newsRiskGate:70,newsPenaltyScale:.55,confidenceCeiling:86,
+      m5CapOne:54,m5CapTwo:70,m5CapThree:82,m15CapOne:56,m15CapTwo:72,m15CapThree:84,
+      forwardMinShare:58,forwardMinSupport:3,forwardMinConfidence:52,conditionalMinConfidence:45,
+      h4OppositionPenalty:8,m5OppositionPenalty:6,m15OppositionPenalty:7
+    },
     features:[],disabledComponents:[]
   };
 }
@@ -92,6 +112,7 @@ function normalizePolicy(p:any,asset:string,regime:string):EvolutionPolicy{
     ...b,...p,regime:p?.regime||regime,
     weights:{...b.weights,...(p?.weights||{})},
     thresholds:{...b.thresholds,...(p?.thresholds||{})},
+    controls:{...b.controls,...(p?.controls||{})},
     features:Array.isArray(p?.features)?p.features:[],
     disabledComponents:Array.isArray(p?.disabledComponents)?p.disabledComponents:[]
   };
@@ -112,15 +133,38 @@ function runtimeActivePath(root:string,asset:string){return path.join(root,'runt
 function sanitizeRuntimePolicy(p:any,asset:string,regime:string):EvolutionPolicy{
   const n=normalizePolicy(p,asset,regime),b=basePolicy(asset,regime);
   const weights:any={};
-  for(const k of Object.keys(b.weights))weights[k]=round(cap(Number((n.weights as any)?.[k]??1),.50,1.34));
+  for(const k of Object.keys(b.weights))weights[k]=round(cap(Number((n.weights as any)?.[k]??1),.15,2.50));
   const thresholds:Thresholds={
-    minLearningConfidence:Math.round(cap(Number(n.thresholds?.minLearningConfidence||48),44,60)),
-    minLearningSamples:Math.round(cap(Number(n.thresholds?.minLearningSamples||10),8,28)),
-    structurePathConfidence:Math.round(cap(Number(n.thresholds?.structurePathConfidence||48),44,66)),
-    strongMoveReadiness:Math.round(cap(Number(n.thresholds?.strongMoveReadiness||60),56,76)),
-    modelConflictPenalty:Math.round(cap(Number(n.thresholds?.modelConflictPenalty||8),6,16))
+    minLearningConfidence:Math.round(cap(Number(n.thresholds?.minLearningConfidence||48),25,85)),
+    minLearningSamples:Math.round(cap(Number(n.thresholds?.minLearningSamples||10),3,80)),
+    structurePathConfidence:Math.round(cap(Number(n.thresholds?.structurePathConfidence||48),25,85)),
+    strongMoveReadiness:Math.round(cap(Number(n.thresholds?.strongMoveReadiness||60),30,92)),
+    modelConflictPenalty:Math.round(cap(Number(n.thresholds?.modelConflictPenalty||8),0,30))
   };
-  return {...n,weights,thresholds,features:(n.features||[]).slice(0,12),disabledComponents:(n.disabledComponents||[]).slice(0,3)};
+  const c=n.controls||{},d=b.controls;
+  const controls:AdaptiveControls={
+    fastGap:cap(Number(c.fastGap??d.fastGap),4,45),
+    fastMinFamilies:Math.round(cap(Number(c.fastMinFamilies??d.fastMinFamilies),1,6)),
+    fastStrongConfidence:cap(Number(c.fastStrongConfidence??d.fastStrongConfidence),20,85),
+    fastEvidenceMinScore:cap(Number(c.fastEvidenceMinScore??d.fastEvidenceMinScore),5,65),
+    m2Gate:cap(Number(c.m2Gate??d.m2Gate),1,30),m2RangeGate:cap(Number(c.m2RangeGate??d.m2RangeGate),0,20),
+    m5Gate:cap(Number(c.m5Gate??d.m5Gate),1,35),m5RangeGate:cap(Number(c.m5RangeGate??d.m5RangeGate),0,25),
+    m15Gate:cap(Number(c.m15Gate??d.m15Gate),1,35),m15RangeGate:cap(Number(c.m15RangeGate??d.m15RangeGate),0,25),
+    leadArmedConfidence:cap(Number(c.leadArmedConfidence??d.leadArmedConfidence),25,90),
+    leadBuildingConfidence:cap(Number(c.leadBuildingConfidence??d.leadBuildingConfidence),20,85),
+    leadArmedWeight:cap(Number(c.leadArmedWeight??d.leadArmedWeight),0,3),
+    leadBuildingWeight:cap(Number(c.leadBuildingWeight??d.leadBuildingWeight),0,2.5),
+    neuralWeight:cap(Number(c.neuralWeight??d.neuralWeight),0,1.5),ml1Weight:cap(Number(c.ml1Weight??d.ml1Weight),0,1.5),ml5Weight:cap(Number(c.ml5Weight??d.ml5Weight),0,1.5),
+    newsWeightCap:cap(Number(c.newsWeightCap??d.newsWeightCap),0,.60),
+    newsRiskGate:cap(Number(c.newsRiskGate??d.newsRiskGate),30,95),newsPenaltyScale:cap(Number(c.newsPenaltyScale??d.newsPenaltyScale),0,1.5),
+    confidenceCeiling:cap(Number(c.confidenceCeiling??d.confidenceCeiling),45,96),
+    m5CapOne:cap(Number(c.m5CapOne??d.m5CapOne),25,80),m5CapTwo:cap(Number(c.m5CapTwo??d.m5CapTwo),35,90),m5CapThree:cap(Number(c.m5CapThree??d.m5CapThree),45,96),
+    m15CapOne:cap(Number(c.m15CapOne??d.m15CapOne),25,82),m15CapTwo:cap(Number(c.m15CapTwo??d.m15CapTwo),35,92),m15CapThree:cap(Number(c.m15CapThree??d.m15CapThree),45,96),
+    forwardMinShare:cap(Number(c.forwardMinShare??d.forwardMinShare),50,80),forwardMinSupport:Math.round(cap(Number(c.forwardMinSupport??d.forwardMinSupport),1,7)),
+    forwardMinConfidence:cap(Number(c.forwardMinConfidence??d.forwardMinConfidence),25,85),conditionalMinConfidence:cap(Number(c.conditionalMinConfidence??d.conditionalMinConfidence),20,80),
+    h4OppositionPenalty:cap(Number(c.h4OppositionPenalty??d.h4OppositionPenalty),0,25),m5OppositionPenalty:cap(Number(c.m5OppositionPenalty??d.m5OppositionPenalty),0,25),m15OppositionPenalty:cap(Number(c.m15OppositionPenalty??d.m15OppositionPenalty),0,25)
+  };
+  return {...n,weights,thresholds,controls,features:(n.features||[]).slice(0,32),disabledComponents:(n.disabledComponents||[]).slice(0,12)};
 }
 async function readRuntimePolicy(root:string,asset:string,regime:string){
   const file=runtimeActivePath(root,asset);
@@ -218,7 +262,7 @@ function disabledFromReliability(asset:string,learning:any){
     if(asset!=='BTC'&&n==='liquidity')continue;
     if(componentSamples(learning,n)>=24&&reliability(learning,n)<=40)out.push(n);
   }
-  return out.slice(0,2);
+  return out.slice(0,7);
 }
 function featureMultiplier(features:FeatureRecipe[],name:string){
   let m=1;
@@ -260,14 +304,50 @@ function mutate(asset:string,active:EvolutionPolicy,learning:any,stateGraph:any,
   }
   const conflictBoost=Number(focus.modelConflict||0)+Number(focus.pathConflict||0);
   const t:Thresholds={
-    minLearningConfidence:Math.round(cap(active.thresholds.minLearningConfidence+(self<45?2:self>58?-1:0)+(variant==='conservative'?2:0),44,60)),
-    minLearningSamples:Math.round(cap(active.thresholds.minLearningSamples+(self<45?2:self>60?-1:0)+(variant==='explorer'?-1:0),8,28)),
-    structurePathConfidence:Math.round(cap(active.thresholds.structurePathConfidence+(rel('structure')<47?2:rel('structure')>58?-1:0)+Math.min(4,conflictBoost),44,66)),
-    strongMoveReadiness:Math.round(cap(active.thresholds.strongMoveReadiness+(self<45?3:self>60?-1:0)+(Number(focus.strongMoveFalse||0)>=3?4:0),56,76)),
-    modelConflictPenalty:Math.round(cap(8+(65-self)*.16+(matches<5?2:0)+Math.min(5,conflictBoost),6,16))
+    minLearningConfidence:Math.round(cap(active.thresholds.minLearningConfidence+(self<45?2:self>58?-1:0)+(variant==='conservative'?2:0),30,78)),
+    minLearningSamples:Math.round(cap(active.thresholds.minLearningSamples+(self<45?2:self>60?-1:0)+(variant==='explorer'?-1:0),4,55)),
+    structurePathConfidence:Math.round(cap(active.thresholds.structurePathConfidence+(rel('structure')<47?2:rel('structure')>58?-1:0)+Math.min(4,conflictBoost),30,78)),
+    strongMoveReadiness:Math.round(cap(active.thresholds.strongMoveReadiness+(self<45?3:self>60?-1:0)+(Number(focus.strongMoveFalse||0)>=3?4:0),35,88)),
+    modelConflictPenalty:Math.round(cap(8+(65-self)*.16+(matches<5?2:0)+Math.min(5,conflictBoost),0,26))
+  };
+  const baseC=active.controls||basePolicy(asset).controls;
+  const poor=self<46,good=self>60,conflict=conflictBoost>=4;
+  const delta=(variant==='explorer'?-2:variant==='conservative'?2:0);
+  const controls:AdaptiveControls={
+    ...baseC,
+    fastGap:round(cap(baseC.fastGap+(poor?2:good?-1:0)+delta,5,40)),
+    fastMinFamilies:Math.round(cap(baseC.fastMinFamilies+(poor?1:good&&variant==='explorer'?-1:0),1,5)),
+    fastStrongConfidence:round(cap(baseC.fastStrongConfidence+(poor?3:good?-1:0)+(variant==='conservative'?3:variant==='micro-heavy'?-2:0),25,82)),
+    fastEvidenceMinScore:round(cap(baseC.fastEvidenceMinScore+(poor?2:good?-1:0),8,60)),
+    m2Gate:round(cap(baseC.m2Gate+(poor?1:good?-.5:0)+delta*.25,1,26)),
+    m2RangeGate:round(cap(baseC.m2RangeGate+(poor?.5:good?-.25:0),0,18)),
+    m5Gate:round(cap(baseC.m5Gate+(poor?1.5:good?-.5:0)+(variant==='state-heavy'?-1:0),2,30)),
+    m5RangeGate:round(cap(baseC.m5RangeGate+(poor?1:good?-.5:0),0,22)),
+    m15Gate:round(cap(baseC.m15Gate+(poor?1.5:good?-.5:0)+(conflict?1:0),2,30)),
+    m15RangeGate:round(cap(baseC.m15RangeGate+(poor?1:good?-.5:0),0,22)),
+    leadArmedConfidence:round(cap(baseC.leadArmedConfidence+(poor?3:good?-1:0)+(variant==='micro-heavy'?-2:0),30,85)),
+    leadBuildingConfidence:round(cap(baseC.leadBuildingConfidence+(poor?2:good?-1:0),25,80)),
+    leadArmedWeight:round(cap(baseC.leadArmedWeight+(variant==='micro-heavy'?.08:poor?-.06:good?.03:0),0,2.7)),
+    leadBuildingWeight:round(cap(baseC.leadBuildingWeight+(variant==='micro-heavy'?.06:poor?-.04:0),0,2.1)),
+    neuralWeight:round(cap(baseC.neuralWeight+(variant==='micro-heavy'?.05:poor?-.03:good?.02:0),0,1.2)),
+    ml1Weight:round(cap(baseC.ml1Weight+(variant==='micro-heavy'?.04:poor?-.03:good?.02:0),0,1.2)),
+    ml5Weight:round(cap(baseC.ml5Weight+(variant==='state-heavy'?.03:poor?-.02:good?.01:0),0,1.2)),
+    newsWeightCap:round(cap(baseC.newsWeightCap+(Number(focus.newsFalse||0)>=3?-.03:good?.01:0),0,.45)),
+    newsRiskGate:round(cap(baseC.newsRiskGate+(poor?-2:good?1:0),35,92)),
+    newsPenaltyScale:round(cap(baseC.newsPenaltyScale+(Number(focus.newsFalse||0)>=3?.08:poor?.03:good?-.02:0),0,1.25)),
+    confidenceCeiling:round(cap(baseC.confidenceCeiling+(poor?-2:good?1:0),55,94)),
+    m5CapOne:round(cap(baseC.m5CapOne+(poor?-2:good?1:0),30,75)),m5CapTwo:round(cap(baseC.m5CapTwo+(poor?-1:good?1:0),40,88)),m5CapThree:round(cap(baseC.m5CapThree+(poor?-1:good?1:0),50,94)),
+    m15CapOne:round(cap(baseC.m15CapOne+(poor?-2:good?1:0),30,78)),m15CapTwo:round(cap(baseC.m15CapTwo+(poor?-1:good?1:0),40,90)),m15CapThree:round(cap(baseC.m15CapThree+(poor?-1:good?1:0),50,95)),
+    forwardMinShare:round(cap(baseC.forwardMinShare+(poor?2:good?-1:0),52,76)),
+    forwardMinSupport:Math.round(cap(baseC.forwardMinSupport+(poor?1:good&&variant==='explorer'?-1:0),1,6)),
+    forwardMinConfidence:round(cap(baseC.forwardMinConfidence+(poor?3:good?-1:0),30,80)),
+    conditionalMinConfidence:round(cap(baseC.conditionalMinConfidence+(poor?2:good?-1:0),25,75)),
+    h4OppositionPenalty:round(cap(baseC.h4OppositionPenalty+(conflict?2:poor?1:good?-1:0),0,22)),
+    m5OppositionPenalty:round(cap(baseC.m5OppositionPenalty+(conflict?1:poor?1:good?-1:0),0,22)),
+    m15OppositionPenalty:round(cap(baseC.m15OppositionPenalty+(conflict?1:poor?1:good?-1:0),0,22))
   };
   const generation=active.generation+jumpPower,regime=regimeOf(stateGraph);
-  return {id:'g'+generation+'-'+asset.toLowerCase()+'-'+variant+'-'+now,generation,createdAt:now,fitness:0,reason:'self-generated '+variant+' candidate',regime,weights:w,thresholds:t,features,disabledComponents:disabled};
+  return {id:'g'+generation+'-'+asset.toLowerCase()+'-'+variant+'-'+now,generation,createdAt:now,fitness:0,reason:'self-generated '+variant+' candidate',regime,weights:w,thresholds:t,controls,features,disabledComponents:disabled};
 }
 function fitness(policy:EvolutionPolicy,learning:any,stateGraph:any){
   const self=Number(learning?.selfCalibration?.reliability||50),samples=Number(learning?.selfCalibration?.samples1||0)+Number(learning?.selfCalibration?.samples5||0);
@@ -280,8 +360,9 @@ function fitness(policy:EvolutionPolicy,learning:any,stateGraph:any){
   const component=relWeight?relScore/relWeight:50,sgSamples=Number(stateGraph?.sequenceMatches||0),sgProb=Number(stateGraph?.nextSideProbability||0);
   const graph=sgSamples>=5?cap(50+(sgProb-50)*Math.min(1,sgSamples/20),35,72):48;
   const drift=Object.values(policy.weights).reduce((s,v)=>s+Math.abs(Number(v)-1),0),thresholdDrift=Math.abs(policy.thresholds.minLearningConfidence-48)/10+Math.abs(policy.thresholds.structurePathConfidence-48)/12+Math.abs(policy.thresholds.strongMoveReadiness-60)/12;
-  const sampleConfidence=Math.min(1,samples/60),featureBonus=Math.min(3,policy.features.filter(f=>f.enabled).length*.35),ablationPenalty=policy.disabledComponents.length*.45;
-  return round((self*.42+component*.36+graph*.22)*(.72+.28*sampleConfidence)-drift*1.45-thresholdDrift*.75+featureBonus-ablationPenalty);
+  const b=basePolicy(policy.id.includes('btc')?'BTC':'GOLD',policy.regime),controlDrift=Object.keys(b.controls).reduce((sum,k)=>sum+Math.abs(Number((policy.controls as any)?.[k]??(b.controls as any)[k])-Number((b.controls as any)[k]))/Math.max(1,Math.abs(Number((b.controls as any)[k]))),0);
+  const sampleConfidence=Math.min(1,samples/60),featureBonus=Math.min(4,policy.features.filter(f=>f.enabled).length*.28),ablationPenalty=policy.disabledComponents.length*.18;
+  return round((self*.42+component*.36+graph*.22)*(.72+.28*sampleConfidence)-drift*.85-thresholdDrift*.35-controlDrift*.10+featureBonus-ablationPenalty);
 }
 function codeFor(asset:string,p:EvolutionPolicy){
   return `// Auto-generated by Predator Self-Evolution Lab.
@@ -292,7 +373,7 @@ function codeFor(asset:string,p:EvolutionPolicy){
 // Development-only candidate generated by the self-evolution lab.
 // Never imported into production automatically.
 // No order execution, secrets, or production source mutation.
-export const policy = ${JSON.stringify({id:p.id,generation:p.generation,regime:p.regime,weights:p.weights,thresholds:p.thresholds,features:p.features,disabledComponents:p.disabledComponents},null,2)} as const;
+export const policy = ${JSON.stringify({id:p.id,generation:p.generation,regime:p.regime,weights:p.weights,thresholds:p.thresholds,controls:p.controls,features:p.features,disabledComponents:p.disabledComponents},null,2)} as const;
 export default policy;
 `;
 }
