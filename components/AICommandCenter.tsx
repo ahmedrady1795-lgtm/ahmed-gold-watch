@@ -35,7 +35,6 @@ const structurePatternAr=(v:any)=>{
 };
 const intentPhaseAr=(p:any)=>p==='LIQUIDITY_BUILDUP'?'تجميع سيولة':p==='SWEEP_DETECTED'?'سحب سيولة':p==='TRAP_CONFIRMED'?'فخ سيولة مؤكد':p==='PRE_EXPANSION'?'استعداد قبل الحركة':p==='EXPANSION'?'الحركة بدأت':'لا يوجد سيناريو واضح';
 const momentumPhaseAr=(p:any)=>p==='BUILDING'?'يتكوّن قبل الحركة':p==='ACTIVE'?'نشط':p==='EXHAUSTING'?'منهك':p==='WEAK'?'ضعيف':'محايد';
-const mVolumePhaseAr=(p:any)=>p==='BUILDING'?'حجم يتزايد قبل الحركة':p==='CONFIRMING'?'الحجم يؤكد الحركة':p==='ABSORBING'?'امتصاص حجم':p==='DIVERGENCE'?'اختلاف سعر/حجم':p==='CLIMAX'?'Volume Climax':'حجم هادئ';
 const intentStepAr=(v:any)=>{
   const x=String(v||'');
   if(x==='COMPRESSION')return 'ضغط';
@@ -137,10 +136,6 @@ function AssetCard({x,liveQuote,fast}:any){
   const validationDirectional=Number(validation15?.global?.hits||0)+Number(validation15?.global?.fails||0);
   const validationAccuracy=Number(validation15?.global?.accuracy);
   const showValidation15=validationDirectional>=5&&Number.isFinite(validationAccuracy);
-  const volumeValidation=validation15?.mVolume||null;
-  const volumeValidationDirectional=Number(volumeValidation?.directional||0);
-  const volumeValidationAccuracy=Number(volumeValidation?.accuracy);
-  const showVolumeValidation=volumeValidationDirectional>=5&&Number.isFinite(volumeValidationAccuracy);
   const upperLiquidity=path?.upperLiquidity||zone?.resistance||null;
   const lowerLiquidity=path?.lowerLiquidity||zone?.support||null;
   const liquidityPoint=(z:any)=>{
@@ -214,29 +209,10 @@ function AssetCard({x,liveQuote,fast}:any){
             ثبات {Math.round(Number(momentum?.stability||0))}% · تسارع {Math.round(Number(momentum?.acceleration||0))}% · استمرار {Math.round(Number(momentum?.persistence||0))}% · اتساع {Math.round(Number(momentum?.expansion||0))}%
           </span>
           {momentum?.flipPending&&<span className="amber">انعكاس مومنتم تحت الاختبار · لن يتم قلب الاتجاه قبل التأكيد</span>}
-          {momentum?.mVolume&&<span>
-            M-Volume · <b className={momentum.mVolume.side==='BUY'?'green':momentum.mVolume.side==='SELL'?'red':'amber'}>{moveAr(momentum.mVolume.side)}</b>
-            {' · '}{mVolumePhaseAr(momentum.mVolume.phase)} · ثقة {Math.round(Number(momentum.mVolume.confidence||0))}% · قوة {Math.round(Number(momentum.mVolume.score||0))}%
-          </span>}
-          {momentum?.mVolume&&<span>
-            RVOL {Number(momentum.mVolume.relativeVolume||0).toFixed(2)}x · Follow-through {Math.round(Number(momentum.mVolume.followThrough||0))}% · Effort/Result {Math.round(Number(momentum.mVolume.effortResult||0))}%
-          </span>}
-          {momentum?.mVolume&&<span>
-            ثبات الحجم {Math.round(Number(momentum.mVolume.stability||0))}% · موثوقية المصدر {Math.round(Number(momentum.mVolume.reliability||0))}% · جودة {Math.round(Number(momentum.mVolume.quality||0))}%
-          </span>}
-          {momentum?.mVolume?.flipPending&&<span className="amber">انعكاس Volume تحت الاختبار · لن يتم قلب اتجاه الحجم قبل التأكيد</span>}
-          {showVolumeValidation&&<span>
-            اختبار M-Volume 15د · دقة {volumeValidationAccuracy.toFixed(1)}% · {volumeValidationDirectional} نتيجة
-            {volumeValidation?.walkForward?.status&&volumeValidation.walkForward.status!=='COLLECTING'?(' · '+String(volumeValidation.walkForward.status)):''}
-          </span>}
-          {momentum?.mVolume&&Number(momentum.mVolume.divergence||0)>=45&&<span className="amber">
-            Divergence سعر/حجم {Math.round(Number(momentum.mVolume.divergence||0))}% · الإشارة تحتاج حذر
-          </span>}
           {(momentumT1!=null||momentumT2!=null)&&<span className="momentum-targets">
             هدف 1 <b dir="ltr">{momentumT1!=null?fmt(momentumT1,2):'—'}</b> · هدف 2 <b dir="ltr">{momentumT2!=null?fmt(momentumT2,2):'—'}</b>
           </span>}
           {momentumInvalidation!=null&&<span>إلغاء المومنتم <b dir="ltr">{fmt(momentumInvalidation,2)}</b> · أفق {Math.round(Number(momentumTargets?.horizonMinutes||15))}د</span>}
-          {momentum?.mVolume&&Number(momentum.mVolume.absorption||0)>=55&&<span>امتصاص {Math.round(Number(momentum.mVolume.absorption||0))}%</span>}
           {Number(momentum?.exhaustion||0)>=55&&<span>إنهاك {Math.round(Number(momentum.exhaustion||0))}%</span>}
         </div>
         <div className="scenario-wide"><small>هيكل الحركة</small><b>{structureText}</b><span>{structurePatternAr(structure?.m1?.structure||structure?.m5?.structure)}</span></div>
