@@ -22,6 +22,7 @@ async function btcQuote(source:string):Promise<ScalpQuote>{
   return {price,at:Number.isFinite(parsed)?parsed:null,bid:Number.isFinite(bid)?bid:null,ask:Number.isFinite(ask)?ask:null,source:kraken?'Kraken XBT/USD':'Coinbase BTC-USD'};
 }
 let cached:any=null,cachedAt=0;
+let lastScalpDiagnosticAt=0;
 let pending:Promise<any>|null=null;
 export async function getScalpDesk(){
   const now=Date.now();
@@ -53,26 +54,29 @@ export async function getScalpDesk(){
         return {horizon:plan.horizon,...losses,issues};
       });
       const liquidity=readScalpLiquidity(input.c1,quote,at,asset);
-      const ledger=updateScalpLedger(asset,plans,quote,at,input.c1);
       const entryConfirmations=plans.map(plan=>{
         const paths=liquidity?.scenarios?.find(s=>s.horizon===plan.horizon)?.paths||[];
         // Show the hold timer for the qualified plan first. In the absence of a
         // plan, watch the more advanced path without declaring it an entry.
         const watch=paths.find(s=>s.side===plan.side)||
-          [...paths].sort((a,b)=>Number(b.confirmation?.heldSeconds||0)-Number(a.confirmation?.heldSeconds||0))[0];
+          paths.find(s=>s.side===liquidity.pressure)||
+          [...paths].sort((a,b)=>
+            Number(b.confirmation?.heldSeconds||0)-Number(a.confirmation?.heldSeconds||0)||
+            Math.abs(Number(a.trigger)-Number(quote.price||0))-Math.abs(Number(b.trigger)-Number(quote.price||0)))[0];
         const confirmation=watch?.confirmation||null;
         const confirmed=confirmation?.state==='CONFIRMED';
-        const lane=ledger.lanes.find(x=>x.horizon===plan.horizon);
-        const active=lane?.current?.state==='ACTIVE';
         const fresh=quote.at!=null&&at-Number(quote.at)>=0&&at-Number(quote.at)<=10000;
+        const planRisk=plan.entry!=null&&plan.stop!=null?Math.abs(plan.entry-plan.stop):0;
+        const entryNearby=planRisk>0&&quote.price!=null&&
+          Math.abs(quote.price-Number(plan.entry))<=planRisk*.35;
         const eligible=Boolean(
-          confirmed&&!active&&plan.status==='ARMED'&&watch?.side===plan.side&&
-          fresh&&plan.entry!=null&&plan.stop!=null&&plan.targets?.[0]?.price!=null&&
+          confirmed&&plan.status==='ARMED'&&watch?.side===plan.side&&
+          fresh&&entryNearby&&plan.entry!=null&&plan.stop!=null&&plan.targets?.[0]?.price!=null&&
           Number(plan.netRR)>=1.25
         );
         return {
           horizon:plan.horizon,side:watch?.side||'WAIT',
-          state:active?'ACTIVE':eligible?'ENTRY':confirmed?'CONDITIONS_PENDING':
+          state:eligible?'ENTRY':confirmed?'CONDITIONS_PENDING':
             confirmation?.state==='HOLDING'?'HOLDING':'WATCH',
           heldSeconds:Number(confirmation?.heldSeconds||0),
           remainingSeconds:Number(confirmation?.remainingSeconds??60),
@@ -82,12 +86,26 @@ export async function getScalpDesk(){
           entry:eligible?plan.entry:null,
           stop:eligible?plan.stop:null,
           targets:eligible?plan.targets:[],
-          reason:active?'صفقة تجريبية مفعلة؛ لا تكرار لإشارة الدخول':
-            eligible?'دخول مشروط بعد ثبات 60 ثانية وإغلاق M1 مع اكتمال شروط الصفقة':
-            confirmed?'ثبتت الدقيقة لكن شروط الصفقة غير مكتملة: '+(plan.blockers?.[0]||plan.reason):
+          reason:eligible?'دخول مشروط بعد ثبات 60 ثانية وإغلاق M1 مع اكتمال شروط الصفقة':
+            confirmed?!entryNearby?'اكتمل ثبات الدقيقة لكن السعر ابتعد عن نقطة الدخول؛ لا مطاردة':
+              'ثبتت الدقيقة لكن شروط الصفقة غير مكتملة: '+(plan.blockers?.[0]||plan.reason):
             confirmation?.reason||'بانتظار مستوى الرصد وسعر حي صالح'
         };
       });
+      // The paper ledger must never arm/activate before the exact 60-second
+      // M1 hold and the final order-book/risk gate have passed.
+      const paperPlans=plans.map((plan,i)=>({
+        ...plan,status:(entryConfirmations[i]?.state==='ENTRY'?'ARMED':'WATCH') as typeof plan.status
+      }));
+      const ledger=updateScalpLedger(asset,paperPlans,quote,at,input.c1);
+      for(const entry of entryConfirmations){
+        const lane=ledger.lanes.find(x=>x.horizon===entry.horizon);
+        if(lane?.current?.state==='ACTIVE'){
+          entry.state='ACTIVE';
+          entry.entry=null;entry.stop=null;entry.targets=[];
+          entry.reason='تفعيل مرجعي تجريبي؛ متابعة الصفقة دون تكرار دخول جديد';
+        }
+      }
       return {asset,checkedAt:at,quote,candleSource:input.candleSource,liquidity,orderBook,plans,qualityGates,entryConfirmations,ledger,data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
     };
     const goldSnap=goldResult.status==='fulfilled'?goldResult.value:null;
@@ -103,6 +121,25 @@ export async function getScalpDesk(){
     if(market)bq=await btcQuote(market.source).catch(()=>bq);
     const gold=make('GOLD',goldSnap?.market,{price:q?.price??null,at:q?.sourceTime??null,bid:q?.bid,ask:q?.ask,source:q?.source||'unavailable'},events,newsReady);
     const bitcoin=make('BTC',market,bq,events,newsReady);
+    // Monitor missing trade flow without leaking provider credentials or
+    // treating a WATCH setup as an executed order.
+    const measuredAt=Date.now();
+    if(measuredAt-lastScalpDiagnosticAt>=30000){
+      lastScalpDiagnosticAt=measuredAt;
+      const diag=(x:any)=>({
+        quote:x.quote?.price,quoteAgeMs:x.data?.quoteAgeMs,source:x.candleSource,
+        m1AgeMs:x.data?.m1AgeMs,newsReady:x.data?.newsReady,
+        liquidityReady:x.liquidity?.available,bookOk:x.orderBook?.ok,
+        plans:x.plans.map((pl:any)=>({
+          h:pl.horizon,status:pl.status,side:pl.side,setup:pl.setup,
+          score:pl.score,entry:pl.entry,stop:pl.stop,t1:pl.targets?.[0]?.price,
+          netRR:pl.netRR,cost:pl.cost,estimated:pl.costEstimated,
+          blockers:pl.blockers.slice(0,5)
+        })),
+        watches:x.entryConfirmations.map((e:any)=>({h:e.horizon,state:e.state,held:e.heldSeconds,side:e.side}))
+      });
+      console.info('[SCALP-DIAG]',JSON.stringify({gold:diag(gold),btc:diag(bitcoin)}));
+    }
     cached={ok:true,version:'scalp-desk-v1',checkedAt:Date.now(),gold,bitcoin};cachedAt=Date.now();return cached;
   })();
   try{return await pending;}finally{pending=null;}

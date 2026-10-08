@@ -56,9 +56,16 @@ function evaluateM1Hold(
   const candleConfirmed=Boolean(last&&contiguous&&closeAt>watch.openedAt&&
     now-closeAt>=0&&now-closeAt<=90000&&
     dir*(last.close-watch.trigger)>0);
-  const heldSeconds=watch.firstBeyondAt!==null&&fresh&&beyond&&continuity
+  // A complete post-watch candle whose ENTIRE low/high remains beyond the
+  // fixed trigger independently proves a 60-second hold. This is stricter than
+  // a close-only cross, and works with legitimate low-frequency gold quotes.
+  const fullMinuteHeld=Boolean(candleConfirmed&&last&&last.time>=watch.openedAt&&
+    dir*((dir===1?last.low:last.high)-watch.trigger)>Math.max(price*.000002,atr*.015));
+  const observedSeconds=watch.firstBeyondAt!==null&&fresh&&beyond&&continuity
     ?Math.max(0,Math.min(60,Math.floor((now-watch.firstBeyondAt)/1000))):0;
-  const confirmed=Boolean(beyond&&!invalid&&heldSeconds>=60&&candleConfirmed);
+  const heldSeconds=fullMinuteHeld?60:observedSeconds;
+  const confirmed=Boolean(fresh&&beyond&&!invalid&&
+    (fullMinuteHeld||(heldSeconds>=60&&candleConfirmed)));
   if(confirmed&&!watch.confirmedAt)watch.confirmedAt=now;
   if(!confirmed)watch.confirmedAt=null;
   return {
@@ -67,7 +74,7 @@ function evaluateM1Hold(
     heldSeconds,remainingSeconds:Math.max(0,60-heldSeconds),
     requiredSeconds:60,closedCandleConfirmed:candleConfirmed,
     confirmedAt:watch.confirmedAt,expiresAt:watch.expiresAt,
-    reason:confirmed?'ثبات 60 ثانية مع إغلاق M1 مؤكد':heldSeconds>0
+    reason:confirmed?'ثبات 60 ثانية مثبت بشمعة M1 كاملة أو مراقبة أسعار حية':heldSeconds>0
       ?'جارٍ حساب الثبات من أسعار جديدة؛ يلزم 60 ثانية وإغلاق M1'
       :'بانتظار عبور المستوى ثم الثبات 60 ثانية'
   };
