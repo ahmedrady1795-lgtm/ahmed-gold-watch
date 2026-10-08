@@ -83,7 +83,7 @@ function nextMoveCopy(hunt:any,stateGraph:any){
   return {title,detail,tone:first==='BUY'?'green':first==='SELL'?'red':'amber'};
 }
 
-function LegacyAssetCard({x,liveQuote,fast}:any){
+function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
   const hunt=x.huntForecast,recommendation=x.recommendation,goldCore=x.asset==='GOLD'?x.goldForecastCore:null,predator=x.asset==='GOLD'?x.predatorFusionV2:null;
   const core1=goldCore?.horizons?.oneMinute,core5=goldCore?.horizons?.fiveMinute;
@@ -109,7 +109,7 @@ function LegacyAssetCard({x,liveQuote,fast}:any){
   const liveWavePrice=Number.isFinite(Number(fast?.price))&&Number(fast.price)>0?Number(fast.price):null;
   const price=liveGoldPrice??liveWavePrice??x.livePulse?.price??x.price;
   const move=nextMoveCopy(hunt,x.stateGraph);
-  const priceDestination=path?.priceDestination?.zone??path?.destination??zone?.target??null;
+  const priceDestination=path?.priceDestination?.zone??path?.priceDestination??path?.destination??zone?.target??null;
   const structuralTarget=priceDestination?.mid??null;
   const target=structuralTarget??recommendation?.targets?.scalp??recommendation?.targets?.oneMinute??hunt?.quickSignalTargets?.oneMinute?.price??null;
   const invalid=path?.invalidation?.price??recommendation?.invalidation??hunt?.invalidation??null;
@@ -134,7 +134,9 @@ function LegacyAssetCard({x,liveQuote,fast}:any){
   const forwardWindow=forward?.horizonMinutes===15?'خلال 15 دقيقة':forward?.windowSeconds?(`${Math.max(1,Math.round(Number(forward.windowSeconds.min||0)/60))}–${Math.max(1,Math.round(Number(forward.windowSeconds.max||0)/60))} د`):'—';
   const liqBuy=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.buy||0))));
   const liqSell=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.sell||0))));
-  const hasLiquidity=Boolean(liqBuy||liqSell);
+  const liqOk=Boolean(x?.liquidity?.ok&&now-Number(x?.liquidity?.checkedAt||0)<12000);
+  const liquidityLabel=x?.liquidity?.mode==='DOM'?'عمق أوامر الوسيط':x?.liquidity?.mode==='CANDLE_FLOW_PROXY'?'تقدير من الشموع (ليس دفتر أوامر)':'سيولة منصات التداول';
+  const hasLiquidity=Boolean(liqOk&&liqBuy+liqSell===100);
   const accumulation=x?.accumulation||null;
   const accumulationPhase=accumulation?.phase==='ACCUMULATING'||accumulation?.phase==='MARKUP_READY'?'تجميع':accumulation?.phase==='DISTRIBUTING'||accumulation?.phase==='MARKDOWN_READY'?'تصريف':'توازن';
   const accumulationScore=Math.max(0,Math.min(100,Math.round(Number(accumulation?.accumulationScore||0))));
@@ -160,6 +162,12 @@ function LegacyAssetCard({x,liveQuote,fast}:any){
   const upperLiquidityLevel=liquidityPoint(upperLiquidity);
   const lowerLiquidityLevel=liquidityPoint(lowerLiquidity);
   const forwardStatus=String(forward?.status||'WAIT');
+  // An unconfirmed destination remains visible as a watch scenario, never a trade entry.
+  const watchZone=path?.priceDestination?.zone??path?.priceDestination??null;
+  const watchMid=watchZone?.mid!=null?Number(watchZone.mid):watchZone?.low!=null&&watchZone?.high!=null?(Number(watchZone.low)+Number(watchZone.high))/2:null;
+  const watchSide=watchZone?.side==='BUY'||watchZone?.side==='SELL'?watchZone.side:'WAIT';
+  const watchAhead=watchMid!=null&&Number.isFinite(watchMid)&&watchMid>0&&price!=null&&
+    ((watchSide==='BUY'&&watchMid>Number(price))||(watchSide==='SELL'&&watchMid<Number(price)));
   const tradeSetup=forward?.tradeSetup||null;
   const tradeEntry=tradeSetup?.entry!==null&&tradeSetup?.entry!==undefined&&Number.isFinite(Number(tradeSetup.entry))?Number(tradeSetup.entry):null;
   const tradeSl=tradeSetup?.stopLoss!==null&&tradeSetup?.stopLoss!==undefined&&Number.isFinite(Number(tradeSetup.stopLoss))?Number(tradeSetup.stopLoss):null;
@@ -206,6 +214,11 @@ function LegacyAssetCard({x,liveQuote,fast}:any){
       <div><small>جودة الأهداف</small><strong>{targetQuality?targetQuality+'%':'—'}</strong></div>
       <div><small>الحالة</small><strong className={liveInvalidated?'red':heroSide==='WAIT'?'amber':'green'}>{liveStateAr}</strong></div>
     </div>
+    <div className="forecast-horizons decision-horizons direction-only">
+      <div><small>ضغط الشراء</small><strong className="green">{hasLiquidity?liqBuy+'%':'—'}</strong><span>{hasLiquidity?'قراءة سوق متاحة':'البيانات غير مؤكدة'}</span></div>
+      <div><small>ضغط البيع</small><strong className="red">{hasLiquidity?liqSell+'%':'—'}</strong><span>{liquidityLabel}</span></div>
+      <div><small>مصدر السيولة</small><strong>{liqOk?'متاح':'غير مؤكد'}</strong><span>{x?.liquidity?.source||'لا يوجد مصدر مؤكد'}</span></div>
+    </div>
 
     <div className="next-move-copy primary-move zone-primary">
       <span>الحركة القادمة · أهداف أمامية متدرجة</span>
@@ -218,6 +231,11 @@ function LegacyAssetCard({x,liveQuote,fast}:any){
       </strong>
 
       <div className="forecast-scenario-strip">
+        {heroSide==='WAIT'&&watchAhead&&<div className="scenario-wide">
+          <small>منطقة مراقبة فقط · ليست إشارة دخول أو هدفًا مؤكدًا</small>
+          <b dir="ltr">{moveAr(watchSide)} → {fmt(watchMid,2)}</b>
+          <span>{watchZone?.projected?'إسقاط احتمالي من التذبذب':'منطقة سعرية مرجحة'} · تنتظر تأكيد M1 و M5 والسيولة قبل أي توصية</span>
+        </div>}
         <div><small>T1 · الهدف الأول</small><b dir="ltr">{t1Price!=null?fmt(t1Price,2):'—'}</b><span>{liveT1Hit?'تحقق':targetSourceAr(t1Level?.source)+(t1Level?.quality?' · جودة '+Math.round(Number(t1Level.quality))+'%':'')}</span></div>
         <div><small>T2 · الهدف التالي</small><b dir="ltr">{t2Price!=null?fmt(t2Price,2):'—'}</b><span>{liveT2Hit?'تحقق':targetSourceAr(t2Level?.source)+(t2Level?.quality?' · جودة '+Math.round(Number(t2Level.quality))+'%':'')}</span></div>
         <div><small>T3 · الامتداد</small><b dir="ltr">{t3Price!=null?fmt(t3Price,2):'—'}</b><span>{liveT3Hit?'تحقق':targetSourceAr(t3Level?.source)+(t3Level?.quality?' · جودة '+Math.round(Number(t3Level.quality))+'%':'')}</span></div>
@@ -254,6 +272,7 @@ function AssetCard(props:any){
 }
 
 export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.now()}:any){
+  const snapshotAgeMs=data?.snapshot?Math.max(0,now-Number(data.snapshot.servedAt||now)+Number(data.snapshot.ageMs||0)):null;
   const auto=data?.autopilot,next=auto?.nextEvent;
   const nextEventDelta=Number(next?.time)-now;
   const awaitingActual=Boolean(next?.awaitingActual||next?.status==='AWAITING_ACTUAL');
@@ -261,6 +280,7 @@ export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.n
   const showNextEvent=!!next&&Number.isFinite(nextEventDelta)&&((nextEventDelta>=0&&nextEventDelta<=10*60*60*1000)||(awaitingActual&&nextEventDelta>=-30*60*1000)||(narrativeLive&&nextEventDelta>=-8*60*1000));
   return <div className="ai-clean">
     {error&&!data&&<div className="fatal"><Activity size={18}/><div><strong>تعذر تحديث AI</strong><span>{error}</span></div></div>}
+    {snapshotAgeMs!=null&&snapshotAgeMs>30000&&<div className="fatal"><Activity size={18}/><div><strong>التحليل متأخر</strong><span>آخر لقطة عمرها {Math.round(snapshotAgeMs/1000)} ثانية · لا تعتمد على أي توصية حتى تتجدد</span></div></div>}
 
     {showNextEvent&&<section className="next-news news-impact-card">
       <div className="news-head">
