@@ -54,6 +54,10 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
   if(blockers.length)return [base(1),base(5)];
   const a=m1.closed,b=m5.closed,last=a.at(-1)!,prev=a.at(-2)!;
   const i1=indicators(a),i5=indicators(b),atr=i1.atr;
+  const last5=b.at(-1)!,prev5=b.at(-2)!;
+  const atr5=Math.max(Number(i5.atr)||0,atr);
+  const m5Body=(last5.close-last5.open)/Math.max(1e-9,last5.high-last5.low);
+  const m5Momentum=(last5.close-b.at(-3)!.close)/atr5;
   if(!Number.isFinite(atr)||atr<=0)return [base(1),base(5)];
   const closes=a.map(c=>c.close),f9=ema(closes,9),f21=ema(closes,21),old9=ema(closes.slice(0,-3),9);
   const trend1=side(f9-f21),trend5=side(i5.ema20-i5.ema50);
@@ -116,10 +120,17 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     const reasons:string[]=[];
     if(chosen.score<(horizon===1?60:64))reasons.push('قوة الإعداد لم تصل لحد التفعيل');
     if(risk>maxRisk||reward>maxMove)reasons.push('الوقف أو الهدف أبعد من مدى الحركة المناسب للفريم');
-    if(cost>atr*.45)reasons.push('التكلفة كبيرة مقابل حركة الدقيقة');
+    if(cost>atr*(horizon===1?.30:.48))reasons.push('التكلفة كبيرة بالنسبة للتذبذب القابل للتداول');
+    if(spread==null)reasons.push('السبريد الفعلي غير متاح؛ السيناريو للمراقبة فقط');
+    if(chosen.setup==='BREAKOUT'&&volumeRatio!=null&&volumeRatio<.8)reasons.push('اختراق دون مشاركة حجم كافية');
+    if(chosen.setup!=='SWEEP'&&efficiency<.22)reasons.push('حركة متقطعة تضعف استمرار الاتجاه');
+    if(targets[0]?.kind==='PROJECTION'&&chosen.score<76)reasons.push('الهدف الأول تقديري وقوة الإعداد لا تكفي للاعتماد عليه');
     if(last.high-last.low>atr*2.8||Math.abs(price-last.close)>atr*.85)reasons.push('الحركة ممتدة؛ انتظر إعادة اختبار بدل مطاردة السعر');
     if(rr==null||rr<1.25)reasons.push('العائد بعد التكلفة أقل من 1.25R');
     if(horizon===5&&trend5!==chosen.side&&chosen.setup!=='SWEEP')reasons.push('استمرار M5 لم يؤكد اتجاه الإعداد');
+    if(horizon===5&&chosen.setup!=='SWEEP'&&dir*m5Body<-.20&&dir*m5Momentum<.10)reasons.push('آخر شمعة M5 مغلقة تعارض الاستمرار');
+    if(horizon===5&&chosen.setup==='SWEEP'&&dir*m5Body<-.40)reasons.push('انعكاس الدقيقة عكس جسم M5 قوي؛ يلزم تأكيد إضافي');
+    if(horizon===1&&chosen.setup==='BREAKOUT'&&volumeRatio!=null&&volumeRatio<1.05&&efficiency<.45)reasons.push('اختراق M1 ضعيف دون تأكيد كافٍ');
     if(!input.newsReady)reasons.push('تغطية الأخبار غير متاحة؛ الإعداد للمراقبة');
     return {...plan,id:asset+'-'+horizon+'-'+last.time+'-'+chosen.setup+'-'+chosen.side,
       side:chosen.side,setup:chosen.setup,score:chosen.score,entry,stop,targets,netRR:rr,

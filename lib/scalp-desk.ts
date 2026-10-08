@@ -1,7 +1,7 @@
 import {getMarketSnapshot} from './market-hub';
 import {getBtcMarket,mergeBtcCandles} from './btc-market';
 import {buildScalpPlans,type ScalpQuote} from './scalp-opportunities';
-import {updateScalpLedger} from './scalp-paper-ledger';
+import {updateScalpLedger,getScalpPaperQualityGate} from './scalp-paper-ledger';
 import {getRuntimeEnv} from './runtime';
 import {getCoinbaseServerQuote,getCoinbaseClosedCandles} from './server-tick-brain';
 import {readScalpLiquidity} from './scalp-liquidity';
@@ -34,7 +34,25 @@ export async function getScalpDesk(){
       const input={asset,c1:market?.c1||[],c5:market?.c5||[],candleSource:market?.priceSource||market?.source||'unavailable',quote,now:at,events,newsReady,marketOpen:asset==='BTC'||session(at),feeBps:envNumber('SCALP_'+asset+'_FEE_BPS'),slippageBps:envNumber('SCALP_'+asset+'_SLIPPAGE_BPS')};
       const plans=buildScalpPlans(input);
       const orderBook=asset==='BTC'&&liquidityResult.status==='fulfilled'?liquidityResult.value:null;
-      return {asset,checkedAt:at,quote,candleSource:input.candleSource,liquidity:readScalpLiquidity(input.c1,quote,at),orderBook,plans,ledger:updateScalpLedger(asset,plans,quote,at,input.c1),data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
+      const bookFresh=Boolean(orderBook?.ok&&Number(orderBook?.quality||0)>=65&&
+        Number(orderBook?.checkedAt||0)>0&&at-Number(orderBook.checkedAt)>=0&&at-Number(orderBook.checkedAt)<12000);
+      const qualityGates=plans.map(plan=>{
+        const losses=getScalpPaperQualityGate(asset,plan.horizon,at);
+        const issues:string[]=[];
+        if(plan.status==='ARMED'&&asset==='BTC'){
+          if(!bookFresh)issues.push('دفتر أوامر BTC غير موثوق أو متأخر؛ متابعة فقط');
+          else if(orderBook?.side!=='WAIT'&&orderBook?.side!==plan.side&&Number(orderBook?.strength||0)>=59)
+            issues.push('تدفق سيولة BTC يعاكس الدخول المقترح');
+          if(bookFresh&&Number(orderBook?.book?.spreadBps||0)>5)
+            issues.push('سبريد دفتر أوامر BTC مرتفع للحركة المتوقعة');
+        }
+        if(plan.status==='ARMED'&&losses.blocked)issues.push(losses.reason);
+        if(plan.status==='ARMED'&&issues.length){
+          plan.status='WATCH';plan.blockers=[...plan.blockers,...issues];plan.reason=issues[0];
+        }
+        return {horizon:plan.horizon,...losses,issues};
+      });
+      return {asset,checkedAt:at,quote,candleSource:input.candleSource,liquidity:readScalpLiquidity(input.c1,quote,at),orderBook,plans,qualityGates,ledger:updateScalpLedger(asset,plans,quote,at,input.c1),data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
     };
     const goldSnap=goldResult.status==='fulfilled'?goldResult.value:null;
     let market=btcResult.status==='fulfilled'?btcResult.value:null;

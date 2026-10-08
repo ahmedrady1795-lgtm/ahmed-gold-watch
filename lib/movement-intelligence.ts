@@ -139,7 +139,10 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   const expected2=expected?.twoMinute||{},expected5=expected?.fiveMinute||{},expected15=expected?.fifteenMinute||{};
   const rangeMode=regime==='RANGE'||regime==='COMPRESSION';
   const expSide2=rangeMode?softExpectedSide(expected2):side(expected2?.side),expSide5=rangeMode?softExpectedSide(expected5):side(expected5?.side),expSide15=rangeMode?softExpectedSide(expected15):side(expected15?.side);
-  const liqScore=Math.max(Number(liq?.buy||0),Number(liq?.sell||0),Number(liq?.strength||0));
+  const liqAge=Date.now()-Number(liq?.checkedAt||0);
+  const liqUsable=Boolean(liq?.ok&&liqAge>=0&&liqAge<=12000&&Number(liq?.quality||0)>=55);
+  const liqSide:Side=liqUsable?side(liq?.side):'WAIT';
+  const liqScore=liqUsable?Math.max(Number(liq?.buy||0),Number(liq?.sell||0),Number(liq?.strength||0)):0;
   const tickScore=Math.max(Number(tick?.score||0),Number(tick?.confidence||0));
   const accScore=Math.max(Number(acc?.accumulationScore||0),Number(acc?.distributionScore||0),Number(acc?.breakoutReadiness||0));
   const stateScore=Number(g?.nextSideProbability||0)*Math.min(1,Math.max(.45,Number(g?.sequenceMatches||0)/12));
@@ -173,7 +176,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     {side:side(tick?.side),score:Math.max(Number(tick?.score||0),Number(tick?.confidence||0)),weight:1.20*on('wave')},
     {side:scalpSide,score:scalpScore,weight:1.25*on('scalp')},
     {side:side(motion?.side),score:Math.max(Number(motion?.score||0),Number(motion?.confidence||0)),weight:1.05*on('motion')},
-    {side:side(liq?.side),score:liqScore,weight:(asset==='BTC'?1.00:.35)*on('liquidity')},
+    {side:liqSide,score:liqScore,weight:(asset==='BTC'?1.00:.35)*on('liquidity')},
     {side:leadSide,score:leadScore,weight:leadArmed?pc('leadArmedWeight',1.55,0,3):leadBuilding?pc('leadBuildingWeight',.82,0,2.5):0},
     {side:microSide,score:microScore,weight:microReady?1.55*pc('neuralWeight',.34,0,1.5)/.34:0},
     {side:ml1Side,score:ml1Score,weight:ml1Ready?1.35*pc('ml1Weight',.30,0,1.5)/.30:0}
@@ -192,7 +195,7 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     ev('neuralL2',microSide,microScore,microReady?pc('neuralWeight',.34,0,1.5):0,microRel),
     ev('mlEnsemble1m',ml1Side,ml1Score,ml1Ready?pc('ml1Weight',.30,0,1.5):0,ml1Rel),
     ev('motion',motion?.side,motion?.score,w.motion,relH(learning,'motion','m2')),
-    ev('liquidity',liq?.side,liqScore,w.liquidity,relH(learning,'liquidity','m2')),
+    ev('liquidity',liqSide,liqScore,w.liquidity,relH(learning,'liquidity','m2')),
     ev('marketLead',leadSide,leadScore,leadArmed?pc('leadArmedWeight',1.55,0,3)*.194:leadBuilding?pc('leadBuildingWeight',.82,0,2.5)*.159:0,leadArmed?1.22:1.0),
     ev('structureM1',structure?.m1?.nextSide,struct1,w.structure,relH(learning,'structure','m2')),
     ev('stateGraph',g?.nextSide,stateScore,w.stateGraph,relH(learning,'stateGraph','m2')),
@@ -283,8 +286,10 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   if(leadArmed){
     const applyLead=(h:any,waitCap:number,alignedBoost:number)=>{
       if(h.side==='WAIT'){
-        const c=Math.round(cap(Number(h.confidence||0)*.35+Number(marketLead.confidence||0)*.65,38,waitCap));
-        return {...h,side:leadSide,confidence:c,uncertainty:Math.max(0,100-c),gateReason:'MARKET_LEAD_ARMED'};
+        // A live lead is observational evidence, not permission to override a
+        // failing or under-calibrated M1/M3 model. Keep its original safety gate.
+        return {...h,leadWatch:{side:leadSide,confidence:Number(marketLead.confidence||0),
+          stability:Number(marketLead.stability||0)},gateReason:h.gateReason||'LOW_CONFIDENCE'};
       }
       if(h.side===leadSide){
         const c=Math.round(cap(Number(h.confidence||0)+alignedBoost,0,confidenceCeiling));

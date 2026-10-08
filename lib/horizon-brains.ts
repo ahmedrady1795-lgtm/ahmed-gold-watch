@@ -76,7 +76,14 @@ export function buildSpecializedHorizonBrains(args:any){
   const scalpScore=Math.max(scalpLong,scalpShort,Number(scalp?.confidence||0));
   const tickScore=Math.max(Number(tick?.score||0),Number(tick?.confidence||0));
   const motionScore=Math.max(Number(motion?.score||0),Number(motion?.confidence||0));
-  const liqScore=Math.max(Number(liq?.buy||0),Number(liq?.sell||0),Number(liq?.strength||0));
+  // Only live, sufficiently complete liquidity can vote for a directional forecast.
+  // A stale book or failed provider must not count as an independent evidence family.
+  const liquidityAge=Date.now()-Number(liq?.checkedAt||0);
+  const liquidityReady=Boolean(liq?.ok&&liquidityAge>=0&&liquidityAge<=12000&&Number(liq?.quality||0)>=55);
+  const liquiditySide:Side=liquidityReady?s(liq?.side):'WAIT';
+  const liqScore=liquidityReady
+    ?Math.min(92,Math.max(Number(liq?.buy||0),Number(liq?.sell||0),Number(liq?.strength||0))*Math.min(1,Number(liq.quality||0)/85))
+    :0;
   const accScore=Math.max(Number(acc?.accumulationScore||0),Number(acc?.distributionScore||0),Number(acc?.breakoutReadiness||0));
   const graphScore=Number(graph?.nextSideProbability||0)*Math.min(1,Math.max(.45,Number(graph?.sequenceMatches||0)/12));
   const struct1=Number(structure?.m1?.nextScore||0),struct5=Number(structure?.m5?.nextScore||0);
@@ -98,7 +105,7 @@ export function buildSpecializedHorizonBrains(args:any){
   const memory5=s(memory?.horizon5?.side),memory5Score=Number(memory?.horizon5?.confidence||0);
   let one=resolve({
     FLOW:[ev(tick?.side,tickScore,.42),ev(scalpSide,scalpScore,.34),ev(motion?.side,motionScore,.24)],
-    LIQUIDITY:[ev(liq?.side,liqScore,1)],
+    LIQUIDITY:[ev(liquiditySide,liqScore,1)],
     POSITIONING:[ev(acc?.side,accScore,1)],
     STRUCTURE:[ev(structure?.m1?.nextSide,struct1,.58),ev(graph?.nextSide,graphScore,.24),ev(m1Side,m1Score,.18)],
     MODEL:[ev(neuralSide,neuralScore,neuralReady?.42:0),ev(ml1Side,ml1Score,ml1Ready?.38:0),ev(exp2Side,exp2Score,.20)],
@@ -109,7 +116,7 @@ export function buildSpecializedHorizonBrains(args:any){
 
   let three=resolve({
     FLOW:[ev(tick?.side,tickScore,.25),ev(scalpSide,scalpScore,.25),ev(motion?.side,motionScore,.50)],
-    LIQUIDITY:[ev(liq?.side,liqScore,1)],
+    LIQUIDITY:[ev(liquiditySide,liqScore,1)],
     POSITIONING:[ev(acc?.side,accScore,1)],
     STRUCTURE:[ev(structure?.m1?.nextSide,struct1,.48),ev(graph?.nextSide,graphScore,.34),ev(m1Side,m1Score,.18)],
     MODEL:[ev(exp2Side,exp2Score,.50),ev(ml1Side,ml1Score,ml1Ready?.30:0),ev(neuralSide,neuralScore,neuralReady?.20:0)],
@@ -120,7 +127,7 @@ export function buildSpecializedHorizonBrains(args:any){
 
   let five=resolve({
     FLOW:[ev(motion?.side,motionScore,.65),ev(scalpSide,scalpScore,.20),ev(tick?.side,tickScore,.15)],
-    LIQUIDITY:[ev(liq?.side,liqScore,1)],
+    LIQUIDITY:[ev(liquiditySide,liqScore,1)],
     POSITIONING:[ev(acc?.side,accScore,1)],
     STRUCTURE:[ev(structure?.m5?.nextSide,struct5,.48),ev(graph?.nextSide,graphScore,.30),ev(m5Side,m5Score,.22)],
     MODEL:[ev(ml5Side,ml5Score,ml5Ready?.44:0),ev(exp5Side,exp5Score,.56)],
