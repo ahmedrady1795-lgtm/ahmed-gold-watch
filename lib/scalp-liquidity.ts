@@ -68,7 +68,7 @@ function evaluateM1Hold(
   // A complete post-watch candle whose ENTIRE low/high remains beyond the
   // fixed trigger independently proves a 60-second hold. This is stricter than
   // a close-only cross, and works with legitimate low-frequency gold quotes.
-  const fullMinuteHeld=Boolean(candleConfirmed&&last&&last.time>=watch.openedAt&&
+  const fullMinuteHeld=Boolean(candleConfirmed&&last&&beyond&&!invalid&&last.time>=watch.openedAt&&
     dir*((dir===1?last.low:last.high)-watch.trigger)>Math.max(price*.000002,atr*.015));
   const observedSeconds=watch.firstBeyondAt!==null&&fresh&&beyond&&continuity
     ?Math.max(0,Math.min(requiredSeconds,Math.floor((now-watch.firstBeyondAt)/1000))):0;
