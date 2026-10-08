@@ -1,5 +1,6 @@
 'use client';
 import {Activity,TrendingDown,TrendingUp} from 'lucide-react';
+import ScalpDesk from './ScalpDesk';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
 const sideAr=(s:any)=>s==='BUY'?'شراء':s==='SELL'?'بيع':'انتظار';
@@ -79,7 +80,7 @@ function nextMoveCopy(hunt:any,stateGraph:any){
   return {title,detail,tone:first==='BUY'?'green':first==='SELL'?'red':'amber'};
 }
 
-function AssetCard({x,liveQuote,fast}:any){
+function LegacyAssetCard({x,liveQuote,fast}:any){
   if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
   const hunt=x.huntForecast,recommendation=x.recommendation,goldCore=x.asset==='GOLD'?x.goldForecastCore:null,predator=x.asset==='GOLD'?x.predatorFusionV2:null;
   const core1=goldCore?.horizons?.oneMinute,core5=goldCore?.horizons?.fiveMinute;
@@ -244,6 +245,11 @@ function AssetCard({x,liveQuote,fast}:any){
   </section>;
 }
 
+function AssetCard(props:any){
+  if(!props.x?.scalpDesk)return <LegacyAssetCard {...props}/>;
+  return <ScalpDesk desk={props.x.scalpDesk} now={props.now}><LegacyAssetCard {...props}/></ScalpDesk>;
+}
+
 export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.now()}:any){
   const auto=data?.autopilot,next=auto?.nextEvent;
   const nextEventDelta=Number(next?.time)-now;
@@ -303,6 +309,6 @@ export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.n
       </div>
     </section>}
 
-    <div className="dashboardgrid"><AssetCard x={data?.bitcoin} fast={fastWave?.btc}/><AssetCard x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive}/></div>
+    <div className="dashboardgrid"><AssetCard now={now} x={data?.bitcoin} fast={fastWave?.btc}/><AssetCard now={now} x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive}/></div>
   </div>;
 }

@@ -13,6 +13,7 @@ const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v
 export default function Home(){
   const [aiData,setAiData]=useState<any>(null);
   const [aiError,setAiError]=useState('');
+  const [scalpDesk,setScalpDesk]=useState<any>(null);
   const [busy,setBusy]=useState(false);
   const [btc,setBtc]=useState<number|null>(null);
   const [btcSource,setBtcSource]=useState('Coinbase');
@@ -71,6 +72,24 @@ export default function Home(){
       if(manual)setBusy(false);
     }
   };
+
+  useEffect(()=>{
+    let stopped=false;
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    const controller=new AbortController();
+    const load=async()=>{
+      try{
+        if(document.visibilityState==='visible'){
+          const r=await fetch('/api/scalp',{cache:'no-store',signal:AbortSignal.any([controller.signal,AbortSignal.timeout(10000)])});
+          const j=await r.json();
+          if(!stopped&&r.ok&&j?.ok)setScalpDesk(j);
+        }
+      }catch{}
+      if(!stopped)timer=setTimeout(load,2500);
+    };
+    void load();
+    return()=>{stopped=true;controller.abort();clearTimeout(timer);};
+  },[]);
 
   useEffect(()=>{
     void loadAi();
@@ -288,7 +307,7 @@ export default function Home(){
     {aiError&&!aiData&&<div className="fatal"><WifiOff size={18}/><div><strong>تعذر تحديث AI</strong><span>{aiError}</span></div></div>}
 
     <section className="content lite-content">
-      <AICommandCenter data={aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
+      <AICommandCenter data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
       <NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredId={aiData?.autopilot?.nextEvent?.id||null}/>
     </section>
 

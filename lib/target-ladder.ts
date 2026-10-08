@@ -28,7 +28,7 @@ export type TargetLadder={
 type Candidate={price:number;low:number;high:number;confidence:number;kind:TargetKind;source:string;weight:number};
 
 const cap=(n:number,a=0,b=100)=>Math.max(a,Math.min(b,n));
-const num=(v:any)=>Number.isFinite(Number(v))?Number(v):null;
+const num=(v:any)=>v==null||v===''?null:Number.isFinite(Number(v))?Number(v):null;
 const validSide=(v:any):Side=>v==='BUY'||v==='SELL'?v:'WAIT';
 
 function zone(v:any){

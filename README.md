@@ -2,6 +2,16 @@
 
 Rule-based trading command dashboard for gold and Bitcoin monitoring, technical analysis, backtesting/paper trading, and optional MT5/Exness bridge integration.
 
+## Scalp desk (October 8, 2026)
+- `/api/scalp` independently updates M1 and M5 opportunities. The H4/M15 forecast is context rather than a scalp veto.
+- Uses closed M1/M5 candles for breakouts, pullbacks and liquidity sweeps. Quotes older than 15 seconds, gaps, malformed candles, futures proxies and imminent high-impact news block activation.
+- Entry triggers expire after 45 seconds (M1) or 90 seconds (M5). Issued levels remain fixed until cancellation, expiry or settlement; targets do not chase the price.
+- Scores describe setup strength, not calibrated success probabilities. Structural targets and projected extensions are labelled separately.
+- Paper reference-price outcomes are stored on the existing `/data` volume in `scalp-paper-v1.json`, separately by asset and horizon. T1/stop/time exits include assumed round-trip costs; unknown monitoring intervals never become wins. This is not a broker fill or an execution signal.
+- Optional `SCALP_GOLD_FEE_BPS`, `SCALP_BTC_FEE_BPS`, `SCALP_GOLD_SLIPPAGE_BPS`, `SCALP_BTC_SLIPPAGE_BPS` set round-trip basis-point estimates. Defaults: gold 0 fee + 1 slippage bps, BTC 12 fee + 2 slippage bps, plus observed spread. Missing spread uses 2 bps. Estimates are shown explicitly; do not interpret Coinbase reference prices as Exness fills.
+- Verify with `node tests/indicators.cjs`, `node tests/scalp.cjs`, and `npm run build`. An optional replay JSON (`[{asset,c1,c5,source,spread,feeBps,slippageBps}]`) can be passed to `node tests/scalp.cjs FILE`.
+- Initial short replay: 301 gold M1 bars and 350 BTC bars, fixed parameters and conservative intrabar assumptions. Gold M1: 3 simulated trades, net -0.483R; gold M5: 3 simulated trades, net +0.457R. BTC produced no armed setup after the assumed costs. This is a smoke test, not proof of profitability or a representative backtest.
+
 ## Principles
 - No OpenAI API and no AI dependency.
 - Closed-candle analysis on M1, M5, M15 and H1.

@@ -1,5 +1,6 @@
 import {startServerTickBrain} from './lib/server-tick-brain';
 import {getNextMoveOutcome} from './lib/next-move-outcome';
+import {getScalpDesk} from './lib/scalp-desk';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -12,6 +13,10 @@ export async function register(){
   if(process.env.PREDATOR_BACKGROUND_LEARNING==='false')return;
   if(globalThis.__predatorLearningLoopStarted)return;
   globalThis.__predatorLearningLoopStarted=true;
+
+  // Keep immutable scalp plans and their paper outcomes observed while the UI is closed.
+  const scalpTimer=setInterval(()=>{void getScalpDesk().catch(()=>{});},4000);
+  scalpTimer.unref?.();
 
   const port=process.env.PORT||'3000';
   const url='http://127.0.0.1:'+port+'/api/ai-analysis';

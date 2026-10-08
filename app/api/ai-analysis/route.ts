@@ -35,6 +35,7 @@ import {setAiSnapshot} from '../../../lib/ai-snapshot-cache';
 import {runAutonomousToolCycle} from '../../../lib/autonomous-tool-broker';
 import {buildMarketToolMesh} from '../../../lib/market-tool-mesh';
 import {buildTargetLadder} from '../../../lib/target-ladder';
+import {getScalpDesk} from '../../../lib/scalp-desk';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -521,6 +522,7 @@ export async function GET(request:Request){
   analysisBusy=true;
   try{
     const actions:string[]=[],detected:string[]=[];
+    const scalpDeskPromise=getScalpDesk().catch(()=>null);
     const webIntelPromise=getWebMarketIntelligence(now).catch(()=>null);
     let [goldSnap,btc,liveBtc,liquidity]=await Promise.all([getMarketSnapshot(),getBtcMarket(),liveBtcSpot(),getBtcLiquidity().catch(()=>null)]);
     let gm=goldSnap.market,quote=goldSnap.quote;
@@ -1207,8 +1209,10 @@ export async function GET(request:Request){
 
       return keepPrev('تم رفض انعكاس مؤقت؛ الاتجاه لا يتغير إلا بتفوق واضح ومستقل للإشارة العكسية');
     };
+    const scalpDesk=await scalpDeskPromise;
     const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any,h4?:any,intent?:any,evolution?:any,toolMesh?:any,atr?:number|null)=>({
       asset,
+      scalpDesk:scalpDesk?.[asset==='GOLD'?'gold':'bitcoin']||null,
       forwardMove:stabilizeForwardMove(asset,buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse,liq,structure,accumulation,h4,intent,evolution,toolMesh,atr),pulse),
       h4Context:h4||null,
       marketToolMesh:toolMesh?{
