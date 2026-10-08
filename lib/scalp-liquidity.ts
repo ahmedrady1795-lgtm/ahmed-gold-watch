@@ -16,7 +16,7 @@ const activeWatches=new Map<string,HoldWatch>();
 function evaluateM1Hold(
   asset:'GOLD'|'BTC',horizon:1|5,side:WatchSide,seed:{trigger:number;invalidation:number},
   closed:Candle[],quote:ScalpQuote,now:number,atr:number,
-  watchId='SCENARIO',validUntil=now+4*60000
+  watchId='SCENARIO',validUntil=now+4*60000,requiredSeconds:30|60=60
 ){
   const key=asset+':'+horizon+':'+side+':'+watchId;
   if(activeWatches.size>300)for(const [id,state] of activeWatches){
@@ -66,20 +66,23 @@ function evaluateM1Hold(
   const fullMinuteHeld=Boolean(candleConfirmed&&last&&last.time>=watch.openedAt&&
     dir*((dir===1?last.low:last.high)-watch.trigger)>Math.max(price*.000002,atr*.015));
   const observedSeconds=watch.firstBeyondAt!==null&&fresh&&beyond&&continuity
-    ?Math.max(0,Math.min(60,Math.floor((now-watch.firstBeyondAt)/1000))):0;
-  const heldSeconds=fullMinuteHeld?60:observedSeconds;
+    ?Math.max(0,Math.min(requiredSeconds,Math.floor((now-watch.firstBeyondAt)/1000))):0;
+  const heldSeconds=fullMinuteHeld?requiredSeconds:observedSeconds;
+  // The 30-second selective M5 path still REQUIRES the M1 candle to
+  // close after this watch opened. Half a minute of ticks alone cannot
+  // create a confirmed trade, even with an excellent setup score.
   const confirmed=Boolean(fresh&&beyond&&!invalid&&
-    (fullMinuteHeld||(heldSeconds>=60&&candleConfirmed)));
+    (fullMinuteHeld||(heldSeconds>=requiredSeconds&&candleConfirmed)));
   if(confirmed&&!watch.confirmedAt)watch.confirmedAt=now;
   if(!confirmed)watch.confirmedAt=null;
   return {
     state:confirmed?'CONFIRMED':heldSeconds>0?'HOLDING':'WATCH',
     side,trigger:watch.trigger,invalidation:watch.invalidation,
-    heldSeconds,remainingSeconds:Math.max(0,60-heldSeconds),
-    requiredSeconds:60,closedCandleConfirmed:candleConfirmed,
+    heldSeconds,remainingSeconds:Math.max(0,requiredSeconds-heldSeconds),
+    requiredSeconds,closedCandleConfirmed:candleConfirmed,
     confirmedAt:watch.confirmedAt,expiresAt:watch.expiresAt,
-    reason:confirmed?'ثبات 60 ثانية مثبت بشمعة M1 كاملة أو مراقبة أسعار حية':heldSeconds>0
-      ?'جارٍ حساب الثبات من أسعار جديدة؛ يلزم 60 ثانية وإغلاق M1'
+    reason:confirmed?'ثبات موثق بإغلاق M1 وأسعار حديثة متصلة':heldSeconds>0
+      ?'جارٍ تأكيد الثبات من أسعار متجددة؛ يلزم '+requiredSeconds+' ثانية وإغلاق M1'
       :'بانتظار عبور المستوى ثم الثبات 60 ثانية'
   };
 }
@@ -88,7 +91,7 @@ function evaluateM1Hold(
 export function observeScalpPlanHold(
   asset:'GOLD'|'BTC',horizon:1|5,side:WatchSide,planId:string,
   entry:number,stop:number,expiresAt:number,
-  rows:Candle[],quote:ScalpQuote,now:number
+  rows:Candle[],quote:ScalpQuote,now:number,requiredSeconds:30|60=60
 ){
   const closed=rows.filter(c=>c.time+60000<=now&&
     [c.time,c.open,c.high,c.low,c.close].every(Number.isFinite)&&
@@ -98,13 +101,13 @@ export function observeScalpPlanHold(
   if(!Number.isFinite(atr)||atr<=0||closed.length<21||now>expiresAt||
       closed.slice(-20).some((c,i,a)=>i>0&&c.time-a[i-1].time!==60000)){
     return {state:'WATCH' as const,side,trigger:entry,invalidation:stop,
-      heldSeconds:0,remainingSeconds:60,requiredSeconds:60,
+      heldSeconds:0,remainingSeconds:requiredSeconds,requiredSeconds,
       closedCandleConfirmed:false,confirmedAt:null,expiresAt,
       reason:'بيانات الدقيقة غير مكتملة أو انتهت صلاحية الفرصة'};
   }
   return evaluateM1Hold(asset,horizon,side,
     {trigger:entry,invalidation:stop},closed,quote,now,atr,
-    'PLAN:'+planId,expiresAt);
+    'PLAN:'+planId,expiresAt,requiredSeconds);
 }
 
 export function readScalpLiquidity(rows:Candle[],quote:ScalpQuote,now:number,asset:'GOLD'|'BTC'='GOLD'){
