@@ -23,6 +23,17 @@ assert.equal(completedLiveCandles(disconnected,now+120000).length,0,'A stream ga
 const series=(ms)=>Array.from({length:240},(_,i)=>({time:now-(240-i)*ms,open:4000,high:4000.4,low:3999.6,close:4000}));
 function input(){return {asset:'GOLD',c1:series(60000),c5:series(300000),quote:{price:4000.45,at:now,bid:4000.44,ask:4000.455,source:'Biquote'},candleSource:'Biquote XAUUSD',now,events:[],newsReady:true,marketOpen:true,feeBps:0,slippageBps:0};}
 function breakout(){const x=input();x.c1[x.c1.length-1]={time:now-60000,open:4000,high:4000.55,low:3999.9,close:4000.45};return x;}
+const {readScalpLiquidity}=load('lib/scalp-liquidity.ts');
+const liquidityInput=input();
+const liquid=readScalpLiquidity(liquidityInput.c1,{...liquidityInput.quote,price:4000},now);
+assert.equal(liquid.available,true);assert.ok(liquid.levels.some(l=>l.side==='ABOVE'));assert.ok(liquid.levels.some(l=>l.side==='BELOW'));
+assert.equal(readScalpLiquidity(liquidityInput.c1,{...liquidityInput.quote,at:now-16000},now).available,false);
+const sweepRows=series(60000);sweepRows[sweepRows.length-1]={time:now-60000,open:4000,high:4001,low:3999.8,close:4000.1};
+assert.equal(readScalpLiquidity(sweepRows,liquidityInput.quote,now).sweeps.at(-1).side,'SELL');
+const withPartial=[...liquidityInput.c1,{time:now,open:4000,high:5000,low:3000,close:4000}];
+assert.equal(readScalpLiquidity(withPartial,liquidityInput.quote,now).rangeHigh,4000.4);
+const gapRows=series(60000);gapRows.splice(-4,1);assert.equal(readScalpLiquidity(gapRows,liquidityInput.quote,now).available,false);
+console.log('PASS: liquidity map, confirmed sweep, stale price, incomplete candles and data gaps');
 const plans=buildScalpPlans(breakout());
 const buy=plans[0];assert.equal(buy.side,'BUY');assert.equal(buy.status,'ARMED');
 assert.ok(buy.entry>4000.45);assert.ok(buy.stop<buy.entry);assert.ok(buy.targets[0].price>buy.entry);assert.ok(buy.targets[1].price>buy.targets[0].price);assert.ok(buy.targets[2].price>buy.targets[1].price);assert.ok(buy.netRR>=1.25);

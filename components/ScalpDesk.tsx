@@ -17,7 +17,10 @@ export default function ScalpDesk({desk,now=Date.now(),children}:any){
   const status=stale?'التحديث متأخر':expired?'انتهت صلاحية الدخول':current?stateAr(current.state):plan?.status==='ARMED'?'إعداد قابل للتفعيل التجريبي':plan?.status==='BLOCKED'?'البيانات تمنع التفعيل':plan?.side==='WAIT'?'رصد السوق':'تكوّن فرصة';
   const directional=shown?.side==='BUY'||shown?.side==='SELL';
   const tone=stale||expired?'amber':shown?.side==='BUY'?'green':shown?.side==='SELL'?'red':'amber';
-  const secs=shown&&directional?Math.max(0,Math.ceil(((current?.activatedAt?current.activatedAt+horizon*60000:shown.expiresAt)-now)/1000)):0;
+  const timed=Boolean(current&&(current.state==='ARMED'||current.state==='ACTIVE'));
+  const liquidity=desk.liquidity,book=desk.orderBook;
+  const bookFresh=book?.providers?.krakenDepth&&now-book.checkedAt<=15000;
+  const secs=shown&&directional&&timed?Math.max(0,Math.ceil(((current?.activatedAt?current.activatedAt+horizon*60000:shown.expiresAt)-now)/1000)):0;
   const stats=lane?.stats;
   return <section className={'panel scalp-desk ai-asset-card '+(shown?.side==='BUY'?'ai-buy':shown?.side==='SELL'?'ai-sell':'ai-wait')}>
     <div className="scalp-desk-head">
@@ -27,20 +30,32 @@ export default function ScalpDesk({desk,now=Date.now(),children}:any){
     <div className="scalp-frame-tabs" role="tablist" aria-label="فريم السكالب">
       {([1,5] as const).map(h=>{const p=desk.plans?.find((x:any)=>x.horizon===h),c=desk.ledger?.lanes?.find((x:any)=>x.horizon===h)?.current;return <button key={h} id={'scalp-tab-'+desk.asset+'-'+h} type="button" role="tab" aria-selected={horizon===h} aria-controls={'scalp-panel-'+desk.asset} onClick={()=>setHorizon(h)} className={horizon===h?'selected':''}><strong>{h===1?'دقيقة واحدة':'خمس دقائق'} <span dir="ltr">M{h}</span></strong><small>{c?stateAr(c.state):p?.status==='BLOCKED'?'بيانات غير جاهزة':p?.side==='WAIT'?'رصد السوق':sideAr(p?.side)+' · '+setupAr(p?.setup)}</small></button>;})}
     </div>
+    <div className="scalp-liquidity" aria-label="قراءة السيولة الحية">
+      <div className="scalp-liquidity-title"><strong>خريطة السيولة · قراءة مستمرة</strong><small>{stale?'التحديث متأخر':liquidity?.available?'قراءة حديثة':'بيانات غير كافية'} · {new Date(desk.checkedAt).toLocaleTimeString('ar-AE',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small></div>
+      <p>{liquidity?.reason||'جارٍ تحميل قراءة السيولة'}</p>
+      {liquidity?.available&&<>
+        <div className="scalp-liquidity-grid"><div><small>قمة نطاق 20 دقيقة</small><b dir="ltr">{fmt(liquidity.rangeHigh)}</b></div><div><small>قاع نطاق 20 دقيقة</small><b dir="ltr">{fmt(liquidity.rangeLow)}</b></div><div><small>الحركة منذ آخر إغلاق</small><b className={liquidity.pressure==='BUY'?'green':liquidity.pressure==='SELL'?'red':''}>{liquidity.pressure==='WAIT'?'متوازنة':sideAr(liquidity.pressure)} <span dir="ltr">{fmt(liquidity.move)}</span></b></div></div>
+        <div className="scalp-pools">{liquidity.levels?.map((l:any,i:number)=><div key={i}><span>{l.side==='ABOVE'?'سيولة فوق قمة':'سيولة تحت قاع'}{l.touches>1?' · قمم/قيعان متقاربة':''}</span><b dir="ltr">{fmt(l.price)}</b><small>المسافة {fmt(l.distance)}</small></div>)}</div>
+        <p>{liquidity.sweeps?.length?'آخر سحب مؤكد بإغلاق: '+liquidity.sweeps.map((s:any)=>(s.side==='BUY'?'سحب قاع واستعادة':'سحب قمة ورفض')+' '+fmt(s.level)+' · '+new Date(s.at).toLocaleTimeString('ar-AE',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'})).join(' / '):'لم يُرصد سحب مؤكد في آخر 6 شموع؛ مراقبة الاقتراب والاختراق مستمرة.'}</p>
+        <small>{liquidity.note}</small>
+      </>}
+      {desk.asset==='BTC'?<div className="scalp-book"><strong>دفتر أوامر Kraken · 25 مستوى</strong>{bookFresh?<div className="scalp-liquidity-grid"><div><small>طلبات الشراء · USD</small><b dir="ltr">{fmt(book.book.bidDepthUsd,0)}</b></div><div><small>عروض البيع · USD</small><b dir="ltr">{fmt(book.book.askDepthUsd,0)}</b></div><div><small>اختلال العمق المرجّح</small><b dir="ltr">{fmt(book.book.depthImbalance,0)}%</b></div></div>:<p>دفتر الأوامر غير متاح أو متأخر؛ خريطة السعر مستقلة عنه.</p>}<small>لقطة أوامر قابلة للتغيير والإلغاء؛ ليست ضمان اتجاه أو حجم صفقات منفذة.</small></div>:<div className="scalp-book"><small>الذهب: المصدر لا يوفر دفتر أوامر أو حجم تداول موثوق؛ قراءة السيولة هنا من حركة السعر.</small></div>}
+    </div>
     <div id={'scalp-panel-'+desk.asset} role="tabpanel" aria-labelledby={'scalp-tab-'+desk.asset+'-'+horizon}>
       <div className="scalp-decision">
         <div className={'scalp-direction '+tone}>{shown?.side==='BUY'?<ArrowUpRight size={34}/>:shown?.side==='SELL'?<ArrowDownRight size={34}/>:<Activity size={30}/>}<div><strong>{directional?sideAr(shown.side)+' · '+setupAr(shown.setup):'نبحث عن الإعداد التالي'}</strong><span>{status}</span></div></div>
-        <div className="scalp-score"><b>{shown?.score||0}<small>/100</small></b><span>قوة الإعداد</span></div>
+        <div className="scalp-score"><b>{directional?shown?.score:'—'}{directional&&<small>/100</small>}</b><span>قوة الإعداد</span></div>
       </div>
-      <div className="scalp-levels">
+      {directional&&<div className="scalp-levels">
         <div><small>الدخول المشروط</small><b dir="ltr">{fmt(shown?.entry)}</b></div>
         <div className="stop"><small>وقف الخسارة</small><b dir="ltr">{fmt(shown?.stop)}</b></div>
         {[0,1,2].map(j=><div key={j}><small><Target size={12}/> T{j+1}{j===0?' · الأول':''}</small><b dir="ltr">{fmt(shown?.targets?.[j]?.price)}</b><span>{shown?.targets?.[j]?shown.targets[j].kind==='STRUCTURE'?'مستوى سعري':'امتداد تقديري':'بانتظار إعداد'}</span></div>)}
       </div>
+      }
       <div className="scalp-condition"><strong>{stale?'لا تعتمد الإعداد حتى يعود تحديث حديث':current?.note||plan?.reason}</strong><span>{shown?.trigger}</span></div>
       <div className="scalp-facts">
         <div><small>العائد / المخاطرة بعد التكلفة</small><b>{fmt(shown?.netRR)} R</b></div>
-        <div><small><Clock3 size={12}/> {current?.activatedAt?'متبقي للمتابعة':'صلاحية التفعيل'}</small><b>{secs?secs+' ثانية':shown?.entry!=null?'انتهت':'—'}</b></div>
+        <div><small><Clock3 size={12}/> {current?.activatedAt?'متبقي للمتابعة':'صلاحية التفعيل'}</small><b>{timed?(secs?secs+' ثانية':'انتهت'):'غير مفعّلة'}</b></div>
         <div><small>تكلفة الدورة {shown?.costEstimated?'· تقديرية':''}</small><b>{fmt(shown?.cost)} $</b></div>
       </div>
       {!!plan?.blockers?.length&&!current&&<ul className="scalp-blockers">{plan.blockers.map((r:string)=><li key={r}>{r}</li>)}</ul>}

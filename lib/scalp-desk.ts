@@ -4,6 +4,8 @@ import {buildScalpPlans,type ScalpQuote} from './scalp-opportunities';
 import {updateScalpLedger} from './scalp-paper-ledger';
 import {getRuntimeEnv} from './runtime';
 import {getCoinbaseServerQuote,getCoinbaseClosedCandles} from './server-tick-brain';
+import {readScalpLiquidity} from './scalp-liquidity';
+import {getBtcLiquidity} from './liquidity-intelligence';
 
 function session(now:number){const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;return day!==6&&!(day===0&&h<22)&&!(day===5&&h>=21)&&!(day>=1&&day<=4&&h>=21&&h<22);}
 function envNumber(key:string){const raw=(getRuntimeEnv() as Record<string,unknown>)[key]??process.env[key];if(raw==null||raw==='')return null;const n=Number(raw);return Number.isFinite(n)&&n>=0&&n<=100?n:null;}
@@ -26,12 +28,13 @@ export async function getScalpDesk(){
   if(cached&&now-cachedAt<2000)return cached;
   if(pending)return pending;
   pending=(async()=>{
-    const [goldResult,btcResult]=await Promise.allSettled([getMarketSnapshot(),getBtcMarket()]);
+    const [goldResult,btcResult,liquidityResult]=await Promise.allSettled([getMarketSnapshot(),getBtcMarket(),getBtcLiquidity()]);
     const make=(asset:'GOLD'|'BTC',market:any,quote:ScalpQuote,events:any[],newsReady:boolean)=>{
       const at=Date.now();
       const input={asset,c1:market?.c1||[],c5:market?.c5||[],candleSource:market?.priceSource||market?.source||'unavailable',quote,now:at,events,newsReady,marketOpen:asset==='BTC'||session(at),feeBps:envNumber('SCALP_'+asset+'_FEE_BPS'),slippageBps:envNumber('SCALP_'+asset+'_SLIPPAGE_BPS')};
       const plans=buildScalpPlans(input);
-      return {asset,checkedAt:at,quote,candleSource:input.candleSource,plans,ledger:updateScalpLedger(asset,plans,quote,at,input.c1),data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
+      const orderBook=asset==='BTC'&&liquidityResult.status==='fulfilled'?liquidityResult.value:null;
+      return {asset,checkedAt:at,quote,candleSource:input.candleSource,liquidity:readScalpLiquidity(input.c1,quote,at),orderBook,plans,ledger:updateScalpLedger(asset,plans,quote,at,input.c1),data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
     };
     const goldSnap=goldResult.status==='fulfilled'?goldResult.value:null;
     let market=btcResult.status==='fulfilled'?btcResult.value:null;
