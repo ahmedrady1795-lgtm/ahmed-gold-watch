@@ -44,6 +44,7 @@ NORM_MEAN=None
 NORM_STD=None
 TRAINING=False
 LAST_TRAIN_AT=0
+LAST_TRAIN_ATTEMPT_AT=0
 PATH_MODEL=None
 PATH_METRICS=None
 PATH_NORM_MEAN=None
@@ -519,7 +520,7 @@ def _fit_once(Xtr,ytr,Xv,yv):
     return model
 
 def _train():
-    global MODEL,METRICS,NORM_MEAN,NORM_STD,TRAINING,LAST_TRAIN_AT,LAST_ERROR
+    global MODEL,METRICS,NORM_MEAN,NORM_STD,TRAINING,LAST_TRAIN_AT,LAST_TRAIN_ATTEMPT_AT,LAST_ERROR
     if TRAINING:return
     TRAINING=True
     try:
@@ -549,6 +550,14 @@ def _train():
                  "classRates":{"down":float(class_rates[0]),"noise":float(class_rates[1]),"up":float(class_rates[2])},
                  "purge":purge,"normalization":"train-only robust median/IQR"}
         trained=int(time.time()*1000)
+        LAST_TRAIN_ATTEMPT_AT=trained
+        # Production readiness is earned on validation AND untouched holdout.
+        # A weak retrain must never overwrite an already READY champion.
+        if MODEL is not None and METRICS is not None and METRICS.get("ready") and not ready:
+            print("[NEURAL-CHALLENGER-REJECTED] "+json.dumps({
+                "reason":"new model failed holdout",
+                "candidate":metrics,"championTrainedAt":LAST_TRAIN_AT}),flush=True)
+            return
         obj={"version":APP_VERSION,"state_dict":model.state_dict(),"metrics":metrics,
              "normMean":center.tolist(),"normStd":scale.tolist(),"trainedAt":trained}
         tmp=MODEL_PATH.with_suffix(".tmp");torch.save(obj,tmp);os.replace(tmp,MODEL_PATH)
@@ -574,7 +583,7 @@ def _collector():
                 if len(PENDING)>=10:_flush()
                 n=len(ROWS)
             LAST_SNAPSHOT_AT=row["t"];LAST_ERROR=None
-            if n>=MIN_SNAPSHOTS and not TRAINING and row["t"]-LAST_TRAIN_AT>RETRAIN_SECONDS*1000 and _rss_mb()<=MEMORY_TRAIN_START_MB:
+            if n>=MIN_SNAPSHOTS and not TRAINING and row["t"]-max(LAST_TRAIN_AT,LAST_TRAIN_ATTEMPT_AT)>RETRAIN_SECONDS*1000 and _rss_mb()<=MEMORY_TRAIN_START_MB:
                 threading.Thread(target=_train,daemon=True,name="neural-trainer").start()
             elif n>=MIN_SNAPSHOTS and not PATH_TRAINING and PATH_MODEL is None and _rss_mb()<=MEMORY_TRAIN_START_MB:
                 threading.Thread(target=_train_path,daemon=True,name="price-path-trainer").start()
@@ -645,7 +654,8 @@ def startup():
 def health():
     return {"ok":True,"version":APP_VERSION,"runtimeRevision":RUNTIME_REVISION,"training":TRAINING,"pathTraining":PATH_TRAINING,
             "storedSnapshots":len(ROWS),"trainingMaxSamples":TRAIN_MAX_SAMPLES,"rssMb":_rss_mb(),"lastSnapshotAt":LAST_SNAPSHOT_AT,
-            "lastTrainAt":LAST_TRAIN_AT,"pathLastTrainAt":PATH_LAST_TRAIN_AT,"lastError":LAST_ERROR,"pathLastError":PATH_LAST_ERROR,"prediction":_predict()}
+            "lastTrainAt":LAST_TRAIN_AT,"lastTrainAttemptAt":LAST_TRAIN_ATTEMPT_AT,
+            "pathLastTrainAt":PATH_LAST_TRAIN_AT,"lastError":LAST_ERROR,"pathLastError":PATH_LAST_ERROR,"prediction":_predict()}
 
 @app.get("/predict")
 def predict():
