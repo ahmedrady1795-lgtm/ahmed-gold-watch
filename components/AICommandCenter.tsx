@@ -157,104 +157,89 @@ function AssetCard({x,liveQuote,fast}:any){
   const planInvalid=planPrimary?.invalidation!=null&&Number.isFinite(Number(planPrimary.invalidation))?Number(planPrimary.invalidation):null;
   const planT1=planPrimary?.target1!=null&&Number.isFinite(Number(planPrimary.target1))?Number(planPrimary.target1):null;
   const planT2=planPrimary?.target2!=null&&Number.isFinite(Number(planPrimary.target2))?Number(planPrimary.target2):null;
-  const forwardHeadline=forwardSide==='WAIT'
-    ?'انتظار قراءة أمامية أوضح'
-    :forwardStatus==='PRE_MOVE'
-      ?`قبل الحركة خلال 15د: ${moveAr(forwardSide)}`
-      :forwardStatus==='CONDITIONAL_ENTRY'
-        ?`صفقة مشروطة 15د: ${moveAr(forwardSide)}`
-      :forwardStatus==='BUILDING'
-        ?`ترجيح 15د يتكوّن: ${moveAr(forwardSide)}`
-        :forwardStatus==='IN_PROGRESS'
-          ?`حركة 15د بدأت: ${moveAr(forwardSide)} نحو الهدف`
-          :`الحركة القادمة خلال 15د: ${moveAr(forwardSide)}`;
-  return <section className={"panel ai-asset-card compact-asset "+(buy?'ai-buy':sell?'ai-sell':'ai-wait')}>
+  const heroSide=planBias!=='WAIT'?planBias:forwardSide;
+  const liveInvalidated=Boolean(price!=null&&planInvalid!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)<=planInvalid:Number(price)>=planInvalid));
+  const liveTriggered=Boolean(price!=null&&planEntry!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)>=planEntry:Number(price)<=planEntry));
+  const liveT1Hit=Boolean(price!=null&&planT1!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)>=planT1:Number(price)<=planT1));
+  const liveT2Hit=Boolean(price!=null&&planT2!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)>=planT2:Number(price)<=planT2));
+  const livePlanState=liveInvalidated?'INVALIDATED':liveT2Hit?'T2_HIT':liveT1Hit?'T1_HIT':liveTriggered?'ACTIVE':plan?.phase||'OBSERVE';
+  const livePlanAr=livePlanState==='INVALIDATED'?'الخطة أُلغيت':livePlanState==='T2_HIT'?'تم الوصول للهدف 2':livePlanState==='T1_HIT'?'تم الوصول للهدف 1':livePlanState==='ACTIVE'?'الحركة بدأت':professionalPhaseAr(livePlanState);
+  const distanceToT1=price!=null&&planT1!=null?Math.abs(planT1-Number(price)):null;
+  const distancePct=distanceToT1!=null&&Number(price)>0?distanceToT1/Number(price)*100:null;
+  const forwardHeadline=heroSide==='WAIT'
+    ?'انتظار حركة أوضح'
+    :liveInvalidated
+      ?'السيناريو السابق أُلغي · ننتظر خطة جديدة'
+      :liveT1Hit
+        ?`الهدف تحقق · مراقبة الامتداد التالي`
+        :liveTriggered
+          ?`الحركة بدأت: ${moveAr(heroSide)} نحو الهدف`
+          :`الحركة القادمة: ${moveAr(heroSide)}`;
+  return <section className={"panel ai-asset-card compact-asset "+(heroSide==='BUY'?'ai-buy':heroSide==='SELL'?'ai-sell':'ai-wait')}>
     <div className="panelhead">
-      <div><span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span><h2>{forwardHeadline}</h2></div>
-      {forwardSide==='BUY'?<TrendingUp/>:forwardSide==='SELL'?<TrendingDown/>:<Activity/>}
+      <div>
+        <span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'} · LIVE</span>
+        <h2>{forwardHeadline}</h2>
+      </div>
+      {heroSide==='BUY'?<TrendingUp/>:heroSide==='SELL'?<TrendingDown/>:<Activity/>}
     </div>
 
     <div className="ai-price-row compact-price">
       <div><small>السعر الآن</small><strong>{fmt(price,2)}</strong></div>
-      <div><small>ثقة القراءة المبكرة</small><strong className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>{forward?.confidence?Math.round(Number(forward.confidence))+'%':'—'}</strong></div>
-      <div><small>التحرك المتوقع</small><strong className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>{moveAr(forwardSide)}</strong></div>
+      <div><small>الاتجاه القادم</small><strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>{moveAr(heroSide)}</strong></div>
+      <div><small>الثقة</small><strong>{Math.round(Number(plan?.confidence??forward?.confidence||0))}%</strong></div>
+      <div><small>الحالة اللحظية</small><strong className={liveInvalidated?'red':liveTriggered?'green':'amber'}>{livePlanAr}</strong></div>
     </div>
 
-    <div className="next-move-copy primary-move zone-primary">
-      <span>الحركة القادمة · قراءة H4 → توقع 15 دقيقة</span>
-      <strong className={forwardSide==='BUY'?'green':forwardSide==='SELL'?'red':'amber'}>
-        {forwardSide==='WAIT'
-          ?'لا يوجد اتجاه أمامي واضح'
-          :forwardStatus==='CONDITIONAL_ENTRY'&&tradeEntry!=null
-            ?`${moveAr(forwardSide)} مشروط فوق/تحت ${fmt(tradeEntry,2)} → ${tradeTp!=null?fmt(tradeTp,2):forwardTarget!=null?fmt(forwardTarget,2):'—'} · ${Math.round(Number(forward.confidence||0))}%`
-            :`${moveAr(forwardSide)} → ${forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):'—'} · ${Math.round(Number(forward.confidence||0))}%`}
+    <div className="next-move-copy primary-move zone-primary professional-plan">
+      <span>قراءة الحركة القادمة · H4 → M15 → M5 → سيولة/هيكل</span>
+      <strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>
+        {heroSide==='WAIT'
+          ?'لا يوجد اتجاه يستحق الدخول الآن'
+          :planT1!=null
+            ?`${moveAr(heroSide)} → ${fmt(planT1,2)}${planT2!=null?' ثم '+fmt(planT2,2):''}`
+            :`${moveAr(heroSide)} · انتظار هدف أمامي صالح`}
       </strong>
-      <div className="forecast-scenario-strip">
-        <div><small>الوجهة</small><b>{forwardZone?zoneRange(forwardZone):forwardTarget!=null?fmt(forwardTarget,2):priceDestination?zoneRange(priceDestination):'—'}</b></div>
-        <div><small>نافذة التحرك</small><b>{forwardSide!=='WAIT'?forwardWindow:'—'}</b></div>
-        <div><small>الارتداد</small><b dir="ltr">{zoneRange(path?.reboundZone||zone?.origin)}</b></div>
-        <div className="scenario-wide"><small>نسبة السيولة</small><b className="green">{hasLiquidity?`صعود ${liqBuy}%`:'—'}</b><b className="red">{hasLiquidity?`هبوط ${liqSell}%`:'—'}</b><span>{accumulationPhase}{accumulationPhase==='تجميع'&&accumulationScore?` · ${accumulationScore}%`:accumulationPhase==='تصريف'&&distributionScore?` · ${distributionScore}%`:''}</span></div>
-        <div className="scenario-wide"><small>مستويات السيولة</small>
-          <b>{upperLiquidityLevel!=='—'?<>سيولة أعلى عند <span dir="ltr">{upperLiquidityLevel}</span></>:'لا توجد سيولة علوية واضحة'}</b>
-          <span>{lowerLiquidityLevel!=='—'?<>سيولة أسفل عند <span dir="ltr">{lowerLiquidityLevel}</span></>:'لا توجد سيولة سفلية واضحة'}</span>
-        </div>
-        <div className="scenario-wide"><small>قراءة صانع السوق</small>
-          <b className={intentSide==='BUY'?'green':intentSide==='SELL'?'red':'amber'}>{intent?(intentPhaseAr(intent.phase)+' · '+moveAr(intentSide)+' · '+Math.round(Number(intent.confidence||0))+'%'):'—'}</b>
-          <span>{intentSteps||'لا يوجد تسلسل سيولة مكتمل'}{intentSweep?<> · مستوى السحب <span dir="ltr">{intentSweep}</span></>:null}</span>
-          {showValidation15&&<span>اختبار حي 15د · دقة {validationAccuracy.toFixed(1)}% · {validationDirectional} نتيجة</span>}
-        </div>
-        <div className="scenario-wide"><small>هيكل الحركة</small><b>{structureText}</b><span>{structurePatternAr(structure?.m1?.structure||structure?.m5?.structure)}</span></div>
-      </div>
-      {tradeSetup&&tradeEntry!=null&&tradeTp!=null&&<div className="forecast-scenario-strip trade-setup-strip">
-        <div><small>{tradeSetup.mode==='CONDITIONAL'?'دخول مشروط':'الدخول'}</small><b dir="ltr">{fmt(tradeEntry,2)}</b></div>
-        <div><small>وقف الخسارة</small><b dir="ltr">{tradeSl!=null?fmt(tradeSl,2):'—'}</b></div>
-        <div><small>الهدف</small><b dir="ltr">{fmt(tradeTp,2)}</b></div>
-        <div><small>التفعيل</small><b>{tradeSetup.trigger||'—'}</b>{Number.isFinite(Number(tradeSetup.rr))&&<span>R:R {Number(tradeSetup.rr).toFixed(2)}</span>}</div>
-      </div>}
-      {forward?.reason&&<small className="muted">{forward.reason}</small>}
-    </div>
 
-    {plan&&<div className="next-move-copy primary-move zone-primary professional-plan">
-      <span>خطة السوق الاحترافية · قبل التنفيذ</span>
-      <strong className={planBias==='BUY'?'green':planBias==='SELL'?'red':'amber'}>
-        {professionalPhaseAr(plan.phase)} · {moveAr(planBias)} · جاهزية {Math.round(Number(plan.readiness||0))}%
-      </strong>
       <div className="forecast-scenario-strip">
+        <div><small>منطقة التفعيل</small><b dir="ltr">{planEntry!=null?fmt(planEntry,2):'—'}</b><span>{liveTriggered?'تم التفعيل':'لم تتفعل بعد'}</span></div>
+        <div><small>الهدف القادم T1</small><b dir="ltr">{planT1!=null?fmt(planT1,2):'—'}</b><span>{distancePct!=null&&!liveT1Hit?`يبعد ${distancePct.toFixed(3)}%`:liveT1Hit?'تحقق':'—'}</span></div>
+        <div><small>الامتداد T2</small><b dir="ltr">{planT2!=null?fmt(planT2,2):'—'}</b><span>{planPrimary?.target2Kind==='STRUCTURAL'?'هدف هيكلي':'امتداد متوقع'}</span></div>
+        <div><small>إبطال السيناريو</small><b dir="ltr">{planInvalid!=null?fmt(planInvalid,2):'—'}</b><span>{liveInvalidated?'تم الكسر · الخطة ملغية':'صالح'}</span></div>
+
         <div className="scenario-wide"><small>فهم السوق</small>
-          <b>{plan.marketStory||'انتظار سياق أوضح'}</b>
-          <span>{Array.isArray(plan.earlySignals)&&plan.earlySignals.length?plan.earlySignals.join(' · '):'لا توجد إشارة مبكرة مكتملة'}</span>
+          <b>{plan?.marketStory||forward?.reason||'انتظار توافق أوضح بين الفريمات والسيولة'}</b>
+          <span>{Array.isArray(plan?.earlySignals)&&plan.earlySignals.length?plan.earlySignals.slice(0,4).join(' · '):'لا توجد إشارة استباقية مكتملة بعد'}</span>
         </div>
-        <div><small>التفعيل</small><b dir="ltr">{planEntry!=null?fmt(planEntry,2):'—'}</b></div>
-        <div><small>الإبطال</small><b dir="ltr">{planInvalid!=null?fmt(planInvalid,2):'—'}</b></div>
-        <div><small>الهدف 1</small><b dir="ltr">{planT1!=null?fmt(planT1,2):'—'}</b></div>
-        <div><small>الهدف 2</small><b dir="ltr">{planT2!=null?fmt(planT2,2):'—'}</b></div>
-        <div><small>احتمال الرئيسي</small><b>{Math.round(Number(planPrimary?.probability||0))}%</b></div>
-        <div><small>R:R</small><b>{Number.isFinite(Number(planPrimary?.rr))?Number(planPrimary.rr).toFixed(2):'—'}</b></div>
-        <div className="scenario-wide"><small>مسار الخطة</small>
-          <b>{Array.isArray(plan.route)&&plan.route.length?plan.route.join(' → '):'انتظار'}</b>
-          <span>{planPrimary?.trigger||'انتظار تفعيل واضح'}</span>
+
+        <div className="scenario-wide"><small>تسلسل الحركة المتوقع</small>
+          <b>{Array.isArray(plan?.route)&&plan.route.length?plan.route.join(' → '):'انتظار → تأكيد → حركة'}</b>
+          <span>{planPrimary?.trigger||'لا دخول قبل تفعيل واضح'}</span>
         </div>
-        {planAlt&&<div className="scenario-wide"><small>السيناريو البديل</small>
-          <b className={planAlt.side==='BUY'?'green':planAlt.side==='SELL'?'red':'amber'}>{moveAr(planAlt.side)} · {Math.round(Number(planAlt.probability||0))}%</b>
-          <span>{planAlt.destinationLow!=null&&planAlt.destinationHigh!=null?('وجهة '+fmt(Number(planAlt.destinationLow),2)+'–'+fmt(Number(planAlt.destinationHigh),2)+' · '):''}{planAlt.trigger}</span>
+
+        <div className="scenario-wide"><small>تأكيد الفريمات</small>
+          <b>H4 {moveAr(plan?.context?.h4)} · M15 {moveAr(plan?.context?.m15)} · M5 {moveAr(plan?.context?.m5)}</b>
+          <span>هيكل {moveAr(plan?.context?.structure)} · سيولة {moveAr(plan?.context?.liquidity)} · Market Lead {moveAr(plan?.context?.lead)}</span>
+        </div>
+
+        {planAlt&&<div className="scenario-wide"><small>الخطة البديلة لو الرئيسي فشل</small>
+          <b className={planAlt.side==='BUY'?'green':planAlt.side==='SELL'?'red':'amber'}>
+            {moveAr(planAlt.side)} · {Math.round(Number(planAlt.probability||0))}%
+          </b>
+          <span>{planAlt.destinationLow!=null&&planAlt.destinationHigh!=null?`وجهة ${fmt(Number(planAlt.destinationLow),2)}–${fmt(Number(planAlt.destinationHigh),2)} · `:''}{planAlt.trigger}</span>
         </div>}
-        <div className="scenario-wide"><small>حماية الصفقة</small>
-          <b>{plan.protection?.breakEvenTrigger!=null?<>Break-even عند <span dir="ltr">{fmt(Number(plan.protection.breakEvenTrigger),2)}</span></>:'Break-even بعد تحرك صالح'}</b>
-          <span>{Array.isArray(plan.protection?.cancelOn)?'إلغاء عند: '+plan.protection.cancelOn.join(' · '):'إلغاء عند فشل السيناريو'}</span>
-        </div>
-        {Array.isArray(plan.noTradeReasons)&&plan.noTradeReasons.length>0&&<div className="scenario-wide"><small>لماذا لا ندخل الآن</small>
-          <b className="amber">{plan.noTradeReasons.slice(0,3).join(' · ')}</b>
+
+        {Array.isArray(plan?.noTradeReasons)&&plan.noTradeReasons.length>0&&<div className="scenario-wide"><small>مانع الدخول الآن</small>
+          <b className="amber">{plan.noTradeReasons.slice(0,2).join(' · ')}</b>
         </div>}
       </div>
-    </div>}
 
-    <div className="forecast-horizons decision-horizons direction-only">
-      <div><small>اتجاه M1</small><strong className={h1.side==='BUY'?'green':h1.side==='SELL'?'red':'amber'}>{moveAr(h1.side)}</strong><span>{calibrated(h1.confidence??h1.strength)}% · هدف <b dir="ltr">{horizonTarget(t1,h1.side)}</b></span></div>
-      <div><small>اتجاه M5</small><strong className={h5.side==='BUY'?'green':h5.side==='SELL'?'red':'amber'}>{moveAr(h5.side)}</strong><span>{calibrated(h5.confidence??h5.strength)}% · هدف <b dir="ltr">{horizonTarget(t5,h5.side)}</b></span></div>
-      <div><small>اتجاه M15</small><strong className={h15.side==='BUY'?'green':h15.side==='SELL'?'red':'amber'}>{moveAr(h15.side)}</strong><span>{calibrated(h15.confidence??h15.strength)}% · هدف <b dir="ltr">{horizonTarget(t15,h15.side)}</b></span></div>
+      <div className="forecast-horizons decision-horizons direction-only">
+        <div><small>دقة 15د</small><strong>{showValidation15?validationAccuracy.toFixed(1)+'%':'—'}</strong><span>{showValidation15?`${validationDirectional} نتيجة`:'جمع عينات'}</span></div>
+        <div><small>جاهزية الخطة</small><strong>{Math.round(Number(plan?.readiness||0))}%</strong><span>{professionalPhaseAr(plan?.phase)}</span></div>
+        <div><small>R:R</small><strong>{Number.isFinite(Number(planPrimary?.rr))?Number(planPrimary.rr).toFixed(2):'—'}</strong><span>التنفيذ فقط عند اكتمال الشروط</span></div>
+      </div>
     </div>
-
-
   </section>;
 }
 
