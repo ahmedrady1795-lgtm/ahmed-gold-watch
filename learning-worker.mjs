@@ -1,6 +1,6 @@
 const DEFAULT_URL='https://ahmed-gold-watch-production.up.railway.app/api/ai-analysis';
 const target=process.env.AI_ANALYSIS_URL||DEFAULT_URL;
-const intervalMs=Math.max(5000,Math.min(60000,Number(process.env.LEARNING_INTERVAL_MS||5000)));
+const intervalMs=Math.max(2500,Math.min(60000,Number(process.env.LEARNING_INTERVAL_MS||3000)));
 const requestTimeoutMs=Math.max(8000,Math.min(45000,Number(process.env.LEARNING_TIMEOUT_MS||30000)));
 
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
