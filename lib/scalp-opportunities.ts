@@ -120,7 +120,36 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       {label:'زخم 3 شموع',side:side(mom),value:round(mom)+' ATR'},
       {label:'حجم التداول',side:'WAIT',value:volumeRatio==null?'غير متاح':round(volumeRatio)+'× المتوسط'}
     ];
-    if(!chosen)return stableCandidate(plan,now,p!,cost);
+    if(!chosen){
+      // No entry confirmation yet: prepare a concrete, CONDITIONAL breakout
+      // watch only when M1 momentum and M5 trend agree. Never mark it ARMED.
+      const trendAligned=trend1!=='WAIT'&&trend1===trend5&&
+        (trend1==='BUY'?last.close>f21&&mom>.12:last.close<f21&&mom<-.12);
+      if(!trendAligned)return stableCandidate(plan,now,p!,cost);
+      const dir=trend1==='BUY'?1:-1;
+      const sample=a.slice(-12);
+      const edge=dir===1?Math.max(...sample.map(c=>c.high)):Math.min(...sample.map(c=>c.low));
+      const entry=round(dir===1?Math.max(edge+atr*.12,p!+atr*.08):Math.min(edge-atr*.12,p!-atr*.08));
+      const risk=Math.max(atr*(horizon===1?.82:1.15),cost*1.85,Math.abs(entry-f21)*.50);
+      const move=Math.max(risk*1.75+cost*2.2,atr*(horizon===1?1.6:2.8));
+      // Do not invent a feasible scalp when costs dwarf realistic ATR.
+      if(risk>atr*(horizon===1?1.8:3.2)||move>atr*(horizon===1?2.6:5))
+        return stableCandidate(plan,now,p!,cost);
+      const stop=round(entry-dir*risk);
+      const targets=[1,1.5,2].map(k=>({price:round(entry+dir*move*k),kind:'PROJECTION' as const}));
+      const netRR=round((move-cost)/(risk+cost));
+      const trigger=trend1==='BUY'?'إغلاق M1 فوق':'إغلاق M1 تحت';
+      const watch:ScalpPlan={
+        ...plan,id:asset+'-'+horizon+'-'+last.time+'-WATCH-'+trend1,
+        status:'WATCH',side:trend1,setup:'BREAKOUT',score:Math.round(Math.min(67,
+          46+Math.min(12,Math.abs(mom)*7)+(efficiency>.40?7:0))),
+        entry,stop,targets,netRR,
+        blockers:['ينتظر اختراق المستوى وإغلاق M1 ثم ثبات 60 ثانية؛ لا دخول الآن'],
+        trigger:trigger+' '+entry.toFixed(2)+' مع استمرار الثبات دقيقة؛ التكاليف '+(costEstimated?'تقديرية':'من المصدر'),
+        reason:'فرصة رصد مرتبطة بتوافق EMA على M1 وM5، وليست صفقة مفعلة'
+      };
+      return stableCandidate(watch,now,p!,cost);
+    }
     const dir=chosen.side==='BUY'?1:-1,price=p!;
     const entry=round(price+dir*Math.max(atr*.07,cost*.15,.02));
     const rawStop=chosen.anchor-dir*atr*.12;
