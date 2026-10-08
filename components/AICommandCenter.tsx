@@ -34,7 +34,19 @@ const structurePatternAr=(v:any)=>{
   return x?'هيكل متغير':'—';
 };
 const intentPhaseAr=(p:any)=>p==='LIQUIDITY_BUILDUP'?'تجميع سيولة':p==='SWEEP_DETECTED'?'سحب سيولة':p==='TRAP_CONFIRMED'?'فخ سيولة مؤكد':p==='PRE_EXPANSION'?'استعداد قبل الحركة':p==='EXPANSION'?'الحركة بدأت':'لا يوجد سيناريو واضح';
-const professionalPhaseAr=(p:any)=>p==='PREPARE'?'تحضير':p==='ARMED'?'مسلّح قبل الحركة':p==='EXECUTE'?'جاهز للتنفيذ':p==='MANAGE'?'إدارة الصفقة':p==='NO_TRADE'?'لا صفقة':'مراقبة';
+const targetSourceAr=(v:any)=>{
+  const x=String(v||'').toLowerCase();
+  if(x.includes('movement 15m'))return 'نموذج 15د';
+  if(x.includes('hunt 15m'))return 'توافق 15د';
+  if(x.includes('path destination'))return 'المسار الهيكلي';
+  if(x.includes('liquidity'))return 'مستوى سيولة';
+  if(x.includes('h4'))return 'مستوى H4';
+  if(x.includes('intent'))return 'هدف تدفق السوق';
+  if(x.includes('30m'))return 'امتداد 30د';
+  if(x.includes('atr'))return 'إسقاط ATR';
+  if(x.includes('structural'))return 'هيكل سعري';
+  return v||'هدف مركب';
+};
 const intentStepAr=(v:any)=>{
   const x=String(v||'');
   if(x==='COMPRESSION')return 'ضغط';
@@ -90,7 +102,8 @@ function AssetCard({x,liveQuote,fast}:any){
   const softDestination=Boolean(path?.side==='WAIT'&&path?.priceDestination?.zone);
   const buy=displaySide==='BUY'&&!softDestination,sell=displaySide==='SELL'&&!softDestination;
   const liveGoldPrice=x.asset==='GOLD'&&liveQuote?.ok&&Number.isFinite(Number(liveQuote?.price))&&Number(liveQuote.price)>0?Number(liveQuote.price):null;
-  const price=liveGoldPrice??x.livePulse?.price??x.price;
+  const liveWavePrice=Number.isFinite(Number(fast?.price))&&Number(fast.price)>0?Number(fast.price):null;
+  const price=liveGoldPrice??liveWavePrice??x.livePulse?.price??x.price;
   const move=nextMoveCopy(hunt,x.stateGraph);
   const priceDestination=path?.priceDestination?.zone??path?.destination??zone?.target??null;
   const structuralTarget=priceDestination?.mid??null;
@@ -149,32 +162,30 @@ function AssetCard({x,liveQuote,fast}:any){
   const tradeTp=tradeSetup?.takeProfit!==null&&tradeSetup?.takeProfit!==undefined&&Number.isFinite(Number(tradeSetup.takeProfit))?Number(tradeSetup.takeProfit):null;
   const structure=x?.movementStructure||null;
   const structureText=movementStructureLabel(structure);
-  const plan=x?.professionalPlan||null;
-  const planPrimary=plan?.primary||null;
-  const planAlt=plan?.alternate||null;
-  const planBias=plan?.bias==='BUY'||plan?.bias==='SELL'?plan.bias:'WAIT';
-  const planEntry=planPrimary?.entry!=null&&Number.isFinite(Number(planPrimary.entry))?Number(planPrimary.entry):null;
-  const planInvalid=planPrimary?.invalidation!=null&&Number.isFinite(Number(planPrimary.invalidation))?Number(planPrimary.invalidation):null;
-  const planT1=planPrimary?.target1!=null&&Number.isFinite(Number(planPrimary.target1))?Number(planPrimary.target1):null;
-  const planT2=planPrimary?.target2!=null&&Number.isFinite(Number(planPrimary.target2))?Number(planPrimary.target2):null;
-  const heroSide=planBias!=='WAIT'?planBias:forwardSide;
-  const liveInvalidated=Boolean(price!=null&&planInvalid!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)<=planInvalid:Number(price)>=planInvalid));
-  const liveTriggered=Boolean(price!=null&&planEntry!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)>=planEntry:Number(price)<=planEntry));
-  const liveT1Hit=Boolean(price!=null&&planT1!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)>=planT1:Number(price)<=planT1));
-  const liveT2Hit=Boolean(price!=null&&planT2!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)>=planT2:Number(price)<=planT2));
-  const livePlanState=liveInvalidated?'INVALIDATED':liveT2Hit?'T2_HIT':liveT1Hit?'T1_HIT':liveTriggered?'ACTIVE':plan?.phase||'OBSERVE';
-  const livePlanAr=livePlanState==='INVALIDATED'?'الخطة أُلغيت':livePlanState==='T2_HIT'?'تم الوصول للهدف 2':livePlanState==='T1_HIT'?'تم الوصول للهدف 1':livePlanState==='ACTIVE'?'الحركة بدأت':professionalPhaseAr(livePlanState);
-  const distanceToT1=price!=null&&planT1!=null?Math.abs(planT1-Number(price)):null;
-  const distancePct=distanceToT1!=null&&Number(price)>0?distanceToT1/Number(price)*100:null;
+  const targets=forward?.targets||null;
+  const t1Level=targets?.t1||null,t2Level=targets?.t2||null,t3Level=targets?.t3||null;
+  const t1Price=t1Level?.price!=null&&Number.isFinite(Number(t1Level.price))?Number(t1Level.price):forwardTarget;
+  const t2Price=t2Level?.price!=null&&Number.isFinite(Number(t2Level.price))?Number(t2Level.price):null;
+  const t3Price=t3Level?.price!=null&&Number.isFinite(Number(t3Level.price))?Number(t3Level.price):null;
+  const invalidation=targets?.invalidation!=null&&Number.isFinite(Number(targets.invalidation))?Number(targets.invalidation):forward?.invalidation!=null&&Number.isFinite(Number(forward.invalidation))?Number(forward.invalidation):tradeSl;
+  const heroSide=forwardSide;
+  const liveInvalidated=Boolean(price!=null&&invalidation!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)<=invalidation:Number(price)>=invalidation));
+  const hit=(v:number|null)=>Boolean(price!=null&&v!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)>=v:Number(price)<=v));
+  const liveT1Hit=hit(t1Price),liveT2Hit=hit(t2Price),liveT3Hit=hit(t3Price);
+  const liveState=liveInvalidated?'INVALIDATED':liveT3Hit?'T3_HIT':liveT2Hit?'T2_HIT':liveT1Hit?'T1_HIT':forwardStatus==='IN_PROGRESS'?'ACTIVE':'TRACKING';
+  const liveStateAr=liveState==='INVALIDATED'?'القراءة أُلغيت':liveState==='T3_HIT'?'T3 تحقق':liveState==='T2_HIT'?'T2 تحقق':liveState==='T1_HIT'?'T1 تحقق':liveState==='ACTIVE'?'الحركة بدأت':'تتبع لحظي';
+  const activeTarget=!liveT1Hit?t1Price:!liveT2Hit?t2Price:!liveT3Hit?t3Price:null;
+  const activeLabel=!liveT1Hit?'T1':!liveT2Hit?'T2':!liveT3Hit?'T3':'تمت الأهداف';
+  const activeDistancePct=price!=null&&activeTarget!=null&&Number(price)>0?Math.abs(activeTarget-Number(price))/Number(price)*100:null;
+  const targetQuality=Math.round(Number(targets?.quality||forward?.targetQuality||0));
+  const targetSources=Number(targets?.sourceCount||0);
   const forwardHeadline=heroSide==='WAIT'
-    ?'انتظار حركة أوضح'
+    ?'الحركة القادمة: انتظار'
     :liveInvalidated
-      ?'السيناريو السابق أُلغي · ننتظر خطة جديدة'
-      :liveT1Hit
-        ?`الهدف تحقق · مراقبة الامتداد التالي`
-        :liveTriggered
-          ?`الحركة بدأت: ${moveAr(heroSide)} نحو الهدف`
-          :`الحركة القادمة: ${moveAr(heroSide)}`;
+      ?'القراءة السابقة أُلغيت · إعادة حساب'
+      :activeTarget!=null
+        ?'الحركة القادمة: '+moveAr(heroSide)+' نحو '+activeLabel+' '+fmt(activeTarget,2)
+        :'الحركة اكتملت · انتظار أهداف جديدة';
   return <section className={"panel ai-asset-card compact-asset "+(heroSide==='BUY'?'ai-buy':heroSide==='SELL'?'ai-sell':'ai-wait')}>
     <div className="panelhead">
       <div>
@@ -187,57 +198,47 @@ function AssetCard({x,liveQuote,fast}:any){
     <div className="ai-price-row compact-price">
       <div><small>السعر الآن</small><strong>{fmt(price,2)}</strong></div>
       <div><small>الاتجاه القادم</small><strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>{moveAr(heroSide)}</strong></div>
-      <div><small>الثقة</small><strong>{Math.round(Number((plan?.confidence??forward?.confidence)??0))}%</strong></div>
-      <div><small>الحالة اللحظية</small><strong className={liveInvalidated?'red':liveTriggered?'green':'amber'}>{livePlanAr}</strong></div>
+      <div><small>ثقة الاتجاه</small><strong>{Math.round(Number(forward?.confidence||0))}%</strong></div>
+      <div><small>جودة الأهداف</small><strong>{targetQuality?targetQuality+'%':'—'}</strong></div>
+      <div><small>الحالة</small><strong className={liveInvalidated?'red':heroSide==='WAIT'?'amber':'green'}>{liveStateAr}</strong></div>
     </div>
 
-    <div className="next-move-copy primary-move zone-primary professional-plan">
-      <span>قراءة الحركة القادمة · H4 → M15 → M5 → سيولة/هيكل</span>
+    <div className="next-move-copy primary-move zone-primary">
+      <span>الحركة القادمة · أهداف أمامية متدرجة</span>
       <strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>
         {heroSide==='WAIT'
-          ?'لا يوجد اتجاه يستحق الدخول الآن'
-          :planT1!=null
-            ?`${moveAr(heroSide)} → ${fmt(planT1,2)}${planT2!=null?' ثم '+fmt(planT2,2):''}`
-            :`${moveAr(heroSide)} · انتظار هدف أمامي صالح`}
+          ?'لا يوجد اتجاه صالح الآن'
+          :activeTarget!=null
+            ?moveAr(heroSide)+' → '+activeLabel+' '+fmt(activeTarget,2)+(activeDistancePct!=null?' · يبعد '+activeDistancePct.toFixed(3)+'%':'')
+            :'تم استهلاك سلم الأهداف الحالي'}
       </strong>
 
       <div className="forecast-scenario-strip">
-        <div><small>منطقة التفعيل</small><b dir="ltr">{planEntry!=null?fmt(planEntry,2):'—'}</b><span>{liveTriggered?'تم التفعيل':'لم تتفعل بعد'}</span></div>
-        <div><small>الهدف القادم T1</small><b dir="ltr">{planT1!=null?fmt(planT1,2):'—'}</b><span>{distancePct!=null&&!liveT1Hit?`يبعد ${distancePct.toFixed(3)}%`:liveT1Hit?'تحقق':'—'}</span></div>
-        <div><small>الامتداد T2</small><b dir="ltr">{planT2!=null?fmt(planT2,2):'—'}</b><span>{planPrimary?.target2Kind==='STRUCTURAL'?'هدف هيكلي':'امتداد متوقع'}</span></div>
-        <div><small>إبطال السيناريو</small><b dir="ltr">{planInvalid!=null?fmt(planInvalid,2):'—'}</b><span>{liveInvalidated?'تم الكسر · الخطة ملغية':'صالح'}</span></div>
+        <div><small>T1 · الهدف الأول</small><b dir="ltr">{t1Price!=null?fmt(t1Price,2):'—'}</b><span>{liveT1Hit?'تحقق':targetSourceAr(t1Level?.source)}</span></div>
+        <div><small>T2 · الهدف التالي</small><b dir="ltr">{t2Price!=null?fmt(t2Price,2):'—'}</b><span>{liveT2Hit?'تحقق':targetSourceAr(t2Level?.source)}</span></div>
+        <div><small>T3 · الامتداد</small><b dir="ltr">{t3Price!=null?fmt(t3Price,2):'—'}</b><span>{liveT3Hit?'تحقق':targetSourceAr(t3Level?.source)}</span></div>
+        <div><small>إبطال القراءة</small><b dir="ltr">{invalidation!=null?fmt(invalidation,2):'—'}</b><span>{liveInvalidated?'تم الكسر':'صالح'}</span></div>
 
-        <div className="scenario-wide"><small>فهم السوق</small>
-          <b>{plan?.marketStory||forward?.reason||'انتظار توافق أوضح بين الفريمات والسيولة'}</b>
-          <span>{Array.isArray(plan?.earlySignals)&&plan.earlySignals.length?plan.earlySignals.slice(0,4).join(' · '):'لا توجد إشارة استباقية مكتملة بعد'}</span>
+        <div className="scenario-wide"><small>سبب اختيار الأهداف</small>
+          <b>{targets?.reason||forward?.reason||'انتظار مستويات أمامية أوضح'}</b>
+          <span>{targetSources?'توافق '+targetSources+' مصادر سعرية/هيكلية':targets?.projected?'الأهداف الحالية إسقاط مؤقت حتى يظهر مستوى هيكلي':'قراءة مركبة من السوق'}</span>
         </div>
 
-        <div className="scenario-wide"><small>تسلسل الحركة المتوقع</small>
-          <b>{Array.isArray(plan?.route)&&plan.route.length?plan.route.join(' → '):'انتظار → تأكيد → حركة'}</b>
-          <span>{planPrimary?.trigger||'لا دخول قبل تفعيل واضح'}</span>
+        <div className="scenario-wide"><small>تأكيد الاتجاه</small>
+          <b>H4 {moveAr(forward?.confirmations?.h4)} · M15 {moveAr(forward?.confirmations?.m15)} · M5 {moveAr(forward?.confirmations?.m5)}</b>
+          <span>هيكل {moveAr(forward?.confirmations?.structure)} · سيولة {moveAr(forward?.confirmations?.liquidity)} · مصادر السوق {moveAr(forward?.confirmations?.toolMesh)}</span>
         </div>
 
-        <div className="scenario-wide"><small>تأكيد الفريمات</small>
-          <b>H4 {moveAr(plan?.context?.h4)} · M15 {moveAr(plan?.context?.m15)} · M5 {moveAr(plan?.context?.m5)}</b>
-          <span>هيكل {moveAr(plan?.context?.structure)} · سيولة {moveAr(plan?.context?.liquidity)} · Market Lead {moveAr(plan?.context?.lead)}</span>
-        </div>
-
-        {planAlt&&<div className="scenario-wide"><small>الخطة البديلة لو الرئيسي فشل</small>
-          <b className={planAlt.side==='BUY'?'green':planAlt.side==='SELL'?'red':'amber'}>
-            {moveAr(planAlt.side)} · {Math.round(Number(planAlt.probability||0))}%
-          </b>
-          <span>{planAlt.destinationLow!=null&&planAlt.destinationHigh!=null?`وجهة ${fmt(Number(planAlt.destinationLow),2)}–${fmt(Number(planAlt.destinationHigh),2)} · `:''}{planAlt.trigger}</span>
-        </div>}
-
-        {Array.isArray(plan?.noTradeReasons)&&plan.noTradeReasons.length>0&&<div className="scenario-wide"><small>مانع الدخول الآن</small>
-          <b className="amber">{plan.noTradeReasons.slice(0,2).join(' · ')}</b>
+        {tradeSetup&&tradeEntry!=null&&<div className="scenario-wide"><small>التفعيل فقط عند اكتمال الشروط</small>
+          <b dir="ltr">{fmt(tradeEntry,2)}</b>
+          <span>{tradeSetup.trigger||'—'}{Number.isFinite(Number(tradeSetup.rr))?' · R:R '+Number(tradeSetup.rr).toFixed(2):''}</span>
         </div>}
       </div>
 
       <div className="forecast-horizons decision-horizons direction-only">
-        <div><small>دقة 15د</small><strong>{showValidation15?validationAccuracy.toFixed(1)+'%':'—'}</strong><span>{showValidation15?`${validationDirectional} نتيجة`:'جمع عينات'}</span></div>
-        <div><small>جاهزية الخطة</small><strong>{Math.round(Number(plan?.readiness||0))}%</strong><span>{professionalPhaseAr(plan?.phase)}</span></div>
-        <div><small>R:R</small><strong>{Number.isFinite(Number(planPrimary?.rr))?Number(planPrimary.rr).toFixed(2):'—'}</strong><span>التنفيذ فقط عند اكتمال الشروط</span></div>
+        <div><small>دقة 15د</small><strong>{showValidation15?validationAccuracy.toFixed(1)+'%':'—'}</strong><span>{showValidation15?validationDirectional+' نتيجة':'جمع عينات'}</span></div>
+        <div><small>نافذة القراءة</small><strong>{forwardWindow}</strong><span>تتحدث تلقائيًا</span></div>
+        <div><small>توافق القرار</small><strong>{Math.round(Number(forward?.agreement||0))}%</strong><span>{Math.round(Number(forward?.support||0))} مصادر مؤيدة</span></div>
       </div>
     </div>
   </section>;
