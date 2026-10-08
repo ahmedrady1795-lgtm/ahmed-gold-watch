@@ -23,7 +23,7 @@ assert.equal(completedLiveCandles(disconnected,now+120000).length,0,'A stream ga
 const series=(ms)=>Array.from({length:240},(_,i)=>({time:now-(240-i)*ms,open:4000,high:4000.4,low:3999.6,close:4000}));
 function input(){return {asset:'GOLD',c1:series(60000),c5:series(300000),quote:{price:4000.45,at:now,bid:4000.44,ask:4000.455,source:'Biquote'},candleSource:'Biquote XAUUSD',now,events:[],newsReady:true,marketOpen:true,feeBps:0,slippageBps:0};}
 function breakout(){const x=input();x.c1[x.c1.length-1]={time:now-60000,open:4000,high:4000.55,low:3999.9,close:4000.45};return x;}
-const {readScalpLiquidity}=load('lib/scalp-liquidity.ts');
+const {readScalpLiquidity,observeScalpPlanHold}=load('lib/scalp-liquidity.ts');
 const liquidityInput=input();
 const liquid=readScalpLiquidity(liquidityInput.c1,{...liquidityInput.quote,price:4000},now);
 for(const frame of liquid.scenarios){for(const path of frame.paths){
@@ -43,6 +43,28 @@ const withPartial=[...liquidityInput.c1,{time:now,open:4000,high:5000,low:3000,c
 assert.equal(readScalpLiquidity(withPartial,liquidityInput.quote,now).rangeHigh,4000.4);
 const gapRows=series(60000);gapRows.splice(-4,1);assert.equal(readScalpLiquidity(gapRows,liquidityInput.quote,now).available,false);
 console.log('PASS: liquidity map, confirmed sweep, stale price, incomplete candles and data gaps');
+// Regression: An honestly confirmed breakout may wait for a near-entry retest
+// rather than attempting to market-chase a target with only ~0.05R fee headroom.
+// No plan is authorized by scenario-only watches or an unconfirmed candle.
+const fixedHoldId='CONFIRMED_RETEST_TEST';
+const sourceBars=series(60000);
+const hold=(bars,price,at,id=fixedHoldId,nowAt=at)=>
+  observeScalpPlanHold('GOLD',5,'BUY',id,4000.7,3999.0,now+180000,
+    bars,{price,at,source:'fresh-fixture'},nowAt,30);
+assert.equal(hold(sourceBars,4000.9,now).state,'WATCH');
+const confirmedBars=[...sourceBars,{time:now,open:4000.86,high:4001.2,low:4000.8,close:4001.07}];
+assert.equal(hold(confirmedBars,4001.08,now+61000).state,'CONFIRMED',
+  'An entire closed minute beyond the immutable plan trigger is real evidence');
+assert.equal(hold(confirmedBars,4000.65,now+65000).state,'RETEST_READY',
+  'Post-confirmation near-entry limit retest should remain valid for paper review');
+assert.equal(hold(confirmedBars,3998.9,now+66000).state,'WATCH',
+  'Breaking the exact stop invalidates a confirmed retest');
+assert.equal(hold(sourceBars,4000.9,now,'STALE_RETEST_TEST').state,'WATCH');
+assert.equal(hold(confirmedBars,4001.08,now+61000,'STALE_RETEST_TEST').state,'CONFIRMED');
+assert.equal(hold(confirmedBars,4000.65,now+65000,'STALE_RETEST_TEST',now+90000).state,'WATCH',
+  'A stale quote must never release a previously confirmed retest');
+console.log('PASS: real M1 confirmation unlocks a 45-second retest; stale quotes and stop breaks revoke it.');
+
 const plans=buildScalpPlans(breakout());
 const buy=plans[0];assert.equal(buy.side,'BUY');assert.ok(['ARMED','WATCH'].includes(buy.status),'Conservative eligibility guards can block an otherwise valid directional setup');
 assert.ok(buy.entry>4000.45);assert.ok(buy.stop<buy.entry);assert.ok(buy.targets[0].price>buy.entry);assert.ok(buy.targets[1].price>buy.targets[0].price);assert.ok(buy.targets[2].price>buy.targets[1].price);assert.ok(buy.netRR>=1.25);
