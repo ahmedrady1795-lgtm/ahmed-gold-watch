@@ -624,11 +624,11 @@ export async function GET(request:Request){
     const bitcoinNews=webIntel?mergeNewsWithWeb(bitcoinNewsBase,webIntel.btc):bitcoinNewsBase;
     const [goldToolMesh,bitcoinToolMesh]=await Promise.all([
       buildMarketToolMesh({
-        asset:'GOLD',now,price:goldPrice,marketLead:goldMarketLead,liquidity:goldLiquidity,tick:quote,
+        asset:'GOLD',now,price:goldPrice??undefined,marketLead:goldMarketLead,liquidity:goldLiquidity,tick:quote,
         marketData:gm,webIntel,news:gm.events
       }).catch(()=>null),
       buildMarketToolMesh({
-        asset:'BTC',now,price:btcPrice,marketLead:bitcoinMarketLead,liquidity,tick:bitcoinTick,
+        asset:'BTC',now,price:btcPrice??undefined,marketLead:bitcoinMarketLead,liquidity,tick:bitcoinTick,
         marketData:btc,webIntel,news:gm.events
       }).catch(()=>null)
     ]);
