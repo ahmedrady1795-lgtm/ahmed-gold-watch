@@ -14,19 +14,46 @@ export type ScalpPlan={
 const n=(v:unknown)=>v==null||v===''?null:Number.isFinite(Number(v))?Number(v):null;
 const round=(v:number)=>Number(v.toFixed(2));
 const mean=(v:number[])=>v.reduce((s,x)=>s+x,0)/Math.max(1,v.length);
+// Empirical one-bar price reach is a ceiling on target feasibility, not a
+// probability of profit. Never use future/partial candles for this estimate.
+function quantile(values:number[],fraction:number){
+  const sorted=values.filter(v=>Number.isFinite(v)&&v>=0).sort((a,b)=>a-b);
+  if(!sorted.length)return null;
+  const idx=(sorted.length-1)*fraction,lo=Math.floor(idx),hi=Math.ceil(idx);
+  return sorted[lo]+(sorted[hi]-sorted[lo])*(idx-lo);
+}
 // Keep a qualified, time-limited setup alive across its first following M1
 // close. Otherwise a required 60-second hold can never complete.
 const pendingSetups=new Map<string,ScalpPlan>();
 function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number):ScalpPlan{
   const key=plan.asset+':'+plan.horizon,previous=pendingSetups.get(key);
-  const validPrevious=Boolean(previous&&previous.status==='ARMED'&&now>previous.at&&now<previous.expiresAt&&
+  const oldRisk=previous?.entry!=null&&previous.stop!=null?
+    Math.abs(previous.entry-previous.stop):0;
+  const oldReward=previous?.entry!=null&&previous.targets[0]?.price!=null?
+    Math.abs(previous.targets[0].price-previous.entry):0;
+  const liveNetRR=oldRisk>0?(oldReward-cost)/(oldRisk+cost):0;
+  const currentM1Trend=plan.evidence.find(e=>e.label==='اتجاه M1')?.side;
+  // A same-side setup may keep its entry through the next closed candle.
+  // An opposing setup or reversal of EMA trend cancels the stale candidate.
+  const sideAligned=Boolean(previous&&
+    (plan.side==='WAIT'||plan.side===previous.side)&&
+    (previous.setup==='SWEEP'||currentM1Trend==null||
+     currentM1Trend==='WAIT'||currentM1Trend===previous.side));
+  const explicitRiskVeto=plan.blockers.some(b=>
+    b.includes('الهدف أبعد من الحركة المواتية')||
+    b.includes('التكلفة كبيرة بالنسبة لتذبذب الفريم'));
+  const validPrevious=Boolean(previous&&previous.status==='ARMED'&&sideAligned&&
+    !explicitRiskVeto&&now>previous.at&&now<previous.expiresAt&&
     previous.entry!=null&&previous.stop!=null&&previous.targets[0]?.price!=null&&
-    (previous.side==='BUY'?quote>previous.stop&&quote<previous.targets[0].price:quote<previous.stop&&quote>previous.targets[0].price)&&
-    cost<=Math.max(previous.cost*1.35,.01));
-  // Freeze plan IDs, entry, risk and targets through the observation window;
-  // do not recycle a dead plan or let old setups bypass hard feed blockers.
+    (previous.side==='BUY'?quote>previous.stop&&quote<previous.targets[0].price:
+       quote<previous.stop&&quote>previous.targets[0].price)&&
+    cost<=Math.max(previous.cost*1.35,.01)&&liveNetRR>=1.25);
+  // Preserve the ID/entry/target through the observation window, but NEVER
+  // preserve an outdated low fee, an opposing trend or an unreachable target.
   if(validPrevious&&(plan.status!=='ARMED'||plan.side===previous!.side))
-    return {...previous!,reason:'مستوى الدخول والوقف ثابتان خلال رصد M1؛ لا إعادة ضبط للتأكيد'};
+    return {...previous!,cost:round(cost),costEstimated:plan.costEstimated,
+      netRR:round(liveNetRR),
+      reason:'مستوى الدخول والوقف ثابتان، والتكلفة أعيد حسابها بالسعر الحالي'};
   if(plan.status==='ARMED')pendingSetups.set(key,plan);
   else if(!validPrevious)pendingSetups.delete(key);
   return plan;
@@ -181,6 +208,19 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     const actualRisk=dir*(entry-stop),actualReward=dir*(targets[0].price-entry);
     const rr=actualRisk>0?round((actualReward-cost)/(actualRisk+cost)):null;
     const reasons:string[]=[];
+    // Five of seven historical GOLD M1 outcomes exited on the clock, not T1.
+    // A 1-minute plan needs a realistic one-minute destination. Measure
+    // favorable open-to-extreme travel in the SAME horizon's closed candles.
+    // This is an optimistic ceiling: true entry timing may have less room.
+    const historical=(horizon===1?a.slice(-80):b.slice(-60));
+    const favorable=historical.map(c=>Math.max(0,
+      chosen.side==='BUY'?c.high-c.open:c.open-c.low));
+    const empiricalReach=quantile(favorable,horizon===1?.55:.75);
+    if(empiricalReach!=null&&historical.length>=40&&
+       actualReward>empiricalReach*(horizon===1?1:1.15)){
+      reasons.push('الهدف أبعد من الحركة المواتية المعتادة خلال '+(horizon===1?'دقيقة':'خمس دقائق')+
+        '؛ احتمال الخروج بالوقت أو التكلفة مرتفع');
+    }
     if(chosen.score<(horizon===1?60:64))reasons.push('قوة الإعداد لم تصل لحد التفعيل');
     if(risk>maxRisk||reward>maxMove)reasons.push('الوقف أو الهدف أبعد من مدى الحركة المناسب للفريم');
     if(cost>rangeAtr*(horizon===1?.30:.48))reasons.push('التكلفة كبيرة بالنسبة لتذبذب الفريم بعد الرسوم');
@@ -198,6 +238,10 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     if(horizon===5&&chosen.setup!=='SWEEP'&&dir*m5Body<-.20&&dir*m5Momentum<.10)reasons.push('آخر شمعة M5 مغلقة تعارض الاستمرار');
     if(horizon===5&&chosen.setup==='SWEEP'&&dir*m5Body<-.40)reasons.push('انعكاس الدقيقة عكس جسم M5 قوي؛ يلزم تأكيد إضافي');
     if(horizon===1&&chosen.setup==='BREAKOUT'&&volumeRatio!=null&&volumeRatio<1.05&&efficiency<.45)reasons.push('اختراق M1 ضعيف دون تأكيد كافٍ');
+    plan.evidence.push({
+      label:'حد الحركة المواتية للفريم',side:'WAIT',
+      value:empiricalReach==null?'غير متاح':round(empiricalReach)+' $ / '+(horizon===1?'M1':'M5')
+    });
     // A missing optional news feed is not itself a scheduled major release.
     // Known high-impact release windows remain blocked at the base gate.
     if(!input.newsReady)plan.evidence.push({label:'تغطية الأخبار',side:'WAIT',value:'غير مكتملة؛ افحص التقويم'});

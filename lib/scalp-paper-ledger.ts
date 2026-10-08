@@ -34,13 +34,18 @@ export function getScalpPaperQualityGate(asset:'GOLD'|'BTC',horizon:1|5,now=Date
   const failureStreak=lastFour.length===4&&lastFour.every(t=>Number(t.netR)<0);
   const persistentWeak=recent.length>=12&&recentNetR/recent.length<-.18&&
     recent.filter(t=>Number(t.netR)<0).length>=8;
-  const cooldownMs=15*60*1000;
-  const blocked=Boolean((failureStreak||persistentWeak)&&latest>0&&now-latest>=0&&now-latest<cooldownMs);
+  // Six or more real paper outcomes with major negative expectancy warrant
+  // a longer pause; historical weak batches do not freeze the system forever.
+  const severeWeak=recent.length>=6&&recentNetR<=-2&&
+    recent.filter(t=>Number(t.netR)>0).length<=Math.floor(recent.length*.25);
+  const cooldownMs=severeWeak?90*60*1000:15*60*1000;
+  const blocked=Boolean((failureStreak||persistentWeak||severeWeak)&&
+    latest>0&&now-latest>=0&&now-latest<cooldownMs);
   return {
     blocked,source:'PAPER_REFERENCE',samples:recent.length,
     expectancyR:recent.length?round(recentNetR/recent.length):null,
     remainingSeconds:blocked?Math.ceil((cooldownMs-(now-latest))/1000):0,
-    reason:blocked?'إيقاف تجريبي مؤقت بعد خسائر متتابعة أو توقع عائد سلبي؛ متابعة بلا دخول حتى تنتهي فترة التهدئة':''
+    reason:blocked?'إيقاف دخول '+horizon+' دقيقة بعد خسائر تجريبية متكررة؛ التهدئة '+Math.ceil(cooldownMs/60000)+' دقيقة من آخر نتيجة، مع استمرار متابعة السوق':''
   };
 }
 
@@ -132,8 +137,17 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
     const verified=lane.history.filter(t=>t.netR!=null&&['TP1','STOP','TIME_EXIT'].includes(t.state));
     const wins=verified.filter(t=>Number(t.netR)>0),losses=verified.filter(t=>Number(t.netR)<0);
     const positive=wins.reduce((s,t)=>s+Number(t.netR),0),negative=-losses.reduce((s,t)=>s+Number(t.netR),0);
+    const timeExits=verified.filter(t=>t.state==='TIME_EXIT');
+    const stopExits=verified.filter(t=>t.state==='STOP');
+    const targetExits=verified.filter(t=>t.state==='TP1');
     return {horizon:plan.horizon,current:lane.current,recent:lane.history.slice(0,8),stats:{
       samples:verified.length,wins:wins.length,losses:losses.length,
+      exitCauses:{
+        timeExits:timeExits.length,stops:stopExits.length,targets:targetExits.length,
+        negativeTimeExits:timeExits.filter(t=>Number(t.netR)<0).length,
+        timeExitNetR:round(timeExits.reduce((sum,t)=>sum+Number(t.netR),0)),
+        stopNetR:round(stopExits.reduce((sum,t)=>sum+Number(t.netR),0))
+      },
       winRate:verified.length?round(wins.length/verified.length*100):null,
       netR:round(verified.reduce((s,t)=>s+Number(t.netR),0)),
       expectancyR:verified.length?round(verified.reduce((s,t)=>s+Number(t.netR),0)/verified.length):null,
