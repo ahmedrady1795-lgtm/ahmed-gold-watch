@@ -8,7 +8,18 @@ function load(file){
 }
 const {buildScalpPlans}=load('lib/scalp-opportunities.ts');
 const {advancePaperTrade,updateScalpLedger}=load('lib/scalp-paper-ledger.ts');
+const {mergeBtcCandles}=load('lib/btc-market.ts');
+const {ingestLiveCandle,completedLiveCandles}=load('lib/live-candles.ts');
 const now=Date.parse('2026-10-08T01:30:00Z');
+const refreshed=mergeBtcCandles([{time:2,close:100},{time:1,close:90},{time:2,close:105}]);
+assert.equal(refreshed.length,2);assert.equal(refreshed[0].time,1);assert.equal(refreshed[1].close,105,'Latest provider OHLC must override a cached unfinished candle');
+const live={lastAt:0,bars:[]};
+for(let t=now+50000;t<=now+180000;t+=5000)ingestLiveCandle(live,t,100+(t-now)/60000);
+const observed=completedLiveCandles(live,now+180000);
+assert.equal(observed.length,2);assert.equal(observed[0].time,now+60000,'Initial partial minute cannot be treated as a complete candle');
+const disconnected={lastAt:0,bars:[]};
+ingestLiveCandle(disconnected,now+55000,100);ingestLiveCandle(disconnected,now+60000,101);ingestLiveCandle(disconnected,now+115000,103);
+assert.equal(completedLiveCandles(disconnected,now+120000).length,0,'A stream gap invalidates the minute');
 const series=(ms)=>Array.from({length:240},(_,i)=>({time:now-(240-i)*ms,open:4000,high:4000.4,low:3999.6,close:4000}));
 function input(){return {asset:'GOLD',c1:series(60000),c5:series(300000),quote:{price:4000.45,at:now,bid:4000.44,ask:4000.455,source:'Biquote'},candleSource:'Biquote XAUUSD',now,events:[],newsReady:true,marketOpen:true,feeBps:0,slippageBps:0};}
 function breakout(){const x=input();x.c1[x.c1.length-1]={time:now-60000,open:4000,high:4000.55,low:3999.9,close:4000.45};return x;}

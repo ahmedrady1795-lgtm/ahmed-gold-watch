@@ -4,7 +4,7 @@ Rule-based trading command dashboard for gold and Bitcoin monitoring, technical 
 
 ## Scalp desk (October 8, 2026)
 - `/api/scalp` independently updates M1 and M5 opportunities. The H4/M15 forecast is context rather than a scalp veto.
-- Uses closed M1/M5 candles for breakouts, pullbacks and liquidity sweeps. Quotes older than 15 seconds, gaps, malformed candles, futures proxies and imminent high-impact news block activation.
+- Uses closed M1/M5 candles for breakouts, pullbacks and liquidity sweeps. New provider OHLC overrides cached unfinished candles. Complete observed Coinbase WebSocket minute bars bridge REST publication delays; the first partial minute and minutes with tick gaps are excluded. Quotes older than 15 seconds, gaps, malformed candles, futures proxies and imminent high-impact news block activation.
 - Entry triggers expire after 45 seconds (M1) or 90 seconds (M5). Issued levels remain fixed until cancellation, expiry or settlement; targets do not chase the price.
 - Scores describe setup strength, not calibrated success probabilities. Structural targets and projected extensions are labelled separately.
 - Paper reference-price outcomes are stored on the existing `/data` volume in `scalp-paper-v1.json`, separately by asset and horizon. T1/stop/time exits include assumed round-trip costs; unknown monitoring intervals never become wins. This is not a broker fill or an execution signal.

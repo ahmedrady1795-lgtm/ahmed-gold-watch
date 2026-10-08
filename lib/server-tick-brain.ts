@@ -1,8 +1,9 @@
 import {getQuoteData} from './market-hub';
+import {ingestLiveCandle,completedLiveCandles,type LiveBars} from './live-candles';
 type Asset='BTC'|'GOLD';
 type Side='BUY'|'SELL'|'WAIT';
 type Tick={at:number;price:number;bid:number|null;ask:number|null;bidQty:number|null;askQty:number|null;source:string};
-type State={started:boolean;ticks:Record<Asset,Tick[]>;sockets:any[]};
+type State={started:boolean;ticks:Record<Asset,Tick[]>;sockets:any[];btcBars?:LiveBars};
 
 declare global {
   // eslint-disable-next-line no-var
@@ -14,6 +15,10 @@ function state():State{
   return globalThis.__predatorTickBrain;
 }
 function push(asset:Asset,t:Tick){
+  if(asset==='BTC'){
+    const live=state().btcBars||={lastAt:0,bars:[]};
+    ingestLiveCandle(live,t.at,t.price);
+  }
   const s=state(),cut=t.at-30000,arr=s.ticks[asset].filter(x=>x.at>=cut);arr.push(t);s.ticks[asset]=arr.slice(-240);
 }
 function connect(url:string,onOpen:(ws:any)=>void,onData:(j:any)=>void){
@@ -68,6 +73,10 @@ export function getCoinbaseServerQuote(now=Date.now()){
   const tick=state().ticks.BTC.at(-1);
   if(!tick||now-tick.at>10000||tick.at>now+2000)return null;
   return {price:tick.price,at:tick.at,bid:tick.bid,ask:tick.ask,source:tick.source};
+}
+export function getCoinbaseClosedCandles(now=Date.now()){
+  const live=state().btcBars;
+  return live?completedLiveCandles(live,now):[];
 }
 export function getServerTickSignal(asset:Asset,now=Date.now()){
   const arr=state().ticks[asset].filter(x=>now-x.at<=(asset==='GOLD'?24000:18000)),latest=arr.at(-1);

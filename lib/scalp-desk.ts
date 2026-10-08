@@ -1,9 +1,9 @@
 import {getMarketSnapshot} from './market-hub';
-import {getBtcMarket} from './btc-market';
+import {getBtcMarket,mergeBtcCandles} from './btc-market';
 import {buildScalpPlans,type ScalpQuote} from './scalp-opportunities';
 import {updateScalpLedger} from './scalp-paper-ledger';
 import {getRuntimeEnv} from './runtime';
-import {getCoinbaseServerQuote} from './server-tick-brain';
+import {getCoinbaseServerQuote,getCoinbaseClosedCandles} from './server-tick-brain';
 
 function session(now:number){const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;return day!==6&&!(day===0&&h<22)&&!(day===5&&h>=21)&&!(day>=1&&day<=4&&h>=21&&h<22);}
 function envNumber(key:string){const raw=(getRuntimeEnv() as Record<string,unknown>)[key]??process.env[key];if(raw==null||raw==='')return null;const n=Number(raw);return Number.isFinite(n)&&n>=0&&n<=100?n:null;}
@@ -34,7 +34,12 @@ export async function getScalpDesk(){
       return {asset,checkedAt:at,quote,candleSource:input.candleSource,plans,ledger:updateScalpLedger(asset,plans,quote,at,input.c1),data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
     };
     const goldSnap=goldResult.status==='fulfilled'?goldResult.value:null;
-    const market=btcResult.status==='fulfilled'?btcResult.value:null;
+    let market=btcResult.status==='fulfilled'?btcResult.value:null;
+    if(market&&/Coinbase/i.test(market.source)){
+      const live=getCoinbaseClosedCandles();
+      // Full observed minute bars bridge the REST publication delay. No partial or gap bar is used.
+      if(live.length)market={...market,c1:mergeBtcCandles([...market.c1,...live]),source:market.source+' · closed WebSocket M1'};
+    }
     const q=goldSnap?.quote;
     const events=goldSnap?.market.events||[],newsReady=Boolean(goldSnap?.market.newsReady&&Date.now()-goldSnap.market.checkedAt<120000);
     let bq:ScalpQuote={price:null,at:null,source:market?.source||'unavailable'};

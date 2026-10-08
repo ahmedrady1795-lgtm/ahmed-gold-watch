@@ -14,10 +14,10 @@ export default function ScalpDesk({desk,now=Date.now(),children}:any){
   const shown=current?.plan||plan;
   const stale=now-Number(desk.checkedAt)>15000;
   const expired=Boolean(current?.state==='ARMED'&&now>=Number(shown?.expiresAt));
-  const status=stale?'التحديث متأخر':expired?'انتهت صلاحية الدخول':current?stateAr(current.state):plan?.status==='ARMED'?'إعداد قابل للتفعيل التجريبي':plan?.status==='BLOCKED'?'البيانات تمنع التفعيل':'تكوّن فرصة';
+  const status=stale?'التحديث متأخر':expired?'انتهت صلاحية الدخول':current?stateAr(current.state):plan?.status==='ARMED'?'إعداد قابل للتفعيل التجريبي':plan?.status==='BLOCKED'?'البيانات تمنع التفعيل':plan?.side==='WAIT'?'رصد السوق':'تكوّن فرصة';
   const directional=shown?.side==='BUY'||shown?.side==='SELL';
   const tone=stale||expired?'amber':shown?.side==='BUY'?'green':shown?.side==='SELL'?'red':'amber';
-  const secs=shown?Math.max(0,Math.ceil(((current?.activatedAt?current.activatedAt+horizon*60000:shown.expiresAt)-now)/1000)):0;
+  const secs=shown&&directional?Math.max(0,Math.ceil(((current?.activatedAt?current.activatedAt+horizon*60000:shown.expiresAt)-now)/1000)):0;
   const stats=lane?.stats;
   return <section className={'panel scalp-desk ai-asset-card '+(shown?.side==='BUY'?'ai-buy':shown?.side==='SELL'?'ai-sell':'ai-wait')}>
     <div className="scalp-desk-head">
@@ -40,7 +40,7 @@ export default function ScalpDesk({desk,now=Date.now(),children}:any){
       <div className="scalp-condition"><strong>{stale?'لا تعتمد الإعداد حتى يعود تحديث حديث':current?.note||plan?.reason}</strong><span>{shown?.trigger}</span></div>
       <div className="scalp-facts">
         <div><small>العائد / المخاطرة بعد التكلفة</small><b>{fmt(shown?.netRR)} R</b></div>
-        <div><small><Clock3 size={12}/> {current?.activatedAt?'متبقي للمتابعة':'صلاحية التفعيل'}</small><b>{secs?secs+' ثانية':'انتهت'}</b></div>
+        <div><small><Clock3 size={12}/> {current?.activatedAt?'متبقي للمتابعة':'صلاحية التفعيل'}</small><b>{secs?secs+' ثانية':shown?.entry!=null?'انتهت':'—'}</b></div>
         <div><small>تكلفة الدورة {shown?.costEstimated?'· تقديرية':''}</small><b>{fmt(shown?.cost)} $</b></div>
       </div>
       {!!plan?.blockers?.length&&!current&&<ul className="scalp-blockers">{plan.blockers.map((r:string)=><li key={r}>{r}</li>)}</ul>}
