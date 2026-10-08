@@ -19,6 +19,41 @@ function save(data:Ledger){
   }catch{return false;}
 }
 const round=(v:number)=>Number(v.toFixed(3));
+// A fixed post-upgrade cohort avoids claiming that old historical fills
+// demonstrate profitability of the new engine. Do not back-date this marker.
+export const SCALP_PROOF_FROM=Date.parse('2026-10-08T09:00:00Z');
+export function evaluatePaperProof(trades:PaperTrade[],start=SCALP_PROOF_FROM){
+  // Closed outcomes only; canceled, unknown, unfilled and old historical
+  // observations NEVER count as wins or statistical evidence.
+  const rows=trades.filter(t=>t.activatedAt!=null&&t.activatedAt>=start&&
+    t.netR!=null&&Number.isFinite(t.netR)&&['TP1','STOP','TIME_EXIT'].includes(t.state))
+    .sort((a,b)=>Number(a.activatedAt)-Number(b.activatedAt));
+  const rets=rows.map(t=>Number(t.netR));
+  const n=rets.length,net=rets.reduce((sum,v)=>sum+v,0);
+  const expectancy=n?net/n:0;
+  const variance=n>1?rets.reduce((a,v)=>a+(v-expectancy)**2,0)/(n-1):0;
+  const lower95=n>1?expectancy-1.96*Math.sqrt(variance/n):null;
+  const positive=rets.filter(v=>v>0).reduce((a,b)=>a+b,0);
+  const negative=-rets.filter(v=>v<0).reduce((a,b)=>a+b,0);
+  let equity=0,peak=0,maxDrawdownR=0;
+  for(const v of rets){equity+=v;peak=Math.max(peak,equity);
+    maxDrawdownR=Math.max(maxDrawdownR,peak-equity);}
+  const profitFactor=negative>0?positive/negative:null;
+  const target=50;
+  const qualified=n>=target&&lower95!=null&&lower95>0&&
+    profitFactor!=null&&profitFactor>=1.2&&maxDrawdownR<=6;
+  return {
+    status:n<target?'COLLECTING':qualified?'POSITIVE_PAPER_SAMPLE':'NOT_VALIDATED',
+    cohortStart:start,samples:n,requiredSamples:target,
+    wins:rets.filter(v=>v>0).length,
+    netR:round(net),expectancyR:n?round(expectancy):null,
+    lower95MeanR:lower95!=null?round(lower95):null,
+    profitFactor:profitFactor!=null?round(profitFactor):null,
+    maxDrawdownR:round(maxDrawdownR),
+    eligibleForLiveTrading:false,
+    note:'عينة صفقات ورقية بعد التحديث وبسعر مرجعي؛ لا تختبر تنفيذ Exness. حد الثقة تقريبي ولا يضمن الربحية.'
+  };
+}
 
 // Paper-only circuit breaker: a run of poor simulated entries pauses new
 // candidates for 15 minutes. It never alters settled outcomes or real orders.
@@ -148,6 +183,7 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
         timeExitNetR:round(timeExits.reduce((sum,t)=>sum+Number(t.netR),0)),
         stopNetR:round(stopExits.reduce((sum,t)=>sum+Number(t.netR),0))
       },
+      forwardProof:evaluatePaperProof(lane.history),
       winRate:verified.length?round(wins.length/verified.length*100):null,
       netR:round(verified.reduce((s,t)=>s+Number(t.netR),0)),
       expectancyR:verified.length?round(verified.reduce((s,t)=>s+Number(t.netR),0)/verified.length):null,

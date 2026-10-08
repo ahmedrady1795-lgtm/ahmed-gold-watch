@@ -1822,6 +1822,43 @@ export async function GET(request:Request){
         gold:{side:webIntel.gold.side,confidence:webIntel.gold.confidence,risk:webIntel.gold.risk,sourceCount:webIntel.gold.sourceCount,freshCount:webIntel.gold.freshCount},
         btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount}
       }:null,
+      modelValidation:{
+        // Service availability and statistical readiness are different facts.
+        // Neither these BTC classifiers nor their holdouts validate gold.
+        source:'BTC-only prediction services; not Exness broker-price executions',
+        mlM1:{
+          serviceOk:Boolean(bitcoinMlRaw?.ok),
+          ready:Boolean(bitcoinMlRaw?.oneMinute?.ready),
+          status:String(bitcoinMlRaw?.status||'UNKNOWN'),
+          oosSamples:Number(bitcoinMlRaw?.oneMinute?.metrics?.ensemble?.n||0),
+          oosSelectiveSamples:Number(bitcoinMlRaw?.oneMinute?.metrics?.ensemble?.selectiveN||0),
+          oosSelectiveAccuracyPct:Number(((bitcoinMlRaw?.oneMinute?.metrics?.ensemble?.selectiveAccuracy||0)*100).toFixed(1)),
+          oosCoveragePct:Number(((bitcoinMlRaw?.oneMinute?.metrics?.ensemble?.selectiveCoverage||0)*100).toFixed(1)),
+          reason:bitcoinMlRaw?.oneMinute?.ready?'Validated shadow directional model':'M1 fails independent statistical readiness or data feed',
+        },
+        mlM5:{
+          serviceOk:Boolean(bitcoinMlRaw?.ok),
+          ready:Boolean(bitcoinMlRaw?.fiveMinute?.ready),
+          status:String(bitcoinMlRaw?.status||'UNKNOWN'),
+          oosSamples:Number(bitcoinMlRaw?.fiveMinute?.metrics?.ensemble?.n||0),
+          oosSelectiveSamples:Number(bitcoinMlRaw?.fiveMinute?.metrics?.ensemble?.selectiveN||0),
+          oosSelectiveAccuracyPct:Number(((bitcoinMlRaw?.fiveMinute?.metrics?.ensemble?.selectiveAccuracy||0)*100).toFixed(1)),
+          oosCoveragePct:Number(((bitcoinMlRaw?.fiveMinute?.metrics?.ensemble?.selectiveCoverage||0)*100).toFixed(1)),
+          validationAccuracyPct:Number(((bitcoinMlRaw?.fiveMinute?.metrics?.validation?.selectiveAccuracy||0)*100).toFixed(1)),
+          reason:bitcoinMlRaw?.fiveMinute?.ready?'M5 independent holdout qualified':'M5 independent holdout below quality gate; predictions kept in shadow',
+        },
+        neural:{
+          serviceOk:Boolean(bitcoinNeural?.ok),
+          ready:Boolean(bitcoinNeural?.ready),
+          status:String(bitcoinNeural?.status||'UNKNOWN'),
+          oosSamples:Number(bitcoinNeural?.metrics?.holdout?.n||0),
+          oosSelectiveSamples:Number(bitcoinNeural?.metrics?.holdout?.selectiveN||0),
+          oosSelectiveAccuracyPct:Number(((bitcoinNeural?.metrics?.holdout?.selectiveAccuracy||0)*100).toFixed(1)),
+          oosCoveragePct:Number(((bitcoinNeural?.metrics?.holdout?.selectiveCoverage||0)*100).toFixed(1)),
+          reason:bitcoinNeural?.ready?'Neural independent holdout qualified':'Neural holdout lacks sufficient selective edge or coverage; shadow only',
+        },
+        warning:'READY requires real holdout performance. No readiness flag is overridden and no accuracy is guaranteed.'
+      },
       developmentLab:{
         mode:'AUTONOMOUS_RUNTIME_EVOLUTION',
         productionSourceWrite:false,
