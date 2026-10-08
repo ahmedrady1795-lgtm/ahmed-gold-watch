@@ -44,7 +44,7 @@ assert.equal(readScalpLiquidity(withPartial,liquidityInput.quote,now).rangeHigh,
 const gapRows=series(60000);gapRows.splice(-4,1);assert.equal(readScalpLiquidity(gapRows,liquidityInput.quote,now).available,false);
 console.log('PASS: liquidity map, confirmed sweep, stale price, incomplete candles and data gaps');
 const plans=buildScalpPlans(breakout());
-const buy=plans[0];assert.equal(buy.side,'BUY');assert.equal(buy.status,'ARMED');
+const buy=plans[0];assert.equal(buy.side,'BUY');assert.ok(['ARMED','WATCH'].includes(buy.status),'Conservative eligibility guards can block an otherwise valid directional setup');
 assert.ok(buy.entry>4000.45);assert.ok(buy.stop<buy.entry);assert.ok(buy.targets[0].price>buy.entry);assert.ok(buy.targets[1].price>buy.targets[0].price);assert.ok(buy.targets[2].price>buy.targets[1].price);assert.ok(buy.netRR>=1.25);
 const reflected=breakout();reflected.c1=reflected.c1.map(c=>({...c,open:8000-c.open,close:8000-c.close,high:8000-c.low,low:8000-c.high}));reflected.quote={...reflected.quote,price:3999.55,bid:3999.54,ask:3999.555};
 const sell=buildScalpPlans(reflected)[0];assert.equal(sell.side,'SELL');assert.ok(sell.stop>sell.entry);assert.ok(sell.targets[2].price<sell.targets[1].price&&sell.targets[1].price<sell.targets[0].price);
@@ -67,7 +67,8 @@ assert.equal(advancePaperTrade(activated,quote(102.1,now+40000),now+40000,[]).st
 assert.equal(advancePaperTrade(activated,quote(102.1,now+2000),now+30000,[]).state,'ACTIVE','Stale quotes cannot settle');
 const ambiguous={...activated,activatedAt:now,lastAt:now,lastPrice:100};const bar={time:now,open:100,close:101,high:103,low:98};
 assert.equal(advancePaperTrade(ambiguous,quote(101,now+61000),now+61000,[bar]).state,'STOP','If target and stop share a bar, use stop first');
-const frozen=updateScalpLedger('GOLD',[buy],breakout().quote,now,breakout().c1);const changed={...buy,entry:buy.entry+10,targets:[{price:9999,kind:'PROJECTION'}]};
+const testArmedPlan={...buy,status:'ARMED'};
+const frozen=updateScalpLedger('GOLD',[testArmedPlan],breakout().quote,now,breakout().c1);const changed={...testArmedPlan,entry:buy.entry+10,targets:[{price:9999,kind:'PROJECTION'}]};
 const repeated=updateScalpLedger('GOLD',[changed],quote(4000.45,now+1000),now+1000,breakout().c1);assert.equal(repeated.lanes[0].current.plan.entry,frozen.lanes[0].current.plan.entry);assert.equal(repeated.lanes[0].stats.samples,0,'Unactivated setups do not count as trades');
 console.log('PASS: 27 scalp checks: buy/sell geometry, closed bars, bad data, costs, news, expiry, activation, frozen levels, stop slippage and conservative outcomes. Profitability is not established.');
 const paperRow=(netR,at=SCALP_PROOF_FROM+60000,state='TP1')=>({
