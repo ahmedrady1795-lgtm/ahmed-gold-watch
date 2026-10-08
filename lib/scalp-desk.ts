@@ -166,7 +166,17 @@ export async function getScalpDesk(){
           netRR:pl.netRR,cost:pl.cost,estimated:pl.costEstimated,
           blockers:pl.blockers.slice(0,5)
         })),
-        watches:x.entryConfirmations.map((e:any)=>({h:e.horizon,state:e.state,held:e.heldSeconds,side:e.side}))
+        watches:x.entryConfirmations.map((e:any)=>({
+          h:e.horizon,state:e.state,held:e.heldSeconds,side:e.side,
+          trigger:e.trigger,confirmedCandleAt:e.confirmedCandleAt
+        })),
+        ledger:x.ledger.lanes.map((l:any)=>({
+          h:l.horizon,active:l.current?.state||null,
+          paperEntry:l.current?.plan?.entry??null,
+          verifiedResults:l.stats.samples,wins:l.stats.wins,
+          netR:l.stats.netR,unknown:l.stats.unknown
+        })),
+        ledgerSaved:x.ledger.persisted
       });
       console.info('[SCALP-DIAG]',JSON.stringify({gold:diag(gold),btc:diag(bitcoin)}));
     }
