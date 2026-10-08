@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {Activity,RefreshCw,Wifi,WifiOff} from 'lucide-react';
+import {Activity,RefreshCw,WifiOff} from 'lucide-react';
 import AICommandCenter from '../components/AICommandCenter';
 import NewsCommandCenter from '../components/NewsCommandCenter';
 import {computeWaveLead,type WaveLead,type WaveTick} from '../lib/wave-lead';
@@ -279,7 +279,7 @@ export default function Home(){
     <header className="topbar">
       <div className="brand">
         <div className="brandmark">AG</div>
-        <div><span>AHMED GOLD · AI LITE</span><strong>SCALP</strong></div>
+        <div><span>AHMED · LIVE MARKET</span><strong>GOLD WATCH</strong></div>
       </div>
       <div className="tickerstrip">
         <div>
@@ -293,16 +293,13 @@ export default function Home(){
           <em className={btcLive?'up':'muted'}>{btcLive?'LIVE':'WAIT'}</em>
         </div>
       </div>
-      <button className="refresh" onClick={()=>void loadAi(true)} disabled={busy}>
-        <RefreshCw size={17} className={busy?'spin':''}/><span>تحديث AI</span>
-      </button>
+      <div className="topbar-actions">
+        <span className={'pill '+(aiActive?'ok':'neutral')}><Activity size={14}/>{aiActive?'التحليل مباشر':'جارٍ التحديث'}</span>
+        <button className="refresh" onClick={()=>void loadAi(true)} disabled={busy} aria-label="تحديث التحليل">
+          <RefreshCw size={17} className={busy?'spin':''}/><span>تحديث</span>
+        </button>
+      </div>
     </header>
-
-    <section className="statusrail lite-status">
-      <span className={goldLive?'pill ok':goldUsable?'pill':'pill bad'}>{goldLive?<Wifi size={14}/>:<WifiOff size={14}/>} GOLD {goldBadge}</span>
-      <span className={btcLive?'pill ok':'pill bad'}>{btcLive?<Wifi size={14}/>:<WifiOff size={14}/>} BTC {btcLive?'LIVE':'WAIT'}</span>
-      <span className={aiActive?'pill ok':'pill neutral'}><Activity size={14}/> AI {aiActive?'ACTIVE':'SYNCING'}</span>
-    </section>
 
     {aiError&&!aiData&&<div className="fatal"><WifiOff size={18}/><div><strong>تعذر تحديث AI</strong><span>{aiError}</span></div></div>}
 
@@ -311,6 +308,6 @@ export default function Home(){
       <NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredId={aiData?.autopilot?.nextEvent?.id||null}/>
     </section>
 
-    <footer>Ahmed Gold AI Lite · السعر والسكالب والتوقع فقط</footer>
+    <footer>Gold Watch · تحليل احتمالي ومتابعة تجريبية · ليست أوامر تنفيذ وسيط</footer>
   </main>;
 }

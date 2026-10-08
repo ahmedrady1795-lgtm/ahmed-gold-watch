@@ -7,7 +7,7 @@ const sideAr=(s:string)=>s==='BUY'?'شراء':s==='SELL'?'بيع':'انتظار'
 const setupAr=(s:string)=>s==='BREAKOUT'?'اختراق نطاق':s==='PULLBACK'?'إعادة اختبار':s==='SWEEP'?'سحب سيولة وانعكاس':'رصد إعداد جديد';
 const stateAr=(s:string)=>({ARMED:'بانتظار التفعيل',ACTIVE:'متابعة تجريبية',TP1:'تحقق T1',STOP:'ضرب الوقف',TIME_EXIT:'انتهت المدة',EXPIRED:'انتهت صلاحية الدخول',CANCELED:'أُلغي قبل الدخول',UNKNOWN:'نتيجة غير موثقة'} as Record<string,string>)[s]||'مراقبة';
 
-export default function ScalpDesk({desk,now=Date.now(),children}:any){
+export default function ScalpDesk({desk,now=Date.now()}:any){
   const [horizon,setHorizon]=useState<1|5>(1);
   const plan=desk.plans?.find((p:any)=>p.horizon===horizon);
   const lane=desk.ledger?.lanes?.find((x:any)=>x.horizon===horizon),current=lane?.current;
@@ -25,22 +25,12 @@ export default function ScalpDesk({desk,now=Date.now(),children}:any){
   const qualityGate=desk.qualityGates?.find((x:any)=>x.horizon===horizon);
   return <section className={'panel scalp-desk ai-asset-card '+(shown?.side==='BUY'?'ai-buy':shown?.side==='SELL'?'ai-sell':'ai-wait')}>
     <div className="scalp-desk-head">
-      <div><span className="eyebrow">{desk.asset==='GOLD'?'XAU / USD':'BTC / USD'} · SCALP ENGINE</span><h2>رادار فرص السوق</h2></div>
-      <div className="scalp-quote"><b dir="ltr">{fmt(desk.quote?.price)}</b><small>{desk.quote?.at!=null&&now-desk.quote.at<=15000?'سعر حديث':'السعر متأخر'}</small></div>
+      <div><span className="eyebrow">توقيت الدخول · {desk.asset==='GOLD'?'الذهب':'البيتكوين'}</span><h2>فرص السكالب</h2></div>
+      <span className={'scalp-feed-state '+(stale?'late':'')}>{stale?'بيانات متأخرة':'يتحدث تلقائيًا'}</span>
     </div>
     <div className="scalp-frame-tabs" role="tablist" aria-label="فريم السكالب">
       {([1,5] as const).map(h=>{const p=desk.plans?.find((x:any)=>x.horizon===h),c=desk.ledger?.lanes?.find((x:any)=>x.horizon===h)?.current;return <button key={h} id={'scalp-tab-'+desk.asset+'-'+h} type="button" role="tab" aria-selected={horizon===h} aria-controls={'scalp-panel-'+desk.asset} onClick={()=>setHorizon(h)} className={horizon===h?'selected':''}><strong>{h===1?'دقيقة واحدة':'خمس دقائق'} <span dir="ltr">M{h}</span></strong><small>{c?stateAr(c.state):p?.status==='BLOCKED'?'بيانات غير جاهزة':p?.side==='WAIT'?'رصد السوق':sideAr(p?.side)+' · '+setupAr(p?.setup)}</small></button>;})}
     </div>
-    {!current&&liquidity?.available&&!stale&&<div className="scalp-motion" aria-label="أهداف الحركة المحتملة">
-      <div className="scalp-liquidity-title"><strong>أهداف الحركة المحتملة · M{horizon}</strong><small>تتحدث مع السعر · الميل اللحظي {liquidity.pressure==='WAIT'?'متوازن':sideAr(liquidity.pressure)}</small></div>
-      <p>سيناريوهات رصد مشروطة بإغلاق M1؛ أهداف الصفقة تتثبت عند تفعيل إعداد الدخول.</p>
-      <div className="scalp-motion-paths">{liquidity.scenarios?.find((s:any)=>s.horizon===horizon)?.paths.map((s:any)=><div key={s.side} className="scalp-motion-path">
-        <strong className={s.side==='BUY'?'green':'red'}>{s.side==='BUY'?'مسار الصعود':'مسار الهبوط'}</strong>
-        <small>شرط الرصد: إغلاق M1 {s.side==='BUY'?'فوق':'تحت'} <b dir="ltr">{fmt(s.trigger)}</b></small>
-        <div className="scalp-motion-targets">{s.targets.map((t:any,i:number)=><div key={i}><small>T{i+1}</small><b dir="ltr">{fmt(t.price)}</b><small>{t.kind==='STRUCTURE'?'مستوى سيولة':'امتداد تقديري'}</small></div>)}</div>
-        <small>إبطال المسار {s.side==='BUY'?'تحت':'فوق'} <b dir="ltr">{fmt(s.invalidation)}</b></small>
-      </div>)}</div>
-    </div>}
     <div id={'scalp-panel-'+desk.asset} role="tabpanel" aria-labelledby={'scalp-tab-'+desk.asset+'-'+horizon}>
       <div className="scalp-decision">
         <div className={'scalp-direction '+tone}>{shown?.side==='BUY'?<ArrowUpRight size={34}/>:shown?.side==='SELL'?<ArrowDownRight size={34}/>:<Activity size={30}/>}<div><strong>{directional?sideAr(shown.side)+' · '+setupAr(shown.setup):'نبحث عن الإعداد التالي'}</strong><span>{status}</span></div></div>
@@ -58,11 +48,21 @@ export default function ScalpDesk({desk,now=Date.now(),children}:any){
         <div><small><Clock3 size={12}/> {current?.activatedAt?'متبقي للمتابعة':'صلاحية التفعيل'}</small><b>{timed?(secs?secs+' ثانية':'انتهت'):'غير مفعّلة'}</b></div>
         <div><small>تكلفة الدورة {shown?.costEstimated?'· تقديرية':''}</small><b>{fmt(shown?.cost)} $</b></div>
       </div>
-      {!!plan?.blockers?.length&&!current&&<ul className="scalp-blockers">{plan.blockers.map((r:string)=><li key={r}>{r}</li>)}</ul>}
+      {!!plan?.blockers?.length&&!current&&plan.blockers.length>1&&<details className="scalp-expand"><summary>شروط الدخول غير المكتملة ({plan.blockers.length})</summary><ul className="scalp-blockers">{plan.blockers.map((r:string)=><li key={r}>{r}</li>)}</ul></details>}}
       {qualityGate?.blocked&&<p className="scalp-condition">حماية سجل السكالب التجريبي: {qualityGate.reason} · المتبقي {qualityGate.remainingSeconds} ثانية</p>}
-      <div className="scalp-evidence">{shown?.evidence?.map((e:any)=><div key={e.label}><small>{e.label}</small><b className={e.side==='BUY'?'green':e.side==='SELL'?'red':''}>{e.side==='WAIT'?e.value:sideAr(e.side)}</b><span>{e.side!=='WAIT'?e.value:''}</span></div>)}</div>
+      {!!shown?.evidence?.length&&<details className="scalp-expand"><summary>المؤشرات التي كوّنت الفرصة</summary><div className="scalp-evidence">{shown.evidence.map((e:any)=><div key={e.label}><small>{e.label}</small><b className={e.side==='BUY'?'green':e.side==='SELL'?'red':''}>{e.side==='WAIT'?e.value:sideAr(e.side)}</b><span>{e.side!=='WAIT'?e.value:''}</span></div>)}</div></details>}
     </div>
-    <div className="scalp-liquidity" aria-label="قراءة السيولة الحية">
+    {!current&&liquidity?.available&&!stale&&<details className="scalp-expand"><summary>سيناريوهات سعرية بديلة · للمراقبة فقط</summary><div className="scalp-motion" aria-label="أهداف الحركة المحتملة">
+      <div className="scalp-liquidity-title"><strong>أهداف الحركة المحتملة · M{horizon}</strong><small>تتحدث مع السعر · الميل اللحظي {liquidity.pressure==='WAIT'?'متوازن':sideAr(liquidity.pressure)}</small></div>
+      <p>سيناريوهات رصد مشروطة بإغلاق M1؛ أهداف الصفقة تتثبت عند تفعيل إعداد الدخول.</p>
+      <div className="scalp-motion-paths">{liquidity.scenarios?.find((s:any)=>s.horizon===horizon)?.paths.map((s:any)=><div key={s.side} className="scalp-motion-path">
+        <strong className={s.side==='BUY'?'green':'red'}>{s.side==='BUY'?'مسار الصعود':'مسار الهبوط'}</strong>
+        <small>شرط الرصد: إغلاق M1 {s.side==='BUY'?'فوق':'تحت'} <b dir="ltr">{fmt(s.trigger)}</b></small>
+        <div className="scalp-motion-targets">{s.targets.map((t:any,i:number)=><div key={i}><small>T{i+1}</small><b dir="ltr">{fmt(t.price)}</b><small>{t.kind==='STRUCTURE'?'مستوى سيولة':'امتداد تقديري'}</small></div>)}</div>
+        <small>إبطال المسار {s.side==='BUY'?'تحت':'فوق'} <b dir="ltr">{fmt(s.invalidation)}</b></small>
+      </div>)}</div>
+    </div></details>}
+    <details className="scalp-expand"><summary>خريطة السيولة ومصادر البيانات <span>{liquidity?.available&&!stale?'· قراءة متاحة':'· بيانات غير مكتملة'}</span></summary><div className="scalp-liquidity" aria-label="قراءة السيولة الحية">
       <div className="scalp-liquidity-title"><strong>خريطة السيولة · قراءة مستمرة</strong><small>{stale?'التحديث متأخر':liquidity?.available?'قراءة حديثة':'بيانات غير كافية'} · {new Date(desk.checkedAt).toLocaleTimeString('ar-AE',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small></div>
       <p>{liquidity?.reason||'جارٍ تحميل قراءة السيولة'}</p>
       {liquidity?.available&&<>
@@ -72,11 +72,12 @@ export default function ScalpDesk({desk,now=Date.now(),children}:any){
         <small>{liquidity.note}</small>
       </>}
       {desk.asset==='BTC'?<div className="scalp-book"><strong>دفتر أوامر Kraken · 25 مستوى</strong>{bookFresh?<div className="scalp-liquidity-grid"><div><small>طلبات الشراء · USD</small><b dir="ltr">{fmt(book.book.bidDepthUsd,0)}</b></div><div><small>عروض البيع · USD</small><b dir="ltr">{fmt(book.book.askDepthUsd,0)}</b></div><div><small>اختلال العمق المرجّح</small><b dir="ltr">{fmt(book.book.depthImbalance,0)}%</b></div></div>:<p>دفتر الأوامر غير متاح أو متأخر؛ خريطة السعر مستقلة عنه.</p>}<small>لقطة أوامر قابلة للتغيير والإلغاء؛ ليست ضمان اتجاه أو حجم صفقات منفذة.</small></div>:<div className="scalp-book"><small>الذهب: المصدر لا يوفر دفتر أوامر أو حجم تداول موثوق؛ قراءة السيولة هنا من حركة السعر.</small></div>}
-    </div>
+    </div></details>
+    <div className="scalp-paper-brief"><span>متابعة الصفقات التجريبية</span><strong>{stats?.samples?stats.samples+' نتيجة · متوسط '+fmt(stats.expectancyR)+'R':'جمع نتائج الأداء الفعلي'}</strong></div>
+    <details className="scalp-expand"><summary>نتائج السكالب التفصيلية</summary>
     <div className="scalp-results"><div><span className="eyebrow">سجل هذا الفريم · تجريبي</span><h3>{stats?.samples?stats.samples+' صفقة موثقة':'بدأ سجل جديد للصفقات'}</h3></div><div className="scalp-results-grid"><div><small>صافي النتيجة</small><b className={Number(stats?.netR)>=0?'green':'red'}>{stats?.samples?fmt(stats.netR)+' R':'—'}</b></div><div><small>متوسط الصفقة</small><b>{stats?.samples?fmt(stats.expectancyR)+' R':'—'}</b></div><div><small>نسبة الربح</small><b>{stats?.samples?fmt(stats.winRate,1)+'%':'—'}</b></div></div><p>قوة الإعداد ليست احتمال نجاح. النتائج تحسب T1 أو الوقف أو انتهاء المدة بعد التكلفة. {stats?.unknown?stats.unknown+' نتيجة غير موثقة مستبعدة. ':''}{stats?.expired?stats.expired+' إعداد انتهى أو أُلغي قبل الدخول.':''}</p>
       {!!lane?.recent?.length&&<details><summary>آخر النتائج ({lane.recent.length})</summary><div className="scalp-history">{lane.recent.map((t:any)=><div key={t.plan.id}><time>{new Date(t.closedAt).toLocaleTimeString('ar-AE',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'})}</time><span>{sideAr(t.plan.side)} · {stateAr(t.state)}</span><b className={Number(t.netR)>=0?'green':'red'}>{t.netR!=null?fmt(t.netR)+' R':'—'}</b></div>)}</div></details>}
-    </div>
+    </div></details>
     <div className="scalp-source"><span>{desk.candleSource}</span><span>{desk.data?.m1AgeMs!=null?'آخر إغلاق M1 منذ '+Math.max(0,Math.round(desk.data.m1AgeMs/1000))+'ث':'شموع M1 غير متاحة'}</span><span>مرجع سعري؛ لم تُنفذ صفقة وسيط</span>{!desk.ledger?.persisted&&<span className="amber">حفظ السجل الدائم غير متاح</span>}</div>
-    {children&&<details className="scalp-context"><summary>الاتجاه العام وتوقع 15 دقيقة</summary>{children}</details>}
   </section>;
 }

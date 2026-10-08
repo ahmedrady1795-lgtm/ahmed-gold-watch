@@ -1,5 +1,5 @@
 'use client';
-import {Activity,TrendingDown,TrendingUp} from 'lucide-react';
+import {Activity} from 'lucide-react';
 import ScalpDesk from './ScalpDesk';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
@@ -192,33 +192,25 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
   const activeDistancePct=price!=null&&activeTarget!=null&&Number(price)>0?Math.abs(activeTarget-Number(price))/Number(price)*100:null;
   const targetQuality=Math.round(Number(targets?.quality||forward?.targetQuality||0));
   const targetSources=Number(targets?.sourceCount||0);
-  const forwardHeadline=heroSide==='WAIT'
-    ?'الحركة القادمة: انتظار'
-    :liveInvalidated
-      ?'القراءة السابقة أُلغيت · إعادة حساب'
-      :activeTarget!=null
-        ?'الحركة القادمة: '+moveAr(heroSide)+' نحو '+activeLabel+' '+fmt(activeTarget,2)
-        :'الحركة اكتملت · انتظار أهداف جديدة';
   return <section className={"panel ai-asset-card compact-asset "+(heroSide==='BUY'?'ai-buy':heroSide==='SELL'?'ai-sell':'ai-wait')}>
     <div className="panelhead">
       <div>
         <span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'} · LIVE</span>
-        <h2>{forwardHeadline}</h2>
+        <h2>{x.asset==='GOLD'?'توقع حركة الذهب':'توقع حركة البيتكوين'}</h2>
       </div>
-      {heroSide==='BUY'?<TrendingUp/>:heroSide==='SELL'?<TrendingDown/>:<Activity/>}
+      <span className={'market-signal-state '+(liveInvalidated?'invalid':heroSide==='WAIT'?'waiting':'tracking')}>
+        {heroSide==='WAIT'?'بانتظار تأكيد':liveStateAr}
+      </span>
     </div>
 
     <div className="ai-price-row compact-price">
       <div><small>السعر الآن</small><strong>{fmt(price,2)}</strong></div>
       <div><small>الاتجاه القادم</small><strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>{moveAr(heroSide)}</strong></div>
       <div><small>ثقة الاتجاه</small><strong>{Math.round(Number(forward?.confidence||0))}%</strong></div>
-      <div><small>جودة الأهداف</small><strong>{targetQuality?targetQuality+'%':'—'}</strong></div>
-      <div><small>الحالة</small><strong className={liveInvalidated?'red':heroSide==='WAIT'?'amber':'green'}>{liveStateAr}</strong></div>
     </div>
-    <div className="forecast-horizons decision-horizons direction-only">
-      <div><small>ضغط الشراء</small><strong className="green">{hasLiquidity?liqBuy+'%':'—'}</strong><span>{hasLiquidity?'قراءة سوق متاحة':'البيانات غير مؤكدة'}</span></div>
-      <div><small>ضغط البيع</small><strong className="red">{hasLiquidity?liqSell+'%':'—'}</strong><span>{liquidityLabel}</span></div>
-      <div><small>مصدر السيولة</small><strong>{liqOk?'متاح':'غير مؤكد'}</strong><span>{x?.liquidity?.source||'لا يوجد مصدر مؤكد'}</span></div>
+    <div className="market-liquidity-brief">
+      <span>السيولة: {hasLiquidity?<><b className="green">شراء {liqBuy}%</b> <b className="red">بيع {liqSell}%</b></>:'غير مؤكدة'}</span>
+      <small>{liquidityLabel}</small>
     </div>
 
     <div className="next-move-copy primary-move zone-primary">
@@ -226,6 +218,8 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
       <strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>
         {heroSide==='WAIT'
           ?'لا يوجد اتجاه صالح الآن'
+          :liveInvalidated
+            ?'السيناريو أُلغي بعد كسر مستوى الإبطال · ننتظر توقعًا جديدًا'
           :activeTarget!=null
             ?moveAr(heroSide)+' → '+activeLabel+' '+fmt(activeTarget,2)+(activeDistancePct!=null?' · يبعد '+activeDistancePct.toFixed(3)+'%':'')
             :'تم استهلاك سلم الأهداف الحالي'}
@@ -237,11 +231,15 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
           <b dir="ltr">{moveAr(watchSide)} → {fmt(watchMid,2)}</b>
           <span>{watchZone?.projected?'إسقاط احتمالي من التذبذب':'منطقة سعرية مرجحة'} · تنتظر تأكيد M1 و M5 والسيولة قبل أي توصية</span>
         </div>}
-        <div><small>T1 · الهدف الأول</small><b dir="ltr">{t1Price!=null?fmt(t1Price,2):'—'}</b><span>{liveT1Hit?'تحقق':targetSourceAr(t1Level?.source)+(t1Level?.quality?' · جودة '+Math.round(Number(t1Level.quality))+'%':'')}</span></div>
-        <div><small>T2 · الهدف التالي</small><b dir="ltr">{t2Price!=null?fmt(t2Price,2):'—'}</b><span>{liveT2Hit?'تحقق':targetSourceAr(t2Level?.source)+(t2Level?.quality?' · جودة '+Math.round(Number(t2Level.quality))+'%':'')}</span></div>
-        <div><small>T3 · الامتداد</small><b dir="ltr">{t3Price!=null?fmt(t3Price,2):'—'}</b><span>{liveT3Hit?'تحقق':targetSourceAr(t3Level?.source)+(t3Level?.quality?' · جودة '+Math.round(Number(t3Level.quality))+'%':'')}</span></div>
+        <div><small>T1 · الهدف الأول</small><b dir="ltr">{!liveInvalidated&&t1Price!=null?fmt(t1Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT1Hit?'تحقق':targetSourceAr(t1Level?.source)+(t1Level?.quality?' · جودة '+Math.round(Number(t1Level.quality))+'%':'')}</span></div>
+        <div><small>T2 · الهدف التالي</small><b dir="ltr">{!liveInvalidated&&t2Price!=null?fmt(t2Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT2Hit?'تحقق':targetSourceAr(t2Level?.source)+(t2Level?.quality?' · جودة '+Math.round(Number(t2Level.quality))+'%':'')}</span></div>
+        <div><small>T3 · الامتداد</small><b dir="ltr">{!liveInvalidated&&t3Price!=null?fmt(t3Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT3Hit?'تحقق':targetSourceAr(t3Level?.source)+(t3Level?.quality?' · جودة '+Math.round(Number(t3Level.quality))+'%':'')}</span></div>
         <div><small>إبطال القراءة</small><b dir="ltr">{invalidation!=null?fmt(invalidation,2):'—'}</b><span>{liveInvalidated?'تم الكسر':'صالح'}</span></div>
 
+      </div>
+      <details className="forecast-extra">
+        <summary>تفاصيل التحليل ومصادر الأهداف</summary>
+        <div className="forecast-scenario-strip forecast-scenario-details">
         <div className="scenario-wide"><small>سبب اختيار الأهداف</small>
           <b>{targets?.reason||forward?.reason||'انتظار مستويات أمامية أوضح'}</b>
           <span>{targets?.mode==='STRUCTURAL'?'أهداف هيكلية بالكامل':targets?.mode==='MIXED'?'مزيج مستويات حقيقية + إسقاط احتياطي':targets?.mode==='PROJECTED'?'إسقاط مؤقت لحين ظهور مستويات حقيقية':targetSources?'توافق '+targetSources+' مصادر سعرية/هيكلية':'قراءة مركبة من السوق'}</span>
@@ -267,13 +265,16 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
         <div><small>نافذة القراءة</small><strong>{forwardWindow}</strong><span>تتحدث تلقائيًا</span></div>
         <div><small>توافق القرار</small><strong>{Math.round(Number(forward?.agreement||0))}%</strong><span>{Math.round(Number(forward?.support||0))} مصادر مؤيدة</span></div>
       </div>
+      </details>
     </div>
   </section>;
 }
 
 function AssetCard(props:any){
-  if(!props.x?.scalpDesk)return <LegacyAssetCard {...props}/>;
-  return <ScalpDesk desk={props.x.scalpDesk} now={props.now}><LegacyAssetCard {...props}/></ScalpDesk>;
+  return <div className="market-asset-column">
+    <LegacyAssetCard {...props}/>
+    {props.x?.scalpDesk&&<ScalpDesk desk={props.x.scalpDesk} now={props.now}/>}
+  </div>;
 }
 
 export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.now()}:any){
@@ -287,7 +288,10 @@ export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.n
     {error&&!data&&<div className="fatal"><Activity size={18}/><div><strong>تعذر تحديث AI</strong><span>{error}</span></div></div>}
     {snapshotAgeMs!=null&&snapshotAgeMs>30000&&<div className="fatal"><Activity size={18}/><div><strong>التحليل متأخر</strong><span>آخر لقطة عمرها {Math.round(snapshotAgeMs/1000)} ثانية · لا تعتمد على أي توصية حتى تتجدد</span></div></div>}
 
-    {showNextEvent&&<section className="next-news news-impact-card">
+    <div className="dashboardgrid"><AssetCard now={now} x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive}/><AssetCard now={now} x={data?.bitcoin} fast={fastWave?.btc}/></div>
+    {showNextEvent&&<details className="news-event-details">
+      <summary><span>خبر مؤثر على السوق <strong>{next.name}</strong></span><b>{awaitingActual?'بانتظار النتيجة':timeLeft(next.time,now)}</b></summary>
+      <section className="next-news news-impact-card">
       <div className="news-head">
         <div className="news-title-wrap">
           <small>{awaitingActual?'بانتظار نتيجة الخبر':narrativeLive?'تصريحات جارية':'الخبر القادم'}</small>
@@ -335,8 +339,9 @@ export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.n
           </div>;
         })}
       </div>
-    </section>}
+      </section>
+    </details>}
 
-    <div className="dashboardgrid"><AssetCard now={now} x={data?.bitcoin} fast={fastWave?.btc}/><AssetCard now={now} x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive}/></div>
+
   </div>;
 }
