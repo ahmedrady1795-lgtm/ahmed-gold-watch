@@ -307,6 +307,21 @@ export default function Home(){
     {aiError&&!aiData&&<div className="fatal"><WifiOff size={18}/><div><strong>تعذر تحديث AI</strong><span>{aiError}</span></div></div>}
 
     <section className="content lite-content">
+      {aiData?.modelValidation&&<section className="panel" aria-label="جودة وصدق النماذج" style={{padding:'14px 18px'}}>
+        <strong>تأهيل نماذج AI · نتائج اختبار خارج العينة</strong>
+        <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:8}}>
+          {(['mlM1','mlM5','neural'] as const).map(k=>{
+            const m=aiData.modelValidation[k];
+            return <span key={k} className={'pill '+(m?.ready?'ok':'neutral')} title={m?.reason||''}>
+              {k==='mlM1'?'ML دقيقة':k==='mlM5'?'ML خمس دقائق':'Neural'}:
+              {' '}{m?.ready?'جاهز باختبار مستقل':m?.serviceOk?'تجريبي غير مؤهل':'غير متاح'}
+              {' · '}{m?.oosSelectiveSamples||0} توقع مختبر
+              {m?.oosSelectiveSamples>0?' · '+m.oosSelectiveAccuracyPct+'%':''}
+            </span>;
+          })}
+        </div>
+        <small>تنبؤات ML وNeural تخص البيتكوين، وليست إثبات ربح أو اختبارًا لنماذج الذهب. نتائج الوسيط الحقيقي لم تُتحقق بعد.</small>
+      </section>}
       <AICommandCenter data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
       <NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredId={aiData?.autopilot?.nextEvent?.id||null}/>
     </section>
