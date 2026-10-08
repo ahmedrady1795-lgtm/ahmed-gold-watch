@@ -93,7 +93,10 @@ export default function Home(){
 
   useEffect(()=>{
     void loadAi();
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},1000);
+    // Market ticks stream independently. The AI snapshot itself is heavy and
+    // refreshed by the server on a slower cadence; reading it every second
+    // only burns bandwidth and main-thread JSON parsing.
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},3000);
     const clock=setInterval(()=>setNow(Date.now()),5000);
     return()=>{clearInterval(aiTimer);clearInterval(clock);};
   },[]);

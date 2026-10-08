@@ -106,6 +106,9 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
 
   return ([1,5] as const).map(horizon=>{
     const plan=base(horizon);
+    // M5 must budget its stop, feasible targets and fees against genuine
+    // CLOSED M5 candle volatility, not M1 ATR. Never expand M1 risk.
+    const rangeAtr=horizon===5?atr5:atr;
     const ranked=candidates.map(c=>{
       const dir=c.side==='BUY'?1:-1;
       const momentum=Math.min(22,Math.max(0,dir*mom)*13+Math.max(0,dir*body)*10);
@@ -131,10 +134,12 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       const sample=a.slice(-12);
       const edge=dir===1?Math.max(...sample.map(c=>c.high)):Math.min(...sample.map(c=>c.low));
       const entry=round(edge+dir*atr*.12);
-      const risk=Math.max(atr*(horizon===1?.82:1.15),cost*1.85,Math.abs(entry-f21)*.50);
-      const move=Math.max(risk*1.75+cost*2.2,atr*(horizon===1?1.6:2.8));
-      // Do not invent a feasible scalp when costs dwarf realistic ATR.
-      if(risk>atr*(horizon===1?1.8:3.2)||move>atr*(horizon===1?2.6:5))
+      const risk=Math.max(rangeAtr*(horizon===1?.82:.75),cost*1.85,Math.abs(entry-f21)*.50);
+      const move=Math.max(risk*1.75+cost*2.2,rangeAtr*(horizon===1?1.6:1.8));
+      // Never fabricate breakout levels if even M5 volatility cannot cover
+      // projected round-trip fees, stop and target at their expected horizon.
+      if(risk>rangeAtr*(horizon===1?1.8:1.7)||
+         move>rangeAtr*(horizon===1?2.6:2.7))
         return stableCandidate(plan,now,p!,cost);
       const stop=round(entry-dir*risk);
       const targets=[1,1.5,2].map(k=>({price:round(entry+dir*move*k),kind:'PROJECTION' as const}));
@@ -156,11 +161,11 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     // the published stop/target plan between confirmations.
     const entry=round(last.close+dir*Math.max(atr*.07,cost*.15,.02));
     const rawStop=chosen.anchor-dir*atr*.12;
-    const risk=Math.max(dir*(entry-rawStop),atr*(horizon===1?.48:.7),cost*2);
+    const risk=Math.max(dir*(entry-rawStop),rangeAtr*(horizon===1?.48:.52),cost*2);
     const stop=round(entry-dir*risk);
-    const maxMove=atr*(horizon===1?2:4);
+    const maxMove=rangeAtr*(horizon===1?2:2.65);
     const minReward=Math.max(risk*1.45+cost*2.45,cost*3);
-    const maxRisk=atr*(horizon===1?1.6:2.5);
+    const maxRisk=rangeAtr*(horizon===1?1.6:1.65);
     const pivots=[...a.slice(-60),...(horizon===5?b.slice(-24):[])].map(c=>chosen.side==='BUY'?c.high:c.low)
       .filter(x=>dir*(x-entry)>=minReward&&dir*(x-entry)<=maxMove)
       .sort((x,y)=>dir*(x-y));
@@ -178,10 +183,10 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     const reasons:string[]=[];
     if(chosen.score<(horizon===1?60:64))reasons.push('قوة الإعداد لم تصل لحد التفعيل');
     if(risk>maxRisk||reward>maxMove)reasons.push('الوقف أو الهدف أبعد من مدى الحركة المناسب للفريم');
-    if(cost>atr*(horizon===1?.30:.48))reasons.push('التكلفة كبيرة بالنسبة للتذبذب القابل للتداول');
+    if(cost>rangeAtr*(horizon===1?.30:.48))reasons.push('التكلفة كبيرة بالنسبة لتذبذب الفريم بعد الرسوم');
     // Paper-reference prices can use the disclosed conservative spread
     // assumption, but not when even the estimated transaction drag is large.
-    if(spread==null&&cost>atr*(horizon===1?.24:.38))
+    if(spread==null&&cost>rangeAtr*(horizon===1?.24:.38))
       reasons.push('غياب سبريد حي وتكلفة تقديرية كبيرة؛ لا دخول');
     if(chosen.setup==='BREAKOUT'&&volumeRatio!=null&&volumeRatio<.8)reasons.push('اختراق دون مشاركة حجم كافية');
     if(chosen.setup!=='SWEEP'&&efficiency<.22)reasons.push('حركة متقطعة تضعف استمرار الاتجاه');

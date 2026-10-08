@@ -3,6 +3,7 @@ import type {Candle} from './engine';
 type BtcMarket={c1:Candle[];c5:Candle[];c15:Candle[];c60:Candle[];source:string;checkedAt:number};
 let cache:{at:number;value:BtcMarket}|null=null;
 let longM1Cache:{at:number;value:Candle[]}|null=null;
+let pending:Promise<BtcMarket>|null=null;
 
 async function json(url:string){
   const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(8000),headers:{'User-Agent':'AhmedGoldCommand/1.0'}});
@@ -71,7 +72,12 @@ async function kraken(interval:number){
 }
 export async function getBtcMarket(force=false):Promise<BtcMarket>{
   const now=Date.now();
-  if(!force&&cache&&now-cache.at<5000)return cache.value;
+  // Closed M1 bars change once per minute. A 12-second shared cache reduces
+  // REST load without allowing a missing minute close to become trade data.
+  if(!force&&cache&&now-cache.at<12000&&
+     latestClosedAge(cache.value.c1,60000,now)<=75000)return cache.value;
+  if(pending)return pending;
+  pending=(async():Promise<BtcMarket>=>{
   try{
     const [latest1,c5,c15,c60]=await Promise.all([coinbase(60),coinbase(300),coinbase(900),coinbase(3600)]);
     if(c5.length<220||c15.length<220||c60.length<220)throw new Error('coinbase history short');
@@ -83,4 +89,7 @@ export async function getBtcMarket(force=false):Promise<BtcMarket>{
   if(c5.length<220||c15.length<220||c60.length<220)throw new Error('BTC history unavailable');
   assertFresh(c1,c5,c15,c60,Date.now(),'Kraken');
   const value={c1,c5,c15,c60,source:'Kraken XBT/USD · fresh-candle fallback',checkedAt:now};cache={at:now,value};return value;
+  })();
+  try{return await pending;}
+  finally{pending=null;}
 }
