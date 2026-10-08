@@ -24,12 +24,14 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
   const stats=lane?.stats;
   const qualityGate=desk.qualityGates?.find((x:any)=>x.horizon===horizon);
   const entryCheck=desk.entryConfirmations?.find((x:any)=>x.horizon===horizon);
+  const holdRequired=Math.max(30,Number(entryCheck?.requiredSeconds||60));
+  const activeM5=desk.profile==='ACTIVE_M5_PAPER'&&horizon===5;
   const entryConfirmed=Boolean(!stale&&!expired&&entryCheck?.state==='ENTRY');
   const counting=Boolean(!stale&&entryCheck?.state==='HOLDING');
   const candleVerified=Boolean(!stale&&entryCheck?.state==='CONDITIONS_PENDING');
   return <section className={'panel scalp-desk ai-asset-card '+(shown?.side==='BUY'?'ai-buy':shown?.side==='SELL'?'ai-sell':'ai-wait')}>
     <div className="scalp-desk-head">
-      <div><span className="eyebrow">توقيت الدخول · {desk.asset==='GOLD'?'الذهب':'البيتكوين'}</span><h2>فرص السكالب</h2></div>
+      <div><span className="eyebrow">توقيت الدخول · {desk.asset==='GOLD'?'الذهب':'البيتكوين'}</span><h2>فرص السكالب {activeM5?'· وضع نشط':''}</h2></div>
       <span className={'scalp-feed-state '+(stale?'late':'')}>{stale?'بيانات متأخرة':'يتحدث تلقائيًا'}</span>
     </div>
     <div className="scalp-frame-tabs" role="tablist" aria-label="فريم السكالب">
@@ -39,15 +41,16 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       <div className={'scalp-entry-watch '+(entryConfirmed?'entry-confirmed':candleVerified?'entry-blocked':counting?'entry-counting':'')}>
         <div className="scalp-entry-status">
           <strong>{stale?'تأكيد الدخول متوقف: الأسعار متأخرة':
-            entryConfirmed?'دخول '+sideAr(entryCheck.side)+' · ثبتت الدقيقة':
+            entryConfirmed?'إشارة ورقية '+sideAr(entryCheck.side)+' · اكتمل تأكيد M1':
             candleVerified?'اكتمل ثبات الدقيقة · لا دخول':
-            counting?'جارٍ تأكيد الثبات: '+entryCheck.heldSeconds+' / 60 ثانية':
+            counting?'جارٍ تأكيد الثبات: '+entryCheck.heldSeconds+' / '+holdRequired+' ثانية':
             entryCheck?.state==='ACTIVE'?'صفقة تجريبية قيد المتابعة':
-            'بانتظار ثبات دقيقة لتأكيد الدخول'}</strong>
+            'بانتظار شرط الثبات وإغلاق M1 لتأكيد الدخول'}</strong>
           <span>{counting?'متبقي '+entryCheck.remainingSeconds+' ثانية':entryConfirmed?'تم تأكيد إغلاق M1':candleVerified?'شروط المخاطرة أو البيانات غير مكتملة':'تأكيد آلي مع كل تحديث'}</span>
         </div>
-        <div className="scalp-entry-progress" aria-hidden="true"><span style={{width:(entryConfirmed||candleVerified?100:Math.max(0,Math.min(100,Number(entryCheck?.heldSeconds||0)/60*100)))+'%'}}/></div>
+        <div className="scalp-entry-progress" aria-hidden="true"><span style={{width:(entryConfirmed||candleVerified?100:Math.max(0,Math.min(100,Number(entryCheck?.heldSeconds||0)/holdRequired*100)))+'%'}}/></div>
         {entryCheck?.trigger!=null&&<small>المستوى المرصود: <b dir="ltr">{fmt(entryCheck.trigger)}</b> · {entryCheck.side==='BUY'?'الثبات أعلاه للشراء':entryCheck.side==='SELL'?'الثبات أدناه للبيع':'انتظار الاتجاه'}</small>}
+        {activeM5&&<p className="scalp-entry-advice">وضع نشط تجريبي: تأكيد 30 ثانية للإعدادات القوية المتوافقة مع M5، وإلا 60 ثانية. إغلاق M1 وقيود التكلفة والعائد مطلوبة في الحالتين.</p>}
         {entryConfirmed&&<p className="scalp-entry-advice">سعر الدخول الورقي عند التأكيد <b dir="ltr">{fmt(entryCheck.entry)}</b> · الوقف <b dir="ltr">{fmt(entryCheck.stop)}</b> · T1 <b dir="ltr">{fmt(entryCheck.targets?.[0]?.price)}</b> · إشارة تحليلية وليست تنفيذًا تلقائيًا</p>}
         {candleVerified&&<p className="scalp-entry-advice">{entryCheck.reason}</p>}
       </div>
