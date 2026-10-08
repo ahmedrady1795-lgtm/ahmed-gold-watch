@@ -26,6 +26,15 @@ function breakout(){const x=input();x.c1[x.c1.length-1]={time:now-60000,open:400
 const {readScalpLiquidity}=load('lib/scalp-liquidity.ts');
 const liquidityInput=input();
 const liquid=readScalpLiquidity(liquidityInput.c1,{...liquidityInput.quote,price:4000},now);
+for(const frame of liquid.scenarios){for(const path of frame.paths){
+ const dir=path.side==='BUY'?1:-1;
+ assert.equal(path.targets.length,3);
+ assert.ok(dir*(path.targets[0].price-4000)>0);
+ assert.ok(dir*(path.targets[1].price-path.targets[0].price)>0);
+ assert.ok(dir*(path.targets[2].price-path.targets[1].price)>0);
+ assert.ok(dir*(path.trigger-path.invalidation)>0);
+}}
+assert.equal(liquid.scenarios.length,2,'Both M1 and M5 need conditional movement targets');
 assert.equal(liquid.available,true);assert.ok(liquid.levels.some(l=>l.side==='ABOVE'));assert.ok(liquid.levels.some(l=>l.side==='BELOW'));
 assert.equal(readScalpLiquidity(liquidityInput.c1,{...liquidityInput.quote,at:now-16000},now).available,false);
 const sweepRows=series(60000);sweepRows[sweepRows.length-1]={time:now-60000,open:4000,high:4001,low:3999.8,close:4000.1};

@@ -34,5 +34,18 @@ export function readScalpLiquidity(rows:Candle[],quote:ScalpQuote,now:number){
   const pressure=move>atr*.12?'BUY':move<-atr*.12?'SELL':'WAIT';
   const position=high>low?Math.round((price!-low)/(high-low)*100):50;
   const state=price!>high?'السعر فوق قمة 20 دقيقة · اختبار استمرار الاختراق':price!<low?'السعر تحت قاع 20 دقيقة · اختبار استمرار الكسر':position>=80?'قرب سيولة القمم':position<=20?'قرب سيولة القيعان':'السعر داخل نطاق السيولة';
-  return {available:true,checkedAt:now,reason:state,levels,sweeps,rangeHigh:high,rangeLow:low,pressure,move:Number(move.toFixed(2)),bars:closed.length,note:'مناطق سيولة محتملة من القمم والقيعان؛ ليست أوامر معلقة مرصودة. الزخم اللحظي مقارنة بآخر إغلاق.'};
+  const round=(v:number)=>Number(v.toFixed(2));
+  const scenarios=atr>0?([1,5] as const).map(horizon=>({horizon,paths:([1,-1] as const).map(dir=>{
+    const trigger=last!.close+dir*atr*.15,origin=dir===1?Math.max(price!,trigger):Math.min(price!,trigger);
+    const step=atr*(horizon===1?.5:1),targets:{price:number;kind:'STRUCTURE'|'PROJECTION'}[]=[];
+    const candidates=[...pivots.filter(p=>p.side===(dir===1?'ABOVE':'BELOW')).map(p=>p.price),dir===1?high:low].filter(p=>dir*(p-origin)>.01).sort((a,b)=>dir*(a-b));
+    for(let j=0;j<3;j++){
+      const previous=j?targets[j-1].price:origin;
+      const structural=candidates.find(p=>dir*(p-previous)>Math.max(.02,atr*.15)&&dir*(p-previous)<=step*1.5);
+      targets.push({price:round(structural??(previous+dir*step)),kind:structural==null?'PROJECTION':'STRUCTURE'});
+    }
+    const invalidation=dir===1?Math.min(last!.low,trigger-atr*.5):Math.max(last!.high,trigger+atr*.5);
+    return {side:dir===1?'BUY':'SELL',trigger:round(trigger),invalidation:round(invalidation),targets};
+  })})):[];
+  return {available:true,checkedAt:now,reason:state,levels,sweeps,scenarios,rangeHigh:high,rangeLow:low,pressure,move:Number(move.toFixed(2)),bars:closed.length,note:'مناطق سيولة محتملة من القمم والقيعان؛ ليست أوامر معلقة مرصودة. الزخم اللحظي مقارنة بآخر إغلاق.'};
 }

@@ -30,17 +30,16 @@ export default function ScalpDesk({desk,now=Date.now(),children}:any){
     <div className="scalp-frame-tabs" role="tablist" aria-label="فريم السكالب">
       {([1,5] as const).map(h=>{const p=desk.plans?.find((x:any)=>x.horizon===h),c=desk.ledger?.lanes?.find((x:any)=>x.horizon===h)?.current;return <button key={h} id={'scalp-tab-'+desk.asset+'-'+h} type="button" role="tab" aria-selected={horizon===h} aria-controls={'scalp-panel-'+desk.asset} onClick={()=>setHorizon(h)} className={horizon===h?'selected':''}><strong>{h===1?'دقيقة واحدة':'خمس دقائق'} <span dir="ltr">M{h}</span></strong><small>{c?stateAr(c.state):p?.status==='BLOCKED'?'بيانات غير جاهزة':p?.side==='WAIT'?'رصد السوق':sideAr(p?.side)+' · '+setupAr(p?.setup)}</small></button>;})}
     </div>
-    <div className="scalp-liquidity" aria-label="قراءة السيولة الحية">
-      <div className="scalp-liquidity-title"><strong>خريطة السيولة · قراءة مستمرة</strong><small>{stale?'التحديث متأخر':liquidity?.available?'قراءة حديثة':'بيانات غير كافية'} · {new Date(desk.checkedAt).toLocaleTimeString('ar-AE',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small></div>
-      <p>{liquidity?.reason||'جارٍ تحميل قراءة السيولة'}</p>
-      {liquidity?.available&&<>
-        <div className="scalp-liquidity-grid"><div><small>قمة نطاق 20 دقيقة</small><b dir="ltr">{fmt(liquidity.rangeHigh)}</b></div><div><small>قاع نطاق 20 دقيقة</small><b dir="ltr">{fmt(liquidity.rangeLow)}</b></div><div><small>الحركة منذ آخر إغلاق</small><b className={liquidity.pressure==='BUY'?'green':liquidity.pressure==='SELL'?'red':''}>{liquidity.pressure==='WAIT'?'متوازنة':sideAr(liquidity.pressure)} <span dir="ltr">{fmt(liquidity.move)}</span></b></div></div>
-        <div className="scalp-pools">{liquidity.levels?.map((l:any,i:number)=><div key={i}><span>{l.side==='ABOVE'?'سيولة فوق قمة':'سيولة تحت قاع'}{l.touches>1?' · قمم/قيعان متقاربة':''}</span><b dir="ltr">{fmt(l.price)}</b><small>المسافة {fmt(l.distance)}</small></div>)}</div>
-        <p>{liquidity.sweeps?.length?'آخر سحب مؤكد بإغلاق: '+liquidity.sweeps.map((s:any)=>(s.side==='BUY'?'سحب قاع واستعادة':'سحب قمة ورفض')+' '+fmt(s.level)+' · '+new Date(s.at).toLocaleTimeString('ar-AE',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'})).join(' / '):'لم يُرصد سحب مؤكد في آخر 6 شموع؛ مراقبة الاقتراب والاختراق مستمرة.'}</p>
-        <small>{liquidity.note}</small>
-      </>}
-      {desk.asset==='BTC'?<div className="scalp-book"><strong>دفتر أوامر Kraken · 25 مستوى</strong>{bookFresh?<div className="scalp-liquidity-grid"><div><small>طلبات الشراء · USD</small><b dir="ltr">{fmt(book.book.bidDepthUsd,0)}</b></div><div><small>عروض البيع · USD</small><b dir="ltr">{fmt(book.book.askDepthUsd,0)}</b></div><div><small>اختلال العمق المرجّح</small><b dir="ltr">{fmt(book.book.depthImbalance,0)}%</b></div></div>:<p>دفتر الأوامر غير متاح أو متأخر؛ خريطة السعر مستقلة عنه.</p>}<small>لقطة أوامر قابلة للتغيير والإلغاء؛ ليست ضمان اتجاه أو حجم صفقات منفذة.</small></div>:<div className="scalp-book"><small>الذهب: المصدر لا يوفر دفتر أوامر أو حجم تداول موثوق؛ قراءة السيولة هنا من حركة السعر.</small></div>}
-    </div>
+    {!current&&liquidity?.available&&!stale&&<div className="scalp-motion" aria-label="أهداف الحركة المحتملة">
+      <div className="scalp-liquidity-title"><strong>أهداف الحركة المحتملة · M{horizon}</strong><small>تتحدث مع السعر · الميل اللحظي {liquidity.pressure==='WAIT'?'متوازن':sideAr(liquidity.pressure)}</small></div>
+      <p>سيناريوهات رصد مشروطة بإغلاق M1؛ أهداف الصفقة تتثبت عند تفعيل إعداد الدخول.</p>
+      <div className="scalp-motion-paths">{liquidity.scenarios?.find((s:any)=>s.horizon===horizon)?.paths.map((s:any)=><div key={s.side} className="scalp-motion-path">
+        <strong className={s.side==='BUY'?'green':'red'}>{s.side==='BUY'?'مسار الصعود':'مسار الهبوط'}</strong>
+        <small>شرط الرصد: إغلاق M1 {s.side==='BUY'?'فوق':'تحت'} <b dir="ltr">{fmt(s.trigger)}</b></small>
+        <div className="scalp-motion-targets">{s.targets.map((t:any,i:number)=><div key={i}><small>T{i+1}</small><b dir="ltr">{fmt(t.price)}</b><small>{t.kind==='STRUCTURE'?'مستوى سيولة':'امتداد تقديري'}</small></div>)}</div>
+        <small>إبطال المسار {s.side==='BUY'?'تحت':'فوق'} <b dir="ltr">{fmt(s.invalidation)}</b></small>
+      </div>)}</div>
+    </div>}
     <div id={'scalp-panel-'+desk.asset} role="tabpanel" aria-labelledby={'scalp-tab-'+desk.asset+'-'+horizon}>
       <div className="scalp-decision">
         <div className={'scalp-direction '+tone}>{shown?.side==='BUY'?<ArrowUpRight size={34}/>:shown?.side==='SELL'?<ArrowDownRight size={34}/>:<Activity size={30}/>}<div><strong>{directional?sideAr(shown.side)+' · '+setupAr(shown.setup):'نبحث عن الإعداد التالي'}</strong><span>{status}</span></div></div>
@@ -60,6 +59,17 @@ export default function ScalpDesk({desk,now=Date.now(),children}:any){
       </div>
       {!!plan?.blockers?.length&&!current&&<ul className="scalp-blockers">{plan.blockers.map((r:string)=><li key={r}>{r}</li>)}</ul>}
       <div className="scalp-evidence">{shown?.evidence?.map((e:any)=><div key={e.label}><small>{e.label}</small><b className={e.side==='BUY'?'green':e.side==='SELL'?'red':''}>{e.side==='WAIT'?e.value:sideAr(e.side)}</b><span>{e.side!=='WAIT'?e.value:''}</span></div>)}</div>
+    </div>
+    <div className="scalp-liquidity" aria-label="قراءة السيولة الحية">
+      <div className="scalp-liquidity-title"><strong>خريطة السيولة · قراءة مستمرة</strong><small>{stale?'التحديث متأخر':liquidity?.available?'قراءة حديثة':'بيانات غير كافية'} · {new Date(desk.checkedAt).toLocaleTimeString('ar-AE',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small></div>
+      <p>{liquidity?.reason||'جارٍ تحميل قراءة السيولة'}</p>
+      {liquidity?.available&&<>
+        <div className="scalp-liquidity-grid"><div><small>قمة نطاق 20 دقيقة</small><b dir="ltr">{fmt(liquidity.rangeHigh)}</b></div><div><small>قاع نطاق 20 دقيقة</small><b dir="ltr">{fmt(liquidity.rangeLow)}</b></div><div><small>الحركة منذ آخر إغلاق</small><b className={liquidity.pressure==='BUY'?'green':liquidity.pressure==='SELL'?'red':''}>{liquidity.pressure==='WAIT'?'متوازنة':sideAr(liquidity.pressure)} <span dir="ltr">{fmt(liquidity.move)}</span></b></div></div>
+        <div className="scalp-pools">{liquidity.levels?.map((l:any,i:number)=><div key={i}><span>{l.side==='ABOVE'?'سيولة فوق قمة':'سيولة تحت قاع'}{l.touches>1?' · قمم/قيعان متقاربة':''}</span><b dir="ltr">{fmt(l.price)}</b><small>المسافة {fmt(l.distance)}</small></div>)}</div>
+        <p>{liquidity.sweeps?.length?'آخر سحب مؤكد بإغلاق: '+liquidity.sweeps.map((s:any)=>(s.side==='BUY'?'سحب قاع واستعادة':'سحب قمة ورفض')+' '+fmt(s.level)+' · '+new Date(s.at).toLocaleTimeString('ar-AE',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'})).join(' / '):'لم يُرصد سحب مؤكد في آخر 6 شموع؛ مراقبة الاقتراب والاختراق مستمرة.'}</p>
+        <small>{liquidity.note}</small>
+      </>}
+      {desk.asset==='BTC'?<div className="scalp-book"><strong>دفتر أوامر Kraken · 25 مستوى</strong>{bookFresh?<div className="scalp-liquidity-grid"><div><small>طلبات الشراء · USD</small><b dir="ltr">{fmt(book.book.bidDepthUsd,0)}</b></div><div><small>عروض البيع · USD</small><b dir="ltr">{fmt(book.book.askDepthUsd,0)}</b></div><div><small>اختلال العمق المرجّح</small><b dir="ltr">{fmt(book.book.depthImbalance,0)}%</b></div></div>:<p>دفتر الأوامر غير متاح أو متأخر؛ خريطة السعر مستقلة عنه.</p>}<small>لقطة أوامر قابلة للتغيير والإلغاء؛ ليست ضمان اتجاه أو حجم صفقات منفذة.</small></div>:<div className="scalp-book"><small>الذهب: المصدر لا يوفر دفتر أوامر أو حجم تداول موثوق؛ قراءة السيولة هنا من حركة السعر.</small></div>}
     </div>
     <div className="scalp-results"><div><span className="eyebrow">سجل هذا الفريم · تجريبي</span><h3>{stats?.samples?stats.samples+' صفقة موثقة':'بدأ سجل جديد للصفقات'}</h3></div><div className="scalp-results-grid"><div><small>صافي النتيجة</small><b className={Number(stats?.netR)>=0?'green':'red'}>{stats?.samples?fmt(stats.netR)+' R':'—'}</b></div><div><small>متوسط الصفقة</small><b>{stats?.samples?fmt(stats.expectancyR)+' R':'—'}</b></div><div><small>نسبة الربح</small><b>{stats?.samples?fmt(stats.winRate,1)+'%':'—'}</b></div></div><p>قوة الإعداد ليست احتمال نجاح. النتائج تحسب T1 أو الوقف أو انتهاء المدة بعد التكلفة. {stats?.unknown?stats.unknown+' نتيجة غير موثقة مستبعدة. ':''}{stats?.expired?stats.expired+' إعداد انتهى أو أُلغي قبل الدخول.':''}</p>
       {!!lane?.recent?.length&&<details><summary>آخر النتائج ({lane.recent.length})</summary><div className="scalp-history">{lane.recent.map((t:any)=><div key={t.plan.id}><time>{new Date(t.closedAt).toLocaleTimeString('ar-AE',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'})}</time><span>{sideAr(t.plan.side)} · {stateAr(t.state)}</span><b className={Number(t.netR)>=0?'green':'red'}>{t.netR!=null?fmt(t.netR)+' R':'—'}</b></div>)}</div></details>}
