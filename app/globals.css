@@ -439,6 +439,13 @@ footer{display:flex;justify-content:space-between;gap:20px;color:#5f7880;font-si
   .news-calendar-summary small{display:none}
 }
 @media(max-width:430px){
+  .topbar .brand>div:last-child{display:none}
+  .topbar .brand{gap:0}
+  .topbar .brandmark{width:35px;height:35px}
+  .topbar{gap:7px}
+  .topbar .tickerstrip>div{padding:6px 5px}
+  .topbar .tickerstrip small{font-size:7px}
+  .topbar .tickerstrip em{font-size:7px}
   .market-liquidity-brief{padding:8px}
   .market-liquidity-brief span,.market-liquidity-brief b{font-size:10px}
   .compact-asset .ai-price-row strong{font-size:15px}
