@@ -4,7 +4,7 @@ import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Target} from 'lucide-react';
 
 const fmt=(v:any,d=2)=>v!=null&&Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
 const sideAr=(s:string)=>s==='BUY'?'شراء':s==='SELL'?'بيع':'انتظار';
-const setupAr=(s:string)=>s==='BREAKOUT'?'اختراق نطاق':s==='PULLBACK'?'إعادة اختبار':s==='SWEEP'?'سحب سيولة وانعكاس':'رصد إعداد جديد';
+const setupAr=(s:string)=>s==='BREAKOUT'?'اختراق نطاق':s==='PULLBACK'?'إعادة اختبار':s==='SWEEP'?'سحب سيولة وانعكاس':s==='CONTINUATION'?'استمرار اتجاه مؤكد':'رصد إعداد جديد';
 const stateAr=(s:string)=>({ARMED:'بانتظار التفعيل',ACTIVE:'متابعة تجريبية',TP1:'تحقق T1',STOP:'ضرب الوقف',TIME_EXIT:'انتهت المدة',EXPIRED:'انتهت صلاحية الدخول',CANCELED:'أُلغي قبل الدخول',UNKNOWN:'نتيجة غير موثقة'} as Record<string,string>)[s]||'مراقبة';
 
 export default function ScalpDesk({desk,now=Date.now()}:any){
@@ -14,7 +14,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
   const shown=current?.plan||plan;
   const stale=now-Number(desk.checkedAt)>15000;
   const expired=Boolean(current?.state==='ARMED'&&now>=Number(shown?.expiresAt));
-  const status=stale?'التحديث متأخر':expired?'انتهت صلاحية الدخول':current?stateAr(current.state):plan?.status==='ARMED'?'إعداد قابل للتفعيل التجريبي':plan?.status==='BLOCKED'?'البيانات تمنع التفعيل':plan?.side==='WAIT'?'رصد السوق':'تكوّن فرصة';
+  const status=stale?'التحديث متأخر':expired?'انتهت صلاحية الدخول':current?stateAr(current.state):plan?.status==='ARMED'?'فرصة قيد تأكيد الثبات':plan?.status==='BLOCKED'?'البيانات تمنع التفعيل':plan?.side==='WAIT'?'رصد السوق':'فرصة مشروطة · لم تتأكد';
   const directional=shown?.side==='BUY'||shown?.side==='SELL';
   const tone=stale||expired?'amber':shown?.side==='BUY'?'green':shown?.side==='SELL'?'red':'amber';
   const timed=Boolean(current&&(current.state==='ARMED'||current.state==='ACTIVE'));
@@ -56,7 +56,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
         <div className="scalp-score"><b>{directional?shown?.score:'—'}{directional&&<small>/100</small>}</b><span>قوة الإعداد</span></div>
       </div>
       {directional&&<div className="scalp-levels">
-        <div><small>الدخول المشروط</small><b dir="ltr">{fmt(shown?.entry)}</b></div>
+        <div><small>{entryConfirmed?'دخول بعد التأكيد':'نقطة دخول محتملة'}</small><b dir="ltr">{fmt(shown?.entry)}</b></div>
         <div className="stop"><small>وقف الخسارة</small><b dir="ltr">{fmt(shown?.stop)}</b></div>
         {[0,1,2].map(j=><div key={j}><small><Target size={12}/> T{j+1}{j===0?' · الأول':''}</small><b dir="ltr">{fmt(shown?.targets?.[j]?.price)}</b><span>{shown?.targets?.[j]?shown.targets[j].kind==='STRUCTURE'?'مستوى سعري':'امتداد تقديري':'بانتظار إعداد'}</span></div>)}
       </div>
