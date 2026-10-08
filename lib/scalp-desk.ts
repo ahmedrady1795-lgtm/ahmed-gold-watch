@@ -174,7 +174,17 @@ export async function getScalpDesk(){
           h:l.horizon,active:l.current?.state||null,
           paperEntry:l.current?.plan?.entry??null,
           verifiedResults:l.stats.samples,wins:l.stats.wins,
-          netR:l.stats.netR,unknown:l.stats.unknown
+          netR:l.stats.netR,unknown:l.stats.unknown,
+          exitBreakdown:l.recent.reduce((acc:any,t:any)=>{
+            acc[t.state]=(acc[t.state]||0)+1;return acc;
+          },{}),
+          autopsy:l.recent.slice(0,8).map((t:any)=>({
+            state:t.state,side:t.plan.side,setup:t.plan.setup,
+            score:t.plan.score,entry:t.plan.entry,stop:t.plan.stop,
+            target:t.plan.targets?.[0]?.price,cost:t.plan.cost,
+            at:t.activatedAt,closed:t.closedAt,
+            exit:t.exit,netR:t.netR,note:t.note
+          }))
         })),
         ledgerSaved:x.ledger.persisted
       });
