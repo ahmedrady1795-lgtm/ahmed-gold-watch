@@ -20,6 +20,10 @@ type FrameStructure={
   retestSide:Side;
   exhaustionSide:Side;
   pullbackSide:Side;
+  rangeHigh:number;
+  rangeLow:number;
+  lastSwingHigh:number|null;
+  lastSwingLow:number|null;
   reasons:string[];
 };
 
@@ -129,7 +133,15 @@ function frame(series:Candle[],ms:number,now:number):FrameStructure|null{
   const phaseBonus=phase==='RETEST'||phase==='SWEEP_REVERSAL'?12:phase==='BREAKOUT'||phase==='IMPULSE'?8:phase==='PULLBACK'?7:0;
   const confidence=Math.round(cap(nextScore*.62+Math.min(100,Math.abs(edge)*2)*.18+phaseBonus+Math.min(12,Math.abs(bodyPressure)*.08),0,90));
 
-  return {side:structureSide,phase,score:Math.round(cap(Math.max(b,s))),confidence,structure,nextSide,nextScore,rangePosition,compression:Number(compression.toFixed(2)),expansion:Number(expansion.toFixed(2)),bodyPressure:Math.round(bodyPressure),sweepSide,breakoutSide,retestSide,exhaustionSide,pullbackSide,reasons:[...new Set(reasons)].slice(0,7)};
+  return {
+    side:structureSide,phase,score:Math.round(cap(Math.max(b,s))),confidence,structure,nextSide,nextScore,
+    rangePosition,compression:Number(compression.toFixed(2)),expansion:Number(expansion.toFixed(2)),bodyPressure:Math.round(bodyPressure),
+    sweepSide,breakoutSide,retestSide,exhaustionSide,pullbackSide,
+    rangeHigh:Number(hi.toFixed(6)),rangeLow:Number(lo.toFixed(6)),
+    lastSwingHigh:h.length?Number(h.at(-1)!.p.toFixed(6)):null,
+    lastSwingLow:l.length?Number(l.at(-1)!.p.toFixed(6)):null,
+    reasons:[...new Set(reasons)].slice(0,7)
+  };
 }
 
 export function analyzeWaveStructure(c1:Candle[],c5:Candle[],now=Date.now()):WaveStructure{
