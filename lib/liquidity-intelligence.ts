@@ -64,6 +64,7 @@ export type LiquidityIntelligence={
 
 let cache:{at:number;value:LiquidityIntelligence}|null=null;
 let previous:BookState|null=null;
+let lastGood:{at:number;value:LiquidityIntelligence}|null=null;
 
 const clamp=(n:number,min=-100,max=100)=>Math.max(min,Math.min(max,n));
 const finite=(v:any)=>Number.isFinite(Number(v));
@@ -179,7 +180,7 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
   const pressureChange=old?pressureBase-old.pressure:0;
   const bidDepthChangePct=old?pctChange(rawBidUsd,old.bidDepthUsd):0,askDepthChangePct=old?pctChange(rawAskUsd,old.askDepthUsd):0;
   const acceleration=clamp(pressureChange*.55+(bidDepthChangePct-askDepthChangePct)*.45);
-  previous={at:now,pressure:pressureBase,bidDepthUsd:rawBidUsd,askDepthUsd:rawAskUsd};
+  // A failed venue must not reset the previous valid depth or pressure to zero.
 
   const absDelta=Math.abs(flow.deltaPct),signedPrice=flow.priceChangeBps;
   const sellFollowThrough=flow.deltaPct<=-18&&signedPrice<=-2.2;
@@ -208,8 +209,11 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
   const buy=Math.round(clamp(50+signed/2,8,92)),sell=100-buy,side=buy-sell>=10?'BUY':sell-buy>=10?'SELL':'WAIT';
   const successCount=[bboR,depthR,tradesR,okxDepthR,okxTradesR].filter(x=>x.status==='fulfilled').length;
   const quality=Math.max(0,Math.min(100,Math.round(successCount/5*78+(bids.length>=20&&asks.length>=20?7:0)+(okxBids.length>=20&&okxAsks.length>=20?7:0)+(flow.tradeCount>=20?4:0)+(okxFlow.tradeCount>=20?4:0))));
+  // Require actual book depth and trades, not just successful HTTP responses.
+  const reliable=quality>=55&&Boolean((bids.length&&asks.length)||(okxBids.length&&okxAsks.length))&&Boolean(flow.tradeCount||okxFlow.tradeCount);
+  if(!reliable)warnings.push('Insufficient fresh order-book + trade evidence');
   const value:LiquidityIntelligence={
-    ok:quality>=55,source:'Coinbase BBO/Trades · Kraken Depth25 · OKX Depth25/Trades',checkedAt:now,quality,side,buy,sell,strength:Math.max(buy,sell),pressure:Math.round(signed),
+    ok:reliable,source:'Coinbase BBO/Trades · Kraken Depth25 · OKX Depth25/Trades',checkedAt:now,quality,side:reliable?side:'WAIT',buy:reliable?buy:50,sell:reliable?sell:50,strength:reliable?Math.max(buy,sell):0,pressure:reliable?Math.round(signed):0,
     providers:{
       coinbaseBbo:bboR.status==='fulfilled'&&bestBid!=null&&bestAsk!=null,
       coinbaseTrades:tradesR.status==='fulfilled'&&flow.tradeCount>0,
@@ -222,5 +226,19 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
     dynamics:{pressureChange:Number(pressureChange.toFixed(1)),bidDepthChangePct:Number(bidDepthChangePct.toFixed(1)),askDepthChangePct:Number(askDepthChangePct.toFixed(1)),acceleration:Number(acceleration.toFixed(1))},
     absorption:{side:absorptionSide,score:absorptionScore,reason:absorptionReason,trapDetected,followThrough},warnings
   };
+  if(reliable){
+    previous={at:now,pressure:pressureBase,bidDepthUsd:rawBidUsd,askDepthUsd:rawAskUsd};
+    lastGood={at:now,value};
+    cache={at:now,value};return value;
+  }
+  if(lastGood&&now-lastGood.at<=45000){
+    // Display last known reading for continuity, but never present it as tradable/live.
+    const stale:LiquidityIntelligence={
+      ...lastGood.value,ok:false,quality:Math.min(45,lastGood.value.quality),
+      checkedAt:lastGood.at,source:lastGood.value.source+' · last known (stale)',
+      warnings:[...warnings,'Held last valid liquidity reading; trading confirmation disabled']
+    };
+    cache={at:now,value:stale};return stale;
+  }
   cache={at:now,value};return value;
 }
