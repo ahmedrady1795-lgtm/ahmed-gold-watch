@@ -169,6 +169,7 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
   const watchAhead=watchMid!=null&&Number.isFinite(watchMid)&&watchMid>0&&price!=null&&
     ((watchSide==='BUY'&&watchMid>Number(price))||(watchSide==='SELL'&&watchMid<Number(price)));
   const tradeSetup=forward?.tradeSetup||null;
+  const tradeQuality=forward?.tradeQuality||null;
   const tradeEntry=tradeSetup?.entry!==null&&tradeSetup?.entry!==undefined&&Number.isFinite(Number(tradeSetup.entry))?Number(tradeSetup.entry):null;
   const tradeSl=tradeSetup?.stopLoss!==null&&tradeSetup?.stopLoss!==undefined&&Number.isFinite(Number(tradeSetup.stopLoss))?Number(tradeSetup.stopLoss):null;
   const tradeTp=tradeSetup?.takeProfit!==null&&tradeSetup?.takeProfit!==undefined&&Number.isFinite(Number(tradeSetup.takeProfit))?Number(tradeSetup.takeProfit):null;
@@ -250,6 +251,10 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
           <b>H4 {moveAr(forward?.confirmations?.h4)} · M15 {moveAr(forward?.confirmations?.m15)} · M5 {moveAr(forward?.confirmations?.m5)}</b>
           <span>هيكل {moveAr(forward?.confirmations?.structure)} · سيولة {moveAr(forward?.confirmations?.liquidity)} · مصادر السوق {moveAr(forward?.confirmations?.toolMesh)}</span>
         </div>
+        {heroSide!=='WAIT'&&tradeQuality&&<div className="scenario-wide"><small>جودة فرصة الدخول · ليست نسبة نجاح</small>
+          <b>{tradeQuality.liveLiquidity?'سيولة مؤكدة':'السيولة بحاجة إلى تأكيد'} · {tradeQuality.structuralTarget?'هدف هيكلي مناسب':'الهدف يحتاج تحققًا'}</b>
+          <span>العائد/المخاطرة بعد تكلفة تقديرية {tradeQuality.netRR!=null?Number(tradeQuality.netRR).toFixed(2)+'R':'غير مجدٍ'} · التكلفة المفترضة {tradeQuality.assumedRoundTripCostBps} نقطة أساس؛ التنفيذ يحتاج أسعار وسيط فعلية</span>
+        </div>}
 
         {tradeSetup&&tradeEntry!=null&&<div className="scenario-wide"><small>التفعيل فقط عند اكتمال الشروط</small>
           <b dir="ltr">{fmt(tradeEntry,2)}</b>
