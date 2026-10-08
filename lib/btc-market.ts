@@ -26,7 +26,7 @@ function latestClosedAge(c:Candle[],ms:number,now:number){
 }
 function assertFresh(c1:Candle[],c5:Candle[],c15:Candle[],c60:Candle[],now:number,provider:string){
   const ages={m1:latestClosedAge(c1,60000,now),m5:latestClosedAge(c5,300000,now),m15:latestClosedAge(c15,900000,now),h1:latestClosedAge(c60,3600000,now)};
-  if(ages.m1>150000||ages.m5>480000||ages.m15>1200000||ages.h1>4500000)throw new Error(provider+' stale candles');
+  if(ages.m1>90000||ages.m5>330000||ages.m15>1200000||ages.h1>4500000)throw new Error(provider+' stale candles');
   return ages;
 }
 async function coinbase(granularity:number,start?:number,end?:number){
@@ -76,11 +76,11 @@ export async function getBtcMarket(force=false):Promise<BtcMarket>{
     const [latest1,c5,c15,c60]=await Promise.all([coinbase(60),coinbase(300),coinbase(900),coinbase(3600)]);
     if(c5.length<220||c15.length<220||c60.length<220)throw new Error('coinbase history short');
     const c1=await coinbaseLongM1(now,latest1);
-    assertFresh(c1,c5,c15,c60,now,'Coinbase');
+    assertFresh(c1,c5,c15,c60,Date.now(),'Coinbase');
     const value={c1,c5,c15,c60,source:'Coinbase BTC-USD · extended M1',checkedAt:now};cache={at:now,value};return value;
   }catch{}
   const [c1,c5,c15,c60]=await Promise.all([kraken(1),kraken(5),kraken(15),kraken(60)]);
   if(c5.length<220||c15.length<220||c60.length<220)throw new Error('BTC history unavailable');
-  assertFresh(c1,c5,c15,c60,now,'Kraken');
+  assertFresh(c1,c5,c15,c60,Date.now(),'Kraken');
   const value={c1,c5,c15,c60,source:'Kraken XBT/USD · fresh-candle fallback',checkedAt:now};cache={at:now,value};return value;
 }
