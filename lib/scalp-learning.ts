@@ -1,12 +1,12 @@
 import type {Candle} from './engine';
 
 type Side='BUY'|'SELL'|'WAIT';
-type FeatureRow={x:number[];fwdAtr:number;maeAtr:number;mfeAtr:number};
+type FeatureRow={entryAt:number;exitAt:number;x:number[];fwdAtr:number;maeAtr:number;mfeAtr:number};
 type Model={means:number[];sds:number[];weights:number[];threshold:number};
 type Metrics={used:number;accuracy:number;grossEdgeAtr:number;netEdgeAtr:number;profitFactor:number;maxDrawdownAtr:number;wins:number;losses:number;signalRate:number};
 
 export type ScalpLearningResult={
-  ok:boolean;side:Side;score:number;confidence:number;edge:number;
+  evaluationVersion:'cost-aware-v2';ok:boolean;side:Side;score:number;confidence:number;edge:number;
   sampleCount:number;trainCount:number;validationCount:number;testCount:number;
   oosAccuracy:number;oosEdgeAtr:number;oosGrossEdgeAtr:number;profitFactor:number;maxDrawdownAtr:number;costAtr:number;
   preferredHoldBars:number;entryThreshold:number;validationSignalRate:number;testSignalRate:number;
@@ -46,7 +46,7 @@ function buildRows(c:Candle[],horizon:number){
     const entry=c[i].close,end=c[i+horizon].close,fwd=(end-entry)/a;
     let high=-Infinity,low=Infinity;
     for(let j=i+1;j<=i+horizon;j++){high=Math.max(high,c[j].high);low=Math.min(low,c[j].low);}
-    rows.push({x,fwdAtr:fwd,maeAtr:(low-entry)/a,mfeAtr:(high-entry)/a});
+    rows.push({entryAt:c[i].time+60000,exitAt:c[i+horizon].time+60000,x,fwdAtr:fwd,maeAtr:(low-entry)/a,mfeAtr:(high-entry)/a});
   }
   return rows;
 }
@@ -88,9 +88,11 @@ function predict(x:number[],m:Model){
 }
 
 function evaluate(rows:FeatureRow[],m:Model,costAtr:number):Metrics{
-  const returns:number[]=[];let wins=0,losses=0,gross=0;
+  const returns:number[]=[];let wins=0,losses=0,gross=0,nextEntryAt=-Infinity;
   for(const r of rows){
+    if(r.entryAt<nextEntryAt)continue;
     const p=predict(r.x,m);if(p.side==='WAIT')continue;
+    nextEntryAt=r.exitAt;
     const dir=p.side==='BUY'?1:-1,g=dir*r.fwdAtr,net=g-costAtr;
     gross+=g;returns.push(net);if(net>0)wins++;else losses++;
   }
@@ -140,9 +142,9 @@ function tuneThreshold(validation:FeatureRow[],model:Model,costAtr:number){
   return {threshold:.32,metrics,rank:-99,stability:0};
 }
 
-function planFrom(rows:FeatureRow[],h:number,costAtr:number){
-  const favorable=rows.map(r=>Math.max(r.mfeAtr,-r.maeAtr)).filter(Number.isFinite).sort((a,b)=>a-b);
-  const adverse=rows.map(r=>Math.min(Math.abs(r.maeAtr),Math.abs(r.mfeAtr))).filter(Number.isFinite).sort((a,b)=>a-b);
+function planFrom(rows:FeatureRow[],h:number,costAtr:number,side:Side){
+  const favorable=rows.map(r=>Math.max(0,side==='SELL'?-r.maeAtr:r.mfeAtr)).filter(Number.isFinite).sort((a,b)=>a-b);
+  const adverse=rows.map(r=>Math.max(0,side==='SELL'?r.mfeAtr:-r.maeAtr)).filter(Number.isFinite).sort((a,b)=>a-b);
   const q=(arr:number[],p:number,fallback:number)=>arr.length?arr[Math.min(arr.length-1,Math.floor((arr.length-1)*p))]:fallback;
   const take=Math.max(costAtr*2.4,.34,Math.min(.90,q(favorable,.58,.5)*.72));
   const stop=Math.max(costAtr*1.8,.22,Math.min(.48,q(adverse,.62,.35)*.90));
@@ -150,8 +152,21 @@ function planFrom(rows:FeatureRow[],h:number,costAtr:number){
 }
 
 export function trainScalpLearner(input:Candle[],now=Date.now(),estimatedCostAtr=.10):ScalpLearningResult{
-  const c=input.filter(x=>x.time+60000<=now).slice(-760),costAtr=Math.max(.04,Math.min(.28,Number(estimatedCostAtr)||.10));
-  const empty:ScalpLearningResult={ok:false,side:'WAIT',score:0,confidence:0,edge:0,sampleCount:0,trainCount:0,validationCount:0,testCount:0,oosAccuracy:0,oosEdgeAtr:0,oosGrossEdgeAtr:0,profitFactor:0,maxDrawdownAtr:0,costAtr,preferredHoldBars:0,entryThreshold:0,validationSignalRate:0,testSignalRate:0,exitPlan:{maxHoldSeconds:0,takeAtr:0,stopAtr:0,exitOnFlip:true},features:[],gate:{passed:false,reasons:['عينة M1 غير كافية.']},reasons:['عينة M1 غير كافية لتقييم Edge حقيقي.']};
+  // Never make expensive markets look profitable by capping their cost.
+  const costKnown=Number.isFinite(estimatedCostAtr)&&estimatedCostAtr>=0;
+  const costAtr=costKnown?Math.max(.04,estimatedCostAtr):0;
+  const c=input.filter(x=>x.time+60000<=now).slice(-760);
+  const empty:ScalpLearningResult={evaluationVersion:'cost-aware-v2',ok:false,side:'WAIT',score:0,confidence:0,edge:0,sampleCount:0,trainCount:0,validationCount:0,testCount:0,oosAccuracy:0,oosEdgeAtr:0,oosGrossEdgeAtr:0,profitFactor:0,maxDrawdownAtr:0,costAtr,preferredHoldBars:0,entryThreshold:0,validationSignalRate:0,testSignalRate:0,exitPlan:{maxHoldSeconds:0,takeAtr:0,stopAtr:0,exitOnFlip:true},features:[],gate:{passed:false,reasons:['عينة M1 غير كافية.']},reasons:['عينة M1 غير كافية لتقييم Edge حقيقي.']};
+  const reject=(reason:string):ScalpLearningResult=>({...empty,gate:{passed:false,reasons:[reason]},reasons:[reason]});
+  if(!costKnown)return reject('تكلفة التداول غير معروفة؛ التعلم لا يسمح بإشارة.');
+  if(!Number.isFinite(now)||input.some(x=>!Number.isFinite(x.time)||x.time>now))
+    return reject('توقيت الشموع غير صالح أو في المستقبل.');
+  if(c.some((x,i)=>![x.open,x.high,x.low,x.close].every(v=>Number.isFinite(v)&&v>0)||
+    x.high<Math.max(x.open,x.close)||x.low>Math.min(x.open,x.close)||
+    (i>0&&x.time-c[i-1].time!==60000)))
+    return reject('شموع M1 غير صالحة أو متقطعة؛ أُوقف التعلم حتى اكتمال البيانات.');
+  if(c.length&&now-(c.at(-1)!.time+60000)>90000)
+    return reject('آخر شمعة مكتملة قديمة؛ الإشارة متوقفة.');
   if(c.length<220)return empty;
 
   const minMove=Math.max(.20,Math.min(.34,.12+costAtr*1.6));
@@ -169,7 +184,7 @@ export function trainScalpLearner(input:Candle[],now=Date.now(),estimatedCostAtr
   const refitBase=fit([...chosen.train,...chosen.validation],minMove),refit={...refitBase,threshold:chosen.model.threshold};
   const tm=evaluate(chosen.test,refit,costAtr);
   const x=feat(c.slice(-25));if(!x)return empty;
-  const p=predict(x,refit),exitPlan=planFrom([...chosen.train,...chosen.validation],chosen.h,costAtr);
+  const p=predict(x,refit),exitPlan=planFrom([...chosen.train,...chosen.validation],chosen.h,costAtr,p.side);
   const contributions=names.map((name,j)=>({name,weight:Number(refit.weights[j].toFixed(3)),value:Number(x[j].toFixed(3)),contribution:Number((((x[j]-refit.means[j])/refit.sds[j])*refit.weights[j]).toFixed(3))})).sort((a,b)=>Math.abs(b.contribution)-Math.abs(a.contribution));
 
   const gateReasons:string[]=[];
@@ -190,7 +205,8 @@ export function trainScalpLearner(input:Candle[],now=Date.now(),estimatedCostAtr
   const confidence=Math.min(86,Math.round(p.score*.36+edgeQuality*100*.24+pfQuality*100*.16+accQuality*100*.14+stabilityQuality*100*.10));
   const side:Side=valid?p.side:'WAIT';
   const reasons=[
-    `FINAL HOLDOUT: ${tm.accuracy.toFixed(1)}% على ${tm.used} صفقة · signal rate ${tm.signalRate.toFixed(0)}%`,
+    `FINAL HOLDOUT: ${tm.accuracy.toFixed(1)}% على ${tm.used} عينة اتجاه غير متداخلة · signal rate ${tm.signalRate.toFixed(0)}%`,
+    'تقييم اتجاه عند نهاية الأفق؛ ليس اختبار تنفيذ أو إثبات ربح للهدف والوقف.',
     `Net expectancy ${tm.netEdgeAtr.toFixed(3)} ATR بعد تكلفة ${costAtr.toFixed(2)} ATR`,
     `Profit factor ${tm.profitFactor.toFixed(2)} · Max DD ${tm.maxDrawdownAtr.toFixed(2)} ATR`,
     `Validation expectancy ${chosen.vm.netEdgeAtr.toFixed(3)} ATR · stability ${Math.round(chosen.stability*100)}%`,
@@ -199,7 +215,7 @@ export function trainScalpLearner(input:Candle[],now=Date.now(),estimatedCostAtr
   ];
 
   return {
-    ok:valid,side,score:p.score,confidence,edge:Number(p.raw.toFixed(3)),
+    evaluationVersion:'cost-aware-v2',ok:valid,side,score:p.score,confidence,edge:Number(p.raw.toFixed(3)),
     sampleCount:chosen.rows.length,trainCount:chosen.train.length,validationCount:chosen.validation.length,testCount:chosen.test.length,
     oosAccuracy:Number(tm.accuracy.toFixed(1)),oosEdgeAtr:Number(tm.netEdgeAtr.toFixed(3)),oosGrossEdgeAtr:Number(tm.grossEdgeAtr.toFixed(3)),
     profitFactor:Number(tm.profitFactor.toFixed(2)),maxDrawdownAtr:Number(tm.maxDrawdownAtr.toFixed(2)),costAtr:Number(costAtr.toFixed(3)),

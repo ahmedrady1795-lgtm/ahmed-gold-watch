@@ -2,6 +2,7 @@ import {getRuntimeEnv} from '../../../../lib/runtime';
 import {getMarketSnapshot,getMt5FastSignal} from '../../../../lib/market-hub';
 import {scalpAnalyze} from '../../../../lib/engine';
 import {trainScalpLearner} from '../../../../lib/scalp-learning';
+import {learnerCostAtr} from '../../../../lib/scalp-cost';
 import {buildAccumulationMap} from '../../../../lib/accumulation-map';
 import {buildScalpFusion} from '../../../../lib/scalp-fusion';
 
@@ -54,7 +55,7 @@ export async function GET(request:Request){
     if(!fresh)return Response.json({ok:true,demoOnly:true,authority:'AMBUSH',ready:false,reason:'MT5 tick/candles not fresh',checkedAt:now,liveOrderAllowed:false},{headers:{'Cache-Control':'private, no-store'}});
 
     const price=Number(q?.price),atr=atrNow(m.c1),spread=Number(q?.spread);
-    const costAtr=atr&&atr>0&&Number.isFinite(spread)?Math.max(.05,spread/atr+.03):.10;
+    const costAtr=learnerCostAtr('GOLD',price,atr,spread);
     const learner=trainScalpLearner(m.c1,now,costAtr);
     const technicalHelper=scalpAnalyze(m.c1,m.c5,now,price);
     const fast=getMt5FastSignal(now);
