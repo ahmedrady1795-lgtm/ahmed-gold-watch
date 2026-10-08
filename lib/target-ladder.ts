@@ -6,11 +6,13 @@ export type TargetLevel={
   confidence:number;quality:number;consensus:number;rankScore:number;
   kind:TargetKind;source:string;sources:string[];
   distanceBps:number;distanceAtr:number|null;
+  learningBonus:number;learningSamples:number;learningPosterior:number|null;
 };
 export type TargetLadder={
   side:Side;t1:TargetLevel|null;t2:TargetLevel|null;t3:TargetLevel|null;
   invalidation:number|null;quality:number;sourceCount:number;projected:boolean;
   mode:'STRUCTURAL'|'MIXED'|'PROJECTED';reason:string;
+  learning:{enabled:boolean;t1Samples:number;t2Samples:number;t3Samples:number};
 };
 
 type Candidate={price:number;low:number;high:number;confidence:number;kind:TargetKind;source:string;weight:number};
@@ -49,10 +51,10 @@ function beyond(side:Side,a:number,b:number,min:number){
 
 export function buildTargetLadder(args:{
   asset:'GOLD'|'BTC';side:Side;price:number|null;atr?:number|null;
-  hunt?:any;movement?:any;h4?:any;intent?:any;structure?:any;liquidity?:any;toolMesh?:any;
+  hunt?:any;movement?:any;h4?:any;intent?:any;structure?:any;liquidity?:any;toolMesh?:any;learning?:any;
 }):TargetLadder{
   const side=validSide(args.side),price=num(args.price),atr0=num(args.atr);
-  const empty=(reason:string):TargetLadder=>({side:'WAIT',t1:null,t2:null,t3:null,invalidation:null,quality:0,sourceCount:0,projected:false,mode:'PROJECTED',reason});
+  const empty=(reason:string):TargetLadder=>({side:'WAIT',t1:null,t2:null,t3:null,invalidation:null,quality:0,sourceCount:0,projected:false,mode:'PROJECTED',reason,learning:{enabled:false,t1Samples:0,t2Samples:0,t3Samples:0}});
   if(side==='WAIT'||price==null||price<=0)return empty('لا يوجد اتجاه أمامي صالح لبناء أهداف');
 
   const atr=atr0!=null&&atr0>0?atr0:price*(args.asset==='GOLD'?.0012:.0032);
@@ -60,6 +62,23 @@ export function buildTargetLadder(args:{
   const minDistance=Math.max(price*minBps/10000,atr*.07);
   const maxDistance=atr*5.5;
   const candidates:Candidate[]=[];
+  const stageLearning=(stage:1|2|3,kind:TargetKind)=>{
+    const live=args.learning?.['t'+stage]||null;
+    const stats=live?.bySource?.[kind]||null;
+    const hits=Number(stats?.hits||0),fails=Number(stats?.fails||0),samples=hits+fails;
+    const posterior=Number.isFinite(Number(stats?.posteriorAccuracy))?Number(stats.posteriorAccuracy):50;
+    const maturity=Math.min(1,samples/24);
+    let bonus=(posterior-50)*.24*maturity;
+    const wf=live?.walkForwardBySource?.[kind]||null;
+    if(Number(wf?.oos?.n||0)>=10){
+      if(wf?.status==='PASS'&&Number(wf?.oos?.accuracy||0)>=58)bonus+=2.5;
+      if(wf?.status==='WATCH')bonus-=2;
+      if(wf?.drift?.status==='DEGRADING')bonus-=4;
+    }
+    if(samples>=8&&posterior<44)bonus-=4;
+    if(samples>=12&&posterior>=60)bonus+=2;
+    return {bonus:cap(bonus,-12,9),samples,posterior};
+  };
 
   const add=(raw:any,source:string,confidence:number,kind:TargetKind,weight=1,sideHint?:any)=>{
     if(sideHint&&validSide(sideHint)!=='WAIT'&&validSide(sideHint)!==side)return;
@@ -152,21 +171,26 @@ export function buildTargetLadder(args:{
     };
   }).filter(x=>x.quality>=36);
 
-  const normalized=(x:any,stage:1|2|3):TargetLevel=>({
-    ...x,
-    price:Number(x.price.toFixed(2)),low:Number(x.low.toFixed(2)),high:Number(x.high.toFixed(2)),
-    confidence:Math.round(x.confidence),quality:Math.round(x.quality),consensus:Math.round(x.consensus),
-    rankScore:Number((x.quality+distanceFit(x.distanceAtr,stage)+Math.min(10,(x.sources.length-1)*4)).toFixed(1)),
-    distanceBps:Number(x.distanceBps.toFixed(2)),distanceAtr:x.distanceAtr==null?null:Number(x.distanceAtr.toFixed(2))
-  });
+  const normalized=(x:any,stage:1|2|3):TargetLevel=>{
+    const learn=stageLearning(stage,x.kind);
+    return {
+      ...x,
+      price:Number(x.price.toFixed(2)),low:Number(x.low.toFixed(2)),high:Number(x.high.toFixed(2)),
+      confidence:Math.round(cap(x.confidence+learn.bonus*.35)),quality:Math.round(cap(x.quality+learn.bonus*.45)),consensus:Math.round(x.consensus),
+      rankScore:Number((x.quality+distanceFit(x.distanceAtr,stage)+Math.min(10,(x.sources.length-1)*4)+learn.bonus).toFixed(1)),
+      distanceBps:Number(x.distanceBps.toFixed(2)),distanceAtr:x.distanceAtr==null?null:Number(x.distanceAtr.toFixed(2)),
+      learningBonus:Number(learn.bonus.toFixed(1)),learningSamples:learn.samples,learningPosterior:learn.samples?Number(learn.posterior.toFixed(1)):null
+    };
+  };
 
   const choose=(pool:any[],stage:1|2|3,after:number|null)=>{
     const minGap=stage===1?0:stage===2?atr*.14:atr*.18;
     const usable=pool.filter(x=>after==null||beyond(side,x.price,after,minGap));
     if(!usable.length)return null;
     return normalized([...usable].sort((a,b)=>{
-      const ar=a.quality+distanceFit(a.distanceAtr,stage)+Math.min(10,(a.sources.length-1)*4);
-      const br=b.quality+distanceFit(b.distanceAtr,stage)+Math.min(10,(b.sources.length-1)*4);
+      const al=stageLearning(stage,a.kind).bonus,bl=stageLearning(stage,b.kind).bonus;
+      const ar=a.quality+distanceFit(a.distanceAtr,stage)+Math.min(10,(a.sources.length-1)*4)+al;
+      const br=b.quality+distanceFit(b.distanceAtr,stage)+Math.min(10,(b.sources.length-1)*4)+bl;
       return br-ar;
     })[0],stage);
   };
@@ -177,7 +201,10 @@ export function buildTargetLadder(args:{
     return {
       price:Number(p.toFixed(2)),low:Number((p-half).toFixed(2)),high:Number((p+half).toFixed(2)),
       confidence:conf,quality:conf,consensus:20,rankScore:conf-8,kind:'PROJECTION',source:label,sources:[label],
-      distanceBps:Number((Math.abs(p-price)/price*10000).toFixed(2)),distanceAtr:mult
+      distanceBps:Number((Math.abs(p-price)/price*10000).toFixed(2)),distanceAtr:mult,
+      learningBonus:Number(stageLearning(stage,'PROJECTION').bonus.toFixed(1)),
+      learningSamples:stageLearning(stage,'PROJECTION').samples,
+      learningPosterior:stageLearning(stage,'PROJECTION').samples?Number(stageLearning(stage,'PROJECTION').posterior.toFixed(1)):null
     };
   };
 
@@ -218,5 +245,8 @@ export function buildTargetLadder(args:{
       ' · T2 '+t2.source+
       (t2.kind==='PROJECTION'?' (إسقاط مؤقت)':'');
 
-  return {side,t1,t2,t3,invalidation,quality,sourceCount,projected,mode,reason};
+  const stageSamples=(stage:1|2|3)=>Object.values(args.learning?.['t'+stage]?.bySource||{}).reduce((sum:any,v:any)=>sum+Number(v?.hits||0)+Number(v?.fails||0),0) as number;
+  const learning={enabled:Boolean(args.learning),t1Samples:stageSamples(1),t2Samples:stageSamples(2),t3Samples:stageSamples(3)};
+  const learnedReason=learning.enabled&&learning.t1Samples>=8?reason+' · ترتيب الأهداف متكيف مع النتائج الحية':reason;
+  return {side,t1,t2,t3,invalidation,quality,sourceCount,projected,mode,reason:learnedReason,learning};
 }
