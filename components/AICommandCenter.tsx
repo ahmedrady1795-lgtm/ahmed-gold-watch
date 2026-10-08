@@ -40,6 +40,9 @@ const targetSourceAr=(v:any)=>{
   if(x.includes('movement 15m'))return 'نموذج 15د';
   if(x.includes('hunt 15m'))return 'توافق 15د';
   if(x.includes('path destination'))return 'المسار الهيكلي';
+  if(x.includes('order-book')||x.includes('order book'))return 'جدار Order Book';
+  if(x.includes('last swing'))return 'Swing حديث';
+  if(x.includes('range edge'))return 'حد النطاق';
   if(x.includes('liquidity'))return 'مستوى سيولة';
   if(x.includes('h4'))return 'مستوى H4';
   if(x.includes('intent'))return 'هدف تدفق السوق';
@@ -215,14 +218,14 @@ function LegacyAssetCard({x,liveQuote,fast}:any){
       </strong>
 
       <div className="forecast-scenario-strip">
-        <div><small>T1 · الهدف الأول</small><b dir="ltr">{t1Price!=null?fmt(t1Price,2):'—'}</b><span>{liveT1Hit?'تحقق':targetSourceAr(t1Level?.source)}</span></div>
-        <div><small>T2 · الهدف التالي</small><b dir="ltr">{t2Price!=null?fmt(t2Price,2):'—'}</b><span>{liveT2Hit?'تحقق':targetSourceAr(t2Level?.source)}</span></div>
-        <div><small>T3 · الامتداد</small><b dir="ltr">{t3Price!=null?fmt(t3Price,2):'—'}</b><span>{liveT3Hit?'تحقق':targetSourceAr(t3Level?.source)}</span></div>
+        <div><small>T1 · الهدف الأول</small><b dir="ltr">{t1Price!=null?fmt(t1Price,2):'—'}</b><span>{liveT1Hit?'تحقق':targetSourceAr(t1Level?.source)+(t1Level?.quality?' · جودة '+Math.round(Number(t1Level.quality))+'%':'')}</span></div>
+        <div><small>T2 · الهدف التالي</small><b dir="ltr">{t2Price!=null?fmt(t2Price,2):'—'}</b><span>{liveT2Hit?'تحقق':targetSourceAr(t2Level?.source)+(t2Level?.quality?' · جودة '+Math.round(Number(t2Level.quality))+'%':'')}</span></div>
+        <div><small>T3 · الامتداد</small><b dir="ltr">{t3Price!=null?fmt(t3Price,2):'—'}</b><span>{liveT3Hit?'تحقق':targetSourceAr(t3Level?.source)+(t3Level?.quality?' · جودة '+Math.round(Number(t3Level.quality))+'%':'')}</span></div>
         <div><small>إبطال القراءة</small><b dir="ltr">{invalidation!=null?fmt(invalidation,2):'—'}</b><span>{liveInvalidated?'تم الكسر':'صالح'}</span></div>
 
         <div className="scenario-wide"><small>سبب اختيار الأهداف</small>
           <b>{targets?.reason||forward?.reason||'انتظار مستويات أمامية أوضح'}</b>
-          <span>{targetSources?'توافق '+targetSources+' مصادر سعرية/هيكلية':targets?.projected?'الأهداف الحالية إسقاط مؤقت حتى يظهر مستوى هيكلي':'قراءة مركبة من السوق'}</span>
+          <span>{targets?.mode==='STRUCTURAL'?'أهداف هيكلية بالكامل':targets?.mode==='MIXED'?'مزيج مستويات حقيقية + إسقاط احتياطي':targets?.mode==='PROJECTED'?'إسقاط مؤقت لحين ظهور مستويات حقيقية':targetSources?'توافق '+targetSources+' مصادر سعرية/هيكلية':'قراءة مركبة من السوق'}</span>
         </div>
 
         <div className="scenario-wide"><small>تأكيد الاتجاه</small>
