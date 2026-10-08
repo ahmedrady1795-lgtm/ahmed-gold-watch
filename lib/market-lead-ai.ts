@@ -109,7 +109,7 @@ export function updateGoldMarketLead(fast:any,now=Date.now(),wave:any=null):Mark
   return offline('GOLD','Live gold microstructure','لا يوجد DOM أو Biquote micro-flow حديث الآن.',now);
 }
 export function updateBtcMarketLead(liq:any,now=Date.now()):MarketLeadSignal{
-  if(!liq?.ok&&Number(liq?.quality||0)<45)return offline('BTC','Coinbase · Kraken · OKX microstructure','سيولة BTC غير مكتملة بما يكفي للقراءة المبكرة.',now);
+  if(!liq?.ok||!Number.isFinite(Number(liq?.checkedAt))||now-Number(liq.checkedAt)>8000)return offline('BTC','Coinbase · Kraken · OKX microstructure','مصدر سيولة BTC غير مؤكد أو قديم؛ تم تعطيل إشارة الحركة المبكرة.',now);
   const replenish=Number(liq?.dynamics?.bidDepthChangePct||0)-Number(liq?.dynamics?.askDepthChangePct||0);
   return evaluate('BTC',{source:'Coinbase · Kraken · OKX · Market Lead AI',sourceAt:Number(liq?.checkedAt||now),quality:Number(liq?.quality||0),price:Number.isFinite(Number(liq?.book?.microprice))?Number(liq.book.microprice):null,bookImbalance:Number(liq?.book?.weightedImbalance||liq?.book?.depthImbalance||0),pressureChange:Number(liq?.dynamics?.pressureChange||0),replenishDelta:replenish,acceleration:Number(liq?.dynamics?.acceleration||0),flowDelta:Number(liq?.flow?.deltaPct||0),priceVelocity:Number(liq?.flow?.priceChangeBps||0),persistence:Math.min(100,Math.abs(Number(liq?.flow?.deltaPct||0))*1.4),absorptionSide:sideOf(liq?.absorption?.side),absorptionScore:Number(liq?.absorption?.score||0),trapDetected:Boolean(liq?.absorption?.trapDetected),hintSide:sideOf(liq?.side)},now,'CROSS_EXCHANGE');
 }
