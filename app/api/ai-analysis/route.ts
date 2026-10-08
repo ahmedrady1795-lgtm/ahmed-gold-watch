@@ -860,7 +860,9 @@ export async function GET(request:Request){
       add('path',hunt?.zoneForecast?.pathForecast?.side,hunt?.zoneForecast?.pathForecast?.confidence,1.12);
       add('hunt',hunt?.nextMove?.side,hunt?.nextMove?.confidence,.48);
 
-      const liqSide=liq?.side==='BUY'||liq?.side==='SELL'?liq.side:'WAIT';
+      const liqAge=now-Number(liq?.checkedAt||0);
+      const usableLiquidity=Boolean(liq?.ok&&liqAge>=0&&liqAge<=12000&&Number(liq?.quality||0)>=55);
+      const liqSide=usableLiquidity&&(liq?.side==='BUY'||liq?.side==='SELL')?liq.side:'WAIT';
       const sideLiquidity=liqSide==='BUY'?Number(liq?.buy||0):liqSide==='SELL'?Number(liq?.sell||0):0;
       // Important: never use the opposite side's percentage as evidence for the chosen side.
       const liqScore=liqSide==='WAIT'?0:Math.max(
@@ -1038,9 +1040,24 @@ export async function GET(request:Request){
           stopLoss=Number((winner==='BUY'?priceNow-targetDistance*.58:priceNow+targetDistance*.58).toFixed(2));
         }
       }
-      const rr=stopLoss!=null&&entryTrigger!=null&&Math.abs(entryTrigger-stopLoss)>0
-        ?Number((Math.abs(Number(target)-entryTrigger)/Math.abs(entryTrigger-stopLoss)).toFixed(2))
+      // Round-trip execution costs are conservative assumptions until the
+      // broker's bid/ask, fees and slippage are supplied to this engine.
+      const assumedCostBps=asset==='GOLD'?3:16;
+      const estimatedCost=entryTrigger!=null?entryTrigger*assumedCostBps/10000:null;
+      const grossReward=entryTrigger!=null&&target!=null
+        ?(winner==='BUY'?target-entryTrigger:entryTrigger-target):null;
+      const grossRisk=entryTrigger!=null&&stopLoss!=null
+        ?Math.abs(entryTrigger-stopLoss):null;
+      const rr=grossReward!=null&&grossRisk!=null&&estimatedCost!=null&&grossRisk>0&&grossReward>estimatedCost
+        ?Number(((grossReward-estimatedCost)/(grossRisk+estimatedCost)).toFixed(2))
         :null;
+      const qualityFlags={
+        liveLiquidity:usableLiquidity&&liqSide===winner&&Number(liq?.quality||0)>=62,
+        structuralTarget:targetLadder?.t1?.kind!=='PROJECTION'&&Number(targetLadder?.t1?.quality||0)>=66,
+        netRR:rr,
+        assumedRoundTripCostBps:assumedCostBps,
+        costMode:'CONSERVATIVE_ESTIMATE'
+      };
       const targetDistanceBps=priceNow!=null&&target!=null?Math.abs(target-priceNow)/priceNow*10000:0;
       const minTradeDistanceBps=asset==='GOLD'?3.5:8;
       const zeroLossAlignment=Boolean(
@@ -1050,8 +1067,9 @@ export async function GET(request:Request){
       );
       const tradeEligible=Boolean(
         executionValidated&&zeroLossGuardPass&&zeroLossAlignment&&
+        qualityFlags.liveLiquidity&&qualityFlags.structuralTarget&&
         target!=null&&entryTrigger!=null&&stopLoss!=null&&rr!=null&&rr>=1.80&&
-        targetDistanceBps>=minTradeDistanceBps&&higherTfPair&&!m5Opposes&&!m15Opposes
+        targetDistanceBps>=minTradeDistanceBps+assumedCostBps&&higherTfPair&&!m5Opposes&&!m15Opposes
       );
       const safeEntry=entryTrigger!=null?Number(entryTrigger):null;
       const riskDistance=safeEntry!=null&&stopLoss!=null?Math.abs(safeEntry-stopLoss):null;
@@ -1073,6 +1091,9 @@ export async function GET(request:Request){
         trigger:winner==='BUY'?'اختراق وثبات أعلى سعر التفعيل':'كسر وثبات أسفل سعر التفعيل',
         timeframe:'15m',
         rr,
+        estimatedRoundTripCostBps:assumedCostBps,
+        executionCosts:'تقديرية؛ يلزم تأكيد سبريد وعمولة الوسيط قبل التنفيذ',
+        targetQuality:Number(targetLadder?.t1?.quality||0),
         targetDistanceBps:Number(targetDistanceBps.toFixed(2)),
         protection:{
           mode:'LOSS_MINIMIZATION',
@@ -1129,7 +1150,7 @@ export async function GET(request:Request){
 
       const sourceParts=rows.filter(r=>r.side===winner).sort((a,b)=>b.weight-a.weight).slice(0,3).map(r=>r.name);
       return {
-        side:winner,confidence,status,target,targets:targetLadder,invalidation:targetLadder?.invalidation??null,targetQuality:Number(targetLadder?.quality||0),tradeSetup:alreadyMoving?null:tradeSetup,conditionalReady,horizonMinutes:15,h4Context:h4?.ok?{side:h4Side,confidence:h4Confidence,structure:h4.structure,support:h4.support,resistance:h4.resistance,rangePosition:h4.rangePosition}:null,
+        side:winner,confidence,status,target,targets:targetLadder,invalidation:targetLadder?.invalidation??null,targetQuality:Number(targetLadder?.quality||0),tradeQuality:qualityFlags,tradeSetup:alreadyMoving?null:tradeSetup,conditionalReady,horizonMinutes:15,h4Context:h4?.ok?{side:h4Side,confidence:h4Confidence,structure:h4.structure,support:h4.support,resistance:h4.resistance,rangePosition:h4.rangePosition}:null,
         zone:pathZone?{low:Number(pathZone.low),high:Number(pathZone.high),mid:Number(pathZone.mid)}:null,
         windowSeconds,expiresAt:now+windowSeconds.max*1000,agreement:Math.round(share),support,opposition:oppose,
         priceNow,distancePct:distancePct==null?null:Number(distancePct.toFixed(4)),
