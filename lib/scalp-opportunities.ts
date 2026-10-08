@@ -191,7 +191,12 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     const risk=Math.max(dir*(entry-rawStop),rangeAtr*(horizon===1?.48:.52),cost*2);
     const stop=round(entry-dir*risk);
     const maxMove=rangeAtr*(horizon===1?2:2.65);
-    const minReward=Math.max(risk*1.45+cost*2.45,cost*3);
+    // ACTIVE PAPER mode selectively improves the M5 GOLD target feasibility.
+    // All executions still require a positive >=1.25R NET reward at the
+    // current quote; GOLD M1 and BTC retain the conservative baseline.
+    const activeGoldM5=asset==='GOLD'&&horizon===5;
+    const targetNetR=activeGoldM5?1.30:1.45;
+    const minReward=Math.max(risk*targetNetR+cost*(targetNetR+1),cost*3);
     const maxRisk=rangeAtr*(horizon===1?1.6:1.65);
     const pivots=[...a.slice(-60),...(horizon===5?b.slice(-24):[])].map(c=>chosen.side==='BUY'?c.high:c.low)
       .filter(x=>dir*(x-entry)>=minReward&&dir*(x-entry)<=maxMove)
@@ -238,6 +243,10 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     if(horizon===5&&chosen.setup!=='SWEEP'&&dir*m5Body<-.20&&dir*m5Momentum<.10)reasons.push('آخر شمعة M5 مغلقة تعارض الاستمرار');
     if(horizon===5&&chosen.setup==='SWEEP'&&dir*m5Body<-.40)reasons.push('انعكاس الدقيقة عكس جسم M5 قوي؛ يلزم تأكيد إضافي');
     if(horizon===1&&chosen.setup==='BREAKOUT'&&volumeRatio!=null&&volumeRatio<1.05&&efficiency<.45)reasons.push('اختراق M1 ضعيف دون تأكيد كافٍ');
+    if(activeGoldM5)plan.evidence.push({
+      label:'وضع التنفيذ المرجعي',side:'WAIT',
+      value:'نشط M5 · هدف واقعي · 1.30R صافي مستهدف'
+    });
     plan.evidence.push({
       label:'حد الحركة المواتية للفريم',side:'WAIT',
       value:empiricalReach==null?'غير متاح':round(empiricalReach)+' $ / '+(horizon===1?'M1':'M5')

@@ -65,10 +65,18 @@ export async function getScalpDesk(){
             Math.abs(Number(a.trigger)-Number(quote.price||0))-Math.abs(Number(b.trigger)-Number(quote.price||0)))[0];
         // The map's directional scenario is useful for visibility, NOT for
         // authorizing a trade: only hold the exact frozen setup entry level.
+        // ACTIVE M5 means faster PAPER observation, never auto broker orders:
+        // only GOLD high-score M5 setups ALIGNED with completed M5 trend may
+        // use a 30s hold, and a post-watch M1 close is mandatory either way.
+        const activeHold=asset==='GOLD'&&plan.horizon===5&&plan.score>=85&&
+          ['BREAKOUT','CONTINUATION'].includes(plan.setup)&&
+          plan.evidence.some(e=>e.label==='سياق M5'&&e.side===plan.side)&&
+          Number(plan.netRR)>=1.25;
+        const requiredHold:30|60=activeHold?30:60;
         const planHold=plan.status==='ARMED'&&plan.side!=='WAIT'&&
           plan.entry!=null&&plan.stop!=null
           ?observeScalpPlanHold(asset,plan.horizon,plan.side,plan.id,
-              plan.entry,plan.stop,plan.expiresAt,input.c1,quote,at)
+              plan.entry,plan.stop,plan.expiresAt,input.c1,quote,at,requiredHold)
           :null;
         const confirmation=planHold||watch?.confirmation||null;
         const watchedSide=planHold?plan.side:watch?.side||'WAIT';
@@ -94,13 +102,13 @@ export async function getScalpDesk(){
             confirmation?.state==='HOLDING'?'HOLDING':'WATCH',
           heldSeconds:Number(confirmation?.heldSeconds||0),
           remainingSeconds:Number(confirmation?.remainingSeconds??60),
-          requiredSeconds:60,trigger:confirmation?.trigger??null,
+          requiredSeconds:Number(confirmation?.requiredSeconds??60),trigger:confirmation?.trigger??null,
           confirmedCandleAt:confirmed?Number(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time||0)+60000:null,
           checkedAt:at,
           entry:eligible?quote.price:null,
           stop:eligible?plan.stop:null,
           targets:eligible?plan.targets:[],
-          reason:eligible?'دخول تجريبي بسعر المرجع الحالي بعد ثبات الدخول نفسه دقيقة وإغلاق M1':
+          reason:eligible?'دخول ورقي مؤكّد بعد '+requiredHold+' ثانية مراقبة وإغلاق M1 لاحق لبداية الرصد':
             confirmed&&!entryNearby?'اكتمل الثبات لكن السعر ابتعد عن الدخول؛ لا مطاردة':
             confirmed&&!planHold?'ثبت السيناريو العام، لكن لا توجد صفقة مستوفية للشروط':
             confirmed&&liveRR<1.25?'انخفض العائد بعد تكلفة الدخول الحالي؛ لا صفقة':
@@ -136,7 +144,8 @@ export async function getScalpDesk(){
           entry.reason='هذه الفرصة مسجلة بالفعل؛ لا تكرار لإشارة قديمة';
         }
       }
-      return {asset,checkedAt:at,quote,candleSource:input.candleSource,liquidity,orderBook,plans,qualityGates,entryConfirmations,ledger,data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
+      return {asset,profile:asset==='GOLD'?'ACTIVE_M5_PAPER':'STANDARD_PAPER',
+        checkedAt:at,quote,candleSource:input.candleSource,liquidity,orderBook,plans,qualityGates,entryConfirmations,ledger,data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
     };
     const goldSnap=goldResult.status==='fulfilled'?goldResult.value:null;
     let market=btcResult.status==='fulfilled'?btcResult.value:null;
@@ -167,8 +176,8 @@ export async function getScalpDesk(){
           blockers:pl.blockers.slice(0,5)
         })),
         watches:x.entryConfirmations.map((e:any)=>({
-          h:e.horizon,state:e.state,held:e.heldSeconds,side:e.side,
-          trigger:e.trigger,confirmedCandleAt:e.confirmedCandleAt
+          h:e.horizon,state:e.state,held:e.heldSeconds,required:e.requiredSeconds,
+          side:e.side,trigger:e.trigger,confirmedCandleAt:e.confirmedCandleAt
         })),
         ledger:x.ledger.lanes.map((l:any)=>({
           h:l.horizon,active:l.current?.state||null,
