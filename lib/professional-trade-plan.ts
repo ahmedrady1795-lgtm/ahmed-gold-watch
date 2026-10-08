@@ -51,7 +51,7 @@ export type ProfessionalTradePlan={
 
 export function buildProfessionalTradePlan(args:{
   asset:'GOLD'|'BTC';now?:number;price?:number|null;
-  forward:any;hunt:any;h4:any;movement:any;structure:any;liquidity:any;intent:any;marketLead:any;news?:any;accumulation?:any;
+  forward:any;hunt:any;h4:any;movement:any;structure:any;liquidity:any;intent:any;marketLead:any;news?:any;accumulation?:any;toolMesh?:any;
 }):ProfessionalTradePlan{
   const now=Number(args.now||Date.now()),f=args.forward||{},hunt=args.hunt||{},m=args.movement||{};
   const price=n(args.price),bias=side(f.side),trade=f.tradeSetup||null;
@@ -76,12 +76,26 @@ export function buildProfessionalTradePlan(args:{
   const rr=n(trade?.rr);
 
   const risk=entry!=null&&invalidation!=null?Math.abs(entry-invalidation):null;
-  const structuralT2Candidate=n(path?.destination?.mid??path?.priceDestination?.mid);
+  const pickLevel=(v:any,prefer:'HIGH'|'LOW'|'MID'='MID')=>{
+    if(Number.isFinite(Number(v)))return Number(v);
+    if(!v||typeof v!=='object')return null;
+    const first=prefer==='HIGH'?[v.high,v.mid,v.low,v.price]:prefer==='LOW'?[v.low,v.mid,v.high,v.price]:[v.mid,v.price,v.high,v.low];
+    for(const x of first){if(Number.isFinite(Number(x)))return Number(x);}
+    return null;
+  };
+  const structuralCandidates:number[]=[
+    pickLevel(path?.destination,bias==='BUY'?'HIGH':'LOW'),
+    pickLevel(path?.priceDestination,bias==='BUY'?'HIGH':'LOW'),
+    pickLevel(bias==='BUY'?path?.upperLiquidity:path?.lowerLiquidity,bias==='BUY'?'HIGH':'LOW'),
+    pickLevel(bias==='BUY'?args.h4?.resistance:args.h4?.support,bias==='BUY'?'HIGH':'LOW'),
+    pickLevel(bias==='BUY'?args.liquidity?.book?.askWall:args.liquidity?.book?.bidWall,bias==='BUY'?'HIGH':'LOW'),
+    pickLevel(bias==='BUY'?args.liquidity?.askWall:args.liquidity?.bidWall,bias==='BUY'?'HIGH':'LOW')
+  ].filter((x):x is number=>x!=null&&Number.isFinite(x));
   let target2:number|null=null,target2Kind:'STRUCTURAL'|'PROJECTION'|'NONE'='NONE';
   if(bias!=='WAIT'&&target1!=null&&price!=null){
-    const structuralAhead=structuralT2Candidate!=null&&(bias==='BUY'?structuralT2Candidate>target1:structuralT2Candidate<target1);
-    if(structuralAhead){target2=structuralT2Candidate;target2Kind='STRUCTURAL';}
-    else if(risk!=null&&risk>0){target2=bias==='BUY'?target1+risk*.65:target1-risk*.65;target2Kind='PROJECTION';}
+    const ahead=structuralCandidates.filter(x=>bias==='BUY'?x>target1:x<target1).sort((a,b)=>Math.abs(a-target1)-Math.abs(b-target1));
+    if(ahead.length){target2=ahead[0];target2Kind='STRUCTURAL';}
+    else if(risk!=null&&risk>0){target2=bias==='BUY'?target1+risk*.80:target1-risk*.80;target2Kind='PROJECTION';}
   }
 
   const newsRisk=Number(args.news?.risk||0),newsPhase=String(args.news?.phase||'');
@@ -103,6 +117,11 @@ export function buildProfessionalTradePlan(args:{
   if(m5===bias&&m15===bias&&bias!=='WAIT')earlySignals.push('M5 وM15 متفقان');
   if(structure===bias&&bias!=='WAIT')earlySignals.push('الهيكل يدعم الوجهة');
   if(liquidity===bias&&bias!=='WAIT')earlySignals.push('السيولة تدعم المسار');
+  const meshSide=side(args.toolMesh?.summary?.side);
+  const meshAgreement=Number(args.toolMesh?.summary?.agreement||0);
+  const meshQuality=Number(args.toolMesh?.summary?.liveQuality||args.toolMesh?.summary?.quality||0);
+  if(meshSide===bias&&meshAgreement>=60&&meshQuality>=55)earlySignals.push('مصادر السوق الخارجية متفقة مع السيناريو');
+  if(meshSide!=='WAIT'&&bias!=='WAIT'&&meshSide!==bias&&meshAgreement>=65&&meshQuality>=60)noTradeReasons.push('مصادر السوق الخارجية تعاكس السيناريو');
 
   let readiness=forwardConfidence*.52+aligned*10+(structure===bias?8:0)+(liquidity===bias?6:0)+(leadArmed?8:leadBuilding?4:0)+(intentPre?6:0)-opposed*15;
   if(executionPass)readiness+=5;if(zeroLossGuard)readiness+=7;if(newsPhase==='PRE_EVENT'&&newsRisk>=70)readiness-=18;
@@ -132,6 +151,8 @@ export function buildProfessionalTradePlan(args:{
   if(structure===bias)storyParts.push('الهيكل مؤيد');
   if(leadArmed||leadBuilding)storyParts.push('ضغط مبكر ظاهر');
   if(intentPre)storyParts.push('مرحلة قبل التوسع محتملة');
+  if(meshSide===bias&&meshAgreement>=60)storyParts.push('تأكيد متعدد المصادر');
+  else if(meshSide!=='WAIT'&&bias!=='WAIT'&&meshSide!==bias&&meshAgreement>=60)storyParts.push('المصادر الخارجية غير متفقة');
 
   const protection=trade?.protection||{};
   const cancelOn:string[]=[];
