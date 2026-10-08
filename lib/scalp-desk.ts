@@ -80,11 +80,12 @@ export async function getScalpDesk(){
           :null;
         const confirmation=planHold||watch?.confirmation||null;
         const watchedSide=planHold?plan.side:watch?.side||'WAIT';
-        const confirmed=confirmation?.state==='CONFIRMED';
+        const retestConfirmed=Boolean(planHold&&planHold.state==='RETEST_READY');
+        const confirmed=confirmation?.state==='CONFIRMED'||retestConfirmed;
         const fresh=quote.at!=null&&at-Number(quote.at)>=0&&at-Number(quote.at)<=10000;
         const planRisk=plan.entry!=null&&plan.stop!=null?Math.abs(plan.entry-plan.stop):0;
         const entryNearby=planRisk>0&&quote.price!=null&&
-          Math.abs(quote.price-Number(plan.entry))<=planRisk*.35;
+          Math.abs(quote.price-Number(plan.entry))<=planRisk*(retestConfirmed?.12:.35);
         const dir=plan.side==='BUY'?1:-1;
         const realizedRisk=plan.stop!=null&&quote.price!=null?dir*(quote.price-plan.stop):0;
         const realizedReward=plan.targets[0]?.price!=null&&quote.price!=null?
@@ -108,10 +109,14 @@ export async function getScalpDesk(){
           entry:eligible?quote.price:null,
           stop:eligible?plan.stop:null,
           targets:eligible?plan.targets:[],
-          reason:eligible?'دخول ورقي مؤكّد بعد '+requiredHold+' ثانية مراقبة وإغلاق M1 لاحق لبداية الرصد':
-            confirmed&&!entryNearby?'اكتمل الثبات لكن السعر ابتعد عن الدخول؛ لا مطاردة':
+          reason:eligible?(retestConfirmed?
+            'دخول ورقي عند إعادة اختبار الخطة بعد تأكيد إغلاق M1؛ العائد بعد التكلفة صالح':
+            'دخول ورقي مؤكّد بعد '+requiredHold+' ثانية مراقبة وإغلاق M1 لاحق لبداية الرصد'):
+            confirmed&&!entryNearby?(retestConfirmed?
+              'تم تأكيد الاختراق؛ إعادة الاختبار ما زالت بعيدة عن سعر الخطة، بلا مطاردة':
+              'اكتمل الثبات لكن السعر ابتعد عن الدخول؛ انتظر إعادة الاختبار'):
             confirmed&&!planHold?'ثبت السيناريو العام، لكن لا توجد صفقة مستوفية للشروط':
-            confirmed&&liveRR<1.25?'انخفض العائد بعد تكلفة الدخول الحالي؛ لا صفقة':
+            confirmed&&liveRR<1.25?'العائد الفعلي بعد رسوم الدخول أقل من 1.25R؛ لا صفقة':
             confirmed?'ثبتت الدقيقة لكن الشروط غير مكتملة: '+(plan.blockers?.[0]||plan.reason):
             confirmation?.reason||'بانتظار مستوى الرصد وسعر حي صالح'
         };

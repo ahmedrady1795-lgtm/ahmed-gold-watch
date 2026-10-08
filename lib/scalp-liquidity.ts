@@ -36,6 +36,11 @@ function evaluateM1Hold(
     Number.isFinite(at)&&at<=now+2000&&now-at>=0&&now-at<=10000;
   const contiguous=closed.slice(-3).every((c,i,a)=>i===0||c.time-a[i-1].time===60000);
   const continuity=watch.lastSeenAt>0&&now-watch.lastSeenAt>=0&&now-watch.lastSeenAt<=10000;
+  // A confirmed M1 close can be followed by a *short, real-time limit
+  // retest* of the immutable plan entry. This must be a previously completed
+  // confirmation and is invalidated by stale/discontinuous quotes.
+  const priorConfirmation=watch.confirmedAt!==null&&watch.confirmedAt<=now&&
+    now-watch.confirmedAt<=45000&&fresh&&contiguous&&continuity;
   if(!fresh||!contiguous||!continuity){
     watch.firstBeyondAt=null;
     watch.confirmedAt=null;
@@ -44,7 +49,7 @@ function evaluateM1Hold(
   const invalid=fresh&&dir*(price-watch.invalidation)<=0;
   if(!beyond||invalid){
     watch.firstBeyondAt=null;
-    watch.confirmedAt=null;
+    if(invalid||!priorConfirmation)watch.confirmedAt=null;
   }else if(at>watch.lastQuoteAt){
     if(watch.firstBeyondAt===null)watch.firstBeyondAt=now;
     watch.lastSeenAt=now;
@@ -63,7 +68,7 @@ function evaluateM1Hold(
   // A complete post-watch candle whose ENTIRE low/high remains beyond the
   // fixed trigger independently proves a 60-second hold. This is stricter than
   // a close-only cross, and works with legitimate low-frequency gold quotes.
-  const fullMinuteHeld=Boolean(candleConfirmed&&last&&last.time>=watch.openedAt&&
+  const fullMinuteHeld=Boolean(candleConfirmed&&last&&beyond&&!invalid&&last.time>=watch.openedAt&&
     dir*((dir===1?last.low:last.high)-watch.trigger)>Math.max(price*.000002,atr*.015));
   const observedSeconds=watch.firstBeyondAt!==null&&fresh&&beyond&&continuity
     ?Math.max(0,Math.min(requiredSeconds,Math.floor((now-watch.firstBeyondAt)/1000))):0;
@@ -73,15 +78,21 @@ function evaluateM1Hold(
   // create a confirmed trade, even with an excellent setup score.
   const confirmed=Boolean(fresh&&beyond&&!invalid&&
     (fullMinuteHeld||(heldSeconds>=requiredSeconds&&candleConfirmed)));
+  // Never manufacture an entry from a simple retreat: only an observed
+  // confirmed breakout may unlock a 45-second retest. Final fill logic
+  // checks the CURRENT price, M5/M1 validity and >=1.25R after fees.
+  const retestReady=Boolean(priorConfirmation&&!beyond&&!invalid&&
+    watch.confirmedAt!==null&&fresh&&contiguous&&continuity);
   if(confirmed&&!watch.confirmedAt)watch.confirmedAt=now;
-  if(!confirmed)watch.confirmedAt=null;
+  if(!confirmed&&!retestReady)watch.confirmedAt=null;
   return {
-    state:confirmed?'CONFIRMED':heldSeconds>0?'HOLDING':'WATCH',
+    state:confirmed?'CONFIRMED':retestReady?'RETEST_READY':heldSeconds>0?'HOLDING':'WATCH',
     side,trigger:watch.trigger,invalidation:watch.invalidation,
     heldSeconds,remainingSeconds:Math.max(0,requiredSeconds-heldSeconds),
     requiredSeconds,closedCandleConfirmed:candleConfirmed,
     confirmedAt:watch.confirmedAt,expiresAt:watch.expiresAt,
-    reason:confirmed?'ثبات موثق بإغلاق M1 وأسعار حديثة متصلة':heldSeconds>0
+    reason:confirmed?'ثبات موثق بإغلاق M1 وأسعار حديثة متصلة':
+      retestReady?'تم تأكيد الاختراق؛ إعادة اختبار الدخول خلال 45 ثانية مع التحقق من التكلفة والعائد':heldSeconds>0
       ?'جارٍ تأكيد الثبات من أسعار متجددة؛ يلزم '+requiredSeconds+' ثانية وإغلاق M1'
       :'بانتظار عبور المستوى ثم الثبات 60 ثانية'
   };
