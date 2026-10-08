@@ -1,5 +1,5 @@
 'use client';
-import {Activity,TrendingDown,TrendingUp} from 'lucide-react';
+import {Activity} from 'lucide-react';
 import ScalpDesk from './ScalpDesk';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
@@ -192,18 +192,11 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
   const activeDistancePct=price!=null&&activeTarget!=null&&Number(price)>0?Math.abs(activeTarget-Number(price))/Number(price)*100:null;
   const targetQuality=Math.round(Number(targets?.quality||forward?.targetQuality||0));
   const targetSources=Number(targets?.sourceCount||0);
-  const forwardHeadline=heroSide==='WAIT'
-    ?'الحركة القادمة: انتظار'
-    :liveInvalidated
-      ?'القراءة السابقة أُلغيت · إعادة حساب'
-      :activeTarget!=null
-        ?'الحركة القادمة: '+moveAr(heroSide)+' نحو '+activeLabel+' '+fmt(activeTarget,2)
-        :'الحركة اكتملت · انتظار أهداف جديدة';
   return <section className={"panel ai-asset-card compact-asset "+(heroSide==='BUY'?'ai-buy':heroSide==='SELL'?'ai-sell':'ai-wait')}>
     <div className="panelhead">
       <div>
         <span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'} · LIVE</span>
-        <h2>{forwardHeadline}</h2>
+        <h2>{x.asset==='GOLD'?'توقع حركة الذهب':'توقع حركة البيتكوين'}</h2>
       </div>
       <span className={'market-signal-state '+(liveInvalidated?'invalid':heroSide==='WAIT'?'waiting':'tracking')}>
         {heroSide==='WAIT'?'بانتظار تأكيد':liveStateAr}
@@ -225,6 +218,8 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
       <strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>
         {heroSide==='WAIT'
           ?'لا يوجد اتجاه صالح الآن'
+          :liveInvalidated
+            ?'السيناريو أُلغي بعد كسر مستوى الإبطال · ننتظر توقعًا جديدًا'
           :activeTarget!=null
             ?moveAr(heroSide)+' → '+activeLabel+' '+fmt(activeTarget,2)+(activeDistancePct!=null?' · يبعد '+activeDistancePct.toFixed(3)+'%':'')
             :'تم استهلاك سلم الأهداف الحالي'}
@@ -236,9 +231,9 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
           <b dir="ltr">{moveAr(watchSide)} → {fmt(watchMid,2)}</b>
           <span>{watchZone?.projected?'إسقاط احتمالي من التذبذب':'منطقة سعرية مرجحة'} · تنتظر تأكيد M1 و M5 والسيولة قبل أي توصية</span>
         </div>}
-        <div><small>T1 · الهدف الأول</small><b dir="ltr">{t1Price!=null?fmt(t1Price,2):'—'}</b><span>{liveT1Hit?'تحقق':targetSourceAr(t1Level?.source)+(t1Level?.quality?' · جودة '+Math.round(Number(t1Level.quality))+'%':'')}</span></div>
-        <div><small>T2 · الهدف التالي</small><b dir="ltr">{t2Price!=null?fmt(t2Price,2):'—'}</b><span>{liveT2Hit?'تحقق':targetSourceAr(t2Level?.source)+(t2Level?.quality?' · جودة '+Math.round(Number(t2Level.quality))+'%':'')}</span></div>
-        <div><small>T3 · الامتداد</small><b dir="ltr">{t3Price!=null?fmt(t3Price,2):'—'}</b><span>{liveT3Hit?'تحقق':targetSourceAr(t3Level?.source)+(t3Level?.quality?' · جودة '+Math.round(Number(t3Level.quality))+'%':'')}</span></div>
+        <div><small>T1 · الهدف الأول</small><b dir="ltr">{!liveInvalidated&&t1Price!=null?fmt(t1Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT1Hit?'تحقق':targetSourceAr(t1Level?.source)+(t1Level?.quality?' · جودة '+Math.round(Number(t1Level.quality))+'%':'')}</span></div>
+        <div><small>T2 · الهدف التالي</small><b dir="ltr">{!liveInvalidated&&t2Price!=null?fmt(t2Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT2Hit?'تحقق':targetSourceAr(t2Level?.source)+(t2Level?.quality?' · جودة '+Math.round(Number(t2Level.quality))+'%':'')}</span></div>
+        <div><small>T3 · الامتداد</small><b dir="ltr">{!liveInvalidated&&t3Price!=null?fmt(t3Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT3Hit?'تحقق':targetSourceAr(t3Level?.source)+(t3Level?.quality?' · جودة '+Math.round(Number(t3Level.quality))+'%':'')}</span></div>
         <div><small>إبطال القراءة</small><b dir="ltr">{invalidation!=null?fmt(invalidation,2):'—'}</b><span>{liveInvalidated?'تم الكسر':'صالح'}</span></div>
 
       </div>
