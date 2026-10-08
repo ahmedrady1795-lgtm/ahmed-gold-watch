@@ -58,11 +58,12 @@ export default function NewsCommandCenter({analysis,events=[],now=Date.now(),fea
     .filter((e:any)=>{const t=Number(e?.time),hasActual=Boolean(String(e?.actual||'').trim());return t<=now+30*86400000&&(t>=now||(hasActual&&t>=now-10*60000)||(!hasActual&&t>=now-15*60000));})
     .sort((a:any,b:any)=>Number(a.time)-Number(b.time));
   const active=analysis?.news?.event;
-  return <section className="panel newscommand">
-    <div className="panelhead"><div><span className="eyebrow">UPCOMING MACRO RADAR</span><h2>{featuredId?'الأخبار التالية بالترتيب · توقيت الإمارات':'الأخبار القادمة · توقيت الإمارات'}</h2></div><Newspaper/></div>
+  return <details className="panel newscommand news-calendar">
+    <summary className="news-calendar-summary"><span><Newspaper size={18}/> <strong>التقويم الاقتصادي</strong><small>أقرب {Math.min(upcoming.length,4)} أخبار · بتوقيت الإمارات</small></span><b>{upcoming.length?'عرض المواعيد':'لا توجد أخبار قريبة'}</b></summary>
+    <div className="news-calendar-content">
     {active&&<div className="newsclock"><Clock3/><strong>{active.name}</strong><span>{timeLeft(Number(active.time),now)}</span></div>}
     {!upcoming.length&&<p>لا توجد أحداث قادمة وصلت من المصادر الحالية.</p>}
-    {upcoming.map((e:any,index:number)=>{
+    {upcoming.slice(0,4).map((e:any,index:number)=>{
       const b=macroBias(e),impact=Number(e?.importance)||1;
       return <article key={e.id||e.name+e.time} className="rule compact" style={{display:'block'}}>
         <strong>#{index+(featuredId?2:1)} · {e.name} · {impact===3?'🔥 مرتفع':impact===2?'⚠️ متوسط':'منخفض'}</strong>
@@ -76,6 +77,7 @@ export default function NewsCommandCenter({analysis,events=[],now=Date.now(),fea
         {/^https:\/\//.test(String(e.source||''))&&<a href={e.source} target="_blank" rel="noreferrer">المصدر الرسمي/التقويم</a>}
       </article>;
     })}
-    <p className="muted">ميزان ↑/↓ هو ترجيح اتجاهي من بيانات الخبر وليس نسبة نجاح أو ضمانًا للصفقة؛ بعد صدور الخبر يعطي رد فعل السعر أولوية أعلى.</p>
-  </section>;
+    <p className="muted">ترجيح ↑/↓ ليس احتمال نجاح؛ رد فعل السعر بعد الخبر أهم من التقدير المسبق.</p>
+    </div>
+  </details>;
 }
