@@ -1170,7 +1170,7 @@ export async function GET(request:Request){
         const nextTarget=Number.isFinite(Number(value?.target))?Number(value.target):null;
         forwardCommitState[asset]={
           side,at:now,confidence:Number(value?.confidence??confidence),target:nextTarget,zone:value?.zone||null,
-          targets:value?.targets||null,targetQuality:Number(value?.targetQuality??value?.targets?.quality||0),
+          targets:value?.targets||null,targetQuality:Number((value?.targetQuality??value?.targets?.quality)??0),
           windowSeconds:value?.windowSeconds||null,
           status:String(value?.status||'SHORT_HORIZON'),agreement:Number(value?.agreement||0),support:Number(value?.support||0)
         };
