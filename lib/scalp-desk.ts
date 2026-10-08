@@ -22,6 +22,7 @@ async function btcQuote(source:string):Promise<ScalpQuote>{
   return {price,at:Number.isFinite(parsed)?parsed:null,bid:Number.isFinite(bid)?bid:null,ask:Number.isFinite(ask)?ask:null,source:kraken?'Kraken XBT/USD':'Coinbase BTC-USD'};
 }
 let cached:any=null,cachedAt=0;
+let lastScalpDiagnosticAt=0;
 let pending:Promise<any>|null=null;
 export async function getScalpDesk(){
   const now=Date.now();
@@ -103,6 +104,25 @@ export async function getScalpDesk(){
     if(market)bq=await btcQuote(market.source).catch(()=>bq);
     const gold=make('GOLD',goldSnap?.market,{price:q?.price??null,at:q?.sourceTime??null,bid:q?.bid,ask:q?.ask,source:q?.source||'unavailable'},events,newsReady);
     const bitcoin=make('BTC',market,bq,events,newsReady);
+    // Monitor missing trade flow without leaking provider credentials or
+    // treating a WATCH setup as an executed order.
+    const measuredAt=Date.now();
+    if(measuredAt-lastScalpDiagnosticAt>=30000){
+      lastScalpDiagnosticAt=measuredAt;
+      const diag=(x:any)=>({
+        quote:x.quote?.price,quoteAgeMs:x.data?.quoteAgeMs,source:x.candleSource,
+        m1AgeMs:x.data?.m1AgeMs,newsReady:x.data?.newsReady,
+        liquidityReady:x.liquidity?.available,bookOk:x.orderBook?.ok,
+        plans:x.plans.map((pl:any)=>({
+          h:pl.horizon,status:pl.status,side:pl.side,setup:pl.setup,
+          score:pl.score,entry:pl.entry,stop:pl.stop,t1:pl.targets?.[0]?.price,
+          netRR:pl.netRR,cost:pl.cost,estimated:pl.costEstimated,
+          blockers:pl.blockers.slice(0,5)
+        })),
+        watches:x.entryConfirmations.map((e:any)=>({h:e.horizon,state:e.state,held:e.heldSeconds,side:e.side}))
+      });
+      console.info('[SCALP-DIAG]',JSON.stringify({gold:diag(gold),btc:diag(bitcoin)}));
+    }
     cached={ok:true,version:'scalp-desk-v1',checkedAt:Date.now(),gold,bitcoin};cachedAt=Date.now();return cached;
   })();
   try{return await pending;}finally{pending=null;}
