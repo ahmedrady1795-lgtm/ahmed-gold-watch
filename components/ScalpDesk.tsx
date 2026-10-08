@@ -19,9 +19,10 @@ export default function ScalpDesk({desk,now=Date.now(),children}:any){
   const tone=stale||expired?'amber':shown?.side==='BUY'?'green':shown?.side==='SELL'?'red':'amber';
   const timed=Boolean(current&&(current.state==='ARMED'||current.state==='ACTIVE'));
   const liquidity=desk.liquidity,book=desk.orderBook;
-  const bookFresh=book?.providers?.krakenDepth&&now-book.checkedAt<=15000;
+  const bookFresh=Boolean(book?.ok&&book?.providers?.krakenDepth&&book.checkedAt&&now-book.checkedAt>=0&&now-book.checkedAt<=12000);
   const secs=shown&&directional&&timed?Math.max(0,Math.ceil(((current?.activatedAt?current.activatedAt+horizon*60000:shown.expiresAt)-now)/1000)):0;
   const stats=lane?.stats;
+  const qualityGate=desk.qualityGates?.find((x:any)=>x.horizon===horizon);
   return <section className={'panel scalp-desk ai-asset-card '+(shown?.side==='BUY'?'ai-buy':shown?.side==='SELL'?'ai-sell':'ai-wait')}>
     <div className="scalp-desk-head">
       <div><span className="eyebrow">{desk.asset==='GOLD'?'XAU / USD':'BTC / USD'} · SCALP ENGINE</span><h2>رادار فرص السوق</h2></div>
@@ -58,6 +59,7 @@ export default function ScalpDesk({desk,now=Date.now(),children}:any){
         <div><small>تكلفة الدورة {shown?.costEstimated?'· تقديرية':''}</small><b>{fmt(shown?.cost)} $</b></div>
       </div>
       {!!plan?.blockers?.length&&!current&&<ul className="scalp-blockers">{plan.blockers.map((r:string)=><li key={r}>{r}</li>)}</ul>}
+      {qualityGate?.blocked&&<p className="scalp-condition">حماية سجل السكالب التجريبي: {qualityGate.reason} · المتبقي {qualityGate.remainingSeconds} ثانية</p>}
       <div className="scalp-evidence">{shown?.evidence?.map((e:any)=><div key={e.label}><small>{e.label}</small><b className={e.side==='BUY'?'green':e.side==='SELL'?'red':''}>{e.side==='WAIT'?e.value:sideAr(e.side)}</b><span>{e.side!=='WAIT'?e.value:''}</span></div>)}</div>
     </div>
     <div className="scalp-liquidity" aria-label="قراءة السيولة الحية">
