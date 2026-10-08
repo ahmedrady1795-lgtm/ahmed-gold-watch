@@ -235,7 +235,18 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       reasons.push('غياب سبريد حي وتكلفة تقديرية كبيرة؛ لا دخول');
     if(chosen.setup==='BREAKOUT'&&volumeRatio!=null&&volumeRatio<.8)reasons.push('اختراق دون مشاركة حجم كافية');
     if(chosen.setup!=='SWEEP'&&efficiency<.22)reasons.push('حركة متقطعة تضعف استمرار الاتجاه');
-    if(targets[0]?.kind==='PROJECTION'&&chosen.score<76)reasons.push('الهدف الأول تقديري وقوة الإعداد لا تكفي للاعتماد عليه');
+    // One conservative global projection-score gate hid otherwise confirmed
+    // GOLD M5 trend/volume setups. Relax it only for an actual 5-minute trend
+    // backed by fresh M1 momentum, strong participation, price efficiency AND
+    // an already feasible empirical target. All fee, stop, return and news gates stay.
+    const confirmedTrendProjection=asset==='GOLD'&&horizon===5&&
+      trend5===chosen.side&&trend1===chosen.side&&
+      chosen.score>=70&&dir*mom>=.55&&efficiency>=.47&&
+      volumeRatio!=null&&volumeRatio>=1.1&&
+      empiricalReach!=null&&actualReward<=empiricalReach;
+    const projectionScoreGate=confirmedTrendProjection?70:76;
+    if(targets[0]?.kind==='PROJECTION'&&chosen.score<projectionScoreGate)
+      reasons.push('الهدف الأول تقديري ويلزمه اتجاه وحجم وإمكانية حركة مثبتة');
     if(last.high-last.low>atr*2.8||Math.abs(price-last.close)>atr*.85||dir*(price-entry)>atr*.3)
       reasons.push('السعر ابتعد عن دخول الشمعة المغلقة؛ انتظر إعادة اختبار بدل مطاردة السعر');
     if(rr==null||rr<1.25)reasons.push('العائد بعد التكلفة أقل من 1.25R');
