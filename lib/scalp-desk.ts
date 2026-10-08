@@ -52,7 +52,43 @@ export async function getScalpDesk(){
         }
         return {horizon:plan.horizon,...losses,issues};
       });
-      return {asset,checkedAt:at,quote,candleSource:input.candleSource,liquidity:readScalpLiquidity(input.c1,quote,at),orderBook,plans,qualityGates,ledger:updateScalpLedger(asset,plans,quote,at,input.c1),data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
+      const liquidity=readScalpLiquidity(input.c1,quote,at,asset);
+      const ledger=updateScalpLedger(asset,plans,quote,at,input.c1);
+      const entryConfirmations=plans.map(plan=>{
+        const paths=liquidity?.scenarios?.find(s=>s.horizon===plan.horizon)?.paths||[];
+        // Show the hold timer for the qualified plan first. In the absence of a
+        // plan, watch the more advanced path without declaring it an entry.
+        const watch=paths.find(s=>s.side===plan.side)||
+          [...paths].sort((a,b)=>Number(b.confirmation?.heldSeconds||0)-Number(a.confirmation?.heldSeconds||0))[0];
+        const confirmation=watch?.confirmation||null;
+        const confirmed=confirmation?.state==='CONFIRMED';
+        const lane=ledger.lanes.find(x=>x.horizon===plan.horizon);
+        const active=lane?.current?.state==='ACTIVE';
+        const fresh=quote.at!=null&&at-Number(quote.at)>=0&&at-Number(quote.at)<=10000;
+        const eligible=Boolean(
+          confirmed&&!active&&plan.status==='ARMED'&&watch?.side===plan.side&&
+          fresh&&plan.entry!=null&&plan.stop!=null&&plan.targets?.[0]?.price!=null&&
+          Number(plan.netRR)>=1.25
+        );
+        return {
+          horizon:plan.horizon,side:watch?.side||'WAIT',
+          state:active?'ACTIVE':eligible?'ENTRY':confirmed?'CONDITIONS_PENDING':
+            confirmation?.state==='HOLDING'?'HOLDING':'WATCH',
+          heldSeconds:Number(confirmation?.heldSeconds||0),
+          remainingSeconds:Number(confirmation?.remainingSeconds??60),
+          requiredSeconds:60,trigger:watch?.trigger??null,
+          confirmedCandleAt:confirmed?Number(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time||0)+60000:null,
+          checkedAt:at,
+          entry:eligible?plan.entry:null,
+          stop:eligible?plan.stop:null,
+          targets:eligible?plan.targets:[],
+          reason:active?'صفقة تجريبية مفعلة؛ لا تكرار لإشارة الدخول':
+            eligible?'دخول مشروط بعد ثبات 60 ثانية وإغلاق M1 مع اكتمال شروط الصفقة':
+            confirmed?'ثبتت الدقيقة لكن شروط الصفقة غير مكتملة: '+(plan.blockers?.[0]||plan.reason):
+            confirmation?.reason||'بانتظار مستوى الرصد وسعر حي صالح'
+        };
+      });
+      return {asset,checkedAt:at,quote,candleSource:input.candleSource,liquidity,orderBook,plans,qualityGates,entryConfirmations,ledger,data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
     };
     const goldSnap=goldResult.status==='fulfilled'?goldResult.value:null;
     let market=btcResult.status==='fulfilled'?btcResult.value:null;
