@@ -550,8 +550,11 @@ def train_all():
                 if key=="m1":m1=incumbent
                 else:m5=incumbent
                 model_origins[key]="RETAINED_READY_CHAMPION"
-        payload={"version":APP_VERSION,"features":FEATURE_SIGNATURE,"trainedAt":int(time.time()*1000),"historyRows":len(hist),"source":source,
-                 "models":{"m1":m1,"m5":m5},"modelOrigins":model_origins}
+        trained_now=int(time.time()*1000)
+        model_times={key:(int(MODELS.get("modelTrainedAt",{}).get(key) or MODELS.get("trainedAt",0))
+             if model_origins[key]=="RETAINED_READY_CHAMPION" else trained_now) for key in ("m1","m5")}
+        payload={"version":APP_VERSION,"features":FEATURE_SIGNATURE,"trainedAt":trained_now,"historyRows":len(hist),"source":source,
+                 "models":{"m1":m1,"m5":m5},"modelOrigins":model_origins,"modelTrainedAt":model_times}
         tmp=MODEL_PATH.with_suffix(".tmp"); joblib.dump(payload,tmp); os.replace(tmp,MODEL_PATH)
         meta={"version":APP_VERSION,"trainedAt":payload["trainedAt"],"historyRows":len(hist),"source":payload["source"],
               "metrics":{"m1":m1["metrics"],"m5":m5["metrics"]},"rows":{"m1":m1["rows"],"m5":m5["rows"]}}
@@ -561,7 +564,8 @@ def train_all():
         STATE.update({"status":status,"trainedAt":payload["trainedAt"],
                       "modelLoaded":True,"metrics":meta["metrics"],"historyRows":len(hist),"source":payload["source"],"lastError":None})
         print("[ML-TRAIN] "+json.dumps({"status":STATE["status"],"trainedAt":payload["trainedAt"],"historyRows":len(hist),
-              "source":source,"metrics":meta["metrics"],"rows":meta["rows"],"modelOrigins":model_origins}),flush=True)
+              "source":source,"metrics":meta["metrics"],"rows":meta["rows"],
+              "modelOrigins":model_origins,"modelTrainedAt":model_times}),flush=True)
     except Exception as e:
         STATE.update({"status":"ERROR","lastError":f"{type(e).__name__}: {e}"})
         print("[ML-TRAIN-ERROR] "+json.dumps({"error":STATE["lastError"]}),flush=True); traceback.print_exc()
