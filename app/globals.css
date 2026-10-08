@@ -453,3 +453,28 @@ footer{display:flex;justify-content:space-between;gap:20px;color:#5f7880;font-si
   .scalp-desk .scalp-levels b{font-size:clamp(12px,3.8vw,16px)}
   .scalp-paper-brief{flex-wrap:wrap}
 }
+
+/* M1 observed-hold confirmation: show the decision, then the supporting plan. */
+.scalp-entry-watch{margin:7px 0 10px;padding:12px 14px;border:1px solid rgba(227,189,104,.22);border-radius:12px;background:linear-gradient(135deg,rgba(227,189,104,.07),rgba(4,13,16,.32))}
+.scalp-entry-status{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.scalp-entry-status strong{font-size:13px;line-height:1.5;color:var(--amber)}
+.scalp-entry-status>span{color:var(--muted);font-size:10px;white-space:nowrap}
+.scalp-entry-progress{height:5px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.07);margin:10px 0 8px}
+.scalp-entry-progress>span{display:block;height:100%;width:0;background:var(--gold);transition:width .35s;border-radius:999px}
+.scalp-entry-watch>small{font-size:10px;color:var(--muted);line-height:1.7}
+.scalp-entry-watch>small b{color:var(--text);font-size:11px;margin-inline:3px}
+.scalp-entry-watch.entry-confirmed{border-color:rgba(75,214,155,.42);background:linear-gradient(135deg,rgba(75,214,155,.13),rgba(4,13,16,.32))}
+.scalp-entry-watch.entry-confirmed .scalp-entry-status strong{color:var(--green)}
+.scalp-entry-watch.entry-confirmed .scalp-entry-progress>span{background:var(--green)}
+.scalp-entry-watch.entry-blocked{border-color:rgba(255,107,107,.36)}
+.scalp-entry-watch.entry-blocked .scalp-entry-status strong{color:var(--red)}
+.scalp-entry-watch.entry-blocked .scalp-entry-progress>span{background:var(--red)}
+.scalp-entry-watch.entry-counting .scalp-entry-progress>span{background:var(--gold)}
+.scalp-entry-advice{margin:8px 0 0;line-height:1.75;color:var(--text);font-size:11px;overflow-wrap:anywhere}
+.scalp-entry-advice b{white-space:nowrap;color:var(--gold)}
+@media(max-width:500px){
+  .scalp-entry-watch{padding:10px 11px}
+  .scalp-entry-status{align-items:flex-start}
+  .scalp-entry-status strong{font-size:12px}
+  .scalp-entry-status>span{font-size:9px}
+}
