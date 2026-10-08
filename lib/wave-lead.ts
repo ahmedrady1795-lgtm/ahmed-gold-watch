@@ -4,7 +4,7 @@ export type WaveLead={
   score:number;buy:number;sell:number;confidence:number;
   velocity1s:number;velocity3s:number;velocity8s:number;acceleration:number;
   persistence:number;burstRate:number;imbalance:number;spreadBps:number|null;spreadCompression:number;
-  samples:number;at:number;reasons:string[];
+  samples:number;at:number;price:number|null;reasons:string[];
 };
 
 const cap=(n:number,min=0,max=92)=>Math.max(min,Math.min(max,n));
@@ -13,7 +13,7 @@ const nearestBefore=(xs:WaveTick[],at:number)=>{for(let i=xs.length-1;i>=0;i--)i
 
 export function computeWaveLead(input:WaveTick[],now=Date.now()):WaveLead{
   const xs=input.filter(x=>now-x.at<=12000&&Number.isFinite(x.price)&&x.price>0).sort((a,b)=>a.at-b.at);
-  const empty:WaveLead={ok:false,side:'WAIT',stage:'WARMING',score:0,buy:0,sell:0,confidence:0,velocity1s:0,velocity3s:0,velocity8s:0,acceleration:0,persistence:0,burstRate:0,imbalance:0,spreadBps:null,spreadCompression:0,samples:xs.length,at:now,reasons:[]};
+  const empty:WaveLead={ok:false,side:'WAIT',stage:'WARMING',score:0,buy:0,sell:0,confidence:0,velocity1s:0,velocity3s:0,velocity8s:0,acceleration:0,persistence:0,burstRate:0,imbalance:0,spreadBps:null,spreadCompression:0,samples:xs.length,at:now,price:xs.at(-1)?.price??null,reasons:[]};
   if(xs.length<5)return empty;
   const last=xs.at(-1)!,p1=nearestBefore(xs,now-1000),p3=nearestBefore(xs,now-3000),p8=nearestBefore(xs,now-8000);
   const v1=bps(last.price,p1?.price||last.price),v3=bps(last.price,p3?.price||last.price),v8=bps(last.price,p8?.price||last.price);
@@ -72,5 +72,5 @@ export function computeWaveLead(input:WaveTick[],now=Date.now()):WaveLead{
   if(side!=='WAIT'&&score>=46&&precursorCount>=3)stage='WAVE_FORMING';
   if(side!=='WAIT'&&score>=64&&Math.abs(v1)>=.7&&persistence>=62&&burstRate>=1.15)stage='IGNITION';
   const confidence=cap(score*.62+Math.min(100,gap*2)*.18+Math.min(100,precursorCount*14)*.20,0,88);
-  return {ok:true,side,stage,score:Math.round(score),buy:Math.round(buy),sell:Math.round(sell),confidence:Math.round(confidence),velocity1s:Number(v1.toFixed(2)),velocity3s:Number(v3.toFixed(2)),velocity8s:Number(v8.toFixed(2)),acceleration:Number(acceleration.toFixed(2)),persistence,burstRate,imbalance:Math.round(imbalance),spreadBps:spreadBps==null?null:Number(spreadBps.toFixed(3)),spreadCompression:Math.round(spreadCompression),samples:xs.length,at:now,reasons:[...new Set(reasons)].slice(0,6)};
+  return {ok:true,side,stage,score:Math.round(score),buy:Math.round(buy),sell:Math.round(sell),confidence:Math.round(confidence),velocity1s:Number(v1.toFixed(2)),velocity3s:Number(v3.toFixed(2)),velocity8s:Number(v8.toFixed(2)),acceleration:Number(acceleration.toFixed(2)),persistence,burstRate,imbalance:Math.round(imbalance),spreadBps:spreadBps==null?null:Number(spreadBps.toFixed(3)),spreadCompression:Math.round(spreadCompression),samples:xs.length,at:now,price:last.price,reasons:[...new Set(reasons)].slice(0,6)};
 }
