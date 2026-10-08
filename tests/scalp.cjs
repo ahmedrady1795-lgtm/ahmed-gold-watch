@@ -7,7 +7,7 @@ function load(file){
   return exports;
 }
 const {buildScalpPlans}=load('lib/scalp-opportunities.ts');
-const {advancePaperTrade,updateScalpLedger}=load('lib/scalp-paper-ledger.ts');
+const {advancePaperTrade,updateScalpLedger,evaluatePaperProof,SCALP_PROOF_FROM}=load('lib/scalp-paper-ledger.ts');
 const {mergeBtcCandles}=load('lib/btc-market.ts');
 const {ingestLiveCandle,completedLiveCandles}=load('lib/live-candles.ts');
 const now=Date.parse('2026-10-08T01:30:00Z');
@@ -70,6 +70,26 @@ assert.equal(advancePaperTrade(ambiguous,quote(101,now+61000),now+61000,[bar]).s
 const frozen=updateScalpLedger('GOLD',[buy],breakout().quote,now,breakout().c1);const changed={...buy,entry:buy.entry+10,targets:[{price:9999,kind:'PROJECTION'}]};
 const repeated=updateScalpLedger('GOLD',[changed],quote(4000.45,now+1000),now+1000,breakout().c1);assert.equal(repeated.lanes[0].current.plan.entry,frozen.lanes[0].current.plan.entry);assert.equal(repeated.lanes[0].stats.samples,0,'Unactivated setups do not count as trades');
 console.log('PASS: 27 scalp checks: buy/sell geometry, closed bars, bad data, costs, news, expiry, activation, frozen levels, stop slippage and conservative outcomes. Profitability is not established.');
+const paperRow=(netR,at=SCALP_PROOF_FROM+60000,state='TP1')=>({
+  plan:buy,state,activatedAt:at,closedAt:at+60000,
+  exit:buy.entry,netR,lastAt:at+60000,lastPrice:buy.entry,note:'fixture'
+});
+assert.equal(evaluatePaperProof([paperRow(5,SCALP_PROOF_FROM-60000)]).samples,0,
+  'Old wins must not leak into proof of a new deployment');
+assert.equal(evaluatePaperProof([paperRow(8,SCALP_PROOF_FROM+60000,'UNKNOWN')]).samples,0,
+  'Unknown or canceled trades are never counted as realized wins');
+assert.equal(evaluatePaperProof([paperRow(3)]).status,'COLLECTING',
+  'A single lucky winner is not evidence of profitability');
+const paperWins=Array.from({length:50},(_,i)=>paperRow(i%5===0?-.9:1.2,SCALP_PROOF_FROM+(i+1)*60000,i%5===0?'STOP':'TP1'));
+assert.equal(evaluatePaperProof(paperWins).status,'POSITIVE_PAPER_SAMPLE',
+  'Positive confidence-bound paper sample can qualify only after enough closed outcomes');
+const paperLosses=Array.from({length:50},(_,i)=>paperRow(i%5===0?1:-.8,SCALP_PROOF_FROM+(i+1)*60000,i%5===0?'TP1':'STOP'));
+assert.equal(evaluatePaperProof(paperLosses).status,'NOT_VALIDATED',
+  'At least 50 outcomes do not guarantee a positive verdict');
+assert.equal(evaluatePaperProof(paperWins).eligibleForLiveTrading,false,
+  'Paper performance must never authorize live broker execution');
+console.log('PASS: post-release proof excludes old/unknown fills and rejects negative samples.');
+
 
 // Optional chronological replay of real OHLC; same parameters for all bars, no tuning.
 // Only next-bar opens can enter. Full next-bar ranges settle with stop-first priority.
