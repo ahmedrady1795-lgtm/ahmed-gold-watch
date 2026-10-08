@@ -4,7 +4,7 @@ import {buildScalpPlans,type ScalpQuote} from './scalp-opportunities';
 import {updateScalpLedger,getScalpPaperQualityGate} from './scalp-paper-ledger';
 import {getRuntimeEnv} from './runtime';
 import {getCoinbaseServerQuote,getCoinbaseClosedCandles} from './server-tick-brain';
-import {readScalpLiquidity} from './scalp-liquidity';
+import {readScalpLiquidity,observeScalpPlanHold} from './scalp-liquidity';
 import {getBtcLiquidity} from './liquidity-intelligence';
 
 function session(now:number){const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;return day!==6&&!(day===0&&h<22)&&!(day===5&&h>=21)&&!(day>=1&&day<=4&&h>=21&&h<22);}
@@ -63,32 +63,48 @@ export async function getScalpDesk(){
           [...paths].sort((a,b)=>
             Number(b.confirmation?.heldSeconds||0)-Number(a.confirmation?.heldSeconds||0)||
             Math.abs(Number(a.trigger)-Number(quote.price||0))-Math.abs(Number(b.trigger)-Number(quote.price||0)))[0];
-        const confirmation=watch?.confirmation||null;
+        // The map's directional scenario is useful for visibility, NOT for
+        // authorizing a trade: only hold the exact frozen setup entry level.
+        const planHold=plan.status==='ARMED'&&plan.side!=='WAIT'&&
+          plan.entry!=null&&plan.stop!=null
+          ?observeScalpPlanHold(asset,plan.horizon,plan.side,plan.id,
+              plan.entry,plan.stop,plan.expiresAt,input.c1,quote,at)
+          :null;
+        const confirmation=planHold||watch?.confirmation||null;
+        const watchedSide=planHold?plan.side:watch?.side||'WAIT';
         const confirmed=confirmation?.state==='CONFIRMED';
         const fresh=quote.at!=null&&at-Number(quote.at)>=0&&at-Number(quote.at)<=10000;
         const planRisk=plan.entry!=null&&plan.stop!=null?Math.abs(plan.entry-plan.stop):0;
         const entryNearby=planRisk>0&&quote.price!=null&&
           Math.abs(quote.price-Number(plan.entry))<=planRisk*.35;
+        const dir=plan.side==='BUY'?1:-1;
+        const realizedRisk=plan.stop!=null&&quote.price!=null?dir*(quote.price-plan.stop):0;
+        const realizedReward=plan.targets[0]?.price!=null&&quote.price!=null?
+          dir*(plan.targets[0].price-quote.price):0;
+        const liveRR=realizedRisk>0?
+          (realizedReward-plan.cost)/(realizedRisk+plan.cost):0;
         const eligible=Boolean(
-          confirmed&&plan.status==='ARMED'&&watch?.side===plan.side&&
-          fresh&&entryNearby&&plan.entry!=null&&plan.stop!=null&&plan.targets?.[0]?.price!=null&&
-          Number(plan.netRR)>=1.25
+          confirmed&&planHold&&plan.status==='ARMED'&&
+          fresh&&entryNearby&&realizedRisk>0&&realizedReward>0&&
+          liveRR>=1.25&&Number(plan.netRR)>=1.25
         );
         return {
-          horizon:plan.horizon,side:watch?.side||'WAIT',
+          horizon:plan.horizon,side:watchedSide,
           state:eligible?'ENTRY':confirmed?'CONDITIONS_PENDING':
             confirmation?.state==='HOLDING'?'HOLDING':'WATCH',
           heldSeconds:Number(confirmation?.heldSeconds||0),
           remainingSeconds:Number(confirmation?.remainingSeconds??60),
-          requiredSeconds:60,trigger:watch?.trigger??null,
+          requiredSeconds:60,trigger:confirmation?.trigger??null,
           confirmedCandleAt:confirmed?Number(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time||0)+60000:null,
           checkedAt:at,
-          entry:eligible?plan.entry:null,
+          entry:eligible?quote.price:null,
           stop:eligible?plan.stop:null,
           targets:eligible?plan.targets:[],
-          reason:eligible?'دخول مشروط بعد ثبات 60 ثانية وإغلاق M1 مع اكتمال شروط الصفقة':
-            confirmed?!entryNearby?'اكتمل ثبات الدقيقة لكن السعر ابتعد عن نقطة الدخول؛ لا مطاردة':
-              'ثبتت الدقيقة لكن شروط الصفقة غير مكتملة: '+(plan.blockers?.[0]||plan.reason):
+          reason:eligible?'دخول تجريبي بسعر المرجع الحالي بعد ثبات الدخول نفسه دقيقة وإغلاق M1':
+            confirmed&&!entryNearby?'اكتمل الثبات لكن السعر ابتعد عن الدخول؛ لا مطاردة':
+            confirmed&&!planHold?'ثبت السيناريو العام، لكن لا توجد صفقة مستوفية للشروط':
+            confirmed&&liveRR<1.25?'انخفض العائد بعد تكلفة الدخول الحالي؛ لا صفقة':
+            confirmed?'ثبتت الدقيقة لكن الشروط غير مكتملة: '+(plan.blockers?.[0]||plan.reason):
             confirmation?.reason||'بانتظار مستوى الرصد وسعر حي صالح'
         };
       });
@@ -101,9 +117,23 @@ export async function getScalpDesk(){
       for(const entry of entryConfirmations){
         const lane=ledger.lanes.find(x=>x.horizon===entry.horizon);
         if(lane?.current?.state==='ACTIVE'){
-          entry.state='ACTIVE';
-          entry.entry=null;entry.stop=null;entry.targets=[];
-          entry.reason='تفعيل مرجعي تجريبي؛ متابعة الصفقة دون تكرار دخول جديد';
+          const newlyOpened=entry.state==='ENTRY'&&
+            lane.current.plan.id===plans.find(x=>x.horizon===entry.horizon)?.id&&
+            at-Number(lane.current.activatedAt||0)<=15000;
+          if(newlyOpened){
+            entry.entry=lane.current.plan.entry;
+            entry.stop=lane.current.plan.stop;
+            entry.targets=lane.current.plan.targets;
+            entry.reason='إشارة دخول مؤكدة وسجل ورقي مفعّل بالسعر الحالي؛ دون تنفيذ وسيط';
+          }else{
+            entry.state='ACTIVE';
+            entry.entry=null;entry.stop=null;entry.targets=[];
+            entry.reason='متابعة صفقة تجريبية مفعّلة؛ ممنوع تكرار الإشارة';
+          }
+        }else if(entry.state==='ENTRY'&&lane?.recent?.some(t=>
+          t.plan.id===plans.find(x=>x.horizon===entry.horizon)?.id)){
+          entry.state='WATCH';entry.entry=null;entry.stop=null;entry.targets=[];
+          entry.reason='هذه الفرصة مسجلة بالفعل؛ لا تكرار لإشارة قديمة';
         }
       }
       return {asset,checkedAt:at,quote,candleSource:input.candleSource,liquidity,orderBook,plans,qualityGates,entryConfirmations,ledger,data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
@@ -136,7 +166,17 @@ export async function getScalpDesk(){
           netRR:pl.netRR,cost:pl.cost,estimated:pl.costEstimated,
           blockers:pl.blockers.slice(0,5)
         })),
-        watches:x.entryConfirmations.map((e:any)=>({h:e.horizon,state:e.state,held:e.heldSeconds,side:e.side}))
+        watches:x.entryConfirmations.map((e:any)=>({
+          h:e.horizon,state:e.state,held:e.heldSeconds,side:e.side,
+          trigger:e.trigger,confirmedCandleAt:e.confirmedCandleAt
+        })),
+        ledger:x.ledger.lanes.map((l:any)=>({
+          h:l.horizon,active:l.current?.state||null,
+          paperEntry:l.current?.plan?.entry??null,
+          verifiedResults:l.stats.samples,wins:l.stats.wins,
+          netR:l.stats.netR,unknown:l.stats.unknown
+        })),
+        ledgerSaved:x.ledger.persisted
       });
       console.info('[SCALP-DIAG]',JSON.stringify({gold:diag(gold),btc:diag(bitcoin)}));
     }

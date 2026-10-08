@@ -15,13 +15,17 @@ const activeWatches=new Map<string,HoldWatch>();
 // candle must additionally confirm the fixed trigger.
 function evaluateM1Hold(
   asset:'GOLD'|'BTC',horizon:1|5,side:WatchSide,seed:{trigger:number;invalidation:number},
-  closed:Candle[],quote:ScalpQuote,now:number,atr:number
+  closed:Candle[],quote:ScalpQuote,now:number,atr:number,
+  watchId='SCENARIO',validUntil=now+4*60000
 ){
-  const key=asset+':'+horizon+':'+side;
+  const key=asset+':'+horizon+':'+side+':'+watchId;
+  if(activeWatches.size>300)for(const [id,state] of activeWatches){
+    if(state.expiresAt<now||activeWatches.size>500)activeWatches.delete(id);
+  }
   let watch=activeWatches.get(key);
   const elapsed=watch?now-watch.openedAt:Infinity;
   if(!watch||now>watch.expiresAt||elapsed<0){
-    watch={openedAt:now,expiresAt:now+4*60000,trigger:seed.trigger,invalidation:seed.invalidation,
+    watch={openedAt:now,expiresAt:Math.min(now+4*60000,validUntil),trigger:seed.trigger,invalidation:seed.invalidation,
       firstBeyondAt:null,lastSeenAt:0,lastQuoteAt:0,confirmedAt:null};
     activeWatches.set(key,watch);
   }
@@ -79,6 +83,30 @@ function evaluateM1Hold(
       :'بانتظار عبور المستوى ثم الثبات 60 ثانية'
   };
 }
+// Trade approval MUST use the immutable setup's actual entry price,
+// not the independently projected liquidity-scenario observation level.
+export function observeScalpPlanHold(
+  asset:'GOLD'|'BTC',horizon:1|5,side:WatchSide,planId:string,
+  entry:number,stop:number,expiresAt:number,
+  rows:Candle[],quote:ScalpQuote,now:number
+){
+  const closed=rows.filter(c=>c.time+60000<=now&&
+    [c.time,c.open,c.high,c.low,c.close].every(Number.isFinite)&&
+    c.low>0&&c.high>=Math.max(c.open,c.close)&&c.low<=Math.min(c.open,c.close)).slice(-90);
+  const range=closed.slice(-14);
+  const atr=range.length>=14?range.reduce((sum,c)=>sum+c.high-c.low,0)/14:0;
+  if(!Number.isFinite(atr)||atr<=0||closed.length<21||now>expiresAt||
+      closed.slice(-20).some((c,i,a)=>i>0&&c.time-a[i-1].time!==60000)){
+    return {state:'WATCH' as const,side,trigger:entry,invalidation:stop,
+      heldSeconds:0,remainingSeconds:60,requiredSeconds:60,
+      closedCandleConfirmed:false,confirmedAt:null,expiresAt,
+      reason:'بيانات الدقيقة غير مكتملة أو انتهت صلاحية الفرصة'};
+  }
+  return evaluateM1Hold(asset,horizon,side,
+    {trigger:entry,invalidation:stop},closed,quote,now,atr,
+    'PLAN:'+planId,expiresAt);
+}
+
 export function readScalpLiquidity(rows:Candle[],quote:ScalpQuote,now:number,asset:'GOLD'|'BTC'='GOLD'){
   const closed=rows.filter(c=>c.time+60000<=now&&[c.time,c.open,c.high,c.low,c.close].every(Number.isFinite)&&c.low>0&&c.high>=Math.max(c.open,c.close)&&c.low<=Math.min(c.open,c.close)).slice(-90);
   const last=closed.at(-1),price=quote.price;

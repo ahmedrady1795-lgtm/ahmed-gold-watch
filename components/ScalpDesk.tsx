@@ -8,7 +8,7 @@ const setupAr=(s:string)=>s==='BREAKOUT'?'اختراق نطاق':s==='PULLBACK'?
 const stateAr=(s:string)=>({ARMED:'بانتظار التفعيل',ACTIVE:'متابعة تجريبية',TP1:'تحقق T1',STOP:'ضرب الوقف',TIME_EXIT:'انتهت المدة',EXPIRED:'انتهت صلاحية الدخول',CANCELED:'أُلغي قبل الدخول',UNKNOWN:'نتيجة غير موثقة'} as Record<string,string>)[s]||'مراقبة';
 
 export default function ScalpDesk({desk,now=Date.now()}:any){
-  const [horizon,setHorizon]=useState<1|5>(1);
+  const [horizon,setHorizon]=useState<1|5>(5);
   const plan=desk.plans?.find((p:any)=>p.horizon===horizon);
   const lane=desk.ledger?.lanes?.find((x:any)=>x.horizon===horizon),current=lane?.current;
   const shown=current?.plan||plan;
@@ -33,7 +33,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       <span className={'scalp-feed-state '+(stale?'late':'')}>{stale?'بيانات متأخرة':'يتحدث تلقائيًا'}</span>
     </div>
     <div className="scalp-frame-tabs" role="tablist" aria-label="فريم السكالب">
-      {([1,5] as const).map(h=>{const p=desk.plans?.find((x:any)=>x.horizon===h),c=desk.ledger?.lanes?.find((x:any)=>x.horizon===h)?.current;return <button key={h} id={'scalp-tab-'+desk.asset+'-'+h} type="button" role="tab" aria-selected={horizon===h} aria-controls={'scalp-panel-'+desk.asset} onClick={()=>setHorizon(h)} className={horizon===h?'selected':''}><strong>{h===1?'دقيقة واحدة':'خمس دقائق'} <span dir="ltr">M{h}</span></strong><small>{c?stateAr(c.state):p?.status==='BLOCKED'?'بيانات غير جاهزة':p?.side==='WAIT'?'رصد السوق':sideAr(p?.side)+' · '+setupAr(p?.setup)}</small></button>;})}
+      {([1,5] as const).map(h=>{const p=desk.plans?.find((x:any)=>x.horizon===h),c=desk.ledger?.lanes?.find((x:any)=>x.horizon===h)?.current,e=desk.entryConfirmations?.find((x:any)=>x.horizon===h);return <button key={h} id={'scalp-tab-'+desk.asset+'-'+h} type="button" role="tab" aria-selected={horizon===h} aria-controls={'scalp-panel-'+desk.asset} onClick={()=>setHorizon(h)} className={horizon===h?'selected':''}><strong>{h===1?'دقيقة واحدة':'خمس دقائق'} <span dir="ltr">M{h}</span></strong><small>{e?.state==='ENTRY'?'دخول مؤكد '+sideAr(e.side):c?stateAr(c.state):p?.status==='BLOCKED'?'بيانات غير جاهزة':p?.side==='WAIT'?'رصد السوق':sideAr(p?.side)+' · '+setupAr(p?.setup)}</small></button>;})}
     </div>
     <div id={'scalp-panel-'+desk.asset} role="tabpanel" aria-labelledby={'scalp-tab-'+desk.asset+'-'+horizon}>
       <div className={'scalp-entry-watch '+(entryConfirmed?'entry-confirmed':candleVerified?'entry-blocked':counting?'entry-counting':'')}>
@@ -48,7 +48,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
         </div>
         <div className="scalp-entry-progress" aria-hidden="true"><span style={{width:(entryConfirmed||candleVerified?100:Math.max(0,Math.min(100,Number(entryCheck?.heldSeconds||0)/60*100)))+'%'}}/></div>
         {entryCheck?.trigger!=null&&<small>المستوى المرصود: <b dir="ltr">{fmt(entryCheck.trigger)}</b> · {entryCheck.side==='BUY'?'الثبات أعلاه للشراء':entryCheck.side==='SELL'?'الثبات أدناه للبيع':'انتظار الاتجاه'}</small>}
-        {entryConfirmed&&<p className="scalp-entry-advice">سعر الدخول المشروط <b dir="ltr">{fmt(entryCheck.entry)}</b> · الوقف <b dir="ltr">{fmt(entryCheck.stop)}</b> · T1 <b dir="ltr">{fmt(entryCheck.targets?.[0]?.price)}</b> · إشارة تحليلية وليست تنفيذًا تلقائيًا</p>}
+        {entryConfirmed&&<p className="scalp-entry-advice">سعر الدخول الورقي عند التأكيد <b dir="ltr">{fmt(entryCheck.entry)}</b> · الوقف <b dir="ltr">{fmt(entryCheck.stop)}</b> · T1 <b dir="ltr">{fmt(entryCheck.targets?.[0]?.price)}</b> · إشارة تحليلية وليست تنفيذًا تلقائيًا</p>}
         {candleVerified&&<p className="scalp-entry-advice">{entryCheck.reason}</p>}
       </div>
       <div className="scalp-decision">
@@ -67,6 +67,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
         <div><small><Clock3 size={12}/> {current?.activatedAt?'متبقي للمتابعة':'صلاحية التفعيل'}</small><b>{timed?(secs?secs+' ثانية':'انتهت'):'غير مفعّلة'}</b></div>
         <div><small>تكلفة الدورة {shown?.costEstimated?'· تقديرية':''}</small><b>{fmt(shown?.cost)} $</b></div>
       </div>
+      {desk.asset==='BTC'&&shown?.costEstimated&&<p className="scalp-condition">رسوم البيتكوين والانزلاق تقديرية لمصدر الأسعار، وليست تكلفة Exness الفعلية. لن يعتبر النظام صفقة قابلة للتنفيذ حتى تسمح حسابات المخاطرة والعائد بالتكلفة المُستخدمة.</p>}
       {!!plan?.blockers?.length&&!current&&plan.blockers.length>1&&<details className="scalp-expand"><summary>شروط الدخول غير المكتملة ({plan.blockers.length})</summary><ul className="scalp-blockers">{plan.blockers.map((r:string)=><li key={r}>{r}</li>)}</ul></details>}
       {qualityGate?.blocked&&<p className="scalp-condition">حماية سجل السكالب التجريبي: {qualityGate.reason} · المتبقي {qualityGate.remainingSeconds} ثانية</p>}
       {!!shown?.evidence?.length&&<details className="scalp-expand"><summary>المؤشرات التي كوّنت الفرصة</summary><div className="scalp-evidence">{shown.evidence.map((e:any)=><div key={e.label}><small>{e.label}</small><b className={e.side==='BUY'?'green':e.side==='SELL'?'red':''}>{e.side==='WAIT'?e.value:sideAr(e.side)}</b><span>{e.side!=='WAIT'?e.value:''}</span></div>)}</div></details>}

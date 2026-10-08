@@ -25,7 +25,8 @@ function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number):Sca
     cost<=Math.max(previous.cost*1.35,.01));
   // Freeze plan IDs, entry, risk and targets through the observation window;
   // do not recycle a dead plan or let old setups bypass hard feed blockers.
-  if(validPrevious&&(!previous||plan.status!=='ARMED'||previous.id===plan.id))return {...previous!,reason:'الإعداد مستمر؛ متابعة ثبات M1 حتى انتهاء الصلاحية'};
+  if(validPrevious&&(plan.status!=='ARMED'||plan.side===previous!.side))
+    return {...previous!,reason:'مستوى الدخول والوقف ثابتان خلال رصد M1؛ لا إعادة ضبط للتأكيد'};
   if(plan.status==='ARMED')pendingSetups.set(key,plan);
   else if(!validPrevious)pendingSetups.delete(key);
   return plan;
