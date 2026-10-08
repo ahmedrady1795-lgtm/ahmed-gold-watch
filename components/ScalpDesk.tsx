@@ -23,6 +23,10 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
   const secs=shown&&directional&&timed?Math.max(0,Math.ceil(((current?.activatedAt?current.activatedAt+horizon*60000:shown.expiresAt)-now)/1000)):0;
   const stats=lane?.stats;
   const qualityGate=desk.qualityGates?.find((x:any)=>x.horizon===horizon);
+  const entryCheck=desk.entryConfirmations?.find((x:any)=>x.horizon===horizon);
+  const entryConfirmed=Boolean(!stale&&!expired&&entryCheck?.state==='ENTRY');
+  const counting=Boolean(!stale&&entryCheck?.state==='HOLDING');
+  const candleVerified=Boolean(!stale&&entryCheck?.state==='CONDITIONS_PENDING');
   return <section className={'panel scalp-desk ai-asset-card '+(shown?.side==='BUY'?'ai-buy':shown?.side==='SELL'?'ai-sell':'ai-wait')}>
     <div className="scalp-desk-head">
       <div><span className="eyebrow">توقيت الدخول · {desk.asset==='GOLD'?'الذهب':'البيتكوين'}</span><h2>فرص السكالب</h2></div>
@@ -32,6 +36,21 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       {([1,5] as const).map(h=>{const p=desk.plans?.find((x:any)=>x.horizon===h),c=desk.ledger?.lanes?.find((x:any)=>x.horizon===h)?.current;return <button key={h} id={'scalp-tab-'+desk.asset+'-'+h} type="button" role="tab" aria-selected={horizon===h} aria-controls={'scalp-panel-'+desk.asset} onClick={()=>setHorizon(h)} className={horizon===h?'selected':''}><strong>{h===1?'دقيقة واحدة':'خمس دقائق'} <span dir="ltr">M{h}</span></strong><small>{c?stateAr(c.state):p?.status==='BLOCKED'?'بيانات غير جاهزة':p?.side==='WAIT'?'رصد السوق':sideAr(p?.side)+' · '+setupAr(p?.setup)}</small></button>;})}
     </div>
     <div id={'scalp-panel-'+desk.asset} role="tabpanel" aria-labelledby={'scalp-tab-'+desk.asset+'-'+horizon}>
+      <div className={'scalp-entry-watch '+(entryConfirmed?'entry-confirmed':candleVerified?'entry-blocked':counting?'entry-counting':'')}>
+        <div className="scalp-entry-status">
+          <strong>{stale?'تأكيد الدخول متوقف: الأسعار متأخرة':
+            entryConfirmed?'دخول '+sideAr(entryCheck.side)+' · ثبتت الدقيقة':
+            candleVerified?'اكتمل ثبات الدقيقة · لا دخول':
+            counting?'جارٍ تأكيد الثبات: '+entryCheck.heldSeconds+' / 60 ثانية':
+            entryCheck?.state==='ACTIVE'?'صفقة تجريبية قيد المتابعة':
+            'بانتظار ثبات دقيقة لتأكيد الدخول'}</strong>
+          <span>{counting?'متبقي '+entryCheck.remainingSeconds+' ثانية':entryConfirmed?'تم تأكيد إغلاق M1':candleVerified?'شروط المخاطرة أو البيانات غير مكتملة':'تأكيد آلي مع كل تحديث'}</span>
+        </div>
+        <div className="scalp-entry-progress" aria-hidden="true"><span style={{width:(entryConfirmed||candleVerified?100:Math.max(0,Math.min(100,Number(entryCheck?.heldSeconds||0)/60*100)))+'%'}}/></div>
+        {entryCheck?.trigger!=null&&<small>المستوى المرصود: <b dir="ltr">{fmt(entryCheck.trigger)}</b> · {entryCheck.side==='BUY'?'الثبات أعلاه للشراء':entryCheck.side==='SELL'?'الثبات أدناه للبيع':'انتظار الاتجاه'}</small>}
+        {entryConfirmed&&<p className="scalp-entry-advice">سعر الدخول المشروط <b dir="ltr">{fmt(entryCheck.entry)}</b> · الوقف <b dir="ltr">{fmt(entryCheck.stop)}</b> · T1 <b dir="ltr">{fmt(entryCheck.targets?.[0]?.price)}</b> · إشارة تحليلية وليست تنفيذًا تلقائيًا</p>}
+        {candleVerified&&<p className="scalp-entry-advice">{entryCheck.reason}</p>}
+      </div>
       <div className="scalp-decision">
         <div className={'scalp-direction '+tone}>{shown?.side==='BUY'?<ArrowUpRight size={34}/>:shown?.side==='SELL'?<ArrowDownRight size={34}/>:<Activity size={30}/>}<div><strong>{directional?sideAr(shown.side)+' · '+setupAr(shown.setup):'نبحث عن الإعداد التالي'}</strong><span>{status}</span></div></div>
         <div className="scalp-score"><b>{directional?shown?.score:'—'}{directional&&<small>/100</small>}</b><span>قوة الإعداد</span></div>
@@ -57,7 +76,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       <p>سيناريوهات رصد مشروطة بإغلاق M1؛ أهداف الصفقة تتثبت عند تفعيل إعداد الدخول.</p>
       <div className="scalp-motion-paths">{liquidity.scenarios?.find((s:any)=>s.horizon===horizon)?.paths.map((s:any)=><div key={s.side} className="scalp-motion-path">
         <strong className={s.side==='BUY'?'green':'red'}>{s.side==='BUY'?'مسار الصعود':'مسار الهبوط'}</strong>
-        <small>شرط الرصد: إغلاق M1 {s.side==='BUY'?'فوق':'تحت'} <b dir="ltr">{fmt(s.trigger)}</b></small>
+        <small>الثبات لمدة دقيقة {s.side==='BUY'?'فوق':'تحت'} <b dir="ltr">{fmt(s.trigger)}</b> · {s.confirmation?.state==='CONFIRMED'?'تحقق شرط الثبات':s.confirmation?.state==='HOLDING'?s.confirmation.heldSeconds+' / 60 ثانية':'بانتظار عبور المستوى'}</small>
         <div className="scalp-motion-targets">{s.targets.map((t:any,i:number)=><div key={i}><small>T{i+1}</small><b dir="ltr">{fmt(t.price)}</b><small>{t.kind==='STRUCTURE'?'مستوى سيولة':'امتداد تقديري'}</small></div>)}</div>
         <small>إبطال المسار {s.side==='BUY'?'تحت':'فوق'} <b dir="ltr">{fmt(s.invalidation)}</b></small>
       </div>)}</div>
