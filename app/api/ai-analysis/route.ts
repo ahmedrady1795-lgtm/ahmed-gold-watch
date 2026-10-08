@@ -966,6 +966,12 @@ export async function GET(request:Request){
       else if(leadFresh&&leadStage==='BUILDING'&&leadSide===winner)confidence=Math.min(confidenceCeiling,confidence+2);
       if(!leadFresh&&marketLead?.available)confidence-=2;
       confidence=Math.max(0,Math.min(confidenceCeiling,Math.round(confidence)));
+      // Visual confidence must not substantially outrun independently observed
+      // forecast accuracy. This calibration is descriptive, not a win guarantee.
+      const accuracyCap=cleanDirectional>=40&&cleanOosN>=30&&Number.isFinite(cleanOosAccuracy)
+        ?Math.max(45,Math.min(86,Math.round(cleanPosterior*.55+cleanOosAccuracy*.45+4)))
+        :confidenceCeiling;
+      confidence=Math.min(confidence,accuracyCap);
 
       const leadSupports=Boolean(leadFresh&&leadSide===winner&&(marketLead?.armed||leadStage==='BUILDING'));
       const m1Aligned=m1Side===winner&&m1Confidence>=38;
@@ -1169,7 +1175,10 @@ export async function GET(request:Request){
         if(target==null||!Number.isFinite(target)||target<=0||!priceOk)return false;
         return s==='BUY'?Number(target)>price:Number(target)<price;
       };
-      const prevAlive=Boolean(prev&&now-prev.at<=120000&&ahead(prev.side,prev.target));
+      const invalidation=Number(prev?.targets?.invalidation);
+      const stopBroken=Boolean(prev&&priceOk&&Number.isFinite(invalidation)&&invalidation>0&&
+        (prev.side==='BUY'?price<=invalidation:price>=invalidation));
+      const prevAlive=Boolean(prev&&!stopBroken&&now-prev.at<=120000&&ahead(prev.side,prev.target));
       const keepPrev=(reason:string)=>{
         if(!prev)return candidate;
         const age=Math.max(0,now-prev.at);
