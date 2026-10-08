@@ -187,7 +187,7 @@ function AssetCard({x,liveQuote,fast}:any){
     <div className="ai-price-row compact-price">
       <div><small>السعر الآن</small><strong>{fmt(price,2)}</strong></div>
       <div><small>الاتجاه القادم</small><strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>{moveAr(heroSide)}</strong></div>
-      <div><small>الثقة</small><strong>{Math.round(Number(plan?.confidence??forward?.confidence||0))}%</strong></div>
+      <div><small>الثقة</small><strong>{Math.round(Number((plan?.confidence??forward?.confidence)??0))}%</strong></div>
       <div><small>الحالة اللحظية</small><strong className={liveInvalidated?'red':liveTriggered?'green':'amber'}>{livePlanAr}</strong></div>
     </div>
 
