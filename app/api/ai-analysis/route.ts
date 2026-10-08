@@ -44,7 +44,7 @@ let lastDiagLog=0;
 let lastAiPayload:any=null,lastAiPayloadAt=0,analysisBusy=false;
 type ForwardCommit={side:'BUY'|'SELL';at:number;confidence:number;target:number|null;zone:any;targets:any;targetQuality:number;windowSeconds:any;status:string;agreement:number;support:number};
 let forwardCommitState:Record<'GOLD'|'BTC',ForwardCommit|null>={GOLD:null,BTC:null};
-let stableGoldLiquidityState:{at:number;pressure:number;quality:number;side:'BUY'|'SELL'|'WAIT'}|null=null;
+let stableGoldLiquidityState:{at:number;pressure:number;quality:number;side:'BUY'|'SELL'|'WAIT';mode:'DOM'|'PROXY'}|null=null;
 async function liveBtcSpot(){
   const now=Date.now();
   const providers=[
@@ -164,9 +164,19 @@ function candleLiquidityProxy(c1:any[],price:number|null){
     flow:Number(flow.toFixed(1)),momentum:Number(momentum.toFixed(2)),valid:true
   };
 }
-function stabilizeGoldLiquidity(_raw:any,c1:any[],price:number|null,now=Date.now()){
+function stabilizeGoldLiquidity(raw:any,c1:any[],price:number|null,now=Date.now()){
+  // Never discard a fresh broker order book in favour of a candle-derived estimate.
+  const liveDom=Boolean(raw?.ok&&raw?.mode==='DOM'&&Number(raw?.book?.bidDepthUsd)>0&&Number(raw?.book?.askDepthUsd)>0);
+  if(liveDom){
+    const pressure=Math.max(-100,Math.min(100,Number(raw.pressure)||0));
+    const side:'BUY'|'SELL'|'WAIT'=pressure>=10?'BUY':pressure<=-10?'SELL':'WAIT';
+    stableGoldLiquidityState={at:now,pressure,quality:Number(raw.quality)||90,side,mode:'DOM'};
+    return {...raw,checkedAt:now,side,stable:true,singleSource:true,heldLastGood:false,proxy:null,lastKnownGoodAgeMs:0,
+      warnings:['عمق سوق وسيط MT5 فقط؛ لا يمثل سيولة الذهب العالمية']};
+  }
   const proxy=candleLiquidityProxy(c1,price);
-  const prev=stableGoldLiquidityState;
+  // Never blend a prior DOM reading into a weaker candle-only estimate.
+  const prev=stableGoldLiquidityState?.mode==='PROXY'?stableGoldLiquidityState:null;
   const age=prev?Math.max(0,now-prev.at):Infinity;
   const holdMs=5*60*1000;
   let pressure=0,quality=48,heldLastGood=false;
@@ -181,7 +191,7 @@ function stabilizeGoldLiquidity(_raw:any,c1:any[],price:number|null,now=Date.now
       const flipsSign=Math.sign(prev.pressure)!==0&&Math.sign(target)!==0&&Math.sign(prev.pressure)!==Math.sign(target);
       if(flipsSign&&Math.abs(target)<10)pressure=prev.pressure*.64+target*.36;
     }
-    quality=Math.max(55,Number(proxy.quality||0));
+    quality=Math.min(64,Math.max(35,Number(proxy.quality||0)));
   }else if(prev&&age<holdMs){
     pressure=prev.pressure;
     quality=Math.max(50,prev.quality-Math.floor(age/60000)*2);
@@ -193,15 +203,15 @@ function stabilizeGoldLiquidity(_raw:any,c1:any[],price:number|null,now=Date.now
   const buy=Math.round(Math.max(12,Math.min(88,50+pressure/2))),sell=100-buy;
   const stableSide=(side==='BUY'||side==='SELL')?side:(prev&&age<holdMs?prev.side:'WAIT');
   if(proxy.valid){
-    stableGoldLiquidityState={at:now,pressure,quality,side:stableSide};
+    stableGoldLiquidityState={at:now,pressure,quality,side:stableSide,mode:'PROXY'};
   }else if(prev&&age<holdMs){
     stableGoldLiquidityState=prev;
   }
 
   return {
     ok:Boolean(proxy.valid||prev&&age<holdMs),
-    mode:'BIQUOTE_CANDLE_FLOW',
-    source:'Biquote · XAU/USD candle-volume',
+    mode:'CANDLE_FLOW_PROXY',
+    source:'Biquote · XAU/USD candle-flow estimate (not order book)',
     checkedAt:now,
     quality,
     side,
@@ -215,9 +225,9 @@ function stabilizeGoldLiquidity(_raw:any,c1:any[],price:number|null,now=Date.now
     proxy:{side:proxy.side,pressure:proxy.pressure,quality:proxy.quality,volumeScore:proxy.volumeScore},
     lastKnownGoodAgeMs:prev&&age<holdMs?age:null,
     book:{
-      bestBid:null,bestAsk:null,spreadBps:0,bboImbalance:0,depthImbalance:0,
-      weightedImbalance:0,microprice:null,microEdge:0,bidDepthUsd:0,askDepthUsd:0,
-      bidWall:1,askWall:1,wallSide:'WAIT'
+      bestBid:raw?.book?.bestBid??null,bestAsk:raw?.book?.bestAsk??null,spreadBps:raw?.book?.spreadBps??null,bboImbalance:null,depthImbalance:null,
+      weightedImbalance:null,microprice:null,microEdge:null,bidDepthUsd:null,askDepthUsd:null,
+      bidWall:null,askWall:null,wallSide:'WAIT'
     },
     flow:{
       tradeCount:0,buyVolume:0,sellVolume:0,deltaVolume:0,
@@ -225,7 +235,7 @@ function stabilizeGoldLiquidity(_raw:any,c1:any[],price:number|null,now=Date.now
     },
     dynamics:{pressureChange:0,bidDepthChangePct:0,askDepthChangePct:0,acceleration:0},
     absorption:{side:'WAIT',score:0,reason:'Biquote single-source candle flow',trapDetected:false,followThrough:false},
-    warnings:heldLastGood?['Biquote candle update delayed briefly; holding last valid liquidity reading']:[],
+    warnings:[!proxy.valid?'Candle-flow proxy unavailable': 'Candle-flow proxy only; no confirmed market depth',...(heldLastGood?['Quote update delayed; holding the last valid proxy reading']:[])],
   };
 }
 
@@ -1135,7 +1145,7 @@ export async function GET(request:Request){
       const price=Number(pulse?.price);
       const priceOk=Number.isFinite(price)&&price>0;
       const ahead=(s:'BUY'|'SELL',target:number|null)=>{
-        if(target==null||!Number.isFinite(Number(target))||!priceOk)return true;
+        if(target==null||!Number.isFinite(target)||target<=0||!priceOk)return false;
         return s==='BUY'?Number(target)>price:Number(target)<price;
       };
       const prevAlive=Boolean(prev&&now-prev.at<=120000&&ahead(prev.side,prev.target));
@@ -1172,9 +1182,9 @@ export async function GET(request:Request){
       }
 
       const confidence=Math.max(0,Math.min(89,Math.round(Number(candidate?.confidence||0))));
-      const target=Number.isFinite(Number(candidate?.target))?Number(candidate.target):null;
+      const target=candidate?.target!=null&&Number.isFinite(Number(candidate.target))&&Number(candidate.target)>0?Number(candidate.target):null;
       const commit=(value:any=candidate)=>{
-        const nextTarget=Number.isFinite(Number(value?.target))?Number(value.target):null;
+        const nextTarget=value?.target!=null&&Number.isFinite(Number(value.target))&&Number(value.target)>0?Number(value.target):null;
         forwardCommitState[asset]={
           side,at:now,confidence:Number(value?.confidence??confidence),target:nextTarget,zone:value?.zone||null,
           targets:value?.targets||null,targetQuality:Number((value?.targetQuality??value?.targets?.quality)??0),
@@ -1186,7 +1196,7 @@ export async function GET(request:Request){
 
       if(!prev||!prevAlive)return commit();
       if(prev.side===side){
-        const prevTarget=Number(prev.target),nextTarget=Number(target);
+        const prevTarget=prev.target==null?NaN:Number(prev.target),nextTarget=target==null?NaN:Number(target);
         const prevQuality=Number(prev.targetQuality||prev.targets?.quality||0),nextQuality=Number(candidate?.targetQuality||candidate?.targets?.quality||0);
         const shiftBps=priceOk&&Number.isFinite(prevTarget)&&Number.isFinite(nextTarget)?Math.abs(nextTarget-prevTarget)/price*10000:0;
         const shiftGate=asset==='GOLD'?3.5:7;
@@ -1232,6 +1242,7 @@ export async function GET(request:Request){
       }:null,
       liquidity:liq?{
         side:liq.side||'WAIT',
+        ok:Boolean(liq.ok),mode:String(liq.mode||'UNKNOWN'),checkedAt:Number(liq.checkedAt||0),warnings:Array.isArray(liq.warnings)?liq.warnings.slice(0,2):[],
         buy:Math.max(0,Math.min(100,Math.round(Number(liq.buy||0)))),
         sell:Math.max(0,Math.min(100,Math.round(Number(liq.sell||0)))),
         strength:Math.max(0,Math.min(100,Math.round(Number(liq.strength||0)))),
