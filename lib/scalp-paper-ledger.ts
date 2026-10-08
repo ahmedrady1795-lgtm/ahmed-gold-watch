@@ -20,6 +20,30 @@ function save(data:Ledger){
 }
 const round=(v:number)=>Number(v.toFixed(3));
 
+// Paper-only circuit breaker: a run of poor simulated entries pauses new
+// candidates for 15 minutes. It never alters settled outcomes or real orders.
+export function getScalpPaperQualityGate(asset:'GOLD'|'BTC',horizon:1|5,now=Date.now()){
+  const lane=load().lanes[asset+'-'+horizon];
+  const rows=(lane?.history||[]).filter(t=>
+    t.netR!=null&&Number.isFinite(Number(t.netR))&&
+    ['TP1','STOP','TIME_EXIT'].includes(t.state)).slice(0,30);
+  const recent=rows.slice(0,12);
+  const recentNetR=recent.reduce((sum,t)=>sum+Number(t.netR),0);
+  const latest=Number(rows[0]?.closedAt||0);
+  const lastFour=rows.slice(0,4);
+  const failureStreak=lastFour.length===4&&lastFour.every(t=>Number(t.netR)<0);
+  const persistentWeak=recent.length>=12&&recentNetR/recent.length<-.18&&
+    recent.filter(t=>Number(t.netR)<0).length>=8;
+  const cooldownMs=15*60*1000;
+  const blocked=Boolean((failureStreak||persistentWeak)&&latest>0&&now-latest>=0&&now-latest<cooldownMs);
+  return {
+    blocked,source:'PAPER_REFERENCE',samples:recent.length,
+    expectancyR:recent.length?round(recentNetR/recent.length):null,
+    remainingSeconds:blocked?Math.ceil((cooldownMs-(now-latest))/1000):0,
+    reason:blocked?'إيقاف تجريبي مؤقت بعد خسائر متتابعة أو توقع عائد سلبي؛ متابعة بلا دخول حتى تنتهي فترة التهدئة':''
+  };
+}
+
 // Reference-price simulation, not a claim of an executed broker fill.
 // No wins are invented during a quote gap. Closed bars recover barriers only after entry.
 export function advancePaperTrade(trade:PaperTrade,quote:ScalpQuote,now:number,c1:Candle[]):PaperTrade{
@@ -70,8 +94,13 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
     const key=asset+'-'+plan.horizon;
     const lane=data.lanes[key]||={current:null,lastId:'',history:[]};
     if(lane.current){
-      lane.current=advancePaperTrade(lane.current,quote,now,c1);
-      if(lane.current.state==='ARMED'&&plan.status==='BLOCKED')lane.current={...lane.current,state:'CANCELED',closedAt:now,note:plan.reason};
+      // Revoked or replaced entries must not fill on a tick that arrived after
+      // the current conditions ceased to approve the earlier plan.
+      if(lane.current.state==='ARMED'&&(plan.status!=='ARMED'||lane.current.plan.id!==plan.id)){
+        lane.current={...lane.current,state:'CANCELED',closedAt:now,note:'انتهى تأكيد شروط الدخول أو تغير نموذج الإعداد'};
+      }else{
+        lane.current=advancePaperTrade(lane.current,quote,now,c1);
+      }
       if(!['ARMED','ACTIVE'].includes(lane.current.state)){
         lane.history.unshift(lane.current);lane.history=lane.history.slice(0,500);lane.current=null;
       }
@@ -92,7 +121,7 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
       profitFactor:negative>0?round(positive/negative):null,
       unknown:lane.history.filter(t=>t.state==='UNKNOWN').length,
       expired:lane.history.filter(t=>['EXPIRED','CANCELED'].includes(t.state)).length,
-      validation:verified.length<30?'COLLECTING':verified.reduce((s,t)=>s+Number(t.netR),0)>0?'POSITIVE_SAMPLE':'NEGATIVE_SAMPLE'
+      validation:verified.length<30?'COLLECTING':verified.reduce((s,t)=>s+Number(t.netR),0)/verified.length>.08&&negative>0&&positive/negative>=1.15?'POSITIVE_SAMPLE':'NEGATIVE_SAMPLE'
     }};
   });
   const persisted=save(data);
