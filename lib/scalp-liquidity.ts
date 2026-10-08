@@ -9,7 +9,6 @@ type HoldWatch={
   confirmedAt:number|null;
 };
 const activeWatches=new Map<string,HoldWatch>();
-const holdRound=(n:number)=>Number(n.toFixed(2));
 
 // This is an OBSERVED 60-second hold from fresh, advancing quotes, never a
 // historical candle backfill masquerading as a realtime entry. A closed M1
@@ -79,7 +78,7 @@ export function readScalpLiquidity(rows:Candle[],quote:ScalpQuote,now:number,ass
   const fresh=price!=null&&price>0&&quote.at!=null&&now-quote.at<=15000&&quote.at<=now+2000;
   const contiguous=closed.slice(-20).every((c,i,a)=>!i||c.time-a[i-1].time===60000);
   const available=Boolean(last&&closed.length>=21&&now-last.time-60000<=90000&&fresh&&contiguous);
-  if(!available)return {available:false,checkedAt:now,reason:'قراءة السيولة تحتاج سعراً حديثاً وشموع M1 متصلة',levels:[],sweeps:[]};
+  if(!available)return {available:false,checkedAt:now,reason:'قراءة السيولة تحتاج سعراً حديثاً وشموع M1 متصلة',levels:[],sweeps:[],scenarios:[]};
   const sample=closed.slice(-21,-1),high=Math.max(...sample.map(c=>c.high)),low=Math.min(...sample.map(c=>c.low));
   const atr=closed.slice(-14).reduce((s,c)=>s+c.high-c.low,0)/14,tolerance=Math.max(atr*.12,price!*.000005);
   const pivots:{price:number;side:'ABOVE'|'BELOW';touches:number}[]=[];
