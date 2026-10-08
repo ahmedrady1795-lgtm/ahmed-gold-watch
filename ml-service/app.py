@@ -537,7 +537,21 @@ def train_all():
             source="Coinbase Exchange BTC-USD 1m · neutral micro fallback"
         m1=train_horizon(make_dataset(hist,1,.04,M1_FEATURES),1,M1_FEATURES)
         m5=train_m5_multiclass(make_m5_multiclass_dataset(hist,M5_FEATURES,.18),M5_FEATURES)
-        payload={"version":APP_VERSION,"features":FEATURE_SIGNATURE,"trainedAt":int(time.time()*1000),"historyRows":len(hist),"source":source,"models":{"m1":m1,"m5":m5}}
+        # A shadow challenger must not silently replace a genuinely validated
+        # production champion. Do not relax the out-of-sample acceptance gate:
+        # preserve an old compatible READY model if the new challenger fails it.
+        model_origins={"m1":"CHALLENGER","m5":"CHALLENGER"}
+        old=MODELS.get("models",{}) if MODELS.get("features")==FEATURE_SIGNATURE else {}
+        for key,candidate in (("m1",m1),("m5",m5)):
+            incumbent=old.get(key) if isinstance(old,dict) else None
+            compatible=bool(incumbent and incumbent.get("features")==candidate.get("features") and
+                (key!="m5" or incumbent.get("mode")=="m5_multiclass"))
+            if compatible and incumbent["metrics"].get("ready") and not candidate["metrics"].get("ready"):
+                if key=="m1":m1=incumbent
+                else:m5=incumbent
+                model_origins[key]="RETAINED_READY_CHAMPION"
+        payload={"version":APP_VERSION,"features":FEATURE_SIGNATURE,"trainedAt":int(time.time()*1000),"historyRows":len(hist),"source":source,
+                 "models":{"m1":m1,"m5":m5},"modelOrigins":model_origins}
         tmp=MODEL_PATH.with_suffix(".tmp"); joblib.dump(payload,tmp); os.replace(tmp,MODEL_PATH)
         meta={"version":APP_VERSION,"trainedAt":payload["trainedAt"],"historyRows":len(hist),"source":payload["source"],
               "metrics":{"m1":m1["metrics"],"m5":m5["metrics"]},"rows":{"m1":m1["rows"],"m5":m5["rows"]}}
@@ -546,7 +560,8 @@ def train_all():
         status="READY" if (m1["metrics"]["ready"] and m5["metrics"]["ready"]) else ("PARTIAL" if (m1["metrics"]["ready"] or m5["metrics"]["ready"]) else "SHADOW")
         STATE.update({"status":status,"trainedAt":payload["trainedAt"],
                       "modelLoaded":True,"metrics":meta["metrics"],"historyRows":len(hist),"source":payload["source"],"lastError":None})
-        print("[ML-TRAIN] "+json.dumps({"status":STATE["status"],"trainedAt":payload["trainedAt"],"historyRows":len(hist),"source":source,"metrics":meta["metrics"],"rows":meta["rows"]}),flush=True)
+        print("[ML-TRAIN] "+json.dumps({"status":STATE["status"],"trainedAt":payload["trainedAt"],"historyRows":len(hist),
+              "source":source,"metrics":meta["metrics"],"rows":meta["rows"],"modelOrigins":model_origins}),flush=True)
     except Exception as e:
         STATE.update({"status":"ERROR","lastError":f"{type(e).__name__}: {e}"})
         print("[ML-TRAIN-ERROR] "+json.dumps({"error":STATE["lastError"]}),flush=True); traceback.print_exc()
