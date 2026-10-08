@@ -33,6 +33,8 @@ export type LiquidityIntelligence={
     askDepthUsd:number;
     bidWall:number;
     askWall:number;
+    bidWallPrice:number|null;
+    askWallPrice:number|null;
     wallSide:Side;
   };
   flow:{
@@ -80,6 +82,14 @@ function wallRatio(rows:DepthRow[]){
   if(!notionals.length)return 0;
   const avg=notionals.reduce((a,b)=>a+b,0)/notionals.length;
   return avg>0?Math.max(...notionals)/avg:0;
+}
+function wallPoint(rows:DepthRow[]){
+  if(!rows.length)return {price:null as number|null,ratio:0};
+  const values=rows.map(x=>({price:x.price,notional:x.price*x.size})).filter(x=>Number.isFinite(x.notional)&&x.notional>0);
+  if(!values.length)return {price:null as number|null,ratio:0};
+  const avg=values.reduce((a,b)=>a+b.notional,0)/values.length;
+  const top=[...values].sort((a,b)=>b.notional-a.notional)[0];
+  return {price:Number(top.price.toFixed(2)),ratio:avg>0?top.notional/avg:0};
 }
 function weightedDepth(rows:DepthRow[],best:number){
   let total=0;
@@ -158,7 +168,8 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
   const mid=bestBid&&bestAsk?(bestBid+bestAsk)/2:null,spread=bestBid&&bestAsk?bestAsk-bestBid:null,spreadBps=mid&&spread!=null?spread/mid*10000:null;
   const microprice=bestBid&&bestAsk&&bboTotal>0?(bestAsk*bidSize+bestBid*askSize)/bboTotal:null;
   const microEdge=mid&&spread&&microprice!=null&&spread>0?clamp((microprice-mid)/(spread/2)*100):0;
-  const bidWall=wallRatio(bids),askWall=wallRatio(asks),wallDiff=bidWall-askWall,wallSide:Side=wallDiff>=1.2?'BUY':wallDiff<=-1.2?'SELL':'WAIT';
+  const bidWallPoint=wallPoint(bids),askWallPoint=wallPoint(asks);
+  const bidWall=bidWallPoint.ratio,askWall=askWallPoint.ratio,wallDiff=bidWall-askWall,wallSide:Side=wallDiff>=1.2?'BUY':wallDiff<=-1.2?'SELL':'WAIT';
   const weightedImbalance=clamp(depthImbalance*.72+bboImbalance*.18+microEdge*.10);
   const okxDepthBid=okxBids.length?weightedDepth(okxBids,okxBids[0].price):0,okxDepthAsk=okxAsks.length?weightedDepth(okxAsks,okxAsks[0].price):0;
   const okxDepthTotal=okxDepthBid+okxDepthAsk,okxDepthImbalance=okxDepthTotal>0?(okxDepthBid-okxDepthAsk)/okxDepthTotal*100:0;
@@ -206,7 +217,7 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
       okxDepth:okxDepthR.status==='fulfilled'&&okxBids.length>0&&okxAsks.length>0,
       okxTrades:okxTradesR.status==='fulfilled'&&okxFlow.tradeCount>0
     },
-    book:{bestBid,bestAsk,spreadBps:spreadBps==null?null:Number(spreadBps.toFixed(3)),bboImbalance:Math.round(bboImbalance),depthImbalance:Math.round(depthImbalance),weightedImbalance:Math.round(weightedImbalance),microprice:microprice==null?null:Number(microprice.toFixed(2)),microEdge:Math.round(microEdge),bidDepthUsd:Math.round(rawBidUsd),askDepthUsd:Math.round(rawAskUsd),bidWall:Number(bidWall.toFixed(2)),askWall:Number(askWall.toFixed(2)),wallSide},
+    book:{bestBid,bestAsk,spreadBps:spreadBps==null?null:Number(spreadBps.toFixed(3)),bboImbalance:Math.round(bboImbalance),depthImbalance:Math.round(depthImbalance),weightedImbalance:Math.round(weightedImbalance),microprice:microprice==null?null:Number(microprice.toFixed(2)),microEdge:Math.round(microEdge),bidDepthUsd:Math.round(rawBidUsd),askDepthUsd:Math.round(rawAskUsd),bidWall:Number(bidWall.toFixed(2)),askWall:Number(askWall.toFixed(2)),bidWallPrice:bidWallPoint.price,askWallPrice:askWallPoint.price,wallSide},
     flow:{tradeCount:flow.tradeCount,buyVolume:Number(flow.buyVolume.toFixed(6)),sellVolume:Number(flow.sellVolume.toFixed(6)),deltaVolume:Number(flow.deltaVolume.toFixed(6)),deltaPct:Number(flow.deltaPct.toFixed(1)),priceChangeBps:Number(flow.priceChangeBps.toFixed(2)),cvdSide:flow.cvdSide},
     dynamics:{pressureChange:Number(pressureChange.toFixed(1)),bidDepthChangePct:Number(bidDepthChangePct.toFixed(1)),askDepthChangePct:Number(askDepthChangePct.toFixed(1)),acceleration:Number(acceleration.toFixed(1))},
     absorption:{side:absorptionSide,score:absorptionScore,reason:absorptionReason,trapDetected,followThrough},warnings
