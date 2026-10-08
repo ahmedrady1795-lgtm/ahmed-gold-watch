@@ -27,14 +27,33 @@ function quantile(values:number[],fraction:number){
 const pendingSetups=new Map<string,ScalpPlan>();
 function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number):ScalpPlan{
   const key=plan.asset+':'+plan.horizon,previous=pendingSetups.get(key);
-  const validPrevious=Boolean(previous&&previous.status==='ARMED'&&now>previous.at&&now<previous.expiresAt&&
+  const oldRisk=previous?.entry!=null&&previous.stop!=null?
+    Math.abs(previous.entry-previous.stop):0;
+  const oldReward=previous?.entry!=null&&previous.targets[0]?.price!=null?
+    Math.abs(previous.targets[0].price-previous.entry):0;
+  const liveNetRR=oldRisk>0?(oldReward-cost)/(oldRisk+cost):0;
+  const currentM1Trend=plan.evidence.find(e=>e.label==='اتجاه M1')?.side;
+  // A same-side setup may keep its entry through the next closed candle.
+  // An opposing setup or reversal of EMA trend cancels the stale candidate.
+  const sideAligned=Boolean(previous&&
+    (plan.side==='WAIT'||plan.side===previous.side)&&
+    (previous.setup==='SWEEP'||currentM1Trend==null||
+     currentM1Trend==='WAIT'||currentM1Trend===previous.side));
+  const explicitRiskVeto=plan.blockers.some(b=>
+    b.includes('الهدف أبعد من الحركة المواتية')||
+    b.includes('التكلفة كبيرة بالنسبة لتذبذب الفريم'));
+  const validPrevious=Boolean(previous&&previous.status==='ARMED'&&sideAligned&&
+    !explicitRiskVeto&&now>previous.at&&now<previous.expiresAt&&
     previous.entry!=null&&previous.stop!=null&&previous.targets[0]?.price!=null&&
-    (previous.side==='BUY'?quote>previous.stop&&quote<previous.targets[0].price:quote<previous.stop&&quote>previous.targets[0].price)&&
-    cost<=Math.max(previous.cost*1.35,.01));
-  // Freeze plan IDs, entry, risk and targets through the observation window;
-  // do not recycle a dead plan or let old setups bypass hard feed blockers.
+    (previous.side==='BUY'?quote>previous.stop&&quote<previous.targets[0].price:
+       quote<previous.stop&&quote>previous.targets[0].price)&&
+    cost<=Math.max(previous.cost*1.35,.01)&&liveNetRR>=1.25);
+  // Preserve the ID/entry/target through the observation window, but NEVER
+  // preserve an outdated low fee, an opposing trend or an unreachable target.
   if(validPrevious&&(plan.status!=='ARMED'||plan.side===previous!.side))
-    return {...previous!,reason:'مستوى الدخول والوقف ثابتان خلال رصد M1؛ لا إعادة ضبط للتأكيد'};
+    return {...previous!,cost:round(cost),costEstimated:plan.costEstimated,
+      netRR:round(liveNetRR),
+      reason:'مستوى الدخول والوقف ثابتان، والتكلفة أعيد حسابها بالسعر الحالي'};
   if(plan.status==='ARMED')pendingSetups.set(key,plan);
   else if(!validPrevious)pendingSetups.delete(key);
   return plan;
