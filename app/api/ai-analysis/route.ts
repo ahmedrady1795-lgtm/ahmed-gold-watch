@@ -996,9 +996,14 @@ export async function GET(request:Request){
         reason:m15Opposes?'M15 يعاكس الاتجاه؛ تم إيقاف التوقع':m5Opposes?'M5 يعاكس الاتجاه؛ تم إيقاف التوقع بدل المخاطرة بإشارة H4 منفردة':!higherTfPair?'يلزم اتفاق اثنين على الأقل من M5/M15/H4 قبل اعتماد توقع 15 دقيقة':'السيولة والهيكل والفريمات الأعلى لم تتفق بما يكفي'
       };
 
+      const targetLearning={
+        t1:getNextMoveOutcome(asset+'_TARGET_T1_15M',priceNow,now),
+        t2:getNextMoveOutcome(asset+'_TARGET_T2_15M',priceNow,now),
+        t3:getNextMoveOutcome(asset+'_TARGET_T3_15M',priceNow,now)
+      };
       const targetLadder=buildTargetLadder({
         asset,side:winner,price:priceNow,atr,
-        hunt,movement,h4,intent,structure,liquidity:liq,toolMesh
+        hunt,movement,h4,intent,structure,liquidity:liq,toolMesh,learning:targetLearning
       });
       const target=targetLadder?.t1?.price??null;
       const pathZone=targetLadder?.t1?{
@@ -1851,10 +1856,62 @@ export async function GET(request:Request){
       });
     };
 
+    const recordTargetLadder=(asset:'GOLD'|'BTC',node:any,price:any,atr:any)=>{
+      const fm=node?.forwardMove||{},side=fm?.side==='BUY'||fm?.side==='SELL'?fm.side:'WAIT';
+      const ladder=fm?.targets||null;
+      if(side==='WAIT'||!ladder)return null;
+      const stop=Number(ladder?.invalidation);
+      const stages=[
+        {id:'T1',level:ladder?.t1,horizon:'TARGET_T1_15M'},
+        {id:'T2',level:ladder?.t2,horizon:'TARGET_T2_15M'},
+        {id:'T3',level:ladder?.t3,horizon:'TARGET_T3_15M'}
+      ];
+      const out:any={};
+      for(const stage of stages){
+        const level=stage.level;
+        const target=Number(level?.price);
+        const ahead=Number.isFinite(target)&&target>0&&(side==='BUY'?target>Number(price):target<Number(price));
+        if(!ahead)continue;
+        const ledgerKey=asset+'_TARGET_'+stage.id+'_15M';
+        const existing=getNextMoveOutcome(ledgerKey,Number(price),now);
+        if(Number(existing?.pending||0)>0){out[stage.id.toLowerCase()]=existing;continue;}
+        out[stage.id.toLowerCase()]=recordNextMoveOutcome({
+          asset:ledgerKey,price:Number(price),atr:Number(atr),now,
+          hunt:{nextMove:{
+            side,
+            confidence:Number(level?.quality||level?.confidence||fm?.confidence||0),
+            source:String(level?.kind||'UNKNOWN'),
+            micro:{
+              targetSource:String(level?.source||''),
+              targetConsensus:Number(level?.consensus||0),
+              targetRankScore:Number(level?.rankScore||0),
+              targetDistanceAtr:Number(level?.distanceAtr||0),
+              targetLearningBonus:Number(level?.learningBonus||0)
+            }
+          }},
+          regime:String(ladder?.mode||'UNKNOWN')+'__'+String(fm?.status||'WAIT'),
+          horizonMs:15*60*1000,horizonLabel:stage.horizon,
+          targetPrice:target,
+          stopPrice:Number.isFinite(stop)?stop:null,
+          minRecordIntervalMs:15*60*1000,
+          barrierScale:.55,minBarrierBps:asset==='GOLD'?2.5:7,maxBarrierBps:asset==='GOLD'?18:35
+        });
+      }
+      return out;
+    };
+
     const gold15Validation=recordForward15('GOLD',payload.gold,goldLearningPrice,goldAtr,goldIntent,goldH4);
     const bitcoin15Validation=recordForward15('BTC',payload.bitcoin,btcPrice,btcAtr,bitcoinIntent,bitcoinH4);
+    const goldTargetValidation=recordTargetLadder('GOLD',payload.gold,goldLearningPrice,goldAtr);
+    const bitcoinTargetValidation=recordTargetLadder('BTC',payload.bitcoin,btcPrice,btcAtr);
     payload.gold.forecastValidation15m=compact15Validation(gold15Validation);
     payload.bitcoin.forecastValidation15m=compact15Validation(bitcoin15Validation);
+    payload.gold.targetValidation=goldTargetValidation?{
+      t1:compact15Validation(goldTargetValidation.t1),t2:compact15Validation(goldTargetValidation.t2),t3:compact15Validation(goldTargetValidation.t3)
+    }:null;
+    payload.bitcoin.targetValidation=bitcoinTargetValidation?{
+      t1:compact15Validation(bitcoinTargetValidation.t1),t2:compact15Validation(bitcoinTargetValidation.t2),t3:compact15Validation(bitcoinTargetValidation.t3)
+    }:null;
 
     lastAiPayload=payload;lastAiPayloadAt=Date.now();
     setAiSnapshot(payload,lastAiPayloadAt);
