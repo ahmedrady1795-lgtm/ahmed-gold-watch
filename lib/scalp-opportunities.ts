@@ -5,7 +5,7 @@ export type ScalpQuote={price:number|null;at:number|null;bid?:number|null;ask?:n
 export type ScalpInput={asset:'GOLD'|'BTC';c1:Candle[];c5:Candle[];quote:ScalpQuote;candleSource:string;now:number;events:Event[];newsReady:boolean;marketOpen:boolean;feeBps?:number|null;slippageBps?:number|null};
 export type ScalpPlan={
   id:string;asset:'GOLD'|'BTC';horizon:1|5;at:number;expiresAt:number;side:ScalpSide;
-  status:'BLOCKED'|'WATCH'|'ARMED';setup:'BREAKOUT'|'PULLBACK'|'SWEEP'|'NONE';
+  status:'BLOCKED'|'WATCH'|'ARMED';setup:'BREAKOUT'|'PULLBACK'|'SWEEP'|'CONTINUATION'|'NONE';
   score:number;scoreLabel:string;entry:number|null;stop:number|null;
   targets:{price:number;kind:'STRUCTURE'|'PROJECTION'}[];netRR:number|null;
   cost:number;costEstimated:boolean;trigger:string;reason:string;blockers:string[];
@@ -14,6 +14,22 @@ export type ScalpPlan={
 const n=(v:unknown)=>v==null||v===''?null:Number.isFinite(Number(v))?Number(v):null;
 const round=(v:number)=>Number(v.toFixed(2));
 const mean=(v:number[])=>v.reduce((s,x)=>s+x,0)/Math.max(1,v.length);
+// Keep a qualified, time-limited setup alive across its first following M1
+// close. Otherwise a required 60-second hold can never complete.
+const pendingSetups=new Map<string,ScalpPlan>();
+function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number):ScalpPlan{
+  const key=plan.asset+':'+plan.horizon,previous=pendingSetups.get(key);
+  const validPrevious=Boolean(previous&&previous.status==='ARMED'&&now>previous.at&&now<previous.expiresAt&&
+    previous.entry!=null&&previous.stop!=null&&previous.targets[0]?.price!=null&&
+    (previous.side==='BUY'?quote>previous.stop&&quote<previous.targets[0].price:quote<previous.stop&&quote>previous.targets[0].price)&&
+    cost<=Math.max(previous.cost*1.35,.01));
+  // Freeze plan IDs, entry, risk and targets through the observation window;
+  // do not recycle a dead plan or let old setups bypass hard feed blockers.
+  if(validPrevious&&(!previous||plan.status!=='ARMED'||previous.id===plan.id))return {...previous!,reason:'الإعداد مستمر؛ متابعة ثبات M1 حتى انتهاء الصلاحية'};
+  if(plan.status==='ARMED')pendingSetups.set(key,plan);
+  else if(!validPrevious)pendingSetups.delete(key);
+  return plan;
+}
 const side=(v:number):ScalpSide=>v>0?'BUY':v<0?'SELL':'WAIT';
 
 function frame(rows:Candle[],ms:number,now:number){
@@ -47,7 +63,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
 
   const base=(horizon:1|5):ScalpPlan=>({
     id:asset+'-'+horizon+'-'+String(m1.closed.at(-1)?.time??now)+'-NONE',asset,horizon,at:now,
-    expiresAt:now+(horizon===1?45000:90000),side:'WAIT',status:blockers.length?'BLOCKED':'WATCH',setup:'NONE',score:0,
+    expiresAt:now+(horizon===1?145000:210000),side:'WAIT',status:blockers.length?'BLOCKED':'WATCH',setup:'NONE',score:0,
     scoreLabel:'قوة الإعداد /100 · ليست احتمال ربح',entry:null,stop:null,targets:[],netRR:null,cost:round(cost),costEstimated,
     trigger:'انتظار إعداد سعري واضح',reason:blockers[0]||'لم يكتمل اختراق أو إعادة اختبار أو سحب سيولة',blockers:[...blockers],evidence:[]
   });
@@ -76,6 +92,16 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
   if(last.close<low&&body<-.45&&trend1==='SELL')candidates.push({side:'SELL',setup:'BREAKOUT',triggerScore:34,anchor:low});
   if(trend1==='BUY'&&f9>old9&&prev.low<=f9+atr*.15&&last.close>prev.high&&body>.3)candidates.push({side:'BUY',setup:'PULLBACK',triggerScore:30,anchor:Math.min(last.low,prev.low)});
   if(trend1==='SELL'&&f9<old9&&prev.high>=f9-atr*.15&&last.close<prev.low&&body<-.3)candidates.push({side:'SELL',setup:'PULLBACK',triggerScore:30,anchor:Math.max(last.high,prev.high)});
+  // A two-candle continuation can be tradeable without clearing an entire
+  // 8-candle range. Require EMA+M5 alignment, real candle close and efficiency.
+  if(trend1==='BUY'&&trend5==='BUY'&&f9>old9&&last.close>prev.high&&
+     body>.32&&prev.close>prev.open&&mom>.35&&efficiency>.42&&
+     last.close>f9&&last.close-f9<atr*.85)
+    candidates.push({side:'BUY',setup:'CONTINUATION',triggerScore:30,anchor:Math.min(last.low,prev.low)});
+  if(trend1==='SELL'&&trend5==='SELL'&&f9<old9&&last.close<prev.low&&
+     body<-.32&&prev.close<prev.open&&mom<-.35&&efficiency>.42&&
+     last.close<f9&&f9-last.close<atr*.85)
+    candidates.push({side:'SELL',setup:'CONTINUATION',triggerScore:30,anchor:Math.max(last.high,prev.high)});
 
   return ([1,5] as const).map(horizon=>{
     const plan=base(horizon);
@@ -94,7 +120,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       {label:'زخم 3 شموع',side:side(mom),value:round(mom)+' ATR'},
       {label:'حجم التداول',side:'WAIT',value:volumeRatio==null?'غير متاح':round(volumeRatio)+'× المتوسط'}
     ];
-    if(!chosen)return plan;
+    if(!chosen)return stableCandidate(plan,now,p!,cost);
     const dir=chosen.side==='BUY'?1:-1,price=p!;
     const entry=round(price+dir*Math.max(atr*.07,cost*.15,.02));
     const rawStop=chosen.anchor-dir*atr*.12;
@@ -121,7 +147,10 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     if(chosen.score<(horizon===1?60:64))reasons.push('قوة الإعداد لم تصل لحد التفعيل');
     if(risk>maxRisk||reward>maxMove)reasons.push('الوقف أو الهدف أبعد من مدى الحركة المناسب للفريم');
     if(cost>atr*(horizon===1?.30:.48))reasons.push('التكلفة كبيرة بالنسبة للتذبذب القابل للتداول');
-    if(spread==null)reasons.push('السبريد الفعلي غير متاح؛ السيناريو للمراقبة فقط');
+    // Paper-reference prices can use the disclosed conservative spread
+    // assumption, but not when even the estimated transaction drag is large.
+    if(spread==null&&cost>atr*(horizon===1?.24:.38))
+      reasons.push('غياب سبريد حي وتكلفة تقديرية كبيرة؛ لا دخول');
     if(chosen.setup==='BREAKOUT'&&volumeRatio!=null&&volumeRatio<.8)reasons.push('اختراق دون مشاركة حجم كافية');
     if(chosen.setup!=='SWEEP'&&efficiency<.22)reasons.push('حركة متقطعة تضعف استمرار الاتجاه');
     if(targets[0]?.kind==='PROJECTION'&&chosen.score<76)reasons.push('الهدف الأول تقديري وقوة الإعداد لا تكفي للاعتماد عليه');
@@ -131,12 +160,14 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     if(horizon===5&&chosen.setup!=='SWEEP'&&dir*m5Body<-.20&&dir*m5Momentum<.10)reasons.push('آخر شمعة M5 مغلقة تعارض الاستمرار');
     if(horizon===5&&chosen.setup==='SWEEP'&&dir*m5Body<-.40)reasons.push('انعكاس الدقيقة عكس جسم M5 قوي؛ يلزم تأكيد إضافي');
     if(horizon===1&&chosen.setup==='BREAKOUT'&&volumeRatio!=null&&volumeRatio<1.05&&efficiency<.45)reasons.push('اختراق M1 ضعيف دون تأكيد كافٍ');
-    if(!input.newsReady)reasons.push('تغطية الأخبار غير متاحة؛ الإعداد للمراقبة');
-    return {...plan,id:asset+'-'+horizon+'-'+last.time+'-'+chosen.setup+'-'+chosen.side,
+    // A missing optional news feed is not itself a scheduled major release.
+    // Known high-impact release windows remain blocked at the base gate.
+    if(!input.newsReady)plan.evidence.push({label:'تغطية الأخبار',side:'WAIT',value:'غير مكتملة؛ افحص التقويم'});
+    return stableCandidate({...plan,id:asset+'-'+horizon+'-'+last.time+'-'+chosen.setup+'-'+chosen.side,
       side:chosen.side,setup:chosen.setup,score:chosen.score,entry,stop,targets,netRR:rr,
       status:reasons.length?'WATCH':'ARMED',blockers:reasons,
       trigger:chosen.side==='BUY'?'تجاوز سعر الدخول من أسفل قبل انتهاء الصلاحية':'كسر سعر الدخول من أعلى قبل انتهاء الصلاحية',
-      reason:reasons[0]||(chosen.setup==='SWEEP'?'استعادة مستوى بعد سحب سيولة':chosen.setup==='PULLBACK'?'استمرار بعد إعادة اختبار':'إغلاق خارج نطاق آخر 8 شموع')
-    };
+      reason:reasons[0]||(chosen.setup==='SWEEP'?'استعادة مستوى بعد سحب سيولة':chosen.setup==='PULLBACK'?'استمرار بعد إعادة اختبار':chosen.setup==='CONTINUATION'?'استمرار شمعتين مع توافق M5':'إغلاق خارج نطاق آخر 8 شموع')
+    },now,p!,cost);
   });
 }
