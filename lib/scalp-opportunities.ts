@@ -129,7 +129,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       const dir=trend1==='BUY'?1:-1;
       const sample=a.slice(-12);
       const edge=dir===1?Math.max(...sample.map(c=>c.high)):Math.min(...sample.map(c=>c.low));
-      const entry=round(dir===1?Math.max(edge+atr*.12,p!+atr*.08):Math.min(edge-atr*.12,p!-atr*.08));
+      const entry=round(edge+dir*atr*.12);
       const risk=Math.max(atr*(horizon===1?.82:1.15),cost*1.85,Math.abs(entry-f21)*.50);
       const move=Math.max(risk*1.75+cost*2.2,atr*(horizon===1?1.6:2.8));
       // Do not invent a feasible scalp when costs dwarf realistic ATR.
@@ -151,7 +151,9 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       return stableCandidate(watch,now,p!,cost);
     }
     const dir=chosen.side==='BUY'?1:-1,price=p!;
-    const entry=round(price+dir*Math.max(atr*.07,cost*.15,.02));
+    // Entry is anchored to the last CLOSED bar. Live ticks must never move
+    // the published stop/target plan between confirmations.
+    const entry=round(last.close+dir*Math.max(atr*.07,cost*.15,.02));
     const rawStop=chosen.anchor-dir*atr*.12;
     const risk=Math.max(dir*(entry-rawStop),atr*(horizon===1?.48:.7),cost*2);
     const stop=round(entry-dir*risk);
@@ -183,7 +185,8 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     if(chosen.setup==='BREAKOUT'&&volumeRatio!=null&&volumeRatio<.8)reasons.push('اختراق دون مشاركة حجم كافية');
     if(chosen.setup!=='SWEEP'&&efficiency<.22)reasons.push('حركة متقطعة تضعف استمرار الاتجاه');
     if(targets[0]?.kind==='PROJECTION'&&chosen.score<76)reasons.push('الهدف الأول تقديري وقوة الإعداد لا تكفي للاعتماد عليه');
-    if(last.high-last.low>atr*2.8||Math.abs(price-last.close)>atr*.85)reasons.push('الحركة ممتدة؛ انتظر إعادة اختبار بدل مطاردة السعر');
+    if(last.high-last.low>atr*2.8||Math.abs(price-last.close)>atr*.85||dir*(price-entry)>atr*.3)
+      reasons.push('السعر ابتعد عن دخول الشمعة المغلقة؛ انتظر إعادة اختبار بدل مطاردة السعر');
     if(rr==null||rr<1.25)reasons.push('العائد بعد التكلفة أقل من 1.25R');
     if(horizon===5&&trend5!==chosen.side&&chosen.setup!=='SWEEP')reasons.push('استمرار M5 لم يؤكد اتجاه الإعداد');
     if(horizon===5&&chosen.setup!=='SWEEP'&&dir*m5Body<-.20&&dir*m5Momentum<.10)reasons.push('آخر شمعة M5 مغلقة تعارض الاستمرار');
