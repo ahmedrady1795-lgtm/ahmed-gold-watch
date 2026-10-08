@@ -92,7 +92,9 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
   const data=load();
   const lanes=plans.map(plan=>{
     const key=asset+'-'+plan.horizon;
-    const lane=data.lanes[key]||={current:null,lastId:'',history:[]};
+    // Register the lane in persisted state; a temporary local lane would
+    // silently lose every active paper trade and its historical results.
+    const lane=data.lanes[key]??(data.lanes[key]={current:null,lastId:'',history:[]});
     if(lane.current){
       // Revoked or replaced entries must not fill on a tick that arrived after
       // the current conditions ceased to approve the earlier plan.
@@ -105,10 +107,27 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
         lane.history.unshift(lane.current);lane.history=lane.history.slice(0,500);lane.current=null;
       }
     }
-    if(!lane.current&&plan.status==='ARMED'&&plan.id!==lane.lastId&&quote.price!=null&&quote.at!=null){
-      // A new issue never starts as filled. The next fresh quote must cross its trigger.
-      lane.lastId=plan.id;
-      lane.current={plan:JSON.parse(JSON.stringify(plan)),state:'ARMED',activatedAt:null,closedAt:null,exit:null,netR:null,lastAt:quote.at,lastPrice:quote.price,note:'انتظار تجاوز الدخول؛ لا توجد صفقة مفعلة بعد'};
+    if(!lane.current&&plan.status==='ARMED'&&plan.id!==lane.lastId&&
+        quote.price!=null&&quote.at!=null&&now-quote.at>=0&&now-quote.at<=10000&&
+        quote.at<=plan.expiresAt&&plan.side!=='WAIT'&&plan.entry!=null&&
+        plan.stop!=null&&plan.targets[0]?.price!=null){
+      // ENTRY is passed here only AFTER a plan-specific 60-second hold.
+      // Record a reference fill at the CURRENT quote (not the old trigger);
+      // already includes spread/fees/slippage via plan.cost, not an actual
+      // broker order. Do not count off-market/reward-negative fills.
+      const dir=plan.side==='BUY'?1:-1,p=quote.price,anchorRisk=Math.abs(plan.entry-plan.stop);
+      const risk=dir*(p-plan.stop),reward=dir*(plan.targets[0].price-p);
+      const priceNearby=anchorRisk>0&&Math.abs(p-plan.entry)<=anchorRisk*.35;
+      const rr=risk>0?(reward-plan.cost)/(risk+plan.cost):0;
+      if(priceNearby&&risk>0&&reward>0&&rr>=1.25){
+        const filled:ScalpPlan={...plan,entry:p,netRR:round(rr)};
+        lane.lastId=plan.id;
+        lane.current={
+          plan:filled,state:'ACTIVE',activatedAt:quote.at,closedAt:null,
+          exit:null,netR:null,lastAt:quote.at,lastPrice:p,
+          note:'تفعيل ورقي بعد 60 ثانية عند سعر المرجع الحالي؛ لا تنفيذ وسيط'
+        };
+      }
     }
     const verified=lane.history.filter(t=>t.netR!=null&&['TP1','STOP','TIME_EXIT'].includes(t.state));
     const wins=verified.filter(t=>Number(t.netR)>0),losses=verified.filter(t=>Number(t.netR)<0);
@@ -125,5 +144,5 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
     }};
   });
   const persisted=save(data);
-  return {mode:'PAPER_REFERENCE',persisted,lanes,note:'نتائج تجريبية بسعر المصدر بعد التكلفة؛ ليست تنفيذ وسيط. هدف T1 والوقف ثابتان. النتائج المجهولة لا تُحسب نجاحاً.'};
+  return {mode:'PAPER_REFERENCE',persisted,lanes,note:'نتائج تجريبية بسعر المرجع عند تأكيد الدقيقة، وبعد التكلفة؛ لا تنفيذ وسيط. الهدف والوقف يظلان ثابتين. النتائج المجهولة لا تُحسب نجاحاً.'};
 }
