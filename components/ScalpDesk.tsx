@@ -48,7 +48,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
         <div><small><Clock3 size={12}/> {current?.activatedAt?'متبقي للمتابعة':'صلاحية التفعيل'}</small><b>{timed?(secs?secs+' ثانية':'انتهت'):'غير مفعّلة'}</b></div>
         <div><small>تكلفة الدورة {shown?.costEstimated?'· تقديرية':''}</small><b>{fmt(shown?.cost)} $</b></div>
       </div>
-      {!!plan?.blockers?.length&&!current&&plan.blockers.length>1&&<details className="scalp-expand"><summary>شروط الدخول غير المكتملة ({plan.blockers.length})</summary><ul className="scalp-blockers">{plan.blockers.map((r:string)=><li key={r}>{r}</li>)}</ul></details>}}
+      {!!plan?.blockers?.length&&!current&&plan.blockers.length>1&&<details className="scalp-expand"><summary>شروط الدخول غير المكتملة ({plan.blockers.length})</summary><ul className="scalp-blockers">{plan.blockers.map((r:string)=><li key={r}>{r}</li>)}</ul></details>}
       {qualityGate?.blocked&&<p className="scalp-condition">حماية سجل السكالب التجريبي: {qualityGate.reason} · المتبقي {qualityGate.remainingSeconds} ثانية</p>}
       {!!shown?.evidence?.length&&<details className="scalp-expand"><summary>المؤشرات التي كوّنت الفرصة</summary><div className="scalp-evidence">{shown.evidence.map((e:any)=><div key={e.label}><small>{e.label}</small><b className={e.side==='BUY'?'green':e.side==='SELL'?'red':''}>{e.side==='WAIT'?e.value:sideAr(e.side)}</b><span>{e.side!=='WAIT'?e.value:''}</span></div>)}</div></details>}
     </div>
