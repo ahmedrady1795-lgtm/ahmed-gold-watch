@@ -174,7 +174,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
   };
   const arabicVoice=()=>{
     const voices=voicesRef.current.length?voicesRef.current:typeof window!=='undefined'&&'speechSynthesis' in window?window.speechSynthesis.getVoices():[];
-    return voices.find(v=>/^ar[-_]EG$/i.test(v.lang))||voices.find(v=>/^ar(-|_)/i.test(v.lang))||voices.find(v=>/arabic|ar-eg|ar-sa/i.test(`${v.name} ${v.lang}`))||null;
+    return voices.find(v=>/^ar[-_]EG$/i.test(v.lang))||voices.find(v=>/^ar(-|_)/i.test(v.lang))||null;
   };
   const speak=(text:string)=>{
     if(typeof window==='undefined'||!('speechSynthesis' in window)||typeof (window as any).SpeechSynthesisUtterance!=='function'){
