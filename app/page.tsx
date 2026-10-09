@@ -13,6 +13,7 @@ const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v
   :'—';
 
 export default function Home(){
+  const [assetView,setAssetView]=useState<'ALL'|'GOLD'|'BTC'>('ALL');
   const [aiData,setAiData]=useState<any>(null);
   const [aiError,setAiError]=useState('');
   const [scalpDesk,setScalpDesk]=useState<any>(null);
@@ -296,7 +297,8 @@ export default function Home(){
   const shownBtcAt=btcAt||Number(aiBtc?.sourceTime||0);
   const btcLive=Boolean(shownBtcAt&&now-shownBtcAt<10000);
 
-  return <main className="shell">
+  return <main className="shell modern-workspace">
+    <a className="skip-link" href="#scalp-opportunities">انتقل إلى فرص السكالب</a>
     <header className="topbar">
       <div className="brand">
         <div className="brandmark">AG</div>
@@ -324,12 +326,22 @@ export default function Home(){
 
     {aiError&&!aiData&&<div className="fatal"><WifiOff size={18}/><div><strong>تعذر تحديث AI</strong><span>{aiError}</span></div></div>}
 
-    <section className="content lite-content">
-      <FastScalpPulse desk={scalpDesk} now={now} aiAgeMs={Number.isFinite(snapshotAge)?snapshotAge:null}/>
-      <AICommandCenter data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
-      <NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredId={aiData?.autopilot?.nextEvent?.id||null}/>
+    <div className="workspace-intro">
+      <div><span className="eyebrow">لوحة المتابعة المباشرة</span><h1>السوق بوضوح<span>.</span></h1><p>السعر أولًا، ثم الإعداد والقرار، والتفاصيل عند الحاجة.</p></div>
+      <span className="workspace-mode"><span aria-hidden="true"/>متابعة وتحليل ورقي</span>
+    </div>
+    <div className="workspace-toolbar">
+      <div className="asset-switch" role="group" aria-label="اختيار الأصل المعروض">
+        {([{id:'ALL',label:'الكل'},{id:'GOLD',label:'الذهب'},{id:'BTC',label:'البيتكوين'}] as const).map(item=><button key={item.id} type="button" aria-pressed={assetView===item.id} onClick={()=>setAssetView(item.id)}>{item.label}</button>)}
+      </div>
+      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#market-overview">نظرة سريعة</a><a href="#scalp-opportunities">السكالب</a><a href="#market-forecast">توقع 15 دقيقة</a><a href="#market-news">الأخبار</a><a href="#market-research">الجودة والنتائج</a></nav>
+    </div>
+    <section className="content lite-content" aria-label="بيانات السوق والتحليل">
+      <FastScalpPulse assetView={assetView} desk={scalpDesk} now={now} aiAgeMs={Number.isFinite(snapshotAge)?snapshotAge:null}/>
+      <AICommandCenter assetView={assetView} data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
+      <div id="market-news" className="workspace-section"><div className="workspace-section-heading"><div><span>04 / الأجندة</span><h2>أخبار تحرّك السوق</h2></div><p>المواعيد والنتائج بتوقيت الإمارات</p></div><NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredId={aiData?.autopilot?.nextEvent?.id||null}/></div>
 
-      <details className="panel research-drawer">
+      <details id="market-research" className="panel research-drawer">
         <summary className="research-drawer-summary"><span><strong>أدوات البحث واختبارات الجودة</strong><small>الفوركس، نتائج النماذج، واختبارات اتجاه BUY/SELL · افتح عند الحاجة</small></span><span aria-hidden="true">⌄</span></summary>
         <div className="research-drawer-content">
       {aiData?.modelValidation&&<section className="panel" aria-label="جودة وصدق النماذج" style={{padding:'14px 18px'}}>

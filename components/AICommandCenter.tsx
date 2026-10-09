@@ -307,14 +307,7 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
   </section>;
 }
 
-function AssetCard(props:any){
-  return <div className="market-asset-column">
-    <LegacyAssetCard {...props}/>
-    {props.x?.scalpDesk&&<ScalpDesk desk={props.x.scalpDesk} now={props.now}/>}
-  </div>;
-}
-
-export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.now()}:any){
+export default function AICommandCenter({data,error,fastWave,goldLive,assetView='ALL',now=Date.now()}:any){
   const snapshotAgeMs=data?.snapshot?Math.max(0,now-Number(data.snapshot.servedAt||now)+Number(data.snapshot.ageMs||0)):null;
   const auto=data?.autopilot,next=auto?.nextEvent;
   const nextEventDelta=Number(next?.time)-now;
@@ -325,7 +318,20 @@ export default function AICommandCenter({data,error,fastWave,goldLive,now=Date.n
     {error&&!data&&<div className="fatal"><Activity size={18}/><div><strong>تعذر تحديث AI</strong><span>{error}</span></div></div>}
     {snapshotAgeMs!=null&&snapshotAgeMs>30000&&<div className="fatal"><Activity size={18}/><div><strong>التحليل متأخر</strong><span>آخر لقطة عمرها {Math.round(snapshotAgeMs/1000)} ثانية · لا تعتمد على أي توصية حتى تتجدد</span></div></div>}
 
-    <div className="dashboardgrid"><AssetCard now={now} x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive}/><AssetCard now={now} x={data?.bitcoin} fast={fastWave?.btc}/></div>
+    <section id="scalp-opportunities" className="workspace-section" aria-labelledby="scalp-section-title">
+      <div className="workspace-section-heading"><div><span>02 / فرص الدخول</span><h2 id="scalp-section-title">السكالب · دقيقة وخمس دقائق</h2></div><p>الإعداد، التأكيد، ثم مستويات الدخول</p></div>
+      <div className={'dashboardgrid market-pair-grid '+(assetView!=='ALL'?'single-asset':'')}>
+        {assetView!=='BTC'&&(data?.gold?.scalpDesk?<ScalpDesk desk={data.gold.scalpDesk} now={now}/>:<div className="panel workspace-loading">جارٍ تحميل إعدادات الذهب…</div>)}
+        {assetView!=='GOLD'&&(data?.bitcoin?.scalpDesk?<ScalpDesk desk={data.bitcoin.scalpDesk} now={now}/>:<div className="panel workspace-loading">جارٍ تحميل إعدادات البيتكوين…</div>)}
+      </div>
+    </section>
+    <section id="market-forecast" className="workspace-section" aria-labelledby="forecast-section-title">
+      <div className="workspace-section-heading"><div><span>03 / الاتجاه الأوسع</span><h2 id="forecast-section-title">توقع الحركة · 15 دقيقة</h2></div><p>سياق الاتجاه بجوار الأهداف والإبطال</p></div>
+      <div className={'dashboardgrid market-pair-grid '+(assetView!=='ALL'?'single-asset':'')}>
+        {assetView!=='BTC'&&<LegacyAssetCard now={now} x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive}/>}
+        {assetView!=='GOLD'&&<LegacyAssetCard now={now} x={data?.bitcoin} fast={fastWave?.btc}/>}
+      </div>
+    </section>
     {showNextEvent&&<details className="news-event-details">
       <summary><span>خبر مؤثر على السوق <strong>{next.name}</strong></span><b>{awaitingActual?'بانتظار النتيجة':timeLeft(next.time,now)}</b></summary>
       <section className="next-news news-impact-card">
