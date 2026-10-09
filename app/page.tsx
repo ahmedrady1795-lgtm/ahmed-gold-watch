@@ -338,7 +338,18 @@ export default function Home(){
       <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#core-console">النواة الصوتية</a><a href="#market-overview">نظرة سريعة</a><a href="#scalp-opportunities">السكالب</a><a href="#market-forecast">توقع 15 دقيقة</a></nav>
     </div>
     <section className="content lite-content" aria-label="بيانات السوق والتحليل">
-      <CoreChat data={aiData} desk={scalpDesk}/>
+      <CoreChat data={aiData} desk={scalpDesk} onCommand={(cmd)=>{
+        if(cmd.type==='SET_ASSET'){setAssetView(cmd.asset);return;}
+        if(cmd.type==='REFRESH_ANALYSIS'){void loadAi(true);return;}
+        if(cmd.type==='NAVIGATE'){
+          const el=document.getElementById(cmd.section);
+          if(!el)return;
+          for(let parent=el.parentElement;parent;parent=parent.parentElement){
+            if(parent instanceof HTMLDetailsElement)parent.open=true;
+          }
+          window.requestAnimationFrame(()=>el.scrollIntoView({behavior:'smooth',block:'start'}));
+        }
+      }}/>
       <FastScalpPulse assetView={assetView} desk={scalpDesk} now={now} aiAgeMs={Number.isFinite(snapshotAge)?snapshotAge:null}/>
       <AICommandCenter assetView={assetView} data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
       <details className="secondary-tools">
