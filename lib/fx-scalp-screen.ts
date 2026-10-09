@@ -38,7 +38,7 @@ export function screenFxQuote(symbol:string,now:number,obs?:Partial<FxBrokerObse
       spreadPips:Number(((ask-bid)/pair.pipSize).toFixed(2)),
       reason:'تحتاج عمولة وانزلاق الوسيط الفعليين؛ لا نفترض تكلفة صفر'};
   const mid=(bid+ask)/2,spread=ask-bid;
-  const drag=spread+mid*(commissionRoundTripBps+slippageRoundTripBps)/10000;
+  const drag=spread+mid*(Number(commissionRoundTripBps)+Number(slippageRoundTripBps))/10000;
   const ratio1=drag/m1Atr,ratio5=drag/m5Atr;
   const spreadPips=Number((spread/pair.pipSize).toFixed(2));
   const totalCostPips=Number((drag/pair.pipSize).toFixed(2));
