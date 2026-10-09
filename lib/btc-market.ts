@@ -25,6 +25,17 @@ function latestClosedAge(c:Candle[],ms:number,now:number){
   const last=c.filter(x=>x.time+ms<=now).at(-1);
   return last?Math.max(0,now-(last.time+ms)):Infinity;
 }
+// If an external refresh is slow, the scalp desk may reuse ONLY a genuinely
+// recent, completed candle set. Freshness validation remains fail-closed;
+// this does not fabricate OHLC or extend the market-open window.
+export function peekFreshBtcMarket(now=Date.now()):BtcMarket|null{
+  const item=cache;
+  if(!item||now<item.at||now-item.at>90000)return null;
+  const value=item.value;
+  if(latestClosedAge(value.c1,60000,now)>75000||
+     latestClosedAge(value.c5,300000,now)>330000)return null;
+  return value;
+}
 function assertFresh(c1:Candle[],c5:Candle[],c15:Candle[],c60:Candle[],now:number,provider:string){
   const ages={m1:latestClosedAge(c1,60000,now),m5:latestClosedAge(c5,300000,now),m15:latestClosedAge(c15,900000,now),h1:latestClosedAge(c60,3600000,now)};
   if(ages.m1>90000||ages.m5>330000||ages.m15>1200000||ages.h1>4500000)throw new Error(provider+' stale candles');
