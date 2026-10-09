@@ -72,7 +72,28 @@ assert.equal(chooseEligibleScalpPlan([candidate(94,'ARMED',{cost:1,netRR:1.25}),
   'Cost-adjusted current payoff must satisfy 1.25R independent of cached badge');
 assert.equal(chooseEligibleScalpPlan([candidate(94,'ARMED',{targets:[{price:NaN}]}),candidate(75,'ARMED')]).score,75,
   'NaN targets cannot displace a valid backup candidate');
+assert.equal(chooseEligibleScalpPlan([candidate(94,'ARMED',{stop:101})]).status,'WATCH',
+  'Never leave an invalid ARMED candidate authorized when no safe backup exists');
 console.log('PASS: two candidate setups ranked by full tradability, stop geometry, and net transaction costs');
+const {FX_WATCHLIST,screenFxQuote}=load('lib/fx-scalp-screen.ts');
+assert.equal(FX_WATCHLIST.length,7);
+assert.deepEqual(FX_WATCHLIST.map(x=>x.symbol),
+  ['EURUSD','USDJPY','GBPUSD','USDCAD','AUDUSD','EURGBP','EURAUD']);
+assert.equal(screenFxQuote('EURUSD',now).status,'BROKER_FEED_REQUIRED');
+const fxt=Date.parse('2026-10-09T09:00:00Z');
+const e={bid:1.10000,ask:1.10010,quoteAt:fxt,
+  m1Atr:.00055,m5Atr:.0015,commissionRoundTripBps:.1,
+  slippageRoundTripBps:.1};
+assert.equal(screenFxQuote('EURUSD',fxt,e).status,'PAPER_RESEARCH_ONLY');
+assert.equal(screenFxQuote('EURUSD',fxt,{...e,quoteAt:fxt-20000}).status,'STALE_OR_BAD_DATA');
+assert.equal(screenFxQuote('EURUSD',fxt,{...e,commissionRoundTripBps:undefined}).status,'EXECUTION_COST_REQUIRED');
+assert.equal(screenFxQuote('EURUSD',fxt,{...e,ask:1.101}).status,'COST_BLOCKED');
+const yen=screenFxQuote('USDJPY',fxt,{...e,bid:150,ask:150.008,m1Atr:.13,m5Atr:.30});
+assert.equal(yen.status,'PAPER_RESEARCH_ONLY');
+assert.ok(Math.abs(yen.spreadPips-.8)<.01,'JPY pip is 0.01 rather than 0.0001');
+for(const row of FX_WATCHLIST)assert.equal(screenFxQuote(row.symbol,fxt,e).eligible,false,
+  'Even with coherent test quotes a forex pair cannot become a real broker order');
+console.log('PASS: seven FX pairs fail closed without true MT5 quotes/commissions and apply JPY pip conventions');
 const trendBars=Array.from({length:210},(_,i)=>({
   time:Date.parse('2026-10-07T00:00:00Z')+i*60000,
   open:100+i*.10,close:100+(i+1)*.10,
