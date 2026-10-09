@@ -20,37 +20,74 @@ export default function CoreChat({data,desk}:CoreChatProps){
   const [draft,setDraft]=useState('');
   const [busy,setBusy]=useState(false);
   const [listening,setListening]=useState(false);
+  const [liveVoice,setLiveVoice]=useState(false);
   const [voiceReply,setVoiceReply]=useState(false);
+  const [voiceError,setVoiceError]=useState('');
   const recognitionRef=useRef<any>(null);
+  const liveVoiceRef=useRef(false);
+  const speakingRef=useRef(false);
+  const voiceBufferRef=useRef('');
+  const voiceSendTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
   const nextId=useRef(2);
   const context=useMemo(()=>compactContext(data,desk),[data,desk]);
   const suggestions=['ما الاتجاه الآن؟','ليه مفيش دخول؟','حلل البيتكوين','ما تكلفة الصفقة؟'];
 
   const speak=(text:string)=>{
     if(!voiceReply||typeof window==='undefined'||!('speechSynthesis' in window))return;
+    speakingRef.current=true;
+    if(liveVoiceRef.current)recognitionRef.current?.stop();
     window.speechSynthesis.cancel();
     const utterance=new SpeechSynthesisUtterance(text);utterance.lang='ar-EG';utterance.rate=.98;utterance.pitch=1;
+    utterance.onend=()=>{speakingRef.current=false;if(liveVoiceRef.current)window.setTimeout(()=>startRecognition(true),350);};
     window.speechSynthesis.speak(utterance);
   };
-  const startListening=()=>{
-    if(typeof window==='undefined')return;
-    const Recognition=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;
-    if(!Recognition){setDraft('الميكروفون يحتاج متصفحًا يدعم التعرف على الكلام.');return;}
-    if(listening){recognitionRef.current?.stop();return;}
-    const recognition=new Recognition();recognition.lang='ar-EG';recognition.interimResults=true;recognition.continuous=false;
-    recognition.onresult=(event:any)=>{const text=Array.from(event.results||[]).map((x:any)=>x[0]?.transcript||'').join('');setDraft(text);};
-    recognition.onerror=()=>setListening(false);recognition.onend=()=>setListening(false);recognitionRef.current=recognition;setListening(true);recognition.start();
-  };
-  useEffect(()=>()=>{recognitionRef.current?.stop();if(typeof window!=='undefined')window.speechSynthesis?.cancel();},[]);
-  const send=async(event?:FormEvent)=>{
-    event?.preventDefault();const text=draft.trim();if(!text||busy)return;
-    setDraft('');setMessages(prev=>[...prev,{id:nextId.current++,role:'user',text}]);setBusy(true);
+  const submitText=async(text:string)=>{
+    const clean=text.trim();if(!clean||busy)return;
+    setDraft('');setMessages(prev=>[...prev,{id:nextId.current++,role:'user',text:clean}]);setBusy(true);
     try{
-      const response=await fetch('/api/core-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,context}),signal:AbortSignal.timeout(7000)});
+      const response=await fetch('/api/core-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:clean,context}),signal:AbortSignal.timeout(7000)});
       const payload=await response.json().catch(()=>null);if(!response.ok||!payload?.ok)throw new Error(payload?.message||'تعذر الرد');
       setMessages(prev=>[...prev,{id:nextId.current++,role:'core',text:payload.answer}]);speak(payload.answer);
     }catch{const fallback='النواة مشغولة لحظة. استخدم بيانات الشاشة الحالية أو أعد إرسال السؤال بعد قليل.';setMessages(prev=>[...prev,{id:nextId.current++,role:'core',text:fallback}]);speak(fallback);}
     finally{setBusy(false);}
+  };
+  const startRecognition=(continuous=false)=>{
+    if(typeof window==='undefined')return;
+    const Recognition=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;
+    if(!Recognition){setVoiceError('المتصفح لا يدعم التعرف على الكلام. جرّب Chrome أو Safari محدثًا.');return;}
+    const recognition=new Recognition();recognition.lang='ar-EG';recognition.interimResults=true;recognition.continuous=continuous;
+    recognition.onresult=(event:any)=>{
+      let interim='';
+      for(let i=event.resultIndex||0;i<(event.results||[]).length;i++){
+        const result=event.results[i],text=String(result?.[0]?.transcript||'');
+        if(result?.isFinal){voiceBufferRef.current=(voiceBufferRef.current+' '+text).trim();}
+        else interim+=text;
+      }
+      const visible=(voiceBufferRef.current+' '+interim).trim();if(visible)setDraft(visible);
+      if(continuous&&voiceBufferRef.current){
+        if(voiceSendTimerRef.current)clearTimeout(voiceSendTimerRef.current);
+        voiceSendTimerRef.current=setTimeout(()=>{const message=voiceBufferRef.current.trim();voiceBufferRef.current='';if(message)void submitText(message);},650);
+      }
+    };
+    recognition.onerror=(event:any)=>{setListening(false);if(event?.error==='not-allowed')setVoiceError('اسمح للمتصفح بالميكروفون من إعدادات الموقع ثم جرّب مرة أخرى.');};
+    recognition.onend=()=>{setListening(false);if(liveVoiceRef.current&&!speakingRef.current)window.setTimeout(()=>startRecognition(true),350);};
+    recognitionRef.current=recognition;setVoiceError('');setListening(true);recognition.start();
+  };
+  const startListening=()=>{
+    if(listening){recognitionRef.current?.stop();return;}
+    voiceBufferRef.current='';startRecognition(false);
+  };
+  const toggleLiveVoice=async()=>{
+    if(liveVoice){liveVoiceRef.current=false;setLiveVoice(false);setListening(false);recognitionRef.current?.stop();window.speechSynthesis?.cancel();return;}
+    if(typeof window==='undefined')return;
+    try{
+      if(navigator.mediaDevices?.getUserMedia){const stream=await navigator.mediaDevices.getUserMedia({audio:true});stream.getTracks().forEach(track=>track.stop());}
+      liveVoiceRef.current=true;setLiveVoice(true);setVoiceReply(true);voiceBufferRef.current='';startRecognition(true);
+    }catch{setVoiceError('لم يتم السماح بالميكروفون. اضغط سماح من نافذة المتصفح ثم أعد المحاولة.');}
+  };
+  useEffect(()=>()=>{liveVoiceRef.current=false;recognitionRef.current?.stop();if(voiceSendTimerRef.current)clearTimeout(voiceSendTimerRef.current);if(typeof window!=='undefined')window.speechSynthesis?.cancel();},[]);
+  const send=async(event?:FormEvent)=>{
+    event?.preventDefault();void submitText(draft);
   };
   return <section id="core-console" className="core-console" aria-labelledby="core-console-title">
     <div className="core-console-visual">
@@ -63,10 +100,11 @@ export default function CoreChat({data,desk}:CoreChatProps){
       <div className="core-health"><i/> متصلة بالبيانات · <b>سريعة</b></div>
     </div>
     <div className="core-chat-panel">
-      <div className="core-chat-head"><div><strong>محادثة مباشرة</strong><small>اكتب أو استخدم الميكروفون</small></div><button type="button" className={'core-voice-toggle '+(voiceReply?'active':'')} onClick={()=>setVoiceReply(v=>!v)} aria-pressed={voiceReply} title="تشغيل صوت الرد">{voiceReply?<Volume2 size={17}/>:<VolumeX size={17}/>}<span>{voiceReply?'صوت الرد مفعل':'صوت الرد مغلق'}</span></button></div>
+      <div className="core-chat-head"><div><strong>محادثة مباشرة</strong><small>{liveVoice?'اتكلم الآن · النواة تستمع وترد صوتيًا':'اكتب أو استخدم الميكروفون'}</small></div><div className="core-chat-actions"><button type="button" className={'core-live-voice '+(liveVoice?'active':'')} onClick={()=>void toggleLiveVoice()} aria-pressed={liveVoice} title={liveVoice?'إيقاف الكلام المباشر':'بدء الكلام المباشر'}>{liveVoice?<MicOff size={16}/>:<Mic size={16}/>}<span>{liveVoice?'إيقاف الكلام':'تحدث مباشرة'}</span></button><button type="button" className={'core-voice-toggle '+(voiceReply?'active':'')} onClick={()=>setVoiceReply(v=>!v)} aria-pressed={voiceReply} title="تشغيل صوت الرد">{voiceReply?<Volume2 size={17}/>:<VolumeX size={17}/>}<span>{voiceReply?'صوت الرد مفعل':'صوت الرد مغلق'}</span></button></div></div>
       <div className="core-messages" aria-live="polite">{messages.slice(-5).map(m=><div key={m.id} className={'core-message '+m.role}><span>{m.role==='core'?'النواة':'أنت'}</span><p>{m.text}</p></div>)}{busy&&<div className="core-message core typing"><span>النواة</span><p><i/><i/><i/></p></div>}</div>
       <div className="core-suggestions" aria-label="أسئلة سريعة">{suggestions.map(s=><button key={s} type="button" onClick={()=>setDraft(s)}>{s}</button>)}</div>
       <form className="core-composer" onSubmit={send}><button type="button" className={'core-mic '+(listening?'recording':'')} onClick={startListening} aria-label={listening?'إيقاف التسجيل':'تحدث مع النواة'} title={listening?'إيقاف التسجيل':'تحدث مع النواة'}>{listening?<MicOff size={19}/>:<Mic size={19}/>}</button><textarea value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void send();}}} placeholder="اكتب سؤالك للنواة…" rows={1} aria-label="رسالتك للنواة"/><button className="core-send" type="submit" disabled={!draft.trim()||busy} aria-label="إرسال السؤال"><Send size={18}/></button></form>
+      {voiceError&&<small className="core-voice-error" role="status">{voiceError}</small>}
       <small className="core-note">النواة تشرح بيانات الموقع الحالية. الرد السريع لا يشغّل دورة تحليل جديدة.</small>
     </div>
   </section>;
