@@ -7,6 +7,49 @@ function load(file){
   return exports;
 }
 const {buildScalpPlans}=load('lib/scalp-opportunities.ts');
+const {selectGoldM5Breakout}=load('lib/scalp-selection.ts');
+// Breakout selection tests are synthetic, not a profitable backtest.
+// Gold M5 BUY/SELL now plan an ENTRY near the old boundary (limit retest),
+// place the SL beyond the real completed breakout candle, and reject wick traps.
+const strongBuy=selectGoldM5Breakout({
+  side:'BUY',boundary:100,open:99.9,high:100.9,low:99.3,close:100.8,
+  atr1:1,roundTripCost:.2
+});
+assert.equal(strongBuy.blockers.length,0);
+assert.ok(strongBuy.entry>100&&strongBuy.entry<100.8,
+  'BUY breakout must use boundary retest, never chase impulse close');
+assert.ok(strongBuy.stop<99.3,
+  'BUY stop must be beyond confirmed breakout candle LOW');
+const strongSell=selectGoldM5Breakout({
+  side:'SELL',boundary:100,open:100.1,high:100.7,low:99.2,close:99.25,
+  atr1:1,roundTripCost:.2
+});
+assert.equal(strongSell.blockers.length,0);
+assert.ok(strongSell.entry<100&&strongSell.entry>99.25,
+  'SELL retest price must be between breakout boundary and close');
+assert.ok(strongSell.stop>100.7,'SELL stop beyond completed breakout HIGH');
+const wickTrap=selectGoldM5Breakout({
+  side:'BUY',boundary:100,open:99.95,high:101.5,low:99.6,close:100.4,
+  atr1:1,roundTripCost:.2
+});
+assert.ok(wickTrap.blockers.some(x=>x.includes('ذيل رفض')),
+  'Large rejection wick must invalidate the high momentum score');
+const weakClose=selectGoldM5Breakout({
+  side:'BUY',boundary:100,open:99.8,high:100.1,low:99.4,close:100.01,
+  atr1:1,roundTripCost:.2
+});
+assert.ok(weakClose.blockers.some(x=>x.includes('غير حاسم')));
+const overextended=selectGoldM5Breakout({
+  side:'SELL',boundary:100,open:99.9,high:100,low:98.5,close:98.7,
+  atr1:1,roundTripCost:.2
+});
+assert.ok(overextended.blockers.some(x=>x.includes('ممتدة')),
+  'Overextended sell impulse must not authorize an immediate chase');
+assert.ok(selectGoldM5Breakout({
+  side:'BUY',boundary:100,open:100,high:NaN,low:99,close:100.2,
+  atr1:1,roundTripCost:.2
+}).blockers.length>0,'Missing candle data fails closed');
+console.log('PASS: BUY/SELL breakout limit retest, structural stops, wick rejection, fake breakout and exhaustion filters');
 const {advancePaperTrade,updateScalpLedger,evaluatePaperProof,SCALP_PROOF_FROM}=load('lib/scalp-paper-ledger.ts');
 const {mergeBtcCandles}=load('lib/btc-market.ts');
 const {ingestLiveCandle,completedLiveCandles}=load('lib/live-candles.ts');
