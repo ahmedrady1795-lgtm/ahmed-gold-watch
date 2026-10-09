@@ -22,6 +22,8 @@ assert.ok(m5.walkForward.tested>=20,'Time-split movement baseline should have in
 assert.equal(m5.walkForward.nominalCoveragePct,50,'The 25–75% interval has 50% NOMINAL coverage, not 75%');
 assert.equal(m5.walkForward.directionalAccuracyPct,100,
   'Known synthetic upward history must yield strictly historical forward-median predictions');
+assert.equal(m5.walkForward.directionQuality,'OBSERVED_EDGE');
+assert.equal(estimate(series.slice(-25),1,5,now,price).walkForward.rangeQuality,'COLLECTING');
 assert.ok(Math.abs(m5.endpointMedian-.5)<.001,
   'M5 forecast measures next five completed one-minute CLOSES, not same-bar excursions');
 assert.ok(Math.abs(m5.upsideP75-.55)<.001,
