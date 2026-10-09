@@ -1,5 +1,6 @@
 import {calibrateHorizonBrain} from './horizon-brain-learning';
 import {buildSpecializedHorizonBrains} from './horizon-brains';
+import {observedMoveEnvelope,type MoveEnvelope} from './move-reach-calibration';
 type Side='BUY'|'SELL'|'WAIT';
 type Regime='EXPANSION'|'COMPRESSION'|'REVERSAL'|'RANGE'|'TRANSITION';
 type Evidence={name:string;side:Side;score:number;weight:number;reliability:number};
@@ -15,6 +16,7 @@ export type MovementIntelligence={
     changePoint:boolean;changePointScore:number;
   };
   target15:{side:Side;price:number|null;low:number|null;high:number|null;confidence:number;moveAtr:number;source:string}|null;
+  forwardEnvelope:{m1:MoveEnvelope;m5:MoveEnvelope;m15:MoveEnvelope};
   reasons:string[];
   marketLead?:any;
 };
@@ -335,17 +337,31 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   ));
 
   const p=Number(args?.price),atr=Number(args?.atr),valid=Number.isFinite(p)&&p>0&&Number.isFinite(atr)&&atr>0;
-  const closeAtr=Number(expected15?.meanCloseAtr||0),samples=Number(expected15?.samples||0);
-  const behaviorAtr=Number(behavior?.expectedMoveAtr||0);
+  // The forecast horizon determines the sampling frequency and lookahead
+  // window IN HISTORICAL DATA ONLY: M1->M1/M5 and M5->M15. Never extrapolate
+  // a one-minute ATR into a precise fifteen-minute destination.
+  const forwardEnvelope={
+    m1:observedMoveEnvelope(args?.c1||[],1,1,Number(args?.now),valid?p:null),
+    m5:observedMoveEnvelope(args?.c1||[],1,5,Number(args?.now),valid?p:null),
+    m15:observedMoveEnvelope(args?.c5||[],5,15,Number(args?.now),valid?p:null)
+  };
   const fdir=fifteen.side==='BUY'?1:fifteen.side==='SELL'?-1:0;
-  const fallbackAtr=fdir*(.30+Math.min(1.15,fifteen.confidence/75));
-  const memoryUsable=samples>=6&&Math.abs(closeAtr)>=.06;
-  let moveAtr=memoryUsable?closeAtr*.62+behaviorAtr*.16+fallbackAtr*.22:behaviorAtr*.28+fallbackAtr*.72;
-  if(fifteen.side!=='WAIT'&&Math.sign(moveAtr)!==fdir&&Math.abs(moveAtr)<.55)moveAtr=fallbackAtr*.72;
-  moveAtr=cap(moveAtr,-2.6,2.6);
-  const targetPrice=valid?p+atr*moveAtr:null;
-  const rangeAtr=Math.max(.24,Math.min(1.15,(Number(expected15?.expectedUpAtr||0)+Number(expected15?.expectedDownAtr||0))*.18+(100-fifteen.confidence)/100*.48));
-  const target15=targetPrice==null?null:{side:fifteen.side,price:Number(targetPrice.toFixed(2)),low:Number((targetPrice-atr*rangeAtr).toFixed(2)),high:Number((targetPrice+atr*rangeAtr).toFixed(2)),confidence:fifteen.confidence,moveAtr:Number(moveAtr.toFixed(3)),source:memoryUsable?'REGIME_MEMORY_BLEND':'REGIME_LIVE_BLEND'};
+  const env15=forwardEnvelope.m15;
+  // A forecast direction and the historical *endpoint median* must agree.
+  // Otherwise this remains a range for WATCH, not a directional target.
+  const directionConsistent=fdir!==0&&env15.endpointMedian!=null&&
+    fdir*env15.endpointMedian>0;
+  const reach=fdir===1?env15.upsideP55:env15.downsideP55;
+  const canShowTarget=valid&&fifteen.confidence>=50&&directionConsistent&&
+    env15.status==='READY'&&reach!=null&&reach>0;
+  const targetPrice=canShowTarget?p+fdir*Number(reach):null;
+  const target15=targetPrice==null?null:{
+    side:fifteen.side,price:Number(targetPrice.toFixed(2)),
+    low:env15.lowerPrice,high:env15.upperPrice,
+    confidence:fifteen.confidence,
+    moveAtr:Number((fdir*Number(reach)/Math.max(atr,1e-9)).toFixed(3)),
+    source:'CAUSAL_M5_15M_CONTEXT_P55'
+  };
 
   const reasons=[
     'Regime '+regime,
@@ -376,6 +392,6 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
       fifteenMinute:{independentSupport:fifteenIndependentSupport,independentOpposition:fifteenIndependentOpposition},
       changePoint:graphChangePoint,changePointScore:Number(g?.changePointScore||0)
     },
-    target15,reasons
+    target15,forwardEnvelope,reasons
   };
 }

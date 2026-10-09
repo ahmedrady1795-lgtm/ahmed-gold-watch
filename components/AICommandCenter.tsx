@@ -127,6 +127,7 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
     reason:Array.isArray(fast.reasons)&&fast.reasons.length?fast.reasons.slice(0,3).join(' · '):'قراءة micro-flow لحظية من التسارع والسبريد وتتابع الـticks.',
     metrics:{bookImbalance:Number(fast.imbalance||0),pressureChange:0,replenishDelta:0,acceleration:Number(fast.acceleration||0),persistence:Number(fast.persistence||0)}
   }:null;
+  const moveEnvelope=x.movementEnvelope||null;
   const forward=x.forwardMove||null;
   const forwardSide=forward?.side==='BUY'||forward?.side==='SELL'?forward.side:'WAIT';
   const forwardZone=forward?.zone||null;
@@ -212,6 +213,25 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
       <span>السيولة: {hasLiquidity?<><b className="green">شراء {liqBuy}%</b> <b className="red">بيع {liqSell}%</b></>:'غير مؤكدة'}</span>
       <small>{liquidityLabel}</small>
     </div>
+    {moveEnvelope&&<details className="forecast-extra">
+      <summary>توزيع حركة السعر الفعلية خلال 1 و5 و15 دقيقة · مرجع تاريخي</summary>
+      <div className="forecast-scenario-strip">
+        {(['m1','m5','m15'] as const).map((frame)=>{
+          const e=moveEnvelope[frame];
+          const label=frame==='m1'?'دقيقة':frame==='m5'?'5 دقائق':'15 دقيقة';
+          return <div key={frame}>
+            <small>حركة {label} · {e?.samples||0} عينة</small>
+            <b>{e?.status==='READY'&&e.lowerPrice!=null&&e.upperPrice!=null
+              ?fmt(e.lowerPrice,2)+' — '+fmt(e.upperPrice,2)
+              :'العينة غير مؤهلة أو البيانات متأخرة'}</b>
+            <span>{e?.status==='READY'?'حد 25–75% لتغير الإغلاق التاريخي · ارتفاع P75 '+fmt(e.upsideP75,2)+' · هبوط P75 '+fmt(e.downsideP75,2):
+              'لا يُعرض هدف بلا تاريخ مغلق كافٍ'}
+              {e?.status==='READY'?' · '+(e.conditioning==='MATCHED_3_BAR_TREND'?'سياق اتجاه مشابه':'عينة عامة'):''}</span>
+          </div>;
+        })}
+      </div>
+      <small>النطاق التاريخي ليس توقع احتمال 75%، ولا توصية شراء أو بيع. التوزيع محسوب من شموع مغلقة، وأي دخول يظل خاضعًا لتأكيد الاتجاه والوقف والتكلفة.</small>
+    </details>}
 
     <div className="next-move-copy primary-move zone-primary">
       <span>الحركة القادمة · أهداف أمامية متدرجة</span>
