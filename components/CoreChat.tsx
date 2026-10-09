@@ -36,6 +36,9 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
   const [liveVoice,setLiveVoice]=useState(false);
   const [speaking,setSpeaking]=useState(false);
   const [voiceError,setVoiceError]=useState('');
+  const [arabicVoices,setArabicVoices]=useState<Array<{id:string;name:string;lang:string}>>([]);
+  const [selectedVoiceURI,setSelectedVoiceURI]=useState('');
+  const selectedVoiceRef=useRef('');
   const [intelligenceMode,setIntelligenceMode]=useState<'checking'|'smart'|'basic'>('checking');
   const [modelReady,setModelReady]=useState<boolean|null>(null);
   const [researchSources,setResearchSources]=useState<Array<{title:string;url:string}>>([]);
@@ -68,7 +71,20 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
 
   useEffect(()=>{
     if(typeof window==='undefined'||!('speechSynthesis' in window))return;
-    const loadVoices=()=>{voicesRef.current=window.speechSynthesis.getVoices();};
+    const loadVoices=()=>{
+      const found=window.speechSynthesis.getVoices();
+      voicesRef.current=found;
+      const arabic=found.filter(v=>/^ar(?:[-_]|$)/i.test(v.lang))
+        .map(v=>({id:v.voiceURI,name:v.name,lang:v.lang}));
+      setArabicVoices(arabic);
+      const selected=found.find(v=>v.voiceURI===selectedVoiceRef.current);
+      if(!selected){
+        const preferred=found.find(v=>/^ar[-_]EG$/i.test(v.lang))||
+          found.find(v=>/^ar(?:[-_]|$)/i.test(v.lang));
+        selectedVoiceRef.current=preferred?.voiceURI||'';
+        setSelectedVoiceURI(selectedVoiceRef.current);
+      }
+    };
     loadVoices();
     window.speechSynthesis.addEventListener?.('voiceschanged',loadVoices);
     return ()=>window.speechSynthesis.removeEventListener?.('voiceschanged',loadVoices);
@@ -157,16 +173,43 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
     setListening(true);
     try{recognition.start();return true;}catch{setListening(false);setVoiceError('تعذر تشغيل الميكروفون. أعد الضغط على زر بدء الكلام.');return false;}
   };
+  // These substitutions are spoken only; the actual Gemini answer remains unchanged.
+  // Web Speech on iOS frequently reads Latin trading abbreviations letter by letter.
+  const textForSpeech=(value:string)=>{
+    const glossary:Array<[RegExp,string]>=[
+      [/\bXAUUSD\b/gi,'الذهب مقابل الدولار'],
+      [/\bBTCUSDT?\b/gi,'بيتكوين مقابل الدولار'],
+      [/\bEURUSD\b/gi,'اليورو مقابل الدولار'],
+      [/\bMT5\b/gi,'ميتا تريدر خمسة'],
+      [/\bM15\b/gi,'فريم الخمستاشر دقيقة'],
+      [/\bM5\b/gi,'فريم الخمس دقايق'],
+      [/\bM3\b/gi,'فريم التلات دقايق'],
+      [/\bM1\b/gi,'فريم الدقيقة'],
+      [/\bH4\b/gi,'فريم الأربع ساعات'],
+      [/\bSL\b/gi,'وقف الخسارة'],
+      [/\bTP\b/gi,'جني الربح'],
+      [/\bRR\b/gi,'نسبة العائد للمخاطرة'],
+      [/\bBTC\b/gi,'بيتكوين'],
+      [/\bAI\b/gi,'ذكاء اصطناعي'],
+      [/\bGemini\b/gi,'جيميناي'],
+      [/\bExness\b/gi,'إكسنس'],
+      [/([0-9]+(?:[.,][0-9]+)?)\s*%/g,'$1 في المية'],
+    ];
+    let valueForVoice=value.replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/g,'$1')
+      .replace(/https?:\/\/\S+/g,'رابط').replace(/[\x60*_#~]+/g,' ');
+    for(const [pattern,spoken] of glossary)valueForVoice=valueForVoice.replace(pattern,spoken);
+    return valueForVoice.replace(/\s+/g,' ').trim();
+  };
   const speechChunks=(text:string)=>{
-    const compact=text.replace(/\s+/g,' ').trim();
+    const compact=textForSpeech(text);
     if(!compact)return [];
-    const sentences=compact.split(/(?:[.!؟؛:]+\s*)/).filter(Boolean);
+    const sentences=compact.replace(/([.!؟؛])\s+/g,'$1\n').split('\n').filter(Boolean);
     const chunks:string[]=[];
     let current='';
     for(const sentence of (sentences.length?sentences:[compact])){
       for(const word of sentence.trim().split(' ')){
         const next=current?`${current} ${word}`:word;
-        if(next.length>180&&current){chunks.push(current);current=word;}else current=next;
+        if(next.length>150&&current){chunks.push(current);current=word;}else current=next;
       }
       if(current){chunks.push(current);current='';}
     }
@@ -174,7 +217,9 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
   };
   const arabicVoice=()=>{
     const voices=voicesRef.current.length?voicesRef.current:typeof window!=='undefined'&&'speechSynthesis' in window?window.speechSynthesis.getVoices():[];
-    return voices.find(v=>/^ar[-_]EG$/i.test(v.lang))||voices.find(v=>/^ar(-|_)/i.test(v.lang))||null;
+    return voices.find(v=>v.voiceURI===selectedVoiceRef.current)||
+      voices.find(v=>/^ar[-_]EG$/i.test(v.lang))||
+      voices.find(v=>/^ar(?:[-_]|$)/i.test(v.lang))||null;
   };
   const speak=(text:string)=>{
     if(typeof window==='undefined'||!('speechSynthesis' in window)||typeof (window as any).SpeechSynthesisUtterance!=='function'){
@@ -216,9 +261,9 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
       let utterance:any;
       try{utterance=new Utterance(chunks[index]);}
       catch{fail('تعذر إنشاء الصوت في المتصفح.');return;}
-      utterance.lang=usingDefaultVoice?'ar':'ar-EG';
+      utterance.lang=usingDefaultVoice?'ar':(preferredVoice?.lang||'ar');
       if(preferredVoice&&!usingDefaultVoice)utterance.voice=preferredVoice;
-      utterance.rate=.96;
+      utterance.rate=.9;
       utterance.pitch=1;
       utterance.volume=1;
       let started=false;
@@ -283,7 +328,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
     window.speechSynthesis.cancel();
     window.speechSynthesis.resume();
   };
-  const testSpeech=()=>{unlockAudio(true);speak('أيوه، أنا سامعاك. اتكلم معايا براحتك، وهرد عليك بالمصري.');};
+  const testSpeech=()=>{unlockAudio(true);speak('أيوه، أنا سامعاك. اتكلم معايا براحتك. هنبص على الذهب وفريم الخمس دقايق، ونشوف السعر رايح على فين.');};
   const submitVoice=async(text:string)=>{
     const clean=text.trim();
     if(!clean||busyRef.current)return;
@@ -324,8 +369,10 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
   const clearConversation=()=>{messagesRef.current=[];setMessages([]);setVoiceError('');voiceBufferRef.current='';interimVoiceRef.current='';setResearchSources([]);setResearchUsed(false);setAnalysisSkill('');};
   useEffect(()=>()=>{liveVoiceRef.current=false;recognitionRef.current?.stop();if(voiceSendTimerRef.current)clearTimeout(voiceSendTimerRef.current);clearSpeechWatch();if(typeof window!=='undefined')window.speechSynthesis?.cancel();},[]);
 
+  const selectedNativeVoice=arabicVoices.find(v=>v.id===selectedVoiceURI);
+  const egyptianSpeechAvailable=Boolean(selectedNativeVoice&&/^ar[-_]EG$/i.test(selectedNativeVoice.lang));
   const status=voiceError?'الصوت محتاج تفعيل':speaking?'النواة بترد عليك صوتيًا':busy?'بحلل سؤالك بسرعة':listening?'سامعك… اتكلم دلوقتي':liveVoice?'قول سؤالك بصوتك':'اضغط «ابدأ الكلام» وابدأ سؤالك';
-  const hint=voiceError?voiceError:liveVoice?'لما تخلص جملتك، النواة هتجاوبك بصوت مصري وتسمع السؤال اللي بعده تلقائيًا.':'مش هتحتاج تكتب؛ كل الحوار هيكون بالصوت.';
+  const hint=voiceError?voiceError:liveVoice?'لما تخلص جملتك، النواة هترد بالصوت المتاح على جهازك وتسمع السؤال اللي بعده تلقائيًا.':'مش هتحتاج تكتب؛ كل الحوار هيكون بالصوت.';
 
   return <section id="core-console" className="core-console voice-only" aria-labelledby="core-console-title">
     <div className="core-console-visual">
@@ -334,7 +381,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
         <span className="core-node node-a"/><span className="core-node node-b"/><span className="core-node node-c"/><span className="core-node node-d"/><span className="core-node node-e"/><span className="core-node node-f"/>
         <span className="core-orbit orbit-one"/><span className="core-orbit orbit-two"/><div className="core-emblem"><BrainCircuit size={33}/><small>CORE</small></div>
       </div>
-      <div className="core-identity"><span className="core-kicker"><Zap size={13}/> CORE / VOICE</span><h2 id="core-console-title">النواة الصوتية</h2><p>اتكلم بحرية بالمصري؛ النواة تقدر تبحث في الإنترنت وتحلل السوق من أدلة متعددة.</p></div>
+      <div className="core-identity"><span className="core-kicker"><Zap size={13}/> CORE / VOICE</span><h2 id="core-console-title">النواة الصوتية</h2><p>اتكلم بحرية بالمصري؛ النواة تقدر تبحث وتحلل، والنطق بيتحدد حسب أصوات جهازك.</p></div>
       <div className="core-health"><i/> مصري · <b>{intelligenceMode==='smart'?'محادثة ذكية':modelReady===false?'الحوار الحر غير متصل':modelReady===true?'موديل مُعدّ':'مساعد صوتي'}</b></div>
     </div>
     <div className="core-chat-panel voice-panel">
@@ -346,6 +393,22 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
         <div className="core-voice-wave" aria-hidden="true"><i/><i/><i/><i/><i/><i/><i/></div>
       </div>
       {voiceError&&<small className="core-voice-error" role="status">{voiceError}</small>}
+      <div className="core-voice-options" style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',padding:'7px 12px'}}>
+        <label htmlFor="core-voice-select" style={{fontSize:12}}>صوت النواة:</label>
+        <select id="core-voice-select" value={selectedVoiceURI}
+          onChange={e=>{selectedVoiceRef.current=e.target.value;setSelectedVoiceURI(e.target.value);}}
+          disabled={!arabicVoices.length} dir="auto"
+          style={{maxWidth:'100%',padding:'5px 8px',borderRadius:8,background:'transparent',color:'inherit'}}>
+          {!arabicVoices.length&&<option value="">مفيش صوت عربي متاح</option>}
+          {arabicVoices.map(v=><option key={v.id} value={v.id} style={{color:'#111'}}>
+            {v.name} ({v.lang}){/^ar[-_]EG$/i.test(v.lang)?' · مصري':''}
+          </option>)}
+        </select>
+        <small style={{fontSize:11,opacity:.8}}>
+          {egyptianSpeechAvailable?'صوت الجهاز محدد على ar-EG.':
+           'الصوت الحالي مش مصري؛ لو مش ظاهر ar-EG فالجهاز محتاج صوت مصري أو محرك نطق خارجي.'}
+        </small>
+      </div>
       {(researchSources.length>0||analysisSkill)&&
         <div className="core-voice-research" style={{padding:'8px 12px',fontSize:12}}>
           {analysisSkill&&<small style={{display:'block',opacity:.85,marginBottom:5}}>تحليل قائم على بيانات الموقع · {({
@@ -366,7 +429,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
 
       <small className="core-note">{modelReady===false
         ?'للحوار المفتوح في أي موضوع، لازم مفتاح GEMINI_API_KEY يتضاف بأمان في إعدادات Railway. لحد ما يتوصل، الردود الأساسية محدودة. نبرة الصوت بتعتمد على أصوات جهازك.'
-        :'اسألني عن أي موضوع. النطق باللهجة المصرية بيستخدم أفضل صوت عربي متاح على جهازك، والأوامر المسموح بيها بتشتغل جوه الموقع.'}</small>
+        :'اسألني عن أي موضوع. لو صوت ar-EG مش متاح على جهازك، اختيار صوت عربي تاني مش هيضمن النطق المصري الصحيح.'}</small>
     </div>
   </section>;
 }
