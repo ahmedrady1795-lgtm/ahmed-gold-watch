@@ -93,6 +93,51 @@ const testArmedPlan={...buy,status:'ARMED'};
 const frozen=updateScalpLedger('GOLD',[testArmedPlan],breakout().quote,now,breakout().c1);const changed={...testArmedPlan,entry:buy.entry+10,targets:[{price:9999,kind:'PROJECTION'}]};
 const repeated=updateScalpLedger('GOLD',[changed],quote(4000.45,now+1000),now+1000,breakout().c1);assert.equal(repeated.lanes[0].current.plan.entry,frozen.lanes[0].current.plan.entry);assert.equal(repeated.lanes[0].stats.samples,0,'Unactivated setups do not count as trades');
 console.log('PASS: 27 scalp checks: buy/sell geometry, closed bars, bad data, costs, news, expiry, activation, frozen levels, stop slippage and conservative outcomes. Profitability is not established.');
+
+// Production incident replay (2026-10-09 05:03:39Z): confirmed GOLD M5
+// BREAKOUT with score 94 was a BUY and stopped 47s later. These are recorded
+// PAPER reference prices, not Exness fills or fresh backtest samples.
+// This test validates direction/stop geometry, loss arithmetic, slippage, and
+// ensures neither a strong score nor gross 2.2R counts as a real profitable trade.
+const auditedRecords=[
+  {side:'BUY',entry:4186.702,stop:4185.16,target:4190.09,cost:.59,exit:4185.038,expectedR:-1.057,result:'STOP'},
+  {side:'SELL',entry:4121.524,stop:4124.04,target:4116.71,cost:.58,exit:4121.271,expectedR:-.106,result:'TIME_EXIT'},
+  {side:'SELL',entry:4118.517,stop:4119.94,target:4115.31,cost:.58,exit:4115.31,expectedR:1.312,result:'TP1'},
+  {side:'BUY',entry:4141.64,stop:4140.42,target:4144.83,cost:.58,exit:4140.212,expectedR:-1.116,result:'STOP'}
+];
+for(const t of auditedRecords){
+  const direction=t.side==='BUY'?1:-1;
+  assert.ok(direction*(t.entry-t.stop)>0,t.side+' stop must be on losing side');
+  assert.ok(direction*(t.target-t.entry)>0,t.side+' target must be on winning side');
+  const risk=Math.abs(t.entry-t.stop),reward=direction*(t.target-t.entry);
+  const expectedNetRR=(reward-t.cost)/(risk+t.cost);
+  assert.ok(expectedNetRR>=1.25,'Only plans passing cost-inclusive reward/R are eligible');
+  const calculated=(direction*(t.exit-t.entry)-t.cost)/(risk+t.cost);
+  assert.ok(Math.abs(calculated-t.expectedR)<.002,
+    'Recorded net R must include round-trip cost and stop slippage');
+  if(t.result==='STOP'){
+    assert.ok(calculated<=-1,'Stop fill beyond boundary must include slippage loss');
+  }
+}
+const refDate=Date.parse('2026-10-09T05:03:39Z');
+const incident={
+  plan:{...buy,id:'GOLD-5-breakout-20261009',side:'BUY',horizon:5,setup:'BREAKOUT',
+    status:'ARMED',score:94,entry:4186.702,stop:4185.16,
+    targets:[{price:4190.09,kind:'STRUCTURE'}],cost:.59,
+    expiresAt:refDate+210000},state:'ACTIVE',activatedAt:refDate,
+  closedAt:null,exit:null,netR:null,lastAt:refDate,lastPrice:4186.702,note:''
+};
+let paperIncident=incident;
+for(let k=5;k<=40;k+=5)paperIncident=advancePaperTrade(
+  paperIncident,quote(4186.5,refDate+k*1000),refDate+k*1000,[]);
+paperIncident=advancePaperTrade(paperIncident,quote(4185.038,refDate+47000),
+  refDate+47000,[]);
+assert.equal(paperIncident.state,'STOP');
+assert.equal(paperIncident.netR,-1.057,
+  'Replay of the actual reference stop must settle at -1.057R net, not a win');
+assert.equal(paperIncident.closedAt,refDate+47000);
+console.log('PASS: audited GOLD M5 breakout geometry; 4 recorded outcomes match cost-inclusive R and the 47-second loss replay.');
+
 const paperRow=(netR,at=SCALP_PROOF_FROM+60000,state='TP1')=>({
   plan:buy,state,activatedAt:at,closedAt:at+60000,
   exit:buy.entry,netR,lastAt:at+60000,lastPrice:buy.entry,note:'fixture'
