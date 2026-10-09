@@ -1,6 +1,7 @@
 import {getAiSnapshot} from '../../../lib/ai-snapshot-cache';
 import {searchMarketNews} from '../../../lib/core-web-research';
 import {generateEgyptianCoreAnswer,coreModelConfigured} from '../../../lib/core-language-model';
+import {buildCoreAnalysisSkills} from '../../../lib/core-analysis-skills';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -133,40 +134,70 @@ function voiceCommand(input:string):{answer:string;action:VoiceCommand|null}|nul
  return null;
 }
 function isNewsRequest(message:string){
- return /(?:ابحث|دور|دوّر|فتش|فتّش|هات.*(?:أخبار|اخبار|خبر)|جيب.*(?:أخبار|اخبار|خبر)|آخر الأخبار|اخر الاخبار|الأخبار من النت|اخبار من النت|الإنترنت|الانترنت|internet|latest news|search web|خبر النهاردة)/i.test(message);
+ return /(?:أخبار|اخبار|الخبر|آخر الأخبار|اخر الاخبار|news|breaking|خبر النهاردة)/i.test(message)&&
+   !/(?:إيه أخبارك|ايه اخبارك|عامل ايه)/.test(message);
+}
+function wantsWebSearch(message:string){
+ // General-purpose public internet research, not just gold/BTC headlines.
+ return /(?:ابحث|ابحثي|دور|دوّر|دوري|فتش|فتّش|بحث|جوجل|النت|الإنترنت|الانترنت|المواقع|مصادر|أخبار|اخبار|news|search|online|معلومة حديثة|آخر|اخر|أحدث|احدث|النهاردة|اليوم|دلوقتي|حاليا|حاليًا|2026|الرائج|ترندات|latest|today|current|recent|سعر اليوم|كم سعر)/i.test(message);
+}
+// Keep the publicly reachable voice endpoint from silently exhausting an API allowance.
+const requestWindow=new Map<string,{start:number,count:number}>();
+function withinRateLimit(request:Request,now:number){
+ const ip=(request.headers.get('x-forwarded-for')||request.headers.get('x-real-ip')||'unknown').split(',')[0].trim().slice(0,72);
+ const entry=requestWindow.get(ip);
+ const active=entry&&now-entry.start<60000?entry:{start:now,count:0};
+ active.count++;requestWindow.set(ip,active);
+ if(requestWindow.size>600){
+   for(const [key,value] of requestWindow)if(now-value.start>60000)requestWindow.delete(key);
+   if(requestWindow.size>600)requestWindow.clear();
+ }
+ return active.count<=18;
 }
 export async function POST(request:Request){
  try{
   const body=await request.json().catch(()=>({}));
   const message=String(body?.message||'').trim().slice(0,600);
   if(!message)return Response.json({ok:false,message:'قولّي سؤالك الأول.'},{status:400});
-  const now=Date.now(),snapshot=getAiSnapshot(now),context=contextFrom(snapshot.payload,body?.context,now);
+  const now=Date.now();
+  if(!withinRateLimit(request,now))return Response.json({ok:false,message:'الطلبات كتير قوي في وقت قصير، جرّب بعد دقيقة.'},{status:429});
+  const snapshot=getAiSnapshot(now),context=contextFrom(snapshot.payload,body?.context,now);
   const history:ChatHistoryItem[]=Array.isArray(body?.history)?body.history.slice(-18).map((x:any)=>({role:x?.role,text:String(x?.text||'').slice(0,550)})):[];
   const command=voiceCommand(message);
   if(command)return Response.json({ok:true,answer:command.answer,action:command.action,checkedAt:context.checkedAt,
     mode:'VOICE_COMMAND'},{headers:{'Cache-Control':'private, no-store'}});
-  const research=isNewsRequest(message);
+  const research=isNewsRequest(message),webSearch=wantsWebSearch(message);
+  const analysis=buildCoreAnalysisSkills(message,snapshot.payload,body?.context,now);
   const asset=/بيت|btc|bitcoin|بتكوين/.test(message.toLowerCase())?'BTC':
     /ذهب|gold|xau/.test(message.toLowerCase())?'GOLD':'BOTH';
+  // RSS is a no-key fallback for news; Google's grounded search handles broad research.
   const found=research?await searchMarketNews(message,asset):null;
   const recent=(found?.items||[]).filter(x=>!x.publishedAt||(x.publishedAt<=Date.now()+60000&&Date.now()-x.publishedAt<3*86400000)).slice(0,3);
   const web=research?{ok:Boolean(found?.ok),query:found?.query,checkedAt:found?.checkedAt,
     headlines:recent.map(x=>({title:x.title,source:x.source,publishedAt:x.publishedAt,url:x.url}))}:undefined;
   // LLM is conversational only; actions are deterministic and never taken from model output.
-  const natural=await generateEgyptianCoreAnswer({message,history:history.map(x=>({role:x.role==='core'?'core':'user',text:String(x.text||'')})),context,web});
-  if(natural)return Response.json({ok:true,answer:natural,mode:'EGYPTIAN_LLM',action:null,
-    modelConfigured:true,web:research?{ok:Boolean(found?.ok),query:found?.query,checkedAt:found?.checkedAt}:undefined,
-    sources:recent,checkedAt:context.checkedAt,latencyMs:Date.now()-now},
+  const natural=await generateEgyptianCoreAnswer({message,
+    history:history.map(x=>({role:x.role==='core'?'core':'user',text:String(x.text||'')})),
+    context,web,analysis,useGoogleSearch:webSearch});
+  if(natural)return Response.json({ok:true,answer:natural.answer,
+    mode:natural.grounded?'EGYPTIAN_LLM_GROUNDED':'EGYPTIAN_LLM',
+    action:null,modelConfigured:true,analysisSkill:analysis?.skill||null,
+    web:{searchRequested:webSearch,searchConfirmed:natural.grounded,queries:natural.searchQueries,
+      ...(research?{newsFallbackReady:Boolean(found?.ok)}:{})},
+    sources:natural.sources.length?natural.sources:recent.map(x=>({title:x.title,url:x.url})),
+    checkedAt:context.checkedAt,latencyMs:Date.now()-now},
     {headers:{'Cache-Control':'private, no-store'}});
   let answer:string;
-  if(research)answer=found?.ok&&recent.length
+  if(webSearch&&!research)answer='بحث الإنترنت العام مش متاح حاليًا من الموديل. جرّب تاني بعد شوية، ومش هخترع نتائج بحث.';
+  else if(research)answer=found?.ok&&recent.length
     ?'دورت على الإنترنت، ودي آخر العناوين المتاحة: '+recent.map((x,i)=>(i+1)+'، '+x.title+'، المصدر '+x.source).join('؛ ')+
       '. دي عناوين مش تأكيد لحركة السعر، ولازم نراجع بيانات السوق قبل أي صفقة.'
     :found?.ok?'لقيت أخبار، بس مش لاقية عناوين بتاريخ حديث كفاية أعتمد عليها دلوقتي.':
       'حاولت أبحث على الإنترنت، لكن مصدر الأخبار مش متاح دلوقتي. مش هقولك معلومة مش متأكدة منها.';
   else answer=answerFor(message,context,now,history);
   return Response.json({ok:true,answer,action:null,modelConfigured:coreModelConfigured(),
-    mode:research?'LIVE_WEB_RESEARCH':'RULE_BASED_FALLBACK',
+    mode:research?'NEWS_RSS_FALLBACK':webSearch?'WEB_SEARCH_UNAVAILABLE':'RULE_BASED_FALLBACK',
+    analysisSkill:analysis?.skill||null,
     web:research?{ok:Boolean(found?.ok),query:found?.query,checkedAt:found?.checkedAt}:undefined,
     sources:recent,checkedAt:context.checkedAt,latencyMs:Date.now()-now},
     {headers:{'Cache-Control':'private, no-store'}});
@@ -178,6 +209,9 @@ export async function POST(request:Request){
 // Show actual model readiness to the voice interface without exposing API keys.
 export async function GET(){
   return Response.json({ok:true,conversationModelReady:coreModelConfigured(),
-    capabilities:{voiceCommands:true,marketData:true,publicNews:true,openConversation:coreModelConfigured()}},
+    capabilities:{voiceCommands:true,marketData:true,publicNews:true,
+      publicGoogleSearch:coreModelConfigured()&&process.env.CORE_GOOGLE_SEARCH_ENABLED!=='false',
+      analysisSkills:['TREND','SCALP','BREAKOUT','LIQUIDITY','COST','FORECAST','RISK','VALIDATION','MARKET_REVIEW'],
+      openConversation:coreModelConfigured()}},
     {headers:{'Cache-Control':'private, no-store'}});
 }
