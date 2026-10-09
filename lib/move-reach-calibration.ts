@@ -6,7 +6,9 @@ export type MoveEnvelope={
   samples:number;requiredSamples:number;latestClosedAt:number|null;
   allSamples:number;conditioning:'MATCHED_3_BAR_TREND'|'UNCONDITIONAL';
   walkForward:{tested:number;nominalCoveragePct:50;intervalCoveragePct:number|null;
-    directionN:number;directionalAccuracyPct:number|null};
+    directionN:number;directionalAccuracyPct:number|null;
+    rangeQuality:'COLLECTING'|'IN_RANGE'|'MIS_CALIBRATED';
+    directionQuality:'COLLECTING'|'OBSERVED_EDGE'|'NO_DEMONSTRATED_EDGE'};
   endpointP25:number|null;endpointMedian:number|null;endpointP75:number|null;
   upsideP55:number|null;upsideP75:number|null;
   downsideP55:number|null;downsideP75:number|null;
@@ -37,7 +39,8 @@ export function observedMoveEnvelope(
     samples:0,requiredSamples,latestClosedAt:null,
     allSamples:0,conditioning:'UNCONDITIONAL',
     walkForward:{tested:0,nominalCoveragePct:50,intervalCoveragePct:null,
-      directionN:0,directionalAccuracyPct:null},
+      directionN:0,directionalAccuracyPct:null,rangeQuality:'COLLECTING',
+      directionQuality:'COLLECTING'},
     endpointP25:null,endpointMedian:null,endpointP75:null,
     upsideP55:null,upsideP75:null,downsideP55:null,downsideP75:null,
     lowerPrice:null,medianPrice:null,upperPrice:null,
@@ -93,9 +96,19 @@ export function observedMoveEnvelope(
       directionN++;if(Math.sign(mid)===Math.sign(actual.delta))directionHits++;
     }
   }
+  const realizedCoverage=tested?inBand/tested*100:null;
+  const directionAccuracy=directionN?directionHits/directionN*100:null;
+  // This is a MONITORING gate, not statistical proof. Require enough held-out
+  // observations before declaring a range plausible; no model direction is
+  // promoted unless a clear (>=55%) empirical directional edge exists.
+  const rangeQuality=tested<25?'COLLECTING':
+    realizedCoverage!=null&&realizedCoverage>=35&&realizedCoverage<=65?'IN_RANGE':'MIS_CALIBRATED';
+  const directionQuality=directionN<25?'COLLECTING':
+    directionAccuracy!=null&&directionAccuracy>=55?'OBSERVED_EDGE':'NO_DEMONSTRATED_EDGE';
   base.walkForward={tested,nominalCoveragePct:50,
-    intervalCoveragePct:tested?round(inBand/tested*100):null,
-    directionN,directionalAccuracyPct:directionN?round(directionHits/directionN*100):null};
+    intervalCoveragePct:realizedCoverage==null?null:round(realizedCoverage),
+    directionN,directionalAccuracyPct:directionAccuracy==null?null:round(directionAccuracy),
+    rangeQuality,directionQuality};
   const matched=latestTrend===0?[]:all.filter(x=>x.trend===latestTrend);
   const selected=matched.length>=requiredSamples?matched:all;
   base.conditioning=selected===matched?'MATCHED_3_BAR_TREND':'UNCONDITIONAL';

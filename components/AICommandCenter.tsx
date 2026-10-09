@@ -230,7 +230,15 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
               {e?.walkForward?.tested>=15?' · اختبار زمني '+e.walkForward.tested+' عينة'
                 +' · تغطية نطاق الإغلاق '+fmt(e.walkForward.intervalCoveragePct,1)+'% مقابل 50% مرجعية'
                 +(e.walkForward.directionN>0?' · صحة اتجاه الوسيط '+fmt(e.walkForward.directionalAccuracyPct,1)+'%':'')
-                :' · اختبار النطاق الزمني غير مكتمل'}</span>
+                :' · اختبار النطاق الزمني غير مكتمل'}
+              {e?.walkForward?.rangeQuality==='MIS_CALIBRATED'
+                ?' · تحذير: النطاق لا يغطي الحركة الحقيقية بالمعدل المتوقع'
+                :e?.walkForward?.rangeQuality==='IN_RANGE'
+                  ?' · تغطية النطاق مقبولة مبدئيًا':' · تغطية النطاق قيد الاختبار'}
+              {e?.walkForward?.directionQuality==='NO_DEMONSTRATED_EDGE'
+                ?' · اتجاه الحركة المتوسطة لم يثبت تفوقه'
+                :e?.walkForward?.directionQuality==='OBSERVED_EDGE'
+                  ?' · تفوق اتجاهي تاريخي أولي (ليس ضمانًا)':''}</span>
           </div>;
         })}
       </div>
