@@ -26,16 +26,19 @@ export function readFastScalpView(desk:any,now:number){
   if(plan){
     const side:Side=plan.side;
     const confirm=desk?.entryConfirmations?.find((x:any)=>x?.horizon===plan.horizon);
+    const dir=side==='BUY'?1:-1;
     const validEntry=Boolean(plan.status==='ARMED'&&confirm?.state==='ENTRY'&&
+      confirm.entry!=null&&confirm.stop!=null&&confirm.targets?.[0]?.price!=null&&
       Number.isFinite(Number(confirm.entry))&&Number(confirm.entry)>0&&
       Number.isFinite(Number(confirm.stop))&&Number(confirm.stop)>0&&
-      Number(confirm.entry)!==Number(confirm.stop)&&
-      Number.isFinite(Number(confirm.targets?.[0]?.price)));
+      Number.isFinite(Number(confirm.targets[0].price))&&
+      dir*(Number(confirm.entry)-Number(confirm.stop))>0&&
+      dir*(Number(confirm.targets[0].price)-Number(confirm.entry))>0);
     return {...result,side,status:validEntry?'PAPER_ENTRY':'CONDITIONAL_WATCH',
       horizon:Number(plan.horizon),score:Number(plan.score),
-      entry:validEntry?Number(confirm.entry):Number.isFinite(Number(plan.entry))?Number(plan.entry):null,
-      stop:Number.isFinite(Number(plan.stop))?Number(plan.stop):null,
-      target:Number.isFinite(Number(plan.targets?.[0]?.price))?Number(plan.targets[0].price):null,
+      entry:validEntry?Number(confirm.entry):plan.entry!=null&&Number.isFinite(Number(plan.entry))?Number(plan.entry):null,
+      stop:plan.stop!=null&&Number.isFinite(Number(plan.stop))?Number(plan.stop):null,
+      target:plan.targets?.[0]?.price!=null&&Number.isFinite(Number(plan.targets[0].price))?Number(plan.targets[0].price):null,
       reason:validEntry?'إشارة ورقية استوفت شروط الدخول، ليست أمر وسيط':
         String(plan.blockers?.[0]||confirm?.reason||plan.reason||'مستوى مراقبة فقط')
     };
