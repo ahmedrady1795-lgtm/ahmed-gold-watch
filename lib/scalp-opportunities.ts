@@ -340,7 +340,9 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     if(!best)return stableCandidate(plan,now,p!,cost);
     if(evaluated.length>1)best.evidence.push({
       label:'مقارنة الإعدادات',side:'WAIT',
-      value:'تم فحص '+evaluated.length+' أنواع إعداد؛ اختيار المؤهل قبل الأعلى درجة المحجوب'
+      value:best!==evaluated[0]&&best.status==='ARMED'
+        ?'تم فحص '+evaluated.length+' إعدادات؛ اعتماد بديل اجتاز المخاطر بعد رفض الأعلى درجة'
+        :'تم فحص '+evaluated.length+' إعدادات؛ لم توجد أولوية زائفة لدرجة إعداد محجوب'
     });
     return stableCandidate(best,now,p!,cost);
   });
