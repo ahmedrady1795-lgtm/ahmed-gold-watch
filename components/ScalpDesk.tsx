@@ -84,6 +84,12 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
           </div>)}
         </div>
       </details>}
+      <div className="scalp-facts">
+        <div><small>العائد / المخاطرة بعد التكلفة</small><b>{fmt(shown?.netRR)} R</b></div>
+        <div><small><Clock3 size={12}/> {current?.activatedAt?'متبقي للمتابعة':'صلاحية التفعيل'}</small><b>{timed?(secs?secs+' ثانية':'انتهت'):'غير مفعّلة'}</b></div>
+        <div><small>تكلفة تقديرية / {costUnit}</small><b>{fmt(shown?.cost)} $</b></div>
+      </div>
+      <details className="scalp-expand scalp-analysis-drawer"><summary>تفاصيل الإعداد والتكلفة والاستراتيجيات</summary>
       {!!plan?.strategyReview?.length&&<details className="scalp-expand">
         <summary>مقارنة الاستراتيجيات الأربع · لماذا اختارت النواة هذا الإعداد؟</summary>
         <p className="scalp-condition">الاختراق وإعادة الاختبار واستمرار الاتجاه وسحب السيولة تُفحص بشكل منفصل. درجة الإعداد لا تعني احتمال ربح، ولا تتحول أي استراتيجية إلى دخول إلا بعد التكلفة ووقف الخسارة وتأكيد M1.</p>
@@ -100,11 +106,6 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
         </div>
       </details>}
       <div className="scalp-condition"><strong>{stale?'لا تعتمد الإعداد حتى يعود تحديث حديث':current?.note||plan?.reason}</strong><span>{shown?.trigger}</span></div>
-      <div className="scalp-facts">
-        <div><small>العائد / المخاطرة بعد التكلفة</small><b>{fmt(shown?.netRR)} R</b></div>
-        <div><small><Clock3 size={12}/> {current?.activatedAt?'متبقي للمتابعة':'صلاحية التفعيل'}</small><b>{timed?(secs?secs+' ثانية':'انتهت'):'غير مفعّلة'}</b></div>
-        <div><small>تكلفة تقديرية / {costUnit}</small><b>{fmt(shown?.cost)} $</b></div>
-      </div>
       {entryCheck?.entryAudit&&!stale&&<p className="scalp-condition"><strong>سبب القرار</strong> — {entryCheck.entryAudit.reason}
         {entryCheck.confirmationSource==='SCENARIO_ONLY'?' · ثبات سيناريو السيولة ليس اعتمادًا لدخول الخطة.':''}
         {entryCheck.entryAudit.liveNetRR!=null?' · العائد الفعلي '+fmt(entryCheck.entryAudit.liveNetRR)+'R':''}</p>}
@@ -117,6 +118,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       {!!plan?.blockers?.length&&!current&&plan.blockers.length>1&&<details className="scalp-expand"><summary>شروط الدخول غير المكتملة ({plan.blockers.length})</summary><ul className="scalp-blockers">{plan.blockers.map((r:string)=><li key={r}>{r}</li>)}</ul></details>}
       {qualityGate?.blocked&&<p className="scalp-condition">حماية سجل السكالب التجريبي: {qualityGate.reason} · المتبقي {qualityGate.remainingSeconds} ثانية</p>}
       {!!shown?.evidence?.length&&<details className="scalp-expand"><summary>المؤشرات التي كوّنت الفرصة</summary><div className="scalp-evidence">{shown.evidence.map((e:any)=><div key={e.label}><small>{e.label}</small><b className={e.side==='BUY'?'green':e.side==='SELL'?'red':''}>{e.side==='WAIT'?e.value:sideAr(e.side)}</b><span>{e.side!=='WAIT'?e.value:''}</span></div>)}</div></details>}
+      </details>
     </div>
     {!current&&liquidity?.available&&!stale&&<details className="scalp-expand"><summary>سيناريوهات سعرية بديلة · للمراقبة فقط</summary><div className="scalp-motion" aria-label="أهداف الحركة المحتملة">
       <div className="scalp-liquidity-title"><strong>أهداف الحركة المحتملة · M{horizon}</strong><small>تتحدث مع السعر · الميل اللحظي {liquidity.pressure==='WAIT'?'متوازن':sideAr(liquidity.pressure)}</small></div>

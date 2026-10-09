@@ -4,17 +4,17 @@ import {readFastScalpView} from '../lib/scalp-fast-view';
 const fmt=(n:number|null)=>n==null||!Number.isFinite(n)?'—':
   n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const sideArabic=(side:string)=>side==='BUY'?'ميل صعود':side==='SELL'?'ميل هبوط':'دون ميل معتمد';
-export default function FastScalpPulse({desk,now,aiAgeMs}:{
-  desk:any;now:number;aiAgeMs:number|null
+export default function FastScalpPulse({desk,now,aiAgeMs,assetView='ALL'}:{
+  desk:any;now:number;aiAgeMs:number|null;assetView?:'ALL'|'GOLD'|'BTC'
 }){
-  const views=[readFastScalpView(desk?.gold,now),readFastScalpView(desk?.bitcoin,now)];
-  if(!desk)return null;
-  return <section className="panel fast-pulse-compact" aria-label="القراءة السريعة المستقلة عن AI" style={{padding:'13px 16px'}}>
+  const views=[readFastScalpView(desk?.gold,now),readFastScalpView(desk?.bitcoin,now)].filter(v=>assetView==='ALL'||v.asset===assetView);
+  if(!desk)return <section id="market-overview" className="panel workspace-loading">جارٍ تحميل القراءة اللحظية للسوق…</section>;
+  return <section id="market-overview" className="panel fast-pulse-compact" aria-label="القراءة السريعة المستقلة عن AI">
     <div className="panelhead">
-      <div><span className="eyebrow">بيانات سوق مستقلة عن AI الموسع</span><h2>السوق الآن · قراءة لحظية</h2></div>
+      <div><span className="eyebrow">01 / نبض السوق</span><h2>السوق الآن · قراءة لحظية</h2></div>
       <span className="pill">{aiAgeMs!=null?'آخر تحليل AI موسع منذ '+Math.round(aiAgeMs/1000)+' ثانية':'AI الموسع لم يصل بعد'}</span>
     </div>
-    <div className="fast-pulse-grid">
+    <div className={'fast-pulse-grid '+(assetView!=='ALL'?'single-asset':'')}>
       {views.map(v=><div key={v.asset} className="fast-pulse-asset">
         <strong>{v.asset==='GOLD'?'الذهب XAU/USD':'البيتكوين BTC/USD'}</strong>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8,gap:8,flexWrap:'wrap'}}>
