@@ -353,7 +353,10 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     fdir*env15.endpointMedian>0;
   const reach=fdir===1?env15.upsideP55:env15.downsideP55;
   const canShowTarget=valid&&fifteen.confidence>=50&&directionConsistent&&
-    env15.status==='READY'&&reach!=null&&reach>0;
+    env15.status==='READY'&&
+    env15.walkForward.rangeQuality==='IN_RANGE'&&
+    env15.walkForward.directionQuality==='OBSERVED_EDGE'&&
+    reach!=null&&reach>0;
   const targetPrice=canShowTarget?p+fdir*Number(reach):null;
   const target15=targetPrice==null?null:{
     side:fifteen.side,price:Number(targetPrice.toFixed(2)),
