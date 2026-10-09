@@ -1,6 +1,6 @@
 import {getAiSnapshot} from '../../../lib/ai-snapshot-cache';
 import {searchMarketNews} from '../../../lib/core-web-research';
-import {generateEgyptianCoreAnswer,coreModelConfigured} from '../../../lib/core-language-model';
+import {generateEgyptianCoreAnswer,coreModelConfigured,coreModelTelemetry} from '../../../lib/core-language-model';
 import {buildCoreAnalysisSkills} from '../../../lib/core-analysis-skills';
 
 export const dynamic='force-dynamic';
@@ -187,6 +187,15 @@ export async function POST(request:Request){
     sources:natural.sources.length?natural.sources:recent.map(x=>({title:x.title,url:x.url})),
     checkedAt:context.checkedAt,latencyMs:Date.now()-now},
     {headers:{'Cache-Control':'private, no-store'}});
+  // Never pass off a canned answer as genuine conversation after the model failed.
+  if(coreModelConfigured()&&!analysis&&!research){
+    const health=coreModelTelemetry();
+    return Response.json({ok:true,mode:'MODEL_UNAVAILABLE',action:null,
+      answer:'مش قادرة أوصل لموديل الذكاء دلوقتي، ومش عايزة أرد عليك كلام محفوظ وأقولك إني فهمت. الاتصال محتاج فحص.',
+      modelHealth:{lastStatus:health.lastStatus,lastAttempt:health.lastAttempt,model:health.model},
+      checkedAt:context.checkedAt,latencyMs:Date.now()-now},
+      {headers:{'Cache-Control':'private, no-store'}});
+  }
   let answer:string;
   if(webSearch&&!research)answer='بحث الإنترنت العام مش متاح حاليًا من الموديل. جرّب تاني بعد شوية، ومش هخترع نتائج بحث.';
   else if(research)answer=found?.ok&&recent.length
@@ -208,7 +217,12 @@ export async function POST(request:Request){
 
 // Show actual model readiness to the voice interface without exposing API keys.
 export async function GET(){
+  const health=coreModelTelemetry();
+  const connection=health.lastStatus===200?'confirmed':health.lastAttempt?'failed':'not_tested';
   return Response.json({ok:true,conversationModelReady:coreModelConfigured(),
+    modelConnection:connection,
+    modelHealth:{lastStatus:health.lastStatus,lastAttempt:health.lastAttempt,
+      lastSuccess:health.lastSuccess,latencyMs:health.latencyMs,model:health.model},
     capabilities:{voiceCommands:true,marketData:true,publicNews:true,
       publicGoogleSearch:coreModelConfigured()&&process.env.CORE_GOOGLE_SEARCH_ENABLED!=='false',
       analysisSkills:['TREND','SCALP','BREAKOUT','LIQUIDITY','COST','FORECAST','RISK','VALIDATION','MARKET_REVIEW'],
