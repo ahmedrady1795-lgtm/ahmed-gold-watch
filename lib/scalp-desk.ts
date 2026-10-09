@@ -25,6 +25,11 @@ async function btcQuote(source:string):Promise<ScalpQuote>{
 let cached:any=null,cachedAt=0;
 let lastScalpDiagnosticAt=0;
 let pending:Promise<any>|null=null;
+// Read-only scalp cache for AI. The normal paper engine still owns every
+// entry, fill and settlement. No network refresh occurs in this accessor.
+export function peekScalpDesk(maxAgeMs=12000){
+  return cached&&cachedAt>0&&Date.now()-cachedAt<=maxAgeMs?cached:null;
+}
 export async function getScalpDesk(){
   const now=Date.now();
   if(cached&&now-cachedAt<2000)return cached;
