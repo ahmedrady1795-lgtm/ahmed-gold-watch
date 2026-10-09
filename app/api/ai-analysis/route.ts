@@ -1720,7 +1720,9 @@ export async function GET(request:Request){
           lower:e?.lowerPrice??null,median:e?.medianPrice??null,upper:e?.upperPrice??null,
           oosN:Number(e?.walkForward?.tested||0),
           oosCoverage:e?.walkForward?.intervalCoveragePct??null,
-          oosDirection:e?.walkForward?.directionalAccuracyPct??null}];
+          oosDirection:e?.walkForward?.directionalAccuracyPct??null,
+          rangeQuality:e?.walkForward?.rangeQuality||'COLLECTING',
+          directionQuality:e?.walkForward?.directionQuality||'COLLECTING'}];
       }));
       console.info('[AI-DIAG]',JSON.stringify({
         status:autopilot.status,
