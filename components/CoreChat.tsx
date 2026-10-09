@@ -174,7 +174,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
     setListening(true);
     try{recognition.start();return true;}catch{setListening(false);setVoiceError('تعذر تشغيل الميكروفون. أعد الضغط على زر بدء الكلام.');return false;}
   };
-  // These substitutions are spoken only; the actual Gemini answer remains unchanged.
+  // These substitutions are spoken only; the model response text remains unchanged.
   // Web Speech on iOS frequently reads Latin trading abbreviations letter by letter.
   const textForSpeech=(value:string)=>{
     const glossary:Array<[RegExp,string]>=[
@@ -343,7 +343,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
       if(!response.ok||!payload?.ok)throw new Error(payload?.message||'تعذر الرد');
       rememberTurn('core',String(payload.answer||''),nextId.current++);
       const replyMode=String(payload.mode||'');
-      if(replyMode.startsWith('EGYPTIAN_LLM')){setIntelligenceMode('smart');setModelConnection('confirmed');}
+      if(replyMode==='CORE_AI'){setIntelligenceMode('smart');setModelConnection('confirmed');}
       else if(replyMode==='MODEL_UNAVAILABLE'){setIntelligenceMode('basic');setModelConnection('failed');}
       else if(replyMode==='RULE_BASED_FALLBACK'||replyMode==='WEB_SEARCH_UNAVAILABLE'){setIntelligenceMode('basic');}
       setResearchUsed(Boolean(payload.web?.searchConfirmed));
@@ -386,7 +386,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
         <span className="core-orbit orbit-one"/><span className="core-orbit orbit-two"/><div className="core-emblem"><BrainCircuit size={33}/><small>CORE</small></div>
       </div>
       <div className="core-identity"><span className="core-kicker"><Zap size={13}/> CORE / VOICE</span><h2 id="core-console-title">النواة الصوتية</h2><p>اتكلم بحرية بالمصري؛ النواة تقدر تبحث وتحلل، والنطق بيتحدد حسب أصوات جهازك.</p></div>
-      <div className="core-health"><i/> مصري · <b>{modelConnection==='confirmed'?'محادثة Gemini شغالة':modelConnection==='failed'?'اتصال Gemini فيه عطل':modelReady===false?'موديل غير متصل':modelReady===true?'Gemini مُعدّ، لم يتم اختباره':'مساعد صوتي'}</b></div>
+      <div className="core-health"><i/> مصري · <b>{modelConnection==='confirmed'?'محادثة الذكاء شغالة':modelConnection==='failed'?'موديل الذكاء مش بيرد':modelReady===false?'موديل غير متصل':modelReady===true?'موديل ذكاء مُعدّ، لم يتم اختباره':'مساعد صوتي'}</b></div>
     </div>
     <div className="core-chat-panel voice-panel">
       <div className="core-chat-head"><div><strong>اتكلم مع النواة</strong><small>{liveVoice?'الوضع الصوتي شغال':'صوت فقط · بدون شات'}</small></div><div className="core-chat-actions"><button type="button" className={'core-live-voice core-voice-primary '+(liveVoice?'active':'')} onClick={()=>void toggleLiveVoice()} aria-pressed={liveVoice} title={liveVoice?'إيقاف الصوت':'بدء الكلام'}>{liveVoice?<MicOff size={17}/>:<Mic size={17}/>}<span>{liveVoice?'إيقاف الصوت':'ابدأ الكلام'}</span></button><button type="button" className="core-voice-test" onClick={testSpeech} aria-label="اختبار صوت النواة" title="اختبار صوت النواة"><Volume2 size={16}/><span>اختبار الصوت</span></button><button type="button" className="core-clear" onClick={clearConversation} aria-label="بدء جلسة صوتية جديدة" title="بدء جلسة صوتية جديدة"><Trash2 size={15}/></button></div></div>
@@ -432,7 +432,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
         </div>}
 
       <small className="core-note">{modelReady===false
-        ?'للحوار المفتوح في أي موضوع، لازم مفتاح GEMINI_API_KEY يتضاف بأمان في إعدادات Railway. لحد ما يتوصل، الردود الأساسية محدودة. نبرة الصوت بتعتمد على أصوات جهازك.'
+        ?'Gemini متوقف تمامًا. المحادثة الحرة تحتاج ربط Groq أو OpenRouter بمفتاح خاص في Railway. تحليل السوق والصوت الأساسي شغالين من غيره.'
         :'اسألني عن أي موضوع. لو صوت ar-EG مش متاح على جهازك، اختيار صوت عربي تاني مش هيضمن النطق المصري الصحيح.'}</small>
     </div>
   </section>;
