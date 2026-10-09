@@ -5,6 +5,10 @@ type CoreLLMInput={message:string;history:Turn[];context:unknown;web?:unknown;an
 type CoreSource={title:string;url:string};
 export type CoreLLMResult={answer:string;sources:CoreSource[];grounded:boolean;searchQueries:string[]};
 let searchDay='',searchCount=0;
+type CoreModelTelemetry={lastAttempt:number;lastSuccess:number;lastStatus:number|null;latencyMs:number|null;model:string};
+const telemetry:CoreModelTelemetry={lastAttempt:0,lastSuccess:0,lastStatus:null,latencyMs:null,model:''};
+export function coreModelTelemetry(){return {...telemetry};}
+
 function trySearchBudget(){
   const day=new Date().toISOString().slice(0,10);
   if(searchDay!==day){searchDay=day;searchCount=0;}
