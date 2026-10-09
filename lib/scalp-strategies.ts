@@ -63,6 +63,8 @@ export function rankScalpStrategies(
 export type ReviewedPlan={
   setup:StrategyId|'NONE';side:Direction;score:number;status:'ARMED'|'WATCH'|'BLOCKED';
   netRR:number|null;blockers:readonly string[];
+  entry?:number|null;stop?:number|null;targets?:ReadonlyArray<{price:number}>;
+  cost?:number;
 };
 export function describeScalpStrategies(
   evaluated:readonly ReviewedPlan[],selected?:ReviewedPlan|null,dataBlocked=false
@@ -76,7 +78,15 @@ export function describeScalpStrategies(
       state:dataBlocked?'DATA_BLOCKED':'NO_TRIGGER',side:'WAIT' as const,
       score:null,netRR:null,
       reason:dataBlocked?'البيانات أو الجلسة لا تسمح بحساب الاستراتيجية':'لم تظهر شمعة مغلقة تحقق شروط هذه الاستراتيجية'};
-    const accepted=plan.status==='ARMED'&&plan.blockers.length===0;
+    const entry=plan.entry,stop=plan.stop,target=plan.targets?.[0]?.price,cost=plan.cost;
+    const dir=plan.side==='BUY'?1:plan.side==='SELL'?-1:0;
+    const geometry=entry!=null&&stop!=null&&target!=null&&cost!=null&&
+      [entry,stop,target,cost].every(Number.isFinite)&&cost>=0&&dir!==0;
+    const risk=geometry?dir*(entry!-stop!):0;
+    const reward=geometry?dir*(target!-entry!):0;
+    const accepted=plan.status==='ARMED'&&plan.blockers.length===0&&geometry&&
+      risk>0&&reward>0&&plan.netRR!=null&&Number.isFinite(plan.netRR)&&
+      plan.netRR>=1.25&&(reward-cost!)/(risk+cost!)>=1.25;
     const isSelected=accepted&&Boolean(selected&&selected.setup===plan.setup&&
       selected.side===plan.side&&selected.score===plan.score);
     return {setup:spec.id,label:spec.label,family:spec.family,
