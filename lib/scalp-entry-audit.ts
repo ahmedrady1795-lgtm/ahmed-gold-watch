@@ -50,11 +50,17 @@ export function auditScalpEntry(
     return result(plan,'AWAITING_M1_CONFIRMATION','CONFIRMATION',
       'ينتظر إغلاق M1 مؤيدًا ومستوى دخول ثابتًا بأسعار متجددة');
   const at=quote.at,price=quote.price;
-  if(at==null||price==null||!Number.isFinite(price)||price<=0||
-     now-at<0||now-at>10000)
+  if(at==null||price==null||!Number.isFinite(now)||!Number.isFinite(at)||
+     !Number.isFinite(price)||price<=0||now-at<0||now-at>10000)
     return result(plan,'QUOTE_STALE','FEED','السعر المرجعي غير حديث؛ تأكيد سابق لا يكفي للدخول');
   const entry=plan.entry,stop=plan.stop,target=plan.targets[0]?.price,cost=plan.cost;
-  if(entry==null||stop==null||target==null||!Number.isFinite(cost)||cost<0)
+  // NaN targets and infinities do not satisfy numerical <= comparisons, so
+  // they MUST be rejected explicitly. Otherwise a mathematically impossible
+  // plan can fall through to READY after a confirmed observation.
+  if(plan.side!=='BUY'&&plan.side!=='SELL')return result(plan,'BAD_GEOMETRY','RISK','اتجاه الخطة غير صالح');
+  if(entry==null||stop==null||target==null||
+     ![entry,stop,target,cost,Number(plan.netRR)].every(Number.isFinite)||
+     entry<=0||stop<=0||target<=0||cost<0)
     return result(plan,'BAD_GEOMETRY','RISK','مستويات الدخول أو الوقف أو الهدف غير صالحة');
   const dir=plan.side==='BUY'?1:-1;
   const anchorRisk=dir*(entry-stop),anchorReward=dir*(target-entry);
@@ -70,7 +76,8 @@ export function auditScalpEntry(
     return result(plan,'ENTRY_DRIFT','PRICE',
       'الاختراق تأكد لكن سعر التنفيذ ابتعد عن الدخول؛ انتظر إعادة اختبار آمنة',
       liveNetRR,distance,share);
-  if(liveNetRR==null||liveNetRR<1.25||Number(plan.netRR)<1.25)
+  if(liveNetRR==null||!Number.isFinite(liveNetRR)||
+     liveNetRR<1.25||Number(plan.netRR)<1.25)
     return result(plan,'NET_REWARD_TOO_LOW','COST',
       'العائد الصافي الفعلي أقل من 1.25R عند السعر الحالي؛ تكلفة/سعر التنفيذ لا يبرران الدخول',
       liveNetRR,distance,share);

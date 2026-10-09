@@ -31,6 +31,22 @@ assert.equal(audit({...planAudit,stop:101},100).code,'BAD_GEOMETRY',
   'A BUY stop above the fill is not allowed');
 assert.equal(audit({...planAudit,cost:1.20,netRR:2.6},100).code,'NET_REWARD_TOO_LOW',
   'Fees can invalidate an otherwise favorable gross RR');
+assert.equal(audit({...planAudit,targets:[{price:NaN,kind:'PROJECTION'}]},100).code,'BAD_GEOMETRY',
+  'A NaN first target must NEVER authorize even a fully confirmed BUY');
+assert.equal(audit({...planAudit,targets:[{price:Infinity,kind:'PROJECTION'}]},100).code,'BAD_GEOMETRY',
+  'Infinite profit targets must fail closed');
+assert.equal(audit({...planAudit,stop:-Infinity},100).code,'BAD_GEOMETRY',
+  'Infinite or nonpositive stop geometry is invalid');
+assert.equal(audit({...planAudit,netRR:NaN},100).code,'BAD_GEOMETRY',
+  'A NaN plan net-reward ratio cannot count as a passing score');
+assert.equal(audit({...planAudit,netRR:Infinity},100).code,'BAD_GEOMETRY',
+  'An infinite planned RR is never a measurable edge');
+assert.equal(auditScalpEntry(planAudit,quoteAudit(100,NaN),auditNow,'CONFIRMED').code,'QUOTE_STALE',
+  'Unknown quote timestamps must fail closed');
+assert.equal(auditScalpEntry(planAudit,quoteAudit(100,Infinity),auditNow,'CONFIRMED').code,'QUOTE_STALE',
+  'Infinity timestamp may not bypass stale-quote comparisons');
+assert.equal(audit({...planAudit,side:'WAIT'},100).code,'BAD_GEOMETRY',
+  'An ARMED plan without BUY/SELL direction is malformed');
 const watchCost={...planAudit,status:'WATCH',
   blockers:['التكلفة كبيرة بالنسبة لتذبذب الفريم بعد الرسوم']};
 assert.equal(audit(watchCost,100,null,auditNow,true).code,'COST_UNVIABLE',
