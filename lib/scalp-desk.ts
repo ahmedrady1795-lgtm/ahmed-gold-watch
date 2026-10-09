@@ -6,6 +6,7 @@ import {getRuntimeEnv} from './runtime';
 import {getCoinbaseServerQuote,getCoinbaseClosedCandles} from './server-tick-brain';
 import {readScalpLiquidity,observeScalpPlanHold} from './scalp-liquidity';
 import {getBtcLiquidity} from './liquidity-intelligence';
+import {auditScalpEntry} from './scalp-entry-audit';
 
 function session(now:number){const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;return day!==6&&!(day===0&&h<22)&&!(day===5&&h>=21)&&!(day>=1&&day<=4&&h>=21&&h<22);}
 function envNumber(key:string){const raw=(getRuntimeEnv() as Record<string,unknown>)[key]??process.env[key];if(raw==null||raw==='')return null;const n=Number(raw);return Number.isFinite(n)&&n>=0&&n<=100?n:null;}
@@ -24,6 +25,11 @@ async function btcQuote(source:string):Promise<ScalpQuote>{
 let cached:any=null,cachedAt=0;
 let lastScalpDiagnosticAt=0;
 let pending:Promise<any>|null=null;
+// Read-only scalp cache for AI. The normal paper engine still owns every
+// entry, fill and settlement. No network refresh occurs in this accessor.
+export function peekScalpDesk(maxAgeMs=12000){
+  return cached&&cachedAt>0&&Date.now()-cachedAt<=maxAgeMs?cached:null;
+}
 export async function getScalpDesk(){
   const now=Date.now();
   if(cached&&now-cachedAt<2000)return cached;
@@ -80,27 +86,18 @@ export async function getScalpDesk(){
           :null;
         const confirmation=planHold||watch?.confirmation||null;
         const watchedSide=planHold?plan.side:watch?.side||'WAIT';
+        const scenarioConfirmed=Boolean(watch?.confirmation?.state==='CONFIRMED');
         const retestConfirmed=Boolean(planHold&&planHold.state==='RETEST_READY');
-        const confirmed=confirmation?.state==='CONFIRMED'||retestConfirmed;
-        const fresh=quote.at!=null&&at-Number(quote.at)>=0&&at-Number(quote.at)<=10000;
-        const planRisk=plan.entry!=null&&plan.stop!=null?Math.abs(plan.entry-plan.stop):0;
-        const entryNearby=planRisk>0&&quote.price!=null&&
-          Math.abs(quote.price-Number(plan.entry))<=planRisk*(retestConfirmed?.12:.35);
-        const dir=plan.side==='BUY'?1:-1;
-        const realizedRisk=plan.stop!=null&&quote.price!=null?dir*(quote.price-plan.stop):0;
-        const realizedReward=plan.targets[0]?.price!=null&&quote.price!=null?
-          dir*(plan.targets[0].price-quote.price):0;
-        const liveRR=realizedRisk>0?
-          (realizedReward-plan.cost)/(realizedRisk+plan.cost):0;
-        const eligible=Boolean(
-          confirmed&&planHold&&plan.status==='ARMED'&&
-          fresh&&entryNearby&&realizedRisk>0&&realizedReward>0&&
-          liveRR>=1.25&&Number(plan.netRR)>=1.25
-        );
+        const confirmed=Boolean(planHold&&(planHold.state==='CONFIRMED'||retestConfirmed));
+        // A scenario may confirm while the exact PLAN is not eligible. Never
+        // report such a case as an almost-executed order.
+        const audit=auditScalpEntry(plan,quote,at,planHold?.state??null,scenarioConfirmed);
+        const eligible=audit.approved;
         return {
           horizon:plan.horizon,side:watchedSide,
           state:eligible?'ENTRY':confirmed?'CONDITIONS_PENDING':
             confirmation?.state==='HOLDING'?'HOLDING':'WATCH',
+          entryAudit:audit,confirmationSource:planHold?'EXACT_PLAN':'SCENARIO_ONLY',
           heldSeconds:Number(confirmation?.heldSeconds||0),
           remainingSeconds:Number(confirmation?.remainingSeconds??60),
           requiredSeconds:Number(confirmation?.requiredSeconds??60),trigger:confirmation?.trigger??null,
@@ -110,15 +107,10 @@ export async function getScalpDesk(){
           stop:eligible?plan.stop:null,
           targets:eligible?plan.targets:[],
           reason:eligible?(retestConfirmed?
-            'دخول ورقي عند إعادة اختبار الخطة بعد تأكيد إغلاق M1؛ العائد بعد التكلفة صالح':
-            'دخول ورقي مؤكّد بعد '+requiredHold+' ثانية مراقبة وإغلاق M1 لاحق لبداية الرصد'):
-            confirmed&&!entryNearby?(retestConfirmed?
-              'تم تأكيد الاختراق؛ إعادة الاختبار ما زالت بعيدة عن سعر الخطة، بلا مطاردة':
-              'اكتمل الثبات لكن السعر ابتعد عن الدخول؛ انتظر إعادة الاختبار'):
-            confirmed&&!planHold?'ثبت السيناريو العام، لكن لا توجد صفقة مستوفية للشروط':
-            confirmed&&liveRR<1.25?'العائد الفعلي بعد رسوم الدخول أقل من 1.25R؛ لا صفقة':
-            confirmed?'ثبتت الدقيقة لكن الشروط غير مكتملة: '+(plan.blockers?.[0]||plan.reason):
-            confirmation?.reason||'بانتظار مستوى الرصد وسعر حي صالح'
+            'دخول ورقي عند إعادة اختبار الخطة بعد تأكيد إغلاق M1 وبعد التكلفة':
+            'دخول ورقي بتأكيد '+requiredHold+' ثانية وإغلاق M1 بعد بدء الرصد'):
+            audit.code==='AWAITING_M1_CONFIRMATION'&&planHold?
+              confirmation?.reason||audit.reason:audit.reason
         };
       });
       // The paper ledger must never arm/activate before the exact 60-second
@@ -182,7 +174,10 @@ export async function getScalpDesk(){
         })),
         watches:x.entryConfirmations.map((e:any)=>({
           h:e.horizon,state:e.state,held:e.heldSeconds,required:e.requiredSeconds,
-          side:e.side,trigger:e.trigger,confirmedCandleAt:e.confirmedCandleAt
+          side:e.side,trigger:e.trigger,confirmedCandleAt:e.confirmedCandleAt,
+          audit:e.entryAudit?.code,gate:e.entryAudit?.group,
+          executionR:e.entryAudit?.liveNetRR,estimated:e.entryAudit?.costEstimated,
+          confirmationSource:e.confirmationSource
         })),
         ledger:x.ledger.lanes.map((l:any)=>({
           h:l.horizon,active:l.current?.state||null,

@@ -70,6 +70,11 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
         <div><small><Clock3 size={12}/> {current?.activatedAt?'متبقي للمتابعة':'صلاحية التفعيل'}</small><b>{timed?(secs?secs+' ثانية':'انتهت'):'غير مفعّلة'}</b></div>
         <div><small>تكلفة الدورة {shown?.costEstimated?'· تقديرية':''}</small><b>{fmt(shown?.cost)} $</b></div>
       </div>
+      {entryCheck?.entryAudit&&!stale&&<p className="scalp-condition"><strong>سبب القرار · {entryCheck.entryAudit.group}</strong> — {entryCheck.entryAudit.reason}
+        {entryCheck.confirmationSource==='SCENARIO_ONLY'?' · ثبات سيناريو السيولة ليس اعتمادًا لدخول الخطة.':''}
+        {entryCheck.entryAudit.liveNetRR!=null?' · العائد الفعلي '+fmt(entryCheck.entryAudit.liveNetRR)+'R':''}</p>}
+      {shown?.costBreakdown&&<p className="scalp-condition">تفصيل تكلفة الدورة لكل وحدة من الأصل: سبريد {fmt(shown.costBreakdown.spread)}$ · عمولات {fmt(shown.costBreakdown.fees)}$ · انزلاق {fmt(shown.costBreakdown.slippage)}$.
+        {shown.costEstimated?' بعض المكونات افتراضية وليست رسوم Exness الفعلية.':' المكونات من المصادر المهيأة؛ تحقق من اتفاقها مع كشف الوسيط.'}</p>}
       {desk.asset==='BTC'&&shown?.costEstimated&&<p className="scalp-condition">رسوم البيتكوين والانزلاق تقديرية لمصدر الأسعار، وليست تكلفة Exness الفعلية. لن يعتبر النظام صفقة قابلة للتنفيذ حتى تسمح حسابات المخاطرة والعائد بالتكلفة المُستخدمة.</p>}
       {!!plan?.blockers?.length&&!current&&plan.blockers.length>1&&<details className="scalp-expand"><summary>شروط الدخول غير المكتملة ({plan.blockers.length})</summary><ul className="scalp-blockers">{plan.blockers.map((r:string)=><li key={r}>{r}</li>)}</ul></details>}
       {qualityGate?.blocked&&<p className="scalp-condition">حماية سجل السكالب التجريبي: {qualityGate.reason} · المتبقي {qualityGate.remainingSeconds} ثانية</p>}

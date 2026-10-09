@@ -36,7 +36,7 @@ import {setAiSnapshot} from '../../../lib/ai-snapshot-cache';
 import {runAutonomousToolCycle} from '../../../lib/autonomous-tool-broker';
 import {buildMarketToolMesh} from '../../../lib/market-tool-mesh';
 import {buildTargetLadder} from '../../../lib/target-ladder';
-import {getScalpDesk} from '../../../lib/scalp-desk';
+import {getScalpDesk,peekScalpDesk} from '../../../lib/scalp-desk';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -1261,7 +1261,14 @@ export async function GET(request:Request){
 
       return keepPrev('تم رفض انعكاس مؤقت؛ الاتجاه لا يتغير إلا بتفوق واضح ومستقل للإشارة العكسية');
     };
-    const scalpDesk=await scalpDeskPromise;
+    // The scalp engine independently observes fresh quotes and paper fills.
+    // Publishing an AI forecast must not block on a slow order-book/candle
+    // refresh that belongs to the separate live scalp view.
+    const recentScalp=peekScalpDesk(12000);
+    const scalpDesk=recentScalp??await Promise.race([
+      scalpDeskPromise,new Promise<null>(resolve=>setTimeout(()=>resolve(null),150))
+    ]);
+    perf.scalpSource=recentScalp?'independent-cache':scalpDesk?'fast-response':'deferred';
     perf.scalpResolvedAtMs=Date.now()-perfStarted;
     const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any,h4?:any,intent?:any,evolution?:any,toolMesh?:any,atr?:number|null)=>({
       asset,

@@ -9,7 +9,9 @@ export type ScalpPlan={
   status:'BLOCKED'|'WATCH'|'ARMED';setup:'BREAKOUT'|'PULLBACK'|'SWEEP'|'CONTINUATION'|'NONE';
   score:number;scoreLabel:string;entry:number|null;stop:number|null;
   targets:{price:number;kind:'STRUCTURE'|'PROJECTION'}[];netRR:number|null;
-  cost:number;costEstimated:boolean;trigger:string;reason:string;blockers:string[];
+  cost:number;costEstimated:boolean;
+  costBreakdown:{spread:number;fees:number;slippage:number;allMeasured:boolean};
+  trigger:string;reason:string;blockers:string[];
   evidence:{label:string;side:ScalpSide;value:string}[];
 };
 const n=(v:unknown)=>v==null||v===''?null:Number.isFinite(Number(v))?Number(v):null;
@@ -57,7 +59,7 @@ function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number):Sca
   // preserve an outdated low fee, an opposing trend or an unreachable target.
   if(validPrevious&&(plan.status!=='ARMED'||plan.side===previous!.side))
     return {...previous!,cost:round(cost),costEstimated:plan.costEstimated,
-      netRR:round(liveNetRR),
+      costBreakdown:plan.costBreakdown,netRR:round(liveNetRR),
       reason:'مستوى الدخول والوقف ثابتان، والتكلفة أعيد حسابها بالسعر الحالي'};
   if(plan.status==='ARMED')pendingSetups.set(key,plan);
   else if(!validPrevious)pendingSetups.delete(key);
@@ -81,8 +83,15 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
   const spread=bid!=null&&ask!=null&&bid>0&&ask>=bid?ask-bid:null;
   const fee=n(input.feeBps),slip=n(input.slippageBps);
   const costEstimated=spread==null||fee==null||slip==null;
-  // Cost is round-trip: spread + fees + slippage. Unknown fees are explicit assumptions.
-  const cost=p!=null?(spread??p*(asset==='GOLD'?2:2)/10000)+p*((fee??(asset==='BTC'?12:0))+(slip??(asset==='BTC'?2:1)))/10000:0;
+  // Show execution-cost decomposition. These are round-trip costs in USD per
+  // unit of the underlying, NOT account P&L or verified Exness commissions.
+  // Missing inputs remain explicit conservative assumptions; never zero them.
+  const spreadCost=p==null?0:(spread??p*2/10000);
+  const feeCost=p==null?0:p*(fee??(asset==='BTC'?12:0))/10000;
+  const slippageCost=p==null?0:p*(slip??(asset==='BTC'?2:1))/10000;
+  const cost=spreadCost+feeCost+slippageCost;
+  const costBreakdown={spread:round(spreadCost),fees:round(feeCost),
+    slippage:round(slippageCost),allMeasured:!costEstimated};
   const blockers:string[]=[];
   if(p==null||p<=0||quoteAt==null||now-quoteAt>15000||quoteAt>now+2000)blockers.push('السعر الحي متأخر أو توقيته غير موثوق');
   if(!input.marketOpen)blockers.push('جلسة التداول مغلقة');
@@ -97,7 +106,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
   const base=(horizon:1|5):ScalpPlan=>({
     id:asset+'-'+horizon+'-'+String(m1.closed.at(-1)?.time??now)+'-NONE',asset,horizon,at:now,
     expiresAt:now+(horizon===1?145000:210000),side:'WAIT',status:blockers.length?'BLOCKED':'WATCH',setup:'NONE',score:0,
-    scoreLabel:'قوة الإعداد /100 · ليست احتمال ربح',entry:null,stop:null,targets:[],netRR:null,cost:round(cost),costEstimated,
+    scoreLabel:'قوة الإعداد /100 · ليست احتمال ربح',entry:null,stop:null,targets:[],netRR:null,cost:round(cost),costEstimated,costBreakdown,
     trigger:'انتظار إعداد سعري واضح',reason:blockers[0]||'لم يكتمل اختراق أو إعادة اختبار أو سحب سيولة',blockers:[...blockers],evidence:[]
   });
   if(blockers.length)return [base(1),base(5)];

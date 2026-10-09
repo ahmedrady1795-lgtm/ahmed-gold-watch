@@ -7,6 +7,39 @@ function load(file){
   return exports;
 }
 const {buildScalpPlans}=load('lib/scalp-opportunities.ts');
+const {auditScalpEntry}=load('lib/scalp-entry-audit.ts');
+const auditNow=Date.parse('2026-10-09T12:00:00Z');
+const planAudit={status:'ARMED',side:'BUY',setup:'BREAKOUT',
+  entry:100,stop:99,targets:[{price:103,kind:'STRUCTURE'}],
+  cost:.10,costEstimated:true,netRR:2.6,blockers:[],reason:'',horizon:5};
+const quoteAudit=(price,at=auditNow)=>({price,at,source:'test'});
+const audit=(plan,price,hold='CONFIRMED',now=auditNow,scenario=false)=>
+  auditScalpEntry(plan,quoteAudit(price),now,hold,scenario);
+assert.equal(audit(planAudit,100,null,auditNow,true).code,'SCENARIO_ONLY',
+  'A confirmed liquidity-scenario watch is not a confirmed exact-plan entry');
+assert.equal(audit(planAudit,100,'HOLDING').code,'AWAITING_M1_CONFIRMATION',
+  'A partial quote hold cannot authorize a paper fill');
+assert.equal(audit(planAudit,100).code,'READY',
+  'A confirmed exact entry with positive risk and cost-adjusted RR may qualify');
+assert.equal(audit(planAudit,100.4).code,'ENTRY_DRIFT',
+  'A 0.4R chase must be refused even after the candle confirms');
+assert.equal(audit(planAudit,100.15,'RETEST_READY').code,'ENTRY_DRIFT',
+  'A late retest cannot exceed the stricter 0.12R displacement');
+assert.equal(audit(planAudit,100,'CONFIRMED',auditNow+15000).code,'QUOTE_STALE',
+  'Fresh quote timestamps are mandatory');
+assert.equal(audit({...planAudit,stop:101},100).code,'BAD_GEOMETRY',
+  'A BUY stop above the fill is not allowed');
+assert.equal(audit({...planAudit,cost:1.20,netRR:2.6},100).code,'NET_REWARD_TOO_LOW',
+  'Fees can invalidate an otherwise favorable gross RR');
+const watchCost={...planAudit,status:'WATCH',
+  blockers:['التكلفة كبيرة بالنسبة لتذبذب الفريم بعد الرسوم']};
+assert.equal(audit(watchCost,100,null,auditNow,true).code,'COST_UNVIABLE',
+  'Scenario confirmation must never override a setup blocked by transaction costs');
+const shortPlan={...planAudit,side:'SELL',stop:101,targets:[{price:97,kind:'STRUCTURE'}]};
+assert.equal(audit(shortPlan,100).code,'READY','SELL stop/reward geometry should mirror BUY');
+assert.equal(audit({...shortPlan,stop:99},100).code,'BAD_GEOMETRY',
+  'A SELL stop below the fill is not allowed');
+console.log('PASS: exact-plan versus scenario, M1 hold, chase, stale quotes, stop geometry, and net-cost audit');
 const {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid}=load('lib/scalp-selection.ts');
 const trendBars=Array.from({length:210},(_,i)=>({
   time:Date.parse('2026-10-07T00:00:00Z')+i*60000,
