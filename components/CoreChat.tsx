@@ -3,7 +3,12 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {BrainCircuit,Mic,MicOff,Trash2,Volume2,Zap} from 'lucide-react';
 
 type Message={id:number;role:'user'|'core';text:string};
-type CoreChatProps={data:any;desk:any};
+type VoiceAction=
+  |{type:'REFRESH_ANALYSIS'}
+  |{type:'SET_ASSET';asset:'ALL'|'GOLD'|'BTC'}
+  |{type:'NAVIGATE';section:'core-console'|'market-overview'|'scalp-opportunities'|'market-forecast'|'market-news'}
+  |{type:'STOP_VOICE'};
+type CoreChatProps={data:any;desk:any;onCommand?:(command:VoiceAction)=>void};
 const cleanNumber=(v:any)=>Number.isFinite(Number(v))?Number(v):null;
 
 function compactContext(data:any,desk:any){
@@ -14,7 +19,7 @@ function compactContext(data:any,desk:any){
   return {checkedAt:Number(data?.checkedAt||Date.now()),gold:pick('gold','الذهب'),bitcoin:pick('bitcoin','البيتكوين')};
 }
 
-export default function CoreChat({data,desk}:CoreChatProps){
+export default function CoreChat({data,desk,onCommand}:CoreChatProps){
   // The voice-first surface keeps a short in-memory history for context,
   // but never renders a text chat or asks the user to type.
   const [messages,setMessages]=useState<Message[]>([]);
@@ -23,6 +28,7 @@ export default function CoreChat({data,desk}:CoreChatProps){
   const [liveVoice,setLiveVoice]=useState(false);
   const [speaking,setSpeaking]=useState(false);
   const [voiceError,setVoiceError]=useState('');
+  const [intelligenceMode,setIntelligenceMode]=useState<'checking'|'smart'|'basic'>('checking');
   const recognitionRef=useRef<any>(null);
   const liveVoiceRef=useRef(false);
   const speakingRef=useRef(false);
@@ -129,7 +135,7 @@ export default function CoreChat({data,desk}:CoreChatProps){
   };
   const arabicVoice=()=>{
     const voices=voicesRef.current.length?voicesRef.current:typeof window!=='undefined'&&'speechSynthesis' in window?window.speechSynthesis.getVoices():[];
-    return voices.find(v=>/^ar(-|_)/i.test(v.lang))||voices.find(v=>/arabic|ar-eg|ar-sa/i.test(`${v.name} ${v.lang}`))||null;
+    return voices.find(v=>/^ar[-_]EG$/i.test(v.lang))||voices.find(v=>/^ar(-|_)/i.test(v.lang))||voices.find(v=>/arabic|ar-eg|ar-sa/i.test(`${v.name} ${v.lang}`))||null;
   };
   const speak=(text:string)=>{
     if(typeof window==='undefined'||!('speechSynthesis' in window)||typeof (window as any).SpeechSynthesisUtterance!=='function'){
@@ -238,7 +244,7 @@ export default function CoreChat({data,desk}:CoreChatProps){
     window.speechSynthesis.cancel();
     window.speechSynthesis.resume();
   };
-  const testSpeech=()=>{unlockAudio(true);speak('اختبار الصوت. أنا النواة، سامعاك وهرد عليك بصوت عربي.');};
+  const testSpeech=()=>{unlockAudio(true);speak('أيوه، أنا سامعاك. اتكلم معايا براحتك، وهرد عليك بالمصري.');};
   const submitVoice=async(text:string)=>{
     const clean=text.trim();
     if(!clean||busyRef.current)return;
@@ -247,13 +253,16 @@ export default function CoreChat({data,desk}:CoreChatProps){
     setMessages(prev=>[...prev,{id:nextId.current++,role:'user',text:clean}]);
     setBusyState(true);
     try{
-      const response=await fetch('/api/core-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:clean,context,history}),signal:AbortSignal.timeout(7000)});
+      const response=await fetch('/api/core-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:clean,context,history}),signal:AbortSignal.timeout(16000)});
       const payload=await response.json().catch(()=>null);
       if(!response.ok||!payload?.ok)throw new Error(payload?.message||'تعذر الرد');
       setMessages(prev=>[...prev,{id:nextId.current++,role:'core',text:payload.answer}]);
+      setIntelligenceMode(payload.mode==='EGYPTIAN_LLM'?'smart':'basic');
+      if(payload?.action?.type==='STOP_VOICE'){stopVoice();return;}
+      if(payload?.action)onCommand?.(payload.action as VoiceAction);
       speak(payload.answer);
     }catch{
-      const fallback='النواة مشغولة لحظة. اسألني تاني بعد ثانية.';
+      const fallback='الرد اتأخر مني شوية. ممكن تعيد السؤال؟';
       setMessages(prev=>[...prev,{id:nextId.current++,role:'core',text:fallback}]);
       speak(fallback);
     }finally{setBusyState(false);}
@@ -282,7 +291,7 @@ export default function CoreChat({data,desk}:CoreChatProps){
         <span className="core-orbit orbit-one"/><span className="core-orbit orbit-two"/><div className="core-emblem"><BrainCircuit size={33}/><small>CORE</small></div>
       </div>
       <div className="core-identity"><span className="core-kicker"><Zap size={13}/> CORE / VOICE</span><h2 id="core-console-title">النواة الصوتية</h2><p>اتكلم طبيعي، والنواة ترد عليك بصوت مصري من بيانات السوق الحالية.</p></div>
-      <div className="core-health"><i/> صوت عربي · <b>سريعة</b></div>
+      <div className="core-health"><i/> مصري · <b>{intelligenceMode==='smart'?'محادثة ذكية':intelligenceMode==='basic'?'وضع أساسي':'صوت مباشر'}</b></div>
     </div>
     <div className="core-chat-panel voice-panel">
       <div className="core-chat-head"><div><strong>اتكلم مع النواة</strong><small>{liveVoice?'الوضع الصوتي شغال':'صوت فقط · بدون شات'}</small></div><div className="core-chat-actions"><button type="button" className={'core-live-voice core-voice-primary '+(liveVoice?'active':'')} onClick={()=>void toggleLiveVoice()} aria-pressed={liveVoice} title={liveVoice?'إيقاف الصوت':'بدء الكلام'}>{liveVoice?<MicOff size={17}/>:<Mic size={17}/>}<span>{liveVoice?'إيقاف الصوت':'ابدأ الكلام'}</span></button><button type="button" className="core-voice-test" onClick={testSpeech} aria-label="اختبار صوت النواة" title="اختبار صوت النواة"><Volume2 size={16}/><span>اختبار الصوت</span></button><button type="button" className="core-clear" onClick={clearConversation} aria-label="بدء جلسة صوتية جديدة" title="بدء جلسة صوتية جديدة"><Trash2 size={15}/></button></div></div>
@@ -293,7 +302,7 @@ export default function CoreChat({data,desk}:CoreChatProps){
         <div className="core-voice-wave" aria-hidden="true"><i/><i/><i/><i/><i/><i/><i/></div>
       </div>
       {voiceError&&<small className="core-voice-error" role="status">{voiceError}</small>}
-      <small className="core-note">لا يوجد صندوق كتابة أو رسائل معروضة؛ النواة تسمعك وترد صوتيًا فقط.</small>
+      <small className="core-note">الوضع الصوتي مصري في الكلام؛ نبرة الصوت نفسها بتعتمد على الأصوات المثبّتة على موبايلك. الأوامر المعتمدة بتشتغل جوه لوحة التحكم فقط.</small>
     </div>
   </section>;
 }
