@@ -14,7 +14,8 @@ from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 from microstructure import MicrostructureCore
 
-APP_VERSION="predator-ml-v11-neural-micro-shadow"
+APP_VERSION="predator-ml-v12-purged-calibrated"
+EVALUATION_PROTOCOL="purged-chronological-served-estimators-v1"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 MODEL_PATH=MODEL_DIR/"btc_ml_ensemble.joblib"
 META_PATH=MODEL_DIR/"btc_ml_meta.json"
@@ -202,6 +203,9 @@ def make_dataset(df,horizon,deadzone_atr,feature_names):
         move_atr=(future-c)/atr.replace(0,np.nan)
     else:
         move_atr=(c.shift(-horizon)-c)/atr1.replace(0,np.nan)
+    stamps=pd.Series(f.index,index=f.index)
+    contiguous=(stamps.shift(-horizon)-stamps)==pd.Timedelta(minutes=horizon)
+    move_atr=move_atr.where(contiguous)
     ds=f.copy(); ds["target"]=(move_atr>0).astype(int); ds["move_atr"]=move_atr
     return ds.loc[move_atr.abs()>=deadzone_atr].dropna(subset=feature_names+["target"])
 
@@ -215,6 +219,9 @@ def make_m5_multiclass_dataset(df,feature_names,neutral_atr=.18):
     atr=fatr.reindex(f.index,method="ffill")
     future=(c.shift(-4)+c.shift(-5))/2
     move_atr=(future-c)/atr.replace(0,np.nan)
+    stamps=pd.Series(f.index,index=f.index)
+    contiguous=(stamps.shift(-5)-stamps)==pd.Timedelta(minutes=5)
+    move_atr=move_atr.where(contiguous)
     target=np.where(move_atr>neutral_atr,2,np.where(move_atr<-neutral_atr,0,1))
     ds=f.copy(); ds["target"]=target; ds["move_atr"]=move_atr
     return ds.dropna(subset=feature_names+["move_atr"])
@@ -255,7 +262,7 @@ def fetch_coinbase_history(limit_rows):
     df["trades"]=0.0
     df["taker_buy_base"]=df["volume"]*.5
     df["taker_buy_quote"]=df["quote_volume"]*.5
-    return df
+    return df[df.index+pd.Timedelta(minutes=1)<=pd.Timestamp.now(tz="UTC")]
 
 def _binance_ms(v):
     n=int(v)
@@ -296,6 +303,8 @@ def fetch_binance_vision_history(limit_rows):
     df=df[~df.index.duplicated(keep="last")].sort_index()
     required=max(220,min(int(limit_rows),1000))
     if len(df)<required: raise RuntimeError(f"binance vision normalized history too short: {len(df)} < {required}")
+    # Exclude the active minute from both labels and live feature construction.
+    df=df[df.index+pd.Timedelta(minutes=1)<=pd.Timestamp.now(tz="UTC")]
     return df
 
 LIVE_FRAME={"at":0.0,"df":None,"source":"none","error":None}
@@ -381,15 +390,39 @@ def choose_blend(y,px,pl,horizon):
                 best=(score,wx,1-wx,threshold,worst,spread)
     return (best[1],best[2],best[3]) if best else (.5,.5,.57)
 
+def purged_splits(ds,horizon):
+    n=len(ds);a=int(n*.70);b=int(n*.85)
+    # Use timestamps because binary dead-zone filtering removes arbitrary rows.
+    times=ds.index
+    train=np.flatnonzero((times<times[a]) & (times+pd.Timedelta(minutes=horizon)<times[a]))
+    valid=np.flatnonzero((times>=times[a]) & (times<times[b]) &
+        (times+pd.Timedelta(minutes=horizon)<times[b]))
+    test=np.arange(b,n)
+    if min(len(train),len(valid),len(test))<80:raise RuntimeError("insufficient_purged_split")
+    return train,valid,test
+
+def _model_ready(model):
+    m=model.get("metrics",{})
+    return bool(m.get("ready") and m.get("evaluationProtocol")==EVALUATION_PROTOCOL)
+
+def _temperature_probs(prob,temperature=1.0):
+    logits=np.log(np.clip(prob,1e-9,1))/max(.25,float(temperature))
+    logits-=logits.max(axis=1,keepdims=True)
+    p=np.exp(logits);return p/p.sum(axis=1,keepdims=True)
+
+def _fit_temperature(y,prob):
+    return min([.75,1.0,1.25,1.5,2.0,3.0,4.0],key=lambda t:float(-np.log(np.clip(
+        _temperature_probs(prob,t)[np.arange(len(y)),y],1e-9,1)).mean()))
+
 def train_horizon(ds,horizon,feature_names):
     X=ds[feature_names].astype(float).to_numpy(); y=ds.target.astype(int).to_numpy(); n=len(y)
     if n<MIN_TRAIN_ROWS: raise RuntimeError(f"not enough rows for h{horizon}: {n}")
 
     # Strict chronological split: oldest 70% train, next 15% validation,
     # newest 15% untouched final holdout.
-    train_end=int(n*.70); val_end=int(n*.85)
-    Xtr,Xv,Xte=X[:train_end],X[train_end:val_end],X[val_end:]
-    ytr,yv,yte=y[:train_end],y[train_end:val_end],y[val_end:]
+    it,iv,ie=purged_splits(ds,horizon)
+    Xtr,Xv,Xte=X[it],X[iv],X[ie]
+    ytr,yv,yte=y[it],y[iv],y[ie]
     x,l=new_models(42+horizon,horizon); x.fit(Xtr,ytr); l.fit(Xtr,ytr)
 
     # Weight + threshold selection is validation-only; final holdout stays untouched.
@@ -419,13 +452,14 @@ def train_horizon(ds,horizon,feature_names):
         gap<=.16 and stability<=.08
     )
 
-    # Production models see all history only AFTER the untouched holdout is scored.
-    xf,lf=new_models(142+horizon,horizon); xf.fit(X,y); lf.fit(X,y)
-    return {"xgb":xf,"lgb":lf,"weights":{"xgb":float(wx),"lgb":float(wl)},"signalThreshold":float(signal_threshold),"features":feature_names,
+    # Serve precisely the fitted estimators evaluated above. A full-data refit
+    # invalidates these holdout metrics, even if its recipe is identical.
+    return {"xgb":x,"lgb":l,"weights":{"xgb":float(wx),"lgb":float(wl)},"signalThreshold":float(signal_threshold),"features":feature_names,
             "metrics":{"ensemble":me,"validation":mv,"xgb":mxt,"lightgbm":mlt,
                        "validationXgb":mxv,"validationLightgbm":mlv,
                        "trainAccuracy":float(train_acc),"overfitGap":float(gap),
-                       "validationHoldoutStability":float(stability),"ready":ready},
+                       "validationHoldoutStability":float(stability),"ready":ready,
+                       "evaluationProtocol":EVALUATION_PROTOCOL,"purgeMinutes":horizon},
             "rows":n,"horizon":horizon}
 
 def new_m5_models(seed):
@@ -491,34 +525,50 @@ def choose_m5_multiclass(y,px,pl):
 def train_m5_multiclass(ds,feature_names):
     X=ds[feature_names].astype(float).to_numpy(); y=ds.target.astype(int).to_numpy(); n=len(y)
     if n<MIN_TRAIN_ROWS: raise RuntimeError(f"not enough rows for m5 multiclass: {n}")
-    train_end=int(n*.70); val_end=int(n*.85)
-    Xtr,Xv,Xte=X[:train_end],X[train_end:val_end],X[val_end:]
-    ytr,yv,yte=y[:train_end],y[train_end:val_end],y[val_end:]
+    it,iv,ie=purged_splits(ds,5)
+    Xtr,Xv,Xte=X[it],X[iv],X[ie]
+    ytr,yv,yte=y[it],y[iv],y[ie]
     x,l=new_m5_models(47); x.fit(Xtr,ytr); l.fit(Xtr,ytr)
     pxv=x.predict_proba(Xv); plv=l.predict_proba(Xv)
+    # First chronological validation block calibrates; later block selects gates.
+    # Purge the five-minute target before the gate block too.
+    cut=len(iv)//2
+    calibration=np.flatnonzero(ds.index[iv]+pd.Timedelta(minutes=5)<ds.index[iv[cut]])
+    gate=np.arange(cut,len(iv))
+    if len(calibration)<80 or len(gate)<120:raise RuntimeError("insufficient_m5_calibration")
+    tx=_fit_temperature(yv[calibration],pxv[calibration])
+    tl=_fit_temperature(yv[calibration],plv[calibration])
+    pxv=_temperature_probs(pxv,tx);plv=_temperature_probs(plv,tl)
+    Xv=Xv[gate];yv=yv[gate];pxv=pxv[gate];plv=plv[gate]
     wx,wl,threshold,margin=choose_m5_multiclass(yv,pxv,plv)
     agree_v=(pxv[:,2]>=pxv[:,0])==(plv[:,2]>=plv[:,0])
     pv=pxv*wx+plv*wl
     mv=m5_metrics(yv,pv,threshold,margin,agree_v)
-    pxte=x.predict_proba(Xte); plte=l.predict_proba(Xte)
+    pxte=_temperature_probs(x.predict_proba(Xte),tx); plte=_temperature_probs(l.predict_proba(Xte),tl)
     agree_t=(pxte[:,2]>=pxte[:,0])==(plte[:,2]>=plte[:,0])
     pte=pxte*wx+plte*wl
     me=m5_metrics(yte,pte,threshold,margin,agree_t)
-    trainp=x.predict_proba(Xtr)*wx+l.predict_proba(Xtr)*wl
+    trainp=_temperature_probs(x.predict_proba(Xtr),tx)*wx+_temperature_probs(l.predict_proba(Xtr),tl)*wl
     mt=m5_metrics(ytr,trainp,threshold,margin)
     stability=abs(mv["selectiveAccuracy"]-me["selectiveAccuracy"])
+    baseline_class=int(np.argmax(np.bincount(ytr,minlength=3)))
+    for labels,prob,agree,m in ((yv,pv,agree_v,mv),(yte,pte,agree_t,me)):
+        direction=np.maximum(prob[:,0],prob[:,2])
+        mask=(direction>=threshold)&(direction-prob[:,1]>=margin)&agree
+        base=float(np.mean(labels[mask]==baseline_class)) if mask.any() else 0.0
+        m["pairedBaselineAccuracy"]=base;m["edgeVsBaseline"]=m["selectiveAccuracy"]-base
     ready=bool(
-        me["n"]>=1200 and mv["n"]>=1200 and
+        me["n"]>=1200 and len(iv)>=1200 and
         me["selectiveN"]>=140 and mv["selectiveN"]>=120 and
         me["selectiveCoverage"]>=.03 and mv["selectiveCoverage"]>=.03 and
         me["selectiveAccuracy"]>=.58 and mv["selectiveAccuracy"]>=.56 and
-        stability<=.10
+        stability<=.10 and mv["edgeVsBaseline"]>=.02 and me["edgeVsBaseline"]>=.02
     )
-    xf,lf=new_m5_models(147); xf.fit(X,y); lf.fit(X,y)
     return {
-        "xgb":xf,"lgb":lf,"weights":{"xgb":float(wx),"lgb":float(wl)},
+        "xgb":x,"lgb":l,"temperature":{"xgb":tx,"lgb":tl},"weights":{"xgb":float(wx),"lgb":float(wl)},
         "signalThreshold":float(threshold),"flatMargin":float(margin),"features":feature_names,
-        "metrics":{"ensemble":me,"validation":mv,"train":mt,"validationHoldoutStability":float(stability),"ready":ready},
+        "metrics":{"ensemble":me,"validation":mv,"train":mt,"validationHoldoutStability":float(stability),"ready":ready,
+                       "evaluationProtocol":EVALUATION_PROTOCOL,"purgeMinutes":5,"calibrationRows":len(calibration),"validationPeriodRows":len(iv)},
         "rows":n,"horizon":5,"mode":"m5_multiclass"
     }
 
@@ -546,7 +596,7 @@ def train_all():
             incumbent=old.get(key) if isinstance(old,dict) else None
             compatible=bool(incumbent and incumbent.get("features")==candidate.get("features") and
                 (key!="m5" or incumbent.get("mode")=="m5_multiclass"))
-            if compatible and incumbent["metrics"].get("ready") and not candidate["metrics"].get("ready"):
+            if compatible and _model_ready(incumbent) and not candidate["metrics"].get("ready"):
                 if key=="m1":m1=incumbent
                 else:m5=incumbent
                 model_origins[key]="RETAINED_READY_CHAMPION"
@@ -583,6 +633,9 @@ def load_model():
             STATE.update({"status":"TRAINING","modelLoaded":False,"metrics":None,"lastError":"incompatible_model_features"})
             return False
         MODELS.clear(); MODELS.update(obj)
+        for model in obj["models"].values():
+            if not _model_ready(model):
+                model["metrics"]["ready"]=False
         m={k:v["metrics"] for k,v in obj["models"].items()}
         current=bool(obj.get("version")==APP_VERSION)
         base_status="READY" if all(v.get("ready") for v in m.values()) else ("PARTIAL" if any(v.get("ready") for v in m.values()) else "SHADOW")
@@ -668,14 +721,14 @@ def predict_h(model,x):
     # was validated on the chronological holdout. Previous code validated RAW
     # probabilities but gated the shrunken probability, silently crushing live
     # coverage and producing long periods with no M1 recommendations.
-    active=(raw>=threshold or raw<=1-threshold) and (model["horizon"]!=5 or component_agree)
+    active=_model_ready(model) and (raw>=threshold or raw<=1-threshold) and (model["horizon"]!=5 or component_agree)
     excess=max(0.0,abs(raw-.5)-max(0.0,threshold-.5))
     learned_quality=float(hold.get("selectiveAccuracy",.5))*100
     confidence=round(min(89,max(55,learned_quality+excess*120))) if active else round(min(70,max(45,50+abs(calibrated-.5)*60)))
     return {"side":lean if active else "WAIT","leanSide":lean,
             "probUp":round(calibrated*100,2),"probDown":round((1-calibrated)*100,2),
             "confidence":confidence,"edge":round(raw_edge*100,2),
-            "ready":bool(model["metrics"]["ready"]),"metrics":model["metrics"],
+            "ready":_model_ready(model),"metrics":model["metrics"],
             "component":{"xgbUp":round(px*100,2),"lightgbmUp":round(pl*100,2),"rawUp":round(raw*100,2),
                          "calibratedUp":round(calibrated*100,2),"agree":bool(component_agree),"weights":w,
                          "signalThreshold":threshold,"gateDomain":"validated_raw_probability"}}
@@ -701,6 +754,9 @@ def predict_m5(model,x):
     # Map estimator classes explicitly so a missing/legacy class can never crash inference.
     features=model.get("features") or []
     px=_class3_probs(model["xgb"],x,features); pl=_class3_probs(model["lgb"],x,features); w=model["weights"]
+    temperature=model.get("temperature",{})
+    px=_temperature_probs(px.reshape(1,-1),temperature.get("xgb",1.0))[0]
+    pl=_temperature_probs(pl.reshape(1,-1),temperature.get("lgb",1.0))[0]
     p=px*w["xgb"]+pl*w["lgb"]
     down,flat,up=float(p[0]),float(p[1]),float(p[2])
     lean="BUY" if up>=down else "SELL"
@@ -708,19 +764,20 @@ def predict_m5(model,x):
     component_agree=((px[2]>=px[0])==(pl[2]>=pl[0]))
     model_mode=str(model.get("mode") or "")
     compatible=(model_mode=="m5_multiclass")
-    active=bool(compatible and component_agree and dir_prob>=threshold and dir_prob-flat>=margin)
+    active=bool(compatible and _model_ready(model) and component_agree and dir_prob>=threshold and dir_prob-flat>=margin)
     directional_total=max(1e-9,up+down)
     prob_up_dir=up/directional_total; edge=abs(up-down)
     confidence=round(min(90,max(0,50+(dir_prob-flat)*85+edge*35))) if active else round(min(70,max(45,50+edge*25)))
     return {
         "side":lean if active else "WAIT","leanSide":lean,
         "probUp":round(prob_up_dir*100,2),"probDown":round((1-prob_up_dir)*100,2),"probFlat":round(flat*100,2),
-        "confidence":confidence,"edge":round(edge*100,2),"ready":bool(compatible and model["metrics"]["ready"]),"metrics":model["metrics"],
+        "confidence":confidence,"edge":round(edge*100,2),"ready":bool(compatible and _model_ready(model)),"metrics":model["metrics"],
         "component":{
             "xgb":{"down":round(float(px[0])*100,2),"flat":round(float(px[1])*100,2),"up":round(float(px[2])*100,2)},
             "lightgbm":{"down":round(float(pl[0])*100,2),"flat":round(float(pl[1])*100,2),"up":round(float(pl[2])*100,2)},
             "agree":bool(component_agree),"compatible":compatible,"mode":model_mode,
-            "weights":w,"signalThreshold":threshold,"flatMargin":margin
+            "weights":w,"temperature":temperature,"gateDomain":"validated_calibrated_probability",
+            "signalThreshold":threshold,"flatMargin":margin
         }
     }
 
@@ -730,7 +787,10 @@ def startup():
     MICRO.start()
 
 @app.get("/health")
-def health(): return {"ok":True,"version":APP_VERSION,"microstructure":MICRO.status(),**STATE}
+def health():
+    readiness={k:_model_ready(v) for k,v in MODELS.get("models",{}).items()}
+    return {"ok":True,"version":APP_VERSION,"modelReady":bool(readiness and all(readiness.values())),
+        "readiness":readiness,"evaluationProtocol":EVALUATION_PROTOCOL,"microstructure":MICRO.status(),**STATE}
 
 @app.post("/train")
 def train():

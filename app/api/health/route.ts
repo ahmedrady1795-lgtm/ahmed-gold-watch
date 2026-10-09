@@ -1,3 +1,4 @@
+import {getAiReadiness} from '../../../lib/ai-readiness';
 import {getRuntimeEnv} from '../../../lib/runtime';
 import {getMarketData,getQuoteData,getMt5BridgeStatus} from '../../../lib/market-hub';
 import {getKillSwitch} from '../../../lib/admin-state';
@@ -20,11 +21,12 @@ function goldSessionOpen(now:number){
 
 export async function GET(){
   const env=getRuntimeEnv(),started=Date.now(),now=Date.now(),goldOpen=goldSessionOpen(now);
-  const [quoteProbe,marketRaw,btcLiquidityProbe,kill]=await Promise.all([
+  const [quoteProbe,marketRaw,btcLiquidityProbe,kill,ai]=await Promise.all([
     probe(()=>getQuoteData()),
     probe(()=>getMarketData({force:true})),
     probe(()=>getBtcLiquidity(true)),
-    getKillSwitch()
+    getKillSwitch(),
+    getAiReadiness()
   ]);
 
   const marketValue:any=marketRaw.value;
@@ -64,15 +66,17 @@ export async function GET(){
   const btcLiquidityOk=Boolean(btcLiquidityProbe.ok&&btcLiquidityValue?.ok);
   const backgroundConfigured=Boolean(env.TWELVE_DATA_API_KEY);
   const coreMarketReady=quote.ok&&(market.ok||!goldOpen);
-  const status=coreMarketReady?(btcLiquidityOk?'healthy':'degraded'):quote.ok||market.ok?'degraded':'halted';
+  const status=coreMarketReady?(btcLiquidityOk&&ai.ready?'healthy':'degraded'):quote.ok||market.ok?'degraded':'halted';
 
   return Response.json({
     ok:status!=='halted',
     status,
+    degradedReasons:ai.reasons,
     checkedAt:Date.now(),
     latencyMs:Date.now()-started,
     session:{goldOpen,state:goldOpen?'open':'closed'},
     services:{
+      ai,
       quote,
       market,
       backtest:{configured:true,source:'Binance Futures XAUUSDT proxy',requiresApiKey:false,optional:false},

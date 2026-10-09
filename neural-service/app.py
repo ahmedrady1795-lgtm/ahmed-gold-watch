@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from fastapi import FastAPI
 
-APP_VERSION="predator-neural-v3-calibrated-l2"
+APP_VERSION="predator-neural-v4-time-calibrated-l2"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 DATA_PATH=MODEL_DIR/"l2_neural.jsonl"
 MODEL_PATH=MODEL_DIR/"l2_neural.pt"
@@ -26,9 +26,16 @@ TRAIN_MAX_SAMPLES=int(os.getenv("NEURAL_TRAIN_MAX_SAMPLES","12000"))
 TRAIN_BATCH=int(os.getenv("NEURAL_TRAIN_BATCH","32"))
 EVAL_BATCH=int(os.getenv("NEURAL_EVAL_BATCH","128"))
 MEMORY_TRAIN_START_MB=float(os.getenv("NEURAL_TRAIN_START_MAX_RSS_MB","620"))
-RUNTIME_REVISION="memorysafe-r3.1"
+RUNTIME_REVISION="time-calibrated-r4.0"
+HORIZON_SECONDS=float(os.getenv("NEURAL_HORIZON_SECONDS",str(HORIZON*INTERVAL)))
+MAX_GAP_MS=max(10000.0,INTERVAL*5000)
+TRAIN_LOCK=threading.Lock()
+SCHEDULE_PATH=MODEL_DIR/"training_schedule.json"
+SCHEDULE={"classifier":{},"path":{}}
+DATASET_AUDIT={}
 LEVELS=10
-FEAT_DIM=50
+FEAT_DIM=56
+EXTRA_DIM=FEAT_DIM-40
 PATH_END_SCALE_BPS=8.0
 PATH_RANGE_SCALE_BPS=12.0
 DEVICE=torch.device("cpu")
@@ -79,7 +86,11 @@ def _load_rows():
             for line in f:
                 try:
                     j=json.loads(line)
-                    if len(j.get("f",[]))==FEAT_DIM: tail.append(j)
+                    if len(j.get("f",[]))==50:
+                        # Migrate retained L2 rows causally; no future price enters
+                        # a feature, and a recipe upgrade need not discard history.
+                        j["f"]=j["f"]+_price_context(float(j["mid"]),int(j["t"]),list(tail)[-64:])
+                    if len(j.get("f",[]))==FEAT_DIM:tail.append(j)
                 except Exception: pass
         ROWS.extend(tail)
     except Exception as e:
@@ -135,6 +146,18 @@ def _fetch_depth():
     if len(bids)<LEVELS or len(asks)<LEVELS:raise RuntimeError("depth_short")
     return bids,asks
 
+def _price_context(mid,at,history):
+    recent=[r for r in history if 0<at-int(r["t"])<=120000 and float(r.get("mid",0))>0]
+    returns=[]
+    for seconds in (2,10,30,60):
+        past=[r for r in recent if int(r["t"])<=at-seconds*1000]
+        returns.append(cap((mid/float(past[-1]["mid"])-1)*10000,-30,30) if past else 0.0)
+    prices=np.asarray([float(r["mid"]) for r in recent[-16:]]+[mid],dtype=float)
+    increments=np.diff(np.log(prices))*10000
+    vol=float(np.std(increments)) if len(increments)>=3 else 0.0
+    acceleration=returns[1]-returns[2]/3
+    return returns+[cap(vol,0,30),cap(acceleration,-30,30)]
+
 def _features(bids,asks):
     bp=np.array([p for p,_ in bids],dtype=np.float64)
     ap=np.array([p for p,_ in asks],dtype=np.float64)
@@ -151,8 +174,8 @@ def _features(bids,asks):
     micro=(ask*bq[0]+bid*aq[0])/max(1e-12,bq[0]+aq[0])
     spread=(ask-bid)/mid*10000
     bid_depth=float(bq.sum()/total);ask_depth=float(aq.sum()/total)
-    with LOCK:
-        prev=ROWS[-1] if ROWS else None
+    with LOCK:history=list(ROWS)[-64:]
+    prev=history[-1] if history else None
     pf=(prev or {}).get("f") or []
     prev_bid=float(pf[46]) if len(pf)>47 else bid_depth
     prev_ask=float(pf[47]) if len(pf)>47 else ask_depth
@@ -161,6 +184,7 @@ def _features(bids,asks):
         float(imb(1)),float(imb(3)),float(imb(5)),float(imb(10)),
         bid_depth,ask_depth,bid_depth-prev_bid,ask_depth-prev_ask
     ]
+    vec+=_price_context(mid,int(time.time()*1000),history)
     return mid,[float(x) for x in vec]
 
 class CausalBlock(nn.Module):
@@ -209,7 +233,7 @@ class DeepLOBBranch(nn.Module):
             nn.GELU(),
             nn.AdaptiveAvgPool2d((1,5))
         )
-        self.extra=nn.Sequential(nn.Linear(10,16),nn.GELU())
+        self.extra=nn.Sequential(nn.Linear(EXTRA_DIM,16),nn.GELU())
         self.gru=nn.GRU(24*5+16,64,batch_first=True)
     def forward(self,x):
         b,t,_=x.shape
@@ -237,7 +261,7 @@ class HybridMicroNet(nn.Module):
         self.tcn=TCNBranch()
         self.ssm=SelectiveSSM()
         self.meta=nn.Sequential(
-            nn.Linear(64*3+10,128),nn.GELU(),nn.Dropout(.12),
+            nn.Linear(64*3+EXTRA_DIM,128),nn.GELU(),nn.Dropout(.12),
             nn.Linear(128,48),nn.GELU(),nn.Dropout(.08),
             nn.Linear(48,3)
         )
@@ -254,7 +278,7 @@ class PricePathNet(nn.Module):
         self.tcn=TCNBranch()
         self.ssm=SelectiveSSM()
         self.head=nn.Sequential(
-            nn.Linear(64*3+10,128),nn.GELU(),nn.Dropout(.12),
+            nn.Linear(64*3+EXTRA_DIM,128),nn.GELU(),nn.Dropout(.12),
             nn.Linear(128,64),nn.GELU(),nn.Dropout(.08),
             nn.Linear(64,4)
         )
@@ -265,54 +289,86 @@ class PricePathNet(nn.Module):
         positive=torch.sigmoid(raw[:,1:4])
         return torch.cat([end,positive],dim=1)
 
-def _dataset():
-    with LOCK: rows=list(ROWS)
-    end=len(rows)-HORIZON
-    start=max(SEQ_LEN-1,end-TRAIN_MAX_SAMPLES)
-    count=max(0,end-start)
-    if count<=0:return None,None
-    X=np.empty((count,SEQ_LEN,FEAT_DIM),dtype=np.float32)
-    y=np.empty((count,),dtype=np.int64)
-    used=0
-    for i in range(start,end):
-        seq=rows[i-SEQ_LEN+1:i+1]
-        if any(len(r.get("f",[]))!=FEAT_DIM for r in seq):continue
-        cur=float(rows[i]["mid"]);fut=float(rows[i+HORIZON]["mid"])
-        move=(fut-cur)/cur*10000
-        X[used]=np.asarray([r["f"] for r in seq],dtype=np.float32)
-        y[used]=2 if move>=LABEL_BPS else 0 if move<=-LABEL_BPS else 1
-        used+=1
-    if used<=0:return None,None
-    return X[:used],y[:used]
+def _sample_indices(rows):
+    # Labels describe elapsed market time, never N successful HTTP polls.
+    stamps=np.asarray([int(r["t"]) for r in rows],dtype=np.int64)
+    valid=np.asarray([len(r.get("f",[]))==FEAT_DIM and
+        np.isfinite(float(r.get("mid",0))) and float(r.get("mid",0))>0 and
+        np.isfinite(np.asarray(r.get("f",[]),dtype=float)).all() for r in rows])
+    bad=np.concatenate([[0],np.cumsum(~valid)])
+    gap=np.concatenate([[0],np.cumsum((np.diff(stamps)<=0)|(np.diff(stamps)>MAX_GAP_MS))])
+    samples=[]
+    for i in range(SEQ_LEN-1,len(rows)):
+        j=int(np.searchsorted(stamps,stamps[i]+HORIZON_SECONDS*1000))
+        start=i-SEQ_LEN+1
+        if j>=len(rows):break
+        if stamps[j]-(stamps[i]+HORIZON_SECONDS*1000)>MAX_GAP_MS:continue
+        if bad[j+1]!=bad[start] or gap[j]!=gap[start]:continue
+        samples.append((start,i,j))
+    return samples[-TRAIN_MAX_SAMPLES:]
 
-def _path_dataset():
+def _make_dataset(path=False):
     with LOCK: rows=list(ROWS)
-    end=len(rows)-HORIZON
-    start=max(SEQ_LEN-1,end-TRAIN_MAX_SAMPLES)
-    count=max(0,end-start)
-    if count<=0:return None,None
-    X=np.empty((count,SEQ_LEN,FEAT_DIM),dtype=np.float32)
-    y=np.empty((count,4),dtype=np.float32)
-    used=0
-    for i in range(start,end):
-        seq=rows[i-SEQ_LEN+1:i+1]
-        if any(len(r.get("f",[]))!=FEAT_DIM for r in seq):continue
+    samples=_sample_indices(rows)
+    DATASET_AUDIT.update({"storedRows":len(rows),"validSamples":len(samples),
+        "horizonSeconds":HORIZON_SECONDS,"maxGapMs":MAX_GAP_MS,"featureDim":FEAT_DIM,"priceContext":"causal elapsed 2/10/30/60s returns, volatility, acceleration"})
+    if not samples:return None,None,None,None
+    X=np.empty((len(samples),SEQ_LEN,FEAT_DIM),dtype=np.float32)
+    y=np.empty((len(samples),4) if path else (len(samples),),dtype=np.float32 if path else np.int64)
+    starts=[];ends=[]
+    for k,(start,i,j) in enumerate(samples):
+        X[k]=np.asarray([r["f"] for r in rows[start:i+1]],dtype=np.float32)
         cur=float(rows[i]["mid"])
-        future=np.asarray([float(rows[k]["mid"]) for k in range(i+1,i+HORIZON+1)],dtype=np.float32)
-        moves=(future-cur)/cur*10000
-        end_move=float(moves[-1]);up=max(0.0,float(moves.max()));down=max(0.0,float(-moves.min()))
-        hit=np.where(np.abs(moves)>=LABEL_BPS)[0]
-        hit_frac=float((int(hit[0])+1)/HORIZON) if len(hit) else 1.0
-        X[used]=np.asarray([r["f"] for r in seq],dtype=np.float32)
-        y[used]=[
-            float(np.clip(end_move/PATH_END_SCALE_BPS,-1,1)),
-            float(np.clip(up/PATH_RANGE_SCALE_BPS,0,1)),
-            float(np.clip(down/PATH_RANGE_SCALE_BPS,0,1)),
-            float(np.clip(hit_frac,0,1))
-        ]
-        used+=1
-    if used<=0:return None,None
-    return X[:used],y[:used]
+        move=(float(rows[j]["mid"])-cur)/cur*10000
+        if path:
+            moves=np.asarray([(float(r["mid"])-cur)/cur*10000 for r in rows[i+1:j+1]])
+            hit=np.flatnonzero(np.abs(moves)>=LABEL_BPS)
+            seconds=(rows[i+1+int(hit[0])]["t"]-rows[i]["t"])/1000 if len(hit) else HORIZON_SECONDS
+            y[k]=[np.clip(move/PATH_END_SCALE_BPS,-1,1),
+                np.clip(max(0,float(moves.max()))/PATH_RANGE_SCALE_BPS,0,1),
+                np.clip(max(0,float(-moves.min()))/PATH_RANGE_SCALE_BPS,0,1),
+                np.clip(seconds/HORIZON_SECONDS,0,1)]
+        else:y[k]=2 if move>=LABEL_BPS else 0 if move<=-LABEL_BPS else 1
+        starts.append(rows[start]["t"]);ends.append(rows[j]["t"])
+    return X,y,np.asarray(starts),np.asarray(ends)
+
+def _dataset():return _make_dataset(False)
+def _path_dataset():return _make_dataset(True)
+
+def _time_splits(starts,ends,fractions=(.60,.72,.78,.85)):
+    cuts=[0]+[int(len(starts)*f) for f in fractions]+[len(starts)]
+    parts=[]
+    for a,b in zip(cuts[:-1],cuts[1:]):
+        idx=np.arange(a,b)
+        if b<len(starts):idx=idx[ends[idx]<starts[b]]
+        if len(idx)<80:raise RuntimeError("insufficient_purged_split")
+        parts.append(idx)
+    return parts
+
+def _temperature_probs(prob,temperature=1.0):
+    logits=np.log(np.clip(prob,1e-9,1))/max(.25,float(temperature))
+    logits-=logits.max(axis=1,keepdims=True)
+    p=np.exp(logits);return p/p.sum(axis=1,keepdims=True)
+
+def _fit_temperature(y,prob):
+    # Fit only on calibration dates, after early stopping; holdout never tunes.
+    candidates=[.75,1.0,1.25,1.5,2.0,3.0,4.0]
+    return min(candidates,key=lambda t:float(-np.log(np.clip(
+        _temperature_probs(prob,t)[np.arange(len(y)),y],1e-9,1)).mean()))
+
+def _training_due(kind,now,last_snapshot):
+    schedule=SCHEDULE.get(kind,{})
+    return (now>=schedule.get("nextAttemptAt",0) and
+        last_snapshot-schedule.get("dataEndAt",0)>=max(300000,HORIZON_SECONDS*4000))
+
+def _record_attempt(kind,ready):
+    now=int(time.time()*1000);old=SCHEDULE.get(kind,{})
+    failures=0 if ready else min(4,int(old.get("failures",0))+1)
+    delay=RETRAIN_SECONDS*1000*(2**failures)
+    SCHEDULE[kind]={"lastAttemptAt":now,"nextAttemptAt":now+delay,
+        "failures":failures,"dataEndAt":LAST_SNAPSHOT_AT,"ready":bool(ready)}
+    tmp=SCHEDULE_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(SCHEDULE));os.replace(tmp,SCHEDULE_PATH)
 
 def _selected_metrics(y,prob,threshold=.55,margin=.10):
     p=np.asarray(prob);pred=p.argmax(1)
@@ -368,13 +424,13 @@ def _choose_selective_gate(y,prob):
     if best:return float(best[1]),float(best[2])
     return .62,.12
 
-def _probs(model,X,batch=EVAL_BATCH):
+def _probs(model,X,batch=EVAL_BATCH,temperature=1.0):
     model.eval();outs=[]
     with torch.no_grad():
         for i in range(0,len(X),batch):
             z=torch.from_numpy(X[i:i+batch]).to(DEVICE)
             outs.append(torch.softmax(model(z),dim=1).cpu().numpy())
-    return np.concatenate(outs,axis=0) if outs else np.empty((0,3))
+    return _temperature_probs(np.concatenate(outs,axis=0),temperature) if outs else np.empty((0,3))
 
 def _path_decode(y):
     a=np.asarray(y,dtype=np.float32)
@@ -382,7 +438,7 @@ def _path_decode(y):
         a[:,0]*PATH_END_SCALE_BPS,
         a[:,1]*PATH_RANGE_SCALE_BPS,
         a[:,2]*PATH_RANGE_SCALE_BPS,
-        a[:,3]*HORIZON*INTERVAL
+        a[:,3]*HORIZON_SECONDS
     ])
 
 def _path_metrics(y_true,y_pred,baseline):
@@ -444,19 +500,19 @@ def _fit_path(Xtr,ytr,Xv,yv):
 
 def _train_path():
     global PATH_MODEL,PATH_METRICS,PATH_NORM_MEAN,PATH_NORM_STD,PATH_TRAINING,PATH_LAST_TRAIN_AT,PATH_LAST_ERROR
-    if PATH_TRAINING:return
+    if not TRAIN_LOCK.acquire(blocking=False):return
     PATH_TRAINING=True
+    ready=False
     try:
         if _rss_mb()>MEMORY_TRAIN_START_MB:
             raise RuntimeError(f"memory_guard rss={_rss_mb()}MB")
-        X,y=_path_dataset()
+        X,y,starts,ends=_path_dataset()
         if X is None or len(y)<MIN_SNAPSHOTS:return
-        a=int(len(y)*.70);b=int(len(y)*.85);purge=HORIZON+2
-        train_stop=max(1,a-purge)
-        center,scale=_fit_normalizer(X[:train_stop])
+        it,iv,ie=_time_splits(starts,ends,(.70,.85))
+        center,scale=_fit_normalizer(X[it])
         _normalize_inplace(X,center,scale)
-        Xtr,Xv,Xte=X[:train_stop],X[a:max(a+1,b-purge)],X[b:]
-        ytr,yv,yte=y[:train_stop],y[a:max(a+1,b-purge)],y[b:]
+        Xtr,Xv,Xte=X[it],X[iv],X[ie]
+        ytr,yv,yte=y[it],y[iv],y[ie]
         decoded=_path_decode(ytr)
         baseline={
             "end":float(np.median(decoded[:,0])),
@@ -476,6 +532,9 @@ def _train_path():
         metrics={"validation":vm,"holdout":tm,"baseline":baseline,"ready":ready,"samples":int(len(y))}
         trained=int(time.time()*1000)
         obj={"version":APP_VERSION,"state_dict":model.state_dict(),"metrics":metrics,"normMean":center.tolist(),"normStd":scale.tolist(),"trainedAt":trained}
+        if PATH_MODEL is not None and PATH_METRICS and PATH_METRICS.get("ready") and not ready:
+            print("[PRICE-PATH-CHALLENGER-REJECTED] "+json.dumps(metrics),flush=True)
+            return
         tmp=PATH_MODEL_PATH.with_suffix(".tmp");torch.save(obj,tmp);os.replace(tmp,PATH_MODEL_PATH)
         PATH_MODEL=model.eval();PATH_METRICS=metrics;PATH_NORM_MEAN=center;PATH_NORM_STD=scale;PATH_LAST_TRAIN_AT=trained;PATH_LAST_ERROR=None
         print("[PRICE-PATH-TRAIN] "+json.dumps({"version":APP_VERSION,"metrics":metrics}),flush=True)
@@ -484,13 +543,15 @@ def _train_path():
         print("[PRICE-PATH-ERROR] "+json.dumps({"error":PATH_LAST_ERROR}),flush=True)
     finally:
         PATH_TRAINING=False
+        try:_record_attempt("path",ready)
+        finally:TRAIN_LOCK.release()
         gc.collect()
 
 def _fit_once(Xtr,ytr,Xv,yv):
+    torch.manual_seed(77)
     model=HybridMicroNet().to(DEVICE)
-    counts=np.bincount(ytr,minlength=3).astype(np.float32)
-    weights=(counts.sum()/np.maximum(counts,1));weights=weights/weights.mean()
-    loss_fn=nn.CrossEntropyLoss(weight=torch.tensor(weights,dtype=torch.float32,device=DEVICE))
+    # Proper unweighted likelihood retains the observed class priors.
+    loss_fn=nn.CrossEntropyLoss()
     opt=torch.optim.AdamW(model.parameters(),lr=8e-4,weight_decay=2e-3)
     best=None;best_loss=1e9;bad=0
     rng=np.random.default_rng(77)
@@ -521,34 +582,47 @@ def _fit_once(Xtr,ytr,Xv,yv):
 
 def _train():
     global MODEL,METRICS,NORM_MEAN,NORM_STD,TRAINING,LAST_TRAIN_AT,LAST_TRAIN_ATTEMPT_AT,LAST_ERROR
-    if TRAINING:return
+    if not TRAIN_LOCK.acquire(blocking=False):return
     TRAINING=True
+    ready=False
     try:
         if _rss_mb()>MEMORY_TRAIN_START_MB:
             raise RuntimeError(f"memory_guard rss={_rss_mb()}MB")
-        X,y=_dataset()
+        X,y,starts,ends=_dataset()
         if X is None or len(y)<MIN_SNAPSHOTS:return
-        a=int(len(y)*.70);b=int(len(y)*.85);purge=HORIZON+2
-        train_stop=max(1,a-purge)
-        center,scale=_fit_normalizer(X[:train_stop])
+        it,iv,ic,ig,ie=_time_splits(starts,ends)
+        if np.min(np.bincount(y[it],minlength=3))<40:raise RuntimeError("insufficient_class_support")
+        center,scale=_fit_normalizer(X[it])
         _normalize_inplace(X,center,scale)
-        Xtr,Xv,Xte=X[:train_stop],X[a:max(a+1,b-purge)],X[b:]
-        ytr,yv,yte=y[:train_stop],y[a:max(a+1,b-purge)],y[b:]
+        Xtr,Xv,Xc,Xg,Xte=X[it],X[iv],X[ic],X[ig],X[ie]
+        ytr,yv,yc,yg,yte=y[it],y[iv],y[ic],y[ig],y[ie]
         model=_fit_once(Xtr,ytr,Xv,yv)
-        pv=_probs(model,Xv)
-        threshold,margin=_choose_selective_gate(yv,pv)
-        pt=_probs(model,Xte)
-        vm=_selected_metrics(yv,pv,threshold,margin);tm=_selected_metrics(yte,pt,threshold,margin)
+        temperature=_fit_temperature(yc,_probs(model,Xc))
+        pv=_probs(model,Xg,temperature=temperature)
+        threshold,margin=_choose_selective_gate(yg,pv)
+        pt=_probs(model,Xte,temperature=temperature)
+        vm=_selected_metrics(yg,pv,threshold,margin);tm=_selected_metrics(yte,pt,threshold,margin)
+        baseline_class=int(np.argmax(np.bincount(ytr,minlength=3)))
+        for labels,prob,m in ((yg,pv,vm),(yte,pt,tm)):
+            directional=np.maximum(prob[:,0],prob[:,2])
+            mask=(directional>=threshold)&(directional-prob[:,1]>=margin)
+            base=float((labels[mask]==baseline_class).mean()) if mask.any() else 0.0
+            m["pairedBaselineAccuracy"]=base
+            m["edgeVsBaseline"]=m["selectiveAccuracy"]-base
         class_rates=np.bincount(y,minlength=3)/max(1,len(y))
         ready=bool(
             vm["selectiveN"]>=80 and tm["selectiveN"]>=80 and
             vm["selectiveCoverage"]>=.04 and tm["selectiveCoverage"]>=.04 and
-            vm["selectiveAccuracy"]>=.57 and tm["selectiveAccuracy"]>=.59
+            vm["selectiveAccuracy"]>=.57 and tm["selectiveAccuracy"]>=.59 and
+            vm["edgeVsBaseline"]>=.02 and tm["edgeVsBaseline"]>=.02
         )
         metrics={"validation":vm,"holdout":tm,"ready":ready,"samples":int(len(y)),
                  "threshold":threshold,"margin":margin,
                  "classRates":{"down":float(class_rates[0]),"noise":float(class_rates[1]),"up":float(class_rates[2])},
-                 "purge":purge,"normalization":"train-only robust median/IQR"}
+                 "splitProtocol":"purged-time-train-earlystop-calibration-holdout",
+                 "temperature":temperature,"horizonSeconds":HORIZON_SECONDS,
+                 "normalization":"train-only mean/std clipped at 8",
+                 "dataAudit":dict(DATASET_AUDIT)}
         trained=int(time.time()*1000)
         LAST_TRAIN_ATTEMPT_AT=trained
         # Production readiness is earned on validation AND untouched holdout.
@@ -570,6 +644,8 @@ def _train():
         print("[NEURAL-TRAIN-ERROR] "+json.dumps({"error":LAST_ERROR}),flush=True)
     finally:
         TRAINING=False
+        try:_record_attempt("classifier",ready)
+        finally:TRAIN_LOCK.release()
         gc.collect()
 
 def _collector():
@@ -583,9 +659,9 @@ def _collector():
                 if len(PENDING)>=10:_flush()
                 n=len(ROWS)
             LAST_SNAPSHOT_AT=row["t"];LAST_ERROR=None
-            if n>=MIN_SNAPSHOTS and not TRAINING and row["t"]-max(LAST_TRAIN_AT,LAST_TRAIN_ATTEMPT_AT)>RETRAIN_SECONDS*1000 and _rss_mb()<=MEMORY_TRAIN_START_MB:
+            if n>=MIN_SNAPSHOTS and not TRAIN_LOCK.locked() and _training_due("classifier",row["t"],row["t"]) and _rss_mb()<=MEMORY_TRAIN_START_MB:
                 threading.Thread(target=_train,daemon=True,name="neural-trainer").start()
-            elif n>=MIN_SNAPSHOTS and not PATH_TRAINING and PATH_MODEL is None and _rss_mb()<=MEMORY_TRAIN_START_MB:
+            elif n>=MIN_SNAPSHOTS and not TRAIN_LOCK.locked() and _training_due("path",row["t"],row["t"]) and _rss_mb()<=MEMORY_TRAIN_START_MB:
                 threading.Thread(target=_train_path,daemon=True,name="price-path-trainer").start()
         except Exception as e:
             LAST_ERROR=f"collector:{type(e).__name__}:{e}"
@@ -602,7 +678,7 @@ def _predict_path(rows):
     end_bps=float(pred[0]*PATH_END_SCALE_BPS)
     up_bps=float(pred[1]*PATH_RANGE_SCALE_BPS)
     down_bps=float(pred[2]*PATH_RANGE_SCALE_BPS)
-    hit_seconds=float(pred[3]*HORIZON*INTERVAL)
+    hit_seconds=float(pred[3]*HORIZON_SECONDS)
     mid=float(rows[-1]["mid"])
     score=(up_bps-down_bps)+end_bps*.8
     side="BUY" if score>=0 else "SELL"
@@ -620,12 +696,15 @@ def _predict_path(rows):
         "upExcursionBps":round(up_bps,3),
         "downExcursionBps":round(down_bps,3),
         "firstHitSeconds":round(max(INTERVAL,hit_seconds),1),
-        "horizonSeconds":round(HORIZON*INTERVAL,1),
+        "horizonSeconds":round(HORIZON_SECONDS,1),
         "metrics":PATH_METRICS
     }
 
 def _predict():
     with LOCK: rows=list(ROWS)
+    if not rows or int(time.time()*1000)-int(rows[-1]["t"])>MAX_GAP_MS:
+        return {"ok":True,"version":APP_VERSION,"ready":False,"status":"STALE","side":"WAIT",
+            "reason":"stale_l2_snapshots","metrics":METRICS,"samples":len(rows)}
     price_path=_predict_path(rows)
     if MODEL is None or len(rows)<SEQ_LEN:
         return {"ok":True,"version":APP_VERSION,"status":"COLLECTING" if len(rows)<MIN_SNAPSHOTS else "TRAINING",
@@ -634,7 +713,7 @@ def _predict():
     if NORM_MEAN is None or NORM_STD is None:
         return {"ok":True,"version":APP_VERSION,"status":"SHADOW","ready":False,"side":"WAIT","samples":len(rows),"metrics":METRICS,"pricePath":price_path,"reason":"normalizer_unavailable"}
     x=_normalize(x,NORM_MEAN,NORM_STD)
-    p=_probs(MODEL,x)[0];down,noise,up=map(float,p)
+    p=_probs(MODEL,x,temperature=float((METRICS or {}).get("temperature",1.0)))[0];down,noise,up=map(float,p)
     lean="BUY" if up>=down else "SELL"
     direction=max(up,down)
     threshold=float((METRICS or {}).get("threshold",.62));margin=float((METRICS or {}).get("margin",.12))
@@ -647,16 +726,24 @@ def _predict():
 
 @app.on_event("startup")
 def startup():
+    try:
+        if SCHEDULE_PATH.exists():SCHEDULE.update(json.loads(SCHEDULE_PATH.read_text()))
+    except Exception:pass
     _load_rows();_load_model();_load_path_model()
+    if ROWS:
+        global LAST_SNAPSHOT_AT
+        LAST_SNAPSHOT_AT=int(ROWS[-1]["t"])
     threading.Thread(target=_collector,daemon=True,name="neural-l2-collector").start()
 
 @app.get("/health")
 def health():
     return {"ok":True,"version":APP_VERSION,"runtimeRevision":RUNTIME_REVISION,"training":TRAINING,"pathTraining":PATH_TRAINING,
             "storedSnapshots":len(ROWS),"trainingMaxSamples":TRAIN_MAX_SAMPLES,"rssMb":_rss_mb(),"lastSnapshotAt":LAST_SNAPSHOT_AT,
+            "trainingSchedule":SCHEDULE,"dataAudit":DATASET_AUDIT,
+            "modelReady":bool(METRICS and METRICS.get("ready")),
             "lastTrainAt":LAST_TRAIN_AT,"lastTrainAttemptAt":LAST_TRAIN_ATTEMPT_AT,
             "pathLastTrainAt":PATH_LAST_TRAIN_AT,"lastError":LAST_ERROR,"pathLastError":PATH_LAST_ERROR,"prediction":_predict()}
 
 @app.get("/predict")
 def predict():
-    return _predict()
+    return {**_predict(),"trainingSchedule":SCHEDULE,"dataAudit":DATASET_AUDIT}

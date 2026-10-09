@@ -1,3 +1,4 @@
+import {summarizeAiReadiness} from '../../../lib/ai-readiness';
 import {analyze,defaults,scalpAnalyze} from '../../../lib/engine';
 import {getMarketSnapshot,getMarketData,getQuoteData,getMt5FastSignal} from '../../../lib/market-hub';
 import {getBtcMarket} from '../../../lib/btc-market';
@@ -1564,9 +1565,11 @@ export async function GET(request:Request){
         })):[]
       }:null
     };};
-    const degraded=(goldMarketOpen&&!gm.pricesReady)||!gm.newsReady||!btc?.c1?.length||!btcPrice;
+    const aiReadiness=summarizeAiReadiness(bitcoinMlRaw,bitcoinNeural);
+    const degraded=!aiReadiness.ready||(goldMarketOpen&&!gm.pricesReady)||!gm.newsReady||!btc?.c1?.length||!btcPrice;
     const autopilot={
-      status:recovered?'recovered':degraded?'degraded':'healthy',
+      status:degraded?'degraded':recovered?'recovered':'healthy',
+      aiReadiness,
       nextEvent:featuredEvent?{
         id:featuredEvent.id,
         name:featuredEvent.name,
