@@ -3,6 +3,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {Activity,RefreshCw,WifiOff} from 'lucide-react';
 import AICommandCenter from '../components/AICommandCenter';
+import FastScalpPulse from '../components/FastScalpPulse';
 import NewsCommandCenter from '../components/NewsCommandCenter';
 import {computeWaveLead,type WaveLead,type WaveTick} from '../lib/wave-lead';
 
@@ -30,6 +31,7 @@ export default function Home(){
   const aiInFlight=useRef(false);
   const aiReady=useRef(false);
   const aiFailureCount=useRef(0);
+  const aiEtag=useRef('');
   const btcUiAt=useRef(0);
 
   const pushWave=(asset:'btc'|'gold',tick:WaveTick)=>{
@@ -51,13 +53,24 @@ export default function Home(){
       const endpoint=manual
         ?'/api/ai-analysis?worker=1&manual=1&_='+Date.now()
         :'/api/ai-snapshot?_='+Date.now();
-      const r=await fetch(endpoint,{cache:'no-store',signal:AbortSignal.timeout(manual?12000:3500)});
+      const headers:Record<string,string>={};
+      if(!manual&&aiEtag.current)headers['If-None-Match']=aiEtag.current;
+      const r=await fetch(endpoint,{cache:'no-store',headers,signal:AbortSignal.timeout(manual?12000:3500)});
+      // An unchanged generation is NOT a stalled AI or an error.
+      // Skip decoding and rendering the same large JSON on every poll.
+      if(!manual&&r.status===304){
+        setAiLastOkAt(Date.now());
+        aiFailureCount.current=0;
+        return;
+      }
       const j=await r.json().catch(()=>null);
       if(r.status===503&&j?.warming){
         if(!aiReady.current)setAiError('');
         return;
       }
       if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر قراءة محرك AI');
+      const responseEtag=r.headers.get('ETag');
+      if(!manual&&responseEtag)aiEtag.current=responseEtag;
       setAiData(j);
       setAiLastOkAt(Date.now());
       aiReady.current=true;
@@ -272,8 +285,12 @@ export default function Home(){
   const goldLive=goldBrokerLive||goldStreamLive||goldPulse;
   const goldUsable=goldLive||goldDelayed||goldFallback;
   const goldBadge=goldBrokerLive?'LIVE EXNESS':goldStreamLive?'LIVE':goldPulse?'PULSE':goldDelayed?'DELAYED':goldFallback?'FALLBACK':'WAIT';
-  const snapshotAge=Number(aiData?.snapshot?.ageMs??(aiData?.checkedAt?now-Number(aiData.checkedAt):Infinity));
-  const aiActive=Boolean(aiData?.ok&&aiLastOkAt&&now-aiLastOkAt<10000&&Number.isFinite(snapshotAge)&&snapshotAge<20000);
+  // Snapshot age is not frozen at FETCH time: age keeps growing every tick.
+  // A 304 means unchanged analysis, not a new market forecast.
+  const aiSnapshotAt=Number(aiData?.snapshot?.servedAt||0)-Number(aiData?.snapshot?.ageMs||0);
+  const aiProducedAt=Number(aiData?.checkedAt)||aiSnapshotAt;
+  const snapshotAge=aiProducedAt>0?Math.max(0,now-aiProducedAt):Infinity;
+  const aiActive=Boolean(aiData?.ok&&aiLastOkAt&&now-aiLastOkAt<10000&&snapshotAge<20000);
   const shownBtc=btc??aiBtc?.price??aiData?.bitcoin?.price??null;
   const shownBtcAt=btcAt||Number(aiBtc?.sourceTime||0);
   const btcLive=Boolean(shownBtcAt&&now-shownBtcAt<10000);
@@ -297,7 +314,7 @@ export default function Home(){
         </div>
       </div>
       <div className="topbar-actions">
-        <span className={'pill '+(aiActive?'ok':'neutral')}><Activity size={14}/>{aiActive?'التحليل مباشر':'جارٍ التحديث'}</span>
+        <span className={'pill '+(aiActive?'ok':'neutral')}><Activity size={14}/>{aiActive?'AI موسع محدث':Number.isFinite(snapshotAge)?'AI موسع منذ '+Math.round(snapshotAge/1000)+' ث':'جارٍ تحميل AI'}</span>
         <button className="refresh" onClick={()=>void loadAi(true)} disabled={busy} aria-label="تحديث التحليل">
           <RefreshCw size={17} className={busy?'spin':''}/><span>تحديث</span>
         </button>
@@ -307,6 +324,7 @@ export default function Home(){
     {aiError&&!aiData&&<div className="fatal"><WifiOff size={18}/><div><strong>تعذر تحديث AI</strong><span>{aiError}</span></div></div>}
 
     <section className="content lite-content">
+      <FastScalpPulse desk={scalpDesk} now={now} aiAgeMs={Number.isFinite(snapshotAge)?snapshotAge:null}/>
       {aiData?.modelValidation&&<section className="panel" aria-label="جودة وصدق النماذج" style={{padding:'14px 18px'}}>
         <strong>تأهيل نماذج AI · نتائج اختبار خارج العينة</strong>
         <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:8}}>
