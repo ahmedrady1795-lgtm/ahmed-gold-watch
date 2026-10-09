@@ -226,7 +226,11 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
               :'العينة غير مؤهلة أو البيانات متأخرة'}</b>
             <span>{e?.status==='READY'?'حد 25–75% لتغير الإغلاق التاريخي · ارتفاع P75 '+fmt(e.upsideP75,2)+' · هبوط P75 '+fmt(e.downsideP75,2):
               'لا يُعرض هدف بلا تاريخ مغلق كافٍ'}
-              {e?.status==='READY'?' · '+(e.conditioning==='MATCHED_3_BAR_TREND'?'سياق اتجاه مشابه':'عينة عامة'):''}</span>
+              {e?.status==='READY'?' · '+(e.conditioning==='MATCHED_3_BAR_TREND'?'سياق اتجاه مشابه':'عينة عامة'):''}
+              {e?.walkForward?.tested>=15?' · اختبار زمني '+e.walkForward.tested+' عينة'
+                +' · تغطية نطاق الإغلاق '+fmt(e.walkForward.intervalCoveragePct,1)+'% مقابل 50% مرجعية'
+                +(e.walkForward.directionN>0?' · صحة اتجاه الوسيط '+fmt(e.walkForward.directionalAccuracyPct,1)+'%':'')
+                :' · اختبار النطاق الزمني غير مكتمل'}</span>
           </div>;
         })}
       </div>

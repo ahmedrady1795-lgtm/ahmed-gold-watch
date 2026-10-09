@@ -5,6 +5,8 @@ export type MoveEnvelope={
   horizonMinutes:1|5|15;barMinutes:1|5;
   samples:number;requiredSamples:number;latestClosedAt:number|null;
   allSamples:number;conditioning:'MATCHED_3_BAR_TREND'|'UNCONDITIONAL';
+  walkForward:{tested:number;nominalCoveragePct:50;intervalCoveragePct:number|null;
+    directionN:number;directionalAccuracyPct:number|null};
   endpointP25:number|null;endpointMedian:number|null;endpointP75:number|null;
   upsideP55:number|null;upsideP75:number|null;
   downsideP55:number|null;downsideP75:number|null;
@@ -34,6 +36,8 @@ export function observedMoveEnvelope(
   const base:MoveEnvelope={status:'INSUFFICIENT_DATA',horizonMinutes,barMinutes,
     samples:0,requiredSamples,latestClosedAt:null,
     allSamples:0,conditioning:'UNCONDITIONAL',
+    walkForward:{tested:0,nominalCoveragePct:50,intervalCoveragePct:null,
+      directionN:0,directionalAccuracyPct:null},
     endpointP25:null,endpointMedian:null,endpointP75:null,
     upsideP55:null,upsideP75:null,downsideP55:null,downsideP75:null,
     lowerPrice:null,medianPrice:null,upperPrice:null,
@@ -70,6 +74,28 @@ export function observedMoveEnvelope(
     });
   }
   base.allSamples=all.length;
+  // Forward-only time split: each held-out prediction is calculated from
+  // strictly EARLIER, non-overlapping samples. A later outcome must never
+  // affect an earlier test fold. This audits the price-envelope baseline,
+  // not the separate AI direction model or a broker trading strategy.
+  const chronological=[...all].reverse();
+  let tested=0,inBand=0,directionN=0,directionHits=0;
+  for(let j=Math.max(30,Math.floor(chronological.length*.70));j<chronological.length;j++){
+    const prior=chronological.slice(0,j),actual=chronological[j];
+    const matchedPrior=actual.trend===0?[]:prior.filter(x=>x.trend===actual.trend);
+    const train=matchedPrior.length>=requiredSamples?matchedPrior:prior;
+    if(train.length<requiredSamples)continue;
+    const returns=train.map(x=>x.delta);
+    const lower=quantile(returns,.25)!,upper=quantile(returns,.75)!;
+    const mid=quantile(returns,.5)!;
+    tested++;if(actual.delta>=lower-1e-8&&actual.delta<=upper+1e-8)inBand++;
+    if(Math.abs(mid)>1e-8&&Math.abs(actual.delta)>1e-8){
+      directionN++;if(Math.sign(mid)===Math.sign(actual.delta))directionHits++;
+    }
+  }
+  base.walkForward={tested,nominalCoveragePct:50,
+    intervalCoveragePct:tested?round(inBand/tested*100):null,
+    directionN,directionalAccuracyPct:directionN?round(directionHits/directionN*100):null};
   const matched=latestTrend===0?[]:all.filter(x=>x.trend===latestTrend);
   const selected=matched.length>=requiredSamples?matched:all;
   base.conditioning=selected===matched?'MATCHED_3_BAR_TREND':'UNCONDITIONAL';
