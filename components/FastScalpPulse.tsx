@@ -1,5 +1,6 @@
 'use client';
 import {readFastScalpView} from '../lib/scalp-fast-view';
+import {FX_WATCHLIST} from '../lib/fx-scalp-screen';
 
 const fmt=(n:number|null)=>n==null||!Number.isFinite(n)?'—':
   n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -14,7 +15,7 @@ export default function FastScalpPulse({desk,now,aiAgeMs}:{
       <div><span className="eyebrow">M1 / M5 · قراءة مستقلة سريعة</span><h2>رصد السوق اللحظي</h2></div>
       <span className="pill">{aiAgeMs!=null?'آخر تحليل AI موسع منذ '+Math.round(aiAgeMs/1000)+' ثانية':'AI الموسع لم يصل بعد'}</span>
     </div>
-    <p style={{margin:'6px 0 12px'}}>هذه القراءة تأتي من الأسعار ومحرك السكالب المحدث بشكل مستقل، ولا تنتظر اكتمال AI الثقيل. **الميل أو WATCH ليس إشارة دخول.**</p>
+    <p style={{margin:'6px 0 12px'}}>هذه القراءة تأتي من الأسعار ومحرك السكالب المحدث بشكل مستقل، ولا تنتظر اكتمال AI الثقيل. الميل أو WATCH ليس إشارة دخول.</p>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:12}}>
       {views.map(v=><div key={v.asset} style={{border:'1px solid var(--line,rgba(128,128,128,.25))',borderRadius:12,padding:12}}>
         <strong>{v.asset==='GOLD'?'الذهب XAU/USD':'البيتكوين BTC/USD'}</strong>
@@ -45,6 +46,15 @@ export default function FastScalpPulse({desk,now,aiAgeMs}:{
         {v.fresh&&<small>آخر سعر منذ {Math.max(0,Math.round((now-v.quoteAt)/1000))} ث · مصدر: {v.candleSource||'غير محدد'}</small>}
       </div>)}
     </div>
+    <details style={{marginTop:10}}>
+      <summary>فحص أزواج الفوركس السبعة · جاهزية استراتيجية M1/M5</summary>
+      <p style={{fontSize:13,marginTop:6}}>أولوية البحث وليست توصية شراء/بيع. لم تصل للموقع بعد أسعار BID/ASK وشموع وعمولات Exness موثوقة لهذه الأزواج، لذلك لا توجد إشارة دخول معتمدة.</p>
+      <div style={{display:'flex',flexWrap:'wrap',gap:7,margin:'10px 0'}}>
+        {FX_WATCHLIST.map(p=><span className="pill" key={p.symbol}
+          title={p.label}>{p.symbol.slice(0,3)}/{p.symbol.slice(3)} · {p.priority==='FIRST'?'فحص أولي':'فحص ثانوي'} · انتظار تغذية MT5</span>)}
+      </div>
+      <small>سيتم تأهيل كل زوج فقط بعد توفر سعر وسيط حديث وسبريد وعمولة وانزلاق واختبار اتجاه مستقل؛ لا أسعار أو أرباح مفترضة.</small>
+    </details>
     <small>رصد سريع لا يستخدم نموذجًا تنبؤيًا جديدًا؛ التوقع الموسع منفصل وقرار التنفيذ يظل خاضعًا للتكلفة والوقف والتأكيد. لا تنفيذ آلي على Exness.</small>
   </section>;
 }
