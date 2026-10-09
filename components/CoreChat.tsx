@@ -57,10 +57,10 @@ export default function CoreChat({data,desk}:CoreChatProps){
       audioContextRef.current=audioContext;
       void audioContext.resume?.();
       const oscillator=audioContext.createOscillator(),gain=audioContext.createGain();
-      gain.gain.value=audible?.12:.0001;
+      gain.gain.value=audible ? 0.12 : 0.0001;
       oscillator.frequency.value=760;
       oscillator.connect(gain);gain.connect(audioContext.destination);
-      oscillator.start();oscillator.stop(audioContext.currentTime+(audible?.2:.02));
+      oscillator.start();oscillator.stop(audioContext.currentTime+(audible ? 0.2 : 0.02));
     }catch{}
   };
   const stopVoice=()=>{
@@ -180,6 +180,10 @@ export default function CoreChat({data,desk}:CoreChatProps){
       const retryOrFail=()=>{
         if(token!==speechTokenRef.current)return;
         clearSpeechWatch();
+        // A deliberate cancel during fallback must not fire an error on this utterance.
+        utterance.onstart=null;
+        utterance.onend=null;
+        utterance.onerror=null;
         if(preferredVoice&&!usingDefaultVoice){
           usingDefaultVoice=true;
           synth.cancel();
