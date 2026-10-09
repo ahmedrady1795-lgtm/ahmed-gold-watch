@@ -23,10 +23,13 @@ export function screenFxQuote(symbol:string,now:number,obs?:Partial<FxBrokerObse
   const common={symbol,pipSize:pair.pipSize,priority:pair.priority,eligible:false};
   if(!obs||obs.bid==null||obs.ask==null||obs.quoteAt==null)
     return {...common,status:'BROKER_FEED_REQUIRED',reason:'بانتظار أسعار BID/ASK حقيقية ومحدثة من حساب MT5 لنفس الزوج'};
-  const {bid,ask,quoteAt,m1Atr,m5Atr,commissionRoundTripBps,slippageRoundTripBps}=obs;
-  if(![bid,ask,quoteAt,m1Atr,m5Atr].every(v=>typeof v==='number'&&Number.isFinite(v))||
-     !Number.isFinite(now)||bid<=0||ask<bid||m1Atr!<=0||m5Atr!<=0||
-     quoteAt!>now+2000||now-quoteAt!>10000||now-quoteAt!<0)
+  const bid=Number(obs.bid),ask=Number(obs.ask),quoteAt=Number(obs.quoteAt);
+  const m1Atr=Number(obs.m1Atr),m5Atr=Number(obs.m5Atr);
+  const commissionRoundTripBps=obs.commissionRoundTripBps,
+    slippageRoundTripBps=obs.slippageRoundTripBps;
+  if(![bid,ask,quoteAt,m1Atr,m5Atr].every(Number.isFinite)||
+     !Number.isFinite(now)||bid<=0||ask<bid||m1Atr<=0||m5Atr<=0||
+     quoteAt>now+2000||now-quoteAt>10000||now-quoteAt<0)
     return {...common,status:'STALE_OR_BAD_DATA',reason:'سعر أو شموع غير صحيحة أو تغذية قديمة؛ التداول ممنوع'};
   if(commissionRoundTripBps==null||slippageRoundTripBps==null||
      ![commissionRoundTripBps,slippageRoundTripBps].every(v=>
@@ -36,7 +39,7 @@ export function screenFxQuote(symbol:string,now:number,obs?:Partial<FxBrokerObse
       reason:'تحتاج عمولة وانزلاق الوسيط الفعليين؛ لا نفترض تكلفة صفر'};
   const mid=(bid+ask)/2,spread=ask-bid;
   const drag=spread+mid*(commissionRoundTripBps+slippageRoundTripBps)/10000;
-  const ratio1=drag/m1Atr!,ratio5=drag/m5Atr!;
+  const ratio1=drag/m1Atr,ratio5=drag/m5Atr;
   const spreadPips=Number((spread/pair.pipSize).toFixed(2));
   const totalCostPips=Number((drag/pair.pipSize).toFixed(2));
   const result={...common,spreadPips,totalCostPips,
