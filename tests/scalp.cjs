@@ -80,7 +80,7 @@ assert.equal(FX_WATCHLIST.length,7);
 assert.equal(FX_WATCHLIST.map(x=>x.symbol).join(','),
   'EURUSD,USDJPY,GBPUSD,USDCAD,AUDUSD,EURGBP,EURAUD',
   'Cross-VM arrays have separate prototypes; compare literal symbol values');
-assert.equal(screenFxQuote('EURUSD',now).status,'BROKER_FEED_REQUIRED');
+assert.equal(screenFxQuote('EURUSD',Date.parse('2026-10-09T09:00:00Z')).status,'BROKER_FEED_REQUIRED');
 const fxt=Date.parse('2026-10-09T09:00:00Z');
 const e={bid:1.10000,ask:1.10010,quoteAt:fxt,
   m1Atr:.00055,m5Atr:.0015,commissionRoundTripBps:.1,
