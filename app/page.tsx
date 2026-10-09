@@ -340,6 +340,26 @@ export default function Home(){
         </div>
         <small>تنبؤات ML وNeural تخص البيتكوين، وليست إثبات ربح أو اختبارًا لنماذج الذهب. نتائج الوسيط الحقيقي لم تُتحقق بعد.</small>
       </section>}
+      {(aiData?.gold?.directionValidation||aiData?.bitcoin?.directionValidation)&&
+        <details className="panel" style={{padding:'12px 18px'}}>
+          <summary><strong>اختبار اتجاه BUY/SELL المستقل · مراقبة خارج العينة</strong></summary>
+          <div style={{display:'flex',gap:14,flexWrap:'wrap',marginTop:10}}>
+            {(['gold','bitcoin'] as const).map(asset=>(
+              (['m1','m5'] as const).map(frame=>{
+                const a=aiData?.[asset]?.directionValidation?.[frame];
+                if(!a)return null;
+                return <div key={asset+frame} style={{minWidth:150,flex:'1 1 160px'}}>
+                  <strong>{asset==='gold'?'الذهب':'البيتكوين'} · {frame.toUpperCase()}</strong>
+                  <p style={{margin:'4px 0'}}>النموذج المختار: {a.selected}</p>
+                  <p style={{margin:'4px 0'}}>اختبار لاحق: {a.holdout?.n??0} توقع · {a.holdout?.accuracyPct==null?'غير كافٍ':a.holdout.accuracyPct+'%'}</p>
+                  <p style={{margin:'4px 0'}}>المرجع المقارن: {a.baseline?.accuracyPct==null?'—':a.baseline.accuracyPct+'%'}</p>
+                  <small>{a.qualified?'اجتاز شرط التحفظ؛ يُستخدم لرفض التعارض فقط':'غير مؤهل لتغيير إشارة BUY/SELL'} · {a.status}</small>
+                </div>;
+              })
+            ))}
+          </div>
+          <small>اختبار زمني على اتجاه حركة السعر بعد التكلفة التقديرية. ليس اختبارًا للنواة الكاملة، ولا إثبات ربح، ولا نتائج أوامر Exness.</small>
+        </details>}
       <AICommandCenter data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
       <NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredId={aiData?.autopilot?.nextEvent?.id||null}/>
     </section>

@@ -689,8 +689,12 @@ export async function GET(request:Request){
     const bitcoinMl={...bitcoinMlRaw,neuralCore:bitcoinNeural};
     const goldHorizonLearning=getHorizonBrainLearning('GOLD',goldLearningPrice,now);
     const bitcoinHorizonLearning=getHorizonBrainLearning('BTC',btcPrice,now);
-    const goldMovement=buildMovementIntelligence('GOLD',{expected:goldExpectedLearning,stateGraph:goldStateGraph,liquidity:goldLiquidity,motion:goldMotion,structure:goldStructure,accumulation:goldAccumulation,behavior:goldBehavior,learning:goldLearning,tick:goldTick,scalp:goldScalp,decision:gold,evolution:goldEvolution,autonomousTools:goldAutonomousTools,marketToolMesh:goldToolMesh,news:goldNews,price:goldPrice,atr:goldAtr,now,c1:gm.c1,c5:gm.c5,horizonLearning:goldHorizonLearning,marketLead:goldMarketLead});
-    const bitcoinMovement=buildMovementIntelligence('BTC',{expected:bitcoinExpectedLearning,stateGraph:bitcoinStateGraph,liquidity,motion,structure:bitcoinStructure,accumulation:bitcoinAccumulation,behavior:bitcoinBehavior,learning:bitcoinLearning,tick:bitcoinTick,scalp:bitcoinScalp,decision:bitcoin,evolution:bitcoinEvolution,autonomousTools:bitcoinAutonomousTools,marketToolMesh:bitcoinToolMesh,news:bitcoinNews,ml:bitcoinMl,price:btcPrice,atr:btcAtr,now,c1:btc.c1,c5:btc.c5,horizonLearning:bitcoinHorizonLearning,marketLead:bitcoinMarketLead});
+    const goldMovement=buildMovementIntelligence('GOLD',{expected:goldExpectedLearning,stateGraph:goldStateGraph,liquidity:goldLiquidity,motion:goldMotion,structure:goldStructure,accumulation:goldAccumulation,behavior:goldBehavior,learning:goldLearning,tick:goldTick,scalp:goldScalp,decision:gold,evolution:goldEvolution,autonomousTools:goldAutonomousTools,marketToolMesh:goldToolMesh,news:goldNews,price:goldPrice,atr:goldAtr,now,c1:gm.c1,c5:gm.c5,
+      directionCost:Math.max(0,Number.isFinite(goldSpread)?goldSpread:Number(goldPrice||0)*.0002)+Number(goldPrice||0)*.0001,
+      horizonLearning:goldHorizonLearning,marketLead:goldMarketLead});
+    const bitcoinMovement=buildMovementIntelligence('BTC',{expected:bitcoinExpectedLearning,stateGraph:bitcoinStateGraph,liquidity,motion,structure:bitcoinStructure,accumulation:bitcoinAccumulation,behavior:bitcoinBehavior,learning:bitcoinLearning,tick:bitcoinTick,scalp:bitcoinScalp,decision:bitcoin,evolution:bitcoinEvolution,autonomousTools:bitcoinAutonomousTools,marketToolMesh:bitcoinToolMesh,news:bitcoinNews,ml:bitcoinMl,price:btcPrice,atr:btcAtr,now,c1:btc.c1,c5:btc.c5,
+      directionCost:Math.max(0,btcSpreadUsd)+Number(btcPrice||0)*.0014,
+      horizonLearning:bitcoinHorizonLearning,marketLead:bitcoinMarketLead});
     const goldHorizonLive=recordHorizonBrainOutcome({asset:'GOLD',price:goldLearningPrice,atr:goldAtr,now,horizons:goldMovement.horizons});
     const bitcoinHorizonLive=recordHorizonBrainOutcome({asset:'BTC',price:btcPrice,atr:btcAtr,now,horizons:bitcoinMovement.horizons});
     (goldMovement as any).horizonLearning=goldHorizonLive;
@@ -1275,6 +1279,7 @@ export async function GET(request:Request){
       scalpDesk:scalpDesk?.[asset==='GOLD'?'gold':'bitcoin']||null,
       forwardMove:stabilizeForwardMove(asset,buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse,liq,structure,accumulation,h4,intent,evolution,toolMesh,atr),pulse),
       movementEnvelope:movement?.forwardEnvelope||null,
+      directionValidation:movement?.directionAudit||null,
       movementTarget15:movement?.target15||null,
       h4Context:h4||null,
       marketToolMesh:toolMesh?{
@@ -1729,6 +1734,10 @@ export async function GET(request:Request){
         recoveryActions:actualRecoveryActions.slice(0,5),
         forward15:{gold:gold15Diag,btc:btc15Diag},
         movementReach:{gold:compactReach(goldMovement),btc:compactReach(bitcoinMovement)},
+        directionAudit:{
+          gold:goldMovement?.directionAudit||null,
+          btc:bitcoinMovement?.directionAudit||null
+        },
         evolution:{
           gold:{
             generation:goldEvolution?.generation,regime:goldEvolution?.regime,reason:goldEvolution?.reason,

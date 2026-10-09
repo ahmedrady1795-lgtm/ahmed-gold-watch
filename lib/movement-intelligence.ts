@@ -1,6 +1,7 @@
 import {calibrateHorizonBrain} from './horizon-brain-learning';
 import {buildSpecializedHorizonBrains} from './horizon-brains';
 import {observedMoveEnvelope,type MoveEnvelope} from './move-reach-calibration';
+import {validateDirectionChronologically} from './direction-walkforward';
 type Side='BUY'|'SELL'|'WAIT';
 type Regime='EXPANSION'|'COMPRESSION'|'REVERSAL'|'RANGE'|'TRANSITION';
 type Evidence={name:string;side:Side;score:number;weight:number;reliability:number};
@@ -17,6 +18,7 @@ export type MovementIntelligence={
   };
   target15:{side:Side;price:number|null;low:number|null;high:number|null;confidence:number;moveAtr:number;source:string}|null;
   forwardEnvelope:{m1:MoveEnvelope;m5:MoveEnvelope;m15:MoveEnvelope};
+  directionAudit:{m1:ReturnType<typeof validateDirectionChronologically>;m5:ReturnType<typeof validateDirectionChronologically>};
   reasons:string[];
   marketLead?:any;
 };
@@ -311,6 +313,28 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
       five={...five,confidence:c,uncertainty:Math.min(100,100-c)};
     }
   }
+  // Independently score SIMPLE technical directional challengers on disjoint
+  // past windows. Selection sees training rows only; held-out labels determine
+  // whether a challenger is allowed to VETO (never fabricate) a live direction.
+  // This audit is not an OOS test of the entire multi-brain ensemble.
+  const directionCost=Math.max(0,Number(args?.directionCost||0));
+  const directionAudit={
+    m1:validateDirectionChronologically(args?.c1||[],Number(args?.now),1,directionCost),
+    m5:validateDirectionChronologically(args?.c1||[],Number(args?.now),5,directionCost)
+  };
+  const independentVeto=(h:any,a:typeof directionAudit.m1)=>{
+    if(!a.qualified||a.liveSide==='WAIT'||h.side==='WAIT'||a.liveSide===h.side)return h;
+    return {...h,side:'WAIT' as Side,
+      confidence:Math.min(38,Number(h.confidence||0)),
+      uncertainty:Math.max(62,Number(h.uncertainty||0)),
+      gateReason:'INDEPENDENT_DIRECTION_CONFLICT',
+      shadowCandidate:{side:h.side,confidence:h.confidence,
+        independentFamilies:Number(h.independentFamilies||0),
+        familyOpposition:Number(h.familyOpposition||0)}
+    };
+  };
+  one=independentVeto(one,directionAudit.m1);
+  five=independentVeto(five,directionAudit.m5);
   if(news?.phase==='PRE_EVENT'&&Number(news?.risk||0)>=70){
     const p=Math.min(22,Math.round((Number(news.risk)-60)*.55));
     one.confidence=Math.max(0,one.confidence-p);one.uncertainty=Math.min(100,100-one.confidence);
@@ -327,7 +351,16 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
     rangeMode&&two.side==='WAIT'&&leanSide!=='WAIT'&&
     two.agreement>=50.75&&two.confidence>=18
   );
-  const finalSide:Side=two.side!=='WAIT'?two.side:softLeanUsable?leanSide:'WAIT';
+  const forecastSide:Side=two.side!=='WAIT'?two.side:softLeanUsable?leanSide:'WAIT';
+  const adverseAudit=[directionAudit.m1,directionAudit.m5].filter(a=>
+    a.qualified&&a.liveSide!=='WAIT'&&forecastSide!=='WAIT'&&
+    a.liveSide!==forecastSide);
+  // A single short-horizon challenger only vetoes weak (<55) forecasts.
+  // Two separately assessed horizons opposing a proposed BUY/SELL is a hard
+  // veto. This NEVER replaces the ensemble with a newly invented opposite side.
+  const directionalVeto=adverseAudit.length>=2||
+    (adverseAudit.length===1&&two.confidence<55);
+  const finalSide:Side=directionalVeto?'WAIT':forecastSide;
   const directionalConfidence=Math.round(cap(
     finalSide==='WAIT'?two.confidence:
     two.side==='WAIT'?Math.min(40,two.confidence):
@@ -384,6 +417,13 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
   if(ml1Ready||ml5Ready)reasons.push('ML selective OOS '+(ml1Ready?('1m '+ml1Side+' '+Math.round(ml1Acc)+'%'):'1m shadow')+' · '+(ml5Ready?('5m '+ml5Side+' '+Math.round(ml5Acc)+'%'):'5m shadow'));
   if(rangeMode)reasons.push('Range/compression mode: fast price-action evidence leads; slower memory only calibrates confidence');
   if(conflict)reasons.push('Model disagreement detected; confidence reduced, direction preserved when a measurable edge exists');
+  if(directionalVeto)reasons.push('BUY/SELL withheld: independent historical direction audit conflicts with current ensemble');
+  for(const [h,audit] of [['M1',directionAudit.m1],['M5',directionAudit.m5]] as const){
+    reasons.push(h+' directional holdout '+audit.status+' · '+audit.selected+
+      ' · N '+Number(audit.holdout?.n||0)+
+      ' · accuracy '+String(audit.holdout?.accuracyPct??'unknown')+
+      '% vs momentum '+String(audit.baseline?.accuracyPct??'unknown')+'%');
+  }
 
   return {
     ok:true,asset,regime,side:finalSide,leanSide,confidence:directionalConfidence,agreement:two.agreement,uncertainty:two.uncertainty,conflict,conflictScore,
@@ -395,6 +435,6 @@ export function buildMovementIntelligence(asset:string,args:any):MovementIntelli
       fifteenMinute:{independentSupport:fifteenIndependentSupport,independentOpposition:fifteenIndependentOpposition},
       changePoint:graphChangePoint,changePointScore:Number(g?.changePointScore||0)
     },
-    target15,forwardEnvelope,reasons
+    target15,forwardEnvelope,directionAudit,reasons
   };
 }
