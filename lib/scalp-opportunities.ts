@@ -59,7 +59,7 @@ function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number):Sca
   // preserve an outdated low fee, an opposing trend or an unreachable target.
   if(validPrevious&&(plan.status!=='ARMED'||plan.side===previous!.side))
     return {...previous!,cost:round(cost),costEstimated:plan.costEstimated,
-      netRR:round(liveNetRR),
+      costBreakdown:plan.costBreakdown,netRR:round(liveNetRR),
       reason:'مستوى الدخول والوقف ثابتان، والتكلفة أعيد حسابها بالسعر الحالي'};
   if(plan.status==='ARMED')pendingSetups.set(key,plan);
   else if(!validPrevious)pendingSetups.delete(key);
