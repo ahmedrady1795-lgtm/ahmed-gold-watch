@@ -232,7 +232,7 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
                 +(e.walkForward.directionN>0?' · صحة اتجاه الوسيط '+fmt(e.walkForward.directionalAccuracyPct,1)+'%':'')
                 :' · اختبار النطاق الزمني غير مكتمل'}
               {e?.walkForward?.rangeQuality==='MIS_CALIBRATED'
-                ?' · تحذير: النطاق لا يغطي الحركة الحقيقية بالمعدل المتوقع'
+                ?' · تحذير: تغطية النطاق خارج المعدل المرجعي (أضيق أو أوسع من اللازم)'
                 :e?.walkForward?.rangeQuality==='IN_RANGE'
                   ?' · تغطية النطاق مقبولة مبدئيًا':' · تغطية النطاق قيد الاختبار'}
               {e?.walkForward?.directionQuality==='NO_DEMONSTRATED_EDGE'
