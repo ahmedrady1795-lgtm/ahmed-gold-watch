@@ -1,5 +1,6 @@
 import gc, json, math, os, threading, time
 from collections import deque
+from itertools import islice
 from pathlib import Path
 
 import numpy as np
@@ -79,20 +80,22 @@ def _rss_mb():
 
 def _load_rows():
     global LAST_ERROR
-    if not DATA_PATH.exists(): return
+    if not DATA_PATH.exists():return
     try:
-        tail=deque(maxlen=MAX_SNAPSHOTS)
+        # Bound raw input before parsing/migrating. The append-only log can be
+        # much larger than the training window; migrating every old row made
+        # startup quadratic when copying the growing deque for each feature.
         with DATA_PATH.open("r",encoding="utf-8") as f:
-            for line in f:
-                try:
-                    j=json.loads(line)
-                    if len(j.get("f",[]))==50:
-                        # Migrate retained L2 rows causally; no future price enters
-                        # a feature, and a recipe upgrade need not discard history.
-                        j["f"]=j["f"]+_price_context(float(j["mid"]),int(j["t"]),list(tail)[-64:])
-                    if len(j.get("f",[]))==FEAT_DIM:tail.append(j)
-                except Exception: pass
-        ROWS.extend(tail)
+            tail=deque(f,maxlen=MAX_SNAPSHOTS+64)
+        history=deque(maxlen=64)
+        for line in tail:
+            try:
+                j=json.loads(line)
+                if len(j.get("f",[]))==50:
+                    j["f"]=j["f"]+_price_context(float(j["mid"]),int(j["t"]),list(history))
+                if len(j.get("f",[]))==FEAT_DIM:
+                    history.append(j);ROWS.append(j)
+            except Exception:pass
     except Exception as e:
         LAST_ERROR=f"load_rows:{type(e).__name__}:{e}"
 
@@ -174,7 +177,7 @@ def _features(bids,asks):
     micro=(ask*bq[0]+bid*aq[0])/max(1e-12,bq[0]+aq[0])
     spread=(ask-bid)/mid*10000
     bid_depth=float(bq.sum()/total);ask_depth=float(aq.sum()/total)
-    with LOCK:history=list(ROWS)[-64:]
+    with LOCK:history=list(islice(reversed(ROWS),64))[::-1]
     prev=history[-1] if history else None
     pf=(prev or {}).get("f") or []
     prev_bid=float(pf[46]) if len(pf)>47 else bid_depth

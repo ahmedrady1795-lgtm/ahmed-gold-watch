@@ -97,6 +97,16 @@ class CausalTrainingTests(unittest.TestCase):
         self.assertEqual(len(neural.ROWS[-1]['f']),56)
         self.assertEqual(neural.ROWS[90]['f'][-6:],features)
 
+    def test_restore_reads_only_bounded_tail_without_migrating_old_log(self):
+        rows=self.rows(1000)
+        neural.DATA_PATH.write_text('\n'.join(__import__('json').dumps({**r,'f':[0.0]*50}) for r in rows))
+        neural.ROWS.clear()
+        original=neural._price_context
+        with patch.object(neural,'MAX_SNAPSHOTS',100),patch.object(neural,'_price_context',wraps=original) as context:
+            neural._load_rows()
+        self.assertEqual(context.call_count,164)
+        self.assertEqual(neural.ROWS[-1]['t'],rows[-1]['t'])
+
     def test_neural_label_is_sixty_seconds_not_thirty_polls(self):
         rows=self.rows()
         neural.ROWS.clear();neural.ROWS.extend(rows)
