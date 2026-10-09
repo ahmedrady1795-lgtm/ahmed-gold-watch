@@ -23,7 +23,7 @@ const fwdSell=observedForwardReach(trendBars.map(c=>({
   ...c,open:200-c.open,close:200-c.close,
   high:200-c.low,low:200-c.high
 })),'SELL',5);
-assert.equal(fwdSell.favorableP75,fwdBuy.favorableP75,
+assert.ok(Math.abs(fwdSell.favorableP75-fwdBuy.favorableP75)<.000001,
   'BUY and SELL forward-window geometry must be symmetric');
 const brokenBars=trendBars.map(c=>({...c}));
 brokenBars[brokenBars.length-9].time+=60000;
