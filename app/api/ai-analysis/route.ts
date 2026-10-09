@@ -1713,10 +1713,20 @@ export async function GET(request:Request){
       };
       const gold15Diag=diag15(getNextMoveOutcome('GOLD_FORWARD_15M_V2',goldLearningPrice,now));
       const btc15Diag=diag15(getNextMoveOutcome('BTC_FORWARD_15M_V2',btcPrice,now));
+      const compactReach=(movement:any)=>Object.fromEntries((['m1','m5','m15'] as const).map(h=>{
+        const e=movement?.forwardEnvelope?.[h];
+        return [h,{status:e?.status||'UNKNOWN',n:Number(e?.samples||0),
+          totalN:Number(e?.allSamples||0),context:e?.conditioning||null,
+          lower:e?.lowerPrice??null,median:e?.medianPrice??null,upper:e?.upperPrice??null,
+          oosN:Number(e?.walkForward?.tested||0),
+          oosCoverage:e?.walkForward?.intervalCoveragePct??null,
+          oosDirection:e?.walkForward?.directionalAccuracyPct??null}];
+      }));
       console.info('[AI-DIAG]',JSON.stringify({
         status:autopilot.status,
         recoveryActions:actualRecoveryActions.slice(0,5),
         forward15:{gold:gold15Diag,btc:btc15Diag},
+        movementReach:{gold:compactReach(goldMovement),btc:compactReach(bitcoinMovement)},
         evolution:{
           gold:{
             generation:goldEvolution?.generation,regime:goldEvolution?.regime,reason:goldEvolution?.reason,
