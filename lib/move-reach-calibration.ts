@@ -4,6 +4,7 @@ export type MoveEnvelope={
   status:'READY'|'INSUFFICIENT_DATA'|'STALE_CANDLES';
   horizonMinutes:1|5|15;barMinutes:1|5;
   samples:number;requiredSamples:number;latestClosedAt:number|null;
+  allSamples:number;conditioning:'MATCHED_3_BAR_TREND'|'UNCONDITIONAL';
   endpointP25:number|null;endpointMedian:number|null;endpointP75:number|null;
   upsideP55:number|null;upsideP75:number|null;
   downsideP55:number|null;downsideP75:number|null;
@@ -32,6 +33,7 @@ export function observedMoveEnvelope(
   const barMs=barMinutes*60000,k=horizonMinutes/barMinutes,requiredSamples=30;
   const base:MoveEnvelope={status:'INSUFFICIENT_DATA',horizonMinutes,barMinutes,
     samples:0,requiredSamples,latestClosedAt:null,
+    allSamples:0,conditioning:'UNCONDITIONAL',
     endpointP25:null,endpointMedian:null,endpointP75:null,
     upsideP55:null,upsideP75:null,downsideP55:null,downsideP75:null,
     lowerPrice:null,medianPrice:null,upperPrice:null,
@@ -46,8 +48,9 @@ export function observedMoveEnvelope(
   if(now-base.latestClosedAt>Math.max(120000,barMs*2)){
     base.status='STALE_CANDLES';return base;
   }
-  const deltas:number[]=[],up:number[]=[],down:number[]=[];
-  for(let i=closed.length-k-1;i>=0;i-=k){
+  const all:{delta:number;up:number;down:number;trend:number}[]=[];
+  const latestTrend=closed.length>=4?Math.sign(last.close-closed[closed.length-4].close):0;
+  for(let i=closed.length-k-1;i>=3;i-=k){
     const anchor=closed[i],path=closed.slice(i+1,i+k+1);
     if(path.length!==k)continue;
     let previous=anchor.time,continuous=true;
@@ -57,10 +60,20 @@ export function observedMoveEnvelope(
     }
     if(!continuous)continue;
     const high=Math.max(...path.map(c=>c.high)),low=Math.min(...path.map(c=>c.low));
-    deltas.push(path.at(-1)!.close-anchor.close);
-    up.push(Math.max(0,high-anchor.close));
-    down.push(Math.max(0,anchor.close-low));
+    all.push({
+      delta:path.at(-1)!.close-anchor.close,
+      up:Math.max(0,high-anchor.close),
+      down:Math.max(0,anchor.close-low),
+      // Context is observable AT the hypothetical entry candle; no future
+      // prices or subsequent labels participate in choosing this sign.
+      trend:Math.sign(anchor.close-closed[i-3].close)
+    });
   }
+  base.allSamples=all.length;
+  const matched=latestTrend===0?[]:all.filter(x=>x.trend===latestTrend);
+  const selected=matched.length>=requiredSamples?matched:all;
+  base.conditioning=selected===matched?'MATCHED_3_BAR_TREND':'UNCONDITIONAL';
+  const deltas=selected.map(x=>x.delta),up=selected.map(x=>x.up),down=selected.map(x=>x.down);
   base.samples=deltas.length;
   if(base.samples<requiredSamples)return base;
   const p25=quantile(deltas,.25)!,median=quantile(deltas,.5)!,p75=quantile(deltas,.75)!;
