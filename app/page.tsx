@@ -335,7 +335,7 @@ export default function Home(){
       <div className="asset-switch" role="group" aria-label="اختيار الأصل المعروض">
         {([{id:'ALL',label:'الكل'},{id:'GOLD',label:'الذهب'},{id:'BTC',label:'البيتكوين'}] as const).map(item=><button key={item.id} type="button" aria-pressed={assetView===item.id} onClick={()=>setAssetView(item.id)}>{item.label}</button>)}
       </div>
-      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#core-console">محادثة النواة</a><a href="#market-overview">نظرة سريعة</a><a href="#scalp-opportunities">السكالب</a><a href="#market-forecast">توقع 15 دقيقة</a></nav>
+      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#core-console">النواة الصوتية</a><a href="#market-overview">نظرة سريعة</a><a href="#scalp-opportunities">السكالب</a><a href="#market-forecast">توقع 15 دقيقة</a></nav>
     </div>
     <section className="content lite-content" aria-label="بيانات السوق والتحليل">
       <CoreChat data={aiData} desk={scalpDesk}/>
