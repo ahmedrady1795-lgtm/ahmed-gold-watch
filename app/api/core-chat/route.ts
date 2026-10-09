@@ -11,6 +11,7 @@ type AssetContext={
   reason:string;checkedAt:number;
 };
 type CoreContext={gold:AssetContext;bitcoin:AssetContext;checkedAt:number};
+type ChatHistoryItem={role?:'user'|'core';text?:string};
 
 const finite=(v:unknown)=>Number.isFinite(Number(v));
 const num=(v:unknown)=>finite(v)?Number(v):null;
@@ -57,32 +58,42 @@ function oneAsset(a:AssetContext){
   return `${a.label}: السعر ${price(a.price)}، القرار ${sideAr(a.side)}${a.confidence!=null?` بقوة ${pct(a.confidence)}`:''}، توقع 15 دقيقة ${sideAr(a.forecastSide)}${a.forecastConfidence!=null?` بقوة ${pct(a.forecastConfidence)}`:''}، السكالب ${scalp}.`;
 }
 
-function answerFor(message:string,ctx:CoreContext,now:number){
+function recentAsset(history:ChatHistoryItem[]){
+  const text=history.filter(x=>x?.role==='user').slice(-4).map(x=>String(x.text||'').toLowerCase()).join(' ');
+  return /بيت|btc|bitcoin|بتكوين/.test(text)?'bitcoin':/ذهب|gold|xau/.test(text)?'gold':null;
+}
+
+function answerFor(message:string,ctx:CoreContext,now:number,history:ChatHistoryItem[]=[]){
   const q=message.toLowerCase().trim();
-  const chosen=/بيت|btc|bitcoin|بتكوين/.test(q)?ctx.bitcoin:/ذهب|gold|xau/.test(q)?ctx.gold:null;
+  const requested=/بيت|btc|bitcoin|بتكوين/.test(q)?'bitcoin':/ذهب|gold|xau/.test(q)?'gold':null;
+  const chosen=requested==='bitcoin'?ctx.bitcoin:requested==='gold'?ctx.gold:recentAsset(history)==='bitcoin'?ctx.bitcoin:recentAsset(history)==='gold'?ctx.gold:null;
   const age=Math.max(0,now-ctx.checkedAt);
   const freshness=age<10000?'البيانات حديثة':age<30000?`آخر لقطة منذ ${Math.round(age/1000)} ثانية`:'اللقطة قديمة، فانتظر التحديث';
-  if(/^(اهلا|أهلا|السلام|hello|hi|مرحبا|هاي)/.test(q))return `أهلًا، أنا النواة. أقرأ السعر والاتجاه والسكالب والتكلفة من نفس لوحة الموقع. اسألني مثل: «ليه مفيش دخول؟» أو «حلل البيتكوين الآن». ${freshness}.`;
+  if(/^(اهلا|أهلا|السلام|hello|hi|مرحبا|هاي|تمام|صباح|مساء)/.test(q))return `أهلًا يا أحمد، أنا معاك. أقدر أقولك الاتجاه الحالي، سبب الانتظار، وضع السكالب، والتكلفة من نفس بيانات الموقع. قولّي مثلًا: «حلل البيتكوين» أو «ليه مفيش دخول؟» — ${freshness}.`;
+  if(/حلل|تحليل|السوق|الوضع|ملخص|الاتنين|كلهم|كله/.test(q)&&!(/تكلف|دخول|صفقة/.test(q))){
+    return `تمام، دي قراءة سريعة: ${oneAsset(ctx.gold)} ${oneAsset(ctx.bitcoin)}. لو عايز ندخل في أصل واحد قول «حلل الذهب» أو «حلل البيتكوين». ${freshness}.`;
+  }
   if(/ليه|لماذا|سبب|انتظار|رافض|مفيش دخول|لا يوجد دخول|blocked/.test(q)){
     const a=chosen||ctx.gold;
     const reasons=a.scalp.filter(p=>p.status!=='ARMED').map(p=>`M${p.horizon}: ${p.reason}`).join(' · ');
-    return `${a.label}: القرار الحالي ${sideAr(a.side)}. سبب الانتظار الأساسي: ${reasons||a.reason}. ${a.forecastSide==='WAIT'?'وتوقع 15 دقيقة غير معتمد حاليًا.':'توقع 15 دقيقة يميل إلى '+sideAr(a.forecastSide)+' لكن لا يكفي وحده للدخول.'} ${freshness}.`;
+    return `بص، ${a.label} حالياً على ${sideAr(a.side)}. سبب الانتظار الأساسي: ${reasons||a.reason}. ${a.forecastSide==='WAIT'?'وتوقع الـ15 دقيقة لسه مش معتمد.':'توقع الـ15 دقيقة مائل لـ'+sideAr(a.forecastSide)+'، بس ده لوحده مش كفاية لدخول.'} ${freshness}.`;
   }
   if(/تكلف|سبريد|عمول|انزلاق|fee|cost/.test(q)){
     const a=chosen||ctx.bitcoin,rows=a.scalp.filter(p=>p.cost!=null);
-    return `${a.label}: تكلفة الدورة المعروضة تقديرية لكل وحدة من الأصل. ${rows.length?rows.map(p=>`M${p.horizon}: ${price(p.cost)} دولار`).join(' · '):'لا توجد خطة تكلفة حالية'}. هذه ليست قياسًا مباشرًا لرسوم حساب Exness.`;
+    return `${a.label}: تكلفة الدورة المعروضة تقديرية لكل وحدة. ${rows.length?rows.map(p=>`M${p.horizon}: ${price(p.cost)} دولار`).join(' · '):'مفيش خطة تكلفة حالية'}. دي مش قياس مباشر لرسوم حساب Exness.`;
   }
   if(/دخول|صفقة|شراء|بيع|entry|signal/.test(q)){
     const a=chosen||ctx.gold;
     const armed=a.scalp.find(p=>p.status==='ARMED'&&p.side!=='WAIT');
-    return armed?`${a.label}: توجد خطة M${armed.horizon} في حالة مراقبة تفعيل للاتجاه ${sideAr(armed.side)}، بصافي ${armed.netRR==null?'غير متاح':armed.netRR.toFixed(2)+'R'} بعد التكلفة. تأكيد M1 وسعر التنفيذ مطلوبان.`:`${a.label}: لا توجد صفقة دخول مؤهلة الآن. الخطط الحالية: ${a.scalp.map(p=>`M${p.horizon} ${p.status}`).join(' · ')||'لا توجد خطة'}.`;
+    return armed?`${a.label}: فيه خطة M${armed.horizon} مائلة لـ${sideAr(armed.side)}، بصافي ${armed.netRR==null?'غير متاح':armed.netRR.toFixed(2)+'R'} بعد التكلفة. لسه محتاجة تأكيد M1 وسعر تنفيذ مناسب.`:`${a.label}: مفيش صفقة دخول مؤهلة دلوقتي. الخطط الحالية: ${a.scalp.map(p=>`M${p.horizon} ${p.status}`).join(' · ')||'مفيش خطة'}.`;
   }
   if(/توقع|15|هدف|اتجاه|صاعد|هابط/.test(q)){
     const a=chosen||ctx.gold;
-    return `${oneAsset(a)} ${a.target!=null?`الهدف المرجعي ${price(a.target)}.`:''} التوقع قراءة 15 دقيقة، وليس أمر تنفيذ.`;
+    return `${oneAsset(a)} ${a.target!=null?`الهدف المرجعي ${price(a.target)}.`:''} دي قراءة 15 دقيقة، ومش أمر تنفيذ.`;
   }
-  if(/سرع|تحديث|اخر|آخر|بطء/.test(q))return `الرد ده مبني على لقطة النواة المخزنة محليًا عشان يكون سريعًا. ${freshness}. دورة التحليل الثقيلة تعمل بشكل منفصل ولا يتم تشغيلها مع كل رسالة.`;
-  return `أنا النواة، وأقدر أشرح القرار الحالي بسرعة. ${oneAsset(chosen||ctx.gold)} ${oneAsset(chosen?ctx.gold:ctx.bitcoin)} اسألني عن الاتجاه، سبب الانتظار، الدخول، أو التكلفة.`;
+  if(/سرع|تحديث|اخر|آخر|بطء/.test(q))return `الرد ده طالع من آخر لقطة جاهزة عشان يكون سريع. ${freshness}. التحليل الكامل بيشتغل لوحده ومش بيتشغل مع كل سؤال.`;
+  if(chosen)return `تمام، ${oneAsset(chosen)} قولّي عايز تعرف الاتجاه، الدخول، ولا سبب الانتظار؟`;
+  return `أنا النواة، وأقدر أشرحلك القرار الحالي بسرعة. ${oneAsset(chosen||ctx.gold)} اسألني عن الاتجاه، سبب الانتظار، الدخول، أو التكلفة.`;
 }
 
 export async function POST(request:Request){
@@ -91,6 +102,7 @@ export async function POST(request:Request){
     const message=String(body?.message||'').trim().slice(0,600);
     if(!message)return Response.json({ok:false,message:'اكتب سؤالك أولًا.'},{status:400});
     const now=Date.now(),snapshot=getAiSnapshot(now),context=contextFrom(snapshot.payload,body?.context,now);
-    return Response.json({ok:true,answer:answerFor(message,context,now),checkedAt:context.checkedAt,latencyMs:Date.now()-now,mode:'CORE_FAST_CONTEXT'},{headers:{'Cache-Control':'no-store'}});
+    const history=Array.isArray(body?.history)?body.history.slice(-8).map((x:any)=>({role:x?.role,text:String(x?.text||'').slice(0,300)})):[];
+    return Response.json({ok:true,answer:answerFor(message,context,now,history),checkedAt:context.checkedAt,latencyMs:Date.now()-now,mode:'CORE_FAST_CONTEXT',contextUsed:history.length>0},{headers:{'Cache-Control':'no-store'}});
   }catch{return Response.json({ok:false,message:'تعذر رد النواة الآن.'},{status:503,headers:{'Cache-Control':'no-store'}});}
 }
