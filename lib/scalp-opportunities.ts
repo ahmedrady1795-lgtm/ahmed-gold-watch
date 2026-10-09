@@ -1,5 +1,5 @@
 import {ema,indicators,type Candle,type Event} from './engine';
-import {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid} from './scalp-selection';
+import {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid,chooseEligibleScalpPlan} from './scalp-selection';
 
 export type ScalpSide='BUY'|'SELL'|'WAIT';
 export type ScalpQuote={price:number|null;at:number|null;bid?:number|null;ask?:number|null;source:string};
@@ -197,6 +197,18 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       };
       return stableCandidate(watch,now,p!,cost);
     }
+    // Different valid setups can coexist on the SAME completed M1 candle.
+    // The highest raw score may have an unreachable T1 or invalid structural
+    // stop. Score EVERY candidate with the same risk checks before selecting
+    // the best truly eligible plan. This never relaxes an individual gate.
+    const evaluated=ranked.map(chosen=>{
+      const plan=base(horizon);
+      plan.evidence=[
+        {label:'اتجاه M1',side:trend1,value:'EMA 9 / 21'},
+        {label:'سياق M5',side:trend5,value:'EMA 20 / 50'},
+        {label:'زخم 3 شموع',side:side(mom),value:round(mom)+' ATR'},
+        {label:'حجم التداول',side:'WAIT',value:volumeRatio==null?'غير متاح':round(volumeRatio)+'× المتوسط'}
+      ];
     const dir=chosen.side==='BUY'?1:-1,price=p!;
     // Entry is anchored to the last CLOSED bar. Live ticks must never move
     // the published stop/target plan between confirmations.
@@ -316,12 +328,20 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     // A missing optional news feed is not itself a scheduled major release.
     // Known high-impact release windows remain blocked at the base gate.
     if(!input.newsReady)plan.evidence.push({label:'تغطية الأخبار',side:'WAIT',value:'غير مكتملة؛ افحص التقويم'});
-    return stableCandidate({...plan,id:asset+'-'+horizon+'-'+last.time+'-'+chosen.setup+'-'+chosen.side,
+    return {...plan,id:asset+'-'+horizon+'-'+last.time+'-'+chosen.setup+'-'+chosen.side,
       side:chosen.side,setup:chosen.setup,score:chosen.score,entry,stop,targets,netRR:rr,
-      status:reasons.length?'WATCH':'ARMED',blockers:reasons,
+      status:reasons.length?'WATCH' as const:'ARMED' as const,blockers:reasons,
       trigger:goldM5Breakout?.entry!=null?'اختراق مغلق ثم تأكيد M1 وإعادة اختبار مستوى الدخول؛ بلا مطاردة':
         chosen.side==='BUY'?'تجاوز سعر الدخول من أسفل قبل انتهاء الصلاحية':'كسر سعر الدخول من أعلى قبل انتهاء الصلاحية',
       reason:reasons[0]||(chosen.setup==='SWEEP'?'استعادة مستوى بعد سحب سيولة':chosen.setup==='PULLBACK'?'استمرار بعد إعادة اختبار':chosen.setup==='CONTINUATION'?'استمرار شمعتين مع توافق M5':'إغلاق خارج نطاق آخر 8 شموع')
-    },now,p!,cost);
+    };
+    });
+    const best=chooseEligibleScalpPlan(evaluated);
+    if(!best)return stableCandidate(plan,now,p!,cost);
+    if(evaluated.length>1)best.evidence.push({
+      label:'مقارنة الإعدادات',side:'WAIT',
+      value:'تم فحص '+evaluated.length+' أنواع إعداد؛ اختيار المؤهل قبل الأعلى درجة المحجوب'
+    });
+    return stableCandidate(best,now,p!,cost);
   });
 }
