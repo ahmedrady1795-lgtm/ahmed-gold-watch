@@ -56,7 +56,23 @@ assert.equal(audit(shortPlan,100).code,'READY','SELL stop/reward geometry should
 assert.equal(audit({...shortPlan,stop:99},100).code,'BAD_GEOMETRY',
   'A SELL stop below the fill is not allowed');
 console.log('PASS: exact-plan versus scenario, M1 hold, chase, stale quotes, stop geometry, and net-cost audit');
-const {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid}=load('lib/scalp-selection.ts');
+const {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid,chooseEligibleScalpPlan}=load('lib/scalp-selection.ts');
+const candidate=(score,status,extra={})=>({
+  id:'test-'+score,status,score,side:'BUY',entry:100,stop:99,
+  targets:[{price:102.8}],cost:.1,netRR:2.455,
+  blockers:status==='ARMED'?[]:['rejected by risk gate'],...extra
+});
+assert.equal(chooseEligibleScalpPlan([candidate(94,'WATCH'),candidate(79,'ARMED')]).score,79,
+  'Do not skip a risk-qualified secondary setup because a stronger raw score failed');
+assert.equal(chooseEligibleScalpPlan([candidate(94,'WATCH'),candidate(79,'WATCH')]).score,94,
+  'When none qualifies, keep highest score as WATCH, never invent ENTRY');
+assert.equal(chooseEligibleScalpPlan([candidate(94,'ARMED',{stop:101}),candidate(79,'ARMED')]).score,79,
+  'Wrong-side stop invalidates top candidate regardless of reported ARMED state');
+assert.equal(chooseEligibleScalpPlan([candidate(94,'ARMED',{cost:1,netRR:1.25}),candidate(79,'ARMED')]).score,79,
+  'Cost-adjusted current payoff must satisfy 1.25R independent of cached badge');
+assert.equal(chooseEligibleScalpPlan([candidate(94,'ARMED',{targets:[{price:NaN}]}),candidate(75,'ARMED')]).score,75,
+  'NaN targets cannot displace a valid backup candidate');
+console.log('PASS: two candidate setups ranked by full tradability, stop geometry, and net transaction costs');
 const trendBars=Array.from({length:210},(_,i)=>({
   time:Date.parse('2026-10-07T00:00:00Z')+i*60000,
   open:100+i*.10,close:100+(i+1)*.10,
