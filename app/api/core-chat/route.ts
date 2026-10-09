@@ -94,8 +94,8 @@ function answerFor(message:string,ctx:CoreContext,now:number,history:ChatHistory
     return `${oneAsset(a)} ${a.target!=null?`الهدف المرجعي ${price(a.target)}.`:''} دي قراءة 15 دقيقة، ومش أمر تنفيذ.`;
   }
   if(/سرع|تحديث|اخر|آخر|بطء/.test(q))return `الرد ده طالع من آخر لقطة جاهزة عشان يكون سريع. ${freshness}. التحليل الكامل بيشتغل لوحده ومش بيتشغل مع كل سؤال.`;
-  if(chosen)return `تمام، ${oneAsset(chosen)} قولّي عايز تعرف الاتجاه، الدخول، ولا سبب الانتظار؟`;
-  return `أنا النواة، وأقدر أشرحلك القرار الحالي بسرعة. ${oneAsset(chosen||ctx.gold)} اسألني عن الاتجاه، سبب الانتظار، الدخول، أو التكلفة.`;
+  if(chosen)return `بالنسبة لـ${chosen.label}، ${oneAsset(chosen)} عايز نراجع الاتجاه ولا سبب الانتظار؟`;
+  return 'سامعاك، بس عشان أقدر أتكلم معاك بحرية في أي موضوع وأفهم متابعة الكلام، لازم موديل المحادثة يتوصل بالنواة. الوضع الأساسي الحالي يقدر يشرح تحليلات السوق وينفذ أوامر الموقع المحددة، لكنه مش ذكاء محادثة عام.';
 }
 
 
@@ -141,7 +141,7 @@ export async function POST(request:Request){
   const message=String(body?.message||'').trim().slice(0,600);
   if(!message)return Response.json({ok:false,message:'قولّي سؤالك الأول.'},{status:400});
   const now=Date.now(),snapshot=getAiSnapshot(now),context=contextFrom(snapshot.payload,body?.context,now);
-  const history:ChatHistoryItem[]=Array.isArray(body?.history)?body.history.slice(-8).map((x:any)=>({role:x?.role,text:String(x?.text||'').slice(0,300)})):[];
+  const history:ChatHistoryItem[]=Array.isArray(body?.history)?body.history.slice(-18).map((x:any)=>({role:x?.role,text:String(x?.text||'').slice(0,550)})):[];
   const command=voiceCommand(message);
   if(command)return Response.json({ok:true,answer:command.answer,action:command.action,checkedAt:context.checkedAt,
     mode:'VOICE_COMMAND'},{headers:{'Cache-Control':'private, no-store'}});
@@ -173,4 +173,11 @@ export async function POST(request:Request){
  }catch{
   return Response.json({ok:false,message:'تعذر رد النواة دلوقتي.'},{status:503,headers:{'Cache-Control':'no-store'}});
  }
+}
+
+// Show actual model readiness to the voice interface without exposing API keys.
+export async function GET(){
+  return Response.json({ok:true,conversationModelReady:coreModelConfigured(),
+    capabilities:{voiceCommands:true,marketData:true,publicNews:true,openConversation:coreModelConfigured()}},
+    {headers:{'Cache-Control':'private, no-store'}});
 }
