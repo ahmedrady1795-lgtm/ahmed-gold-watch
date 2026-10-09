@@ -26,9 +26,12 @@ function signals(rows:Candle[],i:number,atr:number):Record<Strategy,Side>{
   return {MOMENTUM_3:mom,EMA_8_21:e,BREAKOUT_8:breakout,
     TREND_CONFIRM:mom!=='WAIT'&&mom===e&&body===mom?mom:'WAIT'};
 }
-function evaluate(rows:Example[],strategy:Strategy){
+function evaluate(rows:Example[],strategy:Strategy,pairedWith?:Strategy){
   let n=0,hits=0,signalsN=0,neutral=0;
   for(const r of rows){
+    // Compare against baseline on exactly the candidate's signal dates.
+    // Different subsets would inflate a selective model's claimed advantage.
+    if(pairedWith&&r.signals[pairedWith]==='WAIT')continue;
     const prediction=r.signals[strategy];
     if(prediction==='WAIT')continue;
     signalsN++;
@@ -96,13 +99,14 @@ export function validateDirectionChronologically(
     if(rank>best+1){selected=strategy;best=rank;}
   }
   const selectedTrain=evaluate(train,selected);
-  const holdout=evaluate(test,selected),baseline=evaluate(test,'MOMENTUM_3');
+  const holdout=evaluate(test,selected),baseline=evaluate(test,'MOMENTUM_3',selected);
   // Holdout is evaluated AFTER selection and never chooses which strategy
   // wins. A positive label requires adequate independent sample, a credible
   // lower Wilson bound and superiority to the fixed momentum baseline.
   const qualified=selected!=='MOMENTUM_3'&&holdout.n>=35&&
     holdout.coveragePct>=18&&holdout.accuracyPct!=null&&
     holdout.accuracyPct>=58&&holdout.lower95Pct!=null&&holdout.lower95Pct>50&&
+    baseline.n>=Math.ceil(holdout.n*.75)&&
     baseline.accuracyPct!=null&&holdout.accuracyPct>=baseline.accuracyPct+3;
   const atrRecent=closed.slice(-15).reduce((sum,c)=>sum+c.high-c.low,0)/15;
   const latest=signals(closed,closed.length-1,Math.max(.0000001,atrRecent));
