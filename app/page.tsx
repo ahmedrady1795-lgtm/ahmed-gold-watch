@@ -4,6 +4,7 @@ import {useEffect,useRef,useState} from 'react';
 import {Activity,RefreshCw,WifiOff} from 'lucide-react';
 import AICommandCenter from '../components/AICommandCenter';
 import FastScalpPulse from '../components/FastScalpPulse';
+import FxPairWatchlist from '../components/FxPairWatchlist';
 import NewsCommandCenter from '../components/NewsCommandCenter';
 import {computeWaveLead,type WaveLead,type WaveTick} from '../lib/wave-lead';
 
@@ -325,6 +326,7 @@ export default function Home(){
 
     <section className="content lite-content">
       <FastScalpPulse desk={scalpDesk} now={now} aiAgeMs={Number.isFinite(snapshotAge)?snapshotAge:null}/>
+      <FxPairWatchlist/>
       {aiData?.modelValidation&&<section className="panel" aria-label="جودة وصدق النماذج" style={{padding:'14px 18px'}}>
         <strong>تأهيل نماذج AI · نتائج اختبار خارج العينة</strong>
         <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:8}}>
