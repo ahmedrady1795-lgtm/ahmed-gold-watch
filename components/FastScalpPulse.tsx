@@ -11,7 +11,7 @@ export default function FastScalpPulse({desk,now,aiAgeMs}:{
   if(!desk)return null;
   return <section className="panel fast-pulse-compact" aria-label="القراءة السريعة المستقلة عن AI" style={{padding:'13px 16px'}}>
     <div className="panelhead">
-      <div><span className="eyebrow">بيانات سوق مستقلة عن AI الموسع</span><h2>السوق الآن</h2></div>
+      <div><span className="eyebrow">بيانات سوق مستقلة عن AI الموسع</span><h2>السوق الآن · قراءة لحظية</h2></div>
       <span className="pill">{aiAgeMs!=null?'آخر تحليل AI موسع منذ '+Math.round(aiAgeMs/1000)+' ثانية':'AI الموسع لم يصل بعد'}</span>
     </div>
     <div className="fast-pulse-grid">
@@ -36,6 +36,6 @@ export default function FastScalpPulse({desk,now,aiAgeMs}:{
       </div>)}
     </div>
 
-    <small className="fast-pulse-note">القراءة السريعة مستقلة عن AI · WATCH ليست دخولًا · لا أوامر Exness</small>
+    <small className="fast-pulse-note">الميل اللحظي قد يختلف عن توقع 15 دقيقة · إعدادات السكالب M1 وM5 تحتاج تأكيدًا مستقلًا · لا أوامر Exness</small>
   </section>;
 }

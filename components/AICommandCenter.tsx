@@ -11,7 +11,7 @@ const timeLeft=(ts:any,now:number)=>{
   const totalSeconds=Math.ceil(d/1000),m=Math.floor(totalSeconds/60),s=totalSeconds%60,h=Math.floor(m/60),mm=m%60;
   return h>0?`متبقي ${h}س ${mm}د`:(m>0?`متبقي ${m}د ${s}ث`:`متبقي ${s}ث`);
 };
-const moveAr=(s:any)=>s==='BUY'?'صعود':s==='SELL'?'هبوط':'تذبذب';
+const moveAr=(s:any)=>s==='BUY'?'صعود':s==='SELL'?'هبوط':'اتجاه غير معتمد';
 const zoneRange=(z:any)=>z&&Number.isFinite(Number(z.low))&&Number.isFinite(Number(z.high))?`${fmt(z.low,2)}–${fmt(z.high,2)}`:'—';
 const zoneName=(z:any)=>String(z?.kind||'').includes('DEMAND')||z?.side==='BUY'?'دعم/طلب':String(z?.kind||'').includes('SUPPLY')||z?.side==='SELL'?'مقاومة/عرض':'منطقة';
 const phaseAr=(p:any)=>p==='ACCUMULATING'?'تجميع':p==='DISTRIBUTING'?'تصريف':p==='MARKUP_READY'?'تجميع جاهز للصعود':p==='MARKDOWN_READY'?'تصريف جاهز للهبوط':'توازن';
@@ -197,7 +197,7 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
     <div className="panelhead">
       <div>
         <span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'} · LIVE</span>
-        <h2>{x.asset==='GOLD'?'توقع حركة الذهب':'توقع حركة البيتكوين'}</h2>
+        <h2>{x.asset==='GOLD'?'توقع الذهب · 15 دقيقة':'توقع البيتكوين · 15 دقيقة'}</h2>
       </div>
       <span className={'market-signal-state '+(liveInvalidated?'invalid':heroSide==='WAIT'?'waiting':'tracking')}>
         {heroSide==='WAIT'?'بانتظار تأكيد':liveStateAr}
@@ -206,8 +206,8 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
 
     <div className="ai-price-row compact-price">
       <div><small>السعر الآن</small><strong>{fmt(price,2)}</strong></div>
-      <div><small>الاتجاه القادم</small><strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>{moveAr(heroSide)}</strong></div>
-      <div><small>ثقة الاتجاه</small><strong>{Math.round(Number(forward?.confidence||0))}%</strong></div>
+      <div><small>اتجاه 15 دقيقة</small><strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>{moveAr(heroSide)}</strong></div>
+      <div><small>قوة الترجيح · ليست احتمال ربح</small><strong>{heroSide==='WAIT'?'—':Math.round(Number(forward?.confidence||0))+'/100'}</strong></div>
     </div>
     <div className="market-liquidity-brief">
       <span>السيولة: {hasLiquidity?<><b className="green">شراء {liqBuy}%</b> <b className="red">بيع {liqSell}%</b></>:'غير مؤكدة'}</span>
@@ -246,10 +246,10 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
     </details>}
 
     <div className="next-move-copy primary-move zone-primary">
-      <span>الحركة القادمة · أهداف أمامية متدرجة</span>
+      <span>توقع 15 دقيقة · أهداف أمامية متدرجة</span>
       <strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>
         {heroSide==='WAIT'
-          ?'لا يوجد اتجاه صالح الآن'
+          ?'لا يوجد اتجاه معتمد لـ15 دقيقة'
           :liveInvalidated
             ?'السيناريو أُلغي بعد كسر مستوى الإبطال · ننتظر توقعًا جديدًا'
           :activeTarget!=null

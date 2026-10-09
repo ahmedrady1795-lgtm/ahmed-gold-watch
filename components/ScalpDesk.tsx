@@ -27,9 +27,16 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
   const entryCheck=desk.entryConfirmations?.find((x:any)=>x.horizon===horizon);
   const holdRequired=Math.max(30,Number(entryCheck?.requiredSeconds||60));
   const activeM5=desk.profile==='ACTIVE_M5_PAPER'&&horizon===5;
-  const entryConfirmed=Boolean(!stale&&!expired&&entryCheck?.state==='ENTRY');
-  const counting=Boolean(!stale&&entryCheck?.state==='HOLDING');
-  const candleVerified=Boolean(!stale&&entryCheck?.state==='CONDITIONS_PENDING');
+  const following=current?.state==='ACTIVE'||entryCheck?.state==='ACTIVE';
+  const exactPlan=plan?.status==='ARMED'&&entryCheck?.confirmationSource==='EXACT_PLAN';
+  const entryConfirmed=Boolean(!stale&&!expired&&!following&&exactPlan&&entryCheck?.state==='ENTRY');
+  const counting=Boolean(!stale&&!expired&&!following&&exactPlan&&entryCheck?.state==='HOLDING');
+  const candleVerified=Boolean(!stale&&!expired&&!following&&exactPlan&&entryCheck?.state==='CONDITIONS_PENDING');
+  const decisionReason=entryCheck?.entryAudit?.reason||entryCheck?.reason||plan?.reason||'جارٍ فحص الإعدادات';
+  const costUnit=desk.asset==='BTC'?'1 BTC':'أونصة ذهب';
+  const costSource=(value:string|undefined)=>value==='QUOTE'?'من عرض السعر':value==='CONFIGURED'?'معدل مُعدّ يدويًا':value==='ASSUMED'?'افتراض':'مصدر غير موثق';
+  const grossRisk=shown?.entry!=null&&shown?.stop!=null?Math.abs(shown.entry-shown.stop):0;
+  const grossReward=shown?.entry!=null&&shown?.targets?.[0]?.price!=null?Math.abs(shown.targets[0].price-shown.entry):null;
   return <section className={'panel scalp-desk ai-asset-card '+(shown?.side==='BUY'?'ai-buy':shown?.side==='SELL'?'ai-sell':'ai-wait')}>
     <div className="scalp-desk-head">
       <div><span className="eyebrow">توقيت الدخول · {desk.asset==='GOLD'?'الذهب':'البيتكوين'}</span><h2>فرص السكالب {activeM5?'· وضع نشط':''}</h2></div>
@@ -42,15 +49,18 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       <div className={'scalp-entry-watch '+(entryConfirmed?'entry-confirmed':candleVerified?'entry-blocked':counting?'entry-counting':'')}>
         <div className="scalp-entry-status">
           <strong>{stale?'تأكيد الدخول متوقف: الأسعار متأخرة':
+            expired?'انتهت صلاحية الدخول · ننتظر إعدادًا جديدًا':
+            following?'صفقة تجريبية قيد المتابعة':
             entryConfirmed?'إشارة ورقية '+sideAr(entryCheck.side)+' · اكتمل تأكيد M1':
             candleVerified?'اكتمل ثبات الدقيقة · لا دخول':
             counting?'جارٍ تأكيد الثبات: '+entryCheck.heldSeconds+' / '+holdRequired+' ثانية':
-            entryCheck?.state==='ACTIVE'?'صفقة تجريبية قيد المتابعة':
-            'بانتظار شرط الثبات وإغلاق M1 لتأكيد الدخول'}</strong>
-          <span>{counting?'متبقي '+entryCheck.remainingSeconds+' ثانية':entryConfirmed?'تم تأكيد إغلاق M1':candleVerified?'شروط المخاطرة أو البيانات غير مكتملة':'تأكيد آلي مع كل تحديث'}</span>
+            plan?.status==='BLOCKED'?'الدخول متوقف بسبب شروط السوق أو البيانات':
+            plan?.side==='WAIT'?'لا يوجد إعداد دخول حاليًا':
+            exactPlan?'بانتظار شرط الثبات وإغلاق M1 لتأكيد الدخول':'الإعداد غير مؤهل للدخول'}</strong>
+          <span>{counting?'متبقي '+entryCheck.remainingSeconds+' ثانية':entryConfirmed?'تم تأكيد إغلاق M1':following?'متابعة الصفقة الورقية الحالية':decisionReason}</span>
         </div>
-        <div className="scalp-entry-progress" aria-hidden="true"><span style={{width:(entryConfirmed||candleVerified?100:Math.max(0,Math.min(100,Number(entryCheck?.heldSeconds||0)/holdRequired*100)))+'%'}}/></div>
-        {entryCheck?.trigger!=null&&<small>المستوى المرصود: <b dir="ltr">{fmt(entryCheck.trigger)}</b> · {entryCheck.side==='BUY'?'الثبات أعلاه للشراء':entryCheck.side==='SELL'?'الثبات أدناه للبيع':'انتظار الاتجاه'}</small>}
+        {!stale&&!expired&&!following&&exactPlan&&<div className="scalp-entry-progress" aria-hidden="true"><span style={{width:(entryConfirmed||candleVerified?100:Math.max(0,Math.min(100,Number(entryCheck?.heldSeconds||0)/holdRequired*100)))+'%'}}/></div>}
+        {!stale&&!expired&&!following&&exactPlan&&entryCheck?.trigger!=null&&<small>المستوى المرصود: <b dir="ltr">{fmt(entryCheck.trigger)}</b> · {entryCheck.side==='BUY'?'الثبات أعلاه للشراء':entryCheck.side==='SELL'?'الثبات أدناه للبيع':'انتظار الاتجاه'}</small>}
         {activeM5&&<details className="scalp-expand"><summary>قواعد تأكيد الدخول النشط</summary><p className="scalp-entry-advice">30 ثانية للإعدادات القوية المتوافقة مع M5، وإلا 60 ثانية. تأكيد إغلاق M1 وحد التكلفة والعائد مطلوبان دائمًا.</p></details>}
         {entryConfirmed&&<p className="scalp-entry-advice">سعر الدخول الورقي عند التأكيد <b dir="ltr">{fmt(entryCheck.entry)}</b> · الوقف <b dir="ltr">{fmt(entryCheck.stop)}</b> · T1 <b dir="ltr">{fmt(entryCheck.targets?.[0]?.price)}</b> · إشارة تحليلية وليست تنفيذًا تلقائيًا</p>}
         {candleVerified&&<p className="scalp-entry-advice">{entryCheck.reason}</p>}
@@ -93,14 +103,15 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       <div className="scalp-facts">
         <div><small>العائد / المخاطرة بعد التكلفة</small><b>{fmt(shown?.netRR)} R</b></div>
         <div><small><Clock3 size={12}/> {current?.activatedAt?'متبقي للمتابعة':'صلاحية التفعيل'}</small><b>{timed?(secs?secs+' ثانية':'انتهت'):'غير مفعّلة'}</b></div>
-        <div><small>تكلفة الدورة {shown?.costEstimated?'· تقديرية':''}</small><b>{fmt(shown?.cost)} $</b></div>
+        <div><small>تكلفة تقديرية / {costUnit}</small><b>{fmt(shown?.cost)} $</b></div>
       </div>
-      {entryCheck?.entryAudit&&!stale&&<p className="scalp-condition"><strong>سبب القرار · {entryCheck.entryAudit.group}</strong> — {entryCheck.entryAudit.reason}
+      {entryCheck?.entryAudit&&!stale&&<p className="scalp-condition"><strong>سبب القرار</strong> — {entryCheck.entryAudit.reason}
         {entryCheck.confirmationSource==='SCENARIO_ONLY'?' · ثبات سيناريو السيولة ليس اعتمادًا لدخول الخطة.':''}
         {entryCheck.entryAudit.liveNetRR!=null?' · العائد الفعلي '+fmt(entryCheck.entryAudit.liveNetRR)+'R':''}</p>}
       {shown?.costBreakdown&&<details className="scalp-expand"><summary>تفصيل السبريد والعمولات والانزلاق</summary>
-      <p className="scalp-condition">تفصيل تكلفة الدورة لكل وحدة من الأصل: سبريد {fmt(shown.costBreakdown.spread)}$ · عمولات {fmt(shown.costBreakdown.fees)}$ · انزلاق {fmt(shown.costBreakdown.slippage)}$.
-        {shown.costEstimated?' بعض المكونات افتراضية وليست رسوم Exness الفعلية.':' المكونات من المصادر المهيأة؛ تحقق من اتفاقها مع كشف الوسيط.'}</p>
+      <p className="scalp-condition">تكلفة دورة كاملة لكل {costUnit}: سبريد {fmt(shown.costBreakdown.spread)}$ ({costSource(shown.costBreakdown.sources?.spread)}) · عمولات {fmt(shown.costBreakdown.fees)}$ ({costSource(shown.costBreakdown.sources?.fees)}) · انزلاق {fmt(shown.costBreakdown.slippage)}$ ({costSource(shown.costBreakdown.sources?.slippage)}).
+        {' مصدر السعر: '+(shown.costBreakdown.quoteSource||desk.quote?.source||'غير موثق')+'. المعدلات المهيأة والافتراضات ليست قياسًا لرسوم حساب Exness.'}</p>
+      {grossRisk>0&&grossReward!=null&&<p className="scalp-condition">أثر التكلفة على الخطة: العائد / المخاطرة قبلها {fmt(grossReward/grossRisk)}R وبعدها {fmt((grossReward-shown.cost)/(grossRisk+shown.cost))}R · التكلفة {fmt(shown.cost/(grossRisk+shown.cost)*100,1)}% من المخاطرة شاملة التكلفة. هذا حساب للخطة، وليس نتيجة صفقة منفذة.</p>}
       </details>}
       {desk.asset==='BTC'&&shown?.costEstimated&&<p className="scalp-condition">رسوم البيتكوين والانزلاق تقديرية لمصدر الأسعار، وليست تكلفة Exness الفعلية. لن يعتبر النظام صفقة قابلة للتنفيذ حتى تسمح حسابات المخاطرة والعائد بالتكلفة المُستخدمة.</p>}
       {!!plan?.blockers?.length&&!current&&plan.blockers.length>1&&<details className="scalp-expand"><summary>شروط الدخول غير المكتملة ({plan.blockers.length})</summary><ul className="scalp-blockers">{plan.blockers.map((r:string)=><li key={r}>{r}</li>)}</ul></details>}
