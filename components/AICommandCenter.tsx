@@ -257,18 +257,23 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
             :'تم استهلاك سلم الأهداف الحالي'}
       </strong>
 
-      <div className="forecast-scenario-strip">
+      <div className="forecast-scenario-strip primary-target-strip">
         {heroSide==='WAIT'&&watchAhead&&<div className="scenario-wide">
           <small>منطقة مراقبة فقط · ليست إشارة دخول أو هدفًا مؤكدًا</small>
           <b dir="ltr">{moveAr(watchSide)} → {fmt(watchMid,2)}</b>
           <span>{watchZone?.projected?'إسقاط احتمالي من التذبذب':'منطقة سعرية مرجحة'} · تنتظر تأكيد M1 و M5 والسيولة قبل أي توصية</span>
         </div>}
         <div><small>T1 · الهدف الأول</small><b dir="ltr">{!liveInvalidated&&t1Price!=null?fmt(t1Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT1Hit?'تحقق':targetSourceAr(t1Level?.source)+(t1Level?.quality?' · جودة '+Math.round(Number(t1Level.quality))+'%':'')}</span></div>
-        <div><small>T2 · الهدف التالي</small><b dir="ltr">{!liveInvalidated&&t2Price!=null?fmt(t2Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT2Hit?'تحقق':targetSourceAr(t2Level?.source)+(t2Level?.quality?' · جودة '+Math.round(Number(t2Level.quality))+'%':'')}</span></div>
-        <div><small>T3 · الامتداد</small><b dir="ltr">{!liveInvalidated&&t3Price!=null?fmt(t3Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT3Hit?'تحقق':targetSourceAr(t3Level?.source)+(t3Level?.quality?' · جودة '+Math.round(Number(t3Level.quality))+'%':'')}</span></div>
         <div><small>إبطال القراءة</small><b dir="ltr">{invalidation!=null?fmt(invalidation,2):'—'}</b><span>{liveInvalidated?'تم الكسر':'صالح'}</span></div>
 
       </div>
+      {(t2Price!=null||t3Price!=null)&&<details className="forecast-extra">
+        <summary>الأهداف البعيدة T2 وT3 · تفاصيل إضافية</summary>
+        <div className="forecast-scenario-strip advanced-target-strip">
+        <div><small>T2 · الهدف التالي</small><b dir="ltr">{!liveInvalidated&&t2Price!=null?fmt(t2Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT2Hit?'تحقق':targetSourceAr(t2Level?.source)+(t2Level?.quality?' · جودة '+Math.round(Number(t2Level.quality))+'%':'')}</span></div>
+        <div><small>T3 · الامتداد</small><b dir="ltr">{!liveInvalidated&&t3Price!=null?fmt(t3Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT3Hit?'تحقق':targetSourceAr(t3Level?.source)+(t3Level?.quality?' · جودة '+Math.round(Number(t3Level.quality))+'%':'')}</span></div>
+        </div>
+      </details>}
       <details className="forecast-extra">
         <summary>تفاصيل التحليل ومصادر الأهداف</summary>
         <div className="forecast-scenario-strip forecast-scenario-details">
