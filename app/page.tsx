@@ -3,6 +3,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {Activity,RefreshCw,WifiOff} from 'lucide-react';
 import AICommandCenter from '../components/AICommandCenter';
+import CoreChat from '../components/CoreChat';
 import FastScalpPulse from '../components/FastScalpPulse';
 import FxPairWatchlist from '../components/FxPairWatchlist';
 import NewsCommandCenter from '../components/NewsCommandCenter';
@@ -334,15 +335,19 @@ export default function Home(){
       <div className="asset-switch" role="group" aria-label="اختيار الأصل المعروض">
         {([{id:'ALL',label:'الكل'},{id:'GOLD',label:'الذهب'},{id:'BTC',label:'البيتكوين'}] as const).map(item=><button key={item.id} type="button" aria-pressed={assetView===item.id} onClick={()=>setAssetView(item.id)}>{item.label}</button>)}
       </div>
-      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#market-overview">نظرة سريعة</a><a href="#scalp-opportunities">السكالب</a><a href="#market-forecast">توقع 15 دقيقة</a><a href="#market-news">الأخبار</a><a href="#market-research">الجودة والنتائج</a></nav>
+      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#core-console">محادثة النواة</a><a href="#market-overview">نظرة سريعة</a><a href="#scalp-opportunities">السكالب</a><a href="#market-forecast">توقع 15 دقيقة</a></nav>
     </div>
     <section className="content lite-content" aria-label="بيانات السوق والتحليل">
+      <CoreChat data={aiData} desk={scalpDesk}/>
       <FastScalpPulse assetView={assetView} desk={scalpDesk} now={now} aiAgeMs={Number.isFinite(snapshotAge)?snapshotAge:null}/>
       <AICommandCenter assetView={assetView} data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
+      <details className="secondary-tools">
+        <summary className="secondary-tools-summary"><span><strong>المزيد من الأدوات</strong><small>الأخبار، جودة النماذج، والفوركس عند الحاجة</small></span><span aria-hidden="true">⌄</span></summary>
+        <div className="secondary-tools-content">
       <div id="market-news" className="workspace-section"><div className="workspace-section-heading"><div><span>04 / الأجندة</span><h2>أخبار تحرّك السوق</h2></div><p>المواعيد والنتائج بتوقيت الإمارات</p></div><NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredId={aiData?.autopilot?.nextEvent?.id||null}/></div>
 
       <details id="market-research" className="panel research-drawer">
-        <summary className="research-drawer-summary"><span><strong>أدوات البحث واختبارات الجودة</strong><small>الفوركس، نتائج النماذج، واختبارات اتجاه BUY/SELL · افتح عند الحاجة</small></span><span aria-hidden="true">⌄</span></summary>
+        <summary className="research-drawer-summary"><span><strong>جودة النماذج والفوركس</strong><small>نتائج التحقق والأزواج الإضافية</small></span><span aria-hidden="true">⌄</span></summary>
         <div className="research-drawer-content">
       {aiData?.modelValidation&&<section className="panel" aria-label="جودة وصدق النماذج" style={{padding:'14px 18px'}}>
         <strong>تأهيل نماذج AI · نتائج اختبار خارج العينة</strong>
@@ -380,6 +385,8 @@ export default function Home(){
           <small>اختبار زمني على اتجاه حركة السعر بعد التكلفة التقديرية. ليس اختبارًا للنواة الكاملة، ولا إثبات ربح، ولا نتائج أوامر Exness.</small>
         </details>}
           <FxPairWatchlist/>
+        </div>
+      </details>
         </div>
       </details>
     </section>
