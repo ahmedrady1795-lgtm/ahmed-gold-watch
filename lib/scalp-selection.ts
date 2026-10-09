@@ -104,5 +104,12 @@ export function chooseEligibleScalpPlan<T extends {
   });
   // Existing ranked order remains authoritative *among fully qualified*
   // plans; a WATCH with any score can never displace an ARMED trade.
-  return valid[0]??plans[0]??null;
+  if(valid.length)return valid[0];
+  const top=plans[0];
+  if(!top)return null;
+  // Never pass through an ARMED badge whose numeric reward/geometry
+  // fails independent validation, even if no alternative exists.
+  return top.status==='ARMED'
+    ?{...top,status:'WATCH',blockers:[...top.blockers,'تقييم التكلفة والوقف النهائي رفض هذا الإعداد']} as T
+    :top;
 }
