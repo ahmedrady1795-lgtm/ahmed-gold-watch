@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {BrainCircuit,Mic,MicOff,Trash2,Volume2,Zap} from 'lucide-react';
+import {Activity,BrainCircuit,Mic,MicOff,Trash2,Volume2,Zap} from 'lucide-react';
 
 type Message={id:number;role:'user'|'core';text:string};
 type VoiceAction=
@@ -45,6 +45,9 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
   const [researchSources,setResearchSources]=useState<Array<{title:string;url:string}>>([]);
   const [researchUsed,setResearchUsed]=useState(false);
   const [analysisSkill,setAnalysisSkill]=useState('');
+  const [siteInspection,setSiteInspection]=useState<{
+    checkedAt:number;status:string;checks:Array<{key:string;label:string;state:string;detail:string}>
+  }|null>(null);
   const recognitionRef=useRef<any>(null);
   const liveVoiceRef=useRef(false);
   const speakingRef=useRef(false);
@@ -348,6 +351,8 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
       else if(replyMode==='RULE_BASED_FALLBACK'||replyMode==='WEB_SEARCH_UNAVAILABLE'){setIntelligenceMode('basic');}
       setResearchUsed(Boolean(payload.web?.searchConfirmed));
       setAnalysisSkill(String(payload.analysisSkill||''));
+      setSiteInspection(payload.mode==='SITE_INSPECTION'&&payload.siteInspection
+        ?payload.siteInspection:null);
       setResearchSources(Array.isArray(payload.sources)?payload.sources.slice(0,5)
         .filter((x:any)=>typeof x?.url==='string'&&/^https:\/\//i.test(x.url))
         .map((x:any)=>({title:String(x.title||x.source||'مصدر').slice(0,90),url:String(x.url)})):[]);
@@ -370,12 +375,12 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
     voiceBufferRef.current='';interimVoiceRef.current='';
     if(!startRecognition(true)){liveVoiceRef.current=false;setLiveVoice(false);}
   };
-  const clearConversation=()=>{messagesRef.current=[];setMessages([]);setVoiceError('');voiceBufferRef.current='';interimVoiceRef.current='';setResearchSources([]);setResearchUsed(false);setAnalysisSkill('');};
+  const clearConversation=()=>{messagesRef.current=[];setMessages([]);setVoiceError('');voiceBufferRef.current='';interimVoiceRef.current='';setResearchSources([]);setResearchUsed(false);setAnalysisSkill('');setSiteInspection(null);};
   useEffect(()=>()=>{liveVoiceRef.current=false;recognitionRef.current?.stop();if(voiceSendTimerRef.current)clearTimeout(voiceSendTimerRef.current);clearSpeechWatch();if(typeof window!=='undefined')window.speechSynthesis?.cancel();},[]);
 
   const selectedNativeVoice=arabicVoices.find(v=>v.id===selectedVoiceURI);
   const egyptianSpeechAvailable=Boolean(selectedNativeVoice&&/^ar[-_]EG$/i.test(selectedNativeVoice.lang));
-  const status=voiceError?'الصوت محتاج تفعيل':speaking?'النواة بترد عليك صوتيًا':busy?'بحلل سؤالك بسرعة':listening?'سامعك… اتكلم دلوقتي':liveVoice?'قول سؤالك بصوتك':'اضغط «ابدأ الكلام» وابدأ سؤالك';
+  const status=voiceError?'الصوت محتاج تفعيل':speaking?'النواة بترد عليك صوتيًا':busy?'بفحص وبجهّز الرد':listening?'سامعك… اتكلم دلوقتي':liveVoice?'قول سؤالك بصوتك':'اضغط «ابدأ الكلام» وابدأ سؤالك';
   const hint=voiceError?voiceError:liveVoice?'لما تخلص جملتك، النواة هترد بالصوت المتاح على جهازك وتسمع السؤال اللي بعده تلقائيًا.':'مش هتحتاج تكتب؛ كل الحوار هيكون بالصوت.';
 
   return <section id="core-console" className="core-console voice-only" aria-labelledby="core-console-title">
@@ -385,11 +390,14 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
         <span className="core-node node-a"/><span className="core-node node-b"/><span className="core-node node-c"/><span className="core-node node-d"/><span className="core-node node-e"/><span className="core-node node-f"/>
         <span className="core-orbit orbit-one"/><span className="core-orbit orbit-two"/><div className="core-emblem"><BrainCircuit size={33}/><small>CORE</small></div>
       </div>
-      <div className="core-identity"><span className="core-kicker"><Zap size={13}/> CORE / VOICE</span><h2 id="core-console-title">النواة الصوتية</h2><p>اتكلم بحرية بالمصري؛ النواة تقدر تبحث وتحلل، والنطق بيتحدد حسب أصوات جهازك.</p></div>
+      <div className="core-identity"><span className="core-kicker"><Zap size={13}/> CORE / VOICE</span><h2 id="core-console-title">النواة الصوتية</h2><p>كلّمني بالصوت، أو قول «افحص الموقع» علشان أراجع الخدمات وأقولك النتيجة.</p></div>
       <div className="core-health"><i/> مصري · <b>{modelConnection==='confirmed'?'محادثة الذكاء شغالة':modelConnection==='failed'?'موديل الذكاء مش بيرد':modelReady===false?'موديل غير متصل':modelReady===true?'موديل ذكاء مُعدّ، لم يتم اختباره':'مساعد صوتي'}</b></div>
     </div>
     <div className="core-chat-panel voice-panel">
-      <div className="core-chat-head"><div><strong>اتكلم مع النواة</strong><small>{liveVoice?'الوضع الصوتي شغال':'صوت فقط · بدون شات'}</small></div><div className="core-chat-actions"><button type="button" className={'core-live-voice core-voice-primary '+(liveVoice?'active':'')} onClick={()=>void toggleLiveVoice()} aria-pressed={liveVoice} title={liveVoice?'إيقاف الصوت':'بدء الكلام'}>{liveVoice?<MicOff size={17}/>:<Mic size={17}/>}<span>{liveVoice?'إيقاف الصوت':'ابدأ الكلام'}</span></button><button type="button" className="core-voice-test" onClick={testSpeech} aria-label="اختبار صوت النواة" title="اختبار صوت النواة"><Volume2 size={16}/><span>اختبار الصوت</span></button><button type="button" className="core-clear" onClick={clearConversation} aria-label="بدء جلسة صوتية جديدة" title="بدء جلسة صوتية جديدة"><Trash2 size={15}/></button></div></div>
+      <div className="core-chat-head"><div><strong>اتكلم مع النواة</strong><small>{liveVoice?'الوضع الصوتي شغال':'صوت فقط · بدون شات'}</small></div><div className="core-chat-actions"><button type="button" className={'core-live-voice core-voice-primary '+(liveVoice?'active':'')} onClick={()=>void toggleLiveVoice()} aria-pressed={liveVoice} title={liveVoice?'إيقاف الصوت':'بدء الكلام'}>{liveVoice?<MicOff size={17}/>:<Mic size={17}/>}<span>{liveVoice?'إيقاف الصوت':'ابدأ الكلام'}</span></button><button type="button" className="core-voice-test" onClick={()=>{primeSpeech();void submitVoice('افحص الموقع والخدمات');}}
+          disabled={busy} title="فحص الموقع الفعلي بالصوت" aria-label="افحص الموقع">
+          <Activity size={16}/><span>{busy?'بفحص…':'افحص الموقع'}</span>
+        </button><button type="button" className="core-voice-test" onClick={testSpeech} aria-label="اختبار صوت النواة" title="اختبار صوت النواة"><Volume2 size={16}/><span>اختبار الصوت</span></button><button type="button" className="core-clear" onClick={clearConversation} aria-label="بدء جلسة صوتية جديدة" title="بدء جلسة صوتية جديدة"><Trash2 size={15}/></button></div></div>
       <div className="core-voice-stage" aria-live="polite">
         <div className={'core-voice-orb '+(liveVoice?'active ':'')+(listening?'listening ':'')+(speaking?'speaking':'')} aria-hidden="true">{speaking?<BrainCircuit size={34}/>:<Mic size={34}/>}</div>
         <strong>{status}</strong>
@@ -413,6 +421,20 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
            'الصوت الحالي مش مصري؛ لو مش ظاهر ar-EG فالجهاز محتاج صوت مصري أو محرك نطق خارجي.'}
         </small>
       </div>
+      {siteInspection&&
+        <section aria-label="نتيجة فحص الموقع" className="core-site-inspection"
+          style={{padding:'10px 12px',border:'1px solid rgba(120,145,180,.26)',
+            borderRadius:10,margin:'7px 10px'}}>
+          <strong style={{display:'block',fontSize:13,marginBottom:8}}>
+            نتيجة الفحص: {siteInspection.status==='HEALTHY'?'المؤشرات المتاحة سليمة':
+              siteInspection.status==='DEGRADED'?'فيه ملاحظات محتاجة متابعة':'تعذر تأكيد الجاهزية'}
+          </strong>
+          {siteInspection.checks.map(item=><div key={item.key}
+            style={{display:'flex',gap:8,fontSize:12,marginBottom:5,alignItems:'baseline'}}>
+            <span aria-hidden="true">{item.state==='OK'?'✓':item.state==='FAIL'?'✗':item.state==='WARN'?'!':'?'}</span>
+            <span><b>{item.label}:</b> {item.detail}</span>
+          </div>)}
+        </section>}
       {(researchSources.length>0||analysisSkill)&&
         <div className="core-voice-research" style={{padding:'8px 12px',fontSize:12}}>
           {analysisSkill&&<small style={{display:'block',opacity:.85,marginBottom:5}}>تحليل قائم على بيانات الموقع · {({
