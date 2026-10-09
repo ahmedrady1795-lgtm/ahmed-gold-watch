@@ -7,6 +7,52 @@ function load(file){
   return exports;
 }
 const {buildScalpPlans}=load('lib/scalp-opportunities.ts');
+// The strategy registry must preserve the old detectors' predicates but
+// show why each competing setup was accepted/rejected. No fake trade edge.
+const {SCALP_STRATEGIES,detectScalpStrategies,rankScalpStrategies,describeScalpStrategies}=load('lib/scalp-strategies.ts');
+assert.equal(SCALP_STRATEGIES.length,4);
+assert.equal(new Set(SCALP_STRATEGIES.map(x=>x.id)).size,4);
+const strategyContext={
+  last:{open:100,high:101.05,low:99.9,close:100.9},
+  prev:{open:99.95,high:100.5,low:99.7,close:100.3},
+  high:100.65,low:99.1,atr:1,body:.78,
+  trend1:'BUY',trend5:'BUY',f9:100.4,old9:100,mom:1.2,efficiency:.8
+};
+const bullish=detectScalpStrategies(strategyContext);
+assert.deepEqual([...bullish.map(x=>x.setup)].sort(),['BREAKOUT','CONTINUATION','PULLBACK'],
+  'A strong confirmed candle can legitimately produce three competing setups');
+const rankedStrategies=rankScalpStrategies(bullish,{horizon:5,trend1:'BUY',trend5:'BUY',mom:1.2,body:.78,efficiency:.8,volumeRatio:1.2});
+assert.ok(rankedStrategies[0].score>=rankedStrategies[1].score);
+const mirrored={
+  ...strategyContext,
+  last:{open:100,high:100.1,low:98.95,close:99.1},
+  prev:{open:100.05,high:100.3,low:99.5,close:99.7},
+  high:100.9,low:99.35,body:-.78,
+  trend1:'SELL',trend5:'SELL',f9:99.6,old9:100,mom:-1.2
+};
+assert.deepEqual([...detectScalpStrategies(mirrored).map(x=>x.setup)].sort(),
+  ['BREAKOUT','CONTINUATION','PULLBACK'],'BUY and SELL must have symmetric detectors');
+const sweep=detectScalpStrategies({
+  ...strategyContext,last:{open:98.98,high:99.45,low:98.8,close:99.25},
+  low:99,high:100,body:.42,trend1:'WAIT',trend5:'SELL',
+  f9:99.2,old9:99.25,mom:.1,efficiency:.25
+});
+assert.equal(sweep.map(x=>x.setup).join(','),'SWEEP','Sweep is a separate reversal strategy');
+const pendingReview={setup:'BREAKOUT',side:'BUY',score:93,status:'WATCH',
+  netRR:2.3,blockers:['هدف غير واقعي'],entry:100,stop:99,targets:[{price:103}],cost:.1};
+const goodReview={setup:'PULLBACK',side:'BUY',score:81,status:'ARMED',
+  netRR:2.3,blockers:[],entry:100,stop:99,targets:[{price:103}],cost:.1};
+const reviews=describeScalpStrategies([pendingReview,goodReview],goodReview);
+assert.equal(describeScalpStrategies([{...goodReview,stop:101}],null).find(x=>x.setup==='PULLBACK').state,'WATCH',
+  'A malformed ARMED strategy cannot appear as qualified in the UI');
+assert.equal(describeScalpStrategies([{...goodReview,cost:2.5}],null).find(x=>x.setup==='PULLBACK').state,'WATCH',
+  'A strategy cannot appear qualified if the net reward is negative after current fees');
+assert.equal(reviews.find(x=>x.setup==='BREAKOUT').state,'WATCH');
+assert.equal(reviews.find(x=>x.setup==='PULLBACK').state,'SELECTED');
+assert.equal(reviews.find(x=>x.setup==='CONTINUATION').state,'NO_TRIGGER');
+assert.ok(describeScalpStrategies([],null,true).every(x=>x.state==='DATA_BLOCKED'));
+assert.ok(describeScalpStrategies([],null).every(x=>x.state==='NO_TRIGGER'));
+console.log('PASS: independent momentum, trend and reversal strategies with auditable risk-based selection');
 const {auditScalpEntry}=load('lib/scalp-entry-audit.ts');
 const auditNow=Date.parse('2026-10-09T12:00:00Z');
 const planAudit={status:'ARMED',side:'BUY',setup:'BREAKOUT',
@@ -246,6 +292,10 @@ assert.equal(hold(confirmedBars,4000.65,now+65000,'STALE_RETEST_TEST',now+90000)
 console.log('PASS: real M1 confirmation unlocks a 45-second retest; stale quotes and stop breaks revoke it.');
 
 const plans=buildScalpPlans(breakout());
+assert.ok(plans.every(x=>x.strategyReview.length===4),
+  'A strategy review must accompany every scalp horizon, even while waiting');
+assert.ok(buildScalpPlans(input())[0].strategyReview.every(x=>x.state==='NO_TRIGGER'),
+  'A flat market must not pretend to have an eligible trading strategy');
 const m5BreakoutPlan=plans.find(p=>p.horizon===5);
 assert.equal(m5BreakoutPlan.setup,'BREAKOUT',
   'Fixture must exercise real GOLD M5 selection, not just the pure helper');

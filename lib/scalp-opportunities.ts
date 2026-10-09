@@ -1,5 +1,6 @@
 import {ema,indicators,type Candle,type Event} from './engine';
 import {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid,chooseEligibleScalpPlan} from './scalp-selection';
+import {detectScalpStrategies,rankScalpStrategies,describeScalpStrategies,type StrategyReview} from './scalp-strategies';
 
 export type ScalpSide='BUY'|'SELL'|'WAIT';
 export type ScalpQuote={price:number|null;at:number|null;bid?:number|null;ask?:number|null;source:string};
@@ -11,7 +12,7 @@ export type ScalpPlan={
   targets:{price:number;kind:'STRUCTURE'|'PROJECTION'}[];netRR:number|null;
   cost:number;costEstimated:boolean;
   costBreakdown:{spread:number;fees:number;slippage:number;allMeasured:boolean};
-  trigger:string;reason:string;blockers:string[];
+  trigger:string;reason:string;blockers:string[];strategyReview:StrategyReview[];
   evidence:{label:string;side:ScalpSide;value:string}[];
 };
 const n=(v:unknown)=>v==null||v===''?null:Number.isFinite(Number(v))?Number(v):null;
@@ -107,7 +108,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     id:asset+'-'+horizon+'-'+String(m1.closed.at(-1)?.time??now)+'-NONE',asset,horizon,at:now,
     expiresAt:now+(horizon===1?145000:210000),side:'WAIT',status:blockers.length?'BLOCKED':'WATCH',setup:'NONE',score:0,
     scoreLabel:'قوة الإعداد /100 · ليست احتمال ربح',entry:null,stop:null,targets:[],netRR:null,cost:round(cost),costEstimated,costBreakdown,
-    trigger:'انتظار إعداد سعري واضح',reason:blockers[0]||'لم يكتمل اختراق أو إعادة اختبار أو سحب سيولة',blockers:[...blockers],evidence:[]
+    trigger:'انتظار إعداد سعري واضح',reason:blockers[0]||'لم يكتمل اختراق أو إعادة اختبار أو سحب سيولة',blockers:[...blockers],strategyReview:describeScalpStrategies([],null,blockers.length>0),evidence:[]
   });
   if(blockers.length)return [base(1),base(5)];
   const a=m1.closed,b=m5.closed,last=a.at(-1)!,prev=a.at(-2)!;
@@ -126,38 +127,20 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
   const efficiency=travel?Math.abs(path.at(-1)!-path[0])/travel:0;
   const volumes=a.slice(-21,-1).map(c=>Number(c.realVolume??c.tickVolume??0)).filter(v=>v>0);
   const volume=Number(last.realVolume??last.tickVolume??0),volumeRatio=volumes.length&&volume>0?volume/mean(volumes):null;
-  const candidates:{side:'BUY'|'SELL';setup:ScalpPlan['setup'];triggerScore:number;anchor:number}[]=[];
-  // A sweep can trade against M5; a continuation must agree with short-term price structure.
-  if(last.low<low-atr*.04&&last.close>low+atr*.08&&body>.12)candidates.push({side:'BUY',setup:'SWEEP',triggerScore:32,anchor:last.low});
-  if(last.high>high+atr*.04&&last.close<high-atr*.08&&body<-.12)candidates.push({side:'SELL',setup:'SWEEP',triggerScore:32,anchor:last.high});
-  if(last.close>high&&body>.45&&trend1==='BUY')candidates.push({side:'BUY',setup:'BREAKOUT',triggerScore:34,anchor:high});
-  if(last.close<low&&body<-.45&&trend1==='SELL')candidates.push({side:'SELL',setup:'BREAKOUT',triggerScore:34,anchor:low});
-  if(trend1==='BUY'&&f9>old9&&prev.low<=f9+atr*.15&&last.close>prev.high&&body>.3)candidates.push({side:'BUY',setup:'PULLBACK',triggerScore:30,anchor:Math.min(last.low,prev.low)});
-  if(trend1==='SELL'&&f9<old9&&prev.high>=f9-atr*.15&&last.close<prev.low&&body<-.3)candidates.push({side:'SELL',setup:'PULLBACK',triggerScore:30,anchor:Math.max(last.high,prev.high)});
-  // A two-candle continuation can be tradeable without clearing an entire
-  // 8-candle range. Require EMA+M5 alignment, real candle close and efficiency.
-  if(trend1==='BUY'&&trend5==='BUY'&&f9>old9&&last.close>prev.high&&
-     body>.32&&prev.close>prev.open&&mom>.35&&efficiency>.42&&
-     last.close>f9&&last.close-f9<atr*.85)
-    candidates.push({side:'BUY',setup:'CONTINUATION',triggerScore:30,anchor:Math.min(last.low,prev.low)});
-  if(trend1==='SELL'&&trend5==='SELL'&&f9<old9&&last.close<prev.low&&
-     body<-.32&&prev.close<prev.open&&mom<-.35&&efficiency>.42&&
-     last.close<f9&&f9-last.close<atr*.85)
-    candidates.push({side:'SELL',setup:'CONTINUATION',triggerScore:30,anchor:Math.max(last.high,prev.high)});
+  // Keep each strategy's detector independent and testable. No rank or
+  // scoring branch may skip a different strategy's risk checks.
+  const candidates=detectScalpStrategies({
+    last,prev,high,low,atr,body,trend1,trend5,f9,old9,mom,efficiency
+  });
 
   return ([1,5] as const).map(horizon=>{
     const plan=base(horizon);
     // M5 must budget its stop, feasible targets and fees against genuine
     // CLOSED M5 candle volatility, not M1 ATR. Never expand M1 risk.
     const rangeAtr=horizon===5?atr5:atr;
-    const ranked=candidates.map(c=>{
-      const dir=c.side==='BUY'?1:-1;
-      const momentum=Math.min(22,Math.max(0,dir*mom)*13+Math.max(0,dir*body)*10);
-      const context=(trend1===c.side?10:0)+(trend5===c.side?(horizon===5?15:10):c.setup==='SWEEP'?5:0);
-      const participation=volumeRatio==null?5:Math.min(15,Math.max(0,volumeRatio)*8);
-      const score=Math.round(Math.min(95,c.triggerScore+momentum+context+participation+efficiency*8));
-      return {...c,score};
-    }).sort((x,y)=>y.score-x.score);
+    const ranked=rankScalpStrategies(candidates,{
+      horizon,trend1,trend5,mom,body,efficiency,volumeRatio
+    });
     const chosen=ranked[0];
     plan.evidence=[
       {label:'اتجاه M1',side:trend1,value:'EMA 9 / 21'},
@@ -191,6 +174,12 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
         status:'WATCH',side:trend1,setup:'BREAKOUT',score:Math.round(Math.min(67,
           46+Math.min(12,Math.abs(mom)*7)+(efficiency>.40?7:0))),
         entry,stop,targets,netRR,
+        strategyReview:describeScalpStrategies([{
+          setup:'BREAKOUT',side:trend1,score:Math.round(Math.min(67,
+            46+Math.min(12,Math.abs(mom)*7)+(efficiency>.40?7:0))),
+          status:'WATCH',netRR,
+          blockers:['فرصة رصد مشروطة؛ لا تزال الشمعة والتأكيد غير مكتملين']
+        }]),
         blockers:['ينتظر اختراق المستوى وإغلاق M1 ثم ثبات 60 ثانية؛ لا دخول الآن'],
         trigger:trigger+' '+entry.toFixed(2)+' مع استمرار الثبات دقيقة؛ التكاليف '+(costEstimated?'تقديرية':'من المصدر'),
         reason:'فرصة رصد مرتبطة بتوافق EMA على M1 وM5، وليست صفقة مفعلة'
@@ -337,13 +326,14 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     };
     });
     const best=chooseEligibleScalpPlan(evaluated);
-    if(!best)return stableCandidate(plan,now,p!,cost);
+    const strategyReview=describeScalpStrategies(evaluated,best);
+    if(!best)return stableCandidate({...plan,strategyReview},now,p!,cost);
     if(evaluated.length>1)best.evidence.push({
       label:'مقارنة الإعدادات',side:'WAIT',
       value:best!==evaluated[0]&&best.status==='ARMED'
         ?'تم فحص '+evaluated.length+' إعدادات؛ اعتماد بديل اجتاز المخاطر بعد رفض الأعلى درجة'
         :'تم فحص '+evaluated.length+' إعدادات؛ لم توجد أولوية زائفة لدرجة إعداد محجوب'
     });
-    return stableCandidate(best,now,p!,cost);
+    return stableCandidate({...best,strategyReview},now,p!,cost);
   });
 }

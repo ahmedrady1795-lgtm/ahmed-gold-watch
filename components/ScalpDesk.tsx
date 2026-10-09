@@ -5,6 +5,7 @@ import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Target} from 'lucide-react';
 const fmt=(v:any,d=2)=>v!=null&&Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
 const sideAr=(s:string)=>s==='BUY'?'شراء':s==='SELL'?'بيع':'انتظار';
 const setupAr=(s:string)=>s==='BREAKOUT'?'اختراق نطاق':s==='PULLBACK'?'إعادة اختبار':s==='SWEEP'?'سحب سيولة وانعكاس':s==='CONTINUATION'?'استمرار اتجاه مؤكد':'رصد إعداد جديد';
+const strategyStateAr=(s:string)=>({NO_TRIGGER:'لا إشارة',DATA_BLOCKED:'بيانات غير كافية',WATCH:'مراقبة فقط',QUALIFIED:'مؤهلة كبديل',SELECTED:'المختارة'} as Record<string,string>)[s]||'مراقبة';
 const stateAr=(s:string)=>({ARMED:'بانتظار التفعيل',ACTIVE:'متابعة تجريبية',TP1:'تحقق T1',STOP:'ضرب الوقف',TIME_EXIT:'انتهت المدة',EXPIRED:'انتهت صلاحية الدخول',CANCELED:'أُلغي قبل الدخول',UNKNOWN:'نتيجة غير موثقة'} as Record<string,string>)[s]||'مراقبة';
 
 export default function ScalpDesk({desk,now=Date.now()}:any){
@@ -70,6 +71,21 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
           {([1,2] as const).map(j=>shown?.targets?.[j]&&<div key={j}>
             <small>T{j+1} · {shown.targets[j].kind==='STRUCTURE'?'مستوى سعري':'امتداد تقديري'}</small>
             <b dir="ltr">{fmt(shown.targets[j].price)}</b>
+          </div>)}
+        </div>
+      </details>}
+      {!!plan?.strategyReview?.length&&<details className="scalp-expand">
+        <summary>مقارنة الاستراتيجيات الأربع · لماذا اختارت النواة هذا الإعداد؟</summary>
+        <p className="scalp-condition">الاختراق وإعادة الاختبار واستمرار الاتجاه وسحب السيولة تُفحص بشكل منفصل. درجة الإعداد لا تعني احتمال ربح، ولا تتحول أي استراتيجية إلى دخول إلا بعد التكلفة ووقف الخسارة وتأكيد M1.</p>
+        <div className="scalp-evidence">
+          {plan.strategyReview.map((r:any)=><div key={r.setup}>
+            <small>{r.label} · {r.family==='REVERSAL'?'انعكاس':r.family==='TREND'?'اتجاه':'زخم'}</small>
+            <b className={r.state==='SELECTED'?'green':r.side==='SELL'?'red':''}>
+              {strategyStateAr(r.state)}
+            </b>
+            <span>{r.score!=null?sideAr(r.side)+' · '+r.score+'/100 · ':''}{r.reason}
+              {r.netRR!=null?' · العائد النظري '+fmt(r.netRR)+'R':''}
+            </span>
           </div>)}
         </div>
       </details>}
