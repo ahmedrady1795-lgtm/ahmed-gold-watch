@@ -25,6 +25,19 @@ async function btcQuote(source:string):Promise<ScalpQuote>{
 let cached:any=null,cachedAt=0;
 let lastScalpDiagnosticAt=0;
 let pending:Promise<any>|null=null;
+// BTC external services can occasionally stall for several seconds. Those
+// fetches MUST NOT prevent the independent GOLD scalp engine from observing
+// successive ticks. A timed-out BTC feed fails CLOSED for BTC only; it is
+// never replaced by synthetic candles or a made-up fill.
+async function boundedSource<T>(pendingSource:Promise<T>,limitMs:number):Promise<T>{
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  return Promise.race([
+    pendingSource,
+    new Promise<T>((_,reject)=>{
+      timer=setTimeout(()=>reject(new Error('BTC external source exceeded latency budget')),limitMs);
+    })
+  ]).finally(()=>{if(timer)clearTimeout(timer);});
+}
 // Read-only scalp cache for AI. The normal paper engine still owns every
 // entry, fill and settlement. No network refresh occurs in this accessor.
 export function peekScalpDesk(maxAgeMs=12000){
@@ -35,7 +48,11 @@ export async function getScalpDesk(){
   if(cached&&now-cachedAt<2000)return cached;
   if(pending)return pending;
   pending=(async()=>{
-    const [goldResult,btcResult,liquidityResult]=await Promise.allSettled([getMarketSnapshot(),getBtcMarket(),getBtcLiquidity()]);
+    const [goldResult,btcResult,liquidityResult]=await Promise.allSettled([
+      getMarketSnapshot(),
+      boundedSource(getBtcMarket(),4000),
+      boundedSource(getBtcLiquidity(),2700)
+    ]);
     const make=(asset:'GOLD'|'BTC',market:any,quote:ScalpQuote,events:any[],newsReady:boolean)=>{
       const at=Date.now();
       const input={asset,c1:market?.c1||[],c5:market?.c5||[],candleSource:market?.priceSource||market?.source||'unavailable',quote,now:at,events,newsReady,marketOpen:asset==='BTC'||session(at),feeBps:envNumber('SCALP_'+asset+'_FEE_BPS'),slippageBps:envNumber('SCALP_'+asset+'_SLIPPAGE_BPS')};
@@ -154,7 +171,7 @@ export async function getScalpDesk(){
     const q=goldSnap?.quote;
     const events=goldSnap?.market.events||[],newsReady=Boolean(goldSnap?.market.newsReady&&Date.now()-goldSnap.market.checkedAt<120000);
     let bq:ScalpQuote={price:null,at:null,source:market?.source||'unavailable'};
-    if(market)bq=await btcQuote(market.source).catch(()=>bq);
+    if(market)bq=await boundedSource(btcQuote(market.source),2700).catch(()=>bq);
     const gold=make('GOLD',goldSnap?.market,{price:q?.price??null,at:q?.sourceTime??null,bid:q?.bid,ask:q?.ask,source:q?.source||'unavailable'},events,newsReady);
     const bitcoin=make('BTC',market,bq,events,newsReady);
     // Monitor missing trade flow without leaking provider credentials or
