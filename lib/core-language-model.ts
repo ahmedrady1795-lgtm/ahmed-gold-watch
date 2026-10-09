@@ -30,6 +30,9 @@ export async function generateEgyptianCoreAnswer(input:CoreLLMInput):Promise<Cor
   if(!apiKey)return null;
   const chosen=String(process.env.GEMINI_MODEL||'gemini-2.5-flash-lite');
   const model=/^[a-zA-Z0-9._-]{1,90}$/.test(chosen)?chosen:'gemini-2.5-flash-lite';
+  const started=Date.now();
+  telemetry.lastAttempt=started;
+  telemetry.model=model;
   const system=[
     'إنتِ النواة، مساعدة ذكاء اصطناعي للمحادثة العامة باللهجة المصرية، وفي نفس الوقت تقدري تساعدي في تحليل الأسواق.',
     'إنتِ مش محصورة في التداول: ردي على أي سؤال أو موضوع مناسب، سواء نقاش عادي، أفكار، تعلم، تكنولوجيا، حياة يومية أو أسئلة متابعة.',
@@ -79,7 +82,9 @@ export async function generateEgyptianCoreAnswer(input:CoreLLMInput):Promise<Cor
       })
     });
     if(!r.ok){
-      console.warn('[CORE-LLM] model request failed',r.status,searchEnabled?'grounded':'normal');
+      telemetry.lastStatus=r.status;
+      telemetry.latencyMs=Date.now()-started;
+      console.warn('[CORE-LLM] http_status='+r.status,'model='+model,'ms='+telemetry.latencyMs);
       // Some models/projects disallow grounding. A normal retry lets open conversation work.
       if(searchEnabled&&[400,403,404,429].includes(r.status)){
         return generateEgyptianCoreAnswer({...input,useGoogleSearch:false});
@@ -89,7 +94,11 @@ export async function generateEgyptianCoreAnswer(input:CoreLLMInput):Promise<Cor
     const json=await r.json();
     const candidate=json?.candidates?.[0];
     const answer=String((candidate?.content?.parts||[]).map((p:any)=>p.text||'').join(' ').trim());
-    if(answer.length<5)return null;
+    if(answer.length<5){
+      telemetry.lastStatus=204;telemetry.latencyMs=Date.now()-started;
+      console.warn('[CORE-LLM] empty_response','model='+model);
+      return null;
+    }
     const meta=candidate?.groundingMetadata;
     const chunks=Array.isArray(meta?.groundingChunks)?meta.groundingChunks:[];
     const sources:CoreSource[]=[];
@@ -99,7 +108,13 @@ export async function generateEgyptianCoreAnswer(input:CoreLLMInput):Promise<Cor
       sources.push({title:title.slice(0,130),url:url.slice(0,1800)});
       if(sources.length>=5)break;
     }
+    telemetry.lastSuccess=Date.now();telemetry.lastStatus=200;telemetry.latencyMs=Date.now()-started;
+    console.info('[CORE-LLM] success','model='+model,'ms='+telemetry.latencyMs);
     return {answer:answer.slice(0,4000),sources,grounded:Boolean(meta?.webSearchQueries?.length||sources.length),
       searchQueries:Array.isArray(meta?.webSearchQueries)?meta.webSearchQueries.slice(0,4).map((x:any)=>String(x).slice(0,120)):[]};
-  }catch{return null;}finally{clearTimeout(timeout);}
+  }catch(e){
+    telemetry.lastStatus=0;telemetry.latencyMs=Date.now()-started;
+    console.warn('[CORE-LLM] request_error',e instanceof Error&&e.name==='AbortError'?'timeout':'network_error','model='+model);
+    return null;
+  }finally{clearTimeout(timeout);}
 }
