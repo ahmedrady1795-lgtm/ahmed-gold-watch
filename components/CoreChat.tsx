@@ -1,6 +1,6 @@
 'use client';
 import {FormEvent,useEffect,useMemo,useRef,useState} from 'react';
-import {BrainCircuit,Mic,MicOff,Send,Volume2,VolumeX,Zap} from 'lucide-react';
+import {BrainCircuit,Mic,MicOff,Send,Trash2,Volume2,VolumeX,Zap} from 'lucide-react';
 
 type Message={id:number;role:'user'|'core';text:string};
 type CoreChatProps={data:any;desk:any};
@@ -16,7 +16,7 @@ function compactContext(data:any,desk:any){
 }
 
 export default function CoreChat({data,desk}:CoreChatProps){
-  const [messages,setMessages]=useState<Message[]>([{id:1,role:'core',text:'أنا النواة. اسألني عن الاتجاه، سبب الانتظار، الدخول، أو تكلفة الصفقة.'}]);
+  const [messages,setMessages]=useState<Message[]>([{id:1,role:'core',text:'أهلًا يا أحمد، أنا النواة. اسألني عن الاتجاه، سبب الانتظار، الدخول، أو تكلفة الصفقة.'}]);
   const [draft,setDraft]=useState('');
   const [busy,setBusy]=useState(false);
   const [listening,setListening]=useState(false);
@@ -45,7 +45,8 @@ export default function CoreChat({data,desk}:CoreChatProps){
     const clean=text.trim();if(!clean||busy)return;
     setDraft('');setMessages(prev=>[...prev,{id:nextId.current++,role:'user',text:clean}]);setBusy(true);
     try{
-      const response=await fetch('/api/core-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:clean,context}),signal:AbortSignal.timeout(7000)});
+      const history=messages.slice(-8).map(item=>({role:item.role,text:item.text}));
+      const response=await fetch('/api/core-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:clean,context,history}),signal:AbortSignal.timeout(7000)});
       const payload=await response.json().catch(()=>null);if(!response.ok||!payload?.ok)throw new Error(payload?.message||'تعذر الرد');
       setMessages(prev=>[...prev,{id:nextId.current++,role:'core',text:payload.answer}]);speak(payload.answer);
     }catch{const fallback='النواة مشغولة لحظة. استخدم بيانات الشاشة الحالية أو أعد إرسال السؤال بعد قليل.';setMessages(prev=>[...prev,{id:nextId.current++,role:'core',text:fallback}]);speak(fallback);}
@@ -89,6 +90,7 @@ export default function CoreChat({data,desk}:CoreChatProps){
   const send=async(event?:FormEvent)=>{
     event?.preventDefault();void submitText(draft);
   };
+  const clearConversation=()=>{setMessages([{id:nextId.current++,role:'core',text:'تمام، بدأنا محادثة جديدة. اسألني عن السوق الحالي.'}]);setDraft('');setVoiceError('');};
   return <section id="core-console" className="core-console" aria-labelledby="core-console-title">
     <div className="core-console-visual">
       <div className="core-network" aria-hidden="true">
@@ -100,7 +102,7 @@ export default function CoreChat({data,desk}:CoreChatProps){
       <div className="core-health"><i/> متصلة بالبيانات · <b>سريعة</b></div>
     </div>
     <div className="core-chat-panel">
-      <div className="core-chat-head"><div><strong>محادثة مباشرة</strong><small>{liveVoice?'اتكلم الآن · النواة تستمع وترد صوتيًا':'اكتب أو استخدم الميكروفون'}</small></div><div className="core-chat-actions"><button type="button" className={'core-live-voice '+(liveVoice?'active':'')} onClick={()=>void toggleLiveVoice()} aria-pressed={liveVoice} title={liveVoice?'إيقاف الكلام المباشر':'بدء الكلام المباشر'}>{liveVoice?<MicOff size={16}/>:<Mic size={16}/>}<span>{liveVoice?'إيقاف الكلام':'تحدث مباشرة'}</span></button><button type="button" className={'core-voice-toggle '+(voiceReply?'active':'')} onClick={()=>setVoiceReply(v=>!v)} aria-pressed={voiceReply} title="تشغيل صوت الرد">{voiceReply?<Volume2 size={17}/>:<VolumeX size={17}/>}<span>{voiceReply?'صوت الرد مفعل':'صوت الرد مغلق'}</span></button></div></div>
+      <div className="core-chat-head"><div><strong>محادثة مباشرة</strong><small>{liveVoice?'اتكلم الآن · النواة تستمع وترد صوتيًا':'اكتب أو استخدم الميكروفون'}</small></div><div className="core-chat-actions"><button type="button" className={'core-live-voice '+(liveVoice?'active':'')} onClick={()=>void toggleLiveVoice()} aria-pressed={liveVoice} title={liveVoice?'إيقاف الكلام المباشر':'بدء الكلام المباشر'}>{liveVoice?<MicOff size={16}/>:<Mic size={16}/>}<span>{liveVoice?'إيقاف الكلام':'تحدث مباشرة'}</span></button><button type="button" className={'core-voice-toggle '+(voiceReply?'active':'')} onClick={()=>setVoiceReply(v=>!v)} aria-pressed={voiceReply} title="تشغيل صوت الرد">{voiceReply?<Volume2 size={17}/>:<VolumeX size={17}/>}<span>{voiceReply?'صوت الرد مفعل':'صوت الرد مغلق'}</span></button><button type="button" className="core-clear" onClick={clearConversation} aria-label="بدء محادثة جديدة" title="بدء محادثة جديدة"><Trash2 size={15}/></button></div></div>
       <div className="core-messages" aria-live="polite">{messages.slice(-5).map(m=><div key={m.id} className={'core-message '+m.role}><span>{m.role==='core'?'النواة':'أنت'}</span><p>{m.text}</p></div>)}{busy&&<div className="core-message core typing"><span>النواة</span><p><i/><i/><i/></p></div>}</div>
       <div className="core-suggestions" aria-label="أسئلة سريعة">{suggestions.map(s=><button key={s} type="button" onClick={()=>setDraft(s)}>{s}</button>)}</div>
       <form className="core-composer" onSubmit={send}><button type="button" className={'core-mic '+(listening?'recording':'')} onClick={startListening} aria-label={listening?'إيقاف التسجيل':'تحدث مع النواة'} title={listening?'إيقاف التسجيل':'تحدث مع النواة'}>{listening?<MicOff size={19}/>:<Mic size={19}/>}</button><textarea value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void send();}}} placeholder="اكتب سؤالك للنواة…" rows={1} aria-label="رسالتك للنواة"/><button className="core-send" type="submit" disabled={!draft.trim()||busy} aria-label="إرسال السؤال"><Send size={18}/></button></form>
