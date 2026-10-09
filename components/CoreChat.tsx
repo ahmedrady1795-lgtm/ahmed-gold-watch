@@ -41,6 +41,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
   const selectedVoiceRef=useRef('');
   const [intelligenceMode,setIntelligenceMode]=useState<'checking'|'smart'|'basic'>('checking');
   const [modelReady,setModelReady]=useState<boolean|null>(null);
+  const [modelConnection,setModelConnection]=useState<'not_tested'|'confirmed'|'failed'>('not_tested');
   const [researchSources,setResearchSources]=useState<Array<{title:string;url:string}>>([]);
   const [researchUsed,setResearchUsed]=useState(false);
   const [analysisSkill,setAnalysisSkill]=useState('');
@@ -64,7 +65,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
   useEffect(()=>{
     let mounted=true;
     fetch('/api/core-chat',{cache:'no-store',signal:AbortSignal.timeout(5000)})
-      .then(r=>r.json()).then(j=>{if(mounted)setModelReady(Boolean(j?.conversationModelReady));})
+      .then(r=>r.json()).then(j=>{if(mounted){setModelReady(Boolean(j?.conversationModelReady));setModelConnection(j?.modelConnection==='confirmed'?'confirmed':j?.modelConnection==='failed'?'failed':'not_tested');}})
       .catch(()=>{if(mounted)setModelReady(null);});
     return()=>{mounted=false;};
   },[]);
@@ -341,7 +342,10 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
       const payload=await response.json().catch(()=>null);
       if(!response.ok||!payload?.ok)throw new Error(payload?.message||'تعذر الرد');
       rememberTurn('core',String(payload.answer||''),nextId.current++);
-      setIntelligenceMode(String(payload.mode||'').startsWith('EGYPTIAN_LLM')?'smart':'basic');
+      const replyMode=String(payload.mode||'');
+      if(replyMode.startsWith('EGYPTIAN_LLM')){setIntelligenceMode('smart');setModelConnection('confirmed');}
+      else if(replyMode==='MODEL_UNAVAILABLE'){setIntelligenceMode('basic');setModelConnection('failed');}
+      else if(replyMode==='RULE_BASED_FALLBACK'||replyMode==='WEB_SEARCH_UNAVAILABLE'){setIntelligenceMode('basic');}
       setResearchUsed(Boolean(payload.web?.searchConfirmed));
       setAnalysisSkill(String(payload.analysisSkill||''));
       setResearchSources(Array.isArray(payload.sources)?payload.sources.slice(0,5)
@@ -382,7 +386,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
         <span className="core-orbit orbit-one"/><span className="core-orbit orbit-two"/><div className="core-emblem"><BrainCircuit size={33}/><small>CORE</small></div>
       </div>
       <div className="core-identity"><span className="core-kicker"><Zap size={13}/> CORE / VOICE</span><h2 id="core-console-title">النواة الصوتية</h2><p>اتكلم بحرية بالمصري؛ النواة تقدر تبحث وتحلل، والنطق بيتحدد حسب أصوات جهازك.</p></div>
-      <div className="core-health"><i/> مصري · <b>{intelligenceMode==='smart'?'محادثة ذكية':modelReady===false?'الحوار الحر غير متصل':modelReady===true?'موديل مُعدّ':'مساعد صوتي'}</b></div>
+      <div className="core-health"><i/> مصري · <b>{modelConnection==='confirmed'?'محادثة Gemini شغالة':modelConnection==='failed'?'اتصال Gemini فيه عطل':modelReady===false?'موديل غير متصل':modelReady===true?'Gemini مُعدّ، لم يتم اختباره':'مساعد صوتي'}</b></div>
     </div>
     <div className="core-chat-panel voice-panel">
       <div className="core-chat-head"><div><strong>اتكلم مع النواة</strong><small>{liveVoice?'الوضع الصوتي شغال':'صوت فقط · بدون شات'}</small></div><div className="core-chat-actions"><button type="button" className={'core-live-voice core-voice-primary '+(liveVoice?'active':'')} onClick={()=>void toggleLiveVoice()} aria-pressed={liveVoice} title={liveVoice?'إيقاف الصوت':'بدء الكلام'}>{liveVoice?<MicOff size={17}/>:<Mic size={17}/>}<span>{liveVoice?'إيقاف الصوت':'ابدأ الكلام'}</span></button><button type="button" className="core-voice-test" onClick={testSpeech} aria-label="اختبار صوت النواة" title="اختبار صوت النواة"><Volume2 size={16}/><span>اختبار الصوت</span></button><button type="button" className="core-clear" onClick={clearConversation} aria-label="بدء جلسة صوتية جديدة" title="بدء جلسة صوتية جديدة"><Trash2 size={15}/></button></div></div>
