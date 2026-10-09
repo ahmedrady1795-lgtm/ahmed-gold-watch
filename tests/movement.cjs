@@ -18,6 +18,10 @@ assert.equal(m1.status,'READY');
 assert.equal(m5.status,'READY');
 assert.equal(m5.conditioning,'MATCHED_3_BAR_TREND');
 assert.ok(m5.samples>=30,'M5 must use a credible historical sample');
+assert.ok(m5.walkForward.tested>=20,'Time-split movement baseline should have independent held-out windows');
+assert.equal(m5.walkForward.nominalCoveragePct,50,'The 25–75% interval has 50% NOMINAL coverage, not 75%');
+assert.equal(m5.walkForward.directionalAccuracyPct,100,
+  'Known synthetic upward history must yield strictly historical forward-median predictions');
 assert.ok(Math.abs(m5.endpointMedian-.5)<.001,
   'M5 forecast measures next five completed one-minute CLOSES, not same-bar excursions');
 assert.ok(Math.abs(m5.upsideP75-.55)<.001,
@@ -27,6 +31,8 @@ assert.ok(Math.abs(m5.downsideP75-.05)<.001,
 assert.ok(m5.lowerPrice<=m5.medianPrice&&m5.medianPrice<=m5.upperPrice);
 const partial={time:now,open:price,high:price+900,low:price-90,close:price+200};
 const unchanged=estimate([...series,partial],1,5,now,price);
+assert.equal(unchanged.walkForward.intervalCoveragePct,m5.walkForward.intervalCoveragePct,
+  'A partial bar must not leak into chronological out-of-sample validation');
 assert.equal(unchanged.endpointMedian,m5.endpointMedian,
   'Unclosed current candle cannot leak into the historical reference distribution');
 const future={time:now+60000,open:price,high:price+200,low:price-20,close:price+100};
@@ -43,6 +49,8 @@ const m5bars=candles(360,.3,300000),m5now=origin+360*300000;
 const m15=estimate(m5bars,5,15,m5now,m5bars.at(-1).close);
 assert.equal(m15.status,'READY');
 assert.ok(m15.samples>=30);
+assert.ok(m15.walkForward.tested>=20);
+assert.equal(m15.walkForward.directionalAccuracyPct,100);
 assert.ok(Math.abs(m15.endpointMedian-.9)<.001,
   '15-minute movement MUST use three future CLOSED M5 candles, not M1 ATR');
 const reflected=series.map(c=>({...c,open:250-c.open,close:250-c.close,
