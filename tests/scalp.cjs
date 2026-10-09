@@ -38,10 +38,15 @@ const sweep=detectScalpStrategies({
   f9:99.2,old9:99.25,mom:.1,efficiency:.25
 });
 assert.equal(sweep.map(x=>x.setup).join(','),'SWEEP','Sweep is a separate reversal strategy');
-const reviews=describeScalpStrategies([
-  {setup:'BREAKOUT',side:'BUY',score:93,status:'WATCH',netRR:1.5,blockers:['هدف غير واقعي']},
-  {setup:'PULLBACK',side:'BUY',score:81,status:'ARMED',netRR:1.4,blockers:[]}
-],{setup:'PULLBACK',side:'BUY',score:81,status:'ARMED',netRR:1.4,blockers:[]});
+const pendingReview={setup:'BREAKOUT',side:'BUY',score:93,status:'WATCH',
+  netRR:2.3,blockers:['هدف غير واقعي'],entry:100,stop:99,targets:[{price:103}],cost:.1};
+const goodReview={setup:'PULLBACK',side:'BUY',score:81,status:'ARMED',
+  netRR:2.3,blockers:[],entry:100,stop:99,targets:[{price:103}],cost:.1};
+const reviews=describeScalpStrategies([pendingReview,goodReview],goodReview);
+assert.equal(describeScalpStrategies([{...goodReview,stop:101}],null).find(x=>x.setup==='PULLBACK').state,'WATCH',
+  'A malformed ARMED strategy cannot appear as qualified in the UI');
+assert.equal(describeScalpStrategies([{...goodReview,cost:2.5}],null).find(x=>x.setup==='PULLBACK').state,'WATCH',
+  'A strategy cannot appear qualified if the net reward is negative after current fees');
 assert.equal(reviews.find(x=>x.setup==='BREAKOUT').state,'WATCH');
 assert.equal(reviews.find(x=>x.setup==='PULLBACK').state,'SELECTED');
 assert.equal(reviews.find(x=>x.setup==='CONTINUATION').state,'NO_TRIGGER');
