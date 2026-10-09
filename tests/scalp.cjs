@@ -109,6 +109,15 @@ assert.equal(hold(confirmedBars,4000.65,now+65000,'STALE_RETEST_TEST',now+90000)
 console.log('PASS: real M1 confirmation unlocks a 45-second retest; stale quotes and stop breaks revoke it.');
 
 const plans=buildScalpPlans(breakout());
+const m5BreakoutPlan=plans.find(p=>p.horizon===5);
+assert.equal(m5BreakoutPlan.setup,'BREAKOUT',
+  'Fixture must exercise real GOLD M5 selection, not just the pure helper');
+assert.ok(m5BreakoutPlan.entry>4000.4&&m5BreakoutPlan.entry<4000.55,
+  'M5 trading level should be close to the prior range HIGH, not above breakout wick');
+assert.ok(m5BreakoutPlan.stop<3999.9,
+  'Integrated GOLD M5 stop must be beyond the last CLOSED M1 breakout candle low');
+assert.ok(m5BreakoutPlan.evidence.some(e=>e.label==='وقف خلف شمعة الاختراق'),
+  'UI evidence must explain structural stop rather than high setup score');
 const buy=plans[0];assert.equal(buy.side,'BUY');assert.ok(['ARMED','WATCH'].includes(buy.status),'Conservative eligibility guards can block an otherwise valid directional setup');
 assert.ok(buy.entry>4000.45);assert.ok(buy.stop<buy.entry);assert.ok(buy.targets[0].price>buy.entry);assert.ok(buy.targets[1].price>buy.targets[0].price);assert.ok(buy.targets[2].price>buy.targets[1].price);assert.ok(buy.netRR>=1.25);
 const reflected=breakout();reflected.c1=reflected.c1.map(c=>({...c,open:8000-c.open,close:8000-c.close,high:8000-c.low,low:8000-c.high}));reflected.quote={...reflected.quote,price:3999.55,bid:3999.54,ask:3999.555};
