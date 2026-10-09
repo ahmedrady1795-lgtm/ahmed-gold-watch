@@ -76,9 +76,9 @@ assert.equal(chooseEligibleScalpPlan([candidate(94,'ARMED',{stop:101})]).status,
   'Never leave an invalid ARMED candidate authorized when no safe backup exists');
 console.log('PASS: two candidate setups ranked by full tradability, stop geometry, and net transaction costs');
 const {FX_WATCHLIST,screenFxQuote}=load('lib/fx-scalp-screen.ts');
-assert.equal(FX_WATCHLIST.length,7);
+assert.equal(FX_WATCHLIST.length,9);
 assert.equal(FX_WATCHLIST.map(x=>x.symbol).join(','),
-  'EURUSD,USDJPY,GBPUSD,USDCAD,AUDUSD,EURGBP,EURAUD',
+  'EURUSD,USDJPY,GBPUSD,USDCAD,AUDUSD,EURGBP,EURAUD,USDCHF,NZDUSD',
   'Cross-VM arrays have separate prototypes; compare literal symbol values');
 assert.equal(screenFxQuote('EURUSD',Date.parse('2026-10-09T09:00:00Z')).status,'BROKER_FEED_REQUIRED');
 const fxt=Date.parse('2026-10-09T09:00:00Z');
@@ -94,7 +94,9 @@ assert.equal(yen.status,'PAPER_RESEARCH_ONLY');
 assert.ok(Math.abs(yen.spreadPips-.8)<.01,'JPY pip is 0.01 rather than 0.0001');
 for(const row of FX_WATCHLIST)assert.equal(screenFxQuote(row.symbol,fxt,e).eligible,false,
   'Even with coherent test quotes a forex pair cannot become a real broker order');
-console.log('PASS: seven FX pairs fail closed without true MT5 quotes/commissions and apply JPY pip conventions');
+assert.equal(FX_WATCHLIST.filter(x=>x.priority==='FIRST').length,3,
+  'Major low-friction first-research candidates are EURUSD, USDJPY, GBPUSD');
+console.log('PASS: nine FX pairs fail closed without true MT5 quotes/commissions and apply JPY pip conventions');
 const trendBars=Array.from({length:210},(_,i)=>({
   time:Date.parse('2026-10-07T00:00:00Z')+i*60000,
   open:100+i*.10,close:100+(i+1)*.10,

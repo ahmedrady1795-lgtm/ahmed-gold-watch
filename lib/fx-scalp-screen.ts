@@ -1,7 +1,7 @@
 // FX universe PRE-FLIGHT, not fake real-time FX quotes and never an order.
 // Trading suitability depends on fresh broker bid/ask, volatility and actual
 // account commission/slippage; none may be inferred from USD gold or BTC.
-export type FxSymbol='EURUSD'|'USDJPY'|'GBPUSD'|'USDCAD'|'AUDUSD'|'EURGBP'|'EURAUD';
+export type FxSymbol='EURUSD'|'USDJPY'|'GBPUSD'|'USDCAD'|'AUDUSD'|'EURGBP'|'EURAUD'|'USDCHF'|'NZDUSD';
 export const FX_WATCHLIST:ReadonlyArray<{
  symbol:FxSymbol;pipSize:number;priority:'FIRST'|'SECOND';label:string
 }>=[
@@ -11,7 +11,9 @@ export const FX_WATCHLIST:ReadonlyArray<{
  {symbol:'USDCAD',pipSize:.0001,priority:'SECOND',label:'حساسية للأخبار الأمريكية والكندية'},
  {symbol:'AUDUSD',pipSize:.0001,priority:'SECOND',label:'اختبر سيولة الجلسة المناسبة'},
  {symbol:'EURGBP',pipSize:.0001,priority:'SECOND',label:'حركة أهدأ غالبًا؛ قارن التكلفة بالهدف'},
- {symbol:'EURAUD',pipSize:.0001,priority:'SECOND',label:'فارق أوسع محتمل؛ لا دخول دون قياس'}
+ {symbol:'EURAUD',pipSize:.0001,priority:'SECOND',label:'فارق أوسع محتمل؛ لا دخول دون قياس'},
+ {symbol:'USDCHF',pipSize:.0001,priority:'SECOND',label:'زوج رئيسي؛ راقب أثر الأخبار وتغير السبريد'},
+ {symbol:'NZDUSD',pipSize:.0001,priority:'SECOND',label:'ساعات سيولة متفاوتة؛ اختبار تكلفة M1 وM5 مطلوب'}
 ];
 export type FxBrokerObservation={
   bid:number;ask:number;quoteAt:number;m1Atr:number;m5Atr:number;
