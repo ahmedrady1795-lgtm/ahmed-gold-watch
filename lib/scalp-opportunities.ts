@@ -1,4 +1,5 @@
 import {ema,indicators,type Candle,type Event} from './engine';
+import {selectGoldM5Breakout} from './scalp-selection';
 
 export type ScalpSide='BUY'|'SELL'|'WAIT';
 export type ScalpQuote={price:number|null;at:number|null;bid?:number|null;ask?:number|null;source:string};
@@ -41,7 +42,8 @@ function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number):Sca
      currentM1Trend==='WAIT'||currentM1Trend===previous.side));
   const explicitRiskVeto=plan.blockers.some(b=>
     b.includes('الهدف أبعد من الحركة المواتية')||
-    b.includes('التكلفة كبيرة بالنسبة لتذبذب الفريم'));
+    b.includes('التكلفة كبيرة بالنسبة لتذبذب الفريم')||
+    b.includes('جودة اختراق M5'));
   const validPrevious=Boolean(previous&&previous.status==='ARMED'&&sideAligned&&
     !explicitRiskVeto&&now>previous.at&&now<previous.expiresAt&&
     previous.entry!=null&&previous.stop!=null&&previous.targets[0]?.price!=null&&
@@ -186,8 +188,15 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     const dir=chosen.side==='BUY'?1:-1,price=p!;
     // Entry is anchored to the last CLOSED bar. Live ticks must never move
     // the published stop/target plan between confirmations.
-    const entry=round(last.close+dir*Math.max(atr*.07,cost*.15,.02));
-    const rawStop=chosen.anchor-dir*atr*.12;
+    const goldM5Breakout=asset==='GOLD'&&horizon===5&&chosen.setup==='BREAKOUT'
+      ?selectGoldM5Breakout({side:chosen.side,boundary:chosen.anchor,
+          open:last.open,high:last.high,low:last.low,close:last.close,
+          atr1:atr,roundTripCost:cost})
+      :null;
+    // Do not chase an M1 closing impulse. Watch the previously broken level
+    // and demand a later confirmed M1 + retest before any PAPER entry.
+    const entry=round(goldM5Breakout?.entry??(last.close+dir*Math.max(atr*.07,cost*.15,.02)));
+    const rawStop=goldM5Breakout?.stop??(chosen.anchor-dir*atr*.12);
     const risk=Math.max(dir*(entry-rawStop),rangeAtr*(horizon===1?.48:.52),cost*2);
     const stop=round(entry-dir*risk);
     const maxMove=rangeAtr*(horizon===1?2:2.65);
@@ -212,7 +221,14 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     }
     const actualRisk=dir*(entry-stop),actualReward=dir*(targets[0].price-entry);
     const rr=actualRisk>0?round((actualReward-cost)/(actualRisk+cost)):null;
-    const reasons:string[]=[];
+    const reasons:string[]=[...(goldM5Breakout?.blockers||[])];
+    if(goldM5Breakout&&goldM5Breakout.entry!=null&&goldM5Breakout.stop!=null){
+      plan.evidence.push(
+        {label:'مستوى إعادة اختبار الاختراق',side:chosen.side,value:round(goldM5Breakout.entry)+' $'},
+        {label:'وقف خلف شمعة الاختراق',side:'WAIT',value:round(goldM5Breakout.stop)+' $'},
+        {label:'نسبة ذيل رفض الاختراق',side:'WAIT',value:round(Number(goldM5Breakout.wickRatio)*100)+'%'}
+      );
+    }
     // Five of seven historical GOLD M1 outcomes exited on the clock, not T1.
     // A 1-minute plan needs a realistic one-minute destination. Measure
     // favorable open-to-extreme travel in the SAME horizon's closed candles.
@@ -247,7 +263,8 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     const projectionScoreGate=confirmedTrendProjection?70:76;
     if(targets[0]?.kind==='PROJECTION'&&chosen.score<projectionScoreGate)
       reasons.push('الهدف الأول تقديري ويلزمه اتجاه وحجم وإمكانية حركة مثبتة');
-    if(last.high-last.low>atr*2.8||Math.abs(price-last.close)>atr*.85||dir*(price-entry)>atr*.3)
+    if(last.high-last.low>atr*2.8||Math.abs(price-last.close)>atr*.85||
+       dir*(price-entry)>atr*(goldM5Breakout?.entry!=null ? .75 : .3))
       reasons.push('السعر ابتعد عن دخول الشمعة المغلقة؛ انتظر إعادة اختبار بدل مطاردة السعر');
     if(rr==null||rr<1.25)reasons.push('العائد بعد التكلفة أقل من 1.25R');
     if(horizon===5&&trend5!==chosen.side&&chosen.setup!=='SWEEP')reasons.push('استمرار M5 لم يؤكد اتجاه الإعداد');
@@ -268,7 +285,8 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     return stableCandidate({...plan,id:asset+'-'+horizon+'-'+last.time+'-'+chosen.setup+'-'+chosen.side,
       side:chosen.side,setup:chosen.setup,score:chosen.score,entry,stop,targets,netRR:rr,
       status:reasons.length?'WATCH':'ARMED',blockers:reasons,
-      trigger:chosen.side==='BUY'?'تجاوز سعر الدخول من أسفل قبل انتهاء الصلاحية':'كسر سعر الدخول من أعلى قبل انتهاء الصلاحية',
+      trigger:goldM5Breakout?.entry!=null?'اختراق مغلق ثم تأكيد M1 وإعادة اختبار مستوى الدخول؛ بلا مطاردة':
+        chosen.side==='BUY'?'تجاوز سعر الدخول من أسفل قبل انتهاء الصلاحية':'كسر سعر الدخول من أعلى قبل انتهاء الصلاحية',
       reason:reasons[0]||(chosen.setup==='SWEEP'?'استعادة مستوى بعد سحب سيولة':chosen.setup==='PULLBACK'?'استمرار بعد إعادة اختبار':chosen.setup==='CONTINUATION'?'استمرار شمعتين مع توافق M5':'إغلاق خارج نطاق آخر 8 شموع')
     },now,p!,cost);
   });
