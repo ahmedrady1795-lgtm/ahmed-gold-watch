@@ -1,6 +1,6 @@
 import {getAiSnapshot} from '../../../lib/ai-snapshot-cache';
 import {searchMarketNews} from '../../../lib/core-web-research';
-import {generateEgyptianCoreAnswer,coreModelConfigured,coreModelTelemetry} from '../../../lib/core-language-model';
+import {generateEgyptianCoreAnswer,coreModelConfigured,coreModelTelemetry,coreModelProvider} from '../../../lib/core-language-model';
 import {buildCoreAnalysisSkills} from '../../../lib/core-analysis-skills';
 
 export const dynamic='force-dynamic';
@@ -170,7 +170,7 @@ export async function POST(request:Request){
   const analysis=buildCoreAnalysisSkills(message,snapshot.payload,body?.context,now);
   const asset=/بيت|btc|bitcoin|بتكوين/.test(message.toLowerCase())?'BTC':
     /ذهب|gold|xau/.test(message.toLowerCase())?'GOLD':'BOTH';
-  // RSS is a no-key fallback for news; Google's grounded search handles broad research.
+  // RSS supplies public headlines; conversational answers use the configured non-Gemini provider.
   const found=research?await searchMarketNews(message,asset):null;
   const recent=(found?.items||[]).filter(x=>!x.publishedAt||(x.publishedAt<=Date.now()+60000&&Date.now()-x.publishedAt<3*86400000)).slice(0,3);
   const web=research?{ok:Boolean(found?.ok),query:found?.query,checkedAt:found?.checkedAt,
@@ -180,19 +180,19 @@ export async function POST(request:Request){
     history:history.map(x=>({role:x.role==='core'?'core':'user',text:String(x.text||'')})),
     context,web,analysis,useGoogleSearch:webSearch});
   if(natural)return Response.json({ok:true,answer:natural.answer,
-    mode:natural.grounded?'EGYPTIAN_LLM_GROUNDED':'EGYPTIAN_LLM',
+    mode:'CORE_AI',provider:natural.provider,model:natural.model,
     action:null,modelConfigured:true,analysisSkill:analysis?.skill||null,
-    web:{searchRequested:webSearch,searchConfirmed:natural.grounded,queries:natural.searchQueries,
+    web:{searchRequested:webSearch,searchConfirmed:false,queries:[],
       ...(research?{newsFallbackReady:Boolean(found?.ok)}:{})},
     sources:natural.sources.length?natural.sources:recent.map(x=>({title:x.title,url:x.url})),
     checkedAt:context.checkedAt,latencyMs:Date.now()-now},
     {headers:{'Cache-Control':'private, no-store'}});
   // Never pass off a canned answer as genuine conversation after the model failed.
-  if(coreModelConfigured()&&!analysis&&!research){
+  if(!analysis&&!research){
     const health=coreModelTelemetry();
     return Response.json({ok:true,mode:'MODEL_UNAVAILABLE',action:null,
-      answer:'مش قادرة أوصل لموديل الذكاء دلوقتي، ومش عايزة أرد عليك كلام محفوظ وأقولك إني فهمت. الاتصال محتاج فحص.',
-      modelHealth:{lastStatus:health.lastStatus,lastAttempt:health.lastAttempt,model:health.model},
+      answer:coreModelConfigured()?'موديل المحادثة مش بيرد دلوقتي. مش هخترع إجابة ولا أوهمك إنه شغال.':'وقفت Gemini تماماً. علشان نكمل محادثة حرة بذكاء فعلي، لازم نوصل موديل بديل. تحليل السوق والأوامر الأساسية لسه شغالة.',
+      modelHealth:{lastStatus:health.lastStatus,lastAttempt:health.lastAttempt,model:health.model,provider:coreModelProvider()},
       checkedAt:context.checkedAt,latencyMs:Date.now()-now},
       {headers:{'Cache-Control':'private, no-store'}});
   }
@@ -222,9 +222,9 @@ export async function GET(){
   return Response.json({ok:true,conversationModelReady:coreModelConfigured(),
     modelConnection:connection,
     modelHealth:{lastStatus:health.lastStatus,lastAttempt:health.lastAttempt,
-      lastSuccess:health.lastSuccess,latencyMs:health.latencyMs,model:health.model},
+      lastSuccess:health.lastSuccess,latencyMs:health.latencyMs,model:health.model,provider:health.provider},
     capabilities:{voiceCommands:true,marketData:true,publicNews:true,
-      publicGoogleSearch:coreModelConfigured()&&process.env.CORE_GOOGLE_SEARCH_ENABLED!=='false',
+      generalWebSearch:false,modelProvider:coreModelProvider(),
       analysisSkills:['TREND','SCALP','BREAKOUT','LIQUIDITY','COST','FORECAST','RISK','VALIDATION','MARKET_REVIEW'],
       openConversation:coreModelConfigured()}},
     {headers:{'Cache-Control':'private, no-store'}});
