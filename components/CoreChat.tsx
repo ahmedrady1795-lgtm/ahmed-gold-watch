@@ -38,6 +38,9 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
   const [voiceError,setVoiceError]=useState('');
   const [intelligenceMode,setIntelligenceMode]=useState<'checking'|'smart'|'basic'>('checking');
   const [modelReady,setModelReady]=useState<boolean|null>(null);
+  const [researchSources,setResearchSources]=useState<Array<{title:string;url:string}>>([]);
+  const [researchUsed,setResearchUsed]=useState(false);
+  const [analysisSkill,setAnalysisSkill]=useState('');
   const recognitionRef=useRef<any>(null);
   const liveVoiceRef=useRef(false);
   const speakingRef=useRef(false);
@@ -293,7 +296,12 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
       const payload=await response.json().catch(()=>null);
       if(!response.ok||!payload?.ok)throw new Error(payload?.message||'تعذر الرد');
       rememberTurn('core',String(payload.answer||''),nextId.current++);
-      setIntelligenceMode(payload.mode==='EGYPTIAN_LLM'?'smart':'basic');
+      setIntelligenceMode(String(payload.mode||'').startsWith('EGYPTIAN_LLM')?'smart':'basic');
+      setResearchUsed(Boolean(payload.web?.searchConfirmed));
+      setAnalysisSkill(String(payload.analysisSkill||''));
+      setResearchSources(Array.isArray(payload.sources)?payload.sources.slice(0,5)
+        .filter((x:any)=>typeof x?.url==='string'&&/^https:\/\//i.test(x.url))
+        .map((x:any)=>({title:String(x.title||x.source||'مصدر').slice(0,90),url:String(x.url)})):[]);
       if(payload?.action?.type==='STOP_VOICE'){stopVoice();return;}
       if(payload?.action)onCommand?.(payload.action as VoiceAction);
       speak(payload.answer);
@@ -313,7 +321,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
     voiceBufferRef.current='';interimVoiceRef.current='';
     if(!startRecognition(true)){liveVoiceRef.current=false;setLiveVoice(false);}
   };
-  const clearConversation=()=>{messagesRef.current=[];setMessages([]);setVoiceError('');voiceBufferRef.current='';interimVoiceRef.current='';};
+  const clearConversation=()=>{messagesRef.current=[];setMessages([]);setVoiceError('');voiceBufferRef.current='';interimVoiceRef.current='';setResearchSources([]);setResearchUsed(false);setAnalysisSkill('');};
   useEffect(()=>()=>{liveVoiceRef.current=false;recognitionRef.current?.stop();if(voiceSendTimerRef.current)clearTimeout(voiceSendTimerRef.current);clearSpeechWatch();if(typeof window!=='undefined')window.speechSynthesis?.cancel();},[]);
 
   const status=voiceError?'الصوت محتاج تفعيل':speaking?'النواة بترد عليك صوتيًا':busy?'بحلل سؤالك بسرعة':listening?'سامعك… اتكلم دلوقتي':liveVoice?'قول سؤالك بصوتك':'اضغط «ابدأ الكلام» وابدأ سؤالك';
@@ -326,7 +334,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
         <span className="core-node node-a"/><span className="core-node node-b"/><span className="core-node node-c"/><span className="core-node node-d"/><span className="core-node node-e"/><span className="core-node node-f"/>
         <span className="core-orbit orbit-one"/><span className="core-orbit orbit-two"/><div className="core-emblem"><BrainCircuit size={33}/><small>CORE</small></div>
       </div>
-      <div className="core-identity"><span className="core-kicker"><Zap size={13}/> CORE / VOICE</span><h2 id="core-console-title">النواة الصوتية</h2><p>اتكلم طبيعي، والنواة ترد عليك بصوت مصري من بيانات السوق الحالية.</p></div>
+      <div className="core-identity"><span className="core-kicker"><Zap size={13}/> CORE / VOICE</span><h2 id="core-console-title">النواة الصوتية</h2><p>اتكلم بحرية بالمصري؛ النواة تقدر تبحث في الإنترنت وتحلل السوق من أدلة متعددة.</p></div>
       <div className="core-health"><i/> مصري · <b>{intelligenceMode==='smart'?'محادثة ذكية':modelReady===false?'الحوار الحر غير متصل':modelReady===true?'موديل مُعدّ':'مساعد صوتي'}</b></div>
     </div>
     <div className="core-chat-panel voice-panel">
@@ -338,6 +346,24 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
         <div className="core-voice-wave" aria-hidden="true"><i/><i/><i/><i/><i/><i/><i/></div>
       </div>
       {voiceError&&<small className="core-voice-error" role="status">{voiceError}</small>}
+      {(researchSources.length>0||analysisSkill)&&
+        <div className="core-voice-research" style={{padding:'8px 12px',fontSize:12}}>
+          {analysisSkill&&<small style={{display:'block',opacity:.85,marginBottom:5}}>تحليل قائم على بيانات الموقع · {({
+            TREND:'اتجاه متعدد الفريمات',SCALP:'سكالب بعد التكلفة',BREAKOUT:'تأكيد الاختراق',
+            LIQUIDITY:'سيولة وحجم تداول',COST:'تكلفة التنفيذ',FORECAST:'توقع الحركة',
+            RISK:'إدارة المخاطر',VALIDATION:'اختبار الدقة',MARKET_REVIEW:'مراجعة السوق'
+          } as Record<string,string>)[analysisSkill]||'فحص البيانات'}</small>}
+          {researchSources.length>0&&<small style={{display:'block',marginBottom:5}}>
+            {researchUsed?'مصادر بحث الإنترنت:':'مصادر أخبار متاحة:'}
+          </small>}
+          {researchSources.map((item,i)=><a key={item.url+i} href={item.url} target="_blank" rel="noopener noreferrer"
+            style={{display:'inline-block',padding:'3px 7px',margin:'2px 4px',borderRadius:6,
+              border:'1px solid rgba(130,140,170,.3)',color:'inherit',maxWidth:'96%',overflow:'hidden',
+              textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+            {i+1} · {item.title}
+          </a>)}
+        </div>}
+
       <small className="core-note">{modelReady===false
         ?'للحوار المفتوح في أي موضوع، لازم مفتاح GEMINI_API_KEY يتضاف بأمان في إعدادات Railway. لحد ما يتوصل، الردود الأساسية محدودة. نبرة الصوت بتعتمد على أصوات جهازك.'
         :'اسألني عن أي موضوع. النطق باللهجة المصرية بيستخدم أفضل صوت عربي متاح على جهازك، والأوامر المسموح بيها بتشتغل جوه الموقع.'}</small>
