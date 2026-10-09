@@ -37,7 +37,7 @@ const sweep=detectScalpStrategies({
   low:99,high:100,body:.42,trend1:'WAIT',trend5:'SELL',
   f9:99.2,old9:99.25,mom:.1,efficiency:.25
 });
-assert.deepEqual(sweep.map(x=>x.setup),['SWEEP'],'Sweep is a separate reversal strategy');
+assert.equal(sweep.map(x=>x.setup).join(','),'SWEEP','Sweep is a separate reversal strategy');
 const reviews=describeScalpStrategies([
   {setup:'BREAKOUT',side:'BUY',score:93,status:'WATCH',netRR:1.5,blockers:['هدف غير واقعي']},
   {setup:'PULLBACK',side:'BUY',score:81,status:'ARMED',netRR:1.4,blockers:[]}
