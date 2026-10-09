@@ -77,8 +77,9 @@ assert.equal(chooseEligibleScalpPlan([candidate(94,'ARMED',{stop:101})]).status,
 console.log('PASS: two candidate setups ranked by full tradability, stop geometry, and net transaction costs');
 const {FX_WATCHLIST,screenFxQuote}=load('lib/fx-scalp-screen.ts');
 assert.equal(FX_WATCHLIST.length,7);
-assert.deepEqual(FX_WATCHLIST.map(x=>x.symbol),
-  ['EURUSD','USDJPY','GBPUSD','USDCAD','AUDUSD','EURGBP','EURAUD']);
+assert.equal(FX_WATCHLIST.map(x=>x.symbol).join(','),
+  'EURUSD,USDJPY,GBPUSD,USDCAD,AUDUSD,EURGBP,EURAUD',
+  'Cross-VM arrays have separate prototypes; compare literal symbol values');
 assert.equal(screenFxQuote('EURUSD',now).status,'BROKER_FEED_REQUIRED');
 const fxt=Date.parse('2026-10-09T09:00:00Z');
 const e={bid:1.10000,ask:1.10010,quoteAt:fxt,
