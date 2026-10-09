@@ -7,7 +7,35 @@ function load(file){
   return exports;
 }
 const {buildScalpPlans}=load('lib/scalp-opportunities.ts');
-const {selectGoldM5Breakout}=load('lib/scalp-selection.ts');
+const {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid}=load('lib/scalp-selection.ts');
+const trendBars=Array.from({length:210},(_,i)=>({
+  time:Date.parse('2026-10-07T00:00:00Z')+i*60000,
+  open:100+i*.10,close:100+(i+1)*.10,
+  high:100+(i+1)*.10+.05,low:100+i*.10-.05
+}));
+const fwdBuy=observedForwardReach(trendBars,'BUY',5);
+assert.ok(fwdBuy.samples>=30,'5-minute sample must have at least 30 non-overlapping completed windows');
+assert.ok(Math.abs(fwdBuy.favorableP75-.55)<.001,
+  'M5 target reach must measure NEXT five M1 highs after previous close');
+assert.ok(Math.abs(fwdBuy.adverseP50-.05)<.001,
+  'Historical adverse excursion must start from the same reference entry');
+const fwdSell=observedForwardReach(trendBars.map(c=>({
+  ...c,open:200-c.open,close:200-c.close,
+  high:200-c.low,low:200-c.high
+})),'SELL',5);
+assert.equal(fwdSell.favorableP75,fwdBuy.favorableP75,
+  'BUY and SELL forward-window geometry must be symmetric');
+const brokenBars=trendBars.map(c=>({...c}));
+brokenBars[brokenBars.length-9].time+=60000;
+assert.ok(observedForwardReach(brokenBars,'BUY',5).samples<fwdBuy.samples,
+  'Gapped closed M1 bars may not be treated as uninterrupted forward windows');
+assert.equal(frozenTrendIsValid('BUY','BREAKOUT','BUY','SELL'),false,
+  'A BUY frozen candidate cannot survive an opposing CURRENT M5 trend');
+assert.equal(frozenTrendIsValid('SELL','CONTINUATION','BUY','SELL'),false,
+  'An M1 reversal cancels a frozen M5 continuation');
+assert.equal(frozenTrendIsValid('SELL','BREAKOUT','SELL','SELL'),true,
+  'A genuinely aligned, still-valid sell may remain frozen for confirmation');
+console.log('PASS: causal BUY/SELL forward reach, price gaps, and M1/M5 frozen-trend invalidation');
 // Breakout selection tests are synthetic, not a profitable backtest.
 // Gold M5 BUY/SELL now plan an ENTRY near the old boundary (limit retest),
 // place the SL beyond the real completed breakout candle, and reject wick traps.
