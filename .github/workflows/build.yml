@@ -20,6 +20,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      - run: node --check learning-worker.mjs
       - run: node tests/scalp.cjs
       - run: python3 -m compileall -q ml-service neural-service
       - run: npm run build
