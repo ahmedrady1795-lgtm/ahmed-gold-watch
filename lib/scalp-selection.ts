@@ -100,7 +100,7 @@ export function chooseEligibleScalpPlan<T extends {
        ![entry,stop,target,plan.cost].every(Number.isFinite)||plan.cost<0)return false;
     const dir=plan.side==='BUY'?1:-1,risk=dir*(entry-stop),reward=dir*(target-entry);
     return risk>0&&reward>0&&
-      (reward-plan.cost)/(risk+plan.cost)>=1.245;
+      (reward-plan.cost)/(risk+plan.cost) >= 1.25;
   });
   // Existing ranked order remains authoritative *among fully qualified*
   // plans; a WATCH with any score can never displace an ARMED trade.
