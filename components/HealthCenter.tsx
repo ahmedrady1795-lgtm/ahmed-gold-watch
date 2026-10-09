@@ -13,7 +13,13 @@ export default function HealthCenter(){
   const goldClosed=h?.session?.goldOpen===false;
   const mt5=h?.services?.mt5Bridge;
   const bg=h?.services?.background;
+  const ai=h?.services?.ai?.models;
   const items:HealthItem[]=[
+    ...(['mlM1','mlM5','neural'] as const).map(key=>({
+      label:key==='mlM1'?'ML M1':key==='mlM5'?'ML M5':'Neural AI',
+      state:(ai?.[key]?.ready?'ok':!ai?.[key]?.configured?'neutral':'bad') as HealthState,
+      text:ai?.[key]?.ready?'READY':ai?.[key]?.status||'NOT READY'
+    })),
     {label:'Price',state:h?.services?.quote?.ok?'ok':'bad',text:h?.services?.quote?.ok?(goldClosed?'LAST PRICE':'OK'):'NOT READY'},
     {label:'Candles/Market',state:h?.services?.market?.ok?'ok':goldClosed?'neutral':'bad',text:h?.services?.market?.ok?'OK':goldClosed?'MARKET CLOSED':'NOT READY'},
     {label:'Journal',state:h?.services?.journal?'ok':'bad',text:h?.services?.journal?'OK':'NOT READY'},
@@ -33,6 +39,7 @@ export default function HealthCenter(){
       <button className="iconbutton" onClick={load} disabled={busy}><RefreshCw size={16}/>فحص</button>
     </div>
     <div className={`healthbanner ${h?.status||'halted'}`}><Activity/><strong>{banner}</strong></div>
+    {h?.services?.ai?.reasons?.length>0&&<div className="rule compact">جاهزية AI غير مكتملة: {h.services.ai.reasons.join(" · ")}</div>}
     <div className="healthgrid">
       {items.map(item=>{
         const Icon=item.state==='ok'?ShieldCheck:item.state==='bad'?ShieldX:MinusCircle;
