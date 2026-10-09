@@ -1,5 +1,5 @@
 import {ema,indicators,type Candle,type Event} from './engine';
-import {selectGoldM5Breakout} from './scalp-selection';
+import {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid} from './scalp-selection';
 
 export type ScalpSide='BUY'|'SELL'|'WAIT';
 export type ScalpQuote={price:number|null;at:number|null;bid?:number|null;ask?:number|null;source:string};
@@ -34,12 +34,15 @@ function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number):Sca
     Math.abs(previous.targets[0].price-previous.entry):0;
   const liveNetRR=oldRisk>0?(oldReward-cost)/(oldRisk+cost):0;
   const currentM1Trend=plan.evidence.find(e=>e.label==='اتجاه M1')?.side;
-  // A same-side setup may keep its entry through the next closed candle.
-  // An opposing setup or reversal of EMA trend cancels the stale candidate.
+  const currentM5Trend=plan.evidence.find(e=>e.label==='سياق M5')?.side;
+  // When GOLD M5 had an armed setup, do not inherit its old grade after
+  // either closed trend flips. A new plan must qualify from scratch.
+  const currentTrendOK=previous?.horizon===5
+    ?previous.side!=='WAIT'&&frozenTrendIsValid(previous.side,previous.setup,currentM1Trend,currentM5Trend)
+    :previous?.setup==='SWEEP'||currentM1Trend==null||
+      currentM1Trend==='WAIT'||currentM1Trend===previous?.side;
   const sideAligned=Boolean(previous&&
-    (plan.side==='WAIT'||plan.side===previous.side)&&
-    (previous.setup==='SWEEP'||currentM1Trend==null||
-     currentM1Trend==='WAIT'||currentM1Trend===previous.side));
+    (plan.side==='WAIT'||plan.side===previous.side)&&currentTrendOK);
   const explicitRiskVeto=plan.blockers.some(b=>
     b.includes('الهدف أبعد من الحركة المواتية')||
     b.includes('التكلفة كبيرة بالنسبة لتذبذب الفريم')||
@@ -236,7 +239,16 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     const historical=(horizon===1?a.slice(-80):b.slice(-60));
     const favorable=historical.map(c=>Math.max(0,
       chosen.side==='BUY'?c.high-c.open:c.open-c.low));
-    const empiricalReach=quantile(favorable,horizon===1?.55:.75);
+    // GOLD M5 uses what price ACTUALLY traveled over the NEXT five
+    // completed M1 bars after a hypothetical historical entry, not what
+    // happened during the same completed M5 candle. Take non-overlapping
+    // windows to reduce correlated observations. Fallback conservatively if
+    // the broker-derived M1 history lacks 30 complete windows.
+    const forwardReach=asset==='GOLD'&&horizon===5
+      ?observedForwardReach(a,chosen.side,5):null;
+    const empiricalReach=forwardReach&&forwardReach.samples>=30&&
+      forwardReach.favorableP75!=null
+      ?forwardReach.favorableP75:quantile(favorable,horizon===1?.55:.75);
     if(empiricalReach!=null&&historical.length>=40&&
        actualReward>empiricalReach*(horizon===1?1:1.15)){
       reasons.push('الهدف أبعد من الحركة المواتية المعتادة خلال '+(horizon===1?'دقيقة':'خمس دقائق')+
@@ -279,6 +291,19 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       label:'حد الحركة المواتية للفريم',side:'WAIT',
       value:empiricalReach==null?'غير متاح':round(empiricalReach)+' $ / '+(horizon===1?'M1':'M5')
     });
+    if(forwardReach){
+      plan.evidence.push({
+        label:'عينة الحركة بعد الدخول',side:'WAIT',
+        value:forwardReach.samples>=30
+          ?forwardReach.samples+' نوافذ تاريخية M5 غير متداخلة · P75'
+          :'بيانات 5 دقائق مستقبلية غير كافية؛ قياس الشموع المحافظ'
+      });
+      plan.evidence.push({
+        label:'ارتداد معاكس تاريخي بعد الدخول',side:'WAIT',
+        value:forwardReach.adverseP50!=null?
+          round(forwardReach.adverseP50)+' $ · وسيط 5 دقائق (معلومة لا ضمان)': 'غير متاح'
+      });
+    }
     // A missing optional news feed is not itself a scheduled major release.
     // Known high-impact release windows remain blocked at the base gate.
     if(!input.newsReady)plan.evidence.push({label:'تغطية الأخبار',side:'WAIT',value:'غير مكتملة؛ افحص التقويم'});
