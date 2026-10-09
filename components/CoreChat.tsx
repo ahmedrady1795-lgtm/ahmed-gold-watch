@@ -51,6 +51,9 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
   const audioContextRef=useRef<any>(null);
   const nextId=useRef(1);
   const context=useMemo(()=>compactContext(data,desk),[data,desk]);
+  // The microphone callback may outlive multiple market snapshots.
+  const latestMarketContext=useRef(context);
+  latestMarketContext.current=context;
 
   useEffect(()=>{
     let mounted=true;
@@ -286,7 +289,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
     rememberTurn('user',clean,nextId.current++);
     setBusyState(true);
     try{
-      const response=await fetch('/api/core-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:clean,context,history}),signal:AbortSignal.timeout(16000)});
+      const response=await fetch('/api/core-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:clean,context:latestMarketContext.current,history}),signal:AbortSignal.timeout(16000)});
       const payload=await response.json().catch(()=>null);
       if(!response.ok||!payload?.ok)throw new Error(payload?.message||'تعذر الرد');
       rememberTurn('core',String(payload.answer||''),nextId.current++);
