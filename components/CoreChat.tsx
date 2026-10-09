@@ -23,6 +23,14 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
   // The voice-first surface keeps a short in-memory history for context,
   // but never renders a text chat or asks the user to type.
   const [messages,setMessages]=useState<Message[]>([]);
+  // Voice recognition callbacks are long-lived: always read the latest turns,
+  // never the messages array captured when the microphone first started.
+  const messagesRef=useRef<Message[]>([]);
+  const rememberTurn=(role:'user'|'core',text:string,id:number)=>{
+    const next=[...messagesRef.current,{id,role,text}].slice(-32);
+    messagesRef.current=next;
+    setMessages(next);
+  };
   const [busy,setBusy]=useState(false);
   const [listening,setListening]=useState(false);
   const [liveVoice,setLiveVoice]=useState(false);
@@ -34,6 +42,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
   const speakingRef=useRef(false);
   const busyRef=useRef(false);
   const voiceBufferRef=useRef('');
+  const interimVoiceRef=useRef('');
   const voiceSendTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
   const voicesRef=useRef<SpeechSynthesisVoice[]>([]);
   const speechTokenRef=useRef(0);
@@ -78,6 +87,8 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
     speechTokenRef.current+=1;
     clearSpeechWatch();
     recognitionRef.current?.stop();
+    if(voiceSendTimerRef.current)clearTimeout(voiceSendTimerRef.current);
+    voiceBufferRef.current='';interimVoiceRef.current='';
     if(typeof window!=='undefined')window.speechSynthesis?.cancel();
   };
   const startRecognition=(continuous=false)=>{
@@ -91,13 +102,14 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
     recognition.onresult=(event:any)=>{
       for(let i=event.resultIndex||0;i<(event.results||[]).length;i++){
         const result=event.results[i],text=String(result?.[0]?.transcript||'').trim();
-        if(result?.isFinal&&text)voiceBufferRef.current=(voiceBufferRef.current+' '+text).trim();
+        if(result?.isFinal&&text){voiceBufferRef.current=(voiceBufferRef.current+' '+text).trim();interimVoiceRef.current='';}
+        else if(text)interimVoiceRef.current=text;
       }
       if(continuous&&voiceBufferRef.current&&!busyRef.current&&!speakingRef.current){
         if(voiceSendTimerRef.current)clearTimeout(voiceSendTimerRef.current);
         voiceSendTimerRef.current=setTimeout(()=>{
           const message=voiceBufferRef.current.trim();
-          voiceBufferRef.current='';
+          voiceBufferRef.current='';interimVoiceRef.current='';
           if(message)void submitVoice(message);
         },650);
       }
@@ -111,7 +123,19 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
     };
     recognition.onend=()=>{
       setListening(false);
-      if(liveVoiceRef.current&&!speakingRef.current&&!busyRef.current)window.setTimeout(()=>startRecognition(true),350);
+      // Safari sometimes ends a recognition turn with a transcript that has
+      // never been marked final; keep it instead of silently discarding it.
+      if(liveVoiceRef.current&&!busyRef.current&&!speakingRef.current){
+        const pending=(voiceBufferRef.current||interimVoiceRef.current).trim();
+        if(pending){
+          if(voiceSendTimerRef.current)clearTimeout(voiceSendTimerRef.current);
+          voiceSendTimerRef.current=setTimeout(()=>{
+            if(!liveVoiceRef.current||busyRef.current||speakingRef.current)return;
+            voiceBufferRef.current='';interimVoiceRef.current='';
+            void submitVoice(pending);
+          },300);
+        }else window.setTimeout(()=>startRecognition(true),350);
+      }
     };
     recognitionRef.current=recognition;
     setVoiceError('');
@@ -249,21 +273,21 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
     const clean=text.trim();
     if(!clean||busyRef.current)return;
     recognitionRef.current?.stop();
-    const history=messages.slice(-8).map(item=>({role:item.role,text:item.text}));
-    setMessages(prev=>[...prev,{id:nextId.current++,role:'user',text:clean}]);
+    const history=messagesRef.current.slice(-18).map(item=>({role:item.role,text:item.text.slice(0,650)}));
+    rememberTurn('user',clean,nextId.current++);
     setBusyState(true);
     try{
       const response=await fetch('/api/core-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:clean,context,history}),signal:AbortSignal.timeout(16000)});
       const payload=await response.json().catch(()=>null);
       if(!response.ok||!payload?.ok)throw new Error(payload?.message||'تعذر الرد');
-      setMessages(prev=>[...prev,{id:nextId.current++,role:'core',text:payload.answer}]);
+      rememberTurn('core',String(payload.answer||''),nextId.current++);
       setIntelligenceMode(payload.mode==='EGYPTIAN_LLM'?'smart':'basic');
       if(payload?.action?.type==='STOP_VOICE'){stopVoice();return;}
       if(payload?.action)onCommand?.(payload.action as VoiceAction);
       speak(payload.answer);
     }catch{
-      const fallback='الرد اتأخر مني شوية. ممكن تعيد السؤال؟';
-      setMessages(prev=>[...prev,{id:nextId.current++,role:'core',text:fallback}]);
+      const fallback='معلش، الرد اتأخر. ممكن تعيد آخر حتة قلتها؟';
+      rememberTurn('core',fallback,nextId.current++);
       speak(fallback);
     }finally{setBusyState(false);}
   };
@@ -274,10 +298,10 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
     primeSpeech();
     liveVoiceRef.current=true;
     setLiveVoice(true);
-    voiceBufferRef.current='';
+    voiceBufferRef.current='';interimVoiceRef.current='';
     if(!startRecognition(true)){liveVoiceRef.current=false;setLiveVoice(false);}
   };
-  const clearConversation=()=>{setMessages([]);setVoiceError('');voiceBufferRef.current='';};
+  const clearConversation=()=>{messagesRef.current=[];setMessages([]);setVoiceError('');voiceBufferRef.current='';interimVoiceRef.current='';};
   useEffect(()=>()=>{liveVoiceRef.current=false;recognitionRef.current?.stop();if(voiceSendTimerRef.current)clearTimeout(voiceSendTimerRef.current);clearSpeechWatch();if(typeof window!=='undefined')window.speechSynthesis?.cancel();},[]);
 
   const status=voiceError?'الصوت محتاج تفعيل':speaking?'النواة بترد عليك صوتيًا':busy?'بحلل سؤالك بسرعة':listening?'سامعك… اتكلم دلوقتي':liveVoice?'قول سؤالك بصوتك':'اضغط «ابدأ الكلام» وابدأ سؤالك';
