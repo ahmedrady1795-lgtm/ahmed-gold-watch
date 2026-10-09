@@ -101,18 +101,16 @@ function answerFor(message:string,ctx:CoreContext,now:number,history:ChatHistory
 }
 
 
-type VoiceCommand=
+type ConsoleCommand=
  |{type:'REFRESH_ANALYSIS'}
  |{type:'SET_ASSET';asset:'ALL'|'GOLD'|'BTC'}
  |{type:'NAVIGATE';section:'core-console'|'market-overview'|'scalp-opportunities'|'market-forecast'|'market-news'}
- |{type:'STOP_VOICE'};
-function voiceCommand(input:string):{answer:string;action:VoiceCommand|null}|null{
+;
+function consoleCommand(input:string):{answer:string;action:ConsoleCommand|null}|null{
  const q=input.toLowerCase().trim();
- // Broker orders, account changes, and code mutations are never executed from speech.
+ // No brokerage orders, account changes, or code mutation via the text console.
  if(/(?:افتح|نفذ|نفّذ|ادخل|اشتري|بيعلي|حط|حطلي)\s+(?:صفقة|شراء|بيع|اوردر|أمر|limit|order)/.test(q))
    return {answer:'أقدر أجهز خطة وتحليل، بس فتح صفقة حقيقية على ميتاتريدر محتاج ربط تداول منفصل وتأكيد واضح. مش هفتحها من الكلام بس.',action:null};
- if(/^(?:اقفل|وقف|اوقف|أوقف|إيقاف|اطفي)\s+(?:ال)?صوت/.test(q))
-   return {answer:'حاضر، هوقف الوضع الصوتي.',action:{type:'STOP_VOICE'}};
  if(/(?:حدّث|حدث|جدد|جدّد|اعمل تحديث|شغل تحليل|شغّل تحليل|اعد التحليل|أعد التحليل)/.test(q)&&
    /(?:تحليل|الذهب|البيتكوين|السوق|البيانات|الكل|الاسعار|الأسعار|التحديث)/.test(q))
    return {answer:'حاضر، بطلب تحديث جديد لتحليل السوق دلوقتي.',action:{type:'REFRESH_ANALYSIS'}};
@@ -177,7 +175,7 @@ export async function POST(request:Request){
       latencyMs:Date.now()-now,modelConfigured:coreModelConfigured()},
       {headers:{'Cache-Control':'private, no-store'}});
   }
-  const command=voiceCommand(message);
+  const command=consoleCommand(message);
   if(command)return Response.json({ok:true,answer:command.answer,action:command.action,checkedAt:context.checkedAt,
     mode:'VOICE_COMMAND'},{headers:{'Cache-Control':'private, no-store'}});
   const research=isNewsRequest(message),webSearch=wantsWebSearch(message);
@@ -237,7 +235,7 @@ export async function GET(){
     modelConnection:connection,
     modelHealth:{lastStatus:health.lastStatus,lastAttempt:health.lastAttempt,
       lastSuccess:health.lastSuccess,latencyMs:health.latencyMs,model:health.model,provider:health.provider},
-    capabilities:{voiceCommands:true,siteInspection:true,marketData:true,publicNews:true,
+    capabilities:{voiceCommands:false,textCommands:true,siteInspection:true,marketData:true,publicNews:true,
       generalWebSearch:false,modelProvider:coreModelProvider(),
       analysisSkills:['TREND','SCALP','BREAKOUT','LIQUIDITY','COST','FORECAST','RISK','VALIDATION','MARKET_REVIEW'],
       openConversation:coreModelConfigured()}},
