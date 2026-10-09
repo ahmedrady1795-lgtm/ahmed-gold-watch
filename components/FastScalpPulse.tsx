@@ -32,6 +32,16 @@ export default function FastScalpPulse({desk,now,aiAgeMs}:{
             ?<p>مستوى مراقبة {fmt(v.entry)} · الوقف المقترح {fmt(v.stop)} · الهدف المشروط {fmt(v.target)}</p>
             :null}
         <p style={{margin:'8px 0 0',fontSize:13}}>{v.reason}</p>
+        {(()=>{
+          const study=desk?.[v.asset==='GOLD'?'gold':'bitcoin']?.directionStudy?.m5;
+          if(!study)return null;
+          const o=study.holdout,baseline=study.baseline;
+          return <small style={{display:'block',marginTop:8}}>
+            اختبار اتجاه M5 تاريخي مستقل: {study.status==='QUALIFIED'?'اجتاز معيار المقارنة (رصد فقط)':study.status==='INSUFFICIENT'?'بيانات غير كافية':'لم يثبت تفوقه على المعيار'}.
+            {o?.n?' عينة '+o.n+'، دقة '+o.accuracyPct+'% مقابل الزخم '+(baseline?.accuracyPct??'—')+'%.':''}
+            {' '}ليس اختبارًا لأرباح السكالب ولا إشارة تنفيذ.
+          </small>;
+        })()}
         {v.fresh&&<small>آخر سعر منذ {Math.max(0,Math.round((now-v.quoteAt)/1000))} ث · مصدر: {v.candleSource||'غير محدد'}</small>}
       </div>)}
     </div>
