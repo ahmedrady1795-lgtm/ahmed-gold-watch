@@ -11,7 +11,7 @@ export type ScalpPlan={
   score:number;scoreLabel:string;entry:number|null;stop:number|null;
   targets:{price:number;kind:'STRUCTURE'|'PROJECTION'}[];netRR:number|null;
   cost:number;costEstimated:boolean;
-  costBreakdown:{spread:number;fees:number;slippage:number;allMeasured:boolean};
+  costBreakdown:{spread:number;fees:number;slippage:number;allMeasured:boolean;quoteSource?:string;sources?:{spread:string;fees:string;slippage:string}};
   trigger:string;reason:string;blockers:string[];strategyReview:StrategyReview[];
   evidence:{label:string;side:ScalpSide;value:string}[];
 };
@@ -83,7 +83,8 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
   const p=n(quote.price),quoteAt=n(quote.at),bid=n(quote.bid),ask=n(quote.ask);
   const spread=bid!=null&&ask!=null&&bid>0&&ask>=bid?ask-bid:null;
   const fee=n(input.feeBps),slip=n(input.slippageBps);
-  const costEstimated=spread==null||fee==null||slip==null;
+  // Configured basis points remain estimates, not measured account fills.
+  const costEstimated=true;
   // Show execution-cost decomposition. These are round-trip costs in USD per
   // unit of the underlying, NOT account P&L or verified Exness commissions.
   // Missing inputs remain explicit conservative assumptions; never zero them.
@@ -92,7 +93,9 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
   const slippageCost=p==null?0:p*(slip??(asset==='BTC'?2:1))/10000;
   const cost=spreadCost+feeCost+slippageCost;
   const costBreakdown={spread:round(spreadCost),fees:round(feeCost),
-    slippage:round(slippageCost),allMeasured:!costEstimated};
+    slippage:round(slippageCost),allMeasured:false,quoteSource:quote.source,
+    sources:{spread:spread==null?'ASSUMED':'QUOTE',
+      fees:fee==null?'ASSUMED':'CONFIGURED',slippage:slip==null?'ASSUMED':'CONFIGURED'}};
   const blockers:string[]=[];
   if(p==null||p<=0||quoteAt==null||now-quoteAt>15000||quoteAt>now+2000)blockers.push('السعر الحي متأخر أو توقيته غير موثوق');
   if(!input.marketOpen)blockers.push('جلسة التداول مغلقة');

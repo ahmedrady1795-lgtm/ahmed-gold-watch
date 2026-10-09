@@ -431,3 +431,16 @@ if(process.argv[2]){
  }
 }
 function round(n){return Math.round(n*1000)/1000;}
+
+assert.equal(audit({...planAudit,status:'BLOCKED',side:'WAIT',entry:null,blockers:['شموع السكالب متأخرة']},100,null).code,'MARKET_BLOCKED');
+const costInput={asset:'BTC',c1:[],c5:[],quote:{price:80000,bid:79999.95,ask:80000.05,at:auditNow,source:'Coinbase'},candleSource:'test',now:auditNow,events:[],newsReady:true,marketOpen:true};
+const assumed=buildScalpPlans(costInput)[0];
+assert.equal(assumed.cost,112.1);
+assert.equal(assumed.costBreakdown.sources.fees,'ASSUMED');
+assert.equal(assumed.costBreakdown.sources.spread,'QUOTE');
+const configured=buildScalpPlans({...costInput,feeBps:0,slippageBps:1})[0];
+assert.equal(configured.cost,8.1);
+assert.equal(configured.costBreakdown.sources.fees,'CONFIGURED');
+assert.equal(configured.costBreakdown.allMeasured,false);
+assert.equal(configured.costEstimated,true,'Manual bps are not measured account fills');
+console.log('PASS: market blockers and execution-cost provenance, including configured zero fees');

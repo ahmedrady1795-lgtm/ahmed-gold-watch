@@ -1,7 +1,7 @@
 import type {ScalpPlan,ScalpQuote} from './scalp-opportunities';
 
 export type ScalpEntryGateCode=
-  'NO_SETUP'|'SETUP_QUALITY'|'TARGET_REACH'|'COST_UNVIABLE'|'STOP_OR_RISK'|
+  'MARKET_BLOCKED'|'NO_SETUP'|'SETUP_QUALITY'|'TARGET_REACH'|'COST_UNVIABLE'|'STOP_OR_RISK'|
   'SCENARIO_ONLY'|'AWAITING_M1_CONFIRMATION'|'QUOTE_STALE'|'BAD_GEOMETRY'|
   'ENTRY_DRIFT'|'NET_REWARD_TOO_LOW'|'READY';
 export type ScalpEntryAudit={
@@ -36,6 +36,8 @@ export function auditScalpEntry(
   plan:ScalpPlan,quote:ScalpQuote,now:number,
   planHoldState:string|null,scenarioConfirmed=false
 ):ScalpEntryAudit{
+  if(plan.status==='BLOCKED')
+    return result(plan,'MARKET_BLOCKED','FEED',plan.blockers[0]||plan.reason||'شروط السوق أو البيانات غير مكتملة');
   if(plan.status!=='ARMED'){
     if(plan.side==='WAIT'||plan.entry==null||plan.stop==null)
       return result(plan,'NO_SETUP','SETUP','لا توجد خطة سعرية مؤهلة حاليًا');
