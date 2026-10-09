@@ -50,7 +50,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
         </div>
         <div className="scalp-entry-progress" aria-hidden="true"><span style={{width:(entryConfirmed||candleVerified?100:Math.max(0,Math.min(100,Number(entryCheck?.heldSeconds||0)/holdRequired*100)))+'%'}}/></div>
         {entryCheck?.trigger!=null&&<small>المستوى المرصود: <b dir="ltr">{fmt(entryCheck.trigger)}</b> · {entryCheck.side==='BUY'?'الثبات أعلاه للشراء':entryCheck.side==='SELL'?'الثبات أدناه للبيع':'انتظار الاتجاه'}</small>}
-        {activeM5&&<p className="scalp-entry-advice">وضع نشط تجريبي: تأكيد 30 ثانية للإعدادات القوية المتوافقة مع M5، وإلا 60 ثانية. إغلاق M1 وقيود التكلفة والعائد مطلوبة في الحالتين.</p>}
+        {activeM5&&<details className="scalp-expand"><summary>قواعد تأكيد الدخول النشط</summary><p className="scalp-entry-advice">30 ثانية للإعدادات القوية المتوافقة مع M5، وإلا 60 ثانية. تأكيد إغلاق M1 وحد التكلفة والعائد مطلوبان دائمًا.</p></details>}
         {entryConfirmed&&<p className="scalp-entry-advice">سعر الدخول الورقي عند التأكيد <b dir="ltr">{fmt(entryCheck.entry)}</b> · الوقف <b dir="ltr">{fmt(entryCheck.stop)}</b> · T1 <b dir="ltr">{fmt(entryCheck.targets?.[0]?.price)}</b> · إشارة تحليلية وليست تنفيذًا تلقائيًا</p>}
         {candleVerified&&<p className="scalp-entry-advice">{entryCheck.reason}</p>}
       </div>
@@ -61,9 +61,18 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       {directional&&<div className="scalp-levels">
         <div><small>{entryConfirmed?'دخول بعد التأكيد':'نقطة دخول محتملة'}</small><b dir="ltr">{fmt(shown?.entry)}</b></div>
         <div className="stop"><small>وقف الخسارة</small><b dir="ltr">{fmt(shown?.stop)}</b></div>
-        {[0,1,2].map(j=><div key={j}><small><Target size={12}/> T{j+1}{j===0?' · الأول':''}</small><b dir="ltr">{fmt(shown?.targets?.[j]?.price)}</b><span>{shown?.targets?.[j]?shown.targets[j].kind==='STRUCTURE'?'مستوى سعري':'امتداد تقديري':'بانتظار إعداد'}</span></div>)}
+        {[0].map(j=><div key={j}><small><Target size={12}/> T{j+1}{j===0?' · الأول':''}</small><b dir="ltr">{fmt(shown?.targets?.[j]?.price)}</b><span>{shown?.targets?.[j]?shown.targets[j].kind==='STRUCTURE'?'مستوى سعري':'امتداد تقديري':'بانتظار إعداد'}</span></div>)}
       </div>
       }
+      {directional&&shown?.targets?.length>1&&<details className="scalp-expand">
+        <summary>الأهداف الممتدة T2 وT3 · للتوسع فقط</summary>
+        <div className="scalp-extended-targets">
+          {([1,2] as const).map(j=>shown?.targets?.[j]&&<div key={j}>
+            <small>T{j+1} · {shown.targets[j].kind==='STRUCTURE'?'مستوى سعري':'امتداد تقديري'}</small>
+            <b dir="ltr">{fmt(shown.targets[j].price)}</b>
+          </div>)}
+        </div>
+      </details>}
       <div className="scalp-condition"><strong>{stale?'لا تعتمد الإعداد حتى يعود تحديث حديث':current?.note||plan?.reason}</strong><span>{shown?.trigger}</span></div>
       <div className="scalp-facts">
         <div><small>العائد / المخاطرة بعد التكلفة</small><b>{fmt(shown?.netRR)} R</b></div>
@@ -73,8 +82,10 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       {entryCheck?.entryAudit&&!stale&&<p className="scalp-condition"><strong>سبب القرار · {entryCheck.entryAudit.group}</strong> — {entryCheck.entryAudit.reason}
         {entryCheck.confirmationSource==='SCENARIO_ONLY'?' · ثبات سيناريو السيولة ليس اعتمادًا لدخول الخطة.':''}
         {entryCheck.entryAudit.liveNetRR!=null?' · العائد الفعلي '+fmt(entryCheck.entryAudit.liveNetRR)+'R':''}</p>}
-      {shown?.costBreakdown&&<p className="scalp-condition">تفصيل تكلفة الدورة لكل وحدة من الأصل: سبريد {fmt(shown.costBreakdown.spread)}$ · عمولات {fmt(shown.costBreakdown.fees)}$ · انزلاق {fmt(shown.costBreakdown.slippage)}$.
-        {shown.costEstimated?' بعض المكونات افتراضية وليست رسوم Exness الفعلية.':' المكونات من المصادر المهيأة؛ تحقق من اتفاقها مع كشف الوسيط.'}</p>}
+      {shown?.costBreakdown&&<details className="scalp-expand"><summary>تفصيل السبريد والعمولات والانزلاق</summary>
+      <p className="scalp-condition">تفصيل تكلفة الدورة لكل وحدة من الأصل: سبريد {fmt(shown.costBreakdown.spread)}$ · عمولات {fmt(shown.costBreakdown.fees)}$ · انزلاق {fmt(shown.costBreakdown.slippage)}$.
+        {shown.costEstimated?' بعض المكونات افتراضية وليست رسوم Exness الفعلية.':' المكونات من المصادر المهيأة؛ تحقق من اتفاقها مع كشف الوسيط.'}</p>
+      </details>}
       {desk.asset==='BTC'&&shown?.costEstimated&&<p className="scalp-condition">رسوم البيتكوين والانزلاق تقديرية لمصدر الأسعار، وليست تكلفة Exness الفعلية. لن يعتبر النظام صفقة قابلة للتنفيذ حتى تسمح حسابات المخاطرة والعائد بالتكلفة المُستخدمة.</p>}
       {!!plan?.blockers?.length&&!current&&plan.blockers.length>1&&<details className="scalp-expand"><summary>شروط الدخول غير المكتملة ({plan.blockers.length})</summary><ul className="scalp-blockers">{plan.blockers.map((r:string)=><li key={r}>{r}</li>)}</ul></details>}
       {qualityGate?.blocked&&<p className="scalp-condition">حماية سجل السكالب التجريبي: {qualityGate.reason} · المتبقي {qualityGate.remainingSeconds} ثانية</p>}
@@ -101,7 +112,8 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       </>}
       {desk.asset==='BTC'?<div className="scalp-book"><strong>دفتر أوامر Kraken · 25 مستوى</strong>{bookFresh?<div className="scalp-liquidity-grid"><div><small>طلبات الشراء · USD</small><b dir="ltr">{fmt(book.book.bidDepthUsd,0)}</b></div><div><small>عروض البيع · USD</small><b dir="ltr">{fmt(book.book.askDepthUsd,0)}</b></div><div><small>اختلال العمق المرجّح</small><b dir="ltr">{fmt(book.book.depthImbalance,0)}%</b></div></div>:<p>دفتر الأوامر غير متاح أو متأخر؛ خريطة السعر مستقلة عنه.</p>}<small>لقطة أوامر قابلة للتغيير والإلغاء؛ ليست ضمان اتجاه أو حجم صفقات منفذة.</small></div>:<div className="scalp-book"><small>الذهب: المصدر لا يوفر دفتر أوامر أو حجم تداول موثوق؛ قراءة السيولة هنا من حركة السعر.</small></div>}
     </div></details>
-    <div className="scalp-paper-brief"><span>متابعة الصفقات التجريبية</span><strong>{stats?.samples?stats.samples+' نتيجة · متوسط '+fmt(stats.expectancyR)+'R':'جمع نتائج الأداء الفعلي'}</strong></div>
+    <div className="scalp-paper-brief"><span>سجل الصفقات الورقية · بعد التكلفة</span><strong>{stats?.samples?stats.samples+' نتيجة · صافي '+fmt(stats.netR)+'R':'لا توجد نتائج مؤكدة بعد'}</strong></div>
+    <details className="scalp-expand"><summary>نتائج السكالب التفصيلية</summary>
     {stats?.forwardProof&&<div className="scalp-condition">
       <strong>إثبات الربحية بعد آخر تطوير: {stats.forwardProof.status==='POSITIVE_PAPER_SAMPLE'?'عينة ورقية إيجابية مبدئيًا':stats.forwardProof.status==='COLLECTING'?'جمع نتائج بدون أحكام مسبقة':'لم تثبت الربحية بعد'}</strong>
       <p>العينة الجديدة {stats.forwardProof.samples} / {stats.forwardProof.requiredSamples} صفقة مغلقة · صافي {fmt(stats.forwardProof.netR)}R
@@ -110,7 +122,6 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       {stats.forwardProof.lower95MeanR!=null?' · أدنى متوسط تقديري 95% '+fmt(stats.forwardProof.lower95MeanR)+'R':''}.
       لا نعتبر سجلًا قديمًا أو صفقة انتظار إثباتًا لنجاح الإصدار الجديد.</p>
     </div>}
-    <details className="scalp-expand"><summary>نتائج السكالب التفصيلية</summary>
     <div className="scalp-results"><div><span className="eyebrow">سجل هذا الفريم · تجريبي</span><h3>{stats?.samples?stats.samples+' صفقة موثقة':'بدأ سجل جديد للصفقات'}</h3></div><div className="scalp-results-grid"><div><small>صافي النتيجة</small><b className={Number(stats?.netR)>=0?'green':'red'}>{stats?.samples?fmt(stats.netR)+' R':'—'}</b></div><div><small>متوسط الصفقة</small><b>{stats?.samples?fmt(stats.expectancyR)+' R':'—'}</b></div><div><small>نسبة الربح</small><b>{stats?.samples?fmt(stats.winRate,1)+'%':'—'}</b></div></div><p>قوة الإعداد ليست احتمال نجاح. النتائج تحسب T1 أو الوقف أو انتهاء المدة بعد التكلفة. {stats?.unknown?stats.unknown+' نتيجة غير موثقة مستبعدة. ':''}{stats?.expired?stats.expired+' إعداد انتهى أو أُلغي قبل الدخول.':''}</p>
       {stats?.samples>0&&<p className="scalp-condition">تشريح النتائج: {stats.exitCauses?.timeExits||0} خروج بانتهاء المدة (منها {stats.exitCauses?.negativeTimeExits||0} بخسارة)، {stats.exitCauses?.stops||0} ضرب وقف، {stats.exitCauses?.targets||0} وصول إلى T1. صافي خروج الوقت {fmt(stats.exitCauses?.timeExitNetR)}R. {horizon===1&&stats.exitCauses?.timeExits>stats.exitCauses?.targets?'الأهداف السابقة لم تكن قابلة للوصول خلال دقيقة في حالات كثيرة؛ فلتر واقعية الهدف مفعل.':''}</p>}
       {!!lane?.recent?.length&&<details><summary>آخر النتائج ({lane.recent.length})</summary><div className="scalp-history">{lane.recent.map((t:any)=><div key={t.plan.id}><time>{new Date(t.closedAt).toLocaleTimeString('ar-AE',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'})}</time><span>{sideAr(t.plan.side)} · {stateAr(t.state)}</span><b className={Number(t.netR)>=0?'green':'red'}>{t.netR!=null?fmt(t.netR)+' R':'—'}</b></div>)}</div></details>}

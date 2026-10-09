@@ -1,6 +1,5 @@
 'use client';
 import {readFastScalpView} from '../lib/scalp-fast-view';
-import {FX_WATCHLIST} from '../lib/fx-scalp-screen';
 
 const fmt=(n:number|null)=>n==null||!Number.isFinite(n)?'—':
   n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -10,14 +9,13 @@ export default function FastScalpPulse({desk,now,aiAgeMs}:{
 }){
   const views=[readFastScalpView(desk?.gold,now),readFastScalpView(desk?.bitcoin,now)];
   if(!desk)return null;
-  return <section className="panel" aria-label="القراءة السريعة المستقلة عن AI" style={{padding:'14px 18px'}}>
+  return <section className="panel fast-pulse-compact" aria-label="القراءة السريعة المستقلة عن AI" style={{padding:'13px 16px'}}>
     <div className="panelhead">
-      <div><span className="eyebrow">M1 / M5 · قراءة مستقلة سريعة</span><h2>رصد السوق اللحظي</h2></div>
+      <div><span className="eyebrow">بيانات سوق مستقلة عن AI الموسع</span><h2>السوق الآن</h2></div>
       <span className="pill">{aiAgeMs!=null?'آخر تحليل AI موسع منذ '+Math.round(aiAgeMs/1000)+' ثانية':'AI الموسع لم يصل بعد'}</span>
     </div>
-    <p style={{margin:'6px 0 12px'}}>هذه القراءة تأتي من الأسعار ومحرك السكالب المحدث بشكل مستقل، ولا تنتظر اكتمال AI الثقيل. الميل أو WATCH ليس إشارة دخول.</p>
-    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:12}}>
-      {views.map(v=><div key={v.asset} style={{border:'1px solid var(--line,rgba(128,128,128,.25))',borderRadius:12,padding:12}}>
+    <div className="fast-pulse-grid">
+      {views.map(v=><div key={v.asset} className="fast-pulse-asset">
         <strong>{v.asset==='GOLD'?'الذهب XAU/USD':'البيتكوين BTC/USD'}</strong>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8,gap:8,flexWrap:'wrap'}}>
           <strong className={v.fresh?(v.side==='BUY'?'green':v.side==='SELL'?'red':'amber'):'muted'}>
@@ -33,28 +31,11 @@ export default function FastScalpPulse({desk,now,aiAgeMs}:{
             ?<p>مستوى مراقبة {fmt(v.entry)} · الوقف المقترح {fmt(v.stop)} · الهدف المشروط {fmt(v.target)}</p>
             :null}
         <p style={{margin:'8px 0 0',fontSize:13}}>{v.reason}</p>
-        {(()=>{
-          const study=desk?.[v.asset==='GOLD'?'gold':'bitcoin']?.directionStudy?.m5;
-          if(!study)return null;
-          const o=study.holdout,baseline=study.baseline;
-          return <small style={{display:'block',marginTop:8}}>
-            اختبار اتجاه M5 تاريخي مستقل: {study.status==='QUALIFIED'?'اجتاز معيار المقارنة (رصد فقط)':study.status==='INSUFFICIENT'?'بيانات غير كافية':'لم يثبت تفوقه على المعيار'}.
-            {o?.n?' عينة '+o.n+'، دقة '+o.accuracyPct+'% مقابل الزخم '+(baseline?.accuracyPct??'—')+'%.':''}
-            {' '}ليس اختبارًا لأرباح السكالب ولا إشارة تنفيذ.
-          </small>;
-        })()}
+
         {v.fresh&&<small>آخر سعر منذ {Math.max(0,Math.round((now-v.quoteAt)/1000))} ث · مصدر: {v.candleSource||'غير محدد'}</small>}
       </div>)}
     </div>
-    <details style={{marginTop:10}}>
-      <summary>فحص أزواج الفوركس السبعة · جاهزية استراتيجية M1/M5</summary>
-      <p style={{fontSize:13,marginTop:6}}>أولوية البحث وليست توصية شراء/بيع. لم تصل للموقع بعد أسعار BID/ASK وشموع وعمولات Exness موثوقة لهذه الأزواج، لذلك لا توجد إشارة دخول معتمدة.</p>
-      <div style={{display:'flex',flexWrap:'wrap',gap:7,margin:'10px 0'}}>
-        {FX_WATCHLIST.map(p=><span className="pill" key={p.symbol}
-          title={p.label}>{p.symbol.slice(0,3)}/{p.symbol.slice(3)} · {p.priority==='FIRST'?'فحص أولي':'فحص ثانوي'} · انتظار تغذية MT5</span>)}
-      </div>
-      <small>سيتم تأهيل كل زوج فقط بعد توفر سعر وسيط حديث وسبريد وعمولة وانزلاق واختبار اتجاه مستقل؛ لا أسعار أو أرباح مفترضة.</small>
-    </details>
-    <small>رصد سريع لا يستخدم نموذجًا تنبؤيًا جديدًا؛ التوقع الموسع منفصل وقرار التنفيذ يظل خاضعًا للتكلفة والوقف والتأكيد. لا تنفيذ آلي على Exness.</small>
+
+    <small className="fast-pulse-note">القراءة السريعة مستقلة عن AI · WATCH ليست دخولًا · لا أوامر Exness</small>
   </section>;
 }

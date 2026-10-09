@@ -326,7 +326,12 @@ export default function Home(){
 
     <section className="content lite-content">
       <FastScalpPulse desk={scalpDesk} now={now} aiAgeMs={Number.isFinite(snapshotAge)?snapshotAge:null}/>
-      <FxPairWatchlist/>
+      <AICommandCenter data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
+      <NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredId={aiData?.autopilot?.nextEvent?.id||null}/>
+
+      <details className="panel research-drawer">
+        <summary className="research-drawer-summary"><span><strong>أدوات البحث واختبارات الجودة</strong><small>الفوركس، نتائج النماذج، واختبارات اتجاه BUY/SELL · افتح عند الحاجة</small></span><span aria-hidden="true">⌄</span></summary>
+        <div className="research-drawer-content">
       {aiData?.modelValidation&&<section className="panel" aria-label="جودة وصدق النماذج" style={{padding:'14px 18px'}}>
         <strong>تأهيل نماذج AI · نتائج اختبار خارج العينة</strong>
         <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:8}}>
@@ -362,8 +367,9 @@ export default function Home(){
           </div>
           <small>اختبار زمني على اتجاه حركة السعر بعد التكلفة التقديرية. ليس اختبارًا للنواة الكاملة، ولا إثبات ربح، ولا نتائج أوامر Exness.</small>
         </details>}
-      <AICommandCenter data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
-      <NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredId={aiData?.autopilot?.nextEvent?.id||null}/>
+          <FxPairWatchlist/>
+        </div>
+      </details>
     </section>
 
     <footer>Gold Watch · تحليل احتمالي ومتابعة تجريبية · ليست أوامر تنفيذ وسيط</footer>
