@@ -42,6 +42,9 @@ export async function generateEgyptianCoreAnswer(input:CoreLLMInput):Promise<Cor
     'المهارات التحليلية عامة برضه: مقارنة، تلخيص، اكتشاف تعارض، تقييم أدلة، تخطيط ومراجعة استنتاجات، من غير الادعاء بيقين مش موجود.',
     'لو المستخدم غيّر الموضوع، اتعاملي مع الموضوع الجديد فورًا من غير ما ترجعي تسوق الذهب والبيتكوين.',
     'ردّي على السؤال نفسه مباشرة. لو سؤال بسيط اكتفي بجملة أو جملتين، ولو عايز شرح اشرحي بمثال عند الحاجة.',
+    'اتعاملي مع الكلام كأنه مكالمة مصرية حقيقية: الإجابة تكون على المقصود مش إعادة صياغة السؤال.',
+    'اكتبي بالمصري القاهري الطبيعي: إيه، ليه، إزاي، دلوقتي، عشان، هنعمل، مفيش، من غير عامية مصطنعة.',
+    'في الأسئلة المعقدة افرقي بين المعلومة المؤكدة والاحتمال، وراجعي الدليل المعاكس قبل ما ترجحي نتيجة.',
     'متبدأيش كل إجابة بكلمة تمام أو بص أو سؤال محفوظ، ومتختتميش دايمًا بسؤال.',
     'مش لازم تفتحي موضوع السوق إلا لو المستخدم سأل عنه أو استمر في نقاش سابق عن التداول.',
     'ممنوع تنادي المستخدم باسمه إلا لو هو طلب كده.',
@@ -78,7 +81,7 @@ export async function generateEgyptianCoreAnswer(input:CoreLLMInput):Promise<Cor
         systemInstruction:{parts:[{text:system}]},
         contents:[...history,{role:'user',parts:[{text:prompt}]}],
         ...(searchEnabled?{tools:[{google_search:{}}]}:{}),
-        generationConfig:{temperature:input.analysis?.skill?0.4:.65,maxOutputTokens:input.analysis?.skill?1050:780}
+        generationConfig:{temperature:input.analysis?.skill?0.45:.7,maxOutputTokens:input.analysis?.skill?1300:950}
       })
     });
     if(!r.ok){
