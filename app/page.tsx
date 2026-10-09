@@ -55,7 +55,7 @@ export default function Home(){
         :'/api/ai-snapshot?_='+Date.now();
       const headers:Record<string,string>={};
       if(!manual&&aiEtag.current)headers['If-None-Match']=aiEtag.current;
-      const r=await fetch(endpoint,{cache:'no-store',headers,signal:AbortSignal.timeout(manual?12000:3500)});
+      const r=await fetch(endpoint,{cache:'no-store',headers,signal:AbortSignal.timeout(manual?12000:4500)});
       // An unchanged generation is NOT a stalled AI or an error.
       // Skip decoding and rendering the same large JSON on every poll.
       if(!manual&&r.status===304){
@@ -106,11 +106,11 @@ export default function Home(){
 
   useEffect(()=>{
     void loadAi();
-    // Market ticks stream independently. The AI snapshot itself is heavy and
-    // refreshed by the server on a slower cadence; reading it every second
-    // only burns bandwidth and main-thread JSON parsing.
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},3000);
-    const clock=setInterval(()=>setNow(Date.now()),5000);
+    // Efficient conditional GET: a 304 has no JSON body and no expensive AI
+    // computation. Faster polling reduces the UI delay after a NEW server
+    // generation, without starting heavy analysis cycles.
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},1500);
+    const clock=setInterval(()=>setNow(Date.now()),2500);
     return()=>{clearInterval(aiTimer);clearInterval(clock);};
   },[]);
 
