@@ -1,7 +1,7 @@
 // Server-side conversational model. Optional: GEMINI_API_KEY / GEMINI_MODEL.
 // No key is ever accepted from or sent to the browser.
 type Turn={role:'user'|'core';text:string};
-type CoreLLMInput={message:string;history:Turn[];context:unknown;web?:unknown;analysis?:unknown;useGoogleSearch?:boolean};
+type CoreLLMInput={message:string;history:Turn[];context:unknown;web?:unknown;analysis?:{skill?:string;[key:string]:unknown}|null;useGoogleSearch?:boolean};
 type CoreSource={title:string;url:string};
 export type CoreLLMResult={answer:string;sources:CoreSource[];grounded:boolean;searchQueries:string[]};
 let searchDay='',searchCount=0;
