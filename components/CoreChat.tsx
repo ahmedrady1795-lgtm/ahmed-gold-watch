@@ -31,6 +31,8 @@ export default function CoreChat({data,desk}:CoreChatProps){
   const voiceSendTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
   const voicesRef=useRef<SpeechSynthesisVoice[]>([]);
   const speechTokenRef=useRef(0);
+  const speechWatchRef=useRef<number|null>(null);
+  const audioContextRef=useRef<any>(null);
   const nextId=useRef(1);
   const context=useMemo(()=>compactContext(data,desk),[data,desk]);
 
@@ -43,6 +45,23 @@ export default function CoreChat({data,desk}:CoreChatProps){
   },[]);
 
   const setBusyState=(value:boolean)=>{busyRef.current=value;setBusy(value);};
+  const clearSpeechWatch=()=>{
+    if(speechWatchRef.current){clearTimeout(speechWatchRef.current);speechWatchRef.current=null;}
+  };
+  const unlockAudio=()=>{
+    if(typeof window==='undefined')return;
+    try{
+      const AudioContextCtor=(window as any).AudioContext||(window as any).webkitAudioContext;
+      if(typeof AudioContextCtor!=='function')return;
+      const audioContext=audioContextRef.current||new AudioContextCtor();
+      audioContextRef.current=audioContext;
+      void audioContext.resume?.();
+      const oscillator=audioContext.createOscillator(),gain=audioContext.createGain();
+      gain.gain.value=.0001;
+      oscillator.connect(gain);gain.connect(audioContext.destination);
+      oscillator.start();oscillator.stop(audioContext.currentTime+.02);
+    }catch{}
+  };
   const stopVoice=()=>{
     liveVoiceRef.current=false;
     setLiveVoice(false);
@@ -50,6 +69,7 @@ export default function CoreChat({data,desk}:CoreChatProps){
     setSpeaking(false);
     speakingRef.current=false;
     speechTokenRef.current+=1;
+    clearSpeechWatch();
     recognitionRef.current?.stop();
     if(typeof window!=='undefined')window.speechSynthesis?.cancel();
   };
@@ -75,10 +95,12 @@ export default function CoreChat({data,desk}:CoreChatProps){
         },650);
       }
     };
+    recognition.onstart=()=>{setVoiceError('');setListening(true);};
     recognition.onerror=(event:any)=>{
       setListening(false);
       if(event?.error==='not-allowed')setVoiceError('اسمح للمتصفح بالميكروفون من إعدادات الموقع ثم جرّب مرة أخرى.');
       else if(event?.error==='audio-capture')setVoiceError('لم يتم العثور على ميكروفون متاح.');
+      else if(event?.error==='service-not-allowed'||event?.error==='network')setVoiceError('التعرّف الصوتي غير متاح في هذا المتصفح؛ افتح الموقع في Safari أو Chrome محدث.');
     };
     recognition.onend=()=>{
       setListening(false);
@@ -109,45 +131,65 @@ export default function CoreChat({data,desk}:CoreChatProps){
     return voices.find(v=>/^ar(-|_)/i.test(v.lang))||voices.find(v=>/arabic|ar-eg|ar-sa/i.test(`${v.name} ${v.lang}`))||null;
   };
   const speak=(text:string)=>{
-    if(typeof window==='undefined'||!('speechSynthesis' in window)){setVoiceError('المتصفح لا يدعم الرد الصوتي.');return;}
-    const synth=window.speechSynthesis;
+    if(typeof window==='undefined'||!('speechSynthesis' in window)||typeof (window as any).SpeechSynthesisUtterance!=='function'){
+      setVoiceError('المتصفح لا يدعم الرد الصوتي؛ افتح الموقع في Safari أو Chrome محدث.');
+      return;
+    }
+    const synth=window.speechSynthesis,Utterance=(window as any).SpeechSynthesisUtterance;
     const chunks=speechChunks(text);
     if(!chunks.length)return;
     const token=++speechTokenRef.current;
     const voice=arabicVoice();
     let index=0;
+    let genericVoice=false;
     speakingRef.current=true;
     setSpeaking(true);
+    setVoiceError('');
     recognitionRef.current?.stop();
+    unlockAudio();
+    clearSpeechWatch();
     synth.cancel();
     const next=()=>{
       if(token!==speechTokenRef.current)return;
       if(index>=chunks.length){speakingRef.current=false;setSpeaking(false);if(liveVoiceRef.current)window.setTimeout(()=>startRecognition(true),350);return;}
-      const utterance=new SpeechSynthesisUtterance(chunks[index++]);
-      utterance.lang='ar-EG';
-      if(voice)utterance.voice=voice;
+      let utterance:any;
+      try{utterance=new Utterance(chunks[index++]);}catch{setVoiceError('تعذر إنشاء الرد الصوتي في هذا المتصفح.');speakingRef.current=false;setSpeaking(false);return;}
+      const started=()=>{clearSpeechWatch();setVoiceError('');};
+      utterance.lang=genericVoice?'ar':'ar-EG';
+      if(voice&&!genericVoice)utterance.voice=voice;
       utterance.rate=.98;
       utterance.pitch=1;
       utterance.volume=1;
-      utterance.onend=()=>window.setTimeout(next,80);
-      utterance.onerror=()=>window.setTimeout(next,80);
-      synth.speak(utterance);
-      synth.resume();
+      let hasStarted=false;
+      utterance.onstart=()=>{hasStarted=true;started();};
+      utterance.onend=()=>{clearSpeechWatch();window.setTimeout(next,100);};
+      utterance.onerror=(event:any)=>{
+        clearSpeechWatch();
+        if(token!==speechTokenRef.current)return;
+        if(!hasStarted&&!genericVoice){
+          genericVoice=true;
+          synth.cancel();
+          window.setTimeout(next,80);
+          return;
+        }
+        if(event?.error!=='canceled'&&event?.error!=='interrupted')setVoiceError('المتصفح منع تشغيل الصوت؛ جرّب Safari أو Chrome مع رفع الصوت.');
+        speakingRef.current=false;setSpeaking(false);
+      };
+      try{
+        window.setTimeout(()=>{if(token===speechTokenRef.current){synth.speak(utterance);synth.resume();}},40);
+        speechWatchRef.current=window.setTimeout(()=>{
+          if(token!==speechTokenRef.current||hasStarted||genericVoice)return;
+          genericVoice=true;synth.cancel();window.setTimeout(next,80);
+        },1400);
+      }catch{setVoiceError('تعذر تشغيل الرد الصوتي؛ افتح الموقع في Safari أو Chrome.');speakingRef.current=false;setSpeaking(false);}
     };
     next();
   };
   const primeSpeech=()=>{
+    unlockAudio();
     if(typeof window==='undefined'||!('speechSynthesis' in window))return;
-    const synth=window.speechSynthesis;
-    const utterance=new SpeechSynthesisUtterance('الصوت جاهز');
-    utterance.lang='ar-EG';
-    const voice=arabicVoice();
-    if(voice)utterance.voice=voice;
-    utterance.volume=.01;
-    utterance.rate=1.05;
-    synth.cancel();
-    synth.speak(utterance);
-    synth.resume();
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
   };
   const testSpeech=()=>speak('الصوت شغال. اتكلم مع النواة بعد الضغط على ابدأ الكلام.');
   const submitVoice=async(text:string)=>{
@@ -169,23 +211,18 @@ export default function CoreChat({data,desk}:CoreChatProps){
       speak(fallback);
     }finally{setBusyState(false);}
   };
-  const toggleLiveVoice=async()=>{
+  const toggleLiveVoice=()=>{
     if(liveVoice){stopVoice();return;}
     if(typeof window==='undefined')return;
+    setVoiceError('');
     primeSpeech();
-    try{
-      if(navigator.mediaDevices?.getUserMedia){
-        const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-        stream.getTracks().forEach(track=>track.stop());
-      }
-      liveVoiceRef.current=true;
-      setLiveVoice(true);
-      voiceBufferRef.current='';
-      if(!startRecognition(true)){liveVoiceRef.current=false;setLiveVoice(false);}
-    }catch{setVoiceError('لم يتم السماح بالميكروفون. اضغط سماح من نافذة المتصفح ثم أعد المحاولة.');}
+    liveVoiceRef.current=true;
+    setLiveVoice(true);
+    voiceBufferRef.current='';
+    if(!startRecognition(true)){liveVoiceRef.current=false;setLiveVoice(false);}
   };
   const clearConversation=()=>{setMessages([]);setVoiceError('');voiceBufferRef.current='';};
-  useEffect(()=>()=>{liveVoiceRef.current=false;recognitionRef.current?.stop();if(voiceSendTimerRef.current)clearTimeout(voiceSendTimerRef.current);if(typeof window!=='undefined')window.speechSynthesis?.cancel();},[]);
+  useEffect(()=>()=>{liveVoiceRef.current=false;recognitionRef.current?.stop();if(voiceSendTimerRef.current)clearTimeout(voiceSendTimerRef.current);clearSpeechWatch();if(typeof window!=='undefined')window.speechSynthesis?.cancel();},[]);
 
   const status=voiceError?'راجع إذن الميكروفون':speaking?'النواة بترد عليك صوتيًا':busy?'بحلل سؤالك بسرعة':listening?'سامعك… اتكلم دلوقتي':liveVoice?'قول سؤالك بصوتك':'اضغط «ابدأ الكلام» وابدأ سؤالك';
   const hint=voiceError?'اسمح بالميكروفون من إعدادات الموقع ثم اضغط الزر مرة أخرى.':liveVoice?'لما تخلص جملتك، النواة هتجاوبك بصوت مصري وتسمع السؤال اللي بعده تلقائيًا.':'مش هتحتاج تكتب؛ كل الحوار هيكون بالصوت.';
