@@ -1,5 +1,5 @@
 import {getMarketSnapshot} from './market-hub';
-import {getBtcMarket,mergeBtcCandles} from './btc-market';
+import {getBtcMarket,mergeBtcCandles,peekFreshBtcMarket} from './btc-market';
 import {buildScalpPlans,type ScalpQuote} from './scalp-opportunities';
 import {updateScalpLedger,getScalpPaperQualityGate} from './scalp-paper-ledger';
 import {getRuntimeEnv} from './runtime';
@@ -162,7 +162,10 @@ export async function getScalpDesk(){
         checkedAt:at,quote,candleSource:input.candleSource,liquidity,orderBook,plans,qualityGates,entryConfirmations,ledger,data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
     };
     const goldSnap=goldResult.status==='fulfilled'?goldResult.value:null;
-    let market=btcResult.status==='fulfilled'?btcResult.value:null;
+    // A stalled BTC REST refresh may fall back only to verified CLOSED M1/M5
+    // candles that remain within the same trade-safety freshness limits.
+    // Otherwise BTC stays unavailable while GOLD proceeds independently.
+    let market=btcResult.status==='fulfilled'?btcResult.value:peekFreshBtcMarket(Date.now());
     if(market&&/Coinbase/i.test(market.source)){
       const live=getCoinbaseClosedCandles();
       // Full observed minute bars bridge the REST publication delay. No partial or gap bar is used.
