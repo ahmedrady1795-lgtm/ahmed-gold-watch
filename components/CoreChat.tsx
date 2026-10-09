@@ -48,7 +48,7 @@ export default function CoreChat({data,desk}:CoreChatProps){
   const clearSpeechWatch=()=>{
     if(speechWatchRef.current){clearTimeout(speechWatchRef.current);speechWatchRef.current=null;}
   };
-  const unlockAudio=()=>{
+  const unlockAudio=(audible=false)=>{
     if(typeof window==='undefined')return;
     try{
       const AudioContextCtor=(window as any).AudioContext||(window as any).webkitAudioContext;
@@ -57,9 +57,10 @@ export default function CoreChat({data,desk}:CoreChatProps){
       audioContextRef.current=audioContext;
       void audioContext.resume?.();
       const oscillator=audioContext.createOscillator(),gain=audioContext.createGain();
-      gain.gain.value=.0001;
+      gain.gain.value=audible?.12:.0001;
+      oscillator.frequency.value=760;
       oscillator.connect(gain);gain.connect(audioContext.destination);
-      oscillator.start();oscillator.stop(audioContext.currentTime+.02);
+      oscillator.start();oscillator.stop(audioContext.currentTime+(audible?.2:.02));
     }catch{}
   };
   const stopVoice=()=>{
@@ -132,58 +133,100 @@ export default function CoreChat({data,desk}:CoreChatProps){
   };
   const speak=(text:string)=>{
     if(typeof window==='undefined'||!('speechSynthesis' in window)||typeof (window as any).SpeechSynthesisUtterance!=='function'){
-      setVoiceError('المتصفح لا يدعم الرد الصوتي؛ افتح الموقع في Safari أو Chrome محدث.');
+      setVoiceError('المتصفح لا يدعم تشغيل الكلام. جرّب فتح الموقع في Safari المحدث.');
       return;
     }
     const synth=window.speechSynthesis,Utterance=(window as any).SpeechSynthesisUtterance;
     const chunks=speechChunks(text);
     if(!chunks.length)return;
     const token=++speechTokenRef.current;
-    const voice=arabicVoice();
-    let index=0;
-    let genericVoice=false;
-    speakingRef.current=true;
-    setSpeaking(true);
-    setVoiceError('');
-    recognitionRef.current?.stop();
-    unlockAudio();
+    const preferredVoice=arabicVoice();
+    let index=0,usingDefaultVoice=false;
     clearSpeechWatch();
+    speakingRef.current=true;
+    // Do not show "speaking" until Web Speech reports playback starting.
+    setSpeaking(false);
+    setVoiceError('');
+    try{recognitionRef.current?.stop();}catch{}
+    unlockAudio();
+    // On iOS, the first speak() MUST happen synchronously inside the tap.
+    // Delaying it with setTimeout loses Safari's user activation.
     synth.cancel();
-    const next=()=>{
+    const finish=()=>{
       if(token!==speechTokenRef.current)return;
-      if(index>=chunks.length){speakingRef.current=false;setSpeaking(false);if(liveVoiceRef.current)window.setTimeout(()=>startRecognition(true),350);return;}
+      clearSpeechWatch();
+      speakingRef.current=false;
+      setSpeaking(false);
+      if(liveVoiceRef.current)window.setTimeout(()=>startRecognition(true),350);
+    };
+    const fail=(message:string)=>{
+      if(token!==speechTokenRef.current)return;
+      clearSpeechWatch();
+      setVoiceError(message);
+      finish();
+    };
+    const playNext=()=>{
+      if(token!==speechTokenRef.current)return;
+      if(index>=chunks.length){finish();return;}
       let utterance:any;
-      try{utterance=new Utterance(chunks[index++]);}catch{setVoiceError('تعذر إنشاء الرد الصوتي في هذا المتصفح.');speakingRef.current=false;setSpeaking(false);return;}
-      const started=()=>{clearSpeechWatch();setVoiceError('');};
-      utterance.lang=genericVoice?'ar':'ar-EG';
-      if(voice&&!genericVoice)utterance.voice=voice;
-      utterance.rate=.98;
+      try{utterance=new Utterance(chunks[index]);}
+      catch{fail('تعذر إنشاء الصوت في المتصفح.');return;}
+      utterance.lang=usingDefaultVoice?'ar':'ar-EG';
+      if(preferredVoice&&!usingDefaultVoice)utterance.voice=preferredVoice;
+      utterance.rate=.96;
       utterance.pitch=1;
       utterance.volume=1;
-      let hasStarted=false;
-      utterance.onstart=()=>{hasStarted=true;started();};
-      utterance.onend=()=>{clearSpeechWatch();window.setTimeout(next,100);};
-      utterance.onerror=(event:any)=>{
-        clearSpeechWatch();
+      let started=false;
+      const retryOrFail=()=>{
         if(token!==speechTokenRef.current)return;
-        if(!hasStarted&&!genericVoice){
-          genericVoice=true;
+        clearSpeechWatch();
+        if(preferredVoice&&!usingDefaultVoice){
+          usingDefaultVoice=true;
           synth.cancel();
-          window.setTimeout(next,80);
+          window.setTimeout(playNext,100);
+        }else{
+          fail('السماعة لم تبدأ النطق. ألغِ الصامت، ارفع صوت الوسائط، وافصل سماعة البلوتوث إن كانت متصلة، ثم اضغط «اختبار الصوت».');
+        }
+      };
+      utterance.onstart=()=>{
+        if(token!==speechTokenRef.current)return;
+        started=true;
+        clearSpeechWatch();
+        setSpeaking(true);
+        setVoiceError('');
+      };
+      utterance.onend=()=>{
+        if(token!==speechTokenRef.current)return;
+        clearSpeechWatch();
+        index+=1;
+        window.setTimeout(playNext,90);
+      };
+      utterance.onerror=(event:any)=>{
+        if(token!==speechTokenRef.current)return;
+        if(event?.error==='canceled'||event?.error==='interrupted'){
+          // An interruption that was not initiated by a newer speech token
+          // must not leave the UI stuck in "speaking".
+          fail('الصوت اتوقف من المتصفح. اضغط «اختبار الصوت» لتشغيل السماعة من جديد.');
           return;
         }
-        if(event?.error!=='canceled'&&event?.error!=='interrupted')setVoiceError('المتصفح منع تشغيل الصوت؛ جرّب Safari أو Chrome مع رفع الصوت.');
-        speakingRef.current=false;setSpeaking(false);
+        retryOrFail();
       };
       try{
-        window.setTimeout(()=>{if(token===speechTokenRef.current){synth.speak(utterance);synth.resume();}},40);
+        // Keep this synchronous: essential for the iOS speaker test.
+        synth.speak(utterance);
+        synth.resume();
         speechWatchRef.current=window.setTimeout(()=>{
-          if(token!==speechTokenRef.current||hasStarted||genericVoice)return;
-          genericVoice=true;synth.cancel();window.setTimeout(next,80);
-        },1400);
-      }catch{setVoiceError('تعذر تشغيل الرد الصوتي؛ افتح الموقع في Safari أو Chrome.');speakingRef.current=false;setSpeaking(false);}
+          if(token!==speechTokenRef.current||started)return;
+          if(synth.speaking){
+            // A few Safari versions omit onstart even while speaking.
+            started=true;
+            setSpeaking(true);
+            clearSpeechWatch();
+          }else retryOrFail();
+        },3500);
+      }catch{retryOrFail();}
     };
-    next();
+    playNext();
   };
   const primeSpeech=()=>{
     unlockAudio();
@@ -191,7 +234,7 @@ export default function CoreChat({data,desk}:CoreChatProps){
     window.speechSynthesis.cancel();
     window.speechSynthesis.resume();
   };
-  const testSpeech=()=>speak('الصوت شغال. اتكلم مع النواة بعد الضغط على ابدأ الكلام.');
+  const testSpeech=()=>{unlockAudio(true);speak('اختبار الصوت. أنا النواة، سامعاك وهرد عليك بصوت عربي.');};
   const submitVoice=async(text:string)=>{
     const clean=text.trim();
     if(!clean||busyRef.current)return;
@@ -224,8 +267,8 @@ export default function CoreChat({data,desk}:CoreChatProps){
   const clearConversation=()=>{setMessages([]);setVoiceError('');voiceBufferRef.current='';};
   useEffect(()=>()=>{liveVoiceRef.current=false;recognitionRef.current?.stop();if(voiceSendTimerRef.current)clearTimeout(voiceSendTimerRef.current);clearSpeechWatch();if(typeof window!=='undefined')window.speechSynthesis?.cancel();},[]);
 
-  const status=voiceError?'راجع إذن الميكروفون':speaking?'النواة بترد عليك صوتيًا':busy?'بحلل سؤالك بسرعة':listening?'سامعك… اتكلم دلوقتي':liveVoice?'قول سؤالك بصوتك':'اضغط «ابدأ الكلام» وابدأ سؤالك';
-  const hint=voiceError?'اسمح بالميكروفون من إعدادات الموقع ثم اضغط الزر مرة أخرى.':liveVoice?'لما تخلص جملتك، النواة هتجاوبك بصوت مصري وتسمع السؤال اللي بعده تلقائيًا.':'مش هتحتاج تكتب؛ كل الحوار هيكون بالصوت.';
+  const status=voiceError?'الصوت محتاج تفعيل':speaking?'النواة بترد عليك صوتيًا':busy?'بحلل سؤالك بسرعة':listening?'سامعك… اتكلم دلوقتي':liveVoice?'قول سؤالك بصوتك':'اضغط «ابدأ الكلام» وابدأ سؤالك';
+  const hint=voiceError?voiceError:liveVoice?'لما تخلص جملتك، النواة هتجاوبك بصوت مصري وتسمع السؤال اللي بعده تلقائيًا.':'مش هتحتاج تكتب؛ كل الحوار هيكون بالصوت.';
 
   return <section id="core-console" className="core-console voice-only" aria-labelledby="core-console-title">
     <div className="core-console-visual">
