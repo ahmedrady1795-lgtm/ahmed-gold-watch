@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {BrainCircuit,Mic,MicOff,Trash2,Zap} from 'lucide-react';
+import {BrainCircuit,Mic,MicOff,Trash2,Volume2,Zap} from 'lucide-react';
 
 type Message={id:number;role:'user'|'core';text:string};
 type CoreChatProps={data:any;desk:any};
@@ -29,8 +29,18 @@ export default function CoreChat({data,desk}:CoreChatProps){
   const busyRef=useRef(false);
   const voiceBufferRef=useRef('');
   const voiceSendTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const voicesRef=useRef<SpeechSynthesisVoice[]>([]);
+  const speechTokenRef=useRef(0);
   const nextId=useRef(1);
   const context=useMemo(()=>compactContext(data,desk),[data,desk]);
+
+  useEffect(()=>{
+    if(typeof window==='undefined'||!('speechSynthesis' in window))return;
+    const loadVoices=()=>{voicesRef.current=window.speechSynthesis.getVoices();};
+    loadVoices();
+    window.speechSynthesis.addEventListener?.('voiceschanged',loadVoices);
+    return ()=>window.speechSynthesis.removeEventListener?.('voiceschanged',loadVoices);
+  },[]);
 
   const setBusyState=(value:boolean)=>{busyRef.current=value;setBusy(value);};
   const stopVoice=()=>{
@@ -39,6 +49,7 @@ export default function CoreChat({data,desk}:CoreChatProps){
     setListening(false);
     setSpeaking(false);
     speakingRef.current=false;
+    speechTokenRef.current+=1;
     recognitionRef.current?.stop();
     if(typeof window!=='undefined')window.speechSynthesis?.cancel();
   };
@@ -78,20 +89,67 @@ export default function CoreChat({data,desk}:CoreChatProps){
     setListening(true);
     try{recognition.start();return true;}catch{setListening(false);setVoiceError('تعذر تشغيل الميكروفون. أعد الضغط على زر بدء الكلام.');return false;}
   };
+  const speechChunks=(text:string)=>{
+    const compact=text.replace(/\s+/g,' ').trim();
+    if(!compact)return [];
+    const sentences=compact.split(/(?:[.!؟؛:]+\s*)/).filter(Boolean);
+    const chunks:string[]=[];
+    let current='';
+    for(const sentence of (sentences.length?sentences:[compact])){
+      for(const word of sentence.trim().split(' ')){
+        const next=current?`${current} ${word}`:word;
+        if(next.length>180&&current){chunks.push(current);current=word;}else current=next;
+      }
+      if(current){chunks.push(current);current='';}
+    }
+    return chunks;
+  };
+  const arabicVoice=()=>{
+    const voices=voicesRef.current.length?voicesRef.current:typeof window!=='undefined'&&'speechSynthesis' in window?window.speechSynthesis.getVoices():[];
+    return voices.find(v=>/^ar(-|_)/i.test(v.lang))||voices.find(v=>/arabic|ar-eg|ar-sa/i.test(`${v.name} ${v.lang}`))||null;
+  };
   const speak=(text:string)=>{
     if(typeof window==='undefined'||!('speechSynthesis' in window)){setVoiceError('المتصفح لا يدعم الرد الصوتي.');return;}
+    const synth=window.speechSynthesis;
+    const chunks=speechChunks(text);
+    if(!chunks.length)return;
+    const token=++speechTokenRef.current;
+    const voice=arabicVoice();
+    let index=0;
     speakingRef.current=true;
     setSpeaking(true);
     recognitionRef.current?.stop();
-    window.speechSynthesis.cancel();
-    const utterance=new SpeechSynthesisUtterance(text);
-    utterance.lang='ar-EG';
-    utterance.rate=.98;
-    utterance.pitch=1;
-    utterance.onend=()=>{speakingRef.current=false;setSpeaking(false);if(liveVoiceRef.current)window.setTimeout(()=>startRecognition(true),350);};
-    utterance.onerror=()=>{speakingRef.current=false;setSpeaking(false);if(liveVoiceRef.current)window.setTimeout(()=>startRecognition(true),350);};
-    window.speechSynthesis.speak(utterance);
+    synth.cancel();
+    const next=()=>{
+      if(token!==speechTokenRef.current)return;
+      if(index>=chunks.length){speakingRef.current=false;setSpeaking(false);if(liveVoiceRef.current)window.setTimeout(()=>startRecognition(true),350);return;}
+      const utterance=new SpeechSynthesisUtterance(chunks[index++]);
+      utterance.lang='ar-EG';
+      if(voice)utterance.voice=voice;
+      utterance.rate=.98;
+      utterance.pitch=1;
+      utterance.volume=1;
+      utterance.onend=()=>window.setTimeout(next,80);
+      utterance.onerror=()=>window.setTimeout(next,80);
+      synth.speak(utterance);
+      synth.resume();
+    };
+    next();
   };
+  const primeSpeech=()=>{
+    if(typeof window==='undefined'||!('speechSynthesis' in window))return;
+    const synth=window.speechSynthesis;
+    const utterance=new SpeechSynthesisUtterance('الصوت جاهز');
+    utterance.lang='ar-EG';
+    const voice=arabicVoice();
+    if(voice)utterance.voice=voice;
+    utterance.volume=.01;
+    utterance.rate=1.05;
+    synth.cancel();
+    synth.speak(utterance);
+    synth.resume();
+  };
+  const testSpeech=()=>speak('الصوت شغال. اتكلم مع النواة بعد الضغط على ابدأ الكلام.');
   const submitVoice=async(text:string)=>{
     const clean=text.trim();
     if(!clean||busyRef.current)return;
@@ -114,6 +172,7 @@ export default function CoreChat({data,desk}:CoreChatProps){
   const toggleLiveVoice=async()=>{
     if(liveVoice){stopVoice();return;}
     if(typeof window==='undefined')return;
+    primeSpeech();
     try{
       if(navigator.mediaDevices?.getUserMedia){
         const stream=await navigator.mediaDevices.getUserMedia({audio:true});
@@ -142,7 +201,7 @@ export default function CoreChat({data,desk}:CoreChatProps){
       <div className="core-health"><i/> صوت عربي · <b>سريعة</b></div>
     </div>
     <div className="core-chat-panel voice-panel">
-      <div className="core-chat-head"><div><strong>اتكلم مع النواة</strong><small>{liveVoice?'الوضع الصوتي شغال':'صوت فقط · بدون شات'}</small></div><div className="core-chat-actions"><button type="button" className={'core-live-voice core-voice-primary '+(liveVoice?'active':'')} onClick={()=>void toggleLiveVoice()} aria-pressed={liveVoice} title={liveVoice?'إيقاف الصوت':'بدء الكلام'}>{liveVoice?<MicOff size={17}/>:<Mic size={17}/>}<span>{liveVoice?'إيقاف الصوت':'ابدأ الكلام'}</span></button><button type="button" className="core-clear" onClick={clearConversation} aria-label="بدء جلسة صوتية جديدة" title="بدء جلسة صوتية جديدة"><Trash2 size={15}/></button></div></div>
+      <div className="core-chat-head"><div><strong>اتكلم مع النواة</strong><small>{liveVoice?'الوضع الصوتي شغال':'صوت فقط · بدون شات'}</small></div><div className="core-chat-actions"><button type="button" className={'core-live-voice core-voice-primary '+(liveVoice?'active':'')} onClick={()=>void toggleLiveVoice()} aria-pressed={liveVoice} title={liveVoice?'إيقاف الصوت':'بدء الكلام'}>{liveVoice?<MicOff size={17}/>:<Mic size={17}/>}<span>{liveVoice?'إيقاف الصوت':'ابدأ الكلام'}</span></button><button type="button" className="core-voice-test" onClick={testSpeech} aria-label="اختبار صوت النواة" title="اختبار صوت النواة"><Volume2 size={16}/><span>اختبار الصوت</span></button><button type="button" className="core-clear" onClick={clearConversation} aria-label="بدء جلسة صوتية جديدة" title="بدء جلسة صوتية جديدة"><Trash2 size={15}/></button></div></div>
       <div className="core-voice-stage" aria-live="polite">
         <div className={'core-voice-orb '+(liveVoice?'active ':'')+(listening?'listening ':'')+(speaking?'speaking':'')} aria-hidden="true">{speaking?<BrainCircuit size={34}/>:<Mic size={34}/>}</div>
         <strong>{status}</strong>
