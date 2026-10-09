@@ -351,8 +351,8 @@ export default function Home(){
                 return <div key={asset+frame} style={{minWidth:150,flex:'1 1 160px'}}>
                   <strong>{asset==='gold'?'الذهب':'البيتكوين'} · {frame.toUpperCase()}</strong>
                   <p style={{margin:'4px 0'}}>النموذج المختار: {a.selected}</p>
-                  <p style={{margin:'4px 0'}}>اختبار لاحق: {a.holdout?.n??0} توقع · {a.holdout?.accuracyPct==null?'غير كافٍ':a.holdout.accuracyPct+'%'}</p>
-                  <p style={{margin:'4px 0'}}>المرجع المقارن: {a.baseline?.accuracyPct==null?'—':a.baseline.accuracyPct+'%'}</p>
+                  <p style={{margin:'4px 0'}}>اختبار لاحق: {a.holdout?.n??0} توقع · {Number(a.holdout?.n||0)<25?'عينة غير كافية للحكم':a.holdout?.accuracyPct==null?'غير متاح':a.holdout.accuracyPct+'%'}</p>
+                  <p style={{margin:'4px 0'}}>المرجع المقارن: {Number(a.baseline?.n||0)<25?'عينة غير كافية':a.baseline?.accuracyPct==null?'—':a.baseline.accuracyPct+'%'}</p>
                   <small>{a.qualified?'اجتاز شرط التحفظ؛ يُستخدم لرفض التعارض فقط':'غير مؤهل لتغيير إشارة BUY/SELL'} · {a.status}</small>
                 </div>;
               })
