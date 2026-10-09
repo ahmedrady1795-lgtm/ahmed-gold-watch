@@ -22,6 +22,7 @@ jobs:
       - run: npm ci
       - run: node --check learning-worker.mjs
       - run: node tests/scalp.cjs
+      - run: node tests/direction.cjs
       - run: node tests/movement.cjs
       - run: python3 -m compileall -q ml-service neural-service
       - run: npm run build
