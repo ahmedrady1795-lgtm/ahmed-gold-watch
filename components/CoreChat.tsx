@@ -37,6 +37,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
   const [speaking,setSpeaking]=useState(false);
   const [voiceError,setVoiceError]=useState('');
   const [intelligenceMode,setIntelligenceMode]=useState<'checking'|'smart'|'basic'>('checking');
+  const [modelReady,setModelReady]=useState<boolean|null>(null);
   const recognitionRef=useRef<any>(null);
   const liveVoiceRef=useRef(false);
   const speakingRef=useRef(false);
@@ -50,6 +51,14 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
   const audioContextRef=useRef<any>(null);
   const nextId=useRef(1);
   const context=useMemo(()=>compactContext(data,desk),[data,desk]);
+
+  useEffect(()=>{
+    let mounted=true;
+    fetch('/api/core-chat',{cache:'no-store',signal:AbortSignal.timeout(5000)})
+      .then(r=>r.json()).then(j=>{if(mounted)setModelReady(Boolean(j?.conversationModelReady));})
+      .catch(()=>{if(mounted)setModelReady(null);});
+    return()=>{mounted=false;};
+  },[]);
 
   useEffect(()=>{
     if(typeof window==='undefined'||!('speechSynthesis' in window))return;
@@ -315,7 +324,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
         <span className="core-orbit orbit-one"/><span className="core-orbit orbit-two"/><div className="core-emblem"><BrainCircuit size={33}/><small>CORE</small></div>
       </div>
       <div className="core-identity"><span className="core-kicker"><Zap size={13}/> CORE / VOICE</span><h2 id="core-console-title">النواة الصوتية</h2><p>اتكلم طبيعي، والنواة ترد عليك بصوت مصري من بيانات السوق الحالية.</p></div>
-      <div className="core-health"><i/> مصري · <b>{intelligenceMode==='smart'?'محادثة ذكية':intelligenceMode==='basic'?'وضع أساسي':'صوت مباشر'}</b></div>
+      <div className="core-health"><i/> مصري · <b>{intelligenceMode==='smart'?'محادثة ذكية':modelReady===false?'الحوار الحر غير متصل':modelReady===true?'موديل مُعدّ':'مساعد صوتي'}</b></div>
     </div>
     <div className="core-chat-panel voice-panel">
       <div className="core-chat-head"><div><strong>اتكلم مع النواة</strong><small>{liveVoice?'الوضع الصوتي شغال':'صوت فقط · بدون شات'}</small></div><div className="core-chat-actions"><button type="button" className={'core-live-voice core-voice-primary '+(liveVoice?'active':'')} onClick={()=>void toggleLiveVoice()} aria-pressed={liveVoice} title={liveVoice?'إيقاف الصوت':'بدء الكلام'}>{liveVoice?<MicOff size={17}/>:<Mic size={17}/>}<span>{liveVoice?'إيقاف الصوت':'ابدأ الكلام'}</span></button><button type="button" className="core-voice-test" onClick={testSpeech} aria-label="اختبار صوت النواة" title="اختبار صوت النواة"><Volume2 size={16}/><span>اختبار الصوت</span></button><button type="button" className="core-clear" onClick={clearConversation} aria-label="بدء جلسة صوتية جديدة" title="بدء جلسة صوتية جديدة"><Trash2 size={15}/></button></div></div>
@@ -326,7 +335,9 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
         <div className="core-voice-wave" aria-hidden="true"><i/><i/><i/><i/><i/><i/><i/></div>
       </div>
       {voiceError&&<small className="core-voice-error" role="status">{voiceError}</small>}
-      <small className="core-note">الوضع الصوتي مصري في الكلام؛ نبرة الصوت نفسها بتعتمد على الأصوات المثبّتة على موبايلك. الأوامر المعتمدة بتشتغل جوه لوحة التحكم فقط.</small>
+      <small className="core-note">{modelReady===false
+        ?'للحوار المفتوح في أي موضوع، لازم مفتاح GEMINI_API_KEY يتضاف بأمان في إعدادات Railway. لحد ما يتوصل، الردود الأساسية محدودة. نبرة الصوت بتعتمد على أصوات جهازك.'
+        :'اسألني عن أي موضوع. النطق باللهجة المصرية بيستخدم أفضل صوت عربي متاح على جهازك، والأوامر المسموح بيها بتشتغل جوه الموقع.'}</small>
     </div>
   </section>;
 }
