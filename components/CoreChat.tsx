@@ -251,7 +251,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
       clearSpeechWatch();
       speakingRef.current=false;
       setSpeaking(false);
-      if(liveVoiceRef.current)window.setTimeout(()=>startRecognition(true),350);
+      if(liveVoiceRef.current&&!busyRef.current)window.setTimeout(()=>startRecognition(true),350);
     };
     const fail=(message:string)=>{
       if(token!==speechTokenRef.current)return;
@@ -373,7 +373,10 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
     liveVoiceRef.current=true;
     setLiveVoice(true);
     voiceBufferRef.current='';interimVoiceRef.current='';
-    if(!startRecognition(true)){liveVoiceRef.current=false;setLiveVoice(false);}
+    // Start speech inside the actual tap on iOS. After the short greeting,
+    // the normal speech completion handler opens the microphone.
+    if('speechSynthesis' in window)speak('أنا سامعاك، اتكلم.');
+    else if(!startRecognition(true)){liveVoiceRef.current=false;setLiveVoice(false);}
   };
   const clearConversation=()=>{messagesRef.current=[];setMessages([]);setVoiceError('');voiceBufferRef.current='';interimVoiceRef.current='';setResearchSources([]);setResearchUsed(false);setAnalysisSkill('');setSiteInspection(null);};
   useEffect(()=>()=>{liveVoiceRef.current=false;recognitionRef.current?.stop();if(voiceSendTimerRef.current)clearTimeout(voiceSendTimerRef.current);clearSpeechWatch();if(typeof window!=='undefined')window.speechSynthesis?.cancel();},[]);
@@ -394,7 +397,7 @@ export default function CoreChat({data,desk,onCommand}:CoreChatProps){
       <div className="core-health"><i/> مصري · <b>{modelConnection==='confirmed'?'محادثة الذكاء شغالة':modelConnection==='failed'?'موديل الذكاء مش بيرد':modelReady===false?'موديل غير متصل':modelReady===true?'موديل ذكاء مُعدّ، لم يتم اختباره':'مساعد صوتي'}</b></div>
     </div>
     <div className="core-chat-panel voice-panel">
-      <div className="core-chat-head"><div><strong>اتكلم مع النواة</strong><small>{liveVoice?'الوضع الصوتي شغال':'صوت فقط · بدون شات'}</small></div><div className="core-chat-actions"><button type="button" className={'core-live-voice core-voice-primary '+(liveVoice?'active':'')} onClick={()=>void toggleLiveVoice()} aria-pressed={liveVoice} title={liveVoice?'إيقاف الصوت':'بدء الكلام'}>{liveVoice?<MicOff size={17}/>:<Mic size={17}/>}<span>{liveVoice?'إيقاف الصوت':'ابدأ الكلام'}</span></button><button type="button" className="core-voice-test" onClick={()=>{primeSpeech();void submitVoice('افحص الموقع والخدمات');}}
+      <div className="core-chat-head"><div><strong>اتكلم مع النواة</strong><small>{liveVoice?'الوضع الصوتي شغال':'صوت فقط · بدون شات'}</small></div><div className="core-chat-actions"><button type="button" className={'core-live-voice core-voice-primary '+(liveVoice?'active':'')} onClick={()=>void toggleLiveVoice()} aria-pressed={liveVoice} title={liveVoice?'إيقاف الصوت':'بدء الكلام'}>{liveVoice?<MicOff size={17}/>:<Mic size={17}/>}<span>{liveVoice?'إيقاف الصوت':'ابدأ الكلام'}</span></button><button type="button" className="core-voice-test" onClick={()=>{primeSpeech();speak('هفحص الموقع دلوقتي.');void submitVoice('افحص الموقع والخدمات');}}
           disabled={busy} title="فحص الموقع الفعلي بالصوت" aria-label="افحص الموقع">
           <Activity size={16}/><span>{busy?'بفحص…':'افحص الموقع'}</span>
         </button><button type="button" className="core-voice-test" onClick={testSpeech} aria-label="اختبار صوت النواة" title="اختبار صوت النواة"><Volume2 size={16}/><span>اختبار الصوت</span></button><button type="button" className="core-clear" onClick={clearConversation} aria-label="بدء جلسة صوتية جديدة" title="بدء جلسة صوتية جديدة"><Trash2 size={15}/></button></div></div>
