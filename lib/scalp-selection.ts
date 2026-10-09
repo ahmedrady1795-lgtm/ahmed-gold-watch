@@ -81,3 +81,35 @@ export function frozenTrendIsValid(
   if(setup==='SWEEP')return currentM1!=='WAIT'&&currentM1===side;
   return currentM1===side&&currentM5===side;
 }
+
+// Two genuine price-action setups can trigger in the same completed candle.
+// A higher score cannot rescue an untradable reward, invalid stop or a fee
+// veto. Only evaluate the plans whose *entire* independent gate set passed.
+// The caller supplies candidates in descending technical-quality score order.
+export function chooseEligibleScalpPlan<T extends {
+  status:string;score:number;side:'BUY'|'SELL'|'WAIT';entry:number|null;
+  stop:number|null;targets:ReadonlyArray<{price:number}>;
+  cost:number;netRR:number|null;blockers:ReadonlyArray<string>;
+}>(plans:readonly T[]):T|null {
+  const valid=plans.filter(plan=>{
+    if(plan.status!=='ARMED'||plan.blockers.length>0||plan.netRR==null||
+       !Number.isFinite(plan.netRR)||plan.netRR<1.25||
+       (plan.side!=='BUY'&&plan.side!=='SELL'))return false;
+    const entry=plan.entry,stop=plan.stop,target=plan.targets[0]?.price;
+    if(entry==null||stop==null||target==null||
+       ![entry,stop,target,plan.cost].every(Number.isFinite)||plan.cost<0)return false;
+    const dir=plan.side==='BUY'?1:-1,risk=dir*(entry-stop),reward=dir*(target-entry);
+    return risk>0&&reward>0&&
+      (reward-plan.cost)/(risk+plan.cost) >= 1.25;
+  });
+  // Existing ranked order remains authoritative *among fully qualified*
+  // plans; a WATCH with any score can never displace an ARMED trade.
+  if(valid.length)return valid[0];
+  const top=plans[0];
+  if(!top)return null;
+  // Never pass through an ARMED badge whose numeric reward/geometry
+  // fails independent validation, even if no alternative exists.
+  return top.status==='ARMED'
+    ?{...top,status:'WATCH',blockers:[...top.blockers,'تقييم التكلفة والوقف النهائي رفض هذا الإعداد']} as T
+    :top;
+}

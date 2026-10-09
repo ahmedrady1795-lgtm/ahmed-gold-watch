@@ -7,6 +7,7 @@ import {getCoinbaseServerQuote,getCoinbaseClosedCandles} from './server-tick-bra
 import {readScalpLiquidity,observeScalpPlanHold} from './scalp-liquidity';
 import {getBtcLiquidity} from './liquidity-intelligence';
 import {auditScalpEntry} from './scalp-entry-audit';
+import {validateDirectionChronologically} from './direction-walkforward';
 
 function session(now:number){const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;return day!==6&&!(day===0&&h<22)&&!(day===5&&h>=21)&&!(day>=1&&day<=4&&h>=21&&h<22);}
 function envNumber(key:string){const raw=(getRuntimeEnv() as Record<string,unknown>)[key]??process.env[key];if(raw==null||raw==='')return null;const n=Number(raw);return Number.isFinite(n)&&n>=0&&n<=100?n:null;}
@@ -23,6 +24,24 @@ async function btcQuote(source:string):Promise<ScalpQuote>{
   return {price,at:Number.isFinite(parsed)?parsed:null,bid:Number.isFinite(bid)?bid:null,ask:Number.isFinite(ask)?ask:null,source:kraken?'Kraken XBT/USD':'Coinbase BTC-USD'};
 }
 let cached:any=null,cachedAt=0;
+// Direction study uses ONLY completed M1 candles. Cache per closed-bar and
+// estimated transaction-cost bucket; never recompute a full OOS split per tick.
+const directionCache=new Map<string,{at:number,result:any}>();
+function independentDirectionStudy(asset:'GOLD'|'BTC',rows:any[],now:number,cost:number){
+  const last=rows.filter(c=>Number(c.time)+60000<=now).at(-1)?.time;
+  const key=asset+':'+last+':'+Math.round(cost*100);
+  const v=directionCache.get(key);
+  if(v&&now-v.at>=0&&now-v.at<20000)return v.result;
+  if(directionCache.size>20)directionCache.clear();
+  const result={
+    m1:validateDirectionChronologically(rows,now,1,cost),
+    m5:validateDirectionChronologically(rows,now,5,cost),
+    note:'Independent time-ordered technical direction shadow study; NOT a full scalp backtest or Exness fill.'
+  };
+  directionCache.set(key,{at:now,result});
+  return result;
+}
+
 let lastScalpDiagnosticAt=0;
 let pending:Promise<any>|null=null;
 // BTC external services can occasionally stall for several seconds. Those
@@ -57,6 +76,8 @@ export async function getScalpDesk(){
       const at=Date.now();
       const input={asset,c1:market?.c1||[],c5:market?.c5||[],candleSource:market?.priceSource||market?.source||'unavailable',quote,now:at,events,newsReady,marketOpen:asset==='BTC'||session(at),feeBps:envNumber('SCALP_'+asset+'_FEE_BPS'),slippageBps:envNumber('SCALP_'+asset+'_SLIPPAGE_BPS')};
       const plans=buildScalpPlans(input);
+      const directionStudy=independentDirectionStudy(asset,input.c1,at,
+        Math.max(0,Number(plans[0]?.cost||0)));
       const orderBook=asset==='BTC'&&liquidityResult.status==='fulfilled'?liquidityResult.value:null;
       const bookFresh=Boolean(orderBook?.ok&&Number(orderBook?.quality||0)>=65&&
         Number(orderBook?.checkedAt||0)>0&&at-Number(orderBook.checkedAt)>=0&&at-Number(orderBook.checkedAt)<12000);
@@ -159,7 +180,7 @@ export async function getScalpDesk(){
         }
       }
       return {asset,profile:asset==='GOLD'?'ACTIVE_M5_PAPER':'STANDARD_PAPER',
-        checkedAt:at,quote,candleSource:input.candleSource,liquidity,orderBook,plans,qualityGates,entryConfirmations,ledger,data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
+        directionStudy,checkedAt:at,quote,candleSource:input.candleSource,liquidity,orderBook,plans,qualityGates,entryConfirmations,ledger,data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
     };
     const goldSnap=goldResult.status==='fulfilled'?goldResult.value:null;
     // A stalled BTC REST refresh may fall back only to verified CLOSED M1/M5
