@@ -82,6 +82,26 @@ const {advancePaperTrade,updateScalpLedger,evaluatePaperProof,SCALP_PROOF_FROM}=
 const {mergeBtcCandles}=load('lib/btc-market.ts');
 const {ingestLiveCandle,completedLiveCandles}=load('lib/live-candles.ts');
 const now=Date.parse('2026-10-08T01:30:00Z');
+const {readFastScalpView}=load('lib/scalp-fast-view.ts');
+const liveDesk={asset:'GOLD',checkedAt:now,quote:{at:now,price:4000},
+  candleSource:'MT5 reference',liquidity:{available:true,pressure:'BUY'},
+  plans:[{horizon:5,status:'WATCH',side:'BUY',score:88,entry:4000.5,stop:3999.8,
+    targets:[{price:4002}],blockers:['مطلوب إغلاق M1']}],
+  entryConfirmations:[{horizon:5,state:'CONDITIONS_PENDING',entry:null,stop:null,targets:[]}]};
+const fastWatch=readFastScalpView(liveDesk,now+4000);
+assert.equal(fastWatch.status,'CONDITIONAL_WATCH','A good directional WATCH is not an ENTRY');
+assert.equal(fastWatch.side,'BUY');
+assert.equal(readFastScalpView(liveDesk,now+15000).status,'UNAVAILABLE',
+  'Old reference-price observations must fail closed');
+const falseEntry=readFastScalpView({...liveDesk,plans:[{...liveDesk.plans[0],status:'ARMED'}],
+  entryConfirmations:[{horizon:5,state:'ENTRY',entry:4000.5,stop:4001,targets:[{price:4002}]}]},now+1000);
+assert.notEqual(falseEntry.status,'PAPER_ENTRY','An incorrect BUY stop geometry may not be shown as approved');
+const approved=readFastScalpView({...liveDesk,plans:[{...liveDesk.plans[0],status:'ARMED'}],
+  entryConfirmations:[{horizon:5,state:'ENTRY',entry:4000.5,stop:3999.8,targets:[{price:4002}]}]},now+1000);
+assert.equal(approved.status,'PAPER_ENTRY');
+assert.equal(readFastScalpView({...liveDesk,plans:[]},now+1000).status,'PRICE_PRESSURE_ONLY',
+  'Quote momentum can show a non-trading lean even when AI chooses WAIT');
+console.log('PASS: fast independent M1/M5 lane: staleness, conditional WATCH, stop geometry and paper-only ENTRY');
 const refreshed=mergeBtcCandles([{time:2,close:100},{time:1,close:90},{time:2,close:105}]);
 assert.equal(refreshed.length,2);assert.equal(refreshed[0].time,1);assert.equal(refreshed[1].close,105,'Latest provider OHLC must override a cached unfinished candle');
 const live={lastAt:0,bars:[]};
