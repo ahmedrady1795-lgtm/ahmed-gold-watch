@@ -43,6 +43,7 @@ export const runtime='nodejs';
 startServerTickBrain();
 let lastDiagLog=0;
 let lastAiPayload:any=null,lastAiPayloadAt=0,analysisBusy=false;
+let lastAiPerfLog=0;
 type ForwardCommit={side:'BUY'|'SELL';at:number;confidence:number;target:number|null;zone:any;targets:any;targetQuality:number;windowSeconds:any;status:string;agreement:number;support:number};
 let forwardCommitState:Record<'GOLD'|'BTC',ForwardCommit|null>={GOLD:null,BTC:null};
 let stableGoldLiquidityState:{at:number;pressure:number;quality:number;side:'BUY'|'SELL'|'WAIT';mode:'DOM'|'PROXY'}|null=null;
@@ -501,6 +502,8 @@ function applyMarketLeadToScalp(scalp:any,lead:any){
 
 export async function GET(request:Request){
   const now=Date.now(),url=new URL(request.url),workerCycle=url.searchParams.get('worker')==='1',btcWave=waveFromParams(url,'b',now),goldWave=waveFromParams(url,'g',now);
+  // Measure actual expensive-stage latency without adding a new blocking probe.
+  const perfStarted=Date.now(),perf:any={workerCycle};
   const clientGoldAt=Number(url.searchParams.get('gt'));
   const clientBtcAt=Number(url.searchParams.get('bat'));
   const clientGoldPrice=Number(url.searchParams.get('gp'));
@@ -536,6 +539,7 @@ export async function GET(request:Request){
     const scalpDeskPromise=getScalpDesk().catch(()=>null);
     const webIntelPromise=getWebMarketIntelligence(now).catch(()=>null);
     let [goldSnap,btc,liveBtc,liquidity]=await Promise.all([getMarketSnapshot(),getBtcMarket(),liveBtcSpot(),getBtcLiquidity().catch(()=>null)]);
+    perf.firstMarketFetchMs=Date.now()-perfStarted;
     let gm=goldSnap.market,quote=goldSnap.quote;
     if(!gm.pricesReady||!gm.newsReady){
       detected.push(...(gm.errors||[]));
@@ -598,6 +602,7 @@ export async function GET(request:Request){
     const mlPredictionPromise=getMlPrediction(btc.c1,now).catch(()=>({ok:false,status:'UNAVAILABLE',shadow:true} as any));
     const neuralPredictionPromise=getNeuralPrediction(now).catch(()=>({ok:false,status:'UNAVAILABLE',ready:false,side:'WAIT'} as any));
     const bitcoinMlRaw=await mlPredictionPromise;
+    perf.mlReadyAtMs=Date.now()-perfStarted;perf.mlServiceMs=Number(bitcoinMlRaw?.latencyMs||0);
     const bitcoinTick=getServerTickSignal('BTC',now)||btcWave;
     const goldMarketLead=updateGoldMarketLead(mt5GoldTick,now,goldWave||goldTick);
     const bitcoinMarketLead=updateBtcMarketLead(liquidity,now);
@@ -680,6 +685,7 @@ export async function GET(request:Request){
       }).catch(()=>null)
     ]);
     const bitcoinNeural=await neuralPredictionPromise;
+    perf.neuralReadyAtMs=Date.now()-perfStarted;perf.neuralServiceMs=Number(bitcoinNeural?.latencyMs||0);
     const bitcoinMl={...bitcoinMlRaw,neuralCore:bitcoinNeural};
     const goldHorizonLearning=getHorizonBrainLearning('GOLD',goldLearningPrice,now);
     const bitcoinHorizonLearning=getHorizonBrainLearning('BTC',btcPrice,now);
@@ -1256,6 +1262,7 @@ export async function GET(request:Request){
       return keepPrev('تم رفض انعكاس مؤقت؛ الاتجاه لا يتغير إلا بتفوق واضح ومستقل للإشارة العكسية');
     };
     const scalpDesk=await scalpDeskPromise;
+    perf.scalpResolvedAtMs=Date.now()-perfStarted;
     const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any,h4?:any,intent?:any,evolution?:any,toolMesh?:any,atr?:number|null)=>({
       asset,
       scalpDesk:scalpDesk?.[asset==='GOLD'?'gold':'bitcoin']||null,
@@ -1994,6 +2001,16 @@ export async function GET(request:Request){
 
     lastAiPayload=payload;lastAiPayloadAt=Date.now();
     setAiSnapshot(payload,lastAiPayloadAt);
+    if(Date.now()-lastAiPerfLog>=30000){
+      lastAiPerfLog=Date.now();
+      console.info('[AI-PERF]',JSON.stringify({
+        ...perf,totalMs:Date.now()-perfStarted,
+        goldM1Bars:gm.c1.length,btcM1Bars:btc.c1.length,
+        hasScalpSnapshot:Boolean(scalpDesk),
+        mlQualified:Boolean(bitcoinMlRaw?.oneMinute?.ready),
+        neuralQualified:Boolean(bitcoinNeural?.ready)
+      }));
+    }
     return Response.json(payload,{headers:{'Cache-Control':'no-store','X-AI-Cache':'miss'}});
   }catch(e){
     console.error('[AI-ERROR]',e instanceof Error?(e.stack||e.message):e);
