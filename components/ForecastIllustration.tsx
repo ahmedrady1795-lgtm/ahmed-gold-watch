@@ -44,22 +44,24 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const stateLabel=m.ready?'مسار احتمالي':journal?'محفوظ · '+({MONITORING:'تحت المراقبة',STALE:'سعر متأخر',UNQUALIFIED:'غير مؤهل',TP_REACHED:'هدف تحقق',INVALIDATED:'مُبطل',EXPIRED:'منتهي',ACTIVE:'تحت المراجعة'}[journal.state]):m.status==='STALE_CANDLES'?'شموع تاريخية متأخرة':
     m.status==='NO_CANDLES'?'الشموع غير متاحة':'الترقب بدون أهداف مؤكدة';
   const highest=m.displayTargets.at(-1);
+  const zoneList=sn.zones.slice(0,4);
+  const statusText=journal?.message||sn.longRange?.reason||sn.stageText;
   const activation=sn.activation?'خلال '+sn.activation.min+'–'+sn.activation.max+' د':'—';
   const arrival=sn.arrival?'خلال '+sn.arrival.min+'–'+sn.arrival.max+' د':'غير محدد';
 
   return <section id="forecast-illustration" className="workspace-section forecast-visual-section"
     aria-labelledby="forecast-visual-title">
     <div className="workspace-section-heading renewed-section-head">
-      <div><span>02 / PRICE PATH RADAR · VISUAL OUTLOOK</span>
-        <h2 id="forecast-visual-title">الرسم التوضيحي للحركة القادمة</h2></div>
-      <p>شموع حقيقية · خريطة السيولة · مناطق الاستهداف · مسار مشروط</p>
+      <div><span>01 / AI PREDATOR · SMART PATH RADAR</span>
+        <h2 id="forecast-visual-title">القناص الذكي · الرسم المتوقع للحركة</h2></div>
+      <p>التحليل والاتجاه والأهداف الهيكلية في لوحة واحدة · السكالب في صفحة مستقلة</p>
     </div>
     <div className="forecast-visual-shell">
       <header className="forecast-visual-header">
         <div className="forecast-visual-heading">
           <span className="forecast-visual-mark"><Crosshair size={17}/></span>
           <div><strong>خريطة حركة {asset==='GOLD'?'الذهب':'البيتكوين'}</strong>
-            <small>PRE-MOVE · M1 HISTORY / AI TARGET LADDER</small></div>
+            <small>M1 CANDLES · M15/H1 STRUCTURAL SNIPER</small></div>
         </div>
         <div className="forecast-visual-controls">
           {assetView==='ALL'&&<div className="forecast-visual-tabs" role="group" aria-label="الأصل على الرسم">
@@ -71,6 +73,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </span>
         </div>
       </header>
+      <div className="forecast-brain-strip">
+        <span><Activity size={14}/> {sn.phaseText} {sn.compression!=null?'· جاهزية '+sn.compression+'/100':''}</span>
+        <span><Layers3 size={14}/> مصادر الأهداف: M15 / H1 / السيولة</span>
+        <span><Target size={14}/> {m.ready?'أهداف هيكلية أبعد من تذبذب السكالب':journal?'أهداف سابقة محفوظة':'لا يوجد هدف هيكلي كافٍ حاليًا'}</span>
+      </div>
       <div className="forecast-visual-layout">
         <div className="forecast-visual-facts">
           <div className="forecast-visual-fact forecast-visual-last">
@@ -87,7 +94,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             {([1,2,3] as const).map(i=>{
               const target=m.displayTargets.find(t=>t.stage===i);
               return <div key={i} className="forecast-visual-target">
-                <span>TP{i}<small>{target&&'reached' in target&&target.reached?'تحقق':journal&&!m.ready?'محفوظ':target?.kind==='PROJECTION'?'تقديري':'منطقة هدف'}</small></span>
+                <span>{i===1?'TP1 · أول':i===2?'TP2 · رئيسي':'TP3 · ممتد'}<small>{target&&'reached' in target&&target.reached?'تم الوصول':journal&&!m.ready?'مستوى سابق':target?'M15/H1 · هيكلي':'بانتظار مستوى مؤكد'}</small></span>
                 <strong dir="ltr">{fmt(target?.price)}</strong>
               </div>;
             })}
@@ -99,11 +106,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           <div className="forecast-visual-fact forecast-visual-time">
             <small><Clock3 size={13}/> بدء الحركة / الهدف الأول</small>
             <strong>{m.ready?activation:journal?'غير نشط':'—'}</strong>
-            <span>{m.ready?arrival:journal?.message||'توقيت غير مؤهل'}</span>
+            <span>{m.ready?arrival:journal?'توقيت غير نشط':'لا يوجد موعد موثوق للهدف البعيد'}</span>
           </div>
           <div className="forecast-visual-confidence">
             <span>قوة التحليل <b>{m.ready&&sn.view.confidence!=null?fmt(sn.view.confidence,0)+'/100':'—'}</b></span>
-            <small>تقييم نموذج، وليس نسبة نجاح أو ضمانًا</small>
+            <small>تقييم مشروط، وليس نسبة نجاح أو ضمانًا</small>
           </div>
         </div>
         <div className="forecast-visual-chart-wrap">
@@ -207,6 +214,26 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <span><i className="forecast-legend-rebound"/> مناطق ارتداد وسيولة</span>
             <span><i className="forecast-legend-stop"/> إبطال</span>
           </div>
+        </div>
+      </div>
+      <div className="forecast-decision-row">
+        <div className="forecast-decision-card">
+          <strong><Layers3 size={15}/> مناطق الارتداد والسيولة</strong>
+          <div className="forecast-decision-zones">
+            {zoneList.length?zoneList.map(z=><span key={z.label}>
+              <small>{z.label}</small><b dir="ltr">{fmt(z.low)} – {fmt(z.high)}</b>
+            </span>):<small>لا توجد مناطق حديثة مؤهلة للعرض</small>}
+          </div>
+          {sn.flow&&<p>تدفق تقديري: طلب {sn.flow.buy}% · عرض {sn.flow.sell}% ({sn.flow.source})</p>}
+        </div>
+        <div className="forecast-decision-card">
+          <strong><Crosshair size={15}/> قرار القناص وسبب الأهداف</strong>
+          <p>{statusText}</p>
+          <p>{sn.longRange?.basis||'في انتظار إطار هيكلي موثوق'}
+            {sn.longRange?.atr15!=null?' · ATR M15 '+fmt(sn.longRange.atr15):''}</p>
+          {m.ready&&sn.evidence?.length>0&&<div className="forecast-decision-evidence">
+            {sn.evidence.slice(0,4).map(item=><span key={item}>{item}</span>)}
+          </div>}
         </div>
       </div>
       <footer className="forecast-visual-note">
