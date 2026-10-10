@@ -137,6 +137,11 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
   const liqSell=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.sell||0))));
   const liqOk=Boolean(x?.liquidity?.ok&&now-Number(x?.liquidity?.checkedAt||0)<12000);
   const liquidityLabel=x?.liquidity?.mode==='DOM'?'عمق أوامر الوسيط':x?.liquidity?.mode==='CANDLE_FLOW_PROXY'?'تقدير من الشموع (ليس دفتر أوامر)':'سيولة منصات التداول';
+  const scalpLiquidity=x?.scalpDesk?.liquidity;
+  const freshScalpLiquidity=Boolean(scalpLiquidity?.available&&
+    x?.scalpDesk?.checkedAt&&now-Number(x.scalpDesk.checkedAt)<15000);
+  const liquidityUpper=freshScalpLiquidity&&Number.isFinite(Number(scalpLiquidity.rangeHigh))?Number(scalpLiquidity.rangeHigh):null;
+  const liquidityLower=freshScalpLiquidity&&Number.isFinite(Number(scalpLiquidity.rangeLow))?Number(scalpLiquidity.rangeLow):null;
   const hasLiquidity=Boolean(liqOk&&liqBuy+liqSell===100);
   const accumulation=x?.accumulation||null;
   const accumulationPhase=accumulation?.phase==='ACCUMULATING'||accumulation?.phase==='MARKUP_READY'?'تجميع':accumulation?.phase==='DISTRIBUTING'||accumulation?.phase==='MARKDOWN_READY'?'تصريف':'توازن';
@@ -187,7 +192,9 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
   // execution engine or the raw audit records.
   const unqualified15m=x.asset==='GOLD'&&validationDirectional>=100&&
     Number.isFinite(validationAccuracy)&&validationAccuracy<55;
-  const heroSide=unqualified15m?'WAIT':forwardSide;
+  const sourceAt=Number(x?.livePulse?.sourceTime||x?.checkedAt||0);
+  const marketStale=sourceAt>0&&(now-sourceAt>30000||now<sourceAt);
+  const heroSide=unqualified15m||marketStale?'WAIT':forwardSide;
   const liveInvalidated=Boolean(price!=null&&invalidation!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)<=invalidation:Number(price)>=invalidation));
   const hit=(v:number|null)=>Boolean(price!=null&&v!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)>=v:Number(price)<=v));
   const liveT1Hit=hit(t1Price),liveT2Hit=hit(t2Price),liveT3Hit=hit(t3Price);
@@ -214,9 +221,15 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
       <div><small>اتجاه 15 دقيقة</small><strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>{moveAr(heroSide)}</strong></div>
       <div><small>قوة الترجيح · ليست احتمال ربح</small><strong>{heroSide==='WAIT'?'—':Math.round(Number(forward?.confidence||0))+'/100'}</strong></div>
     </div>
-    <div className="market-liquidity-brief">
-      <span>السيولة: {hasLiquidity?<><b className="green">شراء {liqBuy}%</b> <b className="red">بيع {liqSell}%</b></>:'غير مؤكدة'}</span>
-      <small>{liquidityLabel}</small>
+    <div className="market-liquidity-brief next-move-liquidity" aria-label="السيولة مع الحركة القادمة">
+      <div><b>السيولة المصاحبة للحركة القادمة</b>
+        <span>{hasLiquidity?<><b className="green">ضغط شراء {liqBuy}%</b> <b className="red">ضغط بيع {liqSell}%</b></>:'مفيش سيولة حديثة مؤكدة'}</span>
+      </div>
+      <div className="liquidity-near-levels">
+        <span><small>السيولة فوق النطاق</small><strong dir="ltr">{liquidityUpper!=null?fmt(liquidityUpper,2):upperLiquidityLevel}</strong></span>
+        <span><small>السيولة تحت النطاق</small><strong dir="ltr">{liquidityLower!=null?fmt(liquidityLower,2):lowerLiquidityLevel}</strong></span>
+      </div>
+      <small>{hasLiquidity?liquidityLabel:'الأرقام القديمة مش دليل دخول'} · مستويات سيولة متغيرة، مش ضمان اتجاه</small>
     </div>
     {moveEnvelope&&<details className="forecast-extra">
       <summary>توزيع حركة السعر الفعلية خلال 1 و5 و15 دقيقة · مرجع تاريخي</summary>
@@ -254,7 +267,7 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
       <span>توقع 15 دقيقة · أهداف أمامية متدرجة</span>
       <strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>
         {heroSide==='WAIT'
-          ?(unqualified15m?'توقع الذهب غير مؤهل حاليًا: نتائج الاتجاه قريبة من 50%':'لا يوجد اتجاه معتمد لـ15 دقيقة')
+          ?(marketStale?'الأسعار متأخرة · مفيش توقع جديد موثوق':unqualified15m?'توقع الذهب غير مؤهل: دقة الاتجاه التاريخية ضعيفة':'لا يوجد اتجاه معتمد لـ15 دقيقة')
           :liveInvalidated
             ?'السيناريو أُلغي بعد كسر مستوى الإبطال · ننتظر توقعًا جديدًا'
           :activeTarget!=null
@@ -314,81 +327,25 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
 
 export default function AICommandCenter({data,error,fastWave,goldLive,assetView='ALL',now=Date.now()}:any){
   const snapshotAgeMs=data?.snapshot?Math.max(0,now-Number(data.snapshot.servedAt||now)+Number(data.snapshot.ageMs||0)):null;
-  const auto=data?.autopilot,next=auto?.nextEvent;
-  const nextEventDelta=Number(next?.time)-now;
-  const awaitingActual=Boolean(next?.awaitingActual||next?.status==='AWAITING_ACTUAL');
-  const narrativeLive=Boolean(next?.status==='TEXT_EVENT_LIVE'||next?.eventType==='NARRATIVE'&&nextEventDelta<0);
-  const showNextEvent=!!next&&Number.isFinite(nextEventDelta)&&((nextEventDelta>=0&&nextEventDelta<=10*60*60*1000)||(awaitingActual&&nextEventDelta>=-30*60*1000)||(narrativeLive&&nextEventDelta>=-8*60*1000));
   return <div className="ai-clean">
     {error&&!data&&<div className="fatal"><Activity size={18}/><div><strong>تعذر تحديث AI</strong><span>{error}</span></div></div>}
     {snapshotAgeMs!=null&&snapshotAgeMs>30000&&<div className="fatal"><Activity size={18}/><div><strong>التحليل متأخر</strong><span>آخر لقطة عمرها {Math.round(snapshotAgeMs/1000)} ثانية · لا تعتمد على أي توصية حتى تتجدد</span></div></div>}
 
     <section id="scalp-opportunities" className="workspace-section" aria-labelledby="scalp-section-title">
-      <div className="workspace-section-heading"><div><span>02 / فرص الدخول</span><h2 id="scalp-section-title">السكالب · دقيقة وخمس دقائق</h2></div><p>الإعداد، التأكيد، ثم مستويات الدخول</p></div>
+      <div className="workspace-section-heading"><div><span>01 / دخول سريع</span><h2 id="scalp-section-title">السكالب · اتجاه واضح وصلاحية 15 ثانية</h2></div><p>إشارة ورقية مؤقتة، من غير تفاصيل إعداد معقدة</p></div>
       <div className={'dashboardgrid market-pair-grid '+(assetView!=='ALL'?'single-asset':'')}>
         {assetView!=='BTC'&&(data?.gold?.scalpDesk?<ScalpDesk desk={data.gold.scalpDesk} now={now}/>:<div className="panel workspace-loading">جارٍ تحميل إعدادات الذهب…</div>)}
         {assetView!=='GOLD'&&(data?.bitcoin?.scalpDesk?<ScalpDesk desk={data.bitcoin.scalpDesk} now={now}/>:<div className="panel workspace-loading">جارٍ تحميل إعدادات البيتكوين…</div>)}
       </div>
     </section>
-    <details id="market-forecast" className="workspace-section panel forecast-optional" aria-labelledby="forecast-section-title">
-      <summary className="workspace-section-heading"><div><span>سياق إضافي · ليس إشارة دخول</span><h2 id="forecast-section-title">توقع الحركة · 15 دقيقة</h2></div><p>اضغط لعرض السيناريو والأهداف الافتراضية</p></summary>
+    <section id="market-forecast" className="workspace-section" aria-labelledby="forecast-section-title">
+      <div className="workspace-section-heading"><div><span>02 / السيناريو القادم</span><h2 id="forecast-section-title">الحركة القادمة + السيولة</h2></div><p>اتجاه مشروط، مستويات السيولة، والهدف الأول مع الإبطال</p></div>
       <div className={'dashboardgrid market-pair-grid '+(assetView!=='ALL'?'single-asset':'')}>
         {assetView!=='BTC'&&<LegacyAssetCard now={now} x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive}/>}
         {assetView!=='GOLD'&&<LegacyAssetCard now={now} x={data?.bitcoin} fast={fastWave?.btc}/>}
       </div>
-    </details>
-    {showNextEvent&&<details className="news-event-details">
-      <summary><span>خبر مؤثر على السوق <strong>{next.name}</strong></span><b>{awaitingActual?'بانتظار النتيجة':timeLeft(next.time,now)}</b></summary>
-      <section className="next-news news-impact-card">
-      <div className="news-head">
-        <div className="news-title-wrap">
-          <small>{awaitingActual?'بانتظار نتيجة الخبر':narrativeLive?'تصريحات جارية':'الخبر القادم'}</small>
-          <strong>{next.name}</strong>
-          <em>تأثيره المتوقع على السوق</em>
-        </div>
-        <span className="news-countdown">{awaitingActual?`متأخر ${Math.max(1,Math.floor(Math.abs(nextEventDelta)/60000))}د · بانتظار النتيجة`:narrativeLive?`بدأ منذ ${Math.max(1,Math.floor(Math.abs(nextEventDelta)/60000))}د · متابعة التأثير`:timeLeft(next.time,now)}</span>
-      </div>
+    </section>
 
-      {(next.forecast||next.previous||next.actual)&&<div className="news-values ordered">
-        {next.previous&&<span>السابق <b>{next.previous}</b></span>}
-        {next.forecast&&<span>المتوقع <b>{next.forecast}</b></span>}
-        {next.actual&&<span className="actual">الفعلي <b>{next.actual}</b></span>}
-      </div>}
-
-      <div className="news-impact-grid ordered">
-        {[
-          {label:'GOLD',name:'الذهب',impact:next.goldImpact},
-          {label:'BTC',name:'البتكوين',impact:next.btcImpact}
-        ].map(({label,name,impact}:any)=>{
-          const s=String(impact?.side||'WAIT');
-          const released=!awaitingActual&&Boolean(next?.actual)&&String(impact?.phase||'')!=='PRE_EVENT';
-          const confidence=Math.round(Number(impact?.confidence||0));
-          const risk=Math.round(Number(impact?.risk||0));
-          const up=Math.max(0,Math.min(100,Math.round(Number(impact?.upProbability??50))));
-          const down=Math.max(0,Math.min(100,Math.round(Number(impact?.downProbability??(100-up)))));
-          const direction=s==='BUY'?'↑ صعود':s==='SELL'?'↓ هبوط':released?'↔ محايد':narrativeLive?'↔ التأثير قيد القراءة':awaitingActual?'⏳ بانتظار النتيجة':'↔ غير محسوم';
-          return <div className="news-impact ordered-impact" key={label}>
-            <div className="impact-top">
-              <small>{label}</small>
-              <b>{name}</b>
-            </div>
-            <strong className={s==='BUY'?'green':s==='SELL'?'red':'amber'}>
-              {direction}{confidence>0?` · ${confidence}%`:''}
-            </strong>
-            <div className="impact-meta">
-              <span>{released?'تأثير فعلي':narrativeLive?'قراءة اللهجة ورد فعل السوق':awaitingActual?'التأثير المتوقع · بانتظار النتيجة':'الترجيح قبل الخبر'}</span>
-              <em>خطورة {risk}%</em>
-            </div>
-            <div className="news-values ordered">
-              <span>صعود <b className="green">{up}%</b></span>
-              <span>هبوط <b className="red">{down}%</b></span>
-            </div>
-            <p>{impact?.reason||(next?.eventType==='NARRATIVE'?'لا توجد نتيجة رقمية لهذا الحدث؛ يتم تقييم التصريحات والسعر والسيولة.':'سيتم تحديد الاتجاه بعد صدور البيانات ومقارنة الفعلي بالمتوقع.')}</p>
-          </div>;
-        })}
-      </div>
-      </section>
-    </details>}
 
 
   </div>;
