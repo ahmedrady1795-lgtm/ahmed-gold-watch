@@ -229,7 +229,7 @@ assert.ok(selectGoldM5Breakout({
   atr1:1,roundTripCost:.2
 }).blockers.length>0,'Missing candle data fails closed');
 console.log('PASS: BUY/SELL breakout limit retest, structural stops, wick rejection, fake breakout and exhaustion filters');
-const {advancePaperTrade,updateScalpLedger,evaluatePaperProof,evaluateRetestPaperProof,SCALP_PROOF_FROM,SCALP_RETEST_PROOF_FROM}=load('lib/scalp-paper-ledger.ts');
+const {advancePaperTrade,updateScalpLedger,evaluatePaperProof,evaluateRetestPaperProof,summarizePaperBySetup,SCALP_PROOF_FROM,SCALP_RETEST_PROOF_FROM}=load('lib/scalp-paper-ledger.ts');
 const {mergeBtcCandles}=load('lib/btc-market.ts');
 const {ingestLiveCandle,completedLiveCandles}=load('lib/live-candles.ts');
 const now=Date.parse('2026-10-08T01:30:00Z');
@@ -440,6 +440,26 @@ assert.equal(onlyRetest.samples,1,'Only real new RETEST exits count, not old bre
 assert.equal(onlyRetest.netR,-.35,'A losing retest must be shown even if other setups have wins');
 assert.equal(onlyRetest.status,'COLLECTING','One outcome cannot validate a new setup');
 assert.equal(onlyRetest.eligibleForLiveTrading,false,'Independent retest proof stays paper-only');
+const setupMetrics=summarizePaperBySetup([
+  {...paperRow(-.6,SCALP_RETEST_PROOF_FROM+120000,'TIME_EXIT'),plan:{...buy,setup:'RETEST'}},
+  {...paperRow(1.1,SCALP_RETEST_PROOF_FROM+180000),plan:{...buy,setup:'BREAKOUT'}},
+  {...paperRow(999,SCALP_RETEST_PROOF_FROM+240000,'CANCELED'),plan:{...buy,setup:'RETEST'}},
+  {...paperRow(-1.2,SCALP_RETEST_PROOF_FROM+300000,'STOP'),plan:{...buy,setup:'BREAKOUT'}},
+  {...paperRow(777,SCALP_RETEST_PROOF_FROM+360000,'UNKNOWN'),plan:{...buy,setup:'BREAKOUT'}}
+]);
+assert.equal(setupMetrics.length,5,'Every registered setup has a separate evidence lane');
+const retestStats=setupMetrics.find(x=>x.setup==='RETEST');
+assert.equal(retestStats.samples,1);
+assert.equal(retestStats.netR,-.6);
+assert.equal(retestStats.timeExits,1);
+assert.equal(retestStats.negativeTimeExits,1);
+const breakoutStats=setupMetrics.find(x=>x.setup==='BREAKOUT');
+assert.equal(breakoutStats.samples,2);
+assert.equal(breakoutStats.netR,-.1);
+assert.equal(breakoutStats.stops,1);
+assert.equal(breakoutStats.targets,1);
+assert.equal(setupMetrics.find(x=>x.setup==='SWEEP').samples,0);
+console.log('PASS: setup attribution excludes unfilled and unknown outcomes and isolates TIME_EXIT losses.');
 console.log('PASS: isolated M5 retest proof excludes old setup wins, canceled entries and prelaunch observations.');
 console.log('PASS: post-release proof excludes old/unknown fills and rejects negative samples.');
 
