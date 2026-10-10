@@ -1188,9 +1188,12 @@ export async function GET(request:Request){
         return s==='BUY'?Number(target)>price:Number(target)<price;
       };
       const invalidation=Number(prev?.targets?.invalidation);
-      const stopBroken=Boolean(prev&&priceOk&&Number.isFinite(invalidation)&&invalidation>0&&
+      const sourceAt=Number(pulse?.sourceTime||0);
+      const livePulse=priceOk&&sourceAt>0&&sourceAt<=now+1500&&now-sourceAt<=15000;
+      const stopBroken=Boolean(prev&&livePulse&&Number.isFinite(invalidation)&&invalidation>0&&
         (prev.side==='BUY'?price<=invalidation:price>=invalidation));
-      const prevAlive=Boolean(prev&&!stopBroken&&now-prev.at<=120000&&ahead(prev.side,prev.target));
+      const holdingMs=180000;
+      const prevAlive=Boolean(prev&&!stopBroken&&now-prev.at<=holdingMs&&ahead(prev.side,prev.target));
       const keepPrev=(reason:string)=>{
         if(!prev)return candidate;
         const age=Math.max(0,now-prev.at);
@@ -1207,7 +1210,7 @@ export async function GET(request:Request){
           targetQuality:prev.targetQuality,
           zone:prev.zone,
           windowSeconds:prev.windowSeconds,
-          expiresAt:now+Math.max(8000,Number(prev.windowSeconds?.max||25)*1000),
+          expiresAt:prev.at+Math.min(900000,Math.max(180000,Number(prev.windowSeconds?.max||180)*1000)),
           agreement:Math.max(Number(candidate?.agreement||0),prev.agreement),
           support:Math.max(Number(candidate?.support||0),prev.support),
           stability:{locked:true,ageMs:age,flipBlocked:true},
@@ -1216,7 +1219,7 @@ export async function GET(request:Request){
       };
 
       if(side==='WAIT'){
-        if(prevAlive&&prev&&prev.confidence>=58&&now-prev.at<=45000){
+        if(prevAlive&&prev&&prev.confidence>=54&&now-prev.at<=holdingMs){
           return keepPrev('الاتجاه السابق ما زال صالحًا؛ تم منع التردد اللحظي حتى يظهر انعكاس مؤكد');
         }
         if(!prevAlive)forwardCommitState[asset]=null;
@@ -1241,9 +1244,9 @@ export async function GET(request:Request){
         const prevTarget=prev.target==null?NaN:Number(prev.target),nextTarget=target==null?NaN:Number(target);
         const prevQuality=Number(prev.targetQuality||prev.targets?.quality||0),nextQuality=Number(candidate?.targetQuality||candidate?.targets?.quality||0);
         const shiftBps=priceOk&&Number.isFinite(prevTarget)&&Number.isFinite(nextTarget)?Math.abs(nextTarget-prevTarget)/price*10000:0;
-        const shiftGate=asset==='GOLD'?3.5:7;
+        const shiftGate=asset==='GOLD'?2.5:6;
         const oldStillAhead=Number.isFinite(prevTarget)&&ahead(side,prevTarget);
-        if(oldStillAhead&&shiftBps>shiftGate&&nextQuality<prevQuality+8){
+        if(oldStillAhead&&shiftBps>shiftGate&&nextQuality<prevQuality+12){
           return commit({
             ...candidate,target:prev.target,targets:prev.targets,targetQuality:prevQuality,zone:prev.zone,
             reason:String(candidate?.reason||'')+' · تم تثبيت الأهداف السابقة لمنع قفز الهدف بدون دليل أقوى'
@@ -1261,7 +1264,7 @@ export async function GET(request:Request){
       const higherTfFlip=higherTfVotes>=2&&higherTfOppose<=1&&confidence>=54&&agreement>=57&&support>=3;
       const decisiveFlip=confidence>=Math.max(62,prev.confidence+6)&&agreement>=61&&support>=3;
       const preMoveFlip=String(candidate?.status)==='PRE_MOVE'&&higherTfVotes>=2&&confidence>=58&&agreement>=59&&support>=3;
-      const agedFlip=age>=60000&&confidence>=55&&agreement>=58&&support>=2;
+      const agedFlip=age>=holdingMs&&confidence>=58&&agreement>=60&&support>=3;
       if(higherTfFlip||decisiveFlip||preMoveFlip||agedFlip)return commit();
 
       return keepPrev('تم رفض انعكاس مؤقت؛ الاتجاه لا يتغير إلا بتفوق واضح ومستقل للإشارة العكسية');
