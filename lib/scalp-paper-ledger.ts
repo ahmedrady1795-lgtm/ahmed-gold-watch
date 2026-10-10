@@ -57,6 +57,30 @@ export function evaluatePaperProof(trades:PaperTrade[],start=SCALP_PROOF_FROM){
   };
 }
 
+// Track where the paper losses originate; selection quality cannot be
+// audited by total wins alone. No canceled/unfilled/unknown case is a win.
+export function summarizePaperBySetup(trades:PaperTrade[]){
+  const setups=['BREAKOUT','PULLBACK','SWEEP','CONTINUATION','RETEST'] as const;
+  const closed=trades.filter(t=>t?.activatedAt!=null&&t.netR!=null&&
+    Number.isFinite(t.netR)&&['TP1','STOP','TIME_EXIT'].includes(t.state));
+  return setups.map(setup=>{
+    const rows=closed.filter(t=>t.plan?.setup===setup);
+    const values=rows.map(t=>Number(t.netR));
+    const net=values.reduce((sum,x)=>sum+x,0);
+    const profit=values.filter(x=>x>0).reduce((sum,x)=>sum+x,0);
+    const loss=-values.filter(x=>x<0).reduce((sum,x)=>sum+x,0);
+    return {setup,samples:rows.length,wins:values.filter(x=>x>0).length,
+      netR:round(net),expectancyR:rows.length?round(net/rows.length):null,
+      profitFactor:loss>0?round(profit/loss):null,
+      timeExits:rows.filter(t=>t.state==='TIME_EXIT').length,
+      stops:rows.filter(t=>t.state==='STOP').length,
+      targets:rows.filter(t=>t.state==='TP1').length,
+      // A whole period of negative TIME_EXITs indicates horizon mismatch.
+      negativeTimeExits:rows.filter(t=>t.state==='TIME_EXIT'&&Number(t.netR)<0).length
+    };
+  });
+}
+
 export function evaluateRetestPaperProof(trades:PaperTrade[]){
   // Closed trades of the new setup ONLY. Old M5 breakout profits never
   // count as evidence for RETEST, even when they are in the same ledger.
@@ -205,6 +229,7 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
       // Never show profitable results from older breakout/pullback trades as
       // if they validated the newly launched RETEST strategy.
       retestProof:evaluateRetestPaperProof(lane.history),
+      setupBreakdown:summarizePaperBySetup(lane.history),
       winRate:verified.length?round(wins.length/verified.length*100):null,
       netR:round(verified.reduce((s,t)=>s+Number(t.netR),0)),
       expectancyR:verified.length?round(verified.reduce((s,t)=>s+Number(t.netR),0)/verified.length):null,
