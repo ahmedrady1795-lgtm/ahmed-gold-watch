@@ -2,7 +2,7 @@ import type {buildSniperOutlook} from './sniper-outlook';
 
 type Sniper=ReturnType<typeof buildSniperOutlook>;
 export type ScenarioTarget={
-  stage:1|2|3;price:number;low:number;high:number;quality:number;kind:string;reached:boolean
+  stage:1|2|3;price:number;low:number;high:number;quality:number;kind:string;source?:string;distanceAtr?:number;reached:boolean
 };
 export type ForecastJournal={
   side:'BUY'|'SELL';
@@ -18,13 +18,13 @@ const reached=(side:'BUY'|'SELL',price:number,goal:number)=>
   side==='BUY'?price>=goal:price<=goal;
 const suitable=(s:Sniper)=>s.view.side!=='WAIT'&&s.view.priceFresh&&s.view.forecastFresh&&
   s.view.price!=null&&s.view.invalidation!=null&&s.targets.length>0;
-const MAX_HISTORY=30*60*1000;
-const MAX_LIFETIME=15*60*1000;
+const MAX_HISTORY=3*60*60*1000;
+const MAX_LIFETIME=90*60*1000;
 function start(s:Sniper,now:number,modelAt:number):ForecastJournal{
   const side=s.view.side as 'BUY'|'SELL';
   const suggested=Number(s.activation?.max||0)*60*1000;
   // One forecast has a fixed expiry; polling the same snapshot must never refresh it.
-  const lifetime=Math.min(MAX_LIFETIME,Math.max(3*60*1000,suggested||MAX_LIFETIME));
+  const lifetime=Math.min(MAX_LIFETIME,Math.max(45*60*1000,(suggested||15*60*1000)*4));
   return {
     side,startPrice:s.view.price!,invalidation:s.view.invalidation!,
     confidence:Number(s.view.confidence||0),
