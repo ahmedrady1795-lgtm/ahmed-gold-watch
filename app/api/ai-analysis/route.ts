@@ -1289,6 +1289,15 @@ export async function GET(request:Request){
         .slice(-52)
         .map((c:any)=>({time:Number(c.time),open:Number(c.open),high:Number(c.high),
           low:Number(c.low),close:Number(c.close),volume:Math.max(0,Number(c.realVolume||c.tickVolume||0))})),
+      // Higher-timeframe CLOSED history for independent, non-scalp liquidity objectives.
+      chartHigherFrames:{
+        m5:(asset==='GOLD'?gm.c5:btc.c5).filter((c:any)=>Number(c.time)+300000<=now)
+          .slice(-110).map((c:any)=>({time:Number(c.time),open:Number(c.open),high:Number(c.high),low:Number(c.low),close:Number(c.close)})),
+        m15:(asset==='GOLD'?gm.c15:btc.c15).filter((c:any)=>Number(c.time)+900000<=now)
+          .slice(-160).map((c:any)=>({time:Number(c.time),open:Number(c.open),high:Number(c.high),low:Number(c.low),close:Number(c.close)})),
+        h1:(asset==='GOLD'?gm.c60:btc.c60).filter((c:any)=>Number(c.time)+3600000<=now)
+          .slice(-130).map((c:any)=>({time:Number(c.time),open:Number(c.open),high:Number(c.high),low:Number(c.low),close:Number(c.close)}))
+      },
       indicatorMatrix:x?.indicatorMatrix||null,
       coreSummary:(()=>{const core=asset==='GOLD'?goldMultiBrain:bitcoinMultiBrain;return {side:core.side,regime:core.regime,confidence:core.confidence,qualityReady:core.calibration.qualityReady,samples:core.calibration.supportSamples};})(),
       scalpDesk:scalpDesk?.[asset==='GOLD'?'gold':'bitcoin']||null,
