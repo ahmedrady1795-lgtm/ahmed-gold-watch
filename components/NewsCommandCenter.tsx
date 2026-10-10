@@ -1,5 +1,6 @@
 'use client';
 import {Clock3,Newspaper} from 'lucide-react';
+import {economicNewsTimeline} from '../lib/news-alert-window';
 
 const macroNumber=(v:any)=>{
   const s=String(v??'').trim().replace(/,/g,'');
@@ -55,20 +56,7 @@ const dirLabel=(d:Dir)=>d==='up'?'صعود':d==='down'?'هبوط':'محايد';
 export default function NewsCommandCenter({events=[],now=Date.now(),featuredEvent=null}:any){
   // Event times must come from a real feed. Do not generate placeholder dates
   // or present an approximate/narrative event as an exact scheduled release.
-  const candidates=[...events,featuredEvent].filter((e:any)=>e&&
-    typeof e.name==='string'&&e.name.trim()&&
-    Number.isFinite(Number(e.time))&&Number(e.time)>0);
-  const seen=new Set<string>();
-  const unique=candidates.sort((a:any,b:any)=>Number(a.time)-Number(b.time))
-    .filter((e:any)=>{
-      const key=String(e.id||'')+'|'+String(e.name).toLowerCase()+'|'+Number(e.time);
-      if(seen.has(key))return false;seen.add(key);return true;
-    });
-  const upcoming=unique.filter((e:any)=>Number(e.time)>=now&&
-    Number(e.time)<=now+30*86400000);
-  const alerts=upcoming.filter((e:any)=>Number(e.time)-now<=8*60*60*1000).slice(0,4);
-  const recent=unique.filter((e:any)=>Number(e.time)<now&&
-    Number(e.time)>=now-10*60000&&String(e.actual||'').trim()).slice(-2);
+  const {upcoming,alerts,recent}=economicNewsTimeline(events,featuredEvent,now);
   return <section className="panel newscommand standalone-news" aria-label="الأخبار الاقتصادية">
     <header className="standalone-news-head">
       <div><span className="eyebrow">03 / الأخبار الاقتصادية</span>
