@@ -631,3 +631,51 @@ body:has(.modern-workspace){
 .sniper-goal-hit strong{color:#85eebf!important;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
 .forecast-visual-shell:has(.forecast-visual-status:not(.forecast-visual-active)) .forecast-visual-target{background:#20262a;border-color:#526063}
 .forecast-visual-shell:has(.forecast-visual-status:not(.forecast-visual-active)) .forecast-visual-target strong{color:#b7c6ca}
+
+/* Unified longer-range sniper and separate, laptop-ready scalp workspace */
+#market-forecast{min-width:0}
+.modern-workspace .renewed-ai{gap:0}
+.modern-workspace .forecast-visual-section{margin:0}
+.modern-workspace .forecast-visual-shell{border-color:#33546a;box-shadow:inset 0 1px #ffffff09,0 20px 48px #0004}
+.modern-workspace .forecast-visual-chart-wrap{background:linear-gradient(125deg,#08111b,#0b1725)}
+.forecast-brain-strip{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:9px 13px;background:#0c1a29;border-bottom:1px solid #294154}
+.forecast-brain-strip span{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:#a8d8e1}
+.forecast-brain-strip span:last-child{color:#f0ce91}
+.forecast-visual-targets{margin-top:2px}
+.forecast-visual-target:nth-child(2){border-color:#bc9d5b;background:linear-gradient(135deg,#342b1e,#1b292a)}
+.forecast-visual-target:nth-child(2) strong,.forecast-visual-target:nth-child(2)>span{color:#f8daa1}
+.forecast-decision-row{display:grid;grid-template-columns:1.1fr 1fr;gap:9px;margin:0 10px 10px}
+.forecast-decision-card{min-width:0;border:1px solid #264153;border-radius:9px;background:linear-gradient(135deg,#112232,#0f1b27);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.forecast-decision-card>strong{display:flex;align-items:center;gap:6px;color:#d9e9f2;font-size:12px}
+.forecast-decision-card>p{font-size:10px;color:#acc5d3;margin:0;line-height:1.6}
+.forecast-decision-zones{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.forecast-decision-zones>span{display:flex;align-items:center;justify-content:space-between;gap:5px;border:1px solid #2f4d60;background:#0a1a28;border-radius:6px;padding:6px;min-width:0}
+.forecast-decision-zones small{color:#8fb4c6;font-size:9px}
+.forecast-decision-zones b{font-size:10px;color:#e2d29e;font-variant-numeric:tabular-nums}
+.forecast-decision-evidence{display:flex;flex-wrap:wrap;gap:4px}
+.forecast-decision-evidence span{background:#123327;border:1px solid #386b58;color:#9fe6c7;font-size:9px;border-radius:5px;padding:3px 6px}
+.workspace-scalp-link{background:#152a37!important;border:1px solid #386276!important;color:#9fe9ec!important;font-weight:700!important}
+.workspace-scalp-link:hover{background:#194353!important}
+.scalp-workspace{min-height:100vh}
+.scalp-back-link{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid #3e6880;color:#b7eaf8;text-decoration:none;border-radius:9px;font-size:11px}
+.scalp-lab-intro{display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap;margin:14px 0 10px}
+.scalp-lab-intro h1{margin:3px 0;font-size:25px;font-weight:800;color:#e8f3f6}
+.scalp-lab-intro h1 span{font-size:17px;color:#dfbf86}
+.scalp-lab-intro p{font-size:12px;color:#aac0ce}
+.scalp-lab-status{display:flex;align-items:center;gap:8px;border:1px solid #2a4b5a;padding:10px 13px;background:#0d202c;border-radius:9px}
+.scalp-lab-status strong{font-size:11px;color:#9fe9d3}
+.scalp-lab-status span{font-size:10px;color:#a1bdcb}
+.scalp-paper-label{display:flex;align-items:center;gap:6px;color:#d3b787;font-size:10px}
+.scalp-lab-footer{display:flex;align-items:center;gap:8px;color:#abbccc;font-size:11px;margin-top:13px;border:1px solid #3c4d5c;padding:11px;border-radius:9px}
+.scalp-workspace footer a{color:#9bd9e9}
+@media(max-width:820px){
+  .forecast-decision-row{grid-template-columns:1fr;margin:0 7px 7px;gap:7px}
+  .forecast-brain-strip{padding:8px}
+  .forecast-brain-strip span{font-size:9px}
+}
+@media(max-width:520px){
+  .scalp-lab-intro h1{font-size:20px}
+  .scalp-lab-intro h1 span{font-size:14px}
+  .scalp-lab-status{width:100%}
+  .forecast-decision-zones{grid-template-columns:1fr}
+}
