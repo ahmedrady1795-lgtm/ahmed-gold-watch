@@ -126,8 +126,17 @@ export function advancePaperTrade(trade:PaperTrade,quote:ScalpQuote,now:number,c
     }
     if(at-t.lastAt>15000){close('UNKNOWN',null,at,'انقطاع متابعة بعد الدخول؛ النتيجة غير قابلة للتحقق');return t;}
     if(at>=expiry){
-      if(expiry-t.lastAt<=5000)close('TIME_EXIT',t.lastPrice,expiry,'انتهاء المدة؛ آخر سعر موثق قبل انتهاء الصلاحية');
-      else close('UNKNOWN',null,expiry,'لا يوجد سعر قريب موثق عند انتهاء المدة');
+      // An EXACT expiry quote is more informative than the previous tick.
+      // A quote arriving AFTER expiry must never be backdated into the trade:
+      // use only a documented pre-expiry quote within a 5-second tolerance.
+      // This removes a bias from stale lastPrice settlement on time exits.
+      if(at===expiry){
+        if(stop!=null&&dir*(p-stop)<=0)close('STOP',p,expiry,'الوقف تحقق في سعر موثق عند نهاية المدة');
+        else if(target!=null&&dir*(p-target)>=0)close('TP1',target,expiry,'الهدف تحقق في سعر موثق عند نهاية المدة');
+        else close('TIME_EXIT',p,expiry,'انتهاء المدة؛ سعر مباشر موثق عند الثانية الأخيرة');
+      }else if(t.lastAt<=expiry&&expiry-t.lastAt>=0&&expiry-t.lastAt<=5000)
+        close('TIME_EXIT',t.lastPrice,expiry,'انتهاء المدة؛ آخر سعر موثق قبل انتهائها بخمس ثوانٍ أو أقل');
+      else close('UNKNOWN',null,expiry,'لا يوجد سعر قبل نهاية المدة بفترة موثوقة؛ النتيجة مجهولة');
       return t;
     }
     // Stop wins an ambiguous same-bar recovery; a single quote cannot cross both barriers.
