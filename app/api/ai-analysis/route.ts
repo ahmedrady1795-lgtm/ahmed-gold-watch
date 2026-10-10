@@ -1277,6 +1277,15 @@ export async function GET(request:Request){
     perf.scalpResolvedAtMs=Date.now()-perfStarted;
     const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any,h4?:any,intent?:any,evolution?:any,toolMesh?:any,atr?:number|null)=>({
       asset,
+      // Closed one-minute candles for the illustrated chart. No invented
+      // OHLC: a stale feed remains historical and the UI suppresses projections.
+      chartCandles:(asset==='GOLD'?gm.c1:btc.c1)
+        .filter((c:any)=>Number.isFinite(Number(c.time))&&Number(c.time)>0&&
+          Number(c.time)+60000<=now&&Number(c.time)>=now-7*86400000&&
+          [c.open,c.high,c.low,c.close].every((v:any)=>Number.isFinite(Number(v))&&Number(v)>0))
+        .slice(-52)
+        .map((c:any)=>({time:Number(c.time),open:Number(c.open),high:Number(c.high),
+          low:Number(c.low),close:Number(c.close),volume:Math.max(0,Number(c.realVolume||c.tickVolume||0))})),
       indicatorMatrix:x?.indicatorMatrix||null,
       coreSummary:(()=>{const core=asset==='GOLD'?goldMultiBrain:bitcoinMultiBrain;return {side:core.side,regime:core.regime,confidence:core.confidence,qualityReady:core.calibration.qualityReady,samples:core.calibration.supportSamples};})(),
       scalpDesk:scalpDesk?.[asset==='GOLD'?'gold':'bitcoin']||null,
