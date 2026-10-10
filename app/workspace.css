@@ -619,3 +619,15 @@ body:has(.modern-workspace){
   .forecast-visual-controls{width:100%;justify-content:space-between}
   .forecast-visual-target strong{font-size:12px}
 }
+
+/* Clear, persistent forecast life-cycle: cached numbers never imply an active trade. */
+.sniper-journal-state{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 9px;border-radius:8px;border:1px solid #325467;background:#142a37;color:#b7d9e4;font-size:10px}
+.sniper-journal-state>span{flex:1;min-width:180px}
+.sniper-journal-state>small{font-size:9px;color:#84abbd}
+.sniper-journal-invalidated,.sniper-journal-expired,.sniper-journal-unqualified{border-color:#66505d;background:#2b1c26;color:#fac4cc}
+.sniper-journal-tp_reached{border-color:#367a63;background:#16372c;color:#b6f7d8}
+.sniper-journal-stale,.sniper-journal-monitoring{border-color:#715c41;background:#29241b;color:#f6dcae}
+.sniper-goal-hit{background:#143d34!important;border-color:#4a9779!important}
+.sniper-goal-hit strong{color:#85eebf!important;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+.forecast-visual-shell:has(.forecast-visual-status:not(.forecast-visual-active)) .forecast-visual-target{background:#20262a;border-color:#526063}
+.forecast-visual-shell:has(.forecast-visual-status:not(.forecast-visual-active)) .forecast-visual-target strong{color:#b7c6ca}
