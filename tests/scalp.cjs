@@ -229,7 +229,7 @@ assert.ok(selectGoldM5Breakout({
   atr1:1,roundTripCost:.2
 }).blockers.length>0,'Missing candle data fails closed');
 console.log('PASS: BUY/SELL breakout limit retest, structural stops, wick rejection, fake breakout and exhaustion filters');
-const {advancePaperTrade,updateScalpLedger,evaluatePaperProof,SCALP_PROOF_FROM}=load('lib/scalp-paper-ledger.ts');
+const {advancePaperTrade,updateScalpLedger,evaluatePaperProof,evaluateRetestPaperProof,SCALP_PROOF_FROM,SCALP_RETEST_PROOF_FROM}=load('lib/scalp-paper-ledger.ts');
 const {mergeBtcCandles}=load('lib/btc-market.ts');
 const {ingestLiveCandle,completedLiveCandles}=load('lib/live-candles.ts');
 const now=Date.parse('2026-10-08T01:30:00Z');
@@ -411,6 +411,18 @@ assert.equal(evaluatePaperProof(paperLosses).status,'NOT_VALIDATED',
   'At least 50 outcomes do not guarantee a positive verdict');
 assert.equal(evaluatePaperProof(paperWins).eligibleForLiveTrading,false,
   'Paper performance must never authorize live broker execution');
+const separateRetest=[
+  {...paperRow(12,SCALP_RETEST_PROOF_FROM+60000),plan:{...buy,setup:'BREAKOUT'}},
+  {...paperRow(6,SCALP_RETEST_PROOF_FROM-60000),plan:{...buy,setup:'RETEST'}},
+  {...paperRow(-.35,SCALP_RETEST_PROOF_FROM+60000,'STOP'),plan:{...buy,setup:'RETEST'}},
+  {...paperRow(5,SCALP_RETEST_PROOF_FROM+120000,'CANCELED'),plan:{...buy,setup:'RETEST'}}
+];
+const onlyRetest=evaluateRetestPaperProof(separateRetest);
+assert.equal(onlyRetest.samples,1,'Only real new RETEST exits count, not old breakouts or prelaunch fills');
+assert.equal(onlyRetest.netR,-.35,'A losing retest must be shown even if other setups have wins');
+assert.equal(onlyRetest.status,'COLLECTING','One outcome cannot validate a new setup');
+assert.equal(onlyRetest.eligibleForLiveTrading,false,'Independent retest proof stays paper-only');
+console.log('PASS: isolated M5 retest proof excludes old setup wins, canceled entries and prelaunch observations.');
 console.log('PASS: post-release proof excludes old/unknown fills and rejects negative samples.');
 
 
