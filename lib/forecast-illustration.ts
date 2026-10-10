@@ -1,11 +1,12 @@
 import {buildSniperOutlook} from './sniper-outlook';
+import type {ForecastJournal} from './forecast-journal';
 
 export type PlotCandle={time:number;open:number;high:number;low:number;close:number;volume:number};
 export type PriceBand={key:string;label:string;low:number;high:number;price:number;kind:'TARGET'|'DEMAND'|'SUPPLY'|'REBOUND'|'LIQUIDITY'|'STOP'};
 const finite=(x:unknown):number|null=>x!==null&&x!==undefined&&x!==''&&Number.isFinite(Number(x))?Number(x):null;
 const valid=(x:unknown)=>{const p=finite(x);return p!=null&&p>0?p:null;};
 
-export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now:number,snapshotAt:unknown){
+export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now:number,snapshotAt:unknown,journal:ForecastJournal|null=null){
   const sniper=buildSniperOutlook(asset,x,quote,now,snapshotAt);
   // Chart uses actual CLOSED candles from the last model snapshot, never synthetic prices.
   const raw=Array.isArray(x?.chartCandles)?x.chartCandles:[];
@@ -22,16 +23,18 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const lastAt=candles.length?candles[candles.length-1].time+60000:0;
   const historyAge=lastAt?Math.max(0,now-lastAt):null;
   const historyFresh=historyAge!=null&&historyAge<=180000;
+  const displayTargets=journal?.targets??sniper.targets;
+  const displayStop=journal?.invalidation??sniper.view.invalidation;
   const ready=sniper.view.side!=='WAIT'&&sniper.view.priceFresh&&sniper.view.forecastFresh&&
-    sniper.targets.length>0&&historyFresh;
+    sniper.targets.length>0&&historyFresh&&(!journal||journal.state==='ACTIVE');
   const price=sniper.view.price;
   const bands:PriceBand[]=[];
-  if(ready){
-    for(const t of sniper.targets){
-      bands.push({key:'TP'+t.stage,label:'TP'+t.stage,low:t.low,high:t.high,
+  if((ready||Boolean(journal))&&historyFresh){
+    for(const t of displayTargets){
+      bands.push({key:'TP'+t.stage,label:'TP'+t.stage+(journal&&journal.state!=='ACTIVE'?' · محفوظ':''),low:t.low,high:t.high,
         price:t.price,kind:'TARGET'});
     }
-    const stop=valid(sniper.view.invalidation);
+    const stop=valid(displayStop);
     if(stop!=null)bands.push({key:'STOP',label:'إبطال السيناريو',low:stop,high:stop,price:stop,kind:'STOP'});
   }
   if(historyFresh&&sniper.view.priceFresh&&sniper.view.forecastFresh){
@@ -55,7 +58,7 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const projected=ready&&price!=null
     ?[{key:'NOW',price},...sniper.targets.map(t=>({key:'TP'+t.stage,price:t.price}))]
     :[];
-  return {asset,sniper,candles,bands,price,historyAge,historyFresh,ready,
+  return {asset,sniper,candles,bands,price,historyAge,historyFresh,ready,displayTargets,displayStop,journal,
     lower,upper,projected,
     status:!candles.length?'NO_CANDLES':!historyFresh?'STALE_CANDLES':!ready?'WATCH':'SCENARIO'};
 }
