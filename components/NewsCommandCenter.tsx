@@ -52,32 +52,67 @@ function macroBias(e:any){
 }
 const dirLabel=(d:Dir)=>d==='up'?'صعود':d==='down'?'هبوط':'محايد';
 
-export default function NewsCommandCenter({analysis,events=[],now=Date.now(),featuredId=null}:any){
-  const upcoming=[...events]
-    .filter((e:any)=>!featuredId||String(e?.id)!==String(featuredId))
-    .filter((e:any)=>{const t=Number(e?.time),hasActual=Boolean(String(e?.actual||'').trim());return t<=now+30*86400000&&(t>=now||(hasActual&&t>=now-10*60000)||(!hasActual&&t>=now-15*60000));})
-    .sort((a:any,b:any)=>Number(a.time)-Number(b.time));
-  const active=analysis?.news?.event;
-  return <details className="panel newscommand news-calendar">
-    <summary className="news-calendar-summary"><span><Newspaper size={18}/> <strong>التقويم الاقتصادي</strong><small>أقرب {Math.min(upcoming.length,4)} أخبار · بتوقيت الإمارات</small></span><b>{upcoming.length?'عرض المواعيد':'لا توجد أخبار قريبة'}</b></summary>
-    <div className="news-calendar-content">
-    {active&&<div className="newsclock"><Clock3/><strong>{active.name}</strong><span>{timeLeft(Number(active.time),now)}</span></div>}
-    {!upcoming.length&&<p>لا توجد أحداث قادمة وصلت من المصادر الحالية.</p>}
-    {upcoming.slice(0,4).map((e:any,index:number)=>{
-      const b=macroBias(e),impact=Number(e?.importance)||1;
-      return <article key={e.id||e.name+e.time} className="rule compact" style={{display:'block'}}>
-        <strong>#{index+(featuredId?2:1)} · {e.name} · {impact===3?'🔥 مرتفع':impact===2?'⚠️ متوسط':'منخفض'}</strong>
-        <p><b>موعد الخبر (الإمارات): {dateLabel(Number(e.time))}</b> · <b>{timeLeft(Number(e.time),now)}</b></p>
-        {(e.forecast||e.previous||e.actual)&&<p>Actual: {e.actual||'لم يصدر'} · Forecast: {e.forecast||'—'} · Previous: {e.previous||'—'}</p>}
-        <div className="levels">
-          <div><small>التأثير المرجح على الذهب · {dirLabel(b.gold)}</small><strong>↑ {b.goldUp} / ↓ {b.goldDown}</strong></div>
-          <div><small>BTC · ميل ماكرو</small><strong>↑ {b.btcUp} / ↓ {b.btcDown}</strong></div>
-        </div>
-        <p>{b.why}</p>
-        {/^https:\/\//.test(String(e.source||''))&&<a href={e.source} target="_blank" rel="noreferrer">المصدر الرسمي/التقويم</a>}
-      </article>;
-    })}
-    <p className="muted">ترجيح ↑/↓ ليس احتمال نجاح؛ رد فعل السعر بعد الخبر أهم من التقدير المسبق.</p>
+export default function NewsCommandCenter({events=[],now=Date.now(),featuredEvent=null}:any){
+  // Event times must come from a real feed. Do not generate placeholder dates
+  // or present an approximate/narrative event as an exact scheduled release.
+  const candidates=[...events,featuredEvent].filter((e:any)=>e&&
+    typeof e.name==='string'&&e.name.trim()&&
+    Number.isFinite(Number(e.time))&&Number(e.time)>0);
+  const seen=new Set<string>();
+  const unique=candidates.sort((a:any,b:any)=>Number(a.time)-Number(b.time))
+    .filter((e:any)=>{
+      const key=String(e.id||'')+'|'+String(e.name).toLowerCase()+'|'+Number(e.time);
+      if(seen.has(key))return false;seen.add(key);return true;
+    });
+  const upcoming=unique.filter((e:any)=>Number(e.time)>=now&&
+    Number(e.time)<=now+30*86400000);
+  const alerts=upcoming.filter((e:any)=>Number(e.time)-now<=8*60*60*1000).slice(0,4);
+  const recent=unique.filter((e:any)=>Number(e.time)<now&&
+    Number(e.time)>=now-10*60000&&String(e.actual||'').trim()).slice(-2);
+  return <section className="panel newscommand standalone-news" aria-label="الأخبار الاقتصادية">
+    <header className="standalone-news-head">
+      <div><span className="eyebrow">03 / الأخبار الاقتصادية</span>
+        <h2><Newspaper size={19}/> الأخبار ومواعيد التأثير</h2></div>
+      <small>بتوقيت الإمارات · التنبيه داخل الصفحة يبدأ قبل 8 ساعات</small>
+    </header>
+    <div className="news-eight-hour" aria-live="polite">
+      {alerts.length?alerts.map((e:any)=>{
+        const delta=Number(e.time)-now;
+        const high=Number(e.importance)>=3;
+        return <article className={'news-eight-hour-item '+(high?'news-high-impact':'')} key={e.id||e.name+e.time}>
+          <div className="news-eight-hour-top">
+            <span>{high?'خبر عالي التأثير':Number(e.importance)===2?'خبر متوسط التأثير':'خبر اقتصادي'}</span>
+            <strong><Clock3 size={15}/> {timeLeft(Number(e.time),now)}</strong>
+          </div>
+          <b>{e.name}</b>
+          <small>الموعد: {dateLabel(Number(e.time))} · يبدأ ظهوره هنا قبل 8 ساعات من الموعد</small>
+          {(e.forecast||e.previous)&&<p>المتوقع: {e.forecast||'غير منشور'} · السابق: {e.previous||'غير منشور'}</p>}
+          <p>الاتجاه بعد الخبر مش مضمون؛ انتظر النتيجة الفعلية وحركة السعر والسيولة.</p>
+        </article>;
+      }):<p className="news-eight-empty">مفيش أخبار بمواعيد مؤكدة خلال الـ8 ساعات الجاية. أول ما يظهر خبر في الفترة دي، هيتعرض هنا تلقائيًا طالما الصفحة بتتحدث.</p>}
     </div>
-  </details>;
+    {recent.map((e:any)=><div className="news-post-release" key={e.id||e.name+e.time}>
+      <b>صدر: {e.name}</b><span>الفعلي: {e.actual} · {timeLeft(Number(e.time),now)}</span>
+    </div>)}
+    <details className="news-calendar">
+      <summary className="news-calendar-summary"><span><Newspaper size={16}/> <strong>كل مواعيد الأخبار القادمة</strong>
+        <small>{upcoming.length} حدث في التقويم · التفاصيل حسب المصدر</small></span>
+        <b>عرض التقويم</b>
+      </summary>
+      <div className="news-calendar-content">
+        {!upcoming.length&&<p>لسه مفيش مواعيد جديدة وصلت من مصدر الأخبار.</p>}
+        {upcoming.slice(0,8).map((e:any,index:number)=>{
+          const bias=macroBias(e);
+          return <article key={e.id||e.name+e.time} className="rule compact news-list-item">
+            <strong>{index+1}. {e.name} · {Number(e.importance)>=3?'مرتفع':Number(e.importance)===2?'متوسط':'منخفض'}</strong>
+            <p><b>{dateLabel(Number(e.time))}</b> · {timeLeft(Number(e.time),now)}</p>
+            {(e.forecast||e.previous||e.actual)&&
+              <p>المتوقع: {e.forecast||'—'} · السابق: {e.previous||'—'} · الفعلي: {e.actual||'لم يصدر'}</p>}
+            <small>{bias.why} · مش توصية تداول ولا توقع مؤكد لرد فعل السعر.</small>
+            {/^https:\/\//.test(String(e.source||''))&&<a href={e.source} target="_blank" rel="noopener noreferrer">مصدر الخبر</a>}
+          </article>;
+        })}
+      </div>
+    </details>
+  </section>;
 }
