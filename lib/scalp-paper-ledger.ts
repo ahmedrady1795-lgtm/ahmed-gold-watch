@@ -22,6 +22,8 @@ const round=(v:number)=>Number(v.toFixed(3));
 // A fixed post-upgrade cohort avoids claiming that old historical fills
 // demonstrate profitability of the new engine. Do not back-date this marker.
 export const SCALP_PROOF_FROM=Date.parse('2026-10-08T09:00:00Z');
+// First M5 retest launch, not the original broader scalp strategy cohort.
+export const SCALP_RETEST_PROOF_FROM=Date.parse('2026-10-10T19:44:30Z');
 export function evaluatePaperProof(trades:PaperTrade[],start=SCALP_PROOF_FROM){
   // Closed outcomes only; canceled, unknown, unfilled and old historical
   // observations NEVER count as wins or statistical evidence.
@@ -184,6 +186,11 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
         stopNetR:round(stopExits.reduce((sum,t)=>sum+Number(t.netR),0))
       },
       forwardProof:evaluatePaperProof(lane.history),
+      // Never show profitable results from older breakout/pullback trades as
+      // if they validated the newly launched RETEST strategy.
+      retestProof:evaluatePaperProof(
+        lane.history.filter(t=>t.plan?.setup==='RETEST'),
+        SCALP_RETEST_PROOF_FROM),
       winRate:verified.length?round(wins.length/verified.length*100):null,
       netR:round(verified.reduce((s,t)=>s+Number(t.netR),0)),
       expectancyR:verified.length?round(verified.reduce((s,t)=>s+Number(t.netR),0)/verified.length):null,
