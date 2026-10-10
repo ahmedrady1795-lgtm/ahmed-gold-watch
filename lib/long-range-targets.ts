@@ -47,8 +47,8 @@ export function buildLongRangeTargets(input:{
      input.now-(m5.at(-1)!.time+300000)>13*60000)return empty('شموع هيكل السوق متأخرة');
   const a15=atr(m15),a5=atr(m5);
   if(a15==null||a5==null)return empty('لا يوجد متوسط مدى صالح');
-  const scale=Math.max(a15*.75,a5*1.1,price*(input.asset==='GOLD'?.0005:.0009));
-  const minDistance=Math.max(scale*.9,price*(input.asset==='GOLD'?.00045:.0008));
+  const scale=Math.max(a15*1.05,a5*1.35,price*(input.asset==='GOLD'?.0005:.0009));
+  const minDistance=Math.max(scale,price*(input.asset==='GOLD'?.00045:.0008));
   const maxDistance=Math.max(a15*8,scale*7);
   const candidates:Candidate[]=[];
   const add=(p:any,source:string,quality:number,frame:string)=>{
