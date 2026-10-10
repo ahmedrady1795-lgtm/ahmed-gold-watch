@@ -10,15 +10,21 @@ const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
 const clock=(t:number)=>new Date(t).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
 const clamp=(p:number,a:number,b:number)=>Math.max(a,Math.min(b,p));
 
-export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLive,assetView='ALL',journals}:{
+export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLive,assetView='ALL',journals,audit,auditLoaded=false}:{
   data:any;now:number;snapshotAt:unknown;goldLive?:any;btcLive?:any;assetView?:'ALL'|'GOLD'|'BTC';
-  journals?:{GOLD:ForecastJournal|null;BTC:ForecastJournal|null}
+  journals?:{GOLD:ForecastJournal|null;BTC:ForecastJournal|null};audit?:any;auditLoaded?:boolean
 }){
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
   const asset: 'GOLD'|'BTC'=assetView==='ALL'?chosen:assetView;
   const x=asset==='GOLD'?data?.gold:data?.bitcoin;
   const journal=journals?.[asset]??null;
-  const m=buildForecastIllustration(asset,x,asset==='GOLD'?goldLive:btcLive,now,snapshotAt,journal);
+  const m=buildForecastIllustration(asset,x,asset==='GOLD'?goldLive:btcLive,now,snapshotAt,journal,true);
+  const calibration=audit?.metrics?.[asset];
+  const observed=Number(calibration?.observed||0);
+  const lastSource=Number(audit?.updatedAt||0);
+  const auditHealthy=Boolean(auditLoaded&&audit?.persistence==='VOLUME'&&lastSource>0&&
+    now-lastSource<180000);
+  const statusReady=m.ready&&auditHealthy;
   const sn=m.sniper,dir=journal?.side??sn.view.side;
   const rise=dir==='BUY',fall=dir==='SELL';
   const W=1040,H=360,x0=52,x1=612,xf=622,xr=946,yt=22,yb=275;
@@ -31,7 +37,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const chartBands=m.bands.slice().sort((a,b)=>a.kind==='TARGET'?-1:b.kind==='TARGET'?1:0);
   const projected=m.projected;
   let projectedPath='';
-  if(m.ready&&projected.length>=2){
+  if(statusReady&&projected.length>=2){
     projectedPath='M '+xf+' '+px(projected[0].price);
     projected.slice(1).forEach((p,i)=>{
       const xa=i===0?xf:Math.round(716+(i-1)*106);
@@ -41,7 +47,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     });
   }
   const ageMin=m.historyAge==null?null:Math.ceil(m.historyAge/60000);
-  const stateLabel=m.ready?'مسار احتمالي':journal?'محفوظ · '+({MONITORING:'تحت المراقبة',STALE:'سعر متأخر',UNQUALIFIED:'غير مؤهل',TP_REACHED:'هدف تحقق',INVALIDATED:'مُبطل',EXPIRED:'منتهي',ACTIVE:'تحت المراجعة'}[journal.state]):m.status==='STALE_CANDLES'?'شموع تاريخية متأخرة':
+  const stateLabel=statusReady?'مسار مشروط مسجل':!auditHealthy?'التقييم قيد الاتصال':journal?'محفوظ · '+({MONITORING:'تحت المراقبة',STALE:'سعر متأخر',UNQUALIFIED:'غير مؤهل',TP_REACHED:'هدف تحقق',INVALIDATED:'مُبطل',EXPIRED:'منتهي',ACTIVE:'تحت المراجعة'}[journal.state]):m.status==='STALE_CANDLES'?'شموع تاريخية متأخرة':
     m.status==='NO_CANDLES'?'الشموع غير متاحة':'الترقب بدون أهداف مؤكدة';
   const highest=m.displayTargets.at(-1);
   const zoneList=sn.zones.slice(0,4);
@@ -68,7 +74,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <button type="button" aria-pressed={asset==='GOLD'} onClick={()=>setChosen('GOLD')}>الذهب</button>
             <button type="button" aria-pressed={asset==='BTC'} onClick={()=>setChosen('BTC')}>البيتكوين</button>
           </div>}
-          <span className={'forecast-visual-status '+(m.ready?'forecast-visual-active':'')}>
+          <span className={'forecast-visual-status '+(statusReady?'forecast-visual-active':'')}>
             <span className="forecast-dot"/>{stateLabel}
           </span>
         </div>
@@ -76,7 +82,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       <div className="forecast-brain-strip">
         <span><Activity size={14}/> {sn.phaseText} {sn.compression!=null?'· جاهزية '+sn.compression+'/100':''}</span>
         <span><Layers3 size={14}/> مصادر الأهداف: M15 / H1 / السيولة</span>
-        <span><Target size={14}/> {m.ready?'أهداف هيكلية أبعد من تذبذب السكالب':journal?'أهداف سابقة محفوظة':'لا يوجد هدف هيكلي كافٍ حاليًا'}</span>
+        <span><Target size={14}/> {statusReady?'أهداف هيكلية متتبعة من سجلات حقيقية':journal?'أهداف سابقة محفوظة':'لا يوجد هدف هيكلي كافٍ حاليًا'}</span>
       </div>
       <div className="forecast-visual-layout">
         <div className="forecast-visual-facts">
@@ -88,13 +94,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <small>الاتجاه المحتمل</small>
             <strong className={rise?'green':fall?'red':'forecast-visual-muted'}>
               {rise?<ArrowUpRight size={16}/>:fall?<ArrowDownRight size={16}/>:<Activity size={15}/>}
-              {rise?(m.ready?'صعود':'صعود سابق'):fall?(m.ready?'هبوط':'هبوط سابق'):'انتظار'}</strong>
+              {rise?(statusReady?'صعود':'صعود سابق'):fall?(statusReady?'هبوط':'هبوط سابق'):'انتظار'}</strong>
           </div>
           <div className="forecast-visual-targets">
             {([1,2,3] as const).map(i=>{
               const target=m.displayTargets.find(t=>t.stage===i);
               return <div key={i} className="forecast-visual-target">
-                <span>{i===1?'TP1 · أول':i===2?'TP2 · رئيسي':'TP3 · ممتد'}<small>{target&&'reached' in target&&target.reached?'تم الوصول':journal&&!m.ready?'مستوى سابق':target?'M15/H1 · هيكلي':'بانتظار مستوى مؤكد'}</small></span>
+                <span>{i===1?'TP1 · أول':i===2?'TP2 · رئيسي':'TP3 · ممتد'}<small>{target&&'reached' in target&&target.reached?'تم الوصول':journal&&!statusReady?'مستوى سابق':target?'M15/H1 · هيكلي':'بانتظار مستوى مؤكد'}</small></span>
                 <strong dir="ltr">{fmt(target?.price)}</strong>
               </div>;
             })}
@@ -105,11 +111,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
           <div className="forecast-visual-fact forecast-visual-time">
             <small><Clock3 size={13}/> بدء الحركة / الهدف الأول</small>
-            <strong>{m.ready?activation:journal?'غير نشط':'—'}</strong>
-            <span>{m.ready?arrival:journal?'توقيت غير نشط':'لا يوجد موعد موثوق للهدف البعيد'}</span>
+            <strong>{statusReady?activation:journal?'غير نشط':'—'}</strong>
+            <span>{statusReady?arrival:journal?'توقيت غير نشط':'لا يوجد موعد موثوق للهدف البعيد'}</span>
           </div>
           <div className="forecast-visual-confidence">
-            <span>قوة التحليل <b>{m.ready&&sn.view.confidence!=null?fmt(sn.view.confidence,0)+'/100':'—'}</b></span>
+            <span>قوة التحليل <b>{statusReady&&sn.view.confidence!=null?fmt(sn.view.confidence,0)+'/100':'—'}</b></span>
             <small>تقييم مشروط، وليس نسبة نجاح أو ضمانًا</small>
           </div>
         </div>
@@ -120,7 +126,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
           <div className="forecast-visual-chart-scroll">
             <svg className="forecast-visual-svg" viewBox={'0 0 '+W+' '+H}
-              role="img" aria-label={m.ready?
+              role="img" aria-label={statusReady?
                 'الشموع التاريخية الحقيقية والمسار الاحتمالي إلى '+m.displayTargets.map(t=>'TP'+t.stage+' '+fmt(t.price)).join(' ثم '):
                 'الشموع التاريخية فقط، ولا يوجد مسار سعري مؤهل'} >
               <defs>
@@ -199,10 +205,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   cx={Math.min(xr-8,716+i*106)} cy={px(p.price)} r="4.2"
                   fill={rise?'#7eecc3':'#ffc2ce'} stroke="#0a1928" strokeWidth="2"/>)}
               </g>}
-              {!m.ready&&<g>
+              {!statusReady&&<g>
                 <rect x="645" y="136" width="273" height="65" rx="9" fill="#0a1520" stroke="#3a5464" strokeOpacity=".8"/>
                 <text x="782" y="160" fill="#cedfeb" textAnchor="middle" fontSize="14" fontWeight="700">
-                  {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'لا توجد شموع كافية':journal?'الأهداف محفوظة · ليست إشارة نشطة':'لا توجد أهداف مؤهلة'}</text>
+                  {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'لا توجد شموع كافية':journal?'الأهداف محفوظة · ليست إشارة نشطة':!auditHealthy?'سجل الأداء غير محدث':'لا توجد أهداف مؤهلة'}</text>
                 <text x="782" y="182" fill="#91abbb" textAnchor="middle" fontSize="11">لن يتم رسم مسار افتراضي</text>
               </g>}
             </svg>
@@ -231,14 +237,32 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           <p>{statusText}</p>
           <p>{sn.longRange?.basis||'في انتظار إطار هيكلي موثوق'}
             {sn.longRange?.atr15!=null?' · ATR M15 '+fmt(sn.longRange.atr15):''}</p>
-          {m.ready&&sn.evidence?.length>0&&<div className="forecast-decision-evidence">
+          {statusReady&&sn.evidence?.length>0&&<div className="forecast-decision-evidence">
             {sn.evidence.slice(0,4).map(item=><span key={item}>{item}</span>)}
           </div>}
         </div>
       </div>
+      <section className="sniper-audit-panel" aria-label="سجل الأداء الحقيقي للقناص">
+        <div className="sniper-audit-heading">
+          <strong><ShieldAlert size={15}/> مراقبة الأهداف الفعلية · {asset==='GOLD'?'الذهب':'البيتكوين'}</strong>
+          <span>{auditHealthy?'تخزين دائم على السيرفر':'سجل غير مؤكد الآن'}</span>
+        </div>
+        <div className="sniper-audit-figures">
+          <div><small>سيناريوهات مكتملة التقييم</small><b dir="ltr">{observed}</b></div>
+          <div><small>TP1 · وصول مُلاحظ</small><b>{observed>=40&&calibration?.targets?.[0]?.observedPct!=null?calibration.targets[0].observedPct+'%':'قيد جمع البيانات'}</b></div>
+          <div><small>TP2 · وصول مُلاحظ</small><b>{observed>=40&&calibration?.targets?.[1]?.observedPct!=null?calibration.targets[1].observedPct+'%':'قيد جمع البيانات'}</b></div>
+          <div><small>TP3 · وصول مُلاحظ</small><b>{observed>=40&&calibration?.targets?.[2]?.observedPct!=null?calibration.targets[2].observedPct+'%':'قيد جمع البيانات'}</b></div>
+        </div>
+        <p>
+          {observed<40?'نحتاج '+Math.max(0,40-observed)+' سيناريوهات إضافية مكتملة قبل عرض النِّسب. ':''}
+          الحالات غير الحاسمة: {Number(calibration?.ambiguous||0)} · انقطاع المتابعة: {Number(calibration?.unobserved||0)}.
+          المعدلات نسبة وصول الأهداف قبل انتهاء السيناريو، وليست احتمالات ربح أو شهادة بدقة النموذج.
+        </p>
+        {audit?.block?.[asset]&&<p>سبب الانتظار الحالي: {String(audit.block[asset])}</p>}
+      </section>
       <footer className="forecast-visual-note">
         <span>الشموع السابقة بيانات سوق فعلية. الخط المتقطع رسم توضيحي لترتيب الأهداف وليس توقّعًا لشكل الشموع أو توقيت كل نقطة.</span>
-        <span>{highest?(m.ready?'آخر هدف مرصود ':'آخر هدف محفوظ ')+fmt(highest.price):'القناص يرصد الشروط قبل عرض اتجاه وأهداف'}</span>
+        <span>{highest?(statusReady?'آخر هدف مرصود ':'آخر هدف محفوظ ')+fmt(highest.price):'القناص يرصد الشروط قبل عرض اتجاه وأهداف'}</span>
       </footer>
     </div>
   </section>;
