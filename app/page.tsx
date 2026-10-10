@@ -5,7 +5,7 @@ import {Activity,RefreshCw,WifiOff} from 'lucide-react';
 import AICommandCenter from '../components/AICommandCenter';
 import CoreChat from '../components/CoreChat';
 import FastScalpPulse from '../components/FastScalpPulse';
-import FxPairWatchlist from '../components/FxPairWatchlist';
+import ScalpProofStrip from '../components/ScalpProofStrip';
 import NewsCommandCenter from '../components/NewsCommandCenter';
 import {computeWaveLead,type WaveLead,type WaveTick} from '../lib/wave-lead';
 
@@ -327,17 +327,19 @@ export default function Home(){
 
     {aiError&&!aiData&&<div className="fatal"><WifiOff size={18}/><div><strong>تعذر تحديث AI</strong><span>{aiError}</span></div></div>}
 
-    <div className="workspace-intro">
-      <div><span className="eyebrow">لوحة المتابعة المباشرة</span><h1>السوق بوضوح<span>.</span></h1><p>السعر أولًا، ثم الإعداد والقرار، والتفاصيل عند الحاجة.</p></div>
-      <span className="workspace-mode"><span aria-hidden="true"/>متابعة وتحليل ورقي</span>
-    </div>
     <div className="workspace-toolbar">
       <div className="asset-switch" role="group" aria-label="اختيار الأصل المعروض">
         {([{id:'ALL',label:'الكل'},{id:'GOLD',label:'الذهب'},{id:'BTC',label:'البيتكوين'}] as const).map(item=><button key={item.id} type="button" aria-pressed={assetView===item.id} onClick={()=>setAssetView(item.id)}>{item.label}</button>)}
       </div>
-      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#core-console">النواة · فحص الموقع</a><a href="#market-overview">نظرة سريعة</a><a href="#scalp-opportunities">السكالب</a><a href="#market-forecast">توقع 15 دقيقة</a></nav>
+      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#market-overview">السوق الآن</a><a href="#trade-performance">نتائج الصفقات</a><a href="#scalp-opportunities">فرص السكالب</a></nav>
     </div>
     <section className="content lite-content" aria-label="بيانات السوق والتحليل">
+      <FastScalpPulse assetView={assetView} desk={scalpDesk} now={now} aiAgeMs={Number.isFinite(snapshotAge)?snapshotAge:null}/>
+      <ScalpProofStrip desk={scalpDesk}/>
+      <AICommandCenter assetView={assetView} data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
+      <details className="secondary-tools core-tools">
+        <summary className="secondary-tools-summary"><span><strong>النواة · فحص الموقع</strong><small>فحص الأداء وخدمات الموقع والتشخيص المكتوب عند الحاجة</small></span><span aria-hidden="true">⌄</span></summary>
+        <div className="secondary-tools-content">
       <CoreChat data={aiData} desk={scalpDesk} onCommand={(cmd)=>{
         if(cmd.type==='SET_ASSET'){setAssetView(cmd.asset);return;}
         if(cmd.type==='REFRESH_ANALYSIS'){void loadAi(true);return;}
@@ -350,15 +352,16 @@ export default function Home(){
           window.requestAnimationFrame(()=>el.scrollIntoView({behavior:'smooth',block:'start'}));
         }
       }}/>
-      <FastScalpPulse assetView={assetView} desk={scalpDesk} now={now} aiAgeMs={Number.isFinite(snapshotAge)?snapshotAge:null}/>
-      <AICommandCenter assetView={assetView} data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
+
+        </div>
+      </details>
       <details className="secondary-tools">
-        <summary className="secondary-tools-summary"><span><strong>المزيد من الأدوات</strong><small>الأخبار، جودة النماذج، والفوركس عند الحاجة</small></span><span aria-hidden="true">⌄</span></summary>
+        <summary className="secondary-tools-summary"><span><strong>أخبار السوق والتحقق من النماذج</strong><small>التفاصيل الإضافية فقط عند الحاجة</small></span><span aria-hidden="true">⌄</span></summary>
         <div className="secondary-tools-content">
       <div id="market-news" className="workspace-section"><div className="workspace-section-heading"><div><span>04 / الأجندة</span><h2>أخبار تحرّك السوق</h2></div><p>المواعيد والنتائج بتوقيت الإمارات</p></div><NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredId={aiData?.autopilot?.nextEvent?.id||null}/></div>
 
       <details id="market-research" className="panel research-drawer">
-        <summary className="research-drawer-summary"><span><strong>جودة النماذج والفوركس</strong><small>نتائج التحقق والأزواج الإضافية</small></span><span aria-hidden="true">⌄</span></summary>
+        <summary className="research-drawer-summary"><span><strong>نتائج التحقق الفني</strong><small>اختبارات مستقلة لجودة توقع الاتجاه</small></span><span aria-hidden="true">⌄</span></summary>
         <div className="research-drawer-content">
       {aiData?.modelValidation&&<section className="panel" aria-label="جودة وصدق النماذج" style={{padding:'14px 18px'}}>
         <strong>تأهيل نماذج AI · نتائج اختبار خارج العينة</strong>
@@ -395,7 +398,6 @@ export default function Home(){
           </div>
           <small>اختبار زمني على اتجاه حركة السعر بعد التكلفة التقديرية. ليس اختبارًا للنواة الكاملة، ولا إثبات ربح، ولا نتائج أوامر Exness.</small>
         </details>}
-          <FxPairWatchlist/>
         </div>
       </details>
         </div>
