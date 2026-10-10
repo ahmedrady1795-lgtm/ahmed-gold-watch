@@ -10,10 +10,13 @@ function load(path,requireFn){
   return mod.exports;
 }
 const next=load('lib/next-move-view.ts');
+const long=load('lib/long-range-targets.ts');
+const {frames}=require('./long-range-fixture.cjs');
 const {buildSniperOutlook:build}=load('lib/sniper-outlook.ts',
-  path=>path==='./next-move-view'?next:require(path));
+  path=>path==='./next-move-view'?next:path==='./long-range-targets'?long:require(path));
 const now=Date.parse('2026-10-11T10:00:00Z');
 const base={
+  chartHigherFrames:frames(now),
   livePulse:{price:100,sourceTime:now-3000},
   forwardMove:{side:'BUY',confidence:72,targets:{
     t1:{price:102,low:101.8,high:102.2,kind:'LIQUIDITY',quality:74},
@@ -36,9 +39,12 @@ const view=(x=base,time=now)=>build('GOLD',x,null,time,now-10000);
 let s=view();
 assert.equal(s.view.side,'BUY');
 assert.equal(s.stage,'ARMED');
-assert.equal(s.targets.length,3);
-assert.equal(s.arrival.min,4);
-assert.equal(s.arrival.max,6);
+assert.ok(s.targets.length>=1&&s.targets.length<=3);
+assert.ok(s.targets[0].price>100+Number(s.longRange.minDistance||0));
+assert.ok(s.targets.every(t=>t.kind==='STRUCTURAL'));
+assert.equal(s.longRange.basis.includes('M15/H1'),true);
+assert.equal(s.arrival?.min,24);
+assert.equal(s.arrival?.max,36);
 assert.equal(s.activation.min,2);
 assert.equal(s.flow.buy,63);
 assert.equal(s.zones.some(z=>z.label==='منطقة ارتداد'),true);
@@ -64,4 +70,4 @@ s=view({...base,forwardMove:{...base.forwardMove,targets:{
   t1:{price:98},invalidation:99}}});
 assert.equal(s.view.side,'WAIT');
 assert.equal(s.targets.length,0);
-console.log('PASS: sniper target ladder, adaptive arrival, freshness, validation, pre-move watch and liquidity');
+console.log('PASS: distant structural sniper targets, 30m-only arrival, freshness, validation and liquidity');
