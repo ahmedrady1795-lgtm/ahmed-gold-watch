@@ -325,13 +325,13 @@ export default function AICommandCenter({data,error,fastWave,goldLive,assetView=
         {assetView!=='GOLD'&&(data?.bitcoin?.scalpDesk?<ScalpDesk desk={data.bitcoin.scalpDesk} now={now}/>:<div className="panel workspace-loading">جارٍ تحميل إعدادات البيتكوين…</div>)}
       </div>
     </section>
-    <section id="market-forecast" className="workspace-section" aria-labelledby="forecast-section-title">
-      <div className="workspace-section-heading"><div><span>03 / الاتجاه الأوسع</span><h2 id="forecast-section-title">توقع الحركة · 15 دقيقة</h2></div><p>سياق الاتجاه بجوار الأهداف والإبطال</p></div>
+    <details id="market-forecast" className="workspace-section panel forecast-optional" aria-labelledby="forecast-section-title">
+      <summary className="workspace-section-heading"><div><span>سياق إضافي · ليس إشارة دخول</span><h2 id="forecast-section-title">توقع الحركة · 15 دقيقة</h2></div><p>اضغط لعرض السيناريو والأهداف الافتراضية</p></summary>
       <div className={'dashboardgrid market-pair-grid '+(assetView!=='ALL'?'single-asset':'')}>
         {assetView!=='BTC'&&<LegacyAssetCard now={now} x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive}/>}
         {assetView!=='GOLD'&&<LegacyAssetCard now={now} x={data?.bitcoin} fast={fastWave?.btc}/>}
       </div>
-    </section>
+    </details>
     {showNextEvent&&<details className="news-event-details">
       <summary><span>خبر مؤثر على السوق <strong>{next.name}</strong></span><b>{awaitingActual?'بانتظار النتيجة':timeLeft(next.time,now)}</b></summary>
       <section className="next-news news-impact-card">
