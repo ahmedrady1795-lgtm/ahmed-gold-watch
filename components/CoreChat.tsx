@@ -1,6 +1,6 @@
 'use client';
 import {useMemo,useRef,useState} from 'react';
-import {Activity,BrainCircuit,Send,Trash2} from 'lucide-react';
+import {BrainCircuit,Send,Trash2} from 'lucide-react';
 
 // Text-only diagnostics and analysis. No microphone, speech synthesis or audio permissions.
 type ConsoleAction=
@@ -8,8 +8,6 @@ type ConsoleAction=
   |{type:'SET_ASSET';asset:'ALL'|'GOLD'|'BTC'}
   |{type:'NAVIGATE';section:'core-console'|'market-overview'|'scalp-opportunities'|'market-forecast'|'market-news'};
 type Turn={role:'user'|'core';text:string;id:number};
-type SiteCheck={key:string;label:string;state:string;detail:string};
-type SiteInspection={checkedAt:number;status:string;checks:SiteCheck[];problems?:string[]};
 type Props={data:any;desk:any;onCommand?:(command:ConsoleAction)=>void};
 const numberOrNull=(v:unknown)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v):null;
 function compactMarketContext(data:any,desk:any){
@@ -36,7 +34,6 @@ export default function CoreChat({data,desk,onCommand}:Props){
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [turns,setTurns]=useState<Turn[]>([]);
-  const [inspection,setInspection]=useState<SiteInspection|null>(null);
   const [modelState,setModelState]=useState('');
   const [sources,setSources]=useState<Array<{title:string;url:string}>>([]);
   const nextId=useRef(1);
@@ -65,7 +62,6 @@ export default function CoreChat({data,desk,onCommand}:Props){
       const coreTurn:Turn={id:nextId.current++,role:'core',text:reply};
       turnsRef.current=[...turnsRef.current,coreTurn].slice(-24);setTurns(turnsRef.current);
       setModelState(String(payload.mode||''));
-      setInspection(payload.mode==='SITE_INSPECTION'?payload.siteInspection??null:null);
       const raw=Array.isArray(payload.sources)?payload.sources:[];
       setSources(raw.slice(0,5).filter((x:any)=>typeof x?.url==='string'&&/^https:\/\//.test(x.url))
         .map((x:any)=>({title:String(x.title||'مصدر').slice(0,90),url:String(x.url).slice(0,1800)})));
@@ -76,20 +72,16 @@ export default function CoreChat({data,desk,onCommand}:Props){
       setError(message);
     }finally{busyRef.current=false;setBusy(false);}
   }
-  const reset=()=>{if(busyRef.current)return;turnsRef.current=[];setTurns([]);setInspection(null);setSources([]);setModelState('');setError('');setQuery('');};
+  const reset=()=>{if(busyRef.current)return;turnsRef.current=[];setTurns([]);setSources([]);setModelState('');setError('');setQuery('');};
   return <section id="core-console" className="panel" aria-labelledby="core-console-title"
     style={{padding:'16px',marginBottom:12}}>
     <header style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
       <div style={{display:'flex',alignItems:'center',gap:10}}>
         <BrainCircuit size={26} aria-hidden="true"/>
-        <div><h2 id="core-console-title" style={{margin:0,fontSize:20}}>النواة · تحليل وفحص</h2>
+        <div><h2 id="core-console-title" style={{margin:0,fontSize:20}}>النواة · محادثة وتحليل</h2>
           <small style={{opacity:.8}}>واجهة نصية فقط، بدون ميكروفون أو صوت</small></div>
       </div>
       <div style={{display:'flex',gap:8}}>
-        <button type="button" disabled={busy} onClick={()=>void ask('افحص الموقع والخدمات')}
-          style={{padding:'8px 12px',borderRadius:8,display:'flex',alignItems:'center',gap:6}}>
-          <Activity size={16}/>{busy?'جاري الفحص…':'افحص الموقع'}
-        </button>
         <button type="button" disabled={busy||!turns.length} onClick={reset}
           title="مسح المحادثة" aria-label="مسح المحادثة"
           style={{padding:'8px 10px',borderRadius:8}}><Trash2 size={16}/></button>
@@ -97,7 +89,7 @@ export default function CoreChat({data,desk,onCommand}:Props){
     </header>
     <form onSubmit={e=>{e.preventDefault();void ask(query);}}
       style={{marginTop:14,display:'flex',gap:8,alignItems:'stretch'}}>
-      <input aria-label="اكتب سؤالك للنواة" placeholder="اكتب سؤالك أو اطلب فحص التحليل…"
+      <input aria-label="اكتب سؤالك للنواة" placeholder="اسأل النواة عن السوق أو أي موضوع…"
         value={query} onChange={e=>setQuery(e.target.value)} disabled={busy} dir="auto"
         style={{flex:1,minWidth:0,padding:'12px',borderRadius:9,fontSize:14}}/>
       <button type="submit" disabled={busy||!query.trim()} aria-label="إرسال السؤال"
@@ -116,23 +108,12 @@ export default function CoreChat({data,desk,onCommand}:Props){
         <span>{turn.text}</span>
       </div>)}
     </div>}
-    {inspection&&<div aria-label="تفاصيل فحص الموقع"
-      style={{marginTop:12,border:'1px solid rgba(140,155,180,.25)',borderRadius:10,padding:12}}>
-      <strong>نتيجة الفحص: {inspection.status==='HEALTHY'?'المؤشرات المتاحة سليمة':
-        inspection.status==='DEGRADED'?'فيه ملاحظات محتاجة متابعة':'تعذر التأكد من حالة الخدمات'}</strong>
-      <div style={{display:'grid',gap:8,marginTop:9}}>
-        {inspection.checks.map(item=><div key={item.key} style={{fontSize:13}}>
-          <strong>{item.state==='OK'?'✓':item.state==='FAIL'?'✕':item.state==='WARN'?'!':'?'} {item.label}: </strong>
-          {item.detail}
-        </div>)}
-      </div>
-    </div>}
     {sources.length>0&&<div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:12}}>
       {sources.map((item,i)=><a key={item.url+i} href={item.url} rel="noopener noreferrer"
         target="_blank" style={{fontSize:12,textDecoration:'underline'}}>{item.title}</a>)}
     </div>}
     {modelState==='MODEL_UNAVAILABLE'&&<small style={{display:'block',marginTop:9,opacity:.8}}>
-      المحادثة الحرة محتاجة موديل بديل متوصل؛ فحص الموقع الأساسي متاح بدون موديل.
+      المحادثة الحرة محتاجة موديل ذكاء بديل متوصل. مفيش رد ذكي فعلي قبل تشغيله.
     </small>}
   </section>;
 }
