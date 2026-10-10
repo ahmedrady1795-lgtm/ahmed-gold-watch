@@ -217,7 +217,7 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
     </div>
 
     <div className="ai-price-row compact-price">
-      <div><small>السعر الآن</small><strong>{fmt(price,2)}</strong></div>
+      <div><small>{marketStale?'آخر سعر قديم · ليس مباشرًا':'السعر الآن'}</small><strong>{fmt(price,2)}</strong></div>
       <div><small>اتجاه 15 دقيقة</small><strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>{moveAr(heroSide)}</strong></div>
       <div><small>قوة الترجيح · ليست احتمال ربح</small><strong>{heroSide==='WAIT'?'—':Math.round(Number(forward?.confidence||0))+'/100'}</strong></div>
     </div>
@@ -226,8 +226,8 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
         <span>{hasLiquidity?<><b className="green">ضغط شراء {liqBuy}%</b> <b className="red">ضغط بيع {liqSell}%</b></>:'مفيش سيولة حديثة مؤكدة'}</span>
       </div>
       <div className="liquidity-near-levels">
-        <span><small>السيولة فوق النطاق</small><strong dir="ltr">{liquidityUpper!=null?fmt(liquidityUpper,2):upperLiquidityLevel}</strong></span>
-        <span><small>السيولة تحت النطاق</small><strong dir="ltr">{liquidityLower!=null?fmt(liquidityLower,2):lowerLiquidityLevel}</strong></span>
+        <span><small>السيولة فوق النطاق</small><strong dir="ltr">{liquidityUpper!=null?fmt(liquidityUpper,2):hasLiquidity?upperLiquidityLevel:'—'}</strong></span>
+        <span><small>السيولة تحت النطاق</small><strong dir="ltr">{liquidityLower!=null?fmt(liquidityLower,2):hasLiquidity?lowerLiquidityLevel:'—'}</strong></span>
       </div>
       <small>{hasLiquidity?liquidityLabel:'الأرقام القديمة مش دليل دخول'} · مستويات سيولة متغيرة، مش ضمان اتجاه</small>
     </div>
@@ -276,13 +276,13 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
       </strong>
 
       <div className="forecast-scenario-strip primary-target-strip">
-        {heroSide==='WAIT'&&watchAhead&&<div className="scenario-wide">
+        {heroSide==='WAIT'&&!marketStale&&watchAhead&&<div className="scenario-wide">
           <small>منطقة مراقبة فقط · ليست إشارة دخول أو هدفًا مؤكدًا</small>
           <b dir="ltr">{moveAr(watchSide)} → {fmt(watchMid,2)}</b>
           <span>{watchZone?.projected?'إسقاط احتمالي من التذبذب':'منطقة سعرية مرجحة'} · تنتظر تأكيد M1 و M5 والسيولة قبل أي توصية</span>
         </div>}
         <div><small>T1 · الهدف الأول</small><b dir="ltr">{heroSide!=='WAIT'&&!liveInvalidated&&t1Price!=null?fmt(t1Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT1Hit?'تحقق':targetSourceAr(t1Level?.source)+(t1Level?.quality?' · جودة '+Math.round(Number(t1Level.quality))+'%':'')}</span></div>
-        <div><small>إبطال القراءة</small><b dir="ltr">{invalidation!=null?fmt(invalidation,2):'—'}</b><span>{liveInvalidated?'تم الكسر':'صالح'}</span></div>
+        <div><small>إبطال القراءة</small><b dir="ltr">{heroSide!=='WAIT'&&invalidation!=null?fmt(invalidation,2):'—'}</b><span>{heroSide==='WAIT'?'غير مؤهل':liveInvalidated?'تم الكسر':'صالح وقت التحديث'}</span></div>
 
       </div>
       {heroSide!=='WAIT'&&(t2Price!=null||t3Price!=null)&&<details className="forecast-extra">
