@@ -87,7 +87,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             {([1,2,3] as const).map(i=>{
               const target=m.displayTargets.find(t=>t.stage===i);
               return <div key={i} className="forecast-visual-target">
-                <span>TP{i}<small>{'reached' in (target||{})&&target?.reached?'تحقق':journal&&!m.ready?'محفوظ':target?.kind==='PROJECTION'?'تقديري':'منطقة هدف'}</small></span>
+                <span>TP{i}<small>{target&&'reached' in target&&target.reached?'تحقق':journal&&!m.ready?'محفوظ':target?.kind==='PROJECTION'?'تقديري':'منطقة هدف'}</small></span>
                 <strong dir="ltr">{fmt(target?.price)}</strong>
               </div>;
             })}
