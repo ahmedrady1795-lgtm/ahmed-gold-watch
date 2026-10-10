@@ -46,6 +46,12 @@ function candidate(asset:Asset,x:any,now:number,modelAt:number){
   const sniper=buildSniperOutlook(asset,x,null,now,modelAt);
   const v=sniper.view,targets=sniper.targets;
   const blockers:string[]=[];
+  const historical=scorecard(load().scenarios,asset);
+  const priorT1=historical.targets[0];
+  // An empirical circuit-breaker only after a meaningful audit sample.
+  // It can DISABLE new forecasts; it must never inflate model confidence.
+  if(priorT1.samples>=60&&priorT1.observedPct!=null&&priorT1.observedPct<50)
+    blockers.push('توقف حماية: معدل الوصول للهدف الأول ضعيف في آخر السجل');
   if(!v.priceFresh||!v.forecastFresh)blockers.push('السعر أو التحليل متأخر');
   if(v.quality==='UNQUALIFIED')blockers.push('التحقق التاريخي من الاتجاه ضعيف');
   if(v.side==='WAIT')blockers.push('لا يوجد اتفاق اتجاه مؤهل');
