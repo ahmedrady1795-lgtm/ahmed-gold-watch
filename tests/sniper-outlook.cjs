@@ -66,6 +66,13 @@ s=view({...base,huntForecast:{...base.huntForecast,horizons:{
 }}});
 assert.equal(s.arrival.min,24,'opposite/weak horizon cannot forecast early reach');
 assert.equal(s.arrival.max,36);
+s=view({...base,
+  livePulse:{price:102.3,sourceTime:now-2000},
+  forwardMove:{...base.forwardMove,confirmations:{m5:'BUY',m15:'BUY'},
+    targets:{...base.forwardMove.targets,t1:{price:102},invalidation:99}}
+});
+assert.equal(s.view.side,'BUY','long-range targets survive a consumed micro T1 only when M5 and M15 independently agree');
+assert.ok(s.targets.length>0&&s.targets[0].price>102.3);
 s=view({...base,forwardMove:{...base.forwardMove,targets:{
   t1:{price:98},invalidation:99}}});
 assert.equal(s.view.side,'WAIT');
