@@ -13,7 +13,6 @@ export default function Home(){
   const [assetView,setAssetView]=useState<'ALL'|'GOLD'|'BTC'>('ALL');
   const [aiData,setAiData]=useState<any>(null);
   const [aiError,setAiError]=useState('');
-  const [scalpDesk,setScalpDesk]=useState<any>(null);
   const [busy,setBusy]=useState(false);
   const [btc,setBtc]=useState<number|null>(null);
   const [btcSource,setBtcSource]=useState('Coinbase');
@@ -71,24 +70,6 @@ export default function Home(){
       if(manual)setBusy(false);
     }
   };
-
-  useEffect(()=>{
-    let stopped=false;
-    let timer:ReturnType<typeof setTimeout>|undefined;
-    const controller=new AbortController();
-    const load=async()=>{
-      try{
-        if(document.visibilityState==='visible'){
-          const r=await fetch('/api/scalp',{cache:'no-store',signal:AbortSignal.any([controller.signal,AbortSignal.timeout(10000)])});
-          const j=await r.json();
-          if(!stopped&&r.ok&&j?.ok)setScalpDesk(j);
-        }
-      }catch{}
-      if(!stopped)timer=setTimeout(load,2500);
-    };
-    void load();
-    return()=>{stopped=true;controller.abort();clearTimeout(timer);};
-  },[]);
 
   useEffect(()=>{
     void loadAi();
@@ -266,15 +247,15 @@ export default function Home(){
 
     {aiError&&!aiData&&<div className="fatal"><WifiOff size={18}/><div><strong>تعذر تحديث AI</strong><span>{aiError}</span></div></div>}
 
-    <div className="workspace-intro"><div><span className="eyebrow">GOLD WATCH / MARKET DESK</span><h1>القناص يرصد الحركة<span>.</span></h1></div><span className="workspace-mode"><span/> الذهب والبيتكوين</span></div>
+    <div className="workspace-intro"><div><span className="eyebrow">GOLD WATCH / SMART PATH RADAR</span><h1>القناص على الرسم<span>.</span></h1></div><span className="workspace-mode"><span/> الذهب والبيتكوين</span></div>
     <div className="workspace-toolbar">
       <div className="asset-switch" role="group" aria-label="اختيار الأصل المعروض">
         {([{id:'ALL',label:'الكل'},{id:'GOLD',label:'الذهب'},{id:'BTC',label:'البيتكوين'}] as const).map(item=><button key={item.id} type="button" aria-pressed={assetView===item.id} onClick={()=>setAssetView(item.id)}>{item.label}</button>)}
       </div>
-      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#market-forecast">القناص</a><a href="#forecast-illustration">رسم الحركة القادمة</a><a href="#scalp-opportunities">سكالب ثواني</a><a href="#market-news">الأخبار</a></nav>
+      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#forecast-illustration">القناص على الرسم</a><a href="#market-news">الأخبار</a><a href="/scalp" className="workspace-scalp-link">سكالب الثواني ↗</a></nav>
     </div>
     <section className="content lite-content" aria-label="بيانات السوق والتحليل">
-      <AICommandCenter assetView={assetView} data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick}
+      <AICommandCenter assetView={assetView} data={aiData} error={aiError} now={now} goldLive={goldTick}
         btcLive={btcLive&&shownBtc!=null?{asset:'BTC',ok:true,price:shownBtc,sourceTime:shownBtcAt}:null}/>
       <div id="market-news" className="workspace-section news-home-section">
         <NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredEvent={aiData?.autopilot?.nextEvent||null}/>
@@ -282,6 +263,6 @@ export default function Home(){
 
     </section>
 
-    <footer>Gold Watch Predator · تحليل احتمالي بأهداف ومواعيد مشروطة · بدون تنفيذ تلقائي</footer>
+    <footer>Gold Watch Predator · أهداف هيكلية متوسطة المدى · التوقع ليس أمر تداول · <a href="/scalp">سكالب الثواني</a></footer>
   </main>;
 }
