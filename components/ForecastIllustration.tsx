@@ -3,19 +3,22 @@
 import {useState} from 'react';
 import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Crosshair,Layers3,ShieldAlert,Target} from 'lucide-react';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
+import type {ForecastJournal} from '../lib/forecast-journal';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
   p.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
 const clock=(t:number)=>new Date(t).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
 const clamp=(p:number,a:number,b:number)=>Math.max(a,Math.min(b,p));
 
-export default function ForecastIllustration({data,now,snapshotAt,goldLive,assetView='ALL'}:{
-  data:any;now:number;snapshotAt:unknown;goldLive?:any;assetView?:'ALL'|'GOLD'|'BTC'
+export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLive,assetView='ALL',journals}:{
+  data:any;now:number;snapshotAt:unknown;goldLive?:any;btcLive?:any;assetView?:'ALL'|'GOLD'|'BTC';
+  journals?:{GOLD:ForecastJournal|null;BTC:ForecastJournal|null}
 }){
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
   const asset: 'GOLD'|'BTC'=assetView==='ALL'?chosen:assetView;
   const x=asset==='GOLD'?data?.gold:data?.bitcoin;
-  const m=buildForecastIllustration(asset,x,asset==='GOLD'?goldLive:null,now,snapshotAt);
+  const journal=journals?.[asset]??null;
+  const m=buildForecastIllustration(asset,x,asset==='GOLD'?goldLive:btcLive,now,snapshotAt,journal);
   const sn=m.sniper,dir=sn.view.side;
   const rise=dir==='BUY',fall=dir==='SELL';
   const W=1040,H=360,x0=52,x1=612,xf=622,xr=946,yt=22,yb=275;
@@ -38,9 +41,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,asset
     });
   }
   const ageMin=m.historyAge==null?null:Math.ceil(m.historyAge/60000);
-  const stateLabel=m.ready?'مسار احتمالي':m.status==='STALE_CANDLES'?'شموع تاريخية متأخرة':
+  const stateLabel=m.ready?'مسار احتمالي':journal?'محفوظ · '+({MONITORING:'تحت المراقبة',STALE:'سعر متأخر',UNQUALIFIED:'غير مؤهل',TP_REACHED:'هدف تحقق',INVALIDATED:'مُبطل',EXPIRED:'منتهي',ACTIVE:'تحت المراجعة'}[journal.state]):m.status==='STALE_CANDLES'?'شموع تاريخية متأخرة':
     m.status==='NO_CANDLES'?'الشموع غير متاحة':'الترقب بدون أهداف مؤكدة';
-  const highest=sn.targets.at(-1);
+  const highest=m.displayTargets.at(-1);
   const activation=sn.activation?'خلال '+sn.activation.min+'–'+sn.activation.max+' د':'—';
   const arrival=sn.arrival?'خلال '+sn.arrival.min+'–'+sn.arrival.max+' د':'غير محدد';
 
@@ -82,21 +85,21 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,asset
           </div>
           <div className="forecast-visual-targets">
             {([1,2,3] as const).map(i=>{
-              const target=m.ready?sn.targets.find(t=>t.stage===i):null;
+              const target=m.displayTargets.find(t=>t.stage===i);
               return <div key={i} className="forecast-visual-target">
-                <span>TP{i}<small>{target?.kind==='PROJECTION'?'تقديري':'منطقة هدف'}</small></span>
+                <span>TP{i}<small>{'reached' in (target||{})&&target?.reached?'تحقق':journal&&!m.ready?'محفوظ':target?.kind==='PROJECTION'?'تقديري':'منطقة هدف'}</small></span>
                 <strong dir="ltr">{fmt(target?.price)}</strong>
               </div>;
             })}
           </div>
           <div className="forecast-visual-fact forecast-visual-stop">
             <small><ShieldAlert size={13}/> إبطال السيناريو</small>
-            <strong dir="ltr">{fmt(m.ready?sn.view.invalidation:null)}</strong>
+            <strong dir="ltr">{fmt(m.displayStop)}</strong>
           </div>
           <div className="forecast-visual-fact forecast-visual-time">
             <small><Clock3 size={13}/> بدء الحركة / الهدف الأول</small>
-            <strong>{m.ready?activation:'—'}</strong>
-            <span>{m.ready?arrival:'توقيت غير مؤهل'}</span>
+            <strong>{m.ready?activation:journal?'غير نشط':'—'}</strong>
+            <span>{m.ready?arrival:journal?.message||'توقيت غير مؤهل'}</span>
           </div>
           <div className="forecast-visual-confidence">
             <span>قوة التحليل <b>{m.ready&&sn.view.confidence!=null?fmt(sn.view.confidence,0)+'/100':'—'}</b></span>
@@ -111,7 +114,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,asset
           <div className="forecast-visual-chart-scroll">
             <svg className="forecast-visual-svg" viewBox={'0 0 '+W+' '+H}
               role="img" aria-label={m.ready?
-                'الشموع التاريخية الحقيقية والمسار الاحتمالي إلى '+sn.targets.map(t=>'TP'+t.stage+' '+fmt(t.price)).join(' ثم '):
+                'الشموع التاريخية الحقيقية والمسار الاحتمالي إلى '+m.displayTargets.map(t=>'TP'+t.stage+' '+fmt(t.price)).join(' ثم '):
                 'الشموع التاريخية فقط، ولا يوجد مسار سعري مؤهل'} >
               <defs>
                 <linearGradient id={'forecast-target-'+asset} x1="0" y1="0" x2="0" y2="1">
@@ -192,7 +195,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,asset
               {!m.ready&&<g>
                 <rect x="645" y="136" width="273" height="65" rx="9" fill="#0a1520" stroke="#3a5464" strokeOpacity=".8"/>
                 <text x="782" y="160" fill="#cedfeb" textAnchor="middle" fontSize="14" fontWeight="700">
-                  {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'لا توجد شموع كافية':'لا توجد أهداف مؤهلة'}</text>
+                  {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'لا توجد شموع كافية':journal?'الأهداف محفوظة · ليست إشارة نشطة':'لا توجد أهداف مؤهلة'}</text>
                 <text x="782" y="182" fill="#91abbb" textAnchor="middle" fontSize="11">لن يتم رسم مسار افتراضي</text>
               </g>}
             </svg>
@@ -208,7 +211,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,asset
       </div>
       <footer className="forecast-visual-note">
         <span>الشموع السابقة بيانات سوق فعلية. الخط المتقطع رسم توضيحي لترتيب الأهداف وليس توقّعًا لشكل الشموع أو توقيت كل نقطة.</span>
-        <span>{highest&&m.ready?'آخر هدف مرصود '+fmt(highest.price):'القناص يرصد الشروط قبل عرض اتجاه وأهداف'}</span>
+        <span>{highest?(m.ready?'آخر هدف مرصود ':'آخر هدف محفوظ ')+fmt(highest.price):'القناص يرصد الشروط قبل عرض اتجاه وأهداف'}</span>
       </footer>
     </div>
   </section>;
