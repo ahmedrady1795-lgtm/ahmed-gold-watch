@@ -4,7 +4,7 @@ import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Target} from 'lucide-react';
 
 const fmt=(v:any,d=2)=>v!=null&&Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
 const sideAr=(s:string)=>s==='BUY'?'شراء':s==='SELL'?'بيع':'انتظار';
-const setupAr=(s:string)=>s==='BREAKOUT'?'اختراق نطاق':s==='PULLBACK'?'إعادة اختبار':s==='SWEEP'?'سحب سيولة وانعكاس':s==='CONTINUATION'?'استمرار اتجاه مؤكد':'رصد إعداد جديد';
+const setupAr=(s:string)=>s==='BREAKOUT'?'اختراق نطاق':s==='PULLBACK'?'إعادة اختبار':s==='SWEEP'?'سحب سيولة وانعكاس':s==='CONTINUATION'?'استمرار اتجاه مؤكد':s==='RETEST'?'إعادة اختبار اختراق M5 · تجريبية':'رصد إعداد جديد';
 const strategyStateAr=(s:string)=>({NO_TRIGGER:'لا إشارة',DATA_BLOCKED:'بيانات غير كافية',WATCH:'مراقبة فقط',QUALIFIED:'مؤهلة كبديل',SELECTED:'المختارة'} as Record<string,string>)[s]||'مراقبة';
 const stateAr=(s:string)=>({ARMED:'بانتظار التفعيل',ACTIVE:'متابعة تجريبية',TP1:'تحقق T1',STOP:'ضرب الوقف',TIME_EXIT:'انتهت المدة',EXPIRED:'انتهت صلاحية الدخول',CANCELED:'أُلغي قبل الدخول',UNKNOWN:'نتيجة غير موثقة'} as Record<string,string>)[s]||'مراقبة';
 
@@ -91,8 +91,8 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       </div>
       <details className="scalp-expand scalp-analysis-drawer"><summary>تفاصيل الإعداد والتكلفة والاستراتيجيات</summary>
       {!!plan?.strategyReview?.length&&<details className="scalp-expand">
-        <summary>مقارنة الاستراتيجيات الأربع · لماذا اختارت النواة هذا الإعداد؟</summary>
-        <p className="scalp-condition">الاختراق وإعادة الاختبار واستمرار الاتجاه وسحب السيولة تُفحص بشكل منفصل. درجة الإعداد لا تعني احتمال ربح، ولا تتحول أي استراتيجية إلى دخول إلا بعد التكلفة ووقف الخسارة وتأكيد M1.</p>
+        <summary>مقارنة الاستراتيجيات الخمس · لماذا اختارت النواة هذا الإعداد؟</summary>
+        <p className="scalp-condition">الاختراق والتصحيح والاستمرار وسحب السيولة وإعادة الاختبار المؤكد تُفحص بشكل منفصل. درجة الإعداد لا تعني احتمال ربح، ولا تتحول أي استراتيجية إلى دخول إلا بعد التكلفة ووقف الخسارة وتأكيد M1.</p>
         <div className="scalp-evidence">
           {plan.strategyReview.map((r:any)=><div key={r.setup}>
             <small>{r.label} · {r.family==='REVERSAL'?'انعكاس':r.family==='TREND'?'اتجاه':'زخم'}</small>
