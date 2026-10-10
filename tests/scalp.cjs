@@ -342,6 +342,24 @@ assert.equal(advancePaperTrade(trade(),quote(98.9,now+1000),now+1000,[]).state,'
 assert.equal(advancePaperTrade(trade(),quote(100.7,now+1000),now+1000,[]).state,'CANCELED','Do not assume a fill after a gap past the trigger');
 assert.equal(advancePaperTrade(activated,quote(102.1,now+40000),now+40000,[]).state,'UNKNOWN','Missed monitoring must not manufacture wins');
 assert.equal(advancePaperTrade(activated,quote(102.1,now+2000),now+30000,[]).state,'ACTIVE','Stale quotes cannot settle');
+// TIME_EXIT must use a quote observed at expiry, never an older tick when
+// the exact observation is available, and never a quote AFTER expiry.
+const expiryActive={...activated,activatedAt:now,lastAt:now+55000,lastPrice:100.2};
+const expiryExact=advancePaperTrade(expiryActive,quote(100.5,now+60000),now+60000,[]);
+assert.equal(expiryExact.state,'TIME_EXIT');
+assert.equal(expiryExact.exit,100.5,'Exact expiry quote supersedes a stale cached tick');
+assert.equal(expiryExact.netR,.364,'Expiry uses the timestamp-accurate price and net round trip cost');
+const expiryWithStop=advancePaperTrade(expiryActive,quote(98.8,now+60000),now+60000,[]);
+assert.equal(expiryWithStop.state,'STOP','A documented stop at expiry is not silently a time exit');
+const expiryAfter={...expiryActive,lastAt:now+59000,lastPrice:100.2};
+const lateExit=advancePaperTrade(expiryAfter,quote(100.9,now+60001),now+60001,[]);
+assert.equal(lateExit.state,'TIME_EXIT');
+assert.equal(lateExit.exit,100.2,'A quote after the trading window cannot backdate a profitable fill');
+const expiredWithoutPrice=advancePaperTrade({...expiryActive,lastAt:now+51000},
+  quote(101.2,now+60001),now+60001,[]);
+assert.equal(expiredWithoutPrice.state,'UNKNOWN','Old pre-expiry tick is not an exact settled trade');
+assert.equal(expiredWithoutPrice.netR,null,'Unknown outcomes must never be wins');
+console.log('PASS: exact time expiry, no look-ahead, barrier at expiry and unknown stale outcomes.');
 const ambiguous={...activated,activatedAt:now,lastAt:now,lastPrice:100};const bar={time:now,open:100,close:101,high:103,low:98};
 assert.equal(advancePaperTrade(ambiguous,quote(101,now+61000),now+61000,[bar]).state,'STOP','If target and stop share a bar, use stop first');
 const testArmedPlan={...buy,status:'ARMED'};
