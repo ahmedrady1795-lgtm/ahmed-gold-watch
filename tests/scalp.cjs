@@ -10,8 +10,8 @@ const {buildScalpPlans}=load('lib/scalp-opportunities.ts');
 // The strategy registry must preserve the old detectors' predicates but
 // show why each competing setup was accepted/rejected. No fake trade edge.
 const {SCALP_STRATEGIES,detectScalpStrategies,rankScalpStrategies,describeScalpStrategies}=load('lib/scalp-strategies.ts');
-assert.equal(SCALP_STRATEGIES.length,4);
-assert.equal(new Set(SCALP_STRATEGIES.map(x=>x.id)).size,4);
+assert.equal(SCALP_STRATEGIES.length,5);
+assert.equal(new Set(SCALP_STRATEGIES.map(x=>x.id)).size,5);
 const strategyContext={
   last:{open:100,high:101.05,low:99.9,close:100.9},
   prev:{open:99.95,high:100.5,low:99.7,close:100.3},
