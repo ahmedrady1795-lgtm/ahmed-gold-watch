@@ -1,6 +1,8 @@
 'use client';
+import {useEffect,useState} from 'react';
 import {ArrowDownRight,ArrowUpRight,Activity,Clock3,Crosshair,ShieldAlert,Target,Zap,Layers3} from 'lucide-react';
 import {buildSniperOutlook} from '../lib/sniper-outlook';
+import {updateForecastJournal,type ForecastJournal} from '../lib/forecast-journal';
 import ScalpDesk from './ScalpDesk';
 import ForecastIllustration from './ForecastIllustration';
 
@@ -23,19 +25,31 @@ function IndicatorSummary({x,fresh}:{x:any;fresh:boolean}){
     </div>
   </details>;
 }
-export function NextMoveCard({x,asset,now,liveQuote,snapshotAt}:{
-  x:any;asset:'GOLD'|'BTC';now:number;liveQuote?:any;snapshotAt:unknown
+export function NextMoveCard({x,asset,now,liveQuote,snapshotAt,journal}:{
+  x:any;asset:'GOLD'|'BTC';now:number;liveQuote?:any;snapshotAt:unknown;journal?:ForecastJournal|null
 }){
   const sn=buildSniperOutlook(asset,x,liveQuote,now,snapshotAt);
-  const v=sn.view,ready=v.side!=='WAIT',rise=v.side==='BUY',fall=v.side==='SELL';
+  const v=sn.view;
+  const ready=v.side!=='WAIT'&&(!journal||journal.state==='ACTIVE');
+  const displayedSide=journal?.side||v.side;
+  const rise=displayedSide==='BUY',fall=displayedSide==='SELL';
+  const savedTargets=journal?.targets??sn.targets;
+  const showTargets=savedTargets.length>0&&(ready||Boolean(journal));
+  const displayStop=journal?.invalidation??v.invalidation;
+  const statusWords:Record<ForecastJournal['state'],string>={
+    ACTIVE:'الأهداف مثبتة',MONITORING:'سيناريو معلّق',STALE:'البيانات متأخرة',
+    UNQUALIFIED:'غير مؤهل',TP_REACHED:'هدف تحقق',
+    INVALIDATED:'السيناريو مُبطَل',EXPIRED:'انتهت الصلاحية'
+  };
   const name=asset==='GOLD'?'الذهب':'البيتكوين';
-  const signal=ready?(rise?'صعود محتمل':'هبوط محتمل'):'بدون إشارة مؤكدة';
+  const signal=ready?(rise?'صعود محتمل':'هبوط محتمل'):
+    journal?(rise?'سيناريو صعود محفوظ':'سيناريو هبوط محفوظ'):'بدون إشارة مؤكدة';
   return <article className={'panel sniper-card '+(rise?'sniper-long':fall?'sniper-short':'sniper-neutral')}
     aria-label={'قناص الحركة القادمة '+name}>
     <div className="sniper-head">
       <div className="sniper-name"><span className="sniper-icon"><Crosshair size={19}/></span>
         <div><small>AI PREDATOR / NEXT MOVE</small><h3>{name} <span>{asset==='GOLD'?'XAUUSD':'BTCUSD'}</span></h3></div></div>
-      <span className={'sniper-tag '+(ready?'sniper-tag-active':'')}>{sn.stageText}</span>
+      <span className={'sniper-tag '+(ready?'sniper-tag-active':'')}>{journal?statusWords[journal.state]:sn.stageText}</span>
     </div>
     <div className="sniper-command">
       <div className="sniper-direction">
@@ -63,21 +77,21 @@ export function NextMoveCard({x,asset,now,liveQuote,snapshotAt}:{
         <span>{sn.arrival?.basis||'لا يُعرض توقيت من غير نموذج متوافق'}</span></div>
     </div>
 
-    {ready&&sn.targets.length>0?<section className="sniper-objectives">
-      <div className="sniper-subhead"><b><Target size={15}/> خريطة الأهداف</b><small>مستويات احتمالية قبل الحركة</small></div>
+    {showTargets?<section className="sniper-objectives">
+      <div className="sniper-subhead"><b><Target size={15}/> {journal?'الأهداف المثبتة':'خريطة الأهداف'}</b><small>{journal&&journal.state!=='ACTIVE'?'محفوظة للمراجعة · غير نشطة':'مستويات احتمالية قبل الحركة'}</small></div>
       <div className="sniper-objective-grid">
-        {sn.targets.map(t=><div key={t.stage} className="sniper-objective">
-          <small>TP{t.stage} {t.kind==='PROJECTION'?'· تقديري':''}</small>
+        {savedTargets.map(t=><div key={t.stage} className={'sniper-objective '+('reached' in t&&t.reached?'sniper-goal-hit':'')}>
+          <small>TP{t.stage} {'reached' in t&&t.reached?'· تحقق':t.kind==='PROJECTION'?'· تقديري':''}</small>
           <strong dir="ltr">{fmt(t.price)}</strong>
           <span dir="ltr">{fmt(t.low)} – {fmt(t.high)}</span>
         </div>)}
       </div>
       <div className="sniper-protection">
-        <span><ShieldAlert size={14}/> إبطال السيناريو <b dir="ltr">{fmt(v.invalidation)}</b></span>
-        <span>المسافة للهدف {v.targetDistancePct!=null?fmt(v.targetDistancePct,2)+'%':'—'}</span>
+        <span><ShieldAlert size={14}/> إبطال السيناريو <b dir="ltr">{fmt(displayStop)}</b></span>
+        <span>المسافة للهدف {ready&&v.targetDistancePct!=null?fmt(v.targetDistancePct,2)+'%':'غير نشط'}</span>
       </div>
     </section>:<div className="sniper-empty">
-      <ShieldAlert size={16}/><span>{v.reason}. مش هنعرض هدف أو اتجاه قبل اكتمال شروطه.</span>
+      <ShieldAlert size={16}/><span>{journal?.message||v.reason}. مش هنعرض هدف جديد قبل اكتمال شروطه.</span>
     </div>}
 
     <section className="sniper-liquidity">
@@ -96,6 +110,10 @@ export function NextMoveCard({x,asset,now,liveQuote,snapshotAt}:{
     {ready&&sn.evidence.length>0&&<div className="sniper-evidence">
       {sn.evidence.map(s=><span key={s}>{s}</span>)}
     </div>}
+    {journal&&<div className={'sniper-journal-state sniper-journal-'+journal.state.toLowerCase()}>
+      <ShieldAlert size={14}/><span>{journal.message}</span>
+      <small>ثُبّت: {new Date(journal.capturedAt).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})}</small>
+    </div>}
     <div className="sniper-foot">
       <span>{v.quality==='READY'?'مراقبة مشروطة':v.quality==='STALE'?'البيانات متأخرة':v.quality==='UNQUALIFIED'?'الدقة التاريخية غير مؤهلة':'رصد فقط'}</span>
       <span>القوة: {ready&&v.confidence!=null?fmt(v.confidence,0)+'/100':'—'}</span>
@@ -105,8 +123,21 @@ export function NextMoveCard({x,asset,now,liveQuote,snapshotAt}:{
     <small className="sniper-disclaimer">توقّع احتمالي؛ الوقت والأهداف غير مضمونة، وليس أمر تنفيذ.</small>
   </article>;
 }
-export default function AICommandCenter({data,error,assetView='ALL',now=Date.now(),goldLive}:any){
+export default function AICommandCenter({data,error,assetView='ALL',now=Date.now(),goldLive,btcLive}:any){
   const generatedAt=data?.checkedAt;
+  const [journals,setJournals]=useState<{GOLD:ForecastJournal|null;BTC:ForecastJournal|null}>({GOLD:null,BTC:null});
+  useEffect(()=>{
+    const produced=Number(data?.checkedAt||0);
+    setJournals(previous=>{
+      const gold=updateForecastJournal(previous.GOLD,
+        buildSniperOutlook('GOLD',data?.gold,goldLive,now,produced),now,produced);
+      const bitcoin=updateForecastJournal(previous.BTC,
+        buildSniperOutlook('BTC',data?.bitcoin,btcLive,now,produced),now,produced);
+      if(JSON.stringify(gold)===JSON.stringify(previous.GOLD)&&
+         JSON.stringify(bitcoin)===JSON.stringify(previous.BTC))return previous;
+      return {GOLD:gold,BTC:bitcoin};
+    });
+  },[data,goldLive,btcLive,now]);
   const snapshotAgeMs=generatedAt?Math.max(0,now-Number(generatedAt)):null;
   return <div className="ai-clean renewed-ai">
     {error&&!data&&<div className="fatal"><ShieldAlert size={18}/><div><strong>التحليل مش متاح</strong><span>{error}</span></div></div>}
@@ -120,12 +151,12 @@ export default function AICommandCenter({data,error,assetView='ALL',now=Date.now
         <p>تجميع · تصريف · سيولة · مناطق ارتداد · توقيت ديناميكي</p>
       </div>
       <div className={'dashboardgrid market-pair-grid next-move-grid '+(assetView!=='ALL'?'single-asset':'')}>
-        {assetView!=='BTC'&&<NextMoveCard x={data?.gold} asset="GOLD" now={now} liveQuote={goldLive} snapshotAt={generatedAt}/>}
-        {assetView!=='GOLD'&&<NextMoveCard x={data?.bitcoin} asset="BTC" now={now} snapshotAt={generatedAt}/>}
+        {assetView!=='BTC'&&<NextMoveCard x={data?.gold} asset="GOLD" now={now} liveQuote={goldLive} snapshotAt={generatedAt} journal={journals.GOLD}/>}
+        {assetView!=='GOLD'&&<NextMoveCard x={data?.bitcoin} asset="BTC" now={now} liveQuote={btcLive} snapshotAt={generatedAt} journal={journals.BTC}/>}
       </div>
     </section>
     <ForecastIllustration data={data} now={now} snapshotAt={generatedAt}
-      goldLive={goldLive} assetView={assetView}/>
+      goldLive={goldLive} btcLive={btcLive} assetView={assetView} journals={journals}/>
     <section id="scalp-opportunities" className="workspace-section" aria-labelledby="scalp-section-title">
       <div className="workspace-section-heading renewed-section-head">
         <div><span>03 / فرص لحظية</span><h2 id="scalp-section-title">سكالب الثواني</h2></div>
