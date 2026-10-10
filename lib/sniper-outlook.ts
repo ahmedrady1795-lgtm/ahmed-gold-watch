@@ -1,4 +1,5 @@
 import {buildNextMoveView} from './next-move-view';
+import {buildLongRangeTargets} from './long-range-targets';
 
 type Side='BUY'|'SELL'|'WAIT';
 type Zone={low:number;high:number;label:string;strength:number|null};
@@ -47,43 +48,23 @@ export function buildSniperOutlook(asset:'GOLD'|'BTC',x:any,liveQuote:any,now:nu
     MOVING:'الحركة بدأت',BLOCKED:'انتظار تأكيد'
   }[stage];
 
-  const targets:Target[]=[];
-  if(valid&&price!=null){
-    let previous=price;
-    for(const i of [1,2,3] as const){
-      const t=move?.targets?.['t'+i],target=positive(t?.price);
-      const lo=positive(t?.low)??target,hi=positive(t?.high)??target;
-      if(target==null||lo==null||hi==null||lo>hi||
-         !ahead(direction,price,target)||!ordered(direction,previous,target))continue;
-      // A projected destination is still a projection; do not mark it guaranteed.
-      targets.push({price:target,low:lo,high:hi,
-        quality:bound(Math.round(Number(t?.quality||0)),0,100),
-        kind:String(t?.kind||'MODEL'),stage:i});
-      previous=target;
-    }
-  }
-
-  // Estimate arrival ONLY when a matching horizon model provides a concrete
-  // future price that reaches a meaningful portion of the observed T1 distance.
-  // The engine has no validated 60m arrival model: never relabel M15 as 1h.
-  const horizonDefs=[['twoMinute',2],['fiveMinute',5],['fifteenMinute',15],['thirtyMinute',30]] as const;
+  // Sniper targets are NOT the 15-minute scalp ladder. Only observed
+  // higher-timeframe structures beyond meaningful M15 volatility qualify.
+  const longRange=buildLongRangeTargets({
+    asset,side:direction,price,now,frames:x?.chartHigherFrames,
+    forecast:move,hunt:hf,h4:x?.h4Context
+  });
+  const targets:Target[]=longRange.targets;
   const target=targets[0]?.price??null;
   let arrival:{min:number;max:number;basis:string}|null=null;
+  // Long-range arrivals cannot be inferred from a 1m/5m model. Only use a
+  // supported 30-minute horizon that actually reaches the structural target.
   if(valid&&price!=null&&target!=null){
-    const distance=Math.abs(target-price);
-    for(const [key,minutes] of horizonDefs){
-      const h=hf?.horizons?.[key],end=positive(h?.price),confidence=Number(h?.confidence||0);
-      if(side(h?.side)!==direction||confidence<55||end==null||!ahead(direction,price,end))continue;
-      if(Math.abs(end-price)<distance*.72)continue;
-      // 20% temporal bands express model uncertainty, not a hard deadline.
-      arrival={min:Math.max(1,Math.floor(minutes*.8)),max:Math.ceil(minutes*1.2),basis:'نموذج '+minutes+' دقائق'};break;
-    }
-    if(!arrival){
-      const first=n(hf?.nextMove?.firstHitMinutes),hm=hf?.horizons?.fifteenMinute;
-      if(first!=null&&first>=1&&first<=30&&side(hf?.nextMove?.side)===direction&&
-         side(hm?.side)===direction&&Number(hm?.confidence||0)>=55){
-        arrival={min:Math.max(1,Math.floor(first*.75)),max:Math.ceil(first*1.25),basis:'تقدير وصول الحركة'};
-      }
+    const h=hf?.horizons?.thirtyMinute;
+    const estimate=positive(h?.price);
+    if(side(h?.side)===direction&&Number(h?.confidence||0)>=62&&estimate!=null&&
+      ahead(direction,price,estimate)&&Math.abs(estimate-price)>=Math.abs(target-price)*.85){
+      arrival={min:24,max:36,basis:'تقدير M30؛ هدف هيكلي وليس وعدًا بالوصول'};
     }
   }
   const wl=move?.windowSeconds;
@@ -113,11 +94,11 @@ export function buildSniperOutlook(asset:'GOLD'|'BTC',x:any,liveQuote:any,now:nu
   if(leadAligned)evidence.push('تدفق لحظي مؤيد');
   if(side(move?.confirmations?.m5)===direction&&side(move?.confirmations?.m15)===direction)evidence.push('اتفاق M5 + M15');
   if(destination)evidence.push('منطقة وجهة مرصودة');
-  if(targets[0]?.kind==='PROJECTION')evidence.push('الهدف تقديري');
+  if(targets.length)evidence.push('أهداف M15/H1 هيكلية وليست سكالب');
   return {
     view,stage,stageText,phaseText,compression:acc.ok?bound(Math.round(compression),0,100):null,
     arrival,activation,targets,destination,zones,flow,trigger,evidence,
-    forecastBasis:targets[0]?.kind||null,
+    forecastBasis:targets[0]?.kind||null,longRange,
     verifiedTradeSetup:Boolean(valid&&move?.tradeSetup&&move?.adaptiveLearning?.execution?.validated),
     priceAge:view.sourceAgeSeconds
   };
