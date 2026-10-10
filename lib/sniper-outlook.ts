@@ -18,10 +18,39 @@ function zone(raw:any,label:string):Zone|null{
 function ahead(d:Side,price:number,destination:number){return d==='BUY'?destination>price:d==='SELL'?destination<price:false;}
 function ordered(d:Side,a:number,b:number){return d==='BUY'?b>a:b<a;}
 export function buildSniperOutlook(asset:'GOLD'|'BTC',x:any,liveQuote:any,now:number,snapshotAt:unknown){
-  const view=buildNextMoveView(asset,x,liveQuote,now,snapshotAt);
-  const price=view.price,move=x?.forwardMove||{},lead=x?.marketLead||{},intent=x?.marketMakerIntent||{};
+  const baseView=buildNextMoveView(asset,x,liveQuote,now,snapshotAt);
+  const price=baseView.price,move=x?.forwardMove||{},lead=x?.marketLead||{},intent=x?.marketMakerIntent||{};
   const acc=x?.accumulation||{},path=x?.huntForecast?.zoneForecast?.pathForecast||{};
   const hf=x?.huntForecast||{},liquidity=x?.liquidity||{};
+  const modelSide=side(move?.side),stop=positive(move?.targets?.invalidation??move?.invalidation);
+  const confirms=move?.confirmations||{};
+  // The old SHORT-HORIZON T1 can be consumed by a recent tick while the
+  // independently verified M15/H1 objective is still well ahead.
+  // Bridge only that specific case with fresh data + M5/M15 agreement.
+  const shortTarget=positive(move?.targets?.t1?.price??move?.target);
+  const consumed=price!=null&&shortTarget!=null&&
+    (modelSide==='BUY'?price>=shortTarget:modelSide==='SELL'?price<=shortTarget:false);
+  const orientedStop=price!=null&&stop!=null&&
+    (modelSide==='BUY'?stop<price:modelSide==='SELL'?stop>price:false);
+  const bridge=Boolean(baseView.side==='WAIT'&&baseView.quality==='MONITOR'&&
+    consumed&&orientedStop&&baseView.priceFresh&&baseView.forecastFresh&&
+    move?.status!=='STABILITY_HOLD'&&modelSide!=='WAIT'&&
+    Number(move?.confidence||0)>=58&&
+    confirms.m5===modelSide&&confirms.m15===modelSide);
+  const suggestedSide:Side=baseView.side!=='WAIT'?baseView.side:bridge?modelSide:'WAIT';
+  const longRange=buildLongRangeTargets({
+    asset,side:suggestedSide,price,now,frames:x?.chartHigherFrames,
+    forecast:move,hunt:hf,h4:x?.h4Context
+  });
+  const repaired=bridge&&price!=null&&longRange.targets.length>0;
+  const view=repaired?{
+    ...baseView,side:suggestedSide,quality:'READY' as const,
+    confidence:Number(move.confidence||0),
+    invalidation:stop,target:longRange.targets[0].price,
+    targetDistancePct:Math.abs(longRange.targets[0].price-price!)/price!*100,
+    riskDistancePct:stop==null?null:Math.abs(stop-price!)/price!*100,
+    reason:'الهدف السريع تم تجاوزه · السيناريو الهيكلي M15/H1 ما زال أمام السعر'
+  }:baseView;
   const valid=view.side!=='WAIT'&&price!=null&&view.target!=null&&view.invalidation!=null;
   const direction:Side=valid?view.side:'WAIT';
   const phase=String(acc.phase||intent.phase||'NEUTRAL');
@@ -50,10 +79,6 @@ export function buildSniperOutlook(asset:'GOLD'|'BTC',x:any,liveQuote:any,now:nu
 
   // Sniper targets are NOT the 15-minute scalp ladder. Only observed
   // higher-timeframe structures beyond meaningful M15 volatility qualify.
-  const longRange=buildLongRangeTargets({
-    asset,side:direction,price,now,frames:x?.chartHigherFrames,
-    forecast:move,hunt:hf,h4:x?.h4Context
-  });
   const targets:Target[]=longRange.targets;
   const target=targets[0]?.price??null;
   let arrival:{min:number;max:number;basis:string}|null=null;
