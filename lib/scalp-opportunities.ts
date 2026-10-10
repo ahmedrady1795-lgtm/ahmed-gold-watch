@@ -7,7 +7,7 @@ export type ScalpQuote={price:number|null;at:number|null;bid?:number|null;ask?:n
 export type ScalpInput={asset:'GOLD'|'BTC';c1:Candle[];c5:Candle[];quote:ScalpQuote;candleSource:string;now:number;events:Event[];newsReady:boolean;marketOpen:boolean;feeBps?:number|null;slippageBps?:number|null};
 export type ScalpPlan={
   id:string;asset:'GOLD'|'BTC';horizon:1|5;at:number;expiresAt:number;side:ScalpSide;
-  status:'BLOCKED'|'WATCH'|'ARMED';setup:'BREAKOUT'|'PULLBACK'|'SWEEP'|'CONTINUATION'|'NONE';
+  status:'BLOCKED'|'WATCH'|'ARMED';setup:'BREAKOUT'|'PULLBACK'|'SWEEP'|'CONTINUATION'|'RETEST'|'NONE';
   score:number;scoreLabel:string;entry:number|null;stop:number|null;
   targets:{price:number;kind:'STRUCTURE'|'PROJECTION'}[];netRR:number|null;
   cost:number;costEstimated:boolean;
@@ -124,6 +124,10 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
   const closes=a.map(c=>c.close),f9=ema(closes,9),f21=ema(closes,21),old9=ema(closes.slice(0,-3),9);
   const trend1=side(f9-f21),trend5=side(i5.ema20-i5.ema50);
   const prior=a.slice(-9,-1),high=Math.max(...prior.map(c=>c.high)),low=Math.min(...prior.map(c=>c.low));
+  // Excludes both the breakout candle and the retest candle: avoid look-ahead.
+  const priorToBreak=a.slice(-10,-2);
+  const retestHigh=Math.max(...priorToBreak.map(c=>c.high));
+  const retestLow=Math.min(...priorToBreak.map(c=>c.low));
   const body=(last.close-last.open)/Math.max(1e-9,last.high-last.low);
   const mom=(last.close-a.at(-4)!.close)/atr;
   const path=a.slice(-9).map(c=>c.close),travel=path.slice(1).reduce((s,v,j)=>s+Math.abs(v-path[j]),0);
@@ -133,7 +137,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
   // Keep each strategy's detector independent and testable. No rank or
   // scoring branch may skip a different strategy's risk checks.
   const candidates=detectScalpStrategies({
-    last,prev,high,low,atr,body,trend1,trend5,f9,old9,mom,efficiency
+    last,prev,high,low,atr,body,trend1,trend5,f9,old9,mom,efficiency,retestHigh,retestLow,volumeRatio
   });
 
   return ([1,5] as const).map(horizon=>{
@@ -141,7 +145,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     // M5 must budget its stop, feasible targets and fees against genuine
     // CLOSED M5 candle volatility, not M1 ATR. Never expand M1 risk.
     const rangeAtr=horizon===5?atr5:atr;
-    const ranked=rankScalpStrategies(candidates,{
+    const ranked=rankScalpStrategies(candidates.filter(c=>horizon===5||c.setup!=='RETEST'),{
       horizon,trend1,trend5,mom,body,efficiency,volumeRatio
     });
     const chosen=ranked[0];
@@ -211,8 +215,13 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       :null;
     // Do not chase an M1 closing impulse. Watch the previously broken level
     // and demand a later confirmed M1 + retest before any PAPER entry.
-    const entry=round(goldM5Breakout?.entry??(last.close+dir*Math.max(atr*.07,cost*.15,.02)));
-    const rawStop=goldM5Breakout?.stop??(chosen.anchor-dir*atr*.12);
+    const retestEntry=chosen.setup==='RETEST'
+      ?chosen.anchor+dir*Math.max(atr*.08,cost*.12,.02):null;
+    const entry=round(goldM5Breakout?.entry??retestEntry??
+      (last.close+dir*Math.max(atr*.07,cost*.15,.02)));
+    const retestStop=chosen.setup==='RETEST'
+      ?(dir===1?last.low-atr*.16:last.high+atr*.16):null;
+    const rawStop=goldM5Breakout?.stop??retestStop??(chosen.anchor-dir*atr*.12);
     const risk=Math.max(dir*(entry-rawStop),rangeAtr*(horizon===1?.48:.52),cost*2);
     const stop=round(entry-dir*risk);
     const maxMove=rangeAtr*(horizon===1?2:2.65);
@@ -220,7 +229,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     // All executions still require a positive >=1.25R NET reward at the
     // current quote; GOLD M1 and BTC retain the conservative baseline.
     const activeGoldM5=asset==='GOLD'&&horizon===5;
-    const targetNetR=activeGoldM5?1.30:1.45;
+    const targetNetR=chosen.setup==='RETEST'?1.65:activeGoldM5?1.30:1.45;
     const minReward=Math.max(risk*targetNetR+cost*(targetNetR+1),cost*3);
     const maxRisk=rangeAtr*(horizon===1?1.6:1.65);
     const pivots=[...a.slice(-60),...(horizon===5?b.slice(-24):[])].map(c=>chosen.side==='BUY'?c.high:c.low)
@@ -291,7 +300,24 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     if(last.high-last.low>atr*2.8||Math.abs(price-last.close)>atr*.85||
        dir*(price-entry)>atr*(goldM5Breakout?.entry!=null ? .75 : .3))
       reasons.push('السعر ابتعد عن دخول الشمعة المغلقة؛ انتظر إعادة اختبار بدل مطاردة السعر');
-    if(rr==null||rr<1.25)reasons.push('العائد بعد التكلفة أقل من 1.25R');
+    if(rr==null||rr<(chosen.setup==='RETEST'?1.5:1.25))
+      reasons.push('العائد بعد التكلفة أقل من الحد المحافظ للاستراتيجية');
+    if(chosen.setup==='RETEST'){
+      const structuralRisk=dir*(entry-stop);
+      if(asset==='GOLD'&&horizon!==5)reasons.push('إعادة الاختبار متاحة لفريم M5 فقط');
+      if(trend1!==chosen.side||trend5!==chosen.side)
+        reasons.push('إعادة الاختبار تحتاج توافق اتجاه الدقيقة والخمس دقائق');
+      if(volumeRatio==null||volumeRatio<1.15)
+        reasons.push('إعادة الاختبار تحتاج مشاركة حجم أعلى من المتوسط');
+      if(cost>structuralRisk*.16)
+        reasons.push('تكلفة إعادة الاختبار أعلى من 16% من الوقف');
+      if(empiricalReach==null||actualReward>empiricalReach)
+        reasons.push('هدف إعادة الاختبار لم تثبت إمكانية الوصول إليه خلال فترة الاحتفاظ');
+      if(dir*(price-entry)>atr*.22)
+        reasons.push('السعر ابتعد عن مستوى إعادة الاختبار؛ ممنوع المطاردة');
+      plan.evidence.push({label:'استراتيجية انتقائية تجريبية',side:'WAIT',
+        value:'إغلاق اختراق ثم إعادة اختبار · M5 · بدون ادعاء ربح مثبت'});
+    }
     if(horizon===5&&trend5!==chosen.side&&chosen.setup!=='SWEEP')reasons.push('استمرار M5 لم يؤكد اتجاه الإعداد');
     if(horizon===5&&chosen.setup!=='SWEEP'&&dir*m5Body<-.20&&dir*m5Momentum<.10)reasons.push('آخر شمعة M5 مغلقة تعارض الاستمرار');
     if(horizon===5&&chosen.setup==='SWEEP'&&dir*m5Body<-.40)reasons.push('انعكاس الدقيقة عكس جسم M5 قوي؛ يلزم تأكيد إضافي');
@@ -325,7 +351,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       status:reasons.length?'WATCH' as const:'ARMED' as const,blockers:reasons,
       trigger:goldM5Breakout?.entry!=null?'اختراق مغلق ثم تأكيد M1 وإعادة اختبار مستوى الدخول؛ بلا مطاردة':
         chosen.side==='BUY'?'تجاوز سعر الدخول من أسفل قبل انتهاء الصلاحية':'كسر سعر الدخول من أعلى قبل انتهاء الصلاحية',
-      reason:reasons[0]||(chosen.setup==='SWEEP'?'استعادة مستوى بعد سحب سيولة':chosen.setup==='PULLBACK'?'استمرار بعد إعادة اختبار':chosen.setup==='CONTINUATION'?'استمرار شمعتين مع توافق M5':'إغلاق خارج نطاق آخر 8 شموع')
+      reason:reasons[0]||(chosen.setup==='RETEST'?'إغلاق اختراق ثم إعادة اختبار وثبات مستوى':chosen.setup==='SWEEP'?'استعادة مستوى بعد سحب سيولة':chosen.setup==='PULLBACK'?'استمرار بعد إعادة اختبار':chosen.setup==='CONTINUATION'?'استمرار شمعتين مع توافق M5':'إغلاق خارج نطاق آخر 8 شموع')
     };
     });
     const best=chooseEligibleScalpPlan(evaluated);
