@@ -74,3 +74,8 @@ body:has(.modern-workspace){background:radial-gradient(ellipse at 85% 0,rgba(55,
 .forecast-optional>.dashboardgrid{margin-top:16px}
 .core-tools .core-console{margin:0}
 @media(max-width:750px){.proof-outcome-grid{grid-template-columns:1fr}.proof-board{padding:12px}.proof-outcome-numbers strong{font-size:14px}}
+
+.proof-outcome-meta{display:block;margin-top:10px;color:#b6c6d9;font-size:11px;line-height:1.65}
+.proof-retest{margin-top:10px;padding:10px 9px;background:rgba(38,60,81,.32);border:1px solid rgba(133,167,191,.28);border-radius:9px;display:flex;flex-direction:column;gap:5px}
+.proof-retest>b{font-size:12px;color:#e0ebf8}
+.proof-retest>span{font-size:11px;color:#bdcbda;line-height:1.65}
