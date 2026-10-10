@@ -6,7 +6,7 @@ export type PriceBand={key:string;label:string;low:number;high:number;price:numb
 const finite=(x:unknown):number|null=>x!==null&&x!==undefined&&x!==''&&Number.isFinite(Number(x))?Number(x):null;
 const valid=(x:unknown)=>{const p=finite(x);return p!=null&&p>0?p:null;};
 
-export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now:number,snapshotAt:unknown,journal:ForecastJournal|null=null){
+export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now:number,snapshotAt:unknown,journal:ForecastJournal|null=null,auditRequired=false){
   const sniper=buildSniperOutlook(asset,x,quote,now,snapshotAt);
   // Chart uses actual CLOSED candles from the last model snapshot, never synthetic prices.
   const raw=Array.isArray(x?.chartCandles)?x.chartCandles:[];
@@ -23,10 +23,11 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const lastAt=candles.length?candles[candles.length-1].time+60000:0;
   const historyAge=lastAt?Math.max(0,now-lastAt):null;
   const historyFresh=historyAge!=null&&historyAge<=180000;
-  const displayTargets=journal?.targets??sniper.targets;
+  const displayTargets=journal?.targets??(auditRequired?[]:sniper.targets);
   const displayStop=journal?.invalidation??sniper.view.invalidation;
   const ready=sniper.view.side!=='WAIT'&&sniper.view.priceFresh&&sniper.view.forecastFresh&&
-    sniper.targets.length>0&&historyFresh&&(!journal||journal.state==='ACTIVE');
+    displayTargets.length>0&&historyFresh&&(!journal||journal.state==='ACTIVE')&&
+    (!auditRequired||journal?.state==='ACTIVE');
   const price=sniper.view.price;
   const bands:PriceBand[]=[];
   if((ready||Boolean(journal))&&historyFresh){
