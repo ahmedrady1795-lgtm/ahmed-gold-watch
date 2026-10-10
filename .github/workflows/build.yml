@@ -29,6 +29,7 @@ jobs:
       - run: node tests/next-move-view.cjs
       - run: node tests/sniper-outlook.cjs
       - run: node tests/forecast-illustration.cjs
+      - run: node tests/forecast-journal.cjs
       - run: node tests/direction.cjs
       - run: node tests/movement.cjs
       - run: python3 -m compileall -q ml-service neural-service
