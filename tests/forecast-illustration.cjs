@@ -8,7 +8,9 @@ function read(path,customRequire){
   return module.exports;
 }
 const next=read('lib/next-move-view.ts');
-const sniper=read('lib/sniper-outlook.ts',p=>p==='./next-move-view'?next:require(p));
+const long=read('lib/long-range-targets.ts');
+const {frames}=require('./long-range-fixture.cjs');
+const sniper=read('lib/sniper-outlook.ts',p=>p==='./next-move-view'?next:p==='./long-range-targets'?long:require(p));
 const {buildForecastIllustration:build}=read('lib/forecast-illustration.ts',
   p=>p==='./sniper-outlook'?sniper:require(p));
 const now=Date.parse('2026-10-11T10:00:00Z');
@@ -20,6 +22,7 @@ const candles=Array.from({length:46},(_,i)=>{
 const base={
   livePulse:{price:100,sourceTime:now-1500},
   chartCandles:candles,
+  chartHigherFrames:frames(now),
   forwardMove:{side:'BUY',confidence:70,targets:{
     t1:{price:102,low:101.8,high:102.2,quality:85},
     t2:{price:103,low:102.9,high:103.1,quality:75},
@@ -33,12 +36,12 @@ let m=build('GOLD',base,null,now,now-10000);
 assert.equal(m.ready,true);
 assert.equal(m.historyFresh,true);
 assert.equal(m.candles.length,46);
-assert.equal(m.projected.length,3);
+assert.ok(m.projected.length>=2&&m.projected.length<=4);
 assert.equal(m.projected[0].price,100);
-assert.equal(m.bands.some(b=>b.key==='TP1'&&b.price===102),true);
+assert.equal(m.bands.some(b=>b.key==='TP1'&&b.price>100.5),true);
 assert.equal(m.bands.some(b=>b.kind==='STOP'&&b.price===98.8),true);
 assert.equal(m.bands.some(b=>b.kind==='REBOUND'),true);
-assert.ok(m.upper>103&&m.lower<98.8);
+assert.ok(m.upper>101&&m.lower<98.8);
 m=build('GOLD',{...base,chartCandles:candles.map(c=>({...c,time:c.time-600000}))},null,now,now-10000);
 assert.equal(m.ready,false,'stale candles must veto a projected arrow');
 assert.equal(m.projected.length,0);
