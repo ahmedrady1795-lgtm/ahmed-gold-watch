@@ -3,7 +3,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {Activity,RefreshCw,WifiOff} from 'lucide-react';
 import AICommandCenter from '../components/AICommandCenter';
-import CoreChat from '../components/CoreChat';
 import NewsCommandCenter from '../components/NewsCommandCenter';
 import {computeWaveLead,type WaveLead,type WaveTick} from '../lib/wave-lead';
 
@@ -329,78 +328,14 @@ export default function Home(){
       <div className="asset-switch" role="group" aria-label="اختيار الأصل المعروض">
         {([{id:'ALL',label:'الكل'},{id:'GOLD',label:'الذهب'},{id:'BTC',label:'البيتكوين'}] as const).map(item=><button key={item.id} type="button" aria-pressed={assetView===item.id} onClick={()=>setAssetView(item.id)}>{item.label}</button>)}
       </div>
-      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#scalp-opportunities">سكالب ثواني</a><a href="#market-forecast">الحركة القادمة والسيولة</a><a href="#market-news">الأخبار</a></nav>
+      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#scalp-opportunities">سكالب ثواني</a><a href="#market-forecast">الحركة القادمة</a><a href="#market-news">الأخبار</a></nav>
     </div>
     <section className="content lite-content" aria-label="بيانات السوق والتحليل">
       <AICommandCenter assetView={assetView} data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
       <div id="market-news" className="workspace-section news-home-section">
         <NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredEvent={aiData?.autopilot?.nextEvent||null}/>
       </div>
-      <details className="secondary-tools core-tools">
-        <summary className="secondary-tools-summary"><span><strong>النواة · محادثة</strong><small>اسأل عن السوق أو عن أي موضوع · بدون فحص الموقع</small></span><span aria-hidden="true">⌄</span></summary>
-        <div className="secondary-tools-content">
-      <CoreChat data={aiData} desk={scalpDesk} onCommand={(cmd)=>{
-        if(cmd.type==='SET_ASSET'){setAssetView(cmd.asset);return;}
-        if(cmd.type==='REFRESH_ANALYSIS'){void loadAi(true);return;}
-        if(cmd.type==='NAVIGATE'){
-          const el=document.getElementById(cmd.section);
-          if(!el)return;
-          for(let parent=el.parentElement;parent;parent=parent.parentElement){
-            if(parent instanceof HTMLDetailsElement)parent.open=true;
-          }
-          window.requestAnimationFrame(()=>el.scrollIntoView({behavior:'smooth',block:'start'}));
-        }
-      }}/>
 
-        </div>
-      </details>
-      <details className="secondary-tools">
-        <summary className="secondary-tools-summary"><span><strong>اختبارات النماذج</strong><small>معلومات التحقق الفني الإضافية</small></span><span aria-hidden="true">⌄</span></summary>
-        <div className="secondary-tools-content">
-      
-
-      <details id="market-research" className="panel research-drawer">
-        <summary className="research-drawer-summary"><span><strong>نتائج التحقق الفني</strong><small>اختبارات مستقلة لجودة توقع الاتجاه</small></span><span aria-hidden="true">⌄</span></summary>
-        <div className="research-drawer-content">
-      {aiData?.modelValidation&&<section className="panel" aria-label="جودة وصدق النماذج" style={{padding:'14px 18px'}}>
-        <strong>تأهيل نماذج AI · نتائج اختبار خارج العينة</strong>
-        <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:8}}>
-          {(['mlM1','mlM5','neural'] as const).map(k=>{
-            const m=aiData.modelValidation[k];
-            return <span key={k} className={'pill '+(m?.ready?'ok':'neutral')} title={m?.reason||''}>
-              {k==='mlM1'?'ML دقيقة':k==='mlM5'?'ML خمس دقائق':'Neural'}:
-              {' '}{m?.ready?'جاهز باختبار مستقل':m?.serviceOk?'تجريبي غير مؤهل':'غير متاح'}
-              {' · '}{m?.oosSelectiveSamples||0} توقع مختبر
-              {m?.oosSelectiveSamples>0?' · '+m.oosSelectiveAccuracyPct+'%':''}
-            </span>;
-          })}
-        </div>
-        <small>تنبؤات ML وNeural تخص البيتكوين، وليست إثبات ربح أو اختبارًا لنماذج الذهب. نتائج الوسيط الحقيقي لم تُتحقق بعد.</small>
-      </section>}
-      {(aiData?.gold?.directionValidation||aiData?.bitcoin?.directionValidation)&&
-        <details className="panel" style={{padding:'12px 18px'}}>
-          <summary><strong>اختبار اتجاه BUY/SELL المستقل · مراقبة خارج العينة</strong></summary>
-          <div style={{display:'flex',gap:14,flexWrap:'wrap',marginTop:10}}>
-            {(['gold','bitcoin'] as const).map(asset=>(
-              (['m1','m5'] as const).map(frame=>{
-                const a=aiData?.[asset]?.directionValidation?.[frame];
-                if(!a)return null;
-                return <div key={asset+frame} style={{minWidth:150,flex:'1 1 160px'}}>
-                  <strong>{asset==='gold'?'الذهب':'البيتكوين'} · {frame.toUpperCase()}</strong>
-                  <p style={{margin:'4px 0'}}>النموذج المختار: {a.selected}</p>
-                  <p style={{margin:'4px 0'}}>اختبار لاحق: {a.holdout?.n??0} توقع · {Number(a.holdout?.n||0)<25?'عينة غير كافية للحكم':a.holdout?.accuracyPct==null?'غير متاح':a.holdout.accuracyPct+'%'}</p>
-                  <p style={{margin:'4px 0'}}>المرجع المقارن: {Number(a.baseline?.n||0)<25?'عينة غير كافية':a.baseline?.accuracyPct==null?'—':a.baseline.accuracyPct+'%'}</p>
-                  <small>{a.qualified?'اجتاز شرط التحفظ؛ يُستخدم لرفض التعارض فقط':'غير مؤهل لتغيير إشارة BUY/SELL'} · {a.status}</small>
-                </div>;
-              })
-            ))}
-          </div>
-          <small>اختبار زمني على اتجاه حركة السعر بعد التكلفة التقديرية. ليس اختبارًا للنواة الكاملة، ولا إثبات ربح، ولا نتائج أوامر Exness.</small>
-        </details>}
-        </div>
-      </details>
-        </div>
-      </details>
     </section>
 
     <footer>Gold Watch · تحليل احتمالي ومتابعة تجريبية · ليست أوامر تنفيذ وسيط</footer>
