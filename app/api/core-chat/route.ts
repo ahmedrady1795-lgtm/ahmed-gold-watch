@@ -2,7 +2,6 @@ import {getAiSnapshot} from '../../../lib/ai-snapshot-cache';
 import {searchMarketNews} from '../../../lib/core-web-research';
 import {generateEgyptianCoreAnswer,coreModelConfigured,coreModelTelemetry,coreModelProvider} from '../../../lib/core-language-model';
 import {buildCoreAnalysisSkills} from '../../../lib/core-analysis-skills';
-import {inspectCoreSite} from '../../../lib/core-site-inspection';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -132,11 +131,6 @@ function consoleCommand(input:string):{answer:string;action:ConsoleCommand|null}
  }
  return null;
 }
-function siteInspectionRequest(message:string){
-  const q=message.toLowerCase();
-  return /(?:افحص|افحصي|فحص|شيك|شيّك|راجع|راجعي|اختبر|اختبري|شوف|شوّف|بص|بصي|اتأكد|تأكد|تشيك|check|inspect|diagnos).{0,55}(?:موقع|الموقع|النظام|السيرفر|الخدمات|الصفحة|النواة|الأداء|الاداء|المحرك|التحليل)/i.test(q)||
-    /(?:حالة|صحة|سلامة).{0,25}(?:الموقع|النظام|الخدمات|السيرفر)/.test(q);
-}
 function isNewsRequest(message:string){
  return /(?:أخبار|اخبار|الخبر|آخر الأخبار|اخر الاخبار|news|breaking|خبر النهاردة)/i.test(message)&&
    !/(?:إيه أخبارك|ايه اخبارك|عامل ايه)/.test(message);
@@ -167,14 +161,6 @@ export async function POST(request:Request){
   if(!withinRateLimit(request,now))return Response.json({ok:false,message:'الطلبات كتير قوي في وقت قصير، جرّب بعد دقيقة.'},{status:429});
   const snapshot=getAiSnapshot(now),context=contextFrom(snapshot.payload,body?.context,now);
   const history:ChatHistoryItem[]=Array.isArray(body?.history)?body.history.slice(-18).map((x:any)=>({role:x?.role,text:String(x?.text||'').slice(0,550)})):[];
-  // Explicit read-only inspection requests are real diagnostic actions, not LLM claims.
-  if(siteInspectionRequest(message)){
-    const inspection=await inspectCoreSite();
-    return Response.json({ok:true,answer:inspection.summary,action:null,
-      mode:'SITE_INSPECTION',siteInspection:inspection,checkedAt:inspection.checkedAt,
-      latencyMs:Date.now()-now,modelConfigured:coreModelConfigured()},
-      {headers:{'Cache-Control':'private, no-store'}});
-  }
   const command=consoleCommand(message);
   if(command)return Response.json({ok:true,answer:command.answer,action:command.action,checkedAt:context.checkedAt,
     mode:'VOICE_COMMAND'},{headers:{'Cache-Control':'private, no-store'}});
@@ -235,7 +221,7 @@ export async function GET(){
     modelConnection:connection,
     modelHealth:{lastStatus:health.lastStatus,lastAttempt:health.lastAttempt,
       lastSuccess:health.lastSuccess,latencyMs:health.latencyMs,model:health.model,provider:health.provider},
-    capabilities:{voiceCommands:false,textCommands:true,siteInspection:true,marketData:true,publicNews:true,
+    capabilities:{voiceCommands:false,textCommands:true,marketData:true,publicNews:true,
       generalWebSearch:false,modelProvider:coreModelProvider(),
       analysisSkills:['TREND','SCALP','BREAKOUT','LIQUIDITY','COST','FORECAST','RISK','VALIDATION','MARKET_REVIEW'],
       openConversation:coreModelConfigured()}},
