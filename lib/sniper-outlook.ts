@@ -35,8 +35,10 @@ export function buildSniperOutlook(asset:'GOLD'|'BTC',x:any,liveQuote:any,now:nu
   const leadAligned=valid&&leadFresh&&side(lead.side)===direction;
   const intentAligned=valid&&intent.ok&&side(intent.side)===direction&&intent.preMove;
   const compression=Number(acc.breakoutReadiness||0);
+  const preliminary=Boolean(!valid&&view.priceFresh&&view.forecastFresh&&acc.ok&&
+    Number(acc.breakoutReadiness||0)>=62&&side(acc.side)!=='WAIT');
   const stage: 'WAIT'|'BUILDING'|'ARMED'|'MOVING'|'BLOCKED'=
-    !valid?'WAIT':
+    !valid?(preliminary?'BUILDING':'WAIT'):
     (move.status==='IN_PROGRESS'||leadAligned&&lead.released)?'MOVING':
     (leadAligned&&lead.armed||intentAligned&&compression>=55)?'ARMED':
     (leadAligned&&lead.stage==='BUILDING'||compression>=55&&side(acc.side)===direction)?'BUILDING':'BLOCKED';
@@ -85,7 +87,7 @@ export function buildSniperOutlook(asset:'GOLD'|'BTC',x:any,liveQuote:any,now:nu
     }
   }
   const wl=move?.windowSeconds;
-  const activation=valid&&Number.isFinite(Number(wl?.min))&&Number.isFinite(Number(wl?.max))&&
+  const activation=valid&&stage!=='MOVING'&&Number.isFinite(Number(wl?.min))&&Number.isFinite(Number(wl?.max))&&
     Number(wl.min)>0&&Number(wl.max)>=Number(wl.min)&&Number(wl.max)<=3600?
     {min:Math.ceil(Number(wl.min)/60),max:Math.ceil(Number(wl.max)/60)}:null;
   const quoteFresh=view.priceFresh&&view.forecastFresh;
