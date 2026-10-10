@@ -1,352 +1,149 @@
 'use client';
-import {Activity} from 'lucide-react';
-import ScalpDesk from './ScalpDesk';
+import {ArrowDownRight,ArrowUpRight,Clock3,ShieldAlert,Target,TrendingUp,Activity} from 'lucide-react';
+import {buildNextMoveView} from '../lib/next-move-view';
 
-const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
-const sideAr=(s:any)=>s==='BUY'?'شراء':s==='SELL'?'بيع':'انتظار';
-const calibrated=(v:any)=>Math.min(92,Math.max(0,Math.round(Number(v)||0)));
-const timeLeft=(ts:any,now:number)=>{
-  const d=Number(ts)-now;if(!Number.isFinite(d))return '';
-  if(d<=0)return 'الآن';
-  const totalSeconds=Math.ceil(d/1000),m=Math.floor(totalSeconds/60),s=totalSeconds%60,h=Math.floor(m/60),mm=m%60;
-  return h>0?`متبقي ${h}س ${mm}د`:(m>0?`متبقي ${m}د ${s}ث`:`متبقي ${s}ث`);
-};
-const moveAr=(s:any)=>s==='BUY'?'صعود':s==='SELL'?'هبوط':'اتجاه غير معتمد';
-const zoneRange=(z:any)=>z&&Number.isFinite(Number(z.low))&&Number.isFinite(Number(z.high))?`${fmt(z.low,2)}–${fmt(z.high,2)}`:'—';
-const zoneName=(z:any)=>String(z?.kind||'').includes('DEMAND')||z?.side==='BUY'?'دعم/طلب':String(z?.kind||'').includes('SUPPLY')||z?.side==='SELL'?'مقاومة/عرض':'منطقة';
-const phaseAr=(p:any)=>p==='ACCUMULATING'?'تجميع':p==='DISTRIBUTING'?'تصريف':p==='MARKUP_READY'?'تجميع جاهز للصعود':p==='MARKDOWN_READY'?'تصريف جاهز للهبوط':'توازن';
-const structurePhaseAr=(p:any)=>p==='BREAKOUT'?'اختراق':p==='RETEST'?'إعادة اختبار':p==='SWEEP_REVERSAL'?'سحب سيولة وانعكاس':p==='IMPULSE'?'اندفاع':p==='PULLBACK'?'تصحيح':p==='EXHAUSTION'?'إجهاد الحركة':p==='COMPRESSION'?'ضغط وتجميع':p==='TREND'?'اتجاه مستمر':'انتقال';
-const movementStructureLabel=(s:any)=>{
-  if(!s?.ok)return 'غير مكتمل';
-  const m=s.m1||s.m5||{};
-  const next=m.nextSide||s.shortSide||s.side||'WAIT';
-  const sideTxt=next==='BUY'?'صاعد':next==='SELL'?'هابط':'متوازن';
-  if(s.path==='RISE_THEN_DROP')return 'صعود ثم هبوط';
-  if(s.path==='DROP_THEN_RISE')return 'هبوط ثم صعود';
-  return `${structurePhaseAr(m.phase)} ${sideTxt}`;
-};
-const structurePatternAr=(v:any)=>{
-  const x=String(v||'').toUpperCase().trim();
-  if(x==='HH + HL')return 'قمم أعلى + قيعان أعلى';
-  if(x==='LH + LL')return 'قمم أدنى + قيعان أدنى';
-  if(x==='EXPANDING RANGE')return 'نطاق متسع';
-  if(x==='COMPRESSION / RANGE')return 'ضغط داخل نطاق';
-  if(x==='MIXED')return 'هيكل مختلط';
-  return x?'هيكل متغير':'—';
-};
-const intentPhaseAr=(p:any)=>p==='LIQUIDITY_BUILDUP'?'تجميع سيولة':p==='SWEEP_DETECTED'?'سحب سيولة':p==='TRAP_CONFIRMED'?'فخ سيولة مؤكد':p==='PRE_EXPANSION'?'استعداد قبل الحركة':p==='EXPANSION'?'الحركة بدأت':'لا يوجد سيناريو واضح';
-const targetSourceAr=(v:any)=>{
-  const x=String(v||'').toLowerCase();
-  if(x.includes('movement 15m'))return 'نموذج 15د';
-  if(x.includes('hunt 15m'))return 'توافق 15د';
-  if(x.includes('path destination'))return 'المسار الهيكلي';
-  if(x.includes('order-book')||x.includes('order book'))return 'جدار Order Book';
-  if(x.includes('last swing'))return 'Swing حديث';
-  if(x.includes('range edge'))return 'حد النطاق';
-  if(x.includes('liquidity'))return 'مستوى سيولة';
-  if(x.includes('h4'))return 'مستوى H4';
-  if(x.includes('intent'))return 'هدف تدفق السوق';
-  if(x.includes('30m'))return 'امتداد 30د';
-  if(x.includes('atr'))return 'إسقاط ATR';
-  if(x.includes('structural'))return 'هيكل سعري';
-  return v||'هدف مركب';
-};
-const intentStepAr=(v:any)=>{
-  const x=String(v||'');
-  if(x==='COMPRESSION')return 'ضغط';
-  if(x==='LOWER_LIQUIDITY_SWEEP')return 'سحب سيولة أسفل';
-  if(x==='UPPER_LIQUIDITY_SWEEP')return 'سحب سيولة أعلى';
-  if(x==='RECLAIM')return 'استعادة المستوى';
-  if(x==='ABSORPTION')return 'امتصاص';
-  if(x==='INSTITUTIONAL_ZONE')return 'منطقة مؤسسية';
-  if(x==='PRE_EXPANSION')return 'استعداد للاندفاع';
-  if(x==='EXPANSION')return 'اندفاع';
-  return '';
-};
-function nextMoveCopy(hunt:any,stateGraph:any){
-  if(!hunt&&!stateGraph)return {title:'لا توجد حركة مؤكدة حاليًا',detail:'النواة تنتظر بيانات أو توافقًا أوضح قبل ترجيح الحركة القادمة.',tone:'amber'};
-  const understanding=hunt?.marketUnderstanding;
-  const first=understanding?.firstMove?.side||hunt?.nextMove?.side||hunt?.path?.shortSide||stateGraph?.nextSide||'WAIT';
-  const follow=understanding?.followMove?.side||hunt?.path?.followSide||'WAIT';
-  const pathLabel=String(hunt?.path?.label||'').trim();
-  const firstHit=Number(hunt?.nextMove?.firstHitMinutes);
-  const confidence=calibrated(understanding?.firstMove?.confidence??hunt?.nextMove?.confidence??hunt?.quality??stateGraph?.nextSideProbability??0);
-  const title=String(understanding?.summary||'').trim()||pathLabel||(
-    first==='BUY'?'الحركة القادمة المرجحة: صعود':
-    first==='SELL'?'الحركة القادمة المرجحة: هبوط':
-    'الحركة القادمة المرجحة: تذبذب وانتظار اتجاه أوضح'
-  );
-  const h1=hunt?.horizons?.oneMinute?.side||hunt?.horizons?.twoMinute?.side||'WAIT',h5=hunt?.horizons?.fiveMinute?.side||'WAIT',h15=hunt?.horizons?.fifteenMinute?.side||'WAIT',h30=hunt?.horizons?.thirtyMinute?.side||'WAIT';
-  const timing=Number.isFinite(firstHit)&&firstHit>0?'، وأول حركة معتبرة متوقعة خلال نحو '+firstHit.toFixed(1)+' دقيقة':'';
-  const phase=understanding?.mode?(' · فهم السوق: '+String(understanding.mode).replaceAll('_',' ')):'';
-  const detail='أول حركة '+moveAr(first)+' بثقة '+confidence+'%'+timing+'. 1د: '+moveAr(h1)+' · 5د: '+moveAr(h5)+' · 15د: '+moveAr(h15)+' · 30د: '+moveAr(h30)+phase+'.';
-  return {title,detail,tone:first==='BUY'?'green':first==='SELL'?'red':'amber'};
-}
-
-function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
-  if(!x)return <section className="panel"><p>بانتظار التحليل…</p></section>;
-  const hunt=x.huntForecast,recommendation=x.recommendation,goldCore=x.asset==='GOLD'?x.goldForecastCore:null,predator=x.asset==='GOLD'?x.predatorFusionV2:null;
-  const core1=goldCore?.horizons?.oneMinute,core5=goldCore?.horizons?.fiveMinute;
-  const h1=core1||hunt?.horizons?.oneMinute||hunt?.horizons?.twoMinute||{};
-  const h5=core5||hunt?.horizons?.fiveMinute||{};
-  const h15=hunt?.horizons?.fifteenMinute||{};
-  const t1=hunt?.quickSignalTargets?.oneMinute||null;
-  const t5=hunt?.quickSignalTargets?.fiveMinute||null;
-  const t15=hunt?.quickSignalTargets?.fifteenMinute||hunt?.fifteenMinuteTarget||null;
-  const horizonTarget=(t:any,side:any)=>(t?.side===side&&Number.isFinite(Number(t?.price)))?fmt(Number(t.price),2):'—';
-  const zone=hunt?.zoneForecast||null;
-  const path=zone?.pathForecast||null;
-  const forecastSide=path?.side&&path.side!=='WAIT'
-    ?String(path.side)
-    :path?.priceDestination?.side&&path.priceDestination.side!=='WAIT'
-      ?String(path.priceDestination.side)
-      :zone?String(zone.side||'WAIT')
-      :(goldCore?.side||hunt?.nextMove?.side||hunt?.marketUnderstanding?.firstMove?.side||'WAIT');
-  const displaySide=forecastSide;
-  const softDestination=Boolean(path?.side==='WAIT'&&path?.priceDestination?.zone);
-  const buy=displaySide==='BUY'&&!softDestination,sell=displaySide==='SELL'&&!softDestination;
-  const liveGoldPrice=x.asset==='GOLD'&&liveQuote?.ok&&Number.isFinite(Number(liveQuote?.price))&&Number(liveQuote.price)>0?Number(liveQuote.price):null;
-  const liveWavePrice=Number.isFinite(Number(fast?.price))&&Number(fast.price)>0?Number(fast.price):null;
-  const price=liveGoldPrice??liveWavePrice??x.livePulse?.price??x.price;
-  const move=nextMoveCopy(hunt,x.stateGraph);
-  const priceDestination=path?.priceDestination?.zone??path?.priceDestination??path?.destination??zone?.target??null;
-  const structuralTarget=priceDestination?.mid??null;
-  const target=structuralTarget??recommendation?.targets?.scalp??recommendation?.targets?.oneMinute??hunt?.quickSignalTargets?.oneMinute?.price??null;
-  const invalid=path?.invalidation?.price??recommendation?.invalidation??hunt?.invalidation??null;
-  const conf=path?.side&&path.side!=='WAIT'
-    ?calibrated(path.confidence)
-    :path?.priceDestination
-      ?calibrated(path.priceDestination.confidence)
-      :calibrated(goldCore?.confidence??hunt?.nextMove?.confidence??hunt?.confidence??0);
-  const waveLeadView=fast?.ok?{
-    available:true,armed:false,side:fast.side||'WAIT',
-    stage:fast.stage==='IGNITION'||fast.stage==='WAVE_FORMING'?'RELEASED':fast.stage==='PRE_TRIGGER'||fast.stage==='COILED'?'BUILDING':'OBSERVE',
-    mode:'MICRO_FLOW',
-    score:Number(fast.score||0),confidence:Number(fast.confidence||0),stability:Number(fast.persistence||0),
-    source:x.asset==='GOLD'?'Biquote live WebSocket micro-flow':'Coinbase live WebSocket micro-flow',
-    reason:Array.isArray(fast.reasons)&&fast.reasons.length?fast.reasons.slice(0,3).join(' · '):'قراءة micro-flow لحظية من التسارع والسبريد وتتابع الـticks.',
-    metrics:{bookImbalance:Number(fast.imbalance||0),pressureChange:0,replenishDelta:0,acceleration:Number(fast.acceleration||0),persistence:Number(fast.persistence||0)}
-  }:null;
-  const moveEnvelope=x.movementEnvelope||null;
-  const forward=x.forwardMove||null;
-  const forwardSide=forward?.side==='BUY'||forward?.side==='SELL'?forward.side:'WAIT';
-  const forwardZone=forward?.zone||null;
-  const forwardTarget=forward?.target!==null&&forward?.target!==undefined&&Number.isFinite(Number(forward.target))?Number(forward.target):null;
-  const forwardWindow=forward?.horizonMinutes===15?'خلال 15 دقيقة':forward?.windowSeconds?(`${Math.max(1,Math.round(Number(forward.windowSeconds.min||0)/60))}–${Math.max(1,Math.round(Number(forward.windowSeconds.max||0)/60))} د`):'—';
-  const liqBuy=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.buy||0))));
-  const liqSell=Math.max(0,Math.min(100,Math.round(Number(x?.liquidity?.sell||0))));
-  const liqOk=Boolean(x?.liquidity?.ok&&now-Number(x?.liquidity?.checkedAt||0)<12000);
-  const liquidityLabel=x?.liquidity?.mode==='DOM'?'عمق أوامر الوسيط':x?.liquidity?.mode==='CANDLE_FLOW_PROXY'?'تقدير من الشموع (ليس دفتر أوامر)':'سيولة منصات التداول';
-  const scalpLiquidity=x?.scalpDesk?.liquidity;
-  const freshScalpLiquidity=Boolean(scalpLiquidity?.available&&
-    x?.scalpDesk?.checkedAt&&now-Number(x.scalpDesk.checkedAt)<15000);
-  const liquidityUpper=freshScalpLiquidity&&Number.isFinite(Number(scalpLiquidity.rangeHigh))?Number(scalpLiquidity.rangeHigh):null;
-  const liquidityLower=freshScalpLiquidity&&Number.isFinite(Number(scalpLiquidity.rangeLow))?Number(scalpLiquidity.rangeLow):null;
-  const hasLiquidity=Boolean(liqOk&&liqBuy+liqSell===100);
-  const accumulation=x?.accumulation||null;
-  const accumulationPhase=accumulation?.phase==='ACCUMULATING'||accumulation?.phase==='MARKUP_READY'?'تجميع':accumulation?.phase==='DISTRIBUTING'||accumulation?.phase==='MARKDOWN_READY'?'تصريف':'توازن';
-  const accumulationScore=Math.max(0,Math.min(100,Math.round(Number(accumulation?.accumulationScore||0))));
-  const distributionScore=Math.max(0,Math.min(100,Math.round(Number(accumulation?.distributionScore||0))));
-  const intent=x?.marketMakerIntent||null;
-  const intentSide=intent?.side==='BUY'||intent?.side==='SELL'?intent.side:'WAIT';
-  const intentSteps=Array.isArray(intent?.sequence)?intent.sequence.map(intentStepAr).filter(Boolean).join(' → '):'';
-  const intentSweep=intent?.sweepLevel!==null&&intent?.sweepLevel!==undefined&&Number.isFinite(Number(intent.sweepLevel))?fmt(Number(intent.sweepLevel),2):null;
-  const validation15=x?.forecastValidation15m||null;
-  const validationDirectional=Number(validation15?.global?.hits||0)+Number(validation15?.global?.fails||0);
-  const validationAccuracy=Number(validation15?.global?.accuracy);
-  const showValidation15=validationDirectional>=5&&Number.isFinite(validationAccuracy);
-  const upperLiquidity=path?.upperLiquidity||zone?.resistance||null;
-  const lowerLiquidity=path?.lowerLiquidity||zone?.support||null;
-  const liquidityPoint=(z:any)=>{
-    if(!z)return '—';
-    const mid=Number(z?.mid);
-    if(Number.isFinite(mid))return fmt(mid,2);
-    const low=Number(z?.low),high=Number(z?.high);
-    if(Number.isFinite(low)&&Number.isFinite(high))return fmt((low+high)/2,2);
-    return '—';
-  };
-  const upperLiquidityLevel=liquidityPoint(upperLiquidity);
-  const lowerLiquidityLevel=liquidityPoint(lowerLiquidity);
-  const forwardStatus=String(forward?.status||'WAIT');
-  // An unconfirmed destination remains visible as a watch scenario, never a trade entry.
-  const watchZone=path?.priceDestination?.zone??path?.priceDestination??null;
-  const watchMid=watchZone?.mid!=null?Number(watchZone.mid):watchZone?.low!=null&&watchZone?.high!=null?(Number(watchZone.low)+Number(watchZone.high))/2:null;
-  const watchSide=watchZone?.side==='BUY'||watchZone?.side==='SELL'?watchZone.side:'WAIT';
-  const watchAhead=watchMid!=null&&Number.isFinite(watchMid)&&watchMid>0&&price!=null&&
-    ((watchSide==='BUY'&&watchMid>Number(price))||(watchSide==='SELL'&&watchMid<Number(price)));
-  const tradeSetup=forward?.tradeSetup||null;
-  const tradeQuality=forward?.tradeQuality||null;
-  const tradeEntry=tradeSetup?.entry!==null&&tradeSetup?.entry!==undefined&&Number.isFinite(Number(tradeSetup.entry))?Number(tradeSetup.entry):null;
-  const tradeSl=tradeSetup?.stopLoss!==null&&tradeSetup?.stopLoss!==undefined&&Number.isFinite(Number(tradeSetup.stopLoss))?Number(tradeSetup.stopLoss):null;
-  const tradeTp=tradeSetup?.takeProfit!==null&&tradeSetup?.takeProfit!==undefined&&Number.isFinite(Number(tradeSetup.takeProfit))?Number(tradeSetup.takeProfit):null;
-  const structure=x?.movementStructure||null;
-  const structureText=movementStructureLabel(structure);
-  const targets=forward?.targets||null;
-  const t1Level=targets?.t1||null,t2Level=targets?.t2||null,t3Level=targets?.t3||null;
-  const t1Price=t1Level?.price!=null&&Number.isFinite(Number(t1Level.price))?Number(t1Level.price):forwardTarget;
-  const t2Price=t2Level?.price!=null&&Number.isFinite(Number(t2Level.price))?Number(t2Level.price):null;
-  const t3Price=t3Level?.price!=null&&Number.isFinite(Number(t3Level.price))?Number(t3Level.price):null;
-  const invalidation=targets?.invalidation!=null&&Number.isFinite(Number(targets.invalidation))?Number(targets.invalidation):forward?.invalidation!=null&&Number.isFinite(Number(forward.invalidation))?Number(forward.invalidation):tradeSl;
-  // A historically unqualified directional model must not headline a BUY/SELL
-  // forecast. This presentation veto does not alter the independent paper
-  // execution engine or the raw audit records.
-  const unqualified15m=x.asset==='GOLD'&&validationDirectional>=100&&
-    Number.isFinite(validationAccuracy)&&validationAccuracy<55;
-  const sourceAt=Number(x?.livePulse?.sourceTime||x?.checkedAt||0);
-  const marketStale=sourceAt>0&&(now-sourceAt>30000||now<sourceAt);
-  const heroSide=unqualified15m||marketStale?'WAIT':forwardSide;
-  const liveInvalidated=Boolean(price!=null&&invalidation!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)<=invalidation:Number(price)>=invalidation));
-  const hit=(v:number|null)=>Boolean(price!=null&&v!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)>=v:Number(price)<=v));
-  const liveT1Hit=hit(t1Price),liveT2Hit=hit(t2Price),liveT3Hit=hit(t3Price);
-  const liveState=liveInvalidated?'INVALIDATED':liveT3Hit?'T3_HIT':liveT2Hit?'T2_HIT':liveT1Hit?'T1_HIT':forwardStatus==='IN_PROGRESS'?'ACTIVE':'TRACKING';
-  const liveStateAr=liveState==='INVALIDATED'?'القراءة أُلغيت':liveState==='T3_HIT'?'T3 تحقق':liveState==='T2_HIT'?'T2 تحقق':liveState==='T1_HIT'?'T1 تحقق':liveState==='ACTIVE'?'الحركة بدأت':'تتبع لحظي';
-  const activeTarget=!liveT1Hit?t1Price:!liveT2Hit?t2Price:!liveT3Hit?t3Price:null;
-  const activeLabel=!liveT1Hit?'T1':!liveT2Hit?'T2':!liveT3Hit?'T3':'تمت الأهداف';
-  const activeDistancePct=price!=null&&activeTarget!=null&&Number(price)>0?Math.abs(activeTarget-Number(price))/Number(price)*100:null;
-  const targetQuality=Math.round(Number(targets?.quality||forward?.targetQuality||0));
-  const targetSources=Number(targets?.sourceCount||0);
-  return <section className={"panel ai-asset-card compact-asset "+(heroSide==='BUY'?'ai-buy':heroSide==='SELL'?'ai-sell':'ai-wait')}>
-    <div className="panelhead">
-      <div>
-        <span className="eyebrow">{x.asset==='GOLD'?'XAU/USD':'BTC/USD'} · LIVE</span>
-        <h2>{x.asset==='GOLD'?'توقع الذهب · 15 دقيقة':'توقع البيتكوين · 15 دقيقة'}</h2>
+const fmt=(n:unknown,d=2)=>n!=null&&Number.isFinite(Number(n))
+  ?Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
+function pct(n:number|null){return n==null?'—':n.toFixed(2)+'%';}
+function Liquidity({x,now}:{x:any;now:number}){
+  const liq=x?.liquidity,scalp=x?.scalpDesk;
+  const depthAt=Number(liq?.checkedAt||0),depthFresh=Boolean(liq?.ok&&depthAt&&
+    now-depthAt>=0&&now-depthAt<=12000);
+  const buy=Number(liq?.buy),sell=Number(liq?.sell);
+  const hasPressure=depthFresh&&Number.isFinite(buy)&&Number.isFinite(sell)&&
+    buy>=0&&sell>=0&&Math.abs(buy+sell-100)<=1;
+  const cacheFresh=Boolean(scalp?.liquidity?.available&&
+    scalp?.checkedAt&&now-Number(scalp.checkedAt)>=0&&
+    now-Number(scalp.checkedAt)<=15000);
+  const upper=cacheFresh?scalp.liquidity.rangeHigh:null;
+  const lower=cacheFresh?scalp.liquidity.rangeLow:null;
+  const mode=liq?.mode==='DOM'?'دفتر أوامر':liq?.mode==='CANDLE_FLOW_PROXY'?'تقدير من الشموع':'مصدر غير مؤكد';
+  return <section className="next-liquidity" aria-label="السيولة القريبة">
+    <div className="next-liq-heading"><b>السيولة القريبة</b>
+      <small>{hasPressure?mode:'ضغط السيولة غير مؤكد'}</small></div>
+    {hasPressure?<div className="next-orderflow">
+      <div className="next-orderflow-labels">
+        <span className="green">شراء {Math.round(buy)}%</span>
+        <span className="red">بيع {Math.round(sell)}%</span>
       </div>
-      <span className={'market-signal-state '+(liveInvalidated?'invalid':heroSide==='WAIT'?'waiting':'tracking')}>
-        {heroSide==='WAIT'?'بانتظار تأكيد':liveStateAr}
-      </span>
+      <div className="next-orderflow-track" aria-hidden="true">
+        <span style={{width:buy+'%'}}/>
+      </div>
+    </div>:<p className="next-liq-empty">مفيش قراءة ضغط حديثة؛ مش هنخمن نسبة شراء أو بيع.</p>}
+    <div className="next-liq-levels">
+      <div><small>سيولة فوق النطاق</small><strong dir="ltr">{cacheFresh?fmt(upper):'—'}</strong></div>
+      <div><small>سيولة تحت النطاق</small><strong dir="ltr">{cacheFresh?fmt(lower):'—'}</strong></div>
     </div>
-
-    <div className="ai-price-row compact-price">
-      <div><small>{marketStale?'آخر سعر قديم · ليس مباشرًا':'السعر الآن'}</small><strong>{fmt(price,2)}</strong></div>
-      <div><small>اتجاه 15 دقيقة</small><strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>{moveAr(heroSide)}</strong></div>
-      <div><small>قوة الترجيح · ليست احتمال ربح</small><strong>{heroSide==='WAIT'?'—':Math.round(Number(forward?.confidence||0))+'/100'}</strong></div>
-    </div>
-    <div className="market-liquidity-brief next-move-liquidity" aria-label="السيولة مع الحركة القادمة">
-      <div><b>السيولة المصاحبة للحركة القادمة</b>
-        <span>{hasLiquidity?<><b className="green">ضغط شراء {liqBuy}%</b> <b className="red">ضغط بيع {liqSell}%</b></>:'مفيش سيولة حديثة مؤكدة'}</span>
-      </div>
-      <div className="liquidity-near-levels">
-        <span><small>السيولة فوق النطاق</small><strong dir="ltr">{liquidityUpper!=null?fmt(liquidityUpper,2):hasLiquidity?upperLiquidityLevel:'—'}</strong></span>
-        <span><small>السيولة تحت النطاق</small><strong dir="ltr">{liquidityLower!=null?fmt(liquidityLower,2):hasLiquidity?lowerLiquidityLevel:'—'}</strong></span>
-      </div>
-      <small>{hasLiquidity?liquidityLabel:'الأرقام القديمة مش دليل دخول'} · مستويات سيولة متغيرة، مش ضمان اتجاه</small>
-    </div>
-    {moveEnvelope&&<details className="forecast-extra">
-      <summary>توزيع حركة السعر الفعلية خلال 1 و5 و15 دقيقة · مرجع تاريخي</summary>
-      <div className="forecast-scenario-strip">
-        {(['m1','m5','m15'] as const).map((frame)=>{
-          const e=moveEnvelope[frame];
-          const label=frame==='m1'?'دقيقة':frame==='m5'?'5 دقائق':'15 دقيقة';
-          return <div key={frame}>
-            <small>حركة {label} · {e?.samples||0} عينة</small>
-            <b>{e?.status==='READY'&&e.lowerPrice!=null&&e.upperPrice!=null
-              ?fmt(e.lowerPrice,2)+' — '+fmt(e.upperPrice,2)
-              :'العينة غير مؤهلة أو البيانات متأخرة'}</b>
-            <span>{e?.status==='READY'?'حد 25–75% لتغير الإغلاق التاريخي · ارتفاع P75 '+fmt(e.upsideP75,2)+' · هبوط P75 '+fmt(e.downsideP75,2):
-              'لا يُعرض هدف بلا تاريخ مغلق كافٍ'}
-              {e?.status==='READY'?' · '+(e.conditioning==='MATCHED_3_BAR_TREND'?'سياق اتجاه مشابه':'عينة عامة'):''}
-              {e?.walkForward?.tested>=15?' · اختبار زمني '+e.walkForward.tested+' عينة'
-                +' · تغطية نطاق الإغلاق '+fmt(e.walkForward.intervalCoveragePct,1)+'% مقابل 50% مرجعية'
-                +(e.walkForward.directionN>0?' · صحة اتجاه الوسيط '+fmt(e.walkForward.directionalAccuracyPct,1)+'%':'')
-                :' · اختبار النطاق الزمني غير مكتمل'}
-              {e?.walkForward?.rangeQuality==='MIS_CALIBRATED'
-                ?' · تحذير: تغطية النطاق خارج المعدل المرجعي (أضيق أو أوسع من اللازم)'
-                :e?.walkForward?.rangeQuality==='IN_RANGE'
-                  ?' · تغطية النطاق مقبولة مبدئيًا':' · تغطية النطاق قيد الاختبار'}
-              {e?.walkForward?.directionQuality==='NO_DEMONSTRATED_EDGE'
-                ?' · اتجاه الحركة المتوسطة لم يثبت تفوقه'
-                :e?.walkForward?.directionQuality==='OBSERVED_EDGE'
-                  ?' · تفوق اتجاهي تاريخي أولي (ليس ضمانًا)':''}</span>
-          </div>;
-        })}
-      </div>
-      <small>النطاق التاريخي ليس توقع احتمال 75%، ولا توصية شراء أو بيع. التوزيع محسوب من شموع مغلقة، وأي دخول يظل خاضعًا لتأكيد الاتجاه والوقف والتكلفة.</small>
-    </details>}
-
-    <div className="next-move-copy primary-move zone-primary">
-      <span>توقع 15 دقيقة · أهداف أمامية متدرجة</span>
-      <strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>
-        {heroSide==='WAIT'
-          ?(marketStale?'الأسعار متأخرة · مفيش توقع جديد موثوق':unqualified15m?'توقع الذهب غير مؤهل: دقة الاتجاه التاريخية ضعيفة':'لا يوجد اتجاه معتمد لـ15 دقيقة')
-          :liveInvalidated
-            ?'السيناريو أُلغي بعد كسر مستوى الإبطال · ننتظر توقعًا جديدًا'
-          :activeTarget!=null
-            ?moveAr(heroSide)+' → '+activeLabel+' '+fmt(activeTarget,2)+(activeDistancePct!=null?' · يبعد '+activeDistancePct.toFixed(3)+'%':'')
-            :'تم استهلاك سلم الأهداف الحالي'}
-      </strong>
-
-      <div className="forecast-scenario-strip primary-target-strip">
-        {heroSide==='WAIT'&&!marketStale&&watchAhead&&<div className="scenario-wide">
-          <small>منطقة مراقبة فقط · ليست إشارة دخول أو هدفًا مؤكدًا</small>
-          <b dir="ltr">{moveAr(watchSide)} → {fmt(watchMid,2)}</b>
-          <span>{watchZone?.projected?'إسقاط احتمالي من التذبذب':'منطقة سعرية مرجحة'} · تنتظر تأكيد M1 و M5 والسيولة قبل أي توصية</span>
-        </div>}
-        <div><small>T1 · الهدف الأول</small><b dir="ltr">{heroSide!=='WAIT'&&!liveInvalidated&&t1Price!=null?fmt(t1Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT1Hit?'تحقق':targetSourceAr(t1Level?.source)+(t1Level?.quality?' · جودة '+Math.round(Number(t1Level.quality))+'%':'')}</span></div>
-        <div><small>إبطال القراءة</small><b dir="ltr">{heroSide!=='WAIT'&&invalidation!=null?fmt(invalidation,2):'—'}</b><span>{heroSide==='WAIT'?'غير مؤهل':liveInvalidated?'تم الكسر':'صالح وقت التحديث'}</span></div>
-
-      </div>
-      {heroSide!=='WAIT'&&(t2Price!=null||t3Price!=null)&&<details className="forecast-extra">
-        <summary>الأهداف البعيدة T2 وT3 · تفاصيل إضافية</summary>
-        <div className="forecast-scenario-strip advanced-target-strip">
-        <div><small>T2 · الهدف التالي</small><b dir="ltr">{!liveInvalidated&&t2Price!=null?fmt(t2Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT2Hit?'تحقق':targetSourceAr(t2Level?.source)+(t2Level?.quality?' · جودة '+Math.round(Number(t2Level.quality))+'%':'')}</span></div>
-        <div><small>T3 · الامتداد</small><b dir="ltr">{!liveInvalidated&&t3Price!=null?fmt(t3Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT3Hit?'تحقق':targetSourceAr(t3Level?.source)+(t3Level?.quality?' · جودة '+Math.round(Number(t3Level.quality))+'%':'')}</span></div>
-        </div>
-      </details>}
-      <details className="forecast-extra">
-        <summary>تفاصيل التحليل ومصادر الأهداف</summary>
-        <div className="forecast-scenario-strip forecast-scenario-details">
-        <div className="scenario-wide"><small>سبب اختيار الأهداف</small>
-          <b>{targets?.reason||forward?.reason||'انتظار مستويات أمامية أوضح'}</b>
-          <span>{targets?.mode==='STRUCTURAL'?'أهداف هيكلية بالكامل':targets?.mode==='MIXED'?'مزيج مستويات حقيقية + إسقاط احتياطي':targets?.mode==='PROJECTED'?'إسقاط مؤقت لحين ظهور مستويات حقيقية':targetSources?'توافق '+targetSources+' مصادر سعرية/هيكلية':'قراءة مركبة من السوق'}</span>
-        </div>
-
-        <div className="scenario-wide"><small>تأكيد الاتجاه</small>
-          <b>H4 {moveAr(forward?.confirmations?.h4)} · M15 {moveAr(forward?.confirmations?.m15)} · M5 {moveAr(forward?.confirmations?.m5)}</b>
-          <span>هيكل {moveAr(forward?.confirmations?.structure)} · سيولة {moveAr(forward?.confirmations?.liquidity)} · مصادر السوق {moveAr(forward?.confirmations?.toolMesh)}</span>
-        </div>
-        {heroSide!=='WAIT'&&tradeQuality&&<div className="scenario-wide"><small>جودة فرصة الدخول · ليست نسبة نجاح</small>
-          <b>{tradeQuality.liveLiquidity?'سيولة مؤكدة':'السيولة بحاجة إلى تأكيد'} · {tradeQuality.structuralTarget?'هدف هيكلي مناسب':'الهدف يحتاج تحققًا'}</b>
-          <span>العائد/المخاطرة بعد تكلفة تقديرية {tradeQuality.netRR!=null?Number(tradeQuality.netRR).toFixed(2)+'R':'غير مجدٍ'} · التكلفة المفترضة {tradeQuality.assumedRoundTripCostBps} نقطة أساس؛ التنفيذ يحتاج أسعار وسيط فعلية</span>
-        </div>}
-
-        {heroSide!=='WAIT'&&tradeSetup&&tradeEntry!=null&&<div className="scenario-wide"><small>التفعيل فقط عند اكتمال الشروط</small>
-          <b dir="ltr">{fmt(tradeEntry,2)}</b>
-          <span>{tradeSetup.trigger||'—'}{Number.isFinite(Number(tradeSetup.rr))?' · R:R '+Number(tradeSetup.rr).toFixed(2):''}</span>
-        </div>}
-      </div>
-
-      <div className="forecast-horizons decision-horizons direction-only">
-        <div><small>دقة 15د</small><strong>{showValidation15?validationAccuracy.toFixed(1)+'%':'—'}</strong><span>{showValidation15?validationDirectional+' نتيجة':'جمع عينات'}</span></div>
-        <div><small>نافذة القراءة</small><strong>{forwardWindow}</strong><span>تتحدث تلقائيًا</span></div>
-        <div><small>توافق القرار</small><strong>{Math.round(Number(forward?.agreement||0))}%</strong><span>{Math.round(Number(forward?.support||0))} مصادر مؤيدة</span></div>
-      </div>
-      </details>
-    </div>
+    <small className="next-liq-note">المستويات بتتغير مع السوق؛ الضغط مش احتمال ربح ولا حجم تنفيذ مضمون.</small>
   </section>;
 }
-
-export default function AICommandCenter({data,error,fastWave,goldLive,assetView='ALL',now=Date.now()}:any){
-  const snapshotAgeMs=data?.snapshot?Math.max(0,now-Number(data.snapshot.servedAt||now)+Number(data.snapshot.ageMs||0)):null;
-  return <div className="ai-clean">
-    {error&&!data&&<div className="fatal"><Activity size={18}/><div><strong>تعذر تحديث AI</strong><span>{error}</span></div></div>}
-    {snapshotAgeMs!=null&&snapshotAgeMs>30000&&<div className="fatal"><Activity size={18}/><div><strong>التحليل متأخر</strong><span>آخر لقطة عمرها {Math.round(snapshotAgeMs/1000)} ثانية · لا تعتمد على أي توصية حتى تتجدد</span></div></div>}
-
+export function NextMoveCard({x,asset,now,liveQuote,snapshotAt}:{
+  x:any;asset:'GOLD'|'BTC';now:number;liveQuote?:any;snapshotAt:unknown
+}){
+  const view=buildNextMoveView(asset,x,liveQuote,now,snapshotAt);
+  const ready=view.side!=='WAIT';
+  const rise=view.side==='BUY',fall=view.side==='SELL';
+  const symbol=asset==='GOLD'?'XAU / USD':'BTC / USD';
+  const label=asset==='GOLD'?'الذهب':'البيتكوين';
+  const confidence=view.confidence!=null&&Number.isFinite(view.confidence)?
+    Math.max(0,Math.min(100,Math.round(view.confidence))):null;
+  const t1=ready&&view.target!=null?view.target:null;
+  const stop=ready&&view.invalidation!=null?view.invalidation:null;
+  return <article className={'panel next-move-card '+(rise?'next-up':fall?'next-down':'next-wait')}
+    aria-label={'الحركة القادمة '+label}>
+    <header className="next-card-head">
+      <div><small className="next-kicker">الحركة القادمة · 15 دقيقة</small>
+        <h3>{label}<span dir="ltr">{symbol}</span></h3></div>
+      <span className={'next-status '+(view.quality==='READY'?'active':'paused')}>
+        <span className="next-status-dot" aria-hidden="true"/>
+        {view.quality==='READY'?'سيناريو مشروط':
+          view.quality==='STALE'?'بيانات متأخرة':
+          view.quality==='UNQUALIFIED'?'غير مؤهل':'قيد المراقبة'}
+      </span>
+    </header>
+    <div className="next-hero">
+      <div className={'next-direction '+(rise?'green':fall?'red':'amber')}>
+        {rise?<ArrowUpRight size={31}/>:fall?<ArrowDownRight size={31}/>:<Activity size={27}/>}
+        <span><small>الاتجاه خلال 15 دقيقة</small>
+          <strong>{rise?'صعود':fall?'هبوط':'انتظار'}</strong></span>
+      </div>
+      <div className="next-current-price">
+        <small>{view.priceFresh?'السعر المرجعي الآن':'آخر سعر · غير مباشر'}</small>
+        <strong dir="ltr">{fmt(view.price)}</strong>
+        <span>{view.sourceAgeSeconds!=null?'عمر السعر '+view.sourceAgeSeconds+' ثانية':'وقت المصدر غير متاح'}</span>
+      </div>
+    </div>
+    <div className="next-reason">
+      {ready?<TrendingUp size={16}/>:<ShieldAlert size={16}/>}
+      <span>{view.reason}</span>
+    </div>
+    <div className="next-target-map">
+      <div className="next-target-head"><span><Target size={16}/> المسار المتوقع</span>
+        <small>{ready?'هدف مرصود وإبطال واضح':'من غير أهداف تداول لحد اكتمال الشروط'}</small>
+      </div>
+      <div className="next-target-grid">
+        <div><small>الهدف الأول</small><strong className={rise?'green':fall?'red':''} dir="ltr">{fmt(t1)}</strong>
+          <span>{pct(view.targetDistancePct)} من السعر</span></div>
+        <div><small>إبطال السيناريو</small><strong dir="ltr">{fmt(stop)}</strong>
+          <span>{pct(view.riskDistancePct)} من السعر</span></div>
+      </div>
+      {ready&&view.targetDistancePct!=null&&view.riskDistancePct!=null&&
+        <div className="next-risk-note">المسافة للهدف مقارنة بالإبطال:
+          <b> {view.riskDistancePct>0?
+            (view.targetDistancePct/view.riskDistancePct).toFixed(2)+' : 1':'—'}</b>
+          <span> (هندسة مستويات فقط، قبل السبريد والعمولات)</span>
+        </div>}
+    </div>
+    <Liquidity x={x} now={now}/>
+    <div className="next-card-foot">
+      {view.hasHistoricalBand&&<span><Clock3 size={14}/> النطاق التاريخي لإغلاق 15 دقيقة:
+        <b dir="ltr">{fmt(view.bandLower)} – {fmt(view.bandUpper)}</b>
+      </span>}
+      <span>قوة السيناريو: {ready&&confidence!=null?confidence+'/100':'غير معتمدة'} · مش نسبة نجاح</span>
+      {view.directionAccuracy!=null&&<span>اختبار الاتجاه: {fmt(view.directionAccuracy,1)}%
+        من {view.evidenceCount} حالة · ليس ضمانًا</span>}
+      <small>التحليل احتمالي، وليس إشارة تنفيذ أو أمر MT5.</small>
+    </div>
+  </article>;
+}
+export default function AICommandCenter({data,error,assetView='ALL',now=Date.now(),goldLive}:any){
+  const generatedAt=data?.checkedAt;
+  const snapshotAgeMs=generatedAt?Math.max(0,now-Number(generatedAt)):null;
+  return <div className="ai-clean renewed-ai">
+    {error&&!data&&<div className="fatal"><ShieldAlert size={18}/>
+      <div><strong>التحليل مش متاح</strong><span>{error}</span></div></div>}
+    {snapshotAgeMs!=null&&snapshotAgeMs>90000&&
+      <div className="fatal"><ShieldAlert size={18}/><div>
+        <strong>لقطة التحليل متأخرة</strong>
+        <span>آخر تحديث منذ {Math.round(snapshotAgeMs/1000)} ثانية. السيناريوهات مش صالحة للدخول.</span>
+      </div></div>}
     <section id="scalp-opportunities" className="workspace-section" aria-labelledby="scalp-section-title">
-      <div className="workspace-section-heading"><div><span>01 / دخول سريع</span><h2 id="scalp-section-title">السكالب · اتجاه واضح وصلاحية 15 ثانية</h2></div><p>إشارة ورقية مؤقتة، من غير تفاصيل إعداد معقدة</p></div>
+      <div className="workspace-section-heading renewed-section-head">
+        <div><span>01 / قرارات سريعة</span>
+          <h2 id="scalp-section-title">سكالب الثواني</h2></div>
+        <p>اتجاه واضح، وتأهيل قبل أي إشارة ورقية لمدة 15 ثانية</p>
+      </div>
       <div className={'dashboardgrid market-pair-grid '+(assetView!=='ALL'?'single-asset':'')}>
-        {assetView!=='BTC'&&(data?.gold?.scalpDesk?<ScalpDesk desk={data.gold.scalpDesk} now={now}/>:<div className="panel workspace-loading">جارٍ تحميل إعدادات الذهب…</div>)}
-        {assetView!=='GOLD'&&(data?.bitcoin?.scalpDesk?<ScalpDesk desk={data.bitcoin.scalpDesk} now={now}/>:<div className="panel workspace-loading">جارٍ تحميل إعدادات البيتكوين…</div>)}
+        {assetView!=='BTC'&&(data?.gold?.scalpDesk?
+          <ScalpDesk desk={data.gold.scalpDesk} now={now}/>:
+          <div className="panel workspace-loading">بنجهّز سكالب الذهب…</div>)}
+        {assetView!=='GOLD'&&(data?.bitcoin?.scalpDesk?
+          <ScalpDesk desk={data.bitcoin.scalpDesk} now={now}/>:
+          <div className="panel workspace-loading">بنجهّز سكالب البيتكوين…</div>)}
       </div>
     </section>
     <section id="market-forecast" className="workspace-section" aria-labelledby="forecast-section-title">
-      <div className="workspace-section-heading"><div><span>02 / السيناريو القادم</span><h2 id="forecast-section-title">الحركة القادمة + السيولة</h2></div><p>اتجاه مشروط، مستويات السيولة، والهدف الأول مع الإبطال</p></div>
-      <div className={'dashboardgrid market-pair-grid '+(assetView!=='ALL'?'single-asset':'')}>
-        {assetView!=='BTC'&&<LegacyAssetCard now={now} x={data?.gold} fast={fastWave?.gold} liveQuote={goldLive}/>}
-        {assetView!=='GOLD'&&<LegacyAssetCard now={now} x={data?.bitcoin} fast={fastWave?.btc}/>}
+      <div className="workspace-section-heading renewed-section-head">
+        <div><span>02 / سيناريو السعر والسيولة</span>
+          <h2 id="forecast-section-title">الحركة القادمة</h2></div>
+        <p>اتجاه وتوقيت، هدف وإبطال، ومناطق سيولة قريبة</p>
+      </div>
+      <div className={'dashboardgrid market-pair-grid next-move-grid '+(assetView!=='ALL'?'single-asset':'')}>
+        {assetView!=='BTC'&&<NextMoveCard x={data?.gold} asset="GOLD" now={now}
+          liveQuote={goldLive} snapshotAt={generatedAt}/>}
+        {assetView!=='GOLD'&&<NextMoveCard x={data?.bitcoin} asset="BTC" now={now}
+          snapshotAt={generatedAt}/>}
       </div>
     </section>
-
-
-
   </div>;
 }
