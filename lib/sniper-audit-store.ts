@@ -104,6 +104,9 @@ export function updateSniperAudit(payload:any,now=Date.now()){
   try{
     runAsset('GOLD',payload.gold,modelAt,now);
     runAsset('BTC',payload.bitcoin,modelAt,now);
+    // Keep the persistent audit heartbeat current even while no setup passes.
+    // This distinguishes "no qualified setup" from a dead/missing ledger.
+    if(now-load().updatedAt>=30000)dirty=true;
     save(now);
   }catch(e){
     console.warn('[SNIPER-AUDIT] update:',e instanceof Error?e.message:'unknown');
