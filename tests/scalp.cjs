@@ -38,6 +38,22 @@ const sweep=detectScalpStrategies({
   f9:99.2,old9:99.25,mom:.1,efficiency:.25
 });
 assert.equal(sweep.map(x=>x.setup).join(','),'SWEEP','Sweep is a separate reversal strategy');
+// Two CLOSED M1 candles must show breakout then retest before a 5m candidate exists.
+const retestInput={
+  ...strategyContext,
+  prev:{open:99.85,high:100.81,low:99.72,close:100.43},
+  last:{open:100.16,high:100.70,low:100.05,close:100.63},
+  body:.72,mom:.5,efficiency:.65,
+  retestHigh:100,retestLow:98.9,volumeRatio:1.4
+};
+assert.ok(detectScalpStrategies(retestInput).some(x=>x.setup==='RETEST'&&x.side==='BUY'),
+  'A completed breakout then retest with trend alignment must be detected');
+assert.ok(!detectScalpStrategies({...retestInput,volumeRatio:.8}).some(x=>x.setup==='RETEST'),
+  'Weak trading participation must not create a selective retest signal');
+assert.ok(!detectScalpStrategies({...retestInput,trend5:'SELL'}).some(x=>x.setup==='RETEST'),
+  'Counter-trend M5 setups must not pass the retest detector');
+assert.ok(!detectScalpStrategies({...retestInput,last:{...retestInput.last,low:99.3}}).some(x=>x.setup==='RETEST'),
+  'An over-deep retest invalidates the setup');
 const pendingReview={setup:'BREAKOUT',side:'BUY',score:93,status:'WATCH',
   netRR:2.3,blockers:['هدف غير واقعي'],entry:100,stop:99,targets:[{price:103}],cost:.1};
 const goodReview={setup:'PULLBACK',side:'BUY',score:81,status:'ARMED',
