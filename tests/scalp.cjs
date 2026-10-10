@@ -308,7 +308,7 @@ assert.equal(hold(confirmedBars,4000.65,now+65000,'STALE_RETEST_TEST',now+90000)
 console.log('PASS: real M1 confirmation unlocks a 45-second retest; stale quotes and stop breaks revoke it.');
 
 const plans=buildScalpPlans(breakout());
-assert.ok(plans.every(x=>x.strategyReview.length===4),
+assert.ok(plans.every(x=>x.strategyReview.length===5),
   'A strategy review must accompany every scalp horizon, even while waiting');
 assert.ok(buildScalpPlans(input())[0].strategyReview.every(x=>x.state==='NO_TRIGGER'),
   'A flat market must not pretend to have an eligible trading strategy');
