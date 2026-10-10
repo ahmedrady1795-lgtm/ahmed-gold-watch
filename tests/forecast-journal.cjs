@@ -39,12 +39,12 @@ fresh=step(fresh,{...waiting,view:{...waiting.view,priceFresh:false}},
   now+31000,now-91000);
 assert.equal(fresh.state,'STALE');
 assert.equal(fresh.targets[0].price,102);
-fresh=step(fresh,waiting,now+610000,now+609000);
+fresh=step(fresh,waiting,now+2800000,now+2799000);
 assert.equal(fresh.state,'EXPIRED');
 assert.equal(fresh.targets.length,2);
 let other={...active(),view:{...active().view,side:'SELL',invalidation:101.2},
   targets:[{stage:1,price:98,low:97.9,high:98.1,quality:80,kind:'STRUCTURE'}]};
-fresh=step(fresh,other,now+615000,now+614000);
+fresh=step(fresh,other,now+2805000,now+2804000);
 assert.equal(fresh.side,'SELL','fresh qualified opposite prediction can replace expired plan');
 assert.equal(fresh.state,'ACTIVE');
 assert.equal(step(null,waiting,now,now-1000),null,'a WAIT has no new targets');
