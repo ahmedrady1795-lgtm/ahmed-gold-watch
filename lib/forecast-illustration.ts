@@ -23,6 +23,7 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const lastAt=candles.length?candles[candles.length-1].time+60000:0;
   const historyAge=lastAt?Math.max(0,now-lastAt):null;
   const historyFresh=historyAge!=null&&historyAge<=180000;
+  const price=sniper.view.price;
   const displayTargets=journal?.targets??(auditRequired?[]:sniper.targets);
   const displayStop=journal?.invalidation??sniper.view.invalidation;
   const sameDirection=!journal||journal.side===sniper.view.side;
@@ -34,7 +35,6 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const ready=sniper.view.side!=='WAIT'&&sniper.view.priceFresh&&sniper.view.forecastFresh&&
     displayTargets.length>0&&historyFresh&&sameDirection&&ahead&&stopSafe&&
     (!journal||journal.state==='ACTIVE')&&(!auditRequired||journal?.state==='ACTIVE');
-  const price=sniper.view.price;
   const bands:PriceBand[]=[];
   if((ready||Boolean(journal))&&historyFresh){
     for(const t of displayTargets){
