@@ -2,7 +2,7 @@
 // Detect on CLOSED M1 candles; execution authorization remains with the
 // per-plan spread, stop, reward, news and exact M1 entry-confirmation gates.
 // A technical setup score is NOT an estimated win probability.
-export type StrategyId='BREAKOUT'|'PULLBACK'|'SWEEP'|'CONTINUATION';
+export type StrategyId='BREAKOUT'|'PULLBACK'|'SWEEP'|'CONTINUATION'|'RETEST';
 export type Direction='BUY'|'SELL'|'WAIT';
 export type StrategyCandidate={side:'BUY'|'SELL';setup:StrategyId;triggerScore:number;anchor:number};
 export type StrategyRank=StrategyCandidate&{score:number};
@@ -11,7 +11,8 @@ export const SCALP_STRATEGIES=[
   {id:'BREAKOUT',label:'اختراق نطاق',principle:'إغلاق خارج نطاق القمم أو القيعان مع زخم M1',family:'MOMENTUM'},
   {id:'PULLBACK',label:'إعادة اختبار',principle:'استئناف الاتجاه بعد اختبار EMA ومستوى الشمعة السابقة',family:'TREND'},
   {id:'CONTINUATION',label:'استمرار الاتجاه',principle:'شمعتان داعمتان وزخم متوافق مع M5',family:'TREND'},
-  {id:'SWEEP',label:'سحب السيولة',principle:'اختراق كاذب ثم استعادة المستوى بشمعة مغلقة',family:'REVERSAL'}
+  {id:'SWEEP',label:'سحب السيولة',principle:'اختراق كاذب ثم استعادة المستوى بشمعة مغلقة',family:'REVERSAL'},
+  {id:'RETEST',label:'اختراق وإعادة اختبار M5',principle:'شمعة اختراق مغلقة، ثم لمس المستوى مجددًا وإغلاق تأكيد مع توافق M1 وM5 وحجم واضح',family:'TREND'}
 ] as const;
 export type StrategyReview={
   setup:StrategyId;label:string;family:string;
@@ -20,7 +21,8 @@ export type StrategyReview={
 };
 export type StrategyContext={
   last:StrategyBar;prev:StrategyBar;high:number;low:number;atr:number;body:number;
-  trend1:Direction;trend5:Direction;f9:number;old9:number;mom:number;efficiency:number
+  trend1:Direction;trend5:Direction;f9:number;old9:number;mom:number;efficiency:number;
+  retestHigh?:number;retestLow?:number;volumeRatio?:number|null
 };
 export function detectScalpStrategies(x:StrategyContext):StrategyCandidate[]{
   const {last,prev,high,low,atr,body,trend1,trend5,f9,old9,mom,efficiency}=x;
@@ -45,6 +47,24 @@ export function detectScalpStrategies(x:StrategyContext):StrategyCandidate[]{
       body<-.32&&prev.close<prev.open&&mom<-.35&&efficiency>.42&&
       last.close<f9&&f9-last.close<atr*.85)
     candidates.push({side:'SELL',setup:'CONTINUATION',triggerScore:30,anchor:Math.max(last.high,prev.high)});
+  // Candidate for M5 only: two CLOSED M1 bars, first breaks an older
+  // eight-bar level and the next retests it without chasing the extreme.
+  // Even a detected pattern is paper-only until cost and entry gates pass.
+  const cap=x.retestHigh,base=x.retestLow,part=x.volumeRatio;
+  const confirmed=part!=null&&part>=1.15&&efficiency>=.38&&
+    trend1!=='WAIT'&&trend1===trend5;
+  if(confirmed&&cap!=null&&Number.isFinite(cap)&&
+     prev.close>cap+atr*.10&&last.low<=cap+atr*.14&&
+     last.low>=cap-atr*.42&&last.close>cap+atr*.09&&
+     last.close<=cap+atr*.72&&last.close>last.open&&
+     body>.28&&mom>.28)
+    candidates.push({side:'BUY',setup:'RETEST',triggerScore:46,anchor:cap});
+  if(confirmed&&base!=null&&Number.isFinite(base)&&
+     prev.close<base-atr*.10&&last.high>=base-atr*.14&&
+     last.high<=base+atr*.42&&last.close<base-atr*.09&&
+     last.close>=base-atr*.72&&last.close<last.open&&
+     body<-.28&&mom<-.28)
+    candidates.push({side:'SELL',setup:'RETEST',triggerScore:46,anchor:base});
   return candidates;
 }
 export function rankScalpStrategies(
