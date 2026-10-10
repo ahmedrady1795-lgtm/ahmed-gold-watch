@@ -7,7 +7,9 @@ type Proof={status?:string;samples?:number;requiredSamples?:number;netR?:number;
   expectancyR?:number;lower95MeanR?:number|null;profitFactor?:number|null;maxDrawdownR?:number};
 type Stat={samples?:number;wins?:number;netR?:number;expectancyR?:number;
   validation?:string;forwardProof?:Proof;retestProof?:Proof};
-type Lane={horizon?:number;stats?:Stat};
+type SetupStat={setup:string;samples:number;wins:number;netR:number;
+  expectancyR:number|null;timeExits:number;negativeTimeExits:number;stops:number;targets:number};
+type Lane={horizon?:number;stats?:Stat&{setupBreakdown?:SetupStat[]}};
 function Outcome({asset,label,desk,horizon}:{asset:string;label:string;desk:any;horizon:1|5}){
   const lane=(desk?.ledger?.lanes as Lane[]|undefined)?.find(x=>x.horizon===horizon);
   const stats=lane?.stats;
@@ -62,6 +64,28 @@ export default function ScalpProofStrip({desk}:{desk:any}){
       <Outcome asset="BTC" label="البيتكوين" desk={desk?.bitcoin} horizon={1}/>
       <Outcome asset="BTC" label="البيتكوين" desk={desk?.bitcoin} horizon={5}/>
     </div>
+    <details className="proof-breakdown">
+      <summary>اعرف الخسائر جاية من أنهي استراتيجية، وإيه سبب الخروج</summary>
+      <div className="proof-breakdown-grid">
+        {([['GOLD','الذهب',desk?.gold],['BTC','البيتكوين',desk?.bitcoin]] as const)
+          .flatMap(([asset,label,assetDesk])=>
+            ([1,5] as const).flatMap(horizon=>{
+              const lane=(assetDesk?.ledger?.lanes as Lane[]|undefined)?.find(x=>x.horizon===horizon);
+              return (lane?.stats?.setupBreakdown||[]).filter(x=>x.samples>0).map(x=>({
+                ...x,key:asset+'-'+horizon+'-'+x.setup,label:label+' M'+horizon
+              }));
+            }))
+          .map(x=><div className="proof-breakdown-row" key={x.key}>
+            <strong>{x.label} · {({BREAKOUT:'اختراق',PULLBACK:'تصحيح',
+              SWEEP:'سحب سيولة',CONTINUATION:'استمرار',RETEST:'إعادة اختبار'} as Record<string,string>)[x.setup]||x.setup}</strong>
+            <span>نتائج {x.samples} · ربح {x.wins} · صافي
+              <b className={x.netR<0?'red':x.netR>0?'green':'muted'}> {r(x.netR)} </b></span>
+            <small>وقف {x.stops} · هدف {x.targets} · خروج وقت {x.timeExits}
+              {x.negativeTimeExits?' (خسارة '+x.negativeTimeExits+')':''}</small>
+          </div>)}
+      </div>
+      <small>الصفقات ذات النتيجة المجهولة والمُلغاة مش محسوبة أرباح. البيانات ورقية وبسعر مرجعي، مش نتائج Exness.</small>
+    </details>
     <p className="muted proof-outcome-note">نتائج الصفقات الورقية التي اكتمل توثيقها فقط، من سجل الخادم الحالي. إعادة النشر أو تبدّل التخزين ممكن تؤثر على استمرارية العينات. التحقق الورقي بيتطلب 50 نتيجة موثقة بعد التحديث، ومتوسط عائد موجب بحد ثقة تقريبي، ومعامل ربح لا يقل عن 1.2 وسحب لا يزيد عن 6R. وده برضه مش اختبار تنفيذ Exness أو إثبات ربح مستقبلي. استراتيجية إعادة اختبار الاختراق M5 تجريبية، والتنفيذ الحقيقي غير مفعّل.</p>
   </section>;
 }
