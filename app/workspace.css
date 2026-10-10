@@ -53,3 +53,24 @@ body:has(.modern-workspace){background:radial-gradient(ellipse at 85% 0,rgba(55,
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.modern-workspace *{animation:none!important;transition:none!important}}
 .core-clear{display:inline-flex;align-items:center;justify-content:center;padding:8px;border:1px solid #354a62;border-radius:9px;background:#152336;color:#8ea6bc}.core-clear:hover{color:#ffd18a;border-color:#edca826b}
 .voice-only .core-chat-panel{min-height:300px}.core-voice-primary,.core-voice-test{font-weight:700;color:#fff0bd!important;border-color:#edca8280!important;background:#edca8214!important}.core-voice-primary.active{color:#101923!important;background:var(--gold)!important;border-color:var(--gold)!important}.core-voice-test{display:inline-flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid #354a62;border-radius:9px;font-size:11px}.core-voice-stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:25px 10px 12px}.core-voice-orb{width:98px;height:98px;display:grid;place-items:center;border:1px solid #55748f;border-radius:50%;background:radial-gradient(circle,#203c58 0,#142538 66%,#101c2b 100%);color:#bcdcff;box-shadow:0 0 0 10px #6ea9dc0d,0 0 35px #6ea9dc1a;transition:.25s ease}.core-voice-orb.active{border-color:#edca8280;color:var(--gold);box-shadow:0 0 0 10px #edca8210,0 0 42px #edca8230}.core-voice-orb.listening{animation:core-voice-listen 1.35s ease-in-out infinite}.core-voice-orb.speaking{animation:core-voice-speak .7s ease-in-out infinite;color:#fff0bd}.core-voice-stage>strong{margin-top:18px;color:#eaf2fb;font-size:16px}.core-voice-stage>p{max-width:430px;margin:6px 0 14px;color:#9eb2c8;font-size:12px;line-height:1.8}.core-voice-wave{height:26px;display:flex;align-items:center;justify-content:center;gap:4px}.core-voice-wave i{display:block;width:4px;height:8px;border-radius:999px;background:#edca82;opacity:.4}.core-voice-orb.active~.core-voice-wave i{animation:core-voice-wave 1.1s ease-in-out infinite}.core-voice-wave i:nth-child(2){animation-delay:.1s}.core-voice-wave i:nth-child(3){animation-delay:.2s}.core-voice-wave i:nth-child(4){animation-delay:.3s}.core-voice-wave i:nth-child(5){animation-delay:.4s}.core-voice-wave i:nth-child(6){animation-delay:.5s}.core-voice-wave i:nth-child(7){animation-delay:.6s}@keyframes core-voice-listen{0%,100%{transform:scale(1);box-shadow:0 0 0 10px #edca8210,0 0 42px #edca8220}50%{transform:scale(1.05);box-shadow:0 0 0 18px #edca8216,0 0 54px #edca8240}}@keyframes core-voice-speak{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}@keyframes core-voice-wave{0%,100%{height:8px;opacity:.4}50%{height:24px;opacity:1}}
+
+/* Outcome-first workspace: keep the paper P&L visible without opening analytics drawers. */
+.proof-board{margin:12px 0 18px;padding:18px}
+.proof-outcome-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin-top:12px}
+.proof-outcome{min-width:0;padding:13px;border-radius:12px;border:1px solid rgba(140,165,195,.20);background:rgba(16,27,40,.42)}
+.proof-outcome-head{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.proof-outcome-head b{font-size:13px}
+.proof-outcome-numbers{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.proof-outcome-numbers span{min-width:0;display:flex;flex-direction:column;gap:4px}
+.proof-outcome-numbers small{font-size:10px;color:#aebed0}
+.proof-outcome-numbers strong{font-size:15px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.proof-outcome-warning{color:#ffc3b8;display:block;margin-top:9px}
+.proof-outcome-note{font-size:12px;line-height:1.7;margin:12px 0 0}
+.forecast-optional{padding:12px 16px;margin:14px 0}
+.forecast-optional>summary{cursor:pointer;list-style:none;margin:0!important;padding:8px 0}
+.forecast-optional>summary::-webkit-details-marker{display:none}
+.forecast-optional>summary::after{content:'⌄';margin-inline-start:auto;font-size:22px;color:#bacddd}
+.forecast-optional[open]>summary::after{content:'⌃'}
+.forecast-optional>.dashboardgrid{margin-top:16px}
+.core-tools .core-console{margin:0}
+@media(max-width:750px){.proof-outcome-grid{grid-template-columns:1fr}.proof-board{padding:12px}.proof-outcome-numbers strong{font-size:14px}}
