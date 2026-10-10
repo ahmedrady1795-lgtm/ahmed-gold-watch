@@ -63,7 +63,7 @@ export function updateForecastJournal(
   const replacement=usable&&freshModel&&
     s.view.side!==previous.side&&
     modelAt>previous.modelAt;
-  if(replacement&&!stopHit)return start(s,now,modelAt);
+  if(replacement)return start(s,now,modelAt);
 
   if(hardStop){
     const updated={...previous,targets:nextTargets,state:'INVALIDATED' as const,
