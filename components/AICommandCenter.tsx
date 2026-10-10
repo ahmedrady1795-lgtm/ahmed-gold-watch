@@ -182,7 +182,12 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
   const t2Price=t2Level?.price!=null&&Number.isFinite(Number(t2Level.price))?Number(t2Level.price):null;
   const t3Price=t3Level?.price!=null&&Number.isFinite(Number(t3Level.price))?Number(t3Level.price):null;
   const invalidation=targets?.invalidation!=null&&Number.isFinite(Number(targets.invalidation))?Number(targets.invalidation):forward?.invalidation!=null&&Number.isFinite(Number(forward.invalidation))?Number(forward.invalidation):tradeSl;
-  const heroSide=forwardSide;
+  // A historically unqualified directional model must not headline a BUY/SELL
+  // forecast. This presentation veto does not alter the independent paper
+  // execution engine or the raw audit records.
+  const unqualified15m=x.asset==='GOLD'&&validationDirectional>=100&&
+    Number.isFinite(validationAccuracy)&&validationAccuracy<55;
+  const heroSide=unqualified15m?'WAIT':forwardSide;
   const liveInvalidated=Boolean(price!=null&&invalidation!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)<=invalidation:Number(price)>=invalidation));
   const hit=(v:number|null)=>Boolean(price!=null&&v!=null&&heroSide!=='WAIT'&&(heroSide==='BUY'?Number(price)>=v:Number(price)<=v));
   const liveT1Hit=hit(t1Price),liveT2Hit=hit(t2Price),liveT3Hit=hit(t3Price);
@@ -249,7 +254,7 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
       <span>توقع 15 دقيقة · أهداف أمامية متدرجة</span>
       <strong className={heroSide==='BUY'?'green':heroSide==='SELL'?'red':'amber'}>
         {heroSide==='WAIT'
-          ?'لا يوجد اتجاه معتمد لـ15 دقيقة'
+          ?(unqualified15m?'توقع الذهب غير مؤهل حاليًا: نتائج الاتجاه قريبة من 50%':'لا يوجد اتجاه معتمد لـ15 دقيقة')
           :liveInvalidated
             ?'السيناريو أُلغي بعد كسر مستوى الإبطال · ننتظر توقعًا جديدًا'
           :activeTarget!=null
@@ -263,11 +268,11 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
           <b dir="ltr">{moveAr(watchSide)} → {fmt(watchMid,2)}</b>
           <span>{watchZone?.projected?'إسقاط احتمالي من التذبذب':'منطقة سعرية مرجحة'} · تنتظر تأكيد M1 و M5 والسيولة قبل أي توصية</span>
         </div>}
-        <div><small>T1 · الهدف الأول</small><b dir="ltr">{!liveInvalidated&&t1Price!=null?fmt(t1Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT1Hit?'تحقق':targetSourceAr(t1Level?.source)+(t1Level?.quality?' · جودة '+Math.round(Number(t1Level.quality))+'%':'')}</span></div>
+        <div><small>T1 · الهدف الأول</small><b dir="ltr">{heroSide!=='WAIT'&&!liveInvalidated&&t1Price!=null?fmt(t1Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT1Hit?'تحقق':targetSourceAr(t1Level?.source)+(t1Level?.quality?' · جودة '+Math.round(Number(t1Level.quality))+'%':'')}</span></div>
         <div><small>إبطال القراءة</small><b dir="ltr">{invalidation!=null?fmt(invalidation,2):'—'}</b><span>{liveInvalidated?'تم الكسر':'صالح'}</span></div>
 
       </div>
-      {(t2Price!=null||t3Price!=null)&&<details className="forecast-extra">
+      {heroSide!=='WAIT'&&(t2Price!=null||t3Price!=null)&&<details className="forecast-extra">
         <summary>الأهداف البعيدة T2 وT3 · تفاصيل إضافية</summary>
         <div className="forecast-scenario-strip advanced-target-strip">
         <div><small>T2 · الهدف التالي</small><b dir="ltr">{!liveInvalidated&&t2Price!=null?fmt(t2Price,2):'—'}</b><span>{liveInvalidated?'أُلغيت':liveT2Hit?'تحقق':targetSourceAr(t2Level?.source)+(t2Level?.quality?' · جودة '+Math.round(Number(t2Level.quality))+'%':'')}</span></div>
@@ -291,7 +296,7 @@ function LegacyAssetCard({x,liveQuote,fast,now=Date.now()}:any){
           <span>العائد/المخاطرة بعد تكلفة تقديرية {tradeQuality.netRR!=null?Number(tradeQuality.netRR).toFixed(2)+'R':'غير مجدٍ'} · التكلفة المفترضة {tradeQuality.assumedRoundTripCostBps} نقطة أساس؛ التنفيذ يحتاج أسعار وسيط فعلية</span>
         </div>}
 
-        {tradeSetup&&tradeEntry!=null&&<div className="scenario-wide"><small>التفعيل فقط عند اكتمال الشروط</small>
+        {heroSide!=='WAIT'&&tradeSetup&&tradeEntry!=null&&<div className="scenario-wide"><small>التفعيل فقط عند اكتمال الشروط</small>
           <b dir="ltr">{fmt(tradeEntry,2)}</b>
           <span>{tradeSetup.trigger||'—'}{Number.isFinite(Number(tradeSetup.rr))?' · R:R '+Number(tradeSetup.rr).toFixed(2):''}</span>
         </div>}
