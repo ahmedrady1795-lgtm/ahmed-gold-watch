@@ -38,6 +38,7 @@ import {runAutonomousToolCycle} from '../../../lib/autonomous-tool-broker';
 import {buildMarketToolMesh} from '../../../lib/market-tool-mesh';
 import {buildTargetLadder} from '../../../lib/target-ladder';
 import {getScalpDesk,peekScalpDesk} from '../../../lib/scalp-desk';
+import {updateSniperAudit} from '../../../lib/sniper-audit-store';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -2055,6 +2056,13 @@ export async function GET(request:Request){
       t1:compact15Validation(bitcoinTargetValidation.t1),t2:compact15Validation(bitcoinTargetValidation.t2),t3:compact15Validation(bitcoinTargetValidation.t3)
     }:null;
 
+    // A durable independent scorecard follows closed M1 candles, not a
+    // browser chart; it never promotes rejected scenarios into entry signals.
+    const sniperAudit=updateSniperAudit(payload,Date.now());
+    payload.sniperAudit={
+      updatedAt:sniperAudit.updatedAt,persistence:sniperAudit.persistence,
+      activeIds:{GOLD:sniperAudit.current.GOLD?.id||null,BTC:sniperAudit.current.BTC?.id||null}
+    };
     lastAiPayload=payload;lastAiPayloadAt=Date.now();
     setAiSnapshot(payload,lastAiPayloadAt);
     if(Date.now()-lastAiPerfLog>=30000){
