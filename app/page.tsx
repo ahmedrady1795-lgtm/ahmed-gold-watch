@@ -238,7 +238,7 @@ export default function Home(){
   const btcLive=Boolean(shownBtcAt&&now-shownBtcAt<10000);
 
   return <main className="shell modern-workspace">
-    <a className="skip-link" href="#scalp-opportunities">انتقل إلى فرص السكالب</a>
+    <a className="skip-link" href="#market-forecast">انتقل إلى القناص</a>
     <header className="topbar">
       <div className="brand">
         <div className="brandmark">AG</div>
@@ -266,12 +266,12 @@ export default function Home(){
 
     {aiError&&!aiData&&<div className="fatal"><WifiOff size={18}/><div><strong>تعذر تحديث AI</strong><span>{aiError}</span></div></div>}
 
-    <div className="workspace-intro"><div><span className="eyebrow">GOLD WATCH / MARKET DESK</span><h1>السوق، بوضوح<span>.</span></h1></div><span className="workspace-mode"><span/> الذهب والبيتكوين</span></div>
+    <div className="workspace-intro"><div><span className="eyebrow">GOLD WATCH / MARKET DESK</span><h1>القناص يرصد الحركة<span>.</span></h1></div><span className="workspace-mode"><span/> الذهب والبيتكوين</span></div>
     <div className="workspace-toolbar">
       <div className="asset-switch" role="group" aria-label="اختيار الأصل المعروض">
         {([{id:'ALL',label:'الكل'},{id:'GOLD',label:'الذهب'},{id:'BTC',label:'البيتكوين'}] as const).map(item=><button key={item.id} type="button" aria-pressed={assetView===item.id} onClick={()=>setAssetView(item.id)}>{item.label}</button>)}
       </div>
-      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#scalp-opportunities">سكالب ثواني</a><a href="#market-forecast">الحركة القادمة</a><a href="#market-news">الأخبار</a></nav>
+      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#market-forecast">قناص الحركة القادمة</a><a href="#scalp-opportunities">سكالب ثواني</a><a href="#market-news">الأخبار</a></nav>
     </div>
     <section className="content lite-content" aria-label="بيانات السوق والتحليل">
       <AICommandCenter assetView={assetView} data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick}/>
@@ -281,6 +281,6 @@ export default function Home(){
 
     </section>
 
-    <footer>Gold Watch · تحليل احتمالي ومتابعة تجريبية · ليست أوامر تنفيذ وسيط</footer>
+    <footer>Gold Watch Predator · تحليل احتمالي بأهداف ومواعيد مشروطة · بدون تنفيذ تلقائي</footer>
   </main>;
 }
