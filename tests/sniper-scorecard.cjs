@@ -34,7 +34,7 @@ let gap=start(base);
 gap=advance(gap,[candle(1,100,101)],at+2*60000);
 gap=advance(gap,[candle(3,100,102.2)],at+4*60000);
 assert.equal(gap.status,'UNOBSERVED');
-let expiry=start(base);
+let expiry=start({...base,durationMs:30*60000});
 expiry=advance(expiry,[],at+31*60000);
 assert.equal(expiry.status,'UNOBSERVED','gaps cannot be scored as a trading failure');
 const v=stats([r,amb,stop,gap,expiry],'BTC');
