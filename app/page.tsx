@@ -271,7 +271,7 @@ export default function Home(){
       <div className="asset-switch" role="group" aria-label="اختيار الأصل المعروض">
         {([{id:'ALL',label:'الكل'},{id:'GOLD',label:'الذهب'},{id:'BTC',label:'البيتكوين'}] as const).map(item=><button key={item.id} type="button" aria-pressed={assetView===item.id} onClick={()=>setAssetView(item.id)}>{item.label}</button>)}
       </div>
-      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#market-forecast">قناص الحركة القادمة</a><a href="#scalp-opportunities">سكالب ثواني</a><a href="#market-news">الأخبار</a></nav>
+      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#market-forecast">القناص</a><a href="#forecast-illustration">رسم الحركة القادمة</a><a href="#scalp-opportunities">سكالب ثواني</a><a href="#market-news">الأخبار</a></nav>
     </div>
     <section className="content lite-content" aria-label="بيانات السوق والتحليل">
       <AICommandCenter assetView={assetView} data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick}/>
