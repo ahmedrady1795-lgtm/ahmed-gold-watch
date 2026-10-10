@@ -18,7 +18,7 @@ export type MultiBrainCore={
   reasons:string[];
 };
 
-const cap=(n:number,a=0,b=100)=>Math.max(a,Math.min(b,n));
+const cap=(n:number,a=0,b=100)=>Math.max(a,Math.min(b,Number.isFinite(n)?n:a));
 const BRAIN_NAMES:BrainName[]=['MICRO','TREND','REVERSAL','RANGE'];
 const s=(x:any):Side=>x==='BUY'||x==='SELL'?x:'WAIT';
 const regimeOf=(x:any):Regime=>{
@@ -187,7 +187,8 @@ export function buildMultiBrainCore(asset:string,args:any):MultiBrainCore{
   const avgBrain=supporting.length?supporting.reduce((a,x)=>a+brains[x.name].confidence,0)/supporting.length:0;
   const rawConfidence=Math.round(cap(gap*.48+avgBrain*.34+fastAgreement*4.5+totalAgreement*1.8,0,91));
 
-  // Confidence Calibration v3:
+  // Confidence Calibration v5: overlapping brains share observation windows.
+  // Use the largest supporting sample count, never their sum.
   // internal agreement can create a large score, but it must not claim probability
   // far above the actually learned reliability of the brains supporting that side.
   let relNum=0,relDen=0,supportSamples=0;
@@ -196,7 +197,7 @@ export function buildMultiBrainCore(asset:string,args:any):MultiBrainCore{
     const samples=Math.max(0,Number(rowLearned?.samples||0));
     const acc=cap(Number(rowLearned?.blendedAccuracy||learnedAccuracy[x.name]||50),20,85);
     const evidenceWeight=Math.max(.25,x.value)*(0.45+Math.min(1,samples/120)*.55);
-    relNum+=acc*evidenceWeight;relDen+=evidenceWeight;supportSamples+=samples;
+    relNum+=acc*evidenceWeight;relDen+=evidenceWeight;supportSamples=Math.max(supportSamples,samples);
   }
   const learnedReliability=relDen?relNum/relDen:50;
   const maturity=Math.min(1,supportSamples/240);
@@ -217,7 +218,7 @@ export function buildMultiBrainCore(asset:string,args:any):MultiBrainCore{
     'Agreement fast '+fastAgreement+' · total '+totalAgreement
   ];
   if(dominant)reasons.push('Dominant brain '+dominant+' · learned '+learnedAccuracy[dominant]+'% · weight x'+learnedWeights[dominant].toFixed(2));
-  reasons.push('Calibration v4 · learned reliability '+Math.round(shrunkReliability)+'% · dominant '+Math.round(dominantAccuracy)+'% · cap '+Math.round(reliabilityCap)+' · '+(qualityReady?'QUALIFIED':'SHADOW'));
+  reasons.push('Calibration v5 · learned reliability '+Math.round(shrunkReliability)+'% · dominant '+Math.round(dominantAccuracy)+'% · cap '+Math.round(reliabilityCap)+' · '+(qualityReady?'QUALIFIED':'SHADOW'));
   if(!qualityReady)reasons.push('Multi-Brain shadow: learned reliability is not strong enough to authorize a production trade');
   if(decisive)reasons.push('Decisive multi-brain alignment passed learned-reliability gate');
 

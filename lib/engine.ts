@@ -15,7 +15,23 @@ function rma(a:number[],n:number){if(a.length<n)return NaN;let x=avg(a.slice(0,n
 function std(a:number[]){const m=avg(a);return Math.sqrt(avg(a.map(v=>(v-m)**2)));}
 function macd(closes:number[]){const a=emaAll(closes,12),b=emaAll(closes,26),line:number[]=[];for(let i=25;i<closes.length;i++)if(Number.isFinite(a[i])&&Number.isFinite(b[i]))line.push(a[i]-b[i]);const signal=ema(line,9),value=line.at(-1)??NaN;return {macd:value,signal,hist:value-signal};}
 function stoch(c:Candle[],n=14){const ks:number[]=[];for(let j=Math.max(n-1,c.length-3);j<c.length;j++){const w=c.slice(j-n+1,j+1);if(w.length<n)continue;const hi=Math.max(...w.map(x=>x.high)),lo=Math.min(...w.map(x=>x.low));ks.push(hi===lo?50:100*(c[j].close-lo)/(hi-lo));}return {k:ks.at(-1)??NaN,d:avg(ks.slice(-3))};}
-function directional(c:Candle[],n=14){const tr:number[]=[],plus:number[]=[],minus:number[]=[];for(let i=1;i<c.length;i++){const up=c[i].high-c[i-1].high,down=c[i-1].low-c[i].low;tr.push(Math.max(c[i].high-c[i].low,Math.abs(c[i].high-c[i-1].close),Math.abs(c[i].low-c[i-1].close)));plus.push(up>down&&up>0?up:0);minus.push(down>up&&down>0?down:0);}if(tr.length<n*2)return {atr:NaN,adx:NaN,plusDI:NaN,minusDI:NaN};let atr=avg(tr.slice(0,n)),p=avg(plus.slice(0,n)),m=avg(minus.slice(0,n));const dx:number[]=[];for(let i=n;i<tr.length;i++){atr=(atr*(n-1)+tr[i])/n;p=(p*(n-1)+plus[i])/n;m=(m*(n-1)+minus[i])/n;const pdi=atr?100*p/atr:0,mdi=atr?100*m/atr:0;dx.push((pdi+mdi)?100*Math.abs(pdi-mdi)/(pdi+mdi):0);}const adx=rma(dx,n);return {atr,adx,plusDI:atr?100*p/atr:0,minusDI:atr?100*m/atr:0};}
+function directional(c:Candle[],n=14){
+  const tr:number[]=[],plus:number[]=[],minus:number[]=[];
+  for(let i=1;i<c.length;i++){
+    const up=c[i].high-c[i-1].high,down=c[i-1].low-c[i].low;
+    tr.push(Math.max(c[i].high-c[i].low,Math.abs(c[i].high-c[i-1].close),Math.abs(c[i].low-c[i-1].close)));
+    plus.push(up>down&&up>0?up:0);minus.push(down>up&&down>0?down:0);
+  }
+  if(tr.length<n)return {atr:NaN,adx:NaN,plusDI:NaN,minusDI:NaN};
+  let atr=avg(tr.slice(0,n)),p=avg(plus.slice(0,n)),m=avg(minus.slice(0,n));
+  // Wilder's first DX belongs to the initial n-period seed, not the next bar.
+  const dx:number[]=[p+m?100*Math.abs(p-m)/(p+m):0];
+  for(let i=n;i<tr.length;i++){
+    atr=(atr*(n-1)+tr[i])/n;p=(p*(n-1)+plus[i])/n;m=(m*(n-1)+minus[i])/n;
+    dx.push(p+m?100*Math.abs(p-m)/(p+m):0);
+  }
+  return {atr,adx:rma(dx,n),plusDI:atr?100*p/atr:0,minusDI:atr?100*m/atr:0};
+}
 export function indicators(c:Candle[]):IndicatorSet{
   const closes=c.map(x=>x.close),gains:number[]=[],losses:number[]=[];for(let i=1;i<c.length;i++){const d=c[i].close-c[i-1].close;gains.push(Math.max(d,0));losses.push(Math.max(-d,0));}
   const g=rma(gains,14),l=rma(losses,14),rsi=g===0&&l===0?50:l===0?100:100-100/(1+g/l),dir=directional(c,14),mc=macd(closes),bb=closes.slice(-20),mid=avg(bb),sd=std(bb),st=stoch(c),trs:number[]=[];

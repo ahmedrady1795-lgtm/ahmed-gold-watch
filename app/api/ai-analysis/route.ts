@@ -1277,6 +1277,8 @@ export async function GET(request:Request){
     perf.scalpResolvedAtMs=Date.now()-perfStarted;
     const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any,h4?:any,intent?:any,evolution?:any,toolMesh?:any,atr?:number|null)=>({
       asset,
+      indicatorMatrix:x?.indicatorMatrix||null,
+      coreSummary:(()=>{const core=asset==='GOLD'?goldMultiBrain:bitcoinMultiBrain;return {side:core.side,regime:core.regime,confidence:core.confidence,qualityReady:core.calibration.qualityReady,samples:core.calibration.supportSamples};})(),
       scalpDesk:scalpDesk?.[asset==='GOLD'?'gold':'bitcoin']||null,
       forwardMove:stabilizeForwardMove(asset,buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse,liq,structure,accumulation,h4,intent,evolution,toolMesh,atr),pulse),
       movementEnvelope:movement?.forwardEnvelope||null,

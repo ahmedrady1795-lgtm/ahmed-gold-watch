@@ -62,11 +62,11 @@ function reasons(a:any,mt:any,st:any,hunter:any){
   if(hunter?.mode)out.push('Hunter '+hunter.mode+' · '+hunter.score+'/100');
   return out.slice(0,8);
 }
-function frameVote(i:any,last:any){
-  if(!i||!finite(last))return {buy:0,sell:0,bias:'WAIT',strength:0};
+export function frameVote(i:any,last:any){
+  if(!i||last==null||!finite(last)||!['ema20','ema50','ema200','macdHist','rsi','adx','plusDI','minusDI','stochK','stochD','bbMid'].every(k=>i[k]!=null&&finite(i[k])))return {buy:0,sell:0,bias:'WAIT',strength:0};
   let buy=0,sell=0;
-  if(i.ema20>i.ema50)buy+=16;else sell+=16;
-  if(last>i.ema200)buy+=14;else sell+=14;
+  if(i.ema20>i.ema50)buy+=16;else if(i.ema20<i.ema50)sell+=16;
+  if(last>i.ema200)buy+=14;else if(last<i.ema200)sell+=14;
   if(i.macdHist>0)buy+=14;else if(i.macdHist<0)sell+=14;
   if(i.rsi>=52&&i.rsi<=72)buy+=10;else if(i.rsi<=48&&i.rsi>=28)sell+=10;
   if(i.adx>=18){if(i.plusDI>i.minusDI)buy+=16;else if(i.minusDI>i.plusDI)sell+=16;}

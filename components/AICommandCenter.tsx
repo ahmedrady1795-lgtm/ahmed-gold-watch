@@ -30,13 +30,28 @@ function Liquidity({x,now}:{x:any;now:number}){
       <div className="next-orderflow-track" aria-hidden="true">
         <span style={{width:buy+'%'}}/>
       </div>
-    </div>:<p className="next-liq-empty">مفيش قراءة ضغط حديثة؛ مش هنخمن نسبة شراء أو بيع.</p>}
+    </div>:<p className="next-liq-empty">ضغط السيولة غير متاح حاليًا.</p>}
     <div className="next-liq-levels">
       <div><small>سيولة فوق النطاق</small><strong dir="ltr">{cacheFresh?fmt(upper):'—'}</strong></div>
       <div><small>سيولة تحت النطاق</small><strong dir="ltr">{cacheFresh?fmt(lower):'—'}</strong></div>
     </div>
-    <small className="next-liq-note">المستويات بتتغير مع السوق؛ الضغط مش احتمال ربح ولا حجم تنفيذ مضمون.</small>
+
   </section>;
+}
+function IndicatorSummary({x,fresh}:{x:any;fresh:boolean}){
+  const rows=x?.indicatorMatrix?.rows;
+  const core=x?.coreSummary;
+  const label=(side:unknown)=>side==='BUY'?'صاعد':side==='SELL'?'هابط':'محايد';
+  return <details className="indicator-summary">
+    <summary><span>المؤشرات والنواة</span><small>{fresh&&core?core.qualityReady?'دليل مؤهل':'قيد التقييم':'بانتظار بيانات حديثة'}</small></summary>
+    <div className="indicator-timeframes">
+      {(['m1','m5','m15','h1'] as const).map(frame=>{
+        const row=fresh?rows?.[frame]:null;
+        return <div key={frame}><b>{frame.toUpperCase()}</b><span className={row?.bias==='BUY'?'green':row?.bias==='SELL'?'red':''}>{row?label(row.bias):'—'}</span><small>RSI {fmt(row?.rsi,0)} · ADX {fmt(row?.adx,0)}</small></div>;
+      })}
+    </div>
+    <p>{fresh&&core?'النواة: '+label(core.side)+' · '+core.samples+' عينة مرجعية':'القراءات القديمة لا تُعرض كمؤشرات مباشرة'}</p>
+  </details>;
 }
 export function NextMoveCard({x,asset,now,liveQuote,snapshotAt}:{
   x:any;asset:'GOLD'|'BTC';now:number;liveQuote?:any;snapshotAt:unknown
@@ -78,7 +93,7 @@ export function NextMoveCard({x,asset,now,liveQuote,snapshotAt}:{
       {ready?<TrendingUp size={16}/>:<ShieldAlert size={16}/>}
       <span>{view.reason}</span>
     </div>
-    <div className="next-target-map">
+    {ready&&<div className="next-target-map">
       <div className="next-target-head"><span><Target size={16}/> المسار المتوقع</span>
         <small>{ready?'هدف مرصود وإبطال واضح':'من غير أهداف تداول لحد اكتمال الشروط'}</small>
       </div>
@@ -94,8 +109,9 @@ export function NextMoveCard({x,asset,now,liveQuote,snapshotAt}:{
             (view.targetDistancePct/view.riskDistancePct).toFixed(2)+' : 1':'—'}</b>
           <span> (هندسة مستويات فقط، قبل السبريد والعمولات)</span>
         </div>}
-    </div>
+    </div>}
     <Liquidity x={x} now={now}/>
+    <IndicatorSummary x={x} fresh={view.forecastFresh&&view.priceFresh}/>
     <div className="next-card-foot">
       {view.hasHistoricalBand&&<span><Clock3 size={14}/> النطاق التاريخي لإغلاق 15 دقيقة:
         <b dir="ltr">{fmt(view.bandLower)} – {fmt(view.bandUpper)}</b>
@@ -103,7 +119,7 @@ export function NextMoveCard({x,asset,now,liveQuote,snapshotAt}:{
       <span>قوة السيناريو: {ready&&confidence!=null?confidence+'/100':'غير معتمدة'} · مش نسبة نجاح</span>
       {view.directionAccuracy!=null&&<span>اختبار الاتجاه: {fmt(view.directionAccuracy,1)}%
         من {view.evidenceCount} حالة · ليس ضمانًا</span>}
-      <small>التحليل احتمالي، وليس إشارة تنفيذ أو أمر MT5.</small>
+
     </div>
   </article>;
 }
@@ -122,7 +138,7 @@ export default function AICommandCenter({data,error,assetView='ALL',now=Date.now
       <div className="workspace-section-heading renewed-section-head">
         <div><span>01 / قرارات سريعة</span>
           <h2 id="scalp-section-title">سكالب الثواني</h2></div>
-        <p>اتجاه واضح، وتأهيل قبل أي إشارة ورقية لمدة 15 ثانية</p>
+        <p>إشارات ورقية بصلاحية 15 ثانية</p>
       </div>
       <div className={'dashboardgrid market-pair-grid '+(assetView!=='ALL'?'single-asset':'')}>
         {assetView!=='BTC'&&(data?.gold?.scalpDesk?
@@ -137,7 +153,7 @@ export default function AICommandCenter({data,error,assetView='ALL',now=Date.now
       <div className="workspace-section-heading renewed-section-head">
         <div><span>02 / سيناريو السعر والسيولة</span>
           <h2 id="forecast-section-title">الحركة القادمة</h2></div>
-        <p>اتجاه وتوقيت، هدف وإبطال، ومناطق سيولة قريبة</p>
+        <p>الاتجاه المتوقع ومستويات السيولة</p>
       </div>
       <div className={'dashboardgrid market-pair-grid next-move-grid '+(assetView!=='ALL'?'single-asset':'')}>
         {assetView!=='BTC'&&<NextMoveCard x={data?.gold} asset="GOLD" now={now}

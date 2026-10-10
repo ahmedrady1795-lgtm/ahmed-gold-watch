@@ -49,4 +49,5 @@ v=view('BTC',{...x,movementEnvelope:{m15:{status:'READY',
 assert.equal(v.hasHistoricalBand,false,'Poorly calibrated intervals must not be displayed');
 v=view('GOLD',{...x,livePulse:{price:100,sourceTime:now+60000}});
 assert.equal(v.side,'WAIT','Future quotes cannot establish current price');
+assert.equal(view('BTC',{...x,forecastValidation15m:{global:{hits:50,fails:50,accuracy:50}}}).quality,'UNQUALIFIED');
 console.log('PASS: next move freshness, side/target/stop, near-chance veto, forecast horizon and calibrated range');

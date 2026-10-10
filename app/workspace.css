@@ -302,3 +302,63 @@ body:has(.modern-workspace){
 @media(prefers-reduced-motion:reduce){
   .modern-workspace *{transition:none!important;animation:none!important;scroll-behavior:auto!important}
 }
+
+/* Quiet market desk: one surface per decision, detail on demand. */
+body:has(.modern-workspace){background:#0b0e13}
+.modern-workspace{--bg:#0b0e13;--panel:#13171e;--line:#292f38;--muted:#a0a9b7;--text:#eff2f7;--gold:#e7c58b;max-width:1360px;padding:24px 32px 40px}
+.modern-workspace .panel,.modern-workspace .topbar{background:#13171e;border-color:var(--line);box-shadow:none;border-radius:18px}
+.modern-workspace .topbar{padding:14px 18px}
+.modern-workspace .brandmark{background:#e7c58b;border:0;box-shadow:none;border-radius:12px}
+.modern-workspace .tickerstrip>div{background:#191e26;border-color:transparent}
+.modern-workspace .tickerstrip b{font-size:22px}
+.modern-workspace .refresh{background:#202630;border-color:#333c49}
+.modern-workspace .workspace-intro{padding:28px 2px 18px}
+.modern-workspace .workspace-intro h1{font-size:36px;font-weight:700;letter-spacing:-1.3px}
+.modern-workspace .workspace-intro .eyebrow{font-size:9px;letter-spacing:2px;color:var(--muted)}
+.modern-workspace .workspace-toolbar{margin:0 0 28px;padding:0 0 20px;border-bottom:1px solid var(--line)}
+.modern-workspace .asset-switch{background:#151a22;border-color:#2b323d;padding:3px}
+.modern-workspace .asset-switch button[aria-pressed=true]{background:#e7c58b;box-shadow:none}
+.modern-workspace .workspace-nav a:hover{background:#202630;border-color:#343e4b}
+.modern-workspace .renewed-section-head h2{font-size:22px}
+.modern-workspace .renewed-section-head>div>span{color:#909cac;font-size:10px}
+.modern-workspace .next-move-card{gap:14px}
+.modern-workspace .next-move-card:before{height:2px}
+.modern-workspace .next-hero{grid-template-columns:1fr 1fr}
+.modern-workspace .next-direction,.modern-workspace .next-current-price{min-height:96px;border:0;background:#1b212b;padding:14px;border-radius:12px}
+.modern-workspace .next-direction.green{background:#183026}
+.modern-workspace .next-direction.red{background:#321f26}
+.modern-workspace .next-target-map,.modern-workspace .next-liquidity{background:transparent;border:0;border-top:1px solid var(--line);border-radius:0;padding:14px 0 0}
+.modern-workspace .next-target-grid>div,.modern-workspace .next-liq-levels>div{background:#1b212b;border:0;border-radius:10px}
+.modern-workspace .next-status{background:#202630;border-color:#333d49}
+.modern-workspace .next-status.active{background:#183026;border-color:#305943}
+.modern-workspace .scalp-frame-tabs{margin:16px 0;gap:6px;padding:4px;background:#0e1218;border-radius:12px}
+.modern-workspace .scalp-frame-tabs button{border:0;background:transparent;padding:9px;border-radius:8px}
+.modern-workspace .scalp-frame-tabs button.selected{background:#262d37;color:#f3dfb9}
+.modern-workspace .scalp-frame-tabs small{display:none}
+.modern-workspace .scalp-seconds-direction{min-height:108px;background:#191f28;border-color:#303945}
+.modern-workspace .scalp-seconds-clock{background:transparent;border:0;border-inline-start:1px solid #37414e;border-radius:0}
+.indicator-summary{border-top:1px solid var(--line);padding-top:12px}
+.indicator-summary summary{display:flex;justify-content:space-between;gap:10px;cursor:pointer;font-size:12px;min-height:32px;align-items:center}
+.indicator-summary summary>span:before{content:'＋';margin-inline-end:6px;color:var(--gold)}
+.indicator-summary[open] summary>span:before{content:'−'}
+.indicator-summary summary small,.indicator-summary p{font-size:11px;color:var(--muted)}
+.indicator-timeframes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:8px}
+.indicator-timeframes>div{display:flex;flex-direction:column;gap:5px;background:#1b212b;padding:10px 6px;border-radius:9px;text-align:center;min-width:0}
+.indicator-timeframes b{font-size:11px}.indicator-timeframes span{font-size:12px}.indicator-timeframes small{font-size:9px;color:var(--muted)}
+.modern-workspace .next-card-foot{font-size:10px;gap:4px}
+.modern-workspace .next-move-card:hover,.modern-workspace .scalp-seconds:hover{transform:none;box-shadow:none}
+@media(max-width:760px){
+ .modern-workspace{padding:12px 12px 30px}
+ .modern-workspace .workspace-intro{padding:22px 2px 16px}
+ .modern-workspace .workspace-intro h1{font-size:29px}
+ .modern-workspace .workspace-mode{font-size:10px}
+ .modern-workspace .workspace-toolbar{margin-bottom:20px;padding-bottom:12px;gap:10px}
+ .modern-workspace .workspace-nav{justify-content:space-between}
+ .modern-workspace .workspace-nav a{font-size:12px;padding:8px}
+ .modern-workspace .next-direction{padding:10px;gap:5px}
+ .modern-workspace .next-direction svg{width:24px}
+ .modern-workspace .next-direction span strong{font-size:24px}
+ .modern-workspace .next-current-price{padding:10px}
+ .modern-workspace .next-current-price strong{font-size:19px}
+ .indicator-timeframes{grid-template-columns:repeat(2,minmax(0,1fr))}
+}

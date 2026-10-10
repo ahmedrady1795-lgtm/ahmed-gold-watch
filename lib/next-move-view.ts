@@ -46,7 +46,7 @@ export function buildNextMoveView(
   const evidenceCount=Math.max(0,hits+misses);
   const acc=num(x?.forecastValidation15m?.global?.accuracy);
   // The gold model's observed near-chance validation is not an entry signal.
-  const unqualified=asset==='GOLD'&&evidenceCount>=100&&acc!=null&&acc<55;
+  const unqualified=evidenceCount>=100&&acc!=null&&acc<55;
   const indicated:Side=forecast?.side==='BUY'||forecast?.side==='SELL'?forecast.side:'WAIT';
   const rawTarget=validPrice(forecast?.targets?.t1?.price??forecast?.target);
   const rawInvalidation=validPrice(forecast?.targets?.invalidation??forecast?.invalidation);

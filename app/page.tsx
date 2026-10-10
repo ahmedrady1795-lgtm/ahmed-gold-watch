@@ -96,7 +96,7 @@ export default function Home(){
     // computation. Faster polling reduces the UI delay after a NEW server
     // generation, without starting heavy analysis cycles.
     const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},1500);
-    const clock=setInterval(()=>setNow(Date.now()),2500);
+    const clock=setInterval(()=>setNow(Date.now()),1000);
     return()=>{clearInterval(aiTimer);clearInterval(clock);};
   },[]);
 
@@ -257,7 +257,7 @@ export default function Home(){
         </div>
       </div>
       <div className="topbar-actions">
-        <span className={'pill '+(aiActive?'ok':'neutral')}><Activity size={14}/>{aiActive?'AI موسع محدث':Number.isFinite(snapshotAge)?'AI موسع منذ '+Math.round(snapshotAge/1000)+' ث':'جارٍ تحميل AI'}</span>
+        <span className={'pill '+(aiActive?'ok':'neutral')}><Activity size={14}/>{aiActive?'التحليل محدث':Number.isFinite(snapshotAge)?'آخر تحليل منذ '+Math.round(snapshotAge/1000)+' ث':'جاري التحليل'}</span>
         <button className="refresh" onClick={()=>void loadAi(true)} disabled={busy} aria-label="تحديث التحليل">
           <RefreshCw size={17} className={busy?'spin':''}/><span>تحديث</span>
         </button>
@@ -266,6 +266,7 @@ export default function Home(){
 
     {aiError&&!aiData&&<div className="fatal"><WifiOff size={18}/><div><strong>تعذر تحديث AI</strong><span>{aiError}</span></div></div>}
 
+    <div className="workspace-intro"><div><span className="eyebrow">GOLD WATCH / MARKET DESK</span><h1>السوق، بوضوح<span>.</span></h1></div><span className="workspace-mode"><span/> الذهب والبيتكوين</span></div>
     <div className="workspace-toolbar">
       <div className="asset-switch" role="group" aria-label="اختيار الأصل المعروض">
         {([{id:'ALL',label:'الكل'},{id:'GOLD',label:'الذهب'},{id:'BTC',label:'البيتكوين'}] as const).map(item=><button key={item.id} type="button" aria-pressed={assetView===item.id} onClick={()=>setAssetView(item.id)}>{item.label}</button>)}

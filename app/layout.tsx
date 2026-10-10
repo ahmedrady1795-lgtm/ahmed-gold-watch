@@ -3,8 +3,8 @@ import "./globals.css";
 import "./workspace.css";
 
 export const metadata: Metadata = {
-  title: "Ahmed Market Command | Predator Core v8.1",
-  description: "مركز تحليل مباشر للذهب وBitcoin بنواة Predator Core v8.1 وقرار اتجاه واحد حصري.",
+  title: "Gold Watch | لوحة السوق",
+  description: "متابعة الذهب والبيتكوين، مؤشرات متعددة الأطر، سيناريوهات الحركة والسيولة والأخبار.",
   manifest: "/manifest.webmanifest",
   icons: {icon:"/favicon.svg",shortcut:"/favicon.svg"},
 };
