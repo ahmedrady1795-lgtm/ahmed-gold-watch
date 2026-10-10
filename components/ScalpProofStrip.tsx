@@ -3,7 +3,10 @@
 // Trading results, never a model confidence score or a promise of future profit.
 const number=(x:unknown)=>typeof x==='number'&&Number.isFinite(x)?x:null;
 const r=(v:number|null,d=2)=>v==null?'—':(v>0?'+':'')+v.toFixed(d)+'R';
-type Stat={samples?:number;wins?:number;netR?:number;expectancyR?:number;validation?:string};
+type Proof={status?:string;samples?:number;requiredSamples?:number;netR?:number;
+  expectancyR?:number;lower95MeanR?:number|null;profitFactor?:number|null;maxDrawdownR?:number};
+type Stat={samples?:number;wins?:number;netR?:number;expectancyR?:number;
+  validation?:string;forwardProof?:Proof;retestProof?:Proof};
 type Lane={horizon?:number;stats?:Stat};
 function Outcome({asset,label,desk,horizon}:{asset:string;label:string;desk:any;horizon:1|5}){
   const lane=(desk?.ledger?.lanes as Lane[]|undefined)?.find(x=>x.horizon===horizon);
@@ -12,11 +15,16 @@ function Outcome({asset,label,desk,horizon}:{asset:string;label:string;desk:any;
   const wins=Math.max(0,Number(stats?.wins||0));
   const net=number(stats?.netR);
   const average=number(stats?.expectancyR);
-  const qualify=count>=30&&average!=null&&average>.08&&stats?.validation==='POSITIVE_SAMPLE';
-  const complete=count>=30;
+  const validated=stats?.forwardProof?.status==='POSITIVE_PAPER_SAMPLE';
+  const completed=stats?.forwardProof?.status==='NOT_VALIDATED';
+  const proofN=Math.max(0,Number(stats?.forwardProof?.samples||0));
+  const required=Math.max(50,Number(stats?.forwardProof?.requiredSamples||50));
+  const retest=horizon===5?stats?.retestProof:null;
   return <div className="proof-outcome">
     <div className="proof-outcome-head"><b>{label} M{horizon}</b>
-      <small className={'pill '+(qualify?'ok':'neutral')}>{qualify?'عينة موجبة أوليًا':complete?'نتيجة تحتاج مراجعة':'جمع بيانات'}</small>
+      <small className={'pill '+(validated?'ok':'neutral')}>
+        {validated?'إثبات ورقي أولي':completed?'النتيجة غير مؤهلة':'جمع إثبات جديد'}
+      </small>
     </div>
     <div className="proof-outcome-numbers">
       <span><small>الصفقات</small><strong>{count}</strong></span>
@@ -24,6 +32,20 @@ function Outcome({asset,label,desk,horizon}:{asset:string;label:string;desk:any;
       <span><small>الصافي</small><strong className={net!=null&&net<0?'red':net!=null&&net>0?'green':'muted'}>{count?r(net):'—'}</strong></span>
       <span><small>المتوسط</small><strong className={average!=null&&average<0?'red':average!=null&&average>0?'green':'muted'}>{count?r(average,3):'—'}</strong></span>
     </div>
+    <small className="proof-outcome-meta">
+      اختبار بعد التحديث {proofN}/{required} صفقة
+      {proofN&&stats?.forwardProof?.lower95MeanR!=null
+        ?' · الحد الأدنى التقديري للمتوسط '+r(stats.forwardProof.lower95MeanR,3):''}
+    </small>
+    {retest&&<div className="proof-retest">
+      <b>إعادة اختبار الاختراق M5 · استراتيجية منفصلة</b>
+      <span>{Math.max(0,Number(retest.samples||0))}/
+        {Math.max(50,Number(retest.requiredSamples||50))} صفقة ورقية جديدة
+        · الصافي {retest.samples?r(number(retest.netR)):'لسه مفيش نتائج'}
+        · {retest.status==='POSITIVE_PAPER_SAMPLE'?'أداء ورقي موجب مبدئيًا':
+          retest.status==='NOT_VALIDATED'?'لم تحقق شروط الإثبات':'تحت الاختبار'}
+      </span>
+    </div>}
     {asset==='GOLD'&&horizon===1&&count>=5&&average!=null&&average<0&&
       <small className="proof-outcome-warning">أداء الدقيقة سلبي؛ مفيش أفضلية ربح مثبتة.</small>}
   </div>;
@@ -40,6 +62,6 @@ export default function ScalpProofStrip({desk}:{desk:any}){
       <Outcome asset="BTC" label="البيتكوين" desk={desk?.bitcoin} horizon={1}/>
       <Outcome asset="BTC" label="البيتكوين" desk={desk?.bitcoin} horizon={5}/>
     </div>
-    <p className="muted proof-outcome-note">نتائج الصفقات الورقية التي اكتمل توثيقها فقط، من سجل الخادم الحالي. إعادة النشر أو تبدّل التخزين ممكن تؤثر على استمرارية العينات. عينة 30 صفقة موجبة شرط مبدئي للمراجعة، مش إثبات ربح خارج العينة. استراتيجية إعادة اختبار الاختراق M5 تجريبية، والتنفيذ الحقيقي غير مفعّل.</p>
+    <p className="muted proof-outcome-note">نتائج الصفقات الورقية التي اكتمل توثيقها فقط، من سجل الخادم الحالي. إعادة النشر أو تبدّل التخزين ممكن تؤثر على استمرارية العينات. التحقق الورقي بيتطلب 50 نتيجة موثقة بعد التحديث، ومتوسط عائد موجب بحد ثقة تقريبي، ومعامل ربح لا يقل عن 1.2 وسحب لا يزيد عن 6R. وده برضه مش اختبار تنفيذ Exness أو إثبات ربح مستقبلي. استراتيجية إعادة اختبار الاختراق M5 تجريبية، والتنفيذ الحقيقي غير مفعّل.</p>
   </section>;
 }
