@@ -4,8 +4,6 @@ import {useEffect,useRef,useState} from 'react';
 import {Activity,RefreshCw,WifiOff} from 'lucide-react';
 import AICommandCenter from '../components/AICommandCenter';
 import CoreChat from '../components/CoreChat';
-import FastScalpPulse from '../components/FastScalpPulse';
-import ScalpProofStrip from '../components/ScalpProofStrip';
 import NewsCommandCenter from '../components/NewsCommandCenter';
 import {computeWaveLead,type WaveLead,type WaveTick} from '../lib/wave-lead';
 
@@ -331,14 +329,15 @@ export default function Home(){
       <div className="asset-switch" role="group" aria-label="اختيار الأصل المعروض">
         {([{id:'ALL',label:'الكل'},{id:'GOLD',label:'الذهب'},{id:'BTC',label:'البيتكوين'}] as const).map(item=><button key={item.id} type="button" aria-pressed={assetView===item.id} onClick={()=>setAssetView(item.id)}>{item.label}</button>)}
       </div>
-      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#market-overview">السوق الآن</a><a href="#trade-performance">نتائج الصفقات</a><a href="#scalp-opportunities">فرص السكالب</a></nav>
+      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#scalp-opportunities">سكالب ثواني</a><a href="#market-forecast">الحركة القادمة والسيولة</a><a href="#market-news">الأخبار</a></nav>
     </div>
     <section className="content lite-content" aria-label="بيانات السوق والتحليل">
-      <FastScalpPulse assetView={assetView} desk={scalpDesk} now={now} aiAgeMs={Number.isFinite(snapshotAge)?snapshotAge:null}/>
-      <ScalpProofStrip desk={scalpDesk}/>
       <AICommandCenter assetView={assetView} data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
+      <div id="market-news" className="workspace-section news-home-section">
+        <NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredEvent={aiData?.autopilot?.nextEvent||null}/>
+      </div>
       <details className="secondary-tools core-tools">
-        <summary className="secondary-tools-summary"><span><strong>النواة · فحص الموقع</strong><small>فحص الأداء وخدمات الموقع والتشخيص المكتوب عند الحاجة</small></span><span aria-hidden="true">⌄</span></summary>
+        <summary className="secondary-tools-summary"><span><strong>النواة · محادثة</strong><small>اسأل عن السوق أو عن أي موضوع · بدون فحص الموقع</small></span><span aria-hidden="true">⌄</span></summary>
         <div className="secondary-tools-content">
       <CoreChat data={aiData} desk={scalpDesk} onCommand={(cmd)=>{
         if(cmd.type==='SET_ASSET'){setAssetView(cmd.asset);return;}
@@ -356,9 +355,9 @@ export default function Home(){
         </div>
       </details>
       <details className="secondary-tools">
-        <summary className="secondary-tools-summary"><span><strong>أخبار السوق والتحقق من النماذج</strong><small>التفاصيل الإضافية فقط عند الحاجة</small></span><span aria-hidden="true">⌄</span></summary>
+        <summary className="secondary-tools-summary"><span><strong>اختبارات النماذج</strong><small>معلومات التحقق الفني الإضافية</small></span><span aria-hidden="true">⌄</span></summary>
         <div className="secondary-tools-content">
-      <div id="market-news" className="workspace-section"><div className="workspace-section-heading"><div><span>04 / الأجندة</span><h2>أخبار تحرّك السوق</h2></div><p>المواعيد والنتائج بتوقيت الإمارات</p></div><NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredId={aiData?.autopilot?.nextEvent?.id||null}/></div>
+      
 
       <details id="market-research" className="panel research-drawer">
         <summary className="research-drawer-summary"><span><strong>نتائج التحقق الفني</strong><small>اختبارات مستقلة لجودة توقع الاتجاه</small></span><span aria-hidden="true">⌄</span></summary>
