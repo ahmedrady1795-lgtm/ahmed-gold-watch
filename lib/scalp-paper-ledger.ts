@@ -57,6 +57,13 @@ export function evaluatePaperProof(trades:PaperTrade[],start=SCALP_PROOF_FROM){
   };
 }
 
+export function evaluateRetestPaperProof(trades:PaperTrade[]){
+  // Closed trades of the new setup ONLY. Old M5 breakout profits never
+  // count as evidence for RETEST, even when they are in the same ledger.
+  return evaluatePaperProof(trades.filter(t=>t.plan?.setup==='RETEST'),
+    SCALP_RETEST_PROOF_FROM);
+}
+
 // Paper-only circuit breaker: a run of poor simulated entries pauses new
 // candidates for 15 minutes. It never alters settled outcomes or real orders.
 export function getScalpPaperQualityGate(asset:'GOLD'|'BTC',horizon:1|5,now=Date.now()){
@@ -188,9 +195,7 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
       forwardProof:evaluatePaperProof(lane.history),
       // Never show profitable results from older breakout/pullback trades as
       // if they validated the newly launched RETEST strategy.
-      retestProof:evaluatePaperProof(
-        lane.history.filter(t=>t.plan?.setup==='RETEST'),
-        SCALP_RETEST_PROOF_FROM),
+      retestProof:evaluateRetestPaperProof(lane.history),
       winRate:verified.length?round(wins.length/verified.length*100):null,
       netR:round(verified.reduce((s,t)=>s+Number(t.netR),0)),
       expectancyR:verified.length?round(verified.reduce((s,t)=>s+Number(t.netR),0)/verified.length):null,
