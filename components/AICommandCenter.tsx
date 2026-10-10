@@ -2,6 +2,7 @@
 import {ArrowDownRight,ArrowUpRight,Activity,Clock3,Crosshair,ShieldAlert,Target,Zap,Layers3} from 'lucide-react';
 import {buildSniperOutlook} from '../lib/sniper-outlook';
 import ScalpDesk from './ScalpDesk';
+import ForecastIllustration from './ForecastIllustration';
 
 const fmt=(n:unknown,d=2)=>n!=null&&Number.isFinite(Number(n))?
   Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
@@ -123,9 +124,11 @@ export default function AICommandCenter({data,error,assetView='ALL',now=Date.now
         {assetView!=='GOLD'&&<NextMoveCard x={data?.bitcoin} asset="BTC" now={now} snapshotAt={generatedAt}/>}
       </div>
     </section>
+    <ForecastIllustration data={data} now={now} snapshotAt={generatedAt}
+      goldLive={goldLive} assetView={assetView}/>
     <section id="scalp-opportunities" className="workspace-section" aria-labelledby="scalp-section-title">
       <div className="workspace-section-heading renewed-section-head">
-        <div><span>02 / فرص لحظية</span><h2 id="scalp-section-title">سكالب الثواني</h2></div>
+        <div><span>03 / فرص لحظية</span><h2 id="scalp-section-title">سكالب الثواني</h2></div>
         <p>صفقات ورقية، وليست أوامر وسيط</p>
       </div>
       <div className={'dashboardgrid market-pair-grid '+(assetView!=='ALL'?'single-asset':'')}>
