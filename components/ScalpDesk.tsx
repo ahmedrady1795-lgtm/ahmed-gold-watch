@@ -2,159 +2,85 @@
 import {useState} from 'react';
 import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Target} from 'lucide-react';
 
-const fmt=(v:any,d=2)=>v!=null&&Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
-const sideAr=(s:string)=>s==='BUY'?'شراء':s==='SELL'?'بيع':'انتظار';
-const setupAr=(s:string)=>s==='BREAKOUT'?'اختراق نطاق':s==='PULLBACK'?'إعادة اختبار':s==='SWEEP'?'سحب سيولة وانعكاس':s==='CONTINUATION'?'استمرار اتجاه مؤكد':s==='RETEST'?'إعادة اختبار اختراق M5 · تجريبية':'رصد إعداد جديد';
-const strategyStateAr=(s:string)=>({NO_TRIGGER:'لا إشارة',DATA_BLOCKED:'بيانات غير كافية',WATCH:'مراقبة فقط',QUALIFIED:'مؤهلة كبديل',SELECTED:'المختارة'} as Record<string,string>)[s]||'مراقبة';
-const stateAr=(s:string)=>({ARMED:'بانتظار التفعيل',ACTIVE:'متابعة تجريبية',TP1:'تحقق T1',STOP:'ضرب الوقف',TIME_EXIT:'انتهت المدة',EXPIRED:'انتهت صلاحية الدخول',CANCELED:'أُلغي قبل الدخول',UNKNOWN:'نتيجة غير موثقة'} as Record<string,string>)[s]||'مراقبة';
-
+const fmt=(v:unknown,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))
+  ?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
+const sideAr=(v:string)=>v==='BUY'?'شراء':v==='SELL'?'بيع':'انتظار';
+const SIGNAL_TTL_MS=15000;
+// The 15-second clock is the visibility/validity window for a confirmed
+// PAPER SIGNAL. It is NOT a broker order or a 15-second trade exit.
 export default function ScalpDesk({desk,now=Date.now()}:any){
   const [horizon,setHorizon]=useState<1|5>(5);
-  const plan=desk.plans?.find((p:any)=>p.horizon===horizon);
-  const lane=desk.ledger?.lanes?.find((x:any)=>x.horizon===horizon),current=lane?.current;
-  const shown=current?.plan||plan;
-  const stale=now-Number(desk.checkedAt)>15000;
-  const expired=Boolean(current?.state==='ARMED'&&now>=Number(shown?.expiresAt));
-  const status=stale?'التحديث متأخر':expired?'انتهت صلاحية الدخول':current?stateAr(current.state):plan?.status==='ARMED'?'فرصة قيد تأكيد الثبات':plan?.status==='BLOCKED'?'البيانات تمنع التفعيل':plan?.side==='WAIT'?'رصد السوق':'فرصة مشروطة · لم تتأكد';
-  const directional=shown?.side==='BUY'||shown?.side==='SELL';
-  const tone=stale||expired?'amber':shown?.side==='BUY'?'green':shown?.side==='SELL'?'red':'amber';
-  const timed=Boolean(current&&(current.state==='ARMED'||current.state==='ACTIVE'));
-  const liquidity=desk.liquidity,book=desk.orderBook;
-  const bookFresh=Boolean(book?.ok&&book?.providers?.krakenDepth&&book.checkedAt&&now-book.checkedAt>=0&&now-book.checkedAt<=12000);
-  const secs=shown&&directional&&timed?Math.max(0,Math.ceil(((current?.activatedAt?current.activatedAt+horizon*60000:shown.expiresAt)-now)/1000)):0;
-  const stats=lane?.stats;
-  const qualityGate=desk.qualityGates?.find((x:any)=>x.horizon===horizon);
-  const entryCheck=desk.entryConfirmations?.find((x:any)=>x.horizon===horizon);
-  const holdRequired=Math.max(30,Number(entryCheck?.requiredSeconds||60));
-  const activeM5=desk.profile==='ACTIVE_M5_PAPER'&&horizon===5;
-  const following=current?.state==='ACTIVE'||entryCheck?.state==='ACTIVE';
-  const exactPlan=plan?.status==='ARMED'&&entryCheck?.confirmationSource==='EXACT_PLAN';
-  const entryConfirmed=Boolean(!stale&&!expired&&!following&&exactPlan&&entryCheck?.state==='ENTRY');
-  const counting=Boolean(!stale&&!expired&&!following&&exactPlan&&entryCheck?.state==='HOLDING');
-  const candleVerified=Boolean(!stale&&!expired&&!following&&exactPlan&&entryCheck?.state==='CONDITIONS_PENDING');
-  const decisionReason=entryCheck?.entryAudit?.reason||entryCheck?.reason||plan?.reason||'جارٍ فحص الإعدادات';
-  const costUnit=desk.asset==='BTC'?'1 BTC':'أونصة ذهب';
-  const costSource=(value:string|undefined)=>value==='QUOTE'?'من عرض السعر':value==='CONFIGURED'?'معدل مُعدّ يدويًا':value==='ASSUMED'?'افتراض':'مصدر غير موثق';
-  const grossRisk=shown?.entry!=null&&shown?.stop!=null?Math.abs(shown.entry-shown.stop):0;
-  const grossReward=shown?.entry!=null&&shown?.targets?.[0]?.price!=null?Math.abs(shown.targets[0].price-shown.entry):null;
-  return <section className={'panel scalp-desk ai-asset-card '+(shown?.side==='BUY'?'ai-buy':shown?.side==='SELL'?'ai-sell':'ai-wait')}>
+  const plan=desk?.plans?.find((p:any)=>p.horizon===horizon);
+  const confirmation=desk?.entryConfirmations?.find((e:any)=>e.horizon===horizon);
+  const lane=desk?.ledger?.lanes?.find((l:any)=>l.horizon===horizon);
+  const current=lane?.current;
+  const stale=!Number.isFinite(Number(desk?.checkedAt))||now-Number(desk.checkedAt)>15000;
+  const blocked=stale||plan?.status==='BLOCKED';
+  const direction=blocked?'WAIT':(
+    current?.plan?.side==='BUY'||current?.plan?.side==='SELL'?current.plan.side:
+    plan?.side==='BUY'||plan?.side==='SELL'?plan.side:'WAIT'
+  );
+  const signaledAt=Number(current?.activatedAt||confirmation?.confirmedCandleAt||0);
+  const signalAge=signaledAt>0?now-signaledAt:Infinity;
+  const confirmed=Boolean(!blocked&&direction!=='WAIT'&&signaledAt>0&&
+    signalAge>=0&&signalAge<SIGNAL_TTL_MS&&
+    (current?.state==='ACTIVE'||confirmation?.state==='ENTRY')&&
+    (current?.state==='ACTIVE'||confirmation?.entryAudit?.approved===true));
+  const remaining=confirmed?Math.max(1,Math.ceil((SIGNAL_TTL_MS-signalAge)/1000)):0;
+  const running=Boolean(current?.state==='ACTIVE');
+  const selected=running?current.plan:plan;
+  const status=blocked?'الدخول متوقف · بيانات أو شروط غير مكتملة':
+    confirmed?'إشارة ورقية مؤكدة · نشطة الآن':
+    running?'إشارة الدخول انتهت · الصفقة الورقية قيد المتابعة':
+    confirmation?.state==='HOLDING'?'بانتظار تأكيد إغلاق M1':
+    direction==='WAIT'?'مفيش اتجاه سكالب مؤكد دلوقتي':
+    'اتجاه مرصود · لسه مش إشارة دخول';
+  const reason=blocked?(plan?.blockers?.[0]||'آخر تحديث للسوق متأخر'):
+    confirmation?.entryAudit?.reason||plan?.reason||'بانتظار الشروط الكاملة';
+  const dirCss=direction==='BUY'?'green':direction==='SELL'?'red':'amber';
+  const actionable=confirmed&&!stale;
+  return <section className={'panel scalp-desk scalp-seconds '+(direction==='BUY'?'ai-buy':direction==='SELL'?'ai-sell':'ai-wait')}
+    aria-label={'السكالب '+(desk?.asset==='GOLD'?'للذهب':'للبيتكوين')}>
     <div className="scalp-desk-head">
-      <div><span className="eyebrow">توقيت الدخول · {desk.asset==='GOLD'?'الذهب':'البيتكوين'}</span><h2>فرص السكالب {activeM5?'· وضع نشط':''}</h2></div>
-      <span className={'scalp-feed-state '+(stale?'late':'')}>{stale?'بيانات متأخرة':'يتحدث تلقائيًا'}</span>
+      <div><span className="eyebrow">سكالب سريع · {desk?.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span>
+        <h2>القرار في ثواني</h2></div>
+      <span className={'scalp-feed-state '+(blocked?'late':'')}>{blocked?'غير جاهز':'أسعار تحت المراقبة'}</span>
     </div>
-    <div className="scalp-frame-tabs" role="tablist" aria-label="فريم السكالب">
-      {([1,5] as const).map(h=>{const p=desk.plans?.find((x:any)=>x.horizon===h),c=desk.ledger?.lanes?.find((x:any)=>x.horizon===h)?.current,e=desk.entryConfirmations?.find((x:any)=>x.horizon===h);return <button key={h} id={'scalp-tab-'+desk.asset+'-'+h} type="button" role="tab" aria-selected={horizon===h} aria-controls={'scalp-panel-'+desk.asset} onClick={()=>setHorizon(h)} className={horizon===h?'selected':''}><strong>{h===1?'دقيقة واحدة':'خمس دقائق'} <span dir="ltr">M{h}</span></strong><small>{e?.state==='ENTRY'?'دخول مؤكد '+sideAr(e.side):c?stateAr(c.state):p?.status==='BLOCKED'?'بيانات غير جاهزة':p?.side==='WAIT'?'رصد السوق':sideAr(p?.side)+' · '+setupAr(p?.setup)}</small></button>;})}
+    <div className="scalp-frame-tabs" role="tablist" aria-label="فريم تحليل السكالب">
+      {([1,5] as const).map(h=><button type="button" role="tab"
+        aria-selected={horizon===h} aria-controls={'scalp-panel-'+desk.asset}
+        id={'scalp-tab-'+desk.asset+'-'+h} key={h}
+        onClick={()=>setHorizon(h)} className={horizon===h?'selected':''}>
+        <strong>M{h}</strong><small>{h===1?'سياق الدقيقة':'سياق خمس دقائق'}</small>
+      </button>)}
     </div>
-    <div id={'scalp-panel-'+desk.asset} role="tabpanel" aria-labelledby={'scalp-tab-'+desk.asset+'-'+horizon}>
-      <div className={'scalp-entry-watch '+(entryConfirmed?'entry-confirmed':candleVerified?'entry-blocked':counting?'entry-counting':'')}>
-        <div className="scalp-entry-status">
-          <strong>{stale?'تأكيد الدخول متوقف: الأسعار متأخرة':
-            expired?'انتهت صلاحية الدخول · ننتظر إعدادًا جديدًا':
-            following?'صفقة تجريبية قيد المتابعة':
-            entryConfirmed?'إشارة ورقية '+sideAr(entryCheck.side)+' · اكتمل تأكيد M1':
-            candleVerified?'اكتمل ثبات الدقيقة · لا دخول':
-            counting?'جارٍ تأكيد الثبات: '+entryCheck.heldSeconds+' / '+holdRequired+' ثانية':
-            plan?.status==='BLOCKED'?'الدخول متوقف بسبب شروط السوق أو البيانات':
-            plan?.side==='WAIT'?'لا يوجد إعداد دخول حاليًا':
-            exactPlan?'بانتظار شرط الثبات وإغلاق M1 لتأكيد الدخول':'الإعداد غير مؤهل للدخول'}</strong>
-          <span>{counting?'متبقي '+entryCheck.remainingSeconds+' ثانية':entryConfirmed?'تم تأكيد إغلاق M1':following?'متابعة الصفقة الورقية الحالية':decisionReason}</span>
+    <div id={'scalp-panel-'+desk.asset} role="tabpanel"
+      aria-labelledby={'scalp-tab-'+desk.asset+'-'+horizon}>
+      <div className={'scalp-seconds-direction '+dirCss}>
+        {direction==='BUY'?<ArrowUpRight size={36}/>:direction==='SELL'?<ArrowDownRight size={36}/>:<Activity size={32}/>}
+        <div><small>الاتجاه الحالي</small>
+          <strong>{direction==='WAIT'?'انتظار':direction==='BUY'?'↑ شراء':'↓ بيع'}</strong>
+          <span>{confirmed?'مؤكد ورقيًا':direction!=='WAIT'?'مشروط ولم يتأكد':'لا دخول'}</span>
         </div>
-        {!stale&&!expired&&!following&&exactPlan&&<div className="scalp-entry-progress" aria-hidden="true"><span style={{width:(entryConfirmed||candleVerified?100:Math.max(0,Math.min(100,Number(entryCheck?.heldSeconds||0)/holdRequired*100)))+'%'}}/></div>}
-        {!stale&&!expired&&!following&&exactPlan&&entryCheck?.trigger!=null&&<small>المستوى المرصود: <b dir="ltr">{fmt(entryCheck.trigger)}</b> · {entryCheck.side==='BUY'?'الثبات أعلاه للشراء':entryCheck.side==='SELL'?'الثبات أدناه للبيع':'انتظار الاتجاه'}</small>}
-        {activeM5&&<details className="scalp-expand"><summary>قواعد تأكيد الدخول النشط</summary><p className="scalp-entry-advice">30 ثانية للإعدادات القوية المتوافقة مع M5، وإلا 60 ثانية. تأكيد إغلاق M1 وحد التكلفة والعائد مطلوبان دائمًا.</p></details>}
-        {entryConfirmed&&<p className="scalp-entry-advice">سعر الدخول الورقي عند التأكيد <b dir="ltr">{fmt(entryCheck.entry)}</b> · الوقف <b dir="ltr">{fmt(entryCheck.stop)}</b> · T1 <b dir="ltr">{fmt(entryCheck.targets?.[0]?.price)}</b> · إشارة تحليلية وليست تنفيذًا تلقائيًا</p>}
-        {candleVerified&&<p className="scalp-entry-advice">{entryCheck.reason}</p>}
-      </div>
-      <div className="scalp-decision">
-        <div className={'scalp-direction '+tone}>{shown?.side==='BUY'?<ArrowUpRight size={34}/>:shown?.side==='SELL'?<ArrowDownRight size={34}/>:<Activity size={30}/>}<div><strong>{directional?sideAr(shown.side)+' · '+setupAr(shown.setup):'نبحث عن الإعداد التالي'}</strong><span>{status}</span></div></div>
-        <div className="scalp-score"><b>{directional?shown?.score:'—'}{directional&&<small>/100</small>}</b><span>قوة الإعداد</span></div>
-      </div>
-      {directional&&<div className="scalp-levels">
-        <div><small>{entryConfirmed?'دخول بعد التأكيد':'نقطة دخول محتملة'}</small><b dir="ltr">{fmt(shown?.entry)}</b></div>
-        <div className="stop"><small>وقف الخسارة</small><b dir="ltr">{fmt(shown?.stop)}</b></div>
-        {[0].map(j=><div key={j}><small><Target size={12}/> T{j+1}{j===0?' · الأول':''}</small><b dir="ltr">{fmt(shown?.targets?.[j]?.price)}</b><span>{shown?.targets?.[j]?shown.targets[j].kind==='STRUCTURE'?'مستوى سعري':'امتداد تقديري':'بانتظار إعداد'}</span></div>)}
-      </div>
-      }
-      {directional&&shown?.targets?.length>1&&<details className="scalp-expand">
-        <summary>الأهداف الممتدة T2 وT3 · للتوسع فقط</summary>
-        <div className="scalp-extended-targets">
-          {([1,2] as const).map(j=>shown?.targets?.[j]&&<div key={j}>
-            <small>T{j+1} · {shown.targets[j].kind==='STRUCTURE'?'مستوى سعري':'امتداد تقديري'}</small>
-            <b dir="ltr">{fmt(shown.targets[j].price)}</b>
-          </div>)}
+        <div className="scalp-seconds-clock">
+          <Clock3 size={16}/><strong>{remaining?remaining+' ث':'—'}</strong>
+          <small>صلاحية الإشارة</small>
         </div>
-      </details>}
-      <div className="scalp-facts">
-        <div><small>العائد / المخاطرة بعد التكلفة</small><b>{fmt(shown?.netRR)} R</b></div>
-        <div><small><Clock3 size={12}/> {current?.activatedAt?'متبقي للمتابعة':'صلاحية التفعيل'}</small><b>{timed?(secs?secs+' ثانية':'انتهت'):'غير مفعّلة'}</b></div>
-        <div><small>تكلفة تقديرية / {costUnit}</small><b>{fmt(shown?.cost)} $</b></div>
       </div>
-      <details className="scalp-expand scalp-analysis-drawer"><summary>تفاصيل الإعداد والتكلفة والاستراتيجيات</summary>
-      {!!plan?.strategyReview?.length&&<details className="scalp-expand">
-        <summary>مقارنة الاستراتيجيات الخمس · لماذا اختارت النواة هذا الإعداد؟</summary>
-        <p className="scalp-condition">الاختراق والتصحيح والاستمرار وسحب السيولة وإعادة الاختبار المؤكد تُفحص بشكل منفصل. درجة الإعداد لا تعني احتمال ربح، ولا تتحول أي استراتيجية إلى دخول إلا بعد التكلفة ووقف الخسارة وتأكيد M1.</p>
-        <div className="scalp-evidence">
-          {plan.strategyReview.map((r:any)=><div key={r.setup}>
-            <small>{r.label} · {r.family==='REVERSAL'?'انعكاس':r.family==='TREND'?'اتجاه':'زخم'}</small>
-            <b className={r.state==='SELECTED'?'green':r.side==='SELL'?'red':''}>
-              {strategyStateAr(r.state)}
-            </b>
-            <span>{r.score!=null?sideAr(r.side)+' · '+r.score+'/100 · ':''}{r.reason}
-              {r.netRR!=null?' · العائد النظري '+fmt(r.netRR)+'R':''}
-            </span>
-          </div>)}
-        </div>
-      </details>}
-      <div className="scalp-condition"><strong>{stale?'لا تعتمد الإعداد حتى يعود تحديث حديث':current?.note||plan?.reason}</strong><span>{shown?.trigger}</span></div>
-      {entryCheck?.entryAudit&&!stale&&<p className="scalp-condition"><strong>سبب القرار</strong> — {entryCheck.entryAudit.reason}
-        {entryCheck.confirmationSource==='SCENARIO_ONLY'?' · ثبات سيناريو السيولة ليس اعتمادًا لدخول الخطة.':''}
-        {entryCheck.entryAudit.liveNetRR!=null?' · العائد الفعلي '+fmt(entryCheck.entryAudit.liveNetRR)+'R':''}</p>}
-      {shown?.costBreakdown&&<details className="scalp-expand"><summary>تفصيل السبريد والعمولات والانزلاق</summary>
-      <p className="scalp-condition">تكلفة دورة كاملة لكل {costUnit}: سبريد {fmt(shown.costBreakdown.spread)}$ ({costSource(shown.costBreakdown.sources?.spread)}) · عمولات {fmt(shown.costBreakdown.fees)}$ ({costSource(shown.costBreakdown.sources?.fees)}) · انزلاق {fmt(shown.costBreakdown.slippage)}$ ({costSource(shown.costBreakdown.sources?.slippage)}).
-        {' مصدر السعر: '+(shown.costBreakdown.quoteSource||desk.quote?.source||'غير موثق')+'. المعدلات المهيأة والافتراضات ليست قياسًا لرسوم حساب Exness.'}</p>
-      {grossRisk>0&&grossReward!=null&&<p className="scalp-condition">أثر التكلفة على الخطة: العائد / المخاطرة قبلها {fmt(grossReward/grossRisk)}R وبعدها {fmt((grossReward-shown.cost)/(grossRisk+shown.cost))}R · التكلفة {fmt(shown.cost/(grossRisk+shown.cost)*100,1)}% من المخاطرة شاملة التكلفة. هذا حساب للخطة، وليس نتيجة صفقة منفذة.</p>}
-      </details>}
-      {desk.asset==='BTC'&&shown?.costEstimated&&<p className="scalp-condition">رسوم البيتكوين والانزلاق تقديرية لمصدر الأسعار، وليست تكلفة Exness الفعلية. لن يعتبر النظام صفقة قابلة للتنفيذ حتى تسمح حسابات المخاطرة والعائد بالتكلفة المُستخدمة.</p>}
-      {!!plan?.blockers?.length&&!current&&plan.blockers.length>1&&<details className="scalp-expand"><summary>شروط الدخول غير المكتملة ({plan.blockers.length})</summary><ul className="scalp-blockers">{plan.blockers.map((r:string)=><li key={r}>{r}</li>)}</ul></details>}
-      {qualityGate?.blocked&&<p className="scalp-condition">حماية سجل السكالب التجريبي: {qualityGate.reason} · المتبقي {qualityGate.remainingSeconds} ثانية</p>}
-      {!!shown?.evidence?.length&&<details className="scalp-expand"><summary>المؤشرات التي كوّنت الفرصة</summary><div className="scalp-evidence">{shown.evidence.map((e:any)=><div key={e.label}><small>{e.label}</small><b className={e.side==='BUY'?'green':e.side==='SELL'?'red':''}>{e.side==='WAIT'?e.value:sideAr(e.side)}</b><span>{e.side!=='WAIT'?e.value:''}</span></div>)}</div></details>}
-      </details>
+      <p className={'scalp-seconds-status '+(confirmed?'green':blocked?'red':'amber')}>
+        {status}
+      </p>
+      {actionable&&<div className="scalp-seconds-levels" aria-label="مستويات الإشارة الورقية">
+        <span><small>دخول ورقي</small><b dir="ltr">{fmt(current?.plan?.entry??confirmation?.entry)}</b></span>
+        <span><small>وقف</small><b dir="ltr">{fmt(current?.plan?.stop??confirmation?.stop)}</b></span>
+        <span><small><Target size={12}/> الهدف الأول</small><b dir="ltr">{fmt(current?.plan?.targets?.[0]?.price??confirmation?.targets?.[0]?.price)}</b></span>
+      </div>}
+      {!confirmed&&<p className="scalp-seconds-reason">{reason}</p>}
+      <small className="scalp-seconds-foot">
+        {stale?'بيانات السوق قديمة · يُمنع الدخول':
+          'آخر تحديث '+Math.max(0,Math.round((now-desk.checkedAt)/1000))+' ثانية'}
+        {' · '}إشارة 15 ثانية فقط · لا تنفيذ MT5
+      </small>
     </div>
-    {!current&&liquidity?.available&&!stale&&<details className="scalp-expand"><summary>سيناريوهات سعرية بديلة · للمراقبة فقط</summary><div className="scalp-motion" aria-label="أهداف الحركة المحتملة">
-      <div className="scalp-liquidity-title"><strong>أهداف الحركة المحتملة · M{horizon}</strong><small>تتحدث مع السعر · الميل اللحظي {liquidity.pressure==='WAIT'?'متوازن':sideAr(liquidity.pressure)}</small></div>
-      <p>سيناريوهات رصد مشروطة بإغلاق M1؛ أهداف الصفقة تتثبت عند تفعيل إعداد الدخول.</p>
-      <div className="scalp-motion-paths">{liquidity.scenarios?.find((s:any)=>s.horizon===horizon)?.paths.map((s:any)=><div key={s.side} className="scalp-motion-path">
-        <strong className={s.side==='BUY'?'green':'red'}>{s.side==='BUY'?'مسار الصعود':'مسار الهبوط'}</strong>
-        <small>الثبات لمدة دقيقة {s.side==='BUY'?'فوق':'تحت'} <b dir="ltr">{fmt(s.trigger)}</b> · {s.confirmation?.state==='CONFIRMED'?'تحقق شرط الثبات':s.confirmation?.state==='HOLDING'?s.confirmation.heldSeconds+' / 60 ثانية':'بانتظار عبور المستوى'}</small>
-        <div className="scalp-motion-targets">{s.targets.map((t:any,i:number)=><div key={i}><small>T{i+1}</small><b dir="ltr">{fmt(t.price)}</b><small>{t.kind==='STRUCTURE'?'مستوى سيولة':'امتداد تقديري'}</small></div>)}</div>
-        <small>إبطال المسار {s.side==='BUY'?'تحت':'فوق'} <b dir="ltr">{fmt(s.invalidation)}</b></small>
-      </div>)}</div>
-    </div></details>}
-    <details className="scalp-expand"><summary>خريطة السيولة ومصادر البيانات <span>{liquidity?.available&&!stale?'· قراءة متاحة':'· بيانات غير مكتملة'}</span></summary><div className="scalp-liquidity" aria-label="قراءة السيولة الحية">
-      <div className="scalp-liquidity-title"><strong>خريطة السيولة · قراءة مستمرة</strong><small>{stale?'التحديث متأخر':liquidity?.available?'قراءة حديثة':'بيانات غير كافية'} · {new Date(desk.checkedAt).toLocaleTimeString('ar-AE',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small></div>
-      <p>{liquidity?.reason||'جارٍ تحميل قراءة السيولة'}</p>
-      {liquidity?.available&&<>
-        <div className="scalp-liquidity-grid"><div><small>قمة نطاق 20 دقيقة</small><b dir="ltr">{fmt(liquidity.rangeHigh)}</b></div><div><small>قاع نطاق 20 دقيقة</small><b dir="ltr">{fmt(liquidity.rangeLow)}</b></div><div><small>الحركة منذ آخر إغلاق</small><b className={liquidity.pressure==='BUY'?'green':liquidity.pressure==='SELL'?'red':''}>{liquidity.pressure==='WAIT'?'متوازنة':sideAr(liquidity.pressure)} <span dir="ltr">{fmt(liquidity.move)}</span></b></div></div>
-        <div className="scalp-pools">{liquidity.levels?.map((l:any,i:number)=><div key={i}><span>{l.side==='ABOVE'?'سيولة فوق قمة':'سيولة تحت قاع'}{l.touches>1?' · قمم/قيعان متقاربة':''}</span><b dir="ltr">{fmt(l.price)}</b><small>المسافة {fmt(l.distance)}</small></div>)}</div>
-        <p>{liquidity.sweeps?.length?'آخر سحب مؤكد بإغلاق: '+liquidity.sweeps.map((s:any)=>(s.side==='BUY'?'سحب قاع واستعادة':'سحب قمة ورفض')+' '+fmt(s.level)+' · '+new Date(s.at).toLocaleTimeString('ar-AE',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'})).join(' / '):'لم يُرصد سحب مؤكد في آخر 6 شموع؛ مراقبة الاقتراب والاختراق مستمرة.'}</p>
-        <small>{liquidity.note}</small>
-      </>}
-      {desk.asset==='BTC'?<div className="scalp-book"><strong>دفتر أوامر Kraken · 25 مستوى</strong>{bookFresh?<div className="scalp-liquidity-grid"><div><small>طلبات الشراء · USD</small><b dir="ltr">{fmt(book.book.bidDepthUsd,0)}</b></div><div><small>عروض البيع · USD</small><b dir="ltr">{fmt(book.book.askDepthUsd,0)}</b></div><div><small>اختلال العمق المرجّح</small><b dir="ltr">{fmt(book.book.depthImbalance,0)}%</b></div></div>:<p>دفتر الأوامر غير متاح أو متأخر؛ خريطة السعر مستقلة عنه.</p>}<small>لقطة أوامر قابلة للتغيير والإلغاء؛ ليست ضمان اتجاه أو حجم صفقات منفذة.</small></div>:<div className="scalp-book"><small>الذهب: المصدر لا يوفر دفتر أوامر أو حجم تداول موثوق؛ قراءة السيولة هنا من حركة السعر.</small></div>}
-    </div></details>
-    <div className="scalp-paper-brief"><span>سجل الصفقات الورقية · بعد التكلفة</span><strong>{stats?.samples?stats.samples+' نتيجة · صافي '+fmt(stats.netR)+'R':'لا توجد نتائج مؤكدة بعد'}</strong></div>
-    <details className="scalp-expand"><summary>نتائج السكالب التفصيلية</summary>
-    {stats?.forwardProof&&<div className="scalp-condition">
-      <strong>إثبات الربحية بعد آخر تطوير: {stats.forwardProof.status==='POSITIVE_PAPER_SAMPLE'?'عينة ورقية إيجابية مبدئيًا':stats.forwardProof.status==='COLLECTING'?'جمع نتائج بدون أحكام مسبقة':'لم تثبت الربحية بعد'}</strong>
-      <p>العينة الجديدة {stats.forwardProof.samples} / {stats.forwardProof.requiredSamples} صفقة مغلقة · صافي {fmt(stats.forwardProof.netR)}R
-      {stats.forwardProof.expectancyR!=null?' · متوسط '+fmt(stats.forwardProof.expectancyR)+'R':''}
-      {stats.forwardProof.profitFactor!=null?' · PF '+fmt(stats.forwardProof.profitFactor):''}
-      {stats.forwardProof.lower95MeanR!=null?' · أدنى متوسط تقديري 95% '+fmt(stats.forwardProof.lower95MeanR)+'R':''}.
-      لا نعتبر سجلًا قديمًا أو صفقة انتظار إثباتًا لنجاح الإصدار الجديد.</p>
-    </div>}
-    <div className="scalp-results"><div><span className="eyebrow">سجل هذا الفريم · تجريبي</span><h3>{stats?.samples?stats.samples+' صفقة موثقة':'بدأ سجل جديد للصفقات'}</h3></div><div className="scalp-results-grid"><div><small>صافي النتيجة</small><b className={Number(stats?.netR)>=0?'green':'red'}>{stats?.samples?fmt(stats.netR)+' R':'—'}</b></div><div><small>متوسط الصفقة</small><b>{stats?.samples?fmt(stats.expectancyR)+' R':'—'}</b></div><div><small>نسبة الربح</small><b>{stats?.samples?fmt(stats.winRate,1)+'%':'—'}</b></div></div><p>قوة الإعداد ليست احتمال نجاح. النتائج تحسب T1 أو الوقف أو انتهاء المدة بعد التكلفة. {stats?.unknown?stats.unknown+' نتيجة غير موثقة مستبعدة. ':''}{stats?.expired?stats.expired+' إعداد انتهى أو أُلغي قبل الدخول.':''}</p>
-      {stats?.samples>0&&<p className="scalp-condition">تشريح النتائج: {stats.exitCauses?.timeExits||0} خروج بانتهاء المدة (منها {stats.exitCauses?.negativeTimeExits||0} بخسارة)، {stats.exitCauses?.stops||0} ضرب وقف، {stats.exitCauses?.targets||0} وصول إلى T1. صافي خروج الوقت {fmt(stats.exitCauses?.timeExitNetR)}R. {horizon===1&&stats.exitCauses?.timeExits>stats.exitCauses?.targets?'الأهداف السابقة لم تكن قابلة للوصول خلال دقيقة في حالات كثيرة؛ فلتر واقعية الهدف مفعل.':''}</p>}
-      {!!lane?.recent?.length&&<details><summary>آخر النتائج ({lane.recent.length})</summary><div className="scalp-history">{lane.recent.map((t:any)=><div key={t.plan.id}><time>{new Date(t.closedAt).toLocaleTimeString('ar-AE',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'})}</time><span>{sideAr(t.plan.side)} · {stateAr(t.state)}</span><b className={Number(t.netR)>=0?'green':'red'}>{t.netR!=null?fmt(t.netR)+' R':'—'}</b></div>)}</div></details>}
-    </div></details>
-    <div className="scalp-source"><span>{desk.candleSource}</span><span>{desk.data?.m1AgeMs!=null?'آخر إغلاق M1 منذ '+Math.max(0,Math.round(desk.data.m1AgeMs/1000))+'ث':'شموع M1 غير متاحة'}</span><span>مرجع سعري؛ لم تُنفذ صفقة وسيط</span>{!desk.ledger?.persisted&&<span className="amber">حفظ السجل الدائم غير متاح</span>}</div>
   </section>;
 }
