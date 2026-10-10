@@ -1,6 +1,7 @@
 'use client';
 import {ArrowDownRight,ArrowUpRight,Clock3,ShieldAlert,Target,TrendingUp,Activity} from 'lucide-react';
 import {buildNextMoveView} from '../lib/next-move-view';
+import ScalpDesk from './ScalpDesk';
 
 const fmt=(n:unknown,d=2)=>n!=null&&Number.isFinite(Number(n))
   ?Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
