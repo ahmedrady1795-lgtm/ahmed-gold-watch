@@ -536,3 +536,86 @@ body:has(.modern-workspace){
   .sniper-objective-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .sniper-tag{font-size:9px}
 }
+
+/* Real-market visual price path — dense HUD, responsive, no placeholder prices. */
+.forecast-visual-section{min-width:0}
+.forecast-visual-shell{position:relative;overflow:hidden;border:1px solid #29495c;border-radius:14px;background:linear-gradient(125deg,#0c1825,#0a121e 65%,#101a27);box-shadow:0 12px 32px #0003}
+.forecast-visual-shell:before{content:'';position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,#dbb875,#5ed6ee,#5de1aa)}
+.forecast-visual-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:11px 13px;border-bottom:1px solid #203a4b}
+.forecast-visual-heading,.forecast-visual-controls{display:flex;align-items:center;gap:9px;min-width:0}
+.forecast-visual-mark{width:33px;height:33px;display:grid;place-items:center;border:1px solid #417284;border-radius:9px;color:#7bdcec;background:#123141}
+.forecast-visual-heading strong{display:block;font-size:13px;line-height:1.4;color:#f2e2bb}
+.forecast-visual-heading small{display:block;font-size:9px;color:#84a5bb;letter-spacing:.75px}
+.forecast-visual-tabs{display:flex;gap:3px;padding:3px;border-radius:9px;background:#0b1723;border:1px solid #294254}
+.forecast-visual-tabs button{background:transparent;border:0;color:#a3bbcb;font-size:11px;min-height:28px;padding:5px 12px;border-radius:6px;cursor:pointer}
+.forecast-visual-tabs button[aria-pressed=true]{background:#204455;color:#def6fa;font-weight:700}
+.forecast-visual-status{display:inline-flex;align-items:center;gap:6px;border:1px solid #3f5060;background:#172430;color:#bdcdda;font-size:10px;padding:6px 9px;border-radius:8px;white-space:nowrap}
+.forecast-visual-status.forecast-visual-active{background:#123a31;border-color:#3d856b;color:#a1f2d4}
+.forecast-dot{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 10px currentColor}
+.forecast-visual-layout{display:grid;grid-template-columns:minmax(205px,.27fr) minmax(0,1fr);gap:9px;padding:10px}
+.forecast-visual-facts{display:flex;flex-direction:column;gap:7px;min-width:0}
+.forecast-visual-fact{display:flex;flex-direction:column;gap:3px;padding:9px 10px;border:1px solid #254358;border-radius:9px;background:#0e2130}
+.forecast-visual-fact small{display:flex;align-items:center;gap:5px;color:#9eb9c9;font-size:10px}
+.forecast-visual-fact strong{display:flex;align-items:center;gap:3px;color:#e6f2fb;font-size:17px;line-height:1.3;font-variant-numeric:tabular-nums}
+.forecast-visual-last strong{color:#5ce4f4;font-size:23px}
+.forecast-visual-fact strong.green{color:#61e7b8}
+.forecast-visual-fact strong.red{color:#ff9dad}
+.forecast-visual-fact strong.forecast-visual-muted{color:#91a8b9}
+.forecast-visual-targets{display:grid;gap:5px}
+.forecast-visual-target{display:flex;justify-content:space-between;gap:6px;align-items:center;padding:7px 9px;border:1px solid #27574c;background:#102d28;border-radius:8px}
+.forecast-visual-target>span{font-size:10px;color:#69e6ba;font-weight:800}
+.forecast-visual-target small{display:block;color:#83ae9f;font-size:8px;font-weight:500}
+.forecast-visual-target strong{font-size:15px;color:#aff5d3;font-variant-numeric:tabular-nums}
+.forecast-visual-stop{border-color:#673c4a;background:#281a29}
+.forecast-visual-stop strong{color:#ff98a7}
+.forecast-visual-time strong{font-size:13px;color:#f7d8a1}
+.forecast-visual-time>span{font-size:10px;color:#bed2de}
+.forecast-visual-confidence{padding:7px 9px;border:1px solid #284253;border-radius:8px}
+.forecast-visual-confidence>span{display:flex;align-items:center;justify-content:space-between;gap:7px;font-size:10px;color:#b8cfdd}
+.forecast-visual-confidence b{font-size:13px;color:#f2d59e}
+.forecast-visual-confidence small{display:block;color:#7799ac;font-size:9px;margin-top:4px}
+.forecast-visual-chart-wrap{min-width:0;background:#0b1522;border:1px solid #263e52;border-radius:10px;padding:7px;display:flex;flex-direction:column}
+.forecast-visual-topline,.forecast-visual-legend{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;font-size:10px;color:#97b4c6}
+.forecast-visual-topline{padding:3px 7px 6px}
+.forecast-visual-topline>span:first-child{display:flex;align-items:center;gap:4px}
+.forecast-visual-chart-scroll{width:100%;min-width:0;overflow-x:auto}
+.forecast-visual-svg{width:100%;height:auto;display:block;min-width:610px;background:#0b1927;border-radius:8px}
+.forecast-visual-svg text{pointer-events:none;user-select:none}
+.forecast-visual-legend{justify-content:flex-start;gap:7px 15px;padding:8px 6px 2px}
+.forecast-visual-legend>span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-size:9px}
+.forecast-visual-legend i{width:14px;height:5px;border-radius:2px;display:block}
+.forecast-legend-history{background:linear-gradient(90deg,#46d7c8 50%,#e26d89 50%)}
+.forecast-legend-projection{border-top:2px dashed #5bdca9}
+.forecast-legend-target{background:#39df9d}
+.forecast-legend-rebound{background:#dca95d}
+.forecast-legend-stop{background:#ed7182}
+.forecast-visual-note{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap;padding:8px 13px;border-top:1px solid #263b4c;font-size:10px;color:#8eafc0}
+.forecast-visual-note>span:last-child{color:#d9c394}
+@media(max-width:980px){
+  .forecast-visual-layout{grid-template-columns:210px minmax(0,1fr)}
+  .forecast-visual-svg{min-width:700px}
+}
+@media(max-width:720px){
+  .forecast-visual-header{padding:8px;gap:7px}
+  .forecast-visual-heading strong{font-size:12px}
+  .forecast-visual-heading small{font-size:8px}
+  .forecast-visual-layout{grid-template-columns:minmax(0,1fr);padding:6px;gap:7px}
+  .forecast-visual-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+  .forecast-visual-fact{padding:7px 8px}
+  .forecast-visual-fact strong{font-size:13px}
+  .forecast-visual-last strong{font-size:19px}
+  .forecast-visual-targets{grid-column:span 2;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+  .forecast-visual-target{flex-direction:column;align-items:flex-start;padding:7px 6px}
+  .forecast-visual-target strong{font-size:13px}
+  .forecast-visual-target small{font-size:8px}
+  .forecast-visual-confidence{grid-column:span 2}
+  .forecast-visual-chart-wrap{padding:5px}
+  .forecast-visual-svg{min-width:630px}
+  .forecast-visual-status{font-size:9px;padding:5px}
+  .forecast-visual-tabs button{min-height:26px;padding:4px 9px}
+  .forecast-visual-note{padding:8px;font-size:9px}
+}
+@media(max-width:400px){
+  .forecast-visual-controls{width:100%;justify-content:space-between}
+  .forecast-visual-target strong{font-size:12px}
+}
