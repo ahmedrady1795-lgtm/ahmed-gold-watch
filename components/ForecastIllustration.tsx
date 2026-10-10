@@ -19,7 +19,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const x=asset==='GOLD'?data?.gold:data?.bitcoin;
   const journal=journals?.[asset]??null;
   const m=buildForecastIllustration(asset,x,asset==='GOLD'?goldLive:btcLive,now,snapshotAt,journal);
-  const sn=m.sniper,dir=sn.view.side;
+  const sn=m.sniper,dir=journal?.side??sn.view.side;
   const rise=dir==='BUY',fall=dir==='SELL';
   const W=1040,H=360,x0=52,x1=612,xf=622,xr=946,yt=22,yb=275;
   const px=(p:number)=>yt+(m.upper-p)/Math.max(.0000001,m.upper-m.lower)*(yb-yt);
@@ -81,7 +81,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <small>الاتجاه المحتمل</small>
             <strong className={rise?'green':fall?'red':'forecast-visual-muted'}>
               {rise?<ArrowUpRight size={16}/>:fall?<ArrowDownRight size={16}/>:<Activity size={15}/>}
-              {rise?'صعود':fall?'هبوط':'انتظار'}</strong>
+              {rise?(m.ready?'صعود':'صعود سابق'):fall?(m.ready?'هبوط':'هبوط سابق'):'انتظار'}</strong>
           </div>
           <div className="forecast-visual-targets">
             {([1,2,3] as const).map(i=>{
