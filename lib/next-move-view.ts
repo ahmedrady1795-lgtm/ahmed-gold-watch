@@ -24,9 +24,9 @@ export function buildNextMoveView(
   const forecast=x?.forwardMove;
   const scalp=x?.scalpDesk;
   const quotes=[
-    asset==='GOLD'&&liveGoldQuote?{
+    liveGoldQuote?{
       price:liveGoldQuote.price,time:liveGoldQuote.sourceTime,
-      valid:liveGoldQuote.ok===true
+      valid:liveGoldQuote.ok===true&&(asset==='GOLD'||liveGoldQuote.asset==='BTC')
     }:null,
     {price:scalp?.quote?.price,time:scalp?.quote?.at,valid:true},
     {price:x?.livePulse?.price,time:x?.livePulse?.sourceTime,valid:true}
@@ -47,7 +47,9 @@ export function buildNextMoveView(
   const acc=num(x?.forecastValidation15m?.global?.accuracy);
   // The gold model's observed near-chance validation is not an entry signal.
   const unqualified=evidenceCount>=100&&acc!=null&&acc<55;
-  const indicated:Side=forecast?.side==='BUY'||forecast?.side==='SELL'?forecast.side:'WAIT';
+  // A stability hold preserves the historical plan, but cannot be promoted to a fresh entry signal.
+  const indicated:Side=forecast?.status==='STABILITY_HOLD'?'WAIT':
+    forecast?.side==='BUY'||forecast?.side==='SELL'?forecast.side:'WAIT';
   const rawTarget=validPrice(forecast?.targets?.t1?.price??forecast?.target);
   const rawInvalidation=validPrice(forecast?.targets?.invalidation??forecast?.invalidation);
   const orientedTarget=price!=null&&rawTarget!=null&&
@@ -60,7 +62,7 @@ export function buildNextMoveView(
   const reason=!priceFresh?'مفيش سعر حديث موثوق؛ التوقع مش قابل للاستخدام دلوقتي':
     !forecastFresh?'آخر تحليل قديم؛ استنى تحديث جديد':
     unqualified?'توقع الاتجاه غير مؤهل تاريخيًا؛ ممنوع اعتباره إشارة':
-    indicated==='WAIT'?'السوق لسه مفيهوش اتجاه 15 دقيقة متأكد':
+    indicated==='WAIT'?(forecast?.status==='STABILITY_HOLD'?'السيناريو السابق محفوظ للمراقبة؛ التأكيد الجديد غير مكتمل':'السوق لسه مفيهوش اتجاه 15 دقيقة متأكد'):
     !orientedTarget||!orientedStop?'الهدف أو مستوى الإبطال مش متوافق مع اتجاه السعر الحالي':
     'سيناريو حركة مشروط، مش أمر دخول أو احتمال ربح';
   const envelope=x?.movementEnvelope?.m15;
