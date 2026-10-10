@@ -274,7 +274,8 @@ export default function Home(){
       <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#market-forecast">القناص</a><a href="#forecast-illustration">رسم الحركة القادمة</a><a href="#scalp-opportunities">سكالب ثواني</a><a href="#market-news">الأخبار</a></nav>
     </div>
     <section className="content lite-content" aria-label="بيانات السوق والتحليل">
-      <AICommandCenter assetView={assetView} data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick}/>
+      <AICommandCenter assetView={assetView} data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick}
+        btcLive={btcLive&&shownBtc!=null?{asset:'BTC',ok:true,price:shownBtc,sourceTime:shownBtcAt}:null}/>
       <div id="market-news" className="workspace-section news-home-section">
         <NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredEvent={aiData?.autopilot?.nextEvent||null}/>
       </div>
