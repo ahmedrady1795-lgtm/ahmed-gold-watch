@@ -79,3 +79,13 @@ body:has(.modern-workspace){background:radial-gradient(ellipse at 85% 0,rgba(55,
 .proof-retest{margin-top:10px;padding:10px 9px;background:rgba(38,60,81,.32);border:1px solid rgba(133,167,191,.28);border-radius:9px;display:flex;flex-direction:column;gap:5px}
 .proof-retest>b{font-size:12px;color:#e0ebf8}
 .proof-retest>span{font-size:11px;color:#bdcbda;line-height:1.65}
+
+.proof-breakdown{margin:12px 0 0;border-top:1px solid rgba(130,160,190,.22);padding-top:12px}
+.proof-breakdown>summary{cursor:pointer;font-weight:700;font-size:13px;color:#c9dcef}
+.proof-breakdown-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:10px 0}
+.proof-breakdown-row{padding:10px;background:rgba(19,36,55,.4);border:1px solid rgba(140,165,190,.18);border-radius:9px;display:flex;flex-direction:column;gap:6px}
+.proof-breakdown-row strong{font-size:12px}
+.proof-breakdown-row span{font-size:12px;font-variant-numeric:tabular-nums}
+.proof-breakdown-row small{font-size:11px;color:#aebed0}
+.proof-breakdown>small{color:#aebed0;font-size:11px;line-height:1.7}
+@media(max-width:750px){.proof-breakdown-grid{grid-template-columns:1fr}}
