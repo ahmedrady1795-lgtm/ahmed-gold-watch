@@ -4,7 +4,6 @@ import {useEffect,useRef,useState} from 'react';
 import {Activity,RefreshCw,WifiOff} from 'lucide-react';
 import AICommandCenter from '../components/AICommandCenter';
 import NewsCommandCenter from '../components/NewsCommandCenter';
-import {computeWaveLead,type WaveLead,type WaveTick} from '../lib/wave-lead';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))
   ?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})
@@ -20,28 +19,15 @@ export default function Home(){
   const [btcSource,setBtcSource]=useState('Coinbase');
   const [btcAt,setBtcAt]=useState(0);
   const [goldTick,setGoldTick]=useState<any>(null);
-  const [marketLead,setMarketLead]=useState<{gold:any;btc:any}>({gold:null,btc:null});
   const goldTickRef=useRef<any>(null);
   const [aiLastOkAt,setAiLastOkAt]=useState(0);
   const [now,setNow]=useState(Date.now());
 
-  const btcWaveTicks=useRef<WaveTick[]>([]);
-  const goldWaveTicks=useRef<WaveTick[]>([]);
-  const fastWaveRef=useRef<{btc:WaveLead|null;gold:WaveLead|null}>({btc:null,gold:null});
   const aiInFlight=useRef(false);
   const aiReady=useRef(false);
   const aiFailureCount=useRef(0);
   const aiEtag=useRef('');
   const btcUiAt=useRef(0);
-
-  const pushWave=(asset:'btc'|'gold',tick:WaveTick)=>{
-    const ref=asset==='btc'?btcWaveTicks:goldWaveTicks;
-    ref.current.push(tick);
-    const cutoff=tick.at-12000;
-    while(ref.current.length&&ref.current[0].at<cutoff)ref.current.shift();
-    if(ref.current.length>500)ref.current=ref.current.slice(-500);
-    fastWaveRef.current={...fastWaveRef.current,[asset]:computeWaveLead(ref.current,tick.at)};
-  };
 
   const loadAi=async(manual=false)=>{
     if(aiInFlight.current)return;
@@ -133,7 +119,7 @@ export default function Home(){
         const p=Number(x.price),parsed=Date.parse(x.time),at=Number.isFinite(parsed)?parsed:Date.now(),bid=Number(x.best_bid),ask=Number(x.best_ask);
         if(!Number.isFinite(p)||p<=0)return;
         lastWsTick=Date.now();
-        pushWave('btc',{at,price:p,bid:Number.isFinite(bid)?bid:undefined,ask:Number.isFinite(ask)?ask:undefined});
+
         if(!closed&&Date.now()-btcUiAt.current>=250){
           btcUiAt.current=Date.now();
           setBtc(p);setBtcAt(at);setBtcSource('Coinbase WebSocket');
@@ -157,7 +143,7 @@ export default function Home(){
       if(!Number.isFinite(price)||price<=0)return;
       const receivedAt=Date.now();
       lastStreamTick=receivedAt;
-      pushWave('gold',{at,price,bid:Number.isFinite(bid)?bid:undefined,ask:Number.isFinite(ask)?ask:undefined});
+
       const nextGoldTick={ok:true,price,bid:Number.isFinite(bid)&&bid>0?bid:null,ask:Number.isFinite(ask)&&ask>0?ask:null,sourceTime:at,receivedAt,ageMs:Math.max(0,receivedAt-at),status:'live',mode:'stream',source:'Biquote · MT5 XAUUSD WebSocket',brokerSymbol:'XAUUSD',degraded:false};
       goldTickRef.current=nextGoldTick;
       if(!closed)setGoldTick(nextGoldTick);
@@ -200,7 +186,7 @@ export default function Home(){
         if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)){nextDelay=3000;return;}
         const mode=String(j.mode||'external');
         nextDelay=mode==='broker'?650:mode==='external'?1800:3000;
-        pushWave('gold',{at,price,bid:Number.isFinite(bid)?bid:undefined,ask:Number.isFinite(ask)?ask:undefined});
+
         const nextGoldTick={
           ok:true,price,
           bid:Number.isFinite(bid)?bid:null,
@@ -226,50 +212,6 @@ export default function Home(){
     void connectStream();
     void loop();
     return()=>{closed=true;if(timer)clearTimeout(timer);clearTimeout(reconnect);try{stream?.close();}catch{}};
-  },[]);
-
-  useEffect(()=>{
-    let closed=false,source:EventSource|null=null,reconnect:ReturnType<typeof setTimeout>|undefined;
-    let btcInFlight=false,btcTimer:ReturnType<typeof setTimeout>|undefined;
-
-    const connectGoldLead=()=>{
-      if(closed)return;
-      source=new EventSource('/api/market-lead/stream');
-      source.addEventListener('lead',(event:any)=>{
-        try{
-          const j=JSON.parse(String(event?.data||'{}'));
-          if(!closed&&j?.ok)setMarketLead(prev=>({...prev,gold:j}));
-        }catch{}
-      });
-      source.onerror=()=>{
-        try{source?.close();}catch{}
-        if(!closed)reconnect=setTimeout(connectGoldLead,500);
-      };
-    };
-
-    const loadBtcLead=async()=>{
-      if(closed||btcInFlight)return;
-      btcInFlight=true;
-      try{
-        const r=await fetch('/api/market-lead?asset=BTC&ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
-        const j=await r.json();
-        if(!closed&&r.ok&&j?.ok)setMarketLead(prev=>({...prev,btc:j}));
-      }catch{}finally{btcInFlight=false;}
-    };
-    const btcLoop=async()=>{
-      if(closed)return;
-      if(document.visibilityState==='visible')await loadBtcLead();
-      if(!closed)btcTimer=setTimeout(btcLoop,1200);
-    };
-
-    connectGoldLead();
-    void btcLoop();
-    return()=>{
-      closed=true;
-      clearTimeout(reconnect);
-      if(btcTimer)clearTimeout(btcTimer);
-      try{source?.close();}catch{}
-    };
   },[]);
 
   const aiGold=aiData?.gold?.livePulse;
@@ -331,7 +273,7 @@ export default function Home(){
       <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#scalp-opportunities">سكالب ثواني</a><a href="#market-forecast">الحركة القادمة</a><a href="#market-news">الأخبار</a></nav>
     </div>
     <section className="content lite-content" aria-label="بيانات السوق والتحليل">
-      <AICommandCenter assetView={assetView} data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick} marketLead={marketLead} fastWave={fastWaveRef.current}/>
+      <AICommandCenter assetView={assetView} data={scalpDesk?{...aiData,gold:{...aiData?.gold,asset:"GOLD",scalpDesk:scalpDesk.gold},bitcoin:{...aiData?.bitcoin,asset:"BTC",scalpDesk:scalpDesk.bitcoin}}:aiData} error={aiError} now={now} goldLive={goldTick}/>
       <div id="market-news" className="workspace-section news-home-section">
         <NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredEvent={aiData?.autopilot?.nextEvent||null}/>
       </div>
