@@ -25,9 +25,15 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const historyFresh=historyAge!=null&&historyAge<=180000;
   const displayTargets=journal?.targets??(auditRequired?[]:sniper.targets);
   const displayStop=journal?.invalidation??sniper.view.invalidation;
+  const sameDirection=!journal||journal.side===sniper.view.side;
+  const ahead=price!=null&&displayTargets.length>0&&displayTargets.every((t,i)=>
+    t.price>0&&(sniper.view.side==='BUY'?t.price>price:sniper.view.side==='SELL'?t.price<price:false)&&
+    (i===0||(sniper.view.side==='BUY'?t.price>displayTargets[i-1].price:t.price<displayTargets[i-1].price)));
+  const stopSafe=price!=null&&displayStop!=null&&
+    (sniper.view.side==='BUY'?displayStop<price:sniper.view.side==='SELL'?displayStop>price:false);
   const ready=sniper.view.side!=='WAIT'&&sniper.view.priceFresh&&sniper.view.forecastFresh&&
-    displayTargets.length>0&&historyFresh&&(!journal||journal.state==='ACTIVE')&&
-    (!auditRequired||journal?.state==='ACTIVE');
+    displayTargets.length>0&&historyFresh&&sameDirection&&ahead&&stopSafe&&
+    (!journal||journal.state==='ACTIVE')&&(!auditRequired||journal?.state==='ACTIVE');
   const price=sniper.view.price;
   const bands:PriceBand[]=[];
   if((ready||Boolean(journal))&&historyFresh){
