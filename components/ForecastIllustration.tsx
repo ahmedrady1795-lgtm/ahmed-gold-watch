@@ -19,7 +19,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
   const [focusCandles,setFocusCandles]=useState(false);
   const [newsOpen,setNewsOpen]=useState(false);
-  const dueNews=economicNewsTimeline(data?.newsEvents||[],data?.autopilot?.nextEvent||null,now).alerts.length;
+  const earlyNews=economicNewsTimeline(data?.newsEvents||[],data?.autopilot?.nextEvent||null,now).alerts;
+  const dueNews=earlyNews.length;
   const asset: 'GOLD'|'BTC'=assetView==='ALL'?chosen:assetView;
   const x=asset==='GOLD'?data?.gold:data?.bitcoin;
   const journal=journals?.[asset]??null;
@@ -96,6 +97,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </span>
         </div>
       </header>
+      {earlyNews.length>0&&!newsOpen&&<button type="button" className="forecast-news-peek" onClick={()=>setNewsOpen(true)}>
+        خبر خلال 8 ساعات: {earlyNews[0].name} · التفاصيل في تبويب الأخبار ↗
+      </button>}
       {newsOpen&&<div className="forecast-news-drawer"><NewsCommandCenter events={data?.newsEvents||[]} now={now} featuredEvent={data?.autopilot?.nextEvent||null}/></div>}
       <div className="forecast-brain-strip">
         <span><Activity size={14}/> {m.fourHour.ready?'4 ساعات: '+m.fourHour.phase+' · '+(m.fourHour.side==='BUY'?'ميل شراء':m.fourHour.side==='SELL'?'ميل بيع':'ميل محايد'):watchReady&&sn.view.side==='WAIT'?'رصد هيكلي نشط · M5 / M15 / H1':sn.phaseText} {sn.compression!=null?'· جاهزية '+sn.compression+'/100':''}</span>
