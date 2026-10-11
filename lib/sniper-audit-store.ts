@@ -2,13 +2,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {buildSniperOutlook} from './sniper-outlook';
 import {advanceScenario,scorecard,startScenario,terminal,type Scenario,type Asset} from './sniper-scorecard';
+import {buildContinuousBias} from './continuous-direction';
+import {analyzeFourHours} from './four-hour-structure';
+import {advanceWatch,emptyWatch,type WatchMemory} from './sniper-watch';
 
 // Railway Gold Watch has an existing dedicated persistent volume at /data.
 // /tmp fallback intentionally does NOT claim persistence across deploys.
 const STORAGE='/data/predator-sniper-audit-v1.json';
 const FALLBACK='/tmp/predator-sniper-audit-v1.json';
-type AuditFile={version:1;scenarios:Scenario[];updatedAt:number};
-const blank=():AuditFile=>({version:1,scenarios:[],updatedAt:0});
+type AuditFile={version:1;scenarios:Scenario[];updatedAt:number;watch:Record<Asset,WatchMemory>};
+const blank=():AuditFile=>({version:1,scenarios:[],updatedAt:0,watch:{GOLD:emptyWatch(),BTC:emptyWatch()}});
 let memory:AuditFile|null=null,persisted=false,lastSave=0,dirty=false,lastBlock:Record<Asset,string>={GOLD:'',BTC:''};
 
 function load(){
@@ -17,7 +20,12 @@ function load(){
     try{
       const obj=JSON.parse(fs.readFileSync(f,'utf8'));
       if(obj?.version===1&&Array.isArray(obj.scenarios)){
-        memory={version:1,scenarios:obj.scenarios.slice(-600),updatedAt:Number(obj.updatedAt||0)};
+        const restore=(asset:Asset):WatchMemory=>{
+          const saved=obj.watch?.[asset];
+          return saved&&Array.isArray(saved.records)?{...emptyWatch(),...saved,records:saved.records.slice(-600)}:emptyWatch();
+        };
+        memory={version:1,scenarios:obj.scenarios.slice(-600),updatedAt:Number(obj.updatedAt||0),
+          watch:{GOLD:restore('GOLD'),BTC:restore('BTC')}};
         persisted=f===STORAGE;
         return memory;
       }
@@ -25,9 +33,9 @@ function load(){
   }
   memory=blank();return memory;
 }
-function save(now:number){
+function save(now:number,force=false){
   const state=load();
-  if(!dirty||now-lastSave<5000)return;
+  if(!dirty||!force&&now-lastSave<5000)return;
   const file=fs.existsSync(path.dirname(STORAGE))?STORAGE:FALLBACK;
   try{
     const tmp=file+'.tmp';
@@ -108,12 +116,25 @@ export function updateSniperAudit(payload:any,now=Date.now()){
   const modelAt=Number(payload?.checkedAt||0);
   if(!payload?.ok||!modelAt)return getSniperAudit(now);
   try{
+    let watchChanged=false;
+    for(const asset of ['GOLD','BTC'] as const){
+      const x=asset==='GOLD'?payload.gold:payload.bitcoin;
+      const view=buildSniperOutlook(asset,x,null,now,modelAt).view;
+      const fourHour=analyzeFourHours({asset,candles:x?.chartCandles,frames:x?.chartHigherFrames,
+        now,source:x?.candleSource,referencePrice:view.price});
+      const raw=buildContinuousBias({asset,frames:x?.chartHigherFrames,price:view.price,now,
+        sourceReady:view.priceFresh&&view.forecastFresh,fourHour});
+      const previous=load().watch[asset];
+      const next=advanceWatch(previous,raw,asset,view.price,x?.chartCandles,now,modelAt);
+      if(next!==previous){load().watch[asset]=next;dirty=true;watchChanged=true;}
+    }
     runAsset('GOLD',payload.gold,modelAt,now);
     runAsset('BTC',payload.bitcoin,modelAt,now);
     // Keep the persistent audit heartbeat current even while no setup passes.
     // This distinguishes "no qualified setup" from a dead/missing ledger.
     if(now-load().updatedAt>=30000)dirty=true;
-    save(now);
+    // Persist accepted watch changes before returning them to any browser.
+    save(now,watchChanged);
   }catch(e){
     console.warn('[SNIPER-AUDIT] update:',e instanceof Error?e.message:'unknown');
   }
@@ -132,6 +153,12 @@ export function getSniperAudit(now=Date.now()){
     current:{GOLD:show('GOLD'),BTC:show('BTC')},
     metrics:{GOLD:scorecard(records,'GOLD'),BTC:scorecard(records,'BTC')},
     block:lastBlock,
+    watch:Object.fromEntries((['GOLD','BTC'] as const).map(asset=>{
+      const w=state.watch[asset],current=w.records.at(-1)||null;
+      return [asset,{state:w.state,bias:w.bias,updatedAt:w.updatedAt,modelAt:w.modelAt,
+        current,metrics:scorecard(w.records,asset),
+        recent:w.records.filter(r=>terminal(r.status)).slice(-5).reverse()}];
+    })),
     recent:records.filter(r=>terminal(r.status)).slice(-15).reverse().map(r=>({
       id:r.id,asset:r.asset,side:r.side,status:r.status,startedAt:r.startedAt,
       resolvedAt:r.resolvedAt,targets:r.targets.map(t=>({stage:t.stage,price:t.price,reachedAt:t.reachedAt})),

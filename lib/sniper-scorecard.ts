@@ -1,7 +1,7 @@
 // Closed-candle-only audit of the forward structural sniper. Never a trading order.
 export type Asset='GOLD'|'BTC';
 export type Dir='BUY'|'SELL';
-export type AuditStatus='ACTIVE'|'COMPLETED'|'STOPPED'|'EXPIRED'|'AMBIGUOUS'|'UNOBSERVED';
+export type AuditStatus='ACTIVE'|'COMPLETED'|'STOPPED'|'EXPIRED'|'AMBIGUOUS'|'UNOBSERVED'|'REVERSED';
 export type Level={stage:1|2|3;price:number;low:number;high:number;quality:number;kind:string;reachedAt:number|null};
 export type Scenario={
   id:string;asset:Asset;side:Dir;startedAt:number;modelAt:number;expiresAt:number;
@@ -9,6 +9,7 @@ export type Scenario={
   status:AuditStatus;lastBarOpen:number|null;lastCheckedAt:number;firstHitAt:number|null;
   resolvedAt:number|null;resolvedPrice:number|null;bestFavorableR:number;worstAdverseR:number;
   note:string;processedBars:number
+  purpose?:'SCENARIO'|'OBSERVATION';
 };
 export type Bar={time:number;open:number;high:number;low:number;close:number};
 const n=(v:unknown):number|null=>v!=null&&v!==''&&Number.isFinite(Number(v))?Number(v):null;
@@ -28,26 +29,28 @@ export function validClosedBars(rows:any,now:number):Bar[]{
 export function startScenario(args:{
   asset:Asset;side:Dir;at:number;modelAt:number;price:number;stop:number;confidence:number;
   targets:Array<{stage:1|2|3;price:number;low:number;high:number;quality:number;kind:string;source?:string}>
-  durationMs?:number
+  durationMs?:number;purpose?:'SCENARIO'|'OBSERVATION'
 }):Scenario|null{
   const {asset,side,at,modelAt,price,stop,confidence}=args;
   const targets=args.targets.slice(0,3);
-  if(!Number.isFinite(at)||!Number.isFinite(modelAt)||price<=0||stop<=0||
+  if(![at,modelAt,price,stop,confidence].every(Number.isFinite)||price<=0||stop<=0||
     !(side==='BUY'?stop<price:stop>price)||targets.length<1)return null;
   let before=price;
   for(const t of targets){
-    if(!Number.isFinite(t.price)||t.price<=0||t.low<=0||t.high<t.low||
+    if(![t.price,t.low,t.high,t.quality].every(Number.isFinite)||t.price<=0||t.low<=0||t.high<t.low||
       !(side==='BUY'?t.price>before:t.price<before))return null;
     before=t.price;
   }
   const risk=Math.abs(price-stop);
   if(risk<=0)return null;
   const reward=Math.abs(targets[0].price-price);
-  if(reward/risk<1.35)return null; // Paper setups not worth the risk get REJECTED.
-  const duration=Math.max(30*60000,Math.min(90*60000,Number(args.durationMs||60*60000)));
+  const observation=args.purpose==='OBSERVATION';
+  if(!observation&&reward/risk<1.35)return null; // Entry qualification stays independent of observation.
+  const duration=Math.max(30*60000,Math.min((observation?480:90)*60000,Number(args.durationMs||60*60000)));
   const id=[asset,Math.round(at/1000),Math.round(price*100),Math.round(stop*100)].join('-');
   return {id,asset,side,startedAt:at,modelAt,expiresAt:at+duration,entry:price,
-    stop,confidence,source:'M15/H1_STRUCTURAL',targets:targets.map(t=>({...t,reachedAt:null})),
+    stop,confidence,purpose:observation?'OBSERVATION':'SCENARIO',
+    source:observation?'H1/H4_WATCH':'M15/H1_STRUCTURAL',targets:targets.map(t=>({...t,reachedAt:null})),
     status:'ACTIVE',lastBarOpen:null,lastCheckedAt:at,firstHitAt:null,
     resolvedAt:null,resolvedPrice:null,bestFavorableR:0,worstAdverseR:0,
     note:'توقع ورقي جارٍ، لم تتم معايرة نجاحه بعد',processedBars:0};
@@ -106,7 +109,7 @@ export function advanceScenario(previous:Scenario,raw:any,now:number):Scenario{
 }
 export function scorecard(records:Scenario[],asset:Asset){
   const rows=records.filter(r=>r.asset===asset);
-  const observed=rows.filter(r=>['COMPLETED','STOPPED','EXPIRED'].includes(r.status));
+  const observed=rows.filter(r=>['COMPLETED','STOPPED','EXPIRED','REVERSED'].includes(r.status));
   const ambiguous=rows.filter(r=>r.status==='AMBIGUOUS').length;
   const unobserved=rows.filter(r=>r.status==='UNOBSERVED').length;
   const pending=rows.filter(r=>r.status==='ACTIVE').length;
@@ -122,6 +125,7 @@ export function scorecard(records:Scenario[],asset:Asset){
   return {status:n>=40?'TRACKING':'COLLECTING',requiredSamples:40,observed:n,pending,ambiguous,unobserved,
     completed:fullyCompleted,stopped:observed.filter(r=>r.status==='STOPPED').length,
     expired:observed.filter(r=>r.status==='EXPIRED').length,
+    reversed:observed.filter(r=>r.status==='REVERSED').length,
     targets:rates,
     // These are *observed reach rates*, not profitability, win probability or OOS validation.
     description:'نتائج أهداف قناص هيكلية منذ تفعيل السجل، من شموع M1 مغلقة. حالات الانقطاع والتداخل مستبعدة. ليست باكتيست مستقلًا.'};

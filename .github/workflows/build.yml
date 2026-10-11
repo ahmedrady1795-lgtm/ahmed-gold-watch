@@ -34,6 +34,7 @@ jobs:
       - run: node tests/four-hour-structure.cjs
       - run: node tests/long-range-targets.cjs
       - run: node tests/sniper-scorecard.cjs
+      - run: node tests/sniper-watch.cjs
       - run: node tests/forecast-illustration.cjs
       - run: node tests/forecast-journal.cjs
       - run: node tests/direction.cjs

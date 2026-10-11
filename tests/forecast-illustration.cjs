@@ -77,3 +77,18 @@ m=build('GOLD',{...base,livePulse:{price:100,sourceTime:now-30000}},
 assert.equal(m.watchReady,false,'price staleness vetoes watch even with an archived record');
 assert.equal(m.displayTargets.length,0,'stale archives stay off main price chart');
 console.log('PASS: real candles, numeric targets, rebound, stop, freshness and no imaginary arrows');
+const savedBias={...m.bias,side:'BUY',active:true,status:'LIVE',invalidation:98,
+  targets:[{stage:1,price:108,low:108,high:108,quality:75,kind:'STRUCTURAL',source:'H1',distanceAtr:5}]};
+const savedState={side:'BUY',since:now-60000,lastProcessedM15:now,
+  oppositeSide:'WAIT',oppositeBars:0,invalidation:98,targets:savedBias.targets,reachedPrices:[]};
+m=build('GOLD',base,null,now,now-10000,null,true,savedState,savedBias);
+assert.equal(m.watchReady,true);
+assert.equal(m.displayTargets[0].price,108,'chart takes the authoritative server objective');
+m=build('GOLD',base,null,now,now-10000,null,true,{...savedState,targets:[],reachedPrices:[108]},
+  {...savedBias,targets:[]});
+assert.equal(m.watchReady,false,'consumed server goals cannot fall back to raw model goals');
+m=build('GOLD',base,null,now,now-10000,null,true,savedState,{...savedBias,active:false});
+assert.equal(m.watchReady,false,'paused server path cannot fall back to a live raw model');
+m=build('GOLD',{...base,livePulse:{price:97,sourceTime:now}},null,now,now-10000,null,true,savedState,savedBias);
+assert.equal(m.watchReady,false,'price breach cannot resurrect a model path');
+console.log('PASS: authoritative server chart levels, consumed objectives, paused memory and immediate invalidation');

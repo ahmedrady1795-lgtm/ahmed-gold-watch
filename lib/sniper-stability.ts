@@ -6,6 +6,18 @@ export type StableBiasState={
   oppositeSide:Side;oppositeBars:number;invalidation:number|null;
   targets:FarLevel[];reachedPrices?:number[];
 };
+// Presentation cannot mutate the server's reversal counters. Live browser
+// prices may consume a level or pause a breached path, but never flip it.
+export function presentServerBias(server:ObservedBias,local:ObservedBias,price:number|null):ObservedBias{
+  if(!server.active||!local.active||price==null||!Number.isFinite(price)||price<=0)
+    return {...server,active:false,status:'PAUSED',targets:[],invalidation:null,
+      reason:'ذاكرة الخادم محفوظة؛ البيانات الحالية لا تسمح بمسار حي'};
+  const breached=server.invalidation!=null&&(server.side==='BUY'?price<=server.invalidation:
+    server.side==='SELL'?price>=server.invalidation:false);
+  if(breached)return {...server,side:'WAIT',targets:[],invalidation:null,
+    label:'الإبطال اتكسر · تحديث ذاكرة الخادم',rangeBound:true};
+  return {...server,targets:server.targets.filter(t=>ahead(server.side,price,t))};
+}
 type Outcome={bias:ObservedBias;state:StableBiasState|null;held:boolean;explanation:string};
 
 const ahead=(side:Side,price:number,t:FarLevel)=>side==='BUY'?t.price>price:side==='SELL'?t.price<price:false;

@@ -2,7 +2,7 @@ import type {ForecastJournal} from './forecast-journal';
 import type {Scenario} from './sniper-scorecard';
 
 export function scenarioAsJournal(record:Scenario|null|undefined):ForecastJournal|null{
-  if(!record)return null;
+  if(!record||record.purpose==='OBSERVATION')return null;
   const state:ForecastJournal['state']=record.status==='ACTIVE'?'ACTIVE':
     record.status==='COMPLETED'?'TP_REACHED':
     record.status==='STOPPED'?'INVALIDATED':
