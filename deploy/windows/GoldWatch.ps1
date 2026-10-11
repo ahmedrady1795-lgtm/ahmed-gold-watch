@@ -114,7 +114,7 @@ try {
             } else {
                 $env:ML_ENGINE_URL = 'http://ml:8000'
                 Say 'Starting Standard: website + BTC ML + paper scalper.'
-                Invoke-Compose @('--profile','ml','up','-d','--build','web','ml','worker','--remove-orphans')
+                Invoke-Compose @('--profile','ml','up','-d','--build','--remove-orphans','web','ml','worker')
             }
             Say "Open $Url"
             Check-Live
