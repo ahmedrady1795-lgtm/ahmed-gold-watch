@@ -21,6 +21,7 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: node --check learning-worker.mjs
+      - run: node tests/worker-cadence.cjs
       - run: node tests/indicators.cjs
       - run: node tests/core-quality.cjs
       - run: node tests/scalp.cjs
