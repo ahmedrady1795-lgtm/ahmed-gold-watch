@@ -9,6 +9,10 @@ export type NeuralPrediction={
 let cache:{at:number;value:NeuralPrediction}|null=null;
 
 export async function getNeuralPrediction(now=Date.now()):Promise<NeuralPrediction>{
+  // An unqualified model must be fully detachable without deleting its model files.
+  // Apply this BEFORE the cache so disabling cannot replay a previous prediction.
+  if(process.env.NEURAL_ENABLED==='0')
+    return {ok:false,status:'DISABLED',ready:false,side:'WAIT',reason:'Neural suspended by operator'};
   if(cache&&now-cache.at<2500)return cache.value;
   const url=String(process.env.NEURAL_ENGINE_URL||'').trim();
   if(!url)return {ok:false,status:'DISABLED',ready:false,side:'WAIT',reason:'NEURAL_ENGINE_URL missing'};

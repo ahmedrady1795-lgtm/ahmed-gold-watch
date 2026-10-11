@@ -20,3 +20,5 @@ services:
         value: "1"
       - key: AUTONOMOUS_PRODUCTION_SOURCE_WRITE
         value: "false"
+      - key: NEURAL_ENABLED
+        value: "0"
