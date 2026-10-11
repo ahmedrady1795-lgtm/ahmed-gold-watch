@@ -1,0 +1,87 @@
+name: gold-watch-local
+
+# Private, zero-hosting-cost Windows Docker Desktop configuration.
+# Web is reachable ONLY from the laptop at http://127.0.0.1:3000
+# Paper-only scalp; live brokerage orders are forced OFF.
+services:
+  web:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      ML_ENGINE_URL: ${ML_ENGINE_URL-}
+      NEURAL_ENGINE_URL: ""
+      MT5_AUTOTRADE_ENABLED: "false"
+      KILL_SWITCH_ENABLED: "true"
+      MT5_BRIDGE_TOKEN: ${MT5_BRIDGE_TOKEN:-}
+      TRADING_ECONOMICS_API_KEY: ${TRADING_ECONOMICS_API_KEY:-}
+      TWELVE_DATA_API_KEY: ${TWELVE_DATA_API_KEY:-}
+      TELEGRAM_ALERTS_ENABLED: ${TELEGRAM_ALERTS_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
+    volumes:
+      - type: bind
+        source: ../../local-data/web
+        target: /data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 8s
+      retries: 6
+      start_period: 120s
+    mem_limit: 1200m
+    cpus: 1.5
+
+  worker:
+    image: node:22-alpine
+    restart: unless-stopped
+    working_dir: /srv
+    command: ["node", "learning-worker.mjs"]
+    environment:
+      AI_ANALYSIS_URL: http://web:3000/api/ai-analysis
+      SCALP_PULSE_URL: http://web:3000/api/scalp
+      LEARNING_INTERVAL_MS: ${LEARNING_INTERVAL_MS:-10000}
+      SCALP_PULSE_INTERVAL_MS: ${SCALP_PULSE_INTERVAL_MS:-5000}
+      SCALP_PULSE_ENABLED: "1"
+    volumes:
+      - type: bind
+        source: ../../learning-worker.mjs
+        target: /srv/learning-worker.mjs
+        read_only: true
+    depends_on:
+      web:
+        condition: service_healthy
+    read_only: true
+    mem_limit: 128m
+    cpus: 0.25
+
+  ml:
+    profiles: ["ml"]
+    build:
+      context: ../../ml-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      MODEL_DIR: /data
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      ML_RETRAIN_SECONDS: ${ML_RETRAIN_SECONDS:-21600}
+    volumes:
+      - type: bind
+        source: ../../local-data/ml
+        target: /data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).close()"]
+      interval: 30s
+      timeout: 6s
+      retries: 8
+      start_period: 120s
+    mem_limit: 1600m
+    cpus: 1.25
