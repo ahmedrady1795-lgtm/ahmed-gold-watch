@@ -126,7 +126,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             {([1,2,3] as const).map(i=>{
               const target=m.displayTargets.find(t=>t.stage===i);
               return <div key={i} className="forecast-visual-target">
-                <span>{watchReady?('هدف بعيد '+i+' · مراقبة'):(i===1?'TP1 · أول':i===2?'TP2 · رئيسي':'TP3 · ممتد')}<small>{statusReady&&target&&'reached' in target&&target.reached?'تم الوصول':watchReady&&target?(target.source||'H1/H4 · مرصود'):(target?'M15/H1 · هيكلي':'لا يوجد مستوى مرصود بعد')}</small></span>
+                <span>{watchReady?('هدف بعيد '+i+' · مراقبة'):(i===1?'TP1 · أول':i===2?'TP2 · رئيسي':'TP3 · ممتد')}<small>{statusReady&&target&&'reached' in target&&target.reached?'تم الوصول':watchReady&&target?('source' in target && typeof target.source==='string'?target.source:'H1/H4 · مرصود'):(target?'M15/H1 · هيكلي':'لا يوجد مستوى مرصود بعد')}</small></span>
                 <strong dir="ltr">{fmt(target?.price)}</strong>
               </div>;
             })}
