@@ -1,9 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {Activity,RefreshCw,WifiOff} from 'lucide-react';
 import AICommandCenter from '../components/AICommandCenter';
-import NewsCommandCenter from '../components/NewsCommandCenter';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))
   ?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})
@@ -218,51 +216,14 @@ export default function Home(){
   const shownBtcAt=btcAt||Number(aiBtc?.sourceTime||0);
   const btcLive=Boolean(shownBtcAt&&now-shownBtcAt<10000);
 
-  return <main className="shell modern-workspace">
-    <a className="skip-link" href="#market-forecast">انتقل إلى القناص</a>
-    <header className="topbar">
-      <div className="brand">
-        <div className="brandmark">AG</div>
-        <div><span>AHMED · LIVE MARKET</span><strong>GOLD WATCH</strong></div>
-      </div>
-      <div className="tickerstrip">
-        <div>
-          <small>XAU/USD</small>
-          <b>{fmt(goldPrice)}</b>
-          <em className={goldLive?'up':goldUsable?'muted':'muted'}>{goldBadge}</em>
-        </div>
-        <div>
-          <small>BTC/USD · {btcSource}</small>
-          <b>{fmt(shownBtc,2)}</b>
-          <em className={btcLive?'up':'muted'}>{btcLive?'LIVE':'WAIT'}</em>
-        </div>
-      </div>
-      <div className="topbar-actions">
-        <span className={'pill '+(aiActive?'ok':'neutral')}><Activity size={14}/>{aiActive?'التحليل محدث':Number.isFinite(snapshotAge)?'آخر تحليل منذ '+Math.round(snapshotAge/1000)+' ث':'جاري التحليل'}</span>
-        <button className="refresh" onClick={()=>void loadAi(true)} disabled={busy} aria-label="تحديث التحليل">
-          <RefreshCw size={17} className={busy?'spin':''}/><span>تحديث</span>
-        </button>
-      </div>
-    </header>
-
-    {aiError&&!aiData&&<div className="fatal"><WifiOff size={18}/><div><strong>تعذر تحديث AI</strong><span>{aiError}</span></div></div>}
-
-    <div className="workspace-intro"><div><span className="eyebrow">GOLD WATCH / SMART PATH RADAR</span><h1>القناص على الرسم<span>.</span></h1></div><span className="workspace-mode"><span/> الذهب والبيتكوين</span></div>
-    <div className="workspace-toolbar">
-      <div className="asset-switch" role="group" aria-label="اختيار الأصل المعروض">
-        {([{id:'ALL',label:'الكل'},{id:'GOLD',label:'الذهب'},{id:'BTC',label:'البيتكوين'}] as const).map(item=><button key={item.id} type="button" aria-pressed={assetView===item.id} onClick={()=>setAssetView(item.id)}>{item.label}</button>)}
-      </div>
-      <nav className="workspace-nav" aria-label="أقسام لوحة المتابعة"><a href="#forecast-illustration">القناص على الرسم</a><a href="#market-news">الأخبار</a><a href="/scalp" className="workspace-scalp-link">سكالب الثواني ↗</a></nav>
-    </div>
-    <section className="content lite-content" aria-label="بيانات السوق والتحليل">
-      <AICommandCenter assetView={assetView} data={aiData} error={aiError} now={now} goldLive={goldTick}
+  return <main className="shell modern-workspace compact-sniper">
+    <a className="skip-link" href="#market-forecast">انتقل إلى خريطة الحركة</a>
+    <nav className="sniper-solo-nav" aria-label="سكالب الثواني">
+      <a href="/scalp" className="workspace-scalp-link">سكالب الثواني ↗</a>
+    </nav>
+    <section className="content lite-content" aria-label="القناص الذكي">
+      <AICommandCenter assetView="ALL" data={aiData} error={aiError} now={now} goldLive={goldTick}
         btcLive={btcLive&&shownBtc!=null?{asset:'BTC',ok:true,price:shownBtc,sourceTime:shownBtcAt}:null}/>
-      <div id="market-news" className="workspace-section news-home-section">
-        <NewsCommandCenter events={aiData?.newsEvents||[]} now={now} featuredEvent={aiData?.autopilot?.nextEvent||null}/>
-      </div>
-
     </section>
-
-    <footer>Gold Watch Predator · أهداف هيكلية متوسطة المدى · التوقع ليس أمر تداول · <a href="/scalp">سكالب الثواني</a></footer>
   </main>;
 }

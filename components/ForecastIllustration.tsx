@@ -3,6 +3,8 @@
 import {useState} from 'react';
 import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Crosshair,Layers3,ShieldAlert,Target} from 'lucide-react';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
+import NewsCommandCenter from './NewsCommandCenter';
+import {economicNewsTimeline} from '../lib/news-alert-window';
 import type {ForecastJournal} from '../lib/forecast-journal';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
@@ -16,6 +18,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
 }){
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
   const [focusCandles,setFocusCandles]=useState(false);
+  const [newsOpen,setNewsOpen]=useState(false);
+  const earlyNews=economicNewsTimeline(data?.newsEvents||[],data?.autopilot?.nextEvent||null,now).alerts;
+  const dueNews=earlyNews.length;
   const asset: 'GOLD'|'BTC'=assetView==='ALL'?chosen:assetView;
   const x=asset==='GOLD'?data?.gold:data?.bitcoin;
   const journal=journals?.[asset]??null;
@@ -31,7 +36,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const planVisible=statusReady||watchReady;
   const sn=m.sniper,dir=planVisible?m.displaySide:'WAIT';
   const rise=dir==='BUY',fall=dir==='SELL';
-  const W=1040,H=360,x0=52,x1=612,xf=622,xr=946,yt=22,yb=275;
+  const W=1040,H=465,x0=52,x1=612,xf=622,xr=946,yt=30,yb=375;
   const candleBounds=m.candles.flatMap(c=>[c.low,c.high]);
   if(m.price!=null)candleBounds.push(m.price);
   const candleMin=candleBounds.length?Math.min(...candleBounds):m.lower;
@@ -62,6 +67,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     m.status==='NO_CANDLES'?'الشموع غير متاحة':!sn.view.priceFresh?'السعر غير محدث':'الرصد نشط · انتظار توافق';
   const highest=m.displayTargets.at(-1);
   const zoneList=sn.zones.slice(0,4);
+  const reboundBuy=m.fourHour.zones.filter(z=>z.side==='BUY');
+  const reboundSell=m.fourHour.zones.filter(z=>z.side==='SELL');
   const statusText=statusReady?(journal?.message||sn.stageText):watchReady?
     (sn.view.side!=='WAIT'?sn.view.reason:m.observation.reason):
     (sn.view.reason+' · '+m.observation.reason);
@@ -70,19 +77,17 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
 
   return <section id="forecast-illustration" className="workspace-section forecast-visual-section"
     aria-labelledby="forecast-visual-title">
-    <div className="workspace-section-heading renewed-section-head">
-      <div><span>01 / AI PREDATOR · SMART PATH RADAR</span>
-        <h2 id="forecast-visual-title">القناص الذكي · الرسم المتوقع للحركة</h2></div>
-      <p>التحليل والاتجاه والأهداف الهيكلية في لوحة واحدة · السكالب في صفحة مستقلة</p>
-    </div>
+
     <div className="forecast-visual-shell">
       <header className="forecast-visual-header">
         <div className="forecast-visual-heading">
           <span className="forecast-visual-mark"><Crosshair size={17}/></span>
           <div><strong>خريطة حركة {asset==='GOLD'?'الذهب':'البيتكوين'}</strong>
-            <small>M1 CANDLES · M15/H1 STRUCTURAL SNIPER</small></div>
+            <small>M1 · FOUR-HOUR CONTEXT · M15/H1 SNIPER</small></div>
         </div>
         <div className="forecast-visual-controls">
+          <button type="button" onClick={()=>setNewsOpen(v=>!v)} aria-expanded={newsOpen}
+            className={'forecast-news-tab '+(newsOpen?'active':'')}>الأخبار {dueNews>0?'· '+dueNews:''}</button>
           {assetView==='ALL'&&<div className="forecast-visual-tabs" role="group" aria-label="الأصل على الرسم">
             <button type="button" aria-pressed={asset==='GOLD'} onClick={()=>setChosen('GOLD')}>الذهب</button>
             <button type="button" aria-pressed={asset==='BTC'} onClick={()=>setChosen('BTC')}>البيتكوين</button>
@@ -92,8 +97,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </span>
         </div>
       </header>
+      {earlyNews.length>0&&!newsOpen&&<button type="button" className="forecast-news-peek" onClick={()=>setNewsOpen(true)}>
+        خبر خلال 8 ساعات: {earlyNews[0].name} · التفاصيل في تبويب الأخبار ↗
+      </button>}
+      {newsOpen&&<div className="forecast-news-drawer"><NewsCommandCenter events={data?.newsEvents||[]} now={now} featuredEvent={data?.autopilot?.nextEvent||null}/></div>}
       <div className="forecast-brain-strip">
-        <span><Activity size={14}/> {watchReady&&sn.view.side==='WAIT'?'رصد هيكلي نشط · M5 / M15 / H1':sn.phaseText} {sn.compression!=null?'· جاهزية '+sn.compression+'/100':''}</span>
+        <span><Activity size={14}/> {m.fourHour.ready?'4 ساعات: '+m.fourHour.phase+' · '+(m.fourHour.side==='BUY'?'ميل شراء':m.fourHour.side==='SELL'?'ميل بيع':'ميل محايد'):watchReady&&sn.view.side==='WAIT'?'رصد هيكلي نشط · M5 / M15 / H1':sn.phaseText} {sn.compression!=null?'· جاهزية '+sn.compression+'/100':''}</span>
         <span><Layers3 size={14}/> مصادر الأهداف: M15 / H1 / السيولة</span>
         <span><Target size={14}/> {statusReady?'مستويات مؤهلة ومُسجلة':watchReady?'مستويات هيكلية للمراقبة فقط':'لا يوجد هدف مؤهل حاليًا'}</span>
       </div>
@@ -159,19 +168,20 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </marker>
               </defs>
               <rect x="0" y="0" width={W} height={H} rx="9" fill={'url(#forecast-chart-'+asset+')'}/>
-              <rect x={xf} y="16" width={xr-xf} height="310" fill="#56bde7" opacity=".028"/>
+              <rect x={xf} y="16" width={xr-xf} height="405" fill="#56bde7" opacity=".028"/>
               {grid.map((g,i)=><g key={'grid'+i}>
                 <line x1={x0} x2="958" y1={g.y} y2={g.y} stroke="#426076" strokeOpacity=".32" strokeDasharray="3 6"/>
                 <text x="966" y={g.y+4} fill="#97afc0" fontSize="11" fontFamily="monospace">{fmt(g.value)}</text>
               </g>)}
-              {Array.from({length:7},(_,i)=><line key={'v'+i} x1={x0+i*148} x2={x0+i*148} y1="18" y2="329"
+              {Array.from({length:7},(_,i)=><line key={'v'+i} x1={x0+i*148} x2={x0+i*148} y1="18" y2="430"
                 stroke="#345267" strokeOpacity=".20" strokeDasharray="3 7"/>)}
-              <line x1={xf-8} x2={xf-8} y1="15" y2="328" stroke="#72b3d1" strokeOpacity=".5"
+              <line x1={xf-8} x2={xf-8} y1="20" y2="425" stroke="#72b3d1" strokeOpacity=".5"
                 strokeDasharray="6 7"/>
               <text x={xf-14} y="13" textAnchor="end" fill="#88bbd3" fontSize="11">تاريخ فعلي</text>
               <text x={xf+8} y="13" fill="#e7c58a" fontSize="11">المستقبل / سيناريو</text>
               {chartBands.map(z=>{
-                const clr=z.kind==='TARGET'?'#3ce6a8':z.kind==='STOP'?'#fd687c':
+                const clr=z.kind==='BUY_REBOUND'?'#42e5a9':z.kind==='SELL_REBOUND'?'#ff7189':
+                  z.kind==='TARGET'?'#3ce6a8':z.kind==='STOP'?'#fd687c':
                   z.kind==='REBOUND'?'#e8b35e':z.kind==='SUPPLY'?'#b48be9':
                   z.kind==='DEMAND'?'#4e96ff':'#67d9e3';
                 const high=px(z.high),low=px(z.low),mid=px(z.price);
@@ -194,15 +204,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <line x1={x} x2={x} y1={px(c.high)} y2={px(c.low)} stroke={color} strokeWidth="1.3"/>
                   <rect x={x-candleWidth/2} y={top} width={candleWidth}
                     height={Math.max(1.3,bottom-top)} rx=".45" fill={color}/>
-                  <rect x={x-candleWidth/2} y={325-volumeH} width={candleWidth}
+                  <rect x={x-candleWidth/2} y={420-volumeH} width={candleWidth}
                     height={volumeH} fill={color} opacity=".35"/>
                   <title>{clock(c.time)+' · O '+fmt(c.open)+' H '+fmt(c.high)+' L '+fmt(c.low)+' C '+fmt(c.close)}</title>
                 </g>;
               })}
-              <line x1={x0} x2={xr} y1="325" y2="325" stroke="#416077" strokeOpacity=".4"/>
+              <line x1={x0} x2={xr} y1="420" y2="420" stroke="#416077" strokeOpacity=".4"/>
               {candles.length>0&&[0,.33,.66,1].map((a,i)=>{
                 const c=candles[Math.min(candles.length-1,Math.round((candles.length-1)*a))];
-                return <text key={'time'+i} x={x0+(i/3)*(x1-x0)} y="346"
+                return <text key={'time'+i} x={x0+(i/3)*(x1-x0)} y="452"
                   fill="#8ba6b9" textAnchor={i===0?'start':i===3?'end':'middle'} fontSize="11">{clock(c.time)}</text>;
               })}
               {m.price!=null&&sn.view.priceFresh&&<g>
@@ -232,18 +242,38 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <span><i className="forecast-legend-history"/> شموع فعلية</span>
             <span><i className="forecast-legend-projection"/> {watchReady?'مسار مراقبة فقط':'سيناريو مشروط'}</span>
             <span><i className="forecast-legend-target"/> مناطق أهداف</span>
-            <span><i className="forecast-legend-rebound"/> مناطق ارتداد وسيولة</span>
+            <span><i className="forecast-legend-rebound"/> مناطق سيولة</span>
+            <span className="sniper-buy-legend">● ارتداد شراء</span><span className="sniper-sell-legend">● ارتداد بيع</span>
             <span><i className="forecast-legend-stop"/> إبطال</span>
           </div>
         </div>
       </div>
+      <section className="sniper-four-hour" aria-label="قراءة آخر أربع ساعات">
+        <div className="sniper-four-head">
+          <strong>تحليل آخر 4 ساعات · هيكل وسيولة</strong>
+          <span>{m.fourHour.ready?'شموع مغلقة · '+m.fourHour.bars+'/240':'بيانات الأربع ساعات غير مكتملة'}</span>
+        </div>
+        <div className="sniper-four-grid">
+          <div><small>اتجاه 4 ساعات</small><b>{!m.fourHour.ready?'انتظار بيانات':m.fourHour.side==='BUY'?'ميل شرائي':m.fourHour.side==='SELL'?'ميل بيعي':'عرضي / انتظار'}</b></div>
+          <div><small>حالة التجميع / التصريف</small><b>{m.fourHour.phase}</b></div>
+          <div><small>قمة / قاع آخر 4 ساعات</small><b dir="ltr">{fmt(m.fourHour.rangeHigh)} / {fmt(m.fourHour.rangeLow)}</b></div>
+          <div><small>تغير 4 ساعات</small><b dir="ltr">{m.fourHour.changePct==null?'—':(m.fourHour.changePct>0?'+':'')+fmt(m.fourHour.changePct)+'%'}</b></div>
+          <div><small>{m.fourHour.volumeBasis==='TICK'?'VWAP تقريبي · Tick':'VWAP حسب الحجم'}</small><b dir="ltr">{fmt(m.fourHour.vwap)}</b></div>
+          <div><small>سحب السيولة / كسر الهيكل</small><b>{m.fourHour.sweep==='SELL_SIDE'?'قاع مسحوب':m.fourHour.sweep==='BUY_SIDE'?'قمة مسحوبة':'—'} · {m.fourHour.structure==='BOS_UP'?'BOS صاعد':m.fourHour.structure==='BOS_DOWN'?'BOS هابط':'لا كسر'}</b></div>
+        </div>
+        <p>{m.fourHour.ready?m.fourHour.summary:m.fourHour.reason} · مصدر الشموع: {String(x?.candleSource||'غير محدد')} · {m.fourHour.volumeSource}. التجميع والتصريف تقدير سلوكي لا قياس مباشر لأوامر المؤسسات.</p>
+      </section>
       <div className="forecast-decision-row">
         <div className="forecast-decision-card">
           <strong><Layers3 size={15}/> مناطق الارتداد والسيولة</strong>
           <div className="forecast-decision-zones">
+            {m.fourHour.ready&&[...reboundBuy,...reboundSell].map((z,i)=><span key={z.side+i} className={z.side==='BUY'?'sniper-zone-buy':'sniper-zone-sell'}>
+              <small>{z.side==='BUY'?'منطقة ارتداد شراء':'منطقة ارتداد بيع'} · M5</small>
+              <b dir="ltr">{fmt(z.low)} – {fmt(z.high)}</b>
+            </span>)}
             {zoneList.length?zoneList.map(z=><span key={z.label}>
               <small>{z.label}</small><b dir="ltr">{fmt(z.low)} – {fmt(z.high)}</b>
-            </span>):<small>لا توجد مناطق حديثة مؤهلة للعرض</small>}
+            </span>):!m.fourHour.zones.length?<small>لا توجد مناطق جديدة مؤهلة من القمم والقيعان المؤكدة</small>:null}
           </div>
           {sn.flow&&<p>تدفق تقديري: طلب {sn.flow.buy}% · عرض {sn.flow.sell}% ({sn.flow.source})</p>}
         </div>
