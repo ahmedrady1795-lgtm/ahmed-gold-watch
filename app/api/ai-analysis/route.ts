@@ -1291,7 +1291,7 @@ export async function GET(request:Request){
         .map((c:any)=>({time:Number(c.time),open:Number(c.open),high:Number(c.high),
           low:Number(c.low),close:Number(c.close),volume:Math.max(0,Number(c.realVolume||c.tickVolume||0)),
           volumeBasis:Number(c.realVolume)>0?'REAL':Number(c.tickVolume)>0?'TICK':'NONE'})),
-      candleSource:asset==='GOLD'?(gm.priceSource||'مصدر الذهب'):(btc.priceSource||'مصدر BTC'),
+      candleSource:asset==='GOLD'?(gm.priceSource||'مصدر الذهب'):(btc.source||'مصدر BTC'),
       // Higher-timeframe CLOSED history for independent, non-scalp liquidity objectives.
       chartHigherFrames:{
         m5:(asset==='GOLD'?gm.c5:btc.c5).filter((c:any)=>Number(c.time)+300000<=now)
