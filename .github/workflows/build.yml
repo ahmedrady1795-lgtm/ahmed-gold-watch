@@ -30,6 +30,7 @@ jobs:
       - run: node tests/sniper-outlook.cjs
       - run: node tests/structural-watch.cjs
       - run: node tests/continuous-direction.cjs
+      - run: node tests/sniper-stability.cjs
       - run: node tests/four-hour-structure.cjs
       - run: node tests/long-range-targets.cjs
       - run: node tests/sniper-scorecard.cjs
