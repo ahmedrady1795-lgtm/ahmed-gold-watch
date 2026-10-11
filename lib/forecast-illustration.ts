@@ -1,4 +1,5 @@
 import {buildSniperOutlook} from './sniper-outlook';
+import {buildStructuralWatch} from './structural-watch';
 import type {ForecastJournal} from './forecast-journal';
 
 export type PlotCandle={time:number;open:number;high:number;low:number;close:number;volume:number};
@@ -24,21 +25,39 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const historyAge=lastAt?Math.max(0,now-lastAt):null;
   const historyFresh=historyAge!=null&&historyAge<=180000;
   const price=sniper.view.price;
-  const displayTargets=journal?.targets??(auditRequired?[]:sniper.targets);
-  const displayStop=journal?.invalidation??sniper.view.invalidation;
-  const sameDirection=!journal||journal.side===sniper.view.side;
-  const ahead=price!=null&&displayTargets.length>0&&displayTargets.every((t,i)=>
-    t.price>0&&(sniper.view.side==='BUY'?t.price>price:sniper.view.side==='SELL'?t.price<price:false)&&
-    (i===0||(sniper.view.side==='BUY'?t.price>displayTargets[i-1].price:t.price<displayTargets[i-1].price)));
-  const stopSafe=price!=null&&displayStop!=null&&
-    (sniper.view.side==='BUY'?displayStop<price:sniper.view.side==='SELL'?displayStop>price:false);
-  const ready=sniper.view.side!=='WAIT'&&sniper.view.priceFresh&&sniper.view.forecastFresh&&
-    displayTargets.length>0&&historyFresh&&sameDirection&&ahead&&stopSafe&&
-    (!journal||journal.state==='ACTIVE')&&(!auditRequired||journal?.state==='ACTIVE');
+  // Production audits are evidence of qualified scenarios, NOT a prerequisite
+  // for continuously observing real closed-candle market structure.
+  const observation=buildStructuralWatch(asset,x,price,now,
+    sniper.view.priceFresh&&sniper.view.forecastFresh);
+  const plannedTargets=journal?.state==='ACTIVE'?journal.targets:
+    auditRequired?[]:sniper.targets;
+  const plannedStop=journal?.state==='ACTIVE'?journal.invalidation:sniper.view.invalidation;
+  const aheadOf=(dir:'BUY'|'SELL'|'WAIT',levels:Array<{price:number}>)=>price!=null&&
+    dir!=='WAIT'&&levels.length>0&&levels.every((t,i)=>
+      Number.isFinite(t.price)&&t.price>0&&
+      (dir==='BUY'?t.price>price:t.price<price)&&
+      (i===0||(dir==='BUY'?t.price>levels[i-1].price:t.price<levels[i-1].price)));
+  const stopSafe=(dir:'BUY'|'SELL'|'WAIT',stop:number|null)=>
+    price!=null&&stop!=null&&Number.isFinite(stop)&&
+    (dir==='BUY'?stop<price:dir==='SELL'?stop>price:false);
+  const scenarioAllowed=sniper.view.side!=='WAIT'&&sniper.view.priceFresh&&sniper.view.forecastFresh&&
+    historyFresh&&(!journal||journal.state==='ACTIVE'&&journal.side===sniper.view.side)&&
+    (!auditRequired||journal?.state==='ACTIVE');
+  const ready=Boolean(scenarioAllowed&&aheadOf(sniper.view.side,plannedTargets)&&
+    stopSafe(sniper.view.side,plannedStop));
+  const watchSide=sniper.view.side!=='WAIT'?sniper.view.side:observation.side;
+  const watchTargets=sniper.view.side!=='WAIT'?sniper.targets:observation.targets;
+  const watchStop=sniper.view.side!=='WAIT'?sniper.view.invalidation:observation.invalidation;
+  const watchReady=Boolean(!ready&&historyFresh&&sniper.view.priceFresh&&sniper.view.forecastFresh&&
+    aheadOf(watchSide,watchTargets)&&stopSafe(watchSide,watchStop));
+  // Never reuse expired/invalidated audit levels as a new live opportunity.
+  const displayTargets=ready?plannedTargets:watchReady?watchTargets:[];
+  const displayStop=ready?plannedStop:watchReady?watchStop:null;
+  const displaySide=ready?sniper.view.side:watchReady?watchSide:'WAIT';
   const bands:PriceBand[]=[];
-  if((ready||Boolean(journal))&&historyFresh){
+  if((ready||watchReady)&&historyFresh){
     for(const t of displayTargets){
-      bands.push({key:'TP'+t.stage,label:'TP'+t.stage+(journal&&journal.state!=='ACTIVE'?' · محفوظ':''),low:t.low,high:t.high,
+      bands.push({key:'TP'+t.stage,label:(ready?'TP':'رصد ')+t.stage,low:t.low,high:t.high,
         price:t.price,kind:'TARGET'});
     }
     const stop=valid(displayStop);
@@ -62,10 +81,10 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const maximum=anchors.length?Math.max(...anchors):midpoint*1.002;
   const spread=Math.max(maximum-minimum,midpoint*.0007,0.01);
   const lower=minimum-spread*.10,upper=maximum+spread*.10;
-  const projected=ready&&price!=null
-    ?[{key:'NOW',price},...sniper.targets.map(t=>({key:'TP'+t.stage,price:t.price}))]
+  const projected=(ready||watchReady)&&price!=null
+    ?[{key:'NOW',price},...displayTargets.map(t=>({key:'TP'+t.stage,price:t.price}))]
     :[];
-  return {asset,sniper,candles,bands,price,historyAge,historyFresh,ready,displayTargets,displayStop,journal,
+  return {asset,sniper,observation,candles,bands,price,historyAge,historyFresh,ready,watchReady,displaySide,displayTargets,displayStop,journal,
     lower,upper,projected,
-    status:!candles.length?'NO_CANDLES':!historyFresh?'STALE_CANDLES':!ready?'WATCH':'SCENARIO'};
+    status:!candles.length?'NO_CANDLES':!historyFresh?'STALE_CANDLES':ready?'SCENARIO':watchReady?'WATCH_PATH':'WATCH'};
 }

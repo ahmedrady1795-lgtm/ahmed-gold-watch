@@ -11,8 +11,9 @@ const next=read('lib/next-move-view.ts');
 const long=read('lib/long-range-targets.ts');
 const {frames}=require('./long-range-fixture.cjs');
 const sniper=read('lib/sniper-outlook.ts',p=>p==='./next-move-view'?next:p==='./long-range-targets'?long:require(p));
+const watch=read('lib/structural-watch.ts',p=>p==='./long-range-targets'?long:require(p));
 const {buildForecastIllustration:build}=read('lib/forecast-illustration.ts',
-  p=>p==='./sniper-outlook'?sniper:require(p));
+  p=>p==='./sniper-outlook'?sniper:p==='./structural-watch'?watch:require(p));
 const now=Date.parse('2026-10-11T10:00:00Z');
 const candles=Array.from({length:46},(_,i)=>{
   const price=99+i*.02;
@@ -54,4 +55,22 @@ assert.equal(m.ready,false,'no directional target must not draw a projected path
 m=build('GOLD',{...base,chartCandles:[{time:now-60000,open:1,close:20,low:2,high:10},...candles]},null,now,now-10000);
 assert.equal(m.candles.length,46,'malformed price candle is rejected');
 assert.equal(m.candles.at(-1).time,now-60000);
+
+m=build('GOLD',base,null,now,now-10000,null,true);
+assert.equal(m.ready,false,'audited entry must never exist without an ACTIVE ledger record');
+assert.equal(m.watchReady,true,'live qualified levels should still be visible as non-tradable watch');
+assert.equal(m.projected.length>=2,true);
+const archived={side:'BUY',startPrice:100,invalidation:101,confidence:82,
+  targets:[{stage:1,price:999,low:998,high:999,quality:85,kind:'STRUCTURAL',reached:false}],
+  capturedAt:now-100000,modelAt:now-100000,expiresAt:now-20000,
+  lastConfirmedAt:now-30000,state:'INVALIDATED',message:'Archived invalidation'};
+m=build('GOLD',base,null,now,now-10000,archived,true);
+assert.equal(m.ready,false,'invalidated ledger cannot activate');
+assert.equal(m.watchReady,true,'a distinct live market watch remains separate from prior ledger');
+assert.ok(m.displayTargets.every(t=>t.price!==999),'old target never reused as current');
+assert.ok(m.displayStop!==101,'old invalid stop never reused');
+m=build('GOLD',{...base,livePulse:{price:100,sourceTime:now-30000}},
+  null,now,now-10000,archived,true);
+assert.equal(m.watchReady,false,'price staleness vetoes watch even with an archived record');
+assert.equal(m.displayTargets.length,0,'stale archives stay off main price chart');
 console.log('PASS: real candles, numeric targets, rebound, stop, freshness and no imaginary arrows');

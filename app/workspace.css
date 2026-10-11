@@ -551,6 +551,9 @@ body:has(.modern-workspace){
 .forecast-visual-tabs button[aria-pressed=true]{background:#204455;color:#def6fa;font-weight:700}
 .forecast-visual-status{display:inline-flex;align-items:center;gap:6px;border:1px solid #3f5060;background:#172430;color:#bdcdda;font-size:10px;padding:6px 9px;border-radius:8px;white-space:nowrap}
 .forecast-visual-status.forecast-visual-active{background:#123a31;border-color:#3d856b;color:#a1f2d4}
+.forecast-visual-status.forecast-visual-watch{background:#392d1d;border-color:#866639;color:#f4d39a}
+.forecast-chart-zoom{border:1px solid #405e70;background:#132b3b;color:#cce8f0;border-radius:7px;font-size:10px;padding:4px 9px;cursor:pointer;white-space:nowrap}
+.forecast-chart-zoom:hover{background:#20465b}
 .forecast-dot{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 10px currentColor}
 .forecast-visual-layout{display:grid;grid-template-columns:minmax(205px,.27fr) minmax(0,1fr);gap:9px;padding:10px}
 .forecast-visual-facts{display:flex;flex-direction:column;gap:7px;min-width:0}
