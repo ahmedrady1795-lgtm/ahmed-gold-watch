@@ -13,16 +13,16 @@ for(const path of files){
 const transpiled=ts.transpileModule(fs.readFileSync(files[0],'utf8'),{
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
 }).outputText;
-const exports={};
+const moduleExports={};
 const env={NEURAL_ENABLED:'0',NEURAL_ENGINE_URL:'http://unreachable:8000'};
 let requests=0;
 vm.runInNewContext(transpiled,{
-  exports,process:{env},
+  exports:moduleExports,process:{env},
   fetch:()=>{requests++;throw Error('Forbidden neural network request');},
   AbortController,Date,Number,String,Error,setTimeout,clearTimeout
 });
 (async()=>{
-  const result=await exports.getNeuralPrediction(Date.now());
+  const result=await moduleExports.getNeuralPrediction(Date.now());
   assert.equal(result.ready,false);
   assert.equal(result.status,'DISABLED');
   assert.equal(result.side,'WAIT');
