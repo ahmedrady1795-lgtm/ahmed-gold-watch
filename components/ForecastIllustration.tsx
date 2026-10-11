@@ -1,9 +1,8 @@
 'use client';
 
-import {useEffect,useState} from 'react';
+import {useState} from 'react';
 import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Crosshair,Layers3,ShieldAlert,Target} from 'lucide-react';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
-import type {StableBiasState} from '../lib/sniper-stability';
 import NewsCommandCenter from './NewsCommandCenter';
 import {economicNewsTimeline} from '../lib/news-alert-window';
 import type {ForecastJournal} from '../lib/forecast-journal';
@@ -20,7 +19,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
   const [focusCandles,setFocusCandles]=useState(false);
   const [newsOpen,setNewsOpen]=useState(false);
-  const [sticky,setSticky]=useState<Record<'GOLD'|'BTC',StableBiasState|null>>({GOLD:null,BTC:null});
   const earlyNews=economicNewsTimeline(data?.newsEvents||[],data?.autopilot?.nextEvent||null,now).alerts;
   const dueNews=earlyNews.length;
   const asset: 'GOLD'|'BTC'=assetView==='ALL'?chosen:assetView;
@@ -31,12 +29,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const lastSource=Number(audit?.updatedAt||0);
   const auditHealthy=Boolean(auditLoaded&&audit?.persistence==='VOLUME'&&lastSource>0&&
     now-lastSource<180000);
+  const serverWatch=audit?.watch?.[asset];
+  const watchFresh=auditHealthy&&serverWatch?.updatedAt>0&&now-serverWatch.updatedAt<90000&&now>=serverWatch.updatedAt;
+  const watchMetrics=serverWatch?.metrics;
+  const watchObserved=Number(watchMetrics?.observed||0);
   const m=buildForecastIllustration(asset,x,asset==='GOLD'?goldLive:btcLive,now,snapshotAt,
-    auditHealthy?journal:null,true,sticky[asset]);
-  useEffect(()=>{
-    setSticky(previous=>previous[asset]===m.stabilityState?previous:
-      {...previous,[asset]:m.stabilityState});
-  },[asset,m.stabilityState]);
+    auditHealthy?journal:null,true,serverWatch?.state??null,serverWatch?.bias?
+      (watchFresh?serverWatch.bias:{...serverWatch.bias,active:false}):null);
   const statusReady=m.ready&&auditHealthy;
   const watchReady=m.watchReady&&!statusReady;
   const planVisible=statusReady||watchReady;
@@ -317,6 +316,28 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           المعدلات نسبة وصول الأهداف قبل انتهاء السيناريو، وليست احتمالات ربح أو شهادة بدقة النموذج.
         </p>
         {audit?.block?.[asset]&&<p>سبب الانتظار الحالي: {String(audit.block[asset])}</p>}
+      </section>
+      <section className="sniper-audit-panel" aria-label="ذاكرة ونتائج الرصد البعيد">
+        <div className="sniper-audit-heading">
+          <strong><Layers3 size={15}/> ذاكرة القناص · نتائج الأهداف البعيدة</strong>
+          <span>{watchFresh?'اتجاه وأهداف محفوظة على الخادم':'في انتظار تحديث ذاكرة الخادم'}</span>
+        </div>
+        <div className="sniper-audit-figures">
+          <div><small>مسارات مكتملة التقييم</small><b>{watchObserved}</b></div>
+          {([1,2,3] as const).map(stage=>{
+            const rate=watchMetrics?.targets?.find((t:any)=>t.stage===stage);
+            return <div key={stage}><small>هدف بعيد {stage} · وصول مُلاحظ</small>
+              <b>{Number(rate?.samples||0)>=40&&rate?.observedPct!=null?rate.observedPct+'%':'قيد جمع البيانات'}</b>
+              <small>{Number(rate?.samples||0)} مسار · {rate?.avgMinutes!=null?'متوسط الوصول '+rate.avgMinutes+' د':'لا متوسط مثبت'}</small>
+            </div>;
+          })}
+        </div>
+        <p>مدة تقييم المسار حتى 8 ساعات، وليست موعدًا لوصول السعر. الإبطال: {Number(watchMetrics?.stopped||0)} ·
+          انعكاس مؤكد: {Number(watchMetrics?.reversed||0)} · انتهت المدة: {Number(watchMetrics?.expired||0)} ·
+          نتائج مستبعدة لتداخل أو نقص شموع: {Number(watchMetrics?.ambiguous||0)+Number(watchMetrics?.unobserved||0)}.</p>
+        <p>الرصد منفصل عن سيناريو الدخول. النتائج تُجمع للأمام دون تغيير الأهداف بعد صدورها؛ لا تثبت الربحية بعد تكاليف التداول.</p>
+        {serverWatch?.current&&<p>آخر مسار: {String(serverWatch.current.note)} ·
+          الأهداف الأصلية: {serverWatch.current.targets.map((t:any)=>fmt(t.price)+(t.reachedAt?' ✓':'')).join(' / ')}</p>}
       </section>
       <footer className="forecast-visual-note">
         <span>الشموع السابقة بيانات سوق فعلية. {watchReady?'الخط الأصفر مراقبة هيكلية أولية، وليس إشارة شراء أو بيع.':'الخط المتقطع ترتيب مستويات مشروط، وليس توقعًا لشكل الشموع أو وقت وصولها.'}</span>
