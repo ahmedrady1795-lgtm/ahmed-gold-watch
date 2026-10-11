@@ -57,50 +57,27 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
   // Event times must come from a real feed. Do not generate placeholder dates
   // or present an approximate/narrative event as an exact scheduled release.
   const {upcoming,alerts,recent}=economicNewsTimeline(events,featuredEvent,now);
-  return <section className="panel newscommand standalone-news" aria-label="الأخبار الاقتصادية">
+  return <section className="panel newscommand standalone-news" aria-label="الأخبار القادمة خلال 8 ساعات فقط">
     <header className="standalone-news-head">
-      <div><span className="eyebrow">03 / الأخبار الاقتصادية</span>
-        <h2><Newspaper size={19}/> الأخبار ومواعيد التأثير</h2></div>
-      <small>بتوقيت الإمارات · التنبيه داخل الصفحة يبدأ قبل 8 ساعات</small>
+      <div><span className="eyebrow">NEWS · 8H</span>
+        <h2><Newspaper size={17}/> الأخبار الاقتصادية القادمة</h2></div>
+      <small>الموعد بتوقيت الإمارات · لا يظهر الحدث قبل دخوله نافذة 8 ساعات</small>
     </header>
     <div className="news-eight-hour" aria-live="polite">
       {alerts.length?alerts.map((e:any)=>{
-        const delta=Number(e.time)-now;
         const high=Number(e.importance)>=3;
         return <article className={'news-eight-hour-item '+(high?'news-high-impact':'')} key={e.id||e.name+e.time}>
           <div className="news-eight-hour-top">
-            <span>{high?'خبر عالي التأثير':Number(e.importance)===2?'خبر متوسط التأثير':'خبر اقتصادي'}</span>
+            <span>{high?'تأثير مرتفع':Number(e.importance)===2?'تأثير متوسط':'تأثير منخفض'}</span>
             <strong><Clock3 size={15}/> {timeLeft(Number(e.time),now)}</strong>
           </div>
           <b>{e.name}</b>
-          <small>الموعد: {dateLabel(Number(e.time))} · يبدأ ظهوره هنا قبل 8 ساعات من الموعد</small>
-          {(e.forecast||e.previous)&&<p>المتوقع: {e.forecast||'غير منشور'} · السابق: {e.previous||'غير منشور'}</p>}
-          <p>الاتجاه بعد الخبر مش مضمون؛ انتظر النتيجة الفعلية وحركة السعر والسيولة.</p>
+          <small>الموعد: {dateLabel(Number(e.time))}</small>
+          {(e.forecast||e.previous)&&<p>المتوقع: {e.forecast||'—'} · السابق: {e.previous||'—'}</p>}
+          <p>الأثر السعري غير مضمون. يحدد رد الفعل بعد الإعلان وليس التوقع المسبق وحده.</p>
+          {/^https:\/\//.test(String(e.source||''))&&<a href={e.source} target="_blank" rel="noopener noreferrer">مصدر الموعد ↗</a>}
         </article>;
-      }):<p className="news-eight-empty">مفيش أخبار بمواعيد مؤكدة خلال الـ8 ساعات الجاية. أول ما يظهر خبر في الفترة دي، هيتعرض هنا تلقائيًا طالما الصفحة بتتحدث.</p>}
+      }):<p className="news-eight-empty">لا يوجد خبر بموعد معلوم خلال الثماني ساعات القادمة. الأحداث البعيدة غير ظاهرة هنا.</p>}
     </div>
-    {recent.map((e:any)=><div className="news-post-release" key={e.id||e.name+e.time}>
-      <b>صدر: {e.name}</b><span>الفعلي: {e.actual} · {timeLeft(Number(e.time),now)}</span>
-    </div>)}
-    <details className="news-calendar">
-      <summary className="news-calendar-summary"><span><Newspaper size={16}/> <strong>كل مواعيد الأخبار القادمة</strong>
-        <small>{upcoming.length} حدث في التقويم · التفاصيل حسب المصدر</small></span>
-        <b>عرض التقويم</b>
-      </summary>
-      <div className="news-calendar-content">
-        {!upcoming.length&&<p>لسه مفيش مواعيد جديدة وصلت من مصدر الأخبار.</p>}
-        {upcoming.slice(0,8).map((e:any,index:number)=>{
-          const bias=macroBias(e);
-          return <article key={e.id||e.name+e.time} className="rule compact news-list-item">
-            <strong>{index+1}. {e.name} · {Number(e.importance)>=3?'مرتفع':Number(e.importance)===2?'متوسط':'منخفض'}</strong>
-            <p><b>{dateLabel(Number(e.time))}</b> · {timeLeft(Number(e.time),now)}</p>
-            {(e.forecast||e.previous||e.actual)&&
-              <p>المتوقع: {e.forecast||'—'} · السابق: {e.previous||'—'} · الفعلي: {e.actual||'لم يصدر'}</p>}
-            <small>{bias.why} · مش توصية تداول ولا توقع مؤكد لرد فعل السعر.</small>
-            {/^https:\/\//.test(String(e.source||''))&&<a href={e.source} target="_blank" rel="noopener noreferrer">مصدر الخبر</a>}
-          </article>;
-        })}
-      </div>
-    </details>
   </section>;
 }
