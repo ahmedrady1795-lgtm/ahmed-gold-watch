@@ -98,25 +98,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       </header>
       {newsOpen&&<div className="forecast-news-drawer"><NewsCommandCenter events={data?.newsEvents||[]} now={now} featuredEvent={data?.autopilot?.nextEvent||null}/></div>}
       <div className="forecast-brain-strip">
-        <span><Activity size={14}/> {watchReady&&sn.view.side==='WAIT'?'رصد هيكلي نشط · M5 / M15 / H1':sn.phaseText} {sn.compression!=null?'· جاهزية '+sn.compression+'/100':''}</span>
+        <span><Activity size={14}/> {m.fourHour.ready?'4 ساعات: '+m.fourHour.phase+' · '+(m.fourHour.side==='BUY'?'ميل شراء':m.fourHour.side==='SELL'?'ميل بيع':'ميل محايد'):watchReady&&sn.view.side==='WAIT'?'رصد هيكلي نشط · M5 / M15 / H1':sn.phaseText} {sn.compression!=null?'· جاهزية '+sn.compression+'/100':''}</span>
         <span><Layers3 size={14}/> مصادر الأهداف: M15 / H1 / السيولة</span>
         <span><Target size={14}/> {statusReady?'مستويات مؤهلة ومُسجلة':watchReady?'مستويات هيكلية للمراقبة فقط':'لا يوجد هدف مؤهل حاليًا'}</span>
       </div>
-      <section className="sniper-four-hour" aria-label="قراءة آخر أربع ساعات">
-        <div className="sniper-four-head">
-          <strong>تحليل آخر 4 ساعات · هيكل وسيولة</strong>
-          <span>{m.fourHour.ready?'شموع مغلقة · '+m.fourHour.bars+'/240':'بيانات الأربع ساعات غير مكتملة'}</span>
-        </div>
-        <div className="sniper-four-grid">
-          <div><small>اتجاه 4 ساعات</small><b>{!m.fourHour.ready?'انتظار بيانات':m.fourHour.side==='BUY'?'ميل شرائي':m.fourHour.side==='SELL'?'ميل بيعي':'عرضي / انتظار'}</b></div>
-          <div><small>حالة التجميع / التصريف</small><b>{m.fourHour.phase}</b></div>
-          <div><small>قمة / قاع آخر 4 ساعات</small><b dir="ltr">{fmt(m.fourHour.rangeHigh)} / {fmt(m.fourHour.rangeLow)}</b></div>
-          <div><small>تغير 4 ساعات</small><b dir="ltr">{m.fourHour.changePct==null?'—':(m.fourHour.changePct>0?'+':'')+fmt(m.fourHour.changePct)+'%'}</b></div>
-          <div><small>VWAP حجمي</small><b dir="ltr">{fmt(m.fourHour.vwap)}</b></div>
-          <div><small>سحب السيولة / كسر الهيكل</small><b>{m.fourHour.sweep==='SELL_SIDE'?'قاع مسحوب':m.fourHour.sweep==='BUY_SIDE'?'قمة مسحوبة':'—'} · {m.fourHour.structure==='BOS_UP'?'BOS صاعد':m.fourHour.structure==='BOS_DOWN'?'BOS هابط':'لا كسر'}</b></div>
-        </div>
-        <p>{m.fourHour.ready?m.fourHour.summary:m.fourHour.reason} · مصدر الشموع: {String(x?.candleSource||'غير محدد')} · {m.fourHour.volumeSource}. التجميع والتصريف تقدير سلوكي لا قياس مباشر لأوامر المؤسسات.</p>
-      </section>
       <div className="forecast-visual-layout">
         <div className="forecast-visual-facts">
           <div className="forecast-visual-fact forecast-visual-last">
@@ -259,6 +244,21 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
         </div>
       </div>
+      <section className="sniper-four-hour" aria-label="قراءة آخر أربع ساعات">
+        <div className="sniper-four-head">
+          <strong>تحليل آخر 4 ساعات · هيكل وسيولة</strong>
+          <span>{m.fourHour.ready?'شموع مغلقة · '+m.fourHour.bars+'/240':'بيانات الأربع ساعات غير مكتملة'}</span>
+        </div>
+        <div className="sniper-four-grid">
+          <div><small>اتجاه 4 ساعات</small><b>{!m.fourHour.ready?'انتظار بيانات':m.fourHour.side==='BUY'?'ميل شرائي':m.fourHour.side==='SELL'?'ميل بيعي':'عرضي / انتظار'}</b></div>
+          <div><small>حالة التجميع / التصريف</small><b>{m.fourHour.phase}</b></div>
+          <div><small>قمة / قاع آخر 4 ساعات</small><b dir="ltr">{fmt(m.fourHour.rangeHigh)} / {fmt(m.fourHour.rangeLow)}</b></div>
+          <div><small>تغير 4 ساعات</small><b dir="ltr">{m.fourHour.changePct==null?'—':(m.fourHour.changePct>0?'+':'')+fmt(m.fourHour.changePct)+'%'}</b></div>
+          <div><small>{m.fourHour.volumeBasis==='TICK'?'VWAP تقريبي · Tick':'VWAP حسب الحجم'}</small><b dir="ltr">{fmt(m.fourHour.vwap)}</b></div>
+          <div><small>سحب السيولة / كسر الهيكل</small><b>{m.fourHour.sweep==='SELL_SIDE'?'قاع مسحوب':m.fourHour.sweep==='BUY_SIDE'?'قمة مسحوبة':'—'} · {m.fourHour.structure==='BOS_UP'?'BOS صاعد':m.fourHour.structure==='BOS_DOWN'?'BOS هابط':'لا كسر'}</b></div>
+        </div>
+        <p>{m.fourHour.ready?m.fourHour.summary:m.fourHour.reason} · مصدر الشموع: {String(x?.candleSource||'غير محدد')} · {m.fourHour.volumeSource}. التجميع والتصريف تقدير سلوكي لا قياس مباشر لأوامر المؤسسات.</p>
+      </section>
       <div className="forecast-decision-row">
         <div className="forecast-decision-card">
           <strong><Layers3 size={15}/> مناطق الارتداد والسيولة</strong>
