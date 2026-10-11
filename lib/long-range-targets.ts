@@ -49,7 +49,7 @@ export function buildLongRangeTargets(input:{
   if(a15==null||a5==null)return empty('لا يوجد متوسط مدى صالح');
   const scale=Math.max(a15*1.05,a5*1.35,price*(input.asset==='GOLD'?.0005:.0009));
   const minDistance=Math.max(scale,price*(input.asset==='GOLD'?.00045:.0008));
-  const maxDistance=Math.max(a15*8,scale*7);
+  const maxDistance=Math.max(a15*12,scale*10);
   const candidates:Candidate[]=[];
   const add=(p:any,source:string,quality:number,frame:string)=>{
     const v=num(p);
@@ -59,47 +59,48 @@ export function buildLongRangeTargets(input:{
         candidates.push({price:v,source,quality,frame});
     }
   };
+  // Only observed, completed H1/M15 highs/lows may CREATE a sniper
+  // destination. M5 levels and forecasts can confirm an existing level,
+  // never manufacture a distant structural target by themselves.
   const frames=[{rows:h1,name:'H1',confidence:80,windows:[12,24,48,96]},
-    {rows:m15,name:'M15',confidence:73,windows:[12,24,48,96]},
-    {rows:m5,name:'M5',confidence:62,windows:[24,48,90]}];
-  for(const frame of frames){
-    const {rows,name,confidence,windows}=frame;
+    {rows:m15,name:'M15',confidence:73,windows:[12,24,48,96]}];
+  const observedPivots=(rows:Bar[],name:string,confidence:number,windows:number[],emit:(p:number,source:string,quality:number)=>void)=>{
     for(const span of windows){
       if(rows.length<span)continue;
       const sample=rows.slice(-span);
-      const level=side==='BUY'?Math.max(...sample.map(r=>r.high)):Math.min(...sample.map(r=>r.low));
-      add(level,name+' · '+span+' شمعة',confidence, name);
+      emit(side==='BUY'?Math.max(...sample.map(r=>r.high)):Math.min(...sample.map(r=>r.low)),
+        name+' · '+span+' شمعة',confidence);
     }
-    // Confirmed fractal swings only; exclude the last 2 bars as unconfirmed.
     for(let i=2;i<rows.length-2;i++){
-      const centre=rows[i];
-      const neighbors=[rows[i-2],rows[i-1],rows[i+1],rows[i+2]];
-      const pivot=side==='BUY'?neighbors.every(b=>centre.high>b.high):
-        neighbors.every(b=>centre.low<b.low);
-      if(pivot)add(side==='BUY'?centre.high:centre.low,name+' · قمة/قاع هيكلي',
-        confidence-(rows.length-i<15?0:6),name);
-    }
-  }
-  const path=input.hunt?.zoneForecast?.pathForecast||{},zf=input.hunt?.zoneForecast||{};
-  const addKnown=(raw:any,source:string,quality:number)=>{
-    const x=num(raw?.mid??raw?.price??raw?.zone?.mid??raw?.zone?.price);
-    if(x!=null)add(x,source,quality,'ZONE');
-    else {
-      const low=num(raw?.low??raw?.zone?.low),high=num(raw?.high??raw?.zone?.high);
-      if(low!=null&&high!=null)add((low+high)/2,source,quality,'ZONE');
+      const c=rows[i],around=[rows[i-2],rows[i-1],rows[i+1],rows[i+2]];
+      const pivot=side==='BUY'?around.every(b=>c.high>b.high):around.every(b=>c.low<b.low);
+      if(pivot)emit(side==='BUY'?c.high:c.low,
+        name+' · قمة/قاع هيكلي',confidence-(rows.length-i<15?0:6));
     }
   };
-  addKnown(side==='BUY'?input.h4?.resistance:input.h4?.support,'H4 · منطقة هيكلية',72);
-  addKnown(side==='BUY'?(path.upperLiquidity||zf.resistance):(path.lowerLiquidity||zf.support),
-    'سيولة هيكلية',73);
-  addKnown(path.destination,'مسار الهيكل',67);
-  addKnown(zf.target,'منطقة استهداف',67);
-  // Existing quick forecast objectives can corroborate an independently
-  // distant level but must never create synthetic long-range destinations.
+  for(const frame of frames){
+    observedPivots(frame.rows,frame.name,frame.confidence,frame.windows,
+      (p,source,quality)=>add(p,source,quality,frame.name));
+  }
+
+  // Corroboration only: projections, soft liquidity zones, and smaller
+  // timeframe levels cannot become their own sniper targets.
+  const corroborating:number[]=[];
+  const corroborate=(v:any)=>{
+    const p=num(v?.mid??v?.price??v?.zone?.mid??v?.zone?.price??v);
+    const lo=num(v?.low??v?.zone?.low),hi=num(v?.high??v?.zone?.high);
+    const level=p??(lo!=null&&hi!=null&&lo<=hi?(lo+hi)/2:null);
+    if(level!=null&&level>0&&ahead(side,price,level))corroborating.push(level);
+  };
+  observedPivots(m5,'M5',62,[24,48,90],p=>corroborate(p));
+  const path=input.hunt?.zoneForecast?.pathForecast||{},zf=input.hunt?.zoneForecast||{};
+  corroborate(side==='BUY'?input.h4?.resistance:input.h4?.support);
+  corroborate(side==='BUY'?(path.upperLiquidity||zf.resistance):(path.lowerLiquidity||zf.support));
+  corroborate(path.destination);
+  corroborate(zf.target);
   const original=input.forecast?.targets;
   for(const key of ['t2','t3'] as const){
-    const level=original?.[key];
-    if(level?.kind!=='PROJECTION')addKnown(level,key.toUpperCase()+' · تأكيد',55);
+    if(original?.[key]?.kind!=='PROJECTION')corroborate(original?.[key]);
   }
   candidates.sort((a,b)=>Math.abs(a.price-price)-Math.abs(b.price-price));
   const tolerance=Math.max(a15*.22,price*(input.asset==='GOLD'?.00018:.0003));
@@ -113,7 +114,10 @@ export function buildLongRangeTargets(input:{
   }
   const usable=clustered.map(c=>{
     const centre=c.prices.reduce((s,x)=>s+x,0)/c.prices.length;
-    const quality=clamp(c.quality+Math.min(14,(c.frames.size-1)*7)+Math.min(8,(c.sources.size-1)*2),0,94);
+    // Repeated lookback windows often contain the SAME wick; count
+    // independent timeframe agreement, not duplicated window labels.
+    const quality=clamp(c.quality+Math.min(12,(c.frames.size-1)*8)+
+      (corroborating.some(p=>Math.abs(p-centre)<=tolerance)?3:0),0,94);
     return {price:centre,quality,source:[...c.sources].slice(0,2).join(' + '),distance:Math.abs(centre-price),
       low:Math.min(...c.prices),high:Math.max(...c.prices)};
   }).filter(c=>c.quality>=60&&c.distance>=minDistance)
@@ -135,7 +139,7 @@ export function buildLongRangeTargets(input:{
       quality:c.quality,kind:'STRUCTURAL',source:c.source,
       distanceAtr:Number((c.distance/a15).toFixed(2))});
   }
-  return {targets,atr15:a15,basis:'M15/H1 مع هيكل M5 وسيولة فعلية',
+  return {targets,atr15:a15,basis:'M15/H1 تاريخي مؤكد؛ M5 والسيولة للتأييد فقط',
     reason:targets.length?'أهداف أبعد من التقلبات الصغيرة، مأخوذة من مستويات سعرية مرصودة':
       'لم تظهر سيولة أو قمم/قيعان هيكلية بعيدة وصالحة؛ لا نختلق مستويات مستقبلية',
     minDistance};
