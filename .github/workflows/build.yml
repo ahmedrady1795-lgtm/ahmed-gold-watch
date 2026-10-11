@@ -22,6 +22,7 @@ jobs:
       - run: npm ci
       - run: node --check learning-worker.mjs
       - run: node tests/railway-eco.cjs
+      - run: node tests/neural-optout.cjs
       - run: node tests/indicators.cjs
       - run: node tests/core-quality.cjs
       - run: node tests/scalp.cjs
