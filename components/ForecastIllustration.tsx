@@ -1,8 +1,9 @@
 'use client';
 
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Crosshair,Layers3,ShieldAlert,Target} from 'lucide-react';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
+import type {StableBiasState} from '../lib/sniper-stability';
 import NewsCommandCenter from './NewsCommandCenter';
 import {economicNewsTimeline} from '../lib/news-alert-window';
 import type {ForecastJournal} from '../lib/forecast-journal';
@@ -19,6 +20,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
   const [focusCandles,setFocusCandles]=useState(false);
   const [newsOpen,setNewsOpen]=useState(false);
+  const [sticky,setSticky]=useState<Record<'GOLD'|'BTC',StableBiasState|null>>({GOLD:null,BTC:null});
   const earlyNews=economicNewsTimeline(data?.newsEvents||[],data?.autopilot?.nextEvent||null,now).alerts;
   const dueNews=earlyNews.length;
   const asset: 'GOLD'|'BTC'=assetView==='ALL'?chosen:assetView;
@@ -30,7 +32,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const auditHealthy=Boolean(auditLoaded&&audit?.persistence==='VOLUME'&&lastSource>0&&
     now-lastSource<180000);
   const m=buildForecastIllustration(asset,x,asset==='GOLD'?goldLive:btcLive,now,snapshotAt,
-    auditHealthy?journal:null,true);
+    auditHealthy?journal:null,true,sticky[asset]);
+  useEffect(()=>{
+    setSticky(previous=>previous[asset]===m.stabilityState?previous:
+      {...previous,[asset]:m.stabilityState});
+  },[asset,m.stabilityState]);
   const statusReady=m.ready&&auditHealthy;
   const watchReady=m.watchReady&&!statusReady;
   const planVisible=statusReady||watchReady;
@@ -63,8 +69,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     });
   }
   const ageMin=m.historyAge==null?null:Math.ceil(m.historyAge/60000);
-  const stateLabel=statusReady?'سيناريو مؤهل · مسجل':watchReady?'أهداف بعيدة · مراقبة فقط':
-    m.bias.active&&m.bias.side!=='WAIT'?'الاتجاه مرصود · جارٍ البحث عن مستوى بعيد':
+  const stateLabel=statusReady?'سيناريو مؤهل · مسجل':watchReady&&m.heldBias?'اتجاه مثبت · أهداف مراقبة':watchReady?'أهداف بعيدة · مراقبة فقط':
+    m.bias.active&&m.bias.side!=='WAIT'?(m.heldBias?'اتجاه محفوظ · تحقق مستمر':'الاتجاه مرصود · جارٍ البحث عن مستوى بعيد'):
     m.bias.active?'سوق عرضي · التحليل مستمر':
     m.status==='STALE_CANDLES'?'سوق متوقف أو شموع متأخرة':
     m.status==='NO_CANDLES'?'لا توجد شموع كافية':'انحياز سابق · ليس تحليلًا لحظيًا';
@@ -105,7 +111,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       </button>}
       {newsOpen&&<div className="forecast-news-drawer"><NewsCommandCenter events={data?.newsEvents||[]} now={now} featuredEvent={data?.autopilot?.nextEvent||null}/></div>}
       <div className="forecast-brain-strip">
-        <span><Activity size={14}/> {m.bias.active?m.bias.label+(m.bias.opposition?' · اختلاف فريمات':' · رصد متواصل'):
+        <span><Activity size={14}/> {m.bias.active?m.bias.label+(m.heldBias?' · ثابت حتى تأكيد عكسي':m.bias.opposition?' · اختلاف فريمات':' · رصد متواصل'):
           'آخر قراءة: '+m.bias.label+' · '+m.bias.reason} {m.fourHour.ready?' · 4س: '+m.fourHour.phase:''}</span>
         <span><Layers3 size={14}/> وجهات بعيدة: H1 / H4 · مستويات فعلية</span>
         <span><Target size={14}/> {statusReady?'سيناريو مسجل':watchReady?'مستويات مراقبة بعيدة · دون أمر تداول':m.bias.active?'الاتجاه مرصود · الأهداف قيد التحقق':'بيانات قيد التحديث'}</span>
@@ -144,7 +150,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <span>{statusReady?'قوة التحليل':'الانحياز الهيكلي'} <b>{statusReady&&sn.view.confidence!=null?fmt(sn.view.confidence,0)+'/100':
               m.bias.active?(m.bias.agreement+' مصادر مؤيدة'):'—'}</b></span>
             <small>{statusReady?'تقييم مشروط وليس ضمان ربح':m.bias.active?
-              (m.bias.opposition?'ميل غير إجماعي · للاستكشاف فقط':'رصد مستمر، غير صالح كإشارة دخول'):
+              (m.heldBias?'اتجاه مراقبة محفوظ؛ الانعكاس يحتاج إغلاقين M15 مع توافق H1/H4':m.bias.opposition?'ميل غير إجماعي · للاستكشاف فقط':'رصد مستمر، غير صالح كإشارة دخول'):
               'السوق قد يكون مغلقًا أو البيانات متأخرة'}</small>
           </div>
         </div>
