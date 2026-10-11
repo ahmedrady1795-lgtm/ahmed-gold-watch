@@ -112,7 +112,7 @@ try {
                 Invoke-Compose @('--profile','ml','stop','ml')
                 Invoke-Compose @('up','-d','--build','web','worker','--remove-orphans')
             } else {
-                Remove-Item Env:\ML_ENGINE_URL -ErrorAction SilentlyContinue
+                $env:ML_ENGINE_URL = 'http://ml:8000'
                 Say 'Starting Standard: website + BTC ML + paper scalper.'
                 Invoke-Compose @('--profile','ml','up','-d','--build','web','ml','worker','--remove-orphans')
             }
