@@ -5,3 +5,7 @@ node_modules
 *.log
 .env*
 data
+
+local-data
+local-backups
+deploy/windows/.env
