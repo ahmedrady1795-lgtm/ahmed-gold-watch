@@ -53,8 +53,7 @@ export function buildStructuralWatch(asset:'GOLD'|'BTC',x:any,price:number|null,
   const longs=readings.filter(x=>x==='BUY').length,shorts=readings.filter(x=>x==='SELL').length;
   const direction:Side=longs>=2&&shorts===0?'BUY':shorts>=2&&longs===0?'SELL':'WAIT';
   if(direction==='WAIT')return {...empty('فريمات M5/M15/H1 لا تتفق على ميل مبكر'),votes:Math.max(longs,shorts)};
-  const structured=buildLongRangeTargets({asset,side:direction,price,now,frames,
-    forecast:x?.forwardMove,hunt:x?.huntForecast,h4:x?.h4Context});
+  const structured=buildLongRangeTargets({asset,side:direction,price,now,frames});
   const edge=m15.slice(-10);
   const stop=direction==='BUY'?Math.min(...edge.map(b=>b.low)):Math.max(...edge.map(b=>b.high));
   const safe=direction==='BUY'?stop<price:stop>price;
