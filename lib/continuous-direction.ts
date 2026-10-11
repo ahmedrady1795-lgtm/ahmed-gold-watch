@@ -65,17 +65,18 @@ export function buildContinuousBias(input:{
     label:'البيانات غير كافية',reason,agreement:0,opposition:false,
     votes:{m5:'WAIT' as Side,m15:'WAIT' as Side,h1:'WAIT' as Side,h4:'WAIT' as Side},
     targets:[] as FarLevel[],invalidation:null as number|null,
-    lastClosedAt:null as number|null,rangeBound:true,active:false});
+    lastClosedAt:null as number|null,m15ClosedAt:null as number|null,rangeBound:true,active:false});
   const {now}=input,frames=input.frames||{};
   const m5=history(frames.m5,now,300000),m15=history(frames.m15,now,900000),
     h1=history(frames.h1,now,3600000);
   const h4=aggregateH4(h1);
   const lastClosedAt=m5.length?m5.at(-1)!.time+300000:null;
+  const m15ClosedAt=m15.length?m15.at(-1)!.time+900000:null;
   if(m5.length<24||m15.length<24||h1.length<24)
-    return {...empty('لا توجد شموع كافية للفريمات M5/M15/H1'),lastClosedAt};
+    return {...empty('لا توجد شموع كافية للفريمات M5/M15/H1'),lastClosedAt,m15ClosedAt};
   const s5=momentum(m5),s15=momentum(m15),s1=momentum(h1),s4=momentum(h4);
   if(s5==null||s15==null||s1==null)
-    return {...empty('شموع اتجاه غير كافية أو متوسط المدى غير صالح'),lastClosedAt};
+    return {...empty('شموع اتجاه غير كافية أو متوسط المدى غير صالح'),lastClosedAt,m15ClosedAt};
   const observed=[
     {key:'m5' as const,score:s5,weight:1},
     {key:'m15' as const,score:s15,weight:2},
@@ -111,10 +112,10 @@ export function buildContinuousBias(input:{
   // treated as a live watch or used to draw an active forward path.
   if(!active||side==='WAIT'||current==null)
     return {side,status,label,reason,agreement,opposition,votes,
-      targets:[] as FarLevel[],invalidation:null,lastClosedAt,rangeBound:side==='WAIT',active};
+      targets:[] as FarLevel[],invalidation:null,lastClosedAt,m15ClosedAt,rangeBound:side==='WAIT',active};
   const a1=rangeVol(h1)||0,a15=rangeVol(m15)||0;
   if(a1<=0||a15<=0)return {side,status,label,reason,agreement,opposition,votes,
-    targets:[] as FarLevel[],invalidation:null,lastClosedAt,rangeBound:false,active};
+    targets:[] as FarLevel[],invalidation:null,lastClosedAt,m15ClosedAt,rangeBound:false,active};
   const minDistance=Math.max(a1*.72,a15*1.65,current*(input.asset==='BTC'?.0012:.0008));
   const maxDistance=Math.max(a1*16,a15*22,current*(input.asset==='BTC'?.035:.025));
   type Candidate={price:number;source:string;quality:number};
@@ -163,5 +164,5 @@ export function buildContinuousBias(input:{
   const threshold=side==='BUY'?Math.min(...support.map(c=>c.low)):Math.max(...support.map(c=>c.high));
   const invalidation=(side==='BUY'?threshold<current:threshold>current)?round(threshold):null;
   return {side,status,label,reason,agreement,opposition,votes,
-    targets,invalidation,lastClosedAt,rangeBound:false,active};
+    targets,invalidation,lastClosedAt,m15ClosedAt,rangeBound:false,active};
 }
