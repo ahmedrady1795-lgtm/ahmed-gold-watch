@@ -747,3 +747,8 @@ body:has(.modern-workspace){
   .sniper-four-grid b{font-size:11px}
   .forecast-news-tab{padding:5px 9px;min-height:27px}
 }
+
+.forecast-news-peek{display:block;width:calc(100% - 18px);margin:5px 9px 3px;padding:7px 10px;text-align:right;
+  border:1px solid #795e38;border-radius:8px;background:#30261a;color:#f9d99d;
+  font-size:11px;line-height:1.5;cursor:pointer}
+.forecast-news-peek:hover{background:#46331d}
