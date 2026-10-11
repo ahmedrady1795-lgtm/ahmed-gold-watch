@@ -1,0 +1,22 @@
+# Temporary free deployment. No disks, databases, or paid workers.
+services:
+  - type: web
+    name: ahmed-gold-watch-free
+    runtime: docker
+    plan: free
+    region: frankfurt
+    repo: https://github.com/ahmedrady1795-lgtm/ahmed-gold-watch
+    branch: render-free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/live
+    autoDeployTrigger: off
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: AUTONOMOUS_PRODUCTION_SOURCE_WRITE
+        value: "false"
