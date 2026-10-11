@@ -4,7 +4,7 @@ export type ObservedBias=ReturnType<typeof buildContinuousBias>;
 export type StableBiasState={
   side:'BUY'|'SELL';since:number;lastProcessedM15:number;
   oppositeSide:Side;oppositeBars:number;invalidation:number|null;
-  targets:FarLevel[];
+  targets:FarLevel[];reachedPrices?:number[];
 };
 type Outcome={bias:ObservedBias;state:StableBiasState|null;held:boolean;explanation:string};
 
@@ -30,7 +30,9 @@ export function stabilizeSniperBias(
 ):Outcome{
   // A UI stabilizer is not a trade decision or a way around stale input.
   if(!raw.active||currentPrice==null||!Number.isFinite(currentPrice)||currentPrice<=0){
-    const old=previous&&now-previous.since<8*3600000?previous:null;
+    const saved=previous&&now-previous.since<8*3600000?previous:null;
+    // An interruption breaks the independent confirmation streak.
+    const old=saved&&saved.oppositeBars>0?{...saved,oppositeBars:0,oppositeSide:'WAIT' as Side}:saved;
     return {state:old,bias:old?hold(raw,old.side,[],null,
       'آخر انحياز محفوظ تاريخيًا · لا توجد أسعار حية تسمح برسم أهداف نشطة',false):raw,
       held:Boolean(old),explanation:'بيانات غير مباشرة'};
@@ -42,7 +44,7 @@ export function stabilizeSniperBias(
       explanation:'توازن مؤكد نسبيًا · لا نفرض اتجاهًا'};
     const state:StableBiasState={side:raw.side,since:now,
       lastProcessedM15:m15,oppositeSide:'WAIT',oppositeBars:0,
-      invalidation:raw.invalidation,targets:freshTargets};
+      invalidation:raw.invalidation,targets:freshTargets,reachedPrices:[]};
     return {state,bias:{...raw,targets:freshTargets},held:false,
       explanation:'تحديد اتجاه من شموع مكتملة'};
   };
@@ -55,40 +57,41 @@ export function stabilizeSniperBias(
       invalidation:null,label:'الاتجاه السابق اتبطل · إعادة تقييم',rangeBound:true},
       held:false,explanation:'السعر كسر حد إبطال الانحياز المحفوظ'};
   }
+  // Crossing an observed target consumes it for this bias. It must not be
+  // resurrected on a retrace or by the next snapshot's historical levels.
+  const reachedPrices=[...new Set([...(previous.reachedPrices||[]),
+    ...previous.targets.filter(t=>!ahead(previous.side,currentPrice,t)).map(t=>t.price)])];
   const preserved=validLevels(previous.side,currentPrice,previous.targets);
+  const isNewBar=m15>0&&m15>previous.lastProcessedM15;
+  const highFrameAgrees=raw.votes.h1===raw.side||raw.votes.h4===raw.side;
+  const strongOpposition=raw.side!=='WAIT'&&raw.side!==previous.side&&
+    highFrameAgrees&&raw.votes.m15===raw.side;
+  // Only adjacent, independently observed M15 closes count. Neither an
+  // intrabar score change nor a missing/neutral/unsupported close counts.
+  const consecutive=isNewBar&&m15-previous.lastProcessedM15===900000;
+  const oppositeBars=isNewBar?(strongOpposition?
+    (consecutive&&previous.oppositeSide===raw.side?previous.oppositeBars+1:1):0):previous.oppositeBars;
+  if(isNewBar&&strongOpposition&&oppositeBars>=2)return begin();
+  const levels=raw.side===previous.side&&!preserved.length?
+    freshTargets.filter(t=>!reachedPrices.includes(t.price)):preserved;
+  const candidate:StableBiasState={...previous,
+    lastProcessedM15:isNewBar?m15:previous.lastProcessedM15,
+    oppositeSide:isNewBar?(strongOpposition?raw.side:'WAIT'):previous.oppositeSide,
+    oppositeBars,targets:levels,reachedPrices};
+  // React commits this state in an effect; unchanged data must converge.
+  const state=JSON.stringify(candidate)===JSON.stringify(previous)?previous:candidate;
   if(raw.side===previous.side){
-    const newState=previous.oppositeBars>0?{
-      ...previous,oppositeBars:0,oppositeSide:'WAIT' as Side}:previous;
-    // Keep the originally observed objectives while still ahead. A recalculated
-    // snapshot must not replace them every few seconds.
-    const levels=preserved.length?preserved:freshTargets;
-    const updated=levels.length&&!preserved.length?{...newState,targets:levels}:newState;
-    return {state:updated,bias:{...raw,targets:levels,
-      invalidation:previous.invalidation},held:preserved.length>0,
-      explanation:'نفس اتجاه الإطار الطويل · الأهداف مثبتة'};
+    return {state,bias:{...raw,targets:levels,invalidation:previous.invalidation},
+      held:preserved.length>0,explanation:'نفس اتجاه الإطار الطويل · الأهداف مثبتة'};
   }
-  const labelSide=previous.side;
   if(raw.side==='WAIT'){
-    return {state:previous,bias:hold(raw,labelSide,preserved,previous.invalidation,
+    return {state,bias:hold(raw,previous.side,preserved,previous.invalidation,
       'الزخم محايد مؤقتًا · الميل السابق مراقبة فقط لحين كسر المستوى أو تأكيد عكسي',true),
       held:true,explanation:'انخفاض الزخم لا يلغي اتجاه H1/H4 مباشرة'};
   }
-  const highFrameAgrees=raw.votes.h1===raw.side||raw.votes.h4===raw.side;
-  const midFrameAgrees=raw.votes.m15===raw.side;
-  const strongOpposition=highFrameAgrees&&midFrameAgrees;
-  const isNewBar=m15>0&&m15>previous.lastProcessedM15;
-  if(!strongOpposition||!isNewBar){
-    return {state:previous,bias:hold(raw,labelSide,preserved,previous.invalidation,
-      strongOpposition?'عكس محتمل · ننتظر إغلاق M15 ثانٍ مستقل':
-        'التغيّر القصير لا تؤيده فريمات M15/H1/H4 بعد',true),
-      held:true,explanation:'رصد عكس الاتجاه دون قلبه مع كل نبضة'};
-  }
-  const oppositeBars=previous.oppositeSide===raw.side?previous.oppositeBars+1:1;
-  if(oppositeBars<2){
-    const state={...previous,lastProcessedM15:m15,oppositeSide:raw.side,oppositeBars};
-    return {state,bias:hold(raw,labelSide,preserved,previous.invalidation,
-      'عكس محتمل · أول إغلاق M15 مخالف؛ يلزم إغلاق مستقل ثانٍ',true),
-      held:true,explanation:'تأكيد أول لتغير الاتجاه'};
-  }
-  return begin();
+  const explanation=strongOpposition&&oppositeBars>0?
+    'عكس محتمل · يلزم إغلاق M15 تالٍ مستقل مع توافق H1/H4':
+    'التغيّر القصير لا تؤيده إغلاقات متتالية لفريمات M15/H1/H4 بعد';
+  return {state,bias:hold(raw,previous.side,preserved,previous.invalidation,explanation,true),
+    held:true,explanation:'رصد عكس الاتجاه دون قلبه مع كل نبضة'};
 }

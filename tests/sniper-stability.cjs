@@ -53,4 +53,31 @@ assert.equal(stale.bias.targets.length,0,'stale data must not revive active targ
 assert.equal(stale.bias.side,'BUY','old orientation must be labeled as historical only');
 const reached=stabilize(initial,a('BUY',start+900000),106,start+900000);
 assert.equal(reached.bias.targets.length,0,'a passed historical target must not remain ahead');
+const retrace=stabilize(reached.state,a('BUY',start+1800000),104,start+1800000);
+assert.equal(retrace.bias.targets.length,0,'a reached target must not revive after price retraces');
+const first=stabilize(initial,reverse(start+900000),100,start+900000);
+const neutral=stabilize(first.state,a('WAIT',start+1800000),100,start+1800000);
+assert.equal(neutral.state.oppositeBars,0,'a new neutral close breaks the reversal streak');
+const afterNeutral=stabilize(neutral.state,reverse(start+2700000),100,start+2700000);
+assert.equal(afterNeutral.bias.side,'BUY','nonconsecutive confirmations must not reverse bias');
+assert.equal(afterNeutral.state.oppositeBars,1);
+const missingBar=stabilize(first.state,reverse(start+2700000),100,start+2700000);
+assert.equal(missingBar.bias.side,'BUY','a skipped M15 close requires a new confirmation streak');
+const paused=stabilize(first.state,{...reverse(start+1800000),active:false},100,start+1800000);
+const resumed=stabilize(paused.state,reverse(start+1800000),100,start+1800000);
+assert.equal(resumed.bias.side,'BUY','an outage cannot serve as an independent confirmation');
+const weak=stabilize(first.state,{...noHighConfirmation,m15ClosedAt:start+1800000},100,start+1800000);
+assert.equal(weak.state.oppositeBars,0,'a close without higher-frame support resets confirmation');
+const revisedSameBar=stabilize(first.state,a('BUY',start+900000),100,start+900000+1000);
+assert.equal(revisedSameBar.state.oppositeBars,1,'intrabar refresh must not erase a closed-bar confirmation');
+assert.strictEqual(stabilize(initial,a('BUY'),100,start+1000).state,initial,
+  'unchanged observation returns identical state to avoid effect update loops');
+const sell=stabilize(null,a('SELL'),100,start);
+const soldTarget=stabilize(sell.state,a('SELL',start+900000),94,start+900000);
+assert.equal(stabilize(soldTarget.state,a('SELL',start+1800000),96,start+1800000).bias.targets.length,0,
+  'reached sell targets remain consumed after a rally');
+const buyBack=stabilize(sell.state,a('BUY',start+900000),100,start+900000);
+assert.equal(buyBack.bias.side,'SELL');
+assert.equal(stabilize(buyBack.state,a('BUY',start+1800000),100,start+1800000).bias.side,'BUY',
+  'consecutive reversal confirmation works symmetrically');
 console.log('PASS: hysteresis, distinct M15 confirmations, higher-timeframe guard, breaching stop, no stale or crossed targets');
