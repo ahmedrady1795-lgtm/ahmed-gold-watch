@@ -1,4 +1,5 @@
 import {getQuoteData} from './market-hub';
+import {acceptGoldPulse,type GoldPulse} from './gold-tick-quality';
 import {ingestLiveCandle,completedLiveCandles,type LiveBars} from './live-candles';
 type Asset='BTC'|'GOLD';
 type Side='BUY'|'SELL'|'WAIT';
@@ -39,27 +40,18 @@ export function startServerTickBrain(){
     ws=>ws.send(JSON.stringify({type:'subscribe',product_ids:['BTC-USD'],channels:['ticker']})),
     j=>{if(j?.type!=='ticker'||j?.product_id!=='BTC-USD')return;const price=Number(j.price),bid=Number(j.best_bid),ask=Number(j.best_ask);if(!Number.isFinite(price)||price<=0)return;push('BTC',{at:Date.parse(j.time)||Date.now(),price,bid:Number.isFinite(bid)?bid:null,ask:Number.isFinite(ask)?ask:null,bidQty:null,askQty:null,source:'Coinbase server WebSocket'});}
   );
-  let goldBusy=false;
+  let goldBusy=false,lastGoldPulse:GoldPulse|null=null;
   const pollGold=async()=>{
     if(goldBusy)return;goldBusy=true;
     try{
-      const q=await getQuoteData({forceExternal:true}),price=Number(q?.price),sourceTime=Number(q?.sourceTime);
-      const observedAt=Date.now(),fetchedAt=Number(q?.fetchedAt||observedAt);
-      const sourceAge=Number.isFinite(sourceTime)&&sourceTime>0?Math.max(0,observedAt-sourceTime):Infinity;
-      const fetchAge=Number.isFinite(fetchedAt)&&fetchedAt>0?Math.max(0,observedAt-fetchedAt):Infinity;
-      // Biquote/provider timestamps can arrive in coarse batches. A quote freshly fetched by
-      // this server is still usable for micro-flow as long as the provider did not mark it closed/stale.
-      const usable=q?.status!=='closed_or_stale'&&(q?.status==='live'||sourceAge<=10000||fetchAge<=5000);
-      if(!usable||!Number.isFinite(price)||price<=0)return;
-      const bid=Number(q?.bid),ask=Number(q?.ask);
+      const q=await getQuoteData({forceExternal:true}),observedAt=Date.now();
+      const pulse=acceptGoldPulse(q,observedAt,lastGoldPulse);
+      if(!pulse)return;
+      lastGoldPulse=pulse;
       push('GOLD',{
-        // The wave engine measures when this server observed each quote.
-        // Provider timestamps can update in coarse batches and should only be used as a freshness gate above.
-        at:observedAt,price,
-        bid:Number.isFinite(bid)&&bid>0?bid:null,
-        ask:Number.isFinite(ask)&&ask>0?ask:null,
-        bidQty:null,askQty:null,
-        source:String(q?.source||'Gold external quote')+(q?.status==='delayed'?' near-live fallback':'')+' server pulse'
+        at:observedAt,price:pulse.price,
+        bid:pulse.bid,ask:pulse.ask,bidQty:null,askQty:null,
+        source:String(q?.source||'Gold external quote')+' timestamp-verified server pulse'
       });
     }catch{}finally{goldBusy=false;}
   };
