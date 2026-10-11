@@ -19,12 +19,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const asset: 'GOLD'|'BTC'=assetView==='ALL'?chosen:assetView;
   const x=asset==='GOLD'?data?.gold:data?.bitcoin;
   const journal=journals?.[asset]??null;
-  const m=buildForecastIllustration(asset,x,asset==='GOLD'?goldLive:btcLive,now,snapshotAt,journal,true);
   const calibration=audit?.metrics?.[asset];
   const observed=Number(calibration?.observed||0);
   const lastSource=Number(audit?.updatedAt||0);
   const auditHealthy=Boolean(auditLoaded&&audit?.persistence==='VOLUME'&&lastSource>0&&
     now-lastSource<180000);
+  const m=buildForecastIllustration(asset,x,asset==='GOLD'?goldLive:btcLive,now,snapshotAt,
+    auditHealthy?journal:null,true);
   const statusReady=m.ready&&auditHealthy;
   const watchReady=m.watchReady&&!statusReady;
   const planVisible=statusReady||watchReady;
@@ -92,7 +93,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         </div>
       </header>
       <div className="forecast-brain-strip">
-        <span><Activity size={14}/> {sn.phaseText} {sn.compression!=null?'· جاهزية '+sn.compression+'/100':''}</span>
+        <span><Activity size={14}/> {watchReady&&sn.view.side==='WAIT'?'رصد هيكلي نشط · M5 / M15 / H1':sn.phaseText} {sn.compression!=null?'· جاهزية '+sn.compression+'/100':''}</span>
         <span><Layers3 size={14}/> مصادر الأهداف: M15 / H1 / السيولة</span>
         <span><Target size={14}/> {statusReady?'مستويات مؤهلة ومُسجلة':watchReady?'مستويات هيكلية للمراقبة فقط':'لا يوجد هدف مؤهل حاليًا'}</span>
       </div>
