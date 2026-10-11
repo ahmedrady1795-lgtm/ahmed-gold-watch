@@ -155,7 +155,15 @@ export function getSniperAudit(now=Date.now()){
     block:lastBlock,
     watch:Object.fromEntries((['GOLD','BTC'] as const).map(asset=>{
       const w=state.watch[asset],current=w.records.at(-1)||null;
-      return [asset,{state:w.state,bias:w.bias,updatedAt:w.updatedAt,modelAt:w.modelAt,
+      // Render Free can sleep between updates. Keep the confirmed historical
+    // direction in memory, but never re-serve an old LIVE path as actionable.
+    const live=Number.isFinite(w.modelAt)&&w.modelAt>0&&w.modelAt<=now&&
+      now-w.modelAt<=90000&&w.updatedAt>0&&w.updatedAt<=now&&
+      now-w.updatedAt<=90000;
+    const bias=!live&&w.bias?{...w.bias,active:false,status:'PAUSED' as const,
+      targets:[],invalidation:null,
+      reason:'تحديثات القناص متوقفة مؤقتًا؛ الاتجاه السابق محفوظ تاريخيًا فقط'}:w.bias;
+    return [asset,{state:w.state,bias,stale:!live,updatedAt:w.updatedAt,modelAt:w.modelAt,
         current,metrics:scorecard(w.records,asset),
         recent:w.records.filter(r=>terminal(r.status)).slice(-5).reverse()}];
     })),
