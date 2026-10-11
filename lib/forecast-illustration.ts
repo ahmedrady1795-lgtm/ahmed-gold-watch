@@ -1,9 +1,10 @@
 import {buildSniperOutlook} from './sniper-outlook';
 import {buildStructuralWatch} from './structural-watch';
+import {analyzeFourHours} from './four-hour-structure';
 import type {ForecastJournal} from './forecast-journal';
 
 export type PlotCandle={time:number;open:number;high:number;low:number;close:number;volume:number};
-export type PriceBand={key:string;label:string;low:number;high:number;price:number;kind:'TARGET'|'DEMAND'|'SUPPLY'|'REBOUND'|'LIQUIDITY'|'STOP'};
+export type PriceBand={key:string;label:string;low:number;high:number;price:number;kind:'TARGET'|'DEMAND'|'SUPPLY'|'REBOUND'|'LIQUIDITY'|'STOP'|'BUY_REBOUND'|'SELL_REBOUND'};
 const finite=(x:unknown):number|null=>x!==null&&x!==undefined&&x!==''&&Number.isFinite(Number(x))?Number(x):null;
 const valid=(x:unknown)=>{const p=finite(x);return p!=null&&p>0?p:null;};
 
@@ -20,11 +21,13 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
        high<Math.max(open,close)||low>Math.min(open,close)||low>high)continue;
     seen.set(time,{time,open,high,low,close,volume:Math.max(0,volume)});
   }
-  const candles=[...seen.values()].sort((a,b)=>a.time-b.time).slice(-52);
+  const candles=[...seen.values()].sort((a,b)=>a.time-b.time).slice(-96);
   const lastAt=candles.length?candles[candles.length-1].time+60000:0;
   const historyAge=lastAt?Math.max(0,now-lastAt):null;
   const historyFresh=historyAge!=null&&historyAge<=180000;
   const price=sniper.view.price;
+  const fourHour=analyzeFourHours({asset,candles:raw,frames:x?.chartHigherFrames,now,
+    source:x?.candleSource,referencePrice:price});
   // Production audits are evidence of qualified scenarios, NOT a prerequisite
   // for continuously observing real closed-candle market structure.
   const observation=buildStructuralWatch(asset,x,price,now,
@@ -48,7 +51,9 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const watchSide=sniper.view.side!=='WAIT'?sniper.view.side:observation.side;
   const watchTargets=sniper.view.side!=='WAIT'?sniper.targets:observation.targets;
   const watchStop=sniper.view.side!=='WAIT'?sniper.view.invalidation:observation.invalidation;
-  const watchReady=Boolean(!ready&&historyFresh&&sniper.view.priceFresh&&sniper.view.forecastFresh&&
+  const fourHourOpposes=fourHour.ready&&fourHour.side!=='WAIT'&&watchSide!=='WAIT'&&
+    fourHour.side!==watchSide;
+  const watchReady=Boolean(!ready&&!fourHourOpposes&&historyFresh&&sniper.view.priceFresh&&sniper.view.forecastFresh&&
     aheadOf(watchSide,watchTargets)&&stopSafe(watchSide,watchStop));
   // Never reuse expired/invalidated audit levels as a new live opportunity.
   const displayTargets=ready?plannedTargets:watchReady?watchTargets:[];
@@ -70,6 +75,13 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
       bands.push({key:kind+index,label:z.label,low:z.low,high:z.high,price:(z.high+z.low)/2,kind});
     }
   }
+  if(fourHour.ready&&historyFresh){
+    for(const [index,z] of fourHour.zones.entries()){
+      bands.push({key:'REBOUND_4H_'+index,label:z.side==='BUY'?'ارتداد شراء':'ارتداد بيع',
+        low:z.low,high:z.high,price:Number(((z.low+z.high)/2).toFixed(2)),
+        kind:z.side==='BUY'?'BUY_REBOUND':'SELL_REBOUND'});
+    }
+  }
   // Make the chart scale meaningful when only a narrow price range is known.
   const anchors=[
     ...candles.flatMap(c=>[c.low,c.high]),
@@ -84,7 +96,7 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const projected=(ready||watchReady)&&price!=null
     ?[{key:'NOW',price},...displayTargets.map(t=>({key:'TP'+t.stage,price:t.price}))]
     :[];
-  return {asset,sniper,observation,candles,bands,price,historyAge,historyFresh,ready,watchReady,displaySide,displayTargets,displayStop,journal,
+  return {asset,sniper,observation,fourHour,candles,bands,price,historyAge,historyFresh,ready,watchReady,displaySide,displayTargets,displayStop,journal,
     lower,upper,projected,
     status:!candles.length?'NO_CANDLES':!historyFresh?'STALE_CANDLES':ready?'SCENARIO':watchReady?'WATCH_PATH':'WATCH'};
 }
