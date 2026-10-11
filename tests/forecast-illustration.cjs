@@ -14,8 +14,9 @@ const sniper=read('lib/sniper-outlook.ts',p=>p==='./next-move-view'?next:p==='./
 const watch=read('lib/structural-watch.ts',p=>p==='./long-range-targets'?long:require(p));
 const fourHour=read('lib/four-hour-structure.ts');
 const continuous=read('lib/continuous-direction.ts');
+const stability=read('lib/sniper-stability.ts');
 const {buildForecastIllustration:build}=read('lib/forecast-illustration.ts',
-  p=>p==='./sniper-outlook'?sniper:p==='./structural-watch'?watch:p==='./four-hour-structure'?fourHour:p==='./continuous-direction'?continuous:require(p));
+  p=>p==='./sniper-outlook'?sniper:p==='./structural-watch'?watch:p==='./four-hour-structure'?fourHour:p==='./continuous-direction'?continuous:p==='./sniper-stability'?stability:require(p));
 const now=Date.parse('2026-10-11T10:00:00Z');
 const candles=Array.from({length:46},(_,i)=>{
   const price=99+i*.02;
