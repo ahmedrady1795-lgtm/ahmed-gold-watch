@@ -34,7 +34,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const statusReady=m.ready&&auditHealthy;
   const watchReady=m.watchReady&&!statusReady;
   const planVisible=statusReady||watchReady;
-  const sn=m.sniper,dir=planVisible?m.displaySide:'WAIT';
+  const sn=m.sniper,dir=planVisible?m.displaySide:m.bias.active?m.bias.side:'WAIT';
   const rise=dir==='BUY',fall=dir==='SELL';
   const W=1040,H=465,x0=52,x1=612,xf=622,xr=946,yt=30,yb=375;
   const candleBounds=m.candles.flatMap(c=>[c.low,c.high]);
@@ -63,15 +63,18 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     });
   }
   const ageMin=m.historyAge==null?null:Math.ceil(m.historyAge/60000);
-  const stateLabel=statusReady?'سيناريو مؤهل · مسجل':watchReady?'رصد مبكر · غير مؤهل للدخول':m.status==='STALE_CANDLES'?'شموع تاريخية متأخرة':
-    m.status==='NO_CANDLES'?'الشموع غير متاحة':!sn.view.priceFresh?'السعر غير محدث':'الرصد نشط · انتظار توافق';
+  const stateLabel=statusReady?'سيناريو مؤهل · مسجل':watchReady?'أهداف بعيدة · مراقبة فقط':
+    m.bias.active&&m.bias.side!=='WAIT'?'الاتجاه مرصود · جارٍ البحث عن مستوى بعيد':
+    m.bias.active?'سوق عرضي · التحليل مستمر':
+    m.status==='STALE_CANDLES'?'سوق متوقف أو شموع متأخرة':
+    m.status==='NO_CANDLES'?'لا توجد شموع كافية':'انحياز سابق · ليس تحليلًا لحظيًا';
   const highest=m.displayTargets.at(-1);
   const zoneList=sn.zones.slice(0,4);
   const reboundBuy=m.fourHour.zones.filter(z=>z.side==='BUY');
   const reboundSell=m.fourHour.zones.filter(z=>z.side==='SELL');
-  const statusText=statusReady?(journal?.message||sn.stageText):watchReady?
-    (sn.view.side!=='WAIT'?sn.view.reason:m.observation.reason):
-    (sn.view.reason+' · '+m.observation.reason);
+  const statusText=statusReady?(journal?.message||sn.stageText):
+    watchReady?(m.bias.active?m.bias.reason+' · مستويات مرصودة من H1/H4، وليست إشارة دخول':sn.view.reason):
+    m.bias.label+' · '+m.bias.reason;
   const activation=statusReady&&sn.activation?'خلال '+sn.activation.min+'–'+sn.activation.max+' د':'—';
   const arrival=statusReady&&sn.arrival?'خلال '+sn.arrival.min+'–'+sn.arrival.max+' د':'غير محدد';
 
@@ -83,7 +86,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <div className="forecast-visual-heading">
           <span className="forecast-visual-mark"><Crosshair size={17}/></span>
           <div><strong>خريطة حركة {asset==='GOLD'?'الذهب':'البيتكوين'}</strong>
-            <small>M1 · FOUR-HOUR CONTEXT · M15/H1 SNIPER</small></div>
+            <small>M1 · 4H CONTEXT · H1/H4 DISTANT TARGET RADAR</small></div>
         </div>
         <div className="forecast-visual-controls">
           <button type="button" onClick={()=>setNewsOpen(v=>!v)} aria-expanded={newsOpen}
@@ -102,9 +105,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       </button>}
       {newsOpen&&<div className="forecast-news-drawer"><NewsCommandCenter events={data?.newsEvents||[]} now={now} featuredEvent={data?.autopilot?.nextEvent||null}/></div>}
       <div className="forecast-brain-strip">
-        <span><Activity size={14}/> {m.fourHour.ready?'4 ساعات: '+m.fourHour.phase+' · '+(m.fourHour.side==='BUY'?'ميل شراء':m.fourHour.side==='SELL'?'ميل بيع':'ميل محايد'):watchReady&&sn.view.side==='WAIT'?'رصد هيكلي نشط · M5 / M15 / H1':sn.phaseText} {sn.compression!=null?'· جاهزية '+sn.compression+'/100':''}</span>
-        <span><Layers3 size={14}/> مصادر الأهداف: M15 / H1 / السيولة</span>
-        <span><Target size={14}/> {statusReady?'مستويات مؤهلة ومُسجلة':watchReady?'مستويات هيكلية للمراقبة فقط':'لا يوجد هدف مؤهل حاليًا'}</span>
+        <span><Activity size={14}/> {m.bias.active?m.bias.label+(m.bias.opposition?' · اختلاف فريمات':' · رصد متواصل'):
+          'آخر قراءة: '+m.bias.label+' · '+m.bias.reason} {m.fourHour.ready?' · 4س: '+m.fourHour.phase:''}</span>
+        <span><Layers3 size={14}/> وجهات بعيدة: H1 / H4 · مستويات فعلية</span>
+        <span><Target size={14}/> {statusReady?'سيناريو مسجل':watchReady?'مستويات مراقبة بعيدة · دون أمر تداول':m.bias.active?'الاتجاه مرصود · الأهداف قيد التحقق':'بيانات قيد التحديث'}</span>
       </div>
       <div className="forecast-visual-layout">
         <div className="forecast-visual-facts">
@@ -116,29 +120,32 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <small>الاتجاه المحتمل</small>
             <strong className={rise?'green':fall?'red':'forecast-visual-muted'}>
               {rise?<ArrowUpRight size={16}/>:fall?<ArrowDownRight size={16}/>:<Activity size={15}/>}
-              {rise?(statusReady?'صعود مؤهل':'ميل صعود مرصود'):fall?(statusReady?'هبوط مؤهل':'ميل هبوط مرصود'):'انتظار تأكيد'}</strong>
+              {rise?(statusReady?'صعود مؤهل':'ميل صعود للمراقبة'):fall?(statusReady?'هبوط مؤهل':'ميل هبوط للمراقبة'):m.bias.active?'حركة عرضية / ترقب كسر':'البيانات غير حديثة'}</strong>
           </div>
           <div className="forecast-visual-targets">
             {([1,2,3] as const).map(i=>{
               const target=m.displayTargets.find(t=>t.stage===i);
               return <div key={i} className="forecast-visual-target">
-                <span>{watchReady?('منطقة '+i+' · مراقبة'):(i===1?'TP1 · أول':i===2?'TP2 · رئيسي':'TP3 · ممتد')}<small>{statusReady&&target&&'reached' in target&&target.reached?'تم الوصول':watchReady?'مستوى هيكلي · ليس توصية دخول':target?'M15/H1 · هيكلي':'بانتظار مستوى مؤكد'}</small></span>
+                <span>{watchReady?('هدف بعيد '+i+' · مراقبة'):(i===1?'TP1 · أول':i===2?'TP2 · رئيسي':'TP3 · ممتد')}<small>{statusReady&&target&&'reached' in target&&target.reached?'تم الوصول':watchReady&&target?(target.source||'H1/H4 · مرصود'):(target?'M15/H1 · هيكلي':'لا يوجد مستوى مرصود بعد')}</small></span>
                 <strong dir="ltr">{fmt(target?.price)}</strong>
               </div>;
             })}
           </div>
           <div className="forecast-visual-fact forecast-visual-stop">
-            <small><ShieldAlert size={13}/> {watchReady?'إبطال الميل المرصود':'إبطال السيناريو'}</small>
+            <small><ShieldAlert size={13}/> {watchReady?'حد إبطال الميل للمراقبة':'إبطال السيناريو'}</small>
             <strong dir="ltr">{fmt(m.displayStop)}</strong>
           </div>
           <div className="forecast-visual-fact forecast-visual-time">
             <small><Clock3 size={13}/> بدء الحركة / الهدف الأول</small>
-            <strong>{statusReady?activation:watchReady?'لم يتأكد':'—'}</strong>
-            <span>{statusReady?arrival:watchReady?'رصد مبكر · لا يوجد موعد قابل للتحقق':'لا يوجد موعد موثوق للهدف البعيد'}</span>
+            <strong>{statusReady?activation:watchReady?'رصد طويل المدى':'—'}</strong>
+            <span>{statusReady?arrival:watchReady?'الزمن غير مؤكد · H1/H4':'لا يوجد توقيت وصول موثوق'}</span>
           </div>
           <div className="forecast-visual-confidence">
-            <span>{watchReady?'توافق الفريمات':'قوة التحليل'} <b>{statusReady&&sn.view.confidence!=null?fmt(sn.view.confidence,0)+'/100':watchReady&&m.observation.ready?m.observation.votes+'/3':'—'}</b></span>
-            <small>{watchReady?'ميل مراقبة غير مختبر كإشارة تداول':'تقييم مشروط، وليس نسبة نجاح أو ضمانًا'}</small>
+            <span>{statusReady?'قوة التحليل':'الانحياز الهيكلي'} <b>{statusReady&&sn.view.confidence!=null?fmt(sn.view.confidence,0)+'/100':
+              m.bias.active?(m.bias.agreement+' مصادر مؤيدة'):'—'}</b></span>
+            <small>{statusReady?'تقييم مشروط وليس ضمان ربح':m.bias.active?
+              (m.bias.opposition?'ميل غير إجماعي · للاستكشاف فقط':'رصد مستمر، غير صالح كإشارة دخول'):
+              'السوق قد يكون مغلقًا أو البيانات متأخرة'}</small>
           </div>
         </div>
         <div className="forecast-visual-chart-wrap">
@@ -233,14 +240,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {!planVisible&&<g>
                 <rect x="645" y="136" width="273" height="65" rx="9" fill="#0a1520" stroke="#3a5464" strokeOpacity=".8"/>
                 <text x="782" y="160" fill="#cedfeb" textAnchor="middle" fontSize="14" fontWeight="700">
-                  {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'لا توجد شموع كافية':'الرصد يعمل · لا يوجد اتجاه مؤكد'}</text>
+                  {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'لا توجد شموع كافية':m.bias.active?m.bias.label:'بيانات الرصد غير حديثة'}</text>
                 <text x="782" y="182" fill="#91abbb" textAnchor="middle" fontSize="11">لن نختلق هدفًا أو مسارًا بدون بيانات</text>
               </g>}
             </svg>
           </div>
           <div className="forecast-visual-legend">
             <span><i className="forecast-legend-history"/> شموع فعلية</span>
-            <span><i className="forecast-legend-projection"/> {watchReady?'مسار مراقبة فقط':'سيناريو مشروط'}</span>
+            <span><i className="forecast-legend-projection"/> {watchReady?'مسار مستويات بعيد · توضيحي':'سيناريو مشروط'}</span>
             <span><i className="forecast-legend-target"/> مناطق أهداف</span>
             <span><i className="forecast-legend-rebound"/> مناطق سيولة</span>
             <span className="sniper-buy-legend">● ارتداد شراء</span><span className="sniper-sell-legend">● ارتداد بيع</span>
@@ -280,7 +287,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <div className="forecast-decision-card">
           <strong><Crosshair size={15}/> قرار القناص وسبب الأهداف</strong>
           <p>{statusText}</p>
-          <p>{watchReady?'مستويات من شموع M15/H1 التاريخية · ليست نقاط دخول':sn.longRange?.basis||'في انتظار إطار هيكلي موثوق'}
+          <p>{watchReady?'مستويات بعيدة من قمم وقيعان H1/H4 المكتملة · للمراقبة فقط':sn.longRange?.basis||'في انتظار إطار هيكلي موثوق'}
             {sn.longRange?.atr15!=null?' · ATR M15 '+fmt(sn.longRange.atr15):''}</p>
           {statusReady&&sn.evidence?.length>0&&<div className="forecast-decision-evidence">
             {sn.evidence.slice(0,4).map(item=><span key={item}>{item}</span>)}
@@ -307,7 +314,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       </section>
       <footer className="forecast-visual-note">
         <span>الشموع السابقة بيانات سوق فعلية. {watchReady?'الخط الأصفر مراقبة هيكلية أولية، وليس إشارة شراء أو بيع.':'الخط المتقطع ترتيب مستويات مشروط، وليس توقعًا لشكل الشموع أو وقت وصولها.'}</span>
-        <span>{highest?(statusReady?'الهدف المسجل الأخير ':'منطقة الرصد الأبعد ')+fmt(highest.price):'القناص يرصد الشروط قبل عرض اتجاه وأهداف'}</span>
+        <span>{highest?(statusReady?'الهدف المسجل الأخير ':'أبعد مستوى هيكلي مرصود ')+fmt(highest.price):m.bias.active?'انحياز ظاهر · لا مستوى بعيد متاح':'آخر بيانات للمتابعة فقط'}</span>
       </footer>
     </div>
   </section>;
