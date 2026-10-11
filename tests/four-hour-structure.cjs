@@ -1,10 +1,10 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),ts=require('typescript'),vm=require('node:vm');
-const module={exports:{}};
+const sandboxModule={exports:{}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/four-hour-structure.ts','utf8'),{
   compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
-}).outputText,{module,exports:module.exports});
-const {analyzeFourHours:analyze}=module.exports;
+}).outputText,{module:sandboxModule,exports:sandboxModule.exports});
+const {analyzeFourHours:analyze}=sandboxModule.exports;
 const now=Date.parse('2026-10-11T12:00:00Z');
 const m1=Array.from({length:240},(_,i)=>{
   const price=100+i*.012+Math.sin(i*.22)*.13;
