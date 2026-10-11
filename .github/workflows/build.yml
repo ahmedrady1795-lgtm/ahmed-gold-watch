@@ -24,6 +24,7 @@ jobs:
       - run: node tests/worker-cadence.cjs
       - run: docker compose --env-file deploy/oracle/.env.example -f deploy/oracle/compose.yaml config --quiet
       - run: SITE_DOMAIN=example.org docker compose --env-file deploy/oracle/.env.example -f deploy/oracle/compose.yaml --profile public --profile neural config --quiet
+      - run: python3 deploy/oracle/verify-config.py
       - run: node tests/indicators.cjs
       - run: node tests/core-quality.cjs
       - run: node tests/scalp.cjs
