@@ -27,9 +27,11 @@ async function healthProbe(url:string|undefined){
 }
 
 export async function getAiReadiness(){
-  const [ml,neural]=await Promise.all([healthProbe(process.env.ML_ENGINE_URL),healthProbe(process.env.NEURAL_ENGINE_URL)]);
+  const neuralEnabled=process.env.NEURAL_ENABLED!=='0';
+  const [ml,neural]=await Promise.all([healthProbe(process.env.ML_ENGINE_URL),
+    neuralEnabled?healthProbe(process.env.NEURAL_ENGINE_URL):Promise.resolve({ok:false,status:'DISABLED',reason:'Neural suspended by operator'})]);
   return summarizeAiReadiness({...ml,
     oneMinute:{ready:Boolean(ml?.readiness?.m1)},fiveMinute:{ready:Boolean(ml?.readiness?.m5)}
   },{...neural,ready:Boolean(neural?.prediction?.ready),status:neural?.prediction?.status,reason:neural?.prediction?.reason},
-    Boolean(process.env.ML_ENGINE_URL),Boolean(process.env.NEURAL_ENGINE_URL));
+    Boolean(process.env.ML_ENGINE_URL),neuralEnabled&&Boolean(process.env.NEURAL_ENGINE_URL));
 }
