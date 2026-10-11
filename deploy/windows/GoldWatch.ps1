@@ -110,7 +110,7 @@ try {
                 $env:ML_ENGINE_URL = ''
                 Say 'Starting Lite: website + paper scalper (ML model disabled).'
                 Invoke-Compose @('--profile','ml','stop','ml')
-                Invoke-Compose @('up','-d','--build','web','worker','--remove-orphans')
+                Invoke-Compose @('up','-d','--build','--remove-orphans','web','worker')
             } else {
                 $env:ML_ENGINE_URL = 'http://ml:8000'
                 Say 'Starting Standard: website + BTC ML + paper scalper.'
