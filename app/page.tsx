@@ -74,7 +74,7 @@ export default function Home(){
     // Efficient conditional GET: a 304 has no JSON body and no expensive AI
     // computation. Faster polling reduces the UI delay after a NEW server
     // generation, without starting heavy analysis cycles.
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},1500);
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},3000);
     const clock=setInterval(()=>setNow(Date.now()),1000);
     return()=>{clearInterval(aiTimer);clearInterval(clock);};
   },[]);
