@@ -7,7 +7,7 @@ COPY . .
 # Hard-block production deployment on a regression in the target scorecard.
 # This tests the scorer's stated expiry time and rejects ambiguous OHLC fills.
 RUN node tests/four-hour-structure.cjs && node tests/continuous-direction.cjs && node tests/sniper-stability.cjs && node tests/sniper-scorecard.cjs && node tests/long-range-targets.cjs && node tests/sniper-outlook.cjs && node tests/forecast-illustration.cjs && node tests/forecast-journal.cjs
-RUN node tests/sniper-watch.cjs && node tests/gold-tick-quality.cjs && node tests/client-market-freshness.cjs && node tests/ai-readiness.cjs
+RUN node tests/sniper-watch.cjs && node tests/gold-tick-quality.cjs && node tests/client-market-freshness.cjs && node tests/background-ai-cycle.cjs && node tests/ai-readiness.cjs
 RUN npm run build
 
 FROM public.ecr.aws/docker/library/node:22-alpine AS runner
