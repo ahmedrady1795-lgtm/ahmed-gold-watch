@@ -1,4 +1,4 @@
-export type Candle={time:number;open:number;high:number;low:number;close:number};
+export type Candle={time:number;open:number;high:number;low:number;close:number;tickVolume?:number;realVolume?:number;spread?:number};
 export type Event={id:string;time:number;name:string;importance:number;actual:string;forecast:string;previous:string;source:string;exactTime:boolean};
 export type Rules={before:number;after:number;adx:number;spike:number;minScore:number};
 export const defaults:Rules={before:15,after:15,adx:22,spike:2,minScore:76};
@@ -15,7 +15,23 @@ function rma(a:number[],n:number){if(a.length<n)return NaN;let x=avg(a.slice(0,n
 function std(a:number[]){const m=avg(a);return Math.sqrt(avg(a.map(v=>(v-m)**2)));}
 function macd(closes:number[]){const a=emaAll(closes,12),b=emaAll(closes,26),line:number[]=[];for(let i=25;i<closes.length;i++)if(Number.isFinite(a[i])&&Number.isFinite(b[i]))line.push(a[i]-b[i]);const signal=ema(line,9),value=line.at(-1)??NaN;return {macd:value,signal,hist:value-signal};}
 function stoch(c:Candle[],n=14){const ks:number[]=[];for(let j=Math.max(n-1,c.length-3);j<c.length;j++){const w=c.slice(j-n+1,j+1);if(w.length<n)continue;const hi=Math.max(...w.map(x=>x.high)),lo=Math.min(...w.map(x=>x.low));ks.push(hi===lo?50:100*(c[j].close-lo)/(hi-lo));}return {k:ks.at(-1)??NaN,d:avg(ks.slice(-3))};}
-function directional(c:Candle[],n=14){const tr:number[]=[],plus:number[]=[],minus:number[]=[];for(let i=1;i<c.length;i++){const up=c[i].high-c[i-1].high,down=c[i-1].low-c[i].low;tr.push(Math.max(c[i].high-c[i].low,Math.abs(c[i].high-c[i-1].close),Math.abs(c[i].low-c[i-1].close)));plus.push(up>down&&up>0?up:0);minus.push(down>up&&down>0?down:0);}if(tr.length<n*2)return {atr:NaN,adx:NaN,plusDI:NaN,minusDI:NaN};let atr=avg(tr.slice(0,n)),p=avg(plus.slice(0,n)),m=avg(minus.slice(0,n));const dx:number[]=[];for(let i=n;i<tr.length;i++){atr=(atr*(n-1)+tr[i])/n;p=(p*(n-1)+plus[i])/n;m=(m*(n-1)+minus[i])/n;const pdi=atr?100*p/atr:0,mdi=atr?100*m/atr:0;dx.push((pdi+mdi)?100*Math.abs(pdi-mdi)/(pdi+mdi):0);}const adx=rma(dx,n);return {atr,adx,plusDI:atr?100*p/atr:0,minusDI:atr?100*m/atr:0};}
+function directional(c:Candle[],n=14){
+  const tr:number[]=[],plus:number[]=[],minus:number[]=[];
+  for(let i=1;i<c.length;i++){
+    const up=c[i].high-c[i-1].high,down=c[i-1].low-c[i].low;
+    tr.push(Math.max(c[i].high-c[i].low,Math.abs(c[i].high-c[i-1].close),Math.abs(c[i].low-c[i-1].close)));
+    plus.push(up>down&&up>0?up:0);minus.push(down>up&&down>0?down:0);
+  }
+  if(tr.length<n)return {atr:NaN,adx:NaN,plusDI:NaN,minusDI:NaN};
+  let atr=avg(tr.slice(0,n)),p=avg(plus.slice(0,n)),m=avg(minus.slice(0,n));
+  // Wilder's first DX belongs to the initial n-period seed, not the next bar.
+  const dx:number[]=[p+m?100*Math.abs(p-m)/(p+m):0];
+  for(let i=n;i<tr.length;i++){
+    atr=(atr*(n-1)+tr[i])/n;p=(p*(n-1)+plus[i])/n;m=(m*(n-1)+minus[i])/n;
+    dx.push(p+m?100*Math.abs(p-m)/(p+m):0);
+  }
+  return {atr,adx:rma(dx,n),plusDI:atr?100*p/atr:0,minusDI:atr?100*m/atr:0};
+}
 export function indicators(c:Candle[]):IndicatorSet{
   const closes=c.map(x=>x.close),gains:number[]=[],losses:number[]=[];for(let i=1;i<c.length;i++){const d=c[i].close-c[i-1].close;gains.push(Math.max(d,0));losses.push(Math.max(-d,0));}
   const g=rma(gains,14),l=rma(losses,14),rsi=g===0&&l===0?50:l===0?100:100-100/(1+g/l),dir=directional(c,14),mc=macd(closes),bb=closes.slice(-20),mid=avg(bb),sd=std(bb),st=stoch(c),trs:number[]=[];
@@ -27,9 +43,40 @@ function closed(c:Candle[],ms:number,now:number){return c.filter(x=>x.time+ms<=n
 function trendLong(i:IndicatorSet,last:number){return i.ema20>i.ema50&&last>i.ema200;}
 function trendShort(i:IndicatorSet,last:number){return i.ema20<i.ema50&&last<i.ema200;}
 function add(ok:boolean,w:number){return ok?w:0;}
+function unit(v:number){return Math.max(0,Math.min(1,Number.isFinite(v)?v:0));}
+function directionalStrength(v:number,scale:number){return unit(v/Math.max(1e-9,scale));}
+function indicatorFamilyPower(long:boolean,i:IndicatorSet,p:number){
+  const dir=long?1:-1,atr=Math.max(1e-9,Number(i.atr||0));
+  const emaFast=dir*(i.ema20-i.ema50)/atr;
+  const emaAnchor=dir*(p-i.ema200)/atr;
+  const trend=unit(directionalStrength(emaFast,.42)*.58+directionalStrength(emaAnchor,.75)*.42);
+  const macd=directionalStrength(dir*i.macdHist/atr,.16);
+  const diGap=dir*(i.plusDI-i.minusDI);
+  const dmi=unit(directionalStrength(diGap,22)*.68+directionalStrength(i.adx-12,24)*.32);
+  const rsiSigned=dir*(i.rsi-50);
+  const rsi=unit(directionalStrength(rsiSigned,18)*(i.rsi>=18&&i.rsi<=82?1:.72));
+  const stochSigned=dir*(i.stochK-i.stochD);
+  const stoch=unit(directionalStrength(stochSigned,16)*.70+directionalStrength(dir*(i.stochK-50),35)*.30);
+  const halfBand=Math.max(1e-9,(i.bbUpper-i.bbLower)/2);
+  const bbPos=dir*(p-i.bbMid)/halfBand;
+  const bollinger=unit((bbPos+1)/2);
+  const volQuality=unit(1-Math.abs(Math.log(Math.max(.25,i.volatility||1)))/Math.log(4));
+  return {trend,macd,dmi,rsi,stoch,bollinger,volQuality};
+}
 export function scoreFrames(side:'long'|'short',f:{m1:IndicatorSet;m5:IndicatorSet;m15:IndicatorSet;h1:IndicatorSet},last:{m1:number;m5:number;m15:number;h1:number},breakout:boolean){
-  const long=side==='long';const t=(i:IndicatorSet,p:number)=>long?trendLong(i,p):trendShort(i,p);const mac=(i:IndicatorSet)=>long?i.macdHist>0:i.macdHist<0;const di=(i:IndicatorSet)=>long?i.plusDI>i.minusDI:i.minusDI>i.plusDI;const rsi=long?f.m5.rsi>=52&&f.m5.rsi<=70:f.m5.rsi<=48&&f.m5.rsi>=30;const sto=long?f.m1.stochK>=45&&f.m1.stochK<=92:f.m1.stochK<=55&&f.m1.stochK>=8;const bb=long?last.m5>f.m5.bbMid&&last.m5<=f.m5.bbUpper*1.002:last.m5<f.m5.bbMid&&last.m5>=f.m5.bbLower*.998;
-  return Math.round(add(t(f.m5,last.m5),8)+add(t(f.m15,last.m15),8)+add(t(f.h1,last.h1),8)+add(long?f.m5.ema20>f.m5.ema50:f.m5.ema20<f.m5.ema50,5)+add(long?f.h1.ema20>f.h1.ema50:f.h1.ema20<f.h1.ema50,5)+add(mac(f.m5),9)+add(mac(f.m15),9)+add(rsi,6)+add(f.m5.adx>=20&&di(f.m5),12)+add(sto,5)+add(bb,5)+add(breakout,12)+add(t(f.m1,last.m1)&&mac(f.m1),8));
+  const long=side==='long';
+  const p1=indicatorFamilyPower(long,f.m1,last.m1),p5=indicatorFamilyPower(long,f.m5,last.m5),p15=indicatorFamilyPower(long,f.m15,last.m15),ph=indicatorFamilyPower(long,f.h1,last.h1);
+  const trend=(p5.trend*.28+p15.trend*.36+ph.trend*.36)*30;
+  const momentum=(p1.macd*.20+p5.macd*.42+p15.macd*.38)*22;
+  const directional=(p5.dmi*.52+p15.dmi*.30+ph.dmi*.18)*18;
+  const oscillators=((p5.rsi*.58+p1.rsi*.16+p15.rsi*.26)*.55+(p1.stoch*.55+p5.stoch*.45)*.45)*12;
+  const location=(p1.bollinger*.26+p5.bollinger*.52+p15.bollinger*.22)*8;
+  const timeframeAgreement=[p1.trend,p5.trend,p15.trend,ph.trend].filter(v=>v>=.55).length;
+  const agreement=Math.max(0,(timeframeAgreement-1)/3)*4;
+  const breakoutPower=breakout?6:0;
+  const quality=(p1.volQuality*.15+p5.volQuality*.45+p15.volQuality*.25+ph.volQuality*.15);
+  const raw=trend+momentum+directional+oscillators+location+agreement+breakoutPower;
+  return Math.round(Math.max(0,Math.min(100,raw*(.78+.22*quality))));
 }
 
 export type RegimeKey='trend_up'|'trend_down'|'range'|'high_vol'|'shock'|'unknown';
@@ -51,7 +98,7 @@ export function detectRegime(f:{m1:IndicatorSet;m5:IndicatorSet;m15:IndicatorSet
 export function analyze(c1:Candle[],c5:Candle[],c15:Candle[],c60:Candle[],events:Event[],newsReady:boolean,now:number,r:Rules=defaults){
   const a1=closed(c1,60000,now),a5=closed(c5,300000,now),a15=closed(c15,900000,now),a60=closed(c60,3600000,now);
   const baseStop=(reason:string)=>({state:'stop' as const,title:'توقف عن فتح صفقات',reason,metrics:null,frames:null,levels:null,score:null,regime:null,news:null,signal:null});
-  const invalid=(series:Candle[],ms:number)=>series.some((c,i)=>!Object.values(c).every(Number.isFinite)||c.time>now||c.time%ms!==0||c.low<=0||c.high<Math.max(c.open,c.close)||c.low>Math.min(c.open,c.close)||(i>0&&c.time<=series[i-1].time));
+  const invalid=(series:Candle[],ms:number)=>series.some((c,i)=>![c.time,c.open,c.high,c.low,c.close].every(Number.isFinite)||c.time>now||c.time%ms!==0||c.low<=0||c.high<Math.max(c.open,c.close)||c.low>Math.min(c.open,c.close)||(i>0&&c.time<=series[i-1].time));
   const hasRecentGap=(series:Candle[],ms:number)=>series.slice(-20).some((c,i,recent)=>i>0&&c.time-recent[i-1].time!==ms);
   if(invalid(c1,60000)||invalid(c5,300000)||invalid(c15,900000)||invalid(c60,3600000))return baseStop('شموع غير صالحة أو مكررة أو بتوقيت مستقبلي؛ لا إشارة.');
   if(hasRecentGap(a1,60000)||hasRecentGap(a5,300000)||hasRecentGap(a15,900000)||hasRecentGap(a60,3600000))return baseStop('فجوات في آخر 20 شمعة؛ انتظر اكتمال السلسلة قبل تقييم الدخول.');
@@ -63,9 +110,8 @@ export function analyze(c1:Candle[],c5:Candle[],c15:Candle[],c60:Candle[],events
   const frames={m1:i1,m5:i5,m15:i15,h1:i60},last={m1:last1.close,m5:last5.close,m15:last15.close,h1:last60.close};
   const longBreak=last5.close>high||last1.close>high1,shortBreak=last5.close<low||last1.close<low1,longScore=scoreFrames('long',frames,last,longBreak),shortScore=scoreFrames('short',frames,last,shortBreak),score={long:longScore,short:shortScore,threshold:r.minScore};
   const regime=detectRegime(frames,last5.close,longBreak,shortBreak);
-  const base={metrics:i5,frames,levels,score,regime,news:null as any,signal:null as any};
+  const base={metrics:i5,frames,levels,score,regime,news:null as any,signal:null as any,newsCoverage:newsReady?'ready':'degraded'};
   if(stale)return {...base,state:'stop' as const,title:'قراءة تاريخية — السوق مغلق أو البيانات متأخرة',reason:'المؤشرات المعروضة تخص آخر شموع متاحة وليست تحليلاً لحظياً. الإشارات متوقفة حتى وصول بيانات حديثة.',signal:null};
-  if(!newsReady)return {...base,state:'stop' as const,title:'التحليل جاهز — تغطية الأخبار غير مؤكدة',reason:'المؤشرات محسوبة، لكن لا يمكن فحص اقتراب خبر قوي. تتوقف توصيات الدخول حتى استعادة التقويم.',signal:null};
   const newsEvent=newsReady?events.find(e=>e.importance===3&&e.exactTime&&now>=e.time-r.before*60000&&now<=e.time+r.after*60000):undefined;
   if(newsEvent){
     const mins=(now-newsEvent.time)/60000,news={active:true,event:newsEvent,phase:mins<0?'armed':'released',minutesFromRelease:mins};
@@ -88,8 +134,146 @@ export function analyze(c1:Candle[],c5:Candle[],c15:Candle[],c60:Candle[],events
 
   if(i5.atr<=0||i5.volatility>r.spike||last5.high-last5.low>3*i5.atr||regime.key==='shock')return {...baseStop('تذبذب غير طبيعي أو صدمة سوقية خارج نافذة خبر مؤكدة؛ انتظر عودة المدى لطبيعته.'),...base};
   if(i5.adx<r.adx)return {...baseStop('قوة الاتجاه أقل من الحد المحدد حسب ADX؛ لا دخول.'),...base};
-  const side=longScore>=shortScore?'buy':'sell',best=Math.max(longScore,shortScore),gap=Math.abs(longScore-shortScore),buySide=side==='buy',regimeThreshold=r.minScore+(regime.key==='range'?6:regime.key==='high_vol'?4:0),regimeSideOk=buySide?regime.key!=='trend_down':regime.key!=='trend_up',rangeBreakOk=regime.key!=='range'||(buySide?longBreak:shortBreak),qualified=best>=regimeThreshold&&gap>=12&&regimeSideOk&&rangeBreakOk;
+  const side=longScore>=shortScore?'buy':'sell',best=Math.max(longScore,shortScore),gap=Math.abs(longScore-shortScore),buySide=side==='buy';
+  const cleanTrend=(regime.key==='trend_up'||regime.key==='trend_down')&&i5.adx>=25&&i15.adx>=20;
+  const regimeThreshold=Math.max(68,r.minScore+(regime.key==='range'?5:regime.key==='high_vol'?3:cleanTrend?-4:0));
+  const regimeSideOk=buySide?regime.key!=='trend_down':regime.key!=='trend_up',rangeBreakOk=regime.key!=='range'||(buySide?longBreak:shortBreak),qualified=best>=regimeThreshold&&gap>=10&&regimeSideOk&&rangeBreakOk;
   if(qualified){const buy=side==='buy',entry=last1.close,recent=a5.slice(-12),swing=buy?Math.min(...recent.map(x=>x.low)):Math.max(...recent.map(x=>x.high)),raw=buy?Math.min(swing,entry-1.2*i5.atr):Math.max(swing,entry+1.2*i5.atr),cap=buy?entry-2.2*i5.atr:entry+2.2*i5.atr,sl=buy?Math.max(raw,cap):Math.min(raw,cap),risk=Math.abs(entry-sl);if(risk>0&&risk<=2.25*i5.atr){const dir=buy?1:-1;return {...base,state:'setup' as const,title:buy?'توافق قوي لمراقبة شراء':'توافق قوي لمراقبة بيع',reason:`درجة التوافق ${best}/100 مع فارق ${gap} نقطة. حالة السوق: ${regime.label}. يلزم بقاء البيانات حديثة والسبريد ضمن الحد.`,signal:{id:String(last1.time)+(buy?'buy':'sell'),mode:'standard',side:buy?'شراء':'بيع',sideCode:buy?'buy':'sell',entry,sl,tp:entry+dir*1.8*risk,time:last1.time+60000,score:best,rr:1.8}};}}
   return {...base,state:'wait' as const,title:'انتظار اكتمال التوافق',reason:`أقوى قراءة الآن ${best}/100 (${longScore} شراء مقابل ${shortScore} بيع). حالة السوق: ${regime.label}. الحد الفعلي الآن ${regimeThreshold}/100 مع فارق اتجاه واضح.`,signal:null};
 }
+
+export function scalpAnalyze(c1:Candle[],c5:Candle[],now:number,price?:number|null){
+  const a1=closed(c1,60000,now),a5=closed(c5,300000,now);
+  const wait=(reason:string,extra:any={})=>({state:'wait' as const,action:'WAIT' as const,title:'M1 SCALP · WAIT',reason,score:{long:0,short:0,threshold:60},trade:null,...extra});
+  if(a1.length<80||a5.length<80)return wait('بيانات M1/M5 غير كافية للسكالب.');
+  const l1=a1.at(-1)!,l5=a5.at(-1)!,age1=now-(l1.time+60000),age5=now-(l5.time+300000);
+  if(age1>180000||age5>600000)return wait('بيانات السكالب متأخرة.');
+  const i1=indicators(a1),i5=indicators(a5);
+  if(![i1.atr,i1.adx,i1.rsi,i1.macdHist,i1.stochK,i1.stochD,i5.ema20,i5.ema50,i5.adx,i5.plusDI,i5.minusDI].every(Number.isFinite)||i1.atr<=0)return wait('مؤشرات السكالب غير مكتملة.');
+
+  const p=Number.isFinite(Number(price))&&Number(price)>0?Number(price):l1.close;
+  const prior7=a1.slice(-8,-1),prior12=a1.slice(-13,-1),hi=Math.max(...prior7.map(x=>x.high)),lo=Math.min(...prior7.map(x=>x.low));
+  const hi12=Math.max(...prior12.map(x=>x.high)),lo12=Math.min(...prior12.map(x=>x.low));
+  const prev3=a1.slice(-4,-1),base3=prev3.length?prev3[0].close:l1.open;
+  const prev6=a1.slice(-7,-1),base6=prev6.length?prev6[0].close:l1.open;
+  const momentum=(l1.close-base3)/i1.atr,momentum6=(l1.close-base6)/i1.atr,liveMove=(p-l1.close)/i1.atr;
+  const accel=momentum-momentum6/2;
+  const range=Math.max(1e-9,l1.high-l1.low),body=(l1.close-l1.open)/range;
+  const upperWick=(l1.high-Math.max(l1.open,l1.close))/range,lowerWick=(Math.min(l1.open,l1.close)-l1.low)/range;
+  const wickBias=lowerWick-upperWick;
+  const longBreak=l1.close>hi||p>hi,shortBreak=l1.close<lo||p<lo;
+  const rangePos=(p-lo12)/Math.max(1e-9,hi12-lo12);
+  const recentRanges=a1.slice(-5).map(x=>x.high-x.low),olderRanges=a1.slice(-15,-5).map(x=>x.high-x.low);
+  const compression=1-(avg(recentRanges)/Math.max(1e-9,avg(olderRanges)));
+  const path=a1.slice(-7).map(x=>x.close),pathLen=path.slice(1).reduce((s,v,j)=>s+Math.abs(v-path[j]),0),efficiency=pathLen?Math.abs(path.at(-1)!-path[0])/pathLen:0;
+  const reclaimUp=l1.low<lo&&l1.close>lo&&body>0;
+  const reclaimDown=l1.high>hi&&l1.close<hi&&body<0;
+  const impulseUp=(body>=.52&&momentum>=.18)||(liveMove>=.08&&momentum>=.08);
+  const impulseDown=(body<=-.52&&momentum<=-.18)||(liveMove<=-.08&&momentum<=-.08);
+  const m5Bull=i5.ema20>=i5.ema50,m5Bear=i5.ema20<=i5.ema50;
+  const m5DiBull=i5.plusDI>=i5.minusDI,m5DiBear=i5.minusDI>=i5.plusDI;
+  const trendStrength=Math.min(1.35,Math.max(.35,Number(i5.adx||0)/22));
+  const reversalUp=(rangePos<=.28||reclaimUp)&&(wickBias>=.12||Number(i1.rsi)<=43)&&(i1.stochK>=i1.stochD||body>0);
+  const reversalDown=(rangePos>=.72||reclaimDown)&&(wickBias<=-.12||Number(i1.rsi)>=57)&&(i1.stochK<=i1.stochD||body<0);
+
+  const indicatorPower=(long:boolean)=>{
+    const dir=long?1:-1;
+    const p1=indicatorFamilyPower(long,i1,l1.close),p5=indicatorFamilyPower(long,i5,l5.close);
+    const ema=unit(p1.trend*.68+p5.trend*.32);
+    const macd=unit(p1.macd*.72+p5.macd*.28);
+    const dmi=unit(p1.dmi*.70+p5.dmi*.30);
+    const oscillator=unit((p1.rsi*.52+p1.stoch*.48)*.82+(p5.rsi*.55+p5.stoch*.45)*.18);
+    const bollinger=unit(p1.bollinger*.74+p5.bollinger*.26);
+    const momentumPower=unit(
+      directionalStrength(dir*momentum,.28)*.34+
+      directionalStrength(dir*accel,.12)*.22+
+      directionalStrength(dir*liveMove,.12)*.18+
+      directionalStrength(dir*momentum6,.42)*.26
+    );
+    const candlePower=unit(
+      directionalStrength(dir*body,.55)*.30+
+      directionalStrength(dir*wickBias,.22)*.18+
+      ((long?reclaimUp:reclaimDown)?1:0)*.22+
+      ((long?impulseUp:impulseDown)?1:0)*.18+
+      ((long?longBreak:shortBreak)?1:0)*.12
+    );
+    const pathPower=unit(
+      directionalStrength(dir*momentum6,.50)*.36+
+      unit((efficiency-.18)/.62)*.34+
+      unit(Math.max(0,compression)/.42)*((long?impulseUp||longBreak:impulseDown||shortBreak)?1:.45)*.30
+    );
+    const context=unit(
+      ((long?m5Bull:m5Bear)?1:0)*.42+
+      ((long?m5DiBull:m5DiBear)?1:0)*.34+
+      directionalStrength(Number(i5.adx)-12,24)*.24
+    );
+    const reversal=(long?reversalUp:reversalDown)?1:0;
+    const quality=unit(p1.volQuality*.66+p5.volQuality*.34);
+    const families={
+      ema:Number((ema*100).toFixed(1)),macd:Number((macd*100).toFixed(1)),dmi:Number((dmi*100).toFixed(1)),
+      oscillator:Number((oscillator*100).toFixed(1)),bollinger:Number((bollinger*100).toFixed(1)),
+      momentum:Number((momentumPower*100).toFixed(1)),priceAction:Number((candlePower*100).toFixed(1)),
+      path:Number((pathPower*100).toFixed(1)),context:Number((context*100).toFixed(1)),reversal:Number((reversal*100).toFixed(1))
+    };
+    const raw=
+      ema*12+macd*11+dmi*10+oscillator*8+bollinger*5+
+      momentumPower*17+candlePower*16+pathPower*9+context*8+reversal*4;
+    const total=Math.round(Math.max(0,Math.min(100,raw*(.82+.18*quality))));
+    return {total,families,quality:Number((quality*100).toFixed(1))};
+  };
+
+  const longPower=indicatorPower(true),shortPower=indicatorPower(false);
+  const long=longPower.total,short=shortPower.total,buySide=long>=short,best=Math.max(long,short),gap=Math.abs(long-short);
+  const side=buySide?'buy':'sell',breakActive=buySide?longBreak:shortBreak,reversalActive=buySide?reversalUp:reversalDown,impulseActive=buySide?impulseUp:impulseDown;
+  const m5Aligned=buySide?m5Bull:m5Bear,m5DiAligned=buySide?m5DiBull:m5DiBear;
+  const mode=reversalActive?'REVERSAL':breakActive?'BREAKOUT':impulseActive?'MOMENTUM':compression>=.18?'COMPRESSION':'FLOW';
+
+  const candleAtr=(l1.high-l1.low)/i1.atr;
+  const volatilityOk=i1.volatility<=3.15&&candleAtr<=4.2;
+  let threshold=60;
+  if(mode==='BREAKOUT'||mode==='MOMENTUM')threshold-=3;
+  if(mode==='REVERSAL')threshold-=2;
+  if(m5Aligned&&m5DiAligned)threshold-=2;
+  if(Number(i5.adx)<18)threshold+=2;
+  if(i1.volatility>1.8)threshold+=2;
+  if(Math.abs(liveMove)>=.10)threshold-=2;
+  threshold=Math.max(54,Math.min(66,threshold));
+
+  let minGap=(mode==='BREAKOUT'||mode==='MOMENTUM')?6:7;
+  if(reversalActive)minGap=6;
+  if(!m5Aligned&&!reversalActive&&!breakActive)minGap+=2;
+
+  const qualified=best>=threshold&&gap>=minGap&&volatilityOk;
+  const watch=best>=threshold-6&&gap>=Math.max(4,minGap-2)&&volatilityOk;
+  const action=qualified?(buySide?'BUY' as const:'SELL' as const):watch?(buySide?'BUY' as const:'SELL' as const):'WAIT' as const;
+  const state=qualified?'setup' as const:watch?'watch' as const:'wait' as const;
+
+  const diagnostics={
+    indicators:{m1:i1,m5:i5},
+    score:{long,short,threshold},
+    momentum:Number(momentum.toFixed(2)),momentum6:Number(momentum6.toFixed(2)),accel:Number(accel.toFixed(2)),liveMove:Number(liveMove.toFixed(2)),
+    priceAction:{body:Number(body.toFixed(2)),wickBias:Number(wickBias.toFixed(2)),rangePos:Number(rangePos.toFixed(2)),compression:Number(compression.toFixed(2)),efficiency:Number(efficiency.toFixed(2)),reclaimUp,reclaimDown},
+    breakout:{long:longBreak,short:shortBreak},
+    adaptive:{mode,m5Aligned,m5DiAligned,trendStrength:Number(trendStrength.toFixed(2)),minGap,volatilityOk,candleAtr:Number(candleAtr.toFixed(2))},
+    indicatorPower:{long:longPower,short:shortPower,dominant:buySide?longPower:shortPower},
+    dataAgeMs:{m1:age1,m5:age5}
+  };
+
+  const helperSide=watch?(buySide?'BUY' as const:'SELL' as const):'WAIT' as const;
+  const helperConfidence=Math.round(Math.max(0,Math.min(90,best*.72+gap*.9+(m5Aligned?5:0)+(reversalActive||breakActive?5:0))));
+  return {
+    state:'helper' as const,
+    action:'WAIT' as const,
+    title:'AMBUSH TECH HELPER',
+    reason:`مساعد فني لـ Ambush فقط · ${mode} · شراء ${long} / بيع ${short} · لا يصدر صفقة مستقلة.`,
+    ...diagnostics,
+    trade:null,
+    early:false,
+    helperOnly:true,
+    helperSide,
+    helperConfidence,
+    confidence:helperConfidence
+  };
+}
+
 export function surprise(e:Event){if(!e.actual||!e.forecast)return 'لم تصدر نتيجة قابلة للمقارنة بعد.';const rx=/^\s*(-?[\d,.]+)\s*([%KMB]?)\s*$/i,a=e.actual.match(rx),f=e.forecast.match(rx);if(!a||!f||a[2].toUpperCase()!==f[2].toUpperCase())return 'نتيجة تحتاج قراءة تفصيلية؛ لا اتجاه تلقائي.';const delta=Number(a[1].replaceAll(',',''))-Number(f[1].replaceAll(',',''));return delta===0?'النتيجة توافق التوقعات؛ راقب رد فعل السعر.':`النتيجة ${delta>0?'أعلى':'أقل'} من التوقعات. أثرها على الذهب غير محسوم دون العوائد والدولار ورد فعل السعر.`;}

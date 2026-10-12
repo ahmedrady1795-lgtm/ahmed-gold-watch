@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./workspace.css";
 
 export const metadata: Metadata = {
-  title: "Ahmed Gold Command | XAU/USD",
-  description: "مركز متابعة الذهب: مؤشرات متعددة الأطر، تنبيهات، أخبار، وMT5 Bridge.",
+  title: "Gold Watch | لوحة السوق",
+  description: "متابعة الذهب والبيتكوين، مؤشرات متعددة الأطر، سيناريوهات الحركة والسيولة والأخبار.",
   manifest: "/manifest.webmanifest",
-  other: {"codex-preview":"development"},
   icons: {icon:"/favicon.svg",shortcut:"/favicon.svg"},
 };
 

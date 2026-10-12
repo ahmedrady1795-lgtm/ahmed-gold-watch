@@ -1,0 +1,23 @@
+# Free Render web service for the active Gold Watch application.
+# The full sniper/scalp dashboard is on the railway branch, not main.
+services:
+  - type: web
+    name: gold-watch-free
+    runtime: node
+    plan: free
+    branch: railway
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/ping
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: "22.19.0"
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: MT5_AUTOTRADE_ENABLED
+        value: "false"
+      - key: KILL_SWITCH_ENABLED
+        value: "true"
