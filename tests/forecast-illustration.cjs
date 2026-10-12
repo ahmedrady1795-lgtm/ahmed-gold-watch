@@ -92,3 +92,12 @@ assert.equal(m.watchReady,false,'paused server path cannot fall back to a live r
 m=build('GOLD',{...base,livePulse:{price:97,sourceTime:now}},null,now,now-10000,null,true,savedState,savedBias);
 assert.equal(m.watchReady,false,'price breach cannot resurrect a model path');
 console.log('PASS: authoritative server chart levels, consumed objectives, paused memory and immediate invalidation');
+const cold={...base,forwardMove:{side:'WAIT'},forecastValidation15m:null};
+m=build('GOLD',cold,null,now,0,null,true,savedState,savedBias,now-1000);
+assert.equal(m.sniper.view.forecastFresh,false,'no inference timestamp cannot imply a fresh AI prediction');
+assert.equal(m.ready,false,'independent market observation cannot qualify entry');
+assert.equal(m.watchReady,true,'fresh closed-candle observation is independent of heavy inference warming');
+assert.equal(m.displayTargets[0].price,108,'same authoritative server objective is retained');
+m=build('GOLD',cold,null,now,0,null,true,savedState,savedBias,now-100000);
+assert.equal(m.watchReady,false,'stale observation cannot bypass freshness');
+console.log('PASS: cold inference has no entry, but fresh server market observation continues');

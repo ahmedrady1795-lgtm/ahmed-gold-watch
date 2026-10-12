@@ -14,8 +14,8 @@ const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
 const clock=(t:number)=>new Date(t).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Dubai'});
 const clamp=(p:number,a:number,b:number)=>Math.max(a,Math.min(b,p));
 
-export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLive,assetView='ALL',journals,audit,auditLoaded=false}:{
-  data:any;now:number;snapshotAt:unknown;goldLive?:any;btcLive?:any;assetView?:'ALL'|'GOLD'|'BTC';
+export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLive,assetView='ALL',journals,audit,auditLoaded=false,observationAt=snapshotAt}:{
+  data:any;now:number;snapshotAt:unknown;observationAt?:unknown;goldLive?:any;btcLive?:any;assetView?:'ALL'|'GOLD'|'BTC';
   journals?:{GOLD:ForecastJournal|null;BTC:ForecastJournal|null};audit?:any;auditLoaded?:boolean
 }){
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
@@ -44,7 +44,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const watchMetrics=serverWatch?.metrics;
   const watchObserved=Number(watchMetrics?.observed||0);
   const m=buildForecastIllustration(asset,x,asset==='GOLD'?goldLive:btcLive,now,snapshotAt,
-    auditHealthy?journal:null,true,memory.state,memory.bias);
+    auditHealthy?journal:null,true,memory.state,memory.bias,observationAt);
   const statusReady=m.ready&&auditHealthy;
   const watchReady=m.watchReady&&!statusReady;
   const planVisible=statusReady||watchReady;
@@ -76,7 +76,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     const i=candles.findIndex(c=>c.time>=time);
     return i<0?x1:x0+(i+.5)*stride;
   };
-  const readingLive=m.fourHour.ready&&sn.view.priceFresh&&sn.view.forecastFresh&&m.historyFresh;
+  const readingLive=m.fourHour.ready&&sn.view.priceFresh&&m.observationFresh&&m.historyFresh;
   const marketEvents=readingLive?m.fourHour.events.filter(e=>candles[0]&&e.at>=candles[0].time)
     .filter((e,i,a)=>a.findLastIndex(q=>q.kind===e.kind)===i).slice(mobile?-2:-3):[];
   const contextBox=readingLive?m.fourHour.contextBox:null;
@@ -275,11 +275,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       </div>
       <div className="sniper-data-health" aria-label="حداثة بيانات القناص">
         <span className={sn.view.priceFresh?'sniper-health-ok':''}>السعر: {sn.view.priceFresh?'حديث':'متأخر'} · {sn.priceAge==null?'—':Math.round(sn.priceAge)+' ث'}</span>
-        <span className={sn.view.forecastFresh?'sniper-health-ok':''}>التحليل: {sn.view.forecastFresh?'حديث':'متأخر'} · {Number(snapshotAt)>0?Math.max(0,Math.round((now-Number(snapshotAt))/1000))+' ث':'—'}</span>
+        <span className={m.observationFresh?'sniper-health-ok':''}>قراءة السوق: {m.observationFresh?'حديثة':'متأخرة'} · {Number(observationAt)>0?Math.max(0,Math.round((now-Number(observationAt))/1000))+' ث':'—'}</span>
         <span className={m.historyFresh?'sniper-health-ok':''}>الشموع: {m.historyFresh?'حديثة':'تحتاج تحديث'}</span>
       </div>
       <SniperStrategyRadar frames={x?.chartHigherFrames} now={now} price={m.price} side={dir}
-        sourceReady={sn.view.priceFresh&&sn.view.forecastFresh} targets={m.displayTargets} stop={m.displayStop}/>
+        sourceReady={sn.view.priceFresh&&m.observationFresh} targets={m.displayTargets} stop={m.displayStop}/>
       <details className="sniper-inspection"><summary>تحليل 4 ساعات ومصادر السيولة</summary>
       <section className="sniper-four-hour" aria-label="قراءة آخر أربع ساعات">
         <div className="sniper-four-head">

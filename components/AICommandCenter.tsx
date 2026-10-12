@@ -45,21 +45,26 @@ export default function AICommandCenter({data,chartData,error,assetView='ALL',no
     void load();
     return()=>{closed=true;clearTimeout(timer);};
   },[]);
-  const journal={GOLD:scenarioAsJournal(audit?.current?.GOLD),
-    BTC:scenarioAsJournal(audit?.current?.BTC)};
-  const stale=generatedAt>0&&now-generatedAt>90000;
+  const chartAudit=chartData?.structuralAudit;
+  const effectiveAudit=chartAudit?.ok&&Number(chartAudit.updatedAt||0)>Number(audit?.updatedAt||0)?chartAudit:audit;
+  const journal={GOLD:scenarioAsJournal(effectiveAudit?.current?.GOLD),
+    BTC:scenarioAsJournal(effectiveAudit?.current?.BTC)};
+  const observationAt=Number(chartData?.checkedAt||data?.checkedAt||0);
+  const chartWatchFresh=Boolean(chartAudit?.ok&&now-observationAt<90000&&observationAt<=now);
+  const stale=generatedAt>0&&now-generatedAt>90000&&!chartWatchFresh;
   return <div className="ai-clean renewed-ai">
     {error&&!data&&<div className="fatal"><ShieldAlert size={18}/><div><strong>التحليل غير متاح</strong><span>{error}</span></div></div>}
     {stale&&<div className="fatal"><ShieldAlert size={18}/><div><strong>تحديث AI متأخر</strong>
       <span>آخر تحليل منذ {Math.round((now-generatedAt)/1000)} ثانية · الأهداف السابقة للمراجعة فقط.</span>
     </div></div>}
-    {auditError&&<div className="fatal"><ShieldAlert size={18}/><div><strong>سجل القناص غير متصل</strong>
+    {auditError&&!chartWatchFresh&&<div className="fatal"><ShieldAlert size={18}/><div><strong>سجل القناص غير متصل</strong>
       <span>الأهداف الجديدة مش معتمدة على الرسم قبل استعادة سجل الأداء.</span>
     </div></div>}
     <div id="market-forecast">
       <ForecastIllustration data={displayData} now={now} snapshotAt={generatedAt}
         goldLive={goldLive} btcLive={btcLive} assetView={assetView}
-        journals={journal} audit={audit} auditLoaded={audit!=null&&!auditError}/>
+        journals={journal} audit={effectiveAudit} observationAt={observationAt}
+        auditLoaded={Boolean(effectiveAudit?.ok&&(chartWatchFresh||!auditError))}/>
     </div>
   </div>;
 }

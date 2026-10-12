@@ -119,6 +119,26 @@ function runAsset(asset:Asset,x:any,modelAt:number,now:number){
     console.info('[SNIPER-AUDIT] New',asset,next.produced.id,'targets',next.produced.targets.map(t=>t.price));
   }
 }
+// Closed-candle observation continues while expensive inference warms.
+// It never starts ENTRY records or presents a candle close as a live tick.
+export function updateStructuralWatchFromChart(payload:any,now=Date.now()){
+  load(true);
+  let changed=false;
+  for(const asset of ['GOLD','BTC'] as const){
+    const x=asset==='GOLD'?payload?.gold:payload?.bitcoin;
+    const last=x?.chartCandles?.at(-1),price=Number(last?.close),closedAt=Number(last?.time||0)+60000;
+    if(!last||!Number.isFinite(price)||price<=0||closedAt>now||now-closedAt>90000)continue;
+    const previous=load().watch[asset];
+    if(closedAt<=previous.modelAt)continue;
+    const fourHour=analyzeFourHours({asset,candles:x.chartCandles,frames:x.chartHigherFrames,now,
+      source:x.candleSource,referencePrice:price});
+    const raw=buildContinuousBias({asset,frames:x.chartHigherFrames,price,now,sourceReady:true,fourHour});
+    const next=advanceWatch(previous,raw,asset,price,x.chartCandles,now,closedAt);
+    if(next!==previous){load().watch[asset]=next;dirty=true;changed=true;}
+  }
+  save(now,changed);
+  return getSniperAudit(now);
+}
 export function updateSniperAudit(payload:any,now=Date.now()){
   const modelAt=Number(payload?.checkedAt||0);
   if(!payload?.ok||!modelAt)return getSniperAudit(now);

@@ -127,3 +127,19 @@ assert.equal(presented.durable,false,'temporary storage still cannot claim durab
 assert.equal(ephemeralReader(transient,'BTC',at+91000,true).bias.active,false,'stale server memory must pause');
 assert.equal(ephemeralReader({...transient,updatedAt:at+10000},'BTC',at,true).fresh,false,'future audit timestamps rejected');
 console.log('PASS: cross-route synchronization, temporary observation and stale/future guards');
+const coldFiles=new Map();
+const coldFs={existsSync:p=>p==='/data',readFileSync:p=>{if(!coldFiles.has(p))throw Error('ENOENT');return coldFiles.get(p);},
+ writeFileSync:(p,s)=>coldFiles.set(p,s),renameSync:(a,b)=>{coldFiles.set(b,coldFiles.get(a));coldFiles.delete(a);}};
+const coldStore=loader(coldFs)('lib/sniper-audit-store.ts');
+const chartOnly={gold:{chartCandles:x.chartCandles,chartHigherFrames:x.chartHigherFrames,candleSource:'test'},
+ bitcoin:{chartCandles:x.chartCandles,chartHigherFrames:x.chartHigherFrames,candleSource:'test'}};
+let coldAudit=coldStore.updateStructuralWatchFromChart(chartOnly,at);
+assert.equal(coldAudit.watch.BTC.bias.side,'BUY');
+assert.equal(coldAudit.watch.BTC.current.purpose,'OBSERVATION');
+assert.equal(coldAudit.current.BTC,null,'chart requests never create qualified ENTRY records');
+const frozen=JSON.stringify(coldAudit.watch.BTC.state);
+coldAudit=coldStore.updateStructuralWatchFromChart(chartOnly,at+1000);
+assert.equal(JSON.stringify(coldAudit.watch.BTC.state),frozen,'same completed M1 cannot reset target memory');
+coldAudit=coldStore.updateStructuralWatchFromChart(chartOnly,at+91000);
+assert.equal(coldAudit.watch.BTC.bias.active,false,'old candles cannot keep observation active');
+console.log('PASS: inference-independent closed-candle watch remains observation-only and timestamp bounded');

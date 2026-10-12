@@ -11,7 +11,7 @@ export type PriceBand={key:string;label:string;low:number;high:number;price:numb
 const finite=(x:unknown):number|null=>x!==null&&x!==undefined&&x!==''&&Number.isFinite(Number(x))?Number(x):null;
 const valid=(x:unknown)=>{const p=finite(x);return p!=null&&p>0?p:null;};
 
-export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now:number,snapshotAt:unknown,journal:ForecastJournal|null=null,auditRequired=false,stableState:StableBiasState|null=null,serverBias:ObservedBias|null=null){
+export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now:number,snapshotAt:unknown,journal:ForecastJournal|null=null,auditRequired=false,stableState:StableBiasState|null=null,serverBias:ObservedBias|null=null,observationAt:unknown=snapshotAt){
   const sniper=buildSniperOutlook(asset,x,quote,now,snapshotAt);
   // Chart uses actual CLOSED candles from the last model snapshot, never synthetic prices.
   const raw=Array.isArray(x?.chartCandles)?x.chartCandles:[];
@@ -29,16 +29,18 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const historyAge=lastAt?Math.max(0,now-lastAt):null;
   const historyFresh=historyAge!=null&&historyAge<=180000;
   const price=sniper.view.price;
+  const marketAt=finite(observationAt);
+  const observationFresh=Boolean(marketAt!=null&&marketAt>0&&marketAt<=now&&now-marketAt<=90000);
   const fourHour=analyzeFourHours({asset,candles:raw,frames:x?.chartHigherFrames,now,
     source:x?.candleSource,referencePrice:price});
   const rawBias=buildContinuousBias({asset,frames:x?.chartHigherFrames,price,now,
-    sourceReady:sniper.view.priceFresh&&sniper.view.forecastFresh,fourHour});
+    sourceReady:sniper.view.priceFresh&&observationFresh,fourHour});
   const stability=stabilizeSniperBias(stableState,rawBias,price,now);
   const bias=serverBias?presentServerBias(serverBias,rawBias,price):stability.bias;
   // Production audits are evidence of qualified scenarios, NOT a prerequisite
   // for continuously observing real closed-candle market structure.
   const observation=buildStructuralWatch(asset,x,price,now,
-    sniper.view.priceFresh&&sniper.view.forecastFresh);
+    sniper.view.priceFresh&&observationFresh);
   const plannedTargets=journal?.state==='ACTIVE'?journal.targets:
     auditRequired?[]:sniper.targets;
   const plannedStop=journal?.state==='ACTIVE'?journal.invalidation:sniper.view.invalidation;
@@ -68,7 +70,7 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
     sniper.view.side!=='WAIT'?sniper.view.invalidation:observation.invalidation;
   const watchStop=stopSafe(watchSide,rawWatchStop)?rawWatchStop:null;
   const watchReady=Boolean(!ready&&historyFresh&&sniper.view.priceFresh&&
-    sniper.view.forecastFresh&&(!auditRequired||serverBias)&&(!authoritative||bias.active)&&aheadOf(watchSide,watchTargets));
+    observationFresh&&(!auditRequired||serverBias)&&(!authoritative||bias.active)&&aheadOf(watchSide,watchTargets));
   // Monitoring levels needn't pretend to offer a verified entry or stop.
   const displayTargets=ready?plannedTargets:watchReady?watchTargets:[];
   const displayStop=ready?plannedStop:watchReady?watchStop:null;
@@ -111,6 +113,6 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
     ?[{key:'NOW',price},...displayTargets.map(t=>({key:'TP'+t.stage,price:t.price}))]
     :[];
   return {asset,sniper,observation,bias,stabilityState:serverBias?stableState:stability.state,stabilityReason:stability.explanation,heldBias:serverBias?Boolean(stableState&&stableState.since<now):stability.held,fourHour,candles,bands,price,historyAge,historyFresh,ready,watchReady,displaySide,displayTargets,displayStop,journal,
-    lower,upper,projected,
+    lower,upper,projected,observationFresh,
     status:!candles.length?'NO_CANDLES':!historyFresh?'STALE_CANDLES':ready?'SCENARIO':watchReady?'WATCH_PATH':'WATCH'};
 }
