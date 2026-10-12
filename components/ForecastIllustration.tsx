@@ -157,10 +157,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           <div className="forecast-visual-topline">
             <span><Layers3 size={13}/> M1 / آخر {candles.length} شمعة مغلقة</span>
             <span>{ageMin!=null?'عمر آخر إغلاق '+ageMin+' دقيقة':'لا توجد بيانات شموع'}</span>
-            <button className="forecast-chart-zoom" type="button" onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'عرض كل المستويات':'تكبير الشموع'}</button>
+            <button className="forecast-chart-zoom" type="button" aria-pressed={focusCandles} onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'عرض الرسم كاملًا':'تكبير الرسم ↔'}</button>
           </div>
           <div className="forecast-visual-chart-scroll">
-            <svg className="forecast-visual-svg" viewBox={'0 0 '+W+' '+H}
+            <svg className={'forecast-visual-svg'+(focusCandles?' forecast-visual-svg-zoomed':'')} viewBox={'0 0 '+W+' '+H}
               role="img" aria-label={statusReady?
                 'الشموع الحقيقية والسيناريو المسجل إلى '+m.displayTargets.map(t=>'TP'+t.stage+' '+fmt(t.price)).join(' ثم '):
                 watchReady?'الشموع الحقيقية مع مستويات مراقبة مبكرة غير مؤهلة للدخول':
