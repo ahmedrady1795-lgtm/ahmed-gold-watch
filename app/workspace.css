@@ -784,3 +784,17 @@ body:has(.modern-workspace){
   .compact-sniper .forecast-visual-svg{min-width:0}
   .compact-sniper .forecast-visual-svg-zoomed{min-width:760px}
 }
+
+/* One concise scorecard instead of two tall, near-identical TP grids. */
+.sniper-audit-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.sniper-audit-summary-item{display:flex;flex-direction:column;gap:5px;min-width:0;padding:11px 12px;border:1px solid #2c4a59;border-radius:9px;background:#0b1b27}
+.sniper-audit-summary-item>small{color:#9cbccc;font-size:11px}
+.sniper-audit-summary-item>strong{display:flex;align-items:baseline;justify-content:flex-start;gap:8px;color:#c5f2dd;font-size:22px;font-variant-numeric:tabular-nums}
+.sniper-audit-summary-item>strong small{font-size:10px;font-weight:500;color:#93b4c2}
+.sniper-audit-summary-item>span{color:#c3d4dc;font-size:10px;line-height:1.6}
+@media(max-width:600px){
+  .sniper-audit-compact{padding:9px}
+  .sniper-audit-summary-grid{grid-template-columns:1fr;gap:6px}
+  .sniper-audit-summary-item{padding:8px 10px}
+  .sniper-audit-summary-item>strong{font-size:19px}
+}
