@@ -4,7 +4,7 @@ const mod={exports:{}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/chart-zone-merge.ts','utf8'),{
   compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
 }).outputText,{module:mod,exports:mod.exports,require,console});
-const {collapseChartZones}=mod.exports;
+const {collapseChartZones,findOpposingOverlap}=mod.exports;
 const zone=(kind,key,low,high)=>({kind,key,label:key,low,high,price:(low+high)/2});
 const input=[
   zone('TARGET','TP1',102,102),zone('TARGET','TP2',105,105),
@@ -24,4 +24,9 @@ assert.ok(!buy.some(z=>z.low===91),'hide only the remote third zone');
 assert.equal(out.filter(z=>['SUPPLY','SELL_REBOUND'].includes(z.kind)).length,1,
   'overlapping sell-side levels combine independently');
 assert.equal(out.length,6);
+const overlap=findOpposingOverlap(out,99.6);
+assert.ok(overlap,'an opposing overlap must be explicitly identified');
+assert.equal(overlap.low,99.42);assert.equal(overlap.high,99.8);
+assert.equal(findOpposingOverlap(out.filter(z=>z.kind!=='SUPPLY'&&z.kind!=='SELL_REBOUND'),99.6),null);
+
 console.log('PASS: chart overlap merger, opposite zones, all targets and invalidations');
