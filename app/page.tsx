@@ -1,223 +1,229 @@
 'use client';
 
-import {useEffect,useMemo,useRef,useState} from 'react';
-import {
-  Activity,BarChart3,Bell,ChartCandlestick,FlaskConical,HeartPulse,
-  LayoutDashboard,Newspaper,RefreshCw,Settings2,ShieldCheck,Wifi,WifiOff
-} from 'lucide-react';
-import CommandCenter from '../components/CommandCenter';
-import SignalFlow from '../components/SignalFlow';
-import NewsCommandCenter from '../components/NewsCommandCenter';
-import StrategyLab from '../components/StrategyLab';
-import PerformanceCenter from '../components/PerformanceCenter';
-import HealthCenter from '../components/HealthCenter';
-import TradingViewGold from '../components/TradingViewGold';
-import {analyze,defaults,type Rules} from '../lib/engine';
+import {useEffect,useRef,useState} from 'react';
+import AICommandCenter from '../components/AICommandCenter';
 
-type Snapshot={ok:boolean;checkedAt:number;market:any;quote:any;mt5:any;analysis:any};
-type Tab='dashboard'|'chart'|'news'|'lab'|'performance'|'health';
-const fmt=(v:any,d=2)=>Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
-const goldMarketOpen=(now:number)=>{const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;if(day===6)return false;if(day===0&&h<22)return false;if(day===5&&h>=21)return false;if(day>=1&&day<=4&&h>=21&&h<22)return false;return true;};
+const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))
+  ?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})
+  :'—';
 
 export default function Home(){
-  const [snap,setSnap]=useState<Snapshot|null>(null);
-  const [health,setHealth]=useState<any>(null);
-  const [tab,setTab]=useState<Tab>('dashboard');
+  const [assetView,setAssetView]=useState<'ALL'|'GOLD'|'BTC'>('ALL');
+  const [aiData,setAiData]=useState<any>(null);
+  const [aiError,setAiError]=useState('');
   const [busy,setBusy]=useState(false);
-  const [error,setError]=useState('');
-  const [monitor,setMonitor]=useState(false);
-  const [notice,setNotice]=useState('');
   const [btc,setBtc]=useState<number|null>(null);
-  const [btcAt,setBtcAt]=useState(0),[goldTick,setGoldTick]=useState<any>(null);
-  const seenSignal=useRef('');
-  const [rules,setRules]=useState<Rules>(defaults);
+  const [btcSource,setBtcSource]=useState('Coinbase');
+  const [btcAt,setBtcAt]=useState(0);
+  const [goldTick,setGoldTick]=useState<any>(null);
+  const goldTickRef=useRef<any>(null);
+  const [aiLastOkAt,setAiLastOkAt]=useState(0);
   const [now,setNow]=useState(Date.now());
-  const first=useRef(true);
 
-  const load=async(silent=false)=>{
-    if(!silent)setBusy(true);
+  const aiInFlight=useRef(false);
+  const aiReady=useRef(false);
+  const aiFailureCount=useRef(0);
+  const aiEtag=useRef('');
+  const btcUiAt=useRef(0);
+
+  const loadAi=async(manual=false)=>{
+    if(aiInFlight.current)return;
+    aiInFlight.current=true;
+    if(manual)setBusy(true);
     try{
-      const r=await fetch('/api/snapshot',{cache:'no-store'});
-      const j=await r.json();
-      if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر جلب لقطة السوق');
-      setSnap(j); setError(''); setNow(Date.now());
+      // Normal UI refreshes are read-only and never start the expensive analysis.
+      // A manual refresh is the only browser action allowed to request a heavy cycle.
+      const endpoint=manual
+        ?'/api/ai-analysis?worker=1&manual=1&_='+Date.now()
+        :'/api/ai-snapshot?_='+Date.now();
+      const headers:Record<string,string>={};
+      if(!manual&&aiEtag.current)headers['If-None-Match']=aiEtag.current;
+      const r=await fetch(endpoint,{cache:'no-store',headers,signal:AbortSignal.timeout(manual?12000:4500)});
+      // An unchanged generation is NOT a stalled AI or an error.
+      // Skip decoding and rendering the same large JSON on every poll.
+      if(!manual&&r.status===304){
+        setAiLastOkAt(Date.now());
+        aiFailureCount.current=0;
+        return;
+      }
+      const j=await r.json().catch(()=>null);
+      if(r.status===503&&j?.warming){
+        if(!aiReady.current)setAiError('');
+        return;
+      }
+      if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر قراءة محرك AI');
+      const responseEtag=r.headers.get('ETag');
+      if(!manual&&responseEtag)aiEtag.current=responseEtag;
+      setAiData(j);
+      setAiLastOkAt(Date.now());
+      aiReady.current=true;
+      aiFailureCount.current=0;
+      setAiError('');
+      setNow(Date.now());
     }catch(e){
-      setError(e instanceof Error?e.message:'تعذر الاتصال بالسوق');
-    }finally{if(!silent)setBusy(false);}
-  };
-  const loadHealth=async()=>{try{const r=await fetch('/api/health',{cache:'no-store'});setHealth(await r.json());}catch{setHealth({status:'halted'});}};
-
-  useEffect(()=>{
-    try{
-      const saved=JSON.parse(localStorage.getItem('ahmed-gold-rules')||'null');
-      if(saved)setRules({...defaults,...saved});
-      setMonitor(localStorage.getItem('ahmed-gold-monitor')==='true');
-    }catch{}
-    void load(); void loadHealth();
-    const clock=setInterval(()=>setNow(Date.now()),1000);
-    const market=setInterval(()=>{if(document.visibilityState==='visible')void load(true);},15000);
-    const hs=setInterval(()=>{if(document.visibilityState==='visible')void loadHealth();},30000);
-    if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
-    return()=>{clearInterval(clock);clearInterval(market);clearInterval(hs);};
-  },[]);
-
-  useEffect(()=>{
-    let lastWsAt=0;
-    const loadBtcFallback=async()=>{try{const r=await fetch('/api/btc',{cache:'no-store'}),j=await r.json();if(r.ok&&j?.ok&&Number(j.price)>0){setBtc(Number(j.price));setBtcAt(Number(j.sourceTime)||0);}}catch{}};
-    void loadBtcFallback();
-    const restTimer=setInterval(()=>{if(Date.now()-lastWsAt>15000)void loadBtcFallback();},15000);
-    let ws:WebSocket|null=null,t:any,closed=false;
-    const open=()=>{if(closed)return;try{
-      ws=new WebSocket('wss://fstream.binance.com/ws/btcusdt@bookTicker');
-      ws.onmessage=e=>{try{const x=JSON.parse(e.data),b=Number(x.b),a=Number(x.a);if(x.s==='BTCUSDT'&&b>0&&a>=b&&Number.isFinite(Number(x.E))&&Number(x.E)<=Date.now()+10000){lastWsAt=Number(x.E);setBtc((b+a)/2);setBtcAt(Number(x.E));}}catch{}};
-      ws.onclose=()=>{if(!closed)t=setTimeout(open,1800);};
-      ws.onerror=()=>{try{ws?.close();}catch{}};
-    }catch{t=setTimeout(open,2500);}};
-    open();return()=>{closed=true;clearTimeout(t);clearInterval(restTimer);try{ws?.close();}catch{}};
-  },[]);
-
-  useEffect(()=>{
-    let closed=false,ws:WebSocket|null=null,t:ReturnType<typeof setTimeout>|undefined;
-    const open=()=>{if(closed)return;ws=new WebSocket('wss://fstream.binance.com/ws/xauusdt@bookTicker');
-      ws.onmessage=e=>{try{const x=JSON.parse(e.data),bid=Number(x.b),ask=Number(x.a),at=Number(x.E);if(x.s!=='XAUUSDT'||!Number.isFinite(at)||at>Date.now()+10000||Date.now()-at>15000||bid<=0||ask<bid)return;setGoldTick({ok:true,price:(bid+ask)/2,bid,ask,spread:ask-bid,sourceTime:at,status:'live',source:'Binance Futures · XAUUSDT proxy'});}catch{}};
-      ws.onerror=()=>ws?.close();ws.onclose=()=>{if(!closed)t=setTimeout(open,3000);};};
-    open();return()=>{closed=true;clearTimeout(t);ws?.close();};
-  },[]);
-  useEffect(()=>{
-    if(!monitor||!snap)return;const a=snap.analysis,id=a?.signal?.id||a?.state+':'+a?.reason;
-    if(!id||id===seenSignal.current)return;seenSignal.current=id;
-    if('Notification'in window&&Notification.permission==='granted'&&'serviceWorker'in navigator){
-      navigator.serviceWorker.getRegistration().then(reg=>reg?.showNotification('مرصد الذهب — '+(a?.title||'تغيّر الحالة'),{body:a?.reason||'راجع البيانات',tag:'gold-state'})).catch(()=>setNotice('تعذر إرسال إشعار الجهاز.'));
+      aiFailureCount.current+=1;
+      if(!aiReady.current&&aiFailureCount.current>=4)setAiError(e instanceof Error?e.message:'تعذر قراءة محرك AI');
+    }finally{
+      aiInFlight.current=false;
+      if(manual)setBusy(false);
     }
-  },[snap,monitor]);
+  };
+
   useEffect(()=>{
-    if(!monitor)return;
-    const pulse=()=>fetch('/api/telegram/pulse',{
-      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rules})
-    }).catch(()=>{});
-    void pulse(); const t=setInterval(pulse,15000); return()=>clearInterval(t);
-  },[monitor,rules]);
+    void loadAi();
+    // Efficient conditional GET: a 304 has no JSON body and no expensive AI
+    // computation. Faster polling reduces the UI delay after a NEW server
+    // generation, without starting heavy analysis cycles.
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},3000);
+    const clock=setInterval(()=>setNow(Date.now()),1000);
+    return()=>{clearInterval(aiTimer);clearInterval(clock);};
+  },[]);
 
-  useEffect(()=>{if(first.current){first.current=false;return;}try{localStorage.setItem('ahmed-gold-rules',JSON.stringify(rules));}catch{}},[rules]);
+  useEffect(()=>{
+    let closed=false,ws:WebSocket|null=null,reconnect:ReturnType<typeof setTimeout>|undefined,lastWsTick=0;
+    const loadBtc=async()=>{try{
+      const r=await fetch('/api/btc?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+      const j=await r.json(),p=Number(j?.price),at=Number(j?.sourceTime)||Number(j?.fetchedAt)||Date.now();
+      if(!closed&&r.ok&&j?.ok&&Number.isFinite(p)&&p>0&&Date.now()-lastWsTick>4000){
+        setBtc(p);setBtcAt(at);setBtcSource(String(j?.source||'Coinbase'));
+      }
+    }catch{}};
+    const connect=()=>{
+      if(closed)return;
+      ws=new WebSocket('wss://ws-feed.exchange.coinbase.com');
+      ws.onopen=()=>{try{ws?.send(JSON.stringify({type:'subscribe',product_ids:['BTC-USD'],channels:['ticker','heartbeat']}));}catch{}};
+      ws.onmessage=e=>{try{
+        const x=JSON.parse(e.data);
+        if(x?.type!=='ticker'||x?.product_id!=='BTC-USD')return;
+        const p=Number(x.price),parsed=Date.parse(x.time),at=Number.isFinite(parsed)?parsed:Date.now(),bid=Number(x.best_bid),ask=Number(x.best_ask);
+        if(!Number.isFinite(p)||p<=0)return;
+        lastWsTick=Date.now();
 
-  const toggleMonitor=()=>setMonitor(v=>{const n=!v;try{localStorage.setItem('ahmed-gold-monitor',String(n));}catch{}return n;});
-  const checkTelegram=async()=>{setNotice('جارٍ التحقق من البوت دون إرسال رسائل…');try{const r=await fetch('/api/telegram/status',{cache:'no-store'}),j=await r.json();setNotice(j.message||'تعذر التحقق');}catch{setNotice('تعذر الاتصال بفحص Telegram');}};
-  const testTelegram=async()=>{
-    setNotice('جارٍ إرسال اختبار Telegram...');
-    try{const r=await fetch('/api/telegram/test',{method:'POST'}),j=await r.json();setNotice(r.ok&&j?.ok?'✅ تم إرسال رسالة الاختبار إلى Telegram':j?.message||'تعذر إرسال Telegram');}
-    catch{setNotice('تعذر الاتصال بخدمة Telegram');}
-  };
-  const enablePush=async()=>{
-    if(!('Notification'in window)){setNotice('الإشعارات غير مدعومة هنا. على iPhone أضف الموقع للشاشة الرئيسية وافتحه من الأيقونة.');return;}
-    const p=await Notification.requestPermission();setNotice(p==='granted'?'✅ إشعارات الجهاز مفعلة':'لم يتم منح إذن الإشعارات.');
-  };
-  const updateRule=(k:keyof Rules,v:number)=>setRules(r=>({...r,[k]:v}));
+        if(!closed&&Date.now()-btcUiAt.current>=250){
+          btcUiAt.current=Date.now();
+          setBtc(p);setBtcAt(at);setBtcSource('Coinbase WebSocket');
+        }
+      }catch{}};
+      ws.onerror=()=>ws?.close();
+      ws.onclose=()=>{if(!closed)reconnect=setTimeout(connect,1500);};
+    };
+    connect();void loadBtc();
+    const restTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadBtc();},5000);
+    return()=>{closed=true;clearInterval(restTimer);clearTimeout(reconnect);ws?.close();};
+  },[]);
 
-  const mt5Active=Boolean(snap?.mt5?.fresh);
-  const streamed=goldTick&&now-goldTick.sourceTime<15000;
-  const quote=mt5Active?snap?.quote:streamed?goldTick:snap?.quote;
-  const m=snap?.market;
-  const analysis=m?analyze(m.c1,m.c5,m.c15,m.c60,m.events,Boolean(m.newsReady&&now-m.checkedAt<120000),now,rules):null;
-  const market=snap?.market;
-  const mt5Fresh=Boolean(snap?.mt5?.fresh);
-  const source=mt5Fresh?'MT5 / Exness':quote?.source||market?.priceSource||'بانتظار المصدر';
-  const score=analysis?.score?Math.max(analysis.score.long,analysis.score.short):0;
-  const latestM1=market?.c1?.filter((c:any)=>c.time+60000<=Date.now()).at(-1)||null;
-  const quoteAge=quote?.sourceTime?Math.max(0,Date.now()-quote.sourceTime):null;
-  const marketOpen=goldMarketOpen(now);
-  const live=marketOpen&&!error&&quote?.status==='live'&&quoteAge!=null&&quoteAge<120000;
-  const priceState=!marketOpen?'MARKET CLOSED':live?'PRICE LIVE':quote?.status==='delayed'?'PRICE DELAYED':'PRICE NOT READY';
+  useEffect(()=>{
+    let closed=false,inFlight=false,timer:ReturnType<typeof setTimeout>|undefined,nextDelay=1800;
+    let stream:WebSocket|null=null,reconnect:ReturnType<typeof setTimeout>|undefined,lastStreamTick=0,subscribed=false;
+    const applyGold=(tick:any)=>{
+      const bid=Number(tick?.bid),ask=Number(tick?.ask),mid=Number(tick?.mid);
+      const price=Number.isFinite(mid)&&mid>0?mid:(Number.isFinite(bid)&&Number.isFinite(ask)&&ask>=bid?(bid+ask)/2:Number(tick?.price));
+      const parsed=Date.parse(String(tick?.timestamp??tick?.time??tick?.lastQuoteAt??'')),at=Number.isFinite(parsed)?parsed:Date.now();
+      if(!Number.isFinite(price)||price<=0)return;
+      const receivedAt=Date.now();
+      lastStreamTick=receivedAt;
 
-  const tabs=[
-    ['dashboard','القيادة',LayoutDashboard],['chart','الرسم',ChartCandlestick],['news','الأخبار',Newspaper],
-    ['lab','المختبر',FlaskConical],['performance','الأداء',BarChart3],['health','الصحة',HeartPulse]
-  ] as const;
+      const nextGoldTick={ok:true,price,bid:Number.isFinite(bid)&&bid>0?bid:null,ask:Number.isFinite(ask)&&ask>0?ask:null,sourceTime:at,receivedAt,ageMs:Math.max(0,receivedAt-at),status:'live',mode:'stream',source:'Biquote · MT5 XAUUSD WebSocket',brokerSymbol:'XAUUSD',degraded:false};
+      goldTickRef.current=nextGoldTick;
+      if(!closed)setGoldTick(nextGoldTick);
+    };
+    const connectStream=async()=>{
+      if(closed)return;
+      try{
+        const nr=await fetch('https://biquote.io/hubs/tick/negotiate?negotiateVersion=1',{method:'POST',cache:'no-store'});
+        const nj=await nr.json(),token=String(nj?.connectionToken||nj?.connectionId||'');
+        if(!nr.ok||!token)throw new Error('Biquote negotiate failed');
+        stream=new WebSocket('wss://biquote.io/hubs/tick?id='+encodeURIComponent(token));
+        stream.onopen=()=>{subscribed=false;try{stream?.send(JSON.stringify({protocol:'json',version:1})+'\x1e');}catch{}};
+        stream.onmessage=(event)=>{try{
+          const frames=String(event.data||'').split('\x1e').filter(Boolean);
+          for(const raw of frames){
+            const msg=JSON.parse(raw);
+            if(!subscribed&&msg&&Object.keys(msg).length===0){
+              subscribed=true;
+              stream?.send(JSON.stringify({type:1,invocationId:'gold-sub',target:'Subscribe',arguments:[['XAUUSD']]})+'\x1e');
+              continue;
+            }
+            if(msg?.type===1&&msg?.target==='ReceiveTick'&&Array.isArray(msg?.arguments)){
+              const tick=msg.arguments[0];
+              if(String(tick?.symbol||'').toUpperCase()==='XAUUSD')applyGold(tick);
+            }
+          }
+        }catch{}};
+        stream.onerror=()=>{try{stream?.close();}catch{}};
+        stream.onclose=()=>{if(!closed)reconnect=setTimeout(()=>{void connectStream();},1200);};
+      }catch{if(!closed)reconnect=setTimeout(()=>{void connectStream();},1800);}
+    };
+    const loadGold=async()=>{
+      if(closed||inFlight||Date.now()-lastStreamTick<3500)return;
+      inFlight=true;
+      try{
+        const r=await fetch('/api/gold-tick?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+        const j=await r.json();
+        if(!r.ok||!j?.ok){nextDelay=3000;return;}
+        const price=Number(j.price),bid=Number(j.bid),ask=Number(j.ask),at=Number(j.sourceTime)||Date.now();
+        if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)){nextDelay=3000;return;}
+        const mode=String(j.mode||'external');
+        nextDelay=mode==='broker'?650:mode==='external'?1800:3000;
 
-  return <main className="shell">
-    <header className="topbar">
-      <div className="brand">
-        <div className="brandmark">AG</div>
-        <div><span>AHMED GOLD · MASTER 3.1</span><strong>COMMAND</strong></div>
-      </div>
-      <div className="tickerstrip">
-        <div><small>{source.includes('Binance')?'XAUUSDT · عقد بديل':'XAU/USD'}</small><b>{fmt(quote?.price)}</b><em className={live?'up':'muted'}>{!marketOpen?'CLOSED':live?'LIVE':'WAIT'}</em></div>
-        <div><small>BTC/USDT</small><b>{fmt(btc,0)}</b><em>{btcAt&&now-btcAt<15000?'LIVE':'WAIT'}</em></div>
-        <div><small>SCORE</small><b>{score||'—'}</b><em>/100</em></div>
-      </div>
-      <button className="refresh" onClick={()=>void load()} disabled={busy}><RefreshCw size={17} className={busy?'spin':''}/><span>{busy?'تحديث':'تحديث'}</span></button>
-    </header>
+        const nextGoldTick={
+          ok:true,price,
+          bid:Number.isFinite(bid)?bid:null,
+          ask:Number.isFinite(ask)?ask:null,
+          sourceTime:at,
+          receivedAt:Number(j.receivedAt)||Date.now(),
+          ageMs:Number(j.ageMs)||0,
+          status:String(j.status||'unknown'),
+          mode,
+          source:String(j.source||'Gold source'),
+          brokerSymbol:j.brokerSymbol||null,
+          degraded:Boolean(j.degraded)
+        };
+        goldTickRef.current=nextGoldTick;
+        if(!closed)setGoldTick(nextGoldTick);
+      }catch{nextDelay=3000;}finally{inFlight=false;}
+    };
+    const loop=async()=>{
+      if(closed)return;
+      if(document.visibilityState==='visible')await loadGold();
+      if(!closed)timer=setTimeout(loop,nextDelay);
+    };
+    void connectStream();
+    void loop();
+    return()=>{closed=true;if(timer)clearTimeout(timer);clearTimeout(reconnect);try{stream?.close();}catch{}};
+  },[]);
 
-    <section className="statusrail">
-      <span className={live?'pill ok':!marketOpen?'pill neutral':'pill bad'}>{live?<Wifi size={14}/>:<WifiOff size={14}/>} {priceState}</span>
-      <span className={market?.pricesReady?'pill ok':'pill bad'}><Activity size={14}/> CANDLES {market?.pricesReady?'READY':'WAIT'}</span>
-      <span className={mt5Fresh?'pill ok':'pill neutral'}><ShieldCheck size={14}/> {mt5Fresh?'MT5 READY':'MT5 OFFLINE'}</span>
-      <span className={monitor?'pill watch':'pill neutral'}><Bell size={14}/> TELEGRAM {monitor?'MONITORING':'PAUSED'}</span>
-      <button className="refresh" onClick={()=>void checkTelegram()}>فحص ربط Telegram</button><span className="source">المصدر: <b>{source}</b></span>
-    </section>
+  const aiGold=aiData?.gold?.livePulse;
+  const aiBtc=aiData?.bitcoin?.livePulse;
+  const goldPrice=goldTick?.price??aiGold?.price??aiData?.gold?.price??null;
+  const goldAt=Number(goldTick?.sourceTime||aiGold?.sourceTime||0);
+  const goldFresh=Boolean(goldTick?.ok&&Number(goldTick?.receivedAt||goldAt)&&now-Number(goldTick?.receivedAt||goldAt)<10000);
+  const goldBrokerLive=Boolean(goldFresh&&goldTick?.mode==='broker'&&goldAt&&now-goldAt<10000);
+  const goldStreamLive=Boolean(goldFresh&&goldTick?.mode==='stream'&&goldAt&&now-goldAt<10000);
+  const goldPulse=Boolean(goldFresh&&goldTick?.mode==='external'&&goldTick?.status==='live');
+  const goldDelayed=Boolean(goldFresh&&goldTick?.mode==='external'&&goldTick?.status!=='live');
+  const goldFallback=Boolean(goldFresh&&goldTick?.mode==='analysis_proxy');
+  const goldLive=goldBrokerLive||goldStreamLive||goldPulse;
+  const goldUsable=goldLive||goldDelayed||goldFallback;
+  const goldBadge=goldBrokerLive?'LIVE EXNESS':goldStreamLive?'LIVE':goldPulse?'PULSE':goldDelayed?'DELAYED':goldFallback?'FALLBACK':'WAIT';
+  // Snapshot age is not frozen at FETCH time: age keeps growing every tick.
+  // A 304 means unchanged analysis, not a new market forecast.
+  const aiSnapshotAt=Number(aiData?.snapshot?.servedAt||0)-Number(aiData?.snapshot?.ageMs||0);
+  const aiProducedAt=Number(aiData?.checkedAt)||aiSnapshotAt;
+  const snapshotAge=aiProducedAt>0?Math.max(0,now-aiProducedAt):Infinity;
+  const aiActive=Boolean(aiData?.ok&&aiLastOkAt&&now-aiLastOkAt<10000&&snapshotAge<20000);
+  const shownBtc=btc??aiBtc?.price??aiData?.bitcoin?.price??null;
+  const shownBtcAt=btcAt||Number(aiBtc?.sourceTime||0);
+  const btcLive=Boolean(shownBtcAt&&now-shownBtcAt<10000);
 
-    <nav className="tabs">
-      {tabs.map(([id,label,Icon])=><button key={id} onClick={()=>setTab(id)} className={tab===id?'active':''}><Icon size={17}/>{label}</button>)}
+  return <main className="shell modern-workspace compact-sniper">
+    <a className="skip-link" href="#market-forecast">انتقل إلى خريطة الحركة</a>
+    <nav className="sniper-solo-nav" aria-label="سكالب الثواني">
+      <a href="/scalp" className="workspace-scalp-link">سكالب الثواني ↗</a>
     </nav>
-
-    {error&&<div className="fatal"><WifiOff size={18}/><div><strong>Fail-closed</strong><span>{error}</span></div></div>}
-
-    <div className="workspace">
-      <section className="content">
-        {tab==='dashboard'&&<><section className="sidecard"><strong>حزمة الماستر وجسر MT5</strong><p>مؤشرات M1/M5/M15/H1، مختبر وسجل، وبث عقد XAUUSDT عند اتصال Binance. ليس سعر تنفيذ Exness. الجسر تجريبي افتراضيًا؛ لا تداول حي قبل ربط التخزين والتحقق على الديمو.</p><a href="/downloads/GoldWatch-MT5-Windows.zip" download>تنزيل جسر Windows / MT5</a></section>
-          <CommandCenter analysis={analysis} quote={quote} events={market?.events||[]} background={market?.background||[]} now={now} health={health}/>
-          <SignalFlow analysis={analysis} health={health} quote={quote} rules={rules}/>
-          <div className="dashboardgrid">
-            <NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/>
-            <section className="panel quickpanel">
-              <div className="panelhead"><div><span className="eyebrow">LIVE CONTROLS</span><h2>التحكم السريع</h2></div><Settings2/></div>
-              <button className={monitor?'primary danger':'primary'} onClick={toggleMonitor}><Bell size={17}/>{monitor?'إيقاف مراقبة Telegram':'تشغيل مراقبة Telegram'}</button>
-              <button className="secondary" onClick={testTelegram}>اختبار Telegram</button>
-              <button className="secondary" onClick={enablePush}>تفعيل إشعارات الجهاز</button>
-              <div className="safetybox"><ShieldCheck/><p><b>التنفيذ الحقيقي مقفول افتراضيًا.</b><br/>MT5_AUTOTRADE_ENABLED=false وKill Switch مفعّل حتى اختبار Demo.</p></div>
-            </section>
-          </div>
-          <section className="panel">
-            <div className="panelhead"><div><span className="eyebrow">RULE ENGINE</span><h2>إعدادات الدخول</h2></div><span className="tag">محلية على جهازك</span></div>
-            <div className="rulecontrols">
-              <label>أقل Score<select value={rules.minScore} onChange={e=>updateRule('minScore',+e.target.value)}>{[72,76,80,84].map(v=><option key={v}>{v}</option>)}</select></label>
-              <label>أقل ADX<select value={rules.adx} onChange={e=>updateRule('adx',+e.target.value)}>{[20,22,25].map(v=><option key={v}>{v}</option>)}</select></label>
-              <label>حد ATR<select value={rules.spike} onChange={e=>updateRule('spike',+e.target.value)}>{[1.5,2,2.5].map(v=><option key={v}>{v}</option>)}</select></label>
-              <label>قبل الخبر<select value={rules.before} onChange={e=>updateRule('before',+e.target.value)}>{[5,15,30].map(v=><option key={v}>{v} دقيقة</option>)}</select></label>
-              <label>بعد الخبر<select value={rules.after} onChange={e=>updateRule('after',+e.target.value)}>{[5,15,30].map(v=><option key={v}>{v} دقيقة</option>)}</select></label>
-            </div>
-          </section>
-        </>}
-
-        {tab==='chart'&&<TradingViewGold/>}
-        {tab==='news'&&<NewsCommandCenter analysis={analysis} events={market?.events||[]} background={market?.background||[]} quote={quote} now={now}/>}
-        {tab==='lab'&&<StrategyLab signal={analysis?.signal||null} regime={analysis?.regime} quotePrice={quote?.price} quoteLive={live} latestM1={latestM1} rules={rules}/>}
-        {tab==='performance'&&<PerformanceCenter/>}
-        {tab==='health'&&<HealthCenter/>}
-      </section>
-
-      <aside className="sidebar">
-        <div className="sidecard">
-          <span className="eyebrow">SYSTEM</span>
-          <h3>{health?.status==='healthy'?'جاهز للمراقبة':health?.status==='degraded'?'يعمل جزئيًا':'بانتظار الفحص'}</h3>
-          <div className="kv"><span>Price</span><b className={live?'green':!marketOpen?'amber':'red'}>{!marketOpen?'CLOSED':live?'LIVE':'WAIT'}</b></div>
-          <div className="kv"><span>Candles</span><b className={market?.pricesReady?'green':'red'}>{market?.pricesReady?'READY':'WAIT'}</b></div>
-          <div className="kv"><span>News</span><b className={market?.newsReady?'green':'amber'}>{market?.newsReady?'READY':'OPTIONAL'}</b></div>
-          <div className="kv"><span>Telegram</span><b className={health?.services?.telegram?.configured?'green':'amber'}>{health?.services?.telegram?.configured?'READY':'TOKEN NEEDED'}</b></div>
-          <div className="kv"><span>MT5</span><b className={mt5Fresh?'green':'amber'}>{mt5Fresh?'LIVE':'WAITING VPS'}</b></div>
-        </div>
-        <div className="sidecard">
-          <span className="eyebrow">PRINCIPLE</span>
-          <p>درجة التوافق ليست نسبة نجاح. النظام لا يفتح صفقة عند بيانات ناقصة أو Tick قديم.</p>
-        </div>
-        <div className="sidecard risk">
-          <span className="eyebrow">RISK LOCK</span>
-          <h3>LIVE EXECUTION OFF</h3>
-          <p>لن يتحول أي Signal لأمر حقيقي قبل تفعيل MT5 يدويًا بعد اختبار Demo.</p>
-        </div>
-      </aside>
-    </div>
-
-    {notice&&<div className="toast" onClick={()=>setNotice('')}>{notice}</div>}
-    <footer>Ahmed Gold Command · Rule-Based Market Engine · لا توجد صفقات مضمونة</footer>
+    <section className="content lite-content" aria-label="القناص الذكي">
+      <AICommandCenter assetView="ALL" data={aiData} error={aiError} now={now} goldLive={goldTick}
+        btcLive={btcLive&&shownBtc!=null?{asset:'BTC',ok:true,price:shownBtc,sourceTime:shownBtcAt}:null}/>
+    </section>
   </main>;
 }

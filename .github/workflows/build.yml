@@ -2,7 +2,9 @@ name: Build Check
 
 on:
   push:
-    branches: [main]
+    branches: [main, railway, 'integration/sniper-unified-20261012']
+  pull_request:
+    branches: [main, railway]
   workflow_dispatch:
 
 permissions:
@@ -17,5 +19,28 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+      - run: npm ci
+      - run: node --check learning-worker.mjs
+      - run: node tests/railway-eco.cjs
+      - run: node tests/neural-optout.cjs
+      - run: node tests/indicators.cjs
+      - run: node tests/core-quality.cjs
+      - run: node tests/scalp.cjs
+      - run: node tests/news-alert-window.cjs
+      - run: node tests/scalp-presentation.cjs
+      - run: node tests/next-move-view.cjs
+      - run: node tests/sniper-outlook.cjs
+      - run: node tests/structural-watch.cjs
+      - run: node tests/continuous-direction.cjs
+      - run: node tests/sniper-stability.cjs
+      - run: node tests/four-hour-structure.cjs
+      - run: node tests/long-range-targets.cjs
+      - run: node tests/sniper-scorecard.cjs
+      - run: node tests/sniper-watch.cjs
+      - run: node tests/forecast-illustration.cjs
+      - run: node tests/forecast-journal.cjs
+      - run: node tests/direction.cjs
+      - run: node tests/movement.cjs
+      - run: python3 -m compileall -q ml-service neural-service
+      - run: python3 -m py_compile mt5_bridge/bridge.py
       - run: npm run build

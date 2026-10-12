@@ -1,0 +1,1067 @@
+import {commitDirection} from './direction-commitment';
+import {evaluatePredatorScalp} from './predator-scalp-core';
+
+type Side='BUY'|'SELL'|'WAIT';
+
+const cap=(n:number,a=0,b=100)=>Math.max(a,Math.min(b,n));
+const side=(x:any):Side=>x==='BUY'||x==='SELL'?x:'WAIT';
+const signed=(s:Side,v:number)=>s==='BUY'?v:s==='SELL'?-v:0;
+const scalpSideScore=(s:Side,target:Side,v:number)=>s===target?v:0;
+const scalpSideOf=(buy:number,sell:number,gate=3):Side=>buy-sell>=gate?'BUY':sell-buy>=gate?'SELL':'WAIT';
+
+type NextPricePending={at:number;entry:number;predicted:number;horizonSeconds:number};
+type NextPriceCalibration={
+  biasBps:number;maeBps:number;n:number;
+  directionalAccuracy:number;directionSamples:number;
+  last:NextPricePending|null;
+};
+const npRoot=globalThis as typeof globalThis&{__ambushNextPriceCalibration?:Map<string,NextPriceCalibration>};
+const npCalibration=npRoot.__ambushNextPriceCalibration??(npRoot.__ambushNextPriceCalibration=new Map<string,NextPriceCalibration>());
+type AmbushTrackLock={side:Side;since:number;opposite:Side;oppositeCount:number;updatedAt:number};
+const trackRoot=globalThis as typeof globalThis&{__ambushTrackLocks?:Map<string,AmbushTrackLock>};
+const ambushTrackLocks=trackRoot.__ambushTrackLocks??(trackRoot.__ambushTrackLocks=new Map<string,AmbushTrackLock>());
+function stickyAmbushTracking(asset:string,candidate:Side,edge:number,now:number):Side{
+  const key=String(asset||'UNKNOWN').toUpperCase();
+  const prev=ambushTrackLocks.get(key);
+  if(!prev){
+    const initial:Side=candidate==='WAIT'?'BUY':candidate;
+    ambushTrackLocks.set(key,{side:initial,since:now,opposite:'WAIT',oppositeCount:0,updatedAt:now});
+    return initial;
+  }
+  prev.updatedAt=now;
+  if(candidate==='WAIT'||candidate===prev.side){
+    prev.opposite='WAIT';prev.oppositeCount=0;
+    ambushTrackLocks.set(key,prev);
+    return prev.side;
+  }
+  if(prev.opposite!==candidate){prev.opposite=candidate;prev.oppositeCount=1;}
+  else prev.oppositeCount+=1;
+  const heldMs=Math.max(0,now-prev.since);
+  const switchNow=edge>=30||(edge>=14&&prev.oppositeCount>=2&&heldMs>=900)||(prev.oppositeCount>=3&&heldMs>=1400);
+  if(switchNow){
+    prev.side=candidate;prev.since=now;prev.opposite='WAIT';prev.oppositeCount=0;
+  }
+  ambushTrackLocks.set(key,prev);
+  return prev.side;
+}
+function nextPriceCalibration(asset:string,price:number,now:number){
+  const key=String(asset||'UNKNOWN').toUpperCase();
+  const state=npCalibration.get(key)||{
+    biasBps:0,maeBps:1.2,n:0,directionalAccuracy:50,directionSamples:0,last:null
+  };
+  state.directionalAccuracy=Number.isFinite(Number(state.directionalAccuracy))?Number(state.directionalAccuracy):50;
+  state.directionSamples=Number.isFinite(Number(state.directionSamples))?Number(state.directionSamples):0;
+  const last=state.last;
+  if(last&&Number.isFinite(price)&&price>0&&now-last.at>=Math.max(2500,last.horizonSeconds*850)){
+    const err=(price-last.predicted)/Math.max(1e-9,last.entry)*10000;
+    const alpha=state.n<8?.26:.14;
+    state.biasBps=cap(state.biasBps*(1-alpha)+err*alpha,-4,4);
+    state.maeBps=cap(state.maeBps*(1-alpha)+Math.abs(err)*alpha,.35,12);
+    const predictedDir=Math.sign(last.predicted-last.entry);
+    const realizedDir=Math.sign(price-last.entry);
+    if(predictedDir!==0&&realizedDir!==0){
+      const hit=predictedDir===realizedDir?100:0;
+      const dirAlpha=state.directionSamples<12?.20:.08;
+      state.directionalAccuracy=cap(
+        state.directionalAccuracy*(1-dirAlpha)+hit*dirAlpha,
+        15,85
+      );
+      state.directionSamples+=1;
+    }
+    state.n+=1;
+    state.last=null;
+  }
+  npCalibration.set(key,state);
+  return state;
+}
+
+function technicalSide(raw:any):Side{
+  const a=side(raw?.action);
+  if(a!=='WAIT')return a;
+  const l=Number(raw?.score?.long||0),s=Number(raw?.score?.short||0);
+  if(Math.abs(l-s)<4)return 'WAIT';
+  return l>s?'BUY':'SELL';
+}
+function liquidityStrength(liq:any){
+  const q=cap(Number(liq?.quality||0),0,100)/100;
+  const directional=Math.abs(Number(liq?.buy||50)-Number(liq?.sell||50));
+  const pressure=Math.abs(Number(liq?.pressure||0));
+  const depth=Math.abs(Number(liq?.book?.depthImbalance??liq?.book?.weightedImbalance??0));
+  const flow=Math.abs(Number(liq?.flow?.deltaPct||0));
+  return cap((directional*.55+pressure*.30+depth*.22+flow*.18)*(0.55+q*.45),0,92);
+}
+function mlStrength(ml:any){
+  const m=ml?.oneMinute||ml?.m1||null;
+  if(!m?.ready||!['BUY','SELL'].includes(String(m?.side)))return {side:'WAIT' as Side,score:0};
+  const conf=Number(m?.confidence||0);
+  const hold=Number(m?.metrics?.ensemble?.selectiveAccuracy||m?.selectiveAccuracy||0);
+  const score=cap(conf*.68+(hold>0?hold*.32:0),0,88);
+  return {side:side(m.side),score};
+}
+function tickStrength(tick:any){
+  const s=side(tick?.side);
+  if(!tick?.ok||s==='WAIT')return {side:'WAIT' as Side,score:0,confidence:0,stage:'OFFLINE'};
+  const score=cap(Number(tick?.score||0)*.62+Number(tick?.confidence||0)*.38,0,90);
+  return {side:s,score,confidence:cap(Number(tick?.confidence||0),0,90),stage:String(tick?.stage||'WARMING')};
+}
+function liveReliability(live:any,primary:string,fallback:string){
+  const p=live?.bySource?.[primary]||{},f=live?.bySource?.[fallback]||{};
+  const pn=Number(p?.hits||0)+Number(p?.fails||0),fn=Number(f?.hits||0)+Number(f?.fails||0);
+  const source=pn>=6?primary:fn>=8?fallback:pn>0?primary:fn>0?fallback:primary;
+  const s=source===primary?p:f;
+  const n=Number(s?.hits||0)+Number(s?.fails||0);
+  const posterior=Number(s?.posteriorAccuracy||50);
+  const wf=live?.walkForwardBySource?.[source]||{};
+  const wfN=Number(wf?.oos?.n||0),wfAcc=Number(wf?.oos?.accuracy);
+  const score=cap(wfN>=10&&Number.isFinite(wfAcc)?posterior*.45+wfAcc*.55:posterior,35,68);
+  const multiplier=cap(.90+(score-50)/80,.76,1.16);
+  return {source,n,posterior:Number(posterior.toFixed(1)),wfN,wfAccuracy:Number.isFinite(wfAcc)?Number(wfAcc.toFixed(1)):null,score:Number(score.toFixed(1)),multiplier:Number(multiplier.toFixed(3)),status:String(wf?.status||'COLLECTING'),drift:String(wf?.drift?.status||'COLLECTING')};
+}
+
+function reactionContext(accumulation:any,price:number){
+  const zones=Array.isArray(accumulation?.reactionZones)?accumulation.reactionZones:[];
+  const p=Number(price);
+  const normalized=zones
+    .map((z:any)=>({
+      side:side(z?.side),low:Number(z?.low),high:Number(z?.high),mid:Number(z?.mid),
+      strength:cap(Number(z?.strength||0),0,94),distanceAtr:Number(z?.distanceAtr),status:String(z?.status||'FAR'),
+      touches:Number(z?.touches||0),rejections:Number(z?.rejections||0),reason:String(z?.reason||'')
+    }))
+    .filter((z:any)=>z.side!=='WAIT'&&Number.isFinite(z.low)&&Number.isFinite(z.high)&&Number.isFinite(z.mid));
+  const inside=normalized.filter((z:any)=>Number.isFinite(p)&&p>=z.low&&p<=z.high).sort((a:any,b:any)=>b.strength-a.strength)[0]||null;
+  const nearest=inside||normalized.slice().sort((a:any,b:any)=>(Number.isFinite(a.distanceAtr)?a.distanceAtr:99)-(Number.isFinite(b.distanceAtr)?b.distanceAtr:99)||b.strength-a.strength)[0]||null;
+  const active=Boolean(nearest&&nearest.strength>=58&&(inside||nearest.status==='NEAR'||Number(nearest.distanceAtr)<=.65));
+  const reboundSide:Side=active?nearest.side:'WAIT';
+  const targetFor=(s:Side)=>{
+    if(s==='WAIT'||!Number.isFinite(p))return null;
+    const targetSide:Side=s==='BUY'?'SELL':'BUY';
+    return normalized
+      .filter((z:any)=>z.side===targetSide&&((s==='BUY'&&z.mid>p)||(s==='SELL'&&z.mid<p)))
+      .sort((a:any,b:any)=>Math.abs(a.mid-p)-Math.abs(b.mid-p)||b.strength-a.strength)[0]||null;
+  };
+  return {zones,normalized,inside,nearest,active,reboundSide,targetFor};
+}
+
+function preMoveSignal(liq:any,motion:any,tick:any){
+  const q=cap(Number(liq?.quality||0),0,100),pressure=Number(liq?.pressure||0),micro=Number(liq?.book?.microEdge||0);
+  const accel=Number(liq?.dynamics?.acceleration||0),pressureChange=Number(liq?.dynamics?.pressureChange||0);
+  const bidDepthChange=Number(liq?.dynamics?.bidDepthChangePct||0),askDepthChange=Number(liq?.dynamics?.askDepthChangePct||0);
+  const replenishDelta=bidDepthChange-askDepthChange;
+  const delta=Number(liq?.flow?.deltaPct||0),priceBps=Number(liq?.flow?.priceChangeBps||0);
+  const t=tickStrength(tick),motionSide=side(motion?.side),motionStage=String(motion?.stage||'WAIT');
+  const precursorCount=Number(motion?.diagnostics?.precursorCount||0),compression=Number(motion?.components?.compression||0);
+  let buy=0,sell=0,supportBuy=0,supportSell=0;
+  const add=(s:Side,pts:number)=>{if(s==='BUY'){buy+=pts;supportBuy++;}else if(s==='SELL'){sell+=pts;supportSell++;}};
+  if(q>=55&&Math.abs(pressure)>=8)add(pressure>0?'BUY':'SELL',Math.min(24,Math.abs(pressure)*.34));
+  if(Math.abs(micro)>=14)add(micro>0?'BUY':'SELL',Math.min(18,Math.abs(micro)*.16));
+  if(Math.abs(accel)>=5)add(accel>0?'BUY':'SELL',Math.min(17,Math.abs(accel)*.22));
+  if(Math.abs(pressureChange)>=5)add(pressureChange>0?'BUY':'SELL',Math.min(15,Math.abs(pressureChange)*.28));
+  if(Math.abs(replenishDelta)>=7)add(replenishDelta>0?'BUY':'SELL',Math.min(13,Math.abs(replenishDelta)*.18));
+  if(Math.abs(delta)>=16)add(delta>0?'BUY':'SELL',Math.min(14,Math.abs(delta)*.16));
+  if(motionSide!=='WAIT'&&['PRE_MOVE','IGNITION','PRE_TRIGGER','WAVE_FORMING'].includes(motionStage))add(motionSide,Math.min(24,Number(motion?.score||0)*.28));
+  if(t.side!=='WAIT'){
+    const velocity3=Math.abs(Number(tick?.velocity3s||0)),acceleration=Math.abs(Number(tick?.acceleration||0)),persistence=Number(tick?.persistence||0);
+    const stageLead=['PRE_TRIGGER','IGNITION','WAVE_FORMING','BUILDING'].includes(String(t.stage||''));
+    const preTick=(velocity3<=3.8&&acceleration>=.12&&persistence>=54)||stageLead;
+    if(preTick)add(t.side,Math.min(24,t.score*.25+Math.max(0,persistence-54)*.18+(stageLead?5:0)));
+  }
+  const provisional:Side=buy-sell>=6?'BUY':sell-buy>=6?'SELL':'WAIT';
+  if(provisional!=='WAIT'&&compression>=60){
+    if(provisional==='BUY')buy+=Math.min(12,compression*.12);else sell+=Math.min(12,compression*.12);
+  }
+  const score=cap(Math.max(buy,sell),0,90),gap=Math.abs(buy-sell);
+  const sideOut:Side=gap>=8&&score>=34?(buy>sell?'BUY':'SELL'):'WAIT';
+  const support=sideOut==='BUY'?supportBuy:sideOut==='SELL'?supportSell:0;
+  const tickVelocity3=Math.abs(Number(tick?.velocity3s||0));
+  const priceStillCoiled=Math.abs(priceBps)<=2.6&&tickVelocity3<=3.8;
+  const lateMomentum=Math.abs(priceBps)>3.2||tickVelocity3>4.8;
+  const stageAligned=Boolean(t.side===sideOut&&['PRE_TRIGGER','IGNITION','WAVE_FORMING','BUILDING'].includes(String(t.stage||'')));
+  const depthLeadAligned=Boolean(sideOut!=='WAIT'&&(
+    (sideOut==='BUY'&&(pressureChange>=5||replenishDelta>=7))||
+    (sideOut==='SELL'&&(pressureChange<=-5||replenishDelta<=-7))
+  ));
+  const armed=Boolean(
+    sideOut!=='WAIT'&&priceStillCoiled&&!lateMomentum&&
+    (
+      (score>=48&&support>=2&&(stageAligned||depthLeadAligned||precursorCount>=2||compression>=60))||
+      (score>=56&&support>=2&&t.side===sideOut)
+    )
+  );
+  const ignition=Boolean(sideOut!=='WAIT'&&(motionStage==='IGNITION'||(t.stage==='IGNITION'&&t.side===sideOut)));
+  const persistence=Number(tick?.persistence||0);
+  const etaSeconds=sideOut==='WAIT'?null:Math.round(cap(
+    27-Math.min(9,Math.abs(accel)*.32)-Math.min(7,Math.max(0,persistence-50)*.12)-Math.min(5,Math.max(0,compression-50)*.08),
+    4,30
+  ));
+  return {
+    side:sideOut,score:Number(score.toFixed(1)),gap:Number(gap.toFixed(1)),support,armed,ignition,priceStillCoiled,lateMomentum,etaSeconds,
+    quality:q,pressure:Number(pressure.toFixed(1)),pressureChange:Number(pressureChange.toFixed(1)),
+    bidDepthChangePct:Number(bidDepthChange.toFixed(1)),askDepthChangePct:Number(askDepthChange.toFixed(1)),replenishDelta:Number(replenishDelta.toFixed(1)),
+    microEdge:Number(micro.toFixed(1)),acceleration:Number(accel.toFixed(1)),deltaPct:Number(delta.toFixed(1)),priceChangeBps:Number(priceBps.toFixed(2)),
+    compression,precursorCount,stageAligned,depthLeadAligned,tickSide:t.side,tickStage:t.stage,tickScore:Number(t.score.toFixed(1))
+  };
+}
+
+export function buildScalpFusion(raw:any,liq:any,motion:any,learner:any,ml:any,price:number|null,atr:number|null,liveOutcome:any=null,tick:any=null,accumulation:any=null,asset='BTC'){
+  const nowNp=Date.now();
+  const pForCal=Number(price);
+  const npCal=nextPriceCalibration(asset,pForCal,nowNp);
+  const techSide=technicalSide(raw);
+  const long=Number(raw?.score?.long||0),short=Number(raw?.score?.short||0),techBest=Math.max(long,short),techGap=Math.abs(long-short);
+  const liqSide=side(liq?.side),liqScore=liquidityStrength(liq);
+  const motionSide=side(motion?.side),motionScore=cap(Number(motion?.score||motion?.confidence||0),0,88);
+  const trapSide:Side=liq?.absorption?.trapDetected?side(liq?.absorption?.side):'WAIT';
+  const trapScore=cap(Number(liq?.absorption?.score||0),0,90);
+  const ml1=mlStrength(ml);
+  const tick1=tickStrength(tick);
+  const preMove=preMoveSignal(liq,motion,tick);
+  const p=Number(price),a=Number(atr);
+  const reaction=reactionContext(accumulation,p);
+  const accumulationSide:Side=accumulation?.ok?side(accumulation?.side):'WAIT';
+  const accumulationScore=accumulationSide==='BUY'?Number(accumulation?.accumulationScore||0):accumulationSide==='SELL'?Number(accumulation?.distributionScore||0):0;
+  const accumulationPhase=String(accumulation?.phase||'NEUTRAL');
+  const accumulationReadiness=Number(accumulation?.breakoutReadiness||0);
+  const reactionSide:Side=reaction.active?reaction.reboundSide:'WAIT';
+  const reactionScore=reaction.active?cap(Number(reaction.nearest?.strength||0)+(reaction.inside?8:0),0,94):0;
+  const reactionFastSupport=[tick1.side,preMove.side,motionSide,liqSide,trapSide].filter(s=>s!=='WAIT'&&s===reactionSide).length;
+  const reactionFastOpposition=[motionSide,liqSide,trapSide].filter(s=>s!=='WAIT'&&reactionSide!=='WAIT'&&s!==reactionSide).length;
+  const reactionConfirmed=Boolean(
+    reactionSide!=='WAIT'&&reactionScore>=68&&
+    (
+      (tick1.side===reactionSide&&tick1.score>=54&&(preMove.side===reactionSide||motionSide===reactionSide))||
+      (motionSide===reactionSide&&liqSide===reactionSide)||
+      (trapSide===reactionSide&&trapScore>=68)
+    )&&
+    reactionFastOpposition<=2
+  );
+  const reactionCandidate=Boolean(reactionSide!=='WAIT'&&reactionScore>=68&&!reactionConfirmed);
+  const confirmedReliability=liveReliability(liveOutcome,'SCALP_AMBUSH_TRADE_V10','SCALP_AMBUSH_TRADE_V8');
+  const preMoveReliability=liveReliability(liveOutcome,'SCALP_AMBUSH_TRADE_V10','SCALP_AMBUSH_TRADE_V8');
+  const confirmedStats=liveOutcome?.bySource?.SCALP_AMBUSH_TRADE_V10||liveOutcome?.bySource?.SCALP_AMBUSH_TRADE_V8||{};
+  const confirmedHits=Number(confirmedStats?.hits||0),confirmedFails=Number(confirmedStats?.fails||0);
+  const confirmedDirectional=confirmedHits+confirmedFails;
+  const confirmedColdFailGuard=Boolean(
+    confirmedDirectional>=3&&confirmedFails>=3&&confirmedHits===0
+  );
+  const learnedSide:Side=learner?.ok&&learner?.gate?.passed?side(learner?.side):'WAIT';
+  const learnedScore=learnedSide==='WAIT'?0:cap(Number(learner?.confidence||0)*.55+Number(learner?.oosAccuracy||0)*.45,0,82);
+
+  const mode=String(raw?.adaptive?.mode||'FLOW').toUpperCase();
+  // v4 deliberately shifts weight away from lagging candle confirmation toward
+  // live order-flow, server tick acceleration and a dedicated pre-move precursor.
+  const weights=mode==='COMPRESSION'
+    ?{tech:.08,liq:.20,ml:.12,motion:.10,trap:.12,learn:.02,tick:.10,premove:.10,accum:.08,reaction:.08}
+    :mode==='REVERSAL'
+      ?{tech:.10,liq:.15,ml:.10,motion:.08,trap:.18,learn:.02,tick:.07,premove:.05,accum:.10,reaction:.15}
+      :mode==='BREAKOUT'||mode==='MOMENTUM'
+        ?{tech:.14,liq:.20,ml:.13,motion:.10,trap:.05,learn:.02,tick:.12,premove:.10,accum:.08,reaction:.06}
+        :{tech:.12,liq:.22,ml:.14,motion:.09,trap:.06,learn:.02,tick:.10,premove:.10,accum:.08,reaction:.07};
+
+  const techFamilies=raw?.indicatorPower?.dominant?.families||{};
+  const techFamilyGroups=[
+    Math.max(Number(techFamilies?.ema||0),Number(techFamilies?.dmi||0)),
+    Math.max(Number(techFamilies?.macd||0),Number(techFamilies?.momentum||0)),
+    Math.max(Number(techFamilies?.priceAction||0),Number(techFamilies?.path||0)),
+    Math.max(Number(techFamilies?.bollinger||0),Number(techFamilies?.reversal||0)),
+    Number(techFamilies?.oscillator||0)
+  ];
+  const techFamilyAgreement=techFamilyGroups.filter(v=>v>=55).length;
+  const techFamilyWeak=techFamilyGroups.filter(v=>v>0&&v<28).length;
+  const techQuality=cap(Number(raw?.indicatorPower?.dominant?.quality||50),0,100);
+  const techSignal=techSide==='WAIT'?0:cap(
+    techBest*.48+techGap*.30+techQuality*.10+
+    techFamilyAgreement*5-techFamilyWeak*2.5,
+    0,94
+  );
+  const techWeightMultiplier=cap(.76+techFamilyAgreement*.09-techFamilyWeak*.05,.68,1.18);
+  const rows=[
+    {name:'TECH',side:techSide,score:techSignal,weight:weights.tech*techWeightMultiplier},
+    {name:'L2',side:liqSide,score:liqScore,weight:weights.liq},
+    {name:'ML1',side:ml1.side,score:ml1.score,weight:weights.ml},
+    {name:'MOTION',side:motionSide,score:motionScore,weight:weights.motion},
+    {name:'TRAP',side:trapSide,score:trapScore,weight:weights.trap},
+    {name:'LEARNED',side:learnedSide,score:learnedScore,weight:weights.learn},
+    {name:'TICK',side:tick1.side,score:tick1.score,weight:weights.tick},
+    {name:'PREMOVE',side:preMove.side,score:preMove.score,weight:weights.premove*preMoveReliability.multiplier},
+    {name:'ACCUM',side:accumulationSide,score:cap(accumulationScore*.72+accumulationReadiness*.28,0,92),weight:weights.accum},
+    {name:'REACTION',side:reactionSide,score:reactionScore,weight:weights.reaction*(reactionConfirmed?1:.22)}
+  ].filter(x=>x.side!=='WAIT'&&x.score>0);
+
+  let buy=0,sell=0;
+  for(const r of rows){
+    const v=r.score*r.weight;
+    if(r.side==='BUY')buy+=v;else sell+=v;
+  }
+
+  // A high-quality L2 + validated ML agreement may overturn a stale/lagging technical candle.
+  const livePair=liqSide!=='WAIT'&&ml1.side!=='WAIT'&&liqSide===ml1.side;
+  if(livePair&&liqScore>=34&&ml1.score>=48){
+    const boost=Math.min(13,(liqScore+ml1.score)*.075);
+    if(liqSide==='BUY')buy+=boost;else sell+=boost;
+  }
+
+  // Opposing high-quality L2 should materially suppress a technical-only call.
+  const techL2Conflict=techSide!=='WAIT'&&liqSide!=='WAIT'&&techSide!==liqSide&&Number(liq?.quality||0)>=75&&liqScore>=26;
+  if(techL2Conflict){
+    if(techSide==='BUY')buy*=.76;else sell*=.76;
+  }
+
+  // PRE-MOVE bonus: pressure + server tick agrees while price is still coiled.
+  // This is the anticipatory path that can arm before a candle breakout confirms.
+  const fastPair=preMove.armed&&preMove.side!=='WAIT'&&tick1.side===preMove.side&&liqSide===preMove.side;
+  if(fastPair){
+    const boost=Math.min(15,preMove.score*.10+tick1.score*.06+liqScore*.04);
+    if(preMove.side==='BUY')buy+=boost;else sell+=boost;
+  }
+
+  // Trap / absorption gets veto-like power only when it is actually strong.
+  if(trapSide!=='WAIT'&&trapScore>=62){
+    if(trapSide==='BUY'){buy+=8;sell*=.78;}else{sell+=8;buy*=.78;}
+  }
+
+  // A reaction zone is LOCATION evidence, not direction by itself.
+  // It only gets reversal authority after fast flow confirms the turn.
+  if(reactionConfirmed){
+    const boost=Math.min(reaction.inside?18:12,reactionScore*(reaction.inside?.18:.11));
+    if(reactionSide==='BUY'){buy+=boost;if(reaction.inside&&reactionScore>=76)sell*=.80;}
+    else {sell+=boost;if(reaction.inside&&reactionScore>=76)buy*=.80;}
+  }
+  if(accumulationSide!=='WAIT'&&accumulationReadiness>=52){
+    const boost=Math.min(10,accumulationReadiness*.10);
+    if(accumulationSide==='BUY')buy+=boost;else sell+=boost;
+  }
+
+  const total=Math.max(1e-9,buy+sell),buyShare=buy/total*100,sellShare=100-buyShare,edge=Math.abs(buyShare-sellShare);
+  const activeWeight=Math.max(.01,rows.reduce((s,r)=>s+r.weight,0));
+  const buyEvidence=cap(buy/activeWeight,0,92),sellEvidence=cap(sell/activeWeight,0,92);
+  const dominantEvidence=Math.max(buyEvidence,sellEvidence);
+  const rawFusedSide:Side=edge>=4&&dominantEvidence>=28?(buy>sell?'BUY':'SELL'):'WAIT';
+  const rawSupport=rows.filter(r=>r.side===rawFusedSide).length;
+  const rawOpposition=rows.filter(r=>rawFusedSide!=='WAIT'&&r.side!==rawFusedSide).length;
+  const rawLiveSupport=[liqSide,motionSide,trapSide,ml1.side,tick1.side,preMove.side].filter(s=>s!=='WAIT'&&s===rawFusedSide).length;
+  const rawLiveOpposition=[liqSide,motionSide,trapSide,ml1.side,tick1.side,preMove.side].filter(s=>s!=='WAIT'&&rawFusedSide!=='WAIT'&&s!==rawFusedSide).length;
+  const commitment=commitDirection(
+    String(asset||'BTC').toUpperCase()+':SCALP_FUSION_V6',buyEvidence,sellEvidence,Date.now(),
+    {side:tick1.side,stage:tick1.stage,score:tick1.score,confidence:tick1.confidence}
+  );
+  const flipSuppressed=Boolean(rawFusedSide!=='WAIT'&&commitment.side!=='WAIT'&&commitment.side!==rawFusedSide);
+  const fusedSide:Side=flipSuppressed?'WAIT':rawFusedSide;
+  const support=fusedSide==='WAIT'?0:rawSupport;
+  const opposition=fusedSide==='WAIT'?rawOpposition:rawOpposition;
+  const liveSupport=fusedSide==='WAIT'?0:rawLiveSupport;
+  const liveOpposition=fusedSide==='WAIT'?rawLiveOpposition:rawLiveOpposition;
+  const preMoveAligned=Boolean(fusedSide!=='WAIT'&&preMove.armed&&preMove.side===fusedSide);
+  const tickAligned=Boolean(fusedSide!=='WAIT'&&tick1.side===fusedSide&&tick1.score>=44);
+  const mlConflict=Boolean(ml1.side!=='WAIT'&&fusedSide!=='WAIT'&&ml1.side!==fusedSide);
+  const strongReaction=Boolean(reactionSide!=='WAIT'&&reactionScore>=68&&(reaction.inside||Number(reaction.nearest?.distanceAtr)<=.45));
+  const reactionConflict=Boolean(reactionConfirmed&&fusedSide!=='WAIT'&&reactionSide!==fusedSide);
+  const reactionAligned=Boolean(reactionConfirmed&&reactionSide===fusedSide);
+  const unconfirmedReactionAgainstFlow=Boolean(
+    reactionCandidate&&fusedSide===reactionSide&&reactionFastOpposition>=2
+  );
+  const accumulationAligned=Boolean(accumulationSide!=='WAIT'&&accumulationSide===fusedSide&&accumulationReadiness>=48);
+  const contextMode=reactionAligned
+    ?(reactionSide==='BUY'?'DEMAND_REBOUND':'SUPPLY_REJECTION')
+    :accumulationPhase==='ACCUMULATING'?'ACCUMULATION'
+    :accumulationPhase==='DISTRIBUTING'?'DISTRIBUTION'
+    :accumulationPhase==='MARKUP_READY'?'BREAKOUT_BUILD_UP'
+    :accumulationPhase==='MARKDOWN_READY'?'BREAKOUT_BUILD_DOWN'
+    :mode;
+
+  const scalpWf=liveOutcome?.walkForward||{};
+  const scalpOosN=Number(scalpWf?.oos?.n||0),scalpOosAcc=Number(scalpWf?.oos?.accuracy);
+  const scalpDrift=String(scalpWf?.drift?.status||'COLLECTING'),scalpWfStatus=String(scalpWf?.status||'COLLECTING');
+  const scalpPrecisionGuard=Boolean(scalpOosN>=10&&(scalpWfStatus==='WATCH'||scalpDrift==='DEGRADING'||(Number.isFinite(scalpOosAcc)&&scalpOosAcc<53)));
+  const scalpSevereDrift=Boolean(scalpOosN>=10&&scalpDrift==='DEGRADING'&&Number(scalpWf?.drift?.delta||0)<=-15);
+
+  const activeReliability=preMoveAligned?preMoveReliability:confirmedReliability;
+  let confidence=cap(dominantEvidence*.54+edge*.18+support*2.4+liveSupport*3.1-liveOpposition*4.4,10,88);
+  if(preMoveAligned)confidence+=5;
+  if(preMove.ignition&&preMove.side===fusedSide)confidence+=3;
+  if(tickAligned&&liqSide===fusedSide)confidence+=3;
+  if(techL2Conflict&&!livePair&&!preMoveAligned)confidence-=5;
+  if(learner&&!learner.ok&&liveSupport<2)confidence-=3;
+  if(ml1.side==='WAIT'&&learnedSide==='WAIT'&&!fastPair)confidence=Math.min(confidence,76);
+  if(scalpWfStatus==='WATCH'&&scalpOosN>=10)confidence-=4;
+  if(scalpDrift==='DEGRADING'&&scalpOosN>=10)confidence-=7;
+  if(Number.isFinite(scalpOosAcc)&&scalpOosN>=10&&scalpOosAcc<50)confidence-=4;
+  if(activeReliability.n>=6)confidence+=cap((activeReliability.score-50)*.16,-4,4);
+  if(reactionAligned)confidence+=reaction.inside?6:4;
+  if(reactionCandidate)confidence-=reactionFastOpposition>=2?8:3;
+  if(accumulationAligned)confidence+=3;
+  if(reactionConflict)confidence-=12;
+  if(confirmedColdFailGuard)confidence-=8;
+  if(flipSuppressed)confidence-=12;
+  confidence=Math.round(cap(confidence,10,88));
+
+  const reliabilityPenalty=activeReliability.n>=6?(activeReliability.score<48?7:activeReliability.score<52?4:activeReliability.score<55?2:activeReliability.score>=60?-2:0):0;
+  const strongEdge=(scalpSevereDrift?20:scalpPrecisionGuard?16:14)+reliabilityPenalty;
+  const strongEvidence=(scalpSevereDrift?66:scalpPrecisionGuard?62:58)+Math.max(0,reliabilityPenalty*.7);
+  const classicStrong=Boolean(
+    fusedSide!=='WAIT'&&edge>=strongEdge&&dominantEvidence>=strongEvidence&&support>=2&&
+    (liveSupport>=2||(ml1.side===fusedSide&&liqSide===fusedSide)||(trapSide===fusedSide&&trapScore>=68))&&
+    (!scalpSevereDrift||liveOpposition===0||edge>=30)&&
+    (!reactionConflict||edge>=30&&liveSupport>=3)
+  );
+  const anticipatoryStrong=Boolean(
+    fusedSide!=='WAIT'&&preMoveAligned&&fastPair&&edge>=12&&dominantEvidence>=56&&support>=2&&liveSupport>=3&&
+    (!mlConflict||edge>=20||preMove.score>=68)&&
+    (!scalpPrecisionGuard||edge>=18)&&
+    (!scalpSevereDrift||liveOpposition===0)&&
+    !preMove.lateMomentum&&
+    (preMoveReliability.n<8||preMoveReliability.score>=48||edge>=24)&&
+    (!reactionConflict||reactionScore<76&&edge>=28)
+  );
+  const chaseRisk=Boolean(
+    fusedSide!=='WAIT'&&preMove.lateMomentum&&mode!=='REVERSAL'&&
+    !(trapSide===fusedSide&&trapScore>=68)
+  );
+  const compressionConfirmed=Boolean(
+    mode!=='COMPRESSION'||
+    (
+      fusedSide!=='WAIT'&&liveOpposition===0&&tickAligned&&
+      liqSide===fusedSide&&
+      (motionSide===fusedSide||preMoveAligned||reactionAligned)
+    )
+  );
+  const recoveryOverride=Boolean(
+    confirmedColdFailGuard&&fusedSide!=='WAIT'&&
+    edge>=82&&dominantEvidence>=78&&liveSupport>=4&&liveOpposition===0&&
+    tickAligned&&liqSide===fusedSide&&motionSide===fusedSide&&
+    (preMoveAligned||reactionAligned)
+  );
+  const rawStrong=classicStrong||anticipatoryStrong;
+  const legacyStrong=Boolean(
+    rawStrong&&!chaseRisk&&!flipSuppressed&&compressionConfirmed&&
+    (!confirmedColdFailGuard||recoveryOverride)
+  );
+  const earlyWatch=Boolean(
+    fusedSide!=='WAIT'&&preMoveAligned&&edge>=8&&dominantEvidence>=42&&support>=2&&liveSupport>=2&&liveOpposition<=1
+  );
+  const lateWatch=Boolean(rawStrong&&chaseRisk);
+  const guardedWatch=Boolean(rawStrong&&(!compressionConfirmed||confirmedColdFailGuard)&&fusedSide!=='WAIT');
+  const legacyWatch=Boolean(
+    fusedSide!=='WAIT'&&!unconfirmedReactionAgainstFlow&&
+    ((edge>=6&&dominantEvidence>=46&&support>=2)||earlyWatch||lateWatch||guardedWatch)
+  );
+  const predator=evaluatePredatorScalp(asset,{
+    now:Date.now(),price:p,side:fusedSide,edge,evidence:dominantEvidence,liveSupport,liveOpposition,
+    tickSide:tick1.side,tickStage:tick1.stage,tickScore:tick1.score,
+    tickConfidence:Number(tick?.confidence||tick1.confidence||0),
+    tickSamples:Number(tick?.samples||0),
+    tickPersistence:Number(tick?.persistence||0),
+    tickSource:String(tick?.source||''),
+    liqSide,liqScore,motionSide,motionStage:String(motion?.stage||'WAIT'),motionScore,
+    preSide:preMove.side,preScore:preMove.score,preArmed:preMove.armed,late:chaseRisk||preMove.lateMomentum,
+    trapSide,trapScore,mode,accumulationPhase,accumulationReadiness,reactionAligned,accumulationAligned,
+    microAvailable:Boolean(liq?.ok&&Number(liq?.quality||0)>=55),
+    pressure:Number(liq?.pressure||0),
+    depthImbalance:Number(liq?.book?.depthImbalance||0),
+    weightedImbalance:Number(liq?.book?.weightedImbalance||0),
+    microEdge:Number(liq?.book?.microEdge||0),
+    flowDelta:Number(liq?.flow?.deltaPct||0),
+    priceChangeBps:Number(liq?.flow?.priceChangeBps||0),
+    pressureChange:Number(liq?.dynamics?.pressureChange||0),
+    bidDepthChange:Number(liq?.dynamics?.bidDepthChangePct||0),
+    askDepthChange:Number(liq?.dynamics?.askDepthChangePct||0),
+    acceleration:Number(liq?.dynamics?.acceleration||0)
+  });
+  // V8 architecture: AMBUSH is the only trade authority.
+  // Every other engine only supplies evidence/confirmation into AMBUSH.
+  const assistants={
+    confirmation:Boolean(predator?.confirmationAssist),
+    fast:Boolean(preMoveAligned||tickAligned),
+    liquidity:Boolean(liqSide===fusedSide),
+    motion:Boolean(motionSide===fusedSide),
+    trap:Boolean(trapSide===fusedSide&&trapScore>=62),
+    accumulation:Boolean(accumulationAligned),
+    reaction:Boolean(reactionAligned),
+    technical:Boolean(techSide===fusedSide),
+    ml:Boolean(ml1.side===fusedSide),
+    learned:Boolean(learnedSide===fusedSide)
+  };
+  const assistantCount=Object.values(assistants).filter(Boolean).length;
+
+  // Live precision governor: movement/next-price remain active, but trade authority
+  // adapts to actual regime + pattern outcomes instead of repeating the same mistake.
+  const outcomeRegime=
+    mode==='COMPRESSION'?'COMPRESSION':
+    mode==='REVERSAL'?'REVERSAL':
+    (mode==='BREAKOUT'||mode==='MOMENTUM')?'EXPANSION':'TRANSITION';
+  const regimeStats=liveOutcome?.byRegime?.[outcomeRegime]||{};
+  const predatorPattern=String(predator?.pattern||'NO_EDGE').toUpperCase();
+  const patternStats=liveOutcome?.byPattern?.[predatorPattern]||{};
+  const patternRegimeKey=predatorPattern+'__'+outcomeRegime;
+  const patternRegimeStats=liveOutcome?.byPatternRegime?.[patternRegimeKey]||{};
+  const patternFailureStreak=Number(liveOutcome?.patternFailureStreaks?.[predatorPattern]||0);
+  const patternHits=Number(patternStats?.hits||0),patternFails=Number(patternStats?.fails||0);
+  const patternDirectional=patternHits+patternFails;
+  const patternPosterior=Number(patternStats?.posteriorAccuracy||50);
+  const prHits=Number(patternRegimeStats?.hits||0),prFails=Number(patternRegimeStats?.fails||0);
+  const prDirectional=prHits+prFails;
+  const prPosterior=Number(patternRegimeStats?.posteriorAccuracy||50);
+  const patternPenalty=
+    (prDirectional>=5&&prPosterior<46?10:prDirectional>=4&&prPosterior<50?6:0)+
+    (patternDirectional>=8&&patternPosterior<48?5:0)+
+    (patternFailureStreak>=3?8:patternFailureStreak===2?4:0);
+  const patternBonus=
+    prDirectional>=6&&prPosterior>=62?4:
+    patternDirectional>=10&&patternPosterior>=60?2:0;
+  const regimeHits=Number(regimeStats?.hits||0),regimeFails=Number(regimeStats?.fails||0);
+  const regimeDirectional=regimeHits+regimeFails;
+  const regimePosterior=Number(regimeStats?.posteriorAccuracy||50);
+  const regimeAccuracy=Number(regimeStats?.accuracy||50);
+  const wf=liveOutcome?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V10||liveOutcome?.walkForwardBySource?.SCALP_AMBUSH_TRADE_V8||liveOutcome?.walkForward||{};
+  const wfThreshold=Number(wf?.activeThreshold||0);
+  const wfOosN=Number(wf?.oos?.n||0),wfOosAccuracy=Number(wf?.oos?.accuracy);
+  const oosWeak=Boolean(wfOosN>=8&&Number.isFinite(wfOosAccuracy)&&wfOosAccuracy<52);
+  const regimeProvenWeak=Boolean(
+    regimeDirectional>=4&&(regimePosterior<50||regimeAccuracy<45)
+  );
+  const regimeUnprovenRisk=Boolean(
+    mode!=='COMPRESSION'&&regimeDirectional<6
+  );
+  const requiredTradeConfidence=Math.max(
+    65,
+    Number.isFinite(wfThreshold)?wfThreshold:0,
+    oosWeak?72:0,
+    regimeProvenWeak?80:0,
+    regimeUnprovenRisk?76:0,
+    65+patternPenalty-patternBonus
+  );
+
+  // Precision guard for the only scalp authority. Weak regimes never silence Ambush tracking;
+  // they only block trade-ready status until independent confirmation is strong enough.
+  const earlyFlowPattern=String(predator?.pattern||'')==='EARLY_FLOW_AMBUSH';
+  const tickSequenceReady=Boolean(predator?.tickSequenceReady||predator?.tickSequence?.ready);
+  const earlyFlowTemporal=Boolean(
+    earlyFlowPattern&&predator?.ambushTemporal&&(
+      predator?.earlyFlowTemporal||
+      predator?.temporalReady||
+      tickSequenceReady
+    )
+  );
+  const ambushTemporalReady=Boolean(predator?.ambushTemporal&&(predator?.temporalReady||earlyFlowTemporal));
+  const ambushMicroConfirmed=Boolean(
+    (earlyFlowPattern&&tickSequenceReady)||
+    !predator?.microstructure?.available||
+    (
+      predator?.microstructure?.ready&&
+      Number(predator?.microstructure?.opposition||0)<=.20&&
+      Number(predator?.microstructure?.persistence||0)>=.66
+    )
+  );
+  const earlyEvidenceGate=liveSupport>=3&&edge>=75?54:58;
+  const earlyFlowQuality=Boolean(
+    earlyFlowPattern&&assistantCount>=2&&Number(predator?.score||0)>=66&&
+    edge>=62&&dominantEvidence>=earlyEvidenceGate&&liveSupport>=2&&liveOpposition===0&&
+    Number(predator?.microstructure?.opposition||0)<=.20&&
+    (tickSequenceReady||Number(predator?.microstructure?.persistence||0)>=.50)&&
+    (preMoveAligned||tickAligned||liqSide===fusedSide)
+  );
+  const exceptionalNonCompression=Boolean(
+    (
+      assistantCount>=6&&Boolean(predator?.confirmationAssist)&&Number(predator?.score||0)>=92&&
+      Number(predator?.microstructure?.persistence||0)>=.85&&
+      Number(predator?.microstructure?.trend||0)>=0&&
+      reactionFastOpposition===0
+    )||earlyFlowQuality
+  );
+  const ambushRegimeGuard=Boolean(
+    mode==='COMPRESSION'
+      ?!regimeProvenWeak
+      :regimeProvenWeak
+        ?false
+        :regimeUnprovenRisk
+          ?exceptionalNonCompression
+          :(assistantCount>=5&&Boolean(predator?.confirmationAssist)&&Number(predator?.score||0)>=88)
+  );
+  const exceptionalOosTrade=Boolean(
+    assistantCount>=6&&Boolean(predator?.confirmationAssist)&&Number(predator?.score||0)>=94&&
+    Number(predator?.microstructure?.persistence||0)>=.85&&
+    Number(predator?.microstructure?.opposition||0)===0
+  );
+  const patternProvenWeak=Boolean(
+    (prDirectional>=5&&prPosterior<45)||
+    (patternDirectional>=10&&patternPosterior<46)||
+    patternFailureStreak>=4
+  );
+  const earlyFlowConfidenceFloor=Math.max(
+    66,
+    Number.isFinite(wfThreshold)?wfThreshold:0,
+    oosWeak?72:0,
+    patternProvenWeak?74:0
+  );
+  const effectiveTradeConfidence=earlyFlowQuality?Math.min(requiredTradeConfidence,earlyFlowConfidenceFloor):requiredTradeConfidence;
+  const weakAmbushCombination=Boolean(
+    (!earlyFlowQuality&&assistantCount<3)||
+    confidence<effectiveTradeConfidence||
+    (oosWeak&&!exceptionalOosTrade&&!earlyFlowQuality)||
+    (predatorPattern==='FLOW_TRACK'&&!predator?.confirmationAssist)||
+    (patternProvenWeak&&!exceptionalOosTrade&&!earlyFlowQuality)||
+    (mode!=='COMPRESSION'&&assistantCount<5&&!reactionAligned&&!accumulationAligned&&!earlyFlowQuality)||
+    !ambushRegimeGuard
+  );
+  const ambushTrade=Boolean(
+    predator?.phase==='AMBUSH'&&predator?.ambush&&predator?.watch&&
+    fusedSide!=='WAIT'&&!flipSuppressed&&!chaseRisk&&!unconfirmedReactionAgainstFlow&&
+    ambushTemporalReady&&ambushMicroConfirmed&&!weakAmbushCombination
+  );
+  const strong=ambushTrade;
+  const watch=false;
+  const action:Side=ambushTrade?fusedSide:'WAIT';
+  const state=ambushTrade?'setup':predator?.phase==='ABORT'?'abort':'wait';
+  const bid=Number(liq?.book?.bestBid),ask=Number(liq?.book?.bestAsk),microprice=Number(liq?.book?.microprice);
+  const validBid=Number.isFinite(bid)&&bid>0,validAsk=Number.isFinite(ask)&&ask>0,validMicro=Number.isFinite(microprice)&&microprice>0;
+  const spreadUsd=validBid&&validAsk&&ask>bid?ask-bid:(Number.isFinite(p)&&p>0?Math.abs(Number(liq?.book?.spreadBps||0))*p/10000:0);
+  const interceptSide:Side=fusedSide!=='WAIT'?fusedSide:rawFusedSide;
+  const dir=interceptSide==='BUY'?1:interceptSide==='SELL'?-1:0;
+  const launchLine=interceptSide==='BUY'
+    ?(validAsk?ask:validMicro?microprice:p)
+    :interceptSide==='SELL'
+      ?(validBid?bid:validMicro?microprice:p)
+      :p;
+  const zonePad=Number.isFinite(a)&&a>0?Math.max(spreadUsd*1.6,a*.045):Math.max(spreadUsd*1.6,Number.isFinite(p)&&p>0?p*.000035:0);
+  const zoneLow=dir>0?launchLine-zonePad:dir<0?launchLine-zonePad*.22:launchLine;
+  const zoneHigh=dir>0?launchLine+zonePad*.22:dir<0?launchLine+zonePad:launchLine;
+  const chaseDistance=Number.isFinite(a)&&a>0?a*.10:Math.max(spreadUsd*3,Number.isFinite(p)&&p>0?p*.00008:0);
+  const chaseBoundary=dir>0?launchLine+chaseDistance:dir<0?launchLine-chaseDistance:launchLine;
+  const inInterceptZone=Boolean(
+    dir!==0&&Number.isFinite(p)&&p>0&&Number.isFinite(zoneLow)&&Number.isFinite(zoneHigh)&&p>=zoneLow&&p<=zoneHigh
+  );
+  const priceRanAway=Boolean(
+    dir>0&&Number.isFinite(p)&&p>chaseBoundary||
+    dir<0&&Number.isFinite(p)&&p<chaseBoundary
+  );
+  const intercept={
+    side:interceptSide,
+    status:dir===0?'NO_EDGE':priceRanAway?'NO_CHASE':inInterceptZone?'READY':'WAIT_ZONE',
+    ready:Boolean(dir!==0&&inInterceptZone&&!priceRanAway&&!flipSuppressed),
+    launchLine:Number.isFinite(launchLine)?Number(launchLine.toFixed(2)):null,
+    zoneLow:Number.isFinite(zoneLow)?Number(zoneLow.toFixed(2)):null,
+    zoneHigh:Number.isFinite(zoneHigh)?Number(zoneHigh.toFixed(2)):null,
+    chaseBoundary:Number.isFinite(chaseBoundary)?Number(chaseBoundary.toFixed(2)):null,
+    etaSeconds:preMove.etaSeconds,
+    microprice:validMicro?Number(microprice.toFixed(2)):null,
+    bestBid:validBid?Number(bid.toFixed(2)):null,
+    bestAsk:validAsk?Number(ask.toFixed(2)):null,
+    priceStillCoiled:preMove.priceStillCoiled,
+    lateMomentum:preMove.lateMomentum
+  };
+  // Ambush tracker stays directional while live price exists.
+  // Trading authority remains gated by ambushTrade; this side is prediction-only.
+  // V12 interception resolver: prediction side comes from the freshest independent
+  // microstructure families first, then falls back to the slower fused commitment.
+  const trackLiveBuy=
+    scalpSideScore(preMove.side,'BUY',Number(preMove.score||0))*.28+
+    scalpSideScore(tick1.side,'BUY',Number(tick1.score||0))*.23+
+    scalpSideScore(liqSide,'BUY',liqScore)*.18+
+    scalpSideScore(motionSide,'BUY',motionScore)*.11+
+    scalpSideScore(trapSide,'BUY',trapScore)*.08+
+    scalpSideScore(reactionSide,'BUY',reactionScore)*.07+
+    buyShare*.05;
+  const trackLiveSell=
+    scalpSideScore(preMove.side,'SELL',Number(preMove.score||0))*.28+
+    scalpSideScore(tick1.side,'SELL',Number(tick1.score||0))*.23+
+    scalpSideScore(liqSide,'SELL',liqScore)*.18+
+    scalpSideScore(motionSide,'SELL',motionScore)*.11+
+    scalpSideScore(trapSide,'SELL',trapScore)*.08+
+    scalpSideScore(reactionSide,'SELL',reactionScore)*.07+
+    sellShare*.05;
+  const trackLiveSide:Side=scalpSideOf(trackLiveBuy,trackLiveSell,3);
+  const trackLiveEdge=Math.abs(trackLiveBuy-trackLiveSell);
+  const trackingCandidate:Side=
+    trackLiveSide!=='WAIT'?trackLiveSide:
+    fusedSide!=='WAIT'?fusedSide:
+    commitment.side!=='WAIT'?commitment.side:
+    rawFusedSide!=='WAIT'?rawFusedSide:
+    buyShare>=sellShare?'BUY':'SELL';
+  const trackingSide:Side=stickyAmbushTracking(asset,trackingCandidate,Math.max(edge,trackLiveEdge),nowNp);
+  const targetSide:Side=trackingSide;
+  const targetZone=reaction.targetFor(targetSide);
+  const breakoutLevel=targetSide==='BUY'?Number(accumulation?.breakoutLevel):targetSide==='SELL'?Number(accumulation?.breakdownLevel):NaN;
+  const zoneDirectionValid=Boolean(targetZone&&((targetSide==='BUY'&&Number(targetZone.mid)>p)||(targetSide==='SELL'&&Number(targetZone.mid)<p)));
+  const zoneDistanceAtr=zoneDirectionValid&&Number.isFinite(a)&&a>0?Math.abs(Number(targetZone.mid)-p)/a:Infinity;
+  const zoneTargetValid=Boolean(zoneDirectionValid&&zoneDistanceAtr<=.72);
+  const breakoutDistanceAtr=Number.isFinite(breakoutLevel)&&Number.isFinite(a)&&a>0?Math.abs(breakoutLevel-p)/a:Infinity;
+  const breakoutTargetValid=Boolean(Number.isFinite(breakoutLevel)&&breakoutDistanceAtr<=.62&&((targetSide==='BUY'&&breakoutLevel>p)||(targetSide==='SELL'&&breakoutLevel<p)));
+  const fallbackTarget=Number.isFinite(a)&&a>0?p+(targetSide==='BUY'?1:-1)*a*Math.max(.14,Math.min(.48,.16+dominantEvidence/260)):null;
+  const approachTarget=zoneDirectionValid&&Number.isFinite(a)&&a>0
+    ?p+(targetSide==='BUY'?1:-1)*a*.48
+    :null;
+  const targetPrice=zoneTargetValid?Number(targetZone.mid):breakoutTargetValid?breakoutLevel:(approachTarget??fallbackTarget);
+  const target={
+    side:targetSide,
+    price:targetPrice!=null&&Number.isFinite(Number(targetPrice))?Number(Number(targetPrice).toFixed(2)):null,
+    zoneLow:zoneTargetValid?Number(targetZone.low.toFixed(2)):null,
+    zoneHigh:zoneTargetValid?Number(targetZone.high.toFixed(2)):null,
+    source:zoneTargetValid?'REACTION_ZONE':breakoutTargetValid?'RANGE_BOUNDARY':zoneDirectionValid?'APPROACH_REACTION_ZONE':'DYNAMIC_ATR',
+    expectedAtTarget:zoneTargetValid?(Number(targetZone.strength)>=68?(targetZone.side==='SELL'?'REJECT_OR_BREAK':'BOUNCE_OR_BREAK'):'TEST'):'CONTINUATION',
+    zoneStrength:zoneTargetValid?Number(targetZone.strength):0,
+    contextMode
+  };
+  // Ambush Next-Price Interceptor V11:
+  // self-calibrating multi-horizon kinematics + order-book impulse + temporal microstructure.
+  const npSide:Side=targetSide;
+  const npDir=npSide==='BUY'?1:npSide==='SELL'?-1:0;
+  const finiteRate=(v:any)=>Number.isFinite(Number(v));
+  const rawV05=finiteRate(tick?.velocity05s)?Number(tick.velocity05s):NaN;
+  const rawV1=finiteRate(tick?.velocity1s)?Number(tick.velocity1s):NaN;
+  const rawV15=finiteRate(tick?.velocity15s)?Number(tick.velocity15s):NaN;
+  const rawV3=finiteRate(tick?.velocity3s)?Number(tick.velocity3s):NaN;
+  const rawV4=finiteRate(tick?.velocity4s)?Number(tick.velocity4s):NaN;
+  const rawV8=finiteRate(tick?.velocity8s)?Number(tick.velocity8s):NaN;
+  const tickAcc=Number(tick?.acceleration||0);
+  const rates=[
+    {r:rawV05/.5,w:.26},{r:rawV1,w:.24},{r:rawV15/1.5,w:.18},
+    {r:rawV3/3,w:.14},{r:rawV4/4,w:.10},{r:rawV8/8,w:.08}
+  ].filter(x=>Number.isFinite(x.r));
+  const rateWeight=rates.reduce((s,x)=>s+x.w,0);
+  const tickPerSecond=rateWeight>0?rates.reduce((s,x)=>s+x.r*x.w,0)/rateWeight:0;
+  const nonFlatRates=rates.filter(x=>Math.abs(x.r)>=.015);
+  const kinematicConsistency=nonFlatRates.length
+    ?nonFlatRates.filter(x=>npDir*x.r>0).length/nonFlatRates.length
+    :0;
+  const shortRate=Number.isFinite(rawV05)?rawV05/.5:Number.isFinite(rawV1)?rawV1:tickPerSecond;
+  const longRate=Number.isFinite(rawV4)?rawV4/4:Number.isFinite(rawV8)?rawV8/8:tickPerSecond;
+  const curvaturePerSecond=shortRate-longRate;
+
+  const liqPressure=Number(liq?.pressure||0);
+  const depthImbalance=Number(liq?.book?.depthImbalance||0);
+  const weightedImbalance=Number(liq?.book?.weightedImbalance||0);
+  const microEdgeNow=Number(liq?.book?.microEdge||0);
+  const flowDeltaNow=Number(liq?.flow?.deltaPct||0);
+  const pressureChange=Number(liq?.dynamics?.pressureChange||0);
+  const bidDepthChange=Number(liq?.dynamics?.bidDepthChangePct||0);
+  const askDepthChange=Number(liq?.dynamics?.askDepthChangePct||0);
+  const liqAcceleration=Number(liq?.dynamics?.acceleration||0);
+  const depthShift=bidDepthChange-askDepthChange;
+  const predMicroMean=Number(predator?.microstructure?.mean||0);
+  const predMicroTrend=Number(predator?.microstructure?.trend||0);
+
+  const npHorizonSeconds=npDir===0?null:Math.round(cap(
+    Number(preMove?.etaSeconds||0)>0
+      ?Number(preMove.etaSeconds)
+      :String(tick?.stage||'')==='IGNITION'?4:String(tick?.stage||'')==='PRE_TRIGGER'?5:String(tick?.stage||'')==='WAVE_FORMING'?6:8,
+    3,12
+  ));
+  const projectedTickBps=npHorizonSeconds==null?0:tickPerSecond*npHorizonSeconds;
+  const curvatureBps=npHorizonSeconds==null?0:cap(curvaturePerSecond*npHorizonSeconds*.34,-3.2,3.2);
+  const projectedAccelBps=npHorizonSeconds==null?0:cap(tickAcc*npHorizonSeconds*.12,-2.4,2.4);
+  const bookBiasBps=cap(
+    liqPressure*.013+
+    depthImbalance*.007+
+    weightedImbalance*.010+
+    microEdgeNow*.011+
+    flowDeltaNow*.005,
+    -3.2,3.2
+  );
+  const bookDynamicsBps=cap(
+    pressureChange*.010+
+    depthShift*.006+
+    liqAcceleration*.006,
+    -2.6,2.6
+  );
+  const temporalBiasBps=cap(predMicroMean*.014+predMicroTrend*.004,-2.0,2.0);
+  const microAnchorBps=validMicro&&Number.isFinite(p)&&p>0
+    ?cap((microprice-p)/p*10000,-2.2,2.2)
+    :0;
+
+  const rawNextMoveBps=
+    projectedTickBps*.43+
+    curvatureBps*.12+
+    projectedAccelBps*.08+
+    bookBiasBps*.13+
+    bookDynamicsBps*.10+
+    temporalBiasBps*.07+
+    microAnchorBps*.07;
+  const atrBps=Number.isFinite(a)&&a>0&&Number.isFinite(p)&&p>0?a/p*10000:0;
+  const nextMoveCap=Math.max(1.2,Math.min(10,atrBps>0?atrBps*.24:5));
+  const modelMoveBps=cap(rawNextMoveBps,-nextMoveCap,nextMoveCap);
+  const directionalNextMove=npDir*modelMoveBps;
+  const npChecks=[
+    npDir*tickPerSecond>=.06,
+    kinematicConsistency>=.60,
+    npDir*bookBiasBps>=.10,
+    npDir*bookDynamicsBps>=.06,
+    npDir*microAnchorBps>=.04,
+    npDir*temporalBiasBps>=.06,
+    preMove?.side===npSide,
+    tick1.side===npSide,
+    liqSide===npSide,
+    Boolean(predator?.microstructure?.ready)
+  ];
+  const npAlignment=npChecks.filter(Boolean).length;
+  const npConflict=[
+    kinematicConsistency>0&&kinematicConsistency<.35,
+    tick1.side!=='WAIT'&&tick1.side!==npSide,
+    liqSide!=='WAIT'&&liqSide!==npSide,
+    preMove?.side!=='WAIT'&&preMove?.side!==npSide,
+    Boolean(predator?.microstructure?.available)&&Number(predator?.microstructure?.opposition||0)>.35
+  ].filter(Boolean).length;
+  const predatorPhaseNow=String(predator?.phase||'HUNT');
+  const npPhaseReady=Boolean(
+    predatorPhaseNow==='AMBUSH'||predatorPhaseNow==='TRACK'||
+    (predatorPhaseNow==='HUNT'&&npAlignment>=5&&npConflict===0)
+  );
+  const nextPriceReady=Boolean(
+    npDir!==0&&npPhaseReady&&Number.isFinite(p)&&p>0&&
+    directionalNextMove>=.28&&npAlignment>=3&&npConflict<=1&&
+    !chaseRisk&&!flipSuppressed&&!predator?.microstructure?.exhausted
+  );
+
+  const nextPriceAnchor=validMicro?p*.68+microprice*.32:p;
+  const directedFallbackBps=npDir===0?0:npDir*Math.max(
+    .20,
+    Math.min(
+      Math.max(.28,nextMoveCap*.28),
+      .32+edge*.011+Math.min(1.15,assistantCount*.13)
+    )
+  );
+  let effectiveMoveBps=
+    npDir!==0&&npDir*modelMoveBps>=.16
+      ?modelMoveBps
+      :directedFallbackBps;
+
+  const calibrationWeight=Math.min(.55,npCal.n/14*.55);
+  effectiveMoveBps=cap(effectiveMoveBps+npCal.biasBps*calibrationWeight,-nextMoveCap,nextMoveCap);
+  // When recent directional skill is weak, keep Ambush active but shorten the
+  // projected distance instead of hiding the forecast behind WAIT.
+  const directionalSkillMultiplier=npCal.directionSamples>=4
+    ?cap(.72+(npCal.directionalAccuracy/100)*.56,.80,1.12)
+    :1;
+  const patternSkillMultiplier=cap(
+    1+(patternBonus-patternPenalty)/50,
+    .72,1.10
+  );
+  effectiveMoveBps=cap(effectiveMoveBps*directionalSkillMultiplier*patternSkillMultiplier,-nextMoveCap,nextMoveCap);
+  if(npDir!==0&&npDir*effectiveMoveBps<.16)effectiveMoveBps=npDir*.16;
+
+  const trackingPriceRaw=Number.isFinite(nextPriceAnchor)&&nextPriceAnchor>0
+    ?nextPriceAnchor*(1+effectiveMoveBps/10000)
+    :NaN;
+  const contextualCap=Number(target?.price);
+  const nextPriceValue=Number.isFinite(trackingPriceRaw)
+    ?(
+      nextPriceReady&&Number.isFinite(contextualCap)&&
+      ((npDir>0&&contextualCap>p)||(npDir<0&&contextualCap<p))
+        ?(npDir>0?Math.min(trackingPriceRaw,contextualCap):Math.max(trackingPriceRaw,contextualCap))
+        :trackingPriceRaw
+    )
+    :null;
+
+  const calibrationUncertainty=Number.isFinite(p)&&p>0?p*npCal.maeBps/10000*.90:0;
+  const directionUncertaintyMultiplier=npCal.directionSamples>=4
+    ?cap(1+(55-npCal.directionalAccuracy)/70,.85,1.35)
+    :1;
+  const npUncertainty=Number.isFinite(p)&&p>0
+    ?Math.max(
+      spreadUsd*1.35,
+      calibrationUncertainty,
+      Number.isFinite(a)&&a>0?a*(npConflict?0.055:0.030):p*.000035
+    )*directionUncertaintyMultiplier
+    :0;
+  const calibrationPenalty=npCal.n>=3?Math.min(18,npCal.maeBps*2.8):0;
+  const directionalSkillBonus=npCal.directionSamples>=4
+    ?cap((npCal.directionalAccuracy-50)*.28,-8,10)
+    :0;
+  const nextPriceConfidence=Math.round(cap(
+    Number(predator?.score||0)*.28+
+    Number(preMove?.score||0)*.14+
+    Math.min(24,npAlignment*3.8)+
+    kinematicConsistency*12+
+    (predator?.microstructure?.ready?9:0)+
+    (tick1.side===npSide?6:0)+
+    directionalSkillBonus+
+    patternBonus-
+    patternPenalty-
+    npConflict*10-
+    calibrationPenalty-
+    (directionalNextMove<.50?4:0),
+    0,92
+  ));
+  const trackingConfidence=Math.round(cap(
+    nextPriceReady
+      ?nextPriceConfidence
+      :nextPriceConfidence*.66+edge*.16+Math.min(12,assistantCount*2)-npConflict*5,
+    26,nextPriceReady?92:72
+  ));
+
+  const trajectorySeconds=[3,6,10];
+  const baseH=Math.max(3,Number(npHorizonSeconds||8));
+  const trajectory=trajectorySeconds.map(seconds=>{
+    const scale=Math.pow(seconds/baseH,.82);
+    const curvatureAdj=curvaturePerSecond*seconds*.05;
+    const accelAdj=tickAcc*seconds*.012;
+    const moveBps=cap(
+      effectiveMoveBps*scale+curvatureAdj+accelAdj,
+      -nextMoveCap*1.35,nextMoveCap*1.35
+    );
+    const raw=Number.isFinite(nextPriceAnchor)&&nextPriceAnchor>0
+      ?nextPriceAnchor*(1+moveBps/10000)
+      :NaN;
+    const contextual=Number(target?.price);
+    const price=Number.isFinite(raw)&&Number.isFinite(contextual)&&
+      ((npDir>0&&contextual>p)||(npDir<0&&contextual<p))
+        ?(npDir>0?Math.min(raw,contextual):Math.max(raw,contextual))
+        :raw;
+    const spread=Math.max(
+      spreadUsd*1.15,
+      npUncertainty*Math.sqrt(seconds/baseH)*.82
+    );
+    return {
+      seconds,
+      price:Number.isFinite(price)?Number(price.toFixed(2)):null,
+      low:Number.isFinite(price)?Number((price-spread).toFixed(2)):null,
+      high:Number.isFinite(price)?Number((price+spread).toFixed(2)):null,
+      moveBps:Number(moveBps.toFixed(2))
+    };
+  });
+
+  const nextPrice={
+    model:'AMBUSH_INTERCEPT_V12',
+    authority:'AMBUSH',
+    ready:nextPriceReady,
+    active:Boolean(npDir!==0&&Number.isFinite(p)&&p>0),
+    status:nextPriceReady?'LOCKED':npConflict>=2?'TRACKING_CONFLICT':'TRACKING',
+    side:npDir!==0?npSide:'WAIT',
+    price:nextPriceValue!=null?Number(nextPriceValue.toFixed(2)):null,
+    low:nextPriceValue!=null?Number((nextPriceValue-npUncertainty).toFixed(2)):null,
+    high:nextPriceValue!=null?Number((nextPriceValue+npUncertainty).toFixed(2)):null,
+    horizonSeconds:npHorizonSeconds,
+    confidence:trackingConfidence,
+    moveBps:Number(effectiveMoveBps.toFixed(2)),
+    alignment:npAlignment,
+    conflicts:npConflict,
+    microprice:validMicro?Number(microprice.toFixed(2)):null,
+    calibration:{
+      samples:npCal.n,
+      biasBps:Number(npCal.biasBps.toFixed(2)),
+      maeBps:Number(npCal.maeBps.toFixed(2)),
+      directionalAccuracy:Number(npCal.directionalAccuracy.toFixed(1)),
+      directionSamples:npCal.directionSamples,
+      weight:Number(calibrationWeight.toFixed(2))
+    },
+    trajectory,
+    diagnostics:{
+      trackingCandidate,
+      stickySide:trackingSide,
+      liveFamilySide:trackLiveSide,
+      liveFamilyBuy:Number(trackLiveBuy.toFixed(1)),
+      liveFamilySell:Number(trackLiveSell.toFixed(1)),
+      liveFamilyEdge:Number(trackLiveEdge.toFixed(1)),
+      tickPerSecond:Number(tickPerSecond.toFixed(3)),
+      kinematicConsistency:Number(kinematicConsistency.toFixed(2)),
+      curvatureBps:Number(curvatureBps.toFixed(2)),
+      projectedTickBps:Number(projectedTickBps.toFixed(2)),
+      accelerationBps:Number(projectedAccelBps.toFixed(2)),
+      bookBiasBps:Number(bookBiasBps.toFixed(2)),
+      bookDynamicsBps:Number(bookDynamicsBps.toFixed(2)),
+      temporalBiasBps:Number(temporalBiasBps.toFixed(2)),
+      microAnchorBps:Number(microAnchorBps.toFixed(2))
+    }
+  };
+  if(
+    !npCal.last&&nextPriceValue!=null&&npHorizonSeconds!=null&&
+    Number.isFinite(p)&&p>0&&trackingConfidence>=30
+  ){
+    npCal.last={at:nowNp,entry:p,predicted:nextPriceValue,horizonSeconds:npHorizonSeconds};
+  }
+
+  const ambushPlanStatus=predator?.phase==='ABORT'?'CANCEL'
+    :ambushTrade?(intercept.ready?'EXECUTE':'ARMED')
+      :predator?.phase==='TRACK'?'STALK':'SCOUT';
+  const ambushPlan={
+    authority:'AMBUSH',
+    status:ambushPlanStatus,
+    side:targetSide,
+    pattern:String(predator?.pattern||contextMode),
+    readiness:Number(predator?.score||0),
+    assistants,
+    assistantCount,
+    entry:{
+      status:intercept.status,
+      ready:intercept.ready,
+      zoneLow:intercept.zoneLow,
+      zoneHigh:intercept.zoneHigh,
+      launchLine:intercept.launchLine,
+      chaseBoundary:intercept.chaseBoundary
+    },
+    trigger:{
+      phaseRequired:'AMBUSH',
+      microReady:ambushMicroConfirmed,
+      temporalReady:ambushTemporalReady,
+      minConfidence:requiredTradeConfidence,
+      regimeReady:ambushRegimeGuard,
+      regimeSamples:regimeDirectional,
+      regimePosterior:Number(regimePosterior.toFixed(1)),
+      oosWeak,
+      noChase:!chaseRisk,
+      noFlip:!flipSuppressed
+    },
+    invalidation:{
+      cancel:Boolean(predator?.phase==='ABORT'||chaseRisk||flipSuppressed||reactionConflict),
+      reasons:[
+        predator?.phase==='ABORT'?'ABORT':null,
+        chaseRisk?'NO_CHASE':null,
+        flipSuppressed?'FLIP_FILTER':null,
+        reactionConflict?'REACTION_CONFLICT':null
+      ].filter(Boolean)
+    },
+    target,
+    nextPrice,
+    etaSeconds:preMove.etaSeconds,
+    updatedAt:Date.now()
+  };
+  let trade:any=null;
+  if(ambushTrade&&intercept.ready&&Number.isFinite(p)&&p>0&&Number.isFinite(a)&&a>0){
+    const dir=fusedSide==='BUY'?1:-1;
+    const risk=a*(mode==='BREAKOUT'||mode==='MOMENTUM'?.48:mode==='REVERSAL'?.42:.45);
+    const rr=mode==='BREAKOUT'?1.35:mode==='MOMENTUM'?1.30:mode==='REVERSAL'?1.20:1.24;
+    const contextualTp=Number(target?.price);
+    const fallbackTp=p+dir*risk*rr;
+    const tp=Number.isFinite(contextualTp)&&((dir>0&&contextualTp>p)||(dir<0&&contextualTp<p))?contextualTp:fallbackTp;
+    trade={mode:'ambush-scalp-v8-'+String(predator?.pattern||contextMode).toLowerCase(),side:fusedSide==='BUY'?'buy':'sell',entry:p,sl:p-dir*risk,tp,rr:Number((Math.abs(tp-p)/Math.max(1e-9,risk)).toFixed(2)),score:confidence,validForSeconds:Math.max(8,Math.min(24,Number(preMove.etaSeconds||16))),time:Date.now(),authority:'AMBUSH',assistants,assistantCount};
+  }
+
+  const outLong=Math.round(cap(buyEvidence+Math.max(0,buyShare-50)*.16,0,92));
+  const outShort=Math.round(cap(sellEvidence+Math.max(0,sellShare-50)*.16,0,92));
+  const changed=techSide!=='WAIT'&&fusedSide!=='WAIT'&&techSide!==fusedSide;
+
+  return {
+    ...raw,
+    state,action,
+    title:action==='BUY'?'AMBUSH · BUY':action==='SELL'?'AMBUSH · SELL':'AMBUSH · WAIT',
+    reason:action==='WAIT'
+      ?`Ambush V10 · ${String(predator?.phase||'HUNT')} · ${String(predator?.pattern||'NO_EDGE')} · AMBUSH لم يعتمد صفقة${chaseRisk?' · NO CHASE':''}${reactionConflict?' · REACTION BLOCK':''}${flipSuppressed?' · FLIP FILTER':''}.`
+      :`Ambush V10 · ${fusedSide} · ${String(predator?.pattern||contextMode)} · score ${Number(predator?.score||0)} · مساعدين ${assistantCount}/10 · stable ${Number(predator?.stableCount||0)}${predator?.confirmationAssist?' · STRONG CONFIRM':''}${preMoveAligned?' · PRE-MOVE':''}${changed?' · TECH CONTRARIAN':''}.`,
+    score:{long:outLong,short:outShort,threshold:58},
+    confidence,
+    trade,
+    tracking:{side:trackingSide,confidence:trackingConfidence,status:nextPrice.status,nextPrice:nextPrice.price,tradeReady:ambushTrade,active:true,candidate:trackingCandidate},
+    ambushPlan,
+    early:Boolean(ambushTrade),
+    preMove,
+    intercept,
+    target,
+    nextPrice,
+    reaction:{active:reaction.active,inside:Boolean(reaction.inside),side:reactionSide,strength:reactionScore,confirmed:reactionConfirmed,candidate:reactionCandidate,fastSupport:reactionFastSupport,fastOpposition:reactionFastOpposition,nearest:reaction.nearest||null,contextMode},
+    fusionV8:{
+      authority:'AMBUSH',side:fusedSide,rawSide:rawFusedSide,confidence,strong:ambushTrade,watch:false,ambushTrade,predator,assistants,assistantCount,ambushPlan,nextPrice,
+      liveGuard:{
+        requiredTradeConfidence,effectiveTradeConfidence,earlyFlowPattern,earlyFlowQuality,earlyEvidenceGate,tickSequenceReady,
+        regimeDirectional,regimePosterior:Number(regimePosterior.toFixed(1)),regimeAccuracy:Number(regimeAccuracy.toFixed(1)),
+        regimeProvenWeak,regimeUnprovenRisk,oosWeak,wfOosN,wfOosAccuracy:Number.isFinite(wfOosAccuracy)?Number(wfOosAccuracy.toFixed(1)):null
+      },
+      contextMode,reactionAligned,reactionConflict,accumulationAligned,accumulationPhase,accumulationReadiness,target,intercept,
+      reliability:{active:activeReliability,ambush:confirmedReliability,reliabilityPenalty},
+      buyShare:Number(buyShare.toFixed(1)),sellShare:Number(sellShare.toFixed(1)),edge:Number(edge.toFixed(1)),
+      buyEvidence:Number(buyEvidence.toFixed(1)),sellEvidence:Number(sellEvidence.toFixed(1)),dominantEvidence:Number(dominantEvidence.toFixed(1)),
+      support,opposition,liveSupport,liveOpposition,mode,
+      components:rows.map(r=>({name:r.name,role:'ASSIST',side:r.side,score:Number(r.score.toFixed(1)),weight:r.weight})),
+      technicalQuality:{familyAgreement:techFamilyAgreement,weakFamilies:techFamilyWeak,quality:techQuality,weightMultiplier:Number(techWeightMultiplier.toFixed(2)),families:techFamilies},
+      errorLearning:{outcomeRegime,pattern:predatorPattern,patternDirectional,patternPosterior,patternRegimeDirectional:prDirectional,patternRegimePosterior:prPosterior,failureStreak:patternFailureStreak,penalty:patternPenalty,bonus:patternBonus,provenWeak:patternProvenWeak}
+    },
+
+  };
+}
