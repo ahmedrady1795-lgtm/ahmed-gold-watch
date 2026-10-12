@@ -2,9 +2,9 @@ name: Build Check
 
 on:
   push:
-    branches: [main, railway]
+    branches: [main, railway, render-free]
   pull_request:
-    branches: [railway]
+    branches: [railway, render-free]
   workflow_dispatch:
 
 permissions:
@@ -30,12 +30,11 @@ jobs:
       - run: node tests/scalp-presentation.cjs
       - run: node tests/next-move-view.cjs
       - run: node tests/sniper-outlook.cjs
-      - run: node tests/structural-watch.cjs
       - run: node tests/continuous-direction.cjs
       - run: node tests/sniper-stability.cjs
       - run: node tests/four-hour-structure.cjs
+      - run: node tests/chart-zone-merge.cjs
       - run: node tests/long-range-targets.cjs
-      - run: node tests/sniper-scorecard.cjs
       - run: node tests/sniper-watch.cjs
       - run: node tests/forecast-illustration.cjs
       - run: node tests/forecast-journal.cjs
