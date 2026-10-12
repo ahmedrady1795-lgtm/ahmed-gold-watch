@@ -124,7 +124,7 @@ export default function Home(){
       const receivedAt=Date.now();
       lastStreamTick=receivedAt;
 
-      const nextGoldTick={ok:true,price,bid:Number.isFinite(bid)&&bid>0?bid:null,ask:Number.isFinite(ask)&&ask>0?ask:null,sourceTime:at,receivedAt,ageMs:Math.max(0,receivedAt-at),status:'live',mode:'stream',source:'Biquote · MT5 XAUUSD WebSocket',brokerSymbol:'XAUUSD',degraded:false};
+      const nextGoldTick={ok:true,price,bid,ask,sourceTime:at,receivedAt,ageMs:Math.max(0,receivedAt-at),status:'live',mode:'stream',source:'Biquote · MT5 XAUUSD WebSocket',brokerSymbol:'XAUUSD',degraded:false};
       goldTickRef.current=nextGoldTick;
       if(!closed)setGoldTick(nextGoldTick);
     };
