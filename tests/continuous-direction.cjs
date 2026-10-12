@@ -44,3 +44,12 @@ v=build({...args,frames:{...history,h1:[]}});
 assert.equal(v.status,'NO_DATA');
 assert.equal(v.targets.length,0);
 console.log('PASS: continuous bias independent of trade confirmation; authentic H1/H4 objectives, stale guards');
+const linear=(count,period,direction)=>Array.from({length:count},(_,i)=>{
+ const close=100+direction*(i-count+1)*.1;
+ return {time:now-(count-i)*period,open:close-direction*.04,close,high:close+.2,low:close-.2};
+});
+const conflicted=build({asset:'GOLD',frames:{m5:linear(40,300000,1),m15:linear(40,900000,-1),h1:linear(30,3600000,1)},now,price:100,sourceReady:true});
+assert.equal(conflicted.votes.h1,'BUY');assert.equal(conflicted.votes.m15,'SELL');assert.equal(conflicted.votes.h4,'WAIT');
+assert.equal(conflicted.side,'WAIT','opposing structural frames cannot create a fresh directional target');
+assert.equal(conflicted.targets.length,0);
+console.log('PASS: weak weighted edge is balance until two structural frames agree');

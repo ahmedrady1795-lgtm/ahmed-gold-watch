@@ -4,6 +4,8 @@
  */
 export type Lean='BUY'|'SELL'|'WAIT';
 export type ReboundZone={side:'BUY'|'SELL';low:number;high:number;source:string;touches:number;confirmedAt:number};
+export type MarketEvent={kind:'SWEEP_LOW'|'SWEEP_HIGH'|'BOS_UP'|'BOS_DOWN';at:number;confirmedAt:number;price:number;level:number;label:string};
+export type ContextBox={low:number;high:number;from:number;to:number;label:string;kind:'ACCUMULATION'|'DISTRIBUTION'|'COMPRESSION'};
 type Bar={time:number;open:number;high:number;low:number;close:number;volume:number;volumeBasis:'REAL'|'TICK'|'NONE'};
 const num=(v:unknown)=>v!=null&&v!==''&&Number.isFinite(Number(v))?Number(v):null;
 const round=(v:number)=>Number(v.toFixed(2));
@@ -30,6 +32,7 @@ const empty=(reason:string)=>({
   changePct:null as number|null,vwap:null as number|null,volumeBasis:'NONE' as 'REAL'|'TICK'|'NONE',
   volumeSource:'لا يوجد حجم موثوق',bars:0,coverage:0,sweep:'NONE' as 'SELL_SIDE'|'BUY_SIDE'|'NONE',
   structure:'NONE' as 'BOS_UP'|'BOS_DOWN'|'NONE',zones:[] as ReboundZone[],
+  events:[] as MarketEvent[],contextBox:null as ContextBox|null,efficiency:null as number|null,atr5:null as number|null,
   summary:'لا توجد شموع مغلقة متصلة كفاية لتحليل آخر 4 ساعات'});
 export function analyzeFourHours(input:{asset:'GOLD'|'BTC';candles:any;frames?:any;now:number;source?:string;referencePrice?:number|null}){
   const {now}=input;
@@ -50,16 +53,34 @@ export function analyzeFourHours(input:{asset:'GOLD'|'BTC';candles:any;frames?:a
   const weights=volumeBasis==='NONE'?[]:rows.map(c=>c.volumeBasis===volumeBasis?c.volume:0);
   const amount=weights.reduce((s,v)=>s+v,0);
   const vwap=amount>0?round(rows.reduce((s,c,i)=>s+((c.high+c.low+c.close)/3)*weights[i],0)/amount):null;
-  const latest=rows.slice(-55);
-  const older=rows.slice(-180,-55),olderHigh=Math.max(...older.map(c=>c.high));
-  const olderLow=Math.min(...older.map(c=>c.low));
-  const sweptLow=latest.some(c=>c.low<olderLow&&c.close>olderLow);
-  const sweptHigh=latest.some(c=>c.high>olderHigh&&c.close<olderHigh);
-  const sweep:'SELL_SIDE'|'BUY_SIDE'|'NONE'=sweptLow&&!sweptHigh?'SELL_SIDE':sweptHigh&&!sweptLow?'BUY_SIDE':'NONE';
   const m5=parseBars(input.frames?.m5,now,300000).filter(c=>c.time+300000>now-270*60000);
   // Use only completed swing pivots (two newer candles confirm each pivot).
   const pivots:ReboundZone[]=[];
   const vol5=Math.max(atr(m5),range/38,price*.00005);
+  const events:MarketEvent[]=[];
+  for(let i=12;i<m5.length-1;i++){
+    const b=m5[i],confirm=m5[i+1],prior=m5.slice(i-12,i);
+    if(confirm.time-b.time!==300000||prior.some((c,j)=>j>0&&c.time-prior[j-1].time>600000))continue;
+    const hi=Math.max(...prior.map(c=>c.high)),lo=Math.min(...prior.map(c=>c.low));
+    const push=(kind:MarketEvent['kind'],p:number,level:number,label:string)=>{
+      const within=rows.filter(c=>c.time>=b.time&&c.time<b.time+300000);
+      const exact=within.sort((a,z)=>kind==='SWEEP_LOW'?a.low-z.low:kind==='SWEEP_HIGH'?z.high-a.high:z.time-a.time)[0];
+      if(!exact)return;
+      const observed=kind==='SWEEP_LOW'?exact.low:kind==='SWEEP_HIGH'?exact.high:exact.close;
+      if(Math.abs(observed-p)>vol5*.5)return;
+      events.push({kind,at:exact.time,confirmedAt:confirm.time+300000,price:round(observed),level:round(level),label});
+    };
+    if(b.low<lo-vol5*.08&&b.close>lo&&confirm.close>lo&&confirm.close>b.close)
+      push('SWEEP_LOW',b.low,lo,'سحب سيولة من القاع · استرداد');
+    if(b.high>hi+vol5*.08&&b.close<hi&&confirm.close<hi&&confirm.close<b.close)
+      push('SWEEP_HIGH',b.high,hi,'سحب سيولة من القمة · رفض');
+    if(b.close>hi+vol5*.08&&confirm.close>hi&&b.close-b.open>vol5*.2)
+      push('BOS_UP',b.close,hi,'كسر صاعد · إغلاقان مؤيدان');
+    if(b.close<lo-vol5*.08&&confirm.close<lo&&b.open-b.close>vol5*.2)
+      push('BOS_DOWN',b.close,lo,'كسر هابط · إغلاقان مؤيدان');
+  }
+  const lastSweep=events.filter(e=>(e.kind==='SWEEP_LOW'||e.kind==='SWEEP_HIGH')&&e.confirmedAt>now-30*60000).at(-1);
+  const sweep:'SELL_SIDE'|'BUY_SIDE'|'NONE'=lastSweep?.kind==='SWEEP_LOW'?'SELL_SIDE':lastSweep?.kind==='SWEEP_HIGH'?'BUY_SIDE':'NONE';
   for(let i=2;i<m5.length-2;i++){
     const c=m5[i],neighbors=[m5[i-2],m5[i-1],m5[i+1],m5[i+2]];
     const demand=neighbors.every(n=>c.low<n.low);
@@ -100,15 +121,26 @@ export function analyzeFourHours(input:{asset:'GOLD'|'BTC';candles:any;frames?:a
   const secondVol=volumeBasis!=='NONE'?avg(second.map(c=>c.volume)):0;
   const activity=volumeBasis==='NONE'?false:secondVol>=firstVol*.9;
   // These are descriptive price/volume heuristics, NOT observed institutional positions.
-  const phase=compressed&&position<.53&&(sweep==='SELL_SIDE'||changePct>0)&&activity?'تجميع محتمل':
-    compressed&&position>.47&&(sweep==='BUY_SIDE'||changePct<0)&&activity?'تصريف محتمل':
-    compressed?'انضغاط / توازن':side==='BUY'?'ميل صعود هيكلي':side==='SELL'?'ميل هبوط هيكلي':'تذبذب / توازن';
+  const local=m5.slice(-12),before=m5.slice(-24,-12);
+  const boxLow=local.length?Math.min(...local.map(c=>c.low)):0,boxHigh=local.length?Math.max(...local.map(c=>c.high)):0;
+  const olderRange=before.length?Math.max(...before.map(c=>c.high))-Math.min(...before.map(c=>c.low)):0;
+  const travel=local.slice(1).reduce((s,c,i)=>s+Math.abs(c.close-local[i].close),0);
+  const efficiency=local.length&&travel>0?Math.abs(local.at(-1)!.close-local[0].close)/travel:0;
+  const tight=local.length===12&&before.length===12&&boxHigh-boxLow<olderRange*.73&&efficiency<.45;
+  const lowRejects=local.filter(c=>(Math.min(c.open,c.close)-c.low)/Math.max(c.high-c.low,1e-9)>.4&&c.close>=(c.high+c.low)/2).length;
+  const highRejects=local.filter(c=>(c.high-Math.max(c.open,c.close))/Math.max(c.high-c.low,1e-9)>.4&&c.close<=(c.high+c.low)/2).length;
+  const accumulating=tight&&position<.6&&lowRejects>=2&&activity;
+  const distributing=tight&&position>.4&&highRejects>=2&&activity;
+  const phase=accumulating&&!distributing?'تجميع محتمل':distributing&&!accumulating?'تصريف محتمل':
+    tight||compressed?'انضغاط / توازن':side==='BUY'?'ميل صعود هيكلي':side==='SELL'?'ميل هبوط هيكلي':'تذبذب / توازن';
+  const contextBox:ContextBox|null=tight?{low:round(boxLow),high:round(boxHigh),from:local[0].time,
+    to:local.at(-1)!.time+300000,label:phase,kind:phase==='تجميع محتمل'?'ACCUMULATION':phase==='تصريف محتمل'?'DISTRIBUTION':'COMPRESSION'}:null;
   const sweepLabel=sweep==='SELL_SIDE'?'سحب سيولة أسفل قاع سابق':sweep==='BUY_SIDE'?'سحب سيولة أعلى قمة سابقة':'لا يوجد سحب مؤكد';
   return {ready:true,reason:'قراءة سعرية من شموع M1/M5 المغلقة خلال آخر 4 ساعات',
     side,phase,rangeHigh:round(high),rangeLow:round(low),changePct:round(changePct),vwap,
     volumeBasis,volumeSource:volumeBasis==='REAL'?'حجم حقيقي من مصدر الشموع':
       volumeBasis==='TICK'?'Tick volume · مؤشر نشاط غير مباشر':'لا يوجد حجم صالح · قراءة سعر فقط',
-    bars:rows.length,coverage:round(coverage*100),sweep,structure,zones,
+    bars:rows.length,coverage:round(coverage*100),sweep,structure,zones,events:events.slice(-12),contextBox,efficiency:round(efficiency),atr5:round(vol5),
     summary:sweepLabel+' · '+(structure==='BOS_UP'?'كسر هيكل صاعد':structure==='BOS_DOWN'?'كسر هيكل هابط':'بدون كسر هيكل مؤكد')+
       ' · '+(volumeBasis==='NONE'?'بدون تأكيد حجم':'VWAP مرجعي')+
       ' · التوصيف احتمالي وليس دليلًا على أوامر مؤسسات'};

@@ -1,12 +1,13 @@
 'use client';
 
 import {useEffect,useState} from 'react';
-import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Crosshair,Layers3,ShieldAlert,Target} from 'lucide-react';
+import {Crosshair,Layers3} from 'lucide-react';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import NewsCommandCenter from './NewsCommandCenter';
 import {economicNewsTimeline} from '../lib/news-alert-window';
 import type {ForecastJournal} from '../lib/forecast-journal';
 import SniperStrategyRadar from './SniperStrategyRadar';
+import {watchForChart} from '../lib/sniper-audit-view';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
   p.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
@@ -22,7 +23,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const [newsOpen,setNewsOpen]=useState(false);
   const [mobile,setMobile]=useState(false);
   const [expanded,setExpanded]=useState(false);
-  const [chartWindow,setChartWindow]=useState<60|240>(60);
+  const [chartWindow,setChartWindow]=useState<60|240>(240);
   useEffect(()=>{
     const media=window.matchMedia('(max-width: 600px)');
     const update=()=>setMobile(media.matches);
@@ -36,30 +37,31 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const journal=journals?.[asset]??null;
   const calibration=audit?.metrics?.[asset];
   const observed=Number(calibration?.observed||0);
-  const lastSource=Number(audit?.updatedAt||0);
-  const auditHealthy=Boolean(auditLoaded&&audit?.persistence==='VOLUME'&&lastSource>0&&
-    now-lastSource<180000);
+  const memory=watchForChart(audit,asset,now,auditLoaded);
+  const auditHealthy=memory.durable;
   const serverWatch=audit?.watch?.[asset];
-  const watchFresh=auditHealthy&&serverWatch?.updatedAt>0&&now-serverWatch.updatedAt<90000&&now>=serverWatch.updatedAt;
+  const watchFresh=memory.fresh;
   const watchMetrics=serverWatch?.metrics;
   const watchObserved=Number(watchMetrics?.observed||0);
   const m=buildForecastIllustration(asset,x,asset==='GOLD'?goldLive:btcLive,now,snapshotAt,
-    auditHealthy?journal:null,true,serverWatch?.state??null,serverWatch?.bias?
-      (watchFresh?serverWatch.bias:{...serverWatch.bias,active:false}):null);
+    auditHealthy?journal:null,true,memory.state,memory.bias);
   const statusReady=m.ready&&auditHealthy;
   const watchReady=m.watchReady&&!statusReady;
   const planVisible=statusReady||watchReady;
-  const sn=m.sniper,dir=planVisible?m.displaySide:m.bias.active?m.bias.side:'WAIT';
+  const sn=m.sniper,dir=planVisible?m.displaySide:watchFresh&&m.bias.active?m.bias.side:'WAIT';
   const rise=dir==='BUY',fall=dir==='SELL';
-  const W=mobile?680:1040,H=expanded?700:mobile?560:520,x0=mobile?18:52,
-    x1=mobile?370:612,xf=x1+10,xr=W-94,yt=30,yb=H-90,volumeEnd=H-45;
+  const W=mobile?480:1040,H=expanded?700:520,x0=mobile?18:52,
+    x1=mobile?270:612,xf=x1+10,xr=W-(mobile?84:94),yt=30,yb=H-90,volumeEnd=H-45;
   const candles=m.candles.slice(-chartWindow);
   const candleBounds=candles.flatMap(c=>[c.low,c.high]);
   if(m.price!=null)candleBounds.push(m.price);
   const candleMin=candleBounds.length?Math.min(...candleBounds):m.lower;
   const candleMax=candleBounds.length?Math.max(...candleBounds):m.upper;
   const candleSpan=Math.max(candleMax-candleMin,Math.abs(m.price||0)*.00065,.01);
-  const allBounds=[...candleBounds,...m.bands.flatMap(z=>[z.low,z.high])];
+  const visibleBands=m.bands.filter(z=>z.kind==='TARGET'||z.kind==='STOP'||
+    (m.fourHour.ready?z.kind==='BUY_REBOUND'||z.kind==='SELL_REBOUND':z.kind==='DEMAND'||z.kind==='SUPPLY'));
+  const chartBands=visibleBands.filter((z,i,a)=>z.kind==='TARGET'||z.kind==='STOP'||a.findIndex(q=>q.kind===z.kind)===i);
+  const allBounds=[...candleBounds,...chartBands.flatMap(z=>[z.low,z.high])];
   const allMin=allBounds.length?Math.min(...allBounds):m.lower;
   const allMax=allBounds.length?Math.max(...allBounds):m.upper;
   const allSpan=Math.max(allMax-allMin,candleSpan);
@@ -68,9 +70,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const px=(p:number)=>yt+(scaleHigh-p)/Math.max(.0000001,scaleHigh-scaleLow)*(yb-yt);
   const grid=Array.from({length:5},(_,i)=>({y:yt+i*(yb-yt)/4,value:scaleHigh-(scaleHigh-scaleLow)*i/4}));
   const stride=(x1-x0)/Math.max(candles.length,1);
-  const candleWidth=clamp(stride*.62,2,8.5);
+  const candleWidth=clamp(stride*.62,mobile?.6:1,8.5);
   const maxVolume=Math.max(1,...candles.map(c=>c.volume));
-  const chartBands=m.bands.slice().sort((a,b)=>a.kind==='TARGET'?-1:b.kind==='TARGET'?1:0);
+  const historyX=(time:number)=>{
+    const i=candles.findIndex(c=>c.time>=time);
+    return i<0?x1:x0+(i+.5)*stride;
+  };
+  const readingLive=m.fourHour.ready&&sn.view.priceFresh&&sn.view.forecastFresh&&m.historyFresh;
+  const marketEvents=readingLive?m.fourHour.events.filter(e=>candles[0]&&e.at>=candles[0].time).slice(mobile?-2:-3):[];
+  const contextBox=readingLive?m.fourHour.contextBox:null;
   const projected=m.projected;
   const futureX=(index:number)=>xf+(index+1)*(xr-xf-12)/Math.max(1,projected.length-1);
   let projectedPath='';
@@ -84,7 +92,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     });
   }
   const ageMin=m.historyAge==null?null:Math.ceil(m.historyAge/60000);
-  const stateLabel=statusReady?'سيناريو مؤهل · مسجل':watchReady&&m.heldBias?'اتجاه مثبت · أهداف مراقبة':watchReady?'أهداف بعيدة · مراقبة فقط':
+  const stateLabel=!watchFresh&&!statusReady?'انتظار ذاكرة حديثة':statusReady?'سيناريو مؤهل · مسجل':watchReady&&m.heldBias?'اتجاه مثبت · أهداف مراقبة':watchReady?'أهداف بعيدة · مراقبة فقط':
     m.bias.active&&m.bias.side!=='WAIT'?(m.heldBias?'اتجاه محفوظ · تحقق مستمر':'الاتجاه مرصود · جارٍ البحث عن مستوى بعيد'):
     m.bias.active?'سوق عرضي · التحليل مستمر':
     m.status==='STALE_CANDLES'?'سوق متوقف أو شموع متأخرة':
@@ -94,10 +102,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const reboundBuy=m.fourHour.zones.filter(z=>z.side==='BUY');
   const reboundSell=m.fourHour.zones.filter(z=>z.side==='SELL');
   const statusText=statusReady?(journal?.message||sn.stageText):
-    watchReady?(m.bias.active?m.bias.reason+' · مستويات مرصودة من H1/H4، وليست إشارة دخول':sn.view.reason):
-    m.bias.label+' · '+m.bias.reason;
-  const activation=statusReady&&sn.activation?'خلال '+sn.activation.min+'–'+sn.activation.max+' د':'—';
-  const arrival=statusReady&&sn.arrival?'خلال '+sn.arrival.min+'–'+sn.arrival.max+' د':'غير محدد';
+    watchReady?m.bias.reason+' · أهداف الخادم ثابتة للمراقبة':
+    watchFresh?m.bias.label+' · '+m.bias.reason:'ننتظر ذاكرة أهداف حديثة من الخادم';
 
   return <section id="forecast-illustration" className="workspace-section forecast-visual-section"
     aria-labelledby="forecast-visual-title">
@@ -125,50 +131,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         خبر خلال 8 ساعات: {earlyNews[0].name} · التفاصيل في تبويب الأخبار ↗
       </button>}
       {newsOpen&&<div className="forecast-news-drawer"><NewsCommandCenter events={data?.newsEvents||[]} now={now} featuredEvent={data?.autopilot?.nextEvent||null}/></div>}
-      <div className="forecast-brain-strip">
-        <span><Activity size={14}/> {m.bias.active?m.bias.label+(m.heldBias?' · ثابت حتى تأكيد عكسي':m.bias.opposition?' · اختلاف فريمات':' · رصد متواصل'):
-          'آخر قراءة: '+m.bias.label+' · '+m.bias.reason} {m.fourHour.ready?' · 4س: '+m.fourHour.phase:''}</span>
-        <span><Layers3 size={14}/> وجهات بعيدة: H1 / H4 · مستويات فعلية</span>
-        <span><Target size={14}/> {statusReady?'سيناريو مسجل':watchReady?'مستويات مراقبة بعيدة · دون أمر تداول':m.bias.active?'الاتجاه مرصود · الأهداف قيد التحقق':'بيانات قيد التحديث'}</span>
+      <div className="sniper-decision-strip" aria-label="قرار موحد للقناص">
+        <strong className={rise?'green':fall?'red':''}>{rise?'ميل صعود':fall?'ميل هبوط':!memory.bias?'تهيئة ذاكرة الأهداف':!m.bias.active?'توقف مؤقت للبيانات':watchFresh?'سوق متوازن · ترقب كسر':'الذاكرة متأخرة'}</strong>
+        <span>{planVisible?m.heldBias?'أهداف مثبتة · تتغير عند الوصول أو الإبطال أو انعكاس مؤكد':'مستويات هيكلية من الخادم · للمراقبة':watchFresh?memory.state?.reachedPrices?.length&&!memory.state?.targets?.length?'الأهداف السابقة استُهلكت؛ انتظار إغلاق M15 لهدف جديد':m.bias.reason:'انتظار بيانات الخادم؛ لا نستبدلها بأهداف متغيرة'}</span>
+        {m.fourHour.ready&&<b>4س · {m.fourHour.phase}</b>}
       </div>
       <div className={'forecast-visual-layout'+(expanded?' forecast-layout-expanded':'')}>
-        <div className="forecast-visual-facts">
-          <div className="forecast-visual-fact forecast-visual-last">
-            <small>السعر المرجعي {sn.view.priceFresh?'· حديث':'· غير مباشر'}</small>
-            <strong dir="ltr">{fmt(m.price)}</strong>
-          </div>
-          <div className="forecast-visual-fact">
-            <small>الاتجاه المحتمل</small>
-            <strong className={rise?'green':fall?'red':'forecast-visual-muted'}>
-              {rise?<ArrowUpRight size={16}/>:fall?<ArrowDownRight size={16}/>:<Activity size={15}/>}
-              {rise?(statusReady?'صعود مؤهل':'ميل صعود للمراقبة'):fall?(statusReady?'هبوط مؤهل':'ميل هبوط للمراقبة'):m.bias.active?'حركة عرضية / ترقب كسر':'البيانات غير حديثة'}</strong>
-          </div>
-          <div className="forecast-visual-targets">
-            {([1,2,3] as const).map(i=>{
-              const target=m.displayTargets.find(t=>t.stage===i);
-              return <div key={i} className="forecast-visual-target">
-                <span>{watchReady?('هدف بعيد '+i+' · مراقبة'):(i===1?'TP1 · أول':i===2?'TP2 · رئيسي':'TP3 · ممتد')}<small>{statusReady&&target&&'reached' in target&&target.reached?'تم الوصول':watchReady&&target?('source' in target && typeof target.source==='string'?target.source:'H1/H4 · مرصود'):(target?'M15/H1 · هيكلي':'لا يوجد مستوى مرصود بعد')}</small></span>
-                <strong dir="ltr">{fmt(target?.price)}</strong>
-              </div>;
-            })}
-          </div>
-          <div className="forecast-visual-fact forecast-visual-stop">
-            <small><ShieldAlert size={13}/> {watchReady?'حد إبطال الميل للمراقبة':'إبطال السيناريو'}</small>
-            <strong dir="ltr">{fmt(m.displayStop)}</strong>
-          </div>
-          <div className="forecast-visual-fact forecast-visual-time">
-            <small><Clock3 size={13}/> بدء الحركة / الهدف الأول</small>
-            <strong>{statusReady?activation:watchReady?'رصد طويل المدى':'—'}</strong>
-            <span>{statusReady?arrival:watchReady?'الزمن غير مؤكد · H1/H4':'لا يوجد توقيت وصول موثوق'}</span>
-          </div>
-          <div className="forecast-visual-confidence">
-            <span>{statusReady?'قوة التحليل':'الانحياز الهيكلي'} <b>{statusReady&&sn.view.confidence!=null?fmt(sn.view.confidence,0)+'/100':
-              m.bias.active?(m.bias.agreement+' مصادر مؤيدة'):'—'}</b></span>
-            <small>{statusReady?'تقييم مشروط وليس ضمان ربح':m.bias.active?
-              (m.heldBias?'اتجاه مراقبة محفوظ؛ الانعكاس يحتاج إغلاقين M15 مع توافق H1/H4':m.bias.opposition?'ميل غير إجماعي · للاستكشاف فقط':'رصد مستمر، غير صالح كإشارة دخول'):
-              'السوق قد يكون مغلقًا أو البيانات متأخرة'}</small>
-          </div>
-        </div>
         <div className={'forecast-visual-chart-wrap'+(expanded?' forecast-chart-expanded':'')}>
           <div className="forecast-visual-topline">
             <span><Layers3 size={13}/> M1 · {candles.length} شمعة · توقيت الإمارات</span>
@@ -204,7 +172,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <rect x={xf} y="16" width={xr-xf} height={volumeEnd-15} fill="#56bde7" opacity=".028"/>
               {grid.map((g,i)=><g key={'grid'+i}>
                 <line x1={x0} x2={xr+12} y1={g.y} y2={g.y} stroke="#426076" strokeOpacity=".32" strokeDasharray="3 6"/>
-                <text x={xr+20} y={g.y+4} fill="#97afc0" fontSize="11" fontFamily="monospace">{fmt(g.value)}</text>
+                <text x={W-8} y={g.y+4} textAnchor="end" fill="#97afc0" fontSize={mobile?14:11} fontFamily="monospace">{fmt(g.value)}</text>
               </g>)}
               {Array.from({length:7},(_,i)=><line key={'v'+i} x1={x0+i*(xr-x0)/6} x2={x0+i*(xr-x0)/6} y1="18" y2={volumeEnd+10}
                 stroke="#345267" strokeOpacity=".20" strokeDasharray="3 7"/>)}
@@ -212,6 +180,16 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 strokeDasharray="6 7"/>
               <text x={xf-14} y="13" textAnchor="end" fill="#88bbd3" fontSize="11">تاريخ فعلي</text>
               <text x={xf+8} y="13" fill="#e7c58a" fontSize="11">المستقبل / سيناريو</text>
+              {contextBox&&candles[0]&&contextBox.to>candles[0].time&&<g className="sniper-context-box">
+                <rect x={Math.max(x0,historyX(contextBox.from))} y={px(contextBox.high)}
+                  width={Math.max(8,Math.min(x1,historyX(contextBox.to))-Math.max(x0,historyX(contextBox.from)))}
+                  height={Math.max(8,px(contextBox.low)-px(contextBox.high))} rx="5"
+                  fill={contextBox.kind==='ACCUMULATION'?'#43d5ad':contextBox.kind==='DISTRIBUTION'?'#ef829e':'#d5b267'}
+                  fillOpacity=".1" stroke={contextBox.kind==='ACCUMULATION'?'#43d5ad':contextBox.kind==='DISTRIBUTION'?'#ef829e':'#d5b267'} strokeDasharray="5 4"/>
+                <text x={Math.max(x0+80,(Math.max(x0,historyX(contextBox.from))+Math.min(x1,historyX(contextBox.to)))/2)}
+                  y={Math.max(yt+14,px(contextBox.high)-8)} textAnchor="middle" fill="#ecdfad" fontSize={mobile?14:12} fontWeight="700">{contextBox.label}</text>
+                <title>{contextBox.label+' · '+fmt(contextBox.low)+' – '+fmt(contextBox.high)+' · قراءة سعر ونشاط وليست أوامر مؤسسات'}</title>
+              </g>}
               {chartBands.map(z=>{
                 const clr=z.kind==='BUY_REBOUND'?'#42e5a9':z.kind==='SELL_REBOUND'?'#ff7189':
                   z.kind==='TARGET'?'#3ce6a8':z.kind==='STOP'?'#fd687c':
@@ -225,7 +203,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <line x1={z.kind==='TARGET'?xf:x0} x2={xr}
                     y1={mid} y2={mid} stroke={clr} strokeWidth={z.kind==='TARGET'?1.4:1}
                     strokeDasharray={z.kind==='STOP'?'7 6':undefined} strokeOpacity=".72"/>
-                  <text x={xr-7} y={mid-7} textAnchor="end" fontSize="11" fill={clr}
+                  <text x={xr-7} y={mid-7} textAnchor="end" fontSize={mobile?13:11} fill={clr}
                     fontWeight={z.kind==='TARGET'?700:500}>{z.label+'  '+fmt(z.price)}</text>
                 </g>;
               })}
@@ -243,6 +221,18 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <title>{clock(c.time)+' · O '+fmt(c.open)+' H '+fmt(c.high)+' L '+fmt(c.low)+' C '+fmt(c.close)}</title>
                 </g>;
               })}
+              {marketEvents.map((event,index)=>{
+                const x=historyX(event.at),y=px(event.price),up=event.kind==='SWEEP_LOW'||event.kind==='BOS_UP';
+                const color=up?'#6af0bd':'#ff9aaf',label=event.kind==='SWEEP_LOW'?'سحب قاع':event.kind==='SWEEP_HIGH'?'سحب قمة':up?'كسر صاعد':'كسر هابط';
+                const labelY=clamp(y+(up?28+index*3:-24-index*3),yt+22,yb-18);
+                return <g key={event.kind+event.at} className="sniper-liquidity-event">
+                  <circle cx={x} cy={y} r="5" stroke={color} fill="#0b1b28" strokeWidth="2"/>
+                  <line x1={x} x2={x} y1={y} y2={labelY} stroke={color} strokeOpacity=".6"/>
+                  <rect x={clamp(x-42,x0,x1-85)} y={labelY-12} width="85" height="22" rx="5" fill="#0b2230" stroke={color} strokeOpacity=".65"/>
+                  <text x={clamp(x,x0+42,x1-43)} y={labelY+3} textAnchor="middle" fill={color} fontSize={mobile?13:11} fontWeight="700">{label}</text>
+                  <title>{event.label+' · '+fmt(event.level)+' · تأكيد '+clock(event.confirmedAt)}</title>
+                </g>;
+              })}
               <line x1={x0} x2={xr} y1={volumeEnd} y2={volumeEnd} stroke="#416077" strokeOpacity=".4"/>
               {candles.length>0&&[0,.33,.66,1].map((a,i)=>{
                 const c=candles[Math.min(candles.length-1,Math.round((candles.length-1)*a))];
@@ -252,9 +242,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {m.price!=null&&sn.view.priceFresh&&<g>
                 <line x1={x0} x2={xr} y1={px(m.price)} y2={px(m.price)}
                   stroke="#5ad6f4" strokeDasharray="3 5" strokeOpacity=".65"/>
-                <rect x={xr+3} y={px(m.price)-12} width="91" height="23" rx="5" fill="#1b7291"/>
-                <text x={xr+48} y={px(m.price)+4} textAnchor="middle" fill="#e8faff"
-                  fontSize="12" fontWeight="700" fontFamily="monospace">{fmt(m.price)}</text>
+                <rect x={xr+3} y={px(m.price)-12} width={mobile?81:91} height="23" rx="5" fill="#1b7291"/>
+                <text x={xr+3+(mobile?81:91)/2} y={px(m.price)+4} textAnchor="middle" fill="#e8faff"
+                  fontSize={mobile?14:12} fontWeight="700" fontFamily="monospace">{fmt(m.price)}</text>
               </g>}
               {projectedPath&&<g>
                 <path d={projectedPath} stroke="#071823" strokeWidth="7" fill="none" opacity=".6"/>
@@ -266,9 +256,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               </g>}
               {!planVisible&&<g>
                 <rect x={xf+8} y="136" width={xr-xf-16} height="80" rx="9" fill="#0a1520" stroke="#3a5464" strokeOpacity=".8"/>
-                <text x={(xf+xr)/2} y="162" fill="#cedfeb" textAnchor="middle" fontSize={mobile?11:14} fontWeight="700">
-                  {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'لا توجد شموع كافية':m.bias.active?m.bias.label:'بيانات الرصد غير حديثة'}</text>
-                <text x={(xf+xr)/2} y="187" fill="#91abbb" textAnchor="middle" fontSize={mobile?9:11}>انتظار بيانات لتأكيد المسار</text>
+                <text x={(xf+xr)/2} y="162" fill="#cedfeb" textAnchor="middle" fontSize="14" fontWeight="700">
+                  {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'انتظار الشموع':watchFresh?rise?'ميل صعود':fall?'ميل هبوط':'ترقب كسر':'تهيئة الذاكرة'}</text>
+                <text x={(xf+xr)/2} y="187" fill="#91abbb" textAnchor="middle" fontSize={mobile?12:11}>انتظار بيانات لتأكيد المسار</text>
               </g>}
             </svg>
           </div>
@@ -277,7 +267,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <span><i className="forecast-legend-projection"/> {watchReady?'مسار مستويات بعيد · توضيحي':'سيناريو مشروط'}</span>
             <span><i className="forecast-legend-target"/> مناطق أهداف</span>
             <span><i className="forecast-legend-rebound"/> مناطق سيولة</span>
-            <span className="sniper-buy-legend">● ارتداد شراء</span><span className="sniper-sell-legend">● ارتداد بيع</span>
+            <span className="sniper-buy-legend">● طلب / استرداد</span><span className="sniper-sell-legend">● عرض / رفض</span>
             <span><i className="forecast-legend-stop"/> إبطال</span>
           </div>
         </div>
@@ -289,6 +279,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       </div>
       <SniperStrategyRadar frames={x?.chartHigherFrames} now={now} price={m.price} side={dir}
         sourceReady={sn.view.priceFresh&&sn.view.forecastFresh} targets={m.displayTargets} stop={m.displayStop}/>
+      <details className="sniper-inspection"><summary>تحليل 4 ساعات ومصادر السيولة</summary>
       <section className="sniper-four-hour" aria-label="قراءة آخر أربع ساعات">
         <div className="sniper-four-head">
           <strong>تحليل آخر 4 ساعات · هيكل وسيولة</strong>
@@ -328,6 +319,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>}
         </div>
       </div>
+      </details>
+      <details className="sniper-inspection"><summary>سجل أداء القناص</summary>
       <section className="sniper-audit-panel sniper-audit-compact" aria-label="ملخص نتائج القناص">
         <div className="sniper-audit-heading">
           <strong><Layers3 size={15}/> سجل أداء القناص · {asset==='GOLD'?'الذهب':'البيتكوين'}</strong>
@@ -362,6 +355,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             ):''}
         </p>
       </section>
+      </details>
       <footer className="forecast-visual-note">
         <span>الشموع السابقة بيانات سوق فعلية. {watchReady?'الخط الأصفر مراقبة هيكلية أولية، وليس إشارة شراء أو بيع.':'الخط المتقطع ترتيب مستويات مشروط، وليس توقعًا لشكل الشموع أو وقت وصولها.'}</span>
         <span>{highest?(statusReady?'الهدف المسجل الأخير ':'أبعد مستوى هيكلي مرصود ')+fmt(highest.price):m.bias.active?'انحياز ظاهر · لا مستوى بعيد متاح':'آخر بيانات للمتابعة فقط'}</span>

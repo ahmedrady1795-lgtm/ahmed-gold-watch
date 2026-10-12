@@ -81,3 +81,16 @@ assert.equal(buyBack.bias.side,'SELL');
 assert.equal(stabilize(buyBack.state,a('BUY',start+1800000),100,start+1800000).bias.side,'BUY',
   'consecutive reversal confirmation works symmetrically');
 console.log('PASS: hysteresis, distinct M15 confirmations, higher-timeframe guard, breaching stop, no stale or crossed targets');
+
+const remaining=stabilize(null,{...a('BUY'),targets:[
+ {...a('BUY').targets[0],stage:1,price:102,low:102,high:102},
+ {...a('BUY').targets[0],stage:2,price:108,low:108,high:108}
+]},100,start);
+const hitFirst=stabilize(remaining.state,a('BUY'),103,start+1000);
+assert.equal(hitFirst.bias.targets[0].stage,2,'remaining TP2 cannot silently become TP1');
+const exhausted=stabilize(remaining.state,a('BUY'),109,start+1000);
+const sameClose=stabilize(exhausted.state,{...a('BUY'),targets:[{...a('BUY').targets[0],price:112,low:112,high:112}]},104,start+2000);
+assert.equal(sameClose.bias.targets.length,0,'new raw target on same M15 cannot rearm exhausted memory');
+const nearby=stabilize(exhausted.state,{...a('BUY',start+900000),targets:[{...a('BUY').targets[0],price:108.01,low:108.01,high:108.01}]},104,start+900000);
+assert.equal(nearby.bias.targets.length,0,'slightly repriced reached zone cannot resurrect');
+console.log('PASS: preserve goal identity and wait for new M15 before rearming');

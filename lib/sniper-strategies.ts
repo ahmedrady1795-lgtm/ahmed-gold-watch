@@ -30,7 +30,7 @@ export function evaluateSniperStrategies(input:{frames:any;now:number;price:numb
     regimeLabel:'قراءة غير متاحة',reason,score:null as number|null,frames:null as
       {m5:FrameReading;m15:FrameReading;h1:FrameReading}|null,
     strategies:[] as Strategy[],blockers:[reason],squeezePercentile:null as number|null,
-    efficiency:null as number|null,extensionAtr:null as number|null,rr:null as number|null,
+    efficiency:null as number|null,choppiness:null as number|null,extensionAtr:null as number|null,rr:null as number|null,
     checkedAt:input.now,confirmedAt:null as number|null});
   const m5=bars(input.frames?.m5,input.now,300000),m15=bars(input.frames?.m15,input.now,900000),
     h1=bars(input.frames?.h1,input.now,3600000);
@@ -54,9 +54,14 @@ export function evaluateSniperStrategies(input:{frames:any;now:number;price:numb
   const percentile=widths.length?100*widths.filter(w=>w<=i15.bbWidth).length/widths.length:100;
   const recent=m15.slice(-21),travel=recent.slice(1).reduce((sum,b,i)=>sum+Math.abs(b.close-recent[i].close),0);
   const efficiency=travel>0?Math.abs(recent.at(-1)!.close-recent[0].close)/travel:0;
+  const chopBars=m15.slice(-15),chopWindow=chopBars.slice(1);
+  const sumTr=chopWindow.reduce((sum,b,i)=>sum+Math.max(b.high-b.low,
+    Math.abs(b.high-chopBars[i].close),Math.abs(b.low-chopBars[i].close)),0);
+  const chopRange=Math.max(...chopWindow.map(b=>b.high))-Math.min(...chopWindow.map(b=>b.low));
+  const choppiness=chopRange>0&&sumTr>0?Math.max(0,Math.min(100,100*Math.log10(sumTr/chopRange)/Math.log10(14))):100;
   const extension=price!=null&&price>0?Math.abs(price-i5.ema20)/i5.atr:Infinity;
   const shock=last.high-last.low>3*i5.atr||i5.volatility>2.2;
-  const trending=i15.adx>=23&&efficiency>=.3;
+  const trending=i15.adx>=23&&efficiency>=.3&&(choppiness<61.8||efficiency>=.65);
   const squeezed=percentile<=20&&i15.adx<23;
   const regime=shock?'SHOCK':trending?'TREND':squeezed?'COMPRESSION':'RANGE';
   const regimeLabel={SHOCK:'تذبذب حاد',TREND:'سوق اتجاهي',COMPRESSION:'انضغاط قبل حركة',RANGE:'تذبذب / توازن'}[regime];
@@ -108,6 +113,8 @@ export function evaluateSniperStrategies(input:{frames:any;now:number;price:numb
   if(shock)blockers.push('تذبذب حاد؛ انتظار استقرار المدى');
   if(extension>2.5)blockers.push('السعر ممتد عن EMA20؛ تجنب مطاردة الحركة');
   if(higherOpposed)blockers.push('H1 يعارض الاتجاه المرشح');
+  if(choppiness>=61.8&&efficiency<.3&&strategies.find(s=>s.id==='SWEEP')?.state!=='CONFIRMED')
+    blockers.push('تذبذب متداخل؛ نحتاج خروجًا أو استرداد سيولة مؤكدًا');
   if(!strategies.some(s=>s.state==='CONFIRMED'))blockers.push('ننتظر تأكيدًا سعريًا للاستراتيجية');
   if(rr==null||rr<1.35)blockers.push('هدف وإبطال صالحان بعائد/مخاطرة 1.35 على الأقل مطلوبان');
   // Evidence score is not a probability and never increases model confidence.
@@ -115,7 +122,7 @@ export function evaluateSniperStrategies(input:{frames:any;now:number;price:numb
     (strategies.some(s=>s.state==='CONFIRMED')?30:0)+(rr!=null&&rr>=1.35?10:0)+
     (!shock&&extension<=2.5?10:0));
   return {ready:true,eligible:blockers.length===0,side,regime,regimeLabel,reason:blockers[0]||'تأكيد سعري مع هدف هيكلي؛ يخضع لبقية فلاتر القناص',
-    score,frames,strategies,blockers,squeezePercentile:rounded(percentile),efficiency:rounded(efficiency),
+    score,frames,strategies,blockers,squeezePercentile:rounded(percentile),efficiency:rounded(efficiency),choppiness:rounded(choppiness),
     extensionAtr:Number.isFinite(extension)?rounded(extension):null,rr:rr==null?null:rounded(rr),
     checkedAt:input.now,confirmedAt:last.time+300000};
 }

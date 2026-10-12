@@ -96,12 +96,15 @@ const x={livePulse:{price,sourceTime:at},chartHigherFrames:history,
   forwardMove:{side:'WAIT'}};
 const legacy={version:1,updatedAt:at-60000,scenarios:[expiry]};
 files.set('/data/predator-sniper-audit-v1.json',JSON.stringify(legacy));
+const cachedReader=loader(fakeFs)('lib/sniper-audit-store.ts');
+cachedReader.getSniperAudit(at-1000); // another route warms its own cache first
 let store=loader(fakeFs)('lib/sniper-audit-store.ts');
 let audit=store.updateSniperAudit({ok:true,checkedAt:at,gold:x,bitcoin:x},at);
 assert.equal(audit.persistence,'VOLUME');assert.equal(audit.metrics.BTC.observed,1,'legacy qualified history survives migration');
 assert.equal(audit.watch.BTC.state.side,'BUY');
 assert.equal(audit.watch.BTC.current.purpose,'OBSERVATION');
 const snapshot=JSON.stringify(audit.watch.BTC);
+assert.equal(JSON.stringify(cachedReader.getSniperAudit(at).watch.BTC),snapshot,'already-warmed route reloads later worker writes');
 store=loader(fakeFs)('lib/sniper-audit-store.ts');
 audit=store.getSniperAudit(at+1000);
 assert.equal(JSON.stringify(audit.watch.BTC),snapshot,'independent process restores full direction and target ledger');
@@ -115,3 +118,12 @@ failWrite=true;
 audit=store.updateSniperAudit({ok:true,checkedAt:at+1000,gold:x,bitcoin:x},at+1000);
 assert.equal(audit.persistence,'NOT_DURABLE','failed writes cannot claim durable server memory');
 console.log('PASS: server restart, legacy migration, frozen levels, wick hits, rearm, reversal, 8h expiry, gaps and entry separation');
+
+const ephemeralReader=loader()('lib/sniper-audit-view.ts').watchForChart;
+const transient={...audit,persistence:'NOT_DURABLE',updatedAt:at,watch:{BTC:{...audit.watch.BTC,updatedAt:at,modelAt:at,stale:false,bias:{...audit.watch.BTC.bias,active:true}}}};
+const presented=ephemeralReader(transient,'BTC',at+1000,true);
+assert.equal(presented.fresh,true,'temporary storage does not disable fresh authoritative observation');
+assert.equal(presented.durable,false,'temporary storage still cannot claim durable entry evidence');
+assert.equal(ephemeralReader(transient,'BTC',at+91000,true).bias.active,false,'stale server memory must pause');
+assert.equal(ephemeralReader({...transient,updatedAt:at+10000},'BTC',at,true).fresh,false,'future audit timestamps rejected');
+console.log('PASS: cross-route synchronization, temporary observation and stale/future guards');

@@ -14,9 +14,9 @@ export default function SniperStrategyRadar({frames,now,price,side,sourceReady,t
   const analysis=useMemo(()=>evaluateSniperStrategies({frames,now:minute*60000,price,side,sourceReady,
     targets:target==null?[]:[{price:target}],stop}),
     [frames,minute,price,side,sourceReady,target,stop]);
-  return <section id="sniper-strategies" className="sniper-strategy-radar" aria-label="استراتيجيات ومؤشرات القناص">
-    <div className="sniper-strategy-head"><strong><Crosshair size={17}/> رادار الاستراتيجيات</strong>
-      <span className={analysis.eligible?'sniper-radar-confirmed':''}>{analysis.regimeLabel} · {analysis.eligible?'تأكيد فني أولي':'انتظار تأكيد'}</span></div>
+  return <details id="sniper-strategies" className="sniper-strategy-radar" aria-label="استراتيجيات ومؤشرات القناص">
+    <summary className="sniper-strategy-head"><strong><Crosshair size={17}/> المؤشرات وشروط الدخول</strong>
+      <span className={analysis.eligible?'sniper-radar-confirmed':''}>{analysis.regimeLabel} · {analysis.eligible?'تأكيد فني أولي':'انتظار تأكيد'}</span></summary>
     <p className="sniper-strategy-reason"><ShieldAlert size={14}/>{analysis.reason}</p>
     {analysis.ready&&<>
       <div className="sniper-indicator-grid">
@@ -40,13 +40,13 @@ export default function SniperStrategyRadar({frames,now,price,side,sourceReady,t
           <p>{s.reason}</p>{s.level!=null&&<small>مستوى مرجعي <b dir="ltr">{fmt(s.level,2)}</b></small>}
         </article>)}
       </div>
-      <details className="sniper-strategy-details"><summary>تفاصيل المؤشرات وشروط الانتظار</summary>
-        <p>رتبة عرض بولينجر: {fmt(analysis.squeezePercentile)}% من آخر 60 قراءة · كفاءة الحركة: {fmt((analysis.efficiency??0)*100)}% · ATR M15: {fmt(analysis.frames?.m15.atr??null,2)}.</p>
+      <div className="sniper-strategy-details">
+        <p>CHOP: {fmt(analysis.choppiness)} · رتبة عرض بولينجر: {fmt(analysis.squeezePercentile)}% من آخر 60 قراءة · كفاءة الحركة: {fmt((analysis.efficiency??0)*100)}% · ATR M15: {fmt(analysis.frames?.m15.atr??null,2)}.</p>
         <p>آخر تأكيد M5: {new Date(analysis.confirmedAt!).toLocaleTimeString('ar-AE',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Dubai'})} بتوقيت الإمارات. الحسابات من شموع مغلقة فقط.</p>
         {analysis.blockers.map(reason=><p key={reason}>• {reason}</p>)}
         <p>الرادار يقيّم فرصًا جديدة حسب اتجاه وأهداف الرسم. التأكيد الفني وحده لا يمنح إشارة دخول؛ السيناريو المعتمد يظهر مسجّلًا على الرسم. الأهداف الهيكلية للمراقبة مستقلة عن تأكيد الدخول. هذه قواعد فنية غير مثبتة الربحية؛ سجل الأداء هو مرجع تقييمها.</p>
-        <p>تعريف المؤشرات: <a href="https://www.tradingview.com/support/solutions/43000589099-average-directional-index-adx/" target="_blank" rel="noreferrer">ADX / DMI</a> · <a href="https://www.tradingview.com/support/solutions/43000501972-bollinger-bandwidth-bbw/" target="_blank" rel="noreferrer">Bollinger BandWidth</a></p>
-      </details>
+        <p>تعريف المؤشرات: <a href="https://www.tradingview.com/support/solutions/43000589099-average-directional-index-adx/" target="_blank" rel="noreferrer">ADX / DMI</a> · <a href="https://www.tradingview.com/support/solutions/43000501972-bollinger-bandwidth-bbw/" target="_blank" rel="noreferrer">Bollinger BandWidth</a> · <a href="https://www.tradingview.com/support/solutions/43000501980-choppiness-index-chop/" target="_blank" rel="noreferrer">CHOP</a></p>
+      </div>
     </>}
-  </section>;
+  </details>;
 }

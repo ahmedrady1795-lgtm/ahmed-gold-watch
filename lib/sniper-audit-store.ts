@@ -15,12 +15,15 @@ type AuditFile={version:1;scenarios:Scenario[];updatedAt:number;watch:Record<Ass
 const blank=():AuditFile=>({version:1,scenarios:[],updatedAt:0,watch:{GOLD:emptyWatch(),BTC:emptyWatch()}});
 let memory:AuditFile|null=null,persisted=false,lastSave=0,dirty=false,lastBlock:Record<Asset,string>={GOLD:'',BTC:''};
 
-function load(){
-  if(memory)return memory;
+function load(refresh=false){
+  // Next route bundles can hold independent module caches. A reader that
+  // started before the worker must notice later file writes without a restart.
+  if(memory&&(!refresh||dirty))return memory;
   for(const f of [STORAGE,FALLBACK]){
     try{
       const obj=JSON.parse(fs.readFileSync(f,'utf8'));
       if(obj?.version===1&&Array.isArray(obj.scenarios)){
+        if(memory&&Number(obj.updatedAt||0)<=memory.updatedAt)return memory;
         const restore=(asset:Asset):WatchMemory=>{
           const saved=obj.watch?.[asset];
           return saved&&Array.isArray(saved.records)?{...emptyWatch(),...saved,records:saved.records.slice(-600)}:emptyWatch();
@@ -32,7 +35,7 @@ function load(){
       }
     }catch{}
   }
-  memory=blank();return memory;
+  memory=memory||blank();return memory;
 }
 function save(now:number,force=false){
   const state=load();
@@ -120,6 +123,7 @@ export function updateSniperAudit(payload:any,now=Date.now()){
   const modelAt=Number(payload?.checkedAt||0);
   if(!payload?.ok||!modelAt)return getSniperAudit(now);
   try{
+    load(true);
     let watchChanged=false;
     for(const asset of ['GOLD','BTC'] as const){
       const x=asset==='GOLD'?payload.gold:payload.bitcoin;
@@ -145,7 +149,7 @@ export function updateSniperAudit(payload:any,now=Date.now()){
   return getSniperAudit(now);
 }
 export function getSniperAudit(now=Date.now()){
-  const state=load();
+  const state=load(true);
   // The persisted flag is true only after an actual /data read or write.
   const show=(asset:Asset)=>{
     const entry=latest(state,asset);

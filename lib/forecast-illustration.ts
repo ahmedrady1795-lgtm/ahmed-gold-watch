@@ -59,7 +59,7 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   // The uninterrupted H1/H4 observation is only a *watch* even if its bias
   // is strong, and has no effect on server execution or scenario records.
   const distantWatch=bias.active&&bias.side!=='WAIT'&&bias.targets.length>0;
-  const authoritative=Boolean(serverBias||stableState);
+  const authoritative=Boolean(auditRequired||serverBias||stableState);
   const watchSide=authoritative||distantWatch?bias.side:
     sniper.view.side!=='WAIT'?sniper.view.side:observation.side;
   const watchTargets=authoritative||distantWatch?bias.targets:
@@ -68,7 +68,7 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
     sniper.view.side!=='WAIT'?sniper.view.invalidation:observation.invalidation;
   const watchStop=stopSafe(watchSide,rawWatchStop)?rawWatchStop:null;
   const watchReady=Boolean(!ready&&historyFresh&&sniper.view.priceFresh&&
-    sniper.view.forecastFresh&&(!authoritative||bias.active)&&aheadOf(watchSide,watchTargets));
+    sniper.view.forecastFresh&&(!auditRequired||serverBias)&&(!authoritative||bias.active)&&aheadOf(watchSide,watchTargets));
   // Monitoring levels needn't pretend to offer a verified entry or stop.
   const displayTargets=ready?plannedTargets:watchReady?watchTargets:[];
   const displayStop=ready?plannedStop:watchReady?watchStop:null;

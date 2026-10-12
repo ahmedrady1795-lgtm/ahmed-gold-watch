@@ -24,7 +24,7 @@ const ahead=(side:Side,price:number,t:FarLevel)=>side==='BUY'?t.price>price:side
 function validLevels(side:Side,price:number,levels:FarLevel[]):FarLevel[]{
   return levels.filter(t=>Number.isFinite(t.price)&&ahead(side,price,t))
     .sort((a,b)=>Math.abs(a.price-price)-Math.abs(b.price-price))
-    .slice(0,3).map((t,i)=>({...t,stage:(i+1) as 1|2|3}));
+    .slice(0,3);
 }
 const named=(side:Side)=>side==='BUY'?'صعود':'هبوط';
 const hold=(raw:ObservedBias,side:'BUY'|'SELL',targets:FarLevel[],invalidation:number|null,
@@ -84,8 +84,10 @@ export function stabilizeSniperBias(
   const oppositeBars=isNewBar?(strongOpposition?
     (consecutive&&previous.oppositeSide===raw.side?previous.oppositeBars+1:1):0):previous.oppositeBars;
   if(isNewBar&&strongOpposition&&oppositeBars>=2)return begin();
-  const levels=raw.side===previous.side&&!preserved.length?
-    freshTargets.filter(t=>!reachedPrices.includes(t.price)):preserved;
+  // Exhausted levels are rearmed only on a NEW M15 close. Nearby repricing
+  // of a consumed zone cannot masquerade as a fresh target after a retrace.
+  const levels=raw.side===previous.side&&!preserved.length&&isNewBar?
+    freshTargets.filter(t=>!reachedPrices.some(p=>Math.abs(p-t.price)<=currentPrice*.0002)):preserved;
   const candidate:StableBiasState={...previous,
     lastProcessedM15:isNewBar?m15:previous.lastProcessedM15,
     oppositeSide:isNewBar?(strongOpposition?raw.side:'WAIT'):previous.oppositeSide,

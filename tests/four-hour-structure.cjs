@@ -37,3 +37,32 @@ assert.equal(noVolume.volumeBasis,'NONE');
 let partial=analyze({asset:'BTC',candles:m1.slice(-50),frames:{m5},now});
 assert.equal(partial.ready,false,'last 52 candles cannot claim four hours');
 console.log('PASS: 4h closed-candle coverage, nonfake volume, structural zones, gaps, stale price and cross-feed guards');
+const makeM5=minutes=>Array.from({length:Math.floor(minutes.length/5)},(_,i)=>{
+  const b=minutes.slice(i*5,i*5+5);return {time:b[0].time,open:b[0].open,close:b.at(-1).close,
+    high:Math.max(...b.map(c=>c.high)),low:Math.min(...b.map(c=>c.low))};
+});
+const swept=Array.from({length:240},(_,i)=>({time:now-(240-i)*60000,open:100,close:100,high:100.2,low:99.8,volume:20,volumeBasis:'TICK'}));
+for(let i=230;i<235;i++)Object.assign(swept[i],{close:100.05,low:i===230?99.4:99.85});
+for(let i=235;i<240;i++)Object.assign(swept[i],{open:100.05,close:100.12,high:100.25,low:99.9});
+let context=analyze({asset:'GOLD',candles:swept,frames:{m5:makeM5(swept)},now});
+const event=context.events.find(e=>e.kind==='SWEEP_LOW');
+assert.ok(event,'low sweep requires reclaim plus the next closed candle');
+assert.equal(event.price,99.4,'annotation points at an actually observed M1 low');
+assert.equal(event.at,swept[230].time);
+assert.equal(event.confirmedAt,now);
+context=analyze({asset:'GOLD',candles:swept,frames:{m5:makeM5(swept)},now:now-300000});
+assert.equal(context.events.some(e=>e.kind==='SWEEP_LOW'),false,'a forming confirmation candle cannot generate a marker');
+const coiled=Array.from({length:240},(_,i)=>{
+ const close=i<180?100+Math.sin(i*.25)*2:100+Math.sin(i*.7)*.1;
+ return {time:now-(240-i)*60000,open:close-.01,close,high:i<180?close+.3:100.22,
+  low:i<180?close-.3:99.65,volume:20,volumeBasis:'TICK'};
+});
+context=analyze({asset:'GOLD',candles:coiled,frames:{m5:makeM5(coiled)},now});
+assert.equal(context.contextBox.kind,'ACCUMULATION','tight range, repeated lower rejection and activity suggest accumulation');
+assert.equal(context.contextBox.from,now-3600000);
+assert.equal(context.contextBox.to,now);
+const missingVolume=coiled.map(c=>({...c,volume:0,volumeBasis:'NONE'}));
+context=analyze({asset:'GOLD',candles:missingVolume,frames:{m5:makeM5(missingVolume)},now});
+assert.equal(context.contextBox.kind,'COMPRESSION','price-only compression cannot assert accumulation');
+assert.equal(context.events.every(e=>e.confirmedAt<=now),true);
+console.log('PASS: causal liquidity markers, historical position, confirmed sweeps and nonfabricated accumulation box');

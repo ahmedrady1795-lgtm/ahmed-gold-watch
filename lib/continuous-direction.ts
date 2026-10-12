@@ -90,7 +90,13 @@ export function buildContinuousBias(input:{
     (fourHour==null?0:fourHour==='BUY'?.8:-.8);
   const denominator=observed.reduce((s,v)=>s+v.weight,0)+(fourHour==null?0:1);
   const normalized=weighted/denominator;
-  const side:Side=normalized>.055?'BUY':normalized<-.055?'SELL':'WAIT';
+  const candidate:Side=normalized>.055?'BUY':normalized<-.055?'SELL':'WAIT';
+  // A tiny weighted edge from opposing frames is balance, not a new path.
+  // Starting a bias needs two structural frames; established paths use the
+  // independent M15 reversal stabilizer and don't flicker on neutral updates.
+  const structuralSupport=candidate!=='WAIT'&&
+    ((votes.m15===candidate&&votes.h1===candidate)||(votes.h1===candidate&&votes.h4===candidate));
+  const side:Side=structuralSupport?candidate:'WAIT';
   const agreement=side==='WAIT'?0:observed.filter(v=>vote(v.score)===side).length+
     (fourHour===side?1:0);
   const opposition=side!=='WAIT'&&
@@ -105,7 +111,7 @@ export function buildContinuousBias(input:{
   const status:'LIVE'|'PAUSED'=active?'LIVE':'PAUSED';
   const reason=!input.sourceReady?'سعر لحظي أو لقطة التحليل غير محدثة':
     !fresh?'شموع الهيكل متأخرة أو السوق مغلق':
-    !aligned?'مصدر السعر لا يتفق مع الشموع':opposition?'انحياز مراقبة مع اختلاف بعض الفريمات':
+    !aligned?'مصدر السعر لا يتفق مع الشموع':side==='WAIT'?'اختلاف الأطر الهيكلية أو ميل ضعيف؛ انتظار توافق إغلاقات':opposition?'انحياز مراقبة مع اختلاف بعض الفريمات':
     'انحياز مبني على شموع مكتملة؛ ليس إشارة دخول';
   const label=side==='BUY'?'ميل صعود هيكلي':side==='SELL'?'ميل هبوط هيكلي':'سوق عرضي · لا اتجاه راجح';
   // An old structural bias may be displayed with PAUSED labeling, but never

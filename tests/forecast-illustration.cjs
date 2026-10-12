@@ -61,15 +61,15 @@ assert.equal(m.candles.at(-1).time,now-60000);
 
 m=build('GOLD',base,null,now,now-10000,null,true);
 assert.equal(m.ready,false,'audited entry must never exist without an ACTIVE ledger record');
-assert.equal(m.watchReady,true,'live qualified levels should still be visible as non-tradable watch');
-assert.equal(m.projected.length>=2,true);
+assert.equal(m.watchReady,false,'production needs an authoritative server watch, not a short model fallback');
+assert.equal(m.projected.length,0,'no mixed-system arrow before server memory arrives');
 const archived={side:'BUY',startPrice:100,invalidation:101,confidence:82,
   targets:[{stage:1,price:999,low:998,high:999,quality:85,kind:'STRUCTURAL',reached:false}],
   capturedAt:now-100000,modelAt:now-100000,expiresAt:now-20000,
   lastConfirmedAt:now-30000,state:'INVALIDATED',message:'Archived invalidation'};
 m=build('GOLD',base,null,now,now-10000,archived,true);
 assert.equal(m.ready,false,'invalidated ledger cannot activate');
-assert.equal(m.watchReady,true,'a distinct live market watch remains separate from prior ledger');
+assert.equal(m.watchReady,false,'archived records cannot enable stateless model fallback');
 assert.ok(m.displayTargets.every(t=>t.price!==999),'old target never reused as current');
 assert.ok(m.displayStop!==101,'old invalid stop never reused');
 m=build('GOLD',{...base,livePulse:{price:100,sourceTime:now-30000}},
