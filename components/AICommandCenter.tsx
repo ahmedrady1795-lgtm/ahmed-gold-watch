@@ -6,8 +6,26 @@ import ForecastIllustration from './ForecastIllustration';
 
 // One calibrated surface: only scenarios actually recorded by the server
 // ledger can show as ACTIVE. Browser refreshes cannot reset their targets.
-export default function AICommandCenter({data,error,assetView='ALL',now=Date.now(),goldLive,btcLive}:any){
-  const generatedAt=Number(data?.checkedAt||0);
+export default function AICommandCenter({data,chartData,error,assetView='ALL',now=Date.now(),goldLive,btcLive}:any){
+  // When inference is warming or fails, the real market chart remains available.
+  // A candle refresh may replace chart HISTORY only, never model decisions,
+  // qualifications, timestamps, targets or recommendation confidence.
+  const attachHistory=(asset:'gold'|'bitcoin')=>{
+    const modeled=data?.[asset]||{};
+    const separate=chartData?.[asset];
+    if(!separate?.chartCandles?.length)return modeled;
+    const lastModelCandle=Number(modeled?.chartCandles?.at(-1)?.time||0);
+    const lastFeedCandle=Number(separate?.chartCandles?.at(-1)?.time||0);
+    if(lastModelCandle>=lastFeedCandle&&lastModelCandle>0)return modeled;
+    return {...modeled,chartCandles:separate.chartCandles,
+      chartHigherFrames:separate.chartHigherFrames,
+      candleSource:separate.candleSource};
+  };
+  const displayData=(data||chartData)?{
+    ...(data||{}),gold:attachHistory('gold'),bitcoin:attachHistory('bitcoin'),
+    checkedAt:Number(data?.checkedAt||chartData?.checkedAt||0)
+  }:null;
+  const generatedAt=Number(data?.checkedAt||chartData?.checkedAt||0);
   const [audit,setAudit]=useState<any>(null);
   const [auditError,setAuditError]=useState(false);
   useEffect(()=>{
@@ -39,7 +57,7 @@ export default function AICommandCenter({data,error,assetView='ALL',now=Date.now
       <span>الأهداف الجديدة مش معتمدة على الرسم قبل استعادة سجل الأداء.</span>
     </div></div>}
     <div id="market-forecast">
-      <ForecastIllustration data={data} now={now} snapshotAt={generatedAt}
+      <ForecastIllustration data={displayData} now={now} snapshotAt={generatedAt}
         goldLive={goldLive} btcLive={btcLive} assetView={assetView}
         journals={journal} audit={audit} auditLoaded={audit!=null&&!auditError}/>
     </div>
