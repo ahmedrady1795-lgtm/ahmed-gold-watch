@@ -12,6 +12,7 @@ const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v
 export default function Home(){
   const [assetView,setAssetView]=useState<'ALL'|'GOLD'|'BTC'>('ALL');
   const [aiData,setAiData]=useState<any>(null);
+  const [chartData,setChartData]=useState<any>(null);
   const [aiError,setAiError]=useState('');
   const [busy,setBusy]=useState(false);
   const [btc,setBtc]=useState<number|null>(null);
@@ -70,6 +71,23 @@ export default function Home(){
       if(manual)setBusy(false);
     }
   };
+
+  useEffect(()=>{
+    let closed=false,loading=false;
+    const refreshChart=async()=>{
+      if(loading||document.visibilityState!=='visible')return;
+      loading=true;
+      try{
+        const r=await fetch('/api/chart-history',{cache:'no-store',signal:AbortSignal.timeout(18000)});
+        const j=await r.json().catch(()=>null);
+        if(r.ok&&j?.ok&&!closed)setChartData(j);
+      }catch{/* Keep the last observed candles; never manufacture new ones. */}
+      finally{loading=false;}
+    };
+    void refreshChart();
+    const timer=setInterval(()=>{void refreshChart();},20000);
+    return()=>{closed=true;clearInterval(timer);};
+  },[]);
 
   useEffect(()=>{
     void loadAi();
@@ -225,7 +243,7 @@ export default function Home(){
       <a href="/scalp" className="workspace-scalp-link">سكالب الثواني ↗</a>
     </nav>
     <section className="content lite-content" aria-label="القناص الذكي">
-      <AICommandCenter assetView="ALL" data={aiData} error={aiError} now={now} goldLive={goldTick}
+      <AICommandCenter assetView="ALL" data={aiData} chartData={chartData} error={aiError} now={now} goldLive={goldTick}
         btcLive={btcLive&&shownBtc!=null?{asset:'BTC',ok:true,price:shownBtc,sourceTime:shownBtcAt}:null}/>
       <TradingViewGold />
     </section>
