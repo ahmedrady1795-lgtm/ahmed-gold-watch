@@ -8,6 +8,7 @@ import {economicNewsTimeline} from '../lib/news-alert-window';
 import type {ForecastJournal} from '../lib/forecast-journal';
 import SniperStrategyRadar from './SniperStrategyRadar';
 import {watchForChart} from '../lib/sniper-audit-view';
+import {collapseChartZones} from '../lib/chart-zone-merge';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
   p.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
@@ -50,8 +51,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const planVisible=statusReady||watchReady;
   const sn=m.sniper,dir=planVisible?m.displaySide:watchFresh&&m.bias.active?m.bias.side:'WAIT';
   const rise=dir==='BUY',fall=dir==='SELL';
-  const W=mobile?480:1040,H=expanded?700:520,x0=mobile?18:52,
-    x1=mobile?270:612,xf=x1+10,xr=W-(mobile?84:94),yt=30,yb=H-90,volumeEnd=H-45;
+  const W=mobile?500:1040,H=expanded?700:520,x0=mobile?18:52,
+    x1=mobile?270:612,xf=x1+10,xr=W-(mobile?108:116),yt=30,yb=H-90,volumeEnd=H-45;
   const candles=m.candles.slice(-chartWindow);
   const candleBounds=candles.flatMap(c=>[c.low,c.high]);
   if(m.price!=null)candleBounds.push(m.price);
@@ -59,8 +60,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const candleMax=candleBounds.length?Math.max(...candleBounds):m.upper;
   const candleSpan=Math.max(candleMax-candleMin,Math.abs(m.price||0)*.00065,.01);
   const visibleBands=m.bands.filter(z=>z.kind==='TARGET'||z.kind==='STOP'||
-    (m.fourHour.ready?z.kind==='BUY_REBOUND'||z.kind==='SELL_REBOUND':z.kind==='DEMAND'||z.kind==='SUPPLY'));
-  const chartBands=visibleBands.filter((z,i,a)=>z.kind==='TARGET'||z.kind==='STOP'||a.findIndex(q=>q.kind===z.kind)===i);
+    z.kind==='BUY_REBOUND'||z.kind==='SELL_REBOUND'||z.kind==='DEMAND'||z.kind==='SUPPLY');
+  // Fold coinciding zones only; keep every independent target stage and the stop.
+  const chartBands=collapseChartZones(visibleBands,m.price);
   const allBounds=[...candleBounds,...chartBands.flatMap(z=>[z.low,z.high])];
   const allMin=allBounds.length?Math.min(...allBounds):m.lower;
   const allMax=allBounds.length?Math.max(...allBounds):m.upper;
@@ -99,9 +101,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     m.status==='STALE_CANDLES'?'سوق متوقف أو شموع متأخرة':
     m.status==='NO_CANDLES'?'لا توجد شموع كافية':'انحياز سابق · ليس تحليلًا لحظيًا';
   const highest=m.displayTargets.at(-1);
-  const zoneList=sn.zones.slice(0,4);
-  const reboundBuy=m.fourHour.zones.filter(z=>z.side==='BUY');
-  const reboundSell=m.fourHour.zones.filter(z=>z.side==='SELL');
+  const zoneList=collapseChartZones(m.bands.filter(z=>z.kind!=='TARGET'&&z.kind!=='STOP'),m.price).slice(0,4);
+  const blockAt=Number(audit?.blockAt?.[asset]||0);
+  const waitReason=!planVisible&&blockAt>0&&blockAt<=now+2000&&now-blockAt<=90000?
+    String(audit?.block?.[asset]||''):'';
   const statusText=statusReady?(journal?.message||sn.stageText):
     watchReady?m.bias.reason+' · أهداف الخادم ثابتة للمراقبة':
     watchFresh?m.bias.label+' · '+m.bias.reason:'ننتظر ذاكرة أهداف حديثة من الخادم';
@@ -173,7 +176,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <rect x={xf} y="16" width={xr-xf} height={volumeEnd-15} fill="#56bde7" opacity=".028"/>
               {grid.map((g,i)=><g key={'grid'+i}>
                 <line x1={x0} x2={xr+12} y1={g.y} y2={g.y} stroke="#426076" strokeOpacity=".32" strokeDasharray="3 6"/>
-                <text x={W-8} y={g.y+4} textAnchor="end" fill="#97afc0" fontSize={mobile?14:11} fontFamily="monospace">{fmt(g.value)}</text>
+                <text x={W-8} y={g.y+4} textAnchor="end" fill="#97afc0" fontSize={mobile?14:11} fontFamily="monospace">{m.price!=null&&sn.view.priceFresh&&Math.abs(g.y-px(m.price))<14?'':fmt(g.value)}</text>
               </g>)}
               {Array.from({length:7},(_,i)=><line key={'v'+i} x1={x0+i*(xr-x0)/6} x2={x0+i*(xr-x0)/6} y1="18" y2={volumeEnd+10}
                 stroke="#345267" strokeOpacity=".20" strokeDasharray="3 7"/>)}
@@ -300,19 +303,18 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <div className="forecast-decision-card">
           <strong><Layers3 size={15}/> مناطق الارتداد والسيولة</strong>
           <div className="forecast-decision-zones">
-            {m.fourHour.ready&&[...reboundBuy,...reboundSell].map((z,i)=><span key={z.side+i} className={z.side==='BUY'?'sniper-zone-buy':'sniper-zone-sell'}>
-              <small>{z.side==='BUY'?'منطقة ارتداد شراء':'منطقة ارتداد بيع'} · M5</small>
-              <b dir="ltr">{fmt(z.low)} – {fmt(z.high)}</b>
-            </span>)}
-            {zoneList.length?zoneList.map(z=><span key={z.label}>
+            {zoneList.length?zoneList.map(z=><span key={z.key} className={z.kind==='DEMAND'||z.kind==='BUY_REBOUND'?'sniper-zone-buy':z.kind==='SUPPLY'||z.kind==='SELL_REBOUND'?'sniper-zone-sell':''}>
               <small>{z.label}</small><b dir="ltr">{fmt(z.low)} – {fmt(z.high)}</b>
-            </span>):!m.fourHour.zones.length?<small>لا توجد مناطق جديدة مؤهلة من القمم والقيعان المؤكدة</small>:null}
+            </span>):<small>لا توجد مناطق جديدة مؤهلة من القمم والقيعان المؤكدة</small>}
           </div>
           {sn.flow&&<p>تدفق تقديري: طلب {sn.flow.buy}% · عرض {sn.flow.sell}% ({sn.flow.source})</p>}
         </div>
         <div className="forecast-decision-card">
           <strong><Crosshair size={15}/> قرار القناص وسبب الأهداف</strong>
           <p>{statusText}</p>
+          {statusReady&&journal?<p className="sniper-entry-gates">دخول السيناريو المسجل: <b dir="ltr">{fmt(journal.startPrice)}</b> · الإبطال: <b dir="ltr">{fmt(journal.invalidation)}</b> · المتابعة حتى الإبطال أو الوصول للهدف.</p>:
+            watchReady?<p className="sniper-entry-gates">مراقبة فقط، ليست صفقة جاهزة. يلزم تأكيد اتجاه وإغلاق M5 مؤهل قبل أي دخول.{m.displayStop!=null?' حد إبطال اتجاه المراقبة: '+fmt(m.displayStop):''}</p>:
+            <p className="sniper-entry-gates">لا توجد نقطة دخول مؤهلة حاليًا.{waitReason?' سبب الانتظار: '+waitReason:''}</p>}
           <p>{watchReady?'مستويات بعيدة من قمم وقيعان H1/H4 المكتملة · للمراقبة فقط':sn.longRange?.basis||'في انتظار إطار هيكلي موثوق'}
             {sn.longRange?.atr15!=null?' · ATR M15 '+fmt(sn.longRange.atr15):''}</p>
           {statusReady&&sn.evidence?.length>0&&<div className="forecast-decision-evidence">
