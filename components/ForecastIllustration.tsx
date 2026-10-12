@@ -41,7 +41,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const watchReady=m.watchReady&&!statusReady;
   const overlay=buildChartOverlay({
     now,price:m.price,historyFresh:m.historyFresh,priceFresh:sniperPriceFresh(),
-    fourHour:m.fourHour,m5:x?.chartHigherFrames?.m5,
+    fourHour:m.fourHour,m5:x?.chartHigherFrames?.m5,accumulation:x?.accumulation,
     targets:statusReady||watchReady?m.displayTargets:[]
   });
   function sniperPriceFresh(){return m.sniper.view.priceFresh;}

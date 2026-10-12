@@ -27,7 +27,7 @@ function atr5(rows:Bar[]):number|null{
 }
 export function buildChartOverlay(input:{
   now:number;price:number|null;historyFresh:boolean;priceFresh:boolean;
-  fourHour:any;m5:any;targets?:Array<{stage:number;price:number}>;
+  fourHour:any;m5:any;accumulation?:any;targets?:Array<{stage:number;price:number}>;
 }){
   const {now,price,fourHour}=input;
   const m5=closedM5(input.m5,now),atr=atr5(m5);
@@ -35,15 +35,27 @@ export function buildChartOverlay(input:{
   const fresh=Boolean(input.historyFresh&&input.priceFresh&&fourHour?.ready&&
     price!=null&&price>0&&last&&now-last.time-300000<=15*60000);
   const phase=String(fourHour?.phase||'غير محسوم');
-  const phaseKind=phase.includes('تجميع')?'ACCUMULATION':phase.includes('تصريف')?'DISTRIBUTION':'BALANCED';
+  const fourHourKind=phase.includes('تجميع')?'ACCUMULATION':phase.includes('تصريف')?'DISTRIBUTION':'BALANCED';
+  const activity=String(input.accumulation?.phase||'');
+  const accumulationScore=number(input.accumulation?.accumulationScore)||0;
+  const distributionScore=number(input.accumulation?.distributionScore)||0;
+  const behaviorKind=activity==='ACCUMULATING'||activity==='MARKUP_READY'?'ACCUMULATION':
+    activity==='DISTRIBUTING'||activity==='MARKDOWN_READY'?'DISTRIBUTION':'BALANCED';
+  const behaviorQualified=(behaviorKind==='ACCUMULATION'&&accumulationScore>=40&&accumulationScore>=distributionScore+8)||
+    (behaviorKind==='DISTRIBUTION'&&distributionScore>=40&&distributionScore>=accumulationScore+8);
+  const conflict=behaviorQualified&&fourHourKind!=='BALANCED'&&fourHourKind!==behaviorKind;
+  const phaseKind=conflict?'BALANCED':fourHourKind!=='BALANCED'?fourHourKind:
+    behaviorQualified?behaviorKind:'BALANCED';
   const phaseLabel=!fresh?'قراءة السيولة غير متاحة':phaseKind==='ACCUMULATION'?'تجميع محتمل':
     phaseKind==='DISTRIBUTION'?'تصريف محتمل':'توازن / غير محسوم';
   const sourceBasis=String(fourHour?.volumeBasis||'NONE');
   const evidence=!fresh?'البيانات المغلقة غير كافية أو غير حديثة':
     (fourHour.sweep==='SELL_SIDE'?'سحب سيولة من القاع · ':
      fourHour.sweep==='BUY_SIDE'?'سحب سيولة من القمة · ':'')+
-    (sourceBasis==='REAL'?'تأكيد بحجم حقيقي':
-     sourceBasis==='TICK'?'حجم تداول تقديري Tick':'قراءة سعرية فقط بدون حجم موثوق');
+    (sourceBasis==='REAL'?'حجم حقيقي':
+     sourceBasis==='TICK'?'حجم نشاط Tick غير مباشر':'قراءة سعرية دون حجم موثوق')+
+    (conflict?' · تعارض في قراءات التجميع والتصريف':
+      fourHourKind==='BALANCED'&&behaviorQualified?' · إشارات السلوك M1/M5 مع توازن 4س':'');
   const high=number(fourHour?.rangeHigh),low=number(fourHour?.rangeLow);
   const width=fresh&&atr!=null&&high!=null&&low!=null&&high>low?
     Math.min((high-low)*.1,atr*1.2):null;
@@ -65,7 +77,7 @@ export function buildChartOverlay(input:{
   const confirmedDown=breakoutDown!=null&&confirmation.length===2&&
     confirmation.every(b=>b.close<breakoutDown);
   const trend=fresh?(fourHour.side==='BUY'?'BUY':fourHour.side==='SELL'?'SELL':'WAIT'):'WAIT';
-  const preferred: 'BUY'|'SELL'|'WAIT'=confirmedUp?'BUY':confirmedDown?'SELL':
+  const preferred: 'BUY'|'SELL'|'WAIT'=conflict?'WAIT':confirmedUp?'BUY':confirmedDown?'SELL':
     phaseKind==='ACCUMULATION'?'BUY':phaseKind==='DISTRIBUTION'?'SELL':trend;
   const eta=(level:number)=>{
     if(!fresh||atr==null||price==null||!Number.isFinite(level)||level<=0)return null;

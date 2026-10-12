@@ -42,4 +42,11 @@ dist=build({...source,fourHour:{...source.fourHour,phase:'توازن',side:'WAIT
 assert.equal(dist.phaseKind,'BALANCED');
 assert.equal(dist.preferred,'WAIT');
 assert.equal(dist.timing[0].eta,null);
-console.log('PASS: chart zones, M5 breakout gates, neutral phases, honest volatility ETA and stale feed veto');
+let inferred=build({...source,fourHour:{...source.fourHour,phase:'توازن',side:'WAIT'},
+ accumulation:{phase:'ACCUMULATING',accumulationScore:44,distributionScore:13}});
+assert.equal(inferred.phaseKind,'ACCUMULATION','display informative M1/M5 accumulation beside a neutral H4');
+inferred=build({...source,fourHour:{...source.fourHour,phase:'تجميع محتمل'},
+ accumulation:{phase:'DISTRIBUTING',accumulationScore:10,distributionScore:76}});
+assert.equal(inferred.phaseKind,'BALANCED','contradictory phase evidence must never claim confidence');
+assert.equal(inferred.preferred,'WAIT');
+console.log('PASS: chart zones, engine+H4 liquidity, conflicts, M5 breakout gates, honest ETA and stale veto');
