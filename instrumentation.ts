@@ -22,10 +22,9 @@ export async function register(){
   // Mark this as an internal worker, not a manual browser refresh.
   const url='http://127.0.0.1:'+port+'/api/ai-analysis?worker=1';
   let running=false;
-  let nextCycle:ReturnType<typeof setTimeout>|null=null;
   const schedule=(delay:number)=>{
-    nextCycle=setTimeout(()=>{void tick();},delay);
-    nextCycle.unref?.();
+    const timer=setTimeout(()=>{void tick();},delay);
+    timer.unref?.();
   };
 
   const tick=async()=>{
