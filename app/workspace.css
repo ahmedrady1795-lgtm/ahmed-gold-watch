@@ -925,3 +925,8 @@ body:has(.modern-workspace){
 .sniper-zone-conflict-note{border:1px solid #6b583a;border-radius:7px;background:#251f19;
   color:#f0d4a4!important;padding:7px 9px;margin-top:7px!important;line-height:1.6}
 .sniper-zone-conflict-note b{white-space:nowrap;color:#f8d997}
+
+/* Core market-structure evidence lives in the existing collapsed radar. */
+.sniper-liquidity-foundation{margin:6px 12px 9px;padding:9px 11px;
+  background:#112838;border-inline-start:3px solid #66c6bf;border-radius:5px;
+  color:#b9d8dc;font-size:11px;line-height:1.6}
