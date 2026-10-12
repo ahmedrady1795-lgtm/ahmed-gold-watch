@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict');
+const ts=require('typescript'),fs=require('fs'),vm=require('vm');
+const m={exports:{}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/client-market-freshness.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{module:m,exports:m.exports});
+const {acceptGoldStreamPacket,sourceTimestamp,validSourceTime}=m.exports;
+const t=1790000000000,q={bid:100,ask:101,timestamp:new Date(t-1000).toISOString()};
+assert.ok(acceptGoldStreamPacket(q,t));
+assert.equal(acceptGoldStreamPacket({...q,timestamp:null},t),null);
+assert.equal(acceptGoldStreamPacket({...q,timestamp:new Date(t-60000).toISOString()},t),null);
+assert.equal(acceptGoldStreamPacket({...q,stale:true},t),null);
+assert.equal(acceptGoldStreamPacket({...q,marketState:'closed'},t),null);
+assert.equal(acceptGoldStreamPacket({...q,timestamp:new Date(t+8000).toISOString()},t),null);
+assert.equal(sourceTimestamp(null),null);
+assert.equal(validSourceTime(null,t),false);
+console.log('PASS browser source timestamp validation');
