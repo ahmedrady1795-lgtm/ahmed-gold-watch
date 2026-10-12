@@ -38,6 +38,7 @@ jobs:
       - run: node tests/sniper-scorecard.cjs
       - run: node tests/sniper-watch.cjs
       - run: node tests/forecast-illustration.cjs
+      - run: node tests/chart-trading-overlay.cjs
       - run: node tests/forecast-journal.cjs
       - run: node tests/direction.cjs
       - run: node tests/movement.cjs
