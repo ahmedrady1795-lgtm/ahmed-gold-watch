@@ -77,7 +77,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     return i<0?x1:x0+(i+.5)*stride;
   };
   const readingLive=m.fourHour.ready&&sn.view.priceFresh&&sn.view.forecastFresh&&m.historyFresh;
-  const marketEvents=readingLive?m.fourHour.events.filter(e=>candles[0]&&e.at>=candles[0].time).slice(mobile?-2:-3):[];
+  const marketEvents=readingLive?m.fourHour.events.filter(e=>candles[0]&&e.at>=candles[0].time)
+    .filter((e,i,a)=>a.findLastIndex(q=>q.kind===e.kind)===i).slice(mobile?-2:-3):[];
   const contextBox=readingLive?m.fourHour.contextBox:null;
   const projected=m.projected;
   const futureX=(index:number)=>xf+(index+1)*(xr-xf-12)/Math.max(1,projected.length-1);
