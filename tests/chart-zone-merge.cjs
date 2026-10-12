@@ -13,7 +13,7 @@ const input=[
   zone('DEMAND','D2',96,96.2),zone('DEMAND','D3',91,91.2),
   zone('SUPPLY','U1',99.42,99.7),zone('SELL_REBOUND','R1',99.6,99.9)];
 const out=collapseChartZones(input,100);
-assert.deepEqual(out.filter(z=>z.kind==='TARGET').map(z=>z.key),['TP1','TP2'],
+assert.equal(out.filter(z=>z.kind==='TARGET').map(z=>z.key).join(','),'TP1,TP2',
   'never deduplicate real target stages');
 assert.equal(out.filter(z=>z.kind==='STOP').length,1,'invalidation is never folded');
 const buy=out.filter(z=>['DEMAND','BUY_REBOUND'].includes(z.kind));
