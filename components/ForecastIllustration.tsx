@@ -8,7 +8,7 @@ import {economicNewsTimeline} from '../lib/news-alert-window';
 import type {ForecastJournal} from '../lib/forecast-journal';
 import SniperStrategyRadar from './SniperStrategyRadar';
 import {watchForChart} from '../lib/sniper-audit-view';
-import {collapseChartZones} from '../lib/chart-zone-merge';
+import {collapseChartZones,findOpposingOverlap} from '../lib/chart-zone-merge';
 import {buildBreakoutGuide,explainFrameConflict,layoutPriceLanes} from '../lib/sniper-decision-guide';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
@@ -64,6 +64,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     z.kind==='BUY_REBOUND'||z.kind==='SELL_REBOUND'||z.kind==='DEMAND'||z.kind==='SUPPLY');
   // Fold coinciding zones only; keep every independent target stage and the stop.
   const chartBands=collapseChartZones(visibleBands,m.price);
+  const opposingOverlap=findOpposingOverlap(chartBands,m.price);
   const allBounds=[...candleBounds,...chartBands.flatMap(z=>[z.low,z.high])];
   const allMin=allBounds.length?Math.min(...allBounds):m.lower;
   const allMax=allBounds.length?Math.max(...allBounds):m.upper;
@@ -110,7 +111,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     m.status==='STALE_CANDLES'?'سوق متوقف أو شموع متأخرة':
     m.status==='NO_CANDLES'?'لا توجد شموع كافية':'انحياز سابق · ليس تحليلًا لحظيًا';
   const highest=m.displayTargets.at(-1);
-  const zoneList=collapseChartZones(m.bands.filter(z=>z.kind!=='TARGET'&&z.kind!=='STOP'),m.price).slice(0,4);
+  const zoneList=chartBands.filter(z=>z.kind!=='TARGET'&&z.kind!=='STOP').slice(0,4);
+  const conflictFavor=opposingOverlap&&m.fourHour.ready&&dir!=='WAIT'&&
+    m.fourHour.side===dir?dir:'WAIT';
   const blockAt=Number(audit?.blockAt?.[asset]||0);
   const waitReason=!planVisible&&blockAt>0&&blockAt<=now+2000&&now-blockAt<=90000?
     String(audit?.block?.[asset]||''):'';
@@ -222,6 +225,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   y={Math.max(yt+14,px(contextBox.high)-8)} textAnchor="middle" fill="#ecdfad" fontSize={mobile?14:12} fontWeight="700">{contextBox.label}</text>
                 <title>{contextBox.label+' · '+fmt(contextBox.low)+' – '+fmt(contextBox.high)+' · قراءة سعر ونشاط وليست أوامر مؤسسات'}</title>
               </g>}
+              {opposingOverlap&&px(opposingOverlap.high)<=yb&&px(opposingOverlap.low)>=yt&&<rect
+                x={x0} y={px(opposingOverlap.high)} width={xr-x0}
+                height={Math.max(3,px(opposingOverlap.low)-px(opposingOverlap.high))}
+                fill="#deb368" fillOpacity=".09" stroke="#efbc70" strokeDasharray="4 5" strokeOpacity=".65">
+                <title>{'منطقة تعارض شراء وبيع '+fmt(opposingOverlap.low)+' – '+fmt(opposingOverlap.high)+' · ليست إشارة دخول'}</title>
+              </rect>}
               {chartBands.map(z=>{
                 const clr=z.kind==='BUY_REBOUND'?'#42e5a9':z.kind==='SELL_REBOUND'?'#ff7189':
                   z.kind==='TARGET'?'#3ce6a8':z.kind==='STOP'?'#fd687c':
@@ -309,6 +318,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <span><i className="forecast-legend-projection"/> {watchReady?'مسار مستويات بعيد · توضيحي':'سيناريو مشروط'}</span>
             <span><i className="forecast-legend-target"/> مناطق أهداف</span>
             <span><i className="forecast-legend-rebound"/> مناطق سيولة</span>
+            {opposingOverlap&&<span className="sniper-conflict-legend">◇ تداخل طلب وعرض · انتظار</span>}
             <span className="sniper-buy-legend">● طلب / استرداد</span><span className="sniper-sell-legend">● عرض / رفض</span>
             <span><i className="forecast-legend-stop"/> إبطال</span>
           </div>
@@ -345,6 +355,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <small>{z.label}</small><b dir="ltr">{fmt(z.low)} – {fmt(z.high)}</b>
             </span>):<small>لا توجد مناطق جديدة مؤهلة من القمم والقيعان المؤكدة</small>}
           </div>
+          {opposingOverlap&&<p className="sniper-zone-conflict-note">
+            منطقة طلب وعرض متداخلة <b dir="ltr">{fmt(opposingOverlap.low)} – {fmt(opposingOverlap.high)}</b> ·
+            {conflictFavor==='BUY'?' ميل سياقي للشراء لأن القناص والأربع ساعات متفقان، لكنه غير مؤكد للدخول.':
+              conflictFavor==='SELL'?' ميل سياقي للبيع لأن القناص والأربع ساعات متفقان، لكنه غير مؤكد للدخول.':
+              ' لا توجد أفضلية مثبتة؛ ننتظر كسرًا مغلقًا وتوافق الفريمات.'}
+          </p>}
           {sn.flow&&<p>تدفق تقديري: طلب {sn.flow.buy}% · عرض {sn.flow.sell}% ({sn.flow.source})</p>}
         </div>
         <div className="forecast-decision-card">
