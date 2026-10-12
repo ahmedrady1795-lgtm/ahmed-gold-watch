@@ -33,6 +33,8 @@ jobs:
       - run: node tests/continuous-direction.cjs
       - run: node tests/sniper-stability.cjs
       - run: node tests/four-hour-structure.cjs
+      - run: node tests/liquidity-foundation.cjs
+      - run: node tests/sniper-strategies.cjs
       - run: node tests/sniper-decision-guide.cjs
       - run: node tests/chart-zone-merge.cjs
       - run: node tests/long-range-targets.cjs
