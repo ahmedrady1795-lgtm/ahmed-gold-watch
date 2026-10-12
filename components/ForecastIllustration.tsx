@@ -299,45 +299,39 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>}
         </div>
       </div>
-      <section className="sniper-audit-panel" aria-label="سجل الأداء الحقيقي للقناص">
+      <section className="sniper-audit-panel sniper-audit-compact" aria-label="ملخص نتائج القناص">
         <div className="sniper-audit-heading">
-          <strong><ShieldAlert size={15}/> مراقبة الأهداف الفعلية · {asset==='GOLD'?'الذهب':'البيتكوين'}</strong>
-          <span>{auditHealthy?'تخزين دائم على السيرفر':'سجل غير مؤكد الآن'}</span>
+          <strong><Layers3 size={15}/> سجل أداء القناص · {asset==='GOLD'?'الذهب':'البيتكوين'}</strong>
+          <span>{audit?.persistence==='VOLUME'?'سجل على الخادم':'حفظ مؤقت · قد يُفقد بعد إعادة التشغيل'}</span>
         </div>
-        <div className="sniper-audit-figures">
-          <div><small>سيناريوهات مكتملة التقييم</small><b dir="ltr">{observed}</b></div>
-          <div><small>TP1 · وصول مُلاحظ</small><b>{observed>=40&&calibration?.targets?.[0]?.observedPct!=null?calibration.targets[0].observedPct+'%':'قيد جمع البيانات'}</b></div>
-          <div><small>TP2 · وصول مُلاحظ</small><b>{observed>=40&&calibration?.targets?.[1]?.observedPct!=null?calibration.targets[1].observedPct+'%':'قيد جمع البيانات'}</b></div>
-          <div><small>TP3 · وصول مُلاحظ</small><b>{observed>=40&&calibration?.targets?.[2]?.observedPct!=null?calibration.targets[2].observedPct+'%':'قيد جمع البيانات'}</b></div>
+        <div className="sniper-audit-summary-grid">
+          <div className="sniper-audit-summary-item">
+            <small>سيناريوهات الدخول المؤهلة</small>
+            <strong dir="ltr">{observed} <small>تقييم مكتمل</small></strong>
+            <span>{observed<40?'نحتاج '+Math.max(0,40-observed)+' نتيجة إضافية قبل عرض نسب الوصول':
+              ([1,2,3] as const).map(stage=>{
+                const target=calibration?.targets?.find((t:any)=>t.stage===stage)??calibration?.targets?.[stage-1];
+                return target?.observedPct!=null?'TP'+stage+': '+target.observedPct+'%':null;
+              }).filter(Boolean).join(' · ')||'النسب غير متاحة'}</span>
+          </div>
+          <div className="sniper-audit-summary-item">
+            <small>الرصد الهيكلي للأهداف البعيدة</small>
+            <strong dir="ltr">{watchObserved} <small>مسار مكتمل</small></strong>
+            <span>{watchObserved<40?'قيد جمع بيانات الرصد':
+              ([1,2,3] as const).map(stage=>{
+                const target=watchMetrics?.targets?.find((t:any)=>t.stage===stage);
+                return Number(target?.samples||0)>=40&&target?.observedPct!=null?
+                  'هدف '+stage+': '+target.observedPct+'%':null;
+              }).filter(Boolean).join(' · ')||'النسب غير متاحة'}</span>
+          </div>
         </div>
-        <p>
-          {observed<40?'نحتاج '+Math.max(0,40-observed)+' سيناريوهات إضافية مكتملة قبل عرض النِّسب. ':''}
-          الحالات غير الحاسمة: {Number(calibration?.ambiguous||0)} · انقطاع المتابعة: {Number(calibration?.unobserved||0)}.
-          المعدلات نسبة وصول الأهداف قبل انتهاء السيناريو، وليست احتمالات ربح أو شهادة بدقة النموذج.
+        <p>السيناريوهات المؤهلة تختلف عن رصد المستويات البعيدة. النتائج سجل متابعة وليست نسبة ربح مؤكدة.
+          {Number(calibration?.ambiguous||0)+Number(calibration?.unobserved||0)+Number(watchMetrics?.ambiguous||0)+Number(watchMetrics?.unobserved||0)>0?
+            ' · عينات غير حاسمة أو مفقودة: '+(
+              Number(calibration?.ambiguous||0)+Number(calibration?.unobserved||0)+
+              Number(watchMetrics?.ambiguous||0)+Number(watchMetrics?.unobserved||0)
+            ):''}
         </p>
-        {audit?.block?.[asset]&&<p>سبب الانتظار الحالي: {String(audit.block[asset])}</p>}
-      </section>
-      <section className="sniper-audit-panel" aria-label="ذاكرة ونتائج الرصد البعيد">
-        <div className="sniper-audit-heading">
-          <strong><Layers3 size={15}/> ذاكرة القناص · نتائج الأهداف البعيدة</strong>
-          <span>{watchFresh?'اتجاه وأهداف محفوظة على الخادم':'في انتظار تحديث ذاكرة الخادم'}</span>
-        </div>
-        <div className="sniper-audit-figures">
-          <div><small>مسارات مكتملة التقييم</small><b>{watchObserved}</b></div>
-          {([1,2,3] as const).map(stage=>{
-            const rate=watchMetrics?.targets?.find((t:any)=>t.stage===stage);
-            return <div key={stage}><small>هدف بعيد {stage} · وصول مُلاحظ</small>
-              <b>{Number(rate?.samples||0)>=40&&rate?.observedPct!=null?rate.observedPct+'%':'قيد جمع البيانات'}</b>
-              <small>{Number(rate?.samples||0)} مسار · {rate?.avgMinutes!=null?'متوسط الوصول '+rate.avgMinutes+' د':'لا متوسط مثبت'}</small>
-            </div>;
-          })}
-        </div>
-        <p>مدة تقييم المسار حتى 8 ساعات، وليست موعدًا لوصول السعر. الإبطال: {Number(watchMetrics?.stopped||0)} ·
-          انعكاس مؤكد: {Number(watchMetrics?.reversed||0)} · انتهت المدة: {Number(watchMetrics?.expired||0)} ·
-          نتائج مستبعدة لتداخل أو نقص شموع: {Number(watchMetrics?.ambiguous||0)+Number(watchMetrics?.unobserved||0)}.</p>
-        <p>الرصد منفصل عن سيناريو الدخول. النتائج تُجمع للأمام دون تغيير الأهداف بعد صدورها؛ لا تثبت الربحية بعد تكاليف التداول.</p>
-        {serverWatch?.current&&<p>آخر مسار: {String(serverWatch.current.note)} ·
-          الأهداف الأصلية: {serverWatch.current.targets.map((t:any)=>fmt(t.price)+(t.reachedAt?' ✓':'')).join(' / ')}</p>}
       </section>
       <footer className="forecast-visual-note">
         <span>الشموع السابقة بيانات سوق فعلية. {watchReady?'الخط الأصفر مراقبة هيكلية أولية، وليس إشارة شراء أو بيع.':'الخط المتقطع ترتيب مستويات مشروط، وليس توقعًا لشكل الشموع أو وقت وصولها.'}</span>
