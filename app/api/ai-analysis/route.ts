@@ -532,8 +532,15 @@ export async function GET(request:Request){
       'X-AI-Btc-Move-Bps':btcMoveBps.toFixed(2)
     }});
   }
-  if(analysisBusy&&lastAiPayload&&now-lastAiPayloadAt<30000){
-    return Response.json({...lastAiPayload,stale:true},{headers:{'Cache-Control':'no-store','X-AI-Cache':'busy'}});
+  if(analysisBusy){
+    // Never start a second heavy computation just because the first one
+    // ran beyond the 30s snapshot window. The free tier cannot afford two.
+    if(lastAiPayload&&now-lastAiPayloadAt<30000)
+      return Response.json({...lastAiPayload,stale:true},{headers:{
+        'Cache-Control':'no-store','X-AI-Cache':'busy'}});
+    return Response.json({ok:false,warming:true,
+      message:'التحليل قيد التحديث؛ لا توجد نتيجة حديثة مؤكدة بعد'},
+      {status:503,headers:{'Cache-Control':'no-store','Retry-After':'5','X-AI-Cache':'busy-no-snapshot'}});
   }
   analysisBusy=true;
   try{
