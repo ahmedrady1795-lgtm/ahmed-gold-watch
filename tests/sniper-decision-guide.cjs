@@ -1,0 +1,31 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),ts=require('typescript'),vm=require('node:vm');
+const m={exports:{}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/sniper-decision-guide.ts','utf8'),{
+  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
+}).outputText,{module:m,exports:m.exports,require,console});
+const {buildBreakoutGuide,explainFrameConflict,layoutPriceLanes}=m.exports;
+const now=Date.parse('2026-10-12T12:00:00Z');
+const rows=Array.from({length:16},(_,i)=>({time:now-(16-i)*300000,open:100,high:101,low:99,close:100}));
+const inp={frames:{m5:rows},now,side:'BUY',price:100,sourceReady:true,invalidation:97};
+let v=buildBreakoutGuide(inp);
+assert.equal(v.ready,true);assert.equal(v.above,101.16);assert.equal(v.below,98.84);
+assert.equal(v.confirmed,false);assert.match(v.reason,/101.16/);
+v=buildBreakoutGuide({...inp,frames:{m5:rows.map((r,i)=>i>=14?{...r,high:103,close:102}:r)}});
+assert.equal(v.confirmed,true,'two fully closed M5 candles confirm price breakout');
+assert.equal(v.invalidation,97,'validated original stop only');
+assert.equal(v.confirmedAt,now);
+v=buildBreakoutGuide({...inp,side:'SELL',frames:{m5:rows.map((r,i)=>i>=14?{...r,low:97,close:98}:r)}});
+assert.equal(v.confirmed,true,'bear confirmation uses the lower bound');
+assert.equal(buildBreakoutGuide({...inp,now:now+20*60000}).ready,false,'stale candles cannot prompt entry');
+assert.equal(buildBreakoutGuide({...inp,frames:{m5:[...rows.slice(0,15),{...rows[15],time:now+300000}]}}).confirmed,false,'future candle excluded');
+assert.equal(buildBreakoutGuide({...inp,side:'WAIT'}).trigger,null,'no fabricated entry in balanced market');
+assert.equal(buildBreakoutGuide({...inp,invalidation:105}).invalidation,null,'wrong side of price is not a stop');
+assert.match(explainFrameConflict('WAIT','SELL',true),/غير محسوم/);
+assert.match(explainFrameConflict('BUY','SELL',true),/متعارضان/);
+assert.match(explainFrameConflict('BUY','WAIT',true),/محايد/);
+assert.match(explainFrameConflict('BUY','BUY',false),/غير مكتملة/);
+const lanes=layoutPriceLanes([{key:'a',y:50},{key:'b',y:51},{key:'c',y:52},{key:'d',y:80}],40,140);
+assert.equal(lanes.length,4);assert.ok(lanes.every(z=>z.labelY>=40&&z.labelY<=140));
+assert.ok(lanes.every((z,i)=>i===0||z.labelY-lanes[i-1].labelY>=19.999));
+assert.equal(layoutPriceLanes([{key:'out',y:200}],40,140).length,0);
+console.log('PASS: M5 two-close levels, stale/future gates, invalidation, frame mismatch, label spacing');
