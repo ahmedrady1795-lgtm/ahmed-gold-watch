@@ -24,6 +24,7 @@ export default function Home(){
   const aiReady=useRef(false);
   const aiFailureCount=useRef(0);
   const aiEtag=useRef('');
+  const aiRecoveryAttemptAt=useRef(0);
   const btcUiAt=useRef(0);
 
   const loadAi=async(manual=false)=>{
@@ -32,7 +33,7 @@ export default function Home(){
     if(manual)setBusy(true);
     try{
       // Normal UI refreshes are read-only and never start the expensive analysis.
-      // A manual refresh is the only browser action allowed to request a heavy cycle.
+      // Manual refresh and rate-limited serverless recovery can run a heavy cycle.
       const endpoint=manual
         ?'/api/ai-analysis?worker=1&manual=1&_='+Date.now()
         :'/api/ai-snapshot?_='+Date.now();
@@ -48,7 +49,28 @@ export default function Home(){
       }
       const j=await r.json().catch(()=>null);
       if(r.status===503&&j?.warming){
-        if(!aiReady.current)setAiError('');
+        // A serverless instance cannot rely on the background worker or an
+        // in-memory snapshot shared with another instance. Recover in the
+        // active browser at most once per minute; never create a 3s AI loop.
+        const recoveryAt=Date.now();
+        if(!manual&&recoveryAt-aiRecoveryAttemptAt.current>=60000){
+          aiRecoveryAttemptAt.current=recoveryAt;
+          try{
+            const direct=await fetch('/api/ai-analysis?worker=1&manual=1&recovery=1&_='+recoveryAt,{
+              cache:'no-store',signal:AbortSignal.timeout(12000)
+            });
+            const fresh=await direct.json().catch(()=>null);
+            if(!direct.ok||!fresh?.ok)throw new Error(fresh?.message||'تعذر استعادة التحليل');
+            setAiData(fresh);
+            setAiLastOkAt(Date.now());
+            aiReady.current=true;
+            aiFailureCount.current=0;
+            setAiError('');
+            setNow(Date.now());
+          }catch(e){
+            if(!aiReady.current)setAiError(e instanceof Error?e.message:'تعذر استعادة التحليل');
+          }
+        }
         return;
       }
       if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر قراءة محرك AI');
