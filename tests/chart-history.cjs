@@ -1,0 +1,30 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),ts=require('typescript'),vm=require('vm');
+const exports={};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/chart-history.ts','utf8'),{
+  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
+}).outputText,{exports});
+const {closedChartBars,chartAssetFromMarket}=exports;
+const now=1791800000000,slot=Math.floor((now-60000)/60000)*60000;
+const valid={time:slot,open:4200,high:4204,low:4198,close:4201,tickVolume:18};
+const bars=closedChartBars([valid,{...valid,time:slot+60000}],60000,slot+60000);
+assert.equal(bars.length,1,'only completed candles');
+assert.equal(bars[0].volumeBasis,'TICK');
+assert.equal(closedChartBars([{...valid,high:4190}],60000,now).length,0,'reject corrupt OHLC');
+assert.equal(closedChartBars([{...valid,time:now+60000}],60000,now).length,0,'reject future bars');
+assert.equal(closedChartBars([{...valid,time:1000000000000}],60000,now).length,0,'reject old historic bars');
+const market={priceSource:'Biquote',c1:[valid],c5:[{...valid,time:Math.floor((now-300000)/300000)*300000}],c15:[],c60:[]};
+const result=chartAssetFromMarket(market,now);
+assert.equal(result?.chartCandles.length,1);
+assert.equal(result?.chartHigherFrames.m5.length,1);
+assert.equal(result?.chartHigherFrames.m15.length,0);
+const page=fs.readFileSync('app/page.tsx','utf8');
+const ui=fs.readFileSync('components/AICommandCenter.tsx','utf8');
+const endpoint=fs.readFileSync('app/api/chart-history/route.ts','utf8');
+assert.match(page,/fetch\('\/api\/chart-history'/,'chart history has its own polling loop');
+assert.match(page,/chartData=\{chartData\}/,'UI receives independent chart data');
+assert.match(ui,/chartCandles:separate\.chartCandles/,'market candles replace missing outdated model chart');
+assert.match(ui,/\.\.\.\(data\|\|\{\}\)/,'existing AI recommendations are retained');
+assert.match(endpoint,/getMarketData\(\),getBtcMarket\(\)/,'chart feed is independent of AI');
+assert.doesNotMatch(endpoint,/getAiSnapshot|ai-analysis/,'no dependency on heavy AI snapshot');
+console.log('PASS: independently available real closed candles, chart and AI remain safely separate');
