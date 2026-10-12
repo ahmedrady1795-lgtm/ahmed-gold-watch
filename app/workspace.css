@@ -752,3 +752,57 @@ body:has(.modern-workspace){
   border:1px solid #795e38;border-radius:8px;background:#30261a;color:#f9d99d;
   font-size:11px;line-height:1.5;cursor:pointer}
 .forecast-news-peek:hover{background:#46331d}
+
+
+/* On-chart liquidity, closed-M5 breakout radar and volatility timing. */
+.forecast-flow-banner{display:grid;grid-template-columns:minmax(165px,.7fr) minmax(180px,1.1fr) minmax(175px,.8fr);
+  align-items:center;gap:12px;margin:9px 10px 0;padding:11px 13px;border-radius:11px;
+  border:1px solid #315d69;background:linear-gradient(105deg,#103042,#0c1b2a)}
+.forecast-flow-banner.phase-accumulation{border-color:#348f76;background:linear-gradient(110deg,#10362f,#0b2630)}
+.forecast-flow-banner.phase-distribution{border-color:#98636d;background:linear-gradient(110deg,#36212d,#132334)}
+.forecast-flow-title{display:flex;align-items:center;gap:9px}
+.forecast-flow-orb{width:34px;height:34px;border:1px solid #4a8c98;background:#143c49;display:grid;place-items:center;border-radius:9px;color:#8de2eb;flex-shrink:0}
+.forecast-flow-title small,.forecast-flow-zones span{display:block;color:#9fc3d1;font-size:10px}
+.forecast-flow-title strong{display:block;font-size:16px;color:#d9f4f1;line-height:1.45}
+.phase-accumulation .forecast-flow-title strong{color:#5ee7b2}
+.phase-distribution .forecast-flow-title strong{color:#ff9caa}
+.forecast-flow-explainer{font-size:11px;color:#d3e6ed;line-height:1.6}
+.forecast-flow-explainer small{display:block;font-size:9px;color:#89aaba}
+.forecast-flow-zones{display:grid;gap:6px}
+.forecast-flow-zones span{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.forecast-flow-zones b{font-size:11px;color:#f3c0c9;font-variant-numeric:tabular-nums}
+.forecast-flow-zones span:last-child b{color:#8ce7e7}
+.forecast-eta-section{margin:0 10px 9px;border:1px solid #32536b;border-radius:10px;
+  background:linear-gradient(125deg,#102230,#0b1928);padding:10px}
+.forecast-eta-header{display:flex;justify-content:space-between;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:9px}
+.forecast-eta-header strong{display:inline-flex;align-items:center;gap:6px;color:#e0eff4;font-size:12px}
+.forecast-eta-header small{color:#8aabba;font-size:9px}
+.forecast-eta-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.forecast-eta-card{display:flex;flex-direction:column;gap:4px;padding:9px;background:#0e2432;
+  border:1px solid #2c695d;border-radius:8px;text-align:center;min-width:0}
+.forecast-eta-card small{font-size:10px;color:#a7c6cd}
+.forecast-eta-card strong{font-size:18px;color:#7aefc1;font-variant-numeric:tabular-nums}
+.forecast-eta-card span{font-size:10px;color:#e0c99d}
+.forecast-breakout-rail{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+.forecast-breakout-rail>span{display:grid;grid-template-columns:auto 1fr;align-items:center;column-gap:5px;
+  background:#0d1d2b;border:1px solid #315163;border-radius:8px;padding:8px;font-size:10px;color:#cce6ed}
+.forecast-breakout-rail>span:first-child{border-color:#397967}
+.forecast-breakout-rail>span:nth-child(2){border-color:#7b4555}
+.forecast-breakout-rail b{justify-self:end;font-size:13px;color:#b7f7d8}
+.forecast-breakout-rail>span:nth-child(2) b{color:#ffaeba}
+.forecast-breakout-rail small{grid-column:1/-1;color:#95afc0;font-size:9px;margin-top:4px}
+.forecast-eta-summary{display:flex;align-items:flex-start;gap:7px;font-size:10px;color:#acc7d6;
+  line-height:1.65;margin:8px 2px 0}
+.forecast-eta-summary svg{flex-shrink:0;margin-top:2px;color:#d7b981}
+@media(max-width:850px){.forecast-flow-banner{grid-template-columns:1fr 1fr;gap:9px}
+  .forecast-flow-explainer{grid-column:1/-1;grid-row:2}.forecast-flow-zones{gap:5px}}
+@media(max-width:520px){.forecast-flow-banner{margin:6px;grid-template-columns:1fr;padding:9px}
+  .forecast-flow-explainer{grid-column:auto;grid-row:auto}
+  .forecast-flow-zones{grid-template-columns:1fr 1fr;gap:5px}
+  .forecast-flow-zones span{flex-direction:column;align-items:flex-start;font-size:9px}
+  .forecast-flow-zones b{font-size:10px}
+  .forecast-eta-section{margin:0 6px 7px;padding:8px}
+  .forecast-eta-grid{gap:4px}.forecast-eta-card{padding:8px 4px}
+  .forecast-eta-card strong{font-size:12px}.forecast-eta-card small{font-size:9px}
+  .forecast-eta-card span{font-size:9px}
+  .forecast-breakout-rail b{font-size:11px}}

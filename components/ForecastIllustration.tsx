@@ -3,6 +3,7 @@
 import {useState} from 'react';
 import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Crosshair,Layers3,ShieldAlert,Target} from 'lucide-react';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
+import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import NewsCommandCenter from './NewsCommandCenter';
 import {economicNewsTimeline} from '../lib/news-alert-window';
 import type {ForecastJournal} from '../lib/forecast-journal';
@@ -38,6 +39,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       (watchFresh?serverWatch.bias:{...serverWatch.bias,active:false}):null);
   const statusReady=m.ready&&auditHealthy;
   const watchReady=m.watchReady&&!statusReady;
+  const overlay=buildChartOverlay({
+    now,price:m.price,historyFresh:m.historyFresh,priceFresh:sniperPriceFresh(),
+    fourHour:m.fourHour,m5:x?.chartHigherFrames?.m5,
+    targets:statusReady||watchReady?m.displayTargets:[]
+  });
+  function sniperPriceFresh(){return m.sniper.view.priceFresh;}
   const planVisible=statusReady||watchReady;
   const sn=m.sniper,dir=planVisible?m.displaySide:m.bias.active?m.bias.side:'WAIT';
   const rise=dir==='BUY',fall=dir==='SELL';
@@ -47,8 +54,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const candleMin=candleBounds.length?Math.min(...candleBounds):m.lower;
   const candleMax=candleBounds.length?Math.max(...candleBounds):m.upper;
   const candleSpan=Math.max(candleMax-candleMin,Math.abs(m.price||0)*.00065,.01);
-  const scaleLow=focusCandles?candleMin-candleSpan*.3:m.lower;
-  const scaleHigh=focusCandles?candleMax+candleSpan*.3:m.upper;
+  const scaleLow=focusCandles?candleMin-candleSpan*.3:Math.min(m.lower,overlay.lower?.low??m.lower,overlay.breakoutDown??m.lower);
+  const scaleHigh=focusCandles?candleMax+candleSpan*.3:Math.max(m.upper,overlay.upper?.high??m.upper,overlay.breakoutUp??m.upper);
   const px=(p:number)=>yt+(scaleHigh-p)/Math.max(.0000001,scaleHigh-scaleLow)*(yb-yt);
   const grid=Array.from({length:5},(_,i)=>({y:yt+i*(yb-yt)/4,value:scaleHigh-(scaleHigh-scaleLow)*i/4}));
   const candles=m.candles;
@@ -57,6 +64,18 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const maxVolume=Math.max(1,...candles.map(c=>c.volume));
   const chartBands=m.bands.slice().sort((a,b)=>a.kind==='TARGET'?-1:b.kind==='TARGET'?1:0);
   const projected=m.projected;
+  // Conditional paths never claim an approved trade, and only lead to closed-M5
+  // breakout levels or existing four-hour liquidity ranges.
+  const conditionalPath=(side:'BUY'|'SELL')=>{
+    const level=side==='BUY'?overlay.breakoutUp:overlay.breakoutDown;
+    if(!overlay.ready||level==null||m.price==null)return '';
+    const pool=side==='BUY'?overlay.upper:overlay.lower;
+    const terminal=pool&&(side==='BUY'?pool.center>level:pool.center<level)?pool.center:level;
+    const start=clamp(px(m.price),yt+10,yb-10),breakAt=clamp(px(level),yt+10,yb-10);
+    const endAt=clamp(px(terminal),yt+10,yb-10);
+    return 'M '+xf+' '+start+' C '+(xf+45)+' '+start+' '+(xf+58)+' '+breakAt+' '+(xf+126)+' '+breakAt+
+      ' C '+(xf+170)+' '+breakAt+' '+(xr-100)+' '+endAt+' '+(xr-38)+' '+endAt;
+  };
   let projectedPath='';
   if(planVisible&&projected.length>=2){
     projectedPath='M '+xf+' '+px(projected[0].price);
@@ -114,6 +133,20 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           'آخر قراءة: '+m.bias.label+' · '+m.bias.reason} {m.fourHour.ready?' · 4س: '+m.fourHour.phase:''}</span>
         <span><Layers3 size={14}/> وجهات بعيدة: H1 / H4 · مستويات فعلية</span>
         <span><Target size={14}/> {statusReady?'سيناريو مسجل':watchReady?'مستويات مراقبة بعيدة · دون أمر تداول':m.bias.active?'الاتجاه مرصود · الأهداف قيد التحقق':'بيانات قيد التحديث'}</span>
+      </div>
+      <div className={'forecast-flow-banner phase-'+overlay.phaseKind.toLowerCase()} aria-live="polite">
+        <div className="forecast-flow-title">
+          <span className="forecast-flow-orb"><Layers3 size={21}/></span>
+          <div><small>حالة السيولة · آخر 4 ساعات</small><strong>{overlay.phaseLabel}</strong></div>
+        </div>
+        <div className="forecast-flow-explainer">
+          <span>{overlay.evidence}</span>
+          <small>استنتاج من الشموع ومناطق السعر، وليس رصدًا مباشرًا لأوامر المؤسسات.</small>
+        </div>
+        <div className="forecast-flow-zones">
+          <span>سيولة علوية <b dir="ltr">{overlay.upper?fmt(overlay.upper.low)+' – '+fmt(overlay.upper.high):'—'}</b></span>
+          <span>سيولة سفلية <b dir="ltr">{overlay.lower?fmt(overlay.lower.low)+' – '+fmt(overlay.lower.high):'—'}</b></span>
+        </div>
       </div>
       <div className="forecast-visual-layout">
         <div className="forecast-visual-facts">
@@ -191,6 +224,28 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 strokeDasharray="6 7"/>
               <text x={xf-14} y="13" textAnchor="end" fill="#88bbd3" fontSize="11">تاريخ فعلي</text>
               <text x={xf+8} y="13" fill="#e7c58a" fontSize="11">المستقبل / سيناريو</text>
+              {overlay.ready&&[overlay.upper,overlay.lower].filter((z):z is NonNullable<typeof z>=>z!=null).map(z=>{
+                const top=clamp(px(z.high),yt,yb),bottom=clamp(px(z.low),yt,yb);
+                const clr=z.side==='UPPER'?'#ff8397':'#55ddeb';
+                return <g key={'pool-'+z.side}>
+                  <rect x={x0} y={Math.min(top,bottom)} width={xr-x0} height={Math.max(5,Math.abs(bottom-top))}
+                    rx="4" fill={clr} fillOpacity=".11" stroke={clr} strokeOpacity=".65" strokeDasharray="6 5"/>
+                  <text x={xf+12} y={clamp(Math.min(top,bottom)-5,yt+9,yb-7)} fill={clr} fontSize="11" fontWeight="700">
+                    {z.side==='UPPER'?'سيولة علوية · عرض محتمل':'سيولة سفلية · طلب محتمل'}</text>
+                </g>;
+              })}
+              {overlay.ready&&([{side:'BUY',level:overlay.breakoutUp,confirmed:overlay.confirmedUp},
+                {side:'SELL',level:overlay.breakoutDown,confirmed:overlay.confirmedDown}] as const)
+                .filter(o=>o.level!=null).map(o=>{
+                  const y=clamp(px(o.level!),yt+10,yb-10),color=o.side==='BUY'?'#6beab8':'#ff9ea9';
+                  return <g key={'break-'+o.side}>
+                    <line x1={xf-8} x2={xr-9} y1={y} y2={y} stroke={color} strokeOpacity=".86"
+                      strokeWidth={o.confirmed?2:1.3} strokeDasharray={o.confirmed?undefined:'6 5'}/>
+                    <circle cx={xf+4} cy={y} r="4" fill="#102330" stroke={color} strokeWidth="1.5"/>
+                    <text x={xf+12} y={clamp(y-8,yt+12,yb-5)} fill={color} fontSize="11" fontWeight="700">
+                      {o.side==='BUY'?'كسر صاعد':'كسر هابط'} {fmt(o.level)} {o.confirmed?'· مؤكد M5':'· مشروط'}</text>
+                  </g>;
+                })}
               {chartBands.map(z=>{
                 const clr=z.kind==='BUY_REBOUND'?'#42e5a9':z.kind==='SELL_REBOUND'?'#ff7189':
                   z.kind==='TARGET'?'#3ce6a8':z.kind==='STOP'?'#fd687c':
@@ -242,11 +297,25 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   cx={Math.min(xr-8,716+i*106)} cy={px(p.price)} r="4.2"
                   fill={rise?'#7eecc3':'#ffc2ce'} stroke="#0a1928" strokeWidth="2"/>)}
               </g>}
-              {!planVisible&&<g>
+              {!planVisible&&overlay.ready&&<g>
+                {(['BUY','SELL'] as const).map(side=>{
+                  const path=conditionalPath(side);
+                  return path?<path key={'conditional-'+side} d={path} fill="none"
+                    stroke={side==='BUY'?'#65edb7':'#94b6ff'}
+                    strokeWidth={overlay.preferred===side?2.8:1.65}
+                    strokeDasharray={overlay.preferred===side?'8 5':'4 8'}
+                    strokeOpacity={overlay.preferred===side?1:.53}
+                    markerEnd={'url(#forecast-arrow-'+asset+')'}/>:null;
+                })}
+                <rect x="706" y="204" width="205" height="38" rx="7" fill="#0b1928" stroke="#52748b"/>
+                <text x="808" y="220" textAnchor="middle" fill="#dce9f2" fontSize="11" fontWeight="700">مساران مشروطان بالكسر</text>
+                <text x="808" y="233" textAnchor="middle" fill="#a1becd" fontSize="9">ليس أمر دخول أو هدف مضمون</text>
+              </g>}
+              {!planVisible&&!overlay.ready&&<g>
                 <rect x="645" y="136" width="273" height="65" rx="9" fill="#0a1520" stroke="#3a5464" strokeOpacity=".8"/>
                 <text x="782" y="160" fill="#cedfeb" textAnchor="middle" fontSize="14" fontWeight="700">
-                  {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'لا توجد شموع كافية':m.bias.active?m.bias.label:'بيانات الرصد غير حديثة'}</text>
-                <text x="782" y="182" fill="#91abbb" textAnchor="middle" fontSize="11">لن نختلق هدفًا أو مسارًا بدون بيانات</text>
+                  {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'لا توجد شموع كافية':'البيانات غير مكتملة'}</text>
+                <text x="782" y="182" fill="#91abbb" textAnchor="middle" fontSize="11">لا مسار أو توقيت دون بيانات حديثة</text>
               </g>}
             </svg>
           </div>
@@ -260,6 +329,39 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
         </div>
       </div>
+      <section className="forecast-eta-section" aria-label="التوقيت التقريبي للأهداف">
+        <div className="forecast-eta-header">
+          <strong><Clock3 size={16}/> مسار الحركة والوقت التقريبي للأهداف</strong>
+          <small>تقدير من ATR M5 بعد تحقق شروط السيناريو · ليس موعدًا مضمونًا</small>
+        </div>
+        <div className="forecast-eta-grid">
+          {([1,2,3] as const).map(stage=>{
+            const target=m.displayTargets.find(t=>t.stage===stage);
+            const timing=overlay.timing.find(t=>t.stage===stage)?.eta;
+            return <div key={stage} className="forecast-eta-card">
+              <small>{stage===1?'الهدف الأول':stage===2?'الهدف الثاني':'الهدف الثالث'} · {statusReady?'مسجل':watchReady?'للمراقبة':'غير مؤهل'}</small>
+              <strong dir="ltr">{fmt(target?.price)}</strong>
+              <span>{timing&&target?(timing.min+'–'+timing.max+' دقيقة'):'الوقت غير محدد'}</span>
+            </div>;
+          })}
+        </div>
+        <div className="forecast-breakout-rail">
+          <span><ArrowUpRight size={15}/> شرط الكسر الصاعد <b dir="ltr">{fmt(overlay.breakoutUp)}</b>
+            <small>{overlay.confirmedUp?'شمعتان M5 فوق المستوى · باقي الشروط لازمة':'انتظار شمعتين M5 مغلقتين فوقه'}</small>
+          </span>
+          <span><ArrowDownRight size={15}/> شرط الكسر الهابط <b dir="ltr">{fmt(overlay.breakoutDown)}</b>
+            <small>{overlay.confirmedDown?'شمعتان M5 تحت المستوى · باقي الشروط لازمة':'انتظار شمعتين M5 مغلقتين تحته'}</small>
+          </span>
+        </div>
+        <p className="forecast-eta-summary">
+          <Target size={14}/> {overlay.ready?(
+            overlay.preferred==='BUY'?'السيناريو المراقب: اختبار الكسر العلوي ثم سيولة القمم':
+            overlay.preferred==='SELL'?'السيناريو المراقب: اختبار الكسر السفلي ثم سيولة القيعان':
+            'السيناريو متوازن: نراقب كسر أحد الحدين دون ترجيح')
+            :'في انتظار شموع M1/M5 حديثة ومتسقة لتحديد السيناريو.'}
+          {' · '}التجميع والتصريف احتمالات سعرية فقط، وليسا إثباتًا لتدفقات المؤسسات.
+        </p>
+      </section>
       <section className="sniper-four-hour" aria-label="قراءة آخر أربع ساعات">
         <div className="sniper-four-head">
           <strong>تحليل آخر 4 ساعات · هيكل وسيولة</strong>
