@@ -42,6 +42,18 @@ for(const side of ['BUY','SELL']){
   assert.notEqual(run(failed).strategies.find(x=>x.id==='RETEST').state,'CONFIRMED','closing back through broken level rejects retest');
 
   assert.equal(s.strategies.find(x=>x.id==='SWEEP').state,'CONFIRMED','two closed reclaim bars confirm sweep');
+  const oppositeSide=side==='BUY'?'SELL':'BUY';
+  const conflictKind=side==='BUY'?['SWEEP_HIGH','BOS_DOWN']:['SWEEP_LOW','BOS_UP'];
+  const conflict={ready:true,side:oppositeSide,volumeBasis:'TICK',
+    events:conflictKind.map((kind,i)=>({kind,level:100,at:now-(i+3)*300000,
+      confirmedAt:now-(i+2)*300000}))};
+  const veto=run({...f,liquidityContext:conflict});
+  assert.equal(veto.liquidity.opposing,true,'paired liquidity and structure mismatch');
+  assert.equal(veto.eligible,false,'liquidity conflict prevents new entry');
+  assert.match(veto.blockers.join(' '),/سحب سيولة/);
+  assert.equal(run({...f,liquidityContext:{...conflict,events:conflict.events.slice(0,1)}}).eligible,true,
+    'single opposing wick does not trigger an unsupported veto');
+
   assert.equal(run({...f,sourceReady:false}).eligible,false,'old quote/model cannot authorize an entry');
   assert.equal(run({...f,stop:100}).eligible,false,'zero-risk stop rejected');
   assert.equal(run({...f,targets:[{price:100+(side==='BUY'?1:-1)}]}).eligible,false,'insufficient reward rejected');
