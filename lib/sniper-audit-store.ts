@@ -11,9 +11,11 @@ import {evaluateSniperStrategies} from './sniper-strategies';
 // /tmp fallback intentionally does NOT claim persistence across deploys.
 const STORAGE='/data/predator-sniper-audit-v1.json';
 const FALLBACK='/tmp/predator-sniper-audit-v1.json';
-type AuditFile={version:1;scenarios:Scenario[];updatedAt:number;watch:Record<Asset,WatchMemory>};
-const blank=():AuditFile=>({version:1,scenarios:[],updatedAt:0,watch:{GOLD:emptyWatch(),BTC:emptyWatch()}});
-let memory:AuditFile|null=null,persisted=false,lastSave=0,dirty=false,lastBlock:Record<Asset,string>={GOLD:'',BTC:''};
+type AuditFile={version:1;scenarios:Scenario[];updatedAt:number;watch:Record<Asset,WatchMemory>;
+  block:Record<Asset,string>;blockAt:Record<Asset,number>};
+const blank=():AuditFile=>({version:1,scenarios:[],updatedAt:0,
+  watch:{GOLD:emptyWatch(),BTC:emptyWatch()},block:{GOLD:'',BTC:''},blockAt:{GOLD:0,BTC:0}});
+let memory:AuditFile|null=null,persisted=false,lastSave=0,dirty=false;
 
 function load(refresh=false){
   // Next route bundles can hold independent module caches. A reader that
@@ -29,7 +31,11 @@ function load(refresh=false){
           return saved&&Array.isArray(saved.records)?{...emptyWatch(),...saved,records:saved.records.slice(-600)}:emptyWatch();
         };
         memory={version:1,scenarios:obj.scenarios.slice(-600),updatedAt:Number(obj.updatedAt||0),
-          watch:{GOLD:restore('GOLD'),BTC:restore('BTC')}};
+          watch:{GOLD:restore('GOLD'),BTC:restore('BTC')},
+          block:{GOLD:String(obj.block?.GOLD||'').slice(0,250),
+            BTC:String(obj.block?.BTC||'').slice(0,250)},
+          blockAt:{GOLD:Number(obj.blockAt?.GOLD||0),
+            BTC:Number(obj.blockAt?.BTC||0)}};
         persisted=f===STORAGE;
         return memory;
       }
@@ -49,6 +55,13 @@ function save(now:number,force=false){
   }catch(e){
     persisted=false;
     console.warn('[SNIPER-AUDIT] Persist failed:',e instanceof Error?e.message:'IO');
+  }
+}
+// Persist the actual no-entry reason so other Next.js route instances can show it.
+function noteBlock(asset:Asset,reason:string,now:number){
+  const state=load();
+  if(state.block[asset]!==reason||now-state.blockAt[asset]>=30000){
+    state.block[asset]=reason;state.blockAt[asset]=now;dirty=true;
   }
 }
 function latest(s:AuditFile,asset:Asset){
@@ -102,16 +115,20 @@ function runAsset(asset:Asset,x:any,modelAt:number,now:number){
   const fresh=Number(x?.chartCandles?.at?.(-1)?.time||0)+60000;
   const feedFresh=fresh>0&&now>=fresh&&now-fresh<=180000;
   if(!feedFresh){
-    lastBlock[asset]='آخر شمعة M1 متأخرة؛ التقييم متوقف';
+    noteBlock(asset,'آخر شمعة M1 متأخرة؛ التقييم متوقف',now);
     return;
   }
   const next=candidate(asset,x,now,modelAt);
-  lastBlock[asset]=next.blockers[0]||'شروط القناص الهيكلي مكتملة';
+  // The visible reason must agree with the actual cooldown/active-entry gate.
   // No rapid-fire cycling from the same forecast. Keep 15-minute cooldown
   // after a settled/expired forecast; do not resurrect an old stop.
   const canStart=!prior||(terminal(prior.status)&&
     now-Math.max(prior.resolvedAt??prior.startedAt,prior.startedAt)>=15*60000&&
     modelAt>prior.modelAt+5*60000);
+  noteBlock(asset,prior?.status==='ACTIVE'?
+    'سيناريو مؤهل نشط بالفعل؛ لا نكرر الدخول':
+    !canStart?'فترة تهدئة بعد آخر سيناريو؛ لا نفتح هدفًا جديدًا':
+    next.blockers[0]||'شروط القناص الهيكلي مكتملة',now);
   if(canStart&&next.produced){
     state.scenarios.push(next.produced);
     if(state.scenarios.length>600)state.scenarios.splice(0,state.scenarios.length-600);
@@ -180,7 +197,11 @@ export function getSniperAudit(now=Date.now()){
     updatedAt:state.updatedAt,
     current:{GOLD:show('GOLD'),BTC:show('BTC')},
     metrics:{GOLD:scorecard(records,'GOLD'),BTC:scorecard(records,'BTC')},
-    block:lastBlock,
+    block:Object.fromEntries((['GOLD','BTC'] as const).map(asset=>[
+      asset,state.blockAt[asset]>0&&state.blockAt[asset]<=now+2000&&
+        now-state.blockAt[asset]<=90000?state.block[asset]:'سبب الانتظار غير حديث'
+    ])),
+    blockAt:state.blockAt,
     watch:Object.fromEntries((['GOLD','BTC'] as const).map(asset=>{
       const w=state.watch[asset],current=w.records.at(-1)||null;
       // Render Free can sleep between updates. Keep the confirmed historical
