@@ -903,3 +903,20 @@ body:has(.modern-workspace){
  .sniper-decision-strip strong{font-size:14px}
  .compact-sniper .forecast-visual-header{gap:7px}
 }
+
+/* Numeric closed-candle confirmation, without adding another bulky dashboard panel. */
+.sniper-confirmation-strip{display:grid;grid-template-columns:minmax(230px,.38fr) minmax(0,1fr);
+  align-items:center;gap:5px 16px;padding:10px 14px;border-bottom:1px solid #294659;background:#0b1d2b}
+.sniper-confirmation-levels{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.sniper-confirmation-levels strong{color:#dcebf4;font-size:12px}
+.sniper-confirmation-levels span{color:#f5ce89;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.sniper-confirmation-strip p,.sniper-confirmation-strip small{margin:0;font-size:11px;color:#b7ccdb;line-height:1.55}
+.sniper-confirmation-strip>small{grid-column:1/-1;color:#839fb1}
+.sniper-confirmation-strip .sniper-frame-explanation{grid-column:1/-1;padding-top:5px;border-top:1px solid #294052;color:#a6c4d1}
+.sniper-price-rail-label text{pointer-events:none;font-variant-numeric:tabular-nums}
+.sniper-entry-gates{color:#f2cf92!important}
+@media(max-width:720px){
+  .sniper-confirmation-strip{grid-template-columns:minmax(0,1fr);padding:9px 11px;gap:5px}
+  .sniper-confirmation-levels span{font-size:12px;overflow-wrap:anywhere}
+  .sniper-confirmation-strip>small,.sniper-confirmation-strip .sniper-frame-explanation{grid-column:auto}
+}
