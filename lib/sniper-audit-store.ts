@@ -71,8 +71,11 @@ function candidate(asset:Asset,x:any,now:number,modelAt:number){
   const sniper=buildSniperOutlook(asset,x,null,now,modelAt);
   const v=sniper.view,targets=sniper.targets;
   const blockers:string[]=[];
+  const liquidityContext=analyzeFourHours({asset,candles:x?.chartCandles,frames:x?.chartHigherFrames,
+    now,source:x?.candleSource,referencePrice:v.price});
   const strategy=evaluateSniperStrategies({frames:x?.chartHigherFrames,now,price:v.price,
-    side:v.side,sourceReady:v.priceFresh&&v.forecastFresh,targets,stop:v.invalidation});
+    side:v.side,sourceReady:v.priceFresh&&v.forecastFresh,targets,stop:v.invalidation,
+    liquidityContext});
   if(!strategy.eligible)blockers.push('تأكيد الاستراتيجية: '+strategy.reason);
   const historical=scorecard(load().scenarios,asset);
   const priorT1=historical.targets[0];
