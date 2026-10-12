@@ -30,3 +30,9 @@ assert.equal(overlap.low,99.42);assert.equal(overlap.high,99.8);
 assert.equal(findOpposingOverlap(out.filter(z=>z.kind!=='SUPPLY'&&z.kind!=='SELL_REBOUND'),99.6),null);
 
 console.log('PASS: chart overlap merger, opposite zones, all targets and invalidations');
+const bridged=[zone('DEMAND','a',90,91),zone('BUY_REBOUND','c',93,94),zone('DEMAND','b',90.8,93.2)];
+for(const rows of [bridged,[bridged[2],bridged[0],bridged[1]]]){
+  const merged=collapseChartZones(rows,100);
+  assert.equal(merged.length,1,'bridging liquidity zones merge transitively in either order');
+  assert.equal(merged[0].low,90);assert.equal(merged[0].high,94);
+}

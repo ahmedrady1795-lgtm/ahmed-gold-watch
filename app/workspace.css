@@ -930,3 +930,21 @@ body:has(.modern-workspace){
 .sniper-liquidity-foundation{margin:6px 12px 9px;padding:9px 11px;
   background:#112838;border-inline-start:3px solid #66c6bf;border-radius:5px;
   color:#b9d8dc;font-size:11px;line-height:1.6}
+
+/* Keep full numeric prices in their own rail; step numbers explain the route. */
+.forecast-visual-svg{direction:ltr;display:block}
+.forecast-motion-guide{margin:8px 2px 2px;padding:9px 11px;background:#0b2030;border:1px solid #2b4c60;border-radius:8px}
+.forecast-motion-guide>strong{font-size:12px;color:#dbeaf4}
+.forecast-motion-guide ol{display:flex;flex-wrap:wrap;gap:6px 10px;margin:8px 0;padding:0;list-style:none}
+.forecast-motion-guide li{display:flex;align-items:center;gap:6px;min-width:0;color:#c2d9e6;font-size:11px}
+.forecast-motion-guide li>b{display:grid;place-items:center;width:22px;height:22px;flex-shrink:0;border:1px solid #6d8b97;border-radius:50%;color:#f3d798}
+.forecast-motion-guide li>span{display:flex;flex-direction:column;gap:2px}
+.forecast-motion-guide small{font-size:11px;font-variant-numeric:tabular-nums;color:#9bd8dd}
+.forecast-motion-guide p{margin:0;color:#8fabbe;line-height:1.6;font-size:10px}
+@media(max-width:600px){
+  .forecast-motion-guide{padding:8px}
+  .forecast-motion-guide ol{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 4px}
+  .forecast-motion-guide li{font-size:10px}
+  .forecast-motion-guide li>b{width:19px;height:19px}
+  .forecast-motion-guide small{font-size:10px}
+}

@@ -32,7 +32,7 @@ export function buildBreakoutGuide(input:{
   }
   const rows=[...data.values()].sort((a,b)=>a.time-b.time).slice(-40);
   const empty={ready:false,side:input.side,above:null as number|null,below:null as number|null,
-    trigger:null as number|null,confirmed:false,confirmedAt:null as number|null,
+    trigger:null as number|null,extension:null as number|null,confirmed:false,confirmedAt:null as number|null,
     invalidation:null as number|null,reason:'مستويات الكسر تنتظر شموع M5 مغلقة وحديثة'};
   if(!input.sourceReady||rows.length<16)return empty;
   const end=rows.at(-1)!;
@@ -55,7 +55,7 @@ export function buildBreakoutGuide(input:{
     side==='SELL'?('انتظار إغلاق شمعتي M5 متتاليتين تحت '+below):
     ('الاتجاه غير محسوم: كسر شراء فوق '+above+' أو كسر بيع تحت '+below+
       ' بشمعتين M5 مغلقتين، ثم توافق الفريمات');
-  return {ready:true,side,above,below,trigger,confirmed,
+  return {ready:true,side,above,below,trigger,extension:avgRange*.25,confirmed,
     confirmedAt:confirmed?end.time+300000:null,invalidation,
     reason:confirmed?'الكسر السعري بشمعتين M5 تحقق، لكن هذا ليس دخولًا: يلزم توافق M15/H1 وباقي الشروط.':
       reason+'، ثم توافق M15/H1 وبقية شروط المخاطرة.'};

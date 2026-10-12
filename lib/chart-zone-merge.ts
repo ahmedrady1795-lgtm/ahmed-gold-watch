@@ -11,17 +11,21 @@ export function collapseChartZones<T extends DisplayZone>(zones:T[],reference:nu
       !Number.isFinite(z.price)||z.price<=0)continue;
     if(z.kind==='TARGET'||z.kind==='STOP'){fixed.push(z);continue;}
     const group=grouping(z.kind),items=groups.get(group)||[];
-    const existing=items.findIndex(q=>{
-      const tolerance=Math.max(.001,Math.min(q.price,z.price)*.00008);
-      return z.low<=q.high+tolerance&&z.high>=q.low-tolerance;
-    });
-    if(existing>=0){
-      const old=items[existing];
-      const low=Math.min(old.low,z.low),high=Math.max(old.high,z.high);
-      const label=group==='BUY'?'طلب / ارتداد شراء':
-        group==='SELL'?'عرض / ارتداد بيع':old.label;
-      items[existing]={...old,key:old.key,label,low,high,price:(low+high)/2};
-    }else items.push({...z});
+    // A bridging zone can join several existing zones. Merge transitively,
+    // regardless of arrival order, before applying the per-side limit.
+    let combined={...z},remaining=items.slice(),changed=true;
+    while(changed){
+      changed=false;
+      remaining=remaining.filter(q=>{
+        const tolerance=Math.max(.001,Math.min(q.price,combined.price)*.00008);
+        if(combined.low>q.high+tolerance||combined.high<q.low-tolerance)return true;
+        const low=Math.min(q.low,combined.low),high=Math.max(q.high,combined.high);
+        combined={...combined,key:[q.key,combined.key].sort().join('+'),low,high,price:(low+high)/2,
+          label:group==='BUY'?'طلب / ارتداد شراء':group==='SELL'?'عرض / ارتداد بيع':combined.label};
+        changed=true;return false;
+      });
+    }
+    items.splice(0,items.length,...remaining,combined);
     groups.set(group,items);
   }
   const merged=[...groups.values()].flatMap(items=>

@@ -2,6 +2,7 @@
 
 import {useEffect,useState} from 'react';
 import {Crosshair,Layers3} from 'lucide-react';
+import {buildForecastMotion} from '../lib/forecast-motion';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import NewsCommandCenter from './NewsCommandCenter';
 import {economicNewsTimeline} from '../lib/news-alert-window';
@@ -52,8 +53,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const planVisible=statusReady||watchReady;
   const sn=m.sniper,dir=planVisible?m.displaySide:watchFresh&&m.bias.active?m.bias.side:'WAIT';
   const rise=dir==='BUY',fall=dir==='SELL';
-  const W=mobile?500:1040,H=expanded?700:520,x0=mobile?18:52,
-    x1=mobile?270:612,xf=x1+10,xr=W-(mobile?108:116),yt=30,yb=H-90,volumeEnd=H-45;
+  const W=mobile?680:1040,H=expanded?700:560,x0=mobile?18:52,
+    x1=mobile?280:530,xf=x1+10,xr=W-(mobile?150:146),yt=30,yb=H-90,volumeEnd=H-45;
+  const breakout=buildBreakoutGuide({frames:x?.chartHigherFrames,now,side:dir,price:m.price,
+    sourceReady:sn.view.priceFresh&&m.observationFresh&&m.historyFresh,invalidation:m.displayStop});
+  const motion=buildForecastMotion({visible:planVisible,side:dir,price:m.price,
+    targets:m.displayTargets,breakout});
+  const motionColor=watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4';
   const candles=m.candles.slice(-chartWindow);
   const candleBounds=candles.flatMap(c=>[c.low,c.high]);
   if(m.price!=null)candleBounds.push(m.price);
@@ -65,7 +71,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   // Fold coinciding zones only; keep every independent target stage and the stop.
   const chartBands=collapseChartZones(visibleBands,m.price);
   const opposingOverlap=findOpposingOverlap(chartBands,m.price);
-  const allBounds=[...candleBounds,...chartBands.flatMap(z=>[z.low,z.high])];
+  const allBounds=[...candleBounds,...chartBands.flatMap(z=>[z.low,z.high]),...motion.map(p=>p.price)];
   const allMin=allBounds.length?Math.min(...allBounds):m.lower;
   const allMax=allBounds.length?Math.max(...allBounds):m.upper;
   const allSpan=Math.max(allMax-allMin,candleSpan);
@@ -76,11 +82,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const priceFresh=m.price!=null&&sn.view.priceFresh&&m.observationFresh;
   const chartLanes=layoutPriceLanes([
     ...chartBands.map(z=>({key:z.key,y:px(z.price),price:z.price,
-      label:z.kind==='TARGET'?z.label:z.kind==='STOP'?'SL':
+      label:z.kind==='TARGET'?'TP'+z.key.replace('TP',''):z.kind==='STOP'?'إبطال':
         z.kind==='DEMAND'||z.kind==='BUY_REBOUND'?'طلب':'عرض',
       kind:z.kind})),
     ...(priceFresh?[{key:'MARKET_PRICE',y:px(m.price!),price:m.price!,label:'سعر',kind:'PRICE'}]:[])
-  ],yt+15,yb-15,mobile?23:22);
+  ],yt+20,yb-20,38);
   const stride=(x1-x0)/Math.max(candles.length,1);
   const candleWidth=clamp(stride*.62,mobile?.6:1,8.5);
   const maxVolume=Math.max(1,...candles.map(c=>c.volume));
@@ -92,16 +98,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const marketEvents=readingLive?m.fourHour.events.filter(e=>candles[0]&&e.at>=candles[0].time)
     .filter((e,i,a)=>a.findLastIndex(q=>q.kind===e.kind)===i).slice(mobile?-2:-3):[];
   const contextBox=readingLive?m.fourHour.contextBox:null;
-  const projected=m.projected;
-  const futureX=(index:number)=>xf+(index+1)*(xr-xf-12)/Math.max(1,projected.length-1);
+  const projectedPoints=motion.map((p,i)=>({...p,
+    x:xf+i*(xr-xf-18)/Math.max(1,motion.length-1),y:px(p.price)}));
   let projectedPath='';
-  if(planVisible&&projected.length>=2){
-    projectedPath='M '+xf+' '+px(projected[0].price);
-    projected.slice(1).forEach((p,i)=>{
-      const xa=i===0?xf:futureX(i-1);
-      const xb=futureX(i);
-      const ya=px(projected[i].price),yb2=px(p.price);
-      projectedPath+=' C '+(xa+(xb-xa)*.3)+' '+ya+' '+(xb-(xb-xa)*.3)+' '+yb2+' '+xb+' '+yb2;
+  if(projectedPoints.length>=2){
+    projectedPath='M '+projectedPoints[0].x+' '+projectedPoints[0].y;
+    projectedPoints.slice(1).forEach((p,i)=>{
+      const a=projectedPoints[i],dx=p.x-a.x;
+      projectedPath+=' C '+(a.x+dx*.35)+' '+a.y+' '+(p.x-dx*.35)+' '+p.y+' '+p.x+' '+p.y;
     });
   }
   const ageMin=m.historyAge==null?null:Math.ceil(m.historyAge/60000);
@@ -117,8 +121,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const blockAt=Number(audit?.blockAt?.[asset]||0);
   const waitReason=!planVisible&&blockAt>0&&blockAt<=now+2000&&now-blockAt<=90000?
     String(audit?.block?.[asset]||''):'';
-  const breakout=buildBreakoutGuide({frames:x?.chartHigherFrames,now,side:dir,price:m.price,
-    sourceReady:sn.view.priceFresh&&m.observationFresh&&m.historyFresh,invalidation:m.displayStop});
   const frameExplanation=explainFrameConflict(dir,m.fourHour.side,m.fourHour.ready);
   const statusText=statusReady?(journal?.message||sn.stageText):
     watchReady?m.bias.reason+' · أهداف الخادم ثابتة للمراقبة':
@@ -188,6 +190,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 watchReady?'الشموع الحقيقية مع مستويات مراقبة مبكرة غير مؤهلة للدخول':
                 'الشموع التاريخية فقط، ولا توجد إشارة مؤهلة'} >
               <defs>
+                <clipPath id={'forecast-plot-'+asset}><rect x={x0} y={yt} width={xr-x0} height={yb-yt}/></clipPath>
                 <linearGradient id={'forecast-target-'+asset} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#36e4a6" stopOpacity=".18"/>
                   <stop offset="100%" stopColor="#36e4a6" stopOpacity=".035"/>
@@ -198,23 +201,23 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </linearGradient>
                 <marker id={'forecast-arrow-'+asset} viewBox="0 0 10 10" refX="8" refY="5"
                   markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill={rise?'#54e7ab':'#f09ca9'}/>
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill={motionColor}/>
                 </marker>
               </defs>
               <rect x="0" y="0" width={W} height={H} rx="9" fill={'url(#forecast-chart-'+asset+')'}/>
               <rect x={xf} y="16" width={xr-xf} height={volumeEnd-15} fill="#56bde7" opacity=".028"/>
               {grid.map((g,i)=><g key={'grid'+i}>
                 <line x1={x0} x2={xr+12} y1={g.y} y2={g.y} stroke="#426076" strokeOpacity=".32" strokeDasharray="3 6"/>
-                {!chartLanes.some(r=>Math.abs(r.labelY-g.y)<17)&&<text x={W-8} y={g.y+4}
-                  textAnchor="end" fill="#97afc0" fontSize={mobile?11:11}
+                {!chartLanes.some(r=>Math.abs(r.labelY-g.y)<17)&&<text direction="ltr" x={W-12} y={g.y+4}
+                  textAnchor="end" fill="#97afc0" fontSize={mobile?18:12}
                   fontFamily="monospace">{fmt(g.value)}</text>}
               </g>)}
               {Array.from({length:7},(_,i)=><line key={'v'+i} x1={x0+i*(xr-x0)/6} x2={x0+i*(xr-x0)/6} y1="18" y2={volumeEnd+10}
                 stroke="#345267" strokeOpacity=".20" strokeDasharray="3 7"/>)}
               <line x1={xf-8} x2={xf-8} y1="20" y2={volumeEnd+5} stroke="#72b3d1" strokeOpacity=".5"
                 strokeDasharray="6 7"/>
-              <text x={xf-14} y="13" textAnchor="end" fill="#88bbd3" fontSize="11">تاريخ فعلي</text>
-              <text x={xf+8} y="13" fill="#e7c58a" fontSize="11">{mobile?'سيناريو':'المستقبل / سيناريو'}</text>
+              <text x={xf-14} y="18" textAnchor="end" fill="#88bbd3" fontSize={mobile?18:12}>تاريخ فعلي</text>
+              <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?18:12}>{mobile?'سيناريو':'المستقبل / سيناريو'}</text>
               {contextBox&&candles[0]&&contextBox.to>candles[0].time&&<g className="sniper-context-box">
                 <rect x={Math.max(x0,historyX(contextBox.from))} y={px(contextBox.high)}
                   width={Math.max(8,Math.min(x1,historyX(contextBox.to))-Math.max(x0,historyX(contextBox.from)))}
@@ -231,6 +234,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 fill="#deb368" fillOpacity=".09" stroke="#efbc70" strokeDasharray="4 5" strokeOpacity=".65">
                 <title>{'منطقة تعارض شراء وبيع '+fmt(opposingOverlap.low)+' – '+fmt(opposingOverlap.high)+' · ليست إشارة دخول'}</title>
               </rect>}
+              {motion.some(p=>p.kind==='BREAK'||p.kind==='RETEST')&&breakout.trigger!=null&&
+                px(breakout.trigger)>=yt&&px(breakout.trigger)<=yb&&<g>
+                <rect x={xf} y={px(breakout.trigger)-7} width={xr-xf} height="14" fill="#75caff" fillOpacity=".13"/>
+                <line x1={xf} x2={xr} y1={px(breakout.trigger)} y2={px(breakout.trigger)} stroke="#8dd4ff" strokeDasharray="4 5"/>
+                <title>{'منطقة التفعيل المشروط · '+fmt(breakout.trigger)+' · إغلاق شمعتي M5، ثم توافق M15/H1'}</title>
+              </g>}
               {chartBands.map(z=>{
                 const clr=z.kind==='BUY_REBOUND'?'#42e5a9':z.kind==='SELL_REBOUND'?'#ff7189':
                   z.kind==='TARGET'?'#3ce6a8':z.kind==='STOP'?'#fd687c':
@@ -285,25 +294,44 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 const isPrice=label.kind==='PRICE',isTarget=label.kind==='TARGET',isStop=label.kind==='STOP';
                 const color=isPrice?'#9feaff':isTarget?'#74f0ba':isStop?'#ff9cab':
                   label.label==='طلب'?'#8debc6':'#f2b0c7';
-                const rx=xr+5,ry=label.labelY-10,rw=W-rx-7;
+                const rx=xr+8,ry=label.labelY-17,rw=W-rx-10;
                 return <g key={'rail-'+label.key} className="sniper-price-rail-label">
                   <line x1={xr} x2={rx} y1={label.y} y2={label.labelY}
                     stroke={color} strokeWidth="1.15" strokeOpacity=".8"/>
-                  <rect x={rx} y={ry} width={rw} height="20" rx="4"
+                  <rect x={rx} y={ry} width={rw} height="34" rx="4"
                     fill={isPrice?'#18506a':'#112637'} stroke={color} strokeOpacity=".65"/>
-                  <text x={rx+rw/2} y={label.labelY+4} textAnchor="middle"
-                    fontSize={mobile?10.5:11} fill={color} fontWeight="700"
-                    fontFamily="monospace">{label.label+' '+fmt(label.price)}</text>
+                  <text x={rx+rw/2} y={label.labelY-5} textAnchor="middle"
+                    fontSize={mobile?16:10} fill={color} fontWeight="700">{label.label}</text>
+                  <text direction="ltr" x={rx+rw/2} y={label.labelY+10} textAnchor="middle"
+                    fontSize={mobile?19:13} fill={color} fontWeight="700"
+                    fontFamily="monospace">{fmt(label.price)}</text>
                   <title>{label.label+' · المستوى الأصلي '+fmt(label.price)}</title>
                 </g>;
               })}
-              {projectedPath&&<g>
-                <path d={projectedPath} stroke="#071823" strokeWidth="7" fill="none" opacity=".6"/>
-                <path d={projectedPath} stroke={watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4'} strokeWidth="3"
-                  strokeDasharray="9 7" fill="none" markerEnd={'url(#forecast-arrow-'+asset+')'}/>
-                {projected.slice(1).map((p,i)=><circle key={p.key}
-                  cx={futureX(i)} cy={px(p.price)} r="4.2"
-                  fill={rise?'#7eecc3':'#ffc2ce'} stroke="#0a1928" strokeWidth="2"/>)}
+              {projectedPath&&<g className="forecast-motion-path" clipPath={'url(#forecast-plot-'+asset+')'}>
+                <path d={projectedPath} stroke="#071823" strokeWidth="8" fill="none" opacity=".7"/>
+                <path d={projectedPath} stroke={motionColor} strokeWidth="3"
+                  strokeDasharray={watchReady?'8 6':undefined} fill="none" markerEnd={'url(#forecast-arrow-'+asset+')'}/>
+                {projectedPoints.map((p,i)=>{
+                  if(p.y<yt||p.y>yb)return null;
+                  const labelY=clamp(p.y+(i%2===0?-30:36),yt+24,yb-20);
+                  const short=p.kind==='TARGET'?p.key:p.kind==='START'?'بداية':p.kind==='BREAK'?'تفعيل':p.kind==='RETEST'?'اختبار؟':'ثبات؟';
+                  return <g key={p.key}>
+                    <circle cx={p.x} cy={p.y} r={mobile?11:8} fill="#0b2230" stroke={motionColor} strokeWidth="2"/>
+                    <text x={p.x} y={p.y+(mobile?5:3)} textAnchor="middle" fill="#f2f8fc" fontSize={mobile?14:9}>{i+1}</text>
+                    {p.kind!=='HOLD'&&<g>
+                      <line x1={p.x} x2={p.x} y1={p.y+(labelY>p.y?12:-12)} y2={labelY} stroke={motionColor} strokeOpacity=".5"/>
+                      <rect x={clamp(p.x-25,xf-25,xr-52)} y={labelY-13} width="52" height="26" rx="5" fill="#0b2130" stroke={motionColor} strokeOpacity=".6"/>
+                      <text x={clamp(p.x,xf,xr-27)} y={labelY+5} textAnchor="middle" fill="#eaf7ff" fontSize={mobile?17:12} fontWeight="700">{short}</text>
+                    </g>}
+                    <title>{(i+1)+' · '+p.label+' · '+fmt(p.price)+(p.kind==='HOLD'?' · امتداد توضيحي مشتق من مدى M5، وليس هدفًا محسوبًا':'')}</title>
+                  </g>;
+                })}
+                {m.displayStop!=null&&px(m.displayStop)>=yt&&px(m.displayStop)<=yb&&<path
+                  d={'M '+xf+' '+px(m.price!)+' L '+(xf+(xr-xf)*.3)+' '+px(m.displayStop)}
+                  stroke="#ff8da1" strokeWidth="1.5" strokeDasharray="4 6" fill="none">
+                  <title>{'مسار إبطال منفصل · '+fmt(m.displayStop)}</title>
+                </path>}
               </g>}
               {!planVisible&&<g>
                 <rect x={xf+8} y="136" width={xr-xf-16} height="80" rx="9" fill="#0a1520" stroke="#3a5464" strokeOpacity=".8"/>
@@ -313,6 +341,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               </g>}
             </svg>
           </div>
+          {motion.length>0&&<div className="forecast-motion-guide" aria-label="خطوات المسار المتوقع">
+            <strong>{statusReady?'سيناريو مؤهل':'مراقبة مشروطة'} · كيف يصل السعر للأهداف؟</strong>
+            <ol>{motion.map((p,i)=><li key={p.key}>
+              <b>{i+1}</b><span>{p.label}{p.kind!=='HOLD'&&<small dir="ltr">{fmt(p.price)}</small>}</span>
+            </li>)}</ol>
+            <p>المسار يوضح ترتيبًا محتملًا، وليس شكل الشموع أو موعد الوصول. إعادة الاختبار اختيارية وقد يصل السعر مباشرة أو يُبطل السيناريو.
+              {motion.some(p=>p.kind==='HOLD')?' الثبات المرسوم امتداد توضيحي من مدى M5.':''}
+              {watchReady?' الكسر يحتاج إغلاق شمعتي M5 وتوافق M15/H1 وباقي شروط القناص؛ ليس تصريح دخول.':''}</p>
+          </div>}
           <div className="forecast-visual-legend">
             <span><i className="forecast-legend-history"/> شموع فعلية</span>
             <span><i className="forecast-legend-projection"/> {watchReady?'مسار مستويات بعيد · توضيحي':'سيناريو مشروط'}</span>
@@ -418,7 +455,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       </section>
       </details>
       <footer className="forecast-visual-note">
-        <span>الشموع السابقة بيانات سوق فعلية. {watchReady?'الخط الأصفر مراقبة هيكلية أولية، وليس إشارة شراء أو بيع.':'الخط المتقطع ترتيب مستويات مشروط، وليس توقعًا لشكل الشموع أو وقت وصولها.'}</span>
+        <span>الشموع السابقة بيانات سوق فعلية. {watchReady?'الخط الأصفر مراقبة هيكلية أولية، وليس إشارة شراء أو بيع.':'المسار ترتيب محتمل لتوضيح السيناريو، وليس توقعًا لشكل الشموع أو وقت وصولها.'}</span>
         <span>{highest?(statusReady?'الهدف المسجل الأخير ':'أبعد مستوى هيكلي مرصود ')+fmt(highest.price):m.bias.active?'انحياز ظاهر · لا مستوى بعيد متاح':'آخر بيانات للمتابعة فقط'}</span>
       </footer>
     </div>
