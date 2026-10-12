@@ -19,30 +19,42 @@ export async function register(){
   scalpTimer.unref?.();
 
   const port=process.env.PORT||'3000';
-  const url='http://127.0.0.1:'+port+'/api/ai-analysis';
+  // Mark this as an internal worker, not a manual browser refresh.
+  const url='http://127.0.0.1:'+port+'/api/ai-analysis?worker=1';
   let running=false;
+  let nextCycle:ReturnType<typeof setTimeout>|null=null;
+  const schedule=(delay:number)=>{
+    nextCycle=setTimeout(()=>{void tick();},delay);
+    nextCycle.unref?.();
+  };
 
   const tick=async()=>{
     if(running)return;
     running=true;
+    const started=Date.now();
+    let succeeded=false;
     try{
-      const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(25000),headers:{'x-predator-background':'1'}});
+      // Market/web/learning providers occasionally need more than 25s.
+      // The fetch timeout is bounded, and another heavy cycle cannot overlap.
+      const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(50000),headers:{'x-predator-background':'1'}});
       if(!r.ok)console.warn('[PREDATOR-LEARN] background cycle HTTP',r.status);
       else{
         const j=await r.json().catch(()=>null);
-        console.info('[PREDATOR-LEARN]',JSON.stringify({model:j?.model,status:j?.autopilot?.status||null}));
+        succeeded=Boolean(j?.ok);
+        console.info('[PREDATOR-LEARN]',JSON.stringify({model:j?.model,status:j?.autopilot?.status||null,durationMs:Date.now()-started}));
       }
     }catch(e){
       console.warn('[PREDATOR-LEARN] cycle failed',e instanceof Error?e.message:'unknown');
     }finally{
       running=false;
+      // Maintain ~30s start-to-start under normal load, add a bounded
+      // backoff after failure, and never create simultaneous AI requests.
+      const duration=Date.now()-started;
+      schedule(succeeded?Math.max(2000,30000-duration):Math.max(15000,45000-duration));
     }
   };
 
-  const first=setTimeout(()=>{void tick();},10000);
-  first.unref?.();
-  const timer=setInterval(()=>{void tick();},30000);
-  timer.unref?.();
+  schedule(10000);
 
   // Lightweight first-passage settlement: observe BTC price every 6s without rerunning the heavy AI stack.
   let settleBusy=false;
