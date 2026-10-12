@@ -7,6 +7,8 @@ const css=fs.readFileSync('app/workspace.css','utf8');
 assert.match(page,/import TradingViewGold from/,'chart component should be imported');
 assert.match(page,/<TradingViewGold\s*\/>/,'the live chart must actually mount on the landing page');
 assert.match(page,/<AICommandCenter/,'the sniper outlook remains visible');
+assert.ok(page.indexOf('<AICommandCenter')<page.indexOf('<TradingViewGold'),
+  'sniper movement map must appear above the external chart');
 assert.match(chart,/embed-widget-advanced-chart\.js/,'use the TradingView advanced chart');
 assert.match(chart,/OANDA:XAUUSD/,'gold symbol preserved');
 assert.match(chart,/COINBASE:BTCUSD/,'bitcoin chart available');
