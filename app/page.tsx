@@ -2,7 +2,6 @@
 
 import {useEffect,useRef,useState} from 'react';
 import AICommandCenter from '../components/AICommandCenter';
-import TradingViewGold from '../components/TradingViewGold';
 import {acceptGoldStreamPacket,sourceTimestamp,validSourceTime} from '../lib/client-market-freshness';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))
@@ -245,7 +244,6 @@ export default function Home(){
     <section className="content lite-content" aria-label="القناص الذكي">
       <AICommandCenter assetView="ALL" data={aiData} chartData={chartData} error={aiError} now={now} goldLive={goldTick}
         btcLive={btcLive&&shownBtc!=null?{asset:'BTC',ok:true,price:shownBtc,sourceTime:shownBtcAt}:null}/>
-      <TradingViewGold />
     </section>
   </main>;
 }
