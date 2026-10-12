@@ -752,3 +752,35 @@ body:has(.modern-workspace){
   border:1px solid #795e38;border-radius:8px;background:#30261a;color:#f9d99d;
   font-size:11px;line-height:1.5;cursor:pointer}
 .forecast-news-peek:hover{background:#46331d}
+
+
+/* Restore the missing price chart as a first-class visible workspace section. */
+.live-trading-chart{margin-bottom:12px;overflow:hidden;border:1px solid #365b6f;border-radius:13px;background:#0a1827}
+.live-trading-chart-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:11px 13px;border-bottom:1px solid #2b4758}
+.live-trading-chart-head strong{display:block;font-size:14px;color:#e9debb}
+.live-trading-chart-head small{display:block;margin-top:3px;font-size:10px;color:#a2bccc}
+.live-trading-chart-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.live-chart-toggle{display:flex;gap:3px;background:#0d2535;border:1px solid #335567;padding:3px;border-radius:8px}
+.live-chart-toggle button{border:0;background:none;color:#a7c4d5;border-radius:6px;padding:7px 12px;font-size:11px;cursor:pointer}
+.live-chart-toggle button[aria-pressed=true]{color:#e2faff;background:#275062;font-weight:700}
+.live-trading-chart-actions select{color:#e0edf4;background:#122b39;border:1px solid #416477;border-radius:7px;padding:7px;font-size:11px}
+.live-trading-chart-embed{width:100%;height:480px;min-height:300px;border:0;border-radius:0;overflow:hidden;background:#091828}
+.live-trading-chart-note{margin:0;padding:7px 12px;border-top:1px solid #223f50;font-size:10px;line-height:1.6;color:#93b0c0}
+.live-trading-chart-note a{color:#a2e8ee;text-decoration:underline;text-underline-offset:3px}
+
+/* An RTL mobile scroller previously opened on the empty future edge, hiding candles.
+   Fit the WHOLE chart first, then expand only on an explicit zoom action. */
+.compact-sniper .forecast-visual-svg{width:100%;min-width:0;height:auto}
+.compact-sniper .forecast-visual-svg-zoomed{min-width:830px}
+@media(max-width:820px){
+  .live-trading-chart-embed{height:410px}
+  .compact-sniper .forecast-visual-svg{min-width:0}
+  .compact-sniper .forecast-visual-svg-zoomed{min-width:795px}
+}
+@media(max-width:520px){
+  .live-trading-chart-head{padding:9px;gap:7px}
+  .live-trading-chart-actions{width:100%;justify-content:space-between}
+  .live-trading-chart-embed{height:365px;min-height:320px}
+  .compact-sniper .forecast-visual-svg{min-width:0}
+  .compact-sniper .forecast-visual-svg-zoomed{min-width:760px}
+}
