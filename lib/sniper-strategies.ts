@@ -1,4 +1,5 @@
 import {indicators,type Candle,type IndicatorSet} from './engine';
+import {assessLiquidityFoundation,type LiquidityContext} from './liquidity-foundation';
 
 type Side='BUY'|'SELL'|'WAIT';
 type Strategy={id:string;name:string;state:'CONFIRMED'|'BUILDING'|'WAIT';reason:string;level:number|null};
@@ -25,13 +26,15 @@ function reading(i:IndicatorSet,b:Candle[],period:number):FrameReading{
     closedAt:b.at(-1)!.time+period};
 }
 export function evaluateSniperStrategies(input:{frames:any;now:number;price:number|null;side:Side;
-  sourceReady:boolean;targets?:Array<{price:number}>;stop?:number|null}){
+  sourceReady:boolean;targets?:Array<{price:number}>;stop?:number|null;
+  liquidityContext?:LiquidityContext|null}){
+  const liquidity=assessLiquidityFoundation({context:input.liquidityContext,now:input.now,side:input.side});
   const empty=(reason:string)=>({ready:false,eligible:false,side:input.side,regime:'UNKNOWN' as string,
     regimeLabel:'قراءة غير متاحة',reason,score:null as number|null,frames:null as
       {m5:FrameReading;m15:FrameReading;h1:FrameReading}|null,
     strategies:[] as Strategy[],blockers:[reason],squeezePercentile:null as number|null,
     efficiency:null as number|null,choppiness:null as number|null,extensionAtr:null as number|null,rr:null as number|null,
-    checkedAt:input.now,confirmedAt:null as number|null});
+    liquidity,checkedAt:input.now,confirmedAt:null as number|null});
   const m5=bars(input.frames?.m5,input.now,300000),m15=bars(input.frames?.m15,input.now,900000),
     h1=bars(input.frames?.h1,input.now,3600000);
   if([m5,m15,h1].some(b=>b.length<60))return empty('نحتاج 60 شمعة مغلقة لكل من M5 / M15 / H1');
@@ -113,6 +116,7 @@ export function evaluateSniperStrategies(input:{frames:any;now:number;price:numb
   if(shock)blockers.push('تذبذب حاد؛ انتظار استقرار المدى');
   if(extension>2.5)blockers.push('السعر ممتد عن EMA20؛ تجنب مطاردة الحركة');
   if(higherOpposed)blockers.push('H1 يعارض الاتجاه المرشح');
+  if(liquidity.opposing)blockers.push('تعارض مؤكد: سحب سيولة وكسر هيكل ضد الاتجاه؛ لا دخول جديد');
   if(choppiness>=61.8&&efficiency<.3&&strategies.find(s=>s.id==='SWEEP')?.state!=='CONFIRMED')
     blockers.push('تذبذب متداخل؛ نحتاج خروجًا أو استرداد سيولة مؤكدًا');
   if(!strategies.some(s=>s.state==='CONFIRMED'))blockers.push('ننتظر تأكيدًا سعريًا للاستراتيجية');
@@ -124,5 +128,5 @@ export function evaluateSniperStrategies(input:{frames:any;now:number;price:numb
   return {ready:true,eligible:blockers.length===0,side,regime,regimeLabel,reason:blockers[0]||'تأكيد سعري مع هدف هيكلي؛ يخضع لبقية فلاتر القناص',
     score,frames,strategies,blockers,squeezePercentile:rounded(percentile),efficiency:rounded(efficiency),choppiness:rounded(choppiness),
     extensionAtr:Number.isFinite(extension)?rounded(extension):null,rr:rr==null?null:rounded(rr),
-    checkedAt:input.now,confirmedAt:last.time+300000};
+    liquidity,checkedAt:input.now,confirmedAt:last.time+300000};
 }
