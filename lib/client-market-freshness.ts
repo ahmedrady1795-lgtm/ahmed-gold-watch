@@ -12,7 +12,7 @@ export function sourceTimestamp(value:unknown):number|null {
   const at=Date.parse(value);
   return Number.isFinite(at)&&at>0?at:null;
 }
-export function validSourceTime(at:number|null,now:number,maxAgeMs=10000){
+export function validSourceTime(at:number|null,now:number,maxAgeMs=10000):at is number {
   return at!=null&&at>0&&at<=now+2000&&now-at>=-2000&&now-at<=maxAgeMs;
 }
 export function acceptGoldStreamPacket(tick:any,now:number) {
