@@ -2,6 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import AICommandCenter from '../components/AICommandCenter';
+import {acceptGoldStreamPacket,sourceTimestamp,validSourceTime} from '../lib/client-market-freshness';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))
   ?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})
@@ -83,7 +84,7 @@ export default function Home(){
     let closed=false,ws:WebSocket|null=null,reconnect:ReturnType<typeof setTimeout>|undefined,lastWsTick=0;
     const loadBtc=async()=>{try{
       const r=await fetch('/api/btc?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
-      const j=await r.json(),p=Number(j?.price),at=Number(j?.sourceTime)||Number(j?.fetchedAt)||Date.now();
+      const j=await r.json(),p=Number(j?.price),at=sourceTimestamp(j?.sourceTime)||0;
       if(!closed&&r.ok&&j?.ok&&Number.isFinite(p)&&p>0&&Date.now()-lastWsTick>4000){
         setBtc(p);setBtcAt(at);setBtcSource(String(j?.source||'Coinbase'));
       }
@@ -95,8 +96,8 @@ export default function Home(){
       ws.onmessage=e=>{try{
         const x=JSON.parse(e.data);
         if(x?.type!=='ticker'||x?.product_id!=='BTC-USD')return;
-        const p=Number(x.price),parsed=Date.parse(x.time),at=Number.isFinite(parsed)?parsed:Date.now(),bid=Number(x.best_bid),ask=Number(x.best_ask);
-        if(!Number.isFinite(p)||p<=0)return;
+        const p=Number(x.price),at=sourceTimestamp(x.time),bid=Number(x.best_bid),ask=Number(x.best_ask);
+        if(!Number.isFinite(p)||p<=0||!validSourceTime(at,Date.now()))return;
         lastWsTick=Date.now();
 
         if(!closed&&Date.now()-btcUiAt.current>=250){
@@ -116,10 +117,10 @@ export default function Home(){
     let closed=false,inFlight=false,timer:ReturnType<typeof setTimeout>|undefined,nextDelay=1800;
     let stream:WebSocket|null=null,reconnect:ReturnType<typeof setTimeout>|undefined,lastStreamTick=0,subscribed=false;
     const applyGold=(tick:any)=>{
-      const bid=Number(tick?.bid),ask=Number(tick?.ask),mid=Number(tick?.mid);
-      const price=Number.isFinite(mid)&&mid>0?mid:(Number.isFinite(bid)&&Number.isFinite(ask)&&ask>=bid?(bid+ask)/2:Number(tick?.price));
-      const parsed=Date.parse(String(tick?.timestamp??tick?.time??tick?.lastQuoteAt??'')),at=Number.isFinite(parsed)?parsed:Date.now();
-      if(!Number.isFinite(price)||price<=0)return;
+      const fresh=acceptGoldStreamPacket(tick,Date.now());
+      if(!fresh)return;
+      const {price,at,bid,ask}=fresh;
+      if(goldTickRef.current?.mode==='stream'&&goldTickRef.current.sourceTime===at&&goldTickRef.current.price===price)return;
       const receivedAt=Date.now();
       lastStreamTick=receivedAt;
 
@@ -161,7 +162,7 @@ export default function Home(){
         const r=await fetch('/api/gold-tick?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
         const j=await r.json();
         if(!r.ok||!j?.ok){nextDelay=3000;return;}
-        const price=Number(j.price),bid=Number(j.bid),ask=Number(j.ask),at=Number(j.sourceTime)||Date.now();
+        const price=Number(j.price),bid=Number(j.bid),ask=Number(j.ask),at=sourceTimestamp(j.sourceTime)||0;
         if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)){nextDelay=3000;return;}
         const mode=String(j.mode||'external');
         nextDelay=mode==='broker'?650:mode==='external'?1800:3000;
@@ -198,9 +199,10 @@ export default function Home(){
   const goldPrice=goldTick?.price??aiGold?.price??aiData?.gold?.price??null;
   const goldAt=Number(goldTick?.sourceTime||aiGold?.sourceTime||0);
   const goldFresh=Boolean(goldTick?.ok&&Number(goldTick?.receivedAt||goldAt)&&now-Number(goldTick?.receivedAt||goldAt)<10000);
-  const goldBrokerLive=Boolean(goldFresh&&goldTick?.mode==='broker'&&goldAt&&now-goldAt<10000);
-  const goldStreamLive=Boolean(goldFresh&&goldTick?.mode==='stream'&&goldAt&&now-goldAt<10000);
-  const goldPulse=Boolean(goldFresh&&goldTick?.mode==='external'&&goldTick?.status==='live');
+  const goldSourceFresh=validSourceTime(goldAt||null,now);
+  const goldBrokerLive=Boolean(goldFresh&&goldSourceFresh&&goldTick?.mode==='broker');
+  const goldStreamLive=Boolean(goldFresh&&goldSourceFresh&&goldTick?.mode==='stream'&&goldTick?.status==='live');
+  const goldPulse=Boolean(goldFresh&&goldSourceFresh&&goldTick?.mode==='external'&&goldTick?.status==='live');
   const goldDelayed=Boolean(goldFresh&&goldTick?.mode==='external'&&goldTick?.status!=='live');
   const goldFallback=Boolean(goldFresh&&goldTick?.mode==='analysis_proxy');
   const goldLive=goldBrokerLive||goldStreamLive||goldPulse;
