@@ -34,6 +34,8 @@ function connect(url:string,onOpen:(ws:any)=>void,onData:(j:any)=>void){
   open();
 }
 export function startServerTickBrain(){
+  // Do not create long-lived WebSockets or 1.5s loops in ephemeral functions.
+  if(process.env.VERCEL==='1')return;
   const s=state();if(s.started)return;s.started=true;
   connect('wss://ws-feed.exchange.coinbase.com',
     ws=>ws.send(JSON.stringify({type:'subscribe',product_ids:['BTC-USD'],channels:['ticker']})),

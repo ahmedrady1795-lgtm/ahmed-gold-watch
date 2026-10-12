@@ -9,6 +9,9 @@ declare global {
 
 export async function register(){
   if(process.env.NEXT_RUNTIME==='edge')return;
+  // Serverless functions cannot keep background timers, sockets, or shared state.
+  // The browser uses a rate-limited direct-analysis recovery on Vercel instead.
+  if(process.env.VERCEL==='1')return;
   startServerTickBrain();
   if(process.env.PREDATOR_BACKGROUND_LEARNING==='false')return;
   if(globalThis.__predatorLearningLoopStarted)return;
