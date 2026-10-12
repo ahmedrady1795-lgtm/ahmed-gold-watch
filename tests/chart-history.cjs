@@ -1,10 +1,10 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),ts=require('typescript'),vm=require('vm');
-const exports={};
+const moduleBox={exports:{}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/chart-history.ts','utf8'),{
   compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
-}).outputText,{exports});
-const {closedChartBars,chartAssetFromMarket}=exports;
+}).outputText,{module:moduleBox,exports:moduleBox.exports});
+const {closedChartBars,chartAssetFromMarket}=moduleBox.exports;
 const now=1791800000000,slot=Math.floor((now-60000)/60000)*60000;
 const valid={time:slot,open:4200,high:4204,low:4198,close:4201,tickVolume:18};
 const bars=closedChartBars([valid,{...valid,time:slot+60000}],60000,slot+60000);
