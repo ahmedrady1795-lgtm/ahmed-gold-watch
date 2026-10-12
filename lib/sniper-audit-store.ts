@@ -225,3 +225,11 @@ export function getSniperAudit(now=Date.now()){
       note:r.note
     }))}
 }
+
+// Public paper records only; the archive job supplies durable checkpoints.
+export function exportSniperArchive(now=Date.now()){
+  const state=load(true);
+  return {schema:1,savedAt:now,sourceUpdatedAt:state.updatedAt,records:[
+    ...state.scenarios,...state.watch.GOLD.records,...state.watch.BTC.records
+  ]};
+}

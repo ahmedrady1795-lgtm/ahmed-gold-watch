@@ -7,9 +7,10 @@ import {buildForecastIllustration} from '../lib/forecast-illustration';
 import NewsCommandCenter from './NewsCommandCenter';
 import {economicNewsTimeline} from '../lib/news-alert-window';
 import type {ForecastJournal} from '../lib/forecast-journal';
+import SniperPerformance from './SniperPerformance';
 import SniperStrategyRadar from './SniperStrategyRadar';
 import {watchForChart} from '../lib/sniper-audit-view';
-import {collapseChartZones,findOpposingOverlap} from '../lib/chart-zone-merge';
+import {collapseChartZones,findOpposingOverlap,primaryLiquidityZone} from '../lib/chart-zone-merge';
 import {buildBreakoutGuide,explainFrameConflict,layoutPriceLanes} from '../lib/sniper-decision-guide';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
@@ -69,7 +70,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const visibleBands=m.bands.filter(z=>z.kind==='TARGET'||z.kind==='STOP'||
     z.kind==='BUY_REBOUND'||z.kind==='SELL_REBOUND'||z.kind==='DEMAND'||z.kind==='SUPPLY');
   // Fold coinciding zones only; keep every independent target stage and the stop.
-  const chartBands=collapseChartZones(visibleBands,m.price);
+  const chartBands=collapseChartZones(visibleBands,m.price,mobile?1:2);
+  const primaryZone=primaryLiquidityZone(chartBands,m.price);
   const opposingOverlap=findOpposingOverlap(chartBands,m.price);
   const allBounds=[...candleBounds,...chartBands.flatMap(z=>[z.low,z.high]),...motion.map(p=>p.price)];
   const allMin=allBounds.length?Math.min(...allBounds):m.lower;
@@ -83,6 +85,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const chartLanes=layoutPriceLanes([
     ...chartBands.map(z=>({key:z.key,y:px(z.price),price:z.price,
       label:z.kind==='TARGET'?'TP'+z.key.replace('TP',''):z.kind==='STOP'?'إبطال':
+        z.key===primaryZone?.key?(z.kind==='DEMAND'||z.kind==='BUY_REBOUND'?'طلب ★':'عرض ★'):
         z.kind==='DEMAND'||z.kind==='BUY_REBOUND'?'طلب':'عرض',
       kind:z.kind})),
     ...(priceFresh?[{key:'MARKET_PRICE',y:px(m.price!),price:m.price!,label:'سعر',kind:'PRICE'}]:[])
@@ -108,6 +111,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       projectedPath+=' C '+(a.x+dx*.35)+' '+a.y+' '+(p.x-dx*.35)+' '+p.y+' '+p.x+' '+p.y;
     });
   }
+  const motionLabels=layoutPriceLanes(projectedPoints.filter(p=>p.kind!=='HOLD').map((p,i)=>({
+    key:p.key,y:clamp(p.y+(i%2===0?-32:36),yt+20,yb-20)
+  })),yt+20,yb-20,mobile?34:30);
   const ageMin=m.historyAge==null?null:Math.ceil(m.historyAge/60000);
   const stateLabel=!watchFresh&&!statusReady?'انتظار ذاكرة حديثة':statusReady?'سيناريو مؤهل · مسجل':watchReady&&m.heldBias?'اتجاه مثبت · أهداف مراقبة':watchReady?'أهداف بعيدة · مراقبة فقط':
     m.bias.active&&m.bias.side!=='WAIT'?(m.heldBias?'اتجاه محفوظ · تحقق مستمر':'الاتجاه مرصود · جارٍ البحث عن مستوى بعيد'):
@@ -249,9 +255,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 if(mid<yt||mid>yb)return null;
                 return <g key={z.key}>
                   <rect x={x0} y={Math.min(high,low)-3} width={xr-x0}
-                    height={Math.max(6,Math.abs(low-high)+6)} fill={clr} opacity={z.kind==='TARGET'?.12:.075} rx="2"/>
+                    height={Math.max(6,Math.abs(low-high)+6)} fill={clr} opacity={z.kind==='TARGET'?.12:z.key===primaryZone?.key ? .18 : .05} rx="2"/>
                   <line x1={z.kind==='TARGET'?xf:x0} x2={xr}
-                    y1={mid} y2={mid} stroke={clr} strokeWidth={z.kind==='TARGET'?1.4:1}
+                    y1={mid} y2={mid} stroke={clr} strokeWidth={z.key===primaryZone?.key?2.1:z.kind==='TARGET'?1.4:1}
                     strokeDasharray={z.kind==='STOP'?'7 6':undefined} strokeOpacity=".72"/>
                   <title>{z.label+' · '+fmt(z.low)+' – '+fmt(z.high)}</title>
                 </g>;
@@ -293,7 +299,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {chartLanes.map(label=>{
                 const isPrice=label.kind==='PRICE',isTarget=label.kind==='TARGET',isStop=label.kind==='STOP';
                 const color=isPrice?'#9feaff':isTarget?'#74f0ba':isStop?'#ff9cab':
-                  label.label==='طلب'?'#8debc6':'#f2b0c7';
+                  label.label.startsWith('طلب')?'#8debc6':'#f2b0c7';
                 const rx=xr+8,ry=label.labelY-17,rw=W-rx-10;
                 return <g key={'rail-'+label.key} className="sniper-price-rail-label">
                   <line x1={xr} x2={rx} y1={label.y} y2={label.labelY}
@@ -314,7 +320,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   strokeDasharray={watchReady?'8 6':undefined} fill="none" markerEnd={'url(#forecast-arrow-'+asset+')'}/>
                 {projectedPoints.map((p,i)=>{
                   if(p.y<yt||p.y>yb)return null;
-                  const labelY=clamp(p.y+(i%2===0?-30:36),yt+24,yb-20);
+                  const labelY=motionLabels.find(l=>l.key===p.key)?.labelY??clamp(p.y-30,yt+24,yb-20);
                   const short=p.kind==='TARGET'?p.key:p.kind==='START'?'بداية':p.kind==='BREAK'?'تفعيل':p.kind==='RETEST'?'اختبار؟':'ثبات؟';
                   return <g key={p.key}>
                     <circle cx={p.x} cy={p.y} r={mobile?11:8} fill="#0b2230" stroke={motionColor} strokeWidth="2"/>
@@ -355,6 +361,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <span><i className="forecast-legend-projection"/> {watchReady?'مسار مستويات بعيد · توضيحي':'سيناريو مشروط'}</span>
             <span><i className="forecast-legend-target"/> مناطق أهداف</span>
             <span><i className="forecast-legend-rebound"/> مناطق سيولة</span>
+            {primaryZone&&<span className="sniper-primary-zone">★ أعلى أولوية عرض · {primaryZone.confirmedAt?'قمة/قاع M5 مؤكد':'منطقة تحليل'}{(primaryZone.sources?.length||0)>1?' + توافق مصدرين':''}</span>}
             {opposingOverlap&&<span className="sniper-conflict-legend">◇ تداخل طلب وعرض · انتظار</span>}
             <span className="sniper-buy-legend">● طلب / استرداد</span><span className="sniper-sell-legend">● عرض / رفض</span>
             <span><i className="forecast-legend-stop"/> إبطال</span>
@@ -419,39 +426,20 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       <section className="sniper-audit-panel sniper-audit-compact" aria-label="ملخص نتائج القناص">
         <div className="sniper-audit-heading">
           <strong><Layers3 size={15}/> سجل أداء القناص · {asset==='GOLD'?'الذهب':'البيتكوين'}</strong>
-          <span>{audit?.persistence==='VOLUME'?'سجل على الخادم':'حفظ مؤقت · قد يُفقد بعد إعادة التشغيل'}</span>
+          <span>{audit?.persistence==='VOLUME'?'سجل على الخادم':audit?.archive?.savedAt>0?'أرشيف دوري · آخر حفظ '+Math.max(0,Math.floor((now-audit.archive.savedAt)/60000))+' د':'جارٍ التحقق من الأرشيف'}</span>
         </div>
-        <div className="sniper-audit-summary-grid">
-          <div className="sniper-audit-summary-item">
-            <small>سيناريوهات الدخول المؤهلة</small>
-            <strong dir="ltr">{observed} <small>تقييم مكتمل</small></strong>
-            <span>{observed<40?'نحتاج '+Math.max(0,40-observed)+' نتيجة إضافية قبل عرض نسب الوصول':
-              ([1,2,3] as const).map(stage=>{
-                const target=calibration?.targets?.find((t:any)=>t.stage===stage)??calibration?.targets?.[stage-1];
-                return target?.observedPct!=null?'TP'+stage+': '+target.observedPct+'%':null;
-              }).filter(Boolean).join(' · ')||'النسب غير متاحة'}</span>
-          </div>
-          <div className="sniper-audit-summary-item">
-            <small>الرصد الهيكلي للأهداف البعيدة</small>
-            <strong dir="ltr">{watchObserved} <small>مسار مكتمل</small></strong>
-            <span>{watchObserved<40?'قيد جمع بيانات الرصد':
-              ([1,2,3] as const).map(stage=>{
-                const target=watchMetrics?.targets?.find((t:any)=>t.stage===stage);
-                return Number(target?.samples||0)>=40&&target?.observedPct!=null?
-                  'هدف '+stage+': '+target.observedPct+'%':null;
-              }).filter(Boolean).join(' · ')||'النسب غير متاحة'}</span>
-          </div>
+        <div className="sniper-performance-grid">
+          <SniperPerformance title="سيناريوهات الدخول المؤهلة" metrics={calibration} recent={audit?.recent||[]} asset={asset}/>
+          <SniperPerformance title="الرصد الهيكلي للأهداف البعيدة · مراقبة فقط" metrics={watchMetrics} recent={serverWatch?.recent||[]} asset={asset}/>
         </div>
-        <p>{audit?.persistence!=='VOLUME'?
-          'حفظ النتائج مؤقت على الاستضافة الحالية وقد يعود العداد للصفر عند إعادة التشغيل؛ الصفر لا يثبت فشل أو نجاح الاستراتيجية. ':
-          'سجل الأداء محفوظ على وحدة تخزين الخادم. '}
-          السيناريوهات المؤهلة تختلف عن رصد المستويات البعيدة. النتائج سجل متابعة وليست نسبة ربح مؤكدة.
-          {Number(calibration?.ambiguous||0)+Number(calibration?.unobserved||0)+Number(watchMetrics?.ambiguous||0)+Number(watchMetrics?.unobserved||0)>0?
-            ' · عينات غير حاسمة أو مفقودة: '+(
-              Number(calibration?.ambiguous||0)+Number(calibration?.unobserved||0)+
-              Number(watchMetrics?.ambiguous||0)+Number(watchMetrics?.unobserved||0)
-            ):''}
+        <p>{audit?.archive?.savedAt>0?
+          'أرشيف دوري محفوظ: '+new Date(audit.archive.savedAt).toLocaleString('ar-EG',{timeZone:'Asia/Dubai',dateStyle:'short',timeStyle:'short'})+
+          ' · '+audit.archive.records+' سجل. آخر أحداث بعد نقطة الحفظ قد تُفقد عند توقف الخادم.':
+          audit?.persistence==='VOLUME'?'السجل محفوظ على وحدة تخزين الخادم.':'لم نتأكد بعد من نقطة حفظ خارجية؛ السجل الحالي مؤقت.'}
+          {audit?.archive?.savedAt>0&&now-audit.archive.savedAt>45*60000?' الأرشفة متأخرة؛ آخر نسخة محفوظة ما زالت متاحة.':''}
+          {' '}فجوات المتابعة مستبعدة من النسب. هذا سجل رصد ورقي وليس قياس ربحية صفقات فعلية.
         </p>
+        <a className="sniper-audit-export" href="/api/sniper-audit?archive=1" download="sniper-paper-audit.json">تنزيل نسخة السجل JSON</a>
       </section>
       </details>
       <footer className="forecast-visual-note">

@@ -1,0 +1,30 @@
+name: Archive sniper paper outcomes
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sniper-archive.yml'
+      - 'scripts/checkpoint-sniper.mjs'
+      - 'scripts/sniper-archive.mjs'
+permissions:
+  contents: write
+concurrency:
+  group: sniper-audit-checkpoint
+  cancel-in-progress: false
+jobs:
+  checkpoint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/checkpoint-sniper.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

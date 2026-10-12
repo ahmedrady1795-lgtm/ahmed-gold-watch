@@ -114,15 +114,18 @@ export function scorecard(records:Scenario[],asset:Asset){
   const unobserved=rows.filter(r=>r.status==='UNOBSERVED').length;
   const pending=rows.filter(r=>r.status==='ACTIVE').length;
   const n=observed.length;
+  const median=(values:number[])=>{const a=[...values].sort((x,y)=>x-y);return a.length?Number(((a[Math.floor((a.length-1)/2)]+a[Math.ceil((a.length-1)/2)])/2).toFixed(1)):null;};
   const rates=([1,2,3] as const).map(stage=>{
     const applicable=observed.filter(r=>r.targets.some(t=>t.stage===stage));
     const hits=applicable.filter(r=>r.targets.some(t=>t.stage===stage&&t.reachedAt!=null));
-    return {stage,samples:applicable.length,hits:hits.length,
+    const minutes=hits.map(r=>(r.targets.find(t=>t.stage===stage)!.reachedAt!-r.startedAt)/60000);
+    return {stage,samples:applicable.length,hits:hits.length,medianMinutes:median(minutes),
       observedPct:applicable.length?Number((100*hits.length/applicable.length).toFixed(1)):null,
       avgMinutes:hits.length?Number((hits.reduce((sum,r)=>sum+(r.targets.find(t=>t.stage===stage)!.reachedAt!-r.startedAt)/60000,0)/hits.length).toFixed(1)):null};
   });
   const fullyCompleted=observed.filter(r=>r.status==='COMPLETED').length;
   return {status:n>=40?'TRACKING':'COLLECTING',requiredSamples:40,observed:n,pending,ambiguous,unobserved,
+    medianResolutionMinutes:median(observed.filter(r=>r.resolvedAt!=null).map(r=>(r.resolvedAt!-r.startedAt)/60000)),
     completed:fullyCompleted,stopped:observed.filter(r=>r.status==='STOPPED').length,
     expired:observed.filter(r=>r.status==='EXPIRED').length,
     reversed:observed.filter(r=>r.status==='REVERSED').length,

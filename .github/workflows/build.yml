@@ -39,6 +39,8 @@ jobs:
       - run: node tests/chart-zone-merge.cjs
       - run: node tests/long-range-targets.cjs
       - run: node tests/sniper-watch.cjs
+      - run: node tests/sniper-archive.mjs
+      - run: node tests/sniper-scorecard.cjs
       - run: node tests/forecast-motion.cjs
       - run: node tests/forecast-illustration.cjs
       - run: node tests/forecast-journal.cjs

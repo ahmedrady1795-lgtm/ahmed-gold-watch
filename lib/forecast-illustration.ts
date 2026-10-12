@@ -7,7 +7,7 @@ import {analyzeFourHours} from './four-hour-structure';
 import type {ForecastJournal} from './forecast-journal';
 
 export type PlotCandle={time:number;open:number;high:number;low:number;close:number;volume:number};
-export type PriceBand={key:string;label:string;low:number;high:number;price:number;kind:'TARGET'|'DEMAND'|'SUPPLY'|'REBOUND'|'LIQUIDITY'|'STOP'|'BUY_REBOUND'|'SELL_REBOUND'};
+export type PriceBand={sources?:string[];touches?:number;confirmedAt?:number;key:string;label:string;low:number;high:number;price:number;kind:'TARGET'|'DEMAND'|'SUPPLY'|'REBOUND'|'LIQUIDITY'|'STOP'|'BUY_REBOUND'|'SELL_REBOUND'};
 const finite=(x:unknown):number|null=>x!==null&&x!==undefined&&x!==''&&Number.isFinite(Number(x))?Number(x):null;
 const valid=(x:unknown)=>{const p=finite(x);return p!=null&&p>0?p:null;};
 
@@ -88,14 +88,14 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
     for(const [index,z] of sniper.zones.entries()){
       const kind:PriceBand['kind']=z.label.includes('ارتداد')?'REBOUND':
         z.label.includes('طلب')?'DEMAND':z.label.includes('عرض')?'SUPPLY':'LIQUIDITY';
-      bands.push({key:kind+index,label:z.label,low:z.low,high:z.high,price:(z.high+z.low)/2,kind});
+      bands.push({key:kind+index,label:z.label,low:z.low,high:z.high,price:(z.high+z.low)/2,kind,sources:['MODEL']});
     }
   }
   if(fourHour.ready&&historyFresh){
     for(const [index,z] of fourHour.zones.entries()){
       bands.push({key:'REBOUND_4H_'+index,label:z.side==='BUY'?'ارتداد شراء':'ارتداد بيع',
         low:z.low,high:z.high,price:Number(((z.low+z.high)/2).toFixed(2)),
-        kind:z.side==='BUY'?'BUY_REBOUND':'SELL_REBOUND'});
+        kind:z.side==='BUY'?'BUY_REBOUND':'SELL_REBOUND',sources:['M5_PIVOT'],touches:z.touches,confirmedAt:z.confirmedAt});
     }
   }
   // Make the chart scale meaningful when only a narrow price range is known.

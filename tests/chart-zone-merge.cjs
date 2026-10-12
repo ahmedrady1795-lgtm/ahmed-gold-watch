@@ -36,3 +36,10 @@ for(const rows of [bridged,[bridged[2],bridged[0],bridged[1]]]){
   assert.equal(merged.length,1,'bridging liquidity zones merge transitively in either order');
   assert.equal(merged[0].low,90);assert.equal(merged[0].high,94);
 }
+const {primaryLiquidityZone}=mod.exports;
+const evidence=[{...zone('DEMAND','near',99,99.1),sources:['MODEL']},{...zone('BUY_REBOUND','confirmed',98,98.2),sources:['M5_PIVOT'],confirmedAt:100,touches:2}];
+assert.equal(primaryLiquidityZone(evidence,100).key,'confirmed','closed pivot evidence outranks an unconfirmed nearby model band');
+assert.equal(collapseChartZones(evidence,100,1)[0].key,'confirmed','mobile cap preserves most evidenced zone');
+const confluence=collapseChartZones([{...zone('DEMAND','m',99,99.2),sources:['MODEL']},{...zone('BUY_REBOUND','p',99.1,99.4),sources:['M5_PIVOT'],confirmedAt:100,touches:3}],100);
+assert.equal(confluence[0].sources.length,2);assert.equal(confluence[0].touches,3);
+assert.equal(primaryLiquidityZone([zone('TARGET','t',110,110),zone('STOP','s',90,90)],100),null,'target/stop never competes as liquidity evidence');
