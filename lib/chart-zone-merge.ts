@@ -29,3 +29,18 @@ export function collapseChartZones<T extends DisplayZone>(zones:T[],reference:nu
       .slice(0,Math.max(1,maxPerSide)));
   return [...fixed,...merged];
 }
+
+export function findOpposingOverlap<T extends DisplayZone>(
+  zones:T[],reference:number|null
+):{low:number;high:number;buy:T;sell:T}|null{
+  const buy=zones.filter(z=>grouping(z.kind)==='BUY');
+  const sell=zones.filter(z=>grouping(z.kind)==='SELL');
+  const overlaps:{low:number;high:number;buy:T;sell:T}[]=[];
+  for(const b of buy)for(const s of sell){
+    const low=Math.max(b.low,s.low),high=Math.min(b.high,s.high);
+    if(low<=high)overlaps.push({low,high,buy:b,sell:s});
+  }
+  overlaps.sort((a,b)=>Math.abs((a.low+a.high)/2-(reference??(a.low+a.high)/2))-
+    Math.abs((b.low+b.high)/2-(reference??(b.low+b.high)/2)));
+  return overlaps[0]??null;
+}
