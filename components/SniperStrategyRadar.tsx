@@ -2,23 +2,25 @@
 import {useMemo} from 'react';
 import {Crosshair,Activity,ShieldAlert} from 'lucide-react';
 import {evaluateSniperStrategies} from '../lib/sniper-strategies';
+import type {LiquidityContext} from '../lib/liquidity-foundation';
 const fmt=(v:number|null,d=1)=>v==null?'—':v.toLocaleString('en-US',{maximumFractionDigits:d});
-export default function SniperStrategyRadar({frames,now,price,side,sourceReady,targets,stop}: {
+export default function SniperStrategyRadar({frames,now,price,side,sourceReady,targets,stop,liquidityContext}: {
   frames:any;now:number;price:number|null;side:'BUY'|'SELL'|'WAIT';sourceReady:boolean;
-  targets:Array<{price:number}>;stop:number|null
+  targets:Array<{price:number}>;stop:number|null;liquidityContext?:LiquidityContext|null
 }){
   // Candle indicators change only with new history. Current price and freshness
   // are still reevaluated; the 1-second clock doesn't create new confirmation bars.
   const minute=Math.floor(now/60000);
   const target=targets[0]?.price??null;
   const analysis=useMemo(()=>evaluateSniperStrategies({frames,now:minute*60000,price,side,sourceReady,
-    targets:target==null?[]:[{price:target}],stop}),
-    [frames,minute,price,side,sourceReady,target,stop]);
+    targets:target==null?[]:[{price:target}],stop,liquidityContext}),
+    [frames,minute,price,side,sourceReady,target,stop,liquidityContext]);
   return <details id="sniper-strategies" className="sniper-strategy-radar" aria-label="استراتيجيات ومؤشرات القناص">
     <summary className="sniper-strategy-head"><strong><Crosshair size={17}/> المؤشرات وشروط الدخول</strong>
       <span className={analysis.eligible?'sniper-radar-confirmed':''}>{analysis.regimeLabel} · {analysis.eligible?'تأكيد فني أولي':'انتظار تأكيد'}</span></summary>
     <p className="sniper-strategy-reason"><ShieldAlert size={14}/>{analysis.reason}</p>
     {analysis.ready&&<>
+      <p className="sniper-liquidity-foundation">أساس الحركة والسيولة: {analysis.liquidity.evidence} · {analysis.liquidity.volumeLabel} · {analysis.liquidity.reason}</p>
       <div className="sniper-indicator-grid">
         <div><small>قوة الاتجاه · ADX M15</small><b dir="ltr">{fmt(analysis.frames?.m15.adx??null)}</b><span>{(analysis.frames?.m15.adx??0)>=23?'اتجاه أقوى':'اتجاه ضعيف / توازن'}</span></div>
         <div><small>زخم · RSI M15</small><b dir="ltr">{fmt(analysis.frames?.m15.rsi??null)}</b><span>زخم مؤيد يحتاج تأكيد السعر</span></div>
