@@ -330,7 +330,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <span className={m.historyFresh?'sniper-health-ok':''}>الشموع: {m.historyFresh?'حديثة':'تحتاج تحديث'}</span>
       </div>
       <SniperStrategyRadar frames={x?.chartHigherFrames} now={now} price={m.price} side={dir}
-        sourceReady={sn.view.priceFresh&&m.observationFresh} targets={m.displayTargets} stop={m.displayStop}/>
+        sourceReady={sn.view.priceFresh&&m.observationFresh} targets={m.displayTargets} stop={m.displayStop}
+        liquidityContext={m.fourHour}/>
       <details className="sniper-inspection"><summary>تحليل 4 ساعات ومصادر السيولة</summary>
       <section className="sniper-four-hour" aria-label="قراءة آخر أربع ساعات">
         <div className="sniper-four-head">
