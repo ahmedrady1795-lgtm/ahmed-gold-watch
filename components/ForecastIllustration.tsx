@@ -1,15 +1,16 @@
 'use client';
 
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Crosshair,Layers3,ShieldAlert,Target} from 'lucide-react';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import NewsCommandCenter from './NewsCommandCenter';
 import {economicNewsTimeline} from '../lib/news-alert-window';
 import type {ForecastJournal} from '../lib/forecast-journal';
+import SniperStrategyRadar from './SniperStrategyRadar';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
   p.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
-const clock=(t:number)=>new Date(t).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+const clock=(t:number)=>new Date(t).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Dubai'});
 const clamp=(p:number,a:number,b:number)=>Math.max(a,Math.min(b,p));
 
 export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLive,assetView='ALL',journals,audit,auditLoaded=false}:{
@@ -19,6 +20,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
   const [focusCandles,setFocusCandles]=useState(false);
   const [newsOpen,setNewsOpen]=useState(false);
+  const [mobile,setMobile]=useState(false);
+  const [expanded,setExpanded]=useState(false);
+  const [chartWindow,setChartWindow]=useState<60|240>(60);
+  useEffect(()=>{
+    const media=window.matchMedia('(max-width: 600px)');
+    const update=()=>setMobile(media.matches);
+    update();media.addEventListener('change',update);
+    return()=>media.removeEventListener('change',update);
+  },[]);
   const earlyNews=economicNewsTimeline(data?.newsEvents||[],data?.autopilot?.nextEvent||null,now).alerts;
   const dueNews=earlyNews.length;
   const asset: 'GOLD'|'BTC'=assetView==='ALL'?chosen:assetView;
@@ -41,30 +51,36 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const planVisible=statusReady||watchReady;
   const sn=m.sniper,dir=planVisible?m.displaySide:m.bias.active?m.bias.side:'WAIT';
   const rise=dir==='BUY',fall=dir==='SELL';
-  const W=1040,H=465,x0=52,x1=612,xf=622,xr=946,yt=30,yb=375;
-  const candleBounds=m.candles.flatMap(c=>[c.low,c.high]);
+  const W=mobile?680:1040,H=expanded?700:mobile?560:520,x0=mobile?18:52,
+    x1=mobile?370:612,xf=x1+10,xr=W-94,yt=30,yb=H-90,volumeEnd=H-45;
+  const candles=m.candles.slice(-chartWindow);
+  const candleBounds=candles.flatMap(c=>[c.low,c.high]);
   if(m.price!=null)candleBounds.push(m.price);
   const candleMin=candleBounds.length?Math.min(...candleBounds):m.lower;
   const candleMax=candleBounds.length?Math.max(...candleBounds):m.upper;
   const candleSpan=Math.max(candleMax-candleMin,Math.abs(m.price||0)*.00065,.01);
-  const scaleLow=focusCandles?candleMin-candleSpan*.3:m.lower;
-  const scaleHigh=focusCandles?candleMax+candleSpan*.3:m.upper;
+  const allBounds=[...candleBounds,...m.bands.flatMap(z=>[z.low,z.high])];
+  const allMin=allBounds.length?Math.min(...allBounds):m.lower;
+  const allMax=allBounds.length?Math.max(...allBounds):m.upper;
+  const allSpan=Math.max(allMax-allMin,candleSpan);
+  const scaleLow=focusCandles?candleMin-candleSpan*.3:allMin-allSpan*.1;
+  const scaleHigh=focusCandles?candleMax+candleSpan*.3:allMax+allSpan*.1;
   const px=(p:number)=>yt+(scaleHigh-p)/Math.max(.0000001,scaleHigh-scaleLow)*(yb-yt);
   const grid=Array.from({length:5},(_,i)=>({y:yt+i*(yb-yt)/4,value:scaleHigh-(scaleHigh-scaleLow)*i/4}));
-  const candles=m.candles;
   const stride=(x1-x0)/Math.max(candles.length,1);
   const candleWidth=clamp(stride*.62,2,8.5);
   const maxVolume=Math.max(1,...candles.map(c=>c.volume));
   const chartBands=m.bands.slice().sort((a,b)=>a.kind==='TARGET'?-1:b.kind==='TARGET'?1:0);
   const projected=m.projected;
+  const futureX=(index:number)=>xf+(index+1)*(xr-xf-12)/Math.max(1,projected.length-1);
   let projectedPath='';
   if(planVisible&&projected.length>=2){
     projectedPath='M '+xf+' '+px(projected[0].price);
     projected.slice(1).forEach((p,i)=>{
-      const xa=i===0?xf:Math.round(716+(i-1)*106);
-      const xb=Math.min(xr-8,716+i*106);
+      const xa=i===0?xf:futureX(i-1);
+      const xb=futureX(i);
       const ya=px(projected[i].price),yb2=px(p.price);
-      projectedPath+=' C '+(xa+29)+' '+ya+' '+(xb-32)+' '+yb2+' '+xb+' '+yb2;
+      projectedPath+=' C '+(xa+(xb-xa)*.3)+' '+ya+' '+(xb-(xb-xa)*.3)+' '+yb2+' '+xb+' '+yb2;
     });
   }
   const ageMin=m.historyAge==null?null:Math.ceil(m.historyAge/60000);
@@ -115,7 +131,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <span><Layers3 size={14}/> وجهات بعيدة: H1 / H4 · مستويات فعلية</span>
         <span><Target size={14}/> {statusReady?'سيناريو مسجل':watchReady?'مستويات مراقبة بعيدة · دون أمر تداول':m.bias.active?'الاتجاه مرصود · الأهداف قيد التحقق':'بيانات قيد التحديث'}</span>
       </div>
-      <div className="forecast-visual-layout">
+      <div className={'forecast-visual-layout'+(expanded?' forecast-layout-expanded':'')}>
         <div className="forecast-visual-facts">
           <div className="forecast-visual-fact forecast-visual-last">
             <small>السعر المرجعي {sn.view.priceFresh?'· حديث':'· غير مباشر'}</small>
@@ -153,11 +169,16 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               'السوق قد يكون مغلقًا أو البيانات متأخرة'}</small>
           </div>
         </div>
-        <div className="forecast-visual-chart-wrap">
+        <div className={'forecast-visual-chart-wrap'+(expanded?' forecast-chart-expanded':'')}>
           <div className="forecast-visual-topline">
-            <span><Layers3 size={13}/> M1 / آخر {candles.length} شمعة مغلقة</span>
+            <span><Layers3 size={13}/> M1 · {candles.length} شمعة · توقيت الإمارات</span>
             <span>{ageMin!=null?'عمر آخر إغلاق '+ageMin+' دقيقة':'لا توجد بيانات شموع'}</span>
-            <button className="forecast-chart-zoom" type="button" aria-pressed={focusCandles} onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'عرض الرسم كاملًا':'تكبير الرسم ↔'}</button>
+            <div className="forecast-chart-tools">
+              <button type="button" aria-pressed={chartWindow===60} onClick={()=>setChartWindow(60)}>ساعة</button>
+              <button type="button" aria-pressed={chartWindow===240} onClick={()=>setChartWindow(240)}>4 ساعات</button>
+              <button className="forecast-chart-zoom" type="button" aria-pressed={focusCandles} onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'كل الأهداف':'تركيز الشموع'}</button>
+              <button type="button" aria-pressed={expanded} onClick={()=>setExpanded(v=>!v)}>{expanded?'حجم عادي':'توسيع الرسم ⤢'}</button>
+            </div>
           </div>
           <div className="forecast-visual-chart-scroll">
             <svg className={'forecast-visual-svg'+(focusCandles?' forecast-visual-svg-zoomed':'')} viewBox={'0 0 '+W+' '+H}
@@ -180,14 +201,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </marker>
               </defs>
               <rect x="0" y="0" width={W} height={H} rx="9" fill={'url(#forecast-chart-'+asset+')'}/>
-              <rect x={xf} y="16" width={xr-xf} height="405" fill="#56bde7" opacity=".028"/>
+              <rect x={xf} y="16" width={xr-xf} height={volumeEnd-15} fill="#56bde7" opacity=".028"/>
               {grid.map((g,i)=><g key={'grid'+i}>
-                <line x1={x0} x2="958" y1={g.y} y2={g.y} stroke="#426076" strokeOpacity=".32" strokeDasharray="3 6"/>
-                <text x="966" y={g.y+4} fill="#97afc0" fontSize="11" fontFamily="monospace">{fmt(g.value)}</text>
+                <line x1={x0} x2={xr+12} y1={g.y} y2={g.y} stroke="#426076" strokeOpacity=".32" strokeDasharray="3 6"/>
+                <text x={xr+20} y={g.y+4} fill="#97afc0" fontSize="11" fontFamily="monospace">{fmt(g.value)}</text>
               </g>)}
-              {Array.from({length:7},(_,i)=><line key={'v'+i} x1={x0+i*148} x2={x0+i*148} y1="18" y2="430"
+              {Array.from({length:7},(_,i)=><line key={'v'+i} x1={x0+i*(xr-x0)/6} x2={x0+i*(xr-x0)/6} y1="18" y2={volumeEnd+10}
                 stroke="#345267" strokeOpacity=".20" strokeDasharray="3 7"/>)}
-              <line x1={xf-8} x2={xf-8} y1="20" y2="425" stroke="#72b3d1" strokeOpacity=".5"
+              <line x1={xf-8} x2={xf-8} y1="20" y2={volumeEnd+5} stroke="#72b3d1" strokeOpacity=".5"
                 strokeDasharray="6 7"/>
               <text x={xf-14} y="13" textAnchor="end" fill="#88bbd3" fontSize="11">تاريخ فعلي</text>
               <text x={xf+8} y="13" fill="#e7c58a" fontSize="11">المستقبل / سيناريو</text>
@@ -197,10 +218,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   z.kind==='REBOUND'?'#e8b35e':z.kind==='SUPPLY'?'#b48be9':
                   z.kind==='DEMAND'?'#4e96ff':'#67d9e3';
                 const high=px(z.high),low=px(z.low),mid=px(z.price);
+                if(mid<yt||mid>yb)return null;
                 return <g key={z.key}>
                   <rect x={x0} y={Math.min(high,low)-3} width={xr-x0}
                     height={Math.max(6,Math.abs(low-high)+6)} fill={clr} opacity={z.kind==='TARGET'?.12:.075} rx="2"/>
-                  <line x1={z.kind==='TARGET'?xr-322:x0} x2={xr}
+                  <line x1={z.kind==='TARGET'?xf:x0} x2={xr}
                     y1={mid} y2={mid} stroke={clr} strokeWidth={z.kind==='TARGET'?1.4:1}
                     strokeDasharray={z.kind==='STOP'?'7 6':undefined} strokeOpacity=".72"/>
                   <text x={xr-7} y={mid-7} textAnchor="end" fontSize="11" fill={clr}
@@ -216,15 +238,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <line x1={x} x2={x} y1={px(c.high)} y2={px(c.low)} stroke={color} strokeWidth="1.3"/>
                   <rect x={x-candleWidth/2} y={top} width={candleWidth}
                     height={Math.max(1.3,bottom-top)} rx=".45" fill={color}/>
-                  <rect x={x-candleWidth/2} y={420-volumeH} width={candleWidth}
+                  <rect x={x-candleWidth/2} y={volumeEnd-volumeH} width={candleWidth}
                     height={volumeH} fill={color} opacity=".35"/>
                   <title>{clock(c.time)+' · O '+fmt(c.open)+' H '+fmt(c.high)+' L '+fmt(c.low)+' C '+fmt(c.close)}</title>
                 </g>;
               })}
-              <line x1={x0} x2={xr} y1="420" y2="420" stroke="#416077" strokeOpacity=".4"/>
+              <line x1={x0} x2={xr} y1={volumeEnd} y2={volumeEnd} stroke="#416077" strokeOpacity=".4"/>
               {candles.length>0&&[0,.33,.66,1].map((a,i)=>{
                 const c=candles[Math.min(candles.length-1,Math.round((candles.length-1)*a))];
-                return <text key={'time'+i} x={x0+(i/3)*(x1-x0)} y="452"
+                return <text key={'time'+i} x={x0+(i/3)*(x1-x0)} y={H-13}
                   fill="#8ba6b9" textAnchor={i===0?'start':i===3?'end':'middle'} fontSize="11">{clock(c.time)}</text>;
               })}
               {m.price!=null&&sn.view.priceFresh&&<g>
@@ -239,14 +261,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 <path d={projectedPath} stroke={watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4'} strokeWidth="3"
                   strokeDasharray="9 7" fill="none" markerEnd={'url(#forecast-arrow-'+asset+')'}/>
                 {projected.slice(1).map((p,i)=><circle key={p.key}
-                  cx={Math.min(xr-8,716+i*106)} cy={px(p.price)} r="4.2"
+                  cx={futureX(i)} cy={px(p.price)} r="4.2"
                   fill={rise?'#7eecc3':'#ffc2ce'} stroke="#0a1928" strokeWidth="2"/>)}
               </g>}
               {!planVisible&&<g>
-                <rect x="645" y="136" width="273" height="65" rx="9" fill="#0a1520" stroke="#3a5464" strokeOpacity=".8"/>
-                <text x="782" y="160" fill="#cedfeb" textAnchor="middle" fontSize="14" fontWeight="700">
+                <rect x={xf+8} y="136" width={xr-xf-16} height="80" rx="9" fill="#0a1520" stroke="#3a5464" strokeOpacity=".8"/>
+                <text x={(xf+xr)/2} y="162" fill="#cedfeb" textAnchor="middle" fontSize={mobile?11:14} fontWeight="700">
                   {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'لا توجد شموع كافية':m.bias.active?m.bias.label:'بيانات الرصد غير حديثة'}</text>
-                <text x="782" y="182" fill="#91abbb" textAnchor="middle" fontSize="11">لن نختلق هدفًا أو مسارًا بدون بيانات</text>
+                <text x={(xf+xr)/2} y="187" fill="#91abbb" textAnchor="middle" fontSize={mobile?9:11}>انتظار بيانات لتأكيد المسار</text>
               </g>}
             </svg>
           </div>
@@ -260,6 +282,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
         </div>
       </div>
+      <div className="sniper-data-health" aria-label="حداثة بيانات القناص">
+        <span className={sn.view.priceFresh?'sniper-health-ok':''}>السعر: {sn.view.priceFresh?'حديث':'متأخر'} · {sn.priceAge==null?'—':Math.round(sn.priceAge)+' ث'}</span>
+        <span className={sn.view.forecastFresh?'sniper-health-ok':''}>التحليل: {sn.view.forecastFresh?'حديث':'متأخر'} · {Number(snapshotAt)>0?Math.max(0,Math.round((now-Number(snapshotAt))/1000))+' ث':'—'}</span>
+        <span className={m.historyFresh?'sniper-health-ok':''}>الشموع: {m.historyFresh?'حديثة':'تحتاج تحديث'}</span>
+      </div>
+      <SniperStrategyRadar frames={x?.chartHigherFrames} now={now} price={m.price} side={dir}
+        sourceReady={sn.view.priceFresh&&sn.view.forecastFresh} targets={m.displayTargets} stop={m.displayStop}/>
       <section className="sniper-four-hour" aria-label="قراءة آخر أربع ساعات">
         <div className="sniper-four-head">
           <strong>تحليل آخر 4 ساعات · هيكل وسيولة</strong>

@@ -1,0 +1,52 @@
+'use client';
+import {useMemo} from 'react';
+import {Crosshair,Activity,ShieldAlert} from 'lucide-react';
+import {evaluateSniperStrategies} from '../lib/sniper-strategies';
+const fmt=(v:number|null,d=1)=>v==null?'—':v.toLocaleString('en-US',{maximumFractionDigits:d});
+export default function SniperStrategyRadar({frames,now,price,side,sourceReady,targets,stop}: {
+  frames:any;now:number;price:number|null;side:'BUY'|'SELL'|'WAIT';sourceReady:boolean;
+  targets:Array<{price:number}>;stop:number|null
+}){
+  // Candle indicators change only with new history. Current price and freshness
+  // are still reevaluated; the 1-second clock doesn't create new confirmation bars.
+  const minute=Math.floor(now/60000);
+  const target=targets[0]?.price??null;
+  const analysis=useMemo(()=>evaluateSniperStrategies({frames,now:minute*60000,price,side,sourceReady,
+    targets:target==null?[]:[{price:target}],stop}),
+    [frames,minute,price,side,sourceReady,target,stop]);
+  return <section id="sniper-strategies" className="sniper-strategy-radar" aria-label="استراتيجيات ومؤشرات القناص">
+    <div className="sniper-strategy-head"><strong><Crosshair size={17}/> رادار الاستراتيجيات</strong>
+      <span className={analysis.eligible?'sniper-radar-confirmed':''}>{analysis.regimeLabel} · {analysis.eligible?'تأكيد فني أولي':'انتظار تأكيد'}</span></div>
+    <p className="sniper-strategy-reason"><ShieldAlert size={14}/>{analysis.reason}</p>
+    {analysis.ready&&<>
+      <div className="sniper-indicator-grid">
+        <div><small>قوة الاتجاه · ADX M15</small><b dir="ltr">{fmt(analysis.frames?.m15.adx??null)}</b><span>{(analysis.frames?.m15.adx??0)>=23?'اتجاه أقوى':'اتجاه ضعيف / توازن'}</span></div>
+        <div><small>زخم · RSI M15</small><b dir="ltr">{fmt(analysis.frames?.m15.rsi??null)}</b><span>زخم مؤيد يحتاج تأكيد السعر</span></div>
+        <div><small>امتداد عن EMA20 · M5</small><b dir="ltr">{fmt(analysis.extensionAtr)} ATR</b><span>{(analysis.extensionAtr??0)>2.5?'امتداد زائد؛ انتظار رجوع':'ضمن المدى المرصود'}</span></div>
+        <div><small>عائد / مخاطرة الهدف الأول</small><b dir="ltr">{analysis.rr==null?'—':'1 : '+fmt(analysis.rr,2)}</b><span>من الهدف والإبطال الظاهرين</span></div>
+      </div>
+      <div className="sniper-frame-agreement" aria-label="توافق الأطر والمؤشرات">
+        {(['m5','m15','h1'] as const).map(frame=>{
+          const item=analysis.frames![frame];
+          return <span key={frame} className={item.side==='BUY'?'sniper-frame-buy':item.side==='SELL'?'sniper-frame-sell':''}>
+            <b>{frame.toUpperCase()}</b> {item.side==='BUY'?'ميل شراء':item.side==='SELL'?'ميل بيع':'متوازن'}
+            <small dir="ltr">ADX {fmt(item.adx)} · +DI {fmt(item.plusDI)} / −DI {fmt(item.minusDI)}</small>
+          </span>;
+        })}
+      </div>
+      <div className="sniper-strategy-grid">
+        {analysis.strategies.map(s=><article key={s.id} className={'sniper-strategy-card sniper-strategy-'+s.state.toLowerCase()}>
+          <div><strong><Activity size={14}/>{s.name}</strong><span>{s.state==='CONFIRMED'?'تأكيد مغلق':s.state==='BUILDING'?'يتكوّن':'رصد'}</span></div>
+          <p>{s.reason}</p>{s.level!=null&&<small>مستوى مرجعي <b dir="ltr">{fmt(s.level,2)}</b></small>}
+        </article>)}
+      </div>
+      <details className="sniper-strategy-details"><summary>تفاصيل المؤشرات وشروط الانتظار</summary>
+        <p>رتبة عرض بولينجر: {fmt(analysis.squeezePercentile)}% من آخر 60 قراءة · كفاءة الحركة: {fmt((analysis.efficiency??0)*100)}% · ATR M15: {fmt(analysis.frames?.m15.atr??null,2)}.</p>
+        <p>آخر تأكيد M5: {new Date(analysis.confirmedAt!).toLocaleTimeString('ar-AE',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Dubai'})} بتوقيت الإمارات. الحسابات من شموع مغلقة فقط.</p>
+        {analysis.blockers.map(reason=><p key={reason}>• {reason}</p>)}
+        <p>الرادار يقيّم فرصًا جديدة حسب اتجاه وأهداف الرسم. التأكيد الفني وحده لا يمنح إشارة دخول؛ السيناريو المعتمد يظهر مسجّلًا على الرسم. الأهداف الهيكلية للمراقبة مستقلة عن تأكيد الدخول. هذه قواعد فنية غير مثبتة الربحية؛ سجل الأداء هو مرجع تقييمها.</p>
+        <p>تعريف المؤشرات: <a href="https://www.tradingview.com/support/solutions/43000589099-average-directional-index-adx/" target="_blank" rel="noreferrer">ADX / DMI</a> · <a href="https://www.tradingview.com/support/solutions/43000501972-bollinger-bandwidth-bbw/" target="_blank" rel="noreferrer">Bollinger BandWidth</a></p>
+      </details>
+    </>}
+  </section>;
+}

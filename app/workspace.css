@@ -798,3 +798,79 @@ body:has(.modern-workspace){
   .sniper-audit-summary-item{padding:8px 10px}
   .sniper-audit-summary-item>strong{font-size:19px}
 }
+
+/* Wider chart-first workspace; mobile geometry is calculated in the SVG itself. */
+.modern-workspace.compact-sniper{max-width:1640px;padding:8px 14px 32px}
+.compact-sniper .forecast-visual-layout{grid-template-columns:minmax(210px,.23fr) minmax(0,1fr);gap:12px}
+.compact-sniper .forecast-visual-chart-wrap{min-height:420px}
+.compact-sniper .forecast-visual-heading strong{font-size:17px}
+.compact-sniper .forecast-visual-header{padding:12px 14px}
+.compact-sniper .forecast-visual-controls button{min-height:42px;font-size:12px}
+.forecast-chart-tools{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.forecast-chart-tools button{min-height:38px;padding:7px 10px;border:1px solid #3a5c70;border-radius:7px;background:#112837;color:#bcd9e5;cursor:pointer;font-size:11px}
+.forecast-chart-tools button[aria-pressed=true]{background:#26546a;border-color:#75a7bb;color:#fff}
+.compact-sniper .forecast-chart-expanded{grid-column:1/-1}
+.compact-sniper .forecast-layout-expanded{grid-template-columns:1fr}
+.compact-sniper .forecast-layout-expanded .forecast-visual-chart-wrap{grid-row:1}
+.compact-sniper .forecast-layout-expanded .forecast-visual-facts{grid-row:2;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.compact-sniper .forecast-layout-expanded .forecast-visual-targets{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.compact-sniper .forecast-layout-expanded .forecast-visual-confidence{grid-column:1/-1}
+.compact-sniper .forecast-visual-svg-zoomed{min-width:0}
+.sniper-data-health{display:flex;gap:6px;flex-wrap:wrap;margin:0 12px 12px}
+.sniper-data-health span{font-size:11px;border:1px solid #755546;background:#2b231f;color:#eac79b;padding:5px 9px;border-radius:6px}
+.sniper-data-health .sniper-health-ok{border-color:#356257;background:#102c29;color:#a3ddc7}
+.sniper-strategy-radar{margin:0 12px 12px;padding:14px;border:1px solid #375366;border-radius:11px;background:linear-gradient(120deg,#102232,#0a1927)}
+.sniper-strategy-head{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap}
+.sniper-strategy-head strong{display:flex;align-items:center;gap:6px;color:#dcecf4;font-size:15px}
+.sniper-strategy-head>span{font-size:11px;color:#e6c68e}
+.sniper-strategy-head>.sniper-radar-confirmed{color:#84e5b9}
+.sniper-strategy-reason{display:flex;align-items:center;gap:6px;font-size:12px;color:#acc4d4;line-height:1.7;margin:10px 0}
+.sniper-indicator-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+.sniper-indicator-grid>div{display:flex;flex-direction:column;gap:4px;border:1px solid #2c465a;border-radius:8px;padding:10px;background:#0b1724;min-width:0}
+.sniper-indicator-grid small{font-size:11px;color:#b8d0dc}
+.sniper-indicator-grid b{font-size:20px;line-height:1.4;color:#a8e1ed;font-variant-numeric:tabular-nums;text-align:right}
+.sniper-indicator-grid span{font-size:10px;color:#90aabd;line-height:1.6}
+.sniper-frame-agreement{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:10px 0}
+.sniper-frame-agreement>span{display:flex;flex-wrap:wrap;align-items:center;gap:5px 8px;border:1px solid #415468;border-radius:7px;padding:8px;font-size:12px;color:#bfced8;background:#14212f;min-width:0}
+.sniper-frame-agreement small{display:block;width:100%;font-size:10px;color:#a9becc}
+.sniper-frame-agreement>.sniper-frame-buy{border-color:#346251;color:#95e0bf}
+.sniper-frame-agreement>.sniper-frame-sell{border-color:#805363;color:#eeacba}
+.sniper-strategy-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.sniper-strategy-card{padding:11px 12px;border:1px solid #304a5c;border-radius:8px;background:#0c1b28;min-width:0}
+.sniper-strategy-card>div{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap}
+.sniper-strategy-card strong{display:flex;align-items:center;gap:5px;font-size:12px;color:#ccdde8}
+.sniper-strategy-card span{font-size:10px;color:#98b1c0}
+.sniper-strategy-card p{font-size:11px;line-height:1.8;color:#aac4d4;margin:7px 0}
+.sniper-strategy-card small{font-size:11px;color:#8fbed1}.sniper-strategy-card small b{display:inline-block;margin-inline-start:5px;font-variant-numeric:tabular-nums}
+.sniper-strategy-confirmed{border-color:#43886d;background:#112b27}.sniper-strategy-confirmed span{color:#8fe8b8}
+.sniper-strategy-building{border-color:#7a6445}.sniper-strategy-building span{color:#e8c384}
+.sniper-strategy-details{border-top:1px solid #2f4a5d;margin-top:12px;padding-top:4px;color:#a8c2d2;font-size:11px;line-height:1.8}
+.sniper-strategy-details summary{cursor:pointer;min-height:44px;align-content:center;color:#c3dce8;font-size:12px}
+.sniper-strategy-details a{color:#8cd4e3}
+.compact-sniper .forecast-decision-card>p,.compact-sniper .sniper-four-hour>p,.compact-sniper .sniper-audit-panel>p{font-size:11px}
+@media(max-width:820px){
+  .modern-workspace.compact-sniper{padding:7px 7px 28px}
+  .compact-sniper .forecast-visual-layout{grid-template-columns:1fr;padding:7px;gap:10px}
+  .compact-sniper .forecast-visual-chart-wrap{grid-row:1;min-height:0;padding:7px}
+  .compact-sniper .forecast-visual-facts{grid-row:2}
+  .compact-sniper .forecast-visual-heading strong{font-size:15px}
+  .compact-sniper .forecast-visual-header{padding:10px}
+  .sniper-strategy-radar{margin:0 7px 10px;padding:10px}
+  .sniper-indicator-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sniper-data-health{margin:0 7px 10px}
+  .compact-sniper .forecast-chart-expanded{grid-column:auto}
+}
+@media(max-width:600px){
+  .compact-sniper .forecast-visual-topline{font-size:11px;gap:8px;padding:3px 0 7px}
+  .forecast-chart-tools{width:100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+  .forecast-chart-tools button{min-height:44px;padding:6px 2px;font-size:11px}
+  .compact-sniper .forecast-visual-svg,.compact-sniper .forecast-visual-svg-zoomed{width:100%;min-width:0;height:auto}
+  .compact-sniper .forecast-visual-legend{font-size:10px;gap:5px 10px}
+  .sniper-strategy-grid{grid-template-columns:1fr}
+  .sniper-frame-agreement>span{font-size:11px;padding:7px 5px}
+  .sniper-frame-agreement small{font-size:9px;overflow-wrap:anywhere}
+  .sniper-strategy-head strong{font-size:14px}
+  .compact-sniper .forecast-visual-last strong{font-size:23px}
+  .compact-sniper .forecast-visual-target strong{font-size:15px}
+  .sniper-indicator-grid b{font-size:19px}
+}

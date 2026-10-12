@@ -24,7 +24,7 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
        high<Math.max(open,close)||low>Math.min(open,close)||low>high)continue;
     seen.set(time,{time,open,high,low,close,volume:Math.max(0,volume)});
   }
-  const candles=[...seen.values()].sort((a,b)=>a.time-b.time).slice(-96);
+  const candles=[...seen.values()].sort((a,b)=>a.time-b.time).slice(-240);
   const lastAt=candles.length?candles[candles.length-1].time+60000:0;
   const historyAge=lastAt?Math.max(0,now-lastAt):null;
   const historyFresh=historyAge!=null&&historyAge<=180000;

@@ -5,6 +5,7 @@ import {advanceScenario,scorecard,startScenario,terminal,type Scenario,type Asse
 import {buildContinuousBias} from './continuous-direction';
 import {analyzeFourHours} from './four-hour-structure';
 import {advanceWatch,emptyWatch,type WatchMemory} from './sniper-watch';
+import {evaluateSniperStrategies} from './sniper-strategies';
 
 // Railway Gold Watch has an existing dedicated persistent volume at /data.
 // /tmp fallback intentionally does NOT claim persistence across deploys.
@@ -54,6 +55,9 @@ function candidate(asset:Asset,x:any,now:number,modelAt:number){
   const sniper=buildSniperOutlook(asset,x,null,now,modelAt);
   const v=sniper.view,targets=sniper.targets;
   const blockers:string[]=[];
+  const strategy=evaluateSniperStrategies({frames:x?.chartHigherFrames,now,price:v.price,
+    side:v.side,sourceReady:v.priceFresh&&v.forecastFresh,targets,stop:v.invalidation});
+  if(!strategy.eligible)blockers.push('تأكيد الاستراتيجية: '+strategy.reason);
   const historical=scorecard(load().scenarios,asset);
   const priorT1=historical.targets[0];
   // An empirical circuit-breaker only after a meaningful audit sample.
