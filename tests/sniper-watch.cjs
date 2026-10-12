@@ -143,3 +143,4 @@ assert.equal(JSON.stringify(coldAudit.watch.BTC.state),frozen,'same completed M1
 coldAudit=coldStore.updateStructuralWatchFromChart(chartOnly,at+91000);
 assert.equal(coldAudit.watch.BTC.bias.active,false,'old candles cannot keep observation active');
 console.log('PASS: inference-independent closed-candle watch remains observation-only and timestamp bounded');
+assert.equal(ephemeralReader({...transient,updatedAt:at+700,watch:{BTC:{...transient.watch.BTC,updatedAt:at+700,modelAt:at+700}}},'BTC',at,true).fresh,true,'subsecond response publication must not flicker while the UI clock catches up');

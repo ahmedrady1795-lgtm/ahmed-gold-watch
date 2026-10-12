@@ -50,7 +50,7 @@ export default function AICommandCenter({data,chartData,error,assetView='ALL',no
   const journal={GOLD:scenarioAsJournal(effectiveAudit?.current?.GOLD),
     BTC:scenarioAsJournal(effectiveAudit?.current?.BTC)};
   const observationAt=Number(chartData?.checkedAt||data?.checkedAt||0);
-  const chartWatchFresh=Boolean(chartAudit?.ok&&now-observationAt<90000&&observationAt<=now);
+  const chartWatchFresh=Boolean(chartAudit?.ok&&now-observationAt<90000&&observationAt<=now+2000);
   const stale=generatedAt>0&&now-generatedAt>90000&&!chartWatchFresh;
   return <div className="ai-clean renewed-ai">
     {error&&!data&&<div className="fatal"><ShieldAlert size={18}/><div><strong>التحليل غير متاح</strong><span>{error}</span></div></div>}

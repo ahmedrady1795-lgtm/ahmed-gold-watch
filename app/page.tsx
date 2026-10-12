@@ -79,7 +79,7 @@ export default function Home(){
       try{
         const r=await fetch('/api/chart-history',{cache:'no-store',signal:AbortSignal.timeout(18000)});
         const j=await r.json().catch(()=>null);
-        if(r.ok&&j?.ok&&!closed)setChartData(j);
+        if(r.ok&&j?.ok&&!closed){setNow(Date.now());setChartData(j);}
       }catch{/* Keep the last observed candles; never manufacture new ones. */}
       finally{loading=false;}
     };

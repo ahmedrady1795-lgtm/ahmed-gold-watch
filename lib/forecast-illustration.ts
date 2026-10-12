@@ -30,7 +30,7 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const historyFresh=historyAge!=null&&historyAge<=180000;
   const price=sniper.view.price;
   const marketAt=finite(observationAt);
-  const observationFresh=Boolean(marketAt!=null&&marketAt>0&&marketAt<=now&&now-marketAt<=90000);
+  const observationFresh=Boolean(marketAt!=null&&marketAt>0&&marketAt<=now+2000&&now-marketAt<=90000);
   const fourHour=analyzeFourHours({asset,candles:raw,frames:x?.chartHigherFrames,now,
     source:x?.candleSource,referencePrice:price});
   const rawBias=buildContinuousBias({asset,frames:x?.chartHigherFrames,price,now,

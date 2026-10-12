@@ -101,3 +101,7 @@ assert.equal(m.displayTargets[0].price,108,'same authoritative server objective 
 m=build('GOLD',cold,null,now,0,null,true,savedState,savedBias,now-100000);
 assert.equal(m.watchReady,false,'stale observation cannot bypass freshness');
 console.log('PASS: cold inference has no entry, but fresh server market observation continues');
+m=build('GOLD',cold,null,now,0,null,true,savedState,savedBias,now+700);
+assert.equal(m.watchReady,true,'fresh publication newer than the sampled UI second does not pause targets');
+m=build('GOLD',cold,null,now,0,null,true,savedState,savedBias,now+10000);
+assert.equal(m.watchReady,false,'real future timestamps remain rejected');
