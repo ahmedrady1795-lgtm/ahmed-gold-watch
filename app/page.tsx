@@ -225,9 +225,9 @@ export default function Home(){
       <a href="/scalp" className="workspace-scalp-link">سكالب الثواني ↗</a>
     </nav>
     <section className="content lite-content" aria-label="القناص الذكي">
-      <TradingViewGold />
       <AICommandCenter assetView="ALL" data={aiData} error={aiError} now={now} goldLive={goldTick}
         btcLive={btcLive&&shownBtc!=null?{asset:'BTC',ok:true,price:shownBtc,sourceTime:shownBtcAt}:null}/>
+      <TradingViewGold />
     </section>
   </main>;
 }
