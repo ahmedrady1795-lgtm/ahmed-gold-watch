@@ -1,5 +1,6 @@
 import {indicators,type Candle,type IndicatorSet} from './engine';
 import {assessLiquidityFoundation,type LiquidityContext} from './liquidity-foundation';
+import {supertrend} from './trend-confirmation';
 
 type Side='BUY'|'SELL'|'WAIT';
 type Strategy={id:string;name:string;state:'CONFIRMED'|'BUILDING'|'WAIT';reason:string;level:number|null};
@@ -32,12 +33,15 @@ export function evaluateSniperStrategies(input:{frames:any;now:number;price:numb
   const empty=(reason:string)=>({ready:false,eligible:false,side:input.side,regime:'UNKNOWN' as string,
     regimeLabel:'قراءة غير متاحة',reason,score:null as number|null,frames:null as
       {m5:FrameReading;m15:FrameReading;h1:FrameReading}|null,
-    strategies:[] as Strategy[],blockers:[reason],squeezePercentile:null as number|null,
+    strategies:[] as Strategy[],blockers:[reason],technical:{supertrendM15:'WAIT' as Side,
+      supertrendH1:'WAIT' as Side,supertrendM15Line:null as number|null,
+      supertrendH1Line:null as number|null,keltnerSqueeze:false,keltnerRelease:false,
+      adxSlopeM15:null as number|null},squeezePercentile:null as number|null,
     efficiency:null as number|null,choppiness:null as number|null,extensionAtr:null as number|null,rr:null as number|null,
     liquidity,checkedAt:input.now,confirmedAt:null as number|null});
   const m5=bars(input.frames?.m5,input.now,300000),m15=bars(input.frames?.m15,input.now,900000),
     h1=bars(input.frames?.h1,input.now,3600000);
-  if([m5,m15,h1].some(b=>b.length<60))return empty('نحتاج 60 شمعة مغلقة لكل من M5 / M15 / H1');
+  if([m5,m15,h1].some(b=>b.length<205))return empty('نحتاج 205 شموع مغلقة لكل إطار M5 / M15 / H1 حتى يعمل EMA200 بدقة');
   const groups=[{rows:m5,period:300000,age:13*60000},{rows:m15,period:900000,age:28*60000},
     {rows:h1,period:3600000,age:120*60000}];
   if(groups.some(g=>input.now-(g.rows.at(-1)!.time+g.period)>g.age))return empty('شموع المؤشرات متأخرة');
@@ -48,6 +52,13 @@ export function evaluateSniperStrategies(input:{frames:any;now:number;price:numb
   if([i5,i15,i1].some(i=>![i.atr,i.adx,i.rsi,i.ema20,i.ema50,i.plusDI,i.minusDI].every(Number.isFinite)||i.atr<=0))
     return empty('مدى السعر أو حساب المؤشرات غير صالح');
   const frames={m5:reading(i5,m5,300000),m15:reading(i15,m15,900000),h1:reading(i1,h1,3600000)};
+  // Trend filter is independent of EMA/DMI. It uses completed M15/H1 bars.
+  const st15=supertrend(m15),st1=supertrend(h1);
+  const previous15=indicators(m15.slice(0,-1));
+  const keltner=(i:IndicatorSet)=>Number.isFinite(i.atr)&&i.atr>0&&
+    i.bbUpper<i.ema20+1.5*i.atr&&i.bbLower>i.ema20-1.5*i.atr;
+  const keltnerNow=keltner(i15),keltnerPrevious=keltner(previous15);
+  const previousAdx=indicators(m15.slice(0,-4)).adx;
   const side=input.side,sign=side==='BUY'?1:side==='SELL'?-1:0;
   const price=number(input.price),last=m5.at(-1)!,prev=m5.at(-2)!;
   const widths:number[]=[];
@@ -65,7 +76,21 @@ export function evaluateSniperStrategies(input:{frames:any;now:number;price:numb
   const extension=price!=null&&price>0?Math.abs(price-i5.ema20)/i5.atr:Infinity;
   const shock=last.high-last.low>3*i5.atr||i5.volatility>2.2;
   const trending=i15.adx>=23&&efficiency>=.3&&(choppiness<61.8||efficiency>=.65);
-  const squeezed=percentile<=20&&i15.adx<23;
+  const squeezed=percentile<=25&&keltnerNow&&i15.adx<26;
+  const higherSupertrendOpposed=Boolean(sign&&st1.ready&&st1.side!==side&&i1.adx>=22);
+  const trendConfirmed=Boolean(sign&&st15.ready&&st1.ready&&
+    st15.side===side&&st1.side===side);
+  const prior15=m15.slice(-13,-1),last15=m15.at(-1)!;
+  const breakout15=Boolean(sign&&prior15.length===12&&(
+    side==='BUY'?last15.close>Math.max(...prior15.map(b=>b.high))+i15.atr*.05:
+    last15.close<Math.min(...prior15.map(b=>b.low))-i15.atr*.05));
+  const keltnerRelease=Boolean(keltnerPrevious&&!keltnerNow&&breakout15&&
+    frames.m15.side===side&&frames.h1.side===side&&!higherSupertrendOpposed&&i15.adx>=18);
+  const technical={supertrendM15:st15.side,supertrendH1:st1.side,
+    supertrendM15Line:st15.line==null?null:rounded(st15.line),
+    supertrendH1Line:st1.line==null?null:rounded(st1.line),
+    keltnerSqueeze:keltnerNow,keltnerRelease,adxSlopeM15:Number.isFinite(previousAdx)?
+      rounded(i15.adx-previousAdx):null};
   const regime=shock?'SHOCK':trending?'TREND':squeezed?'COMPRESSION':'RANGE';
   const regimeLabel={SHOCK:'تذبذب حاد',TREND:'سوق اتجاهي',COMPRESSION:'انضغاط قبل حركة',RANGE:'تذبذب / توازن'}[regime];
   const aligned=side!=='WAIT'&&frames.m15.side===side&&frames.h1.side===side;
@@ -84,7 +109,7 @@ export function evaluateSniperStrategies(input:{frames:any;now:number;price:numb
       if(retest)break;
     }
   }
-  strategies.push({id:'RETEST',name:'كسر وإعادة اختبار',state:retest&&aligned&&!shock?'CONFIRMED':
+  strategies.push({id:'RETEST',name:'كسر وإعادة اختبار',state:retest&&aligned&&!shock&&!higherSupertrendOpposed?'CONFIRMED':
     breakLevel!=null?'BUILDING':'WAIT',level:breakLevel==null?null:rounded(breakLevel),
     reason:retest?(aligned?'كسر مغلق ثم لمس المستوى وثباته مع M15/H1':'إعادة الاختبار موجودة؛ ننتظر اتفاق M15/H1'):
       breakLevel!=null?'الكسر مرصود؛ ننتظر إعادة اختبار وإغلاق مؤيد':'لم يظهر كسر ثم إعادة اختبار مؤكدة'});
@@ -93,18 +118,19 @@ export function evaluateSniperStrategies(input:{frames:any;now:number;price:numb
   const swept=sign&&sweepLevel!=null&&(side==='BUY'?prev.low<sweepLevel-i5.atr*.08:prev.high>sweepLevel+i5.atr*.08);
   const reclaimed=Boolean(swept&&sign*(prev.close-sweepLevel!)>0&&sign*(last.close-sweepLevel!)>0&&
     sign*(last.close-prev.close)>0&&sign*(last.close-last.open)>0);
-  strategies.push({id:'SWEEP',name:'سحب سيولة واسترداد',state:reclaimed&&!higherOpposed&&!shock?'CONFIRMED':swept?'BUILDING':'WAIT',
+  strategies.push({id:'SWEEP',name:'سحب سيولة واسترداد',state:reclaimed&&!higherOpposed&&!higherSupertrendOpposed&&!shock?'CONFIRMED':swept?'BUILDING':'WAIT',
     level:sweepLevel==null?null:rounded(sweepLevel),reason:reclaimed?(higherOpposed?'الاسترداد موجود لكن H1 يعارضه':'سحب طرف النطاق ثم إغلاقان مؤيدان؛ دون معارضة H1'):
       swept?'السحب مرصود؛ نحتاج استردادًا بإغلاقين':'لا سحب مؤكد في آخر شمعتين'});
   const touched=m5.slice(-3).some(b=>b.low<=i5.ema20+i5.atr*.25&&b.high>=i5.ema20-i5.atr*.25);
-  const pullback=Boolean(sign&&aligned&&trending&&touched&&sign*(last.close-i5.ema20)>0&&
+  const pullback=Boolean(sign&&aligned&&trending&&!higherSupertrendOpposed&&st15.side===side&&touched&&sign*(last.close-i5.ema20)>0&&
     sign*(last.close-prev.close)>0&&sign*(last.close-last.open)>0&&extension<=1.8&&!shock);
   strategies.push({id:'PULLBACK',name:'ارتداد مع الاتجاه',state:pullback?'CONFIRMED':aligned&&trending?'BUILDING':'WAIT',
     level:rounded(i5.ema20),reason:pullback?'عودة إلى EMA20 ثم إغلاق مع اتجاه M15/H1':
       aligned&&trending?'الاتجاه متفق؛ ننتظر رجوعًا وإغلاقًا مؤيدًا':'الاتجاه المتوسط والكبير غير متفق بما يكفي'});
-  strategies.push({id:'SQUEEZE',name:'انضغاط وتحرر',state:squeezed?'BUILDING':'WAIT',level:null,
-    reason:squeezed?'عرض بولينجر ضمن أقل 20% من آخر 60 قراءة؛ الاتجاه ينتظر كسرًا مؤكدًا':
-      'لا انضغاط مؤكد؛ التحرر يعتمد على كسر وإعادة اختبار'});
+  strategies.push({id:'SQUEEZE',name:'انضغاط وتحرر',state:keltnerRelease?'CONFIRMED':squeezed?'BUILDING':'WAIT',level:null,
+    reason:keltnerRelease?'خرج Bollinger من Keltner بعد انضغاط؛ كسر M15 مغلق مع توافق الأطر':
+      squeezed?'Bollinger داخل Keltner وعرضه ضمن أدنى 25%؛ ننتظر كسر M15 مغلق':
+      'لا تحرر مثبت من انضغاط BB/KC؛ لا دخول بناءً على الضغط وحده'});
   const stop=number(input.stop),target=number(input.targets?.[0]?.price);
   const risk=price!=null&&stop!=null?sign*(price-stop):0;
   const reward=price!=null&&target!=null?sign*(target-price):0;
@@ -116,17 +142,18 @@ export function evaluateSniperStrategies(input:{frames:any;now:number;price:numb
   if(shock)blockers.push('تذبذب حاد؛ انتظار استقرار المدى');
   if(extension>2.5)blockers.push('السعر ممتد عن EMA20؛ تجنب مطاردة الحركة');
   if(higherOpposed)blockers.push('H1 يعارض الاتجاه المرشح');
+  if(higherSupertrendOpposed)blockers.push('Supertrend H1 يعارض الاتجاه مع ADX قوي؛ لا دخول جديد');
   if(liquidity.opposing)blockers.push('تعارض مؤكد: سحب سيولة وكسر هيكل ضد الاتجاه؛ لا دخول جديد');
   if(choppiness>=61.8&&efficiency<.3&&strategies.find(s=>s.id==='SWEEP')?.state!=='CONFIRMED')
     blockers.push('تذبذب متداخل؛ نحتاج خروجًا أو استرداد سيولة مؤكدًا');
   if(!strategies.some(s=>s.state==='CONFIRMED'))blockers.push('ننتظر تأكيدًا سعريًا للاستراتيجية');
   if(rr==null||rr<1.35)blockers.push('هدف وإبطال صالحان بعائد/مخاطرة 1.35 على الأقل مطلوبان');
   // Evidence score is not a probability and never increases model confidence.
-  const score=Math.min(100,(aligned?35:0)+(trending?15:0)+
+  const score=Math.min(100,(aligned?30:0)+(trending?15:0)+
     (strategies.some(s=>s.state==='CONFIRMED')?30:0)+(rr!=null&&rr>=1.35?10:0)+
-    (!shock&&extension<=2.5?10:0));
+    (!shock&&extension<=2.5?10:0)+(trendConfirmed?5:0));
   return {ready:true,eligible:blockers.length===0,side,regime,regimeLabel,reason:blockers[0]||'تأكيد سعري مع هدف هيكلي؛ يخضع لبقية فلاتر القناص',
     score,frames,strategies,blockers,squeezePercentile:rounded(percentile),efficiency:rounded(efficiency),choppiness:rounded(choppiness),
     extensionAtr:Number.isFinite(extension)?rounded(extension):null,rr:rr==null?null:rounded(rr),
-    liquidity,checkedAt:input.now,confirmedAt:last.time+300000};
+    technical,liquidity,checkedAt:input.now,confirmedAt:last.time+300000};
 }
