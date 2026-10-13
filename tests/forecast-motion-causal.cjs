@@ -22,7 +22,7 @@ let p=build(input);
 assert.equal(kinds(p),'START,BREAK,HOLD,RETEST,TARGET,TARGET');
 assert.equal(p[3].price,101.03,'retest uses a nearby authentic demand boundary');
 assert.ok(p[2].price>p[3].price,'BUY route must show an actual dip after the breakout');
-assert.deepEqual(p.slice(-2).map(x=>x.price),[104,108],'targets remain server prices');
+assert.equal(p.slice(-2).map(x=>x.price).join(','),'104,108','targets remain server prices');
 assert.ok(p.every(x=>x.kind!=='STOP'),'invalidation never joins take-profit path');
 p=build({...input,side:'SELL',price:100.19,targets:[{stage:1,price:95}],
   breakout:{ready:true,trigger:99.3,confirmed:false,extension:.48},
