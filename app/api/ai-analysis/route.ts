@@ -548,11 +548,27 @@ export async function GET(request:Request){
   analysisBusy=true;
   try{
     const actions:string[]=[],detected:string[]=[];
-    const stage=<T,>(name:string,promise:Promise<T>,stageBudgetMs=12000)=>
-      awaitAiStage(name,promise,perfStarted,{totalBudgetMs:39000,stageBudgetMs});
+    const stage=async <T,>(name:string,promise:Promise<T>,stageBudgetMs=12000):Promise<T>=>{
+      try{return await awaitAiStage(name,promise,perfStarted,{totalBudgetMs:39000,stageBudgetMs});}
+      catch(error){
+        console.warn('[AI-STAGE]',JSON.stringify({
+          failedAt:name,elapsedMs:Date.now()-perfStarted,
+          goldMarketMs:perf.goldMarketMs??null,btcMarketMs:perf.btcMarketMs??null,
+          btcSpotMs:perf.btcSpotMs??null,btcLiquidityMs:perf.btcLiquidityMs??null
+        }));
+        throw error;
+      }
+    };
+    const timedFeed=<T,>(name:'goldMarketMs'|'btcMarketMs'|'btcSpotMs'|'btcLiquidityMs',promise:Promise<T>)=>
+      promise.then(result=>{perf[name]=Date.now()-perfStarted;return result;});
     const scalpDeskPromise=getScalpDesk().catch(()=>null);
     const webIntelPromise=getWebMarketIntelligence(now).catch(()=>null);
-    let [goldSnap,btc,liveBtc,liquidity]=await stage('initial-market-feeds',Promise.all([getMarketSnapshot(),getBtcMarket(),liveBtcSpot(),getBtcLiquidity().catch(()=>null)]),18000);
+    let [goldSnap,btc,liveBtc,liquidity]=await stage('initial-market-feeds',Promise.all([
+      timedFeed('goldMarketMs',getMarketSnapshot()),
+      timedFeed('btcMarketMs',getBtcMarket()),
+      timedFeed('btcSpotMs',liveBtcSpot()),
+      timedFeed('btcLiquidityMs',getBtcLiquidity().catch(()=>null))
+    ]),18000);
     perf.firstMarketFetchMs=Date.now()-perfStarted;
     let gm=goldSnap.market,quote=goldSnap.quote;
     if(!gm.pricesReady||!gm.newsReady){
