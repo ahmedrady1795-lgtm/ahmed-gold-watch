@@ -967,3 +967,12 @@ body:has(.modern-workspace){
 .sniper-recent-outcomes small{color:#dabf89}
 .sniper-audit-export{display:inline-flex;min-height:36px;align-items:center;padding:5px 10px;color:#b8dfef;border:1px solid #365367;border-radius:6px;font-size:11px;text-decoration:none}
 @media(max-width:820px){.sniper-performance-grid{grid-template-columns:1fr}.sniper-performance-cohort{padding:8px}.sniper-performance-cohort table{font-size:9px}}
+
+/* Render forecast: reference layout with live, qualified values. */
+.render-flow-banner{margin:8px 10px;display:flex;align-items:center;gap:22px;padding:13px 16px;border:1px solid #386275;border-radius:10px;background:linear-gradient(110deg,#11313b,#0b1c2b)}
+.render-flow-banner strong{display:block;font-size:21px;color:#c8e8ef}.render-flow-banner small{display:block;color:#9dbac8;font-size:11px}
+.render-flow-banner p{margin:0;line-height:1.7;font-size:12px;color:#c6dce6}.render-flow-banner.phase-accumulation{border-color:#3aa987}.phase-accumulation strong{color:#61efbd}.render-flow-banner.phase-distribution{border-color:#c16c88}.phase-distribution strong{color:#ff9db6}
+.render-target-panel{margin:8px 10px;padding:13px;border:1px solid #345267;border-radius:12px;background:#0d202e}.render-target-panel>strong{display:block;margin-bottom:10px;color:#d8e9f2;font-size:15px}
+.render-target-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.render-target-grid>div{padding:12px 8px;border:1px solid #347766;border-radius:8px;background:linear-gradient(145deg,#14323c,#0b1b29);text-align:center;min-width:0}
+.render-target-grid small,.render-target-grid span{display:block;font-size:12px;color:#b8d1df;line-height:1.65}.render-target-grid b{display:block;font-size:22px;color:#7af0c7;font-variant-numeric:tabular-nums;margin:4px 0}.render-conditions{margin-top:9px}.render-conditions>div{border-color:#35586d}.render-conditions>div:last-child{border-color:#98516b}.render-conditions>div:last-child b{color:#ff99b2}.render-target-panel>p{margin:10px 0 0;padding-top:10px;border-top:1px solid #2c485c;color:#a7c3d4;font-size:11px;line-height:1.7}
+@media(max-width:600px){.render-flow-banner{margin:6px;gap:9px;padding:10px;align-items:flex-start;flex-direction:column}.render-flow-banner strong{font-size:19px}.render-target-panel{margin:6px;padding:9px}.render-target-grid{gap:5px}.render-target-grid>div{padding:9px 4px}.render-target-grid b{font-size:17px}.render-target-grid small,.render-target-grid span{font-size:10px}.render-conditions{grid-template-columns:1fr}.render-conditions>div{text-align:start}}

@@ -2,6 +2,7 @@
 
 import {useEffect,useState} from 'react';
 import {Crosshair,Layers3} from 'lucide-react';
+import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildForecastMotion} from '../lib/forecast-motion';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import NewsCommandCenter from './NewsCommandCenter';
@@ -58,6 +59,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     x1=mobile?280:530,xf=x1+10,xr=W-(mobile?150:146),yt=30,yb=H-90,volumeEnd=H-45;
   const breakout=buildBreakoutGuide({frames:x?.chartHigherFrames,now,side:dir,price:m.price,
     sourceReady:sn.view.priceFresh&&m.observationFresh&&m.historyFresh,invalidation:m.displayStop});
+  const overlay=buildChartOverlay({now,price:m.price,historyFresh:m.historyFresh,
+    priceFresh:sn.view.priceFresh&&m.observationFresh,fourHour:m.fourHour,
+    m5:x?.chartHigherFrames?.m5,accumulation:x?.accumulation,targets:planVisible?m.displayTargets:[]});
+  const pools=overlay.ready?[overlay.upper,overlay.lower].filter((z):z is NonNullable<typeof z>=>z!=null):[];
   const motion=buildForecastMotion({visible:planVisible,side:dir,price:m.price,
     targets:m.displayTargets,breakout});
   const motionColor=watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4';
@@ -73,7 +78,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const chartBands=collapseChartZones(visibleBands,m.price,mobile?1:2);
   const primaryZone=primaryLiquidityZone(chartBands,m.price);
   const opposingOverlap=findOpposingOverlap(chartBands,m.price);
-  const allBounds=[...candleBounds,...chartBands.flatMap(z=>[z.low,z.high]),...motion.map(p=>p.price)];
+  const allBounds=[...candleBounds,...chartBands.flatMap(z=>[z.low,z.high]),...motion.map(p=>p.price),...pools.flatMap(z=>[z.low,z.high]),
+    ...(breakout.ready?[breakout.above!,breakout.below!]:[])];
   const allMin=allBounds.length?Math.min(...allBounds):m.lower;
   const allMax=allBounds.length?Math.max(...allBounds):m.upper;
   const allSpan=Math.max(allMax-allMin,candleSpan);
@@ -111,6 +117,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       projectedPath+=' C '+(a.x+dx*.35)+' '+a.y+' '+(p.x-dx*.35)+' '+p.y+' '+p.x+' '+p.y;
     });
   }
+  const conditionalPath=(side:'BUY'|'SELL')=>{
+    const level=side==='BUY'?breakout.above:breakout.below;
+    const pool=side==='BUY'?overlay.upper:overlay.lower;
+    if(!overlay.ready||!breakout.ready||m.price==null||level==null||!pool)return '';
+    const end=side==='BUY'?Math.max(level,pool.center):Math.min(level,pool.center);
+    const dx=xr-xf,start=px(m.price),b=px(level),y=px(end);
+    return `M ${xf} ${start} L ${xf+dx*.23} ${b} L ${xf+dx*.34} ${b+(start-b)*.2} L ${xr-18} ${y}`;
+  };
   const motionLabels=layoutPriceLanes(projectedPoints.filter(p=>p.kind!=='HOLD').map((p,i)=>({
     key:p.key,y:clamp(p.y+(i%2===0?-32:36),yt+20,yb-20)
   })),yt+20,yb-20,mobile?34:30);
@@ -177,7 +191,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           {breakout.invalidation!=null?' مستوى إبطال المراقبة '+fmt(breakout.invalidation):' لا نعرض إبطالًا قبل وجود مستوى سليم.'}</small>}
         <p className="sniper-frame-explanation">{frameExplanation}</p>
       </div>
-      <div className={'forecast-visual-layout'+(expanded?' forecast-layout-expanded':'')}>
+      <div className={'render-flow-banner phase-'+overlay.phaseKind.toLowerCase()} aria-live="polite">
+        <div><small>حالة السيولة · قراءة آخر 4 ساعات</small><strong>{overlay.phaseLabel}</strong></div>
+        <p>{overlay.evidence}<small>تقدير سلوكي من السعر والحجم المتاح · لا يمثل احتمال ربح.</small></p>
+      </div>
+      <div className={'forecast-visual-layout' +(expanded?' forecast-layout-expanded':'')}>
         <div className={'forecast-visual-chart-wrap'+(expanded?' forecast-chart-expanded':'')}>
           <div className="forecast-visual-topline">
             <span><Layers3 size={13}/> M1 · {candles.length} شمعة · توقيت الإمارات</span>
@@ -224,6 +242,24 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 strokeDasharray="6 7"/>
               <text x={xf-14} y="18" textAnchor="end" fill="#88bbd3" fontSize={mobile?18:12}>تاريخ فعلي</text>
               <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?18:12}>{mobile?'سيناريو':'المستقبل / سيناريو'}</text>
+              <g clipPath={'url(#forecast-plot-'+asset+')'}>
+                {pools.map(z=>{const color=z.side==='UPPER'?'#ff7d9b':'#51dcdf';return <g key={z.side}>
+                  <rect x={x0} y={px(z.high)} width={xr-x0} height={Math.max(5,px(z.low)-px(z.high))}
+                    fill={color} fillOpacity=".12" stroke={color} strokeDasharray="6 5"/>
+                  <text x={x0+8} y={clamp(px(z.high)-8,yt+18,yb-18)} fill={color} fontSize={mobile?14:12}>
+                    {z.side==='UPPER'?'سيولة علوية محتملة':'سيولة سفلية محتملة'} · {fmt(z.low)} – {fmt(z.high)}</text>
+                </g>;})}
+                {breakout.ready&&([{side:'BUY',level:breakout.above},{side:'SELL',level:breakout.below}] as const).map(b=>
+                  b.level!=null&&<g key={b.side}>
+                    <line x1={xf} x2={xr} y1={px(b.level)} y2={px(b.level)} stroke={b.side==='BUY'?'#67eac1':'#ff92ad'} strokeDasharray="5 5"/>
+                    <text x={xf+6} y={clamp(px(b.level)-9,yt+16,yb-12)} fill={b.side==='BUY'?'#67eac1':'#ff92ad'} fontSize={mobile?14:12}>
+                      {b.side==='BUY'?'كسر صاعد':'كسر هابط'} · {fmt(b.level)}</text>
+                  </g>)}
+                {(['BUY','SELL'] as const).filter(side=>!planVisible||side!==dir).map(side=>{
+                  const path=conditionalPath(side);return path?<path key={side} d={path} fill="none" stroke={side==='BUY'?'#5ce3b3':'#82b2ff'}
+                    strokeWidth="2.5" strokeDasharray="7 5"><title>{planVisible?'سيناريو بديل مشروط بالكسر':'مسار مراقبة مشروط بالكسر'} · ليس هدفًا معتمدًا</title></path>:null;
+                })}
+              </g>
               {contextBox&&candles[0]&&contextBox.to>candles[0].time&&<g className="sniper-context-box">
                 <rect x={Math.max(x0,historyX(contextBox.from))} y={px(contextBox.high)}
                   width={Math.max(8,Math.min(x1,historyX(contextBox.to))-Math.max(x0,historyX(contextBox.from)))}
@@ -340,10 +376,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </path>}
               </g>}
               {!planVisible&&<g>
-                <rect x={xf+8} y="136" width={xr-xf-16} height="80" rx="9" fill="#0a1520" stroke="#3a5464" strokeOpacity=".8"/>
-                <text x={(xf+xr)/2} y="162" fill="#cedfeb" textAnchor="middle" fontSize="14" fontWeight="700">
+                <rect x={xf+8} y={yb-76} width={xr-xf-16} height="65" rx="9" fill="#0a1520" stroke="#3a5464" strokeOpacity=".8"/>
+                <text x={(xf+xr)/2} y={yb-51} fill="#cedfeb" textAnchor="middle" fontSize="14" fontWeight="700">
                   {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'انتظار شموع':watchFresh?'ترقب كسر':'تهيئة الذاكرة'}</text>
-                <text x={(xf+xr)/2} y="187" fill="#91abbb" textAnchor="middle" fontSize={mobile?11:11}>لا إشارة دخول</text>
+                <text x={(xf+xr)/2} y={yb-29} fill="#91abbb" textAnchor="middle" fontSize={mobile?11:11}>لا إشارة دخول</text>
               </g>}
             </svg>
           </div>
@@ -368,6 +404,20 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
         </div>
       </div>
+      <section className="render-target-panel" aria-label="الوقت التقريبي للأهداف">
+        <strong>◷ الوقت التقريبي للأهداف</strong>
+        <div className="render-target-grid">{([1,2,3] as const).map(stage=>{
+          const t=overlay.timing.find(t=>t.stage===stage);
+          return <div key={stage}><small>◎ الهدف {stage} · {statusReady?'مسجل':'مراقبة'}</small>
+            <b dir="ltr">{fmt(t?.price)}</b><span>{t?.eta?'خلال '+t.eta.min+' – '+t.eta.max+' دقيقة':'لا يوجد توقيت مؤهل'}</span></div>;
+        })}</div>
+        <div className="render-target-grid render-conditions">
+          <div><small>↗ السيناريو المتوقع</small><span>{planVisible?statusText:overlay.ready?'ترقب كسر مؤكد؛ المساران على الرسم احتمالات مشروطة.':'انتظار بيانات حديثة'}</span></div>
+          <div><small>◎ شرط التفعيل</small><span>{breakout.reason}</span></div>
+          <div><small>⊘ مستوى الإبطال</small><b dir="ltr">{fmt(m.displayStop)}</b><span>{m.displayStop!=null?'إبطال السيناريو عند تحقق شرطه':'لا سيناريو مؤهل بإبطال محدد'}</span></div>
+        </div>
+        <p>الخلاصة: {overlay.phaseLabel} · {rise?'ميل صعود':fall?'ميل هبوط':'اتجاه غير محسوم'} · الأوقات نطاقات تقديرية من تقلب M5، وليست مواعيد مضمونة.</p>
+      </section>
       <div className="sniper-data-health" aria-label="حداثة بيانات القناص">
         <span className={sn.view.priceFresh?'sniper-health-ok':''}>السعر: {sn.view.priceFresh?'حديث':'متأخر'} · {sn.priceAge==null?'—':Math.round(sn.priceAge)+' ث'}</span>
         <span className={m.observationFresh?'sniper-health-ok':''}>قراءة السوق: {m.observationFresh?'حديثة':'متأخرة'} · {Number(observationAt)>0?Math.max(0,Math.round((now-Number(observationAt))/1000))+' ث':'—'}</span>
