@@ -7,7 +7,7 @@ export type ForecastSide='BUY'|'SELL'|'WAIT';
 export type ForwardVote={name:string;side:ForecastSide;score:number;weight:number};
 type Family='price_structure'|'liquidity'|'fast_flow'|'external';
 const familyOf=(name:string):Family=>{
-  if(['M5','M15','H4','structure','path'].includes(name))return 'price_structure';
+  if(['M5','M15','H4','structure','path','pre-move'].includes(name))return 'price_structure';
   if(['liquidity','accumulation','intent'].includes(name))return 'liquidity';
   if(name==='tool mesh')return 'external';
   return 'fast_flow';
