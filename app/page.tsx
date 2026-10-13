@@ -3,6 +3,7 @@
 import {useEffect,useRef,useState} from 'react';
 import AICommandCenter from '../components/AICommandCenter';
 import {acceptGoldStreamPacket,sourceTimestamp,validSourceTime} from '../lib/client-market-freshness';
+import {shouldApplyGoldQuote} from '../lib/gold-feed-order';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))
   ?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})
@@ -145,11 +146,10 @@ export default function Home(){
       const fresh=acceptGoldStreamPacket(tick,Date.now());
       if(!fresh)return;
       const {price,at,bid,ask}=fresh;
-      if(goldTickRef.current?.mode==='stream'&&goldTickRef.current.sourceTime===at&&goldTickRef.current.price===price)return;
       const receivedAt=Date.now();
-      lastStreamTick=receivedAt;
-
       const nextGoldTick={ok:true,price,bid,ask,sourceTime:at,receivedAt,ageMs:Math.max(0,receivedAt-at),status:'live',mode:'stream',source:'Biquote · MT5 XAUUSD WebSocket',brokerSymbol:'XAUUSD',degraded:false};
+      if(!shouldApplyGoldQuote(nextGoldTick,goldTickRef.current,receivedAt,lastStreamTick))return;
+      lastStreamTick=receivedAt;
       goldTickRef.current=nextGoldTick;
       if(!closed)setGoldTick(nextGoldTick);
     };
@@ -184,7 +184,7 @@ export default function Home(){
       if(closed||inFlight||Date.now()-lastStreamTick<3500)return;
       inFlight=true;
       try{
-        const r=await fetch('/api/gold-tick?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+        const r=await fetch('/api/gold-tick?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(6500)});
         const j=await r.json();
         if(!r.ok||!j?.ok){nextDelay=3000;return;}
         const price=Number(j.price),bid=Number(j.bid),ask=Number(j.ask),at=sourceTimestamp(j.sourceTime)||0;
@@ -205,6 +205,9 @@ export default function Home(){
           brokerSymbol:j.brokerSymbol||null,
           degraded:Boolean(j.degraded)
         };
+        // REST can complete AFTER a WebSocket update. Never roll the displayed
+        // market timestamp backwards: that produced a false temporary pause.
+        if(!shouldApplyGoldQuote(nextGoldTick,goldTickRef.current,Date.now(),lastStreamTick))return;
         goldTickRef.current=nextGoldTick;
         if(!closed)setGoldTick(nextGoldTick);
       }catch{nextDelay=3000;}finally{inFlight=false;}
