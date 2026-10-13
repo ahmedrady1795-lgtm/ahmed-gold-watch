@@ -69,8 +69,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     m5:x?.chartHigherFrames?.m5,accumulation:x?.accumulation,targets:planVisible?m.displayTargets:[]});
   const pools=overlay.ready?[overlay.upper,overlay.lower].filter((z):z is NonNullable<typeof z>=>z!=null):[];
   const motion=buildForecastMotion({visible:planVisible,side:dir,price:m.price,
-    targets:m.displayTargets,breakout});
+    targets:m.displayTargets,breakout,
+    now,m5:x?.chartHigherFrames?.m5,zones:chartBands,
+    preMove:x?.preMovePressure,liquidity:overlay,invalidation:m.displayStop});
   const motionColor=watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4';
+  const scenarioKind=motion.some(p=>p.kind==='SWEEP')?'SWEEP_RECLAIM':
+    motion.some(p=>p.kind==='RETEST')?'BREAK_RETEST':'DIRECT';
+  const scenarioLabel=scenarioKind==='SWEEP_RECLAIM'?'سحب سيولة ثم استرداد':
+    scenarioKind==='BREAK_RETEST'?'كسر ثم اختبار وارتداد':'مسار مباشر مشروط';
   const candles=m.candles.slice(-chartWindow);
   const candleBounds=candles.flatMap(c=>[c.low,c.high]);
   if(m.price!=null)candleBounds.push(m.price);
@@ -292,8 +298,17 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 px(breakout.trigger)>=yt&&px(breakout.trigger)<=yb&&<g>
                 <rect x={xf} y={px(breakout.trigger)-7} width={xr-xf} height="14" fill="#75caff" fillOpacity=".13"/>
                 <line x1={xf} x2={xr} y1={px(breakout.trigger)} y2={px(breakout.trigger)} stroke="#8dd4ff" strokeDasharray="4 5"/>
-                <title>{'منطقة التفعيل المشروط · '+fmt(breakout.trigger)+' · إغلاق شمعتي M5، ثم توافق M15/H1'}</title>
+                <title>{'منطقة الكسر المشروط · '+fmt(breakout.trigger)+' · إغلاق شمعتي M5، ثم توافق M15/H1'}</title>
               </g>}
+              {motion.filter(p=>p.kind==='RETEST'||p.kind==='SWEEP').map(p=>
+                px(p.price)>=yt&&px(p.price)<=yb?<g key={'motion-zone-'+p.key}>
+                  <rect x={xf} y={px(p.price)-5} width={xr-xf} height="10"
+                    fill={p.kind==='RETEST'?'#72d6fd':'#f5bb7f'} fillOpacity=".17"/>
+                  <line x1={xf} x2={xr} y1={px(p.price)} y2={px(p.price)}
+                    stroke={p.kind==='RETEST'?'#72d6fd':'#f5bb7f'} strokeDasharray="2 6" strokeOpacity=".67"/>
+                  <title>{p.label+' · '+fmt(p.price)+' · احتمال مشروط لا يعني حركة مؤكدة'}</title>
+                </g>:null
+              )}
               {chartBands.map(z=>{
                 const clr=z.kind==='BUY_REBOUND'?'#42e5a9':z.kind==='SELL_REBOUND'?'#ff7189':
                   z.kind==='TARGET'?'#3ce6a8':z.kind==='STOP'?'#fd687c':
@@ -369,7 +384,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 {projectedPoints.map((p,i)=>{
                   if(p.y<yt||p.y>yb)return null;
                   const labelY=motionLabels.find(l=>l.key===p.key)?.labelY??clamp(p.y-30,yt+24,yb-20);
-                  const short=p.kind==='TARGET'?p.key:p.kind==='START'?'بداية':p.kind==='BREAK'?'تفعيل':p.kind==='RETEST'?'اختبار؟':'ثبات؟';
+                  const short=p.kind==='TARGET'?p.key:p.kind==='START'?'بداية':
+                    p.kind==='BREAK'?'كسر؟':p.kind==='RETEST'?'اختبار؟':
+                    p.kind==='SWEEP'?'سحب؟':p.kind==='RECLAIM'?'استرداد؟':'امتداد؟';
                   return <g key={p.key}>
                     <circle cx={p.x} cy={p.y} r={mobile?11:8} fill="#0b2230" stroke={motionColor} strokeWidth="2"/>
                     <text x={p.x} y={p.y+(mobile?5:3)} textAnchor="middle" fill="#f2f8fc" fontSize={mobile?14:9}>{i+1}</text>
@@ -396,12 +413,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             </svg>
           </div>
           {motion.length>0&&<div className="forecast-motion-guide" aria-label="خطوات المسار المتوقع">
-            <strong>{statusReady?'سيناريو مؤهل':'مراقبة مشروطة'} · كيف يصل السعر للأهداف؟</strong>
+            <strong>{statusReady?'سيناريو مؤهل':'مراقبة مشروطة'} · {scenarioLabel}</strong>
             <ol>{motion.map((p,i)=><li key={p.key}>
               <b>{i+1}</b><span>{p.label}{p.kind!=='HOLD'&&<small dir="ltr">{fmt(p.price)}</small>}</span>
             </li>)}</ol>
-            <p>المسار يوضح ترتيبًا محتملًا، وليس شكل الشموع أو موعد الوصول. إعادة الاختبار اختيارية وقد يصل السعر مباشرة أو يُبطل السيناريو.
-              {motion.some(p=>p.kind==='HOLD')?' الثبات المرسوم امتداد توضيحي من مدى M5.':''}
+            <p>السهم يمثل مستويات وارتدادات مشروطة مشتقة من شموع M5 مغلقة ومناطق السعر المرصودة؛ مش شكل الشموع المستقبلية ولا توقيت مضمون.
+              {scenarioKind==='BREAK_RETEST'?' الاختبار ممكن يحصل عند المستوى المرسوم، وممكن السعر يكمل مباشرة.':''}
+              {scenarioKind==='SWEEP_RECLAIM'?' سحب السيولة مسار بديل مرصود الاحتمال فقط، ويلغى لو اتكسر الإبطال.':''}
+              {motion.some(p=>p.kind==='HOLD')?' امتداد ما بعد الكسر تقديري من تذبذب M5، وليس هدفًا منفصلًا.':''}
               {watchReady?' الكسر يحتاج إغلاق شمعتي M5 وتوافق M15/H1 وباقي شروط القناص؛ ليس تصريح دخول.':''}</p>
           </div>}
           <div className="forecast-visual-legend">
