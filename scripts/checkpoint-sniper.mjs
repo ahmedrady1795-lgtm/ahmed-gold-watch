@@ -6,7 +6,12 @@ const response=await fetch(endpoint,{signal:AbortSignal.timeout(45000),headers:{
 if(!response.ok)throw Error('Live audit HTTP '+response.status);
 const text=await response.text();if(text.length>12_000_000)throw Error('Live archive too large');
 const live=cleanArchive(JSON.parse(text));
-if(!live.sourceUpdatedAt||Date.now()-live.sourceUpdatedAt>10*60000)throw Error('Audit is stale; preserving previous checkpoint');
+if(!live.sourceUpdatedAt||Date.now()-live.sourceUpdatedAt>10*60000){
+  // Stale upstream data is a normal skip, not an archive write failure.
+  // Preserve the last valid checkpoint and retry on the next scheduled run.
+  console.warn('Skipping checkpoint: audit data is stale or missing; previous checkpoint preserved.');
+  process.exit(0);
+}
 const api=`https://api.github.com/repos/${repo}/contents/data/sniper-audit.json`;
 const headers={Authorization:`Bearer ${process.env.GITHUB_TOKEN}`,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
 const existing=await fetch(api+'?ref=sniper-audit-data',{headers});
