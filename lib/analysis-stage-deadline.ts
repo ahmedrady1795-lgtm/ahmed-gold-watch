@@ -18,7 +18,6 @@ export async function awaitAiStage<T>(
   let timer:ReturnType<typeof setTimeout>|undefined;
   const guard=new Promise<never>((_,reject)=>{
     timer=setTimeout(()=>reject(new Error('AI_STAGE_TIMEOUT:'+name+':'+Math.round(remaining)+'ms')),remaining);
-    timer.unref?.();
   });
   try{return await Promise.race([pending,guard]);}
   finally{if(timer)clearTimeout(timer);}
