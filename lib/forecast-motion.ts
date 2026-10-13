@@ -125,8 +125,9 @@ export function buildForecastMotion(input:{
     const retestZone=atr!=null?nearestRetestZone(level,side,atr,input.zones):null;
     const retest=retestZone!=null&&safeBeforeStop(retestZone)&&targetSafe(retestZone)?
       retestZone:level;
-    const structuralSetup=Boolean(!freshness||compression||pressureSetup||
-      retestZone!=null||referenceRange!=null&&atr!=null&&referenceRange/atr<=3.3);
+    const structuralSetup=Boolean(input.m5==null&&!freshness||freshness&&(
+      compression||pressureSetup||retestZone!=null||
+      referenceRange!=null&&atr!=null&&referenceRange/atr<=3.3));
     const retestAllowed=structuralSetup&&!farBeyond&&!impulse&&!pendingSweep&&
       safeBeforeStop(retest)&&targetSafe(retest);
 
