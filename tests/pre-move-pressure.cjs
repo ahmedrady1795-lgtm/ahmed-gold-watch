@@ -10,7 +10,7 @@ const rows=Array.from({length:75},(_,i)=>{
     const o=100+Math.sin(i*.63)*.04,c=100+Math.cos(i*.37)*.045;
     return {time,open:o,close:c,high:100.7,low:99.3,tickVolume:100};
   }
-  const mid=100+(i-59)*.025;
+  const mid=100+(i-59)*.031;
   return {time,open:mid-.035,close:mid+.045,high:mid+.10,low:mid-.10,tickVolume:30};
 });
 function five(c1){const out=[];for(let i=0;i+5<=c1.length;i+=5){
