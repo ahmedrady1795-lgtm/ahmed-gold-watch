@@ -35,6 +35,7 @@ import {getHorizonBrainLearning,recordHorizonBrainOutcome} from '../../../lib/ho
 import {buildMarketMakerIntent} from '../../../lib/market-maker-intent';
 import {setAiSnapshot} from '../../../lib/ai-snapshot-cache';
 import {awaitAiStage} from '../../../lib/analysis-stage-deadline';
+import {optionalMarketEvidence} from '../../../lib/optional-market-evidence';
 import {runAutonomousToolCycle} from '../../../lib/autonomous-tool-broker';
 import {buildMarketToolMesh} from '../../../lib/market-tool-mesh';
 import {buildTargetLadder} from '../../../lib/target-ladder';
@@ -567,8 +568,9 @@ export async function GET(request:Request){
       timedFeed('goldMarketMs',getMarketSnapshot()),
       timedFeed('btcMarketMs',getBtcMarket()),
       timedFeed('btcSpotMs',liveBtcSpot()),
-      timedFeed('btcLiquidityMs',getBtcLiquidity().catch(()=>null))
+      timedFeed('btcLiquidityMs',optionalMarketEvidence(getBtcLiquidity(),3500))
     ]),18000);
+    perf.btcLiquidityAvailable=Boolean(liquidity?.ok);
     perf.firstMarketFetchMs=Date.now()-perfStarted;
     let gm=goldSnap.market,quote=goldSnap.quote;
     if(!gm.pricesReady||!gm.newsReady){
