@@ -50,7 +50,14 @@ export default function Home(){
       }
       const j=await r.json().catch(()=>null);
       if(r.status===503&&j?.warming){
-        if(!aiReady.current)setAiError('');
+        aiFailureCount.current+=1;
+        if(j.stale){
+          // Keep the last chart as historical context, never as live advice.
+          setAiLastOkAt(0);
+          setAiError('التحليل الآلي متأخر عن السوق؛ جارٍ استعادة النواة. الأسعار الحية مستقلة.');
+        }else if(!aiReady.current&&aiFailureCount.current>=10){
+          setAiError('محرك التحليل لم ينتج قراءة حديثة بعد. جارٍ التحقق من المصادر.');
+        }
         return;
       }
       if(!r.ok||!j?.ok)throw new Error(j?.message||'تعذر قراءة محرك AI');
