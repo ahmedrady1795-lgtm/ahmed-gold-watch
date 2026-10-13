@@ -34,6 +34,7 @@ jobs:
       - run: node tests/sniper-stability.cjs
       - run: node tests/four-hour-structure.cjs
       - run: node tests/liquidity-foundation.cjs
+      - run: node tests/gold-feed-order.cjs
       - run: node tests/btc-history-nonblocking.cjs
       - run: node tests/ai-stall-recovery.cjs
       - run: node tests/pre-move-pressure.cjs
