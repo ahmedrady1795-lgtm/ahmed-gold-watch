@@ -37,6 +37,7 @@ import {setAiSnapshot} from '../../../lib/ai-snapshot-cache';
 import {runAutonomousToolCycle} from '../../../lib/autonomous-tool-broker';
 import {buildMarketToolMesh} from '../../../lib/market-tool-mesh';
 import {buildTargetLadder} from '../../../lib/target-ladder';
+import {assessForwardEvidence} from '../../../lib/forecast-evidence-gate';
 import {getScalpDesk,peekScalpDesk} from '../../../lib/scalp-desk';
 import {updateSniperAudit} from '../../../lib/sniper-audit-store';
 
@@ -1006,6 +1007,16 @@ export async function GET(request:Request){
       const higherTfAligned=Boolean(m15Aligned||m5Aligned||h4Aligned);
       const higherTfPair=Boolean((m15Aligned&&m5Aligned)||(m15Aligned&&h4Aligned)||(m5Aligned&&h4Aligned));
       const hardLiquidityOpposition=liqSide!=='WAIT'&&liqSide!==winner&&liqScore>=64;
+      const forecastEvidence=assessForwardEvidence({
+        side:winner,votes:rows,historicalDirectional:cleanDirectional,
+        oosN:cleanOosN,
+        oosAccuracy:cleanOosN>0&&Number.isFinite(cleanOosAccuracy)?cleanOosAccuracy:null,
+        walkStatus:String(cleanWf?.status||'COLLECTING'),
+        driftStatus:String(cleanWf?.drift?.status||'COLLECTING')
+      });
+      // Observed OOS performance and truly separate market evidence, not
+      // correlated indicator votes, bound the apparent agreement confidence.
+      confidence=Math.min(confidence,forecastEvidence.confidenceCap);
 
       const coreReadyBase=Boolean(
         higherTfAligned&&!m15Opposes&&
@@ -1017,21 +1028,22 @@ export async function GET(request:Request){
         (!h4Opposes||coreConfirmations>=2&&share>=Math.min(78,forwardMinShare+6)&&support>=forwardMinSupport)&&
         (!intentOpposes||coreConfirmations===3&&share>=Math.min(82,forwardMinShare+8))
       );
-      const coreReady=coreReadyBase&&(!adaptiveWeak||(coreConfirmations>=2&&share>=Math.min(82,forwardMinShare+7)&&support>=Math.min(7,forwardMinSupport+1)));
+      const coreReady=coreReadyBase&&forecastEvidence.independentReady&&(!adaptiveWeak||(coreConfirmations>=2&&share>=Math.min(82,forwardMinShare+7)&&support>=Math.min(7,forwardMinSupport+1)));
       const conditionalReady=Boolean(
         priceNow!=null&&share>=Math.max(50,forwardMinShare-5)&&support>=Math.max(2,forwardMinSupport)&&confidence>=conditionalMinConfidence&&
         structureAligned&&!hardLiquidityOpposition&&!intentOpposes&&!adaptiveWeak&&!m5Opposes&&!m15Opposes&&
-        higherTfPair
+        higherTfPair&&forecastEvidence.independentReady
       );
       const strictForwardReady=Boolean(
-        share>=forwardMinShare&&support>=forwardMinSupport&&confidence>=forwardMinConfidence&&coreReady&&higherTfPair&&!m5Opposes&&!m15Opposes
+        share>=forwardMinShare&&support>=forwardMinSupport&&confidence>=forwardMinConfidence&&coreReady&&higherTfPair&&!m5Opposes&&!m15Opposes&&forecastEvidence.independentReady
       );
       const conditionalBypass=Boolean(!strictForwardReady&&conditionalReady);
       if(!strictForwardReady&&!conditionalReady)return {
         side:'WAIT',confidence,status:'WAIT',target:null,zone:null,windowSeconds:null,expiresAt:null,
+        forecastEvidence,
         confirmations:{core:coreConfirmations,opposition:coreOpposition,liquidity:liqSide,accumulation:accSide,structure:structureSide,lead:leadSide,intent:intentSide,m5:m5Side,m15:m15Side,h4:h4Side,m5IndependentSupport,m5IndependentOpposition,m15IndependentSupport,m15IndependentOpposition,toolMesh:meshSide,toolMeshAgreement:Math.round(meshAgreement),toolMeshQuality:Math.round(meshQuality)},
         adaptiveLearning:{source:adaptiveSource,adjustment:adaptiveAdjustment,sourceSamples,sourcePosterior:Number(sourcePosterior.toFixed(1)),regimeSamples,regimePosterior:Number(regimePosterior.toFixed(1)),sourceRegimeSamples:srSamples,sourceRegimePosterior:Number(srPosterior.toFixed(1)),failureStreak:adaptiveFailureStreak,weak:adaptiveWeak,intentWeightFactor:Number(intentWeightFactor.toFixed(3)),policy:{id:policy?.id||null,generation:Number(policy?.generation||0),forwardMinShare,forwardMinSupport,forwardMinConfidence,conditionalMinConfidence,confidenceCeiling,h4OppositionPenalty,m5OppositionPenalty,m15OppositionPenalty},execution:{validated:executionValidated,zeroLossGuardPass,samples:cleanDirectional,posterior:Number(cleanPosterior.toFixed(1)),oosN:cleanOosN,oosAccuracy:Number.isFinite(cleanOosAccuracy)?Number(cleanOosAccuracy.toFixed(1)):null,status:String(cleanWf?.status||'COLLECTING'),drift:String(cleanWf?.drift?.status||'COLLECTING')}},
-        reason:m15Opposes?'M15 يعاكس الاتجاه؛ تم إيقاف التوقع':m5Opposes?'M5 يعاكس الاتجاه؛ تم إيقاف التوقع بدل المخاطرة بإشارة H4 منفردة':!higherTfPair?'يلزم اتفاق اثنين على الأقل من M5/M15/H4 قبل اعتماد توقع 15 دقيقة':'السيولة والهيكل والفريمات الأعلى لم تتفق بما يكفي'
+        reason:!forecastEvidence.independentReady?forecastEvidence.reason:m15Opposes?'M15 يعاكس الاتجاه؛ تم إيقاف التوقع':m5Opposes?'M5 يعاكس الاتجاه؛ تم إيقاف التوقع بدل المخاطرة بإشارة H4 منفردة':!higherTfPair?'يلزم اتفاق اثنين على الأقل من M5/M15/H4 قبل اعتماد توقع 15 دقيقة':'السيولة والهيكل والفريمات الأعلى لم تتفق بما يكفي'
       };
 
       const targetLearning={
@@ -1176,7 +1188,7 @@ export async function GET(request:Request){
 
       const sourceParts=rows.filter(r=>r.side===winner).sort((a,b)=>b.weight-a.weight).slice(0,3).map(r=>r.name);
       return {
-        side:winner,confidence,status,target,targets:targetLadder,invalidation:targetLadder?.invalidation??null,targetQuality:Number(targetLadder?.quality||0),tradeQuality:qualityFlags,tradeSetup:alreadyMoving?null:tradeSetup,conditionalReady,horizonMinutes:15,h4Context:h4?.ok?{side:h4Side,confidence:h4Confidence,structure:h4.structure,support:h4.support,resistance:h4.resistance,rangePosition:h4.rangePosition}:null,
+        side:winner,confidence,status,target,forecastEvidence,targets:targetLadder,invalidation:targetLadder?.invalidation??null,targetQuality:Number(targetLadder?.quality||0),tradeQuality:qualityFlags,tradeSetup:alreadyMoving?null:tradeSetup,conditionalReady,horizonMinutes:15,h4Context:h4?.ok?{side:h4Side,confidence:h4Confidence,structure:h4.structure,support:h4.support,resistance:h4.resistance,rangePosition:h4.rangePosition}:null,
         zone:pathZone?{low:Number(pathZone.low),high:Number(pathZone.high),mid:Number(pathZone.mid)}:null,
         windowSeconds,expiresAt:now+windowSeconds.max*1000,agreement:Math.round(share),support,opposition:oppose,
         priceNow,distancePct:distancePct==null?null:Number(distancePct.toFixed(4)),
@@ -1225,6 +1237,17 @@ export async function GET(request:Request){
           reason
         };
       };
+
+      // A stale/missing price cannot refresh a directional lock. Keep the
+      // historical plan in the journal only; never reissue it as a live forecast.
+      if(!livePulse){
+        forwardCommitState[asset]=null;
+        return {...candidate,side:'WAIT',confidence:Math.min(38,Number(candidate?.confidence||0)),
+          status:'STALE_FEED',target:null,zone:null,windowSeconds:null,expiresAt:null,
+          conditionalReady:false,tradeSetup:null,
+          stability:{locked:false,ageMs:0,flipBlocked:false},
+          reason:'مصدر السعر متأخر أو غير مؤكد؛ تم إيقاف توقع الحركة حتى عودة سعر حديث'};
+      }
 
       if(side==='WAIT'){
         if(prevAlive&&prev&&prev.confidence>=54&&now-prev.at<=holdingMs){
