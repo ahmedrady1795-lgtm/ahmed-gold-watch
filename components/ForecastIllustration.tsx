@@ -140,11 +140,21 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     key:p.key,y:clamp(p.y+(i%2===0?-32:36),yt+20,yb-20)
   })),yt+20,yb-20,mobile?34:30);
   const ageMin=m.historyAge==null?null:Math.ceil(m.historyAge/60000);
-  const stateLabel=!watchFresh&&!statusReady?'انتظار ذاكرة حديثة':statusReady?'سيناريو مؤهل · مسجل':watchReady&&m.heldBias?'اتجاه مثبت · أهداف مراقبة':watchReady?'أهداف بعيدة · مراقبة فقط':
+  // Distinguish a genuinely stale source from a neutral/conflicted model.
+  // Losing a directional bias does not mean that gold stopped streaming.
+  const feedProblem=!m.historyFresh?'الشموع متأخرة · آخر إغلاق فقط':
+    !sn.view.priceFresh?'السعر متأخر · لا إشارة حية':
+    !m.observationFresh?'تحديث القراءة متأخر · مراقبة فقط':null;
+  const neutralLabel=!memory.bias?'تجهيز ذاكرة الأهداف · التحليل مستمر':
+    !watchFresh?'سجل المراقبة قيد التحديث':
+    !m.bias.active?'التحليل مستمر · الاتجاه غير مؤكد':
+    'سوق متوازن · ترقب كسر';
+  const stateLabel=feedProblem??(!watchFresh&&!statusReady?'انتظار ذاكرة حديثة':
+    statusReady?'سيناريو مؤهل · مسجل':watchReady&&m.heldBias?'اتجاه مثبت · أهداف مراقبة':
+    watchReady?'أهداف بعيدة · مراقبة فقط':
     m.bias.active&&m.bias.side!=='WAIT'?(m.heldBias?'اتجاه محفوظ · تحقق مستمر':'الاتجاه مرصود · جارٍ البحث عن مستوى بعيد'):
     m.bias.active?'سوق عرضي · التحليل مستمر':
-    m.status==='STALE_CANDLES'?'سوق متوقف أو شموع متأخرة':
-    m.status==='NO_CANDLES'?'لا توجد شموع كافية':'انحياز سابق · ليس تحليلًا لحظيًا';
+    m.status==='NO_CANDLES'?'لا توجد شموع كافية':'مراقبة مستمرة · الاتجاه غير مؤكد');
   const highest=m.displayTargets.at(-1);
   const zoneList=chartBands.filter(z=>z.kind!=='TARGET'&&z.kind!=='STOP').slice(0,4);
   const conflictFavor=opposingOverlap&&m.fourHour.ready&&dir!=='WAIT'&&
@@ -184,7 +194,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       </button>}
       {newsOpen&&<div className="forecast-news-drawer"><NewsCommandCenter events={data?.newsEvents||[]} now={now} featuredEvent={data?.autopilot?.nextEvent||null}/></div>}
       <div className="sniper-decision-strip" aria-label="قرار موحد للقناص">
-        <strong className={rise?'green':fall?'red':''}>{rise?'ميل صعود':fall?'ميل هبوط':!memory.bias?'تهيئة ذاكرة الأهداف':!m.bias.active?'توقف مؤقت للبيانات':watchFresh?'سوق متوازن · ترقب كسر':'الذاكرة متأخرة'}</strong>
+        <strong className={rise?'green':fall?'red':''}>{feedProblem??(rise?'ميل صعود':fall?'ميل هبوط':neutralLabel)}</strong>
         <span>{planVisible?m.heldBias?'أهداف مثبتة · تتغير عند الوصول أو الإبطال أو انعكاس مؤكد':'مستويات هيكلية من الخادم · للمراقبة':watchFresh?memory.state?.reachedPrices?.length&&!memory.state?.targets?.length?'الأهداف السابقة استُهلكت؛ انتظار إغلاق M15 لهدف جديد':m.bias.reason:'انتظار بيانات الخادم؛ لا نستبدلها بأهداف متغيرة'}</span>
         {m.fourHour.ready&&<b>4س · {m.fourHour.phase}</b>}
       </div>
