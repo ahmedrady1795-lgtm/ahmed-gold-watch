@@ -34,6 +34,7 @@ jobs:
       - run: node tests/sniper-stability.cjs
       - run: node tests/four-hour-structure.cjs
       - run: node tests/liquidity-foundation.cjs
+      - run: node tests/ai-stall-recovery.cjs
       - run: node tests/pre-move-pressure.cjs
       - run: node tests/forecast-evidence-gate.cjs
       - run: node tests/trend-confirmation.cjs
