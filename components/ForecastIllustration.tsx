@@ -54,6 +54,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const watchReady=m.watchReady&&!statusReady;
   const planVisible=statusReady||watchReady;
   const sn=m.sniper,dir=planVisible?m.displaySide:watchFresh&&m.bias.active?m.bias.side:'WAIT';
+  const preMove=x?.preMovePressure;
+  const preMoveActive=Boolean(preMove?.ok&&['BUILDING','ARMED'].includes(String(preMove.stage))&&
+    (preMove.side==='BUY'||preMove.side==='SELL')&&
+    Number(preMove.sourceAt)>0&&now-Number(preMove.sourceAt)<=180000&&
+    m.historyFresh&&m.observationFresh&&sn.view.priceFresh);
   const rise=dir==='BUY',fall=dir==='SELL';
   const W=mobile?680:1040,H=expanded?700:560,x0=mobile?18:52,
     x1=mobile?280:530,xf=x1+10,xr=W-(mobile?150:146),yt=30,yb=H-90,volumeEnd=H-45;
@@ -189,6 +194,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <p>{breakout.reason}</p>
         {breakout.ready&&<small>المرجع أعلى/أدنى 12 شمعة M5 سابقة + هامش من متوسط مدى الشموع. الكسر وحده ليس تصريح دخول.
           {breakout.invalidation!=null?' مستوى إبطال المراقبة '+fmt(breakout.invalidation):' لا نعرض إبطالًا قبل وجود مستوى سليم.'}</small>}
+        {preMoveActive&&<p className="sniper-frame-explanation" aria-label="التهيئة قبل حركة السوق">
+          <strong>رادار ما قبل الحركة · {preMove.stage==='ARMED'?'ضغط مُهيّأ':'ضغط بيتكوّن'} · {preMove.side==='BUY'?'ميل شرائي':'ميل بيعي'}</strong>
+          {' · مستوى التفعيل '}<b dir="ltr">{fmt(preMove.trigger)}</b>
+          {' · إبطال السيناريو '}<b dir="ltr">{fmt(preMove.invalidation)}</b>
+          {' · تهيئة فنية '}<b dir="ltr">{Math.round(Number(preMove.readiness||0))}/100</b>
+          {' · '}شموع مغلقة فقط، ليست احتمالية ربح ولا تصريح دخول قبل تأكيد الكسر.
+        </p>}
         <p className="sniper-frame-explanation">{frameExplanation}</p>
       </div>
       <div className={'render-flow-banner phase-'+overlay.phaseKind.toLowerCase()} aria-live="polite">
