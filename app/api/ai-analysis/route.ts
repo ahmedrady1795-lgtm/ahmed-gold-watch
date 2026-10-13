@@ -600,6 +600,21 @@ export async function GET(request:Request){
     const goldScalpRaw=scalpAnalyze(gm.c1,gm.c5,now,goldPrice);
     const bitcoinScalpRaw=scalpAnalyze(btc.c1,btc.c5,now,btcPrice);
     const goldAtr=atrNow(gm.c1),btcAtr=a1,goldSpread=Number(quote?.spread);
+    // Paper-only pre-expansion observation. Results are tracked separately
+    // from the existing directional learner and any executable scalp system.
+    // A 15-minute expiry is a NEUTRAL outcome, not a fabricated winning call.
+    const trackPreMove=(asset:'GOLD'|'BTC',pre:any,price:number|null,atr:number|null)=>recordNextMoveOutcome({
+      asset:asset+'_PREMOVE_CAUSAL_V1',price,atr,now,horizonMs:900000,
+      horizonLabel:'PREMOVE_15M',barrierScale:.50,minBarrierBps:1,maxBarrierBps:35,
+      minRecordIntervalMs:300000,regime:pre?.sweep==='NONE'?'COMPRESSION':'LIQUIDITY_RECLAIM',
+      hunt:{nextMove:{
+        side:pre?.ok&&pre.stage==='ARMED'?pre.side:'WAIT',
+        confidence:pre?.ok&&pre.stage==='ARMED'?pre.readiness:0,
+        source:'CLOSED_BAR_PRESSURE_V1'
+      }}
+    });
+    const goldPreMovePerformance=trackPreMove('GOLD',goldPreMove,goldLearningPrice,goldAtr);
+    const bitcoinPreMovePerformance=trackPreMove('BTC',bitcoinPreMove,btcPrice,btcAtr);
     const goldCostAtr=learnerCostAtr('GOLD',goldPrice,goldAtr,goldSpread);
     const btcBookSpread=Number(liquidity?.book?.spreadBps||0),btcSpreadUsd=Number.isFinite(Number(btcPrice))?Number(btcPrice)*btcBookSpread/10000:0;
     const btcCostAtr=learnerCostAtr('BTC',btcPrice,btcAtr,btcSpreadUsd>0?btcSpreadUsd:null);
@@ -1319,7 +1334,7 @@ export async function GET(request:Request){
     ]);
     perf.scalpSource=recentScalp?'independent-cache':scalpDesk?'fast-response':'deferred';
     perf.scalpResolvedAtMs=Date.now()-perfStarted;
-    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any,h4?:any,intent?:any,evolution?:any,toolMesh?:any,atr?:number|null,preMove?:any)=>({
+    const compactAsset=(asset:'GOLD'|'BTC',x:any,hunt:any,recommendation:any,stateGraph:any,scalp:any,pulse:any,goldCore?:any,predator?:any,marketLead?:any,movement?:any,liq?:any,structure?:any,accumulation?:any,h4?:any,intent?:any,evolution?:any,toolMesh?:any,atr?:number|null,preMove?:any,preMovePerformance?:any)=>({
       asset,
       // Closed one-minute candles for the illustrated chart. No invented
       // OHLC: a stale feed remains historical and the UI suppresses projections.
@@ -1353,7 +1368,15 @@ export async function GET(request:Request){
         pressure:Number(preMove.pressure||0),sweep:preMove.sweep||'NONE',
         m5Side:preMove.m5Side||'WAIT',h4Side:preMove.h4Side||'WAIT',
         volumeBasis:preMove.volumeBasis||'NONE',evidence:preMove.evidence||[],
-        reason:preMove.reason||'',status:preMove.status||'STALE'
+        reason:preMove.reason||'',status:preMove.status||'STALE',
+        outcomes:preMovePerformance?.ok?{
+          observed:Number(preMovePerformance.global?.resolved||0),
+          hits:Number(preMovePerformance.global?.hits||0),
+          fails:Number(preMovePerformance.global?.fails||0),
+          neutral:Number(preMovePerformance.global?.neutral||0),
+          hitRate:preMovePerformance.global?.resolvedHitRate??null,
+          walkForward:String(preMovePerformance.walkForward?.status||'COLLECTING')
+        }:null
       }:null,
       movementEnvelope:movement?.forwardEnvelope||null,
       directionValidation:movement?.directionAudit||null,
@@ -1991,8 +2014,8 @@ export async function GET(request:Request){
           reason:bitcoinEvolution?.reason||'',performance:bitcoinEvolution?.performance||null,runtimePlugin:bitcoinEvolution?.runtimePlugin||null,tournament:bitcoinEvolution?.tournament||null,tools:bitcoinAutonomousTools?{capabilities:bitcoinAutonomousTools.capabilities,used:bitcoinAutonomousTools.tools,research:bitcoinAutonomousTools.research}:null
         }
       },
-      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation,goldH4,goldIntent,goldEvolution,goldToolMesh,goldAtr,goldPreMove),
-      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity,bitcoinStructure,bitcoinAccumulation,bitcoinH4,bitcoinIntent,bitcoinEvolution,bitcoinToolMesh,btcAtr,bitcoinPreMove)
+      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation,goldH4,goldIntent,goldEvolution,goldToolMesh,goldAtr,goldPreMove,goldPreMovePerformance),
+      bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity,bitcoinStructure,bitcoinAccumulation,bitcoinH4,bitcoinIntent,bitcoinEvolution,bitcoinToolMesh,btcAtr,bitcoinPreMove,bitcoinPreMovePerformance)
     };
 
     const compact15Validation=(v:any)=>v?{
