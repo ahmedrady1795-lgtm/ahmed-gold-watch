@@ -4,6 +4,8 @@ type BtcMarket={c1:Candle[];c5:Candle[];c15:Candle[];c60:Candle[];source:string;
 let cache:{at:number;value:BtcMarket}|null=null;
 let longM1Cache:{at:number;value:Candle[]}|null=null;
 let pending:Promise<BtcMarket>|null=null;
+let longM1Pending:Promise<void>|null=null;
+let lastLongHistoryAttempt=0;
 
 async function json(url:string){
   const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(8000),headers:{'User-Agent':'AhmedGoldCommand/1.0'}});
@@ -70,6 +72,23 @@ async function coinbaseLongM1(now:number,latest:Candle[]){
     return latest;
   }
 }
+// Long historical M1 is OPTIONAL for a live market snapshot. Coinbase's
+// recent M1 already provides completed four-hour context; archive enrichment
+// must never block the main quote, AI worker, or scalp desk.
+function warmLongM1(now:number,latest:Candle[]){
+  if(longM1Pending||longM1Cache&&now-longM1Cache.at<10*60000)return;
+  if(now-lastLongHistoryAttempt<5*60000)return;
+  lastLongHistoryAttempt=now;
+  longM1Pending=coinbaseLongM1(now,latest).then(()=>{}).catch(()=>{})
+    .finally(()=>{longM1Pending=null;});
+}
+function observedM1(now:number,latest:Candle[]){
+  if(longM1Cache&&now-longM1Cache.at<10*60000){
+    return mergeBtcCandles([...longM1Cache.value,...latest]).slice(-900);
+  }
+  warmLongM1(now,latest);
+  return latest;
+}
 async function kraken(interval:number){
   const j=await json('https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval='+interval);
   const result=j?.result||{},key=Object.keys(result).find(k=>k!=='last'),rows=key?result[key]:null;
@@ -92,7 +111,7 @@ export async function getBtcMarket(force=false):Promise<BtcMarket>{
   try{
     const [latest1,c5,c15,c60]=await Promise.all([coinbase(60),coinbase(300),coinbase(900),coinbase(3600)]);
     if(c5.length<220||c15.length<220||c60.length<220)throw new Error('coinbase history short');
-    const c1=await coinbaseLongM1(now,latest1);
+    const c1=observedM1(now,latest1);
     assertFresh(c1,c5,c15,c60,Date.now(),'Coinbase');
     const value={c1,c5,c15,c60,source:'Coinbase BTC-USD · extended M1',checkedAt:now};cache={at:now,value};return value;
   }catch{}
