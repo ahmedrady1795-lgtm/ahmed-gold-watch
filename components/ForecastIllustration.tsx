@@ -68,15 +68,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     priceFresh:sn.view.priceFresh&&m.observationFresh,fourHour:m.fourHour,
     m5:x?.chartHigherFrames?.m5,accumulation:x?.accumulation,targets:planVisible?m.displayTargets:[]});
   const pools=overlay.ready?[overlay.upper,overlay.lower].filter((z):z is NonNullable<typeof z>=>z!=null):[];
-  const motion=buildForecastMotion({visible:planVisible,side:dir,price:m.price,
-    targets:m.displayTargets,breakout,
-    now,m5:x?.chartHigherFrames?.m5,zones:chartBands,
-    preMove:x?.preMovePressure,liquidity:overlay,invalidation:m.displayStop});
-  const motionColor=watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4';
-  const scenarioKind=motion.some(p=>p.kind==='SWEEP')?'SWEEP_RECLAIM':
-    motion.some(p=>p.kind==='RETEST')?'BREAK_RETEST':'DIRECT';
-  const scenarioLabel=scenarioKind==='SWEEP_RECLAIM'?'سحب سيولة ثم استرداد':
-    scenarioKind==='BREAK_RETEST'?'كسر ثم اختبار وارتداد':'مسار مباشر مشروط';
   const candles=m.candles.slice(-chartWindow);
   const candleBounds=candles.flatMap(c=>[c.low,c.high]);
   if(m.price!=null)candleBounds.push(m.price);
@@ -89,6 +80,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const chartBands=collapseChartZones(visibleBands,m.price,mobile?1:2);
   const primaryZone=primaryLiquidityZone(chartBands,m.price);
   const opposingOverlap=findOpposingOverlap(chartBands,m.price);
+  const motion=buildForecastMotion({visible:planVisible,side:dir,price:m.price,
+    targets:m.displayTargets,breakout,
+    now,m5:x?.chartHigherFrames?.m5,zones:chartBands,
+    preMove:x?.preMovePressure,liquidity:overlay,invalidation:m.displayStop});
+  const motionColor=watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4';
+  const scenarioKind=motion.some(p=>p.kind==='SWEEP')?'SWEEP_RECLAIM':
+    motion.some(p=>p.kind==='RETEST')?'BREAK_RETEST':'DIRECT';
+  const scenarioLabel=scenarioKind==='SWEEP_RECLAIM'?'سحب سيولة ثم استرداد':
+    scenarioKind==='BREAK_RETEST'?'كسر ثم اختبار وارتداد':'مسار مباشر مشروط';
   const allBounds=[...candleBounds,...chartBands.flatMap(z=>[z.low,z.high]),...motion.map(p=>p.price),...pools.flatMap(z=>[z.low,z.high]),
     ...(breakout.ready?[breakout.above!,breakout.below!]:[])];
   const allMin=allBounds.length?Math.min(...allBounds):m.lower;
