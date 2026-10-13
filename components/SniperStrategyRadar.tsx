@@ -43,11 +43,12 @@ export default function SniperStrategyRadar({frames,now,price,side,sourceReady,t
         </article>)}
       </div>
       <div className="sniper-strategy-details">
+        <p>Supertrend (10,3): M15 {analysis.technical.supertrendM15==='BUY'?'صعود':analysis.technical.supertrendM15==='SELL'?'هبوط':'غير مكتمل'} · H1 {analysis.technical.supertrendH1==='BUY'?'صعود':analysis.technical.supertrendH1==='SELL'?'هبوط':'غير مكتمل'} · خط M15: {fmt(analysis.technical.supertrendM15Line,2)}. Bollinger/Keltner: {analysis.technical.keltnerRelease?'تحرر بكسر M15':analysis.technical.keltnerSqueeze?'انضغاط قائم':'بدون ضغط مؤكد'} · تغيّر ADX M15 خلال 3 شموع: {fmt(analysis.technical.adxSlopeM15,2)}.</p>
         <p>CHOP: {fmt(analysis.choppiness)} · رتبة عرض بولينجر: {fmt(analysis.squeezePercentile)}% من آخر 60 قراءة · كفاءة الحركة: {fmt((analysis.efficiency??0)*100)}% · ATR M15: {fmt(analysis.frames?.m15.atr??null,2)}.</p>
         <p>آخر تأكيد M5: {new Date(analysis.confirmedAt!).toLocaleTimeString('ar-AE',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Dubai'})} بتوقيت الإمارات. الحسابات من شموع مغلقة فقط.</p>
         {analysis.blockers.map(reason=><p key={reason}>• {reason}</p>)}
         <p>الرادار يقيّم فرصًا جديدة حسب اتجاه وأهداف الرسم. التأكيد الفني وحده لا يمنح إشارة دخول؛ السيناريو المعتمد يظهر مسجّلًا على الرسم. الأهداف الهيكلية للمراقبة مستقلة عن تأكيد الدخول. هذه قواعد فنية غير مثبتة الربحية؛ سجل الأداء هو مرجع تقييمها.</p>
-        <p>تعريف المؤشرات: <a href="https://www.tradingview.com/support/solutions/43000589099-average-directional-index-adx/" target="_blank" rel="noreferrer">ADX / DMI</a> · <a href="https://www.tradingview.com/support/solutions/43000501972-bollinger-bandwidth-bbw/" target="_blank" rel="noreferrer">Bollinger BandWidth</a> · <a href="https://www.tradingview.com/support/solutions/43000501980-choppiness-index-chop/" target="_blank" rel="noreferrer">CHOP</a></p>
+        <p>تعريف المؤشرات: <a href="https://www.tradingview.com/support/solutions/43000634738-supertrend/" target="_blank" rel="noreferrer">Supertrend</a> · <a href="https://www.tradingview.com/support/solutions/43000502266-keltner-channels-kc/" target="_blank" rel="noreferrer">Keltner</a> · <a href="https://www.tradingview.com/support/solutions/43000589099-average-directional-index-adx/" target="_blank" rel="noreferrer">ADX / DMI</a> · <a href="https://www.tradingview.com/support/solutions/43000501972-bollinger-bandwidth-bbw/" target="_blank" rel="noreferrer">Bollinger BandWidth</a> · <a href="https://www.tradingview.com/support/solutions/43000501980-choppiness-index-chop/" target="_blank" rel="noreferrer">CHOP</a></p>
       </div>
     </>}
   </details>;
