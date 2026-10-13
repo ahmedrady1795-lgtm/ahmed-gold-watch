@@ -45,6 +45,7 @@ jobs:
       - run: node tests/sniper-archive.mjs
       - run: node tests/sniper-scorecard.cjs
       - run: node tests/forecast-motion.cjs
+      - run: node tests/forecast-motion-causal.cjs
       - run: node tests/forecast-illustration.cjs
       - run: node tests/forecast-journal.cjs
       - run: node tests/direction.cjs
