@@ -41,7 +41,7 @@ export function evaluateSniperStrategies(input:{frames:any;now:number;price:numb
     liquidity,checkedAt:input.now,confirmedAt:null as number|null});
   const m5=bars(input.frames?.m5,input.now,300000),m15=bars(input.frames?.m15,input.now,900000),
     h1=bars(input.frames?.h1,input.now,3600000);
-  if([m5,m15,h1].some(b=>b.length<205))return empty('نحتاج 205 شموع مغلقة لكل إطار M5 / M15 / H1 حتى يعمل EMA200 بدقة');
+  if([m5,m15,h1].some(b=>b.length<60))return empty('نحتاج 60 شمعة مغلقة لكل من M5 / M15 / H1');
   const groups=[{rows:m5,period:300000,age:13*60000},{rows:m15,period:900000,age:28*60000},
     {rows:h1,period:3600000,age:120*60000}];
   if(groups.some(g=>input.now-(g.rows.at(-1)!.time+g.period)>g.age))return empty('شموع المؤشرات متأخرة');
