@@ -12,6 +12,16 @@ export async function GET(request:Request){
       {status:503,headers:{'Cache-Control':'no-store','X-AI-Snapshot':'warming'}}
     );
   }
+  // A previous generation is historical data, not a live market assessment.
+  // Do not return 304 indefinitely: that would mask a stalled background loop.
+  if(snap.ageMs!=null&&snap.ageMs>90000){
+    return Response.json(
+      {ok:false,warming:true,stale:true,ageMs:snap.ageMs,
+        message:'آخر تحليل آلي متأخر؛ بانتظار دورة جديدة مؤكدة.'},
+      {status:503,headers:{'Cache-Control':'no-store','Retry-After':'5',
+        'X-AI-Snapshot':'expired','X-AI-Snapshot-Age-Ms':String(snap.ageMs)}}
+    );
+  }
   // The snapshot may be multi-megabyte. When unchanged, ship NO JSON.
   // Clients that already hold this generation still update the age locally.
   // Include the creation timestamp. Process-local generation counters can
