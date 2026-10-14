@@ -885,3 +885,8 @@ body:has(.modern-workspace){
  .news-headline-numbers{font-size:11px}
  .news-headline>small{font-size:9px}
 }
+
+/* Honest non-durable storage label for free Render, without a giant error panel. */
+.sniper-memory-notice{display:flex;align-items:center;min-height:30px;padding:5px 12px;
+  border:1px solid #8b6437;border-radius:8px;background:#30261a;color:#f3d79f;
+  font-size:11px;line-height:1.5}
