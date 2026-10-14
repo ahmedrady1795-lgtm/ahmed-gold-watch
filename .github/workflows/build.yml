@@ -27,6 +27,7 @@ jobs:
       - run: node tests/core-quality.cjs
       - run: node tests/scalp.cjs
       - run: node tests/news-alert-window.cjs
+      - run: node tests/news-intelligence.cjs
       - run: node tests/scalp-presentation.cjs
       - run: node tests/next-move-view.cjs
       - run: node tests/sniper-outlook.cjs
