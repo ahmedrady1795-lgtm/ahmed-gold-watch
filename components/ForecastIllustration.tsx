@@ -6,7 +6,6 @@ import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildForecastMotion} from '../lib/forecast-motion';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import NewsCommandCenter from './NewsCommandCenter';
-import {economicNewsTimeline} from '../lib/news-alert-window';
 import type {ForecastJournal} from '../lib/forecast-journal';
 import SniperPerformance from './SniperPerformance';
 import SniperStrategyRadar from './SniperStrategyRadar';
@@ -25,18 +24,22 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
 }){
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
   const [focusCandles,setFocusCandles]=useState(false);
-  const [newsOpen,setNewsOpen]=useState(false);
   const [mobile,setMobile]=useState(false);
   const [expanded,setExpanded]=useState(false);
-  const [chartWindow,setChartWindow]=useState<60|240>(240);
+  const [chartWindow,setChartWindow]=useState<60|240>(60);
+  const [chartFullscreen,setChartFullscreen]=useState(false);
+  useEffect(()=>{
+    if(!chartFullscreen)return;
+    const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')setChartFullscreen(false);};
+    window.addEventListener('keydown',onKey);
+    return()=>window.removeEventListener('keydown',onKey);
+  },[chartFullscreen]);
   useEffect(()=>{
     const media=window.matchMedia('(max-width: 600px)');
     const update=()=>setMobile(media.matches);
     update();media.addEventListener('change',update);
     return()=>media.removeEventListener('change',update);
   },[]);
-  const earlyNews=economicNewsTimeline(data?.newsEvents||[],data?.autopilot?.nextEvent||null,now).alerts;
-  const dueNews=earlyNews.length;
   const asset: 'GOLD'|'BTC'=assetView==='ALL'?chosen:assetView;
   const x=asset==='GOLD'?data?.gold:data?.bitcoin;
   const journal=journals?.[asset]??null;
@@ -60,8 +63,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     Number(preMove.sourceAt)>0&&now-Number(preMove.sourceAt)<=180000&&
     m.historyFresh&&m.observationFresh&&sn.view.priceFresh);
   const rise=dir==='BUY',fall=dir==='SELL';
-  const W=mobile?680:1040,H=expanded?700:560,x0=mobile?18:52,
-    x1=mobile?280:530,xf=x1+10,xr=W-(mobile?150:146),yt=30,yb=H-90,volumeEnd=H-45;
+  const W=mobile?680:1040,H=expanded||chartFullscreen?700:560,x0=mobile?18:52,
+    x1=mobile?300:565,xf=x1+10,xr=W-(mobile?150:146),yt=30,yb=H-90,volumeEnd=H-45;
   const breakout=buildBreakoutGuide({frames:x?.chartHigherFrames,now,side:dir,price:m.price,
     sourceReady:sn.view.priceFresh&&m.observationFresh&&m.historyFresh,invalidation:m.displayStop});
   const overlay=buildChartOverlay({now,price:m.price,historyFresh:m.historyFresh,
@@ -110,6 +113,27 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const stride=(x1-x0)/Math.max(candles.length,1);
   const candleWidth=clamp(stride*.62,mobile?.6:1,8.5);
   const maxVolume=Math.max(1,...candles.map(c=>c.volume));
+  let continuousStart=Math.max(0,candles.length-1);
+  while(continuousStart>0&&candles[continuousStart].time-candles[continuousStart-1].time===60000)continuousStart--;
+  const continuousCandles=candles.slice(continuousStart);
+  const emaPath=(period:number)=>{
+    if(!m.historyFresh||continuousCandles.length<period)return '';
+    let ema=continuousCandles.slice(0,period).reduce((sum,c)=>sum+c.close,0)/period;
+    let d='M '+(x0+(continuousStart+period-.5)*stride)+' '+px(ema);
+    for(let i=period;i<continuousCandles.length;i++){
+      ema+=(continuousCandles[i].close-ema)*2/(period+1);
+      d+=' L '+(x0+(continuousStart+i+.5)*stride)+' '+px(ema);
+    }
+    return d;
+  };
+  const indicatorRows=x?.indicatorMatrix?.rows||{};
+  const technicalFresh=m.historyFresh&&m.observationFresh&&sn.view.priceFresh;
+  const metric=(v:unknown)=>technicalFresh&&v!=null&&Number.isFinite(Number(v))?fmt(Number(v),1):'—';
+  const modelStatus=data?.modelValidation;
+  const modelLabel=asset==='GOLD'?(x?.coreSummary?.qualityReady?'معايرة فنية متاحة':'غير مؤهل إحصائيًا'):
+    modelStatus?(modelStatus.mlM1?.ready&&modelStatus.mlM5?.ready?'ML M1/M5 مؤهل':'ML غير مؤهل'):'غير متاح';
+  const volumeBasis=candles.some(c=>c.volumeBasis==='REAL')?'REAL':
+    candles.some(c=>c.volumeBasis==='TICK')?'TICK':'NONE';
   const historyX=(time:number)=>{
     const i=candles.findIndex(c=>c.time>=time);
     return i<0?x1:x0+(i+.5)*stride;
@@ -120,14 +144,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const contextBox=readingLive?m.fourHour.contextBox:null;
   const projectedPoints=motion.map((p,i)=>({...p,
     x:xf+i*(xr-xf-18)/Math.max(1,motion.length-1),y:px(p.price)}));
-  let projectedPath='';
-  if(projectedPoints.length>=2){
-    projectedPath='M '+projectedPoints[0].x+' '+projectedPoints[0].y;
-    projectedPoints.slice(1).forEach((p,i)=>{
-      const a=projectedPoints[i],dx=p.x-a.x;
-      projectedPath+=' C '+(a.x+dx*.35)+' '+a.y+' '+(p.x-dx*.35)+' '+p.y+' '+p.x+' '+p.y;
-    });
-  }
+  // Reference levels only: future candles and arrival timings are unknown.
+  const projectedPath=projectedPoints.length>=2?
+    'M '+projectedPoints[0].x+' '+projectedPoints[0].y+
+    projectedPoints.slice(1).map(p=>' L '+p.x+' '+p.y).join(''):'';
   const conditionalPath=(side:'BUY'|'SELL')=>{
     const level=side==='BUY'?breakout.above:breakout.below;
     const pool=side==='BUY'?overlay.upper:overlay.lower;
@@ -178,8 +198,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <small>M1 · 4H CONTEXT · H1/H4 DISTANT TARGET RADAR</small></div>
         </div>
         <div className="forecast-visual-controls">
-          <button type="button" onClick={()=>setNewsOpen(v=>!v)} aria-expanded={newsOpen}
-            className={'forecast-news-tab '+(newsOpen?'active':'')}>الأخبار {dueNews>0?'· '+dueNews:''}</button>
           {assetView==='ALL'&&<div className="forecast-visual-tabs" role="group" aria-label="الأصل على الرسم">
             <button type="button" aria-pressed={asset==='GOLD'} onClick={()=>setChosen('GOLD')}>الذهب</button>
             <button type="button" aria-pressed={asset==='BTC'} onClick={()=>setChosen('BTC')}>البيتكوين</button>
@@ -189,10 +207,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </span>
         </div>
       </header>
-      {earlyNews.length>0&&!newsOpen&&<button type="button" className="forecast-news-peek" onClick={()=>setNewsOpen(true)}>
-        خبر خلال 8 ساعات: {earlyNews[0].name} · التفاصيل في تبويب الأخبار ↗
-      </button>}
-      {newsOpen&&<div className="forecast-news-drawer"><NewsCommandCenter events={data?.newsEvents||[]} now={now} featuredEvent={data?.autopilot?.nextEvent||null}/></div>}
+      <div className="forecast-news-home">
+        <NewsCommandCenter events={data?.newsEvents||[]} now={now}
+          featuredEvent={data?.autopilot?.nextEvent||null}/>
+      </div>
       <div className="sniper-decision-strip" aria-label="قرار موحد للقناص">
         <strong className={statusReady?(rise?'green':fall?'red':''):''}>{feedProblem??(statusReady?'سيناريو ورقي مؤهل':'انتظار · لا دخول مؤكد')}</strong>
         <span>{rise?'اتجاه المراقبة: ميل صعود':fall?'اتجاه المراقبة: ميل هبوط':neutralLabel}</span>
@@ -200,6 +218,16 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <span>{planVisible?m.heldBias?'أهداف مثبتة · تتغير عند الوصول أو الإبطال أو انعكاس مؤكد':'مستويات هيكلية من الخادم · للمراقبة':watchFresh?memory.state?.reachedPrices?.length&&!memory.state?.targets?.length?'الأهداف السابقة استُهلكت؛ انتظار إغلاق M15 لهدف جديد':m.bias.reason:'انتظار بيانات الخادم؛ لا نستبدلها بأهداف متغيرة'}</span>
         {m.fourHour.ready&&<b>4س · {m.fourHour.phase}</b>}
       </div>
+      <div className="sniper-indicator-strip" aria-label="مؤشرات محسوبة من شموع مغلقة">
+        <span><small>M1 RSI</small><b>{metric(indicatorRows.m1?.rsi)}</b></span>
+        <span><small>M5 RSI</small><b>{metric(indicatorRows.m5?.rsi)}</b></span>
+        <span><small>M5 ADX</small><b>{metric(indicatorRows.m5?.adx)}</b></span>
+        <span><small>توافق M5</small><b>{technicalFresh?(indicatorRows.m5?.bias==='BUY'?'ميل صعود':indicatorRows.m5?.bias==='SELL'?'ميل هبوط':'متوازن'):'—'}</b></span>
+        <span><small>AI · {asset==='GOLD'?'الذهب':'BTC'}</small><b>{technicalFresh?modelLabel:'بيانات قديمة'}</b></span>
+        <span><small>حجم التداول</small><b>{!m.historyFresh?'متأخر':volumeBasis==='REAL'?'حقيقي':volumeBasis==='TICK'?'Tick Volume':'غير موثق'}</b></span>
+      </div>
+      <details className="sniper-confirmation-details">
+        <summary>تفاصيل شروط الكسر · {breakout.ready?'مستويات مراقبة مشروطة':'غير مؤهل'}</summary>
       <div className="sniper-confirmation-strip" aria-label="مستويات الكسر وتأكيد الاتجاه">
         <div className="sniper-confirmation-levels">
           <strong>شرط تأكيد الكسر · M5</strong>
@@ -221,12 +249,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         </p>}
         <p className="sniper-frame-explanation">{frameExplanation}</p>
       </div>
+      </details>
       <div className={'render-flow-banner phase-'+overlay.phaseKind.toLowerCase()} aria-live="polite">
         <div><small>حالة السيولة · قراءة آخر 4 ساعات</small><strong>{overlay.phaseLabel}</strong></div>
         <p>{overlay.evidence}<small>تقدير سلوكي من السعر والحجم المتاح · لا يمثل احتمال ربح.</small></p>
       </div>
       <div className={'forecast-visual-layout' +(expanded?' forecast-layout-expanded':'')}>
-        <div className={'forecast-visual-chart-wrap'+(expanded?' forecast-chart-expanded':'')}>
+        <div className={'forecast-visual-chart-wrap'+(expanded?' forecast-chart-expanded':'')+(chartFullscreen?' chart-fullscreen':'')}>
           <div className="forecast-visual-topline">
             <span><Layers3 size={13}/> M1 · {candles.length} شمعة · توقيت الإمارات</span>
             <span>{ageMin!=null?'عمر آخر إغلاق '+ageMin+' دقيقة':'لا توجد بيانات شموع'}</span>
@@ -235,6 +264,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <button type="button" aria-pressed={chartWindow===240} onClick={()=>setChartWindow(240)}>4 ساعات</button>
               <button className="forecast-chart-zoom" type="button" aria-pressed={focusCandles} onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'كل الأهداف':'تركيز الشموع'}</button>
               <button type="button" aria-pressed={expanded} onClick={()=>setExpanded(v=>!v)}>{expanded?'حجم عادي':'توسيع الرسم ⤢'}</button>
+              <button type="button" aria-pressed={chartFullscreen} onClick={()=>setChartFullscreen(v=>!v)}>{chartFullscreen?'إغلاق ملء الشاشة':'⛶ ملء الشاشة'}</button>
             </div>
           </div>
           <div className="forecast-visual-chart-scroll">
@@ -337,6 +367,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <title>{z.label+' · '+fmt(z.low)+' – '+fmt(z.high)}</title>
                 </g>;
               })}
+              {emaPath(20)&&<path d={emaPath(20)} fill="none" stroke="#edc36d" strokeWidth="1.9" strokeOpacity=".9"
+                clipPath={'url(#forecast-plot-'+asset+')'}/>}
+              {emaPath(50)&&<path d={emaPath(50)} fill="none" stroke="#a3a1ff" strokeWidth="1.9" strokeOpacity=".85"
+                clipPath={'url(#forecast-plot-'+asset+')'}/>}
               {candles.map((c,i)=>{
                 const x=x0+(i+.5)*stride;
                 const color=c.close>=c.open?'#4ad9c6':'#f0758a';
@@ -392,7 +426,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {projectedPath&&<g className="forecast-motion-path" clipPath={'url(#forecast-plot-'+asset+')'}>
                 <path d={projectedPath} stroke="#071823" strokeWidth="8" fill="none" opacity=".7"/>
                 <path d={projectedPath} stroke={motionColor} strokeWidth="3"
-                  strokeDasharray={watchReady?'8 6':undefined} fill="none" markerEnd={'url(#forecast-arrow-'+asset+')'}/>
+                  strokeDasharray="8 7" fill="none" markerEnd={'url(#forecast-arrow-'+asset+')'}/>
                 {projectedPoints.map((p,i)=>{
                   if(p.y<yt||p.y>yb)return null;
                   const labelY=motionLabels.find(l=>l.key===p.key)?.labelY??clamp(p.y-30,yt+24,yb-20);
@@ -436,7 +470,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {watchReady?' الكسر يحتاج إغلاق شمعتي M5 وتوافق M15/H1 وباقي شروط القناص؛ ليس تصريح دخول.':''}</p>
           </div>}
           <div className="forecast-visual-legend">
-            <span><i className="forecast-legend-history"/> شموع فعلية</span>
+            <span><i className="forecast-legend-history"/> شموع M1 حقيقية</span>
+            <span className="render-ema20">EMA20</span>
+            <span className="render-ema50">EMA50</span>
             <span><i className="forecast-legend-projection"/> {watchReady?'مسار مستويات بعيد · توضيحي':'سيناريو مشروط'}</span>
             <span><i className="forecast-legend-target"/> مناطق أهداف</span>
             <span><i className="forecast-legend-rebound"/> مناطق سيولة</span>
@@ -466,9 +502,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <span className={m.observationFresh?'sniper-health-ok':''}>قراءة السوق: {m.observationFresh?'حديثة':'متأخرة'} · {Number(observationAt)>0?Math.max(0,Math.round((now-Number(observationAt))/1000))+' ث':'—'}</span>
         <span className={m.historyFresh?'sniper-health-ok':''}>الشموع: {m.historyFresh?'حديثة':'تحتاج تحديث'}</span>
       </div>
+      <details className="sniper-inspection"><summary>مؤشرات الاتجاه والسيولة بالتفصيل</summary>
       <SniperStrategyRadar frames={x?.chartHigherFrames} now={now} price={m.price} side={dir}
         sourceReady={sn.view.priceFresh&&m.observationFresh} targets={m.displayTargets} stop={m.displayStop}
         liquidityContext={m.fourHour}/>
+      </details>
       <details className="sniper-inspection"><summary>تحليل 4 ساعات ومصادر السيولة</summary>
       <section className="sniper-four-hour" aria-label="قراءة آخر أربع ساعات">
         <div className="sniper-four-head">
