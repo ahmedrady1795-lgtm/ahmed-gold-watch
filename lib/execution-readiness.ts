@@ -34,6 +34,7 @@ export function assessExecutionReadiness(input:{
   const side=String(v.analysis?.signal?.sideCode||'')==='buy'?'BUY':
     String(v.analysis?.signal?.sideCode||'')==='sell'?'SELL':'WAIT';
   const aiOk=Boolean(at>0&&age>=0&&age<=90000&&core&&
+    v.aiSnapshot?.gold?.coreSummary?.qualityReady===true&&
     core.action===side&&side!=='WAIT'&&
     Number(core.confidence)>=72&&Number(core.dataQuality)>=78&&
     Number(core.uncertainty)<=38&&
