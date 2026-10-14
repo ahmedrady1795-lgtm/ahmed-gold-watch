@@ -458,8 +458,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               </g>}
             </svg>
           </div>
-          {motion.length>0&&<div className="forecast-motion-guide" aria-label="خطوات المسار المتوقع">
-            <strong>{statusReady?'سيناريو مؤهل':'مراقبة مشروطة'} · {scenarioLabel}</strong>
+          {motion.length>0&&<details className="forecast-motion-guide" aria-label="خطوات المسار المتوقع">
+            <summary><strong>{statusReady?'سيناريو مؤهل':'مراقبة مشروطة'} · {scenarioLabel} · عرض خطوات المسار</strong></summary>
             <ol>{motion.map((p,i)=><li key={p.key}>
               <b>{i+1}</b><span>{p.label}{p.kind!=='HOLD'&&<small dir="ltr">{fmt(p.price)}</small>}</span>
             </li>)}</ol>
@@ -468,7 +468,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {scenarioKind==='SWEEP_RECLAIM'?' سحب السيولة مسار بديل مرصود الاحتمال فقط، ويلغى لو اتكسر الإبطال.':''}
               {motion.some(p=>p.kind==='HOLD')?' امتداد ما بعد الكسر تقديري من تذبذب M5، وليس هدفًا منفصلًا.':''}
               {watchReady?' الكسر يحتاج إغلاق شمعتي M5 وتوافق M15/H1 وباقي شروط القناص؛ ليس تصريح دخول.':''}</p>
-          </div>}
+          </details>}
           <div className="forecast-visual-legend">
             <span><i className="forecast-legend-history"/> شموع M1 حقيقية</span>
             <span className="render-ema20">EMA20</span>
