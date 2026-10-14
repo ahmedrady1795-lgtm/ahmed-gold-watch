@@ -33,7 +33,12 @@ export function assessExecutionReadiness(input:{
   const at=Number(v.aiSnapshot?.checkedAt||0),age=v.now-at;
   const side=String(v.analysis?.signal?.sideCode||'')==='buy'?'BUY':
     String(v.analysis?.signal?.sideCode||'')==='sell'?'SELL':'WAIT';
+  const move=v.aiSnapshot?.gold?.professionalMove;
+  const proAligned=Boolean(move?.status==='CONFIRMED'&&move.side===side&&
+    move.dataReady===true&&Number(move.score)>=75&&
+    Number(move.closedAt)>0&&v.now-Number(move.closedAt)<=480000);
   const aiOk=Boolean(at>0&&age>=0&&age<=90000&&core&&
+    proAligned&&
     v.aiSnapshot?.gold?.coreSummary?.qualityReady===true&&
     core.action===side&&side!=='WAIT'&&
     Number(core.confidence)>=72&&Number(core.dataQuality)>=78&&
