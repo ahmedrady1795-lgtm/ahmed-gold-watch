@@ -5,7 +5,6 @@ import {Crosshair,Layers3} from 'lucide-react';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildForecastMotion} from '../lib/forecast-motion';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
-import NewsCommandCenter from './NewsCommandCenter';
 import type {ForecastJournal} from '../lib/forecast-journal';
 import SniperPerformance from './SniperPerformance';
 import SniperStrategyRadar from './SniperStrategyRadar';
@@ -207,10 +206,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </span>
         </div>
       </header>
-      <div className="forecast-news-home">
-        <NewsCommandCenter events={data?.newsEvents||[]} now={now}
-          featuredEvent={data?.autopilot?.nextEvent||null}/>
-      </div>
       <div className="sniper-decision-strip" aria-label="قرار موحد للقناص">
         <strong className={statusReady?(rise?'green':fall?'red':''):''}>{feedProblem??(statusReady?'سيناريو ورقي مؤهل':'انتظار · لا دخول مؤكد')}</strong>
         <span>{rise?'اتجاه المراقبة: ميل صعود':fall?'اتجاه المراقبة: ميل هبوط':neutralLabel}</span>
