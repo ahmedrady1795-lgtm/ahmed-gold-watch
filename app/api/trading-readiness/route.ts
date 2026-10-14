@@ -26,6 +26,9 @@ export async function GET(){
     brokerBalanceVerified:Number(account?.balance)>0&&Number(account?.equity)>0,
     predatorSnapshotFresh:Boolean(snapshot.payload?.ok&&snapshot.ageMs!=null&&snapshot.ageMs<=90000),
     goldCalibrationReady:core?.coreSummary?.qualityReady===true,
+    professionalBreakoutConfirmed:Boolean(core?.professionalMove?.status==='CONFIRMED'&&
+      core?.professionalMove?.dataReady===true&&core?.professionalMove?.score>=75&&
+      core?.professionalMove?.side===core?.executionQuality?.action),
     aiSignalNotVetoed:Boolean(core?.executionQuality?.action!=='WAIT'&&
       core?.executionQuality?.confidence>=72&&
       core?.executionQuality?.dataQuality>=78&&
@@ -39,7 +42,7 @@ export async function GET(){
     'brokerTokenConfigured','bridgeConnected','brokerTickFresh','brokerCandlesFresh',
     'symbolVerified','brokerAccountPinned','brokerBalanceVerified'
   ] as const;
-  const modelKeys=['predatorSnapshotFresh','goldCalibrationReady','aiSignalNotVetoed'] as const;
+  const modelKeys=['predatorSnapshotFresh','goldCalibrationReady','professionalBreakoutConfirmed','aiSignalNotVetoed'] as const;
   const liveKeys=['explicitSiteAcknowledgement','siteLiveSwitch','serverKillSwitchOff','bridgeLiveMode'] as const;
   const blockedBy=Object.entries(checks).filter(([,ready])=>!ready).map(([key])=>key);
   return Response.json({
