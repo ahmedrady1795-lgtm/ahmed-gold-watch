@@ -6,7 +6,7 @@ services:
     runtime: node
     plan: free
     branch: railway
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci && node tests/news-alert-window.cjs && node tests/news-intelligence.cjs && node tests/indicators.cjs && node tests/forecast-illustration.cjs && npm run build
     startCommand: npm run start
     healthCheckPath: /api/ping
     autoDeployTrigger: commit
