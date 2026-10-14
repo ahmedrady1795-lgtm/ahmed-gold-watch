@@ -11,6 +11,7 @@ import SniperStrategyRadar from './SniperStrategyRadar';
 import {watchForChart} from '../lib/sniper-audit-view';
 import {collapseChartZones,findOpposingOverlap,primaryLiquidityZone} from '../lib/chart-zone-merge';
 import {buildBreakoutGuide,explainFrameConflict,layoutPriceLanes} from '../lib/sniper-decision-guide';
+import {evaluateProfessionalMove} from '../lib/professional-move';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
   p.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
@@ -126,6 +127,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     return d;
   };
   const indicatorRows=x?.indicatorMatrix?.rows||{};
+  const proMove=evaluateProfessionalMove({
+    now,frames:{m1:x?.chartCandles,m5:x?.chartHigherFrames?.m5,
+      m15:x?.chartHigherFrames?.m15,h1:x?.chartHigherFrames?.h1},
+    adxM5:indicatorRows.m5?.adx
+  });
   const technicalFresh=m.historyFresh&&m.observationFresh&&sn.view.priceFresh;
   const metric=(v:unknown)=>technicalFresh&&v!=null&&Number.isFinite(Number(v))?fmt(Number(v),1):'—';
   const modelStatus=data?.modelValidation;
@@ -221,6 +227,23 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <span><small>AI · {asset==='GOLD'?'الذهب':'BTC'}</small><b>{technicalFresh?modelLabel:'بيانات قديمة'}</b></span>
         <span><small>حجم التداول</small><b>{!m.historyFresh?'متأخر':volumeBasis==='REAL'?'حقيقي':volumeBasis==='TICK'?'Tick Volume':'غير موثق'}</b></span>
       </div>
+      <section className="sniper-pro-move" aria-label="رادار توقع الحركة الفني">
+        <div className="sniper-pro-move-head">
+          <strong>Predator · حركة السوق القادمة</strong>
+          <span className={proMove.status==='CONFIRMED'?'pro-confirmed':proMove.status==='WATCH'?'pro-watch':'pro-wait'}>
+            {proMove.status==='CONFIRMED'?'كسر M5 مؤكد فنّيًا':proMove.status==='WATCH'?'ترقب حركة':'انتظار الأدلة'}
+          </span>
+          <b>{proMove.side==='BUY'?'↗ ميل صاعد':proMove.side==='SELL'?'↘ ميل هابط':'— اتجاه غير محسوم'}</b>
+        </div>
+        <div className="sniper-pro-move-data">
+          <span>توافق فني: <b>{proMove.score}/100</b></span>
+          <span>الكسر: <b dir="ltr">{fmt(proMove.trigger)}</b></span>
+          <span>إبطال: <b dir="ltr">{fmt(proMove.invalidation)}</b></span>
+          <span>ATR M5: <b dir="ltr">{fmt(proMove.m5Atr,2)}</b></span>
+          <span>M15/H1: <b>{proMove.timeframeAgreement.m15==='BUY'?'↑':proMove.timeframeAgreement.m15==='SELL'?'↓':'—'} / {proMove.timeframeAgreement.h1==='BUY'?'↑':proMove.timeframeAgreement.h1==='SELL'?'↓':'—'}</b></span>
+        </div>
+        <p>{proMove.reason} · توافق فني وليس احتمال نجاح أو إشارة تنفيذ.</p>
+      </section>
       <details className="sniper-confirmation-details">
         <summary>تفاصيل شروط الكسر · {breakout.ready?'مستويات مراقبة مشروطة':'غير مؤهل'}</summary>
       <div className="sniper-confirmation-strip" aria-label="مستويات الكسر وتأكيد الاتجاه">
