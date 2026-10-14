@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict'),fs=require('fs');
+const bridge=fs.readFileSync('mt5_bridge/bridge.py','utf8');
+assert.match(bridge,/LIVE_ACK!=LIVE_ACK_REQUIRED/,'local explicit live agreement');
+assert.match(bridge,/EXPECTED_LOGIN/,'pin broker login');
+assert.match(bridge,/RISK_PCT=min\(0\.15/,'max broker risk matches site');
+assert.match(bridge,/MAX_DAILY_LOSS_PCT=min\(0\.5/,'daily drawdown cap matches site');
+assert.match(bridge,/MAX_WEEKLY_LOSS_PCT=min\(1\.5/,'weekly cap matches site');
+assert.match(bridge,/MAX_DRAWDOWN_PCT=min\(3\.0/,'max drawdown cap matches site');
+assert.match(bridge,/side_code not in \('buy','sell'\)/,'invalid side must never become SELL');
+assert.match(bridge,/risk\/reward below server minimum 2\.0/,'minimum RR matches site');
+assert.match(bridge,/quote\/spread deteriorated after order_check/,'requote protection');
+assert.match(bridge,/floating=min\(0\.0/,'open loss included in risk protection');
+assert.match(bridge,/state unreadable; manual intervention required/,'corrupt state fails closed in LIVE');
+assert.match(bridge,/os\.replace\(tmp,STATE\)/,'durable atomic state');
+assert.match(bridge,/signal rejected/,'expired site signals rejected');
+assert.match(fs.readFileSync('app/api/trading-readiness/route.ts','utf8'),/liveOrderSent:false/,'status endpoint must never execute');
+console.log('PASS: broker execution safety guardrails and configuration');
