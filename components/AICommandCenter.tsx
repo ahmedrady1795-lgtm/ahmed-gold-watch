@@ -3,6 +3,7 @@ import {useEffect,useState} from 'react';
 import {ShieldAlert} from 'lucide-react';
 import {scenarioAsJournal} from '../lib/sniper-audit-view';
 import ForecastIllustration from './ForecastIllustration';
+import NewsCommandCenter from './NewsCommandCenter';
 
 // One calibrated surface: only scenarios actually recorded by the server
 // ledger can show as ACTIVE. Browser refreshes cannot reset their targets.
@@ -38,6 +39,7 @@ export default function AICommandCenter({data,error,assetView='ALL',now=Date.now
     {auditError&&<div className="fatal"><ShieldAlert size={18}/><div><strong>سجل القناص غير متصل</strong>
       <span>الأهداف الجديدة مش معتمدة على الرسم قبل استعادة سجل الأداء.</span>
     </div></div>}
+    <NewsCommandCenter events={data?.newsEvents||[]} featuredEvent={data?.autopilot?.nextEvent||null} now={now}/>
     <div id="market-forecast">
       <ForecastIllustration data={data} now={now} snapshotAt={generatedAt}
         goldLive={goldLive} btcLive={btcLive} assetView={assetView}
