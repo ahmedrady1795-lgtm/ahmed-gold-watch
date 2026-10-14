@@ -1,4 +1,5 @@
 import {summarizeAiReadiness} from '../../../lib/ai-readiness';
+import {evaluateProfessionalMove} from '../../../lib/professional-move';
 import {analyze,defaults,scalpAnalyze} from '../../../lib/engine';
 import {getMarketSnapshot,getMarketData,getQuoteData,getMt5FastSignal} from '../../../lib/market-hub';
 import {getBtcMarket} from '../../../lib/btc-market';
@@ -1377,6 +1378,13 @@ export async function GET(request:Request){
         h1:(asset==='GOLD'?gm.c60:btc.c60).filter((c:any)=>Number(c.time)+3600000<=now)
            .slice(-220).map((c:any)=>({time:Number(c.time),open:Number(c.open),high:Number(c.high),low:Number(c.low),close:Number(c.close)}))
       },
+      professionalMove:evaluateProfessionalMove({
+        now,frames:{m1:asset==='GOLD'?gm.c1:btc.c1,
+          m5:asset==='GOLD'?gm.c5:btc.c5,
+          m15:asset==='GOLD'?gm.c15:btc.c15,
+          h1:asset==='GOLD'?gm.c60:btc.c60},
+        adxM5:x?.indicatorMatrix?.rows?.m5?.adx
+      }),
       indicatorMatrix:x?.indicatorMatrix||null,
       // Identical core decision consumed by LIVE broker preflight. Trading
       // cannot be authorized by a weaker standalone indicator signal.
