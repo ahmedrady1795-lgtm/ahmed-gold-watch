@@ -79,7 +79,7 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
         <small><Clock3 size={13}/> بعد {timeLeft(Number(highlighted.time),now)}</small>
       </span>
       <strong className="news-headline-title">{highlighted.name}</strong>
-      <span className="news-headline-numbers">المتوقع {highlighted.forecast||'—'} · السابق {highlighted.previous||'—'}</span>
+      <span className="news-headline-numbers">المتوقع {String(highlighted.forecast||'—')} · السابق {String(highlighted.previous||'—')}</span>
       <small>{dateLabel(Number(highlighted.time))} · السيناريو مرتبط بالنتيجة الفعلية، لا توجد نسبة اتجاه مؤكدة.</small>
     </div>:<p className="news-eight-empty">{error?'لم نتمكن من تأكيد الأحداث القادمة.':'لا يوجد خبر مؤكد خلال الثماني ساعات القادمة.'}</p>}
     {alerts.length>0&&<details className="news-all-details">
