@@ -6,7 +6,7 @@ import type {StableBiasState,ObservedBias} from './sniper-stability';
 import {analyzeFourHours} from './four-hour-structure';
 import type {ForecastJournal} from './forecast-journal';
 
-export type PlotCandle={time:number;open:number;high:number;low:number;close:number;volume:number};
+export type PlotCandle={time:number;open:number;high:number;low:number;close:number;volume:number;volumeBasis:'REAL'|'TICK'|'NONE'};
 export type PriceBand={sources?:string[];touches?:number;confirmedAt?:number;key:string;label:string;low:number;high:number;price:number;kind:'TARGET'|'DEMAND'|'SUPPLY'|'REBOUND'|'LIQUIDITY'|'STOP'|'BUY_REBOUND'|'SELL_REBOUND'};
 const finite=(x:unknown):number|null=>x!==null&&x!==undefined&&x!==''&&Number.isFinite(Number(x))?Number(x):null;
 const valid=(x:unknown)=>{const p=finite(x);return p!=null&&p>0?p:null;};
@@ -22,7 +22,8 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
     if(time==null||time<=0||time+60000>now||time<now-7*86400000||
        open==null||high==null||low==null||close==null||
        high<Math.max(open,close)||low>Math.min(open,close)||low>high)continue;
-    seen.set(time,{time,open,high,low,close,volume:Math.max(0,volume)});
+    const volumeBasis=c?.volumeBasis==='REAL'?'REAL':c?.volumeBasis==='TICK'?'TICK':'NONE';
+    seen.set(time,{time,open,high,low,close,volume:Math.max(0,volume),volumeBasis});
   }
   const candles=[...seen.values()].sort((a,b)=>a.time-b.time).slice(-240);
   const lastAt=candles.length?candles[candles.length-1].time+60000:0;
