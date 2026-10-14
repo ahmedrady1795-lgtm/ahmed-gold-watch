@@ -1378,6 +1378,14 @@ export async function GET(request:Request){
            .slice(-220).map((c:any)=>({time:Number(c.time),open:Number(c.open),high:Number(c.high),low:Number(c.low),close:Number(c.close)}))
       },
       indicatorMatrix:x?.indicatorMatrix||null,
+      // Identical core decision consumed by LIVE broker preflight. Trading
+      // cannot be authorized by a weaker standalone indicator signal.
+      executionQuality:{
+        action:x?.action||'WAIT',quality:x?.quality||'D',
+        confidence:Number(x?.confidence||0),dataQuality:Number(x?.dataQuality||0),
+        uncertainty:Number(x?.uncertainty||100),
+        vetoes:Array.isArray(x?.vetoes)?x.vetoes.slice(0,8):[]
+      },
       coreSummary:(()=>{const core=asset==='GOLD'?goldMultiBrain:bitcoinMultiBrain;return {side:core.side,regime:core.regime,confidence:core.confidence,qualityReady:core.calibration.qualityReady,samples:core.calibration.supportSamples};})(),
       scalpDesk:scalpDesk?.[asset==='GOLD'?'gold':'bitcoin']||null,
       forwardMove:stabilizeForwardMove(asset,buildForwardMove(asset,hunt,scalp,movement,marketLead,pulse,liq,structure,accumulation,h4,intent,evolution,toolMesh,atr,preMove),pulse),
@@ -2018,6 +2026,10 @@ export async function GET(request:Request){
           oosCoveragePct:Number(((bitcoinNeural?.metrics?.holdout?.selectiveCoverage||0)*100).toFixed(1)),
           reason:bitcoinNeural?.ready?'Neural independent holdout qualified':'Neural holdout lacks sufficient selective edge or coverage; shadow only',
         },
+        certificationPolicy:{requiresIndependentHoldout:true,
+          minimumOutOfSampleSamples:120,minimumSelectiveDecisions:80,
+          minimumSelectiveCoveragePct:10,wilson95LowerBoundAbovePct:50,
+          neuralSnapshotMaxAgeSeconds:45,btcOnly:true},
         warning:'READY requires real holdout performance. No readiness flag is overridden and no accuracy is guaranteed.'
       },
       developmentLab:{
