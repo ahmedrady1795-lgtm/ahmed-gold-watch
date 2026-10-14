@@ -1,4 +1,4 @@
-import {getMarketData} from '../../../lib/market-hub';
+import {getNewsCalendarFeed} from '../../../lib/market-hub';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -16,7 +16,7 @@ const relevant=(name:string,importance:number)=>
 
 async function load(){
   const now=Date.now();
-  const market=await getMarketData();
+  const market=await getNewsCalendarFeed(now);
   const events=(market.events||[])
     .filter(e=>Number.isFinite(Number(e.time))&&Boolean(e.exactTime)&&
       e.time>=now-AGE_MS&&e.time<=now+WINDOW_MS&&
