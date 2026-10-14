@@ -4,8 +4,6 @@ import {useState} from 'react';
 import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Crosshair,Layers3,ShieldAlert,Target} from 'lucide-react';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
-import NewsCommandCenter from './NewsCommandCenter';
-import {economicNewsTimeline} from '../lib/news-alert-window';
 import type {ForecastJournal} from '../lib/forecast-journal';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
@@ -19,9 +17,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
 }){
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
   const [focusCandles,setFocusCandles]=useState(false);
-  const [newsOpen,setNewsOpen]=useState(false);
-  const earlyNews=economicNewsTimeline(data?.newsEvents||[],data?.autopilot?.nextEvent||null,now).alerts;
-  const dueNews=earlyNews.length;
   const asset: 'GOLD'|'BTC'=assetView==='ALL'?chosen:assetView;
   const x=asset==='GOLD'?data?.gold:data?.bitcoin;
   const journal=journals?.[asset]??null;
@@ -113,8 +108,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <small>M1 · 4H CONTEXT · H1/H4 DISTANT TARGET RADAR</small></div>
         </div>
         <div className="forecast-visual-controls">
-          <button type="button" onClick={()=>setNewsOpen(v=>!v)} aria-expanded={newsOpen}
-            className={'forecast-news-tab '+(newsOpen?'active':'')}>الأخبار {dueNews>0?'· '+dueNews:''}</button>
           {assetView==='ALL'&&<div className="forecast-visual-tabs" role="group" aria-label="الأصل على الرسم">
             <button type="button" aria-pressed={asset==='GOLD'} onClick={()=>setChosen('GOLD')}>الذهب</button>
             <button type="button" aria-pressed={asset==='BTC'} onClick={()=>setChosen('BTC')}>البيتكوين</button>
@@ -124,10 +117,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </span>
         </div>
       </header>
-      {earlyNews.length>0&&!newsOpen&&<button type="button" className="forecast-news-peek" onClick={()=>setNewsOpen(true)}>
-        خبر خلال 8 ساعات: {earlyNews[0].name} · التفاصيل في تبويب الأخبار ↗
-      </button>}
-      {newsOpen&&<div className="forecast-news-drawer"><NewsCommandCenter events={data?.newsEvents||[]} now={now} featuredEvent={data?.autopilot?.nextEvent||null}/></div>}
       <div className="forecast-brain-strip">
         <span><Activity size={14}/> {m.bias.active?m.bias.label+(m.heldBias?' · ثابت حتى تأكيد عكسي':m.bias.opposition?' · اختلاف فريمات':' · رصد متواصل'):
           'آخر قراءة: '+m.bias.label+' · '+m.bias.reason} {m.fourHour.ready?' · 4س: '+m.fourHour.phase:''}</span>
