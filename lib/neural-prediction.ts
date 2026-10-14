@@ -1,3 +1,5 @@
+import {certifyNeuralResponse} from './ai-model-certification';
+
 export type NeuralPrediction={
   ok:boolean;version?:string;status?:string;ready?:boolean;
   side?:'BUY'|'SELL'|'WAIT';leanSide?:'BUY'|'SELL';
@@ -28,7 +30,7 @@ export async function getNeuralPrediction(now=Date.now()):Promise<NeuralPredicti
     if(!r.ok||!j||typeof j!=='object'){
       return {ok:false,status:'ERROR',ready:false,side:'WAIT',reason:'Neural HTTP '+r.status,latencyMs:Date.now()-started};
     }
-    const out:NeuralPrediction={...j,latencyMs:Date.now()-started};
+    const out:NeuralPrediction={...certifyNeuralResponse(j),latencyMs:Date.now()-started};
     cache={at:now,value:out};
     return out;
   }catch(e){
