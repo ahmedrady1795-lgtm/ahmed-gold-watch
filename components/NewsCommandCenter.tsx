@@ -1,4 +1,5 @@
 'use client';
+import {useEffect,useState} from 'react';
 import {Clock3,Newspaper} from 'lucide-react';
 import {economicNewsTimeline} from '../lib/news-alert-window';
 
@@ -54,18 +55,48 @@ function macroBias(e:any){
 const dirLabel=(d:Dir)=>d==='up'?'صعود':d==='down'?'هبوط':'محايد';
 
 export default function NewsCommandCenter({events=[],now=Date.now(),featuredEvent=null}:any){
-  // Event times must come from a real feed. Do not generate placeholder dates
-  // or present an approximate/narrative event as an exact scheduled release.
-  const {upcoming,alerts,recent}=economicNewsTimeline(events,featuredEvent,now);
+  // Fetch independently of the expensive AI snapshot so upcoming releases are
+  // visible on the homepage even when the main forecast is still warming up.
+  const [live,setLive]=useState<any>(null);
+  const [feedError,setFeedError]=useState(false);
+  useEffect(()=>{
+    let closed=false,inFlight=false;
+    const load=async()=>{
+      if(closed||inFlight||document.visibilityState!=='visible')return;
+      inFlight=true;
+      try{
+        const response=await fetch('/api/news?ts='+Date.now(),{
+          cache:'no-store',signal:AbortSignal.timeout(20000)
+        });
+        const data=await response.json();
+        if(!response.ok||!data?.ok||!data.newsReady||!Array.isArray(data.events)){
+          throw new Error('Economic calendar unavailable');
+        }
+        if(!closed){setLive(data);setFeedError(false);}
+      }catch{if(!closed)setFeedError(true);}
+      finally{inFlight=false;}
+    };
+    void load();
+    const timer=setInterval(()=>{void load();},90000);
+    const onVisibility=()=>{if(document.visibilityState==='visible')void load();};
+    document.addEventListener('visibilitychange',onVisibility);
+    return()=>{closed=true;clearInterval(timer);document.removeEventListener('visibilitychange',onVisibility);};
+  },[]);
+  // AI events are a fallback only, never pretend the stale data is new.
+  const displayedEvents=live?.events??events;
+  const displayedFeatured=live?null:featuredEvent;
+  const {alerts,recent}=economicNewsTimeline(displayedEvents,displayedFeatured,now);
   return <section className="panel newscommand standalone-news" aria-label="الأخبار القادمة خلال 8 ساعات فقط">
     <header className="standalone-news-head">
       <div><span className="eyebrow">NEWS · 8H</span>
         <h2><Newspaper size={17}/> الأخبار الاقتصادية القادمة</h2></div>
-      <small>الموعد بتوقيت الإمارات · لا يظهر الحدث قبل دخوله نافذة 8 ساعات</small>
+      <small>بتوقيت الإمارات · تحديث تلقائي كل 90 ثانية · الأحداث تظهر قبل موعدها بـ8 ساعات</small>
     </header>
+    {feedError&&<p className="news-eight-empty" role="status">تعذر تحديث مصدر الأخبار الآن؛ {live?'آخر تقويم محفوظ ظاهر أدناه.':'نعرض بيانات التحليل المتوفرة لحين استعادة التقويم.'}</p>}
     <div className="news-eight-hour" aria-live="polite">
       {alerts.length?alerts.map((e:any)=>{
         const high=Number(e.importance)>=3;
+        const bias=macroBias(e);
         return <article className={'news-eight-hour-item '+(high?'news-high-impact':'')} key={e.id||e.name+e.time}>
           <div className="news-eight-hour-top">
             <span>{high?'تأثير مرتفع':Number(e.importance)===2?'تأثير متوسط':'تأثير منخفض'}</span>
@@ -73,11 +104,16 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
           </div>
           <b>{e.name}</b>
           <small>الموعد: {dateLabel(Number(e.time))}</small>
-          {(e.forecast||e.previous)&&<p>المتوقع: {e.forecast||'—'} · السابق: {e.previous||'—'}</p>}
-          <p>الأثر السعري غير مضمون. يحدد رد الفعل بعد الإعلان وليس التوقع المسبق وحده.</p>
+          <p>توقع السوق (Forecast): <strong>{e.forecast||'غير متاح'}</strong> · السابق: {e.previous||'غير متاح'}</p>
+          {bias.gold!=='mixed'&&<p>الميل المبدئي للذهب: <strong>{dirLabel(bias.gold)}</strong> عند تحقق المقارنة الرقمية · للبيتكوين رد فعل قد يختلف.</p>}
+          <p>{bias.why} هذا سيناريو مشروط، وليس توقعاً مؤكداً أو إشارة دخول؛ الفعلي وحركة الدولار والسعر هما الفيصل.</p>
           {/^https:\/\//.test(String(e.source||''))&&<a href={e.source} target="_blank" rel="noopener noreferrer">مصدر الموعد ↗</a>}
         </article>;
-      }):<p className="news-eight-empty">لا يوجد خبر بموعد معلوم خلال الثماني ساعات القادمة. الأحداث البعيدة غير ظاهرة هنا.</p>}
+      }):<p className="news-eight-empty">{feedError&&!live?'لا توجد مواعيد مؤكدة متاحة حتى الآن بسبب مشكلة المصدر.':'لا يوجد خبر بموعد مؤكد خلال الثماني ساعات القادمة.'}</p>}
     </div>
+    {recent.length>0&&<div className="news-post-release">
+      <strong>صدر مؤخرًا</strong>
+      {recent.map((e:any)=><span key={e.id||e.name+e.time}>{e.name}: الفعلي {e.actual||'—'} · المتوقع {e.forecast||'—'}</span>)}
+    </div>}
   </section>;
 }
