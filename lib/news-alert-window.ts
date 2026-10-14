@@ -15,7 +15,9 @@ export function economicNewsTimeline(
     seen.add(key);return true;
   }).sort((a,b)=>Number(a.time)-Number(b.time));
   const upcoming=unique.filter(e=>Number(e.time)>=now&&Number(e.time)<=now+30*86400000);
-  const alerts=upcoming.filter(e=>Number(e.time)-now<=NEWS_EARLY_MS).slice(0,4);
+  // Keep all important releases in the window; a four-item cap can hide CPI/FOMC
+  // behind earlier minor releases on a busy calendar day.
+  const alerts=upcoming.filter(e=>Number(e.time)-now<=NEWS_EARLY_MS).slice(0,12);
   const recent=unique.filter(e=>Number(e.time)<now&&Number(e.time)>=now-10*60000&&
     String(e.actual??'').trim()).slice(-2);
   return {upcoming,alerts,recent};
