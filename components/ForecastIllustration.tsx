@@ -1,6 +1,6 @@
 'use client';
 
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Crosshair,Layers3,ShieldAlert,Target} from 'lucide-react';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
@@ -17,6 +17,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
 }){
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
   const [focusCandles,setFocusCandles]=useState(false);
+  const [chartFullscreen,setChartFullscreen]=useState(false);
+  useEffect(()=>{
+    if(!chartFullscreen)return;
+    const close=(event:KeyboardEvent)=>{if(event.key==='Escape')setChartFullscreen(false);};
+    window.addEventListener('keydown',close);
+    return()=>window.removeEventListener('keydown',close);
+  },[chartFullscreen]);
   const asset: 'GOLD'|'BTC'=assetView==='ALL'?chosen:assetView;
   const x=asset==='GOLD'?data?.gold:data?.bitcoin;
   const journal=journals?.[asset]??null;
@@ -61,26 +68,38 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const projected=m.projected;
   // Conditional paths never claim an approved trade, and only lead to closed-M5
   // breakout levels or existing four-hour liquidity ranges.
+  // Price annotations are conditional LEVELS, not fabricated future candles
+  // or an implied time-of-arrival curve.
   const conditionalPath=(side:'BUY'|'SELL')=>{
     const level=side==='BUY'?overlay.breakoutUp:overlay.breakoutDown;
     if(!overlay.ready||level==null||m.price==null)return '';
     const pool=side==='BUY'?overlay.upper:overlay.lower;
     const terminal=pool&&(side==='BUY'?pool.center>level:pool.center<level)?pool.center:level;
-    const start=clamp(px(m.price),yt+10,yb-10),breakAt=clamp(px(level),yt+10,yb-10);
-    const endAt=clamp(px(terminal),yt+10,yb-10);
-    return 'M '+xf+' '+start+' C '+(xf+45)+' '+start+' '+(xf+58)+' '+breakAt+' '+(xf+126)+' '+breakAt+
-      ' C '+(xf+170)+' '+breakAt+' '+(xr-100)+' '+endAt+' '+(xr-38)+' '+endAt;
+    const current=clamp(px(m.price),yt+10,yb-10),trigger=clamp(px(level),yt+10,yb-10);
+    const target=clamp(px(terminal),yt+10,yb-10);
+    return 'M '+xf+' '+current+' L '+(xf+90)+' '+trigger+' L '+(xr-60)+' '+target;
   };
-  let projectedPath='';
-  if(planVisible&&projected.length>=2){
-    projectedPath='M '+xf+' '+px(projected[0].price);
-    projected.slice(1).forEach((p,i)=>{
-      const xa=i===0?xf:Math.round(716+(i-1)*106);
-      const xb=Math.min(xr-8,716+i*106);
-      const ya=px(projected[i].price),yb2=px(p.price);
-      projectedPath+=' C '+(xa+29)+' '+ya+' '+(xb-32)+' '+yb2+' '+xb+' '+yb2;
-    });
-  }
+  const projectedPath=planVisible&&projected.length>=2
+    ?'M '+xf+' '+px(projected[0].price)+' '+projected.slice(1).map((p,i)=>
+      'L '+Math.min(xr-8,716+i*106)+' '+px(p.price)).join(' ')
+    :'';
+  const emaSeries=(period:number)=>{
+    if(candles.length<period)return [] as Array<{x:number;y:number}>;
+    let value=candles.slice(0,period).reduce((sum,c)=>sum+c.close,0)/period;
+    const rows=[{x:x0+(period-.5)*stride,y:px(value)}];
+    for(let i=period;i<candles.length;i++){
+      value+=(candles[i].close-value)*2/(period+1);
+      rows.push({x:x0+(i+.5)*stride,y:px(value)});
+    }
+    return rows;
+  };
+  const emaLine=(period:number)=>emaSeries(period).map((p,i)=>
+    (i?'L ':'M ')+p.x.toFixed(2)+' '+p.y.toFixed(2)).join(' ');
+  const indicators=x?.indicatorMatrix?.rows||{};
+  const indicatorValid=Boolean(m.historyFresh&&sn.view.forecastFresh);
+  const modelStatus=data?.modelValidation||null;
+  const mlReady=Boolean(modelStatus?.mlM1?.ready&&modelStatus?.mlM5?.ready);
+  const neuralReady=Boolean(modelStatus?.neural?.ready);
   const ageMin=m.historyAge==null?null:Math.ceil(m.historyAge/60000);
   const stateLabel=statusReady?'سيناريو مؤهل · مسجل':watchReady&&m.heldBias?'اتجاه مثبت · أهداف مراقبة':watchReady?'أهداف بعيدة · مراقبة فقط':
     m.bias.active&&m.bias.side!=='WAIT'?(m.heldBias?'اتجاه محفوظ · تحقق مستمر':'الاتجاه مرصود · جارٍ البحث عن مستوى بعيد'):
@@ -137,6 +156,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           <span>سيولة سفلية <b dir="ltr">{overlay.lower?fmt(overlay.lower.low)+' – '+fmt(overlay.lower.high):'—'}</b></span>
         </div>
       </div>
+      <div className="sniper-indicator-bar" aria-label="مؤشرات التحليل من الشموع المغلقة">
+        <span><small>M1 RSI</small><strong>{indicatorValid&&Number.isFinite(Number(indicators.m1?.rsi))?fmt(Number(indicators.m1.rsi),1):'—'}</strong></span>
+        <span><small>M5 RSI</small><strong>{indicatorValid&&Number.isFinite(Number(indicators.m5?.rsi))?fmt(Number(indicators.m5.rsi),1):'—'}</strong></span>
+        <span><small>M5 ADX</small><strong>{indicatorValid&&Number.isFinite(Number(indicators.m5?.adx))?fmt(Number(indicators.m5.adx),1):'—'}</strong></span>
+        <span><small>EMA M5</small><strong>{indicatorValid?(indicators.m5?.bias==='BUY'?'صاعد':indicators.m5?.bias==='SELL'?'هابط':'غير حاسم'):'غير متاح'}</strong></span>
+        <span><small>AI · BTC</small><strong>{!data?'انتظار':modelStatus?(mlReady&&neuralReady?'ML + Neural مؤهل':mlReady?'ML مؤهل · Neural مراقبة':'نماذج غير مؤهلة'):'غير متاح'}</strong></span>
+        <span><small>مصدر الشموع</small><strong title={String(x?.candleSource||'')}>{indicatorValid?'مغلق · حديث':'قديم / ناقص'}</strong></span>
+      </div>
       <div className="forecast-visual-layout">
         <div className="forecast-visual-facts">
           <div className="forecast-visual-fact forecast-visual-last">
@@ -175,11 +202,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               'السوق قد يكون مغلقًا أو البيانات متأخرة'}</small>
           </div>
         </div>
-        <div className="forecast-visual-chart-wrap">
+        <div className={'forecast-visual-chart-wrap'+(chartFullscreen?' chart-fullscreen':'')}>
           <div className="forecast-visual-topline">
             <span><Layers3 size={13}/> M1 / آخر {candles.length} شمعة مغلقة</span>
             <span>{ageMin!=null?'عمر آخر إغلاق '+ageMin+' دقيقة':'لا توجد بيانات شموع'}</span>
             <button className="forecast-chart-zoom" type="button" onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'عرض كل المستويات':'تكبير الشموع'}</button>
+            <button className="forecast-chart-zoom forecast-chart-screen" type="button"
+              aria-pressed={chartFullscreen} onClick={()=>setChartFullscreen(v=>!v)}>
+              {chartFullscreen?'إغلاق الشاشة الكبيرة':'⛶ تكبير الشاشة'}
+            </button>
           </div>
           <div className="forecast-visual-chart-scroll">
             <svg className="forecast-visual-svg" viewBox={'0 0 '+W+' '+H}
@@ -251,6 +282,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                     fontWeight={z.kind==='TARGET'?700:500}>{z.label+'  '+fmt(z.price)}</text>
                 </g>;
               })}
+              {candles.length>=20&&<path d={emaLine(20)} fill="none" stroke="#e9bc64" strokeWidth="1.9"
+                strokeOpacity=".9" aria-label="متوسط EMA 20 من الشموع المغلقة"/>}
+              {candles.length>=50&&<path d={emaLine(50)} fill="none" stroke="#8d96f6" strokeWidth="1.9"
+                strokeOpacity=".88" aria-label="متوسط EMA 50 من الشموع المغلقة"/>}
               {candles.map((c,i)=>{
                 const x=x0+(i+.5)*stride;
                 const color=c.close>=c.open?'#4ad9c6':'#f0758a';
@@ -280,7 +315,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               </g>}
               {projectedPath&&<g>
                 <path d={projectedPath} stroke="#071823" strokeWidth="7" fill="none" opacity=".6"/>
-                <path d={projectedPath} stroke={watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4'} strokeWidth="3"
+                <path d={projectedPath} stroke={watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4'} strokeWidth="2.6"
                   strokeDasharray="9 7" fill="none" markerEnd={'url(#forecast-arrow-'+asset+')'}/>
                 {projected.slice(1).map((p,i)=><circle key={p.key}
                   cx={Math.min(xr-8,716+i*106)} cy={px(p.price)} r="4.2"
@@ -309,7 +344,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             </svg>
           </div>
           <div className="forecast-visual-legend">
-            <span><i className="forecast-legend-history"/> شموع فعلية</span>
+            <span><i className="forecast-legend-history"/> شموع فعلية M1</span>
+            <span className="legend-ema20">EMA20</span>
+            <span className="legend-ema50">EMA50</span>
             <span><i className="forecast-legend-projection"/> {watchReady?'مسار مستويات بعيد · توضيحي':'سيناريو مشروط'}</span>
             <span><i className="forecast-legend-target"/> مناطق أهداف</span>
             <span><i className="forecast-legend-rebound"/> مناطق سيولة</span>
@@ -318,6 +355,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
         </div>
       </div>
+      <details className="forecast-deep-insights">
+        <summary>التفاصيل الفنية · السيولة · الأهداف · أداء AI</summary>
       <section className="forecast-eta-section" aria-label="التوقيت التقريبي للأهداف">
         <div className="forecast-eta-header">
           <strong><Clock3 size={16}/> مسار الحركة والوقت التقريبي للأهداف</strong>
@@ -430,6 +469,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         {serverWatch?.current&&<p>آخر مسار: {String(serverWatch.current.note)} ·
           الأهداف الأصلية: {serverWatch.current.targets.map((t:any)=>fmt(t.price)+(t.reachedAt?' ✓':'')).join(' / ')}</p>}
       </section>
+      </details>
       <footer className="forecast-visual-note">
         <span>الشموع السابقة بيانات سوق فعلية. {watchReady?'الخط الأصفر مراقبة هيكلية أولية، وليس إشارة شراء أو بيع.':'الخط المتقطع ترتيب مستويات مشروط، وليس توقعًا لشكل الشموع أو وقت وصولها.'}</span>
         <span>{highest?(statusReady?'الهدف المسجل الأخير ':'أبعد مستوى هيكلي مرصود ')+fmt(highest.price):m.bias.active?'انحياز ظاهر · لا مستوى بعيد متاح':'آخر بيانات للمتابعة فقط'}</span>
