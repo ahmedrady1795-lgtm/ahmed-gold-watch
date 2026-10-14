@@ -98,6 +98,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const indicators=x?.indicatorMatrix?.rows||{};
   const indicatorValid=Boolean(m.historyFresh&&sn.view.forecastFresh);
   const modelStatus=data?.modelValidation||null;
+  const chartGaps=candles.reduce((n,c,i)=>n+(i>0&&c.time-candles[i-1].time>60000?1:0),0);
+  const coreReady=Boolean(x?.coreSummary?.qualityReady);
   const mlReady=Boolean(modelStatus?.mlM1?.ready&&modelStatus?.mlM5?.ready);
   const neuralReady=Boolean(modelStatus?.neural?.ready);
   const ageMin=m.historyAge==null?null:Math.ceil(m.historyAge/60000);
@@ -160,9 +162,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <span><small>M1 RSI</small><strong>{indicatorValid&&Number.isFinite(Number(indicators.m1?.rsi))?fmt(Number(indicators.m1.rsi),1):'—'}</strong></span>
         <span><small>M5 RSI</small><strong>{indicatorValid&&Number.isFinite(Number(indicators.m5?.rsi))?fmt(Number(indicators.m5.rsi),1):'—'}</strong></span>
         <span><small>M5 ADX</small><strong>{indicatorValid&&Number.isFinite(Number(indicators.m5?.adx))?fmt(Number(indicators.m5.adx),1):'—'}</strong></span>
-        <span><small>EMA M5</small><strong>{indicatorValid?(indicators.m5?.bias==='BUY'?'صاعد':indicators.m5?.bias==='SELL'?'هابط':'غير حاسم'):'غير متاح'}</strong></span>
-        <span><small>AI · BTC</small><strong>{!data?'انتظار':modelStatus?(mlReady&&neuralReady?'ML + Neural مؤهل':mlReady?'ML مؤهل · Neural مراقبة':'نماذج غير مؤهلة'):'غير متاح'}</strong></span>
-        <span><small>مصدر الشموع</small><strong title={String(x?.candleSource||'')}>{indicatorValid?'مغلق · حديث':'قديم / ناقص'}</strong></span>
+        <span><small>توافق M5</small><strong>{indicatorValid?(indicators.m5?.bias==='BUY'?'صعود':indicators.m5?.bias==='SELL'?'هبوط':'غير حاسم'):'غير متاح'}</strong></span>
+        <span><small>AI · {asset==='GOLD'?'Gold':'BTC'}</small>
+          <strong>{!data?'انتظار':asset==='GOLD'?
+            (coreReady?'معايرة هيكلية متاحة':'شروط المعايرة ناقصة'):
+            modelStatus?(mlReady&&neuralReady?'ML + Neural مؤهل':mlReady?'ML مؤهل · Neural مراقبة':'نماذج غير مؤهلة'):'غير متاح'}</strong></span>
+        <span><small>جودة الرسم</small><strong title={String(x?.candleSource||'')}>{!indicatorValid?'قديم / ناقص':chartGaps?'فجوات بيانات '+chartGaps:'شموع مغلقة حديثة'}</strong></span>
       </div>
       <div className="forecast-visual-layout">
         <div className="forecast-visual-facts">
