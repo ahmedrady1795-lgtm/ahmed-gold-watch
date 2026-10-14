@@ -33,9 +33,11 @@ function goldDirection(name:string,surprise:number):Side{
   }
   return 'WAIT';
 }
-function btcDirection(name:string,surprise:number):Side{
-  const g=goldDirection(name,surprise);
-  return g;
+function btcDirection(_name:string,_surprise:number):Side{
+  // BTC does not have a reliable one-to-one inverse-dollar response to macro
+  // surprises. Never label a macro release as a BTC trading direction without
+  // independent price/order-flow confirmation.
+  return 'WAIT';
 }
 function eventScore(e:Event,now:number){
   const mins=(e.time-now)/60000,imp=Math.max(1,Math.min(3,Number(e.importance)||1));
@@ -67,19 +69,16 @@ export function buildNewsIntelligence(asset:Asset,events:Event[],now=Date.now())
     else reasons.push('نوع الخبر أو نتيجته لا يعطي اتجاهًا آليًا موثوقًا؛ سيُستخدم كعامل مخاطرة فقط.');
   }else{
     const narrative=isNarrativeEvent(e.name);
-    const preDelta=forecast!=null&&previous!=null?(forecast-previous)/Math.max(1,Math.abs(previous)):0;
-    if(!narrative&&mins>0&&Math.abs(preDelta)>.002&&family(e.name)!=='fed'){
-      side=asset==='GOLD'?goldDirection(e.name,preDelta):btcDirection(e.name,preDelta);
-      confidence=side==='WAIT'?0:Math.round(cap(28+importance*6+Math.min(12,Math.abs(preDelta)*100),0,52));
-      directional=side!=='WAIT';weight=directional?Math.min(.07,.025+importance*.012):0;
-    }
+    // Consensus versus previous is NOT a release surprise. Keep directional
+    // trading weight at zero until an actual result is published.
+    side='WAIT';confidence=0;directional=false;weight=0;
     reasons.push(`${e.name} خلال ${mins>0?Math.ceil(mins)+' دقيقة':'وقت الحدث'} · تأثير ${importance}/3.`);
     if(narrative){
       reasons.push(mins>0
         ?'حدث نصّي بلا Actual رقمي؛ قبل البداية لا يُفترض اتجاه من اسم المتحدث وحده، ويُستخدم السياق والسعر لترجيح محدود فقط.'
         :'حدث نصّي بلا Actual رقمي؛ تُقرأ اللهجة ورد فعل الدولار والسيولة بدل انتظار نتيجة رقمية.');
     }else{
-      reasons.push('قبل صدور Actual، تأثير الخبر على الاتجاه محدود ويُرفع وزن المخاطرة بدل تخمين النتيجة.');
+      reasons.push('قبل صدور Actual لا يوجد ترجيح اتجاهي صالح للتنفيذ؛ تُرفع مخاطر التقلب فقط.');
     }
   }
   if(family(e.name)==='fed'&&!hasSurprise&&!isNarrativeEvent(e.name)){side='WAIT';confidence=0;directional=false;weight=0;reasons.push('قرار/حدث فدرالي غير محسوم رقميًا؛ لا يُفرض اتجاه قبل ظهور المعلومة الفعلية.');}
