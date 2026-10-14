@@ -1,4 +1,5 @@
 import type {Candle} from './engine';
+import {certifyMlResponse} from './ai-model-certification';
 
 type Side='BUY'|'SELL'|'WAIT';
 export type MlHorizon={
@@ -43,7 +44,7 @@ export async function getMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPred
     if(!r.ok||!j||typeof j!=='object'){
       return {ok:false,status:'ERROR',reason:'ML HTTP '+r.status,shadow:true,latencyMs:Date.now()-started};
     }
-    const out:MlPrediction={...j,latencyMs:Date.now()-started};
+    const out:MlPrediction={...certifyMlResponse(j),latencyMs:Date.now()-started};
     cache={at:now,value:out};
     return out;
   }catch(e){
