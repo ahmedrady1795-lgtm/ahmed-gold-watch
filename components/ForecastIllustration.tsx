@@ -64,6 +64,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const stride=(x1-x0)/Math.max(candles.length,1);
   const candleWidth=clamp(stride*.62,2,8.5);
   const maxVolume=Math.max(1,...candles.map(c=>c.volume));
+  const basis=candles.some(c=>c.volumeBasis==='REAL')?'REAL':
+    candles.some(c=>c.volumeBasis==='TICK')?'TICK':'NONE';
+  const volumeLabel=basis==='REAL'?'حجم تداول حقيقي':
+    basis==='TICK'?'Tick Volume (عدد تغيرات السعر)':'الحجم غير متوفر';
   const chartBands=m.bands.slice().sort((a,b)=>a.kind==='TARGET'?-1:b.kind==='TARGET'?1:0);
   const projected=m.projected;
   // Conditional paths never claim an approved trade, and only lead to closed-M5
@@ -356,6 +360,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
           <div className="forecast-visual-legend">
             <span><i className="forecast-legend-history"/> شموع فعلية M1</span>
+            <span title="أعمدة أسفل الشموع ليست بالضرورة عقودًا منفذة؛ تعتمد على المصدر">{volumeLabel}</span>
             <span className="legend-ema20">EMA20</span>
             <span className="legend-ema50">EMA50</span>
             <span><i className="forecast-legend-projection"/> {watchReady?'مسار مستويات بعيد · توضيحي':'سيناريو مشروط'}</span>
