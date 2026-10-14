@@ -397,3 +397,69 @@ export async function getMarketData(options:{force?:boolean}={}):Promise<MarketD
   await Promise.all(jobs);result.checkedAt=Date.now();marketCache={at:result.checkedAt,value:result};return result;
 }
 export async function getMarketSnapshot(){const[market,quote]=await Promise.all([getMarketData(),getQuoteData().catch(()=>null)]);return{ok:true,checkedAt:Date.now(),market,quote,mt5:getMt5BridgeStatus()};}
+
+
+// Dedicated calendar-only entry point. Unlike getMarketData, this does not wait
+// for four OHLC price providers, so slow/offline gold feeds cannot hide news.
+export type NewsCalendarFeed={
+  checkedAt:number;events:Event[];newsReady:boolean;errors:string[];
+};
+let newsCalendarCache:Cache<NewsCalendarFeed>|null=null;
+let newsCalendarPending:Promise<NewsCalendarFeed>|null=null;
+export async function getNewsCalendarFeed(now=Date.now()):Promise<NewsCalendarFeed>{
+  if(newsCalendarCache&&now-newsCalendarCache.at<90000)return newsCalendarCache.value;
+  if(newsCalendarPending)return newsCalendarPending;
+  newsCalendarPending=(async()=>{
+    const collected:Event[]=[],errors:string[]=[];
+    const key=getRuntimeEnv().TRADING_ECONOMICS_API_KEY;
+    const tasks:Promise<void>[]=[];
+    if(key)tasks.push((async()=>{
+      try{
+        const start=new Date(now-86400000).toISOString().slice(0,10);
+        const end=new Date(now+30*86400000).toISOString().slice(0,10);
+        const raw=await getJson('https://api.tradingeconomics.com/calendar/country/united%20states/'+start+'/'+end+'?c='+encodeURIComponent(key)+'&f=json');
+        if(!Array.isArray(raw)||!raw.length)throw new Error('empty economic calendar');
+        collected.push(...raw.map((v:any):Event=>({
+          id:String(v.CalendarId),time:utc(String(v.Date)),name:String(v.Event||''),
+          importance:Number(v.Importance),actual:String(v.Actual||''),
+          forecast:String(v.Forecast||''),previous:String(v.Previous||''),
+          source:String(v.SourceURL||''),exactTime:String(v.DateSpan)==='0'
+        })).filter((e:Event)=>Number.isFinite(e.time)&&[1,2,3].includes(e.importance)&&e.name.trim()));
+      }catch{errors.push('Trading Economics غير متاح');}
+    })());
+    tasks.push((async()=>{
+      try{collected.push(...await calendarFromFaireconomy());}
+      catch{errors.push('تقويم Forex Factory الأسبوعي غير متاح');}
+    })());
+    tasks.push((async()=>{
+      try{collected.push(...await calendarFromOfficialUS(now));}
+      catch{errors.push('تعذر قراءة مواعيد BLS/BEA الرسمية');}
+    })());
+    await Promise.all(tasks);
+    const merged=new Map<string,Event>();
+    for(const e of collected){
+      if(!Number.isFinite(e.time)||!String(e.name||'').trim())continue;
+      const mapKey=e.name.toLowerCase().replace(/\s+/g,' ').trim()+'|'+Math.round(e.time/3600000);
+      const prev=merged.get(mapKey);
+      if(!prev){merged.set(mapKey,e);continue;}
+      const official=[prev,e].find(x=>/bls\.gov|bea\.gov/i.test(x.source));
+      const rank=(x:Event)=>(x.actual?8:0)+(x.forecast?4:0)+(x.previous?2:0)+(x.exactTime?1:0);
+      const rich=rank(e)>rank(prev)?e:prev;
+      merged.set(mapKey,{
+        ...rich,time:official?.time??rich.time,
+        exactTime:Boolean(official?.exactTime||rich.exactTime),
+        source:rich.source||official?.source||'',
+        actual:rich.actual||prev.actual||e.actual||'',
+        forecast:rich.forecast||prev.forecast||e.forecast||'',
+        previous:rich.previous||prev.previous||e.previous||''
+      });
+    }
+    const events=[...merged.values()]
+      .filter(e=>e.time>=now-86400000&&e.time<=now+30*86400000)
+      .sort((a,b)=>a.time-b.time);
+    const feed={checkedAt:Date.now(),events,newsReady:events.length>0,errors};
+    if(feed.newsReady)newsCalendarCache={at:Date.now(),value:feed};
+    return feed;
+  })().finally(()=>{newsCalendarPending=null;});
+  return newsCalendarPending;
+}
