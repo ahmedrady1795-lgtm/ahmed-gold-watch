@@ -28,6 +28,7 @@ export default function AICommandCenter({data,chartData,error,assetView='ALL',no
   const generatedAt=Number(data?.checkedAt||chartData?.checkedAt||0);
   const [audit,setAudit]=useState<any>(null);
   const [auditError,setAuditError]=useState(false);
+  const [openedAt]=useState(()=>Date.now());
   useEffect(()=>{
     let closed=false;let timer:ReturnType<typeof setTimeout>|undefined;
     const load=async()=>{
@@ -46,12 +47,19 @@ export default function AICommandCenter({data,chartData,error,assetView='ALL',no
     return()=>{closed=true;clearTimeout(timer);};
   },[]);
   const chartAudit=chartData?.structuralAudit;
-  const effectiveAudit=chartAudit?.ok&&Number(chartAudit.updatedAt||0)>Number(audit?.updatedAt||0)?chartAudit:audit;
+  // Chart updates carry a fresher ledger, but not remote checkpoint metadata.
+  // Preserve the independently fetched archive status when choosing that ledger.
+  const effectiveAudit=chartAudit?.ok&&Number(chartAudit.updatedAt||0)>Number(audit?.updatedAt||0)
+    ?{...chartAudit,archive:audit?.archive}:audit;
   const journal={GOLD:scenarioAsJournal(effectiveAudit?.current?.GOLD),
     BTC:scenarioAsJournal(effectiveAudit?.current?.BTC)};
   const observationAt=Number(chartData?.checkedAt||data?.checkedAt||0);
   const chartWatchFresh=Boolean(chartAudit?.ok&&now-observationAt<90000&&observationAt<=now+2000);
   const stale=generatedAt>0&&now-generatedAt>90000&&!chartWatchFresh;
+  if(!displayData)return <div className="ai-clean renewed-ai"><section className="panel" role="status" aria-live="polite">
+    <h2>{error?'تعذر تحميل القناص':now-openedAt>15000?'الاتصال بالسوق يستغرق وقتًا أطول':'جاري تحميل القناص'}</h2>
+    <p>{error||'ننتظر أول بيانات من الخادم. لا توجد إشارة دخول قبل اكتمال التحميل والتحقق من حداثة الأسعار.'}</p>
+  </section></div>;
   return <div className="ai-clean renewed-ai">
     {error&&!data&&<div className="fatal"><ShieldAlert size={18}/><div><strong>التحليل غير متاح</strong><span>{error}</span></div></div>}
     {stale&&<div className="fatal"><ShieldAlert size={18}/><div><strong>تحديث AI متأخر</strong>

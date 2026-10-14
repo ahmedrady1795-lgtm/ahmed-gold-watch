@@ -160,7 +160,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const conflictFavor=opposingOverlap&&m.fourHour.ready&&dir!=='WAIT'&&
     m.fourHour.side===dir?dir:'WAIT';
   const blockAt=Number(audit?.blockAt?.[asset]||0);
-  const waitReason=!planVisible&&blockAt>0&&blockAt<=now+2000&&now-blockAt<=90000?
+  const waitReason=!statusReady&&blockAt>0&&blockAt<=now+2000&&now-blockAt<=90000?
     String(audit?.block?.[asset]||''):'';
   const frameExplanation=explainFrameConflict(dir,m.fourHour.side,m.fourHour.ready);
   const statusText=statusReady?(journal?.message||sn.stageText):
@@ -194,7 +194,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       </button>}
       {newsOpen&&<div className="forecast-news-drawer"><NewsCommandCenter events={data?.newsEvents||[]} now={now} featuredEvent={data?.autopilot?.nextEvent||null}/></div>}
       <div className="sniper-decision-strip" aria-label="قرار موحد للقناص">
-        <strong className={rise?'green':fall?'red':''}>{feedProblem??(rise?'ميل صعود':fall?'ميل هبوط':neutralLabel)}</strong>
+        <strong className={statusReady?(rise?'green':fall?'red':''):''}>{feedProblem??(statusReady?'سيناريو ورقي مؤهل':'انتظار · لا دخول مؤكد')}</strong>
+        <span>{rise?'اتجاه المراقبة: ميل صعود':fall?'اتجاه المراقبة: ميل هبوط':neutralLabel}</span>
+        {!statusReady&&waitReason&&<span>سبب الانتظار: {waitReason}</span>}
         <span>{planVisible?m.heldBias?'أهداف مثبتة · تتغير عند الوصول أو الإبطال أو انعكاس مؤكد':'مستويات هيكلية من الخادم · للمراقبة':watchFresh?memory.state?.reachedPrices?.length&&!memory.state?.targets?.length?'الأهداف السابقة استُهلكت؛ انتظار إغلاق M15 لهدف جديد':m.bias.reason:'انتظار بيانات الخادم؛ لا نستبدلها بأهداف متغيرة'}</span>
         {m.fourHour.ready&&<b>4س · {m.fourHour.phase}</b>}
       </div>
@@ -527,7 +529,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           'أرشيف دوري محفوظ: '+new Date(audit.archive.savedAt).toLocaleString('ar-EG',{timeZone:'Asia/Dubai',dateStyle:'short',timeStyle:'short'})+
           ' · '+audit.archive.records+' سجل. آخر أحداث بعد نقطة الحفظ قد تُفقد عند توقف الخادم.':
           audit?.persistence==='VOLUME'?'السجل محفوظ على وحدة تخزين الخادم.':'لم نتأكد بعد من نقطة حفظ خارجية؛ السجل الحالي مؤقت.'}
-          {audit?.archive?.savedAt>0&&now-audit.archive.savedAt>45*60000?' الأرشفة متأخرة؛ آخر نسخة محفوظة ما زالت متاحة.':''}
+          {audit?.archive?.checkedAt>0&&!audit.archive.reachable?' تعذر التحقق من أحدث نسخة؛ المعروض آخر حفظ معروف.':
+            audit?.archive?.savedAt>0&&now-audit.archive.savedAt>45*60000?' الأرشفة متأخرة؛ آخر نسخة محفوظة ما زالت متاحة.':''}
           {' '}فجوات المتابعة مستبعدة من النسب. هذا سجل رصد ورقي وليس قياس ربحية صفقات فعلية.
         </p>
         <a className="sniper-audit-export" href="/api/sniper-audit?archive=1" download="sniper-paper-audit.json">تنزيل نسخة السجل JSON</a>

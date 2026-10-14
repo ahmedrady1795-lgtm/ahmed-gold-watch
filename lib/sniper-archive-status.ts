@@ -10,11 +10,13 @@ export async function sniperArchiveStatus(now=Date.now()):Promise<Status>{
     try{const local=JSON.parse(fs.readFileSync('/tmp/sniper-archive-checkpoint.json','utf8'));
       if(Number(local.savedAt)>cache.savedAt)cache={...cache,...local};}catch{}
     try{
-      const r=await fetch(ARCHIVE_URL,{signal:AbortSignal.timeout(4000),cache:'no-store'});
+      const r=await fetch(ARCHIVE_URL+'?checkpoint='+Math.floor(now/60000),{signal:AbortSignal.timeout(4000),cache:'no-store'});
       if(!r.ok)throw Error('HTTP');
       const text=await r.text();if(text.length>12_000_000)throw Error('size');
       const archive=cleanArchive(JSON.parse(text),now);
-      cache={savedAt:archive.savedAt,records:archive.records.length,restoredAt:cache.restoredAt,checkedAt:now,reachable:true};
+      // A delayed CDN response must never roll a verified checkpoint backwards.
+      cache={...cache,...(archive.savedAt>=cache.savedAt?
+        {savedAt:archive.savedAt,records:archive.records.length}:{}),checkedAt:now,reachable:true};
     }catch{cache={...cache,checkedAt:now,reachable:false};}
     return cache;
   })();

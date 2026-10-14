@@ -14,21 +14,21 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
   const confirmation=desk?.entryConfirmations?.find((e:any)=>e.horizon===horizon);
   const lane=desk?.ledger?.lanes?.find((l:any)=>l.horizon===horizon);
   const current=lane?.current;
-  const stale=!Number.isFinite(Number(desk?.checkedAt))||now-Number(desk.checkedAt)>15000;
+  const checkedAt=Number(desk?.checkedAt);
+  const stale=!Number.isFinite(checkedAt)||checkedAt<=0||checkedAt>now+2000||now-checkedAt>15000;
+  const running=Boolean(current?.state==='ACTIVE');
   const blocked=stale||plan?.status==='BLOCKED';
   const direction=blocked?'WAIT':(
-    current?.plan?.side==='BUY'||current?.plan?.side==='SELL'?current.plan.side:
+    running&&(current?.plan?.side==='BUY'||current?.plan?.side==='SELL')?current.plan.side:
     plan?.side==='BUY'||plan?.side==='SELL'?plan.side:'WAIT'
   );
-  const signaledAt=Number(current?.activatedAt||confirmation?.confirmedCandleAt||0);
+  const signaledAt=Number(running?current?.activatedAt:confirmation?.confirmedCandleAt||0);
   const signalAge=signaledAt>0?now-signaledAt:Infinity;
   const confirmed=Boolean(!blocked&&direction!=='WAIT'&&signaledAt>0&&
     signalAge>=0&&signalAge<SIGNAL_TTL_MS&&
     (current?.state==='ACTIVE'||confirmation?.state==='ENTRY')&&
     (current?.state==='ACTIVE'||confirmation?.entryAudit?.approved===true));
   const remaining=confirmed?Math.max(1,Math.ceil((SIGNAL_TTL_MS-signalAge)/1000)):0;
-  const running=Boolean(current?.state==='ACTIVE');
-  const selected=running?current.plan:plan;
   const status=blocked?'الدخول متوقف · بيانات أو شروط غير مكتملة':
     confirmed?'إشارة ورقية مؤكدة · نشطة الآن':
     running?'إشارة الدخول انتهت · الصفقة الورقية قيد المتابعة':
@@ -37,9 +37,9 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
     'اتجاه مرصود · لسه مش إشارة دخول';
   const reason=blocked?(plan?.blockers?.[0]||'آخر تحديث للسوق متأخر'):
     confirmation?.entryAudit?.reason||plan?.reason||'بانتظار الشروط الكاملة';
-  const dirCss=direction==='BUY'?'green':direction==='SELL'?'red':'amber';
+  const dirCss=confirmed?(direction==='BUY'?'green':'red'):'amber';
   const actionable=confirmed&&!stale;
-  return <section className={'panel scalp-desk scalp-seconds '+(direction==='BUY'?'ai-buy':direction==='SELL'?'ai-sell':'ai-wait')}
+  return <section className={'panel scalp-desk scalp-seconds '+(confirmed?(direction==='BUY'?'ai-buy':'ai-sell'):'ai-wait')}
     aria-label={'السكالب '+(desk?.asset==='GOLD'?'للذهب':'للبيتكوين')}>
     <div className="scalp-desk-head">
       <div><span className="eyebrow">سكالب سريع · {desk?.asset==='GOLD'?'XAU/USD':'BTC/USD'}</span>
@@ -57,10 +57,10 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
     <div id={'scalp-panel-'+desk.asset} role="tabpanel"
       aria-labelledby={'scalp-tab-'+desk.asset+'-'+horizon}>
       <div className={'scalp-seconds-direction '+dirCss}>
-        {direction==='BUY'?<ArrowUpRight size={36}/>:direction==='SELL'?<ArrowDownRight size={36}/>:<Activity size={32}/>}
-        <div><small>الاتجاه الحالي</small>
-          <strong>{direction==='WAIT'?'انتظار':direction==='BUY'?'↑ شراء':'↓ بيع'}</strong>
-          <span>{confirmed?'مؤكد ورقيًا':direction!=='WAIT'?'مشروط ولم يتأكد':'لا دخول'}</span>
+        {confirmed?(direction==='BUY'?<ArrowUpRight size={36}/>:<ArrowDownRight size={36}/>):<Activity size={32}/>}
+        <div><small>قرار الدخول</small>
+          <strong>{blocked?'غير جاهز':confirmed?(direction==='BUY'?'↑ شراء مؤكد':'↓ بيع مؤكد'):running?'متابعة فقط':'انتظار · لا دخول'}</strong>
+          <span>{confirmed?'إشارة ورقية · ليست أمرًا منفذًا':direction!=='WAIT'?'اتجاه المراقبة: '+sideAr(direction)+' · لا دخول جديد':'لا اتجاه مؤكد'}</span>
         </div>
         <div className="scalp-seconds-clock">
           <Clock3 size={16}/><strong>{remaining?remaining+' ث':'—'}</strong>
@@ -71,9 +71,9 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
         {status}
       </p>
       {actionable&&<div className="scalp-seconds-levels" aria-label="مستويات الإشارة الورقية">
-        <span><small>دخول ورقي</small><b dir="ltr">{fmt(current?.plan?.entry??confirmation?.entry)}</b></span>
-        <span><small>وقف</small><b dir="ltr">{fmt(current?.plan?.stop??confirmation?.stop)}</b></span>
-        <span><small><Target size={12}/> الهدف الأول</small><b dir="ltr">{fmt(current?.plan?.targets?.[0]?.price??confirmation?.targets?.[0]?.price)}</b></span>
+        <span><small>دخول ورقي</small><b dir="ltr">{fmt(running?current.plan.entry:confirmation?.entry)}</b></span>
+        <span><small>وقف</small><b dir="ltr">{fmt(running?current.plan.stop:confirmation?.stop)}</b></span>
+        <span><small><Target size={12}/> الهدف الأول</small><b dir="ltr">{fmt(running?current.plan.targets?.[0]?.price:confirmation?.targets?.[0]?.price)}</b></span>
       </div>}
       {!confirmed&&<p className="scalp-seconds-reason">{reason}</p>}
       <small className="scalp-seconds-foot">
