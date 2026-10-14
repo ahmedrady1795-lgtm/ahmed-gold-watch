@@ -15,13 +15,17 @@ SITE_URL=os.getenv('SITE_URL','').rstrip('/')
 TOKEN=os.getenv('MT5_BRIDGE_TOKEN','')
 SYMBOL=os.getenv('MT5_SYMBOL','XAUUSDm')
 LIVE=os.getenv('LIVE_TRADING','false').lower()=='true'
-RISK_PCT=min(0.5,max(0.05,float(os.getenv('RISK_PER_TRADE_PCT','0.25'))))
-MAX_DAILY_LOSS_PCT=min(1.5,max(0.25,float(os.getenv('MAX_DAILY_LOSS_PCT','1.0'))))
-MAX_WEEKLY_LOSS_PCT=min(4.0,max(0.5,float(os.getenv('MAX_WEEKLY_LOSS_PCT','2.5'))))
-MAX_DRAWDOWN_PCT=min(8.0,max(1.0,float(os.getenv('MAX_DRAWDOWN_PCT','3.0'))))
-MAX_CONSECUTIVE_LOSSES=max(2,min(6,int(os.getenv('MAX_CONSECUTIVE_LOSSES','3'))))
+LIVE_ACK=os.getenv('MT5_LIVE_ACK','')
+EXPECTED_LOGIN=os.getenv('MT5_EXPECTED_LOGIN','').strip()
+LIVE_ACK_REQUIRED='I_ACCEPT_LIVE_MT5_RISK_V1'
+# These local ceilings must never be looser than the policy advertised by the site.
+RISK_PCT=min(0.15,max(0.0,float(os.getenv('RISK_PER_TRADE_PCT','0.10'))))
+MAX_DAILY_LOSS_PCT=min(0.5,max(0.0,float(os.getenv('MAX_DAILY_LOSS_PCT','0.5'))))
+MAX_WEEKLY_LOSS_PCT=min(1.5,max(0.0,float(os.getenv('MAX_WEEKLY_LOSS_PCT','1.5'))))
+MAX_DRAWDOWN_PCT=min(3.0,max(0.0,float(os.getenv('MAX_DRAWDOWN_PCT','3.0'))))
+MAX_CONSECUTIVE_LOSSES=max(1,min(2,int(os.getenv('MAX_CONSECUTIVE_LOSSES','2'))))
 MIN_MARGIN_LEVEL=max(100.0,float(os.getenv('MIN_MARGIN_LEVEL','300')))
-MAX_OPEN=max(1,min(2,int(os.getenv('MAX_OPEN_POSITIONS','1'))))
+MAX_OPEN=1 # one symbol position maximum, including orders from other EAs
 MAX_SPREAD_POINTS=max(1,int(os.getenv('MAX_SPREAD_POINTS','100')))
 MAX_SIGNAL_SLIPPAGE_POINTS=max(10,int(os.getenv('MAX_SIGNAL_SLIPPAGE_POINTS','150')))
 MAX_TICK_AGE_MS=max(1000,int(os.getenv('MAX_TICK_AGE_MS','5000')))
@@ -44,11 +48,22 @@ STATE=Path(__file__).with_name('.state.json')
 KILL_SWITCH=Path(os.getenv('KILL_SWITCH_FILE',str(Path(__file__).with_name('KILL_SWITCH'))))
 
 def log(*x): print(datetime.now().strftime('%Y-%m-%d %H:%M:%S'),*x,flush=True)
+def empty_state():
+    return {'last_signal':'','last_trade_at':0,'last_attempt_signal':'','last_attempt_at':0,'peak_equity':0,'last_quality':{},'last_candles_push_at':0,'demo_position':None,'demo_stats':{'trades':0,'wins':0,'losses':0,'net_points':0.0,'gross_win_points':0.0,'gross_loss_points':0.0,'profit_factor':0.0,'loss_streak':0}}
 def state_read():
     try:
-        x=json.loads(STATE.read_text('utf-8'));return x if isinstance(x,dict) else {}
-    except:return {'last_signal':'','last_trade_at':0,'last_attempt_signal':'','last_attempt_at':0,'peak_equity':0,'last_quality':{},'last_candles_push_at':0,'demo_position':None,'demo_stats':{'trades':0,'wins':0,'losses':0,'net_points':0.0,'gross_win_points':0.0,'gross_loss_points':0.0,'profit_factor':0.0,'loss_streak':0}}
-def state_write(s): STATE.write_text(json.dumps(s,ensure_ascii=False,indent=2),'utf-8')
+        x=json.loads(STATE.read_text('utf-8'))
+        if not isinstance(x,dict):raise ValueError('invalid state object')
+        return x
+    except FileNotFoundError:return empty_state()
+    except Exception as e:
+        # Corrupt local state must not silently reset the live duplicate-order guard.
+        if LIVE:raise RuntimeError('Live state unreadable; manual intervention required') from e
+        return empty_state()
+def state_write(s):
+    tmp=STATE.with_suffix('.tmp')
+    tmp.write_text(json.dumps(s,ensure_ascii=False,indent=2),'utf-8')
+    os.replace(tmp,STATE)
 def init_mt5():
     if mt5.terminal_info() is not None:return True
     path=os.getenv('MT5_TERMINAL_PATH') or None;login=os.getenv('MT5_LOGIN');password=os.getenv('MT5_PASSWORD');server=os.getenv('MT5_SERVER');kw={}
@@ -218,7 +233,11 @@ def symbol_ready():
     return mt5.symbol_info(SYMBOL)
 
 def period_deals(start,now):
-    return [d for d in (mt5.history_deals_get(start,now) or []) if int(getattr(d,'magic',0) or 0)==MAGIC]
+    deals=mt5.history_deals_get(start,now)
+    if deals is None:
+        if LIVE:raise RuntimeError('MT5 deal history unavailable; loss limits cannot be checked')
+        return []
+    return [d for d in deals if int(getattr(d,'magic',0) or 0)==MAGIC]
 def pnl_of(deals):
     return sum(float(getattr(d,'profit',0) or 0)+float(getattr(d,'commission',0) or 0)+float(getattr(d,'swap',0) or 0)+float(getattr(d,'fee',0) or 0) for d in deals)
 def realized_today():
@@ -242,7 +261,15 @@ def update_peak(account,s):
 
 def risk_guard(account,s):
     if KILL_SWITCH.exists():return False,'local KILL_SWITCH file is present',0
-    daily=realized_today();weekly=realized_week();equity=max(1.0,float(account.equity));balance=max(1.0,float(account.balance));
+    if LIVE and int(getattr(account,'login',0) or 0)!=int(EXPECTED_LOGIN or 0):
+        return False,'broker login mismatch',0
+    if LIVE and (not getattr(account,'trade_allowed',False) or not getattr(account,'trade_expert',False)):
+        return False,'MT5 account or Expert Advisor trading disabled',0
+    positions=mt5.positions_get()
+    if positions is None:return False,'unable to inspect open positions',0
+    floating=min(0.0,sum(float(getattr(p,'profit',0) or 0)+float(getattr(p,'swap',0) or 0) for p in positions))
+    daily=realized_today()+floating;weekly=realized_week()+floating
+    equity=max(1.0,float(account.equity));balance=max(1.0,float(account.balance));
     if daily<=-(balance*MAX_DAILY_LOSS_PCT/100):return False,f'daily loss kill switch: {daily:.2f}',0
     if weekly<=-(balance*MAX_WEEKLY_LOSS_PCT/100):return False,f'weekly loss kill switch: {weekly:.2f}',0
     losses=consecutive_losses()
@@ -271,21 +298,38 @@ def broker_spread(info,tick):return (tick.ask-tick.bid)/float(info.point) if inf
 def send(signal,s):
     info=symbol_ready();tick=mt5.symbol_info_tick(SYMBOL) if info else None;account=mt5.account_info()
     if not info or tick is None or account is None:return False,'MT5 data unavailable',s
+    if LIVE and (LIVE_ACK!=LIVE_ACK_REQUIRED or not EXPECTED_LOGIN.isdigit()):
+        return False,'live activation acknowledgement/login missing',s
+    side_code=str(signal.get('sideCode','')).lower()
+    if side_code not in ('buy','sell'):return False,'invalid signal side',s
+    if not all(math.isfinite(float(signal.get(k,0))) and float(signal.get(k,0))>0 for k in ('entry','sl','tp')):
+        return False,'invalid signal prices',s
+    if not getattr(info,'trade_mode',0)==getattr(mt5,'SYMBOL_TRADE_MODE_FULL',4):
+        return False,'symbol is not in full trading mode',s
     allowed,risk_status,loss_streak=risk_guard(account,s)
     if not allowed:return False,risk_status,s
     positions=mt5.positions_get(symbol=SYMBOL) or []
     if len(positions)>=MAX_OPEN:return False,'max open positions reached',s
     spread_pts=broker_spread(info,tick)
     if spread_pts>MAX_SPREAD_POINTS:return False,f'broker spread too wide: {spread_pts:.1f} points',s
-    tick_msc=int(getattr(tick,'time_msc',0) or 0);tick_age=max(0,int(time.time()*1000)-tick_msc) if tick_msc else 0
-    if tick_age and tick_age>MAX_TICK_AGE_MS:return False,f'stale broker tick: {tick_age}ms',s
+    tick_msc=int(getattr(tick,'time_msc',0) or 0)
+    tick_age=int(time.time()*1000)-tick_msc if tick_msc else 10**9
+    if tick_age<0 or tick_age>MAX_TICK_AGE_MS:return False,f'stale or future broker tick: {tick_age}ms',s
     buy=signal.get('sideCode')=='buy';order_type=mt5.ORDER_TYPE_BUY if buy else mt5.ORDER_TYPE_SELL;entry=float(tick.ask if buy else tick.bid);ref=float(signal['entry']);point=float(info.point or 0)
     source_slippage_pts=abs(entry-ref)/point if point else 10**9
     if source_slippage_pts>MAX_SIGNAL_SLIPPAGE_POINTS:return False,f'pre-trade slippage too large: {source_slippage_pts:.1f} points',s
     sl_dist=abs(ref-float(signal['sl']));tp_dist=abs(float(signal['tp'])-ref)
-    if sl_dist<=0 or tp_dist/sl_dist<1.75:return False,'invalid risk/reward',s
+    if not (sl_dist>0 and tp_dist>0) or tp_dist/sl_dist<2.0:
+        return False,'risk/reward below server minimum 2.0',s
+    if buy and not (float(signal['sl'])<ref<float(signal['tp'])):
+        return False,'BUY stop/target geometry invalid',s
+    if not buy and not (float(signal['tp'])<ref<float(signal['sl'])):
+        return False,'SELL stop/target geometry invalid',s
     sl=entry-sl_dist if buy else entry+sl_dist;tp=entry+tp_dist if buy else entry-tp_dist
-    news_mode=signal.get('mode')=='news';effective_risk=RISK_PCT*(0.5 if news_mode else 1.0)*(0.5 if loss_streak>=2 else 1.0);volume=size_for_risk(account,info,order_type,entry,sl,effective_risk)
+    news_mode=signal.get('mode')=='news'
+    effective_risk=min(RISK_PCT,0.10 if news_mode else 0.15)*(0.5 if loss_streak>=1 else 1.0)
+    if effective_risk<=0:return False,'risk budget is disabled',s
+    volume=size_for_risk(account,info,order_type,entry,sl,effective_risk)
     if volume is None or volume<float(info.volume_min):return False,'risk size below broker minimum or calc failed',s
     request={'action':mt5.TRADE_ACTION_DEAL,'symbol':SYMBOL,'volume':volume,'type':order_type,'price':entry,'sl':sl,'tp':tp,'deviation':30,'magic':MAGIC,'comment':'AhmedGoldWatch','type_time':mt5.ORDER_TIME_GTC}
     fillings=[getattr(mt5,'ORDER_FILLING_IOC',1),getattr(mt5,'ORDER_FILLING_RETURN',2),getattr(mt5,'ORDER_FILLING_FOK',0)];last=''
@@ -297,6 +341,19 @@ def send(signal,s):
         quality={'at':int(time.time()*1000),'siteLatencyMs':round(float(signal.get('_site_latency_ms',0)),1),'tickAgeMs':tick_age,'spreadPoints':round(spread_pts,1),'sourceSlippagePoints':round(source_slippage_pts,1),'orderCheckMs':round(check_ms,1),'riskPct':round(effective_risk,3),'lossStreak':loss_streak,'mode':'news' if news_mode else 'standard'}
         if not LIVE:
             s['last_quality']=quality;return True,f'DRY RUN: {"BUY" if buy else "SELL"} {volume} {SYMBOL} entry={entry} sl={sl} tp={tp} | quality={quality}',s
+        fresh_tick=mt5.symbol_info_tick(SYMBOL)
+        if fresh_tick is None:return False,'quote vanished before order_send',s
+        latest_age=int(time.time()*1000)-int(getattr(fresh_tick,'time_msc',0) or 0)
+        fresh_spread=broker_spread(info,fresh_tick)
+        latest_entry=float(fresh_tick.ask if buy else fresh_tick.bid)
+        if latest_age<0 or latest_age>MAX_TICK_AGE_MS or fresh_spread>MAX_SPREAD_POINTS:
+            return False,'quote/spread deteriorated after order_check',s
+        if point<=0 or abs(latest_entry-ref)/point>MAX_SIGNAL_SLIPPAGE_POINTS:
+            return False,'price moved past max slippage after order_check',s
+        # No silent widening of risk: recompute SL/TP off the newest broker entry.
+        request['price']=latest_entry
+        request['sl']=latest_entry-sl_dist if buy else latest_entry+sl_dist
+        request['tp']=latest_entry+tp_dist if buy else latest_entry-tp_dist
         t1=time.perf_counter();result=mt5.order_send(request);send_ms=(time.perf_counter()-t1)*1000;quality['orderSendMs']=round(send_ms,1)
         if result and result.retcode==mt5.TRADE_RETCODE_DONE:
             fill=float(getattr(result,'price',entry) or entry);quality['fillSlippagePoints']=round(abs(fill-entry)/point,1) if point else None;s['last_quality']=quality
@@ -306,6 +363,9 @@ def send(signal,s):
 
 def main():
     if not SITE_URL.startswith('https://') or not TOKEN:sys.exit('Set SITE_URL=https://... and MT5_BRIDGE_TOKEN in .env')
+    if LIVE and (LIVE_ACK!=LIVE_ACK_REQUIRED or not EXPECTED_LOGIN.isdigit()):
+        sys.exit('LIVE mode requires MT5_LIVE_ACK and MT5_EXPECTED_LOGIN on broker and site')
+    if LIVE and RISK_PCT<=0:sys.exit('LIVE risk budget is zero')
     log('bridge starting','LIVE' if LIVE else 'DRY RUN','symbol',SYMBOL,'risk',RISK_PCT,'%','scalp_demo',SCALP_DEMO and not LIVE)
     failures=0
     while True:
@@ -321,7 +381,9 @@ def main():
             if not data.get('ok'):raise RuntimeError(str(data))
             if not data.get('allowed') or not data.get('signal'):time.sleep(POLL);continue
             now_ms=int(time.time()*1000)
-            if now_ms>int(data.get('expiresAt',0) or 0):log('expired site signal rejected');time.sleep(POLL);continue
+            issued_at=int(data.get('issuedAt',0) or 0);expires_at=int(data.get('expiresAt',0) or 0)
+            if issued_at<=0 or now_ms-issued_at<-2000 or now_ms-issued_at>45000 or now_ms>expires_at or expires_at-issued_at>45000:
+                log('expired/stale/future site signal rejected');time.sleep(POLL);continue
             sig=dict(data['signal']);sig['_site_latency_ms']=data.get('_site_latency_ms',0);sid=str(sig.get('id',''));s=state_read();now=time.time()
             if not sid or sid==s.get('last_signal') or now-float(s.get('last_trade_at',0))<COOLDOWN:time.sleep(POLL);continue
             if sid==s.get('last_attempt_signal') and now-float(s.get('last_attempt_at',0) or 0)<ATTEMPT_COOLDOWN:time.sleep(POLL);continue
