@@ -1,4 +1,5 @@
 'use client';
+import {useEffect,useState} from 'react';
 import {Clock3,Newspaper} from 'lucide-react';
 import {economicNewsTimeline} from '../lib/news-alert-window';
 
@@ -25,9 +26,9 @@ function dateLabel(ts:number){
 }
 
 type Dir='up'|'down'|'mixed';
-function macroBias(e:any){
+function macroBias(e:any,now:number){
   const name=String(e?.name||'');
-  const actual=macroNumber(e?.actual),forecast=macroNumber(e?.forecast),previous=macroNumber(e?.previous);
+  const actual=Number(e?.time)<=now?macroNumber(e?.actual):null,forecast=macroNumber(e?.forecast),previous=macroNumber(e?.previous);
   const higherGoldBullish=/claims|unemployment rate|jobless|continuing claims/i.test(name);
   const higherGoldBearish=/CPI|PCE|PPI|inflation|average hourly|earnings|payroll|employment change|GDP|PMI|ISM|retail|consumer confidence|JOLTS|job openings|fed funds|interest rate|rate decision/i.test(name);
   const baseA=actual!=null&&forecast!=null?actual:forecast,baseB=actual!=null&&forecast!=null?forecast:previous;
@@ -43,29 +44,47 @@ function macroBias(e:any){
     }
   }
   if(/FOMC|Powell|Fed Chair|minutes/i.test(name)&&gold==='mixed')why='حدث فدرالي: النبرة المتشددة تميل للهبوط على الذهب، والتيسيرية تميل للصعود.';
-  const importance=Math.max(1,Math.min(3,Number(e?.importance)||1));
   const actualKnown=actual!=null&&forecast!=null;
-  const strength=gold==='mixed'?50:Math.min(76,(actualKnown?62:56)+importance*4);
-  const goldUp=gold==='up'?strength:gold==='down'?100-strength:50,goldDown=100-goldUp;
-  const btcStrength=gold==='mixed'?50:Math.max(54,strength-7);
-  const btcUp=gold==='up'?btcStrength:gold==='down'?100-btcStrength:50,btcDown=100-btcUp;
-  return {gold,why,goldUp,goldDown,btcUp,btcDown,actualKnown};
+  if(diff===0)why='التوقع يساوي القراءة السابقة؛ لا يوجد ميل رقمي واضح.';
+  return {gold,why,actualKnown};
 }
 const dirLabel=(d:Dir)=>d==='up'?'صعود':d==='down'?'هبوط':'محايد';
 
-export default function NewsCommandCenter({events=[],now=Date.now(),featuredEvent=null}:any){
+export default function NewsCommandCenter({events,now=Date.now(),featuredEvent=null}:any){
+  const [feed,setFeed]=useState<any>(null);
+  const [failed,setFailed]=useState(false);
+  useEffect(()=>{
+    if(events!==undefined)return;
+    let closed=false,timer:ReturnType<typeof setTimeout>|undefined;
+    const controller=new AbortController();
+    const load=async()=>{
+      try{
+        const response=await fetch('/api/market',{cache:'no-store',
+          signal:AbortSignal.any([controller.signal,AbortSignal.timeout(20000)])});
+        const body=await response.json();
+        if(!response.ok||!body.newsReady||!Array.isArray(body.events))throw new Error('calendar unavailable');
+        if(!closed){setFeed(body);setFailed(false);}
+      }catch{if(!closed)setFailed(true);}
+      if(!closed)timer=setTimeout(load,60000);
+    };
+    void load();
+    return()=>{closed=true;clearTimeout(timer);controller.abort();};
+  },[events]);
+  const loading=events===undefined&&!feed&&!failed;
   // Event times must come from a real feed. Do not generate placeholder dates
   // or present an approximate/narrative event as an exact scheduled release.
-  const {upcoming,alerts,recent}=economicNewsTimeline(events,featuredEvent,now);
+  const {alerts}=economicNewsTimeline(events??feed?.events,featuredEvent,now);
   return <section className="panel newscommand standalone-news" aria-label="الأخبار القادمة خلال 8 ساعات فقط">
     <header className="standalone-news-head">
       <div><span className="eyebrow">NEWS · 8H</span>
         <h2><Newspaper size={17}/> الأخبار الاقتصادية القادمة</h2></div>
       <small>الموعد بتوقيت الإمارات · لا يظهر الحدث قبل دخوله نافذة 8 ساعات</small>
     </header>
+    {failed&&<p role="status">تعذر تحديث مصدر الأخبار.{feed?' المعروض آخر بيانات متاحة؛ راجع المصدر.':' أعد المحاولة بعد قليل.'}</p>}
     <div className="news-eight-hour" aria-live="polite">
       {alerts.length?alerts.map((e:any)=>{
         const high=Number(e.importance)>=3;
+        const bias=macroBias(e,now);
         return <article className={'news-eight-hour-item '+(high?'news-high-impact':'')} key={e.id||e.name+e.time}>
           <div className="news-eight-hour-top">
             <span>{high?'تأثير مرتفع':Number(e.importance)===2?'تأثير متوسط':'تأثير منخفض'}</span>
@@ -73,11 +92,13 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
           </div>
           <b>{e.name}</b>
           <small>الموعد: {dateLabel(Number(e.time))}</small>
-          {(e.forecast||e.previous)&&<p>المتوقع: {e.forecast||'—'} · السابق: {e.previous||'—'}</p>}
+          <p>المتوقع: {String(e.forecast??'').trim()||'غير متاح من المصدر'} · السابق: {String(e.previous??'').trim()||'غير متاح من المصدر'}</p>
+          <p><strong>ميل الذهب التقديري: {dirLabel(bias.gold)}</strong> · بناءً على مقارنة المتوقع بالسابق، وليس نتيجة الخبر.</p>
+          <p>{bias.why}</p>
           <p>الأثر السعري غير مضمون. يحدد رد الفعل بعد الإعلان وليس التوقع المسبق وحده.</p>
           {/^https:\/\//.test(String(e.source||''))&&<a href={e.source} target="_blank" rel="noopener noreferrer">مصدر الموعد ↗</a>}
         </article>;
-      }):<p className="news-eight-empty">لا يوجد خبر بموعد معلوم خلال الثماني ساعات القادمة. الأحداث البعيدة غير ظاهرة هنا.</p>}
+      }):<p className="news-eight-empty">{loading?'جاري تحميل مواعيد الأخبار وتوقعاتها…':failed?'لا يمكن تأكيد الأخبار القادمة حتى يعود مصدر البيانات.':'لا يوجد خبر بموعد معلوم خلال الثماني ساعات القادمة. الأحداث البعيدة غير ظاهرة هنا.'}</p>}
     </div>
   </section>;
 }
