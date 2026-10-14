@@ -139,7 +139,7 @@ export function evaluateProfessionalMove(input:{now:number;frames:Frames;adxM5?:
     status==='CONFIRMED'?'إغلاق شمعتَي M5 وراء مستوى الكسر مع توافق M15/H1؛ راجع الفارق السعري والوسيط قبل الدخول':
     status==='WATCH'?'الفريمات متفقة؛ نراقب إغلاق شمعتَي M5 وراء المستوى': 'لم تكتمل الأدلة بعد');
   const bounds=c.slice(-12);
-  return {status,side:status==='WAIT'?'WAIT':side,score:Math.round(score),
+  return {status,side:status==='WAIT'?'WAIT':side,
     dataReady:true,closedAt:last.time+300000,lastBarAgeMs:now-(last.time+300000),
     timeframeAgreement:agreement,regime,m5Atr:round(vol),rsiM5:indicatorRsi==null?null:round(indicatorRsi),
     adxM5:safeAdx,trigger:trigger==null?null:round(trigger),
