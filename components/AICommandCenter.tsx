@@ -31,7 +31,11 @@ export default function AICommandCenter({data,error,assetView='ALL',now=Date.now
   const journal={GOLD:scenarioAsJournal(audit?.current?.GOLD),
     BTC:scenarioAsJournal(audit?.current?.BTC)};
   const stale=generatedAt>0&&now-generatedAt>90000;
+  const memoryVolatile=audit?.ok===true&&audit?.persistence!=='VOLUME';
   return <div className="ai-clean renewed-ai">
+    {memoryVolatile&&<div className="sniper-memory-notice" role="status">
+      سجل القناص مؤقت على الخادم الحالي · النتائج غير محفوظة بشكل دائم على Render المجاني.
+    </div>}
     {error&&!data&&<div className="fatal"><ShieldAlert size={18}/><div><strong>التحليل غير متاح</strong><span>{error}</span></div></div>}
     {stale&&<div className="fatal"><ShieldAlert size={18}/><div><strong>تحديث AI متأخر</strong>
       <span>آخر تحليل منذ {Math.round((now-generatedAt)/1000)} ثانية · الأهداف السابقة للمراجعة فقط.</span>
