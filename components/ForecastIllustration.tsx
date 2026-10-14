@@ -83,13 +83,19 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     ?'M '+xf+' '+px(projected[0].price)+' '+projected.slice(1).map((p,i)=>
       'L '+Math.min(xr-8,716+i*106)+' '+px(p.price)).join(' ')
     :'';
+  // Break EMA computation at every missing one-minute interval: no lines
+  // connecting a closed market or a provider gap as though prices traded.
+  let continuousFrom=candles.length?candles.length-1:0;
+  while(continuousFrom>0&&candles[continuousFrom].time-candles[continuousFrom-1].time===60000)
+    continuousFrom--;
+  const continuousBars=candles.slice(continuousFrom);
   const emaSeries=(period:number)=>{
-    if(candles.length<period)return [] as Array<{x:number;y:number}>;
-    let value=candles.slice(0,period).reduce((sum,c)=>sum+c.close,0)/period;
-    const rows=[{x:x0+(period-.5)*stride,y:px(value)}];
-    for(let i=period;i<candles.length;i++){
-      value+=(candles[i].close-value)*2/(period+1);
-      rows.push({x:x0+(i+.5)*stride,y:px(value)});
+    if(continuousBars.length<period)return [] as Array<{x:number;y:number}>;
+    let value=continuousBars.slice(0,period).reduce((sum,c)=>sum+c.close,0)/period;
+    const rows=[{x:x0+(continuousFrom+period-.5)*stride,y:px(value)}];
+    for(let i=period;i<continuousBars.length;i++){
+      value+=(continuousBars[i].close-value)*2/(period+1);
+      rows.push({x:x0+(continuousFrom+i+.5)*stride,y:px(value)});
     }
     return rows;
   };
@@ -287,9 +293,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                     fontWeight={z.kind==='TARGET'?700:500}>{z.label+'  '+fmt(z.price)}</text>
                 </g>;
               })}
-              {candles.length>=20&&<path d={emaLine(20)} fill="none" stroke="#e9bc64" strokeWidth="1.9"
+              {continuousBars.length>=20&&<path d={emaLine(20)} fill="none" stroke="#e9bc64" strokeWidth="1.9"
                 strokeOpacity=".9" aria-label="متوسط EMA 20 من الشموع المغلقة"/>}
-              {candles.length>=50&&<path d={emaLine(50)} fill="none" stroke="#8d96f6" strokeWidth="1.9"
+              {continuousBars.length>=50&&<path d={emaLine(50)} fill="none" stroke="#8d96f6" strokeWidth="1.9"
                 strokeOpacity=".88" aria-label="متوسط EMA 50 من الشموع المغلقة"/>}
               {candles.map((c,i)=>{
                 const x=x0+(i+.5)*stride;
