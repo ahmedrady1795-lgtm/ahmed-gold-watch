@@ -15,6 +15,7 @@ const source={
   market:{priceSource:'Exness/MT5 · XAUUSDm',newsReady:true,events:[]},
   analysis:{state:'setup',signal:{sideCode:'buy'},regime:{key:'trend'}},
   aiSnapshot:{checkedAt:now-2000,gold:{coreSummary:{qualityReady:true},
+    professionalMove:{status:'CONFIRMED',side:'BUY',dataReady:true,score:90,closedAt:now-300000},
     executionQuality:{action:'BUY',quality:'A',confidence:84,dataQuality:92,uncertainty:20,vetoes:[]}}},
   maxSpread:.55
 };
@@ -31,6 +32,8 @@ for(const [change,reason] of [
   [{market:{...source.market,events:[{importance:3,time:now+80000}]}},'major_news_blackout'],
   [{aiSnapshot:{...source.aiSnapshot,checkedAt:now-150000}},'predator_core_not_qualified_or_stale'],
   [{aiSnapshot:{...source.aiSnapshot,gold:{...source.aiSnapshot.gold,coreSummary:{qualityReady:false}}}},'predator_core_not_qualified_or_stale'],
+  [{aiSnapshot:{...source.aiSnapshot,gold:{...source.aiSnapshot.gold,professionalMove:{status:'WATCH',side:'BUY',dataReady:true,score:70,closedAt:now-300000}}}},'predator_core_not_qualified_or_stale'],
+  [{aiSnapshot:{...source.aiSnapshot,gold:{...source.aiSnapshot.gold,professionalMove:{status:'CONFIRMED',side:'SELL',dataReady:true,score:90,closedAt:now-300000}}}},'predator_core_not_qualified_or_stale'],
   [{aiSnapshot:{...source.aiSnapshot,gold:{...source.aiSnapshot.gold,executionQuality:{...source.aiSnapshot.gold.executionQuality,action:'SELL'}}}},'predator_core_not_qualified_or_stale']
 ]){
   assert.equal(check(change).allowed,false,reason);
