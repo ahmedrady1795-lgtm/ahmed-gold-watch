@@ -806,3 +806,55 @@ body:has(.modern-workspace){
   .forecast-eta-card strong{font-size:12px}.forecast-eta-card small{font-size:9px}
   .forecast-eta-card span{font-size:9px}
   .forecast-breakout-rail b{font-size:11px}}
+
+
+/* October 2026: chart-first workstation, readable without a wall of prose. */
+.compact-sniper.modern-workspace{max-width:1850px;width:100%;padding:8px 14px 30px}
+.compact-sniper .ai-clean,.compact-sniper .lite-content{gap:9px}
+.compact-sniper .forecast-visual-layout{grid-template-columns:minmax(0,1fr);gap:9px;padding:8px}
+.compact-sniper .forecast-visual-chart-wrap{order:-1;min-height:0;padding:8px}
+.compact-sniper .forecast-visual-svg{min-width:920px;width:100%}
+.compact-sniper .forecast-visual-facts{display:grid;grid-template-columns:1fr 1.2fr 2.3fr 1fr;gap:7px;align-items:stretch}
+.compact-sniper .forecast-visual-facts .forecast-visual-targets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;grid-column:auto}
+.compact-sniper .forecast-visual-facts .forecast-visual-target{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.compact-sniper .forecast-visual-facts .forecast-visual-time,
+.compact-sniper .forecast-visual-facts .forecast-visual-confidence{display:none}
+.compact-sniper .forecast-visual-facts .forecast-visual-fact{min-width:0;padding:9px}
+.compact-sniper .forecast-visual-facts .forecast-visual-target strong{font-size:16px}
+.compact-sniper .forecast-visual-legend{gap:5px 13px}
+.compact-sniper .forecast-visual-legend .legend-ema20{color:#e9bc64}
+.compact-sniper .forecast-visual-legend .legend-ema50{color:#a9abff}
+.compact-sniper .forecast-flow-banner{margin-bottom:5px}
+.sniper-indicator-bar{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;padding:8px 10px 2px}
+.sniper-indicator-bar>span{display:flex;flex-direction:column;align-items:flex-start;min-width:0;gap:1px;border:1px solid #29475b;background:#0a1a27;padding:8px 10px;border-radius:9px}
+.sniper-indicator-bar small{color:#9cbace;font-size:10px}
+.sniper-indicator-bar strong{color:#e9ecf1;font-size:13px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.forecast-deep-insights{margin:7px 9px;border:1px solid #2b5067;border-radius:10px;background:#0b1927}
+.forecast-deep-insights>summary{cursor:pointer;list-style-position:inside;color:#d8e8f3;padding:11px 15px;font-weight:650;font-size:12px}
+.forecast-deep-insights[open]>summary{border-bottom:1px solid #29465a;margin-bottom:10px}
+.forecast-chart-screen{font-weight:700}
+.forecast-visual-chart-wrap.chart-fullscreen{position:fixed!important;inset:0!important;z-index:999!important;background:#07111c!important;border:2px solid #5cb4d6!important;border-radius:0!important;padding:16px!important;display:flex;flex-direction:column}
+.chart-fullscreen .forecast-visual-chart-scroll{flex:1;overflow:auto;display:flex;align-items:center}
+.chart-fullscreen .forecast-visual-svg{min-width:1200px;max-height:calc(100vh - 130px)}
+.chart-fullscreen .forecast-visual-topline{min-height:44px;font-size:13px}
+.chart-fullscreen .forecast-chart-zoom{font-size:12px}
+@media(max-width:1050px){
+  .compact-sniper .forecast-visual-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .compact-sniper .forecast-visual-facts .forecast-visual-targets{grid-column:1/-1}
+  .compact-sniper .forecast-visual-svg{min-width:820px}
+  .sniper-indicator-bar{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:600px){
+  .compact-sniper.modern-workspace{padding:5px 5px 20px}
+  .compact-sniper .forecast-visual-layout{padding:5px}
+  .compact-sniper .forecast-visual-chart-wrap{padding:4px}
+  .compact-sniper .forecast-visual-svg{min-width:760px}
+  .compact-sniper .forecast-visual-facts{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+  .compact-sniper .forecast-visual-facts .forecast-visual-targets{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .compact-sniper .forecast-visual-facts .forecast-visual-target strong{font-size:12px}
+  .sniper-indicator-bar{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:5px}
+  .sniper-indicator-bar>span{padding:6px}
+  .sniper-indicator-bar strong{font-size:11px}
+  .sniper-indicator-bar small{font-size:9px}
+  .chart-fullscreen .forecast-visual-svg{min-width:1200px}
+}
