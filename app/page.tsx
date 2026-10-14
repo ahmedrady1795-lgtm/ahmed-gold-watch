@@ -2,6 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import AICommandCenter from '../components/AICommandCenter';
+import NewsCommandCenter from '../components/NewsCommandCenter';
 import {acceptGoldStreamPacket,sourceTimestamp,validSourceTime} from '../lib/client-market-freshness';
 import {shouldApplyGoldQuote} from '../lib/gold-feed-order';
 
@@ -252,6 +253,7 @@ export default function Home(){
       <a href="/scalp" className="workspace-scalp-link">سكالب الثواني ↗</a>
     </nav>
     <section className="content lite-content" aria-label="القناص الذكي">
+      <NewsCommandCenter now={now}/>
       <AICommandCenter assetView="ALL" data={aiData} chartData={chartData} error={aiError} now={now} goldLive={goldTick}
         btcLive={btcLive&&shownBtc!=null?{asset:'BTC',ok:true,price:shownBtc,sourceTime:shownBtcAt}:null}/>
     </section>
