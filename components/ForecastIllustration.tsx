@@ -11,6 +11,7 @@ import SniperStrategyRadar from './SniperStrategyRadar';
 import {watchForChart} from '../lib/sniper-audit-view';
 import {collapseChartZones,findOpposingOverlap,primaryLiquidityZone} from '../lib/chart-zone-merge';
 import {detectLiquiditySweeps} from '../lib/liquidity-sweep';
+import {detectDisplacementObFvg} from '../lib/institutional-price-action';
 import {buildBreakoutGuide,explainFrameConflict,layoutPriceLanes} from '../lib/sniper-decision-guide';
 import {evaluateProfessionalMove} from '../lib/professional-move';
 
@@ -152,6 +153,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const recentSweeps=sweepScan.ok&&readingLive?
     sweepScan.events.filter(e=>e.sweepAt>=candles[0]?.time&&now-e.sweepAt<=30*60000)
       .filter((e,i,a)=>a.findLastIndex(z=>z.side===e.side)===i).slice(-2):[];
+  const structureScan=detectDisplacementObFvg(m.candles,now);
+  const structureView=readingLive&&structureScan.ok?structureScan.setups.filter(e=>
+    e.impulseAt>=candles[0]?.time&&now-e.impulseAt<30*60000&&
+    (e.phase==='AWAIT_RETEST'||e.phase==='RETEST_CONFIRMED')).at(-1)??null:null;
   const leadSweep=recentSweeps.filter(e=>e.status==='CONFIRMED')
     .sort((a,b)=>b.sweepAt-a.sweepAt)[0]??null;
   const marketEvents=readingLive?m.fourHour.events.filter(e=>candles[0]&&e.at>=candles[0].time)
@@ -235,6 +240,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           <div className="forecast-visual-topline">
             <span className="sniper-chart-live-quote"><b dir="ltr">{fmt(m.price)}</b><small>{sn.view.priceFresh?'سعر حديث':'آخر سعر'} · M1 · {candles.length} شمعة</small></span>
             <span className="sniper-chart-candle-age">{ageMin!=null?'آخر إغلاق منذ '+ageMin+' د':'لا توجد بيانات شموع'}</span>
+            {structureView&&<span className={'sniper-structure-chip '+(structureView.side==='BUY'?'structure-up':'structure-down')}
+              title="شموع مغلقة: اندفاع + كسر جسم + آخر شمعة معاكسة + فجوة 3 شموع، وليس إثبات أوامر مؤسسات">
+              {structureView.side==='BUY'?'↗':'↘'} {structureView.kind==='BOS'?'BOS':'CHoCH؟'} · OB/FVG ·
+              {structureView.phase==='RETEST_CONFIRMED'?'اختبار مغلق':'انتظار اختبار'}
+            </span>}
             {leadSweep&&<span className={'sniper-sweep-chip '+(leadSweep.side==='BUY'?'sweep-up':'sweep-down')}
               title="تأكيد فني من شموع مغلقة؛ لا يسمح بالدخول دون وقف وتكلفة وتحقق">
               {leadSweep.side==='BUY'?'↗ سحب سيولة قاع':'↘ سحب سيولة قمة'} · {fmt(leadSweep.level)} · إبطال {fmt(leadSweep.invalidation)}
@@ -367,6 +377,32 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <title>{clock(c.time)+' · O '+fmt(c.open)+' H '+fmt(c.high)+' L '+fmt(c.low)+' C '+fmt(c.close)}</title>
                 </g>;
               })}
+              {structureView&&<g className="sniper-obfvg-structure" aria-label="OB FVG BOS الهيكل" clipPath={'url(#forecast-plot-'+asset+')'}>
+                {([{key:'ob',zone:structureView.ob,label:'OB',color:'#8a99f3'},
+                   {key:'fvg',zone:structureView.fvg,label:'FVG',color:'#f0bf70'}] as const).map(z=>{
+                  const left=Math.max(x0,historyX(z.key==='ob'?structureView.obAt:structureView.impulseAt));
+                  const y=Math.min(px(z.zone.high),px(z.zone.low));
+                  const h=Math.abs(px(z.zone.low)-px(z.zone.high));
+                  return <g key={z.key}>
+                    <rect x={left} y={y} width={Math.max(2,x1-left)}
+                      height={Math.max(h,3)} rx="2" stroke={z.color} strokeDasharray={z.key==='fvg'?'6 4':undefined}
+                      fill={z.color} fillOpacity={z.key==='fvg'?.15:.10} strokeOpacity=".80"/>
+                    <text x={Math.min(left+7,x1-32)} y={clamp(y-6,yt+13,yb-12)}
+                      fill={z.color} fontSize={mobile?15:12} fontWeight="700">{z.label}</text>
+                    <title>{z.label+' · نطاق سعري من شموع مغلقة '+fmt(z.zone.low)+'–'+fmt(z.zone.high)}</title>
+                  </g>;
+                })}
+                <line x1={x0} x2={x1} y1={px(structureView.structuralLevel)}
+                  y2={px(structureView.structuralLevel)} stroke="#e8c67e" strokeDasharray="5 5"
+                  strokeWidth="2" strokeOpacity=".86"/>
+                <circle cx={historyX(structureView.impulseAt)}
+                  cy={px(structureView.side==='BUY'?structureView.impulseHigh:structureView.impulseLow)}
+                  r="6" stroke="#f7ca83" fill="#102438" strokeWidth="2"/>
+                <line x1={historyX(structureView.impulseAt)} x2={x1}
+                  y1={px(structureView.invalidation)} y2={px(structureView.invalidation)}
+                  stroke="#fa8199" strokeDasharray="7 5" strokeWidth="1.5"/>
+                <title>{structureView.reason+' · BOS/CHoCH هيكلي، OB شمعة سعرية، FVG فجوة ثلاث شموع. لا دخول بدون شروط العائد والسبريد وتأكيد الاختبار.'}</title>
+              </g>}
               {recentSweeps.map((event,index)=>{
                 const x=historyX(event.sweepAt),tipY=px(event.extreme),levelY=px(event.level);
                 if(!Number.isFinite(tipY)||tipY<yt||tipY>yb||levelY<yt||levelY>yb)return null;
