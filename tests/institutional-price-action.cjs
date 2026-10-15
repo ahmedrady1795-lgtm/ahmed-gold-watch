@@ -11,7 +11,7 @@ const base=()=>Array.from({length:90},(_,i)=>({
 }));
 const bull=base();
 bull[87]={...bull[87],open:100.25,high:100.4,low:99.6,close:99.8};
-bull[88]={...bull[88],open:100.0,high:103,low:100.9,close:102.8,volume:28};
+bull[88]={...bull[88],open:101.2,high:103,low:100.9,close:102.8,volume:28};
 bull[89]={...bull[89],open:101.65,high:102.2,low:100.8,close:102.05,volume:21};
 const found=scan(bull,now);
 assert.equal(found.ok,true);
