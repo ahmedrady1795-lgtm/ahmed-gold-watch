@@ -6,7 +6,7 @@ const r=(v:number|null,d=2)=>v==null?'—':(v>0?'+':'')+v.toFixed(d)+'R';
 type Proof={status?:string;samples?:number;requiredSamples?:number;netR?:number;
   expectancyR?:number;lower95MeanR?:number|null;profitFactor?:number|null;maxDrawdownR?:number};
 type Stat={samples?:number;wins?:number;netR?:number;expectancyR?:number;
-  validation?:string;forwardProof?:Proof;retestProof?:Proof};
+  validation?:string;forwardProof?:Proof;retestProof?:Proof;unifiedProof?:Proof};
 type SetupStat={setup:string;samples:number;wins:number;netR:number;
   expectancyR:number|null;timeExits:number;negativeTimeExits:number;stops:number;targets:number};
 type Lane={horizon?:number;stats?:Stat&{setupBreakdown?:SetupStat[]}};
@@ -39,6 +39,15 @@ function Outcome({asset,label,desk,horizon}:{asset:string;label:string;desk:any;
       {proofN&&stats?.forwardProof?.lower95MeanR!=null
         ?' · الحد الأدنى التقديري للمتوسط '+r(stats.forwardProof.lower95MeanR,3):''}
     </small>
+    {stats?.unifiedProof&&<div className="proof-unified">
+      <b>محرك القرار الموحد · عينة جديدة مستقلة</b>
+      <span>{Math.max(0,Number(stats.unifiedProof.samples||0))}/
+        {Math.max(50,Number(stats.unifiedProof.requiredSamples||50))} صفقة ورقية موثقة
+        · الصافي {stats.unifiedProof.samples?r(number(stats.unifiedProof.netR)):'لم تتكوّن عينة بعد'}
+        · {stats.unifiedProof.status==='POSITIVE_PAPER_SAMPLE'?'دليل ورقي أولي موجب':
+          stats.unifiedProof.status==='NOT_VALIDATED'?'لم تثبت الأفضلية':'جارٍ جمع الأدلة'}
+      </span>
+    </div>}
     {retest&&<div className="proof-retest">
       <b>إعادة اختبار الاختراق M5 · استراتيجية منفصلة</b>
       <span>{Math.max(0,Number(retest.samples||0))}/
@@ -77,7 +86,7 @@ export default function ScalpProofStrip({desk}:{desk:any}){
             }))
           .map(x=><div className="proof-breakdown-row" key={x.key}>
             <strong>{x.label} · {({BREAKOUT:'اختراق',PULLBACK:'تصحيح',
-              SWEEP:'سحب سيولة',CONTINUATION:'استمرار',RETEST:'إعادة اختبار'} as Record<string,string>)[x.setup]||x.setup}</strong>
+              SWEEP:'سحب سيولة',CONTINUATION:'استمرار',RETEST:'إعادة اختبار',OB_FVG:'كسر + بلوك/فجوة'} as Record<string,string>)[x.setup]||x.setup}</strong>
             <span>نتائج {x.samples} · ربح {x.wins} · صافي
               <b className={x.netR<0?'red':x.netR>0?'green':'muted'}> {r(x.netR)} </b></span>
             <small>وقف {x.stops} · هدف {x.targets} · خروج وقت {x.timeExits}
