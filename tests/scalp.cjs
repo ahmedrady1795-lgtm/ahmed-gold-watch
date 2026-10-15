@@ -10,8 +10,8 @@ const {buildScalpPlans}=load('lib/scalp-opportunities.ts');
 // The strategy registry must preserve the old detectors' predicates but
 // show why each competing setup was accepted/rejected. No fake trade edge.
 const {SCALP_STRATEGIES,detectScalpStrategies,rankScalpStrategies,describeScalpStrategies}=load('lib/scalp-strategies.ts');
-assert.equal(SCALP_STRATEGIES.length,5);
-assert.equal(new Set(SCALP_STRATEGIES.map(x=>x.id)).size,5);
+assert.equal(SCALP_STRATEGIES.length,6);
+assert.equal(new Set(SCALP_STRATEGIES.map(x=>x.id)).size,6);
 const strategyContext={
   last:{open:100,high:101.05,low:99.9,close:100.9},
   prev:{open:99.95,high:100.5,low:99.7,close:100.3},
@@ -308,7 +308,7 @@ assert.equal(hold(confirmedBars,4000.65,now+65000,'STALE_RETEST_TEST',now+90000)
 console.log('PASS: real M1 confirmation unlocks a 45-second retest; stale quotes and stop breaks revoke it.');
 
 const plans=buildScalpPlans(breakout());
-assert.ok(plans.every(x=>x.strategyReview.length===5),
+assert.ok(plans.every(x=>x.strategyReview.length===6),
   'A strategy review must accompany every scalp horizon, even while waiting');
 assert.ok(buildScalpPlans(input())[0].strategyReview.every(x=>x.state==='NO_TRIGGER'),
   'A flat market must not pretend to have an eligible trading strategy');
@@ -447,7 +447,7 @@ const setupMetrics=summarizePaperBySetup([
   {...paperRow(-1.2,SCALP_RETEST_PROOF_FROM+300000,'STOP'),plan:{...buy,setup:'BREAKOUT'}},
   {...paperRow(777,SCALP_RETEST_PROOF_FROM+360000,'UNKNOWN'),plan:{...buy,setup:'BREAKOUT'}}
 ]);
-assert.equal(setupMetrics.length,5,'Every registered setup has a separate evidence lane');
+assert.equal(setupMetrics.length,6,'Every registered setup has a separate evidence lane');
 const retestStats=setupMetrics.find(x=>x.setup==='RETEST');
 assert.equal(retestStats.samples,1);
 assert.equal(retestStats.netR,-.6);
