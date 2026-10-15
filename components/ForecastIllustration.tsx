@@ -24,6 +24,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
 }){
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
   const [focusCandles,setFocusCandles]=useState(false);
+  const [showAlternatives,setShowAlternatives]=useState(false);
   const [mobile,setMobile]=useState(false);
   const [expanded,setExpanded]=useState(false);
   const [chartWindow,setChartWindow]=useState<60|240>(60);
@@ -225,7 +226,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <div className="forecast-chart-tools">
               <button type="button" aria-pressed={chartWindow===60} onClick={()=>setChartWindow(60)}>ساعة</button>
               <button type="button" aria-pressed={chartWindow===240} onClick={()=>setChartWindow(240)}>4 ساعات</button>
-              <button className="forecast-chart-zoom" type="button" aria-pressed={focusCandles} onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'كل الأهداف':'تركيز الشموع'}</button>
+              <button className="forecast-chart-zoom" type="button" aria-pressed={focusCandles} onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'كل المستويات':'تكبير الشموع'}</button>
+              <button className="forecast-chart-alternative" type="button" aria-pressed={showAlternatives} onClick={()=>setShowAlternatives(v=>!v)} title="مسارات مشروطة إضافية، ليست صفقات">{showAlternatives?'إخفاء البدائل':'بدائل'}</button>
               <button type="button" aria-pressed={expanded} onClick={()=>setExpanded(v=>!v)}>{expanded?'حجم عادي':'توسيع الرسم ⤢'}</button>
               <button type="button" aria-pressed={chartFullscreen} onClick={()=>setChartFullscreen(v=>!v)}>{chartFullscreen?'إغلاق ملء الشاشة':'⛶ ملء الشاشة'}</button>
             </div>
@@ -278,7 +280,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                     <text x={xf+6} y={clamp(px(b.level)-9,yt+16,yb-12)} fill={b.side==='BUY'?'#67eac1':'#ff92ad'} fontSize={mobile?14:12}>
                       {b.side==='BUY'?'كسر صاعد':'كسر هابط'} · {fmt(b.level)}</text>
                   </g>)}
-                {(['BUY','SELL'] as const).filter(side=>!planVisible||side!==dir).map(side=>{
+                {showAlternatives&&(['BUY','SELL'] as const).filter(side=>!planVisible||side!==dir).map(side=>{
                   const path=conditionalPath(side);return path?<path key={side} d={path} fill="none" stroke={side==='BUY'?'#5ce3b3':'#82b2ff'}
                     strokeWidth="2.5" strokeDasharray="7 5"><title>{planVisible?'سيناريو بديل مشروط بالكسر':'مسار مراقبة مشروط بالكسر'} · ليس هدفًا معتمدًا</title></path>:null;
                 })}
@@ -441,8 +443,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           <details className="sniper-chart-legend-drawer"><summary>تفاصيل خطوط الرسم</summary>
           <div className="forecast-visual-legend">
             <span><i className="forecast-legend-history"/> شموع M1 حقيقية</span>
-            <span className="render-ema20">EMA20</span>
-            <span className="render-ema50">EMA50</span>
             <span><i className="forecast-legend-projection"/> {watchReady?'مسار مستويات بعيد · توضيحي':'سيناريو مشروط'}</span>
             <span><i className="forecast-legend-target"/> مناطق أهداف</span>
             <span><i className="forecast-legend-rebound"/> مناطق سيولة</span>
@@ -455,7 +455,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         </div>
       </div>
       <div className="sniper-price-snapshot" aria-label="السعر والأهداف الأساسية">
-        <span className="sniper-price-snapshot-live"><small>{sn.view.priceFresh?'السعر الحالي':'آخر سعر مسجل'}</small><b dir="ltr">{fmt(m.price)}</b></span>
         {planVisible&&m.displayTargets.slice(0,3).map(t=><span key={'snap-tp'+t.stage} className="sniper-price-snapshot-target">
           <small>{statusReady?'هدف':'مراقبة'} TP{t.stage}</small><b dir="ltr">{fmt(t.price)}</b>
         </span>)}
@@ -516,26 +515,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <div><small>حالة السيولة · قراءة آخر 4 ساعات</small><strong>{overlay.phaseLabel}</strong></div>
         <p>{overlay.evidence}<small>تقدير سلوكي من السعر والحجم المتاح · لا يمثل احتمال ربح.</small></p>
       </div>
-      <section className="render-target-panel" aria-label="الوقت التقريبي للأهداف">
-        <strong>◷ الوقت التقريبي للأهداف</strong>
-        <div className="render-target-grid">{([1,2,3] as const).map(stage=>{
-          const t=overlay.timing.find(t=>t.stage===stage);
-          return <div key={stage}><small>◎ الهدف {stage} · {statusReady?'مسجل':'مراقبة'}</small>
-            <b dir="ltr">{fmt(t?.price)}</b><span>{t?.eta?'خلال '+t.eta.min+' – '+t.eta.max+' دقيقة':'لا يوجد توقيت مؤهل'}</span></div>;
-        })}</div>
-        <div className="render-target-grid render-conditions">
-          <div><small>↗ السيناريو المتوقع</small><span>{planVisible?statusText:overlay.ready?'ترقب كسر مؤكد؛ المساران على الرسم احتمالات مشروطة.':'انتظار بيانات حديثة'}</span></div>
-          <div><small>◎ شرط التفعيل</small><span>{breakout.reason}</span></div>
-          <div><small>⊘ مستوى الإبطال</small><b dir="ltr">{fmt(m.displayStop)}</b><span>{m.displayStop!=null?'إبطال السيناريو عند تحقق شرطه':'لا سيناريو مؤهل بإبطال محدد'}</span></div>
-        </div>
-        <p>الخلاصة: {overlay.phaseLabel} · {rise?'ميل صعود':fall?'ميل هبوط':'اتجاه غير محسوم'} · الأوقات نطاقات تقديرية من تقلب M5، وليست مواعيد مضمونة.</p>
-      </section>
-      </details>
       <div className="sniper-data-health" aria-label="حداثة بيانات القناص">
         <span className={sn.view.priceFresh?'sniper-health-ok':''}>السعر: {sn.view.priceFresh?'حديث':'متأخر'} · {sn.priceAge==null?'—':Math.round(sn.priceAge)+' ث'}</span>
         <span className={m.observationFresh?'sniper-health-ok':''}>قراءة السوق: {m.observationFresh?'حديثة':'متأخرة'} · {Number(observationAt)>0?Math.max(0,Math.round((now-Number(observationAt))/1000))+' ث':'—'}</span>
         <span className={m.historyFresh?'sniper-health-ok':''}>الشموع: {m.historyFresh?'حديثة':'تحتاج تحديث'}</span>
       </div>
+      </details>
       <details className="sniper-inspection"><summary>مؤشرات الاتجاه والسيولة بالتفصيل</summary>
       <SniperStrategyRadar frames={x?.chartHigherFrames} now={now} price={m.price} side={dir}
         sourceReady={sn.view.priceFresh&&m.observationFresh} targets={m.displayTargets} stop={m.displayStop}
