@@ -10,6 +10,7 @@ import SniperPerformance from './SniperPerformance';
 import SniperStrategyRadar from './SniperStrategyRadar';
 import {watchForChart} from '../lib/sniper-audit-view';
 import {collapseChartZones,findOpposingOverlap,primaryLiquidityZone} from '../lib/chart-zone-merge';
+import {detectLiquiditySweeps} from '../lib/liquidity-sweep';
 import {buildBreakoutGuide,explainFrameConflict,layoutPriceLanes} from '../lib/sniper-decision-guide';
 import {evaluateProfessionalMove} from '../lib/professional-move';
 
@@ -145,7 +146,18 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     return i<0?x1:x0+(i+.5)*stride;
   };
   const readingLive=m.fourHour.ready&&sn.view.priceFresh&&m.observationFresh&&m.historyFresh;
+  // Same causal detector as the scalp engine; paint only recent confirmed or
+  // unconfirmed wicks. No made-up order-book quantities or future candles.
+  const sweepScan=detectLiquiditySweeps(m.candles,now);
+  const recentSweeps=sweepScan.ok&&readingLive?
+    sweepScan.events.filter(e=>e.sweepAt>=candles[0]?.time&&now-e.sweepAt<=30*60000)
+      .filter((e,i,a)=>a.findLastIndex(z=>z.side===e.side)===i).slice(-2):[];
+  const leadSweep=recentSweeps.filter(e=>e.status==='CONFIRMED')
+    .sort((a,b)=>b.sweepAt-a.sweepAt)[0]??null;
   const marketEvents=readingLive?m.fourHour.events.filter(e=>candles[0]&&e.at>=candles[0].time)
+    .filter(e=>!e.kind.startsWith('SWEEP')||!recentSweeps.some(s=>
+      (s.side==='BUY'?e.kind==='SWEEP_LOW':e.kind==='SWEEP_HIGH')&&
+      Math.abs(s.sweepAt-e.at)<=300000))
     .filter((e,i,a)=>a.findLastIndex(q=>q.kind===e.kind)===i).slice(mobile?-2:-3):[];
   const contextBox=readingLive?m.fourHour.contextBox:null;
   const projectedPoints=motion.map((p,i)=>({...p,
@@ -223,6 +235,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           <div className="forecast-visual-topline">
             <span className="sniper-chart-live-quote"><b dir="ltr">{fmt(m.price)}</b><small>{sn.view.priceFresh?'سعر حديث':'آخر سعر'} · M1 · {candles.length} شمعة</small></span>
             <span className="sniper-chart-candle-age">{ageMin!=null?'آخر إغلاق منذ '+ageMin+' د':'لا توجد بيانات شموع'}</span>
+            {leadSweep&&<span className={'sniper-sweep-chip '+(leadSweep.side==='BUY'?'sweep-up':'sweep-down')}
+              title="تأكيد فني من شموع مغلقة؛ لا يسمح بالدخول دون وقف وتكلفة وتحقق">
+              {leadSweep.side==='BUY'?'↗ سحب سيولة قاع':'↘ سحب سيولة قمة'} · {fmt(leadSweep.level)} · إبطال {fmt(leadSweep.invalidation)}
+            </span>}
             <div className="forecast-chart-tools">
               <button type="button" aria-pressed={chartWindow===60} onClick={()=>setChartWindow(60)}>ساعة</button>
               <button type="button" aria-pressed={chartWindow===240} onClick={()=>setChartWindow(240)}>4 ساعات</button>
@@ -349,6 +365,35 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <rect x={x-candleWidth/2} y={volumeEnd-volumeH} width={candleWidth}
                     height={volumeH} fill={color} opacity=".35"/>
                   <title>{clock(c.time)+' · O '+fmt(c.open)+' H '+fmt(c.high)+' L '+fmt(c.low)+' C '+fmt(c.close)}</title>
+                </g>;
+              })}
+              {recentSweeps.map((event,index)=>{
+                const x=historyX(event.sweepAt),tipY=px(event.extreme),levelY=px(event.level);
+                if(!Number.isFinite(tipY)||tipY<yt||tipY>yb||levelY<yt||levelY>yb)return null;
+                const confirmed=event.status==='CONFIRMED';
+                const color=event.status==='TRAP'?'#8699a7':event.side==='BUY'?'#58eec1':'#fa9aaf';
+                const label=(event.side==='BUY'?'سحب قاع':'سحب قمة')+
+                  (confirmed?' ✓':event.status==='PENDING'?' · انتظار':' · فخ');
+                const tagX=clamp(x+18,x0+4,x1-175),tagY=clamp(tipY+(event.side==='BUY'?29:-31),yt+15,yb-18);
+                const opposite=event.side==='BUY'?-1:1;
+                return <g className="sniper-confirmed-sweep" key={event.id}>
+                  <line x1={Math.max(x0,x-stride*13)} x2={Math.min(x1,x+stride*13)}
+                    y1={levelY} y2={levelY} stroke={color} strokeWidth="2"
+                    strokeDasharray="9 5" strokeOpacity={confirmed?.88:.42}/>
+                  <circle cx={x} cy={tipY} r={mobile?13:11} fill="none"
+                    stroke={color} strokeWidth={confirmed?2.9:1.7}
+                    strokeDasharray={confirmed?undefined:'4 4'}/>
+                  <line x1={x} x2={x} y1={tipY} y2={tagY} stroke={color} strokeOpacity=".68"/>
+                  <rect x={tagX} y={tagY-12} width={mobile?164:137} height="25"
+                    rx="7" fill="#102737" stroke={color} strokeOpacity=".78"/>
+                  <text x={tagX+(mobile?82:68.5)} y={tagY+4} textAnchor="middle"
+                    fontSize={mobile?15:12} fill={color} fontWeight="700">{label}</text>
+                  {confirmed&&event.confirmedAt!=null&&<circle
+                    cx={historyX(event.confirmedAt-60000)}
+                    cy={px(event.trigger??event.level)} r="4" fill={color}/>}
+                  <title>{event.reason+' · مستوى '+fmt(event.level)+
+                    ' · ذيل '+fmt(event.extreme)+' · إبطال '+fmt(event.invalidation)+
+                    (confirmed?' · إغلاق تأكيد '+clock(event.confirmedAt!):' · ممنوع التفعيل')}</title>
                 </g>;
               })}
               {marketEvents.map((event,index)=>{
