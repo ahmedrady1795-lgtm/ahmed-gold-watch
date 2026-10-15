@@ -1,6 +1,7 @@
 import {ema,indicators,type Candle,type Event} from './engine';
 import {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid,chooseEligibleScalpPlan} from './scalp-selection';
 import {detectScalpStrategies,rankScalpStrategies,describeScalpStrategies,type StrategyReview} from './scalp-strategies';
+import {detectLiquiditySweeps,activeConfirmedSweep} from './liquidity-sweep';
 
 export type ScalpSide='BUY'|'SELL'|'WAIT';
 export type ScalpQuote={price:number|null;at:number|null;bid?:number|null;ask?:number|null;source:string};
@@ -129,8 +130,13 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
   const volume=Number(last.realVolume??last.tickVolume??0),volumeRatio=volumes.length&&volume>0?volume/mean(volumes):null;
   // Keep each strategy's detector independent and testable. No rank or
   // scoring branch may skip a different strategy's risk checks.
+  // One shared M1 sweep source for chart and scalp. Do not turn a wick alone
+  // into an ARMED scalp setup; a later CLOSED M1 must confirm reclamation.
+  const sweepScan=detectLiquiditySweeps(a,now);
+  const confirmedSweep=activeConfirmedSweep(sweepScan,now,90000);
   const candidates=detectScalpStrategies({
-    last,prev,high,low,atr,body,trend1,trend5,f9,old9,mom,efficiency,retestHigh,retestLow,volumeRatio
+    last,prev,high,low,atr,body,trend1,trend5,f9,old9,mom,efficiency,
+    retestHigh,retestLow,volumeRatio,sweepEvidence:confirmedSweep
   });
 
   return ([1,5] as const).map(horizon=>{
@@ -240,6 +246,21 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     const actualRisk=dir*(entry-stop),actualReward=dir*(targets[0].price-entry);
     const rr=actualRisk>0?round((actualReward-cost)/(actualRisk+cost)):null;
     const reasons:string[]=[...(goldM5Breakout?.blockers||[])];
+    if(chosen.setup==='SWEEP'){
+      const s=confirmedSweep;
+      if(!s||s.status!=='CONFIRMED'||s.side!==chosen.side||
+        s.confirmedAt==null||now-s.confirmedAt>90000)
+        reasons.push('سحب السيولة يحتاج استردادًا وتأكيدًا بشمعة دقيقة مغلقة مستقلة');
+      else {
+        plan.evidence.push(
+          {label:'سحب سيولة مؤكد',side:s.side,value:'اختراق ذيل · رجوع وإغلاق M1 لاحق'},
+          {label:'قمة/قاع السيولة',side:s.side,value:String(s.level)},
+          {label:'إبطال خلف الذيل',side:'WAIT',value:String(s.invalidation)}
+        );
+        if(s.volumeRatio!=null&&s.volumeRatio<.65)
+          reasons.push('سحب السيولة ضعيف المشاركة؛ حجم الشمعة أقل من 65% من المعتاد');
+      }
+    }
     if(goldM5Breakout&&goldM5Breakout.entry!=null&&goldM5Breakout.stop!=null){
       plan.evidence.push(
         {label:'مستوى إعادة اختبار الاختراق',side:chosen.side,value:round(goldM5Breakout.entry)+' $'},
