@@ -26,7 +26,7 @@ export const SCALP_PROOF_FROM=Date.parse('2026-10-08T09:00:00Z');
 // First M5 retest launch, not the original broader scalp strategy cohort.
 export const SCALP_RETEST_PROOF_FROM=Date.parse('2026-10-10T19:44:30Z');
 // New versioned cohort starts AFTER launch, never claim earlier results validate the unified decision.
-export const SCALP_UNIFIED_PROOF_FROM=Date.parse('2026-10-15T14:30:00Z');
+export const SCALP_UNIFIED_PROOF_FROM=Date.parse('2026-10-15T14:50:00Z');
 export function evaluatePaperProof(trades:PaperTrade[],start=SCALP_PROOF_FROM){
   // Closed outcomes only; canceled, unknown, unfilled and old historical
   // observations NEVER count as wins or statistical evidence.
