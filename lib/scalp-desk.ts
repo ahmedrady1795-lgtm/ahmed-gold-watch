@@ -8,6 +8,7 @@ import {readScalpLiquidity,observeScalpPlanHold} from './scalp-liquidity';
 import {getBtcLiquidity} from './liquidity-intelligence';
 import {auditScalpEntry} from './scalp-entry-audit';
 import {validateDirectionChronologically} from './direction-walkforward';
+import {buildSniperDecision} from './sniper-decision-engine';
 
 function session(now:number){const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;return day!==6&&!(day===0&&h<22)&&!(day===5&&h>=21)&&!(day>=1&&day<=4&&h>=21&&h<22);}
 function envNumber(key:string){const raw=(getRuntimeEnv() as Record<string,unknown>)[key]??process.env[key];if(raw==null||raw==='')return null;const n=Number(raw);return Number.isFinite(n)&&n>=0&&n<=100?n:null;}
@@ -92,10 +93,18 @@ export async function getScalpDesk(){
             issues.push('سبريد دفتر أوامر BTC مرتفع للحركة المتوقعة');
         }
         if(plan.status==='ARMED'&&losses.blocked)issues.push(losses.reason);
-        if(plan.status==='ARMED'&&issues.length){
-          plan.status='WATCH';plan.blockers=[...plan.blockers,...issues];plan.reason=issues[0];
+        const decision=buildSniperDecision({
+          plan,quote,now:at,c1:input.c1,c5:input.c5,
+          marketOpen:input.marketOpen,newsReady,externalBlockers:issues
+        });
+        // This is the final fail-closed entry preflight: no independently
+        // failed market, data or structural gate can retain an ARMED badge.
+        if(plan.status==='ARMED'&&decision.status!=='QUALIFIED_WATCH'){
+          const veto=issues.length?issues:decision.blockers;
+          plan.status='WATCH';plan.blockers=[...plan.blockers,...veto];
+          plan.reason=veto[0]||'قرار القنص الموحد لم يؤهل هذه الفرصة';
         }
-        return {horizon:plan.horizon,...losses,issues};
+        return {horizon:plan.horizon,...losses,issues,decision};
       });
       const liquidity=readScalpLiquidity(input.c1,quote,at,asset);
       const entryConfirmations=plans.map(plan=>{
@@ -180,7 +189,8 @@ export async function getScalpDesk(){
         }
       }
       return {asset,profile:asset==='GOLD'?'ACTIVE_M5_PAPER':'STANDARD_PAPER',
-        directionStudy,checkedAt:at,quote,candleSource:input.candleSource,liquidity,orderBook,plans,qualityGates,entryConfirmations,ledger,data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
+        directionStudy,sniperDecisions:qualityGates.map(g=>g.decision),
+        checkedAt:at,quote,candleSource:input.candleSource,liquidity,orderBook,plans,qualityGates,entryConfirmations,ledger,data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
     };
     const goldSnap=goldResult.status==='fulfilled'?goldResult.value:null;
     // A stalled BTC REST refresh may fall back only to verified CLOSED M1/M5
@@ -207,6 +217,11 @@ export async function getScalpDesk(){
         quote:x.quote?.price,quoteAgeMs:x.data?.quoteAgeMs,source:x.candleSource,
         m1AgeMs:x.data?.m1AgeMs,newsReady:x.data?.newsReady,
         liquidityReady:x.liquidity?.available,bookOk:x.orderBook?.ok,
+        decisions:x.sniperDecisions?.map((d:any)=>({
+          h:d.horizon,status:d.status,technicalScore:d.score,requiredNetR:d.requiredNetR,
+          liveNetR:d.liveNetR,reasons:d.blockers.slice(0,3),
+          aiCertification:d.aiCertification
+        })),
         plans:x.plans.map((pl:any)=>({
           h:pl.horizon,status:pl.status,side:pl.side,setup:pl.setup,
           score:pl.score,entry:pl.entry,stop:pl.stop,t1:pl.targets?.[0]?.price,
