@@ -39,7 +39,7 @@ function one(price:number,a:number,seconds:number,signal:number,quality:number){
   // Neutral is neutral: never displace the expected price upward by default.
   const signedMove=side==='WAIT'?0:a*timeScale*Math.min(Math.abs(signal),1.25)*Math.sign(signal);
   const center=price+signedMove;
-  const band=a*timeScale*(.24+(100-quality)/260),edge=cap(Math.abs(signal)*42,0,38),buy=cap(50+Math.sign(signal)*edge,8,92),sell=100-buy;
+  const band=a*timeScale*(.24+(100-quality)/260),edge=side==='WAIT'?0:cap(Math.abs(signal)*42,0,28),buy=cap(50+Math.sign(signal)*edge,22,78),sell=100-buy;
   return {seconds,side,probabilityBasis:'UNCALIBRATED_HEURISTIC',price:Number(center.toFixed(2)),low:Number((center-band).toFixed(2)),high:Number((center+band).toFixed(2)),buyProbability:Number(buy.toFixed(1)),sellProbability:Number(sell.toFixed(1)),confidence:Math.round(cap(quality*.58+edge*.55-(side==='WAIT'?12:0),0,88))};
 }
 export function buildPredatorFusionV2(input:{c1:Candle[];c5:Candle[];price:number|null;tick?:any;goldCore?:any;now?:number}){
