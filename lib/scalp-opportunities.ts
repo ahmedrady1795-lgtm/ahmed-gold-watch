@@ -2,6 +2,7 @@ import {ema,indicators,type Candle,type Event} from './engine';
 import {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid,chooseEligibleScalpPlan} from './scalp-selection';
 import {detectScalpStrategies,rankScalpStrategies,describeScalpStrategies,type StrategyReview} from './scalp-strategies';
 import {detectLiquiditySweeps,activeConfirmedSweep} from './liquidity-sweep';
+import {detectDisplacementObFvg,activeStructureRetest} from './institutional-price-action';
 
 export type ScalpSide='BUY'|'SELL'|'WAIT';
 export type ScalpQuote={price:number|null;at:number|null;bid?:number|null;ask?:number|null;source:string};
@@ -43,7 +44,8 @@ function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number):Sca
     b.includes('لا توجد 30 نافذة حركة لاحقة')||
     b.includes('الهدف أبعد من الحركة المواتية')||
     b.includes('التكلفة كبيرة بالنسبة لتذبذب الفريم')||
-    b.includes('جودة اختراق M5'));
+    b.includes('جودة اختراق M5')||
+    b.includes('OB/FVG')||b.includes('1:3'));
   const validPrevious=Boolean(previous&&previous.status==='ARMED'&&sideAligned&&
     !explicitRiskVeto&&now>previous.at&&now<previous.expiresAt&&
     previous.entry!=null&&previous.stop!=null&&previous.targets[0]?.price!=null&&
@@ -134,9 +136,12 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
   // into an ARMED scalp setup; a later CLOSED M1 must confirm reclamation.
   const sweepScan=detectLiquiditySweeps(a,now);
   const confirmedSweep=activeConfirmedSweep(sweepScan,now,90000);
+  const structureScan=detectDisplacementObFvg(a,now);
+  const obFvgRetest=activeStructureRetest(structureScan,now,90000);
   const candidates=detectScalpStrategies({
     last,prev,high,low,atr,body,trend1,trend5,f9,old9,mom,efficiency,
-    retestHigh,retestLow,volumeRatio,sweepEvidence:confirmedSweep
+    retestHigh,retestLow,volumeRatio,sweepEvidence:confirmedSweep,
+    obFvgEvidence:obFvgRetest
   });
 
   return ([1,5] as const).map(horizon=>{
@@ -216,11 +221,17 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     // and demand a later confirmed M1 + retest before any PAPER entry.
     const retestEntry=chosen.setup==='RETEST'
       ?chosen.anchor+dir*Math.max(atr*.08,cost*.12,.02):null;
-    const entry=round(goldM5Breakout?.entry??retestEntry??
+    // OB/FVG is an unfilled reference LIMIT-style zone, not market chasing.
+    // The stop sits beyond the actual opposite candle and volatility buffer.
+    const institutionalEntry=chosen.setup==='OB_FVG'&&obFvgRetest?.side===chosen.side
+      ?(obFvgRetest.entryZone.low+obFvgRetest.entryZone.high)/2:null;
+    const entry=round(goldM5Breakout?.entry??retestEntry??institutionalEntry??
       (last.close+dir*Math.max(atr*.07,cost*.15,.02)));
     const retestStop=chosen.setup==='RETEST'
       ?(dir===1?last.low-atr*.16:last.high+atr*.16):null;
-    const rawStop=goldM5Breakout?.stop??retestStop??(chosen.anchor-dir*atr*.12);
+    const rawStop=goldM5Breakout?.stop??retestStop??
+      (chosen.setup==='OB_FVG'&&obFvgRetest?.side===chosen.side?
+        obFvgRetest.invalidation:chosen.anchor-dir*atr*.12);
     const risk=Math.max(dir*(entry-rawStop),rangeAtr*(horizon===1?.48:.52),cost*2);
     const stop=round(entry-dir*risk);
     const maxMove=rangeAtr*(horizon===1?2:2.65);
@@ -228,7 +239,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     // All executions still require a positive >=1.25R NET reward at the
     // current quote; GOLD M1 and BTC retain the conservative baseline.
     const activeGoldM5=asset==='GOLD'&&horizon===5;
-    const targetNetR=chosen.setup==='RETEST'?1.65:activeGoldM5?1.30:1.45;
+    const targetNetR=chosen.setup==='OB_FVG'?3:chosen.setup==='RETEST'?1.65:activeGoldM5?1.30:1.45;
     const minReward=Math.max(risk*targetNetR+cost*(targetNetR+1),cost*3);
     const maxRisk=rangeAtr*(horizon===1?1.6:1.65);
     const pivots=[...a.slice(-60),...(horizon===5?b.slice(-24):[])].map(c=>chosen.side==='BUY'?c.high:c.low)
@@ -246,6 +257,31 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     const actualRisk=dir*(entry-stop),actualReward=dir*(targets[0].price-entry);
     const rr=actualRisk>0?round((actualReward-cost)/(actualRisk+cost)):null;
     const reasons:string[]=[...(goldM5Breakout?.blockers||[])];
+    if(chosen.setup==='OB_FVG'){
+      const ob=obFvgRetest;
+      if(!ob||ob.phase!=='RETEST_CONFIRMED'||ob.side!==chosen.side||
+        ob.retestAt==null||now-ob.retestAt>90000)
+        reasons.push('OB/FVG: مطلوب إغلاق إعادة اختبار حديث ومستقل بعد الاندفاع والكسر');
+      else{
+        plan.evidence.push(
+          {label:'BOS / CHoCH محتمل',side:ob.side,value:ob.kind==='BOS'?'كسر هيكل بإغلاق جسم':'تغير سلوك فني محتمل'},
+          {label:'شمعة الاندفاع',side:ob.side,value:round(ob.bodyAtr)+'× متوسط المدى · نسبة جسم '+Math.round(ob.bodyRatio*100)+'%'},
+          {label:'Order Block سعري',side:'WAIT',value:round(ob.ob.low)+' – '+round(ob.ob.high)},
+          {label:'FVG 3 شموع',side:'WAIT',value:round(ob.fvg.low)+' – '+round(ob.fvg.high)},
+          {label:'إبطال هيكلي',side:'WAIT',value:String(ob.invalidation)}
+        );
+        if(ob.participation!=null&&ob.participation<.9)
+          reasons.push('OB/FVG: الاندفاع دون حجم مشاركة كاف');
+        if(trend1!==chosen.side||trend5!==chosen.side)
+          reasons.push('OB/FVG: اتجاه الدقيقة والخمس دقائق لم يؤكد الانعكاس/الاستمرار');
+        if(targets[0]?.kind!=='STRUCTURE'||rr==null||rr<3)
+          reasons.push('OB/FVG: لا توجد سيولة مقابلة مرصودة تحقق 1:3 صافي بعد التكلفة');
+        if(cost>risk*.16)
+          reasons.push('OB/FVG: السبريد والانزلاق أكبر من 16% من الوقف');
+        if(dir*(price-entry)>atr*.22)
+          reasons.push('OB/FVG: السعر ابتعد عن منطقة إعادة الاختبار؛ ممنوع المطاردة');
+      }
+    }
     if(chosen.setup==='SWEEP'){
       const s=confirmedSweep;
       if(!s||s.status!=='CONFIRMED'||s.side!==chosen.side||
@@ -304,7 +340,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     if(last.high-last.low>atr*2.8||Math.abs(price-last.close)>atr*.85||
        dir*(price-entry)>atr*(goldM5Breakout?.entry!=null ? .75 : .3))
       reasons.push('السعر ابتعد عن دخول الشمعة المغلقة؛ انتظر إعادة اختبار بدل مطاردة السعر');
-    if(rr==null||rr<(chosen.setup==='RETEST'?1.5:1.25))
+    if(rr==null||rr<(chosen.setup==='OB_FVG'?3:chosen.setup==='RETEST'?1.5:1.25))
       reasons.push('العائد بعد التكلفة أقل من الحد المحافظ للاستراتيجية');
     if(chosen.setup==='RETEST'){
       const structuralRisk=dir*(entry-stop);
@@ -326,7 +362,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     if(horizon===5&&chosen.setup!=='SWEEP'&&dir*m5Body<-.20&&dir*m5Momentum<.10)reasons.push('آخر شمعة M5 مغلقة تعارض الاستمرار');
     if(horizon===5&&chosen.setup==='SWEEP'&&dir*m5Body<-.40)reasons.push('انعكاس الدقيقة عكس جسم M5 قوي؛ يلزم تأكيد إضافي');
     if(horizon===1&&chosen.setup==='BREAKOUT'&&volumeRatio!=null&&volumeRatio<1.05&&efficiency<.45)reasons.push('اختراق M1 ضعيف دون تأكيد كافٍ');
-    if(activeGoldM5)plan.evidence.push({
+    if(activeGoldM5&&chosen.setup!=='OB_FVG')plan.evidence.push({
       label:'وضع التنفيذ المرجعي',side:'WAIT',
       value:'نشط M5 · هدف واقعي · 1.30R صافي مستهدف'
     });
