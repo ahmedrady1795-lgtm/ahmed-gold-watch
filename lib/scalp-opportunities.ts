@@ -254,25 +254,15 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
         {label:'نسبة ذيل رفض الاختراق',side:'WAIT',value:round(Number(goldM5Breakout.wickRatio)*100)+'%'}
       );
     }
-    // Five of seven historical GOLD M1 outcomes exited on the clock, not T1.
-    // A 1-minute plan needs a realistic one-minute destination. Measure
-    // favorable open-to-extreme travel in the SAME horizon's closed candles.
-    // This is an optimistic ceiling: true entry timing may have less room.
-    const historical=(horizon===1?a.slice(-80):b.slice(-60));
-    const favorable=historical.map(c=>Math.max(0,
-      chosen.side==='BUY'?c.high-c.open:c.open-c.low));
-    // GOLD M5 uses what price ACTUALLY traveled over the NEXT five
-    // completed M1 bars after a hypothetical historical entry, not what
-    // happened during the same completed M5 candle. Take non-overlapping
-    // windows to reduce correlated observations. Fallback conservatively if
-    // the broker-derived M1 history lacks 30 complete windows.
-    const forwardReach=asset==='GOLD'&&horizon===5
-      ?observedForwardReach(a,chosen.side,5):null;
-    const empiricalReach=forwardReach&&forwardReach.samples>=30&&
-      forwardReach.favorableP75!=null
-      ?forwardReach.favorableP75:quantile(favorable,horizon===1?.55:.75);
-    if(empiricalReach!=null&&historical.length>=40&&
-       actualReward>empiricalReach*(horizon===1?1:1.15)){
+    // Both assets and BOTH horizons must use movement strictly AFTER a
+    // historical closed-candle entry. Same-bar open-to-extreme sampling used
+    // to overstate reachable BTC M5 and GOLD/BTC M1 objectives.
+    const forwardReach=observedForwardReach(a,chosen.side,horizon);
+    const empiricalReach=forwardReach.samples>=30
+      ?(horizon===1?forwardReach.favorableP55:forwardReach.favorableP75):null;
+    if(empiricalReach==null){
+      reasons.push('لا توجد 30 نافذة حركة لاحقة متصلة لتأكيد إمكانية الوصول للهدف');
+    }else if(actualReward>empiricalReach*(horizon===1?1:1.15)){
       reasons.push('الهدف أبعد من الحركة المواتية المعتادة خلال '+(horizon===1?'دقيقة':'خمس دقائق')+
         '؛ احتمال الخروج بالوقت أو التكلفة مرتفع');
     }
@@ -330,19 +320,15 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       label:'حد الحركة المواتية للفريم',side:'WAIT',
       value:empiricalReach==null?'غير متاح':round(empiricalReach)+' $ / '+(horizon===1?'M1':'M5')
     });
-    if(forwardReach){
-      plan.evidence.push({
-        label:'عينة الحركة بعد الدخول',side:'WAIT',
-        value:forwardReach.samples>=30
-          ?forwardReach.samples+' نوافذ تاريخية M5 غير متداخلة · P75'
-          :'بيانات 5 دقائق مستقبلية غير كافية؛ قياس الشموع المحافظ'
-      });
-      plan.evidence.push({
-        label:'ارتداد معاكس تاريخي بعد الدخول',side:'WAIT',
-        value:forwardReach.adverseP50!=null?
-          round(forwardReach.adverseP50)+' $ · وسيط 5 دقائق (معلومة لا ضمان)': 'غير متاح'
-      });
-    }
+    plan.evidence.push({
+      label:'عينة الحركة بعد الدخول',side:'WAIT',
+      value:forwardReach.samples+' نافذة لاحقة مغلقة غير متداخلة · '+(horizon===1?'M1 P55':'M5 P75')
+    });
+    plan.evidence.push({
+      label:'ارتداد معاكس تاريخي بعد الدخول',side:'WAIT',
+      value:forwardReach.adverseP50!=null?
+        round(forwardReach.adverseP50)+' $ · وسيط '+horizon+' دقيقة (معلومة لا ضمان)': 'غير متاح'
+    });
     // A missing optional news feed is not itself a scheduled major release.
     // Known high-impact release windows remain blocked at the base gate.
     if(!input.newsReady)plan.evidence.push({label:'تغطية الأخبار',side:'WAIT',value:'غير مكتملة؛ افحص التقويم'});
