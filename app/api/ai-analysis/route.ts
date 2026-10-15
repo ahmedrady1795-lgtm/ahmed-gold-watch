@@ -701,7 +701,12 @@ export async function GET(request:Request){
         asset:'BTC',now,price:btcPrice??undefined,marketLead:bitcoinMarketLead,liquidity,tick:bitcoinTick,
         marketData:btc,webIntel,news:gm.events
       }).catch(()=>null)
-    ]),7000);
+    ]),2800).catch(()=>{
+      // Cross-venue tool mesh is optional confirmation. Slow providers must
+      // never cancel the primary candle/liquidity forecast generation.
+      // Returning null removes its voting weight instead of inventing evidence.
+      return [null,null] as [null,null];
+    });
     const goldClosedM1=gm.c1.filter((c:any)=>c.time+60000<=now).at(-1)||gm.c1.at(-1)||null;
     const goldBase=Number(goldClosedM1?.close??goldPrice),goldDelta=Number.isFinite(Number(goldPrice))&&Number.isFinite(goldBase)?Number(goldPrice)-goldBase:0;
     const goldPulseDirection:'UP'|'DOWN'|'FLAT'=goldDelta>0?'UP':goldDelta<0?'DOWN':'FLAT';
