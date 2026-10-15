@@ -2,7 +2,7 @@
 // Detect on CLOSED M1 candles; execution authorization remains with the
 // per-plan spread, stop, reward, news and exact M1 entry-confirmation gates.
 // A technical setup score is NOT an estimated win probability.
-export type StrategyId='BREAKOUT'|'PULLBACK'|'SWEEP'|'CONTINUATION'|'RETEST';
+export type StrategyId='BREAKOUT'|'PULLBACK'|'SWEEP'|'CONTINUATION'|'RETEST'|'OB_FVG';
 export type Direction='BUY'|'SELL'|'WAIT';
 export type StrategyCandidate={side:'BUY'|'SELL';setup:StrategyId;triggerScore:number;anchor:number};
 export type StrategyRank=StrategyCandidate&{score:number};
@@ -12,7 +12,8 @@ export const SCALP_STRATEGIES=[
   {id:'PULLBACK',label:'إعادة اختبار',principle:'استئناف الاتجاه بعد اختبار EMA ومستوى الشمعة السابقة',family:'TREND'},
   {id:'CONTINUATION',label:'استمرار الاتجاه',principle:'شمعتان داعمتان وزخم متوافق مع M5',family:'TREND'},
   {id:'SWEEP',label:'سحب السيولة',principle:'اختراق كاذب ثم استعادة المستوى بشمعة مغلقة',family:'REVERSAL'},
-  {id:'RETEST',label:'اختراق وإعادة اختبار M5',principle:'شمعة اختراق مغلقة، ثم لمس المستوى مجددًا وإغلاق تأكيد مع توافق M1 وM5 وحجم واضح',family:'TREND'}
+  {id:'RETEST',label:'اختراق وإعادة اختبار M5',principle:'شمعة اختراق مغلقة، ثم لمس المستوى مجددًا وإغلاق تأكيد مع توافق M1 وM5 وحجم واضح',family:'TREND'},
+  {id:'OB_FVG',label:'اندفاع + BOS + OB/FVG',principle:'كسر هيكل بإغلاق اندفاعي، فجوة ثلاث شموع وبلوك معاكس سابق، ثم إعادة اختبار مؤكدة',family:'STRUCTURE'}
 ] as const;
 export type StrategyReview={
   setup:StrategyId;label:string;family:string;
@@ -25,7 +26,8 @@ export type StrategyContext={
   retestHigh?:number;retestLow?:number;volumeRatio?:number|null;
   // Optional authoritative CLOSED-M1 confirmation. Null explicitly disallows
   // the legacy same-candle wick detector from turning into a paper signal.
-  sweepEvidence?:{side:'BUY'|'SELL';status:'CONFIRMED'|'PENDING'|'TRAP';extreme:number}|null
+  sweepEvidence?:{side:'BUY'|'SELL';status:'CONFIRMED'|'PENDING'|'TRAP';extreme:number}|null;
+  obFvgEvidence?:{side:'BUY'|'SELL';phase:'RETEST_CONFIRMED';entryZone:{low:number;high:number}}|null
 };
 export function detectScalpStrategies(x:StrategyContext):StrategyCandidate[]{
   const {last,prev,high,low,atr,body,trend1,trend5,f9,old9,mom,efficiency}=x;
@@ -41,6 +43,11 @@ export function detectScalpStrategies(x:StrategyContext):StrategyCandidate[]{
       candidates.push({side:'BUY',setup:'SWEEP',triggerScore:32,anchor:last.low});
     if(last.high>high+atr*.04&&last.close<high-atr*.08&&body<-.12)
       candidates.push({side:'SELL',setup:'SWEEP',triggerScore:32,anchor:last.high});
+  }
+  if(x.obFvgEvidence?.phase==='RETEST_CONFIRMED'){
+    const z=x.obFvgEvidence.entryZone,anchor=(z.low+z.high)/2;
+    if(z.low>0&&z.high>z.low&&Number.isFinite(anchor))
+      candidates.push({side:x.obFvgEvidence.side,setup:'OB_FVG',triggerScore:48,anchor});
   }
   if(last.close>high&&body>.45&&trend1==='BUY')
     candidates.push({side:'BUY',setup:'BREAKOUT',triggerScore:34,anchor:high});
