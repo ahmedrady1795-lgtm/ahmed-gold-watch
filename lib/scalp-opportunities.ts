@@ -3,6 +3,7 @@ import {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid,chooseEligi
 import {detectScalpStrategies,rankScalpStrategies,describeScalpStrategies,type StrategyReview} from './scalp-strategies';
 import {detectLiquiditySweeps,activeConfirmedSweep} from './liquidity-sweep';
 import {detectDisplacementObFvg,activeStructureRetest,sameActiveStructureEvent,type DisplacementSetup} from './institutional-price-action';
+import {requiredScalpNetR} from './scalp-risk-policy';
 
 export type ScalpSide='BUY'|'SELL'|'WAIT';
 export type ScalpQuote={price:number|null;at:number|null;bid?:number|null;ask?:number|null;source:string};
@@ -58,7 +59,7 @@ function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number,acti
     (previous.side==='BUY'?quote>previous.stop&&quote<previous.targets[0].price:
        quote<previous.stop&&quote>previous.targets[0].price)&&
     cost<=Math.max(previous.cost*1.35,.01)&&
-    liveNetRR>=(previous.setup==='OB_FVG'?3:1.25));
+    liveNetRR>=requiredScalpNetR(previous));
   // Preserve the ID/entry/target through the observation window, but NEVER
   // preserve an outdated low fee, an opposing trend or an unreachable target.
   if(validPrevious&&(plan.status!=='ARMED'||plan.side===previous!.side))
