@@ -64,7 +64,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     m.historyFresh&&m.observationFresh&&sn.view.priceFresh);
   const rise=dir==='BUY',fall=dir==='SELL';
   const W=mobile?740:1440,H=mobile?(expanded||chartFullscreen?860:760):(expanded||chartFullscreen?920:760),x0=mobile?28:66,
-    x1=mobile?450:980,xf=x1+16,xr=W-(mobile?157:172),yt=40,yb=H-102,volumeEnd=H-49;
+    x1=mobile?360:980,xf=x1+14,xr=W-(mobile?142:172),yt=40,yb=H-102,volumeEnd=H-49;
   const breakout=buildBreakoutGuide({frames:x?.chartHigherFrames,now,side:dir,price:m.price,
     sourceReady:sn.view.priceFresh&&m.observationFresh&&m.historyFresh,invalidation:m.displayStop});
   const overlay=buildChartOverlay({now,price:m.price,historyFresh:m.historyFresh,
