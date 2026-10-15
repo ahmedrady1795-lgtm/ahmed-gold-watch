@@ -10,7 +10,7 @@ export type Zone={low:number;high:number};
 export type DisplacementSetup={
   id:string;side:StructureSide;kind:'BOS'|'POSSIBLE_CHOCH';phase:StructurePhase;
   impulseAt:number;confirmedAt:number;retestAt:number|null;
-  structuralLevel:number;impulseHigh:number;impulseLow:number;
+  structuralLevel:number;impulseHigh:number;impulseLow:number;obAt:number;
   ob:Zone;fvg:Zone;entryZone:Zone;invalidation:number;
   bodyAtr:number;bodyRatio:number;participation:number|null;
   reason:string;reference:'CLOSED_M1_CANDLE_HEURISTIC';
@@ -91,7 +91,7 @@ export function detectDisplacementObFvg(raw:readonly StructureCandle[],now:numbe
       phase==='INVALIDATED'?'كسر الإبطال الهيكلي؛ السيناريو ملغى':'انتهت صلاحية المنطقة دون اختبار مؤهل';
     setups.push({id:side+'-'+c.time,side,kind,phase,impulseAt:c.time,
       confirmedAt:c.time+60000,retestAt,structuralLevel:round(level),
-      impulseHigh:round(c.high),impulseLow:round(c.low),ob:{
+      impulseHigh:round(c.high),impulseLow:round(c.low),obAt:opp.time,ob:{
         low:round(ob.low),high:round(ob.high)},fvg:{
         low:round(fvg.low),high:round(fvg.high)},
       entryZone:{low:round(entryZone.low),high:round(entryZone.high)},
