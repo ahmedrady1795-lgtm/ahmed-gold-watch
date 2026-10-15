@@ -66,6 +66,8 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
   const highlighted=[...alerts].sort((a,b)=>
     Number(b.importance||1)-Number(a.importance||1)||Number(a.time)-Number(b.time))[0];
   const next=alerts[0];
+  // The featured release is already prominent above; do not repeat it below.
+  const remainingAlerts=alerts.filter(e=>e!==highlighted);
   return <section className="panel newscommand standalone-news home-news-compact" aria-label="أخبار الاقتصاد خلال 8 ساعات">
     <header className="standalone-news-head">
       <div><span className="eyebrow">NEWS · 8H · UAE</span>
@@ -82,10 +84,10 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
       <span className="news-headline-numbers">المتوقع {String(highlighted.forecast||'—')} · السابق {String(highlighted.previous||'—')}</span>
       <small>{dateLabel(Number(highlighted.time))} · السيناريو مرتبط بالنتيجة الفعلية، لا توجد نسبة اتجاه مؤكدة.</small>
     </div>:<p className="news-eight-empty">{error?'لم نتمكن من تأكيد الأحداث القادمة.':'لا يوجد خبر مؤكد خلال الثماني ساعات القادمة.'}</p>}
-    {alerts.length>0&&<details className="news-all-details">
-      <summary>عرض الأخبار الثمانية ساعات ({alerts.length}) {next&&highlighted!==next?'· أقرب خبر بعد '+timeLeft(Number(next.time),now):''}</summary>
+    {remainingAlerts.length>0&&<details className="news-all-details">
+      <summary>باقي أخبار الـ8 ساعات ({remainingAlerts.length}) {next&&highlighted!==next?'· أقرب خبر بعد '+timeLeft(Number(next.time),now):''}</summary>
       <div className="news-eight-hour">
-        {alerts.map((e:any)=><NewsEventCard key={e.id||e.name+e.time} event={e} now={now}/>)}
+        {remainingAlerts.map((e:any)=><NewsEventCard key={e.id||e.name+e.time} event={e} now={now}/>)}
       </div>
     </details>}
     {recent.length>0&&<details className="news-all-details">
