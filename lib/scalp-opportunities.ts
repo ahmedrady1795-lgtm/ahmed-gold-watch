@@ -2,7 +2,7 @@ import {ema,indicators,type Candle,type Event} from './engine';
 import {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid,chooseEligibleScalpPlan} from './scalp-selection';
 import {detectScalpStrategies,rankScalpStrategies,describeScalpStrategies,type StrategyReview} from './scalp-strategies';
 import {detectLiquiditySweeps,activeConfirmedSweep} from './liquidity-sweep';
-import {detectDisplacementObFvg,activeStructureRetest,type DisplacementSetup} from './institutional-price-action';
+import {detectDisplacementObFvg,activeStructureRetest,sameActiveStructureEvent,type DisplacementSetup} from './institutional-price-action';
 
 export type ScalpSide='BUY'|'SELL'|'WAIT';
 export type ScalpQuote={price:number|null;at:number|null;bid?:number|null;ask?:number|null;source:string};
@@ -49,9 +49,9 @@ function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number,acti
   // Preserve a setup only while its ORIGINAL (not a coincidental fresh)
   // OB/FVG event remains separately confirmed and unbroken.
   const originalPatternValid=previous?.setup!=='OB_FVG'||Boolean(
-    activeStructure&&previous.setupOriginId===activeStructure.id&&
-    activeStructure.side===previous.side&&activeStructure.phase==='RETEST_CONFIRMED'&&
-    activeStructure.retestAt!=null&&now-activeStructure.retestAt<=90000);
+    previous&&previous.side!=='WAIT'&&
+    sameActiveStructureEvent({setupOriginId:previous.setupOriginId,side:previous.side},
+      activeStructure,now));
   const validPrevious=Boolean(previous&&previous.status==='ARMED'&&sideAligned&&
     originalPatternValid&&!explicitRiskVeto&&now>previous.at&&now<previous.expiresAt&&
     previous.entry!=null&&previous.stop!=null&&previous.targets[0]?.price!=null&&
