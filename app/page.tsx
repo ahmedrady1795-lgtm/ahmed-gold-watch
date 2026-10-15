@@ -253,9 +253,12 @@ export default function Home(){
       <a href="/scalp" className="workspace-scalp-link">سكالب الثواني ↗</a>
     </nav>
     <section className="content lite-content" aria-label="القناص الذكي">
-      <NewsCommandCenter now={now}/>
       <AICommandCenter assetView="ALL" data={aiData} chartData={chartData} error={aiError} now={now} goldLive={goldTick}
         btcLive={btcLive&&shownBtc!=null?{asset:'BTC',ok:true,price:shownBtc,sourceTime:shownBtcAt}:null}/>
+      <details className="home-news-drawer">
+        <summary>الأخبار الاقتصادية القادمة · 8 ساعات <span>عرض التقويم والتوقعات</span></summary>
+        <NewsCommandCenter now={now}/>
+      </details>
     </section>
   </main>;
 }
