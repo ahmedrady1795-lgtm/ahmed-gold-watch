@@ -13,6 +13,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
   const plan=desk?.plans?.find((p:any)=>p.horizon===horizon);
   const confirmation=desk?.entryConfirmations?.find((e:any)=>e.horizon===horizon);
   const lane=desk?.ledger?.lanes?.find((l:any)=>l.horizon===horizon);
+  const decision=desk?.sniperDecisions?.find((d:any)=>d.horizon===horizon);
   const current=lane?.current;
   const checkedAt=Number(desk?.checkedAt);
   const stale=!Number.isFinite(checkedAt)||checkedAt<=0||checkedAt>now+2000||now-checkedAt>15000;
@@ -76,6 +77,19 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
         <span><small><Target size={12}/> الهدف الأول</small><b dir="ltr">{fmt(running?current.plan.targets?.[0]?.price:confirmation?.targets?.[0]?.price)}</b></span>
       </div>}
       {!confirmed&&<p className="scalp-seconds-reason">{reason}</p>}
+      {decision&&<details className="sniper-decision-audit">
+        <summary>فلتر القنص: {decision.status==='QUALIFIED_WATCH'?'اجتاز الفحص · ينتظر تأكيد الدخول':
+          decision.status==='BLOCKED'?'البيانات غير جاهزة':'مراقبة فقط'}
+          <span>تقييم فني {Math.max(0,Number(decision.score||0))}/100 · مش نسبة نجاح</span>
+        </summary>
+        <div className="sniper-decision-factors">
+          {(decision.factors||[]).map((f:any)=><span key={f.id} className={'sniper-factor '+String(f.result).toLowerCase()}>
+            <b>{f.result==='PASS'?'✓':f.result==='FAIL'?'×':'·'} {f.id}</b>
+            <small>{f.reason}</small>
+          </span>)}
+        </div>
+        <small>AI المتقدم غير مؤهل حاليًا · التقييم ورقي، ولا ينفذ على MT5.</small>
+      </details> 
       <small className="scalp-seconds-foot">
         {stale?'بيانات السوق قديمة · يُمنع الدخول':
           'آخر تحديث '+Math.max(0,Math.round((now-desk.checkedAt)/1000))+' ثانية'}
