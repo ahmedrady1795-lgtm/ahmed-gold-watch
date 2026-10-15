@@ -67,7 +67,8 @@ export function observedForwardReach(
     return a[lo]+(a[hi]-a[lo])*(j-lo);
   };
   return {samples:favorable.length,
-    favorableP75:quantile(favorable,.75),adverseP50:quantile(adverse,.50),
+    favorableP55:quantile(favorable,.55),favorableP75:quantile(favorable,.75),
+    adverseP50:quantile(adverse,.50),
     holdMinutes,reference:'non-overlapping closed M1 forward windows, not broker fills'};
 }
 
