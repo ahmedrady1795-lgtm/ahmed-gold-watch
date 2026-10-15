@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import type {Candle} from './engine';
 import type {ScalpPlan,ScalpQuote} from './scalp-opportunities';
+import {requiredScalpNetR} from './scalp-risk-policy';
 
 export type PaperTrade={plan:ScalpPlan;state:'ARMED'|'ACTIVE'|'TP1'|'STOP'|'TIME_EXIT'|'EXPIRED'|'CANCELED'|'UNKNOWN';activatedAt:number|null;closedAt:number|null;exit:number|null;netR:number|null;lastAt:number;lastPrice:number;note:string};
 type Ledger={version:1;lanes:Record<string,{current:PaperTrade|null;lastId:string;history:PaperTrade[]}>};
@@ -60,7 +61,7 @@ export function evaluatePaperProof(trades:PaperTrade[],start=SCALP_PROOF_FROM){
 // Track where the paper losses originate; selection quality cannot be
 // audited by total wins alone. No canceled/unfilled/unknown case is a win.
 export function summarizePaperBySetup(trades:PaperTrade[]){
-  const setups=['BREAKOUT','PULLBACK','SWEEP','CONTINUATION','RETEST'] as const;
+  const setups=['BREAKOUT','PULLBACK','SWEEP','CONTINUATION','RETEST','OB_FVG'] as const;
   const closed=trades.filter(t=>t?.activatedAt!=null&&t.netR!=null&&
     Number.isFinite(t.netR)&&['TP1','STOP','TIME_EXIT'].includes(t.state));
   return setups.map(setup=>{
@@ -201,7 +202,7 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
       const risk=dir*(p-plan.stop),reward=dir*(plan.targets[0].price-p);
       const priceNearby=anchorRisk>0&&Math.abs(p-plan.entry)<=anchorRisk*.35;
       const rr=risk>0?(reward-plan.cost)/(risk+plan.cost):0;
-      if(priceNearby&&risk>0&&reward>0&&rr>=1.25){
+      if(priceNearby&&risk>0&&reward>0&&rr>=requiredScalpNetR(plan)){
         const filled:ScalpPlan={...plan,entry:p,netRR:round(rr)};
         lane.lastId=plan.id;
         lane.current={
