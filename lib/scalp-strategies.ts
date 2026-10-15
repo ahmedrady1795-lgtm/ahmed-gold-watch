@@ -22,15 +22,26 @@ export type StrategyReview={
 export type StrategyContext={
   last:StrategyBar;prev:StrategyBar;high:number;low:number;atr:number;body:number;
   trend1:Direction;trend5:Direction;f9:number;old9:number;mom:number;efficiency:number;
-  retestHigh?:number;retestLow?:number;volumeRatio?:number|null
+  retestHigh?:number;retestLow?:number;volumeRatio?:number|null;
+  // Optional authoritative CLOSED-M1 confirmation. Null explicitly disallows
+  // the legacy same-candle wick detector from turning into a paper signal.
+  sweepEvidence?:{side:'BUY'|'SELL';status:'CONFIRMED';extreme:number}|null
 };
 export function detectScalpStrategies(x:StrategyContext):StrategyCandidate[]{
   const {last,prev,high,low,atr,body,trend1,trend5,f9,old9,mom,efficiency}=x;
   const candidates:StrategyCandidate[]=[];
-  if(last.low<low-atr*.04&&last.close>low+atr*.08&&body>.12)
-    candidates.push({side:'BUY',setup:'SWEEP',triggerScore:32,anchor:last.low});
-  if(last.high>high+atr*.04&&last.close<high-atr*.08&&body<-.12)
-    candidates.push({side:'SELL',setup:'SWEEP',triggerScore:32,anchor:last.high});
+  if(x.sweepEvidence!==undefined){
+    const verified=x.sweepEvidence;
+    if(verified?.status==='CONFIRMED'&&Number.isFinite(verified.extreme)&&verified.extreme>0)
+      candidates.push({side:verified.side,setup:'SWEEP',triggerScore:39,anchor:verified.extreme});
+  }else{
+    // Backwards-compatible isolated detector for synthetic strategy research.
+    // Production always supplies sweepEvidence, including null when absent.
+    if(last.low<low-atr*.04&&last.close>low+atr*.08&&body>.12)
+      candidates.push({side:'BUY',setup:'SWEEP',triggerScore:32,anchor:last.low});
+    if(last.high>high+atr*.04&&last.close<high-atr*.08&&body<-.12)
+      candidates.push({side:'SELL',setup:'SWEEP',triggerScore:32,anchor:last.high});
+  }
   if(last.close>high&&body>.45&&trend1==='BUY')
     candidates.push({side:'BUY',setup:'BREAKOUT',triggerScore:34,anchor:high});
   if(last.close<low&&body<-.45&&trend1==='SELL')
