@@ -1,8 +1,13 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
 const exportsObject={};
-const source=fs.readFileSync('lib/scalp-learning.ts','utf8')+'\nexport const testHooks={evaluate,planFrom};';
+const source=fs.readFileSync('lib/scalp-learning.ts','utf8')+'\nexport const testHooks={evaluate,planFrom,evidenceFor};';
 vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:exportsObject});
-const {trainScalpLearner,testHooks:{evaluate,planFrom}}=exportsObject;
+const {trainScalpLearner,testHooks:{evaluate,planFrom,evidenceFor}}=exportsObject;
+assert.equal(evidenceFor({used:20,wins:12},{used:10,netEdgeAtr:.2}).qualified,false,'12 wins out of 20 cannot prove an edge');
+assert.equal(evidenceFor({used:100,wins:68},{used:40,netEdgeAtr:.2}).qualified,true);
+assert.equal(evidenceFor({used:100,wins:68},{used:40,netEdgeAtr:-.01}).qualified,false,'a degrading recent window must block promotion');
+assert.equal(evidenceFor({used:100,wins:68},{used:3,netEdgeAtr:.2}).qualified,false);
+assert.equal(evidenceFor({used:0,wins:0},{used:0,netEdgeAtr:0}).wilsonLowerPct,0);
 const now=Date.parse('2026-10-08T20:00:00Z');
 const candles=Array.from({length:760},(_,i)=>({time:now-(760-i)*60000,open:2000+i*.1,close:2000+i*.1+.08,high:2000+i*.1+.2,low:2000+i*.1-.1}));
 assert.equal(trainScalpLearner(candles,now,1.5).costAtr,1.5,'Costs greater than .28 ATR must not be discounted');

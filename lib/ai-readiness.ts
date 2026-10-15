@@ -5,7 +5,7 @@ export function summarizeAiReadiness(ml:any,neural:any,mlConfigured=true,neuralC
     const name=key==='oneMinute'?'ML M1':'ML M5';
     const ready=Boolean(mlConfigured&&ml?.ok&&ml?.[key]?.ready);
     return {configured:mlConfigured,serviceOk:Boolean(ml?.ok),ready,status:ready?'READY':!mlConfigured?'DISABLED':String(ml?.status||'UNAVAILABLE'),
-      reason:ready?'':!mlConfigured?`${name}: service not configured`:ml?.reason||`${name}: independent validation not qualified`,version:ml?.version};
+      reason:ready?'':!mlConfigured?`${name}: service not configured`:ml?.[key]?.reason||ml?.reason||`${name}: independent validation not qualified`,version:ml?.version};
   };
   const neuralReady=Boolean(neuralConfigured&&neural?.ok&&neural?.ready);
   const models={mlM1:horizon('oneMinute'),mlM5:horizon('fiveMinute'),neural:{
@@ -14,7 +14,15 @@ export function summarizeAiReadiness(ml:any,neural:any,mlConfigured=true,neuralC
     reason:neuralReady?'':!neuralConfigured?'Neural: service not configured':neural?.reason||'Neural: independent validation not qualified',version:neural?.version
   } satisfies ModelReadiness};
   const reasons=Object.values(models).filter(m=>!m.ready).map(m=>m.reason);
-  return {ready:reasons.length===0,status:reasons.length?'degraded':'healthy',models,reasons};
+  const configuredCount=Object.values(models).filter(m=>m.configured).length;
+  const readyCount=Object.values(models).filter(m=>m.ready).length;
+  const activeFailures=Object.values(models).filter(m=>m.configured&&!m.ready).map(m=>m.reason);
+  return {ready:reasons.length===0,status:reasons.length?'degraded':'healthy',models,reasons,
+    mode:configuredCount===0?'TECHNICAL_ONLY':readyCount===3?'FULL':'PARTIAL',
+    configuredCount,readyCount,activeFailures,
+    nextAction:configuredCount===0?'التحليل المحلي يعمل؛ خدمات ML وNeural المنفصلة غير مربوطة بهذه النسخة.':
+      readyCount<configuredCount?'راجع اتصال النماذج وتقييمها المستقل قبل اعتماد إشاراتها.':
+      readyCount<3?'بعض النماذج اختيارية وغير مربوطة.':'النماذج مؤهلة؛ تنفيذ الصفقة يظل مشروطًا بجودة السعر والتكلفة والتأكيد.'};
 }
 
 async function healthProbe(url:string|undefined){

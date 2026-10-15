@@ -19,7 +19,7 @@ export type WebMarketSignal={
 };
 export type WebMarketIntelligence={
   ok:boolean;checkedAt:number;cached:boolean;
-  sources:{id:string;name:string;ok:boolean;itemCount:number;error?:string}[];
+  sources:{id:string;name:string;ok:boolean;itemCount:number;error?:string;retryAt?:number}[];
   gold:WebMarketSignal;btc:WebMarketSignal;
 };
 
@@ -33,6 +33,8 @@ const SOURCES:SourceDef[]=[
 
 const CACHE_MS=120000;
 let cache:WebMarketIntelligence|null=null,lastRun=0,pending:Promise<WebMarketIntelligence>|null=null;
+let cachedResults:any[]=[];
+const sourceFailures=new Map<string,{attempts:number;retryAt:number;error:string}>();
 
 type SourceOutcome='HIT'|'FAIL'|'NEUTRAL';
 type SourceStat={hits:number;fails:number;neutral:number;updatedAt:number};
@@ -139,7 +141,7 @@ export function recordWebSourceOutcome(args:{asset:Asset;price:number|null;atr:n
     for(const item of signal.items){
       if(item.side!=='BUY'&&item.side!=='SELL')continue;
       if(Number(item.impact||0)<30)continue;
-      if(item.ageMinutes!=null&&Number(item.ageMinutes)>180)continue;
+      if(!Number.isFinite(item.publishedAt)||Number(item.publishedAt)>now||now-Number(item.publishedAt)>180*60000)continue;
       if(seen.has(item.sourceId))continue;
       seen.add(item.sourceId);
       const id=headlineId(args.asset,item.sourceId,item.publishedAt,item.title);
@@ -242,14 +244,25 @@ function classify(source:SourceDef,asset:Asset,title:string,description:string,a
   return {side,impact,risk,reason};
 }
 async function fetchSource(source:SourceDef,now:number){
+  const failed=sourceFailures.get(source.id);
+  if(failed&&Date.now()<failed.retryAt)
+    return {source,ok:false,rows:[] as any[],error:failed.error,retryAt:failed.retryAt,now};
+  let status=0;
   try{
-    const r=await fetch(source.url,{cache:'no-store',headers:{'User-Agent':'AhmedGoldWebScout/1.0 (+public-market-research)'},signal:AbortSignal.timeout(6500)});
+    const r=await fetch(source.url,{cache:'no-store',headers:{'User-Agent':'AhmedGoldWebScout/1.0 (+public-market-research)'},signal:AbortSignal.timeout(3500)});
+    status=r.status;
     if(!r.ok)throw new Error('HTTP '+r.status);
     const text=await r.text();
+    if(!/<(?:rss|feed|rdf:RDF)\b/i.test(text))throw new Error('Invalid RSS/Atom response');
     const rows=parseFeed(text).slice(0,18);
+    sourceFailures.delete(source.id);
     return {source,ok:true,rows,error:null as string|null,now};
   }catch(e){
-    return {source,ok:false,rows:[] as any[],error:e instanceof Error?e.message:String(e),now};
+    const error=e instanceof Error?e.message:String(e),attempts=Math.min(5,(failed?.attempts||0)+1);
+    const base=[401,403,429].includes(status)?15*60000:120000;
+    const retryAt=Date.now()+Math.min(3600000,base*2**(attempts-1));
+    sourceFailures.set(source.id,{attempts,retryAt,error});
+    return {source,ok:false,rows:[] as any[],error,retryAt,now};
   }
 }
 function buildSignal(asset:Asset,results:any[],now:number):WebMarketSignal{
@@ -260,6 +273,8 @@ function buildSignal(asset:Asset,results:any[],now:number):WebMarketSignal{
     const perf=performanceReliability(asset,baseSource);
     const source:SourceDef={...baseSource,reliability:perf.effective};
     for(const row of res.rows){
+      // Missing or future publication times cannot become fresh evidence.
+      if(!Number.isFinite(row.publishedAt)||row.publishedAt<=0||row.publishedAt>now)continue;
       const age=row.publishedAt!=null?Math.max(0,(now-row.publishedAt)/60000):null;
       if(age!=null&&age>source.maxAgeMinutes)continue;
       const c=classify(source,asset,row.title,row.description,age);
@@ -290,21 +305,23 @@ function buildSignal(asset:Asset,results:any[],now:number):WebMarketSignal{
   return {
     ok:true,asset,checkedAt:now,side,confidence,risk,directional:side!=='WAIT',
     weight,sourceCount:new Set(top.map(x=>x.sourceId)).size,
-    freshCount:top.filter(x=>x.ageMinutes==null||x.ageMinutes<=180).length,
+    freshCount:top.filter(x=>x.ageMinutes!=null&&x.ageMinutes<=180).length,
     items:top,reasons
   };
 }
 async function run(now:number):Promise<WebMarketIntelligence>{
   const results=await Promise.all(SOURCES.map(s=>fetchSource(s,now)));
+  cachedResults=results;
   const out:WebMarketIntelligence={
     ok:results.some(x=>x.ok),checkedAt:now,cached:false,
-    sources:results.map(x=>({id:x.source.id,name:x.source.name,ok:x.ok,itemCount:x.rows.length,...(x.error?{error:x.error}:{})})),
+    sources:results.map(x=>({id:x.source.id,name:x.source.name,ok:x.ok,itemCount:x.rows.length,...(x.error?{error:x.error,retryAt:x.retryAt}:{})})),
     gold:buildSignal('GOLD',results,now),btc:buildSignal('BTC',results,now)
   };
   cache=out;lastRun=Date.now();return out;
 }
 export async function getWebMarketIntelligence(now=Date.now()):Promise<WebMarketIntelligence>{
-  if(cache&&Date.now()-lastRun<CACHE_MS)return {...cache,cached:true,checkedAt:now};
+  if(cache&&Date.now()-lastRun<CACHE_MS)return {...cache,cached:true,
+    gold:buildSignal('GOLD',cachedResults,now),btc:buildSignal('BTC',cachedResults,now)};
   if(pending)return pending;
   pending=run(now).finally(()=>{pending=null;});
   return pending;

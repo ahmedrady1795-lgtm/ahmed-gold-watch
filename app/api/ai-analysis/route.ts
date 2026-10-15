@@ -1711,7 +1711,9 @@ export async function GET(request:Request){
         })):[]
       }:null
     };};
-    const aiReadiness=summarizeAiReadiness(bitcoinMlRaw,bitcoinNeural);
+    const aiReadiness=summarizeAiReadiness(bitcoinMlRaw,bitcoinNeural,
+      Boolean(process.env.ML_ENGINE_URL?.trim()),
+      process.env.NEURAL_ENABLED!=='0'&&Boolean(process.env.NEURAL_ENGINE_URL?.trim()));
     const degraded=!aiReadiness.ready||(goldMarketOpen&&!gm.pricesReady)||!gm.newsReady||!btc?.c1?.length||!btcPrice;
     const autopilot={
       status:degraded?'degraded':recovered?'recovered':'healthy',
@@ -1880,6 +1882,8 @@ export async function GET(request:Request){
       }));
       console.info('[AI-DIAG]',JSON.stringify({
         status:autopilot.status,
+        aiReadiness:{mode:aiReadiness.mode,configuredCount:aiReadiness.configuredCount,readyCount:aiReadiness.readyCount,activeFailures:aiReadiness.activeFailures},
+        localLearnerEvidence:{gold:goldLearner.evidence||null,btc:bitcoinLearner.evidence||null},
         recoveryActions:actualRecoveryActions.slice(0,5),
         forward15:{gold:gold15Diag,btc:btc15Diag},
         movementReach:{gold:compactReach(goldMovement),btc:compactReach(bitcoinMovement)},
@@ -1903,7 +1907,7 @@ export async function GET(request:Request){
         },
         webScout:webIntel?{
           ok:Boolean(webIntel.ok),cached:Boolean(webIntel.cached),
-          sources:webIntel.sources.map((s:any)=>({id:s.id,ok:Boolean(s.ok),itemCount:Number(s.itemCount||0),error:s.error||null})),
+          sources:webIntel.sources.map((s:any)=>({id:s.id,ok:Boolean(s.ok),itemCount:Number(s.itemCount||0),error:s.error||null,retryAt:s.retryAt||null})),
           gold:{side:webIntel.gold.side,confidence:webIntel.gold.confidence,risk:webIntel.gold.risk,sourceCount:webIntel.gold.sourceCount,freshCount:webIntel.gold.freshCount},
           btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount}
         }:null,
@@ -2005,7 +2009,7 @@ export async function GET(request:Request){
       newsEvents:orderedNewsEvents,
       webScout:webIntel?{
         ok:Boolean(webIntel.ok),checkedAt:webIntel.checkedAt,cached:Boolean(webIntel.cached),
-        sources:webIntel.sources.map((s:any)=>({id:s.id,name:s.name,ok:Boolean(s.ok),itemCount:Number(s.itemCount||0),error:s.error||null})),
+        sources:webIntel.sources.map((s:any)=>({id:s.id,name:s.name,ok:Boolean(s.ok),itemCount:Number(s.itemCount||0),error:s.error||null,retryAt:s.retryAt||null})),
         gold:{side:webIntel.gold.side,confidence:webIntel.gold.confidence,risk:webIntel.gold.risk,sourceCount:webIntel.gold.sourceCount,freshCount:webIntel.gold.freshCount},
         btc:{side:webIntel.btc.side,confidence:webIntel.btc.confidence,risk:webIntel.btc.risk,sourceCount:webIntel.btc.sourceCount,freshCount:webIntel.btc.freshCount}
       }:null,

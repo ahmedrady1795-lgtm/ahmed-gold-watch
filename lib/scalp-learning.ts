@@ -9,6 +9,7 @@ export type ScalpLearningResult={
   evaluationVersion:'cost-aware-v2';ok:boolean;side:Side;score:number;confidence:number;edge:number;
   sampleCount:number;trainCount:number;validationCount:number;testCount:number;
   oosAccuracy:number;oosEdgeAtr:number;oosGrossEdgeAtr:number;profitFactor:number;maxDrawdownAtr:number;costAtr:number;
+  evidence?:{independentTrades:number;wins:number;wilsonLowerPct:number;recentTrades:number;recentNetEdgeAtr:number;qualified:boolean};
   preferredHoldBars:number;entryThreshold:number;validationSignalRate:number;testSignalRate:number;
   exitPlan:{maxHoldSeconds:number;takeAtr:number;stopAtr:number;exitOnFlip:boolean};
   features:{name:string;weight:number;value:number;contribution:number}[];
@@ -109,6 +110,16 @@ function evaluate(rows:FeatureRow[],m:Model,costAtr:number):Metrics{
   };
 }
 
+// A small winning sample is not evidence of a repeatable edge. Keep the
+// confidence interval separate from the heuristic score shown by the model.
+function evidenceFor(metrics:Metrics,recent:Metrics){
+  const n=metrics.used,p=n?metrics.wins/n:0,z=1.96,z2=z*z;
+  const lower=n?(p+z2/(2*n)-z*Math.sqrt((p*(1-p)+z2/(4*n))/n))/(1+z2/n):0;
+  return {independentTrades:n,wins:metrics.wins,wilsonLowerPct:Number((Math.max(0,lower)*100).toFixed(2)),
+    recentTrades:recent.used,recentNetEdgeAtr:Number(recent.netEdgeAtr.toFixed(4)),
+    qualified:n>=20&&lower>.50&&recent.used>=8&&recent.netEdgeAtr>0};
+}
+
 function splitRows(rows:FeatureRow[],horizon:number){
   const n=rows.length,a=Math.floor(n*.55),b=Math.floor(n*.78),purge=Math.max(2,horizon+1);
   return {
@@ -183,6 +194,8 @@ export function trainScalpLearner(input:Candle[],now=Date.now(),estimatedCostAtr
 
   const refitBase=fit([...chosen.train,...chosen.validation],minMove),refit={...refitBase,threshold:chosen.model.threshold};
   const tm=evaluate(chosen.test,refit,costAtr);
+  const recent=evaluate(chosen.test.slice(Math.floor(chosen.test.length/2)),refit,costAtr);
+  const evidence=evidenceFor(tm,recent);
   const x=feat(c.slice(-25));if(!x)return empty;
   const p=predict(x,refit),exitPlan=planFrom([...chosen.train,...chosen.validation],chosen.h,costAtr,p.side);
   const contributions=names.map((name,j)=>({name,weight:Number(refit.weights[j].toFixed(3)),value:Number(x[j].toFixed(3)),contribution:Number((((x[j]-refit.means[j])/refit.sds[j])*refit.weights[j]).toFixed(3))})).sort((a,b)=>Math.abs(b.contribution)-Math.abs(a.contribution));
@@ -193,6 +206,9 @@ export function trainScalpLearner(input:Candle[],now=Date.now(),estimatedCostAtr
   if(chosen.stability<.30)gateReasons.push('Validation غير مستقر بين النصفين');
   if(tm.used<20)gateReasons.push('عدد صفقات Final Holdout أقل من 20');
   if(tm.accuracy<56)gateReasons.push('Final Holdout accuracy أقل من 56%');
+  if(evidence.wilsonLowerPct<=50)gateReasons.push('الحد الأدنى للثقة الإحصائية 95% لم يتجاوز 50%؛ الأفضلية غير مثبتة');
+  if(recent.used<8)gateReasons.push('العينة الحديثة غير كافية للتحقق من ثبات الأداء');
+  else if(recent.netEdgeAtr<=0)gateReasons.push('الأفضلية الحديثة اختفت بعد تكلفة التداول');
   if(tm.netEdgeAtr<.06)gateReasons.push('Final Holdout expectancy أقل من +0.06 ATR بعد التكلفة');
   if(tm.profitFactor<1.20)gateReasons.push('Final Holdout profit factor أقل من 1.20');
   if(tm.maxDrawdownAtr>2.8)gateReasons.push('Final Holdout drawdown مرتفع');
@@ -206,6 +222,7 @@ export function trainScalpLearner(input:Candle[],now=Date.now(),estimatedCostAtr
   const side:Side=valid?p.side:'WAIT';
   const reasons=[
     `FINAL HOLDOUT: ${tm.accuracy.toFixed(1)}% على ${tm.used} عينة اتجاه غير متداخلة · signal rate ${tm.signalRate.toFixed(0)}%`,
+    `حد الثقة الإحصائية الأدنى ${evidence.wilsonLowerPct}% · أحدث ${recent.used} عينة: ${recent.netEdgeAtr.toFixed(3)} ATR بعد التكلفة`,
     'تقييم اتجاه عند نهاية الأفق؛ ليس اختبار تنفيذ أو إثبات ربح للهدف والوقف.',
     `Net expectancy ${tm.netEdgeAtr.toFixed(3)} ATR بعد تكلفة ${costAtr.toFixed(2)} ATR`,
     `Profit factor ${tm.profitFactor.toFixed(2)} · Max DD ${tm.maxDrawdownAtr.toFixed(2)} ATR`,
@@ -215,7 +232,7 @@ export function trainScalpLearner(input:Candle[],now=Date.now(),estimatedCostAtr
   ];
 
   return {
-    evaluationVersion:'cost-aware-v2',ok:valid,side,score:p.score,confidence,edge:Number(p.raw.toFixed(3)),
+    evaluationVersion:'cost-aware-v2',ok:valid,side,score:p.score,confidence,edge:Number(p.raw.toFixed(3)),evidence,
     sampleCount:chosen.rows.length,trainCount:chosen.train.length,validationCount:chosen.validation.length,testCount:chosen.test.length,
     oosAccuracy:Number(tm.accuracy.toFixed(1)),oosEdgeAtr:Number(tm.netEdgeAtr.toFixed(3)),oosGrossEdgeAtr:Number(tm.grossEdgeAtr.toFixed(3)),
     profitFactor:Number(tm.profitFactor.toFixed(2)),maxDrawdownAtr:Number(tm.maxDrawdownAtr.toFixed(2)),costAtr:Number(costAtr.toFixed(3)),

@@ -20,6 +20,9 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      - run: node tests/web-source-resilience.cjs
+      - run: node tests/scalp-learning.cjs
+      - run: node tests/ai-readiness.cjs
       - run: node --check learning-worker.mjs
       - run: node tests/railway-eco.cjs
       - run: node tests/neural-optout.cjs
