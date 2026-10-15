@@ -3,8 +3,8 @@ import "./globals.css";
 import "./workspace.css";
 
 export const metadata: Metadata = {
-  title: "Gold Watch | لوحة السوق",
-  description: "متابعة الذهب والبيتكوين، مؤشرات متعددة الأطر، سيناريوهات الحركة والسيولة والأخبار.",
+  title: "القناص | Qannas Trading Terminal",
+  description: "شاشة القناص للذهب والبيتكوين: شموع سعر حقيقية، سيناريوهات مراقبة مؤهلة، تكلفة السكالب، والأخبار الاقتصادية في سطر واحد.",
   manifest: "/manifest.webmanifest",
   icons: {icon:"/favicon.svg",shortcut:"/favicon.svg"},
 };
