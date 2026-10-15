@@ -113,3 +113,14 @@ export function activeStructureRetest(result:StructureScan,now:number,ttlMs=9000
   return result.setups.filter(x=>x.phase==='RETEST_CONFIRMED'&&
     x.retestAt!=null&&x.retestAt<=now&&now-x.retestAt<=ttlMs).at(-1)??null;
 }
+
+/** Only the exact still-valid event may maintain a frozen paper entry. */
+export function sameActiveStructureEvent(
+  original:{setupOriginId?:string|null;side:'BUY'|'SELL'},
+  current:DisplacementSetup|null,now:number,ttlMs=90000
+):boolean{
+  return Boolean(current&&Number.isFinite(now)&&original.setupOriginId&&
+    original.setupOriginId===current.id&&original.side===current.side&&
+    current.phase==='RETEST_CONFIRMED'&&current.retestAt!=null&&
+    current.retestAt<=now&&now-current.retestAt<=ttlMs);
+}
