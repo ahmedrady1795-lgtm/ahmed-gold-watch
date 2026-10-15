@@ -1,0 +1,56 @@
+name: Qannas complete source backup
+on:
+  workflow_dispatch:
+  push:
+    branches: [render-free]
+    paths:
+      - '.github/workflows/qannas-source-backup.yml'
+permissions:
+  contents: read
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout every branch and all history
+        uses: actions/checkout@v4
+        with:
+          ref: render-free
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Create restorable offline backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qannas-offline
+          # A git archive contains tracked source ONLY: no live env, tokens, cache or build folders.
+          git archive --format=zip --output=qannas-offline/qannas-render-free.zip refs/remotes/origin/render-free
+          git archive --format=zip --output=qannas-offline/qannas-railway.zip refs/remotes/origin/railway
+          git bundle create qannas-offline/qannas-complete-history.bundle --all
+          git bundle verify qannas-offline/qannas-complete-history.bundle
+          printf 'Render branch: %s\nRailway branch: %s\nMain branch: %s\n' \
+            "$(git rev-parse refs/remotes/origin/render-free)" \
+            "$(git rev-parse refs/remotes/origin/railway)" \
+            "$(git rev-parse refs/remotes/origin/main)" > qannas-offline/COMMITS.txt
+          cat > qannas-offline/READ_ME_FIRST.txt <<'TXT'
+          QANNAS OFFLINE BACKUP
+          ======================
+          qannas-render-free.zip: Website on Render. Unzip and run npm ci, npm run build.
+          qannas-railway.zip: Railway source including model services.
+          qannas-complete-history.bundle: Full Git history/branches for offline recovery.
+          Example: git clone qannas-complete-history.bundle qannas-restored
+          Then: git -C qannas-restored switch render-free
+          Never commit real .env credentials; configure keys again in host settings.
+          This is SOURCE, not an export of live market feeds, customer records,
+          external storage, trained model weights, or Render/Railway secret values.
+          TXT
+          cd qannas-offline
+          sha256sum qannas-render-free.zip qannas-railway.zip qannas-complete-history.bundle > SHA256SUMS.txt
+          du -h *
+      - name: Upload complete source as downloadable backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: QANNAS-OFFLINE-BACKUP
+          path: qannas-offline/
+          retention-days: 90
+          if-no-files-found: error
