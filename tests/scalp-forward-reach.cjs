@@ -4,7 +4,16 @@ const source=fs.readFileSync('lib/scalp-selection.ts','utf8');
 const m={exports:{}};
 vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{
   target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS
-}}).outputText,{module:m,exports:m.exports});
+}}).outputText,{module:m,exports:m.exports,require:(name)=>{
+  if(name==='./scalp-risk-policy'){
+    const shared={};
+    vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/scalp-risk-policy.ts','utf8'),{
+      compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
+    }).outputText,{exports:shared});
+    return shared;
+  }
+  return require(name);
+}});
 const {observedForwardReach}=m.exports;
 const start=Date.parse('2026-10-10T00:00:00Z');
 const bars=Array.from({length:230},(_,i)=>({
