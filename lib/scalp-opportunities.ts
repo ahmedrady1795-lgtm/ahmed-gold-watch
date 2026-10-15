@@ -9,7 +9,7 @@ export type ScalpQuote={price:number|null;at:number|null;bid?:number|null;ask?:n
 export type ScalpInput={asset:'GOLD'|'BTC';c1:Candle[];c5:Candle[];quote:ScalpQuote;candleSource:string;now:number;events:Event[];newsReady:boolean;marketOpen:boolean;feeBps?:number|null;slippageBps?:number|null};
 export type ScalpPlan={
   id:string;asset:'GOLD'|'BTC';horizon:1|5;at:number;expiresAt:number;side:ScalpSide;
-  status:'BLOCKED'|'WATCH'|'ARMED';setup:'BREAKOUT'|'PULLBACK'|'SWEEP'|'CONTINUATION'|'RETEST'|'NONE';
+  status:'BLOCKED'|'WATCH'|'ARMED';setup:'BREAKOUT'|'PULLBACK'|'SWEEP'|'CONTINUATION'|'RETEST'|'OB_FVG'|'NONE';
   score:number;scoreLabel:string;entry:number|null;stop:number|null;
   targets:{price:number;kind:'STRUCTURE'|'PROJECTION'}[];netRR:number|null;
   cost:number;costEstimated:boolean;
