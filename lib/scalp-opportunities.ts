@@ -2,13 +2,13 @@ import {ema,indicators,type Candle,type Event} from './engine';
 import {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid,chooseEligibleScalpPlan} from './scalp-selection';
 import {detectScalpStrategies,rankScalpStrategies,describeScalpStrategies,type StrategyReview} from './scalp-strategies';
 import {detectLiquiditySweeps,activeConfirmedSweep} from './liquidity-sweep';
-import {detectDisplacementObFvg,activeStructureRetest} from './institutional-price-action';
+import {detectDisplacementObFvg,activeStructureRetest,type DisplacementSetup} from './institutional-price-action';
 
 export type ScalpSide='BUY'|'SELL'|'WAIT';
 export type ScalpQuote={price:number|null;at:number|null;bid?:number|null;ask?:number|null;source:string};
 export type ScalpInput={asset:'GOLD'|'BTC';c1:Candle[];c5:Candle[];quote:ScalpQuote;candleSource:string;now:number;events:Event[];newsReady:boolean;marketOpen:boolean;feeBps?:number|null;slippageBps?:number|null};
 export type ScalpPlan={
-  id:string;asset:'GOLD'|'BTC';horizon:1|5;at:number;expiresAt:number;side:ScalpSide;
+  id:string;asset:'GOLD'|'BTC';horizon:1|5;at:number;expiresAt:number;side:ScalpSide;setupOriginId?:string|null;
   status:'BLOCKED'|'WATCH'|'ARMED';setup:'BREAKOUT'|'PULLBACK'|'SWEEP'|'CONTINUATION'|'RETEST'|'OB_FVG'|'NONE';
   score:number;scoreLabel:string;entry:number|null;stop:number|null;
   targets:{price:number;kind:'STRUCTURE'|'PROJECTION'}[];netRR:number|null;
@@ -23,7 +23,7 @@ const mean=(v:number[])=>v.reduce((s,x)=>s+x,0)/Math.max(1,v.length);
 // Keep a qualified, time-limited setup alive across its first following M1
 // close. Otherwise a required 60-second hold can never complete.
 const pendingSetups=new Map<string,ScalpPlan>();
-function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number):ScalpPlan{
+function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number,activeStructure:DisplacementSetup|null):ScalpPlan{
   const key=plan.asset+':'+plan.horizon,previous=pendingSetups.get(key);
   const oldRisk=previous?.entry!=null&&previous.stop!=null?
     Math.abs(previous.entry-previous.stop):0;
@@ -46,12 +46,19 @@ function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number):Sca
     b.includes('التكلفة كبيرة بالنسبة لتذبذب الفريم')||
     b.includes('جودة اختراق M5')||
     b.includes('OB/FVG')||b.includes('1:3'));
+  // Preserve a setup only while its ORIGINAL (not a coincidental fresh)
+  // OB/FVG event remains separately confirmed and unbroken.
+  const originalPatternValid=previous?.setup!=='OB_FVG'||Boolean(
+    activeStructure&&previous.setupOriginId===activeStructure.id&&
+    activeStructure.side===previous.side&&activeStructure.phase==='RETEST_CONFIRMED'&&
+    activeStructure.retestAt!=null&&now-activeStructure.retestAt<=90000);
   const validPrevious=Boolean(previous&&previous.status==='ARMED'&&sideAligned&&
-    !explicitRiskVeto&&now>previous.at&&now<previous.expiresAt&&
+    originalPatternValid&&!explicitRiskVeto&&now>previous.at&&now<previous.expiresAt&&
     previous.entry!=null&&previous.stop!=null&&previous.targets[0]?.price!=null&&
     (previous.side==='BUY'?quote>previous.stop&&quote<previous.targets[0].price:
        quote<previous.stop&&quote>previous.targets[0].price)&&
-    cost<=Math.max(previous.cost*1.35,.01)&&liveNetRR>=1.25);
+    cost<=Math.max(previous.cost*1.35,.01)&&
+    liveNetRR>=(previous.setup==='OB_FVG'?3:1.25));
   // Preserve the ID/entry/target through the observation window, but NEVER
   // preserve an outdated low fee, an opposing trend or an unreachable target.
   if(validPrevious&&(plan.status!=='ARMED'||plan.side===previous!.side))
@@ -164,7 +171,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       // watch only when M1 momentum and M5 trend agree. Never mark it ARMED.
       const trendAligned=trend1!=='WAIT'&&trend1===trend5&&
         (trend1==='BUY'?last.close>f21&&mom>.12:last.close<f21&&mom<-.12);
-      if(!trendAligned)return stableCandidate(plan,now,p!,cost);
+      if(!trendAligned)return stableCandidate(plan,now,p!,cost,obFvgRetest);
       const dir=trend1==='BUY'?1:-1;
       const sample=a.slice(-12);
       const edge=dir===1?Math.max(...sample.map(c=>c.high)):Math.min(...sample.map(c=>c.low));
@@ -175,7 +182,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       // projected round-trip fees, stop and target at their expected horizon.
       if(risk>rangeAtr*(horizon===1?1.8:1.7)||
          move>rangeAtr*(horizon===1?2.6:2.7))
-        return stableCandidate(plan,now,p!,cost);
+        return stableCandidate(plan,now,p!,cost,obFvgRetest);
       const stop=round(entry-dir*risk);
       const targets=[1,1.5,2].map(k=>({price:round(entry+dir*move*k),kind:'PROJECTION' as const}));
       const netRR=round((move-cost)/(risk+cost));
@@ -195,7 +202,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
         trigger:trigger+' '+entry.toFixed(2)+' مع استمرار الثبات دقيقة؛ التكاليف '+(costEstimated?'تقديرية':'من المصدر'),
         reason:'فرصة رصد مرتبطة بتوافق EMA على M1 وM5، وليست صفقة مفعلة'
       };
-      return stableCandidate(watch,now,p!,cost);
+      return stableCandidate(watch,now,p!,cost,obFvgRetest);
     }
     // Different valid setups can coexist on the SAME completed M1 candle.
     // The highest raw score may have an unreachable T1 or invalid structural
@@ -255,7 +262,8 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       targets.push({price:round(entry+dir*distance),kind:structural==null?'PROJECTION':'STRUCTURE'});
     }
     const actualRisk=dir*(entry-stop),actualReward=dir*(targets[0].price-entry);
-    const rr=actualRisk>0?round((actualReward-cost)/(actualRisk+cost)):null;
+    const netRUnrounded=actualRisk>0?(actualReward-cost)/(actualRisk+cost):null;
+    const rr=netRUnrounded!=null?round(netRUnrounded):null;
     const reasons:string[]=[...(goldM5Breakout?.blockers||[])];
     if(chosen.setup==='OB_FVG'){
       const ob=obFvgRetest;
@@ -274,7 +282,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
           reasons.push('OB/FVG: الاندفاع دون حجم مشاركة كاف');
         if(trend1!==chosen.side||trend5!==chosen.side)
           reasons.push('OB/FVG: اتجاه الدقيقة والخمس دقائق لم يؤكد الانعكاس/الاستمرار');
-        if(targets[0]?.kind!=='STRUCTURE'||rr==null||rr<3)
+        if(targets[0]?.kind!=='STRUCTURE'||netRUnrounded==null||netRUnrounded<3)
           reasons.push('OB/FVG: لا توجد سيولة مقابلة مرصودة تحقق 1:3 صافي بعد التكلفة');
         if(cost>risk*.16)
           reasons.push('OB/FVG: السبريد والانزلاق أكبر من 16% من الوقف');
@@ -340,7 +348,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     if(last.high-last.low>atr*2.8||Math.abs(price-last.close)>atr*.85||
        dir*(price-entry)>atr*(goldM5Breakout?.entry!=null ? .75 : .3))
       reasons.push('السعر ابتعد عن دخول الشمعة المغلقة؛ انتظر إعادة اختبار بدل مطاردة السعر');
-    if(rr==null||rr<(chosen.setup==='OB_FVG'?3:chosen.setup==='RETEST'?1.5:1.25))
+    if(netRUnrounded==null||netRUnrounded<(chosen.setup==='OB_FVG'?3:chosen.setup==='RETEST'?1.5:1.25))
       reasons.push('العائد بعد التكلفة أقل من الحد المحافظ للاستراتيجية');
     if(chosen.setup==='RETEST'){
       const structuralRisk=dir*(entry-stop);
@@ -383,6 +391,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     // Known high-impact release windows remain blocked at the base gate.
     if(!input.newsReady)plan.evidence.push({label:'تغطية الأخبار',side:'WAIT',value:'غير مكتملة؛ افحص التقويم'});
     return {...plan,id:asset+'-'+horizon+'-'+last.time+'-'+chosen.setup+'-'+chosen.side,
+      setupOriginId:chosen.setup==='OB_FVG'?obFvgRetest?.id:null,
       side:chosen.side,setup:chosen.setup,score:chosen.score,entry,stop,targets,netRR:rr,
       status:reasons.length?'WATCH' as const:'ARMED' as const,blockers:reasons,
       trigger:goldM5Breakout?.entry!=null?'اختراق مغلق ثم تأكيد M1 وإعادة اختبار مستوى الدخول؛ بلا مطاردة':
@@ -392,13 +401,13 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     });
     const best=chooseEligibleScalpPlan(evaluated);
     const strategyReview=describeScalpStrategies(evaluated,best);
-    if(!best)return stableCandidate({...plan,strategyReview},now,p!,cost);
+    if(!best)return stableCandidate({...plan,strategyReview},now,p!,cost,obFvgRetest);
     if(evaluated.length>1)best.evidence.push({
       label:'مقارنة الإعدادات',side:'WAIT',
       value:best!==evaluated[0]&&best.status==='ARMED'
         ?'تم فحص '+evaluated.length+' إعدادات؛ اعتماد بديل اجتاز المخاطر بعد رفض الأعلى درجة'
         :'تم فحص '+evaluated.length+' إعدادات؛ لم توجد أولوية زائفة لدرجة إعداد محجوب'
     });
-    return stableCandidate({...best,strategyReview},now,p!,cost);
+    return stableCandidate({...best,strategyReview},now,p!,cost,obFvgRetest);
   });
 }
