@@ -6,11 +6,10 @@ import type {ScalpPlan,ScalpQuote} from './scalp-opportunities';
 import type {Candle} from './engine';
 import {detectLiquiditySweeps,activeConfirmedSweep} from './liquidity-sweep';
 import {detectDisplacementObFvg,activeStructureRetest} from './institutional-price-action';
+import {requiredScalpNetR} from './scalp-risk-policy';
 
 export const SNIPER_DECISION_VERSION='SNIPER-DECISION-V1';
-export function requiredScalpNetR(plan:Pick<ScalpPlan,'setup'>):number{
-  return plan.setup==='OB_FVG'?3:plan.setup==='RETEST'?1.5:1.25;
-}
+export {requiredScalpNetR} from './scalp-risk-policy';
 type GateResult='PASS'|'WAIT'|'FAIL';
 export type SniperFactor={id:string;result:GateResult;reason:string};
 export type SniperDecision={
