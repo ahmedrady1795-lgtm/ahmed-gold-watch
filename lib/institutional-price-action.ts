@@ -61,6 +61,10 @@ export function detectDisplacementObFvg(raw:readonly StructureCandle[],now:numbe
     const ob:Zone={low:opp.low,high:opp.high};
     if(ob.high<=ob.low)continue;
     if(dir===1?c.close<=ob.high:c.close>=ob.low)continue;
+    // A far-away opposite candle is not the origin of THIS imbalance.
+    // Allow overlap or a small gap, but reject arbitrary historical OBs.
+    const obToFvg=dir===1?fvg.low-ob.high:ob.low-fvg.high;
+    if(obToFvg>avgRange*.45||obToFvg<-avgRange*.65)continue;
     // The last opposite candle + a separate three-bar FVG are required.
     const previousTrend=prev.at(-1)!.close-prev[0].close;
     const kind:DisplacementSetup['kind']=dir*previousTrend<0?'POSSIBLE_CHOCH':'BOS';
@@ -70,20 +74,23 @@ export function detectDisplacementObFvg(raw:readonly StructureCandle[],now:numbe
     const invalidation=round(dir===1?ob.low-avgRange*.12:ob.high+avgRange*.12);
     const entryZone={...fvg};
     let phase:StructurePhase='AWAIT_RETEST',retestAt:number|null=null;
-    // A later candle must actually revisit the gap and CLOSE in the
-    // intended direction, without closing beyond the structural stop.
-    for(let j=i+1;j<bars.length&&j<=i+18;j++){
+    // A later candle must revisit the FVG and CLOSE in the expected
+    // direction. Keep checking newer CLOSED candles even AFTER confirmation:
+    // otherwise an invalidation could leave an old trade marked ARMED.
+    // Only the first 18 M1 closes may produce a retest, not an unlimited wait.
+    for(let j=i+1;j<bars.length;j++){
       const bar=bars[j],prior=bars[j-1];
       if(bar.time-prior.time!==60000){phase='EXPIRED';break;}
       if(dir===1?bar.close<=invalidation:bar.close>=invalidation){
-        phase='INVALIDATED';break;
+        phase='INVALIDATED';retestAt=null;break;
       }
+      if(phase==='RETEST_CONFIRMED')continue;
+      if(j>i+18){phase='EXPIRED';break;}
       const touched=bar.low<=entryZone.high&&bar.high>=entryZone.low;
       const rejected=dir===1?bar.close>bar.open&&bar.close>entryZone.low:
         bar.close<bar.open&&bar.close<entryZone.high;
-      if(touched&&rejected){phase='RETEST_CONFIRMED';retestAt=bar.time+60000;break;}
+      if(touched&&rejected){phase='RETEST_CONFIRMED';retestAt=bar.time+60000;}
     }
-    if(phase==='AWAIT_RETEST'&&bars.length-1-i>18)phase='EXPIRED';
     // Confirmation loses trade-readiness after the next M1; still visible
     // as completed historical research in the chart's inspection layer.
     const reason=phase==='RETEST_CONFIRMED'?'FVG + شمعة معاكسة سابقة + إعادة اختبار مغلق':
