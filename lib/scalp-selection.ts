@@ -83,6 +83,8 @@ export function frozenTrendIsValid(
   return currentM1===side&&currentM5===side;
 }
 
+import {requiredScalpNetR} from './scalp-risk-policy';
+
 // Two genuine price-action setups can trigger in the same completed candle.
 // A higher score cannot rescue an untradable reward, invalid stop or a fee
 // veto. Only evaluate the plans whose *entire* independent gate set passed.
@@ -90,18 +92,18 @@ export function frozenTrendIsValid(
 export function chooseEligibleScalpPlan<T extends {
   status:string;score:number;side:'BUY'|'SELL'|'WAIT';entry:number|null;
   stop:number|null;targets:ReadonlyArray<{price:number}>;
-  cost:number;netRR:number|null;blockers:ReadonlyArray<string>;
+  cost:number;netRR:number|null;setup?:string;blockers:ReadonlyArray<string>;
 }>(plans:readonly T[]):T|null {
   const valid=plans.filter(plan=>{
     if(plan.status!=='ARMED'||plan.blockers.length>0||plan.netRR==null||
-       !Number.isFinite(plan.netRR)||plan.netRR<1.25||
+       !Number.isFinite(plan.netRR)||plan.netRR<requiredScalpNetR({setup:plan.setup||''})||
        (plan.side!=='BUY'&&plan.side!=='SELL'))return false;
     const entry=plan.entry,stop=plan.stop,target=plan.targets[0]?.price;
     if(entry==null||stop==null||target==null||
        ![entry,stop,target,plan.cost].every(Number.isFinite)||plan.cost<0)return false;
     const dir=plan.side==='BUY'?1:-1,risk=dir*(entry-stop),reward=dir*(target-entry);
     return risk>0&&reward>0&&
-      (reward-plan.cost)/(risk+plan.cost) >= 1.25;
+      (reward-plan.cost)/(risk+plan.cost) >= requiredScalpNetR({setup:plan.setup||''});
   });
   // Existing ranked order remains authoritative *among fully qualified*
   // plans; a WATCH with any score can never displace an ARMED trade.
