@@ -740,7 +740,12 @@ export async function GET(request:Request){
         asset:'BTC',now,policy:bitcoinEvolution?.active,
         context:{regime:bitcoinEvolution?.regime,h4Side:bitcoinH4?.side,intentSide:bitcoinIntent?.side,marketLead:bitcoinMarketLead?.side,price:btcPrice}
       }).catch(()=>null)
-    ]),10000);
+    ]),1800).catch(()=>{
+      // Public RSS / optional autonomous research can take 7s+ per source.
+      // Never prevent a valid candle/liquidity prediction from publishing.
+      // Research that finishes late is for the next cycle only.
+      return [null,null] as [null,null];
+    });
     const bitcoinNeural=await stage('neural-prediction',neuralPredictionPromise,4000);
     perf.neuralReadyAtMs=Date.now()-perfStarted;perf.neuralServiceMs=Number(bitcoinNeural?.latencyMs||0);
     const bitcoinMl={...bitcoinMlRaw,neuralCore:bitcoinNeural};
