@@ -20,7 +20,7 @@ const chart=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 const css=fs.readFileSync('app/workspace.css','utf8');
 assert.ok(page.indexOf('<NewsCommandCenter')<page.indexOf('<AICommandCenter'),
   'one-line news ticker must appear before the chart');
-assert.equal((page.match(/<NewsCommandCenter(?:\\s|>)/g)||[]).length,1);
+assert.equal((page.match(/<NewsCommandCenter/g)||[]).length,1);
 assert.match(news,/<details className="news-ticker-shell"/);
 assert.match(news,/<summary className="news-ticker-line"/);
 assert.match(news,/classifyMacroNews\(highlighted\?\.name\)/);
