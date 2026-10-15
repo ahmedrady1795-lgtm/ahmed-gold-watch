@@ -94,8 +94,11 @@ function mlStrength(ml:any){
   const m=ml?.oneMinute||ml?.m1||null;
   if(!m?.ready||!['BUY','SELL'].includes(String(m?.side)))return {side:'WAIT' as Side,score:0};
   const conf=Number(m?.confidence||0);
-  const hold=Number(m?.metrics?.ensemble?.selectiveAccuracy||m?.selectiveAccuracy||0);
-  const score=cap(conf*.68+(hold>0?hold*.32:0),0,88);
+  const hold=Number(m?.metrics?.ensemble?.selectiveAccuracy??m?.selectiveAccuracy??0);
+  // ML holdout rates are fractions in [0,1]; confidence is in percentage
+  // points. Never mix the two scales when a certified model finally qualifies.
+  const verified=Number.isFinite(hold)&&hold>=0&&hold<=1?hold*100:0;
+  const score=cap(conf*.68+verified*.32,0,88);
   return {side:side(m.side),score};
 }
 function tickStrength(tick:any){
