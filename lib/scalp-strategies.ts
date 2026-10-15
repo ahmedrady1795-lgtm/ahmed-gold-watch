@@ -25,7 +25,7 @@ export type StrategyContext={
   retestHigh?:number;retestLow?:number;volumeRatio?:number|null;
   // Optional authoritative CLOSED-M1 confirmation. Null explicitly disallows
   // the legacy same-candle wick detector from turning into a paper signal.
-  sweepEvidence?:{side:'BUY'|'SELL';status:'CONFIRMED';extreme:number}|null
+  sweepEvidence?:{side:'BUY'|'SELL';status:'CONFIRMED'|'PENDING'|'TRAP';extreme:number}|null
 };
 export function detectScalpStrategies(x:StrategyContext):StrategyCandidate[]{
   const {last,prev,high,low,atr,body,trend1,trend5,f9,old9,mom,efficiency}=x;
