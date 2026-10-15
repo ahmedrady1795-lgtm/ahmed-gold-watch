@@ -89,7 +89,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
           </span>)}
         </div>
         <small>AI المتقدم غير مؤهل حاليًا · التقييم ورقي، ولا ينفذ على MT5.</small>
-      </details> 
+      </details>}
       <small className="scalp-seconds-foot">
         {stale?'بيانات السوق قديمة · يُمنع الدخول':
           'آخر تحديث '+Math.max(0,Math.round((now-desk.checkedAt)/1000))+' ثانية'}
