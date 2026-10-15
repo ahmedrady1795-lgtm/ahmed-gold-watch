@@ -3,7 +3,7 @@ const source=fs.readFileSync('lib/institutional-price-action.ts','utf8'),ex={};
 vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{
   target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS
 }}).outputText,{exports:ex,Map,Math,Number,Array});
-const {detectDisplacementObFvg:scan,activeStructureRetest:active}=ex;
+const {detectDisplacementObFvg:scan,activeStructureRetest:active,sameActiveStructureEvent:stillValid}=ex;
 const begin=Date.parse('2026-10-15T08:00:00Z'),now=begin+90*60000;
 const base=()=>Array.from({length:90},(_,i)=>({
   time:begin+i*60000,open:100,high:100.4,low:99.6,close:100,
@@ -27,6 +27,26 @@ assert.ok(buy.invalidation<buy.ob.low,'stop should extend beyond actual opposite
 assert.equal(buy.retestAt,now,'only the NEXT independently closed candle may confirm retest');
 assert.equal(active(found,now)?.id,buy.id);
 assert.equal(active(found,now+91000),null,'stale retest must never qualify a new trade');
+
+assert.equal(stillValid({setupOriginId:buy.id,side:'BUY'},buy,now),true);
+assert.equal(stillValid({setupOriginId:'another-event',side:'BUY'},buy,now),false);
+assert.equal(stillValid({setupOriginId:buy.id,side:'SELL'},buy,now),false);
+assert.equal(stillValid({setupOriginId:buy.id,side:'BUY'},buy,now+91000),false);
+const laterInvalid=[...bull,{time:now,open:99.8,high:100.2,low:98.8,close:99.1}];
+const revoked=scan(laterInvalid,now+60000);
+const broken=revoked.setups.find(x=>x.id===buy.id);
+assert.equal(broken?.phase,'INVALIDATED','any later CLOSED candle breaking OB stop must revoke previous retest');
+assert.equal(broken?.retestAt,null,'cannot keep timestamp of revoked confirmation');
+assert.equal(active(revoked,now+60000),null);
+assert.equal(stillValid({setupOriginId:buy.id,side:'BUY'},active(revoked,now+60000),now+60000),false);
+const rebound=[...laterInvalid,{time:now+60000,open:99.2,high:102.5,low:99,close:102.1}];
+assert.equal(scan(rebound,now+120000).setups.find(x=>x.id===buy.id)?.phase,'INVALIDATED',
+  'a later bounce cannot resurrect an invalidated original OB/FVG event');
+const distantBlock=bull.map(c=>({...c}));
+distantBlock[87]={...distantBlock[87],open:99.15,high:99.35,low:98.7,close:98.85};
+assert.equal(scan(distantBlock,now).setups.some(x=>x.impulseAt===bull[88].time),false,
+  'a far-away bearish candle cannot be claimed as the origin of the observed FVG');
+
 const pre=scan(bull.slice(0,-1),now-60000);
 assert.equal(pre.setups.find(x=>x.impulseAt===bull[88].time)?.phase,'AWAIT_RETEST');
 assert.equal(active(pre,now-60000),null,'BOS+OB+FVG without retest is WATCH only');
@@ -60,8 +80,12 @@ assert.match(scalp,/obFvgEvidence:obFvgRetest/);
 assert.match(scalp,/chosen\.setup==='OB_FVG'\?3/);
 assert.match(scalp,/targets\[0\]\?\.kind!=='STRUCTURE'\|\|rr==null\|\|rr<3/);
 assert.match(scalp,/obFvgRetest\.invalidation/);
+assert.match(scalp,/sameActiveStructureEvent/);
+assert.match(scalp,/liveNetRR>=\(previous\.setup==='OB_FVG'\?3:1\.25\)/);
+assert.match(scalp,/netRUnrounded<3/);
+assert.match(scalp,/setupOriginId:chosen\.setup==='OB_FVG'\?obFvgRetest\?\.id:null/);
 assert.match(strategies,/id:'OB_FVG'/);
 assert.match(chart,/className="sniper-obfvg-structure"/);
 assert.match(chart,/OB\/FVG/);
 assert.doesNotMatch(chart,/أوامر مؤسسات مؤكدة/);
-console.log('PASS: causal BOS/body displacement, opposite OB, 3-bar FVG, BUY/SELL retest, 3R cost/structural risk gates and chart overlay');
+console.log('PASS: causal OB/FVG BOS, close-confirmed retest, permanent invalidation, nearest block, strict 3R on frozen entries, and chart');
