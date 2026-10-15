@@ -27,6 +27,8 @@ async function verify(){
     assert.ok(route.includes("stage('"+name+"'"),'unbounded awaited stage: '+name);
   }
   assert.match(route,/totalBudgetMs:39000/);
+  assert.match(route,/\]\),2800\)\.catch\(\(\)=>\{/,
+    'optional market-tool-mesh must degrade without cancelling AI generation');
   assert.match(route,/finally\s*\{\s*analysisBusy=false;/);
   const snapshot=fs.readFileSync('app/api/ai-snapshot/route.ts','utf8');
   assert.match(snapshot,/snap\.ageMs>90000/);
