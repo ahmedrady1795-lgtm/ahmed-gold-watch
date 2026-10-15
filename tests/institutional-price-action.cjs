@@ -81,7 +81,7 @@ assert.match(scalp,/chosen\.setup==='OB_FVG'\?3/);
 assert.match(scalp,/targets\\[0\\]\\?\\.kind!=='STRUCTURE'\\|\\|netRUnrounded==null\\|\\|netRUnrounded<3/);
 assert.match(scalp,/obFvgRetest\.invalidation/);
 assert.match(scalp,/sameActiveStructureEvent/);
-assert.match(scalp,/liveNetRR>=\(previous\.setup==='OB_FVG'\?3:1\.25\)/);
+assert.match(scalp,/liveNetRR>=requiredScalpNetR\(previous\)/);
 assert.match(scalp,/netRUnrounded<3/);
 assert.match(scalp,/setupOriginId:chosen\.setup==='OB_FVG'\?obFvgRetest\?\.id:null/);
 assert.match(strategies,/id:'OB_FVG'/);
