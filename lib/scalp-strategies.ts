@@ -27,7 +27,7 @@ export type StrategyContext={
   // Optional authoritative CLOSED-M1 confirmation. Null explicitly disallows
   // the legacy same-candle wick detector from turning into a paper signal.
   sweepEvidence?:{side:'BUY'|'SELL';status:'CONFIRMED'|'PENDING'|'TRAP';extreme:number}|null;
-  obFvgEvidence?:{side:'BUY'|'SELL';phase:'RETEST_CONFIRMED';entryZone:{low:number;high:number}}|null
+  obFvgEvidence?:{side:'BUY'|'SELL';phase:'AWAIT_RETEST'|'RETEST_CONFIRMED'|'INVALIDATED'|'EXPIRED';entryZone:{low:number;high:number}}|null
 };
 export function detectScalpStrategies(x:StrategyContext):StrategyCandidate[]{
   const {last,prev,high,low,atr,body,trend1,trend5,f9,old9,mom,efficiency}=x;
