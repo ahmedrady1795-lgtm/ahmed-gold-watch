@@ -1163,3 +1163,110 @@ body:has(.modern-workspace){
   .sniper-decision-compact strong{font-size:11px!important}
   .sniper-decision-compact span{font-size:10px!important}
 }
+
+/* QANNAS 2026 terminal — deliberate visual hierarchy, without duplicating
+   signal cards. Use the same chart/ledger as before; presentation only. */
+body:has(.modern-workspace.compact-sniper){
+  background:radial-gradient(ellipse 1100px 530px at 52% -180px,#13334a 0%,transparent 68%),#060c14;
+  color:#e1edf4;
+}
+.modern-workspace.compact-sniper{max-width:1920px;margin-inline:auto;padding:9px clamp(6px,1.4vw,20px) 30px}
+.compact-sniper .forecast-visual-shell{
+  background:linear-gradient(140deg,rgba(15,34,50,.98),rgba(7,17,29,.99) 67%);
+  border:1px solid rgba(81,128,150,.44);
+  border-radius:18px;
+  box-shadow:0 24px 80px rgba(0,0,0,.31),inset 0 1px rgba(177,220,240,.07);
+}
+.compact-sniper .forecast-visual-shell:before{
+  height:2px;background:linear-gradient(90deg,transparent 0%,#4be4c5 28%,#69b7ef 65%,transparent 100%);opacity:.7;
+}
+.compact-sniper .forecast-visual-header{
+  min-height:61px;padding:10px 15px;gap:9px;background:rgba(5,16,27,.52);
+  border-bottom:1px solid rgba(112,157,179,.18);
+}
+.compact-sniper .forecast-visual-heading strong{
+  font-size:18px;letter-spacing:.1px;color:#f0f8fd;
+}
+.compact-sniper .forecast-visual-heading small{font-size:10px;letter-spacing:.2px;color:#8eb3c7}
+.compact-sniper .forecast-visual-mark{
+  width:36px;height:36px;border-radius:10px;background:#0d3440;border-color:#2a6673;color:#7aeada;
+}
+.compact-sniper .forecast-visual-status{
+  max-width:min(44vw,420px);overflow:hidden;text-overflow:ellipsis;
+  border-radius:99px;padding:7px 11px;background:#142b35;border-color:#34576c;
+}
+.compact-sniper .forecast-visual-tabs{border-radius:11px;background:#081a27;border-color:#294758}
+.compact-sniper .forecast-visual-tabs button{border-radius:8px;transition:background .18s,color .18s}
+.compact-sniper .forecast-visual-tabs button[aria-pressed=true]{
+  background:#174453;box-shadow:inset 0 0 0 1px #3d7d8b;color:#ccfff2;
+}
+.compact-sniper .forecast-visual-chart-wrap{
+  background:linear-gradient(150deg,#091826,#07111d 72%);
+  border-color:rgba(108,151,177,.23);
+  border-radius:13px;
+}
+.compact-sniper .forecast-visual-svg{
+  background:#081725;border-radius:10px;
+  filter:drop-shadow(0 8px 23px rgba(0,0,0,.13));
+}
+.compact-sniper .forecast-visual-topline{
+  border-bottom:1px solid rgba(115,166,186,.11);margin-bottom:7px;min-height:50px;
+}
+.compact-sniper .sniper-chart-live-quote b{
+  font-size:26px;font-weight:750;letter-spacing:.1px;color:#94ebf0;
+}
+.compact-sniper .forecast-chart-tools{gap:5px}
+.compact-sniper .forecast-chart-tools button{
+  min-height:35px;padding:6px 10px;border:1px solid #304e60;
+  border-radius:8px;background:#102532;color:#c8dae5;transition:background .18s,border-color .18s;
+}
+.compact-sniper .forecast-chart-tools button:hover{background:#1a3949;border-color:#64a1ac}
+.compact-sniper .forecast-chart-tools button[aria-pressed=true]{
+  background:#154a4b;color:#b9fbe8;border-color:#358f82;
+}
+.compact-sniper .sniper-decision-compact{
+  min-height:40px;background:rgba(11,31,43,.76);
+  border-bottom:1px solid rgba(107,156,169,.16);
+}
+.compact-sniper .sniper-decision-compact strong{font-size:13px;color:#e1edf5}
+.compact-sniper .sniper-decision-compact b{border-radius:50px;background:#292820;color:#e4d2ac}
+.compact-sniper .sniper-chart-key{padding:7px 8px 5px;color:#a5c0d0}
+.compact-sniper .sniper-chart-legend-drawer>summary{color:#82a8b9}
+.compact-sniper .sniper-price-snapshot{
+  border-top:1px solid rgba(121,176,189,.2);padding:8px 13px;gap:7px;
+  background:rgba(9,24,36,.67);
+}
+.compact-sniper .sniper-price-snapshot>span{border-radius:9px;background:#0d2830;border-color:#2b615e}
+.compact-sniper .sniper-price-snapshot-target b{font-size:16px;color:#80eab9}
+.compact-sniper .sniper-price-snapshot-stop{background:#251c2a!important;border-color:#725165!important}
+.compact-sniper .sniper-evidence-drawer,.compact-sniper .sniper-inspection{
+  border-radius:10px;border-color:rgba(87,132,153,.28);background:#0b1b29;
+}
+.compact-sniper .sniper-evidence-drawer>summary,.compact-sniper .sniper-inspection>summary{
+  color:#b3d1dd;
+}
+.compact-sniper .news-ticker-shell{
+  border-radius:11px;border-color:rgba(117,152,168,.4);
+  background:linear-gradient(95deg,#0c2531,#0a1925);
+  box-shadow:0 5px 19px rgba(0,0,0,.12);
+}
+.compact-sniper .news-ticker-line{min-height:43px}
+.compact-sniper .news-ticker-impact{color:#a9ebc9}
+.compact-sniper .sniper-data-health{margin:8px 9px}
+@media(max-width:760px){
+  .modern-workspace.compact-sniper{padding:5px 5px 24px}
+  .compact-sniper .forecast-visual-shell{border-radius:12px}
+  .compact-sniper .forecast-visual-header{padding:7px 9px;min-height:54px}
+  .compact-sniper .forecast-visual-heading strong{font-size:14px}
+  .compact-sniper .forecast-visual-heading small{font-size:9px}
+  .compact-sniper .forecast-visual-status{font-size:9px;max-width:100%;white-space:nowrap}
+  .compact-sniper .forecast-visual-topline{min-height:44px}
+  .compact-sniper .sniper-chart-live-quote b{font-size:20px}
+  .compact-sniper .forecast-chart-tools{
+    display:flex;overflow-x:auto;flex-wrap:nowrap;gap:4px;width:100%;scrollbar-width:thin;
+  }
+  .compact-sniper .forecast-chart-tools button{flex:0 0 auto;min-height:35px;padding:5px 9px;font-size:10px}
+  .compact-sniper .sniper-price-snapshot{padding:5px 7px}
+  .compact-sniper .sniper-price-snapshot-target b{font-size:13px}
+  .compact-sniper .news-ticker-line{min-height:39px}
+}
