@@ -47,6 +47,11 @@ assert.equal(buildSniperDecision({...input,c1:c1.filter((_,i)=>i!==138)}).status
 assert.notEqual(buildSniperDecision({...input,marketOpen:false}).status,'QUALIFIED_WATCH');
 assert.notEqual(buildSniperDecision({...input,externalBlockers:['BTC orderbook stale']}).status,'QUALIFIED_WATCH');
 assert.notEqual(buildSniperDecision({...input,plan:{...plan,status:'WATCH'}}).status,'QUALIFIED_WATCH');
+const emptyWatch={...plan,status:'WATCH',side:'WAIT',setup:'NONE',entry:null,stop:null,targets:[],netRR:null};
+const neutralObservation=buildSniperDecision({...input,plan:emptyWatch});
+assert.equal(neutralObservation.status,'WAIT','no setup is WATCH, not a corrupt market feed');
+assert.equal(neutralObservation.factors.find(x=>x.id==='SOURCE').result,'PASS',
+  'market quote freshness must be checked independently from missing plan targets');
 assert.ok(buildSniperDecision({...input,newsReady:false}).factors.some(x=>x.id==='NEWS'&&x.result==='WAIT'));
 assert.ok(buildSniperDecision({...input,plan:{...plan,setup:'SWEEP'}}).blockers.some(x=>x.includes('سحب السيولة')));
 assert.ok(buildSniperDecision({...input,plan:{...plan,setup:'OB_FVG',setupOriginId:'nonexistent'}}).blockers.some(x=>x.includes('OB/FVG')));
