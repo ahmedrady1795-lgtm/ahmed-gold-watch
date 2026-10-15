@@ -674,6 +674,15 @@ def frame_from_body(candles):
         "taker_buy_quote":[float(x.get("taker_buy_quote") or 0) for x in rows]
     },index=idx).sort_index()
     df=df[~df.index.duplicated(keep="last")]
+    # Fallback market data is useful only if recently CLOSED and continuous.
+    # Never substitute an old Coinbase frame for a new Binance prediction.
+    last=df.index[-1] if len(df) else None
+    now=pd.Timestamp.now(tz="UTC")
+    if last is None or last+pd.Timedelta(minutes=1)>now+pd.Timedelta(seconds=3) or now-(last+pd.Timedelta(minutes=1))>pd.Timedelta(minutes=3):
+        raise HTTPException(503,"fallback_m1_history_stale")
+    recent=df.index[-40:]
+    if len(recent)<40 or not (recent.to_series().diff().dropna()==pd.Timedelta(minutes=1)).all():
+        raise HTTPException(503,"fallback_m1_history_has_gaps")
     # Main-app fallback candles do not carry Binance taker fields: keep them neutral,
     # never synthesize directional flow.
     missing_micro=(df["quote_volume"]<=0).all() or (df["trades"]<=0).all()
@@ -809,6 +818,12 @@ def predict(body:PredictBody):
         live_error=f"{type(e).__name__}: {e}"
         live_source="main-app candle fallback · neutral micro"
         live_df=frame_from_body(body.candles)
+    # Upstream can return HTTP 200 with frozen candles; freshness is checked
+    # against source timestamps, not the time our HTTP request completed.
+    last_closed=live_df.index[-1] if len(live_df) else None
+    if last_closed is None or pd.Timestamp.now(tz="UTC")-(last_closed+pd.Timedelta(minutes=1))>pd.Timedelta(minutes=3):
+        return {"ok":False,"status":"STALE_FEED","reason":"live_m1_history_stale",
+                "liveSource":live_source,"liveError":live_error}
     f=build_features(live_df)
     if f.dropna(subset=M1_FEATURES).empty or f.dropna(subset=M5_FEATURES).empty:
         raise HTTPException(400,"insufficient feature history")
