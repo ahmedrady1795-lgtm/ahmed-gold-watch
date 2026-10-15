@@ -1,4 +1,5 @@
 import type {ScalpPlan,ScalpQuote} from './scalp-opportunities';
+import {requiredScalpNetR} from './scalp-risk-policy';
 
 export type ScalpEntryGateCode=
   'MARKET_BLOCKED'|'NO_SETUP'|'SETUP_QUALITY'|'TARGET_REACH'|'COST_UNVIABLE'|'STOP_OR_RISK'|
@@ -78,10 +79,11 @@ export function auditScalpEntry(
     return result(plan,'ENTRY_DRIFT','PRICE',
       'الاختراق تأكد لكن سعر التنفيذ ابتعد عن الدخول؛ انتظر إعادة اختبار آمنة',
       liveNetRR,distance,share);
+  const requiredR=requiredScalpNetR(plan);
   if(liveNetRR==null||!Number.isFinite(liveNetRR)||
-     liveNetRR<1.25||Number(plan.netRR)<1.25)
+     liveNetRR<requiredR||Number(plan.netRR)<requiredR)
     return result(plan,'NET_REWARD_TOO_LOW','COST',
-      'العائد الصافي الفعلي أقل من 1.25R عند السعر الحالي؛ تكلفة/سعر التنفيذ لا يبرران الدخول',
+      'العائد الصافي الفعلي أقل من '+requiredR.toFixed(2)+'R عند السعر الحالي؛ تكلفة/سعر التنفيذ لا يبرران الدخول',
       liveNetRR,distance,share);
   return result(plan,'READY','APPROVED','إشارة دخول ورقية مستوفية لتأكيد المستوى والتكلفة والوقف',
     liveNetRR,distance,share);
