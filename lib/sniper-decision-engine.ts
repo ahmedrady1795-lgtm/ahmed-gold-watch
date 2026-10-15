@@ -34,8 +34,14 @@ export function buildSniperDecision(input:{
   const numbersValid=money.every(v=>v!=null&&Number.isFinite(Number(v)))&&
     Number(quote.price)>0&&Number(plan.entry)>0&&Number(plan.stop)>0&&
     Number(plan.targets[0]?.price)>0&&Number(plan.cost)>=0;
-  const quoteOk=numbersValid&&Number(quote.at)<=now+1000&&
-    now-Number(quote.at)>=0&&now-Number(quote.at)<=10000;
+  // A WATCH-only observation need not have entry/stop/TP levels yet.
+  // Quote freshness is independent of plan geometry; otherwise a valid
+  // market feed gets incorrectly labeled BLOCKED when there is no setup.
+  const quoteOk=quote.price!=null&&quote.at!=null&&
+    Number.isFinite(Number(quote.price))&&Number(quote.price)>0&&
+    Number.isFinite(Number(quote.at))&&Number(quote.at)>0&&
+    Number(quote.at)<=now+1000&&now-Number(quote.at)>=0&&
+    now-Number(quote.at)<=10000;
   factor('SOURCE',quoteOk?'PASS':'FAIL','السعر أو التوقيت غير حديث/غير صالح لتأهيل القنص');
   const frame=(rows:readonly Candle[],ms:number,maxAge:number)=>{
     if(!Array.isArray(rows))return false;
