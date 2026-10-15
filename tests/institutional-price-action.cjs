@@ -78,7 +78,7 @@ const chart=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 assert.match(scalp,/activeStructureRetest\(structureScan,now,90000\)/);
 assert.match(scalp,/obFvgEvidence:obFvgRetest/);
 assert.match(scalp,/chosen\.setup==='OB_FVG'\?3/);
-assert.match(scalp,/targets\[0\]\?\.kind!=='STRUCTURE'\|\|rr==null\|\|rr<3/);
+assert.match(scalp,/targets\\[0\\]\\?\\.kind!=='STRUCTURE'\\|\\|netRUnrounded==null\\|\\|netRUnrounded<3/);
 assert.match(scalp,/obFvgRetest\.invalidation/);
 assert.match(scalp,/sameActiveStructureEvent/);
 assert.match(scalp,/liveNetRR>=\(previous\.setup==='OB_FVG'\?3:1\.25\)/);
