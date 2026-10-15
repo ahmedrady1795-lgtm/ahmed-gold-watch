@@ -20,11 +20,14 @@ export function certifyHoldout(metrics:any,providerReady:boolean):Verdict{
   const n=Math.floor(positive(metrics?.n)),selected=Math.floor(positive(metrics?.selectiveN));
   const accuracy=rate(metrics?.selectiveAccuracy),coverage=rate(metrics?.selectiveCoverage);
   const lower=accuracy!=null&&selected>0?wilsonLowerBound(accuracy*selected,selected):0;
+  const baseline=rate(metrics?.pairedBaselineAccuracy);
+  const coverageConsistent=coverage!=null&&n>0&&Math.abs(coverage-selected/n)<=.025;
   let reason='';
   if(!providerReady)reason='Provider has not qualified independent model validation';
   else if(n<120||selected<80||selected>n)reason='Not enough independent out-of-sample directional decisions';
   else if(accuracy==null||coverage==null||coverage<.10)reason='Holdout accuracy or trade coverage is unavailable/too low';
-  else if(lower<=.50)reason='95% Wilson lower bound does not exceed a 50% direction baseline';
+  else if(!coverageConsistent)reason='Holdout selective coverage and sample counts disagree';
+  else if(lower<=Math.max(.50,baseline??.50))reason='95% Wilson bound has not demonstrated a directional edge over the paired baseline';
   return {ready:reason==='',status:reason?'SHADOW':'QUALIFIED',reason:reason||'Independently sampled and statistically qualified; not a profit guarantee',
     oosSamples:n,selectiveSamples:selected,selectiveAccuracy:accuracy??0,
     selectiveCoverage:coverage??0,wilsonLower:Number(lower.toFixed(4))};
@@ -39,10 +42,18 @@ export function certifyMlResponse(input:any){
     const verdict=certifyHoldout(horizon.metrics?.ensemble,Boolean(horizon.ready));
     if(Boolean(horizon.ready)&&!verdict.ready)anyBlocked=true;
     result[key]={...horizon,ready:verdict.ready,
+      side:verdict.ready&&(horizon.side==='BUY'||horizon.side==='SELL')?horizon.side:'WAIT',
       certification:verdict,reason:verdict.ready?horizon.reason:verdict.reason};
   }
+  // Aggregate recommendations are advisory, not a loophole around individual
+  // horizon certification or an unavailable/abstaining direction.
+  const m1=result.oneMinute,m5=result.fiveMinute;
+  const pair=Boolean(m1?.ready&&m5?.ready&&m1.side!=='WAIT'&&m1.side===m5.side);
+  result.consensus={...input.consensus,ready:pair,
+    side:pair?m1.side:'WAIT',aligned:pair,
+    confidence:pair?Math.min(89,Number(input.consensus?.confidence||0)):0};
   // Keep directional ML in SHADOW unless its individual M1/M5 horizon qualifies.
-  if(anyBlocked){result.status='SHADOW';result.shadow=true;}
+  if(anyBlocked||!pair){result.status='SHADOW';result.shadow=true;}
   return result;
 }
 export function certifyNeuralResponse(input:any){
@@ -52,7 +63,9 @@ export function certifyNeuralResponse(input:any){
   const verdict=certifyHoldout(input.metrics?.holdout,Boolean(input.ready)&&fresh);
   const reason=!fresh?'Neural inference snapshot age missing, invalid, or older than 45 seconds':verdict.reason;
   return {...input,ready:verdict.ready&&fresh,
-    side:verdict.ready&&fresh?input.side:'WAIT',
+    side:verdict.ready&&fresh&&(input.side==='BUY'||input.side==='SELL')?input.side:'WAIT',
+    pricePath:verdict.ready&&fresh?input.pricePath:
+      input.pricePath?{...input.pricePath,ready:false,side:'WAIT',status:'SHADOW'}:input.pricePath,
     status:verdict.ready&&fresh?input.status:'SHADOW',
     certification:{...verdict,ready:verdict.ready&&fresh,reason},reason:verdict.ready&&fresh?input.reason:reason};
 }
