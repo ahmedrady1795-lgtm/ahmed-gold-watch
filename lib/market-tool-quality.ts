@@ -9,7 +9,8 @@ type Probe={id:string;category:string;ok:boolean;value:number|null;unit:string|n
 const finite=(v:unknown)=>typeof v==='number'&&Number.isFinite(v);
 export function freshEvidence(data:any,now:number,maxAgeMs=8000):boolean{
   if(!data||data.available===false||data.ok===false)return false;
-  const raw=Number(data.sourceAt??data.checkedAt??data.sourceTime??data.receivedAt??NaN);
+  const stamp=data.sourceAt??data.checkedAt??data.sourceTime??data.receivedAt??NaN;
+  const raw=typeof stamp==='string'&&!Number.isFinite(Number(stamp))?Date.parse(stamp):Number(stamp);
   if(!Number.isFinite(raw)||raw<=0||!Number.isFinite(now))return false;
   const at=raw>=1e9&&raw<1e11?raw*1000:raw;
   return at<=now+2000&&now-at<=maxAgeMs;
