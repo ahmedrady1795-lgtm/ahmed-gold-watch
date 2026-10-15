@@ -18,14 +18,6 @@ export type ScalpPlan={
 const n=(v:unknown)=>v==null||v===''?null:Number.isFinite(Number(v))?Number(v):null;
 const round=(v:number)=>Number(v.toFixed(2));
 const mean=(v:number[])=>v.reduce((s,x)=>s+x,0)/Math.max(1,v.length);
-// Empirical one-bar price reach is a ceiling on target feasibility, not a
-// probability of profit. Never use future/partial candles for this estimate.
-function quantile(values:number[],fraction:number){
-  const sorted=values.filter(v=>Number.isFinite(v)&&v>=0).sort((a,b)=>a-b);
-  if(!sorted.length)return null;
-  const idx=(sorted.length-1)*fraction,lo=Math.floor(idx),hi=Math.ceil(idx);
-  return sorted[lo]+(sorted[hi]-sorted[lo])*(idx-lo);
-}
 // Keep a qualified, time-limited setup alive across its first following M1
 // close. Otherwise a required 60-second hold can never complete.
 const pendingSetups=new Map<string,ScalpPlan>();
@@ -47,6 +39,7 @@ function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number):Sca
   const sideAligned=Boolean(previous&&
     (plan.side==='WAIT'||plan.side===previous.side)&&currentTrendOK);
   const explicitRiskVeto=plan.blockers.some(b=>
+    b.includes('لا توجد 30 نافذة حركة لاحقة')||
     b.includes('الهدف أبعد من الحركة المواتية')||
     b.includes('التكلفة كبيرة بالنسبة لتذبذب الفريم')||
     b.includes('جودة اختراق M5'));
