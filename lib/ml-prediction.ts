@@ -13,10 +13,28 @@ export type MlPrediction={
   shadow?:boolean;reason?:string;latencyMs?:number;
 };
 
-let cache:{at:number;value:MlPrediction}|null=null;
+let cache:{at:number;key:string;value:MlPrediction}|null=null;
 
-function closedM1(c:Candle[],now:number){
-  return c.filter(x=>x.time+60000<=now).slice(-420);
+// Verify a continuous, closed, reasonably fresh M1 window before requesting
+// any neural/boosted model inference. A good HTTP response is not market proof.
+export function prepareMlCandles(c:Candle[],now:number){
+  const unique=new Map<number,Candle>();
+  for(const x of Array.isArray(c)?c:[]){
+    const t=Number(x?.time),o=Number(x?.open),h=Number(x?.high),
+      l=Number(x?.low),close=Number(x?.close);
+    if(![t,o,h,l,close].every(Number.isFinite)||t<=0||t%60000!==0||
+      l<=0||h<Math.max(o,close)||l>Math.min(o,close)||
+      t+60000>now)continue;
+    unique.set(t,x);
+  }
+  const rows=[...unique.values()].sort((a,b)=>a.time-b.time).slice(-420);
+  const last=rows.at(-1);
+  if(rows.length<220||!last)return {ready:false,rows:[] as Candle[],reason:'insufficient valid closed M1 history'};
+  if(now-(last.time+60000)>120000)return {ready:false,rows:[] as Candle[],reason:'stale BTC M1 history'};
+  const tail=rows.slice(-40);
+  if(tail.some((x,i)=>i>0&&x.time-tail[i-1].time!==60000))
+    return {ready:false,rows:[] as Candle[],reason:'gapped M1 history near inference'};
+  return {ready:true,rows,reason:''};
 }
 function volume(c:Candle){
   const x=Number(c.realVolume??c.tickVolume??0);
@@ -24,11 +42,13 @@ function volume(c:Candle){
 }
 
 export async function getMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPrediction>{
-  if(cache&&now-cache.at<4000)return cache.value;
   const url=String(process.env.ML_ENGINE_URL||'').trim();
   if(!url)return {ok:false,status:'DISABLED',reason:'ML_ENGINE_URL missing',shadow:true};
-  const rows=closedM1(c1,now);
-  if(rows.length<220)return {ok:false,status:'WAIT',reason:'insufficient M1 history',shadow:true};
+  const candleCheck=prepareMlCandles(c1,now);
+  if(!candleCheck.ready)return {ok:false,status:'WAIT',reason:candleCheck.reason,shadow:true};
+  const rows=candleCheck.rows,last=rows.at(-1)!;
+  const cacheKey=last.time+'|'+last.close+'|'+rows.length;
+  if(cache&&now-cache.at<4000&&cache.key===cacheKey)return cache.value;
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),3500);
   const started=Date.now();
@@ -45,7 +65,7 @@ export async function getMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPred
       return {ok:false,status:'ERROR',reason:'ML HTTP '+r.status,shadow:true,latencyMs:Date.now()-started};
     }
     const out:MlPrediction={...certifyMlResponse(j),latencyMs:Date.now()-started};
-    cache={at:now,value:out};
+    cache={at:now,key:cacheKey,value:out};
     return out;
   }catch(e){
     return {ok:false,status:'UNAVAILABLE',reason:e instanceof Error?e.message:'ml unavailable',shadow:true,latencyMs:Date.now()-started};
