@@ -2,6 +2,7 @@
 import {useEffect,useState} from 'react';
 import {Clock3,Newspaper} from 'lucide-react';
 import {economicNewsTimeline} from '../lib/news-alert-window';
+import {classifyMacroNews} from '../lib/news-impact-outlook';
 
 function timeLeft(ts:number,now:number){
   const minutes=Math.max(0,Math.ceil((ts-now)/60000));
@@ -68,7 +69,19 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
   const next=alerts[0];
   // The featured release is already prominent above; do not repeat it below.
   const remainingAlerts=alerts.filter(e=>e!==highlighted);
-  return <section className="panel newscommand standalone-news home-news-compact" aria-label="أخبار الاقتصاد خلال 8 ساعات">
+  const outlook=classifyMacroNews(highlighted?.name);
+  return <details className="news-ticker-shell" aria-label="الأخبار وتأثيرها المحتمل خلال 8 ساعات">
+    <summary className="news-ticker-line" title={highlighted?outlook.disclaimer:'متابعة أهم أخبار الثماني ساعات'}>
+      <span className="news-ticker-tag">أخبار 8س</span>
+      <span className="news-ticker-countdown">{highlighted?'بعد '+timeLeft(Number(highlighted.time),now):error?'التحديث متأخر':'لا أخبار قادمة'}</span>
+      <strong className="news-ticker-title">{highlighted?.name||'لا يوجد حدث اقتصادي مؤكد خلال 8 ساعات'}</strong>
+      {highlighted&&<span className="news-ticker-forecast">توقع: {String(highlighted.forecast||'غير متوفر')}</span>}
+      {highlighted&&<span className={'news-ticker-impact '+(outlook.kind==='UNCERTAIN'?'news-ticker-uncertain':'')}>
+        {outlook.higher} <span className="news-ticker-divider">/</span> {outlook.lower}
+      </span>}
+      <span className="news-ticker-expand">التفاصيل ▾</span>
+    </summary>
+    <div className="panel newscommand standalone-news home-news-compact news-ticker-details">
     <header className="standalone-news-head">
       <div><span className="eyebrow">NEWS · 8H · UAE</span>
         <h2><Newspaper size={16}/> رادار الأخبار</h2></div>
@@ -96,5 +109,7 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
         {e.name}: الفعلي {e.actual||'—'} · المتوقع {e.forecast||'—'}
       </span>)}</div>
     </details>}
-  </section>;
+    <p className="news-ticker-caveat">{outlook.disclaimer}</p>
+    </div>
+  </details>;
 }
