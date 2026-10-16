@@ -43,6 +43,16 @@ sell[59]={...sell[59],open:99.83,high:100.2,low:99.45,close:99.6};
 const sellEvidence=active(detect(sell,now),now);
 assert.equal(sellEvidence?.side,'SELL','opposite-side geometry must be symmetric');
 assert.ok(sellEvidence.invalidation>sellEvidence.extreme);
+// Regression: a confirmed sweep must be revoked when a later, fully
+// closed M1 breaches the ORIGINAL invalidation wick. The forming M1 does not count.
+const buyRevoked=[...buy,{time:now,open:100.4,high:100.55,low:98.1,close:99.6}];
+const invalidated=detect(buyRevoked,now+60000).events.find(e=>e.sweepAt===buy[58].time&&e.side==='BUY');
+assert.equal(invalidated?.status,'TRAP');
+assert.equal(active(detect(buyRevoked,now+60000),now+60000),null);
+const buyForming=detect(buyRevoked,now);
+assert.equal(buyForming.events.find(e=>e.sweepAt===buy[58].time&&e.side==='BUY')?.status,'CONFIRMED');
+const sellRevoked=[...sell,{time:now,open:99.6,high:101.9,low:99.3,close:100.9}];
+assert.equal(detect(sellRevoked,now+60000).events.find(e=>e.sweepAt===sell[58].time&&e.side==='SELL')?.status,'TRAP');
 const bad=buy.map(c=>({...c}));bad.splice(-4,1);
 assert.equal(detect(bad,now).reason,'M1_GAP');
 assert.equal(detect(buy,now+4*60000).reason,'STALE_M1');
