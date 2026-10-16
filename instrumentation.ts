@@ -19,6 +19,19 @@ export async function register(){
   scalpTimer.unref?.();
 
   const port=process.env.PORT||'3000';
+  // Observation has its own bounded serial loop; a slow inference cycle
+  // must not stop recording closed-candle target outcomes while UI is closed.
+  const observe=async()=>{
+    try{
+      const r=await fetch('http://127.0.0.1:'+port+'/api/chart-history',{
+        cache:'no-store',signal:AbortSignal.timeout(25000)});
+      if(!r.ok)console.warn('[SNIPER-OBSERVE] HTTP',r.status);
+      await r.arrayBuffer();
+    }catch(e){console.warn('[SNIPER-OBSERVE]',e instanceof Error?e.message:'unavailable');}
+    finally{const next=setTimeout(()=>{void observe();},30000);next.unref?.();}
+  };
+  const observationStart=setTimeout(()=>{void observe();},3000);
+  observationStart.unref?.();
   // Mark this as an internal worker, not a manual browser refresh.
   const url='http://127.0.0.1:'+port+'/api/ai-analysis?worker=1';
   let running=false;

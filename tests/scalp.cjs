@@ -322,9 +322,9 @@ assert.ok(m5BreakoutPlan.stop<3999.9,
 assert.ok(m5BreakoutPlan.evidence.some(e=>e.label==='وقف خلف شمعة الاختراق'),
   'UI evidence must explain structural stop rather than high setup score');
 const buy=plans[0];assert.equal(buy.side,'BUY');assert.ok(['ARMED','WATCH'].includes(buy.status),'Conservative eligibility guards can block an otherwise valid directional setup');
-assert.ok(buy.entry>4000.45);assert.ok(buy.stop<buy.entry);assert.ok(buy.targets[0].price>buy.entry);assert.ok(buy.targets[1].price>buy.targets[0].price);assert.ok(buy.targets[2].price>buy.targets[1].price);assert.ok(buy.netRR>=1.25);
+assert.ok(buy.entry>4000.45);assert.ok(buy.stop<buy.entry);assert.equal(buy.status,'WATCH');assert.equal(buy.targets.length,0,'quiet history cannot support fee-inflated scalp targets');assert.equal(buy.netRR,null);
 const reflected=breakout();reflected.c1=reflected.c1.map(c=>({...c,open:8000-c.open,close:8000-c.close,high:8000-c.low,low:8000-c.high}));reflected.quote={...reflected.quote,price:3999.55,bid:3999.54,ask:3999.555};
-const sell=buildScalpPlans(reflected)[0];assert.equal(sell.side,'SELL');assert.ok(sell.stop>sell.entry);assert.ok(sell.targets[2].price<sell.targets[1].price&&sell.targets[1].price<sell.targets[0].price);
+const sell=buildScalpPlans(reflected)[0];assert.equal(sell.side,'SELL');assert.ok(sell.stop>sell.entry);assert.equal(sell.targets.length,0,'SELL obeys the same horizon cap');
 assert.equal(buildScalpPlans(input())[0].side,'WAIT','Flat market must not invent an opportunity');
 for(const change of [x=>x.quote.at=now-16000,x=>x.quote.price=null,x=>x.marketOpen=false,x=>x.candleSource='COMEX GC=F proxy',x=>x.c1.splice(-5,1),x=>x.c1.push({...x.c1.at(-1),time:now+60000}),x=>x.c1.at(-1).high=NaN,x=>x.events=[{importance:3,exactTime:true,time:now+60000,name:'CPI'}]]){
  const x=breakout();change(x);assert.equal(buildScalpPlans(x)[0].status,'BLOCKED');
@@ -362,7 +362,7 @@ assert.equal(expiredWithoutPrice.netR,null,'Unknown outcomes must never be wins'
 console.log('PASS: exact time expiry, no look-ahead, barrier at expiry and unknown stale outcomes.');
 const ambiguous={...activated,activatedAt:now,lastAt:now,lastPrice:100};const bar={time:now,open:100,close:101,high:103,low:98};
 assert.equal(advancePaperTrade(ambiguous,quote(101,now+61000),now+61000,[bar]).state,'STOP','If target and stop share a bar, use stop first');
-const testArmedPlan={...buy,status:'ARMED'};
+const testArmedPlan={...buy,status:'ARMED',targets:[{price:buy.entry+3,kind:'PROJECTION'}],netRR:2};
 const frozen=updateScalpLedger('GOLD',[testArmedPlan],breakout().quote,now,breakout().c1);const changed={...testArmedPlan,entry:buy.entry+10,targets:[{price:9999,kind:'PROJECTION'}]};
 const repeated=updateScalpLedger('GOLD',[changed],quote(4000.45,now+1000),now+1000,breakout().c1);assert.equal(repeated.lanes[0].current.plan.entry,frozen.lanes[0].current.plan.entry);assert.equal(repeated.lanes[0].stats.samples,0,'Unactivated setups do not count as trades');
 console.log('PASS: 27 scalp checks: buy/sell geometry, closed bars, bad data, costs, news, expiry, activation, frozen levels, stop slippage and conservative outcomes. Profitability is not established.');

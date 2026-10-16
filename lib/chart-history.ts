@@ -26,7 +26,7 @@ export function closedChartBars(rows:unknown,periodMs:number,now:number,limit=26
 }
 export function chartAssetFromMarket(market:any,now:number){
   if(!market)return null;
-  const chartCandles=closedChartBars(market.c1,60000,now);
+  const chartCandles=closedChartBars(market.c1,60000,now,600);
   const chartHigherFrames={
     m5:closedChartBars(market.c5,300000,now,110),
     m15:closedChartBars(market.c15,900000,now,160),

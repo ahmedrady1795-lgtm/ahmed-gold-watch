@@ -146,6 +146,22 @@ export function updateStructuralWatchFromChart(payload:any,now=Date.now()){
   let changed=false;
   for(const asset of ['GOLD','BTC'] as const){
     const x=asset==='GOLD'?payload?.gold:payload?.bitcoin;
+    if(!Array.isArray(x?.chartCandles)||!x.chartCandles.length)continue;
+    // Settle every saved entry independently of inference and live-price
+    // freshness. Historical closed bars can establish outcomes during sleep.
+    const state=load();
+    state.scenarios=state.scenarios.map(r=>{
+      if(r.asset!==asset||r.status!=='ACTIVE')return r;
+      const next=advanceScenario(r,x?.chartCandles,now);
+      if(JSON.stringify(next)!==JSON.stringify(r)){dirty=true;changed=true;}
+      return next;
+    });
+    state.watch[asset].records=state.watch[asset].records.map(r=>{
+      if(r.status!=='ACTIVE')return r;
+      const next=advanceScenario(r,x?.chartCandles,now);
+      if(JSON.stringify(next)!==JSON.stringify(r)){dirty=true;changed=true;}
+      return next;
+    });
     const last=x?.chartCandles?.at(-1),price=Number(last?.close),closedAt=Number(last?.time||0)+60000;
     if(!last||!Number.isFinite(price)||price<=0||closedAt>now||now-closedAt>90000)continue;
     const previous=load().watch[asset];
@@ -193,10 +209,11 @@ export function getSniperAudit(now=Date.now()){
   // The persisted flag is true only after an actual /data read or write.
   const show=(asset:Asset)=>{
     const entry=latest(state,asset);
-    return entry&&now-entry.startedAt<=8*3600000?entry:null;
+    return entry&&!entry.recoveryPending&&now-entry.startedAt<=8*3600000?entry:null;
   };
   const records=state.scenarios;
-  return {ok:true,version:1,persistence:persisted?'VOLUME':'NOT_DURABLE',
+  const durable=persisted&&(!process.env.RENDER||Boolean(process.env.RENDER_DISK_MOUNT_PATH));
+  return {ok:true,version:1,persistence:durable?'VOLUME':'NOT_DURABLE',
     updatedAt:state.updatedAt,
     current:{GOLD:show('GOLD'),BTC:show('BTC')},
     metrics:{GOLD:scorecard(records,'GOLD'),BTC:scorecard(records,'BTC')},

@@ -10,6 +10,7 @@ export type Scenario={
   resolvedAt:number|null;resolvedPrice:number|null;bestFavorableR:number;worstAdverseR:number;
   note:string;processedBars:number
   purpose?:'SCENARIO'|'OBSERVATION';
+  recoveryPending?:boolean;
 };
 export type Bar={time:number;open:number;high:number;low:number;close:number};
 const n=(v:unknown):number|null=>v!=null&&v!==''&&Number.isFinite(Number(v))?Number(v):null;
@@ -60,7 +61,7 @@ const crossed=(side:Dir,price:number,high:number,low:number)=>
 const badStop=(side:Dir,stop:number,high:number,low:number)=>
   side==='BUY'?low<=stop:high>=stop;
 function finish(r:Scenario,status:AuditStatus,at:number,price:number|null,note:string){
-  r.status=status;r.resolvedAt=at;r.resolvedPrice=price;r.note=note;
+  r.status=status;r.resolvedAt=at;r.resolvedPrice=price;r.note=note;r.recoveryPending=false;
 }
 export function advanceScenario(previous:Scenario,raw:any,now:number):Scenario{
   const s:Scenario={...previous,targets:previous.targets.map(x=>({...x}))};
@@ -75,6 +76,7 @@ export function advanceScenario(previous:Scenario,raw:any,now:number):Scenario{
     if(s.lastBarOpen==null&&b.time-s.startedAt>120000){
       finish(s,'UNOBSERVED',now,null,'تاريخ الشموع ناقص منذ بدء السيناريو');return s;
     }
+    s.recoveryPending=false;
     const risk=Math.abs(s.entry-s.stop);
     const favorable=s.side==='BUY'?b.high-s.entry:s.entry-b.low;
     const adverse=s.side==='BUY'?s.entry-b.low:b.high-s.entry;

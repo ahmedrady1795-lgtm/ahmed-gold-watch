@@ -44,6 +44,7 @@ function stableCandidate(plan:ScalpPlan,now:number,quote:number,cost:number,acti
   const explicitRiskVeto=plan.blockers.some(b=>
     b.includes('لا توجد 30 نافذة حركة لاحقة')||
     b.includes('الهدف أبعد من الحركة المواتية')||
+    b.includes('لا يوجد هدف مناسب لمدة الصفقة')||
     b.includes('التكلفة كبيرة بالنسبة لتذبذب الفريم')||
     b.includes('جودة اختراق M5')||
     b.includes('OB/FVG')||b.includes('1:3'));
@@ -179,13 +180,15 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       const entry=round(edge+dir*atr*.12);
       const risk=Math.max(rangeAtr*(horizon===1?.82:.75),cost*1.85,Math.abs(entry-f21)*.50);
       const move=Math.max(risk*1.75+cost*2.2,rangeAtr*(horizon===1?1.6:1.8));
+      const reach=observedForwardReach(a,trend1,horizon);
+      const cap=reach.samples>=30?(horizon===1?reach.favorableP55:reach.favorableP75):null;
       // Never fabricate breakout levels if even M5 volatility cannot cover
       // projected round-trip fees, stop and target at their expected horizon.
-      if(risk>rangeAtr*(horizon===1?1.8:1.7)||
+      if(cap==null||move>cap||risk>rangeAtr*(horizon===1?1.8:1.7)||
          move>rangeAtr*(horizon===1?2.6:2.7))
         return stableCandidate(plan,now,p!,cost,obFvgRetest);
       const stop=round(entry-dir*risk);
-      const targets=[1,1.5,2].map(k=>({price:round(entry+dir*move*k),kind:'PROJECTION' as const}));
+      const targets=[1,1.5,2].filter(k=>move*k<=cap).map(k=>({price:round(entry+dir*move*k),kind:'PROJECTION' as const}));
       const netRR=round((move-cost)/(risk+cost));
       const trigger=trend1==='BUY'?'إغلاق M1 فوق':'إغلاق M1 تحت';
       const watch:ScalpPlan={
@@ -250,8 +253,26 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     const targetNetR=chosen.setup==='OB_FVG'?3:chosen.setup==='RETEST'?1.65:activeGoldM5?1.30:1.45;
     const minReward=Math.max(risk*targetNetR+cost*(targetNetR+1),cost*3);
     const maxRisk=rangeAtr*(horizon===1?1.6:1.65);
+    const forwardReach=observedForwardReach(a,chosen.side,horizon);
+    const empiricalReach=forwardReach.samples>=30
+      ?(horizon===1?forwardReach.favorableP55:forwardReach.favorableP75):null;
+    const targetCap=Math.min(maxMove,empiricalReach==null?0:empiricalReach*(horizon===1?1:1.15));
+    // A fee-inflated minimum cannot be turned into a distant scalp target.
+    // Keep the actual structural stop and required net R; withhold levels
+    // when no feasible objective exists inside this holding period.
+    if(minReward>targetCap||risk>maxRisk){
+      const reason=empiricalReach==null?'لا توجد 30 نافذة حركة لاحقة متصلة لتأكيد إمكانية الوصول للهدف':
+        'لا يوجد هدف مناسب لمدة الصفقة يغطي الوقف والتكلفة؛ انتظار حركة أو تكلفة أفضل';
+      return {...plan,id:asset+'-'+horizon+'-'+last.time+'-'+chosen.setup+'-'+chosen.side,
+        side:chosen.side,setup:chosen.setup,score:chosen.score,status:'WATCH' as const,
+        entry,stop,
+        blockers:[reason],reason,trigger:'انتظار إعداد قابل للتنفيذ داخل مدى الفريم',
+        evidence:[...plan.evidence,{label:goldM5Breakout?'وقف خلف شمعة الاختراق':'إبطال الإعداد',side:'WAIT' as const,value:String(stop)},
+          {label:'حد الحركة المواتية للفريم',side:'WAIT' as const,
+          value:round(targetCap)+' $ · لا تُوسّع الأهداف لتغطية التكلفة'}]};
+    }
     const pivots=[...a.slice(-60),...(horizon===5?b.slice(-24):[])].map(c=>chosen.side==='BUY'?c.high:c.low)
-      .filter(x=>dir*(x-entry)>=minReward&&dir*(x-entry)<=maxMove)
+      .filter(x=>dir*(x-entry)>=minReward&&dir*(x-entry)<=targetCap)
       .sort((x,y)=>dir*(x-y));
     const first=pivots[0];
     const reward=first==null?minReward:dir*(first-entry);
@@ -260,6 +281,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       const lastDistance=dir*(targets[j-1].price-entry);
       const structural=pivots.find(x=>dir*(x-entry)>lastDistance+atr*.3);
       const distance=structural==null?lastDistance+Math.max(atr*.45,risk*.5):dir*(structural-entry);
+      if(distance>targetCap)break;
       targets.push({price:round(entry+dir*distance),kind:structural==null?'PROJECTION':'STRUCTURE'});
     }
     const actualRisk=dir*(entry-stop),actualReward=dir*(targets[0].price-entry);
@@ -316,9 +338,6 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     // Both assets and BOTH horizons must use movement strictly AFTER a
     // historical closed-candle entry. Same-bar open-to-extreme sampling used
     // to overstate reachable BTC M5 and GOLD/BTC M1 objectives.
-    const forwardReach=observedForwardReach(a,chosen.side,horizon);
-    const empiricalReach=forwardReach.samples>=30
-      ?(horizon===1?forwardReach.favorableP55:forwardReach.favorableP75):null;
     if(empiricalReach==null){
       reasons.push('لا توجد 30 نافذة حركة لاحقة متصلة لتأكيد إمكانية الوصول للهدف');
     }else if(actualReward>empiricalReach*(horizon===1?1:1.15)){

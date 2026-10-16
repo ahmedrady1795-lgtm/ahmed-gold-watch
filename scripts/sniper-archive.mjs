@@ -45,9 +45,10 @@ export function mergeArchives(previous,current,now=Date.now()){
 }
 export function restoredState(input,now=Date.now()){
   const archive=cleanArchive(input,now);
-  // A checkpoint is not continuous market coverage. Never score downtime as a loss/win.
-  const records=archive.records.map(r=>r.status==='ACTIVE'?{...r,status:'UNOBSERVED',resolvedAt:now,resolvedPrice:null,
-    lastCheckedAt:now,note:'استُعيد بعد توقف المتابعة؛ النتيجة غير محسومة ومستبعدة من النسب'}:r);
+  // Preserve the original levels/cursor for closed-candle replay. A restored
+  // record is pending evidence, never an actionable signal or a scored win.
+  const records=archive.records.map(r=>r.status==='ACTIVE'?{...r,recoveryPending:true,
+    note:'استُعيد للمراجعة؛ انتظار شموع متصلة لتحديد النتيجة'}:r);
   const watch=asset=>({state:null,bias:null,updatedAt:0,modelAt:0,rearmAfterM15:0,
     records:records.filter(r=>r.purpose==='OBSERVATION'&&r.asset===asset).slice(-600)});
   return {version:1,scenarios:records.filter(r=>r.purpose!=='OBSERVATION').slice(-600),updatedAt:0,

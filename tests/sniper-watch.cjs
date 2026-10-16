@@ -146,4 +146,20 @@ assert.equal(JSON.stringify(coldAudit.watch.BTC.state),frozen,'same completed M1
 coldAudit=coldStore.updateStructuralWatchFromChart(chartOnly,at+91000);
 assert.equal(coldAudit.watch.BTC.bias.active,false,'old candles cannot keep observation active');
 console.log('PASS: inference-independent closed-candle watch remains observation-only and timestamp bounded');
+// A restarted inference process must not strand older active entry records.
+const recovering=[1,2].map(i=>({...startScenario({asset:'BTC',side:'BUY',at,
+  modelAt:at,price:100,stop:99,confidence:70,targets:[{stage:1,price:102,
+  low:102,high:102,quality:75,kind:'STRUCTURAL'}]}),id:'recover-'+i,recoveryPending:true}));
+const savedAudit=JSON.parse(coldFiles.get('/data/predator-sniper-audit-v1.json'));
+savedAudit.scenarios=recovering;
+coldFiles.set('/data/predator-sniper-audit-v1.json',JSON.stringify(savedAudit));
+const recoveringStore=loader(coldFs)('lib/sniper-audit-store.ts');
+assert.equal(recoveringStore.getSniperAudit(at).current.BTC,null,'restored entry is not actionable before replay');
+recoveringStore.updateStructuralWatchFromChart({bitcoin:null},at+3600000);
+assert.equal(recoveringStore.getSniperAudit(at).metrics.BTC.unobserved,0,'provider failure does not prematurely discard pending replay');
+const replay=recoveringStore.updateStructuralWatchFromChart({bitcoin:{chartCandles:[bar(0,99.5),bar(1,99.5,103)]}},at+600000);
+assert.equal(replay.metrics.BTC.completed,2,'settle all saved entries from closed bars even when latest candle is stale');
+assert.equal(replay.metrics.BTC.unobserved,0);
+assert.equal(replay.watch.BTC.bias.active,false,'historical settlement cannot refresh a live bias');
+console.log('PASS: restart pending state, missing provider, all-entry replay and stale-market separation');
 assert.equal(ephemeralReader({...transient,updatedAt:at+700,watch:{BTC:{...transient.watch.BTC,updatedAt:at+700,modelAt:at+700}}},'BTC',at,true).fresh,true,'subsecond response publication must not flicker while the UI clock catches up');
