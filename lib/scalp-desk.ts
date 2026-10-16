@@ -87,7 +87,7 @@ export async function getScalpDesk(){
         const issues:string[]=[];
         if(plan.status==='ARMED'&&asset==='BTC'){
           if(!bookFresh)issues.push('دفتر أوامر BTC غير موثوق أو متأخر؛ متابعة فقط');
-          if(orderBook?.integrity?.blockedSides?.includes(plan.side))
+          if((plan.side==='BUY'||plan.side==='SELL')&&orderBook?.integrity?.blockedSides?.includes(plan.side))
             issues.push('تحذير سلامة السيولة: '+(orderBook.integrity.reasons[0]||'تعارض أو تراجع في عمق السوق'));
           else if(orderBook?.side!=='WAIT'&&orderBook?.side!==plan.side&&Number(orderBook?.strength||0)>=59)
             issues.push('تدفق سيولة BTC يعاكس الدخول المقترح');
