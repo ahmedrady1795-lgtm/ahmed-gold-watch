@@ -18,6 +18,7 @@ const base={candles:rows,now,side:'BUY',price:rows.at(-1).close,
   sourceReady:true,scenarioReady:true};
 const out=build(base);
 assert.equal(out.ready,true,'aligned observed BUY movement should allow experimental candles');
+assert.equal(out.mode,'CANDLES');assert.equal(out.range.length,3);
 assert.equal(out.candles.length,3);
 assert.equal(out.source,'CLOSED_M1_EMPIRICAL_SHADOW');
 assert.equal(out.baseAt,rows.at(-1).time);
@@ -30,13 +31,18 @@ assert.ok(out.validation.samples>=12,'independent walk-forward samples use prior
 assert.equal(out.validation.directionHits,out.validation.samples,'strict monotone pattern should pass directional shadow baseline');
 assert.ok(out.validation.maeAtr!=null&&Number.isFinite(out.validation.maeAtr));
 assert.equal(build({...base,side:'SELL'}).ready,false,'server direction must agree with M1 momentum');
-assert.equal(build({...base,side:'WAIT'}).ready,false);
+assert.equal(build({...base,side:'SELL'}).mode,'RANGE','opposing direction falls back to neutral range');
+assert.equal(build({...base,side:'WAIT',scenarioReady:false}).ready,true,
+  'strong M1 shadow history permits visual-only candles without a server entry');
 assert.equal(build({...base,sourceReady:false}).ready,false);
-assert.equal(build({...base,scenarioReady:false}).ready,false);
+assert.equal(build({...base,sourceReady:false}).mode,'OFF','stale data suppress even the neutral range');
+assert.equal(build({...base,scenarioReady:false}).mode,'CANDLES',
+  'M1 market observation is independent of the server trade verdict');
 assert.equal(build({...base,price:out.candles[0].close+20}).ready,false,'stale or diverged quote cannot anchor fantasy');
 assert.equal(build({...base,now:now+250000}).ready,false,'expired last close cannot create fresh future');
 const gap=rows.filter((_,i)=>i!==150);
 assert.equal(build({...base,candles:gap}).ready,false,'60 closed M1 observations must be contiguous');
+assert.equal(build({...base,candles:gap}).mode,'OFF','gaps suppress even the neutral band');
 const offMinute=[...rows,{...rows.at(-1),time:rows.at(-1).time+15000,close:999}];
 assert.equal(build({...base,candles:offMinute}).candles[0].open,rows.at(-1).close,
   'off-minute or partial data never repaints real last candle');
@@ -49,6 +55,7 @@ assert.ok(sold.candles[0].close<sold.candles[0].open);
 assert.equal(build({...sellBase,side:'BUY'}).ready,false);
 const flat=sequence(165,0);
 assert.equal(build({...base,candles:flat,price:100}).ready,false,'flat context never earns imaginary directional candles');
+assert.equal(build({...base,candles:flat,price:100}).mode,'RANGE','neutral price action permits a symmetric band');
 // Evaluation is independent of the current server side, and excludes ANY
 // following/partially formed bars from causal training windows.
 const buyScore=evaluate(rows,now),sellScore=evaluate(rows,now);
@@ -59,11 +66,32 @@ const laterWithFuture=[...rows,{...rows.at(-1),time:now+60000,close:999,high:999
 assert.equal(JSON.stringify(evaluate(laterWithFuture,now)),JSON.stringify(buyScore),
   'future bars must not leak into evaluation or current estimation');
 assert.ok(early.samples<=buyScore.samples);
+// A noisy flat source may show risk-aware volatility, never a claimed direction.
+const zigzag=Array.from({length:225},(_,i)=>{
+  const open=101+.7*Math.sin(i*.7)+i*.002;
+  const close=open+.12*Math.sin(i*1.4);
+  return {time:start+i*60000,open,close,
+    high:Math.max(open,close)+.18,low:Math.min(open,close)-.18};
+});
+const z=build({...base,candles:zigzag,now:start+225*60000,
+  price:zigzag.at(-1).close,side:'WAIT',scenarioReady:false});
+assert.equal(z.ready,false,'choppy observations do not qualify three directional OHLC');
+assert.equal(z.mode,'RANGE','no directional evidence should render a neutral range');
+assert.equal(z.range.length,3);
+assert.ok(z.range.every((r,i)=>r.high>zigzag.at(-1).close&&
+  r.low<zigzag.at(-1).close&&(i===0||r.high>z.range[i-1].high)),
+  'non-directional envelope must widen symmetrically across the 3 steps');
+const lowQuality=build({...base,candles:rows.slice(0,78),now:start+78*60000,
+  price:rows[77].close,side:'WAIT',scenarioReady:false});
+assert.equal(lowQuality.ready,false,'too few historical scored samples may not qualify');
+assert.equal(lowQuality.mode,'RANGE','low-score periods should still paint neutral band');
+assert.ok(lowQuality.validation.samples<24);
 const ui=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 assert.match(ui,/aria-pressed=\{showGhost\}/);
-assert.match(ui,/ghostVisible&&<g className="sniper-ghost-forecast"/);
+assert.match(ui,/ghostActive&&<g className="sniper-ghost-forecast"/);
+assert.match(ui,/ghostRangeVisible&&<g className="ghost-neutral-range"/);
 assert.match(ui,/buildGhostForecast\(\{candles:m\.candles,now,/);
-assert.match(ui,/\?ghost\.candles\.flatMap/,'shared historical price scale must include projected OHLC only on opt-in');
-assert.match(ui,/شموع M1 الافتراضية الثلاث/);
+assert.match(ui,/ghostActive\?ghost\.range\.flatMap/,'shared historical price scale expands for volatility band');
+assert.match(ui,/نطاق تذبذب M1 · لا توقع اتجاه/);
 assert.match(ui,/ليست نموذج ML معتمدًا/);
 console.log('PASS: causal BUY/SELL experimental M1 ghost candles, OHLC invariant, uncertainty, stale/gap guards, walk-forward origin isolation and default opt-in');
