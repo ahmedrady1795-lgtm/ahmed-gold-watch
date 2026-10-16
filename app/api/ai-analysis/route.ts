@@ -681,7 +681,11 @@ export async function GET(request:Request){
       asset:'BTC',c1:btc.c1,c5:btc.c5,price:btcPrice,atr:btcAtr,liquidity,
       accumulation:bitcoinAccumulation,structure:bitcoinStructure,h4:bitcoinH4,marketLead:bitcoinMarketLead,now
     });
-    const webIntel=await stage('web-intelligence',webIntelPromise,7500).catch(()=>null);
+    // Official/independent web research is contextual evidence, not a prerequisite
+    // for a fresh candle-based decision. Let the shared web cache finish warming
+    // for the next cycle rather than spending seconds blocking this forecast.
+    const webIntel=await optionalMarketEvidence(webIntelPromise,1250);
+    perf.webIntelAvailable=Boolean(webIntel?.ok);
     const goldWebLearning=webIntel?recordWebSourceOutcome({asset:'GOLD',price:goldLearningPrice,atr:goldAtr,signal:webIntel.gold,now}):null;
     const bitcoinWebLearning=webIntel?recordWebSourceOutcome({asset:'BTC',price:btcPrice,atr:btcAtr,signal:webIntel.btc,now}):null;
     if(webIntel){
@@ -692,7 +696,7 @@ export async function GET(request:Request){
     const bitcoinNewsBase=buildNewsIntelligence('BTC',gm.events,now);
     const goldNews=webIntel?mergeNewsWithWeb(goldNewsBase,webIntel.gold):goldNewsBase;
     const bitcoinNews=webIntel?mergeNewsWithWeb(bitcoinNewsBase,webIntel.btc):bitcoinNewsBase;
-    const [goldToolMesh,bitcoinToolMesh]=await stage('market-tool-mesh',Promise.all([
+    const [goldToolMesh,bitcoinToolMesh]=(await optionalMarketEvidence(Promise.all([
       buildMarketToolMesh({
         asset:'GOLD',now,price:goldPrice??undefined,marketLead:goldMarketLead,liquidity:goldLiquidity,tick:quote,
         marketData:gm,webIntel,news:gm.events
@@ -701,12 +705,8 @@ export async function GET(request:Request){
         asset:'BTC',now,price:btcPrice??undefined,marketLead:bitcoinMarketLead,liquidity,tick:bitcoinTick,
         marketData:btc,webIntel,news:gm.events
       }).catch(()=>null)
-    ]),2800).catch(()=>{
-      // Cross-venue tool mesh is optional confirmation. Slow providers must
-      // never cancel the primary candle/liquidity forecast generation.
-      // Returning null removes its voting weight instead of inventing evidence.
-      return [null,null] as [null,null];
-    });
+    ]),1250))??[null,null];
+    // A late or failed cross-venue probe contributes no fabricated confirmation.
     const goldClosedM1=gm.c1.filter((c:any)=>c.time+60000<=now).at(-1)||gm.c1.at(-1)||null;
     const goldBase=Number(goldClosedM1?.close??goldPrice),goldDelta=Number.isFinite(Number(goldPrice))&&Number.isFinite(goldBase)?Number(goldPrice)-goldBase:0;
     const goldPulseDirection:'UP'|'DOWN'|'FLAT'=goldDelta>0?'UP':goldDelta<0?'DOWN':'FLAT';
@@ -731,7 +731,7 @@ export async function GET(request:Request){
       evolveAnalysisPolicy({asset:'GOLD',learning:goldLearning,stateGraph:goldStateGraph,performance:goldEvolutionPerformance,now}),
       evolveAnalysisPolicy({asset:'BTC',learning:bitcoinLearning,stateGraph:bitcoinStateGraph,performance:bitcoinEvolutionPerformance,now})
     ]),5500);
-    const [goldAutonomousTools,bitcoinAutonomousTools]=await stage('autonomous-research',Promise.all([
+    const [goldAutonomousTools,bitcoinAutonomousTools]=(await optionalMarketEvidence(Promise.all([
       runAutonomousToolCycle({
         asset:'GOLD',now,policy:goldEvolution?.active,
         context:{regime:goldEvolution?.regime,h4Side:goldH4?.side,intentSide:goldIntent?.side,marketLead:goldMarketLead?.side,price:goldPrice}
@@ -740,12 +740,9 @@ export async function GET(request:Request){
         asset:'BTC',now,policy:bitcoinEvolution?.active,
         context:{regime:bitcoinEvolution?.regime,h4Side:bitcoinH4?.side,intentSide:bitcoinIntent?.side,marketLead:bitcoinMarketLead?.side,price:btcPrice}
       }).catch(()=>null)
-    ]),1800).catch(()=>{
-      // Public RSS / optional autonomous research can take 7s+ per source.
-      // Never prevent a valid candle/liquidity prediction from publishing.
-      // Research that finishes late is for the next cycle only.
-      return [null,null] as [null,null];
-    });
+    ]),750))??[null,null];
+    // Optional autonomous RSS/research cannot stall the confirmed-candle core.
+    // Late results may warm caches but cannot be assigned to this forecast.
     const bitcoinNeural=await stage('neural-prediction',neuralPredictionPromise,4000);
     perf.neuralReadyAtMs=Date.now()-perfStarted;perf.neuralServiceMs=Number(bitcoinNeural?.latencyMs||0);
     const bitcoinMl={...bitcoinMlRaw,neuralCore:bitcoinNeural};
