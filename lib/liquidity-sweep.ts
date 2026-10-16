@@ -56,16 +56,23 @@ export function detectLiquiditySweeps(raw:readonly SweepBar[],now:number,lookbac
       const confirmed=Boolean(next&&(isBuy
         ?next.close>c.close+atr*.03&&next.close>level&&next.low>extreme
         :next.close<c.close-atr*.03&&next.close<level&&next.high<extreme));
-      const status:SweepStatus=!next?'PENDING':confirmed?'CONFIRMED':'TRAP';
-      const confirmedAt=confirmed?next!.time+60000:null;
+      // A previously confirmed sweep is no longer active if a LATER CLOSED
+      // minute breaches the immutable wick invalidation. Do not keep a
+      // reversed/trapped setup armed for the 90-second eligibility window.
+      const invalidation=extreme+(isBuy?-1:1)*atr*.12;
+      const invalidated=Boolean(confirmed&&rows.slice(i+2).some(later=>
+        isBuy?later.low<=invalidation:later.high>=invalidation));
+      const status:SweepStatus=!next?'PENDING':confirmed&&!invalidated?'CONFIRMED':'TRAP';
+      const confirmedAt=status==='CONFIRMED'?next!.time+60000:null;
       events.push({
         id:side+'-'+c.time+'-'+round(level),side,status,sweepAt:c.time,
         confirmedAt,level:round(level),extreme:round(extreme),
-        invalidation:round(extreme+(isBuy?-1:1)*atr*.12),
+        invalidation:round(invalidation),
         trigger:confirmed?round(next!.close):null,
         wickRatio:round(wickRatio),penetrationAtr:round(penetrationAtr),
         volumeRatio,reference:'CLOSED_M1_PRICE_ACTION',
-        reason:confirmed?'اختراق ذيل ثم استرداد المستوى وتأكيد M1 مغلق':
+        reason:invalidated?'إلغاء السحب: شمعة لاحقة كسرت قمة/قاع السحب الأصلي':
+          confirmed?'اختراق ذيل ثم استرداد المستوى وتأكيد M1 مغلق':
           status==='PENDING'?'سحب محتمل؛ انتظار إغلاق M1 التالي':
           'رفض مبدئي دون تأكيد الشمعة التالية؛ فخ غير مؤهل'
       });
