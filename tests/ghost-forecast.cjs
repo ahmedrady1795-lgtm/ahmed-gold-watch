@@ -40,7 +40,7 @@ assert.equal(build({...base,candles:gap}).ready,false,'60 closed M1 observations
 const offMinute=[...rows,{...rows.at(-1),time:rows.at(-1).time+15000,close:999}];
 assert.equal(build({...base,candles:offMinute}).candles[0].open,rows.at(-1).close,
   'off-minute or partial data never repaints real last candle');
-const conflicting=[...rows,{...rows.at(-1),close:rows.at(-1).close+4,high:rows.at(-1).close+4}];
+const conflicting=[...rows,{...rows.at(-9),close:rows.at(-9).close+4,high:rows.at(-9).close+4}];
 assert.equal(build({...base,candles:conflicting}).ready,false,'conflicting duplicate timestamp must be rejected');
 const sellRows=sequence(165,-.16),sellBase={...base,candles:sellRows,side:'SELL',price:sellRows.at(-1).close};
 const sold=build(sellBase);
