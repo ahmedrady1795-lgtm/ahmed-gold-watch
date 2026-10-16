@@ -22,15 +22,17 @@ async function verify(){
     'a new request can proceed after the failed request expires');
   const route=fs.readFileSync('app/api/ai-analysis/route.ts','utf8');
   for(const name of ['initial-market-feeds','gold-market-fallback','ml-prediction',
-    'web-intelligence','market-tool-mesh','market-learning','expected-move-learning',
-    'evolution-policy','autonomous-research','paper-learning-observations','recommendation-learning']){
+    'market-learning','expected-move-learning',
+    'evolution-policy','paper-learning-observations','recommendation-learning']){
     assert.ok(route.includes("stage('"+name+"'"),'unbounded awaited stage: '+name);
   }
   assert.match(route,/totalBudgetMs:39000/);
-  assert.match(route,/\]\),2800\)\.catch\(\(\)=>\{/,
-    'optional market-tool-mesh must degrade without cancelling AI generation');
-  assert.ok(route.includes("]),1800).catch(()=>{"),
-    'slow optional RSS/autonomous research must not cancel core AI computation');
+  assert.match(route,/optionalMarketEvidence\(webIntelPromise,1250\)/,
+    'slow web headlines must not block the confirmed-candle decision');
+  assert.match(route,/\]\),1250\)\)\?\?\[null,null\]/,
+    'optional market-tool-mesh must degrade to neutral evidence, not delay AI');
+  assert.match(route,/\]\),750\)\)\?\?\[null,null\]/,
+    'optional autonomous research must not block the market forecast');
   assert.match(route,/finally\s*\{\s*analysisBusy=false;/);
   const snapshot=fs.readFileSync('app/api/ai-snapshot/route.ts','utf8');
   assert.match(snapshot,/snap\.ageMs>90000/);
