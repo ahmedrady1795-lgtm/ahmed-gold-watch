@@ -570,7 +570,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <b>{ghostVisible?'3 شموع تقديرية M1 · مراقبة فقط':
               ghostRangeVisible?'نطاق تذبذب M1 · لا توقع اتجاه':
               'لا تتوفر بيانات كافية للتقدير'}</b>
-            <span> · {ghost.reason}. لا يغيّر أي شيء في سيناريو الخادم أو قرار الدخول.</span>
+            <span> · {ghost.reason}. هذه دراسة M1 فقط؛ ليست نموذج ML معتمدًا، ولا تغيّر سيناريو الخادم أو قرار الدخول.</span>
             <details style={{marginTop:4}}>
               <summary>نتائج الاختبار التاريخي وطريقة العرض</summary>
               {ghost.validation.samples>=12?<span>
