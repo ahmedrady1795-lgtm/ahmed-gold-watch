@@ -19,7 +19,7 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   for(const c of raw){
     const time=finite(c?.time),open=valid(c?.open),high=valid(c?.high),
       low=valid(c?.low),close=valid(c?.close),volume=finite(c?.volume)??0;
-    if(time==null||time<=0||time+60000>now||time<now-7*86400000||
+    if(time==null||time<=0||time%60000!==0||time+60000>now||time<now-7*86400000||
        open==null||high==null||low==null||close==null||
        high<Math.max(open,close)||low>Math.min(open,close)||low>high)continue;
     const volumeBasis=c?.volumeBasis==='REAL'?'REAL':c?.volumeBasis==='TICK'?'TICK':'NONE';
@@ -28,7 +28,13 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const candles=[...seen.values()].sort((a,b)=>a.time-b.time).slice(-240);
   const lastAt=candles.length?candles[candles.length-1].time+60000:0;
   const historyAge=lastAt?Math.max(0,now-lastAt):null;
-  const historyFresh=historyAge!=null&&historyAge<=180000;
+  // Historical candles can be individually valid yet contain missing or
+  // irregular minutes. An optimistic projected arrow needs an uninterrupted
+  // CLOSED M1 run, not just a fresh last bar.
+  const recentRun=candles.slice(-20);
+  const historyFresh=Boolean(historyAge!=null&&historyAge<=180000&&
+    recentRun.length===20&&recentRun.every((c,i)=>
+      i===0||c.time-recentRun[i-1].time===60000));
   const price=sniper.view.price;
   const marketAt=finite(observationAt);
   const observationFresh=Boolean(marketAt!=null&&marketAt>0&&marketAt<=now+2000&&now-marketAt<=90000);
