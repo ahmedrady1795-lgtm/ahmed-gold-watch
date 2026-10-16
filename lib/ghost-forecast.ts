@@ -8,9 +8,11 @@ export type GhostCandle={time:number;open:number;high:number;low:number;close:nu
   lowerBand:number;upperBand:number;step:1|2|3};
 export type GhostValidation={samples:number;directionHits:number;maeAtr:number|null;bandHits:number;
   note:string};
-export type GhostForecast={ready:boolean;reason:string;source:'CLOSED_M1_EMPIRICAL_SHADOW';
-  baseAt:number|null;atr:number|null;side:GhostSide;candles:GhostCandle[];
-  validation:GhostValidation};
+export type GhostRange={time:number;low:number;high:number;step:1|2|3};
+export type GhostForecast={ready:boolean;mode:'CANDLES'|'RANGE'|'OFF';
+  reason:string;source:'CLOSED_M1_EMPIRICAL_SHADOW';baseAt:number|null;
+  atr:number|null;side:GhostSide;candles:GhostCandle[];
+  range:GhostRange[];validation:GhostValidation};
 type Bar={time:number;open:number;high:number;low:number;close:number};
 
 const positive=(v:unknown):number|null=>{
@@ -133,16 +135,61 @@ export function evaluateGhostCandles(input:unknown,now:number):GhostValidation{
   if(r.samples&&r.maeAtr!=null)r.maeAtr=Number((r.maeAtr/r.samples).toFixed(3));
   return r;
 }
+// Directional drawings require a statistically conservative, non-overlapping
+// past-only shadow record. A lower bound above chance is NOT a guarantee.
+function wilsonLower(hits:number,n:number){
+  if(n<=0)return 0;
+  const z=1.96,p=hits/n,z2=z*z;
+  return (p+z2/(2*n)-z*Math.sqrt(p*(1-p)/n+z2/(4*n*n)))/(1+z2/n);
+}
+function directionalEvidence(v:GhostValidation){
+  return v.samples>=24&&wilsonLower(v.directionHits,v.samples)>.5&&
+    v.maeAtr!=null&&v.maeAtr<=1.25;
+}
 export function buildGhostForecast(input:{
   candles:unknown;now:number;side:GhostSide;price:number|null;
   sourceReady:boolean;scenarioReady:boolean;
 }):GhostForecast{
-  const rows=cleanClosed(input.candles,input.now),baseAt=rows.at(-1)?.time??null;
+  const rows=cleanClosed(input.candles,input.now),last=rows.at(-1);
+  const baseAt=last?.time??null;
   const validation=evaluateGhostCandles(input.candles,input.now);
-  if(!input.scenarioReady)return {ready:false,reason:'لا يوجد سيناريو خادم حديث حتى تتوافق معه M1',
-    source:'CLOSED_M1_EMPIRICAL_SHADOW',baseAt,atr:null,side:input.side,candles:[],validation};
-  const result=predict(rows,input.side,input.now,input.price,input.sourceReady);
-  return {ready:result.candles.length===STEPS,reason:result.reason,
-    source:'CLOSED_M1_EMPIRICAL_SHADOW',baseAt,atr:result.atr,side:input.side,
-    candles:result.candles,validation};
+  const base={source:'CLOSED_M1_EMPIRICAL_SHADOW' as const,baseAt,
+    validation,side:input.side};
+  const off=(reason:string):GhostForecast=>({...base,ready:false,mode:'OFF',
+    reason,atr:null,candles:[],range:[]});
+  const last60=rows.slice(-CONTEXT);
+  if(!input.sourceReady||!last||last60.length<CONTEXT||
+    last60.some((c,i)=>i>0&&c.time-last60[i-1].time!==60000)||
+    input.now-(last.time+60000)<0||input.now-(last.time+60000)>90000)
+    return off('لا توجد 60 شمعة M1 مغلقة متصلة وسعر حديث؛ لا رسم تقديري');
+  const a=atr(last60);
+  if(!Number.isFinite(a)||a<=last.close*.000001||a>last.close*.025||
+    last.high-last.low>3.8*a||
+    input.price==null||!Number.isFinite(input.price)||input.price<=0||
+    Math.abs(input.price-last.close)>1.25*a)
+    return off('تذبذب أو فجوة سعر غير آمنة؛ توقّف العرض التجريبي');
+  const range:GhostRange[]=Array.from({length:STEPS},(_,i)=>{
+    const spread=a*.85*Math.sqrt(i+1);
+    return {step:(i+1) as 1|2|3,time:last.time+(i+1)*60000,
+      low:last.close-spread,high:last.close+spread};
+  });
+  // Observation is allowed independently of the server's trade verdict.
+  // No market-only ghost is promoted to a qualified trade or ML prediction.
+  const observed=localSide(last60,a);
+  const agrees=observed!=='WAIT'&&(!input.scenarioReady||input.side==='WAIT'||input.side===observed);
+  const strong=directionalEvidence(validation);
+  const projection=agrees&&strong?
+    predict(rows,observed,input.now,input.price,true):null;
+  if(projection?.candles.length===STEPS){
+    return {...base,ready:true,mode:'CANDLES',side:observed,atr:a,
+      candles:projection.candles,range,
+      reason:input.scenarioReady?'شموع تجريبية توافق اتجاه M1 مع خطة الخادم، وليست تصريح دخول':
+        'شموع تجريبية للمراقبة من اتجاه M1 المدعوم بفحص سابق، وليست خطة تداول'};
+  }
+  const reason=!strong?
+    'الفحص التاريخي لا يدعم أفضلية اتجاه موثوقة؛ نعرض نطاق التذبذب فقط':
+    observed==='WAIT'?'M1 عرضي أو متضارب؛ نعرض نطاق التذبذب فقط':
+    !agrees?'M1 يعارض اتجاه الخادم؛ نعرض نطاق التذبذب فقط':
+    'لا يمكن تأهيل مسار الشموع؛ نعرض نطاق التذبذب فقط';
+  return {...base,ready:false,mode:'RANGE',atr:a,candles:[],range,reason};
 }
