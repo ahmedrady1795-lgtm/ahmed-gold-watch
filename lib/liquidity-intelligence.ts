@@ -261,7 +261,7 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
   const successCount=[bboR,depthR,tradesR,okxDepthR,okxTradesR].filter(x=>x.status==='fulfilled').length;
   const quality=Math.max(0,Math.min(100,Math.round(successCount/5*78+(bids.length>=20&&asks.length>=20?7:0)+(okxBids.length>=20&&okxAsks.length>=20?7:0)+(flow.tradeCount>=20?4:0)+(okxFlow.tradeCount>=20?4:0))));
   // Require actual book depth and trades, not just successful HTTP responses.
-  const reliable=quality>=55&&Boolean((bids.length&&asks.length)||(okxBids.length&&okxAsks.length))&&Boolean(flow.tradeCount||okxFlow.tradeCount);
+  const reliable=quality>=55&&Boolean((bids.length&&asks.length)||(okxBids.length&&okxAsks.length))&&Boolean(flow.tradeCount||okxFlow.tradeCount)&&integrity.status!=='VENUE_CONFLICT';
   if(!reliable)warnings.push('Insufficient fresh order-book + trade evidence');
   const value:LiquidityIntelligence={
     ok:reliable,source:'Coinbase BBO/Trades · Kraken Depth25 · OKX Depth25/Trades',checkedAt:now,quality,side:reliable?side:'WAIT',buy:reliable?buy:50,sell:reliable?sell:50,strength:reliable?Math.max(buy,sell):0,pressure:reliable?Math.round(signed):0,
@@ -287,7 +287,7 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
     const stale:LiquidityIntelligence={
       ...lastGood.value,ok:false,quality:Math.min(45,lastGood.value.quality),
       checkedAt:lastGood.at,source:lastGood.value.source+' · last known (stale)',
-      integrity:{status:'UNVERIFIED',blockedSides:[],reasons:['توقف تحديث السيولة؛ يمنع تأكيد دخول جديد']},
+      integrity:integrity.status==='VENUE_CONFLICT'?integrity:{status:'UNVERIFIED',blockedSides:[],reasons:['توقف تحديث السيولة؛ يمنع تأكيد دخول جديد']},
       warnings:[...warnings,'Held last valid liquidity reading; trading confirmation disabled']
     };
     cache={at:now,value:stale};return stale;
