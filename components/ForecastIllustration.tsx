@@ -3,7 +3,7 @@
 import {useEffect,useState} from 'react';
 import {Crosshair,Layers3} from 'lucide-react';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
-import {buildForecastMotion} from '../lib/forecast-motion';
+import {buildForecastMotion,layoutForecastMotion,buildSmoothMotionPath} from '../lib/forecast-motion';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import type {ForecastJournal} from '../lib/forecast-journal';
 import SniperPerformance from './SniperPerformance';
@@ -165,12 +165,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       Math.abs(s.sweepAt-e.at)<=300000))
     .filter((e,i,a)=>a.findLastIndex(q=>q.kind===e.kind)===i).slice(mobile?-2:-3):[];
   const contextBox=readingLive?m.fourHour.contextBox:null;
-  const projectedPoints=motion.map((p,i)=>({...p,
-    x:xf+i*(xr-xf-18)/Math.max(1,motion.length-1),y:px(p.price)}));
-  // Reference levels only: future candles and arrival timings are unknown.
-  const projectedPath=projectedPoints.length>=2?
-    'M '+projectedPoints[0].x+' '+projectedPoints[0].y+
-    projectedPoints.slice(1).map(p=>' L '+p.x+' '+p.y).join(''):'';
+  // Share the EXACT SAME price scale as historical OHLC bars. X positions
+  // reflect the relative price distance to verified levels, NOT future time.
+  // Smooth, price-bounded segments replace misleading equal-step zigzags.
+  const projectedPoints=layoutForecastMotion(motion,xf,xr-18,px);
+  const projectedPath=buildSmoothMotionPath(projectedPoints);
   const conditionalPath=(side:'BUY'|'SELL')=>{
     const level=side==='BUY'?breakout.above:breakout.below;
     const pool=side==='BUY'?overlay.upper:overlay.lower;
@@ -292,7 +291,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <line x1={xf-8} x2={xf-8} y1="20" y2={volumeEnd+5} stroke="#72b3d1" strokeOpacity=".5"
                 strokeDasharray="6 7"/>
               <text x={xf-14} y="18" textAnchor="end" fill="#88bbd3" fontSize={mobile?18:12}>تاريخ فعلي</text>
-              <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?18:12}>{mobile?'سيناريو':'المستقبل / سيناريو'}</text>
+              <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?16:12}>{mobile?'مسار مشروط':'مسار مشروط · ليس مقياسًا للوقت'}</text>
               <g clipPath={'url(#forecast-plot-'+asset+')'}>
                 {pools.map(z=>{const color=z.side==='UPPER'?'#ff7d9b':'#51dcdf';return <g key={z.side}>
                   <rect x={x0} y={px(z.high)} width={xr-x0} height={Math.max(5,px(z.low)-px(z.high))}
@@ -377,6 +376,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <title>{clock(c.time)+' · O '+fmt(c.open)+' H '+fmt(c.high)+' L '+fmt(c.low)+' C '+fmt(c.close)}</title>
                 </g>;
               })}
+              {priceFresh&&m.historyFresh&&candles.length>0&&<g className="sniper-actual-to-quote">
+                <path d={'M '+(x0+(candles.length-.5)*stride)+' '+px(candles[candles.length-1].close)+
+                  ' L '+xf+' '+px(m.price!)}
+                  fill="none" stroke="#8ee6f9" strokeWidth="2" strokeDasharray="2 6" strokeOpacity=".9"/>
+                <circle cx={xf} cy={px(m.price!)} r={mobile?7:5} fill="#102c42" stroke="#8ee6f9" strokeWidth="2"/>
+                <title>آخر إغلاق M1 إلى السعر الحي المرصود · وصل نقطتين فقط، بدون اختلاق شموع بينهما</title>
+              </g>}
               {structureView&&<g className="sniper-obfvg-structure" aria-label="OB FVG BOS الهيكل" clipPath={'url(#forecast-plot-'+asset+')'}>
                 {([{key:'ob',zone:structureView.ob,label:'OB',color:'#8a99f3'},
                    {key:'fvg',zone:structureView.fvg,label:'FVG',color:'#f0bf70'}] as const).map(z=>{
@@ -510,7 +516,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <ol>{motion.map((p,i)=><li key={p.key}>
               <b>{i+1}</b><span>{p.label}{p.kind!=='HOLD'&&<small dir="ltr">{fmt(p.price)}</small>}</span>
             </li>)}</ol>
-            <p>السهم يمثل مستويات وارتدادات مشروطة مشتقة من شموع M5 مغلقة ومناطق السعر المرصودة؛ مش شكل الشموع المستقبلية ولا توقيت مضمون.
+            <p>السهم يربط مستويات موثقة بالأسعار الأصلية، ويظهر ارتدادات مشروطة فقط عند توافر شموع M5 مغلقة متصلة؛ انحناء الخط توضيحي والمسافات الأفقية سعرية وليست أزمنة وصول.
               {scenarioKind==='BREAK_RETEST'?' الاختبار ممكن يحصل عند المستوى المرسوم، وممكن السعر يكمل مباشرة.':''}
               {scenarioKind==='SWEEP_RECLAIM'?' سحب السيولة مسار بديل مرصود الاحتمال فقط، ويلغى لو اتكسر الإبطال.':''}
               {motion.some(p=>p.kind==='HOLD')?' امتداد ما بعد الكسر تقديري من تذبذب M5، وليس هدفًا منفصلًا.':''}
@@ -674,7 +680,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <a className="sniper-audit-export" href="/api/sniper-audit?archive=1" download="sniper-paper-audit.json">تنزيل نسخة السجل JSON</a>
       </section>
       </details>
-      <footer className="forecast-visual-note"><span>الشموع فعلية · مسار المستقبل مشروط ومش ضمان للسعر أو التوقيت.</span>
+      <footer className="forecast-visual-note"><span>الشموع M1 فعلية ومغلقة · السعر الحي نقطة مستقلة · المستقبل مسار احتمالي غير زمني.</span>
         <span>{highest?'آخر مستوى '+fmt(highest.price):'لا أهداف دخول معتمدة'}</span></footer>
     </div>
   </section>;
