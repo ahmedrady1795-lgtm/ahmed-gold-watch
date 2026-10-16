@@ -46,6 +46,17 @@ assert.equal(m.bands.some(b=>b.key==='TP1'&&b.price>100.5),true);
 assert.equal(m.bands.some(b=>b.kind==='STOP'&&b.price===98.8),true);
 assert.equal(m.bands.some(b=>b.kind==='REBOUND'),true);
 assert.ok(m.upper>101&&m.lower<98.8);
+const withGap=candles.filter((_,i)=>i!==41);
+m=build('GOLD',{...base,chartCandles:withGap},null,now,now-10000);
+assert.equal(m.historyFresh,false,'recent M1 history with a gap cannot authorize a chart arrow');
+assert.equal(m.ready,false,'no projected directional scenario on incomplete real candles');
+assert.equal(m.projected.length,0);
+const withOffGrid=[...candles,{...candles.at(-1),time:now-45000,high:999}];
+m=build('GOLD',{...base,chartCandles:withOffGrid},null,now,now-10000);
+assert.equal(m.candles.length,candles.length,'off-minute malformed timing must never alter genuine OHLC');
+assert.equal(m.candles.at(-1).high,candles.at(-1).high,
+  'later off-grid candle cannot repaint original closed M1 highs');
+
 m=build('GOLD',{...base,chartCandles:candles.map(c=>({...c,time:c.time-600000}))},null,now,now-10000);
 assert.equal(m.ready,false,'stale candles must veto a projected arrow');
 assert.equal(m.projected.length,0);
