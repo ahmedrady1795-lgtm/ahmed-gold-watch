@@ -2,15 +2,22 @@ import {ARCHIVE_URL,cleanArchive,mergeArchives} from './sniper-archive.mjs';
 const repo=process.env.GITHUB_REPOSITORY;
 if(repo!=='ahmedrady1795-lgtm/ahmed-gold-watch'||!process.env.GITHUB_TOKEN)throw Error('Expected repository and Actions token');
 const endpoint='https://ahmed-gold-watch-free.onrender.com/api/sniper-audit?archive=1';
-const response=await fetch(endpoint,{signal:AbortSignal.timeout(45000),headers:{'Cache-Control':'no-cache'}});
-if(!response.ok)throw Error('Live audit HTTP '+response.status);
-const text=await response.text();if(text.length>12_000_000)throw Error('Live archive too large');
-const live=cleanArchive(JSON.parse(text));
-if(!live.sourceUpdatedAt||Date.now()-live.sourceUpdatedAt>10*60000){
-  // Stale upstream data is a normal skip, not an archive write failure.
-  // Preserve the last valid checkpoint and retry on the next scheduled run.
-  console.warn('Skipping checkpoint: audit data is stale or missing; previous checkpoint preserved.');
-  process.exit(0);
+// A sleeping instance needs a completed candle refresh before checkpointing.
+// Retry the bounded read after cold start; never replace the archive with an
+// empty boot ledger or manufacture a fresh source timestamp.
+let live;
+for(let attempt=0;attempt<2;attempt++){
+  try{
+    const refresh=await fetch('https://ahmed-gold-watch-free.onrender.com/api/chart-history',{
+      signal:AbortSignal.timeout(45000),headers:{'Cache-Control':'no-cache'}});
+    await refresh.arrayBuffer();
+    const response=await fetch(endpoint,{signal:AbortSignal.timeout(15000),headers:{'Cache-Control':'no-cache'}});
+    if(!response.ok)throw Error('Live audit HTTP '+response.status);
+    const text=await response.text();if(text.length>12_000_000)throw Error('Live archive too large');
+    const candidate=cleanArchive(JSON.parse(text));
+    if(!candidate.sourceUpdatedAt||Date.now()-candidate.sourceUpdatedAt>10*60000)throw Error('Audit is stale');
+    live=candidate;break;
+  }catch(e){if(attempt===1)throw e;}
 }
 const api=`https://api.github.com/repos/${repo}/contents/data/sniper-audit.json`;
 const headers={Authorization:`Bearer ${process.env.GITHUB_TOKEN}`,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
