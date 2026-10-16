@@ -125,7 +125,9 @@ export function buildForecastMotion(input:{
     const retestZone=atr!=null?nearestRetestZone(level,side,atr,input.zones):null;
     const retest=retestZone!=null&&safeBeforeStop(retestZone)&&targetSafe(retestZone)?
       retestZone:level;
-    const structuralSetup=Boolean(input.m5==null&&!freshness||freshness&&(
+    // No credible future retest geometry without contiguous CLOSED M5
+    // history. A missing frame must not invent a zigzag via fallback rules.
+    const structuralSetup=Boolean(freshness&&(
       compression||pressureSetup||retestZone!=null||
       referenceRange!=null&&atr!=null&&referenceRange/atr<=3.3));
     const retestAllowed=structuralSetup&&!farBeyond&&!impulse&&!pendingSweep&&
@@ -154,4 +156,38 @@ export function buildForecastMotion(input:{
   points.push(...targets.map(t=>({key:'TP'+t.stage,price:t.price,
     label:'هدف '+t.stage,kind:'TARGET' as const})));
   return points;
+}
+
+// The projection x-axis is deliberately NOT a clock: we distribute horizontal
+// room in proportion to actual price travel between authoritative waypoints,
+// with a minimum gutter for small retests. Exact target prices are untouched.
+export function layoutForecastMotion<T extends {key:string;price:number}>(
+  points:readonly T[],startX:number,endX:number,toY:(price:number)=>number
+):Array<T&{x:number;y:number}>{
+  if(!points.length||![startX,endX].every(Number.isFinite)||endX<=startX||
+    points.some(p=>!Number.isFinite(p.price)||p.price<=0))return [];
+  if(points.length===1)return [{...points[0],x:startX,y:toY(points[0].price)}];
+  const intervals=points.slice(1).map((p,i)=>Math.abs(p.price-points[i].price));
+  const count=intervals.length,total=intervals.reduce((a,b)=>a+b,0);
+  const span=endX-startX,minGap=Math.min(34,span/count*.58);
+  const variableSpace=Math.max(0,span-minGap*count);
+  let x=startX;
+  return points.map((p,i)=>{
+    if(i>0)x+=minGap+variableSpace*(total>0?intervals[i-1]/total:1/count);
+    return {...p,x:i===points.length-1?endX:x,y:toY(p.price)};
+  });
+}
+
+// Bounded cubic easing passes through every structural level. Control points
+// stay BETWEEN each pair of prices: no phantom high, low, wick or overshoot.
+// The dashed curve is explanatory only; it is not a predicted candle series.
+export function buildSmoothMotionPath(points:readonly {x:number;y:number}[]):string{
+  if(points.length<2||points.some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y)))return '';
+  let d='M '+points[0].x+' '+points[0].y;
+  for(let i=1;i<points.length;i++){
+    const a=points[i-1],b=points[i],delta=b.x-a.x;
+    if(delta<=0)return '';
+    d+=' C '+(a.x+delta*.34)+' '+a.y+' '+(b.x-delta*.34)+' '+b.y+' '+b.x+' '+b.y;
+  }
+  return d;
 }
