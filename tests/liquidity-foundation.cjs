@@ -44,11 +44,11 @@ assert.equal(crossedDepth.blockedSides.includes('SELL'),true);
 const crossedTrades=integrity({...typical,coinbaseDelta:60,okxDelta:-62});
 assert.equal(crossedTrades.status,'VENUE_CONFLICT');
 const prior={at:t-2500,bidDepthUsd:800000,askDepthUsd:850000,bestBid:100,bestAsk:100.1,pressure:0};
-const buyLost=integrity({...typical,previous:prior,bidDepthUsd:270000});
+const buyLost=integrity({...typical,previous:prior,bidDepthUsd:270000,askDepthUsd:800000});
 assert.equal(buyLost.status,'POSSIBLE_DEPTH_WITHDRAWAL');
 assert.equal(buyLost.blockedSides.includes('BUY'),true);
 assert.equal(buyLost.blockedSides.includes('SELL'),false);
-const sellLost=integrity({...typical,previous:prior,askDepthUsd:270000});
+const sellLost=integrity({...typical,previous:prior,askDepthUsd:270000,bidDepthUsd:750000});
 assert.equal(sellLost.blockedSides.includes('SELL'),true);
 assert.equal(sellLost.blockedSides.includes('BUY'),false);
 assert.equal(integrity({...typical,previous:prior,bid:101,bidDepthUsd:100000}).blockedSides.length,0,
