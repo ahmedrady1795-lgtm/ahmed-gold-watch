@@ -1,7 +1,7 @@
 type Side='BUY'|'SELL'|'WAIT';
 
 type DepthRow={price:number;size:number;time?:number};
-type BookState={at:number;pressure:number;bidDepthUsd:number;askDepthUsd:number};
+type BookState={at:number;pressure:number;bidDepthUsd:number;askDepthUsd:number;bestBid:number;bestAsk:number};
 
 export type LiquidityIntelligence={
   ok:boolean;
@@ -59,6 +59,8 @@ export type LiquidityIntelligence={
     trapDetected:boolean;
     followThrough:boolean;
   };
+  integrity:{status:'NORMAL'|'VENUE_CONFLICT'|'POSSIBLE_DEPTH_WITHDRAWAL'|'UNVERIFIED';
+    blockedSides:('BUY'|'SELL')[];reasons:string[]};
   warnings:string[];
 };
 
@@ -123,6 +125,45 @@ function tradeFlow(rows:any[]){
   return {tradeCount:trades.length,buyVolume:buy,sellVolume:sell,deltaVolume:delta,deltaPct,priceChangeBps,cvdSide:sideFromPressure(deltaPct,10)};
 }
 
+// Contradictions are a conservative paper-entry veto, not evidence that an
+// order was canceled intentionally. Compare directional pressure, never raw
+// USD and USDT price levels as though they were the same instrument.
+export function assessBtcLiquidityIntegrity(a:{
+  krakenReady:boolean;okxReady:boolean;krakenImbalance:number;okxImbalance:number;
+  coinbaseTrades:number;okxTrades:number;coinbaseDelta:number;okxDelta:number;
+  now:number;bid:number;ask:number;bidDepthUsd:number;askDepthUsd:number;
+  previous:BookState|null
+}){
+  const crossDepth=a.krakenReady&&a.okxReady&&
+    ((a.krakenImbalance>=28&&a.okxImbalance<=-28)||
+     (a.krakenImbalance<=-28&&a.okxImbalance>=28));
+  const crossTrades=a.coinbaseTrades>=25&&a.okxTrades>=25&&
+    ((a.coinbaseDelta>=35&&a.okxDelta<=-35)||
+     (a.coinbaseDelta<=-35&&a.okxDelta>=35));
+  const previous=a.previous;
+  const stablePrices=Boolean(a.krakenReady&&previous&&
+    a.now-previous.at>=1000&&a.now-previous.at<=12000&&
+    previous.bestBid>0&&previous.bestAsk>0&&
+    Math.abs(a.bid-previous.bestBid)/previous.bestBid*10000<=2&&
+    Math.abs(a.ask-previous.bestAsk)/previous.bestAsk*10000<=2);
+  const bidWithdrawal=Boolean(stablePrices&&previous&&
+    previous.bidDepthUsd>=200000&&a.bidDepthUsd<=previous.bidDepthUsd*.45);
+  const askWithdrawal=Boolean(stablePrices&&previous&&
+    previous.askDepthUsd>=200000&&a.askDepthUsd<=previous.askDepthUsd*.45);
+  const blocked=new Set<'BUY'|'SELL'>();
+  const reasons:string[]=[];
+  if(crossDepth||crossTrades){
+    blocked.add('BUY');blocked.add('SELL');
+    reasons.push('تضارب كبير بين مصادر عمق السوق أو تدفق الصفقات المستقلة');
+  }
+  if(bidWithdrawal){blocked.add('BUY');reasons.push('تراجع مفاجئ محتمل في عمق طلبات الشراء؛ ليس دليل تلاعب');}
+  if(askWithdrawal){blocked.add('SELL');reasons.push('تراجع مفاجئ محتمل في عمق طلبات البيع؛ ليس دليل تلاعب');}
+  return {status:crossDepth||crossTrades?'VENUE_CONFLICT' as const:
+    bidWithdrawal||askWithdrawal?'POSSIBLE_DEPTH_WITHDRAWAL' as const:
+    !a.krakenReady&&!a.okxReady?'UNVERIFIED' as const:'NORMAL' as const,
+    blockedSides:[...blocked],reasons};
+}
+
 export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence>{
   const now=Date.now();
   if(!force&&cache&&now-cache.at<1800)return cache.value;
@@ -175,6 +216,16 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
   const okxDepthBid=okxBids.length?weightedDepth(okxBids,okxBids[0].price):0,okxDepthAsk=okxAsks.length?weightedDepth(okxAsks,okxAsks[0].price):0;
   const okxDepthTotal=okxDepthBid+okxDepthAsk,okxDepthImbalance=okxDepthTotal>0?(okxDepthBid-okxDepthAsk)/okxDepthTotal*100:0;
   const crossExchangePressure=clamp(weightedImbalance*.55+okxDepthImbalance*.25+flow.deltaPct*.10+okxFlow.deltaPct*.10);
+  const integrity=assessBtcLiquidityIntegrity({
+    krakenReady:bids.length>=15&&asks.length>=15,
+    okxReady:okxBids.length>=15&&okxAsks.length>=15,
+    krakenImbalance:depthImbalance,okxImbalance:okxDepthImbalance,
+    coinbaseTrades:flow.tradeCount,okxTrades:okxFlow.tradeCount,
+    coinbaseDelta:flow.deltaPct,okxDelta:okxFlow.deltaPct,now,
+    bid:bids[0]?.price||0,ask:asks[0]?.price||0,
+    bidDepthUsd:rawBidUsd,askDepthUsd:rawAskUsd,previous
+  });
+  if(integrity.reasons.length)warnings.push(...integrity.reasons);
 
   const old=previous,pressureBase=clamp(crossExchangePressure*.68+flow.deltaPct*.18+okxFlow.deltaPct*.14);
   const pressureChange=old?pressureBase-old.pressure:0;
@@ -224,10 +275,10 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
     book:{bestBid,bestAsk,spreadBps:spreadBps==null?null:Number(spreadBps.toFixed(3)),bboImbalance:Math.round(bboImbalance),depthImbalance:Math.round(depthImbalance),weightedImbalance:Math.round(weightedImbalance),microprice:microprice==null?null:Number(microprice.toFixed(2)),microEdge:Math.round(microEdge),bidDepthUsd:Math.round(rawBidUsd),askDepthUsd:Math.round(rawAskUsd),bidWall:Number(bidWall.toFixed(2)),askWall:Number(askWall.toFixed(2)),bidWallPrice:bidWallPoint.price,askWallPrice:askWallPoint.price,wallSide},
     flow:{tradeCount:flow.tradeCount,buyVolume:Number(flow.buyVolume.toFixed(6)),sellVolume:Number(flow.sellVolume.toFixed(6)),deltaVolume:Number(flow.deltaVolume.toFixed(6)),deltaPct:Number(flow.deltaPct.toFixed(1)),priceChangeBps:Number(flow.priceChangeBps.toFixed(2)),cvdSide:flow.cvdSide},
     dynamics:{pressureChange:Number(pressureChange.toFixed(1)),bidDepthChangePct:Number(bidDepthChangePct.toFixed(1)),askDepthChangePct:Number(askDepthChangePct.toFixed(1)),acceleration:Number(acceleration.toFixed(1))},
-    absorption:{side:absorptionSide,score:absorptionScore,reason:absorptionReason,trapDetected,followThrough},warnings
+    absorption:{side:absorptionSide,score:absorptionScore,reason:absorptionReason,trapDetected,followThrough},integrity,warnings
   };
   if(reliable){
-    previous={at:now,pressure:pressureBase,bidDepthUsd:rawBidUsd,askDepthUsd:rawAskUsd};
+    previous={at:now,pressure:pressureBase,bidDepthUsd:rawBidUsd,askDepthUsd:rawAskUsd,bestBid:bids[0]?.price||0,bestAsk:asks[0]?.price||0};
     lastGood={at:now,value};
     cache={at:now,value};return value;
   }
@@ -236,6 +287,7 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
     const stale:LiquidityIntelligence={
       ...lastGood.value,ok:false,quality:Math.min(45,lastGood.value.quality),
       checkedAt:lastGood.at,source:lastGood.value.source+' · last known (stale)',
+      integrity:{status:'UNVERIFIED',blockedSides:[],reasons:['توقف تحديث السيولة؛ يمنع تأكيد دخول جديد']},
       warnings:[...warnings,'Held last valid liquidity reading; trading confirmation disabled']
     };
     cache={at:now,value:stale};return stale;
