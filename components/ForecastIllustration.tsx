@@ -98,15 +98,17 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     side:planVisible?m.displaySide:'WAIT',price:m.price,
     sourceReady:m.historyFresh&&m.observationFresh&&sn.view.priceFresh,
     scenarioReady:planVisible});
-  const ghostVisible=showGhost&&ghost.ready;
-  const ghostXs=ghostVisible?ghost.candles.map((_,i)=>
-    xf+21+(i+.75)*(xr-xf-43)/(ghost.candles.length+1)):[];
+  const ghostVisible=showGhost&&ghost.mode==='CANDLES';
+  const ghostRangeVisible=showGhost&&ghost.mode==='RANGE';
+  const ghostActive=showGhost&&ghost.mode!=='OFF';
+  const ghostXs=ghostActive?ghost.range.map((_,i)=>
+    xf+21+(i+.75)*(xr-xf-43)/(ghost.range.length+1)):[];
   const motionColor=watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4';
   const scenarioKind=motion.some(p=>p.kind==='SWEEP')?'SWEEP_RECLAIM':
     motion.some(p=>p.kind==='RETEST')?'BREAK_RETEST':'DIRECT';
   const scenarioLabel=scenarioKind==='SWEEP_RECLAIM'?'سحب سيولة ثم استرداد':
     scenarioKind==='BREAK_RETEST'?'كسر ثم اختبار وارتداد':'مسار مباشر مشروط';
-  const allBounds=[...candleBounds,...chartBands.flatMap(z=>[z.low,z.high]),...motion.map(p=>p.price),...(ghostVisible?ghost.candles.flatMap(c=>[c.high,c.low]):[]),...pools.flatMap(z=>[z.low,z.high]),
+  const allBounds=[...candleBounds,...chartBands.flatMap(z=>[z.low,z.high]),...motion.map(p=>p.price),...(ghostActive?ghost.range.flatMap(r=>[r.low,r.high]):[]),...(ghostVisible?ghost.candles.flatMap(c=>[c.high,c.low,c.lowerBand,c.upperBand]):[]),...pools.flatMap(z=>[z.low,z.high]),
     ...(breakout.ready?[breakout.above!,breakout.below!]:[])];
   const allMin=allBounds.length?Math.min(...allBounds):m.lower;
   const allMax=allBounds.length?Math.max(...allBounds):m.upper;
@@ -114,8 +116,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const scaleLow=focusCandles?candleMin-candleSpan*.3:allMin-allSpan*.1;
   const scaleHigh=focusCandles?candleMax+candleSpan*.3:allMax+allSpan*.1;
   const px=(p:number)=>yt+(scaleHigh-p)/Math.max(.0000001,scaleHigh-scaleLow)*(yb-yt);
-  const ghostBandPath=ghostVisible?'M '+ghost.candles.map((c,i)=>ghostXs[i]+' '+px(c.upperBand)).join(' L ')+
-    ' L '+ghost.candles.map((_,i)=>ghostXs[ghost.candles.length-1-i]+' '+px(ghost.candles[ghost.candles.length-1-i].lowerBand)).join(' L ')+' Z':'';
+  const ghostBandPath=ghostActive?'M '+xf+' '+px(m.candles.at(-1)!.close)+
+    ' L '+ghost.range.map((r,i)=>ghostXs[i]+' '+px(ghostVisible?ghost.candles[i].upperBand:r.high)).join(' L ')+
+    ' L '+ghost.range.map((_,i)=>ghostXs[ghost.range.length-1-i]+' '+
+      px(ghostVisible?ghost.candles[ghost.range.length-1-i].lowerBand:ghost.range[ghost.range.length-1-i].low)).join(' L ')+
+    ' Z':'';
   const grid=Array.from({length:5},(_,i)=>({y:yt+i*(yb-yt)/4,value:scaleHigh-(scaleHigh-scaleLow)*i/4}));
   const priceFresh=m.price!=null&&sn.view.priceFresh&&m.observationFresh;
   const chartLanes=layoutPriceLanes([
@@ -265,7 +270,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <button type="button" aria-pressed={chartWindow===60} onClick={()=>setChartWindow(60)}>ساعة</button>
               <button type="button" aria-pressed={chartWindow===240} onClick={()=>setChartWindow(240)}>4 ساعات</button>
               <button className="forecast-chart-zoom" type="button" aria-pressed={focusCandles} onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'كل المستويات':'تكبير الشموع'}</button>
-              <button type="button" aria-pressed={showGhost} onClick={()=>setShowGhost(v=>!v)} title="ثلاث شموع M1 افتراضية من تاريخ السوق، لا تمثل ML معتمدًا ولا شموعًا فعلية">{showGhost?'إخفاء الشموع':'شموع تقديرية'}</button>
+              <button type="button" aria-pressed={showGhost} onClick={()=>setShowGhost(v=>!v)} title="شموع M1 افتراضية فقط عندما تؤيدها نتائج زمنية سابقة؛ وإلا نطاق تقلب مرئي دون اتجاه">{showGhost?'إخفاء التقدير':'شموع تقديرية'}</button>
               <button className="forecast-chart-alternative" type="button" aria-pressed={showAlternatives} onClick={()=>setShowAlternatives(v=>!v)} title="مسارات مشروطة إضافية، ليست صفقات">{showAlternatives?'إخفاء البدائل':'بدائل'}</button>
               <button type="button" aria-pressed={expanded} onClick={()=>setExpanded(v=>!v)}>{expanded?'حجم عادي':'توسيع الرسم ⤢'}</button>
               <button type="button" aria-pressed={chartFullscreen} onClick={()=>setChartFullscreen(v=>!v)}>{chartFullscreen?'إغلاق ملء الشاشة':'⛶ ملء الشاشة'}</button>
@@ -472,7 +477,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               })}
               {priceFresh&&<line x1={x0} x2={xr} y1={px(m.price!)} y2={px(m.price!)}
                 stroke="#5ad6f4" strokeDasharray="3 5" strokeOpacity=".65"/>}
-              {ghostVisible&&<g className="sniper-ghost-forecast" clipPath={'url(#forecast-plot-'+asset+')'}>
+              {ghostActive&&<g className="sniper-ghost-forecast" clipPath={'url(#forecast-plot-'+asset+')'}>
                 {ghostBandPath&&<path d={ghostBandPath} fill="#88b4ef" fillOpacity=".105"
                   stroke="#a3bff7" strokeOpacity=".4" strokeDasharray="3 6" strokeWidth="1">
                   <title>نطاق تقلب تقريبي متسع، غير معاير إحصائيًا ولا يضمن تغطية محددة</title>
@@ -494,8 +499,18 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                       ' · ليست حركة سوق حقيقية ولا تنبؤًا معايرًا'}</title>
                   </g>;
                 })}
+                {ghostRangeVisible&&<g className="ghost-neutral-range">
+                  {ghost.range.map((r,i)=><g key={r.time}>
+                    <line x1={ghostXs[i]} x2={ghostXs[i]} y1={px(r.high)} y2={px(r.low)}
+                      stroke="#a7bce8" strokeWidth="1.6" strokeDasharray="3 6" strokeOpacity=".7"/>
+                    <circle cx={ghostXs[i]} cy={px(m.candles.at(-1)!.close)} r="3" fill="#a7bce8" opacity=".7"/>
+                    <title>نطاق تذبذب M1 للخطوة {r.step}، لا يحدد صعودًا أو هبوطًا</title>
+                  </g>)}
+                </g>}
                 <text x={(ghostXs[0]+ghostXs.at(-1)!)/2} y={yt+29} textAnchor="middle"
-                  fontSize={mobile?13:12} fontWeight="700" fill="#bdd1ee">GHOST M1 · تجريبي</text>
+                  fontSize={mobile?13:12} fontWeight="700" fill="#bdd1ee">
+                  {ghostVisible?'GHOST M1 · تجريبي':'M1 · نطاق دون اتجاه'}
+                </text>
               </g>}
               {chartLanes.map(label=>{
                 const isPrice=label.kind==='PRICE',isTarget=label.kind==='TARGET',isStop=label.kind==='STOP';
@@ -552,14 +567,20 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
           {showGhost&&<div className="forecast-ghost-guide" role="status" aria-live="polite"
             style={{padding:'7px 10px',border:'1px dashed #446980',borderRadius:8,marginTop:6,color:'#c4dbea',fontSize:12}}>
-            <b>{ghost.ready?'شموع M1 الافتراضية الثلاث · دراسة تجريبية':'الشموع التقديرية غير مؤهلة حاليًا'}</b>
-            <span> · {ghost.reason}. لا تغيّر خط السيناريو أو نقاط الدخول، وهي ليست نموذج ML معتمدًا.</span>
-            {ghost.validation.samples>=12&&<span>
-              {' '}· فحص زمني سابق (نموذج زخم M1 مستقل): {ghost.validation.directionHits}/{ghost.validation.samples} اتجاهات صحيحة بعد 3 شموع،
-              ومتوسط خطأ الإغلاق {fmt(ghost.validation.maeAtr,2)} ATR.
-              هذه نتائج داخل العينة الزمنية السابقة وليست ضمانًا أو إثباتًا لدقة السيناريو الحالي.
-            </span>}
-            {ghost.validation.samples<12&&<span> · البيانات الاختبارية المستقلة غير كافية لإعلان دقة.</span>}
+            <b>{ghostVisible?'3 شموع تقديرية M1 · مراقبة فقط':
+              ghostRangeVisible?'نطاق تذبذب M1 · لا توقع اتجاه':
+              'لا تتوفر بيانات كافية للتقدير'}</b>
+            <span> · {ghost.reason}. لا يغيّر أي شيء في سيناريو الخادم أو قرار الدخول.</span>
+            <details style={{marginTop:4}}>
+              <summary>نتائج الاختبار التاريخي وطريقة العرض</summary>
+              {ghost.validation.samples>=12?<span>
+                فحص زمني بنوافذ سابقة منفصلة: {ghost.validation.directionHits}/{ghost.validation.samples}
+                {' '}اتجاهات صحيحة بعد 3 شموع؛ متوسط خطأ الإغلاق {fmt(ghost.validation.maeAtr,2)} ATR.
+                {ghostRangeVisible?' النتيجة لا تكفي لإظهار شموع اتجاهية.':''}
+                {' '}اختبار تاريخي تقني فقط، لا يثبت دقة تداول حي أو موثوقية احتمالات.
+              </span>:<span>لا توجد نتائج تاريخية كافية لإعلان دقة.</span>}
+              <span> النطاق المعروض تقدير للتذبذب وليس نطاق ثقة إحصائيًا.</span>
+            </details>
           </div>}
           {motion.length>0&&<details className="forecast-motion-guide" aria-label="خطوات المسار المتوقع">
             <summary><strong>{statusReady?'سيناريو مؤهل':'مراقبة مشروطة'} · {scenarioLabel} · عرض خطوات المسار</strong></summary>
@@ -582,6 +603,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <span><i className="forecast-legend-history"/> شموع M1 حقيقية</span>
             <span><i className="forecast-legend-projection"/> {watchReady?'مسار مستويات بعيد · توضيحي':'سيناريو مشروط'}</span>
             {ghostVisible&&<span>▥ شموع Ghost M1 شفافة · غير مؤكدة</span>}
+            {ghostRangeVisible&&<span>◌ نطاق تقلب M1 · بلا اتجاه</span>}
             <span><i className="forecast-legend-target"/> مناطق أهداف</span>
             <span><i className="forecast-legend-rebound"/> مناطق سيولة</span>
             {primaryZone&&<span className="sniper-primary-zone">★ أعلى أولوية عرض · {primaryZone.confirmedAt?'قمة/قاع M5 مؤكد':'منطقة تحليل'}{(primaryZone.sources?.length||0)>1?' + توافق مصدرين':''}</span>}
