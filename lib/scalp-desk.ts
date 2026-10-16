@@ -87,6 +87,8 @@ export async function getScalpDesk(){
         const issues:string[]=[];
         if(plan.status==='ARMED'&&asset==='BTC'){
           if(!bookFresh)issues.push('دفتر أوامر BTC غير موثوق أو متأخر؛ متابعة فقط');
+          if(orderBook?.integrity?.blockedSides?.includes(plan.side))
+            issues.push('تحذير سلامة السيولة: '+(orderBook.integrity.reasons[0]||'تعارض أو تراجع في عمق السوق'));
           else if(orderBook?.side!=='WAIT'&&orderBook?.side!==plan.side&&Number(orderBook?.strength||0)>=59)
             issues.push('تدفق سيولة BTC يعاكس الدخول المقترح');
           if(bookFresh&&Number(orderBook?.book?.spreadBps||0)>5)
@@ -217,6 +219,7 @@ export async function getScalpDesk(){
         quote:x.quote?.price,quoteAgeMs:x.data?.quoteAgeMs,source:x.candleSource,
         m1AgeMs:x.data?.m1AgeMs,newsReady:x.data?.newsReady,
         liquidityReady:x.liquidity?.available,bookOk:x.orderBook?.ok,
+        bookIntegrity:x.orderBook?.integrity?.status||'UNAVAILABLE',
         decisions:x.sniperDecisions?.map((d:any)=>({
           h:d.horizon,status:d.status,technicalScore:d.score,requiredNetR:d.requiredNetR,
           liveNetR:d.liveNetR,reasons:d.blockers.slice(0,3),
