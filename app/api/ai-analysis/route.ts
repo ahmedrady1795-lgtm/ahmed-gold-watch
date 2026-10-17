@@ -1422,6 +1422,35 @@ export async function GET(request:Request){
           walkForward:String(preMovePerformance.walkForward?.status||'COLLECTING')
         }:null
       }:null,
+      // Expose the SAME learning-calibrated movement horizons already used
+      // by the server. Technical observations are NOT qualified trade calls.
+      // Do not publish server-private state, price predictions or fabricated ML edges.
+      horizonBrains:movement?.horizons?{
+        oneMinute:movement.horizons.oneMinute?{
+          side:movement.horizons.oneMinute.side||'WAIT',
+          confidence:Number(movement.horizons.oneMinute.confidence||0),
+          independentFamilies:Number(movement.horizons.oneMinute.independentFamilies||0),
+          gateReason:movement.horizons.oneMinute.gateReason||'UNQUALIFIED',
+          learning:{
+            recentKill:Boolean(movement.horizons.oneMinute.learning?.recentKill),
+            quality:String(movement.horizons.oneMinute.learning?.quality||'COLLECTING')
+          }
+        }:null,
+        fiveMinute:movement.horizons.fiveMinute?{
+          side:movement.horizons.fiveMinute.side||'WAIT',
+          confidence:Number(movement.horizons.fiveMinute.confidence||0),
+          independentFamilies:Number(movement.horizons.fiveMinute.independentFamilies||0),
+          gateReason:movement.horizons.fiveMinute.gateReason||'UNQUALIFIED',
+          learning:{
+            recentKill:Boolean(movement.horizons.fiveMinute.learning?.recentKill),
+            quality:String(movement.horizons.fiveMinute.learning?.quality||'COLLECTING')
+          }
+        }:null
+      }:null,
+      forecastConflictPath:hunt?.zoneForecast?.pathForecast?{
+        side:hunt.zoneForecast.pathForecast.side||'WAIT',
+        consensusStatus:hunt.zoneForecast.pathForecast.consensusGuard?.status||null
+      }:null,
       movementEnvelope:movement?.forwardEnvelope||null,
       directionValidation:movement?.directionAudit||null,
       movementTarget15:movement?.target15||null,
