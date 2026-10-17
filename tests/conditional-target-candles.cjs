@@ -63,6 +63,11 @@ gap[gap.length-8].time+=5000;
 assert.equal(build({...common,history:gap,targets:[{stage:1,price:quote+1}]}).ready,false);
 const chart=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 assert.match(chart,/buildConditionalTargetCandles\(/,'route is integrated into SVG');
+assert.match(chart,/frozenVisualLevels=useMemo\(/,'target ladder is locked to a closed M1 scenario revision');
+assert.match(chart,/quote:routeAnchor/,'scenario starts from a closed M1 quote-independent anchor');
+assert.match(chart,/frozenRouteWaypoints=useMemo\(/,'structural milestones are stable between ticks');
+assert.doesNotMatch(chart,/history:m\.candles,now,quote:m\.price/,
+ 'intrabar quote must not reshape historical-analogue scenario bars');
 assert.match(chart,/futureWidth=candleWidth/,'scenario and historical candles have exactly the same rendered width');
 assert.match(chart,/visibleCount:candles\.length/,
  'dynamic candle sizing uses the actual 24/36 displayed real candle reference');
