@@ -581,13 +581,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               </g>}
             </svg>
           </div>
-          {showGhost&&<div className="forecast-ghost-guide" role="status" aria-live="polite"
-            style={{padding:'7px 10px',border:'1px dashed #446980',borderRadius:8,marginTop:6,color:'#c4dbea',fontSize:12}}>
-            <b>{goldClosed?'الذهب مغلق · آخر بيانات فعلية محفوظة':ghostVisible?(ghost.source==='GOLD_MT5_OOS_MODEL'?
+          {showGhost&&<details className="forecast-ghost-guide"
+            style={{padding:'6px 10px',border:'1px solid #36536b',borderRadius:8,marginTop:6,color:'#c4dbea',fontSize:12}}>
+            <summary style={{cursor:'pointer',fontWeight:700}}>▥ {goldClosed?'الذهب مغلق · آخر بيانات فعلية محفوظة':ghostVisible?(ghost.source==='GOLD_MT5_OOS_MODEL'?
               '3 شموع ذهب مدعومة باختبار · يليها شموع شكلية فقط':'3 شموع M1 مفحوصة · والباقي شموع افتراضية'):
               ghostRangeVisible?'نطاق تذبذب M1 · لا توقع اتجاه · شموع توضيحية':
-              'لا تتوفر بيانات كافية للتقدير'}</b>
-            <span> · {goldClosed?'الجلسة مغلقة ولا توجد توقعات حية.':ghost.reason} {visualCandles.length?'18 شمعة مستقبلية بنمط أجسام وذيول مأخوذ من تاريخ السوق، وليس توقعًا تم اختباره. الأهداف بعيدة المدى مستقلة عنها.':'لا تتوفر شموع محاكاة مؤهلة.'} هذه الدراسة ليست نموذج ML معتمدًا، ولا تمثل إشارة دخول.</span>
+              'لا تتوفر بيانات كافية للتقدير'}</summary>
+            <div style={{marginTop:7,lineHeight:1.6}}> · {goldClosed?'الجلسة مغلقة ولا توجد توقعات حية.':ghost.reason} {visualCandles.length?'18 شمعة مستقبلية بنمط أجسام وذيول مأخوذ من تاريخ السوق، وليس توقعًا تم اختباره. الأهداف بعيدة المدى مستقلة عنها.':'لا تتوفر شموع محاكاة مؤهلة.'} هذه الدراسة ليست نموذج ML معتمدًا، ولا تمثل إشارة دخول.</div>
             <details style={{marginTop:4}}>
               <summary>نتائج الاختبار التاريخي وطريقة العرض</summary>
               {ghost.validation.samples>=12?<span>
@@ -599,7 +599,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               </span>:<span>لا توجد نتائج تاريخية كافية لإعلان دقة.</span>}
               <span> النطاق المعروض تقدير للتذبذب وليس نطاق ثقة إحصائيًا.</span>
             </details>
-          </div>}
+          </details>}
           {motion.length>0&&<details className="forecast-motion-guide" aria-label="خطوات المسار المتوقع">
             <summary><strong>{statusReady?'سيناريو مؤهل':'مراقبة مشروطة'} · {scenarioLabel} · عرض خطوات المسار</strong></summary>
             <ol>{motion.map((p,i)=><li key={p.key}>
