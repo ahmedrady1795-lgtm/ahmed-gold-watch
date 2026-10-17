@@ -1377,3 +1377,22 @@ body:has(.modern-workspace.compact-sniper){
  .sniper-playbook-step small{font-size:9px}
  .sniper-playbook-footer{font-size:9px;gap:4px 10px}
 }
+
+/* Distinguish current market-reading evidence from the broker's WAIT gate. */
+.btc-forward-observation{display:flex;align-items:center;gap:7px 14px;flex-wrap:wrap;
+ padding:9px 12px;margin:5px 3px 7px;border:1px solid #305b76;border-radius:9px;
+ background:linear-gradient(105deg,rgba(21,56,77,.9),rgba(9,22,37,.85));color:#cbe6f5;direction:rtl}
+.btc-forward-observation strong{color:#90e7ff;font-size:12px}
+.btc-forward-observation span{color:#d0e6f2;font-size:11px}
+.btc-forward-observation small{font-size:10px;color:#acc6d6}
+.btc-forward-aligned_watch{border-color:#317f77;background:linear-gradient(110deg,rgba(19,67,59,.85),rgba(9,24,37,.9))}
+.btc-forward-aligned_watch strong{color:#80efca}
+.btc-forward-conflict{border-color:#936477}
+.btc-forward-conflict strong{color:#ffc0c8}
+.btc-forward-stale{opacity:.77;border-color:#5b6670}
+@media(max-width:700px){
+ .btc-forward-observation{padding:8px;gap:4px 9px;margin:4px 0 6px}
+ .btc-forward-observation strong{font-size:11px}
+ .btc-forward-observation span{font-size:10px}
+ .btc-forward-observation small{font-size:9px}
+}
