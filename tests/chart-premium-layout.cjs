@@ -14,7 +14,7 @@ ensure(/Math\.min\(chartWindow,mobile\?24:36\)/,
 ensure(/candleWidth=clamp\(stride\*\.73,mobile\?2\.2:3,15\)/,
  'historic candles are larger on full chart');
 ensure(/latest=i===candles\.length-1/,'most recent real OHLC receives separate visual emphasis');
-ensure(/fillOpacity=\{c\.validatedShape\?\.88:\.39\}/,
+ensure(/fillOpacity=\\{c\\.validatedShape\\?\\.88:routeVisible\\?\\.52:\\.39\\}/,
  'uncertified illustrative future candles stay visually translucent');
 ensure(/strokeDasharray=\{c\.validatedShape\?undefined:'4 2'\}/,
  'illustrative future candle outlines differ from executed history');
