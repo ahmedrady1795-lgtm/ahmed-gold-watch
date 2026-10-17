@@ -50,22 +50,30 @@ export function assessChartObservation(input:{
     'الجلسة مغلقة','لا توجد إشارة حية أثناء إغلاق السوق');
   if(!input.priceFresh)return output('UNAVAILABLE','WAIT','WAIT','WAIT',
     'السعر اللحظي غير موثوق','مراقبة آخر أسعار محفوظة فقط حتى عودة السعر الحي');
-  if(!input.historyFresh||!m1.valid)return output('UNAVAILABLE','WAIT','WAIT','WAIT',
-    'شموع M1 غير حديثة أو غير متصلة','الرسم التاريخي متاح، لكن رصد اتجاه M1 ينتظر 14 شمعة مغلقة متصلة');
-  if(!m5.valid)return output('UNAVAILABLE','WAIT','WAIT','WAIT',
-    'انتظار سياق M5','نحتاج 26 شمعة M5 مغلقة متصلة وحديثة قبل عرض اتجاه متوافق');
-  const b1=m1.bars,b5=m5.bars;
-  const atr1=middle(b1.slice(1).map((b,i)=>Math.max(b.high-b.low,
-    Math.abs(b.high-b1[i].close),Math.abs(b.low-b1[i].close))));
-  const atr5=middle(b5.slice(1).map((b,i)=>Math.max(b.high-b.low,
-    Math.abs(b.high-b5[i].close),Math.abs(b.low-b5[i].close))));
-  if(atr1<=0||atr5<=0)return output('UNAVAILABLE','WAIT','WAIT','WAIT',
-    'التذبذب غير كافٍ','لا توجد حركة سعرية كافية لتحليل اتجاه واضح');
-  const m1Side=signed(b1.at(-1)!.close-b1.at(-5)!.close,atr1*.38);
-  // M5 direction uses ONLY completed bars and real price displacement.
-  const short=b5.slice(-8).reduce((a,b)=>a+b.close,0)/8;
-  const long=b5.slice(-21).reduce((a,b)=>a+b.close,0)/21;
-  const m5Side=signed(short-long,atr5*.23);
+  // M1 archive can contain a missing minute while independently complete M5
+  // candles are genuinely fresh. Observe one horizon; never assert agreement.
+  const m1Ready=input.historyFresh&&m1.valid,m5Ready=m5.valid;
+  if(!m1Ready&&!m5Ready)return output('UNAVAILABLE','WAIT','WAIT','WAIT',
+    'ننتظر شموعًا مغلقة متصلة','M1 وM5 غير كافيين؛ لا اتجاه مباشر موثوق');
+  const b1=m1Ready?m1.bars:[],b5=m5Ready?m5.bars:[];
+  const atr1=m1Ready?middle(b1.slice(1).map((b,i)=>Math.max(b.high-b.low,
+    Math.abs(b.high-b1[i].close),Math.abs(b.low-b1[i].close)))):0;
+  const atr5=m5Ready?middle(b5.slice(1).map((b,i)=>Math.max(b.high-b.low,
+    Math.abs(b.high-b5[i].close),Math.abs(b.low-b5[i].close)))):0;
+  const m1Side=m1Ready&&atr1>0?
+    signed(b1.at(-1)!.close-b1.at(-5)!.close,atr1*.38):'WAIT';
+  const short=m5Ready?b5.slice(-8).reduce((s,b)=>s+b.close,0)/8:0;
+  const long=m5Ready?b5.slice(-21).reduce((s,b)=>s+b.close,0)/21:0;
+  const m5Side=m5Ready&&atr5>0?signed(short-long,atr5*.23):'WAIT';
+  if(m5Side!=='WAIT'&&!m1Ready)return output('M5_ONLY',m5Side,'WAIT',m5Side,
+    'رصد '+name(m5Side)+' على M5',
+    'اتجاه من إغلاقات M5 فقط؛ M1 متأخر أو غير متصل · لا تأكيد متعدد الأطر');
+  if(m1Side!=='WAIT'&&!m5Ready)return output('M1_ONLY',m1Side,m1Side,'WAIT',
+    'رصد '+name(m1Side)+' على M1',
+    'اتجاه سريع من M1 فقط؛ إطار M5 غير جاهز · لا تأكيد متعدد الأطر');
+  if(!m1Ready||!m5Ready||atr1<=0||atr5<=0)return output('UNAVAILABLE','WAIT',
+    m1Side,m5Side,'الرصد الجزئي غير حاسم',
+    'الأطر غير مكتملة أو بلا حركة كافية · لا دخول حتى اكتمالها');
   if(m5Side==='WAIT'&&m1Side==='WAIT')return output('RANGE','WAIT',m1Side,m5Side,
     'توازن M1/M5','لا توجد حركة مؤكدة الاتجاه من الإغلاقات الأخيرة');
   if(m5Side==='WAIT')return output('M1_ONLY',m1Side,m1Side,m5Side,
