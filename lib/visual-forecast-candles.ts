@@ -91,7 +91,10 @@ export function selectCandleAnalogue(history:Bar[],count:number,atr:number){
  return medoid.start;
 }
 type Audit={samples:number;signals:number;hits:number;accuracyPct:number|null;
- baselineHits:number;baselinePct:number|null;edgeSupported:boolean;status:'COLLECTING'|'NO_PROVEN_EDGE'};
+ baselineHits:number;baselinePct:number|null;
+ // Measured 3-bar close error against a frozen-price baseline; dimensionless ATR.
+ maeAtr:number|null;baselineMaeAtr:number|null;
+ edgeSupported:boolean;status:'COLLECTING'|'NO_PROVEN_EDGE'};
 
 /** Purged chronological replay. On each fold, only the previously completed
  * prefix can select a candidate; the next 3 candles are used ONLY for scoring.
@@ -100,9 +103,10 @@ type Audit={samples:number;signals:number;hits:number;accuracyPct:number|null;
  * A small/flat realised future counts as a miss, never disappears post-hoc.
  */
 export function auditCandleAnalogueDirection(rows:Bar[],atr:number):Audit{
- let samples=0,signals=0,hits=0,baselineHits=0;
+ let samples=0,signals=0,hits=0,baselineHits=0,totalError=0,baselineError=0;
  if(atr<=0||!Number.isFinite(atr))return {samples,signals,hits,accuracyPct:null,
-   baselineHits,baselinePct:null,edgeSupported:false,status:'COLLECTING'};
+   baselineHits,baselinePct:null,maeAtr:null,baselineMaeAtr:null,
+   edgeSupported:false,status:'COLLECTING'};
  const start=Math.max(65,rows.length-156);
  for(let t=start;t<=rows.length-3;t+=4){
    const prefix=rows.slice(0,t);
@@ -120,22 +124,36 @@ export function auditCandleAnalogueDirection(rows:Bar[],atr:number):Audit{
    const net=prefix[idx+2].close-prefix[idx-1].close;
    const move=f[2].close-prefix.at(-1)!.close;
    const baseline=prefix.at(-1)!.close-prefix.at(-4)!.close;
+   // The candle path must be generated from prefix ONLY, never from the
+   // outcomes being scored. Compare against unchanged last-close baseline.
+   const forecast=buildVisualFuture({candles:prefix,forecast:{
+     mode:'RANGE',atr:localAtr,side:'WAIT',candles:[]},side:'WAIT',count:3});
+   if(forecast.length!==3)continue;
+   const endPrice=forecast[2].close;
+   if(!Number.isFinite(endPrice))continue;
    // Selection uses only information known at the fold's forecast time.
-   // Excluding small ACTUAL outcomes would cherry-pick the winning trades.
+   // Flat/small ACTUAL outcomes remain misses rather than being excluded.
    if(Math.abs(net)<localAtr*.20)continue;
    signals++;samples++;
    if(Math.sign(net)===Math.sign(move))hits++;
    if(Math.sign(baseline)===Math.sign(move))baselineHits++;
+   totalError+=Math.abs(endPrice-f[2].close)/localAtr;
+   baselineError+=Math.abs(prefix.at(-1)!.close-f[2].close)/localAtr;
  }
  const accuracyPct=samples?Math.round(hits/samples*100):null;
  const baselinePct=samples?Math.round(baselineHits/samples*100):null;
  // Merely passing a replay threshold is NOT a deployable trade signal.
  // Deliberately never qualify direction from a small single-session sample.
  return {samples,signals,hits,accuracyPct,baselineHits,baselinePct,
+   maeAtr:samples?Number((totalError/samples).toFixed(3)):null,
+   baselineMaeAtr:samples?Number((baselineError/samples).toFixed(3)):null,
    edgeSupported:false,status:samples>=30?'NO_PROVEN_EDGE':'COLLECTING'};
 }
 export function buildVisualFuture(input:{
  candles:Bar[];forecast:Ghost;side:'BUY'|'SELL'|'WAIT';count?:number;
+ // For RANGE illustration only: conditional shape starts at the current
+ // fresh quote and the next FULL minute. These are not recorded OHLC.
+ now?:number;anchorPrice?:number;
  // Compatibility only. Server H1/H4 objectives are intentionally ignored.
  scenarioPath?:Array<{price:number;key?:string}>;
 }):VisualFutureBar[]{
@@ -143,6 +161,15 @@ export function buildVisualFuture(input:{
  if(!last||input.forecast.mode==='OFF'||a==null||!Number.isFinite(a)||a<=0)return [];
  const count=clamp(Math.floor(input.count??18),3,24);
  const g=input.forecast,certified=g.mode==='CANDLES'&&g.candles.length===3;
+ const currentStart=last.time+60000;
+ const quote=input.anchorPrice,t=input.now;
+ const anchored=!certified&&t!=null&&Number.isFinite(t)&&
+   t>=currentStart&&t-currentStart<=90000&&quote!=null&&
+   Number.isFinite(quote)&&quote>0&&Math.abs(quote-last.close)<=a*1.25;
+ const origin=anchored?quote!:last.close;
+ // Timestamp the illustrative candle in the FUTURE, not the still-forming
+ // current minute. Certified 3-bar shadows keep their original timestamps.
+ const firstFutureTime=anchored?Math.floor(t!/60000)*60000+60000:currentStart;
  // Source must be a contiguous genuine M1 run. Never extrapolate across a gap.
  if(bars.slice(-60).some((b,i,tail)=>i>0&&b.time-tail[i-1].time!==60000))return [];
  const start=selectCandleAnalogue(bars,count,a);
@@ -158,7 +185,7 @@ export function buildVisualFuture(input:{
  const bodyMedian=median(bars.slice(-45).map(b=>Math.abs(b.close-b.open)))||a*.18;
  const wickUp=median(bars.slice(-45).map(b=>b.high-Math.max(b.open,b.close)))||a*.17;
  const wickDown=median(bars.slice(-45).map(b=>Math.min(b.open,b.close)-b.low))||a*.17;
- let prev=last.close;
+ let prev=origin;
  const result:VisualFutureBar[]=[];
  for(let i=0;i<count;i++){
    if(certified&&i<3){
@@ -173,19 +200,23 @@ export function buildVisualFuture(input:{
    // no-edge RANGE never masquerades as a directional signal.
    const fallbackMean=analogue?0:
      median(fallback.map(b=>b.close-b.open));
-   const body=clamp(scaled-(analogue?rangeDrift*.68:fallbackMean*.7),-a*1.75,a*1.75);
+   const neutralCorrection=g.mode==='RANGE'?
+     clamp((prev-origin)*.23,-a*.18,a*.18):0;
+   const body=clamp(scaled-(analogue?rangeDrift*.68:fallbackMean*.7)-
+     neutralCorrection,-a*1.75,a*1.75);
    const open=prev;
-   const close=Math.max(last.close*.01,
-     clamp(open+body,last.close-a*7,last.close+a*7));
+   const cap=g.mode==='RANGE'?a*2.6:a*7;
+   const close=Math.max(origin*.01,
+     clamp(open+body,origin-cap,origin+cap));
    // Preserve historical upper/lower wick asymmetry; bound outlier spikes.
    const up=clamp((source.high-Math.max(source.open,source.close))*
      (analogue?factor:1),a*.045,a*2.2);
    const down=clamp((Math.min(source.open,source.close)-source.low)*
      (analogue?factor:1),a*.045,a*2.2);
    const high=Math.max(open,close)+(Number.isFinite(up)?up:Math.min(a,wickUp));
-   const low=Math.max(last.close*.005,Math.min(open,close)-
+   const low=Math.max(origin*.005,Math.min(open,close)-
      (Number.isFinite(down)?down:Math.min(a,wickDown)));
-   result.push({time:last.time+(i+1)*60000,open,high,low,close,
+   result.push({time:firstFutureTime+i*60000,open,high,low,close,
      step:i+1,validatedShape:false,scenarioShape:false,analogue:Boolean(analogue)});
    prev=close;
  }
