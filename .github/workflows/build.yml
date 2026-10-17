@@ -64,6 +64,7 @@ jobs:
       - run: node tests/forecast-illustration.cjs
       - run: node tests/visual-forecast-candles.cjs
       - run: node tests/conditional-target-candles.cjs
+      - run: node tests/scalp-forward-reach.cjs
       - run: node tests/forecast-journal.cjs
       - run: node tests/direction.cjs
       - run: node tests/movement.cjs
