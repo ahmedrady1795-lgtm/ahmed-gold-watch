@@ -6,6 +6,7 @@ import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildForecastMotion,layoutForecastMotion,buildSmoothMotionPath} from '../lib/forecast-motion';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {buildGhostForecast} from '../lib/ghost-forecast';
+import {predictGoldTrainedShadow} from '../lib/gold-trained-shadow';
 import type {ForecastJournal} from '../lib/forecast-journal';
 import SniperPerformance from './SniperPerformance';
 import SniperStrategyRadar from './SniperStrategyRadar';
@@ -94,7 +95,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     preMove:x?.preMovePressure,liquidity:overlay,invalidation:m.displayStop});
   // Optional illustrative M1-only forecast, completely independent from
   // trade execution, AI qualification and the server's stored target prices.
-  const ghost=buildGhostForecast({candles:m.candles,now,
+  const goldShadow=asset==='GOLD'?predictGoldTrainedShadow({
+    candles:m.candles,now,price:m.price,source:String(x?.candleSource||''),
+    planSide:planVisible?m.displaySide:'WAIT',
+    sourceReady:m.historyFresh&&m.observationFresh&&sn.view.priceFresh
+  }):null;
+  const ghost=goldShadow??buildGhostForecast({candles:m.candles,now,
     side:planVisible?m.displaySide:'WAIT',price:m.price,
     sourceReady:m.historyFresh&&m.observationFresh&&sn.view.priceFresh,
     scenarioReady:planVisible});
@@ -509,7 +515,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </g>}
                 <text x={(ghostXs[0]+ghostXs.at(-1)!)/2} y={yt+29} textAnchor="middle"
                   fontSize={mobile?13:12} fontWeight="700" fill="#bdd1ee">
-                  {ghostVisible?'GHOST M1 · تجريبي':'M1 · نطاق دون اتجاه'}
+                  {ghostVisible?(ghost.source==='GOLD_MT5_OOS_MODEL'?'GOLD MT5 · اختبار تاريخي':'GHOST M1 · تجريبي'):'M1 · نطاق دون اتجاه'}
                 </text>
               </g>}
               {chartLanes.map(label=>{
@@ -567,14 +573,16 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
           {showGhost&&<div className="forecast-ghost-guide" role="status" aria-live="polite"
             style={{padding:'7px 10px',border:'1px dashed #446980',borderRadius:8,marginTop:6,color:'#c4dbea',fontSize:12}}>
-            <b>{ghostVisible?'3 شموع تقديرية M1 · مراقبة فقط':
+            <b>{ghostVisible?(ghost.source==='GOLD_MT5_OOS_MODEL'?
+              '3 شموع ذهب من نموذج MT5 اختُبر تاريخيًا · مراقبة فقط':'3 شموع تقديرية M1 · مراقبة فقط'):
               ghostRangeVisible?'نطاق تذبذب M1 · لا توقع اتجاه':
               'لا تتوفر بيانات كافية للتقدير'}</b>
             <span> · {ghost.reason}. هذه دراسة M1 فقط؛ ليست نموذج ML معتمدًا، ولا تغيّر سيناريو الخادم أو قرار الدخول.</span>
             <details style={{marginTop:4}}>
               <summary>نتائج الاختبار التاريخي وطريقة العرض</summary>
               {ghost.validation.samples>=12?<span>
-                فحص زمني بنوافذ سابقة منفصلة: {ghost.validation.directionHits}/{ghost.validation.samples}
+                {ghost.source==='GOLD_MT5_OOS_MODEL'?'اختبار خارج فترة تدريب نموذج الذهب:':'فحص زمني بنوافذ سابقة منفصلة:'}
+                {' '}{ghost.validation.directionHits}/{ghost.validation.samples}
                 {' '}اتجاهات صحيحة بعد 3 شموع؛ متوسط خطأ الإغلاق {fmt(ghost.validation.maeAtr,2)} ATR.
                 {ghostRangeVisible?' النتيجة لا تكفي لإظهار شموع اتجاهية.':''}
                 {' '}اختبار تاريخي تقني فقط، لا يثبت دقة تداول حي أو موثوقية احتمالات.
