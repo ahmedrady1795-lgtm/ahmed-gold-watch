@@ -6,6 +6,7 @@ import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildForecastMotion,layoutForecastMotion,buildSmoothMotionPath} from '../lib/forecast-motion';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {buildGhostForecast} from '../lib/ghost-forecast';
+import {goldMarketSession} from '../lib/gold-market-session';
 import {buildVisualFuture} from '../lib/visual-forecast-candles';
 import {predictGoldTrainedShadow} from '../lib/gold-trained-shadow';
 import type {ForecastJournal} from '../lib/forecast-journal';
@@ -28,7 +29,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   journals?:{GOLD:ForecastJournal|null;BTC:ForecastJournal|null};audit?:any;auditLoaded?:boolean
 }){
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
-  const [focusCandles,setFocusCandles]=useState(false);
+  const [focusCandles,setFocusCandles]=useState(true);
   const [showAlternatives,setShowAlternatives]=useState(false);
   const [showGhost,setShowGhost]=useState(true);
   const [mobile,setMobile]=useState(false);
@@ -48,6 +49,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     return()=>media.removeEventListener('change',update);
   },[]);
   const asset: 'GOLD'|'BTC'=assetView==='ALL'?chosen:assetView;
+  const goldClosed=asset==='GOLD'&&!goldMarketSession(now).open;
   const x=asset==='GOLD'?data?.gold:data?.bitcoin;
   const journal=journals?.[asset]??null;
   const calibration=audit?.metrics?.[asset];
@@ -105,8 +107,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     side:planVisible?m.displaySide:'WAIT',price:m.price,
     sourceReady:m.historyFresh&&m.observationFresh&&sn.view.priceFresh,
     scenarioReady:planVisible});
-  const visualCandles=showGhost?buildVisualFuture({candles:m.candles,forecast:ghost,side:dir,
-    scenarioPath:planVisible&&motion.length>1?motion.map(p=>({key:p.key,price:p.price})):[]}):[];
+  const visualCandles=showGhost&&!goldClosed?buildVisualFuture({candles:m.candles,forecast:ghost,side:dir}):[];
   const scenarioCandles=visualCandles.some(c=>c.scenarioShape);
   const ghostVisible=showGhost&&ghost.mode==='CANDLES';
   const ghostRangeVisible=showGhost&&ghost.mode==='RANGE';
@@ -117,7 +118,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     motion.some(p=>p.kind==='RETEST')?'BREAK_RETEST':'DIRECT';
   const scenarioLabel=scenarioKind==='SWEEP_RECLAIM'?'سحب سيولة ثم استرداد':
     scenarioKind==='BREAK_RETEST'?'كسر ثم اختبار وارتداد':'مسار مباشر مشروط';
-  const allBounds=[...candleBounds,...chartBands.flatMap(z=>[z.low,z.high]),...motion.map(p=>p.price),...(ghostActive?ghost.range.flatMap(r=>[r.low,r.high]):[]),...(visualCandles.length?visualCandles.flatMap(c=>[c.high,c.low]):[]),...pools.flatMap(z=>[z.low,z.high]),
+  const allBounds=[...candleBounds,...(focusCandles?[]:chartBands.flatMap(z=>[z.low,z.high])),...(focusCandles?[]:motion.map(p=>p.price)),...(ghostActive?ghost.range.flatMap(r=>[r.low,r.high]):[]),...(visualCandles.length?visualCandles.flatMap(c=>[c.high,c.low]):[]),...pools.flatMap(z=>[z.low,z.high]),
     ...(breakout.ready?[breakout.above!,breakout.below!]:[])];
   const allMin=allBounds.length?Math.min(...allBounds):m.lower;
   const allMax=allBounds.length?Math.max(...allBounds):m.upper;
@@ -125,7 +126,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const scaleLow=focusCandles?candleMin-candleSpan*.3:allMin-allSpan*.1;
   const scaleHigh=focusCandles?candleMax+candleSpan*.3:allMax+allSpan*.1;
   const px=(p:number)=>yt+(scaleHigh-p)/Math.max(.0000001,scaleHigh-scaleLow)*(yb-yt);
-  const ghostBandPath=visualCandles.length&&!scenarioCandles&&ghost.atr!=null?
+  const ghostBandPath=ghostVisible&&visualCandles.length&&ghost.atr!=null?
     'M '+xf+' '+px(m.candles.at(-1)!.close)+
     ' L '+visualCandles.map((c,i)=>ghostXs[i]+' '+px(c.high+ghost.atr!*.27*Math.sqrt(i+1))).join(' L ')+
     ' L '+visualCandles.map((_,i)=>{const j=visualCandles.length-1-i;
@@ -212,7 +213,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const ageMin=m.historyAge==null?null:Math.ceil(m.historyAge/60000);
   // Distinguish a genuinely stale source from a neutral/conflicted model.
   // Losing a directional bias does not mean that gold stopped streaming.
-  const feedProblem=!m.historyFresh?'الشموع متأخرة · آخر إغلاق فقط':
+  const feedProblem=goldClosed?'سوق الذهب مغلق · آخر إغلاق محفوظ':
+    !m.historyFresh?'الشموع متأخرة · آخر إغلاق فقط':
     !sn.view.priceFresh?'السعر متأخر · لا إشارة حية':
     !m.observationFresh?'تحديث القراءة متأخر · مراقبة فقط':null;
   const neutralLabel=!memory.bias?'تجهيز ذاكرة الأهداف · التحليل مستمر':
@@ -266,7 +268,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <div className={'forecast-visual-chart-wrap'+(expanded?' forecast-chart-expanded':'')+(chartFullscreen?' chart-fullscreen':'')}>
           <div className="forecast-visual-topline">
             <span className="sniper-chart-live-quote"><b dir="ltr">{fmt(m.price)}</b><small>{sn.view.priceFresh?'سعر حديث':'آخر سعر'} · M1 · {candles.length} شمعة</small></span>
-            <span className="sniper-chart-candle-age">{ageMin!=null?'آخر إغلاق منذ '+ageMin+' د':'لا توجد بيانات شموع'}</span>
+            <span className="sniper-chart-candle-age">{goldClosed?'سوق الذهب مغلق · آخر جلسة محفوظة':ageMin!=null?'آخر إغلاق منذ '+ageMin+' د':'لا توجد بيانات شموع'}</span>
             {structureView&&<span className={'sniper-structure-chip '+(structureView.side==='BUY'?'structure-up':'structure-down')}
               title="شموع مغلقة: اندفاع + كسر جسم + آخر شمعة معاكسة + فجوة 3 شموع، وليس إثبات أوامر مؤسسات">
               {structureView.side==='BUY'?'↗':'↘'} {structureView.kind==='BOS'?'BOS':'CHoCH؟'} · OB/FVG ·
@@ -320,7 +322,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <line x1={xf-8} x2={xf-8} y1="20" y2={volumeEnd+5} stroke="#72b3d1" strokeOpacity=".5"
                 strokeDasharray="6 7"/>
               <text x={xf-14} y="18" textAnchor="end" fill="#88bbd3" fontSize={mobile?18:12}>تاريخ فعلي</text>
-              <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?16:12}>{mobile?'مسار مشروط':'مسار مشروط · ليس مقياسًا للوقت'}</text>
+              <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?16:12}>{goldClosed?'السوق مغلق':ghostActive?'شموع مستقبلية تجريبية':'مستويات مراقبة'}</text>
               <g clipPath={'url(#forecast-plot-'+asset+')'}>
                 {pools.map(z=>{const color=z.side==='UPPER'?'#ff7d9b':'#51dcdf';return <g key={z.side}>
                   <rect x={x0} y={px(z.high)} width={xr-x0} height={Math.max(5,px(z.low)-px(z.high))}
@@ -543,7 +545,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <title>{label.label+' · المستوى الأصلي '+fmt(label.price)}</title>
                 </g>;
               })}
-              {projectedPath&&!ghostVisible&&visualCandles.length===0&&<g className="forecast-motion-path" clipPath={'url(#forecast-plot-'+asset+')'}>
+              {!goldClosed&&statusReady&&showAlternatives&&projectedPath&&!ghostVisible&&visualCandles.length===0&&<g className="forecast-motion-path" clipPath={'url(#forecast-plot-'+asset+')'}>
                 <path d={projectedPath} stroke="#071823" strokeWidth="8" fill="none" opacity=".7"/>
                 <path d={projectedPath} stroke={motionColor} strokeWidth="3"
                   strokeDasharray="8 7" fill="none" markerEnd={'url(#forecast-arrow-'+asset+')'}/>
@@ -580,13 +582,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
           {showGhost&&<div className="forecast-ghost-guide" role="status" aria-live="polite"
             style={{padding:'7px 10px',border:'1px dashed #446980',borderRadius:8,marginTop:6,color:'#c4dbea',fontSize:12}}>
-            <b>{ghostVisible?(ghost.source==='GOLD_MT5_OOS_MODEL'?
+            <b>{goldClosed?'الذهب مغلق · آخر بيانات فعلية محفوظة':ghostVisible?(ghost.source==='GOLD_MT5_OOS_MODEL'?
               '3 شموع ذهب مدعومة باختبار · يليها شموع شكلية فقط':'3 شموع M1 مفحوصة · والباقي شموع افتراضية'):
               ghostRangeVisible?'نطاق تذبذب M1 · لا توقع اتجاه · شموع توضيحية':
               'لا تتوفر بيانات كافية للتقدير'}</b>
-            <span> · {ghost.reason}. {scenarioCandles?
-              'شموع مسار مشروط حتى أهداف الخادم، لا تمثل دقيقة لكل شمعة أو موعد وصول، ولا تضمن تحقق الأهداف.':
-              '16 شمعة مستقبلية شكلية مستمدة من تذبذب M1، ليست توقعات OHLC موثوقة.'} هذه الدراسة ليست نموذج ML معتمدًا، ولا تغيّر قرار الدخول.</span>
+            <span> · {goldClosed?'جلسة XAUUSD مغلقة؛ آخر الأسعار محفوظة ولا توجد توقعات حية خلال الإغلاق.':ghost.reason} {visualCandles.length?'10 شموع قريبة المدى فقط؛ TP1/TP2/TP3 مستويات مراقبة بعيدة وليست نهاية إجبارية للشموع.':'لا توجد شموع مستقبلية مؤهلة حاليًا.'} هذه الدراسة ليست نموذج ML معتمدًا، ولا تغيّر قرار الدخول.</span>
             <details style={{marginTop:4}}>
               <summary>نتائج الاختبار التاريخي وطريقة العرض</summary>
               {ghost.validation.samples>=12?<span>
