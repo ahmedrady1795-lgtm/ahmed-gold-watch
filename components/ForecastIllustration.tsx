@@ -507,6 +507,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <stop offset="0%" stopColor="#36e4a6" stopOpacity=".18"/>
                   <stop offset="100%" stopColor="#36e4a6" stopOpacity=".035"/>
                 </linearGradient>
+                <linearGradient id="forecast-ghost-surface" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#1b4360" stopOpacity=".15"/>
+                  <stop offset="100%" stopColor="#34668a" stopOpacity=".6"/>
+                </linearGradient>
                 <linearGradient id={'forecast-chart-'+asset} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#15283d"/>
                   <stop offset="100%" stopColor="#0a1422"/>
@@ -518,7 +522,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               </defs>
               <rect x="0" y="0" width={W} height={H} rx="9" fill={'url(#forecast-chart-'+asset+')'}/>
               <rect x={xf} y="16" width={xr-xf} height={volumeEnd-15}
-                 fill="#153955" opacity={ghostActive?".25":".10"}/>
+                 fill="#153955" opacity={ghostActive?".28":".10"}/>
+              {ghostActive&&<rect x={xf} y={yt} width={xr-xf} height={yb-yt}
+                fill="url(#forecast-ghost-surface)" opacity=".32"/>}
                {ghostActive&&<rect x={xf+2} y={yt+2} width={xr-xf-4} height={yb-yt-4}
                  fill="none" stroke="#5e9aba" strokeOpacity=".26" strokeDasharray="6 8" rx="4"/>}
               {grid.map((g,i)=><g key={'grid'+i}>
@@ -529,8 +535,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               </g>)}
               {Array.from({length:7},(_,i)=><line key={'v'+i} x1={x0+i*(xr-x0)/6} x2={x0+i*(xr-x0)/6} y1="18" y2={volumeEnd+10}
                 stroke="#345267" strokeOpacity=".20" strokeDasharray="3 7"/>)}
-              <line x1={xf-8} x2={xf-8} y1="20" y2={volumeEnd+5} stroke="#72b3d1" strokeOpacity=".5"
-                strokeDasharray="6 7"/>
+              <line x1={xf-8} x2={xf-8} y1="20" y2={volumeEnd+5} stroke="#8cd2f0"
+                strokeWidth="2.4" strokeOpacity=".85" strokeDasharray="7 5"/>
               <text x={xf-14} y="18" textAnchor="end" fill="#88bbd3" fontSize={mobile?18:12}>تاريخ فعلي</text>
               <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?14:12}>{closedPreview?'معاينة آخر جلسة · غير حية':goldClosed?'الذهب مغلق':
     visualCandles.length?'شموع توضيحية · كسر وسيولة':
@@ -622,11 +628,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 const color=c.close>=c.open?'#4ad9c6':'#f0758a';
                 const top=Math.min(px(c.open),px(c.close)),bottom=Math.max(px(c.open),px(c.close));
                 const volumeH=Math.min(35,Math.max(1,c.volume/maxVolume*35));
+                const latest=i===candles.length-1;
                 return <g key={c.time}>
-                  <line x1={x} x2={x} y1={px(c.high)} y2={px(c.low)} stroke={color} strokeWidth="1.3"/>
+                  {latest&&<rect x={x-candleWidth/2-5} y={yt} width={candleWidth+10}
+                    height={yb-yt} fill="#68d9ed" fillOpacity=".055" rx="4"/>}
+                  <line x1={x} x2={x} y1={px(c.high)} y2={px(c.low)}
+                    stroke={color} strokeWidth={latest?2.1:1.5}/>
                   <rect x={x-candleWidth/2} y={top} width={candleWidth}
-                    height={Math.max(2.2,bottom-top)} rx=".7" fill={color}
-                    stroke={c.close>=c.open?'#a2ffe7':'#ffc0cb'} strokeOpacity=".6" strokeWidth=".75"/>
+                    height={Math.max(2.6,bottom-top)} rx="1.3" fill={color}
+                    stroke={c.close>=c.open?'#a2ffe7':'#ffc0cb'} strokeOpacity=".72" strokeWidth="1"/>
                   <rect x={x-candleWidth/2} y={volumeEnd-volumeH} width={candleWidth}
                     height={volumeH} fill={color} opacity=".35"/>
                   <title>{clock(c.time)+' · O '+fmt(c.open)+' H '+fmt(c.high)+' L '+fmt(c.low)+' C '+fmt(c.close)}</title>
@@ -739,12 +749,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   const gx=ghostXs[i],up=c.close>=c.open;
                   const color=up?'#4ad9c6':'#f0758a',top=Math.min(px(c.open),px(c.close)),
                     bottom=Math.max(px(c.open),px(c.close));
-                  return <g key={c.time} opacity={c.validatedShape?.96:.83}>
+                  return <g key={c.time} opacity={c.validatedShape?.96:.89}>
                     <line x1={gx} x2={gx} y1={px(c.high)} y2={px(c.low)}
-                      stroke={color} strokeWidth="1.35"/>
+                      stroke={color} strokeWidth="1.75" strokeDasharray={c.validatedShape?undefined:'3 2'}/>
                     <rect x={gx-futureWidth/2} y={top} width={futureWidth}
-                      height={Math.max(2.2,bottom-top)} rx=".7"
-                      fill={color} stroke={up?'#a2ffe7':'#ffc0cb'} strokeOpacity=".58" strokeWidth=".7"/>
+                      height={Math.max(2.8,bottom-top)} rx="1.2"
+                      fill={color} fillOpacity={c.validatedShape?.88:.39}
+                      stroke={up?'#a2ffe7':'#ffc0cb'} strokeOpacity=".85"
+                      strokeWidth="1.3" strokeDasharray={c.validatedShape?undefined:'4 2'}/>
                     {c.validatedShape&&<circle cx={gx} cy={px(c.high)-5} r="2" fill={color} />}
                     {(i%4===0||i===visualCandles.length-1)&&<text x={gx} y={yb-7} textAnchor="middle" fill="#b8c9e5"
                       fontSize={mobile?11:10}>{closedPreview?'+'+(i+1):clock(c.time)}</text>}
