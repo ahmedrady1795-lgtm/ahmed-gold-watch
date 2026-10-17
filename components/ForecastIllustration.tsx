@@ -42,6 +42,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const [expanded,setExpanded]=useState(false);
   const [chartWindow,setChartWindow]=useState<60|240>(60);
   const [chartFullscreen,setChartFullscreen]=useState(false);
+  const [inspectedTime,setInspectedTime]=useState<number|null>(null);
   const [orderFlow,setOrderFlow]=useState<BtcOrderflow|null>(null);
   useEffect(()=>{
     if(!chartFullscreen)return;
@@ -56,6 +57,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     return()=>media.removeEventListener('change',update);
   },[]);
   const asset: 'GOLD'|'BTC'=assetView==='ALL'?chosen:assetView;
+  useEffect(()=>setInspectedTime(null),[asset,chartWindow,focusCandles]);
   // Real BTC trade tape refresh is independent of AI scoring, without any
   // market-order side effect. Abort + cleanup when the selected asset changes.
   useEffect(()=>{
@@ -247,6 +249,18 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const ghostRangeVisible=showGhost&&!routeVisible&&ghost.mode==='RANGE'&&visualCandles.length>=3;
   const ghostActive=showGhost&&visualCandles.length>0;
   const stride=(x1-x0)/Math.max(candles.length,1);
+  const inspectedIndex=candles.findIndex(c=>c.time===inspectedTime);
+  const inspected=inspectedIndex>=0?candles[inspectedIndex]:null;
+  const detailCandle=inspected??candles.at(-1);
+  const inspectPointer=(event:React.PointerEvent<SVGSVGElement>)=>{
+    if(event.pointerType==='touch'&&event.type==='pointermove')return;
+    const matrix=event.currentTarget.getScreenCTM();
+    if(!matrix||!candles.length)return;
+    const point=new DOMPoint(event.clientX,event.clientY).matrixTransform(matrix.inverse());
+    if(point.x<x0||point.x>x1||point.y<yt||point.y>yb)return;
+    const index=clamp(Math.floor((point.x-x0)/stride),0,candles.length-1);
+    setInspectedTime(candles[index].time);
+  };
   const candleWidth=clamp(stride*.73,mobile?2.2:3,15);
   const futureStride=(xr-xf-18)/Math.max(1,visualCandles.length);
   // The scenario can be narrower, NEVER wider than an actual chart candle.
@@ -567,7 +581,29 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             </div>
           </details>
           <div className="forecast-visual-chart-scroll">
+            <div dir="rtl" style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:'8px 16px',padding:'12px 16px',background:'#0b1928',borderBottom:'1px solid #284156',color:'#b6cad9',fontSize:13,fontVariantNumeric:'tabular-nums'}}>
+              <strong style={{color:'#e3edf5'}}>{inspected?'فحص شمعة':'آخر شمعة'}</strong>
+              {detailCandle?<>
+                <span>{clock(detailCandle.time)} · دبي</span>
+                <span>افتتاح <b dir="ltr">{fmt(detailCandle.open)}</b></span>
+                <span>أعلى <b dir="ltr">{fmt(detailCandle.high)}</b></span>
+                <span>أدنى <b dir="ltr">{fmt(detailCandle.low)}</b></span>
+                <span>إغلاق <b dir="ltr" style={{color:detailCandle.close>=detailCandle.open?'#51e5ac':'#ff8295'}}>{fmt(detailCandle.close)}</b></span>
+              </>:<span>بانتظار بيانات الشموع</span>}
+              {inspected&&<button type="button" onClick={()=>setInspectedTime(null)} style={{background:'#17354a',color:'#e3edf5',border:'1px solid #426078',borderRadius:6,padding:'8px 12px'}}>آخر شمعة ↩</button>}
+              <small>المس شمعة أو حرّك المؤشر · استخدم ← → للتنقل</small>
+            </div>
             <svg className={'forecast-visual-svg'+(focusCandles?' forecast-visual-svg-zoomed':'')} viewBox={'0 0 '+W+' '+H}
+              tabIndex={0} onPointerDown={inspectPointer} onPointerMove={inspectPointer}
+              onKeyDown={event=>{
+                if(event.key==='Escape'){setInspectedTime(null);return;}
+                if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)||!candles.length)return;
+                event.preventDefault();
+                const current=inspectedIndex>=0?inspectedIndex:candles.length-1;
+                const index=event.key==='Home'?0:event.key==='End'?candles.length-1:
+                  clamp(current+(event.key==='ArrowLeft'?-1:1),0,candles.length-1);
+                setInspectedTime(candles[index].time);
+              }}
               role="img" aria-label={statusReady?
                 'الشموع الحقيقية والسيناريو المسجل إلى '+m.displayTargets.map(t=>'TP'+t.stage+' '+fmt(t.price)).join(' ثم '):
                 watchReady?'الشموع الحقيقية مع مستويات مراقبة مبكرة غير مؤهلة للدخول':
@@ -1003,6 +1039,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   {breakoutWatch.phase==='UNAVAILABLE'?'بيانات غير كافية':breakoutWatch.closes>0?
                     breakoutWatch.closes+'/2 إغلاق M5 · لا دخول':'رصد M1/M5 · لا دخول'}</text>
                 <title>{breakoutWatch.detail+' · الدخول يتطلب شروط السيولة والعائد والمخاطرة'}</title>
+              </g>}
+              {inspected&&<g pointerEvents="none" aria-hidden="true">
+                <line x1={x0+(inspectedIndex+.5)*stride} x2={x0+(inspectedIndex+.5)*stride}
+                  y1={yt} y2={volumeEnd} stroke="#dceefa" strokeOpacity=".7" strokeDasharray="4 5"/>
+                <line x1={x0} x2={xr} y1={px(inspected.close)} y2={px(inspected.close)}
+                  stroke="#dceefa" strokeOpacity=".7" strokeDasharray="4 5"/>
+                <circle cx={x0+(inspectedIndex+.5)*stride} cy={px(inspected.close)} r="5" fill="#e3f4ff" stroke="#15354b" strokeWidth="2"/>
+                <rect x={xr+2} y={px(inspected.close)-14} width={W-xr-6} height="28" rx="4" fill="#dceefa"/>
+                <text x={W-10} y={px(inspected.close)+5} textAnchor="end" direction="ltr" fill="#0b1928" fontSize={mobile?16:13} fontFamily="monospace">{fmt(inspected.close)}</text>
               </g>}
             </svg>
           </div>
