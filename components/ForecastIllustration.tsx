@@ -4,7 +4,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {Crosshair,Layers3} from 'lucide-react';
 import {assessBreakoutWatch,buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildForecastMotion,layoutForecastMotion,buildSmoothMotionPath} from '../lib/forecast-motion';
-import {buildForecastIllustration} from '../lib/forecast-illustration';
+import {buildForecastIllustration,type PriceBand} from '../lib/forecast-illustration';
 import {buildGhostForecast} from '../lib/ghost-forecast';
 import {goldMarketSession} from '../lib/gold-market-session';
 import {auditCandleAnalogueDirection,buildClosedSessionCandlePreview,buildVisualFuture,rankCandleAnalogues} from '../lib/visual-forecast-candles';
@@ -100,7 +100,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     historyFresh:m.historyFresh,m15:x?.chartHigherFrames?.m15,
     h1:x?.chartHigherFrames?.h1
   }):[];
-  const targetBands=watchTargets.map(t=>({
+  const targetBands:PriceBand[]=watchTargets.map(t=>({
     key:'WATCH_TP'+t.stage,label:'رصد TP'+t.stage+' · '+t.source,
     price:t.price,low:t.price,high:t.price,kind:'TARGET' as const
   }));
