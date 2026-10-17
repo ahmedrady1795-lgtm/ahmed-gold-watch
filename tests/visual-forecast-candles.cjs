@@ -21,6 +21,18 @@ const model=build(base),again=build(base);
 assert.equal(model.length,18,'18 integrated forecast candles shown by default');
 assert.equal(JSON.stringify(model),JSON.stringify(again),'same input must produce same forecast artwork');
 assert.equal(model[0].time,last.time+60000);
+const quote=last.close+.27,partialNow=last.time+60000+19000;
+const live=build({...base,now:partialNow,anchorPrice:quote});
+assert.equal(live[0].open,quote,'neutral future scenario starts from current actual quote');
+assert.equal(live[0].time,last.time+120000,'first illustrated OHLC starts at next full M1 candle');
+assert.ok(live.every((x,i)=>Math.abs(x.close-quote)<=atr*2.6+.00001),
+  'uncertain RANGE simulation must not suggest unsupported runaway directional edge');
+assert.equal(build({...base,now:partialNow,anchorPrice:last.close+atr*3})[0].open,last.close,
+  'distant quotes cannot be used as trusted extrapolation anchors');
+assert.equal(build({...base,now:last.time+60000+110000,anchorPrice:quote})[0].time,
+  last.time+60000,'stale quote cannot move historic forecast forward as fresh');
+assert.ok(live.every((x,i)=>i===0||x.time-live[i-1].time===60000),
+  'illustrated future M1 timestamps are strictly monotone');
 assert.ok(model.every((c,i)=>[c.open,c.high,c.low,c.close].every(Number.isFinite)&&
  c.high>=Math.max(c.open,c.close)&&c.low<=Math.min(c.open,c.close)&&
  c.low>0&&(i===0?c.open===last.close:c.open===model[i-1].close)));
@@ -62,6 +74,13 @@ assert.ok(report.samples>=5,'chronological forward-test has historical folds');
 assert.ok(report.samples<=Math.ceil((candles.length-65)/4),
  'evaluation folds are disjoint');
 assert.ok(report.hits>=0&&report.hits<=report.samples);
+assert.ok(report.maeAtr!=null&&Number.isFinite(report.maeAtr)&&report.maeAtr>=0,
+  'evaluate quantitative three-candle price error, not direction alone');
+assert.ok(report.baselineMaeAtr!=null&&Number.isFinite(report.baselineMaeAtr),
+  'compare against holding last known close at the historical decision time');
+const emptyReport=audit(candles.slice(0,50),atr);
+assert.equal(emptyReport.maeAtr,null,'insufficient historical test samples do not invent precision');
+assert.equal(emptyReport.baselineMaeAtr,null);
 assert.ok(report.baselineHits>=0&&report.baselineHits<=report.samples);
 assert.equal(report.edgeSupported,false,'single session never establishes profitable forecast edge');
 assert.equal(audit(candles.slice(0,100),atr).edgeSupported,false,
@@ -81,6 +100,11 @@ const first=Array.from({length:3},(_,i)=>({time:last.time+(i+1)*60000,
  high:last.close+(i+1)*.2+.13,low:last.close+i*.2-.12}));
 const certified=build({...base,forecast:{mode:'CANDLES',atr,side:'BUY',candles:first}});
 assert.equal(certified.length,18);
+const locked=build({...base,forecast:{mode:'CANDLES',atr,side:'BUY',candles:first},
+  now:partialNow,anchorPrice:quote});
+assert.equal(locked[0].open,last.close,
+  'three evidence-gated OHLC bars retain original audited price/time anchor');
+assert.equal(locked[0].time,last.time+60000);
 assert.ok(certified.slice(0,3).every((c,i)=>c.validatedShape&&c.close===first[i].close));
 assert.ok(certified.slice(3).every(c=>!c.validatedShape));
 assert.ok(certified.slice(3).some(c=>c.close<c.open));
@@ -88,6 +112,8 @@ const ui=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 assert.match(ui,/visualCandles\.map\(\(c,i\)=>/);
 assert.match(ui,/futureWidth/,'forecast must use proportional real-style candle bodies');
 assert.match(ui,/أنماط تاريخية/,'honest label for illustrative replay');
+assert.match(ui,/anchorPrice:liveAnchor/,'live M1 quote can set neutral illustration origin');
+assert.match(ui,/analogueAudit\.baselineMaeAtr/,'plot reports price error versus naive baseline');
 assert.match(ui,/غير مؤهلة لتحديد اتجاه تداول/,'walk-forward results cannot imply proven trade edge');
 assert.doesNotMatch(ui,/scenarioPath:planVisible/,'never attach far target price path');
 console.log('PASS: 18 varied empirical OHLC candles, historical analogue geometry, gap and safety gates');
