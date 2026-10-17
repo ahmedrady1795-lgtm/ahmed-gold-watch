@@ -27,6 +27,7 @@ export function certifyHoldout(metrics:any,providerReady:boolean):Verdict{
   else if(n<120||selected<80||selected>n)reason='Not enough independent out-of-sample directional decisions';
   else if(accuracy==null||coverage==null||coverage<.10)reason='Holdout accuracy or trade coverage is unavailable/too low';
   else if(!coverageConsistent)reason='Holdout selective coverage and sample counts disagree';
+  else if(baseline==null)reason='Paired baseline results are missing; no independent edge can be certified';
   else if(lower<=Math.max(.50,baseline??.50))reason='95% Wilson bound has not demonstrated a directional edge over the paired baseline';
   return {ready:reason==='',status:reason?'SHADOW':'QUALIFIED',reason:reason||'Independently sampled and statistically qualified; not a profit guarantee',
     oosSamples:n,selectiveSamples:selected,selectiveAccuracy:accuracy??0,
