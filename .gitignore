@@ -10,3 +10,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+
+# Raw broker candles / trained artifacts are local until deliberately published.
+/local-data/
+mt5_bridge/local-data/
+*.csv.gz
