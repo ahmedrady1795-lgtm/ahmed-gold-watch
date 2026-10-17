@@ -399,7 +399,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       </header>
       <div className="sniper-decision-strip sniper-decision-compact" aria-label="قرار موحد للقناص">
         <strong className={statusReady?(rise?'green':fall?'red':''):''}>{feedProblem??(statusReady?'سيناريو ورقي مؤهل':'لا دخول مؤكد')}</strong>
-        <span>{rise?'↗ ميل صعود':fall?'↘ ميل هبوط':neutralLabel}</span>
+        <span>{playbook.side!=='WAIT'&&!statusReady?
+          (playbook.side==='BUY'?'↗ ':'↘ ')+playbook.title:
+          rise?'↗ ميل صعود':fall?'↘ ميل هبوط':neutralLabel}</span>
         {m.fourHour.ready&&<b>4س · {m.fourHour.phase}</b>}
       </div>
       <div className={'forecast-visual-layout' +(expanded?' forecast-layout-expanded':'')}>
@@ -445,7 +447,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           <details className="sniper-chart-analysis-drawer">
             <summary>
               <strong>{playbook.title}</strong>
-              <span>{'◇ '+breakoutWatch.closes+'/2 M5 · '+
+              <span className={'sniper-strength-chip sniper-strength-'+playbook.evidenceStrength.toLowerCase()}
+                title={'قوة الأدلة الفنية وليست احتمالية ربح: '+playbook.strengthDetail}>
+                {'◆ '+playbook.strengthTitle}
+              </span>
+              <span className="sniper-collapse-levels">{'◇ '+breakoutWatch.closes+'/2 M5 · '+
                 (playbook.target?'TP1 '+fmt(playbook.target.price):'أهداف مراقبة')}</span>
               <small>تفاصيل الاتجاه والسيولة والمراحل <span aria-hidden="true">⌄</span></small>
             </summary>
@@ -473,7 +479,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <div className="sniper-playbook-heading">
               <span className="sniper-playbook-mark"><Crosshair size={15}/></span>
               <div><strong>{playbook.title}</strong>
-                <small>{playbook.detail} · ليس أمر دخول</small></div>
+                <small>{playbook.strengthTitle+' · '+playbook.strengthDetail}</small>
+                <small>{playbook.detail} · تحليل وليس أمر دخول</small></div>
               <span className={'sniper-playbook-side '+(playbook.side==='BUY'?'playbook-buy':
                 playbook.side==='SELL'?'playbook-sell':'playbook-neutral')}>
                 {playbook.side==='BUY'?'↗ رصد شراء':
