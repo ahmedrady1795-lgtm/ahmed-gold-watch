@@ -64,7 +64,19 @@ export function rankCandleAnalogues(history:Bar[],count:number,atr:number,limit=
    if(!Number.isFinite(following)||!Number.isFinite(futureAtr))continue;
    matches.push({start:index,distance:Number(distance.toFixed(5)),futureAtr});
  }
- return matches.sort((a,b)=>a.distance-b.distance).slice(0,Math.max(1,Math.min(limit,8)));
+ // Adjacent one-minute snapshots often belong to the SAME market event.
+ // Do not count five overlapping contexts/outcomes as five independent analogues.
+ // Greedy selection chooses the best representative of each distinct time
+ // block; the entire preceding-context + future-candle window is embargoed.
+ const ranked=matches.sort((a,b)=>a.distance-b.distance);
+ const selected:typeof matches=[];
+ const minGap=count+6;
+ for(const candidate of ranked){
+   if(selected.every(p=>Math.abs(p.start-candidate.start)>=minGap))
+     selected.push(candidate);
+   if(selected.length>=Math.max(1,Math.min(limit,8)))break;
+ }
+ return selected;
 }
 export function selectCandleAnalogue(history:Bar[],count:number,atr:number){
  const ranked=rankCandleAnalogues(history,count,atr,5);
@@ -84,6 +96,8 @@ type Audit={samples:number;signals:number;hits:number;accuracyPct:number|null;
 /** Purged chronological replay. On each fold, only the previously completed
  * prefix can select a candidate; the next 3 candles are used ONLY for scoring.
  * Disjoint evaluation horizon (stride 4) avoids claiming repeated win samples.
+ * IMPORTANT: inclusion depends ONLY on pre-outcome candidate magnitude.
+ * A small/flat realised future counts as a miss, never disappears post-hoc.
  */
 export function auditCandleAnalogueDirection(rows:Bar[],atr:number):Audit{
  let samples=0,signals=0,hits=0,baselineHits=0;
@@ -106,7 +120,9 @@ export function auditCandleAnalogueDirection(rows:Bar[],atr:number):Audit{
    const net=prefix[idx+2].close-prefix[idx-1].close;
    const move=f[2].close-prefix.at(-1)!.close;
    const baseline=prefix.at(-1)!.close-prefix.at(-4)!.close;
-   if(Math.abs(net)<localAtr*.20||Math.abs(move)<localAtr*.20)continue;
+   // Selection uses only information known at the fold's forecast time.
+   // Excluding small ACTUAL outcomes would cherry-pick the winning trades.
+   if(Math.abs(net)<localAtr*.20)continue;
    signals++;samples++;
    if(Math.sign(net)===Math.sign(move))hits++;
    if(Math.sign(baseline)===Math.sign(move))baselineHits++;
