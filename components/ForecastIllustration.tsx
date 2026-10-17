@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {Crosshair,Layers3} from 'lucide-react';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildForecastMotion,layoutForecastMotion,buildSmoothMotionPath} from '../lib/forecast-motion';
@@ -108,9 +108,19 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     sourceReady:m.historyFresh&&m.observationFresh&&sn.view.priceFresh,
     scenarioReady:planVisible});
   const visualCandles=showGhost&&!goldClosed?buildVisualFuture({candles:m.candles,forecast:ghost,side:dir}):[];
-  const analogueNeighbors=visualCandles.length?rankCandleAnalogues(m.candles,18,ghost.atr??0).length:0;
-  const analogueAudit=visualCandles.length?
-    auditCandleAnalogueDirection(m.candles,ghost.atr??0):null;
+  // The M1 audit scans many historical folds. A frequent quote/UI refresh
+  // must not rerun it until a genuinely different candle history arrives.
+  const candleRevision=m.candles.map(c=>[c.time,c.open,c.high,c.low,c.close].join(':')).join('|');
+  const analogueStudy=useMemo(()=>{
+    if(!showGhost||goldClosed||ghost.mode==='OFF'||!m.candles.length)
+      return {neighbors:0,audit:null};
+    return {neighbors:rankCandleAnalogues(m.candles,18,ghost.atr??0).length,
+      audit:auditCandleAnalogueDirection(m.candles,ghost.atr??0)};
+  // Revision includes the full OHLC history, protecting corrected past bars.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[asset,candleRevision,ghost.atr,ghost.mode,showGhost,goldClosed]);
+  const analogueNeighbors=analogueStudy.neighbors;
+  const analogueAudit=analogueStudy.audit;
   const scenarioCandles=visualCandles.some(c=>c.scenarioShape);
   const ghostVisible=showGhost&&ghost.mode==='CANDLES';
   const ghostRangeVisible=showGhost&&ghost.mode==='RANGE';
@@ -128,8 +138,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const allMin=allBounds.length?Math.min(...allBounds):m.lower;
   const allMax=allBounds.length?Math.max(...allBounds):m.upper;
   const allSpan=Math.max(allMax-allMin,candleSpan);
-  const scaleLow=focusCandles?candleMin-candleSpan*.3:allMin-allSpan*.1;
-  const scaleHigh=focusCandles?candleMax+candleSpan*.3:allMax+allSpan*.1;
+  // Keep the near-future candles visible at default zoom, without allowing
+  // distant H4 target lines to compress the real/predicted M1 candle bodies.
+  const futureBounds=visualCandles.flatMap(c=>[c.high,c.low]);
+  const focusMin=Math.min(candleMin,...futureBounds);
+  const focusMax=Math.max(candleMax,...futureBounds);
+  const focusSpan=Math.max(candleSpan,focusMax-focusMin,ghost.atr??0);
+  const scaleLow=focusCandles?focusMin-focusSpan*.18:allMin-allSpan*.1;
+  const scaleHigh=focusCandles?focusMax+focusSpan*.18:allMax+allSpan*.1;
   const px=(p:number)=>yt+(scaleHigh-p)/Math.max(.0000001,scaleHigh-scaleLow)*(yb-yt);
   const ghostBandPath=false&&ghostVisible&&visualCandles.length&&ghost.atr!=null?
     'M '+xf+' '+px(m.candles.at(-1)!.close)+
