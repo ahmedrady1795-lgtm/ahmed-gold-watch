@@ -70,7 +70,8 @@ export function buildVisualFuture(input:{
     const wiggle=scenario?
       Math.min(a*.42,Math.abs(legMove)*.6)*Math.sin((i+1)*2.15):
       0;
-    const delta=scenario?legMove+wiggle-(i?Math.min(a*.42,Math.abs(legMove)*.6)*Math.sin(i*2.15):0):
+    const delta=scenario?(i===count-1?target!-open:
+      legMove+wiggle-(i?Math.min(a*.42,Math.abs(legMove)*.6)*Math.sin(i*2.15):0)):
       clamp(drift,-a*.48,a*.48);
     const close=Math.max(last.close*.0001,open+delta);
     const high=Math.max(open,close)+upper*(.8+.33*Math.abs(Math.sin(i*1.41)));
