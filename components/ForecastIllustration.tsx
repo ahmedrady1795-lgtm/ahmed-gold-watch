@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {Crosshair,Layers3} from 'lucide-react';
 import {assessBreakoutWatch,buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildForecastMotion,layoutForecastMotion,buildSmoothMotionPath} from '../lib/forecast-motion';
@@ -18,43 +18,12 @@ import {detectLiquiditySweeps} from '../lib/liquidity-sweep';
 import {detectDisplacementObFvg} from '../lib/institutional-price-action';
 import {buildBreakoutGuide,explainFrameConflict,layoutPriceLanes} from '../lib/sniper-decision-guide';
 import {evaluateProfessionalMove} from '../lib/professional-move';
+import {assessChartObservation,observedStructuralTargets} from '../lib/chart-observation-radar';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
   p.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
 const clock=(t:number)=>new Date(t).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Dubai'});
 const clamp=(p:number,a:number,b:number)=>Math.max(a,Math.min(b,p));
-/** Export pixels rendered by this exact live chart, without generated artwork. */
-function downloadActualChartPng(svg:SVGSVGElement){
-  const clone=svg.cloneNode(true) as SVGSVGElement;
-  clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
-  const width=svg.viewBox.baseVal.width||1440,height=svg.viewBox.baseVal.height||760;
-  clone.setAttribute('width',String(width));clone.setAttribute('height',String(height));
-  const url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)],
-    {type:'image/svg+xml;charset=utf-8'}));
-  const image=new Image();
-  image.onload=()=>{
-    const canvas=document.createElement('canvas');
-    canvas.width=width*2;canvas.height=height*2;
-    const ctx=canvas.getContext('2d');
-    if(ctx){
-      ctx.fillStyle='#0b1725';ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.drawImage(image,0,0,canvas.width,canvas.height);
-      canvas.toBlob(blob=>{
-        if(!blob)return;
-        const pngUrl=URL.createObjectURL(blob),link=document.createElement('a');
-        link.href=pngUrl;
-        link.download='al-qannas-'+(svg.dataset.asset||'chart')+'-'+
-          new Date().toISOString().replace(/[:.]/g,'-')+'.png';
-        document.body.appendChild(link);link.click();link.remove();
-        setTimeout(()=>URL.revokeObjectURL(pngUrl),1200);
-      },'image/png');
-    }
-    URL.revokeObjectURL(url);
-  };
-  image.onerror=()=>URL.revokeObjectURL(url);
-  image.src=url;
-}
-
 export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLive,assetView='ALL',journals,audit,auditLoaded=false,observationAt=snapshotAt}:{
   data:any;now:number;snapshotAt:unknown;observationAt?:unknown;goldLive?:any;btcLive?:any;assetView?:'ALL'|'GOLD'|'BTC';
   journals?:{GOLD:ForecastJournal|null;BTC:ForecastJournal|null};audit?:any;auditLoaded?:boolean
@@ -67,7 +36,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const [expanded,setExpanded]=useState(false);
   const [chartWindow,setChartWindow]=useState<60|240>(60);
   const [chartFullscreen,setChartFullscreen]=useState(false);
-  const chartSvgRef=useRef<SVGSVGElement|null>(null);
   useEffect(()=>{
     if(!chartFullscreen)return;
     const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')setChartFullscreen(false);};
@@ -116,6 +84,26 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     now,price:m.price,priceFresh:sn.view.priceFresh&&m.observationFresh,
     historyFresh:m.historyFresh,m1:m.candles,m5:x?.chartHigherFrames?.m5,overlay
   });
+  // Read-only closed-candle radar and historical objectives. No entries.
+  const observationRadar=assessChartObservation({
+    now,priceFresh:sn.view.priceFresh&&m.observationFresh,
+    historyFresh:m.historyFresh,marketOpen:!goldClosed,
+    m1:m.candles,m5:x?.chartHigherFrames?.m5
+  });
+  const watchTargetSide=observationRadar.status==='CONFLICT'?'WAIT':
+    observationRadar.m5Side!=='WAIT'?observationRadar.m5Side:
+    breakoutWatch.phase==='M5_CONFIRMED'||breakoutWatch.phase==='M5_FIRST'?
+      breakoutWatch.side:'WAIT';
+  const watchTargets=!planVisible?observedStructuralTargets({
+    now,price:m.price,side:watchTargetSide,
+    priceFresh:sn.view.priceFresh&&m.observationFresh,
+    historyFresh:m.historyFresh,m15:x?.chartHigherFrames?.m15,
+    h1:x?.chartHigherFrames?.h1
+  }):[];
+  const targetBands=watchTargets.map(t=>({
+    key:'WATCH_TP'+t.stage,label:'رصد TP'+t.stage+' · '+t.source,
+    price:t.price,low:t.price,high:t.price,kind:'TARGET' as const
+  }));
   const pools=overlay.ready?[overlay.upper,overlay.lower].filter((z):z is NonNullable<typeof z>=>z!=null):[];
   const candles=m.candles.slice(-(focusCandles?Math.min(chartWindow,36):chartWindow));
   const candleBounds=candles.flatMap(c=>[c.low,c.high]);
@@ -126,7 +114,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const visibleBands=m.bands.filter(z=>z.kind==='TARGET'||z.kind==='STOP'||
     z.kind==='BUY_REBOUND'||z.kind==='SELL_REBOUND'||z.kind==='DEMAND'||z.kind==='SUPPLY');
   // Fold coinciding zones only; keep every independent target stage and the stop.
-  const chartBands=collapseChartZones(visibleBands,m.price,mobile?1:2);
+  const chartBands=collapseChartZones([...visibleBands,...targetBands],m.price,mobile?1:2);
   const primaryZone=primaryLiquidityZone(chartBands,m.price);
   const opposingOverlap=findOpposingOverlap(chartBands,m.price);
   const motion=buildForecastMotion({visible:planVisible,side:dir,price:m.price,
@@ -198,7 +186,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const priceFresh=m.price!=null&&sn.view.priceFresh&&m.observationFresh;
   const chartLanes=layoutPriceLanes([
     ...chartBands.map(z=>({key:z.key,y:px(z.price),price:z.price,
-      label:z.kind==='TARGET'?'TP'+z.key.replace('TP',''):z.kind==='STOP'?'إبطال':
+      label:z.key.startsWith('WATCH_TP')?'رصد TP'+z.key.replace('WATCH_TP',''):
+        z.kind==='TARGET'?'TP'+z.key.replace('TP',''):z.kind==='STOP'?'إبطال':
         z.key===primaryZone?.key?(z.kind==='DEMAND'||z.kind==='BUY_REBOUND'?'طلب ★':'عرض ★'):
         z.kind==='DEMAND'||z.kind==='BUY_REBOUND'?'طلب':'عرض',
       kind:z.kind})),
@@ -342,11 +331,18 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               title="تأكيد فني من شموع مغلقة؛ لا يسمح بالدخول دون وقف وتكلفة وتحقق">
               {leadSweep.side==='BUY'?'↗ سحب سيولة قاع':'↘ سحب سيولة قمة'} · {fmt(leadSweep.level)} · إبطال {fmt(leadSweep.invalidation)}
             </span>}
+            <span className={'sniper-structure-chip '+(observationRadar.side==='BUY'?'structure-up':
+              observationRadar.side==='SELL'?'structure-down':'')}
+              title={observationRadar.reason+' · رصد غير قابل للتنفيذ'}>
+              {observationRadar.title} ·
+              {' '}{observationRadar.m1Side==='BUY'?'M1 ↑':
+                observationRadar.m1Side==='SELL'?'M1 ↓':'M1 ↔'} /
+              {' '}{observationRadar.m5Side==='BUY'?'M5 ↑':
+                observationRadar.m5Side==='SELL'?'M5 ↓':'M5 ↔'}
+            </span>
             <div className="forecast-chart-tools">
               <button type="button" aria-pressed={chartWindow===60} onClick={()=>setChartWindow(60)}>ساعة</button>
               <button type="button" aria-pressed={chartWindow===240} onClick={()=>setChartWindow(240)}>4 ساعات</button>
-             <button type="button" onClick={()=>{if(chartSvgRef.current)downloadActualChartPng(chartSvgRef.current)}}
-               title="تنزيل لقطة PNG من الرسم الفعلي في القناص">📷 صورة فعلية</button>
               <button className="forecast-chart-zoom" type="button" aria-pressed={focusCandles} onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'كل المستويات':'تكبير الشموع'}</button>
               <button type="button" aria-pressed={showGhost} onClick={()=>setShowGhost(v=>!v)} title="شموع M1 افتراضية فقط عندما تؤيدها نتائج زمنية سابقة؛ وإلا نطاق تقلب مرئي دون اتجاه">{showGhost?'إخفاء التقدير':'شموع تقديرية'}</button>
               <button className="forecast-chart-alternative" type="button" aria-pressed={showAlternatives} onClick={()=>setShowAlternatives(v=>!v)} title="مسارات مشروطة إضافية، ليست صفقات">{showAlternatives?'إخفاء البدائل':'بدائل'}</button>
@@ -355,11 +351,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             </div>
           </div>
           <div className="forecast-visual-chart-scroll">
-            <svg ref={chartSvgRef} data-asset={asset} className={'forecast-visual-svg'+(focusCandles?' forecast-visual-svg-zoomed':'')} viewBox={'0 0 '+W+' '+H}
+            <svg className={'forecast-visual-svg'+(focusCandles?' forecast-visual-svg-zoomed':'')} viewBox={'0 0 '+W+' '+H}
               role="img" aria-label={statusReady?
                 'الشموع الحقيقية والسيناريو المسجل إلى '+m.displayTargets.map(t=>'TP'+t.stage+' '+fmt(t.price)).join(' ثم '):
                 watchReady?'الشموع الحقيقية مع مستويات مراقبة مبكرة غير مؤهلة للدخول':
-                'الشموع التاريخية فقط، ولا توجد إشارة مؤهلة'} >
+                'شموع تاريخية وأهداف هيكلية مشروطة للكسر والسيولة · لا دخول مؤكد'} >
               <defs>
                 <clipPath id={'forecast-plot-'+asset}><rect x={x0} y={yt} width={xr-x0} height={yb-yt}/></clipPath>
                 <linearGradient id={'forecast-target-'+asset} x1="0" y1="0" x2="0" y2="1">
@@ -391,7 +387,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <line x1={xf-8} x2={xf-8} y1="20" y2={volumeEnd+5} stroke="#72b3d1" strokeOpacity=".5"
                 strokeDasharray="6 7"/>
               <text x={xf-14} y="18" textAnchor="end" fill="#88bbd3" fontSize={mobile?18:12}>تاريخ فعلي</text>
-              <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?14:12}>{closedPreview?'معاينة آخر جلسة · غير حية':goldClosed?'الذهب مغلق':visualCandles.length?'محاكاة M1 · ليست أسعارًا حية':'مستويات مراقبة'}</text>
+              <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?14:12}>{closedPreview?'معاينة آخر جلسة · غير حية':goldClosed?'الذهب مغلق':
+    visualCandles.length?'شموع توضيحية · كسر وسيولة':
+    watchTargets.length?'TP مراقبة · كسر · سيولة':'مستويات كسر وسيولة'}</text>
               <g clipPath={'url(#forecast-plot-'+asset+')'}>
                 {pools.map(z=>{const color=z.side==='UPPER'?'#ff7d9b':'#51dcdf';return <g key={z.side}>
                   <rect x={x0} y={px(z.high)} width={xr-x0} height={Math.max(5,px(z.low)-px(z.high))}
@@ -454,7 +452,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <line x1={z.kind==='TARGET'?xf:x0} x2={xr}
                     y1={mid} y2={mid} stroke={clr} strokeWidth={z.key===primaryZone?.key?2.1:z.kind==='TARGET'?1.4:1}
                     strokeDasharray={z.kind==='STOP'?'7 6':undefined} strokeOpacity=".72"/>
-                  <title>{z.label+' · '+fmt(z.low)+' – '+fmt(z.high)}</title>
+                  <title>{z.label+' · '+fmt(z.low)+' – '+fmt(z.high)+
+  (z.key.startsWith('WATCH_TP')?' · سعر هيكلي تاريخي مرصود · ليس هدف دخول مؤهلاً':'')}</title>
                 </g>;
               })}
               {emaPath(20)&&<path d={emaPath(20)} fill="none" stroke="#edc36d" strokeWidth="1.9" strokeOpacity=".9"
@@ -717,8 +716,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         {planVisible&&m.displayTargets.slice(0,3).map(t=><span key={'snap-tp'+t.stage} className="sniper-price-snapshot-target">
           <small>{statusReady?'هدف':'مراقبة'} TP{t.stage}</small><b dir="ltr">{fmt(t.price)}</b>
         </span>)}
+        {!planVisible&&watchTargets.map(t=><span key={'watch-tp'+t.stage}
+          className="sniper-price-snapshot-target"
+          title={'رصد هيكلي من '+t.source+' · مستوى شمعة مغلقة · ليس أمر دخول'}>
+          <small>رصد TP{t.stage} · {t.source}</small><b dir="ltr">{fmt(t.price)}</b>
+        </span>)}
         {planVisible&&m.displayStop!=null&&<span className="sniper-price-snapshot-stop"><small>الإبطال</small><b dir="ltr">{fmt(m.displayStop)}</b></span>}
-        {!planVisible&&<span className="sniper-price-snapshot-wait">{feedProblem||'مراقبة فقط · لا توجد أهداف دخول مؤهلة'}</span>}
+        {!planVisible&&<span className="sniper-price-snapshot-wait">{feedProblem||'أهداف مراقبة مشروطة · لا دخول مؤكد'}</span>}
       </div>
       <details className="sniper-evidence-drawer"><summary>تفاصيل التحليل والمؤشرات والسيولة <span>إظهار</span></summary>
       <div className="sniper-indicator-strip" aria-label="مؤشرات محسوبة من شموع مغلقة">
