@@ -68,6 +68,21 @@ assert.equal(reviews.find(x=>x.setup==='PULLBACK').state,'SELECTED');
 assert.equal(reviews.find(x=>x.setup==='CONTINUATION').state,'NO_TRIGGER');
 assert.ok(describeScalpStrategies([],null,true).every(x=>x.state==='DATA_BLOCKED'));
 assert.ok(describeScalpStrategies([],null).every(x=>x.state==='NO_TRIGGER'));
+const stricter=(setup,netRR)=>{
+ const entry=100,stop=99,cost=.1;
+ return {setup,side:'BUY',score:92,status:'ARMED',netRR,blockers:[],
+   entry,stop,targets:[{price:entry+netRR*(entry-stop+cost)+cost}],cost};
+};
+for(const [setup,rr] of [['RETEST',1.30],['OB_FVG',2.10]]){
+ const p=stricter(setup,rr);
+ const review=describeScalpStrategies([p],p).find(x=>x.setup===setup);
+ assert.equal(review.state,'WATCH',setup+' is NOT entry-qualified under strategy-specific threshold');
+}
+for(const [setup,rr] of [['RETEST',1.80],['OB_FVG',3.30]]){
+ const p=stricter(setup,rr);
+ assert.equal(describeScalpStrategies([p],p).find(x=>x.setup===setup).state,'SELECTED',
+   setup+' gets selected only after its own cost-adjusted RR minimum');
+}
 console.log('PASS: independent momentum, trend and reversal strategies with auditable risk-based selection');
 const {auditScalpEntry}=load('lib/scalp-entry-audit.ts');
 const auditNow=Date.parse('2026-10-09T12:00:00Z');
