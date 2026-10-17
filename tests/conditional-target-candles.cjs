@@ -32,6 +32,14 @@ assert.ok(z.bars.every((b,i)=>b.low>0&&b.high>=Math.max(b.open,b.close)&&
 assert.ok(z.bars.some(b=>b.close<b.open),'pullback bars prevent an implausible straight ascent');
 assert.ok(new Set(z.bars.map(b=>(b.close-b.open).toFixed(4))).size>7,'varied real-market-like bodies');
 assert.ok(z.bars.at(-1).close<quote+500,'far target remains actually far away');
+const mobile=build({...common,visibleCount:24,targets:[{stage:1,price:quote+1.1}]});
+assert.equal(mobile.ready,true,mobile.reason);
+const shown=history.slice(-24);
+const mobileBodyMax=Math.max(...shown.map(b=>Math.abs(b.close-b.open)));
+const mobileRangeMax=Math.max(...shown.map(b=>b.high-b.low));
+assert.ok(mobile.bars.every(b=>Math.abs(b.close-b.open)<=mobileBodyMax+1e-8&&
+ b.high-b.low<=mobileRangeMax+1e-8),
+ 'mobile scenario cannot exceed geometry of 24 actually visible real candles');
 assert.equal(JSON.stringify(build({...common,targets:[{stage:1,price:quote+1.1},
  {stage:2,price:quote+2.5},{stage:3,price:quote+500}],invalidation:quote-25})),
  JSON.stringify(z),'same real candles and targets produce stable output');
@@ -56,6 +64,8 @@ assert.equal(build({...common,history:gap,targets:[{stage:1,price:quote+1}]}).re
 const chart=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 assert.match(chart,/buildConditionalTargetCandles\(/,'route is integrated into SVG');
 assert.match(chart,/futureWidth=Math\.min\(candleWidth/,'scenario body cannot be wider than real candles');
+assert.match(chart,/visibleCount:candles\.length/,
+ 'dynamic candle sizing uses the actual 24/36 displayed real candle reference');
 assert.match(chart,/targetRoute!\.touches\.map/,'show TP stage near the real price actually reached by route');
 assert.match(chart,/routeVisible\?targetRoute!\.bars/,'target route takes precedence over neutral unrelated sketches');
 assert.match(chart,/routeVisible\?'S'/,'route is marked as stages, not 18 invented minutes');
