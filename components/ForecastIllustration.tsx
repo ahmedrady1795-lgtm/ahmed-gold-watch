@@ -99,7 +99,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     Number(preMove.sourceAt)>0&&now-Number(preMove.sourceAt)<=180000&&
     m.historyFresh&&m.observationFresh&&sn.view.priceFresh);
   const rise=dir==='BUY',fall=dir==='SELL';
-  const W=mobile?740:1440,H=mobile?(expanded||chartFullscreen?860:760):(expanded||chartFullscreen?920:760),x0=mobile?28:66,
+  const W=mobile?650:1440,H=mobile?(expanded||chartFullscreen?860:760):(expanded||chartFullscreen?920:760),x0=mobile?28:66,
     x1=mobile?315:895,xf=x1+14,xr=W-(mobile?126:144),yt=40,yb=H-102,volumeEnd=H-49;
   // Chart structure comes from CLOSED M5, independently of AI snapshot age.
   const breakout=buildBreakoutGuide({frames:x?.chartHigherFrames,now,side:dir,
@@ -163,7 +163,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     price:t.price,low:t.price,high:t.price,kind:'TARGET' as const
   }));
   const pools=overlay.ready?[overlay.upper,overlay.lower].filter((z):z is NonNullable<typeof z>=>z!=null):[];
-  const candles=m.candles.slice(-(focusCandles?Math.min(chartWindow,36):chartWindow));
+  // Fewer, larger CLOSED bars on narrow screens keep actual candle bodies
+  // readable when the complete SVG must fit rather than auto-scroll on load.
+  const candles=m.candles.slice(-(focusCandles?Math.min(chartWindow,mobile?24:36):chartWindow));
   const candleBounds=candles.flatMap(c=>[c.low,c.high]);
   if(m.price!=null)candleBounds.push(m.price);
   const candleMin=candleBounds.length?Math.min(...candleBounds):m.lower;
