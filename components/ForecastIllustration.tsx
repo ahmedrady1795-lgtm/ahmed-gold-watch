@@ -21,6 +21,7 @@ import {evaluateProfessionalMove} from '../lib/professional-move';
 import {assessChartObservation,observedStructuralTargets} from '../lib/chart-observation-radar';
 import {buildSniperChartPlaybook} from '../lib/sniper-chart-playbook';
 import {assessBtcForwardObservation} from '../lib/btc-forward-observation';
+import {assessBtcStructuralScenario} from '../lib/btc-structural-scenario';
 import BtcOrderflowPanel from './BtcOrderflowPanel';
 import type {BtcOrderflow} from '../lib/btc-orderflow';
 
@@ -126,6 +127,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     historyFresh:m.historyFresh,marketOpen:!goldClosed,
     m1:m.candles,m5:x?.chartHigherFrames?.m5
   });
+  // Server-side movement forecast is a separate read-only instrument from
+  // the qualified trade plan, which can legitimately remain WAIT all day.
+  const btcScenario=asset==='BTC'?assessBtcStructuralScenario({
+    now,sourceAt:Number(snapshotAt||0),price:m.price,
+    priceFresh:sn.view.priceFresh,m5:x?.chartHigherFrames?.m5,
+    forecast:x?.zoneForecast,radar:observationRadar
+  }):null;
   const btcOutlook=asset==='BTC'?assessBtcForwardObservation({
     now,modelAt:Number(snapshotAt||0),priceFresh:sn.view.priceFresh,
     historyFresh:m.historyFresh,observationFresh:m.observationFresh,
@@ -242,6 +250,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     ' L '+visualCandles.map((_,i)=>{const j=visualCandles.length-1-i;
       return ghostXs[j]+' '+px(visualCandles[j].low-ghost.atr!*.27*Math.sqrt(j+1));}).join(' L ')+
     ' Z':'';
+  const btcScenarioShown=btcScenario?.side!=='WAIT'&&btcScenario?.destination!=null;
+  const btcScenarioOffscreen=btcScenarioShown&&btcScenario?.destinationMid!=null&&
+    (px(btcScenario.destinationMid)<yt+12||px(btcScenario.destinationMid)>yb-12);
   const offscreenTargets=playbook.targets.filter(t=>px(t.price)<yt+9||px(t.price)>yb-9);
   const nearestOffscreen=offscreenTargets[0]??null;
   const grid=Array.from({length:5},(_,i)=>({y:yt+i*(yb-yt)/4,value:scaleHigh-(scaleHigh-scaleLow)*i/4}));
@@ -355,7 +366,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     !watchFresh?'سجل المراقبة قيد التحديث':
     !m.bias.active?'التحليل مستمر · الاتجاه غير مؤكد':
     breakoutWatch.headline;
-  const stateLabel=feedProblem??(btcOutlook&&btcOutlook.side!=='WAIT'&&
+  const stateLabel=feedProblem??(btcScenarioShown&&!statusReady?
+    'توقع حركة: '+btcScenario!.title+' · الدخول غير مؤهل':
+    btcOutlook&&btcOutlook.side!=='WAIT'&&
     !statusReady&&!watchReady?'تحليل الحركة: '+btcOutlook.title+' · لا دخول':
     !watchFresh&&!statusReady?'انتظار ذاكرة حديثة':
     statusReady?'سيناريو مؤهل · مسجل':watchReady&&m.heldBias?'اتجاه مثبت · أهداف مراقبة':
@@ -444,6 +457,30 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <button type="button" aria-pressed={chartFullscreen} onClick={()=>setChartFullscreen(v=>!v)}>{chartFullscreen?'إغلاق ملء الشاشة':'⛶ ملء الشاشة'}</button>
             </div>
           </div>
+          {asset==='BTC'&&<div className={'sniper-btc-forecast'+
+            (btcScenarioShown?' sniper-btc-forecast-'+btcScenario!.side.toLowerCase():
+              ' sniper-btc-forecast-neutral')}
+            aria-label="سيناريو حركة البيتكوين مستقل عن إشارة الدخول">
+            {btcScenarioShown?<><div className="sniper-btc-forecast-title">
+                <b>{btcScenario!.side==='BUY'?'↗':'↘'} {btcScenario!.title}</b>
+                <small>{btcScenario!.alignment} · تحليل حركة، ليس توصية دخول</small>
+              </div>
+              <div className="sniper-btc-forecast-levels">
+                <span><small>المنطقة المتوقع مراقبتها</small>
+                  <strong dir="ltr">{fmt(btcScenario!.destination!.low)} – {fmt(btcScenario!.destination!.high)}</strong></span>
+                <span><small>إبطال السيناريو</small>
+                  <strong dir="ltr">{fmt(btcScenario!.invalidation)}</strong></span>
+                <span><small>وضع الصفقة</small>
+                  <strong>{statusReady?'خطة مؤهلة مستقلة':'WAIT · لا دخول'}</strong></span>
+              </div>
+              <span className="sniper-btc-forecast-footnote">
+                {btcScenario!.detail} · المستويات مشروطة وقد تتغير مع تحديث الشموع
+                {btcScenarioOffscreen?' · الهدف خارج تكبير الرسم':''}
+              </span>
+            </>:<><strong>مسح سيناريو البيتكوين جارٍ</strong>
+              <small>{btcScenario?.detail||'لم يكتمل المسار الهيكلي على البيانات الحديثة'} · لا توجد وجهة مؤكدة</small>
+            </>}
+          </div>}
           <details className="sniper-chart-analysis-drawer">
             <summary>
               <strong>{playbook.title}</strong>
@@ -524,6 +561,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <stop offset="0%" stopColor="#15283d"/>
                   <stop offset="100%" stopColor="#0a1422"/>
                 </linearGradient>
+                <marker id={'btc-watch-arrow-'+asset} viewBox="0 0 10 10" refX="8" refY="5"
+                  markerWidth="7" markerHeight="7" orient="auto">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#ffd28a"/>
+                </marker>
                 <marker id={'forecast-arrow-'+asset} viewBox="0 0 10 10" refX="8" refY="5"
                   markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                   <path d="M 0 0 L 10 5 L 0 10 z" fill={motionColor}/>
@@ -789,6 +830,39 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   {closedPreview?'من أرشيف السوق · عرض توضيحي فقط':
                      ghostVisible?'3 شموع تقديرية + نماذج تاريخية':'شموع توضيحية من نماذج تاريخية'}
                 </text>
+              </g>}
+              {btcScenarioShown&&!planVisible&&m.price!=null&&<g
+                className="btc-structural-watch-path"
+                aria-label="مسار سعري هيكلي مراقب وليس صفقة">
+                {btcScenario!.destinationMid!=null&&<path
+                  d={'M '+(xf+15)+' '+px(m.price)+
+                    ' L '+(xf+(xr-xf)*.49)+' '+
+                      (px(m.price)*.57+clamp(px(btcScenario!.destinationMid),yt+15,yb-15)*.43)+
+                    ' L '+(xr-35)+' '+clamp(px(btcScenario!.destinationMid),yt+15,yb-15)}
+                  fill="none" stroke="#ffd28a" strokeWidth="3"
+                  strokeOpacity=".92" strokeDasharray="9 6"
+                  markerEnd={'url(#btc-watch-arrow-'+asset+')'}/>}
+                {btcScenario!.destination&&px(btcScenario!.destination.high)<=yb&&
+                  px(btcScenario!.destination.low)>=yt&&<rect
+                    x={xf+8} y={px(btcScenario!.destination.high)}
+                    width={xr-xf-16}
+                    height={Math.max(4,px(btcScenario!.destination.low)-px(btcScenario!.destination.high))}
+                    rx="3" fill="#f4c778" fillOpacity=".14"
+                    stroke="#ffd28a" strokeDasharray="5 5"/>}
+                {btcScenario!.invalidation!=null&&px(btcScenario!.invalidation)>=yt&&
+                  px(btcScenario!.invalidation)<=yb&&<line
+                    x1={xf+8} x2={xr-8}
+                    y1={px(btcScenario!.invalidation)} y2={px(btcScenario!.invalidation)}
+                    stroke="#ff8da7" strokeWidth="1.6" strokeDasharray="5 5"/>}
+                <text x={(xf+xr)/2} y={yb-17} textAnchor="middle" fontSize={mobile?12:12}
+                  fontWeight="700" fill="#ffd28a">
+                  {btcScenarioOffscreen?'↗/↘ وجهة خارج الزوم: ':'◇ وجهة مراقبة: '}
+                  {fmt(btcScenario!.destinationMid)}
+                </text>
+                <title>{btcScenario!.title+' · وجهة تاريخية من السيولة: '+
+                  fmt(btcScenario!.destination!.low)+' – '+fmt(btcScenario!.destination!.high)+
+                  ' · الإبطال: '+fmt(btcScenario!.invalidation)+
+                  ' · مسار وصفي فقط؛ لا توقيت وصول ولا شموع مستقبلية مؤكدة'}</title>
               </g>}
               {nearestOffscreen&&<g className="sniper-offscreen-target" aria-label="هدف هيكلي خارج نطاق التكبير">
                 <rect x={xf+8} y={px(nearestOffscreen.price)<yt?yt+44:yb-44}
