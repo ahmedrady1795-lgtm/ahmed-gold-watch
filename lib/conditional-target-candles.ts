@@ -69,14 +69,15 @@ export function buildConditionalTargetCandles(input:{
    Math.min(96,Math.max(3,Math.floor(input.count!))):18;
  const waypoints=input.waypoints??[];
  if(waypoints.length>8||waypoints.some(w=>!Number.isFinite(w.price)||
-   w.price<=0||(invalid!=null&&sign*(w.price-invalid)<=0)))
+   w.price<=0||sign*(goals[0].price-w.price)<=0||
+   (invalid!=null&&sign*(w.price-invalid)<=0)))
    return empty('مستويات هيكلية غير صالحة');
  // Pick an analogue using ONLY the six PRECEDING real closed M1 bars.
  // Never choose a sample because its subsequent candles hit a TP: that
  // would introduce hindsight selection and manufacture apparent accuracy.
  // Use a 96-bar sample for both short and extended displays whenever
  // available, so expanding the SVG never rewrites the already shown path.
- const horizon=hist.length>=110?96:count;
+ const horizon=hist.length>=116?96:count;
  if(hist.length<horizon+14)return empty('لا يكفي تاريخ مغلق لمقارنة شموع مستقبلية مرجعية');
  const context=hist.slice(-6);
  const norm=(c:Bar,unit:number)=>[
