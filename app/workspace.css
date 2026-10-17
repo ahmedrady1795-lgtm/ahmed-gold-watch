@@ -1331,3 +1331,49 @@ body:has(.modern-workspace.compact-sniper){
 .proof-unified b{font-size:12px}.proof-unified span{font-size:11px;color:#a5caba}
 @media(max-width:650px){.sniper-decision-audit>summary{flex-wrap:wrap;gap:3px}
  .sniper-decision-factors{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Sniper chart cockpit: authentic closed-bar conditions, not painted signals. */
+.sniper-playbook{display:flex;flex-direction:column;gap:7px;padding:9px 12px;margin:4px 3px 8px;
+ border:1px solid #284f65;border-radius:11px;background:
+ linear-gradient(111deg,rgba(24,64,81,.72),rgba(8,25,39,.94) 62%);
+ box-shadow:inset 3px 0 #5ba5bb;color:#d9eff7;direction:rtl}
+.sniper-playbook-confirmed,.sniper-playbook-qualified{border-color:#337761;box-shadow:inset 3px 0 #50dbac}
+.sniper-playbook-conflict,.sniper-playbook-paused{border-color:#5a5060;box-shadow:inset 3px 0 #d4a772}
+.sniper-playbook-heading{display:flex;gap:9px;align-items:center;min-width:0}
+.sniper-playbook-mark{width:29px;height:29px;border-radius:7px;border:1px solid #468092;
+ display:flex;align-items:center;justify-content:center;color:#93def3;background:#102e40;flex-shrink:0}
+.sniper-playbook-heading>div{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.sniper-playbook-heading strong{font-size:13px;line-height:1.25;color:#e9f8fd}
+.sniper-playbook-heading small{font-size:10px;color:#9fbccd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sniper-playbook-side{padding:5px 9px;border:1px solid #385d71;border-radius:20px;
+ white-space:nowrap;font-size:11px;font-weight:700;color:#b3cad7}
+.sniper-playbook-side.playbook-buy{border-color:#328777;color:#7af5c8;background:#133b37}
+.sniper-playbook-side.playbook-sell{border-color:#986274;color:#ffb1c3;background:#3a2739}
+.sniper-playbook-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.sniper-playbook-step{display:flex;align-items:center;gap:7px;padding:6px 8px;
+ border-radius:7px;border:1px solid #305267;background:#102737;min-width:0}
+.sniper-playbook-step-index{display:flex;align-items:center;justify-content:center;
+ flex-shrink:0;width:23px;height:23px;border-radius:50%;font-size:11px;
+ background:#1b3c50;border:1px solid #497086;color:#a9c9d8}
+.sniper-playbook-step>span:last-child{min-width:0;display:flex;flex-direction:column;gap:2px}
+.sniper-playbook-step b{font-size:10px;color:#d6ecf5}
+.sniper-playbook-step small{font-size:10px;color:#9ebcce;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sniper-playbook-step.playbook-step-ready{border-color:#367d68;background:rgba(23,83,63,.32)}
+.playbook-step-ready .sniper-playbook-step-index{background:#145c47;color:#92fbd2;border-color:#399878}
+.sniper-playbook-step.playbook-step-blocked{opacity:.70}
+.sniper-playbook-footer{border-top:1px solid rgba(94,147,167,.22);padding-top:7px;
+ display:flex;flex-wrap:wrap;gap:6px 15px;align-items:center;color:#a9cbdb;font-size:10px}
+.sniper-playbook-footer>span{white-space:nowrap}
+@media(max-width:700px){
+ .sniper-playbook{margin:3px 0 7px;padding:8px;gap:6px}
+ .sniper-playbook-heading strong{font-size:12px}
+ .sniper-playbook-heading small{font-size:9px}
+ .sniper-playbook-mark{width:27px;height:27px}
+ .sniper-playbook-side{font-size:10px;padding:5px 7px}
+ .sniper-playbook-steps{gap:4px}
+ .sniper-playbook-step{padding:6px 4px;gap:4px}
+ .sniper-playbook-step-index{width:19px;height:19px;font-size:10px}
+ .sniper-playbook-step b{font-size:9px}
+ .sniper-playbook-step small{font-size:9px}
+ .sniper-playbook-footer{font-size:9px;gap:4px 10px}
+}
