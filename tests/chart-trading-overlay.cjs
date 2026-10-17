@@ -49,4 +49,64 @@ inferred=build({...source,fourHour:{...source.fourHour,phase:'تجميع محت�
  accumulation:{phase:'DISTRIBUTING',accumulationScore:10,distributionScore:76}});
 assert.equal(inferred.phaseKind,'BALANCED','contradictory phase evidence must never claim confidence');
 assert.equal(inferred.preferred,'WAIT');
+
+const assess=m.exports.assessBreakoutWatch;
+const freshM5=Array.from({length:22},(_,i)=>({
+  time:now-(22-i)*300000,open:100,close:100,
+  high:101,low:99
+}));
+const neutralContext={...source,price:100,m5:freshM5,
+  fourHour:{...source.fourHour,phase:'توازن',side:'WAIT'}};
+const breakout=build(neutralContext);
+assert.equal(breakout.ready,true);
+assert.ok(breakout.breakoutUp>101&&breakout.breakoutDown<99);
+const m1=(a,b)=>[{
+  time:now-120000,open:a,high:Math.max(a,b)+.15,low:Math.min(a,b)-.15,close:a
+},{
+  time:now-60000,open:b,high:Math.max(a,b)+.15,low:Math.min(a,b)-.15,close:b
+}];
+const watch=(changes={})=>assess({now,price:100,priceFresh:true,historyFresh:true,
+  m1:m1(100,100),m5:freshM5,overlay:breakout,...changes});
+assert.equal(watch().phase,'RANGE','genuine neutral bars remain inside range');
+assert.equal(watch({price:breakout.breakoutUp+.3}).phase,'TESTING',
+  'intraminute quote above resistance is not a confirmed close');
+assert.equal(watch({price:breakout.breakoutUp+.5,
+ m1:m1(breakout.breakoutUp+.25,breakout.breakoutUp+.35)}).phase,'M1_BREAK',
+ 'two closed M1 above resistance are observed but not M5 confirmed');
+const closeM5=(last,prev)=>{
+  const rows=freshM5.map(b=>({...b}));
+  rows[rows.length-2]={...rows.at(-2),close:prev,
+    high:Math.max(101,prev+.2),low:Math.min(99,prev-.2)};
+  rows[rows.length-1]={...rows.at(-1),close:last,
+    high:Math.max(101,last+.2),low:Math.min(99,last-.2)};
+  return rows;
+};
+const up1=closeM5(breakout.breakoutUp+.35,100);
+let pending=watch({m5:up1});
+assert.equal(pending.phase,'M5_FIRST');
+assert.equal(pending.closes,1);
+assert.match(pending.detail,/1\/2/);
+let qualifiedWatch=watch({m5:closeM5(breakout.breakoutUp+.6,breakout.breakoutUp+.4)});
+assert.equal(qualifiedWatch.phase,'M5_CONFIRMED');
+assert.equal(qualifiedWatch.closes,2);
+assert.equal(qualifiedWatch.side,'BUY');
+assert.match(qualifiedWatch.detail,/شروط الدخول/,'the watch must not claim an executable trade');
+assert.equal(watch({m5:closeM5(breakout.breakoutDown-.6,breakout.breakoutDown-.4)}).side,'SELL',
+ 'sell continuation remains symmetric');
+assert.equal(watch({m5:closeM5(100,breakout.breakoutUp+.4)}).phase,'REJECTED',
+ 'closed M5 returning inside the range is a failed prior breakout');
+assert.equal(watch({price:100,priceFresh:false}).phase,'UNAVAILABLE',
+ 'stale real price may never present a fresh breakout');
+assert.equal(watch({overlay:{...breakout,ready:false}}).phase,'UNAVAILABLE',
+ 'incomplete structural levels must never invent a breakout');
+const brokenM5=freshM5.map(b=>({...b}));
+brokenM5[brokenM5.length-2].time-=300000;
+assert.equal(watch({m5:brokenM5}).phase,'UNAVAILABLE',
+ 'missing M5 cannot count as confirmation');
+const chart=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
+assert.match(chart,/assessBreakoutWatch\(/);
+assert.match(chart,/breakoutWatch\.headline/);
+assert.doesNotMatch(chart, /watchFresh\?'ترقب كسر'/,
+ 'the user-visible placeholder must never be the generic indefinite wait');
+
 console.log('PASS: chart zones, engine+H4 liquidity, conflicts, M5 breakout gates, honest ETA and stale veto');
