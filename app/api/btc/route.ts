@@ -19,13 +19,18 @@ async function coinbaseSpot():Promise<BtcQuote>{
   const j=await json('https://api.coinbase.com/v2/prices/BTC-USD/spot',1800);
   const price=Number(j?.data?.amount);
   if(!Number.isFinite(price)||price<=0)throw new Error('bad Coinbase Spot price');
-  return {price,source:'Coinbase Spot',sourceTime:null,status:'live'};
+  // Coinbase Spot gives no exchange event timestamp. Do not claim LIVE.
+  return {price,source:'Coinbase Spot · time unknown',sourceTime:null,status:'unknown'};
 }
-async function kraken():Promise<BtcQuote>{
-  const j=await json('https://api.kraken.com/0/public/Ticker?pair=XBTUSD',2200);
-  const row=Object.values(j?.result||{})[0] as any,price=Number(row?.c?.[0]);
-  if(!Number.isFinite(price)||price<=0)throw new Error('bad Kraken price');
-  return {price,source:'Kraken fallback',sourceTime:null,status:'unknown'};
+async function krakenTrades(now:number):Promise<BtcQuote>{
+  // Unlike Kraken Ticker, public Trades includes the actual exchange trade time.
+  const j=await json('https://api.kraken.com/0/public/Trades?pair=XBTUSD&count=1',2200);
+  const rows=Object.values(j?.result||{}).find(v=>Array.isArray(v)) as any[]|undefined;
+  const trade=rows?.at(-1),price=Number(trade?.[0]),at=Math.floor(Number(trade?.[2])*1000);
+  if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)||at<=0||at>now+2000)
+    throw new Error('bad Kraken trade or timestamp');
+  return {price,source:'Kraken XBT/USD Trades',sourceTime:at,
+    status:now-at<=15000?'live':'delayed'};
 }
 async function coingecko():Promise<BtcQuote>{
   const j=await json('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_last_updated_at=true',2500);
@@ -40,35 +45,34 @@ function ok(quote:BtcQuote,now:number,degraded=false){
 export async function GET(request:Request){
   const now=Date.now(),strictCoinbase=new URL(request.url).searchParams.get('source')==='coinbase';
   const errors:string[]=[];
-  const primary=Promise.any([
-    coinbaseExchange(now),
-    coinbaseSpot()
-  ]).catch(e=>{errors.push('Coinbase '+String(e instanceof Error?e.message:e));return null;});
-  const fallback=strictCoinbase
-    ?Promise.resolve(null)
-    :Promise.any([
-      kraken(),
-      coingecko()
-    ]).catch(e=>{errors.push('Fallback '+String(e instanceof Error?e.message:e));return null;});
-
-  // Coinbase is the preferred scalp feed. Give it a short exclusive window;
-  // fallback requests are already in flight, so a Coinbase miss does not add another network round-trip.
+  // Prefer timestamped EXCHANGE prices; Spot/Ticker may report a numeric
+  // value but without a source event time, which cannot be labeled LIVE.
+  const primary=coinbaseExchange(now).catch(e=>{
+    errors.push('Coinbase Exchange '+String(e instanceof Error?e.message:e));return null;
+  });
+  const spot=coinbaseSpot().catch(e=>{
+    errors.push('Coinbase Spot '+String(e instanceof Error?e.message:e));return null;
+  });
+  const fallback=strictCoinbase?Promise.resolve(null):
+    Promise.any([krakenTrades(now),coingecko()]).catch(e=>{
+      errors.push('Timestamped fallback '+String(e instanceof Error?e.message:e));return null;
+    });
   const primaryFast=await Promise.race([
-    primary,
-    new Promise<null>(resolve=>setTimeout(()=>resolve(null),700))
+    primary,new Promise<null>(resolve=>setTimeout(()=>resolve(null),950))
   ]);
   if(primaryFast)return ok(primaryFast,now,false);
-
   if(strictCoinbase){
     const latePrimary=await primary;
     if(latePrimary)return ok(latePrimary,now,false);
   }else{
-    const nextValid=await Promise.any([
-      primary.then(q=>q?{quote:q,degraded:false}:Promise.reject(new Error('primary unavailable'))),
-      fallback.then(q=>q?{quote:q,degraded:true}:Promise.reject(new Error('fallback unavailable')))
+    const dated=await Promise.any([
+      primary.then(q=>q||Promise.reject(new Error('Coinbase unavailable'))),
+      fallback.then(q=>q||Promise.reject(new Error('Fallback unavailable')))
     ]).catch(()=>null);
-    if(nextValid)return ok(nextValid.quote,now,nextValid.degraded);
+    if(dated)return ok(dated,now,!/^Coinbase/.test(dated.source));
   }
+  const unverifiedSpot=await spot;
+  if(unverifiedSpot)return ok(unverifiedSpot,now,true);
 
   const cachedAllowed=lastGood&&now-lastGood.at<=8000&&(!strictCoinbase||/^Coinbase/.test(lastGood.quote.source));
   if(cachedAllowed&&lastGood){
