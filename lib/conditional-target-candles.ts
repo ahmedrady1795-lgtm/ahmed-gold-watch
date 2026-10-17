@@ -29,6 +29,7 @@ const empty=(reason:string):TargetRoute=>({
 export function buildConditionalTargetCandles(input:{
  history:Bar[];now:number;quote:number|null;priceFresh:boolean;
  side:RouteSide;targets:Goal[];invalidation?:number|null;count?:number;
+ visibleCount?:number;
 }):TargetRoute{
  const {now,quote,side}=input,sign=side==='BUY'?1:-1;
  if(!input.priceFresh||quote==null||!Number.isFinite(quote)||quote<=0||
@@ -44,10 +45,13 @@ export function buildConditionalTargetCandles(input:{
  const ranges=bars.slice(1).map((b,i)=>Math.max(b.high-b.low,
    Math.abs(b.high-bars[i].close),Math.abs(b.low-bars[i].close)));
  const atr=quantile(ranges,.5);
- const bodies=bars.map(b=>Math.abs(b.close-b.open));
+ // A mobile canvas displays 24 rather than 36 history candles. The rendered
+ // synthetic candle must be no larger than THAT visible reference set.
+ const visible=bars.slice(-Math.max(16,Math.min(36,Math.floor(input.visibleCount??36))));
+ const bodies=visible.map(b=>Math.abs(b.close-b.open));
  const bodyCap=quantile(bodies,.75);
- const upCap=quantile(bars.map(b=>b.high-Math.max(b.open,b.close)),.75);
- const downCap=quantile(bars.map(b=>Math.min(b.open,b.close)-b.low),.75);
+ const upCap=quantile(visible.map(b=>b.high-Math.max(b.open,b.close)),.75);
+ const downCap=quantile(visible.map(b=>Math.min(b.open,b.close)-b.low),.75);
  // A flat market, feed shock, or quote far away from M1 close cannot
  // produce an honest candle-geometry comparison.
  if(atr<=quote*.000001||atr>quote*.025||bodyCap<atr*.015||
@@ -67,7 +71,7 @@ export function buildConditionalTargetCandles(input:{
  // Even an ambitious model cannot drag a single OHLC body to a far target.
  const maxBody=Math.min(bodyCap*.90,atr*.78);
  const samples=bars.slice(-27);
- const historicalRangeMax=Math.max(...bars.map(b=>b.high-b.low));
+ const historicalRangeMax=Math.max(...visible.map(b=>b.high-b.low));
  const out:RouteBar[]=[],touches:RouteTouch[]=[];let prev=quote,goalIndex=0;
  for(let i=0;i<count;i++){
    const sample=samples[(i*7+5)%samples.length];
