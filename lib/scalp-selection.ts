@@ -42,7 +42,14 @@ export function observedForwardReach(
   const favorable:number[]=[],adverse:number[]=[];
   for(let i=closed.length-holdMinutes-1;i>=start;i-=holdMinutes){
     const anchor=closed[i];
-    if(!anchor||!Number.isFinite(anchor.close)||anchor.close<=0)continue;
+    // The entry anchor is itself a complete, genuine CLOSED minute.
+    // A valid close paired with a future/partial/garbled timestamp, or
+    // impossible high/low, is not valid evidence of historical TP reach.
+    if(!anchor||![anchor.time,anchor.open,anchor.high,anchor.low,anchor.close]
+        .every(Number.isFinite)||anchor.time<=0||anchor.time%60000!==0||
+       anchor.open<=0||anchor.close<=0||anchor.low<=0||
+       anchor.high<Math.max(anchor.open,anchor.close)||
+       anchor.low>Math.min(anchor.open,anchor.close))continue;
     const path=closed.slice(i+1,i+holdMinutes+1);
     if(path.length!==holdMinutes)continue;
     let prevTime=anchor.time,valid=true;
