@@ -1007,11 +1007,21 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
           {showGhost&&<details className="forecast-ghost-guide"
             style={{padding:'6px 10px',border:'1px solid #36536b',borderRadius:8,marginTop:6,color:'#c4dbea',fontSize:12}}>
-            <summary style={{cursor:'pointer',fontWeight:700}}>▥ {closedPreview?'الذهب مغلق · معاينة شموع من آخر جلسة':goldClosed?'الذهب مغلق · آخر بيانات فعلية محفوظة':ghostVisible?(ghost.source==='GOLD_MT5_OOS_MODEL'?
+            <summary style={{cursor:'pointer',fontWeight:700}}>▥ {routeVisible?
+              'شموع مسار مشروط نحو الهدف · السعر بلا زمن وصول':closedPreview?'الذهب مغلق · معاينة شموع من آخر جلسة':goldClosed?'الذهب مغلق · آخر بيانات فعلية محفوظة':ghostVisible?(ghost.source==='GOLD_MT5_OOS_MODEL'?
               '3 شموع ذهب مدعومة باختبار · يليها شموع شكلية فقط':'3 شموع M1 مفحوصة · والباقي شموع افتراضية'):
               ghostRangeVisible?'نطاق تذبذب M1 · لا توقع اتجاه · شموع توضيحية':
               'لا تتوفر بيانات كافية للتقدير'}</summary>
-            <div style={{marginTop:7,lineHeight:1.6}}> · {goldClosed?'الجلسة مغلقة ولا توجد توقعات حية.':ghost.reason} {visualCandles.length?'18 شمعة توضيحية من أنماط تاريخية. عند إغلاق السوق المعاينة من آخر جلسة ولا تحمل توقيت وصول، ولا تعتبر توقعًا حيًا. أثناء الجلسة تبدأ الشموع المحايدة مشروطًا من سعر حديث، ولا توجد دقة مضمونة.':'لا تتوفر شموع محاكاة مؤهلة.'} هذه الدراسة ليست نموذج ML معتمدًا، ولا تمثل إشارة دخول.</div>
+            <div style={{marginTop:7,lineHeight:1.6}}> · {routeVisible?
+              targetRoute!.reason+' · '+targetRoute!.touches.length+
+                ' أهداف لمسها الرسم على نحو شرطي و'+targetRoute!.pendingStages.length+
+                ' أهداف أبعد من نطاق شموع العرض. أحجام الأجسام والظلال محدودة بما ظهر في الشموع الحقيقية.':
+              goldClosed?'الجلسة مغلقة ولا توجد توقعات حية.':ghost.reason}
+              {routeVisible?' المراحل ليست دقائق، ووصول الرسم إلى الهدف لا يتنبأ بوقت أو احتمال وصول فعلي.':
+                visualCandles.length?
+                  ' شموع توضيحية من أنماط تاريخية؛ ليست توقعًا حيًا مضمونًا.':
+                  ' لا تتوفر شموع توضيحية مؤهلة.'}
+              {' '}هذا الرسم ليس نموذج ML معتمدًا ولا إشارة دخول.</div>
             <details style={{marginTop:4}}>
               <summary>نتائج الاختبار التاريخي وطريقة العرض</summary>
               {analogueAudit&&<p style={{margin:'5px 0',color:'#a7c6d4'}}>
