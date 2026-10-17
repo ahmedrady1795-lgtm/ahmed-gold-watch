@@ -15,6 +15,6 @@ assert.match(css,/\.sniper-market-evidence-rail/);
 assert.match(css,/overflow-x:auto/,'mobile evidence rail can scroll instead of shrinking the chart');
 assert.doesNotMatch(ui,/downloadActualChartPng|📷 صورة فعلية/);
 const risk=fs.readFileSync('lib/scalp-strategies.ts','utf8');
-assert.match(risk,/requiredScalpNetR\(\{setup:spec\.id\}\)/,
- 'qualified strategy status uses each setup own transaction-cost threshold');
+assert.match(risk,/spec\.id==='OB_FVG'\?3:spec\.id==='RETEST'\?1\.5:1\.25/,
+ 'the scalp strategy radar must enforce the same setup-specific RR floors as execution');
 console.log('PASS: chart-first responsive BTC flow and H4 structure, confirmed breakout, risk-consistent strategy review');
