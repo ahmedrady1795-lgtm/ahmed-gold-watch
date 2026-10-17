@@ -30,3 +30,41 @@ The quick-capture profile defaults to a short maximum hold, a take-profit sized 
 Recommended starting values are already included in `.env.example`: 12-second max hold, 66 minimum confidence, TP about 2.2× spread, SL about 1.6× spread, and a trailing profit-lock. These are forward-test parameters, not guaranteed-profit settings.
 
 Keep `LIVE_TRADING=false` until a meaningful demo sample shows positive net points after spread, profit factor above 1, and controlled loss streaks.
+## Historical GOLD model (offline, read-only, never executes orders)
+
+This pipeline is separate from the live MT5 bridge and does not need the
+website token. Run on a Windows laptop/VPS with MetaTrader 5 open and logged in:
+
+```powershell
+cd mt5_bridge
+python -m pip install MetaTrader5
+cd ..
+python mt5_bridge/export_gold_history.py --symbol XAUUSDm --years 5
+python mt5_bridge/train_gold_shape.py --input local-data/gold-history --activate
+```
+
+The exporter requests genuine **closed broker M1, M5, M15, and H1 bars** in
+UTC month-sized windows, rejects broken OHLC, writes gzip CSV and a SHA-256
+manifest. It never uploads credentials, raw candles or orders. Check each
+month's count: MT5 **Max bars in chart** and the broker's retention can mean
+less than the requested years are available; an export is not evidence that
+five years were actually obtained.
+
+The trainer uses the M1 archive, chronological 70/30 train/out-of-sample
+split with a purged boundary and non-overlapping three-minute outcomes.
+Conditional OHLC shapes are activated only for buckets with enough independent
+time-period coverage and evidence over a paired momentum baseline. An ordinary
+output is **SHADOW** and `--activate` refuses to publish it. The training
+output is local-data/gold-shape-result.json; the **only** intentionally
+publishable aggregate parameter file is public/models/gold-shape-model.json.
+Raw history must never be committed to GitHub.
+
+Even an independently qualified model will draw only when the **current live
+MT5/Exness broker symbol is identical** to the model's symbol and the M1
+history is fresh and contiguous. The public Biquote or COMEX proxy feed is
+never treated as broker-identical. This only changes **illustrative ghost
+candles**, not trade entries, live MT5 authorization or model-certified
+profitability. No archive or real trained model is shipped in this repository.
+The Render Free service has no persistent disk/DB, so keep the raw archive on
+the laptop/external storage. After creating qualified parameters, commit
+**only** that small JSON parameter file and explicitly deploy to Render.
