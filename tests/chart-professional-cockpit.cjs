@@ -1,0 +1,20 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const ui=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
+const css=fs.readFileSync('app/workspace.css','utf8');
+assert.match(ui,/sniper-market-evidence-rail/,'professional overview exists inside chart');
+assert.match(ui,/m\.fourHour\.ready\?m\.fourHour\.phase/,'accumulation is gated on closed four-hour context');
+assert.match(ui,/breakoutWatch\.closes/,'M5 confirmation is shown separately from entry');
+assert.match(ui,/flowFresh&&orderFlow\?\.flow/,'executed order flow must never be labelled fresh when stale');
+assert.match(ui,/flowFresh&&orderFlow\?\.profile/,'single-venue POC cannot be synthesized');
+assert.match(ui,/buildForecastIllustration/,'real closed candles retained');
+assert.match(ui,/buildVisualFuture/,'predicted illustrative candles retained');
+assert.match(ui,/watchTargets/,'conditional structural target ladder retained');
+assert.match(ui,/sniper-breakout-explainer/,'breakout detail remains directly on chart');
+assert.match(ui,/sniper-live-price-arrow/,'actual price quote remains marked');
+assert.match(css,/\.sniper-market-evidence-rail/);
+assert.match(css,/overflow-x:auto/,'mobile evidence rail can scroll instead of shrinking the chart');
+assert.doesNotMatch(ui,/downloadActualChartPng|📷 صورة فعلية/);
+const risk=fs.readFileSync('lib/scalp-strategies.ts','utf8');
+assert.match(risk,/requiredScalpNetR\(\{setup:spec\.id\}\)/,
+ 'qualified strategy status uses each setup own transaction-cost threshold');
+console.log('PASS: chart-first responsive BTC flow and H4 structure, confirmed breakout, risk-consistent strategy review');
