@@ -210,13 +210,20 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const liveAnchor=m.price!=null&&sn.view.priceFresh&&m.observationFresh&&m.historyFresh?m.price:undefined;
   // Price-space demonstration from REAL server targets, not timed candle
   // predictions. A distant TP stays marked instead of enlarging bodies.
-  const conditionalRouteSide=planVisible?m.displaySide:btcScenario?.side??'WAIT';
+  const conditionalRouteSide=planVisible?m.displaySide:
+    btcScenario&&btcScenario.side!=='WAIT'?btcScenario.side:watchTargetSide;
   const conditionalRouteGoals=planVisible?m.displayTargets.map(t=>({
     stage:t.stage,price:t.price})):btcScenario?.destination&&
     (btcScenario.side==='BUY'||btcScenario.side==='SELL')?[{
       stage:1,price:btcScenario.side==='BUY'?
         btcScenario.destination.low:btcScenario.destination.high
-    }]:[];
+    }]:watchTargets.map(t=>({stage:t.stage,price:t.price}));
+  const routeMotion=planVisible?motion:buildForecastMotion({
+    visible:conditionalRouteGoals.length>0,side:conditionalRouteSide,price:m.price,
+    targets:conditionalRouteGoals,breakout,now,m5:x?.chartHigherFrames?.m5,
+    zones:chartBands,liquidity:overlay,
+    invalidation:btcScenario?.side!=='WAIT'?btcScenario?.invalidation:null
+  });
   const targetRoute=showGhost&&!goldClosed&&m.observationFresh&&
     (conditionalRouteSide==='BUY'||conditionalRouteSide==='SELL')&&
     conditionalRouteGoals.length?
@@ -224,10 +231,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       history:m.candles,now,quote:m.price,priceFresh:sn.view.priceFresh,
       visibleCount:candles.length,
       count:scenarioDetail?96:18,
-      waypoints:motion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET')
+      waypoints:routeMotion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET')
         .map(p=>({key:p.key,label:p.label,price:p.price})),
       side:conditionalRouteSide,targets:conditionalRouteGoals,
-      invalidation:planVisible?m.displayStop:btcScenario?.invalidation
+      invalidation:planVisible?m.displayStop:
+        btcScenario?.side!=='WAIT'?btcScenario?.invalidation:null
     }):null;
   const routeVisible=Boolean(targetRoute?.ready&&targetRoute.bars.length);
   const visualCandles=!showGhost?[]:goldClosed?
@@ -595,9 +603,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </p>}
           {routeVisible&&<div aria-label="مراحل الوصول المشروط للأهداف" style={{display:'flex',flexWrap:'wrap',gap:8,padding:'10px 16px',background:'#102333',color:'#d2e6ee',fontSize:13}}>
             <strong>مسار {conditionalRouteSide==='BUY'?'الصعود':'الهبوط'} المشروط:</strong>
-            {motion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET').map(p=><span key={p.key} style={{border:'1px solid #3b5e71',borderRadius:6,padding:'5px 9px'}}>{p.label} · {fmt(p.price)}</span>)}
+            {routeMotion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET').map(p=><span key={p.key} style={{border:'1px solid #3b5e71',borderRadius:6,padding:'5px 9px'}}>{p.label} · {fmt(p.price)}</span>)}
             {conditionalRouteGoals.map(t=><span key={t.stage} style={{border:'1px solid #376e61',borderRadius:6,padding:'5px 9px'}}>TP{t.stage} · {fmt(t.price)} · {targetRoute!.touches.some(h=>h.stage===t.stage)?'وصل إليه الرسم الشرطي':'امتداد يتجاوز المسار المعروض'}</span>)}
-            <small style={{width:'100%'}}>كل انتقال يتطلب استمرار الاتجاه وبقاء السعر داخل حد الإبطال؛ الأشكال والتصحيحات توضيحية ولا تحدد احتمال الوصول.</small>
+            <small style={{width:'100%'}}>أهداف مراقبة مشروطة وليست أمر دخول. كل انتقال يتطلب استمرار الاتجاه وصلاحية المستويات؛ الأشكال والتصحيحات توضيحية ولا تحدد احتمال الوصول.</small>
           </div>}
           <div className="forecast-visual-chart-scroll" style={scenarioDetail?{display:'block',overflowX:'auto',direction:'ltr'}:undefined}>
             <div dir="rtl" style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:'8px 16px',padding:'12px 16px',background:'#0b1928',borderBottom:'1px solid #284156',color:'#b6cad9',fontSize:13,fontVariantNumeric:'tabular-nums'}}>
