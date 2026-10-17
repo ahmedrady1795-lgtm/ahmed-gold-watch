@@ -107,7 +107,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     side:planVisible?m.displaySide:'WAIT',price:m.price,
     sourceReady:m.historyFresh&&m.observationFresh&&sn.view.priceFresh,
     scenarioReady:planVisible});
-  const visualCandles=showGhost&&!goldClosed?buildVisualFuture({candles:m.candles,forecast:ghost,side:dir}):[];
+  const liveAnchor=m.price!=null&&sn.view.priceFresh&&m.observationFresh&&m.historyFresh?m.price:undefined;
+  const visualCandles=showGhost&&!goldClosed?buildVisualFuture({
+    candles:m.candles,forecast:ghost,side:dir,now,anchorPrice:liveAnchor}):[];
   // The M1 audit scans many historical folds. A frequent quote/UI refresh
   // must not rerun it until a genuinely different candle history arrives.
   const candleRevision=m.candles.map(c=>[c.time,c.open,c.high,c.low,c.close].join(':')).join('|');
@@ -536,9 +538,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 })}
                 {ghostRangeVisible&&<g className="ghost-neutral-range" opacity=".10">
                   {ghost.range.map((r,i)=><g key={r.time}>
-                    <line x1={ghostXs[i]} x2={ghostXs[i]} y1={px(r.high)} y2={px(r.low)}
+                    <line x1={ghostXs[i]} x2={ghostXs[i]} y1={px(r.high+visualCandles[0].open-m.candles.at(-1)!.close)}
+                       y2={px(r.low+visualCandles[0].open-m.candles.at(-1)!.close)}
                       stroke="#a7bce8" strokeWidth="1.6" strokeDasharray="3 6" strokeOpacity=".7"/>
-                    <circle cx={ghostXs[i]} cy={px(m.candles.at(-1)!.close)} r="3" fill="#a7bce8" opacity=".7"/>
+                    <circle cx={ghostXs[i]} cy={px(visualCandles[0].open)} r="3" fill="#a7bce8" opacity=".7"/>
                     <title>نطاق تذبذب M1 للخطوة {r.step}، لا يحدد صعودًا أو هبوطًا</title>
                   </g>)}
                 </g>}
@@ -606,13 +609,16 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               '3 شموع ذهب مدعومة باختبار · يليها شموع شكلية فقط':'3 شموع M1 مفحوصة · والباقي شموع افتراضية'):
               ghostRangeVisible?'نطاق تذبذب M1 · لا توقع اتجاه · شموع توضيحية':
               'لا تتوفر بيانات كافية للتقدير'}</summary>
-            <div style={{marginTop:7,lineHeight:1.6}}> · {goldClosed?'الجلسة مغلقة ولا توجد توقعات حية.':ghost.reason} {visualCandles.length?'18 شمعة مستقبلية بنمط أجسام وذيول مأخوذ من تاريخ السوق، وليس توقعًا تم اختباره. الأهداف بعيدة المدى مستقلة عنها.':'لا تتوفر شموع محاكاة مؤهلة.'} هذه الدراسة ليست نموذج ML معتمدًا، ولا تمثل إشارة دخول.</div>
+            <div style={{marginTop:7,lineHeight:1.6}}> · {goldClosed?'الجلسة مغلقة ولا توجد توقعات حية.':ghost.reason} {visualCandles.length?'18 شمعة توضيحية من أنماط تاريخية. في النطاق المحايد تبدأ مشروطًا من آخر سعر حي حديث، ومن الدقيقة المستقبلية الكاملة التالية. الأهداف البعيدة مستقلة عنها ولا توجد دقة مضمونة.':'لا تتوفر شموع محاكاة مؤهلة.'} هذه الدراسة ليست نموذج ML معتمدًا، ولا تمثل إشارة دخول.</div>
             <details style={{marginTop:4}}>
               <summary>نتائج الاختبار التاريخي وطريقة العرض</summary>
               {analogueAudit&&<p style={{margin:'5px 0',color:'#a7c6d4'}}>
-                محاكاة الشموع: {analogueNeighbors} أنماط مشابهة؛ اختبار زمني مُرحّل لثلاث دقائق:
-                {' '}{analogueAudit.samples} حالات، صحيحة {analogueAudit.hits} مقابل
-                {' '}{analogueAudit.baselineHits} لمرجع الزخم البسيط على الحالات نفسها.
+                محاكاة الشموع: {analogueNeighbors} أنماط مستقلة؛ اختبار زمني لثلاث دقائق:
+                {' '}{analogueAudit.samples} حالات، اتجاه صحيح {analogueAudit.hits} مقابل
+                {' '}{analogueAudit.baselineHits} لمرجع الزخم.
+                {' '}متوسط خطأ الإغلاق {fmt(analogueAudit.maeAtr,3)} ATR مقابل
+                {' '}{fmt(analogueAudit.baselineMaeAtr,3)} ATR لثبات آخر سعر.
+                {' '}النتائج تاريخية فقط؛ لا تثبت أداء التداول الحي.
                 {' '}هذه الدراسة غير مؤهلة لتحديد اتجاه تداول، ولا تثبت أفضلية خارج العينة.
               </p>}
               {ghost.validation.samples>=12?<span>
