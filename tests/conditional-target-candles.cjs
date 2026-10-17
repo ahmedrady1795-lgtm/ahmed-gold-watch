@@ -23,7 +23,7 @@ assert.equal(z.touches[0]?.stage,1,'closest real TP gets a labelled candle touch
 assert.equal(z.touches[1]?.stage,2,'second TP should be reached by gradual realistic candles');
 assert.deepEqual(Array.from(z.pendingStages),[3],'distant TP3 must not be reached by stretching candles');
 const ref=history.slice(-36);
-const refBody=ref.map(b=>Math.abs(b.close-b.open)).sort((a,b)=>a-b)[Math.floor((36-1)*.75)];
+const refBody=Math.max(...ref.map(b=>Math.abs(b.close-b.open)));
 const refRange=Math.max(...ref.map(b=>b.high-b.low));
 assert.ok(z.bars.every((b,i)=>b.low>0&&b.high>=Math.max(b.open,b.close)&&
  b.low<=Math.min(b.open,b.close)&&Math.abs(b.close-b.open)<=refBody+1e-8&&
@@ -78,6 +78,27 @@ assert.match(chart,/!routeVisible&&btcScenario!\.destinationMid/,'do not overlap
 assert.match(chart,/المراحل ليست دقائق/);
 console.log('PASS: target-following up/down realistic OHLC bounded by real body/range, TP stages and far-target honesty');
 
+// No TP, milestone or stop may drag the actual-scale OHLC sequence toward it.
+const alternativeTargets=build({...common,
+ targets:[{stage:1,price:quote+7},{stage:2,price:quote+20}],
+ invalidation:quote-25});
+assert.equal(JSON.stringify(alternativeTargets.bars),JSON.stringify(z.bars),
+ 'changing target prices must NOT rewrite a single candle body or wick');
+for(const hit of z.touches){
+ const bar=z.bars[hit.index];
+ assert.ok(bar.low<=hit.price+1e-8&&bar.high>=hit.price-1e-8,
+   'a TP must be marked only when a replayed OHLC wick actually touches it');
+}
+assert.ok(z.bars.some((b,i)=>i>z.touches[1].index&&Math.abs(b.close-b.open)>.01),
+ 'candles must continue naturally after TP2, not flatten out at the destination');
+// An unreachable target remains a real horizontal level, not a forced landing.
+const unrealistic=build({...common,targets:[{stage:1,price:quote+900}],
+ invalidation:quote-25});
+assert.equal(unrealistic.ready,true,unrealistic.reason);
+assert.equal(unrealistic.touches.length,0);
+assert.deepEqual(Array.from(unrealistic.pendingStages),[1]);
+assert.equal(JSON.stringify(unrealistic.bars),JSON.stringify(z.bars));
+
 const routePoints=[{key:'BREAK',label:'break',price:quote+.8},
  {key:'HOLD',label:'hold',price:quote+1.5},
  {key:'RETEST',label:'retest',price:quote+.6}];
@@ -85,19 +106,29 @@ const detailed=build({...common,count:96,waypoints:routePoints,
  targets:[{stage:1,price:quote+3},{stage:2,price:quote+8},{stage:3,price:quote+12}],invalidation:quote-5});
 assert.equal(detailed.ready,true,detailed.reason);
 assert.equal(detailed.bars.length,96);
-assert.deepEqual(Array.from(detailed.milestones,m=>m.key),['BREAK','HOLD','RETEST']);
-for(const point of detailed.milestones)assert.ok(Math.abs(detailed.bars[point.index].close-point.price)<1e-8);
-assert.ok(detailed.milestones[2].index>detailed.milestones[1].index);
-assert.ok(detailed.bars.slice(detailed.milestones[1].index+1,detailed.milestones[2].index+1).some(b=>b.close<b.open));
-assert.deepEqual(Array.from(detailed.touches,t=>t.stage),[1,2,3]);
-assert.ok(detailed.touches[0].index>detailed.milestones[2].index,'targets follow the structural retest');
-assert.ok(detailed.bars.every(b=>Math.abs(b.close-b.open)<=refBody+1e-8&&b.high-b.low<=refRange+1e-8),'long routes must not enlarge OHLC');
-const shortRoute=build({...common,waypoints:routePoints,targets:[{stage:1,price:quote+3},{stage:2,price:quote+8},{stage:3,price:quote+12}],invalidation:quote-5});
-assert.equal(JSON.stringify(shortRoute.bars),JSON.stringify(detailed.bars.slice(0,18)),'expanded drawing preserves its initial path when the view expands');
-for(const price of [NaN,quote-6,quote+20])assert.equal(build({...common,waypoints:[{key:'BAD',label:'bad',price}],targets:[{stage:1,price:quote+12}],invalidation:quote-5}).ready,false);
+assert.ok(detailed.bars.every(b=>Math.abs(b.close-b.open)<=refBody+1e-8&&
+ b.high-b.low<=refRange+1e-8),'even an extended route retains real visible M1 geometry');
+for(const hit of detailed.touches){
+ const bar=detailed.bars[hit.index];
+ assert.ok(bar.low<=hit.price+1e-8&&bar.high>=hit.price-1e-8,
+   'extended TP touches must be genuinely inside each replayed wick');
+}
+for(const milestone of detailed.milestones){
+ const bar=detailed.bars[milestone.index];
+ assert.ok(bar.low<=milestone.price+1e-8&&bar.high>=milestone.price-1e-8,
+   'a break/retest is NEVER manufactured by moving candle close to the level');
+}
+const shortRoute=build({...common,waypoints:routePoints,
+ targets:[{stage:1,price:quote+3},{stage:2,price:quote+8},{stage:3,price:quote+12}],invalidation:quote-5});
+assert.equal(JSON.stringify(shortRoute.bars),JSON.stringify(detailed.bars.slice(0,18)),
+ 'expanding to 96 stages must preserve the original first 18 real-history analogue bars');
+for(const price of [NaN,quote-6,quote+20])
+ assert.equal(build({...common,waypoints:[{key:'BAD',label:'bad',price}],
+   targets:[{stage:1,price:quote+12}],invalidation:quote-5}).ready,false);
 const downward=build({...common,count:96,history:reflected,quote:3000-quote,side:'SELL',
- waypoints:routePoints.map(w=>({...w,price:3000-w.price})),targets:[{stage:1,price:3000-quote-12}],invalidation:3000-quote+5});
+ waypoints:routePoints.map(w=>({...w,price:3000-w.price})),
+ targets:[{stage:1,price:3000-quote-12}],invalidation:3000-quote+5});
 assert.equal(downward.ready,true,downward.reason);
-assert.equal(downward.milestones.length,3);
-assert.equal(downward.touches[0].stage,1);
-console.log('PASS: 96-step structure-aware BUY/SELL routes reach exact break/retest/TP prices without enlarging candles');
+assert.equal(downward.bars.length,detailed.bars.length);
+assert.ok(downward.bars.some(b=>b.close>b.open),'bearish history includes authentic upward pullbacks');
+console.log('PASS: causal OHLC analogue, untouched server TP levels, genuine touches, 96-stage zoom, BUY/SELL symmetry');
