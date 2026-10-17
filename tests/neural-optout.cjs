@@ -18,6 +18,12 @@ const env={NEURAL_ENABLED:'0',NEURAL_ENGINE_URL:'http://unreachable:8000'};
 let requests=0;
 vm.runInNewContext(transpiled,{
   exports:moduleExports,process:{env},
+  // CommonJS transpilation loads the optional certification dependency eagerly.
+  // In this disabled-mode test it must never be invoked.
+  require:(id)=>{
+    assert.equal(id,'./ai-model-certification');
+    return {certifyNeuralResponse:()=>{throw Error('Neural certification reached while disabled');}};
+  },
   fetch:()=>{requests++;throw Error('Forbidden neural network request');},
   AbortController,Date,Number,String,Error,setTimeout,clearTimeout
 });
