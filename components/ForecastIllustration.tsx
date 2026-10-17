@@ -2,7 +2,7 @@
 
 import {useEffect,useMemo,useState} from 'react';
 import {Crosshair,Layers3} from 'lucide-react';
-import {buildChartOverlay} from '../lib/chart-trading-overlay';
+import {assessBreakoutWatch,buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildForecastMotion,layoutForecastMotion,buildSmoothMotionPath} from '../lib/forecast-motion';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {buildGhostForecast} from '../lib/ghost-forecast';
@@ -79,6 +79,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const overlay=buildChartOverlay({now,price:m.price,historyFresh:m.historyFresh,
     priceFresh:sn.view.priceFresh&&m.observationFresh,fourHour:m.fourHour,
     m5:x?.chartHigherFrames?.m5,accumulation:x?.accumulation,targets:planVisible?m.displayTargets:[]});
+  // Chart-only state. An observed breakout never bypasses trade safety gates.
+  const breakoutWatch=assessBreakoutWatch({
+    now,price:m.price,priceFresh:sn.view.priceFresh&&m.observationFresh,
+    historyFresh:m.historyFresh,m1:m.candles,m5:x?.chartHigherFrames?.m5,overlay
+  });
   const pools=overlay.ready?[overlay.upper,overlay.lower].filter((z):z is NonNullable<typeof z>=>z!=null):[];
   const candles=m.candles.slice(-chartWindow);
   const candleBounds=candles.flatMap(c=>[c.low,c.high]);
@@ -243,13 +248,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const neutralLabel=!memory.bias?'تجهيز ذاكرة الأهداف · التحليل مستمر':
     !watchFresh?'سجل المراقبة قيد التحديث':
     !m.bias.active?'التحليل مستمر · الاتجاه غير مؤكد':
-    'سوق متوازن · ترقب كسر';
+    breakoutWatch.headline;
   const stateLabel=feedProblem??(!watchFresh&&!statusReady?'انتظار ذاكرة حديثة':
     statusReady?'سيناريو مؤهل · مسجل':watchReady&&m.heldBias?'اتجاه مثبت · أهداف مراقبة':
     watchReady?'أهداف بعيدة · مراقبة فقط':
     m.bias.active&&m.bias.side!=='WAIT'?(m.heldBias?'اتجاه محفوظ · تحقق مستمر':'الاتجاه مرصود · جارٍ البحث عن مستوى بعيد'):
     m.bias.active?'سوق عرضي · التحليل مستمر':
-    m.status==='NO_CANDLES'?'لا توجد شموع كافية':'مراقبة مستمرة · الاتجاه غير مؤكد');
+    m.status==='NO_CANDLES'?'لا توجد شموع كافية':
+    breakoutWatch.phase!=='UNAVAILABLE'?breakoutWatch.headline:'مراقبة مستمرة · الاتجاه غير مؤكد');
   const highest=m.displayTargets.at(-1);
   const zoneList=chartBands.filter(z=>z.kind!=='TARGET'&&z.kind!=='STOP').slice(0,4);
   const conflictFavor=opposingOverlap&&m.fourHour.ready&&dir!=='WAIT'&&
@@ -260,7 +266,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const frameExplanation=explainFrameConflict(dir,m.fourHour.side,m.fourHour.ready);
   const statusText=statusReady?(journal?.message||sn.stageText):
     watchReady?m.bias.reason+' · أهداف الخادم ثابتة للمراقبة':
-    watchFresh?m.bias.label+' · '+m.bias.reason:'ننتظر ذاكرة أهداف حديثة من الخادم';
+    watchFresh?breakoutWatch.headline+' · '+breakoutWatch.detail+' · '+m.bias.reason:
+    'ننتظر ذاكرة أهداف حديثة من الخادم';
 
   return <section id="forecast-illustration" className="workspace-section forecast-visual-section"
     aria-labelledby="forecast-visual-title">
@@ -598,8 +605,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {!planVisible&&<g>
                 <rect x={xf+8} y={yb-76} width={xr-xf-16} height="65" rx="9" fill="#0a1520" stroke="#3a5464" strokeOpacity=".8"/>
                 <text x={(xf+xr)/2} y={yb-51} fill="#cedfeb" textAnchor="middle" fontSize="14" fontWeight="700">
-                  {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'انتظار شموع':watchFresh?'ترقب كسر':'تهيئة الذاكرة'}</text>
-                <text x={(xf+xr)/2} y={yb-29} fill="#91abbb" textAnchor="middle" fontSize={mobile?11:11}>لا إشارة دخول</text>
+                  {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'انتظار شموع':breakoutWatch.headline}</text>
+                <text x={(xf+xr)/2} y={yb-29} fill="#91abbb" textAnchor="middle" fontSize={mobile?11:11}>
+                  {breakoutWatch.phase==='UNAVAILABLE'?'بيانات غير كافية':breakoutWatch.closes>0?
+                    breakoutWatch.closes+'/2 إغلاق M5 · لا دخول':'رصد M1/M5 · لا دخول'}</text>
+                <title>{breakoutWatch.detail+' · الدخول يتطلب شروط السيولة والعائد والمخاطرة'}</title>
               </g>}
             </svg>
           </div>
