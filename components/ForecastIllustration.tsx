@@ -78,7 +78,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     x1=mobile?315:895,xf=x1+14,xr=W-(mobile?126:144),yt=40,yb=H-102,volumeEnd=H-49;
   // Chart structure comes from CLOSED M5, independently of AI snapshot age.
   const breakout=buildBreakoutGuide({frames:x?.chartHigherFrames,now,side:dir,
-    price:m.price,sourceReady:sn.view.priceFresh&&m.historyFresh,
+    price:m.price,sourceReady:sn.view.priceFresh,
     invalidation:m.displayStop});
   const overlay=buildChartOverlay({now,price:m.price,historyFresh:m.historyFresh,
     priceFresh:sn.view.priceFresh&&m.observationFresh,fourHour:m.fourHour,
@@ -92,7 +92,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   }:overlay;
   const breakoutWatch=assessBreakoutWatch({
     now,price:m.price,priceFresh:sn.view.priceFresh,
-    historyFresh:m.historyFresh,m1:m.candles,m5:x?.chartHigherFrames?.m5,
+    historyFresh:breakoutEvidence.ready,m1:m.candles,m5:x?.chartHigherFrames?.m5,
     overlay:breakoutEvidence
   });
   // Read-only closed-candle radar and historical objectives. No entries.
@@ -125,7 +125,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   }):[];
   const playbook=buildSniperChartPlaybook({
     marketOpen:!goldClosed,priceFresh:sn.view.priceFresh&&m.observationFresh,
-    historyFresh:m.historyFresh,price:m.price,atr:overlay.atr,
+    historyFresh:m.historyFresh||breakoutEvidence.ready,
+    price:m.price,atr:breakoutEvidence.atr,
     observation:observationForDisplay,breakout:breakoutWatch,
     planReady:statusReady,planSide:dir,
     targets:planVisible?m.displayTargets:watchTargets,
@@ -218,6 +219,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const grid=Array.from({length:5},(_,i)=>({y:yt+i*(yb-yt)/4,value:scaleHigh-(scaleHigh-scaleLow)*i/4}));
   // Coinbase quote refresh is independent of inference/AI snapshot freshness.
   const priceFresh=m.price!=null&&sn.view.priceFresh&&!goldClosed;
+  // A last known quote stays visible, without falsely claiming LIVE.
+  const priceMarkerVisible=m.price!=null&&Number.isFinite(m.price)&&m.price>0;
   const quoteAgeSec=sn.view.sourceAgeSeconds;
   const quoteLabel=priceFresh?(asset==='BTC'?'BTC LIVE':'سعر حي'):
     goldClosed?'السوق مغلق':'سعر مؤخر';
@@ -231,8 +234,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         z.key===primaryZone?.key?(z.kind==='DEMAND'||z.kind==='BUY_REBOUND'?'طلب ★':'عرض ★'):
         z.kind==='DEMAND'||z.kind==='BUY_REBOUND'?'طلب':'عرض',
       kind:z.kind})),
-    ...(priceFresh?[{key:'MARKET_PRICE',y:px(m.price!),price:m.price!,
-      label:asset==='BTC'?'LIVE':'سعر حي',kind:'PRICE'}]:[])
+    ...(priceMarkerVisible?[{key:'MARKET_PRICE',y:px(m.price!),price:m.price!,
+      label:priceFresh?(asset==='BTC'?'BTC LIVE':'سعر حي'):'آخر سعر',kind:'PRICE'}]:[])
   ],yt+20,yb-20,38);
   const stride=(x1-x0)/Math.max(candles.length,1);
   const candleWidth=clamp(stride*.72,mobile?1.6:2,11);
@@ -370,6 +373,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {goldClosed?'سوق الذهب مغلق · آخر جلسة محفوظة':
                 ageMin!=null?'آخر إغلاق M1 منذ '+ageMin+' د':'لا توجد بيانات شموع'}
               {' · '}{m.observationFresh?'تحليل AI حديث':'تحليل AI قيد التحديث'}
+              {' · '}{breakoutEvidence.ready?'كسر M5 متاح':'سياق كسر M5 غير جاهز'}
             </span>
             {structureView&&<span className={'sniper-structure-chip '+(structureView.side==='BUY'?'structure-up':'structure-down')}
               title="شموع مغلقة: اندفاع + كسر جسم + آخر شمعة معاكسة + فجوة 3 شموع، وليس إثبات أوامر مؤسسات">
@@ -650,20 +654,23 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 return <text key={'time'+i} x={x0+(i/3)*(x1-x0)} y={H-13}
                   fill="#8ba6b9" textAnchor={i===0?'start':i===3?'end':'middle'} fontSize="11">{clock(c.time)}</text>;
               })}
-              {priceFresh&&quoteArrowY!=null&&<g className="sniper-live-price-arrow">
+              {priceMarkerVisible&&quoteArrowY!=null&&<g className="sniper-live-price-arrow">
                 <line x1={x0} x2={xr} y1={quoteArrowY} y2={quoteArrowY}
-                  stroke="#5ad6f4" strokeWidth="1.7" strokeDasharray="3 5" strokeOpacity=".88"/>
+                  stroke={priceFresh?'#5ad6f4':'#c5a875'} strokeWidth="1.7"
+                  strokeDasharray="3 5" strokeOpacity=".88"/>
                 <path d={'M '+(x1+6)+' '+quoteArrowY+' l -13 -9 v 18 z'}
-                  fill="#72ebff" stroke="#0b2030" strokeWidth="1.5"/>
-                <circle cx={x1+8} cy={quoteArrowY} r="4" fill="#72ebff"
+                  fill={priceFresh?'#72ebff':'#d5b484'} stroke="#0b2030" strokeWidth="1.5"/>
+                <circle cx={x1+8} cy={quoteArrowY} r="4" fill={priceFresh?'#72ebff':'#d5b484'}
                   stroke="#0b2030" strokeWidth="1.2"/>
                 <text x={x1-15} y={clamp(quoteArrowY-12,yt+13,yb-13)}
-                  textAnchor="end" fill="#b8f5ff" fontSize={mobile?13:11} fontWeight="700">
-                  {asset==='BTC'?'◀ BTC LIVE':'◀ سعر حي'}
+                  textAnchor="end" fill={priceFresh?'#b8f5ff':'#d5b484'}
+                  fontSize={mobile?13:11} fontWeight="700">
+                  {priceFresh?(asset==='BTC'?'◀ BTC LIVE':'◀ سعر حي'):'◀ آخر سعر · غير حي'}
                 </text>
                 <title>{'آخر سعر مصدر حقيقي: '+fmt(m.price)+
                   ' · عمر المصدر '+(quoteAgeSec??'غير معلوم')+
-                  ' ثانية · هذا سهم السعر الحالي وليس توقعًا مستقبليًا'}</title>
+                  ' ثانية · '+(priceFresh?'سعر مباشر من مصدر حديث':'آخر سعر معروف غير مؤهل لوصف LIVE')+
+                  ' · هذا سهم السعر الحالي وليس توقعًا مستقبليًا'</title>
               </g>}
               {ghostActive&&<g className="sniper-ghost-forecast" clipPath={'url(#forecast-plot-'+asset+')'}>
                 {ghostBandPath&&<path d={ghostBandPath} fill="#88b4ef" fillOpacity=".045"
@@ -742,14 +749,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               </g>
               {chartLanes.map(label=>{
                 const isPrice=label.kind==='PRICE',isTarget=label.kind==='TARGET',isStop=label.kind==='STOP';
-                const color=isPrice?'#9feaff':isTarget?'#74f0ba':isStop?'#ff9cab':
+                const color=isPrice?(priceFresh?'#9feaff':'#d5b484'):isTarget?'#74f0ba':isStop?'#ff9cab':
                   label.label.startsWith('طلب')?'#8debc6':'#f2b0c7';
                 const rx=xr+8,ry=label.labelY-17,rw=W-rx-10;
                 return <g key={'rail-'+label.key} className="sniper-price-rail-label">
                   <line x1={xr} x2={rx} y1={label.y} y2={label.labelY}
                     stroke={color} strokeWidth="1.15" strokeOpacity=".8"/>
                   <rect x={rx} y={ry} width={rw} height="34" rx="4"
-                    fill={isPrice?'#18506a':'#112637'} stroke={color} strokeOpacity=".65"/>
+                    fill={isPrice?(priceFresh?'#18506a':'#3b3229'):'#112637'} stroke={color} strokeOpacity=".65"/>
                   <text x={rx+rw/2} y={label.labelY-5} textAnchor="middle"
                     fontSize={mobile?16:10} fill={color} fontWeight="700">{label.label}</text>
                   <text direction="ltr" x={rx+rw/2} y={label.labelY+10} textAnchor="middle"
