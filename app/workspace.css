@@ -1538,3 +1538,27 @@ body:has(.modern-workspace.compact-sniper){
  .sniper-chart-analysis-drawer>summary small span,
  .compact-sniper .forecast-chart-tools button{transition:none}
 }
+
+/* Evidence strength = a transparent technical checklist, NEVER win probability. */
+.sniper-chart-analysis-drawer>summary .sniper-strength-chip{
+ flex-shrink:0;display:inline-flex;align-items:center;gap:5px;
+ padding:5px 9px;border-radius:7px;border:1px solid #4d6674;
+ background:#152d3e;color:#b9d0df;font-weight:750;font-size:11px;
+ letter-spacing:0;max-width:unset;overflow:visible}
+.sniper-chart-analysis-drawer>summary .sniper-strength-partial{
+ color:#efca89;border-color:#836842;background:#342d21}
+.sniper-chart-analysis-drawer>summary .sniper-strength-aligned{
+ color:#9be6f4;border-color:#428595;background:#163846}
+.sniper-chart-analysis-drawer>summary .sniper-strength-confirmed,
+.sniper-chart-analysis-drawer>summary .sniper-strength-qualified{
+ color:#92f6ce;border-color:#3d8e71;background:#144536}
+.sniper-chart-analysis-drawer>summary .sniper-strength-none{
+ color:#a4b3c4;border-color:#455b66;background:#20303e}
+@media(max-width:760px){
+ .sniper-chart-analysis-drawer>summary{flex-wrap:wrap;gap:5px 7px}
+ .sniper-chart-analysis-drawer>summary strong{max-width:none;flex:1 1 56%;white-space:normal}
+ .sniper-chart-analysis-drawer>summary .sniper-strength-chip{font-size:10px;padding:4px 6px}
+ .sniper-chart-analysis-drawer>summary .sniper-collapse-levels{
+  flex:1 1 auto;white-space:normal;font-size:10px}
+ .sniper-chart-analysis-drawer>summary small{margin-inline-start:0}
+}
