@@ -613,6 +613,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 strokeWidth="2.4" strokeOpacity=".85" strokeDasharray="7 5"/>
               <text x={xf-14} y="18" textAnchor="end" fill="#88bbd3" fontSize={mobile?18:12}>تاريخ فعلي</text>
               <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?14:12}>{closedPreview?'معاينة آخر جلسة · غير حية':goldClosed?'الذهب مغلق':
+    routeVisible?'شموع مسار سعري شرطي · لا زمن وصول':
     visualCandles.length?'شموع توضيحية · كسر وسيولة':
     watchTargets.length?'TP مراقبة · كسر · سيولة':'مستويات كسر وسيولة'}</text>
               <g clipPath={'url(#forecast-plot-'+asset+')'}>
@@ -814,7 +815,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   ' ثانية · '+(priceFresh?'سعر مباشر من مصدر حديث':'آخر سعر معروف غير مؤهل لوصف LIVE')+
                   ' · هذا سهم السعر الحالي وليس توقعًا مستقبليًا'}</title>
               </g>}
-              {ghostActive&&<g className="sniper-ghost-forecast" clipPath={'url(#forecast-plot-'+asset+')'}>
+              {ghostActive&&<g className={'sniper-ghost-forecast'+(routeVisible?' sniper-route-candles':'')}
+                clipPath={'url(#forecast-plot-'+asset+')'}>
                 {ghostBandPath&&<path d={ghostBandPath} fill="#88b4ef" fillOpacity=".045"
                   stroke="#a3bff7" strokeOpacity=".4" strokeDasharray="3 6" strokeWidth="1">
                   <title>نطاق تقلب تقريبي متسع، غير معاير إحصائيًا ولا يضمن تغطية محددة</title>
@@ -823,18 +825,20 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   const gx=ghostXs[i],up=c.close>=c.open;
                   const color=up?'#4ad9c6':'#f0758a',top=Math.min(px(c.open),px(c.close)),
                     bottom=Math.max(px(c.open),px(c.close));
-                  return <g key={c.time} opacity={c.validatedShape?.96:.89}>
+                  return <g key={c.time} opacity={c.validatedShape?.96:routeVisible?.97:.89}>
                     <line x1={gx} x2={gx} y1={px(c.high)} y2={px(c.low)}
-                      stroke={color} strokeWidth="1.75" strokeDasharray={c.validatedShape?undefined:'3 2'}/>
+                      stroke={color} strokeWidth={routeVisible?1.5:1.75}
+                      strokeDasharray={c.validatedShape?undefined:'3 2'}/>
                     <rect x={gx-futureWidth/2} y={top} width={futureWidth}
-                      height={Math.max(2.8,bottom-top)} rx="1.2"
-                      fill={color} fillOpacity={c.validatedShape?.88:.39}
+                      height={Math.max(1.8,bottom-top)} rx="1.2"
+                      fill={color} fillOpacity={c.validatedShape?.88:routeVisible?.52:.39}
                       stroke={up?'#a2ffe7':'#ffc0cb'} strokeOpacity=".85"
-                      strokeWidth="1.3" strokeDasharray={c.validatedShape?undefined:'4 2'}/>
+                      strokeWidth={routeVisible?1:1.3}
+                      strokeDasharray={c.validatedShape?undefined:'4 2'}/>
                     {c.validatedShape&&<circle cx={gx} cy={px(c.high)-5} r="2" fill={color} />}
                     {(i%4===0||i===visualCandles.length-1)&&<text x={gx} y={yb-7} textAnchor="middle" fill="#b8c9e5"
-                      fontSize={mobile?11:10}>{closedPreview?'+'+(i+1):clock(c.time)}</text>}
-                    <title>{(c.scenarioShape?'شمعة شكلية لمرحلة المسار، غير زمنية رقم ':'شمعة M1 افتراضية رقم ')+c.step+
+                      fontSize={mobile?11:10}>{routeVisible?'S'+(i+1):closedPreview?'+'+(i+1):clock(c.time)}</text>}
+                    <title>{(c.scenarioShape?'شمعة مسار شرطي · مرحلة سعرية دون زمن رقم ':'شمعة M1 افتراضية رقم ')+c.step+
                       (closedPreview||c.scenarioShape?' · دون موعد وصول':' · '+clock(c.time))+' · '+(up?'صعود توضيحي':'هبوط توضيحي')+
                       ' · O '+fmt(c.open)+' H '+fmt(c.high)+' L '+fmt(c.low)+' C '+fmt(c.close)+
                       ' · '+(c.validatedShape?'نموذج M1 مفحوص تاريخيًا':'شمعة شكلية توضيحية غير مدعومة باختبار مستقل')+' · ليست سعرا فعليا'}</title>
@@ -851,14 +855,25 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </g>}
                 <text x={(ghostXs[0]+ghostXs.at(-1)!)/2} y={yt+29} textAnchor="middle"
                   fontSize={mobile?13:12} fontWeight="700" fill="#bdd1ee">
-                  {closedPreview?'من أرشيف السوق · عرض توضيحي فقط':
-                     ghostVisible?'3 شموع تقديرية + نماذج تاريخية':'شموع توضيحية من نماذج تاريخية'}
+                  {routeVisible?'شموع نحو أهداف حقيقية · مراحل سعرية لا دقائق':
+                    closedPreview?'من أرشيف السوق · عرض توضيحي فقط':
+                    ghostVisible?'3 شموع تقديرية + نماذج تاريخية':'شموع توضيحية من نماذج تاريخية'}
                 </text>
+                {routeVisible&&targetRoute!.touches.map(hit=><g
+                  key={'route-goal-'+hit.stage} className="sniper-route-target-touch">
+                  <circle cx={ghostXs[hit.index]} cy={px(hit.price)} r="5.5"
+                    fill="#0a2930" stroke="#ffdc98" strokeWidth="2"/>
+                  <text x={clamp(ghostXs[hit.index],xf+36,xr-36)}
+                    y={clamp(px(hit.price)-14,yt+20,yb-24)}
+                    textAnchor="middle" fill="#ffe3aa" fontWeight="800"
+                    fontSize={mobile?12:11}>{'TP'+hit.stage+' · '+fmt(hit.price)}</text>
+                  <title>{'هدف '+hit.stage+': وصول ضمن مسار افتراضي مشروط، دون توقيت أو ضمان · '+fmt(hit.price)}</title>
+                </g>)}
               </g>}
               {btcScenarioShown&&!planVisible&&m.price!=null&&<g
                 className="btc-structural-watch-path"
                 aria-label="مسار سعري هيكلي مراقب وليس صفقة">
-                {btcScenario!.destinationMid!=null&&<path
+                {!routeVisible&&btcScenario!.destinationMid!=null&&<path
                   d={'M '+(xf+15)+' '+px(m.price)+
                     ' L '+(xf+(xr-xf)*.49)+' '+
                       (px(m.price)*.57+clamp(px(btcScenario!.destinationMid),yt+15,yb-15)*.43)+
@@ -880,7 +895,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                     stroke="#ff8da7" strokeWidth="1.6" strokeDasharray="5 5"/>}
                 <text x={(xf+xr)/2} y={yb-17} textAnchor="middle" fontSize={mobile?12:12}
                   fontWeight="700" fill="#ffd28a">
-                  {btcScenarioOffscreen?'↗/↘ وجهة خارج الزوم: ':'◇ وجهة مراقبة: '}
+                  {routeVisible&&targetRoute!.pendingStages.length?
+                    '↗/↘ هدف أبعد من مدى الشموع: ':
+                    btcScenarioOffscreen?'↗/↘ وجهة خارج الزوم: ':'◇ وجهة مراقبة: '}
                   {fmt(btcScenario!.destinationMid)}
                 </text>
                 <title>{btcScenario!.title+' · وجهة تاريخية من السيولة: '+
