@@ -97,3 +97,88 @@ export function buildChartOverlay(input:{
     }))
   };
 }
+
+
+/**
+ * Read-only breakout progression for the chart. This does NOT decide trade
+ * eligibility, overwrite an audited plan or create a target. It deliberately
+ * distinguishes intraminute price testing from two CLOSED M5 confirmations.
+ * The levels are exactly those already displayed by buildChartOverlay.
+ */
+export function assessBreakoutWatch(input:{
+ now:number;price:number|null;priceFresh:boolean;historyFresh:boolean;
+ m1:any;m5:any;overlay:ReturnType<typeof buildChartOverlay>;
+}){
+ type Phase='UNAVAILABLE'|'RANGE'|'APPROACH'|'TESTING'|'M1_BREAK'|
+   'M5_FIRST'|'M5_CONFIRMED'|'REJECTED';
+ type Direction='BUY'|'SELL'|'WAIT';
+ const result=(phase:Phase,side:Direction,headline:string,detail:string,
+   closes:0|1|2=0,level:number|null=null)=>
+   ({phase,side,headline,detail,closes,requiredCloses:2 as const,level});
+ const {overlay:o,now,price}=input,upper=o.breakoutUp,lower=o.breakoutDown;
+ if(!input.priceFresh||!input.historyFresh)
+   return result('UNAVAILABLE','WAIT','انتظار بيانات حية','سعر M1 أو الشموع غير حديثة');
+ if(!o.ready||upper==null||lower==null||o.atr==null)
+   return result('UNAVAILABLE','WAIT','انتظار مستويات كسر موثوقة','بيانات M5/H4 لم تكتمل؛ لا تأكيد');
+ const m5=closedM5(input.m5,now),last=m5.at(-1),prev=m5.at(-2);
+ if(m5.length<14||!last||!prev||last.time-prev.time!==300000||
+   now-last.time-300000>10*60000)
+   return result('UNAVAILABLE','WAIT','انتظار إغلاقات M5','آخر إغلاق M5 أو التسلسل غير حديث');
+ const recent=Array.isArray(input.m1)?input.m1.filter((b:any)=>
+   Number.isFinite(Number(b?.time))&&b.time%60000===0&&
+   b.time+60000<=now&&Number.isFinite(Number(b.close))&&
+   b.close>0&&Number.isFinite(Number(b.high))&&Number.isFinite(Number(b.low))&&
+   b.high>=b.close&&b.low<=b.close).sort((a:any,b:any)=>a.time-b.time).slice(-5):[];
+ const m1Last=recent.at(-1),m1Prev=recent.at(-2);
+ const m1Contiguous=Boolean(m1Last&&m1Prev&&
+   m1Last.time-m1Prev.time===60000&&now-m1Last.time-60000<=180000);
+ const m1Up=Boolean(m1Contiguous&&m1Last.close>upper&&m1Prev.close>upper);
+ const m1Down=Boolean(m1Contiguous&&m1Last.close<lower&&m1Prev.close<lower);
+ const up=last.close>upper,down=last.close<lower;
+ const up2=up&&prev.close>upper,down2=down&&prev.close<lower;
+ const fmt=(x:number)=>x.toLocaleString('en-US',{maximumFractionDigits:2,minimumFractionDigits:2});
+ if(up2)return result('M5_CONFIRMED','BUY','كسر صاعد بإغلاقين M5',
+   '2/2 إغلاق · شروط الدخول تُفحص منفصلة',2,upper);
+ if(down2)return result('M5_CONFIRMED','SELL','كسر هابط بإغلاقين M5',
+   '2/2 إغلاق · شروط الدخول تُفحص منفصلة',2,lower);
+ if(up)return result('M5_FIRST','BUY','إغلاق أول فوق مقاومة M5',
+   '1/2 إغلاق · ننتظر إغلاق M5 ثانٍ',1,upper);
+ if(down)return result('M5_FIRST','SELL','إغلاق أول تحت دعم M5',
+   '1/2 إغلاق · ننتظر إغلاق M5 ثانٍ',1,lower);
+ // The latest M5 has closed INSIDE the range. Never convert a former
+ // breakout, a temporary wick or a live tick into a confirmed signal.
+ if(prev.close>upper||prev.close<lower)
+   return result('REJECTED',prev.close>upper?'BUY':'SELL',
+     'كسر سابق لم يثبت','آخر إغلاق M5 عاد داخل النطاق',0,
+     prev.close>upper?upper:lower);
+ if(m1Up)return result('M1_BREAK','BUY','شمعتا M1 فوق المقاومة',
+   'مراقبة أول إغلاق M5 · ليس دخولًا',0,upper);
+ if(m1Down)return result('M1_BREAK','SELL','شمعتا M1 تحت الدعم',
+   'مراقبة أول إغلاق M5 · ليس دخولًا',0,lower);
+ const latestPrice=price!=null&&Number.isFinite(price)&&price>0?price:
+   m1Last&&now-m1Last.time-60000<=180000?m1Last.close:null;
+ if(latestPrice!=null&&latestPrice>upper)
+   return result('TESTING','BUY','السعر يختبر كسرًا صاعدًا',
+     'إغلاق M5 لم يؤكد الكسر بعد',0,upper);
+ if(latestPrice!=null&&latestPrice<lower)
+   return result('TESTING','SELL','السعر يختبر كسرًا هابطًا',
+     'إغلاق M5 لم يؤكد الكسر بعد',0,lower);
+ const recentUp=recent.some((b:any)=>b.high>upper);
+ const recentDown=recent.some((b:any)=>b.low<lower);
+ if(recentUp||recentDown){
+   const side=recentUp&&!recentDown?'BUY':recentDown&&!recentUp?'SELL':'WAIT';
+   return result('REJECTED',side,'اختبار كسر دون ثبات',
+     'الذيول عبرت المستوى ثم عاد الإغلاق داخله',0,side==='BUY'?upper:side==='SELL'?lower:null);
+ }
+ if(latestPrice!=null&&o.atr>0){
+   const distUp=(upper-latestPrice)/o.atr,distDown=(latestPrice-lower)/o.atr;
+   if(distUp>=0&&distUp<=.45&&distUp<=distDown)
+     return result('APPROACH','BUY','اقتراب من مقاومة الكسر',
+       'فوق '+fmt(upper)+' · مطلوب إغلاقا M5',0,upper);
+   if(distDown>=0&&distDown<=.45&&distDown<distUp)
+     return result('APPROACH','SELL','اقتراب من دعم الكسر',
+       'تحت '+fmt(lower)+' · مطلوب إغلاقا M5',0,lower);
+ }
+ return result('RANGE','WAIT','داخل النطاق · لا كسر مؤكد',
+   'فوق '+fmt(upper)+' / تحت '+fmt(lower)+' · إغلاقان M5',0,null);
+}
