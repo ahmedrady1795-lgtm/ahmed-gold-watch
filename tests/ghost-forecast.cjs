@@ -103,7 +103,7 @@ assert.match(ui,/aria-pressed=\{showGhost\}/);
 assert.match(ui,/ghostActive&&<g className="sniper-ghost-forecast"/);
 assert.match(ui,/ghostRangeVisible&&<g className="ghost-neutral-range"/);
 assert.match(ui,/buildGhostForecast\(\{candles:m\.candles,now,/);
-assert.match(ui,/ghostActive\?ghost\.range\.flatMap/,'shared historical price scale expands for volatility band');
+assert.match(ui,/ghostRangeVisible\?ghost\.range\.flatMap/,'only verified live range may expand candle price scale');
 assert.match(ui,/نطاق تذبذب M1 · لا توقع اتجاه/);
 assert.match(ui,/ليست نموذج ML معتمدًا/);
 console.log('PASS: symmetric causal BUY/SELL candles, OHLC, uncertainty, stale/gap guards and walk-forward isolation');
