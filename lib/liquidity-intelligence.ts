@@ -303,7 +303,8 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
   });
   if(integrity.reasons.length)warnings.push(...integrity.reasons);
 
-  const old=previous,pressureBase=clamp(crossExchangePressure*.68+cbDelta*.18+okxDelta*.14);
+  const old=health.krakenDepth?previous:null,
+    pressureBase=clamp(crossExchangePressure*.68+cbDelta*.18+okxDelta*.14);
   const pressureChange=old?pressureBase-old.pressure:0;
   const bidDepthChangePct=old?pctChange(rawBidUsd,old.bidDepthUsd):0,askDepthChangePct=old?pctChange(rawAskUsd,old.askDepthUsd):0;
   const acceleration=clamp(pressureChange*.55+(bidDepthChangePct-askDepthChangePct)*.45);
@@ -350,7 +351,14 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
       okxDepth:health.okxDepth,
       okxTrades:health.okxTrades
     },
-    book:{bestBid,bestAsk,spreadBps:spreadBps==null?null:Number(spreadBps.toFixed(3)),bboImbalance:Math.round(bboImbalance),depthImbalance:Math.round(verifiedDepthImbalance),weightedImbalance:Math.round(weightedImbalance),microprice:microprice==null?null:Number(microprice.toFixed(2)),microEdge:Math.round(microEdge),bidDepthUsd:Math.round(rawBidUsd),askDepthUsd:Math.round(rawAskUsd),bidWall:Number(bidWall.toFixed(2)),askWall:Number(askWall.toFixed(2)),bidWallPrice:bidWallPoint.price,askWallPrice:askWallPoint.price,wallSide:health.krakenDepth?wallSide:'WAIT'},
+    book:{bestBid:health.bbo?bestBid:null,bestAsk:health.bbo?bestAsk:null,
+      spreadBps:health.bbo&&spreadBps!=null?Number(spreadBps.toFixed(3)):null,
+      bboImbalance:health.bbo?Math.round(bboImbalance):0,
+      depthImbalance:Math.round(verifiedDepthImbalance),weightedImbalance:Math.round(weightedImbalance),
+      microprice:health.bbo&&microprice!=null?Number(microprice.toFixed(2)):null,
+      microEdge:Math.round(verifiedMicroEdge),
+      bidDepthUsd:health.krakenDepth?Math.round(rawBidUsd):0,
+      askDepthUsd:health.krakenDepth?Math.round(rawAskUsd):0,bidWall:Number(bidWall.toFixed(2)),askWall:Number(askWall.toFixed(2)),bidWallPrice:bidWallPoint.price,askWallPrice:askWallPoint.price,wallSide:health.krakenDepth?wallSide:'WAIT'},
     flow:{tradeCount:health.coinbaseTrades?flow.tradeCount:0,
       buyVolume:health.coinbaseTrades?Number(flow.buyVolume.toFixed(6)):0,
       sellVolume:health.coinbaseTrades?Number(flow.sellVolume.toFixed(6)):0,
