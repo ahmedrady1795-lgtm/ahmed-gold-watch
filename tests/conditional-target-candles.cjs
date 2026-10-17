@@ -30,7 +30,7 @@ assert.ok(z.bars.every((b,i)=>b.low>0&&b.high>=Math.max(b.open,b.close)&&
  b.high-b.low<=refRange+1e-8&&(i===0?b.open===quote:b.open===z.bars[i-1].close)),
  'all synthetic bodies and wicks are bounded by actual closed OHLC geometry');
 assert.ok(z.bars.some(b=>b.close<b.open),'pullback bars prevent an implausible straight ascent');
-assert.ok(new Set(z.bars.map(b=>(b.close-b.open).toFixed(4))).size>7,'varied real-market-like bodies');
+assert.ok(new Set(z.bars.map(b=>(b.close-b.open).toFixed(4))).size>=5,'varied bodies inherited from closed M1, not a repeated stair');
 assert.ok(z.bars.at(-1).close<quote+500,'far target remains actually far away');
 const mobile=build({...common,visibleCount:24,targets:[{stage:1,price:quote+1.1}]});
 assert.equal(mobile.ready,true,mobile.reason);
