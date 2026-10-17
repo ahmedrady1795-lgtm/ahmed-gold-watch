@@ -7,7 +7,7 @@ assert.doesNotMatch(page,/import TradingViewGold|<TradingViewGold\s*\/>/,
   'remove only the secondary embedded TradingView chart');
 assert.match(page,/<AICommandCenter/,'keep the primary sniper movement chart');
 assert.match(page,/chartData=\{chartData\}/,'keep independent market candle data');
-assert.match(map,/<svg className=/,'preserve native sniper SVG illustration');
+assert.match(map,/<svg ref=\{chartSvgRef\}/,'preserve native sniper SVG illustration and native PNG export');
 assert.match(map,/forecast-visual-svg-zoomed/,'preserve optional chart zoom');
 assert.match(css,/\.compact-sniper \.forecast-visual-svg\{width:100%;min-width:0;height:auto\}/,
   'primary chart still fits on mobile');
