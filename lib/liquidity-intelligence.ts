@@ -164,6 +164,48 @@ export function assessBtcLiquidityIntegrity(a:{
     blockedSides:[...blocked],reasons};
 }
 
+
+/**
+ * Strict per-feed validity. HTTP 200 is not evidence of a usable, recent
+ * order book or executed trade. OKX USDT quotes are not compared directly
+ * to USD best bids/asks to avoid pretending they're one instrument.
+ * Missing timestamps are unknown, not silently treated as fresh.
+ */
+export function assessBtcLiquidityFeedHealth(a:{
+  now:number;coinbaseBid:number|null;coinbaseAsk:number|null;
+  krakenBid:number|null;krakenAsk:number|null;krakenNewestAt:number|null;
+  okxBid:number|null;okxAsk:number|null;okxAt:number|null;
+  coinbaseTradeAt:number|null;okxTradeAt:number|null;
+  coinbaseTradeCount:number;okxTradeCount:number;
+}){
+  const reasons:string[]=[];
+  const bbo=a.coinbaseBid!=null&&a.coinbaseAsk!=null&&
+    Number.isFinite(a.coinbaseBid)&&Number.isFinite(a.coinbaseAsk)&&
+    a.coinbaseBid>0&&a.coinbaseAsk>a.coinbaseBid&&
+    (a.coinbaseAsk-a.coinbaseBid)/a.coinbaseBid*10000<=12;
+  const fresh=(time:number|null,limit:number)=>time!=null&&Number.isFinite(time)&&
+    time>0&&a.now-time>=-3000&&a.now-time<=limit;
+  const depth=(bid:number|null,ask:number|null,time:number|null)=>bid!=null&&ask!=null&&
+    Number.isFinite(bid)&&Number.isFinite(ask)&&bid>0&&ask>bid&&
+    (ask-bid)/bid*10000<=15&&fresh(time,90000);
+  const krakenDepth=depth(a.krakenBid,a.krakenAsk,a.krakenNewestAt);
+  const okxDepth=depth(a.okxBid,a.okxAsk,a.okxAt);
+  const coinbaseTrades=a.coinbaseTradeCount>=10&&fresh(a.coinbaseTradeAt,90000);
+  const okxTrades=a.okxTradeCount>=10&&fresh(a.okxTradeAt,90000);
+  if(a.coinbaseBid!=null&&a.coinbaseAsk!=null&&!bbo)reasons.push('Coinbase BBO مقلوب أو سبريد غير طبيعي');
+  if(a.krakenBid!=null&&!krakenDepth)reasons.push('عمق Kraken متأخر أو غير صالح');
+  if(a.okxBid!=null&&!okxDepth)reasons.push('عمق OKX متأخر أو غير صالح');
+  if(a.coinbaseTradeCount>0&&!coinbaseTrades)reasons.push('صفقات Coinbase متأخرة أو غير كافية');
+  if(a.okxTradeCount>0&&!okxTrades)reasons.push('صفقات OKX متأخرة أو غير كافية');
+  const bookReady=krakenDepth||okxDepth;
+  const tradesReady=coinbaseTrades||okxTrades;
+  if(!bookReady)reasons.push('لا يوجد دفتر أوامر حديث صالح');
+  if(!tradesReady)reasons.push('لا توجد صفقات حديثة كافية');
+  return {ok:bookReady&&tradesReady&&(a.coinbaseBid==null||bbo),
+    bbo,krakenDepth,okxDepth,coinbaseTrades,okxTrades,
+    bookReady,tradesReady,reasons};
+}
+
 export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence>{
   const now=Date.now();
   if(!force&&cache&&now-cache.at<1800)return cache.value;
@@ -200,6 +242,14 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
   const okxFlow=okxTradesR.status==='fulfilled'?okxTradeFlow(okxTradesR.value?.data):okxTradeFlow([]);
   if(okxTradesR.status==='rejected')warnings.push('OKX trades unavailable');
 
+  const coinbaseTradeRows=tradesR.status==='fulfilled'&&Array.isArray(tradesR.value)?tradesR.value:[];
+  const coinbaseTradeAt=coinbaseTradeRows.reduce((at:number,row:any)=>{
+    const time=Date.parse(String(row?.time||''));return Number.isFinite(time)?Math.max(at,time):at;
+  },0)||null;
+  const okxTradeAt=okxTradesR.status==='fulfilled'&&Array.isArray(okxTradesR.value?.data)?
+    okxTradesR.value.data.reduce((at:number,row:any)=>{
+      const t=Number(row?.ts);return Number.isFinite(t)?Math.max(at,t):at;
+    },0)||null:null;
   const flow=tradesR.status==='fulfilled'?tradeFlow(tradesR.value):tradeFlow([]);
   if(tradesR.status==='rejected')warnings.push('Coinbase trades unavailable');
 
@@ -216,6 +266,19 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
   const okxDepthBid=okxBids.length?weightedDepth(okxBids,okxBids[0].price):0,okxDepthAsk=okxAsks.length?weightedDepth(okxAsks,okxAsks[0].price):0;
   const okxDepthTotal=okxDepthBid+okxDepthAsk,okxDepthImbalance=okxDepthTotal>0?(okxDepthBid-okxDepthAsk)/okxDepthTotal*100:0;
   const crossExchangePressure=clamp(weightedImbalance*.55+okxDepthImbalance*.25+flow.deltaPct*.10+okxFlow.deltaPct*.10);
+  const freshestKraken=([...bids,...asks].map(v=>v.time||0).filter(x=>x>0).sort((a,b)=>b-a)[0]||null);
+  const okxDepthAt=okxDepthR.status==='fulfilled'?
+    Number((Array.isArray(okxDepthR.value?.data)?okxDepthR.value.data[0]:null)?.ts):NaN;
+  const health=assessBtcLiquidityFeedHealth({
+    now,coinbaseBid:bestBid,coinbaseAsk:bestAsk,
+    krakenBid:bids[0]?.price||null,krakenAsk:asks[0]?.price||null,
+    krakenNewestAt:freshestKraken,
+    okxBid:okxBids[0]?.price||null,okxAsk:okxAsks[0]?.price||null,
+    okxAt:Number.isFinite(okxDepthAt)?okxDepthAt:null,
+    coinbaseTradeAt,okxTradeAt,coinbaseTradeCount:flow.tradeCount,
+    okxTradeCount:okxFlow.tradeCount
+  });
+  warnings.push(...health.reasons);
   const integrity=assessBtcLiquidityIntegrity({
     krakenReady:bids.length>=15&&asks.length>=15,
     okxReady:okxBids.length>=15&&okxAsks.length>=15,
@@ -259,18 +322,20 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
   const signed=clamp(crossExchangePressure*.38+flow.deltaPct*flowWeight*.70+okxFlow.deltaPct*.12+okxDepthImbalance*.10+acceleration*.10+absorptionAdj+wallAdj,-84,84);
   const buy=Math.round(clamp(50+signed/2,8,92)),sell=100-buy,side=buy-sell>=10?'BUY':sell-buy>=10?'SELL':'WAIT';
   const successCount=[bboR,depthR,tradesR,okxDepthR,okxTradesR].filter(x=>x.status==='fulfilled').length;
-  const quality=Math.max(0,Math.min(100,Math.round(successCount/5*78+(bids.length>=20&&asks.length>=20?7:0)+(okxBids.length>=20&&okxAsks.length>=20?7:0)+(flow.tradeCount>=20?4:0)+(okxFlow.tradeCount>=20?4:0))));
+  const quality=Math.max(0,Math.min(100,Math.round(successCount/5*52+
+    (health.bbo?10:0)+(health.krakenDepth?14:0)+(health.okxDepth?14:0)+
+    (health.coinbaseTrades?5:0)+(health.okxTrades?5:0))));
   // Require actual book depth and trades, not just successful HTTP responses.
-  const reliable=quality>=55&&Boolean((bids.length&&asks.length)||(okxBids.length&&okxAsks.length))&&Boolean(flow.tradeCount||okxFlow.tradeCount)&&integrity.status!=='VENUE_CONFLICT';
+  const reliable=quality>=55&&health.ok&&integrity.status!=='VENUE_CONFLICT';
   if(!reliable)warnings.push('Insufficient fresh order-book + trade evidence');
   const value:LiquidityIntelligence={
     ok:reliable,source:'Coinbase BBO/Trades · Kraken Depth25 · OKX Depth25/Trades',checkedAt:now,quality,side:reliable?side:'WAIT',buy:reliable?buy:50,sell:reliable?sell:50,strength:reliable?Math.max(buy,sell):0,pressure:reliable?Math.round(signed):0,
     providers:{
-      coinbaseBbo:bboR.status==='fulfilled'&&bestBid!=null&&bestAsk!=null,
-      coinbaseTrades:tradesR.status==='fulfilled'&&flow.tradeCount>0,
-      krakenDepth:depthR.status==='fulfilled'&&bids.length>0&&asks.length>0,
-      okxDepth:okxDepthR.status==='fulfilled'&&okxBids.length>0&&okxAsks.length>0,
-      okxTrades:okxTradesR.status==='fulfilled'&&okxFlow.tradeCount>0
+      coinbaseBbo:health.bbo,
+      coinbaseTrades:health.coinbaseTrades,
+      krakenDepth:health.krakenDepth,
+      okxDepth:health.okxDepth,
+      okxTrades:health.okxTrades
     },
     book:{bestBid,bestAsk,spreadBps:spreadBps==null?null:Number(spreadBps.toFixed(3)),bboImbalance:Math.round(bboImbalance),depthImbalance:Math.round(depthImbalance),weightedImbalance:Math.round(weightedImbalance),microprice:microprice==null?null:Number(microprice.toFixed(2)),microEdge:Math.round(microEdge),bidDepthUsd:Math.round(rawBidUsd),askDepthUsd:Math.round(rawAskUsd),bidWall:Number(bidWall.toFixed(2)),askWall:Number(askWall.toFixed(2)),bidWallPrice:bidWallPoint.price,askWallPrice:askWallPoint.price,wallSide},
     flow:{tradeCount:flow.tradeCount,buyVolume:Number(flow.buyVolume.toFixed(6)),sellVolume:Number(flow.sellVolume.toFixed(6)),deltaVolume:Number(flow.deltaVolume.toFixed(6)),deltaPct:Number(flow.deltaPct.toFixed(1)),priceChangeBps:Number(flow.priceChangeBps.toFixed(2)),cvdSide:flow.cvdSide},
