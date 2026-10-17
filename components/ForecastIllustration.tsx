@@ -642,7 +642,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <title>{'مسار إبطال منفصل · '+fmt(m.displayStop)}</title>
                 </path>}
               </g>}
-              {!planVisible&&<g>
+              {!planVisible&&!ghostActive&&<g>
                 <rect x={xf+8} y={yb-76} width={xr-xf-16} height="65" rx="9" fill="#0a1520" stroke="#3a5464" strokeOpacity=".8"/>
                 <text x={(xf+xr)/2} y={yb-51} fill="#cedfeb" textAnchor="middle" fontSize="14" fontWeight="700">
                   {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'انتظار شموع':breakoutWatch.headline}</text>
