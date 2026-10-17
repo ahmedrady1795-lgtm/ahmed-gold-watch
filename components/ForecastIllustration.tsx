@@ -794,28 +794,21 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </text>
                 <title>هدف مراقبة بالسعر الحقيقي خارج نطاق التكبير، وليس إعادة رسمه عند سعر افتراضي</title>
               </g>}
-              <g className="sniper-breakout-explainer" aria-label="تفسير الكسر على الشاشة">
-                <rect x={xf+7} y={yb-147} width={xr-xf-14} height="112" rx="9"
-                  fill="#071a2b" fillOpacity=".94"
-                  stroke={breakoutWatch.closes===2?'#60e2b1':'#55768f'} strokeOpacity=".87"/>
-                <text x={xf+17} y={yb-125} fontSize={mobile?12:12}
+              <g className="sniper-breakout-explainer" aria-label="مستويات الكسر وشروط تأكيدها">
+                <rect x={xf+7} y={yt+40} width={xr-xf-14} height="62" rx="9"
+                  fill="#071b2a" fillOpacity=".87"
+                  stroke={breakoutWatch.closes===2?'#60e2b1':'#55768f'} strokeOpacity=".83"/>
+                <text x={xf+15} y={yt+61} fontSize={mobile?12:12}
                   fontWeight="700" fill={breakoutWatch.closes===2?'#75efbd':'#d6edf9'}>
-                  {'◇ '+breakoutWatch.headline}
+                  {'◇ '+breakoutWatch.headline+' · '+breakoutWatch.closes+'/2 M5'}
                 </text>
-                <text x={xf+17} y={yb-104} fontSize={mobile?11:11} fill="#b7d5e7">
-                  {'↑ كسر صاعد فوق '+fmt(breakoutUp)}
-                </text>
-                <text x={xf+17} y={yb-84} fontSize={mobile?11:11} fill="#b7d5e7">
-                  {'↓ كسر هابط تحت '+fmt(breakoutDown)}
-                </text>
-                <text x={xf+17} y={yb-64} fontSize={mobile?11:11} fill="#c5e4ed">
-                  {breakoutWatch.closes+'/2 إغلاق M5 · الكسر مش معناه دخول'}
-                </text>
-                <text x={xf+17} y={yb-45} fontSize={mobile?10:10} fill="#91b6ca">
-                  {breakoutEvidence.ready?'المستويات من شموع M5 مغلقة':'مستويات M5 تنتظر اكتمال البيانات'}
+                <text x={xf+15} y={yt+84} fontSize={mobile?11:11} fill="#b7d5e7">
+                  {breakoutEvidence.ready?
+                    '↑ '+fmt(breakoutUp)+'   ↓ '+fmt(breakoutDown)+'  · رصد فقط':
+                    'المستويات تنتظر إغلاقات M5 صالحة'}
                 </text>
                 <title>{breakoutWatch.detail+
-                  ' · المستويات من شموع M5 مغلقة · السيولة والتكلفة وإبطال السيناريو شروط مستقلة'}</title>
+                  ' · M5 مغلقة · لا دخول قبل تحقق السيولة والتكلفة ووقف الإبطال'}</title>
               </g>
               {flowLevels.filter(z=>px(z.price)>=yt+18&&px(z.price)<=yb-18).map(z=><g
                 key={'flow-level-'+z.key} className="btc-executed-profile-level">
