@@ -22,7 +22,12 @@ assert.equal(state.actionable,false,'observation must never be an executable sig
 assert.equal(radar({...input,priceFresh:false}).status,'UNAVAILABLE','stale quote cannot promote a direction');
 assert.equal(radar({...input,marketOpen:false}).status,'UNAVAILABLE','closed session cannot promote a direction');
 const gap=[...m1];gap[53]={...gap[53],time:gap[53].time+60000};
-assert.equal(radar({...input,m1:gap}).status,'UNAVAILABLE','missing closed M1 hides live radar');
+assert.equal(radar({...input,m1:gap}).status,'M5_ONLY',
+ 'a single corrupt M1 must not hide independently healthy M5 market analysis');
+assert.equal(radar({...input,historyFresh:false}).status,'M5_ONLY',
+ 'M5 remains a read-only observation if the M1 archive is gapped');
+assert.equal(radar({...input,historyFresh:false}).m1Side,'WAIT',
+ 'M1 cannot vote when its history is unverified');
 const flipped=history(60,60000,false);
 assert.equal(radar({...input,m1:flipped}).status,'CONFLICT','opposed M1/M5 must be displayed as conflict');
 const levels=targets({now,price:1000,side:'SELL',priceFresh:true,historyFresh:true,m15,h1});
