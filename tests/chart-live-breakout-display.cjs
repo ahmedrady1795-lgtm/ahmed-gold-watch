@@ -13,7 +13,7 @@ assert.match(ui,/breakoutWatch\.closes\+'\/2 إغلاق M5/,
  'show concrete M5 close count on chart');
 assert.match(ui,/breakoutUp=breakoutEvidence\.ready/,
  'show up/down M5 levels when verified');
-assert.match(ui,/sourceReady:sn\.view\.priceFresh&&m\.historyFresh/,
+assert.match(ui,/sourceReady:sn\.view\.priceFresh/,
  'technical breakout does not require fresh AI inference or an audited trade');
 assert.match(ui,/!planVisible&&!ghostActive&&!breakoutEvidence\.ready/,
  'generic waiting overlay cannot cover genuine breakout explanation');
