@@ -20,6 +20,7 @@ import {buildBreakoutGuide,explainFrameConflict,layoutPriceLanes} from '../lib/s
 import {evaluateProfessionalMove} from '../lib/professional-move';
 import {assessChartObservation,observedStructuralTargets} from '../lib/chart-observation-radar';
 import {buildSniperChartPlaybook} from '../lib/sniper-chart-playbook';
+import {assessBtcForwardObservation} from '../lib/btc-forward-observation';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
   p.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
@@ -91,6 +92,18 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     historyFresh:m.historyFresh,marketOpen:!goldClosed,
     m1:m.candles,m5:x?.chartHigherFrames?.m5
   });
+  const btcOutlook=asset==='BTC'?assessBtcForwardObservation({
+    now,modelAt:Number(snapshotAt||0),priceFresh:sn.view.priceFresh,
+    historyFresh:m.historyFresh,observationFresh:m.observationFresh,
+    horizons:x?.horizonBrains,zone:{path:x?.forecastConflictPath}
+  }):null;
+  // M1/M5 independent technical analysis may remain useful for observation
+  // when the separate H1/M5 structural context could not qualify an entry.
+  const observationForDisplay=btcOutlook&&btcOutlook.side!=='WAIT'&&
+    observationRadar.status==='UNAVAILABLE'?{
+      ...observationRadar,status:btcOutlook.status,side:btcOutlook.side,
+      m1Side:btcOutlook.m1,m5Side:btcOutlook.m5
+    }:observationRadar;
   const watchTargetSide=observationRadar.status==='CONFLICT'?'WAIT':
     observationRadar.m5Side!=='WAIT'?observationRadar.m5Side:
     breakoutWatch.phase==='M5_CONFIRMED'||breakoutWatch.phase==='M5_FIRST'?
@@ -104,7 +117,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const playbook=buildSniperChartPlaybook({
     marketOpen:!goldClosed,priceFresh:sn.view.priceFresh&&m.observationFresh,
     historyFresh:m.historyFresh,price:m.price,atr:overlay.atr,
-    observation:observationRadar,breakout:breakoutWatch,
+    observation:observationForDisplay,breakout:breakoutWatch,
     planReady:statusReady,planSide:dir,
     targets:planVisible?m.displayTargets:watchTargets,
     liquidityAvailable:overlay.ready&&Boolean(overlay.upper||overlay.lower)
@@ -283,7 +296,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     !watchFresh?'سجل المراقبة قيد التحديث':
     !m.bias.active?'التحليل مستمر · الاتجاه غير مؤكد':
     breakoutWatch.headline;
-  const stateLabel=feedProblem??(!watchFresh&&!statusReady?'انتظار ذاكرة حديثة':
+  const stateLabel=feedProblem??(btcOutlook&&btcOutlook.side!=='WAIT'&&
+    !statusReady&&!watchReady?'تحليل الحركة: '+btcOutlook.title+' · لا دخول':
+    !watchFresh&&!statusReady?'انتظار ذاكرة حديثة':
     statusReady?'سيناريو مؤهل · مسجل':watchReady&&m.heldBias?'اتجاه مثبت · أهداف مراقبة':
     watchReady?'أهداف بعيدة · مراقبة فقط':
     m.bias.active&&m.bias.side!=='WAIT'?(m.heldBias?'اتجاه محفوظ · تحقق مستمر':'الاتجاه مرصود · جارٍ البحث عن مستوى بعيد'):
@@ -344,12 +359,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             </span>}
             <span className={'sniper-structure-chip '+(observationRadar.side==='BUY'?'structure-up':
               observationRadar.side==='SELL'?'structure-down':'')}
-              title={observationRadar.reason+' · رصد غير قابل للتنفيذ'}>
-              {observationRadar.title} ·
-              {' '}{observationRadar.m1Side==='BUY'?'M1 ↑':
-                observationRadar.m1Side==='SELL'?'M1 ↓':'M1 ↔'} /
-              {' '}{observationRadar.m5Side==='BUY'?'M5 ↑':
-                observationRadar.m5Side==='SELL'?'M5 ↓':'M5 ↔'}
+              title={observationForDisplay.reason+' · رصد غير قابل للتنفيذ'}>
+              {observationForDisplay.title} ·
+              {' '}{observationForDisplay.m1Side==='BUY'?'M1 ↑':
+                observationForDisplay.m1Side==='SELL'?'M1 ↓':'M1 ↔'} /
+              {' '}{observationForDisplay.m5Side==='BUY'?'M5 ↑':
+                observationForDisplay.m5Side==='SELL'?'M5 ↓':'M5 ↔'}
             </span>
             <div className="forecast-chart-tools">
               <button type="button" aria-pressed={chartWindow===60} onClick={()=>setChartWindow(60)}>ساعة</button>
@@ -361,6 +376,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <button type="button" aria-pressed={chartFullscreen} onClick={()=>setChartFullscreen(v=>!v)}>{chartFullscreen?'إغلاق ملء الشاشة':'⛶ ملء الشاشة'}</button>
             </div>
           </div>
+          {btcOutlook&&<div className={'btc-forward-observation btc-forward-'+btcOutlook.status.toLowerCase()}
+            role="status" aria-label="تحليل حركة البيتكوين المستقل عن تنفيذ الصفقات">
+            <strong>{btcOutlook.title}</strong>
+            <span>{btcOutlook.horizonSummary}</span>
+            <small>{btcOutlook.reason}</small>
+            <small>رصد فني فقط · النموذج التنبؤي غير مثبت · قرار الدخول مستقل</small>
+          </div>}
           <div className={'sniper-playbook sniper-playbook-'+playbook.phase.toLowerCase()}
             aria-label="مراحل رصد اقتناص الإشارة، وليست إشارة دخول">
             <div className="sniper-playbook-heading">
