@@ -45,6 +45,8 @@ assert.ok(top.every(x=>x.start+18<=candles.length-8),
 assert.ok(top.some(x=>x.start===select(candles,18,atr)),
  'choose a robust central neighbour from the five best patterns');
 const report=audit(candles,atr);
+assert.equal(JSON.stringify(audit(candles,atr)),JSON.stringify(audit(candles,atr*35)),
+ 'walk-forward replay must not depend on the ATR measured after historical folds');
 assert.ok(report.samples>=5,'chronological forward-test has historical folds');
 assert.ok(report.samples<=Math.ceil((candles.length-65)/4),
  'evaluation folds are disjoint');
