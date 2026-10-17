@@ -112,8 +112,12 @@ export default function Home(){
     const loadBtc=async()=>{try{
       const r=await fetch('/api/btc?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
       const j=await r.json(),p=Number(j?.price),at=sourceTimestamp(j?.sourceTime)||0;
+      // A provider may return a numeric Spot or last-good price WITHOUT
+      // a valid trade timestamp. Keep its price for context, not a LIVE flag.
+      const timedLive=j?.status==='live'&&validSourceTime(at||null,Date.now(),10000);
       if(!closed&&r.ok&&j?.ok&&Number.isFinite(p)&&p>0&&Date.now()-lastWsTick>4000){
-        setBtc(p);setBtcAt(at);setBtcSource(String(j?.source||'Coinbase'));
+        setBtc(p);setBtcAt(timedLive?at:0);
+        setBtcSource(String(j?.source||'BTC provider'));
       }
     }catch{}};
     const connect=()=>{
