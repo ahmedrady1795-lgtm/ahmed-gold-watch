@@ -322,7 +322,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <line x1={xf-8} x2={xf-8} y1="20" y2={volumeEnd+5} stroke="#72b3d1" strokeOpacity=".5"
                 strokeDasharray="6 7"/>
               <text x={xf-14} y="18" textAnchor="end" fill="#88bbd3" fontSize={mobile?18:12}>تاريخ فعلي</text>
-              <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?16:12}>{goldClosed?'السوق مغلق':ghostActive?'شموع مستقبلية تجريبية':'مستويات مراقبة'}</text>
+              <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?16:12}>{goldClosed?'الذهب مغلق':ghostActive?'M1 · شموع تقديرية':'مستويات مراقبة'}</text>
               <g clipPath={'url(#forecast-plot-'+asset+')'}>
                 {pools.map(z=>{const color=z.side==='UPPER'?'#ff7d9b':'#51dcdf';return <g key={z.side}>
                   <rect x={x0} y={px(z.high)} width={xr-x0} height={Math.max(5,px(z.low)-px(z.high))}
@@ -498,12 +498,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   const gx=ghostXs[i],up=c.close>=c.open;
                   const color=up?'#40e69b':'#ff6b81',top=Math.min(px(c.open),px(c.close)),
                     bottom=Math.max(px(c.open),px(c.close));
-                  return <g key={c.time} opacity={c.validatedShape?.92:.68}>
+                  return <g key={c.time} opacity={c.validatedShape?.92:.82}>
                     <line x1={gx} x2={gx} y1={px(c.high)} y2={px(c.low)}
-                      stroke={color} strokeWidth={c.validatedShape?2.1:1.65} strokeDasharray="3 3"/>
+                      stroke={color} strokeWidth={c.validatedShape?2.0:1.6}/>
                     <rect x={gx-(mobile?5:7)} y={top} width={mobile?10:14}
-                      height={Math.max(3.2,bottom-top)} rx="1.5"
-                      fill={color} fillOpacity={c.validatedShape?.77:.61} stroke={color} strokeWidth="1" strokeDasharray="3 2"/>
+                      height={Math.max(3.2,bottom-top)} rx=".65"
+                      fill={color} fillOpacity={c.validatedShape?.86:.8} stroke={color} strokeWidth=".7"/>
                     {c.validatedShape&&<text x={gx} y={clamp(px(c.high)-11,yt+30,yb-13)}
                       textAnchor="middle" fill={color} fontSize={mobile?12:10}>{up?'↑':'↓'} {c.step}</text>}
                     {!c.scenarioShape&&(i%4===0||i===visualCandles.length-1)&&<text x={gx} y={yb-7} textAnchor="middle" fill="#b8c9e5"
@@ -586,7 +586,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               '3 شموع ذهب مدعومة باختبار · يليها شموع شكلية فقط':'3 شموع M1 مفحوصة · والباقي شموع افتراضية'):
               ghostRangeVisible?'نطاق تذبذب M1 · لا توقع اتجاه · شموع توضيحية':
               'لا تتوفر بيانات كافية للتقدير'}</b>
-            <span> · {goldClosed?'جلسة XAUUSD مغلقة؛ آخر الأسعار محفوظة ولا توجد توقعات حية خلال الإغلاق.':ghost.reason} {visualCandles.length?'10 شموع قريبة المدى فقط؛ TP1/TP2/TP3 مستويات مراقبة بعيدة وليست نهاية إجبارية للشموع.':'لا توجد شموع مستقبلية مؤهلة حاليًا.'} هذه الدراسة ليست نموذج ML معتمدًا، ولا تغيّر قرار الدخول.</span>
+            <span> · {goldClosed?'جلسة XAUUSD مغلقة؛ آخر الأسعار محفوظة ولا توجد توقعات حية خلال الإغلاق.':ghost.reason} {visualCandles.length?'شموع قصيرة المدى، والأهداف البعيدة مستويات مراقبة منفصلة.':'لا توجد شموع مؤهلة الآن.'} رسم توضيحي فقط، وليس إشارة دخول أو نموذج ML معتمدًا.</span>
             <details style={{marginTop:4}}>
               <summary>نتائج الاختبار التاريخي وطريقة العرض</summary>
               {ghost.validation.samples>=12?<span>
