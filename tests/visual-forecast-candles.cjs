@@ -74,6 +74,7 @@ assert.ok(certified.slice(3).some(c=>c.close<c.open));
 const ui=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 assert.match(ui,/visualCandles\.map\(\(c,i\)=>/);
 assert.match(ui,/futureWidth/,'forecast must use proportional real-style candle bodies');
-assert.match(ui,/نمط تاريخي مشابه/,'honest label for illustrative replay');
+assert.match(ui,/أنماط تاريخية/,'honest label for illustrative replay');
+assert.match(ui,/غير مؤهلة لتحديد اتجاه تداول/,'walk-forward results cannot imply proven trade edge');
 assert.doesNotMatch(ui,/scenarioPath:planVisible/,'never attach far target price path');
 console.log('PASS: 18 varied empirical OHLC candles, historical analogue geometry, gap and safety gates');
