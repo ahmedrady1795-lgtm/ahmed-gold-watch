@@ -1,0 +1,19 @@
+{
+  "schema": "qannas-gold-shape-v1",
+  "status": "SHADOW",
+  "source": "MT5_XAUUSD_MONTHLY_ARCHIVE",
+  "symbol": "XAUUSDm",
+  "frame": "M1",
+  "horizon": 3,
+  "training": {
+    "origin": "UNTRAINED",
+    "nonOverlapping": true,
+    "chronologicalTrainFraction": 0.7,
+    "purgedSampleGap": 4,
+    "qualifiedBuckets": 0,
+    "scoredBuckets": 0,
+    "holdoutSamples": 0,
+    "totalSamples": 0
+  },
+  "patterns": {}
+}
