@@ -74,7 +74,10 @@ export function evaluateSniperStrategies(input:{frames:any;now:number;price:numb
   const chopRange=Math.max(...chopWindow.map(b=>b.high))-Math.min(...chopWindow.map(b=>b.low));
   const choppiness=chopRange>0&&sumTr>0?Math.max(0,Math.min(100,100*Math.log10(sumTr/chopRange)/Math.log10(14))):100;
   const extension=price!=null&&price>0?Math.abs(price-i5.ema20)/i5.atr:Infinity;
-  const shock=last.high-last.low>3*i5.atr||i5.volatility>2.2;
+  // A sweep can be a one-bar liquidity shock followed by a quiet reclaim.
+  // Evaluate BOTH closed confirmation bars, not only the most recent one.
+  const recentShock=[prev,last].some(b=>b.high-b.low>3*i5.atr);
+  const shock=recentShock||i5.volatility>2.2;
   const trending=i15.adx>=23&&efficiency>=.3&&(choppiness<61.8||efficiency>=.65);
   const squeezed=percentile<=25&&keltnerNow&&i15.adx<26;
   const higherSupertrendOpposed=Boolean(sign&&st1.ready&&st1.side!==side&&i1.adx>=22);
