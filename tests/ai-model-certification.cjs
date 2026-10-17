@@ -9,7 +9,9 @@ assert.equal(wilsonLowerBound(0,0),0);
 assert.ok(wilsonLowerBound(65,100)<.60);
 assert.ok(wilsonLowerBound(8,10)<.60);
 const weak={n:180,selectiveN:95,selectiveAccuracy:.53,selectiveCoverage:95/180};
-const strong={n:400,selectiveN:250,selectiveAccuracy:.64,selectiveCoverage:250/400};
+const strong={n:400,selectiveN:250,selectiveAccuracy:.64,selectiveCoverage:250/400,pairedBaselineAccuracy:.50};
+assert.equal(certifyHoldout({...strong,pairedBaselineAccuracy:undefined},true).ready,false,
+ 'missing independent baseline must never qualify an AI model');
 assert.equal(certifyHoldout(weak,true).ready,false,'weak OOS advantage must not be promoted');
 assert.equal(certifyHoldout(strong,true).ready,true,'genuinely supported independent OOS can qualify');
 assert.equal(certifyHoldout(strong,false).ready,false,'never overrule provider veto');
