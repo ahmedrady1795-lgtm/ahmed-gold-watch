@@ -44,6 +44,17 @@ assert.ok(top.every(x=>x.start+18<=candles.length-8),
  'candidate outcomes have an eight-bar embargo before current context');
 assert.ok(top.some(x=>x.start===select(candles,18,atr)),
  'choose a robust central neighbour from the five best patterns');
+assert.ok(top.every((item,i)=>top.slice(0,i).every(other=>
+  Math.abs(item.start-other.start)>=24)),
+  'five analogues must be separated by at least context + 18 future minutes');
+const flatTail=candles.map(x=>({...x}));
+const anchor=flatTail[216].close;
+for(let i=217;i<220;i++)flatTail[i]={...flatTail[i],open:anchor,close:anchor,
+  high:anchor+.16,low:anchor-.14};
+assert.ok(audit(flatTail,atr).samples<=Math.ceil((candles.length-65)/4));
+const source=fs.readFileSync('lib/visual-forecast-candles.ts','utf8');
+assert.doesNotMatch(source,/Math\.abs\(move\)\s*<\s*localAtr/,
+  'must count flat realised outcomes, not remove them after seeing the result');
 const report=audit(candles,atr);
 assert.equal(JSON.stringify(audit(candles,atr)),JSON.stringify(audit(candles,atr*35)),
  'walk-forward replay must not depend on the ATR measured after historical folds');
