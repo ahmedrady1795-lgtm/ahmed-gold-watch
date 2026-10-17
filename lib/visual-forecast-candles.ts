@@ -92,7 +92,12 @@ export function auditCandleAnalogueDirection(rows:Bar[],atr:number):Audit{
  const start=Math.max(65,rows.length-156);
  for(let t=start;t<=rows.length-3;t+=4){
    const prefix=rows.slice(0,t);
-   const idx=selectCandleAnalogue(prefix,3,atr);
+   // The fold's volatility must be measured at its own historical cutoff.
+   // Reusing today's ATR here would leak future scale into old test folds.
+   const local=prefix.slice(-16);
+   const localAtr=median(local.slice(1).map((bar,i)=>tr(bar,local[i])))||0;
+   if(!Number.isFinite(localAtr)||localAtr<=0)continue;
+   const idx=selectCandleAnalogue(prefix,3,localAtr);
    if(idx<0||prefix.length<6)continue;
    const f=rows.slice(t,t+3);
    if(f.length!==3||f.some((c,i)=>!valid(c)||
@@ -101,7 +106,7 @@ export function auditCandleAnalogueDirection(rows:Bar[],atr:number):Audit{
    const net=prefix[idx+2].close-prefix[idx-1].close;
    const move=f[2].close-prefix.at(-1)!.close;
    const baseline=prefix.at(-1)!.close-prefix.at(-4)!.close;
-   if(Math.abs(net)<atr*.20||Math.abs(move)<atr*.20)continue;
+   if(Math.abs(net)<localAtr*.20||Math.abs(move)<localAtr*.20)continue;
    signals++;samples++;
    if(Math.sign(net)===Math.sign(move))hits++;
    if(Math.sign(baseline)===Math.sign(move))baselineHits++;
