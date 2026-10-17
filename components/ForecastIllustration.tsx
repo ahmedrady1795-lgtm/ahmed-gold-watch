@@ -7,7 +7,7 @@ import {buildForecastMotion,layoutForecastMotion,buildSmoothMotionPath} from '..
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {buildGhostForecast} from '../lib/ghost-forecast';
 import {goldMarketSession} from '../lib/gold-market-session';
-import {buildVisualFuture} from '../lib/visual-forecast-candles';
+import {auditCandleAnalogueDirection,buildVisualFuture,rankCandleAnalogues} from '../lib/visual-forecast-candles';
 import {predictGoldTrainedShadow} from '../lib/gold-trained-shadow';
 import type {ForecastJournal} from '../lib/forecast-journal';
 import SniperPerformance from './SniperPerformance';
@@ -108,6 +108,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     sourceReady:m.historyFresh&&m.observationFresh&&sn.view.priceFresh,
     scenarioReady:planVisible});
   const visualCandles=showGhost&&!goldClosed?buildVisualFuture({candles:m.candles,forecast:ghost,side:dir}):[];
+  const analogueNeighbors=visualCandles.length?rankCandleAnalogues(m.candles,18,ghost.atr??0).length:0;
+  const analogueAudit=visualCandles.length?
+    auditCandleAnalogueDirection(m.candles,ghost.atr??0):null;
   const scenarioCandles=visualCandles.some(c=>c.scenarioShape);
   const ghostVisible=showGhost&&ghost.mode==='CANDLES';
   const ghostRangeVisible=showGhost&&ghost.mode==='RANGE';
@@ -525,7 +528,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </g>}
                 <text x={(ghostXs[0]+ghostXs.at(-1)!)/2} y={yt+29} textAnchor="middle"
                   fontSize={mobile?13:12} fontWeight="700" fill="#bdd1ee">
-                  {ghostVisible?'3 شموع مدروسة + محاكاة تاريخية':'نمط تاريخي مشابه · محاكاة فقط'}
+                  {ghostVisible?'3 شموع تقديرية + أمثلة تاريخية':'5 أنماط تاريخية · محاكاة فقط'}
                 </text>
               </g>}
               {chartLanes.map(label=>{
@@ -590,6 +593,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <div style={{marginTop:7,lineHeight:1.6}}> · {goldClosed?'الجلسة مغلقة ولا توجد توقعات حية.':ghost.reason} {visualCandles.length?'18 شمعة مستقبلية بنمط أجسام وذيول مأخوذ من تاريخ السوق، وليس توقعًا تم اختباره. الأهداف بعيدة المدى مستقلة عنها.':'لا تتوفر شموع محاكاة مؤهلة.'} هذه الدراسة ليست نموذج ML معتمدًا، ولا تمثل إشارة دخول.</div>
             <details style={{marginTop:4}}>
               <summary>نتائج الاختبار التاريخي وطريقة العرض</summary>
+              {analogueAudit&&<p style={{margin:'5px 0',color:'#a7c6d4'}}>
+                محاكاة الشموع: {analogueNeighbors} أنماط مشابهة؛ اختبار زمني مُرحّل لثلاث دقائق:
+                {' '}{analogueAudit.samples} حالات، صحيحة {analogueAudit.hits} مقابل
+                {' '}{analogueAudit.baselineHits} لمرجع الزخم البسيط على الحالات نفسها.
+                {' '}هذه الدراسة غير مؤهلة لتحديد اتجاه تداول، ولا تثبت أفضلية خارج العينة.
+              </p>}
               {ghost.validation.samples>=12?<span>
                 {ghost.source==='GOLD_MT5_OOS_MODEL'?'اختبار خارج فترة تدريب نموذج الذهب:':'فحص زمني بنوافذ سابقة منفصلة:'}
                 {' '}{ghost.validation.directionHits}/{ghost.validation.samples}
