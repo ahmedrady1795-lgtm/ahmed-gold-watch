@@ -78,3 +78,51 @@ export function assessChartObservation(input:{
     'رصد '+name(m5Side)+' متوافق M1/M5',
     'توافق اتجاهي مرصود فقط؛ لا يثبت فرصة دخول أو جدوى بعد التكاليف');
 }
+
+/** Structural target *watch*, not a qualified trade plan. Each objective must
+ * equal a HIGH or LOW of a genuine closed M15/H1 candle that existed before
+ * the current quote. Never synthesize TP2/TP3 or imply price will reach it.
+ */
+export function observedStructuralTargets(input:{
+  now:number;price:number|null;side:Side;priceFresh:boolean;historyFresh:boolean;
+  m15:unknown;h1:unknown;
+}):Array<{stage:1|2|3;price:number;source:'M15'|'H1';kind:'OBSERVED'}>{
+  const {price,side,now}=input;
+  if(!input.priceFresh||!input.historyFresh||side==='WAIT'||price==null||
+    !Number.isFinite(price)||price<=0)return [];
+  const frames=[
+    {name:'M15' as const,period:900000,ageLimit:35*60000,rows:input.m15},
+    {name:'H1' as const,period:3600000,ageLimit:135*60000,rows:input.h1}
+  ];
+  const choices:Array<{price:number;source:'M15'|'H1'}>=[];
+  for(const frameDef of frames){
+    const raw=frameDef.rows;
+    if(!Array.isArray(raw))continue;
+    const bars=raw.filter((b):b is Bar=>okay(b)&&b.time%frameDef.period===0&&
+      b.time+frameDef.period<=now&&b.time>=now-12*86400000)
+      .sort((a,b)=>a.time-b.time);
+    const recent=bars.slice(-Math.min(26,bars.length));
+    if(recent.length<14||now-(recent.at(-1)!.time+frameDef.period)>frameDef.ageLimit||
+      recent.some((b,i)=>i>0&&b.time-recent[i-1].time!==frameDef.period))continue;
+    const minDistance=price*.00016;
+    for(const b of bars.slice(-120)){
+      const level=side==='BUY'?b.high:b.low;
+      const distance=(side==='BUY'?level-price:price-level);
+      if(distance>minDistance&&distance<price*.032)
+        choices.push({price:level,source:frameDef.name});
+    }
+  }
+  choices.sort((a,b)=>Math.abs(a.price-price)-Math.abs(b.price-price)||
+    (a.source==='H1'?-1:1));
+  const selected:typeof choices=[];
+  const separation=price*.00024;
+  for(const candidate of choices){
+    if(selected.some(s=>Math.abs(candidate.price-s.price)<separation))continue;
+    selected.push(candidate);
+    if(selected.length>=3)break;
+  }
+  return selected.map((c,i)=>({
+    stage:(i+1) as 1|2|3,price:Number(c.price.toFixed(2)),
+    source:c.source,kind:'OBSERVED' as const
+  }));
+}
