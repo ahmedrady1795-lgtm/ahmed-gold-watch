@@ -586,7 +586,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               '3 شموع ذهب مدعومة باختبار · يليها شموع شكلية فقط':'3 شموع M1 مفحوصة · والباقي شموع افتراضية'):
               ghostRangeVisible?'نطاق تذبذب M1 · لا توقع اتجاه · شموع توضيحية':
               'لا تتوفر بيانات كافية للتقدير'}</b>
-            <span> · {goldClosed?'جلسة XAUUSD مغلقة؛ آخر الأسعار محفوظة ولا توجد توقعات حية خلال الإغلاق.':ghost.reason} {visualCandles.length?'شموع قصيرة المدى، والأهداف البعيدة مستويات مراقبة منفصلة.':'لا توجد شموع مؤهلة الآن.'} رسم توضيحي فقط، وليس إشارة دخول أو نموذج ML معتمدًا.</span>
+            <span> · {goldClosed?'جلسة XAUUSD مغلقة؛ آخر الأسعار محفوظة ولا توجد توقعات حية خلال الإغلاق.':ghost.reason} {visualCandles.length?'شموع قصيرة المدى، والأهداف البعيدة مستويات مراقبة منفصلة.':'لا توجد شموع مؤهلة الآن.'} هذه الدراسة ليست نموذج ML معتمدًا، ولا تمثل إشارة دخول.</span>
             <details style={{marginTop:4}}>
               <summary>نتائج الاختبار التاريخي وطريقة العرض</summary>
               {ghost.validation.samples>=12?<span>
