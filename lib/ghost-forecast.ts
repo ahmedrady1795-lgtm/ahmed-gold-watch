@@ -10,7 +10,7 @@ export type GhostValidation={samples:number;directionHits:number;maeAtr:number|n
   note:string};
 export type GhostRange={time:number;low:number;high:number;step:1|2|3};
 export type GhostForecast={ready:boolean;mode:'CANDLES'|'RANGE'|'OFF';
-  reason:string;source:'CLOSED_M1_EMPIRICAL_SHADOW';baseAt:number|null;
+  reason:string;source:'CLOSED_M1_EMPIRICAL_SHADOW'|'GOLD_MT5_OOS_MODEL';baseAt:number|null;
   atr:number|null;side:GhostSide;candles:GhostCandle[];
   range:GhostRange[];validation:GhostValidation};
 type Bar={time:number;open:number;high:number;low:number;close:number};
