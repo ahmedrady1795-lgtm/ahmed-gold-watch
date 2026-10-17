@@ -18,18 +18,22 @@ let cache:{at:number;key:string;value:MlPrediction}|null=null;
 // Verify a continuous, closed, reasonably fresh M1 window before requesting
 // any neural/boosted model inference. A good HTTP response is not market proof.
 export function prepareMlCandles(c:Candle[],now:number){
-  const unique=new Map<number,Candle>();
+  const unique=new Map<number,Candle>(),conflictingTimes=new Set<number>();
   for(const x of Array.isArray(c)?c:[]){
     const t=Number(x?.time),o=Number(x?.open),h=Number(x?.high),
       l=Number(x?.low),close=Number(x?.close);
     if(![t,o,h,l,close].every(Number.isFinite)||t<=0||t%60000!==0||
       l<=0||h<Math.max(o,close)||l>Math.min(o,close)||
       t+60000>now)continue;
+    const prior=unique.get(t);
+    if(prior&&[prior.open,prior.high,prior.low,prior.close].some((v,i)=>
+      Number(v)!==[o,h,l,close][i]))conflictingTimes.add(t);
     unique.set(t,x);
   }
   const rows=[...unique.values()].sort((a,b)=>a.time-b.time).slice(-420);
   const last=rows.at(-1);
   if(rows.length<220||!last)return {ready:false,rows:[] as Candle[],reason:'insufficient valid closed M1 history'};
+  if(rows.some(c=>conflictingTimes.has(c.time)))return {ready:false,rows:[] as Candle[],reason:'conflicting duplicate M1 observations'};
   if(now-(last.time+60000)>120000)return {ready:false,rows:[] as Candle[],reason:'stale BTC M1 history'};
   const tail=rows.slice(-40);
   if(tail.some((x,i)=>i>0&&x.time-tail[i-1].time!==60000))
@@ -47,7 +51,9 @@ export async function getMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPred
   const candleCheck=prepareMlCandles(c1,now);
   if(!candleCheck.ready)return {ok:false,status:'WAIT',reason:candleCheck.reason,shadow:true};
   const rows=candleCheck.rows,last=rows.at(-1)!;
-  const cacheKey=last.time+'|'+last.close+'|'+rows.length;
+  // A provider correction to an older candle must invalidate cached AI output.
+  // Last-close-only keys silently replay predictions from superseded features.
+  const cacheKey=rows.map(c=>[c.time,c.open,c.high,c.low,c.close,volume(c)].join(':')).join('|');
   if(cache&&now-cache.at<4000&&cache.key===cacheKey)return cache.value;
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),3500);
