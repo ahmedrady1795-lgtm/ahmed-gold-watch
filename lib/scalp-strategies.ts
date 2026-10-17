@@ -1,3 +1,4 @@
+import {requiredScalpNetR} from './scalp-risk-policy';
 // One auditable registry for every supported scalp strategy.
 // Detect on CLOSED M1 candles; execution authorization remains with the
 // per-plan spread, stop, reward, news and exact M1 entry-confirmation gates.
@@ -122,9 +123,13 @@ export function describeScalpStrategies(
       [entry,stop,target,cost].every(Number.isFinite)&&cost>=0&&dir!==0;
     const risk=geometry?dir*(entry!-stop!):0;
     const reward=geometry?dir*(target!-entry!):0;
+    // The UI, ranker and independent broker/paper audit MUST use the same
+    // strategy-specific net-risk hurdle. OB/FVG and retest never become
+    // "qualified" badges just because they passed generic 1.25R.
+    const requiredR=requiredScalpNetR({setup:spec.id});
     const accepted=plan.status==='ARMED'&&plan.blockers.length===0&&geometry&&
       risk>0&&reward>0&&plan.netRR!=null&&Number.isFinite(plan.netRR)&&
-      plan.netRR>=1.25&&(reward-cost!)/(risk+cost!)>=1.25;
+      plan.netRR>=requiredR&&(reward-cost!)/(risk+cost!)>=requiredR;
     const isSelected=accepted&&Boolean(selected&&selected.setup===plan.setup&&
       selected.side===plan.side&&selected.score===plan.score);
     return {setup:spec.id,label:spec.label,family:spec.family,
