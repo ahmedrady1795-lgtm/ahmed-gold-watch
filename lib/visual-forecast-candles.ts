@@ -26,38 +26,92 @@ const tr=(b:Bar,prev?:Bar)=>Math.max(b.high-b.low,
 const valid=(b:Bar)=>Boolean(b&&[b.time,b.open,b.high,b.low,b.close].every(Number.isFinite)&&
  b.open>0&&b.low>0&&b.low<=Math.min(b.open,b.close)&&
  b.high>=Math.max(b.open,b.close)&&b.high>=b.low);
-/** Never match on the future sample. Candidate windows end before the last six
- * context bars, with no touching/overlap of the current market context.
+/** Compare independent historical CLOSED sequences, never overlapping the
+ * six-current-bar context or the candidate's following candles.
  */
-export function selectCandleAnalogue(history:Bar[],count:number,atr:number){
+export function rankCandleAnalogues(history:Bar[],count:number,atr:number,limit=5){
  const context=history.slice(-6);
- if(history.length<count+18||context.length!==6)return -1;
+ if(history.length<count+18||context.length!==6||atr<=0||
+   context.some((b,i)=>!valid(b)||(i>0&&b.time-context[i-1].time!==60000)))return [];
  const signature=(rows:Bar[],vol:number)=>rows.map(b=>[
    clamp((b.close-b.open)/vol,-3,3),
-   clamp((b.high-b.low)/vol,0,5)
+   clamp((b.high-b.low)/vol,0,5),
+   clamp((Math.min(b.open,b.close)-b.low)/vol,0,4),
+   clamp((b.high-Math.max(b.open,b.close))/vol,0,4)
  ]);
- const target=signature(context,atr);
- let best=-1,bestScore=Infinity;
- for(let start=8;start<=history.length-count-8;start++){
-   const contextStart=start-6;
-   const full=history.slice(contextStart,start+count);
-   if(full.length!==count+6||full.some((b,i)=>!valid(b)||
-      (i>0&&b.time-full[i-1].time!==60000)))continue;
-   const prior=history.slice(contextStart,start);
+ const wanted=signature(context,atr);
+ const matches:Array<{start:number;distance:number;futureAtr:number}>=[];
+ for(let index=8;index<=history.length-count-8;index++){
+   const beginning=index-6,window=history.slice(beginning,index+count);
+   if(window.length!==count+6||window.some((b,i)=>!valid(b)||
+      (i>0&&b.time-window[i-1].time!==60000)))continue;
+   const prior=history.slice(beginning,index);
    const vol=median(prior.map((b,i)=>tr(b,prior[i-1])))||atr;
    if(vol<=0)continue;
-   const candidate=signature(prior,vol);
-   let score=0;
+   const sig=signature(prior,vol);
+   let distance=0;
    for(let i=0;i<6;i++){
-     score+=Math.min(6,Math.abs(candidate[i][0]-target[i][0]))*.7;
-     score+=Math.min(6,Math.abs(candidate[i][1]-target[i][1]))*.27;
+     distance+=Math.min(6,Math.abs(sig[i][0]-wanted[i][0]))*.62;
+     distance+=Math.min(6,Math.abs(sig[i][1]-wanted[i][1]))*.16;
+     distance+=Math.min(5,Math.abs(sig[i][2]-wanted[i][2]))*.12;
+     distance+=Math.min(5,Math.abs(sig[i][3]-wanted[i][3]))*.10;
    }
-   const lastTarget=context[5].close-context[0].open;
-   const lastPrior=prior[5].close-prior[0].open;
-   score+=Math.min(4,Math.abs(lastTarget/atr-lastPrior/vol))*.5;
-   if(score<bestScore){bestScore=score;best=start;}
+   const trajectory=context.at(-1)!.close-context[0].open;
+   const priorTrajectory=prior.at(-1)!.close-prior[0].open;
+   distance+=Math.min(6,Math.abs(trajectory/atr-priorTrajectory/vol))*.52;
+   const following=history[index+count-1].close/history[index-1].close-1;
+   const futureAtr=(history[index+count-1].close-history[index-1].close)/vol;
+   if(!Number.isFinite(following)||!Number.isFinite(futureAtr))continue;
+   matches.push({start:index,distance:Number(distance.toFixed(5)),futureAtr});
  }
- return best;
+ return matches.sort((a,b)=>a.distance-b.distance).slice(0,Math.max(1,Math.min(limit,8)));
+}
+export function selectCandleAnalogue(history:Bar[],count:number,atr:number){
+ const ranked=rankCandleAnalogues(history,count,atr,5);
+ if(!ranked.length)return -1;
+ if(ranked.length<3)return ranked[0].start;
+ // The closest single neighbour may be an anomalous winner. Select the
+ // top neighbour whose total future return is closest to their median.
+ const typical=median(ranked.map(x=>x.futureAtr));
+ const medoid=[...ranked].sort((a,b)=>
+   (Math.abs(a.futureAtr-typical)+a.distance*.02)-
+   (Math.abs(b.futureAtr-typical)+b.distance*.02))[0];
+ return medoid.start;
+}
+type Audit={samples:number;signals:number;hits:number;accuracyPct:number|null;
+ baselineHits:number;baselinePct:number|null;edgeSupported:boolean;status:'COLLECTING'|'NO_PROVEN_EDGE'};
+
+/** Purged chronological replay. On each fold, only the previously completed
+ * prefix can select a candidate; the next 3 candles are used ONLY for scoring.
+ * Disjoint evaluation horizon (stride 4) avoids claiming repeated win samples.
+ */
+export function auditCandleAnalogueDirection(rows:Bar[],atr:number):Audit{
+ let samples=0,signals=0,hits=0,baselineHits=0;
+ if(atr<=0||!Number.isFinite(atr))return {samples,signals,hits,accuracyPct:null,
+   baselineHits,baselinePct:null,edgeSupported:false,status:'COLLECTING'};
+ const start=Math.max(65,rows.length-156);
+ for(let t=start;t<=rows.length-3;t+=4){
+   const prefix=rows.slice(0,t);
+   const idx=selectCandleAnalogue(prefix,3,atr);
+   if(idx<0||prefix.length<6)continue;
+   const f=rows.slice(t,t+3);
+   if(f.length!==3||f.some((c,i)=>!valid(c)||
+     (i===0?c.time-prefix.at(-1)!.time!==60000:
+       c.time-f[i-1].time!==60000)))continue;
+   const net=prefix[idx+2].close-prefix[idx-1].close;
+   const move=f[2].close-prefix.at(-1)!.close;
+   const baseline=prefix.at(-1)!.close-prefix.at(-4)!.close;
+   if(Math.abs(net)<atr*.20||Math.abs(move)<atr*.20)continue;
+   signals++;samples++;
+   if(Math.sign(net)===Math.sign(move))hits++;
+   if(Math.sign(baseline)===Math.sign(move))baselineHits++;
+ }
+ const accuracyPct=samples?Math.round(hits/samples*100):null;
+ const baselinePct=samples?Math.round(baselineHits/samples*100):null;
+ // Merely passing a replay threshold is NOT a deployable trade signal.
+ // Deliberately never qualify direction from a small single-session sample.
+ return {samples,signals,hits,accuracyPct,baselineHits,baselinePct,
+   edgeSupported:false,status:samples>=30?'NO_PROVEN_EDGE':'COLLECTING'};
 }
 export function buildVisualFuture(input:{
  candles:Bar[];forecast:Ghost;side:'BUY'|'SELL'|'WAIT';count?:number;
@@ -72,6 +126,8 @@ export function buildVisualFuture(input:{
  if(bars.slice(-60).some((b,i,tail)=>i>0&&b.time-tail[i-1].time!==60000))return [];
  const start=selectCandleAnalogue(bars,count,a);
  const analogue=start>=0?bars.slice(start,start+count):null;
+ const rangeDrift=input.forecast.mode==='RANGE'&&analogue?
+   (analogue.at(-1)!.close-analogue[0].open)/count:0;
  const sampleVol=analogue?
    median(analogue.map((b,i)=>tr(b,analogue[i-1])))||a:a;
  const factor=clamp(a/sampleVol,.5,1.85);
@@ -96,7 +152,7 @@ export function buildVisualFuture(input:{
    // no-edge RANGE never masquerades as a directional signal.
    const fallbackMean=analogue?0:
      median(fallback.map(b=>b.close-b.open));
-   const body=clamp(scaled-(analogue?0:fallbackMean*.7),-a*1.75,a*1.75);
+   const body=clamp(scaled-(analogue?rangeDrift*.68:fallbackMean*.7),-a*1.75,a*1.75);
    const open=prev;
    const close=Math.max(last.close*.01,
      clamp(open+body,last.close-a*7,last.close+a*7));
