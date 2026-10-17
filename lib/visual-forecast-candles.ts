@@ -222,3 +222,22 @@ export function buildVisualFuture(input:{
  }
  return result;
 }
+
+/**
+ * CLOSED MARKET UI PREVIEW. Uses archived, genuinely CLOSED and contiguous
+ * M1 OHLC as its only input. These are NOT live candles, projected timestamps,
+ * model certification, market orders, or executable trade signals.
+ * Called only when the target exchange is closed.
+ */
+export function buildClosedSessionCandlePreview(history:Bar[],count=18):VisualFutureBar[]{
+ const rows=history.filter(valid).slice(-180),tail=rows.slice(-60);
+ if(tail.length<60||tail.some((b,i)=>i>0&&b.time-tail[i-1].time!==60000))
+   return [];
+ const ranges=tail.slice(-34).map((b,i,a)=>tr(b,a[i-1]));
+ const atr=median(ranges);
+ if(!Number.isFinite(atr)||atr<=0||atr>tail.at(-1)!.close*.025)return [];
+ // This is a deterministic illustrative analogue of an old session, never
+ // described as the next 18 real minutes during a market closure.
+ return buildVisualFuture({candles:rows,forecast:{
+   mode:'RANGE',side:'WAIT',atr,candles:[]},side:'WAIT',count});
+}
