@@ -90,9 +90,16 @@ export function buildConditionalTargetCandles(input:{
    // Previously an artificial every-sixth reversal created robotic staircases.
    const retrace=sign*sourceBody<-(atr*.025);
    const magnitude=Math.abs(sourceBody);
-   const drift=Math.min(maxBody,Math.max(maxBody*.32,magnitude*.90));
+   const bodyRatio=Math.min(1,magnitude/Math.max(bodyCap,.000001));
+   const rangeRatio=Math.min(1,(sample.high-sample.low)/Math.max(atr,.000001));
+   const closePosition=Math.max(0,Math.min(1,
+     (sample.close-sample.low)/Math.max(sample.high-sample.low,.000001)));
+   // Copy the joint closed-OHLC shape signature: body, full candle range,
+   // and the close's location within real wicks. Unlike a rigid pattern
+   // these ratios vary across genuine historical bars.
+   const drift=maxBody*(.32+.34*bodyRatio+.17*rangeRatio+.08*closePosition);
    const stepBody=retrace?
-     -Math.min(maxBody*.44,Math.max(maxBody*.12,magnitude*.39)):drift;
+     -maxBody*(.12+.12*bodyRatio+.10*rangeRatio):drift;
    // Follow evidence-derived structure BEFORE goals, including downward
    // retests in BUY routes and upward retests in SELL routes.
    while(waypointIndex<waypoints.length&&Math.abs(waypoints[waypointIndex].price-prev)<1e-8){
