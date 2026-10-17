@@ -28,7 +28,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   journals?:{GOLD:ForecastJournal|null;BTC:ForecastJournal|null};audit?:any;auditLoaded?:boolean
 }){
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
-  const [focusCandles,setFocusCandles]=useState(true);
+  const [focusCandles,setFocusCandles]=useState(false);
   const [showAlternatives,setShowAlternatives]=useState(false);
   const [showGhost,setShowGhost]=useState(true);
   const [mobile,setMobile]=useState(false);
@@ -105,7 +105,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     side:planVisible?m.displaySide:'WAIT',price:m.price,
     sourceReady:m.historyFresh&&m.observationFresh&&sn.view.priceFresh,
     scenarioReady:planVisible});
-  const visualCandles=showGhost?buildVisualFuture({candles:m.candles,forecast:ghost,side:dir}):[];
+  const visualCandles=showGhost?buildVisualFuture({candles:m.candles,forecast:ghost,side:dir,
+    scenarioPath:planVisible&&motion.length>1?motion.map(p=>({key:p.key,price:p.price})):[]}):[];
+  const scenarioCandles=visualCandles.some(c=>c.scenarioShape);
   const ghostVisible=showGhost&&ghost.mode==='CANDLES';
   const ghostRangeVisible=showGhost&&ghost.mode==='RANGE';
   const ghostActive=showGhost&&ghost.mode!=='OFF';
@@ -123,7 +125,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const scaleLow=focusCandles?candleMin-candleSpan*.3:allMin-allSpan*.1;
   const scaleHigh=focusCandles?candleMax+candleSpan*.3:allMax+allSpan*.1;
   const px=(p:number)=>yt+(scaleHigh-p)/Math.max(.0000001,scaleHigh-scaleLow)*(yb-yt);
-  const ghostBandPath=visualCandles.length&&ghost.atr!=null?
+  const ghostBandPath=visualCandles.length&&!scenarioCandles&&ghost.atr!=null?
     'M '+xf+' '+px(m.candles.at(-1)!.close)+
     ' L '+visualCandles.map((c,i)=>ghostXs[i]+' '+px(c.high+ghost.atr!*.27*Math.sqrt(i+1))).join(' L ')+
     ' L '+visualCandles.map((_,i)=>{const j=visualCandles.length-1-i;
@@ -502,10 +504,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                       fill={color} fillOpacity={c.validatedShape?.77:.61} stroke={color} strokeWidth="1" strokeDasharray="3 2"/>
                     {c.validatedShape&&<text x={gx} y={clamp(px(c.high)-11,yt+30,yb-13)}
                       textAnchor="middle" fill={color} fontSize={mobile?12:10}>{up?'↑':'↓'} {c.step}</text>}
-                    {(i%4===0||i===visualCandles.length-1)&&<text x={gx} y={yb-7} textAnchor="middle" fill="#b8c9e5"
+                    {!c.scenarioShape&&(i%4===0||i===visualCandles.length-1)&&<text x={gx} y={yb-7} textAnchor="middle" fill="#b8c9e5"
                       fontSize={mobile?11:10}>{clock(c.time)}</text>}
-                    <title>{'شمعة M1 افتراضية رقم '+c.step+
-                      ' · '+clock(c.time)+' · '+(up?'صعود تقديري':'هبوط تقديري')+
+                    <title>{(c.scenarioShape?'شمعة شكلية لمرحلة المسار، غير زمنية رقم ':'شمعة M1 افتراضية رقم ')+c.step+
+                      (c.scenarioShape?' · دون موعد وصول':' · '+clock(c.time))+' · '+(up?'صعود توضيحي':'هبوط توضيحي')+
                       ' · O '+fmt(c.open)+' H '+fmt(c.high)+' L '+fmt(c.low)+' C '+fmt(c.close)+
                       ' · '+(c.validatedShape?'نموذج M1 مفحوص تاريخيًا':'شمعة شكلية توضيحية غير مدعومة باختبار مستقل')+' · ليست سعرا فعليا'}</title>
                   </g>;
@@ -520,7 +522,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </g>}
                 <text x={(ghostXs[0]+ghostXs.at(-1)!)/2} y={yt+29} textAnchor="middle"
                   fontSize={mobile?13:12} fontWeight="700" fill="#bdd1ee">
-                  {ghostVisible?(ghost.source==='GOLD_MT5_OOS_MODEL'?'GOLD MT5 · اختبار تاريخي':'GHOST M1 · تجريبي') :'M1 · شموع تذبذب افتراضية'}
+                  {scenarioCandles?'شموع مسار سعري مشروط · غير زمنية':ghostVisible?(ghost.source==='GOLD_MT5_OOS_MODEL'?'GOLD MT5 · اختبار تاريخي':'GHOST M1 · تجريبي') :'M1 · شموع تذبذب افتراضية'}
                 </text>
               </g>}
               {chartLanes.map(label=>{
@@ -580,9 +582,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             style={{padding:'7px 10px',border:'1px dashed #446980',borderRadius:8,marginTop:6,color:'#c4dbea',fontSize:12}}>
             <b>{ghostVisible?(ghost.source==='GOLD_MT5_OOS_MODEL'?
               '3 شموع ذهب مدعومة باختبار · يليها شموع شكلية فقط':'3 شموع M1 مفحوصة · والباقي شموع افتراضية'):
-              ghostRangeVisible?'شموع افتراضية للتذبذب · لا توقع اتجاه':
+              ghostRangeVisible?'نطاق تذبذب M1 · لا توقع اتجاه · شموع توضيحية':
               'لا تتوفر بيانات كافية للتقدير'}</b>
-            <span> · {ghost.reason}. يظهر 16 شمعة مستقبلية شكلية مستمدة من تذبذب M1، وليست توقعات OHLC موثوقة؛ المعايرة التاريخية تخص أول 3 شموع فقط عندما تتوفر. لا تغيّر سيناريو الخادم أو قرار الدخول.</span>
+            <span> · {ghost.reason}. {scenarioCandles?
+              'شموع مسار مشروط حتى أهداف الخادم، لا تمثل دقيقة لكل شمعة أو موعد وصول، ولا تضمن تحقق الأهداف.':
+              '16 شمعة مستقبلية شكلية مستمدة من تذبذب M1، ليست توقعات OHLC موثوقة.'} هذه الدراسة ليست نموذج ML معتمدًا، ولا تغيّر قرار الدخول.</span>
             <details style={{marginTop:4}}>
               <summary>نتائج الاختبار التاريخي وطريقة العرض</summary>
               {ghost.validation.samples>=12?<span>
@@ -615,7 +619,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           <div className="forecast-visual-legend">
             <span><i className="forecast-legend-history"/> شموع M1 حقيقية</span>
             <span><i className="forecast-legend-projection"/> {watchReady?'مسار مستويات بعيد · توضيحي':'سيناريو مشروط'}</span>
-            {visualCandles.length>0&&<span>▥ شموع افتراضية M1 · اللون والذيل توضيحيان</span>}
+            {visualCandles.length>0&&<span>▥ {scenarioCandles?'شموع مسار الأهداف · غير زمنية':'شموع افتراضية M1'} · توضيحية فقط</span>}
             {ghostRangeVisible&&<span>◌ محاكاة تذبذب · بلا أفضلية اتجاه</span>}
             <span><i className="forecast-legend-target"/> مناطق أهداف</span>
             <span><i className="forecast-legend-rebound"/> مناطق سيولة</span>
