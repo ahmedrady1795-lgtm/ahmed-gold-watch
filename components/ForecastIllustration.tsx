@@ -122,7 +122,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const analogueNeighbors=analogueStudy.neighbors;
   const analogueAudit=analogueStudy.audit;
   const scenarioCandles=visualCandles.some(c=>c.scenarioShape);
-  const ghostVisible=showGhost&&ghost.mode==='CANDLES';
+  const ghostVisible=showGhost&&ghost.mode==='CANDLES'&&visualCandles.length>=3;
   const ghostRangeVisible=showGhost&&ghost.mode==='RANGE'&&visualCandles.length>=3;
   const ghostActive=showGhost&&ghost.mode!=='OFF'&&visualCandles.length>0;
   const futureStride=(xr-xf-18)/Math.max(1,visualCandles.length);
