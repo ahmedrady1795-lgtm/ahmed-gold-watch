@@ -4,9 +4,12 @@ import type {Candle} from './engine';
 // broker-executable strategy. No training on holdout observations, no future
 // candles in current predictions, and no optimistic interpretation of WAIT.
 type Side='BUY'|'SELL'|'WAIT';
-type Strategy='MOMENTUM_3'|'EMA_8_21'|'BREAKOUT_8'|'TREND_CONFIRM';
+type Strategy='MOMENTUM_3'|'EMA_8_21'|'BREAKOUT_8'|'TREND_CONFIRM'|'SWEEP_RECLAIM'|'RANGE_FADE';
 type Example={at:number;outcome:Side;signals:Record<Strategy,Side>};
-const strategies:Strategy[]=['MOMENTUM_3','EMA_8_21','BREAKOUT_8','TREND_CONFIRM'];
+// Explicit, small hypothesis set. The intact chronological holdout never
+// participates in selecting a challenger; no blind parameter grid search.
+const strategies:Strategy[]=['MOMENTUM_3','EMA_8_21','BREAKOUT_8','TREND_CONFIRM',
+  'SWEEP_RECLAIM','RANGE_FADE'];
 const dir=(x:number,threshold:number):Side=>x>threshold?'BUY':x< -threshold?'SELL':'WAIT';
 const round=(x:number)=>Number(x.toFixed(2));
 function valid(c:Candle){return [c.time,c.open,c.high,c.low,c.close].every(Number.isFinite)&&
@@ -23,8 +26,22 @@ function signals(rows:Candle[],i:number,atr:number):Record<Strategy,Side>{
   const prev=rows.slice(i-8,i),hi=Math.max(...prev.map(x=>x.high)),lo=Math.min(...prev.map(x=>x.low));
   const breakout:Side=c.close>hi+atr*.03?'BUY':c.close<lo-atr*.03?'SELL':'WAIT';
   const body=dir(c.close-c.open,atr*.10);
+  // Hypothesis 1: a completed wick swept a genuine previous high/low and
+  // CLOSED back inside. This is a *technical label*, not proof of real resting
+  // liquidity or of trade execution. Both directions are symmetric.
+  const sweepHigh=c.high>hi+atr*.045&&c.close<hi-atr*.055&&body==='SELL';
+  const sweepLow=c.low<lo-atr*.045&&c.close>lo+atr*.055&&body==='BUY';
+  const sweep:Side=sweepHigh&&!sweepLow?'SELL':sweepLow&&!sweepHigh?'BUY':'WAIT';
+  // Hypothesis 2: a mean-reverting range candidate needs a locally flat
+  // average curve, significant price extension, and reversal candle. No
+  // future candle or inferred next high/low is used in the decision.
+  const ema8=ema(closes,8),ema21=ema(closes,21);
+  const range=Math.abs(ema8-ema21)<=atr*.30;
+  const fade:Side=range&&c.close<ema21-atr*.62&&body==='BUY'?'BUY':
+    range&&c.close>ema21+atr*.62&&body==='SELL'?'SELL':'WAIT';
   return {MOMENTUM_3:mom,EMA_8_21:e,BREAKOUT_8:breakout,
-    TREND_CONFIRM:mom!=='WAIT'&&mom===e&&body===mom?mom:'WAIT'};
+    TREND_CONFIRM:mom!=='WAIT'&&mom===e&&body===mom?mom:'WAIT',
+    SWEEP_RECLAIM:sweep,RANGE_FADE:fade};
 }
 function evaluate(rows:Example[],strategy:Strategy,pairedWith?:Strategy){
   let n=0,hits=0,signalsN=0,neutral=0;
@@ -58,7 +75,7 @@ export function validateDirectionChronologically(
     baseline:null as ReturnType<typeof evaluate>|null,
     qualified:false,reason:'Insufficient independent time-ordered directional outcomes',
     // Explicitly not a measure of profitability or the ensemble's true accuracy.
-    note:'Closed M1 candles, disjoint time holdout and conservative cost deadzone; NOT Exness fills or full ensemble validation'
+    note:'Six fixed technical hypotheses, CLOSED M1 candles, disjoint time holdout, conservative cost deadzone; NOT Exness fills, ML certification or full ensemble validation'
   };
   if(!Number.isFinite(now)||!Number.isFinite(roundTripCost)||roundTripCost<0)return base;
   const closed=candles.filter(c=>valid(c)&&c.time+60000<=now&&c.time>=0).slice(-650);
