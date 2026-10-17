@@ -19,6 +19,7 @@ import {detectDisplacementObFvg} from '../lib/institutional-price-action';
 import {buildBreakoutGuide,explainFrameConflict,layoutPriceLanes} from '../lib/sniper-decision-guide';
 import {evaluateProfessionalMove} from '../lib/professional-move';
 import {assessChartObservation,observedStructuralTargets} from '../lib/chart-observation-radar';
+import {buildSniperChartPlaybook} from '../lib/sniper-chart-playbook';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
   p.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
@@ -100,6 +101,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     historyFresh:m.historyFresh,m15:x?.chartHigherFrames?.m15,
     h1:x?.chartHigherFrames?.h1
   }):[];
+  const playbook=buildSniperChartPlaybook({
+    marketOpen:!goldClosed,priceFresh:sn.view.priceFresh&&m.observationFresh,
+    historyFresh:m.historyFresh,price:m.price,atr:overlay.atr,
+    observation:observationRadar,breakout:breakoutWatch,
+    planReady:statusReady,planSide:dir,
+    targets:planVisible?m.displayTargets:watchTargets,
+    liquidityAvailable:overlay.ready&&Boolean(overlay.upper||overlay.lower)
+  });
   const targetBands:PriceBand[]=watchTargets.map(t=>({
     key:'WATCH_TP'+t.stage,label:'رصد TP'+t.stage+' · '+t.source,
     price:t.price,low:t.price,high:t.price,kind:'TARGET' as const
@@ -182,6 +191,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     ' L '+visualCandles.map((_,i)=>{const j=visualCandles.length-1-i;
       return ghostXs[j]+' '+px(visualCandles[j].low-ghost.atr!*.27*Math.sqrt(j+1));}).join(' L ')+
     ' Z':'';
+  const offscreenTargets=playbook.targets.filter(t=>px(t.price)<yt+9||px(t.price)>yb-9);
+  const nearestOffscreen=offscreenTargets[0]??null;
   const grid=Array.from({length:5},(_,i)=>({y:yt+i*(yb-yt)/4,value:scaleHigh-(scaleHigh-scaleLow)*i/4}));
   const priceFresh=m.price!=null&&sn.view.priceFresh&&m.observationFresh;
   const chartLanes=layoutPriceLanes([
@@ -350,6 +361,33 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <button type="button" aria-pressed={chartFullscreen} onClick={()=>setChartFullscreen(v=>!v)}>{chartFullscreen?'إغلاق ملء الشاشة':'⛶ ملء الشاشة'}</button>
             </div>
           </div>
+          <div className={'sniper-playbook sniper-playbook-'+playbook.phase.toLowerCase()}
+            aria-label="مراحل رصد اقتناص الإشارة، وليست إشارة دخول">
+            <div className="sniper-playbook-heading">
+              <span className="sniper-playbook-mark"><Crosshair size={15}/></span>
+              <div><strong>{playbook.title}</strong>
+                <small>{playbook.detail} · ليس أمر دخول</small></div>
+              <span className={'sniper-playbook-side '+(playbook.side==='BUY'?'playbook-buy':
+                playbook.side==='SELL'?'playbook-sell':'playbook-neutral')}>
+                {playbook.side==='BUY'?'↗ رصد شراء':
+                  playbook.side==='SELL'?'↘ رصد بيع':'◌ محايد'}
+              </span>
+            </div>
+            <div className="sniper-playbook-steps">
+              {playbook.steps.map((step,i)=><div key={step.label}
+                className={'sniper-playbook-step playbook-step-'+step.state.toLowerCase()}>
+                <span className="sniper-playbook-step-index">{i+1}</span>
+                <span><b>{step.label}</b><small>{step.detail}</small></span>
+              </div>)}
+            </div>
+            <div className="sniper-playbook-footer">
+              <span>{playbook.level!=null?'◇ بوابة الكسر '+fmt(playbook.level):
+                '◇ بوابة الكسر: '+breakoutWatch.headline}</span>
+              <span>{playbook.target?'◎ TP1 '+fmt(playbook.target.price)+' · هيكلي مشروط':
+                '◎ الأهداف تنتظر مستوى هيكليًا صالحًا'}</span>
+              {playbook.retest&&<span>↺ إعادة اختبار ±{fmt(playbook.retest.high-playbook.retest.center,2)} · تقريبي</span>}
+            </div>
+          </div>
           <div className="forecast-visual-chart-scroll">
             <svg className={'forecast-visual-svg'+(focusCandles?' forecast-visual-svg-zoomed':'')} viewBox={'0 0 '+W+' '+H}
               role="img" aria-label={statusReady?
@@ -391,6 +429,18 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     visualCandles.length?'شموع توضيحية · كسر وسيولة':
     watchTargets.length?'TP مراقبة · كسر · سيولة':'مستويات كسر وسيولة'}</text>
               <g clipPath={'url(#forecast-plot-'+asset+')'}>
+                {playbook.retest&&px(playbook.retest.low)>=yt-40&&
+                  px(playbook.retest.high)<=yb+40&&<g className="sniper-retest-corridor">
+                  <rect x={xf+5} y={Math.max(yt,px(playbook.retest.high))}
+                    width={xr-xf-10}
+                    height={Math.max(2,Math.min(yb,px(playbook.retest.low))-
+                      Math.max(yt,px(playbook.retest.high)))}
+                    fill={playbook.side==='BUY'?'#54ebbe':'#f390a5'} fillOpacity=".07"
+                    stroke={playbook.side==='BUY'?'#54ebbe':'#f390a5'}
+                    strokeDasharray="3 6" strokeOpacity=".52"/>
+                  <title>{'حزام فني حول مستوى الكسر '+fmt(playbook.retest.center)+
+                    ' · عرض تقريبي من ATR M5، وليس طلبًا/عرضًا مثبتًا أو أمر LIMIT'}</title>
+                </g>}
                 {pools.map(z=>{const color=z.side==='UPPER'?'#ff7d9b':'#51dcdf';return <g key={z.side}>
                   <rect x={x0} y={px(z.high)} width={xr-x0} height={Math.max(5,px(z.low)-px(z.high))}
                     fill={color} fillOpacity=".12" stroke={color} strokeDasharray="6 5"/>
@@ -595,6 +645,19 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   {closedPreview?'من أرشيف السوق · عرض توضيحي فقط':
                      ghostVisible?'3 شموع تقديرية + نماذج تاريخية':'شموع توضيحية من نماذج تاريخية'}
                 </text>
+              </g>}
+              {nearestOffscreen&&<g className="sniper-offscreen-target" aria-label="هدف هيكلي خارج نطاق التكبير">
+                <rect x={xf+8} y={px(nearestOffscreen.price)<yt?yt+44:yb-44}
+                  width={xr-xf-16} height="29" rx="6"
+                  fill="#143329" stroke="#5adca7" strokeOpacity=".7"/>
+                <text x={(xf+xr)/2}
+                  y={px(nearestOffscreen.price)<yt?yt+63:yb-25}
+                  fill="#adf6d7" textAnchor="middle" fontSize={12} fontWeight="700">
+                  {px(nearestOffscreen.price)<yt?'↑':'↓'}
+                  {' TP'+nearestOffscreen.stage+' خارج الزوم · '+fmt(nearestOffscreen.price)+
+                    (offscreenTargets.length>1?' · +'+(offscreenTargets.length-1)+' أهداف':'')}
+                </text>
+                <title>هدف مراقبة بالسعر الحقيقي خارج نطاق التكبير، وليس إعادة رسمه عند سعر افتراضي</title>
               </g>}
               {chartLanes.map(label=>{
                 const isPrice=label.kind==='PRICE',isTarget=label.kind==='TARGET',isStop=label.kind==='STOP';
