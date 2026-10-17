@@ -21,6 +21,8 @@ import {evaluateProfessionalMove} from '../lib/professional-move';
 import {assessChartObservation,observedStructuralTargets} from '../lib/chart-observation-radar';
 import {buildSniperChartPlaybook} from '../lib/sniper-chart-playbook';
 import {assessBtcForwardObservation} from '../lib/btc-forward-observation';
+import BtcOrderflowPanel from './BtcOrderflowPanel';
+import type {BtcOrderflow} from '../lib/btc-orderflow';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
   p.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
@@ -38,6 +40,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const [expanded,setExpanded]=useState(false);
   const [chartWindow,setChartWindow]=useState<60|240>(60);
   const [chartFullscreen,setChartFullscreen]=useState(false);
+  const [orderFlow,setOrderFlow]=useState<BtcOrderflow|null>(null);
   useEffect(()=>{
     if(!chartFullscreen)return;
     const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')setChartFullscreen(false);};
@@ -51,6 +54,28 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     return()=>media.removeEventListener('change',update);
   },[]);
   const asset: 'GOLD'|'BTC'=assetView==='ALL'?chosen:assetView;
+  // Real BTC trade tape refresh is independent of AI scoring, without any
+  // market-order side effect. Abort + cleanup when the selected asset changes.
+  useEffect(()=>{
+    if(asset!=='BTC'){setOrderFlow(null);return;}
+    let closed=false,inFlight=false;
+    const abort=new AbortController();
+    const load=async()=>{
+      if(closed||inFlight||document.visibilityState!=='visible')return;
+      inFlight=true;
+      try{
+        const r=await fetch('/api/orderflow',{cache:'no-store',
+          signal:AbortSignal.any([abort.signal,AbortSignal.timeout(7000)])});
+        const j=await r.json();
+        if(!closed)setOrderFlow(j);
+      }catch{
+        if(!closed)setOrderFlow(null);
+      }finally{inFlight=false;}
+    };
+    void load();
+    const timer=setInterval(()=>{void load();},6000);
+    return()=>{closed=true;abort.abort();clearInterval(timer);};
+  },[asset]);
   const goldClosed=asset==='GOLD'&&!goldMarketSession(now).open;
   const x=asset==='GOLD'?data?.gold:data?.bitcoin;
   const journal=journals?.[asset]??null;
@@ -228,6 +253,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const breakoutUp=breakoutEvidence.ready?breakoutEvidence.breakoutUp:null;
   const breakoutDown=breakoutEvidence.ready?breakoutEvidence.breakoutDown:null;
   const quoteArrowY=m.price!=null?px(m.price):null;
+  // One-venue executed-trade levels. Never extend the candle scale just to
+  // fit a profile sampled over seconds; only draw when already on-screen.
+  const flowFresh=Boolean(asset==='BTC'&&orderFlow?.ok&&orderFlow.asOf>0&&
+    now>=orderFlow.asOf-2000&&now-orderFlow.asOf<=20000);
+  const flowLevels=flowFresh&&orderFlow?.profile?[
+    {key:'POC',price:orderFlow.profile.poc,color:'#f4c778'},
+    {key:'VAH',price:orderFlow.profile.vah,color:'#8ab7fc'},
+    {key:'VAL',price:orderFlow.profile.val,color:'#8ab7fc'}
+  ]:[];
   const chartLanes=layoutPriceLanes([
     ...chartBands.map(z=>({key:z.key,y:px(z.price),price:z.price,
       label:z.key.startsWith('WATCH_TP')?'رصد TP'+z.key.replace('WATCH_TP',''):
@@ -748,6 +782,21 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 <title>{breakoutWatch.detail+
                   ' · المستويات من شموع M5 مغلقة · السيولة والتكلفة وإبطال السيناريو شروط مستقلة'}</title>
               </g>
+              {flowLevels.filter(z=>px(z.price)>=yt+18&&px(z.price)<=yb-18).map(z=><g
+                key={'flow-level-'+z.key} className="btc-executed-profile-level">
+                <line x1={x0} x2={xr} y1={px(z.price)} y2={px(z.price)}
+                  stroke={z.color} strokeWidth={z.key==='POC'?2.2:1.3}
+                  strokeDasharray={z.key==='POC'?'8 5':'3 8'} strokeOpacity=".9"/>
+                <rect x={x0+6} y={px(z.price)-13} width="104" height="23" rx="4"
+                  fill="#0e2432" stroke={z.color} strokeOpacity=".72"/>
+                <text x={x0+58} y={px(z.price)+3} textAnchor="middle"
+                  fontSize={mobile?12:11} fill={z.color} fontWeight="700">
+                  {z.key+' '+fmt(z.price)}</text>
+                <title>{z.key==='POC'?'أعلى مستوى حجم تنفيذ في العينة':
+                  z.key==='VAH'?'الحد الأعلى لمنطقة قيمة العينة بنسبة 70%':
+                  'الحد الأدنى لمنطقة قيمة العينة بنسبة 70%'}
+                  {' · Coinbase spot فقط · ليست كل الجلسة'}</title>
+              </g>)}
               {chartLanes.map(label=>{
                 const isPrice=label.kind==='PRICE',isTarget=label.kind==='TARGET',isStop=label.kind==='STOP';
                 const color=isPrice?(priceFresh?'#9feaff':'#d5b484'):isTarget?'#74f0ba':isStop?'#ff9cab':
@@ -864,6 +913,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </details>
         </div>
       </div>
+      {asset==='BTC'&&<BtcOrderflowPanel data={orderFlow} now={now}
+        breakout={breakoutWatch}/>}
+      {asset==='GOLD'&&<details className="gold-orderflow-note">
+        <summary>أوردر فلو الذهب · حالة بيانات العقود</summary>
+        <p>Footprint وVolume Profile المنفذان مربوطان حاليًا بصفقات BTC-USD الفورية من Coinbase.
+        لا توجد صفقات عقود GC/COMEX موثقة متصلة بالذهب هنا؛ لذلك لا نعرض Footprint
+        بأرقام عقود مصطنعة على XAUUSD. يلزم مزود بيانات Futures حقيقي قبل التفعيل.</p>
+      </details>}
       <div className="sniper-price-snapshot" aria-label="السعر والأهداف الأساسية">
         {planVisible&&m.displayTargets.slice(0,3).map(t=><span key={'snap-tp'+t.stage} className="sniper-price-snapshot-target">
           <small>{statusReady?'هدف':'مراقبة'} TP{t.stage}</small><b dir="ltr">{fmt(t.price)}</b>
