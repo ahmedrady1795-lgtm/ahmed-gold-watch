@@ -255,11 +255,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const routeStop=frozenVisualLevels.invalidation;
   const firstGoal=conditionalRouteGoals[0]?.price;
   // Instantly revoke a drawing when live price breaches a locked TP/stop.
-  const liveRouteSafe=m.price!=null&&firstGoal!=null&&Number.isFinite(m.price)&&
+  const liveRouteSafe=m.price!=null&&routeAnchor!=null&&firstGoal!=null&&
+    Number.isFinite(m.price)&&
     (conditionalRouteSide==='BUY'?
-      (routeStop==null||m.price>routeStop)&&m.price<firstGoal:
+      firstGoal>routeAnchor&&(routeStop==null||m.price>routeStop):
       conditionalRouteSide==='SELL'?
-      (routeStop==null||m.price<routeStop)&&m.price>firstGoal:false);
+      firstGoal<routeAnchor&&(routeStop==null||m.price<routeStop):false);
+  // Hitting TP1 does not erase the remainder of the locked TP ladder.
+  // Only a stop breach, stale feed or changed closed bar revokes the route.
   const targetRoute=showGhost&&!goldClosed&&m.observationFresh&&m.historyFresh&&
     liveRouteSafe&&routeAnchor!=null&&conditionalRouteGoals.length>0?
     buildConditionalTargetCandles({
@@ -270,7 +273,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       side:conditionalRouteSide as 'BUY'|'SELL',targets:conditionalRouteGoals,
       invalidation:routeStop
     }):null;
-  const routeVisible=Boolean(targetRoute?.ready&&targetRoute.bars.length);
+  const routeVisible=Boolean(targetRoute?.ready&&targetRoute.bars.length&&
+    m.price!=null&&routeAnchor!=null&&targetRoute.atr!=null&&
+    Math.abs(m.price-routeAnchor)<=targetRoute.atr*2.5);
   const visualCandles=!showGhost?[]:goldClosed?
     buildClosedSessionCandlePreview(m.candles):
     routeVisible?targetRoute!.bars.map((b,i)=>({
@@ -637,7 +642,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           {routeVisible&&<div aria-label="مراحل الوصول المشروط للأهداف" style={{display:'flex',flexWrap:'wrap',gap:8,padding:'10px 16px',background:'#102333',color:'#d2e6ee',fontSize:13}}>
             <strong>مسار {conditionalRouteSide==='BUY'?'الصعود':'الهبوط'} المشروط:</strong>
             {routeMotion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET').map(p=><span key={p.key} style={{border:'1px solid #3b5e71',borderRadius:6,padding:'5px 9px'}}>{p.label} · {fmt(p.price)}</span>)}
-            {conditionalRouteGoals.map(t=><span key={t.stage} style={{border:'1px solid #376e61',borderRadius:6,padding:'5px 9px'}}>TP{t.stage} · {fmt(t.price)} · {targetRoute!.touches.some(h=>h.stage===t.stage)?'وصل إليه الرسم الشرطي':'امتداد يتجاوز المسار المعروض'}</span>)}
+            {conditionalRouteGoals.map(t=><span key={t.stage} style={{border:'1px solid #376e61',borderRadius:6,padding:'5px 9px'}}>TP{t.stage} · {fmt(t.price)} · {targetRoute!.touches.some(h=>h.stage===t.stage)?'وصله رسم المسار فقط':'بعيد عن الشموع المعروضة'}</span>)}
             <small style={{width:'100%'}}>أهداف مراقبة مشروطة وليست أمر دخول. كل انتقال يتطلب استمرار الاتجاه وصلاحية المستويات؛ الأشكال والتصحيحات توضيحية ولا تحدد احتمال الوصول.</small>
           </div>}
           <div className="forecast-visual-chart-scroll" style={scenarioDetail?{display:'block',overflowX:'auto',direction:'ltr'}:undefined}>
