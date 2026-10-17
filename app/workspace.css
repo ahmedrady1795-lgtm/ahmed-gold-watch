@@ -1396,3 +1396,70 @@ body:has(.modern-workspace.compact-sniper){
  .btc-forward-observation span{font-size:10px}
  .btc-forward-observation small{font-size:9px}
 }
+
+/* Executed BTC tape: profile and Footprint only, never simulated contract data. */
+.btc-orderflow{margin:9px 4px 12px;padding:12px;border:1px solid #305b69;
+ border-radius:12px;background:linear-gradient(130deg,#102b39,#0b1827);
+ color:#d6e8f1;direction:rtl;box-shadow:0 5px 18px rgba(0,0,0,.12)}
+.btc-orderflow-head{display:flex;align-items:center;gap:12px;justify-content:space-between;
+ flex-wrap:wrap;padding-bottom:9px;border-bottom:1px solid #305261}
+.btc-orderflow-head>div{display:flex;flex-direction:column;gap:3px}
+.btc-orderflow-head strong{font-size:14px;color:#dbf7fd;letter-spacing:.8px}
+.btc-orderflow-head small{font-size:10px;color:#a6c9d5}
+.btc-orderflow-state{font-size:10px;font-weight:700;border-radius:20px;padding:5px 10px}
+.btc-flow-live{color:#80f5c7;background:#133f39;border:1px solid #2a7a60}
+.btc-flow-wait{color:#f8cda6;background:#352e2b;border:1px solid #65504b}
+.btc-orderflow-unavailable{font-size:12px;color:#ddc8a8;line-height:1.7;margin:12px 0}
+.btc-flow-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin:10px 0}
+.btc-flow-stats>div{padding:7px 8px;border:1px solid #325369;border-radius:7px;
+ display:flex;flex-direction:column;gap:4px;min-width:0;background:#102b3a}
+.btc-flow-stats small{font-size:10px;color:#a6c5d8}
+.btc-flow-stats b{font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.btc-flow-stats .btc-flow-positive b{color:#72e5ae}
+.btc-flow-stats .btc-flow-negative b{color:#ff9ea9}
+.btc-flow-reading{margin:8px 0 10px;color:#bfe4e9;font-size:11px;line-height:1.5}
+.btc-orderflow-grid{display:grid;grid-template-columns:minmax(235px,.72fr) minmax(0,1.28fr);gap:12px}
+.btc-vp-pane,.btc-footprint-pane{min-width:0;border:1px solid #2b4b5b;
+ border-radius:8px;padding:8px;background:#0b202f}
+.btc-flow-panel-title{display:flex;justify-content:space-between;gap:8px;
+ align-items:center;font-weight:700;font-size:12px;padding:0 0 8px;color:#d9f4fc}
+.btc-flow-panel-title small{font-size:10px;font-weight:400;color:#acc5d0}
+.btc-vp-levels{max-height:300px;overflow:auto;direction:ltr}
+.btc-vp-row{display:grid;grid-template-columns:88px minmax(50px,1fr) 70px;
+ gap:6px;align-items:center;padding:3px 5px;font-size:10px;color:#bbd2df;
+ font-variant-numeric:tabular-nums;border-bottom:1px solid #203b4c}
+.btc-vp-row b{font-size:10px;font-weight:500;text-align:right}
+.btc-vp-row.btc-vp-poc{background:rgba(246,192,103,.12);color:#f7d8a0;border-left:3px solid #f4c778}
+.btc-vp-meter{display:flex;height:9px;background:#112c3b;overflow:hidden;border-radius:2px}
+.btc-vp-meter i{display:block;height:9px;min-width:0}
+.btc-vp-buy{background:#3bccad}.btc-vp-sell{background:#e37e98}
+.btc-footprint-minutes{display:flex;gap:8px;overflow-x:auto;scrollbar-width:thin;direction:rtl}
+.btc-footprint-minute{flex:1 0 210px;min-width:210px;max-width:300px}
+.btc-footprint-minute-head{display:flex;justify-content:space-between;gap:7px;
+ font-size:11px;padding:4px 5px;background:#173345;border-radius:5px}
+.btc-footprint-minute-head small{font-size:9px;color:#b4d4e2}
+.btc-footprint-minute table{width:100%;border-collapse:collapse;direction:ltr;
+ font-size:10px;font-variant-numeric:tabular-nums}
+.btc-footprint-minute th{color:#9ec3d2;font-weight:600;padding:4px 3px;font-size:9px}
+.btc-footprint-minute td{text-align:center;border-top:1px solid #244354;padding:5px 3px}
+.btc-footprint-minute td:nth-child(2){font-weight:700;color:#dbedf5}
+.btc-footprint-buy{color:#6be4bd}.btc-footprint-sell{color:#f29bab}
+.btc-footprint-buy .btc-footprint-buy{background:rgba(37,134,102,.17)}
+.btc-footprint-minute tr.btc-footprint-buy td:nth-child(3){background:rgba(57,192,140,.16)}
+.btc-footprint-minute tr.btc-footprint-sell td:first-child{background:rgba(226,96,125,.16)}
+.btc-flow-provenance{font-size:10px;line-height:1.75;color:#98b9cd;margin:10px 2px 0}
+.gold-orderflow-note{font-size:11px;margin:7px 4px;color:#a9c6d8;border:1px solid #345363;
+ border-radius:8px;padding:7px 12px;direction:rtl}
+.gold-orderflow-note summary{cursor:pointer}
+.gold-orderflow-note p{line-height:1.8}
+@media(max-width:820px){
+ .btc-orderflow{padding:8px;margin:7px 0 10px}
+ .btc-flow-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+ .btc-flow-stats>div{padding:6px}
+ .btc-flow-stats small{font-size:9px}
+ .btc-flow-stats b{font-size:11px}
+ .btc-orderflow-grid{grid-template-columns:minmax(0,1fr)}
+ .btc-vp-levels{max-height:200px}
+ .btc-footprint-minute{flex:0 0 210px}
+ .btc-flow-panel-title{font-size:11px}
+}
