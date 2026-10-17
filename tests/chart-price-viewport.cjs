@@ -1,11 +1,11 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
-const module={exports:{}};
+const mod={exports:{}};
 vm.runInNewContext(ts.transpileModule(
  fs.readFileSync('lib/chart-price-viewport.ts','utf8'),
  {compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}
-).outputText,{module,exports:module.exports,require});
-const viewport=module.exports.chartPriceViewport;
+).outputText,{module:mod,exports:mod.exports,require});
+const viewport=mod.exports.chartPriceViewport;
 const history=Array.from({length:24},(_,i)=>{
  const center=81475+Math.sin(i*.66)*14+(i-12)*.28;
  return {low:center-2.4,high:center+3.1};
