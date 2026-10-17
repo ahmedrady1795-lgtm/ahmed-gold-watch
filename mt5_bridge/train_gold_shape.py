@@ -45,7 +45,7 @@ def valid_rows(folder, manifest):
                 last_time=t
                 vals=[float(d[k]) for k in FIELDS[1:]]
                 o,h,l,c=vals
-                if t%60000==0: raise ValueError("Expected MT5 time in SECONDS, not milliseconds")
+                if not (1000000000 <= t < 10000000000): raise ValueError("Expected MT5 time in Unix SECONDS")
                 if t%60 or not all(math.isfinite(x) for x in vals) or l<=0 or l>min(o,c) or h<max(o,c):
                     raise ValueError(f"Invalid OHLC at {t}")
                 yield (t,o,h,l,c)
@@ -178,6 +178,7 @@ def main():
     p=argparse.ArgumentParser()
     p.add_argument("--input",default="local-data/gold-history")
     p.add_argument("--output",default="local-data/gold-shape-result.json")
+    p.add_argument("--activate",action="store_true",help="Copy ONLY verified qualified aggregates to public model path")
     a=p.parse_args()
     result=build(Path(a.input))
     target=Path(a.output);target.parent.mkdir(parents=True,exist_ok=True)
@@ -185,6 +186,14 @@ def main():
     print("Training complete:",result["status"],"gold-only outcome groups:",
           result["training"]["qualifiedBuckets"],"of",result["training"]["scoredBuckets"])
     print("Output:",target.resolve())
+    if a.activate:
+        if result["status"]!="QUALIFIED":
+            raise SystemExit("Activation refused: independent holdout did not qualify a GOLD pattern")
+        live=Path("public/models/gold-shape-model.json")
+        live.parent.mkdir(parents=True,exist_ok=True)
+        live.write_text(target.read_text(encoding="utf-8"),encoding="utf-8")
+        print("Qualified public MODEL PARAMETERS installed at",live,
+              "- commit and redeploy manually. Raw archive stays local.")
     print("No model can trade until separately certified and deployed.")
 
 
