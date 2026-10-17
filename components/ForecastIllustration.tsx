@@ -29,7 +29,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
   const [focusCandles,setFocusCandles]=useState(false);
   const [showAlternatives,setShowAlternatives]=useState(false);
-  const [showGhost,setShowGhost]=useState(false);
+  const [showGhost,setShowGhost]=useState(true);
   const [mobile,setMobile]=useState(false);
   const [expanded,setExpanded]=useState(false);
   const [chartWindow,setChartWindow]=useState<60|240>(60);
@@ -93,7 +93,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     targets:m.displayTargets,breakout,
     now,m5:x?.chartHigherFrames?.m5,zones:chartBands,
     preMove:x?.preMovePressure,liquidity:overlay,invalidation:m.displayStop});
-  // Optional illustrative M1-only forecast, completely independent from
+  // Visible by default, evidence-gated M1-only forecast, independent from
   // trade execution, AI qualification and the server's stored target prices.
   const goldShadow=asset==='GOLD'?predictGoldTrainedShadow({
     candles:m.candles,now,price:m.price,source:String(x?.candleSource||''),
@@ -490,17 +490,20 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </path>}
                 {ghost.candles.map((c,i)=>{
                   const gx=ghostXs[i],up=c.close>=c.open;
-                  const color=up?'#68e6ca':'#f2a0b0',top=Math.min(px(c.open),px(c.close)),
+                  const color=up?'#40e69b':'#ff6b81',top=Math.min(px(c.open),px(c.close)),
                     bottom=Math.max(px(c.open),px(c.close));
-                  return <g key={c.time} opacity=".68">
+                  return <g key={c.time} opacity=".9">
                     <line x1={gx} x2={gx} y1={px(c.high)} y2={px(c.low)}
                       stroke={color} strokeWidth="2" strokeDasharray="3 3"/>
                     <rect x={gx-(mobile?5:7)} y={top} width={mobile?10:14}
                       height={Math.max(2.4,bottom-top)} rx="2"
-                      fill={color} fillOpacity=".36" stroke={color} strokeWidth="1.5" strokeDasharray="3 2"/>
+                      fill={color} fillOpacity=".55" stroke={color} strokeWidth="1.5" strokeDasharray="3 2"/>
                     <text x={gx} y={clamp(px(c.high)-11,yt+30,yb-13)}
-                      textAnchor="middle" fill="#b8c9e5" fontSize={mobile?14:11}>G{c.step}</text>
+                      textAnchor="middle" fill={color} fontSize={mobile?14:11}>{up?'↑':'↓'} {c.step}</text>
+                    <text x={gx} y={yb-7} textAnchor="middle" fill="#b8c9e5"
+                      fontSize={mobile?12:11}>{clock(c.time)}</text>
                     <title>{'شمعة M1 افتراضية رقم '+c.step+
+                      ' · '+clock(c.time)+' · '+(up?'صعود تقديري':'هبوط تقديري')+
                       ' · O '+fmt(c.open)+' H '+fmt(c.high)+' L '+fmt(c.low)+' C '+fmt(c.close)+
                       ' · ليست حركة سوق حقيقية ولا تنبؤًا معايرًا'}</title>
                   </g>;
@@ -536,7 +539,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <title>{label.label+' · المستوى الأصلي '+fmt(label.price)}</title>
                 </g>;
               })}
-              {projectedPath&&<g className="forecast-motion-path" clipPath={'url(#forecast-plot-'+asset+')'}>
+              {projectedPath&&!ghostVisible&&<g className="forecast-motion-path" clipPath={'url(#forecast-plot-'+asset+')'}>
                 <path d={projectedPath} stroke="#071823" strokeWidth="8" fill="none" opacity=".7"/>
                 <path d={projectedPath} stroke={motionColor} strokeWidth="3"
                   strokeDasharray="8 7" fill="none" markerEnd={'url(#forecast-arrow-'+asset+')'}/>

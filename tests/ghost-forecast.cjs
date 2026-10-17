@@ -53,6 +53,18 @@ const sold=build(sellBase);
 assert.equal(sold.ready,true,'symmetric SELL forecast must pass');
 assert.ok(sold.candles[0].close<sold.candles[0].open);
 assert.equal(build({...sellBase,side:'BUY'}).ready,false);
+// Mirroring the same history must mirror every projected OHLC, without
+// clipping bearish bodies more aggressively than bullish ones.
+const mirror=250;
+const reflected=rows.map(c=>({...c,open:mirror-c.open,close:mirror-c.close,
+  high:mirror-c.low,low:mirror-c.high}));
+const mirrored=build({...base,candles:reflected,side:'SELL',price:mirror-base.price});
+assert.equal(mirrored.mode,'CANDLES');
+out.candles.forEach((c,i)=>{
+  const r=mirrored.candles[i];
+  for(const [left,right] of [['open','open'],['close','close'],['high','low'],['low','high']])
+    assert.ok(Math.abs(c[left]+r[right]-mirror)<1e-8,'BUY/SELL geometry must be symmetric');
+});
 const flat=sequence(165,0);
 assert.equal(build({...base,candles:flat,price:100}).ready,false,'flat context never earns imaginary directional candles');
 assert.equal(build({...base,candles:flat,price:100}).mode,'RANGE','neutral price action permits a symmetric band');
@@ -94,4 +106,4 @@ assert.match(ui,/buildGhostForecast\(\{candles:m\.candles,now,/);
 assert.match(ui,/ghostActive\?ghost\.range\.flatMap/,'shared historical price scale expands for volatility band');
 assert.match(ui,/نطاق تذبذب M1 · لا توقع اتجاه/);
 assert.match(ui,/ليست نموذج ML معتمدًا/);
-console.log('PASS: causal BUY/SELL experimental M1 ghost candles, OHLC invariant, uncertainty, stale/gap guards, walk-forward origin isolation and default opt-in');
+console.log('PASS: symmetric causal BUY/SELL candles, OHLC, uncertainty, stale/gap guards and walk-forward isolation');

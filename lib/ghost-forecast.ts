@@ -97,10 +97,10 @@ function predict(rows:Bar[],side:GhostSide,now:number,price:number|null,priceGat
     const pastBody=candleBodies[recent.length-1-(i*3)%recent.length];
     const signed=clamp(sign*drift*(i===1?.73:i===2?1.08:.9)+
       Math.sign(pastBody)*Math.min(Math.abs(pastBody),bodyNoise)*.22,
-      -a*.18,a*.30);
+      -a*.30,a*.30);
     const open=prev,close=open+signed;
-    const high=Math.max(open,close)+up*(i%2?.85:1.08);
-    const low=Math.min(open,close)-down*(i%2?1.09:.91);
+    const high=Math.max(open,close)+up;
+    const low=Math.min(open,close)-down;
     // Not a confidence interval: the envelope is a widening, uncalibrated
     // volatility marker and must never be presented as a 90%/95% band.
     const spread=a*.85*Math.sqrt(i+1);
