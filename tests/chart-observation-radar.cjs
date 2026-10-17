@@ -7,7 +7,7 @@ const {assessChartObservation:radar,observedStructuralTargets:targets}=module_.e
 const now=Date.parse('2026-10-17T12:00:00.000Z');
 function history(n,ms,fall=true){
  return Array.from({length:n},(_,i)=>{
-  const base=1000+(fall?-1:1)*i*.44;
+  const base=1000+(fall?-1:1)*i*.9;
   return {time:now-(n-i)*ms,open:base,high:base+2.2+(i%5)*.21,
    low:base-2.3-(i%4)*.12,close:base+(fall?-.35:.35)};
  });
