@@ -7,6 +7,8 @@ export type MoveEnvelope={
   allSamples:number;conditioning:'MATCHED_3_BAR_TREND'|'UNCONDITIONAL';
   walkForward:{tested:number;nominalCoveragePct:50;intervalCoveragePct:number|null;
     directionN:number;directionalAccuracyPct:number|null;
+    directionalLower95Pct:number|null;baselineDirectionalAccuracyPct:number|null;
+    directionalLiftPct:number|null;
     rangeQuality:'COLLECTING'|'IN_RANGE'|'MIS_CALIBRATED';
     directionQuality:'COLLECTING'|'OBSERVED_EDGE'|'NO_DEMONSTRATED_EDGE'};
   endpointP25:number|null;endpointMedian:number|null;endpointP75:number|null;
@@ -39,7 +41,8 @@ export function observedMoveEnvelope(
     samples:0,requiredSamples,latestClosedAt:null,
     allSamples:0,conditioning:'UNCONDITIONAL',
     walkForward:{tested:0,nominalCoveragePct:50,intervalCoveragePct:null,
-      directionN:0,directionalAccuracyPct:null,rangeQuality:'COLLECTING',
+      directionN:0,directionalAccuracyPct:null,directionalLower95Pct:null,
+      baselineDirectionalAccuracyPct:null,directionalLiftPct:null,rangeQuality:'COLLECTING',
       directionQuality:'COLLECTING'},
     endpointP25:null,endpointMedian:null,endpointP75:null,
     upsideP55:null,upsideP75:null,downsideP55:null,downsideP75:null,
@@ -50,6 +53,13 @@ export function observedMoveEnvelope(
   const closed=bars.filter(c=>valid(c)&&c.time+barMs<=now&&c.time>=0).slice(-450);
   const last=closed.at(-1);
   if(!last)return base;
+  // The latest three-bar conditioning trend is only meaningful when ALL
+  // bars in its lookback window are adjacent completed real OHLC candles.
+  const tail=closed.slice(-Math.max(4,k+1));
+  if(tail.length<Math.max(4,k+1)||tail.some((b,i)=>i>0&&
+    b.time-tail[i-1].time!==barMs)){
+    base.status='STALE_CANDLES';return base;
+  }
   base.latestClosedAt=last.time+barMs;
   // A stale history cannot justify a CURRENT estimated destination.
   if(now-base.latestClosedAt>Math.max(120000,barMs*2)){
@@ -60,12 +70,11 @@ export function observedMoveEnvelope(
   for(let i=closed.length-k-1;i>=3;i-=k){
     const anchor=closed[i],path=closed.slice(i+1,i+k+1);
     if(path.length!==k)continue;
-    let previous=anchor.time,continuous=true;
-    for(const c of path){
-      if(c.time!==previous+barMs){continuous=false;break;}
-      previous=c.time;
-    }
-    if(!continuous)continue;
+    // No historical context can leap a missing M1/M5 bar. Otherwise the
+    // pattern matcher implicitly attributes a discontinuous jump to a trend.
+    const context=closed.slice(i-3,i+k+1);
+    if(context.length!==k+4||context.some((b,j)=>j>0&&
+       b.time-context[j-1].time!==barMs))continue;
     const high=Math.max(...path.map(c=>c.high)),low=Math.min(...path.map(c=>c.low));
     all.push({
       delta:path.at(-1)!.close-anchor.close,
@@ -82,7 +91,7 @@ export function observedMoveEnvelope(
   // affect an earlier test fold. This audits the price-envelope baseline,
   // not the separate AI direction model or a broker trading strategy.
   const chronological=[...all].reverse();
-  let tested=0,inBand=0,directionN=0,directionHits=0;
+  let tested=0,inBand=0,directionN=0,directionHits=0,baselineHits=0;
   for(let j=Math.max(30,Math.floor(chronological.length*.70));j<chronological.length;j++){
     const prior=chronological.slice(0,j),actual=chronological[j];
     const matchedPrior=actual.trend===0?[]:prior.filter(x=>x.trend===actual.trend);
@@ -92,22 +101,41 @@ export function observedMoveEnvelope(
     const lower=quantile(returns,.25)!,upper=quantile(returns,.75)!;
     const mid=quantile(returns,.5)!;
     tested++;if(actual.delta>=lower-1e-8&&actual.delta<=upper+1e-8)inBand++;
-    if(Math.abs(mid)>1e-8&&Math.abs(actual.delta)>1e-8){
-      directionN++;if(Math.sign(mid)===Math.sign(actual.delta))directionHits++;
+    // Compare with the *observable at that moment* last-three-bar trend
+    // on exactly the same disjoint OOS decisions. Counting different dates
+    // for model/baseline would manufacture an apparent improvement.
+    if(Math.abs(mid)>1e-8&&Math.abs(actual.delta)>1e-8&&actual.trend!==0){
+      directionN++;
+      if(Math.sign(mid)===Math.sign(actual.delta))directionHits++;
+      if(actual.trend===Math.sign(actual.delta))baselineHits++;
     }
   }
   const realizedCoverage=tested?inBand/tested*100:null;
   const directionAccuracy=directionN?directionHits/directionN*100:null;
-  // This is a MONITORING gate, not statistical proof. Require enough held-out
-  // observations before declaring a range plausible; no model direction is
-  // promoted unless a clear (>=55%) empirical directional edge exists.
+  const baselineAccuracy=directionN?baselineHits/directionN*100:null;
+  const directionalLift=directionAccuracy!=null&&baselineAccuracy!=null?
+    directionAccuracy-baselineAccuracy:null;
+  // One-sided success from 25 trials can be pure sampling luck. Use the
+  // conservative two-sided Wilson 95% lower bound and a PAIRED trend baseline.
+  const p=directionN?directionHits/directionN:0,z=1.96;
+  const denom=1+z*z/Math.max(directionN,1);
+  const lower95=directionN?
+    100*(p+z*z/(2*directionN)-z*Math.sqrt(p*(1-p)/directionN+
+      z*z/(4*directionN*directionN)))/denom:null;
+  // Range coverage is descriptive; neither an interval nor a high hit-rate
+  // authorizes entries, predicted profit or AI model certification.
   const rangeQuality=tested<25?'COLLECTING':
     realizedCoverage!=null&&realizedCoverage>=35&&realizedCoverage<=65?'IN_RANGE':'MIS_CALIBRATED';
-  const directionQuality=directionN<25?'COLLECTING':
-    directionAccuracy!=null&&directionAccuracy>=55?'OBSERVED_EDGE':'NO_DEMONSTRATED_EDGE';
+  const directionQuality=directionN<40?'COLLECTING':
+    directionAccuracy!=null&&directionAccuracy>=58&&
+    lower95!=null&&lower95>50&&directionalLift!=null&&directionalLift>=3?
+      'OBSERVED_EDGE':'NO_DEMONSTRATED_EDGE';
   base.walkForward={tested,nominalCoveragePct:50,
     intervalCoveragePct:realizedCoverage==null?null:round(realizedCoverage),
     directionN,directionalAccuracyPct:directionAccuracy==null?null:round(directionAccuracy),
+    directionalLower95Pct:lower95==null?null:round(lower95),
+    baselineDirectionalAccuracyPct:baselineAccuracy==null?null:round(baselineAccuracy),
+    directionalLiftPct:directionalLift==null?null:round(directionalLift),
     rangeQuality,directionQuality};
   const matched=latestTrend===0?[]:all.filter(x=>x.trend===latestTrend);
   const selected=matched.length>=requiredSamples?matched:all;
