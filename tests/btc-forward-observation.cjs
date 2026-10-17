@@ -52,6 +52,6 @@ assert.match(server,/horizonBrains:movement\?\.horizons/,'model publishes techni
 assert.match(server,/forecastConflictPath:hunt\?\.zoneForecast/,'model exposes opposing route');
 assert.match(chart,/assessBtcForwardObservation\(/,'market chart consumes independent analysis');
 assert.match(chart,/btcOutlook\.horizonSummary/,'technical M1 and M5 visibility');
-assert.match(chart,/stateLabel=feedProblem\?\?\(btcOutlook/,'technical analysis precedes generic WAIT');
+assert.match(chart,/stateLabel=feedProblem\?\?\(btcScenarioShown/,'technical analysis precedes generic WAIT');
 assert.match(chart,/\bstatusReady=m\.ready&&auditHealthy/,'qualified signal gate untouched');
 console.log('PASS: visible BTC M1/M5 technical outlook, old path conflict, OOS veto, stale safeguards, no trades');
