@@ -63,7 +63,7 @@ gap[gap.length-8].time+=5000;
 assert.equal(build({...common,history:gap,targets:[{stage:1,price:quote+1}]}).ready,false);
 const chart=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 assert.match(chart,/buildConditionalTargetCandles\(/,'route is integrated into SVG');
-assert.match(chart,/futureWidth=Math\.min\(candleWidth/,'scenario body cannot be wider than real candles');
+assert.match(chart,/futureWidth=candleWidth/,'scenario and historical candles have exactly the same rendered width');
 assert.match(chart,/visibleCount:candles\.length/,
  'dynamic candle sizing uses the actual 24/36 displayed real candle reference');
 assert.match(chart,/targetRoute!\.touches\.map/,'show TP stage near the real price actually reached by route');
@@ -72,3 +72,27 @@ assert.match(chart,/routeVisible\?'S'/,'route is marked as stages, not 18 invent
 assert.match(chart,/!routeVisible&&btcScenario!\.destinationMid/,'do not overlap giant legacy direction arrow and conditional OHLC');
 assert.match(chart,/المراحل ليست دقائق/);
 console.log('PASS: target-following up/down realistic OHLC bounded by real body/range, TP stages and far-target honesty');
+
+const routePoints=[{key:'BREAK',label:'break',price:quote+.8},
+ {key:'HOLD',label:'hold',price:quote+1.5},
+ {key:'RETEST',label:'retest',price:quote+.6}];
+const detailed=build({...common,count:96,waypoints:routePoints,
+ targets:[{stage:1,price:quote+3},{stage:2,price:quote+8},{stage:3,price:quote+12}],invalidation:quote-5});
+assert.equal(detailed.ready,true,detailed.reason);
+assert.equal(detailed.bars.length,96);
+assert.deepEqual(Array.from(detailed.milestones,m=>m.key),['BREAK','HOLD','RETEST']);
+for(const point of detailed.milestones)assert.ok(Math.abs(detailed.bars[point.index].close-point.price)<1e-8);
+assert.ok(detailed.milestones[2].index>detailed.milestones[1].index);
+assert.ok(detailed.bars.slice(detailed.milestones[1].index+1,detailed.milestones[2].index+1).some(b=>b.close<b.open));
+assert.deepEqual(Array.from(detailed.touches,t=>t.stage),[1,2,3]);
+assert.ok(detailed.touches[0].index>detailed.milestones[2].index,'targets follow the structural retest');
+assert.ok(detailed.bars.every(b=>Math.abs(b.close-b.open)<=refBody+1e-8&&b.high-b.low<=refRange+1e-8),'long routes must not enlarge OHLC');
+const shortRoute=build({...common,waypoints:routePoints,targets:[{stage:1,price:quote+3},{stage:2,price:quote+8},{stage:3,price:quote+12}],invalidation:quote-5});
+assert.equal(JSON.stringify(shortRoute.bars),JSON.stringify(detailed.bars.slice(0,18)),'expanded drawing preserves its initial path when the view expands');
+for(const price of [NaN,quote-6,quote+20])assert.equal(build({...common,waypoints:[{key:'BAD',label:'bad',price}],targets:[{stage:1,price:quote+12}],invalidation:quote-5}).ready,false);
+const downward=build({...common,count:96,history:reflected,quote:3000-quote,side:'SELL',
+ waypoints:routePoints.map(w=>({...w,price:3000-w.price})),targets:[{stage:1,price:3000-quote-12}],invalidation:3000-quote+5});
+assert.equal(downward.ready,true,downward.reason);
+assert.equal(downward.milestones.length,3);
+assert.equal(downward.touches[0].stage,1);
+console.log('PASS: 96-step structure-aware BUY/SELL routes reach exact break/retest/TP prices without enlarging candles');

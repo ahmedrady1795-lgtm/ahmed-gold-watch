@@ -9,8 +9,10 @@ export type RouteBar={
   step:number;open:number;high:number;low:number;close:number;
 };
 export type RouteTouch={stage:number;index:number;price:number};
+export type RouteMilestone={key:string;label:string;price:number;index:number};
 export type TargetRoute={
   ready:boolean;bars:RouteBar[];touches:RouteTouch[];pendingStages:number[];
+  milestones:RouteMilestone[];
   atr:number|null;maxBody:number|null;reason:string;
 };
 type Bar={time:number;open:number;high:number;low:number;close:number};
@@ -24,12 +26,13 @@ const okay=(b:Bar)=>b&&[b.time,b.open,b.high,b.low,b.close].every(Number.isFinit
   b.time>0&&b.time%60000===0&&b.open>0&&b.low>0&&
   b.high>=Math.max(b.open,b.close)&&b.low<=Math.min(b.open,b.close);
 const empty=(reason:string):TargetRoute=>({
- ready:false,bars:[],touches:[],pendingStages:[],atr:null,maxBody:null,reason
+ ready:false,bars:[],touches:[],pendingStages:[],milestones:[],atr:null,maxBody:null,reason
 });
 export function buildConditionalTargetCandles(input:{
  history:Bar[];now:number;quote:number|null;priceFresh:boolean;
  side:RouteSide;targets:Goal[];invalidation?:number|null;count?:number;
  visibleCount?:number;
+ waypoints?:Array<{key:string;label:string;price:number}>;
 }):TargetRoute{
  const {now,quote,side}=input,sign=side==='BUY'?1:-1;
  if(!input.priceFresh||quote==null||!Number.isFinite(quote)||quote<=0||
@@ -66,7 +69,14 @@ export function buildConditionalTargetCandles(input:{
  if(invalid!=null&&(!Number.isFinite(invalid)||invalid<=0||
    sign*(quote-invalid)<=0))
    return empty('حد الإبطال لم يعد صالحًا أمام السعر الحي');
- const count=Math.min(18,Math.max(3,Math.floor(input.count??18)));
+ const count=Number.isFinite(input.count)?Math.min(96,Math.max(3,Math.floor(input.count!))):18;
+ const waypoints=input.waypoints??[];
+ if(waypoints.length>8||waypoints.some(w=>!Number.isFinite(w.price)||w.price<=0||
+   sign*(goals[0].price-w.price)<=0||
+   (invalid!=null&&sign*(w.price-invalid)<=0)))
+   return empty('مراحل الكسر أو الاختبار خارج حدود السيناريو');
+ const milestones:RouteMilestone[]=[];
+ let waypointIndex=0;
  // The stride is calibrated to HISTORIC BODY SIZE, not distance to TP.
  // Even an ambitious model cannot drag a single OHLC body to a far target.
  const maxBody=Math.min(bodyCap*.90,atr*.78);
@@ -81,11 +91,18 @@ export function buildConditionalTargetCandles(input:{
    // hesitation; they are patterns of a conditional drawing, not market data.
    const retrace=i%6===4;
    const stepBody=retrace?-maxBody*(.13+ratio*.17):drift;
-   const next=goals[goalIndex];
-   let body=sign*stepBody;
+   // Follow evidence-derived structure BEFORE goals, including downward
+   // retests in BUY routes and upward retests in SELL routes.
+   while(waypointIndex<waypoints.length&&Math.abs(waypoints[waypointIndex].price-prev)<1e-8){
+     milestones.push({...waypoints[waypointIndex++],index:Math.max(0,i-1)});
+   }
+   const waypoint=waypoints[waypointIndex];
+   const next=waypoint??goals[goalIndex];
+   const legSign=next?Math.sign(next.price-prev)||sign:sign;
+   let body=legSign*stepBody;
    if(next){
-     const distance=sign*(next.price-prev);
-     if(distance>0&&sign*body>=distance)body=sign*distance;
+     const distance=Math.abs(next.price-prev);
+     if(legSign*body>=distance)body=legSign*distance;
    }else{
      // Doji/pullback after the last watched objective, no invented TP4.
      body=sign*(i%2===0?-maxBody*.16:maxBody*.12);
@@ -109,13 +126,16 @@ export function buildConditionalTargetCandles(input:{
      return empty('جسم شمعة تخطى مدى الشموع المرجعية');
    out.push({step:i+1,open,high,low,close});
    prev=close;
+   if(waypoint&&Math.abs(prev-waypoint.price)<1e-8){
+     milestones.push({...waypoint,index:i});waypointIndex++;
+   }
    const active=goals[goalIndex];
-   if(active&&sign*(prev-active.price)>=-1e-8){
+   if(!waypoint&&active&&sign*(prev-active.price)>=-1e-8){
      touches.push({stage:active.stage,index:i,price:active.price});
      goalIndex++;
    }
  }
- return {ready:true,bars:out,touches,
+ return {ready:true,bars:out,touches,milestones,
    pendingStages:goals.slice(goalIndex).map(t=>t.stage),atr,maxBody,
    reason:goalIndex===goals.length?
     'شموع مسار سعري مشروط وصلت إلى الأهداف في الرسم فقط · الخطوات ليست دقائق':

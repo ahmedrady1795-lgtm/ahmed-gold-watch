@@ -16,8 +16,8 @@ ensure(/candleWidth=clamp\(stride\*\.73,mobile\?2\.2:3,15\)/,
 ensure(/latest=i===candles\.length-1/,'most recent real OHLC receives separate visual emphasis');
 ensure(/fillOpacity=\{c\.validatedShape\?\.88:routeVisible\?\.52:\.39\}/,
  'uncertified illustrative future candles stay visually translucent');
-ensure(/strokeDasharray=\{c\.validatedShape\?undefined:'4 2'\}/,
- 'illustrative future candle outlines differ from executed history');
+ensure(/strokeDasharray=\{c\.validatedShape\|\|routeVisible\?undefined:'4 2'\}/,
+ 'conditional routes use solid candle outlines; other illustrative previews stay dashed');
 ensure(/forecast-ghost-surface/,'forecast lane has its own background');
 ensure(/<g className="sniper-breakout-explainer"/,'breakout explanation remains on the actual SVG');
 ensure(/<g className="sniper-live-price-arrow"/,'genuine live source quote remains on the SVG');

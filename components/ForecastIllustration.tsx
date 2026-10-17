@@ -42,6 +42,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const [expanded,setExpanded]=useState(false);
   const [chartWindow,setChartWindow]=useState<60|240>(60);
   const [chartFullscreen,setChartFullscreen]=useState(false);
+  const [scenarioDetail,setScenarioDetail]=useState(false);
   const [inspectedTime,setInspectedTime]=useState<number|null>(null);
   const [orderFlow,setOrderFlow]=useState<BtcOrderflow|null>(null);
   useEffect(()=>{
@@ -103,8 +104,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     Number(preMove.sourceAt)>0&&now-Number(preMove.sourceAt)<=180000&&
     m.historyFresh&&m.observationFresh&&sn.view.priceFresh);
   const rise=dir==='BUY',fall=dir==='SELL';
-  const W=mobile?650:1440,H=mobile?(expanded||chartFullscreen?860:760):(expanded||chartFullscreen?920:760),x0=mobile?28:66,
-    x1=mobile?315:895,xf=x1+14,xr=W-(mobile?126:144),yt=40,yb=H-102,volumeEnd=H-49;
+  const historySlots=focusCandles?Math.min(chartWindow,mobile?24:36):chartWindow;
+  const W=scenarioDetail?66+(historySlots+96)*16+176:mobile?650:1440,
+    H=mobile?(expanded||chartFullscreen?860:760):(expanded||chartFullscreen?920:760),x0=scenarioDetail?66:mobile?28:66,
+    x1=scenarioDetail?66+historySlots*16:mobile?315:895,xf=x1+14,
+    xr=W-(scenarioDetail?144:mobile?126:144),yt=40,yb=H-102,volumeEnd=H-49;
   // Chart structure comes from CLOSED M5, independently of AI snapshot age.
   const breakout=buildBreakoutGuide({frames:x?.chartHigherFrames,now,side:dir,
     price:m.price,sourceReady:sn.view.priceFresh,
@@ -219,6 +223,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     buildConditionalTargetCandles({
       history:m.candles,now,quote:m.price,priceFresh:sn.view.priceFresh,
       visibleCount:candles.length,
+      count:scenarioDetail?96:18,
+      waypoints:motion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET')
+        .map(p=>({key:p.key,label:p.label,price:p.price})),
       side:conditionalRouteSide,targets:conditionalRouteGoals,
       invalidation:planVisible?m.displayStop:btcScenario?.invalidation
     }):null;
@@ -262,9 +269,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     setInspectedTime(candles[index].time);
   };
   const candleWidth=clamp(stride*.73,mobile?2.2:3,15);
-  const futureStride=(xr-xf-18)/Math.max(1,visualCandles.length);
+  const futureStride=scenarioDetail?stride:(xr-xf-18)/Math.max(1,visualCandles.length);
   // The scenario can be narrower, NEVER wider than an actual chart candle.
-  const futureWidth=Math.min(candleWidth,clamp(futureStride*.72,2,15));
+  const futureWidth=candleWidth;
   const ghostXs=visualCandles.map((_,i)=>xf+9+(i+.5)*futureStride);
   const motionColor=watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4';
   const scenarioKind=motion.some(p=>p.kind==='SWEEP')?'SWEEP_RECLAIM':
@@ -489,6 +496,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <div className="forecast-chart-tools">
               <button type="button" aria-pressed={chartWindow===60} onClick={()=>setChartWindow(60)}>ساعة</button>
               <button type="button" aria-pressed={chartWindow===240} onClick={()=>setChartWindow(240)}>4 ساعات</button>
+              <button type="button" aria-pressed={scenarioDetail} disabled={!routeVisible&&!scenarioDetail}
+                title={routeVisible?'نفس عرض الشموع ومقياس السعر مع مراحل الكسر والاختبار والأهداف':targetRoute?.reason??'يلزم سعر حديث وأهداف صالحة لعرض مسار الأهداف'}
+                onClick={()=>setScenarioDetail(v=>!v)}>{scenarioDetail?'عرض مختصر':'تفصيل مسار الأهداف ↔'}</button>
               <button className="forecast-chart-zoom" type="button" aria-pressed={focusCandles} onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'كل المستويات':'تكبير الشموع'}</button>
               <button type="button" aria-pressed={showGhost} onClick={()=>setShowGhost(v=>!v)} title="شموع M1 افتراضية فقط عندما تؤيدها نتائج زمنية سابقة؛ وإلا نطاق تقلب مرئي دون اتجاه">{showGhost?'إخفاء التقدير':'شموع تقديرية'}</button>
               <button className="forecast-chart-alternative" type="button" aria-pressed={showAlternatives} onClick={()=>setShowAlternatives(v=>!v)} title="مسارات مشروطة إضافية، ليست صفقات">{showAlternatives?'إخفاء البدائل':'بدائل'}</button>
@@ -580,7 +590,16 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
             </div>
           </details>
-          <div className="forecast-visual-chart-scroll">
+          {scenarioDetail&&<p style={{padding:'10px 16px',color:'#bad9e8',margin:0}}>
+            اسحب الرسم أفقيًا لمتابعة المسار · عرض الشمعة ومقياس السعر موحدان · S مراحل افتراضية وليست دقائق
+          </p>}
+          {routeVisible&&<div aria-label="مراحل الوصول المشروط للأهداف" style={{display:'flex',flexWrap:'wrap',gap:8,padding:'10px 16px',background:'#102333',color:'#d2e6ee',fontSize:13}}>
+            <strong>مسار {conditionalRouteSide==='BUY'?'الصعود':'الهبوط'} المشروط:</strong>
+            {motion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET').map(p=><span key={p.key} style={{border:'1px solid #3b5e71',borderRadius:6,padding:'5px 9px'}}>{p.label} · {fmt(p.price)}</span>)}
+            {conditionalRouteGoals.map(t=><span key={t.stage} style={{border:'1px solid #376e61',borderRadius:6,padding:'5px 9px'}}>TP{t.stage} · {fmt(t.price)} · {targetRoute!.touches.some(h=>h.stage===t.stage)?'وصل إليه الرسم الشرطي':'امتداد يتجاوز المسار المعروض'}</span>)}
+            <small style={{width:'100%'}}>كل انتقال يتطلب استمرار الاتجاه وبقاء السعر داخل حد الإبطال؛ الأشكال والتصحيحات توضيحية ولا تحدد احتمال الوصول.</small>
+          </div>}
+          <div className="forecast-visual-chart-scroll" style={scenarioDetail?{display:'block',overflowX:'auto',direction:'ltr'}:undefined}>
             <div dir="rtl" style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:'8px 16px',padding:'12px 16px',background:'#0b1928',borderBottom:'1px solid #284156',color:'#b6cad9',fontSize:13,fontVariantNumeric:'tabular-nums'}}>
               <strong style={{color:'#e3edf5'}}>{inspected?'فحص شمعة':'آخر شمعة'}</strong>
               {detailCandle?<>
@@ -594,6 +613,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <small>المس شمعة أو حرّك المؤشر · استخدم ← → للتنقل</small>
             </div>
             <svg className={'forecast-visual-svg'+(focusCandles?' forecast-visual-svg-zoomed':'')} viewBox={'0 0 '+W+' '+H}
+              style={scenarioDetail?{width:W,minWidth:W,maxWidth:'none',height:H,maxHeight:'none'}:undefined}
               tabIndex={0} onPointerDown={inspectPointer} onPointerMove={inspectPointer}
               onKeyDown={event=>{
                 if(event.key==='Escape'){setInspectedTime(null);return;}
@@ -865,13 +885,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   return <g key={c.time} opacity={c.validatedShape?.96:routeVisible?.97:.89}>
                     <line x1={gx} x2={gx} y1={px(c.high)} y2={px(c.low)}
                       stroke={color} strokeWidth={routeVisible?1.5:1.75}
-                      strokeDasharray={c.validatedShape?undefined:'3 2'}/>
+                      strokeDasharray={c.validatedShape||routeVisible?undefined:'3 2'}/>
                     <rect x={gx-futureWidth/2} y={top} width={futureWidth}
                       height={Math.max(1.8,bottom-top)} rx="1.2"
                       fill={color} fillOpacity={c.validatedShape?.88:routeVisible?.52:.39}
                       stroke={up?'#a2ffe7':'#ffc0cb'} strokeOpacity=".85"
                       strokeWidth={routeVisible?1:1.3}
-                      strokeDasharray={c.validatedShape?undefined:'4 2'}/>
+                      strokeDasharray={c.validatedShape||routeVisible?undefined:'4 2'}/>
                     {c.validatedShape&&<circle cx={gx} cy={px(c.high)-5} r="2" fill={color} />}
                     {(i%4===0||i===visualCandles.length-1)&&<text x={gx} y={yb-7} textAnchor="middle" fill="#b8c9e5"
                       fontSize={mobile?11:10}>{routeVisible?'S'+(i+1):closedPreview?'+'+(i+1):clock(c.time)}</text>}
@@ -896,6 +916,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                     closedPreview?'من أرشيف السوق · عرض توضيحي فقط':
                     ghostVisible?'3 شموع تقديرية + نماذج تاريخية':'شموع توضيحية من نماذج تاريخية'}
                 </text>
+                {routeVisible&&targetRoute!.milestones.map((hit,i)=><g key={'route-step-'+hit.key}>
+                  <line x1={ghostXs[hit.index]} x2={ghostXs[hit.index]} y1={px(hit.price)} y2={yt+120+i*30} stroke="#90c7ef" strokeDasharray="3 4"/>
+                  <circle cx={ghostXs[hit.index]} cy={px(hit.price)} r="4" fill="#90c7ef"/>
+                  <text x={ghostXs[hit.index]} y={yt+115+i*30} textAnchor="middle" fill="#c3e6ff" fontSize="12">{hit.label+' · '+fmt(hit.price)}</text>
+                </g>)}
                 {routeVisible&&targetRoute!.touches.map(hit=><g
                   key={'route-goal-'+hit.stage} className="sniper-route-target-touch">
                   <circle cx={ghostXs[hit.index]} cy={px(hit.price)} r="5.5"
