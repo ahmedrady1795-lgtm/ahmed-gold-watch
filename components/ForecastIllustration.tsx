@@ -445,6 +445,17 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <small>{btcOutlook.reason}</small>
             <small>رصد فني فقط · النموذج التنبؤي غير مثبت · قرار الدخول مستقل</small>
           </div>}
+          <div className="sniper-market-evidence-rail" aria-label="ملخص أدلة السوق">
+            <span className="sniper-evidence-tag"><b>السعر</b><small>{priceFresh?'مباشر':'مؤخر'} · {quoteAgeSec??'—'} ث</small></span>
+            <span className="sniper-evidence-tag"><b>التجميع / التصريف</b><small>{m.fourHour.ready?m.fourHour.phase:'غير مكتمل'}</small></span>
+            <span className="sniper-evidence-tag"><b>الكسر</b><small>{breakoutWatch.closes}/2 M5</small></span>
+            {asset==='BTC'&&<span className="sniper-evidence-tag"><b>تدفق Coinbase</b>
+              <small>{flowFresh&&orderFlow?.flow?'Delta '+fmt(orderFlow.flow.deltaBtc,3)+' BTC':'عينة غير حديثة'}</small>
+            </span>}
+            {asset==='BTC'&&<span className="sniper-evidence-tag"><b>حجم التنفيذ</b>
+              <small>{flowFresh&&orderFlow?.profile?'POC '+fmt(orderFlow.profile.poc):'غير متاح'}</small>
+            </span>}
+          </div>
           <div className={'sniper-playbook sniper-playbook-'+playbook.phase.toLowerCase()}
             aria-label="مراحل رصد اقتناص الإشارة، وليست إشارة دخول">
             <div className="sniper-playbook-heading">
