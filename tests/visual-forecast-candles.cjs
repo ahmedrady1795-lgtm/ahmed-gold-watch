@@ -102,8 +102,8 @@ gapArchive[gapArchive.length-30].time+=60000;
 assert.equal(closedPreview(gapArchive).length,0,
  'weekend archived demo must reject missing source minutes');
 const uiChart=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
-assert.match(uiChart,/downloadActualChartPng/,'an actual client-rendered chart image can be exported');
-assert.match(uiChart,/chartSvgRef/,'export the real DOM SVG, not generated chart artwork');
+assert.doesNotMatch(uiChart,/downloadActualChartPng|chartSvgRef|📷 صورة فعلية/,
+ 'no PNG screenshot controls remain');
 assert.match(uiChart,/معاينة آخر جلسة/,'archived samples must be visibly labeled non-live');
 assert.match(uiChart,/buildClosedSessionCandlePreview\(m\.candles\)/,
  'closed gold must show a real-history preview only');
