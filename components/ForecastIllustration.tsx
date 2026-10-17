@@ -642,7 +642,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           {routeVisible&&<div aria-label="مراحل الوصول المشروط للأهداف" style={{display:'flex',flexWrap:'wrap',gap:8,padding:'10px 16px',background:'#102333',color:'#d2e6ee',fontSize:13}}>
             <strong>مسار {conditionalRouteSide==='BUY'?'الصعود':'الهبوط'} المشروط:</strong>
             {routeMotion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET').map(p=><span key={p.key} style={{border:'1px solid #3b5e71',borderRadius:6,padding:'5px 9px'}}>{p.label} · {fmt(p.price)}</span>)}
-            {conditionalRouteGoals.map(t=><span key={t.stage} style={{border:'1px solid #376e61',borderRadius:6,padding:'5px 9px'}}>TP{t.stage} · {fmt(t.price)} · {targetRoute!.touches.some(h=>h.stage===t.stage)?'وصله رسم المسار فقط':'بعيد عن الشموع المعروضة'}</span>)}
+            {conditionalRouteGoals.map(t=><span key={t.stage} style={{border:'1px solid #376e61',borderRadius:6,padding:'5px 9px'}}>TP{t.stage} · {fmt(t.price)} · {targetRoute!.touches.some(h=>h.stage===t.stage)?'لامسته شموع تاريخية مرجعية':'لم تلمسه الشموع المرجعية'}</span>)}
             <small style={{width:'100%'}}>أهداف مراقبة مشروطة وليست أمر دخول. كل انتقال يتطلب استمرار الاتجاه وصلاحية المستويات؛ الأشكال والتصحيحات توضيحية ولا تحدد احتمال الوصول.</small>
           </div>}
           <div className="forecast-visual-chart-scroll" style={scenarioDetail?{display:'block',overflowX:'auto',direction:'ltr'}:undefined}>
@@ -716,7 +716,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 strokeWidth="2.4" strokeOpacity=".85" strokeDasharray="7 5"/>
               <text x={xf-14} y="18" textAnchor="end" fill="#88bbd3" fontSize={mobile?18:12}>تاريخ فعلي</text>
               <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?14:12}>{closedPreview?'معاينة آخر جلسة · غير حية':goldClosed?'الذهب مغلق':
-    routeVisible?'شموع ثابتة حتى إغلاق M1 · بلا زمن وصول':
+    routeVisible?'شموع تاريخية معاد تموضعها · دون زمن وصول':
     visualCandles.length?'شموع توضيحية · كسر وسيولة':
     watchTargets.length?'TP مراقبة · كسر · سيولة':'مستويات كسر وسيولة'}</text>
               <g clipPath={'url(#forecast-plot-'+asset+')'}>
@@ -936,7 +936,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                       stroke={up?'#a2ffe7':'#ffc0cb'} strokeOpacity=".72" strokeWidth="1"/>
                     {(i%4===0||i===visualCandles.length-1)&&<text x={gx} y={yb-7} textAnchor="middle" fill="#b8c9e5"
                       fontSize={mobile?11:10}>{routeVisible?'S'+(i+1):closedPreview?'+'+(i+1):clock(c.time)}</text>}
-                    <title>{(c.scenarioShape?'شمعة مسار شرطي · مرحلة سعرية دون زمن رقم ':'شمعة M1 افتراضية رقم ')+c.step+
+                    <title>{(c.scenarioShape?'شمعة من نموذج تاريخي · مرحلة توضيحية دون موعد وصول رقم ':'شمعة M1 افتراضية رقم ')+c.step+
                       (closedPreview||c.scenarioShape?' · دون موعد وصول':' · '+clock(c.time))+' · '+(up?'صعود توضيحي':'هبوط توضيحي')+
                       ' · O '+fmt(c.open)+' H '+fmt(c.high)+' L '+fmt(c.low)+' C '+fmt(c.close)+
                       ' · '+(c.validatedShape?'نموذج M1 مفحوص تاريخيًا':'شمعة شكلية توضيحية غير مدعومة باختبار مستقل')+' · ليست سعرا فعليا'}</title>
@@ -953,7 +953,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </g>}
                 <text x={(ghostXs[0]+ghostXs.at(-1)!)/2} y={yt+29} textAnchor="middle"
                   fontSize={mobile?13:12} fontWeight="700" fill="#bdd1ee">
-                  {routeVisible?'شموع M1 مرجعية · أهداف أصلية · مراحل لا دقائق':
+                  {routeVisible?'أنماط شموع M1 تاريخية · الأهداف لا تحرك الشموع':
                     closedPreview?'من أرشيف السوق · عرض توضيحي فقط':
                     ghostVisible?'3 شموع تقديرية + نماذج تاريخية':'شموع توضيحية من نماذج تاريخية'}
                 </text>
@@ -970,7 +970,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                     y={clamp(px(hit.price)-14,yt+20,yb-24)}
                     textAnchor="middle" fill="#ffe3aa" fontWeight="800"
                     fontSize={mobile?12:11}>{'TP'+hit.stage+' · '+fmt(hit.price)}</text>
-                  <title>{'هدف '+hit.stage+': وصول ضمن مسار افتراضي مشروط، دون توقيت أو ضمان · '+fmt(hit.price)}</title>
+                  <title>{'هدف '+hit.stage+': لمسته شمعة المرجع التاريخي في الرسم فقط، وليس وصولًا متوقعًا · '+fmt(hit.price)}</title>
                 </g>)}
               </g>}
               {btcScenarioShown&&!planVisible&&m.price!=null&&<g
