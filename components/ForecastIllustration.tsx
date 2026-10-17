@@ -76,15 +76,24 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const rise=dir==='BUY',fall=dir==='SELL';
   const W=mobile?740:1440,H=mobile?(expanded||chartFullscreen?860:760):(expanded||chartFullscreen?920:760),x0=mobile?28:66,
     x1=mobile?315:895,xf=x1+14,xr=W-(mobile?126:144),yt=40,yb=H-102,volumeEnd=H-49;
-  const breakout=buildBreakoutGuide({frames:x?.chartHigherFrames,now,side:dir,price:m.price,
-    sourceReady:sn.view.priceFresh&&m.observationFresh&&m.historyFresh,invalidation:m.displayStop});
+  // Chart structure comes from CLOSED M5, independently of AI snapshot age.
+  const breakout=buildBreakoutGuide({frames:x?.chartHigherFrames,now,side:dir,
+    price:m.price,sourceReady:sn.view.priceFresh&&m.historyFresh,
+    invalidation:m.displayStop});
   const overlay=buildChartOverlay({now,price:m.price,historyFresh:m.historyFresh,
     priceFresh:sn.view.priceFresh&&m.observationFresh,fourHour:m.fourHour,
     m5:x?.chartHigherFrames?.m5,accumulation:x?.accumulation,targets:planVisible?m.displayTargets:[]});
   // Chart-only state. An observed breakout never bypasses trade safety gates.
+  // H4 liquidity context is optional for this DISPLAY-ONLY closed-M5 watch.
+  // Both pathways use true past candle highs/lows; neither licenses trades.
+  const breakoutEvidence=overlay.ready?overlay:breakout.ready?{
+    ...overlay,ready:true,breakoutUp:breakout.above,
+    breakoutDown:breakout.below,atr:breakout.extension!=null?breakout.extension*4:null
+  }:overlay;
   const breakoutWatch=assessBreakoutWatch({
-    now,price:m.price,priceFresh:sn.view.priceFresh&&m.observationFresh,
-    historyFresh:m.historyFresh,m1:m.candles,m5:x?.chartHigherFrames?.m5,overlay
+    now,price:m.price,priceFresh:sn.view.priceFresh,
+    historyFresh:m.historyFresh,m1:m.candles,m5:x?.chartHigherFrames?.m5,
+    overlay:breakoutEvidence
   });
   // Read-only closed-candle radar and historical objectives. No entries.
   const observationRadar=assessChartObservation({
@@ -207,7 +216,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const offscreenTargets=playbook.targets.filter(t=>px(t.price)<yt+9||px(t.price)>yb-9);
   const nearestOffscreen=offscreenTargets[0]??null;
   const grid=Array.from({length:5},(_,i)=>({y:yt+i*(yb-yt)/4,value:scaleHigh-(scaleHigh-scaleLow)*i/4}));
-  const priceFresh=m.price!=null&&sn.view.priceFresh&&m.observationFresh;
+  // Coinbase quote refresh is independent of inference/AI snapshot freshness.
+  const priceFresh=m.price!=null&&sn.view.priceFresh&&!goldClosed;
+  const quoteAgeSec=sn.view.sourceAgeSeconds;
+  const quoteLabel=priceFresh?(asset==='BTC'?'BTC LIVE':'سعر حي'):
+    goldClosed?'السوق مغلق':'سعر مؤخر';
+  const breakoutUp=breakoutEvidence.ready?breakoutEvidence.breakoutUp:null;
+  const breakoutDown=breakoutEvidence.ready?breakoutEvidence.breakoutDown:null;
+  const quoteArrowY=m.price!=null?px(m.price):null;
   const chartLanes=layoutPriceLanes([
     ...chartBands.map(z=>({key:z.key,y:px(z.price),price:z.price,
       label:z.key.startsWith('WATCH_TP')?'رصد TP'+z.key.replace('WATCH_TP',''):
@@ -215,7 +231,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         z.key===primaryZone?.key?(z.kind==='DEMAND'||z.kind==='BUY_REBOUND'?'طلب ★':'عرض ★'):
         z.kind==='DEMAND'||z.kind==='BUY_REBOUND'?'طلب':'عرض',
       kind:z.kind})),
-    ...(priceFresh?[{key:'MARKET_PRICE',y:px(m.price!),price:m.price!,label:'سعر',kind:'PRICE'}]:[])
+    ...(priceFresh?[{key:'MARKET_PRICE',y:px(m.price!),price:m.price!,
+      label:asset==='BTC'?'LIVE':'سعر حي',kind:'PRICE'}]:[])
   ],yt+20,yb-20,38);
   const stride=(x1-x0)/Math.max(candles.length,1);
   const candleWidth=clamp(stride*.72,mobile?1.6:2,11);
@@ -346,8 +363,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       <div className={'forecast-visual-layout' +(expanded?' forecast-layout-expanded':'')}>
         <div className={'forecast-visual-chart-wrap'+(expanded?' forecast-chart-expanded':'')+(chartFullscreen?' chart-fullscreen':'')}>
           <div className="forecast-visual-topline">
-            <span className="sniper-chart-live-quote"><b dir="ltr">{fmt(m.price)}</b><small>{sn.view.priceFresh?'سعر حديث':'آخر سعر'} · M1 · {candles.length} شمعة</small></span>
-            <span className="sniper-chart-candle-age">{goldClosed?'سوق الذهب مغلق · آخر جلسة محفوظة':ageMin!=null?'آخر إغلاق منذ '+ageMin+' د':'لا توجد بيانات شموع'}</span>
+            <span className="sniper-chart-live-quote"><b dir="ltr">{fmt(m.price)}</b>
+              <small>{quoteLabel} · {quoteAgeSec!=null?quoteAgeSec+' ث':'المصدر غير مؤرخ'}
+                {' · '}M1 · {candles.length} شمعة</small></span>
+            <span className="sniper-chart-candle-age">
+              {goldClosed?'سوق الذهب مغلق · آخر جلسة محفوظة':
+                ageMin!=null?'آخر إغلاق M1 منذ '+ageMin+' د':'لا توجد بيانات شموع'}
+              {' · '}{m.observationFresh?'تحليل AI حديث':'تحليل AI قيد التحديث'}
+            </span>
             {structureView&&<span className={'sniper-structure-chip '+(structureView.side==='BUY'?'structure-up':'structure-down')}
               title="شموع مغلقة: اندفاع + كسر جسم + آخر شمعة معاكسة + فجوة 3 شموع، وليس إثبات أوامر مؤسسات">
               {structureView.side==='BUY'?'↗':'↘'} {structureView.kind==='BOS'?'BOS':'CHoCH؟'} · OB/FVG ·
@@ -469,7 +492,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <text x={x0+8} y={clamp(px(z.high)-8,yt+18,yb-18)} fill={color} fontSize={mobile?14:12}>
                     {z.side==='UPPER'?'سيولة علوية محتملة':'سيولة سفلية محتملة'} · {fmt(z.low)} – {fmt(z.high)}</text>
                 </g>;})}
-                {breakout.ready&&([{side:'BUY',level:breakout.above},{side:'SELL',level:breakout.below}] as const).map(b=>
+                {breakoutEvidence.ready&&([{side:'BUY',level:breakoutUp},{side:'SELL',level:breakoutDown}] as const).map(b=>
                   b.level!=null&&<g key={b.side}>
                     <line x1={xf} x2={xr} y1={px(b.level)} y2={px(b.level)} stroke={b.side==='BUY'?'#67eac1':'#ff92ad'} strokeDasharray="5 5"/>
                     <text x={xf+6} y={clamp(px(b.level)-9,yt+16,yb-12)} fill={b.side==='BUY'?'#67eac1':'#ff92ad'} fontSize={mobile?14:12}>
@@ -547,7 +570,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <title>{clock(c.time)+' · O '+fmt(c.open)+' H '+fmt(c.high)+' L '+fmt(c.low)+' C '+fmt(c.close)}</title>
                 </g>;
               })}
-              {priceFresh&&m.historyFresh&&candles.length>0&&<g className="sniper-actual-to-quote">
+              {priceFresh&&candles.length>0&&<g className="sniper-actual-to-quote">
                 <path d={'M '+(x0+(candles.length-.5)*stride)+' '+px(candles[candles.length-1].close)+
                   ' L '+xf+' '+px(m.price!)}
                   fill="none" stroke="#8ee6f9" strokeWidth="2" strokeDasharray="2 6" strokeOpacity=".9"/>
@@ -627,8 +650,21 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 return <text key={'time'+i} x={x0+(i/3)*(x1-x0)} y={H-13}
                   fill="#8ba6b9" textAnchor={i===0?'start':i===3?'end':'middle'} fontSize="11">{clock(c.time)}</text>;
               })}
-              {priceFresh&&<line x1={x0} x2={xr} y1={px(m.price!)} y2={px(m.price!)}
-                stroke="#5ad6f4" strokeDasharray="3 5" strokeOpacity=".65"/>}
+              {priceFresh&&quoteArrowY!=null&&<g className="sniper-live-price-arrow">
+                <line x1={x0} x2={xr} y1={quoteArrowY} y2={quoteArrowY}
+                  stroke="#5ad6f4" strokeWidth="1.7" strokeDasharray="3 5" strokeOpacity=".88"/>
+                <path d={'M '+(x1+6)+' '+quoteArrowY+' l -13 -9 v 18 z'}
+                  fill="#72ebff" stroke="#0b2030" strokeWidth="1.5"/>
+                <circle cx={x1+8} cy={quoteArrowY} r="4" fill="#72ebff"
+                  stroke="#0b2030" strokeWidth="1.2"/>
+                <text x={x1-15} y={clamp(quoteArrowY-12,yt+13,yb-13)}
+                  textAnchor="end" fill="#b8f5ff" fontSize={mobile?13:11} fontWeight="700">
+                  {asset==='BTC'?'◀ BTC LIVE':'◀ سعر حي'}
+                </text>
+                <title>{'آخر سعر مصدر حقيقي: '+fmt(m.price)+
+                  ' · عمر المصدر '+(quoteAgeSec??'غير معلوم')+
+                  ' ثانية · هذا سهم السعر الحالي وليس توقعًا مستقبليًا'}</title>
+              </g>}
               {ghostActive&&<g className="sniper-ghost-forecast" clipPath={'url(#forecast-plot-'+asset+')'}>
                 {ghostBandPath&&<path d={ghostBandPath} fill="#88b4ef" fillOpacity=".045"
                   stroke="#a3bff7" strokeOpacity=".4" strokeDasharray="3 6" strokeWidth="1">
@@ -681,6 +717,29 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </text>
                 <title>هدف مراقبة بالسعر الحقيقي خارج نطاق التكبير، وليس إعادة رسمه عند سعر افتراضي</title>
               </g>}
+              <g className="sniper-breakout-explainer" aria-label="تفسير الكسر على الشاشة">
+                <rect x={xf+7} y={yb-147} width={xr-xf-14} height="112" rx="9"
+                  fill="#071a2b" fillOpacity=".94"
+                  stroke={breakoutWatch.closes===2?'#60e2b1':'#55768f'} strokeOpacity=".87"/>
+                <text x={xf+17} y={yb-125} fontSize={mobile?12:12}
+                  fontWeight="700" fill={breakoutWatch.closes===2?'#75efbd':'#d6edf9'}>
+                  {'◇ '+breakoutWatch.headline}
+                </text>
+                <text x={xf+17} y={yb-104} fontSize={mobile?11:11} fill="#b7d5e7">
+                  {'↑ كسر صاعد فوق '+fmt(breakoutUp)}
+                </text>
+                <text x={xf+17} y={yb-84} fontSize={mobile?11:11} fill="#b7d5e7">
+                  {'↓ كسر هابط تحت '+fmt(breakoutDown)}
+                </text>
+                <text x={xf+17} y={yb-64} fontSize={mobile?11:11} fill="#c5e4ed">
+                  {breakoutWatch.closes+'/2 إغلاق M5 · الكسر مش معناه دخول'}
+                </text>
+                <text x={xf+17} y={yb-45} fontSize={mobile?10:10} fill="#91b6ca">
+                  {breakoutEvidence.ready?'المستويات من شموع M5 مغلقة':'مستويات M5 تنتظر اكتمال البيانات'}
+                </text>
+                <title>{breakoutWatch.detail+
+                  ' · المستويات من شموع M5 مغلقة · السيولة والتكلفة وإبطال السيناريو شروط مستقلة'}</title>
+              </g>
               {chartLanes.map(label=>{
                 const isPrice=label.kind==='PRICE',isTarget=label.kind==='TARGET',isStop=label.kind==='STOP';
                 const color=isPrice?'#9feaff':isTarget?'#74f0ba':isStop?'#ff9cab':
@@ -726,7 +785,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <title>{'مسار إبطال منفصل · '+fmt(m.displayStop)}</title>
                 </path>}
               </g>}
-              {!planVisible&&!ghostActive&&<g>
+              {!planVisible&&!ghostActive&&!breakoutEvidence.ready&&<g>
                 <rect x={xf+8} y={yb-76} width={xr-xf-16} height="65" rx="9" fill="#0a1520" stroke="#3a5464" strokeOpacity=".8"/>
                 <text x={(xf+xr)/2} y={yb-51} fill="#cedfeb" textAnchor="middle" fontSize="14" fontWeight="700">
                   {m.status==='STALE_CANDLES'?'الشموع متأخرة':m.status==='NO_CANDLES'?'انتظار شموع':breakoutWatch.headline}</text>
