@@ -67,6 +67,9 @@ for(const side of ['BUY','SELL']){
   assert.equal(run(gap).ready,false,'recent candle gap blocks indicators');
   const shock=structuredClone(f);shock.frames.m5.at(-1).high+=10;
   assert.equal(run(shock).regime,'SHOCK');assert.equal(run(shock).eligible,false);
+  const priorShock=structuredClone(f);priorShock.frames.m5.at(-2).high+=10;
+  assert.equal(run(priorShock).regime,'SHOCK','large sweep wick on penultimate closed bar also counts');
+  assert.equal(run(priorShock).eligible,false,'large previous wick must not promote sweep into trade');
   const stale=structuredClone(f);stale.frames.m5=stale.frames.m5.map(b=>({...b,time:b.time-3600000}));
   assert.equal(run(stale).ready,false,'stale closed frames rejected');
 }
