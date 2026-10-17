@@ -3,7 +3,7 @@ const mod={exports:{}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/visual-forecast-candles.ts','utf8'),{
  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
 }).outputText,{module:mod,exports:mod.exports,require},{filename:'lib/visual-forecast-candles.ts'});
-const {buildVisualFuture:build,selectCandleAnalogue:select,rankCandleAnalogues:rank,auditCandleAnalogueDirection:audit}=mod.exports;
+const {buildVisualFuture:build,buildClosedSessionCandlePreview:closedPreview,selectCandleAnalogue:select,rankCandleAnalogues:rank,auditCandleAnalogueDirection:audit}=mod.exports;
 const start=Date.parse('2026-10-16T03:00:00Z');
 let price=100;
 const candles=Array.from({length:220},(_,i)=>{
@@ -88,6 +88,25 @@ assert.equal(audit(candles.slice(0,100),atr).edgeSupported,false,
 const historicalGap=[...candles];historicalGap[32]={...historicalGap[32],time:historicalGap[32].time+60000};
 assert.ok(rank(historicalGap,18,atr).every(x=>x.start>38||x.start+18<32),
  'gapped history may not be used as an analogue');
+const archive=closedPreview(candles);
+assert.equal(archive.length,18,'closed-market chart can show archived OHLC motifs when complete');
+assert.equal(archive[0].open,last.close,'archive starts at genuine last closing price');
+assert.ok(archive.every((x,i)=>x.high>=Math.max(x.open,x.close)&&
+ x.low<=Math.min(x.open,x.close)&&
+ (i===0||x.open===archive[i-1].close)),
+ 'archived candle sketch must remain geometrically valid and continuous');
+assert.equal(closedPreview(candles.slice(0,50)).length,0,
+ 'no archive drawing on inadequate history');
+const gapArchive=candles.map(x=>({...x}));
+gapArchive[gapArchive.length-30].time+=60000;
+assert.equal(closedPreview(gapArchive).length,0,
+ 'weekend archived demo must reject missing source minutes');
+const uiChart=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
+assert.match(uiChart,/downloadActualChartPng/,'an actual client-rendered chart image can be exported');
+assert.match(uiChart,/chartSvgRef/,'export the real DOM SVG, not generated chart artwork');
+assert.match(uiChart,/معاينة آخر جلسة/,'archived samples must be visibly labeled non-live');
+assert.match(uiChart,/buildClosedSessionCandlePreview\(m\.candles\)/,
+ 'closed gold must show a real-history preview only');
 const distant=build({...base,scenarioPath:[{price:last.close},{price:10,key:'TP1'},{price:1,key:'TP3'}],side:'SELL'});
 assert.equal(JSON.stringify(distant),JSON.stringify(model),'far targets never rewrite M1 candle shape');
 assert.equal(build({...base,forecast:{...base.forecast,mode:'OFF'}}).length,0,'stale data must hide simulation');
