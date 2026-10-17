@@ -67,6 +67,7 @@ export function buildConditionalTargetCandles(input:{
  // Even an ambitious model cannot drag a single OHLC body to a far target.
  const maxBody=Math.min(bodyCap*.90,atr*.78);
  const samples=bars.slice(-27);
+ const historicalRangeMax=Math.max(...bars.map(b=>b.high-b.low));
  const out:RouteBar[]=[],touches:RouteTouch[]=[];let prev=quote,goalIndex=0;
  for(let i=0;i<count;i++){
    const sample=samples[(i*7+5)%samples.length];
@@ -91,13 +92,16 @@ export function buildConditionalTargetCandles(input:{
      sample.high-Math.max(sample.open,sample.close)));
    const below=Math.min(downCap,Math.max(atr*.025,
      Math.min(sample.open,sample.close)-sample.low));
-   const high=Math.max(open,close)+above;
-   const low=Math.max(quote*.001,Math.min(open,close)-below);
+   // Match the entire historical high-low range as well as the body size.
+   const wickBudget=Math.max(0,historicalRangeMax-Math.abs(body));
+   const wickScale=Math.min(1,wickBudget/Math.max(above+below,.000001));
+   const high=Math.max(open,close)+above*wickScale;
+   const low=Math.max(quote*.001,Math.min(open,close)-below*wickScale);
    // Invalidation is a scenario boundary, not a license for a candle
    // to cross it on a made-up path.
    if(invalid!=null&&(side==='BUY'?low<=invalid:high>=invalid))
      return empty('شكل الشموع يتداخل مع حد الإبطال؛ توقف المسار');
-   if(Math.abs(body)>bodyCap+1e-9||high-low>Math.max(...bars.map(b=>b.high-b.low))+1e-8)
+   if(Math.abs(body)>bodyCap+1e-9||high-low>historicalRangeMax+1e-8)
      return empty('جسم شمعة تخطى مدى الشموع المرجعية');
    out.push({step:i+1,open,high,low,close});
    prev=close;
