@@ -23,6 +23,7 @@ import {buildSniperChartPlaybook} from '../lib/sniper-chart-playbook';
 import {assessBtcForwardObservation} from '../lib/btc-forward-observation';
 import {assessBtcStructuralScenario} from '../lib/btc-structural-scenario';
 import {buildConditionalTargetCandles} from '../lib/conditional-target-candles';
+import {chartPriceViewport} from '../lib/chart-price-viewport';
 import BtcOrderflowPanel from './BtcOrderflowPanel';
 import type {BtcOrderflow} from '../lib/btc-orderflow';
 
@@ -324,19 +325,17 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     motion.some(p=>p.kind==='RETEST')?'BREAK_RETEST':'DIRECT';
   const scenarioLabel=scenarioKind==='SWEEP_RECLAIM'?'سحب سيولة ثم استرداد':
     scenarioKind==='BREAK_RETEST'?'كسر ثم اختبار وارتداد':'مسار مباشر مشروط';
-  const allBounds=[...candleBounds,...(focusCandles?[]:chartBands.flatMap(z=>[z.low,z.high])),...(focusCandles?[]:motion.map(p=>p.price)),...(ghostRangeVisible?ghost.range.flatMap(r=>[r.low,r.high]):[]),...(visualCandles.length?visualCandles.flatMap(c=>[c.high,c.low]):[]),...pools.flatMap(z=>[z.low,z.high]),
-    ...(breakout.ready?[breakout.above!,breakout.below!]:[])];
-  const allMin=allBounds.length?Math.min(...allBounds):m.lower;
-  const allMax=allBounds.length?Math.max(...allBounds):m.upper;
-  const allSpan=Math.max(allMax-allMin,candleSpan);
-  // Keep the near-future candles visible at default zoom, without allowing
-  // distant H4 target lines to compress the real/predicted M1 candle bodies.
-  const futureBounds=visualCandles.flatMap(c=>[c.high,c.low]);
-  const focusMin=Math.min(candleMin,...futureBounds);
-  const focusMax=Math.max(candleMax,...futureBounds);
-  const focusSpan=Math.max(candleSpan,focusMax-focusMin,targetRoute?.atr??ghost.atr??0);
-  const scaleLow=focusCandles?focusMin-focusSpan*.18:allMin-allSpan*.1;
-  const scaleHigh=focusCandles?focusMax+focusSpan*.18:allMax+allSpan*.1;
+  // One price-true Y scale for historical and future OHLC. H1/H4 TP levels,
+  // stops, breakout lines and remote liquidity can NEVER enter these bounds.
+  // This was the cause of future BTC candles collapsing into tiny dots when
+  // the "all levels" view was selected on a phone.
+  const candleViewport=chartPriceViewport({
+    real:candles,illustrative:visualCandles,
+    focus:focusCandles,reference:m.candles.at(-1)?.close??null,
+    atr:targetRoute?.atr??ghost.atr??null
+  });
+  const scaleLow=candleViewport.low;
+  const scaleHigh=candleViewport.high;
   const px=(p:number)=>yt+(scaleHigh-p)/Math.max(.0000001,scaleHigh-scaleLow)*(yb-yt);
   const ghostBandPath=false&&ghostVisible&&visualCandles.length&&ghost.atr!=null?
     'M '+xf+' '+px(m.candles.at(-1)!.close)+
@@ -347,8 +346,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const btcScenarioShown=btcScenario?.side!=='WAIT'&&btcScenario?.destination!=null;
   const btcScenarioOffscreen=btcScenarioShown&&btcScenario?.destinationMid!=null&&
     (px(btcScenario.destinationMid)<yt+12||px(btcScenario.destinationMid)>yb-12);
-  const offscreenTargets=playbook.targets.filter(t=>px(t.price)<yt+9||px(t.price)>yb-9);
+  // Original TP prices remain visible as exact labels outside the candle
+  // viewport; never move their Y positions into the plotted candle region.
+  const allGoalLabels=frozenVisualLevels.targets.length?
+    frozenVisualLevels.targets:playbook.targets;
+  const offscreenTargets=allGoalLabels.filter(t=>px(t.price)<yt+9||px(t.price)>yb-9);
   const nearestOffscreen=offscreenTargets[0]??null;
+  const outsideLevels=offscreenTargets.map(t=>({
+    ...t,offset:Math.abs(t.price-(m.candles.at(-1)?.close??t.price))
+  }));
   const grid=Array.from({length:5},(_,i)=>({y:yt+i*(yb-yt)/4,value:scaleHigh-(scaleHigh-scaleLow)*i/4}));
   // Coinbase quote refresh is independent of inference/AI snapshot freshness.
   const priceFresh=m.price!=null&&sn.view.priceFresh&&!goldClosed;
@@ -545,7 +551,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <button type="button" aria-pressed={scenarioDetail} disabled={!routeVisible&&!scenarioDetail}
                 title={routeVisible?'نفس عرض الشموع ومقياس السعر مع مراحل الكسر والاختبار والأهداف':targetRoute?.reason??'يلزم سعر حديث وأهداف صالحة لعرض مسار الأهداف'}
                 onClick={()=>setScenarioDetail(v=>!v)}>{scenarioDetail?'عرض مختصر':'تفصيل مسار الأهداف ↔'}</button>
-              <button className="forecast-chart-zoom" type="button" aria-pressed={focusCandles} onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'كل المستويات':'تكبير الشموع'}</button>
+              <button className="forecast-chart-zoom" type="button" aria-pressed={focusCandles}
+                 title="الشموع دائمًا بمقياسها الفعلي؛ الأهداف البعيدة تظهر خارج الزوم بأسعارها الصحيحة"
+                 onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'نطاق شموع أوسع':'تكبير الشموع'}</button>
               <button type="button" aria-pressed={showGhost} onClick={()=>setShowGhost(v=>!v)} title="شموع M1 افتراضية فقط عندما تؤيدها نتائج زمنية سابقة؛ وإلا نطاق تقلب مرئي دون اتجاه">{showGhost?'إخفاء التقدير':'شموع تقديرية'}</button>
               <button className="forecast-chart-alternative" type="button" aria-pressed={showAlternatives} onClick={()=>setShowAlternatives(v=>!v)} title="مسارات مشروطة إضافية، ليست صفقات">{showAlternatives?'إخفاء البدائل':'بدائل'}</button>
               <button type="button" aria-pressed={expanded} onClick={()=>setExpanded(v=>!v)}>{expanded?'حجم عادي':'توسيع الرسم ⤢'}</button>
@@ -639,6 +647,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           {scenarioDetail&&<p style={{padding:'10px 16px',color:'#bad9e8',margin:0}}>
             اسحب الرسم أفقيًا لمتابعة المسار · نفس عرض ومقياس شموع M1 · يتحدث المسار مع إغلاق الدقيقة · S مراحل وليست دقائق
           </p>}
+          {outsideLevels.length>0&&<div aria-label="الأهداف خارج نطاق شموع الدقيقة"
+            style={{display:'flex',flexWrap:'wrap',gap:8,padding:'8px 16px',background:'#0b1e2c',color:'#c9deeb',fontSize:12}}>
+            <strong style={{width:'100%'}}>أهداف بعيدة · محفوظة بالسعر الحقيقي ولا تضغط الشموع</strong>
+            {outsideLevels.map(t=><span key={'outside-'+t.stage}
+              style={{border:'1px solid #315b57',borderRadius:6,padding:'4px 8px'}}>
+              {'TP'+t.stage+' '+(t.price>scaleHigh?'↑': '↓')+' '+fmt(t.price)+' · فرق '+fmt(t.offset)}
+            </span>)}
+          </div>}
           {routeVisible&&<div aria-label="مراحل الوصول المشروط للأهداف" style={{display:'flex',flexWrap:'wrap',gap:8,padding:'10px 16px',background:'#102333',color:'#d2e6ee',fontSize:13}}>
             <strong>مسار {conditionalRouteSide==='BUY'?'الصعود':'الهبوط'} المشروط:</strong>
             {routeMotion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET').map(p=><span key={p.key} style={{border:'1px solid #3b5e71',borderRadius:6,padding:'5px 9px'}}>{p.label} · {fmt(p.price)}</span>)}
