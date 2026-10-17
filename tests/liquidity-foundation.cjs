@@ -57,6 +57,36 @@ assert.equal(integrity({...typical,previous:{...prior,at:t-25000},bidDepthUsd:10
   'old depth is never compared with a new snapshot');
 assert.equal(integrity({...typical,krakenReady:false,previous:prior,bidDepthUsd:0}).blockedSides.length,0,
   'failed Kraken feed is not evidence that buy orders disappeared');
+
+const health=li.exports.assessBtcLiquidityFeedHealth;
+const live={
+  now:t,coinbaseBid:81000,coinbaseAsk:81000.9,
+  krakenBid:81000,krakenAsk:81001,krakenNewestAt:t-3500,
+  okxBid:81030,okxAsk:81031,okxAt:t-3000,
+  coinbaseTradeAt:t-1500,okxTradeAt:t-2500,
+  coinbaseTradeCount:70,okxTradeCount:85
+};
+let h=health(live);
+assert.equal(h.ok,true,'fresh books and executed trades qualify');
+assert.equal(h.krakenDepth,true);
+assert.equal(h.okxDepth,true);
+assert.equal(health({...live,coinbaseAsk:80900}).ok,false,
+  'crossed primary BBO is not valid liquidity evidence');
+assert.equal(health({...live,coinbaseAsk:810250}).ok,false,
+  'absurd primary BBO spread is not trade-ready');
+assert.equal(health({...live,krakenNewestAt:t-120000,okxAt:t-130000}).ok,false,
+  'both books are stale even if all five HTTP requests succeeded');
+assert.equal(health({...live,krakenAsk:80950,okxAsk:81010}).ok,false,
+  'crossed independent order books must not qualify');
+assert.equal(health({...live,coinbaseTradeAt:t-130000,okxTradeAt:t-140000}).ok,false,
+  'stale executed trade flow is not live microstructure');
+assert.equal(health({...live,coinbaseTradeCount:3,okxTradeCount:7}).ok,false,
+  'a handful of fills is not enough for flow confirmation');
+assert.equal(health({...live,krakenNewestAt:t+60000,okxAt:t+60000}).ok,false,
+  'future-dated timestamps cannot create artificial freshness');
+assert.equal(health({...live,okxDepthAt:t,okxAt:t-120000}).krakenDepth,true,
+  'independent fresh Kraken book can remain observable');
+assert.match(fs.readFileSync('lib/liquidity-intelligence.ts','utf8'),/quality>=55&&health\.ok/);
 const desk=fs.readFileSync('lib/scalp-desk.ts','utf8');
 assert.match(desk,/integrity\?\.blockedSides\?\.includes\(plan\.side\)/,
   'BTC paper entry must respect suspected depth loss and cross-venue conflict');
