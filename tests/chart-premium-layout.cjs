@@ -14,10 +14,12 @@ ensure(/Math\.min\(chartWindow,mobile\?24:36\)/,
 ensure(/candleWidth=clamp\(stride\*\.73,mobile\?2\.2:3,15\)/,
  'historic candles are larger on full chart');
 ensure(/latest=i===candles\.length-1/,'most recent real OHLC receives separate visual emphasis');
-ensure(/fillOpacity=\{c\.validatedShape\?\.88:routeVisible\?\.52:\.39\}/,
- 'uncertified illustrative future candles stay visually translucent');
-ensure(/strokeDasharray=\{c\.validatedShape\|\|routeVisible\?undefined:'4 2'\}/,
- 'conditional routes use solid candle outlines; other illustrative previews stay dashed');
+const future=ui.slice(ui.indexOf('{visualCandles.map((c,i)=>{'),ui.indexOf('{ghostRangeVisible&&<g'));
+assert.match(future,/height=\{Math\.max\(2\.6,bottom-top\)\} rx="1\.3" fill=\{color\}/,
+ 'future candle bodies use the same solid geometry as historical candles');
+assert.doesNotMatch(future,/fillOpacity|strokeDasharray|opacity=/,
+ 'future OHLC uses solid bodies and continuous wicks without ghost transparency');
+assert.match(future,/strokeWidth="1\.5"/,'future wicks match regular historical wicks');
 ensure(/forecast-ghost-surface/,'forecast lane has its own background');
 ensure(/<g className="sniper-breakout-explainer"/,'breakout explanation remains on the actual SVG');
 ensure(/<g className="sniper-live-price-arrow"/,'genuine live source quote remains on the SVG');

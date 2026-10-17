@@ -890,17 +890,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   const gx=ghostXs[i],up=c.close>=c.open;
                   const color=up?'#4ad9c6':'#f0758a',top=Math.min(px(c.open),px(c.close)),
                     bottom=Math.max(px(c.open),px(c.close));
-                  return <g key={c.time} opacity={c.validatedShape?.96:routeVisible?.97:.89}>
+                  return <g key={c.time}>
                     <line x1={gx} x2={gx} y1={px(c.high)} y2={px(c.low)}
-                      stroke={color} strokeWidth={routeVisible?1.5:1.75}
-                      strokeDasharray={c.validatedShape||routeVisible?undefined:'3 2'}/>
+                      stroke={color} strokeWidth="1.5"/>
                     <rect x={gx-futureWidth/2} y={top} width={futureWidth}
-                      height={Math.max(1.8,bottom-top)} rx="1.2"
-                      fill={color} fillOpacity={c.validatedShape?.88:routeVisible?.52:.39}
-                      stroke={up?'#a2ffe7':'#ffc0cb'} strokeOpacity=".85"
-                      strokeWidth={routeVisible?1:1.3}
-                      strokeDasharray={c.validatedShape||routeVisible?undefined:'4 2'}/>
-                    {c.validatedShape&&<circle cx={gx} cy={px(c.high)-5} r="2" fill={color} />}
+                      height={Math.max(2.6,bottom-top)} rx="1.3" fill={color}
+                      stroke={up?'#a2ffe7':'#ffc0cb'} strokeOpacity=".72" strokeWidth="1"/>
                     {(i%4===0||i===visualCandles.length-1)&&<text x={gx} y={yb-7} textAnchor="middle" fill="#b8c9e5"
                       fontSize={mobile?11:10}>{routeVisible?'S'+(i+1):closedPreview?'+'+(i+1):clock(c.time)}</text>}
                     <title>{(c.scenarioShape?'شمعة مسار شرطي · مرحلة سعرية دون زمن رقم ':'شمعة M1 افتراضية رقم ')+c.step+
