@@ -97,7 +97,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   });
   // Read-only closed-candle radar and historical objectives. No entries.
   const observationRadar=assessChartObservation({
-    now,priceFresh:sn.view.priceFresh&&m.observationFresh,
+    now,priceFresh:sn.view.priceFresh,
     historyFresh:m.historyFresh,marketOpen:!goldClosed,
     m1:m.candles,m5:x?.chartHigherFrames?.m5
   });
@@ -119,12 +119,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       breakoutWatch.side:'WAIT';
   const watchTargets=!planVisible?observedStructuralTargets({
     now,price:m.price,side:watchTargetSide,
-    priceFresh:sn.view.priceFresh&&m.observationFresh,
-    historyFresh:m.historyFresh,m15:x?.chartHigherFrames?.m15,
+    priceFresh:sn.view.priceFresh,
+    historyFresh:observationRadar.status!=='UNAVAILABLE',
+    m15:x?.chartHigherFrames?.m15,
     h1:x?.chartHigherFrames?.h1
   }):[];
   const playbook=buildSniperChartPlaybook({
-    marketOpen:!goldClosed,priceFresh:sn.view.priceFresh&&m.observationFresh,
+    marketOpen:!goldClosed,priceFresh:sn.view.priceFresh,
     historyFresh:m.historyFresh||breakoutEvidence.ready,
     price:m.price,atr:breakoutEvidence.atr,
     observation:observationForDisplay,breakout:breakoutWatch,
