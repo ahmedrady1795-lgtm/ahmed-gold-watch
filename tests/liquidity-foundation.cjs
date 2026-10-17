@@ -87,6 +87,12 @@ assert.equal(health({...live,krakenNewestAt:t+60000,okxAt:t+60000}).ok,false,
 assert.equal(health({...live,okxDepthAt:t,okxAt:t-120000}).krakenDepth,true,
   'independent fresh Kraken book can remain observable');
 assert.match(fs.readFileSync('lib/liquidity-intelligence.ts','utf8'),/quality>=55&&health\.ok/);
+const implementation=fs.readFileSync('lib/liquidity-intelligence.ts','utf8');
+assert.match(implementation,/krakenReady:health\.krakenDepth/);
+assert.match(implementation,/coinbaseTrades:health\.coinbaseTrades/);
+assert.match(implementation,/const cbDelta=health\.coinbaseTrades\?flow\.deltaPct:0/);
+assert.match(implementation,/const old=health\.krakenDepth\?previous:null/);
+assert.match(implementation,/const reliable=quality>=55&&health\.ok/);
 const desk=fs.readFileSync('lib/scalp-desk.ts','utf8');
 assert.match(desk,/integrity\?\.blockedSides\?\.includes\(plan\.side\)/,
   'BTC paper entry must respect suspected depth loss and cross-venue conflict');
