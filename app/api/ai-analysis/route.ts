@@ -1903,6 +1903,10 @@ export async function GET(request:Request){
           oosN:Number(e?.walkForward?.tested||0),
           oosCoverage:e?.walkForward?.intervalCoveragePct??null,
           oosDirection:e?.walkForward?.directionalAccuracyPct??null,
+          oosDirectionalN:Number(e?.walkForward?.directionN||0),
+          oosBaseline:e?.walkForward?.baselineDirectionalAccuracyPct??null,
+          oosWilsonLower95:e?.walkForward?.directionalLower95Pct??null,
+          oosLift:e?.walkForward?.directionalLiftPct??null,
           rangeQuality:e?.walkForward?.rangeQuality||'COLLECTING',
           directionQuality:e?.walkForward?.directionQuality||'COLLECTING'}];
       }));
