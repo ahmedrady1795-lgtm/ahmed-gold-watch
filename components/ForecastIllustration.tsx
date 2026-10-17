@@ -670,7 +670,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 <title>{'آخر سعر مصدر حقيقي: '+fmt(m.price)+
                   ' · عمر المصدر '+(quoteAgeSec??'غير معلوم')+
                   ' ثانية · '+(priceFresh?'سعر مباشر من مصدر حديث':'آخر سعر معروف غير مؤهل لوصف LIVE')+
-                  ' · هذا سهم السعر الحالي وليس توقعًا مستقبليًا'</title>
+                  ' · هذا سهم السعر الحالي وليس توقعًا مستقبليًا'}</title>
               </g>}
               {ghostActive&&<g className="sniper-ghost-forecast" clipPath={'url(#forecast-plot-'+asset+')'}>
                 {ghostBandPath&&<path d={ghostBandPath} fill="#88b4ef" fillOpacity=".045"
