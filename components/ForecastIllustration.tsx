@@ -73,7 +73,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     m.historyFresh&&m.observationFresh&&sn.view.priceFresh);
   const rise=dir==='BUY',fall=dir==='SELL';
   const W=mobile?740:1440,H=mobile?(expanded||chartFullscreen?860:760):(expanded||chartFullscreen?920:760),x0=mobile?28:66,
-    x1=mobile?360:980,xf=x1+14,xr=W-(mobile?142:172),yt=40,yb=H-102,volumeEnd=H-49;
+    x1=mobile?315:895,xf=x1+14,xr=W-(mobile?126:144),yt=40,yb=H-102,volumeEnd=H-49;
   const breakout=buildBreakoutGuide({frames:x?.chartHigherFrames,now,side:dir,price:m.price,
     sourceReady:sn.view.priceFresh&&m.observationFresh&&m.historyFresh,invalidation:m.displayStop});
   const overlay=buildChartOverlay({now,price:m.price,historyFresh:m.historyFresh,
@@ -112,7 +112,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const ghostVisible=showGhost&&ghost.mode==='CANDLES';
   const ghostRangeVisible=showGhost&&ghost.mode==='RANGE';
   const ghostActive=showGhost&&ghost.mode!=='OFF';
-  const ghostXs=visualCandles.map((_,i)=>xf+10+(i+.5)*(xr-xf-20)/visualCandles.length);
+  const futureStride=(xr-xf-18)/Math.max(1,visualCandles.length);
+  const futureWidth=clamp(futureStride*.72,mobile?5:5,11);
+  const ghostXs=visualCandles.map((_,i)=>xf+9+(i+.5)*futureStride);
   const motionColor=watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4';
   const scenarioKind=motion.some(p=>p.kind==='SWEEP')?'SWEEP_RECLAIM':
     motion.some(p=>p.kind==='RETEST')?'BREAK_RETEST':'DIRECT';
@@ -126,7 +128,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const scaleLow=focusCandles?candleMin-candleSpan*.3:allMin-allSpan*.1;
   const scaleHigh=focusCandles?candleMax+candleSpan*.3:allMax+allSpan*.1;
   const px=(p:number)=>yt+(scaleHigh-p)/Math.max(.0000001,scaleHigh-scaleLow)*(yb-yt);
-  const ghostBandPath=ghostVisible&&visualCandles.length&&ghost.atr!=null?
+  const ghostBandPath=false&&ghostVisible&&visualCandles.length&&ghost.atr!=null?
     'M '+xf+' '+px(m.candles.at(-1)!.close)+
     ' L '+visualCandles.map((c,i)=>ghostXs[i]+' '+px(c.high+ghost.atr!*.27*Math.sqrt(i+1))).join(' L ')+
     ' L '+visualCandles.map((_,i)=>{const j=visualCandles.length-1-i;
@@ -322,7 +324,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <line x1={xf-8} x2={xf-8} y1="20" y2={volumeEnd+5} stroke="#72b3d1" strokeOpacity=".5"
                 strokeDasharray="6 7"/>
               <text x={xf-14} y="18" textAnchor="end" fill="#88bbd3" fontSize={mobile?18:12}>تاريخ فعلي</text>
-              <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?16:12}>{goldClosed?'الذهب مغلق':ghostActive?'M1 · شموع تقديرية':'مستويات مراقبة'}</text>
+              <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?14:12}>{goldClosed?'الذهب مغلق':visualCandles.length?'محاكاة شموع M1 · ليست سعرًا حيًا':'مستويات مراقبة'}</text>
               <g clipPath={'url(#forecast-plot-'+asset+')'}>
                 {pools.map(z=>{const color=z.side==='UPPER'?'#ff7d9b':'#51dcdf';return <g key={z.side}>
                   <rect x={x0} y={px(z.high)} width={xr-x0} height={Math.max(5,px(z.low)-px(z.high))}
@@ -490,23 +492,22 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {priceFresh&&<line x1={x0} x2={xr} y1={px(m.price!)} y2={px(m.price!)}
                 stroke="#5ad6f4" strokeDasharray="3 5" strokeOpacity=".65"/>}
               {ghostActive&&<g className="sniper-ghost-forecast" clipPath={'url(#forecast-plot-'+asset+')'}>
-                {ghostBandPath&&<path d={ghostBandPath} fill="#88b4ef" fillOpacity=".105"
+                {ghostBandPath&&<path d={ghostBandPath} fill="#88b4ef" fillOpacity=".045"
                   stroke="#a3bff7" strokeOpacity=".4" strokeDasharray="3 6" strokeWidth="1">
                   <title>نطاق تقلب تقريبي متسع، غير معاير إحصائيًا ولا يضمن تغطية محددة</title>
                 </path>}
                 {visualCandles.map((c,i)=>{
                   const gx=ghostXs[i],up=c.close>=c.open;
-                  const color=up?'#40e69b':'#ff6b81',top=Math.min(px(c.open),px(c.close)),
+                  const color=up?'#4ad9c6':'#f0758a',top=Math.min(px(c.open),px(c.close)),
                     bottom=Math.max(px(c.open),px(c.close));
-                  return <g key={c.time} opacity={c.validatedShape?.92:.82}>
+                  return <g key={c.time} opacity={c.validatedShape?.96:.83}>
                     <line x1={gx} x2={gx} y1={px(c.high)} y2={px(c.low)}
-                      stroke={color} strokeWidth={c.validatedShape?2.0:1.6}/>
-                    <rect x={gx-(mobile?5:7)} y={top} width={mobile?10:14}
-                      height={Math.max(3.2,bottom-top)} rx=".65"
-                      fill={color} fillOpacity={c.validatedShape?.86:.8} stroke={color} strokeWidth=".7"/>
-                    {c.validatedShape&&<text x={gx} y={clamp(px(c.high)-11,yt+30,yb-13)}
-                      textAnchor="middle" fill={color} fontSize={mobile?12:10}>{up?'↑':'↓'} {c.step}</text>}
-                    {!c.scenarioShape&&(i%4===0||i===visualCandles.length-1)&&<text x={gx} y={yb-7} textAnchor="middle" fill="#b8c9e5"
+                      stroke={color} strokeWidth="1.35"/>
+                    <rect x={gx-futureWidth/2} y={top} width={futureWidth}
+                      height={Math.max(2.2,bottom-top)} rx=".7"
+                      fill={color} stroke={up?'#a2ffe7':'#ffc0cb'} strokeOpacity=".58" strokeWidth=".7"/>
+                    {c.validatedShape&&<circle cx={gx} cy={px(c.high)-5} r="2" fill={color} />}
+                    {(i%4===0||i===visualCandles.length-1)&&<text x={gx} y={yb-7} textAnchor="middle" fill="#b8c9e5"
                       fontSize={mobile?11:10}>{clock(c.time)}</text>}
                     <title>{(c.scenarioShape?'شمعة شكلية لمرحلة المسار، غير زمنية رقم ':'شمعة M1 افتراضية رقم ')+c.step+
                       (c.scenarioShape?' · دون موعد وصول':' · '+clock(c.time))+' · '+(up?'صعود توضيحي':'هبوط توضيحي')+
@@ -514,7 +515,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                       ' · '+(c.validatedShape?'نموذج M1 مفحوص تاريخيًا':'شمعة شكلية توضيحية غير مدعومة باختبار مستقل')+' · ليست سعرا فعليا'}</title>
                   </g>;
                 })}
-                {ghostRangeVisible&&<g className="ghost-neutral-range" opacity=".15">
+                {ghostRangeVisible&&<g className="ghost-neutral-range" opacity=".10">
                   {ghost.range.map((r,i)=><g key={r.time}>
                     <line x1={ghostXs[i]} x2={ghostXs[i]} y1={px(r.high)} y2={px(r.low)}
                       stroke="#a7bce8" strokeWidth="1.6" strokeDasharray="3 6" strokeOpacity=".7"/>
@@ -524,7 +525,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </g>}
                 <text x={(ghostXs[0]+ghostXs.at(-1)!)/2} y={yt+29} textAnchor="middle"
                   fontSize={mobile?13:12} fontWeight="700" fill="#bdd1ee">
-                  {scenarioCandles?'شموع مسار سعري مشروط · غير زمنية':ghostVisible?(ghost.source==='GOLD_MT5_OOS_MODEL'?'GOLD MT5 · اختبار تاريخي':'GHOST M1 · تجريبي') :'M1 · شموع تذبذب افتراضية'}
+                  {ghostVisible?'3 شموع مدروسة + محاكاة تاريخية':'نمط تاريخي مشابه · محاكاة فقط'}
                 </text>
               </g>}
               {chartLanes.map(label=>{
@@ -586,7 +587,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               '3 شموع ذهب مدعومة باختبار · يليها شموع شكلية فقط':'3 شموع M1 مفحوصة · والباقي شموع افتراضية'):
               ghostRangeVisible?'نطاق تذبذب M1 · لا توقع اتجاه · شموع توضيحية':
               'لا تتوفر بيانات كافية للتقدير'}</b>
-            <span> · {goldClosed?'جلسة XAUUSD مغلقة؛ آخر الأسعار محفوظة ولا توجد توقعات حية خلال الإغلاق.':ghost.reason} {visualCandles.length?'شموع قصيرة المدى، والأهداف البعيدة مستويات مراقبة منفصلة.':'لا توجد شموع مؤهلة الآن.'} هذه الدراسة ليست نموذج ML معتمدًا، ولا تمثل إشارة دخول.</span>
+            <span> · {goldClosed?'الجلسة مغلقة ولا توجد توقعات حية.':ghost.reason} {visualCandles.length?'18 شمعة مستقبلية بنمط أجسام وذيول مأخوذ من تاريخ السوق، وليس توقعًا تم اختباره. الأهداف بعيدة المدى مستقلة عنها.':'لا تتوفر شموع محاكاة مؤهلة.'} هذه الدراسة ليست نموذج ML معتمدًا، ولا تمثل إشارة دخول.</span>
             <details style={{marginTop:4}}>
               <summary>نتائج الاختبار التاريخي وطريقة العرض</summary>
               {ghost.validation.samples>=12?<span>
