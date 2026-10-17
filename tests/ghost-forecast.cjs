@@ -100,10 +100,10 @@ assert.equal(lowQuality.mode,'RANGE','low-score periods should still paint neutr
 assert.ok(lowQuality.validation.samples<24);
 const ui=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 assert.match(ui,/aria-pressed=\{showGhost\}/);
-assert.match(ui,/ghostActive&&<g className="sniper-ghost-forecast"/);
+assert.match(ui,/ghostActive&&<g className=\{/,'forecast group supports ordinary ghosts and conditional target candles');
 assert.match(ui,/ghostRangeVisible&&<g className="ghost-neutral-range"/);
 assert.match(ui,/buildGhostForecast\(\{candles:m\.candles,now,/);
 assert.match(ui,/ghostRangeVisible\?ghost\.range\.flatMap/,'only verified live range may expand candle price scale');
 assert.match(ui,/نطاق تذبذب M1 · لا توقع اتجاه/);
-assert.match(ui,/ليست نموذج ML معتمدًا/);
+assert.match(ui,/ليس نموذج ML معتمدًا/);
 console.log('PASS: symmetric causal BUY/SELL candles, OHLC, uncertainty, stale/gap guards and walk-forward isolation');
