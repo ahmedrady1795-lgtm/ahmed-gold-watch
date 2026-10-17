@@ -1489,3 +1489,52 @@ body:has(.modern-workspace.compact-sniper){
 @media(min-width:761px) and (max-width:1110px){
  .sniper-market-evidence-rail{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
+
+/* Chart-first 2026 cockpit: keep actionable observation legible while
+   the expensive AI/OOS, footprint and method details stay accessible.
+   Entire chart remains native SVG and readable without hover. */
+.sniper-chart-analysis-drawer{margin:2px 3px 8px;border:1px solid #315a6d;
+ border-radius:11px;overflow:hidden;background:#0b2130;color:#c9e5ef;direction:rtl}
+.sniper-chart-analysis-drawer>summary{display:flex;align-items:center;gap:12px;
+ min-height:39px;padding:7px 12px;cursor:pointer;list-style:none}
+.sniper-chart-analysis-drawer>summary::-webkit-details-marker{display:none}
+.sniper-chart-analysis-drawer>summary strong{font-size:12px;color:#d6f4fc;
+ min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sniper-chart-analysis-drawer>summary>span{font-size:11px;white-space:nowrap;
+ color:#8eecd4;font-weight:700}
+.sniper-chart-analysis-drawer>summary small{margin-inline-start:auto;
+ font-size:10px;color:#a7c5d7;white-space:nowrap}
+.sniper-chart-analysis-drawer>summary small span{display:inline-block;
+ transition:transform .18s ease;font-size:15px;vertical-align:middle;margin-inline-start:6px}
+.sniper-chart-analysis-drawer[open]>summary small span{transform:rotate(180deg)}
+.sniper-chart-analysis-drawer[open]>summary{border-bottom:1px solid #315163}
+.sniper-chart-analysis-content{display:grid;gap:6px;padding:8px}
+.sniper-chart-analysis-content .btc-forward-observation,
+.sniper-chart-analysis-content .sniper-market-evidence-rail,
+.sniper-chart-analysis-content .sniper-playbook{margin:0}
+.compact-sniper .forecast-visual-chart-wrap{background:linear-gradient(125deg,#071622,#081b2a);
+ border:1px solid #2c5467;padding:7px}
+.compact-sniper .forecast-visual-svg{border:1px solid #224356;border-radius:9px;
+ box-shadow:inset 0 0 34px #0a1a29}
+.compact-sniper .forecast-visual-header{border-bottom:1px solid #31576b}
+.compact-sniper .forecast-chart-tools button{transition:border-color .16s ease,background .16s ease;
+ border-color:#355b70}
+.compact-sniper .forecast-chart-tools button:hover{background:#183a4d;border-color:#72bac8}
+.compact-sniper .forecast-chart-tools button:focus-visible,
+.sniper-chart-analysis-drawer>summary:focus-visible{outline:2px solid #7edbf5;
+ outline-offset:2px}
+@media(max-width:760px){
+ .sniper-chart-analysis-drawer{margin:1px 0 6px}
+ .sniper-chart-analysis-drawer>summary{gap:7px;min-height:37px;padding:7px}
+ .sniper-chart-analysis-drawer>summary strong{font-size:11px;max-width:44%}
+ .sniper-chart-analysis-drawer>summary>span{font-size:10px}
+ .sniper-chart-analysis-drawer>summary small{font-size:0;flex-shrink:0}
+ .sniper-chart-analysis-drawer>summary small span{font-size:16px}
+ .sniper-chart-analysis-content{padding:6px}
+ .compact-sniper .forecast-visual-chart-wrap{padding:4px}
+ .compact-sniper .forecast-visual-svg{border-radius:6px}
+}
+@media(prefers-reduced-motion:reduce){
+ .sniper-chart-analysis-drawer>summary small span,
+ .compact-sniper .forecast-chart-tools button{transition:none}
+}
