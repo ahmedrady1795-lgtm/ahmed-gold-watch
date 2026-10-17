@@ -173,6 +173,24 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     targets:planVisible?m.displayTargets:watchTargets,
     liquidityAvailable:overlay.ready&&Boolean(overlay.upper||overlay.lower)
   });
+  // Closed-M1 snapshots keep the drawn path and targets fixed between ticks.
+  // The live quote and server-side trading decisions remain independent.
+  const scenarioBarAt=m.candles.at(-1)?.time??0;
+  const frozenVisualLevels=useMemo(()=>{
+    const side=planVisible?m.displaySide:
+      btcScenario&&btcScenario.side!=='WAIT'?btcScenario.side:watchTargetSide;
+    const targets=planVisible?m.displayTargets.map(t=>({stage:t.stage,price:t.price})):
+      btcScenario?.destination&&(btcScenario.side==='BUY'||btcScenario.side==='SELL')?[{
+        stage:1,price:btcScenario.side==='BUY'?btcScenario.destination.low:btcScenario.destination.high
+      }]:watchTargets.map(t=>({stage:t.stage,price:t.price}));
+    return {side,targets,anchor:m.candles.at(-1)?.close??null,
+      invalidation:planVisible?m.displayStop:
+        btcScenario?.side!=='WAIT'?btcScenario?.invalidation??null:null};
+  // A material qualification/side transition also releases the lock.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[asset,scenarioBarAt,planVisible,statusReady,watchReady,m.displaySide,
+    watchTargetSide,btcScenario?.side,Boolean(btcScenario?.destination),
+    m.displayTargets.length,watchTargets.length,m.historyFresh]);
   const targetBands:PriceBand[]=watchTargets.map(t=>({
     key:'WATCH_TP'+t.stage,label:'رصد TP'+t.stage+' · '+t.source,
     price:t.price,low:t.price,high:t.price,kind:'TARGET' as const
@@ -182,14 +200,22 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   // readable when the complete SVG must fit rather than auto-scroll on load.
   const candles=m.candles.slice(-(focusCandles?Math.min(chartWindow,mobile?24:36):chartWindow));
   const candleBounds=candles.flatMap(c=>[c.low,c.high]);
-  if(m.price!=null)candleBounds.push(m.price);
+  // Do not rescale all candles on each real-time quote tick.
   const candleMin=candleBounds.length?Math.min(...candleBounds):m.lower;
   const candleMax=candleBounds.length?Math.max(...candleBounds):m.upper;
   const candleSpan=Math.max(candleMax-candleMin,Math.abs(m.price||0)*.00065,.01);
-  const visibleBands=m.bands.filter(z=>z.kind==='TARGET'||z.kind==='STOP'||
-    z.kind==='BUY_REBOUND'||z.kind==='SELL_REBOUND'||z.kind==='DEMAND'||z.kind==='SUPPLY');
-  // Fold coinciding zones only; keep every independent target stage and the stop.
-  const chartBands=collapseChartZones([...visibleBands,...targetBands],m.price,mobile?1:2);
+  const visibleBands=m.bands.filter(z=>z.kind==='BUY_REBOUND'||z.kind==='SELL_REBOUND'||
+    z.kind==='DEMAND'||z.kind==='SUPPLY');
+  const fixedTargetBands:PriceBand[]=frozenVisualLevels.targets.map(t=>({
+    key:'TP'+t.stage,label:(planVisible?'TP':'رصد TP')+t.stage,
+    price:t.price,low:t.price,high:t.price,kind:'TARGET'
+  }));
+  if(frozenVisualLevels.invalidation!=null)fixedTargetBands.push({
+    key:'STOP',label:'إبطال السيناريو',price:frozenVisualLevels.invalidation,
+    low:frozenVisualLevels.invalidation,high:frozenVisualLevels.invalidation,kind:'STOP'
+  });
+  const chartBands=collapseChartZones([...visibleBands,...fixedTargetBands,
+    ...(frozenVisualLevels.targets.length?[]:targetBands)],m.price,mobile?1:2);
   const primaryZone=primaryLiquidityZone(chartBands,m.price);
   const opposingOverlap=findOpposingOverlap(chartBands,m.price);
   const motion=buildForecastMotion({visible:planVisible,side:dir,price:m.price,
@@ -207,35 +233,42 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     side:planVisible?m.displaySide:'WAIT',price:m.price,
     sourceReady:m.historyFresh&&m.observationFresh&&sn.view.priceFresh,
     scenarioReady:planVisible});
-  const liveAnchor=m.price!=null&&sn.view.priceFresh&&m.observationFresh&&m.historyFresh?m.price:undefined;
+  const liveAnchor=sn.view.priceFresh&&m.observationFresh&&m.historyFresh?
+    m.candles.at(-1)?.close:undefined;
   // Price-space demonstration from REAL server targets, not timed candle
   // predictions. A distant TP stays marked instead of enlarging bodies.
-  const conditionalRouteSide=planVisible?m.displaySide:
-    btcScenario&&btcScenario.side!=='WAIT'?btcScenario.side:watchTargetSide;
-  const conditionalRouteGoals=planVisible?m.displayTargets.map(t=>({
-    stage:t.stage,price:t.price})):btcScenario?.destination&&
-    (btcScenario.side==='BUY'||btcScenario.side==='SELL')?[{
-      stage:1,price:btcScenario.side==='BUY'?
-        btcScenario.destination.low:btcScenario.destination.high
-    }]:watchTargets.map(t=>({stage:t.stage,price:t.price}));
+  const conditionalRouteSide=frozenVisualLevels.side;
+  const conditionalRouteGoals=frozenVisualLevels.targets;
   const routeMotion=planVisible?motion:buildForecastMotion({
     visible:conditionalRouteGoals.length>0,side:conditionalRouteSide,price:m.price,
     targets:conditionalRouteGoals,breakout,now,m5:x?.chartHigherFrames?.m5,
     zones:chartBands,liquidity:overlay,
     invalidation:btcScenario?.side!=='WAIT'?btcScenario?.invalidation:null
   });
-  const targetRoute=showGhost&&!goldClosed&&m.observationFresh&&
-    (conditionalRouteSide==='BUY'||conditionalRouteSide==='SELL')&&
-    conditionalRouteGoals.length?
+  const frozenRouteWaypoints=useMemo(()=>
+    routeMotion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET')
+      .map(p=>({key:p.key,label:p.label,price:p.price})),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [asset,scenarioBarAt,conditionalRouteSide,planVisible,statusReady,watchReady,
+    conditionalRouteGoals.length]);
+  const routeAnchor=frozenVisualLevels.anchor;
+  const routeStop=frozenVisualLevels.invalidation;
+  const firstGoal=conditionalRouteGoals[0]?.price;
+  // Instantly revoke a drawing when live price breaches a locked TP/stop.
+  const liveRouteSafe=m.price!=null&&firstGoal!=null&&Number.isFinite(m.price)&&
+    (conditionalRouteSide==='BUY'?
+      (routeStop==null||m.price>routeStop)&&m.price<firstGoal:
+      conditionalRouteSide==='SELL'?
+      (routeStop==null||m.price<routeStop)&&m.price>firstGoal:false);
+  const targetRoute=showGhost&&!goldClosed&&m.observationFresh&&m.historyFresh&&
+    liveRouteSafe&&routeAnchor!=null&&conditionalRouteGoals.length>0?
     buildConditionalTargetCandles({
-      history:m.candles,now,quote:m.price,priceFresh:sn.view.priceFresh,
+      history:m.candles,now,quote:routeAnchor,priceFresh:sn.view.priceFresh,
       visibleCount:candles.length,
       count:scenarioDetail?96:18,
-      waypoints:routeMotion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET')
-        .map(p=>({key:p.key,label:p.label,price:p.price})),
-      side:conditionalRouteSide,targets:conditionalRouteGoals,
-      invalidation:planVisible?m.displayStop:
-        btcScenario?.side!=='WAIT'?btcScenario?.invalidation:null
+      waypoints:frozenRouteWaypoints,
+      side:conditionalRouteSide as 'BUY'|'SELL',targets:conditionalRouteGoals,
+      invalidation:routeStop
     }):null;
   const routeVisible=Boolean(targetRoute?.ready&&targetRoute.bars.length);
   const visualCandles=!showGhost?[]:goldClosed?
@@ -599,7 +632,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             </div>
           </details>
           {scenarioDetail&&<p style={{padding:'10px 16px',color:'#bad9e8',margin:0}}>
-            اسحب الرسم أفقيًا لمتابعة المسار · عرض الشمعة ومقياس السعر موحدان · S مراحل افتراضية وليست دقائق
+            اسحب الرسم أفقيًا لمتابعة المسار · نفس عرض ومقياس شموع M1 · يتحدث المسار مع إغلاق الدقيقة · S مراحل وليست دقائق
           </p>}
           {routeVisible&&<div aria-label="مراحل الوصول المشروط للأهداف" style={{display:'flex',flexWrap:'wrap',gap:8,padding:'10px 16px',background:'#102333',color:'#d2e6ee',fontSize:13}}>
             <strong>مسار {conditionalRouteSide==='BUY'?'الصعود':'الهبوط'} المشروط:</strong>
@@ -678,7 +711,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 strokeWidth="2.4" strokeOpacity=".85" strokeDasharray="7 5"/>
               <text x={xf-14} y="18" textAnchor="end" fill="#88bbd3" fontSize={mobile?18:12}>تاريخ فعلي</text>
               <text x={xf+8} y="18" fill="#e7c58a" fontSize={mobile?14:12}>{closedPreview?'معاينة آخر جلسة · غير حية':goldClosed?'الذهب مغلق':
-    routeVisible?'شموع مسار سعري شرطي · لا زمن وصول':
+    routeVisible?'شموع ثابتة حتى إغلاق M1 · بلا زمن وصول':
     visualCandles.length?'شموع توضيحية · كسر وسيولة':
     watchTargets.length?'TP مراقبة · كسر · سيولة':'مستويات كسر وسيولة'}</text>
               <g clipPath={'url(#forecast-plot-'+asset+')'}>
@@ -915,7 +948,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </g>}
                 <text x={(ghostXs[0]+ghostXs.at(-1)!)/2} y={yt+29} textAnchor="middle"
                   fontSize={mobile?13:12} fontWeight="700" fill="#bdd1ee">
-                  {routeVisible?'شموع نحو أهداف حقيقية · مراحل سعرية لا دقائق':
+                  {routeVisible?'شموع M1 مرجعية · أهداف أصلية · مراحل لا دقائق':
                     closedPreview?'من أرشيف السوق · عرض توضيحي فقط':
                     ghostVisible?'3 شموع تقديرية + نماذج تاريخية':'شموع توضيحية من نماذج تاريخية'}
                 </text>
