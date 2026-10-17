@@ -3,7 +3,7 @@ const mod={exports:{}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/visual-forecast-candles.ts','utf8'),{
  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
 }).outputText,{module:mod,exports:mod.exports,require},{filename:'lib/visual-forecast-candles.ts'});
-const {buildVisualFuture:build,selectCandleAnalogue:select}=mod.exports;
+const {buildVisualFuture:build,selectCandleAnalogue:select,rankCandleAnalogues:rank,auditCandleAnalogueDirection:audit}=mod.exports;
 const start=Date.parse('2026-10-16T03:00:00Z');
 let price=100;
 const candles=Array.from({length:220},(_,i)=>{
@@ -37,6 +37,25 @@ assert.ok(model.every(c=>Math.abs(c.close-last.close)<=atr*7+.00001),
 assert.ok(model.every(c=>c.scenarioShape===false),'candles are not forced H4 target path');
 assert.ok(model.some(c=>c.analogue),'actual historical analogue candidate was selected');
 assert.equal(select(candles,18,atr)>=0,true);
+const top=rank(candles,18,atr,5);
+assert.equal(top.length,5,'compare five independent historical OHLC sequences');
+assert.ok(top.every((x,i)=>i===0||top[i-1].distance<=x.distance));
+assert.ok(top.every(x=>x.start+18<=candles.length-8),
+ 'candidate outcomes have an eight-bar embargo before current context');
+assert.ok(top.some(x=>x.start===select(candles,18,atr)),
+ 'choose a robust central neighbour from the five best patterns');
+const report=audit(candles,atr);
+assert.ok(report.samples>=5,'chronological forward-test has historical folds');
+assert.ok(report.samples<=Math.ceil((candles.length-65)/4),
+ 'evaluation folds are disjoint');
+assert.ok(report.hits>=0&&report.hits<=report.samples);
+assert.ok(report.baselineHits>=0&&report.baselineHits<=report.samples);
+assert.equal(report.edgeSupported,false,'single session never establishes profitable forecast edge');
+assert.equal(audit(candles.slice(0,100),atr).edgeSupported,false,
+ 'no promotion on minimal test data');
+const historicalGap=[...candles];historicalGap[32]={...historicalGap[32],time:historicalGap[32].time+60000};
+assert.ok(rank(historicalGap,18,atr).every(x=>x.start>38||x.start+18<32),
+ 'gapped history may not be used as an analogue');
 const distant=build({...base,scenarioPath:[{price:last.close},{price:10,key:'TP1'},{price:1,key:'TP3'}],side:'SELL'});
 assert.equal(JSON.stringify(distant),JSON.stringify(model),'far targets never rewrite M1 candle shape');
 assert.equal(build({...base,forecast:{...base.forecast,mode:'OFF'}}).length,0,'stale data must hide simulation');
