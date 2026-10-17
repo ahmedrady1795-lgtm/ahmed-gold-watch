@@ -213,7 +213,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const ghostRangeVisible=showGhost&&ghost.mode==='RANGE'&&visualCandles.length>=3;
   const ghostActive=showGhost&&visualCandles.length>0;
   const futureStride=(xr-xf-18)/Math.max(1,visualCandles.length);
-  const futureWidth=clamp(futureStride*.72,mobile?5:5,11);
+  const futureWidth=clamp(futureStride*.72,5,15);
   const ghostXs=visualCandles.map((_,i)=>xf+9+(i+.5)*futureStride);
   const motionColor=watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4';
   const scenarioKind=motion.some(p=>p.kind==='SWEEP')?'SWEEP_RECLAIM':
@@ -263,17 +263,19 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     {key:'VAL',price:orderFlow.profile.val,color:'#8ab7fc'}
   ]:[];
   const chartLanes=layoutPriceLanes([
-    ...chartBands.map(z=>({key:z.key,y:px(z.price),price:z.price,
+    ...chartBands.filter(z=>px(z.price)>=yt+8&&px(z.price)<=yb-8)
+      .map(z=>({key:z.key,y:px(z.price),price:z.price,
       label:z.key.startsWith('WATCH_TP')?'رصد TP'+z.key.replace('WATCH_TP',''):
         z.kind==='TARGET'?'TP'+z.key.replace('TP',''):z.kind==='STOP'?'إبطال':
         z.key===primaryZone?.key?(z.kind==='DEMAND'||z.kind==='BUY_REBOUND'?'طلب ★':'عرض ★'):
         z.kind==='DEMAND'||z.kind==='BUY_REBOUND'?'طلب':'عرض',
       kind:z.kind})),
-    ...(priceMarkerVisible?[{key:'MARKET_PRICE',y:px(m.price!),price:m.price!,
-      label:priceFresh?(asset==='BTC'?'BTC LIVE':'سعر حي'):'آخر سعر',kind:'PRICE'}]:[])
+    ...(priceMarkerVisible&&px(m.price!)>=yt&&px(m.price!)<=yb?
+      [{key:'MARKET_PRICE',y:px(m.price!),price:m.price!,
+        label:priceFresh?(asset==='BTC'?'BTC LIVE':'سعر حي'):'آخر سعر',kind:'PRICE'}]:[])
   ],yt+20,yb-20,38);
   const stride=(x1-x0)/Math.max(candles.length,1);
-  const candleWidth=clamp(stride*.72,mobile?1.6:2,11);
+  const candleWidth=clamp(stride*.73,mobile?2.2:3,15);
   const maxVolume=Math.max(1,...candles.map(c=>c.volume));
   let continuousStart=Math.max(0,candles.length-1);
   while(continuousStart>0&&candles[continuousStart].time-candles[continuousStart-1].time===60000)continuousStart--;
@@ -438,6 +440,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <button type="button" aria-pressed={chartFullscreen} onClick={()=>setChartFullscreen(v=>!v)}>{chartFullscreen?'إغلاق ملء الشاشة':'⛶ ملء الشاشة'}</button>
             </div>
           </div>
+          <details className="sniper-chart-analysis-drawer">
+            <summary>
+              <strong>{playbook.title}</strong>
+              <span>{'◇ '+breakoutWatch.closes+'/2 M5 · '+
+                (playbook.target?'TP1 '+fmt(playbook.target.price):'أهداف مراقبة')}</span>
+              <small>تفاصيل الاتجاه والسيولة والمراحل <span aria-hidden="true">⌄</span></small>
+            </summary>
+            <div className="sniper-chart-analysis-content">
           {btcOutlook&&<div className={'btc-forward-observation btc-forward-'+btcOutlook.status.toLowerCase()}
             role="status" aria-label="تحليل حركة البيتكوين المستقل عن تنفيذ الصفقات">
             <strong>{btcOutlook.title}</strong>
@@ -483,6 +493,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {playbook.retest&&<span>↺ إعادة اختبار ±{fmt(playbook.retest.high-playbook.retest.center,2)} · تقريبي</span>}
             </div>
           </div>
+            </div>
+          </details>
           <div className="forecast-visual-chart-scroll">
             <svg className={'forecast-visual-svg'+(focusCandles?' forecast-visual-svg-zoomed':'')} viewBox={'0 0 '+W+' '+H}
               role="img" aria-label={statusReady?
