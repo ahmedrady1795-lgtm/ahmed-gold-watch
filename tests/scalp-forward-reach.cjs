@@ -37,6 +37,14 @@ const broken=bars.map(x=>({...x}));
 broken[broken.length-2].time+=30000;
 assert.ok(observedForwardReach(broken,'BUY',1).samples<m1.samples,
   'a discontinuous interval must not count as an observed forward window');
+const malformedAnchor=bars.map(c=>({...c}));
+malformedAnchor[64].high=malformedAnchor[64].close-.25;
+assert.ok(observedForwardReach(malformedAnchor,'BUY',1).samples<m1.samples,
+  'a malformed entry anchor must never count as a successful forward TP sample');
+const brokenAnchorTime=bars.map(c=>({...c}));
+brokenAnchorTime[64].time+=30000;
+assert.ok(observedForwardReach(brokenAnchorTime,'BUY',1).samples<m1.samples,
+  'a non-M1 entry anchor timestamp must invalidate the corresponding sample');
 const small=observedForwardReach(bars.slice(-50),'BUY',5);
 assert.ok(small.samples<30,'not enough independent five-minute trials');
 const plans=fs.readFileSync('lib/scalp-opportunities.ts','utf8');
