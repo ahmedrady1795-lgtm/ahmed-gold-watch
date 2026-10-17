@@ -32,7 +32,7 @@ assert.match(chart,/sniper-evidence-drawer/);
 assert.match(chart,/sniper-chart-legend-drawer/);
 assert.match(chart,/const W=mobile\\?650:1440/,
   'new mobile SVG expands chart label readability without second screens');
-assert.match(chart,/const candleWidth=clamp\(stride\*\.72/);
+assert.match(chart,/const candleWidth=clamp\(stride\*\.73/);
 assert.match(css,/\.news-ticker-line\{display:flex/);
 assert.match(css,/white-space:nowrap/);
 assert.match(css,/\.compact-sniper \.forecast-visual-svg\{width:100%;min-width:0;height:auto\}/);
