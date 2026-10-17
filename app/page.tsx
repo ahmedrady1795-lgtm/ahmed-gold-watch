@@ -243,9 +243,19 @@ export default function Home(){
   const aiProducedAt=Number(aiData?.checkedAt)||aiSnapshotAt;
   const snapshotAge=aiProducedAt>0?Math.max(0,now-aiProducedAt):Infinity;
   const aiActive=Boolean(aiData?.ok&&aiLastOkAt&&now-aiLastOkAt<10000&&snapshotAge<20000);
-  const shownBtc=btc??aiBtc?.price??aiData?.bitcoin?.price??null;
-  const shownBtcAt=btcAt||Number(aiBtc?.sourceTime||0);
-  const btcLive=Boolean(shownBtcAt&&now-shownBtcAt<10000);
+  // A stale WS/REST value must not hide a *newer* genuine server quote.
+  // Always pair a quote's price with the timestamp of THAT SAME source.
+  const aiBtcAt=sourceTimestamp(aiBtc?.sourceTime)||0;
+  const btcDirectFresh=btc!=null&&Number.isFinite(btc)&&btc>0&&
+    validSourceTime(btcAt||null,now,10000);
+  const btcAiPrice=Number(aiBtc?.price);
+  const btcAiFresh=Number.isFinite(btcAiPrice)&&btcAiPrice>0&&
+    validSourceTime(aiBtcAt||null,now,10000);
+  const shownBtc=btcDirectFresh?btc:btcAiFresh?btcAiPrice:
+    btc??(Number.isFinite(btcAiPrice)&&btcAiPrice>0?btcAiPrice:null);
+  const shownBtcAt=btcDirectFresh?btcAt:btcAiFresh?aiBtcAt:
+    btcAt||aiBtcAt;
+  const btcLive=Boolean(btcDirectFresh||btcAiFresh);
 
   return <main className="shell modern-workspace compact-sniper">
     <a className="skip-link" href="#market-forecast">انتقل إلى خريطة الحركة</a>
