@@ -17,6 +17,11 @@ const history=Array.from({length:650},(_,i)=>{
 });
 const now=t0+history.length*60000;
 const m1=validate(history,now,1,.01),m5=validate(history,now,5,.01);
+const source=fs.readFileSync('lib/direction-walkforward.ts','utf8');
+assert.match(source,/SWEEP_RECLAIM/,'historical sweep/reclaim candidate is trained only on past closed bars');
+assert.match(source,/RANGE_FADE/,'range regime challenger exists independently of trend-following');
+assert.match(source,/selected!=='MOMENTUM_3'&&holdout\.n>=35/,
+ 'no challenger is deployed merely by winning on the training set');
 for(const [h,result] of [[1,m1],[5,m5]]){
   assert.equal(result.horizon,h);
   assert.equal(result.closedBars,650);
