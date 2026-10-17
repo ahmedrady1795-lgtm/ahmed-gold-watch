@@ -1463,3 +1463,29 @@ body:has(.modern-workspace.compact-sniper){
  .btc-footprint-minute{flex:0 0 210px}
  .btc-flow-panel-title{font-size:11px}
 }
+
+/* Chart-first cockpit: verified market evidence is glanceable, verbose
+   technical explanations stay in the independent expandable panels. */
+.sniper-market-evidence-rail{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
+ gap:5px;margin:2px 4px 7px;direction:rtl}
+.sniper-evidence-tag{min-width:0;padding:7px 9px;border:1px solid #2e5060;
+ border-radius:8px;background:linear-gradient(125deg,#102b39,#0a202f);
+ display:flex;flex-direction:column;gap:4px;white-space:nowrap;overflow:hidden}
+.sniper-evidence-tag b{font-size:10px;font-weight:750;color:#aac8dc}
+.sniper-evidence-tag small{font-size:11px;overflow:hidden;text-overflow:ellipsis;
+ color:#f0f6fb;font-weight:650;font-variant-numeric:tabular-nums}
+.sniper-evidence-tag:nth-child(3){border-color:#4e766d}
+.sniper-evidence-tag:nth-child(4){border-color:#4e677b}
+.sniper-market-evidence-rail + .sniper-playbook{margin-top:0}
+.compact-sniper .btc-forward-observation{margin:4px 4px 6px}
+.compact-sniper .sniper-playbook{margin-bottom:5px}
+@media(max-width:760px){
+ .sniper-market-evidence-rail{display:flex;overflow-x:auto;scrollbar-width:thin;
+  gap:5px;margin:3px 0 7px;padding-bottom:3px}
+ .sniper-evidence-tag{flex:0 0 auto;min-width:104px;max-width:180px;padding:7px}
+ .sniper-evidence-tag b{font-size:9px}
+ .sniper-evidence-tag small{font-size:10px}
+}
+@media(min-width:761px) and (max-width:1110px){
+ .sniper-market-evidence-rail{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
