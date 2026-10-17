@@ -262,10 +262,8 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
   const microEdge=mid&&spread&&microprice!=null&&spread>0?clamp((microprice-mid)/(spread/2)*100):0;
   const bidWallPoint=wallPoint(bids),askWallPoint=wallPoint(asks);
   const bidWall=bidWallPoint.ratio,askWall=askWallPoint.ratio,wallDiff=bidWall-askWall,wallSide:Side=wallDiff>=1.2?'BUY':wallDiff<=-1.2?'SELL':'WAIT';
-  const weightedImbalance=clamp(depthImbalance*.72+bboImbalance*.18+microEdge*.10);
   const okxDepthBid=okxBids.length?weightedDepth(okxBids,okxBids[0].price):0,okxDepthAsk=okxAsks.length?weightedDepth(okxAsks,okxAsks[0].price):0;
   const okxDepthTotal=okxDepthBid+okxDepthAsk,okxDepthImbalance=okxDepthTotal>0?(okxDepthBid-okxDepthAsk)/okxDepthTotal*100:0;
-  const crossExchangePressure=clamp(weightedImbalance*.55+okxDepthImbalance*.25+flow.deltaPct*.10+okxFlow.deltaPct*.10);
   const freshestKraken=([...bids,...asks].map(v=>v.time||0).filter(x=>x>0).sort((a,b)=>b-a)[0]||null);
   const okxDepthAt=okxDepthR.status==='fulfilled'?
     Number((Array.isArray(okxDepthR.value?.data)?okxDepthR.value.data[0]:null)?.ts):NaN;
@@ -279,47 +277,62 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
     okxTradeCount:okxFlow.tradeCount
   });
   warnings.push(...health.reasons);
+  // Stale books and stale trades cannot vote on the direction or on
+  // absorption, even if another healthy venue made the aggregate usable.
+  // Missing independent sources reduce conviction rather than scaling the
+  // remaining single source to an artificial 100% pressure.
+  const cbDelta=health.coinbaseTrades?flow.deltaPct:0;
+  const okxDelta=health.okxTrades?okxFlow.deltaPct:0;
+  const cbPriceChange=health.coinbaseTrades?flow.priceChangeBps:0;
+  const verifiedDepthImbalance=health.krakenDepth?depthImbalance:0;
+  const verifiedOkxImbalance=health.okxDepth?okxDepthImbalance:0;
+  const verifiedMicroEdge=health.bbo?microEdge:0;
+  const weightedImbalance=clamp(verifiedDepthImbalance*.72+
+    (health.bbo?bboImbalance:0)*.18+verifiedMicroEdge*.10);
+  const crossExchangePressure=clamp(weightedImbalance*.55+
+    verifiedOkxImbalance*.25+cbDelta*.10+okxDelta*.10);
   const integrity=assessBtcLiquidityIntegrity({
-    krakenReady:bids.length>=15&&asks.length>=15,
-    okxReady:okxBids.length>=15&&okxAsks.length>=15,
-    krakenImbalance:depthImbalance,okxImbalance:okxDepthImbalance,
-    coinbaseTrades:flow.tradeCount,okxTrades:okxFlow.tradeCount,
-    coinbaseDelta:flow.deltaPct,okxDelta:okxFlow.deltaPct,now,
+    krakenReady:health.krakenDepth&&bids.length>=15&&asks.length>=15,
+    okxReady:health.okxDepth&&okxBids.length>=15&&okxAsks.length>=15,
+    krakenImbalance:verifiedDepthImbalance,okxImbalance:verifiedOkxImbalance,
+    coinbaseTrades:health.coinbaseTrades?flow.tradeCount:0,
+    okxTrades:health.okxTrades?okxFlow.tradeCount:0,
+    coinbaseDelta:cbDelta,okxDelta,now,
     bid:bids[0]?.price||0,ask:asks[0]?.price||0,
     bidDepthUsd:rawBidUsd,askDepthUsd:rawAskUsd,previous
   });
   if(integrity.reasons.length)warnings.push(...integrity.reasons);
 
-  const old=previous,pressureBase=clamp(crossExchangePressure*.68+flow.deltaPct*.18+okxFlow.deltaPct*.14);
+  const old=previous,pressureBase=clamp(crossExchangePressure*.68+cbDelta*.18+okxDelta*.14);
   const pressureChange=old?pressureBase-old.pressure:0;
   const bidDepthChangePct=old?pctChange(rawBidUsd,old.bidDepthUsd):0,askDepthChangePct=old?pctChange(rawAskUsd,old.askDepthUsd):0;
   const acceleration=clamp(pressureChange*.55+(bidDepthChangePct-askDepthChangePct)*.45);
   // A failed venue must not reset the previous valid depth or pressure to zero.
 
-  const absDelta=Math.abs(flow.deltaPct),signedPrice=flow.priceChangeBps;
-  const sellFollowThrough=flow.deltaPct<=-18&&signedPrice<=-2.2;
-  const buyFollowThrough=flow.deltaPct>=18&&signedPrice>=2.2;
+  const absDelta=Math.abs(cbDelta),signedPrice=cbPriceChange;
+  const sellFollowThrough=cbDelta<=-18&&signedPrice<=-2.2;
+  const buyFollowThrough=cbDelta>=18&&signedPrice>=2.2;
   let absorptionSide:Side='WAIT',absorptionScore=0,absorptionReason='لا يوجد امتصاص واضح.',trapDetected=false,followThrough=sellFollowThrough||buyFollowThrough;
-  if(flow.deltaPct<=-30&&signedPrice>-2.2){
+  if(cbDelta<=-30&&signedPrice>-2.2){
     trapDetected=true;absorptionSide='BUY';
     const mismatch=signedPrice>=0?20:10;
     absorptionScore=Math.min(92,Math.round(45+absDelta*.45+mismatch));
     absorptionReason='بيع هجومي كبير لكن السعر رفض الهبوط: فخ بيع/امتصاص شراء محتمل.';
-  }else if(flow.deltaPct>=30&&signedPrice<2.2){
+  }else if(cbDelta>=30&&signedPrice<2.2){
     trapDetected=true;absorptionSide='SELL';
     const mismatch=signedPrice<=0?20:10;
     absorptionScore=Math.min(92,Math.round(45+absDelta*.45+mismatch));
     absorptionReason='شراء هجومي كبير لكن السعر رفض الصعود: فخ شراء/امتصاص بيع محتمل.';
-  }else if(flow.deltaPct<=-24&&signedPrice>=-1.2){
+  }else if(cbDelta<=-24&&signedPrice>=-1.2){
     absorptionSide='BUY';absorptionScore=Math.min(88,Math.round(36+absDelta*.38));absorptionReason='ضغط بيع بدون متابعة سعرية كافية: امتصاص شراء محتمل.';
-  }else if(flow.deltaPct>=24&&signedPrice<=1.2){
+  }else if(cbDelta>=24&&signedPrice<=1.2){
     absorptionSide='SELL';absorptionScore=Math.min(88,Math.round(36+absDelta*.38));absorptionReason='ضغط شراء بدون متابعة سعرية كافية: امتصاص بيع محتمل.';
   }
 
   const flowWeight=trapDetected?.04:followThrough?.30:.16;
   const absorptionAdj=absorptionSide==='BUY'?Math.min(30,absorptionScore*.32):absorptionSide==='SELL'?-Math.min(30,absorptionScore*.32):0;
-  const wallAdj=wallSide==='BUY'?Math.min(4,Math.max(0,wallDiff)*1.2):wallSide==='SELL'?-Math.min(4,Math.max(0,-wallDiff)*1.2):0;
-  const signed=clamp(crossExchangePressure*.38+flow.deltaPct*flowWeight*.70+okxFlow.deltaPct*.12+okxDepthImbalance*.10+acceleration*.10+absorptionAdj+wallAdj,-84,84);
+  const wallAdj=!health.krakenDepth?0:wallSide==='BUY'?Math.min(4,Math.max(0,wallDiff)*1.2):wallSide==='SELL'?-Math.min(4,Math.max(0,-wallDiff)*1.2):0;
+  const signed=clamp(crossExchangePressure*.38+cbDelta*flowWeight*.70+okxDelta*.12+verifiedOkxImbalance*.10+acceleration*.10+absorptionAdj+wallAdj,-84,84);
   const buy=Math.round(clamp(50+signed/2,8,92)),sell=100-buy,side=buy-sell>=10?'BUY':sell-buy>=10?'SELL':'WAIT';
   const successCount=[bboR,depthR,tradesR,okxDepthR,okxTradesR].filter(x=>x.status==='fulfilled').length;
   const quality=Math.max(0,Math.min(100,Math.round(successCount/5*52+
@@ -337,8 +350,13 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
       okxDepth:health.okxDepth,
       okxTrades:health.okxTrades
     },
-    book:{bestBid,bestAsk,spreadBps:spreadBps==null?null:Number(spreadBps.toFixed(3)),bboImbalance:Math.round(bboImbalance),depthImbalance:Math.round(depthImbalance),weightedImbalance:Math.round(weightedImbalance),microprice:microprice==null?null:Number(microprice.toFixed(2)),microEdge:Math.round(microEdge),bidDepthUsd:Math.round(rawBidUsd),askDepthUsd:Math.round(rawAskUsd),bidWall:Number(bidWall.toFixed(2)),askWall:Number(askWall.toFixed(2)),bidWallPrice:bidWallPoint.price,askWallPrice:askWallPoint.price,wallSide},
-    flow:{tradeCount:flow.tradeCount,buyVolume:Number(flow.buyVolume.toFixed(6)),sellVolume:Number(flow.sellVolume.toFixed(6)),deltaVolume:Number(flow.deltaVolume.toFixed(6)),deltaPct:Number(flow.deltaPct.toFixed(1)),priceChangeBps:Number(flow.priceChangeBps.toFixed(2)),cvdSide:flow.cvdSide},
+    book:{bestBid,bestAsk,spreadBps:spreadBps==null?null:Number(spreadBps.toFixed(3)),bboImbalance:Math.round(bboImbalance),depthImbalance:Math.round(verifiedDepthImbalance),weightedImbalance:Math.round(weightedImbalance),microprice:microprice==null?null:Number(microprice.toFixed(2)),microEdge:Math.round(microEdge),bidDepthUsd:Math.round(rawBidUsd),askDepthUsd:Math.round(rawAskUsd),bidWall:Number(bidWall.toFixed(2)),askWall:Number(askWall.toFixed(2)),bidWallPrice:bidWallPoint.price,askWallPrice:askWallPoint.price,wallSide:health.krakenDepth?wallSide:'WAIT'},
+    flow:{tradeCount:health.coinbaseTrades?flow.tradeCount:0,
+      buyVolume:health.coinbaseTrades?Number(flow.buyVolume.toFixed(6)):0,
+      sellVolume:health.coinbaseTrades?Number(flow.sellVolume.toFixed(6)):0,
+      deltaVolume:health.coinbaseTrades?Number(flow.deltaVolume.toFixed(6)):0,
+      deltaPct:Number(cbDelta.toFixed(1)),priceChangeBps:Number(cbPriceChange.toFixed(2)),
+      cvdSide:health.coinbaseTrades?flow.cvdSide:'WAIT'},
     dynamics:{pressureChange:Number(pressureChange.toFixed(1)),bidDepthChangePct:Number(bidDepthChangePct.toFixed(1)),askDepthChangePct:Number(askDepthChangePct.toFixed(1)),acceleration:Number(acceleration.toFixed(1))},
     absorption:{side:absorptionSide,score:absorptionScore,reason:absorptionReason,trapDetected,followThrough},integrity,warnings
   };
