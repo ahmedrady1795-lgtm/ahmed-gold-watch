@@ -85,12 +85,14 @@ export function buildConditionalTargetCandles(input:{
  const out:RouteBar[]=[],touches:RouteTouch[]=[];let prev=quote,goalIndex=0;
  for(let i=0;i<count;i++){
    const sample=samples[(i*7+5)%samples.length];
-   const ratio=Math.min(1,Math.abs(sample.close-sample.open)/Math.max(bodyCap,.000001));
-   const drift=maxBody*(.44+ratio*.38);
-   // Brief countertrend bars and minor consolidation imitate real OHLC
-   // hesitation; they are patterns of a conditional drawing, not market data.
-   const retrace=i%6===4;
-   const stepBody=retrace?-maxBody*(.13+ratio*.17):drift;
+   const sourceBody=sample.close-sample.open;
+   // Use the polarity and magnitude distribution of ACTUAL closed M1 bars.
+   // Previously an artificial every-sixth reversal created robotic staircases.
+   const retrace=sign*sourceBody<-(atr*.025);
+   const magnitude=Math.abs(sourceBody);
+   const drift=Math.min(maxBody,Math.max(maxBody*.32,magnitude*.90));
+   const stepBody=retrace?
+     -Math.min(maxBody*.44,Math.max(maxBody*.12,magnitude*.39)):drift;
    // Follow evidence-derived structure BEFORE goals, including downward
    // retests in BUY routes and upward retests in SELL routes.
    while(waypointIndex<waypoints.length&&Math.abs(waypoints[waypointIndex].price-prev)<1e-8){
@@ -109,9 +111,11 @@ export function buildConditionalTargetCandles(input:{
    }
    body=Math.max(-maxBody,Math.min(maxBody,body));
    const open=prev,close=open+body;
-   const above=Math.min(upCap,Math.max(atr*.025,
+   // Historical wick lengths are copied from the source bar (clipped only
+   // to the same visible chart percentile). No fabricated minimum wick.
+   const above=Math.min(upCap,Math.max(0,
      sample.high-Math.max(sample.open,sample.close)));
-   const below=Math.min(downCap,Math.max(atr*.025,
+   const below=Math.min(downCap,Math.max(0,
      Math.min(sample.open,sample.close)-sample.low));
    // Match the entire historical high-low range as well as the body size.
    const wickBudget=Math.max(0,historicalRangeMax-Math.abs(body));
