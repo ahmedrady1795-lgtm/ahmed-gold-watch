@@ -22,6 +22,7 @@ import {assessChartObservation,observedStructuralTargets} from '../lib/chart-obs
 import {buildSniperChartPlaybook} from '../lib/sniper-chart-playbook';
 import {assessBtcForwardObservation} from '../lib/btc-forward-observation';
 import {assessBtcStructuralScenario} from '../lib/btc-structural-scenario';
+import {buildConditionalTargetCandles} from '../lib/conditional-target-candles';
 import BtcOrderflowPanel from './BtcOrderflowPanel';
 import type {BtcOrderflow} from '../lib/btc-orderflow';
 
@@ -201,8 +202,30 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     sourceReady:m.historyFresh&&m.observationFresh&&sn.view.priceFresh,
     scenarioReady:planVisible});
   const liveAnchor=m.price!=null&&sn.view.priceFresh&&m.observationFresh&&m.historyFresh?m.price:undefined;
+  // Price-space demonstration from REAL server targets, not timed candle
+  // predictions. A distant TP stays marked instead of enlarging bodies.
+  const conditionalRouteSide=planVisible?m.displaySide:btcScenario?.side??'WAIT';
+  const conditionalRouteGoals=planVisible?m.displayTargets.map(t=>({
+    stage:t.stage,price:t.price})):btcScenario?.destination&&
+    (btcScenario.side==='BUY'||btcScenario.side==='SELL')?[{
+      stage:1,price:btcScenario.side==='BUY'?
+        btcScenario.destination.low:btcScenario.destination.high
+    }]:[];
+  const targetRoute=showGhost&&!goldClosed&&m.observationFresh&&
+    (conditionalRouteSide==='BUY'||conditionalRouteSide==='SELL')&&
+    conditionalRouteGoals.length?
+    buildConditionalTargetCandles({
+      history:m.candles,now,quote:m.price,priceFresh:sn.view.priceFresh,
+      side:conditionalRouteSide,targets:conditionalRouteGoals,
+      invalidation:planVisible?m.displayStop:btcScenario?.invalidation
+    }):null;
+  const routeVisible=Boolean(targetRoute?.ready&&targetRoute.bars.length);
   const visualCandles=!showGhost?[]:goldClosed?
     buildClosedSessionCandlePreview(m.candles):
+    routeVisible?targetRoute!.bars.map((b,i)=>({
+      ...b,time:(m.candles.at(-1)?.time||now)+(i+1)*60000,
+      validatedShape:false,scenarioShape:true,analogue:false
+    })):
     buildVisualFuture({candles:m.candles,forecast:ghost,side:dir,now,anchorPrice:liveAnchor});
   const closedPreview=goldClosed&&visualCandles.length>0;
   // The M1 audit scans many historical folds. A frequent quote/UI refresh
@@ -219,11 +242,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const analogueNeighbors=analogueStudy.neighbors;
   const analogueAudit=analogueStudy.audit;
   const scenarioCandles=visualCandles.some(c=>c.scenarioShape);
-  const ghostVisible=showGhost&&ghost.mode==='CANDLES'&&visualCandles.length>=3;
-  const ghostRangeVisible=showGhost&&ghost.mode==='RANGE'&&visualCandles.length>=3;
+  const ghostVisible=showGhost&&!routeVisible&&ghost.mode==='CANDLES'&&visualCandles.length>=3;
+  const ghostRangeVisible=showGhost&&!routeVisible&&ghost.mode==='RANGE'&&visualCandles.length>=3;
   const ghostActive=showGhost&&visualCandles.length>0;
+  const stride=(x1-x0)/Math.max(candles.length,1);
+  const candleWidth=clamp(stride*.73,mobile?2.2:3,15);
   const futureStride=(xr-xf-18)/Math.max(1,visualCandles.length);
-  const futureWidth=clamp(futureStride*.72,5,15);
+  // The scenario can be narrower, NEVER wider than an actual chart candle.
+  const futureWidth=Math.min(candleWidth,clamp(futureStride*.72,2,15));
   const ghostXs=visualCandles.map((_,i)=>xf+9+(i+.5)*futureStride);
   const motionColor=watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4';
   const scenarioKind=motion.some(p=>p.kind==='SWEEP')?'SWEEP_RECLAIM':
@@ -240,7 +266,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const futureBounds=visualCandles.flatMap(c=>[c.high,c.low]);
   const focusMin=Math.min(candleMin,...futureBounds);
   const focusMax=Math.max(candleMax,...futureBounds);
-  const focusSpan=Math.max(candleSpan,focusMax-focusMin,ghost.atr??0);
+  const focusSpan=Math.max(candleSpan,focusMax-focusMin,targetRoute?.atr??ghost.atr??0);
   const scaleLow=focusCandles?focusMin-focusSpan*.18:allMin-allSpan*.1;
   const scaleHigh=focusCandles?focusMax+focusSpan*.18:allMax+allSpan*.1;
   const px=(p:number)=>yt+(scaleHigh-p)/Math.max(.0000001,scaleHigh-scaleLow)*(yb-yt);
@@ -287,8 +313,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       [{key:'MARKET_PRICE',y:px(m.price!),price:m.price!,
         label:priceFresh?(asset==='BTC'?'BTC LIVE':'سعر حي'):'آخر سعر',kind:'PRICE'}]:[])
   ],yt+20,yb-20,38);
-  const stride=(x1-x0)/Math.max(candles.length,1);
-  const candleWidth=clamp(stride*.73,mobile?2.2:3,15);
   const maxVolume=Math.max(1,...candles.map(c=>c.volume));
   let continuousStart=Math.max(0,candles.length-1);
   while(continuousStart>0&&candles[continuousStart].time-candles[continuousStart-1].time===60000)continuousStart--;
