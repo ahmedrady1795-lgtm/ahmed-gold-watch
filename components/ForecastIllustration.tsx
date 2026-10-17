@@ -216,6 +216,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     conditionalRouteGoals.length?
     buildConditionalTargetCandles({
       history:m.candles,now,quote:m.price,priceFresh:sn.view.priceFresh,
+      visibleCount:candles.length,
       side:conditionalRouteSide,targets:conditionalRouteGoals,
       invalidation:planVisible?m.displayStop:btcScenario?.invalidation
     }):null;
