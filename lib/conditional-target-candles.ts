@@ -13,6 +13,7 @@ export type RouteMilestone={key:string;label:string;price:number;index:number};
 export type TargetRoute={
   ready:boolean;bars:RouteBar[];touches:RouteTouch[];pendingStages:number[];
   milestones:RouteMilestone[];
+  outcome:'ACTIVE'|'STOPPED'|'AMBIGUOUS';
   atr:number|null;maxBody:number|null;reason:string;
 };
 type Bar={time:number;open:number;high:number;low:number;close:number};
@@ -26,7 +27,7 @@ const okay=(b:Bar)=>b&&[b.time,b.open,b.high,b.low,b.close].every(Number.isFinit
   b.time>0&&b.time%60000===0&&b.open>0&&b.low>0&&
   b.high>=Math.max(b.open,b.close)&&b.low<=Math.min(b.open,b.close);
 const empty=(reason:string):TargetRoute=>({
- ready:false,bars:[],touches:[],pendingStages:[],milestones:[],atr:null,maxBody:null,reason
+ ready:false,bars:[],touches:[],pendingStages:[],milestones:[],outcome:'ACTIVE',atr:null,maxBody:null,reason
 });
 export function buildConditionalTargetCandles(input:{
  history:Bar[];now:number;quote:number|null;priceFresh:boolean;
@@ -128,7 +129,7 @@ export function buildConditionalTargetCandles(input:{
  // Same absolute price scale and genuine observed OHLC morphology. Never
  // amplify beyond the visible market's largest body, wick or full range.
  const out:RouteBar[]=[],touches:RouteTouch[]=[],milestones:RouteMilestone[]=[];
- let prev=quote,goalIndex=0,milestoneIndex=0,hitInvalidation=false;
+ let prev=quote,goalIndex=0,milestoneIndex=0,hitInvalidation=false,ambiguous=false;
  for(let i=0;i<count;i++){
    if(i>0&&i%motifLength===0){
      // Re-evaluate morphology after each illustrated structural leg, rather
@@ -156,6 +157,15 @@ export function buildConditionalTargetCandles(input:{
    if(low<=0)return empty('مسار توضيحي غير صالح');
    out.push({step:i+1,open,high,low,close});
    prev=close;
+   // A completed OHLC candle cannot tell whether TP or SL traded first.
+   // If both prices lie inside the same wick, NEVER paint a successful TP.
+   // Stop-only candles also end the path before any later target is marked.
+   const stopped=invalid!=null&&(side==='BUY'?low<=invalid:high>=invalid);
+   if(stopped){
+     hitInvalidation=true;
+     ambiguous=goals.slice(goalIndex).some(goal=>goal.price>=low-1e-9&&goal.price<=high+1e-9);
+     break;
+   }
    // Levels are NEVER used to move candles. Mark a level only when the
    // naturally replayed candle's real-scale high-low interval intersects it.
    while(milestoneIndex<waypoints.length){
@@ -168,15 +178,65 @@ export function buildConditionalTargetCandles(input:{
      if(goal.price<low-1e-9||goal.price>high+1e-9)break;
      touches.push({stage:goal.stage,index:i,price:goal.price});goalIndex++;
    }
-   if(invalid!=null&&(side==='BUY'?low<=invalid:high>=invalid)){
-     hitInvalidation=true;break;
-   }
  }
  if(!out.length)return empty('لم تتوفر شموع مرجعية');
  return {ready:true,bars:out,touches,milestones,
    pendingStages:goals.slice(goalIndex).map(t=>t.stage),
+   outcome:ambiguous?'AMBIGUOUS':hitInvalidation?'STOPPED':'ACTIVE',
    atr,maxBody:bodyCap,
-   reason:hitInvalidation?
-     'الشكل التاريخي المماثل لمس مستوى الإبطال؛ لا يصح مواصلة المسار':
+   reason:ambiguous?
+     'الهدف والوقف داخل شمعة مرجعية واحدة؛ ترتيب اللمس مجهول، ولا يُحتسب الهدف':
+     hitInvalidation?
+     'الشكل التاريخي المماثل لمس مستوى الإبطال أولًا؛ لا يصح مواصلة المسار':
      'مراحل مترابطة من شموع M1 تاريخية مشابهة حديثة النمط؛ الأهداف لا تغيّر الشموع ولا تحدد زمن الوصول أو احتماله'};
+}
+
+
+/** Purged walk-forward illustration check, NOT a timing or TP forecast.
+ * Every match receives only a closed historical PREFIX, and the next 18
+ * genuinely closed M1 bars are revealed AFTER the route has been frozen.
+ * Disjoint 18-bar outcome folds prevent repeat scoring the same movement.
+ */
+export function auditConditionalRoute(history:Bar[],now:number){
+ const rows=Array.isArray(history)?history.slice(-720):[];
+ const emptyAudit={samples:0,maeAtr:null as number|null,
+   baselineMaeAtr:null as number|null,directionPct:null as number|null,
+   baselineDirectionPct:null as number|null,status:'COLLECTING' as 'COLLECTING'|'NO_PROVEN_EDGE'};
+ if(rows.length<95||!Number.isFinite(now))return emptyAudit;
+ let samples=0,totalErr=0,baselineErr=0,hits=0,baseHits=0;
+ // Use at most 25 disjoint tests; do not include an unfinished candle.
+ const cutoff=rows.length-18;
+ const first=Math.max(65,cutoff-25*18);
+ for(let t=first;t<=cutoff;t+=18){
+   const prefix=rows.slice(0,t),future=rows.slice(t,t+18);
+   if(prefix.length<60||future.length!==18||
+      [...prefix.slice(-36),...future].some((c,i,a)=>!okay(c)||
+       (i>0&&c.time-a[i-1].time!==60000))||
+      future.at(-1)!.time+60000>now)continue;
+   const last=prefix.at(-1)!;
+   const recent=prefix.slice(-36);
+   const unit=quantile(recent.slice(1).map((b,i)=>Math.max(b.high-b.low,
+      Math.abs(b.high-recent[i].close),Math.abs(b.low-recent[i].close))),.5);
+   if(!Number.isFinite(unit)||unit<=0)continue;
+   const model=buildConditionalTargetCandles({
+     history:prefix,now:last.time+90000,quote:last.close,priceFresh:true,
+     side:'BUY',targets:[{stage:1,price:last.close+unit*10000}],
+     count:18,visibleCount:36
+   });
+   if(!model.ready||model.bars.length!==18)continue;
+   samples++;
+   for(let i=0;i<18;i++){
+     totalErr+=Math.abs(model.bars[i].close-future[i].close)/unit/18;
+     baselineErr+=Math.abs(last.close-future[i].close)/unit/18;
+   }
+   const realised=Math.sign(future.at(-1)!.close-last.close);
+   if(Math.sign(model.bars.at(-1)!.close-last.close)===realised&&realised!==0)hits++;
+   if(Math.sign(last.close-prefix.at(-4)!.close)===realised&&realised!==0)baseHits++;
+ }
+ return {...emptyAudit,samples,
+   maeAtr:samples?Number((totalErr/samples).toFixed(3)):null,
+   baselineMaeAtr:samples?Number((baselineErr/samples).toFixed(3)):null,
+   directionPct:samples?Number((hits/samples*100).toFixed(1)):null,
+   baselineDirectionPct:samples?Number((baseHits/samples*100).toFixed(1)):null,
+   status:samples>=20?'NO_PROVEN_EDGE' as const:'COLLECTING' as const};
 }
