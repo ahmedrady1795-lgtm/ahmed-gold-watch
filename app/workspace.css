@@ -1590,3 +1590,149 @@ body:has(.modern-workspace.compact-sniper){
  .sniper-btc-forecast-levels>span:first-child{grid-column:1 / -1}
  .sniper-btc-forecast-levels strong{font-size:12px}
 }
+
+
+/* QANNAS / clear command desk.
+   Decision and chart first, context behind explicit disclosure. Trading gates,
+   live/OHLC guards and execution outcomes remain unchanged. */
+.compact-sniper .sniper-home-head{
+ display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;
+ gap:10px 18px;padding:12px 17px;margin:1px 0 10px;
+ background:linear-gradient(112deg,#0e2935,#0a1725 75%);
+ border:1px solid rgba(96,155,170,.37);border-radius:15px;
+ box-shadow:inset 0 1px rgba(194,230,239,.07);direction:rtl
+}
+.compact-sniper .sniper-home-brand{display:flex;align-items:center;gap:12px;min-width:0}
+.compact-sniper .sniper-home-emblem{display:grid;place-items:center;flex:none;width:45px;height:45px;
+ border:1px solid #448d83;border-radius:12px;font-size:28px;line-height:1;color:#89f1d4;
+ background:linear-gradient(145deg,#17443f,#0b2d37)}
+.compact-sniper .sniper-home-brand strong{display:block;font-size:23px;letter-spacing:.1px;color:#f5f8fb}
+.compact-sniper .sniper-home-brand strong span{font-size:11px;font-weight:650;letter-spacing:2px;color:#7fbeaf;margin-inline-start:5px}
+.compact-sniper .sniper-home-brand small{display:block;margin-top:4px;color:#9fbeca;font-size:11px}
+.compact-sniper .sniper-solo-nav{min-height:0;margin:0;padding:0;display:flex;
+ align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px}
+.compact-sniper .sniper-solo-nav a{min-height:36px;padding:8px 13px;border-radius:9px;
+ font-size:12px;text-decoration:none;color:#d2e6ec;border:1px solid #35596a;background:#102b39}
+.compact-sniper .sniper-solo-nav a:hover,.compact-sniper .sniper-solo-nav a:focus-visible{
+ color:#c5fff1;border-color:#4c998f;background:#173a44}
+.compact-sniper .sniper-solo-nav .workspace-scalp-link{color:#11332e;background:#88e7c9;
+ font-weight:800;border-color:#7ee4c5}
+.compact-sniper .sniper-solo-nav .workspace-scalp-link:hover{color:#102e27;background:#b8f7e5}
+.compact-sniper .sniper-home-news{margin-top:12px;scroll-margin-top:20px}
+.compact-sniper #sniper-performance,.compact-sniper #market-forecast{scroll-margin-top:20px}
+
+/* One compact explanation for feed/model delays; no stacked red error cards. */
+.compact-sniper .sniper-system-notice{display:flex;align-items:center;flex-wrap:wrap;gap:9px;
+ padding:9px 13px;border-radius:10px;border:1px solid #67603b;background:#25271f;color:#efdcae;font-size:12px}
+.compact-sniper .sniper-system-notice>strong{font-weight:700;flex:1}
+.compact-sniper .sniper-system-notice>details{position:relative;font-size:11px}
+.compact-sniper .sniper-system-notice summary{cursor:pointer;color:#d8eaf0}
+.compact-sniper .sniper-system-notice p{margin:7px 0 2px;line-height:1.65;color:#f2dec0}
+.compact-sniper .sniper-system-notice>details[open]{flex-basis:100%;padding:7px 3px}
+
+/* Deliberate 4-part decision hierarchy; color belongs to evidence, not fear. */
+.compact-sniper .sniper-action-dashboard{display:grid!important;
+ grid-template-columns:minmax(240px,1.4fr) repeat(3,minmax(140px,1fr));
+ gap:8px!important;padding:10px 13px!important;align-items:stretch!important;
+ background:linear-gradient(105deg,#102736,#0d202e)!important;direction:rtl}
+.compact-sniper .sniper-action-primary,.compact-sniper .sniper-action-cell{
+ min-width:0;display:flex;flex-direction:column;gap:5px;
+ padding:12px 13px;border:1px solid rgba(111,157,178,.28);border-radius:11px;
+ background:rgba(6,22,32,.6)}
+.compact-sniper .sniper-action-primary{background:linear-gradient(110deg,#113b3d,#102936);
+ border-color:rgba(84,192,171,.43);box-shadow:inset 3px 0 #62d6b9}
+.compact-sniper .sniper-action-dashboard small{font-size:10px;line-height:1.35;color:#9dc1cf}
+.compact-sniper .sniper-action-dashboard strong{font-size:14px!important;line-height:1.45;
+ white-space:normal;color:#e5f5fa}
+.compact-sniper .sniper-action-primary>strong{font-size:16px!important;color:#b9f6de}
+.compact-sniper .sniper-action-dashboard strong.green{color:#78eec0}
+.compact-sniper .sniper-action-dashboard strong.red{color:#ffb8c6}
+.compact-sniper .sniper-action-dashboard span{display:block;flex:none!important;
+ color:#9cb8c7;font-size:10px!important;white-space:normal!important;
+ overflow:visible!important;text-overflow:clip!important;line-height:1.45}
+.compact-sniper .sniper-action-dashboard a{color:#98e1d4;text-decoration:underline;text-underline-offset:2px}
+.compact-sniper .sniper-action-dashboard a:focus-visible{outline:2px solid #94ead5}
+.compact-sniper .forecast-visual-status{max-width:min(40vw,240px)}
+.compact-sniper .forecast-visual-status .forecast-dot{flex:none}
+.compact-sniper .forecast-visual-chart-wrap{border-color:#356074}
+
+/* Primary chart controls are fixed; secondary controls are disclosed. */
+.compact-sniper .sniper-more-chart-tools{position:relative;flex:0 0 auto;min-width:0}
+.compact-sniper .sniper-more-chart-tools>summary{list-style:none;cursor:pointer;min-height:35px;
+ display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 10px;
+ color:#bcd9e4;border:1px solid #355b70;border-radius:8px;background:#102532;font-size:11px}
+.compact-sniper .sniper-more-chart-tools>summary::-webkit-details-marker{display:none}
+.compact-sniper .sniper-more-chart-tools>summary:focus-visible{outline:2px solid #7edbf5;outline-offset:2px}
+.compact-sniper .sniper-more-chart-tools[open]>summary{border-color:#3c988b;background:#173a41;color:#e4fff5}
+.compact-sniper .sniper-more-chart-tools-body{position:absolute;z-index:20;inset-inline-end:0;top:calc(100% + 5px);
+ width:max-content;max-width:min(92vw,400px);display:flex;flex-wrap:wrap;gap:6px;padding:9px;
+ background:#0a2230;border:1px solid #476d7a;border-radius:10px;
+ box-shadow:0 12px 32px rgba(0,0,0,.44)}
+.compact-sniper .sniper-more-chart-tools-body button{white-space:nowrap}
+.compact-sniper .forecast-chart-tools{overflow:visible}
+
+/* BTC move stays glanceable without forcing 3 competing panels over the chart. */
+.compact-sniper details.sniper-btc-forecast{display:block;padding:0;
+ margin:7px 3px;border-color:#386174;overflow:hidden}
+.compact-sniper .sniper-btc-forecast-summary{display:flex;align-items:center;
+ justify-content:space-between;gap:9px;min-height:45px;padding:8px 12px;
+ list-style:none;cursor:pointer}
+.compact-sniper .sniper-btc-forecast-summary::-webkit-details-marker{display:none}
+.compact-sniper .sniper-btc-forecast-summary strong{min-width:0;flex:1;font-size:13px;
+ color:#dff2f6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.compact-sniper .sniper-btc-forecast-buy .sniper-btc-forecast-summary strong{color:#8ef0c9}
+.compact-sniper .sniper-btc-forecast-sell .sniper-btc-forecast-summary strong{color:#ffafc0}
+.compact-sniper .sniper-btc-forecast-summary>span{font-size:14px;font-weight:800;color:#f0d59f}
+.compact-sniper .sniper-btc-forecast-summary small{color:#9ec1cf;white-space:nowrap}
+.compact-sniper .sniper-btc-forecast[open] .sniper-btc-forecast-summary{
+ border-bottom:1px solid rgba(121,164,178,.24)}
+.compact-sniper .sniper-btc-forecast-body{display:flex;align-items:center;
+ flex-wrap:wrap;gap:9px 18px;padding:10px 12px}
+.compact-sniper .sniper-btc-forecast-summary:focus-visible{outline:2px solid #8ee5d2;outline-offset:-2px}
+
+/* Reference-route statistics are available, but no longer bury the OHLC. */
+.compact-sniper .sniper-route-research{margin:3px 3px 7px;border:1px solid #2c5567;
+ background:#102735;border-radius:9px;overflow:hidden;color:#cfe4ec}
+.compact-sniper .sniper-route-research>summary{display:flex;align-items:center;gap:10px;
+ justify-content:space-between;min-height:38px;padding:8px 12px;cursor:pointer;
+ list-style:none;font-size:11px}
+.compact-sniper .sniper-route-research>summary::-webkit-details-marker{display:none}
+.compact-sniper .sniper-route-research>summary strong{font-size:12px;color:#cfece8}
+.compact-sniper .sniper-route-research>summary span{color:#97b9cb}
+.compact-sniper .sniper-route-research[open]>summary{border-bottom:1px solid #36586c}
+.compact-sniper .sniper-route-research>summary:focus-visible{outline:2px solid #7edbf5;outline-offset:-2px}
+.compact-sniper .sniper-route-research-content{display:grid;gap:2px}
+.compact-sniper .sniper-inspection>summary{font-size:13px;font-weight:650}
+@media(max-width:1080px){
+ .compact-sniper .sniper-home-head{align-items:flex-start}
+ .compact-sniper .sniper-action-dashboard{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:760px){
+ .compact-sniper .sniper-home-head{padding:10px 11px;gap:8px;margin:1px 0 7px}
+ .compact-sniper .sniper-home-brand strong{font-size:19px}
+ .compact-sniper .sniper-home-brand small{font-size:10px}
+ .compact-sniper .sniper-home-emblem{width:36px;height:36px;font-size:22px}
+ .compact-sniper .sniper-solo-nav{width:100%;justify-content:flex-start;gap:5px}
+ .compact-sniper .sniper-solo-nav a{padding:7px 9px;min-height:34px;font-size:11px}
+ .compact-sniper .sniper-action-dashboard{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px!important;padding:7px!important}
+ .compact-sniper .sniper-action-primary{grid-column:1/-1}
+ .compact-sniper .sniper-action-primary,.compact-sniper .sniper-action-cell{padding:9px}
+ .compact-sniper .sniper-action-dashboard strong{font-size:12px!important}
+ .compact-sniper .sniper-action-primary>strong{font-size:15px!important}
+ .compact-sniper .sniper-action-dashboard span{font-size:9px!important}
+ .compact-sniper .sniper-btc-forecast-summary{flex-wrap:wrap;gap:5px;min-height:42px}
+ .compact-sniper .sniper-btc-forecast-summary strong{flex:1 1 70%}
+ .compact-sniper .sniper-btc-forecast-summary small{font-size:10px}
+ .compact-sniper .sniper-more-chart-tools-body{position:relative;inset:auto;top:auto;
+  margin-top:6px;min-width:0;width:100%}
+ .compact-sniper .sniper-more-chart-tools[open]{flex:1 1 100%}
+ .compact-sniper .forecast-chart-tools:has(.sniper-more-chart-tools[open]){flex-wrap:wrap!important}
+}
+@media(max-width:380px){
+ .compact-sniper .sniper-action-cell{padding:8px 7px}
+ .compact-sniper .sniper-action-dashboard strong{font-size:11px!important}
+ .compact-sniper .sniper-home-brand small{font-size:9px}
+}
+@media(prefers-reduced-motion:reduce){
+ .compact-sniper .sniper-more-chart-tools,.compact-sniper .sniper-home-head{scroll-behavior:auto}
+}
