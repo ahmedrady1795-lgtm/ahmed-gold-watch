@@ -70,7 +70,7 @@ const chart=fs.readFileSync('components/ForecastIllustration.tsx','utf8'),
 assert.match(chart,/sniper-playbook-heading/,'playbook drawn inside live chart UI');
 assert.match(chart,/sniper-retest-corridor/,'retest band rendered at its actual price scale');
 assert.match(chart,/sniper-offscreen-target/,'off-zoom targets are disclosed, not repositioned');
-assert.match(chart,/offscreenTargets=playbook\.targets\.filter/);
+assert.match(chart,/offscreenTargets=allGoalLabels\.filter/,'offscreen TP labels use the current frozen, price-true target ladder');
 assert.match(chart,/primaryLiquidityZone/,'preserve liquidity mapping');
 assert.match(chart,/assessBreakoutWatch/,'preserve M5 breakout gating');
 assert.match(chart,/watchTargets/,'preserve original read-only TP');
