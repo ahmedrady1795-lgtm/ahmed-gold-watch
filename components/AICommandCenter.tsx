@@ -16,10 +16,12 @@ export default function AICommandCenter({data,chartData,error,assetView='ALL',no
     if(!separate?.chartCandles?.length)return modeled;
     const lastModelCandle=Number(modeled?.chartCandles?.at(-1)?.time||0);
     const lastFeedCandle=Number(separate?.chartCandles?.at(-1)?.time||0);
-    if(lastModelCandle>=lastFeedCandle&&lastModelCandle>0)return modeled;
+    if(lastModelCandle>=lastFeedCandle&&lastModelCandle>0&&!separate.providerTransition)return modeled;
     return {...modeled,chartCandles:separate.chartCandles,
       chartHigherFrames:separate.chartHigherFrames,
-      candleSource:separate.candleSource};
+      candleSource:separate.candleSource,
+      providerTransition:Boolean(separate.providerTransition),
+      pendingProvider:separate.pendingProvider};
   };
   const displayData=(data||chartData)?{
     ...(data||{}),gold:attachHistory('gold'),bitcoin:attachHistory('bitcoin'),
