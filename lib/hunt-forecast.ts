@@ -5,7 +5,7 @@ type ForecastSample={at:number;side:Side;score:number};
 type Horizon={side:Side;buy:number;sell:number;strength:number;gap:number};
 
 const memory=new Map<string,ForecastSample[]>();
-type ZoneCommit={forecast:any;side:Side;at:number;lastConfirmedAt:number;price:number;atr:number;flipsBlocked:number};
+type ZoneCommit={forecast:any;side:Side;at:number;lastConfirmedAt:number;price:number;atr:number;flipsBlocked:number;lastEvidenceAt?:number;oppositeBars?:number};
 const zoneCommitMemory=new Map<string,ZoneCommit>();
 type PathCommit={
   path:any;side:'BUY'|'SELL';at:number;lastConfirmedAt:number;anchor:number;atr:number;
@@ -734,8 +734,9 @@ function fmtZone(low:number,high:number){
   return a.toFixed(2)+'–'+b.toFixed(2);
 }
 
-function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,now:number){
+export function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,now:number,closedM1At=0){
   const key=String(asset||'ASSET').toUpperCase(),prev=zoneCommitMemory.get(key);
+  const evidenceAt=Number.isFinite(closedM1At)&&closedM1At>0&&closedM1At%60000===0&&closedM1At<=now&&now-closedM1At<=120000?closedM1At:0;
   const p=Number(price),a=Math.max(1e-9,Number(atr));
   const currentDecisionReady=current?.decisionReady!==false;
   const validCurrent=Boolean(
@@ -765,15 +766,36 @@ function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,
   };
 
   if(!prev||zoneBroken(prev)){
+    zoneCommitMemory.delete(key);
     if(validCurrent&&hasStructure(current)){
       const committed={...current,stability:{locked:true,ageSeconds:0,flipsBlocked:0,reason:'NEW_ZONE_COMMIT'}};
-      zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0});
+      zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0,lastEvidenceAt:evidenceAt,oppositeBars:0});
       return committed;
     }
     return current?{...current,stability:{locked:false,ageSeconds:0,flipsBlocked:0,reason:'NO_STRONG_ZONE'}}:null;
   }
 
   const age=now-prev.at,prevForecast=prev.forecast||{};
+  // Refresh frequency is not independent evidence. An intact zone can reverse
+  // only after two adjacent CLOSED M1 observations support the opposite side.
+  const newClose=evidenceAt>Number(prev.lastEvidenceAt||0);
+  if(validCurrent&&current.side!==prev.side&&hasStructure(current)){
+    const adjacent=evidenceAt-Number(prev.lastEvidenceAt||0)===60000;
+    const count=newClose?(adjacent?Number(prev.oppositeBars||0)+1:1):Number(prev.oppositeBars||0);
+    prev.oppositeBars=count;
+    if(newClose)prev.lastEvidenceAt=evidenceAt;
+    if(count<2||!newClose){
+      const held={...prevForecast,decisionReady:false,
+        stability:{locked:true,ageSeconds:Math.round(age/1000),flipsBlocked:prev.flipsBlocked,
+          reason:'OPPOSITE_CLOSED_M1_PENDING',candidateSide:current.side,confirmedBars:count}};
+      zoneCommitMemory.set(key,{...prev,forecast:held});
+      // Expired maps must not remain directional indefinitely while evidence is missing.
+      return age>300000?{...held,side:'WAIT',target:null,origin:null,
+        stability:{...held.stability,locked:false,reason:'ZONE_EXPIRED_AWAITING_CLOSED_M1'}}:held;
+    }
+  }else if(newClose){
+    prev.lastEvidenceAt=evidenceAt;prev.oppositeBars=0;
+  }
   if(current?.decisionReady===false){
     const grace=30000;
     if(age>grace||Number(prevForecast.confidence||0)<46){
@@ -801,7 +823,7 @@ function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,
   if(age>hardTtl||prevConfidence<24||(!prevHasTarget&&prev.flipsBlocked>=4)){
     if(validCurrent&&hasStructure(current)){
       const committed={...current,stability:{locked:true,ageSeconds:0,flipsBlocked:0,reason:'STALE_ZONE_REPLACED'}};
-      zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0});
+      zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0,lastEvidenceAt:evidenceAt,oppositeBars:0});
       return committed;
     }
     zoneCommitMemory.delete(key);
@@ -851,7 +873,7 @@ function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,
         confidence:Math.round(cap(Number(current.confidence||0)*.68+prevConfidence*.32,0,88)),
         stability:{locked:true,ageSeconds:Math.round(age/1000),flipsBlocked:0,reason:'SAME_ZONE_CONFIRMED'}
       };
-      zoneCommitMemory.set(key,{forecast:merged,side:prev.side,at:prev.at,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0});
+      zoneCommitMemory.set(key,{forecast:merged,side:prev.side,at:prev.at,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0,lastEvidenceAt:evidenceAt,oppositeBars:0});
       return merged;
     }
   }
@@ -864,7 +886,7 @@ function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,
       Number(current?.resistance?.strength||0)
     );
     const confidenceGap=Number(current.confidence||0)-prevConfidence;
-    const repeatedOpposition=prev.flipsBlocked>=2;
+    const repeatedOpposition=Number(prev.oppositeBars||0)>=2;
     const prevWeak=!prevHasTarget||prevStrength<54||prevConfidence<38;
     const structuralUpgrade=Boolean(
       current?.target||
@@ -880,7 +902,7 @@ function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,
     );
     if(decisiveFlip){
       const committed={...current,stability:{locked:true,ageSeconds:0,flipsBlocked:0,reason:'DECISIVE_STRUCTURAL_FLIP'}};
-      zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0});
+      zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0,lastEvidenceAt:evidenceAt,oppositeBars:0});
       return committed;
     }
   }
@@ -897,6 +919,7 @@ function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,
     const held={
       ...prevForecast,
       confidence:heldConfidence,
+      decisionReady:false,
       stability:{
         locked:true,
         ageSeconds:Math.round(age/1000),
@@ -910,7 +933,7 @@ function stabilizeZoneForecast(asset:string,current:any,price:number,atr:number,
 
   if(validCurrent&&hasStructure(current)){
     const committed={...current,stability:{locked:true,ageSeconds:0,flipsBlocked:0,reason:'ZONE_COMMIT_REFRESH'}};
-    zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0});
+    zoneCommitMemory.set(key,{forecast:committed,side:current.side,at:now,lastConfirmedAt:now,price:p,atr:a,flipsBlocked:0,lastEvidenceAt:evidenceAt,oppositeBars:0});
     return committed;
   }
 
@@ -1549,7 +1572,7 @@ export function buildHuntForecast(asset:string,decision:any,scalp:any,price:numb
     ...rawZoneForecastBase,
     pathForecast:stabilizeStructuralPath(asset,rawZoneForecastBase.pathForecast,p,a,now)
   }:null;
-  const stabilizedZoneForecast=validPrice?stabilizeZoneForecast(asset,rawZoneForecast,p,a,now):rawZoneForecast;
+  const stabilizedZoneForecast=validPrice?stabilizeZoneForecast(asset,rawZoneForecast,p,a,now,Number(decision?.closedM1At||0)):rawZoneForecast;
   const zoneForecast=stabilizedZoneForecast&&rawZoneForecast?{
     ...stabilizedZoneForecast,
     // Keep the structural path committed too. Fresh pulses may update a same-side

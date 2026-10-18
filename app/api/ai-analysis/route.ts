@@ -793,8 +793,8 @@ export async function GET(request:Request){
     const bitcoinNextMovePrior=getNextMoveOutcome('BTC',btcPrice,now);
     const goldPathPrior=getStructuralPathLearning('GOLD',goldLearningPrice,now);
     const bitcoinPathPrior=getStructuralPathLearning('BTC',btcPrice,now);
-    const goldHunt=buildHuntForecast('GOLD',{...gold,master:goldMaster},goldScalp,goldPrice,goldAtr,now,goldWave,goldLearner,goldStructure,goldAccumulation,goldLearning,goldEvolution,goldStateGraph,goldExpectedLearning,goldMovement,goldNextMovePrior);
-    const bitcoinHunt=buildHuntForecast('BTC',{...bitcoin,master:bitcoinMaster},bitcoinScalp,btcPrice,btcAtr,now,btcWave,bitcoinLearner,bitcoinStructure,bitcoinAccumulation,bitcoinLearning,bitcoinEvolution,bitcoinStateGraph,bitcoinExpectedLearning,bitcoinMovement,bitcoinNextMovePrior);
+    const goldHunt=buildHuntForecast('GOLD',{...gold,master:goldMaster,closedM1At:Number(gm.c1.filter(c=>c.time+60000<=now).at(-1)?.time??NaN)+60000},goldScalp,goldPrice,goldAtr,now,goldWave,goldLearner,goldStructure,goldAccumulation,goldLearning,goldEvolution,goldStateGraph,goldExpectedLearning,goldMovement,goldNextMovePrior);
+    const bitcoinHunt=buildHuntForecast('BTC',{...bitcoin,master:bitcoinMaster,closedM1At:Number(btc.c1.filter(c=>c.time+60000<=now).at(-1)?.time??NaN)+60000},bitcoinScalp,btcPrice,btcAtr,now,btcWave,bitcoinLearner,bitcoinStructure,bitcoinAccumulation,bitcoinLearning,bitcoinEvolution,bitcoinStateGraph,bitcoinExpectedLearning,bitcoinMovement,bitcoinNextMovePrior);
     goldHunt.nextMove=calibrateNextMoveConfidence(goldHunt.nextMove,goldNextMovePrior,goldMultiBrain?.regime||goldMovement?.regime);
     bitcoinHunt.nextMove=calibrateNextMoveConfidence(bitcoinHunt.nextMove,bitcoinNextMovePrior,bitcoinMultiBrain?.regime||bitcoinMovement?.regime);
     if(goldHunt?.zoneForecast?.pathForecast){

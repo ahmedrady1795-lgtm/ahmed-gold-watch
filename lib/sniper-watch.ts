@@ -3,7 +3,7 @@ import {advanceScenario,startScenario,type Scenario,type Asset} from './sniper-s
 
 // Separate forward observation ledger. These records NEVER qualify an entry.
 export type WatchMemory={state:StableBiasState|null;bias:ObservedBias|null;
-  updatedAt:number;modelAt:number;rearmAfterM15:number;records:Scenario[]};
+  updatedAt:number;modelAt:number;rearmAfterM15:number;records:Scenario[];marketSource?:string};
 export const emptyWatch=():WatchMemory=>({state:null,bias:null,updatedAt:0,
   modelAt:0,rearmAfterM15:0,records:[]});
 
@@ -13,6 +13,16 @@ export function advanceWatch(previous:WatchMemory,raw:ObservedBias,asset:Asset,
   if(modelAt<=previous.modelAt||modelAt>now||now-modelAt>90000)return previous;
   const records=previous.records.map(r=>r.status==='ACTIVE'?advanceScenario(r,candles,now,marketSource):r);
   const prior=records.at(-1);
+  const oldSource=previous.marketSource||previous.records.at(-1)?.marketSource;
+  if(asset==='BTC'&&oldSource&&marketSource&&oldSource!==marketSource){
+    // Price basis changes must retire the old targets AND their direction
+    // memory, not just settle the scorecard as unobserved.
+    return {...previous,state:null,bias:{...raw,side:'WAIT',active:false,status:'PAUSED',
+      targets:[],invalidation:null,label:'تغيّر مصدر السعر · إعادة تأكيد',
+      reason:'انتظار إغلاق M15 جديد من المصدر الحالي قبل إعادة بناء الاتجاه'},
+      updatedAt:now,modelAt,rearmAfterM15:Math.max(previous.rearmAfterM15,raw.m15ClosedAt||0),
+      records:records.slice(-600),marketSource};
+  }
   const reached=records.filter(r=>r.side===previous.state?.side&&r.startedAt>=previous.state.since)
     .flatMap(r=>r.targets.filter(t=>t.reachedAt!=null).map(t=>t.price));
   const saved=previous.state&&reached.length?{...previous.state,
@@ -49,5 +59,5 @@ export function advanceWatch(previous:WatchMemory,raw:ObservedBias,asset:Asset,
     }
   }
   return {state:stable.state,bias:stable.bias,updatedAt:now,modelAt,rearmAfterM15,
-    records:records.slice(-600)};
+    records:records.slice(-600),marketSource:marketSource||previous.marketSource};
 }

@@ -163,3 +163,15 @@ assert.equal(replay.metrics.BTC.unobserved,0);
 assert.equal(replay.watch.BTC.bias.active,false,'historical settlement cannot refresh a live bias');
 console.log('PASS: restart pending state, missing provider, all-entry replay and stale-market separation');
 assert.equal(ephemeralReader({...transient,updatedAt:at+700,watch:{BTC:{...transient.watch.BTC,updatedAt:at+700,modelAt:at+700}}},'BTC',at,true).fresh,true,'subsecond response publication must not flicker while the UI clock catches up');
+
+const fromCoinbase=advanceWatch(emptyWatch(),raw(),'BTC',100,[],at,at,'Coinbase');
+const changed=advanceWatch(fromCoinbase,raw('SELL'),'BTC',100,[],at+1000,at+1000,'Kraken');
+assert.equal(changed.state,null,'venue switch retires directional memory');
+assert.equal(changed.bias.side,'WAIT');assert.equal(changed.bias.active,false);
+assert.equal(changed.records[0].status,'UNOBSERVED');
+const sameClose=advanceWatch(changed,raw('SELL'),'BTC',100,[],at+2000,at+2000,'Kraken');
+assert.equal(sameClose.state,null,'new source cannot rebuild direction from the same M15 close');
+const newClose=advanceWatch(sameClose,raw('SELL',at+900000),'BTC',100,[],at+900000,at+900000,'Kraken');
+assert.equal(newClose.state.side,'SELL','fresh source M15 can establish a new observation');
+assert.equal(fromCoinbase.state.side,'BUY','source transition does not mutate previous snapshot');
+console.log('PASS: source switch retires bias and waits for a new structural close');
