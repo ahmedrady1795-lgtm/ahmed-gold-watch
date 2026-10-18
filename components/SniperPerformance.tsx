@@ -17,11 +17,12 @@ export default function SniperPerformance({title,metrics,recent,asset}:{title:st
       <tbody>{([1,2,3] as const).map(stage=>{
         const t=metrics?.targets?.find((r:any)=>r.stage===stage),samples=Number(t?.samples||0);
         return <tr key={stage}><th>TP{stage}</th><td dir="ltr">{t?.hits||0} / {samples}</td>
-          <td>{samples>=40&&value(t?.observedPct)!=null?t.observedPct+'%':'عينة غير كافية'}</td>
+          <td>{samples>=40&&value(t?.observedPct)!=null?t.observedPct+'%':'عينة غير كافية'}
+            {samples>=40&&value(t?.lower95Pct)!=null&&<small style={{display:'block'}}>فاصل 95%: {t.lower95Pct}%–{t.upper95Pct}%</small>}</td>
           <td>{duration(t?.avgMinutes)}</td><td>{duration(t?.medianMinutes)}</td></tr>;
       })}</tbody>
     </table></div>
-    <p>الإحصاءات من آخر 600 سجل في مجموعة المتابعة. زمن الوصول محسوب للمسارات التي وصلت فقط؛ لا يتنبأ بموعد هدف جديد. الحالات المستبعدة: {Number(metrics?.ambiguous||0)+Number(metrics?.unobserved||0)}. النسب تظهر بعد 40 نتيجة لكل هدف.</p>
+    <p>الإحصاءات من آخر 600 سجل في مجموعة المتابعة. زمن الوصول محسوب للمسارات التي وصلت فقط؛ لا يتنبأ بموعد هدف جديد. الحالات المستبعدة: {Number(metrics?.ambiguous||0)+Number(metrics?.unobserved||0)} (تزامن TP/SL أو انقطاع البيانات أو تبديل المصدر). النسب تظهر بعد 40 نتيجة لكل هدف.</p>
     {rows.length>0&&<ol className="sniper-recent-outcomes">{rows.map(r=><li key={r.id}>
       <span>{r.side==='BUY'?'شراء':'بيع'} · {statuses[r.status]||'جارٍ'}</span>
       <span>{(r.targets||[]).filter((t:any)=>t.reachedAt!=null).map((t:any)=>'TP'+t.stage).join(' + ')||'لا هدف مثبت'}</span>
