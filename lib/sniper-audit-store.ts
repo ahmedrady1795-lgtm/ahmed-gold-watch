@@ -101,14 +101,15 @@ function candidate(asset:Asset,x:any,now:number,modelAt:number){
   if(!meaningful)blockers.push('لقطة النموذج غير حديثة');
   const produced=blockers.length===0&&v.side!=='WAIT'&&price!=null&&invalid!=null?
     startScenario({asset,side:v.side,at:now,modelAt,price,stop:invalid,
-      confidence:Number(v.confidence||0),targets,durationMs:75*60000}):null;
+      confidence:Number(v.confidence||0),targets,durationMs:75*60000,
+      marketSource:String(x?.candleSource||'')}):null;
   return {produced,blockers};
 }
 function runAsset(asset:Asset,x:any,modelAt:number,now:number){
   const state=load();
   let prior=latest(state,asset);
   if(prior&&prior.status==='ACTIVE'){
-    const result=advanceScenario(prior,x?.chartCandles,now);
+    const result=advanceScenario(prior,x?.chartCandles,now,x?.candleSource);
     if(JSON.stringify(result)!==JSON.stringify(prior)){
       const at=state.scenarios.findIndex(y=>y.id===prior!.id);
       if(at>=0){state.scenarios[at]=result;dirty=true;}
@@ -152,7 +153,7 @@ export function updateStructuralWatchFromChart(payload:any,now=Date.now()){
     const state=load();
     state.scenarios=state.scenarios.map(r=>{
       if(r.asset!==asset||r.status!=='ACTIVE')return r;
-      const next=advanceScenario(r,x?.chartCandles,now);
+      const next=advanceScenario(r,x?.chartCandles,now,x?.candleSource);
       if(JSON.stringify(next)!==JSON.stringify(r)){dirty=true;changed=true;}
       return next;
     });
@@ -169,7 +170,7 @@ export function updateStructuralWatchFromChart(payload:any,now=Date.now()){
     const fourHour=analyzeFourHours({asset,candles:x.chartCandles,frames:x.chartHigherFrames,now,
       source:x.candleSource,referencePrice:price});
     const raw=buildContinuousBias({asset,frames:x.chartHigherFrames,price,now,sourceReady:true,fourHour});
-    const next=advanceWatch(previous,raw,asset,price,x.chartCandles,now,closedAt);
+    const next=advanceWatch(previous,raw,asset,price,x.chartCandles,now,closedAt,x?.candleSource);
     if(next!==previous){load().watch[asset]=next;dirty=true;changed=true;}
   }
   save(now,changed);
@@ -189,7 +190,7 @@ export function updateSniperAudit(payload:any,now=Date.now()){
       const raw=buildContinuousBias({asset,frames:x?.chartHigherFrames,price:view.price,now,
         sourceReady:view.priceFresh&&view.forecastFresh,fourHour});
       const previous=load().watch[asset];
-      const next=advanceWatch(previous,raw,asset,view.price,x?.chartCandles,now,modelAt);
+      const next=advanceWatch(previous,raw,asset,view.price,x?.chartCandles,now,modelAt,x?.candleSource);
       if(next!==previous){load().watch[asset]=next;dirty=true;watchChanged=true;}
     }
     runAsset('GOLD',payload.gold,modelAt,now);
