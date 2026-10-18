@@ -28,6 +28,7 @@ jobs:
       - run: node tests/neural-optout.cjs
       - run: node tests/indicators.cjs
       - run: node tests/home-news-singleton.cjs
+      - run: node tests/sniper-ui-dedup.cjs
       - run: node tests/professional-move.cjs
       - run: node tests/ai-model-certification.cjs
       - run: node tests/execution-readiness.cjs
