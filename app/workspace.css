@@ -1747,3 +1747,12 @@ body:has(.modern-workspace.compact-sniper){
  .compact-sniper .sniper-more-chart-tools{flex:1 1 auto}
  .compact-sniper .sniper-more-chart-tools>summary{min-height:35px}
 }
+
+/* Full target overview, with a separate honest conditional candle storyboard. */
+.sniper-target-map{margin:12px 0;border:1px solid #305265;border-radius:12px;overflow:hidden;background:#0c2030}
+.sniper-target-map header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;flex-wrap:wrap}
+.sniper-target-map strong{color:#dbf1fa;font-size:16px}
+.sniper-target-map p{color:#9eb8cb;font-size:12px;margin:6px 0;line-height:1.7}
+.sniper-target-map button{border:1px solid #426a7e;background:#193b4d;color:#e1f3fa;border-radius:8px;padding:10px 14px;cursor:pointer;min-height:44px}
+.sniper-target-map-levels{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 12px}
+.sniper-target-map-levels span{flex:1;min-width:130px;padding:10px 12px;background:#132e3b;border:1px solid #285247;border-radius:8px;color:#9cdbc2;display:flex;justify-content:space-between;gap:12px}

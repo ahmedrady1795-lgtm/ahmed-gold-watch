@@ -25,8 +25,21 @@ export function buildSniperDecision(input:{
   externalBlockers?:readonly string[];
 }):SniperDecision{
   const {plan,quote,now,c1,c5}=input,blocks:string[]=[],factors:SniperFactor[]=[];
+  const passedReasons:Record<string,string>={
+    SOURCE:'السعر حديث وصالح لتقييم الفرصة',
+    CANDLES:'شموع M1 وM5 مغلقة ومتتابعة وحديثة',
+    SESSION:'جلسة السوق متاحة',NEWS:'تغطية الأخبار متاحة',
+    TREND:'اتجاه M1 وM5 متفق مع الخطة',SWEEP:'سحب السيولة مؤكد في اتجاه الخطة',
+    OB_FVG:'إعادة اختبار الهيكل مؤكدة في اتجاه الخطة',
+    GEOMETRY:'الدخول والوقف والهدف صالحون عند السعر الحالي',
+    NET_RR:'العائد الصافي يجتاز الحد المطلوب بعد التكاليف',
+    COST:'التكلفة معلومة وضمن الحد المقبول',
+    ORIGINAL_PLAN:'الاستراتيجية اجتازت شروط التأهيل الأصلية',
+    MARKET_RISK:'لا توجد موانع سيولة أو جودة إضافية'
+  };
   const factor=(id:string,result:GateResult,reason:string)=>{
-    factors.push({id,result,reason});if(result==='FAIL')blocks.push(reason);
+    factors.push({id,result,reason:result==='PASS'?(passedReasons[id]??reason):reason});
+    if(result==='FAIL')blocks.push(reason);
   };
   const side=plan.side==='BUY'||plan.side==='SELL'?plan.side:'WAIT';
   const direction=side==='BUY'?1:side==='SELL'?-1:0;

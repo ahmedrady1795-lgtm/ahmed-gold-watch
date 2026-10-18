@@ -25,6 +25,7 @@ import {assessBtcStructuralScenario} from '../lib/btc-structural-scenario';
 import {auditConditionalRoute,buildConditionalTargetCandles} from '../lib/conditional-target-candles';
 import {chartPriceViewport} from '../lib/chart-price-viewport';
 import BtcOrderflowPanel from './BtcOrderflowPanel';
+import TargetScenarioMap from './TargetScenarioMap';
 import type {BtcOrderflow} from '../lib/btc-orderflow';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
@@ -43,7 +44,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const [expanded,setExpanded]=useState(false);
   const [chartWindow,setChartWindow]=useState<60|240>(60);
   const [chartFullscreen,setChartFullscreen]=useState(false);
-  const [scenarioDetail,setScenarioDetail]=useState(false);
+  const [scenarioDetail,setScenarioDetail]=useState(true);
   const [inspectedTime,setInspectedTime]=useState<number|null>(null);
   const [orderFlow,setOrderFlow]=useState<BtcOrderflow|null>(null);
   useEffect(()=>{
@@ -265,7 +266,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       firstGoal<routeAnchor&&(routeStop==null||m.price<routeStop):false);
   // Hitting TP1 does not erase the remainder of the locked TP ladder.
   // Only a stop breach, stale feed or changed closed bar revokes the route.
-  const targetRoute=showGhost&&!goldClosed&&!providerTransition&&m.observationFresh&&m.historyFresh&&
+  const routeRevision=m.candles.map(c=>[c.time,c.open,c.high,c.low,c.close].join(':')).join('|');
+  const targetRoute=useMemo(()=>showGhost&&!goldClosed&&!providerTransition&&m.observationFresh&&m.historyFresh&&
     liveRouteSafe&&routeAnchor!=null&&conditionalRouteGoals.length>0?
     buildConditionalTargetCandles({
       history:m.candles,now,quote:routeAnchor,priceFresh:sn.view.priceFresh,
@@ -274,7 +276,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       waypoints:frozenRouteWaypoints,
       side:conditionalRouteSide as 'BUY'|'SELL',targets:conditionalRouteGoals,
       invalidation:routeStop
-    }):null;
+    }):null,
+  // Closed OHLC and frozen levels drive morphology; ticks only recheck safety.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [routeRevision,showGhost,goldClosed,providerTransition,m.observationFresh,m.historyFresh,
+    liveRouteSafe,routeAnchor,conditionalRouteGoals,frozenRouteWaypoints,routeStop,
+    sn.view.priceFresh,candles.length,scenarioDetail]);
   const routeVisible=Boolean(!providerTransition&&targetRoute?.ready&&targetRoute.bars.length&&
     m.price!=null&&routeAnchor!=null&&targetRoute.atr!=null&&
     Math.abs(m.price-routeAnchor)<=targetRoute.atr*2.5);
@@ -288,7 +295,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const closedPreview=goldClosed&&visualCandles.length>0;
   // The M1 audit scans many historical folds. A frequent quote/UI refresh
   // must not rerun it until a genuinely different candle history arrives.
-  const candleRevision=m.candles.map(c=>[c.time,c.open,c.high,c.low,c.close].join(':')).join('|');
+  const candleRevision=routeRevision;
   const routeAudit=useMemo(()=>!providerTransition&&showGhost&&!goldClosed?
     auditConditionalRoute(m.candles,now):null,
   // Only re-score when genuine M1 OHLC history or its source changes.
@@ -692,6 +699,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
             </div>
           </details>
+          <TargetScenarioMap history={m.candles} targets={conditionalRouteGoals}
+            side={conditionalRouteSide} anchor={routeAnchor} stop={routeStop}
+            enabled={!providerTransition&&!goldClosed&&m.historyFresh&&m.observationFresh&&liveRouteSafe}/>
           {scenarioDetail&&<p style={{padding:'10px 16px',color:'#bad9e8',margin:0}}>
             اسحب الرسم أفقيًا لمتابعة المسار · نفس عرض ومقياس شموع M1 · يتحدث المسار مع إغلاق الدقيقة · S مراحل وليست دقائق
           </p>}
