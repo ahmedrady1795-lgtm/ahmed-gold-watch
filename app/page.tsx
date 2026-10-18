@@ -4,6 +4,7 @@ import {useEffect,useRef,useState} from 'react';
 import AICommandCenter from '../components/AICommandCenter';
 import NewsCommandCenter from '../components/NewsCommandCenter';
 import {acceptGoldStreamPacket,sourceTimestamp,validSourceTime} from '../lib/client-market-freshness';
+import {reconcileBtcChartProvider,type BtcProviderGate} from '../lib/btc-chart-source-guard';
 import {shouldApplyGoldQuote} from '../lib/gold-feed-order';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))
@@ -29,6 +30,8 @@ export default function Home(){
   const aiFailureCount=useRef(0);
   const aiEtag=useRef('');
   const btcUiAt=useRef(0);
+  const chartDataRef=useRef<any>(null);
+  const btcChartProviderGate=useRef<BtcProviderGate|null>(null);
 
   const loadAi=async(manual=false)=>{
     if(aiInFlight.current)return;
@@ -88,7 +91,14 @@ export default function Home(){
       try{
         const r=await fetch('/api/chart-history',{cache:'no-store',signal:AbortSignal.timeout(18000)});
         const j=await r.json().catch(()=>null);
-        if(r.ok&&j?.ok&&!closed){setNow(Date.now());setChartData(j);}
+        if(r.ok&&j?.ok&&!closed){
+          const guarded=reconcileBtcChartProvider(chartDataRef.current?.bitcoin??null,
+            j.bitcoin??null,btcChartProviderGate.current,Date.now());
+          btcChartProviderGate.current=guarded.gate;
+          const next={...j,bitcoin:guarded.chart};
+          chartDataRef.current=next;
+          setNow(Date.now());setChartData(next);
+        }
       }catch{/* Keep the last observed candles; never manufacture new ones. */}
       finally{loading=false;}
     };
