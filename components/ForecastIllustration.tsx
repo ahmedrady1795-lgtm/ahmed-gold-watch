@@ -22,7 +22,7 @@ import {assessChartObservation,observedStructuralTargets} from '../lib/chart-obs
 import {buildSniperChartPlaybook} from '../lib/sniper-chart-playbook';
 import {assessBtcForwardObservation} from '../lib/btc-forward-observation';
 import {assessBtcStructuralScenario} from '../lib/btc-structural-scenario';
-import {buildConditionalTargetCandles} from '../lib/conditional-target-candles';
+import {auditConditionalRoute,buildConditionalTargetCandles} from '../lib/conditional-target-candles';
 import {chartPriceViewport} from '../lib/chart-price-viewport';
 import BtcOrderflowPanel from './BtcOrderflowPanel';
 import type {BtcOrderflow} from '../lib/btc-orderflow';
@@ -84,6 +84,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   },[asset]);
   const goldClosed=asset==='GOLD'&&!goldMarketSession(now).open;
   const x=asset==='GOLD'?data?.gold:data?.bitcoin;
+  const providerTransition=asset==='BTC'&&Boolean(x?.providerTransition);
   const journal=journals?.[asset]??null;
   const calibration=audit?.metrics?.[asset];
   const observed=Number(calibration?.observed||0);
@@ -189,7 +190,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         btcScenario?.side!=='WAIT'?btcScenario?.invalidation??null:null};
   // A material qualification/side transition also releases the lock.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[asset,scenarioBarAt,planVisible,statusReady,watchReady,m.displaySide,
+  },[asset,x?.candleSource,scenarioBarAt,planVisible,statusReady,watchReady,m.displaySide,
     watchTargetSide,btcScenario?.side,Boolean(btcScenario?.destination),
     m.displayTargets.length,watchTargets.length,m.historyFresh]);
   const targetBands:PriceBand[]=watchTargets.map(t=>({
@@ -250,7 +251,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     routeMotion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET')
       .map(p=>({key:p.key,label:p.label,price:p.price})),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [asset,scenarioBarAt,conditionalRouteSide,planVisible,statusReady,watchReady,
+  [asset,x?.candleSource,scenarioBarAt,conditionalRouteSide,planVisible,statusReady,watchReady,
     conditionalRouteGoals.length]);
   const routeAnchor=frozenVisualLevels.anchor;
   const routeStop=frozenVisualLevels.invalidation;
@@ -264,7 +265,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       firstGoal<routeAnchor&&(routeStop==null||m.price<routeStop):false);
   // Hitting TP1 does not erase the remainder of the locked TP ladder.
   // Only a stop breach, stale feed or changed closed bar revokes the route.
-  const targetRoute=showGhost&&!goldClosed&&m.observationFresh&&m.historyFresh&&
+  const targetRoute=showGhost&&!goldClosed&&!providerTransition&&m.observationFresh&&m.historyFresh&&
     liveRouteSafe&&routeAnchor!=null&&conditionalRouteGoals.length>0?
     buildConditionalTargetCandles({
       history:m.candles,now,quote:routeAnchor,priceFresh:sn.view.priceFresh,
@@ -274,7 +275,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       side:conditionalRouteSide as 'BUY'|'SELL',targets:conditionalRouteGoals,
       invalidation:routeStop
     }):null;
-  const routeVisible=Boolean(targetRoute?.ready&&targetRoute.bars.length&&
+  const routeVisible=Boolean(!providerTransition&&targetRoute?.ready&&targetRoute.bars.length&&
     m.price!=null&&routeAnchor!=null&&targetRoute.atr!=null&&
     Math.abs(m.price-routeAnchor)<=targetRoute.atr*2.5);
   const visualCandles=!showGhost?[]:goldClosed?
@@ -288,6 +289,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   // The M1 audit scans many historical folds. A frequent quote/UI refresh
   // must not rerun it until a genuinely different candle history arrives.
   const candleRevision=m.candles.map(c=>[c.time,c.open,c.high,c.low,c.close].join(':')).join('|');
+  const routeAudit=useMemo(()=>!providerTransition&&showGhost&&!goldClosed?
+    auditConditionalRoute(m.candles,now):null,
+  // Only re-score when genuine M1 OHLC history or its source changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [asset,candleRevision,x?.candleSource,providerTransition,showGhost,goldClosed]);
   const analogueStudy=useMemo(()=>{
     if(!showGhost||goldClosed||ghost.mode==='OFF'||!m.candles.length)
       return {neighbors:0,audit:null};
@@ -655,6 +661,21 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {'TP'+t.stage+' '+(t.price>scaleHigh?'↑': '↓')+' '+fmt(t.price)+' · فرق '+fmt(t.offset)}
             </span>)}
           </div>}
+          {asset==='BTC'&&providerTransition&&<div role="status" style={{padding:'10px 16px',background:'#362b20',color:'#ffdda3',fontSize:13}}>
+            تبديل مصدر BTC قيد التثبيت · الشموع القديمة للعرض التاريخي فقط · مسار الأهداف متوقف حتى إغلاق شمعتين من المصدر الجديد
+          </div>}
+          {routeAudit&&<div aria-label="اختبار دقة رسم الشموع أمام التاريخ المغلق" style={{padding:'9px 16px',background:'#0e2630',color:'#d4e5ec',fontSize:12}}>
+            <strong>اختبار رسم المسار على شموع M1 مغلقة سابقة:</strong>{' '}
+            {routeAudit.samples} عينة زمنية غير متداخلة · خطأ الشموع {routeAudit.maeAtr??'—'} ATR
+            {' مقابل خط أساس ثابت '}{routeAudit.baselineMaeAtr??'—'} ATR
+            {' · اتجاه المسار '}{routeAudit.directionPct==null?'غير متاح':routeAudit.directionPct+'%'}
+            {' مقابل المرجع '}{routeAudit.baselineDirectionPct==null?'غير متاح':routeAudit.baselineDirectionPct+'%'}
+            <small style={{display:'block'}}>المسار الحالي تمثيل في حيز السعر لا يحدد دقائق وصول ولا احتمالات TP. التحقق التاريخي لا يؤهل إشارة دخول؛ {routeAudit.samples<20?'العينة لا تزال صغيرة.':'لا توجد أفضلية تنبؤية مثبتة.'}</small>
+          </div>}
+          {routeVisible&&targetRoute!.outcome!=='ACTIVE'&&<div role="status" style={{padding:'10px 16px',background:'#33241e',color:'#ffe0b5',fontSize:12}}>
+            {targetRoute!.outcome==='AMBIGUOUS'?'⚠ الهدف والوقف داخل نفس الشمعة المرجعية؛ لم يُحتسب الهدف':
+              '⛔ مسار الشموع المرجعية انتهى عند الوقف'} · لا يؤثر على نتائج التداول أو سجل الأهداف الفعلي
+          </div>}
           {routeVisible&&<div aria-label="مراحل الوصول المشروط للأهداف" style={{display:'flex',flexWrap:'wrap',gap:8,padding:'10px 16px',background:'#102333',color:'#d2e6ee',fontSize:13}}>
             <strong>مسار {conditionalRouteSide==='BUY'?'الصعود':'الهبوط'} المشروط:</strong>
             {routeMotion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET').map(p=><span key={p.key} style={{border:'1px solid #3b5e71',borderRadius:6,padding:'5px 9px'}}>{p.label} · {fmt(p.price)} · {targetRoute!.milestones.some(h=>h.key===p.key)?'✓ لمسته الشموع المرجعية':'مشروط · لم يُلمس'}</span>)}
@@ -663,7 +684,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>}
           {showGhost&&!goldClosed&&conditionalRouteGoals.length>0&&!routeVisible&&<div aria-label="سبب تعليق مسار الأهداف"
             style={{padding:'8px 16px',color:'#e8c58d',background:'#1b2731',fontSize:12}}>
-            مسار شموع الأهداف غير متاح الآن · {targetRoute?.ready?
+            مسار شموع الأهداف غير متاح الآن · {providerTransition?'تغيير مصدر BTC يحتاج إغلاقات جديدة':targetRoute?.ready?
               'السعر ابتعد عن مرجع إغلاق الدقيقة؛ الرسم يتجدد عند إغلاق شمعة جديدة':
               targetRoute?.reason??'بانتظار سعر و36 شمعة M1 مغلقة وحديثة'}
           </div>}
