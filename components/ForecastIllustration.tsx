@@ -657,9 +657,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>}
           {routeVisible&&<div aria-label="مراحل الوصول المشروط للأهداف" style={{display:'flex',flexWrap:'wrap',gap:8,padding:'10px 16px',background:'#102333',color:'#d2e6ee',fontSize:13}}>
             <strong>مسار {conditionalRouteSide==='BUY'?'الصعود':'الهبوط'} المشروط:</strong>
-            {routeMotion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET').map(p=><span key={p.key} style={{border:'1px solid #3b5e71',borderRadius:6,padding:'5px 9px'}}>{p.label} · {fmt(p.price)}</span>)}
-            {conditionalRouteGoals.map(t=><span key={t.stage} style={{border:'1px solid #376e61',borderRadius:6,padding:'5px 9px'}}>TP{t.stage} · {fmt(t.price)} · {targetRoute!.touches.some(h=>h.stage===t.stage)?'لامسته شموع تاريخية مرجعية':'لم تلمسه الشموع المرجعية'}</span>)}
+            {routeMotion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET').map(p=><span key={p.key} style={{border:'1px solid #3b5e71',borderRadius:6,padding:'5px 9px'}}>{p.label} · {fmt(p.price)} · {targetRoute!.milestones.some(h=>h.key===p.key)?'✓ لمسته الشموع المرجعية':'مشروط · لم يُلمس'}</span>)}
+            {conditionalRouteGoals.map(t=><span key={t.stage} style={{border:'1px solid #376e61',borderRadius:6,padding:'5px 9px'}}>TP{t.stage} · {fmt(t.price)} · {routeAnchor!=null&&targetRoute!.atr!=null?(Math.abs(t.price-routeAnchor)/targetRoute!.atr).toFixed(1)+' × تقلب M1 · ':''}{targetRoute!.touches.some(h=>h.stage===t.stage)?'✓ لمسته الشموع المرجعية':'لم تلمسه الشموع المرجعية'}</span>)}
             <small style={{width:'100%'}}>أهداف مراقبة مشروطة وليست أمر دخول. كل انتقال يتطلب استمرار الاتجاه وصلاحية المستويات؛ الأشكال والتصحيحات توضيحية ولا تحدد احتمال الوصول.</small>
+          </div>}
+          {showGhost&&!goldClosed&&conditionalRouteGoals.length>0&&!routeVisible&&<div aria-label="سبب تعليق مسار الأهداف"
+            style={{padding:'8px 16px',color:'#e8c58d',background:'#1b2731',fontSize:12}}>
+            مسار شموع الأهداف غير متاح الآن · {targetRoute?.ready?
+              'السعر ابتعد عن مرجع إغلاق الدقيقة؛ الرسم يتجدد عند إغلاق شمعة جديدة':
+              targetRoute?.reason??'بانتظار سعر و36 شمعة M1 مغلقة وحديثة'}
           </div>}
           <div className="forecast-visual-chart-scroll" style={scenarioDetail?{display:'block',overflowX:'auto',direction:'ltr'}:undefined}>
             <div dir="rtl" style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:'8px 16px',padding:'12px 16px',background:'#0b1928',borderBottom:'1px solid #284156',color:'#b6cad9',fontSize:13,fontVariantNumeric:'tabular-nums'}}>
@@ -760,7 +766,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                     <text x={xf+6} y={clamp(px(b.level)-9,yt+16,yb-12)} fill={b.side==='BUY'?'#67eac1':'#ff92ad'} fontSize={mobile?14:12}>
                       {b.side==='BUY'?'كسر صاعد':'كسر هابط'} · {fmt(b.level)}</text>
                   </g>)}
-                {showAlternatives&&(['BUY','SELL'] as const).filter(side=>!planVisible||side!==dir).map(side=>{
+                {showAlternatives&&!routeVisible&&(['BUY','SELL'] as const).filter(side=>!planVisible||side!==dir).map(side=>{
                   const path=conditionalPath(side);return path?<path key={side} d={path} fill="none" stroke={side==='BUY'?'#5ce3b3':'#82b2ff'}
                     strokeWidth="2.5" strokeDasharray="7 5"><title>{planVisible?'سيناريو بديل مشروط بالكسر':'مسار مراقبة مشروط بالكسر'} · ليس هدفًا معتمدًا</title></path>:null;
                 })}
