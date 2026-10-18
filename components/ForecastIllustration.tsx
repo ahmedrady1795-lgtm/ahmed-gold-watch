@@ -488,7 +488,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const quickTrigger=feedProblem||providerTransition?null:
     Number.isFinite(playbook.level)?Number(playbook.level):
     quickSide==='BUY'?breakout.above:quickSide==='SELL'?breakout.below:null;
-  const quickDecision=providerTransition?'تثبيت مصدر الشموع':
+  const quickDecision=goldClosed?'الجلسة مغلقة · الأهداف محفوظة':
+    providerTransition?'تثبيت مصدر الشموع':
     feedProblem?'متابعة البيانات':
     statusReady?'خطة مسجلة · متابعة التنفيذ':
     watchReady?'فرصة مرصودة · بانتظار التفعيل':
@@ -524,7 +525,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <button type="button" aria-pressed={asset==='BTC'} onClick={()=>setChosen('BTC')}>البيتكوين</button>
           </div>}
           <span title={stateLabel} className={'forecast-visual-status '+(statusReady?'forecast-visual-active':watchReady?'forecast-visual-watch':'')}>
-            <span className="forecast-dot"/>{statusReady?'خطة مسجلة':feedProblem?'بيانات بحاجة تحديث':
+            <span className="forecast-dot"/>{statusReady?'خطة مسجلة':goldClosed?'الجلسة مغلقة':feedProblem?'بيانات بحاجة تحديث':
               watchReady?'فرصة تحت المتابعة':btcScenarioShown?'سيناريو مرصود':'الرادار نشط'}
           </span>
         </div>
