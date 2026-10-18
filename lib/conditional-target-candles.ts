@@ -72,47 +72,75 @@ export function buildConditionalTargetCandles(input:{
    w.price<=0||sign*(goals[0].price-w.price)<=0||
    (invalid!=null&&sign*(w.price-invalid)<=0)))
    return empty('مستويات هيكلية غير صالحة');
- // Pick an analogue using ONLY the six PRECEDING real closed M1 bars.
- // Never choose a sample because its subsequent candles hit a TP: that
- // would introduce hindsight selection and manufacture apparent accuracy.
- // Use a 96-bar sample for both short and extended displays whenever
- // available, so expanding the SVG never rewrites the already shown path.
- const horizon=hist.length>=116?96:count;
- if(hist.length<horizon+14)return empty('لا يكفي تاريخ مغلق لمقارنة شموع مستقبلية مرجعية');
- const context=hist.slice(-6);
- const norm=(c:Bar,unit:number)=>[
+ // Build the route from SHORT, genuinely observed closed-M1 motifs.
+ // Requiring one uninterrupted 96-bar historical analogue restricted matching
+ // to much older regimes, making the chart look disconnected from today's M1.
+ // A fresh 18-bar contextual match is used at each stage boundary. Context
+ // for later stages comes only from the already drawn preceding six bars.
+ // No objective/target, invalidation, or future TP hit enters the selection.
+ // Thus zooming 18 -> 96 stages cannot rewrite the initial 18 bars.
+ const motifLength=18;
+ if(hist.length<motifLength+26)
+   return empty('لا يكفي تاريخ مغلق لمقارنة شموع مستقبلية مرجعية');
+ type Shape=Pick<Bar,'open'|'high'|'low'|'close'>;
+ const norm=(c:Shape,unit:number)=>[
    (c.close-c.open)/unit,
    (c.high-Math.max(c.open,c.close))/unit,
-   (Math.min(c.open,c.close)-c.low)/unit
+   (Math.min(c.open,c.close)-c.low)/unit,
+   (c.high-c.low)/unit
  ];
- const current=context.map(c=>norm(c,atr));
- let selected=-1,best=Infinity,sourceUnit=atr;
- for(let start=12;start+horizon<=hist.length-8;start++){
-   const part=hist.slice(start-12,start+horizon);
-   if(part.length!==horizon+12||part.some((b,i)=>!okay(b)||
-      (i>0&&b.time-part[i-1].time!==60000)))continue;
-   const reference=hist.slice(start-6,start);
-   const referenceTr=hist.slice(start-12,start).map(b=>b.high-b.low);
-   const localUnit=quantile(referenceTr,.5);
-   if(localUnit<=0||localUnit>quote*.025)continue;
-   const score=reference.map((bar,j)=>{
-     const signature=norm(bar,localUnit);
-     return signature.reduce((total,value,k)=>{
-       const error=value-current[j][k];
-       return total+error*error*(k===0?1:.35);
-     },0);
-   }).reduce((sum,x)=>sum+x,0);
-   if(score<best){best=score;selected=start;sourceUnit=localUnit;}
- }
- if(selected<0)return empty('لا توجد سلسلة تاريخية M1 متصلة للمقارنة');
+ const usedStarts:number[]=[];
+ const chooseMotif=(recent:Shape[])=>{
+   const current=recent.map(c=>norm(c,atr));
+   const drift=(recent[5].close-recent[0].open)/atr;
+   let selected=-1,best=Infinity,sourceUnit=atr;
+   for(let start=12;start+motifLength<=hist.length-8;start++){
+     const part=hist.slice(start-12,start+motifLength);
+     if(part.length!==motifLength+12||part.some((b,i)=>!okay(b)||
+       (i>0&&b.time-part[i-1].time!==60000)))continue;
+     const reference=hist.slice(start-6,start);
+     const localUnit=quantile(hist.slice(start-12,start)
+       .map(b=>b.high-b.low),.5);
+     if(localUnit<=0||localUnit>quote*.025)continue;
+     let score=0;
+     for(let j=0;j<6;j++){
+       const ref=norm(reference[j],localUnit);
+       for(let k=0;k<4;k++){
+         const diff=ref[k]-current[j][k];
+         score+=Math.min(36,diff*diff)*(k===0?1:k===3?.24:.35);
+       }
+     }
+     const referenceDrift=(reference[5].close-reference[0].open)/localUnit;
+     score+=Math.min(36,(referenceDrift-drift)**2)*.85;
+     // Historical matches from the same overlapping event are NOT a second
+     // distinct motif. Penalize re-use, without biasing toward TP outcomes.
+     if(usedStarts.some(prior=>Math.abs(start-prior)<motifLength+6))
+       score+=5;
+     // When equally similar, prefer a recent completed market regime.
+     score+=(hist.length-(start+motifLength))/hist.length*.15;
+     if(score<best){best=score;selected=start;sourceUnit=localUnit;}
+   }
+   return {selected,sourceUnit};
+ };
+ let source=chooseMotif(hist.slice(-6));
+ if(source.selected<0)return empty('لا توجد سلسلة تاريخية M1 متصلة للمقارنة');
+ usedStarts.push(source.selected);
  // Same absolute price scale and genuine observed OHLC morphology. Never
  // amplify beyond the visible market's largest body, wick or full range.
- const scale=Math.min(1.1,Math.max(.60,atr/sourceUnit));
  const out:RouteBar[]=[],touches:RouteTouch[]=[],milestones:RouteMilestone[]=[];
  let prev=quote,goalIndex=0,milestoneIndex=0,hitInvalidation=false;
  for(let i=0;i<count;i++){
-   const sample=hist[selected+i];
+   if(i>0&&i%motifLength===0){
+     // Re-evaluate morphology after each illustrated structural leg, rather
+     // than looping the same 18 candles or copying a stale 96-bar stretch.
+     const next=chooseMotif(out.slice(-6));
+     if(next.selected<0)break;
+     source=next;
+     usedStarts.push(source.selected);
+   }
+   const sample=hist[source.selected+(i%motifLength)];
    if(!sample)break;
+   const scale=Math.min(1.1,Math.max(.60,atr/source.sourceUnit));
    const originalBody=(sample.close-sample.open)*scale;
    const body=Math.max(-bodyCap,Math.min(bodyCap,originalBody));
    const open=prev,close=open+body;
@@ -150,5 +178,5 @@ export function buildConditionalTargetCandles(input:{
    atr,maxBody:bodyCap,
    reason:hitInvalidation?
      'الشكل التاريخي المماثل لمس مستوى الإبطال؛ لا يصح مواصلة المسار':
-     'إعادة عرض شكل شموع M1 تاريخية فعلية بمقياس السعر الحالي؛ وصول الأهداف غير مفروض ولا يتنبأ بموعد أو احتمال'};
+     'مراحل مترابطة من شموع M1 تاريخية مشابهة حديثة النمط؛ الأهداف لا تغيّر الشموع ولا تحدد زمن الوصول أو احتماله'};
 }
