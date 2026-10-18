@@ -154,3 +154,27 @@ assert.match(chart,/سبب تعليق مسار الأهداف/,
  'do not show an unrelated drawing without explaining missing price/closed OHLC data');
 console.log('PASS: recent-regime target extension, unchanged first 18 candles, honest level status');
 
+
+const b0=z.bars[0];
+assert.ok(b0.low<quote&&b0.high>quote,'test requires a normal first-bar wick either side of anchor');
+const both=build({...common,
+ targets:[{stage:1,price:(quote+b0.high)/2}],
+ invalidation:(quote+b0.low)/2});
+assert.equal(both.ready,true);
+assert.equal(both.outcome,'AMBIGUOUS','TP + stop touched within one OHLC cannot be ordered');
+assert.equal(both.touches.length,0,'do not paint TP before checking same-candle stop');
+assert.deepEqual(Array.from(both.pendingStages),[1]);
+assert.equal(both.bars.length,1,'do not fabricate any post-stop candles');
+const stopFirst=build({...common,targets:[{stage:1,price:quote+500}],
+ invalidation:(quote+b0.low)/2});
+assert.equal(stopFirst.outcome,'STOPPED');
+assert.equal(stopFirst.touches.length,0);
+const historicalReview=mod.exports.auditConditionalRoute(history,now);
+assert.ok(historicalReview.samples>=1,'a disjoint out-of-sample fold exists');
+assert.ok(Number.isFinite(historicalReview.maeAtr),'M1 shape error must be measured');
+assert.ok(Number.isFinite(historicalReview.baselineMaeAtr),'compare to flat-price baseline');
+assert.equal(mod.exports.auditConditionalRoute(history,now).maeAtr,historicalReview.maeAtr,
+ 'historical fold metrics must be deterministic');
+assert.match(chart,/auditConditionalRoute\(m\.candles,now\)/,'chart surfaces measured shape error');
+assert.match(chart,/targetRoute!\.outcome===\x27AMBIGUOUS\x27/,'chart displays OHLC TP/SL ambiguity');
+console.log('PASS: simultaneous stop/TP no false success, independent completed M1 route audit');
