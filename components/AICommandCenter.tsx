@@ -63,13 +63,19 @@ export default function AICommandCenter({data,chartData,error,assetView='ALL',no
     <p>{error||'ننتظر أول بيانات من الخادم. لا توجد إشارة دخول قبل اكتمال التحميل والتحقق من حداثة الأسعار.'}</p>
   </section></div>;
   return <div className="ai-clean renewed-ai">
-    {error&&!data&&<div className="fatal"><ShieldAlert size={18}/><div><strong>التحليل غير متاح</strong><span>{error}</span></div></div>}
-    {stale&&<div className="fatal"><ShieldAlert size={18}/><div><strong>تحديث AI متأخر</strong>
-      <span>آخر تحليل منذ {Math.round((now-generatedAt)/1000)} ثانية · الأهداف السابقة للمراجعة فقط.</span>
-    </div></div>}
-    {auditError&&!chartWatchFresh&&<div className="fatal"><ShieldAlert size={18}/><div><strong>سجل القناص غير متصل</strong>
-      <span>الأهداف الجديدة مش معتمدة على الرسم قبل استعادة سجل الأداء.</span>
-    </div></div>}
+    {(Boolean(error&&!data)||stale||Boolean(auditError&&!chartWatchFresh))&&
+      <div className="sniper-system-notice" role="status" aria-label="حالة تحديث القناص">
+        <ShieldAlert size={17}/>
+        <strong>{error&&!data?'مصدر التحليل يحتاج اتصالًا':
+          stale?'تحليل AI يتجدد · الرسم يعرض آخر شموع مؤكدة':
+          'تحديث سجل الأداء قيد المراجعة'}</strong>
+        <details>
+          <summary>تفاصيل الاتصال</summary>
+          {error&&!data&&<p>{error}</p>}
+          {stale&&<p>آخر تحليل منذ {Math.round((now-generatedAt)/1000)} ثانية · السيناريو القديم للمراجعة، ولا يفعّل دخولًا.</p>}
+          {auditError&&!chartWatchFresh&&<p>سجل القناص غير متصل حاليًا؛ الأهداف الجديدة لا تُعتمد حتى عودته.</p>}
+        </details>
+      </div>}
     <div id="market-forecast">
       <ForecastIllustration data={displayData} now={now} snapshotAt={generatedAt}
         goldLive={goldLive} btcLive={btcLive} assetView={assetView}
