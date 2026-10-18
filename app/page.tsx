@@ -273,13 +273,25 @@ export default function Home(){
 
   return <main className="shell modern-workspace compact-sniper">
     <a className="skip-link" href="#market-forecast">انتقل إلى خريطة الحركة</a>
-    <nav className="sniper-solo-nav" aria-label="سكالب الثواني">
-      <a href="/scalp" className="workspace-scalp-link">سكالب الثواني ↗</a>
-    </nav>
+    <header className="sniper-home-head">
+      <div className="sniper-home-brand">
+        <span className="sniper-home-emblem" aria-hidden="true">◎</span>
+        <div><strong>القناص <span>QANNAS</span></strong>
+          <small>محطة متابعة الحركة والأهداف · قراءة واضحة وقرار منضبط</small></div>
+      </div>
+      <nav className="sniper-solo-nav" aria-label="التنقل في القناص">
+        <a href="#market-forecast">الرسم المباشر</a>
+        <a href="#sniper-performance">نتائج الأهداف</a>
+        <a href="#market-news">أخبار السوق</a>
+        <a href="/scalp" className="workspace-scalp-link">سكالب الثواني ↗</a>
+      </nav>
+    </header>
     <section className="content lite-content" aria-label="القناص الذكي">
-      <NewsCommandCenter now={now}/>
       <AICommandCenter assetView="ALL" data={aiData} chartData={chartData} error={aiError} now={now} goldLive={goldTick}
         btcLive={btcLive&&shownBtc!=null?{asset:'BTC',ok:true,price:shownBtc,sourceTime:shownBtcAt}:null}/>
+      <section id="market-news" className="sniper-home-news" aria-label="أخبار السوق">
+        <NewsCommandCenter now={now}/>
+      </section>
     </section>
   </main>;
 }
