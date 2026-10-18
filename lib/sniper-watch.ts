@@ -8,10 +8,10 @@ export const emptyWatch=():WatchMemory=>({state:null,bias:null,updatedAt:0,
   modelAt:0,rearmAfterM15:0,records:[]});
 
 export function advanceWatch(previous:WatchMemory,raw:ObservedBias,asset:Asset,
-  price:number|null,candles:any,now:number,modelAt:number):WatchMemory{
+  price:number|null,candles:any,now:number,modelAt:number,marketSource?:string):WatchMemory{
   // Late concurrent provider replies must not roll back server memory.
   if(modelAt<=previous.modelAt||modelAt>now||now-modelAt>90000)return previous;
-  const records=previous.records.map(r=>r.status==='ACTIVE'?advanceScenario(r,candles,now):r);
+  const records=previous.records.map(r=>r.status==='ACTIVE'?advanceScenario(r,candles,now,marketSource):r);
   const prior=records.at(-1);
   const reached=records.filter(r=>r.side===previous.state?.side&&r.startedAt>=previous.state.since)
     .flatMap(r=>r.targets.filter(t=>t.reachedAt!=null).map(t=>t.price));
@@ -42,7 +42,7 @@ export function advanceWatch(previous:WatchMemory,raw:ObservedBias,asset:Asset,
   if(canStart&&stable.bias.active&&stable.state&&price!=null&&stable.bias.invalidation!=null){
     const record=startScenario({asset,side:stable.state.side,at:now,modelAt,price,
       stop:stable.bias.invalidation,confidence:0,targets:stable.bias.targets,
-      durationMs:8*3600000,purpose:'OBSERVATION'});
+      durationMs:8*3600000,purpose:'OBSERVATION',marketSource});
     if(record){
       record.note='رصد بعيد مسجل لمدة تقييم أقصاها 8 ساعات؛ ليست موعد وصول أو إشارة دخول';
       records.push(record);
