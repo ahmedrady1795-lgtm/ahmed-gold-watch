@@ -10,6 +10,8 @@ export type Scenario={
   resolvedAt:number|null;resolvedPrice:number|null;bestFavorableR:number;worstAdverseR:number;
   note:string;processedBars:number
   purpose?:'SCENARIO'|'OBSERVATION';
+  // The exchange/broker that supplied the opening OHLC reference.
+  marketSource?:string;
   recoveryPending?:boolean;
 };
 export type Bar={time:number;open:number;high:number;low:number;close:number};
@@ -22,7 +24,7 @@ export function validClosedBars(rows:any,now:number):Bar[]{
     const time=n(c?.time),open=n(c?.open),high=n(c?.high),low=n(c?.low),close=n(c?.close);
     if(time==null||open==null||high==null||low==null||close==null||
       open<=0||low<=0||high<low||high<Math.max(open,close)||low>Math.min(open,close)||
-      time+60000>now||time>now+1000)continue;
+      time+60000>now||time>now+1000||time%60000!==0)continue;
     found.set(time,{time,open,high,low,close});
   }
   return [...found.values()].sort((a,b)=>a.time-b.time).slice(-1000);
@@ -30,7 +32,7 @@ export function validClosedBars(rows:any,now:number):Bar[]{
 export function startScenario(args:{
   asset:Asset;side:Dir;at:number;modelAt:number;price:number;stop:number;confidence:number;
   targets:Array<{stage:1|2|3;price:number;low:number;high:number;quality:number;kind:string;source?:string}>
-  durationMs?:number;purpose?:'SCENARIO'|'OBSERVATION'
+  durationMs?:number;purpose?:'SCENARIO'|'OBSERVATION';marketSource?:string
 }):Scenario|null{
   const {asset,side,at,modelAt,price,stop,confidence}=args;
   const targets=args.targets.slice(0,3);
@@ -51,6 +53,7 @@ export function startScenario(args:{
   const id=[asset,Math.round(at/1000),Math.round(price*100),Math.round(stop*100)].join('-');
   return {id,asset,side,startedAt:at,modelAt,expiresAt:at+duration,entry:price,
     stop,confidence,purpose:observation?'OBSERVATION':'SCENARIO',
+    marketSource:String(args.marketSource||'')||undefined,
     source:observation?'H1/H4_WATCH':'M15/H1_STRUCTURAL',targets:targets.map(t=>({...t,reachedAt:null})),
     status:'ACTIVE',lastBarOpen:null,lastCheckedAt:at,firstHitAt:null,
     resolvedAt:null,resolvedPrice:null,bestFavorableR:0,worstAdverseR:0,
@@ -63,11 +66,15 @@ const badStop=(side:Dir,stop:number,high:number,low:number)=>
 function finish(r:Scenario,status:AuditStatus,at:number,price:number|null,note:string){
   r.status=status;r.resolvedAt=at;r.resolvedPrice=price;r.note=note;r.recoveryPending=false;
 }
-export function advanceScenario(previous:Scenario,raw:any,now:number):Scenario{
+export function advanceScenario(previous:Scenario,raw:any,now:number,marketSource?:string):Scenario{
   const s:Scenario={...previous,targets:previous.targets.map(x=>({...x}))};
   if(terminal(s.status))return s;
+  if(s.asset==='BTC'&&s.marketSource&&marketSource&&s.marketSource!==marketSource){
+    finish(s,'UNOBSERVED',now,null,'مصدر BTC تغيّر قبل نهاية التقييم؛ لا نخلط شموع منصتين في نسبة نجاح واحدة');
+    return s;
+  }
   const bars=validClosedBars(raw,now)
-    .filter(b=>b.time>=s.startedAt&&b.time+60000<=s.expiresAt&&
+    .filter(b=>b.time>=Math.ceil(s.startedAt/60000)*60000&&b.time+60000<=s.expiresAt&&
       (s.lastBarOpen==null||b.time>s.lastBarOpen));
   for(const b of bars){
     if(s.lastBarOpen!=null&&b.time-s.lastBarOpen!==60000){
@@ -117,11 +124,20 @@ export function scorecard(records:Scenario[],asset:Asset){
   const pending=rows.filter(r=>r.status==='ACTIVE').length;
   const n=observed.length;
   const median=(values:number[])=>{const a=[...values].sort((x,y)=>x-y);return a.length?Number(((a[Math.floor((a.length-1)/2)]+a[Math.ceil((a.length-1)/2)])/2).toFixed(1)):null;};
+  const wilson=(hits:number,total:number)=>{
+    if(!total)return {lower95Pct:null,upper95Pct:null};
+    const z=1.96,p=hits/total,denom=1+z*z/total;
+    const midpoint=(p+z*z/(2*total))/denom;
+    const margin=z*Math.sqrt(p*(1-p)/total+z*z/(4*total*total))/denom;
+    return {lower95Pct:Number((100*Math.max(0,midpoint-margin)).toFixed(1)),
+      upper95Pct:Number((100*Math.min(1,midpoint+margin)).toFixed(1))};
+  };
   const rates=([1,2,3] as const).map(stage=>{
     const applicable=observed.filter(r=>r.targets.some(t=>t.stage===stage));
     const hits=applicable.filter(r=>r.targets.some(t=>t.stage===stage&&t.reachedAt!=null));
     const minutes=hits.map(r=>(r.targets.find(t=>t.stage===stage)!.reachedAt!-r.startedAt)/60000);
-    return {stage,samples:applicable.length,hits:hits.length,medianMinutes:median(minutes),
+    return {stage,samples:applicable.length,hits:hits.length,...wilson(hits.length,applicable.length),
+      qualifiedSample:applicable.length>=40,medianMinutes:median(minutes),
       observedPct:applicable.length?Number((100*hits.length/applicable.length).toFixed(1)):null,
       avgMinutes:hits.length?Number((hits.reduce((sum,r)=>sum+(r.targets.find(t=>t.stage===stage)!.reachedAt!-r.startedAt)/60000,0)/hits.length).toFixed(1)):null};
   });
