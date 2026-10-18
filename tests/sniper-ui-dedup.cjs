@@ -12,8 +12,8 @@ assert.equal((ui.match(/<div className="forecast-visual-legend"/g)||[]).length,1
   'one optional full legend only');
 assert.equal((ui.match(/className="sniper-chart-key"/g)||[]).length,1,
   'one concise key beside the chart');
-assert.match(ui,/showAlternatives&&\(\['BUY','SELL'\] as const\)/,
-  'unqualified BUY and SELL scenario paths must be hidden by default');
+assert.match(ui,/showAlternatives&&!routeVisible&&\(\['BUY','SELL'\] as const\)/,
+  'alternative BUY/SELL curves must stay hidden when the realistic target candle route is visible');
 assert.match(ui,/setShowAlternatives\(v=>!v\)/,
   'alternative scenario paths stay available upon explicit user action');
 assert.match(ui,/className="sniper-evidence-drawer"/,
