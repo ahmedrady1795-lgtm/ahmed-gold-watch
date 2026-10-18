@@ -52,3 +52,18 @@ assert.equal(v.targets[1].medianMinutes,3);
 assert.equal(v.medianResolutionMinutes,2.5,'resolution time includes both completed and invalidated outcomes');
 const pendingPartial=advance(start(base),[candle(1,99.5,102.1)],at+2*60000);
 assert.equal(stats([pendingPartial],'BTC').targets[0].samples,0,'pending winners do not inflate completed-cohort reach rates');
+
+const exchange=start({...base,marketSource:'Coinbase BTC-USD'});
+assert.equal(exchange.marketSource,'Coinbase BTC-USD');
+const changed=advance(exchange,[candle(1,100,104.5)],at+2*60000,'Kraken XBT/USD');
+assert.equal(changed.status,'UNOBSERVED','exchanges cannot be merged into one TP result');
+assert.equal(changed.targets[0].reachedAt,null);
+assert.equal(stats([changed],'BTC').observed,0,'source-change result excluded from TP reach denominator');
+const sameExchange=advance(exchange,[candle(1,99.5,102.1)],at+2*60000,'Coinbase BTC-USD');
+assert.equal(sameExchange.targets[0].reachedAt,at+2*60000);
+assert.ok(v.targets[0].lower95Pct>=0&&v.targets[0].upper95Pct<=100,
+ '95% confidence interval bounded even with only two outcomes');
+const intrabar=start({...base,at:at+30000,modelAt:at+30000});
+const oldCandle=advance(intrabar,[candle(0,99,105)],at+60000);
+assert.equal(oldCandle.status,'ACTIVE','no backdated pre-entry candle can hit SL or TP');
+console.log('PASS: source-bound TP scorecards, observed samples/uncertainty and no pre-signal OHLC leakage');
