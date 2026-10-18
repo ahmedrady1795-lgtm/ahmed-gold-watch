@@ -481,6 +481,17 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     m.bias.active?'سوق عرضي · التحليل مستمر':
     m.status==='NO_CANDLES'?'لا توجد شموع كافية':
     breakoutWatch.phase!=='UNAVAILABLE'?breakoutWatch.headline:'مراقبة مستمرة · الاتجاه غير مؤكد');
+  const quickSide=playbook.side!=='WAIT'?playbook.side:
+    dir!=='WAIT'?dir:
+    btcScenarioShown&&btcScenario?.side!=='WAIT'?btcScenario!.side:'WAIT';
+  const quickTrigger=Number.isFinite(playbook.level)?Number(playbook.level):
+    quickSide==='BUY'?breakout.above:quickSide==='SELL'?breakout.below:null;
+  const quickDecision=feedProblem?'متابعة البيانات':
+    statusReady?'خطة مسجلة · متابعة التنفيذ':
+    watchReady?'فرصة مرصودة · بانتظار التفعيل':
+    btcScenarioShown?'مسار حركة مرصود':'رادار القناص يعمل';
+  const quickDirection=quickSide==='BUY'?'↗ ميل شرائي':
+    quickSide==='SELL'?'↘ ميل بيعي':'↔ نطاق متوازن';
   const highest=m.displayTargets.at(-1);
   const zoneList=chartBands.filter(z=>z.kind!=='TARGET'&&z.kind!=='STOP').slice(0,4);
   const conflictFavor=opposingOverlap&&m.fourHour.ready&&dir!=='WAIT'&&
@@ -501,25 +512,42 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       <header className="forecast-visual-header">
         <div className="forecast-visual-heading">
           <span className="forecast-visual-mark"><Crosshair size={17}/></span>
-          <div><strong>شاشة {asset==='GOLD'?'الذهب · XAUUSD':'البيتكوين · BTCUSD'}</strong>
-            <small>شموع سوق فعلية M1 · مراقبة مستويات H1/H4</small></div>
+          <div><strong id="forecast-visual-title">القناص · {asset==='GOLD'?'الذهب XAUUSD':'البيتكوين BTCUSD'}</strong>
+            <small>لوحة الحركة والأهداف · شموع M1 مغلقة · مستويات H1/H4</small></div>
         </div>
         <div className="forecast-visual-controls">
           {assetView==='ALL'&&<div className="forecast-visual-tabs" role="group" aria-label="الأصل على الرسم">
             <button type="button" aria-pressed={asset==='GOLD'} onClick={()=>setChosen('GOLD')}>الذهب</button>
             <button type="button" aria-pressed={asset==='BTC'} onClick={()=>setChosen('BTC')}>البيتكوين</button>
           </div>}
-          <span className={'forecast-visual-status '+(statusReady?'forecast-visual-active':watchReady?'forecast-visual-watch':'')}>
-            <span className="forecast-dot"/>{stateLabel}
+          <span title={stateLabel} className={'forecast-visual-status '+(statusReady?'forecast-visual-active':watchReady?'forecast-visual-watch':'')}>
+            <span className="forecast-dot"/>{statusReady?'خطة مسجلة':feedProblem?'بيانات بحاجة تحديث':
+              watchReady?'فرصة تحت المتابعة':btcScenarioShown?'سيناريو مرصود':'الرادار نشط'}
           </span>
         </div>
       </header>
-      <div className="sniper-decision-strip sniper-decision-compact" aria-label="قرار موحد للقناص">
-        <strong className={statusReady?(rise?'green':fall?'red':''):''}>{feedProblem??(statusReady?'سيناريو ورقي مؤهل':'لا دخول مؤكد')}</strong>
-        <span>{playbook.side!=='WAIT'&&!statusReady?
-          (playbook.side==='BUY'?'↗ ':'↘ ')+playbook.title:
-          rise?'↗ ميل صعود':fall?'↘ ميل هبوط':neutralLabel}</span>
-        {m.fourHour.ready&&<b>4س · {m.fourHour.phase}</b>}
+      <div className="sniper-decision-strip sniper-decision-compact sniper-action-dashboard" aria-label="ملخص قرار القناص">
+        <div className="sniper-action-primary">
+          <small>قرار القناص الآن</small>
+          <strong className={statusReady?(rise?'green':fall?'red':''):''}>{quickDecision}</strong>
+          <span>{statusReady?'سيناريو ورقي موثق · تحقق من شروط التنفيذ':
+            'مراقبة نشطة · لا يوجد أمر دخول معتمد'}</span>
+        </div>
+        <div className="sniper-action-cell">
+          <small>اتجاه الحركة</small>
+          <strong className={quickSide==='BUY'?'green':quickSide==='SELL'?'red':''}>{quickDirection}</strong>
+          <span>{m.fourHour.ready?'H4 · '+m.fourHour.phase:'قراءة هيكل السوق'}</span>
+        </div>
+        <div className="sniper-action-cell">
+          <small>بوابة التفعيل</small>
+          <strong dir={quickTrigger!=null?'ltr':undefined}>{quickTrigger!=null?fmt(quickTrigger):'تحت الرصد'}</strong>
+          <span>{quickTrigger!=null?'مستوى فني للمراقبة · ليس أمر دخول':'بانتظار مستوى كسر موثق'}</span>
+        </div>
+        <div className="sniper-action-cell">
+          <small>المرحلة الحالية</small>
+          <strong>{playbook.strengthTitle}</strong>
+          <span>{breakoutWatch.closes}/2 إغلاقات M5 · <a href="#sniper-performance">سجل الأداء</a></span>
+        </div>
       </div>
       <div className={'forecast-visual-layout' +(expanded?' forecast-layout-expanded':'')}>
         <div className={'forecast-visual-chart-wrap'+(expanded?' forecast-chart-expanded':'')+(chartFullscreen?' chart-fullscreen':'')}>
@@ -551,7 +579,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {' '}{observationForDisplay.m5Side==='BUY'?'M5 ↑':
                 observationForDisplay.m5Side==='SELL'?'M5 ↓':'M5 ↔'}
             </span>
-            <div className="forecast-chart-tools">
+            <div className="forecast-chart-tools" aria-label="أدوات الرسم الأساسية">
               <button type="button" aria-pressed={chartWindow===60} onClick={()=>setChartWindow(60)}>ساعة</button>
               <button type="button" aria-pressed={chartWindow===240} onClick={()=>setChartWindow(240)}>4 ساعات</button>
               <button type="button" aria-pressed={scenarioDetail} disabled={!routeVisible&&!scenarioDetail}
@@ -560,16 +588,25 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <button className="forecast-chart-zoom" type="button" aria-pressed={focusCandles}
                  title="الشموع دائمًا بمقياسها الفعلي؛ الأهداف البعيدة تظهر خارج الزوم بأسعارها الصحيحة"
                  onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'نطاق شموع أوسع':'تكبير الشموع'}</button>
+              <details className="sniper-more-chart-tools"><summary>أدوات إضافية <span aria-hidden="true">⌄</span></summary>
+              <div className="sniper-more-chart-tools-body">
               <button type="button" aria-pressed={showGhost} onClick={()=>setShowGhost(v=>!v)} title="شموع M1 افتراضية فقط عندما تؤيدها نتائج زمنية سابقة؛ وإلا نطاق تقلب مرئي دون اتجاه">{showGhost?'إخفاء التقدير':'شموع تقديرية'}</button>
               <button className="forecast-chart-alternative" type="button" aria-pressed={showAlternatives} onClick={()=>setShowAlternatives(v=>!v)} title="مسارات مشروطة إضافية، ليست صفقات">{showAlternatives?'إخفاء البدائل':'بدائل'}</button>
               <button type="button" aria-pressed={expanded} onClick={()=>setExpanded(v=>!v)}>{expanded?'حجم عادي':'توسيع الرسم ⤢'}</button>
               <button type="button" aria-pressed={chartFullscreen} onClick={()=>setChartFullscreen(v=>!v)}>{chartFullscreen?'إغلاق ملء الشاشة':'⛶ ملء الشاشة'}</button>
+              </div></details>
             </div>
           </div>
-          {asset==='BTC'&&<div className={'sniper-btc-forecast'+
+          {asset==='BTC'&&<details className={'sniper-btc-forecast'+
             (btcScenarioShown?' sniper-btc-forecast-'+btcScenario!.side.toLowerCase():
               ' sniper-btc-forecast-neutral')}
             aria-label="سيناريو حركة البيتكوين مستقل عن إشارة الدخول">
+            <summary className="sniper-btc-forecast-summary">
+              <strong>{btcScenarioShown?(btcScenario!.side==='BUY'?'↗ ':'↘ ')+btcScenario!.title:'◇ رادار حركة البيتكوين'}</strong>
+              <span dir="ltr">{btcScenarioShown?fmt(btcScenario!.destinationMid):'رصد حي'}</span>
+              <small>الوجهة ومستوى الإبطال <span aria-hidden="true">⌄</span></small>
+            </summary>
+            <div className="sniper-btc-forecast-body">
             {btcScenarioShown?<><div className="sniper-btc-forecast-title">
                 <b>{btcScenario!.side==='BUY'?'↗':'↘'} {btcScenario!.title}</b>
                 <small>{btcScenario!.alignment} · تحليل حركة، ليس توصية دخول</small>
@@ -580,7 +617,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 <span><small>إبطال السيناريو</small>
                   <strong dir="ltr">{fmt(btcScenario!.invalidation)}</strong></span>
                 <span><small>وضع الصفقة</small>
-                  <strong>{statusReady?'خطة مؤهلة مستقلة':'WAIT · لا دخول'}</strong></span>
+                  <strong>{statusReady?'خطة مسجلة':'ترقب تفعيل الدخول'}</strong></span>
               </div>
               <span className="sniper-btc-forecast-footnote">
                 {btcScenario!.detail} · المستويات مشروطة وقد تتغير مع تحديث الشموع
@@ -589,7 +626,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             </>:<><strong>مسح سيناريو البيتكوين جارٍ</strong>
               <small>{btcScenario?.detail||'لم يكتمل المسار الهيكلي على البيانات الحديثة'} · لا توجد وجهة مؤكدة</small>
             </>}
-          </div>}
+            </div>
+          </details>}
           <details className="sniper-chart-analysis-drawer">
             <summary>
               <strong>{playbook.title}</strong>
@@ -653,6 +691,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           {scenarioDetail&&<p style={{padding:'10px 16px',color:'#bad9e8',margin:0}}>
             اسحب الرسم أفقيًا لمتابعة المسار · نفس عرض ومقياس شموع M1 · يتحدث المسار مع إغلاق الدقيقة · S مراحل وليست دقائق
           </p>}
+          {(outsideLevels.length>0||Boolean(routeAudit)||routeVisible)&&<details className="sniper-route-research">
+          <summary><strong>تفاصيل مسار الأهداف</strong><span>{outsideLevels.length?
+            outsideLevels.length+' أهداف خارج التكبير · ':''}{routeVisible?'مراحل الكسر والاختبار':'تدقيق الرسم'} <span aria-hidden="true">⌄</span></span></summary>
+          <div className="sniper-route-research-content">
           {outsideLevels.length>0&&<div aria-label="الأهداف خارج نطاق شموع الدقيقة"
             style={{display:'flex',flexWrap:'wrap',gap:8,padding:'8px 16px',background:'#0b1e2c',color:'#c9deeb',fontSize:12}}>
             <strong style={{width:'100%'}}>أهداف بعيدة · محفوظة بالسعر الحقيقي ولا تضغط الشموع</strong>
@@ -682,9 +724,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             {conditionalRouteGoals.map(t=><span key={t.stage} style={{border:'1px solid #376e61',borderRadius:6,padding:'5px 9px'}}>TP{t.stage} · {fmt(t.price)} · {routeAnchor!=null&&targetRoute!.atr!=null?(Math.abs(t.price-routeAnchor)/targetRoute!.atr).toFixed(1)+' × تقلب M1 · ':''}{targetRoute!.touches.some(h=>h.stage===t.stage)?'✓ لمسته الشموع المرجعية':'لم تلمسه الشموع المرجعية'}</span>)}
             <small style={{width:'100%'}}>أهداف مراقبة مشروطة وليست أمر دخول. كل انتقال يتطلب استمرار الاتجاه وصلاحية المستويات؛ الأشكال والتصحيحات توضيحية ولا تحدد احتمال الوصول.</small>
           </div>}
+          </div></details>}
           {showGhost&&!goldClosed&&conditionalRouteGoals.length>0&&!routeVisible&&<div aria-label="سبب تعليق مسار الأهداف"
             style={{padding:'8px 16px',color:'#e8c58d',background:'#1b2731',fontSize:12}}>
-            مسار شموع الأهداف غير متاح الآن · {providerTransition?'تغيير مصدر BTC يحتاج إغلاقات جديدة':targetRoute?.ready?
+            مسار الأهداف يتجدد مع بيانات السوق · {providerTransition?'تغيير مصدر BTC يحتاج إغلاقات جديدة':targetRoute?.ready?
               'السعر ابتعد عن مرجع إغلاق الدقيقة؛ الرسم يتجدد عند إغلاق شمعة جديدة':
               targetRoute?.reason??'بانتظار سعر و36 شمعة M1 مغلقة وحديثة'}
           </div>}
@@ -1361,7 +1404,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         </div>
       </div>
       </details>
-      <details className="sniper-inspection"><summary>سجل أداء القناص</summary>
+      <details id="sniper-performance" className="sniper-inspection"><summary>سجل أداء القناص · نتائج TP1 / TP2 / TP3</summary>
       <section className="sniper-audit-panel sniper-audit-compact" aria-label="ملخص نتائج القناص">
         <div className="sniper-audit-heading">
           <strong><Layers3 size={15}/> سجل أداء القناص · {asset==='GOLD'?'الذهب':'البيتكوين'}</strong>
