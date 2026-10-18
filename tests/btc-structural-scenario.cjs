@@ -57,7 +57,7 @@ assert.match(ui,/sniper-btc-forecast/,'scenario has a first-class visible explan
 assert.match(ui,/btc-structural-watch-path/,'actual-price-scaled path is shown on existing SVG');
 assert.match(ui,/btc-watch-arrow/,'directional structural arrow distinct from executed trade');
 assert.match(ui,/btcScenarioOffscreen/,'off-zoom target remains labelled, not silently projected');
-assert.match(ui,/statusReady\?'خطة مؤهلة مستقلة':'WAIT · لا دخول'/,
+assert.match(ui,/statusReady\?'خطة مسجلة':'ترقب تفعيل الدخول'/,
  'technical directional path must not be interpreted as executable signal');
 assert.match(css,/\.sniper-btc-forecast/);
 assert.doesNotMatch(ui,/downloadActualChartPng|📷 صورة فعلية/);
