@@ -132,3 +132,25 @@ assert.equal(downward.ready,true,downward.reason);
 assert.equal(downward.bars.length,detailed.bars.length);
 assert.ok(downward.bars.some(b=>b.close>b.open),'bearish history includes authentic upward pullbacks');
 console.log('PASS: causal OHLC analogue, untouched server TP levels, genuine touches, 96-stage zoom, BUY/SELL symmetry');
+
+const recentOnly=history.slice(-65);
+const recentRoute=build({...common,history:recentOnly,count:96,
+  targets:[{stage:1,price:quote+1.1}],invalidation:quote-500});
+const recentShort=build({...common,history:recentOnly,count:18,
+  targets:[{stage:1,price:quote+1.1}],invalidation:quote-500});
+assert.equal(recentRoute.ready,true,recentRoute.reason);
+assert.equal(recentRoute.bars.length,96,
+ '96-stage route can stitch closed 18-bar motifs from a shorter, fresh market regime');
+assert.equal(JSON.stringify(recentRoute.bars.slice(0,18)),JSON.stringify(recentShort.bars),
+ 'zooming the target chart must never change its first 18 plotted OHLC bars');
+const nextVersion=fs.readFileSync('lib/conditional-target-candles.ts','utf8');
+assert.match(nextVersion,/chooseMotif\(out\.slice\(-6\)\)/,
+ 'extended target stages re-match actual-scale candle context rather than copy 96 stale bars');
+assert.match(chart,/targetRoute!\.milestones\.some/,
+ 'structural break and retest milestones explicitly distinguish touched from untouched');
+assert.match(chart,/× تقلب M1/,
+ 'target ladder exposes distance relative to observed M1 volatility');
+assert.match(chart,/سبب تعليق مسار الأهداف/,
+ 'do not show an unrelated drawing without explaining missing price/closed OHLC data');
+console.log('PASS: recent-regime target extension, unchanged first 18 candles, honest level status');
+
