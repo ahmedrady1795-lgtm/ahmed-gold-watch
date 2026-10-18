@@ -481,12 +481,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     m.bias.active?'سوق عرضي · التحليل مستمر':
     m.status==='NO_CANDLES'?'لا توجد شموع كافية':
     breakoutWatch.phase!=='UNAVAILABLE'?breakoutWatch.headline:'مراقبة مستمرة · الاتجاه غير مؤكد');
-  const quickSide=playbook.side!=='WAIT'?playbook.side:
+  const quickSide=feedProblem||providerTransition?'WAIT':
+    playbook.side!=='WAIT'?playbook.side:
     dir!=='WAIT'?dir:
     btcScenarioShown&&btcScenario?.side!=='WAIT'?btcScenario!.side:'WAIT';
-  const quickTrigger=Number.isFinite(playbook.level)?Number(playbook.level):
+  const quickTrigger=feedProblem||providerTransition?null:
+    Number.isFinite(playbook.level)?Number(playbook.level):
     quickSide==='BUY'?breakout.above:quickSide==='SELL'?breakout.below:null;
-  const quickDecision=feedProblem?'متابعة البيانات':
+  const quickDecision=providerTransition?'تثبيت مصدر الشموع':
+    feedProblem?'متابعة البيانات':
     statusReady?'خطة مسجلة · متابعة التنفيذ':
     watchReady?'فرصة مرصودة · بانتظار التفعيل':
     btcScenarioShown?'مسار حركة مرصود':'رادار القناص يعمل';
@@ -703,10 +706,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {'TP'+t.stage+' '+(t.price>scaleHigh?'↑': '↓')+' '+fmt(t.price)+' · فرق '+fmt(t.offset)}
             </span>)}
           </div>}
-          {asset==='BTC'&&providerTransition&&<div role="status" style={{padding:'10px 16px',background:'#362b20',color:'#ffdda3',fontSize:13}}>
-            تبديل مصدر BTC قيد التثبيت · الشموع القديمة للعرض التاريخي فقط · مسار الأهداف متوقف حتى إغلاق شمعتين من المصدر الجديد
-          </div>}
-          {routeAudit&&<div aria-label="اختبار دقة رسم الشموع أمام التاريخ المغلق" style={{padding:'9px 16px',background:'#0e2630',color:'#d4e5ec',fontSize:12}}>
+           {routeAudit&&<div aria-label="اختبار دقة رسم الشموع أمام التاريخ المغلق" style={{padding:'9px 16px',background:'#0e2630',color:'#d4e5ec',fontSize:12}}>
             <strong>اختبار رسم المسار على شموع M1 مغلقة سابقة:</strong>{' '}
             {routeAudit.samples} عينة زمنية غير متداخلة · خطأ الشموع {routeAudit.maeAtr??'—'} ATR
             {' مقابل خط أساس ثابت '}{routeAudit.baselineMaeAtr??'—'} ATR
@@ -725,7 +725,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <small style={{width:'100%'}}>أهداف مراقبة مشروطة وليست أمر دخول. كل انتقال يتطلب استمرار الاتجاه وصلاحية المستويات؛ الأشكال والتصحيحات توضيحية ولا تحدد احتمال الوصول.</small>
           </div>}
           </div></details>}
-          {showGhost&&!goldClosed&&conditionalRouteGoals.length>0&&!routeVisible&&<div aria-label="سبب تعليق مسار الأهداف"
+          {asset==='BTC'&&providerTransition&&<div role="status" className="sniper-provider-transition">
+            جارٍ تثبيت مصدر البيتكوين · الأهداف مجمدة حتى إغلاق شمعتين من المصدر الجديد
+          </div>}
+          {showGhost&&!goldClosed&&conditionalRouteGoals.length>0&&!routeVisible&&!providerTransition&&<div aria-label="سبب تعليق مسار الأهداف"
             style={{padding:'8px 16px',color:'#e8c58d',background:'#1b2731',fontSize:12}}>
             مسار الأهداف يتجدد مع بيانات السوق · {providerTransition?'تغيير مصدر BTC يحتاج إغلاقات جديدة':targetRoute?.ready?
               'السعر ابتعد عن مرجع إغلاق الدقيقة؛ الرسم يتجدد عند إغلاق شمعة جديدة':
