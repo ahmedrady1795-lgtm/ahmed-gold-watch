@@ -8,9 +8,9 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
   const [shadow,setShadow]=useState<null|{
     events:number;storage:string;modelQualified:false;
     m1:{samples:number;directional:number;correct:number;
-      pairedN:number;accuracy:number|null;baselineRate:number|null};
+      pairedN:number;accuracy:number|null;pairedRadarRate:number|null;baselineRate:number|null;missing:number};
     m15:{samples:number;directional:number;correct:number;
-      pairedN:number;accuracy:number|null;baselineRate:number|null};
+      pairedN:number;accuracy:number|null;pairedRadarRate:number|null;baselineRate:number|null;missing:number};
   }>(null);
   useEffect(()=>{
     if(asset!=='BTC'){setShadow(null);setScoreOpen(false);return;}
@@ -91,13 +91,14 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
       <strong>اختبار رادار Coinbase · متابعة فقط</strong>
       <div>إشارات محفوظة على الخادم: {shadow?.events??'بانتظار البيانات'}</div>
       <div>M1: {shadow?.m1.samples??0} نتيجة · M15: {shadow?.m15.samples??0} نتيجة</div>
+      <div>بيانات لم تكتمل: M1 {shadow?.m1.missing??0} · M15 {shadow?.m15.missing??0}</div>
       {shadow&&shadow.m1.directional>=70&&shadow.m1.pairedN>=50?
-        <div>دقة M1 التاريخية {Math.round((shadow.m1.accuracy??0)*100)}%
+        <div>دقة M1 التاريخية {Math.round((shadow.m1.pairedRadarRate??0)*100)}%
           · المرجع {Math.round((shadow.m1.baselineRate??0)*100)}%
           · عينات متطابقة {shadow.m1.pairedN}</div>:
         <div>مقارنة M1: عينات مستقلة غير كافية</div>}
       {shadow&&shadow.m15.directional>=70&&shadow.m15.pairedN>=50?
-        <div>دقة M15 التاريخية {Math.round((shadow.m15.accuracy??0)*100)}%
+        <div>دقة M15 التاريخية {Math.round((shadow.m15.pairedRadarRate??0)*100)}%
           · المرجع {Math.round((shadow.m15.baselineRate??0)*100)}%
           · عينات متطابقة {shadow.m15.pairedN}</div>:
         <div>مقارنة M15: عينات مستقلة غير كافية</div>}
