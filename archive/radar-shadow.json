@@ -1,1 +1,1 @@
-{"schema":"qannas-radar-shadow-v1","updatedAt":0,"events":[]}
+{"schema":"qannas-radar-shadow-v1","updatedAt":1792451235689,"events":[{"id":"CB-1792450948974-BUY","source":"Coinbase BTC-USD WS","at":1792450948974,"side":"BUY","price":81977.09,"confirm":81971.396,"invalidate":81939.144,"baseline":"WAIT","phase":"CONFIRMED","l2Snapshots":6,"m1":{"status":"SCORED","barAt":1792450980000,"checkedAt":1792451064859,"direction":"FLAT","correct":false,"moveBps":-0.866},"m15":{"status":"PENDING","barAt":1792451700000,"checkedAt":null,"direction":null,"correct":null,"moveBps":null}}]}
