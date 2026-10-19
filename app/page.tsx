@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import AICommandCenter from '../components/AICommandCenter';
 import NewsCommandCenter from '../components/NewsCommandCenter';
 import {acceptGoldStreamPacket,sourceTimestamp,validSourceTime} from '../lib/client-market-freshness';
@@ -30,6 +30,7 @@ export default function Home(){
   const aiFailureCount=useRef(0);
   const aiEtag=useRef('');
   const btcUiAt=useRef(0);
+  const goldUiAt=useRef(0);
   const chartDataRef=useRef<any>(null);
   const btcChartProviderGate=useRef<BtcProviderGate|null>(null);
 
@@ -118,20 +119,26 @@ export default function Home(){
   },[]);
 
   useEffect(()=>{
-    let closed=false,ws:WebSocket|null=null,reconnect:ReturnType<typeof setTimeout>|undefined,lastWsTick=0;
-    const loadBtc=async()=>{try{
+    let closed=false,inFlight=false,ws:WebSocket|null=null,reconnect:ReturnType<typeof setTimeout>|undefined,lastWsTick=0;
+    const loadBtc=async()=>{
+      if(closed||inFlight)return;
+      inFlight=true;
+      try{
       const wanted=/kraken/i.test(String(chartDataRef.current?.bitcoin?.candleSource||''))?'kraken':'coinbase';
-      const r=await fetch('/api/btc?source='+wanted+'&ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+      if(wanted==='coinbase'&&Date.now()-lastWsTick<4000)return;
+      const r=await fetch('/api/btc?source='+wanted+'&ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(4500)});
       const j=await r.json(),p=Number(j?.price),at=sourceTimestamp(j?.sourceTime)||0;
       // A provider may return a numeric Spot or last-good price WITHOUT
       // a valid trade timestamp. Keep its price for context, not a LIVE flag.
+      const currentProvider=/kraken/i.test(String(chartDataRef.current?.bitcoin?.candleSource||''))?'kraken':'coinbase';
+      if(currentProvider!==wanted)return;
       const timedLive=j?.status==='live'&&validSourceTime(at||null,Date.now(),10000);
       if(!closed&&r.ok&&j?.ok&&Number.isFinite(p)&&p>0&&
         (wanted==='kraken'||Date.now()-lastWsTick>4000)){
         setBtc(p);setBtcAt(timedLive?at:0);
         setBtcSource(String(j?.source||'BTC provider'));
       }
-    }catch{}};
+    }catch{}finally{inFlight=false;}};
     const connect=()=>{
       if(closed)return;
       ws=new WebSocket('wss://ws-feed.exchange.coinbase.com');
@@ -145,7 +152,7 @@ export default function Home(){
         if(/kraken/i.test(String(chartDataRef.current?.bitcoin?.candleSource||'')))return;
         lastWsTick=Date.now();
 
-        if(!closed&&Date.now()-btcUiAt.current>=250){
+        if(!closed&&document.visibilityState==='visible'&&Date.now()-btcUiAt.current>=250){
           btcUiAt.current=Date.now();
           setBtc(p);setBtcAt(at);setBtcSource('Coinbase WebSocket');
         }
@@ -170,7 +177,9 @@ export default function Home(){
       if(!shouldApplyGoldQuote(nextGoldTick,goldTickRef.current,receivedAt,lastStreamTick))return;
       lastStreamTick=receivedAt;
       goldTickRef.current=nextGoldTick;
-      if(!closed)setGoldTick(nextGoldTick);
+      if(!closed&&document.visibilityState==='visible'&&receivedAt-goldUiAt.current>=250){
+        goldUiAt.current=receivedAt;setGoldTick(nextGoldTick);
+      }
     };
     const connectStream=async()=>{
       if(closed)return;
@@ -206,6 +215,7 @@ export default function Home(){
         const r=await fetch('/api/gold-tick?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(6500)});
         const j=await r.json();
         if(!r.ok||!j?.ok){nextDelay=3000;return;}
+        if(Date.now()-lastStreamTick<3500)return;
         const price=Number(j.price),bid=Number(j.bid),ask=Number(j.ask),at=sourceTimestamp(j.sourceTime)||0;
         if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)){nextDelay=3000;return;}
         const mode=String(j.mode||'external');
@@ -275,6 +285,11 @@ export default function Home(){
     btcAt||aiBtcAt;
   const btcLive=Boolean(btcDirectFresh||btcAiFresh);
 
+  const chartBtcSource=btcDirectFresh?btcSource:String(aiData?.bitcoin?.candleSource||'unverified');
+  const chartBtcQuote=useMemo(()=>btcLive&&shownBtc!=null
+    ?{asset:'BTC',ok:true,price:shownBtc,sourceTime:shownBtcAt,source:btcDirectFresh?btcSource:String(aiData?.bitcoin?.candleSource||'unverified')}:null,
+    [btcLive,shownBtc,shownBtcAt,chartBtcSource]);
+
   return <main className="shell modern-workspace compact-sniper">
     <a className="skip-link" href="#market-forecast">انتقل إلى خريطة الحركة</a>
     <header className="sniper-home-head">
@@ -291,8 +306,7 @@ export default function Home(){
     </header>
     <section className="content lite-content" aria-label="القناص الذكي">
       <AICommandCenter assetView="ALL" data={aiData} chartData={chartData} error={aiError} now={now} goldLive={goldTick}
-        btcLive={btcLive&&shownBtc!=null?{asset:'BTC',ok:true,price:shownBtc,sourceTime:shownBtcAt,
-          source:btcDirectFresh?btcSource:String(aiData?.bitcoin?.candleSource||'unverified')}:null}/>
+        btcLive={chartBtcQuote}/>
       <section id="market-news" className="sniper-home-news" aria-label="أخبار السوق">
         <NewsCommandCenter now={now}/>
       </section>

@@ -25,7 +25,7 @@ import {assessBtcStructuralScenario} from '../lib/btc-structural-scenario';
 import {auditConditionalRoute,buildConditionalTargetCandles} from '../lib/conditional-target-candles';
 import {updateSampledLiveCandle,visibleSampledLiveCandle,type SampledLiveCandle} from '../lib/sampled-live-candle';
 import {analyzeNextCandleStrategies,illustrativeNextCandle} from '../lib/next-candle-strategies';
-import {candleBodyGeometry,chartPriceViewport} from '../lib/chart-price-viewport';
+import {candleBodyGeometry,chartPriceViewport,stabilizeChartViewport,type PriceViewport} from '../lib/chart-price-viewport';
 import BtcOrderflowPanel from './BtcOrderflowPanel';
 import type {BtcOrderflow} from '../lib/btc-orderflow';
 
@@ -92,14 +92,16 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const journal=journals?.[asset]??null;
   const calibration=audit?.metrics?.[asset];
   const observed=Number(calibration?.observed||0);
-  const memory=watchForChart(audit,asset,now,auditLoaded);
+  const memory=useMemo(()=>watchForChart(audit,asset,now,auditLoaded),[audit,asset,now,auditLoaded]);
   const auditHealthy=memory.durable;
   const serverWatch=audit?.watch?.[asset];
   const watchFresh=memory.fresh;
   const watchMetrics=serverWatch?.metrics;
   const watchObserved=Number(watchMetrics?.observed||0);
-  const m=buildForecastIllustration(asset,x,asset==='GOLD'?goldLive:btcLive,now,snapshotAt,
-    auditHealthy?journal:null,true,memory.state,memory.bias,observationAt);
+  const selectedQuote=asset==='GOLD'?goldLive:btcLive;
+  const m=useMemo(()=>buildForecastIllustration(asset,x,selectedQuote,now,snapshotAt,
+    auditHealthy?journal:null,true,memory.state,memory.bias,observationAt),
+    [asset,x,selectedQuote,now,snapshotAt,auditHealthy,journal,memory,observationAt]);
   const statusReady=m.ready&&auditHealthy;
   const watchReady=m.watchReady&&!statusReady;
   const planVisible=statusReady||watchReady;
@@ -229,7 +231,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[asset,x?.candleSource,scenarioBarAt,planVisible,statusReady,watchReady,m.displaySide,
     watchTargetSide,btcScenario?.side,Boolean(btcScenario?.destination),
-    m.displayTargets.length,watchTargets.length,m.historyFresh]);
+    m.displayTargets.length,watchTargets.length,m.historyFresh,journal?.capturedAt,journal?.state]);
   const targetBands:PriceBand[]=watchTargets.map(t=>({
     key:'WATCH_TP'+t.stage,label:'رصد TP'+t.stage+' · '+t.source,
     price:t.price,low:t.price,high:t.price,kind:'TARGET' as const
@@ -428,7 +430,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   // stops, breakout lines and remote liquidity can NEVER enter these bounds.
   // This was the cause of future BTC candles collapsing into tiny dots when
   // the "all levels" view was selected on a phone.
-  const candleViewport=chartPriceViewport({
+  const proposedViewport=chartPriceViewport({
     // The visible M1 region follows actual traded OHLC and the nearby first
     // stages only. Distant 96-stage patterns never flatten the real candles.
     // Remote TP remain offscreen with exact directional price labels.
@@ -438,6 +440,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     focus:focusCandles,reference:m.candles.at(-1)?.close??null,
     atr:targetRoute?.atr??ghost.atr??null,protectRealRange:true
   });
+  const viewportMemory=useRef<{key:string;value:PriceViewport}|null>(null);
+  const viewportKey=[asset,x?.candleSource,routeRevision,chartWindow,focusCandles,mobile].join('|');
+  const candleViewport=stabilizeChartViewport(
+    viewportMemory.current?.key===viewportKey?viewportMemory.current.value:null,
+    proposedViewport,[...candles,...(liveVerified&&liveM1?[liveM1]:[])]);
+  viewportMemory.current={key:viewportKey,value:candleViewport};
   const scaleLow=candleViewport.low;
   const scaleHigh=candleViewport.high;
   const px=(p:number)=>yt+(scaleHigh-p)/Math.max(.0000001,scaleHigh-scaleLow)*(yb-yt);
@@ -1214,15 +1222,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         </div>
       </div>
       <div className="sniper-price-snapshot" aria-label="السعر والأهداف الأساسية">
-        {planVisible&&m.displayTargets.slice(0,3).map(t=><span key={'snap-tp'+t.stage} className="sniper-price-snapshot-target">
-          <small>{statusReady?'هدف':'مراقبة'} TP{t.stage}</small><b dir="ltr">{fmt(t.price)}</b>
-        </span>)}
-        {!planVisible&&watchTargets.map(t=><span key={'watch-tp'+t.stage}
+        {frozenVisualLevels.targets.slice(0,3).map(t=><span key={'snap-tp'+t.stage}
           className="sniper-price-snapshot-target"
-          title={'رصد هيكلي من '+t.source+' · مستوى شمعة مغلقة · ليس أمر دخول'}>
-          <small>رصد TP{t.stage} · {t.source}</small><b dir="ltr">{fmt(t.price)}</b>
+          title={statusReady?'هدف السيناريو المسجل':'نفس مستوى المراقبة المرسوم · ليس أمر دخول'}>
+          <small>{statusReady?'هدف':'رصد'} TP{t.stage}</small><b dir="ltr">{fmt(t.price)}</b>
         </span>)}
-        {planVisible&&m.displayStop!=null&&<span className="sniper-price-snapshot-stop"><small>الإبطال</small><b dir="ltr">{fmt(m.displayStop)}</b></span>}
+        {frozenVisualLevels.invalidation!=null&&<span className="sniper-price-snapshot-stop"><small>الإبطال</small><b dir="ltr">{fmt(frozenVisualLevels.invalidation)}</b></span>}
         {!planVisible&&<span className="sniper-price-snapshot-wait">{feedProblem||'أهداف مراقبة مشروطة · لا دخول مؤكد'}</span>}
       </div>
       <details className="sniper-secondary-details"><summary>تفاصيل التحليل وأدوات القراءة <span>اختياري ＋</span></summary>

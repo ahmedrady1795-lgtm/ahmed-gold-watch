@@ -72,3 +72,14 @@ assert.match(src,/const body=candleBodyGeometry\(px\(c\.open\),px\(c\.close\)\)/
 assert.match(src,/const routeVisible=Boolean\(routeProgress&&/,
  'a reversed motif cannot be presented as progressing toward the goal');
 console.log('PASS: price-true live M1 viewport, zero projected clipping, mobile focus, reduced M5 and price-rail clutter');
+
+const stabilize=moduleRef.exports.stabilizeChartViewport;
+const anchored={low:100,high:110,span:10};
+assert.equal(stabilize(anchored,{low:80,high:130,span:50},[{low:102,high:108}]),anchored,
+ 'hypothetical paths and small live ticks cannot resize the chart');
+const expanded=stabilize(anchored,anchored,[{low:99,high:112}]);
+assert.ok(expanded.low<99&&expanded.high>112,'real wick excursions expand the price axis');
+assert.equal(stabilize(expanded,anchored,[{low:102,high:108}]),expanded,
+ 'axis does not contract and jitter after the next tick');
+assert.equal(stabilize(null,anchored,[]),anchored,'new history resets to measured bounds');
+console.log('PASS: stable intraminute axis, real-price expansion and history reset');

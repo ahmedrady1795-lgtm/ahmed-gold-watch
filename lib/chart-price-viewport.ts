@@ -64,3 +64,19 @@ export function candleBodyGeometry(openY:number,closeY:number){
     nearDoji:distance<minPixel
   };
 }
+
+/** Hold the axis between closed-history revisions. Only real wick excursions
+ * can expand it; moving hypothetical candles never resize the observed bars. */
+export function stabilizeChartViewport(previous:PriceViewport|null,candidate:PriceViewport,
+  real:readonly PriceBar[]):PriceViewport{
+  if(!previous)return candidate;
+  const valid=real.filter(b=>Number.isFinite(b.low)&&Number.isFinite(b.high)&&b.low>0&&b.high>=b.low);
+  if(!valid.length)return previous;
+  const low=Math.min(...valid.map(b=>b.low)),high=Math.max(...valid.map(b=>b.high));
+  const margin=previous.span*.04;
+  if(low>=previous.low+margin&&high<=previous.high-margin)return previous;
+  const padding=Math.max(previous.span*.12,(high-low)*.12,.01);
+  const nextLow=Math.max(.000001,Math.min(previous.low,low-padding));
+  const nextHigh=Math.max(previous.high,high+padding);
+  return {low:nextLow,high:nextHigh,span:nextHigh-nextLow};
+}

@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {ShieldAlert} from 'lucide-react';
 import {scenarioAsJournal} from '../lib/sniper-audit-view';
 import ForecastIllustration from './ForecastIllustration';
@@ -10,6 +10,7 @@ export default function AICommandCenter({data,chartData,error,assetView='ALL',no
   // When inference is warming or fails, the real market chart remains available.
   // A candle refresh may replace chart HISTORY only, never model decisions,
   // qualifications, timestamps, targets or recommendation confidence.
+  const displayData=useMemo(()=>{
   const attachHistory=(asset:'gold'|'bitcoin')=>{
     const modeled=data?.[asset]||{};
     const separate=chartData?.[asset];
@@ -23,10 +24,11 @@ export default function AICommandCenter({data,chartData,error,assetView='ALL',no
       providerTransition:Boolean(separate.providerTransition),
       pendingProvider:separate.pendingProvider};
   };
-  const displayData=(data||chartData)?{
+  return (data||chartData)?{
     ...(data||{}),gold:attachHistory('gold'),bitcoin:attachHistory('bitcoin'),
     checkedAt:Number(data?.checkedAt||chartData?.checkedAt||0)
   }:null;
+  },[data,chartData]);
   const generatedAt=Number(data?.checkedAt||chartData?.checkedAt||0);
   const [audit,setAudit]=useState<any>(null);
   const [auditError,setAuditError]=useState(false);
@@ -51,10 +53,10 @@ export default function AICommandCenter({data,chartData,error,assetView='ALL',no
   const chartAudit=chartData?.structuralAudit;
   // Chart updates carry a fresher ledger, but not remote checkpoint metadata.
   // Preserve the independently fetched archive status when choosing that ledger.
-  const effectiveAudit=chartAudit?.ok&&Number(chartAudit.updatedAt||0)>Number(audit?.updatedAt||0)
-    ?{...chartAudit,archive:audit?.archive}:audit;
-  const journal={GOLD:scenarioAsJournal(effectiveAudit?.current?.GOLD),
-    BTC:scenarioAsJournal(effectiveAudit?.current?.BTC)};
+  const effectiveAudit=useMemo(()=>chartAudit?.ok&&Number(chartAudit.updatedAt||0)>Number(audit?.updatedAt||0)
+    ?{...chartAudit,archive:audit?.archive}:audit,[chartAudit,audit]);
+  const journal=useMemo(()=>({GOLD:scenarioAsJournal(effectiveAudit?.current?.GOLD),
+    BTC:scenarioAsJournal(effectiveAudit?.current?.BTC)}),[effectiveAudit]);
   const observationAt=Number(chartData?.checkedAt||data?.checkedAt||0);
   const chartWatchFresh=Boolean(chartAudit?.ok&&now-observationAt<90000&&observationAt<=now+2000);
   const stale=generatedAt>0&&now-generatedAt>90000&&!chartWatchFresh;

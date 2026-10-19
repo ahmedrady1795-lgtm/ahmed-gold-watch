@@ -103,7 +103,7 @@ assert.match(ui,/const showGhost=true;/,'scenario remains visible without the re
 assert.match(ui,/ghostActive&&<g className=\{/,'forecast group supports ordinary ghosts and conditional target candles');
 assert.match(ui,/ghostRangeVisible&&<g className="ghost-neutral-range"/);
 assert.match(ui,/buildGhostForecast\(\{candles:m\.candles,now,/);
-assert.match(ui,/const candleViewport=chartPriceViewport\(/,'price scale uses actual OHLC and bounded illustrative candles');
+assert.match(ui,/const proposedViewport=chartPriceViewport\(/,'price scale uses actual OHLC and bounded illustrative candles');
 assert.doesNotMatch(ui,/ghostRangeVisible\?ghost\.range\.flatMap/,'unsupported neutral uncertainty must not stretch the candle price scale');
 assert.match(ui,/نطاق تذبذب M1 · لا توقع اتجاه/);
 assert.match(ui,/ليس نموذج ML معتمدًا/);
