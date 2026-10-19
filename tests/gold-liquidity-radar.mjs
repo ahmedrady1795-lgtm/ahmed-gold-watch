@@ -53,7 +53,7 @@ assert.equal(appendGoldRadarEvent({ledger:emptyGoldLedger(),now,
  confirm:bull.confirm,invalidate:bull.invalidate,baseline:'BUY'}).added,false);
 const rec=sig.ledger.events[0];
 const m1={time:rec.m1.barAt,open:rec.price,
- high:rec.price+1,low:rec.price-.5,close:rec.price+.6};
+ high:rec.price+2.1,low:rec.price-.5,close:rec.price+1.6};
 const m15={...m1,time:rec.m15.barAt};
 const before=settleGoldRadar({ledger:sig.ledger,
  now:rec.m1.barAt+30000,source:src,m1:[m1],m15:[]});
