@@ -2,6 +2,7 @@
 
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import OrderFlowRadar from './OrderFlowRadar';
+import GoldRadarBadge from './GoldRadarBadge';
 import type {RadarView} from '../lib/order-flow-radar';
 import {assessSniperEntryCandle} from '../lib/sniper-entry-candle';
 import {assessRadarNextCandle} from '../lib/sniper-radar-next-candle';
@@ -306,6 +307,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    </header>
    <div className="sniper-m15-chart-box">
      <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
+     {asset==='GOLD'&&<GoldRadarBadge/>}
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
          'شموع M15 فعلية ثم شموع توقع افتراضي، مع TP1 وTP2 وTP3 والإبطال. '+
          (verifiedArchive.ready?'أرشيف حقيقي متحقق '+verifiedArchive.storedBars+' شمعة':'أرشيف سنوات غير متاح')+
