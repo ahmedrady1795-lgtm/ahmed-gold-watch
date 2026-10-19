@@ -35,7 +35,7 @@ assert.match(chart,/targetRoute!\.outcome===\x27AMBIGUOUS\x27/,
  'simultaneous TP/SL guard still visible in audit');
 assert.match(command,/sniper-system-notice/,'one clear warning instead of stacked alarms');
 assert.match(css,/\.sniper-scenario-line/,'single scenario line styled for responsive layout');
-assert.ok(chart.indexOf('<TargetScenarioMap')<chart.indexOf('className="sniper-secondary-details"'),'scenario precedes optional research');
+assert.ok(chart.indexOf('className="forecast-visual-chart-scroll"')<chart.indexOf('className="sniper-secondary-details"'),'scenario precedes optional research');
 assert.ok(!chart.includes('className="sniper-decision-strip'),'removed dashboard cards stay removed');
 assert.match(css,/\.sniper-more-chart-tools-body/,'secondary tools have a discoverable menu');
 assert.match(css,/\.sniper-route-research/,'route audit disclosure has deliberate hierarchy');

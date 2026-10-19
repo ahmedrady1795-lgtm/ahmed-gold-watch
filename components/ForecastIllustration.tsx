@@ -25,7 +25,6 @@ import {assessBtcStructuralScenario} from '../lib/btc-structural-scenario';
 import {auditConditionalRoute,buildConditionalTargetCandles} from '../lib/conditional-target-candles';
 import {chartPriceViewport} from '../lib/chart-price-viewport';
 import BtcOrderflowPanel from './BtcOrderflowPanel';
-import TargetScenarioMap from './TargetScenarioMap';
 import type {BtcOrderflow} from '../lib/btc-orderflow';
 
 const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
@@ -39,12 +38,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
   const [focusCandles,setFocusCandles]=useState(true);
   const [showAlternatives,setShowAlternatives]=useState(false);
-  const [showGhost,setShowGhost]=useState(true);
+  const showGhost=true;
   const [mobile,setMobile]=useState(false);
-  const [expanded,setExpanded]=useState(false);
+  const expanded=false;
   const [chartWindow,setChartWindow]=useState<60|240>(60);
   const [chartFullscreen,setChartFullscreen]=useState(false);
-  const [scenarioDetail,setScenarioDetail]=useState(true);
+  const scenarioDetail=true;
   const [inspectedTime,setInspectedTime]=useState<number|null>(null);
   const [orderFlow,setOrderFlow]=useState<BtcOrderflow|null>(null);
   useEffect(()=>{
@@ -557,24 +556,16 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <div className="forecast-chart-tools" aria-label="أدوات الرسم الأساسية">
               <button type="button" aria-pressed={chartWindow===60} onClick={()=>setChartWindow(60)}>ساعة</button>
               <button type="button" aria-pressed={chartWindow===240} onClick={()=>setChartWindow(240)}>4 ساعات</button>
-              <button type="button" aria-pressed={scenarioDetail} disabled={!routeVisible&&!scenarioDetail}
-                title={routeVisible?'نفس عرض الشموع ومقياس السعر مع مراحل الكسر والاختبار والأهداف':targetRoute?.reason??'يلزم سعر حديث وأهداف صالحة لعرض مسار الأهداف'}
-                onClick={()=>setScenarioDetail(v=>!v)}>{scenarioDetail?'عرض مختصر':'تفصيل مسار الأهداف ↔'}</button>
               <button className="forecast-chart-zoom" type="button" aria-pressed={focusCandles}
                  title="الشموع دائمًا بمقياسها الفعلي؛ الأهداف البعيدة تظهر خارج الزوم بأسعارها الصحيحة"
                  onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'نطاق شموع أوسع':'تكبير الشموع'}</button>
               <button type="button" aria-pressed={chartFullscreen} onClick={()=>setChartFullscreen(v=>!v)}>{chartFullscreen?'إغلاق ملء الشاشة':'⛶ ملء الشاشة'}</button>
               <details className="sniper-more-chart-tools"><summary>أدوات إضافية <span aria-hidden="true">⌄</span></summary>
               <div className="sniper-more-chart-tools-body">
-              <button type="button" aria-pressed={showGhost} onClick={()=>setShowGhost(v=>!v)} title="شموع M1 افتراضية فقط عندما تؤيدها نتائج زمنية سابقة؛ وإلا نطاق تقلب مرئي دون اتجاه">{showGhost?'إخفاء التقدير':'شموع تقديرية'}</button>
               <button className="forecast-chart-alternative" type="button" aria-pressed={showAlternatives} onClick={()=>setShowAlternatives(v=>!v)} title="مسارات مشروطة إضافية، ليست صفقات">{showAlternatives?'إخفاء البدائل':'بدائل'}</button>
-              <button type="button" aria-pressed={expanded} onClick={()=>setExpanded(v=>!v)}>{expanded?'حجم عادي':'توسيع الرسم ⤢'}</button>
               </div></details>
             </div>
           </div>
-          <TargetScenarioMap history={m.candles} targets={conditionalRouteGoals}
-            side={conditionalRouteSide} anchor={routeAnchor} stop={routeStop}
-            enabled={!providerTransition&&!goldClosed&&m.historyFresh&&m.observationFresh&&liveRouteSafe}/>
           {asset==='BTC'&&providerTransition&&<div role="status" className="sniper-provider-transition">
             جارٍ تثبيت مصدر البيتكوين · الأهداف مجمدة حتى إغلاق شمعتين من المصدر الجديد
           </div>}
