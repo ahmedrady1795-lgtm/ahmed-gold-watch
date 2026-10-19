@@ -25,7 +25,7 @@ import {assessBtcStructuralScenario} from '../lib/btc-structural-scenario';
 import {auditConditionalRoute,buildConditionalTargetCandles} from '../lib/conditional-target-candles';
 import {updateSampledLiveCandle,visibleSampledLiveCandle,type SampledLiveCandle} from '../lib/sampled-live-candle';
 import {analyzeNextCandleStrategies,illustrativeNextCandle} from '../lib/next-candle-strategies';
-import {chartPriceViewport} from '../lib/chart-price-viewport';
+import {candleBodyGeometry,chartPriceViewport} from '../lib/chart-price-viewport';
 import BtcOrderflowPanel from './BtcOrderflowPanel';
 import type {BtcOrderflow} from '../lib/btc-orderflow';
 
@@ -318,7 +318,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   [routeRevision,showGhost,goldClosed,providerTransition,m.observationFresh,m.historyFresh,
     liveRouteSafe,routeAnchor,conditionalRouteGoals,frozenRouteWaypoints,routeStop,
     sn.view.priceFresh,candles.length,scenarioDetail]);
-  const routeVisible=Boolean(!providerTransition&&targetRoute?.ready&&targetRoute.outcome==='ACTIVE'&&
+  // A conditional route must show NET progress toward its real-price goal.
+  // Otherwise leave exact TP levels visible without a contradictory motif.
+  const routeLast=targetRoute?.bars.at(-1);
+  const routeProgress=Boolean(routeLast&&routeAnchor!=null&&firstGoal!=null&&targetRoute?.atr!=null&&
+    (conditionalRouteSide==='BUY'?
+      routeLast.close>routeAnchor+Math.min(targetRoute.atr*.2,(firstGoal-routeAnchor)*.03):
+      conditionalRouteSide==='SELL'?
+      routeLast.close<routeAnchor-Math.min(targetRoute.atr*.2,(routeAnchor-firstGoal)*.03):false));
+  const routeVisible=Boolean(routeProgress&&!providerTransition&&targetRoute?.ready&&targetRoute.outcome==='ACTIVE'&&
     targetRoute.bars.length&&m.price!=null&&routeAnchor!=null&&targetRoute.atr!=null&&
     Math.abs(m.price-routeAnchor)<=targetRoute.atr*2.5);
   const visualCandles=!showGhost?[]:goldClosed?
@@ -429,6 +437,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const scaleLow=candleViewport.low;
   const scaleHigh=candleViewport.high;
   const px=(p:number)=>yt+(scaleHigh-p)/Math.max(.0000001,scaleHigh-scaleLow)*(yb-yt);
+  const liveBody=liveM1?candleBodyGeometry(px(liveM1.open),px(liveM1.close)):null;
+  const nextBody=nextCandle?candleBodyGeometry(px(nextCandle.open),px(nextCandle.close)):null;
   const ghostBandPath=false&&ghostVisible&&visualCandles.length&&ghost.atr!=null?
     'M '+xf+' '+px(m.candles.at(-1)!.close)+
     ' L '+visualCandles.map((c,i)=>ghostXs[i]+' '+px(c.high+ghost.atr!*.27*Math.sqrt(i+1))).join(' L ')+
@@ -836,7 +846,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {candles.map((c,i)=>{
                 const x=x0+(i+.5)*stride;
                 const color=c.close>=c.open?'#4ad9c6':'#f0758a';
-                const top=Math.min(px(c.open),px(c.close)),bottom=Math.max(px(c.open),px(c.close));
+                const body=candleBodyGeometry(px(c.open),px(c.close));
                 const volumeH=Math.min(35,Math.max(1,c.volume/maxVolume*35));
                 const latest=i===candles.length-1;
                 return <g key={c.time}>
@@ -844,8 +854,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                     height={yb-yt} fill="#68d9ed" fillOpacity=".055" rx="4"/>}
                   <line x1={x} x2={x} y1={px(c.high)} y2={px(c.low)}
                     stroke={color} strokeWidth={latest?2.1:1.5}/>
-                  <rect x={x-candleWidth/2} y={top} width={candleWidth}
-                    height={Math.max(2.6,bottom-top)} rx="1.3" fill={color}
+                  <rect x={x-candleWidth/2} y={body.y} width={candleWidth}
+                    height={body.height} rx=".35" fill={color}
                     stroke={c.close>=c.open?'#a2ffe7':'#ffc0cb'} strokeOpacity=".72" strokeWidth="1"/>
                   <rect x={x-candleWidth/2} y={volumeEnd-volumeH} width={candleWidth}
                     height={volumeH} fill={color} opacity=".35"/>
@@ -956,15 +966,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   ' ثانية · '+(priceFresh?'سعر مباشر من مصدر حديث':'آخر سعر معروف غير مؤهل لوصف LIVE')+
                   ' · هذا سهم السعر الحالي وليس توقعًا مستقبليًا'}</title>
               </g>}
-              {liveM1&&<g className="sniper-sampled-live-candle" clipPath={'url(#forecast-plot-'+asset+')'}>
+              {liveM1&&liveBody&&<g className="sniper-sampled-live-candle" clipPath={'url(#forecast-plot-'+asset+')'}>
                 <rect x={liveX-candleWidth/2-4} y={yt+53} width={candleWidth+8}
                   height={yb-yt-53} fill={liveM1.matchedVenue?'#64dced':'#abb3bd'}
                   fillOpacity=".045" stroke={liveM1.matchedVenue?'#64dced':'#aab7be'}
                   strokeOpacity=".35" strokeDasharray="4 6"/>
                 <line x1={liveX} x2={liveX} y1={px(liveM1.high)} y2={px(liveM1.low)}
                   stroke={liveM1.close>=liveM1.open?'#56e2c7':'#ff91a6'} strokeWidth="2.4"/>
-                <rect x={liveX-candleWidth/2} y={Math.min(px(liveM1.open),px(liveM1.close))}
-                  width={candleWidth} height={Math.max(3,Math.abs(px(liveM1.open)-px(liveM1.close)))}
+                <rect x={liveX-candleWidth/2} y={liveBody.y}
+                  width={candleWidth} height={liveBody.height}
                   fill={liveM1.close>=liveM1.open?'#56e2c7':'#ff91a6'} stroke="#e6faff"
                   strokeWidth="1.8" rx="1.3"/>
                 <text x={liveX} y={yt+27} textAnchor="middle" fontSize="10" fontWeight="800" fill="#a5f3ff">LIVE</text>
@@ -973,15 +983,15 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   ' · '+liveM1.count+' عينات سعرية فقط، ليست OHLC كاملة من البورصة'+
                   (liveM1.matchedVenue?'':' · المصدر مختلف عن الشموع المغلقة')}</title>
               </g>}
-              {nextCandle&&<g className="sniper-ai-next-candle" clipPath={'url(#forecast-plot-'+asset+')'}>
+              {nextCandle&&nextBody&&<g className="sniper-ai-next-candle" clipPath={'url(#forecast-plot-'+asset+')'}>
                 <rect x={nextX-futureWidth/2-4} y={yt+53} width={futureWidth+8}
                   height={yb-yt-53} fill="#f6c879" fillOpacity=".045"
                   stroke="#f6c879" strokeDasharray="4 5" strokeWidth="1.6"/>
                 <line x1={nextX} x2={nextX} y1={px(nextCandle.high)} y2={px(nextCandle.low)}
                   stroke={nextCandle.side==='BUY'?'#61eac9':'#ff8fa4'}
                   strokeWidth="2.1" strokeDasharray="3 3"/>
-                <rect x={nextX-futureWidth/2} y={Math.min(px(nextCandle.open),px(nextCandle.close))}
-                  width={futureWidth} height={Math.max(3,Math.abs(px(nextCandle.open)-px(nextCandle.close)))}
+                <rect x={nextX-futureWidth/2} y={nextBody.y}
+                  width={futureWidth} height={nextBody.height}
                   fill={nextCandle.side==='BUY'?'#61eac9':'#ff8fa4'} fillOpacity=".32"
                   stroke={nextCandle.side==='BUY'?'#a2ffe9':'#ffc0cb'}
                   strokeWidth="2" strokeDasharray="3 3" rx="1.3"/>
@@ -1005,13 +1015,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 </g>}
                 {visualCandles.map((c,i)=>{
                   const gx=ghostXs[i],up=c.close>=c.open;
-                  const color=up?'#4ad9c6':'#f0758a',top=Math.min(px(c.open),px(c.close)),
-                    bottom=Math.max(px(c.open),px(c.close));
+                  const color=up?'#4ad9c6':'#f0758a';
+                  const body=candleBodyGeometry(px(c.open),px(c.close));
                   return <g key={c.time}>
                     <line x1={gx} x2={gx} y1={px(c.high)} y2={px(c.low)}
                       stroke={color} strokeWidth="1.5"/>
-                    <rect x={gx-futureWidth/2} y={top} width={futureWidth}
-                      height={Math.max(2.6,bottom-top)} rx="1.3" fill={color}
+                    <rect x={gx-futureWidth/2} y={body.y} width={futureWidth}
+                      height={body.height} rx=".35" fill={color}
                       stroke={up?'#a2ffe7':'#ffc0cb'} strokeOpacity=".72" strokeWidth="1"/>
                     {i>0&&(i%12===0||i===visualCandles.length-1)&&<text x={gx} y={yb-7} textAnchor="middle" fill="#b8c9e5"
                       fontSize="10">{routeVisible?'S'+(i+1):closedPreview?'+'+(i+1):clock(c.time)}</text>}
