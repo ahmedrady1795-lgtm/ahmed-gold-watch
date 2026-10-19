@@ -1897,3 +1897,42 @@ body:has(.modern-workspace.compact-sniper){
  .sniper-m15-layer-state{white-space:normal;flex-basis:auto}
  .sniper-m15-caption .sniper-m15-phase-state{font-size:9px}
 }
+
+/* Mobile chart viewport v2: no negative-RTL overscroll, zero clipped header. */
+.sniper-m15-panel{box-sizing:border-box;max-width:100%;min-width:0;margin:0 0 12px}
+.sniper-m15-head{box-sizing:border-box;min-width:0}
+.sniper-m15-head>*{min-width:0}
+.sniper-m15-chart-box{min-width:0;max-width:100%;box-sizing:border-box}
+.sniper-m15-chart-box svg{max-width:100%;overflow:hidden}
+@media(max-width:600px){
+  .sniper-m15-panel{width:100%!important;max-width:100%!important;
+    margin:0 0 10px!important;border-inline:1px solid #26394b;border-radius:8px}
+  .sniper-m15-head{display:grid;direction:rtl;grid-template-columns:minmax(0,1fr) auto auto;
+    grid-template-areas:"asset frame liquidity" "price price bias";
+    align-items:center;column-gap:8px;row-gap:7px;padding:9px 8px;min-height:76px}
+  .sniper-m15-assets,.sniper-m15-head>b:first-child{grid-area:asset;justify-self:start;min-width:0}
+  .sniper-m15-assets{max-width:100%}
+  .sniper-m15-assets button{min-height:30px;padding:5px 7px;white-space:nowrap}
+  .sniper-m15-frame{grid-area:frame;justify-self:center;white-space:nowrap}
+  .sniper-m15-liquidity-toggle{grid-area:liquidity;justify-self:end;
+    min-height:30px;font-size:10px}
+  .sniper-m15-price{grid-area:price;justify-self:start;
+    max-width:100%;font-size:20px;line-height:1.15;white-space:nowrap}
+  .sniper-m15-bias{grid-area:bias;justify-self:end;margin:0;font-size:11px;
+    overflow:hidden;text-overflow:ellipsis}
+  .sniper-m15-chart-box{height:clamp(495px,70dvh,810px)}
+  .sniper-m15-caption{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+    row-gap:4px;column-gap:8px;padding:8px 9px;align-items:start}
+  .sniper-m15-caption>span{min-width:0;overflow-wrap:anywhere}
+  .sniper-m15-caption>span:last-child{grid-column:1/-1;margin:0;
+    border-top:1px solid #1e343e;padding-top:4px}
+  .sniper-m15-status{padding:6px 9px;line-height:1.45;
+    overflow-wrap:anywhere;align-content:start}
+  .sniper-m15-status>span{flex-basis:100%}
+}
+@media(max-width:360px){
+  .sniper-m15-head{column-gap:4px;padding:7px 6px}
+  .sniper-m15-assets button{padding:4px 5px;font-size:9px}
+  .sniper-m15-price{font-size:18px}
+  .sniper-m15-chart-box{height:clamp(475px,70dvh,750px)}
+}
