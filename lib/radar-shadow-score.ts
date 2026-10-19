@@ -128,7 +128,7 @@ export function radarShadowScore(ledger:ShadowLedger){
     samples:finished.length,directional:directional.length,correct:right,
     accuracy:directional.length?round(right/directional.length):null,
     wilsonLower:directional.length?wilson(right,directional.length):null,
-    pairedN:paired.length,pairedRadarCorrect,pairedBaselineCorrect,
+    pairedN:paired.length,pairedRadarCorrect,pairedBaselineCorrect:baselineCorrect,
     pairedRadarRate:paired.length?round(pairedRadarCorrect/paired.length):null,
     baselineRate:paired.length?round(baselineCorrect/paired.length):null,
     pending:ledger.events.filter(e=>e[key].status==='PENDING').length,
