@@ -57,6 +57,7 @@ assert.match(store,/assessSniperEntryCandle\(\{history:x\?\.chartCandles,now/,
  'server uses closed M1 quality gate before registering a paper scenario');
 assert.match(store,/if\(!entryCandle\.qualified\)blockers\.push/,
  'failed first candle is never promoted to scenario');
-assert.match(ui,/آخر M1 مغلقة:/,'chart shows real closed-M1 signal');
-assert.match(ui,/مسافة TP1:/,'chart reports structural target distance instead of imaginary steps');
+assert.match(ui,/className="sniper-live-next-status"/,'chart shows LIVE M1 and the next candle clearly');
+assert.match(ui,/sniper-price-snapshot-target/,'real structural TP levels remain visible');
+assert.doesNotMatch(ui,/آخر M1 مغلقة:/,'verbose first-candle text removed per user request');
 console.log('PASS: M1 body/rejection confirmation, no chase/future/source mixing, BUY/SELL, reachable original TP1');
