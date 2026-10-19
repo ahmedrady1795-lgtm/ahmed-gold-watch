@@ -103,6 +103,15 @@ export function buildConditionalTargetCandles(input:{
      const localUnit=quantile(hist.slice(start-12,start)
        .map(b=>b.high-b.low),.5);
      if(localUnit<=0||localUnit>quote*.025)continue;
+     // A conditional BUY/SELL path must not reuse a historical 18-bar
+     // sequence whose FIRST bar and NET displacement contradict that
+     // stated path. We select authentic observed motifs instead of
+     // pushing fabricated bodies toward TP. If none qualify, show no
+     // directional candle route; the actual target remains unaltered.
+     const first=hist[start],last=hist[start+motifLength-1];
+     const initialBody=sign*(first.close-first.open);
+     const trendMove=sign*(last.close-first.open);
+     if(initialBody<localUnit*.02||trendMove<localUnit*.5)continue;
      let score=0;
      for(let j=0;j<6;j++){
        const ref=norm(reference[j],localUnit);
