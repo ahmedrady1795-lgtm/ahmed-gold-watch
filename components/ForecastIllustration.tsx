@@ -1242,6 +1242,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {motion.some(p=>p.kind==='HOLD')?' امتداد ما بعد الكسر تقديري من تذبذب M5، وليس هدفًا منفصلًا.':''}
               {watchReady?' الكسر يحتاج إغلاق شمعتي M5 وتوافق M15/H1 وباقي شروط القناص؛ ليس تصريح دخول.':''}</p>
           </details>}
+          <div className="sniper-live-quality" aria-label="حالة الرسم وسجل القناص">
+            <div><small>بيانات الشموع</small><strong>{m.historyFresh?'حديثة':'متأخرة'}</strong></div>
+            <div><small>حالة السيناريو</small><strong>{statusReady?'مسجل':watchReady?'مراقبة':'بانتظار تحقق الشروط'}</strong></div>
+            <div><small>نوع الشموع المستقبلية</small><strong>{visualCandles.length?'محاكاة توضيحية':'غير متوفرة'}</strong></div>
+            <div><small>تقييم المسار التاريخي</small><strong>{routeAudit?'تم فحص السجل':'غير متاح'}</strong></div>
+          </div>
           <details className="sniper-chart-legend-drawer"><summary>تفاصيل خطوط الرسم</summary>
           <div className="forecast-visual-legend">
             <span><i className="forecast-legend-history"/> شموع M1 حقيقية</span>
