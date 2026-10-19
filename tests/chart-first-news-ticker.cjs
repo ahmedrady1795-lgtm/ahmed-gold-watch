@@ -32,7 +32,8 @@ assert.match(chart,/sniper-evidence-drawer/);
 assert.match(chart,/sniper-chart-legend-drawer/);
 assert.match(chart,/const W=scenarioDetail\?66\+\(historySlots\+96\)\*16\+176:mobile\?650:1440/,
   'new mobile SVG expands chart label readability without second screens');
-assert.match(chart,/const candleWidth=clamp\(stride\*\.73/);
+assert.match(chart,/const candleWidth=clamp\(stride\*\.46,3,9\)/,
+  'smaller professional candle bodies preserve genuine market geometry');
 assert.match(css,/\.news-ticker-line\{display:flex/);
 assert.match(css,/white-space:nowrap/);
 assert.match(css,/\.compact-sniper \.forecast-visual-svg\{width:100%;min-width:0;height:auto\}/);
