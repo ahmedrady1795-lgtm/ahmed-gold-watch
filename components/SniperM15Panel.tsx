@@ -201,8 +201,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            return <g key={'zone-'+z.kind+'-'+z.low} className="sniper-m15-zone">
              <rect x={left+2} y={top} width={end-left-5}
                height={Math.max(2,bottom-top)} fill={color}
-               fillOpacity={pool?.045:.095} stroke={color}
-               strokeOpacity=".66" strokeWidth={pool?.75:1}
+               fillOpacity={pool?0.045:0.095} stroke={color}
+               strokeOpacity=".66" strokeWidth={pool?0.75:1}
                strokeDasharray={pool?'3 6':'6 4'}/>
              <title>{z.label+' · '+n(z.low)+' – '+n(z.high)+
                ' · '+z.source+' · مستويات سعرية وليست حجم أوامر فعلي'}</title>
