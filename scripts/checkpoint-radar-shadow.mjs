@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import {sanitizeShadowLedger,radarShadowScore,newLedger}
+import {sanitizeShadowLedger,radarShadowScore,newLedger,mergeRadarShadowArchives}
  from '../lib/radar-shadow-score.ts';
 /** Hourly public Coinbase paper-evidence snapshot. Runs in GitHub Actions.
  * Only merging unchanged capture facts; no fake results, PII, tokens, orders.
@@ -13,26 +13,6 @@ async function readJson(url){
  if(body.length>maxBytes)throw Error('BACKUP_TOO_LARGE');
  return JSON.parse(body);
 }
-function merged(previous,current,now){
- const known=new Map(previous.events.map(e=>[e.id,e]));
- const score=o=>o?.status==='SCORED'?2:o?.status==='NO_DATA'?1:0;
- for(const row of current.events){
-  const old=known.get(row.id);
-  if(!old){known.set(row.id,row);continue;}
-  if(old.at!==row.at||old.side!==row.side||old.price!==row.price||
-     old.source!==row.source||old.confirm!==row.confirm||
-     old.invalidate!==row.invalidate||old.baseline!==row.baseline)continue;
-  const obj={...old};
-  for(const name of ['m1','m15']){
-   if(score(row[name])>score(old[name]))obj[name]=row[name];
-  }
-  known.set(row.id,obj);
- }
- return sanitizeShadowLedger({schema:'qannas-radar-shadow-v1',
-   updatedAt:Math.max(now,previous.updatedAt,current.updatedAt),
-   events:[...known.values()].sort((a,b)=>a.at-b.at).slice(-2400)
- },now);
-}
 async function main(){
  const now=Date.now();
  let local=newLedger();
@@ -40,12 +20,18 @@ async function main(){
  catch(e){if(e.code!=='ENOENT')throw e;}
  const remote=sanitizeShadowLedger(await readJson(endpoint+'&t='+now),now);
  // A live service error never replaces the previously saved paper evidence.
- if(!remote.events.length&&local.events.length){
+ if(!remote.events.length){
   console.log('[RADAR-BACKUP] no new observations; retain',local.events.length);
   return;
  }
- const combined=merged(local,remote,now);
+ const combined=mergeRadarShadowArchives(local,remote,now);
  const oldCount=local.events.length,newCount=combined.events.length;
+ // Checkpoints are event-driven: do not commit the same records just because
+ // the hourly scheduler ran at a later clock timestamp.
+ const observation=(x)=>JSON.stringify(x.events.map(e=>[e.id,e.m1,e.m15]));
+ if(observation(local)===observation(combined)){
+   console.info('[RADAR-BACKUP] unchanged evidence',oldCount);return;
+ }
  const scored=radarShadowScore(combined);
  await fs.mkdir('archive',{recursive:true});
  const payload=JSON.stringify(combined)+'\n';
