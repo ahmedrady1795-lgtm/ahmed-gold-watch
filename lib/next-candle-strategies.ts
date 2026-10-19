@@ -70,7 +70,7 @@ const wilsonLower=(hits:number,n:number)=>{
  return (p+z*z/(2*n)-z*Math.sqrt(p*(1-p)/n+z*z/(4*n*n)))/den;
 };
 function evaluate(rows:Candle[],kind:Strategy,begin:number,end:number){
- let n=0,hits=0,flat=0,naiveN=0,naiveHits=0;
+ let n=0,hits=0,flat=0,naiveN=0,naiveHits=0,modelOnly=0,baselineOnly=0;
  for(let i=begin;i<end;i++){
    const prefix=rows.slice(0,i),next=rows[i];
    if(!next||!prefix.length)continue;
@@ -78,14 +78,27 @@ function evaluate(rows:Candle[],kind:Strategy,begin:number,end:number){
    const actual=sign(next.close-next.open);
    if(prediction==='WAIT')continue;
    n++;
-   if(prediction===actual)hits++;
+   const predictedHit=actual!=='WAIT'&&prediction===actual;
+   if(predictedHit)hits++;
    if(actual==='WAIT')flat++;
    const naive=sign(prefix.at(-1)!.close-prefix.at(-1)!.open);
-   naiveN++;if(naive!=='WAIT'&&naive===actual)naiveHits++;
+   const baselineHit=actual!=='WAIT'&&naive===actual;
+   naiveN++;if(baselineHit)naiveHits++;
+   // Paired same-candle comparison: a trend-following strategy does not gain
+   // credit for wins that an elementary last-body baseline also achieves.
+   if(predictedHit&&!baselineHit)modelOnly++;
+   if(baselineHit&&!predictedHit)baselineOnly++;
  }
- return {n,hits,flat,accuracyPct:n?Math.round(hits/n*100):null,
+ const pairedEdge=n?(modelOnly-baselineOnly)/n:0;
+ // Conservative normal bound for the paired advantage. Disagreements,
+ // not the shared wins, are the evidence of model improvement.
+ const pairedSe=n?Math.sqrt(Math.max(0,
+   (modelOnly+baselineOnly)/n-pairedEdge*pairedEdge)/n):0;
+ return {n,hits,flat,modelOnly,baselineOnly,
+   accuracyPct:n?Math.round(hits/n*100):null,
    baselinePct:naiveN?Math.round(naiveHits/naiveN*100):null,
-   lower95Pct:n?Number((wilsonLower(hits,n)*100).toFixed(1)):null};
+   lower95Pct:n?Number((wilsonLower(hits,n)*100).toFixed(1)):null,
+   pairedEdgeLower95Pct:n?Number(((pairedEdge-1.96*pairedSe)*100).toFixed(1)):null};
 }
 const label:Record<Strategy,string>={
  EMA_8_21:'تقاطع واتجاه EMA 8/21',
@@ -99,7 +112,8 @@ export function analyzeNextCandleStrategies(raw:readonly Candle[],now:number){
  const empty=(reason:string)=>({status:'UNAVAILABLE' as const,side:'WAIT' as Direction,
    strategy:null as Strategy|null,strategyLabel:null as string|null,reason,
    total:0,train:null as ReturnType<typeof evaluate>|null,
-   holdout:null as ReturnType<typeof evaluate>|null,edgeSupported:false,
+   holdout:null as ReturnType<typeof evaluate>|null,
+   recentHoldout:null as ReturnType<typeof evaluate>|null,edgeSupported:false,
    atr:null as number|null,sampleBody:null as number|null,sampleUpperWick:null as number|null,
    sampleLowerWick:null as number|null});
  const rows=(Array.isArray(raw)?raw:[]).filter(b=>b&&
@@ -118,16 +132,24 @@ export function analyzeNextCandleStrategies(raw:readonly Candle[],now:number){
  })).filter(x=>x.train.n>=20&&x.train.accuracyPct!=null);
  training.sort((a,b)=>{
    const score=(x:typeof training[number])=>
-     (x.train.lower95Pct??0)+(Math.min(80,x.train.n)/80)*3;
+     // Rank on skill ABOVE an equally sampled last-candle baseline;
+     // an always-BUY trend cannot win simply by inheriting a rising market.
+     (x.train.lower95Pct??0)-(x.train.baselinePct??50)+
+       Math.min(80,x.train.n)/80*2;
    return score(b)-score(a);
  });
  const winner=training[0];
  if(!winner)return {...empty('لا استراتيجية أعطت 20 إشارة تدريب قابلة للتحقق'),
    total:rows.length,status:'TECHNICAL_ONLY' as const};
  const holdout=evaluate(rows,winner.strategy,cutoff,rows.length);
- const edgeSupported=holdout.n>=30&&holdout.baselinePct!=null&&
-   holdout.accuracyPct!=null&&holdout.accuracyPct>=holdout.baselinePct+5&&
-   (holdout.lower95Pct??0)>50;
+ const recentHoldout=evaluate(rows,winner.strategy,
+   Math.floor((cutoff+rows.length)/2),rows.length);
+ const edgeSupported=holdout.n>=30&&recentHoldout.n>=12&&
+   holdout.baselinePct!=null&&holdout.accuracyPct!=null&&
+   holdout.accuracyPct>=holdout.baselinePct+5&&
+   (holdout.lower95Pct??0)>50&&
+   (holdout.pairedEdgeLower95Pct??-100)>0&&
+   (recentHoldout.accuracyPct??0)>=(recentHoldout.baselinePct??100);
  const side=indicator(rows,winner.strategy);
  const tail=rows.slice(-30),ranges=tail.map(b=>Math.max(b.high-b.low,
    Math.abs(b.high-b.open),Math.abs(b.low-b.open)));
@@ -139,7 +161,7 @@ export function analyzeNextCandleStrategies(raw:readonly Candle[],now:number){
  return {status,side,strategy:winner.strategy,strategyLabel:label[winner.strategy],
    reason:edgeSupported?'أفضلية تاريخية خارج العينة في هذه النافذة؛ ليست ضمانًا للمستقبل':
      'طريقة منتقاة من تدريب أقدم لكن أفضلية توقع الدقيقة لم تثبت خارج العينة',
-   total:rows.length,train:winner.train,holdout,edgeSupported,
+   total:rows.length,train:winner.train,holdout,recentHoldout,edgeSupported,
    atr:a,sampleBody:body,sampleUpperWick:up,sampleLowerWick:down};
 }
 export function illustrativeNextCandle(input:{
