@@ -14,8 +14,8 @@ assert.equal((ui.match(/className="sniper-chart-key"/g)||[]).length,1,
   'one concise key beside the chart');
 assert.match(ui,/showAlternatives&&!routeVisible&&\(\['BUY','SELL'\] as const\)/,
   'alternative BUY/SELL curves must stay hidden when the realistic target candle route is visible');
-assert.match(ui,/setShowAlternatives\(v=>!v\)/,
-  'alternative scenario paths stay available upon explicit user action');
+assert.doesNotMatch(ui,/setShowAlternatives\(v=>!v\)/,
+  'no additional-tools menu or alternative scenario control on minimalist Qannas chart');
 assert.match(ui,/className="sniper-evidence-drawer"/,
   'no disappearance of detailed market indicator analysis');
 assert.ok(ui.indexOf('className="sniper-data-health"')>ui.indexOf('className="sniper-evidence-drawer"'),
