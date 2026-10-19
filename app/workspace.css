@@ -1804,3 +1804,23 @@ body:has(.modern-workspace.compact-sniper){
  .sniper-live-next-status b{font-size:13px}
  .sniper-live-next-status small{font-size:10px}
 }
+
+
+/* Sniper precision pass — readable candles without rescaling OHLC prices. */
+.compact-sniper .forecast-visual-chart-scroll{
+  scrollbar-width:thin;scrollbar-color:#457689 #0a1b29;
+  overscroll-behavior-x:contain;
+}
+.compact-sniper .sniper-chart-key{gap:8px 14px}
+.compact-sniper .sniper-live-next-status .sniper-live-next-forecast{
+  background:linear-gradient(95deg,#242a2d,#102839);
+}
+@media(max-width:760px){
+  /* Keep viewBox geometry legible; horizontally scroll rather than shrinking
+     24 true candles + LIVE + AI NEXT + target route onto a 350px phone. */
+  .compact-sniper .forecast-visual-chart-scroll .forecast-visual-svg{
+    min-width:720px;width:720px;max-width:none;height:auto;
+  }
+  .compact-sniper .forecast-visual-chart-scroll{touch-action:pan-x pan-y}
+  .compact-sniper .sniper-live-next-status b{letter-spacing:.05px}
+}
