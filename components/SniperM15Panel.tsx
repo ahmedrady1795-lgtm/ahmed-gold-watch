@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
+import OrderFlowRadar from './OrderFlowRadar';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {assessChartObservation} from '../lib/chart-observation-radar';
 import {buildDistantMovementOutlook} from '../lib/sniper-movement-outlook';
@@ -268,6 +269,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <span className={'sniper-m15-bias '+(chartSide==='BUY'?'rise':chartSide==='SELL'?'fall':'hold')}>
        {direction}</span>
    </header>
+   <OrderFlowRadar key={asset} asset={asset}/>
    <div className="sniper-m15-chart-box">
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
          'شموع M15 فعلية ثم شموع توقع افتراضي، مع TP1 وTP2 وTP3 والإبطال. '+
