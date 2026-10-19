@@ -11,6 +11,41 @@ const fmt=(p:number|null|undefined,d=2)=>p!=null&&Number.isFinite(p)?
 const clock=(t:number)=>new Date(t).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
 const clamp=(p:number,a:number,b:number)=>Math.max(a,Math.min(b,p));
 
+type ExampleCandle={open:number;high:number;low:number;close:number};
+function illustrativeScenario(actual:readonly ExampleCandle[],price:number|null,
+  goals:readonly {price:number}[],side:'BUY'|'SELL'|'WAIT',active:boolean):ExampleCandle[]{
+  // Visualization ONLY, not predicted OHLC or actual future one-minute candles.
+  if(!active||price==null||!Number.isFinite(price)||price<=0||
+    actual.length<12||side==='WAIT'||!goals.length)return [];
+  const sign=side==='BUY'?1:-1;
+  const terminal=goals[goals.length-1].price;
+  if(!Number.isFinite(terminal)||(terminal-price)*sign<=0||
+    !goals.every((g,i)=>Number.isFinite(g.price)&&(g.price-price)*sign>0&&
+      (i===0||(g.price-goals[i-1].price)*sign>0)))return [];
+  const recent=actual.slice(-40).map(c=>Math.max(0,c.high-c.low))
+    .filter(v=>Number.isFinite(v)&&v>0).sort((a,b)=>a-b);
+  if(recent.length<8)return [];
+  const unit=Math.max(recent[Math.floor(recent.length/2)],price*.000012);
+  const count=48,distance=Math.abs(terminal-price);
+  // Never enlarge candle volatility just to fabricate reaching distant goals.
+  const travel=Math.min(distance*.94,unit*count*.55);
+  const rows:ExampleCandle[]=[];
+  let previous=price;
+  for(let i=0;i<count;i++){
+    const progress=(i+1)/count;
+    const desired=price+sign*travel*progress+Math.sin((i+1)*.79)*unit*.23+
+      Math.sin((i+1)*1.61)*unit*.11;
+    const close=Math.max(.00001,previous+
+      Math.max(-unit*.78,Math.min(unit*.78,desired-previous)));
+    const upper=unit*(.10+.11*(1+Math.sin(i*1.37))/2);
+    const lower=unit*(.10+.11*(1+Math.cos(i*1.19))/2);
+    rows.push({open:previous,close,high:Math.max(previous,close)+upper,
+      low:Math.max(.00001,Math.min(previous,close)-lower)});
+    previous=close;
+  }
+  return rows;
+}
+
 export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLive,assetView='ALL',journals,audit,auditLoaded=false}:{
   data:any;now:number;snapshotAt:unknown;goldLive?:any;btcLive?:any;assetView?:'ALL'|'GOLD'|'BTC';
   journals?:{GOLD:ForecastJournal|null;BTC:ForecastJournal|null};audit?:any;auditLoaded?:boolean
@@ -70,6 +105,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     basis==='TICK'?'Tick Volume (عدد تغيرات السعر)':'الحجم غير متوفر';
   const chartBands=m.bands.slice().sort((a,b)=>a.kind==='TARGET'?-1:b.kind==='TARGET'?1:0);
   const projected=m.projected;
+  const illustrative=illustrativeScenario(
+    m.candles,m.price,m.displayTargets,m.displaySide,planVisible&&m.historyFresh&&sn.view.priceFresh);
+  const exampleStride=(xr-xf-18)/Math.max(illustrative.length,1);
+  const exampleWidth=clamp(Math.min(candleWidth,exampleStride*.64),2,8.5);
   // Conditional paths never claim an approved trade, and only lead to closed-M5
   // breakout levels or existing four-hour liquidity ranges.
   // Price annotations are conditional LEVELS, not fabricated future candles
@@ -127,6 +166,13 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     m.bias.label+' · '+m.bias.reason;
   const activation=statusReady&&sn.activation?'خلال '+sn.activation.min+'–'+sn.activation.max+' د':'—';
   const arrival=statusReady&&sn.arrival?'خلال '+sn.arrival.min+'–'+sn.arrival.max+' د':'غير محدد';
+  const entryPrice=journal?.state==='ACTIVE'?Number(journal.startPrice):NaN;
+  const tp1=m.displayTargets.find(t=>t.stage===1)?.price;
+  const risk=statusReady&&m.displayStop!=null&&Number.isFinite(entryPrice)?
+    Math.abs(entryPrice-m.displayStop):0;
+  const reward=tp1!=null&&Number.isFinite(entryPrice)?Math.abs(tp1-entryPrice):0;
+  const rr=statusReady&&risk>0&&reward>0&&Number.isFinite(reward/risk)?
+    (reward/risk).toFixed(2):null;
 
   return <section id="forecast-illustration" className="workspace-section forecast-visual-section"
     aria-labelledby="forecast-visual-title">
@@ -135,7 +181,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       <header className="forecast-visual-header">
         <div className="forecast-visual-heading">
           <span className="forecast-visual-mark"><Crosshair size={17}/></span>
-          <div><strong>خريطة حركة {asset==='GOLD'?'الذهب':'البيتكوين'}</strong>
+          <div><strong>القناص · الرسم والسيناريو {asset==='GOLD'?'للذهب':'للبيتكوين'}</strong>
             <small>M1 · 4H CONTEXT · H1/H4 DISTANT TARGET RADAR</small></div>
         </div>
         <div className="forecast-visual-controls">
@@ -258,7 +304,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <line x1={xf-8} x2={xf-8} y1="20" y2="425" stroke="#72b3d1" strokeOpacity=".5"
                 strokeDasharray="6 7"/>
               <text x={xf-14} y="13" textAnchor="end" fill="#88bbd3" fontSize="11">تاريخ فعلي</text>
-              <text x={xf+8} y="13" fill="#e7c58a" fontSize="11">المستقبل / سيناريو</text>
+              <text x={xf+8} y="13" fill="#e7c58a" fontSize="11">سيناريو توضيحي · ليس سعرًا فعليًا</text>
               {overlay.ready&&[overlay.upper,overlay.lower].filter((z):z is NonNullable<typeof z>=>z!=null).map(z=>{
                 const top=clamp(px(z.high),yt,yb),bottom=clamp(px(z.low),yt,yb);
                 const clr=z.side==='UPPER'?'#ff8397':'#55ddeb';
@@ -328,10 +374,26 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 <text x={xr+48} y={px(m.price)+4} textAnchor="middle" fill="#e8faff"
                   fontSize="12" fontWeight="700" fontFamily="monospace">{fmt(m.price)}</text>
               </g>}
+              {illustrative.length>0&&<g aria-label="شموع محاكاة توضيحية وليست تنبؤات بالأسعار">
+                <rect x={xf+3} y={yt} width={xr-xf-6} height={yb-yt}
+                  fill="#122b36" opacity=".17" stroke="#d9b66d" strokeDasharray="4 7"/>
+                {illustrative.map((c,i)=>{
+                  const x=xf+7+(i+.5)*exampleStride;
+                  const color=c.close>=c.open?'#52cfb0':'#e48b9a';
+                  const top=Math.min(px(c.open),px(c.close)),bottom=Math.max(px(c.open),px(c.close));
+                  return <g key={'illustrative-'+i} opacity=".83">
+                    <line x1={x} x2={x} y1={px(c.high)} y2={px(c.low)}
+                      stroke={color} strokeWidth="1.2" strokeDasharray="2 1"/>
+                    <rect x={x-exampleWidth/2} y={top} width={exampleWidth}
+                      height={Math.max(1.2,bottom-top)} rx=".3" fill={color}/>
+                    <title>محاكاة غير زمنية بمقياس التذبذب الأخير · لا تمثل أسعارًا فعلية</title>
+                  </g>;
+                })}
+              </g>}
               {projectedPath&&<g>
-                <path d={projectedPath} stroke="#071823" strokeWidth="7" fill="none" opacity=".6"/>
-                <path d={projectedPath} stroke={watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4'} strokeWidth="2.6"
-                  strokeDasharray="9 7" fill="none" markerEnd={'url(#forecast-arrow-'+asset+')'}/>
+                <path d={projectedPath} stroke={watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4'}
+                  strokeWidth="1.5" strokeOpacity=".65" strokeDasharray="4 8"
+                  fill="none" markerEnd={'url(#forecast-arrow-'+asset+')'}/>
                 {projected.slice(1).map((p,i)=><circle key={p.key}
                   cx={Math.min(xr-8,716+i*106)} cy={px(p.price)} r="4.2"
                   fill={rise?'#7eecc3':'#ffc2ce'} stroke="#0a1928" strokeWidth="2"/>)}
@@ -358,12 +420,18 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               </g>}
             </svg>
           </div>
+          <div className="sniper-live-quality" aria-label="جودة بيانات القناص ونتائج الرصد الفعلية">
+            <div><small>سلامة الرسم</small><strong>{m.historyFresh?(chartGaps?'فجوات بيانات '+chartGaps:'شموع فعلية حديثة'):'بيانات متأخرة'}</strong></div>
+            <div><small>حالة السيناريو</small><strong>{statusReady?'دخول مسجل':watchReady?'أهداف تحت المراقبة':'بانتظار تحقق الشروط'}</strong></div>
+            <div><small>عائد / مخاطرة إلى TP1</small><strong dir="ltr">{rr?'1 : '+rr:'—'}</strong></div>
+            <div><small>سيناريوهات قيّمت فعليًا</small><strong>{auditHealthy?observed:'غير متاح'}</strong></div>
+          </div>
           <div className="forecast-visual-legend">
             <span><i className="forecast-legend-history"/> شموع فعلية M1</span>
             <span title="أعمدة أسفل الشموع ليست بالضرورة عقودًا منفذة؛ تعتمد على المصدر">{volumeLabel}</span>
             <span className="legend-ema20">EMA20</span>
             <span className="legend-ema50">EMA50</span>
-            <span><i className="forecast-legend-projection"/> {watchReady?'مسار مستويات بعيد · توضيحي':'سيناريو مشروط'}</span>
+            <span><i className="forecast-legend-projection"/> {illustrative.length?'شموع محاكاة بتذبذب مماثل للتاريخ':'مستويات مشروطة'}</span>
             <span><i className="forecast-legend-target"/> مناطق أهداف</span>
             <span><i className="forecast-legend-rebound"/> مناطق سيولة</span>
             <span className="sniper-buy-legend">● ارتداد شراء</span><span className="sniper-sell-legend">● ارتداد بيع</span>
@@ -487,7 +555,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       </section>
       </details>
       <footer className="forecast-visual-note">
-        <span>الشموع السابقة بيانات سوق فعلية. {watchReady?'الخط الأصفر مراقبة هيكلية أولية، وليس إشارة شراء أو بيع.':'الخط المتقطع ترتيب مستويات مشروط، وليس توقعًا لشكل الشموع أو وقت وصولها.'}</span>
+        <span>الشموع قبل الفاصل بيانات فعلية، وبعده محاكاة بذبذبة قريبة من السوق. الأهداف مشروطة وليست توقع وصول مضمونًا أو بيانات مستقبلية.</span>
         <span>{highest?(statusReady?'الهدف المسجل الأخير ':'أبعد مستوى هيكلي مرصود ')+fmt(highest.price):m.bias.active?'انحياز ظاهر · لا مستوى بعيد متاح':'آخر بيانات للمتابعة فقط'}</span>
       </footer>
     </div>
