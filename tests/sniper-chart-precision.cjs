@@ -34,10 +34,14 @@ for(const scenarioDetail of [false,true]){
      xf=x1+14,W=scenarioDetail?66+(24+96)*16+176:650,
      xr=W-(scenarioDetail?144:126);
    const fs=(xr-xf-18)/Math.max(19,length+1);
-   const nextX=xf+9+fs*.5;
+   const actualM1Stride=(x1-x0)/24;
+   const local=Math.min(actualM1Stride,fs);
+   const nextX=xf+9+local*.5;
+   assert.ok(nextX-(xf-4)<actualM1Stride*1.6,
+    'LIVE and NEXT remain adjacent even with a short conditional route');
    assert.ok(nextX>xf&&nextX<xr,'AI NEXT within future lane');
    for(let i=0;i<length;i++){
-     const pos=xf+9+(i+1.5)*fs;
+     const pos=xf+9+(i+1.5)*local;
      assert.ok(pos>nextX&&pos<xr-2,'scenario candles, including the last stage, fit lane');
    }
  }
