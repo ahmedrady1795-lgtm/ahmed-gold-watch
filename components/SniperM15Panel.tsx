@@ -1,7 +1,10 @@
 'use client';
 
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import OrderFlowRadar from './OrderFlowRadar';
+import type {RadarView} from '../lib/order-flow-radar';
+import {assessSniperEntryCandle} from '../lib/sniper-entry-candle';
+import {assessRadarNextCandle} from '../lib/sniper-radar-next-candle';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {assessChartObservation} from '../lib/chart-observation-radar';
 import {buildDistantMovementOutlook} from '../lib/sniper-movement-outlook';
@@ -35,6 +38,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
 }){
  const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
  const [showLiquidity,setShowLiquidity]=useState(true);
+ const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
+ const onRadarView=useCallback((v:RadarView|null)=>setLiveRadar(v),[]);
  const asset=assetView==='ALL'?chosen:assetView;
  const [archiveState,setArchiveState]=useState<{
    asset:'GOLD'|'BTC';ledger:unknown;status:string}|null>(null);
@@ -186,6 +191,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    blockedKey!==candleKey&&freshObservation?proposedStop:null);
  const projected=stable?.scenario??noScenario;
  const chartSide=stable?.side??safeSide;
+ // Radar cannot change the M15 targets, direction, forecast OHLC or freeze
+ // lifecycle. It can only verify/cancel the FIRST candidate candle, after an
+ // independent, later closed M1 has agreed with the same Coinbase feed.
+ const entryCandle=useMemo(()=>assessSniperEntryCandle({
+   history:m.candles,now,side:chartSide,price,
+   sourceReady:freshObservation&&m.historyFresh
+ }),[m.candles,now,chartSide,price,freshObservation,m.historyFresh]);
+ const firstRadarCandle=assessRadarNextCandle({
+   asset,candleSource:String(x?.candleSource||''),side:chartSide,
+   price,priceFresh:freshObservation&&m.historyFresh,
+   now,radar:liveRadar,m1:entryCandle
+ });
  const phase=sniperPhaseBadge({ready:liquidity.ready,
    contextKind:liquidity.context?.kind,phase:liquidity.phase,side:chartSide});
  const W=430,H=704,left=8,split=184,end=357,axis=359,
@@ -269,7 +286,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <span className={'sniper-m15-bias '+(chartSide==='BUY'?'rise':chartSide==='SELL'?'fall':'hold')}>
        {direction}</span>
    </header>
-   <OrderFlowRadar key={asset} asset={asset}/>
+   <OrderFlowRadar key={asset} asset={asset} onView={onRadarView}/>
    <div className="sniper-m15-chart-box">
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
          'شموع M15 فعلية ثم شموع توقع افتراضي، مع TP1 وTP2 وTP3 والإبطال. '+
@@ -372,12 +389,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                direction="rtl">{mark}</text>}
            </g>;
          })}
-         {validLive&&forming&&<g>
-           <line x1={split-3} x2={split-3} y1={py(forming.high)} y2={py(forming.low)}
-             stroke="#6eeadb" strokeWidth="1.15"/>
-           <circle cx={split-3} cy={py(forming.close)} r="3"
-             fill="#b0ffea" stroke="#001614" strokeWidth=".8"/>
-         </g>}
+         {validLive&&forming&&candle(forming.open,forming.high,forming.low,
+           forming.close,split-3,clamp(actualStride*.60,1.7,4),false,
+           'live-m15-'+forming.time)}
+         {validLive&&forming&&<circle cx={split-3} cy={py(forming.close)} r="1.7"
+           fill="#b0ffea" stroke="#001614" strokeWidth=".4"/>}
        </g>
        {scaleLevels.map(level=>{
          const target=level.kind==='TARGET',isStop=level.kind==='STOP';
@@ -407,6 +423,27 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              fill={color} textAnchor="end" direction="ltr">{n(level.price)}</text>
          </g>;
        })}
+       {asset==='BTC'&&projected.ready&&projected.bars.length>0&&(()=>{
+         const first=projected.bars[0],cx=split+5+.5*projectedStride;
+         const color=firstRadarCandle.phase==='VERIFIED'?'#4de7ab':
+           firstRadarCandle.phase==='CANCELLED'||firstRadarCandle.phase==='CONFLICT'?
+             '#ff7187':'#dfba77';
+         return <g className="sniper-m15-first-candle" aria-label={
+           'أول شمعة متوقعة: '+firstRadarCandle.label}>
+           <circle cx={cx} cy={py(first.close)} r="5.5" fill="none"
+             stroke={color} strokeWidth="1.2"/>
+           <line x1={cx} x2={cx} y1={Math.max(plotTop+10,py(first.high)-8)}
+             y2={Math.max(plotTop+12,py(first.high)-2)}
+             stroke={color} strokeWidth="1.1"/>
+           <text x={split+6} y={plotTop+25} fill={color} fontSize="9.1"
+             fontWeight="700" direction="rtl" textAnchor="start">
+             {'الأولى: '+firstRadarCandle.label}</text>
+           <title>{firstRadarCandle.reason+
+             ' · تأكيد الرادار '+n(firstRadarCandle.confirm)+
+             ' · إلغاؤه '+n(firstRadarCandle.invalidate)+
+             ' · لا يمثل نسبة نجاح أو إذن تنفيذ'}</title>
+         </g>;
+       })()}
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
        <text x={split+5} y={17} fill="#e0c08d" fontSize="10" textAnchor="start" direction="ltr">M15 · FORECAST</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
