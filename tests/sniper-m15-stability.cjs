@@ -60,7 +60,8 @@ assert.match(chart,/latestBos/);
 assert.match(chart,/sniper-m15-phase/);
 assert.match(chart,/buildSniperM15Liquidity/);
 assert.match(chart,/observedM15Bias\(actual\)/);
-assert.match(chart,/fillOpacity=\{pool\?0\.11:0\.18\}/);
+assert.match(chart,/fillOpacity=\{pool\?0\.11:reaction\?0\.24:0\.18\}/,
+ 'rebound bands must remain distinct while pool and demand opacity stay unchanged');
 assert.doesNotMatch(chart,/height=\{plotBottom-plotTop\} fill="#18242d"/,
  'scenario must not be overlaid with an artificial background');
 assert.doesNotMatch(chart,/fillOpacity=\{future\?/,
