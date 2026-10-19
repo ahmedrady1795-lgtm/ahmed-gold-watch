@@ -360,9 +360,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [asset,candleRevision,x?.candleSource,providerTransition,goldClosed,ghost.mode,m.historyFresh]);
   const nextStudy=useMemo(()=>analyzeNextCandleStrategies(m.candles,now),
-  // Train/test runs use closed history only; do not recompute every quote tick.
+  // Recheck at a minute boundary even without new bars: a stalled feed must
+  // expire its AI NEXT qualification rather than leaving a cached BUY/SELL.
+  // Quote ticks inside the minute do not retrain the six strategies.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [asset,routeRevision,x?.candleSource]);
+  [asset,routeRevision,x?.candleSource,Math.floor(now/60000)]);
   const nextCandle=illustrativeNextCandle({
     study:nextStudy,anchor:liveM1?.close??0,minute:liveM1?.time??0,
     enabled:liveVerified&&!goldClosed
@@ -669,8 +671,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <b>{nextStudy.status==='UNAVAILABLE'?'تحليل الاستراتيجيات متوقف':'محرك الاستراتيجيات يعمل'}</b>
               <small>{analysisMode==='TECHNICAL_ONLY'?'TradingView-style · ML/Neural غير متصلين':
                 'اختيار فني مستقل · خدمات AI: '+analysisMode}</small>
-              <small>{nextModelState}{nextStudy.holdout?
-                ' · '+nextStudy.holdout.n+' اختبار خارج العينة · '+nextStudy.holdout.accuracyPct+'٪ اتجاه':''}</small>
+              <small>{nextModelState}{nextStudy.holdout&&nextStudy.holdout.n>=30?
+                ' · '+nextStudy.holdout.n+' اختبار خارج العينة · '+nextStudy.holdout.accuracyPct+'٪ مقابل '+
+                nextStudy.holdout.baselinePct+'٪ مرجع':
+                ' · لا توجد عينة كافية لإعلان دقة'}</small>
             </span>
           </div>
           <div ref={chartScrollRef} className="forecast-visual-chart-scroll" style={scenarioDetail?{display:'block',overflowX:'auto',direction:'ltr'}:undefined}>
