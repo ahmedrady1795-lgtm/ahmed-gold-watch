@@ -66,4 +66,23 @@ assert.match(chart,/scaleLevels\.map/);
 assert.match(chart,/scenario|سيناريو/);
 assert.doesNotMatch(chart,/AI NEXT|LIVE M1|محرك الاستراتيجيات يعمل|آخر شمعة/);
 assert.match(css,/\.sniper-m15-chart-box\{width:100%;height:clamp\(/);
+// Exact-price mobile rail and RTL placement must survive source refactors.
+assert.match(chart,/left=12,split=210,end=322,axis=324/,
+ 'a wider, bounded price rail reserves room for complete target values');
+assert.match(chart,/railGap=29/,
+ 'price labels are separated instead of being drawn over each other');
+assert.match(chart,/!rail\.some\(level=>Math\.abs\(level\.labelY-py\(v\)\)<20\)/,
+ 'background price ticks cannot be printed over TP / stop labels');
+assert.match(chart,/textAnchor="middle" direction="rtl">\{short\}/,
+ 'Arabic liquidity labels stay centered in their compact badge');
+assert.match(chart,/width=\{split-left-5\}/,
+ 'liquidity backgrounds must not hide the projected scenario candles');
+assert.match(chart,/const zoneLabelPoints=/,
+ 'closely spaced demand and supply badges require separate lanes');
+assert.match(chart,/textAnchor="start" direction="ltr">\{h\(trueHistory/,
+ 'left time axis cannot paint Arabic-direction text outside SVG');
+assert.match(css,/grid-template-areas:"asset frame liquidity" "price price bias"/,
+ 'mobile toolbar must wrap to two rows without clipping the market bias');
+assert.match(css,/width:100%!important;max-width:100%!important/,
+ 'no negative-margin overscroll that truncates target labels');
 console.log('PASS: M15 historical OHLC, real partial source, scenario motifs, 3 TP levels, no fabricated touches and chart-first UI');
