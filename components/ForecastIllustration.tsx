@@ -25,6 +25,7 @@ import {assessBtcStructuralScenario} from '../lib/btc-structural-scenario';
 import {auditConditionalRoute,buildConditionalTargetCandles} from '../lib/conditional-target-candles';
 import {updateSampledLiveCandle,visibleSampledLiveCandle,type SampledLiveCandle} from '../lib/sampled-live-candle';
 import {analyzeNextCandleStrategies,illustrativeNextCandle} from '../lib/next-candle-strategies';
+import {buildDistantMovementOutlook} from '../lib/sniper-movement-outlook';
 import {candleBodyGeometry,chartPriceViewport,stabilizeChartViewport,type PriceViewport} from '../lib/chart-price-viewport';
 import BtcOrderflowPanel from './BtcOrderflowPanel';
 import type {BtcOrderflow} from '../lib/btc-orderflow';
@@ -214,24 +215,49 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     targets:planVisible?m.displayTargets:watchTargets,
     liquidityAvailable:overlay.ready&&Boolean(overlay.upper||overlay.lower)
   });
+  // Assert the observed movement direction even when an entry plan stays WAIT.
+  // Farther goals are real M15/H1/H4 swing prices, NOT widened scalp TP.
+  const movementSide=statusReady?m.displaySide:
+    watchReady&&playbook.side!=='WAIT'&&playbook.side!==m.displaySide?'WAIT':
+    playbook.side!=='WAIT'?playbook.side:
+    watchReady?m.displaySide:btcScenario?.status==='ALIGNED'?btcScenario.side:'WAIT';
+  const movementOutlook=useMemo(()=>buildDistantMovementOutlook({
+    asset,now,side:movementSide,price:m.price,
+    priceFresh:sn.view.priceFresh&&m.observationFresh,
+    historyFresh:m.historyFresh,marketOpen:!goldClosed,
+    providerTransition,frames:x?.chartHigherFrames,
+    evidenceStrength:playbook.evidenceStrength,
+    invalidation:m.displayStop??btcScenario?.invalidation??null,
+    trigger:playbook.level
+  }),[asset,now,Math.floor(now/60000),movementSide,m.price,sn.view.priceFresh,
+    m.observationFresh,m.historyFresh,goldClosed,providerTransition,
+    x?.chartHigherFrames,playbook.evidenceStrength,playbook.level,
+    m.displayStop,btcScenario?.invalidation]);
   // Closed-M1 snapshots keep the drawn path and targets fixed between ticks.
   // The live quote and server-side trading decisions remain independent.
   const scenarioBarAt=m.candles.at(-1)?.time??0;
   const frozenVisualLevels=useMemo(()=>{
-    const side=planVisible?m.displaySide:
+    const side=statusReady?m.displaySide:
+      movementOutlook.targets.length?movementOutlook.side:
+      planVisible?m.displaySide:
       btcScenario&&btcScenario.side!=='WAIT'?btcScenario.side:watchTargetSide;
-    const targets=planVisible?m.displayTargets.map(t=>({stage:t.stage,price:t.price})):
+    const targets=statusReady?m.displayTargets.map(t=>({stage:t.stage,price:t.price})):
+      movementOutlook.targets.length?movementOutlook.targets.map(t=>({stage:t.stage,price:t.price})):
+      planVisible?m.displayTargets.map(t=>({stage:t.stage,price:t.price})):
       btcScenario?.destination&&(btcScenario.side==='BUY'||btcScenario.side==='SELL')?[{
         stage:1,price:btcScenario.side==='BUY'?btcScenario.destination.low:btcScenario.destination.high
       }]:watchTargets.map(t=>({stage:t.stage,price:t.price}));
     return {side,targets,anchor:m.candles.at(-1)?.close??null,
-      invalidation:planVisible?m.displayStop:
+      invalidation:statusReady?m.displayStop:
+        movementOutlook.targets.length?movementOutlook.invalidation:
+        planVisible?m.displayStop:
         btcScenario?.side!=='WAIT'?btcScenario?.invalidation??null:null};
   // A material qualification/side transition also releases the lock.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[asset,x?.candleSource,scenarioBarAt,planVisible,statusReady,watchReady,m.displaySide,
     watchTargetSide,btcScenario?.side,Boolean(btcScenario?.destination),
-    m.displayTargets.length,watchTargets.length,m.historyFresh,journal?.capturedAt,journal?.state]);
+    m.displayTargets.length,watchTargets.length,m.historyFresh,journal?.capturedAt,journal?.state,
+    movementOutlook.side,movementOutlook.targets.map(t=>t.price).join('|')]);
   const targetBands:PriceBand[]=watchTargets.map(t=>({
     key:'WATCH_TP'+t.stage,label:'رصد TP'+t.stage+' · '+t.source,
     price:t.price,low:t.price,high:t.price,kind:'TARGET' as const
@@ -665,6 +691,33 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <button type="button" aria-pressed={chartFullscreen} onClick={()=>setChartFullscreen(v=>!v)}>{chartFullscreen?'إغلاق ملء الشاشة':'⛶ ملء الشاشة'}</button>
             </div>
           </div>
+          <section className={'sniper-movement-outlook'+
+            (movementOutlook.side==='BUY'?' movement-up':
+              movementOutlook.side==='SELL'?' movement-down':' movement-neutral')}
+            aria-label="توقع الحركة القادمة والأهداف الهيكلية البعيدة">
+            <div className="sniper-movement-heading">
+              <div><strong>{movementOutlook.side==='BUY'?'↗ ':movementOutlook.side==='SELL'?'↘ ':'◌ '}
+                {movementOutlook.title}</strong>
+                <small>{movementOutlook.strength} · رصد حركة M15/H1/H4، مستقل عن قرار الدخول</small></div>
+              <span>{movementOutlook.side==='BUY'?'ترجيح صعود':
+                movementOutlook.side==='SELL'?'ترجيح هبوط':'بيانات غير كافية'}</span>
+            </div>
+            <div className="sniper-movement-goals">
+              {[1,2,3].map(stage=>{
+                const goal=movementOutlook.targets.find(t=>t.stage===stage);
+                return <div className="sniper-movement-goal" key={stage}>
+                  <small>{'TP'+stage+' · هدف بعيد'}</small>
+                  <strong dir="ltr">{goal?fmt(goal.price):'—'}</strong>
+                  <small>{goal?goal.source+' · بُعد '+goal.distancePct+'%':'لا مستوى هيكلي متاح'}</small>
+                </div>;
+              })}
+            </div>
+            <div className="sniper-movement-meta">
+              <span>تأكيد الكسر: <b dir="ltr">{fmt(movementOutlook.trigger)}</b></span>
+              <span>إبطال الاتجاه: <b dir="ltr">{fmt(movementOutlook.invalidation)}</b></span>
+              <small>{movementOutlook.reason} · لا توجد نسبة نجاح مثبتة لهذه الوجهات.</small>
+            </div>
+          </section>
           {asset==='BTC'&&providerTransition&&<div role="status" className="sniper-provider-transition">
             جارٍ تثبيت مصدر البيتكوين · الأهداف مجمدة حتى إغلاق شمعتين من المصدر الجديد
           </div>}
