@@ -52,4 +52,19 @@ assert.match(src,/\.filter\(z=>z\.kind==='TARGET'\|\|z\.kind==='STOP'\|\|z\.key=
 assert.match(css,/forecast-visual-chart-scroll \.forecast-visual-svg\{\s*min-width:720px/,
  'mobile uses legible scrollable candle geometry rather than scaling all bars to 350 px');
 assert.doesNotMatch(src,/أدوات إضافية/,'extra tools remain absent');
+const body=moduleRef.exports.candleBodyGeometry;
+const doji=body(120,120);
+assert.equal(doji.height,1,'doji is only a one-pixel marker, never a fake 3px body');
+assert.equal(doji.y,119.5,'doji is centered on its real price');
+const small=body(100,100.4);
+assert.ok(small.height<=1&&small.height>=.9,'subpixel real movement remains a thin marker');
+const down=body(102,119);
+assert.equal(down.height,17,'full-sized candles use the exact price-scale height');
+assert.equal(down.y,102);
+assert.match(src,/liveBody\.height/,'LIVE M1 uses the exact same candle-body scale');
+assert.match(src,/nextBody\.height/,'AI NEXT uses the exact same candle-body scale');
+assert.match(src,/const body=candleBodyGeometry\(px\(c\.open\),px\(c\.close\)\)/,
+ 'historical and scenario candles both use consistent body geometry');
+assert.match(src,/const routeVisible=Boolean\(routeProgress&&/,
+ 'a reversed motif cannot be presented as progressing toward the goal');
 console.log('PASS: price-true live M1 viewport, zero projected clipping, mobile focus, reduced M5 and price-rail clutter');
