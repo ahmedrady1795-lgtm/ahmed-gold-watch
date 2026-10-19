@@ -1,0 +1,39 @@
+name: Preserve Coinbase radar paper evidence
+on:
+  schedule:
+    - cron: '43 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/radar-shadow-backup.yml'
+permissions:
+  contents: write
+concurrency:
+  group: coinbase-radar-paper-archive
+  cancel-in-progress: false
+jobs:
+  checkpoint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: render-free
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch and verify server-observed read-only Coinbase evidence
+        run: node scripts/checkpoint-radar-shadow.mjs
+      - name: Save public-only paper evidence to the archive branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add archive/radar-shadow.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Checkpoint Coinbase radar shadow outcomes [skip ci]"
+            git push origin HEAD:render-free
+          else
+            echo "No radar evidence changed"
+          fi
