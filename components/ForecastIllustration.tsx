@@ -23,7 +23,6 @@ import {buildSniperChartPlaybook} from '../lib/sniper-chart-playbook';
 import {assessBtcForwardObservation} from '../lib/btc-forward-observation';
 import {assessBtcStructuralScenario} from '../lib/btc-structural-scenario';
 import {auditConditionalRoute,buildConditionalTargetCandles} from '../lib/conditional-target-candles';
-import {assessSniperEntryCandle} from '../lib/sniper-entry-candle';
 import {updateSampledLiveCandle,visibleSampledLiveCandle,type SampledLiveCandle} from '../lib/sampled-live-candle';
 import {analyzeNextCandleStrategies,illustrativeNextCandle} from '../lib/next-candle-strategies';
 import {chartPriceViewport} from '../lib/chart-price-viewport';
