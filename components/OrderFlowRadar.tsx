@@ -34,36 +34,17 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
     <small>رادار الأوامر: الذهب يحتاج مصدر دفتر أوامر وصفقات فعلية.</small>;
   const micro=view.micro;
   const hint=[
-    'Coinbase BTC-USD فقط؛ دفتر معلن وليس أوامر جهات معروفة.',
-    'دلتا تنفيذ 30 ثانية '+view.delta.toFixed(0)+'%',
+    'Coinbase BTC-USD فقط؛ دفتر معلن وليس هوية صناع السوق',
+    'دلتا تنفيذ '+view.delta.toFixed(0)+'%',
     'اختلال العمق '+view.imbalance.toFixed(0)+'%',
-    micro?.ready?'عمق L2 شراء 
-  const fresh=!['OFFLINE','WARMUP'].includes(view.phase);
-  return <div aria-label="رادار السيولة والامتصاص" style={{display:'flex',flexWrap:'wrap',gap:'6px 16px',alignItems:'center',padding:'8px 12px',border:'1px solid #334155',borderRadius:8,fontSize:12}}>
-    <strong>رادار السيولة · {labels[view.phase]}</strong>
-    <span>{view.side==='BUY'?'امتصاص بيع محتمل':view.side==='SELL'?'امتصاص شراء محتمل':'لا اتجاه مؤكد'}</span>
-    {fresh&&<span>صافي التنفيذ {view.delta.toFixed(0)}% · توازن العمق {view.imbalance.toFixed(0)}%</span>}
-    {view.confirm!=null&&<span>تأكيد <b dir="ltr">{fmt(view.confirm)}</b> · إلغاء <b dir="ltr">{fmt(view.invalidate)}</b></span>}
-    <small title="التجدد استدلال بعد التنفيذ. بيانات Level 2 لا تفصل إلغاء الأوامر عن تنفيذها بدقة. الرادار لا يرسل أوامر تداول ولا يغيّر أهداف السيناريو.">Coinbase BTC-USD · أول شمعة تتطلب إغلاق M1 متوافقًا · ليس نسبة نجاح</small>
-  </div>;
-}
-+micro.bidDepthUsd+
-      ' · بيع 
-  const fresh=!['OFFLINE','WARMUP'].includes(view.phase);
-  return <div aria-label="رادار السيولة والامتصاص" style={{display:'flex',flexWrap:'wrap',gap:'6px 16px',alignItems:'center',padding:'8px 12px',border:'1px solid #334155',borderRadius:8,fontSize:12}}>
-    <strong>رادار السيولة · {labels[view.phase]}</strong>
-    <span>{view.side==='BUY'?'امتصاص بيع محتمل':view.side==='SELL'?'امتصاص شراء محتمل':'لا اتجاه مؤكد'}</span>
-    {fresh&&<span>صافي التنفيذ {view.delta.toFixed(0)}% · توازن العمق {view.imbalance.toFixed(0)}%</span>}
-    {view.confirm!=null&&<span>تأكيد <b dir="ltr">{fmt(view.confirm)}</b> · إلغاء <b dir="ltr">{fmt(view.invalidate)}</b></span>}
-    <small title="التجدد استدلال بعد التنفيذ. بيانات Level 2 لا تفصل إلغاء الأوامر عن تنفيذها بدقة. الرادار لا يرسل أوامر تداول ولا يغيّر أهداف السيناريو.">Coinbase BTC-USD · أول شمعة تتطلب إغلاق M1 متوافقًا · ليس نسبة نجاح</small>
-  </div>;
-}
-+micro.askDepthUsd:'العمق غير مؤهل: '+String(micro?.reason||'تجهيز'),
+    micro?.ready?'طلبات معلنة '+Math.round(micro.bidDepthUsd)+
+      ' USD، عروض معلنة '+Math.round(micro.askDepthUsd)+' USD':
+      'تجهيز العمق: '+String(micro?.reason||'انتظار'),
     micro?.bidPersistent?'جدار طلب مستمر مرصود':'',
     micro?.askPersistent?'جدار عرض مستمر مرصود':'',
     micro?.possibleBidPull?'تراجع عمق الطلب محتمل، السبب غير محسوم':'',
     micro?.possibleAskPull?'تراجع عمق العرض محتمل، السبب غير محسوم':'',
-    'لا أوامر تنفيذ ولا تغيير تلقائي لأهداف M15'
+    'الرادار رصد فقط ولا يغير TP أو SL'
   ].filter(Boolean).join(' | ');
   if(compact)return <span role="status" className={'sniper-flow-radar-chip '+
       (micro?.status==='POSSIBLE_PULL'?'warn':
@@ -82,7 +63,8 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
     <strong>رادار السيولة · {labels[view.phase]}</strong>
     <span>{view.side==='BUY'?'امتصاص بيع محتمل':view.side==='SELL'?'امتصاص شراء محتمل':'لا اتجاه مؤكد'}</span>
     {fresh&&<span>صافي التنفيذ {view.delta.toFixed(0)}% · توازن العمق {view.imbalance.toFixed(0)}%</span>}
+    {micro?.ready&&<span>عمق طلبات معلنة {Math.round(micro.bidDepthUsd)} USD · عروض معلنة {Math.round(micro.askDepthUsd)} USD</span>}
     {view.confirm!=null&&<span>تأكيد <b dir="ltr">{fmt(view.confirm)}</b> · إلغاء <b dir="ltr">{fmt(view.invalidate)}</b></span>}
-    <small title="التجدد استدلال بعد التنفيذ. بيانات Level 2 لا تفصل إلغاء الأوامر عن تنفيذها بدقة. الرادار لا يرسل أوامر تداول ولا يغيّر أهداف السيناريو.">Coinbase BTC-USD · أول شمعة تتطلب إغلاق M1 متوافقًا · ليس نسبة نجاح</small>
+    <small title="تغير دفتر Level 2 قد يكون تنفيذًا أو إلغاءً، وليس إثبات التلاعب أو هوية مشارك. الرادار رصد فقط.">Coinbase BTC-USD · يتطلب رصد M1 لاحقًا · ليس نسبة نجاح</small>
   </div>;
 }
