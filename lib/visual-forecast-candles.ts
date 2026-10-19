@@ -149,6 +149,46 @@ export function auditCandleAnalogueDirection(rows:Bar[],atr:number):Audit{
    baselineMaeAtr:samples?Number((baselineError/samples).toFixed(3)):null,
    edgeSupported:false,status:samples>=30?'NO_PROVEN_EDGE':'COLLECTING'};
 }
+/**
+ * First-M1 visual-candle walk-forward AUDIT (not trade win rate).
+ * The predicted first body comes from the same 18-bar RANGE illustration
+ * shown on the chart. Each fold is built from its historical prefix alone.
+ * The actual next CLOSED M1 candle is revealed only after prediction.
+ * The stride keeps evaluation outcomes apart; flat actuals count as misses.
+ */
+export function auditFirstVisualCandle(rows:Bar[]){
+ let samples=0,hits=0,baselineHits=0,mae=0,baselineMae=0;
+ const start=Math.max(70,rows.length-192);
+ for(let t=start;t<rows.length;t+=3){
+   const known=rows.slice(0,t),actual=rows[t],last=known.at(-1);
+   if(!last||!valid(actual)||actual.time-last.time!==60000)continue;
+   const local=known.slice(-20);
+   if(local.length<20||local.some((b,i)=>!valid(b)||
+     (i>0&&b.time-local[i-1].time!==60000)))continue;
+   const localAtr=median(local.slice(1).map((b,i)=>tr(b,local[i-1])));
+   if(!Number.isFinite(localAtr)||localAtr<=0)continue;
+   const forecast=buildVisualFuture({candles:known,forecast:{
+     mode:'RANGE',atr:localAtr,side:'WAIT',candles:[]},side:'WAIT',count:18});
+   const first=forecast[0];
+   if(!first||first.time!==actual.time)continue;
+   samples++;
+   const realised=Math.sign(actual.close-actual.open);
+   const predicted=Math.sign(first.close-first.open);
+   const naive=Math.sign(last.close-last.open);
+   if(realised!==0&&predicted!==0&&predicted===realised)hits++;
+   if(realised!==0&&naive!==0&&naive===realised)baselineHits++;
+   mae+=Math.abs(first.close-actual.close)/localAtr;
+   baselineMae+=Math.abs(last.close-actual.close)/localAtr;
+ }
+ return {samples,hits,accuracyPct:samples?Math.round(100*hits/samples):null,
+   baselineHits,baselinePct:samples?Math.round(100*baselineHits/samples):null,
+   maeAtr:samples?Number((mae/samples).toFixed(3)):null,
+   baselineMaeAtr:samples?Number((baselineMae/samples).toFixed(3)):null,
+   // The illustrative route has no established first-bar predictive edge.
+   edgeSupported:false,status:samples>=30?'HISTORICAL_ONLY':'INSUFFICIENT' as
+     'HISTORICAL_ONLY'|'INSUFFICIENT'};
+}
+
 export function buildVisualFuture(input:{
  candles:Bar[];forecast:Ghost;side:'BUY'|'SELL'|'WAIT';count?:number;
  // For RANGE illustration only: conditional shape starts at the current
