@@ -5,6 +5,7 @@ import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Crosshair,Layers3,ShieldAler
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import NewsCommandCenter from './NewsCommandCenter';
+import OrderFlowRadar from './OrderFlowRadar';
 import {economicNewsTimeline} from '../lib/news-alert-window';
 import type {ForecastJournal} from '../lib/forecast-journal';
 
@@ -134,6 +135,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <span><Layers3 size={14}/> وجهات بعيدة: H1 / H4 · مستويات فعلية</span>
         <span><Target size={14}/> {statusReady?'سيناريو مسجل':watchReady?'مستويات مراقبة بعيدة · دون أمر تداول':m.bias.active?'الاتجاه مرصود · الأهداف قيد التحقق':'بيانات قيد التحديث'}</span>
       </div>
+      <OrderFlowRadar key={asset} asset={asset}/>
       <div className={'forecast-flow-banner phase-'+overlay.phaseKind.toLowerCase()} aria-live="polite">
         <div className="forecast-flow-title">
           <span className="forecast-flow-orb"><Layers3 size={21}/></span>
