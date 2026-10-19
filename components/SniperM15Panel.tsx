@@ -121,8 +121,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      if(frozen&&frozen.asset===asset&&frozen.closedTime===closedTime){
        const breached=frozen.stop!=null&&price!=null&&
          (frozen.side==='BUY'?price<=frozen.stop:price>=frozen.stop);
-       const opposed=latestBos?.confirmedAt>frozen.createdAt&&
-         (latestBos.kind==='BOS_UP'?'BUY':'SELL')!==frozen.side;
+       const opposed=Boolean(latestBos&&latestBos.confirmedAt>frozen.createdAt&&
+         (latestBos.kind==='BOS_UP'?'BUY':'SELL')!==frozen.side);
        if(breached||opposed)setBlockedKey(candleKey);
      }
      if(frozen)setFrozen(null);
