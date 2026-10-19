@@ -4,6 +4,30 @@ import {OrderFlowRadar as Engine,type RadarView} from '../lib/order-flow-radar';
 const labels={WARMUP:'تجهيز نافذة 30 ثانية',OFFLINE:'تدفق غير مكتمل',WATCH:'مراقبة',PREPARE:'استعداد مبكر',CONFIRMED:'تأكيد حركة',INVALIDATED:'أُلغي بكسر المستوى',EXPIRED:'انتهت صلاحية الرصد'};
 export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD'|'BTC';onView?:(v:RadarView|null)=>void;compact?:boolean}){
   const [view,setView]=useState<RadarView>(()=>new Engine().view);
+  const [shadow,setShadow]=useState<{
+   events:number;m1:{directional:number;accuracy:number|null;pairedN:number;
+     pairedRadarRate:number|null;baselineRate:number|null;missing:number};
+   m15:{directional:number;accuracy:number|null;pairedN:number;
+     pairedRadarRate:number|null;baselineRate:number|null;missing:number}
+  }|null>(null);
+  useEffect(()=>{
+    if(asset!=='BTC'){setShadow(null);return}
+    let alive=true;
+    const load=async()=>{
+      try{
+        const r=await fetch('/api/radar-shadow-score',{cache:'no-store',
+          signal:AbortSignal.timeout(7000)});
+        if(!r.ok)throw Error('unavailable');
+        const v=await r.json();
+        if(alive&&v?.source==='Coinbase BTC-USD WS'&&v.m1&&v.m15)
+          setShadow({events:Number(v.events)||0,m1:v.m1,m15:v.m15});
+        else if(alive)setShadow(null);
+      }catch{if(alive)setShadow(null)}
+    };
+    void load();const timer=setInterval(()=>void load(),120000);
+    return()=>{alive=false;clearInterval(timer)};
+  },[asset]);
+
   const [scoreOpen,setScoreOpen]=useState(false);
   const [shadow,setShadow]=useState<null|{
     events:number;storage:string;modelQualified:false;
@@ -56,7 +80,18 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
   if(asset!=='BTC')return compact?null:
     <small>رادار الأوامر: الذهب يحتاج مصدر دفتر أوامر وصفقات فعلية.</small>;
   const micro=view.micro;
-  const hint=[
+  const scoreHint=shadow?
+    'تقييم ظلّي مستقل: M1 '+shadow.m1.directional+' حالة واضحة، M15 '+
+    shadow.m15.directional+' حالة، مفقود M1 '+shadow.m1.missing+
+    ' وM15 '+shadow.m15.missing+
+    (shadow.m1.pairedN>=40&&shadow.m1.pairedRadarRate!=null&&
+     shadow.m1.baselineRate!=null?
+     ' | M1 الرادار '+Math.round(shadow.m1.pairedRadarRate*100)+
+     '% مقابل المرجع '+Math.round(shadow.m1.baselineRate*100)+
+     '%، عينة '+shadow.m1.pairedN:'')+
+    '. لا يثبت دقة تنبؤية أو ربحًا بعد التكاليف.':
+    'التقييم الزمني لم يجمع عينات موثوقة كافية بعد.';
+  const hint=[scoreHint,
     'Coinbase BTC-USD فقط؛ دفتر معلن وليس هوية صناع السوق',
     'دلتا تنفيذ '+view.delta.toFixed(0)+'%',
     'اختلال العمق '+view.imbalance.toFixed(0)+'%',
