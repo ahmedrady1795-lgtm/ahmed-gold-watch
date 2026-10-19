@@ -176,8 +176,9 @@ export function mergeRadarShadowArchives(oldRaw:unknown,newRaw:unknown,
      prior.invalidate!==event.invalidate||prior.baseline!==event.baseline)
    continue; // immutable observation mismatch
   const choose=(a:ShadowOutcome,b:ShadowOutcome)=>{
-   if(a.status!=='PENDING')return a;
-   return b.status==='PENDING'?a:b;
+   const rank=(x:ShadowOutcome)=>x.status==='SCORED'?2:
+      x.status==='NO_DATA'?1:0;
+   return rank(b)>rank(a)?b:a; // no score is ever invented from an empty gap
   };
   map.set(event.id,{...prior,
     m1:choose(prior.m1,event.m1),m15:choose(prior.m15,event.m15)});
