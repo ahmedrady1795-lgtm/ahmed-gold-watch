@@ -1,0 +1,44 @@
+name: Archive Coinbase radar shadow evidence
+on:
+  schedule:
+    - cron: '33 */2 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: coinbase-radar-shadow-checkpoint
+  cancel-in-progress: false
+jobs:
+  checkpoint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: render-free
+          persist-credentials: true
+      - name: Download public server-observed radar ledger
+        run: |
+          set -euo pipefail
+          mkdir -p archive
+          curl --fail --silent --show-error --location --max-time 45 --retry 2 \
+            "https://ahmed-gold-watch-free.onrender.com/api/radar-shadow-score?archive=1" \
+            -o /tmp/radar-shadow.json
+          node -e '
+            const fs=require("fs"), j=JSON.parse(fs.readFileSync("/tmp/radar-shadow.json"));
+            if(j.schema!=="qannas-radar-shadow-v1"||!Array.isArray(j.events))process.exit(2);
+            if(j.events.length>2400||j.events.some(e=>e.source!=="Coinbase BTC-USD WS"))process.exit(3);
+          '
+          cp /tmp/radar-shadow.json archive/radar-shadow.json
+      - name: Commit new observed events
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add archive/radar-shadow.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Checkpoint Coinbase radar shadow observations [skip ci]"
+            git push origin HEAD:render-free
+          else
+            echo "No new observations"
+          fi
