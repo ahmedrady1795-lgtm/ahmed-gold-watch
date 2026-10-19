@@ -6,6 +6,7 @@ import {buildContinuousBias} from './continuous-direction';
 import {analyzeFourHours} from './four-hour-structure';
 import {advanceWatch,emptyWatch,type WatchMemory} from './sniper-watch';
 import {evaluateSniperStrategies} from './sniper-strategies';
+import {assessSniperEntryCandle} from './sniper-entry-candle';
 
 // Railway Gold Watch has an existing dedicated persistent volume at /data.
 // /tmp fallback intentionally does NOT claim persistence across deploys.
@@ -77,6 +78,11 @@ function candidate(asset:Asset,x:any,now:number,modelAt:number){
     side:v.side,sourceReady:v.priceFresh&&v.forecastFresh,targets,stop:v.invalidation,
     liquidityContext});
   if(!strategy.eligible)blockers.push('تأكيد الاستراتيجية: '+strategy.reason);
+  // Last CLOSED M1 is the final timed checkpoint before any new paper
+  // objective is registered. A current live wick cannot confirm an entry.
+  const entryCandle=assessSniperEntryCandle({history:x?.chartCandles,now,
+    side:v.side,price:v.price,sourceReady:v.priceFresh&&v.forecastFresh});
+  if(!entryCandle.qualified)blockers.push('تأكيد إغلاق M1: '+entryCandle.reason);
   const historical=scorecard(load().scenarios,asset);
   const priorT1=historical.targets[0];
   // An empirical circuit-breaker only after a meaningful audit sample.
@@ -89,6 +95,13 @@ function candidate(asset:Asset,x:any,now:number,modelAt:number){
   if(x?.forwardMove?.status==='STABILITY_HOLD')blockers.push('الإشارة السابقة محفوظة للمراقبة فقط');
   if(targets.length<2)blockers.push('محتاجين هدفين هيكليين مستقلين على الأقل');
   if(Number(targets[0]?.quality||0)<67)blockers.push('جودة الهدف الهيكلي الأول منخفضة');
+  // The target builder enforces a 75-minute M15-ATR reachability envelope.
+  // Recheck the actual selected T1 here, not a stale short-horizon projection.
+  const a15=Number(sniper.longRange.atr15||0);
+  const scale=Number(sniper.longRange.minDistance||0);
+  if(targets[0]&&v.price!=null&&a15>0&&scale>0&&
+    Math.abs(targets[0].price-v.price)>Math.max(a15*4.2,scale*2.8))
+    blockers.push('TP1 بعيد عن نطاق حركة 75 دقيقة؛ هدف مراقبة وليس اقتناصًا');
   const confirms=x?.forwardMove?.confirmations||{};
   const support=[confirms.m5,confirms.m15,confirms.h4].filter(vote=>vote===v.side).length;
   if(support<2)blockers.push('مفيش تأكيد من فريمين متوسط/كبير');
