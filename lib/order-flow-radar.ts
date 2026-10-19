@@ -1,6 +1,6 @@
 // Coinbase BTC-USD only. Experimental evidence, never a calibrated probability.
 import {inspectL2Book,assessL2Persistence,
- type L2BookSample,type OrderFlowMicroEvidence} from './order-flow-microstructure';
+ type L2BookSample,type OrderFlowMicroEvidence} from './order-flow-microstructure.ts';
 export type RadarSide='BUY'|'SELL'|'WAIT';
 export type RadarView={phase:'WARMUP'|'OFFLINE'|'WATCH'|'PREPARE'|'CONFIRMED'|'INVALIDATED'|'EXPIRED';side:RadarSide;delta:number;imbalance:number;confirm:number|null;invalidate:number|null;since:number;replenishments:number;micro?:OrderFlowMicroEvidence};
 type Trade={id:number;at:number;price:number;size:number;buy:boolean};
