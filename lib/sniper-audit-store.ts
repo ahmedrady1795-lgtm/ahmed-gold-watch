@@ -7,6 +7,7 @@ import {analyzeFourHours} from './four-hour-structure';
 import {advanceWatch,emptyWatch,type WatchMemory} from './sniper-watch';
 import {evaluateSniperStrategies} from './sniper-strategies';
 import {assessSniperEntryCandle} from './sniper-entry-candle';
+import {analyzeNextCandleStrategies} from './next-candle-strategies';
 
 // Railway Gold Watch has an existing dedicated persistent volume at /data.
 // /tmp fallback intentionally does NOT claim persistence across deploys.
@@ -83,6 +84,13 @@ function candidate(asset:Asset,x:any,now:number,modelAt:number){
   const entryCandle=assessSniperEntryCandle({history:x?.chartCandles,now,
     side:v.side,price:v.price,sourceReady:v.priceFresh&&v.forecastFresh});
   if(!entryCandle.qualified)blockers.push('تأكيد إغلاق M1: '+entryCandle.reason);
+  // A genuinely held-out selective NEXT-M1 edge may veto a contradictory
+  // fresh paper scenario. Unvalidated TradingView-style indicator votes can
+  // only inform the chart: they never promote entries or fabricate confidence.
+  const nextM1=analyzeNextCandleStrategies(x?.chartCandles,now);
+  if(nextM1.edgeSupported&&nextM1.side!=='WAIT'&&v.side!=='WAIT'&&
+     nextM1.side!==v.side)
+    blockers.push('تعارض اتجاه أول شمعة: دراسة خارج العينة مؤهلة تعارض القنص');
   const historical=scorecard(load().scenarios,asset);
   const priorT1=historical.targets[0];
   // An empirical circuit-breaker only after a meaningful audit sample.
