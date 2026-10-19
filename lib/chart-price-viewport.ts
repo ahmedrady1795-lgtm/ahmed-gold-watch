@@ -53,3 +53,14 @@ export function chartPriceViewport(input:{
   const high=midpoint+core/2+extra;
   return {low,high,span:high-low};
 }
+
+/** A one-pixel doji marker, rather than a fabricated multi-pixel price body. */
+export function candleBodyGeometry(openY:number,closeY:number){
+  const distance=Math.abs(closeY-openY);
+  const minPixel=1;
+  return {
+    y:distance<minPixel?(openY+closeY-minPixel)/2:Math.min(openY,closeY),
+    height:Math.max(minPixel,distance),
+    nearDoji:distance<minPixel
+  };
+}
