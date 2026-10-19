@@ -15,8 +15,12 @@ ensure(/candleWidth=clamp\(stride\*\.46,3,9\)/,
  'small, price-true candlestick bodies resemble a professional MT5/TradingView chart');
 ensure(/latest=i===candles\.length-1/,'most recent real OHLC receives separate visual emphasis');
 const future=ui.slice(ui.indexOf('{visualCandles.map((c,i)=>{'),ui.indexOf('{ghostRangeVisible&&<g'));
-assert.match(future,/height=\{Math\.max\(2\.6,bottom-top\)\} rx="1\.3" fill=\{color\}/,
- 'future candle bodies use the same solid geometry as historical candles');
+assert.match(future,/const body=candleBodyGeometry\(px\(c\.open\),px\(c\.close\)\)/,
+ 'future OHLC share the real-candle body geometry helper');
+assert.match(future,/height=\{body\.height\} rx="\.35" fill=\{color\}/,
+ 'future candle bodies have exactly the same solid-body dimensions as real M1');
+assert.match(ui,/\{candles\.map\(\(c,i\)=>\{[\s\S]*?const body=candleBodyGeometry\(px\(c\.open\),px\(c\.close\)\)/,
+ 'actual M1 bodies use the same price-space helper');
 assert.doesNotMatch(future,/fillOpacity|strokeDasharray|opacity=/,
  'future OHLC uses solid bodies and continuous wicks without ghost transparency');
 assert.match(future,/strokeWidth="1\.5"/,'future wicks match regular historical wicks');
