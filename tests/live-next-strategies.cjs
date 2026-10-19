@@ -46,6 +46,12 @@ assert.ok(s.train.n>=20&&s.holdout.n>0);
 assert.equal(s.edgeSupported,false,
  '100 percent accuracy shared with naive direction has NO independent edge');
 assert.equal(s.status,'TECHNICAL_ONLY');
+assert.ok(s.recentHoldout&&s.recentHoldout.n>0,
+ 'recent disjoint holdout segment must be checked before claiming predictive edge');
+assert.equal(s.holdout.pairedEdgeLower95Pct,0,
+ 'shared wins in a monotonically rising market do not count as model advantage');
+assert.equal(strategy.analyzeNextCandleStrategies(rows,closedNow+3*60000).status,'UNAVAILABLE',
+ 'stale candles must expire prediction even if no new M1 has appeared');
 const c=strategy.illustrativeNextCandle({study:s,anchor:160,minute:closedNow,enabled:true});
 assert.ok(c&&c.time===closedNow+60000&&c.close>c.open);
 assert.ok(c.high>=c.close&&c.low<=c.open);
@@ -72,6 +78,10 @@ assert.match(ui,/ghostXs=visualCandles\.map\(\(_,i\)=>xf\+9\+\(i\+1\.5\)\*future
 assert.match(ui,/Math\.abs\(m\.price-rawQuote\)/,
  'live candle sampled only from the actual displayed quote');
 assert.match(ui,/nextCandle=illustrativeNextCandle/);
+assert.match(ui,/\[asset,routeRevision,x\?\.candleSource,Math\.floor\(now\/60000\)\]/,
+ 'minute-boundary invalidation prevents a frozen AI NEXT direction during feed stalls');
+assert.match(ui,/nextStudy\.holdout\.baselinePct/,
+ 'chart reports a baseline rather than advertising a standalone hit rate');
 const page=fs.readFileSync('app/page.tsx','utf8');
 assert.match(page,/source:btcDirectFresh\?btcSource:/,
  'pass quote venue to prevent cross-exchange live OHLC mixing');
