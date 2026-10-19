@@ -11,8 +11,7 @@ import {buildSniperM15Liquidity} from '../lib/sniper-m15-liquidity';
 
 const n=(x:number|null|undefined)=>x!=null&&Number.isFinite(x)?
  x.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
-const h=(t:number)=>new Date(t).toLocaleString('en-GB',{timeZone:'Asia/Dubai',
- month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+const h=(t:number)=>new Date(t).toLocaleTimeString('en-GB',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'});
 const clamp=(n:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,n));
 
 export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,assetView='ALL',
@@ -35,7 +34,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    [asset,x,liveQuote,now,snapshotAt,observationAt]);
  const actual=useMemo(()=>closedM15Bars(x?.chartHigherFrames?.m15,now,320),
    [x?.chartHigherFrames?.m15,now]);
- const recent=actual.slice(-52);
+ const recent=actual.slice(-46);
  const historyFresh=actual.length>=24&&
    actual.slice(-24).every((b,i,a)=>i===0||b.time-a[i-1].time===900000)&&
    now-(actual.at(-1)!.time+900000)<=36*60000;
@@ -88,8 +87,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    fourHour:m.fourHour,pools
  }),[now,price,actual,historyFresh,m.historyFresh,m.sniper.view.priceFresh,
     m.observationFresh,providerTransition,marketOpen,m.fourHour,pools]);
- const W=430,H=704,left=10,split=232,end=338,axis=340,
-   plotTop=26,plotBottom=H-43;
+ const W=430,H=704,left=12,split=210,end=322,axis=324,
+   plotTop=28,plotBottom=H-47;
  // A single absolute price axis contains EVERY currently valid target and
  // stop. No fake vertical positioning of offscreen targets.
  const important=[
@@ -109,22 +108,31 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ...(stop!=null?[{key:'SL',price:stop,kind:'STOP'}]:[]),
    ...(price!=null?[{key:'LIVE',price,kind:'PRICE'}]:[])
  ];
- const rail=scaleLevels.map(v=>({...v,exactY:py(v.price)}))
-   .sort((a,b)=>a.exactY-b.exactY).map((v,i,a)=>{
-      const previous=i>0?a[i-1].exactY:-100;
-      return {...v,labelY:clamp(Math.max(v.exactY,
-        i===0?plotTop+15:previous+0),plotTop+14,plotBottom-14)};
-   });
- for(let i=1;i<rail.length;i++)rail[i].labelY=Math.max(rail[i].labelY,rail[i-1].labelY+26);
- const overflow=rail.at(-1)?.labelY??0;
- if(overflow>plotBottom-14)
-   for(const r of rail)r.labelY-=overflow-(plotBottom-14);
+ const rail=scaleLevels.map(v=>({...v,exactY:py(v.price),labelY:py(v.price)}))
+   .sort((a,b)=>a.exactY-b.exactY);
+ const railMargin=plotTop+15,railBottom=plotBottom-15,railGap=29;
+ for(let i=0;i<rail.length;i++)
+   rail[i].labelY=Math.max(rail[i].exactY,railMargin+i*railGap,
+     i?rail[i-1].labelY+railGap:railMargin);
+ const overhang=rail.length?Math.max(0,rail[rail.length-1].labelY-railBottom):0;
+ if(overhang)for(const point of rail)point.labelY-=overhang;
+ const underhang=rail.length?Math.max(0,railMargin-rail[0].labelY):0;
+ if(underhang)for(const point of rail)point.labelY+=underhang;
  const actualStride=(split-left-5)/Math.max(trueHistory.length,1);
  const timeX=(time:number)=>left+
    clamp((time-(trueHistory[0]?.time??time))/900000,0,trueHistory.length)*actualStride;
  const liquidityColor=(kind:string)=>kind==='DEMAND'||kind==='LOW_POOL'?
    '#41cfab':'#ff7b90';
  const projectedStride=(end-split-8)/Math.max(projected.bars.length,36);
+ // Price boxes and zone badges must not cover each other or leave the plot.
+ const zoneLabelPoints=liquidity.zones.map((z,i)=>({i,y:py((z.low+z.high)/2)}))
+   .sort((a,b)=>a.y-b.y);
+ for(let i=0;i<zoneLabelPoints.length;i++)
+   zoneLabelPoints[i].y=Math.max(clamp(zoneLabelPoints[i].y,plotTop+16,plotBottom-13),
+     i?zoneLabelPoints[i-1].y+22:plotTop+16);
+ const zoneOverhang=zoneLabelPoints.length?
+   Math.max(0,zoneLabelPoints[zoneLabelPoints.length-1].y-(plotBottom-13)):0;
+ if(zoneOverhang)for(const z of zoneLabelPoints)z.y-=zoneOverhang;
  const candle=(open:number,high:number,low:number,close:number,xpos:number,width:number,
    future:boolean,key:string)=> {
    const up=close>=open,color=up?'#39d6cc':'#fa5970';
@@ -172,8 +180,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {grid.map((v,i)=><g key={'grid'+i}>
          <line x1={left} x2={end} y1={py(v)} y2={py(v)}
            stroke="#26323f" strokeDasharray="3 5" strokeWidth=".8"/>
-         <text x={W-6} y={py(v)+4} fill="#8e9ba8"
-           fontSize="10" textAnchor="end" direction="ltr">{n(v)}</text>
+         {!rail.some(level=>Math.abs(level.labelY-py(v))<20)&&
+           <text x={W-7} y={py(v)+4} fill="#81919f"
+             fontSize="9" textAnchor="end" direction="ltr">{n(v)}</text>}
        </g>)}
        {Array.from({length:8},(_,i)=><line key={'vx'+i} x1={left+i*(end-left)/7}
          x2={left+i*(end-left)/7} y1={plotTop} y2={plotBottom}
@@ -199,7 +208,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            const color=liquidityColor(z.kind),top=py(z.high),bottom=py(z.low);
            const pool=z.kind==='HIGH_POOL'||z.kind==='LOW_POOL';
            return <g key={'zone-'+z.kind+'-'+z.low} className="sniper-m15-zone">
-             <rect x={left+2} y={top} width={end-left-5}
+             <rect x={left+2} y={top} width={split-left-5}
                height={Math.max(2,bottom-top)} fill={color}
                fillOpacity={pool?0.045:0.095} stroke={color}
                strokeOpacity=".66" strokeWidth={pool?0.75:1}
@@ -215,16 +224,20 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {projected.ready&&projected.bars.map((b,i)=>
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
              clamp(projectedStride*.62,1.5,3.1),true,'future'+i))}
-         {showLiquidity&&liquidity.zones.map(z=>{
-           const color=liquidityColor(z.kind),top=py(z.high),bottom=py(z.low);
+         {showLiquidity&&liquidity.zones.map((z,i)=>{
+           const color=liquidityColor(z.kind);
            const pool=z.kind==='HIGH_POOL'||z.kind==='LOW_POOL';
-           // Labels only on historical side, never on top of projected TP rails.
-           const y=clamp((top+bottom)*.5,plotTop+16,plotBottom-9);
+           const y=zoneLabelPoints.find(point=>point.i===i)?.y??py((z.low+z.high)/2);
+           const short= z.kind==='HIGH_POOL'?'سيولة قمم':z.kind==='LOW_POOL'?'سيولة قيعان':
+             z.kind==='DEMAND'?'طلب':'عرض';
+           const xBadge=split-77;
            return <g key={'zone-label-'+z.kind+'-'+z.low}>
-             <rect x={left+4} y={y-9} width={pool?71:61} height="18" rx="3"
-               fill="#030d12" fillOpacity=".85" stroke={color} strokeOpacity=".68"/>
-             <text x={left+8} y={y+3} fill={color} fontSize="9" fontWeight="700">
-               {z.label}</text>
+             <line x1={split-5} x2={xBadge+68} y1={py((z.low+z.high)/2)} y2={y}
+               stroke={color} strokeOpacity=".7" strokeWidth=".8"/>
+             <rect x={xBadge} y={y-9} width="68" height="18" rx="3"
+               fill="#041016" fillOpacity=".94" stroke={color} strokeOpacity=".8"/>
+             <text x={xBadge+34} y={y+3} fill={color} fontSize="9" fontWeight="700"
+               textAnchor="middle" direction="rtl">{short}</text>
            </g>;
          })}
          {showLiquidity&&liquidity.context&&(()=>{
@@ -251,10 +264,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            return <g key={'liquidity-event-'+i} className="sniper-m15-event">
              <circle cx={xMark} cy={yMark} r="2.6" fill={color}/>
              <title>{e.label+' · '+n(e.price)+' · إغلاق مؤكّد'}</title>
-             <text x={clamp(xMark,left+28,split-28)}
-               y={clamp(yMark+(i%2===0?-12:17),plotTop+15,plotBottom-8)}
-               fontSize="8.5" fill={color} fontWeight="700" textAnchor="middle">
-               {mark}</text>
+             {i===liquidity.events.length-1&&<text x={clamp(xMark,left+34,split-34)}
+               y={clamp(yMark-13,plotTop+15,plotBottom-8)}
+               fontSize="9" fill={color} fontWeight="700" textAnchor="middle"
+               direction="rtl">{mark}</text>}
            </g>;
          })}
          {validLive&&forming&&<g>
@@ -272,8 +285,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            <line x1={left} x2={end} y1={y} y2={y} stroke={color}
              strokeWidth={isStop?1.35:1.05} strokeDasharray={isStop?'6 4':'5 5'}
              opacity=".87"/>
-           {target&&<text x={end-6} y={y-5} textAnchor="end" fill={color}
-             fontSize="10" fontWeight="700">{level.key}</text>}
+
          </g>;
        })}
        <line x1={end} x2={end} y1={plotTop} y2={plotBottom} stroke="#637480" strokeWidth="1"/>
@@ -293,11 +305,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              fill={color} textAnchor="end" direction="ltr">{n(level.price)}</text>
          </g>;
        })}
-       <text x={left+3} y={17} fill="#ccd8e6" fontSize="12" direction="ltr">M15 · تاريخ حقيقي</text>
-       <text x={split+5} y={17} fill="#e0c08d" fontSize="11">سيناريو احتمالي</text>
-       {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="10">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
-       {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="10" textAnchor="middle">{h(latestClosed.time)}</text>}
-       <text x={end-2} y={H-17} fill="#aebdc8" fontSize="10" textAnchor="end">
+       <text x={left+3} y={17} fill="#ccd8e6" fontSize="11" direction="ltr" textAnchor="start">M15 · REAL</text>
+       <text x={split+5} y={17} fill="#e0c08d" fontSize="11" textAnchor="start" direction="ltr">M15 · SCENARIO</text>
+       {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
+         textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
+       {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(latestClosed.time)}</text>}
+       <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
          {projected.bars.length?'+'+projected.bars.length+' × M15':'M15'}</text>
      </svg>
    </div>
