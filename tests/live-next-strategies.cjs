@@ -72,8 +72,9 @@ assert.match(ui,/className="sniper-sampled-live-candle"/);
 assert.match(ui,/className="sniper-ai-next-candle"/);
 assert.match(ui,/sniper-live-next-status/);
 assert.match(ui,/ref=\{chartScrollRef\}/,'scroll should initially center LIVE and AI NEXT');
-assert.match(ui,/nextX=xf\+9\+futureStride\*\.5/);
-assert.match(ui,/ghostXs=visualCandles\.map\(\(_,i\)=>xf\+9\+\(i\+1\.5\)\*futureStride\)/,
+assert.match(ui,/adjacentStride=Math\.min\(stride,futureStride\)/, 'next candle remains one actual M1 slot away');
+assert.match(ui,/nextX=xf\+9\+adjacentStride\*\.5/);
+assert.match(ui,/ghostXs=visualCandles\.map\(\(_,i\)=>xf\+9\+\(i\+1\.5\)\*adjacentStride\)/,
  'TP route starts after NEXT, not on top of real-time M1 forecast');
 assert.match(ui,/Math\.abs\(m\.price-rawQuote\)/,
  'live candle sampled only from the actual displayed quote');
