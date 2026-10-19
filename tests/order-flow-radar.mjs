@@ -26,6 +26,16 @@ assert.equal(r.evaluate(start+20000).phase,'OFFLINE');
 assert.equal(r.view.confirm,null);
 const gap=ready();gap.ingest({type:'match',product_id:'BTC-USD',trade_id:32,time:new Date(start).toISOString(),price:'100',size:'1',side:'buy'},start);
 assert.equal(gap.evaluate(start).phase,'OFFLINE','missing trade blocks signals');
+assert.equal(gap.broken,false,'trade gap quarantines delta without losing L2 connection');
+assert.ok(gap.quarantineUntil>=start+30000);
+for(let i=0;i<25;i++){
+ const t=start+31000+i*40;
+ gap.ingest({type:'match',product_id:'BTC-USD',trade_id:33+i,
+   time:new Date(t).toISOString(),price:'100',size:'1',side:'buy'},t);
+}
+gap.heartbeatAt=start+32000;gap.bookAt=start+32000;
+assert.equal(gap.evaluate(start+32000).phase,'WATCH',
+ 'clean flow resumes after quarantine without rebuilding order book');
 const duplicate=ready();duplicate.ingest({type:'match',product_id:'BTC-USD',trade_id:30,time:new Date(start).toISOString(),price:'100',size:'1',side:'buy'},start);
 assert.equal(duplicate.trades.length,30);
 const sell=ready(true);assert.equal(sell.evaluate(start).delta,100);

@@ -5,7 +5,17 @@ type Trade={id:number;at:number;price:number;size:number;buy:boolean};
 export class OrderFlowRadar {
   bids=new Map<number,number>(); asks=new Map<number,number>();
   trades:Trade[]=[]; replenishments:{at:number;side:string}[]=[];
-  snapshotAt=0; heartbeatAt=0; bookAt=0; lastId=0; broken=false;
+  snapshotAt=0; heartbeatAt=0; bookAt=0; lastId=0; lastMatchAt=0; broken=false;
+  // Missing matches invalidate delta, not the L2 socket. Recover after a
+  // clean 30s trade window; never issue signals during the quarantine.
+  quarantineUntil=0; gapCount=0;
+  quarantine(now:number){
+    this.quarantineUntil=Math.max(this.quarantineUntil,now+30000);
+    this.gapCount++;this.trades=[];this.replenishments=[];
+    this.candidate='WAIT';
+    this.view={...this.view,phase:'OFFLINE',side:'WAIT',confirm:null,
+      invalidate:null,since:now};
+  }
   candidate:RadarSide='WAIT'; candidateAt=0;
   view:RadarView={phase:'WARMUP',side:'WAIT',delta:0,imbalance:0,confirm:null,invalidate:null,since:0,replenishments:0};
   ingest(m:any,now=Date.now()){
@@ -19,15 +29,18 @@ export class OrderFlowRadar {
     if(m.type==='heartbeat'){
       const at=Date.parse(m.time); if(!Number.isFinite(at)||Math.abs(now-at)>5000){this.broken=true;return;}
       this.heartbeatAt=now;
-      if(this.lastId&&Number(m.last_trade_id)>this.lastId)this.broken=true;
+      // Heartbeat can precede matching trades; allow brief delivery grace.
+      const heartbeatId=Number(m.last_trade_id);
+      if(this.lastId&&Number.isSafeInteger(heartbeatId)&&heartbeatId>this.lastId&&
+         now-this.lastMatchAt>2500)this.quarantine(now);
     }
-    if(m.type==='last_match'){this.lastId=Number(m.trade_id)||0;return;}
+    if(m.type==='last_match'){this.lastId=Number(m.trade_id)||0;this.lastMatchAt=now;return;}
     if(m.type==='match'){
       const id=Number(m.trade_id),at=Date.parse(m.time),price=Number(m.price),size=Number(m.size);
       if(!Number.isSafeInteger(id)||!Number.isFinite(at+price+size)||price<=0||size<=0||!['buy','sell'].includes(m.side)){this.broken=true;return;}
       if(id<=this.lastId)return;
-      if(this.lastId&&id!==this.lastId+1)this.broken=true;
-      this.lastId=id;
+      if(this.lastId&&id!==this.lastId+1)this.quarantine(now);
+      this.lastId=id;this.lastMatchAt=now;
       if(Math.abs(now-at)>5000){this.broken=true;return;}
       this.trades.push({id,at,price,size,buy:m.side==='sell'}); // feed side is maker
       this.trades=this.trades.filter(t=>now-t.at<=30000).slice(-20000);
@@ -50,7 +63,7 @@ export class OrderFlowRadar {
   }
   evaluate(now=Date.now()):RadarView{
     const rows=this.trades.filter(t=>now-t.at<=30000),last=rows.at(-1);
-    if(this.broken||!this.heartbeatAt||now-this.heartbeatAt>5000||!this.bookAt||now-this.bookAt>10000||!last||now-last.at>5000){
+    if(this.broken||now<this.quarantineUntil||!this.heartbeatAt||now-this.heartbeatAt>5000||!this.bookAt||now-this.bookAt>10000||!last||now-last.at>5000){
       this.candidate='WAIT';this.view={...this.view,phase:'OFFLINE',side:'WAIT',confirm:null,invalidate:null,since:now};return this.view;
     }
     if(now-this.snapshotAt<30000||rows.length<20){this.view={...this.view,phase:'WARMUP',side:'WAIT'};return this.view;}

@@ -37,20 +37,58 @@ export function closedM15Bars(raw:unknown,now:number,limit=1800):M15Bar[]{
  }
  return [...unique.values()].sort((a,b)=>a.time-b.time).slice(-limit);
 }
-export function sampledLiveM15(raw:readonly M15Bar[],now:number){
+/** Sampled intraperiod prices are not a complete exchange OHLC feed. */
+export type ObservedM15={
+ time:number;open:number;high:number;low:number;close:number;
+ lastAt:number;count:number;venue:string
+};
+const venue=(s:string)=>{
+ const v=String(s||'').toLowerCase();
+ return v.includes('coinbase')?'COINBASE':
+   v.includes('kraken')||v.includes('xbt/usd')?'KRAKEN':
+   v.includes('biquote')?'BIQUOTE':
+   v.includes('exness')?'EXNESS':'UNKNOWN';
+};
+export function observeM15Tick(prev:ObservedM15|null,input:{
+ now:number;at:number;price:number;source:string;historySource:string
+}):ObservedM15|null{
+ const {now,at,price,source,historySource}=input,feed=venue(source);
+ if(feed==='UNKNOWN'||feed!==venue(historySource)||
+   ![now,at,price].every(Number.isFinite)||price<=0||
+   at>now+1000||now-at>10000||at<=0)return null;
+ const time=Math.floor(at/900000)*900000;
+ if(time!==Math.floor(now/900000)*900000)return null;
+ if(!prev||prev.time!==time||prev.venue!==feed)
+   return {time,open:price,high:price,low:price,close:price,
+     lastAt:at,count:1,venue:feed};
+ if(at<=prev.lastAt)return prev;
+ return {...prev,high:Math.max(prev.high,price),low:Math.min(prev.low,price),
+   close:price,lastAt:at,count:prev.count+1};
+}
+export function sampledLiveM15(raw:readonly M15Bar[],now:number,
+ observed:ObservedM15|null=null,historySource=''){
  const start=Math.floor(now/900000)*900000;
  const minutes=raw.filter(b=>b.time>=start&&b.time<now&&
    b.time%60000===0&&b.time+60000<=now&&
    [b.open,b.high,b.low,b.close].every(Number.isFinite)&&
    b.low>0&&b.high>=Math.max(b.open,b.close)&&b.low<=Math.min(b.open,b.close))
   .sort((a,b)=>a.time-b.time);
- if(!minutes.length)return null;
+ const tick=observed&&observed.time===start&&
+   observed.venue!=='UNKNOWN'&&observed.venue===venue(historySource)&&
+   observed.lastAt<=now+1000&&now-observed.lastAt<=10000?observed:null;
+ if(!minutes.length)return tick?{
+   time:start,open:tick.open,close:tick.close,high:tick.high,low:tick.low,
+   minutes:0,sampledTicks:tick.count,partial:true as const
+ }:null;
  const first=minutes[0],last=minutes[minutes.length-1];
- // Do not join discontinuous provider minutes into a fabricated full candle.
+ // Never bridge a discontinuous M1 series using sampled quote data.
  if(minutes.some((b,i)=>i>0&&b.time-minutes[i-1].time!==60000))return null;
- return {time:start,open:first.open,close:last.close,
-   high:Math.max(...minutes.map(b=>b.high)),
-   low:Math.min(...minutes.map(b=>b.low)),minutes:minutes.length,
+ const lastClosedAt=last.time+60000;
+ return {time:start,open:first.open,
+   close:tick&&tick.lastAt>=lastClosedAt?tick.close:last.close,
+   high:Math.max(...minutes.map(b=>b.high),tick?.high??0),
+   low:Math.min(...minutes.map(b=>b.low),tick?.low??Infinity),
+   minutes:minutes.length,sampledTicks:tick?.count??0,
    partial:true as const};
 }
 export function buildM15Scenario(input:{

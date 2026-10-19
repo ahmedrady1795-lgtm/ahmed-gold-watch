@@ -4,7 +4,7 @@ const mod={exports:{}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/sniper-m15-scenario.ts','utf8'),{
  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
 }).outputText,{module:mod,exports:mod.exports});
-const {closedM15Bars,buildM15Scenario,sampledLiveM15}=mod.exports;
+const {closedM15Bars,buildM15Scenario,sampledLiveM15,observeM15Tick}=mod.exports;
 const last=Date.parse('2026-10-19T12:00:00Z')-900000;
 const start=last-209*900000;
 let p=4100;const raw=[];
@@ -54,6 +54,22 @@ assert.equal(liveSample.minutes,5);
 assert.equal(liveSample.open,4200);
 assert.equal(liveSample.partial,true);
 assert.equal(sampledLiveM15([],now),null);
+const candleStart=Math.floor(now/900000)*900000;
+const quotedAt=candleStart+5*60000+5100;
+const observed=observeM15Tick(null,{now:quotedAt+200,at:quotedAt,
+ price:4206,source:'Coinbase WebSocket',historySource:'Coinbase BTC-USD'});
+assert.equal(observed.count,1);
+const observed2=observeM15Tick(observed,{now:quotedAt+1100,at:quotedAt+1000,
+ price:4209,source:'Coinbase WebSocket',historySource:'Coinbase BTC-USD'});
+assert.equal(observed2.high,4209);
+const evolved=sampledLiveM15(localM1,quotedAt+1200,observed2,'Coinbase BTC-USD');
+assert.equal(evolved.close,4209,'sampled tick updates the M15 close before next M1');
+assert.equal(evolved.high,4209,'sampled tick extends the partial wick');
+assert.equal(evolved.sampledTicks,2);
+assert.equal(sampledLiveM15(localM1,quotedAt+1200,observed2,'Kraken XBT/USD').close,4204.5);
+assert.equal(observeM15Tick(observed2,{now:quotedAt+1200,at:quotedAt+1100,
+ price:4300,source:'Kraken XBT/USD',historySource:'Coinbase BTC-USD'}),null);
+assert.equal(sampledLiveM15([],quotedAt+30000,observed2,'Coinbase BTC-USD'),null);
 const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const wrapper=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 const css=fs.readFileSync('app/workspace.css','utf8');

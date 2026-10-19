@@ -8,7 +8,8 @@ import {assessRadarNextCandle} from '../lib/sniper-radar-next-candle';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {assessChartObservation} from '../lib/chart-observation-radar';
 import {buildDistantMovementOutlook} from '../lib/sniper-movement-outlook';
-import {buildM15Scenario,closedM15Bars,sampledLiveM15} from '../lib/sniper-m15-scenario';
+import {buildM15Scenario,closedM15Bars,sampledLiveM15,observeM15Tick} from '../lib/sniper-m15-scenario';
+import type {ObservedM15} from '../lib/sniper-m15-scenario';
 import type {M15Scenario,M15Side} from '../lib/sniper-m15-scenario';
 import {frozenM15Decision} from '../lib/sniper-m15-freeze';
 import {sniperPhaseBadge} from '../lib/sniper-market-phase';
@@ -62,6 +63,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  },[asset,Math.floor(now/900000)]);
  const x=asset==='GOLD'?data?.gold:data?.bitcoin;
  const liveQuote=asset==='GOLD'?goldLive:btcLive;
+ const [observedM15,setObservedM15]=useState<ObservedM15|null>(null);
+ // Use same-venue observed ticks to update the live M15 OHLC between M1 closes.
+ useEffect(()=>{
+   setObservedM15(prev=>observeM15Tick(prev,{
+     now,at:Number(liveQuote?.sourceTime),price:Number(liveQuote?.price),
+     source:String(liveQuote?.source||''),
+     historySource:String(x?.candleSource||'')
+   }));
+ },[asset,now,liveQuote?.sourceTime,liveQuote?.price,liveQuote?.source,x?.candleSource]);
  const marketOpen=asset==='BTC'||goldMarketSession(now).open;
  const providerTransition=asset==='BTC'&&Boolean(x?.providerTransition);
  // The independent closed M1 chart continues to certify source/time and
@@ -109,8 +119,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    outlook.invalidation??(m.watchReady?m.displayStop:null);
  const anchor=actual.at(-1)?.close??null;
  const proposedGoals=targets.slice(0,3).map(t=>({stage:t.stage,price:t.price}));
- const forming=sampledLiveM15(m.candles,now);
- // A live partial candle is sourced only from true closed M1 bars.
+ const forming=sampledLiveM15(m.candles,now,observedM15,String(x?.candleSource||''));
+ // Live M15 combines closed M1 OHLC with actual same-venue sampled ticks.
  const validLive=forming!=null&&historyFresh&&m.historyFresh&&
    !providerTransition&&marketOpen&&m.sniper.view.priceFresh;
  const trueHistory=recent;

@@ -76,5 +76,6 @@ jobs:
       - run: python3 -m compileall -q ml-service neural-service
       - run: node tests/order-flow-radar.mjs
       - run: node tests/sniper-radar-next-candle.cjs
+      - run: node tests/sniper-m15-scenario.cjs
       - run: node tests/sniper-m15-stability.cjs
       - run: npm run build

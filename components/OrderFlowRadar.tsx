@@ -26,7 +26,7 @@ export default function OrderFlowRadar({asset,onView}:{asset:'GOLD'|'BTC';onView
       ws.onclose=()=>{engine.broken=true;const offline=engine.evaluate();setView({...offline});publish(offline);if(!stopped)retry=setTimeout(connect,5000);};
     }
     connect();
-    const timer=setInterval(()=>{const next=engine.evaluate();setView({...next});publish(next);if(engine.broken||(next.phase==='OFFLINE'&&Date.now()-connectedAt>10000))ws?.close();},1000);
+    const timer=setInterval(()=>{const next=engine.evaluate();setView({...next});publish(next);if(engine.broken||(next.phase==='OFFLINE'&&Date.now()-connectedAt>10000&&Date.now()>=engine.quarantineUntil))ws?.close();},1000);
     return()=>{stopped=true;clearInterval(timer);clearTimeout(retry);if(ws){ws.onclose=null;ws.close();}};
   },[asset,onView]);
   const fmt=(n:number|null)=>n==null?'—':n.toLocaleString('en-US',{maximumFractionDigits:2});
