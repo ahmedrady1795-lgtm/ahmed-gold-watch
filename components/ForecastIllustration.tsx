@@ -23,6 +23,7 @@ import {buildSniperChartPlaybook} from '../lib/sniper-chart-playbook';
 import {assessBtcForwardObservation} from '../lib/btc-forward-observation';
 import {assessBtcStructuralScenario} from '../lib/btc-structural-scenario';
 import {auditConditionalRoute,buildConditionalTargetCandles} from '../lib/conditional-target-candles';
+import {assessSniperEntryCandle} from '../lib/sniper-entry-candle';
 import {chartPriceViewport} from '../lib/chart-price-viewport';
 import BtcOrderflowPanel from './BtcOrderflowPanel';
 import type {BtcOrderflow} from '../lib/btc-orderflow';
@@ -319,6 +320,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [asset,candleRevision,x?.candleSource,providerTransition,goldClosed,ghost.mode,m.historyFresh]);
   const firstCandle=visualCandles[0];
+  const closedM1Gate=assessSniperEntryCandle({history:m.candles,now,
+    side:conditionalRouteSide,price:m.price,
+    sourceReady:!goldClosed&&!providerTransition&&m.historyFresh&&m.observationFresh&&sn.view.priceFresh});
+  const firstGoalDistance=conditionalRouteGoals[0]&&m.price!=null&&sn.longRange.atr15!=null&&
+    Number(sn.longRange.atr15)>0?
+    Number((Math.abs(conditionalRouteGoals[0].price-m.price)/Number(sn.longRange.atr15)).toFixed(2)):null;
   const firstDirection=firstCandle?
     firstCandle.close>firstCandle.open?'صعود':
     firstCandle.close<firstCandle.open?'هبوط':'تعادل':'غير متاح';
@@ -603,6 +610,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             </span>}
             <strong>{routeVisible||closedPreview?'الدقة الزمنية غير قابلة للقياس لهذا المسار':
               firstAuditLabel}</strong>
+            {!closedPreview&&<span title={closedM1Gate.reason}>
+              {'آخر M1 مغلقة: '+(closedM1Gate.qualified?'تأكيد مع الاتجاه':
+                closedM1Gate.status==='UNAVAILABLE'?'بيانات غير مكتملة':'انتظار تأكيد')}
+            </span>}
+            {!closedPreview&&firstGoalDistance!=null&&<span>
+              {'مسافة TP1: '+firstGoalDistance+' ATR15 · هدف هيكلي مشروط'}
+            </span>}
+            <small>الشمعة الأولى المرسومة ليست إغلاقًا مستقبليًا مضمونًا؛ القرار يعتمد على الإغلاق الفعلي</small>
             {firstAuditEligible&&<small>{'مرجع استمرار آخر شمعة '+firstCandleStudy!.baselinePct+
               '٪ · خطأ إغلاق '+firstCandleStudy!.maeAtr+' ATR مقابل '+firstCandleStudy!.baselineMaeAtr+
               ' ATR للمرجع · ليس احتمال ربح أو ضمانًا'}</small>}
