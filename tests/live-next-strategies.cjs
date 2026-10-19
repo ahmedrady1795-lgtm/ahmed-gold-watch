@@ -75,4 +75,11 @@ assert.match(ui,/nextCandle=illustrativeNextCandle/);
 const page=fs.readFileSync('app/page.tsx','utf8');
 assert.match(page,/source:btcDirectFresh\?btcSource:/,
  'pass quote venue to prevent cross-exchange live OHLC mixing');
+const btcRoute=fs.readFileSync('app/api/btc/route.ts','utf8');
+assert.match(btcRoute,/if\(requested==='kraken'\)/,'Kraken chart must request timestamped Kraken trades');
+assert.match(btcRoute,/return ok\(await krakenTrades\(now\),now\)/,
+ 'Kraken quote must be an actual timed trade, not an invented ticker timestamp');
+assert.match(page,/\/api\/btc\?source='\+wanted/,'BTC REST quote venue follows the M1 candle provider');
+assert.match(page,/if\(\/kraken\/i\.test\(String\(chartDataRef\.current\?\.bitcoin\?\.candleSource/,
+ 'Coinbase WS is not allowed to overwrite the live Kraken chart lane');
 console.log('PASS: causally sampled LIVE M1, vendor separation, first next candle, six train/holdout strategies, no imaginary edge');
