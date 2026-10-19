@@ -50,6 +50,10 @@ export function buildLongRangeTargets(input:{
   const scale=Math.max(a15*1.05,a5*1.35,price*(input.asset==='GOLD'?.0005:.0009));
   const minDistance=Math.max(scale,price*(input.asset==='GOLD'?.00045:.0008));
   const maxDistance=Math.max(a15*12,scale*10);
+  // The paper sniper follows a 75-minute evaluation horizon. A high-quality
+  // H1/H4 level 10+ M15 ATR away is still a REAL level, but not a credible
+  // first take-profit for this horizon. Do not move or fabricate it closer.
+  const maxT1Distance=Math.max(a15*4.2,scale*2.8);
   const candidates:Candidate[]=[];
   const add=(p:any,source:string,quality:number,frame:string)=>{
     const v=num(p);
@@ -125,6 +129,9 @@ export function buildLongRangeTargets(input:{
   const targets:LongTarget[]=[];
   for(const c of usable){
     if(targets.length>=3)break;
+    // Preserve remote levels for higher-stage monitoring only after a
+    // reachable structural T1 exists. Never relabel a far level as T1.
+    if(targets.length===0&&c.distance>maxT1Distance)continue;
     const last=targets.at(-1);
     if(last&&Math.abs(c.price-last.price)<Math.max(scale*.55,tolerance*1.4))continue;
     const step=(targets.length+1) as 1|2|3;
@@ -140,7 +147,7 @@ export function buildLongRangeTargets(input:{
       distanceAtr:Number((c.distance/a15).toFixed(2))});
   }
   return {targets,atr15:a15,basis:'M15/H1 تاريخي مؤكد؛ M5 والسيولة للتأييد فقط',
-    reason:targets.length?'أهداف أبعد من التقلبات الصغيرة، مأخوذة من مستويات سعرية مرصودة':
-      'لم تظهر سيولة أو قمم/قيعان هيكلية بعيدة وصالحة؛ لا نختلق مستويات مستقبلية',
+    reason:targets.length?'أهداف M15/H1 مرصودة؛ TP1 داخل نطاق حركة متناسب مع 75 دقيقة (دون ضمان وصول)':
+      'لا يوجد هدف هيكلي أول داخل نطاق حركة 75 دقيقة؛ تبقى المستويات البعيدة للمراقبة ولا نختلق TP1',
     minDistance};
 }
