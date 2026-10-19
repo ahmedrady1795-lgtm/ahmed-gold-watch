@@ -1963,3 +1963,28 @@ body:has(.modern-workspace.compact-sniper){
  .sniper-m15-bias{font-size:9px}
  .sniper-m15-chart-box{height:clamp(505px,calc(100dvh - 180px),820px)!important}
 }
+
+/* Sniper v4: confirmed market-phase always visible beside liquidity.
+   The forecast plot has exactly the same black theme as history. */
+.sniper-m15-phase{display:inline-flex;align-items:center;justify-content:center;
+  min-width:0;white-space:nowrap;border-radius:5px;border:1px solid #3a4852;
+  padding:5px 7px;color:#bdcdd4;background:#0a1117;font-size:10px;
+  line-height:1.4;font-weight:700;flex:0 1 auto}
+.sniper-m15-phase.confirmed{border-color:#b5964a;color:#f0d394;background:#19170e}
+.sniper-m15-phase.neutral{border-color:#344b51;color:#b5cbce}
+@media(max-width:600px){
+ .sniper-m15-head{justify-content:space-between!important;gap:3px!important}
+ .sniper-m15-phase{font-size:9px;padding:5px 4px;letter-spacing:-.1px}
+ .sniper-m15-assets{flex:0 1 auto!important}
+ .sniper-m15-assets button{font-size:9px;min-height:27px;padding:3px 4px}
+ .sniper-m15-frame{font-size:11px}
+ .sniper-m15-liquidity-toggle{font-size:9px;min-height:27px;padding:3px 4px}
+ .sniper-m15-bias{font-size:9px}
+}
+@media(max-width:380px){
+ .sniper-m15-head{padding:4px 3px!important;gap:2px!important}
+ .sniper-m15-phase{font-size:8px;padding:4px 2px}
+ .sniper-m15-assets button{font-size:8px;padding:3px}
+ .sniper-m15-liquidity-toggle{font-size:8px;padding:3px}
+ .sniper-m15-bias{font-size:8px}
+}
