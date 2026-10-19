@@ -1882,3 +1882,18 @@ body:has(.modern-workspace.compact-sniper){
   .sniper-m15-caption{font-size:9px;gap:6px}
   .sniper-m15-status{font-size:10px}
 }
+
+/* Uncluttered, user-controlled supply/demand and accumulation overlay. */
+.sniper-m15-liquidity-toggle{border:1px solid #3d655f;background:#102723;color:#97ecd3;
+ border-radius:5px;font:inherit;font-size:10px;font-weight:700;min-height:30px;
+ padding:3px 7px;white-space:nowrap;cursor:pointer;flex-shrink:0}
+.sniper-m15-liquidity-toggle[aria-pressed=false]{color:#8ca1ae;
+ border-color:#344653;background:#10171f}
+.sniper-m15-liquidity-toggle:focus-visible{outline:2px solid #75eccb;outline-offset:2px}
+.sniper-m15-layer-state{color:#93dcc5}.sniper-m15-phase-state{color:#eccd8f}
+.sniper-m15-zone,.sniper-m15-context{pointer-events:none}
+@media(max-width:600px){
+ .sniper-m15-liquidity-toggle{font-size:9px;min-height:28px;padding:2px 5px}
+ .sniper-m15-layer-state{white-space:normal;flex-basis:auto}
+ .sniper-m15-caption .sniper-m15-phase-state{font-size:9px}
+}
