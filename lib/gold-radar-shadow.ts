@@ -1,5 +1,5 @@
-import type {GoldSide} from './gold-liquidity-radar';
-import {trustedSpotGoldSource} from './gold-liquidity-radar';
+import type {GoldSide} from './gold-liquidity-radar.ts';
+import {trustedSpotGoldSource} from './gold-liquidity-radar.ts';
 export type GoldOutcome={status:'PENDING'|'SCORED'|'NO_DATA';barAt:number;
  direction:GoldSide|'FLAT'|null;correct:boolean|null;moveBps:number|null};
 export type GoldRadarEvent={id:string;at:number;source:string;side:'BUY'|'SELL';
