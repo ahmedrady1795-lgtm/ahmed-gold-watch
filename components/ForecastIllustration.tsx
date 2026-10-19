@@ -140,8 +140,14 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     xr=W-(scenarioDetail?144:mobile?126:144),yt=40,yb=H-102,volumeEnd=H-49;
   useEffect(()=>{
     const el=chartScrollRef.current;
-    if(el)el.scrollLeft=Math.max(0,x1-el.clientWidth*.43);
-  },[asset,chartWindow,focusCandles,mobile,x1]);
+    if(!el)return;
+    // viewBox coordinates differ from CSS pixels in mobile horizontal scroll.
+    // Focus the last REAL candle together with LIVE and AI NEXT, not the
+    // empty left half of a wide chart.
+    const svg=el.querySelector('svg');
+    const pixelsPerViewBoxUnit=svg?svg.getBoundingClientRect().width/W:1;
+    el.scrollLeft=Math.max(0,(x1+18)*pixelsPerViewBoxUnit-el.clientWidth*.52);
+  },[asset,chartWindow,focusCandles,mobile,x1,W]);
   // Chart structure comes from CLOSED M5, independently of AI snapshot age.
   const breakout=buildBreakoutGuide({frames:x?.chartHigherFrames,now,side:dir,
     price:m.price,sourceReady:sn.view.priceFresh,
@@ -388,7 +394,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   // MT5 / TradingView compact bodies; identical widths for LIVE, NEXT and
   // price-space target stages on the very same true linear Y scale.
   const candleWidth=clamp(stride*.46,3,9);
-  const futureStride=scenarioDetail?stride:(xr-xf-18)/Math.max(1,visualCandles.length);
+  // Reserve one column for AI NEXT. The old /N calculation placed the last
+  // projected bar past xr and silently clipped its wick/TP touch marker.
+  // Use a stable 19-slot width for ordinary view even when no stages exist.
+  const futureStride=(xr-xf-18)/Math.max(19,visualCandles.length+1);
   // The scenario can be narrower, NEVER wider than an actual chart candle.
   const futureWidth=candleWidth;
   // The first horizontal slot is reserved for NEXT M1 immediately after
@@ -409,11 +418,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     // The visible M1 region follows actual traded OHLC and the nearby first
     // stages only. Distant 96-stage patterns never flatten the real candles.
     // Remote TP remain offscreen with exact directional price labels.
-    real:candles,
+    real:[...candles,...(liveVerified&&liveM1?[liveM1]:[])],
     illustrative:[...visualCandles.slice(0,18),
-      ...(liveM1?[liveM1]:[]),...(nextCandle?[nextCandle]:[])],
+      ...(nextCandle?[nextCandle]:[])],
     focus:focusCandles,reference:m.candles.at(-1)?.close??null,
-    atr:targetRoute?.atr??ghost.atr??null
+    atr:targetRoute?.atr??ghost.atr??null,protectRealRange:true
   });
   const scaleLow=candleViewport.low;
   const scaleHigh=candleViewport.high;
@@ -458,6 +467,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   ]:[];
   const chartLanes=layoutPriceLanes([
     ...chartBands.filter(z=>px(z.price)>=yt+8&&px(z.price)<=yb-8)
+      .filter(z=>z.kind==='TARGET'||z.kind==='STOP'||z.key===primaryZone?.key)
       .map(z=>({key:z.key,y:px(z.price),price:z.price,
       label:z.key.startsWith('WATCH_TP')?'رصد TP'+z.key.replace('WATCH_TP',''):
         z.kind==='TARGET'?'TP'+z.key.replace('TP',''):z.kind==='STOP'?'إبطال':
@@ -719,7 +729,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <rect x={xf} y="16" width={xr-xf} height={volumeEnd-15}
                  fill="#153955" opacity={ghostActive?".28":".10"}/>
               {ghostActive&&<rect x={xf} y={yt} width={xr-xf} height={yb-yt}
-                fill="url(#forecast-ghost-surface)" opacity=".32"/>}
+                fill="url(#forecast-ghost-surface)" opacity=".18"/>}
                {ghostActive&&<rect x={xf+2} y={yt+2} width={xr-xf-4} height={yb-yt-4}
                  fill="none" stroke="#5e9aba" strokeOpacity=".26" strokeDasharray="6 8" rx="4"/>}
               {grid.map((g,i)=><g key={'grid'+i}>
@@ -953,7 +963,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   width={candleWidth} height={Math.max(3,Math.abs(px(liveM1.open)-px(liveM1.close)))}
                   fill={liveM1.close>=liveM1.open?'#56e2c7':'#ff91a6'} stroke="#e6faff"
                   strokeWidth="1.8" rx="1.3"/>
-                <text x={liveX} y={yt+64} textAnchor="middle" fontSize="10" fontWeight="800" fill="#a5f3ff">LIVE</text>
+                <text x={liveX} y={yt+27} textAnchor="middle" fontSize="10" fontWeight="800" fill="#a5f3ff">LIVE</text>
                 <title>{'LIVE M1 · '+clock(liveM1.time)+' · O '+fmt(liveM1.open)+
                   ' H '+fmt(liveM1.high)+' L '+fmt(liveM1.low)+' C '+fmt(liveM1.close)+
                   ' · '+liveM1.count+' عينات سعرية فقط، ليست OHLC كاملة من البورصة'+
@@ -971,7 +981,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   fill={nextCandle.side==='BUY'?'#61eac9':'#ff8fa4'} fillOpacity=".32"
                   stroke={nextCandle.side==='BUY'?'#a2ffe9':'#ffc0cb'}
                   strokeWidth="2" strokeDasharray="3 3" rx="1.3"/>
-                <text x={nextX} y={yt+64} textAnchor="middle" fontSize="10" fontWeight="800" fill="#ffe6b3">AI</text>
+                <text x={nextX} y={yt+27} textAnchor="middle" fontSize="10" fontWeight="800" fill="#ffe6b3">AI</text>
                 <title>{'NEXT M1 · '+(nextCandle.side==='BUY'?'صعود':'هبوط')+
                   ' · إغلاق توضيحي '+fmt(nextCandle.close)+
                   ' · '+nextStudy.reason+' · ليست شمعة حقيقية ولا أمر دخول'}</title>
@@ -1085,20 +1095,18 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 <title>هدف مراقبة بالسعر الحقيقي خارج نطاق التكبير، وليس إعادة رسمه عند سعر افتراضي</title>
               </g>}
               <g className="sniper-breakout-explainer" aria-label="مستويات الكسر وشروط تأكيدها">
-                <rect x={xf+7} y={yt+40} width={xr-xf-14} height="62" rx="9"
-                  fill="#071b2a" fillOpacity=".87"
-                  stroke={breakoutWatch.closes===2?'#60e2b1':'#55768f'} strokeOpacity=".83"/>
-                <text x={xf+15} y={yt+61} fontSize={mobile?12:12}
+                <rect x={xf+7} y={yt+42} width={Math.min(207,xr-xf-14)}
+                  height="27" rx="5" fill="#071b2a" fillOpacity=".87"
+                  stroke={breakoutWatch.closes===2?'#60e2b1':'#55768f'}
+                  strokeOpacity=".67"/>
+                <text x={xf+15} y={yt+59} fontSize="10"
                   fontWeight="700" fill={breakoutWatch.closes===2?'#75efbd':'#d6edf9'}>
-                  {'◇ '+breakoutWatch.headline+' · '+breakoutWatch.closes+'/2 M5'}
+                  {'M5 '+breakoutWatch.closes+'/2 · '+(breakoutWatch.closes===2?'كسر مؤكد':'كسر تحت المراقبة')}
                 </text>
-                <text x={xf+15} y={yt+84} fontSize={mobile?11:11} fill="#b7d5e7">
-                  {breakoutEvidence.ready?
-                    '↑ '+fmt(breakoutUp)+'   ↓ '+fmt(breakoutDown)+'  · رصد فقط':
-                    'المستويات تنتظر إغلاقات M5 صالحة'}
-                </text>
-                <title>{breakoutWatch.detail+
-                  ' · M5 مغلقة · لا دخول قبل تحقق السيولة والتكلفة ووقف الإبطال'}</title>
+                <title>{breakoutWatch.headline+' · '+breakoutWatch.detail+
+                  ' · '+breakoutWatch.closes+'/2 إغلاق M5 · '+ 
+                  (breakoutEvidence.ready?'↑ '+fmt(breakoutUp)+' ↓ '+fmt(breakoutDown):'مستويات غير جاهزة')+
+                  ' · لا دخول قبل شروط السيولة والتكلفة والإبطال'}</title>
               </g>
               {flowLevels.filter(z=>px(z.price)>=yt+18&&px(z.price)<=yb-18).map(z=><g
                 key={'flow-level-'+z.key} className="btc-executed-profile-level">
