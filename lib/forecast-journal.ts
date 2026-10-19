@@ -51,8 +51,10 @@ export function updateForecastJournal(
     return usable&&freshModel?start(s,now,modelAt):null;
   }
   const stopHit=live&&!beforeStop(previous.side,quote!,previous.invalidation);
+  // A single sampled quote cannot prove which level was touched first inside a candle.
+  // When a stop is observed, do not credit fresh TP hits on the same update.
   // Expired or invalidated scenarios must not collect fresh target hits.
-  const canMark=live&&previous.state!=='INVALIDATED'&&previous.state!=='EXPIRED'&&now<previous.expiresAt;
+  const canMark=live&&!stopHit&&previous.state!=='INVALIDATED'&&previous.state!=='EXPIRED'&&now<previous.expiresAt;
   const nextTargets=previous.targets.map(t=>({...t,
     reached:t.reached||(canMark&&reached(previous.side,quote!,t.price))}));
   const hitCount=nextTargets.filter(t=>t.reached).length;
