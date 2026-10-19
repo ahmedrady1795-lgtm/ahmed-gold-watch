@@ -65,6 +65,24 @@ assert.equal(missing.ledger.events[0].m15.status,'NO_DATA');
 const filtered=x.validShadowBars([bar(e.m1.barAt,110,105),
  bar(e.m1.barAt+60000,115,105)],e.m1.barAt===0?0:60000,e.m1.barAt+64000);
 assert.equal(filtered.length,1,'future/in-progress bar excluded');
+// Immutable archival merge: do not double count and never overwrite an
+// independently witnessed score with an unobserved or pending later copy.
+const mergedFirst=x.mergeRadarShadowArchives(scored2.ledger,a.ledger,t+86400000);
+assert.equal(mergedFirst.events.length,1,'same radar ID must never inflate sample count');
+assert.equal(mergedFirst.events[0].m1.status,'SCORED');
+assert.equal(mergedFirst.events[0].m15.status,'SCORED');
+const mergedSecond=x.mergeRadarShadowArchives(a.ledger,scored2.ledger,t+86400000);
+assert.equal(mergedSecond.events[0].m1.status,'SCORED','late result fills pending');
+const noData=x.mergeRadarShadowArchives(missing.ledger,scored2.ledger,t+86400000);
+assert.equal(noData.events[0].m15.status,'SCORED','real bar outcome outranks missing data');
+assert.equal(noData.events[0].price,e.price,'frozen signal issue price does not repaint');
+const display=fs.readFileSync('components/OrderFlowRadar.tsx','utf8');
+const backup=fs.readFileSync('scripts/checkpoint-radar-shadow.mjs','utf8');
+assert.match(display,/\/api\/radar-shadow-score/,'badge reads server-only outcomes');
+assert.match(display,/shadow\.m1\.pairedN>=40/,'low sample rates are never displayed as success');
+assert.match(backup,/mergeRadarShadowArchives/,'checkpoint shares immutable merge semantics');
+assert.match(backup,/if\(!remote\.events\.length\)/,
+ 'empty Render worker cannot overwrite a durable archive');
 const restored=x.sanitizeShadowLedger(scored2.ledger,t+86400000);
 assert.equal(restored.events.length,1);
 assert.equal(x.sanitizeShadowLedger({schema:'BAD',events:[e]},t).events.length,0);
