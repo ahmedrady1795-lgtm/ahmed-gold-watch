@@ -1841,3 +1841,44 @@ body:has(.modern-workspace.compact-sniper){
 .sniper-movement-meta b{color:#e1ebf2;font-size:12px}
 .sniper-movement-meta small{flex-basis:100%;font-size:10px;line-height:1.5;color:#8daabd}
 @media(max-width:600px){.sniper-movement-outlook{padding:10px 11px}.sniper-movement-heading strong{font-size:14px}.sniper-movement-heading>span{font-size:10px}.sniper-movement-goals{gap:5px}.sniper-movement-goal{padding:7px 5px}.sniper-movement-goal>strong{font-size:15px}.sniper-movement-goal>small{font-size:9px}}
+
+/* Active chart-first sniper: native quarter-hour candles, black MT5-style plot. */
+.sniper-m15-panel{width:100%;min-width:0;max-width:100%;overflow:hidden;background:#030609;
+  border:1px solid #26394b;border-radius:12px;color:#e8f0f5;direction:rtl;margin:0 0 14px;
+  font-variant-numeric:tabular-nums}
+.sniper-m15-head{display:flex;align-items:center;gap:9px;min-height:52px;
+  padding:7px 10px;border-bottom:1px solid #263743;background:#080d12;
+  font-family:system-ui,sans-serif;overflow:hidden}
+.sniper-m15-assets{display:flex;gap:3px;flex-shrink:0}
+.sniper-m15-assets button{padding:6px 7px;border:1px solid #304353;border-radius:5px;
+  background:#0b1319;color:#849ba9;font-size:11px;font-weight:700;min-height:33px}
+.sniper-m15-assets button[aria-pressed=true]{border-color:#50cab9;color:#d9fff6;background:#11302f}
+.sniper-m15-frame{font-size:13px;color:#c7d6e0;flex-shrink:0}
+.sniper-m15-price{font-family:ui-monospace,Menlo,monospace;font-size:18px;
+  letter-spacing:-.6px;font-weight:800;white-space:nowrap}
+.sniper-m15-bias{margin-inline-start:auto;font-size:12px;white-space:nowrap;
+  font-weight:700}
+.sniper-m15-bias.rise{color:#54e9c4}.sniper-m15-bias.fall{color:#ff657e}
+.sniper-m15-bias.hold{color:#efc981}
+.sniper-m15-chart-box{width:100%;height:clamp(500px,75dvh,870px);background:#000;overflow:hidden}
+.sniper-m15-chart-box svg{display:block;width:100%;height:100%;background:#000;touch-action:pan-y}
+.sniper-m15-caption{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  padding:5px 10px;background:#080e14;color:#92a6b3;font-size:10px;border-top:1px solid #1d303d}
+.sniper-m15-caption span:last-child{margin-inline-start:auto}
+.sniper-m15-real-dot,.sniper-m15-future-dot{display:inline-block;width:7px;height:7px;
+  border:1px solid #36d7c7;background:#36d7c7;margin-inline-end:3px}
+.sniper-m15-future-dot{border:1px dashed #e7bc79;background:transparent}
+.sniper-m15-status{padding:7px 10px;font-size:11px;line-height:1.65;
+  color:#d1dce5;background:#09121a;display:flex;gap:3px 12px;flex-wrap:wrap}
+.sniper-m15-status>small{flex-basis:100%;color:#93b5c3;font-size:10px}
+@media(max-width:600px){
+  .sniper-m15-panel{border-radius:0;border-inline:0;margin:0 -10px;width:calc(100% + 20px);max-width:none}
+  .sniper-m15-head{gap:7px;min-height:46px;padding:5px 7px}
+  .sniper-m15-assets button{font-size:10px;padding:5px 6px}
+  .sniper-m15-frame{font-size:12px}
+  .sniper-m15-price{font-size:16px}
+  .sniper-m15-bias{font-size:11px}
+  .sniper-m15-chart-box{height:clamp(520px,77dvh,860px)}
+  .sniper-m15-caption{font-size:9px;gap:6px}
+  .sniper-m15-status{font-size:10px}
+}
