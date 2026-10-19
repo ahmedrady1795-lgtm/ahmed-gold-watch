@@ -50,5 +50,6 @@ assert.match(chart,/watchTargets\.map\(t=>/,'conditional TP chips remain visible
 assert.match(chart,/assessBreakoutWatch/,'breakout progression remains');
 assert.match(chart,/primaryLiquidityZone/,'liquidity map remains');
 assert.match(chart,/assessChartObservation/,'read-only technical observations remain');
-assert.match(chart,/!planVisible&&watchTargets/,'unqualified watch TP never masquerades as approved entry');
+assert.match(chart,/const watchTargets=!planVisible\?observedStructuralTargets\(/,
+ 'structural watch TP must only be derived outside a qualified trade plan');
 console.log('PASS: M1/M5 observation, no stale entries, historic TP levels, breakout, liquidity and removed PNG control');
