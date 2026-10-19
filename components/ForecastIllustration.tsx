@@ -750,6 +750,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <title>{clock(c.time)+' · O '+fmt(c.open)+' H '+fmt(c.high)+' L '+fmt(c.low)+' C '+fmt(c.close)}</title>
                 </g>;
               })}
+              {priceFresh&&m.price!=null&&candles.length>0&&<g className="sniper-live-price-marker">
+                <circle cx={xf-8} cy={px(m.price)} r="6" fill="#f5d36d" stroke="#ffffff" strokeWidth="2"/>
+                <text x={xf-16} y={Math.max(yt+15,px(m.price)-13)} textAnchor="end"
+                  fontSize="12" fontWeight="800" fill="#ffe59a">السعر الحي · {fmt(m.price)}</text>
+                <title>السعر الحالي لحظي، وليس شمعة OHLC مكتملة. آخر شمعة تاريخية مغلقة على يسار الخط.</title>
+              </g>}
               {priceFresh&&candles.length>0&&<g className="sniper-actual-to-quote">
                 <path d={'M '+(x0+(candles.length-.5)*stride)+' '+px(candles[candles.length-1].close)+
                   ' L '+xf+' '+px(m.price!)}
@@ -859,6 +865,16 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   const color=up?'#4ad9c6':'#f0758a',top=Math.min(px(c.open),px(c.close)),
                     bottom=Math.max(px(c.open),px(c.close));
                   return <g key={c.time}>
+                    {i===0&&<g>
+                      <rect x={gx-futureWidth/2-5} y={yt+3} width={futureWidth+10}
+                        height={yb-yt-6} fill="#f5d36d" fillOpacity=".06"
+                        stroke="#f5d36d" strokeWidth="2" strokeDasharray="5 4" rx="4"/>
+                      <text x={gx+futureWidth/2+9} y={yt+24} fill="#ffe59a"
+                        fontSize="13" fontWeight="800">الشمعة القادمة · سيناريو</text>
+                      <text x={gx+futureWidth/2+9} y={yt+42} fill="#ffe59a"
+                        fontSize="12" fontWeight="700">{sn.view.confidence>0?'ثقة فنية '+Math.round(sn.view.confidence)+'٪ · غير معايرة':'نسبة النجاح غير مثبتة'}</text>
+                      <title>الثقة الفنية ليست احتمال نجاح مثبتًا. الشمعة القادمة توضيحية وليست سعرًا أو توقيتًا متوقعًا مضمونًا.</title>
+                    </g>}
                     <line x1={gx} x2={gx} y1={px(c.high)} y2={px(c.low)}
                       stroke={color} strokeWidth="1.5"/>
                     <rect x={gx-futureWidth/2} y={top} width={futureWidth}
