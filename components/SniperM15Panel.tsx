@@ -7,7 +7,7 @@ import {buildDistantMovementOutlook} from '../lib/sniper-movement-outlook';
 import {buildM15Scenario,closedM15Bars,sampledLiveM15} from '../lib/sniper-m15-scenario';
 import {goldMarketSession} from '../lib/gold-market-session';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
-import {buildSniperM15Liquidity} from '../lib/sniper-m15-liquidity';
+import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
 
 const n=(x:number|null|undefined)=>x!=null&&Number.isFinite(x)?
  x.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
@@ -34,7 +34,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    [asset,x,liveQuote,now,snapshotAt,observationAt]);
  const actual=useMemo(()=>closedM15Bars(x?.chartHigherFrames?.m15,now,320),
    [x?.chartHigherFrames?.m15,now]);
- const recent=actual.slice(-46);
+ const recent=actual.slice(-42);
  const historyFresh=actual.length>=24&&
    actual.slice(-24).every((b,i,a)=>i===0||b.time-a[i-1].time===900000)&&
    now-(actual.at(-1)!.time+900000)<=36*60000;
@@ -64,7 +64,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const goals=targets.slice(0,3).map(t=>({stage:t.stage,price:t.price}));
  const projected=useMemo(()=>buildM15Scenario({
    history:actual,now,anchor,side:safeSide,targets:goals,
-   stop,steps:36
+   stop,steps:48
  }),[actual,now,anchor,safeSide,
    goals.map(g=>g.price).join('|'),stop]);
  const forming=sampledLiveM15(m.candles,now);
@@ -87,7 +87,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    fourHour:m.fourHour,pools
  }),[now,price,actual,historyFresh,m.historyFresh,m.sniper.view.priceFresh,
     m.observationFresh,providerTransition,marketOpen,m.fourHour,pools]);
- const W=430,H=704,left=12,split=210,end=322,axis=324,
+ const W=430,H=704,left=12,split=188,end=322,axis=324,
    plotTop=28,plotBottom=H-47;
  // A single absolute price axis contains EVERY currently valid target and
  // stop. No fake vertical positioning of offscreen targets.
@@ -123,26 +123,26 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    clamp((time-(trueHistory[0]?.time??time))/900000,0,trueHistory.length)*actualStride;
  const liquidityColor=(kind:string)=>kind==='DEMAND'||kind==='LOW_POOL'?
    '#41cfab':'#ff7b90';
- const projectedStride=(end-split-8)/Math.max(projected.bars.length,36);
- // Price boxes and zone badges must not cover each other or leave the plot.
- const zoneLabelPoints=liquidity.zones.map((z,i)=>({i,y:py((z.low+z.high)/2)}))
-   .sort((a,b)=>a.y-b.y);
+ const projectedStride=(end-split-8)/Math.max(projected.bars.length,48);
+ // Price zones keep their true coordinates; only nearby labels merge.
+ const compactZones=compactM15ZoneAnnotations(liquidity.zones,price??0,py,3,34);
+ const zoneLabelPoints=compactZones.map((z,i)=>({i,y:py(z.price)}));
  for(let i=0;i<zoneLabelPoints.length;i++)
-   zoneLabelPoints[i].y=Math.max(clamp(zoneLabelPoints[i].y,plotTop+16,plotBottom-13),
-     i?zoneLabelPoints[i-1].y+22:plotTop+16);
+   zoneLabelPoints[i].y=Math.max(clamp(zoneLabelPoints[i].y,plotTop+17,plotBottom-15),
+     i?zoneLabelPoints[i-1].y+25:plotTop+17);
  const zoneOverhang=zoneLabelPoints.length?
-   Math.max(0,zoneLabelPoints[zoneLabelPoints.length-1].y-(plotBottom-13)):0;
+   Math.max(0,zoneLabelPoints[zoneLabelPoints.length-1].y-(plotBottom-15)):0;
  if(zoneOverhang)for(const z of zoneLabelPoints)z.y-=zoneOverhang;
  const candle=(open:number,high:number,low:number,close:number,xpos:number,width:number,
    future:boolean,key:string)=> {
    const up=close>=open,color=up?'#39d6cc':'#fa5970';
    const top=Math.min(py(open),py(close)),height=Math.max(1,Math.abs(py(open)-py(close)));
    return <g key={key} className={future?'sniper-m15-projected':'sniper-m15-real'}
-     opacity={future?0.84:1}>
+     opacity={future?0.95:1}>
      <line x1={xpos} x2={xpos} y1={py(high)} y2={py(low)}
        stroke={color} strokeWidth={future?0.8:1.05}/>
      <rect x={xpos-width/2} y={top} width={width} height={height}
-       fill={color} stroke={color} strokeWidth=".35"/>
+       fill={color} fillOpacity={future?0.48:1} stroke={color} strokeWidth={future?0.85:0.35}/>
    </g>;
  };
  const direction=safeSide==='BUY'?'↗ صعود':safeSide==='SELL'?'↘ هبوط':'↔ انتظار';
@@ -189,7 +189,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          stroke="#1d2b3a" strokeDasharray="3 6" strokeWidth=".8"/>)}
        <g clipPath={'url(#sniper-m15-clip-'+asset+')'}>
          <rect x={split} y={plotTop} width={end-split}
-           height={plotBottom-plotTop} fill="#122027" opacity=".23"/>
+           height={plotBottom-plotTop} fill="#18242d" opacity=".39"/>
          {showLiquidity&&liquidity.context&&(()=>{
            const z=liquidity.context!;
            const xa=timeX(z.from),xb=Math.min(split,timeX(z.to));
@@ -224,20 +224,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {projected.ready&&projected.bars.map((b,i)=>
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
              clamp(projectedStride*.62,1.5,3.1),true,'future'+i))}
-         {showLiquidity&&liquidity.zones.map((z,i)=>{
-           const color=liquidityColor(z.kind);
-           const pool=z.kind==='HIGH_POOL'||z.kind==='LOW_POOL';
-           const y=zoneLabelPoints.find(point=>point.i===i)?.y??py((z.low+z.high)/2);
-           const short= z.kind==='HIGH_POOL'?'سيولة قمم':z.kind==='LOW_POOL'?'سيولة قيعان':
-             z.kind==='DEMAND'?'طلب':'عرض';
-           const xBadge=split-77;
-           return <g key={'zone-label-'+z.kind+'-'+z.low}>
-             <line x1={split-5} x2={xBadge+68} y1={py((z.low+z.high)/2)} y2={y}
-               stroke={color} strokeOpacity=".7" strokeWidth=".8"/>
-             <rect x={xBadge} y={y-9} width="68" height="18" rx="3"
-               fill="#041016" fillOpacity=".94" stroke={color} strokeOpacity=".8"/>
-             <text x={xBadge+34} y={y+3} fill={color} fontSize="9" fontWeight="700"
-               textAnchor="middle" direction="rtl">{short}</text>
+         {showLiquidity&&compactZones.map((z,i)=>{
+           const color=z.kind==='MIXED'?'#e8c184':liquidityColor(z.kind);
+           const y=zoneLabelPoints[i].y,xBadge=split-82;
+           return <g key={'group-label-'+i+'-'+z.price.toFixed(2)}>
+             <line x1={split-5} x2={xBadge+74} y1={py(z.price)} y2={y}
+               stroke={color} strokeOpacity=".64" strokeWidth=".8"/>
+             <rect x={xBadge} y={y-10} width="74" height="20" rx="4"
+               fill="#07161d" fillOpacity=".98" stroke={color} strokeOpacity=".76"/>
+             <text x={xBadge+37} y={y+3.2} fill={color} fontSize="9"
+               fontWeight="700" textAnchor="middle" direction="rtl">{z.label}</text>
+             <title>{z.detail}</title>
            </g>;
          })}
          {showLiquidity&&liquidity.context&&(()=>{
@@ -306,7 +303,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          </g>;
        })}
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="11" direction="ltr" textAnchor="start">M15 · REAL</text>
-       <text x={split+5} y={17} fill="#e0c08d" fontSize="11" textAnchor="start" direction="ltr">M15 · SCENARIO</text>
+       <text x={split+5} y={17} fill="#e0c08d" fontSize="11" textAnchor="start" direction="ltr">M15 · FORECAST</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(latestClosed.time)}</text>}
@@ -330,9 +327,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        projected.ready?'محاكاة تاريخية مشروطة · ليست حركة مؤكدة':projected.reason}</span>
      <span>{goals.length?goals.map(g=>'TP'+g.stage+' '+n(g.price)).join(' · '):
        'لا توجد أهداف بعيدة صالحة'}</span>
-     {projected.ready&&<small>{projected.touches.length?
-       'الأهداف التي يلامسها النموذج فقط: '+projected.touches.join('، '):
-       'الأهداف بعيدة عن المسار المحاكى؛ لم يتم رسم وصول وهمي إليها'}
+     {projected.ready&&<small>{goals.map(g=>
+       'TP'+g.stage+(projected.touches.includes(g.stage)?' ✓':' ◇')).join('  ·  ')}
+       {' · ✓ لامسها النموذج · ◇ لم يلمسها'}
        {projected.stopped?' · المحاكاة توقفت عند الإبطال':''}</small>}
    </div>
  </section>;
