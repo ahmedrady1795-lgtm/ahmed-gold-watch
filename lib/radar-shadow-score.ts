@@ -36,7 +36,7 @@ export function validShadowBars(raw:unknown,period:number,now:number):ShadowBar[
  return [...map.values()].sort((a,b)=>a.time-b.time).slice(-900);
 }
 function targetAt(at:number,period:number){
- return Math.ceil(at/period)*period;
+ return (Math.floor(at/period)+1)*period;
 }
 export function baselineAt(raw:readonly ShadowBar[],at:number):Direction|'WAIT'{
  const valid=raw.filter(b=>b&&b.time+H1<=at-3000&&b.time%H1===0)
