@@ -1988,3 +1988,17 @@ body:has(.modern-workspace.compact-sniper){
  .sniper-m15-liquidity-toggle{font-size:8px;padding:3px}
  .sniper-m15-bias{font-size:8px}
 }
+
+/* Coinbase microstructure: one subtle chart overlay, never a second dashboard. */
+.sniper-m15-chart-box{position:relative}
+.sniper-flow-radar-chip{position:absolute;z-index:4;top:5px;right:18%;max-width:34%;
+ display:inline-flex;align-items:center;justify-content:center;direction:rtl;
+ border-radius:5px;border:1px solid #415d6b;background:rgba(5,12,17,.95);
+ color:#b5d4df;padding:3px 6px;font-size:10px;font-weight:700;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ box-shadow:0 1px 5px rgba(0,0,0,.6);pointer-events:auto}
+.sniper-flow-radar-chip.warn{border-color:#dfb170;color:#ffdb9a}
+.sniper-flow-radar-chip.confirmed{border-color:#40c4a6;color:#70eac8}
+@media(max-width:600px){
+ .sniper-flow-radar-chip{right:18%;top:3px;max-width:36%;font-size:9px;padding:2px 4px}
+}
