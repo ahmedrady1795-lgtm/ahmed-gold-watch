@@ -92,6 +92,67 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    fourHour:m.fourHour,pools
  }),[now,price,actual,historyFresh,m.sniper.view.priceFresh,
     providerTransition,marketOpen,m.fourHour,pools]);
+ // Freeze a read-only scenario to its last fully closed M15 candle. Incoming
+ // quote ticks still move LIVE but cannot repaint the projected candle route.
+ const [frozen,setFrozen]=useState<FrozenChart|null>(null);
+ const [blockedKey,setBlockedKey]=useState('');
+ const lastAttempt=useRef('');
+ const closedTime=actual.at(-1)?.time??0;
+ const candleKey=asset+':'+closedTime;
+ const confirmedEvents=Array.isArray(m.fourHour?.events)?m.fourHour.events:[];
+ const latestBos=confirmedEvents.filter((e:any)=>
+   (e?.kind==='BOS_UP'||e?.kind==='BOS_DOWN')&&
+   Number.isFinite(e.confirmedAt)&&e.confirmedAt<=now
+ ).sort((a:any,b:any)=>a.confirmedAt-b.confirmedAt).at(-1);
+ const freshObservation=Boolean(historyFresh&&m.sniper.view.priceFresh&&
+   !providerTransition&&marketOpen);
+ const freezeDecision=frozenM15Decision({
+   old:frozen?{asset:frozen.asset,closedTime:frozen.closedTime,
+     side:frozen.side,stop:frozen.stop,createdAt:frozen.createdAt}:null,
+   asset,closedTime,quote:price,fresh:freshObservation,
+   marketOpen,now,opposingBosConfirmedAt:latestBos?.confirmedAt,
+   opposingBosSide:latestBos?.kind==='BOS_UP'?'BUY':
+     latestBos?.kind==='BOS_DOWN'?'SELL':null
+ });
+ useEffect(()=>{
+   if(blockedKey===candleKey)return;
+   if(freezeDecision==='HOLD')return;
+   if(freezeDecision==='CLEAR'){
+     if(frozen&&frozen.asset===asset&&frozen.closedTime===closedTime){
+       const breached=frozen.stop!=null&&price!=null&&
+         (frozen.side==='BUY'?price<=frozen.stop:price>=frozen.stop);
+       const opposed=latestBos?.confirmedAt>frozen.createdAt&&
+         (latestBos.kind==='BOS_UP'?'BUY':'SELL')!==frozen.side;
+       if(breached||opposed)setBlockedKey(candleKey);
+     }
+     if(frozen)setFrozen(null);
+     return;
+   }
+   if(!freshObservation||safeSide==='WAIT'||anchor==null||
+     !proposedGoals.length||lastAttempt.current===candleKey)return;
+   if(proposedStop!=null&&price!=null&&
+      (safeSide==='BUY'?price<=proposedStop:price>=proposedStop))return;
+   lastAttempt.current=candleKey;
+   const scenario=buildM15Scenario({
+     history:actual,now,anchor,side:safeSide,targets:proposedGoals,
+     stop:proposedStop,steps:48
+   });
+   if(!scenario.ready)return;
+   setFrozen({asset,closedTime,createdAt:now,
+     side:safeSide,goals:proposedGoals,stop:proposedStop,scenario});
+ },[asset,now,closedTime,candleKey,blockedKey,freezeDecision,frozen,
+    freshObservation,safeSide,anchor,actual,price,proposedStop,
+    proposedGoals.map(g=>g.price).join('|'),latestBos?.confirmedAt,latestBos?.kind]);
+ const stable=blockedKey!==candleKey&&freezeDecision==='HOLD'&&
+   frozen?.asset===asset?frozen:null;
+ const goals=stable?.goals??(freezeDecision==='REBUILD'&&
+   blockedKey!==candleKey&&safeSide!=='WAIT'&&freshObservation?proposedGoals:[]);
+ const stop=stable?.stop??(freezeDecision==='REBUILD'&&
+   blockedKey!==candleKey&&freshObservation?proposedStop:null);
+ const projected=stable?.scenario??noScenario;
+ const chartSide=stable?.side??safeSide;
+ const phase=sniperPhaseBadge({ready:liquidity.ready,
+   contextKind:liquidity.context?.kind,phase:liquidity.phase,side:chartSide});
  const W=430,H=704,left=8,split=184,end=357,axis=359,
    plotTop=26,plotBottom=H-33;
  // A single absolute price axis contains EVERY currently valid target and
