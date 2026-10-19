@@ -287,7 +287,8 @@ export default function Home(){
     </header>
     <section className="content lite-content" aria-label="القناص الذكي">
       <AICommandCenter assetView="ALL" data={aiData} chartData={chartData} error={aiError} now={now} goldLive={goldTick}
-        btcLive={btcLive&&shownBtc!=null?{asset:'BTC',ok:true,price:shownBtc,sourceTime:shownBtcAt}:null}/>
+        btcLive={btcLive&&shownBtc!=null?{asset:'BTC',ok:true,price:shownBtc,sourceTime:shownBtcAt,
+          source:btcDirectFresh?btcSource:String(aiData?.bitcoin?.candleSource||'unverified')}:null}/>
       <section id="market-news" className="sniper-home-news" aria-label="أخبار السوق">
         <NewsCommandCenter now={now}/>
       </section>
