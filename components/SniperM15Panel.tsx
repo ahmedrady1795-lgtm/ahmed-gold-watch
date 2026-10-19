@@ -1,10 +1,14 @@
 'use client';
 
-import {useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {assessChartObservation} from '../lib/chart-observation-radar';
 import {buildDistantMovementOutlook} from '../lib/sniper-movement-outlook';
 import {buildM15Scenario,closedM15Bars,sampledLiveM15} from '../lib/sniper-m15-scenario';
+import type {M15Scenario,M15Side} from '../lib/sniper-m15-scenario';
+import {frozenM15Decision} from '../lib/sniper-m15-freeze';
+import {sniperPhaseBadge} from '../lib/sniper-market-phase';
+import {observedM15Bias} from '../lib/sniper-m15-bias';
 import {goldMarketSession} from '../lib/gold-market-session';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
@@ -13,6 +17,12 @@ const n=(x:number|null|undefined)=>x!=null&&Number.isFinite(x)?
  x.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
 const h=(t:number)=>new Date(t).toLocaleTimeString('en-GB',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'});
 const clamp=(n:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,n));
+type FrozenChart={asset:'GOLD'|'BTC';closedTime:number;createdAt:number;
+ side:Exclude<M15Side,'WAIT'>;goals:Array<{stage:number;price:number}>;
+ stop:number|null;scenario:M15Scenario};
+const noScenario:M15Scenario={ready:false,bars:[],reason:'لا تتوفر شموع سيناريو M15 مثبتة',
+ sourceBars:0,archiveYears:0,origin:'NONE',touches:[],stopped:false,atr:null};
+
 
 export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,assetView='ALL',
  observationAt=snapshotAt}:{
@@ -40,12 +50,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    now-(actual.at(-1)!.time+900000)<=36*60000;
  const radar=assessChartObservation({now,priceFresh:m.sniper.view.priceFresh,
    historyFresh:m.historyFresh,marketOpen,m1:m.candles,m5:x?.chartHigherFrames?.m5});
+ const m15Bias=useMemo(()=>observedM15Bias(actual),[actual]);
  const side: 'BUY'|'SELL'|'WAIT' =
    (m.ready||m.watchReady)&&m.displaySide!=='WAIT'?m.displaySide:
    m.observation.ready&&m.observation.side!=='WAIT'?m.observation.side:
-   radar.status==='ALIGNED'?radar.side:'WAIT';
+   radar.status==='ALIGNED'?radar.side:m15Bias.side;
  const safeSide=providerTransition||!marketOpen||!historyFresh||
-   !m.sniper.view.priceFresh||!m.observationFresh?'WAIT':side;
+   !m.sniper.view.priceFresh?'WAIT':side;
  const outlook=useMemo(()=>buildDistantMovementOutlook({
    asset,side:safeSide,price:m.price,now,priceFresh:m.sniper.view.priceFresh&&
      m.observationFresh,historyFresh,marketOpen,providerTransition,
@@ -58,15 +69,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const qualified=m.ready&&m.displayTargets.length>0;
  const targets=qualified?m.displayTargets:outlook.targets.length?outlook.targets:
     m.watchReady?m.displayTargets:[];
- const stop=qualified?m.displayStop:
+ const proposedStop=qualified?m.displayStop:
    outlook.invalidation??(m.watchReady?m.displayStop:null);
  const anchor=actual.at(-1)?.close??null;
- const goals=targets.slice(0,3).map(t=>({stage:t.stage,price:t.price}));
- const projected=useMemo(()=>buildM15Scenario({
-   history:actual,now,anchor,side:safeSide,targets:goals,
-   stop,steps:48
- }),[actual,now,anchor,safeSide,
-   goals.map(g=>g.price).join('|'),stop]);
+ const proposedGoals=targets.slice(0,3).map(t=>({stage:t.stage,price:t.price}));
  const forming=sampledLiveM15(m.candles,now);
  // A live partial candle is sourced only from true closed M1 bars.
  const validLive=forming!=null&&historyFresh&&m.historyFresh&&
@@ -81,12 +87,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  }),[now,m.price,m.historyFresh,m.sniper.view.priceFresh,providerTransition,
     marketOpen,m.fourHour,x?.chartHigherFrames?.m5,x?.accumulation]);
  const liquidity=useMemo(()=>buildSniperM15Liquidity({
-   now,price,history:actual,sourceReady:historyFresh&&m.historyFresh&&
-      m.sniper.view.priceFresh&&m.observationFresh&&
-      !providerTransition&&marketOpen,
+   now,price,history:actual,sourceReady:historyFresh&&
+      m.sniper.view.priceFresh&&!providerTransition&&marketOpen,
    fourHour:m.fourHour,pools
- }),[now,price,actual,historyFresh,m.historyFresh,m.sniper.view.priceFresh,
-    m.observationFresh,providerTransition,marketOpen,m.fourHour,pools]);
+ }),[now,price,actual,historyFresh,m.sniper.view.priceFresh,
+    providerTransition,marketOpen,m.fourHour,pools]);
  const W=430,H=704,left=8,split=184,end=357,axis=359,
    plotTop=26,plotBottom=H-33;
  // A single absolute price axis contains EVERY currently valid target and
@@ -137,15 +142,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    future:boolean,key:string)=> {
    const up=close>=open,color=up?'#39d6cc':'#fa5970';
    const top=Math.min(py(open),py(close)),height=Math.max(1,Math.abs(py(open)-py(close)));
-   return <g key={key} className={future?'sniper-m15-projected':'sniper-m15-real'}
-     opacity={future?0.95:1}>
+   return <g key={key} className={future?'sniper-m15-projected':'sniper-m15-real'}>
      <line x1={xpos} x2={xpos} y1={py(high)} y2={py(low)}
-       stroke={color} strokeWidth={future?0.8:1.05}/>
+       stroke={color} strokeWidth="1.05"/>
      <rect x={xpos-width/2} y={top} width={width} height={height}
-       fill={color} fillOpacity={future?0.48:1} stroke={color} strokeWidth={future?0.85:0.35}/>
+       fill={color} stroke={color} strokeWidth=".35"/>
    </g>;
  };
- const direction=safeSide==='BUY'?'↗ صعود':safeSide==='SELL'?'↘ هبوط':'↔ انتظار';
+ const direction=chartSide==='BUY'?'↗ صعود':chartSide==='SELL'?'↘ هبوط':'↔ انتظار';
  const labelBy=(s:string)=>s==='SL'?'إبطال':s==='LIVE'?'LIVE':s;
  const grid=Array.from({length:9},(_,i)=>lo+(hi-lo)*i/8);
  const latestClosed=actual.at(-1);
@@ -161,7 +165,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        aria-pressed={showLiquidity} onClick={()=>setShowLiquidity(v=>!v)}
        title="إظهار أو إخفاء مناطق الطلب والعرض والسيولة والتجميع">
        {showLiquidity?'سيولة ✓':'سيولة'}</button>
-     <span className={'sniper-m15-bias '+(safeSide==='BUY'?'rise':safeSide==='SELL'?'fall':'hold')}>
+     <span className={'sniper-m15-phase '+(phase.confirmed?'confirmed':'neutral')}
+       title={liquidity.ready?liquidity.reason:'لا توجد قراءة محدثة'}>
+       {'الحالة: '+phase.label}</span>
+     <span className={'sniper-m15-bias '+(chartSide==='BUY'?'rise':chartSide==='SELL'?'fall':'hold')}>
        {direction}</span>
    </header>
    <div className="sniper-m15-chart-box">
@@ -184,8 +191,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          x2={left+i*(end-left)/7} y1={plotTop} y2={plotBottom}
          stroke="#1d2b3a" strokeDasharray="3 6" strokeWidth=".8"/>)}
        <g clipPath={'url(#sniper-m15-clip-'+asset+')'}>
-         <rect x={split} y={plotTop} width={end-split}
-           height={plotBottom-plotTop} fill="#18242d" opacity=".39"/>
+         {/* Same black background for real and hypothetical candles. */}
          {showLiquidity&&liquidity.context&&(()=>{
            const z=liquidity.context!;
            const xa=timeX(z.from),xb=Math.min(split,timeX(z.to));
@@ -206,8 +212,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            return <g key={'zone-'+z.kind+'-'+z.low} className="sniper-m15-zone">
              <rect x={left+2} y={top} width={split-left-5}
                height={Math.max(2,bottom-top)} fill={color}
-               fillOpacity={pool?0.045:0.095} stroke={color}
-               strokeOpacity=".66" strokeWidth={pool?0.75:1}
+               fillOpacity={pool?0.11:0.18} stroke={color}
+               strokeOpacity=".94" strokeWidth={pool?1.2:1.3}
                strokeDasharray={pool?'3 6':'6 4'}/>
              <title>{z.label+' · '+n(z.low)+' – '+n(z.high)+
                ' · '+z.source+' · مستويات سعرية وليست حجم أوامر فعلي'}</title>
