@@ -304,8 +304,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <span className={'sniper-m15-bias '+(chartSide==='BUY'?'rise':chartSide==='SELL'?'fall':'hold')}>
        {direction}</span>
    </header>
-   <OrderFlowRadar key={asset} asset={asset} onView={onRadarView}/>
    <div className="sniper-m15-chart-box">
+     <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
          'شموع M15 فعلية ثم شموع توقع افتراضي، مع TP1 وTP2 وTP3 والإبطال. '+
          (verifiedArchive.ready?'أرشيف حقيقي متحقق '+verifiedArchive.storedBars+' شمعة':'أرشيف سنوات غير متاح')+
