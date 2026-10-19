@@ -313,8 +313,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   [routeRevision,showGhost,goldClosed,providerTransition,m.observationFresh,m.historyFresh,
     liveRouteSafe,routeAnchor,conditionalRouteGoals,frozenRouteWaypoints,routeStop,
     sn.view.priceFresh,candles.length,scenarioDetail]);
-  const routeVisible=Boolean(!providerTransition&&targetRoute?.ready&&targetRoute.bars.length&&
-    m.price!=null&&routeAnchor!=null&&targetRoute.atr!=null&&
+  const routeVisible=Boolean(!providerTransition&&targetRoute?.ready&&targetRoute.outcome==='ACTIVE'&&
+    targetRoute.bars.length&&m.price!=null&&routeAnchor!=null&&targetRoute.atr!=null&&
     Math.abs(m.price-routeAnchor)<=targetRoute.atr*2.5);
   const visualCandles=!showGhost?[]:goldClosed?
     buildClosedSessionCandlePreview(m.candles):
@@ -325,7 +325,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     // Do NOT show a neutral/downward illustration underneath an opposite
     // upward structural TP (or vice versa). A conditional route must pass
     // the price-true directional motif check or remain unplotted.
-    conditionalRouteGoals.length>0?[]:
+    (conditionalRouteGoals.length>0||watchTargets.length>0)?[]:
     buildVisualFuture({candles:m.candles,forecast:ghost,side:dir,now,anchorPrice:liveAnchor});
   const closedPreview=goldClosed&&visualCandles.length>0;
   // The M1 audit scans many historical folds. A frequent quote/UI refresh
@@ -639,7 +639,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             style={{padding:'8px 16px',color:'#e8c58d',background:'#1b2731',fontSize:12}}>
             {conditionalRouteSide==='BUY'?'↑ الأهداف أعلى السعر':
               conditionalRouteSide==='SELL'?'↓ الأهداف أسفل السعر':'أهداف مراقبة'} ·
-            {targetRoute?.ready?'المسار المشروط غير ملائم للسعر الحالي؛ لا نرسم شموعًا بعكس الهدف':
+            {targetRoute?.outcome==='AMBIGUOUS'?'هدف ووقف داخل شمعة واحدة؛ لا نعتبر الهدف محققًا':
+              targetRoute?.outcome==='STOPPED'?'النموذج التاريخي لمس الوقف أولًا؛ لا نعرضه كمسار ربح':
+              targetRoute?.ready?'المسار المشروط غير ملائم للسعر الحالي؛ لا نرسم شموعًا بعكس الهدف':
               targetRoute?.reason??'بانتظار 36 شمعة M1 مغلقة وحديثة'}
           </div>}
           <div className="sniper-live-next-status" role="status" aria-label="الشمعة الحية والتوقع التالي">
