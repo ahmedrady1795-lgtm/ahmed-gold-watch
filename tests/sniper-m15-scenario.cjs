@@ -86,7 +86,7 @@ assert.match(css,/grid-template-areas:"asset frame liquidity" "price price bias"
 assert.match(css,/width:100%!important;max-width:100%!important/,
  'no negative-margin overscroll that truncates target labels');
 assert.match(chart,/steps:48/,'M15 analogue route provides 48 optional future candle slots');
-assert.match(chart,/fillOpacity=\{future\?0\.48:1\}/,'future bars must have a distinct transparent fill');
+assert.doesNotMatch(chart,/fillOpacity=\{future\?/,'future bars now use precisely the same body fill as real M15 candles');
 assert.match(chart,/compactM15ZoneAnnotations/,'nearby liquidity labels are grouped, not drawn on top of one another');
 assert.doesNotMatch(chart,/sniper-m15-caption|sniper-m15-status/,
  'no technical paragraphs or scorecard underneath the mobile chart');
