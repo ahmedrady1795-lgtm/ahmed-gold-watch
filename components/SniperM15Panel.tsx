@@ -17,6 +17,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  observationAt=snapshotAt}:{
  data:any;now:number;snapshotAt:unknown;observationAt?:unknown;
  goldLive?:any;btcLive?:any;assetView?:'ALL'|'GOLD'|'BTC';
+ journals?:any;audit?:any;auditLoaded?:boolean;
 }){
  const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
  const asset=assetView==='ALL'?chosen:assetView;
@@ -108,9 +109,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    const up=close>=open,color=up?'#39d6cc':'#fa5970';
    const top=Math.min(py(open),py(close)),height=Math.max(1,Math.abs(py(open)-py(close)));
    return <g key={key} className={future?'sniper-m15-projected':'sniper-m15-real'}
-     opacity={future?.84:1}>
+     opacity={future?0.84:1}>
      <line x1={xpos} x2={xpos} y1={py(high)} y2={py(low)}
-       stroke={color} strokeWidth={future?.8:1.05}/>
+       stroke={color} strokeWidth={future?0.8:1.05}/>
      <rect x={xpos-width/2} y={top} width={width} height={height}
        fill={color} stroke={color} strokeWidth=".35"/>
    </g>;
@@ -156,7 +157,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          <rect x={split} y={plotTop} width={end-split}
            height={plotBottom-plotTop} fill="#122027" opacity=".23"/>
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
-           left+(i+.5)*actualStride,clamp(actualStride*.60,1.7,4),'false'=== 'true','real'+b.time))}
+           left+(i+.5)*actualStride,clamp(actualStride*.60,1.7,4),false,'real'+b.time))}
          <line x1={split} x2={split} y1={plotTop} y2={plotBottom}
            stroke="#7e9bb1" strokeWidth="1.25" strokeDasharray="5 5"/>
          {projected.ready&&projected.bars.map((b,i)=>
