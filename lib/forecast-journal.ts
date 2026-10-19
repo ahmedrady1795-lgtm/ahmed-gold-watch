@@ -51,8 +51,10 @@ export function updateForecastJournal(
     return usable&&freshModel?start(s,now,modelAt):null;
   }
   const stopHit=live&&!beforeStop(previous.side,quote!,previous.invalidation);
+  // Expired or invalidated scenarios must not collect fresh target hits.
+  const canMark=live&&previous.state!=='INVALIDATED'&&previous.state!=='EXPIRED'&&now<previous.expiresAt;
   const nextTargets=previous.targets.map(t=>({...t,
-    reached:t.reached||(live&&reached(previous.side,quote!,t.price))}));
+    reached:t.reached||(canMark&&reached(previous.side,quote!,t.price))}));
   const hitCount=nextTargets.filter(t=>t.reached).length;
   const targetReached=hitCount>0;
   const expired=now>=previous.expiresAt;
