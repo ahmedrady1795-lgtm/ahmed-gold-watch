@@ -158,3 +158,32 @@ export function sanitizeShadowLedger(data:unknown,now:number):ShadowLedger{
    updatedAt:Number.isFinite(x.updatedAt)?x.updatedAt:0,
    events};
 }
+
+/** Retain previously witnessed outcomes across Render free restarts.
+ * Never upgrade a missing event to a success, rewrite an issue price, or
+ * count the same Coinbase event twice. Strict deduplication by frozen id.
+ */
+export function mergeRadarShadowArchives(oldRaw:unknown,newRaw:unknown,
+ now=Date.now()):ShadowLedger{
+ const previous=sanitizeShadowLedger(oldRaw,now);
+ const current=sanitizeShadowLedger(newRaw,now);
+ const map=new Map(previous.events.map(e=>[e.id,e]));
+ for(const event of current.events){
+  const prior=map.get(event.id);
+  if(!prior){map.set(event.id,event);continue;}
+  if(prior.at!==event.at||prior.side!==event.side||
+     prior.price!==event.price||prior.confirm!==event.confirm||
+     prior.invalidate!==event.invalidate||prior.baseline!==event.baseline)
+   continue; // immutable observation mismatch
+  const choose=(a:ShadowOutcome,b:ShadowOutcome)=>{
+   if(a.status!=='PENDING')return a;
+   return b.status==='PENDING'?a:b;
+  };
+  map.set(event.id,{...prior,
+    m1:choose(prior.m1,event.m1),m15:choose(prior.m15,event.m15)});
+ }
+ const events=[...map.values()].sort((a,b)=>a.at-b.at||a.id.localeCompare(b.id))
+   .slice(-2400);
+ return {schema:'qannas-radar-shadow-v1',
+  updatedAt:Math.max(previous.updatedAt,current.updatedAt,now),events};
+}
