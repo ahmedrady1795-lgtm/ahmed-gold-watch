@@ -1783,3 +1783,24 @@ body:has(.modern-workspace.compact-sniper){
  .sniper-secondary-content{padding:6px}
  .compact-sniper .forecast-chart-tools{gap:5px}
 }
+
+
+/* Keep the actual observed LIVE candle and next M1 technical estimate legible. */
+.sniper-live-next-status{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) minmax(0,1.6fr);
+ gap:9px;padding:11px 13px;background:#0a202d;border-bottom:1px solid #315167}
+.sniper-live-next-status>span{display:flex;flex-direction:column;gap:5px;
+ padding:9px 11px;border:1px solid #36536a;border-radius:8px;background:#102839;min-width:0}
+.sniper-live-next-status b{font-size:15px;font-weight:800;color:#e7eff3}
+.sniper-live-next-status small{font-size:11px;color:#b5ced8;line-height:1.4;overflow-wrap:anywhere}
+.sniper-live-next-status .sniper-live-next-live{border-color:#438aa0}
+.sniper-live-next-status .sniper-live-next-live b{color:#a2f3fb}
+.sniper-live-next-status .sniper-live-next-forecast{border-color:#b79755}
+.sniper-live-next-status .sniper-live-next-forecast b{color:#ffde9b}
+.sniper-live-next-status .sniper-live-next-ai{border-color:#576982}
+@media(max-width:760px){
+ .sniper-live-next-status{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;padding:7px}
+ .sniper-live-next-status .sniper-live-next-ai{grid-column:1/-1}
+ .sniper-live-next-status>span{padding:7px}
+ .sniper-live-next-status b{font-size:13px}
+ .sniper-live-next-status small{font-size:10px}
+}
