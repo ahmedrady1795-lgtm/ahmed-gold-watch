@@ -63,7 +63,7 @@ const missing=x.settleRadarOutcomes({ledger:a.ledger,
 assert.equal(missing.ledger.events[0].m1.status,'NO_DATA');
 assert.equal(missing.ledger.events[0].m15.status,'NO_DATA');
 const filtered=x.validShadowBars([bar(e.m1.barAt,110,105),
- bar(e.m1.barAt+60000,115,105)],e.m1.barAt===0?0:60000,e.m1.barAt+62000);
+ bar(e.m1.barAt+60000,115,105)],e.m1.barAt===0?0:60000,e.m1.barAt+64000);
 assert.equal(filtered.length,1,'future/in-progress bar excluded');
 const restored=x.sanitizeShadowLedger(scored2.ledger,t+86400000);
 assert.equal(restored.events.length,1);
