@@ -1936,3 +1936,30 @@ body:has(.modern-workspace.compact-sniper){
   .sniper-m15-price{font-size:18px}
   .sniper-m15-chart-box{height:clamp(475px,70dvh,750px)}
 }
+
+/* Compact full-canvas sniper v3: controls + price levels ON chart only. */
+.sniper-m15-panel{padding:0!important;margin:0!important;background:#000!important}
+.sniper-m15-chart-box{background:#000}
+@media(max-width:600px){
+ .sniper-m15-panel{margin:0!important;border-radius:4px!important}
+ .sniper-m15-head{display:flex!important;flex-direction:row;flex-wrap:nowrap;
+   justify-content:space-between;align-items:center;direction:rtl;
+   gap:4px!important;min-height:40px!important;padding:4px 5px!important}
+ .sniper-m15-head>*{min-width:0;grid-area:auto!important}
+ .sniper-m15-assets{flex:0 1 auto!important;gap:2px}
+ .sniper-m15-assets button{min-height:28px;padding:4px 5px;font-size:10px}
+ .sniper-m15-frame{flex:0 0 auto;font-size:11px;justify-self:auto}
+ .sniper-m15-liquidity-toggle{min-height:28px;font-size:9px;padding:3px 5px}
+ .sniper-m15-bias{margin:0!important;min-width:0;white-space:nowrap;
+   font-size:10px;flex:0 0 auto;justify-self:auto}
+ .sniper-m15-chart-box{height:clamp(530px,calc(100dvh - 192px),900px)!important}
+ .sniper-m15-caption,.sniper-m15-status{display:none!important}
+}
+@media(max-width:360px){
+ .sniper-m15-head{gap:2px!important;padding:3px 4px!important}
+ .sniper-m15-assets button{padding:3px 4px;font-size:9px}
+ .sniper-m15-frame{font-size:10px}
+ .sniper-m15-liquidity-toggle{font-size:9px;padding:2px 4px}
+ .sniper-m15-bias{font-size:9px}
+ .sniper-m15-chart-box{height:clamp(505px,calc(100dvh - 180px),820px)!important}
+}
