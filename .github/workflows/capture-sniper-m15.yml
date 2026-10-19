@@ -1,0 +1,39 @@
+name: Capture sniper M15 price history
+on:
+  schedule:
+    - cron: '11 1,13 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/capture-sniper-m15.yml'
+permissions:
+  contents: write
+concurrency:
+  group: sniper-m15-capture
+  cancel-in-progress: false
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: render-free
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Collect price-true M15 candles from the live provider
+        run: node scripts/capture-m15-archive.mjs
+      - name: Persist only public OHLC price history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add archive/m15-GOLD.json archive/m15-BTC.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Archive closed M15 source candles [skip ci]"
+            git push origin HEAD:render-free
+          else
+            echo "No additional closed candles"
+          fi
