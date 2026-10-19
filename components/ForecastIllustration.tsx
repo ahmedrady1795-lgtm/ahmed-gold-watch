@@ -524,7 +524,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         <div className="forecast-visual-heading">
           <span className="forecast-visual-mark"><Crosshair size={17}/></span>
           <div><strong id="forecast-visual-title">القناص · {asset==='GOLD'?'الذهب XAUUSD':'البيتكوين BTCUSD'}</strong>
-            <small>لوحة الحركة والأهداف · شموع M1 مغلقة · مستويات H1/H4</small></div>
+            <small>الرسم المباشر · السيناريو والأهداف</small></div>
         </div>
         <div className="forecast-visual-controls">
           {assetView==='ALL'&&<div className="forecast-visual-tabs" role="group" aria-label="الأصل على الرسم">
@@ -537,28 +537,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </span>
         </div>
       </header>
-      <div className="sniper-decision-strip sniper-decision-compact sniper-action-dashboard" aria-label="ملخص قرار القناص">
-        <div className="sniper-action-primary">
-          <small>قرار القناص الآن</small>
-          <strong className={statusReady?(rise?'green':fall?'red':''):''}>{quickDecision}</strong>
-          <span>{statusReady?'سيناريو ورقي موثق · تحقق من شروط التنفيذ':
-            'مراقبة نشطة · لا يوجد أمر دخول معتمد'}</span>
-        </div>
-        <div className="sniper-action-cell">
-          <small>اتجاه الحركة</small>
-          <strong className={quickSide==='BUY'?'green':quickSide==='SELL'?'red':''}>{quickDirection}</strong>
-          <span>{m.fourHour.ready?'H4 · '+m.fourHour.phase:'قراءة هيكل السوق'}</span>
-        </div>
-        <div className="sniper-action-cell">
-          <small>بوابة التفعيل</small>
-          <strong dir={quickTrigger!=null?'ltr':undefined}>{quickTrigger!=null?fmt(quickTrigger):'تحت الرصد'}</strong>
-          <span>{quickTrigger!=null?'مستوى فني للمراقبة · ليس أمر دخول':'بانتظار مستوى كسر موثق'}</span>
-        </div>
-        <div className="sniper-action-cell">
-          <small>المرحلة الحالية</small>
-          <strong>{playbook.strengthTitle}</strong>
-          <span>{breakoutWatch.closes}/2 إغلاقات M5 · <a href="#sniper-performance">سجل الأداء</a></span>
-        </div>
+      <div className="sniper-scenario-line" aria-label="حالة السيناريو">
+        <strong>{quickDirection}</strong><span>{quickDecision}</span>
+        {quickTrigger!=null&&<span>التفعيل <b dir="ltr">{fmt(quickTrigger)}</b></span>}
+        <small>{statusReady?'خطة ورقية مسجلة':'سيناريو مراقبة · ليس أمر دخول'}</small>
       </div>
       <div className={'forecast-visual-layout' +(expanded?' forecast-layout-expanded':'')}>
         <div className={'forecast-visual-chart-wrap'+(expanded?' forecast-chart-expanded':'')+(chartFullscreen?' chart-fullscreen':'')}>
@@ -572,24 +554,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {' · '}{m.observationFresh?'تحليل AI حديث':'تحليل AI قيد التحديث'}
               {' · '}{breakoutEvidence.ready?'كسر M5 متاح':'سياق كسر M5 غير جاهز'}
             </span>
-            {structureView&&<span className={'sniper-structure-chip '+(structureView.side==='BUY'?'structure-up':'structure-down')}
-              title="شموع مغلقة: اندفاع + كسر جسم + آخر شمعة معاكسة + فجوة 3 شموع، وليس إثبات أوامر مؤسسات">
-              {structureView.side==='BUY'?'↗':'↘'} {structureView.kind==='BOS'?'BOS':'CHoCH؟'} · OB/FVG ·
-              {structureView.phase==='RETEST_CONFIRMED'?'اختبار مغلق':'انتظار اختبار'}
-            </span>}
-            {leadSweep&&<span className={'sniper-sweep-chip '+(leadSweep.side==='BUY'?'sweep-up':'sweep-down')}
-              title="تأكيد فني من شموع مغلقة؛ لا يسمح بالدخول دون وقف وتكلفة وتحقق">
-              {leadSweep.side==='BUY'?'↗ سحب سيولة قاع':'↘ سحب سيولة قمة'} · {fmt(leadSweep.level)} · إبطال {fmt(leadSweep.invalidation)}
-            </span>}
-            <span className={'sniper-structure-chip '+(observationRadar.side==='BUY'?'structure-up':
-              observationRadar.side==='SELL'?'structure-down':'')}
-              title={observationForDisplay.reason+' · رصد غير قابل للتنفيذ'}>
-              {observationForDisplay.title} ·
-              {' '}{observationForDisplay.m1Side==='BUY'?'M1 ↑':
-                observationForDisplay.m1Side==='SELL'?'M1 ↓':'M1 ↔'} /
-              {' '}{observationForDisplay.m5Side==='BUY'?'M5 ↑':
-                observationForDisplay.m5Side==='SELL'?'M5 ↓':'M5 ↔'}
-            </span>
             <div className="forecast-chart-tools" aria-label="أدوات الرسم الأساسية">
               <button type="button" aria-pressed={chartWindow===60} onClick={()=>setChartWindow(60)}>ساعة</button>
               <button type="button" aria-pressed={chartWindow===240} onClick={()=>setChartWindow(240)}>4 ساعات</button>
@@ -599,143 +563,18 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               <button className="forecast-chart-zoom" type="button" aria-pressed={focusCandles}
                  title="الشموع دائمًا بمقياسها الفعلي؛ الأهداف البعيدة تظهر خارج الزوم بأسعارها الصحيحة"
                  onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'نطاق شموع أوسع':'تكبير الشموع'}</button>
+              <button type="button" aria-pressed={chartFullscreen} onClick={()=>setChartFullscreen(v=>!v)}>{chartFullscreen?'إغلاق ملء الشاشة':'⛶ ملء الشاشة'}</button>
               <details className="sniper-more-chart-tools"><summary>أدوات إضافية <span aria-hidden="true">⌄</span></summary>
               <div className="sniper-more-chart-tools-body">
               <button type="button" aria-pressed={showGhost} onClick={()=>setShowGhost(v=>!v)} title="شموع M1 افتراضية فقط عندما تؤيدها نتائج زمنية سابقة؛ وإلا نطاق تقلب مرئي دون اتجاه">{showGhost?'إخفاء التقدير':'شموع تقديرية'}</button>
               <button className="forecast-chart-alternative" type="button" aria-pressed={showAlternatives} onClick={()=>setShowAlternatives(v=>!v)} title="مسارات مشروطة إضافية، ليست صفقات">{showAlternatives?'إخفاء البدائل':'بدائل'}</button>
               <button type="button" aria-pressed={expanded} onClick={()=>setExpanded(v=>!v)}>{expanded?'حجم عادي':'توسيع الرسم ⤢'}</button>
-              <button type="button" aria-pressed={chartFullscreen} onClick={()=>setChartFullscreen(v=>!v)}>{chartFullscreen?'إغلاق ملء الشاشة':'⛶ ملء الشاشة'}</button>
               </div></details>
             </div>
           </div>
-          {asset==='BTC'&&<details className={'sniper-btc-forecast'+
-            (btcScenarioShown?' sniper-btc-forecast-'+btcScenario!.side.toLowerCase():
-              ' sniper-btc-forecast-neutral')}
-            aria-label="سيناريو حركة البيتكوين مستقل عن إشارة الدخول">
-            <summary className="sniper-btc-forecast-summary">
-              <strong>{btcScenarioShown?(btcScenario!.side==='BUY'?'↗ ':'↘ ')+btcScenario!.title:'◇ رادار حركة البيتكوين'}</strong>
-              <span dir="ltr">{btcScenarioShown?fmt(btcScenario!.destinationMid):'رصد حي'}</span>
-              <small>الوجهة ومستوى الإبطال <span aria-hidden="true">⌄</span></small>
-            </summary>
-            <div className="sniper-btc-forecast-body">
-            {btcScenarioShown?<><div className="sniper-btc-forecast-title">
-                <b>{btcScenario!.side==='BUY'?'↗':'↘'} {btcScenario!.title}</b>
-                <small>{btcScenario!.alignment} · تحليل حركة، ليس توصية دخول</small>
-              </div>
-              <div className="sniper-btc-forecast-levels">
-                <span><small>المنطقة المتوقع مراقبتها</small>
-                  <strong dir="ltr">{fmt(btcScenario!.destination!.low)} – {fmt(btcScenario!.destination!.high)}</strong></span>
-                <span><small>إبطال السيناريو</small>
-                  <strong dir="ltr">{fmt(btcScenario!.invalidation)}</strong></span>
-                <span><small>وضع الصفقة</small>
-                  <strong>{statusReady?'خطة مسجلة':'ترقب تفعيل الدخول'}</strong></span>
-              </div>
-              <span className="sniper-btc-forecast-footnote">
-                {btcScenario!.detail} · المستويات مشروطة وقد تتغير مع تحديث الشموع
-                {btcScenarioOffscreen?' · الهدف خارج تكبير الرسم':''}
-              </span>
-            </>:<><strong>مسح سيناريو البيتكوين جارٍ</strong>
-              <small>{btcScenario?.detail||'لم يكتمل المسار الهيكلي على البيانات الحديثة'} · لا توجد وجهة مؤكدة</small>
-            </>}
-            </div>
-          </details>}
-          <details className="sniper-chart-analysis-drawer">
-            <summary>
-              <strong>{playbook.title}</strong>
-              <span className={'sniper-strength-chip sniper-strength-'+playbook.evidenceStrength.toLowerCase()}
-                title={'قوة الأدلة الفنية وليست احتمالية ربح: '+playbook.strengthDetail}>
-                {'◆ '+playbook.strengthTitle}
-              </span>
-              <span className="sniper-collapse-levels">{'◇ '+breakoutWatch.closes+'/2 M5 · '+
-                (playbook.target?'TP1 '+fmt(playbook.target.price):'أهداف مراقبة')}</span>
-              <small>تفاصيل الاتجاه والسيولة والمراحل <span aria-hidden="true">⌄</span></small>
-            </summary>
-            <div className="sniper-chart-analysis-content">
-          {btcOutlook&&<div className={'btc-forward-observation btc-forward-'+btcOutlook.status.toLowerCase()}
-            role="status" aria-label="تحليل حركة البيتكوين المستقل عن تنفيذ الصفقات">
-            <strong>{btcOutlook.title}</strong>
-            <span>{btcOutlook.horizonSummary}</span>
-            <small>{btcOutlook.reason}</small>
-            <small>رصد فني فقط · النموذج التنبؤي غير مثبت · قرار الدخول مستقل</small>
-          </div>}
-          <div className="sniper-market-evidence-rail" aria-label="ملخص أدلة السوق">
-            <span className="sniper-evidence-tag"><b>السعر</b><small>{priceFresh?'مباشر':'مؤخر'} · {quoteAgeSec??'—'} ث</small></span>
-            <span className="sniper-evidence-tag"><b>التجميع / التصريف</b><small>{m.fourHour.ready?m.fourHour.phase:'غير مكتمل'}</small></span>
-            <span className="sniper-evidence-tag"><b>الكسر</b><small>{breakoutWatch.closes}/2 M5</small></span>
-            {asset==='BTC'&&<span className="sniper-evidence-tag"><b>تدفق Coinbase</b>
-              <small>{flowFresh&&orderFlow?.flow?'Delta '+fmt(orderFlow.flow.deltaBtc,3)+' BTC':'عينة غير حديثة'}</small>
-            </span>}
-            {asset==='BTC'&&<span className="sniper-evidence-tag"><b>حجم التنفيذ</b>
-              <small>{flowFresh&&orderFlow?.profile?'POC '+fmt(orderFlow.profile.poc):'غير متاح'}</small>
-            </span>}
-          </div>
-          <div className={'sniper-playbook sniper-playbook-'+playbook.phase.toLowerCase()}
-            aria-label="مراحل رصد اقتناص الإشارة، وليست إشارة دخول">
-            <div className="sniper-playbook-heading">
-              <span className="sniper-playbook-mark"><Crosshair size={15}/></span>
-              <div><strong>{playbook.title}</strong>
-                <small>{playbook.strengthTitle+' · '+playbook.strengthDetail}</small>
-                <small>{playbook.detail} · تحليل وليس أمر دخول</small></div>
-              <span className={'sniper-playbook-side '+(playbook.side==='BUY'?'playbook-buy':
-                playbook.side==='SELL'?'playbook-sell':'playbook-neutral')}>
-                {playbook.side==='BUY'?'↗ رصد شراء':
-                  playbook.side==='SELL'?'↘ رصد بيع':'◌ محايد'}
-              </span>
-            </div>
-            <div className="sniper-playbook-steps">
-              {playbook.steps.map((step,i)=><div key={step.label}
-                className={'sniper-playbook-step playbook-step-'+step.state.toLowerCase()}>
-                <span className="sniper-playbook-step-index">{i+1}</span>
-                <span><b>{step.label}</b><small>{step.detail}</small></span>
-              </div>)}
-            </div>
-            <div className="sniper-playbook-footer">
-              <span>{playbook.level!=null?'◇ بوابة الكسر '+fmt(playbook.level):
-                '◇ بوابة الكسر: '+breakoutWatch.headline}</span>
-              <span>{playbook.target?'◎ TP1 '+fmt(playbook.target.price)+' · هيكلي مشروط':
-                '◎ الأهداف تنتظر مستوى هيكليًا صالحًا'}</span>
-              {playbook.retest&&<span>↺ إعادة اختبار ±{fmt(playbook.retest.high-playbook.retest.center,2)} · تقريبي</span>}
-            </div>
-          </div>
-            </div>
-          </details>
           <TargetScenarioMap history={m.candles} targets={conditionalRouteGoals}
             side={conditionalRouteSide} anchor={routeAnchor} stop={routeStop}
             enabled={!providerTransition&&!goldClosed&&m.historyFresh&&m.observationFresh&&liveRouteSafe}/>
-          {scenarioDetail&&<p style={{padding:'10px 16px',color:'#bad9e8',margin:0}}>
-            اسحب الرسم أفقيًا لمتابعة المسار · نفس عرض ومقياس شموع M1 · يتحدث المسار مع إغلاق الدقيقة · S مراحل وليست دقائق
-          </p>}
-          {(outsideLevels.length>0||Boolean(routeAudit)||routeVisible)&&<details className="sniper-route-research">
-          <summary><strong>تفاصيل مسار الأهداف</strong><span>{outsideLevels.length?
-            outsideLevels.length+' أهداف خارج التكبير · ':''}{routeVisible?'مراحل الكسر والاختبار':'تدقيق الرسم'} <span aria-hidden="true">⌄</span></span></summary>
-          <div className="sniper-route-research-content">
-          {outsideLevels.length>0&&<div aria-label="الأهداف خارج نطاق شموع الدقيقة"
-            style={{display:'flex',flexWrap:'wrap',gap:8,padding:'8px 16px',background:'#0b1e2c',color:'#c9deeb',fontSize:12}}>
-            <strong style={{width:'100%'}}>أهداف بعيدة · محفوظة بالسعر الحقيقي ولا تضغط الشموع</strong>
-            {outsideLevels.map(t=><span key={'outside-'+t.stage}
-              style={{border:'1px solid #315b57',borderRadius:6,padding:'4px 8px'}}>
-              {'TP'+t.stage+' '+(t.price>scaleHigh?'↑': '↓')+' '+fmt(t.price)+' · فرق '+fmt(t.offset)}
-            </span>)}
-          </div>}
-           {routeAudit&&<div aria-label="اختبار دقة رسم الشموع أمام التاريخ المغلق" style={{padding:'9px 16px',background:'#0e2630',color:'#d4e5ec',fontSize:12}}>
-            <strong>اختبار رسم المسار على شموع M1 مغلقة سابقة:</strong>{' '}
-            {routeAudit.samples} عينة زمنية غير متداخلة · خطأ الشموع {routeAudit.maeAtr??'—'} ATR
-            {' مقابل خط أساس ثابت '}{routeAudit.baselineMaeAtr??'—'} ATR
-            {' · اتجاه المسار '}{routeAudit.directionPct==null?'غير متاح':routeAudit.directionPct+'%'}
-            {' مقابل المرجع '}{routeAudit.baselineDirectionPct==null?'غير متاح':routeAudit.baselineDirectionPct+'%'}
-            <small style={{display:'block'}}>المسار الحالي تمثيل في حيز السعر لا يحدد دقائق وصول ولا احتمالات TP. التحقق التاريخي لا يؤهل إشارة دخول؛ {routeAudit.samples<20?'العينة لا تزال صغيرة.':'لا توجد أفضلية تنبؤية مثبتة.'}</small>
-          </div>}
-          {routeVisible&&targetRoute!.outcome!=='ACTIVE'&&<div role="status" style={{padding:'10px 16px',background:'#33241e',color:'#ffe0b5',fontSize:12}}>
-            {targetRoute!.outcome==='AMBIGUOUS'?'⚠ الهدف والوقف داخل نفس الشمعة المرجعية؛ لم يُحتسب الهدف':
-              '⛔ مسار الشموع المرجعية انتهى عند الوقف'} · لا يؤثر على نتائج التداول أو سجل الأهداف الفعلي
-          </div>}
-          {routeVisible&&<div aria-label="مراحل الوصول المشروط للأهداف" style={{display:'flex',flexWrap:'wrap',gap:8,padding:'10px 16px',background:'#102333',color:'#d2e6ee',fontSize:13}}>
-            <strong>مسار {conditionalRouteSide==='BUY'?'الصعود':'الهبوط'} المشروط:</strong>
-            {routeMotion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET').map(p=><span key={p.key} style={{border:'1px solid #3b5e71',borderRadius:6,padding:'5px 9px'}}>{p.label} · {fmt(p.price)} · {targetRoute!.milestones.some(h=>h.key===p.key)?'✓ لمسته الشموع المرجعية':'مشروط · لم يُلمس'}</span>)}
-            {conditionalRouteGoals.map(t=><span key={t.stage} style={{border:'1px solid #376e61',borderRadius:6,padding:'5px 9px'}}>TP{t.stage} · {fmt(t.price)} · {routeAnchor!=null&&targetRoute!.atr!=null?(Math.abs(t.price-routeAnchor)/targetRoute!.atr).toFixed(1)+' × تقلب M1 · ':''}{targetRoute!.touches.some(h=>h.stage===t.stage)?'✓ لمسته الشموع المرجعية':'لم تلمسه الشموع المرجعية'}</span>)}
-            <small style={{width:'100%'}}>أهداف مراقبة مشروطة وليست أمر دخول. كل انتقال يتطلب استمرار الاتجاه وصلاحية المستويات؛ الأشكال والتصحيحات توضيحية ولا تحدد احتمال الوصول.</small>
-          </div>}
-          </div></details>}
           {asset==='BTC'&&providerTransition&&<div role="status" className="sniper-provider-transition">
             جارٍ تثبيت مصدر البيتكوين · الأهداف مجمدة حتى إغلاق شمعتين من المصدر الجديد
           </div>}
@@ -1217,6 +1056,152 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               </g>}
             </svg>
           </div>
+          <div className="sniper-chart-key" aria-label="مفتاح الرسم">
+            <span><i className="sniper-key-up"/> صعود</span><span><i className="sniper-key-down"/> هبوط</span>
+            <span><i className="sniper-key-path"/> سيناريو مشروط</span>
+            <span className="render-ema20">EMA20</span><span className="render-ema50">EMA50</span>
+          </div>
+        </div>
+      </div>
+      <div className="sniper-price-snapshot" aria-label="السعر والأهداف الأساسية">
+        {planVisible&&m.displayTargets.slice(0,3).map(t=><span key={'snap-tp'+t.stage} className="sniper-price-snapshot-target">
+          <small>{statusReady?'هدف':'مراقبة'} TP{t.stage}</small><b dir="ltr">{fmt(t.price)}</b>
+        </span>)}
+        {!planVisible&&watchTargets.map(t=><span key={'watch-tp'+t.stage}
+          className="sniper-price-snapshot-target"
+          title={'رصد هيكلي من '+t.source+' · مستوى شمعة مغلقة · ليس أمر دخول'}>
+          <small>رصد TP{t.stage} · {t.source}</small><b dir="ltr">{fmt(t.price)}</b>
+        </span>)}
+        {planVisible&&m.displayStop!=null&&<span className="sniper-price-snapshot-stop"><small>الإبطال</small><b dir="ltr">{fmt(m.displayStop)}</b></span>}
+        {!planVisible&&<span className="sniper-price-snapshot-wait">{feedProblem||'أهداف مراقبة مشروطة · لا دخول مؤكد'}</span>}
+      </div>
+      <details className="sniper-secondary-details"><summary>تفاصيل التحليل وأدوات القراءة <span>اختياري ＋</span></summary>
+        <div className="sniper-secondary-content">
+          {asset==='BTC'&&<details className={'sniper-btc-forecast'+
+            (btcScenarioShown?' sniper-btc-forecast-'+btcScenario!.side.toLowerCase():
+              ' sniper-btc-forecast-neutral')}
+            aria-label="سيناريو حركة البيتكوين مستقل عن إشارة الدخول">
+            <summary className="sniper-btc-forecast-summary">
+              <strong>{btcScenarioShown?(btcScenario!.side==='BUY'?'↗ ':'↘ ')+btcScenario!.title:'◇ رادار حركة البيتكوين'}</strong>
+              <span dir="ltr">{btcScenarioShown?fmt(btcScenario!.destinationMid):'رصد حي'}</span>
+              <small>الوجهة ومستوى الإبطال <span aria-hidden="true">⌄</span></small>
+            </summary>
+            <div className="sniper-btc-forecast-body">
+            {btcScenarioShown?<><div className="sniper-btc-forecast-title">
+                <b>{btcScenario!.side==='BUY'?'↗':'↘'} {btcScenario!.title}</b>
+                <small>{btcScenario!.alignment} · تحليل حركة، ليس توصية دخول</small>
+              </div>
+              <div className="sniper-btc-forecast-levels">
+                <span><small>المنطقة المتوقع مراقبتها</small>
+                  <strong dir="ltr">{fmt(btcScenario!.destination!.low)} – {fmt(btcScenario!.destination!.high)}</strong></span>
+                <span><small>إبطال السيناريو</small>
+                  <strong dir="ltr">{fmt(btcScenario!.invalidation)}</strong></span>
+                <span><small>وضع الصفقة</small>
+                  <strong>{statusReady?'خطة مسجلة':'ترقب تفعيل الدخول'}</strong></span>
+              </div>
+              <span className="sniper-btc-forecast-footnote">
+                {btcScenario!.detail} · المستويات مشروطة وقد تتغير مع تحديث الشموع
+                {btcScenarioOffscreen?' · الهدف خارج تكبير الرسم':''}
+              </span>
+            </>:<><strong>مسح سيناريو البيتكوين جارٍ</strong>
+              <small>{btcScenario?.detail||'لم يكتمل المسار الهيكلي على البيانات الحديثة'} · لا توجد وجهة مؤكدة</small>
+            </>}
+            </div>
+          </details>}
+          <details className="sniper-chart-analysis-drawer">
+            <summary>
+              <strong>{playbook.title}</strong>
+              <span className={'sniper-strength-chip sniper-strength-'+playbook.evidenceStrength.toLowerCase()}
+                title={'قوة الأدلة الفنية وليست احتمالية ربح: '+playbook.strengthDetail}>
+                {'◆ '+playbook.strengthTitle}
+              </span>
+              <span className="sniper-collapse-levels">{'◇ '+breakoutWatch.closes+'/2 M5 · '+
+                (playbook.target?'TP1 '+fmt(playbook.target.price):'أهداف مراقبة')}</span>
+              <small>تفاصيل الاتجاه والسيولة والمراحل <span aria-hidden="true">⌄</span></small>
+            </summary>
+            <div className="sniper-chart-analysis-content">
+          {btcOutlook&&<div className={'btc-forward-observation btc-forward-'+btcOutlook.status.toLowerCase()}
+            role="status" aria-label="تحليل حركة البيتكوين المستقل عن تنفيذ الصفقات">
+            <strong>{btcOutlook.title}</strong>
+            <span>{btcOutlook.horizonSummary}</span>
+            <small>{btcOutlook.reason}</small>
+            <small>رصد فني فقط · النموذج التنبؤي غير مثبت · قرار الدخول مستقل</small>
+          </div>}
+          <div className="sniper-market-evidence-rail" aria-label="ملخص أدلة السوق">
+            <span className="sniper-evidence-tag"><b>السعر</b><small>{priceFresh?'مباشر':'مؤخر'} · {quoteAgeSec??'—'} ث</small></span>
+            <span className="sniper-evidence-tag"><b>التجميع / التصريف</b><small>{m.fourHour.ready?m.fourHour.phase:'غير مكتمل'}</small></span>
+            <span className="sniper-evidence-tag"><b>الكسر</b><small>{breakoutWatch.closes}/2 M5</small></span>
+            {asset==='BTC'&&<span className="sniper-evidence-tag"><b>تدفق Coinbase</b>
+              <small>{flowFresh&&orderFlow?.flow?'Delta '+fmt(orderFlow.flow.deltaBtc,3)+' BTC':'عينة غير حديثة'}</small>
+            </span>}
+            {asset==='BTC'&&<span className="sniper-evidence-tag"><b>حجم التنفيذ</b>
+              <small>{flowFresh&&orderFlow?.profile?'POC '+fmt(orderFlow.profile.poc):'غير متاح'}</small>
+            </span>}
+          </div>
+          <div className={'sniper-playbook sniper-playbook-'+playbook.phase.toLowerCase()}
+            aria-label="مراحل رصد اقتناص الإشارة، وليست إشارة دخول">
+            <div className="sniper-playbook-heading">
+              <span className="sniper-playbook-mark"><Crosshair size={15}/></span>
+              <div><strong>{playbook.title}</strong>
+                <small>{playbook.strengthTitle+' · '+playbook.strengthDetail}</small>
+                <small>{playbook.detail} · تحليل وليس أمر دخول</small></div>
+              <span className={'sniper-playbook-side '+(playbook.side==='BUY'?'playbook-buy':
+                playbook.side==='SELL'?'playbook-sell':'playbook-neutral')}>
+                {playbook.side==='BUY'?'↗ رصد شراء':
+                  playbook.side==='SELL'?'↘ رصد بيع':'◌ محايد'}
+              </span>
+            </div>
+            <div className="sniper-playbook-steps">
+              {playbook.steps.map((step,i)=><div key={step.label}
+                className={'sniper-playbook-step playbook-step-'+step.state.toLowerCase()}>
+                <span className="sniper-playbook-step-index">{i+1}</span>
+                <span><b>{step.label}</b><small>{step.detail}</small></span>
+              </div>)}
+            </div>
+            <div className="sniper-playbook-footer">
+              <span>{playbook.level!=null?'◇ بوابة الكسر '+fmt(playbook.level):
+                '◇ بوابة الكسر: '+breakoutWatch.headline}</span>
+              <span>{playbook.target?'◎ TP1 '+fmt(playbook.target.price)+' · هيكلي مشروط':
+                '◎ الأهداف تنتظر مستوى هيكليًا صالحًا'}</span>
+              {playbook.retest&&<span>↺ إعادة اختبار ±{fmt(playbook.retest.high-playbook.retest.center,2)} · تقريبي</span>}
+            </div>
+          </div>
+            </div>
+          </details>
+          {scenarioDetail&&<p style={{padding:'10px 16px',color:'#bad9e8',margin:0}}>
+            اسحب الرسم أفقيًا لمتابعة المسار · نفس عرض ومقياس شموع M1 · يتحدث المسار مع إغلاق الدقيقة · S مراحل وليست دقائق
+          </p>}
+          {(outsideLevels.length>0||Boolean(routeAudit)||routeVisible)&&<details className="sniper-route-research">
+          <summary><strong>تفاصيل مسار الأهداف</strong><span>{outsideLevels.length?
+            outsideLevels.length+' أهداف خارج التكبير · ':''}{routeVisible?'مراحل الكسر والاختبار':'تدقيق الرسم'} <span aria-hidden="true">⌄</span></span></summary>
+          <div className="sniper-route-research-content">
+          {outsideLevels.length>0&&<div aria-label="الأهداف خارج نطاق شموع الدقيقة"
+            style={{display:'flex',flexWrap:'wrap',gap:8,padding:'8px 16px',background:'#0b1e2c',color:'#c9deeb',fontSize:12}}>
+            <strong style={{width:'100%'}}>أهداف بعيدة · محفوظة بالسعر الحقيقي ولا تضغط الشموع</strong>
+            {outsideLevels.map(t=><span key={'outside-'+t.stage}
+              style={{border:'1px solid #315b57',borderRadius:6,padding:'4px 8px'}}>
+              {'TP'+t.stage+' '+(t.price>scaleHigh?'↑': '↓')+' '+fmt(t.price)+' · فرق '+fmt(t.offset)}
+            </span>)}
+          </div>}
+           {routeAudit&&<div aria-label="اختبار دقة رسم الشموع أمام التاريخ المغلق" style={{padding:'9px 16px',background:'#0e2630',color:'#d4e5ec',fontSize:12}}>
+            <strong>اختبار رسم المسار على شموع M1 مغلقة سابقة:</strong>{' '}
+            {routeAudit.samples} عينة زمنية غير متداخلة · خطأ الشموع {routeAudit.maeAtr??'—'} ATR
+            {' مقابل خط أساس ثابت '}{routeAudit.baselineMaeAtr??'—'} ATR
+            {' · اتجاه المسار '}{routeAudit.directionPct==null?'غير متاح':routeAudit.directionPct+'%'}
+            {' مقابل المرجع '}{routeAudit.baselineDirectionPct==null?'غير متاح':routeAudit.baselineDirectionPct+'%'}
+            <small style={{display:'block'}}>المسار الحالي تمثيل في حيز السعر لا يحدد دقائق وصول ولا احتمالات TP. التحقق التاريخي لا يؤهل إشارة دخول؛ {routeAudit.samples<20?'العينة لا تزال صغيرة.':'لا توجد أفضلية تنبؤية مثبتة.'}</small>
+          </div>}
+          {routeVisible&&targetRoute!.outcome!=='ACTIVE'&&<div role="status" style={{padding:'10px 16px',background:'#33241e',color:'#ffe0b5',fontSize:12}}>
+            {targetRoute!.outcome==='AMBIGUOUS'?'⚠ الهدف والوقف داخل نفس الشمعة المرجعية؛ لم يُحتسب الهدف':
+              '⛔ مسار الشموع المرجعية انتهى عند الوقف'} · لا يؤثر على نتائج التداول أو سجل الأهداف الفعلي
+          </div>}
+          {routeVisible&&<div aria-label="مراحل الوصول المشروط للأهداف" style={{display:'flex',flexWrap:'wrap',gap:8,padding:'10px 16px',background:'#102333',color:'#d2e6ee',fontSize:13}}>
+            <strong>مسار {conditionalRouteSide==='BUY'?'الصعود':'الهبوط'} المشروط:</strong>
+            {routeMotion.filter(p=>p.kind!=='START'&&p.kind!=='TARGET').map(p=><span key={p.key} style={{border:'1px solid #3b5e71',borderRadius:6,padding:'5px 9px'}}>{p.label} · {fmt(p.price)} · {targetRoute!.milestones.some(h=>h.key===p.key)?'✓ لمسته الشموع المرجعية':'مشروط · لم يُلمس'}</span>)}
+            {conditionalRouteGoals.map(t=><span key={t.stage} style={{border:'1px solid #376e61',borderRadius:6,padding:'5px 9px'}}>TP{t.stage} · {fmt(t.price)} · {routeAnchor!=null&&targetRoute!.atr!=null?(Math.abs(t.price-routeAnchor)/targetRoute!.atr).toFixed(1)+' × تقلب M1 · ':''}{targetRoute!.touches.some(h=>h.stage===t.stage)?'✓ لمسته الشموع المرجعية':'لم تلمسه الشموع المرجعية'}</span>)}
+            <small style={{width:'100%'}}>أهداف مراقبة مشروطة وليست أمر دخول. كل انتقال يتطلب استمرار الاتجاه وصلاحية المستويات؛ الأشكال والتصحيحات توضيحية ولا تحدد احتمال الوصول.</small>
+          </div>}
+          </div></details>}
           {showGhost&&<details className="forecast-ghost-guide"
             style={{padding:'6px 10px',border:'1px solid #36536b',borderRadius:8,marginTop:6,color:'#c4dbea',fontSize:12}}>
             <summary style={{cursor:'pointer',fontWeight:700}}>▥ {routeVisible?
@@ -1266,11 +1251,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {motion.some(p=>p.kind==='HOLD')?' امتداد ما بعد الكسر تقديري من تذبذب M5، وليس هدفًا منفصلًا.':''}
               {watchReady?' الكسر يحتاج إغلاق شمعتي M5 وتوافق M15/H1 وباقي شروط القناص؛ ليس تصريح دخول.':''}</p>
           </details>}
-          <div className="sniper-chart-key" aria-label="مفتاح الرسم">
-            <span><i className="sniper-key-up"/> صعود</span><span><i className="sniper-key-down"/> هبوط</span>
-            <span><i className="sniper-key-path"/> سيناريو مشروط</span>
-            <span className="render-ema20">EMA20</span><span className="render-ema50">EMA50</span>
-          </div>
           <details className="sniper-chart-legend-drawer"><summary>تفاصيل خطوط الرسم</summary>
           <div className="forecast-visual-legend">
             <span><i className="forecast-legend-history"/> شموع M1 حقيقية</span>
@@ -1285,8 +1265,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <span><i className="forecast-legend-stop"/> إبطال</span>
           </div>
           </details>
-        </div>
-      </div>
       {asset==='BTC'&&<BtcOrderflowPanel data={orderFlow} now={now}
         breakout={breakoutWatch}/>}
       {asset==='GOLD'&&<details className="gold-orderflow-note">
@@ -1295,18 +1273,25 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         لا توجد صفقات عقود GC/COMEX موثقة متصلة بالذهب هنا؛ لذلك لا نعرض Footprint
         بأرقام عقود مصطنعة على XAUUSD. يلزم مزود بيانات Futures حقيقي قبل التفعيل.</p>
       </details>}
-      <div className="sniper-price-snapshot" aria-label="السعر والأهداف الأساسية">
-        {planVisible&&m.displayTargets.slice(0,3).map(t=><span key={'snap-tp'+t.stage} className="sniper-price-snapshot-target">
-          <small>{statusReady?'هدف':'مراقبة'} TP{t.stage}</small><b dir="ltr">{fmt(t.price)}</b>
-        </span>)}
-        {!planVisible&&watchTargets.map(t=><span key={'watch-tp'+t.stage}
-          className="sniper-price-snapshot-target"
-          title={'رصد هيكلي من '+t.source+' · مستوى شمعة مغلقة · ليس أمر دخول'}>
-          <small>رصد TP{t.stage} · {t.source}</small><b dir="ltr">{fmt(t.price)}</b>
-        </span>)}
-        {planVisible&&m.displayStop!=null&&<span className="sniper-price-snapshot-stop"><small>الإبطال</small><b dir="ltr">{fmt(m.displayStop)}</b></span>}
-        {!planVisible&&<span className="sniper-price-snapshot-wait">{feedProblem||'أهداف مراقبة مشروطة · لا دخول مؤكد'}</span>}
-      </div>
+<div className="sniper-secondary-signals">            {structureView&&<span className={'sniper-structure-chip '+(structureView.side==='BUY'?'structure-up':'structure-down')}
+              title="شموع مغلقة: اندفاع + كسر جسم + آخر شمعة معاكسة + فجوة 3 شموع، وليس إثبات أوامر مؤسسات">
+              {structureView.side==='BUY'?'↗':'↘'} {structureView.kind==='BOS'?'BOS':'CHoCH؟'} · OB/FVG ·
+              {structureView.phase==='RETEST_CONFIRMED'?'اختبار مغلق':'انتظار اختبار'}
+            </span>}
+            {leadSweep&&<span className={'sniper-sweep-chip '+(leadSweep.side==='BUY'?'sweep-up':'sweep-down')}
+              title="تأكيد فني من شموع مغلقة؛ لا يسمح بالدخول دون وقف وتكلفة وتحقق">
+              {leadSweep.side==='BUY'?'↗ سحب سيولة قاع':'↘ سحب سيولة قمة'} · {fmt(leadSweep.level)} · إبطال {fmt(leadSweep.invalidation)}
+            </span>}
+            <span className={'sniper-structure-chip '+(observationRadar.side==='BUY'?'structure-up':
+              observationRadar.side==='SELL'?'structure-down':'')}
+              title={observationForDisplay.reason+' · رصد غير قابل للتنفيذ'}>
+              {observationForDisplay.title} ·
+              {' '}{observationForDisplay.m1Side==='BUY'?'M1 ↑':
+                observationForDisplay.m1Side==='SELL'?'M1 ↓':'M1 ↔'} /
+              {' '}{observationForDisplay.m5Side==='BUY'?'M5 ↑':
+                observationForDisplay.m5Side==='SELL'?'M5 ↓':'M5 ↔'}
+            </span>
+</div>
       <details className="sniper-evidence-drawer"><summary>تفاصيل التحليل والمؤشرات والسيولة <span>إظهار</span></summary>
       <div className="sniper-indicator-strip" aria-label="مؤشرات محسوبة من شموع مغلقة">
         <span><small>M1 RSI</small><b>{metric(indicatorRows.m1?.rsi)}</b></span>
@@ -1417,6 +1402,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>}
         </div>
       </div>
+      </details>
+        </div>
       </details>
       <details id="sniper-performance" className="sniper-inspection"><summary>سجل أداء القناص · نتائج TP1 / TP2 / TP3</summary>
       <section className="sniper-audit-panel sniper-audit-compact" aria-label="ملخص نتائج القناص">

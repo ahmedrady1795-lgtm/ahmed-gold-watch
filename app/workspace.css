@@ -1756,3 +1756,30 @@ body:has(.modern-workspace.compact-sniper){
 .sniper-target-map button{border:1px solid #426a7e;background:#193b4d;color:#e1f3fa;border-radius:8px;padding:10px 14px;cursor:pointer;min-height:44px}
 .sniper-target-map-levels{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 12px}
 .sniper-target-map-levels span{flex:1;min-width:130px;padding:10px 12px;background:#132e3b;border:1px solid #285247;border-radius:8px;color:#9cdbc2;display:flex;justify-content:space-between;gap:12px}
+
+/* Chart-first Qannas: one scenario line, two drawings, optional research. */
+.compact-sniper .sniper-home-head{padding:10px 16px;margin-bottom:8px}
+.compact-sniper .sniper-home-brand small{display:none}
+.compact-sniper .forecast-visual-header{padding:12px 16px}
+.sniper-scenario-line{display:flex;align-items:center;gap:10px 20px;flex-wrap:wrap;padding:10px 16px;background:#0d2530;border-bottom:1px solid #294754;font-size:13px;color:#c8dce5}
+.sniper-scenario-line strong{color:#a3e5d4}
+.sniper-scenario-line small{margin-inline-start:auto;color:#9db5c4;font-size:11px}
+.compact-sniper .forecast-visual-topline{padding:10px;gap:8px}
+.compact-sniper .sniper-chart-candle-age{font-size:10px}
+.sniper-secondary-details{margin:12px 14px;border:1px solid #294754;border-radius:10px;background:#0b1c29}
+.sniper-secondary-details>summary{display:flex;justify-content:space-between;gap:10px;cursor:pointer;padding:14px 16px;color:#b4cbd6;font-size:13px;list-style:none}
+.sniper-secondary-details>summary span{color:#7ea499;font-size:11px}
+.sniper-secondary-details>summary:focus-visible{outline:2px solid #8ddfc7;outline-offset:2px}
+.sniper-secondary-content{padding:8px 12px;border-top:1px solid #294754}
+.sniper-secondary-signals{display:flex;gap:8px;flex-wrap:wrap;padding:10px}
+.compact-sniper .sniper-target-map{margin:4px 0 16px}
+.compact-sniper .sniper-target-map header{padding:12px 14px}
+@media(max-width:600px){
+ .compact-sniper .sniper-home-head{padding:8px 10px}
+ .compact-sniper .sniper-solo-nav a{padding:7px 9px;font-size:10px}
+ .sniper-scenario-line{padding:8px 12px;gap:6px 12px;font-size:12px}
+ .sniper-scenario-line small{flex-basis:100%;margin:0}
+ .sniper-secondary-details{margin:10px 6px}
+ .sniper-secondary-content{padding:6px}
+ .compact-sniper .forecast-chart-tools{gap:5px}
+}

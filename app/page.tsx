@@ -277,12 +277,11 @@ export default function Home(){
       <div className="sniper-home-brand">
         <span className="sniper-home-emblem" aria-hidden="true">◎</span>
         <div><strong>القناص <span>QANNAS</span></strong>
-          <small>محطة متابعة الحركة والأهداف · قراءة واضحة وقرار منضبط</small></div>
+          <small>الرسم والسيناريو في شاشة واحدة</small></div>
       </div>
       <nav className="sniper-solo-nav" aria-label="التنقل في القناص">
         <a href="#market-forecast">الرسم المباشر</a>
         <a href="#sniper-performance">نتائج الأهداف</a>
-        <a href="#market-news">أخبار السوق</a>
         <a href="/scalp" className="workspace-scalp-link">سكالب الثواني ↗</a>
       </nav>
     </header>
