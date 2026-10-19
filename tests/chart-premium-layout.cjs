@@ -11,8 +11,8 @@ ensure(/chartBands\.filter\(z=>px\(z\.price\)>=yt\+8&&px\(z\.price\)<=yb-8\)/,
  'offscreen objectives cannot stack on a visible price label');
 ensure(/Math\.min\(chartWindow,mobile\?24:36\)/,
  'real closed mobile candles retain legible bodies');
-ensure(/candleWidth=clamp\(stride\*\.73,mobile\?2\.2:3,15\)/,
- 'historic candles are larger on full chart');
+ensure(/candleWidth=clamp\(stride\*\.46,3,9\)/,
+ 'small, price-true candlestick bodies resemble a professional MT5/TradingView chart');
 ensure(/latest=i===candles\.length-1/,'most recent real OHLC receives separate visual emphasis');
 const future=ui.slice(ui.indexOf('{visualCandles.map((c,i)=>{'),ui.indexOf('{ghostRangeVisible&&<g'));
 assert.match(future,/height=\{Math\.max\(2\.6,bottom-top\)\} rx="1\.3" fill=\{color\}/,
