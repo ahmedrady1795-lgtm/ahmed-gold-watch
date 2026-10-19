@@ -87,8 +87,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    fourHour:m.fourHour,pools
  }),[now,price,actual,historyFresh,m.historyFresh,m.sniper.view.priceFresh,
     m.observationFresh,providerTransition,marketOpen,m.fourHour,pools]);
- const W=430,H=704,left=12,split=188,end=322,axis=324,
-   plotTop=28,plotBottom=H-47;
+ const W=430,H=704,left=8,split=184,end=357,axis=359,
+   plotTop=26,plotBottom=H-33;
  // A single absolute price axis contains EVERY currently valid target and
  // stop. No fake vertical positioning of offscreen targets.
  const important=[
@@ -149,9 +149,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const labelBy=(s:string)=>s==='SL'?'إبطال':s==='LIVE'?'LIVE':s;
  const grid=Array.from({length:9},(_,i)=>lo+(hi-lo)*i/8);
  const latestClosed=actual.at(-1);
- const sourceLabel=projected.archiveYears>=2?
-   'مقارنة أرشيف '+projected.archiveYears+' سنوات':
-   'مرجع: '+projected.sourceBars+' شمعة M15 · لا يوجد أرشيف سنوات متصل';
  return <section className="sniper-m15-panel" dir="rtl"
    aria-label="القناص: شموع ربع ساعة فعلية وسيناريو M15 تاريخي مشروط">
    <header className="sniper-m15-head">
@@ -163,13 +160,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <button type="button" className="sniper-m15-liquidity-toggle"
        aria-pressed={showLiquidity} onClick={()=>setShowLiquidity(v=>!v)}
        title="إظهار أو إخفاء مناطق الطلب والعرض والسيولة والتجميع">
-       {showLiquidity?'السيولة ✓':'السيولة'}</button>
-     <span className="sniper-m15-price" dir="ltr">{n(price)}</span>
+       {showLiquidity?'سيولة ✓':'سيولة'}</button>
      <span className={'sniper-m15-bias '+(safeSide==='BUY'?'rise':safeSide==='SELL'?'fall':'hold')}>
        {direction}</span>
    </header>
    <div className="sniper-m15-chart-box">
-     <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label="شموع M15 الحقيقية يسار الخط، والسيناريو الافتراضي يمينه مع أسعار أهداف TP1 وTP2 وTP3 والإبطال"
+     <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label="شموع M15 فعلية ثم شموع توقع افتراضي، مع مستويات TP1 وTP2 وTP3 والإبطال وأسعارها الحقيقية، ومناطق السيولة على الرسم"
        preserveAspectRatio="none">
        <defs>
          <clipPath id={'sniper-m15-clip-'+asset}>
@@ -180,9 +176,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {grid.map((v,i)=><g key={'grid'+i}>
          <line x1={left} x2={end} y1={py(v)} y2={py(v)}
            stroke="#26323f" strokeDasharray="3 5" strokeWidth=".8"/>
-         {!rail.some(level=>Math.abs(level.labelY-py(v))<20)&&
-           <text x={W-7} y={py(v)+4} fill="#81919f"
-             fontSize="9" textAnchor="end" direction="ltr">{n(v)}</text>}
+         {!rail.some(level=>Math.abs(level.labelY-py(v))<17)&&
+           i%2===0&&<text x={W-5} y={py(v)+3} fill="#697986"
+             fontSize="8.2" textAnchor="end" direction="ltr">{n(v)}</text>}
        </g>)}
        {Array.from({length:8},(_,i)=><line key={'vx'+i} x1={left+i*(end-left)/7}
          x2={left+i*(end-left)/7} y1={plotTop} y2={plotBottom}
@@ -294,16 +290,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          return <g key={'rail'+level.key}>
            <line x1={end} x2={axis+3} y1={level.exactY} y2={level.labelY}
              stroke={color} strokeWidth="1.2"/>
-           <rect x={axis+2} y={level.labelY-12.5} width={W-axis-5}
+           <rect x={axis+1} y={level.labelY-12.5} width={W-axis-4}
              height="25" rx="3" fill={fill} stroke={color} strokeWidth=".7"/>
-           <text x={axis+6} y={level.labelY-3.5} fontSize="9.5" fontWeight="700" fill={color}
+           <text x={axis+5} y={level.labelY-3.7} fontSize="8.8" fontWeight="700" fill={color}
              textAnchor="start" direction="ltr">{labelBy(level.key)}</text>
-           <text x={W-6} y={level.labelY+8} fontSize="10.5" fontWeight="700"
+           <text x={W-5} y={level.labelY+8.1} fontSize="10.3" fontWeight="700"
              fill={color} textAnchor="end" direction="ltr">{n(level.price)}</text>
          </g>;
        })}
-       <text x={left+3} y={17} fill="#ccd8e6" fontSize="11" direction="ltr" textAnchor="start">M15 · REAL</text>
-       <text x={split+5} y={17} fill="#e0c08d" fontSize="11" textAnchor="start" direction="ltr">M15 · FORECAST</text>
+       <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
+       <text x={split+5} y={17} fill="#e0c08d" fontSize="10" textAnchor="start" direction="ltr">M15 · FORECAST</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(latestClosed.time)}</text>}
@@ -311,26 +307,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {projected.bars.length?'+'+projected.bars.length+' × M15':'M15'}</text>
      </svg>
    </div>
-   <div className="sniper-m15-caption">
-     <span><i className="sniper-m15-real-dot"/> حقيقي</span>
-     <span className="sniper-m15-layer-state">{liquidity.ready?
-       'مناطق '+liquidity.zones.length+' · '+liquidity.phase:
-       'السيولة: '+liquidity.reason}</span>
-     {liquidity.ready&&<span className="sniper-m15-phase-state">
-       {liquidity.context?liquidity.context.label:'لا تجميع/تصريف مؤكد حاليًا'}</span>}
-     <span><i className="sniper-m15-future-dot"/> توقع بالشموع</span>
-     <span>{sourceLabel}</span>
-   </div>
-   <div className="sniper-m15-status" role="status">
-     <span>{!marketOpen?'السوق مغلق':providerTransition?'تغير مزود البيانات':
-       !historyFresh?'شموع ربع الساعة غير مكتملة':
-       projected.ready?'محاكاة تاريخية مشروطة · ليست حركة مؤكدة':projected.reason}</span>
-     <span>{goals.length?goals.map(g=>'TP'+g.stage+' '+n(g.price)).join(' · '):
-       'لا توجد أهداف بعيدة صالحة'}</span>
-     {projected.ready&&<small>{goals.map(g=>
-       'TP'+g.stage+(projected.touches.includes(g.stage)?' ✓':' ◇')).join('  ·  ')}
-       {' · ✓ لامسها النموذج · ◇ لم يلمسها'}
-       {projected.stopped?' · المحاكاة توقفت عند الإبطال':''}</small>}
-   </div>
+   {/* Chart-only layout. All levels are shown inside the SVG; historical
+       analogues are visibly separated from observations. */}
  </section>;
 }
