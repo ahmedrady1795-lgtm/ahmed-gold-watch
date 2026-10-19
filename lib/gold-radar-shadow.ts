@@ -94,8 +94,9 @@ export function safeGoldRadarLedger(raw:unknown,now:number):GoldRadarLedger{
   return emptyGoldLedger();
  const events=data.events.slice(-2500).filter(e=>e&&
    trustedSpotGoldSource(e.source)&&typeof e.id==='string'&&
-   e.id==='XAU:'+encodeURIComponent(e.source)+':'+
-     (Math.floor(e.at/60000)*60000===0?0:Number(decodeURIComponent(e.id.split(':').at(-2)||'0')))+':'+e.side &&
+   e.id.startsWith('XAU:'+encodeURIComponent(e.source)+':')&&
+   e.id.endsWith(':'+e.side)&&
+   Number.isSafeInteger(Number(e.id.split(':').at(-2)))&&
    Number.isSafeInteger(e.at)&&now>=e.at&&now-e.at<180*86400000&&
    (e.side==='BUY'||e.side==='SELL')&&Number.isFinite(e.price)&&e.price>0&&
    e.m1?.barAt===nextWhole(e.at,60000)&&
