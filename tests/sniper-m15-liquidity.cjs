@@ -74,6 +74,35 @@ assert.ok(clustered.some(z=>z.count===2&&z.kind==='MIXED'&&z.label.includes('×2
 assert.ok(clustered.find(z=>z.count===2).detail.includes('100.00'),
  'full underlying price levels remain available in a tooltip');
 assert.equal(compact([],100,p=>p).length,0);
+// Reactions must require an observed sweep AND later fully closed follow-through.
+const start=now-52*900000;
+const bars=Array.from({length:52},(_,i)=>({
+ time:start+i*900000,open:100,close:100.04,high:100.18,low:99.86
+}));
+bars[43]={time:start+43*900000,open:100.05,close:100.14,high:100.26,low:99.25};
+bars[44]={time:start+44*900000,open:100.14,close:100.32,high:100.38,low:100.03};
+const got=build({...common,history:bars,price:100.4,
+ fourHour:{ready:false},pools:null});
+const rebound=got.zones.find(z=>z.kind==='REBOUND_UP');
+assert.ok(rebound,'a completed sweep plus bullish follow-through must show bounce');
+assert.equal(rebound.invalidation,99.25);
+assert.ok(rebound.confirmedAt<=now);
+assert.ok(!build({...common,history:bars.slice(0,44),
+ now:bars[43].time+900000,price:100.4,fourHour:{ready:false},pools:null})
+ .zones.some(z=>z.kind==='REBOUND_UP'),'a sweep alone is not a confirmed bounce');
+const broken=bars.map(b=>({...b}));
+broken[50]={...broken[50],open:100,high:100.15,low:99,close:99.15};
+assert.ok(!build({...common,history:broken,price:100.4,
+ fourHour:{ready:false},pools:null}).zones.some(z=>z.kind==='REBOUND_UP'),
+ 'a closed breach must invalidate the observed bounce');
+const bear=bars.map(b=>({...b}));
+bear[43]={time:start+43*900000,open:100.1,close:99.9,high:101.2,low:99.8};
+bear[44]={time:start+44*900000,open:99.9,close:99.7,high:100,low:99.66};
+assert.ok(build({...common,history:bear,price:99.6,fourHour:{ready:false},pools:null})
+ .zones.some(z=>z.kind==='REBOUND_DOWN'),'downward rejection must be symmetric');
+assert.ok(compact(got.zones,100.4,p=>500-(p-100)*100)
+ .some(z=>z.label.includes('ارتداد')),'rebound should remain visible near demand');
+
 const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const css=fs.readFileSync('app/workspace.css','utf8');
 assert.match(chart,/buildSniperM15Liquidity/);

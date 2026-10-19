@@ -7,8 +7,9 @@ type Candle={time:number;open:number;high:number;low:number;close:number};
 type RawZone={side:'BUY'|'SELL';low:number;high:number;confirmedAt:number;source:string;touches?:number};
 type RawContext={low:number;high:number;from:number;to:number;label:string;kind:string};
 type RawEvent={kind:string;at:number;confirmedAt:number;price:number;level:number;label:string};
-export type LiquidityZone={kind:'DEMAND'|'SUPPLY'|'HIGH_POOL'|'LOW_POOL';
- low:number;high:number;label:string;source:string;confirmedAt:number|null};
+export type LiquidityZone={kind:'DEMAND'|'SUPPLY'|'HIGH_POOL'|'LOW_POOL'|'REBOUND_UP'|'REBOUND_DOWN';
+ low:number;high:number;label:string;source:string;confirmedAt:number|null;
+ invalidation?:number};
 export type LiquidityContext={low:number;high:number;from:number;to:number;
  label:string;kind:'ACCUMULATION'|'DISTRIBUTION'|'COMPRESSION'};
 export type LiquidityEvent={kind:'SWEEP_LOW'|'SWEEP_HIGH'|'BOS_UP'|'BOS_DOWN';
@@ -45,11 +46,11 @@ export function buildSniperM15Liquidity(input:{
    hi-lo<=maxWidth&&Math.abs((hi+lo)/2-price)<normalSpan*2.2;
  const zones:LiquidityZone[]=[];
  const add=(kind:LiquidityZone['kind'],low:number,high:number,
-   label:string,source:string,confirmedAt:number|null)=>{
+   label:string,source:string,confirmedAt:number|null,invalidation?:number)=>{
    if(!validZone(low,high))return;
    if(zones.some(z=>z.kind===kind&&
      Math.abs((z.low+z.high)/2-(low+high)/2)<normalSpan*.014))return;
-   zones.push({kind,low,high,label,source,confirmedAt});
+   zones.push({kind,low,high,label,source,confirmedAt,invalidation});
  };
  if(fourHour?.ready){
    for(const z of (fourHour.zones??[]).slice(0,8)){
@@ -84,6 +85,56 @@ export function buildSniperM15Liquidity(input:{
         side==='BUY'?'طلب M15':'عرض M15',z.source,z.confirmedAt));
    }
  }
+ // Fully closed M15 sweep/reclaim + a later completed follow-through.
+ // Not an institutional order book; invalidate after any later close breach.
+ const reactions:Array<{
+   kind:'REBOUND_UP'|'REBOUND_DOWN';low:number;high:number;
+   confirmedAt:number;invalidation:number;source:string
+ }>=[];
+ const atrRows=history.slice(-15);
+ const atrRanges=atrRows.slice(1).map((b,i)=>
+   Math.max(b.high-b.low,Math.abs(b.high-atrRows[i].close),
+     Math.abs(b.low-atrRows[i].close)));
+ const atr=atrRanges.length?
+   atrRanges.reduce((sum,x)=>sum+x,0)/atrRanges.length:0;
+ if(atr>0)for(let i=Math.max(2,history.length-35);i<history.length-1;i++){
+   const p2=history[i-2],p1=history[i-1],b=history[i],next=history[i+1];
+   if(p1.time-p2.time!==900000||b.time-p1.time!==900000||
+      next.time-b.time!==900000||next.time+900000>now)continue;
+   const span=b.high-b.low;
+   if(!(span>0))continue;
+   const lowerWick=Math.min(b.open,b.close)-b.low;
+   const upperWick=b.high-Math.max(b.open,b.close);
+   const upSweep=b.low<Math.min(p1.low,p2.low)&&
+     lowerWick>=span*.22&&b.close>=b.low+span*.55&&
+     next.close>b.close&&next.close>next.open;
+   const downSweep=b.high>Math.max(p1.high,p2.high)&&
+     upperWick>=span*.22&&b.close<=b.high-span*.55&&
+     next.close<b.close&&next.close<next.open;
+   const after=history.slice(i+2);
+   if(upSweep&&price>b.low&&!after.some(c=>c.close<b.low)){
+     const high=Math.min(Math.min(b.open,b.close),
+       b.low+Math.max(atr*.4,span*.25));
+     if(high>b.low)reactions.push({kind:'REBOUND_UP',low:b.low,high,
+       confirmedAt:next.time+900000,invalidation:b.low,
+       source:'سحب قاع M15 ثم إغلاق صاعد لاحق'});
+   }
+   if(downSweep&&price<b.high&&!after.some(c=>c.close>b.high)){
+     const low=Math.max(Math.max(b.open,b.close),
+       b.high-Math.max(atr*.4,span*.25));
+     if(low<b.high)reactions.push({kind:'REBOUND_DOWN',low,high:b.high,
+       confirmedAt:next.time+900000,invalidation:b.high,
+       source:'سحب قمة M15 ثم إغلاق هابط لاحق'});
+   }
+ }
+ // Nearest recent valid reaction on each side; never fabricate an event.
+ for(const kind of ['REBOUND_UP','REBOUND_DOWN'] as const){
+   const candidate=reactions.filter(z=>z.kind===kind)
+     .sort((a,b)=>b.confirmedAt-a.confirmedAt)[0];
+   if(candidate)add(candidate.kind,candidate.low,candidate.high,
+     kind==='REBOUND_UP'?'ارتداد صاعد':'رفض هابط',
+     candidate.source,candidate.confirmedAt,candidate.invalidation);
+ }
  if(input.pools?.ready){
    const upper=input.pools.upper,lower=input.pools.lower;
    if(upper)add('HIGH_POOL',upper.low,upper.high,'سيولة القمم','سعر M1/M5 مغلق',null);
@@ -94,6 +145,7 @@ export function buildSniperM15Liquidity(input:{
    .sort((a,b)=>Math.abs((a.low+a.high)/2-price)-Math.abs((b.low+b.high)/2-price));
  const demand=selected.filter(z=>z.kind==='DEMAND').slice(0,2);
  const supply=selected.filter(z=>z.kind==='SUPPLY').slice(0,2);
+ const reboundZones=zones.filter(z=>z.kind==='REBOUND_UP'||z.kind==='REBOUND_DOWN');
  const pools=zones.filter(z=>['HIGH_POOL','LOW_POOL'].includes(z.kind));
  const contextRaw=fourHour?.ready?fourHour.contextBox:null;
  const context:LiquidityContext|null=contextRaw&&
@@ -111,7 +163,7 @@ export function buildSniperM15Liquidity(input:{
      e.confirmedAt<=now&&e.confirmedAt>e.at))
    .slice(-3).map(e=>({kind:e.kind as LiquidityEvent['kind'],at:e.at,
      price:e.price,label:e.label}));
- return {ready:true,zones:[...demand,...supply,...pools],context,events,
+ return {ready:true,zones:[...demand,...supply,...reboundZones,...pools],context,events,
    phase:fourHour?.ready?String(fourHour.phase||'توازن / غير محسوم'):
      'مناطق M15 فقط · سياق الأربع ساعات غير مكتمل',
    reason:fourHour?.ready?'مناطق مشتقة من شموع M1/M5/M15 مغلقة':
@@ -148,11 +200,17 @@ export function compactM15ZoneAnnotations(
    .slice(0,Math.max(1,Math.min(4,limit)))
    .sort((a,b)=>pixelY(a[0].p)-pixelY(b[0].p));
  return visible.map(group=>{
-   const preferred=group.find(e=>e.z.kind==='DEMAND'||e.z.kind==='SUPPLY')??group[0];
+   const preferred=group.find(e=>e.z.kind==='REBOUND_UP'||e.z.kind==='REBOUND_DOWN')??
+     group.find(e=>e.z.kind==='DEMAND'||e.z.kind==='SUPPLY')??group[0];
    const name=(kind:LiquidityZone['kind'])=>kind==='DEMAND'?'طلب':
-     kind==='SUPPLY'?'عرض':kind==='LOW_POOL'?'سيولة قيعان':'سيولة قمم';
+     kind==='SUPPLY'?'عرض':kind==='REBOUND_UP'?'ارتداد صاعد':
+     kind==='REBOUND_DOWN'?'رفض هابط':
+     kind==='LOW_POOL'?'سيولة قيعان':'سيولة قمم';
    const single=group.every(e=>e.z.kind===preferred.z.kind);
-   const label=(single?name(preferred.z.kind):'مناطق متداخلة')+
+   const hasUp=group.some(e=>e.z.kind==='REBOUND_UP');
+   const hasDown=group.some(e=>e.z.kind==='REBOUND_DOWN');
+   const label=(single?name(preferred.z.kind):
+     hasUp?'ارتداد + مناطق':hasDown?'رفض + مناطق':'مناطق متداخلة')+
      (group.length>1?' ×'+group.length:'');
    return {price:group.reduce((s,x)=>s+x.p,0)/group.length,
      kind:single?preferred.z.kind:'MIXED' as const,label,

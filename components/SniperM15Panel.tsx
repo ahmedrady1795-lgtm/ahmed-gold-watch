@@ -220,11 +220,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    plotTop=26,plotBottom=H-33;
  // A single absolute price axis contains EVERY currently valid target and
  // stop. No fake vertical positioning of offscreen targets.
+ const historyZoneSpan=trueHistory.length?
+   Math.max(1,Math.max(...trueHistory.map(b=>b.high))-
+     Math.min(...trueHistory.map(b=>b.low))):1;
+ const visibleZones=liquidity.zones.filter(z=>
+   Math.abs((z.low+z.high)/2-(price??anchor??0))<=historyZoneSpan*1.2);
  const important=[
    ...trueHistory.flatMap(c=>[c.high,c.low]),
    ...goals.map(t=>t.price),
    ...(stop!=null?[stop]:[]),...(price!=null?[price]:[]),
-   ...projected.bars.flatMap(c=>[c.high,c.low])
+   ...projected.bars.flatMap(c=>[c.high,c.low]),
+   ...visibleZones.flatMap(z=>[z.low,z.high])
  ].filter(v=>Number.isFinite(v)&&v>0);
  const min=Math.min(...important,anchor??1);
  const max=Math.max(...important,anchor??1);
@@ -250,7 +256,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const actualStride=(split-left-5)/Math.max(trueHistory.length,1);
  const timeX=(time:number)=>left+
    clamp((time-(trueHistory[0]?.time??time))/900000,0,trueHistory.length)*actualStride;
- const liquidityColor=(kind:string)=>kind==='DEMAND'||kind==='LOW_POOL'?
+ const liquidityColor=(kind:string)=>
+   kind==='DEMAND'||kind==='LOW_POOL'||kind==='REBOUND_UP'?
    '#41cfab':'#ff7b90';
  const projectedStride=(end-split-8)/Math.max(projected.bars.length,48);
  // Price zones keep their true coordinates; only nearby labels merge.
@@ -287,8 +294,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <b className="sniper-m15-frame">M15</b>
      <button type="button" className="sniper-m15-liquidity-toggle"
        aria-pressed={showLiquidity} onClick={()=>setShowLiquidity(v=>!v)}
-       title="إظهار أو إخفاء مناطق الطلب والعرض والسيولة والتجميع">
-       {showLiquidity?'سيولة ✓':'سيولة'}</button>
+       title="مناطق سيولة القمم والقيعان، الطلب والعرض والارتداد أو الرفض بعد إغلاق M15">
+       {showLiquidity?'المناطق ✓':'المناطق'}</button>
      <span className={'sniper-m15-phase '+(phase.confirmed?'confirmed':'neutral')}
        title={(liquidity.ready?liquidity.reason:'لا توجد قراءة محدثة')+
          ' · تقييم زمني M15: '+walkForward.correct+'/'+walkForward.selected+
@@ -340,14 +347,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {showLiquidity&&liquidity.zones.map(z=>{
            const color=liquidityColor(z.kind),top=py(z.high),bottom=py(z.low);
            const pool=z.kind==='HIGH_POOL'||z.kind==='LOW_POOL';
+           const reaction=z.kind==='REBOUND_UP'||z.kind==='REBOUND_DOWN';
            return <g key={'zone-'+z.kind+'-'+z.low} className="sniper-m15-zone">
              <rect x={left+2} y={top} width={split-left-5}
                height={Math.max(2,bottom-top)} fill={color}
-               fillOpacity={pool?0.11:0.18} stroke={color}
-               strokeOpacity=".94" strokeWidth={pool?1.2:1.3}
-               strokeDasharray={pool?'3 6':'6 4'}/>
+               fillOpacity={pool?0.11:reaction?0.24:0.18} stroke={color}
+               strokeOpacity=".94" strokeWidth={reaction?1.8:pool?1.2:1.3}
+               strokeDasharray={reaction?'2 3':pool?'3 6':'6 4'}/>
              <title>{z.label+' · '+n(z.low)+' – '+n(z.high)+
-               ' · '+z.source+' · مستويات سعرية وليست حجم أوامر فعلي'}</title>
+               (z.invalidation!=null?' · إبطال '+n(z.invalidation):'')+
+               ' · '+z.source+' · شموع مغلقة، لا أوامر مؤسسات'}</title>
            </g>;
          })}
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
@@ -358,7 +367,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
              clamp(projectedStride*.62,1.5,3.1),true,'future'+i))}
          {showLiquidity&&compactZones.map((z,i)=>{
-           const color=z.kind==='MIXED'?'#e8c184':liquidityColor(z.kind);
+           const color=z.kind==='MIXED'?
+             z.label.includes('ارتداد')?'#41cfab':
+             z.label.includes('رفض')?'#ff7b90':'#e8c184':
+             liquidityColor(z.kind);
            const y=zoneLabelPoints[i].y,xBadge=split-82;
            return <g key={'group-label-'+i+'-'+z.price.toFixed(2)}>
              <line x1={split-5} x2={xBadge+74} y1={py(z.price)} y2={y}
