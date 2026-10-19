@@ -40,7 +40,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
 }){
   const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
   const [focusCandles,setFocusCandles]=useState(true);
-  const [showAlternatives,setShowAlternatives]=useState(false);
+  const showAlternatives=false; // optional alternative paths removed from the clean sniper cockpit
   const showGhost=true;
   const [mobile,setMobile]=useState(false);
   const expanded=false;
@@ -322,6 +322,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       ...b,time:(m.candles.at(-1)?.time||now)+(i+1)*60000,
       validatedShape:false,scenarioShape:true,analogue:false
     })):
+    // Do NOT show a neutral/downward illustration underneath an opposite
+    // upward structural TP (or vice versa). A conditional route must pass
+    // the price-true directional motif check or remain unplotted.
+    conditionalRouteGoals.length>0?[]:
     buildVisualFuture({candles:m.candles,forecast:ghost,side:dir,now,anchorPrice:liveAnchor});
   const closedPreview=goldClosed&&visualCandles.length>0;
   // The M1 audit scans many historical folds. A frequent quote/UI refresh
@@ -365,20 +369,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     nextStudy.status==='TECHNICAL_ONLY'?'تحليل فني · أفضلية غير مثبتة':
     'غير متاح · '+nextStudy.reason;
   const firstCandle=visualCandles[0];
-  const closedM1Gate=assessSniperEntryCandle({history:m.candles,now,
-    side:conditionalRouteSide,price:m.price,
-    sourceReady:!goldClosed&&!providerTransition&&m.historyFresh&&m.observationFresh&&sn.view.priceFresh});
-  const firstGoalDistance=conditionalRouteGoals[0]&&m.price!=null&&sn.longRange.atr15!=null&&
-    Number(sn.longRange.atr15)>0?
-    Number((Math.abs(conditionalRouteGoals[0].price-m.price)/Number(sn.longRange.atr15)).toFixed(2)):null;
-  const firstDirection=firstCandle?
-    firstCandle.close>firstCandle.open?'صعود':
-    firstCandle.close<firstCandle.open?'هبوط':'تعادل':'غير متاح';
-  const firstAuditEligible=!routeVisible&&!closedPreview&&ghost.mode==='RANGE'&&
-    firstCandleStudy!=null&&firstCandleStudy.samples>=30;
-  const firstAuditLabel=firstAuditEligible?
-    'اتجاه تاريخي '+firstCandleStudy!.accuracyPct+'٪ · '+firstCandleStudy!.samples+' اختبار':
-    'نسبة النجاح غير مثبتة';
   const scenarioCandles=visualCandles.some(c=>c.scenarioShape);
   const ghostVisible=showGhost&&!routeVisible&&ghost.mode==='CANDLES'&&visualCandles.length>=3;
   const ghostRangeVisible=showGhost&&!routeVisible&&ghost.mode==='RANGE'&&visualCandles.length>=3;
@@ -396,7 +386,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     const index=clamp(Math.floor((point.x-x0)/stride),0,candles.length-1);
     setInspectedTime(candles[index].time);
   };
-  const candleWidth=clamp(stride*.73,mobile?2.2:3,15);
+  // MT5 / TradingView compact bodies; identical widths for LIVE, NEXT and
+  // price-space target stages on the very same true linear Y scale.
+  const candleWidth=clamp(stride*.46,3,9);
   const futureStride=scenarioDetail?stride:(xr-xf-18)/Math.max(1,visualCandles.length);
   // The scenario can be narrower, NEVER wider than an actual chart candle.
   const futureWidth=candleWidth;
@@ -415,7 +407,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   // This was the cause of future BTC candles collapsing into tiny dots when
   // the "all levels" view was selected on a phone.
   const candleViewport=chartPriceViewport({
-    real:candles,illustrative:visualCandles,
+    // The visible M1 region follows actual traded OHLC and the nearby first
+    // stages only. Distant 96-stage patterns never flatten the real candles.
+    // Remote TP remain offscreen with exact directional price labels.
+    real:candles,
+    illustrative:[...visualCandles.slice(0,18),
+      ...(liveM1?[liveM1]:[]),...(nextCandle?[nextCandle]:[])],
     focus:focusCandles,reference:m.candles.at(-1)?.close??null,
     atr:targetRoute?.atr??ghost.atr??null
   });
@@ -633,10 +630,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                  title="الشموع دائمًا بمقياسها الفعلي؛ الأهداف البعيدة تظهر خارج الزوم بأسعارها الصحيحة"
                  onClick={()=>setFocusCandles(v=>!v)}>{focusCandles?'نطاق شموع أوسع':'تكبير الشموع'}</button>
               <button type="button" aria-pressed={chartFullscreen} onClick={()=>setChartFullscreen(v=>!v)}>{chartFullscreen?'إغلاق ملء الشاشة':'⛶ ملء الشاشة'}</button>
-              <details className="sniper-more-chart-tools"><summary>أدوات إضافية <span aria-hidden="true">⌄</span></summary>
-              <div className="sniper-more-chart-tools-body">
-              <button className="forecast-chart-alternative" type="button" aria-pressed={showAlternatives} onClick={()=>setShowAlternatives(v=>!v)} title="مسارات مشروطة إضافية، ليست صفقات">{showAlternatives?'إخفاء البدائل':'بدائل'}</button>
-              </div></details>
             </div>
           </div>
           {asset==='BTC'&&providerTransition&&<div role="status" className="sniper-provider-transition">
@@ -644,9 +637,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>}
           {showGhost&&!goldClosed&&conditionalRouteGoals.length>0&&!routeVisible&&!providerTransition&&<div aria-label="سبب تعليق مسار الأهداف"
             style={{padding:'8px 16px',color:'#e8c58d',background:'#1b2731',fontSize:12}}>
-            مسار الأهداف يتجدد مع بيانات السوق · {providerTransition?'تغيير مصدر BTC يحتاج إغلاقات جديدة':targetRoute?.ready?
-              'السعر ابتعد عن مرجع إغلاق الدقيقة؛ الرسم يتجدد عند إغلاق شمعة جديدة':
-              targetRoute?.reason??'بانتظار سعر و36 شمعة M1 مغلقة وحديثة'}
+            {conditionalRouteSide==='BUY'?'↑ الأهداف أعلى السعر':
+              conditionalRouteSide==='SELL'?'↓ الأهداف أسفل السعر':'أهداف مراقبة'} ·
+            {targetRoute?.ready?'المسار المشروط غير ملائم للسعر الحالي؛ لا نرسم شموعًا بعكس الهدف':
+              targetRoute?.reason??'بانتظار 36 شمعة M1 مغلقة وحديثة'}
           </div>}
           <div className="sniper-live-next-status" role="status" aria-label="الشمعة الحية والتوقع التالي">
             <span className="sniper-live-next-live">
@@ -668,29 +662,6 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                 ' · '+nextStudy.holdout.n+' اختبار خارج العينة · '+nextStudy.holdout.accuracyPct+'٪ اتجاه':''}</small>
             </span>
           </div>
-          {ghostActive&&<div role="status" aria-label="فحص أول شمعة في السيناريو"
-            style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:'7px 16px',padding:'10px 16px',
-              background:'#152735',color:'#e6d39d',borderBottom:'1px solid #5c5135',fontSize:13}}>
-            <strong>① أول شمعة في السيناريو · {firstDirection}</strong>
-            <span>{routeVisible?'مرحلة سعرية S1 بلا توقيت M1':
-              closedPreview?'شكل من الأرشيف غير حي':'شمعة M1 مرسومة افتراضيًا'}</span>
-            {firstCandle&&!routeVisible&&!closedPreview&&<span>
-              {'O '+fmt(firstCandle.open)+' · C تقديري '+fmt(firstCandle.close)}
-            </span>}
-            <strong>{routeVisible||closedPreview?'الدقة الزمنية غير قابلة للقياس لهذا المسار':
-              firstAuditLabel}</strong>
-            {!closedPreview&&<span title={closedM1Gate.reason}>
-              {'آخر M1 مغلقة: '+(closedM1Gate.qualified?'تأكيد مع الاتجاه':
-                closedM1Gate.status==='UNAVAILABLE'?'بيانات غير مكتملة':'انتظار تأكيد')}
-            </span>}
-            {!closedPreview&&firstGoalDistance!=null&&<span>
-              {'مسافة TP1: '+firstGoalDistance+' ATR15 · هدف هيكلي مشروط'}
-            </span>}
-            <small>الشمعة الأولى المرسومة ليست إغلاقًا مستقبليًا مضمونًا؛ القرار يعتمد على الإغلاق الفعلي</small>
-            {firstAuditEligible&&<small>{'مرجع استمرار آخر شمعة '+firstCandleStudy!.baselinePct+
-              '٪ · خطأ إغلاق '+firstCandleStudy!.maeAtr+' ATR مقابل '+firstCandleStudy!.baselineMaeAtr+
-              ' ATR للمرجع · ليس احتمال ربح أو ضمانًا'}</small>}
-          </div>}
           <div ref={chartScrollRef} className="forecast-visual-chart-scroll" style={scenarioDetail?{display:'block',overflowX:'auto',direction:'ltr'}:undefined}>
             <div dir="rtl" style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:'8px 16px',padding:'12px 16px',background:'#0b1928',borderBottom:'1px solid #284156',color:'#b6cad9',fontSize:13,fontVariantNumeric:'tabular-nums'}}>
               <strong style={{color:'#e3edf5'}}>{inspected?'فحص شمعة':'آخر شمعة'}</strong>
@@ -1011,16 +982,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   <title>نطاق تقلب تقريبي متسع، غير معاير إحصائيًا ولا يضمن تغطية محددة</title>
                 </path>}
                 {firstCandle&&<g className="sniper-first-scenario-focus" pointerEvents="none">
-                  <rect x={ghostXs[0]-futureWidth/2-5} y={yt+3} width={futureWidth+10}
-                    height={yb-yt-6} fill="#f5d36d" fillOpacity=".045"
-                    stroke="#f5d36d" strokeWidth="2" strokeDasharray="5 4" rx="4"/>
-                  <text x={ghostXs[0]+futureWidth/2+9} y={yt+24} fill="#ffe59a"
-                    fontSize="13" fontWeight="800">{routeVisible?'المرحلة الأولى S1':'أول شمعة افتراضية M1'}</text>
-                  <text x={ghostXs[0]+futureWidth/2+9} y={yt+42} fill="#ffe59a"
-                    fontSize="12" fontWeight="700">{routeVisible?'غير مؤقتة · غير معايرة':firstAuditLabel}</text>
-                  <title>{routeVisible?
-                    'الشمعة الأولى خطوة مرسومة نحو هدف سعري، ليست توقع الشمعة الزمنية القادمة':
-                    'توافق الاتجاه تاريخي للعرض فقط، وليس نسبة احتمال نجاح مستقبلية أو دخول صفقة'}</title>
+                  <rect x={ghostXs[0]-futureWidth/2-3} y={yt+10}
+                    width={futureWidth+6} height={yb-yt-20}
+                    fill="none" stroke="#f5d36d" strokeOpacity=".42"
+                    strokeWidth="1.2" rx="2"/>
+                  <title>المرحلة الأولى في مسار الأهداف المشروط · ليست شمعة زمنية قادمة</title>
                 </g>}
                 {visualCandles.map((c,i)=>{
                   const gx=ghostXs[i],up=c.close>=c.open;
@@ -1032,8 +998,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                     <rect x={gx-futureWidth/2} y={top} width={futureWidth}
                       height={Math.max(2.6,bottom-top)} rx="1.3" fill={color}
                       stroke={up?'#a2ffe7':'#ffc0cb'} strokeOpacity=".72" strokeWidth="1"/>
-                    {(i%4===0||i===visualCandles.length-1)&&<text x={gx} y={yb-7} textAnchor="middle" fill="#b8c9e5"
-                      fontSize={mobile?11:10}>{routeVisible?'S'+(i+1):closedPreview?'+'+(i+1):clock(c.time)}</text>}
+                    {i>0&&(i%12===0||i===visualCandles.length-1)&&<text x={gx} y={yb-7} textAnchor="middle" fill="#b8c9e5"
+                      fontSize="10">{routeVisible?'S'+(i+1):closedPreview?'+'+(i+1):clock(c.time)}</text>}
                     <title>{(c.scenarioShape?'شمعة من نموذج تاريخي · مرحلة توضيحية دون موعد وصول رقم ':'شمعة M1 افتراضية رقم ')+c.step+
                       (closedPreview||c.scenarioShape?' · دون موعد وصول':' · '+clock(c.time))+' · '+(up?'صعود توضيحي':'هبوط توضيحي')+
                       ' · O '+fmt(c.open)+' H '+fmt(c.high)+' L '+fmt(c.low)+' C '+fmt(c.close)+
@@ -1049,11 +1015,9 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                     <title>نطاق تذبذب M1 للخطوة {r.step}، لا يحدد صعودًا أو هبوطًا</title>
                   </g>)}
                 </g>}
-                <text x={(ghostXs[0]+ghostXs.at(-1)!)/2} y={yt+29} textAnchor="middle"
-                  fontSize={mobile?13:12} fontWeight="700" fill="#bdd1ee">
-                  {routeVisible?'أنماط شموع M1 تاريخية · الأهداف لا تحرك الشموع':
-                    closedPreview?'من أرشيف السوق · عرض توضيحي فقط':
-                    ghostVisible?'3 شموع تقديرية + نماذج تاريخية':'شموع توضيحية من نماذج تاريخية'}
+                <text x={xf+10} y={yt+20} fontSize="11" fontWeight="650" fill="#bdd1ee">
+                  {routeVisible?'مسار أهداف مشروط':closedPreview?'عرض تاريخي':
+                    'أنماط تاريخية توضيحية'}
                 </text>
                 {routeVisible&&targetRoute!.milestones.map((hit,i)=><g key={'route-step-'+hit.key}>
                   <line x1={ghostXs[hit.index]} x2={ghostXs[hit.index]} y1={px(hit.price)} y2={yt+120+i*30} stroke="#90c7ef" strokeDasharray="3 4"/>
@@ -1327,9 +1291,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
             </div>
           </details>
-          {scenarioDetail&&<p style={{padding:'10px 16px',color:'#bad9e8',margin:0}}>
-            اسحب الرسم أفقيًا لمتابعة المسار · نفس عرض ومقياس شموع M1 · يتحدث المسار مع إغلاق الدقيقة · S مراحل وليست دقائق
-          </p>}
+
           {(outsideLevels.length>0||Boolean(routeAudit)||routeVisible)&&<details className="sniper-route-research">
           <summary><strong>تفاصيل مسار الأهداف</strong><span>{outsideLevels.length?
             outsideLevels.length+' أهداف خارج التكبير · ':''}{routeVisible?'مراحل الكسر والاختبار':'تدقيق الرسم'} <span aria-hidden="true">⌄</span></span></summary>
@@ -1380,6 +1342,12 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               {' '}هذا الرسم ليس نموذج ML معتمدًا ولا إشارة دخول.</div>
             <details style={{marginTop:4}}>
               <summary>نتائج الاختبار التاريخي وطريقة العرض</summary>
+              {firstCandleStudy&&<p style={{margin:'5px 0',color:'#a7c6d4'}}>
+                فحص أول شمعة M1 تاريخيًا: {firstCandleStudy.samples} اختبار،
+                اتجاه {firstCandleStudy.accuracyPct??'—'}٪ مقابل
+                {' '}{firstCandleStudy.baselinePct??'—'}٪ للمرجع.
+                هذه مقارنة تاريخية وليست احتمال نجاح.
+              </p>}
               {analogueAudit&&<p style={{margin:'5px 0',color:'#a7c6d4'}}>
                 محاكاة الشموع: {analogueNeighbors} أنماط مستقلة؛ اختبار زمني لثلاث دقائق:
                 {' '}{analogueAudit.samples} حالات، اتجاه صحيح {analogueAudit.hits} مقابل
