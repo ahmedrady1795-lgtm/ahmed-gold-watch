@@ -408,13 +408,17 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   // projected bar past xr and silently clipped its wick/TP touch marker.
   // Use a stable 19-slot width for ordinary view even when no stages exist.
   const futureStride=(xr-xf-18)/Math.max(19,visualCandles.length+1);
+  // No 18-stage or empty forecast may spread its very first candle across
+  // the entire 96-stage lane. Adjacent LIVE, NEXT and ghost candles keep
+  // real historical M1 spacing; 96-stage routes can still use the full lane.
+  const adjacentStride=Math.min(stride,futureStride);
   // The scenario can be narrower, NEVER wider than an actual chart candle.
   const futureWidth=candleWidth;
   // The first horizontal slot is reserved for NEXT M1 immediately after
   // locally observed LIVE M1. Longer target-path shapes start AFTER NEXT.
-  const nextX=xf+9+futureStride*.5;
+  const nextX=xf+9+adjacentStride*.5;
   const liveX=xf-4;
-  const ghostXs=visualCandles.map((_,i)=>xf+9+(i+1.5)*futureStride);
+  const ghostXs=visualCandles.map((_,i)=>xf+9+(i+1.5)*adjacentStride);
   const motionColor=watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4';
   const scenarioKind=motion.some(p=>p.kind==='SWEEP')?'SWEEP_RECLAIM':
     motion.some(p=>p.kind==='RETEST')?'BREAK_RETEST':'DIRECT';
