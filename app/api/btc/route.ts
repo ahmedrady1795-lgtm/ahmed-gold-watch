@@ -43,8 +43,16 @@ function ok(quote:BtcQuote,now:number,degraded=false){
   return Response.json({ok:true,symbol:'BTC/USD',...quote,fetchedAt:now,degraded},{headers:{'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0','Pragma':'no-cache','Expires':'0'}});
 }
 export async function GET(request:Request){
-  const now=Date.now(),strictCoinbase=new URL(request.url).searchParams.get('source')==='coinbase';
+  const now=Date.now(),requested=new URL(request.url).searchParams.get('source');
+  const strictCoinbase=requested==='coinbase';
   const errors:string[]=[];
+  // A Kraken chart must not display a Coinbase real-time bar as if it were
+  // the same OHLC venue. Only genuine timestamped Kraken trades qualify.
+  if(requested==='kraken'){
+    try{return ok(await krakenTrades(now),now);}
+    catch{return Response.json({ok:false,status:'unavailable',message:'Kraken timed trades unavailable; keep LIVE disabled'},
+      {status:503,headers:{'Cache-Control':'no-store'}});}
+  }
   // Prefer timestamped EXCHANGE prices; Spot/Ticker may report a numeric
   // value but without a source event time, which cannot be labeled LIVE.
   const primary=coinbaseExchange(now).catch(e=>{
