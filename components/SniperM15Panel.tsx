@@ -1,0 +1,226 @@
+'use client';
+
+import {useMemo,useState} from 'react';
+import {buildForecastIllustration} from '../lib/forecast-illustration';
+import {assessChartObservation} from '../lib/chart-observation-radar';
+import {buildDistantMovementOutlook} from '../lib/sniper-movement-outlook';
+import {buildM15Scenario,closedM15Bars,sampledLiveM15} from '../lib/sniper-m15-scenario';
+import {goldMarketSession} from '../lib/gold-market-session';
+
+const n=(x:number|null|undefined)=>x!=null&&Number.isFinite(x)?
+ x.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
+const h=(t:number)=>new Date(t).toLocaleString('en-GB',{timeZone:'Asia/Dubai',
+ month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+const clamp=(n:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,n));
+
+export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,assetView='ALL',
+ observationAt=snapshotAt}:{
+ data:any;now:number;snapshotAt:unknown;observationAt?:unknown;
+ goldLive?:any;btcLive?:any;assetView?:'ALL'|'GOLD'|'BTC';
+}){
+ const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
+ const asset=assetView==='ALL'?chosen:assetView;
+ const x=asset==='GOLD'?data?.gold:data?.bitcoin;
+ const liveQuote=asset==='GOLD'?goldLive:btcLive;
+ const marketOpen=asset==='BTC'||goldMarketSession(now).open;
+ const providerTransition=asset==='BTC'&&Boolean(x?.providerTransition);
+ // The independent closed M1 chart continues to certify source/time and
+ // qualified plan history; this new display never turns a watch into an order.
+ const m=useMemo(()=>buildForecastIllustration(asset,x,liveQuote,now,snapshotAt,
+   null,true,null,null,observationAt),
+   [asset,x,liveQuote,now,snapshotAt,observationAt]);
+ const actual=useMemo(()=>closedM15Bars(x?.chartHigherFrames?.m15,now,320),
+   [x?.chartHigherFrames?.m15,now]);
+ const recent=actual.slice(-52);
+ const historyFresh=actual.length>=24&&
+   actual.slice(-24).every((b,i,a)=>i===0||b.time-a[i-1].time===900000)&&
+   now-(actual.at(-1)!.time+900000)<=36*60000;
+ const radar=assessChartObservation({now,priceFresh:m.sniper.view.priceFresh,
+   historyFresh:m.historyFresh,marketOpen,m1:m.candles,m5:x?.chartHigherFrames?.m5});
+ const side: 'BUY'|'SELL'|'WAIT' =
+   (m.ready||m.watchReady)&&m.displaySide!=='WAIT'?m.displaySide:
+   m.observation.ready&&m.observation.side!=='WAIT'?m.observation.side:
+   radar.status==='ALIGNED'?radar.side:'WAIT';
+ const safeSide=providerTransition||!marketOpen||!historyFresh||
+   !m.sniper.view.priceFresh||!m.observationFresh?'WAIT':side;
+ const outlook=useMemo(()=>buildDistantMovementOutlook({
+   asset,side:safeSide,price:m.price,now,priceFresh:m.sniper.view.priceFresh&&
+     m.observationFresh,historyFresh,marketOpen,providerTransition,
+   frames:x?.chartHigherFrames,
+   evidenceStrength:m.ready?'QUALIFIED':radar.status==='ALIGNED'?'ALIGNED':'PARTIAL',
+   invalidation:m.displayStop??m.observation.invalidation??null
+ }),[asset,safeSide,m.price,now,m.sniper.view.priceFresh,m.observationFresh,
+   historyFresh,marketOpen,providerTransition,x?.chartHigherFrames,
+   m.ready,m.displayStop,m.observation.invalidation,radar.status]);
+ const qualified=m.ready&&m.displayTargets.length>0;
+ const targets=qualified?m.displayTargets:outlook.targets.length?outlook.targets:
+    m.watchReady?m.displayTargets:[];
+ const stop=qualified?m.displayStop:
+   outlook.invalidation??(m.watchReady?m.displayStop:null);
+ const anchor=actual.at(-1)?.close??null;
+ const goals=targets.slice(0,3).map(t=>({stage:t.stage,price:t.price}));
+ const projected=useMemo(()=>buildM15Scenario({
+   history:actual,now,anchor,side:safeSide,targets:goals,
+   stop,steps:36
+ }),[actual,now,anchor,safeSide,
+   goals.map(g=>g.price).join('|'),stop]);
+ const forming=sampledLiveM15(m.candles,now);
+ // A live partial candle is sourced only from true closed M1 bars.
+ const validLive=forming!=null&&historyFresh&&m.historyFresh&&
+   !providerTransition&&marketOpen&&m.sniper.view.priceFresh;
+ const trueHistory=recent;
+ const price=m.price;
+ const W=430,H=704,left=10,split=232,end=338,axis=340,
+   plotTop=26,plotBottom=H-43;
+ // A single absolute price axis contains EVERY currently valid target and
+ // stop. No fake vertical positioning of offscreen targets.
+ const important=[
+   ...trueHistory.flatMap(c=>[c.high,c.low]),
+   ...goals.map(t=>t.price),
+   ...(stop!=null?[stop]:[]),...(price!=null?[price]:[]),
+   ...projected.bars.flatMap(c=>[c.high,c.low])
+ ].filter(v=>Number.isFinite(v)&&v>0);
+ const min=Math.min(...important,anchor??1);
+ const max=Math.max(...important,anchor??1);
+ const spread=Math.max(max-min,(anchor??1)*.0004,projected.atr??0,1);
+ const lo=Math.max(.000001,min-spread*.065);
+ const hi=max+spread*.065;
+ const py=(p:number)=>plotTop+(hi-p)/(hi-lo)*(plotBottom-plotTop);
+ const scaleLevels=[
+   ...goals.map(g=>({key:'TP'+g.stage,price:g.price,kind:'TARGET'})),
+   ...(stop!=null?[{key:'SL',price:stop,kind:'STOP'}]:[]),
+   ...(price!=null?[{key:'LIVE',price,kind:'PRICE'}]:[])
+ ];
+ const rail=scaleLevels.map(v=>({...v,exactY:py(v.price)}))
+   .sort((a,b)=>a.exactY-b.exactY).map((v,i,a)=>{
+      const previous=i>0?a[i-1].exactY:-100;
+      return {...v,labelY:clamp(Math.max(v.exactY,
+        i===0?plotTop+15:previous+0),plotTop+14,plotBottom-14)};
+   });
+ for(let i=1;i<rail.length;i++)rail[i].labelY=Math.max(rail[i].labelY,rail[i-1].labelY+26);
+ const overflow=rail.at(-1)?.labelY??0;
+ if(overflow>plotBottom-14)
+   for(const r of rail)r.labelY-=overflow-(plotBottom-14);
+ const actualStride=(split-left-5)/Math.max(trueHistory.length,1);
+ const projectedStride=(end-split-8)/Math.max(projected.bars.length,36);
+ const candle=(open:number,high:number,low:number,close:number,xpos:number,width:number,
+   future:boolean,key:string)=> {
+   const up=close>=open,color=up?'#39d6cc':'#fa5970';
+   const top=Math.min(py(open),py(close)),height=Math.max(1,Math.abs(py(open)-py(close)));
+   return <g key={key} className={future?'sniper-m15-projected':'sniper-m15-real'}
+     opacity={future?.84:1}>
+     <line x1={xpos} x2={xpos} y1={py(high)} y2={py(low)}
+       stroke={color} strokeWidth={future?.8:1.05}/>
+     <rect x={xpos-width/2} y={top} width={width} height={height}
+       fill={color} stroke={color} strokeWidth=".35"/>
+   </g>;
+ };
+ const direction=safeSide==='BUY'?'↗ صعود':safeSide==='SELL'?'↘ هبوط':'↔ انتظار';
+ const labelBy=(s:string)=>s==='SL'?'إبطال':s==='LIVE'?'LIVE':s;
+ const grid=Array.from({length:9},(_,i)=>lo+(hi-lo)*i/8);
+ const latestClosed=actual.at(-1);
+ const sourceLabel=projected.archiveYears>=2?
+   'مقارنة أرشيف '+projected.archiveYears+' سنوات':
+   'مرجع: '+projected.sourceBars+' شمعة M15 · لا يوجد أرشيف سنوات متصل';
+ return <section className="sniper-m15-panel" dir="rtl"
+   aria-label="القناص: شموع ربع ساعة فعلية وسيناريو M15 تاريخي مشروط">
+   <header className="sniper-m15-head">
+     {assetView==='ALL'?<div className="sniper-m15-assets" role="group" aria-label="الأصل">
+       <button type="button" onClick={()=>setChosen('GOLD')} aria-pressed={asset==='GOLD'}>XAUUSD</button>
+       <button type="button" onClick={()=>setChosen('BTC')} aria-pressed={asset==='BTC'}>BTCUSD</button>
+     </div>:<b>{asset==='GOLD'?'XAUUSD':'BTCUSD'}</b>}
+     <b className="sniper-m15-frame">M15</b>
+     <span className="sniper-m15-price" dir="ltr">{n(price)}</span>
+     <span className={'sniper-m15-bias '+(safeSide==='BUY'?'rise':safeSide==='SELL'?'fall':'hold')}>
+       {direction}</span>
+   </header>
+   <div className="sniper-m15-chart-box">
+     <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label="شموع M15 الحقيقية يسار الخط، والسيناريو الافتراضي يمينه مع أسعار أهداف TP1 وTP2 وTP3 والإبطال"
+       preserveAspectRatio="none">
+       <defs>
+         <clipPath id={'sniper-m15-clip-'+asset}>
+           <rect x={left} y={plotTop} width={end-left} height={plotBottom-plotTop}/>
+         </clipPath>
+       </defs>
+       <rect width={W} height={H} fill="#000"/>
+       {grid.map((v,i)=><g key={'grid'+i}>
+         <line x1={left} x2={end} y1={py(v)} y2={py(v)}
+           stroke="#26323f" strokeDasharray="3 5" strokeWidth=".8"/>
+         <text x={W-6} y={py(v)+4} fill="#8e9ba8"
+           fontSize="10" textAnchor="end" direction="ltr">{n(v)}</text>
+       </g>)}
+       {Array.from({length:8},(_,i)=><line key={'vx'+i} x1={left+i*(end-left)/7}
+         x2={left+i*(end-left)/7} y1={plotTop} y2={plotBottom}
+         stroke="#1d2b3a" strokeDasharray="3 6" strokeWidth=".8"/>)}
+       <g clipPath={'url(#sniper-m15-clip-'+asset+')'}>
+         <rect x={split} y={plotTop} width={end-split}
+           height={plotBottom-plotTop} fill="#122027" opacity=".23"/>
+         {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
+           left+(i+.5)*actualStride,clamp(actualStride*.60,1.7,4),'false'=== 'true','real'+b.time))}
+         <line x1={split} x2={split} y1={plotTop} y2={plotBottom}
+           stroke="#7e9bb1" strokeWidth="1.25" strokeDasharray="5 5"/>
+         {projected.ready&&projected.bars.map((b,i)=>
+           candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
+             clamp(projectedStride*.62,1.5,3.1),true,'future'+i))}
+         {validLive&&forming&&<g>
+           <line x1={split-3} x2={split-3} y1={py(forming.high)} y2={py(forming.low)}
+             stroke="#6eeadb" strokeWidth="1.15"/>
+           <circle cx={split-3} cy={py(forming.close)} r="3"
+             fill="#b0ffea" stroke="#001614" strokeWidth=".8"/>
+         </g>}
+       </g>
+       {scaleLevels.map(level=>{
+         const target=level.kind==='TARGET',isStop=level.kind==='STOP';
+         const color=target?'#43e7b4':isStop?'#ff748a':'#e4edf8';
+         const y=py(level.price);
+         return <g key={level.key}>
+           <line x1={left} x2={end} y1={y} y2={y} stroke={color}
+             strokeWidth={isStop?1.35:1.05} strokeDasharray={isStop?'6 4':'5 5'}
+             opacity=".87"/>
+           {target&&<text x={end-6} y={y-5} textAnchor="end" fill={color}
+             fontSize="10" fontWeight="700">{level.key}</text>}
+         </g>;
+       })}
+       <line x1={end} x2={end} y1={plotTop} y2={plotBottom} stroke="#637480" strokeWidth="1"/>
+       {rail.map(level=>{
+         const color=level.kind==='TARGET'?'#56ebbb':
+           level.kind==='STOP'?'#ff8196':'#dbe6f2';
+         const fill=level.kind==='TARGET'?'#063e34':
+           level.kind==='STOP'?'#46202a':'#20313e';
+         return <g key={'rail'+level.key}>
+           <line x1={end} x2={axis+3} y1={level.exactY} y2={level.labelY}
+             stroke={color} strokeWidth="1.2"/>
+           <rect x={axis+2} y={level.labelY-12.5} width={W-axis-5}
+             height="25" rx="3" fill={fill} stroke={color} strokeWidth=".7"/>
+           <text x={axis+6} y={level.labelY-3.5} fontSize="9.5" fontWeight="700" fill={color}
+             textAnchor="start" direction="ltr">{labelBy(level.key)}</text>
+           <text x={W-6} y={level.labelY+8} fontSize="10.5" fontWeight="700"
+             fill={color} textAnchor="end" direction="ltr">{n(level.price)}</text>
+         </g>;
+       })}
+       <text x={left+3} y={17} fill="#ccd8e6" fontSize="12" direction="ltr">M15 · تاريخ حقيقي</text>
+       <text x={split+5} y={17} fill="#e0c08d" fontSize="11">سيناريو احتمالي</text>
+       {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="10">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
+       {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="10" textAnchor="middle">{h(latestClosed.time)}</text>}
+       <text x={end-2} y={H-17} fill="#aebdc8" fontSize="10" textAnchor="end">
+         {projected.bars.length?'+'+projected.bars.length+' × M15':'M15'}</text>
+     </svg>
+   </div>
+   <div className="sniper-m15-caption">
+     <span><i className="sniper-m15-real-dot"/> حقيقي</span>
+     <span><i className="sniper-m15-future-dot"/> توقع بالشموع</span>
+     <span>{sourceLabel}</span>
+   </div>
+   <div className="sniper-m15-status" role="status">
+     <span>{!marketOpen?'السوق مغلق':providerTransition?'تغير مزود البيانات':
+       !historyFresh?'شموع ربع الساعة غير مكتملة':
+       projected.ready?'محاكاة تاريخية مشروطة · ليست حركة مؤكدة':projected.reason}</span>
+     <span>{goals.length?goals.map(g=>'TP'+g.stage+' '+n(g.price)).join(' · '):
+       'لا توجد أهداف بعيدة صالحة'}</span>
+     {projected.ready&&<small>{projected.touches.length?
+       'الأهداف التي يلامسها النموذج فقط: '+projected.touches.join('، '):
+       'الأهداف بعيدة عن المسار المحاكى؛ لم يتم رسم وصول وهمي إليها'}
+       {projected.stopped?' · المحاكاة توقفت عند الإبطال':''}</small>}
+   </div>
+ </section>;
+}
