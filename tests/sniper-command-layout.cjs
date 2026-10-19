@@ -21,8 +21,8 @@ assert.match(chart,/statusReady\?'خطة مسجلة'/,
  'qualified entries distinguished from observation-only paths');
 assert.match(chart,/ليس أمر دخول/,
  'monitoring is explicitly not a trade authorization');
-assert.match(chart,/<details className="sniper-more-chart-tools">/,
- 'secondary tools do not crowd the chart by default');
+assert.doesNotMatch(chart,/أدوات إضافية|<details className="sniper-more-chart-tools">/,
+ 'additional tools were removed by user request');
 assert.match(chart,/className="sniper-btc-forecast-summary"/,
  'BTC forecast shows one-line direction/target summary');
 assert.match(chart,/<details className="sniper-route-research">/,
