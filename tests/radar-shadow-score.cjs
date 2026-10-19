@@ -79,7 +79,7 @@ assert.equal(noData.events[0].price,e.price,'frozen signal issue price does not 
 const display=fs.readFileSync('components/OrderFlowRadar.tsx','utf8');
 const backup=fs.readFileSync('scripts/checkpoint-radar-shadow.mjs','utf8');
 assert.match(display,/\/api\/radar-shadow-score/,'badge reads server-only outcomes');
-assert.match(display,/shadow\.m1\.pairedN>=40/,'low sample rates are never displayed as success');
+assert.match(display,/shadow\.m1\.pairedN>=50/,'low sample rates are never displayed as success');
 assert.match(backup,/mergeRadarShadowArchives/,'checkpoint shares immutable merge semantics');
 assert.match(backup,/if\(!remote\.events\.length\)/,
  'empty Render worker cannot overwrite a durable archive');
