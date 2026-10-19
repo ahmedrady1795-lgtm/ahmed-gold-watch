@@ -7,7 +7,7 @@ import {buildForecastMotion,layoutForecastMotion,buildSmoothMotionPath} from '..
 import {buildForecastIllustration,type PriceBand} from '../lib/forecast-illustration';
 import {buildGhostForecast} from '../lib/ghost-forecast';
 import {goldMarketSession} from '../lib/gold-market-session';
-import {auditCandleAnalogueDirection,buildClosedSessionCandlePreview,buildVisualFuture,rankCandleAnalogues} from '../lib/visual-forecast-candles';
+import {auditCandleAnalogueDirection,auditFirstVisualCandle,buildClosedSessionCandlePreview,buildVisualFuture,rankCandleAnalogues} from '../lib/visual-forecast-candles';
 import {predictGoldTrainedShadow} from '../lib/gold-trained-shadow';
 import type {ForecastJournal} from '../lib/forecast-journal';
 import SniperPerformance from './SniperPerformance';
@@ -310,6 +310,23 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   },[asset,candleRevision,ghost.atr,ghost.mode,showGhost,goldClosed]);
   const analogueNeighbors=analogueStudy.neighbors;
   const analogueAudit=analogueStudy.audit;
+  // Score FIRST illustrated M1 bodies against the next genuinely closed M1,
+  // with strictly past-only chronological folds. Conditional TP route stages
+  // have NO M1 timestamp, so never attach this statistic to them.
+  const firstCandleStudy=useMemo(()=>!providerTransition&&!goldClosed&&
+    ghost.mode==='RANGE'&&m.historyFresh&&m.candles.length>=70?
+    auditFirstVisualCandle(m.candles):null,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [asset,candleRevision,x?.candleSource,providerTransition,goldClosed,ghost.mode,m.historyFresh]);
+  const firstCandle=visualCandles[0];
+  const firstDirection=firstCandle?
+    firstCandle.close>firstCandle.open?'صعود':
+    firstCandle.close<firstCandle.open?'هبوط':'تعادل':'غير متاح';
+  const firstAuditEligible=!routeVisible&&!closedPreview&&ghost.mode==='RANGE'&&
+    firstCandleStudy!=null&&firstCandleStudy.samples>=30;
+  const firstAuditLabel=firstAuditEligible?
+    'اتجاه تاريخي '+firstCandleStudy!.accuracyPct+'٪ · '+firstCandleStudy!.samples+' اختبار':
+    'نسبة النجاح غير مثبتة';
   const scenarioCandles=visualCandles.some(c=>c.scenarioShape);
   const ghostVisible=showGhost&&!routeVisible&&ghost.mode==='CANDLES'&&visualCandles.length>=3;
   const ghostRangeVisible=showGhost&&!routeVisible&&ghost.mode==='RANGE'&&visualCandles.length>=3;
@@ -574,6 +591,21 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             مسار الأهداف يتجدد مع بيانات السوق · {providerTransition?'تغيير مصدر BTC يحتاج إغلاقات جديدة':targetRoute?.ready?
               'السعر ابتعد عن مرجع إغلاق الدقيقة؛ الرسم يتجدد عند إغلاق شمعة جديدة':
               targetRoute?.reason??'بانتظار سعر و36 شمعة M1 مغلقة وحديثة'}
+          </div>}
+          {ghostActive&&<div role="status" aria-label="فحص أول شمعة في السيناريو"
+            style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:'7px 16px',padding:'10px 16px',
+              background:'#152735',color:'#e6d39d',borderBottom:'1px solid #5c5135',fontSize:13}}>
+            <strong>① أول شمعة في السيناريو · {firstDirection}</strong>
+            <span>{routeVisible?'مرحلة سعرية S1 بلا توقيت M1':
+              closedPreview?'شكل من الأرشيف غير حي':'شمعة M1 مرسومة افتراضيًا'}</span>
+            {firstCandle&&!routeVisible&&!closedPreview&&<span>
+              {'O '+fmt(firstCandle.open)+' · C تقديري '+fmt(firstCandle.close)}
+            </span>}
+            <strong>{routeVisible||closedPreview?'الدقة الزمنية غير قابلة للقياس لهذا المسار':
+              firstAuditLabel}</strong>
+            {firstAuditEligible&&<small>{'مرجع استمرار آخر شمعة '+firstCandleStudy!.baselinePct+
+              '٪ · خطأ إغلاق '+firstCandleStudy!.maeAtr+' ATR مقابل '+firstCandleStudy!.baselineMaeAtr+
+              ' ATR للمرجع · ليس احتمال ربح أو ضمانًا'}</small>}
           </div>}
           <div className="forecast-visual-chart-scroll" style={scenarioDetail?{display:'block',overflowX:'auto',direction:'ltr'}:undefined}>
             <div dir="rtl" style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:'8px 16px',padding:'12px 16px',background:'#0b1928',borderBottom:'1px solid #284156',color:'#b6cad9',fontSize:13,fontVariantNumeric:'tabular-nums'}}>
@@ -860,21 +892,23 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   stroke="#a3bff7" strokeOpacity=".4" strokeDasharray="3 6" strokeWidth="1">
                   <title>نطاق تقلب تقريبي متسع، غير معاير إحصائيًا ولا يضمن تغطية محددة</title>
                 </path>}
+                {firstCandle&&<g className="sniper-first-scenario-focus" pointerEvents="none">
+                  <rect x={ghostXs[0]-futureWidth/2-5} y={yt+3} width={futureWidth+10}
+                    height={yb-yt-6} fill="#f5d36d" fillOpacity=".045"
+                    stroke="#f5d36d" strokeWidth="2" strokeDasharray="5 4" rx="4"/>
+                  <text x={ghostXs[0]+futureWidth/2+9} y={yt+24} fill="#ffe59a"
+                    fontSize="13" fontWeight="800">{routeVisible?'المرحلة الأولى S1':'أول شمعة افتراضية M1'}</text>
+                  <text x={ghostXs[0]+futureWidth/2+9} y={yt+42} fill="#ffe59a"
+                    fontSize="12" fontWeight="700">{routeVisible?'غير مؤقتة · غير معايرة':firstAuditLabel}</text>
+                  <title>{routeVisible?
+                    'الشمعة الأولى خطوة مرسومة نحو هدف سعري، ليست توقع الشمعة الزمنية القادمة':
+                    'توافق الاتجاه تاريخي للعرض فقط، وليس نسبة احتمال نجاح مستقبلية أو دخول صفقة'}</title>
+                </g>}
                 {visualCandles.map((c,i)=>{
                   const gx=ghostXs[i],up=c.close>=c.open;
                   const color=up?'#4ad9c6':'#f0758a',top=Math.min(px(c.open),px(c.close)),
                     bottom=Math.max(px(c.open),px(c.close));
                   return <g key={c.time}>
-                    {i===0&&<g>
-                      <rect x={gx-futureWidth/2-5} y={yt+3} width={futureWidth+10}
-                        height={yb-yt-6} fill="#f5d36d" fillOpacity=".06"
-                        stroke="#f5d36d" strokeWidth="2" strokeDasharray="5 4" rx="4"/>
-                      <text x={gx+futureWidth/2+9} y={yt+24} fill="#ffe59a"
-                        fontSize="13" fontWeight="800">الشمعة القادمة · سيناريو</text>
-                      <text x={gx+futureWidth/2+9} y={yt+42} fill="#ffe59a"
-                        fontSize="12" fontWeight="700">{sn.view.confidence>0?'ثقة فنية '+Math.round(sn.view.confidence)+'٪ · غير معايرة':'نسبة النجاح غير مثبتة'}</text>
-                      <title>الثقة الفنية ليست احتمال نجاح مثبتًا. الشمعة القادمة توضيحية وليست سعرًا أو توقيتًا متوقعًا مضمونًا.</title>
-                    </g>}
                     <line x1={gx} x2={gx} y1={px(c.high)} y2={px(c.low)}
                       stroke={color} strokeWidth="1.5"/>
                     <rect x={gx-futureWidth/2} y={top} width={futureWidth}
