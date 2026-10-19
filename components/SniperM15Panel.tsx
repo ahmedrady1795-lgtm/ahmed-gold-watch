@@ -9,6 +9,8 @@ import type {M15Scenario,M15Side} from '../lib/sniper-m15-scenario';
 import {frozenM15Decision} from '../lib/sniper-m15-freeze';
 import {sniperPhaseBadge} from '../lib/sniper-market-phase';
 import {observedM15Bias} from '../lib/sniper-m15-bias';
+import {verifiedM15Archive} from '../lib/sniper-m15-archive-store';
+import {m15WalkForward} from '../lib/sniper-m15-walkforward';
 import {goldMarketSession} from '../lib/gold-market-session';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
@@ -33,6 +35,25 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
  const [showLiquidity,setShowLiquidity]=useState(true);
  const asset=assetView==='ALL'?chosen:assetView;
+ const [archiveState,setArchiveState]=useState<{
+   asset:'GOLD'|'BTC';ledger:unknown;status:string}|null>(null);
+ const lastArchivePoll=useRef<{asset:string;at:number}|null>(null);
+ useEffect(()=>{
+   // Poll at most every 20 minutes, only for this selected asset, and do not
+   // block the live candlestick feed when GitHub archive is unavailable.
+   if(lastArchivePoll.current?.asset===asset&&
+     Date.now()-lastArchivePoll.current.at<20*60000)return;
+   lastArchivePoll.current={asset,at:Date.now()};
+   let canceled=false;
+   fetch('/api/sniper-m15-archive?asset='+asset,{cache:'no-store',
+      signal:AbortSignal.timeout(8500)})
+    .then(r=>r.json())
+    .then(j=>{if(!canceled)setArchiveState({asset,
+      ledger:j?.ok?j.ledger:null,status:String(j?.status||'ARCHIVE_UNAVAILABLE')});})
+    .catch(()=>{if(!canceled)setArchiveState({asset,ledger:null,
+      status:'ARCHIVE_UNAVAILABLE'});});
+   return ()=>{canceled=true};
+ },[asset,Math.floor(now/900000)]);
  const x=asset==='GOLD'?data?.gold:data?.bitcoin;
  const liveQuote=asset==='GOLD'?goldLive:btcLive;
  const marketOpen=asset==='BTC'||goldMarketSession(now).open;
@@ -44,6 +65,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    [asset,x,liveQuote,now,snapshotAt,observationAt]);
  const actual=useMemo(()=>closedM15Bars(x?.chartHigherFrames?.m15,now,320),
    [x?.chartHigherFrames?.m15,now]);
+ const verifiedArchive=useMemo(()=>verifiedM15Archive({
+   ledger:archiveState?.asset===asset?archiveState.ledger:null,
+   asset,source:String(x?.candleSource||''),now,live:actual
+ }),[archiveState,asset,x?.candleSource,actual,Math.floor(now/900000)]);
+ const archiveRows=verifiedArchive.ready?verifiedArchive.rows:[];
+ const walkForward=useMemo(()=>m15WalkForward(
+   verifiedArchive.ready?archiveRows:actual,now,120),
+   [archiveState,asset,x?.candleSource,actual.at(-1)?.time,now>0?
+     Math.floor(now/900000):0]);
  const recent=actual.slice(-42);
  const historyFresh=actual.length>=24&&
    actual.slice(-24).every((b,i,a)=>i===0||b.time-a[i-1].time===900000)&&
@@ -134,7 +164,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
       (safeSide==='BUY'?price<=proposedStop:price>=proposedStop))return;
    lastAttempt.current=candleKey;
    const scenario=buildM15Scenario({
-     history:actual,now,anchor,side:safeSide,targets:proposedGoals,
+     history:actual,
+     archive:verifiedArchive.ready?verifiedArchive.rows:undefined,
+     archiveYears:verifiedArchive.ready?verifiedArchive.years:0,
+     now,anchor,side:safeSide,targets:proposedGoals,
      stop:proposedStop,steps:48
    });
    if(!scenario.ready)return;
@@ -142,7 +175,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      side:safeSide,goals:proposedGoals,stop:proposedStop,scenario});
  },[asset,now,closedTime,candleKey,blockedKey,freezeDecision,frozen,
     freshObservation,safeSide,anchor,actual,price,proposedStop,
-    proposedGoals.map(g=>g.price).join('|'),latestBos?.confirmedAt,latestBos?.kind]);
+    proposedGoals.map(g=>g.price).join('|'),latestBos?.confirmedAt,latestBos?.kind,
+   verifiedArchive.ready,verifiedArchive.storedBars]);
  const stable=blockedKey!==candleKey&&freezeDecision==='HOLD'&&
    frozen?.asset===asset?frozen:null;
  const goals=stable?.goals??(freezeDecision==='REBUILD'&&
@@ -227,13 +261,19 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        title="إظهار أو إخفاء مناطق الطلب والعرض والسيولة والتجميع">
        {showLiquidity?'سيولة ✓':'سيولة'}</button>
      <span className={'sniper-m15-phase '+(phase.confirmed?'confirmed':'neutral')}
-       title={liquidity.ready?liquidity.reason:'لا توجد قراءة محدثة'}>
+       title={(liquidity.ready?liquidity.reason:'لا توجد قراءة محدثة')+
+         ' · تقييم زمني M15: '+walkForward.correct+'/'+walkForward.selected+
+         ' من '+walkForward.evaluated+' نتيجة مرصودة، دون إثبات أفضلية'}>
        {'الحالة: '+phase.label}</span>
      <span className={'sniper-m15-bias '+(chartSide==='BUY'?'rise':chartSide==='SELL'?'fall':'hold')}>
        {direction}</span>
    </header>
    <div className="sniper-m15-chart-box">
-     <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label="شموع M15 فعلية ثم شموع توقع افتراضي، مع مستويات TP1 وTP2 وTP3 والإبطال وأسعارها الحقيقية، ومناطق السيولة على الرسم"
+     <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
+         'شموع M15 فعلية ثم شموع توقع افتراضي، مع TP1 وTP2 وTP3 والإبطال. '+
+         (verifiedArchive.ready?'أرشيف حقيقي متحقق '+verifiedArchive.storedBars+' شمعة':'أرشيف سنوات غير متاح')+
+         '. تقييم خارج العينة '+walkForward.selected+' قرارًا، لا يثبت أفضلية.'
+       }
        preserveAspectRatio="none">
        <defs>
          <clipPath id={'sniper-m15-clip-'+asset}>
