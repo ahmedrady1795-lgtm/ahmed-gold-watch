@@ -4,6 +4,29 @@ import {OrderFlowRadar as Engine,type RadarView} from '../lib/order-flow-radar';
 const labels={WARMUP:'تجهيز نافذة 30 ثانية',OFFLINE:'تدفق غير مكتمل',WATCH:'مراقبة',PREPARE:'استعداد مبكر',CONFIRMED:'تأكيد حركة',INVALIDATED:'أُلغي بكسر المستوى',EXPIRED:'انتهت صلاحية الرصد'};
 export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD'|'BTC';onView?:(v:RadarView|null)=>void;compact?:boolean}){
   const [view,setView]=useState<RadarView>(()=>new Engine().view);
+  const [scoreOpen,setScoreOpen]=useState(false);
+  const [shadow,setShadow]=useState<null|{
+    events:number;storage:string;modelQualified:false;
+    m1:{samples:number;directional:number;correct:number;
+      pairedN:number;accuracy:number|null;baselineRate:number|null};
+    m15:{samples:number;directional:number;correct:number;
+      pairedN:number;accuracy:number|null;baselineRate:number|null};
+  }>(null);
+  useEffect(()=>{
+    if(asset!=='BTC'){setShadow(null);setScoreOpen(false);return;}
+    let active=true;const controller=new AbortController();
+    const poll=async()=>{
+      try{
+        const response=await fetch('/api/radar-shadow-score',{
+          cache:'no-store',signal:controller.signal});
+        if(!response.ok)throw Error('shadow_score_unavailable');
+        const data=await response.json();
+        if(active&&data?.ok&&data?.m1&&data?.m15)setShadow(data);
+      }catch{if(active)setShadow(null);}
+    };
+    void poll();const interval=setInterval(()=>{void poll();},90000);
+    return ()=>{active=false;controller.abort();clearInterval(interval);};
+  },[asset]);
   useEffect(()=>{
     if(asset!=='BTC'){onView?.(null);return;}
     let lastBroadcast='';
@@ -44,20 +67,45 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
     micro?.askPersistent?'جدار عرض مستمر مرصود':'',
     micro?.possibleBidPull?'تراجع عمق الطلب محتمل، السبب غير محسوم':'',
     micro?.possibleAskPull?'تراجع عمق العرض محتمل، السبب غير محسوم':'',
+    shadow?'سجل الخادم: '+shadow.events+
+       ' إشارة؛ نتائج M1 '+shadow.m1.samples+
+       ' وM15 '+shadow.m15.samples:'تقييم النتائج قيد التجميع',
     'الرادار رصد فقط ولا يغير TP أو SL'
   ].filter(Boolean).join(' | ');
-  if(compact)return <span role="status" className={'sniper-flow-radar-chip '+
+  if(compact)return <>
+    <button type="button" className={'sniper-flow-radar-chip '+
       (micro?.status==='POSSIBLE_PULL'?'warn':
        view.phase==='CONFIRMED'?'confirmed':'neutral')}
-      title={hint} aria-label={'رادار الأوامر: '+labels[view.phase]+'. '+hint}>
+      onClick={()=>setScoreOpen(v=>!v)} aria-expanded={scoreOpen}
+      title={hint} aria-label={'رادار الأوامر: '+labels[view.phase]+'. اضغط لعرض نتائج M1 وM15. '+hint}>
       <b>{view.phase==='OFFLINE'||view.phase==='WARMUP'?'تدفق: تجهيز':
         view.phase==='PREPARE'?'تدفق: استعداد':
         view.phase==='CONFIRMED'?'تدفق: تأكيد':
         micro?.possibleBidPull?'سحب طلب؟':
         micro?.possibleAskPull?'سحب عرض؟':
         micro?.bidPersistent?'طلب مستمر':
-        micro?.askPersistent?'عرض مستمر':'تدفق: رصد'}</b>
-    </span>;
+        micro?.askPersistent?'عرض مستمر':'تدفق: رصد'}
+        {shadow?.events?' · n'+shadow.events:''}</b>
+    </button>
+    {scoreOpen&&<aside className="sniper-flow-score-detail" dir="rtl">
+      <strong>اختبار رادار Coinbase · متابعة فقط</strong>
+      <div>إشارات محفوظة على الخادم: {shadow?.events??'بانتظار البيانات'}</div>
+      <div>M1: {shadow?.m1.samples??0} نتيجة · M15: {shadow?.m15.samples??0} نتيجة</div>
+      {shadow&&shadow.m1.directional>=70&&shadow.m1.pairedN>=50?
+        <div>دقة M1 التاريخية {Math.round((shadow.m1.accuracy??0)*100)}%
+          · المرجع {Math.round((shadow.m1.baselineRate??0)*100)}%
+          · عينات متطابقة {shadow.m1.pairedN}</div>:
+        <div>مقارنة M1: عينات مستقلة غير كافية</div>}
+      {shadow&&shadow.m15.directional>=70&&shadow.m15.pairedN>=50?
+        <div>دقة M15 التاريخية {Math.round((shadow.m15.accuracy??0)*100)}%
+          · المرجع {Math.round((shadow.m15.baselineRate??0)*100)}%
+          · عينات متطابقة {shadow.m15.pairedN}</div>:
+        <div>مقارنة M15: عينات مستقلة غير كافية</div>}
+      <small>رصد سيرفر Coinbase فقط، لا يُثبت ربحية أو قدرة مؤكدة على التنبؤ.
+        حفظ الخادم: {shadow?.storage==='PERSISTENT_VOLUME'?'تخزين دائم':
+          'مؤقت مع نسخ دورية'}</small>
+    </aside>}
+  </>;
   const fresh=!['OFFLINE','WARMUP'].includes(view.phase);
   return <div aria-label="رادار السيولة والامتصاص" style={{display:'flex',flexWrap:'wrap',gap:'6px 16px',alignItems:'center',padding:'8px 12px',border:'1px solid #334155',borderRadius:8,fontSize:12}}>
     <strong>رادار السيولة · {labels[view.phase]}</strong>
