@@ -6,6 +6,8 @@ import {assessChartObservation} from '../lib/chart-observation-radar';
 import {buildDistantMovementOutlook} from '../lib/sniper-movement-outlook';
 import {buildM15Scenario,closedM15Bars,sampledLiveM15} from '../lib/sniper-m15-scenario';
 import {goldMarketSession} from '../lib/gold-market-session';
+import {buildChartOverlay} from '../lib/chart-trading-overlay';
+import {buildSniperM15Liquidity} from '../lib/sniper-m15-liquidity';
 
 const n=(x:number|null|undefined)=>x!=null&&Number.isFinite(x)?
  x.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
@@ -20,6 +22,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  journals?:any;audit?:any;auditLoaded?:boolean;
 }){
  const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
+ const [showLiquidity,setShowLiquidity]=useState(true);
  const asset=assetView==='ALL'?chosen:assetView;
  const x=asset==='GOLD'?data?.gold:data?.bitcoin;
  const liveQuote=asset==='GOLD'?goldLive:btcLive;
@@ -71,6 +74,20 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    !providerTransition&&marketOpen&&m.sniper.view.priceFresh;
  const trueHistory=recent;
  const price=m.price;
+ const pools=useMemo(()=>buildChartOverlay({
+   now,price:m.price,historyFresh:m.historyFresh,
+   priceFresh:m.sniper.view.priceFresh&&!providerTransition&&marketOpen,
+   fourHour:m.fourHour,m5:x?.chartHigherFrames?.m5,
+   accumulation:x?.accumulation,targets:[]
+ }),[now,m.price,m.historyFresh,m.sniper.view.priceFresh,providerTransition,
+    marketOpen,m.fourHour,x?.chartHigherFrames?.m5,x?.accumulation]);
+ const liquidity=useMemo(()=>buildSniperM15Liquidity({
+   now,price,history:actual,sourceReady:historyFresh&&m.historyFresh&&
+      m.sniper.view.priceFresh&&m.observationFresh&&
+      !providerTransition&&marketOpen,
+   fourHour:m.fourHour,pools
+ }),[now,price,actual,historyFresh,m.historyFresh,m.sniper.view.priceFresh,
+    m.observationFresh,providerTransition,marketOpen,m.fourHour,pools]);
  const W=430,H=704,left=10,split=232,end=338,axis=340,
    plotTop=26,plotBottom=H-43;
  // A single absolute price axis contains EVERY currently valid target and
@@ -103,6 +120,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  if(overflow>plotBottom-14)
    for(const r of rail)r.labelY-=overflow-(plotBottom-14);
  const actualStride=(split-left-5)/Math.max(trueHistory.length,1);
+ const timeX=(time:number)=>left+
+   clamp((time-(trueHistory[0]?.time??time))/900000,0,trueHistory.length)*actualStride;
+ const liquidityColor=(kind:string)=>kind==='DEMAND'||kind==='LOW_POOL'?
+   '#41cfab':'#ff7b90';
  const projectedStride=(end-split-8)/Math.max(projected.bars.length,36);
  const candle=(open:number,high:number,low:number,close:number,xpos:number,width:number,
    future:boolean,key:string)=> {
@@ -131,6 +152,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <button type="button" onClick={()=>setChosen('BTC')} aria-pressed={asset==='BTC'}>BTCUSD</button>
      </div>:<b>{asset==='GOLD'?'XAUUSD':'BTCUSD'}</b>}
      <b className="sniper-m15-frame">M15</b>
+     <button type="button" className="sniper-m15-liquidity-toggle"
+       aria-pressed={showLiquidity} onClick={()=>setShowLiquidity(v=>!v)}
+       title="إظهار أو إخفاء مناطق الطلب والعرض والسيولة والتجميع">
+       {showLiquidity?'السيولة ✓':'السيولة'}</button>
      <span className="sniper-m15-price" dir="ltr">{n(price)}</span>
      <span className={'sniper-m15-bias '+(safeSide==='BUY'?'rise':safeSide==='SELL'?'fall':'hold')}>
        {direction}</span>
@@ -156,6 +181,33 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <g clipPath={'url(#sniper-m15-clip-'+asset+')'}>
          <rect x={split} y={plotTop} width={end-split}
            height={plotBottom-plotTop} fill="#122027" opacity=".23"/>
+         {showLiquidity&&liquidity.context&&(()=>{
+           const z=liquidity.context!;
+           const xa=timeX(z.from),xb=Math.min(split,timeX(z.to));
+           const top=py(z.high),bottom=py(z.low);
+           const color=z.kind==='ACCUMULATION'?'#43e0aa':
+             z.kind==='DISTRIBUTION'?'#ff9d7f':'#e7bc78';
+           return <g className="sniper-m15-context" key="liquidity-context">
+             <rect x={xa} y={top} width={Math.max(2,xb-xa)}
+               height={Math.max(2,bottom-top)} fill={color} fillOpacity=".13"
+               stroke={color} strokeWidth="1" strokeDasharray="5 4"/>
+             <title>{z.label+' · '+n(z.low)+' – '+n(z.high)+
+               ' · منطقة M5 مثبتة بشموع مغلقة، ليست أوامر مؤسسات'}</title>
+           </g>;
+         })()}
+         {showLiquidity&&liquidity.zones.map(z=>{
+           const color=liquidityColor(z.kind),top=py(z.high),bottom=py(z.low);
+           const pool=z.kind==='HIGH_POOL'||z.kind==='LOW_POOL';
+           return <g key={'zone-'+z.kind+'-'+z.low} className="sniper-m15-zone">
+             <rect x={left+2} y={top} width={end-left-5}
+               height={Math.max(2,bottom-top)} fill={color}
+               fillOpacity={pool?.045:.095} stroke={color}
+               strokeOpacity=".66" strokeWidth={pool?.75:1}
+               strokeDasharray={pool?'3 6':'6 4'}/>
+             <title>{z.label+' · '+n(z.low)+' – '+n(z.high)+
+               ' · '+z.source+' · مستويات سعرية وليست حجم أوامر فعلي'}</title>
+           </g>;
+         })}
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
            left+(i+.5)*actualStride,clamp(actualStride*.60,1.7,4),false,'real'+b.time))}
          <line x1={split} x2={split} y1={plotTop} y2={plotBottom}
@@ -163,6 +215,48 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {projected.ready&&projected.bars.map((b,i)=>
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
              clamp(projectedStride*.62,1.5,3.1),true,'future'+i))}
+         {showLiquidity&&liquidity.zones.map(z=>{
+           const color=liquidityColor(z.kind),top=py(z.high),bottom=py(z.low);
+           const pool=z.kind==='HIGH_POOL'||z.kind==='LOW_POOL';
+           // Labels only on historical side, never on top of projected TP rails.
+           const y=clamp((top+bottom)*.5,plotTop+16,plotBottom-9);
+           return <g key={'zone-label-'+z.kind+'-'+z.low}>
+             <rect x={left+4} y={y-9} width={pool?71:61} height="18" rx="3"
+               fill="#030d12" fillOpacity=".85" stroke={color} strokeOpacity=".68"/>
+             <text x={left+8} y={y+3} fill={color} fontSize="9" fontWeight="700">
+               {z.label}</text>
+           </g>;
+         })}
+         {showLiquidity&&liquidity.context&&(()=>{
+           const z=liquidity.context!,color=z.kind==='ACCUMULATION'?'#66e9b9':
+             z.kind==='DISTRIBUTION'?'#ffac8e':'#eccc87';
+           const xa=timeX(z.from),xb=Math.min(split,timeX(z.to));
+           return <g className="sniper-m15-context-label">
+             <rect x={clamp((xa+xb)/2-37,left+6,split-76)}
+               y={clamp(py(z.high)-20,plotTop+2,plotBottom-21)}
+               width="74" height="17" rx="3" fill="#061017" fillOpacity=".85"
+               stroke={color} strokeOpacity=".7"/>
+             <text x={clamp((xa+xb)/2,left+43,split-39)}
+               y={clamp(py(z.high)-8,plotTop+14,plotBottom-9)}
+               fontSize="9" fill={color} textAnchor="middle" fontWeight="700">
+               {z.kind==='ACCUMULATION'?'تجميع':z.kind==='DISTRIBUTION'?'تصريف':'انضغاط'}</text>
+           </g>;
+         })()}
+         {showLiquidity&&liquidity.events.map((e,i)=>{
+           const mark=e.kind==='SWEEP_LOW'?'سحب قاع':
+             e.kind==='SWEEP_HIGH'?'سحب قمة':
+             e.kind==='BOS_UP'?'BOS ↑':'BOS ↓';
+           const color=e.kind==='BOS_UP'||e.kind==='SWEEP_LOW'?'#53ddb7':'#ffa0b0';
+           const xMark=timeX(e.at),yMark=clamp(py(e.price),plotTop+12,plotBottom-15);
+           return <g key={'liquidity-event-'+i} className="sniper-m15-event">
+             <circle cx={xMark} cy={yMark} r="2.6" fill={color}/>
+             <title>{e.label+' · '+n(e.price)+' · إغلاق مؤكّد'}</title>
+             <text x={clamp(xMark,left+28,split-28)}
+               y={clamp(yMark+(i%2===0?-12:17),plotTop+15,plotBottom-8)}
+               fontSize="8.5" fill={color} fontWeight="700" textAnchor="middle">
+               {mark}</text>
+           </g>;
+         })}
          {validLive&&forming&&<g>
            <line x1={split-3} x2={split-3} y1={py(forming.high)} y2={py(forming.low)}
              stroke="#6eeadb" strokeWidth="1.15"/>
@@ -209,6 +303,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    </div>
    <div className="sniper-m15-caption">
      <span><i className="sniper-m15-real-dot"/> حقيقي</span>
+     <span className="sniper-m15-layer-state">{liquidity.ready?
+       'مناطق '+liquidity.zones.length+' · '+liquidity.phase:
+       'السيولة: '+liquidity.reason}</span>
+     {liquidity.ready&&<span className="sniper-m15-phase-state">
+       {liquidity.context?liquidity.context.label:'لا تجميع/تصريف مؤكد حاليًا'}</span>}
      <span><i className="sniper-m15-future-dot"/> توقع بالشموع</span>
      <span>{sourceLabel}</span>
    </div>
