@@ -2002,3 +2002,21 @@ body:has(.modern-workspace.compact-sniper){
 @media(max-width:600px){
  .sniper-flow-radar-chip{right:18%;top:3px;max-width:36%;font-size:9px;padding:2px 4px}
 }
+
+/* Tap-only paper evidence inspector: no permanent footer and no chart reflow. */
+.sniper-flow-radar-chip{cursor:pointer}
+.sniper-flow-radar-chip:focus-visible{outline:2px solid #75e4c5;outline-offset:2px}
+.sniper-flow-score-detail{
+ position:absolute;z-index:9;top:34px;right:18%;width:min(255px,72%);
+ box-sizing:border-box;display:flex;flex-direction:column;gap:5px;
+ background:rgba(5,14,20,.98);color:#d5e4e8;
+ border:1px solid #4e6d77;border-radius:8px;padding:10px;
+ font-size:11px;line-height:1.5;text-align:right;
+ box-shadow:0 6px 20px rgba(0,0,0,.66)
+}
+.sniper-flow-score-detail strong{color:#7be6c5}
+.sniper-flow-score-detail small{font-size:10px;color:#9bb6c1}
+@media(max-width:600px){
+ .sniper-flow-score-detail{top:28px;right:18%;width:min(240px,72%);
+  padding:8px;font-size:10px;line-height:1.45}
+}
