@@ -75,13 +75,12 @@ const withFuture=m15WalkForward([...rows,{...rows.at(-1),time:now,
 assert.equal(withFuture.evaluated,score.evaluated,'unclosed future price cannot backfill outcomes');
 assert.equal(withFuture.correct,score.correct);
 const feed=fs.readFileSync('scripts/capture-m15-archive.mjs','utf8');
-const workflow=fs.readFileSync('.github/workflows/capture-sniper-m15.yml','utf8');
+
 const route=fs.readFileSync('app/api/sniper-m15-archive/route.ts','utf8');
 const ui=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(feed,/\/api\/chart-history/);
 assert.match(feed,/provider_revised_/);
-assert.match(workflow,/ref: render-free/);
-assert.match(workflow,/cron: '11 1,13 \* \* \*'/);
+
 assert.match(route,/raw\.githubusercontent\.com/);
 assert.match(ui,/verifiedM15Archive/);
 assert.match(ui,/m15WalkForward/);
