@@ -650,7 +650,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>}
           <div className="sniper-live-next-status" role="status" aria-label="الشمعة الحية والتوقع التالي">
             <span className="sniper-live-next-live">
-              <b>LIVE M1 · {liveM1?(liveM1.close>=liveM1.open?'صعود':'هبوط'):'انتظار مصدر حي'}</b>
+              <b>LIVE M1 · {liveM1?(liveM1.close===liveM1.open?'تكوّن':
+                liveM1.close>liveM1.open?'صعود':'هبوط'):'انتظار مصدر حي'}</b>
               <small>{liveM1?fmt(liveM1.close)+' · '+liveM1.count+' تحديث مرصود':'لا شمعة حية مكتملة المصدر'}</small>
             </span>
             <span className="sniper-live-next-forecast">
