@@ -551,6 +551,7 @@ export async function GET(request:Request){
   try{
     const actions:string[]=[],detected:string[]=[];
     const stage=async <T,>(name:string,promise:Promise<T>,stageBudgetMs=12000):Promise<T>=>{
+      const stageStarted=Date.now();
       try{return await awaitAiStage(name,promise,perfStarted,{totalBudgetMs:39000,stageBudgetMs});}
       catch(error){
         console.warn('[AI-STAGE]',JSON.stringify({
@@ -559,6 +560,10 @@ export async function GET(request:Request){
           btcSpotMs:perf.btcSpotMs??null,btcLiquidityMs:perf.btcLiquidityMs??null
         }));
         throw error;
+      }finally{
+        // Stage timing is diagnostic only: never bypass stale-data or
+        // independent model-certification gates to improve latency.
+        (perf.stageMs??={})[name]=Date.now()-stageStarted;
       }
     };
     const timedFeed=<T,>(name:'goldMarketMs'|'btcMarketMs'|'btcSpotMs'|'btcLiquidityMs',promise:Promise<T>)=>
@@ -716,14 +721,18 @@ export async function GET(request:Request){
 
     const goldLearningContext={structure:goldStructure,stateGraph:goldStateGraph,accumulation:goldAccumulation,liquidity:goldLiquidity,motion:goldMotion,behavior:goldBehavior,news:goldNews,scalp:goldScalp,decision:gold,marketLead:goldMarketLead,marketMakerIntent:goldIntent};
     const bitcoinLearningContext={structure:bitcoinStructure,stateGraph:bitcoinStateGraph,accumulation:bitcoinAccumulation,liquidity,motion,behavior:bitcoinBehavior,news:bitcoinNews,scalp:bitcoinScalp,decision:bitcoin,marketLead:bitcoinMarketLead,marketMakerIntent:bitcoinIntent};
+    // These learners use independent stores and identical closed-market
+    // context; start together, not sequentially. Results still pass through
+    // the existing deadline and validation stages before any forecast uses them.
+    const expectedMovePromise=Promise.all([
+      getExpectedMoveLearning({asset:'GOLD',c1:gm.c1,context:goldLearningContext,now}),
+      getExpectedMoveLearning({asset:'BTC',c1:btc.c1,context:bitcoinLearningContext,now})
+    ]);
     const [goldLearning,bitcoinLearning]=await stage('market-learning',Promise.all([
       getMarketLearningSignal({asset:'GOLD',c1:gm.c1,c5:gm.c5,price:goldLearningPrice,atr:goldAtr,context:goldLearningContext,now}),
       getMarketLearningSignal({asset:'BTC',c1:btc.c1,c5:btc.c5,price:btcPrice,atr:btcAtr,context:bitcoinLearningContext,now})
     ]),6500);
-    const [goldExpectedLearning,bitcoinExpectedLearning]=await stage('expected-move-learning',Promise.all([
-      getExpectedMoveLearning({asset:'GOLD',c1:gm.c1,context:goldLearningContext,now}),
-      getExpectedMoveLearning({asset:'BTC',c1:btc.c1,context:bitcoinLearningContext,now})
-    ]),5500);
+    const [goldExpectedLearning,bitcoinExpectedLearning]=await stage('expected-move-learning',expectedMovePromise,5500);
 
     const goldEvolutionPerformance=getNextMoveOutcome('GOLD_FORWARD_15M_V2',goldLearningPrice,now);
     const bitcoinEvolutionPerformance=getNextMoveOutcome('BTC_FORWARD_15M_V2',btcPrice,now);

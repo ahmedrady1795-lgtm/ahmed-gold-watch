@@ -15,7 +15,7 @@ import {frozenM15Decision} from '../lib/sniper-m15-freeze';
 import {sniperPhaseBadge} from '../lib/sniper-market-phase';
 import {observedM15Bias} from '../lib/sniper-m15-bias';
 import {verifiedM15Archive} from '../lib/sniper-m15-archive-store';
-import {m15WalkForward} from '../lib/sniper-m15-walkforward';
+import {m15WalkForward,firstM15Evidence} from '../lib/sniper-m15-walkforward';
 import {goldMarketSession} from '../lib/gold-market-session';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
@@ -90,6 +90,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    verifiedArchive.ready?archiveRows:actual,now,120),
    [archiveState,asset,x?.candleSource,actual.at(-1)?.time,now>0?
      Math.floor(now/900000):0]);
+ const firstM15Stats=firstM15Evidence(walkForward);
  const recent=actual.slice(-42);
  const historyFresh=actual.length>=24&&
    actual.slice(-24).every((b,i,a)=>i===0||b.time-a[i-1].time===900000)&&
@@ -454,6 +455,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              ' · لا يمثل نسبة نجاح أو إذن تنفيذ'}</title>
          </g>;
        })()}
+       {projected.ready&&projected.bars.length>0&&<g className="sniper-m15-first-audit">
+         <text x={split+6} y={plotTop+(asset==='BTC'?42:25)}
+           fill={firstM15Stats.ready?'#b3d9ec':'#899baa'}
+           fontSize="8.2" textAnchor="start" direction="rtl">
+           {firstM15Stats.label}</text>
+         <title>{firstM15Stats.detail}</title>
+       </g>}
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
        <text x={split+5} y={17} fill="#e0c08d" fontSize="10" textAnchor="start" direction="ltr">M15 · FORECAST</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"

@@ -7,12 +7,14 @@ import {observedM15Bias} from './sniper-m15-bias';
 export type M15WalkForward={
  evaluated:number;selected:number;correct:number;coverage:number;
  accuracy:number;baselineAccuracy:number;baselineEvaluated:number;
+ pairedBaselineAccuracy:number;pairedBaselineEvaluated:number;pairedBaselineCorrect:number;
  wilsonLower:number;firstTestAt:number|null;lastTestAt:number|null;
  qualified:false;status:'INSUFFICIENT'|'SHADOW';sourceBars:number;
 };
 export function m15WalkForward(raw:readonly M15Bar[],now:number,maxTests=120):M15WalkForward{
  const empty=():M15WalkForward=>({evaluated:0,selected:0,correct:0,
   coverage:0,accuracy:0,baselineAccuracy:0,baselineEvaluated:0,
+  pairedBaselineAccuracy:0,pairedBaselineEvaluated:0,pairedBaselineCorrect:0,
   wilsonLower:0,firstTestAt:null,lastTestAt:null,qualified:false,
   status:'INSUFFICIENT',sourceBars:0});
  const rows=raw.filter(b=>b&&Number.isFinite(b.time)&&b.time%900000===0&&
@@ -45,11 +47,19 @@ export function m15WalkForward(raw:readonly M15Bar[],now:number,maxTests=120):M1
   if(forecast.side==='WAIT')continue;
   out.selected++;
   if(forecast.side===actual)out.correct++;
+  // Paired comparison on EXACTLY the selected dates. A baseline measured
+  // on a different selection is not evidence of a directional advantage.
+  if(Math.abs(base)>atr*.22){
+    out.pairedBaselineEvaluated++;
+    if((base>0?'BUY':'SELL')===actual)out.pairedBaselineCorrect++;
+  }
  }
  out.coverage=out.evaluated?Number((out.selected/out.evaluated).toFixed(4)):0;
  out.accuracy=out.selected?Number((out.correct/out.selected).toFixed(4)):0;
  out.baselineEvaluated=baselineTests;
  out.baselineAccuracy=baselineTests?Number((baselineRight/baselineTests).toFixed(4)):0;
+ out.pairedBaselineAccuracy=out.pairedBaselineEvaluated?
+   Number((out.pairedBaselineCorrect/out.pairedBaselineEvaluated).toFixed(4)):0;
  const n=out.selected,z=1.96;
  if(n){
   const p=out.correct/n,a=z*z;
@@ -60,4 +70,22 @@ export function m15WalkForward(raw:readonly M15Bar[],now:number,maxTests=120):M1
  // certification, even if the counts eventually look favourable.
  out.status=out.evaluated>=60&&out.selected>=40?'SHADOW':'INSUFFICIENT';
  return out;
+}
+
+/** A historical sample is never a calibrated probability of the next candle.
+ * Suppress percentages on immature or incomparable samples.
+ */
+export function firstM15Evidence(w:M15WalkForward){
+ const enough=w.status==='SHADOW'&&w.selected>=40&&
+   w.pairedBaselineEvaluated>=30&&w.evaluated>=60;
+ const rate=enough?Math.round(w.accuracy*100):null;
+ const edgeProven=enough&&w.wilsonLower>w.pairedBaselineAccuracy;
+ return {
+   ready:enough,
+   label:enough?`اتجاه M15 تاريخيًا: ${rate}% · n=${w.selected}`:'دقة أول M15: جارٍ القياس',
+   detail:enough?
+     `صحة اتجاهية تاريخية على ${w.selected} توقعًا، نطاق ثقة محافظ ${Math.round(w.wilsonLower*100)}%، مقارنة بخط أساس ${Math.round(w.pairedBaselineAccuracy*100)}% على ${w.pairedBaselineEvaluated} حالات متطابقة؛ ${edgeProven?'أُشير إلى تفوق إحصائي يحتاج تأكيدًا مستقلًا':'لم تثبت أفضلية مستقلة'}. ليست نسبة نجاح شمعة حية أو صفقة.`:
+     'نتائج اتجاه M15 خارج العينة غير كافية للمقارنة؛ لا ننشر نسبة نجاح وهمية.',
+   calibrated:false as const,edgeProven
+ };
 }
