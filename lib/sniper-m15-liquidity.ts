@@ -117,3 +117,48 @@ export function buildSniperM15Liquidity(input:{
    reason:fourHour?.ready?'مناطق مشتقة من شموع M1/M5/M15 مغلقة':
      'مستويات M15 تاريخية فقط؛ لا توجد قراءة تجميع مؤكدة'};
 }
+
+
+/** A label is a reading aid, not another price: merge nearby labels while
+ * retaining every independent exact-price zone in the chart geometry. */
+export type CompactZoneAnnotation={
+ price:number;kind:LiquidityZone['kind']|'MIXED';
+ label:string;detail:string;count:number;low:number;high:number
+};
+export function compactM15ZoneAnnotations(
+ zones:readonly LiquidityZone[],lastPrice:number,
+ pixelY:(price:number)=>number,limit=3,minGap=29
+):CompactZoneAnnotation[]{
+ if(!Number.isFinite(lastPrice)||lastPrice<=0)return [];
+ const sorted=zones.filter(z=>z&&Number.isFinite(z.low)&&Number.isFinite(z.high)&&
+     z.high>=z.low&&z.low>0)
+   .map(z=>({z,p:(z.low+z.high)/2}))
+   .sort((a,b)=>pixelY(a.p)-pixelY(b.p));
+ const clusters:Array<Array<typeof sorted[number]>>=[];
+ for(const entry of sorted){
+   const last=clusters.at(-1);
+   if(last&&Math.abs(pixelY(entry.p)-
+     pixelY(last.reduce((sum,e)=>sum+e.p,0)/last.length))<minGap)
+     last.push(entry);
+   else clusters.push([entry]);
+ }
+ const visible=clusters.sort((a,b)=>
+   Math.abs(a.reduce((s,x)=>s+x.p,0)/a.length-lastPrice)-
+   Math.abs(b.reduce((s,x)=>s+x.p,0)/b.length-lastPrice))
+   .slice(0,Math.max(1,Math.min(4,limit)))
+   .sort((a,b)=>pixelY(a[0].p)-pixelY(b[0].p));
+ return visible.map(group=>{
+   const preferred=group.find(e=>e.z.kind==='DEMAND'||e.z.kind==='SUPPLY')??group[0];
+   const name=(kind:LiquidityZone['kind'])=>kind==='DEMAND'?'طلب':
+     kind==='SUPPLY'?'عرض':kind==='LOW_POOL'?'سيولة قيعان':'سيولة قمم';
+   const single=group.every(e=>e.z.kind===preferred.z.kind);
+   const label=(single?name(preferred.z.kind):'مناطق متداخلة')+
+     (group.length>1?' ×'+group.length:'');
+   return {price:group.reduce((s,x)=>s+x.p,0)/group.length,
+     kind:single?preferred.z.kind:'MIXED' as const,label,
+     detail:group.map(e=>name(e.z.kind)+': '+e.z.low.toFixed(2)+'–'+
+       e.z.high.toFixed(2)).join(' | '),count:group.length,
+     low:Math.min(...group.map(e=>e.z.low)),
+     high:Math.max(...group.map(e=>e.z.high))};
+ });
+}
