@@ -67,7 +67,7 @@ assert.match(chart,/scenario|سيناريو/);
 assert.doesNotMatch(chart,/AI NEXT|LIVE M1|محرك الاستراتيجيات يعمل|آخر شمعة/);
 assert.match(css,/\.sniper-m15-chart-box\{width:100%;height:clamp\(/);
 // Exact-price mobile rail and RTL placement must survive source refactors.
-assert.match(chart,/left=12,split=188,end=322,axis=324/,
+assert.match(chart,/left=8,split=184,end=357,axis=359/,
  'a wider, bounded price rail reserves room for complete target values');
 assert.match(chart,/railGap=29/,
  'price labels are separated instead of being drawn over each other');
@@ -88,5 +88,17 @@ assert.match(css,/width:100%!important;max-width:100%!important/,
 assert.match(chart,/steps:48/,'M15 analogue route provides 48 optional future candle slots');
 assert.match(chart,/fillOpacity=\{future\?0\.48:1\}/,'future bars must have a distinct transparent fill');
 assert.match(chart,/compactM15ZoneAnnotations/,'nearby liquidity labels are grouped, not drawn on top of one another');
-assert.match(chart,/projected\.touches\.includes/,'only observed scenario contacts can receive a check mark');
+assert.doesNotMatch(chart,/sniper-m15-caption|sniper-m15-status/,
+ 'no technical paragraphs or scorecard underneath the mobile chart');
+assert.doesNotMatch(chart,/className="sniper-m15-price"/,
+ 'large duplicated live price must not occupy the header');
+assert.match(chart,/W=430,H=704,left=8,split=184,end=357,axis=359/,
+ 'price column shrinks while real and projected candle viewport expands');
+assert.match(css,/Compact full-canvas sniper v3/);
+assert.match(css,/display:flex!important;flex-direction:row;flex-wrap:nowrap/,
+ 'sniper header must use one short mobile row');
+assert.match(css,/height:clamp\(530px,calc\(100dvh - 192px\),900px\)!important/,
+ 'chart takes reclaimed vertical space and responds to viewport');
+assert.match(css,/\.sniper-m15-caption,\.sniper-m15-status\{display:none!important\}/,
+ 'all former diagnostic footers must remain invisible on mobile');
 console.log('PASS: M15 historical OHLC, real partial source, scenario motifs, 3 TP levels, no fabricated touches and chart-first UI');
