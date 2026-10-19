@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {Crosshair,Layers3} from 'lucide-react';
 import {assessBreakoutWatch,buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildForecastMotion,layoutForecastMotion,buildSmoothMotionPath} from '../lib/forecast-motion';
@@ -24,6 +24,8 @@ import {assessBtcForwardObservation} from '../lib/btc-forward-observation';
 import {assessBtcStructuralScenario} from '../lib/btc-structural-scenario';
 import {auditConditionalRoute,buildConditionalTargetCandles} from '../lib/conditional-target-candles';
 import {assessSniperEntryCandle} from '../lib/sniper-entry-candle';
+import {updateSampledLiveCandle,visibleSampledLiveCandle,type SampledLiveCandle} from '../lib/sampled-live-candle';
+import {analyzeNextCandleStrategies,illustrativeNextCandle} from '../lib/next-candle-strategies';
 import {chartPriceViewport} from '../lib/chart-price-viewport';
 import BtcOrderflowPanel from './BtcOrderflowPanel';
 import type {BtcOrderflow} from '../lib/btc-orderflow';
@@ -47,6 +49,8 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const scenarioDetail=true;
   const [inspectedTime,setInspectedTime]=useState<number|null>(null);
   const [orderFlow,setOrderFlow]=useState<BtcOrderflow|null>(null);
+  const [sampledLive,setSampledLive]=useState<SampledLiveCandle|null>(null);
+  const chartScrollRef=useRef<HTMLDivElement|null>(null);
   useEffect(()=>{
     if(!chartFullscreen)return;
     const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')setChartFullscreen(false);};
@@ -101,6 +105,29 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const watchReady=m.watchReady&&!statusReady;
   const planVisible=statusReady||watchReady;
   const sn=m.sniper,dir=planVisible?m.displaySide:watchFresh&&m.bias.active?m.bias.side:'WAIT';
+  const marketQuote=asset==='GOLD'?goldLive:btcLive;
+  const quoteSource=String(marketQuote?.source||'');
+  const rawQuote=Number(marketQuote?.price),rawAt=Number(marketQuote?.sourceTime);
+  const lastClosedAt=Number(m.candles.at(-1)?.time||0)+60000;
+  // The visible live OHLC is a local sample of real source ticks, not
+  // an exchange-certified candle. Browser restarts never invent its open.
+  useEffect(()=>{
+    const valid=marketQuote?.ok===true&&Number.isFinite(rawQuote)&&rawQuote>0&&
+      Number.isFinite(rawAt)&&rawAt>0&&!goldClosed&&!providerTransition&&
+      m.historyFresh&&sn.view.priceFresh&&m.price!=null&&
+      Math.abs(m.price-rawQuote)<=Math.max(.02,rawQuote*.00002);
+    setSampledLive(prev=>valid?updateSampledLiveCandle(prev,{
+      now,at:rawAt,price:rawQuote,sourceKey:quoteSource,
+      historicalSource:String(x?.candleSource||''),lastClosedAt
+    }):null);
+  // Only refresh on a genuine quote, market minute, provider or status change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[asset,rawAt,rawQuote,quoteSource,x?.candleSource,lastClosedAt,
+    Math.floor(now/60000),goldClosed,providerTransition,m.historyFresh,sn.view.priceFresh]);
+  const liveM1=visibleSampledLiveCandle(sampledLive,now,lastClosedAt,
+    quoteSource,String(x?.candleSource||''));
+  const liveVerified=Boolean(liveM1?.matchedVenue&&!providerTransition&&!goldClosed&&
+    sn.view.priceFresh&&m.historyFresh);
   const preMove=x?.preMovePressure;
   const preMoveActive=Boolean(preMove?.ok&&['BUILDING','ARMED'].includes(String(preMove.stage))&&
     (preMove.side==='BUY'||preMove.side==='SELL')&&
@@ -112,6 +139,10 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     H=mobile?(expanded||chartFullscreen?860:760):(expanded||chartFullscreen?920:760),x0=scenarioDetail?66:mobile?28:66,
     x1=scenarioDetail?66+historySlots*16:mobile?315:895,xf=x1+14,
     xr=W-(scenarioDetail?144:mobile?126:144),yt=40,yb=H-102,volumeEnd=H-49;
+  useEffect(()=>{
+    const el=chartScrollRef.current;
+    if(el)el.scrollLeft=Math.max(0,x1-el.clientWidth*.43);
+  },[asset,chartWindow,focusCandles,mobile,x1]);
   // Chart structure comes from CLOSED M5, independently of AI snapshot age.
   const breakout=buildBreakoutGuide({frames:x?.chartHigherFrames,now,side:dir,
     price:m.price,sourceReady:sn.view.priceFresh,
@@ -319,6 +350,20 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     auditFirstVisualCandle(m.candles):null,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [asset,candleRevision,x?.candleSource,providerTransition,goldClosed,ghost.mode,m.historyFresh]);
+  const nextStudy=useMemo(()=>analyzeNextCandleStrategies(m.candles,now),
+  // Train/test runs use closed history only; do not recompute every quote tick.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [asset,routeRevision,x?.candleSource]);
+  const nextCandle=illustrativeNextCandle({
+    study:nextStudy,anchor:liveM1?.close??0,minute:liveM1?.time??0,
+    enabled:liveVerified&&!goldClosed
+  });
+  const nextDirection=nextCandle?.side==='BUY'?'صعود':
+    nextCandle?.side==='SELL'?'هبوط':'انتظار';
+  const analysisMode=String(data?.autopilot?.aiReadiness?.mode||'TECHNICAL_ONLY');
+  const nextModelState=nextStudy.status==='VALIDATED'?'اختبار اتجاه خارج العينة ناجح':
+    nextStudy.status==='TECHNICAL_ONLY'?'تحليل فني · أفضلية غير مثبتة':
+    'غير متاح · '+nextStudy.reason;
   const firstCandle=visualCandles[0];
   const closedM1Gate=assessSniperEntryCandle({history:m.candles,now,
     side:conditionalRouteSide,price:m.price,
@@ -355,7 +400,11 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const futureStride=scenarioDetail?stride:(xr-xf-18)/Math.max(1,visualCandles.length);
   // The scenario can be narrower, NEVER wider than an actual chart candle.
   const futureWidth=candleWidth;
-  const ghostXs=visualCandles.map((_,i)=>xf+9+(i+.5)*futureStride);
+  // The first horizontal slot is reserved for NEXT M1 immediately after
+  // locally observed LIVE M1. Longer target-path shapes start AFTER NEXT.
+  const nextX=xf+9+futureStride*.5;
+  const liveX=xf-4;
+  const ghostXs=visualCandles.map((_,i)=>xf+9+(i+1.5)*futureStride);
   const motionColor=watchReady?'#e8b35e':rise?'#51e5ac':'#f08ca4';
   const scenarioKind=motion.some(p=>p.kind==='SWEEP')?'SWEEP_RECLAIM':
     motion.some(p=>p.kind==='RETEST')?'BREAK_RETEST':'DIRECT';
@@ -599,6 +648,25 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               'السعر ابتعد عن مرجع إغلاق الدقيقة؛ الرسم يتجدد عند إغلاق شمعة جديدة':
               targetRoute?.reason??'بانتظار سعر و36 شمعة M1 مغلقة وحديثة'}
           </div>}
+          <div className="sniper-live-next-status" role="status" aria-label="الشمعة الحية والتوقع التالي">
+            <span className="sniper-live-next-live">
+              <b>LIVE M1 · {liveM1?(liveM1.close>=liveM1.open?'صعود':'هبوط'):'انتظار مصدر حي'}</b>
+              <small>{liveM1?fmt(liveM1.close)+' · '+liveM1.count+' تحديث مرصود':'لا شمعة حية مكتملة المصدر'}</small>
+            </span>
+            <span className="sniper-live-next-forecast">
+              <b>AI NEXT · {nextDirection}</b>
+              <small>{nextCandle?'إغلاق توضيحي '+fmt(nextCandle.close)+' · '+nextStudy.strategyLabel:
+                liveM1&&!liveM1.matchedVenue?'مصدر السعر مختلف عن مصدر الشموع':
+                nextStudy.reason}</small>
+            </span>
+            <span className="sniper-live-next-ai">
+              <b>{nextStudy.status==='UNAVAILABLE'?'تحليل الاستراتيجيات متوقف':'محرك الاستراتيجيات يعمل'}</b>
+              <small>{analysisMode==='TECHNICAL_ONLY'?'TradingView-style · ML/Neural غير متصلين':
+                'اختيار فني مستقل · خدمات AI: '+analysisMode}</small>
+              <small>{nextModelState}{nextStudy.holdout?
+                ' · '+nextStudy.holdout.n+' اختبار خارج العينة · '+nextStudy.holdout.accuracyPct+'٪ اتجاه':''}</small>
+            </span>
+          </div>
           {ghostActive&&<div role="status" aria-label="فحص أول شمعة في السيناريو"
             style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:'7px 16px',padding:'10px 16px',
               background:'#152735',color:'#e6d39d',borderBottom:'1px solid #5c5135',fontSize:13}}>
@@ -622,7 +690,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               '٪ · خطأ إغلاق '+firstCandleStudy!.maeAtr+' ATR مقابل '+firstCandleStudy!.baselineMaeAtr+
               ' ATR للمرجع · ليس احتمال ربح أو ضمانًا'}</small>}
           </div>}
-          <div className="forecast-visual-chart-scroll" style={scenarioDetail?{display:'block',overflowX:'auto',direction:'ltr'}:undefined}>
+          <div ref={chartScrollRef} className="forecast-visual-chart-scroll" style={scenarioDetail?{display:'block',overflowX:'auto',direction:'ltr'}:undefined}>
             <div dir="rtl" style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:'8px 16px',padding:'12px 16px',background:'#0b1928',borderBottom:'1px solid #284156',color:'#b6cad9',fontSize:13,fontVariantNumeric:'tabular-nums'}}>
               <strong style={{color:'#e3edf5'}}>{inspected?'فحص شمعة':'آخر شمعة'}</strong>
               {detailCandle?<>
@@ -900,6 +968,40 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
                   ' · عمر المصدر '+(quoteAgeSec??'غير معلوم')+
                   ' ثانية · '+(priceFresh?'سعر مباشر من مصدر حديث':'آخر سعر معروف غير مؤهل لوصف LIVE')+
                   ' · هذا سهم السعر الحالي وليس توقعًا مستقبليًا'}</title>
+              </g>}
+              {liveM1&&<g className="sniper-sampled-live-candle" clipPath={'url(#forecast-plot-'+asset+')'}>
+                <rect x={liveX-candleWidth/2-4} y={yt+53} width={candleWidth+8}
+                  height={yb-yt-53} fill={liveM1.matchedVenue?'#64dced':'#abb3bd'}
+                  fillOpacity=".045" stroke={liveM1.matchedVenue?'#64dced':'#aab7be'}
+                  strokeOpacity=".35" strokeDasharray="4 6"/>
+                <line x1={liveX} x2={liveX} y1={px(liveM1.high)} y2={px(liveM1.low)}
+                  stroke={liveM1.close>=liveM1.open?'#56e2c7':'#ff91a6'} strokeWidth="2.4"/>
+                <rect x={liveX-candleWidth/2} y={Math.min(px(liveM1.open),px(liveM1.close))}
+                  width={candleWidth} height={Math.max(3,Math.abs(px(liveM1.open)-px(liveM1.close)))}
+                  fill={liveM1.close>=liveM1.open?'#56e2c7':'#ff91a6'} stroke="#e6faff"
+                  strokeWidth="1.8" rx="1.3"/>
+                <text x={liveX} y={yt+64} textAnchor="middle" fontSize="10" fontWeight="800" fill="#a5f3ff">LIVE</text>
+                <title>{'LIVE M1 · '+clock(liveM1.time)+' · O '+fmt(liveM1.open)+
+                  ' H '+fmt(liveM1.high)+' L '+fmt(liveM1.low)+' C '+fmt(liveM1.close)+
+                  ' · '+liveM1.count+' عينات سعرية فقط، ليست OHLC كاملة من البورصة'+
+                  (liveM1.matchedVenue?'':' · المصدر مختلف عن الشموع المغلقة')}</title>
+              </g>}
+              {nextCandle&&<g className="sniper-ai-next-candle" clipPath={'url(#forecast-plot-'+asset+')'}>
+                <rect x={nextX-futureWidth/2-4} y={yt+53} width={futureWidth+8}
+                  height={yb-yt-53} fill="#f6c879" fillOpacity=".045"
+                  stroke="#f6c879" strokeDasharray="4 5" strokeWidth="1.6"/>
+                <line x1={nextX} x2={nextX} y1={px(nextCandle.high)} y2={px(nextCandle.low)}
+                  stroke={nextCandle.side==='BUY'?'#61eac9':'#ff8fa4'}
+                  strokeWidth="2.1" strokeDasharray="3 3"/>
+                <rect x={nextX-futureWidth/2} y={Math.min(px(nextCandle.open),px(nextCandle.close))}
+                  width={futureWidth} height={Math.max(3,Math.abs(px(nextCandle.open)-px(nextCandle.close)))}
+                  fill={nextCandle.side==='BUY'?'#61eac9':'#ff8fa4'} fillOpacity=".32"
+                  stroke={nextCandle.side==='BUY'?'#a2ffe9':'#ffc0cb'}
+                  strokeWidth="2" strokeDasharray="3 3" rx="1.3"/>
+                <text x={nextX} y={yt+64} textAnchor="middle" fontSize="10" fontWeight="800" fill="#ffe6b3">AI</text>
+                <title>{'NEXT M1 · '+(nextCandle.side==='BUY'?'صعود':'هبوط')+
+                  ' · إغلاق توضيحي '+fmt(nextCandle.close)+
+                  ' · '+nextStudy.reason+' · ليست شمعة حقيقية ولا أمر دخول'}</title>
               </g>}
               {ghostActive&&<g className={'sniper-ghost-forecast'+(routeVisible?' sniper-route-candles':'')}
                 clipPath={'url(#forecast-plot-'+asset+')'}>
