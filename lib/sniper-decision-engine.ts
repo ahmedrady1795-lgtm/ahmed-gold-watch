@@ -119,6 +119,8 @@ export function buildSniperDecision(input:{
   const external=input.externalBlockers?.filter(Boolean)||[];
   factor('MARKET_RISK',external.length?'FAIL':'PASS',
     external[0]||'لا توجد موانع سيولة/جودة إضافية');
+  // Directional agreement is mandatory for qualified watch signals.
+  if(direction!==0&&!trendOK)blocks.push('اتجاه M1 وM5 غير متفق؛ لا تؤهل الإشارة');
   const hardPass=blocks.length===0;
   const status:SniperDecision['status']=hardPass?'QUALIFIED_WATCH':
     plan.status==='BLOCKED'||!quoteOk||!candlesOk?'BLOCKED':'WAIT';
