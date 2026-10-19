@@ -8,7 +8,7 @@ export type M15Side='BUY'|'SELL'|'WAIT';
 export type ScenarioM15Bar={open:number;high:number;low:number;close:number;step:number;source:'HISTORICAL_ANALOGUE'};
 export type M15Scenario={
   ready:boolean;bars:ScenarioM15Bar[];reason:string;sourceBars:number;
-  archiveYears:number;origin:'RECENT_M15'|'MULTI_YEAR_ARCHIVE'|'NONE';
+  archiveYears:number;origin:'RECENT_M15'|'CAPTURED_M15'|'MULTI_YEAR_ARCHIVE'|'NONE';
   touches:number[];stopped:boolean;atr:number|null
 };
 const valid=(b:M15Bar)=>b!=null&&
@@ -60,8 +60,21 @@ export function buildM15Scenario(input:{
 }):M15Scenario{
  const live=closedM15Bars(input.history,input.now,500);
  const extra=closedM15Bars(input.archive,input.now,40000);
- const archival=Number.isFinite(input.archiveYears)&&input.archiveYears!>=2&&extra.length>=4000;
- const base=archival?extra:live;
+ // A captured archive can gradually replace the short live window ONLY if
+ // recent overlapping true OHLC match to prevent silently mixing price feeds.
+ const lookups=new Map(extra.map(b=>[b.time,b]));
+ const overlap=live.slice(-24).filter(b=>lookups.has(b.time));
+ const compatible=overlap.length>=6&&overlap.every(b=>{
+   const archived=lookups.get(b.time)!;
+   const tol=Math.max(b.close*.000015,.02);
+   return Math.abs(b.open-archived.open)<=tol&&
+     Math.abs(b.high-archived.high)<=tol&&
+     Math.abs(b.low-archived.low)<=tol&&
+     Math.abs(b.close-archived.close)<=tol;
+ });
+ const captured=extra.length>=240&&compatible;
+ const archival=captured&&Number.isFinite(input.archiveYears)&&input.archiveYears!>=2&&extra.length>=4000;
+ const base=captured?extra:live;
  const years=archival?input.archiveYears!:0;
  if(input.side==='WAIT'||!Number.isFinite(input.anchor)||input.anchor==null||input.anchor<=0)
    return empty('لا اتجاه مرجّح أو سعر إغلاق حقيقي للبدء',base.length,years);
@@ -151,9 +164,10 @@ export function buildM15Scenario(input:{
  }
  if(!output.length)return empty('لا توجد مقاطع M15 تاريخية مماثلة للاتجاه',base.length,years);
  return {ready:true,bars:output,reason:archival?
-   'شموع M15 محاكية من أنماط أرشيف متعدد السنوات؛ ليست أسعار مستقبلية مؤكدة':
-   'محاكاة M15 من الشموع المغلقة المتاحة حديثًا؛ أرشيف سنوات MT5 غير متصل',
+   'شموع M15 من أرشيف متحقق متعدد السنوات؛ ليست أسعار مستقبلية مؤكدة':
+   captured?'محاكاة من أرشيف M15 متزايد بنفس المصدر؛ ليس أرشيف سنوات كاملًا':
+   'محاكاة M15 من الشموع المغلقة المتاحة حديثًا؛ أرشيف سنوات غير متصل',
    sourceBars:base.length,archiveYears:years,
-   origin:archival?'MULTI_YEAR_ARCHIVE':'RECENT_M15',
+   origin:archival?'MULTI_YEAR_ARCHIVE':captured?'CAPTURED_M15':'RECENT_M15',
    touches,stopped,atr};
 }
