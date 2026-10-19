@@ -120,12 +120,14 @@ export default function Home(){
   useEffect(()=>{
     let closed=false,ws:WebSocket|null=null,reconnect:ReturnType<typeof setTimeout>|undefined,lastWsTick=0;
     const loadBtc=async()=>{try{
-      const r=await fetch('/api/btc?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+      const wanted=/kraken/i.test(String(chartDataRef.current?.bitcoin?.candleSource||''))?'kraken':'coinbase';
+      const r=await fetch('/api/btc?source='+wanted+'&ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
       const j=await r.json(),p=Number(j?.price),at=sourceTimestamp(j?.sourceTime)||0;
       // A provider may return a numeric Spot or last-good price WITHOUT
       // a valid trade timestamp. Keep its price for context, not a LIVE flag.
       const timedLive=j?.status==='live'&&validSourceTime(at||null,Date.now(),10000);
-      if(!closed&&r.ok&&j?.ok&&Number.isFinite(p)&&p>0&&Date.now()-lastWsTick>4000){
+      if(!closed&&r.ok&&j?.ok&&Number.isFinite(p)&&p>0&&
+        (wanted==='kraken'||Date.now()-lastWsTick>4000)){
         setBtc(p);setBtcAt(timedLive?at:0);
         setBtcSource(String(j?.source||'BTC provider'));
       }
@@ -139,6 +141,8 @@ export default function Home(){
         if(x?.type!=='ticker'||x?.product_id!=='BTC-USD')return;
         const p=Number(x.price),at=sourceTimestamp(x.time),bid=Number(x.best_bid),ask=Number(x.best_ask);
         if(!Number.isFinite(p)||p<=0||!validSourceTime(at,Date.now()))return;
+        // Only render LIVE from the same exchange as the M1 candle history.
+        if(/kraken/i.test(String(chartDataRef.current?.bitcoin?.candleSource||'')))return;
         lastWsTick=Date.now();
 
         if(!closed&&Date.now()-btcUiAt.current>=250){
