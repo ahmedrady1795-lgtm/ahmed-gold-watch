@@ -31,9 +31,9 @@ const next=build({candles:tail,forecast:{mode:'RANGE',atr:.4,side:'WAIT',candles
 assert.equal(next[0].time,tail.at(-1).time+60000,'first visual bar follows the last closed M1');
 const ui=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 assert.match(ui,/auditFirstVisualCandle\(m\.candles\)/);
-assert.match(ui,/routeVisible\?'مرحلة سعرية S1 بلا توقيت M1'/,
- 'price-space route step cannot masquerade as timed future first M1');
-assert.match(ui,/role="status" aria-label="فحص أول شمعة في السيناريو"/);
+assert.match(ui,/مسار أهداف مشروط/,'stages are conditional price-space, not timed next M1');
+assert.doesNotMatch(ui,/aria-label="فحص أول شمعة في السيناريو"/,
+ 'extra text below the first scenario candle has been removed');
 assert.match(ui,/firstCandleStudy\.samples>=30/);
 assert.doesNotMatch(ui,/sn\.view\.confidence>0\?'ثقة فنية'/,
  'technical confidence must not be mislabeled as candle win probability');
