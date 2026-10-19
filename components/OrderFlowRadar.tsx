@@ -10,7 +10,9 @@ export default function OrderFlowRadar({asset,onView}:{asset:'GOLD'|'BTC';onView
     const publish=(next:RadarView)=>{
       // The full candle SVG is expensive: re-render it for radar state/level
       // changes only, not every 1s volume-delta tick.
-      const signature=[next.phase,next.side,next.confirm,next.invalidate,next.since].join('|');
+      const active=['PREPARE','CONFIRMED','INVALIDATED','EXPIRED'].includes(next.phase);
+      const signature=[next.phase,next.side,next.confirm,next.invalidate,
+        active?next.since:0].join('|');
       if(signature!==lastBroadcast){lastBroadcast=signature;onView?.({...next});}
     };
     let engine=new Engine(),ws:WebSocket|null=null,stopped=false,connectedAt=0,retry:ReturnType<typeof setTimeout>|undefined;
