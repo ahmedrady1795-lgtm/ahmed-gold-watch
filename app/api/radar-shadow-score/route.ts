@@ -4,7 +4,7 @@ import {radarShadowScore,sanitizeShadowLedger}
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
 const paths=['/data/qannas-radar-shadow-v1.json','/tmp/qannas-radar-shadow-v1.json'];
-export async function GET(){
+export async function GET(request:Request){
  try{
   let raw:string|null=null,storage='NOT_RUNNING';
   for(const path of paths){
@@ -16,6 +16,8 @@ export async function GET(){
    reason:'خادم رصد Coinbase لم يحفظ إشارة بعد؛ لا توجد نسبة نجاح'},{headers:{'Cache-Control':'no-store'}});
   if(raw.length>8_000_000)throw Error('ledger_too_large');
   const ledger=sanitizeShadowLedger(JSON.parse(raw),Date.now());
+  if(new URL(request.url).searchParams.get('archive')==='1')
+    return Response.json(ledger,{headers:{'Cache-Control':'no-store'}});
   const score=radarShadowScore(ledger);
   return Response.json({ok:true,status:'SHADOW_COLLECTING',
    storage,...score,recent:ledger.events.slice(-8).reverse().map(e=>({
