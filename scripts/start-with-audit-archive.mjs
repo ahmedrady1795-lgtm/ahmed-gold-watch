@@ -17,5 +17,17 @@ try{
   console.info('[SNIPER-ARCHIVE] Restored checkpoint',archive.savedAt,'records',archive.records.length);
 }catch(e){console.warn('[SNIPER-ARCHIVE] Restore unavailable:',e.message);}
 const child=spawn('npm',['start'],{stdio:'inherit',env:process.env});
-for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>child.kill(signal));
-child.on('exit',(code,signal)=>{process.exitCode=code??(signal?1:0);});
+const radar=spawn('node',['scripts/radar-shadow-worker.mjs'],{
+ stdio:'inherit',env:process.env
+});
+radar.on('error',e=>console.warn('[RADAR-SHADOW] recorder unavailable',e.message));
+radar.on('exit',(code,signal)=>{
+ if(code!==0&&!signal)console.warn('[RADAR-SHADOW] recorder stopped',code);
+});
+for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{
+ child.kill(signal);radar.kill(signal);
+});
+child.on('exit',(code,signal)=>{
+ radar.kill('SIGTERM');
+ process.exitCode=code??(signal?1:0);
+});
