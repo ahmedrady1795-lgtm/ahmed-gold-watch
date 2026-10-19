@@ -1,9 +1,12 @@
 // Coinbase BTC-USD only. Experimental evidence, never a calibrated probability.
+import {inspectL2Book,assessL2Persistence,
+ type L2BookSample,type OrderFlowMicroEvidence} from './order-flow-microstructure';
 export type RadarSide='BUY'|'SELL'|'WAIT';
-export type RadarView={phase:'WARMUP'|'OFFLINE'|'WATCH'|'PREPARE'|'CONFIRMED'|'INVALIDATED'|'EXPIRED';side:RadarSide;delta:number;imbalance:number;confirm:number|null;invalidate:number|null;since:number;replenishments:number};
+export type RadarView={phase:'WARMUP'|'OFFLINE'|'WATCH'|'PREPARE'|'CONFIRMED'|'INVALIDATED'|'EXPIRED';side:RadarSide;delta:number;imbalance:number;confirm:number|null;invalidate:number|null;since:number;replenishments:number;micro?:OrderFlowMicroEvidence};
 type Trade={id:number;at:number;price:number;size:number;buy:boolean};
 export class OrderFlowRadar {
   bids=new Map<number,number>(); asks=new Map<number,number>();
+  bookSamples:L2BookSample[]=[];
   trades:Trade[]=[]; replenishments:{at:number;side:string}[]=[];
   snapshotAt=0; heartbeatAt=0; bookAt=0; lastId=0; lastMatchAt=0; broken=false;
   // Missing matches invalidate delta, not the L2 socket. Recover after a
@@ -24,7 +27,7 @@ export class OrderFlowRadar {
       this.bids.clear();this.asks.clear();
       for(const [rows,book] of [[m.bids,this.bids],[m.asks,this.asks]] as const)
         for(const row of rows||[]){const p=Number(row[0]),s=Number(row[1]);if(p>0&&s>0&&Number.isFinite(p+s))book.set(p,s);}
-      this.snapshotAt=now;this.bookAt=now;
+      this.snapshotAt=now;this.bookAt=now;this.bookSamples=[];
     }
     if(m.type==='heartbeat'){
       const at=Date.parse(m.time); if(!Number.isFinite(at)||Math.abs(now-at)>5000){this.broken=true;return;}
@@ -63,10 +66,24 @@ export class OrderFlowRadar {
   }
   evaluate(now=Date.now()):RadarView{
     const rows=this.trades.filter(t=>now-t.at<=30000),last=rows.at(-1);
-    if(this.broken||now<this.quarantineUntil||!this.heartbeatAt||now-this.heartbeatAt>5000||!this.bookAt||now-this.bookAt>10000||!last||now-last.at>5000){
-      this.candidate='WAIT';this.view={...this.view,phase:'OFFLINE',side:'WAIT',confirm:null,invalidate:null,since:now};return this.view;
+    // Persist only one bounded L2 snapshot each second; no fabricated
+    // intervening observations if the socket was disconnected.
+    if(!this.broken&&this.snapshotAt&&this.bookAt&&now-this.bookAt<=4000&&
+      (!this.bookSamples.length||now-this.bookSamples.at(-1)!.at>=950)){
+      const sample=inspectL2Book({
+        bids:[...this.bids.entries()],asks:[...this.asks.entries()],at:now
+      });
+      if(sample)this.bookSamples=[...this.bookSamples.filter(x=>now-x.at<=15000),
+        sample].slice(-16);
     }
-    if(now-this.snapshotAt<30000||rows.length<20){this.view={...this.view,phase:'WARMUP',side:'WAIT'};return this.view;}
+    const micro=assessL2Persistence({snapshots:this.bookSamples,now,
+      executed:rows.map(t=>({at:t.at,price:t.price,size:t.size,
+        aggressor:(t.buy?'BUY':'SELL') as 'BUY'|'SELL'}))});
+
+    if(this.broken||now<this.quarantineUntil||!this.heartbeatAt||now-this.heartbeatAt>5000||!this.bookAt||now-this.bookAt>10000||!last||now-last.at>5000){
+      this.candidate='WAIT';this.view={...this.view,phase:'OFFLINE',side:'WAIT',confirm:null,invalidate:null,since:now,micro:{...micro,ready:false,status:'STALE'}};return this.view;
+    }
+    if(now-this.snapshotAt<30000||rows.length<20){this.view={...this.view,phase:'WARMUP',side:'WAIT',micro};return this.view;}
     const bids=[...this.bids].sort((a,b)=>b[0]-a[0]),asks=[...this.asks].sort((a,b)=>a[0]-b[0]);
     const bid=bids[0]?.[0],ask=asks[0]?.[0];
     if(!bid||!ask||bid>=ask){this.broken=true;return this.evaluate(now);}
@@ -77,7 +94,7 @@ export class OrderFlowRadar {
     const change=(last.price-rows[0].price)/rows[0].price*10000;
     const side:RadarSide=delta<=-30&&Math.abs(change)<2&&imbalance>10?'BUY':delta>=30&&Math.abs(change)<2&&imbalance< -10?'SELL':'WAIT';
     const counts=this.replenishments.filter(r=>now-r.at<=30000&&r.side===(side==='BUY'?'buy':'sell')).length;
-    let v={...this.view,delta,imbalance,replenishments:side==='WAIT'?0:counts};
+    let v={...this.view,delta,imbalance,replenishments:side==='WAIT'?0:counts,micro};
     if(v.phase==='PREPARE'||v.phase==='CONFIRMED'){
       const buy=v.side==='BUY';
       if(buy?last.price<=v.invalidate!:last.price>=v.invalidate!)v={...v,phase:'INVALIDATED',since:now};
