@@ -27,7 +27,8 @@ assert.ok(targetPrices.every(x=>x<local.low&&x<broad.low),
  'distant objectives are offscreen exact-price labels, never viewport inputs');
 const page=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 assert.match(page,/candleViewport=chartPriceViewport\(/);
-assert.match(page,/real:candles,illustrative:visualCandles/);
+assert.match(page,/protectRealRange:true/,'actual M1 candle geometry stays legible around remote hypothetical legs');
+assert.match(page,/real:\[\.\.\.candles,/,'genuine closed and observed LIVE candle are used for scale');
 assert.match(page,/const scaleLow=candleViewport.low/);
 assert.match(page,/outsideLevels\.map\(/);
 assert.doesNotMatch(page,/const scaleLow=focusCandles\?/,
