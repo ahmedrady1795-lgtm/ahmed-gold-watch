@@ -71,7 +71,7 @@ assert.match(chart,/left=8,split=184,end=357,axis=359/,
  'a wider, bounded price rail reserves room for complete target values');
 assert.match(chart,/railGap=29/,
  'price labels are separated instead of being drawn over each other');
-assert.match(chart,/!rail\.some\(level=>Math\.abs\(level\.labelY-py\(v\)\)<20\)/,
+assert.match(chart,/!rail\.some\(level=>Math\.abs\(level\.labelY-py\(v\)\)<17\)/,
  'background price ticks cannot be printed over TP / stop labels');
 assert.match(chart,/textAnchor="middle" direction="rtl">\{z\.label\}/,
  'Arabic liquidity labels stay centered in their compact badge');
