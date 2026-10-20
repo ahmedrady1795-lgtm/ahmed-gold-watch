@@ -475,12 +475,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const distantTargets=scaleLevels.filter(v=>
    (v.kind==='TARGET'||v.kind==='ILLUSTRATION')&&
    (v.price<lo||v.price>hi)).slice(0,3);
- const distantMarkers=distantTargets.map(v=>{
-   const index=distantTargets.filter(z=>(z.price>hi)===(v.price>hi))
-     .findIndex(z=>z.key===v.key);
-   return {...v,arrow:v.price>hi?'↑':'↓',
-     markerY:v.price>hi?plotTop+12+index*16:plotBottom-10-index*16};
- });
  const rail=nearLevels.map(v=>({...v,exactY:py(v.price),labelY:py(v.price)}))
    .sort((a,b)=>a.exactY-b.exactY);
  const railMargin=plotTop+15,railBottom=plotBottom-15,railGap=29;
@@ -540,14 +534,23 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    }
    return null;
  };
- const watchLabels=showLiquidity?watchPrices.map(z=>({
+ // Offscreen goals occupy only free price-rail rows, never LIVE/SL labels.
+ // Keep their exact numeric values; offscreen symbols do not draw fake lines.
+ const distantMarkers=distantTargets.map(v=>({
+   ...v,arrow:v.price>hi?'↑':'↓',
+   markerY:freeY(v.price>hi?plotTop+20:plotBottom-20)
+ })).filter(v=>v.markerY!=null);
+ const watchLabels=showLiquidity?watchPrices.filter(z=>
+   z.price>=lo&&z.price<=hi).map(z=>({
    ...z,exactY:py(z.price),labelY:null as number|null
  })).sort((a,b)=>a.exactY-b.exactY):[];
  for(const w of watchLabels)w.labelY=freeY(w.exactY);
- const forwardLabels=futureZones.map(z=>({...z,exactY:py(z.price),
+ const forwardLabels=futureZones.filter(z=>
+   z.price>=lo&&z.price<=hi).map(z=>({...z,exactY:py(z.price),
    labelY:null as number|null})).sort((a,b)=>a.exactY-b.exactY);
  for(const z of forwardLabels)z.labelY=freeY(z.exactY);
- const markRailLabels=reactionMap.marks.map(mark=>({
+ const markRailLabels=reactionMap.marks.filter(mark=>
+   mark.price>=lo&&mark.price<=hi).map(mark=>({
    mark,exactY:py(mark.price),labelY:null as number|null
  }));
  for(const z of markRailLabels)
