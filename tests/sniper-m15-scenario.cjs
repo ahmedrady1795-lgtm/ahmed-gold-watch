@@ -32,6 +32,20 @@ assert.equal(JSON.stringify(longerClassic.bars.slice(0,shortClassic.bars.length)
  JSON.stringify(shortClassic.bars),
  'the old 48-bar view must NEVER alter the originally scored first 12 bars');
 
+// A visually honest forecast needs a directional analogue, not permission
+// from a separate execution plan, fabricated targets or fabricated orders.
+assert.equal(buildM15Scenario({...common,steps:12,targets:[]}).ready,false,
+ 'default entry-oriented engine still rejects no-target requests');
+const noTarget=buildM15Scenario({...common,steps:12,
+ targets:[],allowNoTargets:true,stop:null});
+assert.equal(noTarget.ready,true,
+ 'analysis-only scenario may show actual historical analogue OHLC without TP');
+assert.equal(noTarget.touches.length,0,
+ 'zero audited TP touches when there are zero real structural goals');
+assert.equal(noTarget.bars[0].open,price,
+ 'read-only illustration starts from real observed price, not a synthetic level');
+assert.ok(noTarget.bars.every(b=>b.source==='HISTORICAL_ANALOGUE'));
+
 assert.ok(a.bars.length>10);
 assert.equal(a.origin,'RECENT_M15');
 assert.equal(a.archiveYears,0);
