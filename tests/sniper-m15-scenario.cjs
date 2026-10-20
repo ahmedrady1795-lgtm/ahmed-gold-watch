@@ -105,8 +105,8 @@ assert.match(chart,/railGap=29/,
  'price labels are separated instead of being drawn over each other');
 assert.match(chart,/!rail\.some\(level=>Math\.abs\(level\.labelY-py\(v\)\)<17\)/,
  'background price ticks cannot be printed over TP / stop labels');
-assert.match(chart,/textAnchor="middle" direction="rtl">\{z\.label\}/,
- 'Arabic liquidity labels stay centered in their compact badge');
+assert.match(chart,/const y=zoneLabelPoints\\[i\\]\\.y,xBadge=split-7/,
+ 'Compact Arabic zone labels no longer need rectangle badges');
 assert.match(chart,/width=\{split-left-5\}/,
  'liquidity backgrounds must not hide the projected scenario candles');
 assert.match(chart,/const compactZones=compactM15ZoneAnnotations/,
