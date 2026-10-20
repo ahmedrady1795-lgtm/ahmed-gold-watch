@@ -210,3 +210,30 @@
  .sniper-m15-view-controls{gap:4px;padding:3px 4px}
  .sniper-m15-view-controls button{font-size:9px;padding:3px 3px}
 }
+
+
+/* Read-only market preparation is a ONE-LINE disclosure above M15 candles.
+ * Never hide it with clean chart mode; never draw over the actual OHLC. */
+.sniper-m15-preparation-slot{
+ display:flex;flex-direction:column;align-items:stretch;
+ box-sizing:border-box;min-width:0;width:100%;
+ padding:3px 6px;border-bottom:1px solid #29434b;
+ background:#06141b;color:#c6e6df;direction:rtl;
+}
+.sniper-m15-preparation-slot .sniper-flow-radar-chip{
+ position:relative!important;inset:auto!important;top:auto!important;right:auto!important;
+ width:100%!important;max-width:none!important;min-width:0;
+ margin:0;box-shadow:none;border:1px solid #315b60;
+ text-align:right;white-space:normal;font-size:10px;
+ background:#0b1d25;padding:5px 8px;border-radius:5px;
+}
+.sniper-m15-preparation-slot .sniper-flow-score-detail{
+ position:relative!important;inset:auto!important;top:auto!important;right:auto!important;
+ width:100%!important;max-width:none!important;min-width:0;
+ box-sizing:border-box;box-shadow:none;margin-top:4px;
+ background:#081920;padding:8px;
+}
+@media(max-width:600px){
+ .sniper-m15-preparation-slot{padding:3px 4px}
+ .sniper-m15-preparation-slot .sniper-flow-radar-chip{font-size:9.5px;padding:4px 6px}
+}
