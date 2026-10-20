@@ -51,6 +51,63 @@ assert.equal(score.m1.qualified,false);
 assert.equal(score.modelQualified,false);
 assert.equal(score.tradingEnabled,false);
 assert.equal(score.m15.edgeProven,false);
+// Absorption is captured BEFORE a confirmed break and never enters the
+// CONFIRMED radar cohort, even when it is ultimately directionally correct.
+const watched=x.recordAbsorptionFingerprint({ledger:x.newLedger(),
+ now:t,sourceAt:t-500,side:'BUY',fingerprint:'BID_ABSORPTION',
+ price:105,aggressiveUsd:176000,defendedDepthUsd:230000,
+ midMoveBps:.35,l2Snapshots:8,baseline:'SELL'});
+assert.equal(watched.recorded,true,watched.reason);
+assert.equal(watched.ledger.events[0].phase,'OBSERVED');
+assert.equal(watched.ledger.events[0].fingerprint,'BID_ABSORPTION');
+assert.equal(watched.ledger.events[0].m1.status,'PENDING');
+assert.equal(x.radarShadowScore(watched.ledger).events,0,
+ 'unconfirmed footprints cannot inflate confirmed flow hit-rate');
+assert.equal(x.radarShadowScore(watched.ledger).absorption.events,1);
+assert.equal(x.recordAbsorptionFingerprint({...{
+ ledger:watched.ledger,now:t+30000,sourceAt:t+29500,side:'SELL',
+ fingerprint:'ASK_ABSORPTION',price:104,
+ aggressiveUsd:150000,defendedDepthUsd:200000,midMoveBps:-.1,
+ l2Snapshots:8,baseline:'BUY'}}).recorded,false,
+ 'overlapping 15-minute event windows are not independent observations');
+const badAbs={ledger:x.newLedger(),now:t,sourceAt:t-500,
+ side:'BUY',fingerprint:'BID_ABSORPTION',price:105,
+ aggressiveUsd:176000,defendedDepthUsd:230000,midMoveBps:.35,
+ l2Snapshots:8,baseline:'SELL'};
+assert.equal(x.recordAbsorptionFingerprint({...badAbs,
+ fingerprint:'ASK_ABSORPTION'}).recorded,false,
+ 'a sell-absorbed bid cannot claim down-direction without matched kind');
+assert.equal(x.recordAbsorptionFingerprint({...badAbs,
+ aggressiveUsd:99}).recorded,false,
+ 'no phantom large prints');
+assert.equal(x.recordAbsorptionFingerprint({...badAbs,
+ sourceAt:t-30000}).recorded,false,
+ 'future observer cannot backdate without a fresh tape');
+assert.equal(x.recordAbsorptionFingerprint({...badAbs,
+ midMoveBps:3}).recorded,false,
+ 'a clearly moving book is not a price-stalled absorption footprint');
+const watchedM1=x.settleRadarOutcomes({ledger:watched.ledger,
+ now:e.m1.barAt+60000+5000,m1:[bar(e.m1.barAt,110,105)],m15:[]});
+const fingerprintScore=x.radarShadowScore(watchedM1.ledger);
+assert.equal(fingerprintScore.events,0);
+assert.equal(fingerprintScore.absorption.m1.samples,1);
+assert.equal(fingerprintScore.absorption.m1.correct,1);
+assert.equal(fingerprintScore.absorption.m1.pairedN,1);
+assert.equal(fingerprintScore.absorption.m1.pairedRadarRate,1);
+assert.equal(fingerprintScore.absorption.m1.baselineRate,0);
+assert.equal(fingerprintScore.absorption.m1.qualified,false);
+assert.equal(fingerprintScore.modelQualified,false);
+const restoredAbs=x.sanitizeShadowLedger(watchedM1.ledger,t+86400000);
+assert.equal(restoredAbs.events.length,1,
+ 'the archive preserves genuinely recorded early footprint events');
+const archiveAbs=x.mergeRadarShadowArchives(restoredAbs,watched.ledger,t+86400000);
+assert.equal(archiveAbs.events.length,1,'no duplicate absorption checkpoint event');
+assert.equal(archiveAbs.events[0].m1.status,'SCORED',
+ 'a pending checkpoint cannot erase the real later M1 outcome');
+const tampered=JSON.parse(JSON.stringify(watchedM1.ledger));
+tampered.events[0].aggressiveUsd=12;
+assert.equal(x.sanitizeShadowLedger(tampered,t+86400000).events.length,0,
+ 'unqualified footprint event cannot enter a restored trusted archive');
 const opposite=x.settleRadarOutcomes({ledger:a.ledger,
  now:e.m15.barAt+900000+5000,m1:[bar(e.m1.barAt,100,105)],m15:[]});
 assert.equal(opposite.ledger.events[0].m1.correct,false);
@@ -97,6 +154,9 @@ assert.match(worker,/view\.phase!=='CONFIRMED'/);
 assert.match(worker,/view\.micro\.snapshots<5/);
 assert.match(worker,/recordRadarSignal/);
 assert.match(worker,/settleRadarOutcomes/);
+assert.match(worker,/recordAbsorptionFingerprint/);
+assert.match(worker,/micro.status==='POSSIBLE_ABSORPTION'/);
+assert.match(display,/shadow\\?\\.absorption/);
 assert.match(boot,/radar-shadow-worker\.mjs/);
 assert.match(route,/sanitizeShadowLedger/);
 assert.doesNotMatch(route,/export async function POST/,
