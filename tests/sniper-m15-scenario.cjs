@@ -116,7 +116,7 @@ assert.match(wrapper,/return <SniperM15Panel \{\.\.\.props\}\/>/,
  'legacy M1 screen must not be the active rendered sniper');
 assert.match(chart,/chartHigherFrames\?\.m15/,
  'real M15 historical source is selected, never M1 renamed M15');
-assert.match(chart,/displayBars\.map/,'future illustration extends beyond the scored 12 bars');
+assert.match(chart,/renderedBars\.map/,'only visible validated M15 bars are drawn');
 assert.match(chart,/scaleLevels\.filter/,'price level labels belong inside the plot');
 assert.match(chart,/const min=important\.length\?Math\.min\(\.\.\.important\)/,
  'M15 viewport minimum must come from observed prices when LIVE is unavailable');
@@ -130,7 +130,7 @@ assert.match(chart,/scenario|سيناريو/);
 assert.doesNotMatch(chart,/AI NEXT|LIVE M1|محرك الاستراتيجيات يعمل|آخر شمعة/);
 assert.match(css,/\.sniper-m15-chart-box\{width:100%;height:clamp\(/);
 // Widen the actual price plot and render only four evidence-grounded liquidity lines.
-assert.match(chart,/left=8,split=184,end=422/,
+assert.match(chart,/left=8,split=showHistoricalExtension\?184:327,end=422/,
  'price plot reclaims the old rail without altering M15 candle timing');
 assert.match(chart,/className="sniper-m15-liquidity-label"/,
  'source-backed demand/supply/liquidity labels appear inside the chart');
@@ -162,7 +162,7 @@ assert.doesNotMatch(chart,/sniper-m15-caption|sniper-m15-status/,
  'no technical paragraphs or scorecard underneath the mobile chart');
 assert.doesNotMatch(chart,/className="sniper-m15-price"/,
  'large duplicated live price must not occupy the header');
-assert.match(chart,/W=430,H=704,left=8,split=184,end=422/,
+assert.match(chart,/W=430,H=704,left=8,split=showHistoricalExtension\?184:327,end=422/,
  'price column disappears while real and projected candles gain width');
 assert.match(css,/Compact full-canvas sniper v3/);
 assert.match(css,/display:flex!important;flex-direction:row;flex-wrap:nowrap/,
