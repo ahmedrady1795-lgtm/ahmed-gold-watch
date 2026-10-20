@@ -93,7 +93,7 @@ assert.match(wrapper,/return <SniperM15Panel \{\.\.\.props\}\/>/,
  'legacy M1 screen must not be the active rendered sniper');
 assert.match(chart,/chartHigherFrames\?\.m15/,
  'real M15 historical source is selected, never M1 renamed M15');
-assert.match(chart,/projected\.bars\.map/);
+assert.match(chart,/shownBars\.map/);
 assert.match(chart,/scaleLevels\.map/);
 assert.match(chart,/scenario|سيناريو/);
 assert.doesNotMatch(chart,/AI NEXT|LIVE M1|محرك الاستراتيجيات يعمل|آخر شمعة/);
@@ -103,7 +103,7 @@ assert.match(chart,/left=8,split=184,end=357,axis=359/,
  'a wider, bounded price rail reserves room for complete target values');
 assert.match(chart,/railGap=29/,
  'price labels are separated instead of being drawn over each other');
-assert.match(chart,/!rail\.some\(level=>Math\.abs\(level\.labelY-py\(v\)\)<17\)/,
+assert.match(chart,/!reserved\.some\(y=>Math\.abs\(y-py\(v\)\)<13\)/,
  'background price ticks cannot be printed over TP / stop labels');
 assert.match(chart,/const y=zoneLabelPoints\[i\]\.y,xBadge=split-7/,
  'Compact Arabic zone labels no longer need rectangle badges');
