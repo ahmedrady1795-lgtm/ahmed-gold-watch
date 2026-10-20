@@ -52,6 +52,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
 }){
  const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
  const [showLiquidity,setShowLiquidity]=useState(true);
+ const [showExtra,setShowExtra]=useState(false);
  const [priceZoom,setPriceZoom]=useState<'FOCUS'|'ALL'>('ALL');
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
  const onRadarView=useCallback((v:RadarView|null)=>setLiveRadar(v),[]);
@@ -638,10 +639,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          n(zoneBoard.context.low)+' – '+n(zoneBoard.context.high)+
          (zoneBoard.context.historical?' · منطقة تاريخية':' · داخل النطاق')}</span>:
          <span>{zoneBoard.ready?'لا يوجد تجميع أو تصريف مؤكد حاليًا':zoneBoard.reason}</span>}
-       <small>مناطق فنية من شموع مغلقة · ليست أوامر بنوك ولا دخولًا تلقائيًا</small>
+       <small>من شموع مغلقة · للمراقبة فقط</small>
+       <button type="button" className="sniper-m15-extra-toggle"
+         aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}
+         title="إظهار أو إخفاء علامات الرصد الثانوية دون تغيير الشموع أو الأسعار">
+         {showExtra?'إخفاء الزحمة':'تفاصيل إضافية'}</button>
      </div>
    </section>}
-   <div className="sniper-m15-chart-box" id="sniper-performance">
+   <div className="sniper-m15-chart-box" id="sniper-performance"
+     data-clean={!showExtra}>
      <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
 
      <button type="button" className="sniper-m15-zoom-toggle"
@@ -696,7 +702,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            return <g key={'zone-'+z.kind+'-'+z.low} className="sniper-m15-zone">
              <rect x={left+2} y={top} width={split-left-6}
                height={Math.max(1,bottom-top)} fill={color}
-               fillOpacity={pool?'.025':reaction?'.06':'.08'}/>
+               fillOpacity={pool?'.012':reaction?'.035':'.04'}/>
              <line x1={left+2} x2={split-4} y1={top} y2={top}
                stroke={color} strokeWidth=".85" strokeOpacity=".55"
                strokeDasharray={pool?'2 5':reaction?'2 3':'5 5'}/>
@@ -817,7 +823,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              z.label.includes('رفض')?'#ff7b90':'#e8c184':
              liquidityColor(z.kind);
            const y=zoneLabelPoints[i].y,xBadge=split-7;
-           return <g key={'group-label-'+i+'-'+z.price.toFixed(2)}>
+           return <g className="sniper-m15-zone-annotation"
+             key={'group-label-'+i+'-'+z.price.toFixed(2)}>
              <line x1={split-15} x2={xBadge-1} y1={py(z.price)} y2={y}
                stroke={color} strokeOpacity=".44" strokeWidth=".7"/>
              <text x={xBadge} y={y+3} fill={color} fontSize="8.3"
@@ -1026,7 +1033,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        </g>}
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
        <text x={split+5} y={17} fill="#e0c08d" fontSize="10" textAnchor="start" direction="ltr">M15 · FORECAST</text>
-       <text x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
+       <text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
          textAnchor="start" direction="rtl">أول 12 شمعة للتقييم · الامتداد عرض تاريخي غير مُقيّم</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
@@ -1036,7 +1043,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
          {displayBars.length?'+'+displayBars.length+' M15 · '+shownBars.length+' تقييم':'M15'}</text>
      </svg>
-     {showLiquidity&&<div className="sniper-m15-watch-strip"
+     {showLiquidity&&showExtra&&<div className="sniper-m15-watch-strip"
        aria-label="مستويات السيولة والأهداف الهيكلية للمراقبة" role="status">
        {watchMap.ready?<>
          <span>↑ سيولة القمم:
