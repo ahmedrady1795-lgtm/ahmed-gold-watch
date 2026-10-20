@@ -215,7 +215,7 @@ assert.match(chart,/persistenceKey='qannas-m15-freeze-analysis-v3-'/,
  'old over-restricted saved projections do not reappear as new ones');
 assert.match(chart,/allowNoTargets:true/,
  'chart analysis may show authentic analogues without made-up objectives');
-assert.match(chart,/evidenceLevel:issuance.level/,
- 'frozen snapshot remembers whether its evidence was preliminary');
+assert.match(chart,/evidenceLevel:issuance.level==='WAIT'\?undefined:issuance.level/,
+ 'frozen snapshot preserves its evidence tier but never stores WAIT as an issued forecast');
 
 console.log('PASS: M15 supply/demand, liquidity pools, true accumulation box, confirmed sweeps/BOS, freshness & mobile toggle');
