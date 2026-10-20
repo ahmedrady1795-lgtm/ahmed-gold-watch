@@ -35,6 +35,8 @@ const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(chart,/className="sniper-m15-watch-target"/);
 assert.match(chart,/className="sniper-m15-watch-rail"/);
 assert.match(chart,/sniper-m15-watch-strip/);
-assert.match(chart,/aligned\.goals\.filter\(g=>targetBridge\?\.connectedStages\.includes\(g\.stage\)\)/,
-  'only frozen targets intersected by the separate non-scored bridge appear in the price rail');
+assert.match(chart,/targetBridge\?\.connectedStages\.includes\(g\.stage\)/,
+  'only fixed goals intersected by non-scored candles appear as guide levels');
+assert.match(chart,/aligned\.goals\.filter\(g=>shownBars\.some\(b=>b\.low<=g\.price&&g\.price<=b\.high\)\)/,
+  'genuine TP labels still require a touched wick in the original M15 forecast');
 console.log('PASS: read-only closed-price M15/H1 watch targets on both sides, stale/gap safety and visible rail');
