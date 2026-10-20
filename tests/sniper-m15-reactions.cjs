@@ -70,16 +70,16 @@ assert.equal(pivot.marks[0].kind,'PATTERN_TURN');
 assert.equal(pivot.marks[0].invalidation,null,'hypothetical pivot is not verified demand');
 const component=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(component,/const reactions=buildM15ReactionMap/);
-assert.match(component,/aligned\?\.reactions\?\?emptyReactionMap\(\)/,
+assert.match(component,/marks:aligned\.reactions\.marks\.filter/,
  'reaction markers show only when frozen projected candles match the live anchor');
 assert.match(component,/className="sniper-m15-reaction-band"/);
 assert.match(component,/className="sniper-m15-reaction-mark"/);
-assert.match(component,/className="sniper-m15-reaction-zone-label"/);
+assert.match(component,/className="sniper-m15-rail-turn"/);
 assert.match(component,/mark\.price/);
 assert.match(component,/z\.invalidation/);
 assert.match(component,/projected\.ready&&reactionMap\.marks/);
 assert.doesNotMatch(component,/setTimeout\([^]*?setFrozen/);
-assert.match(component,/const projectedSlots=Math\.max\(40,projected\.bars\.length\)/,
+assert.match(component,/const projectedSlots=Math\.max\(40,shownBars\.length\)/,
  'any M15 historical scenario must keep a constant chart time unit');
 assert.match(component,/const candleWidth=clamp\(Math\.min\(actualStride,projectedStride\)\*\.60/,
  'projected and historical candle bodies must have exactly the same display width');
@@ -95,6 +95,6 @@ assert.match(component,/const drawnZones=liquidity\.zones\.filter/,
  'overlapping real liquidity rectangles should not paint opaque red blobs');
 assert.match(component,/compactM15ZoneAnnotations\(drawnZones/,
  'only drawn price zones contribute visible historical labels');
-assert.match(component,/Math\.abs\(m\.price-z\.price\)/,
+assert.match(component,/Math\.abs\(x\.exactY-z\.exactY\)<13/,
  'do not print conditional zone price twice near a plotted reaction point');
 console.log('PASS: frozen source-true rebound bands, mirrored BUY/SELL projected touches, expiry/stop/future guards, no invented hits');
