@@ -79,15 +79,15 @@ assert.match(component,/mark\.price/);
 assert.match(component,/z\.invalidation/);
 assert.match(component,/projected\.ready&&reactionMap\.marks/);
 assert.doesNotMatch(component,/setTimeout\([^]*?setFrozen/);
-assert.match(component,/const projectedSlots=Math\\.max\\(22,displayBars\\.length\\)/,
+assert.match(component,/const projectedSlots=Math\.max\(22,displayBars\.length\)/,
  'conditional price-space candles use stable fixed slots without changing scored M15 bar count');
-assert.match(component,/const realCandleWidth=clamp\\(actualStride\\*\\.68/,
+assert.match(component,/const realCandleWidth=clamp\(actualStride\*\.68/,
  'real M15 width stays based on observed historical geometry');
-assert.match(component,/const futureCandleWidth=clamp\\(projectedStride\\*\\.83/,
+assert.match(component,/const futureCandleWidth=clamp\(projectedStride\*\.83/,
  'non-timed illustrative goals use separate slot geometry');
-assert.match(component,/realCandleWidth,false,'real'\\+b\\.time/,
+assert.match(component,/realCandleWidth,false,'real'\+b\.time/,
  'historical OHLC is rendered at its original width');
-assert.match(component,/futureCandleWidth,true,'future'\\+i/,
+assert.match(component,/futureCandleWidth,true,'future'\+i/,
  'future illustration is drawn as continuous full OHLC candles');
 assert.doesNotMatch(component,/const projectedSlots=Math\.max\(14/,
  'do not zoom up four forecast bars after a stop');
