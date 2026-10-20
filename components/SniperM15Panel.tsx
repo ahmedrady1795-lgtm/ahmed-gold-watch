@@ -412,15 +412,28 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const zoneOverhang=zoneLabelPoints.length?
    Math.max(0,zoneLabelPoints[zoneLabelPoints.length-1].y-(plotBottom-15)):0;
  if(zoneOverhang)for(const z of zoneLabelPoints)z.y-=zoneOverhang;
- // Price level anchors remain exact; only short annotations can move to avoid overlap.
+ // Right price rail is reserved for EVERY label. Live/TP/SL first.
+ const reserved=rail.map(r=>r.labelY);
+ const freeY=(y:number)=>{
+   const mid=clamp(y,plotTop+12,plotBottom-12);
+   for(const delta of [0,-18,18,-36,36,-54,54,-72,72,-90,90]){
+     const q=mid+delta;
+     if(q>=plotTop+12&&q<=plotBottom-12&&
+       reserved.every(v=>Math.abs(v-q)>=19)){
+       reserved.push(q);return q;
+     }
+   }
+   return null;
+ };
  const forwardLabels=futureZones.map(z=>({...z,exactY:py(z.price),
-   labelY:py(z.price)})).sort((a,b)=>a.exactY-b.exactY);
- for(let i=0;i<forwardLabels.length;i++)
-   forwardLabels[i].labelY=Math.max(plotTop+19,forwardLabels[i].exactY,
-     i?forwardLabels[i-1].labelY+17:plotTop+19);
- const over=forwardLabels.length?
-   Math.max(0,forwardLabels.at(-1)!.labelY-(plotBottom-17)):0;
- if(over)for(const z of forwardLabels)z.labelY-=over;
+   labelY:null as number|null})).sort((a,b)=>a.exactY-b.exactY);
+ for(const z of forwardLabels)z.labelY=freeY(z.exactY);
+ const markRailLabels=reactionMap.marks.map(mark=>({
+   mark,exactY:py(mark.price),labelY:null as number|null
+ }));
+ for(const z of markRailLabels)
+   if(!forwardLabels.some(x=>Math.abs(x.exactY-z.exactY)<13))
+     z.labelY=freeY(z.exactY);
  const candle=(open:number,high:number,low:number,close:number,xpos:number,width:number,
    future:boolean,key:string)=> {
    const up=close>=open,color=up?'#39d6cc':'#fa5970';
@@ -479,7 +492,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {grid.map((v,i)=><g key={'grid'+i}>
          <line x1={left} x2={end} y1={py(v)} y2={py(v)}
            stroke="#26323f" strokeDasharray="3 5" strokeWidth=".8"/>
-         {!rail.some(level=>Math.abs(level.labelY-py(v))<17)&&
+         {!reserved.some(y=>Math.abs(y-py(v))<13)&&
            i%2===0&&<text x={W-5} y={py(v)+3} fill="#697986"
              fontSize="8.2" textAnchor="end" direction="ltr">{n(v)}</text>}
        </g>)}
@@ -530,20 +543,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              <line x1={split+4} x2={end-4}
                y1={py(z.low)} y2={py(z.low)}
                stroke={color} strokeWidth=".85" strokeDasharray="3 5" opacity=".55"/>
-             {reactionMap.marks.every(m=>Math.abs(m.price-z.price)>
-               Math.max(projected.atr??0,Math.abs(z.high-z.low)))&&(()=>{
-               const noteY=clamp(py(z.price),plotTop+36,plotBottom-30);
-               return <g className="sniper-m15-reaction-zone-label">
-                 <text x={end-54} y={noteY+3} textAnchor="end"
-                   direction="rtl" fill={color} fontSize="8.2" fontWeight="700"
-                   stroke="#000" strokeWidth="2" paintOrder="stroke">
-                   {z.kind==='DEMAND'||z.kind==='REBOUND_UP'?'ارتداد؟':'رفض؟'}
-                 </text>
-                 <text x={end-5} y={noteY+3} textAnchor="end"
-                   direction="ltr" fill={color} fontSize="9" fontWeight="700"
-                   stroke="#000" strokeWidth="2" paintOrder="stroke">{n(z.price)}</text>
-               </g>;
-             })()}
              <title>{z.label+' · '+n(z.low)+' – '+n(z.high)+
                ' · '+z.source+' · منطقة تاريخية، والارتداد المستقبلي مشروط'+
                ' · إبطال المنطقة '+n(z.invalidation)}</title>
@@ -555,9 +554,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            const buying=z.key==='DEMAND'||z.key==='LOW_POOL';
            const pool=z.key==='HIGH_POOL'||z.key==='LOW_POOL';
            const color=buying?'#4ee5b3':'#ff8497';
-           const y=clamp(z.exactY,plotTop+5,plotBottom-5);
-           const name=z.key==='SUPPLY'?'عرض':z.key==='DEMAND'?'طلب':
-             z.key==='HIGH_POOL'?'سيولة قمم':'سيولة قيعان';
            return <g key={'future-level-'+z.key}
              className="sniper-m15-future-zone">
              {/* Dashes bound the historical price zone, not the future path. */}
@@ -569,17 +565,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                y1={py(z.low)} y2={py(z.low)}
                stroke={color} strokeOpacity=".62" strokeWidth=".8"
                strokeDasharray="5 4"/>}
-             {Math.abs(y-z.labelY)>8&&<line x1={end-83} x2={end-83}
-               y1={y} y2={z.labelY} stroke={color}
-               strokeOpacity=".36" strokeDasharray="2 4"/>}
-             <text x={end-54} y={z.labelY+3} fontSize="8.2"
-               fill={color} fontWeight="700" textAnchor="end"
-               direction="rtl" stroke="#000" strokeWidth="2"
-               paintOrder="stroke">{name}</text>
-             <text x={end-5} y={z.labelY+3} fontSize="9"
-               fill={color} fontWeight="700" textAnchor="end"
-               direction="ltr" stroke="#000" strokeWidth="2"
-               paintOrder="stroke">{n(z.price)}</text>
              <title>{z.subtitle+' · منطقة تاريخية '+n(z.low)+' – '+n(z.high)+
                ' · '+z.source+' · مستوى تأكيد '+n(z.confirm)+
                ' · إبطال '+n(z.invalidate)+
@@ -618,13 +603,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            const dotY=py(mark.price),color=mark.direction==='UP'?'#6bffe0':'#ffad92';
            // Place text in the quiet far-right lane rather than on top of
            // the first projected candles and original SL/zone badges.
-           const labelX=end-5;
-           const labelY=clamp(dotY+(mark.direction==='UP'?21:-21),
-             plotTop+38+i*34,plotBottom-25);
-           const overlapsRail=rail.some(level=>
-             Math.abs(level.exactY-labelY)<22||Math.abs(level.labelY-labelY)<22);
-           const clearLabelY=clamp(labelY+(overlapsRail?
-             (mark.direction==='UP'?29:-29):0),plotTop+30,plotBottom-24);
            return <g className="sniper-m15-reaction-mark"
              key={'reaction-mark-'+mark.step+'-'+i}>
              <circle cx={barX} cy={dotY} r="4.2" fill="#000"
@@ -635,17 +613,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                 'M '+(barX-5)+' '+(dotY-9)+' L '+barX+' '+(dotY-4)+
                   ' L '+(barX+5)+' '+(dotY-9)}
                fill="none" stroke={color} strokeWidth="1.35"/>
-             <line x1={barX+4} y1={dotY}
-               x2={labelX} y2={clearLabelY} stroke={color}
-               strokeWidth=".9" strokeDasharray="2 2"/>
-             <text x={end-54} y={clearLabelY+3} fill={color} fontSize="8.2"
-               fontWeight="700" textAnchor="end" direction="rtl"
-               stroke="#000" strokeWidth="2" paintOrder="stroke">
-               {mark.kind==='PATTERN_TURN'?'انعطاف؟':
-                 mark.direction==='UP'?'ارتداد؟':'رفض؟'}</text>
-             <text x={end-5} y={clearLabelY+3} fill={color}
-               fontSize="9" fontWeight="700" textAnchor="end" direction="ltr"
-               stroke="#000" strokeWidth="2" paintOrder="stroke">{n(mark.price)}</text>
              <title>{mark.detail+' · سعر السيناريو '+n(mark.price)+
                (mark.invalidation!=null?' · إبطال '+n(mark.invalidation):'')+
                ' · شموع توقع غير مؤكدة'}</title>
@@ -741,6 +708,48 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              textAnchor="start" direction="ltr">{labelBy(level.key)}</text>
            <text x={W-5} y={level.labelY+8.1} fontSize="10.3" fontWeight="700"
              fill={color} textAnchor="end" direction="ltr">{n(level.price)}</text>
+         </g>;
+       })}
+       {/* Small word and quote live in the fixed price rail, not in SVG's
+            clipped forecast candle viewport. */}
+       {showLiquidity&&forwardLabels.map(z=>{
+         if(z.labelY==null)return null;
+         const color=z.key==='DEMAND'||z.key==='LOW_POOL'?'#4ee5b3':'#ff8497';
+         const name=z.key==='SUPPLY'?'عرض':z.key==='DEMAND'?'طلب':
+            z.key==='HIGH_POOL'?'قمم':'قيعان';
+         return <g key={'zone-rail-'+z.key} className="sniper-m15-rail-zone">
+           {Math.abs(z.exactY-z.labelY)>9&&<path
+             d={'M '+(end+1)+' '+z.exactY+' H '+(axis+1)+' V '+z.labelY}
+             stroke={color} strokeWidth=".7" strokeDasharray="2 3"
+             fill="none" opacity=".5"/>}
+           <text x={axis+3} y={z.labelY+3} fontSize="7.9"
+             fill={color} fontWeight="700" textAnchor="start"
+             direction="ltr">{name}</text>
+           <text x={W-4} y={z.labelY+3} fontSize="8.4"
+             fill={color} fontWeight="700" textAnchor="end"
+             direction="ltr">{n(z.price)}</text>
+           <title>{z.label+' · السعر الأوسط '+n(z.price)+
+              ' · المنطقة كاملة '+n(z.low)+' – '+n(z.high)+
+              ' · ليست أوامر مستقبلية'}</title>
+         </g>;
+       })}
+       {projected.ready&&markRailLabels.map(({mark,exactY,labelY})=>{
+         if(labelY==null)return null;
+         const color=mark.direction==='UP'?'#6bffe0':'#ffad92';
+         const name=mark.kind==='PATTERN_TURN'?'دوران':
+            mark.direction==='UP'?'ارتداد':'رفض';
+         return <g key={'mark-rail-'+mark.step} className="sniper-m15-rail-turn">
+           {Math.abs(exactY-labelY)>9&&<path
+             d={'M '+(end+1)+' '+exactY+' H '+(axis+1)+' V '+labelY}
+             stroke={color} strokeWidth=".7" strokeDasharray="2 3"
+             fill="none" opacity=".5"/>}
+           <text x={axis+3} y={labelY+3} fontSize="7.7"
+             fill={color} fontWeight="700" textAnchor="start"
+             direction="ltr">{name}</text>
+           <text x={W-4} y={labelY+3} fontSize="8.4"
+             fill={color} fontWeight="700" textAnchor="end"
+             direction="ltr">{n(mark.price)}</text>
+           <title>{mark.detail+' · حركة افتراضية غير مؤكدة'}</title>
          </g>;
        })}
        {!paused&&!awaitingReplacement&&asset==='BTC'&&projected.ready&&projected.bars.length>0&&(()=>{
