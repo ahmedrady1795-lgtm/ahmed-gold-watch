@@ -321,7 +321,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    'تحقق فعلي '+proof.directionMatches+'/'+proof.evaluated+
       ' · خطأ '+n(proof.meanAbsoluteCloseError):
    'التحقق: انتظار إغلاق شموع لاحقة';
- const chartSide=stable?.side??safeSide;
+ const chartSide=aligned?.side??safeSide;
  // Radar cannot change the M15 targets, direction, forecast OHLC or freeze
  // lifecycle. It can only verify/cancel the FIRST candidate candle, after an
  // independent, later closed M1 has agreed with the same Coinbase feed.
@@ -785,7 +785,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
               freshObservation?'لا توجد إشارة مؤكدة':'بانتظار تحديث بيانات السوق'}</text>
          <title>{lifecycle}</title>
        </g>}
-       {projected.ready&&projected.bars.length>0&&<g className="sniper-m15-first-audit">
+       {projected.ready&&shownBars.length>0&&<g className="sniper-m15-first-audit">
          <text x={split+6} y={plotTop+(asset==='BTC'?42:25)}
            fill={firstM15Stats.ready?'#b3d9ec':'#899baa'}
            fontSize="8.2" textAnchor="start" direction="rtl">
@@ -793,14 +793,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          <title>{firstM15Stats.detail}</title>
        </g>}
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
-       <text x={split+5} y={17} fill="#e0c08d" fontSize="10" textAnchor="start" direction="ltr">M15 · FORECAST</text>
+       <text x={split+5} y={17} fill="#e0c08d" fontSize="10" textAnchor="start" direction="ltr">M15 · SCENARIO</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(validLive&&forming?forming.time:latestClosed.time)}</text>}
        {aligned&&<text x={split+8} y={H-4} fill="#8acfb9" fontSize="8"
          textAnchor="start" direction="ltr">{'→ '+h(aligned.anchorTime+900000)}</text>}
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
-         {projected.bars.length?'+'+projected.bars.length+' × M15':'M15'}</text>
+         {shownBars.length?'+'+shownBars.length+' × M15':'M15'}</text>
      </svg>
    </div>
    {/* Chart-only layout. All levels are shown inside the SVG; historical
