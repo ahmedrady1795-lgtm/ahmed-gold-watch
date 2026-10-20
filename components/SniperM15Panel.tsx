@@ -288,8 +288,23 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const projectedSlots=Math.max(14,Math.min(48,projected.bars.length));
  const projectedStride=(end-split-8)/projectedSlots;
  const projectedWidth=clamp(projectedStride*.56,1.5,5.0);
- // Price zones keep their true coordinates; only nearby labels merge.
- const compactZones=compactM15ZoneAnnotations(liquidity.zones,price??0,py,3,34);
+ // Display a maximum of five DISTINCT actual OHLC zones. Several demand,
+ // rejection and sweep levels can occupy the exact same pixels; painting
+ // each translucent band over the others created the misleading red blob.
+ // Keep ALL source zones in liquidity for analysis, suppress visual doubles.
+ const priority=(kind:string)=>kind.startsWith('REBOUND_')?3:
+   kind==='DEMAND'||kind==='SUPPLY'?2:1;
+ const drawnZones=liquidity.zones.filter((z,i,all)=>{
+   const center=(z.low+z.high)/2;
+   const rank=priority(z.kind);
+   return !all.some((other,j)=>j!==i&&
+     Math.abs(py((other.low+other.high)/2)-py(center))<15&&
+     (priority(other.kind)>rank||
+       (priority(other.kind)===rank&&j<i)));
+ }).sort((a,b)=>Math.abs((a.low+a.high)/2-(price??0))-
+                   Math.abs((b.low+b.high)/2-(price??0))).slice(0,5);
+ // Labels have their own non-overlapping lane on the historical side.
+ const compactZones=compactM15ZoneAnnotations(drawnZones,price??0,py,2,34);
  const zoneLabelPoints=compactZones.map((z,i)=>({i,y:py(z.price)}));
  for(let i=0;i<zoneLabelPoints.length;i++)
    zoneLabelPoints[i].y=Math.max(clamp(zoneLabelPoints[i].y,plotTop+17,plotBottom-15),
@@ -377,6 +392,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            </g>;
          })()}
          {showLiquidity&&liquidity.zones.map(z=>{
+           if(!drawnZones.includes(z))return null;
            const color=liquidityColor(z.kind),top=py(z.high),bottom=py(z.low);
            const pool=z.kind==='HIGH_POOL'||z.kind==='LOW_POOL';
            const reaction=z.kind==='REBOUND_UP'||z.kind==='REBOUND_DOWN';
@@ -504,7 +520,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            return <g key={'liquidity-event-'+i} className="sniper-m15-event">
              <circle cx={xMark} cy={yMark} r="2.6" fill={color}/>
              <title>{e.label+' · '+n(e.price)+' · إغلاق مؤكّد'}</title>
-             {i===liquidity.events.length-1&&<text x={clamp(xMark,left+34,split-34)}
+             {i===liquidity.events.length-1&&
+               !compactZones.some(z=>Math.abs(py(z.price)-yMark)<24)&&
+               <text x={clamp(xMark,left+34,split-34)}
                y={clamp(yMark-13,plotTop+15,plotBottom-8)}
                fontSize="9" fill={color} fontWeight="700" textAnchor="middle"
                direction="rtl">{mark}</text>}
