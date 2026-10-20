@@ -150,4 +150,23 @@ assert.match(fs.readFileSync('app/gold-sniper-radar.css','utf8'),
  /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/,
  'mobile readout must not block the same-size MetaTrader candles');
 
+
+const cleanCss=fs.readFileSync('app/gold-sniper-radar.css','utf8');
+assert.match(chart,/const \[showExtra,setShowExtra\]=useState\(false\)/,
+ 'the first view must not be dominated by secondary annotations');
+assert.match(chart,/data-clean=\{!showExtra\}/,
+ 'clean annotations are an explicit visual mode, never price data changes');
+assert.match(chart,/showLiquidity&&showExtra&&<div className="sniper-m15-watch-strip"/,
+ 'the redundant liquidity strip must not steal candle space by default');
+assert.match(chart,/sniper-m15-extra-toggle/,
+ 'secondary BOS, microstructure and pattern marks stay available on request');
+assert.match(cleanCss,/\[data-clean="true"\] \.sniper-m15-reaction-mark/,
+ 'rejection icons hidden until requested');
+assert.match(cleanCss,/\[data-clean="true"\] \.sniper-m15-rail-turn/,
+ 'secondary price rail notes hidden until requested');
+assert.match(cleanCss,/\[data-clean="true"\] \.sniper-flow-radar-chip/,
+ 'chart-side secondary radar chip must not obstruct classic candles');
+assert.doesNotMatch(cleanCss,/\[data-clean="true"\] \.sniper-m15-(real|projected)\b/,
+ 'clean mode must never hide true or projected OHLC');
+
 console.log('PASS: M15 supply/demand, liquidity pools, true accumulation box, confirmed sweeps/BOS, freshness & mobile toggle');
