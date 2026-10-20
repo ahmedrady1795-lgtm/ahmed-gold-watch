@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 import {OrderFlowRadar as Engine,type RadarView} from '../lib/order-flow-radar';
+import {btcPreparation} from '../lib/institutional-preparation-radar';
 const labels={WARMUP:'تجهيز نافذة 30 ثانية',OFFLINE:'تدفق غير مكتمل',WATCH:'مراقبة',PREPARE:'استعداد مبكر',CONFIRMED:'تأكيد حركة',INVALIDATED:'أُلغي بكسر المستوى',EXPIRED:'انتهت صلاحية الرصد'};
 export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD'|'BTC';onView?:(v:RadarView|null)=>void;compact?:boolean}){
   const [view,setView]=useState<RadarView>(()=>new Engine().view);
@@ -61,8 +62,14 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
   if(asset!=='BTC')return compact?null:
     <small>رادار الأوامر: الذهب يحتاج مصدر دفتر أوامر وصفقات فعلية.</small>;
   const micro=view.micro;
+  const prep=btcPreparation({fresh:view.phase!=='OFFLINE'&&
+    view.phase!=='WARMUP',micro,replenishments:view.replenishments,side:view.side});
   const hint=[
     'Coinbase BTC-USD فقط؛ دفتر معلن وليس هوية صناع السوق',
+    'رادار التحضير: '+prep.label,
+    ...prep.observations,
+    prep.icebergCandidate?'بصمة تجدد حجم بعد التنفيذ محتملة وليست إثبات Iceberg':'',
+    prep.withdrawalWarning?'سحب سيولة محتمل غير مفسر؛ ليس إثبات Spoofing':'',
     'دلتا تنفيذ '+view.delta.toFixed(0)+'%',
     'اختلال العمق '+view.imbalance.toFixed(0)+'%',
     micro?.ready?'طلبات معلنة '+Math.round(micro.bidDepthUsd)+
@@ -99,7 +106,10 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
        view.phase==='CONFIRMED'?'confirmed':'neutral')}
       onClick={()=>setScoreOpen(v=>!v)} aria-expanded={scoreOpen}
       title={hint} aria-label={'رادار الأوامر: '+labels[view.phase]+'. اضغط لعرض نتائج M1 وM15. '+hint}>
-      <b>{view.phase==='OFFLINE'||view.phase==='WARMUP'?'تدفق: تجهيز':
+      <b>{view.phase==='OFFLINE'||view.phase==='WARMUP'?'تحضير: تجهيز':
+        prep.phase==='BUY_PREP'?'تحضير: صعود محتمل':
+        prep.phase==='SELL_PREP'?'تحضير: هبوط محتمل':
+        prep.phase==='MIXED'?'تحضير: إشارات متعارضة':
         view.phase==='PREPARE'?'تدفق: استعداد':
         view.phase==='CONFIRMED'?'تدفق: تأكيد':
         micro?.ready&&micro.possibleBidPull?'سحب طلب؟':
@@ -113,6 +123,16 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
         {shadow?.absorption?.events?' · a'+shadow.absorption.events:''}</b>
     </button>
     {scoreOpen&&<aside className="sniper-flow-score-detail" dir="rtl">
+      <strong>رادار التحضير قبل الحركة · {prep.label}</strong>
+      <small>{prep.source} · إشارات احتمالية وليست كشفًا لهوية صانع السوق.</small>
+      {prep.observations.map((note,i)=><div key={'preparation-'+i}>• {note}</div>)}
+      {prep.icebergCandidate&&<div>تجدد الحجم بعد تنفيذ عند نفس المستوى؛
+        بصمة Iceberg محتملة وليست إثبات حجم مخفي.</div>}
+      <div>سحب السيولة: {prep.withdrawalWarning?
+        'اختفاء عمق معلن أكبر من التنفيذات المرصودة؛ قد يكون سحبًا ولا يثبت Spoofing':
+        'لم تُرصد حالة سحب تفوق التنفيذات المقارنة في النافذة الحالية'}.</div>
+      <small>GC وXAUUSD ليسا ضمن دفتر Coinbase. رصد تبعية الذهب للعقود يحتاج
+        تغذية GC حقيقية، غير متصلة الآن.</small>
       <strong>بصمة دفتر الأوامر · Coinbase BTC-USD فقط</strong>
       {micro?.ready&&micro.possibleBidAbsorption&&<div>
         بيع هجومي منفذ {fmt(micro.executedSellUsd)} USD دون تقدم هابط
