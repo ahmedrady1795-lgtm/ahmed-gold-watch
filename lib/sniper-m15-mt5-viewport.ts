@@ -46,9 +46,9 @@ export function mt5M15Viewport(input:{
  };
  if(input.mode==='ALL')return range(validFull?allLow:pivot,
    validFull?allHigh:pivot,false);
- // Use the last OBSERVED 30 M15 bars plus the original time-bounded
+ // Use the last OBSERVED 18 M15 bars plus the original time-bounded
  // model, not remote objectives / large conditional target bridges.
- const original=[...input.history.slice(-30),...input.forecast.slice(0,12)]
+ const original=[...input.history.slice(-18),...input.forecast.slice(0,12)]
    .filter(b=>good(b));
  const prices=original.flatMap(b=>[b.low,b.high]);
  if(pivot>0)prices.push(pivot);

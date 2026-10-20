@@ -103,7 +103,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    [archiveState,asset,x?.candleSource,actual.at(-1)?.time,now>0?
      Math.floor(now/900000):0]);
  const firstM15Stats=firstM15Evidence(walkForward);
- const recent=actual.slice(-32);
+ const recent=actual.slice(-18);
  const historyFresh=actual.length>=24&&
    actual.slice(-24).every((b,i,a)=>i===0||b.time-a[i-1].time===900000)&&
    now-(actual.at(-1)!.time+900000)<=36*60000;
@@ -484,12 +484,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const liquidityColor=(kind:string)=>
    kind==='DEMAND'||kind==='LOW_POOL'||kind==='REBOUND_UP'?
    '#41cfab':'#ff7b90';
- // Preserve real M15 widths; the original scenario is 12 M15 bars maximum.
- // The live candle and projected bar slot start next to each other.
- const projectedSlots=Math.max(18,displayBars.length);
- const projectedStride=(end-split-8)/projectedSlots;
- const realCandleWidth=clamp(actualStride*.84,3.4,6.4);
- const futureCandleWidth=clamp(projectedStride*.90,3.0,6.2);
+ // Identical M15 candle geometry on both sides. The original forecast is
+ // 12 genuine timed hypothesis bars, so never stretch them to fill space.
+ const projectedStride=actualStride;
+ const realCandleWidth=clamp(actualStride*.72,3.6,7.0);
+ const futureCandleWidth=realCandleWidth;
  // Display a maximum of five DISTINCT actual OHLC zones. Several demand,
  // rejection and sweep levels can occupy the exact same pixels; painting
  // each translucent band over the others created the misleading red blob.
