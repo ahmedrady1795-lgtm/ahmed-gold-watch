@@ -852,6 +852,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              fill={color} textAnchor="end" direction="ltr">{n(level.price)}</text>
          </g>;
        })}
+       {distantMarkers.map(level=><g key={'far-TP-'+level.key}
+         className="sniper-m15-offscreen-tp">
+         <text x={axis+3} y={level.markerY} fontSize="8.3"
+           fill="#70e6bd" textAnchor="start" direction="ltr">
+           {level.arrow+level.key}</text>
+         <text x={W-4} y={level.markerY} fontSize="8.6"
+           fill="#d4ede6" textAnchor="end" direction="ltr">{n(level.price)}</text>
+         <title>{'هدف مثبت خارج مدى تكبير الشموع '+n(level.price)+
+           ' · المستوى بسعره الحقيقي؛ اختر كل الأسعار لعرضه على الرسم'}</title>
+       </g>)}
        {showLiquidity&&watchLabels.map(level=>{
           if(level.labelY==null)return null;
           const color=level.side==='BUY'?'#51f1c1':'#ffb0a1';
@@ -955,7 +965,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
        <text x={split+5} y={17} fill="#e0c08d" fontSize="10" textAnchor="start" direction="ltr">M15 · SCENARIO</text>
        <text x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
-         textAnchor="start" direction="rtl">شموع ممتلئة · امتداد شرطي غير زمني</text>
+         textAnchor="start" direction="rtl">امتداد للأهداف: رسم شرطي لا يمثل شموع M15 مستقبلية</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(validLive&&forming?forming.time:latestClosed.time)}</text>}
