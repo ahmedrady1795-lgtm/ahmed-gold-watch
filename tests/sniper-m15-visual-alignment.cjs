@@ -16,12 +16,16 @@ const core={original:model,historical:history,atr:2.7,elapsedSteps:0};
 assert.equal(gate({...core,live:4130.3}).reason,'ALIGNED');
 assert.equal(gate({...core,live:4136.7}).reason,'MOVED_AWAY',
  'a market breakout must never make an old forecast appear attached to LIVE');
-assert.equal(gate({...core,live:4134}).visible,true,
+assert.equal(gate({...core,live:4132.5}).visible,true,
  'ordinary incomplete-candle movement must not dismiss fixed scenarios');
+assert.equal(gate({...core,live:4134}).reason,'MOVED_AWAY',
+ 'a fast live move outside the frozen next candle must not appear aligned');
 assert.equal(gate({...core,live:null}).reason,'NO_LIVE');
 assert.equal(gate({...core,elapsedSteps:3,live:model[2].close+.2}).visible,true,
  'later M15 steps compare to their original frozen time-matched reference');
 assert.equal(gate({...core,elapsedSteps:3,live:model[2].close+8}).visible,false);
+assert.equal(gate({...core,live:4150}).reason,'MOVED_AWAY',
+ 'large 15-minute gold breakout must detach an obsolete lower forecast');
 const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const badge=fs.readFileSync('components/GoldRadarBadge.tsx','utf8');
 assert.match(chart,/assessM15FrozenChartAlignment/);
