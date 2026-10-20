@@ -33,6 +33,7 @@ import {buildPredatorFusionV2} from '../../../lib/predator-fusion-v2';
 import {getStructuralPathLearning,calibrateStructuralPathForecast,recordStructuralPathOutcome} from '../../../lib/structural-path-learning';
 import {getHorizonBrainLearning,recordHorizonBrainOutcome} from '../../../lib/horizon-brain-learning';
 import {buildMarketMakerIntent} from '../../../lib/market-maker-intent';
+import {buildGoldTrapRadar} from '../../../lib/gold-trap-radar';
 import {setAiSnapshot} from '../../../lib/ai-snapshot-cache';
 import {runAutonomousToolCycle} from '../../../lib/autonomous-tool-broker';
 import {buildMarketToolMesh} from '../../../lib/market-tool-mesh';
@@ -626,6 +627,11 @@ export async function GET(request:Request){
     const goldIntent=buildMarketMakerIntent({
       asset:'GOLD',c1:gm.c1,c5:gm.c5,price:goldPrice,atr:goldAtr,liquidity:goldLiquidity,
       accumulation:goldAccumulation,structure:goldStructure,h4:goldH4,marketLead:goldMarketLead,now
+    });
+    const goldTrapRadar=buildGoldTrapRadar({
+      c1:gm.c1,c5:gm.c5,price:goldPrice,
+      quoteAt:quote?.sourceTime,quoteStatus:quote?.status,
+      candleSource:gm.priceSource,mt5Fast:mt5GoldTick,h4Side:goldH4?.side,now
     });
     const bitcoinIntent=buildMarketMakerIntent({
       asset:'BTC',c1:btc.c1,c5:btc.c5,price:btcPrice,atr:btcAtr,liquidity,
@@ -1941,7 +1947,7 @@ export async function GET(request:Request){
           reason:bitcoinEvolution?.reason||'',performance:bitcoinEvolution?.performance||null,runtimePlugin:bitcoinEvolution?.runtimePlugin||null,tournament:bitcoinEvolution?.tournament||null,tools:bitcoinAutonomousTools?{capabilities:bitcoinAutonomousTools.capabilities,used:bitcoinAutonomousTools.tools,research:bitcoinAutonomousTools.research}:null
         }
       },
-      gold:compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation,goldH4,goldIntent,goldEvolution,goldToolMesh,goldAtr),
+      gold:{...compactAsset('GOLD',gold,goldHunt,goldRecommendation,goldStateGraph,goldScalp,goldLivePulse,goldForecastCore,predatorFusionV2,goldMarketLead,goldMovement,goldLiquidity,goldStructure,goldAccumulation,goldH4,goldIntent,goldEvolution,goldToolMesh,goldAtr),goldTrapRadar},
       bitcoin:compactAsset('BTC',bitcoin,bitcoinHunt,bitcoinRecommendation,bitcoinStateGraph,bitcoinScalp,livePulse,undefined,undefined,bitcoinMarketLead,bitcoinMovement,liquidity,bitcoinStructure,bitcoinAccumulation,bitcoinH4,bitcoinIntent,bitcoinEvolution,bitcoinToolMesh,btcAtr)
     };
 
