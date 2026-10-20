@@ -306,7 +306,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      lastAttempt.current='';
      return;
    }
-   if(!issuance.allowed||lastAttempt.current===candleKey)return;
+   if(!issuance.allowed||safeSide==='WAIT'||anchor==null||
+     lastAttempt.current===candleKey)return;
    if(preMove.ok&&preMove.stage==='ARMED'&&preMove.side!==safeSide){
      setBuildReason('ضغط M1/M5 المبكر يعارض الاتجاه؛ انتظار');
      return;
