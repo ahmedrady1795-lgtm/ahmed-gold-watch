@@ -5,10 +5,11 @@
  */
 export type L2BookSample={
  at:number;bid:number;ask:number;bidUsd:number;askUsd:number;
- bidWallPrice:number|null;askWallPrice:number|null
+ bidWallPrice:number|null;askWallPrice:number|null;
+ bestBidSize:number;bestAskSize:number
 };
 export type OrderFlowMicroEvidence={
- ready:boolean;status:'WARMUP'|'STALE'|'OBSERVING'|'POSSIBLE_PULL'|'POSSIBLE_ABSORPTION';
+ ready:boolean;status:'WARMUP'|'STALE'|'OBSERVING'|'POSSIBLE_PULL'|'POSSIBLE_ABSORPTION'|'POSSIBLE_QUEUE_PRESSURE';
  snapshots:number;spanSeconds:number;spreadBps:number|null;
  bidDepthUsd:number;askDepthUsd:number;imbalancePct:number;
  bidWall:number|null;askWall:number|null;
@@ -16,6 +17,8 @@ export type OrderFlowMicroEvidence={
  possibleBidPull:boolean;possibleAskPull:boolean;
  possibleBidAbsorption:boolean;possibleAskAbsorption:boolean;
  executedBuyUsd:number;executedSellUsd:number;midMoveBps:number|null;
+ bestQueueImbalancePct:number|null;microprice:number|null;
+ micropriceOffsetBps:number|null;buyQueuePressure:boolean;sellQueuePressure:boolean;
  reason:string;
  actionable:false;
 };
@@ -45,7 +48,8 @@ export function inspectL2Book(a:{
   return top[0]*top[1]>=Math.max(35000,avg*2.6)?top[0]:null;
  };
  return {at:a.at,bid,ask,bidUsd:sum(b),askUsd:sum(s),
-  bidWallPrice:wall(b),askWallPrice:wall(s)};
+  bidWallPrice:wall(b),askWallPrice:wall(s),
+  bestBidSize:bids[0][1],bestAskSize:asks[0][1]};
 }
 export function assessL2Persistence(input:{
  snapshots:readonly L2BookSample[];now:number;
@@ -60,6 +64,8 @@ export function assessL2Persistence(input:{
     possibleBidPull:false,possibleAskPull:false,
     possibleBidAbsorption:false,possibleAskAbsorption:false,
     executedBuyUsd:0,executedSellUsd:0,midMoveBps:null,
+    bestQueueImbalancePct:null,microprice:null,micropriceOffsetBps:null,
+    buyQueuePressure:false,sellQueuePressure:false,
     actionable:false,...extras
   });
  const now=input.now;
@@ -135,20 +141,52 @@ export function assessL2Persistence(input:{
      !pull(defended)&&
      (defended==='bid'?held('bidWallPrice'):held('askWallPrice'));
  };
+ // Research-motivated BEST-QUEUE skew/microprice. This gives one
+ // provisional bias for the NEXT quote move, not the direction or timing of
+ // BTC's next M15 candle. Persistently observed best quotes only.
+ const bestQueue=(s:L2BookSample)=>{
+   const b=s.bestBidSize,a=s.bestAskSize;
+   if(!Number.isFinite(b)||!Number.isFinite(a)||b<=0||a<=0)return null;
+   if(b*s.bid+a*s.ask<8000)return null;
+   return (b-a)/(b+a)*100;
+ };
+ const bestQueueValues=recent.slice(-4).map(bestQueue);
+ const latestQueue=bestQueue(latest);
+ const microprice=latestQueue==null?null:
+   (latest.ask*latest.bestBidSize+latest.bid*latest.bestAskSize)/
+      (latest.bestBidSize+latest.bestAskSize);
+ const bestQueueImbalancePct=latestQueue==null?null:
+   Number(latestQueue.toFixed(1));
+ const micropriceOffsetBps=microprice==null?null:
+   Number(((microprice-mid1)/mid1*10000).toFixed(4));
+ const continuousQueue=bestQueueValues.length===4&&
+   bestQueueValues.every((x):x is number=>x!=null)&&
+   recent.at(-1)!.at-recent.at(-4)!.at>=3000;
+ const buyQueuePressure=continuousQueue&&spread<=6&&
+   latestQueue!=null&&latestQueue>=58&&
+   bestQueueValues.every(x=>x!=null&&x>=48);
+ const sellQueuePressure=continuousQueue&&spread<=6&&
+   latestQueue!=null&&latestQueue<=-58&&
+   bestQueueValues.every(x=>x!=null&&x<=-48);
  const possibleBidAbsorption=absorption('bid');
  const possibleAskAbsorption=absorption('ask');
  const absorptionSeen=possibleBidAbsorption||possibleAskAbsorption;
  return result(possibleBidPull||possibleAskPull?'POSSIBLE_PULL':
-   absorptionSeen?'POSSIBLE_ABSORPTION':'OBSERVING',
+   absorptionSeen?'POSSIBLE_ABSORPTION':
+   buyQueuePressure||sellQueuePressure?'POSSIBLE_QUEUE_PRESSURE':'OBSERVING',
   possibleBidPull||possibleAskPull?
    'اختفاء عمق مرصود دون تنفيذ كافٍ لتفسيره؛ إلغاء محتمل وليس إثبات تلاعب':
    absorptionSeen?
    'تدفق هجومي منفذ مع ثبات منتصف السعر واستمرار العمق المقابل؛ امتصاص محتمل فقط':
+   buyQueuePressure||sellQueuePressure?
+   'اختلال طابور أفضل عرض وطلب ثابت؛ ميل حركة السعر التالية فقط، لا توقع M15':
    'عمق Coinbase المرصود والتنفيذات الفعلية من نفس المنصة، دون اتجاه مضمون',
   {...baseline,ready:true,bidPersistent:held('bidWallPrice'),
    askPersistent:held('askWallPrice'),possibleBidPull,possibleAskPull,
    possibleBidAbsorption,possibleAskAbsorption,
    executedBuyUsd:Math.round(executedBuyUsd),
    executedSellUsd:Math.round(executedSellUsd),
-   midMoveBps:Number(midMoveBps.toFixed(2))});
+   midMoveBps:Number(midMoveBps.toFixed(2)),
+   bestQueueImbalancePct,microprice,micropriceOffsetBps,
+   buyQueuePressure,sellQueuePressure});
 }
