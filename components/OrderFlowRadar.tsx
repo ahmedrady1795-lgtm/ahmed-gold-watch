@@ -65,12 +65,12 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
       'تجهيز العمق: '+String(micro?.reason||'انتظار'),
     micro?.bidPersistent?'جدار طلب مستمر مرصود':'',
     micro?.askPersistent?'جدار عرض مستمر مرصود':'',
-    micro?.possibleBidPull?'تراجع عمق الطلب محتمل، السبب غير محسوم':'',
-    micro?.possibleAskPull?'تراجع عمق العرض محتمل، السبب غير محسوم':'',
-    micro?.possibleBidAbsorption?
+    micro?.ready&&micro.possibleBidPull?'تراجع عمق الطلب محتمل، السبب غير محسوم':'',
+    micro?.ready&&micro.possibleAskPull?'تراجع عمق العرض محتمل، السبب غير محسوم':'',
+    micro?.ready&&micro.possibleBidAbsorption?
       'امتصاص بيع محتمل: بيع منفذ '+Math.round(micro.executedSellUsd)+
       ' USD مع ثبات السعر وعمق طلب مستمر':'',
-    micro?.possibleAskAbsorption?
+    micro?.ready&&micro.possibleAskAbsorption?
       'امتصاص شراء محتمل: شراء منفذ '+Math.round(micro.executedBuyUsd)+
       ' USD مع ثبات السعر وعمق عرض مستمر':'',
     micro?.ready&&micro.midMoveBps!=null?
@@ -89,25 +89,25 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
       <b>{view.phase==='OFFLINE'||view.phase==='WARMUP'?'تدفق: تجهيز':
         view.phase==='PREPARE'?'تدفق: استعداد':
         view.phase==='CONFIRMED'?'تدفق: تأكيد':
-        micro?.possibleBidPull?'سحب طلب؟':
-        micro?.possibleAskPull?'سحب عرض؟':
-        micro?.possibleBidAbsorption?'بصمة: امتصاص بيع؟':
-        micro?.possibleAskAbsorption?'بصمة: امتصاص شراء؟':
+        micro?.ready&&micro.possibleBidPull?'سحب طلب؟':
+        micro?.ready&&micro.possibleAskPull?'سحب عرض؟':
+        micro?.ready&&micro.possibleBidAbsorption?'بصمة: امتصاص بيع؟':
+        micro?.ready&&micro.possibleAskAbsorption?'بصمة: امتصاص شراء؟':
         micro?.bidPersistent?'طلب مستمر':
         micro?.askPersistent?'عرض مستمر':'تدفق: رصد'}
         {shadow?.events?' · n'+shadow.events:''}</b>
     </button>
     {scoreOpen&&<aside className="sniper-flow-score-detail" dir="rtl">
       <strong>بصمة دفتر الأوامر · Coinbase BTC-USD فقط</strong>
-      {micro?.possibleBidAbsorption&&<div>
+      {micro?.ready&&micro.possibleBidAbsorption&&<div>
         بيع هجومي منفذ {fmt(micro.executedSellUsd)} USD دون تقدم هابط
         واضح، مع استمرار عمق الطلب · امتصاص بيع محتمل لا أكثر.
       </div>}
-      {micro?.possibleAskAbsorption&&<div>
+      {micro?.ready&&micro.possibleAskAbsorption&&<div>
         شراء هجومي منفذ {fmt(micro.executedBuyUsd)} USD دون تقدم صاعد
         واضح، مع استمرار عمق العرض · امتصاص شراء محتمل لا أكثر.
       </div>}
-      {(micro?.possibleBidPull||micro?.possibleAskPull)&&<div>
+      {(micro?.ready&&micro.possibleBidPull||micro?.ready&&micro.possibleAskPull)&&<div>
         اختفاء عمق مرصود؛ قد يكون إلغاء أو تنفيذًا غير مرصود.
         ليس إثبات spoofing ولا هوية فاعل بعينه.
       </div>}
@@ -140,8 +140,8 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
     <span>{view.side==='BUY'?'امتصاص بيع محتمل':view.side==='SELL'?'امتصاص شراء محتمل':'لا اتجاه مؤكد'}</span>
     {fresh&&<span>صافي التنفيذ {view.delta.toFixed(0)}% · توازن العمق {view.imbalance.toFixed(0)}%</span>}
     {micro?.ready&&<span>عمق طلبات معلنة {Math.round(micro.bidDepthUsd)} USD · عروض معلنة {Math.round(micro.askDepthUsd)} USD</span>}
-    {micro?.possibleBidAbsorption&&<span>امتصاص بيع محتمل · تنفيذات SELL {fmt(micro.executedSellUsd)} USD وثبات السعر</span>}
-    {micro?.possibleAskAbsorption&&<span>امتصاص شراء محتمل · تنفيذات BUY {fmt(micro.executedBuyUsd)} USD وثبات السعر</span>}
+    {micro?.ready&&micro.possibleBidAbsorption&&<span>امتصاص بيع محتمل · تنفيذات SELL {fmt(micro.executedSellUsd)} USD وثبات السعر</span>}
+    {micro?.ready&&micro.possibleAskAbsorption&&<span>امتصاص شراء محتمل · تنفيذات BUY {fmt(micro.executedBuyUsd)} USD وثبات السعر</span>}
     {view.confirm!=null&&<span>تأكيد <b dir="ltr">{fmt(view.confirm)}</b> · إلغاء <b dir="ltr">{fmt(view.invalidate)}</b></span>}
     <small title="تغير دفتر Level 2 قد يكون تنفيذًا أو إلغاءً، وليس إثبات التلاعب أو هوية مشارك. الرادار رصد فقط.">Coinbase BTC-USD · يتطلب رصد M1 لاحقًا · ليس نسبة نجاح</small>
   </div>;
