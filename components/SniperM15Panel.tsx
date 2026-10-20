@@ -54,6 +54,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
  const [showLiquidity,setShowLiquidity]=useState(true);
  const [showExtra,setShowExtra]=useState(false);
+ const [showHistoricalExtension,setShowHistoricalExtension]=useState(false);
  const [priceZoom,setPriceZoom]=useState<'FOCUS'|'ALL'>('ALL');
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
  const onRadarView=useCallback((v:RadarView|null)=>setLiveRadar(v),[]);
@@ -440,6 +441,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // target-reaching illustration generated a fake straight-line staircase.
  // Distant H1/H4 destinations remain separate price watch labels.
  const displayBars=aligned?.visualBars?.slice(elapsedSteps)??shownBars;
+ // 12 bars are a scored, timestamped analysis. Any later bodies are
+ // optional, unscored historical continuation and NOT the active forecast.
+ const renderedBars=showHistoricalExtension?displayBars:shownBars;
  const goals=aligned?.scenario.ready&&!aligned.scenario.stopped?
    aligned.goals.filter(g=>shownBars.some(b=>b.low<=g.price&&g.price<=b.high)):[];
  const visualGoals=aligned?.scenario.ready&&!aligned.scenario.stopped?
@@ -494,7 +498,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  });
  const phase=sniperPhaseBadge({ready:liquidity.ready,
    contextKind:liquidity.context?.kind,phase:liquidity.phase,side:chartSide});
- const W=430,H=704,left=8,split=184,end=422,
+ const W=430,H=704,left=8,split=showHistoricalExtension?184:327,end=422,
    plotTop=26,plotBottom=H-33;
  // A single absolute price axis contains EVERY currently valid target and
  // stop. No fake vertical positioning of offscreen targets.
@@ -509,7 +513,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ...visualGoals.map(t=>t.price),
    ...(showLiquidity?watchPrices.map(t=>t.price):[]),
    ...(stop!=null?[stop]:[]),...(price!=null?[price]:[]),
-   ...displayBars.flatMap(c=>[c.high,c.low]),
+   ...renderedBars.flatMap(c=>[c.high,c.low]),
    ...visibleZones.flatMap(z=>[z.low,z.high]),
    ...(showLiquidity?reactionMap.bands.flatMap(z=>[z.low,z.high]):[]),
    ...reactionMap.marks.map(z=>z.price),
@@ -546,9 +550,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Identical M15 candle geometry on both sides. The original forecast is
  // 12 genuine timed hypothesis bars, so never stretch them to fill space.
  // Restore old chart visual geometry; no forced target-reaching extension.
- const projectedStride=(end-split-8)/48;
+ const projectedStride=(end-split-8)/(showHistoricalExtension?48:12);
  const realCandleWidth=clamp(actualStride*.60,1.7,4);
- const futureCandleWidth=clamp(projectedStride*.62,1.5,3.1);
+ const futureCandleWidth=clamp(projectedStride*.62,1.7,4);
  // Display a maximum of five DISTINCT actual OHLC zones. Several demand,
  // rejection and sweep levels can occupy the exact same pixels; painting
  // each translucent band over the others created the misleading red blob.
@@ -645,20 +649,24 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    {asset==='GOLD'&&<GoldRadarBadge now={now}
         marketFresh={Boolean(m.sniper.view.priceFresh&&marketOpen&&
           !providerTransition)} watch={watchMap}/>}
+   <div className="sniper-m15-view-controls" aria-label="عرض سيناريو القناص">
+     <button type="button" className="sniper-m15-extra-toggle"
+       aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}
+       title="عرض أو إخفاء التفاصيل الفنية الثانوية">
+       {showExtra?'إخفاء التفاصيل':'تفاصيل'}</button>
+     <button type="button" className="sniper-m15-zoom-toggle"
+       aria-pressed={priceZoom==='FOCUS'}
+       title="تكبير الأسعار القريبة مع إخفاء المستويات البعيدة">
+       {priceZoom==='FOCUS'?'كل الأسعار':'تكبير الشموع'}</button>
+     <button type="button" className="sniper-m15-extension-toggle"
+       aria-pressed={showHistoricalExtension}
+       onClick={()=>setShowHistoricalExtension(v=>!v)}
+       title="شموع الامتداد بعد الاثنتي عشرة الأولى غير مُقيّمة">
+       {showHistoricalExtension?'12 شمعة مقيّمة':'امتداد تاريخي'}</button>
+   </div>
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
      <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
-     <button type="button" className="sniper-m15-extra-toggle sniper-m15-overlay-extra"
-       aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}
-       title="إظهار التفاصيل الفنية الثانوية فقط">
-       {showExtra?'إخفاء التفاصيل':'⋯ تفاصيل'}</button>
-
-     <button type="button" className="sniper-m15-zoom-toggle"
-       aria-pressed={priceZoom==='FOCUS'}
-       title="تكبير شموع M15 مع إخفاء مستويات الأسعار البعيدة خارج إطار الرسم"
-       onClick={()=>setPriceZoom(v=>v==='FOCUS'?'ALL':'FOCUS')}>
-       {priceZoom==='FOCUS'?'⤢ كل الأسعار':'⤢ تكبير الشموع'}
-     </button>
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
          'شموع M15 فعلية ثم 12 شمعة تاريخية مماثلة فقط، والأهداف الهيكلية البعيدة مستويات مراقبة وليست وصولًا متوقعًا، مع الإبطال. '+
          (verifiedArchive.ready?'أرشيف حقيقي متحقق '+verifiedArchive.storedBars+' شمعة':'أرشيف سنوات غير متاح')+
@@ -694,7 +702,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              y={plotTop+17} fill={zoneBoard.context.label.includes('تجميع')?
                '#6ee9bc':zoneBoard.context.label.includes('تصريف')?
                '#ff9aaa':'#e6c68b'}
-             fontSize="8.5" fontWeight="700" textAnchor="start"
+             fontSize="8.5" fontWeight="700" textAnchor="end"
              direction="rtl" stroke="#000" strokeWidth="2"
              paintOrder="stroke">
              {zoneBoard.context.label+(zoneBoard.context.historical?
@@ -794,7 +802,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            left+(i+.5)*actualStride,realCandleWidth,false,'real'+b.time))}
          <line x1={split} x2={split} y1={plotTop} y2={plotBottom}
            stroke="#7e9bb1" strokeWidth="1.25" strokeDasharray="5 5"/>
-         {projected.ready&&displayBars.map((b,i)=>
+         {projected.ready&&renderedBars.map((b,i)=>
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
              futureCandleWidth,true,'future'+i))}
          {projected.ready&&aligned&&forming&&elapsedSteps===0&&
@@ -904,7 +912,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          </g>}
        </g>
        {/* Small LIVE/TP/stop notes inside the plot, never a wide right rail. */}
-       {scaleLevels.filter(level=>level.price>=lo&&level.price<=hi)
+       {scaleLevels.filter(level=>level.kind!=='PRICE'&&
+          level.price>=lo&&level.price<=hi)
           .map(level=>{
          const color=level.kind==='TARGET'?'#55eab9':
            level.kind==='STOP'?'#ff8093':
@@ -926,7 +935,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            <line x1={end-15} x2={end-15} y1={z.exactY} y2={z.labelY}
              stroke={z.color} strokeDasharray="2 3" strokeWidth=".65"/>}
          <text x={end-6} y={z.labelY-4} fill={z.color}
-            fontSize="8.2" fontWeight="700" textAnchor="end"
+            fontSize="8.2" fontWeight="700" textAnchor="start"
             direction="rtl" stroke="#000" strokeWidth="2.4" paintOrder="stroke">
             {z.label}
          </text>
@@ -989,7 +998,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {aligned&&<text x={split+8} y={H-4} fill="#8acfb9" fontSize="8"
          textAnchor="start" direction="ltr">{'→ '+h(aligned.anchorTime+900000)}</text>}
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
-         {displayBars.length?'+'+displayBars.length+' M15 · '+shownBars.length+' تقييم':'M15'}</text>
+         {renderedBars.length?'+'+renderedBars.length+' M15 · '+shownBars.length+' تقييم'+(showHistoricalExtension?' · تاريخي':''):'M15'}</text>
      </svg>
      {showLiquidity&&showExtra&&<div className="sniper-m15-watch-strip"
        aria-label="مستويات السيولة والأهداف الهيكلية للمراقبة" role="status">
