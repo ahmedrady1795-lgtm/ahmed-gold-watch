@@ -96,7 +96,12 @@ def order_book_snapshot():
             if typ in buy_types:bids.append(item)
             elif typ in sell_types:asks.append(item)
         bids=sorted(bids,key=lambda x:x['price'],reverse=True)[:10];asks=sorted(asks,key=lambda x:x['price'])[:10]
-        return {'available':bool(bids or asks),'reason':None if (bids or asks) else 'empty_book','bids':bids,'asks':asks}
+        # Only a two-sided, timestamped broker book is valid evidence.
+        # Some OTC gold symbols do not publish market depth at all.
+        available=bool(len(bids)>=2 and len(asks)>=2 and bids[0]['price']<asks[0]['price'])
+        return {'available':available,'reason':None if available else 'no_valid_two_sided_broker_book',
+                'capturedAt':int(time.time()*1000),'symbol':SYMBOL,
+                'bids':bids if available else [],'asks':asks if available else []}
     except Exception as e:return {'available':False,'reason':str(e)[:120],'bids':[],'asks':[]}
     finally:
         try:mt5.market_book_release(SYMBOL)
