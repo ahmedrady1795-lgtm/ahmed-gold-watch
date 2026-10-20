@@ -10,8 +10,7 @@ import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {assessChartObservation} from '../lib/chart-observation-radar';
 import {buildDistantMovementOutlook} from '../lib/sniper-movement-outlook';
 import {buildM15Scenario,closedM15Bars,sampledLiveM15,observeM15Tick} from '../lib/sniper-m15-scenario';
-import {extendIllustrativeM15ToTargets} from '../lib/sniper-m15-target-bridge';
-import {compactM15TargetDrawing,mt5M15Viewport} from '../lib/sniper-m15-mt5-viewport';
+import {mt5M15Viewport} from '../lib/sniper-m15-mt5-viewport';
 import type {ObservedM15} from '../lib/sniper-m15-scenario';
 import type {M15Scenario,M15Side} from '../lib/sniper-m15-scenario';
 import {frozenM15Decision,retainM15Snapshot} from '../lib/sniper-m15-freeze';
@@ -360,26 +359,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Retain ORIGINAL forecast timestamps. On later real candles only the
  // not-yet-observed route goes right of NOW; the past is scored separately.
  const shownBars=aligned?.scenario.bars.slice(elapsedSteps,12)??[];
- // Original 12 M15 analogue bars remain frozen and are the ONLY bars scored.
- // A separate price-space continuation joins the originally frozen objectives.
- // It is an illustration, not more M15 forecasts or performance evidence.
- const targetBridge=aligned?.scenario.ready&&!aligned.scenario.stopped?
-   extendIllustrativeM15ToTargets({
-     model:aligned.scenario.bars,goals:aligned.goals,side:aligned.side,
-     atr:aligned.scenario.atr,stop:aligned.stop
-   }):null;
- // Keep the ORIGINAL 12 timed M15 bars unchanged; compact only the
- // unscored price-space target bridge so candles retain visible bodies.
- const displayBars=targetBridge?.bars.length?
-   compactM15TargetDrawing(targetBridge.bars,
-     aligned?.scenario.bars.length??12,15).slice(elapsedSteps):shownBars;
- // Only the ORIGINAL timed and scored analogue may claim a true TP touch.
- // Distant objectives touched by illustrated candles are labelled guides.
+ // Draw the ORIGINAL frozen historical-analogue OHLC only. Forcing a
+ // target-reaching illustration generated a fake straight-line staircase.
+ // Distant H1/H4 destinations remain separate price watch labels.
+ const displayBars=shownBars;
  const goals=aligned?.scenario.ready&&!aligned.scenario.stopped?
    aligned.goals.filter(g=>shownBars.some(b=>b.low<=g.price&&g.price<=b.high)):[];
  const visualGoals=aligned?.scenario.ready&&!aligned.scenario.stopped?
-   aligned.goals.filter(g=>targetBridge?.connectedStages.includes(g.stage)&&
-     !goals.some(real=>real.stage===g.stage)):[];
+   aligned.goals.filter(g=>!goals.some(hit=>hit.stage===g.stage)):[];
  const stop=aligned?.stop??null;
  const projected=aligned?.scenario??noScenario;
  const reactionMap=aligned?{
@@ -497,8 +484,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const liquidityColor=(kind:string)=>
    kind==='DEMAND'||kind==='LOW_POOL'||kind==='REBOUND_UP'?
    '#41cfab':'#ff7b90';
- // Preserve real M15 widths separately from variable-length conditional bars.
- // The target continuation is in price-space, NOT timed as additional M15s.
+ // Preserve real M15 widths; the original scenario is 12 M15 bars maximum.
+ // The live candle and projected bar slot start next to each other.
  const projectedSlots=Math.max(18,displayBars.length);
  const projectedStride=(end-split-8)/projectedSlots;
  const realCandleWidth=clamp(actualStride*.84,3.4,6.4);
@@ -610,7 +597,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {priceZoom==='FOCUS'?'⤢ كل الأسعار':'⤢ تكبير الشموع'}
      </button>
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
-         'شموع M15 فعلية ثم شموع توقع افتراضي، مع مناطق ارتداد حقيقية وتلامس أو انعطاف محاكى، TP1 وTP2 وTP3 والإبطال. '+
+         'شموع M15 فعلية ثم 12 شمعة تاريخية مماثلة فقط، والأهداف الهيكلية البعيدة مستويات مراقبة وليست وصولًا متوقعًا، مع الإبطال. '+
          (verifiedArchive.ready?'أرشيف حقيقي متحقق '+verifiedArchive.storedBars+' شمعة':'أرشيف سنوات غير متاح')+
          '. تقييم خارج العينة '+walkForward.selected+' قرارًا، لا يثبت أفضلية.'
        }
@@ -978,14 +965,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
        <text x={split+5} y={17} fill="#e0c08d" fontSize="10" textAnchor="start" direction="ltr">M15 · SCENARIO</text>
        <text x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
-         textAnchor="start" direction="rtl">امتداد للأهداف رسم شرطي غير زمني</text>
+         textAnchor="start" direction="rtl">شموع تاريخية مماثلة · أهداف بعيدة للمراقبة</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(validLive&&forming?forming.time:latestClosed.time)}</text>}
        {aligned&&<text x={split+8} y={H-4} fill="#8acfb9" fontSize="8"
          textAnchor="start" direction="ltr">{'→ '+h(aligned.anchorTime+900000)}</text>}
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
-         {displayBars.length?'+'+shownBars.length+' M15 + امتداد':'M15'}</text>
+         {shownBars.length?'+'+shownBars.length+' × M15':'M15'}</text>
      </svg>
      {showLiquidity&&<div className="sniper-m15-watch-strip"
        aria-label="مستويات السيولة والأهداف الهيكلية للمراقبة" role="status">
