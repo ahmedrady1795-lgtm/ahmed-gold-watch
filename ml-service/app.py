@@ -794,6 +794,9 @@ def health():
 
 @app.post("/train")
 def train():
+    # Public free deployments must never expose unrestricted expensive training.
+    if os.getenv("ML_MANUAL_TRAIN_ENABLED","0")!="1":
+        raise HTTPException(status_code=403,detail="manual_training_disabled")
     if STATE["training"]: return {"ok":True,"started":False,"status":"already_training"}
     threading.Thread(target=train_all,daemon=True,name="ml-trainer-manual").start()
     return {"ok":True,"started":True}
