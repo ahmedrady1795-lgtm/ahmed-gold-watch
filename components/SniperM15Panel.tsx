@@ -535,6 +535,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  if(zoneOverhang)for(const z of zoneLabelPoints)z.y-=zoneOverhang;
  // Four evidence-backed areas share the chart (not a duplicate price rail).
  // Space labels only, keeping their horizontal lines on the EXACT price.
+ const watchLabels=showLiquidity&&showExtra?watchPrices.filter(z=>
+   z.price>=lo&&z.price<=hi).map(z=>({...z,exactY:py(z.price)})):[];
+ const forwardLabels=showLiquidity&&showExtra?futureZones.filter(z=>
+   z.price>=lo&&z.price<=hi).map(z=>({...z,exactY:py(z.price)})):[];
  const liquidityPalette={
    SELL:'#ff8393',BUY:'#51e5b8',HIGH_LIQ:'#e9bf66',LOW_LIQ:'#67d9ed'
  } as const;
@@ -645,6 +649,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            <title>{z.label+' · المنطقة المرصودة '+n(z.low)+' – '+n(z.high)+
              ' · '+z.source+' · للمراقبة فقط'}</title>
          </g>)}
+         {showLiquidity&&zoneBoard.context&&
+           <text className="sniper-m15-chart-context" x={left+5}
+             y={plotTop+17} fill={zoneBoard.context.label.includes('تجميع')?
+               '#6ee9bc':zoneBoard.context.label.includes('تصريف')?
+               '#ff9aaa':'#e6c68b'}
+             fontSize="8.5" fontWeight="700" textAnchor="start"
+             direction="rtl" stroke="#000" strokeWidth="2"
+             paintOrder="stroke">
+             {zoneBoard.context.label+(zoneBoard.context.historical?
+               ' · تاريخي':' · مرصود')}
+           </text>}
          {/* Same black background for real and hypothetical candles. */}
          {showLiquidity&&liquidity.context&&(()=>{
            const z=liquidity.context!;
