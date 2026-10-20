@@ -522,13 +522,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      z.labelY=freeY(z.exactY);
  const candle=(open:number,high:number,low:number,close:number,xpos:number,width:number,
    future:boolean,key:string)=> {
-   const up=close>=open,color=up?'#39d6cc':'#fa5970';
+   const up=close>=open,color=future?
+      (up?'#70ad9f':'#bb7988'):(up?'#39d6cc':'#fa5970');
    const top=Math.min(py(open),py(close)),height=Math.max(1,Math.abs(py(open)-py(close)));
    return <g key={key} className={future?'sniper-m15-projected':'sniper-m15-real'}>
      <line x1={xpos} x2={xpos} y1={py(high)} y2={py(low)}
-       stroke={color} strokeWidth="1.05"/>
+       stroke={color} strokeWidth={future?".95":"1.05"}
+        strokeDasharray={future?'2 2':undefined}
+        opacity={future?".68":"1"}/>
      <rect x={xpos-width/2} y={top} width={width} height={height}
-       fill={color} stroke={color} strokeWidth=".35"/>
+       fill={color} fillOpacity={future?".27":"1"}
+        stroke={color} strokeWidth={future?".7":".35"}
+        strokeDasharray={future?'2 1':undefined}/>
    </g>;
  };
  const direction=chartSide==='BUY'?'↗ صعود':chartSide==='SELL'?'↘ هبوط':'↔ انتظار';
@@ -566,7 +571,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    </div>
    <div className="sniper-m15-chart-box" id="sniper-performance">
      <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
-     {asset==='GOLD'&&<GoldRadarBadge/>}
+     {asset==='GOLD'&&<GoldRadarBadge now={now}
+        marketFresh={Boolean(m.sniper.view.priceFresh&&marketOpen&&
+          !providerTransition)} watch={watchMap}/>} 
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
          'شموع M15 فعلية ثم شموع توقع افتراضي، مع مناطق ارتداد حقيقية وتلامس أو انعطاف محاكى، TP1 وTP2 وTP3 والإبطال. '+
          (verifiedArchive.ready?'أرشيف حقيقي متحقق '+verifiedArchive.storedBars+' شمعة':'أرشيف سنوات غير متاح')+
@@ -919,6 +926,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        </g>}
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
        <text x={split+5} y={17} fill="#e0c08d" fontSize="10" textAnchor="start" direction="ltr">M15 · SCENARIO</text>
+       <text x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
+         textAnchor="start" direction="rtl">شموع افتراضية · ليست حركة فعلية</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(validLive&&forming?forming.time:latestClosed.time)}</text>}

@@ -1,0 +1,78 @@
+/* Price-evidence Gold Radar lives in the otherwise empty forecast area.
+   It never changes OHLC, confirmed targets or entry gates. */
+.sniper-m15-chart-box{position:relative}
+.sniper-gold-radar-widget{
+  position:absolute;z-index:7;
+  top:39px;right:18%;width:39%;max-width:235px;
+  min-width:0;direction:rtl;color:#c5d8e2;
+  font-size:10px;line-height:1.35;
+  border-inline-start:2px solid #536b75;
+  border-bottom:1px solid rgba(117,149,164,.26);
+  background:linear-gradient(90deg,rgba(4,11,17,.87),rgba(7,17,24,.94));
+  border-radius:4px;box-sizing:border-box;
+  box-shadow:0 2px 8px rgba(0,0,0,.35);
+}
+.sniper-gold-radar-widget.active{border-inline-start-color:#6bd1b1}
+.sniper-gold-radar-toggle{
+  display:flex;flex-direction:column;align-items:stretch;gap:3px;
+  width:100%;background:transparent;border:0;padding:5px 7px;
+  font:inherit;color:inherit;cursor:pointer;text-align:right;
+}
+.sniper-gold-radar-toggle:focus-visible{outline:2px solid #7fe1c8;outline-offset:2px}
+.sniper-gold-radar-top{display:flex;justify-content:space-between;gap:4px;align-items:center}
+.sniper-gold-radar-top strong{font-size:11px;color:#e8d6ac;white-space:nowrap}
+.sniper-gold-radar-top small{font-size:8.5px;color:#a0b4bd;white-space:nowrap}
+.sniper-gold-radar-state{
+  display:block;color:#b6cad4;font-size:10px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;
+}
+.sniper-gold-radar-state.buy{color:#66e0ba}
+.sniper-gold-radar-state.sell{color:#ff9d9d}
+.sniper-gold-radar-prices{
+  display:flex;justify-content:space-between;gap:5px;color:#bfd0df;
+  font-weight:700;font-variant-numeric:tabular-nums;
+}
+.sniper-gold-radar-prices span{white-space:nowrap;font-size:9px}
+.sniper-gold-radar-prices span:first-child{color:#74dfba}
+.sniper-gold-radar-prices span:last-child{color:#ffaba9}
+.sniper-gold-radar-confirm{font-size:9px;color:#d5e6ed;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.sniper-gold-radar-source{font-size:8.7px;color:#93a9b6;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sniper-gold-radar-expanded{
+  position:absolute;top:calc(100% + 4px);right:0;
+  width:min(310px,82vw);max-height:70vh;overflow:auto;
+  box-sizing:border-box;padding:10px;display:flex;flex-direction:column;gap:6px;
+  background:rgba(4,14,22,.985);border:1px solid #3b606d;
+  border-radius:6px;box-shadow:0 8px 20px rgba(0,0,0,.8);
+  color:#c9dce6;font-size:11px;line-height:1.6;
+}
+.sniper-gold-radar-expanded strong{color:#e7d7ad}
+.sniper-gold-radar-expanded small{color:#a9bfc8;font-size:10px}
+@media(max-width:600px){
+  .sniper-gold-radar-widget{top:34px;right:18%;width:39%;font-size:9px}
+  .sniper-gold-radar-toggle{padding:4px 5px;gap:2px}
+  .sniper-gold-radar-top strong{font-size:10px}
+  .sniper-gold-radar-top small{font-size:7.7px}
+  .sniper-gold-radar-prices span{font-size:8.5px}
+  .sniper-gold-radar-source{font-size:7.8px}
+  .sniper-gold-radar-state{font-size:9.3px}
+  .sniper-gold-radar-confirm{font-size:8.5px}
+}
+/* Keep the observation-only watch readout in the fixed chart height on iOS. */
+.sniper-m15-chart-box:has(> .sniper-m15-watch-strip){
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.sniper-m15-chart-box:has(> .sniper-m15-watch-strip)>svg{
+  flex:1 1 0;min-height:0;max-height:calc(100% - 51px);
+  height:calc(100% - 51px)!important;
+}
+.sniper-m15-chart-box>.sniper-m15-watch-strip{
+  flex:0 0 51px;position:relative;z-index:2;
+}
+@media(min-width:700px){
+ .sniper-m15-chart-box:has(> .sniper-m15-watch-strip)>svg{
+  max-height:calc(100% - 41px);height:calc(100% - 41px)!important;
+ }
+ .sniper-m15-chart-box>.sniper-m15-watch-strip{flex-basis:41px}
+}
