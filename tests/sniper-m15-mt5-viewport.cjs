@@ -51,6 +51,8 @@ assert.doesNotMatch(chart,/compactM15TargetDrawing\(targetBridge\.bars/,
 assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars;/,
  'scenario draws only the 12 actual frozen model bars');
 assert.match(chart,/className="sniper-m15-zoom-toggle"/);
+assert.match(chart,/className="sniper-m15-extension-toggle"/,
+ 'additional 36 unscored bars are opt-in, not a default 12-hour forecast');
 assert.match(chart,/sniper-m15-inline-price/);
 assert.doesNotMatch(chart,/x1=\{end\} x2=\{axis\+3\}/,
  'plot must not reserve a bulky right-side price rail');
@@ -60,9 +62,9 @@ assert.doesNotMatch(chart,/fillOpacity=\{future\?/,'all candle bodies are solid'
 assert.match(chart,/strokeWidth="1\.05"/,'classic historical wick is visible');
 assert.match(chart,/const recent=actual\.slice\(-42\)/,
  'show 18 observed M15 candles at the same scale as the 12 frozen forecast bars');
-assert.match(chart,/const projectedStride=\(end-split-8\)\/48;/,
+assert.match(chart,/const projectedStride=\(end-split-8\)\/\(showHistoricalExtension\?48:12\);/,
  'do not stretch a projected M15 minute relative to a real M15 minute');
-assert.match(chart,/const futureCandleWidth=clamp\(projectedStride\*\.62,1\.5,3\.1\);/,
+assert.match(chart,/const futureCandleWidth=clamp\(projectedStride\*\.62,1\.7,4\);/,
  'both panels must have identical candle body width');
 assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars;/,
  'never draw forced target extension candles');
