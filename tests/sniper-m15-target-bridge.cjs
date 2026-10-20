@@ -16,7 +16,7 @@ let result=extend({model:analog,goals,side:'BUY',atr:2,stop:94});
 assert.equal(result.complete,true);
 assert.equal(JSON.stringify(analog),frozen,'never mutate frozen model candles');
 assert.equal(JSON.stringify(result.bars.slice(0,12)),frozen,
- 'model's first 12 timed forward candles must stay identical');
+ "first 12 frozen M15 forward candles must stay identical");
 assert.ok(result.added>0&&result.added<72);
 assert.equal(result.connectedStages.join(','),'1,2,3');
 for(const goal of goals){
