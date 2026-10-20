@@ -47,7 +47,8 @@ jobs:
              out={'ok':data.get('ok'),'status':data.get('status'),
                   'mode':ai.get('mode'),'configuredCount':ai.get('configuredCount'),
                   'readyCount':ai.get('readyCount'),
-                  'models':ai.get('models')}
+                  'models':ai.get('models'),
+                  'mt5Bridge':(data.get('services') or {}).get('mt5Bridge')}
             else:
              broker=data.get('brokerDepth') or {}
              out={'connected':data.get('connected'),'fresh':data.get('fresh'),
@@ -55,11 +56,11 @@ jobs:
                   'brokerDepthReason':broker.get('reason')}
             print('MODEL_AUDIT',name,code,round(time.monotonic()-started,2),
                   json.dumps(out,ensure_ascii=False,default=str),flush=True)
-            if name in ('ML','NEURAL') and (code!=200 or data.get('ok')!=True):
+            if name in ('ML','NEURAL','SITE') and (code!=200 or data.get('ok')!=True):
              failures.append(name)
            except Exception as e:
             print('MODEL_AUDIT_ERROR',name,str(e)[:240],flush=True)
-            if name in ('ML','NEURAL'):failures.append(name)
+            if name in ('ML','NEURAL','SITE'):failures.append(name)
           if failures:
            print('MODEL_AUDIT_UNAVAILABLE',','.join(failures),flush=True)
            sys.exit(1)
