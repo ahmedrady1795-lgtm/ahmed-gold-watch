@@ -26,7 +26,7 @@ assert.match(panel,/evaluateM15ForwardProof\(savedProof,actual,now\)/);
 assert.doesNotMatch(panel,/const anchor=actual\.at\(-1\)\?\.close/,
  'do not start future candles from the old completed M15 while a live candle forms');
 
-assert.match(panel,/stable\.anchorTime===forming\.time\?stable:null/,
+assert.match(panel,/stable\.anchorTime<=forming\.time&&/,
  'pinned forecast must remain visible when live quote changes in same M15');
 assert.doesNotMatch(panel,/stable\.scenario\.bars\[0\]\?\.open===anchor/,
  'do not hide a frozen forecast after a new quote tick');
