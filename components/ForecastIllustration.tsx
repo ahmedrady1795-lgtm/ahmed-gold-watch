@@ -5,6 +5,7 @@ import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Crosshair,Layers3,ShieldAler
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import NewsCommandCenter from './NewsCommandCenter';
+import GoldTrapRadarPanel from './GoldTrapRadarPanel';
 import {economicNewsTimeline} from '../lib/news-alert-window';
 import type {ForecastJournal} from '../lib/forecast-journal';
 
@@ -329,6 +330,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
         </div>
       </div>
+      {asset==='GOLD'&&<GoldTrapRadarPanel radar={x?.goldTrapRadar} now={now}/>}
       <section className="forecast-eta-section" aria-label="التوقيت التقريبي للأهداف">
         <div className="forecast-eta-header">
           <strong><Clock3 size={16}/> مسار الحركة والوقت التقريبي للأهداف</strong>
