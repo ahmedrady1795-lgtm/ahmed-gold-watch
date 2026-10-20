@@ -17,8 +17,18 @@ export function assessM15FrozenChartAlignment(input:{
     .filter(v=>Number.isFinite(v)&&v>0).sort((a,b)=>a-b);
   const ordinary=lengths.length?lengths[Math.floor(lengths.length/2)]:0;
   const atr=Number.isFinite(input.atr)&&input.atr!>0?input.atr!:0;
-  const limit=Math.max(reference*.0004,ordinary*2.0,atr*1.8,.02);
+  // Use ordinary range/ATR from closed M15 data, but do not give a
+  // runaway last live candle two entire M15 ranges of visual leeway.
+  // A saved analogue remains in the audit ledger; only its on-screen route
+  // can be detached. There is no retroactive change to any OHLC or target.
+  const limit=Math.max(reference*.00032,ordinary*1.3,atr*1.45,.02);
   const difference=Math.abs(input.live-reference);
-  const visible=difference<=limit;
+  const predicted=bars[Math.min(idx,bars.length-1)];
+  // A new impulse beyond the current predicted candle's extremum is a
+  // stronger sign of divergence than the candle's closing-price error alone.
+  const tolerance=Math.max(atr*.72,ordinary*.65,reference*.00015);
+  const outside=predicted&&
+    (input.live>predicted.high+tolerance||input.live<predicted.low-tolerance);
+  const visible=difference<=limit&&!outside;
   return {visible,reason:visible?'ALIGNED':'MOVED_AWAY',difference,limit};
 }
