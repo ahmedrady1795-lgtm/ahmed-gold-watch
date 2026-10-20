@@ -7,6 +7,11 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
   const [scoreOpen,setScoreOpen]=useState(false);
   const [shadow,setShadow]=useState<null|{
     events:number;storage:string;modelQualified:false;
+    absorption?:{events:number;status:'EXPERIMENTAL';qualified:false;
+      m1:{samples:number;directional:number;correct:number;pairedN:number;
+        pairedRadarRate:number|null;baselineRate:number|null;missing:number};
+      m15:{samples:number;directional:number;correct:number;pairedN:number;
+        pairedRadarRate:number|null;baselineRate:number|null;missing:number}};
     m1:{samples:number;directional:number;correct:number;
       pairedN:number;accuracy:number|null;pairedRadarRate:number|null;baselineRate:number|null;missing:number};
     m15:{samples:number;directional:number;correct:number;
@@ -78,6 +83,9 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
     shadow?'سجل الخادم: '+shadow.events+
        ' إشارة؛ نتائج M1 '+shadow.m1.samples+
        ' وM15 '+shadow.m15.samples:'تقييم النتائج قيد التجميع',
+    shadow?.absorption?'تقييم بصمة الامتصاص: '+shadow.absorption.events+
+      ' حالة؛ M1 '+shadow.absorption.m1.samples+
+      ' نتيجة، M15 '+shadow.absorption.m15.samples+' نتيجة':'',
     'الرادار رصد فقط ولا يغير TP أو SL'
   ].filter(Boolean).join(' | ');
   if(compact)return <>
@@ -95,7 +103,7 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
         micro?.ready&&micro.possibleAskAbsorption?'بصمة: امتصاص شراء؟':
         micro?.bidPersistent?'طلب مستمر':
         micro?.askPersistent?'عرض مستمر':'تدفق: رصد'}
-        {shadow?.events?' · n'+shadow.events:''}</b>
+        {shadow?.absorption?.events?' · a'+shadow.absorption.events:''}</b>
     </button>
     {scoreOpen&&<aside className="sniper-flow-score-detail" dir="rtl">
       <strong>بصمة دفتر الأوامر · Coinbase BTC-USD فقط</strong>
@@ -115,7 +123,18 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
         {' '+fmt(micro.midMoveBps)} نقطة أساس ·
         آخر نافذة {' '+micro.spanSeconds.toFixed(0)} ثوانٍ ·
         {micro.snapshots} عينات L2.</div>}
-      <strong>اختبار إحصائي لاحق · متابعة فقط</strong>
+      <strong>تقييم البصمة المبكرة من خادم Coinbase</strong>
+      <div>بصمات محفوظة قبل الحركة: {shadow?.absorption?.events??0} ·
+        نتائج M1 {shadow?.absorption?.m1.samples??0} ·
+        نتائج M15 {shadow?.absorption?.m15.samples??0}</div>
+      {shadow?.absorption&&shadow.absorption.m1.directional>=70&&
+        shadow.absorption.m1.pairedN>=50?
+        <div>مقارنة M1 على نفس الحالات: البصمة
+          {' '+Math.round((shadow.absorption.m1.pairedRadarRate??0)*100)}%
+          · المرجع {' '+Math.round((shadow.absorption.m1.baselineRate??0)*100)}%
+          · n={shadow.absorption.m1.pairedN}</div>:
+        <div>دقة البصمة المبكرة غير مؤهلة بعد؛ ما زلنا نجمع نتائج مغلقة.</div>}
+      <strong>اختبار الرادار المؤكد · متابعة فقط</strong>
       <div>إشارات محفوظة على الخادم: {shadow?.events??'بانتظار البيانات'}</div>
       <div>M1: {shadow?.m1.samples??0} نتيجة · M15: {shadow?.m15.samples??0} نتيجة</div>
       <div>بيانات لم تكتمل: M1 {shadow?.m1.missing??0} · M15 {shadow?.m15.missing??0}</div>
