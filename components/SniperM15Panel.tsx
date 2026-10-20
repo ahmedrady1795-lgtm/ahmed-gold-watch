@@ -21,6 +21,8 @@ import {goldMarketSession} from '../lib/gold-market-session';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
 import {buildM15ReactionMap,emptyReactionMap} from '../lib/sniper-m15-reactions';
+import {futureM15WatchZones,conditionalM15BreakoutLevels} from '../lib/sniper-m15-future-zones';
+import type {ForwardWatchZone} from '../lib/sniper-m15-future-zones';
 import type {M15ReactionMap} from '../lib/sniper-m15-reactions';
 
 const n=(x:number|null|undefined)=>x!=null&&Number.isFinite(x)?
@@ -150,6 +152,21 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const lastAttempt=useRef('');
  const closedTime=actual.at(-1)?.time??0;
  const candleKey=asset+':'+String(x?.candleSource||'')+':'+closedTime;
+ // Historical forecast-side test areas stay fixed across quote ticks.
+ const [forwardSnapshot,setForwardSnapshot]=useState<{
+   key:string;zones:ForwardWatchZone[]}|null>(null);
+ useEffect(()=>{
+   if(!historyFresh||!liquidity.ready)return;
+   setForwardSnapshot(prev=>prev?.key===candleKey?prev:{
+     key:candleKey,zones:futureM15WatchZones({
+       now,history:actual,liquidity,sourceReady:historyFresh
+     })
+   });
+ },[candleKey,historyFresh,liquidity.ready,actual.at(-1)?.time]);
+ const futureZones=forwardSnapshot?.key===candleKey?forwardSnapshot.zones:[];
+ const conditionalRange=conditionalM15BreakoutLevels({
+   now,history:actual,sourceReady:historyFresh
+ });
  const confirmedEvents=Array.isArray(m.fourHour?.events)?m.fourHour.events:[];
  const latestBos=confirmedEvents.filter((e:any)=>
    (e?.kind==='BOS_UP'||e?.kind==='BOS_DOWN')&&
@@ -215,12 +232,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    stable?'سيناريو مشروط مثبت · '+h(stable.createdAt):
    blockedKey===candleKey?'السيناريو مُبطل · انتظار إغلاق M15':
    !marketOpen?'السوق مغلق':!freshObservation?'انتظار بيانات حديثة':
+   safeSide==='WAIT'&&conditionalRange.valid?
+     'توازن M15 · مراقبة إغلاق فوق '+n(conditionalRange.upper)+
+       ' أو تحت '+n(conditionalRange.lower)+' · ليست إشارة دخول':
    safeSide==='WAIT'?'توازن السوق · لا اتجاه مرجح حاليًا':
    buildReason||(!proposedGoals.length?'لا توجد أهداف هيكلية صالحة حاليًا':'جارٍ تقييم سيناريو M15');
- const goals=stable?.goals??(freezeDecision==='REBUILD'&&
-   blockedKey!==candleKey&&safeSide!=='WAIT'&&freshObservation?proposedGoals:[]);
- const stop=stable?.stop??(freezeDecision==='REBUILD'&&
-   blockedKey!==candleKey&&freshObservation?proposedStop:null);
+ // Structural H1/H4 pivots are only watch levels; TP prices on this M15
+ // forecast rail must have an actual intersecting hypothetical wick.
+ const goals=stable?.scenario.ready&&!stable.scenario.stopped?
+   stable.goals.filter(g=>stable.scenario.touches.includes(g.stage)):[];
+ const stop=stable?.stop??null;
  const projected=stable?.scenario??noScenario;
  const reactionMap=stable?.reactions??emptyReactionMap();
  const chartSide=stable?.side??safeSide;
@@ -254,7 +275,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ...projected.bars.flatMap(c=>[c.high,c.low]),
    ...visibleZones.flatMap(z=>[z.low,z.high]),
    ...(showLiquidity?reactionMap.bands.flatMap(z=>[z.low,z.high]):[]),
-   ...reactionMap.marks.map(z=>z.price)
+   ...reactionMap.marks.map(z=>z.price),
+   ...(showLiquidity?futureZones.flatMap(z=>[z.low,z.high]):[])
  ].filter(v=>Number.isFinite(v)&&v>0);
  const min=Math.min(...important,anchor??1);
  const max=Math.max(...important,anchor??1);
@@ -313,6 +335,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const zoneOverhang=zoneLabelPoints.length?
    Math.max(0,zoneLabelPoints[zoneLabelPoints.length-1].y-(plotBottom-15)):0;
  if(zoneOverhang)for(const z of zoneLabelPoints)z.y-=zoneOverhang;
+ // Real price coordinates remain exact; only text boxes are spread vertically.
+ const forwardLabels=futureZones.map(z=>({...z,exactY:py(z.price),
+   labelY:py(z.price)})).sort((a,b)=>a.exactY-b.exactY);
+ for(let i=0;i<forwardLabels.length;i++)
+   forwardLabels[i].labelY=Math.max(plotTop+19,forwardLabels[i].exactY,
+     i?forwardLabels[i-1].labelY+32:plotTop+19);
+ const over=forwardLabels.length?
+   Math.max(0,forwardLabels.at(-1)!.labelY-(plotBottom-17)):0;
+ if(over)for(const z of forwardLabels)z.labelY-=over;
  const candle=(open:number,high:number,low:number,close:number,xpos:number,width:number,
    future:boolean,key:string)=> {
    const up=close>=open,color=up?'#39d6cc':'#fa5970';
@@ -410,7 +441,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          })}
          {/* Price-true M15 demand/supply continued only as a
               hypothetical reaction area, not a future event. */}
-         {showLiquidity&&projected.ready&&reactionMap.bands.map((z,i)=>{
+         {showLiquidity&&!futureZones.length&&projected.ready&&reactionMap.bands.map((z,i)=>{
            const color=z.kind==='DEMAND'||z.kind==='REBOUND_UP'?'#44dab2':'#ff8c9b';
            return <g className="sniper-m15-reaction-band" key={'bounce-band-'+i}>
              <rect x={split+2} y={py(z.high)} width={end-split-5}
@@ -434,6 +465,38 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              <title>{z.label+' · '+n(z.low)+' – '+n(z.high)+
                ' · '+z.source+' · منطقة تاريخية، والارتداد المستقبلي مشروط'+
                ' · إبطال المنطقة '+n(z.invalidation)}</title>
+           </g>;
+         })}
+         {/* Historic M15 supply/demand and liquidity TEST zones projected
+              into the future pane, including BTC neutral/WAIT states. */}
+         {showLiquidity&&forwardLabels.map(z=>{
+           const buying=z.key==='DEMAND'||z.key==='LOW_POOL';
+           const pool=z.key==='HIGH_POOL'||z.key==='LOW_POOL';
+           const color=buying?'#4ee5b3':'#ff8497';
+           const y=clamp(z.exactY,plotTop+5,plotBottom-5);
+           const x=end-91;
+           return <g key={'future-level-'+z.key}
+             className="sniper-m15-future-zone">
+             <rect x={split+4} y={py(z.high)} width={end-split-9}
+               height={Math.max(2,py(z.low)-py(z.high))}
+               fill={color} fillOpacity={pool?.035:.065}
+               stroke={color} strokeOpacity=".85"
+               strokeWidth={pool?.8:1.1} strokeDasharray={pool?'2 5':'5 4'}/>
+             <line x1={split+5} x2={x} y1={y} y2={z.labelY}
+               stroke={color} strokeDasharray="2 4" strokeOpacity=".75"/>
+             <rect x={x} y={z.labelY-14} width="84" height="28"
+               rx="4" fill="#061217" fillOpacity=".97"
+               stroke={color} strokeOpacity=".85"/>
+             <text x={x+42} y={z.labelY-2.5} fontSize="8.6"
+               fill={color} fontWeight="700" textAnchor="middle"
+               direction="rtl">{z.label}</text>
+             <text x={x+42} y={z.labelY+9.5} fontSize="9.2"
+               fill="#eaf2f5" textAnchor="middle"
+               direction="ltr">{n(z.price)}</text>
+             <title>{z.subtitle+' · منطقة تاريخية '+n(z.low)+' – '+n(z.high)+
+               ' · '+z.source+' · مستوى تأكيد '+n(z.confirm)+
+               ' · إبطال '+n(z.invalidate)+
+               ' · ليست أوامر مستقبلية أو إشارة صفقة'}</title>
            </g>;
          })}
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
@@ -587,10 +650,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {!projected.ready&&<g className="sniper-m15-empty-reason">
          <text x={(split+end)/2} y={plotTop+66} fill="#d6bd8f"
            fontSize="9" textAnchor="middle" direction="rtl">
-           {blockedKey===candleKey?'السيناريو مُبطل':safeSide==='WAIT'?'لا اتجاه مرجح حاليًا':'انتظار سيناريو صالح'}</text>
+           {blockedKey===candleKey?'السيناريو مُبطل':
+             safeSide==='WAIT'?'نطاق سعري · راقب الكسر بعد الإغلاق':'انتظار سيناريو صالح'}</text>
          <text x={(split+end)/2} y={plotTop+83} fill="#9baaba"
            fontSize="8.3" textAnchor="middle" direction="rtl">
-           {freshObservation?'يجري تقييم الإغلاقات والهيكل':'بانتظار تحديث بيانات السوق'}</text>
+           {freshObservation&&conditionalRange.valid?
+              'فوق '+n(conditionalRange.upper)+' | تحت '+n(conditionalRange.lower):
+              freshObservation?'لا توجد إشارة مؤكدة':'بانتظار تحديث بيانات السوق'}</text>
          <title>{lifecycle}</title>
        </g>}
        {projected.ready&&projected.bars.length>0&&<g className="sniper-m15-first-audit">
