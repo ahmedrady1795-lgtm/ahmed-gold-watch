@@ -67,6 +67,14 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
     micro?.askPersistent?'جدار عرض مستمر مرصود':'',
     micro?.possibleBidPull?'تراجع عمق الطلب محتمل، السبب غير محسوم':'',
     micro?.possibleAskPull?'تراجع عمق العرض محتمل، السبب غير محسوم':'',
+    micro?.possibleBidAbsorption?
+      'امتصاص بيع محتمل: بيع منفذ '+Math.round(micro.executedSellUsd)+
+      ' USD مع ثبات السعر وعمق طلب مستمر':'',
+    micro?.possibleAskAbsorption?
+      'امتصاص شراء محتمل: شراء منفذ '+Math.round(micro.executedBuyUsd)+
+      ' USD مع ثبات السعر وعمق عرض مستمر':'',
+    micro?.ready&&micro.midMoveBps!=null?
+      'حركة منتصف السعر '+micro.midMoveBps.toFixed(2)+' نقطة أساس':'',
     shadow?'سجل الخادم: '+shadow.events+
        ' إشارة؛ نتائج M1 '+shadow.m1.samples+
        ' وM15 '+shadow.m15.samples:'تقييم النتائج قيد التجميع',
@@ -74,7 +82,7 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
   ].filter(Boolean).join(' | ');
   if(compact)return <>
     <button type="button" className={'sniper-flow-radar-chip '+
-      (micro?.status==='POSSIBLE_PULL'?'warn':
+      (micro?.status==='POSSIBLE_PULL'||micro?.status==='POSSIBLE_ABSORPTION'?'warn':
        view.phase==='CONFIRMED'?'confirmed':'neutral')}
       onClick={()=>setScoreOpen(v=>!v)} aria-expanded={scoreOpen}
       title={hint} aria-label={'رادار الأوامر: '+labels[view.phase]+'. اضغط لعرض نتائج M1 وM15. '+hint}>
@@ -83,12 +91,31 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
         view.phase==='CONFIRMED'?'تدفق: تأكيد':
         micro?.possibleBidPull?'سحب طلب؟':
         micro?.possibleAskPull?'سحب عرض؟':
+        micro?.possibleBidAbsorption?'بصمة: امتصاص بيع؟':
+        micro?.possibleAskAbsorption?'بصمة: امتصاص شراء؟':
         micro?.bidPersistent?'طلب مستمر':
         micro?.askPersistent?'عرض مستمر':'تدفق: رصد'}
         {shadow?.events?' · n'+shadow.events:''}</b>
     </button>
     {scoreOpen&&<aside className="sniper-flow-score-detail" dir="rtl">
-      <strong>اختبار رادار Coinbase · متابعة فقط</strong>
+      <strong>بصمة دفتر الأوامر · Coinbase BTC-USD فقط</strong>
+      {micro?.possibleBidAbsorption&&<div>
+        بيع هجومي منفذ {fmt(micro.executedSellUsd)} USD دون تقدم هابط
+        واضح، مع استمرار عمق الطلب · امتصاص بيع محتمل لا أكثر.
+      </div>}
+      {micro?.possibleAskAbsorption&&<div>
+        شراء هجومي منفذ {fmt(micro.executedBuyUsd)} USD دون تقدم صاعد
+        واضح، مع استمرار عمق العرض · امتصاص شراء محتمل لا أكثر.
+      </div>}
+      {(micro?.possibleBidPull||micro?.possibleAskPull)&&<div>
+        اختفاء عمق مرصود؛ قد يكون إلغاء أو تنفيذًا غير مرصود.
+        ليس إثبات spoofing ولا هوية فاعل بعينه.
+      </div>}
+      {micro?.ready&&<div>تغير منتصف السعر:
+        {' '+fmt(micro.midMoveBps)} نقطة أساس ·
+        آخر نافذة {' '+micro.spanSeconds.toFixed(0)} ثوانٍ ·
+        {micro.snapshots} عينات L2.</div>}
+      <strong>اختبار إحصائي لاحق · متابعة فقط</strong>
       <div>إشارات محفوظة على الخادم: {shadow?.events??'بانتظار البيانات'}</div>
       <div>M1: {shadow?.m1.samples??0} نتيجة · M15: {shadow?.m15.samples??0} نتيجة</div>
       <div>بيانات لم تكتمل: M1 {shadow?.m1.missing??0} · M15 {shadow?.m15.missing??0}</div>
@@ -113,6 +140,8 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
     <span>{view.side==='BUY'?'امتصاص بيع محتمل':view.side==='SELL'?'امتصاص شراء محتمل':'لا اتجاه مؤكد'}</span>
     {fresh&&<span>صافي التنفيذ {view.delta.toFixed(0)}% · توازن العمق {view.imbalance.toFixed(0)}%</span>}
     {micro?.ready&&<span>عمق طلبات معلنة {Math.round(micro.bidDepthUsd)} USD · عروض معلنة {Math.round(micro.askDepthUsd)} USD</span>}
+    {micro?.possibleBidAbsorption&&<span>امتصاص بيع محتمل · تنفيذات SELL {fmt(micro.executedSellUsd)} USD وثبات السعر</span>}
+    {micro?.possibleAskAbsorption&&<span>امتصاص شراء محتمل · تنفيذات BUY {fmt(micro.executedBuyUsd)} USD وثبات السعر</span>}
     {view.confirm!=null&&<span>تأكيد <b dir="ltr">{fmt(view.confirm)}</b> · إلغاء <b dir="ltr">{fmt(view.invalidate)}</b></span>}
     <small title="تغير دفتر Level 2 قد يكون تنفيذًا أو إلغاءً، وليس إثبات التلاعب أو هوية مشارك. الرادار رصد فقط.">Coinbase BTC-USD · يتطلب رصد M1 لاحقًا · ليس نسبة نجاح</small>
   </div>;
