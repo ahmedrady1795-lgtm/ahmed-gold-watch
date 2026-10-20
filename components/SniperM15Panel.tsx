@@ -478,14 +478,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const py=(p:number)=>plotTop+(hi-p)/(hi-lo)*(plotBottom-plotTop);
  const scaleLevels=[
    ...goals.map(g=>({key:'TP'+g.stage,price:g.price,kind:'TARGET'})),
-   ...visualGoals.map(g=>({key:'TP'+g.stage,price:g.price,kind:'ILLUSTRATION'})),
+   ...visualGoals.map(g=>({key:'WATCH'+g.stage,price:g.price,kind:'ILLUSTRATION'})),
    ...(stop!=null?[{key:'SL',price:stop,kind:'STOP'}]:[]),
    ...(price!=null?[{key:'LIVE',price,kind:'PRICE'}]:[])
  ];
  const nearLevels=scaleLevels.filter(v=>v.price>=lo&&v.price<=hi);
  const distantTargets=scaleLevels.filter(v=>
-   (v.kind==='TARGET'||v.kind==='ILLUSTRATION')&&
-   (v.price<lo||v.price>hi)).slice(0,3);
+   (v.kind==='TARGET'||v.kind==='ILLUSTRATION'||v.kind==='STOP')&&
+   (v.price<lo||v.price>hi)).slice(0,4);
  const rail=nearLevels.map(v=>({...v,exactY:py(v.price),labelY:py(v.price)}))
    .sort((a,b)=>a.exactY-b.exactY);
  const railMargin=plotTop+15,railBottom=plotBottom-15,railGap=29;
@@ -580,7 +580,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    </g>;
  };
  const direction=chartSide==='BUY'?'↗ صعود':chartSide==='SELL'?'↘ هبوط':'↔ انتظار';
- const labelBy=(s:string)=>s==='SL'?'إبطال':s==='LIVE'?'LIVE':s;
+ const labelBy=(s:string)=>s==='SL'?'إبطال':s==='LIVE'?'LIVE':
+   s.startsWith('WATCH')?'رصد'+s.slice(5):s;
  const grid=Array.from({length:9},(_,i)=>lo+(hi-lo)*i/8);
  const latestClosed=actual.at(-1);
  return <section className="sniper-m15-panel" dir="rtl"
@@ -599,7 +600,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        title={(liquidity.ready?liquidity.reason:'لا توجد قراءة محدثة')+
          ' · تقييم زمني M15: '+walkForward.correct+'/'+walkForward.selected+
          ' من '+walkForward.evaluated+' نتيجة مرصودة، دون إثبات أفضلية'}>
-       {'الحالة: '+phase.label}</span>
+       {'السيولة: '+phase.label}</span>
      <span className={'sniper-m15-bias '+(chartSide==='BUY'?'rise':chartSide==='SELL'?'fall':'hold')}>
        {direction}</span>
    </header>
@@ -881,14 +882,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {distantMarkers.map(level=><g key={'far-'+level.key}
           className="sniper-m15-offscreen-tp">
           <text x={axis+3} y={level.markerY} fontSize="8.2"
-            fill={level.kind==='TARGET'?'#6becc3':'#dfc18d'}
+            fill={level.kind==='TARGET'?'#6becc3':
+              level.kind==='STOP'?'#ff8196':'#dfc18d'}
             textAnchor="start" direction="ltr">
             {level.arrow+labelBy(level.key)}</text>
           <text x={W-4} y={level.markerY} fontSize="8.5"
-            fill={level.kind==='TARGET'?'#d4ede6':'#e9d9b4'}
+            fill={level.kind==='TARGET'?'#d4ede6':
+              level.kind==='STOP'?'#ffe1e6':'#e9d9b4'}
             textAnchor="end" direction="ltr">{n(level.price)}</text>
-          <title>{'هدف خارج نطاق التكبير '+n(level.price)+
-             (level.kind==='ILLUSTRATION'?' · امتداد توضيحي فقط':' · ضمن النموذج المثبت')+
+          <title>{(level.kind==='STOP'?'مستوى الإبطال خارج نطاق التكبير ':
+             level.kind==='ILLUSTRATION'?'هدف مراقبة غير مُقيّم خارج نطاق التكبير ':
+               'هدف ضمن أول 12 شمعة سيناريو خارج نطاق التكبير ')+n(level.price)+
              ' · اختر كل الأسعار لعرض المستوى في موقعه السعري'}</title>
         </g>)}
        {showLiquidity&&watchLabels.map(level=>{
@@ -996,14 +1000,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
        <text x={split+5} y={17} fill="#e0c08d" fontSize="10" textAnchor="start" direction="ltr">M15 · FORECAST</text>
        <text x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
-         textAnchor="start" direction="rtl">رسم تاريخي مشروط · أول 12 شمعة فقط للتقييم</text>
+         textAnchor="start" direction="rtl">أول 12 شمعة للتقييم · الامتداد عرض تاريخي غير مُقيّم</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(validLive&&forming?forming.time:latestClosed.time)}</text>}
        {aligned&&<text x={split+8} y={H-4} fill="#8acfb9" fontSize="8"
          textAnchor="start" direction="ltr">{'→ '+h(aligned.anchorTime+900000)}</text>}
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
-         {displayBars.length?'+'+displayBars.length+' × M15':'M15'}</text>
+         {displayBars.length?'+'+displayBars.length+' M15 · '+shownBars.length+' تقييم':'M15'}</text>
      </svg>
      {showLiquidity&&<div className="sniper-m15-watch-strip"
        aria-label="مستويات السيولة والأهداف الهيكلية للمراقبة" role="status">
