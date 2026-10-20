@@ -49,7 +49,7 @@ assert.equal(r.side,'WAIT');
 r=build({...args,c1:buy,price:3401,quoteStatus:'delayed'});
 assert.equal(r.state,'OFFLINE');
 
-r=build({...args,c1:buy,price:3420});
+r=build({...args,c1:buy,price:3470});
 assert.equal(r.state,'OFFLINE','mismatched spot and candle source must fail closed');
 
 const incomplete=[...base,{...buy[54],time:now-20000}];
