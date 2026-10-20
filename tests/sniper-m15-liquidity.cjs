@@ -152,6 +152,12 @@ assert.equal(unavailable.ready,false);
 assert.ok(unavailable.items.every(i=>i.low===null),'stale inputs must never show old prices');
 assert.match(chart,/buildM15LiquidityBoard/);
 assert.match(chart,/className="sniper-m15-liquidity-line"/);
+assert.match(chart,/className="sniper-m15-view-controls"/,
+ 'buttons are outside the chart to avoid covering REAL M15 title');
+assert.match(chart,/textAnchor="start"\s+direction="rtl" stroke="#000"/,
+ 'right-aligned Arabic labels must extend inward rather than clipping');
+assert.match(chart,/level.kind!=='PRICE'/,
+ 'LIVE must be shown once near the real candle, never twice inside forecast');
 assert.doesNotMatch(chart,/sniper-m15-board-grid/,
  'four duplicate liquidity cards above the chart have been removed');
 assert.match(chart,/const positionedLiquidityLabels=liquidityLabels\.map/,
