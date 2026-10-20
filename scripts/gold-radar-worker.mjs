@@ -73,6 +73,7 @@ async function observe(){
     bars:sourceReady?m1:[],marketOpen:session});
   const lastStatus={checkedAt:now,source,ready:reading.ready,
    phase:reading.phase,side:reading.side,label:reading.label,
+   setupSide:reading.setupSide,setupAt:reading.setupAt,confirmedAt:reading.confirmedAt,
    reason:reading.reason,method:reading.method,
    eventAt:reading.eventAt,price:reading.price,confirm:reading.confirm,
    invalidate:reading.invalidate,evidence:reading.evidence,
