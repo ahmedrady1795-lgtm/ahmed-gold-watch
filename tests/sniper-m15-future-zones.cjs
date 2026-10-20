@@ -61,9 +61,9 @@ assert.match(comp,/prev\?\.key===candleKey\?prev/,
 assert.match(comp,/conditionalM15BreakoutLevels/);
 assert.match(comp,/safeSide==='WAIT'&&conditionalRange\.valid/,
  'BTC WAIT gets historical boundary prices, not a fake direction');
-assert.match(comp,/stable\.goals\.filter\(g=>stable\.scenario\.touches\.includes\(g\.stage\)\)/,
+assert.match(comp,/aligned\.goals\.filter\(g=>aligned\.scenario\.touches\.includes\(g\.stage\)\)/,
  'unreached far H1/H4 structural pivot must not be called reachable M15 TP');
-assert.match(comp,/const stop=stable\?\.stop\?\?null/,
+assert.match(comp,/const stop=aligned\?\.stop\?\?null/,
  'orphan stop must not appear when no active frozen M15 path exists');
 assert.doesNotMatch(comp,/const goals=stable\?\.goals\?\?/,
  'unverified structural goals cannot flatten future chart vertical scale');
