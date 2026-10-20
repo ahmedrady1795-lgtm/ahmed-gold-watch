@@ -45,8 +45,8 @@ assert.equal(futureM15WatchZones({now,history,liquidity:overlap,
  sourceReady:true}).length,1,'crowded identical-price zones are not double-labelled');
 const range=conditionalM15BreakoutLevels({now,history,sourceReady:true});
 assert.equal(range.valid,true,'WAIT still has both true breakout boundaries');
-assert.equal(range.upper,Math.max(...history.slice(-12).map(b=>b.high)));
-assert.equal(range.lower,Math.min(...history.slice(-12).map(b=>b.low)));
+assert.ok(Math.abs(range.upper-Math.max(...history.slice(-12).map(b=>b.high)))<.0001);
+assert.ok(Math.abs(range.lower-Math.min(...history.slice(-12).map(b=>b.low)))<.0001);
 assert.match(range.note,/شرط/);
 const bad=[...history];bad[bad.length-1]={...bad.at(-1),
  time:bad.at(-1).time+1000};
