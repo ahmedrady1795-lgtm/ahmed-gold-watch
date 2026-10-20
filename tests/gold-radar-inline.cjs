@@ -15,7 +15,7 @@ assert.match(radar,/DOM غير متاح/,'missing MT5 DOM must be disclosed');
 assert.match(radar,/لا دخول · انتظار تأكيد/,'WAIT must not look like an order');
 assert.match(chart,/className=\{future\?'sniper-m15-projected':'sniper-m15-real'\}/,
  'conditional M15 candles remain separately classed from observed candles');
-assert.match(chart,/شموع ممتلئة · امتداد شرطي غير زمني/,
+assert.match(chart,/امتداد للأهداف رسم شرطي غير زمني/,
  'full-bodied forecast remains marked as a non-timed illustration');
 assert.match(css,/position:absolute/,'radar belongs inside the chart surface');
 assert.match(css,/right:18%/,'radar occupies forecast area, not real OHLC');
