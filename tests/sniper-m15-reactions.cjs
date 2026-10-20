@@ -79,12 +79,12 @@ assert.match(component,/mark\.price/);
 assert.match(component,/z\.invalidation/);
 assert.match(component,/projected\.ready&&reactionMap\.marks/);
 assert.doesNotMatch(component,/setTimeout\([^]*?setFrozen/);
-assert.match(component,/const projectedSlots=Math\.max\(18,displayBars\.length\)/,
- 'conditional price-space candles use stable fixed slots without changing scored M15 bar count');
-assert.match(component,/const realCandleWidth=clamp\(actualStride\*\.84/,
+assert.match(component,/const projectedStride=actualStride;/,
+ 'forecast and real candles use the exact same M15 time spacing');
+assert.match(component,/const realCandleWidth=clamp\(actualStride\*\.72/,
  'real M15 width stays based on observed historical geometry');
-assert.match(component,/const futureCandleWidth=clamp\(projectedStride\*\.90/,
- 'non-timed illustrative goals use separate slot geometry');
+assert.match(component,/const futureCandleWidth=realCandleWidth;/,
+ 'the predicted bars and observed M15 bars use exactly the same body width');
 assert.match(component,/realCandleWidth,false,'real'\+b\.time/,
  'historical OHLC is rendered at its original width');
 assert.match(component,/futureCandleWidth,true,'future'\+i/,
