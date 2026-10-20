@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises';
 import {OrderFlowRadar} from '../lib/order-flow-radar.ts';
 import {newLedger,sanitizeShadowLedger,recordRadarSignal,
- settleRadarOutcomes,baselineAt,validShadowBars,radarShadowScore}
+ settleRadarOutcomes,baselineAt,validShadowBars,radarShadowScore,
+ recordAbsorptionFingerprint}
  from '../lib/radar-shadow-score.ts';
 
 const CHANNEL='wss://ws-feed.exchange.coinbase.com';
@@ -10,6 +11,7 @@ const candidates=['/data/qannas-radar-shadow-v1.json','/tmp/qannas-radar-shadow-
 let target=candidates[1],ledger=newLedger(),engine=new OrderFlowRadar(),ws=null;
 let reconnect=null,connected=false,finishing=false,inFlight=false;
 let m1=[],m15=[],lastHistoryPoll=0,lastRecordedSince=0,lastSave=0;
+let lastAbsorptionSince=0;
 async function store(){
  const raw=JSON.stringify(ledger);
  const temp=target+'.writing-'+process.pid;
@@ -111,6 +113,33 @@ async function tick(){
  if(!connected||engine.broken)return;
  const view=engine.evaluate(now);
  const last=engine.trades.at(-1);
+ // Independently freeze pre-break footprints from the authenticated,
+ // unbroken Coinbase WS. Never require a confirmed break for this cohort.
+ const micro=view.micro;
+ if(micro?.ready&&micro.snapshots>=5&&last&&now-last.at<=4000&&
+    micro.status==='POSSIBLE_ABSORPTION'&&
+    view.phase!=='OFFLINE'&&view.phase!=='WARMUP'){
+   const bid=Boolean(micro.possibleBidAbsorption);
+   const ask=Boolean(micro.possibleAskAbsorption);
+   if(bid!==ask&&last.at!==lastAbsorptionSince){
+     const a=recordAbsorptionFingerprint({
+       ledger,now,sourceAt:last.at,side:bid?'BUY':'SELL',
+       fingerprint:bid?'BID_ABSORPTION':'ASK_ABSORPTION',
+       price:last.price,
+       aggressiveUsd:bid?micro.executedSellUsd:micro.executedBuyUsd,
+       defendedDepthUsd:bid?micro.bidDepthUsd:micro.askDepthUsd,
+       midMoveBps:micro.midMoveBps??Infinity,
+       l2Snapshots:micro.snapshots,baseline:baselineAt(m1,now)
+     });
+     lastAbsorptionSince=last.at;
+     if(a.recorded){
+       ledger=a.ledger;await store();
+       console.info('[RADAR-SHADOW] pre-break absorption watched',
+         bid?'BID':'ASK','at',new Date(last.at).toISOString(),
+         'absorptionN',radarShadowScore(ledger).absorption.events);
+     }
+   }
+ }
  if(view.phase!=='CONFIRMED'||!view.micro?.ready||
    view.micro.snapshots<5||!last||now-last.at>4000||
    last.price<=0||!view.confirm||!view.invalidate||
