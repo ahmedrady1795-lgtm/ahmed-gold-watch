@@ -21,7 +21,8 @@ export function frozenM15Decision(input:{
    !Number.isFinite(closedTime)||closedTime<=0||
    now<closedTime+900000||now-closedTime>45*60000){
    return old?.asset===asset&&now>=old.createdAt&&
-     now-(old.anchorTime??old.closedTime+900000)<=12*900000?'PAUSE':'CLEAR';
+     (old.anchorTime!=null?now-old.anchorTime<=12*900000:
+       now-old.closedTime<=45*60000)?'PAUSE':'CLEAR';
  }
  if(!old||old.asset!==asset)return 'REBUILD';
  if(old.stop!=null&&Number.isFinite(old.stop)&&
@@ -44,6 +45,6 @@ export function retainM15Snapshot(decision:FreezeDecision,old:FrozenPlanState|nu
  asset:'GOLD'|'BTC',now:number){
  return Boolean(old&&old.asset===asset&&decision!=='CLEAR'&&
    Number.isFinite(now)&&now>=old.createdAt&&now>=old.closedTime+900000&&
-   now-(old.anchorTime??old.closedTime+900000)<=(old.anchorTime!=null?
-     12*900000:45*60000));
+   (old.anchorTime!=null?now-old.anchorTime<12*900000:
+     now-old.closedTime<=45*60000));
 }
