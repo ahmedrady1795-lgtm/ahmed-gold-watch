@@ -29,7 +29,7 @@ export function buildM15ReactionMap(input:{
  const candidates=liquidity.zones.filter(z=>sameSide(z)&&
    valid(z.low)&&valid(z.high)&&z.high>=z.low&&
    (z.confirmedAt==null||z.confirmedAt<=now)&&
-   (stop==null||(buy?z.high>stop:z.low<stop))&&
+   (stop==null||(buy?z.low>stop:z.high<stop))&&
    Math.abs((z.high+z.low)/2-anchor!)<=scenario.atr!*9);
  const unique:LiquidityZone[]=[];
  for(const z of candidates.sort((a,b)=>
