@@ -93,7 +93,7 @@ assert.match(wrapper,/return <SniperM15Panel \{\.\.\.props\}\/>/,
  'legacy M1 screen must not be the active rendered sniper');
 assert.match(chart,/chartHigherFrames\?\.m15/,
  'real M15 historical source is selected, never M1 renamed M15');
-assert.match(chart,/shownBars\.map/);
+assert.match(chart,/displayBars\.map/,'future illustration extends beyond the scored 12 bars');
 assert.match(chart,/scaleLevels\.map/);
 assert.match(chart,/const min=important\.length\?Math\.min\(\.\.\.important\)/,
  'M15 viewport minimum must come from observed prices when LIVE is unavailable');
@@ -126,10 +126,12 @@ assert.match(css,/grid-template-areas:"asset frame liquidity" "price price bias"
 assert.match(css,/width:100%!important;max-width:100%!important/,
  'no negative-margin overscroll that truncates target labels');
 assert.match(chart,/steps:12/,'short original 12-candle scenario is frozen and scored across future closes');
-assert.match(chart,/fillOpacity=\{future\?/,
- 'the future wick/body is visually distinct, because it is only a simulation');
-assert.match(chart,/strokeDasharray=\{future\?'2 2':undefined\}/,
- 'hypothetical wicks are dashed, while observed M15 candles remain solid');
+assert.match(chart,/fillOpacity=\{future\?"\.98":"1"\}/,
+ 'conditional candles must render as filled real-style bodies');
+assert.doesNotMatch(chart,/strokeDasharray=\{future\?'2 2':undefined\}/,
+ 'restore solid wicks to match the original genuine candle design');
+assert.match(chart,/extendIllustrativeM15ToTargets/,
+ 'conditional path may show fixed goals without modifying the scored candles');
 assert.match(chart,/compactM15ZoneAnnotations/,'nearby liquidity labels are grouped, not drawn on top of one another');
 assert.doesNotMatch(chart,/sniper-m15-caption|sniper-m15-status/,
  'no technical paragraphs or scorecard underneath the mobile chart');
