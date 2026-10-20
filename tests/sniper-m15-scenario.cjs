@@ -109,6 +109,21 @@ assert.equal(sampledLiveM15(localM1,quotedAt+1200,observed2,'Kraken XBT/USD').cl
 assert.equal(observeM15Tick(observed2,{now:quotedAt+1200,at:quotedAt+1100,
  price:4300,source:'Kraken XBT/USD',historySource:'Coinbase BTC-USD'}),null);
 assert.equal(sampledLiveM15([],quotedAt+30000,observed2,'Coinbase BTC-USD'),null);
+// A gap in M1 must not freeze a verified live M15 tick, or fabricate OHLC.
+const gapBars=[localM1[0],localM1[2],localM1[3]];
+assert.equal(sampledLiveM15(gapBars,quotedAt+1200,null,'Coinbase BTC-USD'),null);
+const gapPartial=sampledLiveM15(gapBars,quotedAt+1200,observed2,'Coinbase BTC-USD');
+assert.equal(gapPartial.minutes,0,'gapped minute bars must never be treated as complete');
+assert.equal(gapPartial.sampledTicks,2);
+assert.equal(gapPartial.open,4206);
+assert.equal(gapPartial.high,4209);
+assert.equal(gapPartial.close,4209);
+assert.equal(sampledLiveM15(gapBars,quotedAt+1200,observed2,'Biquote · MT5 XAUUSD'),null,
+ 'cannot substitute another venue for missing XAUUSD OHLC');
+const chartAfterGap=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
+assert.match(chartAfterGap,/const formingVisible=Boolean\(forming&&!providerTransition&&/);
+assert.match(chartAfterGap,/const validLive=formingVisible&&m\.historyFresh&&m\.sniper\.view\.priceFresh;/,
+ 'historical feed gaps may show true live ticks but never bypass forecast requirements');
 const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const wrapper=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 const css=fs.readFileSync('app/workspace.css','utf8');
