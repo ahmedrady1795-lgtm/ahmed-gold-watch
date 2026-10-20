@@ -278,8 +278,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // A pinned route from a previous M15 window must never masquerade as a
  // fresh projection starting at the current live candle.
  const aligned=stable&&validLive&&forming&&
-   stable.anchorTime===forming.time&&stable.scenario.bars[0]?.open===anchor?
-   stable:null;
+   stable.anchorTime===forming.time?stable:null;
  const goals=aligned?.scenario.ready&&!aligned.scenario.stopped?
    aligned.goals.filter(g=>aligned.scenario.touches.includes(g.stage)):[];
  const stop=aligned?.stop??null;
@@ -554,17 +553,25 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {projected.ready&&projected.bars.map((b,i)=>
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
              candleWidth,true,'future'+i))}
-         {projected.ready&&validLive&&forming&&anchor!=null&&
-           projected.bars[0]?.open===anchor&&<g className="sniper-m15-anchor-link">
-           <line x1={split-3} y1={py(forming.close)}
+         {projected.ready&&aligned&&forming&&<g className="sniper-m15-anchor-link">
+           {/* Pin the ORIGINAL observed issuance price. Live ticks must never
+               re-anchor or silently erase a forecast after it is recorded. */}
+           <line x1={split-3} y1={py(projected.bars[0].open)}
              x2={split+5+.5*projectedStride} y2={py(projected.bars[0].open)}
              stroke="#aaf5de" strokeWidth="1.7"/>
+           <circle cx={split-3} cy={py(projected.bars[0].open)} r="2.2"
+             fill="#aaf5de" stroke="#031310" strokeWidth=".6"/>
            <circle cx={split+5+.5*projectedStride}
              cy={py(projected.bars[0].open)} r="2.2"
              fill="#aaf5de" stroke="#031310" strokeWidth=".6"/>
-           <title>{'اتصال سعر حقيقي مُراقب '+n(anchor)+
-             ' بأول شمعة افتراضية تبدأ '+h(forming.time+900000)+
-             ' · نفس سعر الافتتاح، وليست نتيجة مستقبلية مؤكدة'}</title>
+           {Math.abs(forming.close-projected.bars[0].open)>0.0000001&&
+             <line x1={split-3} y1={py(forming.close)}
+               x2={split-3} y2={py(projected.bars[0].open)}
+               stroke="#d7b779" strokeDasharray="2 3" strokeWidth=".8"/>}
+           <title>{'توقع ثابت من السعر الحقيقي عند إصدار السيناريو '+
+             n(projected.bars[0].open)+' · السعر الحي الآن '+n(forming.close)+
+             ' · أول شمعة متوقعة تبدأ '+h(aligned.anchorTime+900000)+
+             ' · اختلاف السعر بعد التثبيت لا يعيد كتابة توقع قديم'}</title>
          </g>}
          {projected.ready&&reactionMap.marks.map((mark,i)=>{
            const barX=split+5+(mark.step-.5)*projectedStride;
