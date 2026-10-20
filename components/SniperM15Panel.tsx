@@ -19,6 +19,7 @@ import {verifiedM15Archive} from '../lib/sniper-m15-archive-store';
 import {m15WalkForward,firstM15Evidence} from '../lib/sniper-m15-walkforward';
 import {goldMarketSession} from '../lib/gold-market-session';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
+import {detectPreMovePressure} from '../lib/pre-move-pressure';
 import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
 import {buildM15ReactionMap,emptyReactionMap} from '../lib/sniper-m15-reactions';
 import {futureM15WatchZones,conditionalM15BreakoutLevels} from '../lib/sniper-m15-future-zones';
@@ -128,9 +129,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const proposedGoals=targets.slice(0,3).map(t=>({stage:t.stage,price:t.price}));
  const forming=sampledLiveM15(m.candles,now,observedM15,String(x?.candleSource||''));
  // Live M15 combines closed M1 OHLC with actual same-venue sampled ticks.
- const validLive=forming!=null&&historyFresh&&m.historyFresh&&
-   !providerTransition&&marketOpen&&m.sniper.view.priceFresh&&
-   forming.time===Math.floor(now/900000)*900000;
+ const lastClosedM1=m.candles.at(-1);
+ const m1Recent=Boolean(lastClosedM1&&Number.isFinite(lastClosedM1.time)&&
+   now-lastClosedM1.time-60000>=0&&now-lastClosedM1.time-60000<125000);
+ const tickRecent=Boolean(observedM15&&observedM15.time===
+   Math.floor(now/900000)*900000&&now-observedM15.lastAt<=10000);
+ // Visible partial authentic M15 vs stricter forecast-issuance gate.
+ const formingVisible=Boolean(forming&&historyFresh&&!providerTransition&&
+   marketOpen&&forming.time===Math.floor(now/900000)*900000&&
+   (m1Recent||tickRecent));
+ const validLive=formingVisible&&m.historyFresh&&m.sniper.view.priceFresh;
  // Do not start an apparently FUTURE M15 route at the prior closed candle
  // while the current M15 candle has already moved. Anchor at the actually
  // observed same-venue PARTIAL candle; the first prediction is next FULL M15.
@@ -199,6 +207,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    (e?.kind==='BOS_UP'||e?.kind==='BOS_DOWN')&&
    Number.isFinite(e.confirmedAt)&&e.confirmedAt<=now
  ).sort((a:any,b:any)=>a.confirmedAt-b.confirmedAt).at(-1);
+ const preMove=useMemo(()=>detectPreMovePressure({
+   asset,c1:m.candles,c5:Array.isArray(x?.chartHigherFrames?.m5)?
+     x.chartHigherFrames.m5:[],now
+ }),[asset,m.candles,x?.chartHigherFrames?.m5,now]);
+ const preMoveReady=preMove.ok&&
+   (preMove.stage==='BUILDING'||preMove.stage==='ARMED')&&
+   preMove.side!=='WAIT';
+ const evidenceNote=preMoveReady?
+   'ضغط '+(preMove.side==='BUY'?'صعود':'هبوط')+
+   ' قبل الكسر · اختبار '+n(preMove.trigger)+' / إبطال '+n(preMove.invalidation):
+   'لا تهيئة مبكرة مؤكدة من M1/M5';
  const freshObservation=Boolean(validLive&&historyFresh&&m.sniper.view.priceFresh&&
    !providerTransition&&marketOpen);
  const freezeDecision=frozenM15Decision({
@@ -226,6 +245,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    }
    if(!freshObservation||safeSide==='WAIT'||anchor==null||
      !proposedGoals.length||lastAttempt.current===candleKey)return;
+   if(preMove.ok&&preMove.stage==='ARMED'&&preMove.side!==safeSide){
+     setBuildReason('ضغط M1/M5 المبكر يعارض الاتجاه؛ انتظار');
+     return;
+   }
    if(proposedStop!=null&&price!=null&&
       (safeSide==='BUY'?price<=proposedStop:price>=proposedStop))return;
    const scenario=buildM15Scenario({
@@ -255,7 +278,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  },[asset,now,closedTime,candleKey,blockedKey,freezeDecision,frozen,
     freshObservation,safeSide,anchor,forming?.time,actual,price,proposedStop,
     proposedGoals.map(g=>g.price).join('|'),latestBos?.confirmedAt,latestBos?.kind,
-   verifiedArchive.ready,verifiedArchive.storedBars,liquidity]);
+   verifiedArchive.ready,verifiedArchive.storedBars,liquidity,
+   preMove.stage,preMove.side]);
  const stable=blockedKey!==candleKey&&
    retainM15Snapshot(freezeDecision,frozen,asset,now)&&
    frozen?.asset===asset&&frozen.source===String(x?.candleSource||'')?frozen:null;
@@ -279,11 +303,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // fresh projection starting at the current live candle.
  const aligned=stable&&validLive&&forming&&
    stable.anchorTime===forming.time?stable:null;
+ // Only the first 12 hypothetical M15 bars appear: later chosen analogues
+ // have not demonstrated reliable out-of-sample predictive accuracy.
+ const shownBars=aligned?.scenario.bars.slice(0,12)??[];
  const goals=aligned?.scenario.ready&&!aligned.scenario.stopped?
-   aligned.goals.filter(g=>aligned.scenario.touches.includes(g.stage)):[];
+   aligned.goals.filter(g=>shownBars.some(b=>b.low<=g.price&&g.price<=b.high)):[];
  const stop=aligned?.stop??null;
  const projected=aligned?.scenario??noScenario;
- const reactionMap=aligned?.reactions??emptyReactionMap();
+ const reactionMap=aligned?{
+   bands:aligned.reactions.bands,
+   marks:aligned.reactions.marks.filter(m=>m.step<=shownBars.length)
+ }:emptyReactionMap();
  const savedProof=proofLedger.filter(p=>p.asset===asset&&
    p.source===String(x?.candleSource||'')&&p.anchorTime+2*900000<=now).at(-1);
  const proof=savedProof?evaluateM15ForwardProof(savedProof,actual,now):null;
@@ -319,7 +349,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ...trueHistory.flatMap(c=>[c.high,c.low]),
    ...goals.map(t=>t.price),
    ...(stop!=null?[stop]:[]),...(price!=null?[price]:[]),
-   ...projected.bars.flatMap(c=>[c.high,c.low]),
+   ...shownBars.flatMap(c=>[c.high,c.low]),
    ...visibleZones.flatMap(z=>[z.low,z.high]),
    ...(showLiquidity?reactionMap.bands.flatMap(z=>[z.low,z.high]):[]),
    ...reactionMap.marks.map(z=>z.price),
@@ -355,7 +385,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Every M15 is exactly one equally-spaced slot on either side of NOW.
  // Expanding a 4-bar stopped route into 14 huge slots distorted the candles.
  // If fewer analogues qualify, show fewer bars; never stretch or invent time.
- const projectedSlots=Math.max(40,projected.bars.length);
+ const projectedSlots=Math.max(40,shownBars.length);
  const projectedStride=(end-split-8)/projectedSlots;
  const candleWidth=clamp(Math.min(actualStride,projectedStride)*.60,1.7,3.2);
  // Display a maximum of five DISTINCT actual OHLC zones. Several demand,
@@ -427,7 +457,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {direction}</span>
    </header>
    <div className={'sniper-m15-lifecycle'+(paused?' paused':'')} role="status">
-     <span>{lifecycle}</span><span title={proof?.detail||'لا نعتبر الشموع الافتراضية نتيجة مؤكدة حتى تغلق شموع حقيقية لاحقة'}>{proofLabel}</span>
+     <span>{lifecycle}</span><span title={evidenceNote+' · '+
+       (proof?.detail||'لا نتيجة مؤكدة قبل إغلاق M15')}>
+       {preMoveReady?evidenceNote:proofLabel}</span>
    </div>
    <div className="sniper-m15-chart-box">
      <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
@@ -558,7 +590,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            left+(i+.5)*actualStride,candleWidth,false,'real'+b.time))}
          <line x1={split} x2={split} y1={plotTop} y2={plotBottom}
            stroke="#7e9bb1" strokeWidth="1.25" strokeDasharray="5 5"/>
-         {projected.ready&&projected.bars.map((b,i)=>
+         {projected.ready&&shownBars.map((b,i)=>
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
              candleWidth,true,'future'+i))}
          {projected.ready&&aligned&&forming&&<g className="sniper-m15-anchor-link">
@@ -665,11 +697,23 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                direction="rtl">{mark}</text>}
            </g>;
          })}
-         {validLive&&forming&&candle(forming.open,forming.high,forming.low,
-           forming.close,split-3,candleWidth,false,
-           'live-m15-'+forming.time)}
-         {validLive&&forming&&<circle cx={split-3} cy={py(forming.close)} r="1.7"
-           fill="#b0ffea" stroke="#001614" strokeWidth=".4"/>}
+         {formingVisible&&forming&&<g className="sniper-m15-live-partial">
+           <rect x={split-11} y={Math.max(plotTop,py(forming.high)-5)}
+             width="14" height={Math.max(12,py(forming.low)-py(forming.high)+10)}
+             fill="none" stroke="#a9e9ff" strokeOpacity=".5"
+             strokeWidth=".7" strokeDasharray="2 3"/>
+           {candle(forming.open,forming.high,forming.low,forming.close,
+             split-4,Math.max(3.6,candleWidth*1.6),false,
+             'live-m15-'+forming.time)}
+           <circle cx={split-4} cy={py(forming.close)} r="2.3"
+             fill="#c0f7ff" stroke="#00212c" strokeWidth=".7"/>
+           <text x={split-15} y={Math.max(plotTop+13,py(forming.high)-8)}
+             fill="#b9efff" fontSize="8" fontWeight="700"
+             textAnchor="end" direction="ltr">LIVE</text>
+           <title>{'شمعة M15 جارية وليست مغلقة: '+n(forming.close)+
+             ' · شموع M1 '+forming.minutes+
+             ' · عينات تيك '+forming.sampledTicks}</title>
+         </g>
        </g>
        {scaleLevels.map(level=>{
          const target=level.kind==='TARGET',isStop=level.kind==='STOP';
