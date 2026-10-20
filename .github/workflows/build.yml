@@ -80,6 +80,7 @@ jobs:
       - run: node tests/gold-radar-inline.cjs
       - run: node tests/sniper-m15-scenario.cjs
       - run: node tests/sniper-m15-target-bridge.cjs
+      - run: node tests/sniper-m15-mt5-viewport.cjs
       - run: node tests/sniper-m15-walkforward.cjs
       - run: node tests/sniper-m15-stability.cjs
       - run: npm run build
