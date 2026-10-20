@@ -8,12 +8,15 @@ export type L2BookSample={
  bidWallPrice:number|null;askWallPrice:number|null
 };
 export type OrderFlowMicroEvidence={
- ready:boolean;status:'WARMUP'|'STALE'|'OBSERVING'|'POSSIBLE_PULL';
+ ready:boolean;status:'WARMUP'|'STALE'|'OBSERVING'|'POSSIBLE_PULL'|'POSSIBLE_ABSORPTION';
  snapshots:number;spanSeconds:number;spreadBps:number|null;
  bidDepthUsd:number;askDepthUsd:number;imbalancePct:number;
  bidWall:number|null;askWall:number|null;
  bidPersistent:boolean;askPersistent:boolean;
- possibleBidPull:boolean;possibleAskPull:boolean;reason:string;
+ possibleBidPull:boolean;possibleAskPull:boolean;
+ possibleBidAbsorption:boolean;possibleAskAbsorption:boolean;
+ executedBuyUsd:number;executedSellUsd:number;midMoveBps:number|null;
+ reason:string;
  actionable:false;
 };
 type Side='BUY'|'SELL';
@@ -54,7 +57,10 @@ export function assessL2Persistence(input:{
     ready:false,status,reason,snapshots:0,spanSeconds:0,spreadBps:null,
     bidDepthUsd:0,askDepthUsd:0,imbalancePct:0,
     bidWall:null,askWall:null,bidPersistent:false,askPersistent:false,
-    possibleBidPull:false,possibleAskPull:false,actionable:false,...extras
+    possibleBidPull:false,possibleAskPull:false,
+    possibleBidAbsorption:false,possibleAskAbsorption:false,
+    executedBuyUsd:0,executedSellUsd:0,midMoveBps:null,
+    actionable:false,...extras
   });
  const now=input.now;
  const recent=input.snapshots.filter(s=>s&&Number.isFinite(s.at)&&
@@ -87,8 +93,14 @@ export function assessL2Persistence(input:{
    return prior.filter(s=>s[key]!=null&&Math.abs(s[key]!-level)<=tolerance)
     .length>=3;
  };
+ // The tape window and book are one AND THE SAME Coinbase venue.
+ // Prints outside the observed book window, incomplete sides, or future
+ // timestamps never contribute to a purported absorption pattern.
  const executed=input.executed?.filter(t=>t&&Number.isFinite(t.at)&&
-    t.at>=reference.at&&t.at<=now&&t.price>0&&t.size>0)||[];
+    t.at>=reference.at&&t.at<=latest.at&&t.price>0&&t.size>0&&
+    Number.isFinite(t.price*t.size)&&t.size<=500&&
+    (t.aggressor==='BUY'||t.aggressor==='SELL')&&
+    Math.abs(t.price-mid1)/mid1<=.0015)||[];
  const had=(side:'bid'|'ask')=>side==='bid'?reference.bidUsd:reference.askUsd;
  const has=(side:'bid'|'ask')=>side==='bid'?latest.bidUsd:latest.askUsd;
  const expectedFills=(side:'bid'|'ask')=>executed.filter(t=>
@@ -102,10 +114,41 @@ export function assessL2Persistence(input:{
      recent.slice(-2).every(s=>(side==='bid'?s.bidUsd:s.askUsd)<prev*.60);
  };
  const possibleBidPull=pull('bid'),possibleAskPull=pull('ask');
- return result(possibleBidPull||possibleAskPull?'POSSIBLE_PULL':'OBSERVING',
+ const traded=(side:Side)=>executed.filter(t=>t.aggressor===side);
+ const buyPrints=traded('BUY'),sellPrints=traded('SELL');
+ const spent=(rows:typeof executed)=>rows.reduce((v,t)=>v+t.price*t.size,0);
+ const executedBuyUsd=spent(buyPrints),executedSellUsd=spent(sellPrints);
+ const totalSpent=executedBuyUsd+executedSellUsd;
+ const midMoveBps=(mid1-mid0)/mid0*10000;
+ const absorption=(defended:'bid'|'ask')=>{
+   const side=defended==='bid'?'SELL':'BUY';
+   const rows=side==='SELL'?sellPrints:buyPrints;
+   const aggressiveUsd=side==='SELL'?executedSellUsd:executedBuyUsd;
+   // Large aggressive executions, a still-standing opposed depth side,
+   // no proportional mid-price progress, and NO same-side book vacuum.
+   // Visible snapshots do not prove whose limit orders survived or who
+   // replenished; this remains a non-actionable pattern to score later.
+   return stable&&spread<=6&&Math.abs(midMoveBps)<=2&&
+     rows.length>=8&&totalSpent>=80000&&
+     aggressiveUsd>=75000&&aggressiveUsd/totalSpent>=.72&&
+     had(defended)>=110000&&has(defended)>=had(defended)*.72&&
+     !pull(defended)&&
+     (defended==='bid'?held('bidWallPrice'):held('askWallPrice'));
+ };
+ const possibleBidAbsorption=absorption('bid');
+ const possibleAskAbsorption=absorption('ask');
+ const absorptionSeen=possibleBidAbsorption||possibleAskAbsorption;
+ return result(possibleBidPull||possibleAskPull?'POSSIBLE_PULL':
+   absorptionSeen?'POSSIBLE_ABSORPTION':'OBSERVING',
   possibleBidPull||possibleAskPull?
-   'انخفاض عمق مع سعر شبه ثابت؛ احتمال إلغاء أو تنفيذ غير مرصود، ليس إثبات تلاعب':
-   'عمق Coinbase المرصود والصفقات المنفذة من نفس المنصة فقط',
+   'اختفاء عمق مرصود دون تنفيذ كافٍ لتفسيره؛ إلغاء محتمل وليس إثبات تلاعب':
+   absorptionSeen?
+   'تدفق هجومي منفذ مع ثبات منتصف السعر واستمرار العمق المقابل؛ امتصاص محتمل فقط':
+   'عمق Coinbase المرصود والتنفيذات الفعلية من نفس المنصة، دون اتجاه مضمون',
   {...baseline,ready:true,bidPersistent:held('bidWallPrice'),
-   askPersistent:held('askWallPrice'),possibleBidPull,possibleAskPull});
+   askPersistent:held('askWallPrice'),possibleBidPull,possibleAskPull,
+   possibleBidAbsorption,possibleAskAbsorption,
+   executedBuyUsd:Math.round(executedBuyUsd),
+   executedSellUsd:Math.round(executedSellUsd),
+   midMoveBps:Number(midMoveBps.toFixed(2))});
 }
