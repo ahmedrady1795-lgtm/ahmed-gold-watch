@@ -3,6 +3,7 @@ import {useEffect,useState} from 'react';
 
 type Side='BUY'|'SELL'|'WAIT';
 type Reading={ready:boolean;phase:string;side:Side;
+ setupSide?:Side;setupAt?:number|null;confirmedAt?:number|null;
  label:string;reason:string;source?:string;eventAt?:number|null;price?:number|null;
  confirm?:number|null;invalidate?:number|null;evidence?:string[]};
 type Score={scored:number;directional:number;correct:number;paired:number;
@@ -54,14 +55,17 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
    radar?.ready&&eventFresh);
  const signal=Boolean(current&&radar?.phase==='CONFIRMED'&&
    (radar?.side==='BUY'||radar?.side==='SELL')&&
+   radar?.confirm!=null&&radar?.invalidate!=null&&
    Number.isFinite(Number(radar?.confirm))&&
    Number.isFinite(Number(radar?.invalidate)));
  const dom=state?.brokerDom;
  const label=!marketFresh?'السعر غير حي':
    !current?'انتظار شموع M1':
-   signal?(radar?.side==='BUY'?'سحب قاع / صعود مشروط':'سحب قمة / هبوط مشروط'):
+   signal?(radar?.side==='BUY'?'اتفعّل · صعود مشروط':'اتفعّل · هبوط مشروط'):
+   radar?.phase==='INVALIDATED'?'السيناريو اتلغى':
+   radar?.phase==='EXPIRED'?'انتهت مهلة التأكيد':
    radar?.phase==='COMPRESSION'?'انضغاط · انتظار الكسر':
-   radar?.phase==='WATCH'?'مراقبة فخ سيولة':'توازن · لا ترجيح';
+   radar?.phase==='WATCH'?'منتظر تأكيد':'توازن · لا ترجيح';
  const direction=signal?(radar?.side==='BUY'?'BUY':'SELL'):'WAIT';
  const upper=watch?.ready?watch.upper.find(x=>x.price>0)?.price:null;
  const lower=watch?.ready?watch.lower.find(x=>x.price>0)?.price:null;
@@ -80,7 +84,7 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
      title="تفاصيل الرادار ومصدره وسجل معايرة الإشارات">
      <span className="sniper-gold-radar-top">
        <strong>◈ رادار الذهب</strong>
-       <small>{signal?'إشارة M1':current?'رصد M1':'انتظار'} {expanded?'▴':'▾'}</small>
+       <small>{current?label:'انتظار'} {expanded?'▴':'▾'}</small>
      </span>
    </button>
    {expanded&&<section className="sniper-gold-radar-expanded"
@@ -92,8 +96,8 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
        <span>↑ {fmt(upper)}</span><span>↓ {fmt(lower)}</span>
      </span>
      <span className="sniper-gold-radar-confirm" dir="rtl">
-       {signal?
-         'تأكيد '+fmt(radar?.confirm)+' · إبطال '+fmt(radar?.invalidate):
+       {current&&radar?.confirm!=null&&radar?.invalidate!=null?
+         'إغلاق '+(radar.setupSide==='BUY'?'فوق ':'تحت ')+fmt(radar.confirm)+' · إبطال '+fmt(radar.invalidate):
          'لا دخول · انتظار تأكيد'}
      </span>
      <span className="sniper-gold-radar-source">
@@ -101,6 +105,7 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
        {current?' · M1 منذ '+freshness+' ثانية':''}
      </span>
      <span>{current?radar?.reason:'لا توجد قراءة مؤهلة حديثة؛ الاتجاه انتظار'}</span>
+     {current&&radar?.evidence?.map((item,i)=><span key={i}>• {item}</span>)}
      <span>المصدر: {source}</span>
      <span>إغلاق الشمعة: {current?new Date(eventAt).toLocaleTimeString('en-GB',
        {hour:'2-digit',minute:'2-digit',timeZone:'Asia/Dubai'}):'—'}</span>
@@ -109,6 +114,7 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
        'دفتر أوامر MT5 غير متاح أو غير مؤهل'}</span>
      {domReady&&<span>عمق طلب {dom?.bidDepthLots??'—'} · عرض {dom?.askDepthLots??'—'}
        {' '}· اختلال {dom?.imbalancePct??'—'}%</span>}
+     <small>النتائج التالية تشمل سجل الرادار السابق؛ ليست قياسًا مستقلًا لمنطق التأكيد الجديد.</small>
      <span>نتائج M1: {score(state?.m1)}</span>
      <span>نتائج M15: {score(state?.m15)}</span>
      <small>الرصد من شموع مغلقة؛ المستويات أهداف مراقبة وليست أسعار تنفيذ
