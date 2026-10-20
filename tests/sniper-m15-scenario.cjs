@@ -23,6 +23,15 @@ const common={history:raw,now,anchor:price,side:'BUY',targets:[
  {price:price+2},{price:price+6},{price:price+30}],steps:36};
 const a=buildM15Scenario(common);
 assert.equal(a.ready,true,a.reason);
+const shortClassic=buildM15Scenario({...common,steps:12});
+const longerClassic=buildM15Scenario({...common,steps:48});
+assert.ok(shortClassic.ready&&longerClassic.ready,
+ 'classic 48-slot chart must be based on a real valid analogue');
+assert.ok(longerClassic.bars.length>=shortClassic.bars.length);
+assert.equal(JSON.stringify(longerClassic.bars.slice(0,shortClassic.bars.length)),
+ JSON.stringify(shortClassic.bars),
+ 'the old 48-bar view must NEVER alter the originally scored first 12 bars');
+
 assert.ok(a.bars.length>10);
 assert.equal(a.origin,'RECENT_M15');
 assert.equal(a.archiveYears,0);
