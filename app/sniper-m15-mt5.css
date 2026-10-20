@@ -1,0 +1,21 @@
+/* M15 MetaTrader-style candle zoom. Keeps radar and the mobile
+   liquidity strip in their existing positions. The control affects ONLY scale. */
+.sniper-m15-chart-box{position:relative}
+.sniper-m15-zoom-toggle{
+ position:absolute;z-index:8;top:3px;left:26.5%;
+ border:1px solid #456774;border-radius:4px;
+ background:rgba(7,20,29,.93);color:#cde4ec;cursor:pointer;
+ padding:3px 5px;white-space:nowrap;font-size:9px;line-height:1.3;
+ direction:rtl;max-width:27%;overflow:hidden;text-overflow:ellipsis;
+ box-shadow:0 1px 3px #0009;
+}
+.sniper-m15-zoom-toggle[aria-pressed=true]{
+ border-color:#5da99f;color:#91e1cc;
+}
+.sniper-m15-zoom-toggle:focus-visible{
+ outline:2px solid #7cecc9;outline-offset:2px;
+}
+@media(max-width:600px){
+ .sniper-m15-zoom-toggle{top:2px;left:24%;max-width:30%;
+  font-size:8px;padding:2px 3px}
+}
