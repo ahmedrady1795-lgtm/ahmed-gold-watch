@@ -13,8 +13,10 @@ assert.match(radar,/radar\?\.phase==='CONFIRMED'/,
  'only closed-bar evidence can express conditional direction');
 assert.match(radar,/DOM غير متاح/,'missing MT5 DOM must be disclosed');
 assert.match(radar,/لا دخول · انتظار تأكيد/,'WAIT must not look like an order');
-assert.match(chart,/strokeDasharray=\{future\?'2 2':undefined\}/,
- 'hypothetical M15 candles must not look identical to actual ones');
+assert.match(chart,/className=\{future\?'sniper-m15-projected':'sniper-m15-real'\}/,
+ 'conditional M15 candles remain separately classed from observed candles');
+assert.match(chart,/شموع ممتلئة · امتداد شرطي غير زمني/,
+ 'full-bodied forecast remains marked as a non-timed illustration');
 assert.match(css,/position:absolute/,'radar belongs inside the chart surface');
 assert.match(css,/right:18%/,'radar occupies forecast area, not real OHLC');
 assert.match(css,/sniper-m15-watch-strip/,'watch levels reserve layout height');
