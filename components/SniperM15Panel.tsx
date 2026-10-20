@@ -904,8 +904,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            <circle cx={split-4} cy={py(forming.close)} r="2.3"
              fill="#c0f7ff" stroke="#00212c" strokeWidth=".7"/>
            <text x={split-15} y={Math.max(plotTop+13,py(forming.high)-8)}
-             fill="#b9efff" fontSize="8" fontWeight="700"
-             textAnchor="end" direction="ltr">LIVE</text>
+             fill="#b9efff" fontSize="8.2" fontWeight="700"
+             textAnchor="end" direction="ltr" stroke="#000"
+             strokeWidth="2.5" paintOrder="stroke">{'LIVE '+n(forming.close)}</text>
            <title>{'شمعة M15 جارية وليست مغلقة: '+n(forming.close)+
              ' · شموع M1 '+forming.minutes+
              ' · عينات تيك '+forming.sampledTicks}</title>
