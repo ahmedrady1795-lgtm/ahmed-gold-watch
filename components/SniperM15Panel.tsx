@@ -381,7 +381,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      }].slice(-36));
    setFrozen({asset,source,closedTime,anchorTime,createdAt:now,
      side:safeSide,goals:proposedGoals,stop:scenarioStop,scenario,reactions,
-     visualBars,evidenceLevel:issuance.level});
+     visualBars,evidenceLevel:issuance.level==='WAIT'?undefined:issuance.level});
  },[asset,now,closedTime,candleKey,blockedKey,freezeDecision,frozen,
     restoredKey,persistenceScope,
     freshObservation,safeSide,anchor,forming?.time,actual,price,scenarioStop,
