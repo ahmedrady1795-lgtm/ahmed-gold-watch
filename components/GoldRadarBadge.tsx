@@ -1,5 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
+import {goldPreparation} from '../lib/institutional-preparation-radar';
+import type {Mt5GoldDomReading} from '../lib/gold-mt5-dom';
 
 type Side='BUY'|'SELL'|'WAIT';
 type Reading={ready:boolean;phase:string;side:Side;
@@ -8,9 +10,7 @@ type Reading={ready:boolean;phase:string;side:Side;
  confirm?:number|null;invalidate?:number|null;evidence?:string[]};
 type Score={scored:number;directional:number;correct:number;paired:number;
  pairedBaselineRate:number|null;pairedRadarRate:number|null;pending:number;noData:number;ready:boolean};
-type BrokerDom={available:boolean;status:string;reason:string;symbol:string|null;
- samples:number;bidDepthLots:number|null;askDepthLots:number|null;
- imbalancePct:number|null;source:string;actionable:false};
+type BrokerDom=Mt5GoldDomReading;
 type Status={ok:boolean;status:string;radar:Reading;events:number;
  updatedAt:number;m1:Score;m15:Score;brokerDom?:BrokerDom};
 type Watch={ready:boolean;upper:{price:number}[];lower:{price:number}[]};
@@ -71,6 +71,11 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
  const lower=watch?.ready?watch.lower.find(x=>x.price>0)?.price:null;
  const source=radar?.source||'مصدر M1 غير متاح';
  const domReady=Boolean(dom?.available&&Number(dom.samples)>=4);
+ const prep=goldPreparation({fresh:marketFresh,dom,
+   radarFresh:current,radarSide:radar?.side??'WAIT',
+   radarPhase:radar?.phase});
+ const preparationStatus=prep.available?prep.label:
+   'تحضير مؤسسي: عمق MT5 غير جاهز';
  const freshness=current?Math.round((now-eventAt)/1000):null;
  const score=(s:Score|undefined)=>!s?'قيد القياس':
    s.ready&&s.paired>0?
@@ -84,11 +89,23 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
      title="تفاصيل الرادار ومصدره وسجل معايرة الإشارات">
      <span className="sniper-gold-radar-top">
        <strong>◈ رادار الذهب</strong>
-       <small>{current?label:'انتظار'} {expanded?'▴':'▾'}</small>
+       <small>{preparationStatus} {expanded?'▴':'▾'}</small>
      </span>
    </button>
    {expanded&&<section className="sniper-gold-radar-expanded"
      aria-label="تفاصيل قراءة رادار الذهب">
+     <strong>رادار التحضير المؤسسي · {prep.label}</strong>
+     <span>{prep.source}</span>
+     {prep.observations.length?
+       prep.observations.map((note,i)=><span key={'prep-'+i}>• {note}</span>):
+       <span>لا يوجد دليل مبكر من دفتر أوامر موثوق حاليًا.</span>}
+     <small>ICEBERG: غير قابل للتأكيد من دفتر MT5 وحده،
+       لأن تنفيذات العقود الفعلية غير متاحة.</small>
+     <small>خداع الأوامر: {prep.withdrawalWarning?
+       'اختفاء عمق معلن غير مفسَّر؛ ليس إثبات تلاعب أو أوامر وهمية':
+       'لا توجد بصمة سحب غير مفسر مرصودة'}.</small>
+     <small>مقارنة GC مع XAUUSD: غير مفعّلة، لا توجد تغذية عقود GC مباشرة موثقة.
+       لن نستنتج قيادة العقود من شموع السبوت.</small>
      <strong>قراءة السيولة · ليست كشفًا لأوامر البنوك</strong>
      <b className={'sniper-gold-radar-state '+(signal?direction.toLowerCase():'')}>
        {label}</b>
