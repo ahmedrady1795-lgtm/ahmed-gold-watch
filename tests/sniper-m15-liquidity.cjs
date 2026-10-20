@@ -187,25 +187,35 @@ const evidence={side:'SELL',qualified:false,radarStatus:'ALIGNED',radarSide:'SEL
  m15Side:'SELL',m15Votes:2,structuralActive:false,
  structuralSide:'WAIT',structuralAgreement:0,fresh:true,
  goals:2,stop:103,anchor:100};
-assert.equal(assessIssuance(evidence).allowed,true,'fresh multi-frame agreement may issue');
-assert.equal(assessIssuance({...evidence,radarStatus:'CONFLICT'}).allowed,false,
- 'opposing M1/M5 must veto a new forecast');
-assert.equal(assessIssuance({...evidence,radarStatus:'M1_ONLY'}).allowed,false,
- 'one unverified frame cannot issue a forecast each 15 minutes');
-assert.equal(assessIssuance({...evidence,m15Votes:0}).allowed,false,
- 'M15 direction without confirming votes cannot issue a forecast');
+assert.equal(assessIssuance(evidence).level,'CONFLUENCE',
+ 'two-frame evidence issues a chart-only scenario without an executable trade');
+assert.equal(assessIssuance({...evidence,radarStatus:'CONFLICT'}).level,'PRELIMINARY',
+ 'M15 alone remains a tentative visible trend despite M1/M5 disagreement');
+assert.equal(assessIssuance({...evidence,radarStatus:'M1_ONLY'}).level,'PRELIMINARY',
+ 'closed M15 direction is enough for a labeled preliminary forecast');
+assert.equal(assessIssuance({...evidence,m15Votes:0}).level,'PRELIMINARY',
+ 'M1/M5 agreement alone can support a tentative illustration');
 assert.equal(assessIssuance({...evidence,structuralActive:true,
  structuralSide:'BUY',structuralAgreement:3}).allowed,false,
- 'opposing H1/H4 structural evidence must veto scenario');
-assert.equal(assessIssuance({...evidence,qualified:true,radarStatus:'M1_ONLY'}).allowed,true,
- 'an independently qualified scenario can issue when M15 structure agrees');
+ 'actual opposing H1/H4 structure prevents fabricated certainty');
+assert.equal(assessIssuance({...evidence,qualified:true,radarStatus:'M1_ONLY'}).level,
+ 'QUALIFIED','qualified plan supported by M15 gets a different label');
 assert.equal(assessIssuance({...evidence,fresh:false}).allowed,false,
- 'stale or unavailable data is always WAIT');
-assert.equal(assessIssuance({...evidence,stop:null}).allowed,false,
- 'invalid risk boundary cannot masquerade as a certain scenario');
+ 'stale or unavailable data always blocks forecast issuance');
+assert.equal(assessIssuance({...evidence,stop:null,goals:0}).level,'CONFLUENCE',
+ 'absence of trade TP/SL cannot suppress read-only directional analysis');
+assert.equal(assessIssuance({...evidence,stop:99}).allowed,false,
+ 'a stop on the wrong side is invalid, even for a tentative chart');
+assert.equal(assessIssuance({...evidence,m15Side:'WAIT',m15Votes:0,
+ radarStatus:'RANGE',radarSide:'WAIT'}).allowed,false,
+ 'a truly featureless range must not invent a directional forecast');
 assert.match(chart,/if\(!issuance\.allowed\|\|safeSide==='WAIT'/,
- 'issuance gate and TypeScript-narrowed direction both required');
-assert.match(chart,/persistenceKey='qannas-m15-freeze-evidence-v2-'/,
- 'old unqualified visual scenarios are never silently restored');
+ 'analysis issuance still rejects WAIT and lacks no source verification');
+assert.match(chart,/persistenceKey='qannas-m15-freeze-analysis-v3-'/,
+ 'old over-restricted saved projections do not reappear as new ones');
+assert.match(chart,/allowNoTargets:true/,
+ 'chart analysis may show authentic analogues without made-up objectives');
+assert.match(chart,/evidenceLevel:issuance.level/,
+ 'frozen snapshot remembers whether its evidence was preliminary');
 
 console.log('PASS: M15 supply/demand, liquidity pools, true accumulation box, confirmed sweeps/BOS, freshness & mobile toggle');
