@@ -95,6 +95,8 @@ export function buildM15Scenario(input:{
  history:unknown; archive?:unknown; now:number;anchor:number|null;
  side:M15Side;targets:readonly {price:number}[];stop?:number|null;steps?:number;
  archiveYears?:number;
+ // Chart-only: allow a directional historical analogue without invented TP.
+ allowNoTargets?:boolean;
 }):M15Scenario{
  const live=closedM15Bars(input.history,input.now,500);
  const extra=closedM15Bars(input.archive,input.now,40000);
@@ -126,7 +128,7 @@ export function buildM15Scenario(input:{
    return empty('مدى M15 الحالي غير مناسب للمحاكاة',base.length,years);
  const dir=input.side==='BUY'?1:-1;
  const goals=input.targets.slice(0,3);
- if(!goals.length||goals.some((g,i)=>!Number.isFinite(g.price)||g.price<=0||
+ if((!goals.length&&!input.allowNoTargets)||goals.some((g,i)=>!Number.isFinite(g.price)||g.price<=0||
    dir*(g.price-input.anchor!)<=0||
    i>0&&dir*(g.price-goals[i-1].price)<=0))
    return empty('مستويات الأهداف ليست مرتبة في اتجاه الحركة',base.length,years);
@@ -238,11 +240,12 @@ export function buildM15Scenario(input:{
    }
    if(output.length>=count)break;
  }
- if(!output.length)return empty('لا توجد مقاطع M15 لا تلامس الإبطال؛ لا نعرض مسارًا غير صالح',base.length,years);
+ if(!output.length)return empty('لا يوجد نظير تاريخي صالح للاتجاه والإبطال؛ لا نختلق شموعًا',base.length,years);
  return {ready:true,bars:output,reason:archival?
    'شموع M15 من أرشيف متحقق متعدد السنوات؛ ليست أسعار مستقبلية مؤكدة':
    captured?'محاكاة من أرشيف M15 متزايد بنفس المصدر؛ ليس أرشيف سنوات كاملًا':
-   'محاكاة M15 من الشموع المغلقة المتاحة حديثًا؛ أرشيف سنوات غير متصل',
+   'محاكاة M15 من الشموع المغلقة المتاحة حديثًا؛ أرشيف سنوات غير متصل'+
+   (!goals.length?' · بلا أهداف سعرية موثقة':''),
    sourceBars:base.length,archiveYears:years,
    origin:archival?'MULTI_YEAR_ARCHIVE':captured?'CAPTURED_M15':'RECENT_M15',
    touches,stopped,atr};
