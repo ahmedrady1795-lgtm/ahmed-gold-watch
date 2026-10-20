@@ -114,4 +114,40 @@ assert.match(chart,/sniper-m15-liquidity-toggle/);
 assert.match(chart,/aria-pressed=\{showLiquidity\}/);
 assert.match(chart,/scaleLevels\.map/,'keep the original target/invalidation scale');
 assert.match(css,/\.sniper-m15-liquidity-toggle/);
+
+// Buyer/seller zones are exact price bands from closed history, not fake DOM.
+const boardModule={exports:{}};
+vm.runInNewContext(ts.transpileModule(
+ fs.readFileSync('lib/sniper-m15-liquidity-board.ts','utf8'),{
+ compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
+}).outputText,{module:boardModule,exports:boardModule.exports});
+const makeBoard=boardModule.exports.buildM15LiquidityBoard;
+const flat=data.map(b=>({...b,open:100,high:100.3,low:99.7,close:100}));
+const sampleBoard=makeBoard({now,price:100,history:flat,liquidity:x,
+ watch:{ready:true,upper:[{price:102.4}],lower:[{price:98.4}],atr:1,asOf:now,reason:''}});
+assert.equal(sampleBoard.ready,true);
+assert.equal(sampleBoard.items.length,4,'sell buy upper and lower liquidity all visible');
+assert.equal(sampleBoard.items[0].key,'SELL');
+assert.equal(sampleBoard.items[0].low,100.65,'sell price band is not a projection');
+assert.equal(sampleBoard.items[1].high,99.55,'buy price band from closed OHLC');
+assert.equal(sampleBoard.items[2].low,101.4,'upper stop pool keeps exact bounds');
+assert.equal(sampleBoard.items[3].low,98.7,'lower stop pool keeps exact bounds');
+assert.equal(sampleBoard.context.label,'تجميع سعري مرصود');
+const breaker=flat.map(b=>({...b}));
+breaker[breaker.length-1]={...breaker.at(-1),high:101.65,close:101.50};
+const brokenBoard=makeBoard({now,price:100,history:breaker,liquidity:x,
+ watch:{ready:false,upper:[],lower:[],atr:null,asOf:null,reason:''}});
+assert.equal(brokenBoard.items[0].low,null,
+ 'sell area must vanish after a subsequent closed M15 breaks above supply');
+const unavailable=makeBoard({now,price:100,history:flat,
+ liquidity:build({...common,sourceReady:false}),
+ watch:{ready:false,upper:[],lower:[],atr:null,asOf:null,reason:''}});
+assert.equal(unavailable.ready,false);
+assert.ok(unavailable.items.every(i=>i.low===null),'stale inputs must never show old prices');
+assert.match(chart,/buildM15LiquidityBoard/);
+assert.match(chart,/sniper-m15-board-grid/);
+assert.match(fs.readFileSync('app/gold-sniper-radar.css','utf8'),
+ /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/,
+ 'mobile readout must not block the same-size MetaTrader candles');
+
 console.log('PASS: M15 supply/demand, liquidity pools, true accumulation box, confirmed sweeps/BOS, freshness & mobile toggle');
