@@ -34,7 +34,7 @@ const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(chart,/assessRadarNextCandle/,'the first candle is assessed against radar evidence');
 assert.match(chart,/assessSniperEntryCandle/,'closed M1 candle is independently checked');
 assert.match(chart,/firstRadarCandle/,'decision is drawn above first projected candle');
-assert.match(chart,/validLive&&forming&&candle\(forming\.open/,'live M15 has a real OHLC body');
+assert.match(chart,/formingVisible&&forming&&<g className="sniper-m15-live-partial"/,'authentic live M15 partial has an unmistakable outline');
 const display=fs.readFileSync('components/OrderFlowRadar.tsx','utf8');
 assert.match(display,/onView\?\./,'radar state reaches M15 decision');
 console.log('PASS: radar/M1 two-source first-candle confirmation, expiry, venue isolation and OHLC');
