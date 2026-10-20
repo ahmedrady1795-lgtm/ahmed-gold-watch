@@ -32,6 +32,38 @@ const filled=assessL2Persistence({snapshots:pulled,now:base+12000,executed:[
  {at:base+9000,price:99999,size:20,aggressor:'SELL'}
 ]});
 assert.equal(filled.possibleBidPull,false,'matching executed sells can explain bid-depth disappearance');
+const sellTape=Array.from({length:10},(_,i)=>({
+ at:base+3000+i*700,price:99999,size:.20,aggressor:'SELL'
+}));
+const sells=sellTape.filter(t=>t.at<=base+8000);
+const defendedBuy=assessL2Persistence({snapshots:hist,
+ now:base+8000,executed:sells});
+assert.equal(defendedBuy.possibleBidAbsorption,true,
+ 'actual aggressive sells with a strong unbroken BID wall and flat price');
+assert.equal(defendedBuy.possibleAskAbsorption,false);
+assert.equal(defendedBuy.status,'POSSIBLE_ABSORPTION');
+assert.ok(defendedBuy.executedSellUsd>=75000);
+assert.equal(defendedBuy.actionable,false);
+const buyTape=sellTape.map(t=>({...t,aggressor:'BUY'}));
+const defendedSell=assessL2Persistence({snapshots:hist,now:base+8000,
+ executed:buyTape.filter(t=>t.at<=base+8000)});
+assert.equal(defendedSell.possibleAskAbsorption,true);
+const tiny=assessL2Persistence({snapshots:hist,now:base+8000,
+ executed:sellTape.map(t=>({...t,size:.0002}))});
+assert.equal(tiny.possibleBidAbsorption,false,
+ 'many small prints are not meaningful aggressive USD execution');
+const mixed=assessL2Persistence({snapshots:hist,now:base+8000,
+ executed:[...sells,...buyTape.filter(t=>t.at<=base+8000)]});
+assert.equal(mixed.possibleBidAbsorption,false,
+ 'balanced buying and selling cannot masquerade as bid absorption');
+const futureFills=assessL2Persistence({snapshots:hist,now:base+8000,
+ executed:sellTape.map(t=>({...t,at:base+15000}))});
+assert.equal(futureFills.possibleBidAbsorption,false,
+ 'future prints cannot qualify a causally observed footprint');
+const vanished=assessL2Persistence({snapshots:pulled,now:base+12000,
+ executed:sellTape.map(t=>({...t,at:base+7000}))});
+assert.equal(vanished.possibleBidAbsorption,false,
+ 'a vanished bid wall cannot be called a bid-side absorber');
 const stale=assessL2Persistence({snapshots:hist,now:base+30000});
 assert.equal(stale.status,'STALE');
 assert.equal(stale.ready,false);
@@ -44,6 +76,10 @@ const css=fs.readFileSync('app/workspace.css','utf8');
 assert.match(radar,/assessL2Persistence/);
 assert.match(radar,/bookSamples=\[/);
 assert.match(panel,/micro\?\.possibleBidPull/);
+assert.match(panel,/micro\?\.possibleBidAbsorption/);
+assert.match(panel,/micro\?\.possibleAskAbsorption/);
+assert.match(panel,/بصمة: امتصاص بيع/);
+assert.match(panel,/بصمة: امتصاص شراء/);
 assert.match(panel,/compact\?\s*null/);
 assert.match(chart,/onView=\{onRadarView\} compact/);
 assert.match(css,/\.sniper-flow-radar-chip/);
