@@ -21,6 +21,7 @@ jobs:
           import urllib.request,urllib.error,json,datetime,time,sys
           root='https://ahmed-gold-watch-free.onrender.com'
           paths=['/','/api/live','/api/quote','/api/market',
+                 '/api/btc','/api/orderflow',
                  '/api/gc-futures','/api/gold-radar','/api/mt5/status',
                  '/api/health']
           results={}
