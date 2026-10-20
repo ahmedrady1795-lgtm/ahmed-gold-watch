@@ -11,6 +11,7 @@ import {assessChartObservation} from '../lib/chart-observation-radar';
 import {buildDistantMovementOutlook} from '../lib/sniper-movement-outlook';
 import {buildM15Scenario,closedM15Bars,sampledLiveM15,observeM15Tick} from '../lib/sniper-m15-scenario';
 import {mt5M15Viewport} from '../lib/sniper-m15-mt5-viewport';
+import {assessM15FrozenChartAlignment} from '../lib/sniper-m15-visual-alignment';
 import type {ObservedM15} from '../lib/sniper-m15-scenario';
 import type {M15Scenario,M15Side} from '../lib/sniper-m15-scenario';
 import {frozenM15Decision,retainM15Snapshot} from '../lib/sniper-m15-freeze';
@@ -335,8 +336,20 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    frozen?.asset===asset&&frozen.source===String(x?.candleSource||'')?frozen:null;
  const paused=Boolean(stable&&freezeDecision==='PAUSE');
  const awaitingReplacement=Boolean(stable&&freezeDecision==='REBUILD');
+ // Never redraw the frozen prediction against new LIVE prices. If the live
+ // market has moved several ordinary M15 ranges away, temporarily HIDE the
+ // obsolete forecast, preserving the original OHLC for forward evaluation.
+ const comparisonStep=stable&&forming?
+   Math.max(0,Math.round((forming.time-stable.anchorTime)/900000)):0;
+ const visualAlignment=stable&&validLive&&forming?
+   assessM15FrozenChartAlignment({
+     original:stable.scenario.bars,historical:actual,live:forming.close,
+     atr:stable.scenario.atr,elapsedSteps:comparisonStep
+   }):null;
+ const detached=visualAlignment?.reason==='MOVED_AWAY';
  const lifecycle=paused?'السيناريو محفوظ · البيانات متأخرة':
    awaitingReplacement?'السيناريو السابق محفوظ · تقييم إغلاق M15':
+   detached?'حركة LIVE تجاوزت نطاق توقع M15 المحفوظ · انتظار إغلاق الشمعة دون إعادة رسم':
    stable?.scenario.stopped?'محاكاة M15 لامست الإبطال عند الشمعة '+
      stable.scenario.bars.length+' · الأهداف المعروضة ليست نتائج فعلية':
    stable?'سيناريو ثابت منذ '+h(stable.createdAt)+' · لا يُعاد رسمه كل M15':
@@ -353,7 +366,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // fresh projection starting at the current live candle.
  const aligned=stable&&validLive&&forming&&
    stable.anchorTime<=forming.time&&
-   forming.time<stable.anchorTime+12*900000?stable:null;
+   forming.time<stable.anchorTime+12*900000&&!detached?stable:null;
  const elapsedSteps=aligned&&forming?
    Math.max(0,Math.round((forming.time-aligned.anchorTime)/900000)):0;
  // Retain ORIGINAL forecast timestamps. On later real candles only the
@@ -945,11 +958,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {!projected.ready&&<g className="sniper-m15-empty-reason">
          <text x={(split+end)/2} y={plotTop+66} fill="#d6bd8f"
            fontSize="9" textAnchor="middle" direction="rtl">
-           {blockedKey===candleKey?'السيناريو مُبطل':
+           {detached?'السعر الحي ابتعد عن التوقع المحفوظ':
+             blockedKey===candleKey?'السيناريو مُبطل':
              safeSide==='WAIT'?'نطاق سعري · راقب الكسر بعد الإغلاق':'انتظار سيناريو صالح'}</text>
          <text x={(split+end)/2} y={plotTop+83} fill="#9baaba"
            fontSize="8.3" textAnchor="middle" direction="rtl">
-           {freshObservation&&conditionalRange.valid?
+           {detached?'الشموع المتوقعة لم تتغير · انتظار إغلاق M15':
+              freshObservation&&conditionalRange.valid?
               'فوق '+n(conditionalRange.upper)+' | تحت '+n(conditionalRange.lower):
               freshObservation?'لا توجد إشارة مؤكدة':'بانتظار تحديث بيانات السوق'}</text>
          <title>{lifecycle}</title>
