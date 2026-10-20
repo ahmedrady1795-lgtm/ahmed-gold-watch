@@ -24,6 +24,7 @@ import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {detectPreMovePressure} from '../lib/pre-move-pressure';
 import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
 import {buildM15LiquidityBoard} from '../lib/sniper-m15-liquidity-board';
+import {assessM15ScenarioIssuance} from '../lib/sniper-m15-evidence-issuance';
 import {buildM15WatchPriceMap} from '../lib/sniper-m15-watch-prices';
 import {buildM15ReactionMap,emptyReactionMap} from '../lib/sniper-m15-reactions';
 import {futureM15WatchZones,conditionalM15BreakoutLevels} from '../lib/sniper-m15-future-zones';
@@ -205,7 +206,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const candleKey=asset+':'+String(x?.candleSource||'')+':'+closedTime;
  const currentSource=String(x?.candleSource||'');
  const persistenceScope=asset+':'+currentSource;
- const persistenceKey='qannas-m15-freeze-classic-v1-'+asset;
+ const persistenceKey='qannas-m15-freeze-evidence-v2-'+asset;
  useEffect(()=>{
    if(!currentSource)return;
    let restored:FrozenChart|null=null;
@@ -273,6 +274,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    'لا تهيئة مبكرة مؤكدة من M1/M5';
  const freshObservation=Boolean(validLive&&historyFresh&&m.sniper.view.priceFresh&&
    !providerTransition&&marketOpen);
+ const issuance=assessM15ScenarioIssuance({
+   side:safeSide,qualified,radarStatus:radar.status,radarSide:radar.side,
+   m15Side:m15Bias.side,m15Votes:m15Bias.votes,
+   structuralActive:m.bias.active,structuralSide:m.bias.side,
+   structuralAgreement:m.bias.agreement,fresh:freshObservation,
+   goals:proposedGoals.length,stop:proposedStop,anchor
+ });
  const freezeDecision=frozenM15Decision({
    old:frozen&&frozen.source===String(x?.candleSource||'')?{asset:frozen.asset,closedTime:frozen.closedTime,
      side:frozen.side,stop:frozen.stop,createdAt:frozen.createdAt,
@@ -298,8 +306,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      lastAttempt.current='';
      return;
    }
-   if(!freshObservation||safeSide==='WAIT'||anchor==null||
-     !proposedGoals.length||lastAttempt.current===candleKey)return;
+   if(!issuance.allowed||lastAttempt.current===candleKey)return;
    if(preMove.ok&&preMove.stage==='ARMED'&&preMove.side!==safeSide){
      setBuildReason('ضغط M1/M5 المبكر يعارض الاتجاه؛ انتظار');
      return;
@@ -346,7 +353,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
     freshObservation,safeSide,anchor,forming?.time,actual,price,proposedStop,
     proposedGoals.map(g=>g.price).join('|'),latestBos?.confirmedAt,latestBos?.kind,
    verifiedArchive.ready,verifiedArchive.storedBars,liquidity,
-   preMove.stage,preMove.side]);
+   preMove.stage,preMove.side,issuance.allowed]);
  const stable=blockedKey!==candleKey&&
    retainM15Snapshot(freezeDecision,frozen,asset,now)&&
    frozen?.asset===asset&&frozen.source===String(x?.candleSource||'')?frozen:null;
@@ -375,6 +382,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      'توازن M15 · مراقبة إغلاق فوق '+n(conditionalRange.upper)+
        ' أو تحت '+n(conditionalRange.lower)+' · ليست إشارة دخول':
    safeSide==='WAIT'?'توازن السوق · لا اتجاه مرجح حاليًا':
+   !issuance.allowed?issuance.reason:
    buildReason||(!proposedGoals.length?'لا توجد أهداف هيكلية صالحة حاليًا':'جارٍ تقييم سيناريو M15');
  // Structural H1/H4 pivots are only watch levels; TP prices on this M15
  // forecast rail must have an actual intersecting hypothetical wick.
@@ -446,7 +454,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  });
  const phase=sniperPhaseBadge({ready:liquidity.ready,
    contextKind:liquidity.context?.kind,phase:liquidity.phase,side:chartSide});
- const W=430,H=704,left=8,split=184,end=357,axis=359,
+ const W=430,H=704,left=8,split=184,end=422,
    plotTop=26,plotBottom=H-33;
  // A single absolute price axis contains EVERY currently valid target and
  // stop. No fake vertical positioning of offscreen targets.
@@ -466,6 +474,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ...(showLiquidity?reactionMap.bands.flatMap(z=>[z.low,z.high]):[]),
    ...reactionMap.marks.map(z=>z.price),
    ...(showLiquidity?futureZones.flatMap(z=>[z.low,z.high]):[]),
+   ...(showLiquidity?zoneBoard.items.flatMap(z=>z.low!=null&&z.high!=null?
+     [z.low,z.high]:[]):[]),
    ...(formingVisible&&forming?[forming.open,forming.high,forming.low,forming.close]:[])
  ].filter(v=>Number.isFinite(v)&&v>0);
  // A missing LIVE candle is NOT a price of $1. In WAIT/stale states
@@ -487,20 +497,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ...(stop!=null?[{key:'SL',price:stop,kind:'STOP'}]:[]),
    ...(price!=null?[{key:'LIVE',price,kind:'PRICE'}]:[])
  ];
- const nearLevels=scaleLevels.filter(v=>v.price>=lo&&v.price<=hi);
- const distantTargets=scaleLevels.filter(v=>
-   (v.kind==='TARGET'||v.kind==='ILLUSTRATION'||v.kind==='STOP')&&
-   (v.price<lo||v.price>hi)).slice(0,4);
- const rail=nearLevels.map(v=>({...v,exactY:py(v.price),labelY:py(v.price)}))
-   .sort((a,b)=>a.exactY-b.exactY);
- const railMargin=plotTop+15,railBottom=plotBottom-15,railGap=29;
- for(let i=0;i<rail.length;i++)
-   rail[i].labelY=Math.max(rail[i].exactY,railMargin+i*railGap,
-     i?rail[i-1].labelY+railGap:railMargin);
- const overhang=rail.length?Math.max(0,rail[rail.length-1].labelY-railBottom):0;
- if(overhang)for(const point of rail)point.labelY-=overhang;
- const underhang=rail.length?Math.max(0,railMargin-rail[0].labelY):0;
- if(underhang)for(const point of rail)point.labelY+=underhang;
  const actualStride=(split-left-5)/Math.max(trueHistory.length,1);
  const timeX=(time:number)=>left+
    clamp((time-(trueHistory[0]?.time??time))/900000,0,trueHistory.length)*actualStride;
@@ -537,42 +533,25 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const zoneOverhang=zoneLabelPoints.length?
    Math.max(0,zoneLabelPoints[zoneLabelPoints.length-1].y-(plotBottom-15)):0;
  if(zoneOverhang)for(const z of zoneLabelPoints)z.y-=zoneOverhang;
- // Right price rail is reserved for EVERY label. Live/TP/SL first.
- const reserved=rail.map(r=>r.labelY);
- const freeY=(y:number)=>{
-   const mid=clamp(y,plotTop+12,plotBottom-12);
-   for(const delta of Array.from({length:29},(_,i)=>i===0?0:
-      (i%2?1:-1)*Math.ceil(i/2)*18)){
-     const q=mid+delta;
-     if(q>=plotTop+12&&q<=plotBottom-12&&
-       reserved.every(v=>Math.abs(v-q)>=19)){
-       reserved.push(q);return q;
-     }
-   }
-   return null;
- };
- // Offscreen goals occupy only free price-rail rows, never LIVE/SL labels.
- // Keep their exact numeric values; offscreen symbols do not draw fake lines.
- const distantMarkers=distantTargets.flatMap(v=>{
-   const markerY=freeY(v.price>hi?plotTop+20:plotBottom-20);
-   return markerY==null?[]:[{...v,arrow:v.price>hi?'↑':'↓',markerY}];
- });
- const watchLabels=showLiquidity?watchPrices.filter(z=>
-   z.price>=lo&&z.price<=hi).map(z=>({
-   ...z,exactY:py(z.price),labelY:null as number|null
- })).sort((a,b)=>a.exactY-b.exactY):[];
- for(const w of watchLabels)w.labelY=freeY(w.exactY);
- const forwardLabels=futureZones.filter(z=>
-   z.price>=lo&&z.price<=hi).map(z=>({...z,exactY:py(z.price),
-   labelY:null as number|null})).sort((a,b)=>a.exactY-b.exactY);
- for(const z of forwardLabels)z.labelY=freeY(z.exactY);
- const markRailLabels=reactionMap.marks.filter(mark=>
-   mark.price>=lo&&mark.price<=hi).map(mark=>({
-   mark,exactY:py(mark.price),labelY:null as number|null
- }));
- for(const z of markRailLabels)
-   if(!forwardLabels.some(x=>Math.abs(x.exactY-z.exactY)<13))
-     z.labelY=freeY(z.exactY);
+ // Four evidence-backed areas share the chart (not a duplicate price rail).
+ // Space labels only, keeping their horizontal lines on the EXACT price.
+ const liquidityPalette={
+   SELL:'#ff8393',BUY:'#51e5b8',HIGH_LIQ:'#e9bf66',LOW_LIQ:'#67d9ed'
+ } as const;
+ const liquidityLabels=showLiquidity&&zoneBoard.ready?
+   zoneBoard.items.filter(z=>z.low!=null&&z.high!=null).map(z=>({
+     ...z,price:(z.low!+z.high!)/2,color:liquidityPalette[z.key]
+   })).filter(z=>Number.isFinite(z.price)&&z.price>0):[];
+ const positionedLiquidityLabels=liquidityLabels.map(z=>({
+   ...z,exactY:py(z.price),labelY:clamp(py(z.price),plotTop+20,plotBottom-20)
+ })).sort((a,b)=>a.labelY-b.labelY);
+ for(let i=1;i<positionedLiquidityLabels.length;i++)
+   positionedLiquidityLabels[i].labelY=Math.max(
+     positionedLiquidityLabels[i].labelY,positionedLiquidityLabels[i-1].labelY+25);
+ const labelOverflow=positionedLiquidityLabels.length?
+   Math.max(0,positionedLiquidityLabels.at(-1)!.labelY-(plotBottom-20)):0;
+ if(labelOverflow)for(const label of positionedLiquidityLabels)
+   label.labelY-=labelOverflow;
  const candle=(open:number,high:number,low:number,close:number,xpos:number,width:number,
    future:boolean,key:string)=> {
    const up=close>=open,color=up?'#39d6cc':'#fa5970';
@@ -622,37 +601,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    {asset==='GOLD'&&<GoldRadarBadge now={now}
         marketFresh={Boolean(m.sniper.view.priceFresh&&marketOpen&&
           !providerTransition)} watch={watchMap}/>}
-   {showLiquidity&&<section className="sniper-m15-liquidity-board"
-     aria-label="مناطق البيع والشراء والسيولة المرصودة من الشموع المغلقة">
-     <div className="sniper-m15-board-grid">
-       {zoneBoard.items.map(item=><div key={item.key}
-         className={'sniper-m15-board-item '+item.key.toLowerCase()+
-           (item.status==='NONE'?' unavailable':'')}>
-         <span>{item.label}</span>
-         <strong dir="ltr">{item.low!=null&&item.high!=null?
-           (item.low===item.high?n(item.low):n(item.low)+' – '+n(item.high)):'—'}</strong>
-         <small title={item.source}>{item.status==='REACTION'?'✓ ':''}{item.hint}</small>
-       </div>)}
-     </div>
-     <div className="sniper-m15-board-context">
-       {zoneBoard.context?<span>{zoneBoard.context.label+' · '+
-         n(zoneBoard.context.low)+' – '+n(zoneBoard.context.high)+
-         (zoneBoard.context.historical?' · منطقة تاريخية':' · داخل النطاق')}</span>:
-         <span>{zoneBoard.ready?'لا يوجد تجميع أو تصريف مؤكد حاليًا':zoneBoard.reason}</span>}
-       <small>من شموع مغلقة · للمراقبة فقط</small>
-       <button type="button" className="sniper-m15-extra-toggle"
-         aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}
-         title="إظهار أو إخفاء علامات الرصد الثانوية دون تغيير الشموع أو الأسعار">
-         {showExtra?'إخفاء الزحمة':'تفاصيل إضافية'}</button>
-     </div>
-   </section>}
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
      <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
+     <button type="button" className="sniper-m15-extra-toggle sniper-m15-overlay-extra"
+       aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}
+       title="إظهار التفاصيل الفنية الثانوية فقط">
+       {showExtra?'إخفاء التفاصيل':'⋯ تفاصيل'}</button>
 
      <button type="button" className="sniper-m15-zoom-toggle"
        aria-pressed={priceZoom==='FOCUS'}
-       title="تكبير شموع M15 مع بقاء الأسعار البعيدة في عمود الأهداف"
+       title="تكبير شموع M15 مع إخفاء مستويات الأسعار البعيدة خارج إطار الرسم"
        onClick={()=>setPriceZoom(v=>v==='FOCUS'?'ALL':'FOCUS')}>
        {priceZoom==='FOCUS'?'⤢ كل الأسعار':'⤢ تكبير الشموع'}
      </button>
@@ -668,17 +627,24 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          </clipPath>
        </defs>
        <rect width={W} height={H} fill="#000"/>
-       {grid.map((v,i)=><g key={'grid'+i}>
-         <line x1={left} x2={end} y1={py(v)} y2={py(v)}
-           stroke="#26323f" strokeDasharray="3 5" strokeWidth=".8"/>
-         {!reserved.some(y=>Math.abs(y-py(v))<13)&&
-           i%2===0&&<text x={W-5} y={py(v)+3} fill="#697986"
-             fontSize="8.2" textAnchor="end" direction="ltr">{n(v)}</text>}
-       </g>)}
+       {grid.map((v,i)=><line key={'grid'+i}
+         x1={left} x2={end} y1={py(v)} y2={py(v)}
+         stroke="#1a2933" strokeDasharray="3 7" strokeWidth=".55"/>)}
        {Array.from({length:8},(_,i)=><line key={'vx'+i} x1={left+i*(end-left)/7}
          x2={left+i*(end-left)/7} y1={plotTop} y2={plotBottom}
          stroke="#1d2b3a" strokeDasharray="3 6" strokeWidth=".8"/>)}
        <g clipPath={'url(#sniper-m15-clip-'+asset+')'}>
+         {/* Only four authentic OHLC liquidity levels; colors match source areas. */}
+         {liquidityLabels.map(z=><g key={'liquidity-band-'+z.key}
+           className="sniper-m15-liquidity-line">
+           <rect x={left} y={py(z.high!)} width={end-left}
+             height={Math.max(1,py(z.low!)-py(z.high!))}
+             fill={z.color} fillOpacity=".045"/>
+           <line x1={left} x2={end} y1={py(z.price)} y2={py(z.price)}
+             stroke={z.color} strokeWidth="1.5" strokeOpacity=".9"/>
+           <title>{z.label+' · المنطقة المرصودة '+n(z.low)+' – '+n(z.high)+
+             ' · '+z.source+' · للمراقبة فقط'}</title>
+         </g>)}
          {/* Same black background for real and hypothetical candles. */}
          {showLiquidity&&liquidity.context&&(()=>{
            const z=liquidity.context!;
@@ -882,112 +848,39 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              ' · عينات تيك '+forming.sampledTicks}</title>
          </g>}
        </g>
-       {scaleLevels.map(level=>{
-         const target=level.kind==='TARGET',guide=level.kind==='ILLUSTRATION',
-           isStop=level.kind==='STOP';
-         const color=target?'#43e7b4':guide?'#d6bd83':isStop?'#ff748a':'#e4edf8';
+       {/* Small LIVE/TP/stop notes inside the plot, never a wide right rail. */}
+       {scaleLevels.filter(level=>level.price>=lo&&level.price<=hi)
+          .map(level=>{
+         const color=level.kind==='TARGET'?'#55eab9':
+           level.kind==='STOP'?'#ff8093':
+           level.kind==='ILLUSTRATION'?'#e2c585':'#d9ecf4';
          const y=py(level.price);
-         return <g key={level.key}>
-           <line x1={left} x2={end} y1={y} y2={y} stroke={color}
-             strokeWidth={isStop?1.35:1.05} strokeDasharray={isStop?'6 4':'5 5'}
-             opacity=".87"/>
-
+         return <g key={'inline-'+level.key} className="sniper-m15-inline-price">
+           <line x1={end-19} x2={end-5} y1={y} y2={y}
+             stroke={color} strokeWidth="1.2" opacity=".95"/>
+           <text x={split+8} y={clamp(y-4,plotTop+12,plotBottom-8)}
+             fill={color} fontSize="8.6" fontWeight="700"
+             textAnchor="start" direction="ltr"
+             stroke="#000" strokeWidth="2.4" paintOrder="stroke">
+             {labelBy(level.key)+' '+n(level.price)}</text>
          </g>;
        })}
-       <line x1={end} x2={end} y1={plotTop} y2={plotBottom} stroke="#637480" strokeWidth="1"/>
-       {rail.map(level=>{
-         const color=level.kind==='TARGET'?'#56ebbb':
-           level.kind==='ILLUSTRATION'?'#e4c78d':
-           level.kind==='STOP'?'#ff8196':'#dbe6f2';
-         const fill=level.kind==='TARGET'?'#063e34':
-           level.kind==='ILLUSTRATION'?'#352f23':
-           level.kind==='STOP'?'#46202a':'#20313e';
-         return <g key={'rail'+level.key}>
-           <line x1={end} x2={axis+3} y1={level.exactY} y2={level.labelY}
-             stroke={color} strokeWidth="1.2"/>
-           <rect x={axis+1} y={level.labelY-12.5} width={W-axis-4}
-             height="25" rx="3" fill={fill} stroke={color} strokeWidth=".7"/>
-           <text x={axis+5} y={level.labelY-3.7} fontSize="8.8" fontWeight="700" fill={color}
-             textAnchor="start" direction="ltr">{labelBy(level.key)}</text>
-           <text x={W-5} y={level.labelY+8.1} fontSize="10.3" fontWeight="700"
-             fill={color} textAnchor="end" direction="ltr">{n(level.price)}</text>
-         </g>;
-       })}
-       {distantMarkers.map(level=><g key={'far-'+level.key}
-          className="sniper-m15-offscreen-tp">
-          <text x={axis+3} y={level.markerY} fontSize="8.2"
-            fill={level.kind==='TARGET'?'#6becc3':
-              level.kind==='STOP'?'#ff8196':'#dfc18d'}
-            textAnchor="start" direction="ltr">
-            {level.arrow+labelBy(level.key)}</text>
-          <text x={W-4} y={level.markerY} fontSize="8.5"
-            fill={level.kind==='TARGET'?'#d4ede6':
-              level.kind==='STOP'?'#ffe1e6':'#e9d9b4'}
-            textAnchor="end" direction="ltr">{n(level.price)}</text>
-          <title>{(level.kind==='STOP'?'مستوى الإبطال خارج نطاق التكبير ':
-             level.kind==='ILLUSTRATION'?'هدف مراقبة غير مُقيّم خارج نطاق التكبير ':
-               'هدف ضمن أول 12 شمعة سيناريو خارج نطاق التكبير ')+n(level.price)+
-             ' · اختر كل الأسعار لعرض المستوى في موقعه السعري'}</title>
-        </g>)}
-       {showLiquidity&&watchLabels.map(level=>{
-          if(level.labelY==null)return null;
-          const color=level.side==='BUY'?'#51f1c1':'#ffb0a1';
-          const label=(level.side==='BUY'?'↑':'↓')+level.stage;
-          return <g key={'watch-rail-'+level.key} className="sniper-m15-watch-rail">
-            {Math.abs(level.labelY-level.exactY)>8&&<path
-              d={'M '+(end+1)+' '+level.exactY+' H '+(axis+1)+' V '+level.labelY}
-              stroke={color} strokeDasharray="2 3" strokeWidth=".7"
-              opacity=".65" fill="none"/>}
-            <text x={axis+3} y={level.labelY+3} fontSize="8.7"
-              fontWeight="700" fill={color} textAnchor="start" direction="ltr">{label}</text>
-            <text x={W-4} y={level.labelY+3} fontSize="8.8"
-              fontWeight="700" fill={color} textAnchor="end" direction="ltr">{n(level.price)}</text>
-            <title>{'هدف مراقبة '+label+' · '+level.source+
-              ' · لا يوجد وعد بوصول السعر'}</title>
-          </g>;
-        })}
-        {/* Small word and quote live in the fixed price rail, not in SVG's
-            clipped forecast candle viewport. */}
-       {showLiquidity&&forwardLabels.map(z=>{
-         if(z.labelY==null)return null;
-         const color=z.key==='DEMAND'||z.key==='LOW_POOL'?'#4ee5b3':'#ff8497';
-         const name=z.key==='SUPPLY'?'عرض':z.key==='DEMAND'?'طلب':
-            z.key==='HIGH_POOL'?'قمم':'قيعان';
-         return <g key={'zone-rail-'+z.key} className="sniper-m15-rail-zone">
-           {Math.abs(z.exactY-z.labelY)>9&&<path
-             d={'M '+(end+1)+' '+z.exactY+' H '+(axis+1)+' V '+z.labelY}
-             stroke={color} strokeWidth=".7" strokeDasharray="2 3"
-             fill="none" opacity=".5"/>}
-           <text x={axis+3} y={z.labelY+3} fontSize="7.9"
-             fill={color} fontWeight="700" textAnchor="start"
-             direction="ltr">{name}</text>
-           <text x={W-4} y={z.labelY+3} fontSize="8.4"
-             fill={color} fontWeight="700" textAnchor="end"
-             direction="ltr">{n(z.price)}</text>
-           <title>{z.label+' · السعر الأوسط '+n(z.price)+
-              ' · المنطقة كاملة '+n(z.low)+' – '+n(z.high)+
-              ' · ليست أوامر مستقبلية'}</title>
-         </g>;
-       })}
-       {projected.ready&&markRailLabels.map(({mark,exactY,labelY})=>{
-         if(labelY==null)return null;
-         const color=mark.direction==='UP'?'#6bffe0':'#ffad92';
-         const name=mark.kind==='PATTERN_TURN'?'دوران':
-            mark.direction==='UP'?'ارتداد':'رفض';
-         return <g key={'mark-rail-'+mark.step} className="sniper-m15-rail-turn">
-           {Math.abs(exactY-labelY)>9&&<path
-             d={'M '+(end+1)+' '+exactY+' H '+(axis+1)+' V '+labelY}
-             stroke={color} strokeWidth=".7" strokeDasharray="2 3"
-             fill="none" opacity=".5"/>}
-           <text x={axis+3} y={labelY+3} fontSize="7.7"
-             fill={color} fontWeight="700" textAnchor="start"
-             direction="ltr">{name}</text>
-           <text x={W-4} y={labelY+3} fontSize="8.4"
-             fill={color} fontWeight="700" textAnchor="end"
-             direction="ltr">{n(mark.price)}</text>
-           <title>{mark.detail+' · حركة افتراضية غير مؤكدة'}</title>
-         </g>;
-       })}
+       {positionedLiquidityLabels.map(z=><g key={'liq-label-'+z.key}
+          className="sniper-m15-liquidity-label">
+         {Math.abs(z.labelY-z.exactY)>10&&
+           <line x1={end-15} x2={end-15} y1={z.exactY} y2={z.labelY}
+             stroke={z.color} strokeDasharray="2 3" strokeWidth=".65"/>}
+         <text x={end-6} y={z.labelY-4} fill={z.color}
+            fontSize="8.2" fontWeight="700" textAnchor="end"
+            direction="rtl" stroke="#000" strokeWidth="2.4" paintOrder="stroke">
+            {z.label}
+         </text>
+         <text x={end-6} y={z.labelY+8} fill={z.color}
+            fontSize="9.7" fontWeight="700" textAnchor="end"
+            direction="ltr" stroke="#000" strokeWidth="2.4" paintOrder="stroke">
+            {n(z.price)}
+         </text>
+       </g>)}
        {!paused&&!awaitingReplacement&&asset==='BTC'&&elapsedSteps===0&&
          projected.ready&&shownBars.length>0&&(()=>{
          const first=projected.bars[0],cx=split+5+.5*projectedStride;
