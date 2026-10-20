@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./workspace.css";
 import "./m15-watch-strip.css";
+import "./gold-sniper-radar.css";
 
 export const metadata: Metadata = {
   title: "القناص | Qannas Trading Terminal",
