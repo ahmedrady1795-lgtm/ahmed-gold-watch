@@ -76,3 +76,51 @@
  }
  .sniper-m15-chart-box>.sniper-m15-watch-strip{flex-basis:41px}
 }
+
+
+/* Four evidence-backed price zones live ABOVE the chart, not on the candles.
+   The existing MT5 real/forecast viewport keeps its original height. */
+.sniper-m15-liquidity-board{
+ display:block;box-sizing:border-box;width:100%;min-width:0;
+ padding:5px 7px 4px;background:#061016;
+ border-top:1px solid #26404a;border-bottom:1px solid #2a404a;
+ color:#d1e1e8;direction:rtl;
+ font:10px/1.25 system-ui,sans-serif;
+}
+.sniper-m15-board-grid{
+ display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;
+}
+.sniper-m15-board-item{
+ box-sizing:border-box;min-width:0;padding:5px 6px;
+ border-radius:5px;border:1px solid #45616a;background:#081922;
+ display:flex;flex-direction:column;align-items:stretch;gap:3px;
+}
+.sniper-m15-board-item span{font-weight:700;font-size:10px;white-space:nowrap;
+ overflow:hidden;text-overflow:ellipsis}
+.sniper-m15-board-item strong{font-weight:750;letter-spacing:-.2px;
+ color:#f0f4f6;font-size:11px;white-space:nowrap;font-variant-numeric:tabular-nums;
+ overflow:hidden;text-overflow:ellipsis;text-align:right}
+.sniper-m15-board-item small{font-size:9px;color:#9bb9c4;white-space:nowrap;
+ overflow:hidden;text-overflow:ellipsis}
+.sniper-m15-board-item.sell{border-color:#8c4755;background:#251018}
+.sniper-m15-board-item.sell span{color:#ffadbb}
+.sniper-m15-board-item.buy{border-color:#347967;background:#09251d}
+.sniper-m15-board-item.buy span{color:#77edc8}
+.sniper-m15-board-item.high_liq{border-color:#967a48;background:#211b0e}
+.sniper-m15-board-item.high_liq span{color:#ebd49b}
+.sniper-m15-board-item.low_liq{border-color:#467b8f;background:#0c1c27}
+.sniper-m15-board-item.low_liq span{color:#94dcef}
+.sniper-m15-board-item.unavailable{opacity:.73}
+.sniper-m15-board-context{display:flex;justify-content:space-between;gap:5px;
+ flex-wrap:wrap;align-items:center;padding-top:4px;font-size:10px;color:#cfdbdd}
+.sniper-m15-board-context small{font-size:9px;color:#96acb5}
+@media(max-width:600px){
+ .sniper-m15-liquidity-board{padding:4px 5px}
+ .sniper-m15-board-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
+ .sniper-m15-board-item{padding:4px 6px;gap:2px}
+ .sniper-m15-board-item span{font-size:10px}
+ .sniper-m15-board-item strong{font-size:11px}
+ .sniper-m15-board-item small{font-size:9px}
+ .sniper-m15-board-context{font-size:9px;gap:2px 6px}
+ .sniper-m15-board-context small{font-size:8px}
+}
