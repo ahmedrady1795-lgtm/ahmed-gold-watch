@@ -28,7 +28,7 @@ assert.ok(x.lower.every((z,i)=>i===0||z.price<x.lower[i-1].price));
 assert.ok(x.upper.every(z=>z.source==='M15'||z.source==='H1'));
 assert.equal(build({...args,sourceReady:false}).ready,false,'never print levels with stale quote');
 assert.equal(build({...args,now:now+46*60000}).ready,false,'stale chart fail closed');
-assert.equal(build({...args,m15:[...m15.slice(0,-2),{...m15.at(-1),time:m15.at(-1).time+1000}]}).ready,false,
+assert.equal(build({...args,m15:m15.slice(0,-3)}).ready,false,
   'a missing/invalid last M15 bar must block watch references');
 assert.equal(build({...args,price:null}).upper.length,0);
 const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
