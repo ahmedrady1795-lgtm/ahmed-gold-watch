@@ -79,15 +79,15 @@ assert.match(component,/mark\.price/);
 assert.match(component,/z\.invalidation/);
 assert.match(component,/projected\.ready&&reactionMap\.marks/);
 assert.doesNotMatch(component,/setTimeout\([^]*?setFrozen/);
-assert.match(component,/const projectedSlots=Math\\.max\\(40,projected\\.bars\\.length\\)/,
+assert.match(component,/const projectedSlots=Math\.max\(40,projected\.bars\.length\)/,
  'any M15 historical scenario must keep a constant chart time unit');
-assert.match(component,/const candleWidth=clamp\\(Math\\.min\\(actualStride,projectedStride\\)\\*\\.60/,
+assert.match(component,/const candleWidth=clamp\(Math\.min\(actualStride,projectedStride\)\*\.60/,
  'projected and historical candle bodies must have exactly the same display width');
-assert.match(component,/candleWidth,false,'real'\\+b\\.time/,
+assert.match(component,/candleWidth,false,'real'\+b\.time/,
  'real candles must use the shared body width');
-assert.match(component,/candleWidth,true,'future'\\+i/,
+assert.match(component,/candleWidth,true,'future'\+i/,
  'projected candles must use the same body width');
-assert.doesNotMatch(component,/const projectedSlots=Math\\.max\\(14/,
+assert.doesNotMatch(component,/const projectedSlots=Math\.max\(14/,
  'do not zoom up four forecast bars after a stop');
 assert.match(component,/stable\?\.scenario\.stopped/,
  'display hypothetical early stop transparently instead of only showing distant TPs');
