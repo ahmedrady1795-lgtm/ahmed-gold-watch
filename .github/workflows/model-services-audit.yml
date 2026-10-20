@@ -1,0 +1,67 @@
+name: Model Services Production Check
+on:
+  push:
+    branches: [render-free]
+    paths: ['.github/workflows/model-services-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Query deployed ML and Neural health (no model claims)
+        run: |
+          python3 - <<'PY'
+          import json,urllib.request,time,sys
+          hosts=[
+           ('ML','https://qannas-ml-engine.onrender.com/health'),
+           ('NEURAL','https://qannas-neural-engine.onrender.com/health'),
+           ('SITE','https://ahmed-gold-watch-free.onrender.com/api/health'),
+           ('MT5','https://ahmed-gold-watch-free.onrender.com/api/mt5/status')
+          ]
+          failures=[]
+          for name,url in hosts:
+           try:
+            started=time.monotonic()
+            with urllib.request.urlopen(urllib.request.Request(url,headers={
+              'User-Agent':'Qannas-model-readiness-audit/1.0',
+              'Accept':'application/json'}),timeout=85) as r:
+             data=json.loads(r.read(450000))
+             code=r.status
+            if name=='ML':
+             out={'ok':data.get('ok'),'status':data.get('status'),
+                  'modelReady':data.get('modelReady'),
+                  'training':data.get('training'),
+                  'readiness':data.get('readiness'),
+                  'lastError':str(data.get('lastError') or '')[:180]}
+            elif name=='NEURAL':
+             out={'ok':data.get('ok'),'storedSnapshots':data.get('storedSnapshots'),
+                  'modelReady':data.get('modelReady'),
+                  'predictionReady':(data.get('prediction') or {}).get('ready'),
+                  'predictionStatus':(data.get('prediction') or {}).get('status'),
+                  'lastError':str(data.get('lastError') or '')[:180]}
+            elif name=='SITE':
+             ai=(data.get('services') or {}).get('ai') or {}
+             out={'ok':data.get('ok'),'status':data.get('status'),
+                  'mode':ai.get('mode'),'configuredCount':ai.get('configuredCount'),
+                  'readyCount':ai.get('readyCount'),
+                  'models':ai.get('models')}
+            else:
+             broker=data.get('brokerDepth') or {}
+             out={'connected':data.get('connected'),'fresh':data.get('fresh'),
+                  'brokerDepthAvailable':broker.get('available'),
+                  'brokerDepthReason':broker.get('reason')}
+            print('MODEL_AUDIT',name,code,round(time.monotonic()-started,2),
+                  json.dumps(out,ensure_ascii=False,default=str),flush=True)
+            if name in ('ML','NEURAL') and (code!=200 or data.get('ok')!=True):
+             failures.append(name)
+           except Exception as e:
+            print('MODEL_AUDIT_ERROR',name,str(e)[:240],flush=True)
+            if name in ('ML','NEURAL'):failures.append(name)
+          if failures:
+           print('MODEL_AUDIT_UNAVAILABLE',','.join(failures),flush=True)
+           sys.exit(1)
+          print('MODEL_AUDIT_ENDPOINTS_LIVE (not proof of prediction quality)',flush=True)
+          PY
