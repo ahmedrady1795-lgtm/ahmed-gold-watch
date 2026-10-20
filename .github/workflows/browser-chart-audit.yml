@@ -1,0 +1,73 @@
+name: One-shot Mobile Chart Audit
+
+on:
+  push:
+    branches: [render-free]
+    paths: ['.github/workflows/browser-chart-audit.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Install browser automation
+        run: |
+          npm install --prefix /tmp/qannas-browser playwright@1.56.1 --no-save --silent
+          (which google-chrome || which chromium || which chromium-browser || true)
+      - name: Verify rendered M15 chart on mobile
+        shell: bash
+        run: |
+          node <<'JS'
+          const {chromium}=require('/tmp/qannas-browser/node_modules/playwright');
+          (async()=>{
+           const browser=await chromium.launch({channel:'chrome',headless:true,args:['--no-sandbox']});
+           const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1,isMobile:true,hasTouch:true});
+           const errors=[],warnings=[];
+           page.on('pageerror',e=>errors.push(String(e.message).slice(0,260)));
+           page.on('response',r=>{if(r.status()>=500)warnings.push(r.status()+' '+r.url().replace(/^https?:\/\/[^/]+/,'').slice(0,170));});
+           try {
+            const response=await page.goto('https://ahmed-gold-watch-free.onrender.com/?audit=client',{timeout:35000,waitUntil:'domcontentloaded'});
+            console.log('PAGE_HTTP '+response?.status());
+            await page.locator('.sniper-m15-chart-box svg').first().waitFor({state:'visible',timeout:40000});
+            await page.waitForTimeout(6000);
+            async function inspect(name){
+              const v=await page.evaluate(()=>{
+                const chart=document.querySelector('.sniper-m15-chart-box svg'),parent=chart?.closest('.sniper-m15-chart-box');
+                const rect=chart?.getBoundingClientRect(),outer=parent?.getBoundingClientRect();
+                return {
+                  chartPresent:Boolean(chart),width:rect?.width,height:rect?.height,
+                  parentWidth:outer?.width,realCandles:chart?.querySelectorAll('.sniper-m15-real').length,
+                  forwardCandles:chart?.querySelectorAll('.sniper-m15-projected').length,
+                  liveCandles:chart?.querySelectorAll('[class*=live-m15]').length,
+                  liquidityLevels:chart?.querySelectorAll('.sniper-m15-liquidity-line').length,
+                  forecastLabel:chart?.textContent?.includes('M15 · FORECAST'),
+                  hasPreparation:Boolean(document.querySelector('.sniper-m15-preparation-slot')),
+                  hasGoldRadar:Boolean(document.querySelector('.sniper-gold-radar-widget')),
+                  horizontalOverflow:document.documentElement.scrollWidth>innerWidth+8,
+                  controlsOutsideChart:Boolean(document.querySelector('.sniper-m15-view-controls'))
+                };
+              });
+              console.log('BROWSER '+name+' '+JSON.stringify(v));
+              if(!v.chartPresent||!v.width||v.realCandles<5||!v.forecastLabel)
+                throw Error(name+' missing original closed M15 candles');
+              return v;
+            }
+            const gold=await inspect('GOLD');
+            const btn=page.getByRole('button',{name:'BTCUSD'}).first();
+            if(await btn.count()){
+              await btn.click();
+              await page.waitForTimeout(6500);
+              const btc=await inspect('BTC');
+              if(!btc.hasPreparation)throw Error('BTC preparation radar missing');
+            }else console.log('BROWSER BTC_SWITCH_NOT_IN_THIS_LAYOUT');
+            console.log('BROWSER_ERRORS '+JSON.stringify(errors));
+            console.log('BROWSER_WARNINGS '+JSON.stringify(warnings.slice(0,20)));
+            if(errors.length)throw Error('Client JavaScript runtime errors '+errors.join(' ; '));
+            console.log('BROWSER_RESULT: Mobile M15 chart rendered');
+           }finally{await browser.close();}
+          })().catch(e=>{console.error('BROWSER_ERROR',e.stack||e);process.exit(1)});
+          JS
