@@ -130,8 +130,10 @@ assert.doesNotMatch(chart,/fillOpacity=\{future\?/,
  'M15 candle bodies remain opaque with no ghost-like future candles');
 assert.doesNotMatch(chart,/strokeDasharray=\{future\?'2 2':undefined\}/,
  'restore solid wicks to match the original genuine candle design');
-assert.match(chart,/extendIllustrativeM15ToTargets/,
- 'conditional path may show fixed goals without modifying the scored candles');
+assert.doesNotMatch(chart,/extendIllustrativeM15ToTargets|compactM15TargetDrawing/,
+ 'no fictional candle staircase can be forced to remote TP prices');
+assert.match(chart,/const displayBars=shownBars;/,
+ 'draw the original twelve analogue bars without added targets');
 assert.match(chart,/compactM15ZoneAnnotations/,'nearby liquidity labels are grouped, not drawn on top of one another');
 assert.doesNotMatch(chart,/sniper-m15-caption|sniper-m15-status/,
  'no technical paragraphs or scorecard underneath the mobile chart');
