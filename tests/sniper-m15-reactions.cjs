@@ -70,8 +70,8 @@ assert.equal(pivot.marks[0].kind,'PATTERN_TURN');
 assert.equal(pivot.marks[0].invalidation,null,'hypothetical pivot is not verified demand');
 const component=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(component,/const reactions=buildM15ReactionMap/);
-assert.match(component,/stable\?\.reactions\?\?emptyReactionMap\(\)/,
- 'bounce markers must be frozen with their original M15 projected candles');
+assert.match(component,/aligned\?\.reactions\?\?emptyReactionMap\(\)/,
+ 'reaction markers show only when frozen projected candles match the live anchor');
 assert.match(component,/className="sniper-m15-reaction-band"/);
 assert.match(component,/className="sniper-m15-reaction-mark"/);
 assert.match(component,/className="sniper-m15-reaction-zone-label"/);
