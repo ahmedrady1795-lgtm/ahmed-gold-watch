@@ -536,10 +536,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  };
  // Offscreen goals occupy only free price-rail rows, never LIVE/SL labels.
  // Keep their exact numeric values; offscreen symbols do not draw fake lines.
- const distantMarkers=distantTargets.map(v=>({
-   ...v,arrow:v.price>hi?'↑':'↓',
-   markerY:freeY(v.price>hi?plotTop+20:plotBottom-20)
- })).filter(v=>v.markerY!=null);
+ const distantMarkers=distantTargets.flatMap(v=>{
+   const markerY=freeY(v.price>hi?plotTop+20:plotBottom-20);
+   return markerY==null?[]:[{...v,arrow:v.price>hi?'↑':'↓',markerY}];
+ });
  const watchLabels=showLiquidity?watchPrices.filter(z=>
    z.price>=lo&&z.price<=hi).map(z=>({
    ...z,exactY:py(z.price),labelY:null as number|null
