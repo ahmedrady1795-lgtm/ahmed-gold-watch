@@ -61,7 +61,7 @@ assert.ok(chart.indexOf('className="sniper-m15-preparation-slot"')<
 assert.match(btcUI,/btcPreparation\(/);
 assert.match(goldUI,/goldPreparation\(/);
 assert.match(btcUI,/Iceberg/);
-assert.match(goldUI,/مقارنة GC مع XAUUSD: غير مفعّلة/,
- 'gold futures comparison clearly states that GC venue data is not connected');
+assert.match(goldUI,/قيادة العقود للسبوت: غير مثبتة/,
+ 'even delayed GC futures prices never claim to be leading spot live');
 assert.match(css,/\.sniper-m15-preparation-slot \.sniper-flow-radar-chip/);
 console.log('PASS: BTC exchange absorption/refill/withdrawal, GOLD broker DOM asymmetry, no fake GC feed, no spoofing claims, clean chart');
