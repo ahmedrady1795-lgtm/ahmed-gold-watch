@@ -1,6 +1,8 @@
 import {getRuntimeEnv} from './runtime';
 import type { Candle, Event } from './engine';
 
+import {normalizeMt5GoldDom,analyzeMt5GoldDom} from './gold-mt5-dom';
+import type {Mt5DomSnapshot} from './gold-mt5-dom';
 export type BackgroundPoint = {
   key: 'dxy' | 'us2y' | 'us10y';
   label: string;
@@ -79,6 +81,15 @@ function emitMt5BridgeUpdate(status:Mt5BridgeStatus){
 type FastSide='BUY'|'SELL'|'WAIT';
 type Mt5FastTick={at:number;receivedAt:number;price:number;bid:number;ask:number;tickVolume:number|null;flags:number|null;bidDepth:number;askDepth:number;bookImbalance:number};
 let mt5FastTicks:Mt5FastTick[]=[];
+let mt5DomSamples:Mt5DomSnapshot[]=[];
+let mt5DomUnavailableReason='NO_MT5_CONNECTION';
+export function getMt5GoldDomReading(now=Date.now()){
+ const bridge=getMt5BridgeStatus(now);
+ if(!bridge.fresh||!bridge.status)return analyzeMt5GoldDom({
+   now,symbol:null,snapshots:[],unavailableReason:'NO_FRESH_MT5_BRIDGE'});
+ return analyzeMt5GoldDom({now,symbol:bridge.status.symbol,
+   snapshots:mt5DomSamples,unavailableReason:mt5DomUnavailableReason});
+}
 let backgroundCache: Cache<BackgroundPoint[]> | null = null;
 
 const MARKET_TTL_MS = 15_000;
@@ -117,11 +128,26 @@ export function setMt5BridgeStatus(input:unknown):Mt5BridgeStatus{
   const receivedAt=Date.now(),lastPrice=num(body.last),mid=lastPrice&&lastPrice>0?lastPrice:(bid+ask)/2;
   const tickVol=num(body?.microstructure?.tickVolume),tickFlags=num(body?.microstructure?.tickFlags);
   const ob=body?.microstructure?.orderBook;
-  const obBids=Array.isArray(ob?.bids)?ob.bids:[],obAsks=Array.isArray(ob?.asks)?ob.asks:[];
-  const bidDepth=obBids.slice(0,12).reduce((s:number,x:any)=>s+Math.max(0,Number(x?.volume||0)),0);
-  const askDepth=obAsks.slice(0,12).reduce((s:number,x:any)=>s+Math.max(0,Number(x?.volume||0)),0);
-  const depthTotal=bidDepth+askDepth;
-  const bookImbalance=depthTotal>0?(bidDepth-askDepth)/depthTotal*100:0;
+  const normalizedBook=normalizeMt5GoldDom(ob,{
+    now:receivedAt,symbol,tickTimeMs,bid,ask
+  });
+  // No genuine two-sided MT5 book: fail closed rather than treating 0/0 as
+  // a balanced order book, and never join snapshots from different symbols.
+  if(!normalizedBook.sample){
+    mt5DomSamples=[];
+    mt5DomUnavailableReason=normalizedBook.reason;
+  }else{
+    mt5DomUnavailableReason='';
+    const sample=normalizedBook.sample;
+    if(mt5DomSamples.length&&mt5DomSamples.at(-1)!.symbol!==symbol)
+      mt5DomSamples=[];
+    if(!mt5DomSamples.length||sample.at>mt5DomSamples.at(-1)!.at)
+      mt5DomSamples=[...mt5DomSamples.filter(x=>receivedAt-x.at<=22000),
+        sample].slice(-16);
+  }
+  const bidDepth=normalizedBook.sample?.bidVolume??0;
+  const askDepth=normalizedBook.sample?.askVolume??0;
+  const bookImbalance=normalizedBook.sample?.imbalance??0;
   const lastFast=mt5FastTicks.at(-1);
   if(!lastFast||tickTimeMs>lastFast.at||Math.abs(mid-lastFast.price)>1e-9||Math.abs(bookImbalance-lastFast.bookImbalance)>=1){
     mt5FastTicks.push({at:tickTimeMs,receivedAt,price:mid,bid,ask,tickVolume:tickVol,flags:tickFlags,bidDepth,askDepth,bookImbalance});
@@ -160,7 +186,10 @@ export function getMt5FastSignal(now=Date.now()){
   const score=Math.round(Math.max(0,Math.min(92,36+Math.abs(imbalance)*.24+Math.abs(pressureChange)*.34+Math.min(18,Math.abs(replenish)*.18)+Math.abs(acc)*58+Math.abs(v15)*8+Math.max(0,persistence-50)*.30+(preTrigger?11:0))));
   const confidence=Math.round(Math.max(0,Math.min(90,score*.70+Math.min(18,rows.length*.55)+(stage==='PRE_TRIGGER'?8:stage==='IGNITION'?9:0))));
   return {
-    ok:true,side,stage,score,confidence,samples:rows.length,source:'Exness/MT5 bridge DOM',
+    ok:true,side,stage,score,confidence,samples:rows.length,
+    source:getMt5GoldDomReading(now).available?
+      'MT5 broker displayed depth + quote ticks':'MT5 quote ticks only; DOM unavailable',
+    domReady:getMt5GoldDomReading(now).available,
     velocity05s:Number(v05.toFixed(4)),velocity1s:Number(v1.toFixed(4)),velocity15s:Number(v15.toFixed(4)),velocity3s:Number(v3.toFixed(4)),velocity4s:Number(v4.toFixed(4)),velocity8s:Number(v8.toFixed(4)),
     acceleration:Number(acc.toFixed(4)),persistence,bookImbalance:Number(imbalance.toFixed(1)),pressureChange:Number(pressureChange.toFixed(1)),
     bidDepthChangePct:Number(bidDepthChangePct.toFixed(1)),askDepthChangePct:Number(askDepthChangePct.toFixed(1)),replenishDelta:Number(replenish.toFixed(1)),
