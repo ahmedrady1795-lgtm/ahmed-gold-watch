@@ -2,6 +2,7 @@
 import {useEffect,useState} from 'react';
 import {goldPreparation} from '../lib/institutional-preparation-radar';
 import type {Mt5GoldDomReading} from '../lib/gold-mt5-dom';
+import type {GcFuturesSnapshot} from '../lib/gc-futures-feed';
 
 type Side='BUY'|'SELL'|'WAIT';
 type Reading={ready:boolean;phase:string;side:Side;
@@ -29,6 +30,26 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
 }){
  const [state,setState]=useState<Status|null>(null);
  const [expanded,setExpanded]=useState(false);
+ const [gc,setGc]=useState<GcFuturesSnapshot|null>(null);
+ useEffect(()=>{
+  let alive=true;
+  const poll=async()=>{
+   if(document.visibilityState!=='visible')return;
+   try{
+    const response=await fetch('/api/gc-futures',{cache:'no-store',
+      signal:AbortSignal.timeout(8500)});
+    if(!response.ok)throw Error('gc_unavailable');
+    const next=await response.json();
+    if(alive)setGc(next);
+   }catch{if(alive)setGc(null);}
+  };
+  void poll();
+  const id=setInterval(()=>{void poll();},60000);
+  const visible=()=>{if(document.visibilityState==='visible')void poll();};
+  document.addEventListener('visibilitychange',visible);
+  return()=>{alive=false;clearInterval(id);
+    document.removeEventListener('visibilitychange',visible);};
+ },[]);
  useEffect(()=>{
   let alive=true;
   const poll=async()=>{
@@ -76,6 +97,10 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
    radarPhase:radar?.phase});
  const preparationStatus=prep.available?prep.label:
    'تحضير مؤسسي: عمق MT5 غير جاهز';
+ const gcAge=gc?.quoteAt!=null?Math.max(0,now-gc.quoteAt):null;
+ const gcReady=Boolean(gc?.available&&gcAge!=null&&gcAge<=90*60000);
+ const gcState=gcReady?(gc!.status==='LIVE'?'سعر عقد مباشر':'بيانات متأخرة'):'غير متاح';
+ const gcHeading=gcReady?'GC '+fmt(gc?.price)+' · '+gcState:'GC · غير متاح';
  const freshness=current?Math.round((now-eventAt)/1000):null;
  const score=(s:Score|undefined)=>!s?'قيد القياس':
    s.ready&&s.paired>0?
@@ -89,11 +114,23 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
      title="تفاصيل الرادار ومصدره وسجل معايرة الإشارات">
      <span className="sniper-gold-radar-top">
        <strong>◈ رادار الذهب</strong>
-       <small>{preparationStatus} {expanded?'▴':'▾'}</small>
+       <small>{preparationStatus} · {gcHeading} {expanded?'▴':'▾'}</small>
      </span>
    </button>
    {expanded&&<section className="sniper-gold-radar-expanded"
      aria-label="تفاصيل قراءة رادار الذهب">
+     <strong>عقود الذهب GC · {gcState}</strong>
+     <span dir="ltr">{gcReady?gc!.symbol+'  '+fmt(gc!.price):'GC=F —'}</span>
+     {gcReady&&<span>تحرك 5 دقائق (تاريخي):
+       {' '}{gc?.change5mPct==null?'—':gc.change5mPct.toFixed(3)+'%'}</span>}
+     <span>المصدر: {gc?.source||'غير متصل'}</span>
+     <span>وقت تسعير العقد: {gc?.quoteAt?
+       new Date(gc.quoteAt).toLocaleTimeString('en-GB',{
+         timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—'}</span>
+     <small>GC=F مؤشر للعقد القريب المتداول وليس عقد تسليم محدد.
+       أسعار GC المتأخرة لا تصلح لقياس من يقود حركة XAUUSD لحظيًا.</small>
+     <small>قيادة العقود للسبوت: غير مثبتة؛ تحتاج أسعارًا وتنفيذات متزامنة
+       من COMEX والسبوت. لا يوجد دفتر GC أو Iceberg مؤكد.</small>
      <strong>رادار التحضير المؤسسي · {prep.label}</strong>
      <span>{prep.source}</span>
      {prep.observations.length?
@@ -104,8 +141,8 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
      <small>خداع الأوامر: {prep.withdrawalWarning?
        'اختفاء عمق معلن غير مفسَّر؛ ليس إثبات تلاعب أو أوامر وهمية':
        'لا توجد بصمة سحب غير مفسر مرصودة'}.</small>
-     <small>مقارنة GC مع XAUUSD: غير مفعّلة، لا توجد تغذية عقود GC مباشرة موثقة.
-       لن نستنتج قيادة العقود من شموع السبوت.</small>
+     <small>مقارنة القيادة بين GC وXAUUSD: معلّقة حتى وصول
+       تغذية عقود وتوقيت سبوت متزامنين؛ القراءة المتأخرة مرجع فقط.</small>
      <strong>قراءة السيولة · ليست كشفًا لأوامر البنوك</strong>
      <b className={'sniper-gold-radar-state '+(signal?direction.toLowerCase():'')}>
        {label}</b>
