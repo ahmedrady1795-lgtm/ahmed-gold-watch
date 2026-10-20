@@ -600,11 +600,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          (averageM15Error!=null?' · خطأ '+n(averageM15Error):' · قيد القياس')}
        {' · التفاصيل'}</button>
    </div>
+   {/* Radar details expand outside the M15 OHLC canvas instead of hiding candles. */}
+   {asset==='GOLD'&&<GoldRadarBadge now={now}
+        marketFresh={Boolean(m.sniper.view.priceFresh&&marketOpen&&
+          !providerTransition)} watch={watchMap}/>}
    <div className="sniper-m15-chart-box" id="sniper-performance">
      <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
-     {asset==='GOLD'&&<GoldRadarBadge now={now}
-        marketFresh={Boolean(m.sniper.view.priceFresh&&marketOpen&&
-          !providerTransition)} watch={watchMap}/>} 
+
      <button type="button" className="sniper-m15-zoom-toggle"
        aria-pressed={priceZoom==='FOCUS'}
        title="تكبير شموع M15 مع بقاء الأسعار البعيدة في عمود الأهداف"
