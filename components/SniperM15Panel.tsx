@@ -382,12 +382,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const zoneOverhang=zoneLabelPoints.length?
    Math.max(0,zoneLabelPoints[zoneLabelPoints.length-1].y-(plotBottom-15)):0;
  if(zoneOverhang)for(const z of zoneLabelPoints)z.y-=zoneOverhang;
- // Real price coordinates remain exact; only text boxes are spread vertically.
+ // Price level anchors remain exact; only short annotations can move to avoid overlap.
  const forwardLabels=futureZones.map(z=>({...z,exactY:py(z.price),
    labelY:py(z.price)})).sort((a,b)=>a.exactY-b.exactY);
  for(let i=0;i<forwardLabels.length;i++)
    forwardLabels[i].labelY=Math.max(plotTop+19,forwardLabels[i].exactY,
-     i?forwardLabels[i-1].labelY+32:plotTop+19);
+     i?forwardLabels[i-1].labelY+17:plotTop+19);
  const over=forwardLabels.length?
    Math.max(0,forwardLabels.at(-1)!.labelY-(plotBottom-17)):0;
  if(over)for(const z of forwardLabels)z.labelY-=over;
@@ -476,11 +476,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            const pool=z.kind==='HIGH_POOL'||z.kind==='LOW_POOL';
            const reaction=z.kind==='REBOUND_UP'||z.kind==='REBOUND_DOWN';
            return <g key={'zone-'+z.kind+'-'+z.low} className="sniper-m15-zone">
-             <rect x={left+2} y={top} width={split-left-5}
-               height={Math.max(2,bottom-top)} fill={color}
-               fillOpacity={pool?0.11:reaction?0.24:0.18} stroke={color}
-               strokeOpacity=".94" strokeWidth={reaction?1.8:pool?1.2:1.3}
-               strokeDasharray={reaction?'2 3':pool?'3 6':'6 4'}/>
+             <line x1={left+2} x2={split-4} y1={top} y2={top}
+               stroke={color} strokeWidth=".85" strokeOpacity=".55"
+               strokeDasharray={pool?'2 5':reaction?'2 3':'5 5'}/>
+             <line x1={left+2} x2={split-4} y1={bottom} y2={bottom}
+               stroke={color} strokeWidth=".85" strokeOpacity=".55"
+               strokeDasharray={pool?'2 5':reaction?'2 3':'5 5'}/>
              <title>{z.label+' · '+n(z.low)+' – '+n(z.high)+
                (z.invalidation!=null?' · إبطال '+n(z.invalidation):'')+
                ' · '+z.source+' · شموع مغلقة، لا أوامر مؤسسات'}</title>
@@ -491,22 +492,24 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {showLiquidity&&!futureZones.length&&projected.ready&&reactionMap.bands.map((z,i)=>{
            const color=z.kind==='DEMAND'||z.kind==='REBOUND_UP'?'#44dab2':'#ff8c9b';
            return <g className="sniper-m15-reaction-band" key={'bounce-band-'+i}>
-             <rect x={split+2} y={py(z.high)} width={end-split-5}
-               height={Math.max(2,py(z.low)-py(z.high))} fill={color}
-               fillOpacity=".08" stroke={color} strokeWidth="1.15"
-               strokeOpacity=".9" strokeDasharray="3 4"/>
+             <line x1={split+4} x2={end-4}
+               y1={py(z.high)} y2={py(z.high)}
+               stroke={color} strokeWidth=".85" strokeDasharray="3 5" opacity=".55"/>
+             <line x1={split+4} x2={end-4}
+               y1={py(z.low)} y2={py(z.low)}
+               stroke={color} strokeWidth=".85" strokeDasharray="3 5" opacity=".55"/>
              {reactionMap.marks.every(m=>Math.abs(m.price-z.price)>
                Math.max(projected.atr??0,Math.abs(z.high-z.low)))&&(()=>{
                const noteY=clamp(py(z.price),plotTop+36,plotBottom-30);
                return <g className="sniper-m15-reaction-zone-label">
-                 <rect x={end-75} y={noteY-14} width="70" height="27" rx="4"
-                   fill="#051016" stroke={color} strokeOpacity=".92"/>
-                 <text x={end-40} y={noteY-3} textAnchor="middle"
-                   direction="rtl" fill={color} fontSize="8.7" fontWeight="700">
-                   {z.kind==='DEMAND'||z.kind==='REBOUND_UP'?'طلب · ارتداد؟':'عرض · رفض؟'}
+                 <text x={end-54} y={noteY+3} textAnchor="end"
+                   direction="rtl" fill={color} fontSize="8.2" fontWeight="700"
+                   stroke="#000" strokeWidth="2" paintOrder="stroke">
+                   {z.kind==='DEMAND'||z.kind==='REBOUND_UP'?'ارتداد؟':'رفض؟'}
                  </text>
-                 <text x={end-40} y={noteY+8.8} textAnchor="middle"
-                   direction="ltr" fill="#dbe7ef" fontSize="9.1">{n(z.price)}</text>
+                 <text x={end-5} y={noteY+3} textAnchor="end"
+                   direction="ltr" fill={color} fontSize="9" fontWeight="700"
+                   stroke="#000" strokeWidth="2" paintOrder="stroke">{n(z.price)}</text>
                </g>;
              })()}
              <title>{z.label+' · '+n(z.low)+' – '+n(z.high)+
@@ -521,25 +524,30 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            const pool=z.key==='HIGH_POOL'||z.key==='LOW_POOL';
            const color=buying?'#4ee5b3':'#ff8497';
            const y=clamp(z.exactY,plotTop+5,plotBottom-5);
-           const x=end-91;
+           const name=z.key==='SUPPLY'?'عرض':z.key==='DEMAND'?'طلب':
+             z.key==='HIGH_POOL'?'سيولة قمم':'سيولة قيعان';
            return <g key={'future-level-'+z.key}
              className="sniper-m15-future-zone">
-             <rect x={split+4} y={py(z.high)} width={end-split-9}
-               height={Math.max(2,py(z.low)-py(z.high))}
-               fill={color} fillOpacity={pool?.035:.065}
-               stroke={color} strokeOpacity=".85"
-               strokeWidth={pool?.8:1.1} strokeDasharray={pool?'2 5':'5 4'}/>
-             <line x1={split+5} x2={x} y1={y} y2={z.labelY}
-               stroke={color} strokeDasharray="2 4" strokeOpacity=".75"/>
-             <rect x={x} y={z.labelY-14} width="84" height="28"
-               rx="4" fill="#061217" fillOpacity=".97"
-               stroke={color} strokeOpacity=".85"/>
-             <text x={x+42} y={z.labelY-2.5} fontSize="8.6"
-               fill={color} fontWeight="700" textAnchor="middle"
-               direction="rtl">{z.label}</text>
-             <text x={x+42} y={z.labelY+9.5} fontSize="9.2"
-               fill="#eaf2f5" textAnchor="middle"
-               direction="ltr">{n(z.price)}</text>
+             {/* Dashes bound the historical price zone, not the future path. */}
+             <line x1={split+4} x2={end-4}
+               y1={py(z.high)} y2={py(z.high)}
+               stroke={color} strokeOpacity=".62" strokeWidth=".8"
+               strokeDasharray={pool?'2 5':'5 4'}/>
+             {!pool&&<line x1={split+4} x2={end-4}
+               y1={py(z.low)} y2={py(z.low)}
+               stroke={color} strokeOpacity=".62" strokeWidth=".8"
+               strokeDasharray="5 4"/>}
+             {Math.abs(y-z.labelY)>8&&<line x1={end-83} x2={end-83}
+               y1={y} y2={z.labelY} stroke={color}
+               strokeOpacity=".36" strokeDasharray="2 4"/>}
+             <text x={end-54} y={z.labelY+3} fontSize="8.2"
+               fill={color} fontWeight="700" textAnchor="end"
+               direction="rtl" stroke="#000" strokeWidth="2"
+               paintOrder="stroke">{name}</text>
+             <text x={end-5} y={z.labelY+3} fontSize="9"
+               fill={color} fontWeight="700" textAnchor="end"
+               direction="ltr" stroke="#000" strokeWidth="2"
+               paintOrder="stroke">{n(z.price)}</text>
              <title>{z.subtitle+' · منطقة تاريخية '+n(z.low)+' – '+n(z.high)+
                ' · '+z.source+' · مستوى تأكيد '+n(z.confirm)+
                ' · إبطال '+n(z.invalidate)+
@@ -578,7 +586,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            const dotY=py(mark.price),color=mark.direction==='UP'?'#6bffe0':'#ffad92';
            // Place text in the quiet far-right lane rather than on top of
            // the first projected candles and original SL/zone badges.
-           const labelX=end-79;
+           const labelX=end-5;
            const labelY=clamp(dotY+(mark.direction==='UP'?21:-21),
              plotTop+38+i*34,plotBottom-25);
            const overlapsRail=rail.some(level=>
@@ -598,14 +606,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              <line x1={barX+4} y1={dotY}
                x2={labelX} y2={clearLabelY} stroke={color}
                strokeWidth=".9" strokeDasharray="2 2"/>
-             <rect x={labelX} y={clearLabelY-13} width="72" height="26"
-               rx="4" fill="#041217" stroke={color} strokeOpacity=".8"/>
-             <text x={labelX+36} y={clearLabelY-1.5} fill={color}
-               fontSize="8.4" fontWeight="700" textAnchor="middle"
-               direction="rtl">{mark.label}</text>
-             <text x={labelX+36} y={clearLabelY+9.5} fill="#f0f5f6"
-               fontSize="9" fontWeight="700" textAnchor="middle"
-               direction="ltr">{n(mark.price)}</text>
+             <text x={end-54} y={clearLabelY+3} fill={color} fontSize="8.2"
+               fontWeight="700" textAnchor="end" direction="rtl"
+               stroke="#000" strokeWidth="2" paintOrder="stroke">
+               {mark.kind==='PATTERN_TURN'?'انعطاف؟':
+                 mark.direction==='UP'?'ارتداد؟':'رفض؟'}</text>
+             <text x={end-5} y={clearLabelY+3} fill={color}
+               fontSize="9" fontWeight="700" textAnchor="end" direction="ltr"
+               stroke="#000" strokeWidth="2" paintOrder="stroke">{n(mark.price)}</text>
              <title>{mark.detail+' · سعر السيناريو '+n(mark.price)+
                (mark.invalidation!=null?' · إبطال '+n(mark.invalidation):'')+
                ' · شموع توقع غير مؤكدة'}</title>
@@ -616,14 +624,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              z.label.includes('ارتداد')?'#41cfab':
              z.label.includes('رفض')?'#ff7b90':'#e8c184':
              liquidityColor(z.kind);
-           const y=zoneLabelPoints[i].y,xBadge=split-82;
+           const y=zoneLabelPoints[i].y,xBadge=split-7;
            return <g key={'group-label-'+i+'-'+z.price.toFixed(2)}>
-             <line x1={split-5} x2={xBadge+74} y1={py(z.price)} y2={y}
-               stroke={color} strokeOpacity=".64" strokeWidth=".8"/>
-             <rect x={xBadge} y={y-10} width="74" height="20" rx="4"
-               fill="#07161d" fillOpacity=".98" stroke={color} strokeOpacity=".76"/>
-             <text x={xBadge+37} y={y+3.2} fill={color} fontSize="9"
-               fontWeight="700" textAnchor="middle" direction="rtl">{z.label}</text>
+             <line x1={split-15} x2={xBadge-1} y1={py(z.price)} y2={y}
+               stroke={color} strokeOpacity=".44" strokeWidth=".7"/>
+             <text x={xBadge} y={y+3} fill={color} fontSize="8.3"
+               fontWeight="700" textAnchor="end" direction="rtl"
+               stroke="#000" strokeWidth="2" paintOrder="stroke">
+               {z.kind==='MIXED'?'مناطق':z.label.replace(/ ×\d+$/,'')}
+             </text>
              <title>{z.detail}</title>
            </g>;
          })}
@@ -632,13 +641,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              z.kind==='DISTRIBUTION'?'#ffac8e':'#eccc87';
            const xa=timeX(z.from),xb=Math.min(split,timeX(z.to));
            return <g className="sniper-m15-context-label">
-             <rect x={clamp((xa+xb)/2-37,left+6,split-76)}
-               y={clamp(py(z.high)-20,plotTop+2,plotBottom-21)}
-               width="74" height="17" rx="3" fill="#061017" fillOpacity=".85"
-               stroke={color} strokeOpacity=".7"/>
              <text x={clamp((xa+xb)/2,left+43,split-39)}
                y={clamp(py(z.high)-8,plotTop+14,plotBottom-9)}
-               fontSize="9" fill={color} textAnchor="middle" fontWeight="700">
+               fontSize="8.2" fill={color} textAnchor="middle" fontWeight="700"
+               stroke="#000" strokeWidth="2" paintOrder="stroke">
                {z.kind==='ACCUMULATION'?'تجميع':z.kind==='DISTRIBUTION'?'تصريف':'انضغاط'}</text>
            </g>;
          })()}
