@@ -6,7 +6,9 @@ export type FrozenM15Snapshot={
  stop:number|null;scenario:M15Scenario;reactions:M15ReactionMap;
  // Unscored, natural historical analogue extension for the classic 48-slot view.
  // The original first 12 scored bars stay in scenario.bars unchanged.
- visualBars?:ScenarioM15Bar[]
+ visualBars?:ScenarioM15Bar[];
+ // Display-only provenance; never interprets chart bias as trade authorization.
+ evidenceLevel?:'QUALIFIED'|'CONFLUENCE'|'PRELIMINARY'
 };
 const M15=900000;
 export const FROZEN_M15_HORIZON=12*M15;
@@ -45,6 +47,8 @@ export function validateFrozenM15Snapshot(data:unknown,input:{
      [b.open,b.close,b.high,b.low].every((value,k)=>
        Math.abs(value-[visual[i].open,visual[i].close,visual[i].high,visual[i].low][k])<.000001))))
      return null;
+ if(x.evidenceLevel!==undefined&&x.evidenceLevel!=='QUALIFIED'&&
+   x.evidenceLevel!=='CONFLUENCE'&&x.evidenceLevel!=='PRELIMINARY')return null;
  if(!x.reactions||!Array.isArray(x.reactions.bands)||
    !Array.isArray(x.reactions.marks))return null;
  // Prevent accidental restoration across a changed quote/source or a
