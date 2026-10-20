@@ -176,4 +176,35 @@ assert.match(cleanCss,/\[data-clean="true"\] \.sniper-flow-radar-chip/,
 assert.doesNotMatch(cleanCss,/\[data-clean="true"\] \.sniper-m15-(real|projected)\b/,
  'clean mode must never hide true or projected OHLC');
 
+
+const issuanceModule={exports:{}};
+vm.runInNewContext(ts.transpileModule(
+ fs.readFileSync('lib/sniper-m15-evidence-issuance.ts','utf8'),{
+ compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
+}).outputText,{module:issuanceModule,exports:issuanceModule.exports});
+const assessIssuance=issuanceModule.exports.assessM15ScenarioIssuance;
+const evidence={side:'SELL',qualified:false,radarStatus:'ALIGNED',radarSide:'SELL',
+ m15Side:'SELL',m15Votes:2,structuralActive:false,
+ structuralSide:'WAIT',structuralAgreement:0,fresh:true,
+ goals:2,stop:103,anchor:100};
+assert.equal(assessIssuance(evidence).allowed,true,'fresh multi-frame agreement may issue');
+assert.equal(assessIssuance({...evidence,radarStatus:'CONFLICT'}).allowed,false,
+ 'opposing M1/M5 must veto a new forecast');
+assert.equal(assessIssuance({...evidence,radarStatus:'M1_ONLY'}).allowed,false,
+ 'one unverified frame cannot issue a forecast each 15 minutes');
+assert.equal(assessIssuance({...evidence,m15Votes:0}).allowed,false,
+ 'M15 direction without confirming votes cannot issue a forecast');
+assert.equal(assessIssuance({...evidence,structuralActive:true,
+ structuralSide:'BUY',structuralAgreement:3}).allowed,false,
+ 'opposing H1/H4 structural evidence must veto scenario');
+assert.equal(assessIssuance({...evidence,qualified:true,radarStatus:'M1_ONLY'}).allowed,true,
+ 'an independently qualified scenario can issue when M15 structure agrees');
+assert.equal(assessIssuance({...evidence,fresh:false}).allowed,false,
+ 'stale or unavailable data is always WAIT');
+assert.equal(assessIssuance({...evidence,stop:null}).allowed,false,
+ 'invalid risk boundary cannot masquerade as a certain scenario');
+assert.match(chart,/if\(!issuance\.allowed\|\|lastAttempt\.current===candleKey\)return/);
+assert.match(chart,/persistenceKey='qannas-m15-freeze-evidence-v2-'/,
+ 'old unqualified visual scenarios are never silently restored');
+
 console.log('PASS: M15 supply/demand, liquidity pools, true accumulation box, confirmed sweeps/BOS, freshness & mobile toggle');
