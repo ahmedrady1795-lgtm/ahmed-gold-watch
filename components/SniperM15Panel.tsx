@@ -285,7 +285,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const projected=aligned?.scenario??noScenario;
  const reactionMap=aligned?.reactions??emptyReactionMap();
  const savedProof=proofLedger.filter(p=>p.asset===asset&&
-   p.source===String(x?.candleSource||'')&&p.anchorTime+900000<=now).at(-1);
+   p.source===String(x?.candleSource||'')&&p.anchorTime+2*900000<=now).at(-1);
  const proof=savedProof?evaluateM15ForwardProof(savedProof,actual,now):null;
  const proofLabel=proof&&proof.evaluated>0?
    'تحقق فعلي '+proof.directionMatches+'/'+proof.evaluated+

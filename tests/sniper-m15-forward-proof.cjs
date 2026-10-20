@@ -30,3 +30,6 @@ assert.match(panel,/stable\.anchorTime===forming\.time\?stable:null/,
  'pinned forecast must remain visible when live quote changes in same M15');
 assert.doesNotMatch(panel,/stable\.scenario\.bars\[0\]\?\.open===anchor/,
  'do not hide a frozen forecast after a new quote tick');
+
+assert.match(panel,/p\.anchorTime\+2\*900000<=now/,
+ 'show newest verification only once a full future bar has actually CLOSED');
