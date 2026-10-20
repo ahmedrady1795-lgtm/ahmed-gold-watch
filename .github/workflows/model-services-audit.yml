@@ -49,6 +49,9 @@ jobs:
                   'readyCount':ai.get('readyCount'),
                   'models':ai.get('models'),
                   'mt5Bridge':(data.get('services') or {}).get('mt5Bridge')}
+             bridge=out['mt5Bridge'] or {}
+             if bridge.get('configured') is not True or bridge.get('executionEnabled') is not False:
+              raise RuntimeError('MT5 read-only server token not configured correctly')
             else:
              broker=data.get('brokerDepth') or {}
              out={'connected':data.get('connected'),'fresh':data.get('fresh'),
