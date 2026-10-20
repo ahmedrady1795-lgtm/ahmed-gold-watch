@@ -1,9 +1,9 @@
-/* Price-evidence Gold Radar lives in the otherwise empty forecast area.
-   It never changes OHLC, confirmed targets or entry gates. */
+/* GOLD radar is a compact disclosure ABOVE the plot, never an overlay
+   across price bars or TP labels. It cannot change OHLC or execution. */
 .sniper-m15-chart-box{position:relative}
 .sniper-gold-radar-widget{
-  position:absolute;z-index:7;
-  top:35px;right:18%;width:150px;max-width:35%;
+  position:relative;z-index:2;
+  top:auto;right:auto;width:100%;max-width:none;
   min-width:0;direction:rtl;color:#c5d8e2;
   font-size:10px;line-height:1.35;
   border-inline-start:2px solid #536b75;
@@ -40,17 +40,17 @@
 .sniper-gold-radar-source{font-size:8.7px;color:#93a9b6;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sniper-gold-radar-expanded{
-  position:absolute;top:calc(100% + 4px);right:0;
-  width:min(310px,82vw);max-height:70vh;overflow:auto;
+  position:relative;top:auto;right:auto;
+  width:100%;max-height:none;overflow:visible;
   box-sizing:border-box;padding:10px;display:flex;flex-direction:column;gap:6px;
   background:rgba(4,14,22,.985);border:1px solid #3b606d;
-  border-radius:6px;box-shadow:0 8px 20px rgba(0,0,0,.8);
+  border-radius:6px;box-shadow:none;
   color:#c9dce6;font-size:11px;line-height:1.6;
 }
 .sniper-gold-radar-expanded strong{color:#e7d7ad}
 .sniper-gold-radar-expanded small{color:#a9bfc8;font-size:10px}
 @media(max-width:600px){
-  .sniper-gold-radar-widget{top:32px;right:18%;width:142px;max-width:36%;font-size:9px}
+  .sniper-gold-radar-widget{top:auto;right:auto;width:100%;max-width:none;font-size:9px}
   .sniper-gold-radar-toggle{padding:4px 5px;gap:2px}
   .sniper-gold-radar-top strong{font-size:10px}
   .sniper-gold-radar-top small{font-size:7.7px}
