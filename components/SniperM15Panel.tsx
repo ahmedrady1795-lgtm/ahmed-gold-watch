@@ -26,21 +26,22 @@ import {futureM15WatchZones,conditionalM15BreakoutLevels} from '../lib/sniper-m1
 import type {ForwardWatchZone} from '../lib/sniper-m15-future-zones';
 import type {M15ReactionMap} from '../lib/sniper-m15-reactions';
 import {evaluateM15ForwardProof} from '../lib/sniper-m15-forward-proof';
+import {validateFrozenM15Snapshot} from '../lib/sniper-m15-snapshot';
+import type {FrozenM15Snapshot} from '../lib/sniper-m15-snapshot';
+import SniperPerformance from './SniperPerformance';
 import type {M15ForwardProof} from '../lib/sniper-m15-forward-proof';
 
 const n=(x:number|null|undefined)=>x!=null&&Number.isFinite(x)?
  x.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
 const h=(t:number)=>new Date(t).toLocaleTimeString('en-GB',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'});
 const clamp=(n:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,n));
-type FrozenChart={asset:'GOLD'|'BTC';source:string;closedTime:number;anchorTime:number;createdAt:number;
- side:Exclude<M15Side,'WAIT'>;goals:Array<{stage:number;price:number}>;
- stop:number|null;scenario:M15Scenario;reactions:M15ReactionMap};
+type FrozenChart=FrozenM15Snapshot;
 const noScenario:M15Scenario={ready:false,bars:[],reason:'لا تتوفر شموع سيناريو M15 مثبتة',
  sourceBars:0,archiveYears:0,origin:'NONE',touches:[],stopped:false,atr:null};
 
 
 export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,assetView='ALL',
- observationAt=snapshotAt}:{
+ observationAt=snapshotAt,audit,auditLoaded=false}:{
  data:any;now:number;snapshotAt:unknown;observationAt?:unknown;
  goldLive?:any;btcLive?:any;assetView?:'ALL'|'GOLD'|'BTC';
  journals?:any;audit?:any;auditLoaded?:boolean;
@@ -161,6 +162,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Freeze a read-only scenario to its last fully closed M15 candle. Incoming
  // quote ticks still move LIVE but cannot repaint the projected candle route.
  const [frozen,setFrozen]=useState<FrozenChart|null>(null);
+ const [restoredKey,setRestoredKey]=useState('');
+ const [resultsOpen,setResultsOpen]=useState(false);
+ useEffect(()=>{
+   const onHash=()=>{if(window.location.hash==='#sniper-performance')
+      setResultsOpen(true);};
+   window.addEventListener('hashchange',onHash);
+   onHash();
+   return ()=>window.removeEventListener('hashchange',onHash);
+ },[]);
  // Immutable, browser-local forward records: stored BEFORE a future full M15
  // exists; never rewrite their OHLC with observed outcomes.
  const [proofLedger,setProofLedger]=useState<M15ForwardProof[]>([]);
@@ -187,6 +197,30 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const lastAttempt=useRef('');
  const closedTime=actual.at(-1)?.time??0;
  const candleKey=asset+':'+String(x?.candleSource||'')+':'+closedTime;
+ const currentSource=String(x?.candleSource||'');
+ const persistenceScope=asset+':'+currentSource;
+ const persistenceKey='qannas-m15-freeze-v2-'+asset;
+ useEffect(()=>{
+   let restored:FrozenChart|null=null;
+   try {
+     const raw=window.localStorage.getItem(persistenceKey);
+     restored=validateFrozenM15Snapshot(raw?JSON.parse(raw):null,{
+       asset,source:currentSource,now
+     });
+   }catch{}
+   setFrozen(prev=>prev?.asset===asset&&prev.source===currentSource?
+     prev:restored);
+   lastAttempt.current='';
+   setRestoredKey(persistenceScope);
+ },[persistenceScope,persistenceKey]);
+ useEffect(()=>{
+   if(restoredKey!==persistenceScope)return;
+   try {
+     if(frozen?.asset===asset&&frozen.source===currentSource)
+       window.localStorage.setItem(persistenceKey,JSON.stringify(frozen));
+     else window.localStorage.removeItem(persistenceKey);
+   }catch{}
+ },[restoredKey,persistenceScope,persistenceKey,frozen,asset,currentSource]);
  // Historical forecast-side test areas stay fixed across quote ticks.
  const [forwardSnapshot,setForwardSnapshot]=useState<{
    key:string;zones:ForwardWatchZone[]}|null>(null);
@@ -222,13 +256,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    !providerTransition&&marketOpen);
  const freezeDecision=frozenM15Decision({
    old:frozen&&frozen.source===String(x?.candleSource||'')?{asset:frozen.asset,closedTime:frozen.closedTime,
-     side:frozen.side,stop:frozen.stop,createdAt:frozen.createdAt}:null,
+     side:frozen.side,stop:frozen.stop,createdAt:frozen.createdAt,
+     anchorTime:frozen.anchorTime}:null,
    asset,closedTime,quote:price,fresh:freshObservation,
    marketOpen,now,opposingBosConfirmedAt:latestBos?.confirmedAt,
    opposingBosSide:latestBos?.kind==='BOS_UP'?'BUY':
      latestBos?.kind==='BOS_DOWN'?'SELL':null
  });
  useEffect(()=>{
+   if(restoredKey!==persistenceScope)return;
    if(blockedKey===candleKey)return;
    if(freezeDecision==='HOLD'||freezeDecision==='PAUSE')return;
    if(freezeDecision==='CLEAR'){
@@ -256,7 +292,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      archive:verifiedArchive.ready?verifiedArchive.rows:undefined,
      archiveYears:verifiedArchive.ready?verifiedArchive.years:0,
      now,anchor,side:safeSide,targets:proposedGoals,
-     stop:proposedStop,steps:48
+     stop:proposedStop,steps:12
    });
    if(!scenario.ready){setBuildReason(scenario.reason);return;}
    setBuildReason('');
@@ -276,6 +312,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    setFrozen({asset,source,closedTime,anchorTime,createdAt:now,
      side:safeSide,goals:proposedGoals,stop:proposedStop,scenario,reactions});
  },[asset,now,closedTime,candleKey,blockedKey,freezeDecision,frozen,
+    restoredKey,persistenceScope,
     freshObservation,safeSide,anchor,forming?.time,actual,price,proposedStop,
     proposedGoals.map(g=>g.price).join('|'),latestBos?.confirmedAt,latestBos?.kind,
    verifiedArchive.ready,verifiedArchive.storedBars,liquidity,
@@ -289,7 +326,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    awaitingReplacement?'السيناريو السابق محفوظ · تقييم إغلاق M15':
    stable?.scenario.stopped?'محاكاة M15 لامست الإبطال عند الشمعة '+
      stable.scenario.bars.length+' · الأهداف المعروضة ليست نتائج فعلية':
-   stable?'سيناريو مشروط مثبت · '+h(stable.createdAt):
+   stable?'سيناريو ثابت منذ '+h(stable.createdAt)+' · لا يُعاد رسمه كل M15':
    blockedKey===candleKey?'السيناريو مُبطل · انتظار إغلاق M15':
    !marketOpen?'السوق مغلق':!freshObservation?'انتظار بيانات حديثة':
    safeSide==='WAIT'&&conditionalRange.valid?
@@ -302,17 +339,21 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // A pinned route from a previous M15 window must never masquerade as a
  // fresh projection starting at the current live candle.
  const aligned=stable&&validLive&&forming&&
-   stable.anchorTime===forming.time?stable:null;
- // Only the first 12 hypothetical M15 bars appear: later chosen analogues
- // have not demonstrated reliable out-of-sample predictive accuracy.
- const shownBars=aligned?.scenario.bars.slice(0,12)??[];
+   stable.anchorTime<=forming.time&&
+   forming.time<stable.anchorTime+12*900000?stable:null;
+ const elapsedSteps=aligned&&forming?
+   Math.max(0,Math.round((forming.time-aligned.anchorTime)/900000)):0;
+ // Retain ORIGINAL forecast timestamps. On later real candles only the
+ // not-yet-observed route goes right of NOW; the past is scored separately.
+ const shownBars=aligned?.scenario.bars.slice(elapsedSteps,12)??[];
  const goals=aligned?.scenario.ready&&!aligned.scenario.stopped?
    aligned.goals.filter(g=>shownBars.some(b=>b.low<=g.price&&g.price<=b.high)):[];
  const stop=aligned?.stop??null;
  const projected=aligned?.scenario??noScenario;
  const reactionMap=aligned?{
    bands:aligned.reactions.bands,
-   marks:aligned.reactions.marks.filter(m=>m.step<=shownBars.length)
+   marks:aligned.reactions.marks.filter(m=>
+     m.step>elapsedSteps&&m.step<=elapsedSteps+shownBars.length)
  }:emptyReactionMap();
  const savedProof=proofLedger.filter(p=>p.asset===asset&&
    p.source===String(x?.candleSource||'')&&p.anchorTime+2*900000<=now).at(-1);
@@ -585,7 +626,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {projected.ready&&shownBars.map((b,i)=>
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
              candleWidth,true,'future'+i))}
-         {projected.ready&&aligned&&forming&&<g className="sniper-m15-anchor-link">
+         {projected.ready&&aligned&&forming&&elapsedSteps===0&&
+           <g className="sniper-m15-anchor-link">
            {/* Pin the ORIGINAL observed issuance price. Live ticks must never
                re-anchor or silently erase a forecast after it is recorded. */}
            <line x1={split-3} y1={py(projected.bars[0].open)}
@@ -606,7 +648,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              ' · اختلاف السعر بعد التثبيت لا يعيد كتابة توقع قديم'}</title>
          </g>}
          {projected.ready&&reactionMap.marks.map((mark,i)=>{
-           const barX=split+5+(mark.step-.5)*projectedStride;
+           const barX=split+5+(mark.step-elapsedSteps-.5)*projectedStride;
            const dotY=py(mark.price),color=mark.direction==='UP'?'#6bffe0':'#ffad92';
            // Place text in the quiet far-right lane rather than on top of
            // the first projected candles and original SL/zone badges.
@@ -759,7 +801,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            <title>{mark.detail+' · حركة افتراضية غير مؤكدة'}</title>
          </g>;
        })}
-       {!paused&&!awaitingReplacement&&asset==='BTC'&&projected.ready&&projected.bars.length>0&&(()=>{
+       {!paused&&!awaitingReplacement&&asset==='BTC'&&elapsedSteps===0&&
+         projected.ready&&shownBars.length>0&&(()=>{
          const first=projected.bars[0],cx=split+5+.5*projectedStride;
          const color=firstRadarCandle.phase==='VERIFIED'?'#4de7ab':
            firstRadarCandle.phase==='CANCELLED'||firstRadarCandle.phase==='CONFLICT'?
