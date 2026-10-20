@@ -132,7 +132,7 @@ assert.doesNotMatch(chart,/strokeDasharray=\{future\?'2 2':undefined\}/,
  'restore solid wicks to match the original genuine candle design');
 assert.doesNotMatch(chart,/extendIllustrativeM15ToTargets|compactM15TargetDrawing/,
  'no fictional candle staircase can be forced to remote TP prices');
-assert.match(chart,/const displayBars=shownBars;/,
+assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars;/,
  'draw the original twelve analogue bars without added targets');
 assert.match(chart,/compactM15ZoneAnnotations/,'nearby liquidity labels are grouped, not drawn on top of one another');
 assert.doesNotMatch(chart,/sniper-m15-caption|sniper-m15-status/,
