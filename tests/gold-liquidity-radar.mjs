@@ -29,27 +29,27 @@ assert.equal(readGoldLiquidityRadar({now,source:src,bars:future,marketOpen:true}
 const buying=candles.map(x=>({...x}));buying.at(-1).open=4199.7;
 buying.at(-1).low=4198.05;buying.at(-1).high=4200.75;buying.at(-1).close=4200.44;
 const bull=readGoldLiquidityRadar({now,source:src,bars:buying,marketOpen:true});
-assert.equal(bull.phase,'CONFIRMED',JSON.stringify(bull));
-assert.equal(bull.side,'BUY');assert.equal(bull.label,'سحب سيولة قاع');
+assert.equal(bull.phase,'WATCH',JSON.stringify(bull));
+assert.equal(bull.side,'WAIT');assert.equal(bull.setupSide,'BUY');
 assert.ok(bull.confirm>bull.price&&bull.invalidate<bull.price);
 const selling=candles.map(x=>({...x}));selling.at(-1).open=4200.2;
 selling.at(-1).low=4199.65;selling.at(-1).high=4202.25;selling.at(-1).close=4199.85;
 const bear=readGoldLiquidityRadar({now,source:src,bars:selling,marketOpen:true});
-assert.equal(bear.phase,'CONFIRMED',JSON.stringify(bear));
-assert.equal(bear.side,'SELL');
+assert.equal(bear.phase,'WATCH',JSON.stringify(bear));
+assert.equal(bear.side,'WAIT');assert.equal(bear.setupSide,'SELL');
 const sig=appendGoldRadarEvent({ledger:emptyGoldLedger(),now,
- source:src,closedAt:bull.eventAt,side:bull.side,
+ source:src,closedAt:bull.eventAt,side:bull.setupSide,
  price:bull.price,reason:bull.reason,confirm:bull.confirm,
  invalidate:bull.invalidate,baseline:'BUY'});
 assert.equal(sig.added,true,sig.reason);
 const dup=appendGoldRadarEvent({ledger:sig.ledger,now,
- source:src,closedAt:bull.eventAt,side:bull.side,
+ source:src,closedAt:bull.eventAt,side:bull.setupSide,
  price:bull.price,reason:bull.reason,confirm:bull.confirm,
  invalidate:bull.invalidate,baseline:'BUY'});
 assert.equal(dup.added,false);
 assert.equal(appendGoldRadarEvent({ledger:emptyGoldLedger(),now,
  source:'Yahoo Finance · COMEX GC=F proxy',closedAt:bull.eventAt,
- side:bull.side,price:bull.price,reason:bull.reason,
+ side:bull.setupSide,price:bull.price,reason:bull.reason,
  confirm:bull.confirm,invalidate:bull.invalidate,baseline:'BUY'}).added,false);
 const rec=sig.ledger.events[0];
 const m1={time:rec.m1.barAt,open:rec.price,
@@ -91,3 +91,35 @@ assert.match(interfaceCode,/\/api\/gold-radar/);
 assert.match(boot,/gold-radar-worker\.mjs/);
 assert.match(checkpoint,/mergeGoldRadarLedger/);
 console.log('PASS: real XAUUSD M1 sweep, compression guards, source-safe M1/M15 shadow score and mobile overlay');
+
+const next=(rows,bar)=>[...rows,{time:rows.at(-1).time+60000,...bar}];
+const replay=rows=>readGoldLiquidityRadar({now:rows.at(-1).time+60010,
+ source:src,bars:rows,marketOpen:true});
+const activatedRows=next(buying,{open:bull.price,low:bull.price-.1,
+ high:bull.confirm+.4,close:bull.confirm+.2});
+const activated=replay(activatedRows);
+assert.equal(activated.phase,'CONFIRMED');
+assert.equal(activated.side,'BUY');
+assert.equal(activated.confirm,bull.confirm,'trigger must remain frozen');
+assert.equal(activated.invalidate,bull.invalidate);
+assert.equal(activated.setupAt,bull.setupAt);
+assert.equal(activated.confirmedAt,activatedRows.at(-1).time+60000);
+const ambiguousRows=next(buying,{open:bull.price,low:bull.invalidate-.1,
+ high:bull.confirm+.4,close:bull.confirm+.2});
+assert.equal(replay(ambiguousRows).phase,'INVALIDATED');
+assert.equal(replay(ambiguousRows).side,'WAIT');
+const failedAfter=next(activatedRows,{open:activated.price,
+ high:activated.price+.1,low:bull.invalidate-.2,close:bull.invalidate-.1});
+assert.equal(replay(failedAfter).phase,'INVALIDATED');
+let expired=buying;
+for(let i=0;i<6;i++)expired=next(expired,{open:bull.price,
+ high:bull.confirm-.01,low:bull.price-.1,close:bull.price});
+assert.equal(replay(expired).phase,'EXPIRED');
+const sellRows=next(selling,{open:bear.price,high:bear.price+.1,
+ low:bear.confirm-.4,close:bear.confirm-.2});
+assert.equal(replay(sellRows).phase,'CONFIRMED');
+assert.equal(replay(sellRows).side,'SELL');
+assert.equal(readGoldLiquidityRadar({now:now+600000,source:src,
+ bars:buying,marketOpen:true}).ready,false);
+assert.deepEqual(replay(activatedRows),replay(activatedRows),'replay is deterministic');
+console.log('PASS: frozen triggers, later-close confirmation, cancellation, expiry and stale-data guard');
