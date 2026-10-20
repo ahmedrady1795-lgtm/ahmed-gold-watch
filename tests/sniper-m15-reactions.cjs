@@ -79,4 +79,18 @@ assert.match(component,/mark\.price/);
 assert.match(component,/z\.invalidation/);
 assert.match(component,/projected\.ready&&reactionMap\.marks/);
 assert.doesNotMatch(component,/setTimeout\([^]*?setFrozen/);
+assert.match(component,/const projectedSlots=Math\.max\(14,Math\.min\(48,projected\.bars\.length\)\)/,
+ 'a shortened historical scenario must occupy most of the forecast pane');
+assert.doesNotMatch(component,/Math\.max\(projected\.bars\.length,48\)/,
+ 'do not leave 38 invisible future candle slots after an early stop');
+assert.match(component,/projectedWidth=clamp\(actualStride\*\.75,1\.7,3\.6\)/,
+ 'projected candle bodies must remain proportionate to actual bars');
+assert.match(component,/stable\?\.scenario\.stopped/,
+ 'display hypothetical early stop transparently instead of only showing distant TPs');
+assert.match(component,/const drawnZones=liquidity\.zones\.filter/,
+ 'overlapping real liquidity rectangles should not paint opaque red blobs');
+assert.match(component,/compactM15ZoneAnnotations\(drawnZones/,
+ 'only drawn price zones contribute visible historical labels');
+assert.match(component,/Math\.abs\(m\.price-z\.price\)/,
+ 'do not print conditional zone price twice near a plotted reaction point');
 console.log('PASS: frozen source-true rebound bands, mirrored BUY/SELL projected touches, expiry/stop/future guards, no invented hits');
