@@ -210,6 +210,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const awaitingReplacement=Boolean(stable&&freezeDecision==='REBUILD');
  const lifecycle=paused?'السيناريو محفوظ · البيانات متأخرة':
    awaitingReplacement?'السيناريو السابق محفوظ · تقييم إغلاق M15':
+   stable?.scenario.stopped?'محاكاة M15 لامست الإبطال عند الشمعة '+
+     stable.scenario.bars.length+' · الأهداف المعروضة ليست نتائج فعلية':
    stable?'سيناريو مشروط مثبت · '+h(stable.createdAt):
    blockedKey===candleKey?'السيناريو مُبطل · انتظار إغلاق M15':
    !marketOpen?'السوق مغلق':!freshObservation?'انتظار بيانات حديثة':
@@ -281,7 +283,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const liquidityColor=(kind:string)=>
    kind==='DEMAND'||kind==='LOW_POOL'||kind==='REBOUND_UP'?
    '#41cfab':'#ff7b90';
- const projectedStride=(end-split-8)/Math.max(projected.bars.length,48);
+ // A 10-candle scenario must occupy its own forecast canvas. Reserving 48
+ // empty slots made its candlesticks unreadable on mobile.
+ const projectedSlots=Math.max(14,Math.min(48,projected.bars.length));
+ const projectedStride=(end-split-8)/projectedSlots;
+ const projectedWidth=clamp(projectedStride*.56,1.5,5.0);
  // Price zones keep their true coordinates; only nearby labels merge.
  const compactZones=compactM15ZoneAnnotations(liquidity.zones,price??0,py,3,34);
  const zoneLabelPoints=compactZones.map((z,i)=>({i,y:py(z.price)}));
@@ -394,7 +400,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                height={Math.max(2,py(z.low)-py(z.high))} fill={color}
                fillOpacity=".08" stroke={color} strokeWidth="1.15"
                strokeOpacity=".9" strokeDasharray="3 4"/>
-             {reactionMap.marks.every(m=>m.kind!=='ZONE_TOUCH')&&(()=>{
+             {reactionMap.marks.every(m=>Math.abs(m.price-z.price)>
+               Math.max(projected.atr??0,Math.abs(z.high-z.low)))&&(()=>{
                const noteY=clamp(py(z.price),plotTop+36,plotBottom-30);
                return <g className="sniper-m15-reaction-zone-label">
                  <rect x={end-75} y={noteY-14} width="70" height="27" rx="4"
@@ -418,13 +425,19 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            stroke="#7e9bb1" strokeWidth="1.25" strokeDasharray="5 5"/>
          {projected.ready&&projected.bars.map((b,i)=>
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
-             clamp(projectedStride*.62,1.5,3.1),true,'future'+i))}
+             projectedWidth,true,'future'+i))}
          {projected.ready&&reactionMap.marks.map((mark,i)=>{
            const barX=split+5+(mark.step-.5)*projectedStride;
            const dotY=py(mark.price),color=mark.direction==='UP'?'#6bffe0':'#ffad92';
-           const labelX=clamp(barX+9,split+7,end-76);
-           const labelY=clamp(dotY+(mark.direction==='UP'?19:-19),
-             plotTop+21,plotBottom-20);
+           // Place text in the quiet far-right lane rather than on top of
+           // the first projected candles and original SL/zone badges.
+           const labelX=end-79;
+           const labelY=clamp(dotY+(mark.direction==='UP'?21:-21),
+             plotTop+38+i*34,plotBottom-25);
+           const overlapsRail=rail.some(level=>
+             Math.abs(level.exactY-labelY)<22||Math.abs(level.labelY-labelY)<22);
+           const clearLabelY=clamp(labelY+(overlapsRail?
+             (mark.direction==='UP'?29:-29):0),plotTop+30,plotBottom-24);
            return <g className="sniper-m15-reaction-mark"
              key={'reaction-mark-'+mark.step+'-'+i}>
              <circle cx={barX} cy={dotY} r="4.2" fill="#000"
@@ -436,14 +449,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                   ' L '+(barX+5)+' '+(dotY-9)}
                fill="none" stroke={color} strokeWidth="1.35"/>
              <line x1={barX+4} y1={dotY}
-               x2={labelX} y2={labelY} stroke={color}
+               x2={labelX} y2={clearLabelY} stroke={color}
                strokeWidth=".9" strokeDasharray="2 2"/>
-             <rect x={labelX} y={labelY-13} width="72" height="26"
+             <rect x={labelX} y={clearLabelY-13} width="72" height="26"
                rx="4" fill="#041217" stroke={color} strokeOpacity=".8"/>
-             <text x={labelX+36} y={labelY-1.5} fill={color}
+             <text x={labelX+36} y={clearLabelY-1.5} fill={color}
                fontSize="8.4" fontWeight="700" textAnchor="middle"
                direction="rtl">{mark.label}</text>
-             <text x={labelX+36} y={labelY+9.5} fill="#f0f5f6"
+             <text x={labelX+36} y={clearLabelY+9.5} fill="#f0f5f6"
                fontSize="9" fontWeight="700" textAnchor="middle"
                direction="ltr">{n(mark.price)}</text>
              <title>{mark.detail+' · سعر السيناريو '+n(mark.price)+
