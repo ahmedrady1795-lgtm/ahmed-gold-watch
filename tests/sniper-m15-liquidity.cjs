@@ -128,8 +128,14 @@ const sampleBoard=makeBoard({now,price:100,history:flat,liquidity:x,
 assert.equal(sampleBoard.ready,true);
 assert.equal(sampleBoard.items.length,4,'sell buy upper and lower liquidity all visible');
 assert.equal(sampleBoard.items[0].key,'SELL');
-assert.equal(sampleBoard.items[0].low,100.65,'sell price band is not a projection');
-assert.equal(sampleBoard.items[1].high,99.55,'buy price band from closed OHLC');
+assert.ok(x.zones.some(z=>
+  (z.kind==='SUPPLY'||z.kind==='REBOUND_DOWN')&&
+  z.low===sampleBoard.items[0].low&&z.high===sampleBoard.items[0].high),
+ 'sell band must match an observed closed-OHLC source zone, not a projection');
+assert.ok(x.zones.some(z=>
+  (z.kind==='DEMAND'||z.kind==='REBOUND_UP')&&
+  z.low===sampleBoard.items[1].low&&z.high===sampleBoard.items[1].high),
+ 'buy band must match an observed closed-OHLC source zone, not a projection');
 assert.equal(sampleBoard.items[2].low,101.4,'upper stop pool keeps exact bounds');
 assert.equal(sampleBoard.items[3].low,98.7,'lower stop pool keeps exact bounds');
 assert.equal(sampleBoard.context.label,'تجميع سعري مرصود');
