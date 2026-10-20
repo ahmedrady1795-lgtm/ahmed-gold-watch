@@ -114,10 +114,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const radar=assessChartObservation({now,priceFresh:m.sniper.view.priceFresh,
    historyFresh:m.historyFresh,marketOpen,m1:m.candles,m5:x?.chartHigherFrames?.m5});
  const m15Bias=useMemo(()=>observedM15Bias(actual),[actual]);
+ // The visual scenario follows observed price action, NOT entry permissions.
+ // A WATCH-only trade plan must not override stronger closed M15/H1 evidence.
+ const observedSide=m15ObservationSide(m15Bias.side,m.bias);
  const side: 'BUY'|'SELL'|'WAIT' =
-   (m.ready||m.watchReady)&&m.displaySide!=='WAIT'?m.displaySide:
+   m.ready&&m.displaySide!=='WAIT'?m.displaySide:
+   observedSide!=='WAIT'?observedSide:
+   radar.status==='ALIGNED'?radar.side:
    m.observation.ready&&m.observation.side!=='WAIT'?m.observation.side:
-   radar.status==='ALIGNED'?radar.side:m15ObservationSide(m15Bias.side,m.bias);
+   m.watchReady&&m.displaySide!=='WAIT'?m.displaySide:'WAIT';
  const safeSide=providerTransition||!marketOpen||!historyFresh||
    !m.sniper.view.priceFresh?'WAIT':side;
  const outlook=useMemo(()=>buildDistantMovementOutlook({
@@ -134,7 +139,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
     m.watchReady?m.displayTargets:[];
  const proposedStop=qualified?m.displayStop:
    outlook.invalidation??(m.watchReady?m.displayStop:null);
- const proposedGoals=targets.slice(0,3).map(t=>({stage:t.stage,price:t.price}));
+ // The chart may use closed M15/H1 targets even when no qualified trade exists.
+ // Missing targets do not force an invented TP or a permanently blank chart.
  const forming=sampledLiveM15(m.candles,now,observedM15,String(x?.candleSource||''));
  // Live M15 combines closed M1 OHLC with actual same-venue sampled ticks.
  const lastClosedM1=m.candles.at(-1);
@@ -206,7 +212,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const candleKey=asset+':'+String(x?.candleSource||'')+':'+closedTime;
  const currentSource=String(x?.candleSource||'');
  const persistenceScope=asset+':'+currentSource;
- const persistenceKey='qannas-m15-freeze-evidence-v2-'+asset;
+ const persistenceKey='qannas-m15-freeze-analysis-v3-'+asset;
  useEffect(()=>{
    if(!currentSource)return;
    let restored:FrozenChart|null=null;
@@ -256,6 +262,33 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const zoneBoard=useMemo(()=>buildM15LiquidityBoard({
    liquidity,watch:watchMap,history:actual,price,now
  }),[liquidity,watchMap,actual,price,now]);
+ const validObjective=(v:number)=>anchor!=null&&Number.isFinite(v)&&v>0&&
+   (safeSide==='BUY'?v>anchor:safeSide==='SELL'?v<anchor:false);
+ const explicitGoals=targets.map(t=>t.price).filter(validObjective);
+ const backupGoals=watchMap.ready?
+   (safeSide==='BUY'?watchMap.upper:watchMap.lower)
+      .map(t=>t.price).filter(validObjective):[];
+ const candidateGoals=(explicitGoals.length?explicitGoals:backupGoals)
+   .sort((a,b)=>safeSide==='BUY'?a-b:b-a);
+ const selectedGoals:number[]=[];
+ const objectiveGap=Math.max(.01,(watchMap.atr??0)*.18);
+ for(const candidate of candidateGoals){
+   if(selectedGoals.length===3)break;
+   if(!selectedGoals.some(p=>Math.abs(candidate-p)<objectiveGap))
+      selectedGoals.push(candidate);
+ }
+ const proposedGoals=selectedGoals.map((price,i)=>({stage:i+1,price}));
+ // The technical stop, when needed, is an OBSERVED closed-M15 swing.
+ // It is not a broker stop or automatic permission to execute a trade.
+ const swingTail=actual.slice(-10);
+ const swingStop=swingTail.length===10?
+   safeSide==='BUY'?Math.min(...swingTail.map(b=>b.low)):
+   safeSide==='SELL'?Math.max(...swingTail.map(b=>b.high)):null:null;
+ const validStop=(v:number|null)=>v!=null&&Number.isFinite(v)&&v>0&&
+   anchor!=null&&(safeSide==='BUY'?v<anchor:
+     safeSide==='SELL'?v>anchor:false);
+ const scenarioStop=validStop(proposedStop)?proposedStop:
+   validStop(swingStop)?swingStop:null;
  const confirmedEvents=Array.isArray(m.fourHour?.events)?m.fourHour.events:[];
  const latestBos=confirmedEvents.filter((e:any)=>
    (e?.kind==='BOS_UP'||e?.kind==='BOS_DOWN')&&
@@ -279,7 +312,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    m15Side:m15Bias.side,m15Votes:m15Bias.votes,
    structuralActive:m.bias.active,structuralSide:m.bias.side,
    structuralAgreement:m.bias.agreement,fresh:freshObservation,
-   goals:proposedGoals.length,stop:proposedStop,anchor
+   goals:proposedGoals.length,stop:scenarioStop,anchor
  });
  const freezeDecision=frozenM15Decision({
    old:frozen&&frozen.source===String(x?.candleSource||'')?{asset:frozen.asset,closedTime:frozen.closedTime,
@@ -312,14 +345,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      setBuildReason('ضغط M1/M5 المبكر يعارض الاتجاه؛ انتظار');
      return;
    }
-   if(proposedStop!=null&&price!=null&&
-      (safeSide==='BUY'?price<=proposedStop:price>=proposedStop))return;
+   if(scenarioStop!=null&&price!=null&&
+      (safeSide==='BUY'?price<=scenarioStop:price>=scenarioStop))return;
    const modelInput={
      history:actual,
      archive:verifiedArchive.ready?verifiedArchive.rows:undefined,
      archiveYears:verifiedArchive.ready?verifiedArchive.years:0,
      now,anchor,side:safeSide,targets:proposedGoals,
-     stop:proposedStop
+     stop:scenarioStop,allowNoTargets:true
    };
    const scenario=buildM15Scenario({...modelInput,steps:12});
    if(!scenario.ready){setBuildReason(scenario.reason);return;}
@@ -335,7 +368,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    setBuildReason('');
    lastAttempt.current=candleKey;
    const reactions=buildM15ReactionMap({
-     scenario,liquidity,side:safeSide,anchor,now,stop:proposedStop
+     scenario,liquidity,side:safeSide,anchor,now,stop:scenarioStop
    });
    const source=String(x?.candleSource||'');
    const anchorTime=forming!.time;
@@ -347,14 +380,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        bars:scenario.bars.map(b=>({open:b.open,high:b.high,low:b.low,close:b.close}))
      }].slice(-36));
    setFrozen({asset,source,closedTime,anchorTime,createdAt:now,
-     side:safeSide,goals:proposedGoals,stop:proposedStop,scenario,reactions,
-     visualBars});
+     side:safeSide,goals:proposedGoals,stop:scenarioStop,scenario,reactions,
+     visualBars,evidenceLevel:issuance.level});
  },[asset,now,closedTime,candleKey,blockedKey,freezeDecision,frozen,
     restoredKey,persistenceScope,
-    freshObservation,safeSide,anchor,forming?.time,actual,price,proposedStop,
+    freshObservation,safeSide,anchor,forming?.time,actual,price,scenarioStop,
     proposedGoals.map(g=>g.price).join('|'),latestBos?.confirmedAt,latestBos?.kind,
    verifiedArchive.ready,verifiedArchive.storedBars,liquidity,
-   preMove.stage,preMove.side,issuance.allowed]);
+   preMove.stage,preMove.side,issuance.allowed,issuance.level]);
  const stable=blockedKey!==candleKey&&
    retainM15Snapshot(freezeDecision,frozen,asset,now)&&
    frozen?.asset===asset&&frozen.source===String(x?.candleSource||'')?frozen:null;
@@ -376,7 +409,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    detached?'حركة LIVE تجاوزت نطاق توقع M15 المحفوظ · انتظار إغلاق الشمعة دون إعادة رسم':
    stable?.scenario.stopped?'محاكاة M15 لامست الإبطال عند الشمعة '+
      stable.scenario.bars.length+' · الأهداف المعروضة ليست نتائج فعلية':
-   stable?'سيناريو ثابت منذ '+h(stable.createdAt)+' · لا يُعاد رسمه كل M15':
+   stable?(stable.evidenceLevel==='PRELIMINARY'?'ترجيح مبدئي':
+     stable.evidenceLevel==='CONFLUENCE'?'ترجيح مدعوم بأكثر من إطار':
+     'سيناريو تحليلي مؤهل')+' '+(stable.side==='BUY'?'للصعود':'للهبوط')+
+     ' منذ '+h(stable.createdAt)+
+     (stable.goals.length?' · أهداف تاريخية للمراقبة':' · لا أهداف هيكلية موثقة')+
+     (stable.stop==null?' · الإبطال غير متاح':' · الإبطال '+n(stable.stop))+
+     ' · ليس إشارة دخول · لا يُعاد رسمه كل M15':
    blockedKey===candleKey?'السيناريو مُبطل · انتظار إغلاق M15':
    !marketOpen?'السوق مغلق':!freshObservation?'انتظار بيانات حديثة':
    safeSide==='WAIT'&&conditionalRange.valid?
