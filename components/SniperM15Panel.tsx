@@ -20,6 +20,8 @@ import {m15WalkForward,firstM15Evidence} from '../lib/sniper-m15-walkforward';
 import {goldMarketSession} from '../lib/gold-market-session';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
+import {buildM15ReactionMap,emptyReactionMap} from '../lib/sniper-m15-reactions';
+import type {M15ReactionMap} from '../lib/sniper-m15-reactions';
 
 const n=(x:number|null|undefined)=>x!=null&&Number.isFinite(x)?
  x.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
@@ -27,7 +29,7 @@ const h=(t:number)=>new Date(t).toLocaleTimeString('en-GB',{timeZone:'Asia/Dubai
 const clamp=(n:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,n));
 type FrozenChart={asset:'GOLD'|'BTC';closedTime:number;createdAt:number;
  side:Exclude<M15Side,'WAIT'>;goals:Array<{stage:number;price:number}>;
- stop:number|null;scenario:M15Scenario};
+ stop:number|null;scenario:M15Scenario;reactions:M15ReactionMap};
 const noScenario:M15Scenario={ready:false,bars:[],reason:'لا تتوفر شموع سيناريو M15 مثبتة',
  sourceBars:0,archiveYears:0,origin:'NONE',touches:[],stopped:false,atr:null};
 
@@ -189,12 +191,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      stop:proposedStop,steps:48
    });
    if(!scenario.ready)return;
+   const reactions=buildM15ReactionMap({
+     scenario,liquidity,side:safeSide,anchor,now,stop:proposedStop
+   });
    setFrozen({asset,closedTime,createdAt:now,
-     side:safeSide,goals:proposedGoals,stop:proposedStop,scenario});
+     side:safeSide,goals:proposedGoals,stop:proposedStop,scenario,reactions});
  },[asset,now,closedTime,candleKey,blockedKey,freezeDecision,frozen,
     freshObservation,safeSide,anchor,actual,price,proposedStop,
     proposedGoals.map(g=>g.price).join('|'),latestBos?.confirmedAt,latestBos?.kind,
-   verifiedArchive.ready,verifiedArchive.storedBars]);
+   verifiedArchive.ready,verifiedArchive.storedBars,liquidity]);
  const stable=blockedKey!==candleKey&&freezeDecision==='HOLD'&&
    frozen?.asset===asset?frozen:null;
  const goals=stable?.goals??(freezeDecision==='REBUILD'&&
@@ -202,6 +207,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const stop=stable?.stop??(freezeDecision==='REBUILD'&&
    blockedKey!==candleKey&&freshObservation?proposedStop:null);
  const projected=stable?.scenario??noScenario;
+ const reactionMap=stable?.reactions??emptyReactionMap();
  const chartSide=stable?.side??safeSide;
  // Radar cannot change the M15 targets, direction, forecast OHLC or freeze
  // lifecycle. It can only verify/cancel the FIRST candidate candle, after an
@@ -231,7 +237,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ...goals.map(t=>t.price),
    ...(stop!=null?[stop]:[]),...(price!=null?[price]:[]),
    ...projected.bars.flatMap(c=>[c.high,c.low]),
-   ...visibleZones.flatMap(z=>[z.low,z.high])
+   ...visibleZones.flatMap(z=>[z.low,z.high]),
+   ...(showLiquidity?reactionMap.bands.flatMap(z=>[z.low,z.high]):[]),
+   ...reactionMap.marks.map(z=>z.price)
  ].filter(v=>Number.isFinite(v)&&v>0);
  const min=Math.min(...important,anchor??1);
  const max=Math.max(...important,anchor??1);
@@ -309,7 +317,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
      {asset==='GOLD'&&<GoldRadarBadge/>}
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
-         'شموع M15 فعلية ثم شموع توقع افتراضي، مع TP1 وTP2 وTP3 والإبطال. '+
+         'شموع M15 فعلية ثم شموع توقع افتراضي، مع مناطق ارتداد حقيقية وتلامس أو انعطاف محاكى، TP1 وTP2 وTP3 والإبطال. '+
          (verifiedArchive.ready?'أرشيف حقيقي متحقق '+verifiedArchive.storedBars+' شمعة':'أرشيف سنوات غير متاح')+
          '. تقييم خارج العينة '+walkForward.selected+' قرارًا، لا يثبت أفضلية.'
        }
@@ -361,6 +369,20 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                ' · '+z.source+' · شموع مغلقة، لا أوامر مؤسسات'}</title>
            </g>;
          })}
+         {/* Price-true M15 demand/supply continued only as a
+              hypothetical reaction area, not a future event. */}
+         {showLiquidity&&projected.ready&&reactionMap.bands.map((z,i)=>{
+           const color=z.kind==='DEMAND'||z.kind==='REBOUND_UP'?'#44dab2':'#ff8c9b';
+           return <g className="sniper-m15-reaction-band" key={'bounce-band-'+i}>
+             <rect x={split+2} y={py(z.high)} width={end-split-5}
+               height={Math.max(2,py(z.low)-py(z.high))} fill={color}
+               fillOpacity=".08" stroke={color} strokeWidth="1.15"
+               strokeOpacity=".9" strokeDasharray="3 4"/>
+             <title>{z.label+' · '+n(z.low)+' – '+n(z.high)+
+               ' · '+z.source+' · منطقة تاريخية، والارتداد المستقبلي مشروط'+
+               ' · إبطال المنطقة '+n(z.invalidation)}</title>
+           </g>;
+         })}
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
            left+(i+.5)*actualStride,clamp(actualStride*.60,1.7,4),false,'real'+b.time))}
          <line x1={split} x2={split} y1={plotTop} y2={plotBottom}
@@ -368,6 +390,38 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {projected.ready&&projected.bars.map((b,i)=>
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
              clamp(projectedStride*.62,1.5,3.1),true,'future'+i))}
+         {projected.ready&&reactionMap.marks.map((mark,i)=>{
+           const barX=split+5+(mark.step-.5)*projectedStride;
+           const dotY=py(mark.price),color=mark.direction==='UP'?'#6bffe0':'#ffad92';
+           const labelX=clamp(barX+9,split+7,end-76);
+           const labelY=clamp(dotY+(mark.direction==='UP'?19:-19),
+             plotTop+21,plotBottom-20);
+           return <g className="sniper-m15-reaction-mark"
+             key={'reaction-mark-'+mark.step+'-'+i}>
+             <circle cx={barX} cy={dotY} r="4.2" fill="#000"
+               stroke={color} strokeWidth="1.9"/>
+             <path d={mark.direction==='UP'?
+                'M '+(barX-5)+' '+(dotY+9)+' L '+barX+' '+(dotY+4)+
+                  ' L '+(barX+5)+' '+(dotY+9):
+                'M '+(barX-5)+' '+(dotY-9)+' L '+barX+' '+(dotY-4)+
+                  ' L '+(barX+5)+' '+(dotY-9)}
+               fill="none" stroke={color} strokeWidth="1.35"/>
+             <line x1={barX+4} y1={dotY}
+               x2={labelX} y2={labelY} stroke={color}
+               strokeWidth=".9" strokeDasharray="2 2"/>
+             <rect x={labelX} y={labelY-13} width="72" height="26"
+               rx="4" fill="#041217" stroke={color} strokeOpacity=".8"/>
+             <text x={labelX+36} y={labelY-1.5} fill={color}
+               fontSize="8.4" fontWeight="700" textAnchor="middle"
+               direction="rtl">{mark.label}</text>
+             <text x={labelX+36} y={labelY+9.5} fill="#f0f5f6"
+               fontSize="9" fontWeight="700" textAnchor="middle"
+               direction="ltr">{n(mark.price)}</text>
+             <title>{mark.detail+' · سعر السيناريو '+n(mark.price)+
+               (mark.invalidation!=null?' · إبطال '+n(mark.invalidation):'')+
+               ' · شموع توقع غير مؤكدة'}</title>
+           </g>;
+         })}
          {showLiquidity&&compactZones.map((z,i)=>{
            const color=z.kind==='MIXED'?
              z.label.includes('ارتداد')?'#41cfab':
