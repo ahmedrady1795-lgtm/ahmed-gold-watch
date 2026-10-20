@@ -15,7 +15,7 @@ async function query(){
    const u=new URL(configured);
    if(u.protocol==='https:'&&u.username===''&&u.password===''&&
      !['localhost','127.0.0.1','::1'].includes(u.hostname)){
-    const headers:HeadersInit={'Accept':'application/json'};
+    const headers:Record<string,string>={'Accept':'application/json'};
     const token=process.env.GC_FUTURES_FEED_TOKEN;
     if(token)headers['Authorization']='Bearer '+token;
     const r=await fetch(u.toString(),{cache:'no-store',headers,
