@@ -38,6 +38,22 @@ for(const touched of a.touches){
  assert.ok(a.bars.some(b=>b.low<=g&&b.high>=g),
    'an indicated TP needs a real intersecting projected wick');
 }
+// A fitted six-candle historical motif may trend BUY eventually but touch
+// the SELL/BUY original stop in its first candle. Such paths are rejected
+// BEFORE drawing, not shown as oversized 4-bar "forecasts" until failure.
+const buyerStop=price-.35;
+const defended=buildM15Scenario({...common,stop:buyerStop});
+assert.equal(defended.stopped,false,
+ 'an invalidated path must never be presented as an active scenario');
+assert.ok(!defended.ready||defended.bars.every(b=>b.low>buyerStop),
+ 'every displayed forward wick remains on the viable side of original stop');
+const sellerStop=price+.35;
+const defendedSell=buildM15Scenario({...common,side:'SELL',
+ targets:[{price:price-2},{price:price-6}],stop:sellerStop});
+assert.equal(defendedSell.stopped,false);
+assert.ok(!defendedSell.ready||defendedSell.bars.every(b=>b.high<sellerStop),
+ 'SELL analogue cannot rise through its own stop before the target');
+assert.equal(defendedSell.ready||defendedSell.bars.length===0,true);
 assert.equal(buildM15Scenario({...common,side:'WAIT'}).ready,false);
 assert.equal(buildM15Scenario({...common,now:now+40*60000}).ready,false,
  'stale M15 is not a live scenario');
