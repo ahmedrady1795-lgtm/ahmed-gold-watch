@@ -27,8 +27,8 @@ export function buildM15LiquidityBoard(input:{
  });
  const empty=(reason:string):LiquidityBoard=>({
    ready:false,reason,context:null,items:[
-     blank('SELL','تصريف / بيع محتمل','لا توجد منطقة عرض صالحة'),
-     blank('BUY','تجميع / شراء محتمل','لا توجد منطقة طلب صالحة'),
+     blank('SELL','عرض / بيع محتمل','لا توجد منطقة عرض صالحة'),
+     blank('BUY','طلب / شراء محتمل','لا توجد منطقة طلب صالحة'),
      blank('HIGH_LIQ','سيولة أعلى القمم','لا توجد قمة مرصودة'),
      blank('LOW_LIQ','سيولة أسفل القيعان','لا يوجد قاع مرصود')
    ]
@@ -89,9 +89,9 @@ export function buildM15LiquidityBoard(input:{
       historical:price<ctx.low||price>ctx.high||now-ctx.to>3*900000
    }:null;
  return {ready:true,reason:liquidity.reason,context,items:[
-   zoneItem('SELL','تصريف / بيع محتمل',supply,
+   zoneItem('SELL','عرض / بيع محتمل',supply,
      'منطقة عرض · انتظر رفضًا بإغلاق M15'),
-   zoneItem('BUY','تجميع / شراء محتمل',demand,
+   zoneItem('BUY','طلب / شراء محتمل',demand,
      'منطقة طلب · انتظر ارتدادًا بإغلاق M15'),
    poolItem('HIGH_LIQ','سيولة أعلى القمم',highPool,upper),
    poolItem('LOW_LIQ','سيولة أسفل القيعان',lowPool,lower)
