@@ -80,6 +80,10 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
       ' USD مع ثبات السعر وعمق عرض مستمر':'',
     micro?.ready&&micro.midMoveBps!=null?
       'حركة منتصف السعر '+micro.midMoveBps.toFixed(2)+' نقطة أساس':'',
+    micro?.ready&&micro.bestQueueImbalancePct!=null?
+      'اختلال أفضل طابور '+micro.bestQueueImbalancePct.toFixed(1)+'%':'',
+    micro?.ready&&micro.buyQueuePressure?'ضغط طابور شراء متكرر؛ متابعة التحرك السعري التالي فقط':'',
+    micro?.ready&&micro.sellQueuePressure?'ضغط طابور بيع متكرر؛ متابعة التحرك السعري التالي فقط':'',
     shadow?'سجل الخادم: '+shadow.events+
        ' إشارة؛ نتائج M1 '+shadow.m1.samples+
        ' وM15 '+shadow.m15.samples:'تقييم النتائج قيد التجميع',
@@ -90,7 +94,8 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
   ].filter(Boolean).join(' | ');
   if(compact)return <>
     <button type="button" className={'sniper-flow-radar-chip '+
-      (micro?.status==='POSSIBLE_PULL'||micro?.status==='POSSIBLE_ABSORPTION'?'warn':
+      (micro?.ready&&(micro.status==='POSSIBLE_PULL'||
+       micro.status==='POSSIBLE_ABSORPTION'||micro.status==='POSSIBLE_QUEUE_PRESSURE')?'warn':
        view.phase==='CONFIRMED'?'confirmed':'neutral')}
       onClick={()=>setScoreOpen(v=>!v)} aria-expanded={scoreOpen}
       title={hint} aria-label={'رادار الأوامر: '+labels[view.phase]+'. اضغط لعرض نتائج M1 وM15. '+hint}>
@@ -101,6 +106,8 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
         micro?.ready&&micro.possibleAskPull?'سحب عرض؟':
         micro?.ready&&micro.possibleBidAbsorption?'بصمة: امتصاص بيع؟':
         micro?.ready&&micro.possibleAskAbsorption?'بصمة: امتصاص شراء؟':
+        micro?.ready&&micro.buyQueuePressure?'طابور: ضغط صعود؟':
+        micro?.ready&&micro.sellQueuePressure?'طابور: ضغط هبوط؟':
         micro?.bidPersistent?'طلب مستمر':
         micro?.askPersistent?'عرض مستمر':'تدفق: رصد'}
         {shadow?.absorption?.events?' · a'+shadow.absorption.events:''}</b>
@@ -118,6 +125,13 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
       {(micro?.ready&&micro.possibleBidPull||micro?.ready&&micro.possibleAskPull)&&<div>
         اختفاء عمق مرصود؛ قد يكون إلغاء أو تنفيذًا غير مرصود.
         ليس إثبات spoofing ولا هوية فاعل بعينه.
+      </div>}
+      {micro?.ready&&(micro.buyQueuePressure||micro.sellQueuePressure)&&<div>
+        <b>{micro.buyQueuePressure?'ميل طابور الطلبات للارتفاع':'ميل طابور العروض للانخفاض'}</b>
+        {' · اختلال أفضل مستوى '+fmt(micro.bestQueueImbalancePct)+'%'}
+        {' · Microprice '+fmt(micro.microprice)}
+        {' · فرق '+fmt(micro.micropriceOffsetBps)+' نقطة أساس'}.
+        تقدير تجريبي للضغط على حركة السعر التالية، مش توقع اتجاه M15 أو ضمان.
       </div>}
       {micro?.ready&&<div>تغير منتصف السعر:
         {' '+fmt(micro.midMoveBps)} نقطة أساس ·
@@ -161,6 +175,8 @@ export default function OrderFlowRadar({asset,onView,compact=false}:{asset:'GOLD
     {micro?.ready&&<span>عمق طلبات معلنة {Math.round(micro.bidDepthUsd)} USD · عروض معلنة {Math.round(micro.askDepthUsd)} USD</span>}
     {micro?.ready&&micro.possibleBidAbsorption&&<span>امتصاص بيع محتمل · تنفيذات SELL {fmt(micro.executedSellUsd)} USD وثبات السعر</span>}
     {micro?.ready&&micro.possibleAskAbsorption&&<span>امتصاص شراء محتمل · تنفيذات BUY {fmt(micro.executedBuyUsd)} USD وثبات السعر</span>}
+    {micro?.ready&&micro.buyQueuePressure&&<span>اختلال طابور الطلبات ↑ · {fmt(micro.bestQueueImbalancePct)}% · لا دخول</span>}
+    {micro?.ready&&micro.sellQueuePressure&&<span>اختلال طابور العروض ↓ · {fmt(micro.bestQueueImbalancePct)}% · لا دخول</span>}
     {view.confirm!=null&&<span>تأكيد <b dir="ltr">{fmt(view.confirm)}</b> · إلغاء <b dir="ltr">{fmt(view.invalidate)}</b></span>}
     <small title="تغير دفتر Level 2 قد يكون تنفيذًا أو إلغاءً، وليس إثبات التلاعب أو هوية مشارك. الرادار رصد فقط.">Coinbase BTC-USD · يتطلب رصد M1 لاحقًا · ليس نسبة نجاح</small>
   </div>;
