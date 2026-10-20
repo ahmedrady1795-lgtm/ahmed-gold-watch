@@ -33,7 +33,8 @@ assert.equal(build({...args,m15:m15.slice(0,-3)}).ready,false,
 assert.equal(build({...args,price:null}).upper.length,0);
 const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(chart,/className="sniper-m15-watch-target"/);
-assert.match(chart,/className="sniper-m15-watch-rail"/);
+assert.match(chart,/const watchLabels=showLiquidity&&showExtra/,
+ 'extra watch levels only draw after user opens details');
 assert.match(chart,/sniper-m15-watch-strip/);
 assert.match(chart,/aligned\.goals\.filter\(g=>!goals\.some\(hit=>hit\.stage===g\.stage\)\)/,
   'untouched distant objectives remain marked as watch levels without synthetic touches');
