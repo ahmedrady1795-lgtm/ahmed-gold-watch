@@ -72,8 +72,12 @@ export function goldPreparation(input:{
  const buy:string[]=[],sell:string[]=[];
  if(d.possibleAskWithdrawal)buy.push('تراجع عروض الوسيط واستمرار استقرار الأسعار');
  if(d.possibleBidWithdrawal)sell.push('تراجع طلبات الوسيط واستمرار استقرار الأسعار');
- if(d.bidPersistent)buy.push('طلب معلن مستمر عند '+d.bidWall);
- if(d.askPersistent)sell.push('عرض معلن مستمر عند '+d.askWall);
+ // Ordinary two-sided depth alone is NOT a directional institutional cue.
+ // Require meaningful asymmetry before persistent displayed walls count.
+ if(d.bidPersistent&&d.imbalancePct!=null&&d.imbalancePct>=15)
+   buy.push('طلب معلن مستمر عند '+d.bidWall);
+ if(d.askPersistent&&d.imbalancePct!=null&&d.imbalancePct<=-15)
+   sell.push('عرض معلن مستمر عند '+d.askWall);
  // Price-action on closed M1 is separate from a broker book snapshot, but
  // is explicitly NOT a GC lead, executed trade or maker identity.
  if(input.radarFresh&&input.radarPhase==='CONFIRMED'){
