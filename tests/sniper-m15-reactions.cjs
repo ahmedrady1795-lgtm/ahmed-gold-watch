@@ -80,11 +80,11 @@ assert.match(component,/z\.invalidation/);
 assert.match(component,/projected\.ready&&reactionMap\.marks/);
 assert.doesNotMatch(component,/setTimeout\([^]*?setFrozen/);
 assert.match(component,/const projectedStride=\(end-split-8\)\/48;/,
- 'forecast and real candles use the exact same M15 time spacing');
-assert.match(component,/const realCandleWidth=clamp\(actualStride\*\.72/,
+ 'classic 48-slot forecast uses fixed historical 15-minute spacing');
+assert.match(component,/const realCandleWidth=clamp\(actualStride\*\.60/,
  'real M15 width stays based on observed historical geometry');
 assert.match(component,/const futureCandleWidth=clamp\(projectedStride\*\.62,1\.5,3\.1\);/,
- 'the predicted bars and observed M15 bars use exactly the same body width');
+ 'classic right pane uses historical narrow solid candles');
 assert.match(component,/realCandleWidth,false,'real'\+b\.time/,
  'historical OHLC is rendered at its original width');
 assert.match(component,/futureCandleWidth,true,'future'\+i/,
