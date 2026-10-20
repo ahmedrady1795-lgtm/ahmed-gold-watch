@@ -6,7 +6,8 @@ export type GoldSide='BUY'|'SELL'|'WAIT';
 export type GoldBar={time:number;open:number;high:number;low:number;close:number;
  volume?:number;volumeBasis?:string};
 export type GoldRadarReading={ready:boolean;
- phase:'UNAVAILABLE'|'BALANCE'|'COMPRESSION'|'WATCH'|'CONFIRMED';
+ phase:'UNAVAILABLE'|'BALANCE'|'COMPRESSION'|'WATCH'|'CONFIRMED'|'INVALIDATED'|'EXPIRED';
+ setupSide?:GoldSide;setupAt?:number|null;confirmedAt?:number|null;
  side:GoldSide;label:string;reason:string;eventAt:number|null;
  price:number|null;confirm:number|null;invalidate:number|null;
  evidence:string[];source:string;method:'CLOSED_M1_PRICE_ACTION';
@@ -19,7 +20,7 @@ const NONE=(reason:string,source=''):GoldRadarReading=>({
 export const trustedSpotGoldSource=(source:string)=>
  /^(Biquote · MT5 XAUUSD candles|Massive · C:XAUUSD|Twelve Data · XAU\/USD|Exness\/MT5 · [A-Za-z0-9_.-]+)$/i.test(source)
  &&!/proxy|comex|GC=F/i.test(source);
-export function readGoldLiquidityRadar(input:{
+function detectGoldLiquiditySetup(input:{
  now:number;source:string;bars:readonly GoldBar[];marketOpen:boolean
 }):GoldRadarReading{
  const {now,source,marketOpen}=input;
@@ -68,12 +69,12 @@ export function readGoldLiquidityRadar(input:{
  if(lowerSweep&&!upperSweep)
    return {...base,phase:'CONFIRMED',side:'BUY',label:'سحب سيولة قاع',
      reason:'سحب قاع M1 سابق ثم إغلاق راجع أعلى المستوى؛ السعر فقط وليس أوامر بنوك',
-     confirm:last.close+pad,invalidate:last.low-pad,
+     confirm:last.high+pad,invalidate:last.low-pad,
      evidence:['سحب قاع مغلق','رفض هبوط','إغلاق عائد للنطاق']};
  if(upperSweep&&!lowerSweep)
    return {...base,phase:'CONFIRMED',side:'SELL',label:'سحب سيولة قمة',
      reason:'سحب قمة M1 سابق ثم إغلاق راجع أسفل المستوى؛ السعر فقط وليس أوامر بنوك',
-     confirm:last.close-pad,invalidate:last.high+pad,
+     confirm:last.low-pad,invalidate:last.high+pad,
      evidence:['سحب قمة مغلقة','رفض صعود','إغلاق عائد للنطاق']};
  const narrow=smallRange<=atr*3.6;
  const breakUp=narrow&&last.close>Math.max(...series.slice(-9,-1).map(b=>b.high))+pad&&
@@ -86,15 +87,61 @@ export function readGoldLiquidityRadar(input:{
  if(breakUp)
    return {...base,phase:'CONFIRMED',side:'BUY',label:'كسر ضغط لأعلى',
      reason:'بعد نطاق M1 مضغوط، إغلاق قوي خارج النطاق لأعلى',
-     confirm:last.close+pad,invalidate:Math.min(...series.slice(-9,-1).map(b=>b.low))-pad,
+     confirm:last.high+pad,invalidate:Math.min(...series.slice(-9,-1).map(b=>b.low))-pad,
      evidence:['ضغط سعري','كسر بإغلاق M1','جسم قوي']};
  if(breakDown)
    return {...base,phase:'CONFIRMED',side:'SELL',label:'كسر ضغط لأسفل',
      reason:'بعد نطاق M1 مضغوط، إغلاق قوي خارج النطاق لأسفل',
-     confirm:last.close-pad,invalidate:Math.max(...series.slice(-9,-1).map(b=>b.high))+pad,
+     confirm:last.low-pad,invalidate:Math.max(...series.slice(-9,-1).map(b=>b.high))+pad,
      evidence:['ضغط سعري','كسر بإغلاق M1','جسم قوي']};
  return narrow?{...base,phase:'COMPRESSION',
    label:'انضغاط سعري',reason:'نطاق ضيق حقيقي، الاتجاه لم يتأكد'}:
    {...base,phase:'BALANCE',label:'توازن سعري',
      reason:'لا يوجد سحب سيولة أو كسر مؤكّد من الشموع المغلقة'};
+}
+
+/**
+ * Replay a bounded setup from closed candles, freezing its trigger and stop.
+ * The observation timestamp stays current; setupAt identifies the original
+ * evidence. An invalidation touch wins over confirmation on the same bar
+ * because OHLC cannot establish intrabar order. Never creates trade orders.
+ */
+export function readGoldLiquidityRadar(input:{
+ now:number;source:string;bars:readonly GoldBar[];marketOpen:boolean
+}):GoldRadarReading{
+ const latest=detectGoldLiquiditySetup(input);
+ if(!latest.ready)return latest;
+ const bars=[...input.bars].sort((a,b)=>a.time-b.time).slice(-44);
+ // Only replay origins for which the detector had its full 36-bar context.
+ for(let i=Math.max(35,bars.length-9);i<bars.length;i++){
+  const origin=bars[i];
+  const setup=detectGoldLiquiditySetup({...input,bars:bars.slice(0,i+1),
+    now:origin.time+60000});
+  if(setup.phase!=='CONFIRMED'||setup.side==='WAIT'||
+    setup.confirm==null||setup.invalidate==null)continue;
+  const side=setup.side;
+  let phase:GoldRadarReading['phase']='WATCH';
+  let confirmedAt:number|null=null;
+  for(let j=i+1;j<bars.length;j++){
+   const b=bars[j];
+   if(j-i>5&&phase==='WATCH'){phase='EXPIRED';break;}
+   if(side==='BUY'?b.low<=setup.invalidate:b.high>=setup.invalidate){
+    phase='INVALIDATED';break;
+   }
+   if(phase==='WATCH'&&(side==='BUY'?b.close>setup.confirm:b.close<setup.confirm)){
+    phase='CONFIRMED';confirmedAt=b.time+60000;
+   }
+  }
+  const reason=phase==='INVALIDATED'?
+    'أُلغي السيناريو: شمعة مغلقة لامست مستوى الإبطال؛ لا نفترض ترتيب الحركة داخل الشمعة.':
+    phase==='EXPIRED'?'انتهت مهلة التأكيد بعد خمس شموع M1 دون إغلاق يتجاوز مستوى التفعيل.':
+    phase==='CONFIRMED'?'تفعّل السيناريو بإغلاق M1 لاحق يتجاوز مستوى التأكيد المثبّت؛ يظل مشروطًا بعدم لمس الإبطال.':
+    'نمط مرصود فقط؛ ننتظر إغلاق M1 لاحق يتجاوز مستوى التأكيد قبل انقضاء خمس شموع.';
+  return {...setup,phase,setupSide:side,setupAt:setup.eventAt,confirmedAt,
+    side:phase==='CONFIRMED'?side:'WAIT',eventAt:latest.eventAt,price:latest.price,
+    label:phase==='CONFIRMED'?'السيناريو اتفعّل':phase==='INVALIDATED'?
+      'السيناريو اتلغى':phase==='EXPIRED'?'انتهت مهلة السيناريو':'منتظر تأكيد',
+    reason,evidence:[...setup.evidence,setup.label]};
+ }
+ return {...latest,side:'WAIT'};
 }
