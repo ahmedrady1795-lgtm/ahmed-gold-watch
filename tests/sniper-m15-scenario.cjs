@@ -95,6 +95,14 @@ assert.match(chart,/chartHigherFrames\?\.m15/,
  'real M15 historical source is selected, never M1 renamed M15');
 assert.match(chart,/shownBars\.map/);
 assert.match(chart,/scaleLevels\.map/);
+assert.match(chart,/const min=important\.length\?Math\.min\(\.\.\.important\)/,
+ 'M15 viewport minimum must come from observed prices when LIVE is unavailable');
+assert.match(chart,/const max=important\.length\?Math\.max\(\.\.\.important\)/,
+ 'M15 viewport maximum must come from observed prices when LIVE is unavailable');
+assert.doesNotMatch(chart,/Math\.min\(\.\.\.important,anchor\?\?1\)/,
+ 'No $1 synthetic fallback may collapse an 81k BTC candle chart to zero');
+assert.match(chart,/formingVisible&&forming\?\[forming\.open,forming\.high,forming\.low,forming\.close\]/,
+ 'Observed live M15 OHLC must share the exact price scale with closed candles');
 assert.match(chart,/scenario|سيناريو/);
 assert.doesNotMatch(chart,/AI NEXT|LIVE M1|محرك الاستراتيجيات يعمل|آخر شمعة/);
 assert.match(css,/\.sniper-m15-chart-box\{width:100%;height:clamp\(/);
