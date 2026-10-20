@@ -64,10 +64,10 @@ assert.match(chart,/x2=\{split-4\} y1=\{bottom\} y2=\{bottom\}/,
  'historical demand and supply have price-accurate slim edges without obscuring real candles');
 assert.doesNotMatch(chart,/height=\{plotBottom-plotTop\} fill="#18242d"/,
  'scenario must not be overlaid with an artificial background');
-assert.doesNotMatch(chart,/fillOpacity=\{future\?/,
- 'historical and simulated OHLC must have the same candle body style');
-assert.match(chart,/strokeWidth="1\.05"/);
-assert.match(chart,/strokeWidth="\.35"/);
+assert.match(chart,/fillOpacity=\{future\?/,
+ 'hypothetical OHLC must be visually distinguishable from observed candles');
+assert.match(chart,/strokeWidth=\{future\?"\.95":"1\.05"\}/);
+assert.match(chart,/strokeWidth=\{future\?"\.7":"\.35"\}/);
 console.log('PASS: tick-stable M15 forecasts, stop and BOS invalidation, no tinted candles, honest phase and directional M15 bias');
 
 assert.equal(frozenM15Decision({...common,fresh:false,old:null}),'CLEAR');
