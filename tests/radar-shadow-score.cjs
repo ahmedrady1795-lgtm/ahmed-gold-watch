@@ -156,7 +156,7 @@ assert.match(worker,/recordRadarSignal/);
 assert.match(worker,/settleRadarOutcomes/);
 assert.match(worker,/recordAbsorptionFingerprint/);
 assert.match(worker,/micro.status==='POSSIBLE_ABSORPTION'/);
-assert.match(display,/shadow\\?\\.absorption/);
+assert.match(display,/shadow\?\.absorption/);
 assert.match(boot,/radar-shadow-worker\.mjs/);
 assert.match(route,/sanitizeShadowLedger/);
 assert.doesNotMatch(route,/export async function POST/,
