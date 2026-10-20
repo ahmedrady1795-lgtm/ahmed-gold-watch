@@ -1,0 +1,75 @@
+name: One-shot Live Qannas Audit
+
+on:
+  push:
+    branches: [render-free]
+    paths: ['.github/workflows/live-audit.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Probe deployed website and realtime APIs
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.error,json,datetime,time,sys
+          root='https://ahmed-gold-watch-free.onrender.com'
+          paths=['/','/api/live','/api/quote','/api/market',
+                 '/api/gc-futures','/api/gold-radar','/api/mt5/status',
+                 '/api/health']
+          results={}
+          for path in paths:
+              url=root+path
+              last=None
+              for retry in range(2):
+                  try:
+                      start=time.monotonic()
+                      req=urllib.request.Request(url,headers={
+                        'Accept':'application/json' if path!='/' else 'text/html',
+                        'User-Agent':'Qannas-production-audit/1.0'})
+                      with urllib.request.urlopen(req,timeout=55) as f:
+                          status=f.status; payload=f.read(1500000)
+                      ms=int((time.monotonic()-start)*1000)
+                      if path=='/':
+                          details={'bytes':len(payload),'html':b'<html' in payload[:3000]}
+                          good=status==200 and details['html']
+                      else:
+                          obj=json.loads(payload)
+                          details={k:obj.get(k) for k in ('ok','status','pricesReady',
+                            'source','reason','price','symbol','available','eligibleForLead','connected','fresh')}
+                          if path=='/api/health':
+                              details['quote']=obj.get('services',{}).get('quote',{})
+                              details['market']=obj.get('services',{}).get('market',{})
+                              details['ai']=obj.get('services',{}).get('ai',{})
+                          if path=='/api/gold-radar':
+                              d=obj.get('brokerDom') or {}
+                              details.update({'radarPhase':(obj.get('radar') or {}).get('phase'),
+                                'brokerDepthAvailable':d.get('available'),'brokerDepthReason':d.get('reason')})
+                          if path=='/api/gc-futures':
+                              details.update({'quoteAt':obj.get('quoteAt'),
+                                'ageSeconds':obj.get('ageSeconds'),
+                                'gcStatus':obj.get('status'),
+                                'futuresPrice':obj.get('price')})
+                          good=status==200
+                          if path=='/api/live':good=good and obj.get('status')=='alive'
+                      results[path]={'http':status,'ms':ms,'valid':bool(good),'data':details}
+                      last=None
+                      break
+                  except Exception as e:
+                      last=str(e)
+                      if retry==0:time.sleep(2)
+              if last is not None:results[path]={'valid':False,'error':last}
+              print('AUDIT '+path+' '+json.dumps(results[path],ensure_ascii=False,default=str,sort_keys=True),flush=True)
+          important=['/','/api/live','/api/gc-futures','/api/gold-radar']
+          failed=[p for p in important if not results[p].get('valid')]
+          if failed:
+              print('AUDIT_RESULT: FAILED_CORE '+','.join(failed))
+              sys.exit(1)
+          print('AUDIT_RESULT: CORE_ENDPOINTS_RESPOND')
+          PY
