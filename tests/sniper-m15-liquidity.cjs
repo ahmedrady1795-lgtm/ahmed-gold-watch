@@ -203,7 +203,8 @@ assert.equal(assessIssuance({...evidence,fresh:false}).allowed,false,
  'stale or unavailable data is always WAIT');
 assert.equal(assessIssuance({...evidence,stop:null}).allowed,false,
  'invalid risk boundary cannot masquerade as a certain scenario');
-assert.match(chart,/if\(!issuance\.allowed\|\|lastAttempt\.current===candleKey\)return/);
+assert.match(chart,/if\(!issuance\.allowed\|\|safeSide==='WAIT'/,
+ 'issuance gate and TypeScript-narrowed direction both required');
 assert.match(chart,/persistenceKey='qannas-m15-freeze-evidence-v2-'/,
  'old unqualified visual scenarios are never silently restored');
 
