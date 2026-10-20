@@ -82,10 +82,34 @@ def closed_rates(timeframe,count=CANDLE_COUNT):
     if rates is None:return []
     return [{'time':int(r['time'])*1000,'open':float(r['open']),'high':float(r['high']),'low':float(r['low']),'close':float(r['close']),'tickVolume':float(r['tick_volume']),'realVolume':float(r['real_volume']),'spread':float(r['spread'])} for r in rates]
 
+# MarketBookAdd is a persistent MT5 terminal subscription. Subscribe ONCE,
+# let the broker stream warm up, then read successive snapshots. Immediate
+# add/get/release cycles repeatedly discard some brokers' books.
+BOOK_SUBSCRIBED_SYMBOL=None
+BOOK_MISSING_READS=0
+
+def close_market_book():
+    global BOOK_SUBSCRIBED_SYMBOL,BOOK_MISSING_READS
+    if BOOK_SUBSCRIBED_SYMBOL:
+        try:mt5.market_book_release(BOOK_SUBSCRIBED_SYMBOL)
+        except Exception:pass
+    BOOK_SUBSCRIBED_SYMBOL=None
+    BOOK_MISSING_READS=0
+
 def order_book_snapshot():
+    global BOOK_SUBSCRIBED_SYMBOL,BOOK_MISSING_READS
     try:
-        if not mt5.market_book_add(SYMBOL):return {'available':False,'reason':'market_book_add_failed','bids':[],'asks':[]}
-        rows=mt5.market_book_get(SYMBOL) or []
+        if BOOK_SUBSCRIBED_SYMBOL!=SYMBOL:
+            close_market_book()
+            if not mt5.market_book_add(SYMBOL):
+                return {'available':False,'reason':'market_book_add_failed','bids':[],'asks':[]}
+            BOOK_SUBSCRIBED_SYMBOL=SYMBOL
+        rows=mt5.market_book_get(SYMBOL)
+        if not rows:
+            BOOK_MISSING_READS+=1
+            if BOOK_MISSING_READS>=3:close_market_book()
+            return {'available':False,'reason':'broker_book_warming_or_empty','bids':[],'asks':[]}
+        BOOK_MISSING_READS=0
         buy_types={getattr(mt5,'BOOK_TYPE_BUY',2),getattr(mt5,'BOOK_TYPE_BUY_MARKET',4)}
         sell_types={getattr(mt5,'BOOK_TYPE_SELL',1),getattr(mt5,'BOOK_TYPE_SELL_MARKET',3)}
         bids=[];asks=[]
@@ -102,10 +126,9 @@ def order_book_snapshot():
         return {'available':available,'reason':None if available else 'no_valid_two_sided_broker_book',
                 'capturedAt':int(time.time()*1000),'symbol':SYMBOL,
                 'bids':bids if available else [],'asks':asks if available else []}
-    except Exception as e:return {'available':False,'reason':str(e)[:120],'bids':[],'asks':[]}
-    finally:
-        try:mt5.market_book_release(SYMBOL)
-        except Exception:pass
+    except Exception as e:
+        close_market_book()
+        return {'available':False,'reason':str(e)[:120],'bids':[],'asks':[]}
 
 def push_status(s):
     info=symbol_ready();tick=mt5.symbol_info_tick(SYMBOL) if info else None;account=mt5.account_info()
@@ -400,8 +423,10 @@ def main():
         except KeyboardInterrupt:break
         except Exception as e:
             failures+=1;log('watchdog error',repr(e),'failures',failures)
+            close_market_book()
             try:mt5.shutdown()
             except:pass
             time.sleep(min(60,2**min(failures,5)))
+    close_market_book()
     mt5.shutdown()
 if __name__=='__main__':main()
