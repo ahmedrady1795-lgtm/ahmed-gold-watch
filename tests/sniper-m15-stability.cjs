@@ -66,7 +66,7 @@ assert.doesNotMatch(chart,/height=\{plotBottom-plotTop\} fill="#18242d"/,
  'scenario must not be overlaid with an artificial background');
 assert.doesNotMatch(chart,/fillOpacity=\{future\?/,
  'the trader requested the original solid MetaTrader style');
-assert.match(chart,/strokeWidth="\.35"/);
+assert.match(chart,/strokeWidth="1\.15"/);
 assert.match(chart,/strokeWidth="\.35"/);
 console.log('PASS: tick-stable M15 forecasts, stop and BOS invalidation, no tinted candles, honest phase and directional M15 bias');
 
