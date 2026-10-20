@@ -201,6 +201,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const persistenceScope=asset+':'+currentSource;
  const persistenceKey='qannas-m15-freeze-v2-'+asset;
  useEffect(()=>{
+   if(!currentSource)return;
    let restored:FrozenChart|null=null;
    try {
      const raw=window.localStorage.getItem(persistenceKey);
@@ -214,7 +215,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    setRestoredKey(persistenceScope);
  },[persistenceScope,persistenceKey]);
  useEffect(()=>{
-   if(restoredKey!==persistenceScope)return;
+   if(!currentSource||restoredKey!==persistenceScope)return;
    try {
      if(frozen?.asset===asset&&frozen.source===currentSource)
        window.localStorage.setItem(persistenceKey,JSON.stringify(frozen));
@@ -355,6 +356,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    marks:aligned.reactions.marks.filter(m=>
      m.step>elapsedSteps&&m.step<=elapsedSteps+shownBars.length)
  }:emptyReactionMap();
+ const verifiedM15Records=proofLedger.filter(p=>p.asset===asset&&
+   p.source===String(x?.candleSource||'')&&p.anchorTime+2*900000<=now)
+   .map(record=>evaluateM15ForwardProof(record,actual,now))
+   .filter(v=>v.evaluated>0);
+ const totalM15Bars=verifiedM15Records.reduce((sum,r)=>sum+r.evaluated,0);
+ const matchedM15Bars=verifiedM15Records.reduce((sum,r)=>sum+r.directionMatches,0);
+ const averageM15Error=totalM15Bars?
+   verifiedM15Records.reduce((sum,r)=>
+     sum+(r.meanAbsoluteCloseError??0)*r.evaluated,0)/totalM15Bars:null;
  const savedProof=proofLedger.filter(p=>p.asset===asset&&
    p.source===String(x?.candleSource||'')&&p.anchorTime+2*900000<=now).at(-1);
  const proof=savedProof?evaluateM15ForwardProof(savedProof,actual,now):null;
@@ -518,11 +528,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {direction}</span>
    </header>
    <div className={'sniper-m15-lifecycle'+(paused?' paused':'')} role="status">
-     <span>{lifecycle}</span><span title={evidenceNote+' · '+
-       (proof?.detail||'لا نتيجة مؤكدة قبل إغلاق M15')}>
-       {preMoveReady?evidenceNote:proofLabel}</span>
+     <span>{lifecycle}</span>
+     <button type="button" className="sniper-m15-results-trigger"
+       aria-expanded={resultsOpen} onClick={()=>setResultsOpen(v=>!v)}
+       title={evidenceNote+' · '+(proof?.detail||'لا نتيجة مؤكدة قبل إغلاق M15')}>
+       {'نتائج M15: '+matchedM15Bars+'/'+totalM15Bars+
+         (averageM15Error!=null?' · خطأ '+n(averageM15Error):' · قيد القياس')}
+       {' · التفاصيل'}</button>
    </div>
-   <div className="sniper-m15-chart-box">
+   <div className="sniper-m15-chart-box" id="sniper-performance">
      <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
      {asset==='GOLD'&&<GoldRadarBadge/>}
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
@@ -852,8 +866,25 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
          {shownBars.length?'+'+shownBars.length+' × M15':'M15'}</text>
      </svg>
+     {resultsOpen&&<aside className="sniper-m15-results-overlay"
+       role="dialog" aria-label="سجل نتائج القناص الحقيقي">
+       <div className="sniper-m15-results-title">
+         <strong>نتائج القناص · {asset==='GOLD'?'الذهب':'البيتكوين'}</strong>
+         <button type="button" onClick={()=>setResultsOpen(false)}
+           aria-label="إغلاق سجل النتائج">✕ إغلاق</button>
+       </div>
+       <p>تحقق الشموع المحفوظة قبل حدوثها: {matchedM15Bars} من
+         {' '+totalM15Bars} شمعة M15 مكتملة · متوسط خطأ الإغلاق
+         {' '+n(averageM15Error)}. دي مش نسبة ربح ولا نموذج متدرّب.</p>
+       <p>توقع M15 مُثبت قبل الأحداث؛ الشموع القديمة لا يعاد تعديلها.
+         لو المصدر اتغير أو البيانات انقطعت، مش بنعتبرها نجاحًا.</p>
+       {auditLoaded&&audit?.metrics?.[asset]?
+         <SniperPerformance title="نتائج الأهداف الهيكلية المسجلة على الخادم"
+           metrics={audit.metrics[asset]} recent={audit.recent||[]} asset={asset}/>:
+         <p role="status">سجل أهداف الخادم غير متاح أو لم يكتمل تحميله حاليًا.
+           نتائج M15 أعلاه محلية على هذا المتصفح فقط.</p>}
+     </aside>}
    </div>
-   {/* Chart-only layout. All levels are shown inside the SVG; historical
-       analogues are visibly separated from observations. */}
+   {/* Chart-only default. Results opened over chart when requested. */}
  </section>;
 }
