@@ -24,12 +24,14 @@ import {buildM15ReactionMap,emptyReactionMap} from '../lib/sniper-m15-reactions'
 import {futureM15WatchZones,conditionalM15BreakoutLevels} from '../lib/sniper-m15-future-zones';
 import type {ForwardWatchZone} from '../lib/sniper-m15-future-zones';
 import type {M15ReactionMap} from '../lib/sniper-m15-reactions';
+import {evaluateM15ForwardProof} from '../lib/sniper-m15-forward-proof';
+import type {M15ForwardProof} from '../lib/sniper-m15-forward-proof';
 
 const n=(x:number|null|undefined)=>x!=null&&Number.isFinite(x)?
  x.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
 const h=(t:number)=>new Date(t).toLocaleTimeString('en-GB',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'});
 const clamp=(n:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,n));
-type FrozenChart={asset:'GOLD'|'BTC';source:string;closedTime:number;createdAt:number;
+type FrozenChart={asset:'GOLD'|'BTC';source:string;closedTime:number;anchorTime:number;createdAt:number;
  side:Exclude<M15Side,'WAIT'>;goals:Array<{stage:number;price:number}>;
  stop:number|null;scenario:M15Scenario;reactions:M15ReactionMap};
 const noScenario:M15Scenario={ready:false,bars:[],reason:'لا تتوفر شموع سيناريو M15 مثبتة',
@@ -123,12 +125,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
     m.watchReady?m.displayTargets:[];
  const proposedStop=qualified?m.displayStop:
    outlook.invalidation??(m.watchReady?m.displayStop:null);
- const anchor=actual.at(-1)?.close??null;
  const proposedGoals=targets.slice(0,3).map(t=>({stage:t.stage,price:t.price}));
  const forming=sampledLiveM15(m.candles,now,observedM15,String(x?.candleSource||''));
  // Live M15 combines closed M1 OHLC with actual same-venue sampled ticks.
  const validLive=forming!=null&&historyFresh&&m.historyFresh&&
-   !providerTransition&&marketOpen&&m.sniper.view.priceFresh;
+   !providerTransition&&marketOpen&&m.sniper.view.priceFresh&&
+   forming.time===Math.floor(now/900000)*900000;
+ // Do not start an apparently FUTURE M15 route at the prior closed candle
+ // while the current M15 candle has already moved. Anchor at the actually
+ // observed same-venue PARTIAL candle; the first prediction is next FULL M15.
+ const anchor=validLive&&forming?forming.close:null;
  const trueHistory=recent;
  const price=m.price;
  const pools=useMemo(()=>buildChartOverlay({
@@ -147,6 +153,27 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Freeze a read-only scenario to its last fully closed M15 candle. Incoming
  // quote ticks still move LIVE but cannot repaint the projected candle route.
  const [frozen,setFrozen]=useState<FrozenChart|null>(null);
+ // Immutable, browser-local forward records: stored BEFORE a future full M15
+ // exists; never rewrite their OHLC with observed outcomes.
+ const [proofLedger,setProofLedger]=useState<M15ForwardProof[]>([]);
+ const [proofsLoaded,setProofsLoaded]=useState(false);
+ useEffect(()=>{
+   try {
+     const previous=JSON.parse(window.localStorage.getItem('qannas-m15-proof-v1')||'[]');
+     if(Array.isArray(previous))setProofLedger(prior=>[
+       ...previous.filter((r:any)=>r&&Number.isFinite(r.createdAt)&&
+         Number.isFinite(r.anchorTime)&&Array.isArray(r.bars)&&
+         (r.asset==='GOLD'||r.asset==='BTC')&&typeof r.source==='string'),
+       ...prior
+     ].slice(-36));
+   } catch {}
+   setProofsLoaded(true);
+ },[]);
+ useEffect(()=>{
+   if(!proofsLoaded)return;
+   try {window.localStorage.setItem('qannas-m15-proof-v1',
+     JSON.stringify(proofLedger.slice(-36)));} catch {}
+ },[proofLedger,proofsLoaded]);
  const [blockedKey,setBlockedKey]=useState('');
  const [buildReason,setBuildReason]=useState('');
  const lastAttempt=useRef('');
@@ -172,7 +199,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    (e?.kind==='BOS_UP'||e?.kind==='BOS_DOWN')&&
    Number.isFinite(e.confirmedAt)&&e.confirmedAt<=now
  ).sort((a:any,b:any)=>a.confirmedAt-b.confirmedAt).at(-1);
- const freshObservation=Boolean(historyFresh&&m.sniper.view.priceFresh&&
+ const freshObservation=Boolean(validLive&&historyFresh&&m.sniper.view.priceFresh&&
    !providerTransition&&marketOpen);
  const freezeDecision=frozenM15Decision({
    old:frozen&&frozen.source===String(x?.candleSource||'')?{asset:frozen.asset,closedTime:frozen.closedTime,
@@ -214,10 +241,19 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    const reactions=buildM15ReactionMap({
      scenario,liquidity,side:safeSide,anchor,now,stop:proposedStop
    });
-   setFrozen({asset,source:String(x?.candleSource||''),closedTime,createdAt:now,
+   const source=String(x?.candleSource||'');
+   const anchorTime=forming!.time;
+   // A fixed record can later be compared against exactly-timed CLOSED bars.
+   if(scenario.bars[0]?.open!==anchor)return;
+   setProofLedger(old=>old.some(p=>p.asset===asset&&p.source===source&&
+       p.anchorTime===anchorTime)?old:[...old,{
+       asset,source,anchorTime,anchorPrice:anchor,createdAt:now,
+       bars:scenario.bars.map(b=>({open:b.open,high:b.high,low:b.low,close:b.close}))
+     }].slice(-36));
+   setFrozen({asset,source,closedTime,anchorTime,createdAt:now,
      side:safeSide,goals:proposedGoals,stop:proposedStop,scenario,reactions});
  },[asset,now,closedTime,candleKey,blockedKey,freezeDecision,frozen,
-    freshObservation,safeSide,anchor,actual,price,proposedStop,
+    freshObservation,safeSide,anchor,forming?.time,actual,price,proposedStop,
     proposedGoals.map(g=>g.price).join('|'),latestBos?.confirmedAt,latestBos?.kind,
    verifiedArchive.ready,verifiedArchive.storedBars,liquidity]);
  const stable=blockedKey!==candleKey&&
@@ -239,11 +275,23 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    buildReason||(!proposedGoals.length?'لا توجد أهداف هيكلية صالحة حاليًا':'جارٍ تقييم سيناريو M15');
  // Structural H1/H4 pivots are only watch levels; TP prices on this M15
  // forecast rail must have an actual intersecting hypothetical wick.
- const goals=stable?.scenario.ready&&!stable.scenario.stopped?
-   stable.goals.filter(g=>stable.scenario.touches.includes(g.stage)):[];
- const stop=stable?.stop??null;
- const projected=stable?.scenario??noScenario;
- const reactionMap=stable?.reactions??emptyReactionMap();
+ // A pinned route from a previous M15 window must never masquerade as a
+ // fresh projection starting at the current live candle.
+ const aligned=stable&&validLive&&forming&&
+   stable.anchorTime===forming.time&&stable.scenario.bars[0]?.open===anchor?
+   stable:null;
+ const goals=aligned?.scenario.ready&&!aligned.scenario.stopped?
+   aligned.goals.filter(g=>aligned.scenario.touches.includes(g.stage)):[];
+ const stop=aligned?.stop??null;
+ const projected=aligned?.scenario??noScenario;
+ const reactionMap=aligned?.reactions??emptyReactionMap();
+ const savedProof=proofLedger.filter(p=>p.asset===asset&&
+   p.source===String(x?.candleSource||'')&&p.anchorTime+900000<=now).at(-1);
+ const proof=savedProof?evaluateM15ForwardProof(savedProof,actual,now):null;
+ const proofLabel=proof&&proof.evaluated>0?
+   'تحقق فعلي '+proof.directionMatches+'/'+proof.evaluated+
+      ' · خطأ '+n(proof.meanAbsoluteCloseError):
+   'التحقق: انتظار إغلاق شموع لاحقة';
  const chartSide=stable?.side??safeSide;
  // Radar cannot change the M15 targets, direction, forecast OHLC or freeze
  // lifecycle. It can only verify/cancel the FIRST candidate candle, after an
@@ -380,7 +428,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {direction}</span>
    </header>
    <div className={'sniper-m15-lifecycle'+(paused?' paused':'')} role="status">
-     <span>{lifecycle}</span><span title={firstM15Stats.detail}>تحليل أنماط M15</span>
+     <span>{lifecycle}</span><span title={proof?.detail||'لا نعتبر الشموع الافتراضية نتيجة مؤكدة حتى تغلق شموع حقيقية لاحقة'}>{proofLabel}</span>
    </div>
    <div className="sniper-m15-chart-box">
      <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
@@ -506,6 +554,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {projected.ready&&projected.bars.map((b,i)=>
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
              candleWidth,true,'future'+i))}
+         {projected.ready&&validLive&&forming&&anchor!=null&&
+           projected.bars[0]?.open===anchor&&<g className="sniper-m15-anchor-link">
+           <line x1={split-3} y1={py(forming.close)}
+             x2={split+5+.5*projectedStride} y2={py(projected.bars[0].open)}
+             stroke="#aaf5de" strokeWidth="1.7"/>
+           <circle cx={split+5+.5*projectedStride}
+             cy={py(projected.bars[0].open)} r="2.2"
+             fill="#aaf5de" stroke="#031310" strokeWidth=".6"/>
+           <title>{'اتصال سعر حقيقي مُراقب '+n(anchor)+
+             ' بأول شمعة افتراضية تبدأ '+h(forming.time+900000)+
+             ' · نفس سعر الافتتاح، وليست نتيجة مستقبلية مؤكدة'}</title>
+         </g>}
          {projected.ready&&reactionMap.marks.map((mark,i)=>{
            const barX=split+5+(mark.step-.5)*projectedStride;
            const dotY=py(mark.price),color=mark.direction==='UP'?'#6bffe0':'#ffad92';
@@ -670,7 +730,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <text x={split+5} y={17} fill="#e0c08d" fontSize="10" textAnchor="start" direction="ltr">M15 · FORECAST</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
-       {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(latestClosed.time)}</text>}
+       {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(validLive&&forming?forming.time:latestClosed.time)}</text>}
+       {aligned&&<text x={split+8} y={H-4} fill="#8acfb9" fontSize="8"
+         textAnchor="start" direction="ltr">{'→ '+h(aligned.anchorTime+900000)}</text>}
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
          {projected.bars.length?'+'+projected.bars.length+' × M15':'M15'}</text>
      </svg>
