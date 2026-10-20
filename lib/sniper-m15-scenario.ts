@@ -144,6 +144,12 @@ export function buildM15Scenario(input:{
    (bar.high-Math.max(bar.open,bar.close))/u,
    (Math.min(bar.open,bar.close)-bar.low)/u
  ];
+ const regime=(rows:M15Bar[],unit:number)=>{
+   const travel=rows.reduce((sum,b)=>sum+abs(b.close-b.open),0);
+   const net=rows.at(-1)!.close-rows[0].open;
+   return [net/unit,net/Math.max(travel,unit*.01),
+     rows.reduce((sum,b)=>sum+(b.high-b.low)/unit,0)/rows.length];
+ };
  const chosen:number[]=[];
  let price=input.anchor,context=tail.slice(-6).map(b=>({...b}));
  const output:ScenarioM15Bar[]=[],touches:number[]=[];
@@ -151,6 +157,7 @@ export function buildM15Scenario(input:{
  const count=Math.max(6,Math.min(48,Math.floor(input.steps??36)));
  for(let stage=0;stage<Math.ceil(count/6);stage++){
    let best=-1,bestScore=Infinity,bestUnit=atr;
+   const currentRegime=regime(context,atr);
    // Score past context only, never the outcome against live future candles.
    // Filter outcomes by the requested directional scenario, not by TP distance.
    for(let i=12;i+6<=source.length-2;i++){
@@ -169,6 +176,12 @@ export function buildM15Scenario(input:{
           .24*(nowShape[1]-historyShape[1])**2+
           .24*(nowShape[2]-historyShape[2])**2;
      }
+     // Match the observed regime as well as individual candle shapes.
+     // All features precede this candidate's outcome; targets do not enter scoring.
+     const pastRegime=regime(before,refUnit);
+     score+=.35*(currentRegime[0]-pastRegime[0])**2+
+       .75*(currentRegime[1]-pastRegime[1])**2+
+       .25*(currentRegime[2]-pastRegime[2])**2;
      if(chosen.some(prior=>abs(prior-i)<12))score+=1.5;
      // deterministic tie break favour recent genuine windows
      score+=(source.length-i)/source.length*.05;

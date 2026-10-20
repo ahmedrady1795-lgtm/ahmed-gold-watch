@@ -29,7 +29,7 @@ assert.equal(frozenM15Decision({...common,opposingBosConfirmedAt:old.createdAt,
 assert.equal(frozenM15Decision({...common,opposingBosConfirmedAt:time,
  opposingBosSide:'SELL'}),'HOLD','a supportive BOS does not redraw on its own');
 assert.equal(frozenM15Decision({...common,marketOpen:false}),'CLEAR');
-assert.equal(frozenM15Decision({...common,fresh:false}),'CLEAR');
+assert.equal(frozenM15Decision({...common,fresh:false}),'PAUSE');
 assert.equal(frozenM15Decision({...common,asset:'BTC'}),'REBUILD');
 assert.equal(frozenM15Decision({...common,old:null}),'REBUILD');
 const accumulation=sniperPhaseBadge({ready:true,contextKind:'ACCUMULATION'});
@@ -69,3 +69,11 @@ assert.doesNotMatch(chart,/fillOpacity=\{future\?/,
 assert.match(chart,/strokeWidth="1\.05"/);
 assert.match(chart,/strokeWidth="\.35"/);
 console.log('PASS: tick-stable M15 forecasts, stop and BOS invalidation, no tinted candles, honest phase and directional M15 bias');
+
+assert.equal(frozenM15Decision({...common,fresh:false,old:null}),'CLEAR');
+assert.equal(frozenM15Decision({...common,fresh:false,now:closed+46*60000}),'CLEAR');
+assert.equal(frozenM15Decision({...common,fresh:false,asset:'BTC'}),'CLEAR');
+assert.equal(frozenM15Decision({...common,quote:null}),'PAUSE');
+assert.equal(frozenM15Decision(common),'HOLD','recovered feed resumes the same snapshot');
+assert.ok(chart.indexOf('if(!scenario.ready)return;')<chart.indexOf('lastAttempt.current=candleKey;'),
+ 'a failed build must not consume the candle retry');

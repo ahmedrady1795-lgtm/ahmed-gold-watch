@@ -27,7 +27,7 @@ const n=(x:number|null|undefined)=>x!=null&&Number.isFinite(x)?
  x.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
 const h=(t:number)=>new Date(t).toLocaleTimeString('en-GB',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'});
 const clamp=(n:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,n));
-type FrozenChart={asset:'GOLD'|'BTC';closedTime:number;createdAt:number;
+type FrozenChart={asset:'GOLD'|'BTC';source:string;closedTime:number;createdAt:number;
  side:Exclude<M15Side,'WAIT'>;goals:Array<{stage:number;price:number}>;
  stop:number|null;scenario:M15Scenario;reactions:M15ReactionMap};
 const noScenario:M15Scenario={ready:false,bars:[],reason:'لا تتوفر شموع سيناريو M15 مثبتة',
@@ -148,7 +148,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [blockedKey,setBlockedKey]=useState('');
  const lastAttempt=useRef('');
  const closedTime=actual.at(-1)?.time??0;
- const candleKey=asset+':'+closedTime;
+ const candleKey=asset+':'+String(x?.candleSource||'')+':'+closedTime;
  const confirmedEvents=Array.isArray(m.fourHour?.events)?m.fourHour.events:[];
  const latestBos=confirmedEvents.filter((e:any)=>
    (e?.kind==='BOS_UP'||e?.kind==='BOS_DOWN')&&
@@ -157,7 +157,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const freshObservation=Boolean(historyFresh&&m.sniper.view.priceFresh&&
    !providerTransition&&marketOpen);
  const freezeDecision=frozenM15Decision({
-   old:frozen?{asset:frozen.asset,closedTime:frozen.closedTime,
+   old:frozen&&frozen.source===String(x?.candleSource||'')?{asset:frozen.asset,closedTime:frozen.closedTime,
      side:frozen.side,stop:frozen.stop,createdAt:frozen.createdAt}:null,
    asset,closedTime,quote:price,fresh:freshObservation,
    marketOpen,now,opposingBosConfirmedAt:latestBos?.confirmedAt,
@@ -166,7 +166,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  });
  useEffect(()=>{
    if(blockedKey===candleKey)return;
-   if(freezeDecision==='HOLD')return;
+   if(freezeDecision==='HOLD'||freezeDecision==='PAUSE')return;
    if(freezeDecision==='CLEAR'){
      if(frozen&&frozen.asset===asset&&frozen.closedTime===closedTime){
        const breached=frozen.stop!=null&&price!=null&&
@@ -176,13 +176,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        if(breached||opposed)setBlockedKey(candleKey);
      }
      if(frozen)setFrozen(null);
+     lastAttempt.current='';
      return;
    }
    if(!freshObservation||safeSide==='WAIT'||anchor==null||
      !proposedGoals.length||lastAttempt.current===candleKey)return;
    if(proposedStop!=null&&price!=null&&
       (safeSide==='BUY'?price<=proposedStop:price>=proposedStop))return;
-   lastAttempt.current=candleKey;
    const scenario=buildM15Scenario({
      history:actual,
      archive:verifiedArchive.ready?verifiedArchive.rows:undefined,
@@ -191,17 +191,25 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      stop:proposedStop,steps:48
    });
    if(!scenario.ready)return;
+   lastAttempt.current=candleKey;
    const reactions=buildM15ReactionMap({
      scenario,liquidity,side:safeSide,anchor,now,stop:proposedStop
    });
-   setFrozen({asset,closedTime,createdAt:now,
+   setFrozen({asset,source:String(x?.candleSource||''),closedTime,createdAt:now,
      side:safeSide,goals:proposedGoals,stop:proposedStop,scenario,reactions});
  },[asset,now,closedTime,candleKey,blockedKey,freezeDecision,frozen,
     freshObservation,safeSide,anchor,actual,price,proposedStop,
     proposedGoals.map(g=>g.price).join('|'),latestBos?.confirmedAt,latestBos?.kind,
    verifiedArchive.ready,verifiedArchive.storedBars,liquidity]);
- const stable=blockedKey!==candleKey&&freezeDecision==='HOLD'&&
-   frozen?.asset===asset?frozen:null;
+ const stable=blockedKey!==candleKey&&
+   (freezeDecision==='HOLD'||freezeDecision==='PAUSE')&&
+   frozen?.asset===asset&&frozen.source===String(x?.candleSource||'')?frozen:null;
+ const paused=Boolean(stable&&freezeDecision==='PAUSE');
+ const lifecycle=paused?'السيناريو محفوظ · البيانات متأخرة':
+   stable?'سيناريو مثبت · '+h(stable.createdAt):
+   blockedKey===candleKey?'السيناريو مُبطل · انتظار إغلاق M15':
+   !marketOpen?'السوق مغلق':!freshObservation?'انتظار بيانات حديثة':
+   'جارٍ تقييم سيناريو M15';
  const goals=stable?.goals??(freezeDecision==='REBUILD'&&
    blockedKey!==candleKey&&safeSide!=='WAIT'&&freshObservation?proposedGoals:[]);
  const stop=stable?.stop??(freezeDecision==='REBUILD'&&
@@ -313,6 +321,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <span className={'sniper-m15-bias '+(chartSide==='BUY'?'rise':chartSide==='SELL'?'fall':'hold')}>
        {direction}</span>
    </header>
+   <div className={'sniper-m15-lifecycle'+(paused?' paused':'')} role="status">
+     <span>{lifecycle}</span><span title={firstM15Stats.detail}>تحليل أنماط M15</span>
+   </div>
    <div className="sniper-m15-chart-box">
      <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
      {asset==='GOLD'&&<GoldRadarBadge/>}
@@ -515,7 +526,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              fill={color} textAnchor="end" direction="ltr">{n(level.price)}</text>
          </g>;
        })}
-       {asset==='BTC'&&projected.ready&&projected.bars.length>0&&(()=>{
+       {!paused&&asset==='BTC'&&projected.ready&&projected.bars.length>0&&(()=>{
          const first=projected.bars[0],cx=split+5+.5*projectedStride;
          const color=firstRadarCandle.phase==='VERIFIED'?'#4de7ab':
            firstRadarCandle.phase==='CANCELLED'||firstRadarCandle.phase==='CONFLICT'?

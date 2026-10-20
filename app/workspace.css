@@ -2020,3 +2020,10 @@ body:has(.modern-workspace.compact-sniper){
  .sniper-flow-score-detail{top:28px;right:18%;width:min(240px,72%);
   padding:8px;font-size:10px;line-height:1.45}
 }
+
+/* Persistent scenario state without covering candles or price levels. */
+.sniper-m15-lifecycle{display:flex;justify-content:space-between;gap:8px;
+ padding:6px 9px;color:#9ad9c8;background:#07110f;border-bottom:1px solid #1d302c;
+ font-size:11px;line-height:1.5;flex-wrap:wrap}
+.sniper-m15-lifecycle.paused{color:#f1cb86;background:#17130c}
+.sniper-m15-lifecycle span:last-child{color:#96a8b8}

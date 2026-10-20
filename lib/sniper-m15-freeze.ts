@@ -2,23 +2,27 @@ import type {M15Side} from './sniper-m15-scenario';
 /**
  * Stable on-chart projection gate, independent of trade execution.
  * HOLD on every quote tick. REBUILD only on a NEW closed M15 bar.
- * CLEAR immediately if stop, freshness, market or structure invalidates.
+ * PAUSE on transient freshness loss; CLEAR on stop, market or structure invalidation.
  */
 export type FrozenPlanState={
  asset:'GOLD'|'BTC';closedTime:number;side:Exclude<M15Side,'WAIT'>;
  stop:number|null;createdAt:number
 };
-export type FreezeDecision='CLEAR'|'HOLD'|'REBUILD';
+export type FreezeDecision='CLEAR'|'HOLD'|'REBUILD'|'PAUSE';
 export function frozenM15Decision(input:{
  old:FrozenPlanState|null;asset:'GOLD'|'BTC';closedTime:number;
  quote:number|null;fresh:boolean;marketOpen:boolean;now:number;
  opposingBosConfirmedAt?:number|null;opposingBosSide?:'BUY'|'SELL'|null
 }):FreezeDecision{
  const {old,asset,closedTime,quote,now}=input;
- if(!input.fresh||!input.marketOpen||quote==null||
+ if(!input.marketOpen||!Number.isFinite(now))return 'CLEAR';
+ if(!input.fresh||quote==null||
    !Number.isFinite(quote)||quote<=0||!Number.isFinite(now)||
    !Number.isFinite(closedTime)||closedTime<=0||
-   now<closedTime+900000||now-closedTime>45*60000)return 'CLEAR';
+   now<closedTime+900000||now-closedTime>45*60000){
+   return old?.asset===asset&&now>=old.createdAt&&
+     now-old.closedTime<=45*60000?'PAUSE':'CLEAR';
+ }
  if(!old||old.asset!==asset)return 'REBUILD';
  if(old.stop!=null&&Number.isFinite(old.stop)&&
    (old.side==='BUY'?quote<=old.stop:quote>=old.stop))return 'CLEAR';
