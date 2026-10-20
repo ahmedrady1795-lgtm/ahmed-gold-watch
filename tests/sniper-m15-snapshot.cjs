@@ -32,7 +32,7 @@ assert.equal(validateFrozenM15Snapshot({...frozen,scenario:{...scenario,
  bars:scenario.bars.map((b,i)=>i===4?{...b,open:200}:b)}},args),null,
  'damaged contiguous candle chain cannot be restored');
 const gate={old:frozen,asset:'GOLD',closedTime:anchorTime+M15,
- quote:100,fresh:true,marketOpen:true,now:anchorTime+M15+1000};
+ quote:100,fresh:true,marketOpen:true,now:anchorTime+2*M15+1000};
 assert.equal(frozenM15Decision(gate),'HOLD',
  'new M15 close MUST NOT resample the original next-candle forecast');
 assert.equal(frozenM15Decision({...gate,closedTime:anchorTime+8*M15,
