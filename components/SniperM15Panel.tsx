@@ -283,11 +283,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const liquidityColor=(kind:string)=>
    kind==='DEMAND'||kind==='LOW_POOL'||kind==='REBOUND_UP'?
    '#41cfab':'#ff7b90';
- // A 10-candle scenario must occupy its own forecast canvas. Reserving 48
- // empty slots made its candlesticks unreadable on mobile.
- const projectedSlots=Math.max(14,Math.min(48,projected.bars.length));
+ // Every M15 is exactly one equally-spaced slot on either side of NOW.
+ // Expanding a 4-bar stopped route into 14 huge slots distorted the candles.
+ // If fewer analogues qualify, show fewer bars; never stretch or invent time.
+ const projectedSlots=Math.max(40,projected.bars.length);
  const projectedStride=(end-split-8)/projectedSlots;
- const projectedWidth=clamp(actualStride*.75,1.7,3.6);
+ const candleWidth=clamp(Math.min(actualStride,projectedStride)*.60,1.7,3.2);
  // Display a maximum of five DISTINCT actual OHLC zones. Several demand,
  // rejection and sweep levels can occupy the exact same pixels; painting
  // each translucent band over the others created the misleading red blob.
@@ -436,12 +437,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            </g>;
          })}
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
-           left+(i+.5)*actualStride,clamp(actualStride*.60,1.7,4),false,'real'+b.time))}
+           left+(i+.5)*actualStride,candleWidth,false,'real'+b.time))}
          <line x1={split} x2={split} y1={plotTop} y2={plotBottom}
            stroke="#7e9bb1" strokeWidth="1.25" strokeDasharray="5 5"/>
          {projected.ready&&projected.bars.map((b,i)=>
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
-             projectedWidth,true,'future'+i))}
+             candleWidth,true,'future'+i))}
          {projected.ready&&reactionMap.marks.map((mark,i)=>{
            const barX=split+5+(mark.step-.5)*projectedStride;
            const dotY=py(mark.price),color=mark.direction==='UP'?'#6bffe0':'#ffad92';
@@ -529,7 +530,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            </g>;
          })}
          {validLive&&forming&&candle(forming.open,forming.high,forming.low,
-           forming.close,split-3,clamp(actualStride*.60,1.7,4),false,
+           forming.close,split-3,candleWidth,false,
            'live-m15-'+forming.time)}
          {validLive&&forming&&<circle cx={split-3} cy={py(forming.close)} r="1.7"
            fill="#b0ffea" stroke="#001614" strokeWidth=".4"/>}
