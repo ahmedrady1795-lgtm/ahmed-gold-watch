@@ -9,12 +9,12 @@ const {buildM15WatchPriceMap:build}=mod.exports;
 const now=Date.parse('2026-10-20T10:15:05Z');
 const m15=Array.from({length:90},(_,i)=>{
   const close=4118+Math.sin(i*.31)*11+(i%13===0?2:0);
-  return {time:now-900000*(90-i),open:close-.6,close,
+  return {time:(Math.floor(now/900000)*900000-900000)-(89-i)*900000,open:close-.6,close,
     high:close+2.1,low:close-2.4};
 });
 const h1=Array.from({length:35},(_,i)=>{
   const close=4120+Math.sin(i*.39)*23;
-  return {time:now-3600000*(35-i),open:close-.5,close,
+  return {time:(Math.floor(now/3600000)*3600000-3600000)-(34-i)*3600000,open:close-.5,close,
     high:close+2.6,low:close-2.3};
 });
 const args={now,price:4118,sourceReady:true,m15,h1};
