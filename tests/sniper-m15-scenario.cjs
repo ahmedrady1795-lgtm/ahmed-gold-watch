@@ -126,8 +126,8 @@ assert.match(css,/grid-template-areas:"asset frame liquidity" "price price bias"
 assert.match(css,/width:100%!important;max-width:100%!important/,
  'no negative-margin overscroll that truncates target labels');
 assert.match(chart,/steps:12/,'short original 12-candle scenario is frozen and scored across future closes');
-assert.match(chart,/fillOpacity=\{future\?"\.98":"1"\}/,
- 'conditional candles must render as filled real-style bodies');
+assert.doesNotMatch(chart,/fillOpacity=\{future\?/,
+ 'all candle bodies use solid full-opacity MetaTrader colors');
 assert.doesNotMatch(chart,/strokeDasharray=\{future\?'2 2':undefined\}/,
  'restore solid wicks to match the original genuine candle design');
 assert.match(chart,/extendIllustrativeM15ToTargets/,
