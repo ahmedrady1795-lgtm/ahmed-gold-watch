@@ -51,7 +51,9 @@ assert.doesNotMatch(chart,/compactM15TargetDrawing\(targetBridge\.bars/,
 assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars;/,
  'scenario draws only the 12 actual frozen model bars');
 assert.match(chart,/className="sniper-m15-zoom-toggle"/);
-assert.match(chart,/sniper-m15-offscreen-tp/);
+assert.match(chart,/sniper-m15-inline-price/);
+assert.doesNotMatch(chart,/x1=\{end\} x2=\{axis\+3\}/,
+ 'plot must not reserve a bulky right-side price rail');
 assert.match(chart,/const up=close>=open,color=up\?'#39d6cc':'#fa5970'/,
  'use one MetaTrader-style solid candle fill palette');
 assert.doesNotMatch(chart,/fillOpacity=\{future\?/,'all candle bodies are solid');
