@@ -81,8 +81,17 @@ export function sampledLiveM15(raw:readonly M15Bar[],now:number,
    minutes:0,sampledTicks:tick.count,partial:true as const
  }:null;
  const first=minutes[0],last=minutes[minutes.length-1];
- // Never bridge a discontinuous M1 series using sampled quote data.
- if(minutes.some((b,i)=>i>0&&b.time-minutes[i-1].time!==60000))return null;
+ // Missing M1 minutes cannot be filled with quotes. Display only
+
+ // recent same-venue sampled ticks, never forged candle OHLC.
+
+ if(minutes.some((b,i)=>i>0&&b.time-minutes[i-1].time!==60000))
+
+  return tick?{time:start,open:tick.open,high:tick.high,low:tick.low,
+
+    close:tick.close,minutes:0,sampledTicks:tick.count,
+
+    partial:true as const}:null;
  const lastClosedAt=last.time+60000;
  return {time:start,open:first.open,
    close:tick&&tick.lastAt>=lastClosedAt?tick.close:last.close,
