@@ -105,12 +105,12 @@ assert.match(chart,/railGap=29/,
  'price labels are separated instead of being drawn over each other');
 assert.match(chart,/!rail\.some\(level=>Math\.abs\(level\.labelY-py\(v\)\)<17\)/,
  'background price ticks cannot be printed over TP / stop labels');
-assert.match(chart,/const y=zoneLabelPoints\\[i\\]\\.y,xBadge=split-7/,
+assert.match(chart,/const y=zoneLabelPoints\[i\]\.y,xBadge=split-7/,
  'Compact Arabic zone labels no longer need rectangle badges');
-assert.match(chart,/width=\{split-left-5\}/,
- 'liquidity backgrounds must not hide the projected scenario candles');
+assert.match(chart,/x2=\{split-4\} y1=\{top\} y2=\{top\}/,
+ 'historical liquidity ranges use thin boundaries, not filled boxes');
 assert.match(chart,/const compactZones=compactM15ZoneAnnotations/,
- 'closely spaced demand and supply badges require separate lanes');
+ 'only compact nonboxed demand and supply word labels are shown');
 assert.match(chart,/textAnchor="start" direction="ltr">\{h\(trueHistory/,
  'left time axis cannot paint Arabic-direction text outside SVG');
 assert.match(css,/grid-template-areas:"asset frame liquidity" "price price bias"/,
