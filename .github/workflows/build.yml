@@ -77,6 +77,7 @@ jobs:
       - run: node tests/order-flow-radar.mjs
       - run: node tests/sniper-radar-next-candle.cjs
       - run: node tests/sniper-m15-watch-prices.cjs
+      - run: node tests/gold-radar-inline.cjs
       - run: node tests/sniper-m15-scenario.cjs
       - run: node tests/sniper-m15-walkforward.cjs
       - run: node tests/sniper-m15-stability.cjs
