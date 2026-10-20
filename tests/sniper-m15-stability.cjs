@@ -66,7 +66,7 @@ assert.doesNotMatch(chart,/height=\{plotBottom-plotTop\} fill="#18242d"/,
  'scenario must not be overlaid with an artificial background');
 assert.doesNotMatch(chart,/fillOpacity=\{future\?/,
  'the requested classic MetaTrader body style has full opacity');
-assert.match(chart,/strokeWidth="1\.15"/,
+assert.match(chart,/strokeWidth="1\.05"/,
  'both real and conditional scenario wicks are solid');
 assert.match(chart,/strokeWidth="\.35"/,
  'solid illustrated bodies have a subtle border');

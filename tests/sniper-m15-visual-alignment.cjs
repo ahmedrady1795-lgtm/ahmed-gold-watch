@@ -30,7 +30,7 @@ const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const badge=fs.readFileSync('components/GoldRadarBadge.tsx','utf8');
 assert.match(chart,/assessM15FrozenChartAlignment/);
 assert.match(chart,/!detached\?stable:null/,'detach stale forecast from live candle without re-anchoring');
-assert.match(chart,/const displayBars=shownBars;/);
+assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars;/);
 assert.match(chart,/الشموع المتوقعة لم تتغير/,'archive remains unchanged when visual forecast is hidden');
 assert.doesNotMatch(chart,/extendIllustrativeM15ToTargets|compactM15TargetDrawing/,
  'do not manufacture a route toward distant H1/H4 watch targets');
