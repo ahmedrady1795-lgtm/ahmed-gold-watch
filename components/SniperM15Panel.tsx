@@ -367,8 +367,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      atr:aligned.scenario.atr,stop:aligned.stop
    }):null;
  const displayBars=targetBridge?.bars.slice(elapsedSteps)??shownBars;
+ // Only the ORIGINAL timed and scored analogue may claim a true TP touch.
+ // Distant objectives touched by illustrated candles are labelled guides.
  const goals=aligned?.scenario.ready&&!aligned.scenario.stopped?
-   aligned.goals.filter(g=>targetBridge?.connectedStages.includes(g.stage)):[];
+   aligned.goals.filter(g=>shownBars.some(b=>b.low<=g.price&&g.price<=b.high)):[];
+ const visualGoals=aligned?.scenario.ready&&!aligned.scenario.stopped?
+   aligned.goals.filter(g=>targetBridge?.connectedStages.includes(g.stage)&&
+     !goals.some(real=>real.stage===g.stage)):[];
  const stop=aligned?.stop??null;
  const projected=aligned?.scenario??noScenario;
  const reactionMap=aligned?{
@@ -431,6 +436,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const important=[
    ...trueHistory.flatMap(c=>[c.high,c.low]),
    ...goals.map(t=>t.price),
+   ...visualGoals.map(t=>t.price),
    ...(showLiquidity?watchPrices.map(t=>t.price):[]),
    ...(stop!=null?[stop]:[]),...(price!=null?[price]:[]),
    ...displayBars.flatMap(c=>[c.high,c.low]),
@@ -454,6 +460,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const py=(p:number)=>plotTop+(hi-p)/(hi-lo)*(plotBottom-plotTop);
  const scaleLevels=[
    ...goals.map(g=>({key:'TP'+g.stage,price:g.price,kind:'TARGET'})),
+   ...visualGoals.map(g=>({key:'هـ'+g.stage,price:g.price,kind:'ILLUSTRATION'})),
    ...(stop!=null?[{key:'SL',price:stop,kind:'STOP'}]:[]),
    ...(price!=null?[{key:'LIVE',price,kind:'PRICE'}]:[])
  ];
@@ -804,8 +811,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          </g>}
        </g>
        {scaleLevels.map(level=>{
-         const target=level.kind==='TARGET',isStop=level.kind==='STOP';
-         const color=target?'#43e7b4':isStop?'#ff748a':'#e4edf8';
+         const target=level.kind==='TARGET',guide=level.kind==='ILLUSTRATION',
+           isStop=level.kind==='STOP';
+         const color=target?'#43e7b4':guide?'#d6bd83':isStop?'#ff748a':'#e4edf8';
          const y=py(level.price);
          return <g key={level.key}>
            <line x1={left} x2={end} y1={y} y2={y} stroke={color}
@@ -817,8 +825,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <line x1={end} x2={end} y1={plotTop} y2={plotBottom} stroke="#637480" strokeWidth="1"/>
        {rail.map(level=>{
          const color=level.kind==='TARGET'?'#56ebbb':
+           level.kind==='ILLUSTRATION'?'#e4c78d':
            level.kind==='STOP'?'#ff8196':'#dbe6f2';
          const fill=level.kind==='TARGET'?'#063e34':
+           level.kind==='ILLUSTRATION'?'#352f23':
            level.kind==='STOP'?'#46202a':'#20313e';
          return <g key={'rail'+level.key}>
            <line x1={end} x2={axis+3} y1={level.exactY} y2={level.labelY}
