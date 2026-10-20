@@ -649,6 +649,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    {asset==='GOLD'&&<GoldRadarBadge now={now}
         marketFresh={Boolean(m.sniper.view.priceFresh&&marketOpen&&
           !providerTransition)} watch={watchMap}/>}
+   {asset==='BTC'&&<div className="sniper-m15-preparation-slot">
+     <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
+   </div>}
    <div className="sniper-m15-view-controls" aria-label="عرض سيناريو القناص">
      <button type="button" className="sniper-m15-extra-toggle"
        aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}
@@ -666,7 +669,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    </div>
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
-     <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
          'شموع M15 فعلية ثم 12 شمعة تاريخية مماثلة فقط، والأهداف الهيكلية البعيدة مستويات مراقبة وليست وصولًا متوقعًا، مع الإبطال. '+
          (verifiedArchive.ready?'أرشيف حقيقي متحقق '+verifiedArchive.storedBars+' شمعة':'أرشيف سنوات غير متاح')+
