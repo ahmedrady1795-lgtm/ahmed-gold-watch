@@ -21,7 +21,8 @@ jobs:
           import urllib.request,urllib.error,json,datetime,time,sys
           root='https://ahmed-gold-watch-free.onrender.com'
           paths=['/','/api/live','/api/quote','/api/market',
-                 '/api/btc','/api/orderflow',
+                 '/api/btc','/api/btc?source=coinbase','/api/orderflow',
+                 '/api/radar-shadow-score','/api/ai-snapshot',
                  '/api/gc-futures','/api/gold-radar','/api/mt5/status',
                  '/api/health']
           results={}
@@ -44,6 +45,16 @@ jobs:
                           obj=json.loads(payload)
                           details={k:obj.get(k) for k in ('ok','status','pricesReady',
                             'source','reason','price','symbol','available','eligibleForLead','connected','fresh')}
+                          if path=='/api/btc' or path.startswith('/api/btc?'):
+                              details.update({'sourceTime':obj.get('sourceTime'),
+                                'degraded':obj.get('degraded'),'message':obj.get('message')})
+                          if path=='/api/orderflow':
+                              details.update({'coverage':obj.get('coverage'),
+                                'venueComplete':obj.get('venueComplete')})
+                          if path=='/api/radar-shadow-score':
+                              details.update({'events':obj.get('events'),
+                                'm1Samples':(obj.get('m1') or {}).get('samples'),
+                                'm15Samples':(obj.get('m15') or {}).get('samples')})
                           if path=='/api/health':
                               details['quote']=obj.get('services',{}).get('quote',{})
                               details['market']=obj.get('services',{}).get('market',{})
