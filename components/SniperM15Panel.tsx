@@ -687,7 +687,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            <title>{'شمعة M15 جارية وليست مغلقة: '+n(forming.close)+
              ' · شموع M1 '+forming.minutes+
              ' · عينات تيك '+forming.sampledTicks}</title>
-         </g>
+         </g>}
        </g>
        {scaleLevels.map(level=>{
          const target=level.kind==='TARGET',isStop=level.kind==='STOP';
