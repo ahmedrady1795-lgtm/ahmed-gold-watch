@@ -73,18 +73,14 @@ assert.doesNotMatch(annotated,/<rect\b/,
  'future candle viewport has no opaque zone label boxes');
 assert.doesNotMatch(annotated,/<text\b/,
  'future candle viewport has NO price words painted on its candles');
-const railText=comp.slice(comp.indexOf('className="sniper-m15-rail-zone"'),
- comp.indexOf('{!paused&&!awaitingReplacement&&asset',comp.indexOf('className="sniper-m15-rail-zone"')));
-assert.match(railText,/x=\{axis\+3\}/,
- 'compact Arabic name must live inside right-side price rail');
-assert.match(railText,/x=\{W-4\}/,
- 'corresponding exact price stays in the same price rail');
-assert.match(railText,/sniper-m15-rail-turn/,
- 'illustrative inflections use the same collision-managed price rail');
-assert.doesNotMatch(railText,/<rect\b/,
- 'no opaque callout cards cover the price rail');
+assert.match(comp,/className="sniper-m15-liquidity-label"/,
+ 'four genuine liquidity labels now live inside the chart');
+assert.match(comp,/x=\{end-6\}/,
+ 'liquidity price tags must use full chart width, not a right rail');
+assert.doesNotMatch(comp,/x=\{axis\+3\}/,
+ 'no separate right-side price rail remains');
 const historyLabels=comp.slice(comp.indexOf("const y=zoneLabelPoints[i].y,xBadge=split-7"),
  comp.indexOf('<title>{z.detail}</title>',comp.indexOf("const y=zoneLabelPoints[i].y,xBadge=split-7")));
 assert.doesNotMatch(historyLabels,/<rect\b/,
  'historical label must not cover the real candles');
-console.log('PASS: future-side BUY/SELL test zones, WAIT bounds, exact closed prices, immutable bands and realistic TP rail');
+console.log('PASS: future-side zones, honest WAIT and TP guards, price-true liquidity labels inside expanded chart');
