@@ -112,7 +112,7 @@ assert.match(chart,/liquidity\.context/);
 assert.match(chart,/liquidity\.events\.map/);
 assert.match(chart,/sniper-m15-liquidity-toggle/);
 assert.match(chart,/aria-pressed=\{showLiquidity\}/);
-assert.match(chart,/scaleLevels\.map/,'keep the original target/invalidation scale');
+assert.match(chart,/scaleLevels\.filter/,'retain small exact TP/SL labels inside chart');
 assert.match(css,/\.sniper-m15-liquidity-toggle/);
 
 // Buyer/seller zones are exact price bands from closed history, not fake DOM.
@@ -151,10 +151,11 @@ const unavailable=makeBoard({now,price:100,history:flat,
 assert.equal(unavailable.ready,false);
 assert.ok(unavailable.items.every(i=>i.low===null),'stale inputs must never show old prices');
 assert.match(chart,/buildM15LiquidityBoard/);
-assert.match(chart,/sniper-m15-board-grid/);
-assert.match(fs.readFileSync('app/gold-sniper-radar.css','utf8'),
- /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/,
- 'mobile readout must not block the same-size MetaTrader candles');
+assert.match(chart,/className="sniper-m15-liquidity-line"/);
+assert.doesNotMatch(chart,/sniper-m15-board-grid/,
+ 'four duplicate liquidity cards above the chart have been removed');
+assert.match(chart,/const positionedLiquidityLabels=liquidityLabels\.map/,
+ 'label collisions are controlled within the chart');
 
 
 const cleanCss=fs.readFileSync('app/gold-sniper-radar.css','utf8');
@@ -168,8 +169,8 @@ assert.match(chart,/sniper-m15-extra-toggle/,
  'secondary BOS, microstructure and pattern marks stay available on request');
 assert.match(cleanCss,/\[data-clean="true"\] \.sniper-m15-reaction-mark/,
  'rejection icons hidden until requested');
-assert.match(cleanCss,/\[data-clean="true"\] \.sniper-m15-rail-turn/,
- 'secondary price rail notes hidden until requested');
+assert.match(cleanCss,/\[data-clean="true"\] \.sniper-m15-zone/,
+ 'secondary zone edges hidden, only four color-coded liquidity lines remain');
 assert.match(cleanCss,/\[data-clean="true"\] \.sniper-flow-radar-chip/,
  'chart-side secondary radar chip must not obstruct classic candles');
 assert.doesNotMatch(cleanCss,/\[data-clean="true"\] \.sniper-m15-(real|projected)\b/,
