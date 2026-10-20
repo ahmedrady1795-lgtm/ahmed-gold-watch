@@ -2027,3 +2027,47 @@ body:has(.modern-workspace.compact-sniper){
  font-size:11px;line-height:1.5;flex-wrap:wrap}
 .sniper-m15-lifecycle.paused{color:#f1cb86;background:#17130c}
 .sniper-m15-lifecycle span:last-child{color:#96a8b8}
+
+/* Qannas M15: make use of the safe blank space under the news ticker.
+   Keep scrollability, do not hide iOS bottom browser chrome or safe-area. */
+@media(max-width:600px){
+ .sniper-m15-chart-box{
+   height:clamp(550px,calc(100dvh - 148px),955px)!important;
+ }
+}
+@media(max-width:360px){
+ .sniper-m15-chart-box{
+   height:clamp(525px,calc(100dvh - 145px),880px)!important;
+ }
+}
+/* The scores are opt-in and overlay the chart rather than permanently
+   stealing vertical pixels from the live price and projected candles. */
+.sniper-m15-results-trigger{
+ border:0;background:transparent;color:#9bcbd1;cursor:pointer;
+ text-align:start;font:inherit;font-size:10.5px;padding:0 2px;
+ text-decoration:underline;text-decoration-style:dotted;
+ text-underline-offset:3px;flex-shrink:0;
+}
+.sniper-m15-results-trigger:focus-visible{
+ outline:2px solid #54dfc0;outline-offset:3px;
+}
+.sniper-m15-results-overlay{
+ position:absolute;inset:0;z-index:15;overflow:auto;
+ background:rgba(4,12,19,.975);direction:rtl;
+ color:#d9e8f1;padding:12px 10px 28px;box-sizing:border-box;
+ text-align:right;font-size:12px;line-height:1.65;
+}
+.sniper-m15-results-title{
+ display:flex;justify-content:space-between;align-items:center;gap:12px;
+ position:sticky;top:-12px;background:#07131c;padding:10px 4px;
+ z-index:1;border-bottom:1px solid #294352;
+}
+.sniper-m15-results-title strong{color:#97eed4;font-size:14px}
+.sniper-m15-results-title button{
+ font:inherit;font-weight:700;color:#e8f4fb;border:1px solid #385263;
+ background:#112331;padding:5px 9px;border-radius:5px;cursor:pointer;
+}
+.sniper-m15-results-overlay>.sniper-performance-cohort{
+ margin:12px 0;padding:9px 7px;
+}
+.sniper-m15-results-overlay p{margin:10px 0;color:#b5cdd5}
