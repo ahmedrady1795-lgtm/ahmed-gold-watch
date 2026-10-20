@@ -137,8 +137,10 @@ export function buildM15Scenario(input:{
  const unitOf=(part:M15Bar[])=>median(part.slice(1).map((b,i)=>range(b,part[i])));
  const recentBody=median(tail.map(b=>abs(b.close-b.open)));
  const recentWick=median(tail.map(b=>b.high-b.low));
- const capBody=Math.max(atr*.7,recentBody*2.6);
- const capRange=Math.max(atr*1.65,recentWick*2.6);
+ // Preserve the candle morphology of the latest closed M15 regime.
+ // Wide historical outliers must not become oversized illustrative bodies.
+ const capBody=Math.max(atr*.50,recentBody*1.9);
+ const capRange=Math.max(atr*1.35,recentWick*1.9);
  const shape=(bar:M15Bar,u:number)=>[
    (bar.close-bar.open)/u,
    (bar.high-Math.max(bar.open,bar.close))/u,
@@ -150,13 +152,43 @@ export function buildM15Scenario(input:{
    return [net/unit,net/Math.max(travel,unit*.01),
      rows.reduce((sum,b)=>sum+(b.high-b.low)/unit,0)/rows.length];
  };
+ // Rebuild historical candles sequentially at the actual anchor. A candidate
+ // that touches the original stop is not a VIABLE illustrative route and must
+ // never be displayed as a four-candle "forecast" with distant target labels.
+ // This is conditional scenario screening, NOT forecast win-rate evidence.
+ const preview=(following:readonly M15Bar[],startPrice:number,refUnit:number)=>{
+   let cursor=startPrice;
+   const bars:ScenarioM15Bar[]=[];
+   const k=Math.min(1.08,Math.max(.65,atr/refUnit));
+   for(const reference of following){
+     const body=Math.max(-capBody,Math.min(capBody,
+       (reference.close-reference.open)*k));
+     const hi=Math.max(0,(reference.high-
+       Math.max(reference.open,reference.close))*k);
+     const lo=Math.max(0,(Math.min(reference.open,reference.close)-
+       reference.low)*k);
+     const allowance=Math.max(0,capRange-abs(body));
+     const ratio=Math.min(1,allowance/Math.max(.000000001,hi+lo));
+     const open=cursor,close=open+body;
+     const high=Math.max(open,close)+hi*ratio;
+     const low=Math.min(open,close)-lo*ratio;
+     if(low<=0||(input.stop!=null&&
+       low<=input.stop&&input.stop<=high))return null;
+     bars.push({step:bars.length+1,open,high,low,close,
+       source:'HISTORICAL_ANALOGUE'});
+     cursor=close;
+   }
+   return bars;
+ };
  const chosen:number[]=[];
  let price=input.anchor,context=tail.slice(-6).map(b=>({...b}));
  const output:ScenarioM15Bar[]=[],touches:number[]=[];
- let stopped=false,goalIndex=0;
+ const stopped=false;
+ let goalIndex=0;
  const count=Math.max(6,Math.min(48,Math.floor(input.steps??36)));
  for(let stage=0;stage<Math.ceil(count/6);stage++){
-   let best=-1,bestScore=Infinity,bestUnit=atr;
+   let best=-1,bestScore=Infinity;
+   let bestBars:ScenarioM15Bar[]=[];
    const currentRegime=regime(context,atr);
    // Score past context only, never the outcome against live future candles.
    // Filter outcomes by the requested directional scenario, not by TP distance.
@@ -185,35 +217,28 @@ export function buildM15Scenario(input:{
      if(chosen.some(prior=>abs(prior-i)<12))score+=1.5;
      // deterministic tie break favour recent genuine windows
      score+=(source.length-i)/source.length*.05;
-     if(score<bestScore){best=i;bestScore=score;bestUnit=refUnit;}
+     if(score<bestScore){
+       const candidate=preview(future.slice(0,Math.min(6,count-output.length)),
+         price,refUnit);
+       if(!candidate||!candidate.length)continue;
+       best=i;bestScore=score;bestBars=candidate;
+     }
    }
    if(best<0)break;
    chosen.push(best);
-   const following=source.slice(best,best+Math.min(6,count-output.length));
-   for(const reference of following){
-     const k=Math.min(1.12,Math.max(.6,atr/bestUnit));
-     const body=Math.max(-capBody,Math.min(capBody,(reference.close-reference.open)*k));
-     const hi=Math.max(0,(reference.high-Math.max(reference.open,reference.close))*k);
-     const lo=Math.max(0,(Math.min(reference.open,reference.close)-reference.low)*k);
-     const allowance=Math.max(0,capRange-abs(body));
-     const ratio=Math.min(1,allowance/Math.max(.000000001,hi+lo));
-     const open=price,close=open+body;
-     const high=Math.max(open,close)+hi*ratio;
-     const low=Math.min(open,close)-lo*ratio;
-     if(low<=0)break;
-     const bar={step:output.length+1,open,high,low,close,source:'HISTORICAL_ANALOGUE' as const};
-     output.push(bar);price=close;
+   for(const candidate of bestBars){
+     const bar={...candidate,step:output.length+1};
+     output.push(bar);price=bar.close;
+     const {open,high,low,close}=bar;
      context=[...context.slice(1),{time:0,open,high,low,close}];
-     // If stop and TP share one wick, the TP is NOT declared reached.
-     if(input.stop!=null&&low<=input.stop&&input.stop<=high){stopped=true;break;}
      while(goalIndex<goals.length&&low<=goals[goalIndex].price&&
        goals[goalIndex].price<=high){
        touches.push(goalIndex+1);goalIndex++;
      }
    }
-   if(stopped||output.length>=count)break;
+   if(output.length>=count)break;
  }
- if(!output.length)return empty('لا توجد مقاطع M15 تاريخية مماثلة للاتجاه',base.length,years);
+ if(!output.length)return empty('لا توجد مقاطع M15 لا تلامس الإبطال؛ لا نعرض مسارًا غير صالح',base.length,years);
  return {ready:true,bars:output,reason:archival?
    'شموع M15 من أرشيف متحقق متعدد السنوات؛ ليست أسعار مستقبلية مؤكدة':
    captured?'محاكاة من أرشيف M15 متزايد بنفس المصدر؛ ليس أرشيف سنوات كاملًا':
