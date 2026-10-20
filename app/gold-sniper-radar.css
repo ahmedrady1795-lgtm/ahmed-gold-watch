@@ -180,3 +180,33 @@
 @media(max-width:600px){
  .sniper-m15-overlay-extra{top:2px;left:3px;padding:2px 3px}
 }
+
+
+/* Scored forecast: 12 original M15 bodies. Unscored 48-bar extension is opt-in.
+   Place view controls OUTSIDE the SVG so they never conceal the REAL candles. */
+.sniper-m15-view-controls{
+ display:flex;align-items:center;justify-content:space-between;gap:6px;
+ padding:4px 7px;background:#050d12;border-bottom:1px solid #29404c;
+ color:#bad5de;direction:rtl;min-width:0;box-sizing:border-box;
+}
+.sniper-m15-view-controls button{
+ position:static!important;inset:auto!important;
+ display:inline-flex;justify-content:center;align-items:center;
+ flex:1 1 0;min-width:0;max-width:none!important;
+ border:1px solid #385565;border-radius:5px;
+ padding:4px 5px;background:#112029;color:#b9d8e4;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ font:600 10px/1.35 system-ui,sans-serif;cursor:pointer;
+ box-shadow:none!important;
+}
+.sniper-m15-view-controls button[aria-pressed="true"]{
+ border-color:#5aa898;color:#8ee4ca;background:#10302b;
+}
+.sniper-m15-view-controls button:focus-visible{
+ outline:2px solid #84ebd1;outline-offset:1px;
+}
+.sniper-m15-liquidity-label{text-rendering:geometricPrecision}
+@media(max-width:600px){
+ .sniper-m15-view-controls{gap:4px;padding:3px 4px}
+ .sniper-m15-view-controls button{font-size:9px;padding:3px 3px}
+}
