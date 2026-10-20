@@ -103,7 +103,7 @@ assert.match(wrapper,/return <SniperM15Panel \{\.\.\.props\}\/>/,
 assert.match(chart,/chartHigherFrames\?\.m15/,
  'real M15 historical source is selected, never M1 renamed M15');
 assert.match(chart,/displayBars\.map/,'future illustration extends beyond the scored 12 bars');
-assert.match(chart,/scaleLevels\.map/);
+assert.match(chart,/scaleLevels\.filter/,'price level labels belong inside the plot');
 assert.match(chart,/const min=important\.length\?Math\.min\(\.\.\.important\)/,
  'M15 viewport minimum must come from observed prices when LIVE is unavailable');
 assert.match(chart,/const max=important\.length\?Math\.max\(\.\.\.important\)/,
@@ -115,13 +115,13 @@ assert.match(chart,/formingVisible&&forming\?\[forming\.open,forming\.high,formi
 assert.match(chart,/scenario|سيناريو/);
 assert.doesNotMatch(chart,/AI NEXT|LIVE M1|محرك الاستراتيجيات يعمل|آخر شمعة/);
 assert.match(css,/\.sniper-m15-chart-box\{width:100%;height:clamp\(/);
-// Exact-price mobile rail and RTL placement must survive source refactors.
-assert.match(chart,/left=8,split=184,end=357,axis=359/,
- 'a wider, bounded price rail reserves room for complete target values');
-assert.match(chart,/railGap=29/,
- 'price labels are separated instead of being drawn over each other');
-assert.match(chart,/!reserved\.some\(y=>Math\.abs\(y-py\(v\)\)<13\)/,
- 'background price ticks cannot be printed over TP / stop labels');
+// Widen the actual price plot and render only four evidence-grounded liquidity lines.
+assert.match(chart,/left=8,split=184,end=422/,
+ 'price plot reclaims the old rail without altering M15 candle timing');
+assert.match(chart,/className="sniper-m15-liquidity-label"/,
+ 'source-backed demand/supply/liquidity labels appear inside the chart');
+assert.doesNotMatch(chart,/railGap=29|x1=\{end\} x2=\{axis\+3\}/,
+ 'the oversized right-side price rail is completely removed');
 assert.match(chart,/const y=zoneLabelPoints\[i\]\.y,xBadge=split-7/,
  'Compact Arabic zone labels no longer need rectangle badges');
 assert.match(chart,/x2=\{split-4\} y1=\{top\} y2=\{top\}/,
@@ -148,8 +148,8 @@ assert.doesNotMatch(chart,/sniper-m15-caption|sniper-m15-status/,
  'no technical paragraphs or scorecard underneath the mobile chart');
 assert.doesNotMatch(chart,/className="sniper-m15-price"/,
  'large duplicated live price must not occupy the header');
-assert.match(chart,/W=430,H=704,left=8,split=184,end=357,axis=359/,
- 'price column shrinks while real and projected candle viewport expands');
+assert.match(chart,/W=430,H=704,left=8,split=184,end=422/,
+ 'price column disappears while real and projected candles gain width');
 assert.match(css,/Compact full-canvas sniper v3/);
 assert.match(css,/display:flex!important;flex-direction:row;flex-wrap:nowrap/,
  'sniper header must use one short mobile row');
