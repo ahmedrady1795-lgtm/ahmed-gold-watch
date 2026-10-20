@@ -61,7 +61,7 @@ assert.match(comp,/prev\?\.key===candleKey\?prev/,
 assert.match(comp,/conditionalM15BreakoutLevels/);
 assert.match(comp,/safeSide==='WAIT'&&conditionalRange\.valid/,
  'BTC WAIT gets historical boundary prices, not a fake direction');
-assert.match(comp,/aligned\.goals\.filter\(g=>aligned\.scenario\.touches\.includes\(g\.stage\)\)/,
+assert.match(comp,/aligned\.goals\.filter\(g=>shownBars\.some\(b=>b\.low<=g\.price&&g\.price<=b\.high\)\)/,
  'unreached far H1/H4 structural pivot must not be called reachable M15 TP');
 assert.match(comp,/const stop=aligned\?\.stop\?\?null/,
  'orphan stop must not appear when no active frozen M15 path exists');
@@ -70,17 +70,19 @@ assert.doesNotMatch(comp,/const goals=stable\?\.goals\?\?/,
 const annotated=comp.slice(comp.indexOf('className="sniper-m15-future-zone"'),
  comp.indexOf('{trueHistory.map((b,i)=>candle',comp.indexOf('className="sniper-m15-future-zone"')));
 assert.doesNotMatch(annotated,/<rect\b/,
- 'forecast zone labels must have NO opaque box covering candle view');
-assert.match(annotated,/fontSize="8\.2"/,
- 'short name must fit one tiny line');
-assert.match(annotated,/fontSize="9"/,
- 'actual price must appear on same line');
-assert.match(annotated,/strokeDasharray="5 4"/,
- 'whole zone is bounded by price-authentic thin dashed edges');
-const reactionLabels=comp.slice(comp.indexOf('const labelX=end-5'),
- comp.indexOf('<title>{mark.detail+',comp.indexOf('const labelX=end-5')));
-assert.doesNotMatch(reactionLabels,/<rect\b/,
- 'projected rebound marker must not be another large price label box');
+ 'future candle viewport has no opaque zone label boxes');
+assert.doesNotMatch(annotated,/<text\b/,
+ 'future candle viewport has NO price words painted on its candles');
+const railText=comp.slice(comp.indexOf('className="sniper-m15-rail-zone"'),
+ comp.indexOf('{!paused&&!awaitingReplacement&&asset',comp.indexOf('className="sniper-m15-rail-zone"')));
+assert.match(railText,/x=\{axis\+3\}/,
+ 'compact Arabic name must live inside right-side price rail');
+assert.match(railText,/x=\{W-4\}/,
+ 'corresponding exact price stays in the same price rail');
+assert.match(railText,/sniper-m15-rail-turn/,
+ 'illustrative inflections use the same collision-managed price rail');
+assert.doesNotMatch(railText,/<rect\b/,
+ 'no opaque callout cards cover the price rail');
 const historyLabels=comp.slice(comp.indexOf("const y=zoneLabelPoints[i].y,xBadge=split-7"),
  comp.indexOf('<title>{z.detail}</title>',comp.indexOf("const y=zoneLabelPoints[i].y,xBadge=split-7")));
 assert.doesNotMatch(historyLabels,/<rect\b/,
