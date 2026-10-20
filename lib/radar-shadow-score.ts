@@ -10,7 +10,10 @@ export type ShadowOutcome={status:'PENDING'|'SCORED'|'NO_DATA';
 export type ShadowEvent={
  id:string;source:'Coinbase BTC-USD WS';at:number;side:Direction;
  price:number;confirm:number;invalidate:number;
- baseline:Direction|'WAIT';phase:'CONFIRMED';l2Snapshots:number;
+ baseline:Direction|'WAIT';phase:'CONFIRMED'|'OBSERVED';l2Snapshots:number;
+ // OBSERVED is an early pressure fingerprint, NOT a radar-confirmed signal.
+ fingerprint?:'BID_ABSORPTION'|'ASK_ABSORPTION';
+ aggressiveUsd?:number;defendedDepthUsd?:number;midMoveBps?:number;
  m1:ShadowOutcome;m15:ShadowOutcome
 };
 export type ShadowLedger={schema:'qannas-radar-shadow-v1';updatedAt:number;
@@ -80,6 +83,46 @@ export function recordRadarSignal(a:{
    events:[...ledger.events,event].slice(-2400)},
    recorded:true,reason:'SERVER_OBSERVED'};
 }
+/** Freeze a strictly pre-break Coinbase footprint on SERVER only.
+ * Hypothesis: resilient displayed BID following aggressive SELL may precede
+ * upward movement; resilient ASK following aggressive BUY may precede DOWN.
+ * Scores later distinguish outcomes from confirmed-flow signals.
+ */
+export function recordAbsorptionFingerprint(a:{
+ ledger:ShadowLedger;now:number;sourceAt:number;side:Direction;
+ fingerprint:'BID_ABSORPTION'|'ASK_ABSORPTION';
+ price:number;aggressiveUsd:number;defendedDepthUsd:number;
+ midMoveBps:number;l2Snapshots:number;baseline:Direction|'WAIT'
+}):{ledger:ShadowLedger;recorded:boolean;reason:string}{
+ const ok=a.fingerprint==='BID_ABSORPTION'?a.side==='BUY':a.side==='SELL';
+ if(!ok||!validTime(a.now)||!validTime(a.sourceAt)||
+    a.now-a.sourceAt<0||a.now-a.sourceAt>4000||
+    ![a.price,a.aggressiveUsd,a.defendedDepthUsd,a.midMoveBps].
+      every(Number.isFinite)||
+    a.price<=0||a.aggressiveUsd<75000||a.defendedDepthUsd<110000||
+    Math.abs(a.midMoveBps)>2||a.l2Snapshots<5||
+    !['BUY','SELL','WAIT'].includes(a.baseline))
+   return {ledger:a.ledger,recorded:false,reason:'NO_AUTHENTIC_FOOTPRINT'};
+ const prev=[...a.ledger.events].reverse().find(e=>e.phase==='OBSERVED');
+ // Keep a 15-minute disjoint cohort: no rapid-fire multiple correlated
+ // snapshots counted as independent evidence.
+ if(prev&&a.now-prev.at<15*60000)
+   return {ledger:a.ledger,recorded:false,reason:'ABSORPTION_COHORT_COOLDOWN'};
+ const id='CA-'+a.sourceAt+'-'+a.side;
+ if(a.ledger.events.some(e=>e.id===id))
+   return {ledger:a.ledger,recorded:false,reason:'DUPLICATE'};
+ const event:ShadowEvent={id,source:'Coinbase BTC-USD WS',
+   at:a.sourceAt,side:a.side,price:round(a.price),
+   confirm:round(a.price),invalidate:round(a.price),
+   baseline:a.baseline,phase:'OBSERVED',fingerprint:a.fingerprint,
+   aggressiveUsd:Math.round(a.aggressiveUsd),
+   defendedDepthUsd:Math.round(a.defendedDepthUsd),
+   midMoveBps:round(a.midMoveBps),l2Snapshots:a.l2Snapshots,
+   m1:pending(a.sourceAt,H1),m15:pending(a.sourceAt,H15)};
+ return {ledger:{schema:'qannas-radar-shadow-v1',updatedAt:a.now,
+   events:[...a.ledger.events,event].slice(-2400)},
+   recorded:true,reason:'SERVER_OBSERVED_FOOTPRINT'};
+}
 export function settleRadarOutcomes(a:{
  ledger:ShadowLedger;now:number;m1:readonly ShadowBar[];
  m15:readonly ShadowBar[];
@@ -116,8 +159,10 @@ function wilson(k:number,n:number){
    z*Math.sqrt(p*(1-p)/n+v/(4*n)))/(1+v/n)));
 }
 export function radarShadowScore(ledger:ShadowLedger){
- function horizon(key:'m1'|'m15'){
-  const finished=ledger.events.filter(e=>e[key].status==='SCORED');
+ function horizon(key:'m1'|'m15',kind:'RADAR'|'ABSORPTION'='RADAR'){
+  const subset=ledger.events.filter(e=>kind==='RADAR'?
+    e.phase==='CONFIRMED':e.phase==='OBSERVED');
+  const finished=subset.filter(e=>e[key].status==='SCORED');
   const directional=finished.filter(e=>e[key].direction!=='FLAT');
   const right=directional.filter(e=>e[key].correct===true).length;
   const paired=directional.filter(e=>e.baseline!=='WAIT');
@@ -131,15 +176,21 @@ export function radarShadowScore(ledger:ShadowLedger){
     pairedN:paired.length,pairedRadarCorrect,pairedBaselineCorrect:baselineCorrect,
     pairedRadarRate:paired.length?round(pairedRadarCorrect/paired.length):null,
     baselineRate:paired.length?round(baselineCorrect/paired.length):null,
-    pending:ledger.events.filter(e=>e[key].status==='PENDING').length,
-    missing:ledger.events.filter(e=>e[key].status==='NO_DATA').length,
+    pending:subset.filter(e=>e[key].status==='PENDING').length,
+    missing:subset.filter(e=>e[key].status==='NO_DATA').length,
     edgeProven:false,qualified:false,
     reason:ready?'تقييم ظلي فقط؛ التفوق والربح لم يثبتا باختبار مستقل':
       'جمع عينات لاحقة ومنفصلة؛ لا توجد نسبة نجاح معتمدة'};
  }
+ const absorption=ledger.events.filter(e=>e.phase==='OBSERVED');
+ const confirmed=ledger.events.filter(e=>e.phase==='CONFIRMED');
  return {source:'Coinbase BTC-USD WS',mode:'SHADOW' as const,
-   events:ledger.events.length,updatedAt:ledger.updatedAt,
+   events:confirmed.length,updatedAt:ledger.updatedAt,
    m1:horizon('m1'),m15:horizon('m15'),
+   absorption:{events:absorption.length,m1:horizon('m1','ABSORPTION'),
+     m15:horizon('m15','ABSORPTION'),status:'EXPERIMENTAL' as const,
+     qualified:false,
+     note:'بصمات امتصاص Coinbase التجريبية؛ دقتها ليست أداء تداول'},
    tradingEnabled:false,modelQualified:false};
 }
 export function sanitizeShadowLedger(data:unknown,now:number):ShadowLedger{
@@ -147,7 +198,15 @@ export function sanitizeShadowLedger(data:unknown,now:number):ShadowLedger{
  if(x?.schema!=='qannas-radar-shadow-v1'||!Array.isArray(x.events))
   return newLedger();
  const events=x.events.slice(-2400).filter(e=>e&&
-   typeof e.id==='string'&&/^CB-\d+-(BUY|SELL)$/.test(e.id)&&
+   typeof e.id==='string'&&/^C[BA]-\d+-(BUY|SELL)$/.test(e.id)&&
+   (e.id.startsWith('CB-')?
+     e.phase==='CONFIRMED':
+     e.phase==='OBSERVED'&&
+     (e.fingerprint==='BID_ABSORPTION'&&e.side==='BUY'||
+       e.fingerprint==='ASK_ABSORPTION'&&e.side==='SELL')&&
+     Number.isFinite(e.aggressiveUsd)&&e.aggressiveUsd!>=75000&&
+     Number.isFinite(e.defendedDepthUsd)&&e.defendedDepthUsd!>=110000&&
+     Number.isFinite(e.midMoveBps)&&Math.abs(e.midMoveBps!)<=2)&&
    e.source==='Coinbase BTC-USD WS'&&validTime(e.at)&&
    now-e.at>=0&&now-e.at<180*86400000&&
    ['BUY','SELL'].includes(e.side)&&e.price>0&&
@@ -173,7 +232,11 @@ export function mergeRadarShadowArchives(oldRaw:unknown,newRaw:unknown,
   if(!prior){map.set(event.id,event);continue;}
   if(prior.at!==event.at||prior.side!==event.side||
      prior.price!==event.price||prior.confirm!==event.confirm||
-     prior.invalidate!==event.invalidate||prior.baseline!==event.baseline)
+     prior.invalidate!==event.invalidate||prior.baseline!==event.baseline||
+     prior.phase!==event.phase||prior.fingerprint!==event.fingerprint||
+     prior.aggressiveUsd!==event.aggressiveUsd||
+     prior.defendedDepthUsd!==event.defendedDepthUsd||
+     prior.midMoveBps!==event.midMoveBps)
    continue; // immutable observation mismatch
   const choose=(a:ShadowOutcome,b:ShadowOutcome)=>{
    const rank=(x:ShadowOutcome)=>x.status==='SCORED'?2:
