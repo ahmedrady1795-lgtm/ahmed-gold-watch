@@ -46,7 +46,10 @@ assert.ok(all.lo<4073&&all.hi>4162);
 const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(chart,/const \[priceZoom,setPriceZoom\]/);
 assert.match(chart,/const viewport=mt5M15Viewport/);
-assert.match(chart,/compactM15TargetDrawing\(targetBridge\.bars/);
+assert.doesNotMatch(chart,/compactM15TargetDrawing\(targetBridge\.bars/,
+ 'no synthetic target-reaching candle compression in main chart');
+assert.match(chart,/const displayBars=shownBars;/,
+ 'scenario draws only the 12 actual frozen model bars');
 assert.match(chart,/className="sniper-m15-zoom-toggle"/);
 assert.match(chart,/sniper-m15-offscreen-tp/);
 assert.match(chart,/const up=close>=open,color=up\?'#39d6cc':'#fa5970'/,
