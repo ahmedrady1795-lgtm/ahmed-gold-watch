@@ -23,6 +23,7 @@ import {goldMarketSession} from '../lib/gold-market-session';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {detectPreMovePressure} from '../lib/pre-move-pressure';
 import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
+import {buildM15LiquidityBoard} from '../lib/sniper-m15-liquidity-board';
 import {buildM15WatchPriceMap} from '../lib/sniper-m15-watch-prices';
 import {buildM15ReactionMap,emptyReactionMap} from '../lib/sniper-m15-reactions';
 import {futureM15WatchZones,conditionalM15BreakoutLevels} from '../lib/sniper-m15-future-zones';
@@ -250,6 +251,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    m15:actual,h1:x?.chartHigherFrames?.h1
  }),[now,actual,x?.chartHigherFrames?.h1,historyFresh,
    m.sniper.view.priceFresh,marketOpen,providerTransition]);
+ const zoneBoard=useMemo(()=>buildM15LiquidityBoard({
+   liquidity,watch:watchMap,history:actual,price,now
+ }),[liquidity,watchMap,actual,price,now]);
  const confirmedEvents=Array.isArray(m.fourHour?.events)?m.fourHour.events:[];
  const latestBos=confirmedEvents.filter((e:any)=>
    (e?.kind==='BOS_UP'||e?.kind==='BOS_DOWN')&&
@@ -617,6 +621,26 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    {asset==='GOLD'&&<GoldRadarBadge now={now}
         marketFresh={Boolean(m.sniper.view.priceFresh&&marketOpen&&
           !providerTransition)} watch={watchMap}/>}
+   {showLiquidity&&<section className="sniper-m15-liquidity-board"
+     aria-label="مناطق البيع والشراء والسيولة المرصودة من الشموع المغلقة">
+     <div className="sniper-m15-board-grid">
+       {zoneBoard.items.map(item=><div key={item.key}
+         className={'sniper-m15-board-item '+item.key.toLowerCase()+
+           (item.status==='NONE'?' unavailable':'')}>
+         <span>{item.label}</span>
+         <strong dir="ltr">{item.low!=null&&item.high!=null?
+           (item.low===item.high?n(item.low):n(item.low)+' – '+n(item.high)):'—'}</strong>
+         <small title={item.source}>{item.status==='REACTION'?'✓ ':''}{item.hint}</small>
+       </div>)}
+     </div>
+     <div className="sniper-m15-board-context">
+       {zoneBoard.context?<span>{zoneBoard.context.label+' · '+
+         n(zoneBoard.context.low)+' – '+n(zoneBoard.context.high)+
+         (zoneBoard.context.historical?' · منطقة تاريخية':' · داخل النطاق')}</span>:
+         <span>{zoneBoard.ready?'لا يوجد تجميع أو تصريف مؤكد حاليًا':zoneBoard.reason}</span>}
+       <small>مناطق فنية من شموع مغلقة · ليست أوامر بنوك ولا دخولًا تلقائيًا</small>
+     </div>
+   </section>}
    <div className="sniper-m15-chart-box" id="sniper-performance">
      <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
 
@@ -670,6 +694,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            const pool=z.kind==='HIGH_POOL'||z.kind==='LOW_POOL';
            const reaction=z.kind==='REBOUND_UP'||z.kind==='REBOUND_DOWN';
            return <g key={'zone-'+z.kind+'-'+z.low} className="sniper-m15-zone">
+             <rect x={left+2} y={top} width={split-left-6}
+               height={Math.max(1,bottom-top)} fill={color}
+               fillOpacity={pool?'.025':reaction?'.06':'.08'}/>
              <line x1={left+2} x2={split-4} y1={top} y2={top}
                stroke={color} strokeWidth=".85" strokeOpacity=".55"
                strokeDasharray={pool?'2 5':reaction?'2 3':'5 5'}/>
