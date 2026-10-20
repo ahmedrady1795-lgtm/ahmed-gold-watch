@@ -56,5 +56,12 @@ assert.match(chart,/const up=close>=open,color=up\?'#39d6cc':'#fa5970'/,
  'use one MetaTrader-style solid candle fill palette');
 assert.doesNotMatch(chart,/fillOpacity=\{future\?/,'all candle bodies are solid');
 assert.match(chart,/strokeWidth="1\.15"/,'wick is visible');
-assert.match(chart,/const recent=actual\.slice\(-32\)/,'increase per-candle real pane width');
+assert.match(chart,/const recent=actual\.slice\(-18\)/,
+ 'show 18 observed M15 candles at the same scale as the 12 frozen forecast bars');
+assert.match(chart,/const projectedStride=actualStride;/,
+ 'do not stretch a projected M15 minute relative to a real M15 minute');
+assert.match(chart,/const futureCandleWidth=realCandleWidth;/,
+ 'both panels must have identical candle body width');
+assert.match(chart,/const displayBars=shownBars;/,
+ 'never draw forced target extension candles');
 console.log('PASS: MT5-style focus zoom, untouched closed candles and scored forecast, visual TP continuation and far-level labels');
