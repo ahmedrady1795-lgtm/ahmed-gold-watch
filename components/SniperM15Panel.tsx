@@ -353,11 +353,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ...visibleZones.flatMap(z=>[z.low,z.high]),
    ...(showLiquidity?reactionMap.bands.flatMap(z=>[z.low,z.high]):[]),
    ...reactionMap.marks.map(z=>z.price),
-   ...(showLiquidity?futureZones.flatMap(z=>[z.low,z.high]):[])
+   ...(showLiquidity?futureZones.flatMap(z=>[z.low,z.high]):[]),
+   ...(formingVisible&&forming?[forming.open,forming.high,forming.low,forming.close]:[])
  ].filter(v=>Number.isFinite(v)&&v>0);
- const min=Math.min(...important,anchor??1);
- const max=Math.max(...important,anchor??1);
- const spread=Math.max(max-min,(anchor??1)*.0004,projected.atr??0,1);
+ // A missing LIVE candle is NOT a price of $1. In WAIT/stale states
+ // that synthetic fallback made the BTC axis span 0–87k and flattened all
+ // genuine M15 candles into a row at the top. Scale only observed prices.
+ const chartReference=[formingVisible?forming?.close:null,price,
+   trueHistory.at(-1)?.close,anchor].find(v=>
+     typeof v==='number'&&Number.isFinite(v)&&v>0)??null;
+ const min=important.length?Math.min(...important):(chartReference??1);
+ const max=important.length?Math.max(...important):(chartReference??1);
+ const spread=Math.max(max-min,(chartReference??max)*.0004,projected.atr??0,1);
  const lo=Math.max(.000001,min-spread*.065);
  const hi=max+spread*.065;
  const py=(p:number)=>plotTop+(hi-p)/(hi-lo)*(plotBottom-plotTop);
