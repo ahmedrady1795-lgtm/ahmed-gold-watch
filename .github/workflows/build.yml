@@ -83,4 +83,5 @@ jobs:
       - run: node tests/sniper-m15-mt5-viewport.cjs
       - run: node tests/sniper-m15-walkforward.cjs
       - run: node tests/sniper-m15-stability.cjs
+      - run: node tests/sniper-m15-reactions.cjs
       - run: npm run build
