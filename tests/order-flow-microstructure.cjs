@@ -64,6 +64,39 @@ const vanished=assessL2Persistence({snapshots:pulled,now:base+12000,
  executed:sellTape.map(t=>({...t,at:base+7000}))});
 assert.equal(vanished.possibleBidAbsorption,false,
  'a vanished bid wall cannot be called a bid-side absorber');
+// Strong best-queue imbalance must persist for 4 actual L2 snapshots.
+// It does NOT claim the identities of the liquidity providers and never
+// implies an M15 forecast or a trade signal.
+function skewBook(at,bidBestSize=1,askBestSize=1){
+ const bids=Array.from({length:12},(_,i)=>[99999-i*.5,i===0?bidBestSize:i===2?6:1]);
+ const asks=Array.from({length:12},(_,i)=>[100001+i*.5,i===0?askBestSize:i===2?6:1]);
+ return inspectL2Book({bids,asks,at});
+}
+const stackedBid=[0,2,4,6,8].map(i=>skewBook(base+i*1000,12,1));
+const queuedBuy=assessL2Persistence({snapshots:stackedBid,now:base+8000});
+assert.equal(queuedBuy.ready,true);
+assert.equal(queuedBuy.buyQueuePressure,true,'large persistent best bid queue should register as tentative short-term pressure');
+assert.equal(queuedBuy.sellQueuePressure,false);
+assert.equal(queuedBuy.status,'POSSIBLE_QUEUE_PRESSURE');
+assert.ok(queuedBuy.bestQueueImbalancePct>58);
+assert.ok(queuedBuy.microprice>(sample.ask+sample.bid)/2,
+ 'weighted microprice shifts towards ask with larger best bid queue');
+assert.equal(queuedBuy.actionable,false,'queue pressure is NEVER permission to trade');
+const stackedAsk=[0,2,4,6,8].map(i=>skewBook(base+i*1000,1,12));
+const queuedSell=assessL2Persistence({snapshots:stackedAsk,now:base+8000});
+assert.equal(queuedSell.sellQueuePressure,true);
+assert.ok(queuedSell.microprice<(sample.ask+sample.bid)/2);
+const unstable=[...hist.slice(0,4),skewBook(base+8000,12,1)];
+assert.equal(assessL2Persistence({snapshots:unstable,now:base+8000}).buyQueuePressure,false,
+ 'a one-snapshot spoof-looking size is not persistent queue pressure');
+assert.equal(assessL2Persistence({snapshots:stackedBid,now:base+30000}).buyQueuePressure,false,
+ 'a stale book cannot provide next-quote pressure');
+const tinyBook=[0,2,4,6,8].map(i=>skewBook(base+i*1000,.02,.001));
+assert.equal(assessL2Persistence({snapshots:tinyBook,now:base+8000}).buyQueuePressure,false,
+ 'huge ratio with a negligible top-of-book USD notional must be ignored');
+const brokenQueue=[...stackedBid];brokenQueue[2]={...brokenQueue[2],bestBidSize:undefined};
+assert.equal(assessL2Persistence({snapshots:brokenQueue,now:base+8000}).buyQueuePressure,false,
+ 'missing true best-queue sizes cannot be extrapolated from deeper levels');
 const stale=assessL2Persistence({snapshots:hist,now:base+30000});
 assert.equal(stale.status,'STALE');
 assert.equal(stale.ready,false);
@@ -80,6 +113,10 @@ assert.match(panel,/micro\?\.ready&&micro\.possibleBidAbsorption/);
 assert.match(panel,/micro\?\.ready&&micro\.possibleAskAbsorption/);
 assert.match(panel,/بصمة: امتصاص بيع/);
 assert.match(panel,/بصمة: امتصاص شراء/);
+assert.match(panel,/طابور: ضغط صعود/);
+assert.match(panel,/طابور: ضغط هبوط/);
+assert.match(panel,/micro\.bestQueueImbalancePct/);
+assert.match(panel,/micro\.microprice/);
 assert.match(panel,/compact\?\s*null/);
 assert.match(chart,/onView=\{onRadarView\} compact/);
 assert.match(css,/\.sniper-flow-radar-chip/);
