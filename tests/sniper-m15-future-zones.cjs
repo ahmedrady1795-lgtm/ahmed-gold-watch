@@ -69,9 +69,9 @@ assert.doesNotMatch(comp,/const goals=stable\?\.goals\?\?/,
  'unverified structural goals cannot flatten future chart vertical scale');
 const annotated=comp.slice(comp.indexOf('className="sniper-m15-future-zone"'),
  comp.indexOf('{trueHistory.map((b,i)=>candle',comp.indexOf('className="sniper-m15-future-zone"')));
-assert.doesNotMatch(annotated,/<rect\\b/,
+assert.doesNotMatch(annotated,/<rect\b/,
  'forecast zone labels must have NO opaque box covering candle view');
-assert.match(annotated,/fontSize="8\\.2"/,
+assert.match(annotated,/fontSize="8\.2"/,
  'short name must fit one tiny line');
 assert.match(annotated,/fontSize="9"/,
  'actual price must appear on same line');
@@ -79,10 +79,10 @@ assert.match(annotated,/strokeDasharray="5 4"/,
  'whole zone is bounded by price-authentic thin dashed edges');
 const reactionLabels=comp.slice(comp.indexOf('const labelX=end-5'),
  comp.indexOf('<title>{mark.detail+',comp.indexOf('const labelX=end-5')));
-assert.doesNotMatch(reactionLabels,/<rect\\b/,
+assert.doesNotMatch(reactionLabels,/<rect\b/,
  'projected rebound marker must not be another large price label box');
 const historyLabels=comp.slice(comp.indexOf("const y=zoneLabelPoints[i].y,xBadge=split-7"),
  comp.indexOf('<title>{z.detail}</title>',comp.indexOf("const y=zoneLabelPoints[i].y,xBadge=split-7")));
-assert.doesNotMatch(historyLabels,/<rect\\b/,
+assert.doesNotMatch(historyLabels,/<rect\b/,
  'historical label must not cover the real candles');
 console.log('PASS: future-side BUY/SELL test zones, WAIT bounds, exact closed prices, immutable bands and realistic TP rail');
