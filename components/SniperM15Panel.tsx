@@ -378,6 +378,19 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                height={Math.max(2,py(z.low)-py(z.high))} fill={color}
                fillOpacity=".08" stroke={color} strokeWidth="1.15"
                strokeOpacity=".9" strokeDasharray="3 4"/>
+             {reactionMap.marks.every(m=>m.kind!=='ZONE_TOUCH')&&(()=>{
+               const noteY=clamp(py(z.price),plotTop+36,plotBottom-30);
+               return <g className="sniper-m15-reaction-zone-label">
+                 <rect x={end-75} y={noteY-14} width="70" height="27" rx="4"
+                   fill="#051016" stroke={color} strokeOpacity=".92"/>
+                 <text x={end-40} y={noteY-3} textAnchor="middle"
+                   direction="rtl" fill={color} fontSize="8.7" fontWeight="700">
+                   {z.kind==='DEMAND'||z.kind==='REBOUND_UP'?'طلب · ارتداد؟':'عرض · رفض؟'}
+                 </text>
+                 <text x={end-40} y={noteY+8.8} textAnchor="middle"
+                   direction="ltr" fill="#dbe7ef" fontSize="9.1">{n(z.price)}</text>
+               </g>;
+             })()}
              <title>{z.label+' · '+n(z.low)+' – '+n(z.high)+
                ' · '+z.source+' · منطقة تاريخية، والارتداد المستقبلي مشروط'+
                ' · إبطال المنطقة '+n(z.invalidation)}</title>
