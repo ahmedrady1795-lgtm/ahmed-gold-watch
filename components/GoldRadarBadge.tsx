@@ -79,8 +79,13 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
      aria-expanded={expanded} onClick={()=>setExpanded(v=>!v)}
      title="تفاصيل الرادار ومصدره وسجل معايرة الإشارات">
      <span className="sniper-gold-radar-top">
-       <strong>◈ رادار الذهب</strong><small>{current?'M1 · '+freshness+'ث':'رصد مشروط'}</small>
+       <strong>◈ رادار الذهب</strong>
+       <small>{signal?'إشارة M1':current?'رصد M1':'انتظار'} {expanded?'▴':'▾'}</small>
      </span>
+   </button>
+   {expanded&&<section className="sniper-gold-radar-expanded"
+     aria-label="تفاصيل قراءة رادار الذهب">
+     <strong>قراءة السيولة · ليست كشفًا لأوامر البنوك</strong>
      <b className={'sniper-gold-radar-state '+(signal?direction.toLowerCase():'')}>
        {label}</b>
      <span className="sniper-gold-radar-prices" dir="ltr">
@@ -92,12 +97,9 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
          'لا دخول · انتظار تأكيد'}
      </span>
      <span className="sniper-gold-radar-source">
-       {domReady?'DOM وسيط MT5 · رصد سعري':'شموع سعر · DOM غير متاح'} · التفاصيل ↗
+       {domReady?'DOM وسيط MT5 · رصد سعري':'شموع سعر · DOM غير متاح'}
+       {current?' · M1 منذ '+freshness+' ثانية':''}
      </span>
-   </button>
-   {expanded&&<section className="sniper-gold-radar-expanded"
-     aria-label="تفاصيل قراءة رادار الذهب">
-     <strong>قراءة السيولة · ليست كشفًا لأوامر البنوك</strong>
      <span>{current?radar?.reason:'لا توجد قراءة مؤهلة حديثة؛ الاتجاه انتظار'}</span>
      <span>المصدر: {source}</span>
      <span>إغلاق الشمعة: {current?new Date(eventAt).toLocaleTimeString('en-GB',
