@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import {getMt5GoldDomReading} from '../../../lib/market-hub';
 import {emptyGoldLedger,safeGoldRadarLedger,goldRadarScore}
  from '../../../lib/gold-radar-shadow';
 export const dynamic='force-dynamic';
@@ -18,6 +19,7 @@ export async function GET(request:Request){
  const fresh=observation?.checkedAt!=null&&now-observation.checkedAt<200000;
  return Response.json({ok:true,asset:'GOLD',
   status:fresh?'OBSERVING':'STALE_OR_STARTING',
+  brokerDom:getMt5GoldDomReading(now),
   updatedAt:now,storage:text?text===null?'NONE':(await readFile(paths[0]))?'VOLUME':'EPHEMERAL':'NONE',
   radar:fresh?observation:{ready:false,phase:'UNAVAILABLE',
     label:'الذهب: تجهيز',reason:'بيانات الرادار غير حديثة'},
