@@ -66,8 +66,10 @@ assert.doesNotMatch(chart,/height=\{plotBottom-plotTop\} fill="#18242d"/,
  'scenario must not be overlaid with an artificial background');
 assert.match(chart,/fillOpacity=\{future\?/,
  'hypothetical OHLC must be visually distinguishable from observed candles');
-assert.match(chart,/strokeWidth=\{future\?"\.95":"1\.05"\}/);
-assert.match(chart,/strokeWidth=\{future\?"\.7":"\.35"\}/);
+assert.match(chart,/strokeWidth="1\.05" opacity="1"/,
+ 'both real and conditional scenario wicks are solid');
+assert.match(chart,/strokeWidth=\{future\?"\.45":"\.35"\}/,
+ 'solid illustrated bodies have a subtle border');
 console.log('PASS: tick-stable M15 forecasts, stop and BOS invalidation, no tinted candles, honest phase and directional M15 bias');
 
 assert.equal(frozenM15Decision({...common,fresh:false,old:null}),'CLEAR');
