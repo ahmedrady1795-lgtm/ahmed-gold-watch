@@ -11,6 +11,7 @@ import {assessChartObservation} from '../lib/chart-observation-radar';
 import {buildDistantMovementOutlook} from '../lib/sniper-movement-outlook';
 import {buildM15Scenario,closedM15Bars,sampledLiveM15,observeM15Tick} from '../lib/sniper-m15-scenario';
 import {extendIllustrativeM15ToTargets} from '../lib/sniper-m15-target-bridge';
+import {compactM15TargetDrawing,mt5M15Viewport} from '../lib/sniper-m15-mt5-viewport';
 import type {ObservedM15} from '../lib/sniper-m15-scenario';
 import type {M15Scenario,M15Side} from '../lib/sniper-m15-scenario';
 import {frozenM15Decision,retainM15Snapshot} from '../lib/sniper-m15-freeze';
@@ -50,6 +51,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
 }){
  const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
  const [showLiquidity,setShowLiquidity]=useState(true);
+ const [priceZoom,setPriceZoom]=useState<'FOCUS'|'ALL'>('FOCUS');
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
  const onRadarView=useCallback((v:RadarView|null)=>setLiveRadar(v),[]);
  const asset=assetView==='ALL'?chosen:assetView;
@@ -102,7 +104,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    [archiveState,asset,x?.candleSource,actual.at(-1)?.time,now>0?
      Math.floor(now/900000):0]);
  const firstM15Stats=firstM15Evidence(walkForward);
- const recent=actual.slice(-42);
+ const recent=actual.slice(-32);
  const historyFresh=actual.length>=24&&
    actual.slice(-24).every((b,i,a)=>i===0||b.time-a[i-1].time===900000)&&
    now-(actual.at(-1)!.time+900000)<=36*60000;
@@ -366,7 +368,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      model:aligned.scenario.bars,goals:aligned.goals,side:aligned.side,
      atr:aligned.scenario.atr,stop:aligned.stop
    }):null;
- const displayBars=targetBridge?.bars.slice(elapsedSteps)??shownBars;
+ // Only the original 12 M15 candles are timed/scored. Coalesce the
+ // later price-space illustration to avoid 70 hairline candles.
+ const displayBars=targetBridge?.bars.length?
+   compactM15TargetDrawing(targetBridge.bars,
+     aligned?.scenario.bars.length??12,15).slice(elapsedSteps):shownBars;
  const goals=aligned?.scenario.ready&&!aligned.scenario.stopped?
    aligned.goals.filter(g=>targetBridge?.connectedStages.includes(g.stage)):[];
  const stop=aligned?.stop??null;
@@ -448,16 +454,27 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      typeof v==='number'&&Number.isFinite(v)&&v>0)??null;
  const min=important.length?Math.min(...important):(chartReference??1);
  const max=important.length?Math.max(...important):(chartReference??1);
- const spread=Math.max(max-min,(chartReference??max)*.0004,projected.atr??0,1);
- const lo=Math.max(.000001,min-spread*.065);
- const hi=max+spread*.065;
+ const viewport=mt5M15Viewport({mode:priceZoom,allLow:min,allHigh:max,
+   lastPrice:chartReference,history:trueHistory,
+   forecast:projected.bars,atr:projected.atr});
+ const {lo,hi}=viewport;
  const py=(p:number)=>plotTop+(hi-p)/(hi-lo)*(plotBottom-plotTop);
  const scaleLevels=[
    ...goals.map(g=>({key:'TP'+g.stage,price:g.price,kind:'TARGET'})),
    ...(stop!=null?[{key:'SL',price:stop,kind:'STOP'}]:[]),
    ...(price!=null?[{key:'LIVE',price,kind:'PRICE'}]:[])
  ];
- const rail=scaleLevels.map(v=>({...v,exactY:py(v.price),labelY:py(v.price)}))
+ const nearLevels=scaleLevels.filter(v=>v.price>=lo&&v.price<=hi);
+ // Far TP labels remain at the price-axis edge without false horizontal lines.
+ const distantTargets=scaleLevels.filter(v=>v.kind==='TARGET'&&
+   (v.price<lo||v.price>hi)).slice(0,3);
+ const distantMarkers=distantTargets.map(v=>{
+   const index=distantTargets.filter(z=>(z.price>hi)===(v.price>hi))
+     .findIndex(z=>z.key===v.key);
+   return {...v,arrow:v.price>hi?'↑':'↓',
+     markerY:v.price>hi?plotTop+12+index*16:plotBottom-10-index*16};
+ });
+ const rail=nearLevels.map(v=>({...v,exactY:py(v.price),labelY:py(v.price)}))
    .sort((a,b)=>a.exactY-b.exactY);
  const railMargin=plotTop+15,railBottom=plotBottom-15,railGap=29;
  for(let i=0;i<rail.length;i++)
@@ -475,10 +492,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    '#41cfab':'#ff7b90';
  // Preserve real M15 widths separately from variable-length conditional bars.
  // The target continuation is in price-space, NOT timed as additional M15s.
- const projectedSlots=Math.max(22,displayBars.length);
+ const projectedSlots=Math.max(18,displayBars.length);
  const projectedStride=(end-split-8)/projectedSlots;
- const realCandleWidth=clamp(actualStride*.68,2.3,4.7);
- const futureCandleWidth=clamp(projectedStride*.83,1.8,4.3);
+ const realCandleWidth=clamp(actualStride*.84,3.4,6.4);
+ const futureCandleWidth=clamp(projectedStride*.90,3.0,6.2);
  // Display a maximum of five DISTINCT actual OHLC zones. Several demand,
  // rejection and sweep levels can occupy the exact same pixels; painting
  // each translucent band over the others created the misleading red blob.
@@ -532,15 +549,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      z.labelY=freeY(z.exactY);
  const candle=(open:number,high:number,low:number,close:number,xpos:number,width:number,
    future:boolean,key:string)=> {
-   const up=close>=open,color=future?
-      (up?'#49dac2':'#f37a90'):(up?'#39d6cc':'#fa5970');
-   const top=Math.min(py(open),py(close)),height=Math.max(1,Math.abs(py(open)-py(close)));
+   const up=close>=open,color=up?'#39d6cc':'#fa5970';
+   const top=Math.min(py(open),py(close)),height=Math.max(1.4,Math.abs(py(open)-py(close)));
    return <g key={key} className={future?'sniper-m15-projected':'sniper-m15-real'}>
      <line x1={xpos} x2={xpos} y1={py(high)} y2={py(low)}
-       stroke={color} strokeWidth="1.05" opacity="1"/>
+       stroke={color} strokeWidth="1.15"/>
      <rect x={xpos-width/2} y={top} width={width} height={height}
-       fill={color} fillOpacity={future?".98":"1"}
-        stroke={color} strokeWidth={future?".45":".35"}/>
+       fill={color} stroke={color} strokeWidth=".35"/>
    </g>;
  };
  const direction=chartSide==='BUY'?'↗ صعود':chartSide==='SELL'?'↘ هبوط':'↔ انتظار';
@@ -581,6 +596,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      {asset==='GOLD'&&<GoldRadarBadge now={now}
         marketFresh={Boolean(m.sniper.view.priceFresh&&marketOpen&&
           !providerTransition)} watch={watchMap}/>} 
+     <button type="button" className="sniper-m15-zoom-toggle"
+       aria-pressed={priceZoom==='FOCUS'}
+       title="تكبير شموع M15 مع بقاء الأسعار البعيدة في عمود الأهداف"
+       onClick={()=>setPriceZoom(v=>v==='FOCUS'?'ALL':'FOCUS')}>
+       {priceZoom==='FOCUS'?'⤢ كل الأسعار':'⤢ تكبير الشموع'}
+     </button>
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
          'شموع M15 فعلية ثم شموع توقع افتراضي، مع مناطق ارتداد حقيقية وتلامس أو انعطاف محاكى، TP1 وTP2 وTP3 والإبطال. '+
          (verifiedArchive.ready?'أرشيف حقيقي متحقق '+verifiedArchive.storedBars+' شمعة':'أرشيف سنوات غير متاح')+
