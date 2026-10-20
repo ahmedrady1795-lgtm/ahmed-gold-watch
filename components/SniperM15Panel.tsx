@@ -287,7 +287,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // empty slots made its candlesticks unreadable on mobile.
  const projectedSlots=Math.max(14,Math.min(48,projected.bars.length));
  const projectedStride=(end-split-8)/projectedSlots;
- const projectedWidth=clamp(projectedStride*.56,1.5,5.0);
+ const projectedWidth=clamp(actualStride*.75,1.7,3.6);
  // Display a maximum of five DISTINCT actual OHLC zones. Several demand,
  // rejection and sweep levels can occupy the exact same pixels; painting
  // each translucent band over the others created the misleading red blob.
