@@ -79,11 +79,11 @@ assert.match(component,/mark\.price/);
 assert.match(component,/z\.invalidation/);
 assert.match(component,/projected\.ready&&reactionMap\.marks/);
 assert.doesNotMatch(component,/setTimeout\([^]*?setFrozen/);
-assert.match(component,/const projectedStride=actualStride;/,
+assert.match(component,/const projectedStride=\(end-split-8\)\/48;/,
  'forecast and real candles use the exact same M15 time spacing');
 assert.match(component,/const realCandleWidth=clamp\(actualStride\*\.72/,
  'real M15 width stays based on observed historical geometry');
-assert.match(component,/const futureCandleWidth=realCandleWidth;/,
+assert.match(component,/const futureCandleWidth=clamp\(projectedStride\*\.62,1\.5,3\.1\);/,
  'the predicted bars and observed M15 bars use exactly the same body width');
 assert.match(component,/realCandleWidth,false,'real'\+b\.time/,
  'historical OHLC is rendered at its original width');
