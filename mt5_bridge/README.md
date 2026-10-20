@@ -68,3 +68,39 @@ profitability. No archive or real trained model is shipped in this repository.
 The Render Free service has no persistent disk/DB, so keep the raw archive on
 the laptop/external storage. After creating qualified parameters, commit
 **only** that small JSON parameter file and explicitly deploy to Render.
+
+## Real broker DOM for the gold radar (read-only)
+
+The website now separates three different sources: genuine broker MarketBookGet
+depth for the **same XAUUSD broker symbol**, closed M1/M15 spot OHLC evidence,
+and any separate COMEX futures references. It never substitutes COMEX or
+historical candle volume for live broker limit orders.
+
+- On your **Windows MT5 machine or VPS**, update `mt5_bridge/bridge.py` to
+  the latest `render-free` revision. Run MT5, log in, and keep the bridge
+  running with `LIVE_TRADING=false`. Do not send credentials or the
+  `MT5_BRIDGE_TOKEN` to anyone.
+- The Python bridge calls `market_book_add` and `market_book_get` for the
+  selected `MT5_SYMBOL`, and sends only bounded bid/ask levels, broker symbol,
+  and the **captured-at timestamp** to the authenticated site status endpoint.
+  Bid/ask levels are the liquidity displayed by that **broker only**.
+- Open the gold chart, tap **رادار الذهب**, and read the MT5 depth status.
+  It only reports a live book after at least **three fresh two-sided samples
+  spanning eight seconds**; otherwise the reason is shown (unsupported,
+  absent, invalid, or stale). Check
+  `/api/mt5/status` for `brokerDepth` without exposing account credentials.
+- Many XAUUSD OTC accounts/symbols have **no MarketBookGet book**, or
+  only partial synthetic broker depth. In that case the UI will correctly show
+  **not available**. The existing closed-candle gold radar remains independent,
+  and **no depth-only Market Lead signal is activated**.
+- Falling displayed book depth can be canceled orders, execution or a change
+  of quote, and can never prove spoofing or the identity of institutions.
+  Broker volume units are not guaranteed to equal exchange-traded volume.
+- MT5 broker DOM and futures exchange COMEX GC are different venues/instruments.
+  A true licensed CME MDP Market-by-Order/Market-by-Price feed requires a
+  supported data agreement, provider credentials and symbol mapping. We have
+  **not** connected such a feed, and cannot label the spot radar as CME order
+  flow or claim its performance from this bridge.
+
+This integration does **not** enable order execution or change the existing
+paper-trade qualification, scenario freeze, TP/SL or ML-certification logic.
