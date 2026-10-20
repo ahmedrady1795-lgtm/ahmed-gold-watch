@@ -149,8 +149,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    now-lastClosedM1.time-60000>=0&&now-lastClosedM1.time-60000<125000);
  const tickRecent=Boolean(observedM15&&observedM15.time===
    Math.floor(now/900000)*900000&&now-observedM15.lastAt<=10000);
- // Visible partial authentic M15 vs stricter forecast-issuance gate.
- const formingVisible=Boolean(forming&&historyFresh&&!providerTransition&&
+ // Show observed live partial M15 independently of gaps in older M15 bars.
+ // Forecast issuance and trade eligibility still require verified history.
+ const formingVisible=Boolean(forming&&!providerTransition&&
    marketOpen&&forming.time===Math.floor(now/900000)*900000&&
    (m1Recent||tickRecent));
  const validLive=formingVisible&&m.historyFresh&&m.sniper.view.priceFresh;
@@ -911,7 +912,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              strokeWidth="2.5" paintOrder="stroke">{'LIVE '+n(forming.close)}</text>
            <title>{'شمعة M15 جارية وليست مغلقة: '+n(forming.close)+
              ' · شموع M1 '+forming.minutes+
-             ' · عينات تيك '+forming.sampledTicks}</title>
+              ' · عينات تيك '+forming.sampledTicks+
+              (forming.minutes===0?' · رصد تيك جزئي، ليس شمعة مكتملة':'')}</title>
          </g>}
        </g>
        {/* Small LIVE/TP/stop notes inside the plot, never a wide right rail. */}
@@ -997,7 +999,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          textAnchor="start" direction="rtl">أول 12 شمعة للتقييم · الامتداد عرض تاريخي غير مُقيّم</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
-       {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(validLive&&forming?forming.time:latestClosed.time)}</text>}
+       {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(formingVisible&&forming?forming.time:latestClosed.time)}</text>}
        {aligned&&<text x={split+8} y={H-4} fill="#8acfb9" fontSize="8"
          textAnchor="start" direction="ltr">{'→ '+h(aligned.anchorTime+900000)}</text>}
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
