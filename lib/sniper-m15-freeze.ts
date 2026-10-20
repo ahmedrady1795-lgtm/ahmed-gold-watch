@@ -33,3 +33,12 @@ export function frozenM15Decision(input:{
  if(old.closedTime!==closedTime)return 'REBUILD';
  return 'HOLD';
 }
+
+/** A new candle may request a replacement without blanking the valid old route.
+ * The retained snapshot is bounded and never survives an explicit invalidation. */
+export function retainM15Snapshot(decision:FreezeDecision,old:FrozenPlanState|null,
+ asset:'GOLD'|'BTC',now:number){
+ return Boolean(old&&old.asset===asset&&decision!=='CLEAR'&&
+   Number.isFinite(now)&&now>=old.createdAt&&now>=old.closedTime+900000&&
+   now-old.closedTime<=45*60000);
+}

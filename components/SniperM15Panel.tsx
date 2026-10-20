@@ -12,9 +12,9 @@ import {buildDistantMovementOutlook} from '../lib/sniper-movement-outlook';
 import {buildM15Scenario,closedM15Bars,sampledLiveM15,observeM15Tick} from '../lib/sniper-m15-scenario';
 import type {ObservedM15} from '../lib/sniper-m15-scenario';
 import type {M15Scenario,M15Side} from '../lib/sniper-m15-scenario';
-import {frozenM15Decision} from '../lib/sniper-m15-freeze';
+import {frozenM15Decision,retainM15Snapshot} from '../lib/sniper-m15-freeze';
 import {sniperPhaseBadge} from '../lib/sniper-market-phase';
-import {observedM15Bias} from '../lib/sniper-m15-bias';
+import {observedM15Bias,m15ObservationSide} from '../lib/sniper-m15-bias';
 import {verifiedM15Archive} from '../lib/sniper-m15-archive-store';
 import {m15WalkForward,firstM15Evidence} from '../lib/sniper-m15-walkforward';
 import {goldMarketSession} from '../lib/gold-market-session';
@@ -104,7 +104,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const side: 'BUY'|'SELL'|'WAIT' =
    (m.ready||m.watchReady)&&m.displaySide!=='WAIT'?m.displaySide:
    m.observation.ready&&m.observation.side!=='WAIT'?m.observation.side:
-   radar.status==='ALIGNED'?radar.side:m15Bias.side;
+   radar.status==='ALIGNED'?radar.side:m15ObservationSide(m15Bias.side,m.bias);
  const safeSide=providerTransition||!marketOpen||!historyFresh||
    !m.sniper.view.priceFresh?'WAIT':side;
  const outlook=useMemo(()=>buildDistantMovementOutlook({
@@ -146,6 +146,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // quote ticks still move LIVE but cannot repaint the projected candle route.
  const [frozen,setFrozen]=useState<FrozenChart|null>(null);
  const [blockedKey,setBlockedKey]=useState('');
+ const [buildReason,setBuildReason]=useState('');
  const lastAttempt=useRef('');
  const closedTime=actual.at(-1)?.time??0;
  const candleKey=asset+':'+String(x?.candleSource||'')+':'+closedTime;
@@ -190,7 +191,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      now,anchor,side:safeSide,targets:proposedGoals,
      stop:proposedStop,steps:48
    });
-   if(!scenario.ready)return;
+   if(!scenario.ready){setBuildReason(scenario.reason);return;}
+   setBuildReason('');
    lastAttempt.current=candleKey;
    const reactions=buildM15ReactionMap({
      scenario,liquidity,side:safeSide,anchor,now,stop:proposedStop
@@ -202,14 +204,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
     proposedGoals.map(g=>g.price).join('|'),latestBos?.confirmedAt,latestBos?.kind,
    verifiedArchive.ready,verifiedArchive.storedBars,liquidity]);
  const stable=blockedKey!==candleKey&&
-   (freezeDecision==='HOLD'||freezeDecision==='PAUSE')&&
+   retainM15Snapshot(freezeDecision,frozen,asset,now)&&
    frozen?.asset===asset&&frozen.source===String(x?.candleSource||'')?frozen:null;
  const paused=Boolean(stable&&freezeDecision==='PAUSE');
+ const awaitingReplacement=Boolean(stable&&freezeDecision==='REBUILD');
  const lifecycle=paused?'السيناريو محفوظ · البيانات متأخرة':
-   stable?'سيناريو مثبت · '+h(stable.createdAt):
+   awaitingReplacement?'السيناريو السابق محفوظ · تقييم إغلاق M15':
+   stable?'سيناريو مشروط مثبت · '+h(stable.createdAt):
    blockedKey===candleKey?'السيناريو مُبطل · انتظار إغلاق M15':
    !marketOpen?'السوق مغلق':!freshObservation?'انتظار بيانات حديثة':
-   'جارٍ تقييم سيناريو M15';
+   safeSide==='WAIT'?'توازن السوق · لا اتجاه مرجح حاليًا':
+   buildReason||(!proposedGoals.length?'لا توجد أهداف هيكلية صالحة حاليًا':'جارٍ تقييم سيناريو M15');
  const goals=stable?.goals??(freezeDecision==='REBUILD'&&
    blockedKey!==candleKey&&safeSide!=='WAIT'&&freshObservation?proposedGoals:[]);
  const stop=stable?.stop??(freezeDecision==='REBUILD'&&
@@ -526,7 +531,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              fill={color} textAnchor="end" direction="ltr">{n(level.price)}</text>
          </g>;
        })}
-       {!paused&&asset==='BTC'&&projected.ready&&projected.bars.length>0&&(()=>{
+       {!paused&&!awaitingReplacement&&asset==='BTC'&&projected.ready&&projected.bars.length>0&&(()=>{
          const first=projected.bars[0],cx=split+5+.5*projectedStride;
          const color=firstRadarCandle.phase==='VERIFIED'?'#4de7ab':
            firstRadarCandle.phase==='CANCELLED'||firstRadarCandle.phase==='CONFLICT'?
@@ -547,6 +552,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              ' · لا يمثل نسبة نجاح أو إذن تنفيذ'}</title>
          </g>;
        })()}
+       {!projected.ready&&<g className="sniper-m15-empty-reason">
+         <text x={(split+end)/2} y={plotTop+66} fill="#d6bd8f"
+           fontSize="9" textAnchor="middle" direction="rtl">
+           {blockedKey===candleKey?'السيناريو مُبطل':safeSide==='WAIT'?'لا اتجاه مرجح حاليًا':'انتظار سيناريو صالح'}</text>
+         <text x={(split+end)/2} y={plotTop+83} fill="#9baaba"
+           fontSize="8.3" textAnchor="middle" direction="rtl">
+           {freshObservation?'يجري تقييم الإغلاقات والهيكل':'بانتظار تحديث بيانات السوق'}</text>
+         <title>{lifecycle}</title>
+       </g>}
        {projected.ready&&projected.bars.length>0&&<g className="sniper-m15-first-audit">
          <text x={split+6} y={plotTop+(asset==='BTC'?42:25)}
            fill={firstM15Stats.ready?'#b3d9ec':'#899baa'}

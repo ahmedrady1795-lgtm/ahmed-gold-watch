@@ -7,9 +7,9 @@ const load=(path)=>{
  }).outputText,{module:mod,exports:mod.exports});
  return mod.exports;
 };
-const {frozenM15Decision}=load('lib/sniper-m15-freeze.ts');
+const {frozenM15Decision,retainM15Snapshot}=load('lib/sniper-m15-freeze.ts');
 const {sniperPhaseBadge}=load('lib/sniper-market-phase.ts');
-const {observedM15Bias}=load('lib/sniper-m15-bias.ts');
+const {observedM15Bias,m15ObservationSide}=load('lib/sniper-m15-bias.ts');
 const time=Date.parse('2026-10-19T16:45:00Z'),closed=time-900000;
 const old={asset:'GOLD',closedTime:closed,side:'SELL',stop:4150,createdAt:time-5*60000};
 const common={old,asset:'GOLD',closedTime:closed,quote:4140,
@@ -75,5 +75,16 @@ assert.equal(frozenM15Decision({...common,fresh:false,now:closed+46*60000}),'CLE
 assert.equal(frozenM15Decision({...common,fresh:false,asset:'BTC'}),'CLEAR');
 assert.equal(frozenM15Decision({...common,quote:null}),'PAUSE');
 assert.equal(frozenM15Decision(common),'HOLD','recovered feed resumes the same snapshot');
-assert.ok(chart.indexOf('if(!scenario.ready)return;')<chart.indexOf('lastAttempt.current=candleKey;'),
+assert.ok(chart.indexOf('if(!scenario.ready){')<chart.indexOf('lastAttempt.current=candleKey;'),
  'a failed build must not consume the candle retry');
+
+assert.equal(retainM15Snapshot('REBUILD',old,'GOLD',time+900001),true,
+ 'neutral new M15 must not blank a still-valid prior route');
+assert.equal(retainM15Snapshot('CLEAR',old,'GOLD',time+1000),false);
+assert.equal(retainM15Snapshot('REBUILD',old,'BTC',time+1000),false);
+assert.equal(retainM15Snapshot('REBUILD',old,'GOLD',closed+46*60000),false);
+assert.equal(retainM15Snapshot('PAUSE',old,'GOLD',time+1000),true);
+assert.equal(m15ObservationSide('WAIT',{active:true,side:'SELL',agreement:3}),'SELL');
+assert.equal(m15ObservationSide('WAIT',{active:false,side:'SELL',agreement:3}),'WAIT');
+assert.equal(m15ObservationSide('WAIT',{active:true,side:'BUY',agreement:1}),'WAIT');
+assert.equal(m15ObservationSide('BUY',{active:true,side:'SELL',agreement:3}),'BUY');

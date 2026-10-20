@@ -27,3 +27,12 @@ export function observedM15Bias(bars:readonly M15Bar[]):M15Bias{
  if(downside>=2&&upside===0)return {side:'SELL',votes:downside,label:'ميل M15 هابط',actionable:false};
  return none('توازن M15');
 }
+
+/** Read-only structural fallback; neutral M15 is not a veto on a fresh H1/H4
+ * observation. This does not change any execution or confidence threshold. */
+export function m15ObservationSide(local:M15Side,structural:{
+ active:boolean;side:M15Side;agreement:number
+}):M15Side{
+ if(local!=='WAIT')return local;
+ return structural.active&&structural.agreement>=2?structural.side:'WAIT';
+}
