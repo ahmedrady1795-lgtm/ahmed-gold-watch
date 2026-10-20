@@ -74,7 +74,7 @@ assert.match(component,/marks:aligned\.reactions\.marks\.filter/,
  'reaction markers show only when frozen projected candles match the live anchor');
 assert.match(component,/className="sniper-m15-reaction-band"/);
 assert.match(component,/className="sniper-m15-reaction-mark"/);
-assert.match(component,/className="sniper-m15-rail-turn"/);
+assert.match(component,/className="sniper-m15-liquidity-line"/);
 assert.match(component,/mark\.price/);
 assert.match(component,/z\.invalidation/);
 assert.match(component,/projected\.ready&&reactionMap\.marks/);
@@ -97,6 +97,6 @@ assert.match(component,/const drawnZones=liquidity\.zones\.filter/,
  'overlapping real liquidity rectangles should not paint opaque red blobs');
 assert.match(component,/compactM15ZoneAnnotations\(drawnZones/,
  'only drawn price zones contribute visible historical labels');
-assert.match(component,/Math\.abs\(x\.exactY-z\.exactY\)<13/,
- 'do not print conditional zone price twice near a plotted reaction point');
+assert.match(component,/const forwardLabels=showLiquidity&&showExtra/,
+ 'extended reaction notes should appear only when requested');
 console.log('PASS: frozen source-true rebound bands, mirrored BUY/SELL projected touches, expiry/stop/future guards, no invented hits');
