@@ -72,6 +72,11 @@ function evaluate(asset:'GOLD'|'BTC',f:LeadFeatures,now=Date.now(),mode:'DOM'|'M
   state.signal=out;return out;
 }
 export function updateGoldMarketLead(fast:any,now=Date.now(),wave:any=null):MarketLeadSignal{
+  // Do NOT label price-only MT5 ticks as authenticated DOM pressure.
+  // Brokers may not provide MarketBookGet for spot XAUUSD at all.
+  if(fast?.ok&&fast.domReady!==true)
+    return offline('GOLD','MT5 broker depth',
+      'تغذية MT5 السعرية موجودة لكن لا توجد ثلاث عينات عمق وسيط موثوقة؛ DOM غير مؤهل.',now);
   if(fast?.ok){
     const side=sideOf(fast.side);
     return evaluate('GOLD',{
