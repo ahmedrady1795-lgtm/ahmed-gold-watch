@@ -1,11 +1,17 @@
 // Qannas Spot: auditable public-data signals, not knowledge of future orders.
 export type Candle={time:number;open:number;high:number;low:number;close:number;quoteVolume:number;buyQuote:number};
 export type Book={bidShare:number;spreadBps:number;bidWallShare:number;askWallShare:number};
+export type Absorption={
+  state:'NONE'|'SELL_ABSORPTION'|'BUY_RECLAIM';
+  sellShare:number;pressureRatio:number;holdPct:number;reclaimBuyShare:number;
+  reboundPct:number;
+};
 export type Candidate={
   symbol:string;price:number;change24h:number;volume24h:number;
   score:number;phase:'EARLY'|'BUILDING'|'WATCH'|'EXTENDED';freshAt:number;
   volumeImpulse:number;buyShare:number;relative15m:number|null;change15m:number;
   flowDelta5m:number;flowShiftPct:number;rangeCompression:number;trapRisk:boolean;
+  absorption:Absorption;
   book:Book|null;breakout:number;distancePct:number;invalidation:number;
   target1:number;target2:number;estimatedCostPct:number;netRR:number;
   reasons:string[];warnings:string[];
@@ -14,6 +20,45 @@ export type Candidate={
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
 const safe=(v:unknown)=>Number(v);
 const sum=(xs:number[])=>xs.reduce((a,b)=>a+b,0);
+/**
+ * Observation-only selling absorption:
+ * - Aggressive taker sells dominated an unusually busy PRIOR 7-minute window.
+ * - Price resisted that pressure relative to recent baseline range.
+ * - BUY_RECLAIM requires a subsequent five CLOSED bars with returning
+ *   aggressive buys, reclaiming price and no dominant upper-wick supply.
+ * It cannot identify a whale, iceberg, hidden order, or future pump.
+ */
+export function detectAbsorption(input:Candle[]):Absorption {
+  const missing:Absorption={state:'NONE',sellShare:0,pressureRatio:0,
+    holdPct:0,reclaimBuyShare:0,reboundPct:0};
+  const xs=input.slice(-70);
+  if(xs.length<62)return missing;
+  const baseline=xs.slice(-62,-12),pressure=xs.slice(-12,-5),reclaim=xs.slice(-5);
+  const baseVol=sum(baseline.map(x=>x.quoteVolume))/baseline.length;
+  const sellVol=sum(pressure.map(x=>x.quoteVolume));
+  const recentVol=sum(reclaim.map(x=>x.quoteVolume));
+  if(baseVol<=0||sellVol<=0||recentVol<=0)return missing;
+  const sellShare=1-sum(pressure.map(x=>x.buyQuote))/sellVol;
+  const pressureRatio=(sellVol/pressure.length)/baseVol;
+  const holdPct=(pressure.at(-1)!.close/pressure[0].open-1)*100;
+  const reclaimBuyShare=sum(reclaim.map(x=>x.buyQuote))/recentVol;
+  const reboundPct=(reclaim.at(-1)!.close/pressure.at(-1)!.close-1)*100;
+  const typicalBarRangePct=sum(baseline.map(x=>(x.high-x.low)/x.close*100))/baseline.length;
+  const maxDropPct=Math.max(.22,Math.min(.6,typicalBarRangePct*1.25));
+  const recentUpperWick=sum(reclaim.map(x=>x.high-Math.max(x.open,x.close)));
+  const recentRange=Math.max(1e-12,sum(reclaim.map(x=>x.high-x.low)));
+  const heavyTopSupply=recentUpperWick/recentRange>.43;
+  const pressureLow=Math.min(...pressure.map(x=>x.low));
+  const supportHeld=reclaim.at(-1)!.close>=pressureLow&&
+    reclaim.at(-1)!.close>=pressure.at(-1)!.close;
+  const sellingAbsorbed=sellShare>=.6&&pressureRatio>=1.35&&
+    holdPct>=-maxDropPct&&holdPct<=.8&&supportHeld;
+  const recovered=sellingAbsorbed&&reclaimBuyShare>=.55&&
+    reclaimBuyShare-(1-sellShare)>=.16&&
+    reboundPct>=.08&&recentVol/reclaim.length>=baseVol*1.05&&!heavyTopSupply;
+  return {state:recovered?'BUY_RECLAIM':sellingAbsorbed?'SELL_ABSORPTION':'NONE',
+    sellShare,pressureRatio,holdPct,reclaimBuyShare,reboundPct};
+}
 export function parseKlines(raw:unknown,now=Date.now()):Candle[]{
   if(!Array.isArray(raw))return [];
   const rows:Candle[]=[];
@@ -80,6 +125,7 @@ export function scoreCoin(
   const upperWickRatio=sum(recent.map(c=>c.high-Math.max(c.open,c.close)))/
     Math.max(1e-12,sum(recent.map(c=>c.high-c.low)));
   const trapRisk=upperWickRatio>.43&&volumeImpulse>1.8;
+  const absorption=detectAbsorption(candles);
   const change15m=(price/candles[n-16].close-1)*100;
   const relative15m=btc15m===null?null:change15m-btc15m;
   const breakout=Math.max(...candles.slice(-36,-5).map(c=>c.high));
@@ -107,6 +153,8 @@ export function scoreCoin(
   score+=clamp((change15m+.2)/2.8,0,1)*11;
   score+=clamp((flowShiftPct-2)/16,0,1)*8;
   score+=rangeCompression<.8&&volumeImpulse>1.3?5:0;
+  if(absorption.state==='BUY_RECLAIM')score+=9;
+  else if(absorption.state==='SELL_ABSORPTION')score+=3;
   score+=clamp(Math.log10(Math.max(1,volume24h)/1500000)/2,0,1)*7;
   if(book){score+=clamp((book.bidShare-.48)/.23,0,1)*9;
     if(book.spreadBps>25)score-=14;
@@ -131,8 +179,11 @@ export function scoreCoin(
   if(book&&book.bidShare>.54)reasons.push('طلبات شراء مرئية '+Math.round(book.bidShare*100)+'٪');
   if(flowShiftPct>=7)reasons.push('تغير ميزان الشراء +'+flowShiftPct.toFixed(0)+' نقطة');
   if(rangeCompression<.8&&volumeImpulse>1.3)reasons.push('انضغاط تقلب مع نشاط تداول');
+  if(absorption.state==='BUY_RECLAIM')reasons.push('رُصد امتصاص بيع ثم عودة شراء منفّذ');
+  else if(absorption.state==='SELL_ABSORPTION')reasons.push('ضغط بيع منفّذ والسعر متماسك: امتصاص محتمل');
   const warnings:string[]=[];
   if(extended)warnings.push('السعر ممتد؛ خطر مطاردة الارتفاع');
+  if(absorption.state==='SELL_ABSORPTION')warnings.push('امتصاص محتمل فقط: لم يتأكد ارتداد الشراء بعد');
   if(trapRisk)warnings.push('ذيول علوية مرتفعة: احتمال تصريف أو فخ سيولة');
   if(netRR<1.15)warnings.push('الهدف الأول ضعيف بعد تقدير الرسوم والانزلاق والسبريد');
   if(volumeImpulse>1.8&&buyShare>.56&&Math.abs(change15m)<.4)
@@ -143,7 +194,7 @@ export function scoreCoin(
   if(btc15m===null)warnings.push('المقارنة مع BTC غير متاحة');
   return {symbol,price,change24h,volume24h,score,phase,
     freshAt:candles[n-1].time+60000,volumeImpulse,buyShare,relative15m,
-    flowDelta5m,flowShiftPct,rangeCompression,trapRisk,
+    flowDelta5m,flowShiftPct,rangeCompression,trapRisk,absorption,
     change15m,book,breakout,distancePct,invalidation,target1,target2,
     estimatedCostPct,netRR,
     reasons,warnings,candles:candles.slice(-70)};
