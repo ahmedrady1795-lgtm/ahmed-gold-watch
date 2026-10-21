@@ -33,7 +33,7 @@ try{
   assert.equal(final.storage,'ephemeral-runtime');
   const old=JSON.parse(await fs.readFile(process.env.SPOT_FORWARD_LOG_PATH,'utf8'));
   assert.equal(old[0].status,'SETTLED');
-  assert.equal(old[0].returnPct,3.5);
+  assert.ok(Math.abs(old[0].returnPct-3.5)<1e-9);
   assert.equal((await recordAndEvaluateSpot([],verify,due+3*minute)).total,1);
   assert.equal(settleFromClosedMinute({...old[0],status:'PENDING'},
     [[due,'100','105','90','104','0',due+minute*4]],due+2*minute),null,
