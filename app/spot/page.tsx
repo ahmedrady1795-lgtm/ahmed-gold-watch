@@ -6,7 +6,8 @@ import {scanSpotInBrowser} from '../../lib/client-spot-radar';
 import './spot.css';
 
 type Radar={ok:true;source:string;asOf:number;universe:number;scanned:number;
-  depthChecked:number;candidates:Candidate[];warning?:string};
+  depthChecked:number;candidates:Candidate[];warning?:string;
+  forwardAudit?:{total:number;hit3pct:number;avgReturnPct:number;pending:number}};
 const fmt=(value:number)=>Number.isFinite(value)?value.toLocaleString('en-US',
   {maximumFractionDigits:value<.001?8:value<1?6:value<10?4:2}):'—';
 const pct=(v:number)=>Number.isFinite(v)?(v>0?'+':'')+v.toFixed(2)+'%':'—';
@@ -83,6 +84,10 @@ export default function SpotPage(){
         <strong>ترتيب أقوى المرشحين</strong>
         <span>{data?sorted.length+' عملات من '+data.scanned+' تم تحليلها':'بانتظار Binance'}</span>
       </div>
+
+      {data?.forwardAudit&&data.forwardAudit.total>0&&
+        <p className="spot-simple-proof">اختبار 24 ساعة المسجّل: {data.forwardAudit.hit3pct} من {data.forwardAudit.total}
+          {' '}أغلقوا بارتفاع 3% أو أكثر · سجل تشغيل تجريبي قد يُصفّر عند إعادة النشر.</p>}
 
       {error&&<p role="alert" className="spot-simple-alert">{error}</p>}
       {stale&&<p role="status" className="spot-simple-alert">البيانات قديمة؛ لا تعتمد على هذا الترتيب حتى ينجح التحديث.</p>}
