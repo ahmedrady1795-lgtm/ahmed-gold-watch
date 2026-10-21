@@ -136,8 +136,44 @@ const brokenHour=completeHours.map(x=>({...x}));
 brokenHour[brokenHour.length-6].time+=hour/2;
 assert.equal(out.score24hOutlook(scored,brokenHour,0,now),null,
   'Gap in closed hourly history invalidates 24h rank');
+
+// High-beta and meme ranking must require observed participation and
+// a verified Spot market, never just a catchy name or tiny token price.
+const highBeta={};
+vm.runInNewContext(ts.transpileModule(
+  fs.readFileSync('lib/spot-high-upside.ts','utf8'),
+  {compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}
+).outputText,{exports:highBeta});
+assert.equal(highBeta.marketGroup('PEPEUSDT'),'MEME');
+assert.equal(highBeta.marketGroup('BONKUSDT'),'MEME');
+assert.equal(highBeta.marketGroup('ETHUSDT'),'MEGA');
+assert.equal(highBeta.marketGroup('APTUSDT'),'HIGH_BETA');
+assert.equal(highBeta.marketGroup('NOTUSDT'),'HIGH_BETA',
+  'Do not invent a meme classification for unrelated tokens');
+assert.ok(highBeta.memeSpotSymbols().includes('PEPEUSDT'));
+assert.ok(highBeta.memeSpotSymbols().every(x=>x.endsWith('USDT')));
+const clone={...scored,symbol:'PEPEUSDT',buyShare:.62,change24h:2,change15m:.6,
+  volume24h:9000000,trapRisk:false};
+const dynamicHours=completeHours.map((bar,i)=>({...bar,
+  high:bar.high+1.8,low:bar.low-1.8,
+  quoteVolume:i>=completeHours.length-24?bar.quoteVolume*1.6:bar.quoteVolume}));
+const focused=highBeta.highUpsideFocus(clone,dynamicHours);
+assert.ok(focused&&focused.group==='MEME'&&focused.boost>0);
+assert.ok(highBeta.highUpsideFocus({...clone,symbol:'ETHUSDT'},dynamicHours).boost===0);
+assert.equal(highBeta.highUpsideFocus({...clone,buyShare:.42},dynamicHours).boost,0);
+assert.equal(highBeta.highUpsideFocus({...clone,change24h:18},dynamicHours).boost,0);
+assert.equal(highBeta.highUpsideFocus({...clone,trapRisk:true},dynamicHours).boost,0);
+assert.equal(highBeta.highUpsideFocus({...clone,volume24h:700000},dynamicHours).boost,0);
+assert.equal(highBeta.highUpsideFocus(clone,dynamicHours.slice(-20)),null);
+const serverFocus=fs.readFileSync('app/api/spot-radar/route.ts','utf8');
+const clientFocus=fs.readFileSync('lib/client-spot-radar.ts','utf8');
+for(const source of [serverFocus,clientFocus]){
+  assert.ok(source.includes('memeSpotSymbols()')&&source.includes('highUpsideFocus('));
+}
+console.log('PASS: verified meme-first sampling, actual hourly movement, anti-chase, buyer participation and no fake boost.');
+
 const rankingUI=fs.readFileSync('app/spot/page.tsx','utf8');
-assert.ok(rankingUI.includes('للصعود خلال 24 ساعة'));
+assert.ok(rankingUI.includes('الحركات الكبيرة خلال 24 ساعة'));
 assert.ok(rankingUI.includes('spot-simple-list'));
 assert.ok(!rankingUI.includes('CandleChart')&&!rankingUI.includes('spot-detail-panel'));
 assert.ok(!rankingUI.includes('spot-filters'),'Large detail pane and options must stay hidden');
