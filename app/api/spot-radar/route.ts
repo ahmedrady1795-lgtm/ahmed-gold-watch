@@ -219,7 +219,14 @@ async function scan():Promise<RadarResult>{
   });
   if(!initial.length)throw Error('No qualified fresh Spot candles from '+chosen.length+
     ' pairs; '+recentProblems.slice(-3).join(' | '));
-  const shortlist=initial.sort((a,b)=>b.score-a.score).slice(0,23);
+  const byMomentum=[...initial].sort((a,b)=>b.score-a.score).slice(0,15);
+  // A fixed "already-moving" list misses the first hour of new rotation.
+  // Reserve eight slots for liquid, relatively quiet symbols before breakout.
+  const quiet=[...initial].filter(c=>c.volume24h>=2_000_000&&
+    c.change24h>=-3&&c.change24h<=5&&c.change15m<1.5&&!c.trapRisk)
+    .sort((a,b)=>b.volumeImpulse-a.volumeImpulse).slice(0,12);
+  const shortlist=Array.from(new Map([...byMomentum,...quiet].map(c=>[c.symbol,c]))
+    .values()).slice(0,23);
   let depthChecked=0;
   const detailed=await batched(shortlist,6,async item=>{
     try{
