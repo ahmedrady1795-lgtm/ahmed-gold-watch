@@ -55,7 +55,7 @@ export function scoreCoin(
 ):Candidate|null{
   const candles=rawCandles.slice(-70), n=candles.length;
   if(n<60||!Number.isFinite(change24h)||!Number.isFinite(volume24h)||
-     volume24h<1500000||now-candles[n-1].time>210000)return null;
+     volume24h<1500000||now-(candles[n-1].time+60000)>150000)return null;
   for(let i=n-60;i<n;i++)if(i>0&&candles[i].time-candles[i-1].time!==60000)return null;
   const price=candles[n-1].close;
   const recent=candles.slice(-5),past=candles.slice(-55,-5);
@@ -111,7 +111,7 @@ export function scoreCoin(
   const nearLevel=distancePct>=-.5&&distancePct<=1.35;
   const depthOk=book!==null&&book.bidShare>=.53&&book.spreadBps<=25;
   const phase:Candidate['phase']=extended?'EXTENDED':
-    score>=72&&buyConfirmed&&nearLevel&&depthOk?'EARLY':
+    score>=72&&buyConfirmed&&nearLevel&&depthOk&&!trapRisk?'EARLY':
     score>=54&&buyShare>=.52&&volumeImpulse>=1.2?'BUILDING':'WATCH';
   const reasons:string[]=[];
   if(volumeImpulse>=1.3)reasons.push('تسارع تداول فعلي ×'+volumeImpulse.toFixed(1));
