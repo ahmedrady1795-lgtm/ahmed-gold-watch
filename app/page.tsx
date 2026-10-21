@@ -301,6 +301,7 @@ export default function Home(){
       <nav className="sniper-solo-nav" aria-label="التنقل في القناص">
         <a href="#market-forecast">الرسم المباشر</a>
         <a href="#sniper-performance">نتائج الأهداف</a>
+        <a href="/spot" className="workspace-scalp-link">رادار Spot ↗</a>
         <a href="/scalp" className="workspace-scalp-link">سكالب الثواني ↗</a>
       </nav>
     </header>
