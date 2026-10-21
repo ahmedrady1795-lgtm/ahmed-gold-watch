@@ -38,17 +38,44 @@ async function parallel<T,R>(values:T[],count:number,fn:(value:T)=>Promise<R|nul
  */
 export async function scanSpotInBrowser():Promise<BrowserRadar>{
   const host=await pickHost();
-  const [info,tickers]=await Promise.all([
-    request(host,'/api/v3/exchangeInfo',12500),
-    request(host,'/api/v3/ticker/24hr',12500)
+  // Discover with the compact price feed; never download all exchangeInfo or
+  // full 24hr statistics on mobile. Only verify small rotating symbol batches.
+  const prices=await request(host,'/api/v3/ticker/price',12500) as Array<{symbol:string;price:string}>;
+  if(!Array.isArray(prices))throw Error('قائمة أزواج Binance الخفيفة غير متاحة.');
+  const stables=new Set(['USDC','FDUSD','TUSD','DAI','USDE','EUR','EURI','AEUR',
+    'USDD','USD1','RLUSD','USDS','USTC','PYUSD']);
+  const all=prices.map(p=>p?.symbol).filter((p):p is string=>
+    typeof p==='string'&&p.endsWith('USDT')&&!stables.has(p.slice(0,-4)));
+  const anchors=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT',
+    'ADAUSDT','LINKUSDT','SUIUSDT','AVAXUSDT','PEPEUSDT','TRXUSDT',
+    'AAVEUSDT','NEARUSDT','OPUSDT','ARBUSDT','APTUSDT','LTCUSDT','WIFUSDT'];
+  const windowIndex=Math.floor(Date.now()/180000),sorted=[...new Set(all)].sort();
+  const start=sorted.length?windowIndex%sorted.length:0;
+  const names=[...new Set([...anchors,...sorted.slice(start,start+55),
+    ...sorted.slice(0,Math.max(0,start+55-sorted.length))])].slice(0,68);
+  const batches=Array.from({length:Math.ceil(names.length/20)},
+    (_,i)=>names.slice(i*20,i*20+20));
+  const [infos,tickerGroups]=await Promise.all([
+    parallel(batches,4,async chunk=>{
+      try{return await request(host,'/api/v3/exchangeInfo?symbols='+
+        encodeURIComponent(JSON.stringify(chunk)),11000) as MarketInfo;
+      }catch{return null;}
+    }),
+    parallel(batches,4,async chunk=>{
+      try{
+        const x=await request(host,'/api/v3/ticker/24hr?symbols='+
+          encodeURIComponent(JSON.stringify(chunk)),11000);
+        return Array.isArray(x)?x as Ticker[]:null;
+      }catch{return null;}
+    })
   ]);
-  const allowed=new Set(((info as MarketInfo).symbols||[]).filter(s=>
+  const allowed=new Set(infos.flatMap(i=>i?.symbols||[]).filter(s=>
     s.status==='TRADING'&&s.quoteAsset==='USDT'&&
     s.isSpotTradingAllowed!==false&&
     (!s.permissions?.length||s.permissions.includes('SPOT'))).map(s=>s.symbol));
-  if(!allowed.size||!Array.isArray(tickers))throw Error('تعذر التحقق من أزواج Binance Spot الفعلية.');
-  const stables=new Set(['USDC','FDUSD','TUSD','DAI','USDE','EUR','EURI','AEUR','USDD','USD1','RLUSD','USDS']);
-  const eligible=(tickers as Ticker[]).filter(t=>allowed.has(t.symbol)&&t.symbol.endsWith('USDT')&&
+  const tickers=tickerGroups.flat();
+  if(!allowed.size||!tickers.length)throw Error('تعذر التحقق من مجموعات أزواج Binance Spot المصغرة.');
+  const eligible=tickers.filter(t=>allowed.has(t.symbol)&&t.symbol.endsWith('USDT')&&
     !stables.has(t.symbol.slice(0,-4))&&Number(t.quoteVolume)>=1500000&&
     Number(t.priceChangePercent)>=-9&&Number(t.priceChangePercent)<=22);
   const high=[...eligible].sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,10);
@@ -84,7 +111,7 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
   const candidates=refined.filter((x):x is Candidate=>x!==null).sort((a,b)=>b.score-a.score).slice(0,12);
   if(!candidates.length)throw Error('لم تتوفر قراءة حديثة موثوقة لعملات Spot.');
   return {ok:true,asOf:Date.now(),source:'Binance Spot · direct browser feed ('+host.replace('https://','')+')',
-    universe:allowed.size,scanned:scans.length,depthChecked,candidates,
+    universe:all.length,scanned:scans.length,depthChecked,candidates,
     method:'Direct Binance public data · closed 1m klines · taker volume · depth',
     warning:'تعذر الاتصال من الخادم؛ تم التحليل مباشرة من المتصفح. تأكد من تحديث البيانات، وليس توصية شراء.'};
 }
