@@ -109,5 +109,5 @@ export function scoreCoin(
   return {symbol,price,change24h,volume24h,score,phase,
     freshAt:candles[n-1].time+60000,volumeImpulse,buyShare,relative15m,
     change15m,book,breakout,distancePct,invalidation,target1,target2,
-    reasons,warnings,candles:candles.slice(-45)};
+    reasons,warnings,candles:candles.slice(-70)};
 }
