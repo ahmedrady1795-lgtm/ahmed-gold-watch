@@ -110,7 +110,7 @@ export default function SpotPage(){
       <section className="spot-list-panel" aria-label="قائمة مرشحي Spot">
         <div className="spot-panel-title"><div><span>RADAR WATCHLIST</span><h2>العملات المرشحة</h2></div><small>التقييم قوة دلائل، لا نسبة نجاح</small></div>
         <div className="spot-filters">
-          {([['ALL','الكل'],['EARLY','تدفق مبكر'],['BUILDING','ضغط شراء'],['ABSORPTION','امتصاص خفي'],['EXTENDED','لا تطارد']] as const).map(([value,label])=>
+          {([['ALL','الكل'],['EARLY','تدفق مبكر'],['BUILDING','ضغط شراء'],['ABSORPTION','بصمة الامتصاص'],['EXTENDED','لا تطارد']] as const).map(([value,label])=>
             <button key={value} type="button" className={filter===value?'active':''}
               onClick={()=>setFilter(value)}>{label}</button>)}
         </div>
@@ -157,10 +157,10 @@ export default function SpotPage(){
                 'لا توجد بصمة امتصاص مستوفية للشروط'}
             </strong>
             {coin.absorption&&<div className="spot-absorption-stats">
-              <div><small>البيع المنفّذ في فترة الضغط</small><b>{pct(coin.absorption.sellShare*100)}</b></div>
+              <div><small>البيع المنفّذ في فترة الضغط</small><b>{Math.round(coin.absorption.sellShare*100)}%</b></div>
               <div><small>كثافة حجم التداول</small><b>×{coin.absorption.pressureRatio.toFixed(1)}</b></div>
               <div><small>تغير السعر أثناء البيع</small><b>{pct(coin.absorption.holdPct)}</b></div>
-              <div><small>شراء آخر 5 دقائق</small><b>{pct(coin.absorption.reclaimBuyShare*100)}</b></div>
+              <div><small>شراء آخر 5 دقائق</small><b>{Math.round(coin.absorption.reclaimBuyShare*100)}%</b></div>
             </div>}
             <small>مبني على شموع Spot المغلقة وحجم المشترين المبادرين بالصفقات. احتمال امتصاص وليس كشفًا لأوامر مخفية أو نوايا حيتان.</small>
           </div>
