@@ -3,6 +3,7 @@ import {largeTradeFootprint,futuresCrowding,blendEdge} from '../../../lib/spot-e
 import {spotLiquiditySample,spotIgnition,type SpotLiquiditySample} from '../../../lib/spot-ignition';
 import {rankSpotFastLane} from '../../../lib/spot-aggressive';
 import {spotAccumulationPulse} from '../../../lib/spot-accumulation';
+import {spotBackoffMs} from '../../../lib/binance-cooldown';
 import {marketGroup,memeSpotSymbols,highUpsideFocus} from '../../../lib/spot-high-upside';
 import {recordAndEvaluateSpot,type ForwardResult} from '../../../lib/spot-forward-audit';
 
@@ -17,6 +18,20 @@ const HOSTS=[
   'https://api.binance.com'
 ];
 const CACHE_MS=90000;
+let binanceBlockedUntil=0;
+function binanceCooldown(res:Response):void{
+  const ms=spotBackoffMs(res.status,res.headers.get('Retry-After'));
+  if(ms>0){
+    binanceBlockedUntil=Math.max(binanceBlockedUntil,Date.now()+ms);
+    selectedHost=null;
+    problem('Binance HTTP '+res.status+'; pause '+Math.ceil(ms/1000)+'s per Retry-After');
+  }
+}
+function assertNotBanned():void{
+  if(binanceBlockedUntil>Date.now())
+    throw Error('Binance HTTP 418/429 IP cooldown; remaining '+
+      Math.ceil((binanceBlockedUntil-Date.now())/1000)+'s');
+}
 let selectedHost:{name:string;at:number}|null=null;
 let selectPromise:Promise<string>|null=null;
 const recentProblems:string[]=[];
@@ -25,17 +40,20 @@ function problem(msg:string){
   if(recentProblems.length>10)recentProblems.shift();
 }
 async function chooseHost():Promise<string>{
+  assertNotBanned();
   if(selectedHost&&Date.now()-selectedHost.at<300000)return selectedHost.name;
   if(selectPromise)return selectPromise;
   selectPromise=(async()=>{
     const checks=await Promise.allSettled(HOSTS.map(async host=>{
       const r=await fetch(host+'/api/v3/time',{cache:'no-store',signal:AbortSignal.timeout(4200)});
+      if(r.status===418||r.status===429)binanceCooldown(r);
       if(!r.ok)throw Error(host+' HTTP '+r.status);
       const j=await r.json();
       if(!Number.isFinite(Number(j?.serverTime))||Math.abs(Date.now()-Number(j.serverTime))>120000)
         throw Error(host+' unverified exchange clock');
       return host;
     }));
+    assertNotBanned();
     const winner=checks.find(x=>x.status==='fulfilled');
     if(winner&&winner.status==='fulfilled'){
       selectedHost={name:winner.value,at:Date.now()};
@@ -57,16 +75,18 @@ type RadarResult={ok:true;source:string;asOf:number;universe:number;scanned:numb
   candidates:Candidate[];method:string;warning:string;forwardAudit?:ForwardResult};
 
 async function getJson(path:string,timeoutMs=6800):Promise<unknown>{
+  assertNotBanned();
   const first=await chooseHost();
   const candidates=[first,...HOSTS.filter(h=>h!==first)].slice(0,2);
   let previousError='';
   for(const host of candidates){
+    assertNotBanned();
     try{
       const r=await fetch(host+path,{cache:'no-store',
         signal:AbortSignal.timeout(Math.min(13000,timeoutMs+2000)),
         headers:{Accept:'application/json'}});
       if(r.status===429||r.status===418){
-        problem(host+' rate limited '+r.status+' '+path.split('?')[0]);
+        binanceCooldown(r);
         throw Error('Binance rate limited: '+r.status);
       }
       if(!r.ok)throw Error('HTTP '+r.status);
@@ -362,14 +382,23 @@ export async function GET(){
   const now=Date.now();
   if(lastGood&&now-lastGood.time<CACHE_MS)return Response.json({...lastGood.value,
     cacheAgeMs:now-lastGood.time},{headers:{'Cache-Control':'no-store'}});
+  if(binanceBlockedUntil>now){
+    const seconds=Math.ceil((binanceBlockedUntil-now)/1000);
+    return Response.json({ok:false,status:'binance_cooldown',
+      asOf:now,retryAfterSeconds:seconds,
+      message:'Binance temporarily limited the server IP; browser Spot analysis will be tried'},
+      {status:503,headers:{'Cache-Control':'no-store','Retry-After':String(seconds)}});
+  }
   if(!pending)pending=scan().finally(()=>{pending=null;});
   try{
     const value=await pending;
     lastGood={time:Date.now(),value};
     return Response.json({...value,cacheAgeMs:0},{headers:{'Cache-Control':'no-store'}});
   }catch(error){
-    return Response.json({ok:false,status:'unavailable',asOf:now,
-      message:'تعذر إثبات مرشحي Spot من بيانات Binance الحالية',
+    return Response.json({ok:false,
+      status:binanceBlockedUntil>Date.now()?'binance_cooldown':'unavailable',
+      retryAfterSeconds:Math.max(0,Math.ceil((binanceBlockedUntil-Date.now())/1000)),
+      asOf:now,message:'تعذر إثبات مرشحي Spot من بيانات Binance الحالية',
       detail:String(error instanceof Error?error.message:error).slice(0,650),
       failedStage:recentProblems.slice(-5),
       gateway:selectedHost?.name??'unavailable'},

@@ -14,7 +14,7 @@ RUN node tests/sniper-m15-snapshot.cjs && node tests/sniper-m15-forward-proof.cj
 RUN node tests/gc-futures-feed.cjs && node tests/institutional-preparation-radar.cjs && node tests/gold-mt5-dom.cjs && node tests/gold-liquidity-radar.mjs && node tests/sniper-m15-walkforward.cjs && node tests/order-flow-microstructure.cjs && node tests/radar-shadow-score.cjs && node tests/order-flow-radar.mjs && node tests/sniper-radar-next-candle.cjs
 # Spot liquidity and absorption checks are mandatory before publishing the dashboard.
 RUN node tests/sniper-live-opportunity.cjs && node tests/sniper-movement-proof.cjs
-RUN node tests/spot-radar.cjs && node tests/spot-accumulation.cjs
+RUN node tests/spot-radar.cjs && node tests/spot-accumulation.cjs && node tests/binance-cooldown.cjs
 RUN node --experimental-strip-types tests/spot-forward-audit.mjs
 # Nonblocking upstream probes distinguish API outages from algorithm bugs.
 RUN node scripts/spot-market-probe.mjs

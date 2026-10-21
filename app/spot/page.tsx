@@ -73,7 +73,7 @@ export default function SpotPage(){
       <div className="spot-simple-toolbar">
         <div className="spot-simple-stamp">
           <span className={'spot-simple-dot '+(data&&!stale?'live':'wait')}/>
-          <span>{data&&!stale?'تحليل Binance Spot محدث':loading?'جاري تحليل السوق…':'بيانات غير متاحة أو قديمة'}</span>
+          <span>{data&&!stale?(data.source?.includes('browser')?'بيانات Binance مباشرة من المتصفح':'تحليل Binance Spot محدث'):loading?'جاري تحليل السوق…':'بيانات غير متاحة أو قديمة'}</span>
           {data&&<small>· آخر فحص {new Date(data.asOf).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})}</small>}
         </div>
         <button type="button" onClick={()=>setRefreshKey(n=>n+1)}

@@ -6,6 +6,8 @@ on:
       - 'lib/spot-ignition.ts'
       - 'lib/spot-aggressive.ts'
       - 'lib/spot-accumulation.ts'
+      - 'lib/binance-cooldown.ts'
+      - 'tests/binance-cooldown.cjs'
       - 'tests/spot-accumulation.cjs'
       - 'Dockerfile'
       - 'tests/spot-aggressive.cjs'
@@ -26,6 +28,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Verify Binance IP-ban cooldown
+        run: node tests/binance-cooldown.cjs
       - name: Verify three-window buying acceleration
         run: node tests/spot-accumulation.cjs
       - name: Check early-buying fast lane
