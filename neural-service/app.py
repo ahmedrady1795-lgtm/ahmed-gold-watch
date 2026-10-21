@@ -140,9 +140,12 @@ def _load_path_model():
 DEPTH_HOSTS=("https://data-api.binance.vision","https://api-gcp.binance.com","https://api.binance.com")
 LAST_DEPTH_HOST=None
 LAST_COLLECTOR_ERROR_LOG_AT=0
+DEPTH_COOLDOWN_UNTIL=0.0
 
 def _fetch_depth():
-    global LAST_DEPTH_HOST
+    global LAST_DEPTH_HOST,DEPTH_COOLDOWN_UNTIL
+    if time.time()<DEPTH_COOLDOWN_UNTIL:
+        raise RuntimeError('Binance rate-limit cooldown; retry in '+str(round(DEPTH_COOLDOWN_UNTIL-time.time()))+'s')
     # All fallbacks are official Binance spot BTCUSDT, never a proxy book.
     order=([LAST_DEPTH_HOST] if LAST_DEPTH_HOST in DEPTH_HOSTS else []) + [
         host for host in DEPTH_HOSTS if host!=LAST_DEPTH_HOST
@@ -165,7 +168,13 @@ def _fetch_depth():
         except requests.HTTPError as err:
             code=err.response.status_code if err.response is not None else 0
             errors.append(host+":"+str(code))
-            if code in (418,429): break  # respect upstream rate limiting
+            if code in (418,429):
+                try: retry_after=float(err.response.headers.get("Retry-After") or 0)
+                except (TypeError,ValueError): retry_after=0
+                cooldown=max(15,min(3*86400,retry_after or (1800 if code==418 else 90)))
+                DEPTH_COOLDOWN_UNTIL=time.time()+cooldown
+                errors.append("cooldown="+str(int(cooldown))+"s")
+                break  # Do not retry on alternative hosts to evade an IP ban
         except Exception as err:
             errors.append(host+":"+type(err).__name__)
     raise RuntimeError("Binance book unavailable: "+",".join(errors))
@@ -693,7 +702,7 @@ def _collector():
             if time.time()-LAST_COLLECTOR_ERROR_LOG_AT>=45:
                 print("[NEURAL-COLLECTOR-ERROR] "+LAST_ERROR[:350],flush=True)
                 LAST_COLLECTOR_ERROR_LOG_AT=time.time()
-        time.sleep(max(.8,INTERVAL))
+        time.sleep(max(.8,min(60,DEPTH_COOLDOWN_UNTIL-time.time()) if DEPTH_COOLDOWN_UNTIL>time.time() else INTERVAL))
 
 def _predict_path(rows):
     if PATH_MODEL is None or len(rows)<SEQ_LEN:
@@ -766,7 +775,7 @@ def startup():
 @app.get("/health")
 def health():
     return {"ok":True,"version":APP_VERSION,"runtimeRevision":RUNTIME_REVISION,"training":TRAINING,"pathTraining":PATH_TRAINING,
-            "storedSnapshots":len(ROWS),"trainingMaxSamples":TRAIN_MAX_SAMPLES,"rssMb":_rss_mb(),"lastSnapshotAt":LAST_SNAPSHOT_AT,"depthHost":LAST_DEPTH_HOST,
+            "storedSnapshots":len(ROWS),"trainingMaxSamples":TRAIN_MAX_SAMPLES,"rssMb":_rss_mb(),"lastSnapshotAt":LAST_SNAPSHOT_AT,"depthHost":LAST_DEPTH_HOST,"depthCooldownSeconds":max(0,round(DEPTH_COOLDOWN_UNTIL-time.time())),
             "trainingSchedule":SCHEDULE,"dataAudit":DATASET_AUDIT,
             "modelReady":bool(METRICS and METRICS.get("ready")),
             "lastTrainAt":LAST_TRAIN_AT,"lastTrainAttemptAt":LAST_TRAIN_ATTEMPT_AT,
