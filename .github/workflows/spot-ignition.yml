@@ -1,0 +1,29 @@
+name: Spot Ignition Check
+on:
+  push:
+    branches: [render-free]
+    paths:
+      - 'lib/spot-ignition.ts'
+      - 'lib/spot-radar.ts'
+      - 'app/api/spot-radar/route.ts'
+      - 'app/spot/page.tsx'
+      - 'app/spot/spot.css'
+      - 'tests/spot-ignition.cjs'
+      - '.github/workflows/spot-ignition.yml'
+  workflow_dispatch:
+jobs:
+  spot-ignition:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Verify two-snapshot real-buy-flow conditions
+        run: node tests/spot-ignition.cjs
+      - name: Regression test existing Spot radar
+        run: node tests/spot-radar.cjs
+      - name: Check TypeScript integration
+        run: npx tsc --noEmit
