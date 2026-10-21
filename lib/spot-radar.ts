@@ -1,6 +1,14 @@
 // Qannas Spot: auditable public-data signals, not knowledge of future orders.
 export type Candle={time:number;open:number;high:number;low:number;close:number;quoteVolume:number;buyQuote:number};
 export type Book={bidShare:number;spreadBps:number;bidWallShare:number;askWallShare:number};
+// Separate 24h ranking: hourly candles are observational evidence, never a
+// calibrated probability that a pump will occur.
+export type Spot24hOutlook={
+  rankScore:number;state:'HIGH'|'POSSIBLE'|'AVOID';
+  reason:string;hourlyChange24:number;volumeRatio24:number;
+  takerBuyShare12:number;freshAt:number;
+};
+
 export type Absorption={
   state:'NONE'|'SELL_ABSORPTION'|'BUY_RECLAIM';
   sellShare:number;pressureRatio:number;holdPct:number;reclaimBuyShare:number;
@@ -14,7 +22,7 @@ export type Candidate={
   absorption:Absorption;
   book:Book|null;breakout:number;distancePct:number;invalidation:number;
   target1:number;target2:number;estimatedCostPct:number;netRR:number;
-  reasons:string[];warnings:string[];
+  reasons:string[];warnings:string[];outlook24h?:Spot24hOutlook;
   candles:Candle[];
 };
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
@@ -198,4 +206,76 @@ export function scoreCoin(
     change15m,book,breakout,distancePct,invalidation,target1,target2,
     estimatedCostPct,netRR,
     reasons,warnings,candles:candles.slice(-70)};
+}
+
+const HOUR=3600000;
+/** Never use the current unfinished Binance 1h candle for ranking. */
+export function parseHourlyKlines(raw:unknown,now=Date.now()):Candle[]{
+  if(!Array.isArray(raw))return [];
+  const rows:Candle[]=[];
+  for(const r of raw){
+    if(!Array.isArray(r)||r.length<11)continue;
+    const time=Number(r[0]),end=Number(r[6]),open=Number(r[1]),high=Number(r[2]),
+      low=Number(r[3]),close=Number(r[4]),quoteVolume=Number(r[7]),buyQuote=Number(r[10]);
+    if(![time,end,open,high,low,close,quoteVolume,buyQuote].every(Number.isFinite)||
+      time<=0||end>now||time>now||Math.abs(end-time-(HOUR-1))>1000||
+      low<=0||high<Math.max(open,close)||low>Math.min(open,close)||
+      quoteVolume<0||buyQuote<0||buyQuote>quoteVolume*1.00001)continue;
+    rows.push({time,open,high,low,close,quoteVolume,buyQuote});
+  }
+  return rows.sort((a,b)=>a.time-b.time).filter((c,i,a)=>i===0||c.time!==a[i-1].time);
+}
+export function score24hOutlook(
+  coin:Candidate,hourly:Candle[],btc24h:number|null,now=Date.now()
+):Spot24hOutlook|null{
+  const h=hourly.slice(-72),n=h.length;
+  if(n<55||now-(h[n-1].time+HOUR)>2*HOUR||h[n-1].time+HOUR>now+1000)return null;
+  for(let i=n-54;i<n;i++)if(i>0&&h[i].time-h[i-1].time!==HOUR)return null;
+  // Current minute spot and the previous hourly close must reflect the same venue.
+  if(Math.abs(coin.price/h[n-1].close-1)>.04)return null;
+  const latest24=h.slice(-24),previous24=h.slice(-48,-24),recent12=h.slice(-12);
+  const v24=sum(latest24.map(x=>x.quoteVolume)),vPrev=sum(previous24.map(x=>x.quoteVolume));
+  if(v24<=0||vPrev<=0)return null;
+  const volumeRatio24=v24/vPrev;
+  const takerBuyShare12=sum(recent12.map(x=>x.buyQuote))/
+    Math.max(1,sum(recent12.map(x=>x.quoteVolume)));
+  const hourlyChange24=(coin.price/h[n-25].close-1)*100;
+  const change4=(coin.price/h[n-5].close-1)*100;
+  const relative24=btc24h===null?null:hourlyChange24-btc24h;
+  const priorHigh=Math.max(...h.slice(-52,-4).map(x=>x.high));
+  const distanceToBreakout=(priorHigh/coin.price-1)*100;
+  const volNow4=sum(h.slice(-4).map(x=>x.quoteVolume))/4;
+  const volPrior20=sum(h.slice(-24,-4).map(x=>x.quoteVolume))/20;
+  const surge4=volPrior20>0?volNow4/volPrior20:1;
+  const alreadyRunning=hourlyChange24>12||change4>5||distanceToBreakout < -3;
+  let score=0;
+  score+=clamp((volumeRatio24-.8)/1.1,0,1)*23;
+  score+=clamp((takerBuyShare12-.46)/.2,0,1)*19;
+  score+=clamp((surge4-.85)/1.3,0,1)*10;
+  score+=change4>=-.7&&change4<=3.5?11:change4>3.5&&change4<=5?5:0;
+  score+=hourlyChange24>=-2&&hourlyChange24<=10?10:0;
+  score+=distanceToBreakout>=0&&distanceToBreakout<=4?13*(1-distanceToBreakout/6):
+    distanceToBreakout<0&&distanceToBreakout>=-1.5?7:0;
+  score+=relative24===null?0:clamp((relative24+.7)/5,0,1)*9;
+  score+=coin.buyShare>.54&&coin.flowDelta5m>0?7:0;
+  score+=coin.absorption.state==='BUY_RECLAIM'?6:0;
+  score+=coin.book?.bidShare!==undefined&&coin.book.bidShare>.54?4:0;
+  if(alreadyRunning)score-=28;
+  if(coin.trapRisk)score-=25;
+  if(takerBuyShare12<.47)score-=15;
+  if(hourlyChange24 < -7 || change4 < -3)score-=20;
+  if(coin.book&&coin.book.spreadBps>25)score-=12;
+  const rankScore=Math.round(clamp(score,0,100));
+  const state:Spot24hOutlook['state']=alreadyRunning||coin.trapRisk?'AVOID':
+    rankScore>=65&&takerBuyShare12>=.53&&volumeRatio24>=1?'HIGH':
+    rankScore>=45?'POSSIBLE':'AVOID';
+  const reasons:string[]=[];
+  if(volumeRatio24>=1.15)reasons.push('نشاط سيولة 24 ساعة');
+  if(takerBuyShare12>=.54)reasons.push('شراء منفذ يتفوق على البيع');
+  if(distanceToBreakout>=0&&distanceToBreakout<=3)reasons.push('قرب مقاومة مهمة');
+  if(coin.absorption.state==='BUY_RECLAIM')reasons.push('امتصاص بيع ثم عودة شراء');
+  if(relative24!==null&&relative24>=2)reasons.push('قوة أعلى من بيتكوين');
+  return {rankScore,state,reason:reasons.slice(0,2).join(' · ')||
+    'متابعة قوة السعر والسيولة',hourlyChange24,volumeRatio24,
+    takerBuyShare12,freshAt:h[n-1].time+HOUR};
 }
