@@ -2,7 +2,8 @@ import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type C
 import {largeTradeFootprint,futuresCrowding,blendEdge} from '../../../lib/spot-edge';
 import {spotLiquiditySample,spotIgnition,type SpotLiquiditySample} from '../../../lib/spot-ignition';
 import {rankSpotFastLane} from '../../../lib/spot-aggressive';
-import {spotAccumulationPulse} from '../../../lib/spot-accumulation';
+import {spotAccumulationPulse,accumulationSample,verifySpotAccumulation,
+  type SpotAccumulationSample} from '../../../lib/spot-accumulation';
 import {spotBackoffMs} from '../../../lib/binance-cooldown';
 import {marketGroup,memeSpotSymbols,highUpsideFocus} from '../../../lib/spot-high-upside';
 import {recordAndEvaluateSpot,type ForwardResult} from '../../../lib/spot-forward-audit';
@@ -71,6 +72,7 @@ let lastGood:{time:number;value:RadarResult}|null=null;
 let pending:Promise<RadarResult>|null=null;
 // Fail closed after cold start: two separate scans are required.
 const liquidityHistory=new Map<string,SpotLiquiditySample>();
+const accumulationHistory=new Map<string,SpotAccumulationSample>();
 type RadarResult={ok:true;source:string;asOf:number;universe:number;scanned:number;depthChecked:number;
   candidates:Candidate[];method:string;warning:string;forwardAudit?:ForwardResult};
 
@@ -303,11 +305,12 @@ async function scan():Promise<RadarResult>{
         const outlook=score24hOutlook(coin,hourly,btc24h);
         if(!outlook)return null;
         const highUpside=highUpsideFocus(coin,hourly);
-        const accumulation=spotAccumulationPulse(coin);
+        const accumulation=verifySpotAccumulation(
+          coin,spotAccumulationPulse(coin),accumulationHistory.get(coin.symbol)||null);
         const outlook24h=rankSpotFastLane(coin,outlook,
           (highUpside?.boost??0)+accumulation.adjustment);
         if(highUpside?.boost)outlook24h.reason=[highUpside.reason,outlook24h.reason].join(' · ');
-        if(accumulation.state==='BUY_BUILDUP')
+        if(accumulation.state==='BUY_BUILDUP'||accumulation.state==='BUY_PERSISTENT')
           outlook24h.reason=[accumulation.reason,outlook24h.reason].filter(Boolean).slice(0,2).join(' · ');
         if(accumulation.state==='BUY_ABSORBED')
           outlook24h.reason=[accumulation.reason,outlook24h.reason].filter(Boolean).slice(0,2).join(' · ');
@@ -324,8 +327,8 @@ async function scan():Promise<RadarResult>{
   // auxiliary feeds cannot invent an edge. Only 10 best Spot setups are sampled.
   const eligible=candidatesWithHourly
     .filter(c=>c.outlook24h.state!=='AVOID')
-    .sort((a,b)=>(b.outlook24h.rankScore+(b.outlook24h.fastLane?10:0)+(b.accumulation?.state==='BUY_BUILDUP'?6:0))-
-      (a.outlook24h.rankScore+(a.outlook24h.fastLane?10:0)+(a.accumulation?.state==='BUY_BUILDUP'?6:0)));
+    .sort((a,b)=>(b.outlook24h.rankScore+(b.outlook24h.fastLane?10:0)+(b.accumulation?.state==='BUY_PERSISTENT'?12:b.accumulation?.state==='BUY_BUILDUP'?6:0))-
+      (a.outlook24h.rankScore+(a.outlook24h.fastLane?10:0)+(a.accumulation?.state==='BUY_PERSISTENT'?12:a.accumulation?.state==='BUY_BUILDUP'?6:0)));
   const examined=await batched(eligible.slice(0,12),4,async coin=>{
     const symbol=encodeURIComponent(coin.symbol);
     const [tapeRaw,oiRaw,premiumRaw]=await Promise.all([
@@ -354,10 +357,17 @@ async function scan():Promise<RadarResult>{
   const sampledAt=Date.now();
   for(const [symbol,sample] of liquidityHistory)
     if(sampledAt-sample.sampledAt>660000)liquidityHistory.delete(symbol);
+  for(const [symbol,sample] of accumulationHistory)
+    if(sampledAt-sample.sampledAt>660000)accumulationHistory.delete(symbol);
   for(const coin of detailed){
     if(!coin)continue;
     const snapshot=spotLiquiditySample(coin,sampledAt);
     if(snapshot)liquidityHistory.set(coin.symbol,snapshot);
+    // Only pre-verified, depth-backed buying may seed the NEXT independent scan.
+    const current=spotAccumulationPulse(coin);
+    const proof=accumulationSample(coin,current,sampledAt);
+    if(proof)accumulationHistory.set(coin.symbol,proof);
+    else if(current.state==='BUY_ABSORBED')accumulationHistory.delete(coin.symbol);
   }
   const untouched=eligible.slice(12);
   const candidates=[...examined,...untouched]
@@ -375,7 +385,7 @@ async function scan():Promise<RadarResult>{
   }).catch(()=>undefined);
   return {ok:true,source:'Binance public Spot · closed 1m candles + depth',
     asOf:Date.now(),universe,scanned:initial.length,depthChecked,
-    candidates,forwardAudit,method:'Binance Spot · three-window executed-buy acceleration + depth check · 1m/1h closed bars · two-scan persistence',
+    candidates,forwardAudit,method:'Binance Spot · three-window buying acceleration + depth · independently repeated accumulation and liquidity checks · closed 1m/1h candles',
     warning:'Persistent buy-flow signals require separate fresh scans. Process memory resets on redeploy. No future/hidden orders, pump guarantee or auto-trades.'};
 }
 export async function GET(){

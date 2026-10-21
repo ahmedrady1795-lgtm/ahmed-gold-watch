@@ -3,7 +3,7 @@
 // This is an observation about flow, not access to hidden liquidity or future orders.
 import type {Candidate,Candle} from './spot-radar';
 export type SpotAccumulation={
-  state:'BUY_BUILDUP'|'BUY_ABSORBED'|'WATCH'|'NONE';
+  state:'BUY_BUILDUP'|'BUY_PERSISTENT'|'BUY_ABSORBED'|'WATCH'|'NONE';
   flowCandidate:boolean;netBuyQuote5m:number;buyIntensity:number;
   buyAccelerationPct:number;adjustment:number;reason:string;
 };
@@ -58,4 +58,45 @@ export function spotAccumulationPulse(coin:Candidate):SpotAccumulation{
       netBuyQuote5m,buyIntensity,buyAccelerationPct,true);
   return none('BUY_BUILDUP','شراء Spot يتسارع عبر نوافذ منفصلة والسعر متماسك قبل الاختراق',
     10,netBuyQuote5m,buyIntensity,buyAccelerationPct,true);
+}
+
+/** A second independent visit promotes observed buying, not a future guarantee.
+ * Local process history is lost on Render restart; a cold start is NEVER verified. */
+export type SpotAccumulationSample={
+  sampledAt:number;freshAt:number;price:number;netBuyQuote5m:number;
+  bidShare:number;buyIntensity:number;
+};
+export function accumulationSample(
+  coin:Candidate,signal:SpotAccumulation,now=Date.now()
+):SpotAccumulationSample|null{
+  if(!['BUY_BUILDUP','BUY_PERSISTENT'].includes(signal.state)||!coin.book||
+    !Number.isFinite(coin.freshAt)||!Number.isFinite(coin.price)||
+    coin.price<=0||coin.freshAt>now+1000||now-coin.freshAt>150000||
+    !Number.isFinite(signal.netBuyQuote5m)||signal.netBuyQuote5m<=0||
+    !Number.isFinite(coin.book.bidShare)||coin.book.bidShare<.52)return null;
+  return {sampledAt:now,freshAt:coin.freshAt,price:coin.price,
+    netBuyQuote5m:signal.netBuyQuote5m,bidShare:coin.book.bidShare,
+    buyIntensity:signal.buyIntensity};
+}
+export function verifySpotAccumulation(
+  coin:Candidate,signal:SpotAccumulation,
+  previous:SpotAccumulationSample|null,now=Date.now()
+):SpotAccumulation{
+  // Never evaluate confirmation from the same still-open/cached candle.
+  const elapsed=previous?now-previous.sampledAt:0;
+  const distinct=!!previous&&elapsed>=65000&&elapsed<=600000&&
+    coin.freshAt-previous.freshAt>=60000&&previous.price>0;
+  if(!distinct)return signal;
+  if(signal.state==='BUY_ABSORBED')
+    return {...signal,adjustment:Math.min(signal.adjustment,-16),
+      reason:'الشراء المتسارع اصطدم بعروض بيع بعد الفحص السابق'};
+  if(signal.state!=='BUY_BUILDUP'||!coin.book)return signal;
+  const driftPct=(coin.price/previous.price-1)*100;
+  const supported=driftPct>=-.9&&driftPct<=2.6&&
+    coin.book.bidShare>=Math.max(.52,previous.bidShare-.07)&&
+    signal.netBuyQuote5m>=previous.netBuyQuote5m*.65&&
+    signal.buyIntensity>=1.5;
+  if(!supported)return signal;
+  return {...signal,state:'BUY_PERSISTENT',adjustment:18,
+    reason:'تسارع شراء Spot وعمق داعم استمرا في فحصين مستقلين'};
 }
