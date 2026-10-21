@@ -115,7 +115,8 @@ async function discoverNames():Promise<{names:string[];universe:number}>{
   const picked:string[]=[];
   for(const offset of positions)
     picked.push(...rotated.slice(offset,offset+24),...rotated.slice(0,Math.max(0,offset+24-rotated.length)));
-  const names=Array.from(new Set([...CORE_SYMBOLS,...picked])).slice(0,95);
+  const known=new Set(rotated);
+  const names=Array.from(new Set([...CORE_SYMBOLS.filter(x=>known.has(x)),...picked])).slice(0,95);
   return {names,universe:all.length};
 }
 const chunks=<T,>(a:T[],size:number)=>Array.from(
