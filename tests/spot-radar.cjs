@@ -88,4 +88,17 @@ const rejectionWicks=absorptionBars.map((x,i)=>i>=65?{...x,high:103}:x);
 assert.equal(out.detectAbsorption(rejectionWicks).state,'SELL_ABSORPTION',
   'Large upper wicks prevent a buyer-reclaim confirmation');
 console.log('PASS: Spot absorption detection including confirmed rebound, pending case, dumping, no selling, upper-wick trap.');
+// Prevent full-market response timeouts seen on Render (October 21, 2026).
+const serverRoute=fs.readFileSync('app/api/spot-radar/route.ts','utf8');
+const browserFallback=fs.readFileSync('lib/client-spot-radar.ts','utf8');
+for(const source of [serverRoute,browserFallback]){
+  assert.match(source,/exchangeInfo\\?symbols=/,'Exchange metadata must be queried in batches');
+  assert.match(source,/ticker\\/24hr\\?symbols=/,'Rolling stats must be queried in batches');
+  assert.doesNotMatch(source,/getJson\\('\\/api\\/v3\\/exchangeInfo'[,)]/,
+    'Full unbounded exchangeInfo should not block the scanner');
+  assert.doesNotMatch(source,/request\\(host,'\\/api\\/v3\\/exchangeInfo'[,)]/,
+    'Client should not request full exchangeInfo');
+}
+console.log('PASS: bounded Binance metadata/ticker request guards; no unbounded full-market blocking fetch.');
+
 console.log('PASS: closed candles, signed executed flow, depth, liquidity impulse, fakeout risk, targets, gaps, stale feed. Not a profitability test.');
