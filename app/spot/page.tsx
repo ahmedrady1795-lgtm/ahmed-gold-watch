@@ -53,6 +53,7 @@ export default function SpotPage(){
   const [selected,setSelected]=useState('');
   const [filter,setFilter]=useState<Filter>('ALL');
   const [now,setNow]=useState(Date.now());
+  const [manualRefresh,setManualRefresh]=useState(0);
   useEffect(()=>{
     let closed=false,inFlight=false;
     const load=async()=>{
@@ -71,11 +72,11 @@ export default function SpotPage(){
     const timer=setInterval(()=>{if(document.visibilityState==='visible')void load();},95000);
     const clock=setInterval(()=>setNow(Date.now()),5000);
     return()=>{closed=true;clearInterval(timer);clearInterval(clock);};
-  },[]);
+  },[manualRefresh]);
   const old=Boolean(data&&now-data.asOf>210000);
   const shown=useMemo(()=>data?.candidates.filter(c=>filter==='ALL'||c.phase===filter)||[],
     [data,filter]);
-  const coin=data?.candidates.find(c=>c.symbol===selected)||data?.candidates[0]||null;
+  const coin=shown.find(c=>c.symbol===selected)||shown[0]||null;
   const ready=(data?.candidates||[]).filter(c=>c.phase==='EARLY').length;
   return <main className="spot-page" dir="rtl">
     <header className="spot-head">
@@ -87,7 +88,7 @@ export default function SpotPage(){
       <div className="spot-head-state">
         <span className={'spot-live '+(data&&!old?'ok':'warn')}>{data&&!old?'● بيانات سوق حديثة':'● بانتظار بيانات موثوقة'}</span>
         <small>{data?'آخر مسح '+new Date(data.asOf).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}):'مصدر البيانات: Binance Spot'}</small>
-        <button type="button" onClick={()=>window.location.reload()} disabled={busy}>{busy?'جاري فحص السوق…':'↻ إعادة فحص'}</button>
+        <button type="button" onClick={()=>setManualRefresh(x=>x+1)} disabled={busy}>{busy?'جاري فحص السوق…':'↻ إعادة فحص'}</button>
       </div>
     </header>
 
