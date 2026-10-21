@@ -91,4 +91,5 @@ jobs:
       - run: node tests/sniper-m15-stability.cjs
       - run: node tests/sniper-m15-visual-alignment.cjs
       - run: node tests/sniper-m15-reactions.cjs
+      - run: node tests/spot-radar.cjs
       - run: npm run build
