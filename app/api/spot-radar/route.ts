@@ -2,8 +2,44 @@ import {parseKlines,parseBook,scoreCoin,type Candidate} from '../../../lib/spot-
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
-const BASE='https://data-api.binance.vision';
+// Binance provides multiple official market-data gateways. Probe before a
+// large scan; a blocked/cloud-routed endpoint should not stop all discovery.
+const HOSTS=[
+  'https://data-api.binance.vision',
+  'https://api-gcp.binance.com',
+  'https://api1.binance.com',
+  'https://api.binance.com'
+];
 const CACHE_MS=90000;
+let selectedHost:{name:string;at:number}|null=null;
+let selectPromise:Promise<string>|null=null;
+const recentProblems:string[]=[];
+function problem(msg:string){
+  recentProblems.push(msg.slice(0,190));
+  if(recentProblems.length>10)recentProblems.shift();
+}
+async function chooseHost():Promise<string>{
+  if(selectedHost&&Date.now()-selectedHost.at<300000)return selectedHost.name;
+  if(selectPromise)return selectPromise;
+  selectPromise=(async()=>{
+    const checks=await Promise.allSettled(HOSTS.map(async host=>{
+      const r=await fetch(host+'/api/v3/time',{cache:'no-store',signal:AbortSignal.timeout(4200)});
+      if(!r.ok)throw Error(host+' HTTP '+r.status);
+      const j=await r.json();
+      if(!Number.isFinite(Number(j?.serverTime))||Math.abs(Date.now()-Number(j.serverTime))>120000)
+        throw Error(host+' unverified exchange clock');
+      return host;
+    }));
+    const winner=checks.find(x=>x.status==='fulfilled');
+    if(winner&&winner.status==='fulfilled'){
+      selectedHost={name:winner.value,at:Date.now()};
+      return winner.value;
+    }
+    for(const item of checks)if(item.status==='rejected')problem(String(item.reason));
+    throw Error('Binance official gateways unreachable: '+recentProblems.slice(-4).join(' | '));
+  })().finally(()=>{selectPromise=null;});
+  return selectPromise;
+}
 type Ticker={symbol:string;quoteVolume:string;priceChangePercent:string;count?:number};
 type SymbolInfo={symbol:string;status:string;quoteAsset:string;isSpotTradingAllowed?:boolean;permissions?:string[]};
 let validSymbols:{time:number;set:Set<string>}|null=null;
@@ -13,11 +49,33 @@ type RadarResult={ok:true;source:string;asOf:number;universe:number;scanned:numb
   candidates:Candidate[];method:string;warning:string};
 
 async function getJson(path:string,timeoutMs=6800):Promise<unknown>{
-  const r=await fetch(BASE+path,{cache:'no-store',signal:AbortSignal.timeout(timeoutMs),
-    headers:{Accept:'application/json'}});
-  if(!r.ok){if(r.status===429||r.status===418)throw Error('Binance rate limited: '+r.status);
-    throw Error('Binance market feed HTTP '+r.status);}
-  return r.json();
+  const first=await chooseHost();
+  const candidates=[first,...HOSTS.filter(h=>h!==first)].slice(0,2);
+  let previousError='';
+  for(const host of candidates){
+    try{
+      const r=await fetch(host+path,{cache:'no-store',
+        signal:AbortSignal.timeout(Math.min(13000,timeoutMs+2000)),
+        headers:{Accept:'application/json'}});
+      if(r.status===429||r.status===418){
+        problem(host+' rate limited '+r.status+' '+path.split('?')[0]);
+        throw Error('Binance rate limited: '+r.status);
+      }
+      if(!r.ok)throw Error('HTTP '+r.status);
+      const j=await r.json();
+      if(j===null||j===undefined)throw Error('Empty JSON');
+      selectedHost={name:host,at:Date.now()};
+      return j;
+    }catch(e){
+      previousError=String(e instanceof Error?e.message:e).slice(0,120);
+      problem(host+' '+path.split('?')[0]+' '+previousError);
+      // Treat rate limiting as a throttle: retrying all gateways just piles
+      // requests on the same exchange IP budget.
+      if(previousError.includes('rate limited'))break;
+      if(selectedHost?.name===host)selectedHost=null;
+    }
+  }
+  throw Error(path.split('?')[0]+': '+previousError);
 }
 async function symbols():Promise<Set<string>>{
   if(validSymbols&&Date.now()-validSymbols.time<1800000)return validSymbols.set;
@@ -77,9 +135,10 @@ async function scan():Promise<RadarResult>{
       const c=scoreCoin(t.symbol,+t.priceChangePercent,+t.quoteVolume,
         parseKlines(raw),btc15m,null);
       return c;
-    }catch{return null;}
+    }catch(e){problem(t.symbol+' kline '+String(e instanceof Error?e.message:e));return null;}
   });
-  if(!initial.length)throw Error('No fresh, complete Binance 1m candles; cannot rank');
+  if(!initial.length)throw Error('No qualified fresh Spot candles from '+chosen.length+
+    ' pairs; '+recentProblems.slice(-3).join(' | '));
   const shortlist=initial.sort((a,b)=>b.score-a.score).slice(0,17);
   let depthChecked=0;
   const detailed=await batched(shortlist,6,async item=>{
@@ -113,7 +172,9 @@ export async function GET(){
   }catch(error){
     return Response.json({ok:false,status:'unavailable',asOf:now,
       message:'تعذر إثبات مرشحي Spot من بيانات Binance الحالية',
-      detail:String(error instanceof Error?error.message:error).slice(0,180)},
+      detail:String(error instanceof Error?error.message:error).slice(0,650),
+      failedStage:recentProblems.slice(-5),
+      gateway:selectedHost?.name??'unavailable'},
       {status:503,headers:{'Cache-Control':'no-store'}});
   }
 }
