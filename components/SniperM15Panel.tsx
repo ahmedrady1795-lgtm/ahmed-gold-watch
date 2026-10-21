@@ -33,7 +33,6 @@ import type {M15ReactionMap} from '../lib/sniper-m15-reactions';
 import {evaluateM15ForwardProof} from '../lib/sniper-m15-forward-proof';
 import {validateFrozenM15Snapshot} from '../lib/sniper-m15-snapshot';
 import type {FrozenM15Snapshot} from '../lib/sniper-m15-snapshot';
-import SniperPerformance from './SniperPerformance';
 import type {M15ForwardProof} from '../lib/sniper-m15-forward-proof';
 
 const n=(x:number|null|undefined)=>x!=null&&Number.isFinite(x)?
@@ -178,14 +177,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // quote ticks still move LIVE but cannot repaint the projected candle route.
  const [frozen,setFrozen]=useState<FrozenChart|null>(null);
  const [restoredKey,setRestoredKey]=useState('');
- const [resultsOpen,setResultsOpen]=useState(false);
- useEffect(()=>{
-   const onHash=()=>{if(window.location.hash==='#sniper-performance')
-      setResultsOpen(true);};
-   window.addEventListener('hashchange',onHash);
-   onHash();
-   return ()=>window.removeEventListener('hashchange',onHash);
- },[]);
  // Immutable, browser-local forward records: stored BEFORE a future full M15
  // exists; never rewrite their OHLC with observed outcomes.
  const [proofLedger,setProofLedger]=useState<M15ForwardProof[]>([]);
@@ -639,12 +630,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    </header>
    <div className={'sniper-m15-lifecycle'+(paused?' paused':'')} role="status">
      <span>{lifecycle}</span>
-     <button type="button" className="sniper-m15-results-trigger"
-       aria-expanded={resultsOpen} onClick={()=>setResultsOpen(v=>!v)}
-       title={evidenceNote+' · '+(proof?.detail||'لا نتيجة مؤكدة قبل إغلاق M15')}>
-       {'نتائج M15: '+matchedM15Bars+'/'+totalM15Bars+
-         (averageM15Error!=null?' · خطأ '+n(averageM15Error):' · قيد القياس')}
-       {' · التفاصيل'}</button>
    </div>
    {/* Radar details expand outside the M15 OHLC canvas instead of hiding candles. */}
    {asset==='GOLD'&&<GoldRadarBadge now={now}
@@ -1019,28 +1004,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          <small>مراقبة فقط · قمم وقيعان M15/H1 المغلقة · ليست TP مضمونًا</small>
        </>:<small>{watchMap.reason} · لا أهداف افتراضية</small>}
      </div>}
-     {resultsOpen&&<aside className="sniper-m15-results-overlay"
-       role="dialog" aria-label="سجل نتائج القناص الحقيقي">
-       <div className="sniper-m15-results-title">
-         <strong>نتائج القناص · {asset==='GOLD'?'الذهب':'البيتكوين'}</strong>
-         <button type="button" onClick={()=>setResultsOpen(false)}
-           aria-label="إغلاق سجل النتائج">✕ إغلاق</button>
-       </div>
-       <p>تحقق الشموع المحفوظة قبل حدوثها: {matchedM15Bars} من
-         {' '+totalM15Bars} شمعة M15 مكتملة · متوسط خطأ الإغلاق
-         {' '+n(averageM15Error)}. دي مش نسبة ربح ولا نموذج متدرّب.</p>
-       <p>توقع M15 مُثبت قبل الأحداث؛ الشموع القديمة لا يعاد تعديلها.
-         لو المصدر اتغير أو البيانات انقطعت، مش بنعتبرها نجاحًا.</p>
-       {auditLoaded&&audit?.metrics?.[asset]?<>
-         {audit?.evaluation?.metrics?.[asset]&&<SniperPerformance title="نتائج الإصدار الحالي · هدف ووقف هيكليان"
-           metrics={audit.evaluation.metrics[asset]}
-           recent={(audit.recent||[]).filter((r:any)=>r.planVersion===audit.evaluation.planVersion)} asset={asset}/>}
-         <SniperPerformance title="نتائج الأهداف · السجل التراكمي لجميع الإصدارات"
-           metrics={audit.metrics[asset]} recent={audit.recent||[]} asset={asset}/></>:
-         <p role="status">سجل أهداف الخادم غير متاح أو لم يكتمل تحميله حاليًا.
-           نتائج M15 أعلاه محلية على هذا المتصفح فقط.</p>}
-     </aside>}
    </div>
-   {/* Chart-only default. Results opened over chart when requested. */}
+   {/* Performance records continue to be tracked, out of the trading chart. */}
  </section>;
 }
