@@ -35,8 +35,8 @@ export function issueLiveAlertAudit(rows:LiveAuditRecord[],input:{
   !(signal.side==='BUY'||signal.side==='SELL'))return rows;
  const side=signal.side as AlertSide;
  if(!(side==='BUY'?signal.trigger>signal.invalidation:signal.trigger<signal.invalidation))return rows;
- const kind:AuditKind=signal.phase==='PREPARE'?'PREPARE':
-   signal.phase==='BREAK_CONFIRMED'?'BREAK':null as never;
+ const kind:AuditKind|null=signal.phase==='PREPARE'?'PREPARE':
+   signal.phase==='BREAK_CONFIRMED'?'BREAK':null;
  if(kind!=='BREAK'&&kind!=='PREPARE')return rows;
  if(kind==='PREPARE'&&rows.some(r=>r.kind==='PREPARE'&&r.asset===asset&&
    r.source===source&&r.side===side&&now-r.issuedAt<15*MIN&&now>=r.issuedAt))return rows;
@@ -54,7 +54,7 @@ export function issueLiveAlertAudit(rows:LiveAuditRecord[],input:{
 }
 export function evaluateLiveAlertAudit(rows:LiveAuditRecord[],raw:unknown,now:number):LiveAuditRecord[]{
  if(!Number.isFinite(now))return rows;
- const candles=(Array.isArray(raw)?raw:[]).filter(good).filter(c=>c.time+c.time%1===c.time)
+ const candles=(Array.isArray(raw)?raw:[]).filter(good)
    .filter(c=>c.time+MIN<=now).sort((a,b)=>a.time-b.time);
  return rows.map(r=>{
    if(terminal(r.outcome))return r;
