@@ -54,7 +54,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [showLiquidity,setShowLiquidity]=useState(true);
  const [showExtra,setShowExtra]=useState(false);
  const [showHistoricalExtension,setShowHistoricalExtension]=useState(false);
- const [priceZoom,setPriceZoom]=useState<'FOCUS'|'ALL'>('ALL');
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
  const onRadarView=useCallback((v:RadarView|null)=>setLiveRadar(v),[]);
  const asset=assetView==='ALL'?chosen:assetView;
@@ -522,7 +521,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      typeof v==='number'&&Number.isFinite(v)&&v>0)??null;
  const min=important.length?Math.min(...important):(chartReference??1);
  const max=important.length?Math.max(...important):(chartReference??1);
- const viewport=mt5M15Viewport({mode:priceZoom,allLow:min,allHigh:max,
+ const viewport=mt5M15Viewport({mode:'ALL',allLow:min,allHigh:max,
    lastPrice:chartReference,history:trueHistory,
    forecast:projected.bars,atr:projected.atr});
  const {lo,hi}=viewport;
@@ -643,10 +642,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}
        title="عرض أو إخفاء التفاصيل الفنية الثانوية">
        {showExtra?'إخفاء التفاصيل':'تفاصيل'}</button>
-     <button type="button" className="sniper-m15-zoom-toggle"
-       aria-pressed={priceZoom==='FOCUS'}
-       title="تكبير الأسعار القريبة مع إخفاء المستويات البعيدة">
-       {priceZoom==='FOCUS'?'كل الأسعار':'تكبير الشموع'}</button>
      <button type="button" className="sniper-m15-extension-toggle"
        aria-pressed={showHistoricalExtension}
        onClick={()=>setShowHistoricalExtension(v=>!v)}
