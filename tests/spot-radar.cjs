@@ -51,4 +51,41 @@ const trap=out.scoreCoin('TRAPUSDT',2,12000000,riskBars,.03,book,now);
 assert.equal(trap.trapRisk,true,'Upper-wick absorption/distribution risk detected');
 assert.notEqual(trap.phase,'EARLY','Trap suspect must never be early confirmed');
 assert.equal(out.parseKlines([[now-60000,'NaN','1','1','1','1',now-1,'12','1','1','10','0']],now).length,0);
+
+// Deterministic seven-minute sell impulse, with five closed-minute buyer recovery.
+// The selling was REAL taker volume; price did not break while market sells dominated.
+const absorptionBars=Array.from({length:70},(_,i)=>{
+  const t=now-(70-i)*minute;
+  const x={time:t,open:100,high:100.10,low:99.90,close:100,
+    quoteVolume:1000,buyQuote:500};
+  if(i>=58&&i<65)Object.assign(x,{open:100,high:100.11,low:99.85,close:99.96,
+    quoteVolume:2300,buyQuote:460});
+  if(i>=65)Object.assign(x,{open:100,close:100.08+(i-65)*.04,
+    high:100.11+(i-65)*.04,low:99.94,
+    quoteVolume:1600,buyQuote:1168});
+  return x;
+});
+const absorption=out.detectAbsorption(absorptionBars);
+assert.equal(absorption.state,'BUY_RECLAIM',
+  'A high-volume seller impulse with resilient price plus renewed buyers is a reclaim');
+assert.ok(absorption.sellShare>=.75);
+assert.ok(absorption.pressureRatio>=2);
+assert.ok(absorption.reclaimBuyShare>.7);
+const candidateAbs=out.scoreCoin('ABSUSDT',1,20000000,absorptionBars,.01,book,now);
+assert.ok(candidateAbs&&candidateAbs.absorption.state==='BUY_RECLAIM');
+assert.ok(candidateAbs.reasons.some(x=>x.includes('امتصاص بيع')));
+const pendingBars=absorptionBars.map((x,i)=>i>=65?{...x,buyQuote:720,
+  close:99.97,open:99.96,high:100.00,low:99.91}:x);
+assert.equal(out.detectAbsorption(pendingBars).state,'SELL_ABSORPTION',
+  'Seller exhaustion without buyer reclaim is only a watch');
+const rejectedDump=absorptionBars.map((x,i)=>i>=58&&i<65?{...x,close:98.6,low:98.4}:x);
+assert.equal(out.detectAbsorption(rejectedDump).state,'NONE',
+  'Heavy selling WITH large downside is not absorption');
+const bogusBuys=absorptionBars.map((x,i)=>i>=58&&i<65?{...x,buyQuote:1700}:x);
+assert.equal(out.detectAbsorption(bogusBuys).state,'NONE',
+  'Price stability without aggressive sell dominance must not qualify');
+const rejectionWicks=absorptionBars.map((x,i)=>i>=65?{...x,high:103}:x);
+assert.equal(out.detectAbsorption(rejectionWicks).state,'SELL_ABSORPTION',
+  'Large upper wicks prevent a buyer-reclaim confirmation');
+console.log('PASS: Spot absorption detection including confirmed rebound, pending case, dumping, no selling, upper-wick trap.');
 console.log('PASS: closed candles, signed executed flow, depth, liquidity impulse, fakeout risk, targets, gaps, stale feed. Not a profitability test.');
