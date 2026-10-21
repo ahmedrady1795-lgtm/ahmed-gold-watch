@@ -95,8 +95,8 @@ export function advanceMovementProof(input:{
 export function movementProofScore(rows:MovementProof[],asset:'GOLD'|'BTC'){
  const all=rows.filter(x=>x.asset===asset);
  const breaks=all.filter(x=>x.kind==='BREAK');
- const hits=all.filter(x=>x.status==='TARGET');
- const settled=all.filter(x=>['TARGET','STOP','TIMEOUT'].includes(x.status));
+ const hits=breaks.filter(x=>x.status==='TARGET');
+ const settled=breaks.filter(x=>['TARGET','STOP','TIMEOUT'].includes(x.status));
  const lags=breaks.map(x=>x.detectedAfterMs/1000).filter(x=>valid(x)&&x>=0);
  const leads=breaks.map(x=>x.leadSeconds).filter(valid).filter(x=>x>=0);
  return {
