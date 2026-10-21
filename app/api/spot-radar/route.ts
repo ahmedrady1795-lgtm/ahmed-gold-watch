@@ -1,4 +1,5 @@
 import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type Candidate} from '../../../lib/spot-radar';
+import {largeTradeFootprint,futuresCrowding,blendEdge} from '../../../lib/spot-edge';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -185,6 +186,21 @@ async function batched<T,R>(items:T[],size:number,task:(item:T)=>Promise<R|null>
   }
   return out;
 }
+// Futures endpoints are optional: no API key, no trade execution, and never
+// return invented crowding when USD-M data is unavailable.
+async function futuresPublic(path:string):Promise<unknown>{
+  const origins=['https://fapi.binance.com','https://fapi1.binance.com'];
+  let last='';
+  for(const origin of origins){
+    try{
+      const r=await fetch(origin+path,{cache:'no-store',signal:AbortSignal.timeout(3900)});
+      if(!r.ok)throw Error('HTTP '+r.status);
+      return await r.json();
+    }catch(e){last=String(e instanceof Error?e.message:e);}
+  }
+  problem('Futures optional: '+path.split('?')[0]+' '+last);
+  return null;
+}
 async function scan():Promise<RadarResult>{
   const {names,universe}=await discoverNames();
   const [allowed,rawTickers]=await Promise.all([metadataFor(names),tickersFor(names)]);
@@ -236,15 +252,41 @@ async function scan():Promise<RadarResult>{
     });
   if(!candidatesWithHourly.length)
     throw Error('No verified contiguous hourly history for 24h ranking');
-  // AVOID means the observed data doesn't support claiming a candidate.
-  const candidates=candidatesWithHourly
+  // Keep candidate selection based on historical Spot observations. Futures
+  // readings and big-print tape can increase or veto rankings, but unavailable
+  // auxiliary feeds cannot invent an edge. Only 10 best Spot setups are sampled.
+  const eligible=candidatesWithHourly
     .filter(c=>c.outlook24h.state!=='AVOID')
+    .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore);
+  const examined=await batched(eligible.slice(0,10),4,async coin=>{
+    const symbol=encodeURIComponent(coin.symbol);
+    const [tapeRaw,oiRaw,premiumRaw]=await Promise.all([
+      getJson('/api/v3/aggTrades?symbol='+symbol+'&limit=650',4100)
+        .catch(e=>{problem(coin.symbol+' trade prints '+String(e));return null;}),
+      futuresPublic('/futures/data/openInterestHist?symbol='+symbol+'&period=5m&limit=17'),
+      futuresPublic('/fapi/v1/premiumIndex?symbol='+symbol)
+    ]);
+    const whale=largeTradeFootprint(tapeRaw);
+    const leverage=futuresCrowding(oiRaw,premiumRaw);
+    const edge=blendEdge(coin.outlook24h.rankScore,whale,leverage);
+    const updatedScore=Math.max(0,Math.min(100,coin.outlook24h.rankScore+edge.adjustment));
+    const outlook24h={...coin.outlook24h,rankScore:updatedScore,
+      state:coin.outlook24h.state==='HIGH'&&updatedScore<65?'POSSIBLE' as const:
+        coin.outlook24h.state,
+      reason:[...edge.evidence,coin.outlook24h.reason].filter(Boolean).slice(0,2).join(' · ')};
+    return {...coin,outlook24h,edge};
+  });
+  const untouched=eligible.slice(10);
+  const candidates=[...examined,...untouched]
+    .filter(c=>c.outlook24h.rankScore>=45&&
+      c.edge?.leverage?.state!=='CROWDED_LONGS'&&
+      c.edge?.whale?.state!=='SELL_PRESSURE')
     .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore)
     .slice(0,12);
   return {ok:true,source:'Binance public Spot · closed 1m candles + depth',
     asOf:Date.now(),universe,scanned:initial.length,depthChecked,
-    candidates,method:'Verified Binance Spot · 1h closed candles (48h+) · 24h volume shift · taker flow · BTC-relative strength · anti-chase',
-    warning:'Ranking is evidence strength for a possible move in the next 24 hours, NOT a calibrated chance of a pump. Not investment advice, no automatic trading.'};
+    candidates,method:'Verified Binance Spot closed 1h and 1m · optional executed aggregated trades · optional USD-M futures OI/funding · anti-chase',
+    warning:'Spot ranking includes verifiable large trades; futures evidence is optional and can be absent. Neither exposes secret whale orders nor guarantees a 24h pump. No auto-trades.'};
 }
 export async function GET(){
   const now=Date.now();
