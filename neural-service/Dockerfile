@@ -5,6 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
-COPY app.py .
+COPY app.py test_depth_source.py ./
+RUN python -m py_compile app.py && python test_depth_source.py
 EXPOSE 8000
 CMD ["sh","-c","uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}"]
