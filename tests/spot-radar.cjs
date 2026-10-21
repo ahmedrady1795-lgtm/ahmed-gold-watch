@@ -92,12 +92,14 @@ console.log('PASS: Spot absorption detection including confirmed rebound, pendin
 const serverRoute=fs.readFileSync('app/api/spot-radar/route.ts','utf8');
 const browserFallback=fs.readFileSync('lib/client-spot-radar.ts','utf8');
 for(const source of [serverRoute,browserFallback]){
-  assert.match(source,/exchangeInfo\\?symbols=/,'Exchange metadata must be queried in batches');
-  assert.match(source,/ticker\\/24hr\\?symbols=/,'Rolling stats must be queried in batches');
-  assert.doesNotMatch(source,/getJson\\('\\/api\\/v3\\/exchangeInfo'[,)]/,
+  assert.ok(source.includes('exchangeInfo?symbols='),
+    'Exchange metadata must be queried in bounded symbol batches');
+  assert.ok(source.includes('ticker/24hr?symbols='),
+    '24hr statistics must be queried in bounded batches');
+  assert.ok(!source.includes("getJson('/api/v3/exchangeInfo',"),
     'Full unbounded exchangeInfo should not block the scanner');
-  assert.doesNotMatch(source,/request\\(host,'\\/api\\/v3\\/exchangeInfo'[,)]/,
-    'Client should not request full exchangeInfo');
+  assert.ok(!source.includes("request(host,'/api/v3/exchangeInfo',"),
+    'Client should not request unbounded exchangeInfo');
 }
 console.log('PASS: bounded Binance metadata/ticker request guards; no unbounded full-market blocking fetch.');
 
