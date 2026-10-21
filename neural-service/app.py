@@ -27,7 +27,7 @@ TRAIN_MAX_SAMPLES=int(os.getenv("NEURAL_TRAIN_MAX_SAMPLES","12000"))
 TRAIN_BATCH=int(os.getenv("NEURAL_TRAIN_BATCH","32"))
 EVAL_BATCH=int(os.getenv("NEURAL_EVAL_BATCH","128"))
 MEMORY_TRAIN_START_MB=float(os.getenv("NEURAL_TRAIN_START_MAX_RSS_MB","620"))
-RUNTIME_REVISION="time-calibrated-r4.0"
+RUNTIME_REVISION="venue-separated-fallback-r4.1"
 HORIZON_SECONDS=float(os.getenv("NEURAL_HORIZON_SECONDS",str(HORIZON*INTERVAL)))
 MAX_GAP_MS=max(10000.0,INTERVAL*5000)
 TRAIN_LOCK=threading.Lock()
@@ -46,6 +46,9 @@ app=FastAPI(title="Predator Neural Microstructure",version=APP_VERSION)
 LOCK=threading.Lock()
 ROWS=deque(maxlen=MAX_SNAPSHOTS)
 PENDING=[]
+ACTIVE_DEPTH_SOURCE="NONE"
+MODEL_DEPTH_SOURCE="BINANCE"
+PATH_MODEL_DEPTH_SOURCE="BINANCE"
 MODEL=None
 METRICS=None
 NORM_MEAN=None
@@ -79,7 +82,7 @@ def _rss_mb():
 
 
 def _load_rows():
-    global LAST_ERROR
+    global LAST_ERROR,ACTIVE_DEPTH_SOURCE
     if not DATA_PATH.exists():return
     try:
         # Bound raw input before parsing/migrating. The append-only log can be
@@ -88,12 +91,20 @@ def _load_rows():
         with DATA_PATH.open("r",encoding="utf-8") as f:
             tail=deque(f,maxlen=MAX_SNAPSHOTS+64)
         history=deque(maxlen=64)
+        # A trained L2 model is venue-specific. Keep only the last contiguous
+        # single-venue suffix; never mix Binance and Coinbase snapshots.
         for line in tail:
             try:
                 j=json.loads(line)
+                venue=j.get("venue","BINANCE")
+                if venue not in ("BINANCE","COINBASE"):continue
+                if ACTIVE_DEPTH_SOURCE!="NONE" and venue!=ACTIVE_DEPTH_SOURCE:
+                    ROWS.clear();history.clear()
+                ACTIVE_DEPTH_SOURCE=venue
                 if len(j.get("f",[]))==50:
                     j["f"]=j["f"]+_price_context(float(j["mid"]),int(j["t"]),list(history))
                 if len(j.get("f",[]))==FEAT_DIM:
+                    j["venue"]=venue
                     history.append(j);ROWS.append(j)
             except Exception:pass
     except Exception as e:
@@ -108,7 +119,7 @@ def _flush():
     PENDING=[]
 
 def _load_model():
-    global MODEL,METRICS,NORM_MEAN,NORM_STD,LAST_TRAIN_AT,LAST_ERROR
+    global MODEL,METRICS,NORM_MEAN,NORM_STD,LAST_TRAIN_AT,LAST_ERROR,MODEL_DEPTH_SOURCE
     if not MODEL_PATH.exists():return
     try:
         obj=torch.load(MODEL_PATH,map_location="cpu",weights_only=False)
@@ -119,11 +130,12 @@ def _load_model():
         ns=np.asarray(obj.get("normStd",[]),dtype=np.float32)
         if nm.shape!=(FEAT_DIM,) or ns.shape!=(FEAT_DIM,):return
         MODEL=m;METRICS=obj.get("metrics");NORM_MEAN=nm;NORM_STD=ns;LAST_TRAIN_AT=int(obj.get("trainedAt",0))
+        MODEL_DEPTH_SOURCE=obj.get("venue","BINANCE")
     except Exception as e:
         LAST_ERROR=f"load_model:{type(e).__name__}:{e}"
 
 def _load_path_model():
-    global PATH_MODEL,PATH_METRICS,PATH_NORM_MEAN,PATH_NORM_STD,PATH_LAST_TRAIN_AT,PATH_LAST_ERROR
+    global PATH_MODEL,PATH_METRICS,PATH_NORM_MEAN,PATH_NORM_STD,PATH_LAST_TRAIN_AT,PATH_LAST_ERROR,PATH_MODEL_DEPTH_SOURCE
     if not PATH_MODEL_PATH.exists():return
     try:
         obj=torch.load(PATH_MODEL_PATH,map_location="cpu",weights_only=False)
@@ -134,19 +146,41 @@ def _load_path_model():
         ns=np.asarray(obj.get("normStd",[]),dtype=np.float32)
         if nm.shape!=(FEAT_DIM,) or ns.shape!=(FEAT_DIM,):return
         PATH_MODEL=m;PATH_METRICS=obj.get("metrics");PATH_NORM_MEAN=nm;PATH_NORM_STD=ns;PATH_LAST_TRAIN_AT=int(obj.get("trainedAt",0))
+        PATH_MODEL_DEPTH_SOURCE=obj.get("venue","BINANCE")
     except Exception as e:
         PATH_LAST_ERROR=f"load_path_model:{type(e).__name__}:{e}"
 
 DEPTH_HOSTS=("https://data-api.binance.vision","https://api-gcp.binance.com","https://api.binance.com")
+COINBASE_HOST="https://api.exchange.coinbase.com"
+COINBASE_PINNED=False
 LAST_DEPTH_HOST=None
 LAST_COLLECTOR_ERROR_LOG_AT=0
 DEPTH_COOLDOWN_UNTIL=0.0
 
+def _fetch_coinbase_depth():
+    global LAST_DEPTH_HOST,COINBASE_PINNED
+    # Coinbase Exchange BTC-USD L2 is a different VENUE; isolate training below.
+    r=SESSION.get(COINBASE_HOST+"/products/BTC-USD/book",
+        params={"level":"2"},timeout=5)
+    r.raise_for_status()
+    j=r.json()
+    bids=[(float(x[0]),float(x[1])) for x in (j.get("bids") or [])[:LEVELS]]
+    asks=[(float(x[0]),float(x[1])) for x in (j.get("asks") or [])[:LEVELS]]
+    if len(bids)<LEVELS or len(asks)<LEVELS or bids[0][0]>=asks[0][0]:
+        raise RuntimeError("coinbase_depth_short_or_crossed")
+    if LAST_DEPTH_HOST!=COINBASE_HOST:
+        print("[NEURAL-DEPTH-SOURCE] Coinbase Exchange BTC-USD L2 · new training venue",flush=True)
+    LAST_DEPTH_HOST=COINBASE_HOST
+    COINBASE_PINNED=True
+    return bids,asks
+
 def _fetch_depth():
     global LAST_DEPTH_HOST,DEPTH_COOLDOWN_UNTIL
-    if time.time()<DEPTH_COOLDOWN_UNTIL:
-        raise RuntimeError('Binance rate-limit cooldown; retry in '+str(round(DEPTH_COOLDOWN_UNTIL-time.time()))+'s')
-    # All fallbacks are official Binance spot BTCUSDT, never a proxy book.
+    # Never evade Binance 418/429 via another Binance hostname. Use an
+    # independent exchange's public L2 instead, with a separate model ledger.
+    if COINBASE_PINNED or time.time()<DEPTH_COOLDOWN_UNTIL:
+        return _fetch_coinbase_depth()
+    # Binance alternatives are only attempted for non-rate-limit failures.
     order=([LAST_DEPTH_HOST] if LAST_DEPTH_HOST in DEPTH_HOSTS else []) + [
         host for host in DEPTH_HOSTS if host!=LAST_DEPTH_HOST
     ]
@@ -177,7 +211,11 @@ def _fetch_depth():
                 break  # Do not retry on alternative hosts to evade an IP ban
         except Exception as err:
             errors.append(host+":"+type(err).__name__)
-    raise RuntimeError("Binance book unavailable: "+",".join(errors))
+    try:
+        return _fetch_coinbase_depth()
+    except Exception as coinbase_error:
+        errors.append("coinbase:"+type(coinbase_error).__name__)
+        raise RuntimeError("L2 book unavailable: "+",".join(errors))
 
 def _price_context(mid,at,history):
     recent=[r for r in history if 0<at-int(r["t"])<=120000 and float(r.get("mid",0))>0]
@@ -532,10 +570,11 @@ def _fit_path(Xtr,ytr,Xv,yv):
     return model
 
 def _train_path():
-    global PATH_MODEL,PATH_METRICS,PATH_NORM_MEAN,PATH_NORM_STD,PATH_TRAINING,PATH_LAST_TRAIN_AT,PATH_LAST_ERROR
+    global PATH_MODEL,PATH_METRICS,PATH_NORM_MEAN,PATH_NORM_STD,PATH_TRAINING,PATH_LAST_TRAIN_AT,PATH_LAST_ERROR,PATH_MODEL_DEPTH_SOURCE
     if not TRAIN_LOCK.acquire(blocking=False):return
     PATH_TRAINING=True
     ready=False
+    venue=ACTIVE_DEPTH_SOURCE
     try:
         if _rss_mb()>MEMORY_TRAIN_START_MB:
             raise RuntimeError(f"memory_guard rss={_rss_mb()}MB")
@@ -564,12 +603,13 @@ def _train_path():
         )
         metrics={"validation":vm,"holdout":tm,"baseline":baseline,"ready":ready,"samples":int(len(y))}
         trained=int(time.time()*1000)
-        obj={"version":APP_VERSION,"state_dict":model.state_dict(),"metrics":metrics,"normMean":center.tolist(),"normStd":scale.tolist(),"trainedAt":trained}
-        if PATH_MODEL is not None and PATH_METRICS and PATH_METRICS.get("ready") and not ready:
+        obj={"version":APP_VERSION,"venue":venue,"state_dict":model.state_dict(),"metrics":metrics,"normMean":center.tolist(),"normStd":scale.tolist(),"trainedAt":trained}
+        if venue!=ACTIVE_DEPTH_SOURCE:raise RuntimeError("venue_changed_during_path_training")
+        if PATH_MODEL_DEPTH_SOURCE==venue and PATH_MODEL is not None and PATH_METRICS and PATH_METRICS.get("ready") and not ready:
             print("[PRICE-PATH-CHALLENGER-REJECTED] "+json.dumps(metrics),flush=True)
             return
         tmp=PATH_MODEL_PATH.with_suffix(".tmp");torch.save(obj,tmp);os.replace(tmp,PATH_MODEL_PATH)
-        PATH_MODEL=model.eval();PATH_METRICS=metrics;PATH_NORM_MEAN=center;PATH_NORM_STD=scale;PATH_LAST_TRAIN_AT=trained;PATH_LAST_ERROR=None
+        PATH_MODEL=model.eval();PATH_METRICS=metrics;PATH_NORM_MEAN=center;PATH_NORM_STD=scale;PATH_LAST_TRAIN_AT=trained;PATH_LAST_ERROR=None;PATH_MODEL_DEPTH_SOURCE=venue
         print("[PRICE-PATH-TRAIN] "+json.dumps({"version":APP_VERSION,"metrics":metrics}),flush=True)
     except Exception as e:
         PATH_LAST_ERROR=f"train:{type(e).__name__}:{e}"
@@ -614,10 +654,11 @@ def _fit_once(Xtr,ytr,Xv,yv):
     return model
 
 def _train():
-    global MODEL,METRICS,NORM_MEAN,NORM_STD,TRAINING,LAST_TRAIN_AT,LAST_TRAIN_ATTEMPT_AT,LAST_ERROR
+    global MODEL,METRICS,NORM_MEAN,NORM_STD,TRAINING,LAST_TRAIN_AT,LAST_TRAIN_ATTEMPT_AT,LAST_ERROR,MODEL_DEPTH_SOURCE
     if not TRAIN_LOCK.acquire(blocking=False):return
     TRAINING=True
     ready=False
+    venue=ACTIVE_DEPTH_SOURCE
     try:
         if _rss_mb()>MEMORY_TRAIN_START_MB:
             raise RuntimeError(f"memory_guard rss={_rss_mb()}MB")
@@ -660,15 +701,16 @@ def _train():
         LAST_TRAIN_ATTEMPT_AT=trained
         # Production readiness is earned on validation AND untouched holdout.
         # A weak retrain must never overwrite an already READY champion.
-        if MODEL is not None and METRICS is not None and METRICS.get("ready") and not ready:
+        if venue!=ACTIVE_DEPTH_SOURCE:raise RuntimeError("venue_changed_during_classification_training")
+        if MODEL_DEPTH_SOURCE==venue and MODEL is not None and METRICS is not None and METRICS.get("ready") and not ready:
             print("[NEURAL-CHALLENGER-REJECTED] "+json.dumps({
                 "reason":"new model failed holdout",
                 "candidate":metrics,"championTrainedAt":LAST_TRAIN_AT}),flush=True)
             return
-        obj={"version":APP_VERSION,"state_dict":model.state_dict(),"metrics":metrics,
+        obj={"version":APP_VERSION,"venue":venue,"state_dict":model.state_dict(),"metrics":metrics,
              "normMean":center.tolist(),"normStd":scale.tolist(),"trainedAt":trained}
         tmp=MODEL_PATH.with_suffix(".tmp");torch.save(obj,tmp);os.replace(tmp,MODEL_PATH)
-        MODEL=model.eval();METRICS=metrics;NORM_MEAN=center;NORM_STD=scale;LAST_TRAIN_AT=trained;LAST_ERROR=None
+        MODEL=model.eval();METRICS=metrics;NORM_MEAN=center;NORM_STD=scale;LAST_TRAIN_AT=trained;LAST_ERROR=None;MODEL_DEPTH_SOURCE=venue
         print("[NEURAL-TRAIN] "+json.dumps({"version":APP_VERSION,"metrics":metrics}),flush=True)
         # Price-path training starts on a later collector tick, after this function
         # releases the classifier dataset/model optimizer memory.
@@ -682,11 +724,20 @@ def _train():
         gc.collect()
 
 def _collector():
-    global LAST_SNAPSHOT_AT,LAST_ERROR,PENDING
+    global LAST_SNAPSHOT_AT,LAST_ERROR,PENDING,ACTIVE_DEPTH_SOURCE
     while True:
         try:
-            bids,asks=_fetch_depth();mid,feat=_features(bids,asks)
-            row={"t":int(time.time()*1000),"mid":mid,"f":feat}
+            bids,asks=_fetch_depth()
+            venue="COINBASE" if LAST_DEPTH_HOST==COINBASE_HOST else "BINANCE"
+            with LOCK:
+                if ACTIVE_DEPTH_SOURCE not in ("NONE",venue):
+                    # Do not train on a stitched BTCUSDT/BTC-USD L2 history.
+                    ROWS.clear();PENDING.clear()
+                    SCHEDULE["classifier"].clear();SCHEDULE["path"].clear()
+                    print("[NEURAL-VENUE-RESET] "+ACTIVE_DEPTH_SOURCE+" -> "+venue,flush=True)
+                ACTIVE_DEPTH_SOURCE=venue
+            mid,feat=_features(bids,asks)
+            row={"t":int(time.time()*1000),"mid":mid,"f":feat,"venue":venue}
             with LOCK:
                 ROWS.append(row);PENDING.append(row)
                 if len(PENDING)>=10:_flush()
@@ -702,9 +753,11 @@ def _collector():
             if time.time()-LAST_COLLECTOR_ERROR_LOG_AT>=45:
                 print("[NEURAL-COLLECTOR-ERROR] "+LAST_ERROR[:350],flush=True)
                 LAST_COLLECTOR_ERROR_LOG_AT=time.time()
-        time.sleep(max(.8,min(60,DEPTH_COOLDOWN_UNTIL-time.time()) if DEPTH_COOLDOWN_UNTIL>time.time() else INTERVAL))
+        time.sleep(max(.8,INTERVAL if COINBASE_PINNED else min(60,DEPTH_COOLDOWN_UNTIL-time.time()) if DEPTH_COOLDOWN_UNTIL>time.time() else INTERVAL))
 
 def _predict_path(rows):
+    if PATH_MODEL_DEPTH_SOURCE!=ACTIVE_DEPTH_SOURCE:
+        return {"status":"SHADOW","ready":False,"source":ACTIVE_DEPTH_SOURCE,"reason":"path_model_venue_mismatch","samples":len(rows)}
     if PATH_MODEL is None or len(rows)<SEQ_LEN:
         return {"status":"COLLECTING" if len(rows)<MIN_SNAPSHOTS else "TRAINING","ready":False,"samples":len(rows),"metrics":PATH_METRICS}
     x=np.asarray([[r["f"] for r in rows[-SEQ_LEN:]]],dtype=np.float32)
@@ -743,6 +796,8 @@ def _predict():
         return {"ok":True,"version":APP_VERSION,"ready":False,"status":"STALE","side":"WAIT",
             "reason":"stale_l2_snapshots","metrics":METRICS,"samples":len(rows)}
     price_path=_predict_path(rows)
+    if MODEL_DEPTH_SOURCE!=ACTIVE_DEPTH_SOURCE:
+        return {"ok":True,"version":APP_VERSION,"status":"SHADOW","ready":False,"side":"WAIT","source":ACTIVE_DEPTH_SOURCE,"samples":len(rows),"pricePath":price_path,"reason":"neural_model_venue_mismatch"}
     if MODEL is None or len(rows)<SEQ_LEN:
         return {"ok":True,"version":APP_VERSION,"status":"COLLECTING" if len(rows)<MIN_SNAPSHOTS else "TRAINING",
                 "ready":False,"side":"WAIT","samples":len(rows),"metrics":METRICS,"pricePath":price_path}
@@ -775,7 +830,8 @@ def startup():
 @app.get("/health")
 def health():
     return {"ok":True,"version":APP_VERSION,"runtimeRevision":RUNTIME_REVISION,"training":TRAINING,"pathTraining":PATH_TRAINING,
-            "storedSnapshots":len(ROWS),"trainingMaxSamples":TRAIN_MAX_SAMPLES,"rssMb":_rss_mb(),"lastSnapshotAt":LAST_SNAPSHOT_AT,"depthHost":LAST_DEPTH_HOST,"depthCooldownSeconds":max(0,round(DEPTH_COOLDOWN_UNTIL-time.time())),
+            "storedSnapshots":len(ROWS),"trainingMaxSamples":TRAIN_MAX_SAMPLES,"rssMb":_rss_mb(),"lastSnapshotAt":LAST_SNAPSHOT_AT,"depthHost":LAST_DEPTH_HOST,
+            "depthVenue":ACTIVE_DEPTH_SOURCE,"modelVenue":MODEL_DEPTH_SOURCE,"pathModelVenue":PATH_MODEL_DEPTH_SOURCE,"depthCooldownSeconds":max(0,round(DEPTH_COOLDOWN_UNTIL-time.time())),
             "trainingSchedule":SCHEDULE,"dataAudit":DATASET_AUDIT,
             "modelReady":bool(METRICS and METRICS.get("ready")),
             "lastTrainAt":LAST_TRAIN_AT,"lastTrainAttemptAt":LAST_TRAIN_ATTEMPT_AT,
