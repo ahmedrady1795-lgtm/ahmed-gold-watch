@@ -77,18 +77,81 @@ async function getJson(path:string,timeoutMs=6800):Promise<unknown>{
   }
   throw Error(path.split('?')[0]+': '+previousError);
 }
-async function symbols():Promise<Set<string>>{
-  if(validSymbols&&Date.now()-validSymbols.time<1800000)return validSymbols.set;
-  const info=await getJson('/api/v3/exchangeInfo',8000) as {symbols?:SymbolInfo[]};
-  if(!Array.isArray(info.symbols))throw Error('Binance exchangeInfo missing symbols');
-  const set=new Set(info.symbols.filter(s=>
-    s.status==='TRADING'&&s.quoteAsset==='USDT'&&s.symbol.endsWith('USDT')&&
-    s.isSpotTradingAllowed!==false&&!/(UP|DOWN|BULL|BEAR)USDT$/.test(s.symbol)&&
+const CORE_SYMBOLS=[
+  'BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','ADAUSDT',
+  'LINKUSDT','AVAXUSDT','SUIUSDT','TRXUSDT','NEARUSDT','LTCUSDT','DOTUSDT',
+  'UNIUSDT','APTUSDT','ARBUSDT','OPUSDT','PEPEUSDT','WIFUSDT','INJUSDT',
+  'AAVEUSDT','SEIUSDT','TIAUSDT','FILUSDT','ATOMUSDT','FETUSDT','RENDERUSDT'
+];
+type PriceRow={symbol:string;price:string};
+const stableBases=new Set(['USDC','FDUSD','TUSD','DAI','USDE','EUR','EURI',
+  'AEUR','USDD','USDP','USDS','USD1','RLUSD','EURC','XUSD','USTC']);
+let cachedNames:{at:number;names:string[]}|null=null;
+async function discoverNames():Promise<{names:string[];universe:number}>{
+  // Lightweight ticker/price is much smaller than the unbounded
+  // exchangeInfo and ticker/24hr payloads that time out on Render.
+  let all:string[]=cachedNames?.names||[];
+  if(!all.length||Date.now()-(cachedNames?.at||0)>600000){
+    try{
+      const raw=await getJson('/api/v3/ticker/price',11500);
+      if(!Array.isArray(raw))throw Error('Binance price universe not an array');
+      all=(raw as PriceRow[]).map(x=>String(x?.symbol||'')).filter(x=>
+        x.endsWith('USDT')&&!stableBases.has(x.slice(0,-4))&&
+        !/(UP|DOWN|BULL|BEAR)USDT$/.test(x));
+      if(!all.length)throw Error('No listed Spot/USDT prices');
+      cachedNames={at:Date.now(),names:all};
+    }catch(e){
+      problem('Spot price universe: '+String(e instanceof Error?e.message:e));
+      if(!all.length)all=[...CORE_SYMBOLS];
+    }
+  }
+  const rotated=[...new Set(all)].sort();
+  const windowIndex=Math.floor(Date.now()/180000); // every 3 minutes
+  const positions=rotated.length?[
+    windowIndex%rotated.length,
+    (windowIndex*17)%rotated.length,
+    (windowIndex*37)%rotated.length
+  ]:[];
+  const picked:string[]=[];
+  for(const offset of positions)
+    picked.push(...rotated.slice(offset,offset+24),...rotated.slice(0,Math.max(0,offset+24-rotated.length)));
+  const names=Array.from(new Set([...CORE_SYMBOLS,...picked])).slice(0,95);
+  return {names,universe:all.length};
+}
+const chunks=<T,>(a:T[],size:number)=>Array.from(
+  {length:Math.ceil(a.length/size)},(_,i)=>a.slice(i*size,(i+1)*size));
+async function metadataFor(names:string[]):Promise<Set<string>>{
+  const rows=await batched(chunks(names,20),4,async chunk=>{
+    try{
+      const j=await getJson('/api/v3/exchangeInfo?symbols='+
+        encodeURIComponent(JSON.stringify(chunk)),11500) as {symbols?:SymbolInfo[]};
+      return Array.isArray(j?.symbols)?j.symbols:null;
+    }catch(e){
+      problem('Spot metadata batch: '+String(e instanceof Error?e.message:e));return null;
+    }
+  });
+  const allowed=new Set(rows.flat().filter(s=>
+    s.status==='TRADING'&&s.quoteAsset==='USDT'&&
+    s.isSpotTradingAllowed!==false&&
     (!s.permissions?.length||s.permissions.includes('SPOT'))
   ).map(s=>s.symbol));
-  if(!set.size)throw Error('No Binance Spot markets available');
-  validSymbols={time:Date.now(),set};
-  return set;
+  if(!allowed.size)throw Error('Binance metadata mini-batches unavailable: '+
+    recentProblems.slice(-2).join(' | '));
+  return allowed;
+}
+async function tickersFor(names:string[]):Promise<Ticker[]>{
+  const rows=await batched(chunks(names,20),4,async chunk=>{
+    try{
+      const j=await getJson('/api/v3/ticker/24hr?symbols='+
+        encodeURIComponent(JSON.stringify(chunk)),11500);
+      return Array.isArray(j)?j as Ticker[]:null;
+    }catch(e){problem('Spot 24hr mini-batch: '+
+      String(e instanceof Error?e.message:e));return null;}
+  });
+  const result=rows.flat();
+  if(!result.length)throw Error('Binance 24hr mini-batches unavailable: '+
+    recentProblems.slice(-2).join(' | '));
+  return result;
 }
 function pick(tickers:Ticker[],allowed:Set<string>):Ticker[]{
   // Rotate one part of the long-tail each 5 minutes: a fixed 24h leader list
@@ -122,9 +185,9 @@ async function batched<T,R>(items:T[],size:number,task:(item:T)=>Promise<R|null>
   return out;
 }
 async function scan():Promise<RadarResult>{
-  const [allowed,rawTickers]=await Promise.all([symbols(),getJson('/api/v3/ticker/24hr',8500)]);
-  if(!Array.isArray(rawTickers))throw Error('Binance ticker returned no market list');
-  const chosen=pick(rawTickers as Ticker[],allowed);
+  const {names,universe}=await discoverNames();
+  const [allowed,rawTickers]=await Promise.all([metadataFor(names),tickersFor(names)]);
+  const chosen=pick(rawTickers,allowed);
   if(!chosen.length)throw Error('No eligible Spot pairs');
   const btcBars=parseKlines(await getJson('/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=65').catch(()=>null));
   const btc15m=btcBars.length>=17&&Date.now()-btcBars.at(-1)!.time<=210000
@@ -156,8 +219,8 @@ async function scan():Promise<RadarResult>{
     .sort((a,b)=>b.score-a.score).slice(0,12);
   if(!candidates.length)throw Error('Insufficient fresh Spot evidence');
   return {ok:true,source:'Binance public Spot · closed 1m candles + depth',
-    asOf:Date.now(),universe:allowed.size,scanned:initial.length,depthChecked,
-    candidates,method:'24h universe → 1m trading volume → taker-buy flow → BTC relative strength → top-of-book snapshot',
+    asOf:Date.now(),universe,scanned:initial.length,depthChecked,
+    candidates,method:'Rotating Binance USDT sample → batched verified exchange metadata → 24h stats → 1m taker flow → depth',
     warning:'Watchlist score is NOT a win probability. Visible bids can vanish; an orderbook snapshot does not reveal secret orders. No execution or API keys.'};
 }
 export async function GET(){
