@@ -530,3 +530,26 @@ footer{display:flex;justify-content:space-between;gap:20px;color:#5f7880;font-si
   .compact-asset .primary-target-strip,.compact-asset .advanced-target-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
   .research-drawer-summary small{font-size:10px}
 }
+
+
+/* Rapid, read-only M1/M5 movement radar: independent from frozen M15 candles. */
+.sniper-live-opportunity{margin:7px 8px;padding:10px 12px;background:#081a22;
+  border:1px solid #33525c;border-radius:9px;color:#d9e9ed;display:grid;gap:6px}
+.sniper-live-opportunity-head{display:flex;justify-content:space-between;
+  align-items:center;gap:8px;flex-wrap:wrap}
+.sniper-live-opportunity-head strong{font-size:13px;color:#b0e9f2}
+.sniper-live-opportunity-head b{font-size:12px;color:#aabac5}
+.sniper-live-opportunity.phase-break_confirmed{border-color:#d18b58;background:#192019}
+.sniper-live-opportunity.phase-break_confirmed .sniper-live-opportunity-head b{color:#ffd18b}
+.sniper-live-opportunity.phase-prepare,.sniper-live-opportunity.phase-testing{border-color:#428e92}
+.sniper-live-opportunity.phase-prepare .sniper-live-opportunity-head b,
+.sniper-live-opportunity.phase-testing .sniper-live-opportunity-head b{color:#80dfd5}
+.sniper-live-opportunity.phase-cancelled .sniper-live-opportunity-head b{color:#ffa4ae}
+.sniper-live-opportunity-levels{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;
+  font-size:12px;color:#c6d8de;line-height:1.6}
+.sniper-live-opportunity-levels b{color:#e9e5be;font-weight:700;display:inline-block}
+.sniper-live-opportunity>small{font-size:11px;color:#9caeb8;line-height:1.55}
+@media(max-width:600px){
+ .sniper-live-opportunity{padding:9px 10px}
+ .sniper-live-opportunity-levels{font-size:11px;gap:4px 10px}
+}
