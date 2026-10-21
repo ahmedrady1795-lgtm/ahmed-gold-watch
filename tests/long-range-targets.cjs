@@ -35,4 +35,14 @@ assert.equal(build(unsupported).targets.length,0,
 assert.equal(build({...unsupported,frames:{...flat,m5:arg.frames.m5}}).targets.length,0,
   'M5-only moves may corroborate H1/M15 but are not distant structural targets');
 assert.ok(build(arg).targets.length>0,'trusted historical candles still yield targets');
+assert.equal(r.reachability.horizonMinutes,75);
+assert.ok(r.targets[0].distanceAtr<=r.reachability.limitAtr+.02,
+ 'TP1 must fit the same-horizon historical excursion budget');
+const withFuture={...arg,frames:{...arg.frames,m15:[...arg.frames.m15,
+ {time:now+900000,open:100,high:900,low:1,close:800}]}};
+assert.equal(JSON.stringify(build(withFuture)),JSON.stringify(r),'future data cannot improve the target reachability budget');
+const longHistory={...arg,frames:{...arg.frames,m15:require('./long-range-fixture.cjs').history(now,900000,320)}};
+const constrained=build(longHistory);
+assert.equal(constrained.reachability.empirical,true);
+assert.equal(constrained.targets.length,0,'do not issue a remote target when measured 75m travel never supports the minimum structural distance');
 console.log('PASS: long targets use authentic M15/H1 swings, filter microlevels and stale inputs');

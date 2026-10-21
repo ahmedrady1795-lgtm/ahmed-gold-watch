@@ -8,6 +8,7 @@ const e={};vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/sniper-sco
 }).outputText,{exports:e});
 const now=Date.parse('2026-10-12T12:00:00Z');
 const record=e.startScenario({asset:'GOLD',side:'BUY',at:now-600000,modelAt:now-600000,price:100,stop:99,confidence:70,
+ marketSource:'Test spot GOLD candles',planVersion:'SNIPER_STRUCTURAL_V2',
  targets:[{stage:1,price:102,low:101.8,high:102.2,quality:75,kind:'STRUCTURAL'}]});
 const snapshot={schema:1,savedAt:now-300000,sourceUpdatedAt:now-300000,records:[record]};
 const finished={...record,status:'COMPLETED',lastCheckedAt:now-240000,resolvedAt:now-240000,resolvedPrice:102,firstHitAt:now-240000,
@@ -22,6 +23,13 @@ assert.equal(e.scorecard(boot.scenarios,'GOLD').targets[0].hits,1,'completed res
 const uncertain=restoredState(snapshot,now);
 assert.equal(uncertain.scenarios[0].status,'ACTIVE','restore waits for historical evidence before scoring');
 assert.equal(uncertain.scenarios[0].recoveryPending,true);
+assert.equal(uncertain.scenarios[0].marketSource,record.marketSource,'provider identity survives checkpoint and restore');
+assert.equal(uncertain.scenarios[0].planVersion,'SNIPER_STRUCTURAL_V2','new evidence remains isolated by plan revision');
+const legacy=restoredState({...snapshot,records:[{...record,marketSource:undefined}]},now);
+assert.equal(legacy.scenarios[0].status,'UNOBSERVED','legacy unknown-provider active plans must never be scored on a new venue');
+assert.equal(e.scorecard(legacy.scenarios,'GOLD').observed,0);
+assert.equal(e.advanceScenario(uncertain.scenarios[0],[],now,'Another GOLD provider').status,'UNOBSERVED',
+ 'gold provider changes must be rejected after restore, as BTC changes already are');
 assert.equal(e.scorecard(uncertain.scenarios,'GOLD').observed,0);
 assert.equal(uncertain.updatedAt,0,'restored data cannot impersonate a fresh market heartbeat');
 assert.equal(uncertain.watch.GOLD.bias,null,'restored history never activates a trading direction');

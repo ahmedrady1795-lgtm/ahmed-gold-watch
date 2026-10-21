@@ -8,6 +8,7 @@ import {advanceWatch,emptyWatch,type WatchMemory} from './sniper-watch';
 import {evaluateSniperStrategies} from './sniper-strategies';
 import {assessSniperEntryCandle} from './sniper-entry-candle';
 import {analyzeNextCandleStrategies} from './next-candle-strategies';
+import {SNIPER_PLAN_VERSION} from './sniper-risk-plan';
 
 // Railway Gold Watch has an existing dedicated persistent volume at /data.
 // /tmp fallback intentionally does NOT claim persistence across deploys.
@@ -73,6 +74,8 @@ function candidate(asset:Asset,x:any,now:number,modelAt:number){
   const sniper=buildSniperOutlook(asset,x,null,now,modelAt);
   const v=sniper.view,targets=sniper.targets;
   const blockers:string[]=[];
+  if(!sniper.riskPlan.ready)blockers.push('خطة الهدف والوقف: '+sniper.riskPlan.reason);
+  if(typeof x?.candleSource!=='string'||!x.candleSource.trim())blockers.push('مصدر الشموع غير موثق');
   const liquidityContext=analyzeFourHours({asset,candles:x?.chartCandles,frames:x?.chartHigherFrames,
     now,source:x?.candleSource,referencePrice:v.price});
   const strategy=evaluateSniperStrategies({frames:x?.chartHigherFrames,now,price:v.price,
@@ -123,7 +126,7 @@ function candidate(asset:Asset,x:any,now:number,modelAt:number){
   const produced=blockers.length===0&&v.side!=='WAIT'&&price!=null&&invalid!=null?
     startScenario({asset,side:v.side,at:now,modelAt,price,stop:invalid,
       confidence:Number(v.confidence||0),targets,durationMs:75*60000,
-      marketSource:String(x?.candleSource||'')}):null;
+      marketSource:String(x?.candleSource||''),planVersion:SNIPER_PLAN_VERSION}):null;
   return {produced,blockers};
 }
 function runAsset(asset:Asset,x:any,modelAt:number,now:number){
@@ -180,7 +183,7 @@ export function updateStructuralWatchFromChart(payload:any,now=Date.now()){
     });
     state.watch[asset].records=state.watch[asset].records.map(r=>{
       if(r.status!=='ACTIVE')return r;
-      const next=advanceScenario(r,x?.chartCandles,now);
+      const next=advanceScenario(r,x?.chartCandles,now,x?.candleSource);
       if(JSON.stringify(next)!==JSON.stringify(r)){dirty=true;changed=true;}
       return next;
     });
@@ -239,6 +242,10 @@ export function getSniperAudit(now=Date.now()){
     updatedAt:state.updatedAt,
     current:{GOLD:show('GOLD'),BTC:show('BTC')},
     metrics:{GOLD:scorecard(records,'GOLD'),BTC:scorecard(records,'BTC')},
+    evaluation:{planVersion:SNIPER_PLAN_VERSION,
+      metrics:{GOLD:scorecard(records.filter(r=>r.planVersion===SNIPER_PLAN_VERSION),'GOLD'),
+        BTC:scorecard(records.filter(r=>r.planVersion===SNIPER_PLAN_VERSION),'BTC')},
+      note:'السجل العام تراكمي؛ هذا القسم للإصدار الحالي فقط، دون حذف نتائج الإصدارات السابقة'},
     block:Object.fromEntries((['GOLD','BTC'] as const).map(asset=>[
       asset,state.blockAt[asset]>0&&state.blockAt[asset]<=now+2000&&
         now-state.blockAt[asset]<=90000?state.block[asset]:'سبب الانتظار غير حديث'
@@ -260,6 +267,7 @@ export function getSniperAudit(now=Date.now()){
     })),
     recent:records.filter(r=>terminal(r.status)).slice(-15).reverse().map(r=>({
       id:r.id,asset:r.asset,side:r.side,status:r.status,startedAt:r.startedAt,
+      planVersion:r.planVersion,
       resolvedAt:r.resolvedAt,targets:r.targets.map(t=>({stage:t.stage,price:t.price,reachedAt:t.reachedAt})),
       note:r.note
     }))}

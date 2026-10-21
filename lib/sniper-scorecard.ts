@@ -12,6 +12,7 @@ export type Scenario={
   purpose?:'SCENARIO'|'OBSERVATION';
   // The exchange/broker that supplied the opening OHLC reference.
   marketSource?:string;
+  planVersion?:string;
   recoveryPending?:boolean;
 };
 export type Bar={time:number;open:number;high:number;low:number;close:number};
@@ -32,7 +33,7 @@ export function validClosedBars(rows:any,now:number):Bar[]{
 export function startScenario(args:{
   asset:Asset;side:Dir;at:number;modelAt:number;price:number;stop:number;confidence:number;
   targets:Array<{stage:1|2|3;price:number;low:number;high:number;quality:number;kind:string;source?:string}>
-  durationMs?:number;purpose?:'SCENARIO'|'OBSERVATION';marketSource?:string
+  durationMs?:number;purpose?:'SCENARIO'|'OBSERVATION';marketSource?:string;planVersion?:string
 }):Scenario|null{
   const {asset,side,at,modelAt,price,stop,confidence}=args;
   const targets=args.targets.slice(0,3);
@@ -54,6 +55,7 @@ export function startScenario(args:{
   return {id,asset,side,startedAt:at,modelAt,expiresAt:at+duration,entry:price,
     stop,confidence,purpose:observation?'OBSERVATION':'SCENARIO',
     marketSource:String(args.marketSource||'')||undefined,
+    planVersion:args.planVersion,
     source:observation?'H1/H4_WATCH':'M15/H1_STRUCTURAL',targets:targets.map(t=>({...t,reachedAt:null})),
     status:'ACTIVE',lastBarOpen:null,lastCheckedAt:at,firstHitAt:null,
     resolvedAt:null,resolvedPrice:null,bestFavorableR:0,worstAdverseR:0,
@@ -69,8 +71,8 @@ function finish(r:Scenario,status:AuditStatus,at:number,price:number|null,note:s
 export function advanceScenario(previous:Scenario,raw:any,now:number,marketSource?:string):Scenario{
   const s:Scenario={...previous,targets:previous.targets.map(x=>({...x}))};
   if(terminal(s.status))return s;
-  if(s.asset==='BTC'&&s.marketSource&&marketSource&&s.marketSource!==marketSource){
-    finish(s,'UNOBSERVED',now,null,'مصدر BTC تغيّر قبل نهاية التقييم؛ لا نخلط شموع منصتين في نسبة نجاح واحدة');
+  if(s.marketSource&&marketSource&&s.marketSource!==marketSource){
+    finish(s,'UNOBSERVED',now,null,'مصدر '+s.asset+' تغيّر قبل نهاية التقييم؛ لا نخلط شموع مزودين في نسبة نجاح واحدة');
     return s;
   }
   const bars=validClosedBars(raw,now)

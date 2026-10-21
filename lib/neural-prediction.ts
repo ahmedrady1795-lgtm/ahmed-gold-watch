@@ -19,7 +19,7 @@ export async function getNeuralPrediction(now=Date.now()):Promise<NeuralPredicti
   const url=String(process.env.NEURAL_ENGINE_URL||'').trim();
   if(!url)return {ok:false,status:'DISABLED',ready:false,side:'WAIT',reason:'NEURAL_ENGINE_URL missing'};
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),2200);
+  const timer=setTimeout(()=>controller.abort(),8000);
   const started=Date.now();
   try{
     const r=await fetch(url.replace(/\/$/,'')+'/predict',{

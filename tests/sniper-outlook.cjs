@@ -11,9 +11,10 @@ function load(path,requireFn){
 }
 const next=load('lib/next-move-view.ts');
 const long=load('lib/long-range-targets.ts');
+const risk=load('lib/sniper-risk-plan.ts');
 const {frames}=require('./long-range-fixture.cjs');
 const {buildSniperOutlook:build}=load('lib/sniper-outlook.ts',
-  path=>path==='./next-move-view'?next:path==='./long-range-targets'?long:require(path));
+  path=>path==='./next-move-view'?next:path==='./long-range-targets'?long:path==='./sniper-risk-plan'?risk:require(path));
 const now=Date.parse('2026-10-11T10:00:00Z');
 const base={
   chartHigherFrames:frames(now),
@@ -48,7 +49,7 @@ assert.equal(s.arrival?.max,36);
 assert.equal(s.activation.min,2);
 assert.equal(s.flow.buy,63);
 assert.equal(s.zones.some(z=>z.label==='منطقة ارتداد'),true);
-assert.equal(s.view.target,102);
+assert.equal(s.view.target,s.targets[0].price,'view target and entry stop use the structural plan horizon');
 s=view({...base,livePulse:{price:100,sourceTime:now-30000}});
 assert.equal(s.view.side,'WAIT');
 assert.equal(s.targets.length,0);
@@ -71,7 +72,8 @@ s=view({...base,
   forwardMove:{...base.forwardMove,confirmations:{m5:'BUY',m15:'BUY'},
     targets:{...base.forwardMove.targets,t1:{price:102},invalidation:99}}
 });
-assert.equal(s.view.side,'BUY','long-range targets survive a consumed micro T1 only when M5 and M15 independently agree');
+assert.equal(s.view.side,'WAIT','a consumed micro T1 must not promote a structural target whose real stop leaves insufficient reward');
+assert.equal(s.riskPlan.ready,false);
 assert.ok(s.targets.length>0&&s.targets[0].price>102.3);
 s=view({...base,forwardMove:{...base.forwardMove,targets:{
   t1:{price:98},invalidation:99}}});

@@ -10,7 +10,8 @@ function read(path,customRequire){
 const next=read('lib/next-move-view.ts');
 const long=read('lib/long-range-targets.ts');
 const {frames}=require('./long-range-fixture.cjs');
-const sniper=read('lib/sniper-outlook.ts',p=>p==='./next-move-view'?next:p==='./long-range-targets'?long:require(p));
+const risk=read('lib/sniper-risk-plan.ts');
+const sniper=read('lib/sniper-outlook.ts',p=>p==='./next-move-view'?next:p==='./long-range-targets'?long:p==='./sniper-risk-plan'?risk:require(p));
 const watch=read('lib/structural-watch.ts',p=>p==='./long-range-targets'?long:require(p));
 const fourHour=read('lib/four-hour-structure.ts');
 const continuous=read('lib/continuous-direction.ts');

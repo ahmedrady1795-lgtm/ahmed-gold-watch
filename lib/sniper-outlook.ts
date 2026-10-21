@@ -1,5 +1,6 @@
 import {buildNextMoveView} from './next-move-view';
 import {buildLongRangeTargets} from './long-range-targets';
+import {buildSniperRiskPlan} from './sniper-risk-plan';
 
 type Side='BUY'|'SELL'|'WAIT';
 type Zone={low:number;high:number;label:string;strength:number|null};
@@ -43,7 +44,7 @@ export function buildSniperOutlook(asset:'GOLD'|'BTC',x:any,liveQuote:any,now:nu
     forecast:move,hunt:hf,h4:x?.h4Context
   });
   const repaired=bridge&&price!=null&&longRange.targets.length>0;
-  const view=repaired?{
+  const initialView=repaired?{
     ...baseView,side:suggestedSide,quality:'READY' as const,
     confidence:Number(move.confidence||0),
     invalidation:stop,target:longRange.targets[0].price,
@@ -51,6 +52,15 @@ export function buildSniperOutlook(asset:'GOLD'|'BTC',x:any,liveQuote:any,now:nu
     riskDistancePct:stop==null?null:Math.abs(stop-price!)/price!*100,
     reason:'الهدف السريع تم تجاوزه · السيناريو الهيكلي M15/H1 ما زال أمام السعر'
   }:baseView;
+  const riskPlan=buildSniperRiskPlan({asset,side:initialView.side,price,now,
+    frames:x?.chartHigherFrames,originalStop:initialView.invalidation,
+    target:longRange.targets[0]?.price??null,spread:positive(x?.scalpDesk?.quote?.spread)});
+  const view=riskPlan.ready?{...initialView,invalidation:riskPlan.stop,
+    target:longRange.targets[0].price,
+    targetDistancePct:price!=null?Math.abs(longRange.targets[0].price-price)/price*100:null,
+    riskDistancePct:price!=null&&riskPlan.risk!=null?riskPlan.risk/price*100:null}:
+    initialView.side!=='WAIT'?{...initialView,side:'WAIT' as const,quality:'MONITOR' as const,
+      target:null,invalidation:null,reason:riskPlan.reason}:initialView;
   const valid=view.side!=='WAIT'&&price!=null&&view.target!=null&&view.invalidation!=null;
   const direction:Side=valid?view.side:'WAIT';
   const phase=String(acc.phase||intent.phase||'NEUTRAL');
@@ -123,7 +133,7 @@ export function buildSniperOutlook(asset:'GOLD'|'BTC',x:any,liveQuote:any,now:nu
   return {
     view,stage,stageText,phaseText,compression:acc.ok?bound(Math.round(compression),0,100):null,
     arrival,activation,targets,destination,zones,flow,trigger,evidence,
-    forecastBasis:targets[0]?.kind||null,longRange,
+    forecastBasis:targets[0]?.kind||null,longRange,riskPlan,
     verifiedTradeSetup:Boolean(valid&&move?.tradeSetup&&move?.adaptiveLearning?.execution?.validated),
     priceAge:view.sourceAgeSeconds
   };

@@ -33,7 +33,8 @@ function addZone(candidates:Candidate[],raw:any,source:string,confidence:number)
 export function buildLongRangeTargets(input:{
   asset:'GOLD'|'BTC';side:Side;price:number|null;now:number;
   frames:any;forecast?:any;hunt?:any;h4?:any;minAtr?:number
-}):{targets:LongTarget[];atr15:number|null;basis:string;reason:string;minDistance:number|null}{
+}):{targets:LongTarget[];atr15:number|null;basis:string;reason:string;minDistance:number|null;
+  reachability?:{horizonMinutes:number;samples:number;limitAtr:number;empirical:boolean}}{
   const price=num(input.price),side=input.side;
   const empty=(reason:string)=>({targets:[] as LongTarget[],atr15:null,basis:'M15/H1',reason,minDistance:null});
   if(price==null||price<=0||side==='WAIT')return empty('لا يوجد اتجاه صالح');
@@ -53,7 +54,24 @@ export function buildLongRangeTargets(input:{
   // The paper sniper follows a 75-minute evaluation horizon. A high-quality
   // H1/H4 level 10+ M15 ATR away is still a REAL level, but not a credible
   // first take-profit for this horizon. Do not move or fabricate it closer.
-  const maxT1Distance=Math.max(a15*4.2,scale*2.8);
+  // Completed, non-overlapping historical 75m excursions set a destination
+  // budget in ATR units. This is a reachability filter, NOT a success rate.
+  // Every measurement ends before issue time; no future outcome tunes it.
+  const excursions:number[]=[];
+  for(let i=m15.length-6;i>=14;i-=5){
+    const window=m15.slice(i-14,i+6);
+    if(window.some((b,j)=>j>0&&b.time-window[j-1].time!==900000))continue;
+    const priorAtr=atr(m15.slice(i-14,i+1));
+    if(priorAtr==null)continue;
+    const anchor=m15[i].close,future=m15.slice(i+1,i+6);
+    const distance=side==='BUY'?Math.max(...future.map(b=>b.high))-anchor:
+      anchor-Math.min(...future.map(b=>b.low));
+    excursions.push(Math.max(0,distance)/priorAtr);
+  }
+  excursions.sort((a,b)=>a-b);
+  const empirical=excursions.length>=30;
+  const limitAtr=empirical?clamp(excursions[Math.floor((excursions.length-1)*.75)],.5,4.2):4.2;
+  const maxT1Distance=Math.min(Math.max(a15*4.2,scale*2.8),a15*limitAtr);
   const candidates:Candidate[]=[];
   const add=(p:any,source:string,quality:number,frame:string)=>{
     const v=num(p);
@@ -149,5 +167,5 @@ export function buildLongRangeTargets(input:{
   return {targets,atr15:a15,basis:'M15/H1 تاريخي مؤكد؛ M5 والسيولة للتأييد فقط',
     reason:targets.length?'أهداف M15/H1 مرصودة؛ TP1 داخل نطاق حركة متناسب مع 75 دقيقة (دون ضمان وصول)':
       'لا يوجد هدف هيكلي أول داخل نطاق حركة 75 دقيقة؛ تبقى المستويات البعيدة للمراقبة ولا نختلق TP1',
-    minDistance};
+    minDistance,reachability:{horizonMinutes:75,samples:excursions.length,limitAtr,empirical}};
 }

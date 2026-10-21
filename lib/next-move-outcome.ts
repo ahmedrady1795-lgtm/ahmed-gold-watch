@@ -30,6 +30,7 @@ type AssetState={
   history:Recent[];
   lastRecordedBucket:number;
   lastFingerprint:string;
+  lastRecordedAt?:number;
 };
 type State={version:string;assets:Record<string,AssetState>};
 
@@ -453,7 +454,11 @@ export function recordNextMoveOutcome(args:{
     const fingerprint=[side,source,regime,Math.round(price/(price*barrierBps/10000||1))].join(':');
     const minRecordIntervalMs=Math.max(25000,Math.min(horizonMs,Number(args.minRecordIntervalMs||25000)));
     const sameLive=a.pending.some(p=>p.side===side&&p.source===source&&now-p.at<minRecordIntervalMs);
-    if(a.lastRecordedBucket!==bucket&&!sameLive){
+    // The cooldown survives a quick hit/stop and a process restart. Otherwise
+    // one rally can produce many correlated "15m" wins a minute apart.
+    const lastAt=Math.max(a.lastRecordedAt||0,...a.pending.map(p=>p.at),
+      ...a.recent.map(p=>p.at));
+    if(a.lastRecordedBucket!==bucket&&!sameLive&&now-lastAt>=minRecordIntervalMs){
       eventId=[asset,bucket,side,source].join(':');
       const distance=price*fallbackBarrierBps/10000;
       const target=targetValid?requestedTarget:(side==='BUY'?price+distance:price-distance);
@@ -496,7 +501,7 @@ export function recordNextMoveOutcome(args:{
         }
       });
       if(a.pending.length>30)a.pending=a.pending.slice(-30);
-      a.lastRecordedBucket=bucket;a.lastFingerprint=fingerprint;dirty=true;recorded=true;
+      a.lastRecordedBucket=bucket;a.lastRecordedAt=now;a.lastFingerprint=fingerprint;dirty=true;recorded=true;
     }
   }
   save(recorded);

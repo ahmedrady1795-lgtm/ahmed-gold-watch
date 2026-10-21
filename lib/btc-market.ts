@@ -98,7 +98,9 @@ async function kraken(interval:number){
     .sort((a:Candle,b:Candle)=>a.time-b.time)
     .filter((c:Candle,i:number,a:Candle[])=>i===0||c.time!==a[i-1].time);
   if(out.length<220)throw new Error('kraken insufficient');
-  return out.slice(-300);
+  // Kraken supplies up to 720 observed M1 bars: retain enough for an 8h
+  // paper-plan replay after a sleeping instance resumes. Never synthesize gaps.
+  return out.slice(interval===1?-720:-300);
 }
 export async function getBtcMarket(force=false):Promise<BtcMarket>{
   const now=Date.now();
@@ -108,6 +110,18 @@ export async function getBtcMarket(force=false):Promise<BtcMarket>{
      latestClosedAge(cache.value.c1,60000,now)<=75000)return cache.value;
   if(pending)return pending;
   pending=(async():Promise<BtcMarket>=>{
+  const readKraken=async()=>{
+    const [c1,c5,c15,c60]=await Promise.all([kraken(1),kraken(5),kraken(15),kraken(60)]);
+    if(c5.length<220||c15.length<220||c60.length<220)throw new Error('BTC history unavailable');
+    assertFresh(c1,c5,c15,c60,Date.now(),'Kraken');
+    const value={c1,c5,c15,c60,source:'Kraken XBT/USD · fresh-candle fallback',checkedAt:now};
+    cache={at:now,value};return value;
+  };
+  // Stay with the last healthy venue. Returning to Coinbase on every poll
+  // needlessly invalidated active plans when both venues were available.
+  if(cache?.value.source.startsWith('Kraken')){
+    try{return await readKraken();}catch{}
+  }
   try{
     const [latest1,c5,c15,c60]=await Promise.all([coinbase(60),coinbase(300),coinbase(900),coinbase(3600)]);
     if(c5.length<220||c15.length<220||c60.length<220)throw new Error('coinbase history short');
@@ -115,10 +129,7 @@ export async function getBtcMarket(force=false):Promise<BtcMarket>{
     assertFresh(c1,c5,c15,c60,Date.now(),'Coinbase');
     const value={c1,c5,c15,c60,source:'Coinbase BTC-USD · extended M1',checkedAt:now};cache={at:now,value};return value;
   }catch{}
-  const [c1,c5,c15,c60]=await Promise.all([kraken(1),kraken(5),kraken(15),kraken(60)]);
-  if(c5.length<220||c15.length<220||c60.length<220)throw new Error('BTC history unavailable');
-  assertFresh(c1,c5,c15,c60,Date.now(),'Kraken');
-  const value={c1,c5,c15,c60,source:'Kraken XBT/USD · fresh-candle fallback',checkedAt:now};cache={at:now,value};return value;
+  return readKraken();
   })();
   try{return await pending;}
   finally{pending=null;}

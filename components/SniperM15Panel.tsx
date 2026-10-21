@@ -1031,9 +1031,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {' '+n(averageM15Error)}. دي مش نسبة ربح ولا نموذج متدرّب.</p>
        <p>توقع M15 مُثبت قبل الأحداث؛ الشموع القديمة لا يعاد تعديلها.
          لو المصدر اتغير أو البيانات انقطعت، مش بنعتبرها نجاحًا.</p>
-       {auditLoaded&&audit?.metrics?.[asset]?
-         <SniperPerformance title="نتائج الأهداف الهيكلية المسجلة على الخادم"
-           metrics={audit.metrics[asset]} recent={audit.recent||[]} asset={asset}/>:
+       {auditLoaded&&audit?.metrics?.[asset]?<>
+         {audit?.evaluation?.metrics?.[asset]&&<SniperPerformance title="نتائج الإصدار الحالي · هدف ووقف هيكليان"
+           metrics={audit.evaluation.metrics[asset]}
+           recent={(audit.recent||[]).filter((r:any)=>r.planVersion===audit.evaluation.planVersion)} asset={asset}/>}
+         <SniperPerformance title="نتائج الأهداف · السجل التراكمي لجميع الإصدارات"
+           metrics={audit.metrics[asset]} recent={audit.recent||[]} asset={asset}/></>:
          <p role="status">سجل أهداف الخادم غير متاح أو لم يكتمل تحميله حاليًا.
            نتائج M15 أعلاه محلية على هذا المتصفح فقط.</p>}
      </aside>}

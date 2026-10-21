@@ -56,7 +56,9 @@ export async function getMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPred
   const cacheKey=rows.map(c=>[c.time,c.open,c.high,c.low,c.close,volume(c)].join(':')).join('|');
   if(cache&&now-cache.at<4000&&cache.key===cacheKey)return cache.value;
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),3500);
+  // Measured free-tier inference exceeded the old 3.5s cutoff even after
+  // a healthy warm start. The chart runs independently; inference stays bounded.
+  const timer=setTimeout(()=>controller.abort(),8000);
   const started=Date.now();
   try{
     const r=await fetch(url.replace(/\/$/,'')+'/predict',{
