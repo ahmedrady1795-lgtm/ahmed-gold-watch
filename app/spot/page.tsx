@@ -23,7 +23,7 @@ function CandleChart({bars,trigger}:{bars:Candle[];trigger:number}){
   const lo=Math.min(...candles.map(c=>c.low)),hi=Math.max(...candles.map(c=>c.high));
   const margin=Math.max((hi-lo)*.14,hi*.0005),bottom=lo-margin,top=hi+margin;
   const py=(v:number)=>16+(top-v)/(top-bottom)*192;
-  const w=650,step=590/candles.length,width=Math.max(3,step*.6);
+  const step=590/candles.length,width=Math.max(3,step*.6);
   return <svg className="spot-candle-svg" viewBox="0 0 650 240"
       role="img" aria-label="شموع دقيقة حقيقية مغلقة من Binance Spot وليست شموع توقع">
     <rect x="0" y="0" width="650" height="240" fill="#08131f" rx="10"/>
@@ -138,8 +138,12 @@ export default function SpotPage(){
           <div className="spot-metrics">
             <div><small>تسارع تداول آخر 5د</small><b>×{coin.volumeImpulse.toFixed(2)}</b><span>مقارنة بمتوسط 50د قبلها</span></div>
             <div><small>الشراء المنفّذ</small><b>{Math.round(coin.buyShare*100)}%</b><span>حجم المشترين المبادرين بالصفقات</span></div>
+            <div><small>صافي ضغط التداول 5د</small><b className={coin.flowDelta5m>=0?'positive':'negative'}>{coin.flowDelta5m>=0?'+':'−'}{usd(Math.abs(coin.flowDelta5m))}</b><span>فرق شراء وبيع Taker المنفّذ</span></div>
+            <div><small>تحوّل ميزان الشراء</small><b className={coin.flowShiftPct>=0?'positive':'negative'}>{(coin.flowShiftPct>0?'+':'')+coin.flowShiftPct.toFixed(1)} نقطة</b><span>مقابل آخر 20 دقيقة سابقة</span></div>
             <div><small>تفوّق على بيتكوين 15د</small><b>{coin.relative15m===null?'غير متاح':pct(coin.relative15m)}</b><span>قوة نسبية لا تعني ضخاً مؤكداً</span></div>
             <div><small>حجم تداول 24 ساعة</small><b>{usd(coin.volume24h)}</b><span>سيولة تداول · USDT</span></div>
+            <div><small>عائد / مخاطرة بعد التكلفة</small><b className={coin.netRR>=1.15?'positive':'negative'}>{coin.netRR>0?coin.netRR.toFixed(2)+' : 1':'غير مجدٍ'}</b><span>تقديري عند T1 وليس وعداً</span></div>
+            <div><small>تكلفة تقديرية ذهاب وعودة</small><b>{coin.estimatedCostPct.toFixed(2)}%</b><span>رسوم مفترضة 0.1% لكل جهة + 0.05% انزلاق + السبريد</span></div>
           </div>
           <div className="spot-orderflow"><div className="spot-panel-title"><h3>ميزان دفتر الأوامر</h3><small>طلبات ظاهرة ضمن ±1% من السعر</small></div>
             {coin.book?<><div className="spot-book-meter"><span style={{width:(coin.book.bidShare*100)+'%'}}/></div>
