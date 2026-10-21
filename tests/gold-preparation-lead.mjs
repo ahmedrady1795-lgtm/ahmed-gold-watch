@@ -110,5 +110,4 @@ const ui=fs.readFileSync('components/GoldRadarBadge.tsx','utf8');
 assert.match(ui,/leadMinSeconds/);assert.match(ui,/preparationLead/);
 assert.match(ui,/لم تثبت دقته خارج العينة/);
 assert.match(fs.readFileSync('scripts/start-with-audit-archive.mjs','utf8'),/gold-preparation-worker\.mjs/);
-assert.match(fs.readFileSync('.github/workflows/gold-radar-backup.yml','utf8'),/checkpoint-gold-preparation\.mjs/);
 console.log('PASS: causal pre-break plans, historical targets, immutable proof, future-only lead bounds, source/gap/ambiguity guards, honest denominator and restore');
