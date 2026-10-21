@@ -182,7 +182,7 @@ assert.equal(edgeExports.futuresCrowding(interest.slice(3),{lastFundingRate:'0.0
   'Old futures snapshots are not valid');
 const risky=edgeExports.blendEdge(72,whales,crowded);
 assert.ok(risky.adjustment<0,'Crowded leverage veto wins over bullish tape');
-assert.ok(risky.warnings.some(x=>x.includes('العقود')));
+assert.ok(risky.warnings.some(x=>x.includes('عقود')));
 const strong=edgeExports.blendEdge(72,whales,spotled);
 assert.ok(strong.adjustment>0,'Real buying with less leverage crowding reinforces Spot edge');
 assert.equal(edgeExports.blendEdge(72,null,null).adjustment,0,
