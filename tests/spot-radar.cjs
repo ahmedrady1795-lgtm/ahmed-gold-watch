@@ -143,4 +143,53 @@ assert.ok(!rankingUI.includes('CandleChart')&&!rankingUI.includes('spot-detail-p
 assert.ok(!rankingUI.includes('spot-filters'),'Large detail pane and options must stay hidden');
 console.log('PASS: ranked 24h hourly model, no unfinished bars, anti-chase, trap, stale/gap and clean list.');
 
+
+// Whale-print / leverage evidence tests. All snapshots are historical and no
+// backfilled trades or anonymous market-maker identities are fabricated.
+const edgeExports={};
+vm.runInNewContext(ts.transpileModule(
+  fs.readFileSync('lib/spot-edge.ts','utf8'),
+  {compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}
+).outputText,{exports:edgeExports});
+const tape=Array.from({length:120},(_,i)=>({
+  T:now-115000+i*900,
+  p:'100',q:i>=100?'75':'1',m:false
+}));
+const whales=edgeExports.largeTradeFootprint(tape,now);
+assert.ok(whales&&whales.state==='BUY_PRESSURE',
+  'Large aggressive buyer prints should be detected, not alleged hidden orders');
+assert.ok(whales.largeBuyShare>.95&&whales.sampleTrades===120);
+const dump=edgeExports.largeTradeFootprint(tape.map(x=>({...x,m:true})),now);
+assert.equal(dump.state,'SELL_PRESSURE',
+  'Binance m=true means buyer is MAKER => initiated SELL, never invert');
+assert.equal(edgeExports.largeTradeFootprint(tape.slice(-20),now),null,
+  'Thin trade samples have no whale classification');
+assert.equal(edgeExports.largeTradeFootprint(tape.map(x=>({...x,T:now-500000})),now),null,
+  'Time-compressed or stale prints cannot qualify');
+const interest=Array.from({length:17},(_,i)=>({
+  timestamp:now-(17-i)*300000,sumOpenInterest:String(1000+i*12)
+}));
+const crowded=edgeExports.futuresCrowding(interest,{lastFundingRate:'0.0009'},now);
+assert.ok(crowded&&crowded.state==='CROWDED_LONGS',
+  'Fast rising OI and elevated positive funding imply leveraged long crowding');
+const spotled=edgeExports.futuresCrowding(interest.map((x,i)=>({
+  ...x,sumOpenInterest:String(1000+i)
+})),{lastFundingRate:'0.0001'},now);
+assert.ok(spotled&&spotled.state==='SPOT_LED_POSSIBLE');
+assert.equal(edgeExports.futuresCrowding(interest,{lastFundingRate:'garbage'},now),null,
+  'Unverified funding never yields a confident label');
+assert.equal(edgeExports.futuresCrowding(interest.slice(3),{lastFundingRate:'0.0009'},now+3600000),null,
+  'Old futures snapshots are not valid');
+const risky=edgeExports.blendEdge(72,whales,crowded);
+assert.ok(risky.adjustment<0,'Crowded leverage veto wins over bullish tape');
+assert.ok(risky.warnings.some(x=>x.includes('العقود')));
+const strong=edgeExports.blendEdge(72,whales,spotled);
+assert.ok(strong.adjustment>0,'Real buying with less leverage crowding reinforces Spot edge');
+assert.equal(edgeExports.blendEdge(72,null,null).adjustment,0,
+  'Missing optional feeds cannot cause an invented edge boost');
+const serverEdge=fs.readFileSync('app/api/spot-radar/route.ts','utf8');
+assert.ok(serverEdge.includes('largeTradeFootprint')&&
+  serverEdge.includes('futuresCrowding')&&serverEdge.includes('CROWDED_LONGS'));
+console.log('PASS: aggressive whale-print maker flag, thin/stale tape, futures leverage traps and optional evidence.');
+
 console.log('PASS: closed candles, signed executed flow, depth, liquidity impulse, fakeout risk, targets, gaps, stale feed. Not a profitability test.');
