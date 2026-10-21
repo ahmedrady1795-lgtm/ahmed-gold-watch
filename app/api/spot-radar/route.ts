@@ -33,19 +33,27 @@ async function symbols():Promise<Set<string>>{
   return set;
 }
 function pick(tickers:Ticker[],allowed:Set<string>):Ticker[]{
-  const stables=new Set(['USDC','FDUSD','TUSD','DAI','USDE','EUR','EURI','AEUR','USTC','PYUSD']);
+  // Rotate one part of the long-tail each 5 minutes: a fixed 24h leader list
+  // misses quieter mid-caps that begin accumulating before the daily movers.
+  const stables=new Set(['USDC','FDUSD','TUSD','DAI','USDE','EUR','EURI','AEUR',
+    'USTC','PYUSD','USDD','USDP','USDS','USD1','RLUSD','EURC','XUSD']);
   const eligible=tickers.filter(t=>allowed.has(t.symbol)&&
     !stables.has(t.symbol.replace(/USDT$/,''))&&
     Number.isFinite(+t.quoteVolume)&&Number.isFinite(+t.priceChangePercent)&&
     +t.quoteVolume>=1500000&&+t.priceChangePercent>=-9&&+t.priceChangePercent<=22);
-  const high=[...eligible].sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,9);
+  const high=[...eligible].sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,12);
   const middle=eligible.filter(t=>+t.quoteVolume<=120000000&&+t.quoteVolume>=2000000&&
     +t.priceChangePercent>=-5&&+t.priceChangePercent<=6)
-    .sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,15);
-  const emerging=eligible.filter(t=>+t.quoteVolume<250000000&&
+    .sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,20);
+  const trending=eligible.filter(t=>+t.quoteVolume<250000000&&
     +t.priceChangePercent>=0&&+t.priceChangePercent<=12)
-    .sort((a,b)=>(+b.priceChangePercent)-(+a.priceChangePercent)).slice(0,18);
-  return Array.from(new Map([...high,...middle,...emerging].map(t=>[t.symbol,t])).values()).slice(0,40);
+    .sort((a,b)=>+b.priceChangePercent-+a.priceChangePercent).slice(0,14);
+  const quiet=eligible.filter(t=>+t.quoteVolume>=1800000&&+t.quoteVolume<=70000000&&
+    +t.priceChangePercent>=-3&&+t.priceChangePercent<=5)
+    .sort((a,b)=>a.symbol.localeCompare(b.symbol));
+  const window=Math.floor(Date.now()/300000),rotated=quiet.length
+    ?[...quiet.slice(window%quiet.length),...quiet.slice(0,window%quiet.length)].slice(0,22):[];
+  return Array.from(new Map([...high,...middle,...rotated,...trending].map(t=>[t.symbol,t])).values()).slice(0,64);
 }
 async function batched<T,R>(items:T[],size:number,task:(item:T)=>Promise<R|null>):Promise<R[]>{
   const out:R[]=[];
@@ -65,7 +73,7 @@ async function scan():Promise<RadarResult>{
     ?(btcBars.at(-1)!.close/btcBars.at(-16)!.close-1)*100:null;
   const initial=await batched(chosen,8,async t=>{
     try{
-      const raw=await getJson('/api/v3/klines?symbol='+encodeURIComponent(t.symbol)+'&interval=1m&limit=75');
+      const raw=await getJson('/api/v3/klines?symbol='+encodeURIComponent(t.symbol)+'&interval=1m&limit=75',4000);
       const c=scoreCoin(t.symbol,+t.priceChangePercent,+t.quoteVolume,
         parseKlines(raw),btc15m,null);
       return c;
@@ -76,7 +84,7 @@ async function scan():Promise<RadarResult>{
   let depthChecked=0;
   const detailed=await batched(shortlist,6,async item=>{
     try{
-      const raw=await getJson('/api/v3/depth?symbol='+encodeURIComponent(item.symbol)+'&limit=100');
+      const raw=await getJson('/api/v3/depth?symbol='+encodeURIComponent(item.symbol)+'&limit=100',3500);
       const book=parseBook(raw,item.price);
       if(book)depthChecked++;
       return scoreCoin(item.symbol,item.change24h,item.volume24h,
