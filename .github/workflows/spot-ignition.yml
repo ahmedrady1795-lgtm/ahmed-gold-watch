@@ -4,6 +4,8 @@ on:
     branches: [render-free]
     paths:
       - 'lib/spot-ignition.ts'
+      - 'lib/spot-aggressive.ts'
+      - 'tests/spot-aggressive.cjs'
       - 'lib/spot-radar.ts'
       - 'app/api/spot-radar/route.ts'
       - 'app/spot/page.tsx'
@@ -21,6 +23,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Check early-buying fast lane
+        run: node tests/spot-aggressive.cjs
       - name: Verify two-snapshot real-buy-flow conditions
         run: node tests/spot-ignition.cjs
       - name: Regression test existing Spot radar

@@ -1,6 +1,7 @@
 import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type Candidate} from '../../../lib/spot-radar';
 import {largeTradeFootprint,futuresCrowding,blendEdge} from '../../../lib/spot-edge';
 import {spotLiquiditySample,spotIgnition,type SpotLiquiditySample} from '../../../lib/spot-ignition';
+import {rankSpotFastLane} from '../../../lib/spot-aggressive';
 import {marketGroup,memeSpotSymbols,highUpsideFocus} from '../../../lib/spot-high-upside';
 import {recordAndEvaluateSpot,type ForwardResult} from '../../../lib/spot-forward-audit';
 
@@ -238,14 +239,18 @@ async function scan():Promise<RadarResult>{
   const betaLane=[...initial].filter(c=>marketGroup(c.symbol)==='HIGH_BETA'&&
     c.volume24h>=1500000&&!c.trapRisk)
     .sort((a,b)=>b.score-a.score).slice(0,8);
-  const byMomentum=[...initial].sort((a,b)=>b.score-a.score).slice(0,12);
+  const byMomentum=[...initial].sort((a,b)=>b.score-a.score).slice(0,14);
+  // Do not wait for 24h momentum when 1m executed flow has JUST started.
+  const freshFlow=[...initial].filter(c=>!c.trapRisk&&c.buyShare>=.53&&
+    c.volumeImpulse>=1.25&&c.flowDelta5m>1200&&c.change15m<3.5&&
+    c.change24h<12).sort((a,b)=>b.flowDelta5m-a.flowDelta5m).slice(0,12);
   // A fixed "already-moving" list misses the first hour of new rotation.
   // Reserve eight slots for liquid, relatively quiet symbols before breakout.
   const quiet=[...initial].filter(c=>c.volume24h>=2_000_000&&
     c.change24h>=-3&&c.change24h<=5&&c.change15m<1.5&&!c.trapRisk)
     .sort((a,b)=>b.volumeImpulse-a.volumeImpulse).slice(0,12);
-  const shortlist=Array.from(new Map([...memeLane,...betaLane,...quiet,...byMomentum]
-    .map(c=>[c.symbol,c])).values()).slice(0,26);
+  const shortlist=Array.from(new Map([...freshFlow,...memeLane,...betaLane,...quiet,...byMomentum]
+    .map(c=>[c.symbol,c])).values()).slice(0,30);
   let depthChecked=0;
   const detailed=await batched(shortlist,6,async item=>{
     try{
@@ -272,13 +277,8 @@ async function scan():Promise<RadarResult>{
         const outlook=score24hOutlook(coin,hourly,btc24h);
         if(!outlook)return null;
         const highUpside=highUpsideFocus(coin,hourly);
-        const boosted=Math.min(100,outlook.rankScore+(highUpside?.boost??0));
-        const state=outlook.state==='AVOID'?'AVOID' as const:
-          boosted>=65&&outlook.takerBuyShare12>=.53&&outlook.volumeRatio24>=1?
-          'HIGH' as const:boosted>=45?'POSSIBLE' as const:'AVOID' as const;
-        const outlook24h={...outlook,rankScore:boosted,state,
-          reason:highUpside?.boost?
-            [highUpside.reason,outlook.reason].filter(Boolean).join(' · '):outlook.reason};
+        const outlook24h=rankSpotFastLane(coin,outlook,highUpside?.boost??0);
+        if(highUpside?.boost)outlook24h.reason=[highUpside.reason,outlook24h.reason].join(' · ');
         return {...coin,outlook24h,highUpside};
       }catch(e){
         problem(coin.symbol+' 24h bars '+String(e instanceof Error?e.message:e));
@@ -292,8 +292,9 @@ async function scan():Promise<RadarResult>{
   // auxiliary feeds cannot invent an edge. Only 10 best Spot setups are sampled.
   const eligible=candidatesWithHourly
     .filter(c=>c.outlook24h.state!=='AVOID')
-    .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore);
-  const examined=await batched(eligible.slice(0,10),4,async coin=>{
+    .sort((a,b)=>(b.outlook24h.rankScore+(b.outlook24h.fastLane?10:0))-
+      (a.outlook24h.rankScore+(a.outlook24h.fastLane?10:0)));
+  const examined=await batched(eligible.slice(0,12),4,async coin=>{
     const symbol=encodeURIComponent(coin.symbol);
     const [tapeRaw,oiRaw,premiumRaw]=await Promise.all([
       getJson('/api/v3/aggTrades?symbol='+symbol+'&limit=650',4100)
@@ -307,9 +308,11 @@ async function scan():Promise<RadarResult>{
     const ignition=spotIgnition(coin,whale,liquidityHistory.get(coin.symbol)||null);
     const updatedScore=Math.max(0,Math.min(100,
       coin.outlook24h.rankScore+edge.adjustment+ignition.adjustment));
-    const state=coin.outlook24h.state==='AVOID'?'AVOID' as const:
-      updatedScore>=65&&coin.outlook24h.takerBuyShare12>=.53&&coin.outlook24h.volumeRatio24>=1?
-      'HIGH' as const:updatedScore>=45?'POSSIBLE' as const:'AVOID' as const;
+    const state=coin.outlook24h.hardVeto?'AVOID' as const:
+      updatedScore>=63&&coin.outlook24h.takerBuyShare12>=.515&&
+      coin.outlook24h.volumeRatio24>=.85&&coin.buyShare>=.51?
+      'HIGH' as const:updatedScore>=38||coin.outlook24h.fastLane?
+      'POSSIBLE' as const:'AVOID' as const;
     const outlook24h={...coin.outlook24h,rankScore:updatedScore,state,
       reason:[...(ignition.state==='FLOW_CONFIRMED'?[ignition.evidence]:[]),
         ...edge.evidence,coin.outlook24h.reason].filter(Boolean).slice(0,2).join(' · ')};
@@ -324,14 +327,15 @@ async function scan():Promise<RadarResult>{
     const snapshot=spotLiquiditySample(coin,sampledAt);
     if(snapshot)liquidityHistory.set(coin.symbol,snapshot);
   }
-  const untouched=eligible.slice(10);
+  const untouched=eligible.slice(12);
   const candidates=[...examined,...untouched]
-    .filter(c=>c.outlook24h.rankScore>=45&&
+    .filter(c=>c.outlook24h.state!=='AVOID'&&
+      (c.outlook24h.rankScore>=38||c.outlook24h.fastLane)&&
       c.spotIgnition?.state!=='FADING'&&
       c.edge?.leverage?.state!=='CROWDED_LONGS'&&
       c.edge?.whale?.state!=='SELL_PRESSURE')
     .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore)
-    .slice(0,12);
+    .slice(0,14);
   const forwardAudit=await recordAndEvaluateSpot(candidates,async(symbol,dueAt)=>{
     const startTime=Math.floor(dueAt/60000)*60000;
     return getJson('/api/v3/klines?symbol='+encodeURIComponent(symbol)+
@@ -339,7 +343,7 @@ async function scan():Promise<RadarResult>{
   }).catch(()=>undefined);
   return {ok:true,source:'Binance public Spot · closed 1m candles + depth',
     asOf:Date.now(),universe,scanned:initial.length,depthChecked,
-    candidates,forwardAudit,method:'Binance Spot meme-first universe · closed 1h/1m taker flow · persistent bid-depth scans · optional large trades and futures veto',
+    candidates,forwardAudit,method:'Binance Spot early watch + verified buy activity · closed 1m/1h candles · persistent bid-depth and whale confirmation',
     warning:'Persistent buy-flow signals require separate fresh scans. Process memory resets on redeploy. No future/hidden orders, pump guarantee or auto-trades.'};
 }
 export async function GET(){

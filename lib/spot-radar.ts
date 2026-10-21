@@ -7,7 +7,7 @@ export type Book={bidShare:number;spreadBps:number;bidWallShare:number;askWallSh
 // Separate 24h ranking: hourly candles are observational evidence, never a
 // calibrated probability that a pump will occur.
 export type Spot24hOutlook={
-  rankScore:number;state:'HIGH'|'POSSIBLE'|'AVOID';
+  rankScore:number;state:'HIGH'|'POSSIBLE'|'AVOID';hardVeto:boolean;fastLane?:boolean;
   reason:string;hourlyChange24:number;volumeRatio24:number;
   takerBuyShare12:number;freshAt:number;
 };
@@ -180,9 +180,9 @@ export function scoreCoin(
   const nearLevel=distancePct>=-.5&&distancePct<=1.35;
   const depthOk=book!==null&&book.bidShare>=.53&&book.spreadBps<=25;
   const phase:Candidate['phase']=extended?'EXTENDED':
-    score>=72&&buyConfirmed&&nearLevel&&depthOk&&!trapRisk&&netRR>=1.15?'EARLY':
-    score>=54&&buyShare>=.52&&volumeImpulse>=1.2&&!trapRisk&&
-    change15m>=-.5&&netRR>=.5?'BUILDING':'WATCH';
+    score>=65&&buyConfirmed&&nearLevel&&depthOk&&!trapRisk&&netRR>=1.0?'EARLY':
+    score>=46&&buyShare>=.51&&volumeImpulse>=1.15&&!trapRisk&&
+    change15m>=-.7&&netRR>=.35?'BUILDING':'WATCH';
   const reasons:string[]=[];
   if(volumeImpulse>=1.3)reasons.push('تسارع تداول فعلي ×'+volumeImpulse.toFixed(1));
   if(buyShare>=.53)reasons.push('شراء منفّذ '+Math.round(buyShare*100)+'٪');
@@ -279,7 +279,7 @@ export function score24hOutlook(
   if(distanceToBreakout>=0&&distanceToBreakout<=3)reasons.push('قرب مقاومة مهمة');
   if(coin.absorption.state==='BUY_RECLAIM')reasons.push('امتصاص بيع ثم عودة شراء');
   if(relative24!==null&&relative24>=2)reasons.push('قوة أعلى من بيتكوين');
-  return {rankScore,state,reason:reasons.slice(0,2).join(' · ')||
+  return {rankScore,state,hardVeto:alreadyRunning||coin.trapRisk,reason:reasons.slice(0,2).join(' · ')||
     'متابعة قوة السعر والسيولة',hourlyChange24,volumeRatio24,
     takerBuyShare12,freshAt:h[n-1].time+HOUR};
 }

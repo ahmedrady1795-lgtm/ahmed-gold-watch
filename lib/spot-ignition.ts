@@ -34,10 +34,10 @@ export function spotIgnition(
   const single=(state:SpotIgnition['state'],evidence:string,adjustment=0):
     SpotIgnition=>({state,buyQuote5m,observations:1,intervalSeconds:null,evidence,adjustment});
   if(!snap)return single('NO_EVIDENCE','عمق السوق أو حداثة البيانات غير كافية');
-  const active=snap.buyShare>=.55&&snap.volumeImpulse>=1.35&&
-    snap.flowDelta5m>=Math.max(1300,coin.volume24h*.00045)&&
-    snap.bidShare>=.54&&snap.spreadBps<=20&&!snap.trapRisk&&
-    coin.change15m<4&&coin.change24h<12;
+  const active=snap.buyShare>=.53&&snap.volumeImpulse>=1.2&&
+    snap.flowDelta5m>=Math.max(1000,coin.volume24h*.00025)&&
+    snap.bidShare>=.51&&snap.spreadBps<=24&&!snap.trapRisk&&
+    coin.change15m<5&&coin.change24h<14;
   if(whale?.state==='SELL_PRESSURE')
     return single('FADING','بيع كبير منفّذ يناقض ضغط الشراء',-18);
   if(!previous||now-previous.sampledAt<65000||
@@ -46,15 +46,15 @@ export function spotIgnition(
     return single(active?'BUILDING':'NO_EVIDENCE',active?
       'شراء منفّذ وعمق داعم؛ نحتاج فحصًا آخر':'أدلة التدفق غير مكتملة');
   const intervalSeconds=Math.round((now-previous.sampledAt)/1000);
-  const priorActive=previous.buyShare>=.53&&previous.volumeImpulse>=1.2&&
-    previous.flowDelta5m>0&&previous.bidShare>=.52&&
-    previous.spreadBps<=20&&!previous.trapRisk;
+  const priorActive=previous.buyShare>=.51&&previous.volumeImpulse>=1.1&&
+    previous.flowDelta5m>0&&previous.bidShare>=.49&&
+    previous.spreadBps<=24&&!previous.trapRisk;
   const priceMove=(snap.price/previous.price-1)*100;
   if(priorActive&&(snap.bidShare<.43||snap.buyShare<.43||
        snap.trapRisk||priceMove< -2.5))
     return {state:'FADING',buyQuote5m,observations:2,intervalSeconds,
       evidence:'دعم دفتر الطلبات أو ضغط الشراء تراجع بين الفحصين',adjustment:-18};
-  const confirmed=active&&priorActive&&priceMove>=-1.2&&priceMove<=2.7&&
+  const confirmed=active&&priorActive&&priceMove>=-1.5&&priceMove<=3.5&&
     coin.outlook24h?.takerBuyShare12!==undefined&&
     coin.outlook24h.takerBuyShare12>=.51;
   if(confirmed)return {state:'FLOW_CONFIRMED',buyQuote5m,observations:2,

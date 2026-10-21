@@ -2,6 +2,7 @@
 
 import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type Candidate} from './spot-radar';
 import {memeSpotSymbols,marketGroup,highUpsideFocus} from './spot-high-upside';
+import {rankSpotFastLane} from './spot-aggressive';
 
 type Ticker={symbol:string;quoteVolume:string;priceChangePercent:string};
 type MarketInfo={symbols?:Array<{symbol:string;status:string;quoteAsset:string;isSpotTradingAllowed?:boolean;permissions?:string[]}>};
@@ -108,8 +109,11 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
     .sort((a,b)=>b.score-a.score).slice(0,12);
   const betaLane=[...scans].filter(c=>marketGroup(c.symbol)==='HIGH_BETA')
     .sort((a,b)=>b.score-a.score).slice(0,8);
-  const ranked=Array.from(new Map([...memeLane,...betaLane,
-    ...[...scans].sort((a,b)=>b.score-a.score)].map(c=>[c.symbol,c])).values()).slice(0,22);
+  const freshFlow=[...scans].filter(c=>!c.trapRisk&&c.buyShare>=.53&&
+    c.volumeImpulse>=1.25&&c.flowDelta5m>1200&&c.change24h<12)
+    .sort((a,b)=>b.flowDelta5m-a.flowDelta5m).slice(0,10);
+  const ranked=Array.from(new Map([...freshFlow,...memeLane,...betaLane,
+    ...[...scans].sort((a,b)=>b.score-a.score)].map(c=>[c.symbol,c])).values()).slice(0,26);
   let depthChecked=0;
   const refined=await parallel(ranked,6,async item=>{
     try{
@@ -131,18 +135,14 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
       const outlook=score24hOutlook(coin,hourly,btc24);
       if(!outlook)return null;
       const highUpside=highUpsideFocus(coin,hourly);
-      const rankScore=Math.min(100,outlook.rankScore+(highUpside?.boost??0));
-      const state=outlook.state==='AVOID'?'AVOID' as const:
-        rankScore>=65&&outlook.takerBuyShare12>=.53&&outlook.volumeRatio24>=1?
-        'HIGH' as const:rankScore>=45?'POSSIBLE' as const:'AVOID' as const;
-      const outlook24h={...outlook,rankScore,state,
-        reason:highUpside?.boost?[highUpside.reason,outlook.reason].join(' · '):outlook.reason};
+      const outlook24h=rankSpotFastLane(coin,outlook,highUpside?.boost??0);
+      if(highUpside?.boost)outlook24h.reason=[highUpside.reason,outlook24h.reason].join(' · ');
       return {...coin,outlook24h,highUpside};
     }catch{return null;}
   });
   if(!inspected.length)throw Error('لا يوجد تاريخ ساعة مكتمل للتحليل خلال 24 ساعة.');
   const candidates=inspected.filter(x=>x.outlook24h.state!=='AVOID')
-    .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore).slice(0,12);
+    .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore).slice(0,14);
   return {ok:true,asOf:Date.now(),source:'Binance Spot · direct browser feed ('+host.replace('https://','')+')',
     universe:all.length,scanned:scans.length,depthChecked,candidates,
     method:'Direct Binance · verified meme-first Spot markets · 1h true range + 24h volume · buyer flow',
