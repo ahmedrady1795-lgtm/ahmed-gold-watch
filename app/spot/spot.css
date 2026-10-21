@@ -9,7 +9,7 @@
 .spot-head-state{display:flex;flex-direction:column;align-items:flex-end;gap:7px;margin-top:11px;flex-shrink:0}
 .spot-head-state small{color:#98acbf;font-size:11px}.spot-live{font-size:12px;border:1px solid #576273;background:#131d2b;border-radius:99px;padding:4px 12px}.spot-live.ok{color:#76e4c0;border-color:#356953}.spot-live.warn{color:#edc387;border-color:#746347}
 .spot-head-state button{background:#193243;border:1px solid #315e67;color:#d6f8f0;border-radius:10px;padding:7px 12px;font-weight:700;font-size:12px}.spot-head-state button:disabled{opacity:.5;cursor:wait}
-.spot-summary{max-width:1500px;margin:0 auto 20px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.spot-summary{max-width:1500px;margin:0 auto 20px;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
 .spot-summary>div{background:linear-gradient(145deg,#132333,#0e1b29);border:1px solid #293e4d;border-radius:15px;padding:17px 19px}
 .spot-summary small,.spot-summary span{display:block;color:#95a9bd;font-size:11px}.spot-summary strong{display:block;font-size:30px;font-weight:800;color:#f0f8ff;line-height:1.35;margin:4px 0}
 .spot-workspace{max-width:1500px;margin:auto;display:grid;grid-template-columns:minmax(330px,41%) minmax(0,1fr);gap:15px;align-items:start}
@@ -58,3 +58,19 @@
 .spot-warning strong{font-size:12px}.spot-empty{padding:23px 12px;text-align:center;color:#a0afbd;font-size:12px}
 @media(max-width:880px){.spot-workspace{grid-template-columns:1fr}.spot-detail-panel{order:2}.spot-list-panel{order:1}.spot-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:530px){.spot-page{padding:16px 10px 55px}.spot-head{flex-direction:column;gap:11px}.spot-head h1{font-size:29px}.spot-head-state{align-items:flex-start;margin:0;flex-direction:row;flex-wrap:wrap}.spot-head-state small{align-self:center}.spot-summary{gap:7px}.spot-summary>div{padding:11px}.spot-summary strong{font-size:23px}.spot-list-panel{padding:13px 9px}.spot-detail-panel{padding:12px 9px}.spot-pair{grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr) 48px;gap:3px 5px;padding:9px 6px}.spot-pair-main b,.spot-pair-price b{font-size:12px}.spot-filters button{padding:6px;font-size:10px}.spot-chart{margin-top:12px}.spot-metrics>div{padding:9px}.spot-metrics b{font-size:17px}.spot-detail-header h2{font-size:24px}.spot-binance-link{padding:6px}.spot-levels h3{flex-direction:column;gap:2px}}
+
+/* Sell-pressure absorption: observational signal, deliberately distinct from a buy command. */
+.spot-absorption{border:1px solid #2d5263;border-radius:12px;
+  background:linear-gradient(135deg,#132c39,#0c1d2b);padding:14px 15px;margin:16px 0}
+.spot-absorption .spot-panel-title{flex-wrap:wrap}
+.spot-absorption .spot-panel-title h3{font-size:14px;color:#d5eff5}
+.spot-absorption-status{display:block;margin:10px 0 12px;padding:9px 10px;
+  border:1px solid #3d4e5f;border-radius:8px;color:#b7c9d6;font-size:12px}
+.spot-absorption-status.BUY_RECLAIM{border-color:#328972;background:#123c38;color:#91f6d5}
+.spot-absorption-status.SELL_ABSORPTION{border-color:#9a7640;background:#342e1b;color:#f3d394}
+.spot-absorption-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:11px}
+.spot-absorption-stats>div{padding:8px;border:1px solid #324657;border-radius:8px;background:#0a1a27}
+.spot-absorption-stats small,.spot-absorption>small{display:block;font-size:10px;color:#97aebf;line-height:1.7}
+.spot-absorption-stats b{display:block;margin-top:4px;font-size:15px;color:#e2f6ef;direction:ltr;text-align:right;font-variant-numeric:tabular-nums}
+@media(max-width:1100px){.spot-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:880px){.spot-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
