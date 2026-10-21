@@ -1,5 +1,6 @@
 import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type Candidate} from '../../../lib/spot-radar';
 import {largeTradeFootprint,futuresCrowding,blendEdge} from '../../../lib/spot-edge';
+import {marketGroup,memeSpotSymbols,highUpsideFocus} from '../../../lib/spot-high-upside';
 import {recordAndEvaluateSpot,type ForwardResult} from '../../../lib/spot-forward-audit';
 
 export const dynamic='force-dynamic';
@@ -80,10 +81,10 @@ async function getJson(path:string,timeoutMs=6800):Promise<unknown>{
   throw Error(path.split('?')[0]+': '+previousError);
 }
 const CORE_SYMBOLS=[
-  'BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','ADAUSDT',
-  'LINKUSDT','AVAXUSDT','SUIUSDT','TRXUSDT','NEARUSDT','LTCUSDT','DOTUSDT',
-  'UNIUSDT','APTUSDT','ARBUSDT','OPUSDT','PEPEUSDT','WIFUSDT','INJUSDT',
-  'AAVEUSDT','SEIUSDT','TIAUSDT','FILUSDT','ATOMUSDT','FETUSDT','RENDERUSDT'
+  ...memeSpotSymbols(), // verify live Spot before analyzing: no invented listings
+  'SUIUSDT','NEARUSDT','APTUSDT','ARBUSDT','OPUSDT','SEIUSDT',
+  'TIAUSDT','FILUSDT','FETUSDT','RENDERUSDT','INJUSDT',
+  'BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT'
 ];
 type PriceRow={symbol:string;price:string};
 const stableBases=new Set(['USDC','FDUSD','TUSD','DAI','USDE','EUR','EURI',
@@ -165,7 +166,12 @@ function pick(tickers:Ticker[],allowed:Set<string>):Ticker[]{
     !stables.has(t.symbol.replace(/USDT$/,''))&&
     Number.isFinite(+t.quoteVolume)&&Number.isFinite(+t.priceChangePercent)&&
     +t.quoteVolume>=1500000&&+t.priceChangePercent>=-9&&+t.priceChangePercent<=22);
-  const high=[...eligible].sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,12);
+  const memes=eligible.filter(t=>marketGroup(t.symbol)==='MEME')
+    .sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,28);
+  const beta=eligible.filter(t=>marketGroup(t.symbol)==='HIGH_BETA'&&
+    +t.quoteVolume>=1800000&&+t.quoteVolume<220000000)
+    .sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,16);
+  const high=[...eligible].sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,8);
   const middle=eligible.filter(t=>+t.quoteVolume<=120000000&&+t.quoteVolume>=2000000&&
     +t.priceChangePercent>=-5&&+t.priceChangePercent<=6)
     .sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,20);
@@ -177,7 +183,8 @@ function pick(tickers:Ticker[],allowed:Set<string>):Ticker[]{
     .sort((a,b)=>a.symbol.localeCompare(b.symbol));
   const window=Math.floor(Date.now()/300000),rotated=quiet.length
     ?[...quiet.slice(window%quiet.length),...quiet.slice(0,window%quiet.length)].slice(0,22):[];
-  return Array.from(new Map([...high,...middle,...rotated,...trending].map(t=>[t.symbol,t])).values()).slice(0,64);
+  return Array.from(new Map([...memes,...beta,...rotated,...trending,...middle,...high]
+    .map(t=>[t.symbol,t])).values()).slice(0,64);
 }
 async function batched<T,R>(items:T[],size:number,task:(item:T)=>Promise<R|null>):Promise<R[]>{
   const out:R[]=[];
@@ -220,14 +227,22 @@ async function scan():Promise<RadarResult>{
   });
   if(!initial.length)throw Error('No qualified fresh Spot candles from '+chosen.length+
     ' pairs; '+recentProblems.slice(-3).join(' | '));
-  const byMomentum=[...initial].sort((a,b)=>b.score-a.score).slice(0,15);
+  // Reserve dedicated analysis lanes for verified meme and high-beta markets.
+  // This prevents BTC/ETH sized 24h volume from taking every analyst slot.
+  const memeLane=[...initial].filter(c=>marketGroup(c.symbol)==='MEME'&&
+    c.volume24h>=1500000&&!c.trapRisk)
+    .sort((a,b)=>b.score-a.score).slice(0,14);
+  const betaLane=[...initial].filter(c=>marketGroup(c.symbol)==='HIGH_BETA'&&
+    c.volume24h>=1500000&&!c.trapRisk)
+    .sort((a,b)=>b.score-a.score).slice(0,8);
+  const byMomentum=[...initial].sort((a,b)=>b.score-a.score).slice(0,12);
   // A fixed "already-moving" list misses the first hour of new rotation.
   // Reserve eight slots for liquid, relatively quiet symbols before breakout.
   const quiet=[...initial].filter(c=>c.volume24h>=2_000_000&&
     c.change24h>=-3&&c.change24h<=5&&c.change15m<1.5&&!c.trapRisk)
     .sort((a,b)=>b.volumeImpulse-a.volumeImpulse).slice(0,12);
-  const shortlist=Array.from(new Map([...byMomentum,...quiet].map(c=>[c.symbol,c]))
-    .values()).slice(0,23);
+  const shortlist=Array.from(new Map([...memeLane,...betaLane,...quiet,...byMomentum]
+    .map(c=>[c.symbol,c])).values()).slice(0,26);
   let depthChecked=0;
   const detailed=await batched(shortlist,6,async item=>{
     try{
@@ -250,9 +265,18 @@ async function scan():Promise<RadarResult>{
       try{
         const raw=await getJson('/api/v3/klines?symbol='+
           encodeURIComponent(coin.symbol)+'&interval=1h&limit=75',5500);
-        const outlook24h=score24hOutlook(coin,parseHourlyKlines(raw),btc24h);
-        if(!outlook24h)return null;
-        return {...coin,outlook24h};
+        const hourly=parseHourlyKlines(raw);
+        const outlook=score24hOutlook(coin,hourly,btc24h);
+        if(!outlook)return null;
+        const highUpside=highUpsideFocus(coin,hourly);
+        const boosted=Math.min(100,outlook.rankScore+(highUpside?.boost??0));
+        const state=outlook.state==='AVOID'?'AVOID' as const:
+          boosted>=65&&outlook.takerBuyShare12>=.53&&outlook.volumeRatio24>=1?
+          'HIGH' as const:boosted>=45?'POSSIBLE' as const:'AVOID' as const;
+        const outlook24h={...outlook,rankScore:boosted,state,
+          reason:highUpside?.boost?
+            [highUpside.reason,outlook.reason].filter(Boolean).join(' · '):outlook.reason};
+        return {...coin,outlook24h,highUpside};
       }catch(e){
         problem(coin.symbol+' 24h bars '+String(e instanceof Error?e.message:e));
         return null;
@@ -266,7 +290,7 @@ async function scan():Promise<RadarResult>{
   const eligible=candidatesWithHourly
     .filter(c=>c.outlook24h.state!=='AVOID')
     .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore);
-  const examined=await batched(eligible.slice(0,10),4,async coin=>{
+  const examined=await batched(eligible.slice(0,12),4,async coin=>{
     const symbol=encodeURIComponent(coin.symbol);
     const [tapeRaw,oiRaw,premiumRaw]=await Promise.all([
       getJson('/api/v3/aggTrades?symbol='+symbol+'&limit=650',4100)
@@ -284,7 +308,7 @@ async function scan():Promise<RadarResult>{
       reason:[...edge.evidence,coin.outlook24h.reason].filter(Boolean).slice(0,2).join(' · ')};
     return {...coin,outlook24h,edge};
   });
-  const untouched=eligible.slice(10);
+  const untouched=eligible.slice(12);
   const candidates=[...examined,...untouched]
     .filter(c=>c.outlook24h.rankScore>=45&&
       c.edge?.leverage?.state!=='CROWDED_LONGS'&&
@@ -298,7 +322,7 @@ async function scan():Promise<RadarResult>{
   }).catch(()=>undefined);
   return {ok:true,source:'Binance public Spot · closed 1m candles + depth',
     asOf:Date.now(),universe,scanned:initial.length,depthChecked,
-    candidates,forwardAudit,method:'Verified Binance Spot closed 1h and 1m · optional executed aggregated trades · optional USD-M futures OI/funding · anti-chase',
+    candidates,forwardAudit,method:'Binance Spot verified meme-first universe · 1h volatility/24h relative volume · 1m taker flows · optional whale prints/futures veto',
     warning:'Spot ranking includes verifiable large trades; futures evidence is optional and can be absent. Neither exposes secret whale orders nor guarantees a 24h pump. No auto-trades.'};
 }
 export async function GET(){
