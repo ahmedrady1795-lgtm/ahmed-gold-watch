@@ -290,7 +290,7 @@ async function scan():Promise<RadarResult>{
   const eligible=candidatesWithHourly
     .filter(c=>c.outlook24h.state!=='AVOID')
     .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore);
-  const examined=await batched(eligible.slice(0,12),4,async coin=>{
+  const examined=await batched(eligible.slice(0,10),4,async coin=>{
     const symbol=encodeURIComponent(coin.symbol);
     const [tapeRaw,oiRaw,premiumRaw]=await Promise.all([
       getJson('/api/v3/aggTrades?symbol='+symbol+'&limit=650',4100)
@@ -308,7 +308,7 @@ async function scan():Promise<RadarResult>{
       reason:[...edge.evidence,coin.outlook24h.reason].filter(Boolean).slice(0,2).join(' · ')};
     return {...coin,outlook24h,edge};
   });
-  const untouched=eligible.slice(12);
+  const untouched=eligible.slice(10);
   const candidates=[...examined,...untouched]
     .filter(c=>c.outlook24h.rankScore>=45&&
       c.edge?.leverage?.state!=='CROWDED_LONGS'&&
