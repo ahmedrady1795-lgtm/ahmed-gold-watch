@@ -2,10 +2,11 @@
 
 import {useEffect,useMemo,useState} from 'react';
 import type {Candle,Candidate} from '../../lib/spot-radar';
+import {scanSpotInBrowser} from '../../lib/client-spot-radar';
 import './spot.css';
 
 type Radar={ok:true;source:string;asOf:number;universe:number;scanned:number;
-  depthChecked:number;candidates:Candidate[];cacheAgeMs?:number};
+  depthChecked:number;candidates:Candidate[];cacheAgeMs?:number;warning?:string};
 type Filter='ALL'|'EARLY'|'BUILDING'|'ABSORPTION'|'EXTENDED';
 
 const fmt=(v:number)=>Number.isFinite(v)?v.toLocaleString('en-US',
@@ -65,7 +66,24 @@ export default function SpotPage(){
         if(!r.ok||!j?.ok)throw Error(j?.message||'خدمة Binance Spot غير متاحة حالياً');
         if(!closed){setData(j as Radar);setError('');
           setSelected(previous=>j.candidates.some((c:Candidate)=>c.symbol===previous)?previous:(j.candidates[0]?.symbol||''));}
-      }catch(e){if(!closed){setError(e instanceof Error?e.message:'تعذر التحديث');setData(null);}}
+      }catch(e){
+        if(closed)return;
+        const serverError=e instanceof Error?e.message:'تعذر التحديث';
+        try{
+          const direct=await scanSpotInBrowser();
+          if(!closed){
+            setData(direct);setError('');
+            setSelected(previous=>direct.candidates.some((c:Candidate)=>c.symbol===previous)
+              ?previous:(direct.candidates[0]?.symbol||''));
+          }
+        }catch(fallbackError){
+          if(!closed){
+            setData(null);
+            setError('خادم Binance: '+serverError+' · اتصال المتصفح: '+
+              (fallbackError instanceof Error?fallbackError.message:'غير متاح'));
+          }
+        }
+      }
       finally{inFlight=false;if(!closed)setBusy(false);}
     };
     void load();
@@ -89,7 +107,9 @@ export default function SpotPage(){
       </div>
       <div className="spot-head-state">
         <span className={'spot-live '+(data&&!old?'ok':'warn')}>{data&&!old?'● بيانات سوق حديثة':'● بانتظار بيانات موثوقة'}</span>
-        <small>{data?'آخر مسح '+new Date(data.asOf).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}):'مصدر البيانات: Binance Spot'}</small>
+        <small>{data?data.source+' · آخر مسح '+
+          new Date(data.asOf).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})
+          :'مصدر البيانات: Binance Spot'}</small>
         <button type="button" onClick={()=>setManualRefresh(x=>x+1)} disabled={busy}>{busy?'جاري فحص السوق…':'↻ إعادة فحص'}</button>
       </div>
     </header>
@@ -104,6 +124,7 @@ export default function SpotPage(){
 
     {error&&<div className="spot-warning" role="alert"><strong>الرادار متوقف عن إصدار ترشيحات</strong><span>{error}</span></div>}
     {old&&<div className="spot-warning" role="status">بيانات التحليل قديمة، لا تعتبر أي مرشح إشارة نشطة حتى ينجح التحديث.</div>}
+    {data?.warning&&<div className="spot-warning" role="status">{data.warning}</div>}
     {!data&&!error&&<div className="spot-empty">جارٍ جمع الأدلة من صفقات Binance الحقيقية ودفتر الأوامر…</div>}
 
     {data&&<div className="spot-workspace">
