@@ -34,6 +34,7 @@ const after=step({prior:withBreak,now:start+240500,asset:'GOLD',
 assert.equal(after[0].status,'TARGET');
 assert.equal(after[1].status,'TARGET');
 assert.equal(score(after,'GOLD').targetRate,100);
+assert.equal(score(after,'GOLD').hits,1,'confirmed breakout counted once');
 assert.equal(score(after,'GOLD').averageLagSeconds,3);
 const ambiguous=step({prior:issued,now:start+240000,asset:'GOLD',source:'same-provider',
  price:100,signal:{phase:'WATCH',side:'WAIT',sourceAt:null,trigger:null,invalidation:null,targets:[]},
