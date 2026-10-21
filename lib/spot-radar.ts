@@ -7,7 +7,8 @@ export type Candidate={
   volumeImpulse:number;buyShare:number;relative15m:number|null;change15m:number;
   flowDelta5m:number;flowShiftPct:number;rangeCompression:number;trapRisk:boolean;
   book:Book|null;breakout:number;distancePct:number;invalidation:number;
-  target1:number;target2:number;reasons:string[];warnings:string[];
+  target1:number;target2:number;estimatedCostPct:number;netRR:number;
+  reasons:string[];warnings:string[];
   candles:Candle[];
 };
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
@@ -90,6 +91,13 @@ export function scoreCoin(
   const invalidation=Math.min(lastLow-atr*.2,price-atr*1.2);
   const target1=Math.max(price+atr*1.5,breakout+atr*1.2);
   const target2=target1+atr*1.6;
+  // Paper-only friction assumption: 10bps fee on each side + 5bps total
+  // slippage, plus one observed spread. Actual VIP/BNB fees may differ.
+  const estimatedCostPct=(25+(book?.spreadBps??12))/100;
+  const totalFriction=price*estimatedCostPct/100;
+  const netReward=target1-price-totalFriction;
+  const netRisk=price-invalidation+totalFriction;
+  const netRR=netRisk>0?netReward/netRisk:-1;
   const extended=distancePct<-.018*100||change15m>6||change24h>16;
   let score=0;
   score+=clamp((volumeImpulse-0.8)/3.2,0,1)*25;
@@ -106,12 +114,13 @@ export function scoreCoin(
   if(extended)score-=24;
   if(change15m<-.8)score-=14;
   if(trapRisk)score-=12;
+  if(netRR<1.15)score-=16;
   score=Math.round(clamp(score,0,100));
   const buyConfirmed=buyShare>=.55&&volumeImpulse>=1.6;
   const nearLevel=distancePct>=-.5&&distancePct<=1.35;
   const depthOk=book!==null&&book.bidShare>=.53&&book.spreadBps<=25;
   const phase:Candidate['phase']=extended?'EXTENDED':
-    score>=72&&buyConfirmed&&nearLevel&&depthOk&&!trapRisk?'EARLY':
+    score>=72&&buyConfirmed&&nearLevel&&depthOk&&!trapRisk&&netRR>=1.15?'EARLY':
     score>=54&&buyShare>=.52&&volumeImpulse>=1.2?'BUILDING':'WATCH';
   const reasons:string[]=[];
   if(volumeImpulse>=1.3)reasons.push('تسارع تداول فعلي ×'+volumeImpulse.toFixed(1));
@@ -124,6 +133,7 @@ export function scoreCoin(
   const warnings:string[]=[];
   if(extended)warnings.push('السعر ممتد؛ خطر مطاردة الارتفاع');
   if(trapRisk)warnings.push('ذيول علوية مرتفعة: احتمال تصريف أو فخ سيولة');
+  if(netRR<1.15)warnings.push('الهدف الأول ضعيف بعد تقدير الرسوم والانزلاق والسبريد');
   if(volumeImpulse>1.8&&buyShare>.56&&Math.abs(change15m)<.4)
     warnings.push('شراء نشط بلا تقدم سعري: قد يكون العرض يمتص الشراء');
   if(book===null)warnings.push('عمق دفتر الأوامر غير مؤكد');
@@ -134,5 +144,6 @@ export function scoreCoin(
     freshAt:candles[n-1].time+60000,volumeImpulse,buyShare,relative15m,
     flowDelta5m,flowShiftPct,rangeCompression,trapRisk,
     change15m,book,breakout,distancePct,invalidation,target1,target2,
+    estimatedCostPct,netRR,
     reasons,warnings,candles:candles.slice(-70)};
 }
