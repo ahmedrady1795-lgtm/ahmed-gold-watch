@@ -5,7 +5,10 @@ const command=fs.readFileSync('components/AICommandCenter.tsx','utf8');
 const css=fs.readFileSync('app/workspace.css','utf8');
 assert.match(page,/className="sniper-home-head"/,'single visible Qannas masthead');
 assert.match(page,/href="#market-forecast"/,'jump to actual M1 chart');
-assert.match(page,/href="#sniper-performance"/,'jump to TP scorecard');
+assert.doesNotMatch(page,/href="#sniper-performance"/,'no performance navigation on the streamlined cockpit');
+const m15=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
+assert.doesNotMatch(m15,/sniper-m15-results-trigger|sniper-m15-results-overlay|نتائج القناص/,
+ 'hide the performance panel and its trigger from gold and BTC');
 assert.match(page,/id="market-news"/,'news remains accessible below the chart');
 assert.ok(page.indexOf('<AICommandCenter')<page.indexOf('<NewsCommandCenter'),
  'chart-first surface precedes optional macro ticker');
