@@ -51,7 +51,8 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
     'AAVEUSDT','NEARUSDT','OPUSDT','ARBUSDT','APTUSDT','LTCUSDT','WIFUSDT'];
   const windowIndex=Math.floor(Date.now()/180000),sorted=[...new Set(all)].sort();
   const start=sorted.length?windowIndex%sorted.length:0;
-  const names=[...new Set([...anchors,...sorted.slice(start,start+55),
+  const known=new Set(sorted);
+  const names=[...new Set([...anchors.filter(x=>known.has(x)),...sorted.slice(start,start+55),
     ...sorted.slice(0,Math.max(0,start+55-sorted.length))])].slice(0,68);
   const batches=Array.from({length:Math.ceil(names.length/20)},
     (_,i)=>names.slice(i*20,i*20+20));
