@@ -14,6 +14,8 @@ RUN node tests/sniper-m15-snapshot.cjs && node tests/sniper-m15-forward-proof.cj
 RUN node tests/gc-futures-feed.cjs && node tests/institutional-preparation-radar.cjs && node tests/gold-mt5-dom.cjs && node tests/gold-liquidity-radar.mjs && node tests/sniper-m15-walkforward.cjs && node tests/order-flow-microstructure.cjs && node tests/radar-shadow-score.cjs && node tests/order-flow-radar.mjs && node tests/sniper-radar-next-candle.cjs
 # Spot liquidity and absorption checks are mandatory before publishing the dashboard.
 RUN node tests/spot-radar.cjs
+# Nonblocking upstream probes distinguish API outages from algorithm bugs.
+RUN node scripts/spot-market-probe.mjs
 RUN npm run build
 
 FROM public.ecr.aws/docker/library/node:22-alpine AS runner
