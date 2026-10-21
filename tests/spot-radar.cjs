@@ -26,6 +26,11 @@ assert.ok(scored.volumeImpulse>3);
 assert.ok(scored.buyShare>.6);
 assert.ok(scored.candles.length>=60,'Detail re-scoring requires full history');
 assert.ok(scored.invalidation<scored.price);
+assert.ok(scored.estimatedCostPct>=.25,'Round-trip fee and slip are never silently free');
+assert.ok(Number.isFinite(scored.netRR),'Net reward/risk is finite');
+assert.ok(scored.netRR<((scored.target1-scored.price)/(scored.price-scored.invalidation)),
+  'Cost-adjusted reward/risk must be lower than gross');
+
 assert.ok(scored.target1>scored.price&&scored.target2>scored.target1);
 const noBook=out.scoreCoin('TESTUSDT',2.1,12000000,parsed,.03,null,now);
 assert.notEqual(noBook.phase,'EARLY','An EARLY signal requires valid depth');
