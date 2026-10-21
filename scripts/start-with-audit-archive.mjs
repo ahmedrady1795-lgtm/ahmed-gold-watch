@@ -17,6 +17,33 @@ try{
   console.info('[SNIPER-ARCHIVE] Restored checkpoint',archive.savedAt,'records',archive.records.length);
 }catch(e){console.warn('[SNIPER-ARCHIVE] Restore unavailable:',e.message);}
 const child=spawn('npm',['start'],{stdio:'inherit',env:process.env});
+// Nonblocking post-startup Spot proof. This also warms the market-data
+// cache before a user opens /spot and reports the actual failing stage.
+void (async()=>{
+  const port=Number(process.env.PORT)||3000;
+  const base='http://127.0.0.1:'+port;
+  for(let i=0;i<12;i++){
+    await new Promise(resolve=>setTimeout(resolve,2000));
+    try{
+      const ready=await fetch(base+'/api/live',{signal:AbortSignal.timeout(3000)});
+      if(!ready.ok)continue;
+      const r=await fetch(base+'/api/spot-radar',
+        {signal:AbortSignal.timeout(58000),cache:'no-store'});
+      const j=await r.json().catch(()=>null);
+      console.info('[SPOT-RADAR-STARTUP]',JSON.stringify({
+        httpStatus:r.status,ok:Boolean(j?.ok),source:j?.source??null,
+        scanned:j?.scanned??0,candidates:j?.candidates?.length??0,
+        detail:j?.detail??null,gateway:j?.gateway??null,
+        failedStage:j?.failedStage??null
+      }));
+      return;
+    }catch(e){
+      if(i===11)console.warn('[SPOT-RADAR-STARTUP] Probe unavailable:',
+        String(e instanceof Error?e.message:e).slice(0,220));
+    }
+  }
+})();
+
 const radar=spawn('node',['scripts/radar-shadow-worker.mjs'],{
  stdio:'inherit',env:process.env
 });
