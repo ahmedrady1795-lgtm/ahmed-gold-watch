@@ -2,7 +2,7 @@ import {summarizeAiReadiness} from '../../../lib/ai-readiness';
 import {evaluateProfessionalMove} from '../../../lib/professional-move';
 import {analyze,defaults,scalpAnalyze} from '../../../lib/engine';
 import {getMarketSnapshot,getMarketData,getQuoteData,getMt5FastSignal} from '../../../lib/market-hub';
-import {getBtcMarket} from '../../../lib/btc-market';
+import {getBtcMarket,peekFreshBtcMarket} from '../../../lib/btc-market';
 import {aiDecision} from '../../../lib/ai-analyst';
 import {getBtcLiquidity} from '../../../lib/liquidity-intelligence';
 import {getMotionIntelligence} from '../../../lib/motion-intelligence';
@@ -572,13 +572,22 @@ export async function GET(request:Request){
     const webIntelPromise=getWebMarketIntelligence(now).catch(()=>null);
     let [goldSnap,btc,liveBtc,liquidity]=await stage('initial-market-feeds',Promise.all([
       timedFeed('goldMarketMs',getMarketSnapshot()),
-      timedFeed('btcMarketMs',getBtcMarket()),
+      // BTC history is OPTIONAL to GOLD inference. A sleeping or blocked BTC
+      // venue must not take down a fresh, independently verified gold forecast.
+      timedFeed('btcMarketMs',optionalMarketEvidence(getBtcMarket(),5500)),
       timedFeed('btcSpotMs',liveBtcSpot()),
       timedFeed('btcLiquidityMs',optionalMarketEvidence(getBtcLiquidity(),3500))
     ]),18000);
     perf.btcLiquidityAvailable=Boolean(liquidity?.ok);
     perf.firstMarketFetchMs=Date.now()-perfStarted;
     let gm=goldSnap.market,quote=goldSnap.quote;
+    // Never fabricate candles or let a missing BTC venue certify BTC trades.
+    // Empty frames are deliberately rejected by the existing validation gates.
+    if(!btc){
+      btc=peekFreshBtcMarket(now)??{c1:[],c5:[],c15:[],c60:[],
+        source:'BTC_FEED_UNAVAILABLE',checkedAt:0};
+      detected.push('BTC historical feed timed out; independent GOLD analysis continues');
+    }
     if(!gm.pricesReady||!gm.newsReady){
       detected.push(...(gm.errors||[]));
       const forced=await stage('gold-market-fallback',getMarketData({force:true}),10000).catch(()=>null);
@@ -598,8 +607,13 @@ export async function GET(request:Request){
     gm=goldBasis.market;
     if(goldBasis.aligned)actions.push('مواءمة شموع COMEX proxy مع سعر XAU/USD الفعلي');
     if(!btc?.c1?.length){
-      btc=await stage('btc-market-fallback',getBtcMarket(true),8500);
-      actions.push('إعادة تحميل شموع BTC بالقوة');
+      const btcRecovery=await stage('btc-market-fallback',
+        optionalMarketEvidence(getBtcMarket(true),2800),3000).catch(()=>null);
+      if(btcRecovery){
+        btc=btcRecovery;actions.push('إعادة تحميل شموع BTC بالقوة');
+      }else{
+        detected.push('BTC closed candles unavailable; BTC signals remain unqualified');
+      }
     }
     if(!liveBtc){
       liveBtc=await stage('btc-spot-fallback',liveBtcSpot(),6000);
