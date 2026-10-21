@@ -121,7 +121,8 @@ export function scoreCoin(
   const depthOk=book!==null&&book.bidShare>=.53&&book.spreadBps<=25;
   const phase:Candidate['phase']=extended?'EXTENDED':
     score>=72&&buyConfirmed&&nearLevel&&depthOk&&!trapRisk&&netRR>=1.15?'EARLY':
-    score>=54&&buyShare>=.52&&volumeImpulse>=1.2?'BUILDING':'WATCH';
+    score>=54&&buyShare>=.52&&volumeImpulse>=1.2&&!trapRisk&&
+    change15m>=-.5&&netRR>=.5?'BUILDING':'WATCH';
   const reasons:string[]=[];
   if(volumeImpulse>=1.3)reasons.push('تسارع تداول فعلي ×'+volumeImpulse.toFixed(1));
   if(buyShare>=.53)reasons.push('شراء منفّذ '+Math.round(buyShare*100)+'٪');
