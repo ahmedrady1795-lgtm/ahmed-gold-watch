@@ -1,5 +1,6 @@
 import type {SpotEdge} from './spot-edge';
 import type {SpotIgnition} from './spot-ignition';
+import type {SpotAccumulation} from './spot-accumulation';
 import type {UpsideFocus} from './spot-high-upside';
 // Qannas Spot: auditable public-data signals, not knowledge of future orders.
 export type Candle={time:number;open:number;high:number;low:number;close:number;quoteVolume:number;buyQuote:number};
@@ -26,7 +27,7 @@ export type Candidate={
   book:Book|null;breakout:number;distancePct:number;invalidation:number;
   target1:number;target2:number;estimatedCostPct:number;netRR:number;
   reasons:string[];warnings:string[];outlook24h?:Spot24hOutlook;edge?:SpotEdge;highUpside?:UpsideFocus|null;
-  spotIgnition?:SpotIgnition;
+  spotIgnition?:SpotIgnition;accumulation?:SpotAccumulation;
   candles:Candle[];
 };
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));

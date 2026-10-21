@@ -5,6 +5,9 @@ on:
     paths:
       - 'lib/spot-ignition.ts'
       - 'lib/spot-aggressive.ts'
+      - 'lib/spot-accumulation.ts'
+      - 'tests/spot-accumulation.cjs'
+      - 'Dockerfile'
       - 'tests/spot-aggressive.cjs'
       - 'lib/spot-radar.ts'
       - 'app/api/spot-radar/route.ts'
@@ -23,6 +26,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Verify three-window buying acceleration
+        run: node tests/spot-accumulation.cjs
       - name: Check early-buying fast lane
         run: node tests/spot-aggressive.cjs
       - name: Verify two-snapshot real-buy-flow conditions

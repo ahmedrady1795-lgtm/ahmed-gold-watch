@@ -3,6 +3,7 @@
 import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type Candidate} from './spot-radar';
 import {memeSpotSymbols,marketGroup,highUpsideFocus} from './spot-high-upside';
 import {rankSpotFastLane} from './spot-aggressive';
+import {spotAccumulationPulse} from './spot-accumulation';
 
 type Ticker={symbol:string;quoteVolume:string;priceChangePercent:string};
 type MarketInfo={symbols?:Array<{symbol:string;status:string;quoteAsset:string;isSpotTradingAllowed?:boolean;permissions?:string[]}>};
@@ -109,10 +110,13 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
     .sort((a,b)=>b.score-a.score).slice(0,12);
   const betaLane=[...scans].filter(c=>marketGroup(c.symbol)==='HIGH_BETA')
     .sort((a,b)=>b.score-a.score).slice(0,8);
+  const coiled=[...scans].filter(c=>spotAccumulationPulse(c).flowCandidate)
+    .sort((a,b)=>spotAccumulationPulse(b).buyIntensity-
+      spotAccumulationPulse(a).buyIntensity).slice(0,8);
   const freshFlow=[...scans].filter(c=>!c.trapRisk&&c.buyShare>=.53&&
     c.volumeImpulse>=1.25&&c.flowDelta5m>1200&&c.change24h<12)
     .sort((a,b)=>b.flowDelta5m-a.flowDelta5m).slice(0,10);
-  const ranked=Array.from(new Map([...freshFlow,...memeLane,...betaLane,
+  const ranked=Array.from(new Map([...coiled,...freshFlow,...memeLane,...betaLane,
     ...[...scans].sort((a,b)=>b.score-a.score)].map(c=>[c.symbol,c])).values()).slice(0,26);
   let depthChecked=0;
   const refined=await parallel(ranked,6,async item=>{
@@ -135,9 +139,13 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
       const outlook=score24hOutlook(coin,hourly,btc24);
       if(!outlook)return null;
       const highUpside=highUpsideFocus(coin,hourly);
-      const outlook24h=rankSpotFastLane(coin,outlook,highUpside?.boost??0);
+      const accumulation=spotAccumulationPulse(coin);
+      const outlook24h=rankSpotFastLane(coin,outlook,
+        (highUpside?.boost??0)+accumulation.adjustment);
       if(highUpside?.boost)outlook24h.reason=[highUpside.reason,outlook24h.reason].join(' · ');
-      return {...coin,outlook24h,highUpside};
+      if(accumulation.state==='BUY_BUILDUP'||accumulation.state==='BUY_ABSORBED')
+        outlook24h.reason=[accumulation.reason,outlook24h.reason].filter(Boolean).slice(0,2).join(' · ');
+      return {...coin,outlook24h,highUpside,accumulation};
     }catch{return null;}
   });
   if(!inspected.length)throw Error('لا يوجد تاريخ ساعة مكتمل للتحليل خلال 24 ساعة.');

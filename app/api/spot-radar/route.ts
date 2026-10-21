@@ -2,6 +2,7 @@ import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type C
 import {largeTradeFootprint,futuresCrowding,blendEdge} from '../../../lib/spot-edge';
 import {spotLiquiditySample,spotIgnition,type SpotLiquiditySample} from '../../../lib/spot-ignition';
 import {rankSpotFastLane} from '../../../lib/spot-aggressive';
+import {spotAccumulationPulse} from '../../../lib/spot-accumulation';
 import {marketGroup,memeSpotSymbols,highUpsideFocus} from '../../../lib/spot-high-upside';
 import {recordAndEvaluateSpot,type ForwardResult} from '../../../lib/spot-forward-audit';
 
@@ -240,6 +241,11 @@ async function scan():Promise<RadarResult>{
     c.volume24h>=1500000&&!c.trapRisk)
     .sort((a,b)=>b.score-a.score).slice(0,8);
   const byMomentum=[...initial].sort((a,b)=>b.score-a.score).slice(0,14);
+  // Reserve slots for buyers accelerating over three DISJOINT five-minute
+  // windows, instead of only ranking coins that have already pumped.
+  const coiled=[...initial].filter(c=>spotAccumulationPulse(c).flowCandidate)
+    .sort((a,b)=>spotAccumulationPulse(b).buyIntensity-
+      spotAccumulationPulse(a).buyIntensity).slice(0,10);
   // Do not wait for 24h momentum when 1m executed flow has JUST started.
   const freshFlow=[...initial].filter(c=>!c.trapRisk&&c.buyShare>=.53&&
     c.volumeImpulse>=1.25&&c.flowDelta5m>1200&&c.change15m<3.5&&
@@ -249,7 +255,7 @@ async function scan():Promise<RadarResult>{
   const quiet=[...initial].filter(c=>c.volume24h>=2_000_000&&
     c.change24h>=-3&&c.change24h<=5&&c.change15m<1.5&&!c.trapRisk)
     .sort((a,b)=>b.volumeImpulse-a.volumeImpulse).slice(0,12);
-  const shortlist=Array.from(new Map([...freshFlow,...memeLane,...betaLane,...quiet,...byMomentum]
+  const shortlist=Array.from(new Map([...coiled,...freshFlow,...memeLane,...betaLane,...quiet,...byMomentum]
     .map(c=>[c.symbol,c])).values()).slice(0,30);
   let depthChecked=0;
   const detailed=await batched(shortlist,6,async item=>{
@@ -277,9 +283,15 @@ async function scan():Promise<RadarResult>{
         const outlook=score24hOutlook(coin,hourly,btc24h);
         if(!outlook)return null;
         const highUpside=highUpsideFocus(coin,hourly);
-        const outlook24h=rankSpotFastLane(coin,outlook,highUpside?.boost??0);
+        const accumulation=spotAccumulationPulse(coin);
+        const outlook24h=rankSpotFastLane(coin,outlook,
+          (highUpside?.boost??0)+accumulation.adjustment);
         if(highUpside?.boost)outlook24h.reason=[highUpside.reason,outlook24h.reason].join(' · ');
-        return {...coin,outlook24h,highUpside};
+        if(accumulation.state==='BUY_BUILDUP')
+          outlook24h.reason=[accumulation.reason,outlook24h.reason].filter(Boolean).slice(0,2).join(' · ');
+        if(accumulation.state==='BUY_ABSORBED')
+          outlook24h.reason=[accumulation.reason,outlook24h.reason].filter(Boolean).slice(0,2).join(' · ');
+        return {...coin,outlook24h,highUpside,accumulation};
       }catch(e){
         problem(coin.symbol+' 24h bars '+String(e instanceof Error?e.message:e));
         return null;
@@ -292,8 +304,8 @@ async function scan():Promise<RadarResult>{
   // auxiliary feeds cannot invent an edge. Only 10 best Spot setups are sampled.
   const eligible=candidatesWithHourly
     .filter(c=>c.outlook24h.state!=='AVOID')
-    .sort((a,b)=>(b.outlook24h.rankScore+(b.outlook24h.fastLane?10:0))-
-      (a.outlook24h.rankScore+(a.outlook24h.fastLane?10:0)));
+    .sort((a,b)=>(b.outlook24h.rankScore+(b.outlook24h.fastLane?10:0)+(b.accumulation?.state==='BUY_BUILDUP'?6:0))-
+      (a.outlook24h.rankScore+(a.outlook24h.fastLane?10:0)+(a.accumulation?.state==='BUY_BUILDUP'?6:0)));
   const examined=await batched(eligible.slice(0,12),4,async coin=>{
     const symbol=encodeURIComponent(coin.symbol);
     const [tapeRaw,oiRaw,premiumRaw]=await Promise.all([
@@ -343,7 +355,7 @@ async function scan():Promise<RadarResult>{
   }).catch(()=>undefined);
   return {ok:true,source:'Binance public Spot · closed 1m candles + depth',
     asOf:Date.now(),universe,scanned:initial.length,depthChecked,
-    candidates,forwardAudit,method:'Binance Spot early watch + verified buy activity · closed 1m/1h candles · persistent bid-depth and whale confirmation',
+    candidates,forwardAudit,method:'Binance Spot · three-window executed-buy acceleration + depth check · 1m/1h closed bars · two-scan persistence',
     warning:'Persistent buy-flow signals require separate fresh scans. Process memory resets on redeploy. No future/hidden orders, pump guarantee or auto-trades.'};
 }
 export async function GET(){

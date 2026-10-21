@@ -107,6 +107,8 @@ export default function SpotPage(){
                 <div><strong>{base}</strong><span> / USDT</span></div>
                 {c.highUpside?.group==='MEME'&&
                   <span className="spot-simple-meme">ميم كوين</span>}
+                {c.accumulation?.state==='BUY_BUILDUP'&&
+                  <span className="spot-simple-accumulation">🧲 تسارع شراء قبل الاختراق</span>}
                 {c.spotIgnition?.state==='FLOW_CONFIRMED'?
                   <span className="spot-simple-ignition">⚡ تدفّق شراء مستمر</span>:
                   outlook.fastLane&&
