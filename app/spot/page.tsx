@@ -67,7 +67,7 @@ export default function SpotPage(){
         <a href="/" className="spot-simple-back">← القناص الرئيسي</a>
         <div className="spot-simple-eyebrow">QANNAS · BINANCE SPOT</div>
         <h1>رادار ميم كوين <span>والحركات الكبيرة خلال 24 ساعة</span></h1>
-        <p>الأولوية للميم كوين والعملات سريعة الحركة قبل الانطلاق، مع ترتيب مبني على نشاط السيولة والشراء الفعلي.</p>
+        <p>بنرتّب الميم كوين حسب الشراء المنفّذ، ونميّز السيولة اللي استمرت بين فحصين مستقلين.</p>
       </header>
 
       <div className="spot-simple-toolbar">
@@ -107,7 +107,9 @@ export default function SpotPage(){
                 <div><strong>{base}</strong><span> / USDT</span></div>
                 {c.highUpside?.group==='MEME'&&
                   <span className="spot-simple-meme">ميم كوين</span>}
-                <span className={'spot-simple-level '+(outlook.state==='HIGH'?'high':'possible')}>
+                {c.spotIgnition?.state==='FLOW_CONFIRMED'&&
+                   <span className="spot-simple-ignition">⚡ تدفّق شراء مستمر</span>}
+                 <span className={'spot-simple-level '+(outlook.state==='HIGH'?'high':'possible')}>
                   قوة الإشارة: {level(outlook.rankScore)}
                 </span>
               </div>

@@ -1,5 +1,6 @@
 import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type Candidate} from '../../../lib/spot-radar';
 import {largeTradeFootprint,futuresCrowding,blendEdge} from '../../../lib/spot-edge';
+import {spotLiquiditySample,spotIgnition,type SpotLiquiditySample} from '../../../lib/spot-ignition';
 import {marketGroup,memeSpotSymbols,highUpsideFocus} from '../../../lib/spot-high-upside';
 import {recordAndEvaluateSpot,type ForwardResult} from '../../../lib/spot-forward-audit';
 
@@ -48,6 +49,8 @@ type SymbolInfo={symbol:string;status:string;quoteAsset:string;isSpotTradingAllo
 let validSymbols:{time:number;set:Set<string>}|null=null;
 let lastGood:{time:number;value:RadarResult}|null=null;
 let pending:Promise<RadarResult>|null=null;
+// Fail closed after cold start: two separate scans are required.
+const liquidityHistory=new Map<string,SpotLiquiditySample>();
 type RadarResult={ok:true;source:string;asOf:number;universe:number;scanned:number;depthChecked:number;
   candidates:Candidate[];method:string;warning:string;forwardAudit?:ForwardResult};
 
@@ -301,16 +304,30 @@ async function scan():Promise<RadarResult>{
     const whale=largeTradeFootprint(tapeRaw);
     const leverage=futuresCrowding(oiRaw,premiumRaw);
     const edge=blendEdge(coin.outlook24h.rankScore,whale,leverage);
-    const updatedScore=Math.max(0,Math.min(100,coin.outlook24h.rankScore+edge.adjustment));
-    const outlook24h={...coin.outlook24h,rankScore:updatedScore,
-      state:coin.outlook24h.state==='HIGH'&&updatedScore<65?'POSSIBLE' as const:
-        coin.outlook24h.state,
-      reason:[...edge.evidence,coin.outlook24h.reason].filter(Boolean).slice(0,2).join(' · ')};
-    return {...coin,outlook24h,edge};
+    const ignition=spotIgnition(coin,whale,liquidityHistory.get(coin.symbol)||null);
+    const updatedScore=Math.max(0,Math.min(100,
+      coin.outlook24h.rankScore+edge.adjustment+ignition.adjustment));
+    const state=coin.outlook24h.state==='AVOID'?'AVOID' as const:
+      updatedScore>=65&&coin.outlook24h.takerBuyShare12>=.53&&coin.outlook24h.volumeRatio24>=1?
+      'HIGH' as const:updatedScore>=45?'POSSIBLE' as const:'AVOID' as const;
+    const outlook24h={...coin.outlook24h,rankScore:updatedScore,state,
+      reason:[...(ignition.state==='FLOW_CONFIRMED'?[ignition.evidence]:[]),
+        ...edge.evidence,coin.outlook24h.reason].filter(Boolean).slice(0,2).join(' · ')};
+    return {...coin,outlook24h,edge,spotIgnition:ignition};
   });
+  // Update AFTER comparing all symbols; do not self-confirm a single snapshot.
+  const sampledAt=Date.now();
+  for(const [symbol,sample] of liquidityHistory)
+    if(sampledAt-sample.sampledAt>660000)liquidityHistory.delete(symbol);
+  for(const coin of detailed){
+    if(!coin)continue;
+    const snapshot=spotLiquiditySample(coin,sampledAt);
+    if(snapshot)liquidityHistory.set(coin.symbol,snapshot);
+  }
   const untouched=eligible.slice(10);
   const candidates=[...examined,...untouched]
     .filter(c=>c.outlook24h.rankScore>=45&&
+      c.spotIgnition?.state!=='FADING'&&
       c.edge?.leverage?.state!=='CROWDED_LONGS'&&
       c.edge?.whale?.state!=='SELL_PRESSURE')
     .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore)
@@ -322,8 +339,8 @@ async function scan():Promise<RadarResult>{
   }).catch(()=>undefined);
   return {ok:true,source:'Binance public Spot · closed 1m candles + depth',
     asOf:Date.now(),universe,scanned:initial.length,depthChecked,
-    candidates,forwardAudit,method:'Binance Spot verified meme-first universe · 1h volatility/24h relative volume · 1m taker flows · optional whale prints/futures veto',
-    warning:'Spot ranking includes verifiable large trades; futures evidence is optional and can be absent. Neither exposes secret whale orders nor guarantees a 24h pump. No auto-trades.'};
+    candidates,forwardAudit,method:'Binance Spot meme-first universe · closed 1h/1m taker flow · persistent bid-depth scans · optional large trades and futures veto',
+    warning:'Persistent buy-flow signals require separate fresh scans. Process memory resets on redeploy. No future/hidden orders, pump guarantee or auto-trades.'};
 }
 export async function GET(){
   const now=Date.now();

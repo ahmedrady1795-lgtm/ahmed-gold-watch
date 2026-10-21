@@ -92,3 +92,7 @@
   margin:0 0 13px;background:#172b34;color:#b5e9d8;border:1px solid #326354;border-radius:8px}
 
 .spot-simple-meme{display:inline-block;background:#402d56;color:#e5b9fb;border:1px solid #67477a;font-size:10px;padding:2px 6px;border-radius:7px;font-weight:750}
+
+/* One compact sustained-flow badge without changing the vertical list. */
+.spot-simple-coin-head span.spot-simple-ignition{font-size:10px;color:#a3f8c9;
+  padding:2px 7px;border-radius:7px;border:1px solid #2f8368;background:#174536;font-weight:750}
