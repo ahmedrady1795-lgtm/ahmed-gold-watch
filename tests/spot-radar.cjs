@@ -103,4 +103,44 @@ for(const source of [serverRoute,browserFallback]){
 }
 console.log('PASS: bounded Binance metadata/ticker request guards; no unbounded full-market blocking fetch.');
 
+
+const hour=3600000;
+const hourlyRaw=Array.from({length:72},(_,i)=>{
+  const t=now-(72-i)*hour,p=100+i*.008,vol=i>=48?1600000:1000000;
+  const buy=vol*(i>=60?.61:.5);
+  return [t,String(p),String(p+.10),String(p-.08),String(p+.025),'0',
+    t+hour-1,String(vol),'0','0',String(buy),'0'];
+});
+const completeHours=out.parseHourlyKlines(hourlyRaw,now);
+assert.equal(completeHours.length,72,'All 72 settled 1h bars should parse');
+const unclosedHour=[...hourlyRaw,[now,'100','101','99','100','0',now+hour-1,
+  '2500000','0','0','1250000','0']];
+assert.equal(out.parseHourlyKlines(unclosedHour,now).length,72,
+  'Current, unfinished 1h candle must never inform the 24h ranking');
+const outlook=out.score24hOutlook(scored,completeHours,0,now);
+assert.ok(outlook,'Hourly 24h evidence must be available for verified bars');
+assert.ok(outlook.rankScore>=0&&outlook.rankScore<=100,
+  '24h rank is bounded evidence score, not a probability');
+assert.ok(['HIGH','POSSIBLE'].includes(outlook.state),'Supportive hourly case qualifies');
+assert.equal(outlook.freshAt,now,'Ranking uses last CLOSED hourly source timestamp');
+const riskyHour=completeHours.map(x=>({...x}));
+riskyHour[riskyHour.length-25].close=scored.price/1.18;
+const extendedOutlook=out.score24hOutlook(scored,riskyHour,0,now);
+assert.equal(extendedOutlook.state,'AVOID',
+  'Already-pumped +18 percent hourly price must be excluded');
+assert.equal(out.score24hOutlook({...scored,trapRisk:true},completeHours,0,now).state,
+  'AVOID','Distribution trap cannot be promoted for next 24h');
+assert.equal(out.score24hOutlook(scored,completeHours,0,now+4*hour),null,
+  'Stale hourly market evidence must not be promoted');
+const brokenHour=completeHours.map(x=>({...x}));
+brokenHour[brokenHour.length-6].time+=hour/2;
+assert.equal(out.score24hOutlook(scored,brokenHour,0,now),null,
+  'Gap in closed hourly history invalidates 24h rank');
+const rankingUI=fs.readFileSync('app/spot/page.tsx','utf8');
+assert.ok(rankingUI.includes('للصعود خلال 24 ساعة'));
+assert.ok(rankingUI.includes('spot-simple-list'));
+assert.ok(!rankingUI.includes('CandleChart')&&!rankingUI.includes('spot-detail-panel'));
+assert.ok(!rankingUI.includes('spot-filters'),'Large detail pane and options must stay hidden');
+console.log('PASS: ranked 24h hourly model, no unfinished bars, anti-chase, trap, stale/gap and clean list.');
+
 console.log('PASS: closed candles, signed executed flow, depth, liquidity impulse, fakeout risk, targets, gaps, stale feed. Not a profitability test.');
