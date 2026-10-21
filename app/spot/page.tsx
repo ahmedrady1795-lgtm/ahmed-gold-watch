@@ -66,8 +66,8 @@ export default function SpotPage(){
       <header className="spot-simple-head">
         <a href="/" className="spot-simple-back">← القناص الرئيسي</a>
         <div className="spot-simple-eyebrow">QANNAS · BINANCE SPOT</div>
-        <h1>العملات المرشحة <span>للصعود خلال 24 ساعة</span></h1>
-        <p>الأقوى فوق، والأقل قوة تحت. الترتيب حسب السيولة والشراء الفعلي واتجاه الساعة، وليس وعدًا بضخّ مؤكد.</p>
+        <h1>رادار ميم كوين <span>والحركات الكبيرة خلال 24 ساعة</span></h1>
+        <p>الأولوية للميم كوين والعملات سريعة الحركة قبل الانطلاق، مع ترتيب مبني على نشاط السيولة والشراء الفعلي.</p>
       </header>
 
       <div className="spot-simple-toolbar">
@@ -81,7 +81,7 @@ export default function SpotPage(){
       </div>
 
       <div className="spot-simple-count">
-        <strong>ترتيب أقوى المرشحين</strong>
+        <strong>أقوى مرشحي الحركة الكبيرة</strong>
         <span>{data?sorted.length+' عملات من '+data.scanned+' تم تحليلها':'بانتظار Binance'}</span>
       </div>
 
@@ -105,13 +105,17 @@ export default function SpotPage(){
             <div className="spot-simple-body">
               <div className="spot-simple-coin-head">
                 <div><strong>{base}</strong><span> / USDT</span></div>
+                {c.highUpside?.group==='MEME'&&
+                  <span className="spot-simple-meme">ميم كوين</span>}
                 <span className={'spot-simple-level '+(outlook.state==='HIGH'?'high':'possible')}>
-                  قوة الترشيح: {level(outlook.rankScore)}
+                  قوة الإشارة: {level(outlook.rankScore)}
                 </span>
               </div>
               <p>{outlook.reason}</p>
               <div className="spot-simple-foot">
-                <span>حجم التداول 24س: <b>{(outlook.volumeRatio24).toFixed(2)}×</b> مقارنة بالـ24س السابقة</span>
+                <span>نشاط السيولة: <b>{outlook.volumeRatio24.toFixed(2)}×</b></span>
+                {c.highUpside&&
+                  <span>متوسط نطاق الساعة سابقًا: <b>{c.highUpside.hourlyRangePct.toFixed(2)}%</b></span>}
 
               </div>
             </div>
