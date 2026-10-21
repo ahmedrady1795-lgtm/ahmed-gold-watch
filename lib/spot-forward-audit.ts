@@ -75,7 +75,7 @@ export async function recordAndEvaluateSpot(
   const settled=recent.filter(r=>r.status==='SETTLED'&&
     Number.isFinite(r.returnPct));
   const total=settled.length;
-  return {total,hit3pct:settled.filter(r=>r.returnPct!>=3).length,
+  return {total,hit3pct:settled.filter(r=>Number(r.returnPct)>=3).length,
     avgReturnPct:total?Math.round(settled.reduce((a,r)=>a+r.returnPct!,0)/total*100)/100:0,
     pending:recent.filter(r=>r.status==='PENDING').length,
     evaluatedAt:now,storage:'ephemeral-runtime',
