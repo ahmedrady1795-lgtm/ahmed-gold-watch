@@ -15,5 +15,5 @@ assert.equal(out.rankSpotFastLane({...coin,buyShare:.42},h).state,'AVOID');
 assert.equal(out.rankSpotFastLane({...coin,volume24h:500000},h).state,'AVOID');
 assert.equal(out.rankSpotFastLane({...coin,book:{bidShare:.6,spreadBps:50}},h).state,'AVOID');
 assert.equal(out.rankSpotFastLane({...coin,change15m:9},h).state,'AVOID');
-assert.equal(out.rankSpotFastLane(coin,{...h,rankScore:59,takerBuyShare12:.54}).state,'HIGH');
+assert.equal(out.rankSpotFastLane(coin,{...h,rankScore:59,takerBuyShare12:.54,volumeRatio24:.92}).state,'HIGH');
 console.log('PASS: aggressive early Spot detection with safe data and fakeout veto');
