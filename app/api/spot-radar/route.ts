@@ -1,5 +1,6 @@
 import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type Candidate} from '../../../lib/spot-radar';
 import {largeTradeFootprint,futuresCrowding,blendEdge} from '../../../lib/spot-edge';
+import {recordAndEvaluateSpot,type ForwardResult} from '../../../lib/spot-forward-audit';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -47,7 +48,7 @@ let validSymbols:{time:number;set:Set<string>}|null=null;
 let lastGood:{time:number;value:RadarResult}|null=null;
 let pending:Promise<RadarResult>|null=null;
 type RadarResult={ok:true;source:string;asOf:number;universe:number;scanned:number;depthChecked:number;
-  candidates:Candidate[];method:string;warning:string};
+  candidates:Candidate[];method:string;warning:string;forwardAudit?:ForwardResult};
 
 async function getJson(path:string,timeoutMs=6800):Promise<unknown>{
   const first=await chooseHost();
@@ -290,9 +291,14 @@ async function scan():Promise<RadarResult>{
       c.edge?.whale?.state!=='SELL_PRESSURE')
     .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore)
     .slice(0,12);
+  const forwardAudit=await recordAndEvaluateSpot(candidates,async(symbol,dueAt)=>{
+    const startTime=Math.floor(dueAt/60000)*60000;
+    return getJson('/api/v3/klines?symbol='+encodeURIComponent(symbol)+
+      '&interval=1m&startTime='+startTime+'&limit=4',5000);
+  }).catch(()=>undefined);
   return {ok:true,source:'Binance public Spot · closed 1m candles + depth',
     asOf:Date.now(),universe,scanned:initial.length,depthChecked,
-    candidates,method:'Verified Binance Spot closed 1h and 1m · optional executed aggregated trades · optional USD-M futures OI/funding · anti-chase',
+    candidates,forwardAudit,method:'Verified Binance Spot closed 1h and 1m · optional executed aggregated trades · optional USD-M futures OI/funding · anti-chase',
     warning:'Spot ranking includes verifiable large trades; futures evidence is optional and can be absent. Neither exposes secret whale orders nor guarantees a 24h pump. No auto-trades.'};
 }
 export async function GET(){
