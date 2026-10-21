@@ -1,3 +1,4 @@
+import type {SpotEdge} from './spot-edge';
 // Qannas Spot: auditable public-data signals, not knowledge of future orders.
 export type Candle={time:number;open:number;high:number;low:number;close:number;quoteVolume:number;buyQuote:number};
 export type Book={bidShare:number;spreadBps:number;bidWallShare:number;askWallShare:number};
@@ -22,7 +23,7 @@ export type Candidate={
   absorption:Absorption;
   book:Book|null;breakout:number;distancePct:number;invalidation:number;
   target1:number;target2:number;estimatedCostPct:number;netRR:number;
-  reasons:string[];warnings:string[];outlook24h?:Spot24hOutlook;
+  reasons:string[];warnings:string[];outlook24h?:Spot24hOutlook;edge?:SpotEdge;
   candles:Candle[];
 };
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
