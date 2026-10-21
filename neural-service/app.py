@@ -137,17 +137,38 @@ def _load_path_model():
     except Exception as e:
         PATH_LAST_ERROR=f"load_path_model:{type(e).__name__}:{e}"
 
+DEPTH_HOSTS=("https://data-api.binance.vision","https://api-gcp.binance.com","https://api.binance.com")
+LAST_DEPTH_HOST=None
+LAST_COLLECTOR_ERROR_LOG_AT=0
+
 def _fetch_depth():
-    r=SESSION.get(
-        "https://data-api.binance.vision/api/v3/depth",
-        params={"symbol":"BTCUSDT","limit":"100"},timeout=5
-    )
-    r.raise_for_status()
-    j=r.json()
-    bids=[(float(p),float(q)) for p,q in (j.get("bids") or [])[:LEVELS]]
-    asks=[(float(p),float(q)) for p,q in (j.get("asks") or [])[:LEVELS]]
-    if len(bids)<LEVELS or len(asks)<LEVELS:raise RuntimeError("depth_short")
-    return bids,asks
+    global LAST_DEPTH_HOST
+    # All fallbacks are official Binance spot BTCUSDT, never a proxy book.
+    order=([LAST_DEPTH_HOST] if LAST_DEPTH_HOST in DEPTH_HOSTS else []) + [
+        host for host in DEPTH_HOSTS if host!=LAST_DEPTH_HOST
+    ]
+    errors=[]
+    for host in order:
+        try:
+            r=SESSION.get(host+"/api/v3/depth",
+                params={"symbol":"BTCUSDT","limit":"100"},timeout=4)
+            r.raise_for_status()
+            j=r.json()
+            bids=[(float(p),float(q)) for p,q in (j.get("bids") or [])[:LEVELS]]
+            asks=[(float(p),float(q)) for p,q in (j.get("asks") or [])[:LEVELS]]
+            if len(bids)<LEVELS or len(asks)<LEVELS or bids[0][0]>=asks[0][0]:
+                raise RuntimeError("depth_short_or_crossed")
+            if LAST_DEPTH_HOST!=host:
+                print("[NEURAL-DEPTH-SOURCE] "+host,flush=True)
+            LAST_DEPTH_HOST=host
+            return bids,asks
+        except requests.HTTPError as err:
+            code=err.response.status_code if err.response is not None else 0
+            errors.append(host+":"+str(code))
+            if code in (418,429): break  # respect upstream rate limiting
+        except Exception as err:
+            errors.append(host+":"+type(err).__name__)
+    raise RuntimeError("Binance book unavailable: "+",".join(errors))
 
 def _price_context(mid,at,history):
     recent=[r for r in history if 0<at-int(r["t"])<=120000 and float(r.get("mid",0))>0]
@@ -667,7 +688,11 @@ def _collector():
             elif n>=MIN_SNAPSHOTS and not TRAIN_LOCK.locked() and _training_due("path",row["t"],row["t"]) and _rss_mb()<=MEMORY_TRAIN_START_MB:
                 threading.Thread(target=_train_path,daemon=True,name="price-path-trainer").start()
         except Exception as e:
+            global LAST_COLLECTOR_ERROR_LOG_AT
             LAST_ERROR=f"collector:{type(e).__name__}:{e}"
+            if time.time()-LAST_COLLECTOR_ERROR_LOG_AT>=45:
+                print("[NEURAL-COLLECTOR-ERROR] "+LAST_ERROR[:350],flush=True)
+                LAST_COLLECTOR_ERROR_LOG_AT=time.time()
         time.sleep(max(.8,INTERVAL))
 
 def _predict_path(rows):
@@ -741,7 +766,7 @@ def startup():
 @app.get("/health")
 def health():
     return {"ok":True,"version":APP_VERSION,"runtimeRevision":RUNTIME_REVISION,"training":TRAINING,"pathTraining":PATH_TRAINING,
-            "storedSnapshots":len(ROWS),"trainingMaxSamples":TRAIN_MAX_SAMPLES,"rssMb":_rss_mb(),"lastSnapshotAt":LAST_SNAPSHOT_AT,
+            "storedSnapshots":len(ROWS),"trainingMaxSamples":TRAIN_MAX_SAMPLES,"rssMb":_rss_mb(),"lastSnapshotAt":LAST_SNAPSHOT_AT,"depthHost":LAST_DEPTH_HOST,
             "trainingSchedule":SCHEDULE,"dataAudit":DATASET_AUDIT,
             "modelReady":bool(METRICS and METRICS.get("ready")),
             "lastTrainAt":LAST_TRAIN_AT,"lastTrainAttemptAt":LAST_TRAIN_ATTEMPT_AT,
