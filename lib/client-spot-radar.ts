@@ -1,6 +1,6 @@
 'use client';
 
-import {parseKlines,parseBook,scoreCoin,type Candidate} from './spot-radar';
+import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type Candidate} from './spot-radar';
 
 type Ticker={symbol:string;quoteVolume:string;priceChangePercent:string};
 type MarketInfo={symbols?:Array<{symbol:string;status:string;quoteAsset:string;isSpotTradingAllowed?:boolean;permissions?:string[]}>};
@@ -109,10 +109,23 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
       return scoreCoin(item.symbol,item.change24h,item.volume24h,item.candles,btc15,book);
     }catch{return item;}
   });
-  const candidates=refined.filter((x):x is Candidate=>x!==null).sort((a,b)=>b.score-a.score).slice(0,12);
-  if(!candidates.length)throw Error('لم تتوفر قراءة حديثة موثوقة لعملات Spot.');
+  const btcHourly=parseHourlyKlines(await request(host,
+    '/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=75',9000).catch(()=>null));
+  const btc24=btcHourly.length>=55?
+    (btcHourly.at(-1)!.close/btcHourly.at(-25)!.close-1)*100:null;
+  const inspected=await parallel(refined.filter((x):x is Candidate=>x!==null),6,async coin=>{
+    try{
+      const raw=await request(host,'/api/v3/klines?symbol='+encodeURIComponent(coin.symbol)+
+        '&interval=1h&limit=75',8000);
+      const outlook24h=score24hOutlook(coin,parseHourlyKlines(raw),btc24);
+      return outlook24h?{...coin,outlook24h}:null;
+    }catch{return null;}
+  });
+  if(!inspected.length)throw Error('لا يوجد تاريخ ساعة مكتمل للتحليل خلال 24 ساعة.');
+  const candidates=inspected.filter(x=>x.outlook24h.state!=='AVOID')
+    .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore).slice(0,12);
   return {ok:true,asOf:Date.now(),source:'Binance Spot · direct browser feed ('+host.replace('https://','')+')',
     universe:all.length,scanned:scans.length,depthChecked,candidates,
-    method:'Direct Binance public data · closed 1m klines · taker volume · depth',
-    warning:'تعذر الاتصال من الخادم؛ تم التحليل مباشرة من المتصفح. تأكد من تحديث البيانات، وليس توصية شراء.'};
+    method:'Direct Binance · verified 1h+1m bars · 24h activity + strength · depth',
+    warning:'التحليل من المتصفح بسبب تعذر الخادم. الترتيب قوة أدلة للحركة خلال 24 ساعة وليس نسبة ضخ مضمونة.'};
 }
