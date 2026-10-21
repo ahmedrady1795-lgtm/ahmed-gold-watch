@@ -5,6 +5,7 @@ export type Candidate={
   symbol:string;price:number;change24h:number;volume24h:number;
   score:number;phase:'EARLY'|'BUILDING'|'WATCH'|'EXTENDED';freshAt:number;
   volumeImpulse:number;buyShare:number;relative15m:number|null;change15m:number;
+  flowDelta5m:number;flowShiftPct:number;rangeCompression:number;trapRisk:boolean;
   book:Book|null;breakout:number;distancePct:number;invalidation:number;
   target1:number;target2:number;reasons:string[];warnings:string[];
   candles:Candle[];
@@ -63,6 +64,21 @@ export function scoreCoin(
   if(baseAvg<=0||recentVol<=0||!Number.isFinite(price)||price<=0)return null;
   const volumeImpulse=(recentVol/5)/baseAvg;
   const buyShare=clamp(sum(recent.map(c=>c.buyQuote))/recentVol,0,1);
+  const prev20=candles.slice(-25,-5);
+  const prev20Volume=sum(prev20.map(c=>c.quoteVolume));
+  const prevBuyShare=prev20Volume>0?sum(prev20.map(c=>c.buyQuote))/prev20Volume:.5;
+  // Taker buy quote volume minus taker sell quote volume: observed signed-flow estimate.
+  const flowDelta5m=2*sum(recent.map(c=>c.buyQuote))-recentVol;
+  const flowShiftPct=(buyShare-prevBuyShare)*100;
+  const trueRange=(xs:Candle[])=>xs.map((c,i)=>Math.max(c.high-c.low,
+    i?Math.abs(c.high-xs[i-1].close):0,i?Math.abs(c.low-xs[i-1].close):0));
+  const recentTR=trueRange(candles.slice(-11));
+  const prevTR=trueRange(candles.slice(-41,-11));
+  const avg=(xs:number[])=>xs.length?sum(xs)/xs.length:0;
+  const rangeCompression=prevTR.length&&avg(prevTR)>0?avg(recentTR)/avg(prevTR):1;
+  const upperWickRatio=sum(recent.map(c=>c.high-Math.max(c.open,c.close)))/
+    Math.max(1e-12,sum(recent.map(c=>c.high-c.low)));
+  const trapRisk=upperWickRatio>.43&&volumeImpulse>1.8;
   const change15m=(price/candles[n-16].close-1)*100;
   const relative15m=btc15m===null?null:change15m-btc15m;
   const breakout=Math.max(...candles.slice(-36,-5).map(c=>c.high));
@@ -81,12 +97,15 @@ export function scoreCoin(
   score+=distancePct>=0&&distancePct<=1.8?15*(1-distancePct/2.7):distancePct<0&&distancePct>=-1?10:0;
   score+=relative15m===null?0:clamp((relative15m+.25)/2.5,0,1)*11;
   score+=clamp((change15m+.2)/2.8,0,1)*11;
+  score+=clamp((flowShiftPct-2)/16,0,1)*8;
+  score+=rangeCompression<.8&&volumeImpulse>1.3?5:0;
   score+=clamp(Math.log10(Math.max(1,volume24h)/1500000)/2,0,1)*7;
   if(book){score+=clamp((book.bidShare-.48)/.23,0,1)*9;
     if(book.spreadBps>25)score-=14;
   }
   if(extended)score-=24;
   if(change15m<-.8)score-=14;
+  if(trapRisk)score-=12;
   score=Math.round(clamp(score,0,100));
   const buyConfirmed=buyShare>=.55&&volumeImpulse>=1.6;
   const nearLevel=distancePct>=-.5&&distancePct<=1.35;
@@ -100,14 +119,20 @@ export function scoreCoin(
   if(nearLevel)reasons.push('قريب من مقاومة '+Math.abs(distancePct).toFixed(2)+'٪');
   if(relative15m!==null&&relative15m>.4)reasons.push('أقوى من BTC خلال 15د');
   if(book&&book.bidShare>.54)reasons.push('طلبات شراء مرئية '+Math.round(book.bidShare*100)+'٪');
+  if(flowShiftPct>=7)reasons.push('تغير ميزان الشراء +'+flowShiftPct.toFixed(0)+' نقطة');
+  if(rangeCompression<.8&&volumeImpulse>1.3)reasons.push('انضغاط تقلب مع نشاط تداول');
   const warnings:string[]=[];
   if(extended)warnings.push('السعر ممتد؛ خطر مطاردة الارتفاع');
+  if(trapRisk)warnings.push('ذيول علوية مرتفعة: احتمال تصريف أو فخ سيولة');
+  if(volumeImpulse>1.8&&buyShare>.56&&Math.abs(change15m)<.4)
+    warnings.push('شراء نشط بلا تقدم سعري: قد يكون العرض يمتص الشراء');
   if(book===null)warnings.push('عمق دفتر الأوامر غير مؤكد');
   if(book&&book.spreadBps>25)warnings.push('فارق سعري مرتفع');
   if(volumeImpulse<1.2)warnings.push('لم يثبت تسارع في السيولة');
   if(btc15m===null)warnings.push('المقارنة مع BTC غير متاحة');
   return {symbol,price,change24h,volume24h,score,phase,
     freshAt:candles[n-1].time+60000,volumeImpulse,buyShare,relative15m,
+    flowDelta5m,flowShiftPct,rangeCompression,trapRisk,
     change15m,book,breakout,distancePct,invalidation,target1,target2,
     reasons,warnings,candles:candles.slice(-70)};
 }
