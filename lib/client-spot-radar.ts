@@ -1,6 +1,7 @@
 'use client';
 
 import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type Candidate} from './spot-radar';
+import {memeSpotSymbols,marketGroup,highUpsideFocus} from './spot-high-upside';
 
 type Ticker={symbol:string;quoteVolume:string;priceChangePercent:string};
 type MarketInfo={symbols?:Array<{symbol:string;status:string;quoteAsset:string;isSpotTradingAllowed?:boolean;permissions?:string[]}>};
@@ -46,9 +47,8 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
     'USDD','USD1','RLUSD','USDS','USTC','PYUSD']);
   const all=prices.map(p=>p?.symbol).filter((p):p is string=>
     typeof p==='string'&&p.endsWith('USDT')&&!stables.has(p.slice(0,-4)));
-  const anchors=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT',
-    'ADAUSDT','LINKUSDT','SUIUSDT','AVAXUSDT','PEPEUSDT','TRXUSDT',
-    'AAVEUSDT','NEARUSDT','OPUSDT','ARBUSDT','APTUSDT','LTCUSDT','WIFUSDT'];
+  const anchors=[...memeSpotSymbols(),'SUIUSDT','NEARUSDT','OPUSDT',
+    'ARBUSDT','APTUSDT','FETUSDT','RENDERUSDT','BTCUSDT','ETHUSDT','SOLUSDT'];
   const windowIndex=Math.floor(Date.now()/180000),sorted=[...new Set(all)].sort();
   const start=sorted.length?windowIndex%sorted.length:0;
   const known=new Set(sorted);
@@ -86,7 +86,12 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
   const trending=eligible.filter(t=>+t.quoteVolume<200000000&&
     +t.priceChangePercent>=0&&+t.priceChangePercent<=12)
     .sort((a,b)=>+b.priceChangePercent-+a.priceChangePercent).slice(0,15);
-  const chosen=Array.from(new Map([...low,...high,...trending].map(t=>[t.symbol,t])).values()).slice(0,35);
+  const meme=eligible.filter(t=>marketGroup(t.symbol)==='MEME')
+    .sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,24);
+  const highBeta=eligible.filter(t=>marketGroup(t.symbol)==='HIGH_BETA')
+    .sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,12);
+  const chosen=Array.from(new Map([...meme,...highBeta,...trending,...low,...high]
+    .map(t=>[t.symbol,t])).values()).slice(0,44);
   if(!chosen.length)throw Error('Binance لم ترجع أزواج Spot مؤهلة للتحليل.');
   const btcCandles=parseKlines(await request(host,'/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=65',9000));
   const btc15=btcCandles.length>=17&&Date.now()-btcCandles.at(-1)!.time<210000
@@ -99,7 +104,12 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
     }catch{return null;}
   });
   if(!scans.length)throw Error('فشل تحميل شموع Binance الحقيقية من المتصفح، لا توجد إشارات قابلة للتحقق.');
-  const ranked=scans.sort((a,b)=>b.score-a.score).slice(0,14);
+  const memeLane=[...scans].filter(c=>marketGroup(c.symbol)==='MEME')
+    .sort((a,b)=>b.score-a.score).slice(0,12);
+  const betaLane=[...scans].filter(c=>marketGroup(c.symbol)==='HIGH_BETA')
+    .sort((a,b)=>b.score-a.score).slice(0,8);
+  const ranked=Array.from(new Map([...memeLane,...betaLane,
+    ...[...scans].sort((a,b)=>b.score-a.score)].map(c=>[c.symbol,c])).values()).slice(0,22);
   let depthChecked=0;
   const refined=await parallel(ranked,6,async item=>{
     try{
@@ -117,8 +127,17 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
     try{
       const raw=await request(host,'/api/v3/klines?symbol='+encodeURIComponent(coin.symbol)+
         '&interval=1h&limit=75',8000);
-      const outlook24h=score24hOutlook(coin,parseHourlyKlines(raw),btc24);
-      return outlook24h?{...coin,outlook24h}:null;
+      const hourly=parseHourlyKlines(raw);
+      const outlook=score24hOutlook(coin,hourly,btc24);
+      if(!outlook)return null;
+      const highUpside=highUpsideFocus(coin,hourly);
+      const rankScore=Math.min(100,outlook.rankScore+(highUpside?.boost??0));
+      const state=outlook.state==='AVOID'?'AVOID' as const:
+        rankScore>=65&&outlook.takerBuyShare12>=.53&&outlook.volumeRatio24>=1?
+        'HIGH' as const:rankScore>=45?'POSSIBLE' as const:'AVOID' as const;
+      const outlook24h={...outlook,rankScore,state,
+        reason:highUpside?.boost?[highUpside.reason,outlook.reason].join(' · '):outlook.reason};
+      return {...coin,outlook24h,highUpside};
     }catch{return null;}
   });
   if(!inspected.length)throw Error('لا يوجد تاريخ ساعة مكتمل للتحليل خلال 24 ساعة.');
@@ -126,6 +145,6 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
     .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore).slice(0,12);
   return {ok:true,asOf:Date.now(),source:'Binance Spot · direct browser feed ('+host.replace('https://','')+')',
     universe:all.length,scanned:scans.length,depthChecked,candidates,
-    method:'Direct Binance · verified 1h+1m bars · 24h activity + strength · depth',
+    method:'Direct Binance · verified meme-first Spot markets · 1h true range + 24h volume · buyer flow',
     warning:'التحليل من المتصفح بسبب تعذر الخادم. الترتيب قوة أدلة للحركة خلال 24 ساعة وليس نسبة ضخ مضمونة.'};
 }
