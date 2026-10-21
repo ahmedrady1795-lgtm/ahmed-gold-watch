@@ -1,5 +1,13 @@
 # Ahmed Gold Command
 
+## Qannas Spot Flow radar (October 21, 2026)
+- `/spot` is an independent Arabic Binance Spot USDT radar, linked from the Qannas home header. It does **not** change any gold/BTC candles, forecast graphics or execution settings.
+- `/api/spot-radar` reads Binance's public market-data host without API keys or placing trades. ExchangeInfo filters to tradable spot pairs; 24h tickers select a *sample*; closed, contiguous 1-minute candles supply executed quote volume and taker-buy ratio. Top-ranked pairs receive one 100-level order-book snapshot; price/spread/relative BTC momentum and breakout proximity contribute to a transparent 0–100 evidence score.
+- A snapshot does not prove iceberg, spoofing, insider orders or future pumps. The score is **not** a probability or a verified win rate. Only EARLY status requires a fresh depth confirmation plus executed-buy/volume evidence. EXTENDED explicitly discourages chasing.
+- Structural resistance, invalidation and ATR-derived T1/T2 are calculation levels, not promises. The UI labels source age; on failed or stale data it never substitutes generated example prices.
+- Scans use 90-second in-memory caching and bounded concurrency, respecting Binance IP request weights. No private wallet/order data, project news, or automatic trading are included.
+- Local tests: `node tests/spot-radar.cjs` (requires `typescript` dev dependency); run `npm run build` before deploying. These are input/safety checks, **not** a profitable backtest. Validate real precision, recall and fee-adjusted forward outcomes before interpreting signals as tradable.
+
 Rule-based trading command dashboard for gold and Bitcoin monitoring, technical analysis, backtesting/paper trading, and optional MT5/Exness bridge integration.
 
 ## Scalp desk (October 8, 2026)
