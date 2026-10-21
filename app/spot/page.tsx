@@ -107,9 +107,7 @@ export default function SpotPage(){
               <p>{outlook.reason}</p>
               <div className="spot-simple-foot">
                 <span>حجم التداول 24س: <b>{(outlook.volumeRatio24).toFixed(2)}×</b> مقارنة بالـ24س السابقة</span>
-                <a href={'https://www.binance.com/en/trade/'+base+'_USDT?type=spot'}
-                  target="_blank" rel="noopener noreferrer"
-                  aria-label={'فتح '+base+' على Binance Spot'}>Binance ↗</a>
+
               </div>
             </div>
             <div className="spot-simple-quote">
