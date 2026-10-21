@@ -6,7 +6,7 @@ import './spot.css';
 
 type Radar={ok:true;source:string;asOf:number;universe:number;scanned:number;
   depthChecked:number;candidates:Candidate[];cacheAgeMs?:number};
-type Filter='ALL'|'EARLY'|'BUILDING'|'EXTENDED';
+type Filter='ALL'|'EARLY'|'BUILDING'|'ABSORPTION'|'EXTENDED';
 
 const fmt=(v:number)=>Number.isFinite(v)?v.toLocaleString('en-US',
   {maximumFractionDigits:v<.001?8:v<1?6:v<10?4:2}):'—';
@@ -74,10 +74,12 @@ export default function SpotPage(){
     return()=>{closed=true;clearInterval(timer);clearInterval(clock);};
   },[manualRefresh]);
   const old=Boolean(data&&now-data.asOf>210000);
-  const shown=useMemo(()=>data?.candidates.filter(c=>filter==='ALL'||c.phase===filter)||[],
+  const shown=useMemo(()=>data?.candidates.filter(c=>filter==='ALL'||c.phase===filter||
+    (filter==='ABSORPTION'&&c.absorption?.state!=='NONE'&&Boolean(c.absorption?.state)))||[],
     [data,filter]);
   const coin=shown.find(c=>c.symbol===selected)||shown[0]||null;
   const ready=(data?.candidates||[]).filter(c=>c.phase==='EARLY').length;
+  const absorbed=(data?.candidates||[]).filter(c=>c.absorption?.state==='BUY_RECLAIM').length;
   return <main className="spot-page" dir="rtl">
     <header className="spot-head">
       <div><a className="spot-back" href="/">← القناص الرئيسي</a>
@@ -95,6 +97,7 @@ export default function SpotPage(){
     <div className="spot-summary">
       <div><small>فرص التدفق المبكر</small><strong>{data&&!old?ready:'—'}</strong><span>ليست ضمان ارتفاع</span></div>
       <div><small>الأزواج التي جرى تحليلها</small><strong>{data?data.scanned:'—'}</strong><span>من {data?.universe??'—'} زوج Spot مؤهل</span></div>
+      <div><small>عودة شراء بعد امتصاص بيع</small><strong>{data&&!old?absorbed:'—'}</strong><span>تسلسل مرصود لا ضمان صعود</span></div>
       <div><small>دفاتر أوامر تم فحصها</small><strong>{data?data.depthChecked:'—'}</strong><span>لقطات قابلة للإلغاء</span></div>
       <div><small>تحديث الرادار</small><strong>90s</strong><span>دقائق مغلقة · بدون تداول تلقائي</span></div>
     </div>
@@ -107,7 +110,7 @@ export default function SpotPage(){
       <section className="spot-list-panel" aria-label="قائمة مرشحي Spot">
         <div className="spot-panel-title"><div><span>RADAR WATCHLIST</span><h2>العملات المرشحة</h2></div><small>التقييم قوة دلائل، لا نسبة نجاح</small></div>
         <div className="spot-filters">
-          {([['ALL','الكل'],['EARLY','تدفق مبكر'],['BUILDING','ضغط شراء'],['EXTENDED','لا تطارد']] as const).map(([value,label])=>
+          {([['ALL','الكل'],['EARLY','تدفق مبكر'],['BUILDING','ضغط شراء'],['ABSORPTION','امتصاص خفي'],['EXTENDED','لا تطارد']] as const).map(([value,label])=>
             <button key={value} type="button" className={filter===value?'active':''}
               onClick={()=>setFilter(value)}>{label}</button>)}
         </div>
@@ -116,7 +119,7 @@ export default function SpotPage(){
           {shown.map(c=><button key={c.symbol} type="button"
             className={'spot-pair '+(selected===c.symbol?'selected':'')}
             onClick={()=>setSelected(c.symbol)}>
-            <span className="spot-pair-main"><b>{c.symbol.slice(0,-4)} <em>/ USDT</em></b><small>{phaseName(c.phase)}</small></span>
+            <span className="spot-pair-main"><b>{c.symbol.slice(0,-4)} <em>/ USDT</em></b><small>{phaseName(c.phase)}{c.absorption?.state==='BUY_RECLAIM'?' · امتصاص ثم شراء':c.absorption?.state==='SELL_ABSORPTION'?' · امتصاص محتمل':''}</small></span>
             <span className="spot-pair-price"><b>{fmt(c.price)}</b><small className={c.change24h>=0?'positive':'negative'}>{pct(c.change24h)} / 24س</small></span>
             <span className={'spot-score '+c.phase}><b>{c.score}</b><small>/100</small></span>
             <span className="spot-pair-volume">تسارع <strong>×{c.volumeImpulse.toFixed(1)}</strong></span>
@@ -145,6 +148,21 @@ export default function SpotPage(){
             <div><small>حجم تداول 24 ساعة</small><b>{usd(coin.volume24h)}</b><span>سيولة تداول · USDT</span></div>
             <div><small>عائد / مخاطرة بعد التكلفة</small><b className={coin.netRR>=1.15?'positive':'negative'}>{coin.netRR>0?coin.netRR.toFixed(2)+' : 1':'غير مجدٍ'}</b><span>تقديري عند T1 وليس وعداً</span></div>
             <div><small>تكلفة تقديرية ذهاب وعودة</small><b>{coin.estimatedCostPct.toFixed(2)}%</b><span>رسوم مفترضة 0.1% لكل جهة + 0.05% انزلاق + السبريد</span></div>
+          </div>
+          <div className="spot-absorption">
+            <div className="spot-panel-title"><h3>كاشف الامتصاص الخفي</h3><small>بيع منفّذ → صمود السعر → استعادة الشراء</small></div>
+            <strong className={'spot-absorption-status '+(coin.absorption?.state||'NONE')}>
+              {coin.absorption?.state==='BUY_RECLAIM'?'رُصد امتصاص بيع ثم استعادة شراء':
+                coin.absorption?.state==='SELL_ABSORPTION'?'امتصاص بيع محتمل · ننتظر عودة المشترين':
+                'لا توجد بصمة امتصاص مستوفية للشروط'}
+            </strong>
+            {coin.absorption&&<div className="spot-absorption-stats">
+              <div><small>البيع المنفّذ في فترة الضغط</small><b>{pct(coin.absorption.sellShare*100)}</b></div>
+              <div><small>كثافة حجم التداول</small><b>×{coin.absorption.pressureRatio.toFixed(1)}</b></div>
+              <div><small>تغير السعر أثناء البيع</small><b>{pct(coin.absorption.holdPct)}</b></div>
+              <div><small>شراء آخر 5 دقائق</small><b>{pct(coin.absorption.reclaimBuyShare*100)}</b></div>
+            </div>}
+            <small>مبني على شموع Spot المغلقة وحجم المشترين المبادرين بالصفقات. احتمال امتصاص وليس كشفًا لأوامر مخفية أو نوايا حيتان.</small>
           </div>
           <div className="spot-orderflow"><div className="spot-panel-title"><h3>ميزان دفتر الأوامر</h3><small>طلبات ظاهرة ضمن ±1% من السعر</small></div>
             {coin.book?<><div className="spot-book-meter"><span style={{width:(coin.book.bidShare*100)+'%'}}/></div>
