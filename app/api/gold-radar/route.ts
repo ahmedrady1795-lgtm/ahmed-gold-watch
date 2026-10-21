@@ -2,12 +2,16 @@ import fs from 'node:fs/promises';
 import {getMt5GoldDomReading} from '../../../lib/market-hub';
 import {emptyGoldLedger,safeGoldRadarLedger,goldRadarScore}
  from '../../../lib/gold-radar-shadow';
+import {readGoldPreparationStore} from '../../../lib/gold-preparation-store';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
 const paths=['/data/qannas-gold-radar-v1.json','/tmp/qannas-gold-radar-v1.json'];
 async function readFile(path:string){try{return await fs.readFile(path,'utf8');}catch{return null;}}
 export async function GET(request:Request){
  const now=Date.now();
+ const preparation=await readGoldPreparationStore(now);
+ if(new URL(request.url).searchParams.get('leadArchive')==='1')
+  return Response.json(preparation.ledger,{headers:{'Cache-Control':'no-store'}});
  const text=(await readFile(paths[0]))??(await readFile(paths[1]));
  const ledger=text&&text.length<6e6?
    safeGoldRadarLedger(JSON.parse(text),now):emptyGoldLedger();
@@ -20,6 +24,7 @@ export async function GET(request:Request){
  return Response.json({ok:true,asset:'GOLD',
   status:fresh?'OBSERVING':'STALE_OR_STARTING',
   brokerDom:getMt5GoldDomReading(now),
+  preparationLead:preparation.view,
   updatedAt:now,storage:text?text===null?'NONE':(await readFile(paths[0]))?'VOLUME':'EPHEMERAL':'NONE',
   radar:fresh?observation:{ready:false,phase:'UNAVAILABLE',
     label:'الذهب: تجهيز',reason:'بيانات الرادار غير حديثة'},

@@ -4,6 +4,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+RUN node tests/gold-preparation-lead.mjs
 RUN node tests/sniper-risk-plan.cjs && node tests/next-move-cooldown.cjs && node tests/btc-provider-continuity.cjs && node tests/ai-service-warmup.cjs
 RUN node tests/web-source-resilience.cjs && node tests/scalp-learning.cjs && node tests/scalp.cjs
 # Hard-block production deployment on a regression in the target scorecard.

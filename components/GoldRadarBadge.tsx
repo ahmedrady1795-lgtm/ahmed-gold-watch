@@ -3,6 +3,7 @@ import {useEffect,useState} from 'react';
 import {goldPreparation} from '../lib/institutional-preparation-radar';
 import type {Mt5GoldDomReading} from '../lib/gold-mt5-dom';
 import type {GcFuturesSnapshot} from '../lib/gc-futures-feed';
+import type {goldLeadScore,GoldLeadEvent} from '../lib/gold-preparation-lead';
 
 type Side='BUY'|'SELL'|'WAIT';
 type Reading={ready:boolean;phase:string;side:Side;
@@ -12,14 +13,23 @@ type Reading={ready:boolean;phase:string;side:Side;
 type Score={scored:number;directional:number;correct:number;paired:number;
  pairedBaselineRate:number|null;pairedRadarRate:number|null;pending:number;noData:number;ready:boolean};
 type BrokerDom=Mt5GoldDomReading;
+type LeadScore=ReturnType<typeof goldLeadScore>&{status:string;observation:{
+ checkedAt?:number;reason:string;source?:string;quoteSource?:string;
+ quoteAt?:number;price?:number}};
 type Status={ok:boolean;status:string;radar:Reading;events:number;
- updatedAt:number;m1:Score;m15:Score;brokerDom?:BrokerDom};
+ updatedAt:number;m1:Score;m15:Score;brokerDom?:BrokerDom;preparationLead?:LeadScore};
 type Watch={ready:boolean;upper:{price:number}[];lower:{price:number}[]};
 const fmt=(v:unknown)=>{
  const n=Number(v);
  return v!==null&&v!==undefined&&Number.isFinite(n)&&n>0?
    n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
 };
+const clock=(at:number)=>new Date(at).toLocaleTimeString('en-GB',{
+ timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+const leadLabel=(e:GoldLeadEvent)=>({ARMED:'إنذار ثابت · انتظار التحقق من السبق',BREAKOUT:'كسر لاحق مرصود',
+ TARGET:'لمس الهدف قبل الإبطال',STOP:'إبطال بعد الكسر',NO_BREAK:'انتهت المهلة بلا كسر',
+ INVALIDATED:'إبطال قبل الكسر',TIMEOUT:'انتهت مهلة الهدف',TIMING_UNPROVEN:'الأسبقية غير محسومة',
+ AMBIGUOUS:'ترتيب اللمسات غير معلوم',UNKNOWN:'بيانات غير كافية'})[e.status];
 /**
  * On-screen GOLD radar: historical price action / optional BROKER DOM, not
  * privileged institutional orders, a probability, or automated trading.
@@ -97,6 +107,23 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
    radarPhase:radar?.phase});
  const preparationStatus=prep.available?prep.label:
    'تحضير مؤسسي: عمق MT5 غير جاهز';
+ const lead=state?.preparationLead,early=lead?.current,obs=lead?.observation;
+ const earlyDeadline=early?.breakoutBarAt!=null?early.breakoutBarAt+16*60000:early?.armUntil??0;
+ const earlyCurrent=Boolean(marketFresh&&lead?.status==='OBSERVING'&&early&&
+  obs?.checkedAt!=null&&obs.checkedAt<=now+2000&&now-obs.checkedAt<45000&&
+  obs.source===early.source&&obs.quoteSource===early.quoteSource&&
+  obs.quoteAt!=null&&obs.quoteAt<=now+2000&&now-obs.quoteAt<20000&&
+  early.issuedAt<=now&&now<earlyDeadline);
+ const touchedNow=Boolean(earlyCurrent&&early&&obs?.price!=null&&
+  (early.side==='BUY'?obs.price>=early.trigger:obs.price<=early.trigger));
+ const invalidNow=Boolean(earlyCurrent&&early&&obs?.price!=null&&
+  (early.side==='BUY'?obs.price<=early.invalidate:obs.price>=early.invalidate));
+ const earlyHeading=earlyCurrent&&early?
+  (early.side==='BUY'?'تحضير صعود':'تحضير هبوط')+' · '+
+  (invalidNow?'لمس الإبطال · جارٍ التحقق':early.status==='BREAKOUT'?'كسر لاحق مرصود':
+   touchedNow?'لمس التفعيل · جارٍ التحقق':'قبل الكسر · تجريبي'):
+  'إنذار قبل الكسر · '+(lead?.status==='OBSERVING'?'انتظار فرصة مؤهلة':'انتظار التغذية');
+ const latestLead=earlyCurrent?early:lead?.recent?.[0];
  const gcAge=gc?.quoteAt!=null?Math.max(0,now-gc.quoteAt):null;
  const gcReady=Boolean(gc?.available&&gcAge!=null&&gcAge<=90*60000);
  const gcState=gcReady?(gc!.status==='LIVE'?'سعر عقد مباشر':'بيانات متأخرة'):'غير متاح';
@@ -114,11 +141,37 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
      title="تفاصيل الرادار ومصدره وسجل معايرة الإشارات">
      <span className="sniper-gold-radar-top">
        <strong>◈ رادار الذهب</strong>
-       <small>{preparationStatus} · {gcHeading} {expanded?'▴':'▾'}</small>
+       <small>{earlyHeading} {expanded?'▴':'▾'}</small>
      </span>
+     {earlyCurrent&&early&&<span className="sniper-gold-preparation-levels">
+       تفعيل {fmt(early.trigger)} · هدف {fmt(early.target)} · إبطال {fmt(early.invalidate)}
+     </span>}
    </button>
    {expanded&&<section className="sniper-gold-radar-expanded"
      aria-label="تفاصيل قراءة رادار الذهب">
+     <strong>إنذار التحضير قبل الكسر · تجريبي</strong>
+     <span>{earlyHeading}</span>
+     {latestLead&&<>
+       <span>آخر إنذار: {leadLabel(latestLead)} · {latestLead.side==='BUY'?'صعود':'هبوط'}
+         {' '}· صدر {clock(latestLead.issuedAt)} بتوقيت دبي</span>
+       <span>مستويات ثابتة: تفعيل {fmt(latestLead.trigger)} · هدف تاريخي {fmt(latestLead.target)}
+         {' '}· إبطال {fmt(latestLead.invalidate)}</span>
+       <span>{latestLead.reason} · {latestLead.note}</span>
+       <span>مهلة التفعيل حتى {clock(latestLead.armUntil)} بتوقيت دبي</span>
+       <span>المصدر: {latestLead.source}</span>
+       {latestLead.leadMinSeconds!=null&&<span>الكسر بعد الإنذار بنطاق
+         {' '}{latestLead.leadMinSeconds}–{latestLead.leadMaxSeconds} ثانية</span>}
+     </>}
+     {!earlyCurrent&&<span>{obs?.reason||'لا يوجد إنذار جديد مستوفٍ للشروط'}</span>}
+     <span>السجل الجديد: {lead?.events??0} إنذار · {lead?.pending??0} معلق
+       {' '}· {lead?.evaluated??0} محسوم · {lead?.excluded??0} غير محسوم</span>
+     <span>كسر لاحق مثبت: {lead?.provenBreakouts??0}
+       {' '}· هدف قبل الإبطال: {lead?.targetBeforeStop??0}/{lead?.evaluated??0}
+       {lead?.targetRate!=null?' ('+Math.round(lead.targetRate*100)+'%)':''}</span>
+     <small>النسبة تشمل الإنذارات التي انتهت بلا كسر والإبطالات. أي لمس في دقيقة إصدار
+       الإنذار أو ترتيب ملتبس يُعرض كغير محسوم. هذه لمسات سعرية قبل تكاليف التنفيذ.</small>
+     <small>التحضير من السعر الفوري؛ لا يكشف أوامر صناع السوق. لم تثبت دقته خارج العينة بعد.</small>
+     <span>{preparationStatus} · {gcHeading}</span>
      <strong>عقود الذهب GC · {gcState}</strong>
      <span dir="ltr">{gcReady?gc!.symbol+'  '+fmt(gc!.price):'GC=F —'}</span>
      {gcReady&&<span>تحرك 5 دقائق (تاريخي):

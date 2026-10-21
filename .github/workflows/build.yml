@@ -20,6 +20,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      - run: node tests/gold-preparation-lead.mjs
       - run: node tests/sniper-risk-plan.cjs && node tests/next-move-cooldown.cjs && node tests/btc-provider-continuity.cjs && node tests/ai-service-warmup.cjs
       - run: node --experimental-strip-types tests/gold-liquidity-radar.mjs
       - run: node tests/web-source-resilience.cjs

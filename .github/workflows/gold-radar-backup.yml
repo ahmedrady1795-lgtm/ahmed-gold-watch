@@ -1,0 +1,42 @@
+name: Preserve XAUUSD gold forward radar evidence
+on:
+  schedule:
+    - cron: '11,41 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: spot-gold-radar-archive
+  cancel-in-progress: false
+jobs:
+  checkpoint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: render-free
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Preserve closed-M1 source-specific signals and resolved outcomes
+        run: node scripts/checkpoint-gold-radar.mjs
+      - name: Preserve immutable pre-break alerts and timing proof
+        run: node scripts/checkpoint-gold-preparation.mjs
+      - name: Persist only when observed outcomes changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add archive/gold-radar-shadow.json archive/gold-preparation-lead.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Checkpoint gold preparation and price-action evidence [skip ci]"
+            for attempt in 1 2 3; do
+              if git push origin HEAD:render-free; then exit 0; fi
+              git fetch origin render-free
+              git rebase origin/render-free
+            done
+            exit 1
+          else
+            echo "No changed gold forward observations"
+          fi

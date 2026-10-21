@@ -31,10 +31,17 @@ goldRadar.on('error',e=>console.warn('[GOLD-RADAR] worker unavailable',e.message
 goldRadar.on('exit',(code,signal)=>{
  if(code!==0&&!signal)console.warn('[GOLD-RADAR] recorder stopped',code);
 });
+const preparation=spawn('node',['scripts/gold-preparation-worker.mjs'],{
+ stdio:'inherit',env:process.env
+});
+preparation.on('error',e=>console.warn('[GOLD-PREPARATION] worker unavailable',e.message));
+preparation.on('exit',(code,signal)=>{
+ if(code!==0&&!signal)console.warn('[GOLD-PREPARATION] worker stopped',code);
+});
 for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{
- child.kill(signal);radar.kill(signal);goldRadar.kill(signal);
+ child.kill(signal);radar.kill(signal);goldRadar.kill(signal);preparation.kill(signal);
 });
 child.on('exit',(code,signal)=>{
- radar.kill('SIGTERM');goldRadar.kill('SIGTERM');
+ radar.kill('SIGTERM');goldRadar.kill('SIGTERM');preparation.kill('SIGTERM');
  process.exitCode=code??(signal?1:0);
 });

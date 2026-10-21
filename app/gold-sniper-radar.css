@@ -19,9 +19,11 @@
   font:inherit;color:inherit;cursor:pointer;text-align:right;
 }
 .sniper-gold-radar-toggle:focus-visible{outline:2px solid #7fe1c8;outline-offset:2px}
-.sniper-gold-radar-top{display:flex;justify-content:space-between;gap:4px;align-items:center}
+.sniper-gold-preparation-levels{display:block;font-size:10px;color:#c8e4da;
+ line-height:1.5;white-space:normal;font-variant-numeric:tabular-nums}
+.sniper-gold-radar-top{display:flex;justify-content:space-between;gap:4px;align-items:center;flex-wrap:wrap}
 .sniper-gold-radar-top strong{font-size:11px;color:#e8d6ac;white-space:nowrap}
-.sniper-gold-radar-top small{font-size:8.5px;color:#a0b4bd;white-space:nowrap}
+.sniper-gold-radar-top small{font-size:8.5px;color:#a0b4bd;white-space:normal}
 .sniper-gold-radar-state{
   display:block;color:#b6cad4;font-size:10px;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;
