@@ -23,6 +23,7 @@ import {goldMarketSession} from '../lib/gold-market-session';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {detectPreMovePressure} from '../lib/pre-move-pressure';
 import {assessSniperLiveOpportunity} from '../lib/sniper-live-opportunity';
+import {advanceMovementProof,movementProofScore,safeMovementProof,type MovementProof} from '../lib/sniper-movement-proof';
 import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
 import {buildM15LiquidityBoard} from '../lib/sniper-m15-liquidity-board';
 import {assessM15ScenarioIssuance} from '../lib/sniper-m15-evidence-issuance';
@@ -308,6 +309,31 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    c1:m.candles,c5:x?.chartHigherFrames?.m5,preMove,watch:watchMap
  }),[now,price,marketOpen,m.sniper.view.priceFresh,m.historyFresh,
    providerTransition,m.candles,x?.chartHigherFrames?.m5,preMove,watchMap]);
+ // Keep first-issued target levels immutable; only future CLOSED M1 can score them.
+ const [movementRecords,setMovementRecords]=useState<MovementProof[]>([]);
+ const [movementProofLoaded,setMovementProofLoaded]=useState(false);
+ useEffect(()=>{
+   try{
+     const raw=window.localStorage.getItem('qannas-movement-proof-v1');
+     setMovementRecords(safeMovementProof(raw?JSON.parse(raw):[]));
+   }catch{setMovementRecords([]);}
+   setMovementProofLoaded(true);
+ },[]);
+ useEffect(()=>{
+   if(!movementProofLoaded)return;
+   try{window.localStorage.setItem('qannas-movement-proof-v1',
+     JSON.stringify(movementRecords.slice(-300)));}catch{}
+ },[movementRecords,movementProofLoaded]);
+ useEffect(()=>{
+   if(!movementProofLoaded)return;
+   setMovementRecords(prior=>advanceMovementProof({
+     prior,now,asset,source:String(x?.candleSource||''),
+     price,signal:liveOpportunity,bars:m.candles
+   }));
+ },[movementProofLoaded,now,asset,x?.candleSource,price,
+   liveOpportunity,m.candles]);
+ const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
+   [movementRecords,asset]);
  const issuance=assessM15ScenarioIssuance({
    side:safeSide,qualified,radarStatus:radar.status,radarSide:radar.side,
    m15Side:m15Bias.side,m15Votes:m15Bias.votes,
@@ -661,6 +687,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {liveOpportunity.side!=='WAIT'?' · '+liveOpportunity.targetNote:''}
        {liveOpportunity.higherFrame==='OPPOSED'?' · M5 يعارض الكسر':''}
        {' · رصد وليست إشارة تنفيذ'}</small>
+   </div>
+   <div className="sniper-movement-metrics" aria-label="نتائج رادار الحركة المقاسة من شموع لاحقة">
+     <span>إنذارات <b>{movementStats.alerts}</b></span>
+     <span>تأكيدات M1 <b>{movementStats.breaks}</b></span>
+     <span>زمن الرصد <b>{movementStats.averageLagSeconds==null?'—':
+       movementStats.averageLagSeconds+'ث'}</b></span>
+     <span>وصول T1 <b>{movementStats.hits}/{movementStats.settled}
+       {movementStats.targetRate!=null?' ('+movementStats.targetRate+'%)':''}</b></span>
+     <small>قياس تجريبي محلي أثناء فتح الصفحة ·
+       {movementStats.pending?' '+movementStats.pending+' نتيجة معلقة ·':''}
+       {movementStats.statisticallyThin?' عينة غير كافية ·':''}
+       لا يشمل الإشارات بلا هدف أو نتائج ملتبسة</small>
    </div>
    {/* Radar details expand outside the M15 OHLC canvas instead of hiding candles. */}
    {asset==='GOLD'&&<GoldRadarBadge now={now}
