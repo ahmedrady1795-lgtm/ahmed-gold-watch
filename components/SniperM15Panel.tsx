@@ -22,6 +22,7 @@ import {m15WalkForward,firstM15Evidence} from '../lib/sniper-m15-walkforward';
 import {goldMarketSession} from '../lib/gold-market-session';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {detectPreMovePressure} from '../lib/pre-move-pressure';
+import {assessSniperLiveOpportunity} from '../lib/sniper-live-opportunity';
 import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
 import {buildM15LiquidityBoard} from '../lib/sniper-m15-liquidity-board';
 import {assessM15ScenarioIssuance} from '../lib/sniper-m15-evidence-issuance';
@@ -245,11 +246,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Read-only watch levels from FINISHED M15/H1 prices. The reference remains
  // the last closed M15 candle, so browser tick updates do not chase targets.
  const watchMap=useMemo(()=>buildM15WatchPriceMap({
-   now,price:actual.at(-1)?.close??null,
+   now,price:price??null,
    sourceReady:historyFresh&&m.sniper.view.priceFresh&&marketOpen&&
      !providerTransition,
    m15:actual,h1:x?.chartHigherFrames?.h1
- }),[now,actual,x?.chartHigherFrames?.h1,historyFresh,
+ }),[now,price,actual,x?.chartHigherFrames?.h1,historyFresh,
    m.sniper.view.priceFresh,marketOpen,providerTransition]);
  const zoneBoard=useMemo(()=>buildM15LiquidityBoard({
    liquidity,watch:watchMap,history:actual,price,now
@@ -299,6 +300,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    'لا تهيئة مبكرة مؤكدة من M1/M5';
  const freshObservation=Boolean(validLive&&historyFresh&&m.sniper.view.priceFresh&&
    !providerTransition&&marketOpen);
+ // Fast movement evidence is separate from the frozen M15 analogue and
+ // from strict trade execution. Fresh M1/M5 breaks still appear on screen.
+ const liveOpportunity=useMemo(()=>assessSniperLiveOpportunity({
+   now,price,sourceReady:marketOpen&&m.sniper.view.priceFresh&&
+     m.historyFresh&&!providerTransition,
+   c1:m.candles,c5:x?.chartHigherFrames?.m5,preMove,watch:watchMap
+ }),[now,price,marketOpen,m.sniper.view.priceFresh,m.historyFresh,
+   providerTransition,m.candles,x?.chartHigherFrames?.m5,preMove,watchMap]);
  const issuance=assessM15ScenarioIssuance({
    side:safeSide,qualified,radarStatus:radar.status,radarSide:radar.side,
    m15Side:m15Bias.side,m15Votes:m15Bias.votes,
@@ -629,6 +638,29 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    </header>
    <div className={'sniper-m15-lifecycle'+(paused?' paused':'')} role="status">
      <span>{lifecycle}</span>
+   </div>
+   <div className={'sniper-live-opportunity phase-'+liveOpportunity.phase.toLowerCase()}
+      role="status" aria-label="رصد الحركة اللحظية مستقل عن صفقة التداول">
+     <div className="sniper-live-opportunity-head">
+       <strong>رادار حركة M1/M5</strong>
+       <b>{liveOpportunity.phase==='BREAK_CONFIRMED'?'كسر M1 مرصود':
+         liveOpportunity.phase==='PREPARE'?'تحضير مبكر':
+         liveOpportunity.phase==='TESTING'?'اختبار كسر':
+         liveOpportunity.phase==='CANCELLED'?'فشل الكسر':
+         liveOpportunity.phase==='OFFLINE'?'المصدر غير جاهز':'مراقبة'}</b>
+     </div>
+     {(liveOpportunity.side==='BUY'||liveOpportunity.side==='SELL')&&
+       <div className="sniper-live-opportunity-levels">
+         <span>{liveOpportunity.side==='BUY'?'↗ صعود':'↘ هبوط'}</span>
+         <span>تفعيل <b dir="ltr">{n(liveOpportunity.trigger)}</b></span>
+         <span>إبطال <b dir="ltr">{n(liveOpportunity.invalidation)}</b></span>
+         <span>أهداف أمام السعر <b dir="ltr">
+           {liveOpportunity.targets.map(t=>n(t)).join(' / ')||'—'}</b></span>
+       </div>}
+     <small>{liveOpportunity.reason}
+       {liveOpportunity.side!=='WAIT'?' · '+liveOpportunity.targetNote:''}
+       {liveOpportunity.higherFrame==='OPPOSED'?' · M5 يعارض الكسر':''}
+       {' · رصد وليست إشارة تنفيذ'}</small>
    </div>
    {/* Radar details expand outside the M15 OHLC canvas instead of hiding candles. */}
    {asset==='GOLD'&&<GoldRadarBadge now={now}
