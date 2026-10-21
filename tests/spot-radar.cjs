@@ -34,4 +34,16 @@ assert.equal(out.scoreCoin('TESTUSDT',2,12000000,broken,.03,book,now),null,'Gaps
 assert.equal(out.scoreCoin('TESTUSDT',2,12000000,parsed,.03,book,now+600000),null,'Stale candles fail closed');
 assert.equal(out.scoreCoin('TESTUSDT',20,12000000,parsed,.03,book,now)?.phase,'EXTENDED','Do not chase pumped coins');
 assert.equal(out.parseBook({bids:[],asks:[]},100),null);
-console.log('PASS: closed candles, executed volume, depth, targets, gaps, stale feed, extended-price guard. No performance claims.');
+assert.ok(scored.flowDelta5m>0,'Signed executed flow must be positive when taker buys dominate');
+assert.ok(scored.flowShiftPct>10,'Increase in taker buy participation is detected');
+const quiet=out.scoreCoin('QUIETUSDT',-1,12000000,
+  out.parseKlines(raw.map((row,i)=>i>=66?
+    row.map((v,j)=>j===7?'1000':j===10?'430':v):row),now),.03,null,now);
+assert.ok(quiet&&quiet.score<scored.score,'Low buying impulse cannot outrank strong flow');
+const riskBars=parsed.map((bar,i)=>i>=parsed.length-5?
+  {...bar,high:bar.close+2}:bar);
+const trap=out.scoreCoin('TRAPUSDT',2,12000000,riskBars,.03,book,now);
+assert.equal(trap.trapRisk,true,'Upper-wick absorption/distribution risk detected');
+assert.notEqual(trap.phase,'EARLY','Trap suspect must never be early confirmed');
+assert.equal(out.parseKlines([[now-60000,'NaN','1','1','1','1',now-1,'12','1','1','10','0']],now).length,0);
+console.log('PASS: closed candles, signed executed flow, depth, liquidity impulse, fakeout risk, targets, gaps, stale feed. Not a profitability test.');
