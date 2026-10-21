@@ -1,4 +1,4 @@
-import {parseKlines,parseBook,scoreCoin,type Candidate} from '../../../lib/spot-radar';
+import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type Candidate} from '../../../lib/spot-radar';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -203,7 +203,7 @@ async function scan():Promise<RadarResult>{
   });
   if(!initial.length)throw Error('No qualified fresh Spot candles from '+chosen.length+
     ' pairs; '+recentProblems.slice(-3).join(' | '));
-  const shortlist=initial.sort((a,b)=>b.score-a.score).slice(0,17);
+  const shortlist=initial.sort((a,b)=>b.score-a.score).slice(0,23);
   let depthChecked=0;
   const detailed=await batched(shortlist,6,async item=>{
     try{
@@ -215,14 +215,36 @@ async function scan():Promise<RadarResult>{
         initial.find(x=>x.symbol===item.symbol)!.candles,btc15m,book);
     }catch{return item;}
   });
-  // The detail stage may fail independently; those rows visibly lack depth confirmation.
-  const candidates=detailed.filter((x):x is Candidate=>x!==null)
-    .sort((a,b)=>b.score-a.score).slice(0,12);
-  if(!candidates.length)throw Error('Insufficient fresh Spot evidence');
+  // Hourly history is required for a 24h ranking. Micro volume alone cannot
+  // be represented as a next-day forecast.
+  const btcHours=parseHourlyKlines(await getJson(
+    '/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=75',7500).catch(()=>null));
+  const btc24h=btcHours.length>=55?(
+    btcHours.at(-1)!.close/btcHours.at(-25)!.close-1)*100:null;
+  const candidatesWithHourly=await batched(
+    detailed.filter((x):x is Candidate=>x!==null),6,async coin=>{
+      try{
+        const raw=await getJson('/api/v3/klines?symbol='+
+          encodeURIComponent(coin.symbol)+'&interval=1h&limit=75',5500);
+        const outlook24h=score24hOutlook(coin,parseHourlyKlines(raw),btc24h);
+        if(!outlook24h)return null;
+        return {...coin,outlook24h};
+      }catch(e){
+        problem(coin.symbol+' 24h bars '+String(e instanceof Error?e.message:e));
+        return null;
+      }
+    });
+  if(!candidatesWithHourly.length)
+    throw Error('No verified contiguous hourly history for 24h ranking');
+  // AVOID means the observed data doesn't support claiming a candidate.
+  const candidates=candidatesWithHourly
+    .filter(c=>c.outlook24h.state!=='AVOID')
+    .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore)
+    .slice(0,12);
   return {ok:true,source:'Binance public Spot · closed 1m candles + depth',
     asOf:Date.now(),universe,scanned:initial.length,depthChecked,
-    candidates,method:'Rotating Binance USDT sample → batched verified exchange metadata → 24h stats → 1m taker flow → depth',
-    warning:'Watchlist score is NOT a win probability. Visible bids can vanish; an orderbook snapshot does not reveal secret orders. No execution or API keys.'};
+    candidates,method:'Verified Binance Spot · 1h closed candles (48h+) · 24h volume shift · taker flow · BTC-relative strength · anti-chase',
+    warning:'Ranking is evidence strength for a possible move in the next 24 hours, NOT a calibrated chance of a pump. Not investment advice, no automatic trading.'};
 }
 export async function GET(){
   const now=Date.now();
