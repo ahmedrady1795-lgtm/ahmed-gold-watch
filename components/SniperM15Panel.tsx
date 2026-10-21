@@ -690,15 +690,20 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    </div>
    <div className="sniper-movement-metrics" aria-label="نتائج رادار الحركة المقاسة من شموع لاحقة">
      <span>إنذارات <b>{movementStats.alerts}</b></span>
-     <span>تأكيدات M1 <b>{movementStats.breaks}</b></span>
-     <span>زمن الرصد <b>{movementStats.averageLagSeconds==null?'—':
+     <span>تحضير مبكر <b>{movementStats.early}</b></span>
+     <span>كسور M1 <b>{movementStats.breaks}</b></span>
+     <span>تأخر اكتشاف الكسر <b>{movementStats.averageLagSeconds==null?'—':
        movementStats.averageLagSeconds+'ث'}</b></span>
+     <span>إنذار سبق الكسر <b>{movementStats.earlyLeads}/{movementStats.breaks}
+       {movementStats.averageLeadSeconds!=null?' · '+movementStats.averageLeadSeconds+'ث':''}</b></span>
      <span>وصول T1 <b>{movementStats.hits}/{movementStats.settled}
        {movementStats.targetRate!=null?' ('+movementStats.targetRate+'%)':''}</b></span>
-     <small>قياس تجريبي محلي أثناء فتح الصفحة ·
+     <small>قياس محلي عند فتح الصفحة ومن شموع M1 أُغلقت بعد إصدار الإنذار ·
        {movementStats.pending?' '+movementStats.pending+' نتيجة معلقة ·':''}
+       {movementStats.missingTarget?' '+movementStats.missingTarget+' بلا هدف ·':''}
+       {movementStats.unscored?' '+movementStats.unscored+' غير محسومة ·':''}
        {movementStats.statisticallyThin?' عينة غير كافية ·':''}
-       لا يشمل الإشارات بلا هدف أو نتائج ملتبسة</small>
+       لا يشمل الحالات الملتبسة أو بلا هدف في نسبة النجاح</small>
    </div>
    {/* Radar details expand outside the M15 OHLC canvas instead of hiding candles. */}
    {asset==='GOLD'&&<GoldRadarBadge now={now}
