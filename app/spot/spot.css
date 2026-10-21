@@ -87,3 +87,6 @@
   .spot-simple-quote strong{font-size:13px}
   .spot-simple-level{white-space:normal}
 }
+
+.spot-simple-proof{font-size:11px;line-height:1.6;padding:9px 11px;
+  margin:0 0 13px;background:#172b34;color:#b5e9d8;border:1px solid #326354;border-radius:8px}
