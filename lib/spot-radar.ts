@@ -24,7 +24,7 @@ export type Candidate={
   absorption:Absorption;
   book:Book|null;breakout:number;distancePct:number;invalidation:number;
   target1:number;target2:number;estimatedCostPct:number;netRR:number;
-  reasons:string[];warnings:string[];outlook24h?:Spot24hOutlook;edge?:SpotEdge;highUpside?:UpsideFocus;
+  reasons:string[];warnings:string[];outlook24h?:Spot24hOutlook;edge?:SpotEdge;highUpside?:UpsideFocus|null;
   candles:Candle[];
 };
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
