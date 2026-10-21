@@ -37,11 +37,12 @@ async function observe(){
  if(busy||finished)return;busy=true;
  try{
   const refresh=!chart||Date.now()-chartAt>=30000;
-  const [history,quote]=await Promise.allSettled([
-   refresh?json('/api/chart-history?preparation='+Date.now()):Promise.resolve(chart),
-   json('/api/quote')]);
+  if(refresh)try{chart=await json('/api/chart-history?asset=GOLD&preparation='+Date.now());
+   chartAt=Date.now();}catch{}
+  // Request the quote AFTER history, so a slow history warm-up cannot age
+  // the quote beyond the ten-second source freshness gate before issuance.
+  const quote=await json('/api/quote').catch(()=>null);
   const now=Date.now();
-  if(history.status==='fulfilled'&&refresh){chart=history.value;chartAt=now;}
   const g=chart?.gold,source=String(g?.candleSource||'');
   const m1=Array.isArray(g?.chartCandles)?g.chartCandles.filter(b=>b?.time+60000<=now-3000):[];
   let next=ledger;
@@ -49,9 +50,11 @@ async function observe(){
   else if(next.events.some(e=>e.status==='ARMED'||e.status==='BREAKOUT')){
    const prior=next.events.at(-1);next=settleGoldLead(next,now,prior.source,[]);
   }
-  const q=quote.status==='fulfilled'?quote.value:null;
-  const reading=readGoldPreparation({now,source,bars:m1,quote:q,
-   marketOpen:goldMarketSession(now).open&&g?.fresh===true&&now-chartAt<45000});
+  const q=quote,session=goldMarketSession(now).open;
+  const feedFresh=g?.fresh===true&&now-chartAt<45000;
+  const reading=session&&!feedFresh?{ready:false,plan:null,
+   reason:'سياق شموع الذهب غير متاح أو قديم؛ لا إنذار جديد'}:
+   readGoldPreparation({now,source,bars:m1,quote:q,marketOpen:session});
   if(reading.plan)next=appendGoldLead(next,reading.plan);
   if(next!==ledger){
    const added=next.events.length>ledger.events.length;

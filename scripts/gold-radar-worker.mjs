@@ -58,7 +58,7 @@ async function observe(){
  const now=Date.now();
  try{
   const url='http://127.0.0.1:'+(process.env.PORT||'10000')+
-   '/api/chart-history?gold_radar='+now;
+   '/api/chart-history?asset=GOLD&gold_radar='+now;
   const response=await fetch(url,{cache:'no-store',
    signal:AbortSignal.timeout(19000)});
   if(!response.ok)throw Error('CHART_HTTP_'+response.status);
