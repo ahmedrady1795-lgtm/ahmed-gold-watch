@@ -27,6 +27,15 @@ async function verify(){
     assert.ok(route.includes("stage('"+name+"'"),'unbounded awaited stage: '+name);
   }
   assert.match(route,/totalBudgetMs:39000/);
+  assert.match(route,/optionalMarketEvidence\(getBtcMarket\(\),5500\)/,
+    'a slow BTC candle venue must not block fresh independent gold analysis');
+  assert.match(route,/peekFreshBtcMarket\(now\)/,
+    'a cached BTC history may only be reused if its closed candles pass freshness checks');
+  assert.match(route,/source:'BTC_FEED_UNAVAILABLE',checkedAt:0/,
+    'no BTC candles may be fabricated to bypass qualification gates');
+  assert.match(route,/optionalMarketEvidence\(getBtcMarket\(true\),2800\)/,
+    'the BTC recovery must also be time-bound and optional');
+
   assert.match(route,/optionalMarketEvidence\(webIntelPromise,1250\)/,
     'slow web headlines must not block the confirmed-candle decision');
   assert.match(route,/\]\),1250\)\)\?\?\[null,null\]/,
