@@ -270,8 +270,8 @@ async function scan():Promise<RadarResult>{
       spotAccumulationPulse(a).buyIntensity).slice(0,10);
   // Do not wait for 24h momentum when 1m executed flow has JUST started.
   const freshFlow=[...initial].filter(c=>!c.trapRisk&&c.buyShare>=.53&&
-    c.volumeImpulse>=1.25&&c.flowDelta5m>1200&&c.change15m<3.5&&
-    c.change24h<12).sort((a,b)=>b.flowDelta5m-a.flowDelta5m).slice(0,12);
+    c.volumeImpulse>=1.25&&c.flowDelta5m>1200&&c.change15m<4.5&&
+    c.change24h<16).sort((a,b)=>b.flowDelta5m-a.flowDelta5m).slice(0,12);
   // A fixed "already-moving" list misses the first hour of new rotation.
   // Reserve eight slots for liquid, relatively quiet symbols before breakout.
   const quiet=[...initial].filter(c=>c.volume24h>=2_000_000&&
