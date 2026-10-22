@@ -12,6 +12,7 @@ on:
       - 'Dockerfile'
       - 'tests/spot-aggressive.cjs'
       - 'lib/spot-radar.ts'
+      - 'lib/client-spot-radar.ts'
       - 'app/api/spot-radar/route.ts'
       - 'app/spot/page.tsx'
       - 'app/spot/spot.css'
