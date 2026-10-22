@@ -16,6 +16,7 @@ on:
       - 'app/spot/page.tsx'
       - 'app/spot/spot.css'
       - 'tests/spot-ignition.cjs'
+      - 'tests/spot-radar.cjs'
       - '.github/workflows/spot-ignition.yml'
   workflow_dispatch:
 jobs:
