@@ -17,8 +17,8 @@ export function spotAccumulationPulse(coin:Candidate):SpotAccumulation{
   const bars=coin.candles.slice(-65);
   if(bars.length<60||!Number.isFinite(coin.price)||coin.price<=0||
     !Number.isFinite(coin.volume24h)||coin.volume24h<1_500_000||
-    !Number.isFinite(coin.change24h)||coin.change24h>=12||
-    !Number.isFinite(coin.change15m)||coin.change15m>=3.2||
+    !Number.isFinite(coin.change24h)||coin.change24h>=16||
+    !Number.isFinite(coin.change15m)||coin.change15m>=4.5||
     coin.change15m<-.75||coin.trapRisk)return none();
   for(let i=1;i<bars.length;i++)if(bars[i].time-bars[i-1].time!==60_000)return none();
   if(bars.some(c=>!Number.isFinite(c.quoteVolume)||!Number.isFinite(c.buyQuote)||
