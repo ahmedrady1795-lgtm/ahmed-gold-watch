@@ -109,3 +109,5 @@
   border:1px solid #806b43;background:#302a20;color:#f0d39a!important;font-weight:800}
 .spot-simple-coin.is-watch{border-style:dashed;border-color:#65583b;background:linear-gradient(110deg,#28271f,#121f2b)}
 .spot-simple-evidence{display:block;margin-top:5px;font-size:10px;color:#8fa5b6;line-height:1.55}
+.spot-simple-pipeline{margin:-4px 3px 17px;font-size:10.5px;line-height:1.65;
+  color:#8fa5b6;padding:0 4px;font-variant-numeric:tabular-nums}
