@@ -1,6 +1,6 @@
 'use client';
 
-import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type Candidate} from './spot-radar';
+import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type Candidate,isEarlyWatchCandidate} from './spot-radar';
 import {memeSpotSymbols,marketGroup,highUpsideFocus} from './spot-high-upside';
 import {rankSpotFastLane} from './spot-aggressive';
 import {spotAccumulationPulse} from './spot-accumulation';
@@ -8,7 +8,7 @@ import {spotAccumulationPulse} from './spot-accumulation';
 type Ticker={symbol:string;quoteVolume:string;priceChangePercent:string};
 type MarketInfo={symbols?:Array<{symbol:string;status:string;quoteAsset:string;isSpotTradingAllowed?:boolean;permissions?:string[]}>};
 type BrowserRadar={ok:true;asOf:number;source:string;universe:number;scanned:number;
-  depthChecked:number;candidates:Candidate[];method:string;warning:string};
+  depthChecked:number;candidates:Candidate[];watchlist:Candidate[];method:string;warning:string};
 
 const HOSTS=['https://data-api.binance.vision','https://api.binance.com','https://api-gcp.binance.com'];
 async function request(host:string,path:string,timeoutMs=8000):Promise<unknown>{
@@ -79,8 +79,8 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
   const tickers=tickerGroups.flat();
   if(!allowed.size||!tickers.length)throw Error('تعذر التحقق من مجموعات أزواج Binance Spot المصغرة.');
   const eligible=tickers.filter(t=>allowed.has(t.symbol)&&t.symbol.endsWith('USDT')&&
-    !stables.has(t.symbol.slice(0,-4))&&Number(t.quoteVolume)>=1500000&&
-    Number(t.priceChangePercent)>=-9&&Number(t.priceChangePercent)<=22);
+    !stables.has(t.symbol.slice(0,-4))&&Number(t.quoteVolume)>=750000&&
+    Number(t.priceChangePercent)>=-12&&Number(t.priceChangePercent)<=25);
   const high=[...eligible].sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,10);
   const low=eligible.filter(t=>+t.quoteVolume>=2000000&&+t.quoteVolume<=95000000&&
     +t.priceChangePercent>=-4&&+t.priceChangePercent<=7)
@@ -149,10 +149,18 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
     }catch{return null;}
   });
   if(!inspected.length)throw Error('لا يوجد تاريخ ساعة مكتمل للتحليل خلال 24 ساعة.');
-  const candidates=inspected.filter(x=>x.outlook24h.state!=='AVOID')
+  const candidates=inspected.filter(x=>x.volume24h>=1_500_000&&
+    x.outlook24h.state!=='AVOID')
     .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore).slice(0,14);
+  const candidateSymbols=new Set(candidates.map(c=>c.symbol));
+  const watchlist=inspected.filter(isEarlyWatchCandidate)
+    .filter(c=>!candidateSymbols.has(c.symbol))
+    .sort((a,b)=>
+      (b.outlook24h!.rankScore+Math.min(12,b.volumeImpulse*3)+Math.max(0,(b.buyShare-.5)*40)+(b.highUpside?.group==='MEME'?4:0))-
+      (a.outlook24h!.rankScore+Math.min(12,a.volumeImpulse*3)+Math.max(0,(a.buyShare-.5)*40)+(a.highUpside?.group==='MEME'?4:0)))
+    .slice(0,16);
   return {ok:true,asOf:Date.now(),source:'Binance Spot · direct browser feed ('+host.replace('https://','')+')',
-    universe:all.length,scanned:scans.length,depthChecked,candidates,
+    universe:all.length,scanned:scans.length,depthChecked,candidates,watchlist,
     method:'Direct Binance · verified meme-first Spot markets · 1h true range + 24h volume · buyer flow',
     warning:'التحليل من المتصفح بسبب تعذر الخادم. الترتيب قوة أدلة للحركة خلال 24 ساعة وليس نسبة ضخ مضمونة.'};
 }
