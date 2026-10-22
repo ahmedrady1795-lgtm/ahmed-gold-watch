@@ -49,7 +49,7 @@ export function highUpsideFocus(coin:Candidate,hourly:Candle[]):UpsideFocus|null
   // Zero premium for already exhausted movement, low-liquidity or
   // unverified taker participation; hype alone never upgrades a candidate.
   const actionable=coin.volume24h>=1500000&&!coin.trapRisk&&
-    coin.change24h<12&&coin.change15m<=5&&
+    coin.change24h<16&&coin.change15m<=5&&
     coin.buyShare>=.52&&recentActivityRatio>=.95;
   const volatility=clamp((hourlyRangePct-.5)/2.8,0,1);
   const activity=clamp((recentActivityRatio-.95)/1.2,0,1);
