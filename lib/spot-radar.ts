@@ -114,7 +114,7 @@ export function scoreCoin(
 ):Candidate|null{
   const candles=rawCandles.slice(-70), n=candles.length;
   if(n<60||!Number.isFinite(change24h)||!Number.isFinite(volume24h)||
-     volume24h<1500000||now-(candles[n-1].time+60000)>150000)return null;
+     volume24h<750000||now-(candles[n-1].time+60000)>150000)return null;
   for(let i=n-60;i<n;i++)if(i>0&&candles[i].time-candles[i-1].time!==60000)return null;
   const price=candles[n-1].close;
   const recent=candles.slice(-5),past=candles.slice(-55,-5);
@@ -286,4 +286,20 @@ export function score24hOutlook(
   return {rankScore,state,hardVeto:alreadyRunning||coin.trapRisk,reason:reasons.slice(0,2).join(' · ')||
     'متابعة قوة السعر والسيولة',hourlyChange24,volumeRatio24,
     takerBuyShare12,freshAt:h[n-1].time+HOUR};
+}
+
+/**
+ * Lower-conviction or sub-$1.5m-volume setups can be displayed for observation,
+ * never as buy-confirmed signals. Hard vetoes, traps and extended short-term
+ * moves are excluded. The UI must label these candidates as WATCH only.
+ */
+export function isEarlyWatchCandidate(c:Candidate):boolean{
+  const o=c.outlook24h;
+  if(!o||o.hardVeto||c.trapRisk)return false;
+  if(!Number.isFinite(c.volume24h)||c.volume24h<750_000||
+     !Number.isFinite(c.change24h)||c.change24h < -12||c.change24h>25||
+     !Number.isFinite(c.change15m)||c.change15m < -1.2||c.change15m>4.5||
+     !Number.isFinite(o.rankScore)||o.rankScore<20)return false;
+  const developing=o.state==='AVOID'||c.volume24h<1_500_000||o.rankScore<38;
+  return developing&&(c.buyShare>=.47||c.volumeImpulse>=1.05||c.highUpside?.group==='MEME');
 }
