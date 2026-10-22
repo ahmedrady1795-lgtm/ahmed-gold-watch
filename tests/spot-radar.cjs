@@ -229,3 +229,28 @@ assert.ok(serverEdge.includes('largeTradeFootprint')&&
 console.log('PASS: aggressive whale-print maker flag, thin/stale tape, futures leverage traps and optional evidence.');
 
 console.log('PASS: closed candles, signed executed flow, depth, liquidity impulse, fakeout risk, targets, gaps, stale feed. Not a profitability test.');
+
+const monitor={
+  ...scored,symbol:'PEPEUSDT',volume24h:900000,change24h:2,change15m:.4,
+  volumeImpulse:1.3,buyShare:.53,trapRisk:false,
+  highUpside:{group:'MEME',boost:0,hourlyRangePct:1.2,recentActivityRatio:1.1,reason:'test'},
+  outlook24h:{rankScore:32,state:'AVOID',hardVeto:false,reason:'watch',
+    hourlyChange24:0,volumeRatio24:.9,takerBuyShare12:.51,freshAt:now}
+};
+assert.equal(out.isEarlyWatchCandidate(monitor),true,
+  'A developing lower-conviction meme setup can be displayed as watch-only');
+assert.equal(out.isEarlyWatchCandidate({...monitor,outlook24h:{...monitor.outlook24h,hardVeto:true}}),false,
+  'Hard veto must keep the candidate off the watchlist');
+assert.equal(out.isEarlyWatchCandidate({...monitor,trapRisk:true}),false,
+  'Trap-risk candidate must not be surfaced as a watch setup');
+assert.equal(out.isEarlyWatchCandidate({...monitor,volume24h:700000}),false,
+  'Below-minimum liquidity must not be surfaced');
+assert.equal(out.isEarlyWatchCandidate({...monitor,outlook24h:{...monitor.outlook24h,rankScore:19}}),false,
+  'Weak/no-evidence candidates are not included merely to fill the list');
+const serverRouteWatch=fs.readFileSync('app/api/spot-radar/route.ts','utf8');
+const browserRouteWatch=fs.readFileSync('lib/client-spot-radar.ts','utf8');
+assert.ok(serverRouteWatch.includes('watchlist')&&serverRouteWatch.includes('isEarlyWatchCandidate'));
+assert.ok(browserRouteWatch.includes('watchlist')&&browserRouteWatch.includes('isEarlyWatchCandidate'));
+const watchUI=fs.readFileSync('app/spot/page.tsx','utf8');
+assert.ok(watchUI.includes('مراقبة مبكرة')&&watchUI.includes('watchlist'));
+console.log('PASS: early-watch candidates are separated from buy-confirmed signals; hard vetoes, traps, thin liquidity and weak evidence stay excluded.');
