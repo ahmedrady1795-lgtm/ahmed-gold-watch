@@ -11,7 +11,7 @@ export function isSpotFastLane(coin:Candidate):boolean{
 }
 export function rankSpotFastLane(coin:Candidate,outlook:Spot24hOutlook,boost=0):Spot24hOutlook{
   // Only the SCORE-based 24h veto can be bypassed, never a real trap or chase.
-  const fastLane=isSpotFastLane(coin)&&outlook.hourlyChange24<12&&!outlook.hardVeto;
+  const fastLane=isSpotFastLane(coin)&&outlook.hourlyChange24<16&&!outlook.hardVeto;
   const rankScore=Math.min(100,Math.max(0,outlook.rankScore+boost+(fastLane?8:0)));
   const high=rankScore>=63&&outlook.takerBuyShare12>=.515&&
     outlook.volumeRatio24>=.85&&coin.buyShare>=.51;
