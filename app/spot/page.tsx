@@ -121,11 +121,19 @@ export default function SpotPage(){
               </div>
               <p>{outlook.reason}</p>
               <div className="spot-simple-foot">
-                <span>نشاط السيولة: <b>{outlook.volumeRatio24.toFixed(2)}×</b></span>
+                <span>نشاط السيولة 24س: <b>{outlook.volumeRatio24.toFixed(2)}×</b></span>
+                <span>تسارع حجم 5د: <b>{c.volumeImpulse.toFixed(2)}×</b></span>
+                <span>شراء منفّذ 5د: <b>{(c.buyShare*100).toFixed(0)}%</b></span>
+                <span>صافي تدفق 5د: <b>{c.flowDelta5m>=0?'+':''}{fmt(c.flowDelta5m)} USDT</b></span>
+                {c.absorption.state!=='NONE'&&
+                  <span>امتصاص: <b>{c.absorption.state==='BUY_RECLAIM'?'عودة شراء بعد امتصاص بيع':c.absorption.state==='SELL_ABSORPTION'?'ضغط بيع يجري امتصاصه':'مراقبة'}</b></span>}
                 {c.highUpside&&
                   <span>متوسط نطاق الساعة سابقًا: <b>{c.highUpside.hourlyRangePct.toFixed(2)}%</b></span>}
-
               </div>
+              {c.reasons.length>0&&
+                <small className="spot-simple-evidence">دليل الرصد: {c.reasons.slice(0,3).join(' · ')}</small>}
+              {c.warnings.length>0&&
+                <small className="spot-simple-evidence">تنبيه: {c.warnings.slice(0,2).join(' · ')}</small>}
             </div>
             <div className="spot-simple-quote">
               <strong>{fmt(c.price)}</strong>
