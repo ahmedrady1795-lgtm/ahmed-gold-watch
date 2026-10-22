@@ -254,3 +254,13 @@ assert.ok(browserRouteWatch.includes('watchlist')&&browserRouteWatch.includes('i
 const watchUI=fs.readFileSync('app/spot/page.tsx','utf8');
 assert.ok(watchUI.includes('مراقبة مبكرة')&&watchUI.includes('watchlist'));
 console.log('PASS: early-watch candidates are separated from buy-confirmed signals; hard vetoes, traps, thin liquidity and weak evidence stay excluded.');
+
+assert.ok(serverRouteWatch.includes('freshMinuteCandles')&&
+  serverRouteWatch.includes('hourlyVerified')&&serverRouteWatch.includes('earlyWatch'),
+  'Server must report candidate counts through every major stage');
+assert.ok(browserRouteWatch.includes('freshMinuteCandles')&&
+  browserRouteWatch.includes('hourlyVerified')&&browserRouteWatch.includes('earlyWatch'),
+  'Browser fallback must report the same funnel counters');
+assert.ok(watchUI.includes('spot-simple-pipeline')&&watchUI.includes('hourlyVerified'),
+  'User can see where candidates are filtered without debug tools');
+console.log('PASS: diagnostics expose discovery, valid candles, hourly qualification and visible early-watch counts.');
