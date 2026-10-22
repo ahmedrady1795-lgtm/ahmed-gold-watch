@@ -1,4 +1,4 @@
-import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type Candidate} from '../../../lib/spot-radar';
+import {parseKlines,parseHourlyKlines,parseBook,scoreCoin,score24hOutlook,type Candidate,isEarlyWatchCandidate} from '../../../lib/spot-radar';
 import {largeTradeFootprint,futuresCrowding,blendEdge} from '../../../lib/spot-edge';
 import {spotLiquiditySample,spotIgnition,type SpotLiquiditySample} from '../../../lib/spot-ignition';
 import {rankSpotFastLane} from '../../../lib/spot-aggressive';
@@ -74,7 +74,7 @@ let pending:Promise<RadarResult>|null=null;
 const liquidityHistory=new Map<string,SpotLiquiditySample>();
 const accumulationHistory=new Map<string,SpotAccumulationSample>();
 type RadarResult={ok:true;source:string;asOf:number;universe:number;scanned:number;depthChecked:number;
-  candidates:Candidate[];method:string;warning:string;forwardAudit?:ForwardResult};
+  candidates:Candidate[];watchlist:Candidate[];method:string;warning:string;forwardAudit?:ForwardResult};
 
 async function getJson(path:string,timeoutMs=6800):Promise<unknown>{
   assertNotBanned();
@@ -146,7 +146,7 @@ async function discoverNames():Promise<{names:string[];universe:number}>{
   for(const offset of positions)
     picked.push(...rotated.slice(offset,offset+24),...rotated.slice(0,Math.max(0,offset+24-rotated.length)));
   const known=new Set(rotated);
-  const names=Array.from(new Set([...CORE_SYMBOLS.filter(x=>known.has(x)),...picked])).slice(0,95);
+  const names=Array.from(new Set([...CORE_SYMBOLS.filter(x=>known.has(x)),...picked])).slice(0,125);
   return {names,universe:all.length};
 }
 const chunks=<T,>(a:T[],size:number)=>Array.from(
@@ -192,26 +192,26 @@ function pick(tickers:Ticker[],allowed:Set<string>):Ticker[]{
   const eligible=tickers.filter(t=>allowed.has(t.symbol)&&
     !stables.has(t.symbol.replace(/USDT$/,''))&&
     Number.isFinite(+t.quoteVolume)&&Number.isFinite(+t.priceChangePercent)&&
-    +t.quoteVolume>=1500000&&+t.priceChangePercent>=-9&&+t.priceChangePercent<=22);
+    +t.quoteVolume>=750000&&+t.priceChangePercent>=-12&&+t.priceChangePercent<=25);
   const memes=eligible.filter(t=>marketGroup(t.symbol)==='MEME')
-    .sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,28);
+    .sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,36);
   const beta=eligible.filter(t=>marketGroup(t.symbol)==='HIGH_BETA'&&
-    +t.quoteVolume>=1800000&&+t.quoteVolume<220000000)
+    +t.quoteVolume>=1000000&&+t.quoteVolume<220000000)
     .sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,16);
-  const high=[...eligible].sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,8);
-  const middle=eligible.filter(t=>+t.quoteVolume<=120000000&&+t.quoteVolume>=2000000&&
-    +t.priceChangePercent>=-5&&+t.priceChangePercent<=6)
+  const high=[...eligible].sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,10);
+  const middle=eligible.filter(t=>+t.quoteVolume<=120000000&&+t.quoteVolume>=1000000&&
+    +t.priceChangePercent>=-7&&+t.priceChangePercent<=8)
     .sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,20);
   const trending=eligible.filter(t=>+t.quoteVolume<250000000&&
     +t.priceChangePercent>=0&&+t.priceChangePercent<=12)
     .sort((a,b)=>+b.priceChangePercent-+a.priceChangePercent).slice(0,14);
-  const quiet=eligible.filter(t=>+t.quoteVolume>=1800000&&+t.quoteVolume<=70000000&&
+  const quiet=eligible.filter(t=>+t.quoteVolume>=1000000&&+t.quoteVolume<=70000000&&
     +t.priceChangePercent>=-3&&+t.priceChangePercent<=5)
     .sort((a,b)=>a.symbol.localeCompare(b.symbol));
   const window=Math.floor(Date.now()/300000),rotated=quiet.length
     ?[...quiet.slice(window%quiet.length),...quiet.slice(0,window%quiet.length)].slice(0,22):[];
   return Array.from(new Map([...memes,...beta,...rotated,...trending,...middle,...high]
-    .map(t=>[t.symbol,t])).values()).slice(0,64);
+    .map(t=>[t.symbol,t])).values()).slice(0,72);
 }
 async function batched<T,R>(items:T[],size:number,task:(item:T)=>Promise<R|null>):Promise<R[]>{
   const out:R[]=[];
@@ -326,7 +326,7 @@ async function scan():Promise<RadarResult>{
   // readings and big-print tape can increase or veto rankings, but unavailable
   // auxiliary feeds cannot invent an edge. Only 10 best Spot setups are sampled.
   const eligible=candidatesWithHourly
-    .filter(c=>c.outlook24h.state!=='AVOID')
+    .filter(c=>c.volume24h>=1_500_000&&c.outlook24h.state!=='AVOID')
     .sort((a,b)=>(b.outlook24h.rankScore+(b.outlook24h.fastLane?10:0)+(b.accumulation?.state==='BUY_PERSISTENT'?12:b.accumulation?.state==='BUY_BUILDUP'?6:0))-
       (a.outlook24h.rankScore+(a.outlook24h.fastLane?10:0)+(a.accumulation?.state==='BUY_PERSISTENT'?12:a.accumulation?.state==='BUY_BUILDUP'?6:0)));
   const examined=await batched(eligible.slice(0,12),4,async coin=>{
@@ -378,6 +378,20 @@ async function scan():Promise<RadarResult>{
       c.edge?.whale?.state!=='SELL_PRESSURE')
     .sort((a,b)=>b.outlook24h.rankScore-a.outlook24h.rankScore)
     .slice(0,14);
+  const candidateSymbols=new Set(candidates.map(c=>c.symbol));
+  // Signals excluded from the primary list are shown separately only when
+  // there is early evidence; genuine traps/extended moves remain excluded.
+  const vetoSymbols=new Set(examined.filter(c=>c.outlook24h.hardVeto||
+    c.edge?.leverage?.state==='CROWDED_LONGS'||
+    c.edge?.whale?.state==='SELL_PRESSURE'||
+    c.spotIgnition?.state==='FADING').map(c=>c.symbol));
+  const watchlist=candidatesWithHourly
+    .filter(isEarlyWatchCandidate)
+    .filter(c=>!candidateSymbols.has(c.symbol)&&!vetoSymbols.has(c.symbol))
+    .sort((a,b)=>
+      (b.outlook24h!.rankScore+Math.min(12,b.volumeImpulse*3)+Math.max(0,(b.buyShare-.5)*40)+(b.highUpside?.group==='MEME'?4:0))-
+      (a.outlook24h!.rankScore+Math.min(12,a.volumeImpulse*3)+Math.max(0,(a.buyShare-.5)*40)+(a.highUpside?.group==='MEME'?4:0)))
+    .slice(0,16);
   const forwardAudit=await recordAndEvaluateSpot(candidates,async(symbol,dueAt)=>{
     const startTime=Math.floor(dueAt/60000)*60000;
     return getJson('/api/v3/klines?symbol='+encodeURIComponent(symbol)+
@@ -385,7 +399,7 @@ async function scan():Promise<RadarResult>{
   }).catch(()=>undefined);
   return {ok:true,source:'Binance public Spot · closed 1m candles + depth',
     asOf:Date.now(),universe,scanned:initial.length,depthChecked,
-    candidates,forwardAudit,method:'Binance Spot · three-window buying acceleration + depth · independently repeated accumulation and liquidity checks · closed 1m/1h candles',
+    candidates,watchlist,forwardAudit,method:'Binance Spot · three-window buying acceleration + depth · independently repeated accumulation and liquidity checks · closed 1m/1h candles',
     warning:'Persistent buy-flow signals require separate fresh scans. Process memory resets on redeploy. No future/hidden orders, pump guarantee or auto-trades.'};
 }
 export async function GET(){
