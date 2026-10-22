@@ -1,12 +1,12 @@
 'use client';
 
-import {useEffect,useMemo,useState} from 'react';
+import {Fragment,useEffect,useMemo,useState} from 'react';
 import type {Candidate} from '../../lib/spot-radar';
 import {scanSpotInBrowser} from '../../lib/client-spot-radar';
 import './spot.css';
 
 type Radar={ok:true;source:string;asOf:number;universe:number;scanned:number;
-  depthChecked:number;candidates:Candidate[];warning?:string;
+  depthChecked:number;candidates:Candidate[];watchlist?:Candidate[];warning?:string;
   forwardAudit?:{total:number;hit3pct:number;avgReturnPct:number;pending:number}};
 const fmt=(value:number)=>Number.isFinite(value)?value.toLocaleString('en-US',
   {maximumFractionDigits:value<.001?8:value<1?6:value<10?4:2}):'—';
@@ -60,6 +60,15 @@ export default function SpotPage(){
     .filter(c=>c.outlook24h&&c.outlook24h.state!=='AVOID')
     .sort((a,b)=>(b.outlook24h?.rankScore||0)-(a.outlook24h?.rankScore||0))
     .slice(0,12),[data]);
+  const watching=useMemo(()=>[...(data?.watchlist||[])]
+    .filter(c=>c.outlook24h)
+    .sort((a,b)=>
+      ((b.outlook24h?.rankScore||0)+Math.min(12,b.volumeImpulse*3)+
+        Math.max(0,(b.buyShare-.5)*40)+(b.highUpside?.group==='MEME'?4:0))-
+      ((a.outlook24h?.rankScore||0)+Math.min(12,a.volumeImpulse*3)+
+        Math.max(0,(a.buyShare-.5)*40)+(a.highUpside?.group==='MEME'?4:0)))
+    .slice(0,16),[data]);
+  const displayed=useMemo(()=>[...sorted,...watching],[sorted,watching]);
 
   return <main className="spot-simple" dir="rtl">
     <div className="spot-simple-inner">
@@ -81,8 +90,8 @@ export default function SpotPage(){
       </div>
 
       <div className="spot-simple-count">
-        <strong>أقوى مرشحي الحركة الكبيرة</strong>
-        <span>{data?sorted.length+' عملات من '+data.scanned+' تم تحليلها':'بانتظار Binance'}</span>
+        <strong>فرص أقوى + مراقبة مبكرة</strong>
+        <span>{data?sorted.length+' أقوى · '+watching.length+' مراقبة · '+data.scanned+' تم تحليلها':'بانتظار Binance'}</span>
       </div>
 
       {data?.forwardAudit&&data.forwardAudit.total>0&&
@@ -92,15 +101,18 @@ export default function SpotPage(){
       {error&&<p role="alert" className="spot-simple-alert">{error}</p>}
       {stale&&<p role="status" className="spot-simple-alert">البيانات قديمة؛ لا تعتمد على هذا الترتيب حتى ينجح التحديث.</p>}
       {!data&&loading&&<p className="spot-simple-empty">بنراجع السيولة والشموع الحقيقية خلال 24 ساعة…</p>}
-      {data&&sorted.length===0&&<p className="spot-simple-empty">
+      {data&&displayed.length===0&&<p className="spot-simple-empty">
         مفيش عملات مستوفية لشروط الصعود المبدئي حاليًا. الرادار مش هيخترع ترشيحات.
       </p>}
 
       <ol className="spot-simple-list">
-        {sorted.map((c,i)=>{
+        {displayed.map((c,i)=>{
           const outlook=c.outlook24h!;
           const base=c.symbol.slice(0,-4);
-          return <li key={c.symbol} className="spot-simple-coin">
+          const watchOnly=i>=sorted.length;
+          return <Fragment key={c.symbol}>
+          {watchOnly&&i===sorted.length&&<li className="spot-simple-section-title">مراقبة مبكرة — تحتاج تأكيدًا، وليست إشارة شراء</li>}
+          <li className={'spot-simple-coin'+(watchOnly?' is-watch':'')}>
             <div className="spot-simple-rank">{i+1}</div>
             <div className="spot-simple-body">
               <div className="spot-simple-coin-head">
@@ -115,9 +127,11 @@ export default function SpotPage(){
                   <span className="spot-simple-ignition">⚡ تدفّق شراء مستمر</span>:
                   outlook.fastLane&&
                   <span className="spot-simple-early">⚡ التقاط مبكر</span>}
-                 <span className={'spot-simple-level '+(outlook.state==='HIGH'?'high':'possible')}>
-                  قوة الإشارة: {level(outlook.rankScore)}
-                </span>
+                {watchOnly?
+                  <span className="spot-simple-watch">مراقبة مبكرة · ليست شراء</span>:
+                  <span className={'spot-simple-level '+(outlook.state==='HIGH'?'high':'possible')}>
+                    قوة الإشارة: {level(outlook.rankScore)}
+                  </span>}
               </div>
               <p>{outlook.reason}</p>
               <div className="spot-simple-foot">
@@ -142,7 +156,8 @@ export default function SpotPage(){
                 {pct(outlook.hourlyChange24)} <em>آخر 24س</em>
               </span>
             </div>
-          </li>;
+          </li>
+          </Fragment>;
         })}
       </ol>
       {data&&<footer className="spot-simple-disclaimer">
