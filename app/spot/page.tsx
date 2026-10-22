@@ -6,7 +6,10 @@ import {scanSpotInBrowser} from '../../lib/client-spot-radar';
 import './spot.css';
 
 type Radar={ok:true;source:string;asOf:number;universe:number;scanned:number;
-  depthChecked:number;candidates:Candidate[];watchlist?:Candidate[];warning?:string;
+  depthChecked:number;candidates:Candidate[];watchlist?:Candidate[];
+  pipeline?:{discovered:number;verifiedPairs:number;tickerRows:number;selected:number;
+    freshMinuteCandles:number;depthCandidates:number;depthChecked:number;hourlyVerified:number;
+    nonAvoid:number;topPicks:number;earlyWatch:number};warning?:string;
   forwardAudit?:{total:number;hit3pct:number;avgReturnPct:number;pending:number}};
 const fmt=(value:number)=>Number.isFinite(value)?value.toLocaleString('en-US',
   {maximumFractionDigits:value<.001?8:value<1?6:value<10?4:2}):'—';
@@ -93,6 +96,7 @@ export default function SpotPage(){
         <strong>فرص أقوى + مراقبة مبكرة</strong>
         <span>{data?sorted.length+' أقوى · '+watching.length+' مراقبة · '+data.scanned+' تم تحليلها':'بانتظار Binance'}</span>
       </div>
+      {data?.pipeline&&<p className="spot-simple-pipeline">مسار الفحص: {data.pipeline.selected} زوجًا مختارًا من {data.pipeline.verifiedPairs} متاحًا · {data.pipeline.freshMinuteCandles} شمعة دقيقة صالحة · {data.pipeline.hourlyVerified} سجل ساعة صالح · {data.pipeline.topPicks} أقوى + {data.pipeline.earlyWatch} مراقبة</p>}
 
       {data?.forwardAudit&&data.forwardAudit.total>0&&
         <p className="spot-simple-proof">اختبار 24 ساعة المسجّل: {data.forwardAudit.hit3pct} من {data.forwardAudit.total}
