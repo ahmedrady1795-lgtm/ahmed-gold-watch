@@ -252,11 +252,14 @@ export function score24hOutlook(
   const volNow4=sum(h.slice(-4).map(x=>x.quoteVolume))/4;
   const volPrior20=sum(h.slice(-24,-4).map(x=>x.quoteVolume))/20;
   const surge4=volPrior20>0?volNow4/volPrior20:1;
-  const alreadyRunning=hourlyChange24>12||change4>5||distanceToBreakout < -3;
+  const alreadyRunning=hourlyChange24>16||change4>6.5||distanceToBreakout < -4;
   let score=0;
   score+=clamp((volumeRatio24-.8)/1.1,0,1)*23;
   score+=clamp((takerBuyShare12-.46)/.2,0,1)*19;
   score+=clamp((surge4-.85)/1.3,0,1)*10;
+  // Early-rotation bonus: accelerating hourly activity plus executed buying,
+  // while the 4h move is still modest. This is a ranking bonus, not a forecast probability.
+  score+=change4>=-.4&&change4<=2.2&&surge4>=1.25&&takerBuyShare12>=.53?7:0;
   score+=change4>=-.7&&change4<=3.5?11:change4>3.5&&change4<=5?5:0;
   score+=hourlyChange24>=-2&&hourlyChange24<=10?10:0;
   score+=distanceToBreakout>=0&&distanceToBreakout<=4?13*(1-distanceToBreakout/6):
