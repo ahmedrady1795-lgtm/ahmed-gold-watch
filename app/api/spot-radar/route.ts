@@ -73,8 +73,11 @@ let pending:Promise<RadarResult>|null=null;
 // Fail closed after cold start: two separate scans are required.
 const liquidityHistory=new Map<string,SpotLiquiditySample>();
 const accumulationHistory=new Map<string,SpotAccumulationSample>();
-type RadarResult={ok:true;source:string;asOf:number;universe:number;scanned:number;depthChecked:number;
-  candidates:Candidate[];watchlist:Candidate[];method:string;warning:string;forwardAudit?:ForwardResult};
+type RadarPipeline={discovered:number;verifiedPairs:number;tickerRows:number;selected:number;
+  freshMinuteCandles:number;depthCandidates:number;depthChecked:number;hourlyVerified:number;
+  nonAvoid:number;topPicks:number;earlyWatch:number};
+ type RadarResult={ok:true;source:string;asOf:number;universe:number;scanned:number;depthChecked:number;
+  candidates:Candidate[];watchlist:Candidate[];pipeline:RadarPipeline;method:string;warning:string;forwardAudit?:ForwardResult};
 
 async function getJson(path:string,timeoutMs=6800):Promise<unknown>{
   assertNotBanned();
@@ -397,9 +400,13 @@ async function scan():Promise<RadarResult>{
     return getJson('/api/v3/klines?symbol='+encodeURIComponent(symbol)+
       '&interval=1m&startTime='+startTime+'&limit=4',5000);
   }).catch(()=>undefined);
+  const pipeline:RadarPipeline={discovered:names.length,verifiedPairs:allowed.size,
+    tickerRows:rawTickers.length,selected:chosen.length,freshMinuteCandles:initial.length,
+    depthCandidates:shortlist.length,depthChecked,hourlyVerified:candidatesWithHourly.length,
+    nonAvoid:eligible.length,topPicks:candidates.length,earlyWatch:watchlist.length};
   return {ok:true,source:'Binance public Spot · closed 1m candles + depth',
     asOf:Date.now(),universe,scanned:initial.length,depthChecked,
-    candidates,watchlist,forwardAudit,method:'Binance Spot · three-window buying acceleration + depth · independently repeated accumulation and liquidity checks · closed 1m/1h candles',
+    candidates,watchlist,pipeline,forwardAudit,method:'Binance Spot · three-window buying acceleration + depth · independently repeated accumulation and liquidity checks · closed 1m/1h candles',
     warning:'Persistent buy-flow signals require separate fresh scans. Process memory resets on redeploy. No future/hidden orders, pump guarantee or auto-trades.'};
 }
 export async function GET(){
