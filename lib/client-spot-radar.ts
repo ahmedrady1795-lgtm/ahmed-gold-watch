@@ -7,8 +7,11 @@ import {spotAccumulationPulse} from './spot-accumulation';
 
 type Ticker={symbol:string;quoteVolume:string;priceChangePercent:string};
 type MarketInfo={symbols?:Array<{symbol:string;status:string;quoteAsset:string;isSpotTradingAllowed?:boolean;permissions?:string[]}>};
+type BrowserPipeline={discovered:number;verifiedPairs:number;tickerRows:number;selected:number;
+  freshMinuteCandles:number;depthCandidates:number;depthChecked:number;hourlyVerified:number;
+  nonAvoid:number;topPicks:number;earlyWatch:number};
 type BrowserRadar={ok:true;asOf:number;source:string;universe:number;scanned:number;
-  depthChecked:number;candidates:Candidate[];watchlist:Candidate[];method:string;warning:string};
+  depthChecked:number;candidates:Candidate[];watchlist:Candidate[];pipeline:BrowserPipeline;method:string;warning:string};
 
 const HOSTS=['https://data-api.binance.vision','https://api.binance.com','https://api-gcp.binance.com'];
 async function request(host:string,path:string,timeoutMs=8000):Promise<unknown>{
@@ -159,8 +162,13 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
       (b.outlook24h!.rankScore+Math.min(12,b.volumeImpulse*3)+Math.max(0,(b.buyShare-.5)*40)+(b.highUpside?.group==='MEME'?4:0))-
       (a.outlook24h!.rankScore+Math.min(12,a.volumeImpulse*3)+Math.max(0,(a.buyShare-.5)*40)+(a.highUpside?.group==='MEME'?4:0)))
     .slice(0,16);
+  const pipeline:BrowserPipeline={discovered:names.length,verifiedPairs:allowed.size,
+    tickerRows:tickers.length,selected:chosen.length,freshMinuteCandles:scans.length,
+    depthCandidates:ranked.length,depthChecked,hourlyVerified:inspected.length,
+    nonAvoid:inspected.filter(c=>c.outlook24h.state!=='AVOID').length,
+    topPicks:candidates.length,earlyWatch:watchlist.length};
   return {ok:true,asOf:Date.now(),source:'Binance Spot · direct browser feed ('+host.replace('https://','')+')',
-    universe:all.length,scanned:scans.length,depthChecked,candidates,watchlist,
+    universe:all.length,scanned:scans.length,depthChecked,candidates,watchlist,pipeline,
     method:'Direct Binance · verified meme-first Spot markets · 1h true range + 24h volume · buyer flow',
     warning:'التحليل من المتصفح بسبب تعذر الخادم. الترتيب قوة أدلة للحركة خلال 24 ساعة وليس نسبة ضخ مضمونة.'};
 }
