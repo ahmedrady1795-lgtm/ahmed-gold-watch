@@ -59,7 +59,7 @@ try{
 
   // A pre-move alert sees +4% intraday, then closes only +0.5% at expiry.
   // The forward audit must record the peak and adverse excursion separately.
-  const runStart=start,runDue=runStart+day;
+  const hour=3600000,runStart=start,runDue=runStart+day;
   const forward=[];
   for(let t=runStart+minute;t<runStart+hour;t+=minute){
     const first=t===runStart+minute;
