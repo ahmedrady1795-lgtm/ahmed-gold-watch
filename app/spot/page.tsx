@@ -10,7 +10,9 @@ type Radar={ok:true;source:string;asOf:number;universe:number;scanned:number;
   pipeline?:{discovered:number;verifiedPairs:number;tickerRows:number;selected:number;
     freshMinuteCandles:number;depthCandidates:number;depthChecked:number;hourlyVerified:number;
     nonAvoid:number;topPicks:number;earlyWatch:number};warning?:string;
-  forwardAudit?:{total:number;hit3pct:number;avgReturnPct:number;pending:number}};
+  forwardAudit?:{total:number;hit3pct:number;avgReturnPct:number;pending:number;
+    peakAudited:number;peakHit3pct:number;avgPeakPct:number;preMoveAudited:number;
+    preMoveHit3pct:number;preMoveAvgPeakPct:number;preMovePending:number}};
 const fmt=(value:number)=>Number.isFinite(value)?value.toLocaleString('en-US',
   {maximumFractionDigits:value<.001?8:value<1?6:value<10?4:2}):'—';
 const pct=(v:number)=>Number.isFinite(v)?(v>0?'+':'')+v.toFixed(2)+'%':'—';
@@ -98,9 +100,16 @@ export default function SpotPage(){
       </div>
       {data?.pipeline&&<p className="spot-simple-pipeline">مسار الفحص: {data.pipeline.selected} زوجًا مختارًا من {data.pipeline.verifiedPairs} متاحًا · {data.pipeline.freshMinuteCandles} شمعة دقيقة صالحة · {data.pipeline.hourlyVerified} سجل ساعة صالح · {data.pipeline.topPicks} أقوى + {data.pipeline.earlyWatch} مراقبة</p>}
 
-      {data?.forwardAudit&&data.forwardAudit.total>0&&
-        <p className="spot-simple-proof">اختبار 24 ساعة المسجّل: {data.forwardAudit.hit3pct} من {data.forwardAudit.total}
-          {' '}أغلقوا بارتفاع 3% أو أكثر · سجل تشغيل تجريبي قد يُصفّر عند إعادة النشر.</p>}
+      {data?.forwardAudit&&
+        <p className="spot-simple-proof">
+          اختبار القمة خلال 24س: {data.forwardAudit.peakHit3pct} من {data.forwardAudit.peakAudited}
+          {' '}وصلت إلى +3% بعد الإشارة · متوسط أعلى حركة {data.forwardAudit.avgPeakPct.toFixed(2)}%.
+          {' '}إغلاق 24س: {data.forwardAudit.hit3pct} من {data.forwardAudit.total} بعائد +3% أو أكثر.
+          {data.forwardAudit.preMoveAudited>0?
+            ' · قبل الصعود: '+data.forwardAudit.preMoveHit3pct+' من '+data.forwardAudit.preMoveAudited+
+            ' وصلت قمتها إلى +3%، ومتوسط القمة '+data.forwardAudit.preMoveAvgPeakPct.toFixed(2)+'%.':
+            ' · اختبار قبل الصعود يجمع عينات: '+data.forwardAudit.preMovePending+' معلّقة تحتاج اكتمال 24 ساعة.'}
+          {' '}سجل تجريبي قد يُصفّر عند إعادة النشر؛ النتائج لا تضمن ربحية مستقبلية.</p>}
 
       {error&&<p role="alert" className="spot-simple-alert">{error}</p>}
       {stale&&<p role="status" className="spot-simple-alert">البيانات قديمة؛ لا تعتمد على هذا الترتيب حتى ينجح التحديث.</p>}
