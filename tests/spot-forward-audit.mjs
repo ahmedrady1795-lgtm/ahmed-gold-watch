@@ -5,7 +5,7 @@ import path from 'node:path';
 const dir=await fs.mkdtemp(path.join(os.tmpdir(),'qannas-forward-test-'));
 process.env.SPOT_FORWARD_LOG_PATH=path.join(dir,'forward.json');
 try{
-  const {recordAndEvaluateSpot,settleFromClosedMinute}=
+  const {recordAndEvaluateSpot,settleFromClosedMinute,settleFromForwardCandles}=
     await import('../lib/spot-forward-audit.ts');
   const start=Date.parse('2026-10-20T16:00:00Z'),minute=60000,day=86400000;
   const candidate={symbol:'TESTUSDT',price:100,
@@ -38,7 +38,34 @@ try{
   assert.equal(settleFromClosedMinute({...old[0],status:'PENDING'},
     [[due,'100','105','90','104','0',due+minute*4]],due+2*minute),null,
     'No future or unclosed candles accepted');
-  console.log('PASS: frozen timestamp/price, 24h-only outcome, exact closed candle, no duplicate, no future fills.');
+
+  // A pre-move alert sees +4% intraday, then closes only +0.5% at expiry.
+  // The forward audit must record the peak and adverse excursion separately.
+  const runStart=start,runDue=runStart+day;
+  const forward=[];
+  for(let t=runStart+minute;t<runStart+hour;t+=minute){
+    const first=t===runStart+minute;
+    forward.push([t,'100',first?'104':'101',first?'99':'99.5',
+      first?'102':'100.2','10',t+minute-1,'10000','0','0','6000','0']);
+  }
+  for(let t=runStart+hour;t<runDue;t+=hour){
+    forward.push([t,'100','101','99.8','100.1','10',t+hour-1,
+      '100000','0','0','60000','0']);
+  }
+  forward.push([runDue,'100','101','99.9','100.5','10',runDue+minute-1,
+    '10000','0','0','6000','0']);
+  const pred={id:'PREMOVE',symbol:'PREMOVEUSDT',recordedAt:runStart,dueAt:runDue,
+    entry:100,rankScore:42,signalType:'PREMOVE',status:'PENDING'};
+  const peakResult=settleFromForwardCandles(pred,forward,runDue+2*minute);
+  assert.ok(peakResult,'Complete contiguous forward candles settle the observation');
+  assert.equal(peakResult.maxHighPct,4,'Record the maximum rise AFTER signal time');
+  assert.ok(Math.abs(peakResult.returnPct-.5)<1e-9,
+    'Peak capture must stay distinct from 24h closing return');
+  assert.equal(peakResult.maxLowPct,-1,'Record adverse excursion separately');
+  const gap=forward.filter((_,i)=>i!==30);
+  assert.equal(settleFromForwardCandles(pred,gap,runDue+2*minute),null,
+    'Missing forward candles must not be treated as a valid pre-rise result');
+  console.log('PASS: 24h close audit, pre-rise peak/adverse excursion, closed candles, no duplicate, no future fills, and gap rejection.');
 }finally{
   delete process.env.SPOT_FORWARD_LOG_PATH;
   await fs.rm(dir,{recursive:true,force:true});
