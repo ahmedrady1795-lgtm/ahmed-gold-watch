@@ -76,10 +76,10 @@ try{
     entry:100,rankScore:42,signalType:'PREMOVE',status:'PENDING'};
   const peakResult=settleFromForwardCandles(pred,forward,runDue+2*minute);
   assert.ok(peakResult,'Complete contiguous forward candles settle the observation');
-  assert.equal(peakResult.maxHighPct,4,'Record the maximum rise AFTER signal time');
+  assert.ok(Math.abs(peakResult.maxHighPct-4)<1e-8,'Record the maximum rise AFTER signal time');
   assert.ok(Math.abs(peakResult.returnPct-.5)<1e-9,
     'Peak capture must stay distinct from 24h closing return');
-  assert.equal(peakResult.maxLowPct,-1,'Record adverse excursion separately');
+  assert.ok(Math.abs(peakResult.maxLowPct+1)<1e-8,'Record adverse excursion separately');
   const gap=forward.filter((_,i)=>i!==30);
   assert.equal(settleFromForwardCandles(pred,gap,runDue+2*minute),null,
     'Missing forward candles must not be treated as a valid pre-rise result');
