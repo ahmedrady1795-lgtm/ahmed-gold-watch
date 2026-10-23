@@ -264,3 +264,14 @@ assert.ok(browserRouteWatch.includes('freshMinuteCandles')&&
 assert.ok(watchUI.includes('spot-simple-pipeline')&&watchUI.includes('hourlyVerified'),
   'User can see where candidates are filtered without debug tools');
 console.log('PASS: diagnostics expose discovery, valid candles, hourly qualification and visible early-watch counts.');
+
+assert.ok(browserRouteWatch.includes('const candidates=allowFallback?[host,...HOSTS.filter(x=>x!==host)].slice(0,2):[host]'),
+  'Browser fallback may try only one alternate official gateway');
+assert.ok(browserRouteWatch.includes('if(res.status===418)throw Error'),
+  'Browser fallback must not retry an IP-wide 418 ban');
+assert.ok(browserRouteWatch.includes('if(res.status===429)')&&
+  browserRouteWatch.includes('if(i+1<candidates.length)continue;'),
+  'An isolated browser 429 should get one alternate-gateway retry');
+assert.ok(browserRouteWatch.includes("request(host,'/api/v3/time',4500,false)"),
+  'Gateway probes must test the gateway directly, without disguising fallback hosts');
+console.log('PASS: browser Spot feed retries one isolated 429, avoids retry storms, and respects IP-wide 418.');
