@@ -416,11 +416,24 @@ async function scan():Promise<RadarResult>{
       (b.outlook24h!.rankScore+Math.min(12,b.volumeImpulse*3)+Math.max(0,(b.buyShare-.5)*40)+(b.highUpside?.group==='MEME'?4:0))-
       (a.outlook24h!.rankScore+Math.min(12,a.volumeImpulse*3)+Math.max(0,(a.buyShare-.5)*40)+(a.highUpside?.group==='MEME'?4:0)))
     .slice(0,16);
-  const forwardAudit=await recordAndEvaluateSpot(candidates,async(symbol,dueAt)=>{
-    const startTime=Math.floor(dueAt/60000)*60000;
-    return getJson('/api/v3/klines?symbol='+encodeURIComponent(symbol)+
-      '&interval=1m&startTime='+startTime+'&limit=4',5000);
-  }).catch(()=>undefined);
+  const forwardAudit=await recordAndEvaluateSpot(candidates,async(symbol,recordedAt,dueAt)=>{
+    // Freeze the post-alert path in three bounded segments: remaining first hour,
+    // full intervening hours, and the closed minute around the 24h deadline.
+    const minute=60000,hour=3600000;
+    const firstHour=(Math.floor(recordedAt/hour)+1)*hour;
+    const lastHour=Math.floor(dueAt/hour)*hour;
+    const firstStart=Math.ceil(recordedAt/minute)*minute;
+    const requests=[
+      firstStart<firstHour?getJson('/api/v3/klines?symbol='+encodeURIComponent(symbol)+
+        '&interval=1m&startTime='+firstStart+'&endTime='+(firstHour-1)+'&limit=60',5000).catch(()=>[]):Promise.resolve([]),
+      firstHour<lastHour?getJson('/api/v3/klines?symbol='+encodeURIComponent(symbol)+
+        '&interval=1h&startTime='+firstHour+'&endTime='+(lastHour-1)+'&limit=30',6500).catch(()=>[]):Promise.resolve([]),
+      getJson('/api/v3/klines?symbol='+encodeURIComponent(symbol)+
+        '&interval=1m&startTime='+lastHour+'&endTime='+(dueAt+2*minute)+'&limit=60',5000).catch(()=>[])
+    ];
+    const windows=await Promise.all(requests);
+    return windows.flat();
+  },Date.now(),watchlist).catch(()=>undefined);
   const pipeline:RadarPipeline={discovered:names.length,verifiedPairs:allowed.size,
     tickerRows:rawTickers.length,selected:chosen.length,freshMinuteCandles:initial.length,
     depthCandidates:shortlist.length,depthChecked,hourlyVerified:candidatesWithHourly.length,
