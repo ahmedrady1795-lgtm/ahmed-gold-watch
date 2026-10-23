@@ -23,13 +23,31 @@ try{
   const due=start+day;
   assert.equal(settleFromClosedMinute(repeat[0],[[due,'1','1','1','104',
     '0',due+minute-1]],due-1000),null,'Do not settle before future minute closes');
-  const verify=async()=>[[due,'100','104','100','103.5','1',
-    due+minute-1,'10000','0','0','5500','0']];
+  const verify=async(symbol,recordedAt,dueAt)=>{
+    const rows=[];
+    const firstHour=(Math.floor(recordedAt/3600000)+1)*3600000;
+    const lastHour=Math.floor(dueAt/3600000)*3600000;
+    for(let t=Math.ceil(recordedAt/minute)*minute;t<firstHour;t+=minute){
+      const first=t===Math.ceil(recordedAt/minute)*minute;
+      rows.push([t,'100',first?'104':'103.6','99','103.5','1',
+        t+minute-1,'10000','0','0','5500','0']);
+    }
+    for(let t=firstHour;t<lastHour;t+=3600000)
+      rows.push([t,'100','104','99','103.5','1',t+3600000-1,
+        '100000','0','0','55000','0']);
+    for(let t=lastHour;t<=dueAt+2*minute;t+=minute)
+      rows.push([t,'100','104','99','103.5','1',t+minute-1,
+        '10000','0','0','5500','0']);
+    return rows;
+  };
   const final=await recordAndEvaluateSpot([],verify,due+2*minute);
   assert.equal(final.total,1);
   assert.equal(final.hit3pct,1);
   assert.equal(final.pending,0);
   assert.equal(final.avgReturnPct,3.5);
+  assert.equal(final.peakAudited,1);
+  assert.equal(final.peakHit3pct,1);
+  assert.equal(final.preMoveAudited,0);
   assert.equal(final.storage,'ephemeral-runtime');
   const old=JSON.parse(await fs.readFile(process.env.SPOT_FORWARD_LOG_PATH,'utf8'));
   assert.equal(old[0].status,'SETTLED');
