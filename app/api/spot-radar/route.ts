@@ -153,16 +153,21 @@ async function discoverNames():Promise<{names:string[];universe:number}>{
   }
   const rotated=[...new Set(all)].sort();
   const windowIndex=Math.floor(Date.now()/180000); // every 3 minutes
+  // Sample six independently rotated windows across the verified Spot universe.
+  // The same cached price list feeds every scan; 24hr and candle calls remain bounded.
   const positions=rotated.length?[
     windowIndex%rotated.length,
     (windowIndex*17)%rotated.length,
-    (windowIndex*37)%rotated.length
+    (windowIndex*37)%rotated.length,
+    (windowIndex*59)%rotated.length,
+    (windowIndex*83)%rotated.length,
+    (windowIndex*107)%rotated.length
   ]:[];
   const picked:string[]=[];
   for(const offset of positions)
     picked.push(...rotated.slice(offset,offset+24),...rotated.slice(0,Math.max(0,offset+24-rotated.length)));
   const known=new Set(rotated);
-  const names=Array.from(new Set([...CORE_SYMBOLS.filter(x=>known.has(x)),...picked])).slice(0,125);
+  const names=Array.from(new Set([...CORE_SYMBOLS.filter(x=>known.has(x)),...picked])).slice(0,180);
   return {names,universe:all.length};
 }
 const chunks=<T,>(a:T[],size:number)=>Array.from(
@@ -226,8 +231,10 @@ function pick(tickers:Ticker[],allowed:Set<string>):Ticker[]{
     .sort((a,b)=>a.symbol.localeCompare(b.symbol));
   const window=Math.floor(Date.now()/300000),rotated=quiet.length
     ?[...quiet.slice(window%quiet.length),...quiet.slice(0,window%quiet.length)].slice(0,22):[];
+  // Broaden the minute-candle funnel, while deeper order-book/hourly analysis
+  // remains capped below to protect latency and Binance request weight.
   return Array.from(new Map([...memes,...beta,...rotated,...trending,...middle,...high]
-    .map(t=>[t.symbol,t])).values()).slice(0,72);
+    .map(t=>[t.symbol,t])).values()).slice(0,84);
 }
 async function batched<T,R>(items:T[],size:number,task:(item:T)=>Promise<R|null>):Promise<R[]>{
   const out:R[]=[];
@@ -294,7 +301,7 @@ async function scan():Promise<RadarResult>{
     c.change24h>=-3&&c.change24h<=5&&c.change15m<1.5&&!c.trapRisk)
     .sort((a,b)=>b.volumeImpulse-a.volumeImpulse).slice(0,12);
   const shortlist=Array.from(new Map([...coiled,...freshFlow,...memeLane,...betaLane,...quiet,...byMomentum]
-    .map(c=>[c.symbol,c])).values()).slice(0,30);
+    .map(c=>[c.symbol,c])).values()).slice(0,36);
   let depthChecked=0;
   const detailed=await batched(shortlist,6,async item=>{
     try{
@@ -340,7 +347,8 @@ async function scan():Promise<RadarResult>{
     throw Error('No verified contiguous hourly history for 24h ranking');
   // Keep candidate selection based on historical Spot observations. Futures
   // readings and big-print tape can increase or veto rankings, but unavailable
-  // auxiliary feeds cannot invent an edge. Only 10 best Spot setups are sampled.
+  // auxiliary feeds cannot invent an edge. Only the top 12 eligible setups receive
+  // optional trade-print and leverage checks to keep the request budget bounded.
   const eligible=candidatesWithHourly
     .filter(c=>c.volume24h>=1_500_000&&c.outlook24h.state!=='AVOID')
     .sort((a,b)=>(b.outlook24h.rankScore+(b.outlook24h.fastLane?10:0)+(b.accumulation?.state==='BUY_PERSISTENT'?12:b.accumulation?.state==='BUY_BUILDUP'?6:0))-
