@@ -429,7 +429,7 @@ async function scan():Promise<RadarResult>{
       firstHour<lastHour?getJson('/api/v3/klines?symbol='+encodeURIComponent(symbol)+
         '&interval=1h&startTime='+firstHour+'&endTime='+(lastHour-1)+'&limit=30',6500).catch(()=>[]):Promise.resolve([]),
       getJson('/api/v3/klines?symbol='+encodeURIComponent(symbol)+
-        '&interval=1m&startTime='+lastHour+'&endTime='+(dueAt+2*minute)+'&limit=60',5000).catch(()=>[])
+        '&interval=1m&startTime='+lastHour+'&endTime='+(dueAt+2*minute)+'&limit=70',5000).catch(()=>[])
     ];
     const windows=await Promise.all(requests);
     return windows.flat();
