@@ -45,9 +45,14 @@ async function chooseHost():Promise<string>{
   if(selectedHost&&Date.now()-selectedHost.at<300000)return selectedHost.name;
   if(selectPromise)return selectPromise;
   selectPromise=(async()=>{
+    // A single API gateway may return 429 while another official gateway
+    // is still healthy. Do not turn that one probe into a process-wide pause
+    // unless no gateway succeeds. HTTP 418 remains an IP-ban-wide stop.
+    const rateLimited:Response[]=[];
     const checks=await Promise.allSettled(HOSTS.map(async host=>{
       const r=await fetch(host+'/api/v3/time',{cache:'no-store',signal:AbortSignal.timeout(4200)});
-      if(r.status===418||r.status===429)binanceCooldown(r);
+      if(r.status===418){binanceCooldown(r);throw Error(host+' HTTP 418 IP ban');}
+      if(r.status===429){rateLimited.push(r);throw Error(host+' HTTP 429 rate limited');}
       if(!r.ok)throw Error(host+' HTTP '+r.status);
       const j=await r.json();
       if(!Number.isFinite(Number(j?.serverTime))||Math.abs(Date.now()-Number(j.serverTime))>120000)
@@ -60,6 +65,8 @@ async function chooseHost():Promise<string>{
       selectedHost={name:winner.value,at:Date.now()};
       return winner.value;
     }
+    if(rateLimited.length)binanceCooldown(rateLimited[0]);
+    assertNotBanned();
     for(const item of checks)if(item.status==='rejected')problem(String(item.reason));
     throw Error('Binance official gateways unreachable: '+recentProblems.slice(-4).join(' | '));
   })().finally(()=>{selectPromise=null;});
@@ -84,15 +91,22 @@ async function getJson(path:string,timeoutMs=6800):Promise<unknown>{
   const first=await chooseHost();
   const candidates=[first,...HOSTS.filter(h=>h!==first)].slice(0,2);
   let previousError='';
+  let rateLimited:Response|null=null;
   for(const host of candidates){
     assertNotBanned();
     try{
       const r=await fetch(host+path,{cache:'no-store',
         signal:AbortSignal.timeout(Math.min(13000,timeoutMs+2000)),
         headers:{Accept:'application/json'}});
-      if(r.status===429||r.status===418){
+      if(r.status===418){
         binanceCooldown(r);
-        throw Error('Binance rate limited: '+r.status);
+        throw Error('Binance HTTP 418 IP ban');
+      }
+      if(r.status===429){
+        // Keep the Retry-After, but give the next official gateway one chance.
+        // If none works, apply the IP cooldown once below.
+        rateLimited=r;
+        throw Error('Binance gateway HTTP 429');
       }
       if(!r.ok)throw Error('HTTP '+r.status);
       const j=await r.json();
@@ -102,12 +116,11 @@ async function getJson(path:string,timeoutMs=6800):Promise<unknown>{
     }catch(e){
       previousError=String(e instanceof Error?e.message:e).slice(0,120);
       problem(host+' '+path.split('?')[0]+' '+previousError);
-      // Treat rate limiting as a throttle: retrying all gateways just piles
-      // requests on the same exchange IP budget.
-      if(previousError.includes('rate limited'))break;
+      if(previousError.includes('HTTP 418'))break;
       if(selectedHost?.name===host)selectedHost=null;
     }
   }
+  if(rateLimited)binanceCooldown(rateLimited);
   throw Error(path.split('?')[0]+': '+previousError);
 }
 const CORE_SYMBOLS=[
