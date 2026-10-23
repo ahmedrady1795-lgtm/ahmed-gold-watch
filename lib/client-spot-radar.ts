@@ -14,14 +14,27 @@ type BrowserRadar={ok:true;asOf:number;source:string;universe:number;scanned:num
   depthChecked:number;candidates:Candidate[];watchlist:Candidate[];pipeline:BrowserPipeline;method:string;warning:string};
 
 const HOSTS=['https://data-api.binance.vision','https://api.binance.com','https://api-gcp.binance.com'];
-async function request(host:string,path:string,timeoutMs=8000):Promise<unknown>{
-  const res=await fetch(host+path,{cache:'no-store',signal:AbortSignal.timeout(timeoutMs)});
-  if(!res.ok)throw Error(host.replace('https://','')+': HTTP '+res.status);
-  return res.json();
+async function request(host:string,path:string,timeoutMs=8000,allowFallback=true):Promise<unknown>{
+  const candidates=allowFallback?[host,...HOSTS.filter(x=>x!==host)].slice(0,2):[host];
+  let previous='';
+  for(let i=0;i<candidates.length;i++){
+    const current=candidates[i];
+    const res=await fetch(current+path,{cache:'no-store',signal:AbortSignal.timeout(timeoutMs)});
+    if(res.status===418)throw Error(current.replace('https://','')+': HTTP 418 IP ban');
+    if(res.status===429){
+      previous=current.replace('https://','')+': HTTP 429 rate limited';
+      // Retry a single other official gateway only; never fan out/retry storms.
+      if(i+1<candidates.length)continue;
+      throw Error(previous);
+    }
+    if(!res.ok)throw Error(current.replace('https://','')+': HTTP '+res.status);
+    return res.json();
+  }
+  throw Error(previous||'Binance Spot gateways unavailable');
 }
 async function pickHost():Promise<string>{
   const probes=await Promise.allSettled(HOSTS.map(async host=>{
-    const j=await request(host,'/api/v3/time',4500) as {serverTime?:number};
+    const j=await request(host,'/api/v3/time',4500,false) as {serverTime?:number};
     if(!j?.serverTime||Math.abs(Date.now()-j.serverTime)>120000)throw Error('Invalid Binance clock');
     return host;
   }));
