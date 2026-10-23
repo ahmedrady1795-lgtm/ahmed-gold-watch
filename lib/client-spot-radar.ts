@@ -68,10 +68,18 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
   const anchors=[...memeSpotSymbols(),'SUIUSDT','NEARUSDT','OPUSDT',
     'ARBUSDT','APTUSDT','FETUSDT','RENDERUSDT','BTCUSDT','ETHUSDT','SOLUSDT'];
   const windowIndex=Math.floor(Date.now()/180000),sorted=[...new Set(all)].sort();
-  const start=sorted.length?windowIndex%sorted.length:0;
   const known=new Set(sorted);
-  const names=[...new Set([...anchors.filter(x=>known.has(x)),...sorted.slice(start,start+55),
-    ...sorted.slice(0,Math.max(0,start+55-sorted.length))])].slice(0,68);
+  const positions=sorted.length?[
+    windowIndex%sorted.length,
+    (windowIndex*17)%sorted.length,
+    (windowIndex*37)%sorted.length,
+    (windowIndex*59)%sorted.length
+  ]:[];
+  const sampled:string[]=[];
+  for(const start of positions)
+    sampled.push(...sorted.slice(start,start+24),
+      ...sorted.slice(0,Math.max(0,start+24-sorted.length)));
+  const names=[...new Set([...anchors.filter(x=>known.has(x)),...sampled])].slice(0,125);
   const batches=Array.from({length:Math.ceil(names.length/20)},
     (_,i)=>names.slice(i*20,i*20+20));
   const [infos,tickerGroups]=await Promise.all([
@@ -109,7 +117,7 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
   const highBeta=eligible.filter(t=>marketGroup(t.symbol)==='HIGH_BETA')
     .sort((a,b)=>+b.quoteVolume-+a.quoteVolume).slice(0,12);
   const chosen=Array.from(new Map([...meme,...highBeta,...trending,...low,...high]
-    .map(t=>[t.symbol,t])).values()).slice(0,44);
+    .map(t=>[t.symbol,t])).values()).slice(0,56);
   if(!chosen.length)throw Error('Binance لم ترجع أزواج Spot مؤهلة للتحليل.');
   const btcCandles=parseKlines(await request(host,'/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=65',9000));
   const btc15=btcCandles.length>=17&&Date.now()-btcCandles.at(-1)!.time<210000
@@ -133,7 +141,7 @@ export async function scanSpotInBrowser():Promise<BrowserRadar>{
     c.volumeImpulse>=1.25&&c.flowDelta5m>1200&&c.change24h<12)
     .sort((a,b)=>b.flowDelta5m-a.flowDelta5m).slice(0,10);
   const ranked=Array.from(new Map([...coiled,...freshFlow,...memeLane,...betaLane,
-    ...[...scans].sort((a,b)=>b.score-a.score)].map(c=>[c.symbol,c])).values()).slice(0,26);
+    ...[...scans].sort((a,b)=>b.score-a.score)].map(c=>[c.symbol,c])).values()).slice(0,32);
   let depthChecked=0;
   const refined=await parallel(ranked,6,async item=>{
     try{
