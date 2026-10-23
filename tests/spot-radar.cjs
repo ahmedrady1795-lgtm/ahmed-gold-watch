@@ -275,3 +275,16 @@ assert.ok(browserRouteWatch.includes('if(res.status===429)')&&
 assert.ok(browserRouteWatch.includes("request(host,'/api/v3/time',4500,false)"),
   'Gateway probes must test the gateway directly, without disguising fallback hosts');
 console.log('PASS: browser Spot feed retries one isolated 429, avoids retry storms, and respects IP-wide 418.');
+
+const serverCoverage=fs.readFileSync('app/api/spot-radar/route.ts','utf8');
+const browserCoverage=fs.readFileSync('lib/client-spot-radar.ts','utf8');
+assert.ok((serverCoverage.match(/windowIndex\*\d+/g)||[]).length>=5,
+  'Server discovery must sample at least six rotating windows, not a single small slice');
+assert.ok(serverCoverage.includes('.slice(0,180)')&&serverCoverage.includes('.slice(0,84)')&&
+  serverCoverage.includes('.slice(0,36)'),
+  'Server pipeline must retain wider discovery, minute scan and bounded deeper scan caps');
+assert.ok((browserCoverage.match(/windowIndex\*\d+/g)||[]).length>=3&&
+  browserCoverage.includes('.slice(0,125)')&&browserCoverage.includes('.slice(0,56)')&&
+  browserCoverage.includes('.slice(0,32)'),
+  'Browser fallback must use wider rotating discovery and candidate coverage too');
+console.log('PASS: expanded rotating Spot universe and wider candidate funnel remain regression-guarded.');
