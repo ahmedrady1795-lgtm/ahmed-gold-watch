@@ -31,7 +31,7 @@ const healthInflight=new Map<string,Promise<any>>();
 
 async function healthProbe(url:string|undefined){
   if(!url)return {ok:false,status:'DISABLED',reason:'service not configured'};
-  const key=url.replace(/\\/$/,'');
+  const key=url.replace(/\/$/,'');
   const cached=healthCache.get(key);
   if(cached&&Date.now()-cached.at<HEALTH_CACHE_MS)return cached.value;
   const pending=healthInflight.get(key);
