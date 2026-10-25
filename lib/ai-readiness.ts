@@ -25,13 +25,27 @@ export function summarizeAiReadiness(ml:any,neural:any,mlConfigured=true,neuralC
       readyCount<3?'بعض النماذج اختيارية وغير مربوطة.':'النماذج مؤهلة؛ تنفيذ الصفقة يظل مشروطًا بجودة السعر والتكلفة والتأكيد.'};
 }
 
+const HEALTH_CACHE_MS=60_000;
+const healthCache=new Map<string,{at:number;value:any}>();
+const healthInflight=new Map<string,Promise<any>>();
+
 async function healthProbe(url:string|undefined){
   if(!url)return {ok:false,status:'DISABLED',reason:'service not configured'};
+  const key=url.replace(/\\/$/,'');
+  const cached=healthCache.get(key);
+  if(cached&&Date.now()-cached.at<HEALTH_CACHE_MS)return cached.value;
+  const pending=healthInflight.get(key);
+  if(pending)return pending;
+  const task=(async()=>{
   try{
     const r=await fetch(url.replace(/\/$/,'')+'/health',{cache:'no-store',signal:AbortSignal.timeout(2200)});
     if(!r.ok)return {ok:false,status:'ERROR',reason:`service HTTP ${r.status}`};
     return await r.json();
   }catch(e){return {ok:false,status:'UNAVAILABLE',reason:e instanceof Error?e.message:'service unavailable'};}
+  })();
+  healthInflight.set(key,task);
+  try{const value=await task;healthCache.set(key,{at:Date.now(),value});return value;}
+  finally{healthInflight.delete(key);}
 }
 
 export async function getAiReadiness(){
