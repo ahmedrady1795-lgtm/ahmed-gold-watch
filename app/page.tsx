@@ -104,7 +104,7 @@ export default function Home(){
       finally{loading=false;}
     };
     void refreshChart();
-    const timer=setInterval(()=>{void refreshChart();},20000);
+    const timer=setInterval(()=>{void refreshChart();},60000);
     return()=>{closed=true;clearInterval(timer);};
   },[]);
 
@@ -113,7 +113,7 @@ export default function Home(){
     // Efficient conditional GET: a 304 has no JSON body and no expensive AI
     // computation. Faster polling reduces the UI delay after a NEW server
     // generation, without starting heavy analysis cycles.
-    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},3000);
+    const aiTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadAi();},10000);
     const clock=setInterval(()=>setNow(Date.now()),1000);
     return()=>{clearInterval(aiTimer);clearInterval(clock);};
   },[]);
@@ -161,7 +161,7 @@ export default function Home(){
       ws.onclose=()=>{if(!closed)reconnect=setTimeout(connect,1500);};
     };
     connect();void loadBtc();
-    const restTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadBtc();},5000);
+    const restTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadBtc();},15000);
     return()=>{closed=true;clearInterval(restTimer);clearTimeout(reconnect);ws?.close();};
   },[]);
 
@@ -219,7 +219,7 @@ export default function Home(){
         const price=Number(j.price),bid=Number(j.bid),ask=Number(j.ask),at=sourceTimestamp(j.sourceTime)||0;
         if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)){nextDelay=3000;return;}
         const mode=String(j.mode||'external');
-        nextDelay=mode==='broker'?650:mode==='external'?1800:3000;
+        nextDelay=mode==='broker'?2500:mode==='external'?3000:4000;
 
         const nextGoldTick={
           ok:true,price,
