@@ -29,7 +29,7 @@ assert.equal(validate({...frozen,visualBars:[...bars,bars[0]]},args),null,
  'extra route cannot extend beyond 48 M15 cells');
 const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(chart,/M15 · FORECAST/);
-assert.match(chart,/const recent=actual\.slice\(-42\)/);
+assert.match(chart,/const recent=actual\.slice\(-120\)/);
 assert.match(chart,/const projectedStride=\(end-split-8\)\/\(showHistoricalExtension\?48:12\);/);
 assert.match(chart,/const futureCandleWidth=clamp\(projectedStride\*\.62,1\.7,4\);/);
 assert.match(chart,/const realCandleWidth=clamp\(actualStride\*\.60,1\.7,4\);/);
@@ -38,11 +38,11 @@ assert.match(chart,/const scenario=buildM15Scenario\(\{\.\.\.modelInput,steps:12
 assert.match(chart,/const visualBars=prefixMatches\?longer\.bars:scenario\.bars/);
 assert.match(chart,/const renderedBars=showHistoricalExtension\?displayBars:shownBars/,
  'first 12 auditable M15 bars are the default view; 48 historical is optional');
-assert.match(chart,/split=showHistoricalExtension\?184:327/,
+assert.match(chart,/split=215/,
  '12 timed bars have their own properly sized canvas, without flattening candles');
 assert.match(chart,/bars:scenario\.bars\.map\(b=>/,'proof ledger only stores 12 genuine scored bars');
 assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars/);
 assert.doesNotMatch(chart,/extendIllustrativeM15ToTargets\(/,
  'no forced target-reaching staircase can appear');
 assert.match(chart,/const aligned=stable&&validLive&&forming/);
-console.log('PASS: classic 42/48 M15 chart, authentic saved 12-bar prefix, immutable causal score, no forced TP staircase');
+console.log('PASS: classic 120/48 M15 chart, authentic saved 12-bar prefix, immutable causal score, no forced TP staircase');
