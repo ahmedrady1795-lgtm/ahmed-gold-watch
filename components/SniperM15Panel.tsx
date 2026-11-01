@@ -108,7 +108,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    [archiveState,asset,x?.candleSource,actual.at(-1)?.time,now>0?
      Math.floor(now/900000):0]);
  const firstM15Stats=firstM15Evidence(walkForward);
- const recent=actual.slice(-42);
+ const recent=actual.slice(-120);
  const historyFresh=actual.length>=24&&
    actual.slice(-24).every((b,i,a)=>i===0||b.time-a[i-1].time===900000)&&
    now-(actual.at(-1)!.time+900000)<=36*60000;
@@ -524,7 +524,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  });
  const phase=sniperPhaseBadge({ready:liquidity.ready,
    contextKind:liquidity.context?.kind,phase:liquidity.phase,side:chartSide});
- const W=430,H=704,left=8,split=showHistoricalExtension?184:327,end=422,
+ const W=430,H=704,left=8,split=215,end=422,
    plotTop=26,plotBottom=H-33;
  // A single absolute price axis contains EVERY currently valid target and
  // stop. No fake vertical positioning of offscreen targets.
@@ -609,7 +609,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // diagnostics remain behind the details toggle.
  const watchLabels=showLiquidity?watchPrices.filter(z=>
    z.price>=lo&&z.price<=hi).map(z=>({...z,exactY:py(z.price)})):[];
- const forwardLabels=showLiquidity?futureZones.filter(z=>
+ const forwardLabels=showLiquidity&&showExtra?futureZones.filter(z=>
    z.price>=lo&&z.price<=hi).map(z=>({...z,exactY:py(z.price)})):[];
  const liquidityPalette={
    SELL:'#ff8393',BUY:'#51e5b8',HIGH_LIQ:'#e9bf66',LOW_LIQ:'#67d9ed'
