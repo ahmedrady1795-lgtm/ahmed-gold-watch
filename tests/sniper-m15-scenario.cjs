@@ -145,8 +145,8 @@ assert.match(chart,/scenario|سيناريو/);
 assert.doesNotMatch(chart,/AI NEXT|LIVE M1|محرك الاستراتيجيات يعمل|آخر شمعة/);
 assert.match(css,/\.sniper-m15-chart-box\{width:100%;height:clamp\(/);
 // Widen the actual price plot and render only four evidence-grounded liquidity lines.
-assert.match(chart,/left=8,split=showHistoricalExtension\?184:327,end=422/,
- 'price plot reclaims the old rail without altering M15 candle timing');
+assert.match(chart,/left=8,split=215,end=422/,
+ 'real and forecast panes share the chart width equally');
 assert.match(chart,/className="sniper-m15-liquidity-label"/,
  'source-backed demand/supply/liquidity labels appear inside the chart');
 assert.doesNotMatch(chart,/railGap=29|x1=\{end\} x2=\{axis\+3\}/,
