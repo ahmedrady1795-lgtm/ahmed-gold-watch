@@ -607,7 +607,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Space labels only, keeping their horizontal lines on the EXACT price.
  // Keep the core hunter levels visible in the clean chart; secondary
  // diagnostics remain behind the details toggle.
- const watchLabels=showLiquidity?watchPrices.filter(z=>
+ const watchLabels=showLiquidity&&showExtra?watchPrices.filter(z=>
    z.price>=lo&&z.price<=hi).map(z=>({...z,exactY:py(z.price)})):[];
  const forwardLabels=showLiquidity&&showExtra?futureZones.filter(z=>
    z.price>=lo&&z.price<=hi).map(z=>({...z,exactY:py(z.price)})):[];
