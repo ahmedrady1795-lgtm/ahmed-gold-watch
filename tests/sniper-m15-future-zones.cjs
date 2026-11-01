@@ -71,8 +71,8 @@ const annotated=comp.slice(comp.indexOf('className="sniper-m15-future-zone"'),
  comp.indexOf('{trueHistory.map((b,i)=>candle',comp.indexOf('className="sniper-m15-future-zone"')));
 assert.doesNotMatch(annotated,/<rect\b/,
  'future candle viewport has no opaque zone label boxes');
-assert.doesNotMatch(annotated,/<text\b/,
- 'future candle viewport has NO price words painted on its candles');
+assert.doesNotMatch(annotated,/<text\b[^>]*className="sniper-m15-forecast-candle-price"/,
+ 'future candle bodies must not carry price labels; zone labels stay separate');
 assert.match(comp,/className="sniper-m15-liquidity-label"/,
  'four genuine liquidity labels now live inside the chart');
 assert.match(comp,/x=\{end-6\}/,
