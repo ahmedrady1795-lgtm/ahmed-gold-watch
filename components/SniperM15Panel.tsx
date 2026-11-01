@@ -644,6 +644,21 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    s.startsWith('WATCH')?'رصد'+s.slice(5):s;
  const grid=Array.from({length:9},(_,i)=>lo+(hi-lo)*i/8);
  const latestClosed=actual.at(-1);
+ // Confirmed M15 pivot-break markers: only closed candles, never a live guess.
+ const signalMarks:{index:number;side:'BUY'|'SELL';price:number;time:number}[]=[];
+ for(let i=2;i<trueHistory.length-3;i++){
+   const pivot=trueHistory[i],prior=trueHistory.slice(i-2,i),
+     after=trueHistory.slice(i+1,i+3),confirm=after[1];
+   const swingLow=prior.every(b=>pivot.low<=b.low)&&after.every(b=>pivot.low<=b.low);
+   const swingHigh=prior.every(b=>pivot.high>=b.high)&&after.every(b=>pivot.high>=b.high);
+   const buy=swingLow&&confirm.close>pivot.high&&confirm.close>confirm.open;
+   const sell=swingHigh&&confirm.close<pivot.low&&confirm.close<confirm.open;
+   if(!buy&&!sell)continue;
+   const mark={index:i+2,side:buy?'BUY' as const:'SELL' as const,
+     price:buy?confirm.low:confirm.high,time:confirm.time};
+   if(signalMarks.length&&mark.index-signalMarks[signalMarks.length-1].index<5)continue;
+   signalMarks.push(mark);
+ }
  return <section className="sniper-m15-panel" dir="rtl"
    aria-label="القناص: شموع ربع ساعة فعلية وسيناريو M15 تاريخي مشروط">
    <header className="sniper-m15-head">
@@ -866,6 +881,30 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          })}
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
            left+(i+.5)*actualStride,realCandleWidth,false,'real'+b.time))}
+          {showLiquidity&&signalMarks.map(mark=>{
+            const xMark=left+(mark.index+.5)*actualStride;
+            const buy=mark.side==='BUY',color=buy?'#4ee5b3':'#ff7188';
+            const yMark=clamp(py(mark.price)+(buy?9:-9),plotTop+8,plotBottom-8);
+            return <g key={'signal-'+mark.time} className="sniper-m15-signal-mark">
+              <circle cx={xMark} cy={yMark} r="5.2" fill="#06110f"
+                stroke={color} strokeWidth="1.8"/>
+              <path d={buy?
+                'M '+(xMark-3.5)+' '+(yMark+1)+' L '+xMark+' '+(yMark-3)+
+                  ' L '+(xMark+3.5)+' '+(yMark+1):
+                'M '+(xMark-3.5)+' '+(yMark-1)+' L '+xMark+' '+(yMark+3)+
+                  ' L '+(xMark+3.5)+' '+(yMark-1)}
+                fill="none" stroke={color} strokeWidth="1.4"
+                strokeLinecap="round" strokeLinejoin="round"/>
+              <text x={xMark} y={clamp(yMark+(buy?-8:14),plotTop+9,plotBottom-3)}
+                fill={color} fontSize="7.5" fontWeight="700"
+                textAnchor="middle" stroke="#000" strokeWidth="2"
+                paintOrder="stroke">{buy?'شراء':'بيع'}</text>
+              <title>{(buy?'إشارة شراء تاريخية':'إشارة بيع تاريخية')+
+                ' · تأكيد بعد كسر قمة/قاع انعكاس وإغلاق M15 · '+
+                n(mark.price)+' · '+h(mark.time)+
+                ' · مؤشر رصد تاريخي وليس أمر تداول'}</title>
+            </g>;
+          })}
          <line x1={split} x2={split} y1={plotTop} y2={plotBottom}
            stroke="#7e9bb1" strokeWidth="1.25" strokeDasharray="5 5"/>
          {projected.ready&&renderedBars.map((b,i)=>
