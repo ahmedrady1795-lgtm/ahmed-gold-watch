@@ -19,3 +19,15 @@
  .sniper-m15-zoom-toggle{top:2px;left:24%;max-width:30%;
   font-size:8px;padding:2px 3px}
 }
+
+
+/* Keep the live M15 hunter chart to roughly half a viewport so the
+   market context and target notes remain visible without scrolling forever. */
+.sniper-m15-panel .sniper-m15-chart-box{
+ height:clamp(320px,50dvh,560px)!important;
+}
+@media(max-width:600px){
+ .sniper-m15-panel .sniper-m15-chart-box{
+  height:clamp(300px,48dvh,470px)!important;
+ }
+}
