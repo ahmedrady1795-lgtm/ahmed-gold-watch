@@ -177,8 +177,8 @@ assert.doesNotMatch(chart,/sniper-m15-caption|sniper-m15-status/,
  'no technical paragraphs or scorecard underneath the mobile chart');
 assert.doesNotMatch(chart,/className="sniper-m15-price"/,
  'large duplicated live price must not occupy the header');
-assert.match(chart,/W=430,H=704,left=8,split=showHistoricalExtension\?184:327,end=422/,
- 'price column disappears while real and projected candles gain width');
+assert.match(chart,/W=430,H=704,left=8,split=215,end=422/,
+ 'real and forecast chart panes each use half the available width');
 assert.match(css,/Compact full-canvas sniper v3/);
 assert.match(css,/display:flex!important;flex-direction:row;flex-wrap:nowrap/,
  'sniper header must use one short mobile row');
