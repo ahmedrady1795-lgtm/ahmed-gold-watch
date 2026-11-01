@@ -21,11 +21,11 @@ assert.equal(scalpInterval({SCALP_PULSE_INTERVAL_MS:'3000'}),3000);
 assert.match(worker,/if\(scalpEnabled\)void scalpLoop\(\)/,'scalp loop is separate from structural worker');
 
 const home=fs.readFileSync('app/page.tsx','utf8');
-assert.match(home,/const aiTimer=setInterval\(\(\)=>\{if\(document\.visibilityState==='visible'\)void loadAi\(\);\},3000\)/,
-  'lightweight AI snapshot reads run every three seconds');
+assert.match(home,/const aiTimer=setInterval\(\(\)=>\{if\(document\.visibilityState==='visible'\)void loadAi\(\);\},10000\)/,
+  'lightweight AI snapshot reads use the 10s eco interval');
 assert.match(home,/const clock=setInterval\(\(\)=>setNow\(Date\.now\(\)\),1000\)/,
   'screen clock stays responsive independent of snapshot reads');
-assert.match(home,/const restTimer=setInterval\(\(\)=>\{if\(document\.visibilityState==='visible'\)void loadBtc\(\);\},5000\)/,
-  'BTC price stream fallback remains independent');
+assert.match(home,/const restTimer=setInterval\(\(\)=>\{if\(document\.visibilityState==='visible'\)void loadBtc\(\);\},15000\)/,
+  'BTC REST fallback uses the 15s eco interval');
 assert.match(home,/goldTickRef\.current=nextGoldTick/,'gold tick source remains independent');
 console.log('PASS: Railway ECO analysis 10s, snapshots 3s, paper scalp 5s, real-time ticks intact');
