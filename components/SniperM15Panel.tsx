@@ -605,9 +605,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  if(zoneOverhang)for(const z of zoneLabelPoints)z.y-=zoneOverhang;
  // Four evidence-backed areas share the chart (not a duplicate price rail).
  // Space labels only, keeping their horizontal lines on the EXACT price.
- const watchLabels=showLiquidity&&showExtra?watchPrices.filter(z=>
+ // Keep the core hunter levels visible in the clean chart; secondary
+ // diagnostics remain behind the details toggle.
+ const watchLabels=showLiquidity?watchPrices.filter(z=>
    z.price>=lo&&z.price<=hi).map(z=>({...z,exactY:py(z.price)})):[];
- const forwardLabels=showLiquidity&&showExtra?futureZones.filter(z=>
+ const forwardLabels=showLiquidity?futureZones.filter(z=>
    z.price>=lo&&z.price<=hi).map(z=>({...z,exactY:py(z.price)})):[];
  const liquidityPalette={
    SELL:'#ff8393',BUY:'#51e5b8',HIGH_LIQ:'#e9bf66',LOW_LIQ:'#67d9ed'
@@ -826,6 +828,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                 stroke={color} strokeWidth="1.15" strokeDasharray="6 5"
                 strokeOpacity=".82"/>
               <circle cx={end-4} cy={t.exactY} r="1.8" fill={color}/>
+              <text x={end-8} y={t.exactY-5} textAnchor="end"
+                fill={color} fontSize="8" stroke="#000" strokeWidth="2"
+                paintOrder="stroke">{(t.side==='BUY'?'سيولة صعود ':'سيولة هبوط ')+n(t.price)}</text>
               <title>{'مستوى '+(t.side==='BUY'?'سيولة صعود':'سيولة هبوط')+
                 ' للمراقبة '+n(t.price)+' · قمة/قاع '+t.source+
                 ' مغلق · ليس TP محققًا ولا أمر دخول'}</title>
@@ -850,6 +855,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                y1={py(z.low)} y2={py(z.low)}
                stroke={color} strokeOpacity=".86" strokeWidth="1.1"
                strokeDasharray="5 4"/>}
+             <text x={end-8} y={(py(z.high)+py(z.low))/2-4}
+               textAnchor="end" fill={color} fontSize="8" stroke="#000"
+               strokeWidth="2" paintOrder="stroke">{z.label+' '+n(z.price)}</text>
              <title>{z.subtitle+' · منطقة تاريخية '+n(z.low)+' – '+n(z.high)+
                ' · '+z.source+' · مستوى تأكيد '+n(z.confirm)+
                ' · إبطال '+n(z.invalidate)+
