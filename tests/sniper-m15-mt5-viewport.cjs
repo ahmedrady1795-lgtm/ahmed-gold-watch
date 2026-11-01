@@ -44,13 +44,13 @@ assert.ok(focused.lo<=Math.min(...model.map(b=>b.low)));
 assert.ok(focused.hi>=Math.max(...model.map(b=>b.high)));
 assert.ok(all.lo<4073&&all.hi>4162);
 const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
-assert.match(chart,/const \[priceZoom,setPriceZoom\]/);
+assert.match(chart,/const viewport=mt5M15Viewport/,'chart uses the MT5 viewport helper');
 assert.match(chart,/const viewport=mt5M15Viewport/);
 assert.doesNotMatch(chart,/compactM15TargetDrawing\(targetBridge\.bars/,
  'no synthetic target-reaching candle compression in main chart');
 assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars;/,
  'scenario draws only the 12 actual frozen model bars');
-assert.match(chart,/className="sniper-m15-zoom-toggle"/);
+assert.match(chart,/const \[showHistoricalExtension,setShowHistoricalExtension\]/,'historical extension is opt-in');
 assert.match(chart,/className="sniper-m15-extension-toggle"/,
  'additional 36 unscored bars are opt-in, not a default 12-hour forecast');
 assert.match(chart,/sniper-m15-inline-price/);
