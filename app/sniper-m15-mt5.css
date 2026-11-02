@@ -26,8 +26,8 @@
 .sniper-m15-panel .sniper-m15-chart-box{
  width:100%;
  min-width:0;
- height:clamp(560px,72dvh,820px)!important;
- min-height:560px;
+ height:clamp(640px,82dvh,940px)!important;
+ min-height:640px;
  overflow:hidden;
 }
 .sniper-m15-panel .sniper-m15-chart-box svg{
@@ -38,8 +38,8 @@
 }
 @media(max-width:600px){
  .sniper-m15-panel .sniper-m15-chart-box{
-  height:clamp(560px,76dvh,760px)!important;
-  min-height:560px;
+  height:clamp(640px,86dvh,900px)!important;
+  min-height:640px;
  }
  .sniper-m15-panel .sniper-m15-chart-box svg{min-height:560px}
 }
