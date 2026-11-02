@@ -19,7 +19,7 @@ assert.equal(verify(record,[future2],anchorTime+3*T).evaluated,0,
 assert.equal(verify({...record,createdAt:anchorTime+T},[future1,future2],anchorTime+3*T).evaluated,0,
  'retrospective snapshots must never pass as before-the-event predictions');
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
-assert.match(panel,/const anchor=validLive&&forming\?forming\.close:null/);
+assert.match(panel,/const anchor=validLive&&forming&&m\.candles\.at\(-1\)\?m\.candles\.at\(-1\)!\.close:null/);
 assert.match(panel,/sniper-m15-anchor-link/);
 assert.match(panel,/anchorTime:forming\.time|const anchorTime=forming!\.time/);
 assert.match(panel,/evaluateM15ForwardProof\(savedProof,actual,now\)/);
