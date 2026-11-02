@@ -115,12 +115,19 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const radar=assessChartObservation({now,priceFresh:m.sniper.view.priceFresh,
    historyFresh:m.historyFresh,marketOpen,m1:m.candles,m5:x?.chartHigherFrames?.m5});
  const m15Bias=useMemo(()=>observedM15Bias(actual),[actual]);
- // The visual scenario follows observed price action, NOT entry permissions.
- // A WATCH-only trade plan must not override stronger closed M15/H1 evidence.
- // Freeze scenario direction to CLOSED M15 evidence only. Live quote ticks,
- // M1 radar and provisional model outputs must never flip the scenario side.
+ // Gold must be forecast from a pre-break setup, not from the direction of
+ // a candle that has already moved. Only a qualified, still-unbroken M1/M5
+ // pressure setup may originate the GOLD scenario; M15 bias remains a
+ // confirmation/veto, never the source of a late BUY/SELL label.
+ const preMove=useMemo(()=>detectPreMovePressure({
+   asset,c1:m.candles,c5:Array.isArray(x?.chartHigherFrames?.m5)?
+     x.chartHigherFrames.m5:[],now
+ }),[asset,m.candles,x?.chartHigherFrames?.m5,now]);
+ const goldPreMoveReady=preMove.ok&&preMove.stage==='ARMED'&&
+   preMove.side!=='WAIT'&&preMove.trigger!=null&&preMove.invalidation!=null;
  const observedSide=m15Bias.side;
- const side: 'BUY'|'SELL'|'WAIT' = observedSide;
+ const side: 'BUY'|'SELL'|'WAIT' = asset==='GOLD'?
+   (goldPreMoveReady?preMove.side:'WAIT'):observedSide;
  const safeSide=providerTransition||!marketOpen||!historyFresh||
    !m.sniper.view.priceFresh?'WAIT':side;
  const outlook=useMemo(()=>buildDistantMovementOutlook({
@@ -289,10 +296,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    (e?.kind==='BOS_UP'||e?.kind==='BOS_DOWN')&&
    Number.isFinite(e.confirmedAt)&&e.confirmedAt<=now
  ).sort((a:any,b:any)=>a.confirmedAt-b.confirmedAt).at(-1);
- const preMove=useMemo(()=>detectPreMovePressure({
-   asset,c1:m.candles,c5:Array.isArray(x?.chartHigherFrames?.m5)?
-     x.chartHigherFrames.m5:[],now
- }),[asset,m.candles,x?.chartHigherFrames?.m5,now]);
  const preMoveReady=preMove.ok&&
    (preMove.stage==='BUILDING'||preMove.stage==='ARMED')&&
    preMove.side!=='WAIT';
