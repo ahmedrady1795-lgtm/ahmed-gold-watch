@@ -559,7 +559,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    // Distant watch-only objectives must not stretch the price axis and
    // flatten the actual candles. Unreached levels remain in the side labels.
    ...(showLiquidity?watchPrices.filter(t=>
-     Math.abs(t.price-(chartReference??t.price))<=historyZoneSpan*.9
+     Math.abs(t.price-(price??anchor??t.price))<=historyZoneSpan*.9
    ).map(t=>t.price):[]),
    ...(stop!=null?[stop]:[]),...(price!=null?[price]:[]),
    ...renderedBars.flatMap(c=>[c.high,c.low]),
