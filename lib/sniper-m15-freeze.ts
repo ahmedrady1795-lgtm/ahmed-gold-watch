@@ -27,10 +27,9 @@ export function frozenM15Decision(input:{
  if(!old||old.asset!==asset)return 'REBUILD';
  if(old.stop!=null&&Number.isFinite(old.stop)&&
    (old.side==='BUY'?quote<=old.stop:quote>=old.stop))return 'CLEAR';
- if(input.opposingBosConfirmedAt!=null&&
-   input.opposingBosConfirmedAt>(old.anchorTime??old.closedTime)+900000&&
-   input.opposingBosSide!=null&&
-   input.opposingBosSide!==old.side)return 'CLEAR';
+ // A higher-frame BOS timestamp may refresh on quote ticks; it must not
+ // repeatedly clear/reissue a frozen M15 route. M15 closed-bar evidence,
+ // the frozen stop, and the 12-bar horizon control this lifecycle.
  // Keep one issued twelve-bar forecast across intervening M15 closes.
  // Actual outcomes are compared against its ORIGINAL issued timestamps.
  if(old.anchorTime!=null&&now<old.anchorTime+12*900000)
