@@ -44,18 +44,17 @@ export function assessSniperLiveOpportunity(input:{
  if(!input.sourceReady||!finite(now)||!finite(price)||price<=0)
    return empty('السعر أو المصدر غير حديث؛ رادار الحركة متوقف');
  const m1=closed(input.c1,60000,now),m5=closed(input.c5,300000,now);
- if(m1.length<32||m5.length<7||!contiguous(m1,60000,30)||
-   !contiguous(m5,300000,6)||
-   now-(m1.at(-1)!.time+60000)>120000||
-   now-(m5.at(-1)!.time+300000)>600000)
-   return empty('شموع M1/M5 غير كافية أو متأخرة أو متقطعة');
+ const m1Fresh=m1.length>0&&now-(m1.at(-1)!.time+60000)<=120000;
+ const m5Fresh=m5.length>0&&now-(m5.at(-1)!.time+300000)<=600000;
+ const dataWarning=m1.length<13||!m1Fresh?'بيانات M1 محدودة أو متأخرة':
+   m5.length<3||!m5Fresh?'بيانات M5 محدودة أو متأخرة':'';
  const tail=m1.slice(-24);
  const tr=tail.slice(1).map((b,i)=>Math.max(
    b.high-b.low,Math.abs(b.high-tail[i].close),Math.abs(b.low-tail[i].close)));
- const atr=tr.reduce((sum,x)=>sum+x,0)/tr.length;
- if(!(atr>0))return empty('تذبذب M1 غير صالح');
- const frameDelta=m5.at(-1)!.close-m5.at(-3)!.close;
- const m5Side:Side=Math.abs(frameDelta)<atr*.35?'WAIT':frameDelta>0?'BUY':'SELL';
+ const atr=tr.length?tr.reduce((sum,x)=>sum+x,0)/tr.length:0;
+ const frameDelta=m5.length>=3?m5.at(-1)!.close-m5.at(-3)!.close:0;
+ const m5Side:Side=m5.length<3||!(atr>0)||Math.abs(frameDelta)<atr*.35?
+   'WAIT':frameDelta>0?'BUY':'SELL';
  const targets=(s:Side)=>{
    if(!input.watch?.ready||s==='WAIT')return [];
    const margin=Math.max(.01,atr*.10);
@@ -82,7 +81,7 @@ export function assessSniperLiveOpportunity(input:{
  };
  // Scan a wider recent window: fast breaks may be missed when polling is delayed.
  // Only closed M1 candles count; stale events are ignored rather than replayed as fresh.
- for(let i=m1.length-1;i>=Math.max(12,m1.length-12);i--){
+ if(atr>0&&m1.length>=13)for(let i=m1.length-1;i>=Math.max(12,m1.length-12);i--){
    const bar=m1[i],history=m1.slice(i-12,i);
    const hi=Math.max(...history.map(b=>b.high));
    const lo=Math.min(...history.map(b=>b.low));
@@ -125,5 +124,7 @@ export function assessSniperLiveOpportunity(input:{
        'السعر يختبر مستوى الكسر؛ نحتاج إغلاق M1 مؤكدًا':
        'ضغط مبكر من M1/M5 قبل الكسر؛ إنذار مراقبة مشروط');
  }
- return empty('لا كسر M1 مؤكد ولا ضغط مبكر مؤهل الآن','WATCH');
+ return empty(dataWarning?
+   dataWarning+'؛ الرادار مستمر في عرض الحالة ولا يعتبرها إشارة دخول':
+   'لا كسر M1 مؤكد ولا ضغط مبكر مؤهل الآن','WATCH');
 }
