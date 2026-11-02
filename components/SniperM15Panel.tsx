@@ -108,7 +108,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    [archiveState,asset,x?.candleSource,actual.at(-1)?.time,now>0?
      Math.floor(now/900000):0]);
  const firstM15Stats=firstM15Evidence(walkForward);
- const recent=actual.slice(-120);
+ const recent=actual.slice(-72);
  const historyFresh=actual.length>=24&&
    actual.slice(-24).every((b,i,a)=>i===0||b.time-a[i-1].time===900000)&&
    now-(actual.at(-1)!.time+900000)<=36*60000;
@@ -117,13 +117,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const m15Bias=useMemo(()=>observedM15Bias(actual),[actual]);
  // The visual scenario follows observed price action, NOT entry permissions.
  // A WATCH-only trade plan must not override stronger closed M15/H1 evidence.
- const observedSide=m15ObservationSide(m15Bias.side,m.bias);
- const side: 'BUY'|'SELL'|'WAIT' =
-   m.ready&&m.displaySide!=='WAIT'?m.displaySide:
-   observedSide!=='WAIT'?observedSide:
-   radar.status==='ALIGNED'?radar.side:
-   m.observation.ready&&m.observation.side!=='WAIT'?m.observation.side:
-   m.watchReady&&m.displaySide!=='WAIT'?m.displaySide:'WAIT';
+ // Freeze scenario direction to CLOSED M15 evidence only. Live quote ticks,
+ // M1 radar and provisional model outputs must never flip the scenario side.
+ const observedSide=m15Bias.side;
+ const side: 'BUY'|'SELL'|'WAIT' = observedSide;
  const safeSide=providerTransition||!marketOpen||!historyFresh||
    !m.sniper.view.priceFresh?'WAIT':side;
  const outlook=useMemo(()=>buildDistantMovementOutlook({
@@ -158,7 +155,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Do not start an apparently FUTURE M15 route at the prior closed candle
  // while the current M15 candle has already moved. Anchor at the actually
  // observed same-venue PARTIAL candle; the first prediction is next FULL M15.
- const anchor=validLive&&forming?forming.close:null;
+ // Use the latest CLOSED M1 close as the scenario anchor. The live partial
+ // candle continues moving on the chart, but quote ticks cannot re-anchor
+ // and redraw the forecast every few seconds.
+ const anchor=validLive&&forming&&m.candles.at(-1)?
+   m.candles.at(-1)!.close:null;
  const trueHistory=recent;
  const price=m.price;
  const pools=useMemo(()=>buildChartOverlay({
@@ -596,7 +597,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // 12 genuine timed hypothesis bars, so never stretch them to fill space.
  // Restore old chart visual geometry; no forced target-reaching extension.
  const projectedStride=(end-split-8)/(showHistoricalExtension?48:12);
- const realCandleWidth=clamp(actualStride*.60,1.7,4);
+ const realCandleWidth=clamp(actualStride*.68,2.2,5.2);
  const futureCandleWidth=clamp(projectedStride*.62,1.7,4);
  // Display a maximum of five DISTINCT actual OHLC zones. Several demand,
  // rejection and sweep levels can occupy the exact same pixels; painting
@@ -664,20 +665,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const grid=Array.from({length:9},(_,i)=>lo+(hi-lo)*i/8);
  const latestClosed=actual.at(-1);
  // Confirmed M15 pivot-break markers: only closed candles, never a live guess.
- const signalMarks:{index:number;side:'BUY'|'SELL';price:number;time:number}[]=[];
- for(let i=2;i<trueHistory.length-3;i++){
-   const pivot=trueHistory[i],prior=trueHistory.slice(i-2,i),
-     after=trueHistory.slice(i+1,i+3),confirm=after[1];
-   const swingLow=prior.every(b=>pivot.low<=b.low)&&after.every(b=>pivot.low<=b.low);
-   const swingHigh=prior.every(b=>pivot.high>=b.high)&&after.every(b=>pivot.high>=b.high);
-   const buy=swingLow&&confirm.close>pivot.high&&confirm.close>confirm.open;
-   const sell=swingHigh&&confirm.close<pivot.low&&confirm.close<confirm.open;
-   if(!buy&&!sell)continue;
-   const mark={index:i+2,side:buy?'BUY' as const:'SELL' as const,
-     price:buy?confirm.low:confirm.high,time:confirm.time};
-   if(signalMarks.length&&mark.index-signalMarks[signalMarks.length-1].index<5)continue;
-   signalMarks.push(mark);
- }
+ // Historical BUY/SELL markers are deliberately not drawn on the ordinary
+ // price chart. Direction belongs to the scenario pane and the live candle.
  return <section className="sniper-m15-panel" dir="rtl"
    aria-label="القناص: شموع ربع ساعة فعلية وسيناريو M15 تاريخي مشروط">
    <header className="sniper-m15-head">
@@ -932,32 +921,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          })}
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
            left+(i+.5)*actualStride,realCandleWidth,false,'real'+b.time))}
-          {showLiquidity&&signalMarks.map(mark=>{
-            const xMark=left+(mark.index+.5)*actualStride;
-            const buy=mark.side==='BUY',color=buy?'#4ee5b3':'#ff7188';
-            const yMark=clamp(py(mark.price)+(buy?9:-9),plotTop+8,plotBottom-8);
-            return <g key={'signal-'+mark.time} className="sniper-m15-signal-mark">
-              <circle cx={xMark} cy={yMark} r="5.2" fill="#06110f"
-                stroke={color} strokeWidth="1.8"/>
-              <path d={buy?
-                'M '+(xMark-3.5)+' '+(yMark+1)+' L '+xMark+' '+(yMark-3)+
-                  ' L '+(xMark+3.5)+' '+(yMark+1):
-                'M '+(xMark-3.5)+' '+(yMark-1)+' L '+xMark+' '+(yMark+3)+
-                  ' L '+(xMark+3.5)+' '+(yMark-1)}
-                fill="none" stroke={color} strokeWidth="1.4"
-                strokeLinecap="round" strokeLinejoin="round"/>
-              <text x={xMark} y={clamp(yMark+(buy?-8:14),plotTop+9,plotBottom-3)}
-                fill={color} fontSize="7.5" fontWeight="700"
-                textAnchor="middle" stroke="#000" strokeWidth="2"
-                paintOrder="stroke">{buy?'شراء':'بيع'}</text>
-              <title>{(buy?'إشارة شراء تاريخية':'إشارة بيع تاريخية')+
-                ' · تأكيد بعد كسر قمة/قاع انعكاس وإغلاق M15 · '+
-                n(mark.price)+' · '+h(mark.time)+
-                ' · مؤشر رصد تاريخي وليس أمر تداول'}</title>
-            </g>;
-          })}
+
          {projected.ready&&<line x1={split} x2={split} y1={plotTop} y2={plotBottom}
            stroke="#7e9bb1" strokeWidth="1.25" strokeDasharray="5 5"/>}
+         {projected.ready&&<text x={end-8} y={plotTop+13}
+           textAnchor="end" fill={chartSide==='BUY'?'#55e5b6':'#ff8195'}
+           fontSize="9" fontWeight="800" stroke="#000" strokeWidth="2"
+           paintOrder="stroke">
+           {'سيناريو '+(chartSide==='BUY'?'شراء':'بيع')}
+         </text>}
          {projected.ready&&renderedBars.map((b,i)=>
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
              futureCandleWidth,true,'future'+i))}
@@ -1063,6 +1035,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              fill="#b9efff" fontSize="8.2" fontWeight="700"
              textAnchor="end" direction="ltr" stroke="#000"
              strokeWidth="2.5" paintOrder="stroke">{'LIVE '+n(forming.close)}</text>
+           {formingBias!=='WAIT'&&<g className={'sniper-live-candle-bias '+(formingBias==='BUY'?'is-buy':'is-sell')}>
+             <rect x={split-49} y={clamp(py(forming.close)-24,plotTop+5,plotBottom-20)}
+               width="34" height="15" rx="3"
+               fill={formingBias==='BUY'?'#0a3b30':'#481d29'}
+               stroke={formingBias==='BUY'?'#55e5b6':'#ff8195'} strokeWidth="1"/>
+             <text x={split-32} y={clamp(py(forming.close)-13,plotTop+16,plotBottom-9)}
+               fill={formingBias==='BUY'?'#75f0c5':'#ff9bad'}
+               fontSize="8" fontWeight="800" textAnchor="middle">
+               {formingBias==='BUY'?'BUY':'SELL'}
+             </text>
+           </g>}
            <title>{'شمعة M15 جارية وليست مغلقة: '+n(forming.close)+
              ' · شموع M1 '+forming.minutes+
               ' · عينات تيك '+forming.sampledTicks+
