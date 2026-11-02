@@ -29,7 +29,7 @@ assert.equal(returnToCoin.chart.candleSource,'Coinbase BTC-USD',
 assert.equal(Boolean(returnToCoin.chart.providerTransition),false);
 const gap=feed('Coinbase BTC-USD',40,3);
 gap.chartCandles[35].time+=1000;
-let corrupt=guard(approved.chart,gap,approved.gate,base+40*60000+1000);
+let corrupt=guard(returnToCoin.chart,gap,returnToCoin.gate,base+40*60000+1000);
 assert.equal(corrupt.chart.providerTransition,true,'invalid/gapped candle history must not promote');
 assert.equal(corrupt.gate.newCloses,0);
 const page=fs.readFileSync('app/page.tsx','utf8');
