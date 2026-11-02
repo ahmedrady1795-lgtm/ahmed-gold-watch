@@ -15,6 +15,7 @@ export type MlPrediction={
 
 let cache:{at:number;key:string;value:MlPrediction}|null=null;
 let retryAfter429Until=0;
+let inflight:Promise<MlPrediction>|null=null;
 
 // Verify a continuous, closed, reasonably fresh M1 window before requesting
 // any neural/boosted model inference. A good HTTP response is not market proof.
@@ -46,7 +47,7 @@ function volume(c:Candle){
   return Number.isFinite(x)&&x>=0?x:0;
 }
 
-export async function getMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPrediction>{
+async function runMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPrediction>{
   const url=String(process.env.ML_ENGINE_URL||'').trim();
   if(!url)return {ok:false,status:'DISABLED',reason:'ML_ENGINE_URL missing',shadow:true};
   const candleCheck=prepareMlCandles(c1,now);
@@ -87,4 +88,14 @@ export async function getMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPred
   }finally{
     clearTimeout(timer);
   }
+}
+
+
+// Collapse concurrent identical inference requests into one upstream call.
+export function getMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPrediction>{
+  if(inflight)return inflight;
+  const task=runMlPrediction(c1,now);
+  inflight=task;
+  void task.finally(()=>{if(inflight===task)inflight=null;});
+  return task;
 }
