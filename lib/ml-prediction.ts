@@ -14,6 +14,7 @@ export type MlPrediction={
 };
 
 let cache:{at:number;key:string;value:MlPrediction}|null=null;
+let retryAfter429Until=0;
 
 // Verify a continuous, closed, reasonably fresh M1 window before requesting
 // any neural/boosted model inference. A good HTTP response is not market proof.
@@ -54,7 +55,8 @@ export async function getMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPred
   // A provider correction to an older candle must invalidate cached AI output.
   // Last-close-only keys silently replay predictions from superseded features.
   const cacheKey=rows.map(c=>[c.time,c.open,c.high,c.low,c.close,volume(c)].join(':')).join('|');
-  if(cache&&now-cache.at<4000&&cache.key===cacheKey)return cache.value;
+  if(cache&&now-cache.at<30000&&cache.key===cacheKey)return cache.value;
+  if(now<retryAfter429Until)return {ok:false,status:'RATE_LIMITED',reason:'ML engine cooldown after HTTP 429',shadow:true};
   const controller=new AbortController();
   // Measured free-tier inference exceeded the old 3.5s cutoff even after
   // a healthy warm start. The chart runs independently; inference stays bounded.
@@ -68,7 +70,12 @@ export async function getMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPred
         time:c.time,open:c.open,high:c.high,low:c.low,close:c.close,volume:volume(c)
       }))})
     });
+    const retryHeader=Number(r.headers.get('retry-after'));
     const j=await r.json().catch(()=>null);
+    if(r.status===429){
+      retryAfter429Until=Date.now()+(Number.isFinite(retryHeader)&&retryHeader>0?Math.min(300,Math.max(15,retryHeader))*1000:60000);
+      return {ok:false,status:'RATE_LIMITED',reason:'ML HTTP 429; retry delayed',shadow:true,latencyMs:Date.now()-started};
+    }
     if(!r.ok||!j||typeof j!=='object'){
       return {ok:false,status:'ERROR',reason:'ML HTTP '+r.status,shadow:true,latencyMs:Date.now()-started};
     }
