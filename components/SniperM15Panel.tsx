@@ -16,7 +16,7 @@ import type {ObservedM15} from '../lib/sniper-m15-scenario';
 import type {M15Scenario,M15Side} from '../lib/sniper-m15-scenario';
 import {frozenM15Decision,retainM15Snapshot} from '../lib/sniper-m15-freeze';
 import {sniperPhaseBadge} from '../lib/sniper-market-phase';
-import {observedM15Bias,m15ObservationSide} from '../lib/sniper-m15-bias';
+import {observedM15Bias} from '../lib/sniper-m15-bias';
 import {verifiedM15Archive} from '../lib/sniper-m15-archive-store';
 import {m15WalkForward,firstM15Evidence} from '../lib/sniper-m15-walkforward';
 import {goldMarketSession} from '../lib/gold-market-session';
