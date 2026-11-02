@@ -81,7 +81,7 @@ assert.match(component,/projected\.ready&&reactionMap\.marks/);
 assert.doesNotMatch(component,/setTimeout\([^]*?setFrozen/);
 assert.match(component,/const projectedStride=\(end-split-8\)\/\(showHistoricalExtension\?48:12\);/,
  'classic 48-slot forecast uses fixed historical 15-minute spacing');
-assert.match(component,/const realCandleWidth=clamp\(actualStride\*\.60/,
+assert.match(component,/const realCandleWidth=clamp\(actualStride\*\.68/,
  'real M15 width stays based on observed historical geometry');
 assert.match(component,/const futureCandleWidth=clamp\(projectedStride\*\.62,1\.7,4\);/,
  'classic right pane uses historical narrow solid candles');
