@@ -80,31 +80,36 @@ export function assessSniperLiveOpportunity(input:{
        'لا يوجد هدف M15/H1 صالح أمام السعر الحالي؛ لا نستنتج هدفًا وهميًا',
      tradeEligible:false};
  };
- // Detect the most recent CLOSED M1 displacement beyond preceding price levels.
- // No unfinished M15, projected candles, future bars or stale quote is used.
- for(let i=m1.length-1;i>=Math.max(12,m1.length-4);i--){
+ // Scan a wider recent window: fast breaks may be missed when polling is delayed.
+ // Only closed M1 candles count; stale events are ignored rather than replayed as fresh.
+ for(let i=m1.length-1;i>=Math.max(12,m1.length-12);i--){
    const bar=m1[i],history=m1.slice(i-12,i);
    const hi=Math.max(...history.map(b=>b.high));
    const lo=Math.min(...history.map(b=>b.low));
    const range=Math.max(.00001,bar.high-bar.low);
    const body=Math.abs(bar.close-bar.open);
-   if(body<atr*.60)continue;
-   const sell=bar.close<lo-atr*.06&&bar.close<bar.open&&
-     (bar.close-bar.low)/range<=.38;
-   const buy=bar.close>hi+atr*.06&&bar.close>bar.open&&
-     (bar.high-bar.close)/range<=.38;
+   if(body<atr*.40)continue;
+   const sell=bar.close<lo-atr*.02&&bar.close<bar.open&&
+     (bar.close-bar.low)/range<=.52;
+   const buy=bar.close>hi+atr*.02&&bar.close>bar.open&&
+     (bar.high-bar.close)/range<=.52;
    if(!sell&&!buy)continue;
    const side:Side=sell?'SELL':'BUY';
    const trigger=sell?lo:hi;
    const invalidation=sell?Math.max(...history.slice(-6).map(x=>x.high)):
      Math.min(...history.slice(-6).map(x=>x.low));
    const eventAt=bar.time+60000;
+   const age=now-eventAt;
+   if(age<0||age>8*60000)continue;
    const cancelled=sell?price>trigger+atr*.25:price<trigger-atr*.25;
-   const strength=52+Math.min(22,body/atr*8)+(m5Side===side?9:0)-
+   const retesting=Math.abs(price-trigger)<=atr*.35;
+   const strength=48+Math.min(22,body/atr*8)+(m5Side===side?9:0)-
      (m5Side!=='WAIT'&&m5Side!==side?12:0);
    return output(cancelled?'CANCELLED':'BREAK_CONFIRMED',side,trigger,
      invalidation,eventAt,strength,cancelled?
        'السعر رجع داخل النطاق بعد كسر M1؛ تم إلغاء رصد الاندفاع':
+       retesting?
+       'كسر M1 مرصود والسعر يعيد اختبار مستوى الكسر؛ راقب الثبات':
        'كسر وإغلاق M1 خارج النطاق السابق؛ رصد حركة وليس تصريح دخول');
  }
  const pre=input.preMove;
