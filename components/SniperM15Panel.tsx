@@ -308,8 +308,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Fast movement evidence is separate from the frozen M15 analogue and
  // from strict trade execution. Fresh M1/M5 breaks still appear on screen.
  const liveOpportunity=useMemo(()=>assessSniperLiveOpportunity({
+   // The live M1 observer validates its own candle freshness/continuity.
+   // Do not let stale M5/M15/H1 history suppress an otherwise valid M1 watch.
    now,price,sourceReady:marketOpen&&m.sniper.view.priceFresh&&
-     m.historyFresh&&!providerTransition,
+     !providerTransition,
    c1:m.candles,c5:x?.chartHigherFrames?.m5,preMove,watch:watchMap
  }),[now,price,marketOpen,m.sniper.view.priceFresh,m.historyFresh,
    providerTransition,m.candles,x?.chartHigherFrames?.m5,preMove,watchMap]);
