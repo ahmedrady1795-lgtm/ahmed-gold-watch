@@ -28,7 +28,7 @@ export function frozenM15Decision(input:{
  if(old.stop!=null&&Number.isFinite(old.stop)&&
    (old.side==='BUY'?quote<=old.stop:quote>=old.stop))return 'CLEAR';
  if(input.opposingBosConfirmedAt!=null&&
-   input.opposingBosConfirmedAt>old.createdAt&&
+   input.opposingBosConfirmedAt>(old.anchorTime??old.closedTime+900000)&&
    input.opposingBosSide!=null&&
    input.opposingBosSide!==old.side)return 'CLEAR';
  // Keep one issued twelve-bar forecast across intervening M15 closes.
