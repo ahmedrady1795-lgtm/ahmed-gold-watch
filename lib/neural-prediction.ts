@@ -10,8 +10,9 @@ export type NeuralPrediction={
 
 let cache:{at:number;value:NeuralPrediction}|null=null;
 let retryAfter429Until=0;
+let inflight:Promise<NeuralPrediction>|null=null;
 
-export async function getNeuralPrediction(now=Date.now()):Promise<NeuralPrediction>{
+async function runNeuralPrediction(now=Date.now()):Promise<NeuralPrediction>{
   // An unqualified model must be fully detachable without deleting its model files.
   // Apply this BEFORE the cache so disabling cannot replay a previous prediction.
   if(process.env.NEURAL_ENABLED==='0')
@@ -45,4 +46,14 @@ export async function getNeuralPrediction(now=Date.now()):Promise<NeuralPredicti
   }finally{
     clearTimeout(timer);
   }
+}
+
+
+// Collapse concurrent requests; one live inference serves all callers.
+export function getNeuralPrediction(now=Date.now()):Promise<NeuralPrediction>{
+  if(inflight)return inflight;
+  const task=runNeuralPrediction(now);
+  inflight=task;
+  void task.finally(()=>{if(inflight===task)inflight=null;});
+  return task;
 }
