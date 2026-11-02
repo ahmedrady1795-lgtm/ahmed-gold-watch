@@ -543,7 +543,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  });
  const phase=sniperPhaseBadge({ready:liquidity.ready,
    contextKind:liquidity.context?.kind,phase:liquidity.phase,side:chartSide});
- const W=430,H=704,left=8,split=215,end=422,
+ const W=430,H=704,left=8,split=projected.ready?215:422,end=422,
    plotTop=26,plotBottom=H-33;
  // A single absolute price axis contains EVERY currently valid target and
  // stop. No fake vertical positioning of offscreen targets.
@@ -582,7 +582,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const py=(p:number)=>plotTop+(hi-p)/(hi-lo)*(plotBottom-plotTop);
  const scaleLevels=[
    ...goals.map(g=>({key:'TP'+g.stage,price:g.price,kind:'TARGET'})),
-   ...visualGoals.map(g=>({key:'WATCH'+g.stage,price:g.price,kind:'ILLUSTRATION'})),
+   
    ...(stop!=null?[{key:'SL',price:stop,kind:'STOP'}]:[]),
    ...(price!=null?[{key:'LIVE',price,kind:'PRICE'}]:[])
  ];
@@ -634,7 +634,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    SELL:'#ff8393',BUY:'#51e5b8',HIGH_LIQ:'#e9bf66',LOW_LIQ:'#67d9ed'
  } as const;
  const liquidityLabels=showLiquidity&&zoneBoard.ready?
-   zoneBoard.items.filter(z=>z.low!=null&&z.high!=null).map(z=>({
+   zoneBoard.items.filter(z=>(z.key==='SELL'||z.key==='BUY')&&z.low!=null&&z.high!=null).map(z=>({
      ...z,price:(z.low!+z.high!)/2,color:liquidityPalette[z.key]
    })).filter(z=>Number.isFinite(z.price)&&z.price>0):[];
  const positionedLiquidityLabels=liquidityLabels.map(z=>({
@@ -743,10 +743,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
               هدف {i+1} <b dir="ltr">{n(target)}</b>
             </span>):
           watchMap.ready?<>
-            {watchMap.upper.slice(0,2).map((level,i)=>
+            {watchMap.upper.slice(0,1).map((level,i)=>
               <span key={'upper-watch-'+i}>سيولة أعلى {i+1}
                 <b dir="ltr">{n(level.price)}</b></span>)}
-            {watchMap.lower.slice(0,2).map((level,i)=>
+            {watchMap.lower.slice(0,1).map((level,i)=>
               <span key={'lower-watch-'+i}>سيولة أسفل {i+1}
                 <b dir="ltr">{n(level.price)}</b></span>)}
           </>:<span className="sniper-no-target">
@@ -956,8 +956,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                 ' · مؤشر رصد تاريخي وليس أمر تداول'}</title>
             </g>;
           })}
-         <line x1={split} x2={split} y1={plotTop} y2={plotBottom}
-           stroke="#7e9bb1" strokeWidth="1.25" strokeDasharray="5 5"/>
+         {projected.ready&&<line x1={split} x2={split} y1={plotTop} y2={plotBottom}
+           stroke="#7e9bb1" strokeWidth="1.25" strokeDasharray="5 5"/>}
          {projected.ready&&renderedBars.map((b,i)=>
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
              futureCandleWidth,true,'future'+i))}
@@ -1147,9 +1147,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          <title>{firstM15Stats.detail}</title>
        </g>}
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
-       <text x={split+5} y={17} fill="#e0c08d" fontSize="10" textAnchor="start" direction="ltr">M15 · FORECAST</text>
+       <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'} fontSize="10" textAnchor="start" direction="ltr">{projected.ready?'M15 · FORECAST':'M15 · LIVE'}</text>
        <text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
-         textAnchor="start" direction="rtl">أول 12 شمعة للتقييم · الامتداد عرض تاريخي غير مُقيّم</text>
+         textAnchor="start" direction="rtl">{projected.ready?'أول 12 شمعة للتقييم · الامتداد عرض تاريخي غير مُقيّم':'شموع فعلية متصلة · لا توجد شموع توقع معتمدة الآن'}</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(formingVisible&&forming?forming.time:latestClosed.time)}</text>}
