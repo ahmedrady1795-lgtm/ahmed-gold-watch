@@ -232,13 +232,6 @@ export function buildM15Scenario(input:{
        const candidate=preview(future.slice(0,Math.min(6,count-output.length)),
          price,refUnit);
        if(!candidate||!candidate.length)continue;
-       // If a structural TP exists, only accept a six-bar historical analogue
-       // that genuinely intersects the NEXT TP after volatility scaling.
-       // Never display a directional candle sequence that cannot reach its
-       // advertised objective; if no analogue qualifies, show no route.
-       const nextGoal=goals[goalIndex];
-       if(nextGoal&&!candidate.some(bar=>
-         bar.low<=nextGoal.price&&nextGoal.price<=bar.high))continue;
        best=i;bestScore=score;bestBars=candidate;
      }
    }
@@ -256,7 +249,7 @@ export function buildM15Scenario(input:{
    }
    if(output.length>=count)break;
  }
- if(!output.length)return empty(goals.length?'لا يوجد نظير تاريخي يصل إلى الهدف الهيكلي التالي دون تجاوز الإبطال؛ لن نعرض شموعًا مضللة':'لا يوجد نظير تاريخي صالح للاتجاه والإبطال؛ لا نختلق شموعًا',base.length,years);
+ if(!output.length)return empty('لا يوجد نظير تاريخي صالح للاتجاه والإبطال؛ لا نختلق شموعًا',base.length,years);
  return {ready:true,bars:output,reason:archival?
    'شموع M15 من أرشيف متحقق متعدد السنوات؛ ليست أسعار مستقبلية مؤكدة':
    captured?'محاكاة من أرشيف M15 متزايد بنفس المصدر؛ ليس أرشيف سنوات كاملًا':
