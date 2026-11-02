@@ -60,7 +60,7 @@ assert.match(chart,/const up=close>=open,color=up\?'#39d6cc':'#fa5970'/,
  'use one MetaTrader-style solid candle fill palette');
 assert.doesNotMatch(chart,/fillOpacity=\{future\?/,'all candle bodies are solid');
 assert.match(chart,/strokeWidth="1\.05"/,'classic historical wick is visible');
-assert.match(chart,/const recent=actual\.slice\(-120\)/,
+assert.match(chart,/const recent=actual\.slice\(-72\)/,
  'show up to 120 observed M15 candles at the same scale as the 12 frozen forecast bars');
 assert.match(chart,/const projectedStride=\(end-split-8\)\/\(showHistoricalExtension\?48:12\);/,
  'do not stretch a projected M15 minute relative to a real M15 minute');
