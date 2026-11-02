@@ -309,17 +309,24 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    c1:m.candles,c5:x?.chartHigherFrames?.m5,preMove,watch:watchMap
  }),[now,price,marketOpen,m.sniper.view.priceFresh,m.historyFresh,
    providerTransition,m.candles,x?.chartHigherFrames?.m5,preMove,watchMap]);
+ const formingBias: 'BUY'|'SELL'|'WAIT' =
+   freshObservation&&formingVisible&&forming?
+     forming.close>forming.open?'BUY':forming.close<forming.open?'SELL':'WAIT':'WAIT';
  const currentSignalSide=liveOpportunity.phase==='BREAK_CONFIRMED'?
-   liveOpportunity.side:'WAIT';
+   liveOpportunity.side:
+   liveOpportunity.phase==='PREPARE'||liveOpportunity.phase==='TESTING'?
+     liveOpportunity.side:formingBias;
  const currentSignalLabel=liveOpportunity.phase==='BREAK_CONFIRMED'?
    (liveOpportunity.side==='BUY'?'شراء مؤكد بإغلاق M1':
     liveOpportunity.side==='SELL'?'بيع مؤكد بإغلاق M1':'انتظار'):
    liveOpportunity.phase==='PREPARE'?
-    (liveOpportunity.side==='BUY'?'ترقب شراء':'ترقب بيع'):
+    (liveOpportunity.side==='BUY'?'ترقب شراء قبل الكسر':'ترقب بيع قبل الكسر'):
    liveOpportunity.phase==='TESTING'?
     (liveOpportunity.side==='BUY'?'اختبار كسر صاعد':'اختبار كسر هابط'):
    liveOpportunity.phase==='CANCELLED'?'الكسر ملغي':
-   liveOpportunity.phase==='OFFLINE'?'بيانات غير جاهزة':'انتظار تأكيد';
+   liveOpportunity.phase==='OFFLINE'?'البيانات غير جاهزة':
+   formingBias==='BUY'?'ميل شراء · شمعة صاعدة غير مؤكدة':
+   formingBias==='SELL'?'ميل بيع · شمعة هابطة غير مؤكدة':'انتظار';
  const currentSignalPrice=formingVisible&&forming?forming.close:price;
  // Keep first-issued target levels immutable; only future CLOSED M1 can score them.
  const [movementRecords,setMovementRecords]=useState<MovementProof[]>([]);
@@ -735,10 +742,19 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
             <span className="sniper-current-target" key={'live-target-'+i}>
               هدف {i+1} <b dir="ltr">{n(target)}</b>
             </span>):
-          <span className="sniper-no-target">لا يوجد هدف موثوق أمام السعر حاليًا</span>}
+          watchMap.ready?<>
+            {watchMap.upper.slice(0,2).map((level,i)=>
+              <span key={'upper-watch-'+i}>سيولة أعلى {i+1}
+                <b dir="ltr">{n(level.price)}</b></span>)}
+            {watchMap.lower.slice(0,2).map((level,i)=>
+              <span key={'lower-watch-'+i}>سيولة أسفل {i+1}
+                <b dir="ltr">{n(level.price)}</b></span>)}
+          </>:<span className="sniper-no-target">
+            لا توجد أهداف مؤكدة؛ المصدر أو مستويات M15/H1 غير جاهزة
+          </span>}
       </div>
       <small>{liveOpportunity.reason} · لا يظهر شراء/بيع مؤكد إلا بعد إغلاق M1،
-        والشمعة الحالية M15 ما زالت جارية</small>
+        والشمعة M15 ما زالت جارية</small>
     </div>
     <div className="sniper-movement-metrics" aria-label="نتائج رادار الحركة المقاسة من شموع لاحقة">
      <span>إنذارات <b>{movementStats.alerts}</b></span>
