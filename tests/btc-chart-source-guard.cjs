@@ -27,7 +27,7 @@ const returnToCoin=guard(b.chart,feed('Coinbase BTC-USD',39,2),b.gate,base+39*60
 assert.equal(returnToCoin.chart.candleSource,'Coinbase BTC-USD',
  'a second complete fresh provider history can replace the chart atomically');
 assert.equal(Boolean(returnToCoin.chart.providerTransition),false);
-const gap=feed('Coinbase BTC-USD',40,3);
+const gap=feed('Kraken XBT/USD',40,3);
 gap.chartCandles[35].time+=1000;
 let corrupt=guard(returnToCoin.chart,gap,returnToCoin.gate,base+40*60000+1000);
 assert.equal(corrupt.chart.providerTransition,true,'invalid/gapped candle history must not promote');
