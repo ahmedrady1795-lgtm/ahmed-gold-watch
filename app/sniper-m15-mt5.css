@@ -31,3 +31,37 @@
   height:clamp(300px,48dvh,470px)!important;
  }
 }
+
+
+/* Current-candle decision and target ladder: high contrast on mobile. */
+.sniper-m15-panel .sniper-current-signal{
+ display:grid;gap:7px;margin:8px 0;padding:10px 12px;
+ border:1px solid #496474;border-radius:12px;
+ background:linear-gradient(135deg,#10212b,#07131b);
+ color:#dceaf0;font-size:13px;line-height:1.45;
+}
+.sniper-m15-panel .sniper-current-signal.is-buy{border-color:#35c99c}
+.sniper-m15-panel .sniper-current-signal.is-sell{border-color:#f16d82}
+.sniper-m15-panel .sniper-current-signal.is-wait{border-color:#927b54}
+.sniper-current-signal-title{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.sniper-current-signal-title span{color:#a9c0cd}
+.sniper-current-signal-title strong{font-size:16px;font-weight:800}
+.sniper-current-signal.is-buy .sniper-current-signal-title strong{color:#55e5b6}
+.sniper-current-signal.is-sell .sniper-current-signal-title strong{color:#ff8195}
+.sniper-current-signal.is-wait .sniper-current-signal-title strong{color:#e7c68b}
+.sniper-current-signal-title>b{margin-inline-start:auto;color:#fff;font-variant-numeric:tabular-nums}
+.sniper-current-signal-levels{display:flex;flex-wrap:wrap;gap:6px}
+.sniper-current-signal-levels span{
+ display:inline-flex;gap:5px;align-items:center;padding:5px 8px;
+ border-radius:7px;background:#071017;border:1px solid #29404c;
+ color:#afc5d0;font-size:12px
+}
+.sniper-current-signal-levels b{color:#f0f7fa;font-variant-numeric:tabular-nums}
+.sniper-current-signal-levels .sniper-current-target{border-color:#267d68;color:#68e4bb}
+.sniper-current-signal-levels .sniper-no-target{color:#e3c58e;border-color:#78613a}
+.sniper-current-signal small{color:#9db1bd;font-size:11px}
+@media(max-width:600px){
+ .sniper-m15-panel .sniper-current-signal{padding:9px;font-size:12px}
+ .sniper-current-signal-title strong{font-size:15px}
+ .sniper-current-signal-levels span{font-size:11px;padding:4px 6px}
+}
