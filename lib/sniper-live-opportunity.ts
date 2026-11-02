@@ -46,8 +46,9 @@ export function assessSniperLiveOpportunity(input:{
  const m1=closed(input.c1,60000,now),m5=closed(input.c5,300000,now);
  const m1Fresh=m1.length>0&&now-(m1.at(-1)!.time+60000)<=120000;
  const m5Fresh=m5.length>0&&now-(m5.at(-1)!.time+300000)<=600000;
- const dataWarning=m1.length<13||!m1Fresh?'بيانات M1 محدودة أو متأخرة':
-   m5.length<3||!m5Fresh?'بيانات M5 محدودة أو متأخرة':'';
+ const dataWarning=m5.length<3||!m5Fresh?'بيانات M5 محدودة أو متأخرة':'';
+ if(m1.length<13||!m1Fresh||!contiguous(m1,60000,13))
+   return empty('بيانات M1 غير حديثة أو متقطعة؛ لا يمكن تأكيد كسر جديد','OFFLINE');
  const tail=m1.slice(-24);
  const tr=tail.slice(1).map((b,i)=>Math.max(
    b.high-b.low,Math.abs(b.high-tail[i].close),Math.abs(b.low-tail[i].close)));
@@ -81,7 +82,7 @@ export function assessSniperLiveOpportunity(input:{
  };
  // Scan a wider recent window: fast breaks may be missed when polling is delayed.
  // Only closed M1 candles count; stale events are ignored rather than replayed as fresh.
- if(atr>0&&m1.length>=13)for(let i=m1.length-1;i>=Math.max(12,m1.length-12);i--){
+ if(atr>0)for(let i=m1.length-1;i>=Math.max(12,m1.length-12);i--){
    const bar=m1[i],history=m1.slice(i-12,i);
    const hi=Math.max(...history.map(b=>b.high));
    const lo=Math.min(...history.map(b=>b.low));
