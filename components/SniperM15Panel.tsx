@@ -440,14 +440,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    frozen?.asset===asset&&frozen.source===String(x?.candleSource||'')?frozen:null;
  const paused=Boolean(stable&&freezeDecision==='PAUSE');
  const awaitingReplacement=Boolean(stable&&freezeDecision==='REBUILD');
- // Never redraw the frozen prediction against new LIVE prices. If the live
- // market has moved several ordinary M15 ranges away, temporarily HIDE the
- // obsolete forecast, preserving the original OHLC for forward evaluation.
+ // Keep the frozen route visually stable between CLOSED M15 candles.
+ // Live ticks may update the real candle, but must not make the forecast pane
+ // blink in/out as price briefly crosses the alignment threshold.
  const comparisonStep=stable&&forming?
    Math.max(0,Math.round((forming.time-stable.anchorTime)/900000)):0;
  const visualAlignment=stable&&validLive&&forming?
    assessM15FrozenChartAlignment({
-     original:stable.scenario.bars,historical:actual,live:forming.close,
+     original:stable.scenario.bars,historical:actual,live:actual.at(-1)?.close??forming.close,
      atr:stable.scenario.atr,elapsedSteps:comparisonStep
    }):null;
  const detached=visualAlignment?.reason==='MOVED_AWAY';
