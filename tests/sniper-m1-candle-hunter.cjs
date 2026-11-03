@@ -138,8 +138,8 @@ assert.match(panel,/chartMode==='M1'\?<SniperM1CandleHunter/,
  'minute scalp remains directly accessible in the visible mode switch');
 assert.match(panel,/useState<\x27M1\x27\|\x27M15\x27>\(\x27M15\x27\)/,
  'actual M15 future-candle chart is the default visible scenario');
-assert.match(panel,/sniper-minute-audit-strip/,
- 'a concise M1 audit summary remains visible even in M15 mode');
+assert.doesNotMatch(panel,/sniper-minute-audit-strip/,
+ 'M1 audit appears once, in the scalp component rather than repeated over M15');
 assert.match(panel,/noForecastReason=\{!projected.ready\?lifecycle:null\}/,
  'unavailable M15 projections must disclose their gating reason');
 assert.match(snippet,/sniper-m1-gross-risk/,
