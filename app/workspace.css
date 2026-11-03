@@ -806,3 +806,68 @@ body:has(.modern-workspace){
   .forecast-eta-card strong{font-size:12px}.forecast-eta-card small{font-size:9px}
   .forecast-eta-card span{font-size:9px}
   .forecast-breakout-rail b{font-size:11px}}
+
+
+/* Scenario-first trading dashboard: one decisive summary above an uninterrupted chart. */
+.forecast-scenario-hero{
+  margin:10px 10px 4px;padding:14px 16px;
+  border:1px solid #34566a;border-radius:12px;
+  background:linear-gradient(120deg,#112634,#101b2b);
+}
+.forecast-scenario-hero.is-active{border-color:#347a64;background:linear-gradient(120deg,#113329,#102431)}
+.forecast-scenario-hero.is-watch{border-color:#806b43;background:linear-gradient(120deg,#2d291e,#102431)}
+.forecast-scenario-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 18px}
+.forecast-scenario-heading small{display:block;color:#a2b9c8;font-size:11px}
+.forecast-scenario-heading h2{margin:2px 0 0;color:#e9f4f7;font-size:24px;line-height:1.4}
+.forecast-scenario-heading h2.green{color:#80e8bd}
+.forecast-scenario-heading h2.red{color:#ffacb5}
+.forecast-scenario-heading .forecast-visual-status{white-space:normal;text-align:center}
+.forecast-scenario-reason{margin:8px 0 12px;color:#c8dce7;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.forecast-scenario-key-levels,.forecast-scenario-goals{display:grid;gap:8px}
+.forecast-scenario-key-levels{grid-template-columns:repeat(4,minmax(0,1fr))}
+.forecast-scenario-goals{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:9px}
+.forecast-scenario-key-levels>div,.forecast-scenario-goals>div{
+  display:flex;flex-direction:column;min-width:0;gap:4px;
+  padding:10px 11px;border:1px solid #294a5a;background:#0c1e2b;border-radius:8px
+}
+.forecast-scenario-key-levels small,.forecast-scenario-goals small{color:#9dbaca;font-size:10px}
+.forecast-scenario-key-levels strong,.forecast-scenario-goals strong{
+  color:#edf4fb;font-size:17px;line-height:1.4;font-variant-numeric:tabular-nums;overflow-wrap:anywhere
+}
+.forecast-scenario-key-levels>div:nth-child(3) strong{color:#ffb5b9}
+.forecast-scenario-goals strong{color:#a1edca}
+.forecast-scenario-goals span{font-size:10px;color:#a9c2ce}
+.forecast-scenario-condition{
+  display:flex;align-items:flex-start;gap:7px;margin:10px 0 0;
+  font-size:11px;line-height:1.7;color:#e6d29c
+}
+.forecast-scenario-condition svg{flex-shrink:0;margin-top:3px}
+.forecast-scenario-no-goals{font-size:11px;color:#a8c0cf;margin:10px 0 0}
+.compact-sniper .forecast-visual-layout{display:block;grid-template-columns:none}
+.compact-sniper .forecast-visual-chart-wrap{width:100%;min-width:0}
+.forecast-more{margin:10px;border:1px solid #2a4656;border-radius:10px;background:#0c1a26}
+.forecast-more>summary{cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:13px 15px;color:#cbdce8;font-size:12px;font-weight:700;list-style:none}
+.forecast-more>summary::-webkit-details-marker{display:none}
+.forecast-more>summary:after{content:'+';color:#e2c990;font-size:18px;line-height:1}
+.forecast-more[open]>summary:after{content:'−'}
+.forecast-more>summary:focus-visible{outline:2px solid #edca82;outline-offset:3px}
+.forecast-more[open]>summary{border-bottom:1px solid #294353}
+.forecast-more .forecast-flow-banner{margin:10px}
+.forecast-more .forecast-decision-row{grid-template-columns:minmax(0,1fr)}
+.forecast-more .forecast-decision-row>.forecast-decision-card{max-width:none}
+@media(max-width:760px){
+  .forecast-scenario-hero{margin:7px;padding:11px}
+  .forecast-scenario-heading h2{font-size:21px}
+  .forecast-scenario-key-levels{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+  .forecast-scenario-goals{gap:5px}
+  .forecast-scenario-key-levels>div,.forecast-scenario-goals>div{padding:8px 7px}
+  .forecast-scenario-key-levels strong{font-size:15px}
+  .forecast-scenario-goals strong{font-size:13px}
+  .forecast-scenario-goals small,.forecast-scenario-goals span{font-size:9px}
+  .forecast-more{margin:7px}
+  .forecast-more>summary{padding:11px;font-size:11px}
+}
+@media(max-width:380px){
+  .forecast-scenario-goals{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
