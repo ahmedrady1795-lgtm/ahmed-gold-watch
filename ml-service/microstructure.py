@@ -1,5 +1,6 @@
 import json, os, threading, time
 from collections import deque
+from bisect import bisect_left
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,9 @@ class MicrostructureCore:
         self.interval=float(os.getenv("MICRO_DEPTH_INTERVAL","2.0"))
         self.seq_len=int(os.getenv("MICRO_SEQ_LEN","12"))
         self.horizon=int(os.getenv("MICRO_HORIZON_STEPS","15"))
+        self.horizon_ms=int(float(os.getenv("MICRO_HORIZON_SECONDS",str(self.interval*self.horizon)))*1000)
+        self.max_gap_ms=max(5000,int(self.interval*3000))
+        self.train_lock=threading.Lock()
         self.min_train=int(os.getenv("MICRO_MIN_TRAIN","1600"))
         self.max_mem=int(os.getenv("MICRO_MAX_MEMORY","18000"))
         self.threshold_bps=float(os.getenv("MICRO_LABEL_BPS","0.8"))
@@ -32,7 +36,7 @@ class MicrostructureCore:
         self.last_train_at=0
         self.model=None
         self.metrics=None
-        self.version="micro-neural-v1"
+        self.version="micro-neural-v2-causal"
         self._load_rows()
         self._load_model()
 
@@ -134,21 +138,45 @@ class MicrostructureCore:
 
     def _dataset(self):
         with self.lock: rows=list(self.rows)
-        n=len(rows);xs=[];ys=[]
-        for i in range(self.seq_len-1,n-self.horizon):
-            cur=rows[i];future=rows[i+self.horizon]
-            mid=float(cur["mid"]);fm=float(future["mid"])
+        times=[int(r["t"]) for r in rows]
+        xs=[];ys=[];starts=[];ends=[]
+        for i in range(self.seq_len-1,len(rows)):
+            j=bisect_left(times,times[i]+self.horizon_ms,lo=i+1)
+            if j>=len(rows):break
+            start=i-self.seq_len+1
+            window=rows[start:j+1]
+            if times[j]-(times[i]+self.horizon_ms)>self.max_gap_ms:continue
+            if any(b<=a or b-a>self.max_gap_ms for a,b in zip(times[start:j],times[start+1:j+1])):continue
+            if any(not np.isfinite(float(z["mid"])) or float(z["mid"])<=0 or
+                   len(z["f"])!=50 or not np.isfinite(z["f"]).all() for z in window):continue
+            mid=float(rows[i]["mid"]);fm=float(rows[j]["mid"])
             move=(fm-mid)/mid*10000
             y=2 if move>=self.threshold_bps else 0 if move<=-self.threshold_bps else 1
-            seq=rows[i-self.seq_len+1:i+1]
-            x=[]
-            mids=[float(z["mid"]) for z in seq]
-            base=mids[-1]
+            seq=rows[start:i+1];x=[]
             for z in seq:x.extend(z["f"])
-            # temporal returns across the sequence help the MLP see acceleration.
-            x.extend([(m-base)/base*10000 for m in mids])
-            xs.append(x);ys.append(y)
-        return np.asarray(xs,dtype=np.float32),np.asarray(ys,dtype=np.int64)
+            x.extend([(float(z["mid"])-mid)/mid*10000 for z in seq])
+            xs.append(x);ys.append(y);starts.append(times[start]);ends.append(times[j])
+        return (np.asarray(xs,dtype=np.float32),np.asarray(ys,dtype=np.int64),
+                np.asarray(starts,dtype=np.int64),np.asarray(ends,dtype=np.int64))
+
+    @staticmethod
+    def _time_splits(starts,ends):
+        n=len(starts);a=int(n*.70);b=int(n*.85)
+        if n<10:raise ValueError("insufficient chronological samples")
+        # Purge the complete feature sequence AND target interval at each boundary.
+        train=np.flatnonzero((np.arange(n)<a)&(ends<starts[a]))
+        valid=np.flatnonzero((np.arange(n)>=a)&(np.arange(n)<b)&(ends<starts[b]))
+        test=np.arange(b,n)
+        if min(len(train),len(valid),len(test))<30:raise ValueError("insufficient purged samples")
+        return train,valid,test
+
+    @staticmethod
+    def _class_probs(model,X):
+        raw=model.predict_proba(X)
+        out=np.zeros((len(X),3),dtype=float)
+        for i,k in enumerate(model.classes_):
+            if 0<=int(k)<=2:out[:,int(k)]=raw[:,i]
+        return out
 
     def _selective_metrics(self,y,p,threshold=.50,margin=.06):
         pred=np.argmax(p,axis=1);down,noise,up=p[:,0],p[:,1],p[:,2]
@@ -159,39 +187,44 @@ class MicrostructureCore:
         return {"selectiveAccuracy":acc,"selectiveCoverage":float(mask.mean()) if len(mask) else 0.0,"selectiveN":sn,"n":int(len(y))}
 
     def _train(self):
-        if self.training:return
+        if not self.train_lock.acquire(blocking=False):return
         self.training=True
         try:
-            X,y=self._dataset()
+            X,y,starts,ends=self._dataset()
             if len(y)<self.min_train:return
-            a=int(len(y)*.70);b=int(len(y)*.85)
-            Xtr,Xv,Xte=X[:a],X[a:b],X[b:];ytr,yv,yte=y[:a],y[a:b],y[b:]
+            it,iv,ie=self._time_splits(starts,ends)
+            Xtr,Xv,Xte=X[it],X[iv],X[ie];ytr,yv,yte=y[it],y[iv],y[ie]
+            if len(np.unique(ytr))<2:raise ValueError("insufficient training classes")
             model=Pipeline([
                 ("scale",StandardScaler()),
                 ("mlp",MLPClassifier(hidden_layer_sizes=(72,36),activation="relu",solver="adam",alpha=.002,
-                    batch_size=128,learning_rate_init=.001,max_iter=45,early_stopping=True,validation_fraction=.12,
+                    batch_size=128,learning_rate_init=.001,max_iter=45,early_stopping=False,shuffle=False,
                     n_iter_no_change=6,random_state=77))
             ])
             model.fit(Xtr,ytr)
-            pv=model.predict_proba(Xv);pt=model.predict_proba(Xte)
+            pv=self._class_probs(model,Xv);pt=self._class_probs(model,Xte)
             vm=self._selective_metrics(yv,pv);tm=self._selective_metrics(yte,pt)
-            ready=bool(vm["selectiveN"]>=70 and tm["selectiveN"]>=70 and vm["selectiveAccuracy"]>=.55 and tm["selectiveAccuracy"]>=.57 and vm["selectiveCoverage"]>=.04 and tm["selectiveCoverage"]>=.04)
-            metrics={"validation":vm,"holdout":tm,"ready":ready,"samples":int(len(y))}
-            # retrain on all chronological data only after untouched holdout scoring.
-            final=Pipeline([
-                ("scale",StandardScaler()),
-                ("mlp",MLPClassifier(hidden_layer_sizes=(72,36),activation="relu",solver="adam",alpha=.002,
-                    batch_size=128,learning_rate_init=.001,max_iter=45,early_stopping=True,validation_fraction=.12,
-                    n_iter_no_change=6,random_state=177))
-            ])
-            final.fit(X,y)
-            obj={"version":self.version,"model":final,"metrics":metrics,"trainedAt":int(time.time()*1000)}
+            baseline=int(np.argmax(np.bincount(ytr,minlength=3)))
+            for labels,prob,metric in ((yv,pv,vm),(yte,pt,tm)):
+                direction=np.maximum(prob[:,0],prob[:,2])
+                mask=(direction>=.50)&(direction-prob[:,1]>=.06)
+                base=float(np.mean(labels[mask]==baseline)) if mask.any() else 0.0
+                metric["pairedBaselineAccuracy"]=base
+                metric["edgeVsBaseline"]=metric["selectiveAccuracy"]-base
+            ready=bool(vm["edgeVsBaseline"]>=.02 and tm["edgeVsBaseline"]>=.02 and vm["selectiveN"]>=70 and tm["selectiveN"]>=70 and vm["selectiveAccuracy"]>=.55 and tm["selectiveAccuracy"]>=.57 and vm["selectiveCoverage"]>=.04 and tm["selectiveCoverage"]>=.04)
+            metrics={"validation":vm,"holdout":tm,"ready":ready,"samples":int(len(y)),
+                     "evaluationProtocol":"purged-sequence-holdout-v1","horizonSeconds":self.horizon_ms/1000,
+                     "splitRows":{"train":len(it),"validation":len(iv),"holdout":len(ie)}}
+            # Persist exactly the estimator scored on untouched data; no full-data refit.
+            obj={"version":self.version,"model":model,"metrics":metrics,"trainedAt":int(time.time()*1000)}
             tmp=self.model_path.with_suffix(".tmp");joblib.dump(obj,tmp);os.replace(tmp,self.model_path)
-            self.model=final;self.metrics=metrics;self.last_train_at=obj["trainedAt"];self.last_error=None
+            self.model=model;self.metrics=metrics;self.last_train_at=obj["trainedAt"];self.last_error=None
         except Exception as e:
             self.last_error=f"train:{type(e).__name__}:{e}"
         finally:
+            self.last_train_at=int(time.time()*1000)
             self.training=False
+            self.train_lock.release()
 
     def predict(self):
         with self.lock: rows=list(self.rows)
@@ -199,6 +232,15 @@ class MicrostructureCore:
             return {"ok":True,"version":self.version,"status":"COLLECTING","ready":False,"samples":len(rows),"side":"WAIT"}
         if self.model is None:
             return {"ok":True,"version":self.version,"status":"COLLECTING" if len(rows)<self.min_train else "TRAINING","ready":False,"samples":len(rows),"side":"WAIT","metrics":self.metrics}
+        seq=rows[-self.seq_len:]
+        now=int(time.time()*1000)
+        times=[int(z["t"]) for z in seq]
+        if (now-times[-1]>max(15000,self.max_gap_ms) or times[-1]>now or
+            any(b<=a or b-a>self.max_gap_ms for a,b in zip(times,times[1:])) or
+            any(float(z["mid"])<=0 or not np.isfinite(float(z["mid"])) or
+                len(z["f"])!=50 or not np.isfinite(z["f"]).all() for z in seq)):
+            return {"ok":True,"version":self.version,"status":"STALE","ready":False,
+                    "samples":len(rows),"side":"WAIT","metrics":self.metrics}
         seq=rows[-self.seq_len:];base=float(seq[-1]["mid"]);x=[]
         for z in seq:x.extend(z["f"])
         x.extend([(float(z["mid"])-base)/base*10000 for z in seq])
