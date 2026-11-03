@@ -15,6 +15,19 @@ export function sourceVenue(s:string){
    /biquote/.test(v)?'BIQUOTE':/exness/.test(v)?'EXNESS':
    /yahoo|comex|gc=f/.test(v)?'YAHOO':'UNKNOWN';
 }
+export type M1QuoteForWatch={ok?:boolean;price?:number;sourceTime?:number;source?:string}|null|undefined;
+/** Only a post-setup quote from the same known venue can inform a touch WATCH.
+ * A quote value alone never proves a broker stop-order fill. */
+export function freshM1QuoteForWatch(q:M1QuoteForWatch,historySource:string,
+  now:number,setupIssuedAt:number):boolean{
+  const price=q?.price,time=q?.sourceTime;
+  if(q?.ok!==true||typeof price!=='number'||!Number.isFinite(price)||price<=0||
+     typeof time!=='number'||!Number.isFinite(time)||time<setupIssuedAt||
+     time>now+1000||now-time<0||now-time>10000)return false;
+  const from=sourceVenue(String(q?.source||'')),historical=sourceVenue(historySource);
+  return from!=='UNKNOWN'&&from===historical;
+}
+
 export function updateSampledLiveCandle(prev:SampledLiveCandle|null,q:TickInput):SampledLiveCandle|null{
  const {now,at,price,sourceKey,historicalSource,lastClosedAt}=q;
  if(![now,at,price,lastClosedAt].every(Number.isFinite)||price<=0||!sourceKey||
