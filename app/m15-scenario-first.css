@@ -45,3 +45,19 @@
  .sniper-m15-diagnostics>summary{font-size:11px}
 }
 @media(max-width:340px){.sniper-m15-summary-levels{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Keep the actual M15 forecast visible by default and M1 audit in one short row. */
+.sniper-minute-audit-strip{display:flex;gap:5px 12px;align-items:center;flex-wrap:wrap;
+  margin:5px 0 8px;padding:8px 10px;background:#101f2b;border:1px solid #315167;
+  border-radius:8px;font-size:11px;line-height:1.55;color:#d3e3eb}
+.sniper-minute-audit-strip strong{font-weight:800;color:#e8d3a0}
+.sniper-minute-audit-strip span{font-variant-numeric:tabular-nums;color:#9fe5cf}
+.sniper-minute-audit-strip small{color:#c5ad7b;font-size:10px}
+.sniper-m15-forecast-unavailable{font-size:11px;color:#d6bb89;line-height:1.55;
+  border-top:1px solid #294353;margin:8px 0 0;padding-top:8px;overflow-wrap:anywhere}
+@media(max-width:600px){
+  .sniper-minute-audit-strip{font-size:10px;padding:7px;gap:3px 9px}
+  .sniper-minute-audit-strip strong{width:100%}
+  .sniper-minute-audit-strip small{width:100%}
+  .sniper-m15-forecast-unavailable{font-size:10px}
+}

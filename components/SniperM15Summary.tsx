@@ -6,6 +6,7 @@ type Props={
   marketOpen:boolean;providerTransition:boolean;fresh:boolean;side:Side;
   price:number|null;trigger:number|null;upper:number|null;lower:number|null;
   stop:number|null;targets:Level[];nextBar:Candle|null;signal:string|null;
+  noForecastReason?:string|null;
 };
 const fmt=(v:number|null|undefined)=>v!=null&&Number.isFinite(v)&&v>0?
   v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
@@ -48,5 +49,8 @@ export default function SniperM15Summary(p:Props){
     </div>
     <p className="sniper-m15-summary-reason">{message}
       <small> · متابعة مشروطة، وليست أمر تداول.</small></p>
+    {!p.ready&&p.noForecastReason&&<p className="sniper-m15-forecast-unavailable">
+      سبب عدم ظهور شموع التوقع: {p.noForecastReason}
+    </p>}
   </section>;
 }

@@ -18,7 +18,7 @@ export default function SniperM1CandleHunter(p:Props){
     sourceReady:p.sourceReady,providerTransition:p.providerTransition
   }),[p.history,p.now,p.marketOpen,p.sourceReady,p.providerTransition]);
   const closedAt=p.history.at(-1)?.time??0;
-  const audit=useMemo(()=>auditCandleHunter(p.history,p.now,32),
+  const audit=useMemo(()=>auditCandleHunter(p.history,p.now,48),
     // Re-score only on a newly closed bar, not on every live quote.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [p.asset,p.historicalSource,closedAt,Math.floor(p.now/60000)]);
@@ -48,6 +48,8 @@ export default function SniperM1CandleHunter(p:Props){
         <h2>قنص كل شمعة M1</h2></div>
       <span>{plan.ready?'مستويات دقيقة جارية':'انتظار شمعة مؤهلة'}</span>
     </div>
+    <p className="sniper-m1-gross-risk">فحص المخاطرة: الهدف 0.72 ATR مقابل وقف 0.82 ATR = 0.88R قبل السبريد والعمولات والانزلاق.
+      هذه المستويات للرصد فقط؛ لا توجد أهلية تنفيذ مثبتة.</p>
     {plan.ready&&plan.buy&&plan.sell?<>
       <div className="sniper-m1-hunter-orders">
         {details('BUY STOP',plan.buy)}
@@ -61,7 +63,7 @@ export default function SniperM1CandleHunter(p:Props){
       levels={levels}/>
     <details className="sniper-m1-hunter-audit">
       <summary>فحص القنص على شموع M1 تاريخية</summary>
-      <p>آخر {audit.observed} فرصة دقيقة قابلة للفحص من الشموع المتجاورة:
+      <p>آخر {audit.observed} فرصة دقيقة قابلة للفحص من الشموع المتجاورة، ولا تمثل تنفيذًا عند أسعار الوسيط:
         {' '}لمس الهدف {audit.targetTouches}،
         {' '}ملتبس {audit.ambiguous}،
         {' '}فتح بسعر فجوة غير مؤكد {audit.openGapUnknown}،

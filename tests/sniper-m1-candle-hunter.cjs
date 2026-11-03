@@ -80,7 +80,15 @@ const css=fs.readFileSync('app/m1-candle-hunter.css','utf8');
 const layout=fs.readFileSync('app/layout.tsx','utf8');
 assert.match(panel,/chartMode,setChartMode/);
 assert.match(panel,/chartMode==='M1'\?<SniperM1CandleHunter/,
- 'fast scalp is the DEFAULT visible chart, not hidden in details');
+ 'minute scalp remains directly accessible in the visible mode switch');
+assert.match(panel,/useState<\x27M1\x27\|\x27M15\x27>\(\x27M15\x27\)/,
+ 'actual M15 future-candle chart is the default visible scenario');
+assert.match(panel,/sniper-minute-audit-strip/,
+ 'a concise M1 audit summary remains visible even in M15 mode');
+assert.match(panel,/noForecastReason=\{!projected.ready\?lifecycle:null\}/,
+ 'unavailable M15 projections must disclose their gating reason');
+assert.match(snippet,/sniper-m1-gross-risk/,
+ 'sub-1R M1 target/stop geometry is flagged before any trade claims');
 assert.match(panel,/chartMode==='M15'/,
  'original M15 scenario must remain available');
 assert.match(snippet,/BUY STOP/);

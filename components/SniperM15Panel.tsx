@@ -3,6 +3,7 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import SniperM15Summary from './SniperM15Summary';
 import SniperM1CandleHunter from './SniperM1CandleHunter';
+import {auditCandleHunter} from '../lib/sniper-m1-candle-hunter';
 import OrderFlowRadar from './OrderFlowRadar';
 import GoldRadarBadge from './GoldRadarBadge';
 import type {RadarView} from '../lib/order-flow-radar';
@@ -56,7 +57,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
 }){
  const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
  const [showLiquidity,setShowLiquidity]=useState(false);
- const [chartMode,setChartMode]=useState<'M1'|'M15'>('M1');
+ const [chartMode,setChartMode]=useState<'M1'|'M15'>('M15');
  const [showExtra,setShowExtra]=useState(false);
  const [showHistoricalExtension,setShowHistoricalExtension]=useState(false);
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
@@ -99,6 +100,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const m=useMemo(()=>buildForecastIllustration(asset,x,liveQuote,now,snapshotAt,
    null,true,null,null,observationAt),
    [asset,x,liveQuote,now,snapshotAt,observationAt]);
+ const minuteAudit=useMemo(()=>auditCandleHunter(m.candles,now,48),
+    [m.candles,Math.floor(now/60000)]);
  const actual=useMemo(()=>closedM15Bars(x?.chartHigherFrames?.m15,now,320),
    [x?.chartHigherFrames?.m15,now]);
  const verifiedArchive=useMemo(()=>verifiedM15Archive({
@@ -696,8 +699,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <button type="button" aria-pressed={chartMode==='M1'}
        onClick={()=>setChartMode('M1')}>M1 · قنص كل شمعة</button>
      <button type="button" aria-pressed={chartMode==='M15'}
-       onClick={()=>setChartMode('M15')}>M15 · السيناريو</button>
+       onClick={()=>setChartMode('M15')}>M15 · رسم السيناريو</button>
    </nav>
+   <div className="sniper-minute-audit-strip" role="status" aria-label="نتائج فحص قنص الدقيقة على الشموع المغلقة">
+     <strong>قنص M1 · فحص آخر {minuteAudit.observed} فرصة</strong>
+     <span>لمس هدف: {minuteAudit.targetTouches}</span>
+     <span>ملتبس/غير محسوم: {minuteAudit.ambiguous+minuteAudit.openGapUnknown+minuteAudit.pending}</span>
+     <span>بدون كسر: {minuteAudit.noTrigger}</span>
+     <small>{minuteAudit.observed<30?'عينة صغيرة · ':''}ليست نتائج صفقات ولا ربحًا صافيًا</small>
+   </div>
    {chartMode==='M1'?<SniperM1CandleHunter asset={asset}
      history={m.candles} historicalSource={String(x?.candleSource||'')}
      quote={liveQuote} now={now} marketOpen={marketOpen}
@@ -716,7 +726,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      targets={projected.ready||stable?stable?.goals??[]:
        currentSignalSide!=='WAIT'?liveOpportunity.targets.map((price,i)=>({stage:i+1,price})):[]}
      nextBar={projected.ready?shownBars[0]??null:null}
-     signal={currentSignalSide!=='WAIT'?currentSignalLabel:null}/>
+     signal={currentSignalSide!=='WAIT'?currentSignalLabel:null}
+     noForecastReason={!projected.ready?lifecycle:null}/>
    <div className="sniper-m15-view-controls" aria-label="عرض سيناريو القناص">
      <button type="button" className="sniper-m15-extra-toggle"
        aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}

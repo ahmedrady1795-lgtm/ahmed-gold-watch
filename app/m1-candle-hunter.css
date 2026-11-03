@@ -47,3 +47,8 @@
  .sniper-mt5-m1 svg{height:clamp(470px,71dvh,735px)}
 }
 @media(max-width:340px){.sniper-m1-hunter-orders{gap:4px;padding:4px}.sniper-m1-hunter-side{padding:6px 4px}}
+
+/* Performance warning: historical target touches are not executed wins. */
+.sniper-m1-gross-risk{margin:5px 9px 7px;padding:6px 8px;
+  border:1px solid #654e33;border-radius:6px;background:#2b241a;
+  color:#ead1a1;font-size:10px;line-height:1.6}
