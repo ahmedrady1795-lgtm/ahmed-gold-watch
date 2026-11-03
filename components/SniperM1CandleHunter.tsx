@@ -4,6 +4,7 @@ import {useMemo} from 'react';
 import SniperMT5M1Chart from './SniperMT5M1Chart';
 import {auditCandleHunter,buildCandleHunter,type CandleHunterLevel} from '../lib/sniper-m1-candle-hunter';
 import type {M1Bar} from '../lib/sniper-mt5-m1';
+import {freshM1QuoteForWatch} from '../lib/sampled-live-candle';
 
 type Quote={ok?:boolean;price?:number;source?:string;sourceTime?:number}|null|undefined;
 type Props={
@@ -26,13 +27,19 @@ export default function SniperM1CandleHunter(p:Props){
     {kind:'TRIGGER' as const,label:'BUY STOP',price:plan.buy.trigger},
     {kind:'TRIGGER' as const,label:'SELL STOP',price:plan.sell.trigger},
     {kind:'TARGET' as const,label:'BUY TP',price:plan.buy.target},
-    {kind:'TARGET' as const,label:'SELL TP',price:plan.sell.target}
+    {kind:'TARGET' as const,label:'SELL TP',price:plan.sell.target},
+    {kind:'STOP' as const,label:'BUY SL',price:plan.buy.stop},
+    {kind:'STOP' as const,label:'SELL SL',price:plan.sell.stop}
   ]:[];
   const nowPrice=Number(p.quote?.price);
-  const activeHint=plan.ready&&p.quote?.ok&&Number.isFinite(nowPrice)?
-    nowPrice>=plan.buy!.trigger?'تمت ملامسة BUY STOP بالسعر المعلن · التفعيل الفعلي غير مؤكد':
-    nowPrice<=plan.sell!.trigger?'تمت ملامسة SELL STOP بالسعر المعلن · التفعيل الفعلي غير مؤكد':
-    'مستويات القنص تنتظر كسر الشمعة المقبلة':'';
+  const trusted=plan.ready&&p.marketOpen&&!p.providerTransition&&
+    freshM1QuoteForWatch(p.quote,p.historicalSource,p.now,plan.issuedAt!);
+  // A current quote beyond a limit is NOT proof that a pending order filled.
+  const activeHint=trusted?
+    nowPrice>=plan.buy!.trigger?'السعر المرصود أعلى BUY STOP · لا يوجد تنفيذ مؤكد':
+    nowPrice<=plan.sell!.trigger?'السعر المرصود أسفل SELL STOP · لا يوجد تنفيذ مؤكد':
+    'السعر بين مستويَي الكسر · انتظار':
+    'ننتظر سعرًا حديثًا من نفس مصدر الشموع بعد إنشاء المستويات';
   const details=(name:string,level:CandleHunterLevel)=>(
     <div className={'sniper-m1-hunter-side '+(level.side==='BUY'?'is-buy':'is-sell')}
       key={name}>
@@ -46,7 +53,9 @@ export default function SniperM1CandleHunter(p:Props){
     <div className="sniper-m1-hunter-head">
       <div><small>القناص السريع · على نهج الفيديو</small>
         <h2>قنص كل شمعة M1</h2></div>
-      <span>{plan.ready?'مستويات دقيقة جارية':'انتظار شمعة مؤهلة'}</span>
+      <span>{plan.ready&&plan.expiresAt?
+        'تتبقى '+Math.max(0,Math.ceil((plan.expiresAt-p.now)/1000))+' ثانية':
+        'انتظار شمعة مؤهلة'}</span>
     </div>
     <p className="sniper-m1-gross-risk">فحص المخاطرة: الهدف 0.72 ATR مقابل وقف 0.82 ATR = 0.88R قبل السبريد والعمولات والانزلاق.
       هذه المستويات للرصد فقط؛ لا توجد أهلية تنفيذ مثبتة.</p>
