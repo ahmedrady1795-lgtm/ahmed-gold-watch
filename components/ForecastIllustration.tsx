@@ -700,7 +700,7 @@ function LegacyForecastIllustration({data,now,snapshotAt,goldLive,btcLive,assetV
             {(planVisible?frozenVisualLevels.targets:movementOutlook.targets).slice(0,3).map((t,i)=>
               <div key={t.stage}><small>{statusReady?'هدف مسجل TP'+t.stage:'هدف مراقبة '+t.stage}</small>
                 <b dir="ltr">{fmt(t.price)}</b>
-                <small>{statusReady?activation:'موعد الوصول غير مؤكد'}</small></div>)}
+                <small>{statusReady&&sn.activation?'خلال '+sn.activation.min+'–'+sn.activation.max+' د':'موعد الوصول غير مؤكد'}</small></div>)}
           </div>:
           <p className="render-scenario-first-no-target">لا توجد أهداف دخول معتمدة حاليًا.</p>}
         <p className="render-scenario-first-activation">
