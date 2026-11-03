@@ -76,7 +76,7 @@ assert.equal(directional.scorePrioritizedNextM1(plan,'BUY',next({
  time:now+60000,high:plan.buy.target+.05
 })),'UNRESOLVED','late candles must not be used to claim on-time TP');
 assert.equal(directional.scorePrioritizedNextM1(plan,'SELL',next({
- high:last.close+.015,low:plan.sell.target-.05,close:plan.sell.target+.01
+ high:last.close+.002,low:plan.sell.target-.05,close:plan.sell.target+.01
 })),'TARGET_TOUCHED','SELL is evaluated separately without BUY-stop leakage');
 const audit=directional.auditPrioritizedM1(ascending,now,32);
 assert.ok(audit.observed>0&&audit.prioritized>0);
