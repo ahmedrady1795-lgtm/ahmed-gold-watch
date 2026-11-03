@@ -48,11 +48,19 @@ export function analyzeM15MarketStructure(
 ):StructureSnapshot{
  if(!Array.isArray(history)||!Number.isFinite(now))
    return empty('إغلاقات M15 غير متاحة');
- const bars=history.slice(-72);
- if(bars.length<24)return empty('يلزم 24 إغلاق M15 متصل');
- if(bars.some((b,i)=>!valid(b)||b.time+900000>now||
-     i>0&&b.time-bars[i-1].time!==900000))
-   return empty('شموع غير مغلقة أو فجوة مصدر');
+ // Markets may have scheduled closed-session gaps. Analyze the most
+ // recent contiguous segment only rather than hiding every indicator
+ // because a weekend gap exists among older historical bars.
+ const tail=history.slice(-72);
+ let begin=tail.length;
+ while(begin>0){
+   const b=tail[begin-1];
+   if(!valid(b)||b.time+900000>now||
+      begin<tail.length&&tail[begin].time-b.time!==900000)break;
+   begin--;
+ }
+ const bars=tail.slice(begin);
+ if(bars.length<24)return empty('يلزم 24 إغلاق M15 متصل وحديث');
  const last=bars.at(-1)!;
  if(now-(last.time+900000)>3600000)return empty('بيانات الهيكل قديمة');
  const ranges=bars.slice(-16).slice(1).map((b,i)=>{
