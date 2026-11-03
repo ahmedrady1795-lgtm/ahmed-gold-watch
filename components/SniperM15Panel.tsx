@@ -574,11 +574,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ...(showLiquidity?futureZones.flatMap(z=>[z.low,z.high]):[]),
    ...(showLiquidity?zoneBoard.items.flatMap(z=>z.low!=null&&z.high!=null?
      [z.low,z.high]:[]):[]),
+   ...(formingVisible&&forming?[forming.open,forming.high,forming.low,forming.close]:[])
  ].filter(v=>Number.isFinite(v)&&v>0);
  // A missing LIVE candle is NOT a price of $1. In WAIT/stale states
  // that synthetic fallback made the BTC axis span 0–87k and flattened all
  // genuine M15 candles into a row at the top. Scale only observed prices.
- const chartReference=[trueHistory.at(-1)?.close,anchor].find(v=>
+ const chartReference=[formingVisible?forming?.close:null,
+   trueHistory.at(-1)?.close,anchor].find(v=>
      typeof v==='number'&&Number.isFinite(v)&&v>0)??null;
  const min=important.length?Math.min(...important):(chartReference??1);
  const max=important.length?Math.max(...important):(chartReference??1);
