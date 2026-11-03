@@ -68,6 +68,7 @@ assert.equal(placeHuntWaypoints({...ready,ready:false},py,plotTop,plotBottom).le
 assert.equal(placeHuntWaypoints(ready,py,plotTop,plotTop+30).length,0);
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const overlay=fs.readFileSync('components/SniperM15HuntOverlay.tsx','utf8');
+const structureOverlay=fs.readFileSync('components/SniperMarketStructureOverlay.tsx','utf8');
 const style=fs.readFileSync('app/hunter-cockpit-layout.css','utf8');
 assert.match(panel,/const \[focusView,setFocusView\]=useState\(true\)/,
  'on mobile the first M15 screen must default to an actual-price FOCUS, not ALL');
@@ -83,6 +84,10 @@ assert.match(overlay,/const stride=\(width-80\)\/6/,
  'candle bodies reserve a genuine right-side target label rail');
 assert.match(overlay,/placeHuntWaypoints\(f,p\.py,p\.top,p\.bottom\)/,
  'conditional projected target station badges are rendered on true prices');
+assert.match(panel,/visibleFrom=\{trueHistory\[0\]\?\.time\}/,
+ 'BOS/CHoCH events older than the focused historical window are not pinned to its left boundary');
+assert.match(structureOverlay,/s\.events\.filter\(ev=>ev\.at>=\(p\.visibleFrom\?\?0\)\)/,
+ 'the actual structure SVG filters its event markers on visible historical time');
 assert.match(overlay,/className="sniper-hunt-waypoint"/);
 assert.match(overlay,/هدف افتراضي من ATR/,
  'a visual waypoint is not a broker target or proved return');
