@@ -8,7 +8,9 @@ const code=ts.transpileModule(fs.readFileSync('lib/neural-prediction.ts','utf8')
 }).outputText;
 const out={};
 const env={NEURAL_ENABLED:'0'};
-vm.runInNewContext(code,{exports:out,process:{env},AbortController,setTimeout,clearTimeout,Date});
+let remotePayload=null;
+const fetchMock=async()=>({ok:true,json:async()=>remotePayload});
+vm.runInNewContext(code,{exports:out,process:{env},AbortController,setTimeout,clearTimeout,Date,fetch:fetchMock});
 const valid={ok:true,ready:true,status:'READY',side:'BUY',leanSide:'BUY',
   probUp:.64,probDown:.30,probNoise:.06,confidence:64,edge:0.34,
   samples:250,snapshotAgeMs:3000,
@@ -31,8 +33,21 @@ assert.equal(check({...valid,pricePath:{ready:true,currentPrice:0,expectedPrice:
   'invalid ready price path is rejected');
 assert.equal(check(null).ready,false,'null payload is rejected');
 
-out.getNeuralPrediction().then((result)=>{
-  assert.equal(result.status,'DISABLED','operator kill switch overrides inference');
-  assert.equal(result.ready,false);
-  console.log('PASS: Neural prediction schema, probability, stale snapshot, path and kill-switch checks.');
-}).catch(err=>{console.error(err);process.exitCode=1;});
+(async()=>{
+  let result=await out.getNeuralPrediction(1000);
+  assert.equal(result.status,'DISABLED','operator kill switch blocks inference');
+  env.NEURAL_ENABLED='1';
+  env.NEURAL_ENGINE_URL='https://mock.neural.test';
+  remotePayload={...valid,confidence:Infinity};
+  result=await out.getNeuralPrediction(5000);
+  assert.equal(result.ready,false,'bad service output is rejected at fetch boundary');
+  assert.equal(result.status,'INVALID');
+  remotePayload=valid;
+  result=await out.getNeuralPrediction(9000);
+  assert.equal(result.ready,true,'valid service output survives fetch validation');
+  env.NEURAL_ENABLED='0';
+  result=await out.getNeuralPrediction(9001);
+  assert.equal(result.ready,false,'kill switch overrides a cached valid response');
+  assert.equal(result.status,'DISABLED');
+  console.log('PASS: Neural validation, fetch boundary, stale snapshot and kill switch.');
+})().catch(err=>{console.error(err);process.exitCode=1;});
