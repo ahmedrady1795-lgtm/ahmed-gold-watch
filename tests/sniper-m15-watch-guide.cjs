@@ -56,8 +56,8 @@ assert.match(panel,/className="sniper-m15-watch-guide"/,
   'actual M15 chart renders two branches rather than hiding the scenario');
 assert.match(panel,/const projected=aligned\?\.scenario\?\?noScenario/,
   'strict pre-event ML predictions and forward scoring remain separate');
-assert.match(panel,/chartMode==='M1'&&<details className="sniper-minute-audit-strip"/,
-  'M1 audit no longer clutters the active M15 forecast view');
+assert.doesNotMatch(panel,/sniper-minute-audit-strip/,
+  'duplicate M1 stat strip is removed from the main chart entirely');
 assert.match(summary,/sniper-m15-watch-summary/,
   'conditional up/down M15 ranges are explicitly labeled read-only');
 assert.match(summary,/sniper-m15-unavailable-details/,
