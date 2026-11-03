@@ -37,3 +37,31 @@ export function fixedM1PriceRange(bars:readonly M1Bar[]):{low:number;high:number
   const center=(high+low)/2;
   return {low:center-span*.62,high:center+span*.62};
 }
+
+/** Position price-level captions inside the plot even when several SL/TP
+ * prices are tightly grouped. The horizontal line remains at the real price.
+ * SVG inherits RTL from the cockpit: captions themselves must use LTR. */
+export type M1ChartPriceLevel={label:string;price:number|null;kind:'TRIGGER'|'STOP'|'TARGET'};
+export type M1ChartMarker={label:string;price:number;kind:M1ChartPriceLevel['kind'];
+  lineY:number;labelY:number};
+export function placeM1ChartMarkers(levels:readonly M1ChartPriceLevel[],
+  range:{low:number;high:number},top:number,bottom:number):M1ChartMarker[]{
+  if(!Number.isFinite(range.low)||!Number.isFinite(range.high)||
+     range.high<=range.low||!Number.isFinite(top)||!Number.isFinite(bottom)||
+     bottom-top<100)return [];
+  const minY=top+13,maxY=bottom-6,spacing=15;
+  const valid=levels.filter((l):l is M1ChartPriceLevel&{price:number}=>l.price!=null&&
+    Number.isFinite(l.price)&&l.price>0&&l.price>=range.low&&l.price<=range.high);
+  const out=valid.slice(0,6).map(l=>({
+    label:l.label,price:l.price,kind:l.kind,
+    lineY:top+(range.high-l.price)/(range.high-range.low)*(bottom-top),labelY:0
+  })).sort((a,b)=>a.lineY-b.lineY);
+  let previous=minY-spacing;
+  for(const marker of out){
+    marker.labelY=Math.max(minY,Math.min(maxY,marker.lineY-4),previous+spacing);
+    previous=marker.labelY;
+  }
+  const overflow=(out.at(-1)?.labelY??minY)-maxY;
+  if(overflow>0)for(const marker of out)marker.labelY-=overflow;
+  return out;
+}
