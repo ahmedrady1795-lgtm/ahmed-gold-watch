@@ -1,5 +1,7 @@
 import os, json, time, threading, traceback
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+import math
 from pathlib import Path
 from typing import Any
 
@@ -226,6 +228,35 @@ def make_m5_multiclass_dataset(df,feature_names,neutral_atr=.18):
     ds=f.copy(); ds["target"]=target; ds["move_atr"]=move_atr
     return ds.dropna(subset=feature_names+["move_atr"])
 
+# Shared across training and live inference; never spin on a throttled provider.
+HISTORY_COOLDOWNS={}
+HISTORY_COOLDOWN_LOCK=threading.Lock()
+
+def fetch_history_page(session,url,params):
+    with HISTORY_COOLDOWN_LOCK:
+        remaining=HISTORY_COOLDOWNS.get(url,0)-time.monotonic()
+    if remaining>0:
+        raise RuntimeError(f"history provider cooling down; retry in {math.ceil(remaining)}s")
+    response=session.get(url,params=params,timeout=REQUEST_TIMEOUT)
+    if response.status_code in (418,429):
+        delay=60.0 if response.status_code==429 else 120.0
+        header=response.headers.get("Retry-After")
+        if header:
+            try:
+                requested=float(header)
+            except (TypeError,ValueError):
+                try:
+                    requested=parsedate_to_datetime(header).timestamp()-time.time()
+                except (TypeError,ValueError,OverflowError):
+                    requested=0.0
+            if math.isfinite(requested):
+                delay=max(delay,requested)
+        with HISTORY_COOLDOWN_LOCK:
+            HISTORY_COOLDOWNS[url]=max(HISTORY_COOLDOWNS.get(url,0),time.monotonic()+delay)
+        raise RuntimeError(f"history provider HTTP {response.status_code}; retry in {math.ceil(delay)}s")
+    response.raise_for_status()
+    return response
+
 def fetch_coinbase_history(limit_rows):
     url="https://api.exchange.coinbase.com/products/BTC-USD/candles"
     sess=requests.Session(); sess.headers.update({"User-Agent":"PredatorMLEngine/1.0","Accept":"application/json"})
@@ -238,10 +269,8 @@ def fetch_coinbase_history(limit_rows):
             "start":datetime.fromtimestamp(start_ms/1000,tz=timezone.utc).isoformat(),
             "end":datetime.fromtimestamp(end_ms/1000,tz=timezone.utc).isoformat()
         }
-        r=sess.get(url,params=params,timeout=REQUEST_TIMEOUT)
-        if r.status_code==429:
-            time.sleep(1.0); continue
-        r.raise_for_status(); batch=r.json()
+        r=fetch_history_page(sess,url,params)
+        batch=r.json()
         if not isinstance(batch,list) or not batch: break
         rows.extend(batch)
         oldest=min(int(x[0]) for x in batch)*1000
@@ -275,10 +304,8 @@ def fetch_binance_vision_history(limit_rows):
     while len(rows)<limit_rows:
         params={"symbol":"BTCUSDT","interval":"1m","limit":"1000"}
         if end is not None: params["endTime"]=str(end)
-        r=sess.get(url,params=params,timeout=REQUEST_TIMEOUT)
-        if r.status_code==429:
-            time.sleep(.8); continue
-        r.raise_for_status(); batch=r.json()
+        r=fetch_history_page(sess,url,params)
+        batch=r.json()
         if not isinstance(batch,list) or not batch: break
         rows.extend(batch)
         oldest=min(_binance_ms(x[0]) for x in batch)
