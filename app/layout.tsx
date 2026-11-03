@@ -8,6 +8,7 @@ import "./m15-scenario-first.css";
 import "./m1-candle-hunter.css";
 import "./m15-chart-clean.css";
 import "./smart-money-hunter.css";
+import "./hunter-cockpit-layout.css";
 
 export const metadata: Metadata = {
   title: "القناص | Qannas Trading Terminal",
