@@ -2,7 +2,7 @@
 
 import {useMemo} from 'react';
 import SniperMT5M1Chart from './SniperMT5M1Chart';
-import {auditCandleHunter,buildCandleHunter,type CandleHunterLevel} from '../lib/sniper-m1-candle-hunter';
+import {auditCandleHunter,displayCandleHunter,type CandleHunterLevel} from '../lib/sniper-m1-candle-hunter';
 import type {M1Bar} from '../lib/sniper-mt5-m1';
 import {freshM1QuoteForWatch} from '../lib/sampled-live-candle';
 
@@ -14,10 +14,13 @@ type Props={
 };
 const fmt=(x:number)=>x.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 export default function SniperM1CandleHunter(p:Props){
-  const plan=useMemo(()=>buildCandleHunter({
+  const display=useMemo(()=>displayCandleHunter({
     bars:p.history,now:p.now,marketOpen:p.marketOpen,
     sourceReady:p.sourceReady,providerTransition:p.providerTransition
   }),[p.history,p.now,p.marketOpen,p.sourceReady,p.providerTransition]);
+  const plan=display.plan;
+  const referenceOnly=display.kind==='EXPIRED_REFERENCE';
+  const liveEligible=display.kind==='LIVE';
   const closedAt=p.history.at(-1)?.time??0;
   const audit=useMemo(()=>auditCandleHunter(p.history,p.now,48),
     // Re-score only on a newly closed bar, not on every live quote.
@@ -32,7 +35,7 @@ export default function SniperM1CandleHunter(p:Props){
     {kind:'STOP' as const,label:'SELL SL',price:plan.sell.stop}
   ]:[];
   const nowPrice=Number(p.quote?.price);
-  const trusted=plan.ready&&p.marketOpen&&!p.providerTransition&&
+  const trusted=liveEligible&&p.marketOpen&&!p.providerTransition&&
     freshM1QuoteForWatch(p.quote,p.historicalSource,p.now,plan.issuedAt!);
   // A current quote beyond a limit is NOT proof that a pending order filled.
   const activeHint=trusted?
@@ -43,7 +46,7 @@ export default function SniperM1CandleHunter(p:Props){
   const details=(name:string,level:CandleHunterLevel)=>(
     <div className={'sniper-m1-hunter-side '+(level.side==='BUY'?'is-buy':'is-sell')}
       key={name}>
-      <strong>{name} <small>رصد مشروط لدقيقة واحدة</small></strong>
+      <strong>{name} <small>{referenceOnly?'مستوى منتهي · مرجع فقط':'رصد مشروط لدقيقة واحدة'}</small></strong>
       <div><span>تفعيل</span><b dir="ltr">{fmt(level.trigger)}</b></div>
       <div><span>هدف سريع TP</span><b dir="ltr">{fmt(level.target)}</b></div>
       <div><span>إبطال / وقف SL</span><b dir="ltr">{fmt(level.stop)}</b></div>
@@ -53,23 +56,24 @@ export default function SniperM1CandleHunter(p:Props){
     <div className="sniper-m1-hunter-head">
       <div><small>القناص السريع · على نهج الفيديو</small>
         <h2>قنص كل شمعة M1</h2></div>
-      <span>{plan.ready&&plan.expiresAt?
+      <span>{liveEligible&&plan.expiresAt?
         'تتبقى '+Math.max(0,Math.ceil((plan.expiresAt-p.now)/1000))+' ثانية':
-        'انتظار شمعة مؤهلة'}</span>
+        referenceOnly?'مستويات منتهية · لا دخول':'انتظار شمعة مؤهلة'}</span>
     </div>
-    <p className="sniper-m1-gross-risk">فحص المخاطرة: الهدف 0.72 ATR مقابل وقف 0.82 ATR = 0.88R قبل السبريد والعمولات والانزلاق.
-      هذه المستويات للرصد فقط؛ لا توجد أهلية تنفيذ مثبتة.</p>
+    <p className="sniper-m1-gross-risk">رصد تجريبي فقط · الهدف 0.72 ATR / الوقف 0.82 ATR (حوالي 0.88R قبل تكاليف التداول).</p>
     {plan.ready&&plan.buy&&plan.sell?<>
       <div className="sniper-m1-hunter-orders">
         {details('BUY STOP',plan.buy)}
         {details('SELL STOP',plan.sell)}
       </div>
-      <p className="sniper-m1-hunter-hint">{activeHint||plan.reason}</p>
+      <p className={'sniper-m1-hunter-hint '+(referenceOnly?'is-expired':'')}>
+        {referenceOnly?display.reason:activeHint||plan.reason}
+      </p>
     </>:<p className="sniper-m1-hunter-hint">{plan.reason} · لا مستويات وهمية</p>}
     <SniperMT5M1Chart asset={p.asset} history={p.history}
       historicalSource={p.historicalSource} quote={p.quote} now={p.now}
       marketOpen={p.marketOpen} providerTransition={p.providerTransition}
-      levels={levels}/>
+      levels={levels} referenceOnly={referenceOnly}/>
     <details className="sniper-m1-hunter-audit">
       <summary>فحص القنص على شموع M1 تاريخية</summary>
       <p>آخر {audit.observed} فرصة دقيقة قابلة للفحص من الشموع المتجاورة، ولا تمثل تنفيذًا عند أسعار الوسيط:
