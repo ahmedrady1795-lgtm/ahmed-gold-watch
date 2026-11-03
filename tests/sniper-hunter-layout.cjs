@@ -6,7 +6,7 @@ const source=fs.readFileSync('components/SniperHunterSidebars.tsx','utf8');
 const transpiled=ts.transpileModule(source,{compilerOptions:{
   module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX
 }}).outputText;
-const exports={},mod={exports};
+const mod={exports:{}};
 vm.runInNewContext(transpiled,{
   module:mod,exports:mod.exports,
   require:id=>{
