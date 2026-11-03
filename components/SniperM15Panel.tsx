@@ -1,6 +1,7 @@
 'use client';
 
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
+import SniperM15Summary from './SniperM15Summary';
 import OrderFlowRadar from './OrderFlowRadar';
 import GoldRadarBadge from './GoldRadarBadge';
 import type {RadarView} from '../lib/order-flow-radar';
@@ -53,7 +54,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  journals?:any;audit?:any;auditLoaded?:boolean;
 }){
  const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
- const [showLiquidity,setShowLiquidity]=useState(true);
+ const [showLiquidity,setShowLiquidity]=useState(false);
  const [showExtra,setShowExtra]=useState(false);
  const [showHistoricalExtension,setShowHistoricalExtension]=useState(false);
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
@@ -688,101 +689,26 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        aria-pressed={showLiquidity} onClick={()=>setShowLiquidity(v=>!v)}
        title="مناطق سيولة القمم والقيعان، الطلب والعرض والارتداد أو الرفض بعد إغلاق M15">
        {showLiquidity?'المناطق ✓':'المناطق'}</button>
-     <span className={'sniper-m15-phase '+(phase.confirmed?'confirmed':'neutral')}
-       title={(liquidity.ready?liquidity.reason:'لا توجد قراءة محدثة')+
-         ' · تقييم زمني M15: '+walkForward.correct+'/'+walkForward.selected+
-         ' من '+walkForward.evaluated+' نتيجة مرصودة، دون إثبات أفضلية'}>
-       {'السيولة: '+phase.label}</span>
-     <span className={'sniper-m15-bias '+(chartSide==='BUY'?'rise':chartSide==='SELL'?'fall':'hold')}>
-       {direction}</span>
    </header>
-   <div className={'sniper-m15-lifecycle'+(paused?' paused':'')} role="status">
-     <span>{lifecycle}</span>
-   </div>
-   <div className={'sniper-live-opportunity phase-'+liveOpportunity.phase.toLowerCase()}
-      role="status" aria-label="رصد الحركة اللحظية مستقل عن صفقة التداول">
-     <div className="sniper-live-opportunity-head">
-       <strong>رادار حركة M1/M5</strong>
-       <b>{liveOpportunity.phase==='BREAK_CONFIRMED'?'كسر M1 مرصود':
-         liveOpportunity.phase==='PREPARE'?'تحضير مبكر':
-         liveOpportunity.phase==='TESTING'?'اختبار كسر':
-         liveOpportunity.phase==='CANCELLED'?'فشل الكسر':
-         liveOpportunity.phase==='OFFLINE'?'المصدر غير جاهز':'مراقبة'}</b>
-     </div>
-     {(liveOpportunity.side==='BUY'||liveOpportunity.side==='SELL')&&
-       <div className="sniper-live-opportunity-levels">
-         <span>{liveOpportunity.side==='BUY'?'↗ صعود':'↘ هبوط'}</span>
-         <span>تفعيل <b dir="ltr">{n(liveOpportunity.trigger)}</b></span>
-         <span>إبطال <b dir="ltr">{n(liveOpportunity.invalidation)}</b></span>
-         <span>أهداف أمام السعر <b dir="ltr">
-           {liveOpportunity.targets.map(t=>n(t)).join(' / ')||'—'}</b></span>
-       </div>}
-     <small>{liveOpportunity.reason}
-       {liveOpportunity.side!=='WAIT'?' · '+liveOpportunity.targetNote:''}
-       {liveOpportunity.higherFrame==='OPPOSED'?' · M5 يعارض الكسر':''}
-       {' · رصد وليست إشارة تنفيذ'}</small>
-   </div>
-   <div className={'sniper-current-signal '+(currentSignalSide==='BUY'?'is-buy':
-      currentSignalSide==='SELL'?'is-sell':'is-wait')}
-      role="status" aria-label="اتجاه الشمعة الحالية">
-      <div className="sniper-current-signal-title">
-        <span>قرار الشمعة الحالية M15</span>
-        <strong>{currentSignalLabel}</strong>
-        <b dir="ltr">{n(currentSignalPrice)}</b>
-      </div>
-      <div className="sniper-current-signal-levels">
-        {liveOpportunity.side!=='WAIT'&&<>
-          <span>تفعيل <b dir="ltr">{n(liveOpportunity.trigger)}</b></span>
-          <span>إبطال <b dir="ltr">{n(liveOpportunity.invalidation)}</b></span>
-        </>}
-        {liveOpportunity.targets.length>0?
-          liveOpportunity.targets.map((target,i)=>
-            <span className="sniper-current-target" key={'live-target-'+i}>
-              هدف {i+1} <b dir="ltr">{n(target)}</b>
-            </span>):
-          watchMap.ready?<>
-            {watchMap.upper.slice(0,1).map((level,i)=>
-              <span key={'upper-watch-'+i}>سيولة أعلى {i+1}
-                <b dir="ltr">{n(level.price)}</b></span>)}
-            {watchMap.lower.slice(0,1).map((level,i)=>
-              <span key={'lower-watch-'+i}>سيولة أسفل {i+1}
-                <b dir="ltr">{n(level.price)}</b></span>)}
-          </>:<span className="sniper-no-target">
-            لا توجد أهداف مؤكدة؛ المصدر أو مستويات M15/H1 غير جاهزة
-          </span>}
-      </div>
-      <small>{liveOpportunity.reason} · لا يظهر شراء/بيع مؤكد إلا بعد إغلاق M1،
-        والشمعة M15 ما زالت جارية</small>
-    </div>
-    <div className="sniper-movement-metrics" aria-label="نتائج رادار الحركة المقاسة من شموع لاحقة">
-     <span>إنذارات <b>{movementStats.alerts}</b></span>
-     <span>تحضير مبكر <b>{movementStats.early}</b></span>
-     <span>كسور M1 <b>{movementStats.breaks}</b></span>
-     <span>تأخر اكتشاف الكسر <b>{movementStats.averageLagSeconds==null?'—':
-       movementStats.averageLagSeconds+'ث'}</b></span>
-     <span>إنذار سبق الكسر <b>{movementStats.earlyLeads}/{movementStats.breaks}
-       {movementStats.averageLeadSeconds!=null?' · '+movementStats.averageLeadSeconds+'ث':''}</b></span>
-     <span>وصول T1 <b>{movementStats.hits}/{movementStats.settled}
-       {movementStats.targetRate!=null?' ('+movementStats.targetRate+'%)':''}</b></span>
-     <small>قياس محلي عند فتح الصفحة ومن شموع M1 أُغلقت بعد إصدار الإنذار ·
-       {movementStats.pending?' '+movementStats.pending+' نتيجة معلقة ·':''}
-       {movementStats.missingTarget?' '+movementStats.missingTarget+' بلا هدف ·':''}
-       {movementStats.unscored?' '+movementStats.unscored+' غير محسومة ·':''}
-       {movementStats.statisticallyThin?' عينة غير كافية ·':''}
-       لا يشمل الحالات الملتبسة أو بلا هدف في نسبة النجاح</small>
-   </div>
-   {/* Radar details expand outside the M15 OHLC canvas instead of hiding candles. */}
-   {asset==='GOLD'&&<GoldRadarBadge now={now}
-        marketFresh={Boolean(m.sniper.view.priceFresh&&marketOpen&&
-          !providerTransition)} watch={watchMap}/>}
-   {asset==='BTC'&&<div className="sniper-m15-preparation-slot">
-     <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
-   </div>}
+   <SniperM15Summary asset={asset} ready={projected.ready}
+     saved={Boolean(stable&&!projected.ready)} paused={paused} detached={detached}
+     marketOpen={marketOpen} providerTransition={providerTransition}
+     fresh={freshObservation} side={projected.ready?chartSide:
+       currentSignalSide!=='WAIT'?currentSignalSide:safeSide}
+     price={currentSignalPrice}
+     trigger={currentSignalSide!=='WAIT'?liveOpportunity.trigger:null}
+     upper={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.upper:null}
+     lower={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.lower:null}
+     stop={projected.ready?stop:stable?.stop??(currentSignalSide!=='WAIT'?liveOpportunity.invalidation:null)}
+     targets={projected.ready||stable?stable?.goals??[]:
+       currentSignalSide!=='WAIT'?liveOpportunity.targets.map((price,i)=>({stage:i+1,price})):[]}
+     nextBar={projected.ready?shownBars[0]??null:null}
+     signal={currentSignalSide!=='WAIT'?currentSignalLabel:null}/>
    <div className="sniper-m15-view-controls" aria-label="عرض سيناريو القناص">
      <button type="button" className="sniper-m15-extra-toggle"
        aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}
        title="عرض أو إخفاء التفاصيل الفنية الثانوية">
-       {showExtra?'إخفاء التفاصيل':'تفاصيل'}</button>
+       {showExtra?'إخفاء علامات الرسم':'علامات الرسم'}</button>
      <button type="button" className="sniper-m15-extension-toggle"
        aria-pressed={showHistoricalExtension}
        onClick={()=>setShowHistoricalExtension(v=>!v)}
@@ -1165,6 +1091,69 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        </>:<small>{watchMap.reason} · لا أهداف افتراضية</small>}
      </div>}
    </div>
+   <details className="sniper-m15-diagnostics">
+     <summary>تفاصيل إضافية: الرادار والاختبارات والسيولة</summary>
+     <div className="sniper-m15-diagnostics-content">
+     <span className={'sniper-m15-phase '+(phase.confirmed?'confirmed':'neutral')}
+       title={(liquidity.ready?liquidity.reason:'لا توجد قراءة محدثة')+
+         ' · تقييم زمني M15: '+walkForward.correct+'/'+walkForward.selected+
+         ' من '+walkForward.evaluated+' نتيجة مرصودة، دون إثبات أفضلية'}>
+       {'السيولة: '+phase.label}</span>
+     <span className={'sniper-m15-bias '+(chartSide==='BUY'?'rise':chartSide==='SELL'?'fall':'hold')}>
+       {direction}</span>
+   <div className={'sniper-m15-lifecycle'+(paused?' paused':'')} role="status">
+     <span>{lifecycle}</span>
+   </div>
+   <div className={'sniper-live-opportunity phase-'+liveOpportunity.phase.toLowerCase()}
+      role="status" aria-label="رصد الحركة اللحظية مستقل عن صفقة التداول">
+     <div className="sniper-live-opportunity-head">
+       <strong>رادار حركة M1/M5</strong>
+       <b>{liveOpportunity.phase==='BREAK_CONFIRMED'?'كسر M1 مرصود':
+         liveOpportunity.phase==='PREPARE'?'تحضير مبكر':
+         liveOpportunity.phase==='TESTING'?'اختبار كسر':
+         liveOpportunity.phase==='CANCELLED'?'فشل الكسر':
+         liveOpportunity.phase==='OFFLINE'?'المصدر غير جاهز':'مراقبة'}</b>
+     </div>
+     {(liveOpportunity.side==='BUY'||liveOpportunity.side==='SELL')&&
+       <div className="sniper-live-opportunity-levels">
+         <span>{liveOpportunity.side==='BUY'?'↗ صعود':'↘ هبوط'}</span>
+         <span>تفعيل <b dir="ltr">{n(liveOpportunity.trigger)}</b></span>
+         <span>إبطال <b dir="ltr">{n(liveOpportunity.invalidation)}</b></span>
+         <span>أهداف أمام السعر <b dir="ltr">
+           {liveOpportunity.targets.map(t=>n(t)).join(' / ')||'—'}</b></span>
+       </div>}
+     <small>{liveOpportunity.reason}
+       {liveOpportunity.side!=='WAIT'?' · '+liveOpportunity.targetNote:''}
+       {liveOpportunity.higherFrame==='OPPOSED'?' · M5 يعارض الكسر':''}
+       {' · رصد وليست إشارة تنفيذ'}</small>
+   </div>
+    <div className="sniper-movement-metrics" aria-label="نتائج رادار الحركة المقاسة من شموع لاحقة">
+     <span>إنذارات <b>{movementStats.alerts}</b></span>
+     <span>تحضير مبكر <b>{movementStats.early}</b></span>
+     <span>كسور M1 <b>{movementStats.breaks}</b></span>
+     <span>تأخر اكتشاف الكسر <b>{movementStats.averageLagSeconds==null?'—':
+       movementStats.averageLagSeconds+'ث'}</b></span>
+     <span>إنذار سبق الكسر <b>{movementStats.earlyLeads}/{movementStats.breaks}
+       {movementStats.averageLeadSeconds!=null?' · '+movementStats.averageLeadSeconds+'ث':''}</b></span>
+     <span>وصول T1 <b>{movementStats.hits}/{movementStats.settled}
+       {movementStats.targetRate!=null?' ('+movementStats.targetRate+'%)':''}</b></span>
+     <small>قياس محلي عند فتح الصفحة ومن شموع M1 أُغلقت بعد إصدار الإنذار ·
+       {movementStats.pending?' '+movementStats.pending+' نتيجة معلقة ·':''}
+       {movementStats.missingTarget?' '+movementStats.missingTarget+' بلا هدف ·':''}
+       {movementStats.unscored?' '+movementStats.unscored+' غير محسومة ·':''}
+       {movementStats.statisticallyThin?' عينة غير كافية ·':''}
+       لا يشمل الحالات الملتبسة أو بلا هدف في نسبة النجاح</small>
+   </div>
+   {/* Radar details expand outside the M15 OHLC canvas instead of hiding candles. */}
+   {asset==='GOLD'&&<GoldRadarBadge now={now}
+        marketFresh={Boolean(m.sniper.view.priceFresh&&marketOpen&&
+          !providerTransition)} watch={watchMap}/>}
+   {asset==='BTC'&&<div className="sniper-m15-preparation-slot">
+     <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
+   </div>}
+
+     </div>
+   </details>
    {/* Performance records continue to be tracked, out of the trading chart. */}
  </section>;
 }
