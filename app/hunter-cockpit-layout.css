@@ -136,3 +136,44 @@
  .sniper-hunter-profile{grid-template-columns:1fr}
  .sniper-hunter-center .sniper-m15-chart-box{height:clamp(455px,63dvh,640px)!important}
 }
+
+
+/* Source-backed real-price BOS/CHoCH, FVG, OB and RSI overlays. */
+.sniper-market-structure .sniper-structure-event,
+.sniper-market-structure .sniper-structure-zone{pointer-events:visiblePainted}
+.sniper-market-structure text{pointer-events:none;paint-order:stroke}
+.sniper-hunter-center .sniper-structure-rsi{
+ display:flex;align-items:center;gap:9px;background:#060e16;border:1px solid #32474b;
+ margin:4px 0 5px;padding:3px 8px;border-radius:6px;height:59px;box-sizing:border-box;
+}
+.sniper-structure-rsi-label{display:flex;flex-direction:column;gap:1px;
+ flex:0 0 74px;min-width:0}
+.sniper-structure-rsi-label strong{font-size:10px;color:#b9d0cc}
+.sniper-structure-rsi-label b{font-size:15px;color:#7fe4b5;font-weight:850;
+ font-variant-numeric:tabular-nums}
+.sniper-structure-rsi-label small{font-size:8px;color:#9bb0b9}
+.sniper-structure-rsi svg{height:44px;width:100%;min-width:0;flex:1}
+.sniper-hunter-structure-summary{border-top:1px solid #504529;
+ padding:8px;margin:2px 6px 7px;background:#12191c;border-radius:5px}
+.sniper-hunter-structure-summary>strong{font-size:10px;color:#e5ca87}
+.sniper-hunter-structure-summary>div{display:flex;gap:8px;
+ align-items:center;justify-content:space-between;
+ border-bottom:1px solid #243b41;padding:5px 0;font-size:10px;color:#c1cbd2}
+.sniper-hunter-structure-summary>div b{color:#90e6bb;font-size:11px;
+ font-weight:850}
+.sniper-hunter-structure-zones{background:#0c1920;border:1px solid #45513b;
+ padding:7px;border-radius:7px;display:flex;flex-direction:column;gap:4px}
+.sniper-hunter-structure-zones>strong{font-size:10px;color:#ddc789}
+.sniper-hunter-structure-zones>div{display:flex;gap:6px;flex-wrap:wrap;
+ align-items:center;justify-content:space-between;font-size:10px;color:#b7d2d0;
+ border-bottom:1px solid #2a3a43;padding-bottom:3px}
+.sniper-hunter-structure-zones>div b{color:#e4ebdd;font-size:10px;
+ font-variant-numeric:tabular-nums;unicode-bidi:isolate}
+@media(max-width:640px){
+ .sniper-hunter-center .sniper-structure-rsi{
+   margin:3px 0 4px;padding:3px 5px;height:53px}
+ .sniper-structure-rsi-label{flex-basis:60px}
+ .sniper-structure-rsi-label b{font-size:13px}
+ .sniper-structure-rsi svg{height:41px}
+ .sniper-hunter-structure-summary{margin:3px 5px 6px}
+}
