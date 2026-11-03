@@ -103,14 +103,15 @@ export type HuntWaypoint={
 export function placeHuntWaypoints(f:M15HuntPreview,
  priceToY:(value:number)=>number,top:number,bottom:number):HuntWaypoint[]{
  if(!f.ready||bottom-top<100)return [];
- const candidates=([
+ const candidates:([HuntSide,1|2,number|undefined])[]=[
   ['BUY',1,f.buy[2]?.close],['BUY',2,f.buy[5]?.close],
   ['SELL',1,f.sell[2]?.close],['SELL',2,f.sell[5]?.close]
- ] as const).filter((r):r is readonly [HuntSide,1|2,number]=>
-   typeof r[2]==='number'&&Number.isFinite(r[2])&&r[2]>0);
- const raw=candidates.map(([side,stage,price])=>({
-  side,stage,price,lineY:priceToY(price),labelY:0
- })).filter(x=>Number.isFinite(x.lineY)&&x.lineY>=top+5&&x.lineY<=bottom-5)
+ ];
+ const raw=candidates.filter(r=>r[2]!=null&&Number.isFinite(r[2])&&r[2]!>0)
+  .map(([side,stage,value])=>{
+   const price=value as number;
+   return {side,stage,price,lineY:priceToY(price),labelY:0};
+  }).filter(x=>Number.isFinite(x.lineY)&&x.lineY>=top+5&&x.lineY<=bottom-5)
    .sort((a,b)=>a.lineY-b.lineY);
  const labelMin=top+16,labelMax=bottom-8,spacing=16;
  let prior=labelMin-spacing;
