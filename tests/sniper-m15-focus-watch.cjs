@@ -53,8 +53,8 @@ const plotTop=26,plotBottom=671;
 const py=price=>plotTop+(focus.hi-price)/(focus.hi-focus.lo)*(plotBottom-plotTop);
 const marks=placeHuntWaypoints(ready,py,plotTop,plotBottom);
 assert.equal(marks.length,4,'two projected stations per direction must be present');
-assert.deepEqual(marks.map(m=>m.side+'-'+m.stage).sort(),
- ['BUY-1','BUY-2','SELL-1','SELL-2'].sort());
+assert.equal([...marks].map(m=>m.side+'-'+m.stage).sort().join(','),
+ ['BUY-1','BUY-2','SELL-1','SELL-2'].sort().join(','));
 for(const m of marks){
  assert.ok(m.labelY>=plotTop+16&&m.labelY<=plotBottom-8);
  assert.equal(m.lineY,py(m.price),
