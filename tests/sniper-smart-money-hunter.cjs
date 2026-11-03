@@ -118,7 +118,7 @@ assert.match(panel,/className="sniper-m15-watch-guide"/,
  'old conditional M15 watch region remains in the real SVG');
 assert.match(panel,/projected.ready&&renderedBars.map/,
  'strict frozen and auditable M15 forecast mode must remain untouched');
-assert.match(plot,/illustrative/,'what-if OHLC must be explicitly marked as illustrative');
+assert.match(plot,/OHLC افتراضي/,'what-if OHLC must be explicitly marked as illustrative');
 assert.match(plot,/sniper-hunt-pool/,'high/low stop clusters are visual zones, not hidden orders');
 assert.match(hud,/مؤشر غير مُعاير/,
  'non-calibrated price pattern strength must not masquerade as probability');
