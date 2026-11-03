@@ -1,7 +1,7 @@
 'use client';
 
 import {useState} from 'react';
-import {Activity,ArrowDownRight,ArrowUpRight,Clock3,Crosshair,Layers3,ShieldAlert,Target} from 'lucide-react';
+import {Crosshair,Layers3,ShieldAlert} from 'lucide-react';
 import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import NewsCommandCenter from './NewsCommandCenter';
@@ -110,7 +110,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
       <header className="forecast-visual-header">
         <div className="forecast-visual-heading">
           <span className="forecast-visual-mark"><Crosshair size={17}/></span>
-          <div><strong>القناص · {asset==='GOLD'?'الذهب':'البيتكوين'}</strong></div>
+          <div><strong id="forecast-visual-title">القناص · {asset==='GOLD'?'الذهب':'البيتكوين'}</strong></div>
         </div>
         <div className="forecast-visual-controls">
           <button type="button" onClick={()=>setNewsOpen(v=>!v)} aria-expanded={newsOpen}
@@ -142,7 +142,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             <span className="forecast-dot"/>{statusReady?'سيناريو مُسجل':watchReady?'مراقبة فقط':'بدون دخول'}
           </span>
         </div>
-        <p className="forecast-scenario-reason">{stateLabel} · {statusText}</p>
+        <p className="forecast-scenario-reason">{m.status==='STALE_CANDLES'||m.status==='NO_CANDLES'?stateLabel+' · ':''}{statusText}</p>
         <div className="forecast-scenario-key-levels">
           <div><small>السعر المرجعي {sn.view.priceFresh?'· حديث':'· غير حديث'}</small>
             <strong dir="ltr">{fmt(m.price)}</strong></div>
@@ -165,7 +165,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
               </div>;
             })}
           </div>:
-          <p className="forecast-scenario-no-goals">لا توجد أهداف مؤهلة حاليًا. لا تعرض الشاشة مستويات دخول غير معتمدة.</p>}
+          <p className="forecast-scenario-no-goals">لا توجد أهداف مؤهلة أو معتمدة حاليًا.</p>}
         <p className="forecast-scenario-condition">
           <Crosshair size={14}/>
           {overlay.ready?(
