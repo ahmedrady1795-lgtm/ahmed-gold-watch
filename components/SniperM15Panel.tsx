@@ -721,8 +721,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        currentSignalSide!=='WAIT'?currentSignalSide:safeSide}
      price={currentSignalPrice}
      trigger={currentSignalSide!=='WAIT'?liveOpportunity.trigger:null}
-     upper={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.upper:null}
-     lower={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.lower:null}
+     upper={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.upper:
+       showWatchGuide?watchGuide.upperTrigger:null}
+     lower={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.lower:
+       showWatchGuide?watchGuide.lowerTrigger:null}
      stop={projected.ready?stop:stable?.stop??(currentSignalSide!=='WAIT'?liveOpportunity.invalidation:null)}
      targets={projected.ready||stable?stable?.goals??[]:
        currentSignalSide!=='WAIT'?liveOpportunity.targets.map((price,i)=>({stage:i+1,price})):[]}
@@ -744,7 +746,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
-         'شموع M15 فعلية ثم 12 شمعة تاريخية مماثلة فقط، والأهداف الهيكلية البعيدة مستويات مراقبة وليست وصولًا متوقعًا، مع الإبطال. '+
+         (projected.ready?'شموع M15 مغلقة مع سيناريو محفوظ من أنماط تاريخية؛ ليس مستقبلًا مؤكدًا. ':
+           showWatchGuide?'شموع M15 مغلقة ومساران مشروطان من ATR للمراقبة، وليسا توقع شموع أو أوامر. ':
+           'شموع M15 مغلقة فقط؛ لا يوجد نطاق مراقبة موثوق حاليًا. ')+
          (verifiedArchive.ready?'أرشيف حقيقي متحقق '+verifiedArchive.storedBars+' شمعة':'أرشيف سنوات غير متاح')+
          '. تقييم خارج العينة '+walkForward.selected+' قرارًا، لا يثبت أفضلية.'
        }
