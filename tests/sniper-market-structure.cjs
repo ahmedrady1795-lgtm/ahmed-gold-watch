@@ -13,7 +13,7 @@ const base=Array.from({length:39},(_,i)=>{
    high:open+.45,low:open-.46};
 });
 const first=base.at(-1),start=first.time+M15;
-const last={time:start,open:3900.17,close:3902.14,high:3902.31,low:3900.9};
+const last={time:start,open:3901.12,close:3902.14,high:3902.31,low:3900.9};
 const closed=[...base,last],now=start+M15;
 const s=analyzeM15MarketStructure(closed,now);
 assert.equal(s.ready,true,s.reason);
