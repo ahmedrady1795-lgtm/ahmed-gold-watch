@@ -698,10 +698,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <button type="button" onClick={()=>setChosen('BTC')} aria-pressed={asset==='BTC'}>BTCUSD</button>
      </div>:<b>{asset==='GOLD'?'XAUUSD':'BTCUSD'}</b>}
      <b className="sniper-m15-frame">{chartMode}</b>
-     <button type="button" className="sniper-m15-liquidity-toggle"
+     {chartMode==='M15'&&<button type="button" className="sniper-m15-liquidity-toggle"
        aria-pressed={showLiquidity} onClick={()=>setShowLiquidity(v=>!v)}
        title="مناطق سيولة القمم والقيعان، الطلب والعرض والارتداد أو الرفض بعد إغلاق M15">
-       {showLiquidity?'المناطق ✓':'المناطق'}</button>
+       {showLiquidity?'المناطق ✓':'المناطق'}</button>}
    </header>
    <nav className="sniper-candle-mode" aria-label="اختيار سرعة القنص">
      <button type="button" aria-pressed={chartMode==='M1'}
