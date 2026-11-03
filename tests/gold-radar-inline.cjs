@@ -20,7 +20,8 @@ assert.match(chart,/أول 12 شمعة للتقييم · الامتداد عرض
 assert.match(css,/position:relative;z-index:2/,'gold radar is inline and cannot hide candlesticks');
 assert.doesNotMatch(css,/right:18%;width:150px/,'radar no longer overlays the M15 price pane');
 assert.match(css,/width:100%;max-height:none;overflow:visible/,'expanded radar uses normal layout');
-assert.ok(chart.indexOf('<GoldRadarBadge now={now}')<chart.indexOf('className="sniper-m15-chart-box"'),
- 'radar expands ABOVE chart rather than on top of LIVE and future candles');
+assert.ok(chart.indexOf('<GoldRadarBadge now={now}')>chart.indexOf('className="sniper-m15-chart-box"')&&
+ chart.indexOf('<GoldRadarBadge now={now}')>chart.indexOf('className="sniper-m15-diagnostics"'),
+ 'radar expands in optional details BELOW the chart rather than covering LIVE and future candles');
 assert.match(css,/sniper-m15-watch-strip/,'watch levels reserve layout height');
 console.log('PASS: visible GOLD on-chart radar with strict source, timestamp, DOM and shadow-candle separation');

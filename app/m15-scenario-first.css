@@ -1,0 +1,47 @@
+/* The actual production M15 cockpit: one scenario before the real chart. */
+.sniper-m15-scenario-summary{
+  width:100%;box-sizing:border-box;margin:4px 0 7px;
+  padding:10px 11px;border:1px solid #345266;border-radius:9px;
+  background:linear-gradient(120deg,#102531,#0e1721);color:#e8eff5;
+  font-size:12px;line-height:1.4;
+}
+.sniper-m15-scenario-summary.is-ready{border-color:#40856d}
+.sniper-m15-scenario-summary.is-saved{border-color:#8b7150}
+.sniper-m15-summary-head{display:flex;align-items:center;justify-content:space-between;gap:6px 12px;flex-wrap:wrap;margin-bottom:8px}
+.sniper-m15-summary-head small{display:block;color:#a4b9c7;font-size:10px}
+.sniper-m15-summary-head h2{font-size:17px;line-height:1.35;margin:2px 0 0;color:#f5e1ad;font-weight:800}
+.sniper-m15-scenario-summary.is-ready h2{color:#8ff0c2}
+.sniper-m15-summary-head>span{font-size:10px;font-weight:700;color:#c7deea;border:1px solid #335669;border-radius:6px;padding:4px 7px;background:#122b3a}
+.sniper-m15-summary-levels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.sniper-m15-summary-levels>span{display:flex;flex-direction:column;min-width:0;gap:2px;padding:7px 8px;background:#0a1b28;border:1px solid #294455;border-radius:6px}
+.sniper-m15-summary-levels small{color:#99b3c2;font-size:10px}
+.sniper-m15-summary-levels b{color:#e9f3f7;font-size:14px;line-height:1.35;font-weight:800;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;unicode-bidi:isolate}
+.sniper-m15-summary-levels>span:nth-child(3) b{color:#ffb1bc}
+.sniper-m15-summary-levels>span:nth-child(n+4) b{color:#97efc6}
+.sniper-m15-summary-reason{margin:7px 0 0;color:#bfd3de;font-size:11px;line-height:1.5}
+.sniper-m15-summary-reason small{color:#e5c78e;font-size:10px}
+.sniper-m15-diagnostics{margin:9px 0;border:1px solid #274556;border-radius:8px;background:#0c1824;overflow:hidden}
+.sniper-m15-diagnostics>summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:6px;padding:10px 12px;font-size:12px;font-weight:700;color:#c8d9e4}
+.sniper-m15-diagnostics>summary::-webkit-details-marker{display:none}
+.sniper-m15-diagnostics>summary:after{content:'+';font-size:17px;color:#e8d19d}
+.sniper-m15-diagnostics[open]>summary:after{content:'−'}
+.sniper-m15-diagnostics[open]>summary{border-bottom:1px solid #274556}
+.sniper-m15-diagnostics>summary:focus-visible{outline:2px solid #edca82;outline-offset:-3px}
+.sniper-m15-diagnostics-content{display:grid;gap:8px;padding:10px}
+.sniper-m15-diagnostics-content>.sniper-m15-phase,.sniper-m15-diagnostics-content>.sniper-m15-bias{justify-self:start}
+.sniper-m15-diagnostics-content .sniper-current-signal{display:none}
+.sniper-m15-diagnostics-content .sniper-movement-metrics{margin:0}
+.sniper-m15-panel>.sniper-m15-view-controls{margin:3px 0 6px}
+@media(max-width:600px){
+ .sniper-m15-scenario-summary{padding:8px;margin:3px 0 5px}
+ .sniper-m15-summary-head{margin-bottom:6px}
+ .sniper-m15-summary-head h2{font-size:15px}
+ .sniper-m15-summary-head>span{font-size:9px}
+ .sniper-m15-summary-levels{gap:4px}
+ .sniper-m15-summary-levels>span{padding:6px 5px}
+ .sniper-m15-summary-levels small{font-size:9px}
+ .sniper-m15-summary-levels b{font-size:12px}
+ .sniper-m15-summary-reason{font-size:10px}
+ .sniper-m15-diagnostics>summary{font-size:11px}
+}
+@media(max-width:340px){.sniper-m15-summary-levels{grid-template-columns:repeat(2,minmax(0,1fr))}}
