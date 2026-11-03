@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
-    "start": "next start"
+    "start": "next start",
+    "test:neural": "node tests/neural-prediction.cjs"
   },
   "dependencies": {
     "lucide-react": "^1.31.0",
