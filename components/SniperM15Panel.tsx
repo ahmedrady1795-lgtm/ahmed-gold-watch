@@ -104,7 +104,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    [x?.chartHigherFrames?.m15,now]);
  // A source-backed analysis lane remains drawable even when ML/Neural trade
  // qualification is unavailable. It NEVER creates broker-ready signals.
- const watchGuide=useMemo(()=>buildM15WatchGuide(actual,now),[actual,now]);
+ const sourceGuide=useMemo(()=>buildM15WatchGuide(actual,now),[actual,now]);
+ const watchGuide=(providerTransition||!marketOpen)&&sourceGuide.ready?
+   {...sourceGuide,referenceOnly:true}:sourceGuide;
  const verifiedArchive=useMemo(()=>verifiedM15Archive({
    ledger:archiveState?.asset===asset?archiveState.ledger:null,
    asset,source:String(x?.candleSource||''),now,live:actual
