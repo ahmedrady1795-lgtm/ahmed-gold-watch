@@ -559,6 +559,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      Math.min(...trueHistory.map(b=>b.low))):1;
  const visibleZones=liquidity.zones.filter(z=>
    Math.abs((z.low+z.high)/2-(price??anchor??0))<=historyZoneSpan*1.2);
+ const liveScaleValues=formingVisible&&forming?[forming.open,forming.high,forming.low,forming.close]:[];
  const important=[
    ...trueHistory.flatMap(c=>[c.high,c.low]),
    ...goals.map(t=>t.price),
@@ -574,7 +575,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ...(showLiquidity?futureZones.flatMap(z=>[z.low,z.high]):[]),
    ...(showLiquidity?zoneBoard.items.flatMap(z=>z.low!=null&&z.high!=null?
      [z.low,z.high]:[]):[]),
-   ...(formingVisible&&forming?[forming.open,forming.high,forming.low,forming.close]:[])
+   ...liveScaleValues
  ].filter(v=>Number.isFinite(v)&&v>0);
  // A missing LIVE candle is NOT a price of $1. In WAIT/stale states
  // that synthetic fallback made the BTC axis span 0–87k and flattened all
