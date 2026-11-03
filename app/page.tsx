@@ -306,9 +306,12 @@ export default function Home(){
     <section className="content lite-content" aria-label="القناص الذكي">
       <AICommandCenter assetView="ALL" data={aiData} chartData={chartData} error={aiError} now={now} goldLive={goldTick}
         btcLive={chartBtcQuote}/>
-      <section id="market-news" className="sniper-home-news" aria-label="أخبار السوق">
-        <NewsCommandCenter now={now}/>
-      </section>
+      <details className="sniper-news-collapsible">
+        <summary>أخبار السوق والمواعيد الاقتصادية · عرض عند الحاجة</summary>
+        <section id="market-news" className="sniper-home-news" aria-label="أخبار السوق">
+          <NewsCommandCenter now={now}/>
+        </section>
+      </details>
     </section>
   </main>;
 }

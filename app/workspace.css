@@ -2071,3 +2071,63 @@ body:has(.modern-workspace.compact-sniper){
  margin:12px 0;padding:9px 7px;
 }
 .sniper-m15-results-overlay p{margin:10px 0;color:#b5cdd5}
+
+
+/* Scenario first: live Render branch, preserve the original interactive candle chart. */
+.compact-sniper .render-scenario-first{
+  margin:10px 10px 7px;padding:13px 15px;
+  border:1px solid #3c6176;border-radius:12px;
+  background:linear-gradient(115deg,#102a3a,#111e2b);color:#eaf2f8;
+}
+.compact-sniper .render-scenario-first.is-qualified{
+  border-color:#43866e;background:linear-gradient(115deg,#12362e,#112334)
+}
+.compact-sniper .render-scenario-first.is-watch{
+  border-color:#8c7849;background:linear-gradient(115deg,#302b20,#122535)
+}
+.render-scenario-first-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.render-scenario-first-head>div small{display:block;color:#9dbac9;font-size:11px}
+.render-scenario-first-head h2{font-size:23px;line-height:1.35;margin:3px 0;color:#f0dcae}
+.render-scenario-first.is-qualified h2{color:#87eac0}
+.render-scenario-first-head>span{display:inline-block;border:1px solid #496879;background:#142f3d;color:#cce3ed;border-radius:8px;padding:5px 9px;font-size:11px}
+.render-scenario-first-reason{font-size:12px;line-height:1.55;color:#bdd4e0;margin:7px 0 11px;overflow-wrap:anywhere}
+.render-scenario-first-values,.render-scenario-first-targets{display:grid;gap:7px}
+.render-scenario-first-values{grid-template-columns:repeat(4,minmax(0,1fr))}
+.render-scenario-first-targets{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:8px}
+.render-scenario-first-values>div,.render-scenario-first-targets>div{
+ display:flex;flex-direction:column;gap:4px;min-width:0;border:1px solid #2d5061;
+ padding:9px 10px;background:#0b2131;border-radius:8px;
+}
+.render-scenario-first-values small,.render-scenario-first-targets small{color:#a5bdcb;font-size:10px}
+.render-scenario-first-values b,.render-scenario-first-targets b{
+ font-size:17px;color:#f3f6fa;line-height:1.35;font-variant-numeric:tabular-nums;overflow-wrap:anywhere
+}
+.render-scenario-first-values>div:nth-child(3) b{color:#ffb1b9}
+.render-scenario-first-targets b{color:#a7efd0}
+.render-scenario-first-entry,.render-scenario-first-activation,.render-scenario-first-no-target{
+ margin:9px 0 0;font-size:11px;line-height:1.65;color:#e8d7a8
+}
+.render-scenario-first-entry b{color:#f8e2b1;font-variant-numeric:tabular-nums}
+.compact-sniper .sniper-secondary-content>.sniper-movement-outlook{
+ margin:8px 0;border:1px solid #355769;border-radius:10px
+}
+.compact-sniper .sniper-secondary-content>.sniper-live-next-status{margin:10px 0}
+.compact-sniper .sniper-secondary-content>.sniper-price-snapshot{margin:8px 0}
+.compact-sniper .sniper-secondary-content>.sniper-price-snapshot{display:none}
+.sniper-news-collapsible{margin-top:8px;border:1px solid #294558;border-radius:10px;background:#102030}
+.sniper-news-collapsible>summary{padding:11px 14px;cursor:pointer;font-size:12px;color:#cde0ed;font-weight:700}
+.sniper-news-collapsible>summary:focus-visible{outline:2px solid #e8cb8c;outline-offset:2px}
+.sniper-news-collapsible[open]>summary{border-bottom:1px solid #294558}
+.sniper-news-collapsible .sniper-home-news{padding:7px;margin:0}
+@media(max-width:740px){
+ .compact-sniper .render-scenario-first{margin:6px;padding:10px}
+ .render-scenario-first-head h2{font-size:20px}
+ .render-scenario-first-values{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+ .render-scenario-first-targets{gap:5px}
+ .render-scenario-first-values>div,.render-scenario-first-targets>div{padding:7px}
+ .render-scenario-first-values b{font-size:15px}
+ .render-scenario-first-targets b{font-size:13px}
+ .render-scenario-first-targets small{font-size:9px}
+ .render-scenario-first-reason{font-size:11px;margin:7px 0}
+}
+@media(max-width:390px){.render-scenario-first-targets{grid-template-columns:repeat(2,minmax(0,1fr))}}
