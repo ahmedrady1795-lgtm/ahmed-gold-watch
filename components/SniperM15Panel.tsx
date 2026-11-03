@@ -2,6 +2,7 @@
 
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import SniperM15Summary from './SniperM15Summary';
+import SniperM1CandleHunter from './SniperM1CandleHunter';
 import OrderFlowRadar from './OrderFlowRadar';
 import GoldRadarBadge from './GoldRadarBadge';
 import type {RadarView} from '../lib/order-flow-radar';
@@ -55,6 +56,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
 }){
  const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
  const [showLiquidity,setShowLiquidity]=useState(false);
+ const [chartMode,setChartMode]=useState<'M1'|'M15'>('M1');
  const [showExtra,setShowExtra]=useState(false);
  const [showHistoricalExtension,setShowHistoricalExtension]=useState(false);
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
@@ -684,12 +686,23 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <button type="button" onClick={()=>setChosen('GOLD')} aria-pressed={asset==='GOLD'}>XAUUSD</button>
        <button type="button" onClick={()=>setChosen('BTC')} aria-pressed={asset==='BTC'}>BTCUSD</button>
      </div>:<b>{asset==='GOLD'?'XAUUSD':'BTCUSD'}</b>}
-     <b className="sniper-m15-frame">M15</b>
+     <b className="sniper-m15-frame">{chartMode}</b>
      <button type="button" className="sniper-m15-liquidity-toggle"
        aria-pressed={showLiquidity} onClick={()=>setShowLiquidity(v=>!v)}
        title="مناطق سيولة القمم والقيعان، الطلب والعرض والارتداد أو الرفض بعد إغلاق M15">
        {showLiquidity?'المناطق ✓':'المناطق'}</button>
    </header>
+   <nav className="sniper-candle-mode" aria-label="اختيار سرعة القنص">
+     <button type="button" aria-pressed={chartMode==='M1'}
+       onClick={()=>setChartMode('M1')}>M1 · قنص كل شمعة</button>
+     <button type="button" aria-pressed={chartMode==='M15'}
+       onClick={()=>setChartMode('M15')}>M15 · السيناريو</button>
+   </nav>
+   {chartMode==='M1'?<SniperM1CandleHunter asset={asset}
+     history={m.candles} historicalSource={String(x?.candleSource||'')}
+     quote={liveQuote} now={now} marketOpen={marketOpen}
+     sourceReady={m.historyFresh&&m.sniper.view.priceFresh}
+     providerTransition={providerTransition}/>:<>
    <SniperM15Summary asset={asset} ready={projected.ready}
      saved={Boolean(stable&&!projected.ready)} paused={paused} detached={detached}
      marketOpen={marketOpen} providerTransition={providerTransition}
@@ -1091,6 +1104,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        </>:<small>{watchMap.reason} · لا أهداف افتراضية</small>}
      </div>}
    </div>
+   </>}
    <details className="sniper-m15-diagnostics">
      <summary>تفاصيل إضافية: الرادار والاختبارات والسيولة</summary>
      <div className="sniper-m15-diagnostics-content">
