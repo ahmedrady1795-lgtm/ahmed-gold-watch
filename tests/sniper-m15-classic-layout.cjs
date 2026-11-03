@@ -38,7 +38,7 @@ assert.match(chart,/const scenario=buildM15Scenario\(\{\.\.\.modelInput,steps:12
 assert.match(chart,/const visualBars=prefixMatches\?longer\.bars:scenario\.bars/);
 assert.match(chart,/const renderedBars=showHistoricalExtension\?displayBars:shownBars/,
  'first 12 auditable M15 bars are the default view; 48 historical is optional');
-assert.match(chart,/split=projected\.ready\?215:422/,
+assert.match(chart,/split=projected\.ready\|\|showWatchGuide\?215:422/,
  '12 timed bars have their own properly sized canvas, without flattening candles');
 assert.match(chart,/bars:scenario\.bars\.map\(b=>/,'proof ledger only stores 12 genuine scored bars');
 assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars/);
