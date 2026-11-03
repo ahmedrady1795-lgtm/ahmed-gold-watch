@@ -483,7 +483,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Divergence changes its status to detached; it must not make the candles blink.
  const aligned=stable&&validLive&&forming&&
    stable.anchorTime<=forming.time&&
-   forming.time<stable.anchorTime+12*900000?stable:null;
+   forming.time<stable.anchorTime+12*900000&&!detached?stable:null;
  const elapsedSteps=aligned&&forming?
    Math.max(0,Math.round((forming.time-aligned.anchorTime)/900000)):0;
  // Retain ORIGINAL forecast timestamps. On later real candles only the
