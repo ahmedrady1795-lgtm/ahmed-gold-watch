@@ -6,6 +6,8 @@ import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
 import SniperHuntHUD from './SniperHuntHUD';
+import SniperM1CandleTape from './SniperM1CandleTape';
+import {SniperLiquidityColumn,SniperScenarioColumn,SniperNextCandleCard} from './SniperHunterSidebars';
 import SniperM1CandleHunter from './SniperM1CandleHunter';
 import {extendIllustrativeM15ToTargets} from '../lib/sniper-m15-target-bridge';
 import {buildM15WatchGuide} from '../lib/sniper-m15-watch-guide';
@@ -741,6 +743,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      noForecastReason={!projected.ready?lifecycle:null}
      watchGuide={showWatchGuide?watchGuide:null}/>
    </details>
+   <div className="sniper-hunter-workbench">
+     <SniperLiquidityColumn history={actual.slice(-48)}
+       price={price??null} preview={huntPreview} liquidityOn={showLiquidity}/>
+     <div className="sniper-hunter-center">
    <div className="sniper-m15-view-controls" aria-label="عرض سيناريو القناص">
      <button type="button" className="sniper-m15-extra-toggle"
        aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}
@@ -1174,6 +1180,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          <small>مراقبة فقط · قمم وقيعان M15/H1 المغلقة · ليست TP مضمونًا</small>
        </>:<small>{watchMap.reason} · لا أهداف افتراضية</small>}
      </div>}
+     </div>
+     <SniperScenarioColumn preview={huntPreview} guide={watchGuide}
+       qualified={projected.ready} price={price??null} marketOpen={marketOpen}/>
+   </div>
+   <div className="sniper-hunter-bottom">
+     <SniperM1CandleTape history={m.candles} now={now}/>
+     <SniperNextCandleCard priority={nextM1} marketOpen={marketOpen}/>
+   </div>
    </>}
    <details className="sniper-m15-diagnostics">
      <summary>تفاصيل إضافية: الرادار والاختبارات والسيولة</summary>
