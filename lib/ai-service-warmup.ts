@@ -17,12 +17,12 @@ export function warmAiServices():Promise<void>{
   url.pathname=url.pathname.replace(/\/$/,'')+'/health';
   const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(45000),
    headers:{'User-Agent':'Qannas-AI-Health-Recovery/1.0'}});
-  await r.arrayBuffer();
   if(r.status===429){
     // The independent prediction clients have their own 429 retry budgets.
     // Do not add a duplicate health probe while the CDN is throttling.
     nextAllowedAt=Math.max(nextAllowedAt,Date.now()+300000);
   }
+  await r.arrayBuffer();
   if(!r.ok)console.warn('[AI-HEALTH] HTTP',r.status,url.hostname);
  })).then(()=>{}).finally(()=>{running=null;});
  return running;
