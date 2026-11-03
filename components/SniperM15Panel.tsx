@@ -60,7 +60,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [showLiquidity,setShowLiquidity]=useState(true);
  const [chartMode,setChartMode]=useState<'M1'|'M15'>('M15');
  const [showExtra,setShowExtra]=useState(false);
- const [showHistoricalExtension,setShowHistoricalExtension]=useState(true);
+ const [showHistoricalExtension,setShowHistoricalExtension]=useState(false);
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
  const onRadarView=useCallback((v:RadarView|null)=>setLiveRadar(v),[]);
  const asset=assetView==='ALL'?chosen:assetView;
@@ -738,9 +738,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        title="امتداد بشموع توضيحية للأهداف؛ ليس توقعًا زمنيًا أو نتيجة فعلية">
        {showHistoricalExtension?'عرض أول 12 شمعة':'السيناريو للأهداف'}</button>}
    </div>
-   <div role="status" style={{fontSize:12,color:'#b8d5df',padding:'4px 8px'}}>
-     {projected.ready?'شموع متوقعة · الامتداد للأهداف توضيحي وغير مضمون':lifecycle}
-     {' · '+(zoneBoard.context?.label??'لا تجميع أو تصريف مؤكد حاليًا')}
+   <div className="sniper-m15-compact-status" role="status">
+     <span>{projected.ready?'سيناريو M15 · 12 شمعة':showWatchGuide?'نطاق مراقبة M15':'شموع M15 حقيقية'}</span>
+     <b dir="ltr">{formingVisible&&forming?'LIVE '+n(forming.close):
+       latestClosed?'CLOSE '+n(latestClosed.close):'—'}</b>
    </div>
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
@@ -776,7 +777,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            <title>{z.label+' · المنطقة المرصودة '+n(z.low)+' – '+n(z.high)+
              ' · '+z.source+' · للمراقبة فقط'}</title>
          </g>)}
-         {showLiquidity&&zoneBoard.context&&
+         {showLiquidity&&showExtra&&zoneBoard.context&&
            <text className="sniper-m15-chart-context" x={left+5}
              y={plotTop+17} fill={zoneBoard.context.label.includes('تجميع')?
                '#6ee9bc':zoneBoard.context.label.includes('تصريف')?
@@ -788,7 +789,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                ' · تاريخي':' · مرصود')}
            </text>}
          {/* Same black background for real and hypothetical candles. */}
-         {showLiquidity&&liquidity.context&&(()=>{
+         {showLiquidity&&showExtra&&liquidity.context&&(()=>{
            const z=liquidity.context!;
            const xa=timeX(z.from),xb=Math.min(split,timeX(z.to));
            const top=py(z.high),bottom=py(z.low);
@@ -802,7 +803,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                ' · منطقة M5 مثبتة بشموع مغلقة، ليست أوامر مؤسسات'}</title>
            </g>;
          })()}
-         {showLiquidity&&liquidity.zones.map(z=>{
+         {showLiquidity&&showExtra&&liquidity.zones.map(z=>{
            if(!drawnZones.includes(z))return null;
            const color=liquidityColor(z.kind),top=py(z.high),bottom=py(z.low);
            const pool=z.kind==='HIGH_POOL'||z.kind==='LOW_POOL';
@@ -824,7 +825,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          })}
          {/* Price-true M15 demand/supply continued only as a
               hypothetical reaction area, not a future event. */}
-         {showLiquidity&&!futureZones.length&&projected.ready&&reactionMap.bands.map((z,i)=>{
+         {showLiquidity&&showExtra&&!futureZones.length&&projected.ready&&reactionMap.bands.map((z,i)=>{
            const color=z.kind==='DEMAND'||z.kind==='REBOUND_UP'?'#44dab2':'#ff8c9b';
            return <g className="sniper-m15-reaction-band" key={'bounce-band-'+i}>
              <line x1={split+4} x2={end-4}
@@ -927,7 +928,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            </g>}
          {projected.ready&&<line x1={split} x2={split} y1={plotTop} y2={plotBottom}
            stroke="#7e9bb1" strokeWidth="1.25" strokeDasharray="5 5"/>}
-         {projected.ready&&<text x={end-8} y={plotTop+13}
+         {projected.ready&&showExtra&&<text x={end-8} y={plotTop+13}
            textAnchor="end" fill={chartSide==='BUY'?'#55e5b6':'#ff8195'}
            fontSize="9" fontWeight="800" stroke="#000" strokeWidth="2"
            paintOrder="stroke">
@@ -957,7 +958,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              ' · أول شمعة متوقعة تبدأ '+h(aligned.anchorTime+900000)+
              ' · اختلاف السعر بعد التثبيت لا يعيد كتابة توقع قديم'}</title>
          </g>}
-         {projected.ready&&reactionMap.marks.map((mark,i)=>{
+         {projected.ready&&showExtra&&reactionMap.marks.map((mark,i)=>{
            const barX=split+5+(mark.step-elapsedSteps-.5)*projectedStride;
            const dotY=py(mark.price),color=mark.direction==='UP'?'#6bffe0':'#ffad92';
            // Place text in the quiet far-right lane rather than on top of
@@ -977,7 +978,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                ' · شموع توقع غير مؤكدة'}</title>
            </g>;
          })}
-         {showLiquidity&&compactZones.map((z,i)=>{
+         {showLiquidity&&showExtra&&compactZones.map((z,i)=>{
            const color=z.kind==='MIXED'?
              z.label.includes('ارتداد')?'#41cfab':
              z.label.includes('رفض')?'#ff7b90':'#e8c184':
@@ -1007,7 +1008,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                {z.kind==='ACCUMULATION'?'تجميع':z.kind==='DISTRIBUTION'?'تصريف':'انضغاط'}</text>
            </g>;
          })()}
-         {showLiquidity&&liquidity.events.map((e,i)=>{
+         {showLiquidity&&showExtra&&liquidity.events.map((e,i)=>{
            const mark=e.kind==='SWEEP_LOW'?'سحب قاع':
              e.kind==='SWEEP_HIGH'?'سحب قمة':
              e.kind==='BOS_UP'?'BOS ↑':'BOS ↓';
@@ -1034,11 +1035,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              'live-m15-'+forming.time)}
            <circle cx={split-4} cy={py(forming.close)} r="2.3"
              fill="#c0f7ff" stroke="#00212c" strokeWidth=".7"/>
-           <text x={split-15} y={Math.max(plotTop+13,py(forming.high)-8)}
+           {showExtra&&<text x={split-15} y={Math.max(plotTop+13,py(forming.high)-8)}
              fill="#b9efff" fontSize="8.2" fontWeight="700"
              textAnchor="end" direction="ltr" stroke="#000"
-             strokeWidth="2.5" paintOrder="stroke">{'LIVE '+n(forming.close)}</text>
-           {formingBias!=='WAIT'&&<g className={'sniper-live-candle-bias '+(formingBias==='BUY'?'is-buy':'is-sell')}>
+             strokeWidth="2.5" paintOrder="stroke">{'LIVE '+n(forming.close)}</text>}
+           {showExtra&&formingBias!=='WAIT'&&<g className={'sniper-live-candle-bias '+(formingBias==='BUY'?'is-buy':'is-sell')}>
              <rect x={split-49} y={clamp(py(forming.close)-24,plotTop+5,plotBottom-20)}
                width="34" height="15" rx="3"
                fill={formingBias==='BUY'?'#0a3b30':'#481d29'}
@@ -1066,14 +1067,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          return <g key={'inline-'+level.key} className="sniper-m15-inline-price">
            <line x1={end-19} x2={end-5} y1={y} y2={y}
              stroke={color} strokeWidth="1.2" opacity=".95"/>
-           <text x={split+8} y={clamp(y-4,plotTop+12,plotBottom-8)}
+           {showExtra&&<text x={split+8} y={clamp(y-4,plotTop+12,plotBottom-8)}
              fill={color} fontSize="8.6" fontWeight="700"
              textAnchor="start" direction="ltr"
              stroke="#000" strokeWidth="2.4" paintOrder="stroke">
-             {labelBy(level.key)+' '+n(level.price)}</text>
+             {labelBy(level.key)+' '+n(level.price)}</text>}
          </g>;
        })}
-       {showLiquidity&&positionedLiquidityLabels.map(z=><g key={'liq-label-'+z.key}
+       {showLiquidity&&showExtra&&positionedLiquidityLabels.map(z=><g key={'liq-label-'+z.key}
           className="sniper-m15-liquidity-label">
          {Math.abs(z.labelY-z.exactY)>10&&
            <line x1={end-15} x2={end-15} y1={z.exactY} y2={z.labelY}
@@ -1089,7 +1090,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
             {n(z.price)}
          </text>
        </g>)}
-       {!paused&&!awaitingReplacement&&asset==='BTC'&&elapsedSteps===0&&
+       {showExtra&&!paused&&!awaitingReplacement&&asset==='BTC'&&elapsedSteps===0&&
          projected.ready&&shownBars.length>0&&(()=>{
          const first=projected.bars[0],cx=split+5+.5*projectedStride;
          const color=firstRadarCandle.phase==='VERIFIED'?'#4de7ab':
@@ -1125,7 +1126,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
               freshObservation?'لا توجد إشارة مؤكدة':'بانتظار تحديث بيانات السوق'}</text>
          <title>{lifecycle}</title>
        </g>}
-       {projected.ready&&shownBars.length>0&&<g className="sniper-m15-first-audit">
+       {projected.ready&&showExtra&&shownBars.length>0&&<g className="sniper-m15-first-audit">
          <text x={split+6} y={plotTop+(asset==='BTC'?42:25)}
            fill={firstM15Stats.ready?'#b3d9ec':'#899baa'}
            fontSize="8.2" textAnchor="start" direction="rtl">
@@ -1134,8 +1135,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        </g>}
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
        <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'} fontSize="10" textAnchor="start" direction="ltr">{projected.ready?'M15 · FORECAST':showWatchGuide?'M15 · WATCH':'M15 · LIVE'}</text>
-       <text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
-         textAnchor="start" direction="rtl">{projected.ready?'أول 12 شمعة للتقييم · امتداد الأهداف توضيحي غير زمني':showWatchGuide?'مساران مشروطان من M15 مغلق · ليست شموع مستقبلية':'شموع فعلية متصلة · لا توجد شموع توقع معتمدة الآن'}</text>
+       {showExtra&&<text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
+         textAnchor="start" direction="rtl">{projected.ready?'أول 12 شمعة للتقييم · امتداد الأهداف توضيحي غير زمني':showWatchGuide?'مساران مشروطان من M15 مغلق · ليست شموع مستقبلية':'شموع فعلية متصلة · لا توجد شموع توقع معتمدة الآن'}</text>}
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(formingVisible&&forming?forming.time:latestClosed.time)}</text>}
@@ -1144,6 +1145,25 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
          {renderedBars.length?shownBars.length+' M15'+(showHistoricalExtension?' · امتداد أهداف غير زمني':''):'M15'}</text>
      </svg>
+     {(scaleLevels.some(level=>level.kind!=='PRICE')||
+        showLiquidity&&positionedLiquidityLabels.length>0)&&
+       <div className="sniper-m15-levels-below" aria-label="دليل المستويات أسفل الرسم">
+         <div className="sniper-m15-level-key">
+           {scaleLevels.filter(level=>level.kind!=='PRICE').slice(0,4).map(level=>
+             <span className={'sniper-m15-level-chip '+(level.kind==='STOP'?'is-stop':
+               level.kind==='ILLUSTRATION'?'is-illustration':'is-target')}
+               key={'chip-'+level.key}>
+               <small>{labelBy(level.key)}</small>
+               <b dir="ltr">{n(level.price)}</b>
+             </span>)}
+           {showLiquidity&&positionedLiquidityLabels.map(z=>
+             <span className="sniper-m15-level-chip is-zone"
+               key={'chip-'+z.key} style={{borderInlineStartColor:z.color}}>
+               <small>{z.label}</small>
+               <b dir="ltr">{n(z.price)}</b>
+             </span>)}
+         </div>
+       </div>}
      {showLiquidity&&showExtra&&<div className="sniper-m15-watch-strip"
        aria-label="مستويات السيولة والأهداف الهيكلية للمراقبة" role="status">
        {watchMap.ready?<>
