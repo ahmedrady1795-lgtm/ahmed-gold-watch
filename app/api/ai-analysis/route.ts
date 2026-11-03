@@ -85,7 +85,7 @@ function buildH4Context(c60:any[],price:number|null,now=Date.now()){
   }
   const bars=[...groups.entries()]
     .sort((a,b)=>a[0]-b[0])
-    .filter(([,g])=>g.length>=4)
+    .filter(([bucket,g])=>{ const times=new Set(g.map((c:any)=>Number(c.time))); return times.size===4&&[0,1,2,3].every(i=>times.has(bucket+i*hour)); })
     .map(([time,g])=>{
       const x=g.slice().sort((a:any,b:any)=>Number(a.time)-Number(b.time));
       const open=Number(x[0]?.open),close=Number(x.at(-1)?.close);
