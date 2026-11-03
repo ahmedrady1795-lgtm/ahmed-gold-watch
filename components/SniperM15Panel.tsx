@@ -4,6 +4,7 @@ import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import SniperM15Summary from './SniperM15Summary';
 import SniperM1CandleHunter from './SniperM1CandleHunter';
 import {auditCandleHunter} from '../lib/sniper-m1-candle-hunter';
+import {buildM15WatchGuide} from '../lib/sniper-m15-watch-guide';
 import OrderFlowRadar from './OrderFlowRadar';
 import GoldRadarBadge from './GoldRadarBadge';
 import type {RadarView} from '../lib/order-flow-radar';
@@ -104,6 +105,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
     [m.candles,Math.floor(now/60000)]);
  const actual=useMemo(()=>closedM15Bars(x?.chartHigherFrames?.m15,now,320),
    [x?.chartHigherFrames?.m15,now]);
+ // A source-backed analysis lane remains drawable even when ML/Neural trade
+ // qualification is unavailable. It NEVER creates broker-ready signals.
+ const watchGuide=useMemo(()=>buildM15WatchGuide(actual,now),[actual,now]);
  const verifiedArchive=useMemo(()=>verifiedM15Archive({
    ledger:archiveState?.asset===asset?archiveState.ledger:null,
    asset,source:String(x?.candleSource||''),now,live:actual
@@ -508,6 +512,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    aligned.goals.filter(g=>!goals.some(hit=>hit.stage===g.stage)):[];
  const stop=aligned?.stop??null;
  const projected=aligned?.scenario??noScenario;
+ const showWatchGuide=!projected.ready&&watchGuide.ready;
  const reactionMap=aligned?{
    bands:aligned.reactions.bands,
    marks:aligned.reactions.marks.filter(m=>
@@ -556,7 +561,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  });
  const phase=sniperPhaseBadge({ready:liquidity.ready,
    contextKind:liquidity.context?.kind,phase:liquidity.phase,side:chartSide});
- const W=430,H=704,left=8,split=projected.ready?215:422,end=422,
+ const W=430,H=704,left=8,split=projected.ready||showWatchGuide?215:422,end=422,
    plotTop=26,plotBottom=H-33;
  // A single absolute price axis contains EVERY currently valid target and
  // stop. No fake vertical positioning of offscreen targets.
@@ -575,6 +580,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    // the entire candle field. The viewport follows closed bars and frozen levels.
    ...(stop!=null?[stop]:[]),
    ...renderedBars.flatMap(c=>[c.high,c.low]),
+   ...(showWatchGuide?[
+     ...watchGuide.up,...watchGuide.down,
+     watchGuide.upperTrigger??0,watchGuide.lowerTrigger??0
+   ]:[]),
    ...visibleZones.flatMap(z=>[z.low,z.high]),
    ...(showLiquidity?reactionMap.bands.flatMap(z=>[z.low,z.high]):[]),
    ...reactionMap.marks.map(z=>z.price),
@@ -701,13 +710,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <button type="button" aria-pressed={chartMode==='M15'}
        onClick={()=>setChartMode('M15')}>M15 · رسم السيناريو</button>
    </nav>
-   <div className="sniper-minute-audit-strip" role="status" aria-label="نتائج فحص قنص الدقيقة على الشموع المغلقة">
-     <strong>قنص M1 · فحص آخر {minuteAudit.observed} فرصة</strong>
-     <span>لمس هدف: {minuteAudit.targetTouches}</span>
-     <span>ملتبس/غير محسوم: {minuteAudit.ambiguous+minuteAudit.openGapUnknown+minuteAudit.pending}</span>
-     <span>بدون كسر: {minuteAudit.noTrigger}</span>
-     <small>{minuteAudit.observed<30?'عينة صغيرة · ':''}ليست نتائج صفقات ولا ربحًا صافيًا</small>
-   </div>
+   {chartMode==='M1'&&<details className="sniper-minute-audit-strip" aria-label="فحص قنص الدقيقة">
+     <summary>فحص M1: {minuteAudit.targetTouches} لمس هدف من {minuteAudit.observed} حالة</summary>
+     <small>ملتبس أو غير محسوم {minuteAudit.ambiguous+minuteAudit.openGapUnknown+minuteAudit.pending} ·
+       بلا كسر {minuteAudit.noTrigger} · لا يمثل أرباحًا أو تنفيذًا عند الوسيط</small>
+   </details>}
    {chartMode==='M1'?<SniperM1CandleHunter asset={asset}
      history={m.candles} historicalSource={String(x?.candleSource||'')}
      quote={liveQuote} now={now} marketOpen={marketOpen}
@@ -727,17 +734,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        currentSignalSide!=='WAIT'?liveOpportunity.targets.map((price,i)=>({stage:i+1,price})):[]}
      nextBar={projected.ready?shownBars[0]??null:null}
      signal={currentSignalSide!=='WAIT'?currentSignalLabel:null}
-     noForecastReason={!projected.ready?lifecycle:null}/>
+     noForecastReason={!projected.ready?lifecycle:null}
+     watchGuide={showWatchGuide?watchGuide:null}/>
    <div className="sniper-m15-view-controls" aria-label="عرض سيناريو القناص">
      <button type="button" className="sniper-m15-extra-toggle"
        aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}
        title="عرض أو إخفاء التفاصيل الفنية الثانوية">
        {showExtra?'إخفاء علامات الرسم':'علامات الرسم'}</button>
-     <button type="button" className="sniper-m15-extension-toggle"
+     {projected.ready&&<button type="button" className="sniper-m15-extension-toggle"
        aria-pressed={showHistoricalExtension}
        onClick={()=>setShowHistoricalExtension(v=>!v)}
        title="شموع الامتداد بعد الاثنتي عشرة الأولى غير مُقيّمة">
-       {showHistoricalExtension?'12 شمعة مقيّمة':'امتداد تاريخي'}</button>
+       {showHistoricalExtension?'12 شمعة مقيّمة':'امتداد تاريخي'}</button>}
    </div>
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
