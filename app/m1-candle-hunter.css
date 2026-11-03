@@ -1,0 +1,49 @@
+/* Mobile-first fast candle sniper. Read-only BUY STOP / SELL STOP levels. */
+.sniper-candle-mode{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:7px 0}
+.sniper-candle-mode button{border:1px solid #335569;border-radius:7px;padding:9px 6px;background:#10212e;
+ color:#bfd1dd;cursor:pointer;font-size:12px;font-weight:750}
+.sniper-candle-mode button[aria-pressed=true]{border-color:#57d9b9;color:#9bf4d4;background:#153c36}
+.sniper-candle-mode button:focus-visible{outline:2px solid #b4fce0;outline-offset:2px}
+.sniper-m1-hunter{padding:0;background:#080f18;border:1px solid #2b4758;border-radius:10px;overflow:hidden}
+.sniper-m1-hunter-head{display:flex;align-items:center;justify-content:space-between;gap:9px;
+ flex-wrap:wrap;padding:11px 12px;background:#0d1c28}
+.sniper-m1-hunter-head small{font-size:10px;color:#aac2d0;display:block}
+.sniper-m1-hunter-head h2{margin:2px 0 0;color:#f2e0b6;font-size:17px;line-height:1.3}
+.sniper-m1-hunter-head>span{font-size:10px;color:#d5e7ef;border:1px solid #2e5565;
+ padding:5px 7px;border-radius:6px}
+.sniper-m1-hunter-orders{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:8px 9px 2px}
+.sniper-m1-hunter-side{display:flex;flex-direction:column;gap:5px;border-radius:8px;
+ padding:9px 10px;background:#0b202c;border:1px solid #3c6470}
+.sniper-m1-hunter-side.is-buy{border-color:#389c87}
+.sniper-m1-hunter-side.is-sell{border-color:#ad576c}
+.sniper-m1-hunter-side>strong{font-size:13px;display:flex;flex-wrap:wrap;gap:4px 8px;
+ align-items:center;color:#7ff2c9}
+.sniper-m1-hunter-side.is-sell>strong{color:#ffa4b2}
+.sniper-m1-hunter-side>strong small{font-size:9px;color:#a9bfca;font-weight:400}
+.sniper-m1-hunter-side>div{display:flex;justify-content:space-between;align-items:baseline;gap:6px;
+ border-bottom:1px solid #264354;padding-bottom:3px}
+.sniper-m1-hunter-side>div:last-child{border-bottom:0}
+.sniper-m1-hunter-side>div span{color:#b3c9d5;font-size:11px}
+.sniper-m1-hunter-side>div b{color:#edf6fa;font-size:13px;font-variant-numeric:tabular-nums}
+.sniper-m1-hunter-hint{margin:5px 10px 9px;color:#e4ce98;line-height:1.5;font-size:11px}
+.sniper-mt5-m1{background:#000;position:relative;color:#c3d3db}
+.sniper-mt5-m1-top{display:flex;justify-content:space-between;align-items:center;
+ gap:8px;padding:7px 12px;background:#060809;font-size:11px}
+.sniper-mt5-m1-top b{color:#fff}
+.sniper-mt5-m1-top span{color:#9cbac2;font-size:10px}
+.sniper-mt5-m1 svg{display:block;width:100%;height:clamp(480px,72dvh,820px);
+ background:#000;min-width:0}
+.sniper-mt5-m1>p{margin:0;padding:6px 9px;color:#aebec7;font-size:10px;line-height:1.5}
+.sniper-m1-hunter-audit{margin:5px 8px 8px;border:1px solid #263f4b;border-radius:7px;color:#b5ceda}
+.sniper-m1-hunter-audit>summary{padding:9px;cursor:pointer;font-weight:700;font-size:11px}
+.sniper-m1-hunter-audit p{margin:4px 9px 11px;font-size:11px;line-height:1.6}
+@media(max-width:600px){
+ .sniper-candle-mode button{font-size:11px;padding:8px 4px}
+ .sniper-m1-hunter-head h2{font-size:15px}
+ .sniper-m1-hunter-side{padding:7px 6px}
+ .sniper-m1-hunter-side>strong{font-size:12px}
+ .sniper-m1-hunter-side>div span{font-size:10px}
+ .sniper-m1-hunter-side>div b{font-size:11px}
+ .sniper-mt5-m1 svg{height:clamp(470px,71dvh,735px)}
+}
+@media(max-width:340px){.sniper-m1-hunter-orders{gap:4px;padding:4px}.sniper-m1-hunter-side{padding:6px 4px}}
