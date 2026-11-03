@@ -186,4 +186,26 @@ assert.match(css,/height:clamp\(530px,calc\(100dvh - 192px\),900px\)!important/,
  'chart takes reclaimed vertical space and responds to viewport');
 assert.match(css,/\.sniper-m15-caption,\.sniper-m15-status\{display:none!important\}/,
  'all former diagnostic footers must remain invisible on mobile');
+const actualSummary=fs.readFileSync('components/SniperM15Summary.tsx','utf8');
+const theme=fs.readFileSync('app/m15-scenario-first.css','utf8');
+const layout=fs.readFileSync('app/layout.tsx','utf8');
+const summaryPos=chart.indexOf('<SniperM15Summary');
+const chartPos=chart.indexOf('className="sniper-m15-chart-box"');
+const diagnosticPos=chart.indexOf('className="sniper-m15-diagnostics"');
+assert.ok(summaryPos>0&&summaryPos<chartPos,
+ 'the ACTUAL production M15 scenario is visible before the chart');
+assert.ok(diagnosticPos>chartPos,
+ 'radar and metrics follow the chart in collapsed optional details');
+assert.ok(chart.indexOf("className={'sniper-live-opportunity")>diagnosticPos,
+ 'live opportunity detail no longer blocks the first-screen chart');
+assert.doesNotMatch(chart,/className=\{'sniper-current-signal/,
+ 'duplicate current candle decision is removed from the visible layout');
+assert.match(actualSummary,/p\.ready\?'12 شمعة مشروطة'/,
+ 'forecast readiness and non-ready states have clearly distinct labels');
+assert.match(actualSummary,/p\.saved\?p\.detached/,
+ 'detached older forecast is presented as historical, not a fresh signal');
+assert.match(theme,/\.sniper-m15-scenario-summary/,
+ 'mobile scenario summary receives proper styling');
+assert.match(layout,/m15-scenario-first\.css/,
+ 'new live scenario styles are imported into the page');
 console.log('PASS: M15 historical OHLC, real partial source, scenario motifs, 3 TP levels, no fabricated touches and chart-first UI');
