@@ -1,6 +1,7 @@
 import type {M15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import type {M15WatchGuide} from '../lib/sniper-m15-watch-guide';
 import type {M1Priority} from '../lib/sniper-m1-priority';
+import type {StructureSnapshot} from '../lib/sniper-market-structure';
 
 type Bar={time:number;open:number;high:number;low:number;close:number};
 const fmt=(x:number|null|undefined)=>typeof x==='number'&&Number.isFinite(x)&&x>0?
@@ -23,8 +24,9 @@ export function closedM15PriceActivity(bars:readonly Bar[],price:number|null,bin
     return {at,touches,side:at>=price?'ABOVE' as const:'BELOW' as const};
   });
 }
-export function SniperLiquidityColumn({history,price,preview,liquidityOn}:{
+export function SniperLiquidityColumn({history,price,preview,liquidityOn,structure}:{
   history:Bar[];price:number|null;preview:M15HuntPreview;liquidityOn:boolean;
+  structure:StructureSnapshot;
 }){
   const buckets=closedM15PriceActivity(history,price,11);
   const max=Math.max(1,...buckets.map(b=>b.touches));
@@ -45,6 +47,16 @@ export function SniperLiquidityColumn({history,price,preview,liquidityOn}:{
         </div>
       ):<p className="sniper-hunter-no-data">لا توجد شموع M15 كافية لبناء البروفايل.</p>}
     </div>
+    {structure.ready&&<div className="sniper-hunter-structure-summary">
+      <strong>هيكل السوق · إغلاقات M15</strong>
+      <div><span>RSI 14</span><b dir="ltr">{structure.rsi14?.toFixed(1)??'—'}</b></div>
+      <div><span>كسر هيكل</span><b>{
+        structure.events.at(-1)?.kind.startsWith('BOS_')?'BOS':
+        structure.events.at(-1)?.kind.startsWith('CHOCH_')?'CHoCH':
+        'لا كسر حديث'
+      }</b></div>
+      <div><span>فجوات / كتل نشطة</span><b>{structure.zones.length}</b></div>
+    </div>}
     {liquidityOn&&preview.ready&&
       <div className="sniper-hunter-pool-stack">
         <strong>مناطق جذب السعر</strong>
@@ -57,9 +69,9 @@ export function SniperLiquidityColumn({history,price,preview,liquidityOn}:{
       </div>}
   </aside>;
 }
-export function SniperScenarioColumn({preview,guide,qualified,price,marketOpen}:{
+export function SniperScenarioColumn({preview,guide,qualified,price,marketOpen,structure}:{
   preview:M15HuntPreview;guide:M15WatchGuide;qualified:boolean;
-  price:number|null;marketOpen:boolean;
+  price:number|null;marketOpen:boolean;structure:StructureSnapshot;
 }){
  const active=preview.ready&&!preview.referenceOnly&&marketOpen;
  const up=preview.buy,down=preview.sell;
@@ -86,6 +98,15 @@ export function SniperScenarioColumn({preview,guide,qualified,price,marketOpen}:
    </div>
    {preview.ready?<div className="sniper-hunter-scenario-stack">
      {row('BUY')}{row('SELL')}
+     {structure.ready&&structure.zones.length>0&&
+       <div className="sniper-hunter-structure-zones">
+         <strong>FVG / OB · مناطق مرصودة</strong>
+         {structure.zones.slice(0,2).map(z=>
+           <div key={z.kind+'-'+z.formedAt}>
+             <span>{z.label}</span>
+             <b dir="ltr">{fmt(z.low)} – {fmt(z.high)}</b>
+           </div>)}
+       </div>}
      <div className="sniper-hunter-sweep">
        <span>قراءة سحب السيولة</span>
        <strong>{preview.sweep==='HIGH_REJECTION'?'رفض قمة مغلقة':
