@@ -61,6 +61,37 @@ export function buildCandleHunter(args:{
     tradeEligible:false};
 }
 
+/**
+ * Keep the most recent CLOSED-candle watch visible as a REFERENCE if the
+ * upstream historical feed is one or two minutes behind the wall clock.
+ * This never extends its one-minute validity or authorizes an entry.
+ * A reference is unavailable after 3 minutes, on source changes/stale feeds,
+ * or when there are fewer than 21 contiguous closed bars.
+ */
+export type CandleHunterDisplay={
+  kind:'LIVE'|'EXPIRED_REFERENCE'|'NONE';
+  plan:CandleHunter;
+  reason:string
+};
+export function displayCandleHunter(args:Parameters<typeof buildCandleHunter>[0]):CandleHunterDisplay{
+  const live=buildCandleHunter(args);
+  if(live.ready)return {kind:'LIVE',plan:live,reason:live.reason};
+  if(!args.marketOpen||!args.sourceReady||args.providerTransition)
+    return {kind:'NONE',plan:live,reason:live.reason};
+  const closed=closedM1ChartBars(args.bars,args.now,72);
+  const last=closed.at(-1);
+  if(!last)return {kind:'NONE',plan:live,reason:live.reason};
+  const issuedAt=last.time+60000;
+  // A fresh watch always expires after exactly 60s. Never call these levels
+  // current after expiry, and never display stale prices indefinitely.
+  if(args.now<issuedAt+60000||args.now>issuedAt+3*60000)
+    return {kind:'NONE',plan:live,reason:live.reason};
+  const reference=buildCandleHunter({...args,now:issuedAt+1});
+  if(!reference.ready)return {kind:'NONE',plan:live,reason:live.reason};
+  return {kind:'EXPIRED_REFERENCE',plan:reference,
+    reason:'آخر مستويات قنص محسوبة من شمعة M1 مغلقة؛ انتهت صلاحيتها. بانتظار إغلاق أحدث من مصدر الشموع'};
+}
+
 /** OHLC alone cannot establish fill order or actual broker execution. */
 export function scoreNextClosedM1(setup:CandleHunter,next:M1Bar):HunterOutcome{
   if(!setup.ready||!setup.buy||!setup.sell)return 'NO_TRIGGER';
