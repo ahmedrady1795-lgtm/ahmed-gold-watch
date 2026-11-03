@@ -177,3 +177,38 @@
  .sniper-structure-rsi svg{height:41px}
  .sniper-hunter-structure-summary{margin:3px 5px 6px}
 }
+
+
+/* Default nearby-price zoom: last 18 authentic M15 candles + both
+   hypothetical paths. This toggle never changes OHLC or trading targets. */
+.sniper-m15-panel .sniper-m15-focus-toggle{
+  color:#f7d99c;background:#312817;border:1px solid #bd9145;
+  font-size:11px;font-weight:850;padding:7px 10px;border-radius:6px;
+  cursor:pointer;box-shadow:inset 0 0 0 1px #76603455;
+}
+.sniper-m15-panel .sniper-m15-focus-toggle[aria-pressed="false"]{
+  color:#b9d9e4;background:#11222b;border-color:#405c6a;
+  box-shadow:none;
+}
+.sniper-m15-panel .sniper-m15-focus-toggle:focus-visible{
+  outline:2px solid #f2ca70;outline-offset:2px;
+}
+.sniper-m15-panel .sniper-m15-view-controls{
+  display:flex;gap:5px;align-items:center;flex-wrap:wrap;
+}
+.sniper-m15-hunt-overlay .sniper-hunt-waypoint{
+  pointer-events:none;
+}
+.sniper-m15-hunt-overlay .sniper-hunt-waypoint text{
+  font-variant-numeric:tabular-nums;letter-spacing:-.16px;
+  paint-order:stroke;
+}
+.sniper-m15-panel .sniper-m15-compact-status{
+  display:flex;align-items:center;justify-content:space-between;
+}
+@media(max-width:640px){
+ .sniper-m15-panel .sniper-m15-focus-toggle{
+  font-size:10px;padding:6px 7px;min-height:32px;
+ }
+ .sniper-m15-panel .sniper-m15-view-controls{gap:4px}
+}

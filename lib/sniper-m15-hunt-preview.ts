@@ -91,3 +91,36 @@ export function buildM15HuntPreview(
     preferred,strength,sweep,referenceOnly:guide.referenceOnly,atr,
     buy:make('BUY'),sell:make('SELL'),pools};
 }
+
+/** Stop/target-like visual WATCH waypoints on the price axis.
+ * The price-aligned horizontal line is never shifted. Only the text label
+ * moves by a few pixels to avoid collisions on a narrow mobile screen.
+ * These are simulated ATR stations, NOT broker TP/SL orders.
+ */
+export type HuntWaypoint={
+ side:HuntSide;stage:1|2;price:number;lineY:number;labelY:number
+};
+export function placeHuntWaypoints(f:M15HuntPreview,
+ priceToY:(value:number)=>number,top:number,bottom:number):HuntWaypoint[]{
+ if(!f.ready||bottom-top<100)return [];
+ const candidates:([HuntSide,1|2,number|undefined])[]=[
+  ['BUY',1,f.buy[2]?.close],['BUY',2,f.buy[5]?.close],
+  ['SELL',1,f.sell[2]?.close],['SELL',2,f.sell[5]?.close]
+ ];
+ const raw=candidates.filter(r=>r[2]!=null&&Number.isFinite(r[2])&&r[2]!>0)
+  .map(([side,stage,value])=>{
+   const price=value as number;
+   return {side,stage,price,lineY:priceToY(price),labelY:0};
+  }).filter(x=>Number.isFinite(x.lineY)&&x.lineY>=top+5&&x.lineY<=bottom-5)
+   .sort((a,b)=>a.lineY-b.lineY);
+ const labelMin=top+16,labelMax=bottom-8,spacing=16;
+ let prior=labelMin-spacing;
+ for(const x of raw){
+  x.labelY=Math.max(prior+spacing,Math.max(labelMin,
+    Math.min(labelMax,x.lineY-4)));
+  prior=x.labelY;
+ }
+ const overflow=(raw.at(-1)?.labelY??labelMin)-labelMax;
+ if(overflow>0)for(const x of raw)x.labelY-=overflow;
+ return raw;
+}

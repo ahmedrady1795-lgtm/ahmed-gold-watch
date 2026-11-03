@@ -85,6 +85,7 @@ jobs:
       - run: node tests/gold-radar-inline.cjs
       - run: node tests/sniper-m1-candle-hunter.cjs
       - run: node tests/sniper-m1-priority.cjs
+      - run: node tests/sniper-m15-focus-watch.cjs
       - run: node tests/sniper-market-structure.cjs
       - run: node tests/sniper-hunter-layout.cjs
       - run: node tests/sniper-smart-money-hunter.cjs
