@@ -9,7 +9,7 @@ type Level=M1ChartPriceLevel;
 type Props={
   asset:'GOLD'|'BTC';history:M1Bar[];historicalSource:string;quote:Quote;
   now:number;marketOpen:boolean;providerTransition:boolean;
-  levels:Level[];
+  levels:Level[];referenceOnly?:boolean;
 };
 const fmt=(v:number)=>v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const clock=(at:number)=>new Date(at).toLocaleTimeString('en-GB',{
@@ -79,7 +79,8 @@ export default function SniperMT5M1Chart(p:Props){
     aria-label={'شارت M1 الحقيقي لل'+(p.asset==='GOLD'?'ذهب':'بيتكوين')+' على طريقة MetaTrader'}>
     <div className="sniper-mt5-m1-top">
       <b>{p.asset==='GOLD'?'XAUUSD':'BTCUSD'} · M1</b>
-      <span>{priceStatus}{partial?' · '+partial.count+' تيك':''}</span>
+      <span>{priceStatus}{partial?' · '+partial.count+' تيك':''}
+        {p.referenceOnly?' · مستويات مرجعية منتهية':''}</span>
     </div>
     <svg viewBox={'0 0 '+W+' '+H} preserveAspectRatio="none"
       role="img" aria-label="شموع دقيقة مغلقة حقيقية من مصدر واحد، شمعة جزئية فقط عند توافر تيكات حديثة، ومقياس أسعار على اليمين">
@@ -98,12 +99,14 @@ export default function SniperMT5M1Chart(p:Props){
         {bars.map((c,i)=>candle(c,first+i*step,'closed-'+c.time))}
         {partial&&candle(partial,first+bars.length*step,'live-'+partial.time,true)}
         {levels.map((l,i)=>{
-          const color=l.kind==='TRIGGER'?'#e7cc84':
+          const color=p.referenceOnly?'#87939c':
+            l.kind==='TRIGGER'?'#e7cc84':
             l.kind==='STOP'?'#f48da2':'#76e8c5';
           return <g key={'level-'+l.kind+'-'+i}>
             <line x1={LEFT} x2={RIGHT} y1={l.lineY} y2={l.lineY}
               stroke={color} strokeWidth={l.kind==='TRIGGER'?1.65:1.25}
-              strokeDasharray={l.kind==='TRIGGER'?'7 3':'4 4'} opacity=".95"/>
+              strokeDasharray={p.referenceOnly?'2 6':l.kind==='TRIGGER'?'7 3':'4 4'}
+              opacity={p.referenceOnly?.65:.95}/>
             <rect x={LEFT+2} y={l.labelY-11} width="153" height="14"
               fill="#000" fillOpacity=".85" rx="2"/>
             <text x={LEFT+7} y={l.labelY} direction="ltr"
@@ -135,7 +138,9 @@ export default function SniperMT5M1Chart(p:Props){
       {bars.length===1&&previous==null&&<text x={LEFT+8} y={TOP+20}
         fill="#e2c68a" fontSize="10">بداية سلسلة شموع جديدة بعد انقطاع المصدر</text>}
     </svg>
-    <p>الشموع السابقة مغلقة فعلًا؛ الشمعة الحية جزئية من تيكات نفس المصدر عند توفرها.
-      مستويات التفعيل والإبطال للمراقبة، وليست أوامر BUY أو SELL حقيقية.</p>
+    <p>{p.referenceOnly?
+      'الخطوط الرمادية مستويات منتهية محفوظة من آخر شمعة M1 مؤهلة؛ ليست مستويات دخول حية. ':
+      'الخطوط الملوّنة مستويات متابعة مشروطة لشمعة M1 الحالية. '}
+      الشمعة الجزئية تعرض تيكات مرصودة فقط، وليست أمرًا منفذًا عند الوسيط.</p>
   </div>;
 }
