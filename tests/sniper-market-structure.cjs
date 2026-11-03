@@ -74,8 +74,13 @@ assert.match(sides,/FVG \/ OB/);
 assert.match(overlay,/BOS/);
 assert.match(overlay,/CHoCH/);
 assert.match(overlay,/SWEEP/);
-assert.match(overlay,/FVG/);
-assert.match(overlay,/OB/);
+assert.match(overlay,/sniper-structure-zone/,
+ 'confirmed source-backed zones render under their stored labels');
+const algorithm=fs.readFileSync('lib/sniper-market-structure.ts','utf8');
+assert.match(algorithm,/BULL_FVG\x27\|\x27BEAR_FVG/,
+ 'FVG zones require non-overlapping closed three-bar OHLC');
+assert.match(algorithm,/BULL_OB\x27\|\x27BEAR_OB/,
+ 'OB candidates require the closed opposing candle before displacement');
 assert.match(style,/sniper-structure-rsi/);
 assert.doesNotMatch(overlay,/87%|92%|62%|38%/);
 assert.match(panel,/className="sniper-hunter-workbench"/,
