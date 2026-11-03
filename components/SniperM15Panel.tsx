@@ -3,6 +3,7 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import SniperM15Summary from './SniperM15Summary';
 import SniperM1CandleHunter from './SniperM1CandleHunter';
+import {extendIllustrativeM15ToTargets} from '../lib/sniper-m15-target-bridge';
 import {buildM15WatchGuide} from '../lib/sniper-m15-watch-guide';
 import OrderFlowRadar from './OrderFlowRadar';
 import GoldRadarBadge from './GoldRadarBadge';
@@ -19,7 +20,7 @@ import type {ObservedM15} from '../lib/sniper-m15-scenario';
 import type {M15Scenario,M15Side} from '../lib/sniper-m15-scenario';
 import {frozenM15Decision,retainM15Snapshot} from '../lib/sniper-m15-freeze';
 import {sniperPhaseBadge} from '../lib/sniper-market-phase';
-import {observedM15Bias} from '../lib/sniper-m15-bias';
+import {observedM15Bias,m15ObservationSide} from '../lib/sniper-m15-bias';
 import {verifiedM15Archive} from '../lib/sniper-m15-archive-store';
 import {m15WalkForward,firstM15Evidence} from '../lib/sniper-m15-walkforward';
 import {goldMarketSession} from '../lib/gold-market-session';
@@ -56,10 +57,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  journals?:any;audit?:any;auditLoaded?:boolean;
 }){
  const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
- const [showLiquidity,setShowLiquidity]=useState(false);
+ const [showLiquidity,setShowLiquidity]=useState(true);
  const [chartMode,setChartMode]=useState<'M1'|'M15'>('M15');
  const [showExtra,setShowExtra]=useState(false);
- const [showHistoricalExtension,setShowHistoricalExtension]=useState(false);
+ const [showHistoricalExtension,setShowHistoricalExtension]=useState(true);
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
  const onRadarView=useCallback((v:RadarView|null)=>setLiveRadar(v),[]);
  const asset=assetView==='ALL'?chosen:assetView;
@@ -124,19 +125,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const radar=assessChartObservation({now,priceFresh:m.sniper.view.priceFresh,
    historyFresh:m.historyFresh,marketOpen,m1:m.candles,m5:x?.chartHigherFrames?.m5});
  const m15Bias=useMemo(()=>observedM15Bias(actual),[actual]);
- // Gold must be forecast from a pre-break setup, not from the direction of
- // a candle that has already moved. Only a qualified, still-unbroken M1/M5
- // pressure setup may originate the GOLD scenario; M15 bias remains a
- // confirmation/veto, never the source of a late BUY/SELL label.
+ // Display M15 analysis independently of M1 trade-entry qualification.
  const preMove=useMemo(()=>detectPreMovePressure({
    asset,c1:m.candles,c5:Array.isArray(x?.chartHigherFrames?.m5)?
      x.chartHigherFrames.m5:[],now
  }),[asset,m.candles,x?.chartHigherFrames?.m5,now]);
- const goldPreMoveReady=preMove.ok&&preMove.stage==='ARMED'&&
-   preMove.side!=='WAIT'&&preMove.trigger!=null&&preMove.invalidation!=null;
  const observedSide=m15Bias.side;
- const side: 'BUY'|'SELL'|'WAIT' = asset==='GOLD'?
-   (goldPreMoveReady?preMove.side:'WAIT'):observedSide;
+ const side: 'BUY'|'SELL'|'WAIT' = m15ObservationSide(observedSide,m.bias);
  const safeSide=providerTransition||!marketOpen||!historyFresh||
    !m.sniper.view.priceFresh?'WAIT':side;
  const outlook=useMemo(()=>buildDistantMovementOutlook({
@@ -401,10 +396,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    }
    if(!issuance.allowed||safeSide==='WAIT'||anchor==null||
      lastAttempt.current===candleKey)return;
-   if(preMove.ok&&preMove.stage==='ARMED'&&preMove.side!==safeSide){
-     setBuildReason('ضغط M1/M5 المبكر يعارض الاتجاه؛ انتظار');
-     return;
-   }
    if(scenarioStop!=null&&price!=null&&
       (safeSide==='BUY'?price<=scenarioStop:price>=scenarioStop))return;
    const modelInput={
@@ -498,13 +489,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Retain ORIGINAL forecast timestamps. On later real candles only the
  // not-yet-observed route goes right of NOW; the past is scored separately.
  const shownBars=aligned?.scenario.bars.slice(elapsedSteps,12)??[];
- // Draw the ORIGINAL frozen historical-analogue OHLC only. Forcing a
- // target-reaching illustration generated a fake straight-line staircase.
- // Distant H1/H4 destinations remain separate price watch labels.
+ // Keep the original frozen analogue as the basis of the displayed route.
  const displayBars=aligned?.visualBars?.slice(elapsedSteps)??shownBars;
- // 12 bars are a scored, timestamped analysis. Any later bodies are
- // optional, unscored historical continuation and NOT the active forecast.
- const renderedBars=showHistoricalExtension?displayBars:shownBars;
+ // Only the first 12 bars enter the timestamped forecast score.
+ const targetRoute=aligned?extendIllustrativeM15ToTargets({
+   model:aligned.visualBars??aligned.scenario.bars,goals:aligned.goals,
+   side:aligned.side,atr:aligned.scenario.atr,stop:aligned.stop,maxCandles:96
+ }):null;
+ // Target continuation is a conditional drawing; the scored OHLC stays frozen.
+ const renderedBars=showHistoricalExtension?
+   (targetRoute?.bars.slice(elapsedSteps)??displayBars):shownBars;
  const goals=aligned?.scenario.ready&&!aligned.scenario.stopped?
    aligned.goals.filter(g=>shownBars.some(b=>b.low<=g.price&&g.price<=b.high)):[];
  const visualGoals=aligned?.scenario.ready&&!aligned.scenario.stopped?
@@ -606,6 +600,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const py=(p:number)=>plotTop+(hi-p)/(hi-lo)*(plotBottom-plotTop);
  const scaleLevels=[
    ...goals.map(g=>({key:'TP'+g.stage,price:g.price,kind:'TARGET'})),
+   ...visualGoals.map(g=>({key:'هدف مشروط '+g.stage,price:g.price,kind:'ILLUSTRATION'})),
    
    ...(stop!=null?[{key:'SL',price:stop,kind:'STOP'}]:[]),
    ...(price!=null?[{key:'LIVE',price,kind:'PRICE'}]:[])
@@ -617,9 +612,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    kind==='DEMAND'||kind==='LOW_POOL'||kind==='REBOUND_UP'?
    '#41cfab':'#ff7b90';
  // Identical M15 candle geometry on both sides. The original forecast is
- // 12 genuine timed hypothesis bars, so never stretch them to fill space.
- // Restore old chart visual geometry; no forced target-reaching extension.
- const projectedStride=(end-split-8)/(showHistoricalExtension?48:12);
+ // 12 scored hypothesis bars plus an explicitly unscored target illustration.
+ const projectedStride=(end-split-8)/Math.max(12,renderedBars.length);
  const realCandleWidth=clamp(actualStride*.68,2.2,5.2);
  const futureCandleWidth=clamp(projectedStride*.62,1.7,4);
  // Display a maximum of five DISTINCT actual OHLC zones. Several demand,
@@ -658,8 +652,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    SELL:'#ff8393',BUY:'#51e5b8',HIGH_LIQ:'#e9bf66',LOW_LIQ:'#67d9ed'
  } as const;
  const liquidityLabels=showLiquidity&&zoneBoard.ready?
-   zoneBoard.items.filter(z=>(z.key==='SELL'||z.key==='BUY')&&z.low!=null&&z.high!=null).map(z=>({
-     ...z,price:(z.low!+z.high!)/2,color:liquidityPalette[z.key]
+   zoneBoard.items.filter(z=>z.low!=null&&z.high!=null).map(z=>({
+     ...z,label:z.key==='BUY'?'طلب · صعود محتمل':z.key==='SELL'?'عرض · هبوط محتمل':z.label,
+     price:(z.low!+z.high!)/2,color:liquidityPalette[z.key]
    })).filter(z=>Number.isFinite(z.price)&&z.price>0):[];
  const positionedLiquidityLabels=liquidityLabels.map(z=>({
    ...z,exactY:py(z.price),labelY:clamp(py(z.price),plotTop+20,plotBottom-20)
@@ -740,8 +735,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      {projected.ready&&<button type="button" className="sniper-m15-extension-toggle"
        aria-pressed={showHistoricalExtension}
        onClick={()=>setShowHistoricalExtension(v=>!v)}
-       title="شموع الامتداد بعد الاثنتي عشرة الأولى غير مُقيّمة">
-       {showHistoricalExtension?'12 شمعة مقيّمة':'امتداد تاريخي'}</button>}
+       title="امتداد بشموع توضيحية للأهداف؛ ليس توقعًا زمنيًا أو نتيجة فعلية">
+       {showHistoricalExtension?'عرض أول 12 شمعة':'السيناريو للأهداف'}</button>}
+   </div>
+   <div role="status" style={{fontSize:12,color:'#b8d5df',padding:'4px 8px'}}>
+     {projected.ready?'شموع متوقعة · الامتداد للأهداف توضيحي وغير مضمون':lifecycle}
+     {' · '+(zoneBoard.context?.label??'لا تجميع أو تصريف مؤكد حاليًا')}
    </div>
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
@@ -932,7 +931,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            textAnchor="end" fill={chartSide==='BUY'?'#55e5b6':'#ff8195'}
            fontSize="9" fontWeight="800" stroke="#000" strokeWidth="2"
            paintOrder="stroke">
-           {'سيناريو '+(chartSide==='BUY'?'شراء':'بيع')}
+           {'سيناريو '+(chartSide==='BUY'?'صعود':'هبوط')}
          </text>}
          {projected.ready&&renderedBars.map((b,i)=>
            candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
@@ -1136,14 +1135,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
        <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'} fontSize="10" textAnchor="start" direction="ltr">{projected.ready?'M15 · FORECAST':showWatchGuide?'M15 · WATCH':'M15 · LIVE'}</text>
        <text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
-         textAnchor="start" direction="rtl">{projected.ready?'أول 12 شمعة للتقييم · الامتداد عرض تاريخي غير مُقيّم':showWatchGuide?'مساران مشروطان من M15 مغلق · ليست شموع مستقبلية':'شموع فعلية متصلة · لا توجد شموع توقع معتمدة الآن'}</text>
+         textAnchor="start" direction="rtl">{projected.ready?'أول 12 شمعة للتقييم · امتداد الأهداف توضيحي غير زمني':showWatchGuide?'مساران مشروطان من M15 مغلق · ليست شموع مستقبلية':'شموع فعلية متصلة · لا توجد شموع توقع معتمدة الآن'}</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(formingVisible&&forming?forming.time:latestClosed.time)}</text>}
        {aligned&&<text x={split+8} y={H-4} fill="#8acfb9" fontSize="8"
          textAnchor="start" direction="ltr">{'→ '+h(aligned.anchorTime+900000)}</text>}
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
-         {renderedBars.length?'+'+renderedBars.length+' M15 · '+shownBars.length+' تقييم'+(showHistoricalExtension?' · تاريخي':''):'M15'}</text>
+         {renderedBars.length?shownBars.length+' M15'+(showHistoricalExtension?' · امتداد أهداف غير زمني':''):'M15'}</text>
      </svg>
      {showLiquidity&&showExtra&&<div className="sniper-m15-watch-strip"
        aria-label="مستويات السيولة والأهداف الهيكلية للمراقبة" role="status">

@@ -62,8 +62,8 @@ assert.doesNotMatch(chart,/fillOpacity=\{future\?/,'all candle bodies are solid'
 assert.match(chart,/strokeWidth="1\.05"/,'classic historical wick is visible');
 assert.match(chart,/const recent=actual\.slice\(-72\)/,
  'show up to 120 observed M15 candles at the same scale as the 12 frozen forecast bars');
-assert.match(chart,/const projectedStride=\(end-split-8\)\/\(showHistoricalExtension\?48:12\);/,
- 'do not stretch a projected M15 minute relative to a real M15 minute');
+assert.match(chart,/const projectedStride=\(end-split-8\)\/Math\.max\(12,renderedBars\.length\);/,
+ 'all drawing bars fit inside the scenario pane');
 assert.match(chart,/const futureCandleWidth=clamp\(projectedStride\*\.62,1\.7,4\);/,
  'both panels must have identical candle body width');
 assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars;/,

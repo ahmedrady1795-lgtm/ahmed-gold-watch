@@ -79,8 +79,8 @@ assert.match(component,/mark\.price/);
 assert.match(component,/z\.invalidation/);
 assert.match(component,/projected\.ready&&reactionMap\.marks/);
 assert.doesNotMatch(component,/setTimeout\([^]*?setFrozen/);
-assert.match(component,/const projectedStride=\(end-split-8\)\/\(showHistoricalExtension\?48:12\);/,
- 'classic 48-slot forecast uses fixed historical 15-minute spacing');
+assert.match(component,/const projectedStride=\(end-split-8\)\/Math\.max\(12,renderedBars\.length\);/,
+ 'conditional drawing fits its candle count without changing the scored bars');
 assert.match(component,/const realCandleWidth=clamp\(actualStride\*\.68/,
  'real M15 width stays based on observed historical geometry');
 assert.match(component,/const futureCandleWidth=clamp\(projectedStride\*\.62,1\.7,4\);/,

@@ -15,7 +15,7 @@ assert.match(radar,/DOM غير متاح/,'missing MT5 DOM must be disclosed');
 assert.match(radar,/لا دخول · انتظار تأكيد/,'WAIT must not look like an order');
 assert.match(chart,/className=\{future\?'sniper-m15-projected':'sniper-m15-real'\}/,
  'conditional M15 candles remain separately classed from observed candles');
-assert.match(chart,/أول 12 شمعة للتقييم · الامتداد عرض تاريخي غير مُقيّم/,
+assert.match(chart,/أول 12 شمعة للتقييم · امتداد الأهداف توضيحي غير زمني/,
  'natural frozen M15 candles are separated from distant unverified watch goals');
 assert.match(css,/position:relative;z-index:2/,'gold radar is inline and cannot hide candlesticks');
 assert.doesNotMatch(css,/right:18%;width:150px/,'radar no longer overlays the M15 price pane');

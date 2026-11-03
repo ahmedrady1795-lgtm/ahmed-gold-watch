@@ -175,8 +175,8 @@ assert.match(chart,/sniper-m15-extra-toggle/,
  'secondary BOS, microstructure and pattern marks stay available on request');
 assert.match(cleanCss,/\[data-clean="true"\] \.sniper-m15-reaction-mark/,
  'rejection icons hidden until requested');
-assert.match(cleanCss,/\[data-clean="true"\] \.sniper-m15-zone/,
- 'secondary zone edges hidden, only four color-coded liquidity lines remain');
+assert.doesNotMatch(cleanCss,/\[data-clean="true"\] \.sniper-m15-(zone|context)(?:,|\{)/,
+ 'demand, supply and accumulation context remain visible in clean mode');
 assert.match(cleanCss,/\[data-clean="true"\] \.sniper-flow-radar-chip/,
  'chart-side secondary radar chip must not obstruct classic candles');
 assert.doesNotMatch(cleanCss,/\[data-clean="true"\] \.sniper-m15-(real|projected)\b/,
@@ -225,3 +225,7 @@ assert.match(chart,/evidenceLevel:issuance.level==='WAIT'\?undefined:issuance.le
  'frozen snapshot preserves its evidence tier but never stores WAIT as an issued forecast');
 
 console.log('PASS: M15 supply/demand, liquidity pools, true accumulation box, confirmed sweeps/BOS, freshness & mobile toggle');
+
+assert.match(chart,/\[showLiquidity,setShowLiquidity\]=useState\(true\)/);
+assert.match(chart,/m15ObservationSide\(observedSide,m\.bias\)/, 'M15 analysis must not depend on M1 trade arming');
+assert.doesNotMatch(chart,/goldPreMoveReady\?preMove\.side:'WAIT'/);

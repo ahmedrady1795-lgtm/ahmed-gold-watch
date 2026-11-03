@@ -146,8 +146,6 @@
 .sniper-m15-chart-box[data-clean="true"] .sniper-m15-watch-rail,
 .sniper-m15-chart-box[data-clean="true"] .sniper-m15-rail-zone,
 .sniper-m15-chart-box[data-clean="true"] .sniper-m15-rail-turn,
-.sniper-m15-chart-box[data-clean="true"] .sniper-m15-zone-annotation,
-.sniper-m15-chart-box[data-clean="true"] .sniper-m15-context-label,
 .sniper-m15-chart-box[data-clean="true"] .sniper-m15-event,
 .sniper-m15-chart-box[data-clean="true"] .sniper-m15-first-audit,
 .sniper-m15-chart-box[data-clean="true"] .sniper-m15-first-candle,
@@ -169,8 +167,6 @@
  position:absolute;top:3px;left:4px;z-index:8;min-width:0;
  max-width:24%;background:rgba(8,24,31,.92);
 }
-.sniper-m15-chart-box[data-clean="true"] .sniper-m15-zone,
-.sniper-m15-chart-box[data-clean="true"] .sniper-m15-context,
 .sniper-m15-chart-box[data-clean="true"] .sniper-m15-future-zone{
  display:none!important;
 }

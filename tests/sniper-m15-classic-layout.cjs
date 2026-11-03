@@ -30,14 +30,14 @@ assert.equal(validate({...frozen,visualBars:[...bars,bars[0]]},args),null,
 const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(chart,/M15 · FORECAST/);
 assert.match(chart,/const recent=actual\.slice\(-72\)/);
-assert.match(chart,/const projectedStride=\(end-split-8\)\/\(showHistoricalExtension\?48:12\);/);
+assert.match(chart,/const projectedStride=\(end-split-8\)\/Math\.max\(12,renderedBars\.length\);/);
 assert.match(chart,/const futureCandleWidth=clamp\(projectedStride\*\.62,1\.7,4\);/);
 assert.match(chart,/const realCandleWidth=clamp\(actualStride\*\.68,2\.2,5\.2\);/);
 assert.match(chart,/const longer=buildM15Scenario\(\{\.\.\.modelInput,steps:48\}\)/);
 assert.match(chart,/const scenario=buildM15Scenario\(\{\.\.\.modelInput,steps:12\}\)/);
 assert.match(chart,/const visualBars=prefixMatches\?longer\.bars:scenario\.bars/);
-assert.match(chart,/const renderedBars=showHistoricalExtension\?displayBars:shownBars/,
- 'first 12 auditable M15 bars are the default view; 48 historical is optional');
+assert.match(chart,/targetRoute\?\.bars\.slice\(elapsedSteps\)\?\?displayBars/,
+ 'full conditional route is displayed without rewriting the first 12 scored bars');
 assert.match(chart,/split=projected\.ready\|\|showWatchGuide\?215:422/,
  '12 timed bars have their own properly sized canvas, without flattening candles');
 assert.match(chart,/bars:scenario\.bars\.map\(b=>/,'proof ledger only stores 12 genuine scored bars');
@@ -46,7 +46,7 @@ assert.doesNotMatch(chart,/sniper-m15-signal-mark|signalMarks/,
  'historical BUY/SELL markers must not pollute the ordinary price chart');
 assert.match(chart,/sniper-live-candle-bias/,
  'the current live candle must carry its own visible BUY/SELL label');
-assert.doesNotMatch(chart,/extendIllustrativeM15ToTargets\(/,
- 'no forced target-reaching staircase can appear');
+assert.match(chart,/extendIllustrativeM15ToTargets\(/,
+ 'restore explicitly illustrative target continuation');
 assert.match(chart,/const aligned=stable&&validLive&&forming/);
-console.log('PASS: classic 120/48 M15 chart, authentic saved 12-bar prefix, immutable causal score, no forced TP staircase');
+console.log('PASS: classic 120/48 M15 chart, authentic saved 12-bar prefix, immutable causal score, separate conditional TP illustration');
