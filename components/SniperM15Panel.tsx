@@ -3,7 +3,6 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import SniperM15Summary from './SniperM15Summary';
 import SniperM1CandleHunter from './SniperM1CandleHunter';
-import {auditCandleHunter} from '../lib/sniper-m1-candle-hunter';
 import {buildM15WatchGuide} from '../lib/sniper-m15-watch-guide';
 import OrderFlowRadar from './OrderFlowRadar';
 import GoldRadarBadge from './GoldRadarBadge';
@@ -101,8 +100,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const m=useMemo(()=>buildForecastIllustration(asset,x,liveQuote,now,snapshotAt,
    null,true,null,null,observationAt),
    [asset,x,liveQuote,now,snapshotAt,observationAt]);
- const minuteAudit=useMemo(()=>auditCandleHunter(m.candles,now,48),
-    [m.candles,Math.floor(now/60000)]);
  const actual=useMemo(()=>closedM15Bars(x?.chartHigherFrames?.m15,now,320),
    [x?.chartHigherFrames?.m15,now]);
  // A source-backed analysis lane remains drawable even when ML/Neural trade
@@ -710,11 +707,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <button type="button" aria-pressed={chartMode==='M15'}
        onClick={()=>setChartMode('M15')}>M15 · رسم السيناريو</button>
    </nav>
-   {chartMode==='M1'&&<details className="sniper-minute-audit-strip" aria-label="فحص قنص الدقيقة">
-     <summary>فحص M1: {minuteAudit.targetTouches} لمس هدف من {minuteAudit.observed} حالة</summary>
-     <small>ملتبس أو غير محسوم {minuteAudit.ambiguous+minuteAudit.openGapUnknown+minuteAudit.pending} ·
-       بلا كسر {minuteAudit.noTrigger} · لا يمثل أرباحًا أو تنفيذًا عند الوسيط</small>
-   </details>}
    {chartMode==='M1'?<SniperM1CandleHunter asset={asset}
      history={m.candles} historicalSource={String(x?.candleSource||'')}
      quote={liveQuote} now={now} marketOpen={marketOpen}
