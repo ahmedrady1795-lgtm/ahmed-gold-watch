@@ -145,7 +145,7 @@ assert.match(chart,/scenario|سيناريو/);
 assert.doesNotMatch(chart,/AI NEXT|LIVE M1|محرك الاستراتيجيات يعمل|آخر شمعة/);
 assert.match(css,/\.sniper-m15-chart-box\{width:100%;height:clamp\(/);
 // Widen the actual price plot and render only four evidence-grounded liquidity lines.
-assert.match(chart,/left=8,split=projected\.ready\?215:422,end=422/,
+assert.match(chart,/left=8,split=projected\\.ready\\|\\|showWatchGuide\\?215:422,end=422/,
  'when no forecast is valid, actual candles reclaim the full chart width');
 assert.match(chart,/className="sniper-m15-liquidity-label"/,
  'source-backed demand/supply/liquidity labels appear inside the chart');
@@ -177,7 +177,7 @@ assert.doesNotMatch(chart,/sniper-m15-caption|sniper-m15-status/,
  'no technical paragraphs or scorecard underneath the mobile chart');
 assert.doesNotMatch(chart,/className="sniper-m15-price"/,
  'large duplicated live price must not occupy the header');
-assert.match(chart,/W=430,H=704,left=8,split=projected\.ready\?215:422,end=422/,
+assert.match(chart,/W=430,H=704,left=8,split=projected\\.ready\\|\\|showWatchGuide\\?215:422,end=422/,
  'a valid scenario keeps the split view; otherwise the actual chart uses full width');
 assert.match(css,/Compact full-canvas sniper v3/);
 assert.match(css,/display:flex!important;flex-direction:row;flex-wrap:nowrap/,
