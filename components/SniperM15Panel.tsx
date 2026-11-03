@@ -922,7 +922,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          })}
          {showLiquidity&&<SniperMarketStructureOverlay structure={structure}
            left={left} split={split} top={plotTop} bottom={plotBottom}
-           py={py} timeX={timeX}/>}
+           py={py} timeX={timeX} visibleFrom={trueHistory[0]?.time}/>}
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
            left+(i+.5)*actualStride,realCandleWidth,false,'real'+b.time))}
          {/* The next-M1 watch is fixed by prior CLOSED minute candles,
