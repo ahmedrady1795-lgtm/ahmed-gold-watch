@@ -1,4 +1,4 @@
-import type {M15HuntPreview,HuntPreviewCandle,HuntSide} from '../lib/sniper-m15-hunt-preview';
+import {placeHuntWaypoints,type M15HuntPreview,type HuntPreviewCandle,type HuntSide} from '../lib/sniper-m15-hunt-preview';
 
 type Props={
   forecast:M15HuntPreview;left:number;split:number;end:number;
@@ -10,8 +10,11 @@ export default function SniperM15HuntOverlay(p:Props){
   if(!f.ready||f.anchor==null)return null;
   const clip=(v:number)=>Math.max(p.top+2,Math.min(p.bottom-2,v));
   const width=p.end-p.split;
-  const stride=(width-14)/6;
+  // Reserve a price-labelled station rail at right; simulated candles must
+  // not be hidden beneath the target labels on the mobile SVG.
+  const stride=(width-80)/6;
   const anchored=f.preferred!=='WAIT';
+  const stations=placeHuntWaypoints(f,p.py,p.top,p.bottom);
   const toPoints=(list:HuntPreviewCandle[])=>
     [[p.split+4,clip(p.py(f.anchor!))],
       ...list.map((b,i)=>[p.split+9+(i+.5)*stride,clip(p.py(b.close))])];
@@ -25,7 +28,7 @@ export default function SniperM15HuntOverlay(p:Props){
         const yHigh=clip(p.py(b.high)),yLow=clip(p.py(b.low));
         const top=Math.min(yOpen,yClose),height=Math.max(1.8,Math.abs(yOpen-yClose));
         const rising=b.close>=b.open;
-        const opacity=f.referenceOnly?0.3:selected?0.87:anchored?0.26:0.47;
+        const opacity=f.referenceOnly?0.31:selected?0.91:anchored?0.53:0.58;
         return <g key={'sim-'+side+'-'+b.time}>
           <line x1={x} x2={x} y1={yHigh} y2={yLow}
             stroke={color[side]} strokeWidth={selected?1.7:1.1}
@@ -34,7 +37,7 @@ export default function SniperM15HuntOverlay(p:Props){
             stroke={color[side]} strokeWidth={selected?1.5:1}
             strokeDasharray={selected?'none':'2 2'}
             fill={rising?'#37ad8e':'#b54c68'}
-            fillOpacity={selected?(f.referenceOnly?0.13:0.34):0.055}
+            fillOpacity={selected?(f.referenceOnly?0.13:0.48):0.17}
             strokeOpacity={opacity}/>
           <title>{(side==='BUY'?'احتمال صعود':'احتمال هبوط')+
             ' · شمعة '+(i+1)+' · OHLC افتراضي غير مُتحقق'}</title>
@@ -56,6 +59,30 @@ export default function SniperM15HuntOverlay(p:Props){
           ' · تقدير من شموع مغلقة فقط، وليس دفتر أوامر حقيقي'}</title>
       </g>;
     })}
+    {/* Price-TRUE watch waypoints. Only caption Y is shifted to avoid
+        overlaps; these are conditional simulated stations, not TP fills. */}
+    {stations.map(m=>{
+      const ink=color[m.side],isUp=m.side==='BUY';
+      return <g key={'station-'+m.side+'-'+m.stage}
+        className="sniper-hunt-waypoint">
+        <line x1={p.split+6} x2={p.end-77} y1={m.lineY} y2={m.lineY}
+          stroke={ink} strokeWidth={m.stage===2?1.45:0.95}
+          strokeOpacity={f.referenceOnly?0.3:0.62}
+          strokeDasharray={m.stage===2?'5 4':'2 5'}/>
+        <path d={'M '+(p.end-76)+' '+m.lineY+
+          ' L '+(p.end-72)+' '+(m.labelY-4)}
+          fill="none" stroke={ink} strokeWidth="1" strokeOpacity=".65"/>
+        <rect x={p.end-72} y={m.labelY-11} width="70" height="15" rx="3"
+          fill="#08151b" stroke={ink} strokeOpacity=".75"
+          strokeWidth=".8"/>
+        <text x={p.end-5} y={m.labelY} textAnchor="end" direction="ltr"
+          fontSize="8.3" fontWeight="800" fill={ink}>
+          {(isUp?'↑':'↓')+m.stage+' '+m.price.toFixed(2)}
+        </text>
+        <title>{(isUp?'صعود':'هبوط')+' · محطة '+m.stage+' '+m.price.toFixed(2)+
+          ' · هدف افتراضي من ATR وليس TP حقيقيًا'}</title>
+      </g>;
+    })}
     <line x1={p.split} x2={p.split} y1={p.top} y2={p.bottom}
       stroke="#bca874" strokeWidth="1.1" strokeDasharray="4 5"/>
     {(['BUY','SELL'] as const).map(side=>
@@ -64,7 +91,7 @@ export default function SniperM15HuntOverlay(p:Props){
           .map(pt=>pt.join(',')).join(' ')}
           fill="none" stroke={color[side]}
           strokeWidth={f.preferred===side?1.8:1.1}
-          strokeOpacity={f.referenceOnly?0.3:f.preferred===side?0.68:0.3}
+          strokeOpacity={f.referenceOnly?0.30:f.preferred===side?0.75:0.50}
           strokeDasharray={f.preferred===side?'6 4':'2 6'}/>
         {drawCandles(side==='BUY'?f.buy:f.sell,side)}
       </g>
