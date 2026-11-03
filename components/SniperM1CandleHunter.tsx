@@ -2,6 +2,7 @@
 
 import {useMemo} from 'react';
 import SniperMT5M1Chart from './SniperMT5M1Chart';
+import SniperM1CandleTape from './SniperM1CandleTape';
 import {auditCandleHunter,displayCandleHunter,type CandleHunterLevel} from '../lib/sniper-m1-candle-hunter';
 import type {M1Bar} from '../lib/sniper-mt5-m1';
 import {freshM1QuoteForWatch} from '../lib/sampled-live-candle';
@@ -77,8 +78,16 @@ export default function SniperM1CandleHunter(p:Props){
         'الرصد غير حي · لا أولوية دخول'}</span>
       <small>ترجيح للمتابعة فقط، وليس أمر تداول أو نسبة نجاح.</small>
     </div>
-    <p className="sniper-m1-gross-risk">العائد/الوقف النظري 0.88R؛
-      يلزم نجاح يتجاوز {grossBreakEvenPct().toFixed(1)}% قبل التكاليف، وأكثر بعد السبريد.</p>
+
+    <SniperMT5M1Chart asset={p.asset} history={p.history}
+      historicalSource={p.historicalSource} quote={p.quote} now={p.now}
+      marketOpen={p.marketOpen} providerTransition={p.providerTransition}
+      levels={levels} referenceOnly={referenceOnly}/>
+    <SniperM1CandleTape history={p.history} now={p.now}/>
+    <details className="sniper-m1-setup-details">
+      <summary>{plan.ready?'الدخول والهدف والوقف · عرض المستويات':'تفاصيل شروط القنص'}</summary>
+      <p className="sniper-m1-gross-risk">عائد/وقف نظري 0.88R؛
+        يلزم نجاح يتجاوز {grossBreakEvenPct().toFixed(1)}% قبل التكلفة.</p>
     {plan.ready&&plan.buy&&plan.sell?<>
       <div className="sniper-m1-hunter-orders">
         {details('BUY STOP',plan.buy)}
@@ -88,10 +97,8 @@ export default function SniperM1CandleHunter(p:Props){
         {referenceOnly?display.reason:activeHint||plan.reason}
       </p>
     </>:<p className="sniper-m1-hunter-hint">{plan.reason} · لا مستويات وهمية</p>}
-    <SniperMT5M1Chart asset={p.asset} history={p.history}
-      historicalSource={p.historicalSource} quote={p.quote} now={p.now}
-      marketOpen={p.marketOpen} providerTransition={p.providerTransition}
-      levels={levels} referenceOnly={referenceOnly}/>
+
+    </details>
     <details className="sniper-m1-hunter-audit">
       <summary>مقارنة قنص اتجاه واحد بقنص الاتجاهين · فحص تاريخي</summary>
       <p><b>اتجاه واحد:</b> {priorityAudit.prioritized} ترجيح من {priorityAudit.observed} فرصة،
