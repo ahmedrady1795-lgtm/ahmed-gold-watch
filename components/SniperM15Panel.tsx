@@ -889,6 +889,45 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
            left+(i+.5)*actualStride,realCandleWidth,false,'real'+b.time))}
 
+         {showWatchGuide&&watchGuide.anchor!=null&&
+           <g className="sniper-m15-watch-guide"
+             aria-label="رسم مساري مراقبة M15 المستقلين عن تأهيل التداول">
+             {/* TWO conditional volatility routes from the last CLOSED M15.
+                 These are NOT hypothetical OHLC candles or broker signals. */}
+             <line x1={split} x2={split} y1={plotTop} y2={plotBottom}
+               stroke="#657b88" strokeDasharray="4 5" strokeWidth="1.1"/>
+             <text x={split+8} y={plotTop+14} fill="#e4ce9a"
+               fontSize="9" textAnchor="start" direction="rtl">
+               {watchGuide.referenceOnly?'نطاق سابق · غير حي':'M15 · سيناريو مراقبة'}
+             </text>
+             {([
+               {side:'BUY',levels:watchGuide.up,color:'#6bdfb7'},
+               {side:'SELL',levels:watchGuide.down,color:'#f28fa4'}
+             ] as const).map(branch=>{
+               const opacity=watchGuide.bias==='WAIT'||watchGuide.bias===branch.side?.9:.55;
+               const points=[
+                 [split+8,py(watchGuide.anchor!)],
+                 ...branch.levels.map((v,i)=>[
+                   split+20+(i+1)*projectedStride*2,py(v)])
+               ];
+               const ending=points.at(-1)!;
+               return <g key={'m15-watch-'+branch.side}>
+                 <polyline points={points.map(point=>point.join(',')).join(' ')}
+                   fill="none" stroke={branch.color} strokeOpacity={opacity}
+                   strokeWidth={watchGuide.bias===branch.side?2.5:1.7}
+                   strokeDasharray={watchGuide.referenceOnly?'2 6':'6 4'}/>
+                 <circle cx={ending[0]} cy={ending[1]} r="3"
+                   fill="#000" stroke={branch.color} strokeWidth="1.4"/>
+                 <text x={Math.min(end-86,ending[0]+7)} y={ending[1]-7}
+                   fill={branch.color} fontSize="8.5" textAnchor="start"
+                   direction="rtl" stroke="#000" strokeWidth="2"
+                   paintOrder="stroke">
+                   {branch.side==='BUY'?'نطاق صعود':'نطاق هبوط'}
+                 </text>
+               </g>;
+             })}
+             <title>{watchGuide.reason+' · هذا نطاق ATR مشروط من شموع M15 مغلقة، وليس توقع شموع مستقبلية ولا تصريح دخول'}</title>
+           </g>}
          {projected.ready&&<line x1={split} x2={split} y1={plotTop} y2={plotBottom}
            stroke="#7e9bb1" strokeWidth="1.25" strokeDasharray="5 5"/>}
          {projected.ready&&<text x={end-8} y={plotTop+13}
@@ -1075,7 +1114,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              ' · لا يمثل نسبة نجاح أو إذن تنفيذ'}</title>
          </g>;
        })()}
-       {!projected.ready&&<g className="sniper-m15-empty-reason">
+       {!projected.ready&&!showWatchGuide&&<g className="sniper-m15-empty-reason">
          <text x={(split+end)/2} y={plotTop+66} fill="#d6bd8f"
            fontSize="9" textAnchor="middle" direction="rtl">
            {detached?'السعر الحي ابتعد عن التوقع المحفوظ':
@@ -1097,9 +1136,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          <title>{firstM15Stats.detail}</title>
        </g>}
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
-       <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'} fontSize="10" textAnchor="start" direction="ltr">{projected.ready?'M15 · FORECAST':'M15 · LIVE'}</text>
+       <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'} fontSize="10" textAnchor="start" direction="ltr">{projected.ready?'M15 · FORECAST':showWatchGuide?'M15 · WATCH':'M15 · LIVE'}</text>
        <text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
-         textAnchor="start" direction="rtl">{projected.ready?'أول 12 شمعة للتقييم · الامتداد عرض تاريخي غير مُقيّم':'شموع فعلية متصلة · لا توجد شموع توقع معتمدة الآن'}</text>
+         textAnchor="start" direction="rtl">{projected.ready?'أول 12 شمعة للتقييم · الامتداد عرض تاريخي غير مُقيّم':showWatchGuide?'مساران مشروطان من M15 مغلق · ليست شموع مستقبلية':'شموع فعلية متصلة · لا توجد شموع توقع معتمدة الآن'}</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(formingVisible&&forming?forming.time:latestClosed.time)}</text>}
