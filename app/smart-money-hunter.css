@@ -1,0 +1,109 @@
+/* Al-Qannas: evidence-backed liquidity hunter, not an invented order book. */
+.sniper-m15-panel{--hunt-gold:#e8c780;--hunt-green:#52e5b8;
+  --hunt-red:#f17b99;--hunt-muted:#9fb5bf;color:#e5f0f4}
+.sniper-m15-panel>.sniper-m15-head{background:linear-gradient(110deg,#061219,#0b1a1f);
+  border:1px solid #364e53;border-radius:10px;padding:7px 10px;margin:0 0 7px}
+.sniper-m15-panel>.sniper-m15-head .sniper-m15-frame{color:var(--hunt-gold)}
+.sniper-m15-panel>.sniper-candle-mode{margin:4px 0 7px;gap:5px}
+.sniper-m15-panel>.sniper-candle-mode button{
+  padding:8px 6px;border:1px solid #305059;border-radius:8px;
+  background:#0b1e25;color:#9db5c0;min-height:36px;font-weight:750}
+.sniper-m15-panel>.sniper-candle-mode button[aria-pressed="true"]{
+  background:linear-gradient(120deg,#2b291b,#122c2a);
+  border-color:#d3ae64;color:#f8e4ac;
+  box-shadow:inset 0 0 0 1px #735f3a}
+.sniper-hunt-hud{margin:4px 0 6px;padding:8px 10px;
+  border:1px solid #99723a;border-radius:10px;
+  background:linear-gradient(125deg,#191b16,#09171f 46%,#0b2025);
+  display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 10px;
+  box-shadow:0 0 16px #bd8f2212}
+.sniper-hunt-hud-brand{display:flex;flex-direction:column;gap:3px;min-width:135px}
+.sniper-hunt-hud-brand>small{color:#c9a55d;font-size:9px;letter-spacing:.5px}
+.sniper-hunt-hud-brand>b{color:#f6e6bf;font-size:17px;font-weight:850}
+.sniper-hunt-hud-brand>b span{color:#9db9b4;font-size:10px;font-weight:500}
+.sniper-hunt-hud-data{flex:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;min-width:0}
+.sniper-hunt-hud-data>span{background:#06161d;border:1px solid #2a4547;
+  border-radius:6px;display:flex;flex-direction:column;justify-content:center;
+  padding:5px 7px;min-width:0;gap:2px}
+.sniper-hunt-hud-data small{color:#a7babd;font-size:9px}
+.sniper-hunt-hud-data b{color:#e6f0f0;font-size:11px;font-weight:800;
+  line-height:1.2;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.sniper-hunt-hud-data .is-next b{color:#7ee8c0}
+.sniper-hunt-hud-state{color:#d5be85;font-size:9px;width:100%;
+  text-align:right;line-height:1.3}
+.sniper-hunt-advanced{border:1px solid #263f43;background:#0a1720;
+  border-radius:7px;margin:0 0 6px;color:#b9d1d6;overflow:hidden}
+.sniper-hunt-advanced>summary{padding:7px 10px;font-size:11px;
+  cursor:pointer;font-weight:700;list-style:none;display:flex;
+  align-items:center;justify-content:space-between}
+.sniper-hunt-advanced>summary::-webkit-details-marker{display:none}
+.sniper-hunt-advanced>summary span{color:var(--hunt-gold);font-size:14px}
+.sniper-hunt-advanced[open]>summary{border-bottom:1px solid #31505a}
+.sniper-hunt-advanced>summary:focus-visible,.sniper-m1-setup-details>summary:focus-visible{
+  outline:2px solid #dbb66b;outline-offset:-2px}
+.sniper-hunt-advanced .sniper-m15-scenario-summary{margin:0;border:0;
+  border-radius:0;box-shadow:none}
+.sniper-m15-panel .sniper-m15-chart-box{border:1px solid #a47b36!important;
+  border-radius:9px;overflow:hidden;box-shadow:0 0 0 1px #3e3830}
+.sniper-m15-hunt-overlay .sniper-hunt-candles.preferred{filter:drop-shadow(0 0 1px #85c9b7)}
+.sniper-m15-hunt-overlay .sniper-hunt-pool{pointer-events:none}
+.sniper-m15-hunt-overlay .sniper-hunt-live-direction{pointer-events:none}
+.sniper-m15-panel .sniper-m15-compact-status{margin:3px 0 5px;
+  border-color:#3a4938;background:#06171c;color:#cfc39d}
+.sniper-m15-panel .sniper-m15-levels-below{border-color:#3d4d43}
+.sniper-m15-panel .sniper-m15-level-chip{border-color:#344b50}
+.sniper-m1-hunter{border-color:#8b7143!important;background:#040b0e}
+.sniper-m1-hunter-head{background:#0b1819}
+.sniper-m1-hunter-head h2{color:#edcf89}
+.sniper-m1-hunter .sniper-m1-priority{margin:4px 8px 6px;padding:5px 8px;
+  background:#0a201f;border-color:#496f52}
+.sniper-m1-hunter .sniper-mt5-m1 svg{height:clamp(445px,68dvh,730px)}
+.sniper-m1-setup-details{border-top:1px solid #2e4650;
+  margin:7px 8px;border:1px solid #2b464e;border-radius:7px}
+.sniper-m1-setup-details>summary{cursor:pointer;padding:8px 10px;
+  font-size:11px;font-weight:750;color:#c9deb9;list-style:none}
+.sniper-m1-setup-details>summary::-webkit-details-marker{display:none}
+.sniper-m1-setup-details .sniper-m1-hunter-orders{margin-bottom:8px}
+.sniper-candle-tape{margin:7px 8px 9px;border:1px solid #3b4c42;
+  border-radius:9px;overflow:hidden;background:#09151b;padding:8px}
+.sniper-candle-tape-title{display:flex;align-items:center;
+  justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:7px}
+.sniper-candle-tape-title strong{color:#efdaaa;font-size:12px}
+.sniper-candle-tape-title span{color:#9cdbbd;font-size:10px;
+  font-variant-numeric:tabular-nums}
+.sniper-candle-tape-rail{display:flex;gap:5px;direction:ltr;overflow-x:auto;
+  scrollbar-width:thin;padding:2px 0 6px;scroll-snap-type:x proximity}
+.sniper-candle-tape-item{flex:1 0 58px;min-width:54px;max-width:84px;
+  padding:5px 3px 6px;background:#081e24;border:1px solid #294851;
+  border-radius:6px;text-align:center;display:flex;flex-direction:column;
+  align-items:center;gap:2px;scroll-snap-align:start}
+.sniper-candle-tape-item svg{height:37px;width:42px;display:block}
+.sniper-candle-tape-item small{font-size:9px;color:#9cb3b7}
+.sniper-candle-tape-item b{font-size:15px;color:#c9e0df;line-height:1.2}
+.sniper-candle-tape-item b span{font-size:11px;margin-inline-start:3px}
+.sniper-candle-tape-item.is-aligned{border-color:#34886e}
+.sniper-candle-tape-item.is-aligned b{color:#69e5ad}
+.sniper-candle-tape-item.is-divergent{border-color:#974b62}
+.sniper-candle-tape-item.is-divergent b{color:#f37d96}
+.sniper-candle-tape-item.is-neutral{opacity:.75}
+.sniper-candle-tape-no-data{color:#a6bdbe;font-size:11px}
+.sniper-candle-tape-caution{display:block;color:#a9bfc3;font-size:9px;
+  margin-top:5px;line-height:1.4}
+@media(max-width:700px){
+ .sniper-hunt-hud{padding:7px;gap:6px}
+ .sniper-hunt-hud-brand{width:100%;flex-direction:row;align-items:center;
+   justify-content:space-between}
+ .sniper-hunt-hud-brand>b{font-size:14px}
+ .sniper-hunt-hud-data{grid-template-columns:repeat(4,minmax(0,1fr));width:100%}
+ .sniper-hunt-hud-data>span{padding:5px 4px}
+ .sniper-hunt-hud-data small{font-size:8px}
+ .sniper-hunt-hud-data b{font-size:10px}
+ .sniper-m15-panel .sniper-m15-chart-box{height:clamp(500px,70dvh,780px)!important}
+ .sniper-m15-panel .sniper-m15-chart-box svg{min-height:500px}
+ .sniper-m1-hunter .sniper-mt5-m1 svg{height:clamp(420px,64dvh,700px)}
+ .sniper-candle-tape-item{flex:0 0 57px}
+}
+@media(max-width:360px){
+ .sniper-hunt-hud-data{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .sniper-hunt-hud-data b{font-size:11px}
+}

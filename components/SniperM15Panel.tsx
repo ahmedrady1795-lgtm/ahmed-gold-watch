@@ -2,6 +2,10 @@
 
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import SniperM15Summary from './SniperM15Summary';
+import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
+import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
+import SniperM15HuntOverlay from './SniperM15HuntOverlay';
+import SniperHuntHUD from './SniperHuntHUD';
 import SniperM1CandleHunter from './SniperM1CandleHunter';
 import {extendIllustrativeM15ToTargets} from '../lib/sniper-m15-target-bridge';
 import {buildM15WatchGuide} from '../lib/sniper-m15-watch-guide';
@@ -108,6 +112,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const sourceGuide=useMemo(()=>buildM15WatchGuide(actual,now),[actual,now]);
  const watchGuide=(providerTransition||!marketOpen)&&sourceGuide.ready?
    {...sourceGuide,referenceOnly:true}:sourceGuide;
+ const huntPreview=useMemo(()=>buildM15HuntPreview(actual,watchGuide,now),
+   [actual,watchGuide,Math.floor(now/900000)]);
+ const nextM1=useMemo(()=>assessM1DirectionalPriority(m.candles,now),
+   [m.candles,Math.floor(now/60000)]);
  const verifiedArchive=useMemo(()=>verifiedM15Archive({
    ledger:archiveState?.asset===asset?archiveState.ledger:null,
    asset,source:String(x?.candleSource||''),now,live:actual
@@ -709,6 +717,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      quote={liveQuote} now={now} marketOpen={marketOpen}
      sourceReady={m.historyFresh&&m.sniper.view.priceFresh}
      providerTransition={providerTransition}/>:<>
+   <SniperHuntHUD hunt={huntPreview} m1={nextM1}
+      price={currentSignalPrice??null} marketOpen={marketOpen}
+      qualified={projected.ready} qualifiedSide={chartSide}/>
+   <details className="sniper-hunt-advanced">
+     <summary>المستويات والتشخيص <span aria-hidden="true">＋</span></summary>
    <SniperM15Summary asset={asset} ready={projected.ready}
      saved={Boolean(stable&&!projected.ready)} paused={paused} detached={detached}
      marketOpen={marketOpen} providerTransition={providerTransition}
@@ -727,6 +740,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      signal={currentSignalSide!=='WAIT'?currentSignalLabel:null}
      noForecastReason={!projected.ready?lifecycle:null}
      watchGuide={showWatchGuide?watchGuide:null}/>
+   </details>
    <div className="sniper-m15-view-controls" aria-label="عرض سيناريو القناص">
      <button type="button" className="sniper-m15-extra-toggle"
        aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}
@@ -886,45 +900,26 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          })}
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
            left+(i+.5)*actualStride,realCandleWidth,false,'real'+b.time))}
+         {/* The next-M1 watch is fixed by prior CLOSED minute candles,
+              not guessed from the color of this unfinished candle. */}
+         {formingVisible&&forming&&marketOpen&&nextM1.ready&&
+           nextM1.side!=='WAIT'&&<g className="sniper-hunt-live-direction">
+             <text x={split-7}
+               y={clamp(py(forming.close)+23,plotTop+28,plotBottom-12)}
+               textAnchor="end" direction="rtl"
+               fill={nextM1.side==='BUY'?'#7effbf':'#ff8aa4'}
+               fontSize="9" fontWeight="800" stroke="#02090e"
+               strokeWidth="2.5" paintOrder="stroke">
+               {nextM1.side==='BUY'?'↑ M1 مراقبة':'↓ M1 مراقبة'}
+             </text>
+           </g>}
 
          {showWatchGuide&&watchGuide.anchor!=null&&
-           <g className="sniper-m15-watch-guide"
-             aria-label="رسم مساري مراقبة M15 المستقلين عن تأهيل التداول">
-             {/* TWO conditional volatility routes from the last CLOSED M15.
-                 These are NOT hypothetical OHLC candles or broker signals. */}
-             <line x1={split} x2={split} y1={plotTop} y2={plotBottom}
-               stroke="#657b88" strokeDasharray="4 5" strokeWidth="1.1"/>
-             <text x={split+8} y={plotTop+14} fill="#e4ce9a"
-               fontSize="9" textAnchor="start" direction="rtl">
-               {watchGuide.referenceOnly?'نطاق سابق · غير حي':'M15 · سيناريو مراقبة'}
-             </text>
-             {([
-               {side:'BUY',levels:watchGuide.up,color:'#6bdfb7'},
-               {side:'SELL',levels:watchGuide.down,color:'#f28fa4'}
-             ] as const).map(branch=>{
-               const opacity=watchGuide.bias==='WAIT'||watchGuide.bias===branch.side?0.9:0.55;
-               const points=[
-                 [split+8,py(watchGuide.anchor!)],
-                 ...branch.levels.map((v,i)=>[
-                   split+20+(i+1)*projectedStride*2,py(v)])
-               ];
-               const ending=points.at(-1)!;
-               return <g key={'m15-watch-'+branch.side}>
-                 <polyline points={points.map(point=>point.join(',')).join(' ')}
-                   fill="none" stroke={branch.color} strokeOpacity={opacity}
-                   strokeWidth={watchGuide.bias===branch.side?2.5:1.7}
-                   strokeDasharray={watchGuide.referenceOnly?'2 6':'6 4'}/>
-                 <circle cx={ending[0]} cy={ending[1]} r="3"
-                   fill="#000" stroke={branch.color} strokeWidth="1.4"/>
-                 <text x={Math.min(end-86,ending[0]+7)} y={ending[1]-7}
-                   fill={branch.color} fontSize="8.5" textAnchor="start"
-                   direction="rtl" stroke="#000" strokeWidth="2"
-                   paintOrder="stroke">
-                   {branch.side==='BUY'?'نطاق صعود':'نطاق هبوط'}
-                 </text>
-               </g>;
-             })}
-             <title>{watchGuide.reason+' · هذا نطاق ATR مشروط من شموع M15 مغلقة، وليس توقع شموع مستقبلية ولا تصريح دخول'}</title>
+           <g className="sniper-m15-watch-guide">
+             <SniperM15HuntOverlay forecast={huntPreview}
+               left={left} split={split} end={end}
+               top={plotTop} bottom={plotBottom} py={py}
+               liquidity={showLiquidity}/>
            </g>}
          {projected.ready&&<line x1={split} x2={split} y1={plotTop} y2={plotBottom}
            stroke="#7e9bb1" strokeWidth="1.25" strokeDasharray="5 5"/>}
