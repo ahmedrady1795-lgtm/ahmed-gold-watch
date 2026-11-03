@@ -737,7 +737,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          stroke="#1d2b3a" strokeDasharray="3 6" strokeWidth=".8"/>)}
        <g clipPath={'url(#sniper-m15-clip-'+asset+')'}>
          {/* Only four authentic OHLC liquidity levels; colors match source areas. */}
-         {liquidityLabels.map(z=><g key={'liquidity-band-'+z.key}
+         {showLiquidity&&liquidityLabels.map(z=><g key={'liquidity-band-'+z.key}
            className="sniper-m15-liquidity-line">
            <rect x={left} y={py(z.high!)} width={end-left}
              height={Math.max(1,py(z.low!)-py(z.high!))}
@@ -1005,7 +1005,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              {labelBy(level.key)+' '+n(level.price)}</text>
          </g>;
        })}
-       {positionedLiquidityLabels.map(z=><g key={'liq-label-'+z.key}
+       {showLiquidity&&positionedLiquidityLabels.map(z=><g key={'liq-label-'+z.key}
           className="sniper-m15-liquidity-label">
          {Math.abs(z.labelY-z.exactY)>10&&
            <line x1={end-15} x2={end-15} y1={z.exactY} y2={z.labelY}
