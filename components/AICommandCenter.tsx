@@ -43,11 +43,14 @@ export default function AICommandCenter({data,error,assetView='ALL',now=Date.now
     {auditError&&<div className="fatal"><ShieldAlert size={18}/><div><strong>سجل القناص غير متصل</strong>
       <span>الأهداف الجديدة مش معتمدة على الرسم قبل استعادة سجل الأداء.</span>
     </div></div>}
-    <NewsCommandCenter events={data?.newsEvents||[]} featuredEvent={data?.autopilot?.nextEvent||null} now={now}/>
     <div id="market-forecast">
       <ForecastIllustration data={data} now={now} snapshotAt={generatedAt}
         goldLive={goldLive} btcLive={btcLive} assetView={assetView}
         journals={journal} audit={audit} auditLoaded={audit!=null&&!auditError}/>
     </div>
+    <details className="sniper-news-details">
+      <summary>الأخبار الاقتصادية ومواعيدها{data?.autopilot?.nextEvent?.name?' · '+String(data.autopilot.nextEvent.name):''}</summary>
+      <NewsCommandCenter events={data?.newsEvents||[]} featuredEvent={data?.autopilot?.nextEvent||null} now={now}/>
+    </details>
   </div>;
 }

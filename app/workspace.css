@@ -929,3 +929,63 @@ body:has(.modern-workspace){
   .compact-sniper .forecast-visual-confidence{grid-column:span 1}
   .sniper-live-quality{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* Railway production dashboard: decision first, chart second, research on demand. */
+.compact-sniper .forecast-scenario-hero{
+  display:block;margin:10px 10px 6px;padding:14px 16px;
+  border:1px solid #36576b;border-radius:12px;
+  background:linear-gradient(125deg,#122635,#0e1b28)
+}
+.compact-sniper .forecast-scenario-hero.is-active{border-color:#36846b;background:linear-gradient(120deg,#143b30,#0e2432)}
+.compact-sniper .forecast-scenario-hero.is-watch{border-color:#8e7544;background:linear-gradient(120deg,#312a20,#112331)}
+.forecast-scenario-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px}
+.forecast-scenario-heading small{font-size:11px;display:block;color:#a2bdc9}
+.forecast-scenario-heading h2{font-size:23px;line-height:1.35;color:#ecf5f9;margin:2px 0 0}
+.forecast-scenario-heading h2.green{color:#83ecc4}
+.forecast-scenario-heading h2.red{color:#ffaab7}
+.forecast-scenario-heading .forecast-visual-status{white-space:normal;text-align:center}
+.forecast-scenario-reason{margin:8px 0 11px;font-size:12px;color:#c4d9e5;line-height:1.65;overflow-wrap:anywhere}
+.forecast-scenario-key-levels,.forecast-scenario-goals{display:grid;gap:7px}
+.forecast-scenario-key-levels{grid-template-columns:repeat(4,minmax(0,1fr))}
+.forecast-scenario-goals{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:8px}
+.forecast-scenario-key-levels>div,.forecast-scenario-goals>div{
+ display:flex;flex-direction:column;gap:4px;min-width:0;
+ padding:9px 11px;border:1px solid #294d5e;border-radius:8px;background:#0c2030
+}
+.forecast-scenario-key-levels small,.forecast-scenario-goals small{font-size:10px;color:#a5c2d0}
+.forecast-scenario-key-levels strong,.forecast-scenario-goals strong{
+ font-size:17px;line-height:1.35;color:#eef5fc;font-variant-numeric:tabular-nums;overflow-wrap:anywhere
+}
+.forecast-scenario-key-levels>div:nth-child(3) strong{color:#ffb6bc}
+.forecast-scenario-goals strong{color:#a5f2cc}
+.forecast-scenario-goals span{font-size:10px;color:#a6bcc9}
+.forecast-scenario-entry{margin:9px 0 0;font-size:11px;color:#e2d4ae;line-height:1.6}
+.forecast-scenario-entry b{font-variant-numeric:tabular-nums;color:#f6e4b7}
+.forecast-scenario-condition{display:flex;align-items:flex-start;gap:7px;margin:10px 0 0;font-size:11px;line-height:1.65;color:#efd99c}
+.forecast-scenario-condition svg{flex-shrink:0;margin-top:2px}
+.forecast-scenario-no-goals{font-size:11px;color:#b1c5d1;margin:9px 0 0}
+.compact-sniper .forecast-visual-layout{display:block!important;grid-template-columns:none!important}
+.compact-sniper .forecast-visual-chart-wrap{width:100%;min-width:0}
+.compact-sniper .forecast-deep-insights{margin:10px;border:1px solid #2b4a5b;border-radius:10px;background:#0b1d29}
+.compact-sniper .forecast-deep-insights>summary{cursor:pointer;display:block;padding:11px 14px;color:#cbdce7;font-size:12px;font-weight:700}
+.compact-sniper .forecast-deep-insights[open]>summary{margin-bottom:10px;border-bottom:1px solid #29465a}
+.compact-sniper .forecast-deep-insights .forecast-flow-banner{margin:8px 10px}
+.compact-sniper .forecast-deep-insights .sniper-indicator-bar{margin:8px 10px}
+.compact-sniper .forecast-deep-insights .sniper-live-quality{margin:8px 10px}
+.compact-sniper .forecast-deep-insights .forecast-decision-row{grid-template-columns:minmax(0,1fr)}
+.sniper-news-details{margin:8px 0;border:1px solid #263b49;border-radius:11px;background:#0e1b28}
+.sniper-news-details>summary{cursor:pointer;padding:11px 14px;color:#d9e4ed;font-size:12px;font-weight:700}
+.sniper-news-details[open]>summary{border-bottom:1px solid #263b49}
+.sniper-news-details .home-news-compact{margin:9px!important}
+@media(max-width:760px){
+ .compact-sniper .forecast-scenario-hero{margin:6px;padding:10px}
+ .forecast-scenario-heading h2{font-size:20px}
+ .forecast-scenario-key-levels{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+ .forecast-scenario-goals{gap:5px}
+ .forecast-scenario-key-levels>div,.forecast-scenario-goals>div{padding:7px 7px}
+ .forecast-scenario-key-levels strong{font-size:15px}
+ .forecast-scenario-goals strong{font-size:13px}
+ .forecast-scenario-goals span,.forecast-scenario-goals small{font-size:9px}
+ .compact-sniper .forecast-deep-insights{margin:7px}
+}
+@media(max-width:390px){.forecast-scenario-goals{grid-template-columns:repeat(2,minmax(0,1fr))}}
