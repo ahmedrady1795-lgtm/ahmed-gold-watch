@@ -70,6 +70,28 @@ assert.ok(plan.buy.target>plan.buy.trigger&&plan.buy.stop<plan.buy.trigger);
 assert.ok(plan.sell.target<plan.sell.trigger&&plan.sell.stop>plan.sell.trigger);
 assert.equal(hunter.buildCandleHunter({...args,now:issuedAt+60000}).ready,false,
   'minute scalp expires exactly when next minute ends');
+
+const liveDisplay=hunter.displayCandleHunter({...args,now:issuedAt+12000});
+assert.equal(liveDisplay.kind,'LIVE');
+assert.equal(liveDisplay.plan.expiresAt,issuedAt+60000);
+const expiredDisplay=hunter.displayCandleHunter({...args,now:issuedAt+61000});
+assert.equal(expiredDisplay.kind,'EXPIRED_REFERENCE',
+  'a one-minute chart feed delay must not erase the last levels');
+assert.equal(expiredDisplay.plan.ready,true,'the ORIGINAL math is retained');
+assert.ok(expiredDisplay.plan.expiresAt<issuedAt+61000,
+  'expired reference must keep the ORIGINAL one-minute expiry');
+assert.equal(expiredDisplay.plan.tradeEligible,false,
+  'expired references never become broker instructions');
+assert.equal(expiredDisplay.plan.buy.trigger,plan.buy.trigger);
+assert.equal(expiredDisplay.plan.sell.target,plan.sell.target);
+assert.equal(hunter.displayCandleHunter({...args,now:issuedAt+181000}).kind,'NONE',
+  'old expired reference removed after three minutes');
+assert.equal(hunter.displayCandleHunter({...args,now:issuedAt+61000,sourceReady:false}).kind,'NONE',
+  'stale source cannot show a reference as actionable data');
+assert.equal(hunter.displayCandleHunter({...args,now:issuedAt+61000,marketOpen:false}).kind,'NONE');
+assert.equal(hunter.displayCandleHunter({...args,now:issuedAt+61000,providerTransition:true}).kind,'NONE');
+assert.equal(hunter.displayCandleHunter({...args,now:issuedAt+61000,bars:bars.slice(-12)}).kind,'NONE',
+  'inadequate source history cannot fabricate levels');
 assert.equal(hunter.buildCandleHunter({...args,sourceReady:false}).ready,false);
 assert.equal(hunter.buildCandleHunter({...args,marketOpen:false}).ready,false);
 assert.equal(hunter.buildCandleHunter({...args,providerTransition:true}).ready,false);
@@ -139,6 +161,17 @@ assert.match(snippet,/kind:'STOP' as const,label:'SELL SL'/,
   'seller invalidation must be plotted instead of only shown in a card');
 assert.match(snippet,/freshM1QuoteForWatch/,
   'conditional quote notice requires source and issuance checks');
+
+assert.match(snippet,/displayCandleHunter/,
+  'minute view must retain bounded reference levels instead of drawing a blank chart');
+assert.match(snippet,/referenceOnly\?display.reason/,
+  'expired reference must not report a live entry touch');
+assert.match(chart,/referenceOnly\?'#87939c'/,
+  'expired reference lines are visually grey instead of active-color entry signals');
+assert.match(chart,/p.referenceOnly\?'2 6'/,
+  'expired level lines are dashed and visibly distinct');
+assert.match(chart,/مستويات مرجعية منتهية/,
+  'chart warns when the lines are historical and expired');
 
 assert.match(css,/\.sniper-m1-hunter-orders/);
 assert.match(layout,/m1-candle-hunter\.css/);
