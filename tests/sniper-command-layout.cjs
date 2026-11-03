@@ -19,7 +19,7 @@ const hero=chart.slice(heroStart,chartStart);
 assert.ok(heroStart>0&&chartStart>heroStart,'the scenario appears above the chart');
 for(const token of ['quickSide','quickTrigger','statusReady','frozenVisualLevels.targets','movementOutlook.targets','nextDirection'])
  assert.ok(hero.includes(token),'scenario shows decision-critical information: '+token);
-assert.ok(chart.indexOf('sniper-movement-outlook')>chart.indexOf('className="sniper-secondary-details"'),
+assert.ok(chart.indexOf("className={'sniper-movement-outlook'")>chart.indexOf('className="sniper-secondary-details"'),
   'verbose movement analysis stays in optional details');
 assert.ok(chart.indexOf('sniper-live-next-status')>chart.indexOf('className="sniper-secondary-details"'),
   'verbose AI model diagnostics stay in optional details');
