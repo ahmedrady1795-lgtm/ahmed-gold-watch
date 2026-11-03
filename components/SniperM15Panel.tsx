@@ -5,6 +5,8 @@ import SniperM15Summary from './SniperM15Summary';
 import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
+import {analyzeM15MarketStructure} from '../lib/sniper-market-structure';
+import SniperMarketStructureOverlay,{SniperStructureRSI} from './SniperMarketStructureOverlay';
 import SniperHuntHUD from './SniperHuntHUD';
 import SniperM1CandleTape from './SniperM1CandleTape';
 import {SniperLiquidityColumn,SniperScenarioColumn,SniperNextCandleCard} from './SniperHunterSidebars';
@@ -116,6 +118,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    {...sourceGuide,referenceOnly:true}:sourceGuide;
  const huntPreview=useMemo(()=>buildM15HuntPreview(actual,watchGuide,now),
    [actual,watchGuide,Math.floor(now/900000)]);
+ const structure=useMemo(()=>analyzeM15MarketStructure(actual,now),
+   [actual,Math.floor(now/900000)]);
  const nextM1=useMemo(()=>assessM1DirectionalPriority(m.candles,now),
    [m.candles,Math.floor(now/60000)]);
  const verifiedArchive=useMemo(()=>verifiedM15Archive({
@@ -745,7 +749,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    </details>
    <div className="sniper-hunter-workbench">
      <SniperLiquidityColumn history={actual.slice(-48)}
-       price={price??null} preview={huntPreview} liquidityOn={showLiquidity}/>
+       price={price??null} preview={huntPreview} liquidityOn={showLiquidity}
+       structure={structure}/>
      <div className="sniper-hunter-center">
    <div className="sniper-m15-view-controls" aria-label="عرض سيناريو القناص">
      <button type="button" className="sniper-m15-extra-toggle"
@@ -904,6 +909,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                ' · ليست أوامر مستقبلية أو إشارة صفقة'}</title>
            </g>;
          })}
+         {showLiquidity&&<SniperMarketStructureOverlay structure={structure}
+           left={left} split={split} top={plotTop} bottom={plotBottom}
+           py={py} timeX={timeX}/>}
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
            left+(i+.5)*actualStride,realCandleWidth,false,'real'+b.time))}
          {/* The next-M1 watch is fixed by prior CLOSED minute candles,
@@ -1147,6 +1155,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {renderedBars.length?shownBars.length+' M15'+(showHistoricalExtension?' · امتداد أهداف غير زمني':''):'M15'}</text>
      </svg>
    </div>
+     <SniperStructureRSI structure={structure}/>
      {(scaleLevels.some(level=>level.kind!=='PRICE')||
         showLiquidity&&positionedLiquidityLabels.length>0)&&
        <div className="sniper-m15-levels-below" aria-label="دليل المستويات أسفل الرسم">
@@ -1182,7 +1191,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      </div>}
      </div>
      <SniperScenarioColumn preview={huntPreview} guide={watchGuide}
-       qualified={projected.ready} price={price??null} marketOpen={marketOpen}/>
+       qualified={projected.ready} price={price??null} marketOpen={marketOpen}
+       structure={structure}/>
    </div>
    <div className="sniper-hunter-bottom">
      <SniperM1CandleTape history={m.candles} now={now}/>
