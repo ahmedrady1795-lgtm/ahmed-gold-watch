@@ -2,6 +2,7 @@ import type {StructureSnapshot} from '../lib/sniper-market-structure';
 type Props={
   structure:StructureSnapshot;left:number;split:number;top:number;bottom:number;
   py:(price:number)=>number;timeX:(time:number)=>number;
+  visibleFrom?:number;
 };
 const palette=(kind:string)=>kind.startsWith('BULL')||kind.endsWith('_UP')||
   kind==='SWEEP_LOW'?'#42e7af':'#fa7595';
@@ -10,7 +11,9 @@ export default function SniperMarketStructureOverlay(p:Props){
  if(!s.ready)return null;
  const min=p.left+5,max=p.split-7;
  const clamp=(v:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,v));
- const lastEvents=s.events.slice(-4);
+ // Hide structure events that happened before the zoomed visible candles.
+ // Older active zones may still extend into the current price region.
+ const lastEvents=s.events.filter(ev=>ev.at>=(p.visibleFrom??0)).slice(-4);
  return <g className="sniper-market-structure" aria-label="هيكل السوق من الشموع المغلقة">
   {s.zones.map(z=>{
     const start=clamp(p.timeX(z.formedAt),min,max),color=palette(z.kind);
