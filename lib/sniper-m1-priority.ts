@@ -29,7 +29,7 @@ export function assessM1DirectionalPriority(bars:readonly M1Bar[],now:number):M1
   const closedAt=last.time+60000;
   if(now<closedAt||now-closedAt>=60000)
     return wait('لا يوجد إغلاق M1 حديث يصلح لترجيح الدقيقة الجارية');
-  const trueRanges=rows.slice(-15).slice(1).map((b,i,tail)=>
+  const trueRanges=rows.slice(-15).slice(1).map((b,i)=>
     Math.max(b.high-b.low,
       Math.abs(b.high-rows[rows.length-15+i].close),
       Math.abs(b.low-rows[rows.length-15+i].close)));
