@@ -43,6 +43,17 @@ export async function getMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPred
     if(!r.ok||!j||typeof j!=='object'){
       return {ok:false,status:'ERROR',reason:'ML HTTP '+r.status,shadow:true,latencyMs:Date.now()-started};
     }
+    // Never allow malformed external model output to become a trading vote.
+    const validHorizon=(h:any)=>h&&typeof h==='object'&&
+      ['BUY','SELL','WAIT'].includes(h.side)&&
+      ['BUY','SELL'].includes(h.leanSide)&&
+      [h.probUp,h.probDown,h.confidence,h.edge].every((v:any)=>typeof v==='number'&&Number.isFinite(v))&&
+      h.probUp>=0&&h.probUp<=1&&h.probDown>=0&&h.probDown<=1&&
+      Math.abs(h.probUp+h.probDown-1)<0.03&&
+      h.confidence>=0&&h.confidence<=100&&typeof h.ready==='boolean';
+    if(j.ok!==true||!validHorizon(j.oneMinute)||!validHorizon(j.fiveMinute)){
+      return {ok:false,status:'INVALID',reason:'ML response failed schema/probability validation',shadow:true,latencyMs:Date.now()-started};
+    }
     const out:MlPrediction={...j,latencyMs:Date.now()-started};
     cache={at:now,value:out};
     return out;
