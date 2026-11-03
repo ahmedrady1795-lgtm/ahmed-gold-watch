@@ -55,9 +55,11 @@ const btcUI=fs.readFileSync('components/OrderFlowRadar.tsx','utf8');
 const goldUI=fs.readFileSync('components/GoldRadarBadge.tsx','utf8');
 const css=fs.readFileSync('app/gold-sniper-radar.css','utf8');
 assert.match(chart,/className="sniper-m15-preparation-slot"/);
-assert.ok(chart.indexOf('className="sniper-m15-preparation-slot"')<
- chart.indexOf('className="sniper-m15-chart-box"'),
- 'BTC reading must stay above, not obscuring, candlesticks');
+assert.ok(chart.indexOf('className="sniper-m15-preparation-slot"')>
+ chart.indexOf('className="sniper-m15-chart-box"')&&
+ chart.indexOf('className="sniper-m15-preparation-slot"')>
+ chart.indexOf('className="sniper-m15-diagnostics"'),
+ 'BTC reading is available in optional details BELOW the chart and never covers candlesticks');
 assert.match(btcUI,/btcPreparation\(/);
 assert.match(goldUI,/goldPreparation\(/);
 assert.match(btcUI,/Iceberg/);
