@@ -2,7 +2,7 @@ import {closedM1ChartBars,type M1Bar} from './sniper-mt5-m1';
 import {assessM1DirectionalPriority} from './sniper-m1-priority';
 export type CandleTapeMark={
   time:number;predicted:'BUY'|'SELL'|'WAIT';observed:'BUY'|'SELL'|'FLAT';
-  aligned:boolean|null;open:number;close:number;
+  aligned:boolean|null;open:number;high:number;low:number;close:number;
 };
 export type CandleTape={marks:CandleTapeMark[];graded:number;aligned:number};
 /**
@@ -24,7 +24,7 @@ export function buildM1CandleTape(history:readonly M1Bar[],now:number,max=9):Can
     const aligned=priority.side==='WAIT'||observed==='FLAT'?null:
       priority.side===observed;
     marks.push({time:candle.time,predicted:priority.side,
-      observed,aligned,open:candle.open,close:candle.close});
+      observed,aligned,open:candle.open,high:candle.high,low:candle.low,close:candle.close});
   }
   return {marks,graded:marks.filter(x=>x.aligned!==null).length,
     aligned:marks.filter(x=>x.aligned===true).length};
