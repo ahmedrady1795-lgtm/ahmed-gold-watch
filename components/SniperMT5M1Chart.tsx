@@ -106,7 +106,7 @@ export default function SniperMT5M1Chart(p:Props){
             <line x1={LEFT} x2={RIGHT} y1={l.lineY} y2={l.lineY}
               stroke={color} strokeWidth={l.kind==='TRIGGER'?1.65:1.25}
               strokeDasharray={p.referenceOnly?'2 6':l.kind==='TRIGGER'?'7 3':'4 4'}
-              opacity={p.referenceOnly?.65:.95}/>
+              opacity={p.referenceOnly?0.65:0.95}/>
             <rect x={LEFT+2} y={l.labelY-11} width="153" height="14"
               fill="#000" fillOpacity=".85" rx="2"/>
             <text x={LEFT+7} y={l.labelY} direction="ltr"
