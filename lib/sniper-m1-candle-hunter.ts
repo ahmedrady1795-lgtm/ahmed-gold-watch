@@ -15,7 +15,7 @@ export type CandleHunter={
   buy:CandleHunterLevel|null;sell:CandleHunterLevel|null;tradeEligible:false
 };
 export type HunterOutcome='NO_TRIGGER'|'TARGET_TOUCHED'|'STOP_TOUCHED'|
-  'AMBIGUOUS'|'OPEN_GAP_UNKNOWN';
+  'AMBIGUOUS'|'OPEN_GAP_UNKNOWN'|'TRIGGERED_PENDING';
 export type HunterScore={
   observed:number;targetTouches:number;stopTouches:number;
   ambiguous:number;openGapUnknown:number;noTrigger:number;pending:number
@@ -77,8 +77,8 @@ export function scoreNextClosedM1(setup:CandleHunter,next:M1Bar):HunterOutcome{
   const hitStop=up?next.low<=selected.stop:next.high>=selected.stop;
   if(hitTarget&&hitStop)return 'AMBIGUOUS';
   if(hitTarget)return 'TARGET_TOUCHED';
-  if(hitStop)return 'STOP_TOUCHED';
-  return 'NO_TRIGGER';
+  if(hitStop)return 'AMBIGUOUS'; // Cannot determine whether SL preceded entry within M1.
+  return 'TRIGGERED_PENDING';
 }
 export function auditCandleHunter(bars:readonly M1Bar[],now:number,limit=48):HunterScore{
   const closed=closedM1ChartBars(bars,now,72);
@@ -95,6 +95,7 @@ export function auditCandleHunter(bars:readonly M1Bar[],now:number,limit=48):Hun
     else if(outcome==='STOP_TOUCHED')result.stopTouches++;
     else if(outcome==='AMBIGUOUS')result.ambiguous++;
     else if(outcome==='OPEN_GAP_UNKNOWN')result.openGapUnknown++;
+    else if(outcome==='TRIGGERED_PENDING')result.pending++;
     else result.noTrigger++;
   }
   return result;
