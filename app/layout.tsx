@@ -6,6 +6,7 @@ import "./gold-sniper-radar.css";
 import "./sniper-m15-mt5.css";
 import "./m15-scenario-first.css";
 import "./m1-candle-hunter.css";
+import "./m15-chart-clean.css";
 
 export const metadata: Metadata = {
   title: "القناص | Qannas Trading Terminal",

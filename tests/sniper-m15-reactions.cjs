@@ -77,7 +77,8 @@ assert.match(component,/className="sniper-m15-reaction-mark"/);
 assert.match(component,/className="sniper-m15-liquidity-line"/);
 assert.match(component,/mark\.price/);
 assert.match(component,/z\.invalidation/);
-assert.match(component,/projected\.ready&&reactionMap\.marks/);
+assert.match(component,/projected\.ready&&showExtra&&reactionMap\.marks/,
+ 'confirmed reaction marks remain optional instead of cluttering forecast candles');
 assert.doesNotMatch(component,/setTimeout\([^]*?setFrozen/);
 assert.match(component,/const projectedStride=\(end-split-8\)\/Math\.max\(12,renderedBars\.length\);/,
  'conditional drawing fits its candle count without changing the scored bars');

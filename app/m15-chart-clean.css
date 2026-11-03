@@ -1,0 +1,40 @@
+/* The actual production M15 chart: keep OHLC and lines in the SVG;
+   price labels live in a separate responsive key rather than over candles. */
+.sniper-m15-compact-status{
+ display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;
+ gap:4px 10px;padding:5px 9px;margin:4px 0 6px;background:#091822;
+ border:1px solid #294958;border-radius:7px;color:#c8dae5;font-size:11px;
+}
+.sniper-m15-compact-status b{font-size:11px;color:#c3ebea;
+ font-weight:800;font-variant-numeric:tabular-nums;unicode-bidi:isolate}
+.sniper-m15-levels-below{border:1px solid #2c4c5d;border-radius:8px;
+ background:#0c1c29;margin-top:6px;padding:7px}
+.sniper-m15-level-key{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+ gap:5px;direction:rtl}
+.sniper-m15-level-chip{display:flex;flex-direction:column;gap:2px;min-width:0;
+ border:1px solid #345162;border-inline-start:3px solid #63d5b0;
+ border-radius:6px;background:#071621;padding:6px 8px;line-height:1.35}
+.sniper-m15-level-chip small{font-size:10px;font-weight:650;color:#b3ccda;
+ overflow-wrap:anywhere}
+.sniper-m15-level-chip b{font-size:12px;color:#e7f2f6;font-weight:800;
+ font-variant-numeric:tabular-nums;unicode-bidi:isolate;white-space:nowrap}
+.sniper-m15-level-chip.is-stop{border-inline-start-color:#f08b9c}
+.sniper-m15-level-chip.is-illustration{border-inline-start-color:#e4c88b}
+.sniper-m15-level-chip.is-zone{border-inline-start-width:3px}
+@media(max-width:640px){
+ .sniper-m15-panel .sniper-m15-chart-box{
+  height:clamp(530px,73dvh,760px)!important;min-height:530px;
+ }
+ .sniper-m15-panel .sniper-m15-chart-box svg{min-height:530px}
+ .sniper-m15-level-key{grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
+ .sniper-m15-level-chip{padding:5px 7px}
+ .sniper-m15-level-chip small{font-size:9px}
+ .sniper-m15-level-chip b{font-size:11px}
+ .sniper-m15-compact-status{font-size:10px;padding:5px 7px}
+}
+@media(max-width:360px){
+ .sniper-m15-panel .sniper-m15-chart-box{
+  height:clamp(500px,70dvh,700px)!important;min-height:500px
+ }
+ .sniper-m15-panel .sniper-m15-chart-box svg{min-height:500px}
+}
