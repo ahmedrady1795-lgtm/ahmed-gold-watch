@@ -69,6 +69,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [chartMode,setChartMode]=useState<'M1'|'M15'>('M15');
  const [showExtra,setShowExtra]=useState(false);
  const [showHistoricalExtension,setShowHistoricalExtension]=useState(false);
+ const [focusView,setFocusView]=useState(true);
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
  const onRadarView=useCallback((v:RadarView|null)=>setLiveRadar(v),[]);
  const asset=assetView==='ALL'?chosen:assetView;
@@ -185,7 +186,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // and redraw the forecast every few seconds.
  const anchor=validLive&&forming&&m.candles.at(-1)?
    m.candles.at(-1)!.close:null;
- const trueHistory=recent;
+ // Draw the nearest 18 authentic M15 candles by default. Older, real
+ // candles remain available via the context toggle; neither mode edits OHLC.
+ const trueHistory=focusView?recent.slice(-18):recent;
  const price=m.price;
  const pools=useMemo(()=>buildChartOverlay({
    now,price:m.price,historyFresh:m.historyFresh,
@@ -607,9 +610,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      typeof v==='number'&&Number.isFinite(v)&&v>0)??null;
  const min=important.length?Math.min(...important):(chartReference??1);
  const max=important.length?Math.max(...important):(chartReference??1);
- const viewport=mt5M15Viewport({mode:'ALL',allLow:min,allHigh:max,
+ const viewport=mt5M15Viewport({mode:focusView?'FOCUS':'ALL',allLow:min,allHigh:max,
    lastPrice:chartReference,history:trueHistory,
-   forecast:projected.bars,atr:projected.atr});
+   // In WATCH mode use both closed-M15-derived illustrative routes to size
+   // the display. Ignore remote levels for vertical zoom; never move prices.
+   forecast:projected.ready?projected.bars:[...huntPreview.buy,...huntPreview.sell],
+   atr:projected.atr??watchGuide.atr});
  const {lo,hi}=viewport;
  const py=(p:number)=>plotTop+(hi-p)/(hi-lo)*(plotBottom-plotTop);
  const scaleLevels=[
@@ -753,6 +759,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        structure={structure}/>
      <div className="sniper-hunter-center">
    <div className="sniper-m15-view-controls" aria-label="عرض سيناريو القناص">
+     <button type="button" className="sniper-m15-focus-toggle"
+       aria-pressed={focusView} onClick={()=>setFocusView(v=>!v)}
+       title="قرب الشموع المتوقعة والأهداف دون تغيير سعرها أو شكلها الحقيقي">
+       {focusView?'سياق كامل':'تكبير الحركة القريبة'}</button>
      <button type="button" className="sniper-m15-extra-toggle"
        aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}
        title="عرض أو إخفاء التفاصيل الفنية الثانوية">
@@ -764,7 +774,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {showHistoricalExtension?'عرض أول 12 شمعة':'السيناريو للأهداف'}</button>}
    </div>
    <div className="sniper-m15-compact-status" role="status">
-     <span>{projected.ready?'سيناريو M15 · 12 شمعة':showWatchGuide?'نطاق مراقبة M15':'شموع M15 حقيقية'}</span>
+     <span>{projected.ready?'سيناريو M15 · 12 شمعة':showWatchGuide?'نطاق مراقبة M15':'شموع M15 حقيقية'}
+       {focusView?' · آخر 18 شمعة':' · كل التاريخ'}</span>
      <b dir="ltr">{formingVisible&&forming?'LIVE '+n(forming.close):
        latestClosed?'CLOSE '+n(latestClosed.close):'—'}</b>
    </div>
