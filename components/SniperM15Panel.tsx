@@ -1145,6 +1145,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
          {renderedBars.length?shownBars.length+' M15'+(showHistoricalExtension?' · امتداد أهداف غير زمني':''):'M15'}</text>
      </svg>
+   </div>
      {(scaleLevels.some(level=>level.kind!=='PRICE')||
         showLiquidity&&positionedLiquidityLabels.length>0)&&
        <div className="sniper-m15-levels-below" aria-label="دليل المستويات أسفل الرسم">
@@ -1178,7 +1179,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          <small>مراقبة فقط · قمم وقيعان M15/H1 المغلقة · ليست TP مضمونًا</small>
        </>:<small>{watchMap.reason} · لا أهداف افتراضية</small>}
      </div>}
-   </div>
    </>}
    <details className="sniper-m15-diagnostics">
      <summary>تفاصيل إضافية: الرادار والاختبارات والسيولة</summary>
