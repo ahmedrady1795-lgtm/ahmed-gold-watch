@@ -25,7 +25,7 @@ export default function SniperM15HuntOverlay(p:Props){
         const yHigh=clip(p.py(b.high)),yLow=clip(p.py(b.low));
         const top=Math.min(yOpen,yClose),height=Math.max(1.8,Math.abs(yOpen-yClose));
         const rising=b.close>=b.open;
-        const opacity=f.referenceOnly?.3:selected?.87:anchored?.26:.47;
+        const opacity=f.referenceOnly?0.3:selected?0.87:anchored?0.26:0.47;
         return <g key={'sim-'+side+'-'+b.time}>
           <line x1={x} x2={x} y1={yHigh} y2={yLow}
             stroke={color[side]} strokeWidth={selected?1.7:1.1}
@@ -34,7 +34,7 @@ export default function SniperM15HuntOverlay(p:Props){
             stroke={color[side]} strokeWidth={selected?1.5:1}
             strokeDasharray={selected?'none':'2 2'}
             fill={rising?'#37ad8e':'#b54c68'}
-            fillOpacity={selected?(f.referenceOnly?.13:.34):.055}
+            fillOpacity={selected?(f.referenceOnly?0.13:0.34):0.055}
             strokeOpacity={opacity}/>
           <title>{(side==='BUY'?'احتمال صعود':'احتمال هبوط')+
             ' · شمعة '+(i+1)+' · OHLC افتراضي غير مُتحقق'}</title>
@@ -64,7 +64,7 @@ export default function SniperM15HuntOverlay(p:Props){
           .map(pt=>pt.join(',')).join(' ')}
           fill="none" stroke={color[side]}
           strokeWidth={f.preferred===side?1.8:1.1}
-          strokeOpacity={f.referenceOnly?.3:f.preferred===side?.68:.3}
+          strokeOpacity={f.referenceOnly?0.3:f.preferred===side?0.68:0.3}
           strokeDasharray={f.preferred===side?'6 4':'2 6'}/>
         {drawCandles(side==='BUY'?f.buy:f.sell,side)}
       </g>
