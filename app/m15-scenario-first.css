@@ -61,3 +61,24 @@
   .sniper-minute-audit-strip small{width:100%}
   .sniper-m15-forecast-unavailable{font-size:10px}
 }
+
+/* M15 scenario analysis remains useful even when trade/ML gates stay closed. */
+.sniper-m15-watch-summary{display:flex;gap:5px 13px;flex-wrap:wrap;align-items:center;
+  padding:7px 0;border-top:1px solid #2a4652;color:#c8e4ed;font-size:11px}
+.sniper-m15-watch-summary span{display:inline-flex;gap:6px;align-items:center}
+.sniper-m15-watch-summary b{color:#e3f3f4;font-size:12px;font-variant-numeric:tabular-nums}
+.sniper-m15-watch-summary span:first-child b{color:#91eac8}
+.sniper-m15-watch-summary span:nth-child(2) b{color:#f4a0af}
+.sniper-m15-watch-summary small{font-size:10px;color:#dbc695}
+.sniper-m15-unavailable-details{font-size:10px;color:#b7c9d4;margin-top:4px}
+.sniper-m15-unavailable-details summary{display:inline-block;cursor:pointer;color:#9bbacb}
+.sniper-m15-unavailable-details p{margin:5px 0;color:#cdbb98;line-height:1.6}
+.sniper-m15-unavailable-details summary:focus-visible{outline:2px solid #e7d3a3}
+.sniper-m15-watch-guide text{paint-order:stroke;pointer-events:none}
+details.sniper-minute-audit-strip{display:block;margin:4px 0 7px}
+details.sniper-minute-audit-strip summary{cursor:pointer;font-size:11px;font-weight:700}
+details.sniper-minute-audit-strip small{display:block;margin-top:5px}
+@media(max-width:600px){
+  .sniper-m15-watch-summary{gap:4px 10px;font-size:10px}
+  .sniper-m15-watch-summary b{font-size:11px}
+}

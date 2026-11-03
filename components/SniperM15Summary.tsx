@@ -1,3 +1,4 @@
+import type {M15WatchGuide} from '../lib/sniper-m15-watch-guide';
 type Side='BUY'|'SELL'|'WAIT';
 type Level={stage:number;price:number};
 type Candle={open:number;close:number};
@@ -7,6 +8,7 @@ type Props={
   price:number|null;trigger:number|null;upper:number|null;lower:number|null;
   stop:number|null;targets:Level[];nextBar:Candle|null;signal:string|null;
   noForecastReason?:string|null;
+  watchGuide?:M15WatchGuide|null;
 };
 const fmt=(v:number|null|undefined)=>v!=null&&Number.isFinite(v)&&v>0?
   v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
@@ -30,6 +32,7 @@ export default function SniperM15Summary(p:Props){
     !p.marketOpen?'آخر بيانات فقط · لا توجد إشارة حية':
     p.providerTransition?'ننتظر اكتمال تغيير مصدر الأسعار':
     !p.fresh?'الشموع غير حديثة أو شروط M15 غير مكتملة':
+    p.watchGuide?.ready?p.watchGuide.reason+' · نطاق تحليلي للمراقبة فقط':
     p.signal??'نراقب شروط الكسر قبل إصدار توقع شموع جديد';
   return <section className={'sniper-m15-scenario-summary '+(p.ready?'is-ready':p.saved?'is-saved':'is-watch')}
     aria-label="السيناريو الأساسي ظاهر دائمًا">
@@ -49,8 +52,15 @@ export default function SniperM15Summary(p:Props){
     </div>
     <p className="sniper-m15-summary-reason">{message}
       <small> · متابعة مشروطة، وليست أمر تداول.</small></p>
-    {!p.ready&&p.noForecastReason&&<p className="sniper-m15-forecast-unavailable">
-      سبب عدم ظهور شموع التوقع: {p.noForecastReason}
-    </p>}
+    {!p.ready&&p.watchGuide?.ready&&<div className="sniper-m15-watch-summary">
+      <span>صعود مشروط <b dir="ltr">{fmt(p.watchGuide.up[2])}</b></span>
+      <span>هبوط مشروط <b dir="ltr">{fmt(p.watchGuide.down[2])}</b></span>
+      <small>{p.watchGuide.referenceOnly?'نطاق سابق · ليس حيًا':
+        'نطاق ATR من إغلاقات M15 · ليس TP أو إشارة دخول'}</small>
+    </div>}
+    {!p.ready&&p.noForecastReason&&<details className="sniper-m15-unavailable-details">
+      <summary>ليه مفيش شموع توقع معتمدة؟</summary>
+      <p>{p.noForecastReason}</p>
+    </details>}
   </section>;
 }

@@ -3,7 +3,7 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import SniperM15Summary from './SniperM15Summary';
 import SniperM1CandleHunter from './SniperM1CandleHunter';
-import {auditCandleHunter} from '../lib/sniper-m1-candle-hunter';
+import {buildM15WatchGuide} from '../lib/sniper-m15-watch-guide';
 import OrderFlowRadar from './OrderFlowRadar';
 import GoldRadarBadge from './GoldRadarBadge';
 import type {RadarView} from '../lib/order-flow-radar';
@@ -100,10 +100,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const m=useMemo(()=>buildForecastIllustration(asset,x,liveQuote,now,snapshotAt,
    null,true,null,null,observationAt),
    [asset,x,liveQuote,now,snapshotAt,observationAt]);
- const minuteAudit=useMemo(()=>auditCandleHunter(m.candles,now,48),
-    [m.candles,Math.floor(now/60000)]);
  const actual=useMemo(()=>closedM15Bars(x?.chartHigherFrames?.m15,now,320),
    [x?.chartHigherFrames?.m15,now]);
+ // A source-backed analysis lane remains drawable even when ML/Neural trade
+ // qualification is unavailable. It NEVER creates broker-ready signals.
+ const sourceGuide=useMemo(()=>buildM15WatchGuide(actual,now),[actual,now]);
+ const watchGuide=(providerTransition||!marketOpen)&&sourceGuide.ready?
+   {...sourceGuide,referenceOnly:true}:sourceGuide;
  const verifiedArchive=useMemo(()=>verifiedM15Archive({
    ledger:archiveState?.asset===asset?archiveState.ledger:null,
    asset,source:String(x?.candleSource||''),now,live:actual
@@ -508,6 +511,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    aligned.goals.filter(g=>!goals.some(hit=>hit.stage===g.stage)):[];
  const stop=aligned?.stop??null;
  const projected=aligned?.scenario??noScenario;
+ const showWatchGuide=!projected.ready&&watchGuide.ready;
  const reactionMap=aligned?{
    bands:aligned.reactions.bands,
    marks:aligned.reactions.marks.filter(m=>
@@ -556,7 +560,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  });
  const phase=sniperPhaseBadge({ready:liquidity.ready,
    contextKind:liquidity.context?.kind,phase:liquidity.phase,side:chartSide});
- const W=430,H=704,left=8,split=projected.ready?215:422,end=422,
+ const W=430,H=704,left=8,split=projected.ready||showWatchGuide?215:422,end=422,
    plotTop=26,plotBottom=H-33;
  // A single absolute price axis contains EVERY currently valid target and
  // stop. No fake vertical positioning of offscreen targets.
@@ -575,6 +579,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    // the entire candle field. The viewport follows closed bars and frozen levels.
    ...(stop!=null?[stop]:[]),
    ...renderedBars.flatMap(c=>[c.high,c.low]),
+   ...(showWatchGuide?[
+     ...watchGuide.up,...watchGuide.down,
+     watchGuide.upperTrigger??0,watchGuide.lowerTrigger??0
+   ]:[]),
    ...visibleZones.flatMap(z=>[z.low,z.high]),
    ...(showLiquidity?reactionMap.bands.flatMap(z=>[z.low,z.high]):[]),
    ...reactionMap.marks.map(z=>z.price),
@@ -690,10 +698,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <button type="button" onClick={()=>setChosen('BTC')} aria-pressed={asset==='BTC'}>BTCUSD</button>
      </div>:<b>{asset==='GOLD'?'XAUUSD':'BTCUSD'}</b>}
      <b className="sniper-m15-frame">{chartMode}</b>
-     <button type="button" className="sniper-m15-liquidity-toggle"
+     {chartMode==='M15'&&<button type="button" className="sniper-m15-liquidity-toggle"
        aria-pressed={showLiquidity} onClick={()=>setShowLiquidity(v=>!v)}
        title="مناطق سيولة القمم والقيعان، الطلب والعرض والارتداد أو الرفض بعد إغلاق M15">
-       {showLiquidity?'المناطق ✓':'المناطق'}</button>
+       {showLiquidity?'المناطق ✓':'المناطق'}</button>}
    </header>
    <nav className="sniper-candle-mode" aria-label="اختيار سرعة القنص">
      <button type="button" aria-pressed={chartMode==='M1'}
@@ -701,13 +709,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <button type="button" aria-pressed={chartMode==='M15'}
        onClick={()=>setChartMode('M15')}>M15 · رسم السيناريو</button>
    </nav>
-   <div className="sniper-minute-audit-strip" role="status" aria-label="نتائج فحص قنص الدقيقة على الشموع المغلقة">
-     <strong>قنص M1 · فحص آخر {minuteAudit.observed} فرصة</strong>
-     <span>لمس هدف: {minuteAudit.targetTouches}</span>
-     <span>ملتبس/غير محسوم: {minuteAudit.ambiguous+minuteAudit.openGapUnknown+minuteAudit.pending}</span>
-     <span>بدون كسر: {minuteAudit.noTrigger}</span>
-     <small>{minuteAudit.observed<30?'عينة صغيرة · ':''}ليست نتائج صفقات ولا ربحًا صافيًا</small>
-   </div>
    {chartMode==='M1'?<SniperM1CandleHunter asset={asset}
      history={m.candles} historicalSource={String(x?.candleSource||'')}
      quote={liveQuote} now={now} marketOpen={marketOpen}
@@ -720,29 +721,34 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        currentSignalSide!=='WAIT'?currentSignalSide:safeSide}
      price={currentSignalPrice}
      trigger={currentSignalSide!=='WAIT'?liveOpportunity.trigger:null}
-     upper={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.upper:null}
-     lower={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.lower:null}
+     upper={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.upper:
+       showWatchGuide?watchGuide.upperTrigger:null}
+     lower={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.lower:
+       showWatchGuide?watchGuide.lowerTrigger:null}
      stop={projected.ready?stop:stable?.stop??(currentSignalSide!=='WAIT'?liveOpportunity.invalidation:null)}
      targets={projected.ready||stable?stable?.goals??[]:
        currentSignalSide!=='WAIT'?liveOpportunity.targets.map((price,i)=>({stage:i+1,price})):[]}
      nextBar={projected.ready?shownBars[0]??null:null}
      signal={currentSignalSide!=='WAIT'?currentSignalLabel:null}
-     noForecastReason={!projected.ready?lifecycle:null}/>
+     noForecastReason={!projected.ready?lifecycle:null}
+     watchGuide={showWatchGuide?watchGuide:null}/>
    <div className="sniper-m15-view-controls" aria-label="عرض سيناريو القناص">
      <button type="button" className="sniper-m15-extra-toggle"
        aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}
        title="عرض أو إخفاء التفاصيل الفنية الثانوية">
        {showExtra?'إخفاء علامات الرسم':'علامات الرسم'}</button>
-     <button type="button" className="sniper-m15-extension-toggle"
+     {projected.ready&&<button type="button" className="sniper-m15-extension-toggle"
        aria-pressed={showHistoricalExtension}
        onClick={()=>setShowHistoricalExtension(v=>!v)}
        title="شموع الامتداد بعد الاثنتي عشرة الأولى غير مُقيّمة">
-       {showHistoricalExtension?'12 شمعة مقيّمة':'امتداد تاريخي'}</button>
+       {showHistoricalExtension?'12 شمعة مقيّمة':'امتداد تاريخي'}</button>}
    </div>
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
-         'شموع M15 فعلية ثم 12 شمعة تاريخية مماثلة فقط، والأهداف الهيكلية البعيدة مستويات مراقبة وليست وصولًا متوقعًا، مع الإبطال. '+
+         (projected.ready?'شموع M15 مغلقة مع سيناريو محفوظ من أنماط تاريخية؛ ليس مستقبلًا مؤكدًا. ':
+           showWatchGuide?'شموع M15 مغلقة ومساران مشروطان من ATR للمراقبة، وليسا توقع شموع أو أوامر. ':
+           'شموع M15 مغلقة فقط؛ لا يوجد نطاق مراقبة موثوق حاليًا. ')+
          (verifiedArchive.ready?'أرشيف حقيقي متحقق '+verifiedArchive.storedBars+' شمعة':'أرشيف سنوات غير متاح')+
          '. تقييم خارج العينة '+walkForward.selected+' قرارًا، لا يثبت أفضلية.'
        }
@@ -881,6 +887,45 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
            left+(i+.5)*actualStride,realCandleWidth,false,'real'+b.time))}
 
+         {showWatchGuide&&watchGuide.anchor!=null&&
+           <g className="sniper-m15-watch-guide"
+             aria-label="رسم مساري مراقبة M15 المستقلين عن تأهيل التداول">
+             {/* TWO conditional volatility routes from the last CLOSED M15.
+                 These are NOT hypothetical OHLC candles or broker signals. */}
+             <line x1={split} x2={split} y1={plotTop} y2={plotBottom}
+               stroke="#657b88" strokeDasharray="4 5" strokeWidth="1.1"/>
+             <text x={split+8} y={plotTop+14} fill="#e4ce9a"
+               fontSize="9" textAnchor="start" direction="rtl">
+               {watchGuide.referenceOnly?'نطاق سابق · غير حي':'M15 · سيناريو مراقبة'}
+             </text>
+             {([
+               {side:'BUY',levels:watchGuide.up,color:'#6bdfb7'},
+               {side:'SELL',levels:watchGuide.down,color:'#f28fa4'}
+             ] as const).map(branch=>{
+               const opacity=watchGuide.bias==='WAIT'||watchGuide.bias===branch.side?0.9:0.55;
+               const points=[
+                 [split+8,py(watchGuide.anchor!)],
+                 ...branch.levels.map((v,i)=>[
+                   split+20+(i+1)*projectedStride*2,py(v)])
+               ];
+               const ending=points.at(-1)!;
+               return <g key={'m15-watch-'+branch.side}>
+                 <polyline points={points.map(point=>point.join(',')).join(' ')}
+                   fill="none" stroke={branch.color} strokeOpacity={opacity}
+                   strokeWidth={watchGuide.bias===branch.side?2.5:1.7}
+                   strokeDasharray={watchGuide.referenceOnly?'2 6':'6 4'}/>
+                 <circle cx={ending[0]} cy={ending[1]} r="3"
+                   fill="#000" stroke={branch.color} strokeWidth="1.4"/>
+                 <text x={Math.min(end-86,ending[0]+7)} y={ending[1]-7}
+                   fill={branch.color} fontSize="8.5" textAnchor="start"
+                   direction="rtl" stroke="#000" strokeWidth="2"
+                   paintOrder="stroke">
+                   {branch.side==='BUY'?'نطاق صعود':'نطاق هبوط'}
+                 </text>
+               </g>;
+             })}
+             <title>{watchGuide.reason+' · هذا نطاق ATR مشروط من شموع M15 مغلقة، وليس توقع شموع مستقبلية ولا تصريح دخول'}</title>
+           </g>}
          {projected.ready&&<line x1={split} x2={split} y1={plotTop} y2={plotBottom}
            stroke="#7e9bb1" strokeWidth="1.25" strokeDasharray="5 5"/>}
          {projected.ready&&<text x={end-8} y={plotTop+13}
@@ -1067,7 +1112,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              ' · لا يمثل نسبة نجاح أو إذن تنفيذ'}</title>
          </g>;
        })()}
-       {!projected.ready&&<g className="sniper-m15-empty-reason">
+       {!projected.ready&&!showWatchGuide&&<g className="sniper-m15-empty-reason">
          <text x={(split+end)/2} y={plotTop+66} fill="#d6bd8f"
            fontSize="9" textAnchor="middle" direction="rtl">
            {detached?'السعر الحي ابتعد عن التوقع المحفوظ':
@@ -1089,9 +1134,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          <title>{firstM15Stats.detail}</title>
        </g>}
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
-       <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'} fontSize="10" textAnchor="start" direction="ltr">{projected.ready?'M15 · FORECAST':'M15 · LIVE'}</text>
+       <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'} fontSize="10" textAnchor="start" direction="ltr">{projected.ready?'M15 · FORECAST':showWatchGuide?'M15 · WATCH':'M15 · LIVE'}</text>
        <text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
-         textAnchor="start" direction="rtl">{projected.ready?'أول 12 شمعة للتقييم · الامتداد عرض تاريخي غير مُقيّم':'شموع فعلية متصلة · لا توجد شموع توقع معتمدة الآن'}</text>
+         textAnchor="start" direction="rtl">{projected.ready?'أول 12 شمعة للتقييم · الامتداد عرض تاريخي غير مُقيّم':showWatchGuide?'مساران مشروطان من M15 مغلق · ليست شموع مستقبلية':'شموع فعلية متصلة · لا توجد شموع توقع معتمدة الآن'}</text>
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(formingVisible&&forming?forming.time:latestClosed.time)}</text>}
