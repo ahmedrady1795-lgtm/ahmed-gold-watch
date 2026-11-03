@@ -904,7 +904,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                {side:'BUY',levels:watchGuide.up,color:'#6bdfb7'},
                {side:'SELL',levels:watchGuide.down,color:'#f28fa4'}
              ] as const).map(branch=>{
-               const opacity=watchGuide.bias==='WAIT'||watchGuide.bias===branch.side?.9:.55;
+               const opacity=watchGuide.bias==='WAIT'||watchGuide.bias===branch.side?0.9:0.55;
                const points=[
                  [split+8,py(watchGuide.anchor!)],
                  ...branch.levels.map((v,i)=>[
