@@ -315,13 +315,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    c1:m.candles,c5:x?.chartHigherFrames?.m5,preMove,watch:watchMap
  }),[now,price,marketOpen,m.sniper.view.priceFresh,m.historyFresh,
    providerTransition,m.candles,x?.chartHigherFrames?.m5,preMove,watchMap]);
- const formingBias: 'BUY'|'SELL'|'WAIT' =
-   freshObservation&&formingVisible&&forming?
-     forming.close>forming.open?'BUY':forming.close<forming.open?'SELL':'WAIT':'WAIT';
- const currentSignalSide=liveOpportunity.phase==='BREAK_CONFIRMED'?
-   liveOpportunity.side:
+ // Never derive BUY/SELL from the colour of an unfinished candle. The live
+ // candle is display-only; direction comes from closed-bar PREMOVE or M1 proof.
+ const formingBias: 'BUY'|'SELL'|'WAIT'='WAIT';
+ const currentSignalSide=liveOpportunity.phase==='BREAK_CONFIRMED'||
    liveOpportunity.phase==='PREPARE'||liveOpportunity.phase==='TESTING'?
-     liveOpportunity.side:formingBias;
+     liveOpportunity.side:'WAIT';
  const currentSignalLabel=liveOpportunity.phase==='BREAK_CONFIRMED'?
    (liveOpportunity.side==='BUY'?'شراء مؤكد بإغلاق M1':
     liveOpportunity.side==='SELL'?'بيع مؤكد بإغلاق M1':'انتظار'):
@@ -331,8 +330,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
     (liveOpportunity.side==='BUY'?'اختبار كسر صاعد':'اختبار كسر هابط'):
    liveOpportunity.phase==='CANCELLED'?'الكسر ملغي':
    liveOpportunity.phase==='OFFLINE'?'البيانات غير جاهزة':
-   formingBias==='BUY'?'ميل شراء · شمعة صاعدة غير مؤكدة':
-   formingBias==='SELL'?'ميل بيع · شمعة هابطة غير مؤكدة':'انتظار';
+   preMoveReady?'ضغط مبكر '+(preMove.side==='BUY'?'صاعد':'هابط')+' من شموع مغلقة':
+   'انتظار قراءة مسبقة من M1/M5';
  const currentSignalPrice=formingVisible&&forming?forming.close:price;
  // Keep first-issued target levels immutable; only future CLOSED M1 can score them.
  const [movementRecords,setMovementRecords]=useState<MovementProof[]>([]);
@@ -480,9 +479,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // forecast rail must have an actual intersecting hypothetical wick.
  // A pinned route from a previous M15 window must never masquerade as a
  // fresh projection starting at the current live candle.
+ // Keep the original forecast visible even after live price diverges.
+ // Divergence changes its status to detached; it must not make the candles blink.
  const aligned=stable&&validLive&&forming&&
    stable.anchorTime<=forming.time&&
-   forming.time<stable.anchorTime+12*900000&&!detached?stable:null;
+   forming.time<stable.anchorTime+12*900000?stable:null;
  const elapsedSteps=aligned&&forming?
    Math.max(0,Math.round((forming.time-aligned.anchorTime)/900000)):0;
  // Retain ORIGINAL forecast timestamps. On later real candles only the
@@ -563,10 +564,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ...goals.map(t=>t.price),
    // Distant watch-only objectives must not stretch the price axis and
    // flatten the actual candles. Unreached levels remain in the side labels.
-   ...(showLiquidity?watchPrices.filter(t=>
-     Math.abs(t.price-(price??anchor??t.price))<=historyZoneSpan*.9
-   ).map(t=>t.price):[]),
-   ...(stop!=null?[stop]:[]),...(price!=null?[price]:[]),
+   // Do not let tick-by-tick quotes or price-filtered watch labels rescale
+   // the entire candle field. The viewport follows closed bars and frozen levels.
+   ...(stop!=null?[stop]:[]),
    ...renderedBars.flatMap(c=>[c.high,c.low]),
    ...visibleZones.flatMap(z=>[z.low,z.high]),
    ...(showLiquidity?reactionMap.bands.flatMap(z=>[z.low,z.high]):[]),
@@ -574,13 +574,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ...(showLiquidity?futureZones.flatMap(z=>[z.low,z.high]):[]),
    ...(showLiquidity?zoneBoard.items.flatMap(z=>z.low!=null&&z.high!=null?
      [z.low,z.high]:[]):[]),
-   ...(formingVisible&&forming?[forming.open,forming.high,forming.low,forming.close]:[])
  ].filter(v=>Number.isFinite(v)&&v>0);
  // A missing LIVE candle is NOT a price of $1. In WAIT/stale states
  // that synthetic fallback made the BTC axis span 0–87k and flattened all
  // genuine M15 candles into a row at the top. Scale only observed prices.
- const chartReference=[formingVisible?forming?.close:null,price,
-   trueHistory.at(-1)?.close,anchor].find(v=>
+ const chartReference=[trueHistory.at(-1)?.close,anchor].find(v=>
      typeof v==='number'&&Number.isFinite(v)&&v>0)??null;
  const min=important.length?Math.min(...important):(chartReference??1);
  const max=important.length?Math.max(...important):(chartReference??1);
