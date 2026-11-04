@@ -72,8 +72,8 @@ export function startLeadObservation(
   const threshold=Math.max(candidate.cost*2,price*.0001);
   return {id:candidate.id,lane,side:candidate.side,score:candidate.score,
     setup:candidate.setup,status:candidate.status,source:quote.source,
-    startedAt:at,lastQuoteAt:at,
-    expiresAt:at+(lane==='GOLD_M1'?60_000:lane==='GOLD_M5'?300_000:30_000),
+    startedAt:now,lastQuoteAt:at,
+    expiresAt:now+(lane==='GOLD_M1'?60_000:lane==='GOLD_M5'?300_000:30_000),
     startPrice:price,threshold:fixed(threshold),maxFavorable:0,maxAdverse:0,
     result:'OPEN',resolvedAt:null,reason:'OBSERVING_FUTURE_QUOTES'};
 }
@@ -87,7 +87,7 @@ export function advanceLeadObservation(
   if(now>record.expiresAt+MAX_GAP_MS)return close('UNKNOWN','UNOBSERVED_HORIZON',now);
   if(!fresh(quote,now))return record; // allow a brief outage; expiration will mark UNKNOWN
   const at=Number(quote.at),price=Number(quote.price);
-  if(at<=record.lastQuoteAt)return record; // never re-evaluate or backdate a quote
+  if(at<=record.lastQuoteAt||at<=record.startedAt)return record; // only quotes after the signal was computed
   if(quote.source!==record.source)return close('UNKNOWN','SOURCE_CHANGED',at);
   if(at-record.lastQuoteAt>MAX_GAP_MS)return close('UNKNOWN','QUOTE_GAP',at);
   if(at>record.expiresAt+5000)return close('UNKNOWN','HORIZON_NOT_OBSERVED',at);
