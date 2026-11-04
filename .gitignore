@@ -10,3 +10,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+
+# Windows laptop bridge local files
+mt5_bridge/.venv/
+mt5_bridge/.state.json
+mt5_bridge/KILL_SWITCH
+**/__pycache__/
+*.pyc
