@@ -20,7 +20,9 @@ Independent ML/Neural services also showed HTTP 429 cooldown in `[AI-DIAG]` logs
 
 ## Reading the results
 
-The mobile **Scalp Lab** screen (`/scalp`) shows separate GOLD M1/M5 shadow observation counts and observed time-to-favorable, with missing/unknown values displayed rather than presented as trades.\n\nThe existing `GET /api/scalp` response adds:
+The mobile **Scalp Lab** screen (`/scalp`) shows separate GOLD M1/M5 shadow observation counts and observed time-to-favorable, with missing/unknown values displayed rather than presented as trades.
+
+The existing `GET /api/scalp` response adds:
 - `gold.leadAudit.m1`
 - `gold.leadAudit.m5`
 
