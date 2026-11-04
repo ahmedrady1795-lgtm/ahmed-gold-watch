@@ -84,7 +84,7 @@ export function advanceLeadObservation(
   const close=(result:Outcome,reason:string,at:number,updated=record)=>({
     ...updated,result,reason,resolvedAt:at
   });
-  if(now>o.expiresAt+MAX_GAP_MS)return close('UNKNOWN','UNOBSERVED_HORIZON',now);
+  if(now>record.expiresAt+MAX_GAP_MS)return close('UNKNOWN','UNOBSERVED_HORIZON',now);
   if(!fresh(quote,now))return record; // allow a brief outage; expiration will mark UNKNOWN
   const at=Number(quote.at),price=Number(quote.price);
   if(at<=record.lastQuoteAt)return record; // never re-evaluate or backdate a quote
