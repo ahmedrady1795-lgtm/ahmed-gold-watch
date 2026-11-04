@@ -1,6 +1,10 @@
 # Ahmed Gold Watch MT5 Bridge
 
-Windows/VPS bridge for MetaTrader 5. It is fail-closed and **dry-run by default**.
+Windows laptop/VPS bridge for MetaTrader 5. It is fail-closed and **dry-run by default**.
+
+For a Windows **home laptop** (DEMO-only setup, no VPS), use [the Arabic laptop setup guide](./SETUP-LOCAL-LAPTOP-AR.md). Run `setup_laptop.bat` once and then `start_laptop_demo.bat`. This launcher checks for a demo MT5 account before starting.
+
+For privacy, `SEND_ACCOUNT_DETAILS=false` by default: broker login, balance and equity are not uploaded. Tick/candle data and demo journal events are still sent to the configured HTTPS website.
 
 ## What changed in Master 3.0
 - Every polling cycle publishes the latest broker tick (Bid/Ask/time) to `/api/mt5/status`.
