@@ -16,11 +16,11 @@ Independent ML/Neural services also showed HTTP 429 cooldown in `[AI-DIAG]` logs
 - Threshold is frozen at `max(2 * estimated execution cost, 0.01% of the reference price)`. This is a *directional research threshold*, **not** a TP, SL or evidence of executable net profit. No real commission, swap, slippage or fill is observed.
 - Horizon: M1 60 seconds, M5 300 seconds, Ambush 30 seconds. Repeated or pre-decision quotes are ignored. Quote gaps over 15 seconds, source changes, or an unobserved end-of-horizon produce `UNKNOWN`, never a win/loss. A fully observed but threshold-free horizon is `NO_THRESHOLD`, excluded from first-touch directional rate.
 - No overlapping samples within one lane and no historical repainting; only live future quotes are used. This is **not** a continuous market collector: when no client polls `/api/scalp` or the MT5 bridge doesn't poll the demo route, data may be unobservable and will become unknown on the next evaluation.
-- Each lane stores the most recent 500 closed outcomes in `/data/scalp-lead-audit-v1.json`. `persisted=false` signals that the file could not be persisted. This path must be a persistent disk; in-memory globals alone will be lost on restart.
+- Each lane checkpoints active observations periodically (at most once every 10 seconds) and always on start/settlement, to limit free-service disk writes. A crash during an unpersisted interval can make the outcome unknown. Each lane stores the most recent 500 closed outcomes in `/data/scalp-lead-audit-v1.json`. `persisted=false` signals that the file could not be persisted. This path must be a persistent disk; in-memory globals alone will be lost on restart.
 
 ## Reading the results
 
-The existing `GET /api/scalp` response adds:
+The mobile **Scalp Lab** screen (`/scalp`) shows separate GOLD M1/M5 shadow observation counts and observed time-to-favorable, with missing/unknown values displayed rather than presented as trades.\n\nThe existing `GET /api/scalp` response adds:
 - `gold.leadAudit.m1`
 - `gold.leadAudit.m5`
 
