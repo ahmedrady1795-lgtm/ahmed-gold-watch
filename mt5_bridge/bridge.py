@@ -33,6 +33,7 @@ CANDLE_PUSH_SECONDS=max(10,int(os.getenv('MT5_CANDLE_PUSH_SECONDS','15')))
 CANDLE_COUNT=max(240,min(500,int(os.getenv('MT5_CANDLE_COUNT','300'))))
 MAGIC=int(os.getenv('MT5_MAGIC','5601795'))
 SCALP_DEMO=os.getenv('SCALP_DEMO_MODE','false').lower()=='true'
+SEND_ACCOUNT_DETAILS=os.getenv('SEND_ACCOUNT_DETAILS','false').lower()=='true'
 SCALP_DEMO_POLL=max(0.5,float(os.getenv('SCALP_DEMO_POLL_SECONDS','1.0')))
 SCALP_QUICK_MAX_HOLD=max(5,min(30,float(os.getenv('SCALP_QUICK_MAX_HOLD_SECONDS','30'))))
 SCALP_QUICK_MIN_CONF=max(50,min(88,float(os.getenv('SCALP_QUICK_MIN_CONFIDENCE','66'))))
@@ -90,7 +91,9 @@ def order_book_snapshot():
 def push_status(s):
     info=symbol_ready();tick=mt5.symbol_info_tick(SYMBOL) if info else None;account=mt5.account_info()
     if not info or tick is None or account is None:return False
-    now=time.time();payload={'symbol':SYMBOL,'tickTimeMs':int(getattr(tick,'time_msc',0) or int(time.time()*1000)),'bid':float(tick.bid),'ask':float(tick.ask),'last':float(getattr(tick,'last',0) or 0) or None,'mode':'live' if LIVE else 'dry-run','lastQuality':s.get('last_quality',{}),'microstructure':{'orderBook':order_book_snapshot(),'tickFlags':int(getattr(tick,'flags',0) or 0),'tickVolume':float(getattr(tick,'volume_real',0) or getattr(tick,'volume',0) or 0)},'account':{'login':int(getattr(account,'login',0) or 0),'balance':float(getattr(account,'balance',0) or 0),'equity':float(getattr(account,'equity',0) or 0),'marginLevel':float(getattr(account,'margin_level',0) or 0)}}
+    now=time.time();payload={'symbol':SYMBOL,'tickTimeMs':int(getattr(tick,'time_msc',0) or int(time.time()*1000)),'bid':float(tick.bid),'ask':float(tick.ask),'last':float(getattr(tick,'last',0) or 0) or None,'mode':'live' if LIVE else 'dry-run','lastQuality':s.get('last_quality',{}),'microstructure':{'orderBook':order_book_snapshot(),'tickFlags':int(getattr(tick,'flags',0) or 0),'tickVolume':float(getattr(tick,'volume_real',0) or getattr(tick,'volume',0) or 0)}}
+    if SEND_ACCOUNT_DETAILS:
+        payload['account']={'login':int(getattr(account,'login',0) or 0),'balance':float(getattr(account,'balance',0) or 0),'equity':float(getattr(account,'equity',0) or 0),'marginLevel':float(getattr(account,'margin_level',0) or 0)}
     if now-float(s.get('last_candles_push_at',0) or 0)>=CANDLE_PUSH_SECONDS:
         candles={'c1':closed_rates(mt5.TIMEFRAME_M1),'c5':closed_rates(mt5.TIMEFRAME_M5),'c15':closed_rates(mt5.TIMEFRAME_M15),'c60':closed_rates(mt5.TIMEFRAME_H1)}
         if len(candles['c1'])>=80 and all(len(candles[k])>=220 for k in ('c5','c15','c60')):
