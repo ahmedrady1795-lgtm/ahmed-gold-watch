@@ -209,7 +209,7 @@ export async function getScalpDesk(){
     const events=goldSnap?.market.events||[],newsReady=Boolean(goldSnap?.market.newsReady&&Date.now()-goldSnap.market.checkedAt<120000);
     let bq:ScalpQuote={price:null,at:null,source:market?.source||'unavailable'};
     if(market)bq=await boundedSource(btcQuote(market.source),2700).catch(()=>bq);
-    const gold=make('GOLD',goldSnap?.market,{price:q?.price??null,at:q?.sourceTime??null,bid:q?.bid,ask:q?.ask,source:q?.source||'unavailable'},events,newsReady);
+    const gold:any=make('GOLD',goldSnap?.market,{price:q?.price??null,at:q?.sourceTime??null,bid:q?.bid,ask:q?.ask,source:q?.source||'unavailable'},events,newsReady);
     // Purely observational: follow WATCH/ARMED price direction, never authorize
     // a trade or credit an unobserved future candle as a win.
     const goldLeadCandidate=(h:1|5)=>{
