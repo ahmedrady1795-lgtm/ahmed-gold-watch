@@ -42,6 +42,7 @@ jobs:
       - run: python3 -m py_compile mt5_bridge/bridge.py
       - run: python3 tests/mt5-book-subscription.py
       - run: node tests/core-quality.cjs
+      - run: node tests/scalp-lead-audit.cjs
       - run: node tests/scalp.cjs
       - run: node tests/news-alert-window.cjs
       - run: node tests/news-intelligence.cjs

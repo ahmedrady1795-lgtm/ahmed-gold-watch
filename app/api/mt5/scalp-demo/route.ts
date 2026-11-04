@@ -5,6 +5,7 @@ import {trainScalpLearner} from '../../../../lib/scalp-learning';
 import {learnerCostAtr} from '../../../../lib/scalp-cost';
 import {buildAccumulationMap} from '../../../../lib/accumulation-map';
 import {buildScalpFusion} from '../../../../lib/scalp-fusion';
+import {observeScalpLead} from '../../../../lib/scalp-lead-audit';
 
 export const dynamic='force-dynamic';
 
@@ -52,7 +53,15 @@ export async function GET(request:Request){
   try{
     const snap=await getMarketSnapshot(),m=snap.market,q=snap.quote,mt5=snap.mt5;
     const fresh=Boolean(mt5?.fresh&&mt5?.candlesFresh&&String(m?.priceSource||'').startsWith('Exness/MT5')&&q?.ok&&q?.status==='live');
-    if(!fresh)return Response.json({ok:true,demoOnly:true,authority:'AMBUSH',ready:false,reason:'MT5 tick/candles not fresh',checkedAt:now,liveOrderAllowed:false},{headers:{'Cache-Control':'private, no-store'}});
+    if(!fresh){
+      // Outstanding observations time out as UNKNOWN; no fallback feed becomes broker evidence.
+      observeScalpLead('GOLD_AMBUSH',{
+        price:q?.price??null,at:q?.sourceTime??null,source:q?.source||'unavailable'
+      },now,null);
+      return Response.json({ok:true,demoOnly:true,authority:'AMBUSH',ready:false,
+        reason:'MT5 tick/candles not fresh',checkedAt:now,liveOrderAllowed:false},
+        {headers:{'Cache-Control':'private, no-store'}});
+    }
 
     const price=Number(q?.price),atr=atrNow(m.c1),spread=Number(q?.spread);
     const costAtr=learnerCostAtr('GOLD',price,atr,spread);
@@ -66,6 +75,19 @@ export async function GET(request:Request){
     const plan=ambush?.ambushPlan||null;
     const trade=ambush?.trade||null;
     const ambushActive=Boolean(ambush?.action==='BUY'||ambush?.action==='SELL');
+    // Freeze the first observed Ambush quote and audit only later EXNESS/MT5
+    // quotes. This is not a paper fill or a profitability claim.
+    const ambushSide=ambush?.action==='BUY'?'BUY':ambush?.action==='SELL'?'SELL':null;
+    const ambushCost=Number.isFinite(spread)&&spread>0?
+      spread+price*.0001:NaN; // conservative estimated spread + slippage
+    const ambushLead=observeScalpLead('GOLD_AMBUSH',
+      {price:q?.price??null,at:q?.sourceTime??null,source:q?.source||'unavailable'},
+      now,ambushActive&&ambushSide&&String(q?.source||'').startsWith('Exness/MT5')&&Number.isFinite(ambushCost)?{
+        id:String(plan?.id||'ambush:'+ambushSide+':'+Math.floor(now/60000)),
+        side:ambushSide,score:Number(ambush?.confidence)||0,status:'AMBUSH',
+        setup:String(ambush?.fusionV8?.predator?.pattern||'AMBUSH'),
+        cost:ambushCost
+      }:null);
 
     return Response.json({
       ok:true,demoOnly:true,liveOrderAllowed:false,authority:'AMBUSH',ready:true,checkedAt:now,expiresAt:now+2200,
@@ -82,6 +104,7 @@ export async function GET(request:Request){
         fastRadar:fast,
         accumulation:{side:accumulation?.side||'WAIT',phase:accumulation?.phase||'NEUTRAL',readiness:accumulation?.breakoutReadiness||0}
       },
+      leadAudit:ambushLead,
       blockedBy:[
         ...(!ambushActive?['ambush_not_approved']:[]),
         ...(plan?.status==='CANCEL'?['ambush_plan_cancelled']:[]),
