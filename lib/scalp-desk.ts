@@ -9,6 +9,7 @@ import {getBtcLiquidity} from './liquidity-intelligence';
 import {auditScalpEntry} from './scalp-entry-audit';
 import {validateDirectionChronologically} from './direction-walkforward';
 import {buildSniperDecision} from './sniper-decision-engine';
+import {observeScalpLead} from './scalp-lead-audit';
 
 function session(now:number){const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;return day!==6&&!(day===0&&h<22)&&!(day===5&&h>=21)&&!(day>=1&&day<=4&&h>=21&&h<22);}
 function envNumber(key:string){const raw=(getRuntimeEnv() as Record<string,unknown>)[key]??process.env[key];if(raw==null||raw==='')return null;const n=Number(raw);return Number.isFinite(n)&&n>=0&&n<=100?n:null;}
@@ -209,6 +210,22 @@ export async function getScalpDesk(){
     let bq:ScalpQuote={price:null,at:null,source:market?.source||'unavailable'};
     if(market)bq=await boundedSource(btcQuote(market.source),2700).catch(()=>bq);
     const gold=make('GOLD',goldSnap?.market,{price:q?.price??null,at:q?.sourceTime??null,bid:q?.bid,ask:q?.ask,source:q?.source||'unavailable'},events,newsReady);
+    // Purely observational: follow WATCH/ARMED price direction, never authorize
+    // a trade or credit an unobserved future candle as a win.
+    const goldLeadCandidate=(h:1|5)=>{
+      const plan=gold.plans?.find((p:any)=>p.horizon===h);
+      if(!plan||plan.status==='BLOCKED'||!['BUY','SELL'].includes(plan.side)||
+        plan.setup==='NONE'||!Number.isFinite(Number(plan.score))||
+        Number(plan.score)<70||!Number.isFinite(Number(plan.cost))||
+        Number(plan.cost)<=0)return null;
+      return {id:String(plan.id)+'|'+plan.side,side:plan.side,
+        score:Number(plan.score),status:plan.status==='ARMED'?'ARMED' as const:'WATCH' as const,
+        setup:String(plan.setup),cost:Number(plan.cost)};
+    };
+    gold.leadAudit={
+      m1:observeScalpLead('GOLD_M1',gold.quote,Date.now(),goldLeadCandidate(1)),
+      m5:observeScalpLead('GOLD_M5',gold.quote,Date.now(),goldLeadCandidate(5))
+    };
     const bitcoin=make('BTC',market,bq,events,newsReady);
     // Monitor missing trade flow without leaking provider credentials or
     // treating a WATCH setup as an executed order.
@@ -254,7 +271,8 @@ export async function getScalpDesk(){
             exit:t.exit,netR:t.netR,note:t.note
           }))
         })),
-        ledgerSaved:x.ledger.persisted
+        ledgerSaved:x.ledger.persisted,
+        leadAudit:x.leadAudit??null
       });
       console.info('[SCALP-DIAG]',JSON.stringify({gold:diag(gold),btc:diag(bitcoin)}));
     }
