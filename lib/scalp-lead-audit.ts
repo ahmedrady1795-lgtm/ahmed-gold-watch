@@ -23,6 +23,7 @@ type Audit={version:1;lanes:Record<Lane,LaneState>};
 const PATH='/data/scalp-lead-audit-v1.json';
 const MAX_GAP_MS=15_000;
 const MAX_QUOTE_AGE_MS=10_000;
+let lastPersistAt=0; // limit writes while a quote is merely moving inside an open sample
 declare global {var __qannasScalpLeadAudit:Audit|undefined;}
 function blank():Audit{return {version:1,lanes:{GOLD_M1:{active:null,history:[],seen:[]},
   GOLD_M5:{active:null,history:[],seen:[]},GOLD_AMBUSH:{active:null,history:[],seen:[]}}};}
@@ -136,7 +137,7 @@ export function observeScalpLead(
   lane:Lane,quote:LeadQuote,now:number,candidate:LeadCandidate|null
 ){
   const state=load(),row=state.lanes[lane];
-  let changed=false,closed=false;
+  let changed=false,closed=false,startedNow=false;
   if(row.active){
     const prior=row.active,updated=advanceLeadObservation(prior,quote,now);
     if(updated!==prior){row.active=updated;changed=true;}
@@ -152,11 +153,17 @@ export function observeScalpLead(
       const started=startLeadObservation(lane,candidate,quote,now);
       if(started){
         row.active=started;row.seen.unshift(id);row.seen=row.seen.slice(0,500);
-        changed=true;
+        changed=true;startedNow=true;
       }
     }
   }
-  const persisted=changed?save(state):fs.existsSync(PATH);
+  // A running quote can change every couple of seconds. Persist starts,
+  // settlements and a periodic checkpoint, not every poll on the free service.
+  // An interrupted checkpoint must be treated as UNKNOWN upon later replay.
+  const shouldSave=changed&&(closed||startedNow||now-lastPersistAt>=10_000);
+  const didSave=shouldSave?save(state):false;
+  if(didSave)lastPersistAt=now;
+  const persisted=didSave||fs.existsSync(PATH);
   return {...summarizeLeadObservations(row.history,row.active),persisted};
 }
 export function peekScalpLead(lane:Lane){
