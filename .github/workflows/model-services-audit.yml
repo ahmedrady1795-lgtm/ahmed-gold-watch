@@ -14,7 +14,7 @@ jobs:
       - name: Query deployed ML and Neural health (no model claims)
         run: |
           python3 - <<'PY'
-          import json,urllib.request,time,sys
+          import json,urllib.request,urllib.error,time,sys
           hosts=[
            ('ML','https://qannas-ml-engine.onrender.com/health'),
            ('NEURAL','https://qannas-neural-engine.onrender.com/health'),
@@ -61,6 +61,10 @@ jobs:
                   json.dumps(out,ensure_ascii=False,default=str),flush=True)
             if name in ('ML','NEURAL','SITE') and (code!=200 or data.get('ok')!=True):
              failures.append(name)
+           except urllib.error.HTTPError as e:
+            print('MODEL_AUDIT_HTTP_ERROR',name,e.code,
+                  json.dumps({k:e.headers.get(k) for k in ('Retry-After','Server','Content-Type')},sort_keys=True),flush=True)
+            if name in ('ML','NEURAL','SITE'):failures.append(name)
            except Exception as e:
             print('MODEL_AUDIT_ERROR',name,str(e)[:240],flush=True)
             if name in ('ML','NEURAL','SITE'):failures.append(name)

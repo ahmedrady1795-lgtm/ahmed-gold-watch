@@ -17,3 +17,10 @@ assert.equal(api.recordNextMoveOutcome({...arg,now:now+120000}).recorded,false,
 assert.equal(api.recordNextMoveOutcome({...arg,now:now+900000}).recorded,true,
  'a genuinely new horizon can begin after 15m');
 console.log('PASS: no serial correlated 15m wins after a quick hit or server reload');
+const forward={...arg,asset:'TIME_ORDER_TEST'};
+assert.equal(api.recordNextMoveOutcome(forward).recorded,true);
+assert.equal(api.getNextMoveOutcome(forward.asset,102,now-1000).global.hits,0,'past observations cannot settle future forecasts');
+assert.equal(api.getNextMoveOutcome(forward.asset,102,now).global.hits,0,'same-time observation is not forward evidence');
+const expired=api.getNextMoveOutcome(forward.asset,200,now+900001);
+assert.equal(expired.global.hits,0,'post-expiry move cannot be a win');
+assert.equal(expired.global.avgMfeBps,0,'post-expiry move cannot inflate favorable excursion');

@@ -3,7 +3,7 @@ const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
 const ex={};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/ai-readiness.ts','utf8'),{
   compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
-}).outputText,{exports:ex,process,AbortSignal});
+}).outputText,{exports:ex,process,AbortSignal,require:()=>({})});
 const summarize=ex.summarizeAiReadiness;
 const ml={ok:true,status:'PARTIAL',oneMinute:{ready:true},fiveMinute:{ready:false}};
 const neural={ok:true,status:'SHADOW',ready:false};

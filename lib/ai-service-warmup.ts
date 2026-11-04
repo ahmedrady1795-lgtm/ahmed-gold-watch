@@ -1,3 +1,4 @@
+import {aiRetryAt,recordAiResponse} from './ai-service-backoff';
 /** Cold-start health recovery outside inference. Never hammer a throttled
  * Render service: one attempt per 2 minutes, at least 5 minutes after 429.
  * Health checks do not certify model quality or produce trading signals. */
@@ -12,14 +13,15 @@ export function warmAiServices():Promise<void>{
  if(!urls.length)return Promise.resolve();
  nextAllowedAt=Date.now()+120000;
  running=Promise.allSettled(urls.map(async base=>{
+  if(Date.now()<aiRetryAt(base.trim()))return;
   const url=new URL(base.trim());
   if(!['http:','https:'].includes(url.protocol))return;
   url.pathname=url.pathname.replace(/\/$/,'')+'/health';
   const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(45000),
    headers:{'User-Agent':'Qannas-AI-Health-Recovery/1.0'}});
+  recordAiResponse(base.trim(),r.status,r.headers.get('retry-after'));
   if(r.status===429){
-    // The independent prediction clients have their own 429 retry budgets.
-    // Do not add a duplicate health probe while the CDN is throttling.
+    // Prediction and health clients share the same service budget.
     nextAllowedAt=Math.max(nextAllowedAt,Date.now()+300000);
   }
   await r.arrayBuffer();

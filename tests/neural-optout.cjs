@@ -21,6 +21,7 @@ vm.runInNewContext(transpiled,{
   // CommonJS transpilation loads the optional certification dependency eagerly.
   // In this disabled-mode test it must never be invoked.
   require:(id)=>{
+    if(id==='./ai-service-backoff')return {};
     assert.equal(id,'./ai-model-certification');
     return {certifyNeuralResponse:()=>{throw Error('Neural certification reached while disabled');}};
   },

@@ -1,3 +1,4 @@
+import {aiRetryAt,recordAiResponse} from './ai-service-backoff';
 export type ModelReadiness={configured:boolean;serviceOk:boolean;ready:boolean;status:string;reason:string;version?:string};
 
 export function summarizeAiReadiness(ml:any,neural:any,mlConfigured=true,neuralConfigured=true){
@@ -31,15 +32,17 @@ const healthInflight=new Map<string,Promise<any>>();
 
 async function healthProbe(url:string|undefined){
   if(!url)return {ok:false,status:'DISABLED',reason:'service not configured'};
-  const key=url.replace(/\/$/,'');
+  const key=url.trim().replace(/\/$/,'');
+  if(Date.now()<aiRetryAt(key))return {ok:false,status:'RATE_LIMITED',reason:'service cooldown after HTTP 429'};
   const cached=healthCache.get(key);
   if(cached&&Date.now()-cached.at<HEALTH_CACHE_MS)return cached.value;
   const pending=healthInflight.get(key);
   if(pending)return pending;
   const task=(async()=>{
   try{
-    const r=await fetch(url.replace(/\/$/,'')+'/health',{cache:'no-store',signal:AbortSignal.timeout(2200)});
-    if(!r.ok)return {ok:false,status:'ERROR',reason:`service HTTP ${r.status}`};
+    const r=await fetch(key+'/health',{cache:'no-store',signal:AbortSignal.timeout(2200)});
+    recordAiResponse(key,r.status,r.headers.get('retry-after'));
+    if(!r.ok)return {ok:false,status:r.status===429?'RATE_LIMITED':'ERROR',reason:`service HTTP ${r.status}`};
     return await r.json();
   }catch(e){return {ok:false,status:'UNAVAILABLE',reason:e instanceof Error?e.message:'service unavailable'};}
   })();
@@ -54,6 +57,6 @@ export async function getAiReadiness(){
     neuralEnabled?healthProbe(process.env.NEURAL_ENGINE_URL):Promise.resolve({ok:false,status:'DISABLED',reason:'Neural suspended by operator'})]);
   return summarizeAiReadiness({...ml,
     oneMinute:{ready:Boolean(ml?.readiness?.m1)},fiveMinute:{ready:Boolean(ml?.readiness?.m5)}
-  },{...neural,ready:Boolean(neural?.prediction?.ready),status:neural?.prediction?.status,reason:neural?.prediction?.reason},
+  },{...neural,ready:Boolean(neural?.prediction?.ready),status:neural?.prediction?.status??neural?.status,reason:neural?.prediction?.reason??neural?.reason},
     Boolean(process.env.ML_ENGINE_URL),neuralEnabled&&Boolean(process.env.NEURAL_ENGINE_URL));
 }

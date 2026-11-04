@@ -111,10 +111,11 @@ function updateExcursion(p:Pending,price:number){
   p.maeBps=Math.max(p.maeBps,adverse);
 }
 function settle(asset:string,price:number,now:number){
-  if(!Number.isFinite(price)||price<=0)return;
+  if(!Number.isFinite(price)||price<=0||!Number.isFinite(now))return;
   const a=ensure(asset),keep:Pending[]=[];
   for(const p of a.pending){
-    updateExcursion(p,price);
+    if(now<=p.at){keep.push(p);continue;}
+    if(now-p.at<p.horizonMs)updateExcursion(p,price);
     const hit=p.side==='BUY'?price>=p.target:price<=p.target;
     const fail=p.side==='BUY'?price<=p.stop:price>=p.stop;
     const expired=now-p.at>=p.horizonMs;

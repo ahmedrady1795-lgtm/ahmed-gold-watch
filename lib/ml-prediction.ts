@@ -1,3 +1,4 @@
+import {aiRetryAt,recordAiResponse} from './ai-service-backoff';
 import type {Candle} from './engine';
 import {certifyMlResponse} from './ai-model-certification';
 
@@ -14,8 +15,7 @@ export type MlPrediction={
 };
 
 let cache:{at:number;key:string;value:MlPrediction}|null=null;
-let retryAfter429Until=0;
-let inflight:Promise<MlPrediction>|null=null;
+const inflight=new Map<string,Promise<MlPrediction>>();
 
 // Verify a continuous, closed, reasonably fresh M1 window before requesting
 // any neural/boosted model inference. A good HTTP response is not market proof.
@@ -57,7 +57,7 @@ async function runMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPrediction>
   // Last-close-only keys silently replay predictions from superseded features.
   const cacheKey=rows.map(c=>[c.time,c.open,c.high,c.low,c.close,volume(c)].join(':')).join('|');
   if(cache&&now-cache.at<30000&&cache.key===cacheKey)return cache.value;
-  if(now<retryAfter429Until)return {ok:false,status:'RATE_LIMITED',reason:'ML engine cooldown after HTTP 429',shadow:true};
+  if(Date.now()<aiRetryAt(url))return {ok:false,status:'RATE_LIMITED',reason:'ML engine cooldown after HTTP 429',shadow:true};
   const controller=new AbortController();
   // Measured free-tier inference exceeded the old 3.5s cutoff even after
   // a healthy warm start. The chart runs independently; inference stays bounded.
@@ -71,10 +71,9 @@ async function runMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPrediction>
         time:c.time,open:c.open,high:c.high,low:c.low,close:c.close,volume:volume(c)
       }))})
     });
-    const retryHeader=Number(r.headers.get('retry-after'));
+    recordAiResponse(url,r.status,r.headers.get('retry-after'));
     const j=await r.json().catch(()=>null);
     if(r.status===429){
-      retryAfter429Until=Date.now()+(Number.isFinite(retryHeader)&&retryHeader>0?Math.min(300,Math.max(15,retryHeader))*1000:60000);
       return {ok:false,status:'RATE_LIMITED',reason:'ML HTTP 429; retry delayed',shadow:true,latencyMs:Date.now()-started};
     }
     if(!r.ok||!j||typeof j!=='object'){
@@ -93,9 +92,17 @@ async function runMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPrediction>
 
 // Collapse concurrent identical inference requests into one upstream call.
 export function getMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPrediction>{
-  if(inflight)return inflight;
-  const task=runMlPrediction(c1,now);
-  inflight=task;
-  void task.finally(()=>{if(inflight===task)inflight=null;});
+  const checked=prepareMlCandles(c1,now);
+  if(!checked.ready)return Promise.resolve({ok:false,status:'WAIT',reason:checked.reason,shadow:true});
+  // Snapshot inputs before awaiting: callers may update their live candle array.
+  const rows=checked.rows.map(c=>({...c}));
+  const key=String(process.env.ML_ENGINE_URL||'')+'|'+rows.map(c=>
+    [c.time,c.open,c.high,c.low,c.close,volume(c)].join(':')).join('|');
+  const pending=inflight.get(key);
+  if(pending)return pending;
+  const task=runMlPrediction(rows,now);
+  inflight.set(key,task);
+  const clear=()=>{if(inflight.get(key)===task)inflight.delete(key);};
+  void task.then(clear,clear);
   return task;
 }
