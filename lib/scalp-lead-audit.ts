@@ -64,7 +64,7 @@ export function startLeadObservation(
   lane:Lane,candidate:LeadCandidate,quote:LeadQuote,now:number
 ):LeadObservation|null{
   if(!fresh(quote,now)||!candidate.id||candidate.side!=='BUY'&&candidate.side!=='SELL'||
-    !Number.isFinite(candidate.score)||candidate.score<70||
+    !Number.isFinite(candidate.score)||(candidate.status!=='AMBUSH'&&candidate.score<70)||
     !Number.isFinite(candidate.cost)||candidate.cost<=0||
     !['WATCH','ARMED','AMBUSH'].includes(candidate.status))return null;
   const price=Number(quote.price),at=Number(quote.at);
@@ -81,26 +81,26 @@ export function advanceLeadObservation(
   record:LeadObservation,quote:LeadQuote,now:number
 ):LeadObservation{
   if(record.result!=='OPEN')return record;
-  const o={...record};
-  const close=(result:Outcome,reason:string,at:number)=>{
-    o.result=result;o.reason=reason;o.resolvedAt=at;return o;
-  };
+  const close=(result:Outcome,reason:string,at:number,updated=record)=>({
+    ...updated,result,reason,resolvedAt:at
+  });
   if(now>o.expiresAt+MAX_GAP_MS)return close('UNKNOWN','UNOBSERVED_HORIZON',now);
-  if(!fresh(quote,now))return o; // allow a brief outage; expiration will mark UNKNOWN
+  if(!fresh(quote,now))return record; // allow a brief outage; expiration will mark UNKNOWN
   const at=Number(quote.at),price=Number(quote.price);
-  if(at<=o.lastQuoteAt)return o; // never re-evaluate or backdate a quote
-  if(quote.source!==o.source)return close('UNKNOWN','SOURCE_CHANGED',at);
-  if(at-o.lastQuoteAt>MAX_GAP_MS)return close('UNKNOWN','QUOTE_GAP',at);
-  if(at>o.expiresAt+5000)return close('UNKNOWN','HORIZON_NOT_OBSERVED',at);
+  if(at<=record.lastQuoteAt)return record; // never re-evaluate or backdate a quote
+  if(quote.source!==record.source)return close('UNKNOWN','SOURCE_CHANGED',at);
+  if(at-record.lastQuoteAt>MAX_GAP_MS)return close('UNKNOWN','QUOTE_GAP',at);
+  if(at>record.expiresAt+5000)return close('UNKNOWN','HORIZON_NOT_OBSERVED',at);
+  const o={...record};
   const dir=o.side==='BUY'?1:-1,delta=dir*(price-o.startPrice);
   o.maxFavorable=fixed(Math.max(o.maxFavorable,delta));
   o.maxAdverse=fixed(Math.max(o.maxAdverse,-delta));
   o.lastQuoteAt=at;
   // Bid/ask execution and path between ticks are unknown. Only first
   // OBSERVED threshold touch is scored; a single quote cannot touch both.
-  if(delta>=o.threshold)return close('FAVORABLE_FIRST','FORWARD_MOVE_OBSERVED',at);
-  if(delta<=-o.threshold)return close('ADVERSE_FIRST','OPPOSITE_MOVE_OBSERVED',at);
-  if(at>=o.expiresAt)return close('NO_THRESHOLD','NO_DECISIVE_MOVE',at);
+  if(delta>=o.threshold)return close('FAVORABLE_FIRST','FORWARD_MOVE_OBSERVED',at,o);
+  if(delta<=-o.threshold)return close('ADVERSE_FIRST','OPPOSITE_MOVE_OBSERVED',at,o);
+  if(at>=o.expiresAt)return close('NO_THRESHOLD','NO_DECISIVE_MOVE',at,o);
   return o;
 }
 export function summarizeLeadObservations(history:LeadObservation[],active:LeadObservation|null){
