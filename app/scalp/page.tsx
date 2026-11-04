@@ -5,6 +5,51 @@ import {useEffect,useRef,useState} from 'react';
 import {Activity,ArrowRight,Clock3,RefreshCw,ShieldAlert} from 'lucide-react';
 import ScalpDesk from '../../components/ScalpDesk';
 
+function GoldLeadAudit({audit}:{audit:any}){
+  if(!audit)return <section className="panel" aria-label="قياس اقتناص الذهب" style={{padding:16}}>
+    <strong>قياس الاقتناص · الذهب</strong>
+    <p>لم تبدأ عينة التوقيت بعد. لا توجد نسبة نجاح يمكن اعتمادها.</p>
+  </section>;
+  const lanes=[{key:'m1',name:'M1 · 60 ثانية'},{key:'m5',name:'M5 · 5 دقائق'}];
+  return <section className="panel" aria-label="قياس اقتناص الذهب" style={{padding:16,marginBottom:14}}>
+    <div style={{display:'flex',flexWrap:'wrap',justifyContent:'space-between',gap:10,alignItems:'center'}}>
+      <strong>قياس اقتناص الحركة · الذهب</strong>
+      <span style={{fontSize:12,opacity:.76}}>مراقبة الاتجاه بعد الإشارة · ليست صفقات أو نسبة ربح</span>
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(215px,1fr))',gap:12,marginTop:12}}>
+      {lanes.map(({key,name})=>{
+        const a=audit[key]||{},seen=Number(a.resolved||0);
+        const sources=Object.keys(a.bySource||{});
+        const exnessOnly=sources.length>0&&sources.every(s=>s.startsWith('Exness/MT5'));
+        return <article key={key} style={{padding:14,border:'1px solid var(--border, rgba(160,165,180,.25))',borderRadius:12}}>
+          <div style={{display:'flex',justifyContent:'space-between',gap:10}}>
+            <strong>{name}</strong>
+            <span style={{fontSize:12,opacity:.76}}>{a.pending?'رصد جارٍ':'رصد فقط'}</span>
+          </div>
+          <p style={{margin:'10px 0',fontSize:21,fontWeight:750}}>
+            {seen>0?String(a.observedFavorablePct)+'%':'لا توجد عينة مكتملة'}
+          </p>
+          <p style={{fontSize:12,opacity:.82,margin:'5px 0'}}>
+            حركة مؤيدة {a.favorableFirst||0} · عكسية {a.adverseFirst||0} · بلا حسم {a.noThreshold||0} · مجهولة {a.unknown||0}
+          </p>
+          <p style={{fontSize:12,opacity:.82,margin:'5px 0'}}>
+            زمن الحركة المؤيدة: {a.meanTimeToFavorableMs!=null?
+              (Number(a.meanTimeToFavorableMs)/1000).toFixed(1)+' ثانية':'غير متاح'}
+          </p>
+          <p style={{fontSize:12,opacity:.72,margin:'5px 0'}}>
+            المصدر: {sources.length?(exnessOnly?'Exness/MT5':'أسعار مرجعية / مصدر مختلط'):'قيد الانتظار'}
+            {' · '}{seen<50?'عينة غير كافية':'نتائج رصد فقط'}
+          </p>
+        </article>;
+      })}
+    </div>
+    <p style={{margin:'10px 0 0',fontSize:12,opacity:.76}}>
+      معدل الحركة المؤيدة يُحسب من أول حركة سعرية مرصودة بعد الإشارة، ولا يشمل الحالات المجهولة.
+      لا يثبت الدخول قبل صناع السوق أو الربحية. قياس Ambush على أسعار Exness يبدأ بعد ربط MT5.
+    </p>
+  </section>;
+}
+
 export default function ScalpWorkspace(){
   const [desk,setDesk]=useState<any>(null);
   const [now,setNow]=useState(Date.now());
@@ -71,6 +116,7 @@ export default function ScalpWorkspace(){
     </div>
     {error&&<div className="fatal"><ShieldAlert size={16}/><div><strong>الاتصال غير مستقر</strong>
       <span>{error} · لا تعتمد على الأسعار المعروضة قبل عودة البيانات الحديثة.</span></div></div>}
+    {asset!=='BTC'&&<GoldLeadAudit audit={desk?.gold?.leadAudit}/>}
     <section className="content lite-content" aria-label="منصة سكالب مستقلة">
       <div className={'dashboardgrid market-pair-grid '+(asset!=='ALL'?'single-asset':'')}>
         {asset!=='BTC'&&(desk?.gold?<ScalpDesk desk={desk.gold} now={now}/>:
