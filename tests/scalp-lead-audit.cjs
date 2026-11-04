@@ -84,4 +84,11 @@ const t4=observe('GOLD_M1',quote(101.3,5000),at(5100),candidate('fresh'));
 assert.equal(t4.pending,1,'only a new plan ID can start a new sample');
 assert.equal(observe('GOLD_M5',quote(100,0),at(100),candidate('independent')).pending,1,
  'M1 and M5 audit lanes must be separate');
+const scalpPage=fs.readFileSync('app/scalp/page.tsx','utf8');
+assert.match(scalpPage,/GoldLeadAudit audit=\\{desk\\?\\.gold\\?\\.leadAudit\\}/,
+ 'the GOLD M1/M5 audit must appear on the mobile Scalp Lab screen');
+assert.match(scalpPage,/ليست صفقات أو نسبة ربح/,
+ 'the UI must not present observed directional moves as a win rate');
+assert.match(scalpPage,/لا يشمل الحالات المجهولة/,
+ 'unknown quote gaps must remain visible rather than being scored as wins');
 console.log('PASS: causal scalp shadow observations, no future candles, stale/gap/source uncertainty, fee thresholds, dedupe, no live execution');
