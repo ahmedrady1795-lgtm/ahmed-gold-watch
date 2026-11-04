@@ -25,7 +25,7 @@ const at=ms=>T+ms;
 let base=start('GOLD_M1',candidate(),quote(100,0),at(100));
 assert.equal(base.result,'OPEN');
 assert.equal(base.threshold,1,'threshold must cover twice the estimated transaction cost');
-assert.equal(base.startedAt,T);
+assert.equal(base.startedAt,T+100,'signal birth is computation time, not pre-signal source tick');
 assert.equal(start('GOLD_M1',{...candidate(),score:69},quote(100,0),at(100)),null,
  'low confidence technical WATCH must not be silently promoted');
 assert.equal(start('GOLD_M1',candidate(),quote(100,0),at(11000)),null,
@@ -54,11 +54,12 @@ assert.equal(missing.result,'UNKNOWN','unobserved 60s horizon does not count as 
 let flat=base;
 for(let ms=10000;ms<=60000;ms+=10000)
  flat=advance(flat,quote(100.2,ms),at(ms+100));
+flat=advance(flat,quote(100.2,61000),at(61100));
 assert.equal(flat.result,'NO_THRESHOLD','completed horizon without a threshold is neutral, not a win');
 let amb=start('GOLD_AMBUSH',{...candidate('ambush-1','SELL','AMBUSH'),score:62},
  quote(100,0,'Exness/MT5 XAUUSDm'),at(100));
 assert.ok(amb,'real Ambush events are observed without inventing technical score gating');
-assert.equal(amb.expiresAt,T+30000);
+assert.equal(amb.expiresAt,T+30100);
 assert.equal(advance(amb,quote(98.7,5000,'Exness/MT5 XAUUSDm'),at(5100)).result,'FAVORABLE_FIRST');
 let s=summary([step,adverse,switched,gap,missing,flat],null);
 assert.equal(s.total,6);
@@ -70,6 +71,8 @@ assert.equal(s.unknown,3);
 assert.equal(s.observedFavorablePct,50);
 assert.equal(s.verdict,'COLLECTING','a tiny shadow sample proves no predictive edge');
 // Exercise real lane state: one unresolved signal per lane, no repeat ID and no peeking.
+assert.equal(advance(base,quote(110,50),at(110)),base,
+ 'ticks from before signal computation must not count as favorable outcomes');
 const t1=observe('GOLD_M1',quote(100,0),at(100),candidate('same'));
 assert.equal(t1.pending,1);assert.equal(t1.total,0);assert.equal(t1.persisted,true);
 const t2=observe('GOLD_M1',quote(101.2,3000),at(3100),candidate('same'));
