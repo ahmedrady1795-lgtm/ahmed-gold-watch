@@ -82,7 +82,7 @@ export async function GET(request:Request){
       spread+price*.0001:NaN; // conservative estimated spread + slippage
     const ambushLead=observeScalpLead('GOLD_AMBUSH',
       {price:q?.price??null,at:q?.sourceTime??null,source:q?.source||'unavailable'},
-      now,ambushActive&&ambushSide&&Number.isFinite(ambushCost)?{
+      now,ambushActive&&ambushSide&&String(q?.source||'').startsWith('Exness/MT5')&&Number.isFinite(ambushCost)?{
         id:String(plan?.id||'ambush:'+ambushSide+':'+Math.floor(now/60000)),
         side:ambushSide,score:Number(ambush?.confidence)||0,status:'AMBUSH',
         setup:String(ambush?.fusionV8?.predator?.pattern||'AMBUSH'),
