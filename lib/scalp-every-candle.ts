@@ -146,6 +146,25 @@ function stageAfterQuote(t:EveryAttempt,raw:readonly M1Bar[],q:ScalpQuote,
   t.note='تم وضع LIMIT ورقي بعد أول Bid/Ask جديد؛ لا تنفيذ Market أو Exness';
   return true;
 }
+function beginAfterFreshQuote(t:EveryAttempt,raw:readonly M1Bar[],q:ScalpQuote,
+ now:number,costEstimate:number){
+ if(t.state!=='AWAIT_QUOTE'||now>=t.expiryAt||
+  !validQuote(q,now)||!validBook(q)||q.at!<t.issuedAt||
+  !q.source||q.source==='unavailable')return false;
+ const atr=Number(t.atr);
+ if(!Number.isFinite(atr)||atr<=0)return false;
+ if(!requiresM1TickConfirmation({side:t.side,weak:t.weak,
+   pressure:t.pressure,atr,directionModel:t.directionModel}))
+   return stageAfterQuote(t,raw,q,now,costEstimate);
+ t.seedMid=(Number(q.bid)+Number(q.ask))/2;
+ t.seedAt=q.at!;
+ t.seedSource=q.source;
+ t.lastQuoteAt=q.at!;
+ t.state='CONFIRMING';
+ t.note='توقع ضعيف محفوظ · انتظار حركة Bid/Ask جديدة مؤيدة قبل LIMIT';
+ return true;
+}
+
 export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
   q:ScalpQuote,now:number,costEstimate:number,chartSource?:string):EveryLedger{
   const history=ledger.history;
