@@ -176,8 +176,44 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       if(now>=t.expiryAt)
         finish(t,'NO_BID_ASK',now,null,
           'انتهت الدقيقة قبل وصول Bid/Ask صالح بعد إصدار التوقع');
-      else stageAfterQuote(t,raw,q,now,costEstimate);
-      // Staging never fills on the same quote that created the LIMIT.
+      else beginAfterFreshQuote(t,raw,q,now,costEstimate);
+      // A seed or newly created LIMIT can NEVER fill on that same quote.
+      continue;
+    }
+    if(t.state==='CONFIRMING'){
+      if(now>=t.issuedAt+M1_CONFIRM_WINDOW_MS){
+        finish(t,'NO_EDGE',now,null,
+          'لم يظهر تأكيد اتجاه جديد خلال 24 ثانية؛ التوقع محفوظ بلا LIMIT');
+        continue;
+      }
+      if(now-t.lastQuoteAt>15000){
+        finish(t,'UNKNOWN',now,null,
+          'انقطع Bid/Ask أثناء التأكيد؛ لا نتيجة مؤكدة');
+        continue;
+      }
+      if(fresh&&book&&q.source!==t.seedSource){
+        finish(t,'UNKNOWN',now,null,
+          'مصدر السعر تغير أثناء اختبار اتجاه الدقيقة');
+        continue;
+      }
+      if(!fresh||!book||!q.source||q.at!<=Number(t.seedAt))continue;
+      const decision=m1BidAskEvidence({
+        side:t.side,weak:t.weak,pressure:t.pressure,atr:Number(t.atr),
+        directionModel:t.directionModel
+      },{mid:Number(t.seedMid),at:Number(t.seedAt),source:String(t.seedSource)},{
+        bid:Number(q.bid),ask:Number(q.ask),at:q.at!,source:q.source
+      });
+      if(decision==='REJECT')finish(t,'NO_EDGE',now,null,
+        'سعر عكسي أو حركة استنفدت مدى الدقيقة؛ التوقع يبقى لكن لا LIMIT');
+      else if(decision==='UNKNOWN')finish(t,'UNKNOWN',now,null,
+        'لا يوجد تيك موثوق صالح لتأكيد التوقع');
+      else if(decision==='CONFIRM'){
+        t.state='AWAIT_QUOTE';t.confirmedAt=q.at!;
+        if(!stageAfterQuote(t,raw,q,now,costEstimate))
+          finish(t,'UNKNOWN',now,null,'تأكيد اتجاه لكن بيانات التكلفة غير صالحة');
+        else if(t.state==='PENDING')
+          t.note='تيك جديد أكد الاتجاه؛ LIMIT مرجعي ثابت ينتظر ارتداد السعر';
+      }else t.lastQuoteAt=q.at!;
       continue;
     }
     if(t.state==='PENDING'&&now>=t.expiryAt){
