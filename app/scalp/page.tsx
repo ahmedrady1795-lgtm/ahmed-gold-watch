@@ -124,6 +124,7 @@ function GoldEveryCandle({data}:{data:any}){
       <span>وقف {data?.stops??0}</span>
       <span>انتهت {data?.expired??0}</span>
       <span>مجهولة {data?.unknown??0}</span>
+      <span>عينات قديمة منفصلة {data?.legacyResults??0}</span>
     </div>
     {latest?<div style={{border:'1px solid var(--border, rgba(160,165,180,.25))',
       padding:12,borderRadius:10}}>
