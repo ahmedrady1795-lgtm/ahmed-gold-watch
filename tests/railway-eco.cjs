@@ -25,7 +25,7 @@ assert.match(home,/const aiTimer=setInterval\(\(\)=>\{if\(document\.visibilitySt
   'lightweight AI snapshot reads use the 10s eco interval');
 assert.match(home,/const clock=setInterval\(\(\)=>setNow\(Date\.now\(\)\),1000\)/,
   'screen clock stays responsive independent of snapshot reads');
-assert.match(home,/const restTimer=setInterval\(\(\)=>\{if\(document\.visibilityState==='visible'\)void loadBtc\(\);\},15000\)/,
-  'BTC REST fallback uses the 15s eco interval');
+assert.match(home,/const restTimer=setInterval\(\(\)=>\{if\(document\.visibilityState==='visible'\)void loadBtc\(\);\},5000\)/,
+  'BTC REST fallback refreshes inside its 10s freshness window');
 assert.match(home,/goldTickRef\.current=nextGoldTick/,'gold tick source remains independent');
 console.log('PASS: Railway ECO analysis 10s, snapshots 3s, paper scalp 5s, real-time ticks intact');
