@@ -98,7 +98,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const reboundBuy=m.fourHour.zones.filter(z=>z.side==='BUY');
   const reboundSell=m.fourHour.zones.filter(z=>z.side==='SELL');
   const statusText=statusReady?(journal?.message||sn.stageText):
-    watchReady?'اتجاه مشروط من آخر شموع M1 المغلقة مع سياق M5؛ الهدف من حركة الدقيقة التالية تاريخياً (P20)، وليس توقع ربح أو أمر دخول':
+    watchReady?'قراءة زخم آخر شموع M1 المغلقة مع سياق M5 · مستوى P20 من '+(m.nearTermEvidence?.samples??0)+' نافذة تاريخية · مراقبة فقط، وليس احتمال ربح أو أمر دخول':
     m.bias.label+' · '+m.bias.reason;
   const activation=statusReady&&sn.activation?'خلال '+sn.activation.min+'–'+sn.activation.max+' د':'—';
   const arrival=statusReady&&sn.arrival?'خلال '+sn.arrival.min+'–'+sn.arrival.max+' د':'غير محدد';
