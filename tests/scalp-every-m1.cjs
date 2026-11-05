@@ -175,7 +175,7 @@ assert.equal(weakTape.marks.length,9);
 assert.equal(weakTape.graded,0,'flat outcomes do not count as correct directional guesses');
 assert.ok(weakTape.marks.every(x=>x.weak),'unqualified weak forecasts are visible and count toward coverage');
 const source=fs.readFileSync('lib/scalp-every-candle.ts','utf8');
-assert.match(source,/limitsIssued,awaitingQuote,missedMinutes/,
+assert.match(source,/limitsIssued,awaitingQuote,confirming,missedMinutes/,
  'honestly report LIMIT creation, quote wait and missed server-observation minutes');
 assert.match(source,/q\.at!<t\.issuedAt/,
  'never backdate a pending LIMIT before its prediction timestamp');
