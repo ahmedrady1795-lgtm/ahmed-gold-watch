@@ -198,3 +198,40 @@ const panel=fs.readFileSync('components/SniperM1CandleHunter.tsx','utf8');
 assert.match(panel,/everyM1Direction\(p\.history,p\.now\)/);
 assert.match(panel,/توقع الشمعة الحالية/);
 console.log('PASS: prediction every valid closed M1, weak predictions counted, per-candle limit lifecycle, no market entries or fake broker wins');
+
+
+// Expiry processing must not mask barriers seen on an eligible final quote.
+for(const side of ['BUY','SELL']){
+ const active={...artificialActive,side,entry:100,stop:side==='BUY'?99:101,
+   tp:side==='BUY'?101:99,lastQuoteAt:expiry-3000,
+   lastExitAt:expiry-3000,lastExitPrice:100};
+ for(const offset of [0,-1000]){
+  const at=expiry+offset;
+  for(const [state,exit] of [['STOP',side==='BUY'?98.8:101.2],
+                            ['QUICK_TP',side==='BUY'?101.2:98.8],
+                            ['TIME_EXIT',100]]){
+   const book=side==='BUY'?q(exit,exit+.1,at):q(exit-.1,exit,at);
+   const result=advanceEveryM1({version:1,history:[{...active}]},
+     bars,book,expiry+100,.15).history[0];
+   assert.equal(result.state,state,side+' final quote must honor '+state);
+   assert.equal(result.closedAt,state==='TIME_EXIT'?expiry:at);
+   assert.equal(result.exit,exit);
+  }
+ }
+}
+// A newer neutral tick followed by an older favorable tick is not confirmation.
+const confirming={...a,state:'CONFIRMING',entry:null,stop:null,tp:null,
+  atr:1,weak:true,pressure:10,seedMid:100,seedAt:issue+1000,
+  seedSource:'TEST-MT5',lastQuoteAt:issue+5000,filledAt:null,
+  closedAt:null,exit:null,netR:null,confirmedAt:null};
+for(const at of [issue+4000,issue+5000]){
+ const result=advanceEveryM1({version:1,history:[{...confirming}]},
+   bars,q(100.1,100.12,at),issue+6000,.03).history[0];
+ assert.equal(result.state,'CONFIRMING','old/repeated ticks cannot confirm');
+ assert.equal(result.lastQuoteAt,issue+5000,'quote clock must remain monotonic');
+ assert.equal(result.confirmedAt,null);
+}
+const staleGap=advanceEveryM1({version:1,history:[{...confirming}]},
+ bars,q(100.1,100.12,issue+4000),issue+21000,.03).history[0];
+assert.equal(staleGap.state,'UNKNOWN','stale tick cannot conceal a feed gap');
+console.log('PASS: BUY/SELL expiry barriers and monotonic M1 confirmation');

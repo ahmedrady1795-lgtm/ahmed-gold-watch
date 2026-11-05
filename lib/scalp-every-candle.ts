@@ -196,7 +196,9 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
           'مصدر السعر تغير أثناء اختبار اتجاه الدقيقة');
         continue;
       }
-      if(!fresh||!book||!q.source||q.at!<=Number(t.seedAt))continue;
+      // Ignore duplicate/out-of-order ticks: they cannot confirm a new move
+      // or roll lastQuoteAt backwards and hide a subsequent feed gap.
+      if(!fresh||!book||!q.source||q.at!<=t.lastQuoteAt)continue;
       const decision=m1BidAskEvidence({
         side:t.side,weak:t.weak,pressure:t.pressure,atr:Number(t.atr),
         directionModel:t.directionModel
@@ -237,8 +239,15 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       const priorEligible=Number.isFinite(priorAt)&&priorAt>0&&
         priorAt>=cutoff-5000&&priorAt<=cutoff&&
         t.lastExitPrice!=null&&Number.isFinite(t.lastExitPrice);
-      if(currentEligible)
-        finish(t,'TIME_EXIT',cutoff,px,'خروج مرجعي بآخر Bid/Ask صالح قبل نهاية الدقيقة');
+      if(currentEligible){
+        // A newly observed quote at/before expiry still belongs to the trade.
+        // Evaluate barriers before the clock; never relabel a stop as TIME_EXIT.
+        const stopped=t.side==='BUY'?px!<=Number(t.stop):px!>=Number(t.stop);
+        const targeted=t.side==='BUY'?px!>=Number(t.tp):px!<=Number(t.tp);
+        if(stopped)finish(t,'STOP',currentAt!,px,'وقف مرصود قبل انتهاء المدة أو عندها');
+        else if(targeted)finish(t,'QUICK_TP',currentAt!,px,'هدف مرصود قبل انتهاء المدة أو عندها');
+        else finish(t,'TIME_EXIT',cutoff,px,'خروج مرجعي بآخر Bid/Ask صالح قبل نهاية الدقيقة');
+      }
       else if(priorEligible)
         finish(t,'TIME_EXIT',cutoff,Number(t.lastExitPrice),
           'خروج مرجعي بآخر Bid/Ask قبل انتهاء الدقيقة بخمس ثوانٍ');
