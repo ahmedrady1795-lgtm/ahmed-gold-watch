@@ -23,6 +23,9 @@ type Audit={version:1;lanes:Record<Lane,LaneState>};
 const PATH='/data/scalp-lead-audit-v1.json';
 const MAX_GAP_MS=15_000;
 const MAX_QUOTE_AGE_MS=10_000;
+// Historical 70-point gate silently discarded real technical WATCH setups
+// scoring 55–69. Observe them separately; NEVER qualify them for execution.
+export const MIN_SCALP_SHADOW_SCORE=55;
 let lastPersistAt=0; // limit writes while a quote is merely moving inside an open sample
 declare global {var __qannasScalpLeadAudit:Audit|undefined;}
 function blank():Audit{return {version:1,lanes:{GOLD_M1:{active:null,history:[],seen:[]},
@@ -65,7 +68,7 @@ export function startLeadObservation(
   lane:Lane,candidate:LeadCandidate,quote:LeadQuote,now:number
 ):LeadObservation|null{
   if(!fresh(quote,now)||!candidate.id||candidate.side!=='BUY'&&candidate.side!=='SELL'||
-    !Number.isFinite(candidate.score)||(candidate.status!=='AMBUSH'&&candidate.score<70)||
+    !Number.isFinite(candidate.score)||(candidate.status!=='AMBUSH'&&candidate.score<MIN_SCALP_SHADOW_SCORE)||
     !Number.isFinite(candidate.cost)||candidate.cost<=0||
     !['WATCH','ARMED','AMBUSH'].includes(candidate.status))return null;
   const price=Number(quote.price),at=Number(quote.at);
@@ -122,6 +125,10 @@ export function summarizeLeadObservations(history:LeadObservation[],active:LeadO
   const ambushResults=done.filter(x=>x.status==='AMBUSH');
   const averageMs=favorable.length?Math.round(favorable.reduce((sum,x)=>sum+
     Math.max(0,Number(x.resolvedAt)-x.startedAt),0)/favorable.length):null;
+  const early=done.filter(x=>x.status==='WATCH'&&x.score>=MIN_SCALP_SHADOW_SCORE&&x.score<70);
+  const earlyFavorable=early.filter(x=>x.result==='FAVORABLE_FIRST').length;
+  const earlyAdverse=early.filter(x=>x.result==='ADVERSE_FIRST').length;
+  const earlyResolved=earlyFavorable+earlyAdverse;
   const sources:Record<string,number>={};
   for(const x of done)sources[x.source]=(sources[x.source]||0)+1;
   return {
@@ -131,6 +138,10 @@ export function summarizeLeadObservations(history:LeadObservation[],active:LeadO
     resolved:directionallyResolved,observedFavorablePct:directionallyResolved?
       Math.round(favorable.length/directionallyResolved*1000)/10:null,
     meanTimeToFavorableMs:averageMs,watchOnlyResults:waitResults.length,
+    earlyWatchCohort:{total:early.length,favorable:earlyFavorable,
+      adverse:earlyAdverse,unknown:early.filter(x=>x.result==='UNKNOWN').length,
+      neutral:early.filter(x=>x.result==='NO_THRESHOLD').length,
+      observedFavorablePct:earlyResolved?Math.round(earlyFavorable/earlyResolved*1000)/10:null},
     ambushOnlyResults:ambushResults.length,bySource:sources,
     verdict:directionallyResolved>=50?'OBSERVED_SAMPLE_ONLY':'COLLECTING',
     caveat:'First observed quote threshold, not a fill, profit, verified timing before market move or Exness execution.'
