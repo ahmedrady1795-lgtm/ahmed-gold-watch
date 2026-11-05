@@ -119,10 +119,19 @@ function chooseAdaptive(rows:readonly M1Bar[]){
     best.score.hits>=Math.ceil(best.score.n*.62)&&
     check.n>=10&&check.hits>=Math.ceil(check.n*.67)&&
     check.hits-check.baselineHits>=2;
-  return {model:improved?best.model:'PRESSURE_SWEEP' as Model,
-    trained:best.score.n,trainHits:best.score.hits,
-    checked:check.n,checkHits:check.hits,simpleCheckHits:check.baselineHits,
-    improved};
+  // Critical audit fix: when a challenger fails its later check, the engine
+  // uses PRESSURE_SWEEP. Report PRESSURE_SWEEP's actual train/check outcomes,
+  // not the rejected challenger's hits under the fallback model label.
+  const reportedModel:Model=improved?best.model:'PRESSURE_SWEEP';
+  const reportedTrain=improved?best.score:
+    training.find(x=>x.model==='PRESSURE_SWEEP')?.score??
+      scorePast(rows,'PRESSURE_SWEEP',trainStart,checkStart);
+  const reportedCheck=improved?check:
+    scorePast(rows,'PRESSURE_SWEEP',checkStart,rows.length);
+  return {model:reportedModel,
+    trained:reportedTrain.n,trainHits:reportedTrain.hits,
+    checked:reportedCheck.n,checkHits:reportedCheck.hits,
+    simpleCheckHits:reportedCheck.baselineHits,improved};
 }
 
 export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Direction|null{

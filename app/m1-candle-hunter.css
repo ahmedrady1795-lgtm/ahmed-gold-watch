@@ -64,3 +64,21 @@
 @media(max-width:600px){.sniper-m1-priority{padding:6px 7px;gap:2px 7px}
 .sniper-m1-priority strong{width:100%;font-size:11px}
 .sniper-m1-priority span,.sniper-m1-priority small{font-size:10px}}
+
+
+/* Live intrabar tick observations and pre-open predictions are distinct.
+   No pulse color is an executable trade or a closed-candle grade. */
+.sniper-m1-pulse{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:7px;margin:6px 9px 9px;padding:8px;border:1px solid #385665;
+ border-radius:8px;background:#071824;color:#e7eef3}
+.sniper-m1-pulse-column{display:flex;flex-direction:column;gap:5px;
+ min-width:0;padding:7px;border-radius:6px;border:1px solid #264555;background:#0e2632}
+.sniper-m1-pulse-column small{font-size:10px;color:#9cc0ce}
+.sniper-m1-pulse-column strong{font-size:13px;color:#e2c78d;line-height:1.35}
+.sniper-m1-pulse-column span{font-size:10px;color:#c3d5dc;line-height:1.5}
+.sniper-m1-pulse.is-aligned .sniper-m1-pulse-column:nth-child(2) strong{color:#66e4b7}
+.sniper-m1-pulse.is-warning .sniper-m1-pulse-column:nth-child(2) strong{color:#ffa4ae}
+.sniper-m1-pulse-note{grid-column:1/-1;font-size:10px;
+ line-height:1.5;color:#b4c6ce;padding:0 3px}
+@media(max-width:430px){.sniper-m1-pulse{grid-template-columns:1fr;
+ margin:5px 7px;padding:6px}.sniper-m1-pulse-note{grid-column:auto}}

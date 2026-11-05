@@ -196,7 +196,9 @@ assert.equal(priceEveryM1Limit({side:'BUY',bid:100.2,ask:100.3,
  'when spread/fees dominate the minute, record an unviable forecast, not a fake trade');
 const panel=fs.readFileSync('components/SniperM1CandleHunter.tsx','utf8');
 assert.match(panel,/everyM1Direction\(p\.history,p\.now\)/);
-assert.match(panel,/توقع الشمعة الحالية/);
+assert.match(panel,/auditM1VisualEvidence\(/,'M1 screen must distinguish a hypothesis from qualified evidence');
+assert.match(panel,/visual\.liveConflict/,'Intrabar contradiction must be visible without rewriting a prior guess');
+assert.doesNotMatch(panel,/توقع الشمعة الحالية: صعود/,'A low-pressure prediction must not be promoted to a confident title');
 console.log('PASS: prediction every valid closed M1, weak predictions counted, per-candle limit lifecycle, no market entries or fake broker wins');
 
 

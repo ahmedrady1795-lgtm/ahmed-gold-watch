@@ -89,4 +89,30 @@ assert.match(ledger,/originalSide:signal\.side/,
 assert.doesNotMatch(ledger,/history\.filter\(.*weak\s*===\s*false\).*resolved/,
  'weak losses must not be excluded from full sample');
 assert.ok(EVERY_M1_EDGE_V3.includes('V3'));
+const {auditM1VisualEvidence}=load('lib/sniper-m1-visual-evidence.ts');
+// Screenshot regression: 47/100 pressure and 7/12 historical checks are
+// NOT evidence of an 80% winner and must never earn a priority star.
+const screenshot={side:'BUY',pressure:47,weak:false,improved:false,
+  checked:12,checkHits:7,simpleCheckHits:5,quoteTrusted:true,
+  lastClosedPrice:4105.50,currentPrice:4103.81,atr:1.20};
+const visible=auditM1VisualEvidence(screenshot);
+assert.equal(visible.status,'WEAK');
+assert.equal(visible.showPriorityStar,false);
+assert.match(visible.label,/ضعيف/);
+assert.equal(visible.liveConflict,true,
+  'Adverse live quote should warn without retroactively flipping BUY to SELL');
+assert.equal(auditM1VisualEvidence({...screenshot,quoteTrusted:false}).liveConflict,false,
+  'A stale or mismatched quote can never assert real-time contradiction');
+assert.equal(auditM1VisualEvidence({...screenshot,currentPrice:4105.43}).liveConflict,false);
+assert.equal(auditM1VisualEvidence({...screenshot,side:'SELL',
+  lastClosedPrice:4103,currentPrice:4104,atr:1}).liveConflict,true);
+assert.equal(auditM1VisualEvidence({...screenshot,pressure:78,weak:false,improved:true,
+  checked:12,checkHits:9,simpleCheckHits:5}).showPriorityStar,false,
+  'Twelve historical check candles are too few to certify a highlight');
+assert.equal(auditM1VisualEvidence({...screenshot,pressure:78,weak:false,improved:true,
+  checked:40,checkHits:30,simpleCheckHits:25}).showPriorityStar,true,
+  'A larger documented causal comparison may earn research highlight, not trade permission');
+assert.equal(failed.adaptive.model,'PRESSURE_SWEEP',
+  'Fallback screen must identify the actual selected directional model');
+console.log('PASS: M1 evidence labelling, small-sample warning, no visual overclaim or intrabar hindsight');
 console.log('PASS: adaptive M1 causal train/check, reversal wins on alternating fixture, no future leak, unchanged trend and all-error accounting');

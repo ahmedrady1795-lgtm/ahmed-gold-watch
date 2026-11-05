@@ -3,9 +3,11 @@
 import {useMemo} from 'react';
 import SniperMT5M1Chart from './SniperMT5M1Chart';
 import SniperM1CandleTape from './SniperM1CandleTape';
+import SniperM1IntrabarPulse from './SniperM1IntrabarPulse';
 import {auditCandleHunter,displayCandleHunter,type CandleHunterLevel} from '../lib/sniper-m1-candle-hunter';
 import type {M1Bar} from '../lib/sniper-mt5-m1';
 import {everyM1Direction} from '../lib/sniper-m1-every-direction';
+import {auditM1VisualEvidence} from '../lib/sniper-m1-visual-evidence';
 import {freshM1QuoteForWatch} from '../lib/sampled-live-candle';
 import {auditPrioritizedM1,grossBreakEvenPct}
   from '../lib/sniper-m1-priority';
@@ -36,17 +38,29 @@ export default function SniperM1CandleHunter(p:Props){
     [p.history,Math.floor(p.now/60000)]);
   const favored=liveEligible&&every?.anchorTime===plan.candleTime?
     every.side:'WAIT';
+  const nowPrice=Number(p.quote?.price);
+  const trusted=liveEligible&&p.marketOpen&&!p.providerTransition&&
+    freshM1QuoteForWatch(p.quote,p.historicalSource,p.now,plan.issuedAt!);
+  // An issued forecast is immutable. Fresh live prices may flag an observed
+  // contradiction, but they must not retroactively change its scored side.
+  const anchorClose=p.history.find(b=>b.time===plan.candleTime)?.close??null;
+  const visual=auditM1VisualEvidence({
+    side:favored,pressure:every?.pressure??NaN,weak:every?.weak??true,
+    improved:every?.adaptive?.improved??false,
+    checked:every?.adaptive?.checked??0,
+    checkHits:every?.adaptive?.checkHits??0,
+    simpleCheckHits:every?.adaptive?.simpleCheckHits??0,
+    quoteTrusted:Boolean(trusted),lastClosedPrice:anchorClose,
+    currentPrice:Number.isFinite(nowPrice)?nowPrice:null,atr:plan.atr
+  });
   const levels=plan.ready&&plan.buy&&plan.sell?[
-    {kind:'TRIGGER' as const,label:favored==='BUY'?'BUY BREAK ★':'BUY BREAK',price:plan.buy.trigger},
-    {kind:'TRIGGER' as const,label:favored==='SELL'?'SELL BREAK ★':'SELL BREAK',price:plan.sell.trigger},
+    {kind:'TRIGGER' as const,label:visual.showPriorityStar&&favored==='BUY'?'BUY BREAK ★':'BUY BREAK',price:plan.buy.trigger},
+    {kind:'TRIGGER' as const,label:visual.showPriorityStar&&favored==='SELL'?'SELL BREAK ★':'SELL BREAK',price:plan.sell.trigger},
     {kind:'TARGET' as const,label:'BUY TP',price:plan.buy.target},
     {kind:'TARGET' as const,label:'SELL TP',price:plan.sell.target},
     {kind:'STOP' as const,label:'BUY SL',price:plan.buy.stop},
     {kind:'STOP' as const,label:'SELL SL',price:plan.sell.stop}
   ]:[];
-  const nowPrice=Number(p.quote?.price);
-  const trusted=liveEligible&&p.marketOpen&&!p.providerTransition&&
-    freshM1QuoteForWatch(p.quote,p.historicalSource,p.now,plan.issuedAt!);
   // A current quote beyond a limit is NOT proof that a pending order filled.
   const activeHint=trusted?
     nowPrice>=plan.buy!.trigger?'السعر المرصود أعلى BUY BREAK · لا يوجد تنفيذ مؤكد':
@@ -75,13 +89,13 @@ export default function SniperM1CandleHunter(p:Props){
         referenceOnly?'مستويات منتهية · لا دخول':'انتظار شمعة مؤهلة'}</span>
     </div>
     <div className="sniper-m1-priority" aria-label="ترجيح قنص الدقيقة على الإغلاقات الحقيقية">
-      <strong>{favored==='BUY'?'توقع الشمعة الحالية: صعود ↑':
-        favored==='SELL'?'توقع الشمعة الحالية: هبوط ↓':
-        'بانتظار إغلاق M1 التالي لتوقع شمعة جديدة'}</strong>
+      <strong>{visual.label}</strong>
       <span>{liveEligible&&every?
-        'توقع لكل شمعة · '+(every.adaptive?.improved?'ترجيح متكيف مختبر سابقًا':
-          every.weak?'أدلة ضعيفة · غير مؤهل للدخول':'ضغط اتجاهي · لم يثبت التفوق')+
-        ' · الضغط '+every.pressure+'/100 (مش احتمال نجاح)':display.reason}</span>
+        'فرضية قبل بداية الشمعة · '+visual.reason+
+        ' · الضغط '+every.pressure+'/100 (ليس احتمال نجاح)':display.reason}</span>
+      {visual.liveConflict&&<small className="sniper-m1-live-conflict">
+        تنبيه: حركة التيكات الحالية عكس توقع بداية الدقيقة؛ لا نعيد كتابة التوقع أو نحسب نتيجة قبل الإغلاق.
+      </small>}
       {liveEligible&&every?.adaptive&&<small>
         {every.adaptive.trained>0?
           'فحص سببي سابق: تدريب '+every.adaptive.trainHits+'/'+every.adaptive.trained+
@@ -93,6 +107,11 @@ export default function SniperM1CandleHunter(p:Props){
       <small>TP هنا امتداد مرجعي قصير داخل M1، مش هدف ربح مؤهل بعد السبريد. BREAK للمراقبة فقط، ومحاولات Limit الورقية منفصلة.</small>
     </div>
 
+    <SniperM1IntrabarPulse forecast={liveEligible?every:null}
+      anchorClose={liveEligible?anchorClose:null}
+      historicalSource={p.historicalSource} quote={p.quote} now={p.now}
+      marketOpen={p.marketOpen} sourceReady={p.sourceReady}
+      providerTransition={p.providerTransition}/>
     <SniperMT5M1Chart asset={p.asset} history={p.history}
       historicalSource={p.historicalSource} quote={p.quote} now={p.now}
       marketOpen={p.marketOpen} providerTransition={p.providerTransition}

@@ -167,6 +167,35 @@ function GoldEveryCandle({data}:{data:any}){
         الحالات المجهولة والتوقعات الضعيفة ظاهرة، ومش محسوبة كمكاسب.
       </p>
     </div>
+    <div style={{padding:12,margin:'10px 0',borderRadius:10,
+      border:'1px solid var(--border, rgba(160,165,180,.25))'}}
+      aria-label="تقييم مبكر للتيكات دون تغيير التوقع الأصلي">
+      <strong>مختبر أول 20 ثانية · هل قراءة التيكات تحسّن الاتجاه؟</strong>
+      <p style={{fontSize:12,margin:'6px 0'}}>
+        توقعات جديدة {data?.forwardPulse?.issued??0}
+        {' · '}تيكان موثوقان {data?.forwardPulse?.sampled??0}
+        {' · '}إشارات مبكرة مجمّدة {data?.forwardPulse?.earlySignals??0}
+        {' · '}بلا إشارة قابلة للمقارنة {data?.forwardPulse?.insufficient??0}
+      </p>
+      <p style={{fontSize:12,margin:'6px 0'}}>
+        من نفس {data?.forwardPulse?.graded??0} شمعة أغلقت:
+        {' '}قراءة التيكات أصابت {data?.forwardPulse?.earlyHits??0}
+        {' · '}التوقع الأصلي أصاب {data?.forwardPulse?.originalHits??0}
+        {' · '}مجهول {data?.forwardPulse?.unknown??0}
+        {' · '}محايد {data?.forwardPulse?.flat??0}
+        {' · '}بانتظار الإغلاق {data?.forwardPulse?.waiting??0}
+      </p>
+      <p style={{fontSize:12,margin:'6px 0',opacity:.8}}>
+        لما التيكات وافقت توقع البداية:
+        {' '}{data?.forwardPulse?.agree?.earlyHits??0} من
+        {' '}{data?.forwardPulse?.agree?.graded??0}.
+        {' '}ولما عارضته:
+        {' '}{data?.forwardPulse?.counter?.earlyHits??0} من
+        {' '}{data?.forwardPulse?.counter?.graded??0}.
+        {' '}دي مقارنة اتجاه فقط، مش أرباح أو إشارة تداول حقيقي.
+        ولا نعتبرها تحسنًا مثبتًا من غير عينة مستقلة كافية.
+      </p>
+    </div>
     {latest?<div style={{border:'1px solid var(--border, rgba(160,165,180,.25))',
       padding:12,borderRadius:10}}>
       <div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
@@ -185,6 +214,12 @@ function GoldEveryCandle({data}:{data:any}){
       {latest.state==='CONFIRMING'&&<small style={{display:'block',marginTop:5}}>
         مفيش أمر Limit لحد ما حركة سعر جديدة تأكد التوقع الضعيف؛ الضغط {latest.pressure}/100
       </small>}
+      <small style={{display:'block',marginTop:6}}>
+        {latest.pulse?.firstSide?
+          'أول إشارة تيكات مسجلة خلال الدقيقة: '+(latest.pulse.firstSide==='BUY'?'صعود':'هبوط')+
+          (latest.pulse.firstAgree?' · مع التوقع':' · عكس التوقع')+
+          ' · لا تغير الدخول ولا النتيجة':'لا توجد إشارة تيكات مبكرة مجمدة لهذه الدقيقة'}
+      </small>
       <small style={{display:'block',marginTop:6}}>
         {latest.directionObserved==='BUY'||latest.directionObserved==='SELL'?
           'نتيجة توقع الشمعة بعد إغلاقها: '+(latest.side===latest.directionObserved?'✓ صحيح':'✗ خطأ'):
@@ -212,9 +247,10 @@ function GoldEveryCandle({data}:{data:any}){
       القناص ما بيراقبش الشموع وقت نوم Render أو انقطاع الأسعار،
       والدقائق دي لا نحسبها نجاحًا،
       {' '}متوسط الصافي {data?.meanNetR!=null?fmt(data.meanNetR)+'R':'غير محسوب'}،
-      {' '}العائد المستهدف مش نسبة نجاح. نقطة التعادل النظرية عند
-      مكسب 0.45R مقابل خسارة 1R حوالي 69% صفقات رابحة قبل تفاوت التنفيذ،
-      وما نعتبرش استراتيجية V4 ناجحة إلا بعينة أمامية كبيرة صافيها موجب.
+      {' '}العائد المستهدف مش نسبة نجاح. العائد الصافي المستهدف في
+      إعداد V5 لا يقل نظريًا عن 0.55R لكل وحدة مخاطرة؛ ونقطة التعادل
+      تختلف مع التنفيذ الفعلي وتوزيع الخسائر. وما نعتبرش V5 ناجحة
+      إلا بعينة أمامية كبيرة صافيها موجب.
       {' '}مش دليل ربح حقيقي ولا نسبة نجاح معتمدة.
     </small>
   </section>;
