@@ -90,8 +90,8 @@ assert.ok(directional.grossBreakEvenPct()>53&&directional.grossBreakEvenPct()<54
  '0.72 ATR TP / 0.82 ATR stop needs more than 53% wins BEFORE venue costs');
 const panel=fs.readFileSync('components/SniperM1CandleHunter.tsx','utf8');
 const html=fs.readFileSync('components/SniperMT5M1Chart.tsx','utf8');
-assert.match(panel,/favored=liveEligible&&priority.ready&&priority.anchorTime===plan.candleTime/,
- 'priority is only considered on a LIVE matching closed-candle plan');
+assert.match(panel,/favored=liveEligible&&every\?\.anchorTime===plan.candleTime/,
+ 'every-minute direction is only considered on a LIVE matching closed-candle plan');
 assert.match(panel,/auditPrioritizedM1/,'backtest comparison belongs in optional M1 details');
 assert.match(panel,/BUY BREAK ★/,'visually distinguish only the currently favored stop');
 assert.match(panel,/SELL BREAK ★/,'visually distinguish favored sell');
