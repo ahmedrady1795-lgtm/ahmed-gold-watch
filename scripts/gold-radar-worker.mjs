@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import {sidecarWorkAllowed} from '../lib/render-free-viewer-lease.ts';
 import {readGoldLiquidityRadar,trustedSpotGoldSource}
  from '../lib/gold-liquidity-radar.ts';
 import {goldMarketSession} from '../lib/gold-market-session.ts';
@@ -57,6 +58,7 @@ async function observe(){
  if(busy||finished)return;busy=true;
  const now=Date.now();
  try{
+  if(!(await sidecarWorkAllowed(now)))return;
   const url='http://127.0.0.1:'+(process.env.PORT||'10000')+
    '/api/chart-history?asset=GOLD&gold_radar='+now;
   const response=await fetch(url,{cache:'no-store',
