@@ -12,7 +12,7 @@ export type TickDecision='WAIT'|'CONFIRM'|'REJECT'|'UNKNOWN';
 export const M1_CONFIRM_WINDOW_MS=24000;
 export const M1_EXECUTION_EDGE_V4='EVERY_M1_TICK_CONFIRM_V4';
 export const requiresM1TickConfirmation=(p:M1Evidence):boolean=>
-  p.weak||p.pressure<35;
+  p.weak||p.pressure<55;
 export function m1BidAskEvidence(signal:M1Evidence,seed:SeedEvidence,
   q:TickEvidence):TickDecision{
   if(!Number.isFinite(signal.atr)||signal.atr<=0||
