@@ -49,23 +49,36 @@ assert.ok(!html.includes('scalp-early-watch'),
 
 const confirmed={...check,state:'ENTRY',entry:100,stop:99,targets:[{price:103}],
   confirmedCandleAt:now-5000,entryAudit:{approved:true,reason:'إغلاق مؤكّد'}};
+// ENTRY approval alone is NOT a fill. With LIMIT-only execution the UI
+// must wait for a verified reference bid/ask touch before a 15s entry badge.
 html=render(desk(armed,confirmed));
-assert.ok(html.includes('10 ث'),'Confirmed paper signal expires after 15 seconds');
-assert.ok(html.includes('scalp-seconds-levels'),'Only confirmed entry shows actual paper levels');
-html=render(desk(armed,{...confirmed,confirmedCandleAt:now-16000}));
-assert.ok(!html.includes('scalp-seconds-levels'),'Expired signal must not be actionable');
-html=render(desk(armed,confirmed,{checkedAt:now-16000}));
-assert.ok(!html.includes('scalp-seconds-levels'),'Stale prices block a previously confirmed signal');
-html=render(desk(armed,confirmed,{checkedAt:now+60000}));
+assert.ok(!html.includes('scalp-seconds-levels'),
+ 'an unfilled pending limit must never appear as an executed paper entry');
+const openAt=(p,activatedAt,extra={})=>desk(p,confirmed,{ledger:{lanes:[{
+ horizon:5,current:{state:'ACTIVE',activatedAt,plan:p}}]},...extra});
+html=render(openAt(armed,now-5000));
+assert.ok(html.includes('10 ث'),'Confirmed LIMIT touch has a 15-second badge window');
+assert.ok(html.includes('scalp-seconds-levels'),'Only activated pending limit shows paper levels');
+html=render(openAt(armed,now-16000));
+assert.ok(!html.includes('scalp-seconds-levels'),'Expired activation badge must not be actionable');
+html=render(openAt(armed,now-5000,{checkedAt:now-16000}));
+assert.ok(!html.includes('scalp-seconds-levels'),'Stale prices block a filled paper signal');
+html=render(openAt(armed,now-5000,{checkedAt:now+60000}));
 assert.ok(!html.includes('scalp-seconds-levels'),'Future-dated feed must not qualify as fresh');
-const closed={state:'STOPPED',activatedAt:now-60000,plan:{...armed,side:'SELL',entry:999,stop:1000,targets:[{price:998}]}};
+const pending={state:'ARMED',limitType:'BUY_LIMIT',limitExpiresAt:now+30000,
+ activatedAt:null,plan:armed};
+html=render(desk(armed,confirmed,{ledger:{lanes:[{horizon:5,current:pending}]}}));
+assert.ok(html.includes('BUY LIMIT معلّق')&&html.includes('scalp-pending-limit'));
+assert.ok(!html.includes('scalp-seconds-levels'),'pending LIMIT is never confirmed');
+const closed={state:'STOPPED',activatedAt:now-60000,
+ plan:{...armed,side:'SELL',entry:999,stop:1000,targets:[{price:998}]}};
 html=render(desk(armed,confirmed,{ledger:{lanes:[{horizon:5,current:closed}]}}));
-assert.ok(html.includes('↑ شراء مؤكد'),'Closed trade must not override the current confirmed direction');
-assert.ok(html.includes('100.00')&&!html.includes('999.00'),'Closed trade levels must not leak into a new signal');
-html=render(desk(armed,check,{ledger:{lanes:[{horizon:5,current:{...closed,state:'ACTIVE'}}]}}));
+assert.ok(!html.includes('شراء مؤكد'),'closed paper positions never renew a limit entry');
+assert.ok(!html.includes('999.00'),'Closed trade levels must not leak into a new signal');
+html=render(openAt(armed,now-60000));
 assert.ok(html.includes('متابعة فقط'));
-assert.ok(!html.includes('scalp-seconds-levels'),'An active paper trade does not renew an expired entry window');
-html=render(desk({...armed,side:'SELL',stop:101,targets:[{price:97}]},
-  {...confirmed,confirmedCandleAt:now-2000}));
+assert.ok(!html.includes('scalp-seconds-levels'),'An old paper entry does not renew a confirmed window');
+const sellArmed={...armed,side:'SELL',stop:101,targets:[{price:97}]};
+html=render(openAt(sellArmed,now-2000));
 assert.ok(html.includes('بيع'),'Sell direction stays visually explicit');
 console.log('PASS: fast scalp BUY/SELL/WAIT, 15-second TTL, stale veto, no fake levels or setup clutter');
