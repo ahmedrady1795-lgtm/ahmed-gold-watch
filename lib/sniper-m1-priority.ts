@@ -107,4 +107,14 @@ export function auditPrioritizedM1(bars:readonly M1Bar[],now:number,limit=48):Pr
   }
   return out;
 }
-export const grossBreakEvenPct=():number=>100*.82/(.82+.72);
+export const grossBreakEvenPct=(plan:CandleHunter):number=>{
+  if(!plan.ready||!plan.buy||!plan.sell)return NaN;
+  const buyRisk=plan.buy.trigger-plan.buy.stop;
+  const sellRisk=plan.sell.stop-plan.sell.trigger;
+  const buyReward=plan.buy.target-plan.buy.trigger;
+  const sellReward=plan.sell.trigger-plan.sell.target;
+  if(Math.min(buyRisk,sellRisk,buyReward,sellReward)<=0)return NaN;
+  const buyNeeded=100*buyRisk/(buyRisk+buyReward);
+  const sellNeeded=100*sellRisk/(sellRisk+sellReward);
+  return Math.max(buyNeeded,sellNeeded);
+};
