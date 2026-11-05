@@ -44,6 +44,12 @@ assert.equal(a.state,'PENDING','weakness or 1.25R trading gate must not discard 
 assert.equal(a.limitType,'BUY_LIMIT');
 assert.ok(a.entry<first.bid,'BUY LIMIT must be lower than current bid');
 assert.equal(a.filledAt,null,'never market-fill on creation');
+assert.ok(a.extraCost!=null&&Math.abs(a.extraCost-.05)<.001,
+  'bid/ask at entry and exit already charge spread; only fees/slippage remain');
+assert.ok(a.tp>a.entry+a.extraCost,
+  'micro target must still leave a positive gain after extra execution cost');
+assert.ok((a.tp-a.entry)<a.cost+.06,
+  'do not double-charge the measured spread when choosing micro TP');
 const start=a.entry;
 data=advanceEveryM1(data,bars,first,issue+500,.15);
 assert.equal(data.history.length,1,'same minute and quote never duplicate attempt');
@@ -69,12 +75,25 @@ assert.ok(down.side==='BUY'||down.side==='SELL');
 assert.equal(down.state,'PENDING');
 assert.ok(down.side==='BUY'?down.entry<102.6:down.entry>102.7);
 data=advanceEveryM1(data,second,q(102.6,102.7,after+60100),after+60100,.15);
-assert.equal(data.history[1].state,'EXPIRED','unfilled LIMIT expires, never converts to market');
+assert.equal(data.history[1].state,'UNKNOWN',
+ 'without intervening quotes an apparently unfilled LIMIT has unknown outcome, never assumed non-fill');
 const noBook={price:102,at:issue+100,source:'TEST-MT5'};
 let absent=advanceEveryM1({version:1,history:[]},bars,noBook,issue+100,.15);
 assert.equal(absent.history.length,1,'forecast still appears when broker quote is incomplete');
 assert.equal(absent.history[0].state,'NO_BID_ASK');
 assert.equal(absent.history[0].filledAt,null);
+let expensive=advanceEveryM1({version:1,history:[]},bars,first,issue+100,1.2);
+assert.equal(expensive.history[0].state,'COST_UNVIABLE',
+  'cost higher than typical M1 move must be logged, not paper-traded');
+assert.equal(expensive.history[0].filledAt,null);
+const beforeIssued=q(102.5,102.6,issue-1000);
+const temporal=advanceEveryM1({version:1,history:[]},bars,beforeIssued,issue+100,.15);
+assert.equal(temporal.history[0].state,'NO_BID_ASK',
+  'quote from before the signal is not a new LIMIT price');
+const gapBars=bars.map((b,i)=>i===39?{...b,time:b.time-60000}:b);
+assert.equal(everyM1Direction(gapBars,issue+100),null,
+  'missing M1 history cannot be used as contiguous evidence');
+
 const tape=buildM1CandleTape(bars,issue+100,9);
 assert.equal(tape.marks.length,9);
 assert.equal(tape.graded,9,'direction offered each of 9 past nonflat candles');
