@@ -90,6 +90,14 @@ function GoldQuickResults({gold}:{gold:any}){
 
 function GoldEveryCandle({data}:{data:any}){
   const latest=data?.latest;
+  // A directional forecast is not a pending broker or paper LIMIT.
+  // Show order levels only after a frozen reference LIMIT was actually
+  // staged. NO_EDGE/CONFIRMING/COST_UNVIABLE never imply a fill.
+  const stagedLimit=latest?.entry!=null&&latest?.tp!=null&&
+    latest?.stop!=null&&[latest.entry,latest.tp,latest.stop]
+      .every((n:unknown)=>Number.isFinite(Number(n)));
+  const hasPendingLimit=stagedLimit&&latest.state==='PENDING';
+  const hasPaperTouch=stagedLimit&&latest.filledAt!=null;
   const stateLabel=(v:string)=>({
     AWAIT_QUOTE:'التوقع صادر · انتظار أول Bid/Ask بعد بداية الشمعة',
     CONFIRMING:'تأكيد اتجاه سريع من Bid/Ask · لم نضع Limit بعد',
@@ -115,7 +123,7 @@ function GoldEveryCandle({data}:{data:any}){
     <p style={{fontSize:12,opacity:.80,margin:'8px 0'}}>
       توقع لكل دقيقة مؤهلة؛ دخول LIMIT على تراجع داخل شمعة مغلقة، بهدف
       صافي نظري ≥0.55R بعد تكلفة إضافية تقديرية. التوقعات الضعيفة بتحتاج
-      تيكًا جديدًا يؤيد الاتجاه خلال 24 ثانية؛ مش هنستنى شمعة تانية.
+      تيكًا جديدًا يؤيد الاتجاه خلال 24 ثانية من أول سعر صالح بعد إصدار التوقع.
       أي فرصة لا تصلح للتنفيذ
       تفضل متسجلة كتوقع، من غير تزوير دخول أو نجاح. مفيش ضمان للربح.
     </p>
@@ -170,17 +178,29 @@ function GoldEveryCandle({data}:{data:any}){
     {latest?<div style={{border:'1px solid var(--border, rgba(160,165,180,.25))',
       padding:12,borderRadius:10}}>
       <div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
-        <b>{latest.side==='BUY'?'↑ توقع صعود / BUY LIMIT':'↓ توقع هبوط / SELL LIMIT'}</b>
+        <b>{
+          (latest.side==='BUY'?'↑ توقع صعود':'↓ توقع هبوط')+
+          (hasPendingLimit?' · '+latest.limitType+' معلّق':
+           hasPaperTouch?' · لمس Limit ورقي':
+           stagedLimit?' · محاولة Limit منتهية':
+           ' · لم يصدر Limit')
+        }</b>
         <small>{latest.weak?'ضعيف · تجريبي فقط':'مرشح بحثي · لم تثبت ربحيته'}
           {' · '}{latest.pressure}/100 مش نسبة نجاح
           {' · '}{latest.pattern==='SWEEP_REJECTION'?'رفض كسر سيولة':'متابعة زخم'}
           {' · '}{latest.onlineModel==='ONLINE_INVERSION'?'اتجاه تغيّر بتعلم أمامي':
             'الترجيح الأساسي'}</small>
       </div>
-      <p style={{margin:'6px 0',fontSize:13}}>
-        دخول {fmt(latest.entry)} · هدف {fmt(latest.tp)} · وقف {fmt(latest.stop)}
-        {latest.targetNetR!=null?' · عائد نظري '+latest.targetNetR+'R':''}
-      </p>
+      {stagedLimit?
+        <p style={{margin:'6px 0',fontSize:13}}>
+          {hasPendingLimit?'Limit ورقي معلّق':'مستويات محاولة Limit ورقية'}
+          {' · '}دخول {fmt(latest.entry)}
+          {' · '}هدف {fmt(latest.tp)} · وقف {fmt(latest.stop)}
+          {latest.targetNetR!=null?' · عائد نظري '+latest.targetNetR+'R':''}
+        </p>:
+        <p style={{margin:'6px 0',fontSize:13,opacity:.82}}>
+          توقع اتجاه فقط؛ لم يوضع أي أمر Limit، ولا يوجد دخول أو هدف صفقة.
+        </p>}
       <small>{stateLabel(latest.state)} · {latest.note}</small>
       {latest.state==='CONFIRMING'&&<small style={{display:'block',marginTop:5}}>
         مفيش أمر Limit لحد ما حركة سعر جديدة تأكد التوقع الضعيف؛ الضغط {latest.pressure}/100
@@ -213,8 +233,8 @@ function GoldEveryCandle({data}:{data:any}){
       والدقائق دي لا نحسبها نجاحًا،
       {' '}متوسط الصافي {data?.meanNetR!=null?fmt(data.meanNetR)+'R':'غير محسوب'}،
       {' '}العائد المستهدف مش نسبة نجاح. نقطة التعادل النظرية عند
-      مكسب 0.45R مقابل خسارة 1R حوالي 69% صفقات رابحة قبل تفاوت التنفيذ،
-      وما نعتبرش استراتيجية V4 ناجحة إلا بعينة أمامية كبيرة صافيها موجب.
+      مكسب 0.55R مقابل خسارة 1R حوالي 64.5% صفقات رابحة قبل تفاوت التنفيذ،
+      وما نعتبرش استراتيجية V5 ناجحة إلا بعينة أمامية كبيرة صافيها موجب.
       {' '}مش دليل ربح حقيقي ولا نسبة نجاح معتمدة.
     </small>
   </section>;
