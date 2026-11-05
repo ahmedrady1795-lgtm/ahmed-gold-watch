@@ -21,6 +21,7 @@ export type LeadObservation={
 type LaneState={active:LeadObservation|null;history:LeadObservation[];seen:string[]};
 type Audit={version:1;lanes:Record<Lane,LaneState>};
 const PATH='/data/scalp-lead-audit-v1.json';
+const EPHEMERAL_PATH='/tmp/scalp-lead-audit-v1.json';
 const MAX_GAP_MS=15_000;
 const MAX_QUOTE_AGE_MS=10_000;
 // Historical 70-point gate silently discarded real technical WATCH setups
@@ -33,9 +34,12 @@ function blank():Audit{return {version:1,lanes:{GOLD_M1:{active:null,history:[],
 function load():Audit{
   if(globalThis.__qannasScalpLeadAudit)return globalThis.__qannasScalpLeadAudit;
   let state=blank();
-  try{
-    const parsed=JSON.parse(fs.readFileSync(PATH,'utf8'));
-    if(parsed?.version===1&&parsed?.lanes&&typeof parsed.lanes==='object'){
+  for(const file of [PATH,EPHEMERAL_PATH]){
+    try{
+      const raw=fs.readFileSync(file,'utf8');
+      if(raw.length>3_000_000)continue;
+      const parsed=JSON.parse(raw);
+      if(parsed?.version!==1||!parsed?.lanes||typeof parsed.lanes!=='object')continue;
       for(const lane of Object.keys(state.lanes) as Lane[]){
         const row=parsed.lanes[lane];
         if(row&&Array.isArray(row.history)&&Array.isArray(row.seen)){
@@ -45,17 +49,20 @@ function load():Audit{
           };
         }
       }
-    }
-  }catch{}
+      break; // Prefer durable volume over a temporary checkpoint.
+    }catch{}
+  }
   globalThis.__qannasScalpLeadAudit=state;
   return state;
 }
-function save(state:Audit){
+function save(state:Audit):'VOLUME'|'EPHEMERAL'|null{
+  const file=fs.existsSync('/data')?PATH:EPHEMERAL_PATH;
   try{
-    if(!fs.existsSync('/data'))return false;
-    fs.writeFileSync(PATH+'.tmp',JSON.stringify(state));
-    fs.renameSync(PATH+'.tmp',PATH);return true;
-  }catch{return false;}
+    fs.writeFileSync(file+'.tmp',JSON.stringify(state));
+    fs.renameSync(file+'.tmp',file);
+    // Render Free /tmp can survive a process restart, but not a new instance.
+    return file===PATH?'VOLUME':'EPHEMERAL';
+  }catch{return null;}
 }
 function fixed(n:number){return Math.round(n*10000)/10000;}
 function fresh(quote:LeadQuote,now:number){
@@ -179,12 +186,15 @@ export function observeScalpLead(
   // settlements and a periodic checkpoint, not every poll on the free service.
   // An interrupted checkpoint must be treated as UNKNOWN upon later replay.
   const shouldSave=changed&&(closed||startedNow||now-lastPersistAt>=10_000);
-  const didSave=shouldSave?save(state):false;
-  if(didSave)lastPersistAt=now;
-  const persisted=didSave||fs.existsSync(PATH);
-  return {...summarizeLeadObservations(row.history,row.active),persisted};
+  const wrote=shouldSave?save(state):null;
+  if(wrote)lastPersistAt=now;
+  const persisted=fs.existsSync(PATH);
+  return {...summarizeLeadObservations(row.history,row.active),persisted,
+    storage:persisted?'VOLUME':fs.existsSync(EPHEMERAL_PATH)?'EPHEMERAL':'MEMORY'};
 }
 export function peekScalpLead(lane:Lane){
   const state=load(),row=state.lanes[lane];
-  return {...summarizeLeadObservations(row.history,row.active),persisted:fs.existsSync(PATH)};
+  const persisted=fs.existsSync(PATH);
+  return {...summarizeLeadObservations(row.history,row.active),persisted,
+    storage:persisted?'VOLUME':fs.existsSync(EPHEMERAL_PATH)?'EPHEMERAL':'MEMORY'};
 }
