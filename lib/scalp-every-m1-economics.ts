@@ -4,6 +4,7 @@ export const EVERY_M1_EDGE_V2='EVERY_M1_EDGE_V2';
 export const EVERY_M1_EDGE_V3='EVERY_M1_ADAPTIVE_DIRECTION_V3';
 export const EVERY_M1_EDGE_V4='EVERY_M1_FORWARD_LEARNER_V4';
 export const EVERY_M1_EDGE_V5='EVERY_M1_TICK_CONFIRMED_LIMIT_V5';
+export const EVERY_M1_EDGE_V6='EVERY_M1_LOSS_BRAKE_V6';
 export const EVERY_M1_MIN_NET_R=.55;
 export type EveryM1Economics={
   side:'BUY'|'SELL';entry:number;stop:number;tp:number;
