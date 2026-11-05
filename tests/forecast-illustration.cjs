@@ -15,8 +15,10 @@ const watch=read('lib/structural-watch.ts',p=>p==='./long-range-targets'?long:re
 const fourHour=read('lib/four-hour-structure.ts');
 const continuous=read('lib/continuous-direction.ts');
 const stability=read('lib/sniper-stability.ts');
+const selection=read('lib/scalp-selection.ts');
+const nearCandle=read('lib/near-candle-watch.ts',p=>p==='./scalp-selection'?selection:require(p));
 const {buildForecastIllustration:build}=read('lib/forecast-illustration.ts',
-  p=>p==='./sniper-outlook'?sniper:p==='./structural-watch'?watch:p==='./four-hour-structure'?fourHour:p==='./continuous-direction'?continuous:p==='./sniper-stability'?stability:require(p));
+  p=>p==='./sniper-outlook'?sniper:p==='./structural-watch'?watch:p==='./four-hour-structure'?fourHour:p==='./continuous-direction'?continuous:p==='./sniper-stability'?stability:p==='./near-candle-watch'?nearCandle:require(p));
 const now=Date.parse('2026-10-11T10:00:00Z');
 const candles=Array.from({length:46},(_,i)=>{
   const price=99+i*.02;
@@ -61,15 +63,15 @@ assert.equal(m.candles.at(-1).time,now-60000);
 
 m=build('GOLD',base,null,now,now-10000,null,true);
 assert.equal(m.ready,false,'audited entry must never exist without an ACTIVE ledger record');
-assert.equal(m.watchReady,true,'live qualified levels should still be visible as non-tradable watch');
-assert.equal(m.projected.length>=2,true);
+assert.equal(m.watchReady,false,'A short M1 chart must not substitute distant H1/H4 watch levels when near-bar evidence is insufficient');
+assert.equal(m.projected.length,0);
 const archived={side:'BUY',startPrice:100,invalidation:101,confidence:82,
   targets:[{stage:1,price:999,low:998,high:999,quality:85,kind:'STRUCTURAL',reached:false}],
   capturedAt:now-100000,modelAt:now-100000,expiresAt:now-20000,
   lastConfirmedAt:now-30000,state:'INVALIDATED',message:'Archived invalidation'};
 m=build('GOLD',base,null,now,now-10000,archived,true);
 assert.equal(m.ready,false,'invalidated ledger cannot activate');
-assert.equal(m.watchReady,true,'a distinct live market watch remains separate from prior ledger');
+assert.equal(m.watchReady,false,'an archived entry cannot invent a next-minute path without enough M1 candles');
 assert.ok(m.displayTargets.every(t=>t.price!==999),'old target never reused as current');
 assert.ok(m.displayStop!==101,'old invalid stop never reused');
 m=build('GOLD',{...base,livePulse:{price:100,sourceTime:now-30000}},
@@ -77,18 +79,30 @@ m=build('GOLD',{...base,livePulse:{price:100,sourceTime:now-30000}},
 assert.equal(m.watchReady,false,'price staleness vetoes watch even with an archived record');
 assert.equal(m.displayTargets.length,0,'stale archives stay off main price chart');
 console.log('PASS: real candles, numeric targets, rebound, stop, freshness and no imaginary arrows');
+// The main visual watches only the NEXT minute when sufficient M1 evidence exists.
+const nearCandles=Array.from({length:120},(_,i)=>{
+  const price=97+i*.025;
+  return {time:now-(120-i)*60000,open:price,close:price+.04,
+    high:price+.075,low:price-.02,volume:i+1};
+});
+const nearBase={...base,chartCandles:nearCandles};
 const savedBias={...m.bias,side:'BUY',active:true,status:'LIVE',invalidation:98,
   targets:[{stage:1,price:108,low:108,high:108,quality:75,kind:'STRUCTURAL',source:'H1',distanceAtr:5}]};
 const savedState={side:'BUY',since:now-60000,lastProcessedM15:now,
   oppositeSide:'WAIT',oppositeBars:0,invalidation:98,targets:savedBias.targets,reachedPrices:[]};
-m=build('GOLD',base,null,now,now-10000,null,true,savedState,savedBias);
-assert.equal(m.watchReady,true);
-assert.equal(m.displayTargets[0].price,108,'chart takes the authoritative server objective');
-m=build('GOLD',base,null,now,now-10000,null,true,{...savedState,targets:[],reachedPrices:[108]},
+m=build('GOLD',nearBase,null,now,now-10000,null,true,savedState,savedBias);
+assert.equal(m.watchReady,true,'Sufficient closed M1 history can support a near-candle WATCH');
+assert.equal(m.nearTermWatch,true);
+assert.ok(m.displayTargets.length===1&&m.displayTargets[0].price>100&&
+  m.displayTargets[0].price<100.3&&m.displayTargets[0].price!==108,
+  'The main chart must not render distant server H1 objectives as next-minute targets');
+assert.equal(m.displayStop,null,'The M1 observation must not inherit a misleading H1/H4 stop');
+m=build('GOLD',nearBase,null,now,now-10000,null,true,{...savedState,targets:[],reachedPrices:[108]},
   {...savedBias,targets:[]});
-assert.equal(m.watchReady,false,'consumed server goals cannot fall back to raw model goals');
-m=build('GOLD',base,null,now,now-10000,null,true,savedState,{...savedBias,active:false});
-assert.equal(m.watchReady,false,'paused server path cannot fall back to a live raw model');
-m=build('GOLD',{...base,livePulse:{price:97,sourceTime:now}},null,now,now-10000,null,true,savedState,savedBias);
-assert.equal(m.watchReady,false,'price breach cannot resurrect a model path');
+assert.ok(m.displayTargets.every(t=>t.price!==108),
+  'A consumed long-range goal must never be resurrected by a separate M1 watch');
+m=build('GOLD',nearBase,null,now,now-10000,null,true,savedState,{...savedBias,active:false});
+assert.equal(m.watchReady,false,'Paused authoritative server state still vetoes new paths');
+m=build('GOLD',{...nearBase,livePulse:{price:97,sourceTime:now}},null,now,now-10000,null,true,savedState,savedBias);
+assert.equal(m.watchReady,false,'Large quote drift cannot chase an already-consumed M1 target');
 console.log('PASS: authoritative server chart levels, consumed objectives, paused memory and immediate invalidation');
