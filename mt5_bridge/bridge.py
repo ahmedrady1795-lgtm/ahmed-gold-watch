@@ -53,7 +53,7 @@ KILL_SWITCH=Path(os.getenv('KILL_SWITCH_FILE',str(Path(__file__).with_name('KILL
 
 def log(*x): print(datetime.now().strftime('%Y-%m-%d %H:%M:%S'),*x,flush=True)
 def empty_state():
-    return {'last_signal':'','last_trade_at':0,'last_attempt_signal':'','last_attempt_at':0,'peak_equity':0,'last_quality':{},'last_candles_push_at':0,'demo_position':None,'demo_stats':{'trades':0,'wins':0,'losses':0,'net_points':0.0,'gross_win_points':0.0,'gross_loss_points':0.0,'profit_factor':0.0,'loss_streak':0}}
+    return {'last_signal':'','last_trade_at':0,'last_attempt_signal':'','last_attempt_at':0,'peak_equity':0,'last_quality':{},'last_candles_push_at':0,'demo_position':None,'demo_pending':None,'demo_stats':{'trades':0,'wins':0,'losses':0,'net_points':0.0,'gross_win_points':0.0,'gross_loss_points':0.0,'profit_factor':0.0,'loss_streak':0}}
 def state_read():
     try:
         x=json.loads(STATE.read_text('utf-8'))
@@ -172,6 +172,44 @@ def scalp_demo_step(s):
     now=time.time();bid=float(tick.bid);ask=float(tick.ask);point=float(info.point or 1)
     spread_points=max(0.0,(ask-bid)/point if point else 0.0)
 
+    if s.get('demo_pending') and not pos:
+        pending=s['demo_pending']
+        requested=str(pending.get('side','WAIT'))
+        entry=float(pending.get('entry',0))
+        started_msc=int(pending.get('last_tick_msc',0) or 0)
+        current_msc=int(getattr(tick,'time_msc',0) or 0)
+        expires=float(pending.get('expires_at',0) or 0)
+        if (now>=expires or KILL_SWITCH.exists() or
+            ambush.get('side')!=requested or not ambush.get('active') or
+            spread_points>MAX_SPREAD_POINTS or current_msc<=started_msc or
+            (current_msc-started_msc)>5000):
+            log('SCALP DEMO LIMIT EXPIRED/CANCELED',pending.get('id'))
+            s['demo_pending']=None
+            return s
+        px=ask if requested=='BUY' else bid
+        last=float(pending['last_executable'])
+        touched=(last>entry>=px) if requested=='BUY' else (last<entry<=px)
+        if not touched:
+            pending['last_executable']=px
+            pending['last_tick_msc']=current_msc
+            return s
+        risk=float(pending['sl_points'])*point
+        if abs(px-entry)>risk*.35:
+            log('SCALP DEMO LIMIT GAP UNKNOWN',pending.get('id'))
+            s['demo_pending']=None;return s
+        pos={k:v for k,v in pending.items() if k not in
+             ('expires_at','last_executable','last_tick_msc','order_type')}
+        pos['entry']=entry
+        pos['sl']=entry-float(pos['sl_points'])*point if requested=='BUY' else entry+float(pos['sl_points'])*point
+        pos['tp']=entry+float(pos['tp_points'])*point if requested=='BUY' else entry-float(pos['tp_points'])*point
+        pos['opened_at']=now
+        pos['best_points']=-spread_points;pos['worst_points']=-spread_points
+        pos['weak_polls']=0
+        s['demo_pending']=None;s['demo_position']=pos
+        log('SCALP DEMO LIMIT FILLED',requested,'entry',entry,'ref quote',px)
+        journal_demo('opened',pos,'LIMIT_TOUCH_ONLY',{'orderType':pending.get('order_type')})
+        return s
+
     if pos:
         side=pos.get('side');entry=float(pos['entry']);exit_px=bid if side=='BUY' else ask
         pnl=(exit_px-entry)/point*(1 if side=='BUY' else -1)
@@ -228,28 +266,47 @@ def scalp_demo_step(s):
     if side not in ('BUY','SELL') or confidence<dynamic_min_conf:return s
     if spread_points<=0 or spread_points>MAX_SPREAD_POINTS:return s
 
-    entry=ask if side=='BUY' else bid
-    ref=float(plan.get('entry',entry));sl_ref=float(plan.get('sl',entry));tp_ref=float(plan.get('tp',entry))
-    plan_sl_points=abs(ref-sl_ref)/point if point else 0.0
-    plan_tp_points=abs(tp_ref-ref)/point if point else 0.0
+    # The Ambush entry is a ZONE object, not a market-fill price.
+    # A limit is derived from the observed zone midpoint, only if that
+    # fixed level is on the non-marketable side of the broker bid/ask.
+    zone=plan.get('entry')
+    if not isinstance(zone,dict) or not zone.get('ready'):return s
+    try:
+        low=float(zone['zoneLow']);high=float(zone['zoneHigh'])
+    except (ValueError,TypeError,KeyError):return s
+    if not all(math.isfinite(v) for v in (low,high)) or low<=0 or high<low:return s
+    entry=round((low+high)/2,int(info.digits))
+    min_gap=max(point,float(getattr(info,'trade_stops_level',0) or 0)*point)
+    if side=='BUY' and not entry<=ask-min_gap:return s
+    if side=='SELL' and not entry>=bid+min_gap:return s
+    ref=entry
+    plan_sl_points=spread_points*2.0
+    plan_tp_points=spread_points*3.0
 
     # Quick-capture profile: target must clear current spread/cost, but is capped so we exit before momentum fades.
     tp_points=max(spread_points*SCALP_QUICK_TP_SPREAD_MULT,min(plan_tp_points if plan_tp_points>0 else spread_points*3.0,spread_points*3.2))
     sl_points=max(spread_points*SCALP_QUICK_SL_SPREAD_MULT,min(plan_sl_points if plan_sl_points>0 else spread_points*2.0,tp_points*.92))
     tp_points=max(3.0,tp_points);sl_points=max(3.0,sl_points)
 
-    pos={
-        'id':plan.get('id'),'side':side,'entry':entry,
-        'sl':entry-sl_points*point if side=='BUY' else entry+sl_points*point,
-        'tp':entry+tp_points*point if side=='BUY' else entry-tp_points*point,
-        'opened_at':now,'max_hold_seconds':min(SCALP_QUICK_MAX_HOLD,float(plan.get('maxHoldSeconds',SCALP_QUICK_MAX_HOLD) or SCALP_QUICK_MAX_HOLD)),
-        'confidence':confidence,'entry_confidence':confidence,'latency_ms':round(float(data.get('_site_latency_ms',0)),1),
-        'spread_points':round(spread_points,1),'tp_points':round(tp_points,1),'sl_points':round(sl_points,1),
-        'best_points':-spread_points,'worst_points':-spread_points,'weak_polls':0
+    ttl_ms=int(plan.get('expiresAt',0) or 0)
+    expires_at=min(now+30,ttl_ms/1000 if ttl_ms>0 else now+30)
+    if expires_at-now<3 or KILL_SWITCH.exists():return s
+    pending={
+        'id':plan.get('id') or 'ambush:'+side+':'+str(int(now*1000)),
+        'side':side,'entry':entry,
+        'order_type':'BUY_LIMIT' if side=='BUY' else 'SELL_LIMIT',
+        'expires_at':expires_at,'last_executable':ask if side=='BUY' else bid,
+        'last_tick_msc':int(getattr(tick,'time_msc',0) or 0),
+        'sl_points':round(sl_points,2),'tp_points':round(tp_points,2),
+        'max_hold_seconds':min(SCALP_QUICK_MAX_HOLD,float(plan.get('maxHoldSeconds',SCALP_QUICK_MAX_HOLD) or SCALP_QUICK_MAX_HOLD)),
+        'confidence':confidence,'entry_confidence':confidence,
+        'latency_ms':round(float(data.get('_site_latency_ms',0)),1),
+        'spread_points':round(spread_points,1)
     }
-    s['demo_position']=pos
-    log('SCALP DEMO ENTRY',side,'entry',entry,'sl',pos['sl'],'tp',pos['tp'],'tp_pts',round(tp_points,1),'sl_pts',round(sl_points,1),'spread_pts',round(spread_points,1),'hold',pos['max_hold_seconds'],'confidence',confidence,'latency_ms',pos['latency_ms'])
-    journal_demo('opened',pos,'QUICK_CAPTURE_ENTRY',{'ambush':ambush,'dynamicMinConfidence':dynamic_min_conf})
+    s['demo_pending']=pending
+    log('SCALP DEMO LIMIT PENDING',side,'price',entry,'expires',round(expires_at-now,1),
+        'spread_pts',round(spread_points,1))
+    journal_demo('pending',pending,'LIMIT_WAIT',{'dynamicMinConfidence':dynamic_min_conf})
     return s
 
 def journal_execution(signal,ok,message,s):
