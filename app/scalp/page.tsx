@@ -33,6 +33,11 @@ function GoldLeadAudit({audit}:{audit:any}){
             حركة مؤيدة {a.favorableFirst||0} · عكسية {a.adverseFirst||0} · بلا حسم {a.noThreshold||0} · مجهولة {a.unknown||0}
           </p>
           <p style={{fontSize:12,opacity:.82,margin:'5px 0'}}>
+            تحضير مبكر 55–69: {a.earlyWatchCohort?.total??0} حالة مرصودة
+            {' · '}مؤيدة {a.earlyWatchCohort?.favorable??0} · عكسية {a.earlyWatchCohort?.adverse??0}
+            {' · '}مجهولة {a.earlyWatchCohort?.unknown??0}
+          </p>
+          <p style={{fontSize:12,opacity:.82,margin:'5px 0'}}>
             زمن الحركة المؤيدة: {a.meanTimeToFavorableMs!=null?
               (Number(a.meanTimeToFavorableMs)/1000).toFixed(1)+' ثانية':'غير متاح'}
           </p>
@@ -63,7 +68,8 @@ export default function ScalpWorkspace(){
     setLoading(true);
     try{
       const r=await fetch('/api/scalp?ts='+Date.now(),{
-        cache:'no-store',signal:AbortSignal.timeout(12000)
+        cache:'no-store',headers:{'X-Qannas-Viewer':'1'},
+        signal:AbortSignal.timeout(12000)
       });
       const result=await r.json();
       if(!r.ok||!result?.ok)throw Error(result?.message||'تعذر تحديث السكالب');
