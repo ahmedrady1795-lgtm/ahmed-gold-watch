@@ -63,7 +63,7 @@ assert.ok(a.tp-a.entry<=guess.atr*.72+.02,
 const start=a.entry;
 data=advanceEveryM1(data,bars,first,issue+500,.015);
 assert.equal(data.history.length,1,'same minute and quote never duplicate attempt');
-const later=q(start-.04,start-.01,issue+1100);
+const later=q(start-.02,start-.01,issue+1100);
 data=advanceEveryM1(data,bars,later,issue+1200,.015);
 assert.equal(data.history[0].state,'ACTIVE','later ask crossing frozen BUY limit activates reference paper');
 assert.equal(data.history[0].filledAt,issue+1100);
