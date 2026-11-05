@@ -37,7 +37,8 @@ export default function SniperM1CandleTape({history,now}:{
              rx=".5" fill={color}/>
          </svg>
          <small dir="ltr">{time(m.time)}</small>
-         {m.weak&&<small title="توقع منخفض الأدلة، ليس نسبة نجاح">ضعيف</small>}
+         {m.adaptiveImproved?<small title="اختير من تدريب سابق وفحص لاحق؛ ليس إثبات ربح">متكيف</small>:
+          m.weak&&<small title="توقع منخفض الأدلة، ليس نسبة نجاح">ضعيف</small>}
          <b>{m.predicted==='BUY'?'↑':m.predicted==='SELL'?'↓':'–'}
            <span>{m.aligned===true?'✓':m.aligned===false?'×':'·'}</span>
          </b>
@@ -45,7 +46,10 @@ export default function SniperM1CandleTape({history,now}:{
      })}
    </div>
    <small className="sniper-candle-tape-caution">
-     كل شمعة لها اتجاه حتى لو الدليل ضعيف، ويُحسب الخطأ · ✓ تطابق إغلاق فقط، مش ربحًا أو لمس هدف
+     جميع التوقعات الماضية {tape.aligned}/{tape.graded}، ومنها نموذج متكيف
+     {' '}{tape.adaptiveAligned}/{tape.adaptiveGraded} (إن وُجد).
+     {' '}المقارنة إعادة تشغيل تاريخية سببية، وليست إنذارات مجمدة حية أو أرباحًا.
+     الأخطاء والضعيف محسوبين ولا بنخفيهم.
    </small>
  </section>;
 }
