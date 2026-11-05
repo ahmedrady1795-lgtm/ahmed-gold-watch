@@ -7,7 +7,7 @@ assert.match(route,/getScalpDesk\(asset\)/,'API must pass selected GOLD mode');
 assert.match(page,/requestedAsset==='GOLD'\?'GOLD':'ALL'/,
  'standalone GOLD tab must request its independent pipeline');
 assert.match(page,/useState<'ALL'\|'GOLD'\|'BTC'>\('GOLD'\)/,
- 'GOLD should open first for the user's rapid scalp workflow');
+ "GOLD should open first for rapid scalp use");
 
 let btcMarketCalls=0,btcBookCalls=0,goldMarketCalls=0;
 const failIfUnknown=name=>{throw Error('unexpected real dependency '+name)};
