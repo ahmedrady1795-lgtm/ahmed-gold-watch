@@ -91,7 +91,8 @@ function GoldQuickResults({gold}:{gold:any}){
 function GoldEveryCandle({data}:{data:any}){
   const latest=data?.latest;
   const stateLabel=(v:string)=>({
-    NO_BID_ASK:'لا توجد أسعار Bid/Ask مؤكدة',
+    NO_BID_ASK:'لا توجد أسعار Bid/Ask حديثة بعد التوقع',
+    COST_UNVIABLE:'التكلفة أكبر من الحركة المرجحة · بدون Limit',
     PENDING:'LIMIT معلّق · مستني لمس السعر',
     ACTIVE:'تم لمس LIMIT ورقي · متابعة الخروج',
     QUICK_TP:'هدف مكسب صغير مرصود',
@@ -109,11 +110,14 @@ function GoldEveryCandle({data}:{data:any}){
       <span style={{fontSize:12,opacity:.82}}>ورقي بحثي فقط · لا ينفّذ على Exness</span>
     </div>
     <p style={{fontSize:12,opacity:.80,margin:'8px 0'}}>
-      من غير فلتر 1.25R في وضع التجربة: اتجاه لكل دقيقة مغلقة حتى لو الدليل ضعيف.
-      شرط السعر الحقيقي يفضل لازم لإثبات لمس LIMIT، وإلا النتيجة ما تتحسبش مكسب.
+      توقع لكل دقيقة مؤهلة؛ محاولة Limit فقط لو الهدف الصغير يغطي تكلفة إضافية
+      ولم يكن أكبر من نطاق الدقيقة المتوقع. الشموع الضعيفة والفرص المكلفة محسوبة
+      في المراجعة، ومفيش ضمان إن كل شمعة تكسب. الربح الورقي مش تنفيذ Exness.
     </p>
     <div style={{display:'flex',gap:12,flexWrap:'wrap',margin:'8px 0 12px',fontSize:12}}>
       <span>توقعات {data?.proposals??0}</span>
+      <span>فرص مكلفة متروكة {data?.costUnviable??0}</span>
+      <span>توقعات ضعيفة {data?.weakCount??0}</span>
       <span>أوامر معلقة {data?.pending??0}</span>
       <span>لمسات ورقية {data?.filled??0}</span>
       <span>مكاسب صغيرة {data?.quickWins??0}</span>
@@ -147,6 +151,7 @@ function GoldEveryCandle({data}:{data:any}){
        'تخزين مؤقت؛ إعادة إنشاء الخدمة قد تمسح النتائج'}.
       {' '}مجموع الصافي الورقي {fmt(data?.netR)}R،
       {' '}من {data?.resolved??0} نتيجة قابلة للحساب بعد تكلفة تقديرية،
+      {' '}متوسط الصافي {data?.meanNetR!=null?fmt(data.meanNetR)+'R':'غير محسوب'}،
       {' '}مش دليل ربح حقيقي ولا نسبة نجاح معتمدة.
     </small>
   </section>;
