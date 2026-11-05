@@ -130,24 +130,59 @@ function GoldEveryCandle({data}:{data:any}){
       <span>مجهولة {data?.unknown??0}</span>
       <span>انعكاسات سيولة {data?.reversalSetups??0}</span>
       <span>عينات قديمة منفصلة {data?.legacyResults??0}</span>
-      <span>V2 نتائج محسومة {data?.resolved??0}</span>
-      <span>V2 نسبة رابحة {data?.observedWinPct!=null?data.observedWinPct+'%':'لا توجد عينة'}</span>
+      <span>V4 نتائج LIMIT محسومة {data?.resolved??0}</span>
+      <span>V4 نجاح الصفقات الورقية {data?.observedWinPct!=null?data.observedWinPct+'%':'لا توجد عينة'}</span>
+      <span>النسخة القديمة: {data?.legacyResults??0} صفقة / {data?.legacyNetR??0}R (منفصلة)</span>
       <span>رفض قمة/قاع: {data?.byPattern?.reversal?.resolved??0} نتيجة / صافي {data?.byPattern?.reversal?.netR??0}R</span>
       <span>متابعة زخم: {data?.byPattern?.momentum?.resolved??0} نتيجة / صافي {data?.byPattern?.momentum?.netR??0}R</span>
+    </div>
+    <div style={{padding:'12px',margin:'10px 0',borderRadius:10,
+      border:'1px solid var(--border, rgba(160,165,180,.25))'}}>
+      <strong>التعلّم الحي من الشموع · نتيجة تأتي بعد التوقع</strong>
+      <p style={{fontSize:13,margin:'6px 0'}}>
+        {data?.forwardDirection?.hits??0} صحيح من {data?.forwardDirection?.graded??0} توقع
+        مكتمل بعد صدوره · أخطاء {data?.forwardDirection?.misses??0}
+        {' · '}مجهول {data?.forwardDirection?.unknown??0}
+        {' · '}بانتظار الإغلاق {data?.forwardDirection?.waiting??0}
+        {' · '}محايد {data?.forwardDirection?.flat??0}
+      </p>
+      <p style={{fontSize:12,margin:'6px 0'}}>
+        توقعات ضعيفة: {data?.learning?.byEvidence?.weak?.hits??0} صحيح من
+        {' '}{data?.learning?.byEvidence?.weak?.graded??0}
+        {' · '}توقعات أقوى نسبيًا:
+        {' '}{data?.learning?.byEvidence?.candidate?.hits??0} من
+        {' '}{data?.learning?.byEvidence?.candidate?.graded??0}
+        {' · '}قلب اتجاه متعلم {data?.learning?.switched??0}
+      </p>
+      <p style={{fontSize:12,margin:'6px 0',opacity:.8}}>
+        المحرك بيسجل التوقع قبل كل شمعة ويقيم الإغلاق بعدها. لازم 24 توقعًا تدريبيًا
+        و12 توقعًا لاحقًا من نفس نوع الحالة قبل السماح بتغيير اتجاه تلقائي.
+        الحالات المجهولة والتوقعات الضعيفة ظاهرة، ومش محسوبة كمكاسب.
+      </p>
     </div>
     {latest?<div style={{border:'1px solid var(--border, rgba(160,165,180,.25))',
       padding:12,borderRadius:10}}>
       <div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
         <b>{latest.side==='BUY'?'↑ توقع صعود / BUY LIMIT':'↓ توقع هبوط / SELL LIMIT'}</b>
-        <small>{latest.weak?'توقع ضعيف · محسوب ضمن الأخطاء':'ضغط اتجاهي مرصود'}
+        <small>{latest.weak?'ضعيف · تجريبي فقط':'مرشح بحثي · لم تثبت ربحيته'}
           {' · '}{latest.pressure}/100 مش نسبة نجاح
-          {' · '}{latest.pattern==='SWEEP_REJECTION'?'رفض كسر سيولة':'متابعة زخم'}</small>
+          {' · '}{latest.pattern==='SWEEP_REJECTION'?'رفض كسر سيولة':'متابعة زخم'}
+          {' · '}{latest.onlineModel==='ONLINE_INVERSION'?'اتجاه تغيّر بتعلم أمامي':
+            'الترجيح الأساسي'}</small>
       </div>
       <p style={{margin:'6px 0',fontSize:13}}>
         دخول {fmt(latest.entry)} · هدف {fmt(latest.tp)} · وقف {fmt(latest.stop)}
         {latest.targetNetR!=null?' · عائد نظري '+latest.targetNetR+'R':''}
       </p>
       <small>{stateLabel(latest.state)} · {latest.note}</small>
+      <small style={{display:'block',marginTop:6}}>
+        {latest.directionObserved==='BUY'||latest.directionObserved==='SELL'?
+          'نتيجة توقع الشمعة بعد إغلاقها: '+(latest.side===latest.directionObserved?'✓ صحيح':'✗ خطأ'):
+          latest.directionObserved==='UNKNOWN'?'نتيجة الاتجاه مجهولة بسبب فجوة/تغيير مصدر':
+          latest.directionObserved==='FLAT'?'إغلاق محايد':
+          'توقع هذه الشمعة لم يُحسم بعد'}
+        {' · '}التعلم السابق {latest.onlineDecision?.priorGraded??0} شمعة صالحة من نفس الحالة
+      </small>
     </div>:<p>بانتظار شمعة M1 مكتملة جديدة وسعر مرجعي حديث.</p>}
     {Array.isArray(data?.recent)&&data.recent.length>1&&
       <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10,fontSize:12}}>
@@ -169,7 +204,7 @@ function GoldEveryCandle({data}:{data:any}){
       {' '}متوسط الصافي {data?.meanNetR!=null?fmt(data.meanNetR)+'R':'غير محسوب'}،
       {' '}العائد المستهدف مش نسبة نجاح. نقطة التعادل النظرية عند
       مكسب 0.45R مقابل خسارة 1R حوالي 69% صفقات رابحة قبل تفاوت التنفيذ،
-      وما نعتبرش استراتيجية V2 ناجحة إلا بعينة مستقلة كافية.
+      وما نعتبرش استراتيجية V4 ناجحة إلا بعينة أمامية كبيرة صافيها موجب.
       {' '}مش دليل ربح حقيقي ولا نسبة نجاح معتمدة.
     </small>
   </section>;
