@@ -14,6 +14,11 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Directi
   const rows=closedM1ChartBars(raw,now,72),last=rows.at(-1);
   if(rows.length<21||!last||now-last.time-60000<0||
     now-last.time-60000>=60000)return null;
+  // One-minute research cannot claim a new signal from a stitched,
+  // discontinuous candle feed. A missing minute is missing evidence.
+  const window=rows.slice(-21);
+  if(window.some((bar,i)=>i>0&&bar.time-window[i-1].time!==60000))
+    return null;
   const p=assessM1DirectionalPriority(rows,now);
   if(!p.ready)return null;
   const signed=.48*p.emaSpreadAtr+.30*p.impulseAtr+.15*p.closeLocation;
