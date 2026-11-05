@@ -305,7 +305,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       anchorClose:raw.find(b=>b.time===signal.anchorTime)?.close,
       chartSource,
       directionObserved:null,directionEvaluatedAt:null,
-      strategyVersion:EVERY_M1_EDGE_V4,pattern:signal.pattern,
+      strategyVersion:EVERY_M1_EDGE_V5,pattern:signal.pattern,
       directionModel:online.inverted?'ONLINE_INVERSION':
         signal.adaptive?.model??'PRESSURE_SWEEP',
       entry:null,stop:null,tp:null,
@@ -317,7 +317,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       note:'توقع حي مجمّد · '+(signal.weak?'دليل ضعيف للتعلم فقط':'مرشح بحثي غير معتمد')+'؛ انتظار أول Bid/Ask حقيقي بعد الإصدار'
     };
     history.push(t);
-    stageAfterQuote(t,raw,q,now,costEstimate);
+    beginAfterFreshQuote(t,raw,q,now,costEstimate);
   }
   ledger.history=history.slice(-360);
   return ledger;
@@ -339,8 +339,8 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     ['QUICK_TP','STOP','TIME_EXIT'].includes(t.state));
   // New geometry/reversal model gets a truly separate future cohort.
   // Old cost-corrected tests must not validate today's changed payoff.
-  const settled=completed.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V4);
-  const oldResults=completed.filter(t=>t.strategyVersion!==EVERY_M1_EDGE_V4);
+  const settled=completed.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V5);
+  const oldResults=completed.filter(t=>t.strategyVersion!==EVERY_M1_EDGE_V5);
   const legacyResults=oldResults.length;
   const legacyNetR=round(oldResults.reduce((sum,t)=>sum+Number(t.netR),0));
   const results=settled.map(t=>Number(t.netR));
@@ -351,7 +351,9 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     return {resolved:rows.length,wins:rows.filter(t=>Number(t.netR)>0).length,
       netR:round(sum),meanNetR:rows.length?round(sum/rows.length):null};
   };
-  const v4=hist.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V4);
+  // Same frozen forward-direction model spans V4 and V5; only LIMIT P/L changes.
+  const v4=hist.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V4||
+    t.strategyVersion===EVERY_M1_EDGE_V5);
   const marked=v4.filter(t=>t.directionObserved==='BUY'||t.directionObserved==='SELL');
   const directionHits=marked.filter(t=>t.side===t.directionObserved).length;
   const byEvidence=(weak:boolean)=>{
