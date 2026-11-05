@@ -9,6 +9,7 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 import MetaTrader5 as mt5
+from limit_scalper import build_limit_plan
 
 load_dotenv()
 SITE_URL=os.getenv('SITE_URL','').rstrip('/')
@@ -30,6 +31,9 @@ MAX_SPREAD_POINTS=max(1,int(os.getenv('MAX_SPREAD_POINTS','100')))
 MAX_SIGNAL_SLIPPAGE_POINTS=max(10,int(os.getenv('MAX_SIGNAL_SLIPPAGE_POINTS','150')))
 MAX_TICK_AGE_MS=max(1000,int(os.getenv('MAX_TICK_AGE_MS','5000')))
 MAX_PRECHECK_LATENCY_MS=max(250,int(os.getenv('MAX_PRECHECK_LATENCY_MS','1500')))
+# Pending LIMIT only; never turn a non-marketable retest into a market DEAL.
+MT5_LIMIT_EXPIRY_SECONDS=max(15,min(45,int(os.getenv('MT5_LIMIT_EXPIRY_SECONDS','30'))))
+MT5_COMMISSION_ROUNDTRIP_PRICE=max(0.0,float(os.getenv('MT5_COMMISSION_ROUNDTRIP_PRICE','0')))
 POLL=max(3,int(os.getenv('POLL_SECONDS','5')))
 COOLDOWN=max(60,int(os.getenv('COOLDOWN_SECONDS','600')))
 ATTEMPT_COOLDOWN=max(20,int(os.getenv('ATTEMPT_COOLDOWN_SECONDS','90')))
@@ -49,7 +53,7 @@ KILL_SWITCH=Path(os.getenv('KILL_SWITCH_FILE',str(Path(__file__).with_name('KILL
 
 def log(*x): print(datetime.now().strftime('%Y-%m-%d %H:%M:%S'),*x,flush=True)
 def empty_state():
-    return {'last_signal':'','last_trade_at':0,'last_attempt_signal':'','last_attempt_at':0,'peak_equity':0,'last_quality':{},'last_candles_push_at':0,'demo_position':None,'demo_stats':{'trades':0,'wins':0,'losses':0,'net_points':0.0,'gross_win_points':0.0,'gross_loss_points':0.0,'profit_factor':0.0,'loss_streak':0}}
+    return {'last_signal':'','last_trade_at':0,'last_attempt_signal':'','last_attempt_at':0,'peak_equity':0,'last_quality':{},'last_candles_push_at':0,'demo_position':None,'demo_pending':None,'demo_stats':{'trades':0,'wins':0,'losses':0,'net_points':0.0,'gross_win_points':0.0,'gross_loss_points':0.0,'profit_factor':0.0,'loss_streak':0}}
 def state_read():
     try:
         x=json.loads(STATE.read_text('utf-8'))
@@ -168,6 +172,48 @@ def scalp_demo_step(s):
     now=time.time();bid=float(tick.bid);ask=float(tick.ask);point=float(info.point or 1)
     spread_points=max(0.0,(ask-bid)/point if point else 0.0)
 
+    if s.get('demo_pending') and not pos:
+        pending=s['demo_pending']
+        requested=str(pending.get('side','WAIT'))
+        entry=float(pending.get('entry',0))
+        started_msc=int(pending.get('last_tick_msc',0) or 0)
+        current_msc=int(getattr(tick,'time_msc',0) or 0)
+        expires=float(pending.get('expires_at',0) or 0)
+        if (now>=expires or KILL_SWITCH.exists() or
+            ambush.get('side')!=requested or not ambush.get('active') or
+            spread_points>MAX_SPREAD_POINTS or current_msc<started_msc or
+            (current_msc-started_msc)>5000):
+
+            log('SCALP DEMO LIMIT EXPIRED/CANCELED',pending.get('id'))
+            s['demo_pending']=None
+            return s
+        if current_msc==started_msc:
+            # An unchanged quote is not new evidence of a limit touch.
+            return s
+        px=ask if requested=='BUY' else bid
+        last=float(pending['last_executable'])
+        touched=(last>entry>=px) if requested=='BUY' else (last<entry<=px)
+        if not touched:
+            pending['last_executable']=px
+            pending['last_tick_msc']=current_msc
+            return s
+        risk=float(pending['sl_points'])*point
+        if abs(px-entry)>risk*.35:
+            log('SCALP DEMO LIMIT GAP UNKNOWN',pending.get('id'))
+            s['demo_pending']=None;return s
+        pos={k:v for k,v in pending.items() if k not in
+             ('expires_at','last_executable','last_tick_msc','order_type')}
+        pos['entry']=entry
+        pos['sl']=entry-float(pos['sl_points'])*point if requested=='BUY' else entry+float(pos['sl_points'])*point
+        pos['tp']=entry+float(pos['tp_points'])*point if requested=='BUY' else entry-float(pos['tp_points'])*point
+        pos['opened_at']=now
+        pos['best_points']=-spread_points;pos['worst_points']=-spread_points
+        pos['weak_polls']=0
+        s['demo_pending']=None;s['demo_position']=pos
+        log('SCALP DEMO LIMIT FILLED',requested,'entry',entry,'ref quote',px)
+        journal_demo('opened',pos,'LIMIT_TOUCH_ONLY',{'orderType':pending.get('order_type')})
+        return s
+
     if pos:
         side=pos.get('side');entry=float(pos['entry']);exit_px=bid if side=='BUY' else ask
         pnl=(exit_px-entry)/point*(1 if side=='BUY' else -1)
@@ -224,28 +270,47 @@ def scalp_demo_step(s):
     if side not in ('BUY','SELL') or confidence<dynamic_min_conf:return s
     if spread_points<=0 or spread_points>MAX_SPREAD_POINTS:return s
 
-    entry=ask if side=='BUY' else bid
-    ref=float(plan.get('entry',entry));sl_ref=float(plan.get('sl',entry));tp_ref=float(plan.get('tp',entry))
-    plan_sl_points=abs(ref-sl_ref)/point if point else 0.0
-    plan_tp_points=abs(tp_ref-ref)/point if point else 0.0
+    # The Ambush entry is a ZONE object, not a market-fill price.
+    # A limit is derived from the observed zone midpoint, only if that
+    # fixed level is on the non-marketable side of the broker bid/ask.
+    zone=plan.get('entry')
+    if not isinstance(zone,dict) or not zone.get('ready'):return s
+    try:
+        low=float(zone['zoneLow']);high=float(zone['zoneHigh'])
+    except (ValueError,TypeError,KeyError):return s
+    if not all(math.isfinite(v) for v in (low,high)) or low<=0 or high<low:return s
+    entry=round((low+high)/2,int(info.digits))
+    min_gap=max(point,float(getattr(info,'trade_stops_level',0) or 0)*point)
+    if side=='BUY' and not entry<=ask-min_gap:return s
+    if side=='SELL' and not entry>=bid+min_gap:return s
+    ref=entry
+    plan_sl_points=spread_points*2.0
+    plan_tp_points=spread_points*3.0
 
     # Quick-capture profile: target must clear current spread/cost, but is capped so we exit before momentum fades.
     tp_points=max(spread_points*SCALP_QUICK_TP_SPREAD_MULT,min(plan_tp_points if plan_tp_points>0 else spread_points*3.0,spread_points*3.2))
     sl_points=max(spread_points*SCALP_QUICK_SL_SPREAD_MULT,min(plan_sl_points if plan_sl_points>0 else spread_points*2.0,tp_points*.92))
     tp_points=max(3.0,tp_points);sl_points=max(3.0,sl_points)
 
-    pos={
-        'id':plan.get('id'),'side':side,'entry':entry,
-        'sl':entry-sl_points*point if side=='BUY' else entry+sl_points*point,
-        'tp':entry+tp_points*point if side=='BUY' else entry-tp_points*point,
-        'opened_at':now,'max_hold_seconds':min(SCALP_QUICK_MAX_HOLD,float(plan.get('maxHoldSeconds',SCALP_QUICK_MAX_HOLD) or SCALP_QUICK_MAX_HOLD)),
-        'confidence':confidence,'entry_confidence':confidence,'latency_ms':round(float(data.get('_site_latency_ms',0)),1),
-        'spread_points':round(spread_points,1),'tp_points':round(tp_points,1),'sl_points':round(sl_points,1),
-        'best_points':-spread_points,'worst_points':-spread_points,'weak_polls':0
+    ttl_ms=int(plan.get('expiresAt',0) or 0)
+    expires_at=min(now+30,ttl_ms/1000 if ttl_ms>0 else now+30)
+    if expires_at-now<3 or KILL_SWITCH.exists():return s
+    pending={
+        'id':plan.get('id') or 'ambush:'+side+':'+str(int(now*1000)),
+        'side':side,'entry':entry,
+        'order_type':'BUY_LIMIT' if side=='BUY' else 'SELL_LIMIT',
+        'expires_at':expires_at,'last_executable':ask if side=='BUY' else bid,
+        'last_tick_msc':int(getattr(tick,'time_msc',0) or 0),
+        'sl_points':round(sl_points,2),'tp_points':round(tp_points,2),
+        'max_hold_seconds':min(SCALP_QUICK_MAX_HOLD,float(plan.get('maxHoldSeconds',SCALP_QUICK_MAX_HOLD) or SCALP_QUICK_MAX_HOLD)),
+        'confidence':confidence,'entry_confidence':confidence,
+        'latency_ms':round(float(data.get('_site_latency_ms',0)),1),
+        'spread_points':round(spread_points,1)
     }
-    s['demo_position']=pos
-    log('SCALP DEMO ENTRY',side,'entry',entry,'sl',pos['sl'],'tp',pos['tp'],'tp_pts',round(tp_points,1),'sl_pts',round(sl_points,1),'spread_pts',round(spread_points,1),'hold',pos['max_hold_seconds'],'confidence',confidence,'latency_ms',pos['latency_ms'])
-    journal_demo('opened',pos,'QUICK_CAPTURE_ENTRY',{'ambush':ambush,'dynamicMinConfidence':dynamic_min_conf})
+    s['demo_pending']=pending
+    log('SCALP DEMO LIMIT PENDING',side,'price',entry,'expires',round(expires_at-now,1),
+        'spread_pts',round(spread_points,1))
+    journal_demo('pending',pending,'LIMIT_WAIT',{'dynamicMinConfidence':dynamic_min_conf})
     return s
 
 def journal_execution(signal,ok,message,s):
@@ -336,15 +401,23 @@ def send(signal,s):
         return False,'symbol is not in full trading mode',s
     allowed,risk_status,loss_streak=risk_guard(account,s)
     if not allowed:return False,risk_status,s
-    positions=mt5.positions_get(symbol=SYMBOL) or []
-    if len(positions)>=MAX_OPEN:return False,'max open positions reached',s
+    positions=mt5.positions_get(symbol=SYMBOL)
+    pending_orders=mt5.orders_get(symbol=SYMBOL)
+    if positions is None or pending_orders is None:
+        return False,'cannot verify existing positions and pending orders',s
+    if len(positions)+len(pending_orders)>=MAX_OPEN:
+        return False,'max open positions/pending orders reached',s
     spread_pts=broker_spread(info,tick)
     if spread_pts>MAX_SPREAD_POINTS:return False,f'broker spread too wide: {spread_pts:.1f} points',s
     tick_msc=int(getattr(tick,'time_msc',0) or 0)
     tick_age=int(time.time()*1000)-tick_msc if tick_msc else 10**9
     if tick_age<0 or tick_age>MAX_TICK_AGE_MS:return False,f'stale or future broker tick: {tick_age}ms',s
-    buy=signal.get('sideCode')=='buy';order_type=mt5.ORDER_TYPE_BUY if buy else mt5.ORDER_TYPE_SELL;entry=float(tick.ask if buy else tick.bid);ref=float(signal['entry']);point=float(info.point or 0)
-    source_slippage_pts=abs(entry-ref)/point if point else 10**9
+    buy=signal.get('sideCode')=='buy'
+    order_type=mt5.ORDER_TYPE_BUY if buy else mt5.ORDER_TYPE_SELL # risk calculation only
+    pending_type=mt5.ORDER_TYPE_BUY_LIMIT if buy else mt5.ORDER_TYPE_SELL_LIMIT
+    ref=float(signal['entry']);point=float(info.point or 0)
+    entry=ref # exact frozen LIMIT price, never the current Ask or Bid
+    source_slippage_pts=abs((float(tick.ask) if buy else float(tick.bid))-ref)/point if point else 10**9
     if source_slippage_pts>MAX_SIGNAL_SLIPPAGE_POINTS:return False,f'pre-trade slippage too large: {source_slippage_pts:.1f} points',s
     sl_dist=abs(ref-float(signal['sl']));tp_dist=abs(float(signal['tp'])-ref)
     if not (sl_dist>0 and tp_dist>0) or tp_dist/sl_dist<2.0:
@@ -353,41 +426,76 @@ def send(signal,s):
         return False,'BUY stop/target geometry invalid',s
     if not buy and not (float(signal['tp'])<ref<float(signal['sl'])):
         return False,'SELL stop/target geometry invalid',s
-    sl=entry-sl_dist if buy else entry+sl_dist;tp=entry+tp_dist if buy else entry-tp_dist
+    # Broker must accept a non-marketable pending LIMIT at the original
+    # authorized level. No fallback order / price chasing is allowed.
+    expiration_ms=int(signal.get('_expires_at_ms',0) or 0)
+    seconds_left=(expiration_ms-int(time.time()*1000))//1000
+    expire_seconds=min(MT5_LIMIT_EXPIRY_SECONDS,seconds_left)
+    if expire_seconds<15:return False,'limit signal expires too soon',s
+    spread_price=float(tick.ask)-float(tick.bid)
+    limit=build_limit_plan(
+        side='BUY' if buy else 'SELL',bid=float(tick.bid),ask=float(tick.ask),
+        proposed_entry=ref,stop_distance=sl_dist,target_distance=tp_dist,
+        point=point,digits=int(info.digits),stops_level_points=int(info.trade_stops_level),
+        commission_roundtrip_price=MT5_COMMISSION_ROUNDTRIP_PRICE,
+        slippage_buffer_price=max(point,spread_price*.25),
+        min_net_r=1.25,expiration_seconds=expire_seconds)
+    if limit is None:return False,'pending LIMIT geometry, stop distance, or cost not viable',s
+    sl=limit.sl;tp=limit.tp;entry=limit.entry
     news_mode=signal.get('mode')=='news'
     effective_risk=min(RISK_PCT,0.10 if news_mode else 0.15)*(0.5 if loss_streak>=1 else 1.0)
     if effective_risk<=0:return False,'risk budget is disabled',s
     volume=size_for_risk(account,info,order_type,entry,sl,effective_risk)
     if volume is None or volume<float(info.volume_min):return False,'risk size below broker minimum or calc failed',s
-    request={'action':mt5.TRADE_ACTION_DEAL,'symbol':SYMBOL,'volume':volume,'type':order_type,'price':entry,'sl':sl,'tp':tp,'deviation':30,'magic':MAGIC,'comment':'AhmedGoldWatch','type_time':mt5.ORDER_TIME_GTC}
-    fillings=[getattr(mt5,'ORDER_FILLING_IOC',1),getattr(mt5,'ORDER_FILLING_RETURN',2),getattr(mt5,'ORDER_FILLING_FOK',0)];last=''
-    for filling in fillings:
-        request['type_filling']=filling;t0=time.perf_counter();check=mt5.order_check(request);check_ms=(time.perf_counter()-t0)*1000
-        if check_ms>MAX_PRECHECK_LATENCY_MS:return False,f'order_check latency too high: {check_ms:.0f}ms',s
-        if check is None:last='order_check failed';continue
-        if getattr(check,'retcode',-1) not in (0,getattr(mt5,'TRADE_RETCODE_DONE',10009)):last=f'order_check retcode={getattr(check,"retcode",None)}';continue
-        quality={'at':int(time.time()*1000),'siteLatencyMs':round(float(signal.get('_site_latency_ms',0)),1),'tickAgeMs':tick_age,'spreadPoints':round(spread_pts,1),'sourceSlippagePoints':round(source_slippage_pts,1),'orderCheckMs':round(check_ms,1),'riskPct':round(effective_risk,3),'lossStreak':loss_streak,'mode':'news' if news_mode else 'standard'}
-        if not LIVE:
-            s['last_quality']=quality;return True,f'DRY RUN: {"BUY" if buy else "SELL"} {volume} {SYMBOL} entry={entry} sl={sl} tp={tp} | quality={quality}',s
-        fresh_tick=mt5.symbol_info_tick(SYMBOL)
-        if fresh_tick is None:return False,'quote vanished before order_send',s
-        latest_age=int(time.time()*1000)-int(getattr(fresh_tick,'time_msc',0) or 0)
-        fresh_spread=broker_spread(info,fresh_tick)
-        latest_entry=float(fresh_tick.ask if buy else fresh_tick.bid)
-        if latest_age<0 or latest_age>MAX_TICK_AGE_MS or fresh_spread>MAX_SPREAD_POINTS:
-            return False,'quote/spread deteriorated after order_check',s
-        if point<=0 or abs(latest_entry-ref)/point>MAX_SIGNAL_SLIPPAGE_POINTS:
-            return False,'price moved past max slippage after order_check',s
-        # No silent widening of risk: recompute SL/TP off the newest broker entry.
-        request['price']=latest_entry
-        request['sl']=latest_entry-sl_dist if buy else latest_entry+sl_dist
-        request['tp']=latest_entry+tp_dist if buy else latest_entry-tp_dist
-        t1=time.perf_counter();result=mt5.order_send(request);send_ms=(time.perf_counter()-t1)*1000;quality['orderSendMs']=round(send_ms,1)
-        if result and result.retcode==mt5.TRADE_RETCODE_DONE:
-            fill=float(getattr(result,'price',entry) or entry);quality['fillSlippagePoints']=round(abs(fill-entry)/point,1) if point else None;s['last_quality']=quality
-            return True,f'order sent ticket={result.order} deal={result.deal} fill={fill} quality={quality}',s
-        last=f'order_send retcode={getattr(result,"retcode",None)} last_error={mt5.last_error()}'
-    return False,last or 'no valid filling mode',s
+    # The future live-capable bridge submits ONLY a pending LIMIT. RETURN is
+    # the required pending filling mode; no IOC/FOK market fallback.
+    request={'action':mt5.TRADE_ACTION_PENDING,'symbol':SYMBOL,
+             'volume':volume,'type':pending_type,'price':entry,'sl':sl,'tp':tp,
+             'magic':MAGIC,'comment':'Qannas-LIMIT','type_time':mt5.ORDER_TIME_SPECIFIED,
+             'expiration':int(time.time())+expire_seconds,
+             'type_filling':mt5.ORDER_FILLING_RETURN}
+    t0=time.perf_counter();check=mt5.order_check(request)
+    check_ms=(time.perf_counter()-t0)*1000
+    if check_ms>MAX_PRECHECK_LATENCY_MS:
+        return False,f'order_check latency too high: {check_ms:.0f}ms',s
+    if check is None or getattr(check,'retcode',-1) not in (0,getattr(mt5,'TRADE_RETCODE_DONE',10009)):
+        return False,'pending limit order_check refused by broker',s
+    quality={'at':int(time.time()*1000),'orderType':'BUY_LIMIT' if buy else 'SELL_LIMIT',
+             'siteLatencyMs':round(float(signal.get('_site_latency_ms',0)),1),
+             'tickAgeMs':tick_age,'spreadPoints':round(spread_pts,1),
+             'sourceSlippagePoints':round(source_slippage_pts,1),
+             'orderCheckMs':round(check_ms,1),
+             'riskPct':round(effective_risk,3),'lossStreak':loss_streak,
+             'mode':'news' if news_mode else 'standard',
+             'expirationSeconds':expire_seconds}
+    if not LIVE:
+        s['last_quality']=quality
+        return True,f'DRY RUN PENDING LIMIT: {"BUY" if buy else "SELL"} {volume} {SYMBOL} entry={entry} sl={sl} tp={tp} expires={expire_seconds}s | quality={quality}',s
+    # Recheck market and pending count before placement; do not reprice.
+    fresh_tick=mt5.symbol_info_tick(SYMBOL)
+    if fresh_tick is None:return False,'quote vanished before order_send',s
+    latest_age=int(time.time()*1000)-int(getattr(fresh_tick,'time_msc',0) or 0)
+    fresh_spread=broker_spread(info,fresh_tick)
+    if latest_age<0 or latest_age>MAX_TICK_AGE_MS or fresh_spread>MAX_SPREAD_POINTS:
+        return False,'quote/spread deteriorated after order_check',s
+    latest_orders=mt5.orders_get(symbol=SYMBOL)
+    latest_positions=mt5.positions_get(symbol=SYMBOL)
+    if latest_orders is None or latest_positions is None:
+        return False,'unable to recheck pending/positions before order',s
+    if len(latest_orders)+len(latest_positions)>=MAX_OPEN:
+        return False,'position or pending order appeared before placement',s
+    if (buy and entry>float(fresh_tick.bid)-max(point,int(info.trade_stops_level)*point)) or (
+        not buy and entry<float(fresh_tick.ask)+max(point,int(info.trade_stops_level)*point)):
+        return False,'limit no longer pending-side; do not convert to market',s
+    if expiration_ms-int(time.time()*1000)<5000:
+        return False,'pending limit expired before order_send',s
+    t1=time.perf_counter();result=mt5.order_send(request)
+    quality['orderSendMs']=round((time.perf_counter()-t1)*1000,1)
+    if result and result.retcode==getattr(mt5,'TRADE_RETCODE_PLACED',10008):
+        quality['orderTicket']=getattr(result,'order',None)
+        s['last_quality']=quality
+        return True,f'LIMIT PENDING placed ticket={result.order} at {entry}; not a filled trade',s
+    return False,f'pending LIMIT rejected retcode={getattr(result,"retcode",None)}',s
 
 def main():
     if not SITE_URL.startswith('https://') or not TOKEN:sys.exit('Set SITE_URL=https://... and MT5_BRIDGE_TOKEN in .env')
@@ -412,7 +520,7 @@ def main():
             issued_at=int(data.get('issuedAt',0) or 0);expires_at=int(data.get('expiresAt',0) or 0)
             if issued_at<=0 or now_ms-issued_at<-2000 or now_ms-issued_at>45000 or now_ms>expires_at or expires_at-issued_at>45000:
                 log('expired/stale/future site signal rejected');time.sleep(POLL);continue
-            sig=dict(data['signal']);sig['_site_latency_ms']=data.get('_site_latency_ms',0);sid=str(sig.get('id',''));s=state_read();now=time.time()
+            sig=dict(data['signal']);sig['_site_latency_ms']=data.get('_site_latency_ms',0);sig['_expires_at_ms']=expires_at;sid=str(sig.get('id',''));s=state_read();now=time.time()
             if not sid or sid==s.get('last_signal') or now-float(s.get('last_trade_at',0))<COOLDOWN:time.sleep(POLL);continue
             if sid==s.get('last_attempt_signal') and now-float(s.get('last_attempt_at',0) or 0)<ATTEMPT_COOLDOWN:time.sleep(POLL);continue
             s['last_attempt_signal']=sid;s['last_attempt_at']=now;state_write(s)

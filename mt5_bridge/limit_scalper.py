@@ -31,9 +31,10 @@ def build_limit_plan(*, side, bid, ask, proposed_entry, stop_distance,
     if not 0<=digits<=10 or stops_level_points<0: return None
     entry=round(proposed_entry,digits)
     min_gap=max(point,stops_level_points*point)
-    # Pending buy must be below current ask; pending sell above current bid.
-    if side=='BUY' and not entry<=ask-min_gap: return None
-    if side=='SELL' and not entry>=bid+min_gap: return None
+    # Strict non-marketable retest: buy BELOW the bid, sell ABOVE the ask.
+    # Never let a LIMIT become a de-facto instantaneous market order.
+    if side=='BUY' and not entry<=bid-min_gap: return None
+    if side=='SELL' and not entry>=ask+min_gap: return None
     sl=round(entry-stop_distance if side=='BUY' else entry+stop_distance,digits)
     tp=round(entry+target_distance if side=='BUY' else entry-target_distance,digits)
     if min(abs(entry-sl),abs(entry-tp))<min_gap: return None

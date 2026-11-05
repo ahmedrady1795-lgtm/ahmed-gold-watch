@@ -44,15 +44,25 @@ export async function GET(request:Request){
       mt5:s.mt5,quote:q,market:m,analysis:a,aiSnapshot:snap.payload,maxSpread
     });
     const geometryOk=validTrade(a.signal);
-    const allowed=preflight.allowed&&geometryOk;
+    // Signal must describe a resting LIMIT at a genuinely better price.
+    // Broker min stops-level/cost checks remain mandatory on the local bridge.
+    const bid=Number(q?.bid),ask=Number(q?.ask),limitPrice=Number(a.signal?.entry);
+    const spread=ask-bid,limitGap=Math.max(.02,spread*.5);
+    const limitSideOk=Boolean(geometryOk&&Number.isFinite(bid)&&
+      Number.isFinite(ask)&&bid>0&&ask>bid&&Number.isFinite(limitPrice)&&
+      (a.signal?.sideCode==='buy'?limitPrice<=bid-limitGap:
+        a.signal?.sideCode==='sell'?limitPrice>=ask+limitGap:false));
+    const allowed=preflight.allowed&&geometryOk&&limitSideOk;
     const ttlMs=newsSignal?20000:45000,expiresAt=now+ttlMs;
-    const blockedBy=[...preflight.blockedBy,...(!geometryOk?['trade_levels_or_net_rr_invalid']:[])];
+    const blockedBy=[...preflight.blockedBy,...(!geometryOk?['trade_levels_or_net_rr_invalid']:[]),
+      ...(!limitSideOk?['entry_must_be_nonmarketable_pending_limit']:[])];
     return Response.json({
       ok:true,enabled,allowed,checkedAt:now,issuedAt:now,expiresAt,
       symbol:'XAU/USD',brokerSymbolHint:env.MT5_SYMBOL||'XAUUSDm',
       quote:{price:q?.price??null,bid:q?.bid??null,ask:q?.ask??null,
         spread:q?.spread??null,status:q?.status??'unknown',source:q?.source??null},
       analysis:{state:a.state,title:a.title,reason:a.reason,score:a.score,regime:a.regime,news:a.news},
+      entryOrderType:a.signal?.sideCode==='buy'?'BUY_LIMIT':a.signal?.sideCode==='sell'?'SELL_LIMIT':null,
       signal:allowed?a.signal:null,blockedBy,
       preflight:{demoReady:preflight.demoReady,
         brokerAccountVerified:preflight.brokerAccountVerified,
@@ -68,7 +78,7 @@ export async function GET(request:Request){
         breakEvenAtR:0.45,lockProfitAtR:0.80,lockProfitR:0.10
       },
       qualityPolicy:{
-        signalTtlMs:ttlMs,brokerTickFreshnessRequired:true,
+        signalTtlMs:ttlMs,entryMode:'PENDING_LIMIT_ONLY',brokerTickFreshnessRequired:true,
         mt5QuoteMustBeFresh:true,preTradeSlippageCheck:true,
         orderCheckLatencyCheck:true,fillSlippageLogged:true,
         cancelOnSignalFlip:true,cancelOnSpreadExpansion:true,

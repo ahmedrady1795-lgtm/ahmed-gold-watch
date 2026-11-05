@@ -158,6 +158,7 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
           state:eligible?'ENTRY':confirmed?'CONDITIONS_PENDING':
             confirmation?.state==='HOLDING'?'HOLDING':'WATCH',
           entryAudit:audit,confirmationSource:planHold?'EXACT_PLAN':'SCENARIO_ONLY',
+          orderType:null as 'BUY_LIMIT'|'SELL_LIMIT'|null,expiresAt:null as number|null,
           heldSeconds:Number(confirmation?.heldSeconds||0),
           remainingSeconds:Number(confirmation?.remainingSeconds??60),
           requiredSeconds:Number(confirmation?.requiredSeconds??60),trigger:confirmation?.trigger??null,
@@ -176,12 +177,23 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
       // The paper ledger must never arm/activate before the exact 60-second
       // M1 hold and the final order-book/risk gate have passed.
       const paperPlans=plans.map((plan,i)=>({
-        ...plan,status:(entryConfirmations[i]?.state==='ENTRY'?'ARMED':'WATCH') as typeof plan.status
+        ...plan,status:(plan.status==='BLOCKED'?'BLOCKED':
+          entryConfirmations[i]?.state==='ENTRY'?'ARMED':'WATCH') as typeof plan.status
       }));
       const ledger=updateScalpLedger(asset,paperPlans,quote,at,input.c1);
       for(const entry of entryConfirmations){
         const lane=ledger.lanes.find(x=>x.horizon===entry.horizon);
-        if(lane?.current?.state==='ACTIVE'){
+        if(lane?.current?.state==='ARMED'&&lane.current.limitType){
+          // A qualified setup is an unfilled pending LIMIT, not a BUY/SELL
+          // market entry. Keep the same frozen limit price and expiry visible.
+          entry.state='LIMIT_PENDING';
+          entry.entry=lane.current.plan.entry;
+          entry.stop=lane.current.plan.stop;
+          entry.targets=lane.current.plan.targets;
+          entry.orderType=lane.current.limitType;
+          entry.expiresAt=lane.current.limitExpiresAt??null;
+          entry.reason='Limit معلّق: السعر لم يلمس مستوى الدخول بعد؛ ممنوع التحويل لسعر السوق';
+        }else if(lane?.current?.state==='ACTIVE'){
           const newlyOpened=entry.state==='ENTRY'&&
             lane.current.plan.id===plans.find(x=>x.horizon===entry.horizon)?.id&&
             at-Number(lane.current.activatedAt||0)<=15000;
@@ -189,7 +201,7 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
             entry.entry=lane.current.plan.entry;
             entry.stop=lane.current.plan.stop;
             entry.targets=lane.current.plan.targets;
-            entry.reason='إشارة دخول مؤكدة وسجل ورقي مفعّل بالسعر الحالي؛ دون تنفيذ وسيط';
+            entry.reason='تم لمس Limit الورقي وبدأت المتابعة؛ التنفيذ الفعلي غير مفعّل';
           }else{
             entry.state='ACTIVE';
             entry.entry=null;entry.stop=null;entry.targets=[];
