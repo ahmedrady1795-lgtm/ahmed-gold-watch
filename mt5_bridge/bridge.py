@@ -413,7 +413,7 @@ def send(signal,s):
     pending_type=mt5.ORDER_TYPE_BUY_LIMIT if buy else mt5.ORDER_TYPE_SELL_LIMIT
     ref=float(signal['entry']);point=float(info.point or 0)
     entry=ref # exact frozen LIMIT price, never the current Ask or Bid
-    source_slippage_pts=abs(entry-ref)/point if point else 10**9
+    source_slippage_pts=abs((float(tick.ask) if buy else float(tick.bid))-ref)/point if point else 10**9
     if source_slippage_pts>MAX_SIGNAL_SLIPPAGE_POINTS:return False,f'pre-trade slippage too large: {source_slippage_pts:.1f} points',s
     sl_dist=abs(ref-float(signal['sl']));tp_dist=abs(float(signal['tp'])-ref)
     if not (sl_dist>0 and tp_dist>0) or tp_dist/sl_dist<2.0:
@@ -474,12 +474,14 @@ def send(signal,s):
     fresh_spread=broker_spread(info,fresh_tick)
     if latest_age<0 or latest_age>MAX_TICK_AGE_MS or fresh_spread>MAX_SPREAD_POINTS:
         return False,'quote/spread deteriorated after order_check',s
-    if mt5.orders_get(symbol=SYMBOL) is None or mt5.positions_get(symbol=SYMBOL) is None:
+    latest_orders=mt5.orders_get(symbol=SYMBOL)
+    latest_positions=mt5.positions_get(symbol=SYMBOL)
+    if latest_orders is None or latest_positions is None:
         return False,'unable to recheck pending/positions before order',s
-    if len(mt5.orders_get(symbol=SYMBOL))+len(mt5.positions_get(symbol=SYMBOL))>=MAX_OPEN:
+    if len(latest_orders)+len(latest_positions)>=MAX_OPEN:
         return False,'position or pending order appeared before placement',s
-    if (buy and entry>=float(fresh_tick.ask)-max(point,int(info.trade_stops_level)*point)) or (
-        not buy and entry<=float(fresh_tick.bid)+max(point,int(info.trade_stops_level)*point)):
+    if (buy and entry>float(fresh_tick.bid)-max(point,int(info.trade_stops_level)*point)) or (
+        not buy and entry<float(fresh_tick.ask)+max(point,int(info.trade_stops_level)*point)):
         return False,'limit no longer pending-side; do not convert to market',s
     if expiration_ms-int(time.time()*1000)<5000:
         return False,'pending limit expired before order_send',s
