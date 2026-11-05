@@ -9,7 +9,7 @@ import {getBtcLiquidity} from './liquidity-intelligence';
 import {auditScalpEntry} from './scalp-entry-audit';
 import {validateDirectionChronologically} from './direction-walkforward';
 import {buildSniperDecision} from './sniper-decision-engine';
-import {observeScalpLead} from './scalp-lead-audit';
+import {observeScalpLead,MIN_SCALP_SHADOW_SCORE} from './scalp-lead-audit';
 
 function session(now:number){const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;return day!==6&&!(day===0&&h<22)&&!(day===5&&h>=21)&&!(day>=1&&day<=4&&h>=21&&h<22);}
 function envNumber(key:string){const raw=(getRuntimeEnv() as Record<string,unknown>)[key]??process.env[key];if(raw==null||raw==='')return null;const n=Number(raw);return Number.isFinite(n)&&n>=0&&n<=100?n:null;}
@@ -216,7 +216,7 @@ export async function getScalpDesk(){
       const plan=gold.plans?.find((p:any)=>p.horizon===h);
       if(!plan||plan.status==='BLOCKED'||!['BUY','SELL'].includes(plan.side)||
         plan.setup==='NONE'||!Number.isFinite(Number(plan.score))||
-        Number(plan.score)<70||!Number.isFinite(Number(plan.cost))||
+        Number(plan.score)<MIN_SCALP_SHADOW_SCORE||!Number.isFinite(Number(plan.cost))||
         Number(plan.cost)<=0)return null;
       return {id:String(plan.id)+'|'+plan.side,side:plan.side,
         score:Number(plan.score),status:plan.status==='ARMED'?'ARMED' as const:'WATCH' as const,

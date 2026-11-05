@@ -21,8 +21,12 @@ export type LeadObservation={
 type LaneState={active:LeadObservation|null;history:LeadObservation[];seen:string[]};
 type Audit={version:1;lanes:Record<Lane,LaneState>};
 const PATH='/data/scalp-lead-audit-v1.json';
+const EPHEMERAL_PATH='/tmp/scalp-lead-audit-v1.json';
 const MAX_GAP_MS=15_000;
 const MAX_QUOTE_AGE_MS=10_000;
+// Historical 70-point gate silently discarded real technical WATCH setups
+// scoring 55–69. Observe them separately; NEVER qualify them for execution.
+export const MIN_SCALP_SHADOW_SCORE=55;
 let lastPersistAt=0; // limit writes while a quote is merely moving inside an open sample
 declare global {var __qannasScalpLeadAudit:Audit|undefined;}
 function blank():Audit{return {version:1,lanes:{GOLD_M1:{active:null,history:[],seen:[]},
@@ -30,9 +34,12 @@ function blank():Audit{return {version:1,lanes:{GOLD_M1:{active:null,history:[],
 function load():Audit{
   if(globalThis.__qannasScalpLeadAudit)return globalThis.__qannasScalpLeadAudit;
   let state=blank();
-  try{
-    const parsed=JSON.parse(fs.readFileSync(PATH,'utf8'));
-    if(parsed?.version===1&&parsed?.lanes&&typeof parsed.lanes==='object'){
+  for(const file of [PATH,EPHEMERAL_PATH]){
+    try{
+      const raw=fs.readFileSync(file,'utf8');
+      if(raw.length>3_000_000)continue;
+      const parsed=JSON.parse(raw);
+      if(parsed?.version!==1||!parsed?.lanes||typeof parsed.lanes!=='object')continue;
       for(const lane of Object.keys(state.lanes) as Lane[]){
         const row=parsed.lanes[lane];
         if(row&&Array.isArray(row.history)&&Array.isArray(row.seen)){
@@ -42,17 +49,20 @@ function load():Audit{
           };
         }
       }
-    }
-  }catch{}
+      break; // Prefer durable volume over a temporary checkpoint.
+    }catch{}
+  }
   globalThis.__qannasScalpLeadAudit=state;
   return state;
 }
-function save(state:Audit){
+function save(state:Audit):'VOLUME'|'EPHEMERAL'|null{
+  const file=fs.existsSync('/data')?PATH:EPHEMERAL_PATH;
   try{
-    if(!fs.existsSync('/data'))return false;
-    fs.writeFileSync(PATH+'.tmp',JSON.stringify(state));
-    fs.renameSync(PATH+'.tmp',PATH);return true;
-  }catch{return false;}
+    fs.writeFileSync(file+'.tmp',JSON.stringify(state));
+    fs.renameSync(file+'.tmp',file);
+    // Render Free /tmp can survive a process restart, but not a new instance.
+    return file===PATH?'VOLUME':'EPHEMERAL';
+  }catch{return null;}
 }
 function fixed(n:number){return Math.round(n*10000)/10000;}
 function fresh(quote:LeadQuote,now:number){
@@ -65,7 +75,7 @@ export function startLeadObservation(
   lane:Lane,candidate:LeadCandidate,quote:LeadQuote,now:number
 ):LeadObservation|null{
   if(!fresh(quote,now)||!candidate.id||candidate.side!=='BUY'&&candidate.side!=='SELL'||
-    !Number.isFinite(candidate.score)||(candidate.status!=='AMBUSH'&&candidate.score<70)||
+    !Number.isFinite(candidate.score)||(candidate.status!=='AMBUSH'&&candidate.score<MIN_SCALP_SHADOW_SCORE)||
     !Number.isFinite(candidate.cost)||candidate.cost<=0||
     !['WATCH','ARMED','AMBUSH'].includes(candidate.status))return null;
   const price=Number(quote.price),at=Number(quote.at);
@@ -122,6 +132,10 @@ export function summarizeLeadObservations(history:LeadObservation[],active:LeadO
   const ambushResults=done.filter(x=>x.status==='AMBUSH');
   const averageMs=favorable.length?Math.round(favorable.reduce((sum,x)=>sum+
     Math.max(0,Number(x.resolvedAt)-x.startedAt),0)/favorable.length):null;
+  const early=done.filter(x=>x.status==='WATCH'&&x.score>=MIN_SCALP_SHADOW_SCORE&&x.score<70);
+  const earlyFavorable=early.filter(x=>x.result==='FAVORABLE_FIRST').length;
+  const earlyAdverse=early.filter(x=>x.result==='ADVERSE_FIRST').length;
+  const earlyResolved=earlyFavorable+earlyAdverse;
   const sources:Record<string,number>={};
   for(const x of done)sources[x.source]=(sources[x.source]||0)+1;
   return {
@@ -131,6 +145,10 @@ export function summarizeLeadObservations(history:LeadObservation[],active:LeadO
     resolved:directionallyResolved,observedFavorablePct:directionallyResolved?
       Math.round(favorable.length/directionallyResolved*1000)/10:null,
     meanTimeToFavorableMs:averageMs,watchOnlyResults:waitResults.length,
+    earlyWatchCohort:{total:early.length,favorable:earlyFavorable,
+      adverse:earlyAdverse,unknown:early.filter(x=>x.result==='UNKNOWN').length,
+      neutral:early.filter(x=>x.result==='NO_THRESHOLD').length,
+      observedFavorablePct:earlyResolved?Math.round(earlyFavorable/earlyResolved*1000)/10:null},
     ambushOnlyResults:ambushResults.length,bySource:sources,
     verdict:directionallyResolved>=50?'OBSERVED_SAMPLE_ONLY':'COLLECTING',
     caveat:'First observed quote threshold, not a fill, profit, verified timing before market move or Exness execution.'
@@ -168,12 +186,15 @@ export function observeScalpLead(
   // settlements and a periodic checkpoint, not every poll on the free service.
   // An interrupted checkpoint must be treated as UNKNOWN upon later replay.
   const shouldSave=changed&&(closed||startedNow||now-lastPersistAt>=10_000);
-  const didSave=shouldSave?save(state):false;
-  if(didSave)lastPersistAt=now;
-  const persisted=didSave||fs.existsSync(PATH);
-  return {...summarizeLeadObservations(row.history,row.active),persisted};
+  const wrote=shouldSave?save(state):null;
+  if(wrote)lastPersistAt=now;
+  const persisted=fs.existsSync(PATH);
+  return {...summarizeLeadObservations(row.history,row.active),persisted,
+    storage:persisted?'VOLUME':fs.existsSync(EPHEMERAL_PATH)?'EPHEMERAL':'MEMORY'};
 }
 export function peekScalpLead(lane:Lane){
   const state=load(),row=state.lanes[lane];
-  return {...summarizeLeadObservations(row.history,row.active),persisted:fs.existsSync(PATH)};
+  const persisted=fs.existsSync(PATH);
+  return {...summarizeLeadObservations(row.history,row.active),persisted,
+    storage:persisted?'VOLUME':fs.existsSync(EPHEMERAL_PATH)?'EPHEMERAL':'MEMORY'};
 }
