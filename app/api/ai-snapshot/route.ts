@@ -1,10 +1,13 @@
 import {getAiSnapshot} from '../../../lib/ai-snapshot-cache';
+import {noteViewerActivity} from '../../../lib/render-free-eco';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
 
 export async function GET(request:Request){
   const now=Date.now();
+  // This lightweight, explicit dashboard heartbeat never triggers AI itself.
+  if(request.headers.get('x-qannas-viewer')==='1')noteViewerActivity(now);
   const snap=getAiSnapshot(now);
   if(!snap.payload){
     return Response.json(
