@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import type {Candle} from './engine';
 import type {ScalpPlan,ScalpQuote} from './scalp-opportunities';
 import {requiredScalpNetR} from './scalp-risk-policy';
+import {buildGoldQuickExit} from './scalp-quick-exit';
 
-export type PaperTrade={plan:ScalpPlan;state:'ARMED'|'ACTIVE'|'TP1'|'STOP'|'TIME_EXIT'|'EXPIRED'|'CANCELED'|'UNKNOWN';activatedAt:number|null;closedAt:number|null;exit:number|null;netR:number|null;lastAt:number;lastPrice:number;note:string};
+export type PaperTrade={plan:ScalpPlan;state:'ARMED'|'ACTIVE'|'TP1'|'QUICK_TP'|'STOP'|'TIME_EXIT'|'EXPIRED'|'CANCELED'|'UNKNOWN';activatedAt:number|null;closedAt:number|null;exit:number|null;netR:number|null;lastAt:number;lastPrice:number;note:string;quickExitPrice?:number|null;quickMaxHoldMs?:number|null;quickQuoteSource?:string|null};
 type Ledger={version:1;lanes:Record<string,{current:PaperTrade|null;lastId:string;history:PaperTrade[]}>};
 declare global {var __scalpPaperLedger:Ledger|undefined;}
 function load():Ledger{
@@ -31,7 +32,7 @@ export function evaluatePaperProof(trades:PaperTrade[],start=SCALP_PROOF_FROM){
   // Closed outcomes only; canceled, unknown, unfilled and old historical
   // observations NEVER count as wins or statistical evidence.
   const rows=trades.filter(t=>t.activatedAt!=null&&t.activatedAt>=start&&
-    t.netR!=null&&Number.isFinite(t.netR)&&['TP1','STOP','TIME_EXIT'].includes(t.state))
+    t.netR!=null&&Number.isFinite(t.netR)&&['TP1','QUICK_TP','STOP','TIME_EXIT'].includes(t.state))
     .sort((a,b)=>Number(a.activatedAt)-Number(b.activatedAt));
   const rets=rows.map(t=>Number(t.netR));
   const n=rets.length,net=rets.reduce((sum,v)=>sum+v,0);
@@ -65,7 +66,7 @@ export function evaluatePaperProof(trades:PaperTrade[],start=SCALP_PROOF_FROM){
 export function summarizePaperBySetup(trades:PaperTrade[]){
   const setups=['BREAKOUT','PULLBACK','SWEEP','CONTINUATION','RETEST','OB_FVG'] as const;
   const closed=trades.filter(t=>t?.activatedAt!=null&&t.netR!=null&&
-    Number.isFinite(t.netR)&&['TP1','STOP','TIME_EXIT'].includes(t.state));
+    Number.isFinite(t.netR)&&['TP1','QUICK_TP','STOP','TIME_EXIT'].includes(t.state));
   return setups.map(setup=>{
     const rows=closed.filter(t=>t.plan?.setup===setup);
     const values=rows.map(t=>Number(t.netR));
@@ -77,7 +78,8 @@ export function summarizePaperBySetup(trades:PaperTrade[]){
       profitFactor:loss>0?round(profit/loss):null,
       timeExits:rows.filter(t=>t.state==='TIME_EXIT').length,
       stops:rows.filter(t=>t.state==='STOP').length,
-      targets:rows.filter(t=>t.state==='TP1').length,
+      targets:rows.filter(t=>t.state==='TP1'||t.state==='QUICK_TP').length,
+      quickTargets:rows.filter(t=>t.state==='QUICK_TP').length,
       // A whole period of negative TIME_EXITs indicates horizon mismatch.
       negativeTimeExits:rows.filter(t=>t.state==='TIME_EXIT'&&Number(t.netR)<0).length
     };
@@ -97,7 +99,7 @@ export function getScalpPaperQualityGate(asset:'GOLD'|'BTC',horizon:1|5,now=Date
   const lane=load().lanes[asset+'-'+horizon];
   const rows=(lane?.history||[]).filter(t=>
     t.netR!=null&&Number.isFinite(Number(t.netR))&&
-    ['TP1','STOP','TIME_EXIT'].includes(t.state)).slice(0,30);
+    ['TP1','QUICK_TP','STOP','TIME_EXIT'].includes(t.state)).slice(0,30);
   const recent=rows.slice(0,12);
   const recentNetR=recent.reduce((sum,t)=>sum+Number(t.netR),0);
   const latest=Number(rows[0]?.closedAt||0);
@@ -133,6 +135,9 @@ export function advancePaperTrade(trade:PaperTrade,quote:ScalpQuote,now:number,c
       t.netR=risk>0?round((dir*(exit-plan.entry)-plan.cost)/(risk+plan.cost)):null;
     }
   };
+  if(t.quickQuoteSource&&t.quickQuoteSource!==quote.source){
+    close('UNKNOWN',null,at,'تغير مصدر السعر بعد دخول ورقي سريع؛ لا نثبت نتيجة غير قابلة للمقارنة');return t;
+  }
   if(t.state==='ARMED'){
     if(at>=plan.expiresAt){close('EXPIRED',null,plan.expiresAt,'انتهت صلاحية الدخول قبل التفعيل');return t;}
     if(plan.stop!=null&&dir*(p-plan.stop)<=0){close('CANCELED',null,at,'كُسر مستوى الإبطال قبل الدخول');return t;}
@@ -143,7 +148,11 @@ export function advancePaperTrade(trade:PaperTrade,quote:ScalpQuote,now:number,c
       t.state='ACTIVE';t.activatedAt=at;t.note='تفعيل تجريبي بسعر المرجع؛ المستويات ثابتة';
     }
   }else{
-    const expiry=Number(t.activatedAt)+plan.horizon*60000;
+    const expiry=Number(t.activatedAt)+Math.min(plan.horizon*60000,
+      t.quickMaxHoldMs!=null&&Number.isFinite(t.quickMaxHoldMs)&&t.quickMaxHoldMs>0?
+        t.quickMaxHoldMs:plan.horizon*60000);
+    const quick=t.quickExitPrice!=null&&Number.isFinite(t.quickExitPrice)&&
+      t.quickExitPrice>0?t.quickExitPrice:null;
     const target=plan.targets[0]?.price,stop=plan.stop;
     const bars=c1.filter(c=>c.time>=Number(t.activatedAt)&&c.time>=t.lastAt&&c.time+60000<=Math.min(at,expiry));
     for(const c of bars){
@@ -160,6 +169,7 @@ export function advancePaperTrade(trade:PaperTrade,quote:ScalpQuote,now:number,c
       if(at===expiry){
         if(stop!=null&&dir*(p-stop)<=0)close('STOP',p,expiry,'الوقف تحقق في سعر موثق عند نهاية المدة');
         else if(target!=null&&dir*(p-target)>=0)close('TP1',target,expiry,'الهدف تحقق في سعر موثق عند نهاية المدة');
+        else if(quick!=null&&dir*(p-quick)>=0)close('QUICK_TP',p,expiry,'مكسب ورقي صغير بعد التكلفة عند وقت الخروج');
         else close('TIME_EXIT',p,expiry,'انتهاء المدة؛ سعر مباشر موثق عند الثانية الأخيرة');
       }else if(t.lastAt<=expiry&&expiry-t.lastAt>=0&&expiry-t.lastAt<=5000)
         close('TIME_EXIT',t.lastPrice,expiry,'انتهاء المدة؛ آخر سعر موثق قبل انتهائها بخمس ثوانٍ أو أقل');
@@ -169,6 +179,9 @@ export function advancePaperTrade(trade:PaperTrade,quote:ScalpQuote,now:number,c
     // Stop wins an ambiguous same-bar recovery; a single quote cannot cross both barriers.
     if(stop!=null&&dir*(p-stop)<=0){close('STOP',p,at,'وصل السعر إلى الوقف؛ احتساب تجاوز الوقف');return t;}
     if(target!=null&&dir*(p-target)>=0){close('TP1',target,at,'تحقق الهدف الأول بعد التفعيل');return t;}
+    if(quick!=null&&dir*(p-quick)>=0){
+      close('QUICK_TP',p,at,'خروج سريع من حركة سعرية صغيرة؛ تكلفة التنفيذ تقديرية وليست ربح Exness');return t;
+    }
   }
   t.lastAt=at;t.lastPrice=p;return t;
 }
@@ -206,30 +219,37 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
       const rr=risk>0?(reward-plan.cost)/(risk+plan.cost):0;
       if(priceNearby&&risk>0&&reward>0&&rr>=requiredScalpNetR(plan)){
         const filled:ScalpPlan={...plan,entry:p,netRR:round(rr)};
+        const quick=buildGoldQuickExit(filled,p);
         lane.lastId=plan.id;
         lane.current={
           plan:filled,state:'ACTIVE',activatedAt:quote.at,closedAt:null,
           exit:null,netR:null,lastAt:quote.at,lastPrice:p,
-          note:'تفعيل ورقي بعد 60 ثانية عند سعر المرجع الحالي؛ لا تنفيذ وسيط'
+          quickExitPrice:quick?.price??null,quickMaxHoldMs:quick?.maxHoldMs??null,
+          quickQuoteSource:quick?quote.source:null,
+          note:quick?'تفعيل مرجعي مع جني ربح صغير وتصفية خلال دقيقتين كحد أقصى؛ لا أمر وسيط':
+            'تفعيل ورقي بعد تأكيد الخطة عند سعر المرجع الحالي؛ لا تنفيذ وسيط'
         };
       }
     }
-    const verified=lane.history.filter(t=>t.netR!=null&&['TP1','STOP','TIME_EXIT'].includes(t.state));
+    const verified=lane.history.filter(t=>t.netR!=null&&['TP1','QUICK_TP','STOP','TIME_EXIT'].includes(t.state));
     const wins=verified.filter(t=>Number(t.netR)>0),losses=verified.filter(t=>Number(t.netR)<0);
     const positive=wins.reduce((s,t)=>s+Number(t.netR),0),negative=-losses.reduce((s,t)=>s+Number(t.netR),0);
     const timeExits=verified.filter(t=>t.state==='TIME_EXIT');
     const stopExits=verified.filter(t=>t.state==='STOP');
     const targetExits=verified.filter(t=>t.state==='TP1');
+    const quickExits=verified.filter(t=>t.state==='QUICK_TP');
     return {horizon:plan.horizon,current:lane.current,recent:lane.history.slice(0,8),stats:{
       samples:verified.length,wins:wins.length,losses:losses.length,
       exitCauses:{
         timeExits:timeExits.length,stops:stopExits.length,targets:targetExits.length,
+        quickTargets:quickExits.length,quickNetR:round(quickExits.reduce((sum,t)=>sum+Number(t.netR),0)),
         negativeTimeExits:timeExits.filter(t=>Number(t.netR)<0).length,
         timeExitNetR:round(timeExits.reduce((sum,t)=>sum+Number(t.netR),0)),
         stopNetR:round(stopExits.reduce((sum,t)=>sum+Number(t.netR),0))
       },
       forwardProof:evaluatePaperProof(lane.history),
       unifiedProof:evaluatePaperProof(lane.history,SCALP_UNIFIED_PROOF_FROM),
+      quickProof:evaluatePaperProof(lane.history.filter(t=>t.quickExitPrice!=null),0),
       // Never show profitable results from older breakout/pullback trades as
       // if they validated the newly launched RETEST strategy.
       retestProof:evaluateRetestPaperProof(lane.history),
@@ -244,5 +264,5 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
     }};
   });
   const persisted=save(data);
-  return {mode:'PAPER_REFERENCE',persisted,lanes,note:'نتائج تجريبية بسعر المرجع عند تأكيد الدقيقة، وبعد التكلفة؛ لا تنفيذ وسيط. الهدف والوقف يظلان ثابتين. النتائج المجهولة لا تُحسب نجاحاً.'};
+  return {mode:'PAPER_REFERENCE',persisted,lanes,note:'الذهب التجريبي: جني مكسب صغير بعد التكلفة خلال 1–2 دقيقة عندما يتحرك السعر لصالح الخطة، أو وقف/خروج وقت؛ ليس تنفيذ وسيط ولا إثبات ربح. النتائج المجهولة لا تُحسب نجاحاً.'};
 }
