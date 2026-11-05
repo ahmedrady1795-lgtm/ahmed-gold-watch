@@ -183,6 +183,22 @@ const fwdSell=observedForwardReach(trendBars.map(c=>({
 })),'SELL',5);
 assert.ok(Math.abs(fwdSell.favorableP75-fwdBuy.favorableP75)<.000001,
   'BUY and SELL forward-window geometry must be symmetric');
+// Next-candle observation must stay fixed and must never authorize a trade.
+const {buildNearCandleWatch}=load('lib/near-candle-watch.ts');
+const nearAt=trendBars.at(-1).time+60000+3000,nearPrice=trendBars.at(-1).close;
+const nearBuy=buildNearCandleWatch(trendBars,nearPrice,nearAt,'BUY','BUY');
+assert.ok(nearBuy&&nearBuy.side==='BUY'&&nearBuy.target.price>nearPrice);
+assert.equal(nearBuy.target.kind,'M1_OBSERVATION');
+assert.ok(Math.abs(nearBuy.target.price-nearPrice)<=fwdBuy.favorableP75);
+const movingTick=buildNearCandleWatch(trendBars,nearPrice+.01,nearAt,'BUY','BUY');
+assert.equal(movingTick?.target.price,nearBuy.target.price,
+  'Intrabar ticks must never move a frozen next-minute target');
+assert.equal(buildNearCandleWatch(trendBars,nearPrice,nearAt,'SELL','SELL'),null);
+assert.equal(buildNearCandleWatch(trendBars,nearPrice,nearAt+120000,'BUY','BUY'),null);
+const nearSell=buildNearCandleWatch(trendBars.map(c=>({
+  ...c,open:200-c.open,close:200-c.close,high:200-c.low,low:200-c.high
+})),200-nearPrice,nearAt,'SELL','SELL');
+assert.ok(nearSell&&nearSell.side==='SELL'&&nearSell.target.price<200-nearPrice);
 const brokenBars=trendBars.map(c=>({...c}));
 brokenBars[brokenBars.length-9].time+=60000;
 assert.ok(observedForwardReach(brokenBars,'BUY',5).samples<fwdBuy.samples,
