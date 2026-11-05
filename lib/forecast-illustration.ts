@@ -1,6 +1,7 @@
 import {buildSniperOutlook} from './sniper-outlook';
 import {buildStructuralWatch} from './structural-watch';
 import {buildContinuousBias} from './continuous-direction';
+import {buildNearCandleWatch} from './near-candle-watch';
 import {stabilizeSniperBias,presentServerBias} from './sniper-stability';
 import type {StableBiasState,ObservedBias} from './sniper-stability';
 import {analyzeFourHours} from './four-hour-structure';
@@ -55,23 +56,18 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
     (!auditRequired||journal?.state==='ACTIVE');
   const ready=Boolean(scenarioAllowed&&aheadOf(sniper.view.side,plannedTargets)&&
     stopSafe(sniper.view.side,plannedStop));
-  // A qualified order must still pass its existing independent audit.
-  // The uninterrupted H1/H4 observation is only a *watch* even if its bias
-  // is strong, and has no effect on server execution or scenario records.
-  const distantWatch=bias.active&&bias.side!=='WAIT'&&bias.targets.length>0;
-  const authoritative=Boolean(serverBias||stableState);
-  const watchSide=authoritative||distantWatch?bias.side:
-    sniper.view.side!=='WAIT'?sniper.view.side:observation.side;
-  const watchTargets=authoritative||distantWatch?bias.targets:
-    sniper.view.side!=='WAIT'?sniper.targets:observation.targets;
-  const rawWatchStop=authoritative||distantWatch?bias.invalidation:
-    sniper.view.side!=='WAIT'?sniper.view.invalidation:observation.invalidation;
-  const watchStop=stopSafe(watchSide,rawWatchStop)?rawWatchStop:null;
+  // Recorded and independently audited scenarios keep their original levels.
+  // A separate WATCH-only M1 preview replaces the huge H1/H4 goals on the
+  // near-term chart. It uses future-window statistics from PAST closed bars,
+  // does not rewrite the server audit and never permits execution.
+  const nearWatch=buildNearCandleWatch(candles,price,now,
+    bias.active?bias.side:'WAIT',bias.votes?.m5??'WAIT');
+  const watchSide=nearWatch?.side??'WAIT';
+  const watchTargets=nearWatch?[nearWatch.target]:[];
   const watchReady=Boolean(!ready&&historyFresh&&sniper.view.priceFresh&&
-    sniper.view.forecastFresh&&(!authoritative||bias.active)&&aheadOf(watchSide,watchTargets));
-  // Monitoring levels needn't pretend to offer a verified entry or stop.
+    sniper.view.forecastFresh&&nearWatch&&aheadOf(watchSide,watchTargets));
   const displayTargets=ready?plannedTargets:watchReady?watchTargets:[];
-  const displayStop=ready?plannedStop:watchReady?watchStop:null;
+  const displayStop=ready?plannedStop:null;
   const displaySide=ready?sniper.view.side:watchReady?watchSide:'WAIT';
   const bands:PriceBand[]=[];
   if((ready||watchReady)&&historyFresh){
@@ -110,7 +106,8 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const projected=(ready||watchReady)&&price!=null
     ?[{key:'NOW',price},...displayTargets.map(t=>({key:'TP'+t.stage,price:t.price}))]
     :[];
-  return {asset,sniper,observation,bias,stabilityState:serverBias?stableState:stability.state,stabilityReason:stability.explanation,heldBias:serverBias?Boolean(stableState&&stableState.since<now):stability.held,fourHour,candles,bands,price,historyAge,historyFresh,ready,watchReady,displaySide,displayTargets,displayStop,journal,
+  return {asset,sniper,observation,bias,nearTermWatch:watchReady,nearTermEvidence:watchReady?nearWatch:null,
+    stabilityState:serverBias?stableState:stability.state,stabilityReason:stability.explanation,heldBias:serverBias?Boolean(stableState&&stableState.since<now):stability.held,fourHour,candles,bands,price,historyAge,historyFresh,ready,watchReady,displaySide,displayTargets,displayStop,journal,
     lower,upper,projected,
     status:!candles.length?'NO_CANDLES':!historyFresh?'STALE_CANDLES':ready?'SCENARIO':watchReady?'WATCH_PATH':'WATCH'};
 }
