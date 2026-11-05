@@ -348,7 +348,7 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       plan.evidence.push({
         label:'ارتداد معاكس تاريخي بعد الدخول',side:'WAIT',
         value:forwardReach.adverseP50!=null?
-          round(forwardReach.adverseP50)+' $ · وسيط 5 دقائق (معلومة لا ضمان)': 'غير متاح'
+          round(forwardReach.adverseP50)+' $ · وسيط '+horizon+' دقيقة (معلومة لا ضمان)': 'غير متاح'
       });
     }
     // A missing optional news feed is not itself a scheduled major release.
