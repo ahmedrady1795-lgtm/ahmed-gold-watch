@@ -65,7 +65,7 @@ export function buildForecastIllustration(asset:'GOLD'|'BTC',x:any,quote:any,now
   const watchSide=nearWatch?.side??'WAIT';
   const watchTargets=nearWatch?[nearWatch.target]:[];
   const watchReady=Boolean(!ready&&historyFresh&&sniper.view.priceFresh&&
-    sniper.view.forecastFresh&&nearWatch&&aheadOf(watchSide,watchTargets));
+    sniper.view.forecastFresh&&(!serverBias||bias.active)&&nearWatch&&aheadOf(watchSide,watchTargets));
   const displayTargets=ready?plannedTargets:watchReady?watchTargets:[];
   const displayStop=ready?plannedStop:null;
   const displaySide=ready?sniper.view.side:watchReady?watchSide:'WAIT';
