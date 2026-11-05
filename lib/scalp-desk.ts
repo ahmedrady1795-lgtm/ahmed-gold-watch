@@ -158,6 +158,7 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
           state:eligible?'ENTRY':confirmed?'CONDITIONS_PENDING':
             confirmation?.state==='HOLDING'?'HOLDING':'WATCH',
           entryAudit:audit,confirmationSource:planHold?'EXACT_PLAN':'SCENARIO_ONLY',
+          orderType:null as 'BUY_LIMIT'|'SELL_LIMIT'|null,expiresAt:null as number|null,
           heldSeconds:Number(confirmation?.heldSeconds||0),
           remainingSeconds:Number(confirmation?.remainingSeconds??60),
           requiredSeconds:Number(confirmation?.requiredSeconds??60),trigger:confirmation?.trigger??null,
