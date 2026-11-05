@@ -3,8 +3,9 @@ import type {Candle} from './engine';
 import type {ScalpPlan,ScalpQuote} from './scalp-opportunities';
 import {requiredScalpNetR} from './scalp-risk-policy';
 import {buildGoldQuickExit} from './scalp-quick-exit';
+import {planScalpLimit,limitTouch} from './scalp-limit-entry';
 
-export type PaperTrade={plan:ScalpPlan;state:'ARMED'|'ACTIVE'|'TP1'|'QUICK_TP'|'STOP'|'TIME_EXIT'|'EXPIRED'|'CANCELED'|'UNKNOWN';activatedAt:number|null;closedAt:number|null;exit:number|null;netR:number|null;lastAt:number;lastPrice:number;note:string;quickExitPrice?:number|null;quickMaxHoldMs?:number|null;quickQuoteSource?:string|null};
+export type PaperTrade={plan:ScalpPlan;state:'ARMED'|'ACTIVE'|'TP1'|'QUICK_TP'|'STOP'|'TIME_EXIT'|'EXPIRED'|'CANCELED'|'UNKNOWN';activatedAt:number|null;closedAt:number|null;exit:number|null;netR:number|null;lastAt:number;lastPrice:number;note:string;quickExitPrice?:number|null;quickMaxHoldMs?:number|null;quickQuoteSource?:string|null;limitType?:'BUY_LIMIT'|'SELL_LIMIT'|null;limitSource?:string|null;limitExpiresAt?:number|null;lastExecutable?:number|null};
 type Ledger={version:1;lanes:Record<string,{current:PaperTrade|null;lastId:string;history:PaperTrade[]}>};
 declare global {var __scalpPaperLedger:Ledger|undefined;}
 function load():Ledger{
@@ -139,6 +140,26 @@ export function advancePaperTrade(trade:PaperTrade,quote:ScalpQuote,now:number,c
     close('UNKNOWN',null,at,'تغير مصدر السعر بعد دخول ورقي سريع؛ لا نثبت نتيجة غير قابلة للمقارنة');return t;
   }
   if(t.state==='ARMED'){
+    if(t.limitType){
+      if(at-t.lastAt>15000){close('UNKNOWN',null,at,'انقطاع متابعة أمر Limit؛ لا نفترض تنفيذًا');return t;}
+      const result=limitTouch(t,quote,now);
+      if(result==='EXPIRED'){close('EXPIRED',null,t.limitExpiresAt||at,'انتهت صلاحية Limit دون تنفيذ');return t;}
+      if(result==='UNKNOWN'||result==='INVALID'){
+        close('UNKNOWN',null,at,'لم نتمكن من إثبات لمس Limit بأمر سعري متسق');return t;
+      }
+      if(result==='FILLED'){
+        // Reference pending fill AT the immutable limit, never at ask/market.
+        const quick=buildGoldQuickExit(plan,Number(plan.entry));
+        t.state='ACTIVE';t.activatedAt=at;t.note='لمس Limit ورقي بأحدث Ask/Bid من نفس المصدر؛ لا أمر وسيط';
+        t.quickExitPrice=quick?.price??null;t.quickMaxHoldMs=quick?.maxHoldMs??null;
+        t.quickQuoteSource=quick?quote.source:null;
+        t.lastAt=at;t.lastPrice=p;
+        return t;
+      }
+      t.lastAt=at;t.lastPrice=p;
+      t.lastExecutable=t.limitType==='BUY_LIMIT'?quote.ask:quote.bid;
+      return t;
+    }
     if(at>=plan.expiresAt){close('EXPIRED',null,plan.expiresAt,'انتهت صلاحية الدخول قبل التفعيل');return t;}
     if(plan.stop!=null&&dir*(p-plan.stop)<=0){close('CANCELED',null,at,'كُسر مستوى الإبطال قبل الدخول');return t;}
     if(at>=plan.at&&plan.entry!=null&&dir*(t.lastPrice-plan.entry)<0&&dir*(p-plan.entry)>=0){
@@ -196,7 +217,10 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
     if(lane.current){
       // Revoked or replaced entries must not fill on a tick that arrived after
       // the current conditions ceased to approve the earlier plan.
-      if(lane.current.state==='ARMED'&&(plan.status!=='ARMED'||lane.current.plan.id!==plan.id)){
+      if(lane.current.state==='ARMED'&&
+        (lane.current.plan.id!==plan.id||plan.status==='BLOCKED'||
+         plan.side!==lane.current.plan.side||plan.blockers.length>0||
+         (!lane.current.limitType&&plan.status!=='ARMED'))){
         lane.current={...lane.current,state:'CANCELED',closedAt:now,note:'انتهى تأكيد شروط الدخول أو تغير نموذج الإعداد'};
       }else{
         lane.current=advancePaperTrade(lane.current,quote,now,c1);
@@ -209,25 +233,19 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
         quote.price!=null&&quote.at!=null&&now-quote.at>=0&&now-quote.at<=10000&&
         quote.at<=plan.expiresAt&&plan.side!=='WAIT'&&plan.entry!=null&&
         plan.stop!=null&&plan.targets[0]?.price!=null){
-      // ENTRY is passed here only AFTER a plan-specific 60-second hold.
-      // Record a reference fill at the CURRENT quote (not the old trigger);
-      // already includes spread/fees/slippage via plan.cost, not an actual
-      // broker order. Do not count off-market/reward-negative fills.
-      const dir=plan.side==='BUY'?1:-1,p=quote.price,anchorRisk=Math.abs(plan.entry-plan.stop);
-      const risk=dir*(p-plan.stop),reward=dir*(plan.targets[0].price-p);
-      const priceNearby=anchorRisk>0&&Math.abs(p-plan.entry)<=anchorRisk*.35;
-      const rr=risk>0?(reward-plan.cost)/(risk+plan.cost):0;
-      if(priceNearby&&risk>0&&reward>0&&rr>=requiredScalpNetR(plan)){
-        const filled:ScalpPlan={...plan,entry:p,netRR:round(rr)};
-        const quick=buildGoldQuickExit(filled,p);
+      // Confirmation authorizes a pending LIMIT only. Never book a MARKET
+      // fill from the current quote, even when it is close to the signal.
+      const limit=planScalpLimit(plan,quote,now);
+      if(limit){
+        const frozen:ScalpPlan={...plan,entry:limit.price,
+          expiresAt:limit.expiresAt,netRR:limit.netRR};
         lane.lastId=plan.id;
         lane.current={
-          plan:filled,state:'ACTIVE',activatedAt:quote.at,closedAt:null,
-          exit:null,netR:null,lastAt:quote.at,lastPrice:p,
-          quickExitPrice:quick?.price??null,quickMaxHoldMs:quick?.maxHoldMs??null,
-          quickQuoteSource:quick?quote.source:null,
-          note:quick?'تفعيل مرجعي مع جني ربح صغير وتصفية خلال دقيقتين كحد أقصى؛ لا أمر وسيط':
-            'تفعيل ورقي بعد تأكيد الخطة عند سعر المرجع الحالي؛ لا تنفيذ وسيط'
+          plan:frozen,state:'ARMED',activatedAt:null,closedAt:null,
+          exit:null,netR:null,lastAt:quote.at,lastPrice:quote.price,
+          limitType:limit.type,limitSource:limit.quoteSource,
+          limitExpiresAt:limit.expiresAt,lastExecutable:limit.initialExecutable,
+          note:'أمر Limit ورقي معلّق حتى لمس مستوى الدخول بسعر Ask/Bid موثق؛ لا تنفيذ Market'
         };
       }
     }
@@ -264,5 +282,5 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
     }};
   });
   const persisted=save(data);
-  return {mode:'PAPER_REFERENCE',persisted,lanes,note:'الذهب التجريبي: جني مكسب صغير بعد التكلفة خلال 1–2 دقيقة عندما يتحرك السعر لصالح الخطة، أو وقف/خروج وقت؛ ليس تنفيذ وسيط ولا إثبات ربح. النتائج المجهولة لا تُحسب نجاحاً.'};
+  return {mode:'PAPER_LIMIT_REFERENCE',persisted,lanes,note:'الدخول الورقي Limit فقط دون مطاردة السوق؛ الذهب التجريبي: جني مكسب صغير بعد التكلفة خلال 1–2 دقيقة عندما يتحرك السعر لصالح الخطة، أو وقف/خروج وقت؛ ليس تنفيذ وسيط ولا إثبات ربح. النتائج المجهولة لا تُحسب نجاحاً.'};
 }
