@@ -10,6 +10,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   checkpoint:
+    # Avoid external Render pings on the free 750h shared quota unless explicitly enabled.
+    # Manual workflow_dispatch remains usable during a supervised session.
+    if: github.event_name != 'schedule' || vars.QANNAS_ALLOW_CONTINUOUS_ARCHIVE == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
