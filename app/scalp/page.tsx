@@ -126,6 +126,10 @@ function GoldEveryCandle({data}:{data:any}){
       <span>مجهولة {data?.unknown??0}</span>
       <span>انعكاسات سيولة {data?.reversalSetups??0}</span>
       <span>عينات قديمة منفصلة {data?.legacyResults??0}</span>
+      <span>V2 نتائج محسومة {data?.resolved??0}</span>
+      <span>V2 نسبة رابحة {data?.observedWinPct!=null?data.observedWinPct+'%':'لا توجد عينة'}</span>
+      <span>رفض قمة/قاع: {data?.byPattern?.reversal?.resolved??0} نتيجة / صافي {data?.byPattern?.reversal?.netR??0}R</span>
+      <span>متابعة زخم: {data?.byPattern?.momentum?.resolved??0} نتيجة / صافي {data?.byPattern?.momentum?.netR??0}R</span>
     </div>
     {latest?<div style={{border:'1px solid var(--border, rgba(160,165,180,.25))',
       padding:12,borderRadius:10}}>
