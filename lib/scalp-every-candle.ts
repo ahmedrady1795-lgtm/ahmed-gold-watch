@@ -15,7 +15,7 @@ export type EveryState='AWAIT_QUOTE'|'NO_BID_ASK'|'COST_UNVIABLE'|'PENDING'|'ACT
 export type EveryAttempt={
   id:number;issuedAt:number;side:EverySide;pressure:number;
   weak:boolean;state:EveryState;entry:number|null;stop:number|null;
-  atr?:number;anchorTime?:number;
+  atr?:number;anchorTime?:number;anchorClose?:number;
   tp:number|null;cost:number;extraCost?:number;spreadAtQuote?:number;
   strategyVersion?:string;pattern?:string;directionModel?:string;
   originalSide?:EverySide;onlineModel?:OnlineM1Choice['model'];
@@ -105,6 +105,7 @@ function gradeNextClosed(t:EveryAttempt,raw:readonly M1Bar[],
   const next=raw.find(b=>b.time===t.issuedAt);
   if(!anchor||!next)return;
   if(next.time-anchor.time!==60000||
+    (t.anchorClose!=null&&Math.abs(anchor.close-t.anchorClose)>0.000001)||
     ![next.open,next.close,next.high,next.low,anchor.close].every(Number.isFinite)||
     next.open<=0||next.close<=0||next.high<Math.max(next.open,next.close)||
     next.low>Math.min(next.open,next.close)){
@@ -243,7 +244,9 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       originalSide:signal.side,onlineModel:online.model,onlineDecision:online,
       pressure:signal.pressure,weak:signal.weak,state:'AWAIT_QUOTE',
       qualityTier:signal.weak?'RESEARCH_WEAK':'RESEARCH_CANDIDATE',
-      atr:signal.atr,anchorTime:signal.anchorTime,chartSource,
+      atr:signal.atr,anchorTime:signal.anchorTime,
+      anchorClose:raw.find(b=>b.time===signal.anchorTime)?.close,
+      chartSource,
       directionObserved:null,directionEvaluatedAt:null,
       strategyVersion:EVERY_M1_EDGE_V4,pattern:signal.pattern,
       directionModel:online.inverted?'ONLINE_INVERSION':
