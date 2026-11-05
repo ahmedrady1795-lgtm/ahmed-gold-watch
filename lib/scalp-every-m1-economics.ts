@@ -3,7 +3,8 @@
 export const EVERY_M1_EDGE_V2='EVERY_M1_EDGE_V2';
 export const EVERY_M1_EDGE_V3='EVERY_M1_ADAPTIVE_DIRECTION_V3';
 export const EVERY_M1_EDGE_V4='EVERY_M1_FORWARD_LEARNER_V4';
-export const EVERY_M1_MIN_NET_R=.45;
+export const EVERY_M1_EDGE_V5='EVERY_M1_TICK_CONFIRMED_LIMIT_V5';
+export const EVERY_M1_MIN_NET_R=.55;
 export type EveryM1Economics={
   side:'BUY'|'SELL';entry:number;stop:number;tp:number;
   extraCost:number;spread:number;risk:number;grossTargetMove:number;
@@ -31,25 +32,28 @@ export function priceEveryM1Limit(input:{
   const extra=Math.max(0,cost-spread);
   // Re-enter on a pullback into the last closed candle's body, rather than
   // immediately chasing the current quote. Bound depth to avoid stale orders.
-  const offset=Math.max(.02,spread*.5,atr*.05);
+  const offset=Math.max(.02,spread*.5,atr*.04);
   const bodyMid=(previousOpen+previousClose)/2;
   const buy=side==='BUY';
-  const targetBuy=Math.max(bid-atr*.65,Math.min(bid-offset,bodyMid));
-  const targetSell=Math.min(ask+atr*.65,Math.max(ask+offset,bodyMid));
+  // Pending LIMIT should have a realistic chance of reaching a pullback in M1.
+  const maxRetest=atr*.32;
+  if(offset>maxRetest||spread>atr*.24)return null;
+  const targetBuy=Math.max(bid-maxRetest,Math.min(bid-offset,bodyMid));
+  const targetSell=Math.min(ask+maxRetest,Math.max(ask+offset,bodyMid));
   const entry=buy?lo(targetBuy):hi(targetSell);
   // A tight stop still has to clear normal quote noise and the live spread.
-  const nominalRisk=Math.max(atr*.55,spread*2,.14);
+  // Loss distance shrinks with target; every stop still contributes to proof.
+  const nominalRisk=Math.max(atr*.42,spread*2.15,.14);
   const stop=buy?lo(entry-nominalRisk):hi(entry+nominalRisk);
   const risk=Math.abs(entry-stop);
   const grossMove=extra+EVERY_M1_MIN_NET_R*(risk+extra);
   const tp=buy?hi(entry+grossMove):lo(entry-grossMove);
   const reward=buy?tp-entry:entry-tp;
   const netRewardR=(reward-extra)/(risk+extra);
-  // One completed minute of risk may need >1 ATR to clear the spread.
-  // Allow up to 1.35 recent ATR, never promise a target far beyond it.
-  // This *only* makes the attempt cost-unviable; the prediction is retained.
+  // Target must not exceed plausible M1 reach. Cost-unviable forecasts
+  // remain recorded; they are never fabricated as profitable fills.
   if(entry<=0||stop<=0||tp<=0||risk<=0||reward<=extra||
-    grossMove>atr*1.35||netRewardR+1e-9<EVERY_M1_MIN_NET_R||
+    grossMove>atr*.72||netRewardR+1e-9<EVERY_M1_MIN_NET_R||
     buy&&entry>=bid||!buy&&entry<=ask)return null;
   return {side,entry,stop,tp,extraCost:round(extra),
     spread:round(spread),risk:round(risk),grossTargetMove:round(reward),

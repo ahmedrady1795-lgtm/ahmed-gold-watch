@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import type {M1Bar} from './sniper-mt5-m1';
 import {everyM1Direction} from './sniper-m1-every-direction';
-import {priceEveryM1Limit,EVERY_M1_EDGE_V4} from './scalp-every-m1-economics';
+import {priceEveryM1Limit,EVERY_M1_EDGE_V4,EVERY_M1_EDGE_V5} from './scalp-every-m1-economics';
+import {requiresM1TickConfirmation,m1BidAskEvidence,M1_CONFIRM_WINDOW_MS} from './scalp-m1-tick-evidence';
 import {chooseOnlineM1,type OnlineM1Choice} from './scalp-m1-online-learning';
 import type {ScalpQuote} from './scalp-opportunities';
 
@@ -10,7 +11,7 @@ import type {ScalpQuote} from './scalp-opportunities';
 // It intentionally does NOT borrow the qualified trade's 1.25R entry gate.
 // Missing quote/fill is a documented miss, not an imaginary winning trade.
 export type EverySide='BUY'|'SELL';
-export type EveryState='AWAIT_QUOTE'|'NO_BID_ASK'|'COST_UNVIABLE'|'PENDING'|'ACTIVE'|'QUICK_TP'|
+export type EveryState='AWAIT_QUOTE'|'CONFIRMING'|'NO_EDGE'|'NO_BID_ASK'|'COST_UNVIABLE'|'PENDING'|'ACTIVE'|'QUICK_TP'|
   'STOP'|'TIME_EXIT'|'EXPIRED'|'UNKNOWN';
 export type EveryAttempt={
   id:number;issuedAt:number;side:EverySide;pressure:number;
@@ -18,6 +19,7 @@ export type EveryAttempt={
   atr?:number;anchorTime?:number;anchorClose?:number;
   tp:number|null;cost:number;extraCost?:number;spreadAtQuote?:number;
   strategyVersion?:string;pattern?:string;directionModel?:string;
+  seedMid?:number;seedAt?:number;seedSource?:string;confirmedAt?:number|null;
   originalSide?:EverySide;onlineModel?:OnlineM1Choice['model'];
   onlineDecision?:OnlineM1Choice;chartSource?:string;
   directionObserved?:'BUY'|'SELL'|'FLAT'|'UNKNOWN'|null;
@@ -37,7 +39,7 @@ const TEMP='/tmp/scalp-every-m1-v1.json';
 declare global{var __scalpEveryM1Ledger:EveryLedger|undefined;}
 let lastSaved=0;
 const round=(v:number)=>Number(v.toFixed(3));
-const final=(x:EveryState)=>!['AWAIT_QUOTE','PENDING','ACTIVE'].includes(x);
+const final=(x:EveryState)=>!['AWAIT_QUOTE','CONFIRMING','PENDING','ACTIVE'].includes(x);
 const validQuote=(q:ScalpQuote,now:number)=>q.at!=null&&Number.isFinite(q.at)&&
   q.at>0&&now>=q.at&&now-q.at<=10000&&q.price!=null&&q.price>0;
 const validBook=(q:ScalpQuote)=>q.bid!=null&&q.ask!=null&&
@@ -144,6 +146,25 @@ function stageAfterQuote(t:EveryAttempt,raw:readonly M1Bar[],q:ScalpQuote,
   t.note='تم وضع LIMIT ورقي بعد أول Bid/Ask جديد؛ لا تنفيذ Market أو Exness';
   return true;
 }
+function beginAfterFreshQuote(t:EveryAttempt,raw:readonly M1Bar[],q:ScalpQuote,
+ now:number,costEstimate:number){
+ if(t.state!=='AWAIT_QUOTE'||now>=t.expiryAt||
+  !validQuote(q,now)||!validBook(q)||q.at!<t.issuedAt||
+  !q.source||q.source==='unavailable')return false;
+ const atr=Number(t.atr);
+ if(!Number.isFinite(atr)||atr<=0)return false;
+ if(!requiresM1TickConfirmation({side:t.side,weak:t.weak,
+   pressure:t.pressure,atr,directionModel:t.directionModel}))
+   return stageAfterQuote(t,raw,q,now,costEstimate);
+ t.seedMid=(Number(q.bid)+Number(q.ask))/2;
+ t.seedAt=q.at!;
+ t.seedSource=q.source;
+ t.lastQuoteAt=q.at!;
+ t.state='CONFIRMING';
+ t.note='توقع ضعيف محفوظ · انتظار حركة Bid/Ask جديدة مؤيدة قبل LIMIT';
+ return true;
+}
+
 export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
   q:ScalpQuote,now:number,costEstimate:number,chartSource?:string):EveryLedger{
   const history=ledger.history;
@@ -155,8 +176,44 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       if(now>=t.expiryAt)
         finish(t,'NO_BID_ASK',now,null,
           'انتهت الدقيقة قبل وصول Bid/Ask صالح بعد إصدار التوقع');
-      else stageAfterQuote(t,raw,q,now,costEstimate);
-      // Staging never fills on the same quote that created the LIMIT.
+      else beginAfterFreshQuote(t,raw,q,now,costEstimate);
+      // A seed or newly created LIMIT can NEVER fill on that same quote.
+      continue;
+    }
+    if(t.state==='CONFIRMING'){
+      if(now>=t.issuedAt+M1_CONFIRM_WINDOW_MS){
+        finish(t,'NO_EDGE',now,null,
+          'لم يظهر تأكيد اتجاه جديد خلال 24 ثانية؛ التوقع محفوظ بلا LIMIT');
+        continue;
+      }
+      if(now-t.lastQuoteAt>15000){
+        finish(t,'UNKNOWN',now,null,
+          'انقطع Bid/Ask أثناء التأكيد؛ لا نتيجة مؤكدة');
+        continue;
+      }
+      if(fresh&&book&&q.source!==t.seedSource){
+        finish(t,'UNKNOWN',now,null,
+          'مصدر السعر تغير أثناء اختبار اتجاه الدقيقة');
+        continue;
+      }
+      if(!fresh||!book||!q.source||q.at!<=Number(t.seedAt))continue;
+      const decision=m1BidAskEvidence({
+        side:t.side,weak:t.weak,pressure:t.pressure,atr:Number(t.atr),
+        directionModel:t.directionModel
+      },{mid:Number(t.seedMid),at:Number(t.seedAt),source:String(t.seedSource)},{
+        bid:Number(q.bid),ask:Number(q.ask),at:q.at!,source:q.source
+      });
+      if(decision==='REJECT')finish(t,'NO_EDGE',now,null,
+        'سعر عكسي أو حركة استنفدت مدى الدقيقة؛ التوقع يبقى لكن لا LIMIT');
+      else if(decision==='UNKNOWN')finish(t,'UNKNOWN',now,null,
+        'لا يوجد تيك موثوق صالح لتأكيد التوقع');
+      else if(decision==='CONFIRM'){
+        t.state='AWAIT_QUOTE';t.confirmedAt=q.at!;
+        if(!stageAfterQuote(t,raw,q,now,costEstimate))
+          finish(t,'UNKNOWN',now,null,'تأكيد اتجاه لكن بيانات التكلفة غير صالحة');
+        else if(t.entry!=null&&t.targetNetR!=null)
+          t.note='تيك جديد أكد الاتجاه؛ LIMIT مرجعي ثابت ينتظر ارتداد السعر';
+      }else t.lastQuoteAt=q.at!;
       continue;
     }
     if(t.state==='PENDING'&&now>=t.expiryAt){
@@ -248,7 +305,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       anchorClose:raw.find(b=>b.time===signal.anchorTime)?.close,
       chartSource,
       directionObserved:null,directionEvaluatedAt:null,
-      strategyVersion:EVERY_M1_EDGE_V4,pattern:signal.pattern,
+      strategyVersion:EVERY_M1_EDGE_V5,pattern:signal.pattern,
       directionModel:online.inverted?'ONLINE_INVERSION':
         signal.adaptive?.model??'PRESSURE_SWEEP',
       entry:null,stop:null,tp:null,
@@ -260,7 +317,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       note:'توقع حي مجمّد · '+(signal.weak?'دليل ضعيف للتعلم فقط':'مرشح بحثي غير معتمد')+'؛ انتظار أول Bid/Ask حقيقي بعد الإصدار'
     };
     history.push(t);
-    stageAfterQuote(t,raw,q,now,costEstimate);
+    beginAfterFreshQuote(t,raw,q,now,costEstimate);
   }
   ledger.history=history.slice(-360);
   return ledger;
@@ -273,6 +330,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   const active=hist.filter(t=>t.state==='ACTIVE');
   const pending=hist.filter(t=>t.state==='PENDING');
   const awaitingQuote=hist.filter(t=>t.state==='AWAIT_QUOTE').length;
+  const confirming=hist.filter(t=>t.state==='CONFIRMING').length;
   // An *issued* LIMIT is not a directional prediction and not a fill.
   const limitsIssued=hist.filter(t=>t.entry!=null&&
     (t.limitType==='BUY_LIMIT'||t.limitType==='SELL_LIMIT')).length;
@@ -282,8 +340,8 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     ['QUICK_TP','STOP','TIME_EXIT'].includes(t.state));
   // New geometry/reversal model gets a truly separate future cohort.
   // Old cost-corrected tests must not validate today's changed payoff.
-  const settled=completed.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V4);
-  const oldResults=completed.filter(t=>t.strategyVersion!==EVERY_M1_EDGE_V4);
+  const settled=completed.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V5);
+  const oldResults=completed.filter(t=>t.strategyVersion!==EVERY_M1_EDGE_V5);
   const legacyResults=oldResults.length;
   const legacyNetR=round(oldResults.reduce((sum,t)=>sum+Number(t.netR),0));
   const results=settled.map(t=>Number(t.netR));
@@ -294,7 +352,9 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     return {resolved:rows.length,wins:rows.filter(t=>Number(t.netR)>0).length,
       netR:round(sum),meanNetR:rows.length?round(sum/rows.length):null};
   };
-  const v4=hist.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V4);
+  // Same frozen forward-direction model spans V4 and V5; only LIMIT P/L changes.
+  const v4=hist.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V4||
+    t.strategyVersion===EVERY_M1_EDGE_V5);
   const marked=v4.filter(t=>t.directionObserved==='BUY'||t.directionObserved==='SELL');
   const directionHits=marked.filter(t=>t.side===t.directionObserved).length;
   const byEvidence=(weak:boolean)=>{
@@ -317,7 +377,9 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   };
   return {mode:'EVERY_CANDLE_PAPER_LIMIT_SHADOW',enabled:true,
     storage:fs.existsSync(PERSIST)?'VOLUME':fs.existsSync(TEMP)?'EPHEMERAL':'MEMORY',
-    proposals:hist.length,limitsIssued,awaitingQuote,missedMinutes,
+    proposals:hist.length,limitsIssued,awaitingQuote,confirming,missedMinutes,
+    noEdge:hist.filter(t=>t.state==='NO_EDGE').length,
+    tickConfirmed:hist.filter(t=>t.confirmedAt!=null).length,
     pending:pending.length,active:active.length,
     noQuote:hist.filter(t=>t.state==='NO_BID_ASK').length,
     costUnviable:hist.filter(t=>t.state==='COST_UNVIABLE').length,
@@ -344,9 +406,9 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     meanNetR:settled.length?round(net/settled.length):null,
     weakCount:hist.filter(t=>t.weak).length,
     strongCount:hist.filter(t=>!t.weak).length,
-    version:EVERY_M1_EDGE_V4,
-    nominalNetRMin:.45,
-    breakEvenWinPctNominal:69,
+    version:EVERY_M1_EDGE_V5,
+    nominalNetRMin:.55,
+    breakEvenWinPctNominal:64.52,
     reversalSetups:hist.filter(t=>t.pattern==='SWEEP_REJECTION').length,
     byPattern:{reversal:breakdown('SWEEP_REJECTION'),momentum:breakdown('MOMENTUM')},
     latest:hist.at(-1)??null,
