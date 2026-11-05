@@ -19,10 +19,22 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
   const stale=!Number.isFinite(checkedAt)||checkedAt<=0||checkedAt>now+2000||now-checkedAt>15000;
   const running=Boolean(current?.state==='ACTIVE');
   const blocked=stale||plan?.status==='BLOCKED';
+  const pressure=desk?.liquidity?.available?desk.liquidity.pressure:'WAIT';
   const direction=blocked?'WAIT':(
     running&&(current?.plan?.side==='BUY'||current?.plan?.side==='SELL')?current.plan.side:
-    plan?.side==='BUY'||plan?.side==='SELL'?plan.side:'WAIT'
+    plan?.side==='BUY'||plan?.side==='SELL'?plan.side:
+    pressure==='BUY'||pressure==='SELL'?pressure:'WAIT'
   );
+  // A WATCH is the pre-entry radar, distinct from the exact M1 close/hold
+  // and net-reward gates that authorize a paper ENTRY. Levels are only
+  // observation references and must never carry the ENTRY styling.
+  const technicalWatch=Boolean(!blocked&&!running&&plan?.status==='WATCH'&&
+    (plan?.side==='BUY'||plan?.side==='SELL')&&Number(plan.score)>=55);
+  const entryLevel=Number(plan?.entry),livePrice=Number(desk?.quote?.price);
+  const aheadOfTrigger=Boolean(technicalWatch&&Number.isFinite(entryLevel)&&entryLevel>0&&
+    Number.isFinite(livePrice)&&livePrice>0&&
+    (plan.side==='BUY'?entryLevel>livePrice:entryLevel<livePrice));
+
   const signaledAt=Number(running?current?.activatedAt:confirmation?.confirmedCandleAt||0);
   const signalAge=signaledAt>0?now-signaledAt:Infinity;
   const confirmed=Boolean(!blocked&&direction!=='WAIT'&&signaledAt>0&&
@@ -33,9 +45,11 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
   const status=blocked?'الدخول متوقف · بيانات أو شروط غير مكتملة':
     confirmed?'إشارة ورقية مؤكدة · نشطة الآن':
     running?'إشارة الدخول انتهت · الصفقة الورقية قيد المتابعة':
+    technicalWatch&&aheadOfTrigger?'رصد مبكر قبل مستوى التفعيل · الدخول غير مؤهل بعد':
+    technicalWatch?'إعداد فني مرصود · التفعيل المبكر لم يثبت':
     confirmation?.state==='HOLDING'?'بانتظار تأكيد إغلاق M1':
     direction==='WAIT'?'مفيش اتجاه سكالب مؤكد دلوقتي':
-    'اتجاه مرصود · لسه مش إشارة دخول';
+    'ضغط سعري أولي · مراقبة فقط';
   const reason=blocked?(plan?.blockers?.[0]||'آخر تحديث للسوق متأخر'):
     confirmation?.entryAudit?.reason||plan?.reason||'بانتظار الشروط الكاملة';
   const dirCss=confirmed?(direction==='BUY'?'green':'red'):'amber';
@@ -60,8 +74,13 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       <div className={'scalp-seconds-direction '+dirCss}>
         {confirmed?(direction==='BUY'?<ArrowUpRight size={36}/>:<ArrowDownRight size={36}/>):<Activity size={32}/>}
         <div><small>قرار الدخول</small>
-          <strong>{blocked?'غير جاهز':confirmed?(direction==='BUY'?'↑ شراء مؤكد':'↓ بيع مؤكد'):running?'متابعة فقط':'انتظار · لا دخول'}</strong>
-          <span>{confirmed?'إشارة ورقية · ليست أمرًا منفذًا':direction!=='WAIT'?'اتجاه المراقبة: '+sideAr(direction)+' · لا دخول جديد':'لا اتجاه مؤكد'}</span>
+          <strong>{blocked?'غير جاهز':confirmed?(direction==='BUY'?'↑ شراء مؤكد':'↓ بيع مؤكد'):
+            running?'متابعة فقط':
+            technicalWatch?'رصد فني · '+sideAr(direction):
+            direction!=='WAIT'?'ميل سعري · '+sideAr(direction):'انتظار · لا دخول'}</strong>
+          <span>{confirmed?'إشارة ورقية · ليست أمرًا منفذًا':
+            technicalWatch?'تحضير M'+horizon+' بقوة '+plan.score+'/100 · لا دخول':
+            direction!=='WAIT'?'اتجاه المراقبة: '+sideAr(direction)+' · لا دخول جديد':'لا اتجاه مؤكد'}</span>
         </div>
         <div className="scalp-seconds-clock">
           <Clock3 size={16}/><strong>{remaining?remaining+' ث':'—'}</strong>
@@ -71,6 +90,18 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       <p className={'scalp-seconds-status '+(confirmed?'green':blocked?'red':'amber')}>
         {status}
       </p>
+      {technicalWatch&&!confirmed&&<div className="scalp-early-watch"
+        aria-label="مستويات مراقبة الحركة قبل الدخول"
+        style={{marginTop:10,padding:11,border:'1px solid var(--border, rgba(160,165,180,.25))',borderRadius:10}}>
+        <strong>{aheadOfTrigger?'تجهيز قبل التفعيل':'مراقبة حركة · لم يثبت السبق'}
+          {' '}· {sideAr(plan.side)}</strong>
+        <p style={{margin:'7px 0',fontSize:13}}>
+          مستوى ترقب <b dir="ltr">{fmt(plan.entry)}</b>
+          {' · '}إبطال نظري <b dir="ltr">{fmt(plan.stop)}</b>
+          {' · '}هدف محتمل <b dir="ltr">{fmt(plan.targets?.[0]?.price)}</b>
+        </p>
+        <small>رصد سعري فقط · ليس أمر دخول، والهدف غير مؤهل ما لم تنجح اختبارات التكلفة والتأكيد.</small>
+      </div>}
       {actionable&&<div className="scalp-seconds-levels" aria-label="مستويات الإشارة الورقية">
         <span><small>دخول ورقي</small><b dir="ltr">{fmt(running?current.plan.entry:confirmation?.entry)}</b></span>
         <span><small>وقف</small><b dir="ltr">{fmt(running?current.plan.stop:confirmation?.stop)}</b></span>
