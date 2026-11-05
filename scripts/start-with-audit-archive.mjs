@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import {spawn} from 'node:child_process';
+import {renderFreeEcoEnabled} from '../lib/render-free-eco.ts';
 import {ARCHIVE_URL,cleanArchive,restoredState} from './sniper-archive.mjs';
 try{
   const response=await fetch(ARCHIVE_URL+'?restore='+Date.now(),{signal:AbortSignal.timeout(10000),cache:'no-store'});
@@ -20,6 +21,9 @@ const child=spawn('npm',['start'],{stdio:'inherit',env:process.env});
 // Nonblocking post-startup Spot proof. This also warms the market-data
 // cache before a user opens /spot and reports the actual failing stage.
 void (async()=>{
+  // Real viewers load Spot directly; never force an unused market-wide
+  // Binance scan on every cold-start of the free service.
+  if(renderFreeEcoEnabled())return;
   const port=Number(process.env.PORT)||3000;
   const base='http://127.0.0.1:'+port;
   for(let i=0;i<12;i++){

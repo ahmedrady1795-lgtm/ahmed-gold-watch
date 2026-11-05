@@ -52,7 +52,7 @@ export function readGoldPreparation(input:{now:number;source:string;bars:readonl
  if(bars.length<48||bars.some((b,i)=>!validBar(b)||b.time+MIN>now-3000||
   (i>0&&b.time-bars[i-1].time!==MIN)))return none('تاريخ M1 مغلق ومتصل غير كافٍ');
  const last=bars.at(-1)!,contextAt=last.time+MIN;
- if(now-contextAt>90000||pulse.sourceTime<contextAt)return none('سياق الدقيقة أو توقيت السعر قديم');
+ if(now-contextAt>45000||pulse.sourceTime<contextAt)return none('سياق الدقيقة أو توقيت السعر قديم');
  const ranges=bars.slice(-25).map((b,i,a)=>i?Math.max(b.high-b.low,
   Math.abs(b.high-a[i-1].close),Math.abs(b.low-a[i-1].close)):b.high-b.low).slice(1).sort((a,b)=>a-b);
  const atr=ranges[Math.floor(ranges.length/2)];
@@ -96,6 +96,13 @@ export function readGoldPreparation(input:{now:number;source:string;bars:readonl
  const leadingPrice=side==='BUY'?(pulse.ask??pulse.price):(pulse.bid??pulse.price);
  if(sign*(trigger-leadingPrice)<=0||sign*(pulse.price-invalidate)<=0||
   sign*(trigger-pulse.price)>atr*1.2)return none('السعر عبر التفعيل بالفعل أو بعيد عن التحضير');
+ // A real pre-break alert needs measurable room BEFORE the live quote
+ // reaches the trigger. A quote a few ticks from crossing is not reliably
+ // earlier than the move at our 15s sampling cadence. Use independent
+ // closed-M1 volatility plus same-source spread, not future candles.
+ const leadRoom=sign*(trigger-leadingPrice);
+ const leadBuffer=Math.max(atr*.15,(spread??0)*1.2,last.close*.00001);
+ if(leadRoom<leadBuffer)return none('السعر ملاصق للتفعيل؛ لا يوجد هامش زمني كافٍ لإنذار استباقي');
  const risk=sign*(trigger-invalidate);
  if(risk<atr*.6||risk>atr*4||spread!=null&&risk<spread*4)
   return none('مستوى الإبطال غير مناسب لضوضاء السعر');
@@ -117,7 +124,8 @@ export function readGoldPreparation(input:{now:number;source:string;bars:readonl
   issuedAt:now,contextAt,source,quoteSource:quote.source,quoteAt:pulse.sourceTime,
   price:pulse.price,spread,side,setup,trigger,target,invalidate,
   armUntil:Math.ceil(now/MIN)*MIN+5*MIN,reason,
-  evidence:[...evidence,'السعر المرصود لم يعبر التفعيل وقت الإصدار'],method:'SPOT_PRICE_PREPARATION'};
+  evidence:[...evidence,'السعر المرصود لم يعبر التفعيل وقت الإصدار',
+   'PREBREAK_LEAD_BUFFER_V1'],method:'SPOT_PRICE_PREPARATION'};
  return {ready:true,reason,plan};
 }
 
@@ -267,11 +275,21 @@ export function goldLeadScore(ledger:GoldLeadLedger){
  const excluded=events.filter(e=>unresolved.has(e.status)).length;
  const evaluated=events.length-pending-excluded;
  const successes=events.filter(e=>e.status==='TARGET').length;
+ const resolvedBreakouts=events.filter(e=>['TARGET','STOP','TIMEOUT'].includes(e.status)).length;
+ const buffered=events.filter(e=>e.evidence.includes('PREBREAK_LEAD_BUFFER_V1'));
+ const bufferedEvaluated=buffered.filter(e=>!active(e.status)&&!unresolved.has(e.status));
+ const bufferedTargets=bufferedEvaluated.filter(e=>e.status==='TARGET').length;
  const proven=events.filter(e=>e.breakoutBarAt!=null&&!unresolved.has(e.status));
  const mins=proven.map(e=>e.leadMinSeconds!).sort((a,b)=>a-b);
  return {version:GOLD_PREPARATION_VERSION,method:'CLOSED_M1_FORWARD_INTERVAL',
   events:events.length,pending,evaluated,excluded,targetBeforeStop:successes,
   targetRate:evaluated?successes/evaluated:null,provenBreakouts:proven.length,
+  // Separately report target-after-confirmed-break to avoid mixing setup
+  // activation with target reach; both are descriptive price-touch ratios.
+  resolvedBreakouts,targetAfterBreakoutRate:resolvedBreakouts?successes/resolvedBreakouts:null,
+  leadBufferCohort:{alerts:buffered.length,observed:bufferedEvaluated.length,
+    targetTouches:bufferedTargets,
+    targetRate:bufferedEvaluated.length?bufferedTargets/bufferedEvaluated.length:null},
   noBreak:events.filter(e=>e.status==='NO_BREAK').length,
   invalidated:events.filter(e=>e.status==='INVALIDATED').length,
   stopped:events.filter(e=>e.status==='STOP').length,

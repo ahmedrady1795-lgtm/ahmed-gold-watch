@@ -168,8 +168,16 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
      <span>كسر لاحق مثبت: {lead?.provenBreakouts??0}
        {' '}· هدف قبل الإبطال: {lead?.targetBeforeStop??0}/{lead?.evaluated??0}
        {lead?.targetRate!=null?' ('+Math.round(lead.targetRate*100)+'%)':''}</span>
-     <small>النسبة تشمل الإنذارات التي انتهت بلا كسر والإبطالات. أي لمس في دقيقة إصدار
-       الإنذار أو ترتيب ملتبس يُعرض كغير محسوم. هذه لمسات سعرية قبل تكاليف التنفيذ.</small>
+     <span>بعد كسر مثبت: هدف {lead?.targetBeforeStop??0}/{lead?.resolvedBreakouts??0}
+       {lead?.targetAfterBreakoutRate!=null?
+        ' ('+Math.round(lead.targetAfterBreakoutRate*100)+'%)':''}
+       {' '}· إشارات هامش التفعيل الجديد: {lead?.leadBufferCohort?.alerts??0}
+       {' '}({lead?.leadBufferCohort?.observed??0} نتيجة محسومة)</span>
+     <small>النسبة العامة تشمل الإنذارات التي انتهت بلا كسر والإبطالات. نسبة ما بعد
+       الكسر مشروطة بحدوث كسر مثبت، وليست احتمال ربح. إنذار هامش التفعيل
+       الجديد يكوّن عينة منفصلة، ولا يُنسب إليه نجاح الإنذارات القديمة.</small>
+     <small>أي لمس في دقيقة إصدار الإنذار أو ترتيب ملتبس يُعرض كغير محسوم.
+       جميع النتائج لمسات سعرية قبل تكاليف تنفيذ Exness.</small>
      <small>التحضير من السعر الفوري؛ لا يكشف أوامر صناع السوق. لم تثبت دقته خارج العينة بعد.</small>
      <span>{preparationStatus} · {gcHeading}</span>
      <strong>عقود الذهب GC · {gcState}</strong>

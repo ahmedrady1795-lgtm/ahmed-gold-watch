@@ -1,4 +1,6 @@
 import fs from 'node:fs/promises';
+import {renderFreeEcoEnabled} from '../lib/render-free-eco.ts';
+import {sidecarWorkAllowed} from '../lib/render-free-viewer-lease.ts';
 import {OrderFlowRadar} from '../lib/order-flow-radar.ts';
 import {newLedger,sanitizeShadowLedger,recordRadarSignal,
  settleRadarOutcomes,baselineAt,validShadowBars,radarShadowScore,
@@ -9,7 +11,7 @@ const CHANNEL='wss://ws-feed.exchange.coinbase.com';
 const CHECKPOINT='https://raw.githubusercontent.com/ahmedrady1795-lgtm/ahmed-gold-watch/render-free/archive/radar-shadow.json';
 const candidates=['/data/qannas-radar-shadow-v1.json','/tmp/qannas-radar-shadow-v1.json'];
 let target=candidates[1],ledger=newLedger(),engine=new OrderFlowRadar(),ws=null;
-let reconnect=null,connected=false,finishing=false,inFlight=false;
+let reconnect=null,connected=false,finishing=false,inFlight=false,ecoPaused=false;
 let m1=[],m15=[],lastHistoryPoll=0,lastRecordedSince=0,lastSave=0;
 let lastAbsorptionSince=0;
 async function store(){
@@ -44,32 +46,37 @@ async function init(){
  await store();
 }
 function reconnectSoon(){
- if(finishing||reconnect)return;
+ if(finishing||ecoPaused||reconnect)return;
  reconnect=setTimeout(()=>{reconnect=null;connect();},5500);
 }
 function connect(){
- if(finishing)return;
+ if(finishing||ecoPaused)return;
  if(typeof WebSocket!=='function'){
   console.error('[RADAR-SHADOW] Node WebSocket unavailable; no events recorded');
   return;
  }
  engine=new OrderFlowRadar();connected=false;
  try{
-  ws=new WebSocket(CHANNEL);
-  ws.addEventListener('open',()=>{
+  const socket=new WebSocket(CHANNEL);ws=socket;
+  socket.addEventListener('open',()=>{
+   if(ecoPaused||ws!==socket){socket.close();return;}
    connected=true;
-   ws.send(JSON.stringify({type:'subscribe',product_ids:['BTC-USD'],
+   socket.send(JSON.stringify({type:'subscribe',product_ids:['BTC-USD'],
      channels:['level2_batch','matches','heartbeat']}));
   });
-  ws.addEventListener('message',(ev)=>{
+  socket.addEventListener('message',(ev)=>{
+   if(ecoPaused||ws!==socket)return;
    try{
     const m=JSON.parse(String(ev.data));
-    if(m.type==='error'){engine.broken=true;ws.close();return;}
+    if(m.type==='error'){engine.broken=true;socket.close();return;}
     engine.ingest(m,Date.now());
    }catch{engine.broken=true;}
   });
-  ws.addEventListener('error',()=>{connected=false;});
-  ws.addEventListener('close',()=>{connected=false;reconnectSoon();});
+  socket.addEventListener('error',()=>{if(ws===socket)connected=false;});
+  socket.addEventListener('close',()=>{
+   if(ws!==socket)return;
+   ws=null;connected=false;reconnectSoon();
+  });
  }catch{connected=false;reconnectSoon();}
 }
 function normalizeCandles(raw,period,now){
@@ -157,11 +164,25 @@ async function tick(){
  }
 }
 await init();
-connect();
+// Never open a full Coinbase level-2 socket before the first free-tier viewer.
+if(!renderFreeEcoEnabled())connect();
 let busy=false;
 const timer=setInterval(async()=>{
  if(busy)return;busy=true;
- try{await tick();}catch(e){console.warn('[RADAR-SHADOW] tick',String(e.message).slice(0,100));}
+ try{
+  const allowed=await sidecarWorkAllowed();
+  if(!allowed){
+   if(!ecoPaused){
+    ecoPaused=true;clearTimeout(reconnect);reconnect=null;
+    const prior=ws;ws=null;connected=false;
+    try{prior?.close();}catch{}
+   }
+   return;
+  }
+  if(ecoPaused){ecoPaused=false;connect();}
+  else if(!ws&&!reconnect)connect();
+  await tick();
+ }catch(e){console.warn('[RADAR-SHADOW] tick',String(e.message).slice(0,100));}
  finally{busy=false;}
 },2500);
 for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{
