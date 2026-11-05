@@ -330,6 +330,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   const active=hist.filter(t=>t.state==='ACTIVE');
   const pending=hist.filter(t=>t.state==='PENDING');
   const awaitingQuote=hist.filter(t=>t.state==='AWAIT_QUOTE').length;
+  const confirming=hist.filter(t=>t.state==='CONFIRMING').length;
   // An *issued* LIMIT is not a directional prediction and not a fill.
   const limitsIssued=hist.filter(t=>t.entry!=null&&
     (t.limitType==='BUY_LIMIT'||t.limitType==='SELL_LIMIT')).length;
@@ -376,7 +377,9 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   };
   return {mode:'EVERY_CANDLE_PAPER_LIMIT_SHADOW',enabled:true,
     storage:fs.existsSync(PERSIST)?'VOLUME':fs.existsSync(TEMP)?'EPHEMERAL':'MEMORY',
-    proposals:hist.length,limitsIssued,awaitingQuote,missedMinutes,
+    proposals:hist.length,limitsIssued,awaitingQuote,confirming,missedMinutes,
+    noEdge:hist.filter(t=>t.state==='NO_EDGE').length,
+    tickConfirmed:hist.filter(t=>t.confirmedAt!=null).length,
     pending:pending.length,active:active.length,
     noQuote:hist.filter(t=>t.state==='NO_BID_ASK').length,
     costUnviable:hist.filter(t=>t.state==='COST_UNVIABLE').length,
@@ -403,9 +406,9 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     meanNetR:settled.length?round(net/settled.length):null,
     weakCount:hist.filter(t=>t.weak).length,
     strongCount:hist.filter(t=>!t.weak).length,
-    version:EVERY_M1_EDGE_V4,
-    nominalNetRMin:.45,
-    breakEvenWinPctNominal:69,
+    version:EVERY_M1_EDGE_V5,
+    nominalNetRMin:.55,
+    breakEvenWinPctNominal:64.52,
     reversalSetups:hist.filter(t=>t.pattern==='SWEEP_REJECTION').length,
     byPattern:{reversal:breakdown('SWEEP_REJECTION'),momentum:breakdown('MOMENTUM')},
     latest:hist.at(-1)??null,
