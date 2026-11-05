@@ -1,12 +1,12 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
 let now=1_000_000;
-const env={},exports={};
+const env={},moduleExports={};
 const code=ts.transpileModule(fs.readFileSync('lib/render-free-eco.ts','utf8'),{
   compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
 }).outputText;
-vm.runInNewContext(code,{exports,process:{env},Date:{now:()=>now}});
-const eco=exports;
+vm.runInNewContext(code,{exports:moduleExports,process:{env},Date:{now:()=>now}});
+const eco=moduleExports;
 assert.equal(eco.allowBackgroundWork(),true,'non-Render services preserve background cycles');
 env.RENDER_SERVICE_NAME='ahmed-gold-watch-free';
 assert.equal(eco.renderFreeEcoEnabled(),true);
