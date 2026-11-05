@@ -13,6 +13,8 @@ function load(file){
    {filename:file});return out;
 }
 const {everyM1Direction}=load('lib/sniper-m1-every-direction.ts');
+const {priceEveryM1Limit,EVERY_M1_EDGE_V2,EVERY_M1_MIN_NET_R}=
+ load('lib/scalp-every-m1-economics.ts');
 const {advanceEveryM1}=load('lib/scalp-every-candle.ts');
 const {buildM1CandleTape}=load('lib/sniper-m1-candle-tape.ts');
 const T=Date.parse('2026-11-05T11:00:00Z');
@@ -48,8 +50,14 @@ assert.ok(a.extraCost!=null&&Math.abs(a.extraCost-.05)<.001,
   'bid/ask at entry and exit already charge spread; only fees/slippage remain');
 assert.ok(a.tp>a.entry+a.extraCost,
   'micro target must still leave a positive gain after extra execution cost');
-assert.ok((a.tp-a.entry)<a.cost+.06,
-  'do not double-charge the measured spread when choosing micro TP');
+assert.equal(a.strategyVersion,EVERY_M1_EDGE_V2,
+ 'changed entry/target economics must start a new proof cohort');
+const risk=Math.abs(a.entry-a.stop);
+const reward=a.tp-a.entry-a.extraCost;
+assert.ok(reward/(risk+a.extraCost)>=EVERY_M1_MIN_NET_R-1e-8,
+ 'tiny paper gains must not promise 0.25R while taking 1R losses');
+assert.ok(a.tp-a.entry<=guess.atr*1.35+.02,
+ 'quick target remains bounded by observed true range');
 const start=a.entry;
 data=advanceEveryM1(data,bars,first,issue+500,.15);
 assert.equal(data.history.length,1,'same minute and quote never duplicate attempt');
@@ -58,6 +66,11 @@ data=advanceEveryM1(data,bars,later,issue+1200,.15);
 assert.equal(data.history[0].state,'ACTIVE','later ask crossing frozen BUY limit activates reference paper');
 assert.equal(data.history[0].filledAt,issue+1100);
 assert.equal(data.history[0].entry,start,'do not chase a new market entry');
+const crossedStop=advanceEveryM1({version:1,history:[{
+ ...a,state:'PENDING',lastExecutable:first.ask,lastQuoteAt:issue+100
+}]},bars,q(start-.4,start-.01,issue+1100),issue+1200,.15).history[0];
+assert.equal(crossedStop.state,'UNKNOWN',
+ 'a BUY Limit can be touched at ask while its bid is already beyond stop');
 const target=data.history[0].tp;
 data=advanceEveryM1(data,bars,q(target+.04,target+.08,issue+2200),issue+2300,.15);
 assert.equal(data.history[0].state,'QUICK_TP','later executable BID touching TP closes paper attempt');
@@ -114,6 +127,21 @@ assert.equal(everyM1Direction(gapBars,issue+100),null,
 const tape=buildM1CandleTape(bars,issue+100,9);
 assert.equal(tape.marks.length,9);
 assert.equal(tape.graded,9,'direction offered each of 9 past nonflat candles');
+// A prior high sweep followed by a closed bearish rejection should beat
+// lagging positive EMA momentum, without peeking at the following bar.
+const high=Math.max(...bars.slice(-7,-1).map(b=>b.high));
+const rejection=bars.map(b=>({...b}));
+rejection[rejection.length-1]={...rejection.at(-1),
+  open:high-.02,close:high-.08,high:high+.20,low:high-.18};
+const sweepSell=everyM1Direction(rejection,issue+100);
+assert.equal(sweepSell.side,'SELL','bearish close back inside previous high prioritizes SELL');
+assert.equal(sweepSell.pattern,'SWEEP_REJECTION');
+assert.equal(sweepSell.weak,true,'counter-momentum reversal is labeled weak evidence');
+const inverse=rejection.map(b=>({...b,open:200-b.open,close:200-b.close,
+  high:200-b.low,low:200-b.high}));
+const sweepBuy=everyM1Direction(inverse,issue+100);
+assert.equal(sweepBuy.side,'BUY','bullish low rejection prioritizes BUY');
+assert.equal(sweepBuy.pattern,'SWEEP_REJECTION');
 const weakTape=buildM1CandleTape(weakBars,issue+100,9);
 assert.equal(weakTape.marks.length,9);
 assert.equal(weakTape.graded,0,'flat outcomes do not count as correct directional guesses');
@@ -124,6 +152,15 @@ const desk=fs.readFileSync('lib/scalp-desk.ts','utf8');
 assert.match(desk,/observeEveryM1\(input\.c1,quote,at/);
 assert.match(desk,/const qualityGates=plans\.map/,
  'the strict execution-ready path remains separate from shadow each-candle');
+const economic=priceEveryM1Limit({side:'SELL',bid:99.7,ask:99.8,
+ atr:.55,cost:.17,previousOpen:99.8,previousClose:99.55});
+assert.ok(economic&&economic.entry>99.8,'SELL Limit always sits above ask');
+assert.ok(economic.netRewardR>=EVERY_M1_MIN_NET_R);
+assert.ok(economic.breakEvenWinPct>65&&economic.breakEvenWinPct<70,
+ 'do not pretend that a 0.45R payoff can win at a 50% hit rate');
+assert.equal(priceEveryM1Limit({side:'BUY',bid:100.2,ask:100.3,
+ atr:.20,cost:1.2,previousOpen:100.1,previousClose:100.2}),null,
+ 'when spread/fees dominate the minute, record an unviable forecast, not a fake trade');
 const panel=fs.readFileSync('components/SniperM1CandleHunter.tsx','utf8');
 assert.match(panel,/everyM1Direction\(p\.history,p\.now\)/);
 assert.match(panel,/توقع الشمعة الحالية/);

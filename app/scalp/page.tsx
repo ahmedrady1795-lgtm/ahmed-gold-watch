@@ -110,9 +110,9 @@ function GoldEveryCandle({data}:{data:any}){
       <span style={{fontSize:12,opacity:.82}}>ورقي بحثي فقط · لا ينفّذ على Exness</span>
     </div>
     <p style={{fontSize:12,opacity:.80,margin:'8px 0'}}>
-      توقع لكل دقيقة مؤهلة؛ محاولة Limit فقط لو الهدف الصغير يغطي تكلفة إضافية
-      ولم يكن أكبر من نطاق الدقيقة المتوقع. الشموع الضعيفة والفرص المكلفة محسوبة
-      في المراجعة، ومفيش ضمان إن كل شمعة تكسب. الربح الورقي مش تنفيذ Exness.
+      توقع لكل دقيقة مؤهلة؛ دخول LIMIT على تراجع داخل شمعة مغلقة، بهدف
+      صافي نظري ≥0.45R بعد تكلفة إضافية تقديرية. أي فرصة لا تصلح للتنفيذ
+      تفضل متسجلة كتوقع، من غير تزوير دخول أو نجاح. مفيش ضمان للربح.
     </p>
     <div style={{display:'flex',gap:12,flexWrap:'wrap',margin:'8px 0 12px',fontSize:12}}>
       <span>توقعات {data?.proposals??0}</span>
@@ -124,17 +124,24 @@ function GoldEveryCandle({data}:{data:any}){
       <span>وقف {data?.stops??0}</span>
       <span>انتهت {data?.expired??0}</span>
       <span>مجهولة {data?.unknown??0}</span>
+      <span>انعكاسات سيولة {data?.reversalSetups??0}</span>
       <span>عينات قديمة منفصلة {data?.legacyResults??0}</span>
+      <span>V2 نتائج محسومة {data?.resolved??0}</span>
+      <span>V2 نسبة رابحة {data?.observedWinPct!=null?data.observedWinPct+'%':'لا توجد عينة'}</span>
+      <span>رفض قمة/قاع: {data?.byPattern?.reversal?.resolved??0} نتيجة / صافي {data?.byPattern?.reversal?.netR??0}R</span>
+      <span>متابعة زخم: {data?.byPattern?.momentum?.resolved??0} نتيجة / صافي {data?.byPattern?.momentum?.netR??0}R</span>
     </div>
     {latest?<div style={{border:'1px solid var(--border, rgba(160,165,180,.25))',
       padding:12,borderRadius:10}}>
       <div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
         <b>{latest.side==='BUY'?'↑ توقع صعود / BUY LIMIT':'↓ توقع هبوط / SELL LIMIT'}</b>
         <small>{latest.weak?'توقع ضعيف · محسوب ضمن الأخطاء':'ضغط اتجاهي مرصود'}
-          {' · '}{latest.pressure}/100 مش نسبة نجاح</small>
+          {' · '}{latest.pressure}/100 مش نسبة نجاح
+          {' · '}{latest.pattern==='SWEEP_REJECTION'?'رفض كسر سيولة':'متابعة زخم'}</small>
       </div>
       <p style={{margin:'6px 0',fontSize:13}}>
         دخول {fmt(latest.entry)} · هدف {fmt(latest.tp)} · وقف {fmt(latest.stop)}
+        {latest.targetNetR!=null?' · عائد نظري '+latest.targetNetR+'R':''}
       </p>
       <small>{stateLabel(latest.state)} · {latest.note}</small>
     </div>:<p>بانتظار شمعة M1 مكتملة جديدة وسعر مرجعي حديث.</p>}
@@ -153,6 +160,9 @@ function GoldEveryCandle({data}:{data:any}){
       {' '}مجموع الصافي الورقي {fmt(data?.netR)}R،
       {' '}من {data?.resolved??0} نتيجة قابلة للحساب بعد تكلفة تقديرية،
       {' '}متوسط الصافي {data?.meanNetR!=null?fmt(data.meanNetR)+'R':'غير محسوب'}،
+      {' '}العائد المستهدف مش نسبة نجاح. نقطة التعادل النظرية عند
+      مكسب 0.45R مقابل خسارة 1R حوالي 69% صفقات رابحة قبل تفاوت التنفيذ،
+      وما نعتبرش استراتيجية V2 ناجحة إلا بعينة مستقلة كافية.
       {' '}مش دليل ربح حقيقي ولا نسبة نجاح معتمدة.
     </small>
   </section>;

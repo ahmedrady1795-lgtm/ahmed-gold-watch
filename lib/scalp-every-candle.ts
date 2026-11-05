@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import type {M1Bar} from './sniper-mt5-m1';
 import {everyM1Direction} from './sniper-m1-every-direction';
+import {priceEveryM1Limit,EVERY_M1_EDGE_V2} from './scalp-every-m1-economics';
 import type {ScalpQuote} from './scalp-opportunities';
 
 // Separate, low-friction RESEARCH lane: one forecast and one attempted
@@ -14,6 +15,7 @@ export type EveryAttempt={
   id:number;issuedAt:number;side:EverySide;pressure:number;
   weak:boolean;state:EveryState;entry:number|null;stop:number|null;
   tp:number|null;cost:number;extraCost?:number;spreadAtQuote?:number;
+  strategyVersion?:string;pattern?:string;targetNetR?:number;breakEvenWinPct?:number;retestDepth?:number;
   quoteSource:string;limitType:'BUY_LIMIT'|'SELL_LIMIT';
   expiryAt:number;lastQuoteAt:number;lastExecutable:number|null;
   filledAt:number|null;closedAt:number|null;exit:number|null;netR:number|null;
@@ -27,8 +29,6 @@ const TEMP='/tmp/scalp-every-m1-v1.json';
 declare global{var __scalpEveryM1Ledger:EveryLedger|undefined;}
 let lastSaved=0;
 const round=(v:number)=>Number(v.toFixed(3));
-const lo=(v:number)=>Math.floor(v*100+1e-7)/100;
-const hi=(v:number)=>Math.ceil(v*100-1e-7)/100;
 const final=(x:EveryState)=>!['PENDING','ACTIVE'].includes(x);
 const validQuote=(q:ScalpQuote,now:number)=>q.at!=null&&Number.isFinite(q.at)&&
   q.at>0&&now>=q.at&&now-q.at<=10000&&q.price!=null&&q.price>0;
@@ -128,8 +128,12 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       const touched=wasOutside&&(t.side==='BUY'?px<=Number(t.entry):
         px>=Number(t.entry));
       if(touched){
+        // The quote may have touched the entry and stop in the same gap.
+        // Check the executable *exit* side, not the entry ask/bid alone.
+        const executableExit=t.side==='BUY'?Number(q.bid):Number(q.ask);
         if(Math.abs(px-Number(t.entry))>Math.abs(Number(t.entry)-Number(t.stop))*.35||
-          (t.side==='BUY'?px<=Number(t.stop):px>=Number(t.stop))){
+          (t.side==='BUY'?executableExit<=Number(t.stop):
+            executableExit>=Number(t.stop))){
           finish(t,'UNKNOWN',now,null,'سعر قفز فوق Limit ولا يمكن إثبات تنفيذ');
         }else{
           t.state='ACTIVE';t.filledAt=q.at!;
@@ -155,24 +159,24 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
     // hypothetical LIMIT using a price known only before the forecast.
     const usable=fresh&&book&&q.at!>=signal.issuedAt&&Number.isFinite(cost)&&
       Number.isFinite(spread)&&spread>=0&&spread<=cost+.01;
-    const risk=Math.max(signal.atr*.65,(Number.isFinite(spread)?spread:0)*2.2,.14);
-    const offset=Math.max(.02,(Number.isFinite(spread)?spread:0)*.5,signal.atr*.05);
-    const entry=usable?signal.side==='BUY'?
-      lo(Number(q.bid)-offset):hi(Number(q.ask)+offset):null;
-    const stop=entry==null?null:signal.side==='BUY'?lo(entry-risk):hi(entry+risk);
+    const last=raw.find(x=>x.time===signal.anchorTime);
+    const economics=usable&&last?priceEveryM1Limit({
+      side:signal.side,bid:Number(q.bid),ask:Number(q.ask),
+      atr:signal.atr,cost,previousOpen:last.open,previousClose:last.close
+    }):null;
+    // Still produce a prediction on every valid closed candle. Never fake a
+    // resting limit when the observed spread/cost geometry cannot support it.
+    const entry=economics?.entry??null,stop=economics?.stop??null;
+    const tp=economics?.tp??null;
     const extraCost=usable?Math.max(0,cost-spread):NaN;
-    const move=extraCost+Math.max(.05,risk*.25);
-    const tp=entry==null?null:signal.side==='BUY'?hi(entry+move):lo(entry-move);
-    // A tiny profit is not reachable when the bid/ask-adjusted gross target
-    // exceeds almost all the recent one-minute true range. Still record the
-    // candle prediction, but not a fictional fill or executable paper plan.
-    const feasible=Number.isFinite(move)&&move>extraCost&&
-      move<=signal.atr*.85&&Number.isFinite(extraCost);
-    const state:EveryState=entry==null?'NO_BID_ASK':
-      !feasible?'COST_UNVIABLE':
-      tp!=null&&tp>0&&stop!=null&&stop>0?'PENDING':'COST_UNVIABLE';
+    const state:EveryState=!usable?'NO_BID_ASK':
+      economics?'PENDING':'COST_UNVIABLE';
     history.push({id:signal.issuedAt,issuedAt:signal.issuedAt,side:signal.side,
       pressure:signal.pressure,weak:signal.weak,state,
+      strategyVersion:EVERY_M1_EDGE_V2,pattern:signal.pattern,
+      targetNetR:economics?.netRewardR,
+      breakEvenWinPct:economics?.breakEvenWinPct,
+      retestDepth:economics?.retestDepth,
       entry:state==='PENDING'?entry:null,stop:state==='PENDING'?stop:null,
       tp:state==='PENDING'?tp:null,cost:Number.isFinite(cost)?cost:0,
       extraCost:Number.isFinite(extraCost)?round(extraCost):undefined,
@@ -201,12 +205,18 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   const pending=hist.filter(t=>t.state==='PENDING');
   const completed=hist.filter(t=>t.netR!=null&&
     ['QUICK_TP','STOP','TIME_EXIT'].includes(t.state));
-  // Past experiments used a different, doubly-conservative spread model.
-  // Never blend those settled outcomes with corrected-cost forward results.
-  const settled=completed.filter(t=>t.extraCost!=null);
+  // New geometry/reversal model gets a truly separate future cohort.
+  // Old cost-corrected tests must not validate today's changed payoff.
+  const settled=completed.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V2);
   const legacyResults=completed.length-settled.length;
   const results=settled.map(t=>Number(t.netR));
   const net=results.reduce((a,b)=>a+b,0);
+  const breakdown=(pattern:string)=>{
+    const rows=settled.filter(t=>t.pattern===pattern);
+    const sum=rows.reduce((a,t)=>a+Number(t.netR),0);
+    return {resolved:rows.length,wins:rows.filter(t=>Number(t.netR)>0).length,
+      netR:round(sum),meanNetR:rows.length?round(sum/rows.length):null};
+  };
   return {mode:'EVERY_CANDLE_PAPER_LIMIT_SHADOW',enabled:true,
     storage:fs.existsSync(PERSIST)?'VOLUME':fs.existsSync(TEMP)?'EPHEMERAL':'MEMORY',
     proposals:hist.length,pending:pending.length,active:active.length,
@@ -224,7 +234,12 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     meanNetR:settled.length?round(net/settled.length):null,
     weakCount:hist.filter(t=>t.weak).length,
     strongCount:hist.filter(t=>!t.weak).length,
+    version:EVERY_M1_EDGE_V2,
+    nominalNetRMin:.45,
+    breakEvenWinPctNominal:69,
+    reversalSetups:hist.filter(t=>t.pattern==='SWEEP_REJECTION').length,
+    byPattern:{reversal:breakdown('SWEEP_REJECTION'),momentum:breakdown('MOMENTUM')},
     latest:hist.at(-1)??null,
     recent:hist.slice(-8).reverse(),
-    note:'كل دقيقة مؤهلة لها توقع، لكن Limit تجريبي فقط إن كان المكسب بعد التكاليف قابلًا للمراقبة. صافي نتائج التسعير الجديد مفصول عن النظام القديم؛ لا أوامر MT5.'};
+    note:'كل M1 لها توقع؛ محاولات Limit البحثية بتراجع سعري وهدف صافي 0.45R تقديري على الأقل، دون تفعيل MT5. V2 منفصل عن أي نتائج أقدم.'};
 }
