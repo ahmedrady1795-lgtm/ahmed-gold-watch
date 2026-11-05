@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import type {M1Bar} from './sniper-mt5-m1';
 import {everyM1Direction} from './sniper-m1-every-direction';
-import {priceEveryM1Limit,EVERY_M1_EDGE_V4} from './scalp-every-m1-economics';
+import {priceEveryM1Limit,EVERY_M1_EDGE_V4,EVERY_M1_EDGE_V5} from './scalp-every-m1-economics';
+import {requiresM1TickConfirmation,m1BidAskEvidence,M1_CONFIRM_WINDOW_MS} from './scalp-m1-tick-evidence';
 import {chooseOnlineM1,type OnlineM1Choice} from './scalp-m1-online-learning';
 import type {ScalpQuote} from './scalp-opportunities';
 
@@ -10,7 +11,7 @@ import type {ScalpQuote} from './scalp-opportunities';
 // It intentionally does NOT borrow the qualified trade's 1.25R entry gate.
 // Missing quote/fill is a documented miss, not an imaginary winning trade.
 export type EverySide='BUY'|'SELL';
-export type EveryState='AWAIT_QUOTE'|'NO_BID_ASK'|'COST_UNVIABLE'|'PENDING'|'ACTIVE'|'QUICK_TP'|
+export type EveryState='AWAIT_QUOTE'|'CONFIRMING'|'NO_EDGE'|'NO_BID_ASK'|'COST_UNVIABLE'|'PENDING'|'ACTIVE'|'QUICK_TP'|
   'STOP'|'TIME_EXIT'|'EXPIRED'|'UNKNOWN';
 export type EveryAttempt={
   id:number;issuedAt:number;side:EverySide;pressure:number;
@@ -18,6 +19,7 @@ export type EveryAttempt={
   atr?:number;anchorTime?:number;anchorClose?:number;
   tp:number|null;cost:number;extraCost?:number;spreadAtQuote?:number;
   strategyVersion?:string;pattern?:string;directionModel?:string;
+  seedMid?:number;seedAt?:number;seedSource?:string;confirmedAt?:number|null;
   originalSide?:EverySide;onlineModel?:OnlineM1Choice['model'];
   onlineDecision?:OnlineM1Choice;chartSource?:string;
   directionObserved?:'BUY'|'SELL'|'FLAT'|'UNKNOWN'|null;
@@ -37,7 +39,7 @@ const TEMP='/tmp/scalp-every-m1-v1.json';
 declare global{var __scalpEveryM1Ledger:EveryLedger|undefined;}
 let lastSaved=0;
 const round=(v:number)=>Number(v.toFixed(3));
-const final=(x:EveryState)=>!['AWAIT_QUOTE','PENDING','ACTIVE'].includes(x);
+const final=(x:EveryState)=>!['AWAIT_QUOTE','CONFIRMING','PENDING','ACTIVE'].includes(x);
 const validQuote=(q:ScalpQuote,now:number)=>q.at!=null&&Number.isFinite(q.at)&&
   q.at>0&&now>=q.at&&now-q.at<=10000&&q.price!=null&&q.price>0;
 const validBook=(q:ScalpQuote)=>q.bid!=null&&q.ask!=null&&
