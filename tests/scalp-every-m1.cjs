@@ -83,7 +83,7 @@ const second=[...bars,{time:issue,open:bars.at(-1).close,
  high:bars.at(-1).close+.03,low:bars.at(-1).close-.07,
  close:bars.at(-1).close-.04}];
 const after=issue+60000;
-data=advanceEveryM1(data,second,q(102.6,102.7,after+100),after+100,.015);
+data=advanceEveryM1(data,second,q(102.6,102.61,after+100),after+100,.015);
 assert.equal(data.history.length,2,'next closed candle gets a distinct fresh attempt');
 const down=data.history[1];
 assert.ok(down.side==='BUY'||down.side==='SELL');
@@ -98,7 +98,7 @@ assert.equal(absent.history.length,1,'forecast still appears when broker quote i
 assert.equal(absent.history[0].state,'AWAIT_QUOTE',
  'missing bid/ask must not permanently discard a valid candle before the minute ends');
 assert.equal(absent.history[0].filledAt,null);
-absent=advanceEveryM1(absent,bars,q(102.50,102.60,issue+2100),
+absent=advanceEveryM1(absent,bars,q(102.50,102.51,issue+2100),
  issue+2200,.015);
 assert.equal(absent.history[0].state,'PENDING',
  'later valid bid/ask must create the original-minute pending LIMIT');
@@ -130,7 +130,7 @@ const beforeIssued=q(102.5,102.6,issue-1000);
 const temporal=advanceEveryM1({version:1,history:[]},bars,beforeIssued,issue+100,.015);
 assert.equal(temporal.history[0].state,'AWAIT_QUOTE',
   'quote from before the signal must await the first post-signal quote');
-const delayed=advanceEveryM1(temporal,bars,q(102.5,102.6,issue+1800),
+const delayed=advanceEveryM1(temporal,bars,q(102.5,102.51,issue+1800),
  issue+1900,.015);
 assert.equal(delayed.history[0].state,'PENDING',
  'an up-to-10-second fresh but pre-signal quote must not eat the whole candle');
@@ -138,7 +138,7 @@ assert.equal(delayed.history.length,1,
  'deferred order creation must never double count a candle');
 const deferredLimit=delayed.history[0].entry;
 const unchanged=advanceEveryM1(delayed,bars,
- q(102.5,102.6,issue+1800),issue+2500,.015);
+ q(102.5,102.51,issue+1800),issue+2500,.015);
 assert.equal(unchanged.history[0].state,'PENDING',
  'a stale repetition of the staging quote cannot instantly fill the limit');
 assert.equal(unchanged.history[0].entry,deferredLimit);
