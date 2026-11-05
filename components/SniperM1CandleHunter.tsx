@@ -58,7 +58,11 @@ export default function SniperM1CandleHunter(p:Props){
       key={name}>
       <strong>{name} <small>{referenceOnly?'مستوى منتهي · مرجع فقط':'رصد مشروط لدقيقة واحدة'}</small></strong>
       <div><span>تفعيل</span><b dir="ltr">{fmt(level.trigger)}</b></div>
-      <div><span>هدف سريع TP</span><b dir="ltr">{fmt(level.target)}</b></div>
+      <div><span>هدف رصد M1</span><b dir="ltr">{fmt(level.target)}</b></div>
+      <small>امتداد مرصود {level.targetSampleSize} كسر سابق
+        {level.targetBasis==='CONSERVATIVE_FALLBACK'?' · تقدير احتياطي':''}
+        {' · '}عائد/وقف قبل التكلفة {level.grossRewardRisk.toFixed(2)}R
+      </small>
       <div><span>إبطال / وقف SL</span><b dir="ltr">{fmt(level.stop)}</b></div>
     </div>
   );
@@ -86,7 +90,7 @@ export default function SniperM1CandleHunter(p:Props){
           'العينة السابقة غير كافية لاختيار نموذج أفضل'}
         {' · '}لا يضمن نجاح الشمعة القادمة أو ربح أي صفقة
       </small>}
-      <small>كل شمعة لها توقع يتحاسب على صحته. خطوط BREAK للمراقبة، ومحاولات Limit الورقية في شاشة السكالب.</small>
+      <small>TP هنا امتداد مرجعي قصير داخل M1، مش هدف ربح مؤهل بعد السبريد. BREAK للمراقبة فقط، ومحاولات Limit الورقية منفصلة.</small>
     </div>
 
     <SniperMT5M1Chart asset={p.asset} history={p.history}
@@ -96,8 +100,13 @@ export default function SniperM1CandleHunter(p:Props){
     <SniperM1CandleTape history={p.history} now={p.now}/>
     <details className="sniper-m1-setup-details">
       <summary>{plan.ready?'الدخول والهدف والوقف · عرض المستويات':'تفاصيل شروط القنص'}</summary>
-      <p className="sniper-m1-gross-risk">عائد/وقف نظري 0.88R؛
-        يلزم نجاح يتجاوز {grossBreakEvenPct().toFixed(1)}% قبل التكلفة.</p>
+      <p className="sniper-m1-gross-risk">
+        أهداف أقرب لمدى الدقيقة، لكن العائد/الوقف الحالي
+        {' '}{plan.ready&&plan.buy?plan.buy.grossRewardRisk.toFixed(2)+'R':'غير محسوب'}.
+        {plan.ready&&Number.isFinite(grossBreakEvenPct(plan))?
+          ' يتطلب تجاوز '+grossBreakEvenPct(plan).toFixed(1)+'% نجاح قبل السبريد والرسوم.':''}
+        {' '}دي مستويات مراقبة BREAK وليست Limit منفذ أو صافي ربح، ولو التكلفة أعلى من الحركة يبقى الهدف غير قابل للتداول.
+      </p>
     {plan.ready&&plan.buy&&plan.sell?<>
       <div className="sniper-m1-hunter-orders">
         {details('BUY BREAK',plan.buy)}
