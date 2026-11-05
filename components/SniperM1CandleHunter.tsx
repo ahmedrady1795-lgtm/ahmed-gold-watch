@@ -3,6 +3,7 @@
 import {useMemo} from 'react';
 import SniperMT5M1Chart from './SniperMT5M1Chart';
 import SniperM1CandleTape from './SniperM1CandleTape';
+import SniperM1IntrabarPulse from './SniperM1IntrabarPulse';
 import {auditCandleHunter,displayCandleHunter,type CandleHunterLevel} from '../lib/sniper-m1-candle-hunter';
 import type {M1Bar} from '../lib/sniper-mt5-m1';
 import {everyM1Direction} from '../lib/sniper-m1-every-direction';
@@ -106,6 +107,11 @@ export default function SniperM1CandleHunter(p:Props){
       <small>TP هنا امتداد مرجعي قصير داخل M1، مش هدف ربح مؤهل بعد السبريد. BREAK للمراقبة فقط، ومحاولات Limit الورقية منفصلة.</small>
     </div>
 
+    <SniperM1IntrabarPulse forecast={liveEligible?every:null}
+      anchorClose={liveEligible?anchorClose:null}
+      historicalSource={p.historicalSource} quote={p.quote} now={p.now}
+      marketOpen={p.marketOpen} sourceReady={p.sourceReady}
+      providerTransition={p.providerTransition}/>
     <SniperMT5M1Chart asset={p.asset} history={p.history}
       historicalSource={p.historicalSource} quote={p.quote} now={p.now}
       marketOpen={p.marketOpen} providerTransition={p.providerTransition}
