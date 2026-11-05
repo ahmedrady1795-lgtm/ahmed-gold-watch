@@ -4,6 +4,8 @@ import {everyM1Direction} from './sniper-m1-every-direction';
 import {priceEveryM1Limit,EVERY_M1_EDGE_V4,EVERY_M1_EDGE_V5} from './scalp-every-m1-economics';
 import {requiresM1TickConfirmation,m1BidAskEvidence,M1_CONFIRM_WINDOW_MS} from './scalp-m1-tick-evidence';
 import {chooseOnlineM1,type OnlineM1Choice} from './scalp-m1-online-learning';
+import {advanceForwardM1Pulse,auditForwardM1Pulse,M1_FORWARD_PULSE_V1,
+  type ForwardPulse} from './scalp-m1-forward-pulse';
 import type {ScalpQuote} from './scalp-opportunities';
 
 // Separate, low-friction RESEARCH lane: one forecast and one attempted
@@ -23,6 +25,7 @@ export type EveryAttempt={
   originalSide?:EverySide;onlineModel?:OnlineM1Choice['model'];
   onlineDecision?:OnlineM1Choice;chartSource?:string;
   directionObserved?:'BUY'|'SELL'|'FLAT'|'UNKNOWN'|null;
+  pulseVersion?:string;pulse?:ForwardPulse|null;
   directionEvaluatedAt?:number|null;
   qualityTier?:'RESEARCH_WEAK'|'RESEARCH_CANDIDATE';
   targetNetR?:number;breakEvenWinPct?:number;retestDepth?:number;
@@ -171,6 +174,15 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
   const book=validBook(q),fresh=validQuote(q,now);
   for(const t of history){
     gradeNextClosed(t,raw,now,chartSource);
+    // A prospective early tick snapshot, never entry authorization. Capture
+    // it even for NO_EDGE/COST_UNVIABLE trials, and never backfill old cohorts.
+    if(t.pulseVersion===M1_FORWARD_PULSE_V1&&
+       (!chartSource||!t.chartSource||chartSource===t.chartSource))
+      t.pulse=advanceForwardM1Pulse({
+        previous:t.pulse,quote:q,now,issuedAt:t.issuedAt,
+        anchorClose:t.anchorClose,atr:t.atr,
+        forecastSide:t.side,historicalSource:t.chartSource
+      });
     if(final(t.state))continue;
     if(t.state==='AWAIT_QUOTE'){
       if(now>=t.expiryAt)
@@ -314,6 +326,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       anchorClose:raw.find(b=>b.time===signal.anchorTime)?.close,
       chartSource,
       directionObserved:null,directionEvaluatedAt:null,
+      pulseVersion:M1_FORWARD_PULSE_V1,pulse:null,
       strategyVersion:EVERY_M1_EDGE_V5,pattern:signal.pattern,
       directionModel:online.inverted?'ONLINE_INVERSION':
         signal.adaptive?.model??'PRESSURE_SWEEP',
@@ -326,6 +339,11 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       note:'توقع حي مجمّد · '+(signal.weak?'دليل ضعيف للتعلم فقط':'مرشح بحثي غير معتمد')+'؛ انتظار أول Bid/Ask حقيقي بعد الإصدار'
     };
     history.push(t);
+    // First post-issue quote seeds the pulse; a second DISTINCT tick is
+    // required before any early directional conclusion is frozen.
+    t.pulse=advanceForwardM1Pulse({previous:null,quote:q,now,
+      issuedAt:t.issuedAt,anchorClose:t.anchorClose,atr:t.atr,
+      forecastSide:t.side,historicalSource:t.chartSource});
     beginAfterFreshQuote(t,raw,q,now,costEstimate);
   }
   ledger.history=history.slice(-360);
@@ -365,6 +383,8 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   const v4=hist.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V4||
     t.strategyVersion===EVERY_M1_EDGE_V5);
   const marked=v4.filter(t=>t.directionObserved==='BUY'||t.directionObserved==='SELL');
+  const forwardPulse=auditForwardM1Pulse(
+    hist.filter(t=>t.pulseVersion===M1_FORWARD_PULSE_V1));
   const directionHits=marked.filter(t=>t.side===t.directionObserved).length;
   const byEvidence=(weak:boolean)=>{
     const issued=v4.filter(t=>t.weak===weak);
@@ -399,6 +419,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     stops:settled.filter(t=>t.state==='STOP').length,
     timeExits:settled.filter(t=>t.state==='TIME_EXIT').length,
     legacyResults,legacyNetR,
+    forwardPulse,
     forwardDirection:{issued:v4.length,graded:marked.length,hits:directionHits,
       misses:marked.length-directionHits,
       flat:v4.filter(t=>t.directionObserved==='FLAT').length,
