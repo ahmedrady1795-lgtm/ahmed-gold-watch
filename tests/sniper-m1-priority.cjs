@@ -86,8 +86,10 @@ assert.equal(audit.prioritized,
  'each historical observation gets one conservative outcome, never double counting');
 const same=directional.auditPrioritizedM1(ascending,now+15000,32);
 assert.equal(JSON.stringify(audit),JSON.stringify(same),'live quote ticks never change the closed-candle audit');
-assert.ok(directional.grossBreakEvenPct()>53&&directional.grossBreakEvenPct()<54,
- '0.72 ATR TP / 0.82 ATR stop needs more than 53% wins BEFORE venue costs');
+assert.ok(directional.grossBreakEvenPct(plan)>68,
+ 'small 1-minute reference TP with wide stop needs high win rate before costs');
+assert.ok(directional.grossBreakEvenPct(plan)<90,
+ 'break-even is a finite price-based property, never a declared win probability');
 const panel=fs.readFileSync('components/SniperM1CandleHunter.tsx','utf8');
 const html=fs.readFileSync('components/SniperMT5M1Chart.tsx','utf8');
 assert.match(panel,/favored=liveEligible&&every\?\.anchorTime===plan.candleTime/,
@@ -95,7 +97,7 @@ assert.match(panel,/favored=liveEligible&&every\?\.anchorTime===plan.candleTime/
 assert.match(panel,/auditPrioritizedM1/,'backtest comparison belongs in optional M1 details');
 assert.match(panel,/BUY BREAK ★/,'visually distinguish only the currently favored stop');
 assert.match(panel,/SELL BREAK ★/,'visually distinguish favored sell');
-assert.match(panel,/grossBreakEvenPct\(\)/,'show actual break-even needed before fees');
+assert.match(panel,/grossBreakEvenPct\(plan\)/,'show current observed break-even needed before fees');
 assert.match(html,/referenceOnly/,
  'expired levels remain historical only, regardless of priority');
 console.log('PASS: M1 closed-bar one-side priority, data gaps/expiry, conservative OHLC audit and break-even disclosure');
