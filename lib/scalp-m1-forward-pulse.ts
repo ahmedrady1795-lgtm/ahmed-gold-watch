@@ -22,6 +22,7 @@ export type ForwardPulseArgs={
   historicalSource?:string
 };
 export const FORWARD_PULSE_WINDOW_MS=20_000;
+export const M1_FORWARD_PULSE_V1='M1_FORWARD_TICK_EARLY_V1';
 const good=(n:unknown):n is number=>typeof n==='number'&&Number.isFinite(n);
 export function advanceForwardM1Pulse(a:ForwardPulseArgs):ForwardPulse|null{
   const {previous:q0,quote:q,now,issuedAt,anchorClose,atr}=a;
