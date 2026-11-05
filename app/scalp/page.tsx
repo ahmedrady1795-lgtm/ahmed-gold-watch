@@ -88,6 +88,70 @@ function GoldQuickResults({gold}:{gold:any}){
   </section>;
 }
 
+function GoldEveryCandle({data}:{data:any}){
+  const latest=data?.latest;
+  const stateLabel=(v:string)=>({
+    NO_BID_ASK:'لا توجد أسعار Bid/Ask مؤكدة',
+    PENDING:'LIMIT معلّق · مستني لمس السعر',
+    ACTIVE:'تم لمس LIMIT ورقي · متابعة الخروج',
+    QUICK_TP:'هدف مكسب صغير مرصود',
+    STOP:'وقف مرصود',
+    TIME_EXIT:'خروج وقت',
+    EXPIRED:'انتهى LIMIT دون لمس',
+    UNKNOWN:'نتيجة مجهولة'
+  } as Record<string,string>)[v]||'بانتظار أول شمعة';
+  const fmt=(x:any)=>Number.isFinite(Number(x))&&x!=null?
+    Number(x).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
+  return <section className="panel" aria-label="قنص كل شمعة M1 ورقي"
+    style={{padding:16,marginBottom:14}}>
+    <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
+      <strong>كل شمعة M1 · توقع واتجاه ومحاولة LIMIT</strong>
+      <span style={{fontSize:12,opacity:.82}}>ورقي بحثي فقط · لا ينفّذ على Exness</span>
+    </div>
+    <p style={{fontSize:12,opacity:.80,margin:'8px 0'}}>
+      من غير فلتر 1.25R في وضع التجربة: اتجاه لكل دقيقة مغلقة حتى لو الدليل ضعيف.
+      شرط السعر الحقيقي يفضل لازم لإثبات لمس LIMIT، وإلا النتيجة ما تتحسبش مكسب.
+    </p>
+    <div style={{display:'flex',gap:12,flexWrap:'wrap',margin:'8px 0 12px',fontSize:12}}>
+      <span>توقعات {data?.proposals??0}</span>
+      <span>أوامر معلقة {data?.pending??0}</span>
+      <span>لمسات ورقية {data?.filled??0}</span>
+      <span>مكاسب صغيرة {data?.quickWins??0}</span>
+      <span>وقف {data?.stops??0}</span>
+      <span>انتهت {data?.expired??0}</span>
+      <span>مجهولة {data?.unknown??0}</span>
+    </div>
+    {latest?<div style={{border:'1px solid var(--border, rgba(160,165,180,.25))',
+      padding:12,borderRadius:10}}>
+      <div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
+        <b>{latest.side==='BUY'?'↑ توقع صعود / BUY LIMIT':'↓ توقع هبوط / SELL LIMIT'}</b>
+        <small>{latest.weak?'توقع ضعيف · محسوب ضمن الأخطاء':'ضغط اتجاهي مرصود'}
+          {' · '}{latest.pressure}/100 مش نسبة نجاح</small>
+      </div>
+      <p style={{margin:'6px 0',fontSize:13}}>
+        دخول {fmt(latest.entry)} · هدف {fmt(latest.tp)} · وقف {fmt(latest.stop)}
+      </p>
+      <small>{stateLabel(latest.state)} · {latest.note}</small>
+    </div>:<p>بانتظار شمعة M1 مكتملة جديدة وسعر مرجعي حديث.</p>}
+    {Array.isArray(data?.recent)&&data.recent.length>1&&
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10,fontSize:12}}>
+        {data.recent.slice(1,7).map((t:any)=>
+          <span key={t.id} style={{padding:'5px 8px',borderRadius:6,
+            border:'1px solid var(--border, rgba(160,165,180,.25))'}}>
+            {t.side==='BUY'?'↑':'↓'} {stateLabel(t.state)}
+            {t.netR!=null?' · '+t.netR+'R':''}
+          </span>)}
+      </div>}
+    <small style={{display:'block',opacity:.72,marginTop:10}}>
+      {data?.storage==='VOLUME'?'النتائج محفوظة على قرص الخدمة':
+       'تخزين مؤقت؛ إعادة إنشاء الخدمة قد تمسح النتائج'}.
+      {' '}مجموع الصافي الورقي {fmt(data?.netR)}R،
+      {' '}من {data?.resolved??0} نتيجة قابلة للحساب بعد تكلفة تقديرية،
+      {' '}مش دليل ربح حقيقي ولا نسبة نجاح معتمدة.
+    </small>
+  </section>;
+}
+
 export default function ScalpWorkspace(){
   const [desk,setDesk]=useState<any>(null);
   const [now,setNow]=useState(Date.now());
@@ -160,6 +224,7 @@ export default function ScalpWorkspace(){
     </div>
     {error&&<div className="fatal"><ShieldAlert size={16}/><div><strong>الاتصال غير مستقر</strong>
       <span>{error} · لا تعتمد على الأسعار المعروضة قبل عودة البيانات الحديثة.</span></div></div>}
+    {asset!=='BTC'&&<GoldEveryCandle data={desk?.gold?.everyCandle}/>}
     {asset!=='BTC'&&<GoldLeadAudit audit={desk?.gold?.leadAudit}/>}
     {asset!=='BTC'&&<GoldQuickResults gold={desk?.gold}/>}
     <section className="content lite-content" aria-label="منصة سكالب مستقلة">
