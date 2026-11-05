@@ -305,6 +305,8 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
           proposals:x.everyCandle.proposals,pending:x.everyCandle.pending,
           active:x.everyCandle.active,filled:x.everyCandle.filled,
           quickWins:x.everyCandle.quickWins,stops:x.everyCandle.stops,
+          costUnviable:x.everyCandle.costUnviable,
+          resolved:x.everyCandle.resolved,meanNetR:x.everyCandle.meanNetR,
           expired:x.everyCandle.expired,unknown:x.everyCandle.unknown,
           netR:x.everyCandle.netR,latest:x.everyCandle.latest,
           storage:x.everyCandle.storage
