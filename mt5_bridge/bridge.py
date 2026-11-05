@@ -181,10 +181,14 @@ def scalp_demo_step(s):
         expires=float(pending.get('expires_at',0) or 0)
         if (now>=expires or KILL_SWITCH.exists() or
             ambush.get('side')!=requested or not ambush.get('active') or
-            spread_points>MAX_SPREAD_POINTS or current_msc<=started_msc or
+            spread_points>MAX_SPREAD_POINTS or current_msc<started_msc or
             (current_msc-started_msc)>5000):
+
             log('SCALP DEMO LIMIT EXPIRED/CANCELED',pending.get('id'))
             s['demo_pending']=None
+            return s
+        if current_msc==started_msc:
+            # An unchanged quote is not new evidence of a limit touch.
             return s
         px=ask if requested=='BUY' else bid
         last=float(pending['last_executable'])
