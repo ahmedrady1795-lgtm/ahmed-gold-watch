@@ -2,6 +2,7 @@ import {startServerTickBrain} from './lib/server-tick-brain';
 import {getNextMoveOutcome} from './lib/next-move-outcome';
 import {getScalpDesk} from './lib/scalp-desk';
 import {warmAiServices} from './lib/ai-service-warmup';
+import {allowBackgroundWork} from './lib/render-free-eco';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -14,13 +15,13 @@ export async function register(){
   if(process.env.PREDATOR_BACKGROUND_LEARNING==='false')return;
   if(globalThis.__predatorLearningLoopStarted)return;
   globalThis.__predatorLearningLoopStarted=true;
-  const warmStart=setTimeout(()=>{void warmAiServices();},1000);
+  const warmStart=setTimeout(()=>{if(allowBackgroundWork())void warmAiServices();},1000);
   warmStart.unref?.();
-  const warmTimer=setInterval(()=>{void warmAiServices();},60000);
+  const warmTimer=setInterval(()=>{if(allowBackgroundWork())void warmAiServices();},60000);
   warmTimer.unref?.();
 
   // Keep immutable scalp plans and their paper outcomes observed while the UI is closed.
-  const scalpTimer=setInterval(()=>{void getScalpDesk().catch(()=>{});},4000);
+  const scalpTimer=setInterval(()=>{if(allowBackgroundWork())void getScalpDesk().catch(()=>{});},4000);
   scalpTimer.unref?.();
 
   const port=process.env.PORT||'3000';
@@ -28,6 +29,7 @@ export async function register(){
   // must not stop recording closed-candle target outcomes while UI is closed.
   const observe=async()=>{
     try{
+      if(!allowBackgroundWork())return;
       const r=await fetch('http://127.0.0.1:'+port+'/api/chart-history',{
         cache:'no-store',signal:AbortSignal.timeout(25000)});
       if(!r.ok)console.warn('[SNIPER-OBSERVE] HTTP',r.status);
@@ -46,6 +48,7 @@ export async function register(){
   };
 
   const tick=async()=>{
+    if(!allowBackgroundWork()){schedule(30000);return;}
     if(running)return;
     running=true;
     const started=Date.now();
@@ -76,6 +79,7 @@ export async function register(){
   // Lightweight first-passage settlement: observe BTC price every 6s without rerunning the heavy AI stack.
   let settleBusy=false;
   const settleNextMove=async()=>{
+    if(!allowBackgroundWork())return;
     if(settleBusy)return;
     settleBusy=true;
     try{
