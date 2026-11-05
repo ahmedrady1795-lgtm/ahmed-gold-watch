@@ -28,6 +28,7 @@ jobs:
       - run: node tests/scalp-learning.cjs
       - run: node tests/ai-transport-regression.cjs
       - run: node tests/render-free-eco.cjs
+      - run: node --experimental-strip-types tests/render-free-viewer-lease.mjs
       - run: node tests/ai-readiness.cjs
       - run: node --check learning-worker.mjs
       - run: node tests/railway-eco.cjs
