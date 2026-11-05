@@ -211,6 +211,12 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   const legacyResults=completed.length-settled.length;
   const results=settled.map(t=>Number(t.netR));
   const net=results.reduce((a,b)=>a+b,0);
+  const breakdown=(pattern:string)=>{
+    const rows=settled.filter(t=>t.pattern===pattern);
+    const sum=rows.reduce((a,t)=>a+Number(t.netR),0);
+    return {resolved:rows.length,wins:rows.filter(t=>Number(t.netR)>0).length,
+      netR:round(sum),meanNetR:rows.length?round(sum/rows.length):null};
+  };
   return {mode:'EVERY_CANDLE_PAPER_LIMIT_SHADOW',enabled:true,
     storage:fs.existsSync(PERSIST)?'VOLUME':fs.existsSync(TEMP)?'EPHEMERAL':'MEMORY',
     proposals:hist.length,pending:pending.length,active:active.length,
@@ -232,6 +238,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     nominalNetRMin:.45,
     breakEvenWinPctNominal:69,
     reversalSetups:hist.filter(t=>t.pattern==='SWEEP_REJECTION').length,
+    byPattern:{reversal:breakdown('SWEEP_REJECTION'),momentum:breakdown('MOMENTUM')},
     latest:hist.at(-1)??null,
     recent:hist.slice(-8).reverse(),
     note:'كل M1 لها توقع؛ محاولات Limit البحثية بتراجع سعري وهدف صافي 0.45R تقديري على الأقل، دون تفعيل MT5. V2 منفصل عن أي نتائج أقدم.'};
