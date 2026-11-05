@@ -7,7 +7,7 @@ import {auditCandleHunter,displayCandleHunter,type CandleHunterLevel} from '../l
 import type {M1Bar} from '../lib/sniper-mt5-m1';
 import {everyM1Direction} from '../lib/sniper-m1-every-direction';
 import {freshM1QuoteForWatch} from '../lib/sampled-live-candle';
-import {assessM1DirectionalPriority,auditPrioritizedM1,grossBreakEvenPct}
+import {auditPrioritizedM1,grossBreakEvenPct}
   from '../lib/sniper-m1-priority';
 
 type Quote={ok?:boolean;price?:number;source?:string;sourceTime?:number}|null|undefined;
@@ -30,8 +30,6 @@ export default function SniperM1CandleHunter(p:Props){
     // Re-score only on a newly closed bar, not on every live quote.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [p.asset,p.historicalSource,closedAt,Math.floor(p.now/60000)]);
-  const priority=useMemo(()=>assessM1DirectionalPriority(p.history,p.now),
-    [p.history,Math.floor(p.now/60000)]);
   const priorityAudit=useMemo(()=>auditPrioritizedM1(p.history,p.now,48),
     [p.history,Math.floor(p.now/60000)]);
   const every=useMemo(()=>everyM1Direction(p.history,p.now),
