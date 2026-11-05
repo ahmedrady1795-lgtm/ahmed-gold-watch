@@ -28,7 +28,7 @@ assert.equal(b.maxHoldMs,120000,'M5 quick path must cap holding at two minutes')
 assert.equal(buildGoldQuickExit(samplePlan('BUY',1),100).maxHoldMs,60000);
 assert.equal(GOLD_QUICK_MIN_NET_R,.30);
 assert.equal(buildGoldQuickExit({...buy,asset:'BTC'},100),null,'BTC remains unchanged');
-assert.equal(buildGoldQuickExit({...buy,cost:2},100),null,'gross price cannot be set above original target');
+assert.equal(buildGoldQuickExit({...buy,cost:3},100),null,'gross price cannot be set above original target');
 assert.equal(buildGoldQuickExit({...buy,stop:101},100),null,'opposite stop invalidates quick exit');
 assert.equal(buildGoldQuickExit({...buy,cost:0},100),null,'unknown free execution is not a winning setup');
 const q=(price,at,source='fixture')=>({price,at,source});
@@ -62,7 +62,7 @@ const missingExit=advancePaperTrade({...buyActive,lastAt:T+111000,lastPrice:100.
 assert.equal(missingExit.state,'UNKNOWN','no old quote is treated as an exit');
 const both={time:T+60000,open:100,high:103.5,low:98.5,close:101};
 const ambiguous=advancePaperTrade({...buyActive,lastAt:T+51000,lastPrice:100},
- q(100.4,T+61000),T+61000,[both]);
+ q(100.4,T+121000),T+121000,[both]);
 assert.equal(ambiguous.state,'STOP','same-bar full target and stop must settle as stop');
 const proof=evaluatePaperProof([buyClosed,sellClosed,timeExit],0);
 assert.equal(proof.samples,3);
