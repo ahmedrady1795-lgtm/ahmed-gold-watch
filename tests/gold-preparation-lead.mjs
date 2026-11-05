@@ -42,6 +42,10 @@ assert.equal(read({quote:{...quote,price:plan.trigger+.1,ask:plan.trigger+.2}}).
 assert.equal(read({bars:[...bars,{...bars.at(-1),time:start}]}).plan,null,'forming candles rejected');
 const gap=structuredClone(bars);gap.splice(30,1);
 assert.equal(read({bars:gap}).plan,null);
+assert.ok(read({now:now+29000,quote:{...quote,sourceTime:now+29000,fetchedAt:now+29000}}).plan,
+ 'newly closed M1 context can still create an early alert');
+assert.equal(read({now:now+36000,quote:{...quote,sourceTime:now+36000,fetchedAt:now+36000}}).plan,null,
+ 'a 46-second-old setup cannot be advertised as an early signal');
 assert.equal(read({now:now+100000,quote:{...quote,sourceTime:now+100000,fetchedAt:now+100000}}).plan,null);
 const noDest=bars.map(b=>({...b,high:Math.min(b.high,4200.9)})).filter(b=>b.high>=b.open&&b.high>=b.close);
 assert.equal(read({bars:noDest}).plan,null,'no invented extended target');
