@@ -377,8 +377,11 @@ assert.equal(expiredWithoutPrice.netR,null,'Unknown outcomes must never be wins'
 console.log('PASS: exact time expiry, no look-ahead, barrier at expiry and unknown stale outcomes.');
 const ambiguous={...activated,activatedAt:now,lastAt:now,lastPrice:100};const bar={time:now,open:100,close:101,high:103,low:98};
 assert.equal(advancePaperTrade(ambiguous,quote(101,now+61000),now+61000,[bar]).state,'STOP','If target and stop share a bar, use stop first');
-const testArmedPlan={...buy,status:'ARMED',blockers:[],targets:[{price:buy.entry+3,kind:'PROJECTION'}],netRR:2};
-const frozen=updateScalpLedger('GOLD',[testArmedPlan],breakout().quote,now,breakout().c1);const changed={...testArmedPlan,entry:buy.entry+10,targets:[{price:9999,kind:'PROJECTION'}]};
+const testArmedPlan={...buy,id:'test-frozen-limit-'+now,status:'ARMED',side:'BUY',blockers:[],
+  entry:4000.10,stop:3999.10,targets:[{price:4003.10,kind:'PROJECTION'}],
+  cost:.10,netRR:2.6,expiresAt:now+60000};
+const frozen=updateScalpLedger('GOLD',[testArmedPlan],breakout().quote,now,breakout().c1);
+assert.equal(frozen.lanes[0].current?.limitType,'BUY_LIMIT','qualified plan waits for pending limit, not market fill');const changed={...testArmedPlan,entry:buy.entry+10,targets:[{price:9999,kind:'PROJECTION'}]};
 const repeated=updateScalpLedger('GOLD',[changed],
   {...quote(4000.45,now+1000),source:breakout().quote.source,bid:4000.44,ask:4000.455},now+1000,breakout().c1);assert.equal(repeated.lanes[0].current.plan.entry,frozen.lanes[0].current.plan.entry);assert.equal(repeated.lanes[0].stats.samples,0,'Unactivated setups do not count as trades');
 console.log('PASS: 27 scalp checks: buy/sell geometry, closed bars, bad data, costs, news, expiry, activation, frozen levels, stop slippage and conservative outcomes. Profitability is not established.');
