@@ -8,7 +8,9 @@ On `RENDER_SERVICE_NAME=ahmed-gold-watch-free`, the main server starts in eco-id
 
 While idle, `instrumentation.ts` skips **background** heavy analysis, auxiliary AI health warmups, 4-second paper scalp recomputation, 30-second chart observation, and 6-second BTC outcome settlement. The loops stay scheduled but do not contact providers until the dashboard is viewed again. Manual `/api/ai-analysis` calls still work and do not authorize real trading. A browser refresh resumes the observation cadence automatically.
 
-This does **not** stop a currently running cycle, guarantee Render will spin down, turn off all outbound tick sockets, change external cron-triggered requests, or guarantee a given remaining-hour balance. Free Render services normally sleep after ~15 minutes without inbound traffic; external archive workflows or other uptime pings **can** keep the main service awake even with this guard. Paused intervals also mean that paper observations are unavailable for the paused time. Never treat gaps as profit or validated forecast outcomes.
+The dashboard also publishes a small `/tmp/qannas-render-viewer-lease-v1.json` lease so the independent GOLD preparation and GOLD M1 radar workers stop their quote/chart requests while idle. The Coinbase shadow worker closes its L2 WebSocket and resumes with a fresh book only when a viewer returns. The free-site cold-start Spot scan is skipped. These are observer-network savings, not a promise that monitoring is continuous while the dashboard is closed.
+
+This does **not** stop a currently running cycle, guarantee Render will spin down, turn off the main server's outbound tick socket, change external cron-triggered requests, or guarantee a given remaining-hour balance. Free Render services normally sleep after ~15 minutes without inbound traffic; external archive workflows or other uptime pings **can** keep the main service awake even with this guard. Paused intervals also mean that paper observations are unavailable for the paused time. Never treat gaps as profit or validated forecast outcomes.
 
 ## Controls and safety
 
@@ -17,4 +19,4 @@ This does **not** stop a currently running cycle, guarantee Render will spin dow
 - Unset: auto-enable only on the named main Render Free service, leaving local, Railway and model service runtimes unaffected.
 - ML/Neural 429 backoff, input freshness rules, SHADOW qualification, safety vetoes, MT5 configuration and live-trading switches are **unchanged**.
 
-Test with `node tests/render-free-eco.cjs` and the existing CI build. Publish at most once after CI confirmation to conserve deployment/build minutes.
+Test with `node tests/render-free-eco.cjs`, `node --experimental-strip-types tests/render-free-viewer-lease.mjs`, `node tests/gold-preparation-lead.mjs` and the existing CI build. Publish at most once after CI confirmation to conserve deployment/build minutes.
