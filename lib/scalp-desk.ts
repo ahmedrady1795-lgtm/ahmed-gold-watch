@@ -26,6 +26,7 @@ async function btcQuote(source:string):Promise<ScalpQuote>{
   return {price,at:Number.isFinite(parsed)?parsed:null,bid:Number.isFinite(bid)?bid:null,ask:Number.isFinite(ask)?ask:null,source:kraken?'Kraken XBT/USD':'Coinbase BTC-USD'};
 }
 let cached:any=null,cachedAt=0;
+let goldOnlyCached:any=null,goldOnlyCachedAt=0;
 // Direction study uses ONLY completed M1 candles. Cache per closed-bar and
 // estimated transaction-cost bucket; never recompute a full OOS split per tick.
 const directionCache=new Map<string,{at:number,result:any}>();
@@ -46,6 +47,7 @@ function independentDirectionStudy(asset:'GOLD'|'BTC',rows:any[],now:number,cost
 
 let lastScalpDiagnosticAt=0;
 let pending:Promise<any>|null=null;
+let goldOnlyPending:Promise<any>|null=null;
 // BTC external services can occasionally stall for several seconds. Those
 // fetches MUST NOT prevent the independent GOLD scalp engine from observing
 // successive ticks. A timed-out BTC feed fails CLOSED for BTC only; it is
@@ -64,15 +66,22 @@ async function boundedSource<T>(pendingSource:Promise<T>,limitMs:number):Promise
 export function peekScalpDesk(maxAgeMs=12000){
   return cached&&cachedAt>0&&Date.now()-cachedAt<=maxAgeMs?cached:null;
 }
-export async function getScalpDesk(){
+export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
+  const goldOnly=asset==='GOLD';
   const now=Date.now();
-  if(cached&&now-cachedAt<2000)return cached;
-  if(pending)return pending;
-  pending=(async()=>{
+  const readCache=goldOnly?goldOnlyCached:cached;
+  const readAt=goldOnly?goldOnlyCachedAt:cachedAt;
+  if(readCache&&now-readAt>=0&&now-readAt<2000)return readCache;
+  const inflight=goldOnly?goldOnlyPending:pending;
+  if(inflight)return inflight;
+  // A GOLD-only workspace must not wait 2.7–4s for unrelated BTC market
+  // and book requests. Keep the full combined desk unchanged for its callers.
+  const task=(async()=>{
     const [goldResult,btcResult,liquidityResult]=await Promise.allSettled([
       getMarketSnapshot(),
-      boundedSource(getBtcMarket(),4000),
-      boundedSource(getBtcLiquidity(),2700)
+      ...(goldOnly
+        ? [Promise.resolve(null),Promise.resolve(null)]
+        : [boundedSource(getBtcMarket(),4000),boundedSource(getBtcLiquidity(),2700)])
     ]);
     const make=(asset:'GOLD'|'BTC',market:any,quote:ScalpQuote,events:any[],newsReady:boolean)=>{
       const at=Date.now();
@@ -199,7 +208,8 @@ export async function getScalpDesk(){
     // A stalled BTC REST refresh may fall back only to verified CLOSED M1/M5
     // candles that remain within the same trade-safety freshness limits.
     // Otherwise BTC stays unavailable while GOLD proceeds independently.
-    let market=btcResult.status==='fulfilled'?btcResult.value:peekFreshBtcMarket(Date.now());
+    let market:any=goldOnly?null:
+      btcResult.status==='fulfilled'?btcResult.value:peekFreshBtcMarket(Date.now());
     if(market&&/Coinbase/i.test(market.source)){
       const live=getCoinbaseClosedCandles();
       // Full observed minute bars bridge the REST publication delay. No partial or gap bar is used.
@@ -208,7 +218,7 @@ export async function getScalpDesk(){
     const q=goldSnap?.quote;
     const events=goldSnap?.market.events||[],newsReady=Boolean(goldSnap?.market.newsReady&&Date.now()-goldSnap.market.checkedAt<120000);
     let bq:ScalpQuote={price:null,at:null,source:market?.source||'unavailable'};
-    if(market)bq=await boundedSource(btcQuote(market.source),2700).catch(()=>bq);
+    if(!goldOnly&&market)bq=await boundedSource(btcQuote(market.source),2700).catch(()=>bq);
     const gold:any=make('GOLD',goldSnap?.market,{price:q?.price??null,at:q?.sourceTime??null,bid:q?.bid,ask:q?.ask,source:q?.source||'unavailable'},events,newsReady);
     // Purely observational: follow WATCH/ARMED price direction, never authorize
     // a trade or credit an unobserved future candle as a win.
@@ -226,7 +236,7 @@ export async function getScalpDesk(){
       m1:observeScalpLead('GOLD_M1',gold.quote,Date.now(),goldLeadCandidate(1)),
       m5:observeScalpLead('GOLD_M5',gold.quote,Date.now(),goldLeadCandidate(5))
     };
-    const bitcoin=make('BTC',market,bq,events,newsReady);
+    const bitcoin=goldOnly?null:make('BTC',market,bq,events,newsReady);
     // Monitor missing trade flow without leaking provider credentials or
     // treating a WATCH setup as an executed order.
     const measuredAt=Date.now();
@@ -274,9 +284,19 @@ export async function getScalpDesk(){
         ledgerSaved:x.ledger.persisted,
         leadAudit:x.leadAudit??null
       });
-      console.info('[SCALP-DIAG]',JSON.stringify({gold:diag(gold),btc:diag(bitcoin)}));
+      console.info('[SCALP-DIAG]',JSON.stringify({gold:diag(gold),
+        btc:bitcoin?diag(bitcoin):null,mode:goldOnly?'GOLD_ONLY':'ALL'}));
     }
-    cached={ok:true,version:'scalp-desk-v1',checkedAt:Date.now(),gold,bitcoin};cachedAt=Date.now();return cached;
+    const result={ok:true,version:'scalp-desk-v1',checkedAt:Date.now(),gold,bitcoin};
+    if(goldOnly){goldOnlyCached=result;goldOnlyCachedAt=Date.now();}
+    else{cached=result;cachedAt=Date.now();}
+    return result;
   })();
-  try{return await pending;}finally{pending=null;}
+  if(goldOnly)goldOnlyPending=task;
+  else pending=task;
+  try{return await task;}
+  finally{
+    if(goldOnly)goldOnlyPending=null;
+    else pending=null;
+  }
 }
