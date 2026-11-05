@@ -18,6 +18,8 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
   const checkedAt=Number(desk?.checkedAt);
   const stale=!Number.isFinite(checkedAt)||checkedAt<=0||checkedAt>now+2000||now-checkedAt>15000;
   const running=Boolean(current?.state==='ACTIVE');
+  const limitPending=Boolean(current?.state==='ARMED'&&
+    (current?.limitType==='BUY_LIMIT'||current?.limitType==='SELL_LIMIT'));
   const blocked=stale||plan?.status==='BLOCKED';
   const pressure=desk?.liquidity?.available?desk.liquidity.pressure:'WAIT';
   const direction=blocked?'WAIT':(
@@ -41,10 +43,8 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
 
   const signaledAt=Number(running?current?.activatedAt:confirmation?.confirmedCandleAt||0);
   const signalAge=signaledAt>0?now-signaledAt:Infinity;
-  const confirmed=Boolean(!blocked&&direction!=='WAIT'&&signaledAt>0&&
-    signalAge>=0&&signalAge<SIGNAL_TTL_MS&&
-    (current?.state==='ACTIVE'||confirmation?.state==='ENTRY')&&
-    (current?.state==='ACTIVE'||confirmation?.entryAudit?.approved===true));
+  const confirmed=Boolean(!blocked&&running&&direction!=='WAIT'&&signaledAt>0&&
+    signalAge>=0&&signalAge<SIGNAL_TTL_MS);
   const remaining=confirmed?Math.max(1,Math.ceil((SIGNAL_TTL_MS-signalAge)/1000)):0;
   const quickPrice=Number(current?.quickExitPrice);
   const quickHold=Number(current?.quickMaxHoldMs);
@@ -54,6 +54,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
   const status=blocked?'الدخول متوقف · بيانات أو شروط غير مكتملة':
     confirmed?'إشارة ورقية مؤكدة · نشطة الآن':
     running?'إشارة الدخول انتهت · الصفقة الورقية قيد المتابعة':
+    limitPending?'أمر Limit ورقي معلّق · لم يحدث دخول بعد':
     technicalWatch&&aheadOfTrigger?'رصد مبكر قبل مستوى التفعيل · الدخول غير مؤهل بعد':
     technicalWatch?'إعداد فني مرصود · التفعيل المبكر لم يثبت':
     confirmation?.state==='HOLDING'?'بانتظار تأكيد إغلاق M1':
@@ -85,6 +86,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
         <div><small>قرار الدخول</small>
           <strong>{blocked?'غير جاهز':confirmed?(direction==='BUY'?'↑ شراء مؤكد':'↓ بيع مؤكد'):
             running?'متابعة فقط':
+            limitPending?(current.limitType==='BUY_LIMIT'?'BUY LIMIT معلّق':'SELL LIMIT معلّق'):
             technicalWatch?'رصد فني · '+sideAr(direction):
             'انتظار · لا دخول'}</strong>
           <span>{confirmed?'إشارة ورقية · ليست أمرًا منفذًا':
@@ -99,7 +101,19 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
       <p className={'scalp-seconds-status '+(confirmed?'green':blocked?'red':'amber')}>
         {status}
       </p>
-      {technicalWatch&&!confirmed&&<div className="scalp-early-watch"
+      {limitPending&&!stale&&<div className="scalp-pending-limit"
+        aria-label="أمر دخول Limit معلّق وليس صفقة منفذة"
+        style={{marginTop:10,padding:11,border:'1px solid var(--border, rgba(160,165,180,.25))',borderRadius:10}}>
+        <strong>{current.limitType} · انتظار عودة السعر</strong>
+        <p style={{margin:'7px 0',fontSize:13}}>
+          دخول Limit <b dir="ltr">{fmt(current.plan.entry)}</b>
+          {' · '}وقف <b dir="ltr">{fmt(current.plan.stop)}</b>
+          {' · '}هدف <b dir="ltr">{fmt(current.plan.targets?.[0]?.price)}</b>
+          {' · '}الصلاحية {Math.max(0,Math.ceil((Number(current.limitExpiresAt)-now)/1000))} ثانية
+        </p>
+        <small>لا يوجد تنفيذ حتى لمس Ask للشراء أو Bid للبيع؛ ممنوع التنفيذ بسعر السوق. ورقي فقط.</small>
+      </div>}
+      {technicalWatch&&!limitPending&&!confirmed&&<div className="scalp-early-watch"
         aria-label="مستويات مراقبة الحركة قبل الدخول"
         style={{marginTop:10,padding:11,border:'1px solid var(--border, rgba(160,165,180,.25))',borderRadius:10}}>
         <strong>{aheadOfTrigger?'تجهيز قبل التفعيل':'مراقبة حركة · لم يثبت السبق'}
