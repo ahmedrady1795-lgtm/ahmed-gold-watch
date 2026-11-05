@@ -160,8 +160,12 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
           'توقف وصول Bid/Ask أثناء اختبار اتجاه الدقيقة؛ لا إثبات تأكيد');
         continue;
       }
-      if(!fresh||!book||!q.source||q.source!==t.seedSource||
-        q.at!<=Number(t.seedAt))continue;
+      if(fresh&&book&&q.source!==t.seedSource){
+        finish(t,'UNKNOWN',now,null,
+          'مصدر Bid/Ask اتغير أثناء التأكيد؛ لا نستنتج حركة من مصدرين');
+        continue;
+      }
+      if(!fresh||!book||!q.source||q.at!<=Number(t.seedAt))continue;
       const verdict=m1BidAskEvidence({
         side:t.side,weak:t.weak,pressure:t.pressure,atr:Number(t.atr),
         directionModel:t.directionModel
