@@ -77,12 +77,13 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
   // A GOLD-only workspace must not wait 2.7–4s for unrelated BTC market
   // and book requests. Keep the full combined desk unchanged for its callers.
   const task=(async()=>{
+    // Preserve tuple types so a BTC market snapshot can never be mistaken
+    // for the liquidity book during compilation or risk gating.
+    const btcMarketSource=goldOnly?Promise.resolve(null):boundedSource(getBtcMarket(),4000);
+    const btcBookSource=goldOnly?Promise.resolve(null):boundedSource(getBtcLiquidity(),2700);
     const [goldResult,btcResult,liquidityResult]=await Promise.allSettled([
-      getMarketSnapshot(),
-      ...(goldOnly
-        ? [Promise.resolve(null),Promise.resolve(null)]
-        : [boundedSource(getBtcMarket(),4000),boundedSource(getBtcLiquidity(),2700)])
-    ]);
+      getMarketSnapshot(),btcMarketSource,btcBookSource
+    ] as const);
     const make=(asset:'GOLD'|'BTC',market:any,quote:ScalpQuote,events:any[],newsReady:boolean)=>{
       const at=Date.now();
       const input={asset,c1:market?.c1||[],c5:market?.c5||[],candleSource:market?.priceSource||market?.source||'unavailable',quote,now:at,events,newsReady,marketOpen:asset==='BTC'||session(at),feeBps:envNumber('SCALP_'+asset+'_FEE_BPS'),slippageBps:envNumber('SCALP_'+asset+'_SLIPPAGE_BPS')};
