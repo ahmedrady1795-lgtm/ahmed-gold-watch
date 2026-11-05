@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import {sidecarWorkAllowed} from '../lib/render-free-viewer-lease.ts';
 import {goldMarketSession} from '../lib/gold-market-session.ts';
 import {trustedSpotGoldSource} from '../lib/gold-liquidity-radar.ts';
 import {emptyGoldLeadLedger,safeGoldLeadLedger,mergeGoldLeadLedger,
@@ -36,6 +37,9 @@ async function json(url){
 async function observe(){
  if(busy||finished)return;busy=true;
  try{
+  // The free site shares a viewer lease with the main Next.js process.
+  // On resume, M1 gap/source safeguards still fail closed for missing proof.
+  if(!(await sidecarWorkAllowed()))return;
   const refresh=!chart||Date.now()-chartAt>=30000;
   if(refresh)try{chart=await json('/api/chart-history?asset=GOLD&preparation='+Date.now());
    chartAt=Date.now();}catch{}
