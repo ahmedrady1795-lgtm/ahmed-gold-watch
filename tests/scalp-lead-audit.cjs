@@ -26,8 +26,19 @@ let base=start('GOLD_M1',candidate(),quote(100,0),at(100));
 assert.equal(base.result,'OPEN');
 assert.equal(base.threshold,1,'threshold must cover twice the estimated transaction cost');
 assert.equal(base.startedAt,T+100,'signal birth is computation time, not pre-signal source tick');
-assert.equal(start('GOLD_M1',{...candidate(),score:69},quote(100,0),at(100)),null,
- 'low confidence technical WATCH must not be silently promoted');
+assert.equal(start('GOLD_M1',{...candidate(),score:54},quote(100,0),at(100)),null,
+ 'score below the observational threshold does not enter the scalp shadow');
+const earlyWatch=start('GOLD_M1',{...candidate('early','SELL'),score:60},
+ quote(100,0),at(100));
+assert.ok(earlyWatch,'55–69 point technical WATCH must be measured as early direction');
+assert.equal(earlyWatch.status,'WATCH','early WATCH is not a qualified entry');
+const earlyObserved=advance(earlyWatch,quote(98.7,3000),at(3100));
+assert.equal(earlyObserved.result,'FAVORABLE_FIRST');
+const earlySummary=summary([earlyObserved],null);
+assert.equal(earlySummary.earlyWatchCohort.total,1);
+assert.equal(earlySummary.earlyWatchCohort.favorable,1);
+assert.equal(earlySummary.earlyWatchCohort.observedFavorablePct,100,
+ 'early cohort denominator remains separate from high-grade setups');
 assert.equal(start('GOLD_M1',candidate(),quote(100,0),at(11000)),null,
  'stale quotes never become observation starts');
 assert.equal(start('GOLD_M1',{...candidate(),cost:0},quote(100,0),at(100)),null,
@@ -100,6 +111,14 @@ assert.equal(t4.pending,1,'only a new plan ID can start a new sample');
 assert.equal(observe('GOLD_M5',quote(100,0),at(100),candidate('independent')).pending,1,
  'M1 and M5 audit lanes must be separate');
 const scalpPage=fs.readFileSync('app/scalp/page.tsx','utf8');
+const scalpRoute=fs.readFileSync('app/api/scalp/route.ts','utf8');
+const deskSource=fs.readFileSync('lib/scalp-desk.ts','utf8');
+assert.match(scalpPage,/X-Qannas-Viewer/,
+ 'a visible standalone scalp page must refresh the shared viewer lease');
+assert.match(scalpRoute,/publishViewerLease\(now\)/,
+ 'the scalp endpoint refreshes the Render Free observer lease');
+assert.match(deskSource,/Number\(plan\.score\)<MIN_SCALP_SHADOW_SCORE/,
+ 'monitoring includes actual 55–69 WATCH plans without rewriting entry scoring');
 assert.ok(scalpPage.includes('GoldLeadAudit audit={desk?.gold?.leadAudit}'),
  'the GOLD M1/M5 audit must appear on the mobile Scalp Lab screen');
 assert.match(scalpPage,/ليست صفقات أو نسبة ربح/,
