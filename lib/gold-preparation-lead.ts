@@ -52,7 +52,7 @@ export function readGoldPreparation(input:{now:number;source:string;bars:readonl
  if(bars.length<48||bars.some((b,i)=>!validBar(b)||b.time+MIN>now-3000||
   (i>0&&b.time-bars[i-1].time!==MIN)))return none('تاريخ M1 مغلق ومتصل غير كافٍ');
  const last=bars.at(-1)!,contextAt=last.time+MIN;
- if(now-contextAt>90000||pulse.sourceTime<contextAt)return none('سياق الدقيقة أو توقيت السعر قديم');
+ if(now-contextAt>45000||pulse.sourceTime<contextAt)return none('سياق الدقيقة أو توقيت السعر قديم');
  const ranges=bars.slice(-25).map((b,i,a)=>i?Math.max(b.high-b.low,
   Math.abs(b.high-a[i-1].close),Math.abs(b.low-a[i-1].close)):b.high-b.low).slice(1).sort((a,b)=>a-b);
  const atr=ranges[Math.floor(ranges.length/2)];
