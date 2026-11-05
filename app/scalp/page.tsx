@@ -60,6 +60,34 @@ function GoldLeadAudit({audit}:{audit:any}){
   </section>;
 }
 
+function GoldQuickResults({gold}:{gold:any}){
+  const lanes=([1,5] as const).map(h=>{
+    const stats=gold?.ledger?.lanes?.find((x:any)=>x.horizon===h)?.stats;
+    const proof=stats?.quickProof;
+    return {h,proof,fast:Number(stats?.exitCauses?.quickTargets||0)};
+  });
+  return <section className="panel" aria-label="نتائج جني الربح السريع للذهب"
+    style={{padding:16,marginBottom:14}}>
+    <strong>قنص المكسب الصغير · خروج خلال دقيقة أو دقيقتين</strong>
+    <p style={{fontSize:12,opacity:.78,margin:'7px 0'}}>
+      الصافي بعد تكلفة تقديرية · رصد ورقي مش أرباح Exness. يشمل الربح والوقف وخروج الوقت.
+    </p>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}}>
+      {lanes.map(({h,proof,fast})=><div key={h}
+        style={{border:'1px solid var(--border, rgba(160,165,180,.25))',padding:12,borderRadius:10}}>
+        <b>GOLD M{h}</b>
+        <p style={{margin:'7px 0'}}>
+          خروج سريع {fast} · عينة {proof?.samples??0}/50
+        </p>
+        <small>الصافي {proof?.samples&&Number.isFinite(proof.netR)?proof.netR+'R':'لم يبدأ الإثبات'}
+          {' · '}{proof?.status==='POSITIVE_PAPER_SAMPLE'?'أدلة ورقية أولية':
+            proof?.status==='NOT_VALIDATED'?'لم تثبت الأفضلية':'جمع نتائج'}
+        </small>
+      </div>)}
+    </div>
+  </section>;
+}
+
 export default function ScalpWorkspace(){
   const [desk,setDesk]=useState<any>(null);
   const [now,setNow]=useState(Date.now());
@@ -128,6 +156,7 @@ export default function ScalpWorkspace(){
     {error&&<div className="fatal"><ShieldAlert size={16}/><div><strong>الاتصال غير مستقر</strong>
       <span>{error} · لا تعتمد على الأسعار المعروضة قبل عودة البيانات الحديثة.</span></div></div>}
     {asset!=='BTC'&&<GoldLeadAudit audit={desk?.gold?.leadAudit}/>}
+    {asset!=='BTC'&&<GoldQuickResults gold={desk?.gold}/>}
     <section className="content lite-content" aria-label="منصة سكالب مستقلة">
       <div className={'dashboardgrid market-pair-grid '+(asset!=='ALL'?'single-asset':'')}>
         {asset!=='BTC'&&(desk?.gold?<ScalpDesk desk={desk.gold} now={now}/>:

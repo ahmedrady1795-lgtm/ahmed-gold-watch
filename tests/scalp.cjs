@@ -379,7 +379,8 @@ const ambiguous={...activated,activatedAt:now,lastAt:now,lastPrice:100};const ba
 assert.equal(advancePaperTrade(ambiguous,quote(101,now+61000),now+61000,[bar]).state,'STOP','If target and stop share a bar, use stop first');
 const testArmedPlan={...buy,status:'ARMED',targets:[{price:buy.entry+3,kind:'PROJECTION'}],netRR:2};
 const frozen=updateScalpLedger('GOLD',[testArmedPlan],breakout().quote,now,breakout().c1);const changed={...testArmedPlan,entry:buy.entry+10,targets:[{price:9999,kind:'PROJECTION'}]};
-const repeated=updateScalpLedger('GOLD',[changed],quote(4000.45,now+1000),now+1000,breakout().c1);assert.equal(repeated.lanes[0].current.plan.entry,frozen.lanes[0].current.plan.entry);assert.equal(repeated.lanes[0].stats.samples,0,'Unactivated setups do not count as trades');
+const repeated=updateScalpLedger('GOLD',[changed],
+  {...quote(4000.45,now+1000),source:breakout().quote.source},now+1000,breakout().c1);assert.equal(repeated.lanes[0].current.plan.entry,frozen.lanes[0].current.plan.entry);assert.equal(repeated.lanes[0].stats.samples,0,'Unactivated setups do not count as trades');
 console.log('PASS: 27 scalp checks: buy/sell geometry, closed bars, bad data, costs, news, expiry, activation, frozen levels, stop slippage and conservative outcomes. Profitability is not established.');
 
 // Production incident replay (2026-10-09 05:03:39Z): confirmed GOLD M5

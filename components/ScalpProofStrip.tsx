@@ -6,9 +6,11 @@ const r=(v:number|null,d=2)=>v==null?'—':(v>0?'+':'')+v.toFixed(d)+'R';
 type Proof={status?:string;samples?:number;requiredSamples?:number;netR?:number;
   expectancyR?:number;lower95MeanR?:number|null;profitFactor?:number|null;maxDrawdownR?:number};
 type Stat={samples?:number;wins?:number;netR?:number;expectancyR?:number;
-  validation?:string;forwardProof?:Proof;retestProof?:Proof;unifiedProof?:Proof};
+  validation?:string;forwardProof?:Proof;retestProof?:Proof;unifiedProof?:Proof;
+  quickProof?:Proof;exitCauses?:{quickTargets?:number;quickNetR?:number}};
 type SetupStat={setup:string;samples:number;wins:number;netR:number;
-  expectancyR:number|null;timeExits:number;negativeTimeExits:number;stops:number;targets:number};
+  expectancyR:number|null;timeExits:number;negativeTimeExits:number;stops:number;targets:number;
+  quickTargets?:number};
 type Lane={horizon?:number;stats?:Stat&{setupBreakdown?:SetupStat[]}};
 function Outcome({asset,label,desk,horizon}:{asset:string;label:string;desk:any;horizon:1|5}){
   const lane=(desk?.ledger?.lanes as Lane[]|undefined)?.find(x=>x.horizon===horizon);
@@ -22,6 +24,7 @@ function Outcome({asset,label,desk,horizon}:{asset:string;label:string;desk:any;
   const proofN=Math.max(0,Number(stats?.forwardProof?.samples||0));
   const required=Math.max(50,Number(stats?.forwardProof?.requiredSamples||50));
   const retest=horizon===5?stats?.retestProof:null;
+  const quick=asset==='GOLD'?stats?.quickProof:null;
   return <div className="proof-outcome">
     <div className="proof-outcome-head"><b>{label} M{horizon}</b>
       <small className={'pill '+(validated?'ok':'neutral')}>
@@ -46,6 +49,15 @@ function Outcome({asset,label,desk,horizon}:{asset:string;label:string;desk:any;
         · الصافي {stats.unifiedProof.samples?r(number(stats.unifiedProof.netR)):'لم تتكوّن عينة بعد'}
         · {stats.unifiedProof.status==='POSITIVE_PAPER_SAMPLE'?'دليل ورقي أولي موجب':
           stats.unifiedProof.status==='NOT_VALIDATED'?'لم تثبت الأفضلية':'جارٍ جمع الأدلة'}
+      </span>
+    </div>}
+    {quick&&<div className="proof-quick">
+      <b>قنص مكسب صغير سريع · الذهب M{horizon} · ورقي</b>
+      <span>خروج سريع {stats?.exitCauses?.quickTargets??0}
+        {' · '}نتائج كاملة {quick.samples??0}/{Math.max(50,Number(quick.requiredSamples||50))}
+        {' · '}صافي {quick.samples?r(number(quick.netR)):'قيد جمع العينة'}
+        {' · '}{quick.status==='POSITIVE_PAPER_SAMPLE'?'دليل ورقي أولي فقط':
+          quick.status==='NOT_VALIDATED'?'لم تثبت الربحية':'غير مؤهل إحصائيًا'}
       </span>
     </div>}
     {retest&&<div className="proof-retest">
@@ -89,12 +101,12 @@ export default function ScalpProofStrip({desk}:{desk:any}){
               SWEEP:'سحب سيولة',CONTINUATION:'استمرار',RETEST:'إعادة اختبار',OB_FVG:'كسر + بلوك/فجوة'} as Record<string,string>)[x.setup]||x.setup}</strong>
             <span>نتائج {x.samples} · ربح {x.wins} · صافي
               <b className={x.netR<0?'red':x.netR>0?'green':'muted'}> {r(x.netR)} </b></span>
-            <small>وقف {x.stops} · هدف {x.targets} · خروج وقت {x.timeExits}
+            <small>وقف {x.stops} · هدف {x.targets} (سريع {x.quickTargets??0}) · خروج وقت {x.timeExits}
               {x.negativeTimeExits?' (خسارة '+x.negativeTimeExits+')':''}</small>
           </div>)}
       </div>
       <small>الصفقات ذات النتيجة المجهولة والمُلغاة مش محسوبة أرباح. البيانات ورقية وبسعر مرجعي، مش نتائج Exness.</small>
     </details>
-    <p className="muted proof-outcome-note">نتائج الصفقات الورقية التي اكتمل توثيقها فقط، من سجل الخادم الحالي. إعادة النشر أو تبدّل التخزين ممكن تؤثر على استمرارية العينات. التحقق الورقي بيتطلب 50 نتيجة موثقة بعد التحديث، ومتوسط عائد موجب بحد ثقة تقريبي، ومعامل ربح لا يقل عن 1.2 وسحب لا يزيد عن 6R. وده برضه مش اختبار تنفيذ Exness أو إثبات ربح مستقبلي. استراتيجية إعادة اختبار الاختراق M5 تجريبية، والتنفيذ الحقيقي غير مفعّل.</p>
+    <p className="muted proof-outcome-note">نتائج الصفقات الورقية التي اكتمل توثيقها فقط، من سجل الخادم الحالي. قنص المكسب الصغير لا يضمن صافي أرباح موجب بعد فترات الوقف والخسارة؛ إحصاؤه منفصل بعد التفعيل. إعادة النشر أو تبدّل التخزين ممكن تؤثر على استمرارية العينات. التحقق الورقي بيتطلب 50 نتيجة موثقة بعد التحديث، ومتوسط عائد موجب بحد ثقة تقريبي، ومعامل ربح لا يقل عن 1.2 وسحب لا يزيد عن 6R. وده برضه مش اختبار تنفيذ Exness أو إثبات ربح مستقبلي. استراتيجية إعادة اختبار الاختراق M5 تجريبية، والتنفيذ الحقيقي غير مفعّل.</p>
   </section>;
 }
