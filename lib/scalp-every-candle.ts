@@ -199,8 +199,12 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   const hist=l.history;
   const active=hist.filter(t=>t.state==='ACTIVE');
   const pending=hist.filter(t=>t.state==='PENDING');
-  const settled=hist.filter(t=>t.netR!=null&&
+  const completed=hist.filter(t=>t.netR!=null&&
     ['QUICK_TP','STOP','TIME_EXIT'].includes(t.state));
+  // Past experiments used a different, doubly-conservative spread model.
+  // Never blend those settled outcomes with corrected-cost forward results.
+  const settled=completed.filter(t=>t.extraCost!=null);
+  const legacyResults=completed.length-settled.length;
   const results=settled.map(t=>Number(t.netR));
   const net=results.reduce((a,b)=>a+b,0);
   return {mode:'EVERY_CANDLE_PAPER_LIMIT_SHADOW',enabled:true,
@@ -211,9 +215,10 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     expired:hist.filter(t=>t.state==='EXPIRED').length,
     unknown:hist.filter(t=>t.state==='UNKNOWN').length,
     filled:hist.filter(t=>t.filledAt!=null).length,
-    quickWins:hist.filter(t=>t.state==='QUICK_TP').length,
-    stops:hist.filter(t=>t.state==='STOP').length,
-    timeExits:hist.filter(t=>t.state==='TIME_EXIT').length,
+    quickWins:settled.filter(t=>t.state==='QUICK_TP').length,
+    stops:settled.filter(t=>t.state==='STOP').length,
+    timeExits:settled.filter(t=>t.state==='TIME_EXIT').length,
+    legacyResults,
     resolved:settled.length,netR:round(net),
     observedWinPct:settled.length?round(results.filter(v=>v>0).length/settled.length*100):null,
     meanNetR:settled.length?round(net/settled.length):null,
@@ -221,5 +226,5 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     strongCount:hist.filter(t=>!t.weak).length,
     latest:hist.at(-1)??null,
     recent:hist.slice(-8).reverse(),
-    note:'كل شمعة لها توقع اتجاه، ومحاولة Limit فقط إذا كان هدفها الصغير بعد التكلفة قابلًا للمراقبة. قياسات مرجعية غير مؤكدة ولا أوامر MT5.'};
+    note:'كل دقيقة مؤهلة لها توقع، لكن Limit تجريبي فقط إن كان المكسب بعد التكاليف قابلًا للمراقبة. صافي نتائج التسعير الجديد مفصول عن النظام القديم؛ لا أوامر MT5.'};
 }
