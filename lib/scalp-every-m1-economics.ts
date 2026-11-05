@@ -1,0 +1,56 @@
+// Paper-only economics for the uncensored every-M1 research lane.
+// Prices are hypothetical reference LIMITs, not broker execution instructions.
+export const EVERY_M1_EDGE_V2='EVERY_M1_EDGE_V2';
+export const EVERY_M1_MIN_NET_R=.45;
+export type EveryM1Economics={
+  side:'BUY'|'SELL';entry:number;stop:number;tp:number;
+  extraCost:number;spread:number;risk:number;grossTargetMove:number;
+  netRewardR:number;breakEvenWinPct:number;retestDepth:number
+};
+const lo=(v:number)=>Math.floor(v*100+1e-7)/100;
+const hi=(v:number)=>Math.ceil(v*100-1e-7)/100;
+const round=(v:number)=>Number(v.toFixed(3));
+
+/** Strict quote feasibility, but NO score/technical entry gate:
+ * every valid minute is forecast even if the quote cannot fund a real trade.
+ * Bid/Ask at entry and exit already include spread; the additional
+ * estimated slippage/fees are charged exactly ONCE, on closing.
+ */
+export function priceEveryM1Limit(input:{
+  side:'BUY'|'SELL';bid:number;ask:number;atr:number;
+  cost:number;previousOpen:number;previousClose:number
+}):EveryM1Economics|null{
+  const {side,bid,ask,atr,cost,previousOpen,previousClose}=input;
+  if(![bid,ask,atr,cost,previousOpen,previousClose].every(Number.isFinite)||
+    bid<=0||ask<=bid||atr<=0||cost<=0||
+    previousOpen<=0||previousClose<=0)return null;
+  const spread=ask-bid;
+  if(spread>cost+.01)return null;
+  const extra=Math.max(0,cost-spread);
+  // Re-enter on a pullback into the last closed candle's body, rather than
+  // immediately chasing the current quote. Bound depth to avoid stale orders.
+  const offset=Math.max(.02,spread*.5,atr*.05);
+  const bodyMid=(previousOpen+previousClose)/2;
+  const buy=side==='BUY';
+  const targetBuy=Math.max(bid-atr*.65,Math.min(bid-offset,bodyMid));
+  const targetSell=Math.min(ask+atr*.65,Math.max(ask+offset,bodyMid));
+  const entry=buy?lo(targetBuy):hi(targetSell);
+  // A tight stop still has to clear normal quote noise and the live spread.
+  const nominalRisk=Math.max(atr*.55,spread*2,.14);
+  const stop=buy?lo(entry-nominalRisk):hi(entry+nominalRisk);
+  const risk=Math.abs(entry-stop);
+  const grossMove=extra+EVERY_M1_MIN_NET_R*(risk+extra);
+  const tp=buy?hi(entry+grossMove):lo(entry-grossMove);
+  const reward=buy?tp-entry:entry-tp;
+  const netRewardR=(reward-extra)/(risk+extra);
+  // Do not promise a one-minute profit well beyond observed true range.
+  // This *only* makes the attempt cost-unviable; the prediction is retained.
+  if(entry<=0||stop<=0||tp<=0||risk<=0||reward<=extra||
+    grossMove>atr*1.05||netRewardR+1e-9<EVERY_M1_MIN_NET_R||
+    buy&&entry>=bid||!buy&&entry<=ask)return null;
+  return {side,entry,stop,tp,extraCost:round(extra),
+    spread:round(spread),risk:round(risk),grossTargetMove:round(reward),
+    netRewardR:round(netRewardR),
+    breakEvenWinPct:round(100/(1+netRewardR)),
+    retestDepth:round(buy?bid-entry:entry-ask)};
+}
