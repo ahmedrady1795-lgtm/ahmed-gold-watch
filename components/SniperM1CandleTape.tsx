@@ -37,6 +37,7 @@ export default function SniperM1CandleTape({history,now}:{
              rx=".5" fill={color}/>
          </svg>
          <small dir="ltr">{time(m.time)}</small>
+         {m.weak&&<small title="توقع منخفض الأدلة، ليس نسبة نجاح">ضعيف</small>}
          <b>{m.predicted==='BUY'?'↑':m.predicted==='SELL'?'↓':'–'}
            <span>{m.aligned===true?'✓':m.aligned===false?'×':'·'}</span>
          </b>
@@ -44,7 +45,7 @@ export default function SniperM1CandleTape({history,now}:{
      })}
    </div>
    <small className="sniper-candle-tape-caution">
-     ✓ تطابق اتجاه إغلاق الشمعة مع توقع مسبق · ليس ربحًا أو لمس هدف
+     كل شمعة لها اتجاه حتى لو الدليل ضعيف، ويُحسب الخطأ · ✓ تطابق إغلاق فقط، مش ربحًا أو لمس هدف
    </small>
  </section>;
 }

@@ -5,8 +5,9 @@ import SniperMT5M1Chart from './SniperMT5M1Chart';
 import SniperM1CandleTape from './SniperM1CandleTape';
 import {auditCandleHunter,displayCandleHunter,type CandleHunterLevel} from '../lib/sniper-m1-candle-hunter';
 import type {M1Bar} from '../lib/sniper-mt5-m1';
+import {everyM1Direction} from '../lib/sniper-m1-every-direction';
 import {freshM1QuoteForWatch} from '../lib/sampled-live-candle';
-import {assessM1DirectionalPriority,auditPrioritizedM1,grossBreakEvenPct}
+import {auditPrioritizedM1,grossBreakEvenPct}
   from '../lib/sniper-m1-priority';
 
 type Quote={ok?:boolean;price?:number;source?:string;sourceTime?:number}|null|undefined;
@@ -29,12 +30,12 @@ export default function SniperM1CandleHunter(p:Props){
     // Re-score only on a newly closed bar, not on every live quote.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [p.asset,p.historicalSource,closedAt,Math.floor(p.now/60000)]);
-  const priority=useMemo(()=>assessM1DirectionalPriority(p.history,p.now),
-    [p.history,Math.floor(p.now/60000)]);
   const priorityAudit=useMemo(()=>auditPrioritizedM1(p.history,p.now,48),
     [p.history,Math.floor(p.now/60000)]);
-  const favored=liveEligible&&priority.ready&&priority.anchorTime===plan.candleTime?
-    priority.side:'WAIT';
+  const every=useMemo(()=>everyM1Direction(p.history,p.now),
+    [p.history,Math.floor(p.now/60000)]);
+  const favored=liveEligible&&every?.anchorTime===plan.candleTime?
+    every.side:'WAIT';
   const levels=plan.ready&&plan.buy&&plan.sell?[
     {kind:'TRIGGER' as const,label:favored==='BUY'?'BUY BREAK ★':'BUY BREAK',price:plan.buy.trigger},
     {kind:'TRIGGER' as const,label:favored==='SELL'?'SELL BREAK ★':'SELL BREAK',price:plan.sell.trigger},
@@ -70,13 +71,13 @@ export default function SniperM1CandleHunter(p:Props){
         referenceOnly?'مستويات منتهية · لا دخول':'انتظار شمعة مؤهلة'}</span>
     </div>
     <div className="sniper-m1-priority" aria-label="ترجيح قنص الدقيقة على الإغلاقات الحقيقية">
-      <strong>{favored==='BUY'?'أولوية مراقبة BUY BREAK':
-        favored==='SELL'?'أولوية مراقبة SELL BREAK':
-        'لا أفضلية مؤكدة بين الاتجاهين'}</strong>
-      <span>{liveEligible?(priority.ready?
-        'ضغط إغلاقات M1: '+priority.pressureScore+'/100 · مؤشر غير مُعاير':
-        'شموع M1 حديثة · لا ترجيح اتجاهي مكتمل'):display.reason}</span>
-      <small>مستويات كسر للمراقبة فقط؛ أوامر Limit ونتائجها في شاشة السكالب.</small>
+      <strong>{favored==='BUY'?'توقع الشمعة الحالية: صعود ↑':
+        favored==='SELL'?'توقع الشمعة الحالية: هبوط ↓':
+        'بانتظار إغلاق M1 التالي لتوقع شمعة جديدة'}</strong>
+      <span>{liveEligible&&every?
+        'توقع لكل شمعة · '+(every.weak?'أدلة ضعيفة':'ضغط اتجاهي')+
+        ' · الضغط '+every.pressure+'/100 (مش احتمال نجاح)':display.reason}</span>
+      <small>كل شمعة لها توقع يتحاسب على صحته. خطوط BREAK للمراقبة، ومحاولات Limit الورقية في شاشة السكالب.</small>
     </div>
 
     <SniperMT5M1Chart asset={p.asset} history={p.history}

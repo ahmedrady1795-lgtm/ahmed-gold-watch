@@ -10,6 +10,7 @@ import {auditScalpEntry} from './scalp-entry-audit';
 import {validateDirectionChronologically} from './direction-walkforward';
 import {buildSniperDecision} from './sniper-decision-engine';
 import {observeScalpLead,MIN_SCALP_SHADOW_SCORE} from './scalp-lead-audit';
+import {observeEveryM1} from './scalp-every-candle';
 
 function session(now:number){const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;return day!==6&&!(day===0&&h<22)&&!(day===5&&h>=21)&&!(day>=1&&day<=4&&h>=21&&h<22);}
 function envNumber(key:string){const raw=(getRuntimeEnv() as Record<string,unknown>)[key]??process.env[key];if(raw==null||raw==='')return null;const n=Number(raw);return Number.isFinite(n)&&n>=0&&n<=100?n:null;}
@@ -88,6 +89,11 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
       const at=Date.now();
       const input={asset,c1:market?.c1||[],c5:market?.c5||[],candleSource:market?.priceSource||market?.source||'unavailable',quote,now:at,events,newsReady,marketOpen:asset==='BTC'||session(at),feeBps:envNumber('SCALP_'+asset+'_FEE_BPS'),slippageBps:envNumber('SCALP_'+asset+'_SLIPPAGE_BPS')};
       const plans=buildScalpPlans(input);
+      // Exploratory, unfettered every-M1 lane: one predicted side and
+      // hypothetical nonmarketable LIMIT per fresh closed candle, even if
+      // the strict execution-ready plan says WATCH. No MT5 order authority.
+      const everyCandle=asset==='GOLD'?observeEveryM1(input.c1,quote,at,
+        Math.max(.01,Number(plans[0]?.cost||.58))):null;
       const directionStudy=independentDirectionStudy(asset,input.c1,at,
         Math.max(0,Number(plans[0]?.cost||0)));
       const orderBook=asset==='BTC'&&liquidityResult.status==='fulfilled'?liquidityResult.value:null;
@@ -215,7 +221,7 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
       }
       return {asset,profile:asset==='GOLD'?'ACTIVE_M5_PAPER':'STANDARD_PAPER',
         directionStudy,sniperDecisions:qualityGates.map(g=>g.decision),
-        checkedAt:at,quote,candleSource:input.candleSource,liquidity,orderBook,plans,qualityGates,entryConfirmations,ledger,data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
+        checkedAt:at,quote,candleSource:input.candleSource,liquidity,orderBook,plans,qualityGates,entryConfirmations,ledger,everyCandle,data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
     };
     const goldSnap=goldResult.status==='fulfilled'?goldResult.value:null;
     // A stalled BTC REST refresh may fall back only to verified CLOSED M1/M5
@@ -295,6 +301,14 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
           }))
         })),
         ledgerSaved:x.ledger.persisted,
+        everyCandle:x.everyCandle?{
+          proposals:x.everyCandle.proposals,pending:x.everyCandle.pending,
+          active:x.everyCandle.active,filled:x.everyCandle.filled,
+          quickWins:x.everyCandle.quickWins,stops:x.everyCandle.stops,
+          expired:x.everyCandle.expired,unknown:x.everyCandle.unknown,
+          netR:x.everyCandle.netR,latest:x.everyCandle.latest,
+          storage:x.everyCandle.storage
+        }:null,
         leadAudit:x.leadAudit??null
       });
       console.info('[SCALP-DIAG]',JSON.stringify({gold:diag(gold),
