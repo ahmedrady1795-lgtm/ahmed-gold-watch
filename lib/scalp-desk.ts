@@ -93,7 +93,7 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
       // hypothetical nonmarketable LIMIT per fresh closed candle, even if
       // the strict execution-ready plan says WATCH. No MT5 order authority.
       const everyCandle=asset==='GOLD'?observeEveryM1(input.c1,quote,at,
-        Math.max(.01,Number(plans[0]?.cost||.58))):null;
+        Math.max(.01,Number(plans[0]?.cost||.58)),input.candleSource):null;
       const directionStudy=independentDirectionStudy(asset,input.c1,at,
         Math.max(0,Number(plans[0]?.cost||0)));
       const orderBook=asset==='BTC'&&liquidityResult.status==='fulfilled'?liquidityResult.value:null;
@@ -310,7 +310,9 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
           legacyResults:x.everyCandle.legacyResults,
           expired:x.everyCandle.expired,unknown:x.everyCandle.unknown,
           netR:x.everyCandle.netR,latest:x.everyCandle.latest,
-          storage:x.everyCandle.storage
+          storage:x.everyCandle.storage,
+          forwardDirection:x.everyCandle.forwardDirection,
+          learning:x.everyCandle.learning
         }:null,
         leadAudit:x.leadAudit??null
       });
