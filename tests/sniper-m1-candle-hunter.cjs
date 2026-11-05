@@ -67,7 +67,15 @@ assert.equal(plan.expiresAt,issuedAt+60000);
 assert.ok(plan.buy.trigger>last.high,'buy stop is beyond the PRIOR closed high');
 assert.ok(plan.sell.trigger<last.low,'sell stop is below the PRIOR closed low');
 assert.ok(plan.buy.target>plan.buy.trigger&&plan.buy.stop<plan.buy.trigger);
+assert.ok(plan.buy.target-plan.buy.trigger<=plan.atr*.381,
+ 'reference TP is inside 38% M1 ATR, not obsolete 72% stretch');
+assert.ok(plan.buy.target-plan.buy.trigger>=plan.atr*.119,
+ 'short TP must not collapse to zero or free fee-arbitrage');
+assert.ok(plan.buy.targetSampleSize>=0);
+assert.ok(['PAST_BREAK_REACH','CONSERVATIVE_FALLBACK'].includes(plan.buy.targetBasis));
 assert.ok(plan.sell.target<plan.sell.trigger&&plan.sell.stop>plan.sell.trigger);
+assert.ok(plan.sell.trigger-plan.sell.target<=plan.atr*.381,
+ 'SELL TP must be symmetric in bounded one-candle excursion');
 assert.equal(hunter.buildCandleHunter({...args,now:issuedAt+60000}).ready,false,
   'minute scalp expires exactly when next minute ends');
 
@@ -128,6 +136,14 @@ const replay=hunter.auditCandleHunter([...bars,close({
 assert.ok(replay.observed>0);
 assert.equal(replay.observed,replay.targetTouches+replay.stopTouches+
  replay.ambiguous+replay.openGapUnknown+replay.noTrigger+replay.pending);
+const earlier=hunter.buildCandleHunter({...args,bars:bars.slice(0,-1),
+ now:bars.at(-2).time+60000});
+const rerun=hunter.buildCandleHunter({...args,now:issuedAt+20000});
+assert.equal(rerun.buy.target,plan.buy.target,
+ 'the live quote/wall time cannot repaint an M1 TP within its expiry');
+assert.equal(rerun.sell.target,plan.sell.target);
+assert.ok(plan.buy.grossRewardRisk<.5,
+ 'shorter first-minute targets are disclosed as low payout relative to old stop');
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const snippet=fs.readFileSync('components/SniperM1CandleHunter.tsx','utf8');
 const chart=fs.readFileSync('components/SniperMT5M1Chart.tsx','utf8');

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import type {M1Bar} from './sniper-mt5-m1';
 import {everyM1Direction} from './sniper-m1-every-direction';
-import {priceEveryM1Limit,EVERY_M1_EDGE_V2} from './scalp-every-m1-economics';
+import {priceEveryM1Limit,EVERY_M1_EDGE_V3} from './scalp-every-m1-economics';
 import type {ScalpQuote} from './scalp-opportunities';
 
 // Separate, low-friction RESEARCH lane: one forecast and one attempted
@@ -16,7 +16,8 @@ export type EveryAttempt={
   weak:boolean;state:EveryState;entry:number|null;stop:number|null;
   atr?:number;anchorTime?:number;
   tp:number|null;cost:number;extraCost?:number;spreadAtQuote?:number;
-  strategyVersion?:string;pattern?:string;targetNetR?:number;breakEvenWinPct?:number;retestDepth?:number;
+  strategyVersion?:string;pattern?:string;directionModel?:string;
+  targetNetR?:number;breakEvenWinPct?:number;retestDepth?:number;
   quoteSource:string;limitType:'BUY_LIMIT'|'SELL_LIMIT';
   expiryAt:number;lastQuoteAt:number;lastExecutable:number|null;
   filledAt:number|null;closedAt:number|null;exit:number|null;netR:number|null;
@@ -204,7 +205,8 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       id:signal.issuedAt,issuedAt:signal.issuedAt,side:signal.side,
       pressure:signal.pressure,weak:signal.weak,state:'AWAIT_QUOTE',
       atr:signal.atr,anchorTime:signal.anchorTime,
-      strategyVersion:EVERY_M1_EDGE_V2,pattern:signal.pattern,
+      strategyVersion:EVERY_M1_EDGE_V3,pattern:signal.pattern,
+      directionModel:signal.adaptive?.model??'PRESSURE_SWEEP',
       entry:null,stop:null,tp:null,
       cost:Number.isFinite(costEstimate)&&costEstimate>0?costEstimate:0,
       quoteSource:'',limitType:signal.side==='BUY'?'BUY_LIMIT':'SELL_LIMIT',
@@ -236,7 +238,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     ['QUICK_TP','STOP','TIME_EXIT'].includes(t.state));
   // New geometry/reversal model gets a truly separate future cohort.
   // Old cost-corrected tests must not validate today's changed payoff.
-  const settled=completed.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V2);
+  const settled=completed.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V3);
   const legacyResults=completed.length-settled.length;
   const results=settled.map(t=>Number(t.netR));
   const net=results.reduce((a,b)=>a+b,0);
@@ -264,7 +266,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     meanNetR:settled.length?round(net/settled.length):null,
     weakCount:hist.filter(t=>t.weak).length,
     strongCount:hist.filter(t=>!t.weak).length,
-    version:EVERY_M1_EDGE_V2,
+    version:EVERY_M1_EDGE_V3,
     nominalNetRMin:.45,
     breakEvenWinPctNominal:69,
     reversalSetups:hist.filter(t=>t.pattern==='SWEEP_REJECTION').length,

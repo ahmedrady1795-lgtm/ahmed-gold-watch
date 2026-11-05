@@ -2,9 +2,12 @@ import {closedM1ChartBars,type M1Bar} from './sniper-mt5-m1';
 import {everyM1Direction} from './sniper-m1-every-direction';
 export type CandleTapeMark={
   time:number;predicted:'BUY'|'SELL'|'WAIT';observed:'BUY'|'SELL'|'FLAT';
-  aligned:boolean|null;weak:boolean;pressure:number;open:number;high:number;low:number;close:number;
+  aligned:boolean|null;weak:boolean;pressure:number;
+  adaptiveModel:string|null;adaptiveImproved:boolean;
+  open:number;high:number;low:number;close:number;
 };
-export type CandleTape={marks:CandleTapeMark[];graded:number;aligned:number};
+export type CandleTape={marks:CandleTapeMark[];graded:number;aligned:number;
+  adaptiveGraded:number;adaptiveAligned:number};
 /**
  * Strictly causal, minute-by-minute direction check.
  * Before candle C closes, derive a WATCH from candles preceding C only.
@@ -25,8 +28,12 @@ export function buildM1CandleTape(history:readonly M1Bar[],now:number,max=9):Can
       priority.side===observed;
     marks.push({time:candle.time,predicted:priority.side,
       observed,aligned,weak:priority.weak,pressure:priority.pressure,
+      adaptiveModel:priority.adaptive?.model??null,
+      adaptiveImproved:priority.adaptive?.improved===true,
       open:candle.open,high:candle.high,low:candle.low,close:candle.close});
   }
   return {marks,graded:marks.filter(x=>x.aligned!==null).length,
-    aligned:marks.filter(x=>x.aligned===true).length};
+    aligned:marks.filter(x=>x.aligned===true).length,
+    adaptiveGraded:marks.filter(x=>x.aligned!==null&&x.adaptiveImproved).length,
+    adaptiveAligned:marks.filter(x=>x.aligned===true&&x.adaptiveImproved).length};
 }

@@ -1,6 +1,7 @@
 // Paper-only economics for the uncensored every-M1 research lane.
 // Prices are hypothetical reference LIMITs, not broker execution instructions.
 export const EVERY_M1_EDGE_V2='EVERY_M1_EDGE_V2';
+export const EVERY_M1_EDGE_V3='EVERY_M1_ADAPTIVE_DIRECTION_V3';
 export const EVERY_M1_MIN_NET_R=.45;
 export type EveryM1Economics={
   side:'BUY'|'SELL';entry:number;stop:number;tp:number;
