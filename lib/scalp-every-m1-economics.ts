@@ -43,10 +43,11 @@ export function priceEveryM1Limit(input:{
   const tp=buy?hi(entry+grossMove):lo(entry-grossMove);
   const reward=buy?tp-entry:entry-tp;
   const netRewardR=(reward-extra)/(risk+extra);
-  // Do not promise a one-minute profit well beyond observed true range.
+  // One completed minute of risk may need >1 ATR to clear the spread.
+  // Allow up to 1.35 recent ATR, never promise a target far beyond it.
   // This *only* makes the attempt cost-unviable; the prediction is retained.
   if(entry<=0||stop<=0||tp<=0||risk<=0||reward<=extra||
-    grossMove>atr*1.05||netRewardR+1e-9<EVERY_M1_MIN_NET_R||
+    grossMove>atr*1.35||netRewardR+1e-9<EVERY_M1_MIN_NET_R||
     buy&&entry>=bid||!buy&&entry<=ask)return null;
   return {side,entry,stop,tp,extraCost:round(extra),
     spread:round(spread),risk:round(risk),grossTargetMove:round(reward),
