@@ -91,7 +91,10 @@ export function advanceLeadObservation(
   if(at<=record.lastQuoteAt||at<=record.startedAt)return record; // only quotes after the signal was computed
   if(quote.source!==record.source)return close('UNKNOWN','SOURCE_CHANGED',at);
   if(at-record.lastQuoteAt>MAX_GAP_MS)return close('UNKNOWN','QUOTE_GAP',at);
-  if(at>record.expiresAt+5000)return close('UNKNOWN','HORIZON_NOT_OBSERVED',at);
+  // A grace period may allow delivery, never extend the prediction horizon.
+  // Without a quote at/before expiry, a later touch (or flat quote) cannot
+  // establish what happened in the unobserved tail of the interval.
+  if(at>record.expiresAt)return close('UNKNOWN','HORIZON_NOT_OBSERVED',at);
   const o={...record};
   const dir=o.side==='BUY'?1:-1,delta=dir*(price-o.startPrice);
   o.maxFavorable=fixed(Math.max(o.maxFavorable,delta));
@@ -105,7 +108,11 @@ export function advanceLeadObservation(
   return o;
 }
 export function summarizeLeadObservations(history:LeadObservation[],active:LeadObservation|null){
-  const done=history.filter(x=>x.result!=='OPEN');
+  // Old checkpoints may contain results scored during the former 5s grace
+  // window. Keep the records, but do not carry those outcomes into accuracy.
+  const done=history.filter(x=>x.result!=='OPEN').map(x=>
+    x.result!=='UNKNOWN'&&Number(x.resolvedAt)>x.expiresAt?
+      {...x,result:'UNKNOWN' as Outcome}:x);
   const favorable=done.filter(x=>x.result==='FAVORABLE_FIRST');
   const adverse=done.filter(x=>x.result==='ADVERSE_FIRST');
   const neutral=done.filter(x=>x.result==='NO_THRESHOLD');
@@ -118,7 +125,7 @@ export function summarizeLeadObservations(history:LeadObservation[],active:LeadO
   const sources:Record<string,number>={};
   for(const x of done)sources[x.source]=(sources[x.source]||0)+1;
   return {
-    version:'scalp-forward-observer-v1',mode:'DIRECTIONAL_SHADOW_NOT_TRADES',
+    version:'scalp-forward-observer-v2',mode:'DIRECTIONAL_SHADOW_NOT_TRADES',
     total:done.length,pending:active?1:0,favorableFirst:favorable.length,
     adverseFirst:adverse.length,noThreshold:neutral.length,unknown:unknown.length,
     resolved:directionallyResolved,observedFavorablePct:directionallyResolved?

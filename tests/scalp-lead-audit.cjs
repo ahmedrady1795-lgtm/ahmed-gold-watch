@@ -54,7 +54,17 @@ assert.equal(missing.result,'UNKNOWN','unobserved 60s horizon does not count as 
 let flat=base;
 for(let ms=10000;ms<=60000;ms+=10000)
  flat=advance(flat,quote(100.2,ms),at(ms+100));
-flat=advance(flat,quote(100.2,61000),at(61100));
+const nearExpiry=flat;
+for(const price of [101.2,98.8,100.2]){
+ const late=advance(nearExpiry,quote(price,60101),at(60200));
+ assert.equal(late.result,'UNKNOWN','a quote after expiry cannot establish an in-horizon result');
+ assert.equal(late.reason,'HORIZON_NOT_OBSERVED');
+ assert.equal(late.maxFavorable,nearExpiry.maxFavorable,'late excursions cannot change measured performance');
+}
+assert.equal(advance(nearExpiry,quote(101.2,60100),at(64000)).result,'FAVORABLE_FIRST',
+ 'a fresh quote observed exactly at expiry may arrive after expiry');
+assert.equal(advance(nearExpiry,quote(98.8,60100),at(64000)).result,'ADVERSE_FIRST');
+flat=advance(flat,quote(100.2,60100),at(60200));
 assert.equal(flat.result,'NO_THRESHOLD','completed horizon without a threshold is neutral, not a win');
 let amb=start('GOLD_AMBUSH',{...candidate('ambush-1','SELL','AMBUSH'),score:62},
  quote(100,0,'Exness/MT5 XAUUSDm'),at(100));
@@ -70,6 +80,11 @@ assert.equal(s.noThreshold,1);
 assert.equal(s.unknown,3);
 assert.equal(s.observedFavorablePct,50);
 assert.equal(s.verdict,'COLLECTING','a tiny shadow sample proves no predictive edge');
+const legacy={...step,resolvedAt:base.expiresAt+1000};
+const corrected=summary([legacy,step],null);
+assert.equal(corrected.unknown,1,'late outcomes from old checkpoints are excluded');
+assert.equal(corrected.resolved,1);
+assert.equal(legacy.result,'FAVORABLE_FIRST','historical records are retained without mutation');
 // Exercise real lane state: one unresolved signal per lane, no repeat ID and no peeking.
 assert.equal(advance(base,quote(110,50),at(110)),base,
  'ticks from before signal computation must not count as favorable outcomes');

@@ -60,9 +60,11 @@ export function detectPreMovePressure(args:{
     return empty('شموع M1/M5 المغلقة غير كافية لرصد التهيئة المبكرة.');
   if(ageMs<0||ageMs>180000||now-(m5.at(-1)!.time+300000)>900000)
     return empty('شموع السوق متأخرة؛ لا نعرض ضغطًا سعريًا على أنه إشارة حية.');
-  if(m1.slice(-25).some((v,i,arr)=>i>0&&v.time-arr[i-1].time!==60000))
+  // The volatility baseline is evidence too: gaps there can manufacture
+  // compression even when the most recent 25 bars are contiguous.
+  if(m1.slice(-48).some((v,i,arr)=>i>0&&v.time-arr[i-1].time!==60000))
     return empty('توجد فجوات في سجل M1؛ تم إيقاف رصد الضغط.');
-  if(m5.slice(-8).some((v,i,arr)=>i>0&&v.time-arr[i-1].time!==300000))
+  if(m5.slice(-12).some((v,i,arr)=>i>0&&v.time-arr[i-1].time!==300000))
     return empty('توجد فجوات في سجل M5؛ تأكيد الإطار الأعلى غير موثوق.');
 
   const baseline=m1.slice(-48,-16);
@@ -109,14 +111,20 @@ export function detectPreMovePressure(args:{
   const volumeBasis:PreMovePressure['volumeBasis']=lastFive.some(x=>Number(x.realVolume)>0)?'REAL':
     lastFive.some(x=>Number(x.tickVolume)>0)?'TICK':'NONE';
   let selected:Side='WAIT';
-  if(sweepLow)selected='BUY';
+  // A two-sided sweep supplies no directional advantage. Do not let the
+  // order of the branches quietly turn ambiguous evidence into a BUY.
+  if(sweepLow&&sweepHigh)selected='WAIT';
+  else if(sweepLow)selected='BUY';
   else if(sweepHigh)selected='SELL';
   else if(upward&&!downward)selected='BUY';
   else if(downward&&!upward)selected='SELL';
   const rawPressure=selected==='BUY'?upperPressure:selected==='SELL'?lowerPressure:0;
   const m5Opposed=selected!=='WAIT'&&m5Side!=='WAIT'&&m5Side!==selected;
   const h4Opposed=selected!=='WAIT'&&h4Side!=='WAIT'&&h4Side!==selected&&Number(args.h4?.confidence||0)>=62;
-  const released=selected==='BUY'?brokenUp:selected==='SELL'?brokenDown:false;
+  // A trigger touched by either completed candle has already traded, even
+  // if it closed back inside the box. Such a setup is no longer pre-break.
+  const released=selected==='BUY'?lastTwo.some(x=>x.high>=upperTrigger):
+    selected==='SELL'?lastTwo.some(x=>x.low<=lowerTrigger):false;
   const rejected=selected==='BUY'?brokenDown:selected==='SELL'?brokenUp:false;
   const validPressure=selected!=='WAIT'&&(compact||sweep!=='NONE')&&rawPressure>=27;
   const readiness=Math.round(cap((compact?compression*.46:0)+rawPressure*.35+
