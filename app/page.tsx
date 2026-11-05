@@ -45,6 +45,7 @@ export default function Home(){
         ?'/api/ai-analysis?worker=1&manual=1&_='+Date.now()
         :'/api/ai-snapshot?_='+Date.now();
       const headers:Record<string,string>={};
+      if(!manual)headers['X-Qannas-Viewer']='1';
       if(!manual&&aiEtag.current)headers['If-None-Match']=aiEtag.current;
       const r=await fetch(endpoint,{cache:'no-store',headers,signal:AbortSignal.timeout(manual?12000:4500)});
       // An unchanged generation is NOT a stalled AI or an error.
