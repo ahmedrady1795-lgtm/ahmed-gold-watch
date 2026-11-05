@@ -24,6 +24,7 @@ export function chooseOnlineM1(signal:EveryM1Direction,
   const group=(signal.pattern||'MOMENTUM')+':'+(signal.weak?'WEAK':'STRONG');
   const prepared=historical.filter(t=>t.issuedAt<signal.issuedAt&&
     t.directionEvaluatedAt!=null&&Number.isFinite(t.directionEvaluatedAt)&&
+    t.directionEvaluatedAt>=t.issuedAt+60000&&
     t.directionEvaluatedAt<=signal.issuedAt&&
     t.directionObserved!=null&&['BUY','SELL'].includes(t.directionObserved)&&
     t.pattern===signal.pattern&&t.weak===signal.weak&&
