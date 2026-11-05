@@ -20,7 +20,7 @@ export function m1BidAskEvidence(signal:M1Evidence,seed:SeedEvidence,
     !Number.isFinite(seed.at)||seed.at<=0||!seed.source||
     ![q.bid,q.ask,q.at].every(Number.isFinite)||
     q.bid<=0||q.ask<=q.bid||q.source!==seed.source||
-    q.at<=seed.at||q.at-seed.at>15000)return 'UNKNOWN';
+    q.at<=seed.at||q.at-seed.at>M1_CONFIRM_WINDOW_MS)return 'UNKNOWN';
   const mid=(q.bid+q.ask)/2,spread=q.ask-q.bid;
   const move=(signal.side==='BUY'?1:-1)*(mid-seed.mid);
   const minimum=Math.max(.04,spread*.8,signal.atr*.055);
