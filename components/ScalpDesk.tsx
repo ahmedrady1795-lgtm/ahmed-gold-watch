@@ -31,7 +31,11 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
   const technicalWatch=Boolean(!blocked&&!running&&plan?.status==='WATCH'&&
     (plan?.side==='BUY'||plan?.side==='SELL')&&Number(plan.score)>=55);
   const entryLevel=Number(plan?.entry),livePrice=Number(desk?.quote?.price);
-  const aheadOfTrigger=Boolean(technicalWatch&&Number.isFinite(entryLevel)&&entryLevel>0&&
+  const liveQuoteAt=Number(desk?.quote?.at);
+  const quoteFresh=Number.isFinite(liveQuoteAt)&&liveQuoteAt>0&&
+    now>=liveQuoteAt&&now-liveQuoteAt<=12000;
+  const aheadOfTrigger=Boolean(technicalWatch&&quoteFresh&&
+    Number.isFinite(entryLevel)&&entryLevel>0&&
     Number.isFinite(livePrice)&&livePrice>0&&
     (plan.side==='BUY'?entryLevel>livePrice:entryLevel<livePrice));
 
@@ -49,7 +53,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
     technicalWatch?'إعداد فني مرصود · التفعيل المبكر لم يثبت':
     confirmation?.state==='HOLDING'?'بانتظار تأكيد إغلاق M1':
     direction==='WAIT'?'مفيش اتجاه سكالب مؤكد دلوقتي':
-    'ضغط سعري أولي · مراقبة فقط';
+    'اتجاه مرصود · لسه مش إشارة دخول';
   const reason=blocked?(plan?.blockers?.[0]||'آخر تحديث للسوق متأخر'):
     confirmation?.entryAudit?.reason||plan?.reason||'بانتظار الشروط الكاملة';
   const dirCss=confirmed?(direction==='BUY'?'green':'red'):'amber';
@@ -77,7 +81,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
           <strong>{blocked?'غير جاهز':confirmed?(direction==='BUY'?'↑ شراء مؤكد':'↓ بيع مؤكد'):
             running?'متابعة فقط':
             technicalWatch?'رصد فني · '+sideAr(direction):
-            direction!=='WAIT'?'ميل سعري · '+sideAr(direction):'انتظار · لا دخول'}</strong>
+            'انتظار · لا دخول'}</strong>
           <span>{confirmed?'إشارة ورقية · ليست أمرًا منفذًا':
             technicalWatch?'تحضير M'+horizon+' بقوة '+plan.score+'/100 · لا دخول':
             direction!=='WAIT'?'اتجاه المراقبة: '+sideAr(direction)+' · لا دخول جديد':'لا اتجاه مؤكد'}</span>
