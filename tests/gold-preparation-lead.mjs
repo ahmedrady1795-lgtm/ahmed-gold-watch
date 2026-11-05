@@ -26,6 +26,10 @@ assert.ok(plan.trigger>quote.ask&&plan.target>plan.trigger&&plan.invalidate<quot
 assert.equal(plan.target,4204,'target is an actual pre-existing swing');
 assert.equal(plan.issuedAt,now,'issuance cannot be backdated to the closed setup candle');
 assert.equal(plan.version,GOLD_PREPARATION_VERSION);
+assert.ok(plan.evidence.includes('PREBREAK_LEAD_BUFFER_V1'));
+const near={...quote,price:plan.trigger-.05,bid:plan.trigger-.10,ask:plan.trigger-.025};
+assert.equal(read({quote:near}).plan,null,
+ 'a quote too close to the trigger is not demonstrably pre-break');
 const frozen=structuredClone(plan);
 assert.equal(read({marketOpen:false}).plan,null);
 assert.equal(read({source:'Yahoo Finance · COMEX GC=F proxy'}).plan,null);
@@ -44,6 +48,9 @@ assert.equal(read({bars:noDest}).plan,null,'no invented extended target');
 const mirror=b=>({time:b.time,open:8400-b.open,close:8400-b.close,high:8400-b.low,low:8400-b.high});
 const sell=read({bars:bars.map(mirror),quote:{...quote,price:4199.3,bid:4199.25,ask:4199.35}}).plan;
 assert.ok(sell);assert.equal(sell.side,'SELL');assert.equal(sell.target,4196);
+const nearSell={...quote,price:sell.trigger+.05,bid:sell.trigger+.025,ask:sell.trigger+.10};
+assert.equal(read({bars:bars.map(mirror),quote:nearSell}).plan,null,
+ 'sell rejection uses direction-symmetric quote-to-trigger clearance');
 assert.equal(goldQuoteMatchesCandles(quoteSource,source),true);
 assert.equal(goldQuoteMatchesCandles(quoteSource,'Exness/MT5 · XAUUSD'),false);
 
@@ -64,7 +71,12 @@ assert.deepEqual(e.breakoutBar,breakout);assert.deepEqual(e.issuanceBar,issue);
 assert.equal(e.trigger,plan.trigger);assert.equal(e.issuedAt,now);
 const hit=settle(crossed,[target]);
 assert.equal(hit.events[0].status,'TARGET');assert.equal(goldLeadScore(hit).targetBeforeStop,1);
-assert.equal(goldLeadScore(hit).evaluated,1);assert.equal(goldLeadScore(hit).modelQualified,false);
+assert.equal(goldLeadScore(hit).evaluated,1);
+assert.equal(goldLeadScore(hit).resolvedBreakouts,1);
+assert.equal(goldLeadScore(hit).targetAfterBreakoutRate,1);
+assert.deepEqual(goldLeadScore(hit).leadBufferCohort,
+ {alerts:1,observed:1,targetTouches:1,targetRate:1});
+assert.equal(goldLeadScore(hit).modelQualified,false);
 assert.equal(goldLeadScore(hit).tradingEnabled,false);
 assert.equal(settle(hit,[]),hit,'terminal outcome never repaints');
 assert.deepEqual(plan,frozen,'frozen plan not mutated');
@@ -106,6 +118,12 @@ assert.equal(sellHit.events[0].status,'TARGET','mirrored sell is symmetric');
 const score=goldLeadScore({schema:empty.schema,updatedAt:now,events:[hit.events[0],noBreak.events[0],
  {...hit.events[0],status:'INVALIDATED'}, {...hit.events[0],status:'TIMING_UNPROVEN'}]});
 assert.equal(score.evaluated,3);assert.equal(score.targetRate,1/3);assert.equal(score.excluded,1);
+assert.equal(score.resolvedBreakouts,1,'non-break and invalidations never count as broken setups');
+assert.equal(score.targetAfterBreakoutRate,1);
+const oldUnqualified={...hit.events[0],evidence:['legacy event without a buffer']};
+const oldScore=goldLeadScore({...hit,events:[oldUnqualified]});
+assert.equal(oldScore.leadBufferCohort.alerts,0,
+ 'new buffer variant must not claim outcomes from historical setups');
 const ui=fs.readFileSync('components/GoldRadarBadge.tsx','utf8');
 assert.match(ui,/leadMinSeconds/);assert.match(ui,/preparationLead/);
 assert.match(ui,/لم تثبت دقته خارج العينة/);
