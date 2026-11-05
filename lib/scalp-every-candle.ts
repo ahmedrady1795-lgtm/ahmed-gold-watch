@@ -17,6 +17,7 @@ export type EveryAttempt={
   quoteSource:string;limitType:'BUY_LIMIT'|'SELL_LIMIT';
   expiryAt:number;lastQuoteAt:number;lastExecutable:number|null;
   filledAt:number|null;closedAt:number|null;exit:number|null;netR:number|null;
+  lastExitPrice?:number|null;lastExitAt?:number|null;
   note:string
 };
 export type EveryLedger={version:1;history:EveryAttempt[]};
@@ -90,11 +91,24 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
         'انتهى Limit خلال فجوة اقتباسات؛ لا يمكن إثبات عدم التنفيذ');continue;
     }
     if(t.state==='ACTIVE'&&now>=Number(t.filledAt)+60000){
+      const cutoff=Number(t.filledAt)+60000;
       const px=book?(t.side==='BUY'?Number(q.bid):Number(q.ask)):null;
-      if(fresh&&book&&q.source===t.quoteSource&&q.at!>t.lastQuoteAt&&
-         q.at!-t.lastQuoteAt<=15000&&px!=null){
-        finish(t,'TIME_EXIT',q.at!,px,'خروج زمني بعد دقيقة بسعر Bid/Ask المرصود');
-      }else finish(t,'UNKNOWN',now,null,'لا توجد عينة سعر صالحة عند انتهاء دقيقة الاحتفاظ');
+      // Never use a quote AFTER the minute as a supposed pre-expiry exit.
+      const currentAt=fresh&&book&&q.source===t.quoteSource?q.at!:null;
+      const currentEligible=currentAt!=null&&currentAt>=cutoff-5000&&
+        currentAt<=cutoff&&px!=null&&currentAt>t.lastQuoteAt&&
+        currentAt-t.lastQuoteAt<=15000;
+      const priorAt=Number(t.lastExitAt);
+      const priorEligible=Number.isFinite(priorAt)&&priorAt>0&&
+        priorAt>=cutoff-5000&&priorAt<=cutoff&&
+        t.lastExitPrice!=null&&Number.isFinite(t.lastExitPrice);
+      if(currentEligible)
+        finish(t,'TIME_EXIT',cutoff,px,'خروج مرجعي بآخر Bid/Ask صالح قبل نهاية الدقيقة');
+      else if(priorEligible)
+        finish(t,'TIME_EXIT',cutoff,Number(t.lastExitPrice),
+          'خروج مرجعي بآخر Bid/Ask قبل انتهاء الدقيقة بخمس ثوانٍ');
+      else finish(t,'UNKNOWN',cutoff,null,
+        'لا يوجد سعر Bid/Ask موثوق قبل انتهاء الدقيقة؛ لا نحسب سعرًا متأخرًا');
       continue;
     }
     if(!fresh||!book||q.source!==t.quoteSource||q.at!<=t.lastQuoteAt){
@@ -131,6 +145,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
     else if(t.side==='BUY'?exit>=Number(t.tp):exit<=Number(t.tp))
       finish(t,'QUICK_TP',q.at!,exit,'مكسب سريع مرصود بعد تكلفة تقديرية');
     t.lastQuoteAt=q.at!;
+    t.lastExitPrice=exit;t.lastExitAt=q.at!;
   }
   const signal=everyM1Direction(raw,now);
   if(signal&&!history.some(x=>x.id===signal.issuedAt)){
@@ -167,7 +182,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       expiryAt:signal.issuedAt+60000,lastQuoteAt:q.at??0,
       lastExecutable:state==='PENDING'?(signal.side==='BUY'?Number(q.ask):Number(q.bid)):null,
       filledAt:null,closedAt:state==='NO_BID_ASK'||state==='COST_UNVIABLE'?now:null,
-      exit:null,netR:null,
+      exit:null,netR:null,lastExitPrice:null,lastExitAt:null,
       note:state==='NO_BID_ASK'?
         'توقع الشمعة موجود لكن بدون Bid/Ask بعد الإصدار وتكلفة موثوقة لا يوجد Limit':
         state==='COST_UNVIABLE'?
