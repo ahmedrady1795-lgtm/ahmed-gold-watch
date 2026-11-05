@@ -32,11 +32,14 @@ export function priceEveryM1Limit(input:{
   const extra=Math.max(0,cost-spread);
   // Re-enter on a pullback into the last closed candle's body, rather than
   // immediately chasing the current quote. Bound depth to avoid stale orders.
-  const offset=Math.max(.02,spread*.5,atr*.05);
+  const offset=Math.max(.02,spread*.5,atr*.04);
   const bodyMid=(previousOpen+previousClose)/2;
   const buy=side==='BUY';
-  const targetBuy=Math.max(bid-atr*.65,Math.min(bid-offset,bodyMid));
-  const targetSell=Math.min(ask+atr*.65,Math.max(ask+offset,bodyMid));
+  // Pending LIMIT should have a realistic chance of reaching a pullback in M1.
+  const maxRetest=atr*.32;
+  if(offset>maxRetest||spread>atr*.24)return null;
+  const targetBuy=Math.max(bid-maxRetest,Math.min(bid-offset,bodyMid));
+  const targetSell=Math.min(ask+maxRetest,Math.max(ask+offset,bodyMid));
   const entry=buy?lo(targetBuy):hi(targetSell);
   // A tight stop still has to clear normal quote noise and the live spread.
   const nominalRisk=Math.max(atr*.55,spread*2,.14);
