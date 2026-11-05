@@ -48,6 +48,7 @@ jobs:
       - run: node tests/scalp-lead-audit.cjs
       - run: node tests/scalp-gold-fast-path.cjs
       - run: node tests/scalp-limit-entry.cjs
+      - run: node tests/sniper-decision-engine.cjs
       - run: node tests/scalp-quick-exit.cjs
       - run: node tests/scalp.cjs
       - run: node tests/news-alert-window.cjs

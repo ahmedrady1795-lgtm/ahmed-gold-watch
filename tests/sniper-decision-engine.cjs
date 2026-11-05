@@ -84,7 +84,11 @@ const chart=fs.readFileSync('components/ScalpDesk.tsx','utf8');
 assert.match(desk,/const decision=buildSniperDecision\(/);
 assert.match(desk,/plan\.status='WATCH'/);
 assert.match(desk,/sniperDecisions:qualityGates\.map\(g=>g\.decision\)/);
-assert.match(ledger,/rr>=requiredScalpNetR\(plan\)/);
+assert.match(ledger,/const limit=planScalpLimit\(plan,quote,now\)/,
+  'exact plan approval must create an unfilled LIMIT, not a market fill');
+assert.match(fs.readFileSync('lib/scalp-limit-entry.ts','utf8'),
+  /netRR<requiredScalpNetR\(plan\)/,
+  'cost-inclusive return floor must still be checked for a pending LIMIT');
 assert.match(ledger,/unifiedProof:evaluatePaperProof\(lane\.history,SCALP_UNIFIED_PROOF_FROM\)/);
 assert.match(chart,/sniper-decision-audit/);
 console.log('PASS: unified sniper decision, causal data freshness, strategy-proof gates, strict 3R at audit/selection/fill, independent paper-cohort reporting');
