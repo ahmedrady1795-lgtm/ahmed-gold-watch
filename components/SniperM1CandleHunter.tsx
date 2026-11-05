@@ -75,8 +75,17 @@ export default function SniperM1CandleHunter(p:Props){
         favored==='SELL'?'توقع الشمعة الحالية: هبوط ↓':
         'بانتظار إغلاق M1 التالي لتوقع شمعة جديدة'}</strong>
       <span>{liveEligible&&every?
-        'توقع لكل شمعة · '+(every.weak?'أدلة ضعيفة':'ضغط اتجاهي')+
+        'توقع لكل شمعة · '+(every.adaptive?.improved?'ترجيح متكيف مختبر سابقًا':
+          every.weak?'أدلة ضعيفة · غير مؤهل للدخول':'ضغط اتجاهي · لم يثبت التفوق')+
         ' · الضغط '+every.pressure+'/100 (مش احتمال نجاح)':display.reason}</span>
+      {liveEligible&&every?.adaptive&&<small>
+        {every.adaptive.trained>0?
+          'فحص سببي سابق: تدريب '+every.adaptive.trainHits+'/'+every.adaptive.trained+
+          ' · مراجعة لاحقة '+every.adaptive.checkHits+'/'+every.adaptive.checked+
+          ' مقابل استمرارية شمعة '+every.adaptive.simpleCheckHits+'/'+every.adaptive.checked:
+          'العينة السابقة غير كافية لاختيار نموذج أفضل'}
+        {' · '}لا يضمن نجاح الشمعة القادمة أو ربح أي صفقة
+      </small>}
       <small>كل شمعة لها توقع يتحاسب على صحته. خطوط BREAK للمراقبة، ومحاولات Limit الورقية في شاشة السكالب.</small>
     </div>
 
