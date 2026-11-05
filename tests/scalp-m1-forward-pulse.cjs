@@ -96,7 +96,8 @@ const engine=fs.readFileSync('lib/scalp-every-candle.ts','utf8');
 assert.match(engine,/pulseVersion:M1_FORWARD_PULSE_V1,pulse:null/);
 assert.match(engine,/t\.pulse=advanceForwardM1Pulse\(/);
 assert.match(engine,/const forwardPulse=auditForwardM1Pulse\(/);
-assert.match(engine,/forwardPulse,\s*forwardDirection:/);
+assert.match(engine,/forwardPulse,\s*(?:smartExit,\s*)?forwardDirection:/,
+ 'forward pulse retains its audit even when another independent study is added');
 const page=fs.readFileSync('app/scalp/page.tsx','utf8');
 assert.match(page,/data\?\.forwardPulse\?\.earlyHits/);
 assert.match(page,/data\?\.forwardPulse\?\.originalHits/);

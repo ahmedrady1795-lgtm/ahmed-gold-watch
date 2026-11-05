@@ -6,6 +6,8 @@ import {requiresM1TickConfirmation,m1BidAskEvidence,M1_CONFIRM_WINDOW_MS} from '
 import {chooseOnlineM1,type OnlineM1Choice} from './scalp-m1-online-learning';
 import {advanceForwardM1Pulse,auditForwardM1Pulse,M1_FORWARD_PULSE_V1,
   type ForwardPulse} from './scalp-m1-forward-pulse';
+import {advanceSmartExitShadow,auditSmartExitShadow,M1_SMART_EXIT_SHADOW_V1,
+  type SmartExitShadow} from './scalp-m1-smart-exit-shadow';
 import type {ScalpQuote} from './scalp-opportunities';
 
 // Separate, low-friction RESEARCH lane: one forecast and one attempted
@@ -26,6 +28,7 @@ export type EveryAttempt={
   onlineDecision?:OnlineM1Choice;chartSource?:string;
   directionObserved?:'BUY'|'SELL'|'FLAT'|'UNKNOWN'|null;
   pulseVersion?:string;pulse?:ForwardPulse|null;
+  shadowVersion?:string;shadowExit?:SmartExitShadow|null;
   directionEvaluatedAt?:number|null;
   qualityTier?:'RESEARCH_WEAK'|'RESEARCH_CANDIDATE';
   targetNetR?:number;breakEvenWinPct?:number;retestDepth?:number;
@@ -293,6 +296,13 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
           finish(t,'UNKNOWN',now,null,'سعر قفز فوق Limit ولا يمكن إثبات تنفيذ');
         }else{
           t.state='ACTIVE';t.filledAt=q.at!;
+          if(t.shadowVersion===M1_SMART_EXIT_SHADOW_V1)
+            t.shadowExit=advanceSmartExitShadow({
+              previous:null,side:t.side,entry:Number(t.entry),
+              stop:Number(t.stop),filledAt:q.at!,atr:Number(t.atr),
+              cost:t.cost,extraCost:t.extraCost,
+              executableExit,at:q.at!
+            });
           t.note='لمس Limit ورقي؛ ليس تأكيد تنفيذ وسيط';
         }
       }
@@ -304,6 +314,15 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       finish(t,'STOP',q.at!,exit,'وقف مرصود بالـ Bid/Ask');
     else if(t.side==='BUY'?exit>=Number(t.tp):exit<=Number(t.tp))
       finish(t,'QUICK_TP',q.at!,exit,'مكسب سريع مرصود بعد تكلفة تقديرية');
+    // Shadow only: two successive adverse executable quotes after a grace
+    // interval. TP/SL always take priority in the ORIGINAL paper ledger.
+    if(t.state==='ACTIVE'&&t.shadowVersion===M1_SMART_EXIT_SHADOW_V1)
+      t.shadowExit=advanceSmartExitShadow({
+        previous:t.shadowExit,side:t.side,entry:Number(t.entry),
+        stop:Number(t.stop),filledAt:Number(t.filledAt),
+        atr:Number(t.atr),cost:t.cost,extraCost:t.extraCost,
+        executableExit:exit,at:q.at!
+      });
     t.lastQuoteAt=q.at!;
     t.lastExitPrice=exit;t.lastExitAt=q.at!;
   }
@@ -327,6 +346,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       chartSource,
       directionObserved:null,directionEvaluatedAt:null,
       pulseVersion:M1_FORWARD_PULSE_V1,pulse:null,
+      shadowVersion:M1_SMART_EXIT_SHADOW_V1,shadowExit:null,
       strategyVersion:EVERY_M1_EDGE_V5,pattern:signal.pattern,
       directionModel:online.inverted?'ONLINE_INVERSION':
         signal.adaptive?.model??'PRESSURE_SWEEP',
@@ -385,6 +405,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   const marked=v4.filter(t=>t.directionObserved==='BUY'||t.directionObserved==='SELL');
   const forwardPulse=auditForwardM1Pulse(
     hist.filter(t=>t.pulseVersion===M1_FORWARD_PULSE_V1));
+  const smartExit=auditSmartExitShadow(hist);
   const directionHits=marked.filter(t=>t.side===t.directionObserved).length;
   const byEvidence=(weak:boolean)=>{
     const issued=v4.filter(t=>t.weak===weak);
@@ -419,7 +440,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     stops:settled.filter(t=>t.state==='STOP').length,
     timeExits:settled.filter(t=>t.state==='TIME_EXIT').length,
     legacyResults,legacyNetR,
-    forwardPulse,
+    forwardPulse,smartExit,
     forwardDirection:{issued:v4.length,graded:marked.length,hits:directionHits,
       misses:marked.length-directionHits,
       flat:v4.filter(t=>t.directionObserved==='FLAT').length,
