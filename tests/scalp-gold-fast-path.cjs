@@ -41,6 +41,7 @@ const stubs={
  './direction-walkforward':{validateDirectionChronologically:()=>({status:'SHADOW'})},
  './sniper-decision-engine':{buildSniperDecision:()=>({
   horizon:1,status:'BLOCKED',score:0,blockers:['not qualified'],aiCertification:'NO'})},
+ './scalp-every-candle':{observeEveryM1:()=>({proposals:0,pending:0,active:0,filled:0,quickWins:0,stops:0,expired:0,unknown:0,netR:0,latest:null})},
  './scalp-lead-audit':{observeScalpLead:()=>({pending:0,total:0}),
   MIN_SCALP_SHADOW_SCORE:55}
 };
