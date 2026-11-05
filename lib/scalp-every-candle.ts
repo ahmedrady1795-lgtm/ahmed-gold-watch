@@ -181,22 +181,32 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       continue;
     }
     if(t.state==='CONFIRMING'){
-      if(now>=t.issuedAt+M1_CONFIRM_WINDOW_MS){
-        finish(t,'NO_EDGE',now,null,
-          'لم يظهر تأكيد اتجاه جديد خلال 24 ثانية؛ التوقع محفوظ بلا LIMIT');
-        continue;
-      }
-      if(now-t.lastQuoteAt>15000){
-        finish(t,'UNKNOWN',now,null,
-          'انقطع Bid/Ask أثناء التأكيد؛ لا نتيجة مؤكدة');
-        continue;
-      }
+      // The evidence clock must begin when a real post-issue Bid/Ask quote
+      // arrives, NOT when the new M1 candle opens. Otherwise a slow quote
+      // provider eats the 24s window before confirmation can even start.
+      const deadline=Math.min(t.expiryAt-5000,
+        Number(t.seedAt??t.issuedAt)+M1_CONFIRM_WINDOW_MS);
       if(fresh&&book&&q.source!==t.seedSource){
         finish(t,'UNKNOWN',now,null,
           'مصدر السعر تغير أثناء اختبار اتجاه الدقيقة');
         continue;
       }
-      if(!fresh||!book||!q.source||q.at!<=Number(t.seedAt))continue;
+      const sampled=fresh&&book&&q.source===t.seedSource&&
+        q.at!>Number(t.seedAt)&&q.at!<=deadline;
+      // Missing/interrupted ticks are UNKNOWN, not false NO_EDGE. A valid
+      // pre-deadline tick may arrive after deadline in a delayed response,
+      // but cannot be used when its chronological gap exceeds 15 seconds.
+      const gap=sampled?q.at!-t.lastQuoteAt:now-t.lastQuoteAt;
+      if(gap>15000){
+        finish(t,'UNKNOWN',now,null,
+          'انقطع Bid/Ask أثناء التأكيد؛ لا نعتبر الغياب فشل توقع');
+        continue;
+      }
+      if(!sampled){
+        if(now>=deadline)finish(t,'NO_EDGE',now,null,
+          'انتهت مهلة التأكيد بعد أول سعر صالح؛ لا LIMIT');
+        continue;
+      }
       const decision=m1BidAskEvidence({
         side:t.side,weak:t.weak,pressure:t.pressure,atr:Number(t.atr),
         directionModel:t.directionModel
@@ -213,7 +223,11 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
           finish(t,'UNKNOWN',now,null,'تأكيد اتجاه لكن بيانات التكلفة غير صالحة');
         else if(t.entry!=null&&t.targetNetR!=null)
           t.note='تيك جديد أكد الاتجاه؛ LIMIT مرجعي ثابت ينتظر ارتداد السعر';
-      }else t.lastQuoteAt=q.at!;
+      }else{
+        t.lastQuoteAt=q.at!;
+        if(now>=deadline)finish(t,'NO_EDGE',now,null,
+          'سعر جديد لم يؤكد الاتجاه قبل انتهاء المهلة؛ لا LIMIT');
+      }
       continue;
     }
     if(t.state==='PENDING'&&now>=t.expiryAt){
