@@ -30,6 +30,23 @@ assert.ok(html.includes('لسه مش إشارة دخول'));
 assert.ok(html.includes('انتظار · لا دخول'));
 assert.ok(!html.includes('scalp-seconds-direction green'),'Unconfirmed monitoring cannot use confirmed entry styling');
 assert.ok(!html.includes('scalp-seconds-levels'));
+const earlyWatch={...plan,id:'pre-60',status:'WATCH',side:'SELL',score:60,
+ entry:99,stop:101,targets:[],reason:'هدف غير مؤهل بعد التكلفة'};
+html=render(desk(earlyWatch,check,{quote:{price:100,at:now}}));
+assert.ok(html.includes('رصد فني · بيع'),'valid 60-grade setup is visible, not a blank WAIT');
+assert.ok(html.includes('تجهيز قبل التفعيل'),'watch is ahead of reference quote');
+assert.ok(html.includes('مستوى ترقب')&&html.includes('هدف محتمل'));
+assert.ok(html.includes('الهدف غير مؤهل'),'unverified targets cannot become entry predictions');
+assert.ok(!html.includes('scalp-seconds-levels'),
+ 'technical WATCH never presents execution-grade levels');
+assert.ok(!html.includes('شراء مؤكد')&&!html.includes('بيع مؤكد'));
+html=render(desk(earlyWatch,check,{quote:{price:98,at:now}}));
+assert.ok(html.includes('لم يثبت السبق'),
+ 'crossed watch cannot be called pre-move signal');
+html=render(desk(earlyWatch,check,{checkedAt:now-30000,quote:{price:100,at:now}}));
+assert.ok(!html.includes('scalp-early-watch'),
+ 'stale quote cannot continue advertising an early setup');
+
 const confirmed={...check,state:'ENTRY',entry:100,stop:99,targets:[{price:103}],
   confirmedCandleAt:now-5000,entryAudit:{approved:true,reason:'إغلاق مؤكّد'}};
 html=render(desk(armed,confirmed));
