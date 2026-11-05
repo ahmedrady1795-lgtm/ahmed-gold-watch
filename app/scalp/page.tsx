@@ -196,6 +196,32 @@ function GoldEveryCandle({data}:{data:any}){
         ولا نعتبرها تحسنًا مثبتًا من غير عينة مستقلة كافية.
       </p>
     </div>
+    <div style={{padding:12,margin:'10px 0',borderRadius:10,
+      border:'1px solid var(--border, rgba(160,165,180,.25))'}}
+      aria-label="تقييم خروج سكالب ذكي بورقي مقارنة بالهدف والوقف الأصلي">
+      <strong>مختبر الخروج الذكي · مهلة 5 ثواني + تأكيد تيكين متتالين</strong>
+      <p style={{fontSize:12,margin:'6px 0'}}>
+        صفقات Limit ورقية من النسخة الجديدة {data?.smartExit?.filled??0}
+        {' · '}نتائج قابلة للمقارنة {data?.smartExit?.comparable??0}
+        {' · '}خروج مبكر مقترح {data?.smartExit?.earlyExits??0}
+        {' · '}نتائج مجهولة {data?.smartExit?.unknown??0}
+      </p>
+      <p style={{fontSize:12,margin:'6px 0'}}>
+        المجموع الأصلي بعد التكلفة {data?.smartExit?.originalNetR??0}R
+        {' · '}لو اتطبق الخروج الذكي {data?.smartExit?.shadowNetR??0}R
+        {' · '}الفرق {data?.smartExit?.deltaNetR??0}R
+        {' · '}نتائج موجبة بالأصل {data?.smartExit?.originalWins??0}
+        {' / '}بالتجربة {data?.smartExit?.shadowWins??0}
+      </p>
+      <small style={{display:'block',opacity:.78,lineHeight:1.6}}>
+        {data?.smartExit?.enoughEvidence?
+          'عينة ورقية أولية للمراجعة، تحتاج اختبارًا مستقلًا قبل الاعتماد.':
+          'عينة أقل من 50 صفقة محسومة: لا نحكم إن الخروج المبكر أفضل.'}
+        {' '}التجربة لا تغلق الصفقات الأصلية ولا تغيّر وقف الخسارة.
+        المقارنة تستخدم تيكات Bid/Ask المرصودة والتكلفة المقدرة؛
+        الربح أو الخسارة عند الوسيط غير مثبتين.
+      </small>
+    </div>
     {latest?<div style={{border:'1px solid var(--border, rgba(160,165,180,.25))',
       padding:12,borderRadius:10}}>
       <div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
