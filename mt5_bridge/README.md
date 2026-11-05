@@ -1,5 +1,32 @@
 # Ahmed Gold Watch MT5 Bridge
 
+## Entry policy: **LIMIT only** (2026-11-05)
+- GOLD scalp on the website is paper reference only until MT5 is connected. An
+  independently approved scalp setup places an **unfilled** BUY_LIMIT below
+  measured Bid, or SELL_LIMIT above measured Ask, with its **fixed** entry,
+  structural stop and target. It waits for later fresh same-source Ask/Bid
+  to *cross* the level; the first detection of a setup is never a market fill.
+  The pending intent expires within 45 seconds and is canceled or marked
+  UNKNOWN for a new plan, source jump, quote gap or risk veto.
+- The local `SCALP_DEMO_MODE` now also uses a resting simulated LIMIT
+  derived from an Ambush entry zone; it does not open its demo position
+  straight from the current Ask/Bid. Price gaps may leave outcomes UNKNOWN.
+- The separate future **live-capable** `/api/execution/signal` flow now
+  permits only non-marketable pending LIMIT plans. The bridge uses
+  `TRADE_ACTION_PENDING`, `ORDER_TYPE_BUY_LIMIT/SELL_LIMIT`,
+  `ORDER_TIME_SPECIFIED` and `ORDER_FILLING_RETURN`; broker
+  `TRADE_RETCODE_PLACED` means **order placed, not filled**. No market DEAL
+  fallback exists. It refuses broker-invalid stops, expensive R and
+  existing positions or pending orders, rather than altering entries.
+- Keep `LIVE_TRADING=false` and site `MT5_AUTOTRADE_ENABLED=false`
+  throughout integration. The older user-facing main signal and Ambush
+  scalp are independent authorities and do **not** authorize a live scalp
+  fill from the website's paper ledger. An actual pending order may never
+  fill, even if reference-price charts touched the level.
+- Both limit entry and exit depend on the broker's real Bid/Ask, order-state
+  acknowledgements, spreads and broker-specific symbols. Do not assume
+  reference paper QUICK_TP proves broker profitability.
+
 Windows/VPS bridge for MetaTrader 5. It is fail-closed and **dry-run by default**.
 
 ## What changed in Master 3.0
