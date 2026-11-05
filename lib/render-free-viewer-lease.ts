@@ -13,7 +13,7 @@ export const RENDER_VIEWER_LEASE_PATH='/tmp/qannas-render-viewer-lease-v1.json';
 export async function publishViewerLease(now=Date.now()):Promise<void>{
   if(!renderFreeEcoEnabled())return;
   if(!Number.isSafeInteger(now)||now<=0)return;
-  const tmp=RENDER_VIEWER_LEASE_PATH+'.writing-'+process.pid;
+  const tmp=RENDER_VIEWER_LEASE_PATH+'.writing-'+process.pid+'-'+process.hrtime.bigint();
   try{
     await fs.writeFile(tmp,JSON.stringify({at:now}),{mode:0o600});
     await fs.rename(tmp,RENDER_VIEWER_LEASE_PATH);
