@@ -168,6 +168,13 @@ const fwdBuy=observedForwardReach(trendBars,'BUY',5);
 assert.ok(fwdBuy.samples>=30,'5-minute sample must have at least 30 non-overlapping completed windows');
 assert.ok(Math.abs(fwdBuy.favorableP75-.55)<.001,
   'M5 target reach must measure NEXT five M1 highs after previous close');
+assert.ok(Math.abs(fwdBuy.favorableP20-.55)<.001,
+  'P20 is computed from completed NEXT-window outcomes without looking ahead');
+const varyingBars=trendBars.map((c,i)=>({...c,high:c.high+(i%7)*.04}));
+const varyingReach=observedForwardReach(varyingBars,'BUY',1);
+assert.ok(varyingReach.favorableP20<=varyingReach.favorableP50&&
+  varyingReach.favorableP50<=varyingReach.favorableP75,
+  'A high historical percentile must never be confused with an 80% reach target');
 assert.ok(Math.abs(fwdBuy.adverseP50-.05)<.001,
   'Historical adverse excursion must start from the same reference entry');
 const fwdSell=observedForwardReach(trendBars.map(c=>({
@@ -322,9 +329,19 @@ assert.ok(m5BreakoutPlan.stop<3999.9,
 assert.ok(m5BreakoutPlan.evidence.some(e=>e.label==='وقف خلف شمعة الاختراق'),
   'UI evidence must explain structural stop rather than high setup score');
 const buy=plans[0];assert.equal(buy.side,'BUY');assert.ok(['ARMED','WATCH'].includes(buy.status),'Conservative eligibility guards can block an otherwise valid directional setup');
-assert.ok(buy.entry>4000.45);assert.ok(buy.stop<buy.entry);assert.ok(buy.targets[0].price>buy.entry);assert.ok(buy.targets[1].price>buy.targets[0].price);assert.ok(buy.targets[2].price>buy.targets[1].price);assert.ok(buy.netRR>=1.25);
+assert.ok(buy.entry>4000.45);assert.ok(buy.stop<buy.entry);
+assert.ok(buy.targets[0].price>buy.entry,'Even an unqualified watch must have the correct BUY direction');
+if(buy.status==='ARMED')assert.ok(buy.targets.length>=1&&buy.netRR>=1.25);
+else assert.ok(buy.blockers.length>0&&buy.targets.length<=3,
+  'A distant first target must remain WATCH and cannot invent profitable R');
+assert.ok(buy.targets.every((target,i)=>i===0||target.price>buy.targets[i-1].price),
+  'Published targets must preserve monotonic BUY geometry');
 const reflected=breakout();reflected.c1=reflected.c1.map(c=>({...c,open:8000-c.open,close:8000-c.close,high:8000-c.low,low:8000-c.high}));reflected.quote={...reflected.quote,price:3999.55,bid:3999.54,ask:3999.555};
-const sell=buildScalpPlans(reflected)[0];assert.equal(sell.side,'SELL');assert.ok(sell.stop>sell.entry);assert.ok(sell.targets[2].price<sell.targets[1].price&&sell.targets[1].price<sell.targets[0].price);
+const sell=buildScalpPlans(reflected)[0];assert.equal(sell.side,'SELL');
+assert.ok(sell.stop>sell.entry&&sell.targets[0].price<sell.entry);
+assert.ok(sell.targets.every((target,i)=>i===0||target.price<sell.targets[i-1].price),
+  'Published targets must preserve monotonic SELL geometry');
+if(sell.status==='WATCH')assert.ok(sell.blockers.length>0);
 assert.equal(buildScalpPlans(input())[0].side,'WAIT','Flat market must not invent an opportunity');
 for(const change of [x=>x.quote.at=now-16000,x=>x.quote.price=null,x=>x.marketOpen=false,x=>x.candleSource='COMEX GC=F proxy',x=>x.c1.splice(-5,1),x=>x.c1.push({...x.c1.at(-1),time:now+60000}),x=>x.c1.at(-1).high=NaN,x=>x.events=[{importance:3,exactTime:true,time:now+60000,name:'CPI'}]]){
  const x=breakout();change(x);assert.equal(buildScalpPlans(x)[0].status,'BLOCKED');
