@@ -1,6 +1,6 @@
 import fs from 'node:fs';
-import {closedM1ChartBars,type M1Bar} from './sniper-mt5-m1';
-import {assessM1DirectionalPriority} from './sniper-m1-priority';
+import type {M1Bar} from './sniper-mt5-m1';
+import {everyM1Direction} from './sniper-m1-every-direction';
 import type {ScalpQuote} from './scalp-opportunities';
 
 // Separate, low-friction RESEARCH lane: one forecast and one attempted
@@ -33,30 +33,6 @@ const validQuote=(q:ScalpQuote,now:number)=>q.at!=null&&Number.isFinite(q.at)&&
 const validBook=(q:ScalpQuote)=>q.bid!=null&&q.ask!=null&&
   Number.isFinite(q.bid)&&Number.isFinite(q.ask)&&q.bid>0&&q.ask>q.bid;
 
-export function everyM1Direction(raw:readonly M1Bar[],now:number){
-  const rows=closedM1ChartBars(raw,now,72),last=rows.at(-1);
-  if(rows.length<21||!last||now-last.time-60000<0||
-    now-last.time-60000>=60000)return null;
-  const p=assessM1DirectionalPriority(rows,now);
-  if(!p.ready)return null;
-  // The old .22 threshold hid entire M1 minutes. In this research lane
-  // weaker signed pressure still issues a direction, labeled LOW EVIDENCE.
-  // Zero-pressure tie is deterministic and explicitly not called confidence.
-  const signed=.48*p.emaSpreadAtr+.30*p.impulseAtr+
-    .15*p.closeLocation;
-  const prev=rows.at(-2)!;
-  const side:EverySide=p.side!=='WAIT'?p.side:
-    signed>0?'BUY':signed<0?'SELL':
-      last.close>last.open?'BUY':last.close<last.open?'SELL':
-        last.close>=prev.close?'BUY':'SELL';
-  const ranges=rows.slice(-15).map((b,i,a)=>i===0?b.high-b.low:
-    Math.max(b.high-b.low,Math.abs(b.high-a[i-1].close),
-      Math.abs(b.low-a[i-1].close)));
-  const atr=ranges.reduce((a,b)=>a+b,0)/ranges.length;
-  if(!Number.isFinite(atr)||atr<=0)return null;
-  return {issuedAt:last.time+60000,side,pressure:p.pressureScore,
-    weak:p.side==='WAIT',atr,anchorTime:last.time};
-}
 function load():EveryLedger{
   if(globalThis.__scalpEveryM1Ledger)return globalThis.__scalpEveryM1Ledger;
   let ledger=EMPTY();
