@@ -16,6 +16,6 @@ export async function GET(request:Request){
   // Only a GOLD-only request skips external BTC sources; existing combined
   // API behavior and callers keep all market lanes.
   const asset=new URL(request.url).searchParams.get('asset')==='GOLD'?'GOLD':'ALL';
-  try{return Response.json(await getScalpDesk(asset),{headers:{'Cache-Control':'no-store'}});
+  try{return Response.json(await getScalpDesk(asset),{headers:{'Cache-Control':'no-store'}});}
   catch{return Response.json({ok:false,message:'تعذر تحديث فرص السكالب'},{status:503,headers:{'Cache-Control':'no-store'}});}
 }
