@@ -12,8 +12,8 @@ export type ForwardPulse={
   firstAgree:boolean|null;firstMoveAtr:number|null;
 };
 export type ForwardPulseQuote={
-  at:number|null|undefined;bid:number|null|undefined;
-  ask:number|null|undefined;source:string|null|undefined
+  at?:number|null;bid?:number|null;
+  ask?:number|null;source?:string|null
 };
 export type ForwardPulseArgs={
   previous:ForwardPulse|null|undefined;quote:ForwardPulseQuote;
