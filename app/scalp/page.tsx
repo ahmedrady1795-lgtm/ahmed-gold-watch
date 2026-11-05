@@ -92,6 +92,8 @@ function GoldEveryCandle({data}:{data:any}){
   const latest=data?.latest;
   const stateLabel=(v:string)=>({
     AWAIT_QUOTE:'التوقع صادر · انتظار أول Bid/Ask بعد بداية الشمعة',
+    CONFIRMING:'اختبار اتجاه حي · لسه مفيش أمر Limit',
+    NO_EDGE:'توقع ضعيف بلا تأكيد · مش هنفترض دخول',
     NO_BID_ASK:'الدقيقة انتهت بدون أسعار Bid/Ask موثوقة',
     COST_UNVIABLE:'التكلفة أكبر من الحركة المرجحة · بدون Limit',
     PENDING:'LIMIT معلّق · مستني لمس السعر',
@@ -112,13 +114,18 @@ function GoldEveryCandle({data}:{data:any}){
     </div>
     <p style={{fontSize:12,opacity:.80,margin:'8px 0'}}>
       توقع لكل دقيقة مؤهلة؛ دخول LIMIT على تراجع داخل شمعة مغلقة، بهدف
-      صافي نظري ≥0.45R بعد تكلفة إضافية تقديرية. أي فرصة لا تصلح للتنفيذ
+      صافي نظري ≥0.55R بعد تكلفة إضافية تقديرية. التوقعات الضعيفة بتحتاج
+      تأكيد حركة Bid/Ask خلال أول 24 ثانية، من غير انتظار إغلاق دقيقة تانية.
+      أي فرصة لا تصلح للتنفيذ
       تفضل متسجلة كتوقع، من غير تزوير دخول أو نجاح. مفيش ضمان للربح.
     </p>
     <div style={{display:'flex',gap:12,flexWrap:'wrap',margin:'8px 0 12px',fontSize:12}}>
       <span>توقعات محفوظة {data?.proposals??0}</span>
       <span>أوامر LIMIT اتجهزت {data?.limitsIssued??0}</span>
       <span>في انتظار أول سعر {data?.awaitingQuote??0}</span>
+      <span>ضعيفة تحت التأكيد {data?.confirming??0}</span>
+      <span>حصل تأكيد تيكات {data?.tickConfirmed??0}</span>
+      <span>رفضناها قبل LIMIT {data?.noEdge??0}</span>
       <span>دقائق فاتت بلا رصد {data?.missedMinutes??0}</span>
       <span>فرص مكلفة متروكة {data?.costUnviable??0}</span>
       <span>توقعات ضعيفة {data?.weakCount??0}</span>
@@ -130,8 +137,8 @@ function GoldEveryCandle({data}:{data:any}){
       <span>مجهولة {data?.unknown??0}</span>
       <span>انعكاسات سيولة {data?.reversalSetups??0}</span>
       <span>عينات قديمة منفصلة {data?.legacyResults??0}</span>
-      <span>V2 نتائج محسومة {data?.resolved??0}</span>
-      <span>V2 نسبة رابحة {data?.observedWinPct!=null?data.observedWinPct+'%':'لا توجد عينة'}</span>
+      <span>V4 نتائج مكتملة {data?.resolved??0}</span>
+      <span>V4 نسبة رابحة {data?.observedWinPct!=null?data.observedWinPct+'%':'لا توجد عينة'}</span>
       <span>رفض قمة/قاع: {data?.byPattern?.reversal?.resolved??0} نتيجة / صافي {data?.byPattern?.reversal?.netR??0}R</span>
       <span>متابعة زخم: {data?.byPattern?.momentum?.resolved??0} نتيجة / صافي {data?.byPattern?.momentum?.netR??0}R</span>
     </div>
@@ -148,6 +155,10 @@ function GoldEveryCandle({data}:{data:any}){
         {latest.targetNetR!=null?' · عائد نظري '+latest.targetNetR+'R':''}
       </p>
       <small>{stateLabel(latest.state)} · {latest.note}</small>
+      {latest.state==='CONFIRMING'&&<small style={{display:'block',marginTop:5}}>
+        توقع اتجاهي فقط؛ لن نضع Limit من ضغط {latest.pressure}/100
+        من غير تيك جديد يؤيد الاتجاه
+      </small>}
     </div>:<p>بانتظار شمعة M1 مكتملة جديدة وسعر مرجعي حديث.</p>}
     {Array.isArray(data?.recent)&&data.recent.length>1&&
       <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10,fontSize:12}}>
