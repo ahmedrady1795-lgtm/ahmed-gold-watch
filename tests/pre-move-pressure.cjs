@@ -47,4 +47,29 @@ assert.notEqual(moved.stage,'ARMED','already broken box is not a pre-break signa
 const invalid=run({...x,c1:rows.slice(0,30)});
 assert.equal(invalid.ok,false);
 assert.equal(invalid.side,'WAIT');
+// The same guard must work in both directions, including a wick-only touch
+// in the previous candle followed by a quiet close inside the box.
+for(const direction of [1,-1]){
+ const data=direction===1?rows:rows.map(b=>({...b,open:200-b.open,
+  close:200-b.close,high:200-b.low,low:200-b.high}));
+ const input={...x,c1:data,c5:five(data)};
+ const before=run(input);
+ assert.equal(before.stage,'ARMED');
+ assert.equal(before.side,direction===1?'BUY':'SELL');
+ for(const offset of [1,2]){
+  const touched=data.map(b=>({...b}));
+  if(direction===1)touched[touched.length-offset].high=before.trigger+.001;
+  else touched[touched.length-offset].low=before.trigger-.001;
+  const after=run({...input,c1:touched});
+  assert.equal(after.stage,'RELEASED','a completed trigger wick is not a fresh pre-break setup');
+  assert.equal(after.side,'WAIT');assert.equal(after.trigger,null);
+ }
+}
+const baselineGap=rows.filter((_,i)=>i!==rows.length-40);
+assert.equal(run({...x,c1:baselineGap}).ok,false,'missing baseline M1 bar invalidates compression');
+const m5Gap=five(rows).filter((_,i,a)=>i!==a.length-10);
+assert.equal(run({...x,c5:m5Gap}).ok,false,'missing M5 ATR bar invalidates higher-frame evidence');
+const twoSided=rows.map(b=>({...b}));
+twoSided.at(-2).low=98;twoSided.at(-2).high=102;
+assert.equal(run({...x,c1:twoSided}).side,'WAIT','two-sided sweep must not inherit BUY branch priority');
 console.log('PASS: PREMOVE causal M1/M5 compression, future-bar exclusion, directional trigger/invalidation, delayed-feed and no-after-break guards');
