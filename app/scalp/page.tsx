@@ -91,7 +91,8 @@ function GoldQuickResults({gold}:{gold:any}){
 function GoldEveryCandle({data}:{data:any}){
   const latest=data?.latest;
   const stateLabel=(v:string)=>({
-    NO_BID_ASK:'لا توجد أسعار Bid/Ask حديثة بعد التوقع',
+    AWAIT_QUOTE:'التوقع صادر · انتظار أول Bid/Ask بعد بداية الشمعة',
+    NO_BID_ASK:'الدقيقة انتهت بدون أسعار Bid/Ask موثوقة',
     COST_UNVIABLE:'التكلفة أكبر من الحركة المرجحة · بدون Limit',
     PENDING:'LIMIT معلّق · مستني لمس السعر',
     ACTIVE:'تم لمس LIMIT ورقي · متابعة الخروج',
@@ -106,7 +107,7 @@ function GoldEveryCandle({data}:{data:any}){
   return <section className="panel" aria-label="قنص كل شمعة M1 ورقي"
     style={{padding:16,marginBottom:14}}>
     <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
-      <strong>كل شمعة M1 · توقع واتجاه ومحاولة LIMIT</strong>
+      <strong>كل شمعة M1 · توقع أولًا، ثم LIMIT معلّق، ثم لمس موثّق</strong>
       <span style={{fontSize:12,opacity:.82}}>ورقي بحثي فقط · لا ينفّذ على Exness</span>
     </div>
     <p style={{fontSize:12,opacity:.80,margin:'8px 0'}}>
@@ -115,11 +116,14 @@ function GoldEveryCandle({data}:{data:any}){
       تفضل متسجلة كتوقع، من غير تزوير دخول أو نجاح. مفيش ضمان للربح.
     </p>
     <div style={{display:'flex',gap:12,flexWrap:'wrap',margin:'8px 0 12px',fontSize:12}}>
-      <span>توقعات {data?.proposals??0}</span>
+      <span>توقعات محفوظة {data?.proposals??0}</span>
+      <span>أوامر LIMIT اتجهزت {data?.limitsIssued??0}</span>
+      <span>في انتظار أول سعر {data?.awaitingQuote??0}</span>
+      <span>دقائق فاتت بلا رصد {data?.missedMinutes??0}</span>
       <span>فرص مكلفة متروكة {data?.costUnviable??0}</span>
       <span>توقعات ضعيفة {data?.weakCount??0}</span>
-      <span>أوامر معلقة {data?.pending??0}</span>
-      <span>لمسات ورقية {data?.filled??0}</span>
+      <span>أوامر LIMIT لسه معلقة {data?.pending??0}</span>
+      <span>دخول LIMIT ورقي مرصود {data?.filled??0}</span>
       <span>مكاسب صغيرة {data?.quickWins??0}</span>
       <span>وقف {data?.stops??0}</span>
       <span>انتهت {data?.expired??0}</span>
@@ -159,6 +163,9 @@ function GoldEveryCandle({data}:{data:any}){
        'تخزين مؤقت؛ إعادة إنشاء الخدمة قد تمسح النتائج'}.
       {' '}مجموع الصافي الورقي {fmt(data?.netR)}R،
       {' '}من {data?.resolved??0} نتيجة قابلة للحساب بعد تكلفة تقديرية،
+      {' '}مش كل توقع أمر Limit، ومش كل Limit بيتنفّذ.
+      القناص ما بيراقبش الشموع وقت نوم Render أو انقطاع الأسعار،
+      والدقائق دي لا نحسبها نجاحًا،
       {' '}متوسط الصافي {data?.meanNetR!=null?fmt(data.meanNetR)+'R':'غير محسوب'}،
       {' '}العائد المستهدف مش نسبة نجاح. نقطة التعادل النظرية عند
       مكسب 0.45R مقابل خسارة 1R حوالي 69% صفقات رابحة قبل تفاوت التنفيذ،

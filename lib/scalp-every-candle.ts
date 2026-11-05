@@ -9,11 +9,12 @@ import type {ScalpQuote} from './scalp-opportunities';
 // It intentionally does NOT borrow the qualified trade's 1.25R entry gate.
 // Missing quote/fill is a documented miss, not an imaginary winning trade.
 export type EverySide='BUY'|'SELL';
-export type EveryState='NO_BID_ASK'|'COST_UNVIABLE'|'PENDING'|'ACTIVE'|'QUICK_TP'|
+export type EveryState='AWAIT_QUOTE'|'NO_BID_ASK'|'COST_UNVIABLE'|'PENDING'|'ACTIVE'|'QUICK_TP'|
   'STOP'|'TIME_EXIT'|'EXPIRED'|'UNKNOWN';
 export type EveryAttempt={
   id:number;issuedAt:number;side:EverySide;pressure:number;
   weak:boolean;state:EveryState;entry:number|null;stop:number|null;
+  atr?:number;anchorTime?:number;
   tp:number|null;cost:number;extraCost?:number;spreadAtQuote?:number;
   strategyVersion?:string;pattern?:string;targetNetR?:number;breakEvenWinPct?:number;retestDepth?:number;
   quoteSource:string;limitType:'BUY_LIMIT'|'SELL_LIMIT';
@@ -29,7 +30,7 @@ const TEMP='/tmp/scalp-every-m1-v1.json';
 declare global{var __scalpEveryM1Ledger:EveryLedger|undefined;}
 let lastSaved=0;
 const round=(v:number)=>Number(v.toFixed(3));
-const final=(x:EveryState)=>!['PENDING','ACTIVE'].includes(x);
+const final=(x:EveryState)=>!['AWAIT_QUOTE','PENDING','ACTIVE'].includes(x);
 const validQuote=(q:ScalpQuote,now:number)=>q.at!=null&&Number.isFinite(q.at)&&
   q.at>0&&now>=q.at&&now-q.at<=10000&&q.price!=null&&q.price>0;
 const validBook=(q:ScalpQuote)=>q.bid!=null&&q.ask!=null&&
@@ -75,12 +76,54 @@ function finish(t:EveryAttempt,state:EveryState,now:number,quote:number|null=nul
   t.netR=quote!=null?priceAfterEntry(t,quote):null;
   t.note=note;return t;
 }
+/** A candle hypothesis can precede its first post-close Bid/Ask tick.
+ * Don't throw that minute away; stage a frozen reference LIMIT only upon
+ * the FIRST fresh quote with a timestamp after the issued hypothesis.
+ * No quote/cost is invented, and the order cannot be backdated.
+ */
+function stageAfterQuote(t:EveryAttempt,raw:readonly M1Bar[],q:ScalpQuote,
+  now:number,costEstimate:number):boolean{
+  if(t.state!=='AWAIT_QUOTE'||now>=t.expiryAt||
+    !validQuote(q,now)||!validBook(q)||
+    q.at!<t.issuedAt||!q.source||q.source==='unavailable')return false;
+  const cost=Number.isFinite(costEstimate)&&costEstimate>0?costEstimate:NaN;
+  const last=raw.find(b=>b.time===(t.anchorTime??t.issuedAt-60000));
+  const atr=Number(t.atr);
+  if(!last||!Number.isFinite(atr)||atr<=0||!Number.isFinite(cost))return false;
+  const spread=Number(q.ask)-Number(q.bid);
+  const e=priceEveryM1Limit({
+    side:t.side,bid:Number(q.bid),ask:Number(q.ask),atr,cost,
+    previousOpen:last.open,previousClose:last.close
+  });
+  t.cost=cost;t.quoteSource=q.source;
+  t.spreadAtQuote=round(spread);
+  t.extraCost=Number.isFinite(spread)?round(Math.max(0,cost-spread)):undefined;
+  t.lastQuoteAt=q.at!;
+  if(!e){
+    finish(t,'COST_UNVIABLE',now,null,
+      'تم رصد سعر حديث لكن الهدف بعد التكلفة غير مناسب لحركة الدقيقة');
+    return true;
+  }
+  t.state='PENDING';t.entry=e.entry;t.stop=e.stop;t.tp=e.tp;
+  t.targetNetR=e.netRewardR;t.breakEvenWinPct=e.breakEvenWinPct;
+  t.retestDepth=e.retestDepth;t.lastExecutable=t.side==='BUY'?Number(q.ask):Number(q.bid);
+  t.note='تم وضع LIMIT ورقي بعد أول Bid/Ask جديد؛ لا تنفيذ Market أو Exness';
+  return true;
+}
 export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
   q:ScalpQuote,now:number,costEstimate:number):EveryLedger{
   const history=ledger.history;
   const book=validBook(q),fresh=validQuote(q,now);
   for(const t of history){
     if(final(t.state))continue;
+    if(t.state==='AWAIT_QUOTE'){
+      if(now>=t.expiryAt)
+        finish(t,'NO_BID_ASK',now,null,
+          'انتهت الدقيقة قبل وصول Bid/Ask صالح بعد إصدار التوقع');
+      else stageAfterQuote(t,raw,q,now,costEstimate);
+      // Staging never fills on the same quote that created the LIMIT.
+      continue;
+    }
     if(t.state==='PENDING'&&now>=t.expiryAt){
       // A missing quote is not evidence that a pending LIMIT never filled.
       const sawExpiry=book&&fresh&&q.source===t.quoteSource&&
@@ -153,45 +196,25 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
   }
   const signal=everyM1Direction(raw,now);
   if(signal&&!history.some(x=>x.id===signal.issuedAt)){
-    const cost=Number.isFinite(costEstimate)&&costEstimate>0?costEstimate:NaN;
-    const spread=book?Number(q.ask)-Number(q.bid):NaN;
-    // Requiring a quote sampled AFTER signal issuance prevents placing a
-    // hypothetical LIMIT using a price known only before the forecast.
-    const usable=fresh&&book&&q.at!>=signal.issuedAt&&Number.isFinite(cost)&&
-      Number.isFinite(spread)&&spread>=0&&spread<=cost+.01;
-    const last=raw.find(x=>x.time===signal.anchorTime);
-    const economics=usable&&last?priceEveryM1Limit({
-      side:signal.side,bid:Number(q.bid),ask:Number(q.ask),
-      atr:signal.atr,cost,previousOpen:last.open,previousClose:last.close
-    }):null;
-    // Still produce a prediction on every valid closed candle. Never fake a
-    // resting limit when the observed spread/cost geometry cannot support it.
-    const entry=economics?.entry??null,stop=economics?.stop??null;
-    const tp=economics?.tp??null;
-    const extraCost=usable?Math.max(0,cost-spread):NaN;
-    const state:EveryState=!usable?'NO_BID_ASK':
-      economics?'PENDING':'COST_UNVIABLE';
-    history.push({id:signal.issuedAt,issuedAt:signal.issuedAt,side:signal.side,
-      pressure:signal.pressure,weak:signal.weak,state,
+    // Record the forecast immediately, even if the newest book quote is
+    // from a few milliseconds BEFORE this minute began. Give the quote
+    // provider the full current minute to supply a post-signal executable
+    // bid/ask, rather than finalizing the opportunity as NO_BID_ASK.
+    const t:EveryAttempt={
+      id:signal.issuedAt,issuedAt:signal.issuedAt,side:signal.side,
+      pressure:signal.pressure,weak:signal.weak,state:'AWAIT_QUOTE',
+      atr:signal.atr,anchorTime:signal.anchorTime,
       strategyVersion:EVERY_M1_EDGE_V2,pattern:signal.pattern,
-      targetNetR:economics?.netRewardR,
-      breakEvenWinPct:economics?.breakEvenWinPct,
-      retestDepth:economics?.retestDepth,
-      entry:state==='PENDING'?entry:null,stop:state==='PENDING'?stop:null,
-      tp:state==='PENDING'?tp:null,cost:Number.isFinite(cost)?cost:0,
-      extraCost:Number.isFinite(extraCost)?round(extraCost):undefined,
-      spreadAtQuote:Number.isFinite(spread)?round(spread):undefined,
-      quoteSource:q.source,
-      limitType:signal.side==='BUY'?'BUY_LIMIT':'SELL_LIMIT',
-      expiryAt:signal.issuedAt+60000,lastQuoteAt:q.at??0,
-      lastExecutable:state==='PENDING'?(signal.side==='BUY'?Number(q.ask):Number(q.bid)):null,
-      filledAt:null,closedAt:state==='NO_BID_ASK'||state==='COST_UNVIABLE'?now:null,
-      exit:null,netR:null,lastExitPrice:null,lastExitAt:null,
-      note:state==='NO_BID_ASK'?
-        'توقع الشمعة موجود لكن بدون Bid/Ask بعد الإصدار وتكلفة موثوقة لا يوجد Limit':
-        state==='COST_UNVIABLE'?
-        'الهدف الصغير بعد التكلفة أكبر من نطاق الحركة المعتاد للدقيقة؛ تخطي المحاولة':
-        'Limit بحثي مشروط لكل شمعة، لا يجيز تنفيذ MT5 أو يثبت الربحية'});
+      entry:null,stop:null,tp:null,
+      cost:Number.isFinite(costEstimate)&&costEstimate>0?costEstimate:0,
+      quoteSource:'',limitType:signal.side==='BUY'?'BUY_LIMIT':'SELL_LIMIT',
+      expiryAt:signal.issuedAt+60000,lastQuoteAt:0,lastExecutable:null,
+      filledAt:null,closedAt:null,exit:null,netR:null,
+      lastExitPrice:null,lastExitAt:null,
+      note:'توقع صدر لهذه الدقيقة؛ بانتظار أول Bid/Ask بعد وقت التوقع لوضع LIMIT'
+    };
+    history.push(t);
+    stageAfterQuote(t,raw,q,now,costEstimate);
   }
   ledger.history=history.slice(-360);
   return ledger;
@@ -203,6 +226,12 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   const hist=l.history;
   const active=hist.filter(t=>t.state==='ACTIVE');
   const pending=hist.filter(t=>t.state==='PENDING');
+  const awaitingQuote=hist.filter(t=>t.state==='AWAIT_QUOTE').length;
+  // An *issued* LIMIT is not a directional prediction and not a fill.
+  const limitsIssued=hist.filter(t=>t.entry!=null&&
+    (t.limitType==='BUY_LIMIT'||t.limitType==='SELL_LIMIT')).length;
+  const missedMinutes=hist.reduce((n,t,i)=>i>0?n+
+    Math.max(0,Math.round((t.issuedAt-hist[i-1].issuedAt)/60000)-1):n,0);
   const completed=hist.filter(t=>t.netR!=null&&
     ['QUICK_TP','STOP','TIME_EXIT'].includes(t.state));
   // New geometry/reversal model gets a truly separate future cohort.
@@ -219,7 +248,8 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   };
   return {mode:'EVERY_CANDLE_PAPER_LIMIT_SHADOW',enabled:true,
     storage:fs.existsSync(PERSIST)?'VOLUME':fs.existsSync(TEMP)?'EPHEMERAL':'MEMORY',
-    proposals:hist.length,pending:pending.length,active:active.length,
+    proposals:hist.length,limitsIssued,awaitingQuote,missedMinutes,
+    pending:pending.length,active:active.length,
     noQuote:hist.filter(t=>t.state==='NO_BID_ASK').length,
     costUnviable:hist.filter(t=>t.state==='COST_UNVIABLE').length,
     expired:hist.filter(t=>t.state==='EXPIRED').length,
@@ -241,5 +271,5 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     byPattern:{reversal:breakdown('SWEEP_REJECTION'),momentum:breakdown('MOMENTUM')},
     latest:hist.at(-1)??null,
     recent:hist.slice(-8).reverse(),
-    note:'كل M1 لها توقع؛ محاولات Limit البحثية بتراجع سعري وهدف صافي 0.45R تقديري على الأقل، دون تفعيل MT5. V2 منفصل عن أي نتائج أقدم.'};
+    note:'توقع لكل M1 يتم رصده أثناء نشاط الخدمة؛ انتظر أول سعر بعد بداية الدقيقة قبل تعليق LIMIT ورقي. لا ضمان تنفيذ، ولا Backfill لفترات توقف Render، ولا أوامر MT5.'};
 }
