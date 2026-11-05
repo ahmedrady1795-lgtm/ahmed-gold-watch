@@ -46,6 +46,11 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
     (current?.state==='ACTIVE'||confirmation?.state==='ENTRY')&&
     (current?.state==='ACTIVE'||confirmation?.entryAudit?.approved===true));
   const remaining=confirmed?Math.max(1,Math.ceil((SIGNAL_TTL_MS-signalAge)/1000)):0;
+  const quickPrice=Number(current?.quickExitPrice);
+  const quickHold=Number(current?.quickMaxHoldMs);
+  const quickRemains=running&&Number.isFinite(quickHold)&&quickHold>0?
+    Math.max(0,Math.ceil((Number(current.activatedAt)+quickHold-now)/1000)):null;
+  const hasQuick=desk?.asset==='GOLD'&&running&&Number.isFinite(quickPrice)&&quickPrice>0;
   const status=blocked?'الدخول متوقف · بيانات أو شروط غير مكتملة':
     confirmed?'إشارة ورقية مؤكدة · نشطة الآن':
     running?'إشارة الدخول انتهت · الصفقة الورقية قيد المتابعة':
@@ -105,6 +110,16 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
           {' · '}هدف محتمل <b dir="ltr">{fmt(plan.targets?.[0]?.price)}</b>
         </p>
         <small>رصد سعري فقط · ليس أمر دخول، والهدف غير مؤهل ما لم تنجح اختبارات التكلفة والتأكيد.</small>
+      </div>}
+      {hasQuick&&!stale&&<div className="scalp-quick-exit" aria-label="جني ربح سريع ورقي"
+        style={{marginTop:10,padding:11,border:'1px solid var(--border, rgba(160,165,180,.25))',borderRadius:10}}>
+        <strong>هدف ربح صغير سريع · {sideAr(current.plan.side)}</strong>
+        <p style={{margin:'7px 0',fontSize:13}}>
+          خروج مرجعي سريع <b dir="ltr">{fmt(current.quickExitPrice)}</b>
+          {' · '}وقف <b dir="ltr">{fmt(current.plan.stop)}</b>
+          {' · '}المدة المتبقية {quickRemains??'—'} ثانية
+        </p>
+        <small>هدف محسوب بعد تكاليف تقديرية على الورق؛ ليس ربحًا محققًا أو أمرًا لـMT5.</small>
       </div>}
       {actionable&&<div className="scalp-seconds-levels" aria-label="مستويات الإشارة الورقية">
         <span><small>دخول ورقي</small><b dir="ltr">{fmt(running?current.plan.entry:confirmation?.entry)}</b></span>
