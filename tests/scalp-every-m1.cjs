@@ -13,7 +13,7 @@ function load(file){
    {filename:file});return out;
 }
 const {everyM1Direction}=load('lib/sniper-m1-every-direction.ts');
-const {priceEveryM1Limit,EVERY_M1_EDGE_V2,EVERY_M1_MIN_NET_R}=
+const {priceEveryM1Limit,EVERY_M1_EDGE_V3,EVERY_M1_MIN_NET_R}=
  load('lib/scalp-every-m1-economics.ts');
 const {advanceEveryM1}=load('lib/scalp-every-candle.ts');
 const {buildM1CandleTape}=load('lib/sniper-m1-candle-tape.ts');
@@ -52,8 +52,8 @@ assert.ok(a.extraCost!=null&&Math.abs(a.extraCost-.05)<.001,
   'bid/ask at entry and exit already charge spread; only fees/slippage remain');
 assert.ok(a.tp>a.entry+a.extraCost,
   'micro target must still leave a positive gain after extra execution cost');
-assert.equal(a.strategyVersion,EVERY_M1_EDGE_V2,
- 'changed entry/target economics must start a new proof cohort');
+assert.equal(a.strategyVersion,EVERY_M1_EDGE_V3,
+ 'adaptive direction change must start a new future-only proof cohort');
 const risk=Math.abs(a.entry-a.stop);
 const reward=a.tp-a.entry-a.extraCost;
 assert.ok(reward/(risk+a.extraCost)>=EVERY_M1_MIN_NET_R-1e-8,
