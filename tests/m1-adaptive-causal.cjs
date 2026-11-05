@@ -80,10 +80,12 @@ const gap=alternating.map(b=>({...b}));gap[gap.length-6].time+=1000;
 assert.equal(everyM1Direction(gap,moment+200),null,
  'broken adjacent minute timestamps must never certify a direction');
 const ledger=fs.readFileSync('lib/scalp-every-candle.ts','utf8');
-assert.match(ledger,/EVERY_M1_EDGE_V3/,
- 'new adaptive direction is a new independently evaluated prospective cohort');
-assert.match(ledger,/directionModel:signal\.adaptive\?\.model/,
- 'freeze the direction model chosen before the candle begins');
+assert.match(ledger,/EVERY_M1_EDGE_V4/,
+ 'online forward M1 model must have a separate prospective V4 proof cohort');
+assert.match(ledger,/directionModel:online\.inverted\?'ONLINE_INVERSION'/,
+ 'freeze the chosen online model on the candle before its future close');
+assert.match(ledger,/originalSide:signal\.side/,
+ 'preserve the original causal model direction for future audit');
 assert.doesNotMatch(ledger,/history\.filter\(.*weak\s*===\s*false\).*resolved/,
  'weak losses must not be excluded from full sample');
 assert.ok(EVERY_M1_EDGE_V3.includes('V3'));
