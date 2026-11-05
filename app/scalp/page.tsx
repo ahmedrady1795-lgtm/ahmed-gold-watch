@@ -92,6 +92,8 @@ function GoldEveryCandle({data}:{data:any}){
   const latest=data?.latest;
   const stateLabel=(v:string)=>({
     AWAIT_QUOTE:'التوقع صادر · انتظار أول Bid/Ask بعد بداية الشمعة',
+    CONFIRMING:'تأكيد اتجاه سريع من Bid/Ask · لم نضع Limit بعد',
+    NO_EDGE:'توقع بلا تأكيد كافي · بلا Limit أو صفقة',
     NO_BID_ASK:'الدقيقة انتهت بدون أسعار Bid/Ask موثوقة',
     COST_UNVIABLE:'التكلفة أكبر من الحركة المرجحة · بدون Limit',
     PENDING:'LIMIT معلّق · مستني لمس السعر',
@@ -112,13 +114,18 @@ function GoldEveryCandle({data}:{data:any}){
     </div>
     <p style={{fontSize:12,opacity:.80,margin:'8px 0'}}>
       توقع لكل دقيقة مؤهلة؛ دخول LIMIT على تراجع داخل شمعة مغلقة، بهدف
-      صافي نظري ≥0.45R بعد تكلفة إضافية تقديرية. أي فرصة لا تصلح للتنفيذ
+      صافي نظري ≥0.55R بعد تكلفة إضافية تقديرية. التوقعات الضعيفة بتحتاج
+      تيكًا جديدًا يؤيد الاتجاه خلال 24 ثانية؛ مش هنستنى شمعة تانية.
+      أي فرصة لا تصلح للتنفيذ
       تفضل متسجلة كتوقع، من غير تزوير دخول أو نجاح. مفيش ضمان للربح.
     </p>
     <div style={{display:'flex',gap:12,flexWrap:'wrap',margin:'8px 0 12px',fontSize:12}}>
       <span>توقعات محفوظة {data?.proposals??0}</span>
       <span>أوامر LIMIT اتجهزت {data?.limitsIssued??0}</span>
       <span>في انتظار أول سعر {data?.awaitingQuote??0}</span>
+      <span>تأكيد تيكات جارٍ {data?.confirming??0}</span>
+      <span>تأكيدات ناجحة {data?.tickConfirmed??0}</span>
+      <span>بلا أفضلية قبل Limit {data?.noEdge??0}</span>
       <span>دقائق فاتت بلا رصد {data?.missedMinutes??0}</span>
       <span>فرص مكلفة متروكة {data?.costUnviable??0}</span>
       <span>توقعات ضعيفة {data?.weakCount??0}</span>
@@ -130,8 +137,8 @@ function GoldEveryCandle({data}:{data:any}){
       <span>مجهولة {data?.unknown??0}</span>
       <span>انعكاسات سيولة {data?.reversalSetups??0}</span>
       <span>عينات قديمة منفصلة {data?.legacyResults??0}</span>
-      <span>V4 نتائج LIMIT محسومة {data?.resolved??0}</span>
-      <span>V4 نجاح الصفقات الورقية {data?.observedWinPct!=null?data.observedWinPct+'%':'لا توجد عينة'}</span>
+      <span>V5 نتائج LIMIT محسومة {data?.resolved??0}</span>
+      <span>V5 نجاح الصفقات الورقية {data?.observedWinPct!=null?data.observedWinPct+'%':'لا توجد عينة'}</span>
       <span>النسخة القديمة: {data?.legacyResults??0} صفقة / {data?.legacyNetR??0}R (منفصلة)</span>
       <span>رفض قمة/قاع: {data?.byPattern?.reversal?.resolved??0} نتيجة / صافي {data?.byPattern?.reversal?.netR??0}R</span>
       <span>متابعة زخم: {data?.byPattern?.momentum?.resolved??0} نتيجة / صافي {data?.byPattern?.momentum?.netR??0}R</span>
@@ -175,6 +182,9 @@ function GoldEveryCandle({data}:{data:any}){
         {latest.targetNetR!=null?' · عائد نظري '+latest.targetNetR+'R':''}
       </p>
       <small>{stateLabel(latest.state)} · {latest.note}</small>
+      {latest.state==='CONFIRMING'&&<small style={{display:'block',marginTop:5}}>
+        مفيش أمر Limit لحد ما حركة سعر جديدة تأكد التوقع الضعيف؛ الضغط {latest.pressure}/100
+      </small>}
       <small style={{display:'block',marginTop:6}}>
         {latest.directionObserved==='BUY'||latest.directionObserved==='SELL'?
           'نتيجة توقع الشمعة بعد إغلاقها: '+(latest.side===latest.directionObserved?'✓ صحيح':'✗ خطأ'):
