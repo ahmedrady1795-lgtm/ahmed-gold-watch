@@ -41,6 +41,11 @@ function GoldLeadAudit({audit}:{audit:any}){
             زمن الحركة المؤيدة: {a.meanTimeToFavorableMs!=null?
               (Number(a.meanTimeToFavorableMs)/1000).toFixed(1)+' ثانية':'غير متاح'}
           </p>
+          {!a.persisted&&<p style={{fontSize:12,margin:'6px 0',opacity:.85}}>
+            {a.storage==='EPHEMERAL'?
+              'الرصد محفوظ مؤقتًا داخل التشغيل الحالي؛ إعادة إنشاء Render تمسح السجل':
+              'الرصد غير محفوظ على تخزين دائم؛ النتائج قد تضيع عند إعادة التشغيل'}
+          </p>}
           <p style={{fontSize:12,opacity:.72,margin:'5px 0'}}>
             المصدر: {sources.length?(exnessOnly?'Exness/MT5':'أسعار مرجعية / مصدر مختلط'):'قيد الانتظار'}
             {' · '}{seen<50?'عينة غير كافية':'نتائج رصد فقط'}
