@@ -41,6 +41,8 @@ const first=q(102.5,102.6,issue+100);
 let data={version:1,history:[]};
 data=advanceEveryM1(data,bars,first,issue+100,.15);
 assert.equal(data.history.length,1,'always propose one per new minute');
+assert.equal(data.history.filter(t=>t.entry!=null).length,1,
+ 'with a valid quote one nonmarketable LIMIT is created, distinct from a fill');
 const a=data.history[0];
 assert.equal(a.state,'PENDING','weakness or 1.25R trading gate must not discard shadow attempt');
 assert.equal(a.limitType,'BUY_LIMIT');
@@ -93,8 +95,16 @@ assert.equal(data.history[1].state,'UNKNOWN',
 const noBook={price:102,at:issue+100,source:'TEST-MT5'};
 let absent=advanceEveryM1({version:1,history:[]},bars,noBook,issue+100,.15);
 assert.equal(absent.history.length,1,'forecast still appears when broker quote is incomplete');
-assert.equal(absent.history[0].state,'NO_BID_ASK');
+assert.equal(absent.history[0].state,'AWAIT_QUOTE',
+ 'missing bid/ask must not permanently discard a valid candle before the minute ends');
 assert.equal(absent.history[0].filledAt,null);
+absent=advanceEveryM1(absent,bars,q(102.50,102.60,issue+2100),
+ issue+2200,.15);
+assert.equal(absent.history[0].state,'PENDING',
+ 'later valid bid/ask must create the original-minute pending LIMIT');
+assert.equal(absent.history[0].issuedAt,issue);
+assert.equal(absent.history[0].filledAt,null,
+ 'first valid quote places a LIMIT, does not immediately fill it');
 const artificialActive={
  ...a,state:'ACTIVE',filledAt:issue+1100,lastQuoteAt:issue+59000,
  lastExitAt:issue+59000,lastExitPrice:a.entry+.10
@@ -118,8 +128,26 @@ assert.equal(expensive.history[0].state,'COST_UNVIABLE',
 assert.equal(expensive.history[0].filledAt,null);
 const beforeIssued=q(102.5,102.6,issue-1000);
 const temporal=advanceEveryM1({version:1,history:[]},bars,beforeIssued,issue+100,.15);
-assert.equal(temporal.history[0].state,'NO_BID_ASK',
-  'quote from before the signal is not a new LIMIT price');
+assert.equal(temporal.history[0].state,'AWAIT_QUOTE',
+  'quote from before the signal must await the first post-signal quote');
+const delayed=advanceEveryM1(temporal,bars,q(102.5,102.6,issue+1800),
+ issue+1900,.15);
+assert.equal(delayed.history[0].state,'PENDING',
+ 'an up-to-10-second fresh but pre-signal quote must not eat the whole candle');
+assert.equal(delayed.history.length,1,
+ 'deferred order creation must never double count a candle');
+const deferredLimit=delayed.history[0].entry;
+const unchanged=advanceEveryM1(delayed,bars,
+ q(102.5,102.6,issue+1800),issue+2500,.15);
+assert.equal(unchanged.history[0].state,'PENDING',
+ 'a stale repetition of the staging quote cannot instantly fill the limit');
+assert.equal(unchanged.history[0].entry,deferredLimit);
+const never=advanceEveryM1({version:1,history:[]},bars,
+ beforeIssued,issue+100,.15);
+advanceEveryM1(never,bars,beforeIssued,issue+61000,.15);
+assert.equal(never.history[0].state,'NO_BID_ASK',
+ 'only after the full minute without a usable post-signal price is the opportunity missed');
+assert.equal(never.history[0].filledAt,null);
 const gapBars=bars.map((b,i)=>i===39?{...b,time:b.time-60000}:b);
 assert.equal(everyM1Direction(gapBars,issue+100),null,
   'missing M1 history cannot be used as contiguous evidence');
@@ -146,6 +174,11 @@ const weakTape=buildM1CandleTape(weakBars,issue+100,9);
 assert.equal(weakTape.marks.length,9);
 assert.equal(weakTape.graded,0,'flat outcomes do not count as correct directional guesses');
 assert.ok(weakTape.marks.every(x=>x.weak),'unqualified weak forecasts are visible and count toward coverage');
+const source=fs.readFileSync('lib/scalp-every-candle.ts','utf8');
+assert.match(source,/limitsIssued,awaitingQuote,missedMinutes/,
+ 'honestly report LIMIT creation, quote wait and missed server-observation minutes');
+assert.match(source,/q\.at!<t\.issuedAt/,
+ 'never backdate a pending LIMIT before its prediction timestamp');
 const page=fs.readFileSync('app/scalp/page.tsx','utf8');
 assert.match(page,/GoldEveryCandle data=\{desk\?\.gold\?\.everyCandle\}/);
 const desk=fs.readFileSync('lib/scalp-desk.ts','utf8');
