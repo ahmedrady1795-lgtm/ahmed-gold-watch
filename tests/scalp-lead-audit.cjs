@@ -110,6 +110,34 @@ const t4=observe('GOLD_M1',quote(101.3,5000),at(5100),candidate('fresh'));
 assert.equal(t4.pending,1,'only a new plan ID can start a new sample');
 assert.equal(observe('GOLD_M5',quote(100,0),at(100),candidate('independent')).pending,1,
  'M1 and M5 audit lanes must be separate');
+// Free Render has no /data volume: preserve short-lived audit evidence in
+// /tmp without misrepresenting it as durable after a new container starts.
+const scratch={};
+const scratchFs={
+ existsSync:p=>p==='/tmp'||Object.prototype.hasOwnProperty.call(scratch,p),
+ readFileSync:p=>{if(!(p in scratch))throw new Error('missing');return scratch[p];},
+ writeFileSync:(p,v)=>{scratch[p]=String(v);},
+ renameSync:(a,b)=>{scratch[b]=scratch[a];delete scratch[a];}
+};
+function freshAuditProcess(){
+ const ex={},g={};
+ vm.runInNewContext(ts.transpileModule(source,{
+  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,
+   esModuleInterop:true}
+ }).outputText,{exports:ex,require:name=>name==='node:fs'?
+  {default:scratchFs,...scratchFs}:require(name),globalThis:g});
+ return ex;
+}
+const temporary=freshAuditProcess();
+const tempStart=temporary.observeScalpLead('GOLD_M1',quote(100,0),at(100),
+ {...candidate('temp','SELL'),score:60});
+assert.equal(tempStart.pending,1);
+assert.equal(tempStart.storage,'EPHEMERAL');
+assert.equal(tempStart.persisted,false,'/tmp is not durable disk');
+const restored=freshAuditProcess().peekScalpLead('GOLD_M1');
+assert.equal(restored.pending,1,'same-container process restart retains /tmp observation');
+assert.equal(restored.storage,'EPHEMERAL');
+
 const scalpPage=fs.readFileSync('app/scalp/page.tsx','utf8');
 const scalpRoute=fs.readFileSync('app/api/scalp/route.ts','utf8');
 const deskSource=fs.readFileSync('lib/scalp-desk.ts','utf8');
