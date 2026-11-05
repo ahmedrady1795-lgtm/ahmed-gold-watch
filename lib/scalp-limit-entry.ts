@@ -12,7 +12,8 @@ export type ScalpLimitIntent={
 const down=(x:number)=>Math.floor(x*100+1e-7)/100;
 const up=(x:number)=>Math.ceil(x*100-1e-7)/100;
 export function planScalpLimit(plan:ScalpPlan,quote:ScalpQuote,now:number):ScalpLimitIntent|null{
-  if(plan.status!=='ARMED'||(plan.side!=='BUY'&&plan.side!=='SELL')||
+  if(plan.status!=='ARMED'||plan.blockers.length>0||
+    (plan.side!=='BUY'&&plan.side!=='SELL')||
     plan.entry==null||plan.stop==null||plan.targets[0]?.price==null||
     ![plan.entry,plan.stop,plan.targets[0].price,plan.cost,quote.bid,quote.ask,quote.at]
       .every(x=>x!=null&&Number.isFinite(x))||
