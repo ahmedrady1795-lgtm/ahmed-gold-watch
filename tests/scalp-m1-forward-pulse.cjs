@@ -51,9 +51,12 @@ assert.equal(advance(null,fresh(100.2,500,'Yahoo'),500),null,
  'different venue cannot supply source-matched tick evidence');
 assert.equal(advance(null,fresh(100.2,-20),100),null,
  'pre-issuance quote cannot be used to predict the issued minute');
-assert.equal(advance(null,fresh(100.2,100),T+11000),null,
+assert.equal(advance(null,fresh(100.2,100),11100),null,
  'delayed quote cannot become a fresh signal');
-const afterWindow=advance(first,fresh(100.5,25000),25000);
+const secondQuiet=advance(first,fresh(100.02,10000),10000);
+const thirdQuiet=advance(secondQuiet,fresh(100.03,18000),18000);
+const afterWindow=advance(thirdQuiet,fresh(100.5,25000),25000);
+assert.equal(afterWindow.valid,true);
 assert.equal(afterWindow.firstSide,null,
  'first meaningful tick after 20 seconds is not early evidence');
 const mismatched=advance(first,fresh(100.3,2000,'EXNESS-other-feed'),2000);
