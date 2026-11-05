@@ -41,18 +41,18 @@ export function priceEveryM1Limit(input:{
   const targetSell=Math.min(ask+maxRetest,Math.max(ask+offset,bodyMid));
   const entry=buy?lo(targetBuy):hi(targetSell);
   // A tight stop still has to clear normal quote noise and the live spread.
-  const nominalRisk=Math.max(atr*.55,spread*2,.14);
+  // Shorten loss distance alongside M1 target; count every stop in new proof.
+  const nominalRisk=Math.max(atr*.42,spread*2.15,.14);
   const stop=buy?lo(entry-nominalRisk):hi(entry+nominalRisk);
   const risk=Math.abs(entry-stop);
   const grossMove=extra+EVERY_M1_MIN_NET_R*(risk+extra);
   const tp=buy?hi(entry+grossMove):lo(entry-grossMove);
   const reward=buy?tp-entry:entry-tp;
   const netRewardR=(reward-extra)/(risk+extra);
-  // One completed minute of risk may need >1 ATR to clear the spread.
-  // Allow up to 1.35 recent ATR, never promise a target far beyond it.
-  // This *only* makes the attempt cost-unviable; the prediction is retained.
+  // Target must remain achievable within a plausible fraction of M1 ATR.
+  // Unviable cost leaves a recorded direction but NEVER an imaginary trade.
   if(entry<=0||stop<=0||tp<=0||risk<=0||reward<=extra||
-    grossMove>atr*1.35||netRewardR+1e-9<EVERY_M1_MIN_NET_R||
+    grossMove>atr*.72||netRewardR+1e-9<EVERY_M1_MIN_NET_R||
     buy&&entry>=bid||!buy&&entry<=ask)return null;
   return {side,entry,stop,tp,extraCost:round(extra),
     spread:round(spread),risk:round(risk),grossTargetMove:round(reward),
