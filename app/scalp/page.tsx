@@ -93,20 +93,25 @@ export default function ScalpWorkspace(){
   const [now,setNow]=useState(Date.now());
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(false);
-  const [asset,setAsset]=useState<'ALL'|'GOLD'|'BTC'>('ALL');
+  const [asset,setAsset]=useState<'ALL'|'GOLD'|'BTC'>('GOLD');
+  const assetRef=useRef<'ALL'|'GOLD'|'BTC'>('GOLD');
+  assetRef.current=asset;
   const inFlight=useRef(false);
   const load=async()=>{
     if(inFlight.current)return;
     inFlight.current=true;
     setLoading(true);
     try{
-      const r=await fetch('/api/scalp?ts='+Date.now(),{
+      const requestedAsset=assetRef.current;
+      const r=await fetch('/api/scalp?asset='+(requestedAsset==='GOLD'?'GOLD':'ALL')+'&ts='+Date.now(),{
         cache:'no-store',headers:{'X-Qannas-Viewer':'1'},
         signal:AbortSignal.timeout(12000)
       });
       const result=await r.json();
       if(!r.ok||!result?.ok)throw Error(result?.message||'تعذر تحديث السكالب');
-      setDesk(result);setError('');
+      // Do not overwrite a switched-to-ALL view with an older GOLD-only answer.
+      if(requestedAsset===assetRef.current)setDesk(result);
+      setError('');
     }catch(e){
       setError(e instanceof Error?e.message:'تعذر الاتصال');
     }finally{inFlight.current=false;setLoading(false);}
