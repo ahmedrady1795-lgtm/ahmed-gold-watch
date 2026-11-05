@@ -64,8 +64,31 @@ const adverse=advanceEveryM1(clone(),weakBars,inverse,issued+1200,.015);
 assert.equal(adverse.history[0].state,'NO_EDGE');
 assert.equal(adverse.history[0].entry,null);
 assert.equal(adverse.history[0].netR,null,'no-entry is not credited as a zero-size win');
-const deadline=advanceEveryM1(clone(),weakBars,fresh,issued+M1_CONFIRM_WINDOW_MS+1,.015);
-assert.equal(deadline.history[0].state,'NO_EDGE','do not wait an entire M1 close for extra proof');
+const noFeed=advanceEveryM1(clone(),weakBars,fresh,
+ issued+M1_CONFIRM_WINDOW_MS+1,.015);
+assert.equal(noFeed.history[0].state,'UNKNOWN',
+ 'missing updates must be UNKNOWN, never a false NO_EDGE or a paper loss');
+const quiet14=advanceEveryM1(clone(),weakBars,
+ book(100,100.01,issued+14000),issued+14100,.015);
+assert.equal(quiet14.history[0].state,'CONFIRMING');
+const deadline=advanceEveryM1(quiet14,weakBars,
+ book(100,100.01,issued+M1_CONFIRM_WINDOW_MS+90),
+ issued+M1_CONFIRM_WINDOW_MS+200,.015);
+assert.equal(deadline.history[0].state,'NO_EDGE',
+ 'fresh nonconfirming tick at the true seed-based deadline is NO_EDGE');
+const lateSeed=advanceEveryM1(base(),weakBars,
+ book(100,100.01,issued+9000),issued+9100,.015);
+assert.equal(lateSeed.history[0].state,'CONFIRMING');
+const midTick=advanceEveryM1(lateSeed,weakBars,
+ book(100,100.01,issued+19000),issued+19100,.015);
+assert.equal(midTick.history[0].state,'CONFIRMING');
+const confirmedLate=advanceEveryM1(midTick,weakBars,
+ up?book(100.055,100.065,issued+28000):
+ book(99.945,99.955,issued+28000),issued+28100,.015);
+assert.equal(confirmedLate.history[0].state,'PENDING',
+ 'first quote at +9s still gets a full causal evidence window; no old +24s cutoff');
+assert.equal(confirmedLate.history[0].filledAt,null,
+ 'late but causally valid confirmation is a pending LIMIT only');
 const sprint=up?book(100.15,100.16,issued+1000):
  book(99.85,99.86,issued+1000);
 assert.equal(advanceEveryM1(clone(),weakBars,sprint,issued+1200,.015)
@@ -88,4 +111,12 @@ assert.match(page,/CONFIRMING:/);
 assert.match(page,/NO_EDGE:/);
 assert.match(page,/V5 نتائج LIMIT محسومة/);
 assert.match(page,/tickConfirmed/);
+assert.match(page,/const stagedLimit=/,
+ 'order price card must be gated by a real staged reference LIMIT');
+assert.match(page,/لم يصدر Limit/,
+ 'a weak pending confirmation cannot masquerade as a BUY or SELL LIMIT');
+assert.doesNotMatch(page,/توقع صعود \/ BUY LIMIT/,
+ 'never paint phantom BUY LIMIT while no reference order was issued');
+assert.match(page,/مكسب 0\.55R مقابل خسارة 1R/,
+ 'user-facing break-even must use the correct current V5 payoff');
 console.log('PASS: M1 weak 0/100 does NOT auto-place; 24s same-source fresh-tick confirmation, no market chasing, tighter costed LIMIT, honest V4 cohort');
