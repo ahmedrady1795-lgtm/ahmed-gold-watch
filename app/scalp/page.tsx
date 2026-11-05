@@ -205,6 +205,7 @@ function GoldEveryCandle({data}:{data:any}){
         {' · '}نتائج قابلة للمقارنة {data?.smartExit?.comparable??0}
         {' · '}خروج مبكر مقترح {data?.smartExit?.earlyExits??0}
         {' · '}نتائج مجهولة {data?.smartExit?.unknown??0}
+        {' · '}بانتظار الحسم {data?.smartExit?.unresolved??0}
       </p>
       <p style={{fontSize:12,margin:'6px 0'}}>
         المجموع الأصلي بعد التكلفة {data?.smartExit?.originalNetR??0}R
