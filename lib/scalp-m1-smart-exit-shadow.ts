@@ -82,7 +82,10 @@ export function auditSmartExitShadow(rows:readonly SmartExitAuditRow[]){
   const wins=(values:number[])=>values.filter(v=>v>0).length;
   return {
     cohort:cohort.length,filled:filled.length,comparable:comparable.length,
-    unknown:filled.length-comparable.length,earlyExits:early.length,
+    unknown:filled.filter(x=>x.state==='UNKNOWN').length,
+    unresolved:filled.length-comparable.length-
+      filled.filter(x=>x.state==='UNKNOWN').length,
+    earlyExits:early.length,
     earlierProfit:early.filter(x=>Number(x.shadowExit!.netR)>0).length,
     originalWins:wins(comparable.map(x=>Number(x.netR))),
     shadowWins:wins(comparable.map(x=>Number(x.shadowExit?.netR??x.netR))),
