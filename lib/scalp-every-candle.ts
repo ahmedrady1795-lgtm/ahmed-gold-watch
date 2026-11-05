@@ -211,7 +211,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
         t.state='AWAIT_QUOTE';t.confirmedAt=q.at!;
         if(!stageAfterQuote(t,raw,q,now,costEstimate))
           finish(t,'UNKNOWN',now,null,'تأكيد اتجاه لكن بيانات التكلفة غير صالحة');
-        else if(t.state==='PENDING')
+        else if(t.entry!=null&&t.targetNetR!=null)
           t.note='تيك جديد أكد الاتجاه؛ LIMIT مرجعي ثابت ينتظر ارتداد السعر';
       }else t.lastQuoteAt=q.at!;
       continue;
