@@ -29,8 +29,6 @@ const TEMP='/tmp/scalp-every-m1-v1.json';
 declare global{var __scalpEveryM1Ledger:EveryLedger|undefined;}
 let lastSaved=0;
 const round=(v:number)=>Number(v.toFixed(3));
-const lo=(v:number)=>Math.floor(v*100+1e-7)/100;
-const hi=(v:number)=>Math.ceil(v*100-1e-7)/100;
 const final=(x:EveryState)=>!['PENDING','ACTIVE'].includes(x);
 const validQuote=(q:ScalpQuote,now:number)=>q.at!=null&&Number.isFinite(q.at)&&
   q.at>0&&now>=q.at&&now-q.at<=10000&&q.price!=null&&q.price>0;
