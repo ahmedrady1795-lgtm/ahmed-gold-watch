@@ -16,7 +16,7 @@ function load(file){
 }
 const {everyM1Direction}=load('lib/sniper-m1-every-direction.ts');
 const {buildM1CandleTape}=load('lib/sniper-m1-candle-tape.ts');
-const {EVERY_M1_EDGE_V3}=load('lib/scalp-every-m1-economics.ts');
+const {EVERY_M1_EDGE_V4}=load('lib/scalp-every-m1-economics.ts');
 const T=Date.parse('2026-11-05T09:00:00Z');
 const make=(signs)=>{
  let last=100;
@@ -80,11 +80,11 @@ const gap=alternating.map(b=>({...b}));gap[gap.length-6].time+=1000;
 assert.equal(everyM1Direction(gap,moment+200),null,
  'broken adjacent minute timestamps must never certify a direction');
 const ledger=fs.readFileSync('lib/scalp-every-candle.ts','utf8');
-assert.match(ledger,/EVERY_M1_EDGE_V3/,
- 'new adaptive direction is a new independently evaluated prospective cohort');
+assert.match(ledger,/EVERY_M1_EDGE_V4/,
+ 'changed adaptive model and confirmed limit are a new forward-only prospective proof cohort');
 assert.match(ledger,/directionModel:signal\.adaptive\?\.model/,
  'freeze the direction model chosen before the candle begins');
 assert.doesNotMatch(ledger,/history\.filter\(.*weak\s*===\s*false\).*resolved/,
  'weak losses must not be excluded from full sample');
-assert.ok(EVERY_M1_EDGE_V3.includes('V3'));
+assert.ok(EVERY_M1_EDGE_V4.includes('V4'));
 console.log('PASS: adaptive M1 causal train/check, reversal wins on alternating fixture, no future leak, unchanged trend and all-error accounting');
