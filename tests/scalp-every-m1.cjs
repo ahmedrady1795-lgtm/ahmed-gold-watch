@@ -82,6 +82,23 @@ let absent=advanceEveryM1({version:1,history:[]},bars,noBook,issue+100,.15);
 assert.equal(absent.history.length,1,'forecast still appears when broker quote is incomplete');
 assert.equal(absent.history[0].state,'NO_BID_ASK');
 assert.equal(absent.history[0].filledAt,null);
+const artificialActive={
+ ...a,state:'ACTIVE',filledAt:issue+1100,lastQuoteAt:issue+59000,
+ lastExitAt:issue+59000,lastExitPrice:a.entry+.10
+};
+const expiry=issue+1100+60000;
+const lateQuote=q(a.entry+4,a.entry+4.1,expiry+1300);
+const timeExit=advanceEveryM1({version:1,history:[{...artificialActive}]},
+ bars,lateQuote,expiry+1500,.15).history[0];
+assert.equal(timeExit.state,'TIME_EXIT');
+assert.equal(timeExit.exit,artificialActive.lastExitPrice,
+ 'a late positive quote cannot replace the last real pre-expiry exit');
+const staleExpiry=advanceEveryM1({version:1,history:[{
+ ...artificialActive,lastExitAt:issue+51000,lastQuoteAt:issue+51000
+}]},bars,lateQuote,expiry+1500,.15).history[0];
+assert.equal(staleExpiry.state,'UNKNOWN',
+ 'late price must not forge a target or positive TIME_EXIT without 5s prior evidence');
+
 let expensive=advanceEveryM1({version:1,history:[]},bars,first,issue+100,1.2);
 assert.equal(expensive.history[0].state,'COST_UNVIABLE',
   'cost higher than typical M1 move must be logged, not paper-traded');
