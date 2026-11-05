@@ -22,8 +22,8 @@ const hunter=load('lib/sniper-m1-candle-hunter.ts',{mt5});
 
 const live=load('lib/sampled-live-candle.ts');
 const plotLevels=[
-  {label:'BUY STOP',price:100.80,kind:'TRIGGER'},
-  {label:'SELL STOP',price:100.79,kind:'TRIGGER'},
+  {label:'BUY BREAK',price:100.80,kind:'TRIGGER'},
+  {label:'SELL BREAK',price:100.79,kind:'TRIGGER'},
   {label:'BUY TP',price:100.81,kind:'TARGET'},
   {label:'SELL TP',price:100.78,kind:'TARGET'},
   {label:'BUY SL',price:100.795,kind:'STOP'},
@@ -146,8 +146,8 @@ assert.match(snippet,/sniper-m1-gross-risk/,
  'sub-1R M1 target/stop geometry is flagged before any trade claims');
 assert.match(panel,/chartMode==='M15'/,
  'original M15 scenario must remain available');
-assert.match(snippet,/BUY STOP/);
-assert.match(snippet,/SELL STOP/);
+assert.match(snippet,/BUY BREAK/);
+assert.match(snippet,/SELL BREAK/);
 assert.match(snippet,/auditCandleHunter/);
 assert.match(chart,/sniper-mt5-m1/);
 assert.match(chart,/closedM1ChartBars/);

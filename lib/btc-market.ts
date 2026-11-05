@@ -107,6 +107,7 @@ export async function getBtcMarket(force=false):Promise<BtcMarket>{
   // Closed M1 bars change once per minute. A 12-second shared cache reduces
   // REST load without allowing a missing minute close to become trade data.
   if(!force&&cache&&now-cache.at<12000&&
+     Math.floor(now/60000)===Math.floor(cache.at/60000)&&
      latestClosedAge(cache.value.c1,60000,now)<=75000)return cache.value;
   if(pending)return pending;
   pending=(async():Promise<BtcMarket>=>{

@@ -6,6 +6,7 @@ import NewsCommandCenter from '../components/NewsCommandCenter';
 import {acceptGoldStreamPacket,sourceTimestamp,validSourceTime} from '../lib/client-market-freshness';
 import {reconcileBtcChartProvider,type BtcProviderGate} from '../lib/btc-chart-source-guard';
 import {shouldApplyGoldQuote} from '../lib/gold-feed-order';
+import {chartRefreshDelay} from '../lib/chart-refresh';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))
   ?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})
@@ -86,7 +87,7 @@ export default function Home(){
   };
 
   useEffect(()=>{
-    let closed=false,loading=false;
+    let closed=false,loading=false,timer:ReturnType<typeof setTimeout>|undefined;
     const refreshChart=async()=>{
       if(loading||document.visibilityState!=='visible')return;
       loading=true;
@@ -97,16 +98,24 @@ export default function Home(){
           const guarded=reconcileBtcChartProvider(chartDataRef.current?.bitcoin??null,
             j.bitcoin??null,btcChartProviderGate.current,Date.now());
           btcChartProviderGate.current=guarded.gate;
-          const next={...j,bitcoin:guarded.chart};
+          const next={...j,gold:j.gold??chartDataRef.current?.gold??null,bitcoin:guarded.chart};
           chartDataRef.current=next;
           setNow(Date.now());setChartData(next);
         }
       }catch{/* Keep the last observed candles; never manufacture new ones. */}
-      finally{loading=false;}
+      finally{
+        loading=false;
+        if(!closed&&document.visibilityState==='visible')
+          timer=setTimeout(()=>{void refreshChart();},chartRefreshDelay(chartDataRef.current,Date.now()));
+      }
     };
+    const resume=()=>{
+      clearTimeout(timer);
+      if(document.visibilityState==='visible')void refreshChart();
+    };
+    document.addEventListener('visibilitychange',resume);
     void refreshChart();
-    const timer=setInterval(()=>{void refreshChart();},60000);
-    return()=>{closed=true;clearInterval(timer);};
+    return()=>{closed=true;clearTimeout(timer);document.removeEventListener('visibilitychange',resume);};
   },[]);
 
   useEffect(()=>{
@@ -162,7 +171,9 @@ export default function Home(){
       ws.onclose=()=>{if(!closed)reconnect=setTimeout(connect,1500);};
     };
     connect();void loadBtc();
-    const restTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadBtc();},15000);
+    // The quote is stale after 10s: a 15s REST interval made Kraken-backed
+    // charts lose their live status on every cycle, even with healthy data.
+    const restTimer=setInterval(()=>{if(document.visibilityState==='visible')void loadBtc();},5000);
     return()=>{closed=true;clearInterval(restTimer);clearTimeout(reconnect);ws?.close();};
   },[]);
 

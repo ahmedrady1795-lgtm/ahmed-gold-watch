@@ -379,7 +379,7 @@ async function backgroundFromTwelve(apiKey:string):Promise<BackgroundPoint[]>{co
 
 export async function getMarketData(options:{force?:boolean}={}):Promise<MarketData>{
   const now=Date.now(),mt5CandlesNow=usableMt5Candles(now);
-  if(!options.force&&marketCache&&now-marketCache.at<MARKET_TTL_MS){const cachedMt5=String(marketCache.value.priceSource||'').startsWith('Exness/MT5');if(Boolean(mt5CandlesNow)===cachedMt5)return marketCache.value;}
+  if(!options.force&&marketCache&&now-marketCache.at<MARKET_TTL_MS&&Math.floor(now/60000)===Math.floor(marketCache.at/60000)){const cachedMt5=String(marketCache.value.priceSource||'').startsWith('Exness/MT5');if(Boolean(mt5CandlesNow)===cachedMt5)return marketCache.value;}
   const rt=getRuntimeEnv(),priceKey=rt.TWELVE_DATA_API_KEY,massiveKey=rt.MASSIVE_API_KEY||rt.POLYGON_API_KEY,calendarKey=rt.TRADING_ECONOMICS_API_KEY,result:MarketData={checkedAt:now,pricesReady:false,newsReady:false,backgroundReady:false,c1:[],c5:[],c15:[],c60:[],events:[],background:[],errors:[],priceSource:'unavailable'};
   if(!calendarKey)result.errors.push('Trading Economics غير مربوط؛ سيستخدم النظام تقويم USD المجاني كبديل.');
   const jobs:Promise<void>[]=[];

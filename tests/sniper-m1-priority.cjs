@@ -93,8 +93,8 @@ const html=fs.readFileSync('components/SniperMT5M1Chart.tsx','utf8');
 assert.match(panel,/favored=liveEligible&&priority.ready&&priority.anchorTime===plan.candleTime/,
  'priority is only considered on a LIVE matching closed-candle plan');
 assert.match(panel,/auditPrioritizedM1/,'backtest comparison belongs in optional M1 details');
-assert.match(panel,/BUY STOP ★/,'visually distinguish only the currently favored stop');
-assert.match(panel,/SELL STOP ★/,'visually distinguish favored sell');
+assert.match(panel,/BUY BREAK ★/,'visually distinguish only the currently favored stop');
+assert.match(panel,/SELL BREAK ★/,'visually distinguish favored sell');
 assert.match(panel,/grossBreakEvenPct\(\)/,'show actual break-even needed before fees');
 assert.match(html,/referenceOnly/,
  'expired levels remain historical only, regardless of priority');

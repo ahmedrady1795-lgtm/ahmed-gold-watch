@@ -36,8 +36,8 @@ export default function SniperM1CandleHunter(p:Props){
   const favored=liveEligible&&priority.ready&&priority.anchorTime===plan.candleTime?
     priority.side:'WAIT';
   const levels=plan.ready&&plan.buy&&plan.sell?[
-    {kind:'TRIGGER' as const,label:favored==='BUY'?'BUY STOP ★':'BUY STOP',price:plan.buy.trigger},
-    {kind:'TRIGGER' as const,label:favored==='SELL'?'SELL STOP ★':'SELL STOP',price:plan.sell.trigger},
+    {kind:'TRIGGER' as const,label:favored==='BUY'?'BUY BREAK ★':'BUY BREAK',price:plan.buy.trigger},
+    {kind:'TRIGGER' as const,label:favored==='SELL'?'SELL BREAK ★':'SELL BREAK',price:plan.sell.trigger},
     {kind:'TARGET' as const,label:'BUY TP',price:plan.buy.target},
     {kind:'TARGET' as const,label:'SELL TP',price:plan.sell.target},
     {kind:'STOP' as const,label:'BUY SL',price:plan.buy.stop},
@@ -48,8 +48,8 @@ export default function SniperM1CandleHunter(p:Props){
     freshM1QuoteForWatch(p.quote,p.historicalSource,p.now,plan.issuedAt!);
   // A current quote beyond a limit is NOT proof that a pending order filled.
   const activeHint=trusted?
-    nowPrice>=plan.buy!.trigger?'السعر المرصود أعلى BUY STOP · لا يوجد تنفيذ مؤكد':
-    nowPrice<=plan.sell!.trigger?'السعر المرصود أسفل SELL STOP · لا يوجد تنفيذ مؤكد':
+    nowPrice>=plan.buy!.trigger?'السعر المرصود أعلى BUY BREAK · لا يوجد تنفيذ مؤكد':
+    nowPrice<=plan.sell!.trigger?'السعر المرصود أسفل SELL BREAK · لا يوجد تنفيذ مؤكد':
     'السعر بين مستويَي الكسر · انتظار':
     'ننتظر سعرًا حديثًا من نفس مصدر الشموع بعد إنشاء المستويات';
   const details=(name:string,level:CandleHunterLevel)=>(
@@ -70,13 +70,13 @@ export default function SniperM1CandleHunter(p:Props){
         referenceOnly?'مستويات منتهية · لا دخول':'انتظار شمعة مؤهلة'}</span>
     </div>
     <div className="sniper-m1-priority" aria-label="ترجيح قنص الدقيقة على الإغلاقات الحقيقية">
-      <strong>{favored==='BUY'?'أولوية مراقبة BUY STOP':
-        favored==='SELL'?'أولوية مراقبة SELL STOP':
+      <strong>{favored==='BUY'?'أولوية مراقبة BUY BREAK':
+        favored==='SELL'?'أولوية مراقبة SELL BREAK':
         'لا أفضلية مؤكدة بين الاتجاهين'}</strong>
-      <span>{liveEligible&&priority.ready?
+      <span>{liveEligible?(priority.ready?
         'ضغط إغلاقات M1: '+priority.pressureScore+'/100 · مؤشر غير مُعاير':
-        'الرصد غير حي · لا أولوية دخول'}</span>
-      <small>ترجيح للمتابعة فقط، وليس أمر تداول أو نسبة نجاح.</small>
+        'شموع M1 حديثة · لا ترجيح اتجاهي مكتمل'):display.reason}</span>
+      <small>مستويات كسر للمراقبة فقط؛ أوامر Limit ونتائجها في شاشة السكالب.</small>
     </div>
 
     <SniperMT5M1Chart asset={p.asset} history={p.history}
@@ -90,8 +90,8 @@ export default function SniperM1CandleHunter(p:Props){
         يلزم نجاح يتجاوز {grossBreakEvenPct().toFixed(1)}% قبل التكلفة.</p>
     {plan.ready&&plan.buy&&plan.sell?<>
       <div className="sniper-m1-hunter-orders">
-        {details('BUY STOP',plan.buy)}
-        {details('SELL STOP',plan.sell)}
+        {details('BUY BREAK',plan.buy)}
+        {details('SELL BREAK',plan.sell)}
       </div>
       <p className={'sniper-m1-hunter-hint '+(referenceOnly?'is-expired':'')}>
         {referenceOnly?display.reason:activeHint||plan.reason}

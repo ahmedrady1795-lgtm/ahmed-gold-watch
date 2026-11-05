@@ -1,5 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
-const now=Date.now(),calls=[];let cbDown=true,krDown=false;
+let now=Math.floor(Date.now()/60000)*60000+59000;
+const calls=[];let cbDown=true,krDown=false;
+class Clock extends Date {static now(){return now;}}
 const rows=(minutes)=>Array.from({length:minutes===1?720:280},(_,i)=>{
  const length=minutes===1?720:280,period=minutes*60000,t=Math.floor(now/period)*period-(length-i)*period;
  return [t/1000,100,101,99,100.5,100.3,22];
@@ -17,9 +19,14 @@ const mock=async url=>{
 };
 const e={};vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/btc-market.ts','utf8'),{
  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
-}).outputText,{exports:e,require,fetch:mock,Date,AbortSignal,URL,URLSearchParams});
+}).outputText,{exports:e,require,fetch:mock,Date:Clock,AbortSignal,URL,URLSearchParams});
 (async()=>{
  let m=await e.getBtcMarket(true);assert.ok(m.source.startsWith('Kraken'));assert.equal(m.c1.length,720);
+ const before=calls.length;
+ await e.getBtcMarket();assert.equal(calls.length,before,'same-minute requests reuse cache');
+ now+=2000;
+ m=await e.getBtcMarket();assert.ok(calls.length>before,'minute rollover refreshes despite a two-second cache age');
+ assert.equal(m.c1.at(-1).time,Math.floor(now/60000)*60000-60000);
  const n=calls.filter(u=>u.includes('coinbase')).length;
  cbDown=false;m=await e.getBtcMarket(true);assert.ok(m.source.startsWith('Kraken'));
  assert.equal(calls.filter(u=>u.includes('coinbase')).length,n,'healthy fallback venue stays stable across polls');
