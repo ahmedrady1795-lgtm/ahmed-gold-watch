@@ -13,7 +13,7 @@ function load(file){
    {filename:file});return out;
 }
 const {everyM1Direction}=load('lib/sniper-m1-every-direction.ts');
-const {priceEveryM1Limit,EVERY_M1_EDGE_V3,EVERY_M1_MIN_NET_R}=
+const {priceEveryM1Limit,EVERY_M1_EDGE_V4,EVERY_M1_MIN_NET_R}=
  load('lib/scalp-every-m1-economics.ts');
 const {advanceEveryM1}=load('lib/scalp-every-candle.ts');
 const {buildM1CandleTape}=load('lib/sniper-m1-candle-tape.ts');
@@ -37,9 +37,9 @@ assert.ok(['BUY','SELL'].includes(weak.side));
 assert.equal(everyM1Direction(bars.slice(0,19),issue+100),null,'missing candle history must not forge a signal');
 assert.equal(everyM1Direction(bars,issue+60001),null,'old candle cannot become a fresh new minute');
 const q=(bid,ask,at,source='TEST-MT5')=>({price:(bid+ask)/2,bid,ask,at,source});
-const first=q(102.5,102.6,issue+100);
+const first=q(102.50,102.51,issue+100);
 let data={version:1,history:[]};
-data=advanceEveryM1(data,bars,first,issue+100,.15);
+data=advanceEveryM1(data,bars,first,issue+100,.015);
 assert.equal(data.history.length,1,'always propose one per new minute');
 assert.equal(data.history.filter(t=>t.entry!=null).length,1,
  'with a valid quote one nonmarketable LIMIT is created, distinct from a fill');
@@ -48,23 +48,23 @@ assert.equal(a.state,'PENDING','weakness or 1.25R trading gate must not discard 
 assert.equal(a.limitType,'BUY_LIMIT');
 assert.ok(a.entry<first.bid,'BUY LIMIT must be lower than current bid');
 assert.equal(a.filledAt,null,'never market-fill on creation');
-assert.ok(a.extraCost!=null&&Math.abs(a.extraCost-.05)<.001,
+assert.ok(a.extraCost!=null&&Math.abs(a.extraCost-.005)<.001,
   'bid/ask at entry and exit already charge spread; only fees/slippage remain');
 assert.ok(a.tp>a.entry+a.extraCost,
   'micro target must still leave a positive gain after extra execution cost');
-assert.equal(a.strategyVersion,EVERY_M1_EDGE_V3,
+assert.equal(a.strategyVersion,EVERY_M1_EDGE_V4,
  'adaptive direction change must start a new future-only proof cohort');
 const risk=Math.abs(a.entry-a.stop);
 const reward=a.tp-a.entry-a.extraCost;
 assert.ok(reward/(risk+a.extraCost)>=EVERY_M1_MIN_NET_R-1e-8,
  'tiny paper gains must not promise 0.25R while taking 1R losses');
-assert.ok(a.tp-a.entry<=guess.atr*1.35+.02,
+assert.ok(a.tp-a.entry<=guess.atr*.72+.02,
  'quick target remains bounded by observed true range');
 const start=a.entry;
-data=advanceEveryM1(data,bars,first,issue+500,.15);
+data=advanceEveryM1(data,bars,first,issue+500,.015);
 assert.equal(data.history.length,1,'same minute and quote never duplicate attempt');
 const later=q(start-.04,start-.01,issue+1100);
-data=advanceEveryM1(data,bars,later,issue+1200,.15);
+data=advanceEveryM1(data,bars,later,issue+1200,.015);
 assert.equal(data.history[0].state,'ACTIVE','later ask crossing frozen BUY limit activates reference paper');
 assert.equal(data.history[0].filledAt,issue+1100);
 assert.equal(data.history[0].entry,start,'do not chase a new market entry');
@@ -74,32 +74,32 @@ const crossedStop=advanceEveryM1({version:1,history:[{
 assert.equal(crossedStop.state,'UNKNOWN',
  'a BUY Limit can be touched at ask while its bid is already beyond stop');
 const target=data.history[0].tp;
-data=advanceEveryM1(data,bars,q(target+.04,target+.08,issue+2200),issue+2300,.15);
+data=advanceEveryM1(data,bars,q(target+.04,target+.08,issue+2200),issue+2300,.015);
 assert.equal(data.history[0].state,'QUICK_TP','later executable BID touching TP closes paper attempt');
 assert.ok(data.history[0].netR>0,'document cost-adjusted positive outcome');
-const again=advanceEveryM1(data,bars,q(target+.08,target+.12,issue+3200),issue+3300,.15);
+const again=advanceEveryM1(data,bars,q(target+.08,target+.12,issue+3200),issue+3300,.015);
 assert.equal(again.history.length,1,'no target reused as new candle');
 const second=[...bars,{time:issue,open:bars.at(-1).close,
  high:bars.at(-1).close+.03,low:bars.at(-1).close-.07,
  close:bars.at(-1).close-.04}];
 const after=issue+60000;
-data=advanceEveryM1(data,second,q(102.6,102.7,after+100),after+100,.15);
+data=advanceEveryM1(data,second,q(102.6,102.7,after+100),after+100,.015);
 assert.equal(data.history.length,2,'next closed candle gets a distinct fresh attempt');
 const down=data.history[1];
 assert.ok(down.side==='BUY'||down.side==='SELL');
 assert.equal(down.state,'PENDING');
 assert.ok(down.side==='BUY'?down.entry<102.6:down.entry>102.7);
-data=advanceEveryM1(data,second,q(102.6,102.7,after+60100),after+60100,.15);
+data=advanceEveryM1(data,second,q(102.6,102.7,after+60100),after+60100,.015);
 assert.equal(data.history[1].state,'UNKNOWN',
  'without intervening quotes an apparently unfilled LIMIT has unknown outcome, never assumed non-fill');
 const noBook={price:102,at:issue+100,source:'TEST-MT5'};
-let absent=advanceEveryM1({version:1,history:[]},bars,noBook,issue+100,.15);
+let absent=advanceEveryM1({version:1,history:[]},bars,noBook,issue+100,.015);
 assert.equal(absent.history.length,1,'forecast still appears when broker quote is incomplete');
 assert.equal(absent.history[0].state,'AWAIT_QUOTE',
  'missing bid/ask must not permanently discard a valid candle before the minute ends');
 assert.equal(absent.history[0].filledAt,null);
 absent=advanceEveryM1(absent,bars,q(102.50,102.60,issue+2100),
- issue+2200,.15);
+ issue+2200,.015);
 assert.equal(absent.history[0].state,'PENDING',
  'later valid bid/ask must create the original-minute pending LIMIT');
 assert.equal(absent.history[0].issuedAt,issue);
@@ -127,24 +127,24 @@ assert.equal(expensive.history[0].state,'COST_UNVIABLE',
   'cost higher than typical M1 move must be logged, not paper-traded');
 assert.equal(expensive.history[0].filledAt,null);
 const beforeIssued=q(102.5,102.6,issue-1000);
-const temporal=advanceEveryM1({version:1,history:[]},bars,beforeIssued,issue+100,.15);
+const temporal=advanceEveryM1({version:1,history:[]},bars,beforeIssued,issue+100,.015);
 assert.equal(temporal.history[0].state,'AWAIT_QUOTE',
   'quote from before the signal must await the first post-signal quote');
 const delayed=advanceEveryM1(temporal,bars,q(102.5,102.6,issue+1800),
- issue+1900,.15);
+ issue+1900,.015);
 assert.equal(delayed.history[0].state,'PENDING',
  'an up-to-10-second fresh but pre-signal quote must not eat the whole candle');
 assert.equal(delayed.history.length,1,
  'deferred order creation must never double count a candle');
 const deferredLimit=delayed.history[0].entry;
 const unchanged=advanceEveryM1(delayed,bars,
- q(102.5,102.6,issue+1800),issue+2500,.15);
+ q(102.5,102.6,issue+1800),issue+2500,.015);
 assert.equal(unchanged.history[0].state,'PENDING',
  'a stale repetition of the staging quote cannot instantly fill the limit');
 assert.equal(unchanged.history[0].entry,deferredLimit);
 const never=advanceEveryM1({version:1,history:[]},bars,
- beforeIssued,issue+100,.15);
-advanceEveryM1(never,bars,beforeIssued,issue+61000,.15);
+ beforeIssued,issue+100,.015);
+advanceEveryM1(never,bars,beforeIssued,issue+61000,.015);
 assert.equal(never.history[0].state,'NO_BID_ASK',
  'only after the full minute without a usable post-signal price is the opportunity missed');
 assert.equal(never.history[0].filledAt,null);
@@ -189,7 +189,7 @@ const economic=priceEveryM1Limit({side:'SELL',bid:99.7,ask:99.8,
  atr:.55,cost:.17,previousOpen:99.8,previousClose:99.55});
 assert.ok(economic&&economic.entry>99.8,'SELL Limit always sits above ask');
 assert.ok(economic.netRewardR>=EVERY_M1_MIN_NET_R);
-assert.ok(economic.breakEvenWinPct>65&&economic.breakEvenWinPct<70,
+assert.ok(economic.breakEvenWinPct>62&&economic.breakEvenWinPct<66,
  'do not pretend that a 0.45R payoff can win at a 50% hit rate');
 assert.equal(priceEveryM1Limit({side:'BUY',bid:100.2,ask:100.3,
  atr:.20,cost:1.2,previousOpen:100.1,previousClose:100.2}),null,
