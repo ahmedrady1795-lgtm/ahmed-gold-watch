@@ -191,7 +191,7 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
           entry.stop=lane.current.plan.stop;
           entry.targets=lane.current.plan.targets;
           entry.orderType=lane.current.limitType;
-          entry.expiresAt=lane.current.limitExpiresAt;
+          entry.expiresAt=lane.current.limitExpiresAt??null;
           entry.reason='Limit معلّق: السعر لم يلمس مستوى الدخول بعد؛ ممنوع التحويل لسعر السوق';
         }else if(lane?.current?.state==='ACTIVE'){
           const newlyOpened=entry.state==='ENTRY'&&
