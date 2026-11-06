@@ -5,6 +5,7 @@ import SniperM15Summary from './SniperM15Summary';
 import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
 import {everyM1Direction} from '../lib/sniper-m1-every-direction';
+import {buildCandleHunter} from '../lib/sniper-m1-candle-hunter';
 import SniperLiquidityDecisionMap from './SniperLiquidityDecisionMap';
 import {analyzeM15MarketStructure} from '../lib/sniper-market-structure';
 import SniperMarketStructureOverlay,{SniperStructureRSI} from './SniperMarketStructureOverlay';
@@ -125,6 +126,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    [m.candles,Math.floor(now/60000)]);
  const everyMinuteForecast=useMemo(()=>everyM1Direction(m.candles,now),
    [m.candles,Math.floor(now/60000)]);
+ const minuteWatch=useMemo(()=>buildCandleHunter({bars:m.candles,now,
+   marketOpen,sourceReady:Boolean(m.sniper.view.priceFresh),providerTransition}),
+   [m.candles,now,marketOpen,m.sniper.view.priceFresh,providerTransition]);
  const verifiedArchive=useMemo(()=>verifiedM15Archive({
    ledger:archiveState?.asset===asset?archiveState.ledger:null,
    asset,source:String(x?.candleSource||''),now,live:actual
@@ -787,7 +791,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      priceFresh={Boolean(m.sniper.view.priceFresh)}
      providerTransition={providerTransition}
      opportunity={liveOpportunity} priority={nextM1}
-     minute={everyMinuteForecast}/>
+     minute={everyMinuteForecast} plan={minuteWatch}/>
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
      <svg viewBox={'0 0 '+W+' '+H} role="img"
