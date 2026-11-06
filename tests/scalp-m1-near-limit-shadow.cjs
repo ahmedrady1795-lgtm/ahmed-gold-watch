@@ -116,11 +116,21 @@ assert.equal(advanceNearM1Shadow(continuous,input('BUY',
 const closeBase=advanceNearM1Shadow(newNearM1Shadow('BUY',T),input('BUY',fresh));
 const filled=advanceNearM1Shadow(closeBase,input('BUY',touch,T+1850));
 const cutoff=filled.filledAt+60000;
+// Do not invent a clean last-second TP after 59s without observed quotes.
+assert.equal(advanceNearM1Shadow(filled,input('BUY',
+ q(filled.tp+.02,filled.tp+.05,cutoff-900),cutoff+100)).state,'UNKNOWN',
+ 'a last-minute quote with an unobserved 59-second path cannot prove TP');
+let liveUntilExpiry=filled;
+for(const dt of [13000,25000,37000,49000,60000]){
+  liveUntilExpiry=advanceNearM1Shadow(liveUntilExpiry,input('BUY',
+   q(filled.entry+.01,filled.entry+.04,T+dt),T+dt+100));
+  assert.equal(liveUntilExpiry.state,'ACTIVE');
+}
 const atLimit=q(filled.tp+.02,filled.tp+.05,cutoff-900);
-const nearEnd=advanceNearM1Shadow(filled,
+const nearEnd=advanceNearM1Shadow(liveUntilExpiry,
  input('BUY',atLimit,cutoff+100));
 assert.equal(nearEnd.state,'QUICK_TP',
- 'a genuine pre-cutoff TP must not be mislabeled TIME_EXIT');
+ 'a genuine continuously observed pre-cutoff TP cannot be mislabeled TIME_EXIT');
 const lateUntrusted=advanceNearM1Shadow(filled,
  input('BUY',q(filled.tp+.04,filled.tp+.08,cutoff+200),cutoff+300));
 assert.equal(lateUntrusted.state,'UNKNOWN',
