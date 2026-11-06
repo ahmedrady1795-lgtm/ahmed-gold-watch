@@ -68,7 +68,7 @@ assert.equal(initial.directionObserved,null,'issue does not know the next close'
 assert.equal(initial.originalSide,'BUY');
 assert.equal(initial.onlineModel,'BASELINE');
 assert.equal(initial.qualityTier,'RESEARCH_CANDIDATE');
-assert.equal(initial.strategyVersion,'EVERY_M1_TICK_CONFIRMED_LIMIT_V5');
+assert.equal(initial.strategyVersion,'EVERY_M1_NEAR_PASSIVE_LIMIT_V6');
 const later=[...bars,{time:issue,open:bars.at(-1).close,
   close:bars.at(-1).close-.04,
   high:bars.at(-1).close+.03,low:bars.at(-1).close-.07}];
@@ -102,5 +102,5 @@ assert.match(source,/legacyNetR/);
 assert.match(source,/directionHits/);
 const page=fs.readFileSync('app/scalp/page.tsx','utf8');
 assert.match(page,/التعلّم الحي من الشموع/);
-assert.match(page,/V5 نتائج LIMIT محسومة/);
+assert.match(page,/V6 نتائج LIMIT محسومة/);
 console.log('PASS: true forward-only frozen M1 grading, 24+12 online inversion, prior vs future isolation, source/sleep integrity, honest V4 P&L');
