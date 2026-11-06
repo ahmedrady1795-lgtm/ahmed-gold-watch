@@ -8,6 +8,7 @@ import SniperLiquidityDecisionMap from './SniperLiquidityDecisionMap';
 import {analyzeM15MarketStructure} from '../lib/sniper-market-structure';
 import SniperMarketStructureOverlay,{SniperStructureRSI} from './SniperMarketStructureOverlay';
 import SniperHuntHUD from './SniperHuntHUD';
+import SniperLiveSignalStrip from './SniperLiveSignalStrip';
 import SniperM1CandleTape from './SniperM1CandleTape';
 import {SniperLiquidityColumn,SniperScenarioColumn,SniperNextCandleCard} from './SniperHunterSidebars';
 import SniperM1CandleHunter from './SniperM1CandleHunter';
@@ -779,6 +780,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <b dir="ltr">{formingVisible&&forming?'LIVE '+n(forming.close):
        latestClosed?'CLOSE '+n(latestClosed.close):'—'}</b>
    </div>
+   <SniperLiveSignalStrip now={now} marketOpen={marketOpen}
+     priceFresh={Boolean(m.sniper.view.priceFresh)}
+     providerTransition={providerTransition}
+     opportunity={liveOpportunity} priority={nextM1}/>
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
      <svg viewBox={'0 0 '+W+' '+H} role="img"
