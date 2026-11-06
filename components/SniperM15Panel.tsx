@@ -38,6 +38,7 @@ import {buildM15LiquidityBoard} from '../lib/sniper-m15-liquidity-board';
 import {assessM15ScenarioIssuance} from '../lib/sniper-m15-evidence-issuance';
 import {buildM15WatchPriceMap} from '../lib/sniper-m15-watch-prices';
 import {buildConditionalMovementRoute,type ConditionalMovementRoute} from '../lib/sniper-m15-smart-route';
+import {closedM1ChartBars} from '../lib/sniper-mt5-m1';
 import {buildM15ReactionMap} from '../lib/sniper-m15-reactions';
 import {futureM15WatchZones,conditionalM15BreakoutLevels} from '../lib/sniper-m15-future-zones';
 import type {ForwardWatchZone} from '../lib/sniper-m15-future-zones';
@@ -582,7 +583,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const mapReady=Boolean(watchMap.ready&&freshObservation&&marketOpen&&!providerTransition);
  const mapM1Side=marketOpen&&nextM1.ready?nextM1.side:'WAIT';
  // Only a COMPLETED M1 close anchors the route; quote ticks never re-anchor it.
- const routeClosedM1=m.candles.at(-1);
+ const routeClosedM1=closedM1ChartBars(m.candles,now,72).at(-1);
  const routeAnchor=nextM1.anchorTime!=null&&
    routeClosedM1?.time===nextM1.anchorTime?routeClosedM1.close:null;
  const routeScope=asset+'|'+String(x?.candleSource||'');
@@ -773,7 +774,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {showExtra?'إخفاء علامات الرسم':'علامات الرسم'}</button>
    </div>
    <div className="sniper-m15-compact-status" role="status">
-     <span>شموع M15 حقيقية · مسار السيولة V3
+     <span>شموع M15 حقيقية · رادار حركة السيولة V4
        {focusView?' · آخر 18 شمعة':' · كل التاريخ'}</span>
      <b dir="ltr">{formingVisible&&forming?'LIVE '+n(forming.close):
        latestClosed?'CLOSE '+n(latestClosed.close):'—'}</b>
@@ -874,7 +875,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
 
          <SniperLiquidityDecisionMap watch={watchMap} ready={mapReady}
            direction={mapDirection} m1Side={mapM1Side} m15Side={safeSide}
-           route={activeMovementRoute}
+           route={activeMovementRoute} instanceId={asset}
            price={formingVisible&&forming?forming.close:price}
            trigger={mapReady&&preMoveReady?preMove.trigger:null}
            invalidation={mapReady&&preMoveReady?preMove.invalidation:null}
@@ -975,9 +976,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          </text>
        </g>)}
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
-       <text x={split+5} y={17} fill="#9fc4d3" fontSize="10" textAnchor="start" direction="ltr">M15 · LEVEL MAP · V3</text>
+       <text x={split+5} y={17} fill="#9fc4d3" fontSize="10" textAnchor="start" direction="ltr">M15 · LIQUIDITY RADAR · V4</text>
        {showExtra&&<text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
-         textAnchor="start" direction="rtl">خط مشروط من مستويات مرصودة · غير زمني</text>}
+         textAnchor="start" direction="rtl">قنص الحركة · مسارات مراقبة مشروطة بمستويات مرصودة</text>}
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(formingVisible&&forming?forming.time:latestClosed.time)}</text>}
