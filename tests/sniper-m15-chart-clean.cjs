@@ -18,7 +18,7 @@ assert.match(panel,/showLiquidity&&positionedLiquidityLabels\.map/);
 assert.match(map,/watch\.upper\.slice\(0,2\)/);
 assert.match(map,/watch\.lower\.slice\(0,2\)/);
 assert.match(map,/ready\?\[/,'stale data cannot display active price levels');
-assert.doesNotMatch(map,/\.open|\.close|\.high|\.low|ATR|candle\(/,
+assert.doesNotMatch(map,/\.open\b|\.close\b|\.high\b|\.low\b|ATR|candle\(/,
   'the map consumes historic reference levels, not hypothetical candles');
 assert.match(sidebar,/watch\.upper/);
 assert.match(sidebar,/watch\.lower/);
