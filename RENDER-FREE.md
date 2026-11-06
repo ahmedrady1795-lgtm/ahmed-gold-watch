@@ -1,6 +1,6 @@
 # Qannas — active Render Free deployment
 
-[Deploy the free service](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2Fahmedrady1795-lgtm%2Fahmed-gold-watch%2Ftree%2Frender-free)
+**Existing live site:** https://ahmed-gold-watch-free.onrender.com/ — do not use the one-click Blueprint deploy to create a duplicate service.
 
 The deployed source branch is **render-free**. All new Qannas changes must target this branch and the existing Render services, not unrelated deployment branches.
 
@@ -14,11 +14,9 @@ The deployed source branch is **render-free**. All new Qannas changes must targe
 - Never commit API keys or service credentials into the repository.
 - Auto-deploy is off. Future releases require an explicit Render deploy.
 
-## Activation and verification
+## Verification of the existing service
 
-Sign in to Render, review the Blueprint, confirm that the only service is Free, and deploy. Do not select an upgrade or add a payment method for this setup.
-
-A successful build is not proof the market feeds work in the selected region. After activation, check:
+Do not create another Render service. Release updates to the existing `ahmed-gold-watch-free` service only after tests. A successful build is not proof the market feeds work in the selected region. Verify:
 1. `/api/live` returns HTTP 200.
 2. `/api/ai-snapshot` becomes available after the initial analysis cycle.
 3. `/api/sniper-audit` includes `watch.GOLD` and `watch.BTC`; storage should be `NOT_DURABLE` without a mounted volume.
