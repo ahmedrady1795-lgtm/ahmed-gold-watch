@@ -16,6 +16,7 @@ RUN node tests/gc-futures-feed.cjs && node tests/institutional-preparation-radar
 RUN node tests/sniper-m15-focus-watch.cjs && node tests/sniper-market-structure.cjs && node tests/sniper-hunter-layout.cjs && node tests/sniper-smart-money-hunter.cjs && node tests/sniper-m15-observer.cjs && node tests/sniper-no-future-candles.cjs && node tests/sniper-m15-chart-clean.cjs && node tests/sniper-m15-watch-guide.cjs && node tests/sniper-m1-candle-hunter.cjs && node tests/sniper-m1-priority.cjs
 RUN node tests/sniper-live-opportunity.cjs && node tests/sniper-movement-proof.cjs
 RUN node tests/spot-radar.cjs && node tests/spot-accumulation.cjs && node tests/binance-cooldown.cjs
+RUN node tests/ai-transport-regression.cjs && node tests/sniper-health.cjs
 RUN node --experimental-strip-types tests/spot-forward-audit.mjs
 # Nonblocking upstream probes distinguish API outages from algorithm bugs.
 RUN node scripts/spot-market-probe.mjs
