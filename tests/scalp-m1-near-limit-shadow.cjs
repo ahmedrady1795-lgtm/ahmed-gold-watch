@@ -98,12 +98,23 @@ const sellStop=advanceNearM1Shadow(sellFilled,
 assert.equal(sellStop.state,'STOP');
 assert.ok(sellStop.netR<0);
 const pending=advanceNearM1Shadow(newNearM1Shadow('BUY',T),input('BUY',fresh));
+// Keep a known, strictly increasing quote sequence near the end; a
+// 59-second blind gap must be UNKNOWN, not a provable unfilled order.
 assert.equal(advanceNearM1Shadow(pending,input('BUY',
- q(pending.entry-.01,pending.entry,T+59900),T+60100)).state,'UNKNOWN',
- 'a crossing only observed after expiry is NOT claimed unfilled');
-assert.equal(advanceNearM1Shadow(pending,input('BUY',
+ q(100.5,100.53,T+59900),T+60100)).state,'UNKNOWN',
+ 'an hourglass of missing intraminute ticks cannot prove non-fill');
+let continuous=pending;
+for(const dt of [12000,24000,36000,48000,58000]){
+ continuous=advanceNearM1Shadow(continuous,
+  input('BUY',q(100.5,100.53,T+dt),T+dt+100));
+ assert.equal(continuous.state,'PENDING');
+}
+assert.equal(advanceNearM1Shadow(continuous,input('BUY',
+ q(continuous.entry-.01,continuous.entry,T+59900),T+60100)).state,'UNKNOWN',
+ 'a crossing only seen after expiry is NOT claimed unfilled');
+assert.equal(advanceNearM1Shadow(continuous,input('BUY',
  q(100.5,100.53,T+59900),T+60100)).state,'EXPIRED',
- 'late valid quote with no sampled touch can expire, not fake fill');
+ 'continuous recent bid/ask without sampled touch can expire, not fake fill');
 const closeBase=advanceNearM1Shadow(newNearM1Shadow('BUY',T),input('BUY',fresh));
 const filled=advanceNearM1Shadow(closeBase,input('BUY',touch,T+1850));
 const cutoff=filled.filledAt+60000;
