@@ -28,10 +28,12 @@ assert.equal(validate({...frozen,visualBars:bars.map((b,i)=>i===4?{...b,close:42
 assert.equal(validate({...frozen,visualBars:[...bars,bars[0]]},args),null,
  'extra route cannot extend beyond 48 M15 cells');
 const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
-assert.match(chart,/M15 · FORECAST/);
+assert.match(chart,/M15 · PATH/)
 assert.match(chart,/const recent=actual\.slice\(-72\)/);
 assert.match(chart,/const projectedStride=\(end-split-8\)\/Math\.max\(12,renderedBars\.length\);/);
-assert.match(chart,/const futureCandleWidth=clamp\(projectedStride\*\.62,1\.7,4\);/);
+assert.match(chart,/className="sniper-m15-conditional-route"/);
+assert.doesNotMatch(chart,/futureCandleWidth|sniper-m15-projected|M15 · FORECAST/,
+ 'future OHLC candles must not be rendered')/);
 assert.match(chart,/const realCandleWidth=clamp\(actualStride\*\.68,2\.2,5\.2\);/);
 assert.match(chart,/const longer=buildM15Scenario\(\{\.\.\.modelInput,steps:48\}\)/);
 assert.match(chart,/const scenario=buildM15Scenario\(\{\.\.\.modelInput,steps:12\}\)/);
