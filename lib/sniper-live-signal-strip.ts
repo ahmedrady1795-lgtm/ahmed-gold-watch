@@ -1,8 +1,9 @@
 import type {LiveOpportunity} from './sniper-live-opportunity';
 import type {M1Priority} from './sniper-m1-priority';
+import type {EveryM1Direction} from './sniper-m1-every-direction';
 
 export type VisibleSignal={
-  kind:'OFFLINE'|'WAIT'|'BIAS'|'PREPARE'|'TESTING'|'BREAK'|'EXPIRED';
+  kind:'OFFLINE'|'WAIT'|'BIAS'|'FORECAST'|'PREPARE'|'TESTING'|'BREAK'|'EXPIRED';
   side:'BUY'|'SELL'|'WAIT';title:string;description:string;
   trigger:number|null;invalidation:number|null;targets:number[];
   score:number|null;sourceAt:number|null;executionConfirmed:false;
@@ -10,7 +11,7 @@ export type VisibleSignal={
 
 export function visibleSniperSignal(input:{
   now:number;marketOpen:boolean;priceFresh:boolean;providerTransition:boolean;
-  opportunity:LiveOpportunity;priority:M1Priority;
+  opportunity:LiveOpportunity;priority:M1Priority;minute:EveryM1Direction|null;
 }):VisibleSignal{
   const {opportunity:o,priority:p}=input;
   const base={trigger:null,invalidation:null,targets:[] as number[],
@@ -23,18 +24,36 @@ export function visibleSniperSignal(input:{
     'بانتظار مصدر موحد؛ ممنوع إظهار إشارة قديمة كأنها جديدة');
   if(!input.priceFresh||o.phase==='OFFLINE')return wait('OFFLINE',
     'البيانات غير جاهزة',o.reason||'بيانات السعر أو الشموع غير حديثة');
-  if(o.phase==='CANCELLED')return wait('EXPIRED','الإشارة السابقة أُلغيت',
-    o.reason||'السعر أبطل الكسر المرصود');
+  const minute=input.minute;
+  // A prediction belongs to exactly the minute beginning at issuedAt.
+  // Later browser ticks cannot reissue an old prediction as fresh.
+  const freshMinute=Boolean(minute&&minute.issuedAt<=input.now&&
+    input.now-minute.issuedAt<60000);
+  const forecast=():VisibleSignal|null=>{
+    if(!freshMinute||!minute)return null;
+    return {...base,kind:'FORECAST',side:minute.side,
+      title:(minute.side==='BUY'?'↑ صعود':'↓ هبوط')+
+        (minute.weak?' · توقع ضعيف':' · توقع الدقيقة'),
+      description:minute.directionReason+
+        ' · قراءة صادرة عند بداية الدقيقة من شموع مغلقة وليست أمر دخول',
+      score:minute.pressure,sourceAt:minute.issuedAt};
+  };
+  // Old or invalidated breakouts may be archived, but they must never
+  // monopolize the main live signal while a NEW M1 forecast is available.
+  const eventAge=o.sourceAt!=null?input.now-o.sourceAt:Infinity;
+  if(o.phase==='CANCELLED'){
+    const newMinute=o.sourceAt!=null&&minute&&
+      minute.issuedAt>=o.sourceAt+60000;
+    if(newMinute)return forecast()??wait('EXPIRED','الكسر السابق أُلغي',
+      o.reason||'تم إبطال الرصد السابق');
+    return wait('EXPIRED','الكسر السابق أُلغي',
+      o.reason||'تم إبطال الرصد السابق');
+  }
   const activeSide=o.side==='BUY'||o.side==='SELL'?o.side:null;
   if(activeSide&&(o.phase==='BREAK_CONFIRMED'||o.phase==='PREPARE'||o.phase==='TESTING')){
-    const age=o.sourceAt!=null?input.now-o.sourceAt:Infinity;
-    if(o.phase==='BREAK_CONFIRMED'&&
-      (!Number.isFinite(age)||age<0||age>120000))
-      return wait('EXPIRED','كسر سابق · مش إشارة جديدة',
+    if(o.sourceAt==null||eventAge<0||eventAge>120000)
+      return forecast()??wait('EXPIRED','كسر سابق · مش إشارة جديدة',
         'آخر كسر M1 تجاوز دقيقتين؛ نراقب حدوث تأكيد جديد');
-    if(o.sourceAt==null||age<0||age>120000)
-      return wait('WAIT','انتظار تجديد القراءة',
-        'آخر تهيئة انتهت صلاحيتها؛ لا تُكرر نفس الإشارة');
     const kind=o.phase==='BREAK_CONFIRMED'?'BREAK':o.phase;
     const direction=activeSide==='BUY'?'شراء BUY':'بيع SELL';
     return {
@@ -46,6 +65,10 @@ export function visibleSniperSignal(input:{
       executionConfirmed:false
     };
   }
+  // A lower-confidence hypothesis still receives a side for every valid
+  // new minute. This is an explicit directional GUESS, never trade approval.
+  const newForecast=forecast();
+  if(newForecast)return newForecast;
   // A valid M1 directional priority is a visible watch, NOT an entry.
   if(p.ready&&(p.side==='BUY'||p.side==='SELL'))
     return {...base,kind:'BIAS',side:p.side,
