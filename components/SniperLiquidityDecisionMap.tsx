@@ -1,8 +1,10 @@
 import type {WatchPriceMap} from '../lib/sniper-m15-watch-prices';
+import type {ConditionalMovementRoute} from '../lib/sniper-m15-smart-route';
 
 type Side='BUY'|'SELL'|'WAIT';
 type Props={
   watch:WatchPriceMap;ready:boolean;direction:Side;m1Side:Side;m15Side:Side;
+  route?:ConditionalMovementRoute|null;
   price:number|null;trigger:number|null;invalidation:number|null;
   split:number;end:number;top:number;bottom:number;lo:number;hi:number;
   py:(value:number)=>number;
@@ -16,6 +18,28 @@ const fmt=(v:number)=>v.toLocaleString('en-US',{minimumFractionDigits:2,maximumF
  */
 export default function SniperLiquidityDecisionMap(p:Props){
   const {watch,ready,split,end,top,bottom,lo,hi,py}=p;
+  const route=ready?p.route:null;
+  const invalidated=Boolean(route&&route.invalidation!=null&&p.price!=null&&
+    (route.side==='BUY'?p.price<=route.invalidation:p.price>=route.invalidation));
+  // Horizontal progression is a sequence of conditional PRICE references, not time.
+  // Intermediate control points only smooth the visual line and claim no prices.
+  const routeLevels=route?[
+    route.anchor,
+    ...(route.trigger!=null?[route.trigger]:[]),
+    ...route.targets.map(t=>t.price)
+  ]:[];
+  const routePoints=routeLevels.map((price,i)=>({
+    x:split+14+i*(end-split-30)/Math.max(1,routeLevels.length-1),
+    y:py(price),price
+  }));
+  const movementD=routePoints.length>=2?routePoints.slice(1).reduce((d,to,i)=>{
+    const from=routePoints[i],dx=to.x-from.x;
+    return d+' C '+(from.x+dx*.38)+' '+from.y+
+      ' '+(to.x-dx*.38)+' '+to.y+' '+to.x+' '+to.y;
+  },'M '+routePoints[0].x+' '+routePoints[0].y):'';
+  const directionColor=route?.side==='BUY'?'#50efb6':'#ff728d';
+  const routeColor=invalidated?'#8693a0':directionColor;
+  const routeOnScreen=Boolean(route&&route.anchor>=lo&&route.anchor<=hi);
   const conflict=ready&&p.m1Side!=='WAIT'&&p.m15Side!=='WAIT'&&
     p.m1Side!==p.m15Side;
   const entries=ready?[
@@ -48,6 +72,25 @@ export default function SniperLiquidityDecisionMap(p:Props){
       height={bottom-top-2} fill="#08161b" fillOpacity=".94"/>
     <line x1={split} x2={split} y1={top} y2={bottom}
       stroke="#81a0b1" strokeDasharray="5 5" strokeWidth="1.2"/>
+
+    {routeOnScreen&&movementD&&<g className="sniper-m15-motion-route"
+      aria-label="مسار سعري مشروط، وليس توقع توقيت أو أوامر">
+      <path d={movementD} fill="none" stroke={routeColor} strokeWidth="7"
+        strokeLinecap="round" opacity=".12"/>
+      <path d={movementD} fill="none" stroke={routeColor} strokeWidth="2.5"
+        strokeLinecap="round" strokeDasharray={invalidated?'4 5':undefined}/>
+      {routePoints.map((pt,i)=>pt.price>=lo&&pt.price<=hi&&
+        <g key={'motion-point-'+i}>
+          <circle cx={pt.x} cy={pt.y} r={i===0?3.2:3.7}
+            fill="#08151c" stroke={routeColor} strokeWidth="1.6"/>
+          <title>{i===0?'سعر آخر إغلاق M1: '+
+            fmt(pt.price):'مستوى سعري مشروط: '+fmt(pt.price)}</title>
+        </g>)}
+      <title>{'ترجيح '+(route?.side==='BUY'?'صعود':'هبوط')+
+        ' من إغلاق M1 عند '+fmt(route!.anchor)+
+        ' إلى مستويات M15/H1 الحقيقية؛ '+route?.evidence+
+        ' · بدون توقع توقيت، ولا ضمان وصول أو تنفيذ'}</title>
+    </g>}
     <rect x={split+8} y={top+9} width={end-split-16} height="76"
       rx="6" fill="#102832" stroke="#355364" strokeWidth=".8"/>
     <text x={end-12} y={top+25} textAnchor="end" direction="rtl"
@@ -56,14 +99,17 @@ export default function SniperLiquidityDecisionMap(p:Props){
       fontSize="9.1" fontWeight="800"
       fill={conflict?'#e7c27c':p.direction==='BUY'?'#63e8b9':
         p.direction==='SELL'?'#ff8da0':'#d5b77b'}>
-      {conflict?'تعارض اتجاه الدقيقة وربع الساعة':
+      {invalidated?'مسار سابق · تم إبطاله':
+        conflict?'تعارض اتجاه الدقيقة وربع الساعة':
         p.direction==='BUY'?'↗ ميل صعود للمراقبة':
         p.direction==='SELL'?'↘ ميل هبوط للمراقبة':
         '↔ لا يوجد اتجاه متفق عليه'}
     </text>
     <text x={end-12} y={top+62} textAnchor="end" direction="rtl"
       fontSize="7.8" fill="#aac2ca">
-      {ready?'مستويات من إغلاقات فعلية · لا مسار مضمون':
+      {ready&&route?
+        'مسار شرطي '+route.evidence+' · غير زمني':
+        ready?'مستويات من إغلاقات فعلية · لا مسار مضمون':
         'بيانات غير مؤهلة · لا توقع مرسوم'}
     </text>
     {labels.map(z=><g key={z.key} className="sniper-m15-source-level">
@@ -89,6 +135,11 @@ export default function SniperLiquidityDecisionMap(p:Props){
         <circle cx={end-8} cy={py(p.price)} r="3.2" fill="#d3fbff" stroke="#0a2026"/>
         <title>{'السعر المرصود حاليًا '+fmt(p.price)}</title>
       </g>}
+    {ready&&<text x={end-12} y={bottom-9} textAnchor="end" direction="rtl"
+      fill={route?'#a9d8c7':'#93aab4'} fontSize="8">
+      {route?(invalidated?'التوقع محفوظ · غير نشط':
+        'خط ترجيح مشروط · ليس وقت وصول'):'خط الحركة: انتظار اتفاق الأدلة'}
+    </text>}
     {labels.length===0&&<g className="sniper-m15-map-empty">
       <text x={(split+end)/2} y={top+148} textAnchor="middle" direction="rtl"
         fill="#d4bf92" fontSize="9.5">
