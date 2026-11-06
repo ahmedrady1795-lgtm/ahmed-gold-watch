@@ -5,6 +5,7 @@ import {priceEveryM1Limit,priceEveryM1NearLimit,
   EVERY_M1_EDGE_V4,EVERY_M1_EDGE_V5,EVERY_M1_EDGE_V6} from './scalp-every-m1-economics';
 import {requiresM1TickConfirmation,m1BidAskEvidence,M1_CONFIRM_WINDOW_MS} from './scalp-m1-tick-evidence';
 import {chooseOnlineM1,type OnlineM1Choice} from './scalp-m1-online-learning';
+import {assessM1ForwardQuality,type M1ForwardQuality} from './scalp-m1-forward-quality';
 import {chooseM1ShadowExpert,auditM1ShadowExpert,
   type ShadowM1Selection} from './scalp-m1-shadow-expert';
 import {watchM1FastExitShadow,auditM1FastExitShadow,
@@ -41,6 +42,7 @@ export type EveryAttempt={
   pulseVersion?:string;pulse?:ForwardPulse|null;
   directionEvaluatedAt?:number|null;
   qualityTier?:'RESEARCH_WEAK'|'RESEARCH_CANDIDATE';
+  forwardQuality?:M1ForwardQuality;
   targetNetR?:number;breakEvenWinPct?:number;retestDepth?:number;
   quoteSource:string;limitType:'BUY_LIMIT'|'SELL_LIMIT';
   expiryAt:number;lastQuoteAt:number;lastExecutable:number|null;
@@ -361,6 +363,13 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
     // On-the-fly learning uses only earlier FROZEN observed forecasts.
     // No running candle or P/L after issue can influence this decision.
     const online=chooseOnlineM1(signal,history);
+    // A separate forward-only historical reliability audit. It cannot
+    // manufacture a trade or change the already frozen directional side.
+    const forwardQuality=assessM1ForwardQuality(signal,history,chartSource);
+    // If a meaningful previous cohort has no demonstrated directional edge,
+    // demand independent Bid/Ask tick confirmation even for high pressure.
+    const needsExtraProof=signal.weak||
+      forwardQuality.status==='NO_EDGE'||forwardQuality.status==='UNPROVEN';
     // Shadow expert may learn faster but NEVER changes the issued paper LIMIT.
     const shadow=chooseM1ShadowExpert(signal,history,chartSource);
     const proposed=online.side;
@@ -375,8 +384,9 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       nearLimitShadow:newNearM1Shadow(proposed,signal.issuedAt),
       shadowExitVersion:M1_FAST_EXIT_SHADOW_V1,shadowAdverseTicks:0,
       shadowEarlyExitAt:null,shadowEarlyExitPrice:null,shadowEarlyExitNetR:null,
-      pressure:signal.pressure,weak:signal.weak,state:'AWAIT_QUOTE',
-      qualityTier:signal.weak?'RESEARCH_WEAK':'RESEARCH_CANDIDATE',
+      pressure:signal.pressure,weak:needsExtraProof,state:'AWAIT_QUOTE',
+      qualityTier:needsExtraProof?'RESEARCH_WEAK':'RESEARCH_CANDIDATE',
+      forwardQuality,
       atr:signal.atr,anchorTime:signal.anchorTime,
       anchorClose:raw.find(b=>b.time===signal.anchorTime)?.close,
       chartSource,
@@ -391,7 +401,8 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       expiryAt:signal.issuedAt+60000,lastQuoteAt:0,lastExecutable:null,
       filledAt:null,closedAt:null,exit:null,netR:null,
       lastExitPrice:null,lastExitAt:null,
-      note:'توقع حي مجمّد · '+(signal.weak?'دليل ضعيف للتعلم فقط':'مرشح بحثي غير معتمد')+'؛ انتظار أول Bid/Ask حقيقي بعد الإصدار'
+      note:'توقع حي مجمّد · '+(needsExtraProof?'تأكيد تيك مطلوب':'مرشح بحثي غير معتمد')+
+        ' · '+forwardQuality.reason+'؛ انتظار أول Bid/Ask حقيقي بعد الإصدار'
     };
     history.push(t);
     // The first eligible quote stages an independent near LIMIT reference.
@@ -497,6 +508,9 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
       waiting:v4.filter(t=>t.directionObserved==null).length,
       hitPct:marked.length?round(directionHits/marked.length*100):null},
     learning:{minimumPast:36,shadowExpert,fastExitShadow,nearLimitShadow,
+      latestForwardQuality:hist.at(-1)?.forwardQuality??null,
+      unprovenGated:hist.filter(t=>!t.qualityTier?.includes('CANDIDATE')&&
+        (t.forwardQuality?.status==='NO_EDGE'||t.forwardQuality?.status==='UNPROVEN')).length,
       switched:v4.filter(t=>t.onlineModel==='ONLINE_INVERSION').length,
       byModel:{baseline:byModel('PRESSURE_SWEEP'),
         inversion:byModel('ONLINE_INVERSION')},
