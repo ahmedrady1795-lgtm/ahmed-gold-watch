@@ -1,11 +1,11 @@
 # Free Render web service for the active Gold Watch application.
-# The full sniper/scalp dashboard is on the railway branch, not main.
+# The active Qannas application is deployed from render-free on Render.
 services:
   - type: web
     name: gold-watch-free
     runtime: node
     plan: free
-    branch: railway
+    branch: render-free
     buildCommand: npm ci && npm run build
     startCommand: npm run start
     healthCheckPath: /api/ping
