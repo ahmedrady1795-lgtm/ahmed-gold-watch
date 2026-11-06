@@ -15,7 +15,7 @@ function load(file){
 const {advanceEveryM1}=load('lib/scalp-every-candle.ts');
 const {m1BidAskEvidence,requiresM1TickConfirmation,M1_CONFIRM_WINDOW_MS}
  =load('lib/scalp-m1-tick-evidence.ts');
-const {priceEveryM1Limit,EVERY_M1_EDGE_V5,EVERY_M1_MIN_NET_R}
+const {priceEveryM1Limit,EVERY_M1_EDGE_V6,EVERY_M1_MIN_NET_R}
  =load('lib/scalp-every-m1-economics.ts');
 const T=Date.parse('2026-11-05T10:00:00Z');
 const weakBars=Array.from({length:44},(_,i)=>({
@@ -30,7 +30,7 @@ assert.equal(first.history.length,1,'all closed bars still receive a direction')
 const t=first.history[0];
 const clone=()=>JSON.parse(JSON.stringify(first));
 assert.equal(t.weak,true);
-assert.equal(t.strategyVersion,EVERY_M1_EDGE_V5);
+assert.equal(t.strategyVersion,EVERY_M1_EDGE_V6);
 assert.equal(t.state,'CONFIRMING','pressure 0/100 cannot immediately place resting LIMIT');
 assert.equal(t.entry,null);
 assert.equal(t.filledAt,null);
@@ -86,6 +86,6 @@ assert.equal(priceEveryM1Limit({side:'BUY',bid:100.2,ask:100.3,
 const page=fs.readFileSync('app/scalp/page.tsx','utf8');
 assert.match(page,/CONFIRMING:/);
 assert.match(page,/NO_EDGE:/);
-assert.match(page,/V5 نتائج LIMIT محسومة/);
+assert.match(page,/V6 نتائج LIMIT محسومة/);
 assert.match(page,/tickConfirmed/);
 console.log('PASS: M1 weak 0/100 does NOT auto-place; 24s same-source fresh-tick confirmation, no market chasing, tighter costed LIMIT, honest V4 cohort');
