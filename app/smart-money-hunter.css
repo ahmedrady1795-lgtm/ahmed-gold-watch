@@ -107,3 +107,18 @@
  .sniper-hunt-hud-data{grid-template-columns:repeat(2,minmax(0,1fr))}
  .sniper-hunt-hud-data b{font-size:11px}
 }
+
+/* Observer-only evidence row. Keeps the original M15 SIM/WATCH routes intact. */
+.sniper-hunt-hud-observation{
+  width:100%;display:flex;align-items:center;flex-wrap:wrap;
+  gap:4px 12px;direction:rtl;padding:5px 7px;border-radius:6px;
+  border:1px solid #274b50;background:#081d24;color:#c0d7d8;
+  font-size:10px;line-height:1.55;overflow-wrap:anywhere;
+}
+.sniper-hunt-hud-observation b{color:#e7ca88;font-weight:800}
+.sniper-hunt-hud-observation span{flex:1;min-width:120px}
+.sniper-hunt-hud-observation em{color:#ffafaa;font-style:normal}
+@media(max-width:640px){
+  .sniper-hunt-hud-observation{gap:2px 6px;font-size:9px}
+  .sniper-hunt-hud-observation b{width:100%}
+}
