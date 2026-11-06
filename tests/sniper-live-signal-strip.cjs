@@ -35,8 +35,20 @@ assert.equal(get({...common,priceFresh:false}).side,'WAIT');
 assert.equal(get({...common,providerTransition:true}).side,'WAIT');
 assert.equal(get({...common,opportunity:{...opp,phase:'OFFLINE'}}).kind,'OFFLINE');
 assert.equal(get({...common,priority:{...prior,ready:false,side:'WAIT'}}).kind,'WAIT');
+const minute={issuedAt:now-25000,side:'SELL',pressure:16,weak:true,
+  atr:1.15,anchorTime:now-85000,pattern:'MOMENTUM',
+  directionReason:'ملاحظة من شموع مقفولة'};
+assert.equal(get({...common,minute}).kind,'FORECAST');
+assert.equal(get({...common,minute}).executionConfirmed,false);
+assert.equal(get({...common,minute,
+  opportunity:{...brk,sourceAt:now-180000}}).kind,'FORECAST');
+assert.equal(get({...common,minute,
+  opportunity:{...brk,phase:'CANCELLED',sourceAt:now-180000}}).kind,'FORECAST');
+assert.equal(get({...common,minute:{...minute,issuedAt:now-90000},
+  opportunity:{...brk,sourceAt:now-180000}}).kind,'EXPIRED');
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(panel,/<SniperLiveSignalStrip /);
+assert.match(panel,/minute=\{everyMinuteForecast\}/);
 assert.ok(panel.indexOf('<SniperLiveSignalStrip ')>
  panel.indexOf('className="sniper-m15-compact-status"'));
 assert.ok(panel.indexOf('<SniperLiveSignalStrip ')<
