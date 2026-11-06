@@ -23,7 +23,12 @@ export default function SniperLiveSignalStrip(p:{
         s.kind==='PREPARE'?'إنذار مبكر':s.kind==='FORECAST'?'توقع للمراقبة':s.kind==='BIAS'?'ترجيح فقط':
         s.kind==='EXPIRED'?'ملغاة/قديمة':s.kind==='OFFLINE'?'غير متاحة':'انتظار'}</b>
     </div>
-    <p>{s.description}</p>
+    <p>{s.description}
+      {(s.kind==='FORECAST'||s.kind==='BIAS')&&!s.levelsAreWatchOnly&&
+        <span className="sniper-m15-signal-no-level">
+          {' · مستويات M1 غير جاهزة: '+(p.plan?.reason||'لا تتوفر بيانات كافية')}
+        </span>}
+    </p>
     <div className="sniper-m15-live-signal-levels">
       <span><small>{s.levelsAreWatchOnly?'مستوى كسر للمراقبة':'التفعيل'}</small><b dir="ltr">{directions?fmt(s.trigger):'—'}</b></span>
       <span><small>{s.levelsAreWatchOnly?'إبطال مرجعي':'الإبطال'}</small><b dir="ltr">{directions?fmt(s.invalidation):'—'}</b></span>
