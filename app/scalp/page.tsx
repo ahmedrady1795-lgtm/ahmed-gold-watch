@@ -166,6 +166,14 @@ function GoldEveryCandle({data}:{data:any}){
         و12 توقعًا لاحقًا من نفس نوع الحالة قبل السماح بتغيير اتجاه تلقائي.
         الحالات المجهولة والتوقعات الضعيفة ظاهرة، ومش محسوبة كمكاسب.
       </p>
+      <p style={{fontSize:12,margin:'6px 0',opacity:.85}}>
+        نموذج عكسي منافس (تجريبي فقط): اقترح {data?.learning?.shadowExpert?.proposedFlips??0} انعكاسًا
+        {' · '}مقارنات مغلقة {data?.learning?.shadowExpert?.flipped?.graded??0}
+        {' · '}المنافس أصاب {data?.learning?.shadowExpert?.flipped?.shadowHits??0}
+        {' '}مقابل {data?.learning?.shadowExpert?.flipped?.liveHits??0} للمحرك الحالي على نفس الشموع.
+        يتعلم من 8 نتائج تدريب و8 مراجعة من نفس النمط، ويسجل قراره قبل الشمعة.
+        لا يغيّر الدخول أو توقع الشاشة قبل إثبات مستقل على شموع جديدة.
+      </p>
     </div>
     <div style={{padding:12,margin:'10px 0',borderRadius:10,
       border:'1px solid var(--border, rgba(160,165,180,.25))'}}
