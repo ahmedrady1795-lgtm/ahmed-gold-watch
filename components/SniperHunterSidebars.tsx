@@ -1,5 +1,5 @@
 import type {M15HuntPreview} from '../lib/sniper-m15-hunt-preview';
-import type {M15WatchGuide} from '../lib/sniper-m15-watch-guide';
+import type {WatchPriceMap} from '../lib/sniper-m15-watch-prices';
 import type {M1Priority} from '../lib/sniper-m1-priority';
 import type {StructureSnapshot} from '../lib/sniper-market-structure';
 
@@ -69,58 +69,58 @@ export function SniperLiquidityColumn({history,price,preview,liquidityOn,structu
       </div>}
   </aside>;
 }
-export function SniperScenarioColumn({preview,guide,qualified,price,marketOpen,structure}:{
-  preview:M15HuntPreview;guide:M15WatchGuide;qualified:boolean;
-  price:number|null;marketOpen:boolean;structure:StructureSnapshot;
+export function SniperScenarioColumn({watch,priority,price,marketOpen,structure}:{
+  watch:WatchPriceMap;priority:M1Priority;price:number|null;
+  marketOpen:boolean;structure:StructureSnapshot;
 }){
- const active=preview.ready&&!preview.referenceOnly&&marketOpen;
- const up=preview.buy,down=preview.sell;
- const row=(side:'BUY'|'SELL')=>{
-  const rise=side==='BUY',candles=rise?up:down;
-  const entry=rise?guide.upperTrigger:guide.lowerTrigger;
-  return <section className={'sniper-hunter-path '+(rise?'rise':'fall')+
-      (preview.preferred===side?' preferred':'')} key={side}>
-    <div className="sniper-hunter-pathhead">
-      <span>{rise?'↗':'↘'}</span>
-      <strong>{rise?'مسار الصعود':'مسار الهبوط'}</strong>
-      <small>{preview.preferred===side&&active?'المرجّح للمراقبة':'مسار بديل'}</small>
+  const active=watch.ready&&marketOpen;
+  const direction=active&&priority.ready?priority.side:'WAIT';
+  const row=(side:'BUY'|'SELL')=>{
+    const rise=side==='BUY',levels=rise?watch.upper:watch.lower;
+    return <section className={'sniper-hunter-path '+(rise?'rise':'fall')+
+        (direction===side?' preferred':'')} key={side}>
+      <div className="sniper-hunter-pathhead">
+        <span>{rise?'↗':'↘'}</span>
+        <strong>{rise?'احتمال الصعود':'احتمال الهبوط'}</strong>
+        <small>{direction===side?'ميل M1 الحالي':'سيناريو بديل مشروط'}</small>
+      </div>
+      <div><span>{rise?'أقرب سيولة فوق القمم':'أقرب سيولة تحت القيعان'}</span>
+        <b dir="ltr">{fmt(levels[0]?.price)}</b></div>
+      <div><span>المستوى التالي</span><b dir="ltr">{fmt(levels[1]?.price)}</b></div>
+      <small>{levels.length?
+        'قمم/قيعان M15 أو H1 مغلقة · مستويات مراقبة وليست أهدافًا مضمونة':
+        'لا توجد مستويات مؤكدة قريبة بهذا الاتجاه'}</small>
+    </section>;
+  };
+  return <aside className="sniper-hunter-right" aria-label="خريطة السيولة التاريخية المشروطة">
+    <div className="sniper-hunter-sidehead">
+      <strong>خريطة القنص · سيولة M15/H1</strong>
+      <small>{direction==='BUY'?'ميل الدقيقة صعود':
+        direction==='SELL'?'ميل الدقيقة هبوط':'اتجاه الدقيقة غير مؤكد'}</small>
     </div>
-    <div><span>كسر مشروط</span><b dir="ltr">{fmt(entry)}</b></div>
-    <div><span>محطة 1</span><b dir="ltr">{fmt(candles[2]?.close)}</b></div>
-    <div><span>محطة 2</span><b dir="ltr">{fmt(candles[5]?.close)}</b></div>
-    <small>محطات محاكاة ATR، ليست TP منفذًا أو مضمونًا.</small>
-  </section>;
- };
- return <aside className="sniper-hunter-right" aria-label="المسارات المتوقعة المشروطة">
-   <div className="sniper-hunter-sidehead">
-     <strong>السيناريو الذكي · M15</strong>
-     <small>{qualified?'توقع محفوظ':'مساران تحليليان'}</small>
-   </div>
-   {preview.ready?<div className="sniper-hunter-scenario-stack">
-     {row('BUY')}{row('SELL')}
-     {structure.ready&&structure.zones.length>0&&
-       <div className="sniper-hunter-structure-zones">
-         <strong>FVG / OB · مناطق مرصودة</strong>
-         {structure.zones.slice(0,2).map(z=>
-           <div key={z.kind+'-'+z.formedAt}>
-             <span>{z.label}</span>
-             <b dir="ltr">{fmt(z.low)} – {fmt(z.high)}</b>
-           </div>)}
-       </div>}
-     <div className="sniper-hunter-sweep">
-       <span>قراءة سحب السيولة</span>
-       <strong>{preview.sweep==='HIGH_REJECTION'?'رفض قمة مغلقة':
-         preview.sweep==='LOW_REJECTION'?'استرداد قاع مغلق':'لا يوجد سحب مؤكد'}</strong>
-       <span>السعر المرصود <b dir="ltr">{fmt(price)}</b></span>
-     </div>
-   </div>:<div className="sniper-hunter-no-data">
-     {preview.reason||'لا توجد بيانات مغلقة كافية'}
-   </div>}
-   <small className="sniper-hunter-right-caption">
-     {active?'توقعات مشروطة · ليست صفقات':
-       'مراقبة تاريخية أو سوق مغلق · لا دخول'}
-   </small>
- </aside>;
+    {active?<div className="sniper-hunter-scenario-stack">
+      {row('BUY')}{row('SELL')}
+      {structure.ready&&structure.zones.length>0&&
+        <div className="sniper-hunter-structure-zones">
+          <strong>FVG / OB · مناطق مرصودة</strong>
+          {structure.zones.slice(0,2).map(z=>
+            <div key={z.kind+'-'+z.formedAt}>
+              <span>{z.label}</span>
+              <b dir="ltr">{fmt(z.low)} – {fmt(z.high)}</b>
+            </div>)}
+        </div>}
+      <div className="sniper-hunter-sweep">
+        <span>السعر المرصود</span>
+        <strong dir="ltr">{fmt(price)}</strong>
+        <small>لا تُعرض شموع أو أسعار مستقبلية مصطنعة.</small>
+      </div>
+    </div>:<div className="sniper-hunter-no-data">
+      {marketOpen?watch.reason:'السوق مغلق · مستويات تاريخية فقط'}
+    </div>}
+    <small className="sniper-hunter-right-caption">
+      مستويات من شموع مغلقة · الاختراق أو الرفض يحتاج تأكيدًا · لا دخول آلي
+    </small>
+  </aside>;
 }
 export function SniperNextCandleCard({priority,marketOpen}:{
   priority:M1Priority;marketOpen:boolean;
