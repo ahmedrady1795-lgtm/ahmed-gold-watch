@@ -56,7 +56,13 @@ async function runMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPrediction>
   // A provider correction to an older candle must invalidate cached AI output.
   // Last-close-only keys silently replay predictions from superseded features.
   const cacheKey=rows.map(c=>[c.time,c.open,c.high,c.low,c.close,volume(c)].join(':')).join('|');
-  if(cache&&now-cache.at<30000&&cache.key===cacheKey)return cache.value;
+  // One *identical* immutable CLOSED-M1 input needs only one upstream
+  // inference. The previous 30s TTL repeated the same Binance/ML request
+  // before a new minute closed, increasing free-tier rate limiting.
+  // prepareMlCandles above still rejects stale/gapped rows; ANY OHLC/volume
+  // correction changes the full-row key and forces a fresh inference.
+  const cacheAge=now-cache?.at!;
+  if(cache&&cacheAge>=0&&cacheAge<110000&&cache.key===cacheKey)return cache.value;
   if(Date.now()<aiRetryAt(url))return {ok:false,status:'RATE_LIMITED',reason:'ML engine cooldown after HTTP 429',shadow:true};
   const controller=new AbortController();
   // Measured free-tier inference exceeded the old 3.5s cutoff even after
