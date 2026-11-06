@@ -55,6 +55,8 @@ assert.equal(data.history.filter(t=>t.entry!=null).length,1,
 const a=data.history[0];
 assert.equal(a.state,'PENDING','weakness or 1.25R trading gate must not discard shadow attempt');
 assert.equal(a.limitType,'BUY_LIMIT');
+assert.equal(a.baselineSide,'BUY',
+ 'baseline must be frozen from the last CLOSED candle before the prediction');
 assert.ok(a.entry<first.bid,'BUY LIMIT must be lower than current bid');
 assert.equal(a.filledAt,null,'never market-fill on creation');
 assert.ok(a.extraCost!=null&&Math.abs(a.extraCost-.005)<.001,
