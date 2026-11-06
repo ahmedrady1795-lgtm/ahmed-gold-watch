@@ -49,7 +49,8 @@ assert.match(panel,/localStorage\.setItem\(persistenceKey,JSON\.stringify\(froze
 assert.match(panel,/validateFrozenM15Snapshot/);
 assert.match(panel,/steps:12/,'only a fixed three-hour analogue may be issued');
 assert.match(panel,/scenario\.bars\.slice\(elapsedSteps,12\)/);
-assert.match(panel,/m\.step>elapsedSteps/,'remaining bounce events share original timestamps');
+assert.match(panel,/bars:scenario\.bars\.map\(b=>/,
+ 'scored future hypotheses remain immutable even when not painted');
 assert.match(panel,/restoredKey!==persistenceScope/,'must restore before issuing');
 assert.match(panel,/className="sniper-m15-chart-box"/,'M15 chart remains in place');
 assert.doesNotMatch(panel,/sniper-m15-results-overlay|sniper-m15-results-trigger/,'results overlay is intentionally hidden');
