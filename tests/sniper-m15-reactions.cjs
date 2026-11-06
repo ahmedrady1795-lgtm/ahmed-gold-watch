@@ -69,35 +69,18 @@ assert.equal(pivot.marks.length,1);
 assert.equal(pivot.marks[0].kind,'PATTERN_TURN');
 assert.equal(pivot.marks[0].invalidation,null,'hypothetical pivot is not verified demand');
 const component=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
-assert.match(component,/const reactions=buildM15ReactionMap/);
-assert.match(component,/marks:aligned\.reactions\.marks\.filter/,
- 'reaction markers show only when frozen projected candles match the live anchor');
-assert.match(component,/className="sniper-m15-reaction-band"/);
-assert.match(component,/className="sniper-m15-reaction-mark"/);
+const map=fs.readFileSync('components/SniperLiquidityDecisionMap.tsx','utf8');
+assert.match(component,/const reactions=buildM15ReactionMap/,
+ 'hypothetical reaction marks are still stored for retrospective scoring');
+assert.match(component,/<SniperLiquidityDecisionMap watch=\{watchMap\}/,
+ 'forward lane is a true-price liquidity map, not a candle simulator');
+assert.doesNotMatch(component,/reactionMap\.marks\.map|renderedBars\.map|<SniperM15HuntOverlay/,
+ 'synthetic reactions and OHLC are not shown as future market events');
 assert.match(component,/className="sniper-m15-liquidity-line"/);
-assert.match(component,/mark\.price/);
-assert.match(component,/z\.invalidation/);
-assert.match(component,/projected\.ready&&showExtra&&reactionMap\.marks/,
- 'confirmed reaction marks remain optional instead of cluttering forecast candles');
-assert.doesNotMatch(component,/setTimeout\([^]*?setFrozen/);
-assert.match(component,/const projectedStride=\(end-split-8\)\/Math\.max\(12,renderedBars\.length\);/,
- 'conditional drawing fits its candle count without changing the scored bars');
-assert.match(component,/const realCandleWidth=clamp\(actualStride\*\.68/,
- 'real M15 width stays based on observed historical geometry');
-assert.match(component,/const futureCandleWidth=clamp\(projectedStride\*\.62,1\.7,4\);/,
- 'classic right pane uses historical narrow solid candles');
-assert.match(component,/realCandleWidth,false,'real'\+b\.time/,
- 'historical OHLC is rendered at its original width');
-assert.match(component,/futureCandleWidth,true,'future'\+i/,
- 'future illustration is drawn as continuous full OHLC candles');
-assert.doesNotMatch(component,/const projectedSlots=Math\.max\(14/,
- 'do not zoom up four forecast bars after a stop');
-assert.match(component,/stable\?\.scenario\.stopped/,
- 'display hypothetical early stop transparently instead of only showing distant TPs');
-assert.match(component,/const drawnZones=liquidity\.zones\.filter/,
- 'overlapping real liquidity rectangles should not paint opaque red blobs');
-assert.match(component,/compactM15ZoneAnnotations\(drawnZones/,
- 'only drawn price zones contribute visible historical labels');
-assert.match(component,/const forwardLabels=showLiquidity&&showExtra/,
- 'extended reaction notes should appear only when requested');
-console.log('PASS: frozen source-true rebound bands, mirrored BUY/SELL projected touches, expiry/stop/future guards, no invented hits');
+assert.match(component,/const realCandleWidth=clamp\(actualStride\*\.68/);
+assert.match(component,/realCandleWidth,false,'real'\+b\.time/);
+assert.match(component,/const drawnZones=liquidity\.zones\.filter/);
+assert.match(component,/compactM15ZoneAnnotations\(drawnZones/);
+assert.match(map,/watch\.upper\.slice\(0,2\)/);
+assert.match(map,/watch\.lower\.slice\(0,2\)/);
+console.log('PASS: causal hypothetical reaction scoring retained; forward chart draws observed price levels, no fake OHLC');
