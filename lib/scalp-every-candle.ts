@@ -4,6 +4,10 @@ import {everyM1Direction} from './sniper-m1-every-direction';
 import {priceEveryM1Limit,EVERY_M1_EDGE_V4,EVERY_M1_EDGE_V5} from './scalp-every-m1-economics';
 import {requiresM1TickConfirmation,m1BidAskEvidence,M1_CONFIRM_WINDOW_MS} from './scalp-m1-tick-evidence';
 import {chooseOnlineM1,type OnlineM1Choice} from './scalp-m1-online-learning';
+import {chooseM1ShadowExpert,auditM1ShadowExpert,
+  type ShadowM1Selection} from './scalp-m1-shadow-expert';
+import {watchM1FastExitShadow,auditM1FastExitShadow,
+  M1_FAST_EXIT_SHADOW_V1} from './scalp-m1-fast-exit-shadow';
 import {advanceForwardM1Pulse,auditForwardM1Pulse,M1_FORWARD_PULSE_V1,
   type ForwardPulse} from './scalp-m1-forward-pulse';
 import type {ScalpQuote} from './scalp-opportunities';
@@ -23,7 +27,12 @@ export type EveryAttempt={
   strategyVersion?:string;pattern?:string;directionModel?:string;
   seedMid?:number;seedAt?:number;seedSource?:string;confirmedAt?:number|null;
   originalSide?:EverySide;onlineModel?:OnlineM1Choice['model'];
-  onlineDecision?:OnlineM1Choice;chartSource?:string;
+  onlineDecision?:OnlineM1Choice;
+  shadowSide?:EverySide;shadowModel?:ShadowM1Selection['model'];
+  shadowExitVersion?:string;shadowAdverseTicks?:number;
+  shadowEarlyExitAt?:number|null;shadowEarlyExitPrice?:number|null;
+  shadowEarlyExitNetR?:number|null;
+  chartSource?:string;
   directionObserved?:'BUY'|'SELL'|'FLAT'|'UNKNOWN'|null;
   pulseVersion?:string;pulse?:ForwardPulse|null;
   directionEvaluatedAt?:number|null;
@@ -300,6 +309,27 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       continue;
     }
     const exit=t.side==='BUY'?Number(q.bid):Number(q.ask);
+    // Research-only early exit after a short grace and 2 separate adverse
+    // executable quotes. This NEVER changes V5 exits, broker orders or SL.
+    if(t.shadowExitVersion===M1_FAST_EXIT_SHADOW_V1&&
+       t.shadowEarlyExitAt==null){
+      const observation=watchM1FastExitShadow({
+        side:t.side,entry:Number(t.entry),stop:Number(t.stop),
+        tp:Number(t.tp),filledAt:Number(t.filledAt),
+        lastQuoteAt:t.lastQuoteAt,now,quoteAt:q.at!,
+        bid:Number(q.bid),ask:Number(q.ask),quoteSource:q.source,
+        fillSource:t.quoteSource,
+        previous:{adverseTicks:t.shadowAdverseTicks??0,
+          earlyExitAt:t.shadowEarlyExitAt??null,
+          earlyExitPrice:t.shadowEarlyExitPrice??null}
+      });
+      t.shadowAdverseTicks=observation.adverseTicks;
+      if(observation.earlyExitAt!=null&&observation.earlyExitPrice!=null){
+        t.shadowEarlyExitAt=observation.earlyExitAt;
+        t.shadowEarlyExitPrice=observation.earlyExitPrice;
+        t.shadowEarlyExitNetR=priceAfterEntry(t,observation.earlyExitPrice);
+      }
+    }
     if(t.side==='BUY'?exit<=Number(t.stop):exit>=Number(t.stop))
       finish(t,'STOP',q.at!,exit,'وقف مرصود بالـ Bid/Ask');
     else if(t.side==='BUY'?exit>=Number(t.tp):exit<=Number(t.tp))
@@ -312,6 +342,8 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
     // On-the-fly learning uses only earlier FROZEN observed forecasts.
     // No running candle or P/L after issue can influence this decision.
     const online=chooseOnlineM1(signal,history);
+    // Shadow expert may learn faster but NEVER changes the issued paper LIMIT.
+    const shadow=chooseM1ShadowExpert(signal,history,chartSource);
     const proposed=online.side;
     // Record the forecast immediately, even if the newest book quote is
     // from a few milliseconds BEFORE this minute began. Give the quote
@@ -320,6 +352,9 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
     const t:EveryAttempt={
       id:signal.issuedAt,issuedAt:signal.issuedAt,side:proposed,
       originalSide:signal.side,onlineModel:online.model,onlineDecision:online,
+      shadowSide:shadow.side,shadowModel:shadow.model,
+      shadowExitVersion:M1_FAST_EXIT_SHADOW_V1,shadowAdverseTicks:0,
+      shadowEarlyExitAt:null,shadowEarlyExitPrice:null,shadowEarlyExitNetR:null,
       pressure:signal.pressure,weak:signal.weak,state:'AWAIT_QUOTE',
       qualityTier:signal.weak?'RESEARCH_WEAK':'RESEARCH_CANDIDATE',
       atr:signal.atr,anchorTime:signal.anchorTime,
@@ -369,6 +404,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   // Old cost-corrected tests must not validate today's changed payoff.
   const settled=completed.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V5);
   const oldResults=completed.filter(t=>t.strategyVersion!==EVERY_M1_EDGE_V5);
+  const fastExitShadow=auditM1FastExitShadow(settled,EVERY_M1_EDGE_V5);
   const legacyResults=oldResults.length;
   const legacyNetR=round(oldResults.reduce((sum,t)=>sum+Number(t.netR),0));
   const results=settled.map(t=>Number(t.netR));
@@ -385,6 +421,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   const marked=v4.filter(t=>t.directionObserved==='BUY'||t.directionObserved==='SELL');
   const forwardPulse=auditForwardM1Pulse(
     hist.filter(t=>t.pulseVersion===M1_FORWARD_PULSE_V1));
+  const shadowExpert=auditM1ShadowExpert(hist);
   const directionHits=marked.filter(t=>t.side===t.directionObserved).length;
   const byEvidence=(weak:boolean)=>{
     const issued=v4.filter(t=>t.weak===weak);
@@ -426,7 +463,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
       unknown:v4.filter(t=>t.directionObserved==='UNKNOWN').length,
       waiting:v4.filter(t=>t.directionObserved==null).length,
       hitPct:marked.length?round(directionHits/marked.length*100):null},
-    learning:{minimumPast:36,
+    learning:{minimumPast:36,shadowExpert,fastExitShadow,
       switched:v4.filter(t=>t.onlineModel==='ONLINE_INVERSION').length,
       byModel:{baseline:byModel('PRESSURE_SWEEP'),
         inversion:byModel('ONLINE_INVERSION')},

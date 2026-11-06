@@ -166,6 +166,23 @@ function GoldEveryCandle({data}:{data:any}){
         و12 توقعًا لاحقًا من نفس نوع الحالة قبل السماح بتغيير اتجاه تلقائي.
         الحالات المجهولة والتوقعات الضعيفة ظاهرة، ومش محسوبة كمكاسب.
       </p>
+      <p style={{fontSize:12,margin:'6px 0',opacity:.85}}>
+        نموذج عكسي منافس (تجريبي فقط): اقترح {data?.learning?.shadowExpert?.proposedFlips??0} انعكاسًا
+        {' · '}مقارنات مغلقة {data?.learning?.shadowExpert?.flipped?.graded??0}
+        {' · '}المنافس أصاب {data?.learning?.shadowExpert?.flipped?.shadowHits??0}
+        {' '}مقابل {data?.learning?.shadowExpert?.flipped?.liveHits??0} للمحرك الحالي على نفس الشموع.
+        يتعلم من 8 نتائج تدريب و8 مراجعة من نفس النمط، ويسجل قراره قبل الشمعة.
+        لا يغيّر الدخول أو توقع الشاشة قبل إثبات مستقل على شموع جديدة.
+      </p>
+      <p style={{fontSize:12,margin:'6px 0',opacity:.85}}>
+        تجربة خروج مبكر بعد مهلة 3 ثوان وتيكين عكسيين متتاليين:
+        {' '}{data?.learning?.fastExitShadow?.earlyExits??0} خروج افتراضي من
+        {' '}{data?.learning?.fastExitShadow?.compared??0} صفقة LIMIT ورقية مكتملة جديدة.
+        {' '}صافي مسار V5 الحالي {data?.learning?.fastExitShadow?.baselineNetR??0}R
+        {' · '}صافي التجربة الافتراضية {data?.learning?.fastExitShadow?.shadowNetR??0}R.
+        نفس الصفقات ونفس تكلفة Bid/Ask التقديرية، بدون تعديل الوقف أو التنفيذ،
+        ولا نزعم تقليل الخسارة قبل رصد نتائج كافية.
+      </p>
     </div>
     <div style={{padding:12,margin:'10px 0',borderRadius:10,
       border:'1px solid var(--border, rgba(160,165,180,.25))'}}

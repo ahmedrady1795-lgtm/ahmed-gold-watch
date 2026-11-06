@@ -97,6 +97,8 @@ jobs:
       - run: node tests/m1-adaptive-causal.cjs
       - run: node tests/sniper-m1-intrabar-pulse.cjs
       - run: node tests/m1-forward-online-learning.cjs
+      - run: node tests/scalp-m1-shadow-expert.cjs
+      - run: node tests/scalp-m1-fast-exit-shadow.cjs
       - run: node tests/scalp-m1-tick-evidence.cjs
       - run: node tests/scalp-every-m1.cjs
       - run: node tests/sniper-m1-priority.cjs
