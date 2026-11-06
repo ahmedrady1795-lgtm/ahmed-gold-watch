@@ -21,7 +21,9 @@ const round=(v:number)=>Number(v.toFixed(3));
  */
 export function priceEveryM1Limit(input:{
   side:'BUY'|'SELL';bid:number;ask:number;atr:number;
-  cost:number;previousOpen:number;previousClose:number
+  cost:number;previousOpen:number;previousClose:number;
+  // Research competitor only. Production V5 defaults to original body retest.
+  retestProfile?:'BODY_RETEST'|'NEAR_TICK'
 }):EveryM1Economics|null{
   const {side,bid,ask,atr,cost,previousOpen,previousClose}=input;
   if(![bid,ask,atr,cost,previousOpen,previousClose].every(Number.isFinite)||
@@ -32,14 +34,20 @@ export function priceEveryM1Limit(input:{
   const extra=Math.max(0,cost-spread);
   // Re-enter on a pullback into the last closed candle's body, rather than
   // immediately chasing the current quote. Bound depth to avoid stale orders.
-  const offset=Math.max(.02,spread*.5,atr*.04);
+  const near=input.retestProfile==='NEAR_TICK';
+  const offset=near?Math.max(.02,spread*1.1,atr*.055):
+    Math.max(.02,spread*.5,atr*.04);
   const bodyMid=(previousOpen+previousClose)/2;
   const buy=side==='BUY';
   // Pending LIMIT should have a realistic chance of reaching a pullback in M1.
-  const maxRetest=atr*.32;
+  const maxRetest=atr*(near?.16:.32);
   if(offset>maxRetest||spread>atr*.24)return null;
-  const targetBuy=Math.max(bid-maxRetest,Math.min(bid-offset,bodyMid));
-  const targetSell=Math.min(ask+maxRetest,Math.max(ask+offset,bodyMid));
+  // A near-tick price rests just inside bid/ask without chasing Market.
+  // It is tested prospectively and never alters actual V5 price geometry.
+  const targetBuy=near?bid-offset:
+    Math.max(bid-maxRetest,Math.min(bid-offset,bodyMid));
+  const targetSell=near?ask+offset:
+    Math.min(ask+maxRetest,Math.max(ask+offset,bodyMid));
   const entry=buy?lo(targetBuy):hi(targetSell);
   // A tight stop still has to clear normal quote noise and the live spread.
   // Loss distance shrinks with target; every stop still contributes to proof.
