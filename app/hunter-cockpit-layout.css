@@ -212,3 +212,49 @@
  }
  .sniper-m15-panel .sniper-m15-view-controls{gap:4px}
 }
+
+/* Source-backed directional signal stays directly above the M15 chart.
+   It is not a simulated broker fill or permission to execute. */
+.sniper-m15-live-signal-strip{
+  box-sizing:border-box;direction:rtl;min-width:0;margin:7px 0;
+  padding:9px 10px;border:1px solid #52626a;border-radius:9px;
+  background:#0a1720;color:#e5edf0;font-size:12px;
+}
+.sniper-m15-live-signal-head{
+  display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;
+}
+.sniper-m15-live-signal-head>span{color:#9fb8c2;font-size:11px;font-weight:750}
+.sniper-m15-live-signal-head>strong{font-size:17px;font-weight:850}
+.sniper-m15-live-signal-head>b{
+  margin-inline-start:auto;border:1px solid #607078;
+  border-radius:6px;padding:3px 7px;font-size:10px;color:#d8e2e7;
+}
+.sniper-m15-live-signal-strip.signal-buy{border-color:#277c66}
+.sniper-m15-live-signal-strip.signal-buy .sniper-m15-live-signal-head>strong{color:#64edb9}
+.sniper-m15-live-signal-strip.signal-sell{border-color:#a34e66}
+.sniper-m15-live-signal-strip.signal-sell .sniper-m15-live-signal-head>strong{color:#ff8fab}
+.sniper-m15-live-signal-strip.signal-break .sniper-m15-live-signal-head>b{
+  border-color:#d0ae63;color:#f0cf8e
+}
+.sniper-m15-live-signal-strip>p{margin:6px 0;color:#c0d0d6;line-height:1.45}
+.sniper-m15-live-signal-levels{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;
+}
+.sniper-m15-live-signal-levels>span{
+  display:flex;flex-direction:column;gap:3px;min-width:0;
+  padding:5px 7px;border:1px solid #29434f;border-radius:6px;background:#07121a;
+}
+.sniper-m15-live-signal-levels small{color:#9eb5c2;font-size:9px}
+.sniper-m15-live-signal-levels b{
+  font-size:12px;color:#e7f4f5;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;font-variant-numeric:tabular-nums;
+}
+.sniper-m15-live-signal-disclaimer{
+  display:block;margin-top:7px;color:#a6b7c0;font-size:10px;line-height:1.45;
+}
+@media(max-width:640px){
+  .sniper-m15-live-signal-strip{padding:8px 7px}
+  .sniper-m15-live-signal-head>strong{font-size:15px}
+  .sniper-m15-live-signal-levels{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sniper-m15-live-signal-levels b{font-size:12px}
+}
