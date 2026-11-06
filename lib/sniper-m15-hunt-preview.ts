@@ -77,8 +77,8 @@ export function observeM15HuntPressure(
     vote('BUY',3,'إغلاق فوق هيكل القمم');
   else if(last.close<low-atr*.025)
     vote('SELL',3,'إغلاق تحت هيكل القيعان');
-  if(sweep==='HIGH_REJECTION')vote('SELL',5,'سحب قمة ثم رفض مؤكد');
-  if(sweep==='LOW_REJECTION')vote('BUY',5,'سحب قاع ثم استرداد مؤكد');
+  if(sweep==='HIGH_REJECTION')vote('SELL',10,'سحب قمة ثم رفض مؤكد');
+  if(sweep==='LOW_REJECTION')vote('BUY',10,'سحب قاع ثم استرداد مؤكد');
   // Local price rejection: a closed pin with a clear wick dominance.
   const range=Math.max(last.high-last.low,atr*.01);
   const upper=(last.high-Math.max(last.open,last.close))/range;
