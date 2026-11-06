@@ -176,7 +176,9 @@ function beginAfterFreshQuote(t:EveryAttempt,raw:readonly M1Bar[],q:ScalpQuote,
   !q.source||q.source==='unavailable')return false;
  const atr=Number(t.atr);
  if(!Number.isFinite(atr)||atr<=0)return false;
- if(!requiresM1TickConfirmation({side:t.side,weak:t.weak,
+ if(!requiresM1TickConfirmation({side:t.side,
+   weak:t.weak||t.forwardQuality?.status==='NO_EDGE'||
+     t.forwardQuality?.status==='UNPROVEN',
    pressure:t.pressure,atr,directionModel:t.directionModel}))
    return stageAfterQuote(t,raw,q,now,costEstimate);
  t.seedMid=(Number(q.bid)+Number(q.ask))/2;
@@ -242,7 +244,8 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       // or roll lastQuoteAt backwards and hide a subsequent feed gap.
       if(!fresh||!book||!q.source||q.at!<=t.lastQuoteAt)continue;
       const decision=m1BidAskEvidence({
-        side:t.side,weak:t.weak,pressure:t.pressure,atr:Number(t.atr),
+        side:t.side,weak:t.weak||t.forwardQuality?.status==='NO_EDGE'||
+          t.forwardQuality?.status==='UNPROVEN',pressure:t.pressure,atr:Number(t.atr),
         directionModel:t.directionModel
       },{mid:Number(t.seedMid),at:Number(t.seedAt),source:String(t.seedSource)},{
         bid:Number(q.bid),ask:Number(q.ask),at:q.at!,source:q.source
@@ -384,7 +387,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       nearLimitShadow:newNearM1Shadow(proposed,signal.issuedAt),
       shadowExitVersion:M1_FAST_EXIT_SHADOW_V1,shadowAdverseTicks:0,
       shadowEarlyExitAt:null,shadowEarlyExitPrice:null,shadowEarlyExitNetR:null,
-      pressure:signal.pressure,weak:needsExtraProof,state:'AWAIT_QUOTE',
+      pressure:signal.pressure,weak:signal.weak,state:'AWAIT_QUOTE',
       qualityTier:needsExtraProof?'RESEARCH_WEAK':'RESEARCH_CANDIDATE',
       forwardQuality,
       atr:signal.atr,anchorTime:signal.anchorTime,
