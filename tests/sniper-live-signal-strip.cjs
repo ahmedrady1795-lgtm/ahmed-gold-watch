@@ -46,9 +46,30 @@ assert.equal(get({...common,minute,
   opportunity:{...brk,phase:'CANCELLED',sourceAt:now-180000}}).kind,'FORECAST');
 assert.equal(get({...common,minute:{...minute,issuedAt:now-90000},
   opportunity:{...brk,sourceAt:now-180000}}).kind,'EXPIRED');
+const plan={ready:true,issuedAt:minute.issuedAt,
+  expiresAt:minute.issuedAt+60000,tradeEligible:false,
+  buy:{side:'BUY',trigger:4120,target:4122,stop:4115,grossRewardRisk:.4},
+  sell:{side:'SELL',trigger:4100,target:4098,stop:4105,grossRewardRisk:.4}};
+const watch=get({...common,minute,plan});
+assert.equal(watch.kind,'FORECAST');
+assert.equal(watch.side,'SELL');
+assert.equal(watch.trigger,4100,'forecast links only exact M1 issued breakout');
+assert.equal(watch.invalidation,4105);
+assert.equal(watch.targets[0],4098);
+assert.equal(watch.levelsAreWatchOnly,true);
+assert.equal(watch.executionConfirmed,false);
+assert.equal(get({...common,minute,plan:{...plan,issuedAt:plan.issuedAt-60000}}).trigger,
+ null,'do not borrow levels from a previous minute');
+assert.equal(get({...common,minute,plan:{...plan,expiresAt:now-1}}).trigger,
+ null,'expired watch levels cannot appear in live card');
+const buyMinute={...minute,side:'BUY'};
+const buyWatch=get({...common,minute:buyMinute,plan});
+assert.equal(buyWatch.trigger,4120,'watch levels must follow forecast side');
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(panel,/<SniperLiveSignalStrip /);
 assert.match(panel,/minute=\{everyMinuteForecast\}/);
+assert.match(panel,/plan=\{minuteWatch\}/);
+assert.match(panel,/buildCandleHunter\(\{bars:m\.candles,now/);
 assert.ok(panel.indexOf('<SniperLiveSignalStrip ')>
  panel.indexOf('className="sniper-m15-compact-status"'));
 assert.ok(panel.indexOf('<SniperLiveSignalStrip ')<
