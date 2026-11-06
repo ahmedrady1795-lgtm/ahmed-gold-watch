@@ -1,18 +1,17 @@
-# Temporary Render Free deployment
+# Qannas — active Render Free deployment
 
 [Deploy the free service](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2Fahmedrady1795-lgtm%2Fahmed-gold-watch%2Ftree%2Frender-free)
 
-This branch includes the server-side sniper watch update from production source commit 0feda47a9ce01fc3aef365765e58279e00ab0b95.
+The deployed source branch is **render-free**. All new Qannas changes must target this branch and the existing Render services, not unrelated deployment branches.
 
 ## Scope and limits
 
-- One Docker web service with explicit `plan: free`. No paid workers, disks, or databases are provisioned.
+- Main Qannas site: `ahmed-gold-watch-free`, Docker, Render Free, branch `render-free`. The same workspace also contains the supporting `qannas-ml-engine` and `qannas-neural-engine` services, both on `render-free`.
 - Uses the existing Dockerfile, regression checks, Next.js build, and `/api/live` health check. Next.js listens on Render's configured port 10000.
 - Render Free sleeps after 15 minutes without inbound traffic. Continuous observation while asleep is unavailable; this is not a 24/7 deployment.
-- The filesystem is temporary. Existing Railway history is not copied. Sniper memory can be lost on restart, sleep, or redeployment.
-- ML_ENGINE_URL and NEURAL_ENGINE_URL are intentionally not configured. The separate ML and neural services are not included; the application reports those integrations disabled.
-- No API keys or Railway credentials are copied into the repository.
-- The current Railway service is not changed by this configuration.
+- The filesystem is temporary. Sniper memory can be lost on restart, sleep, or redeployment.
+- ML and neural integrations depend on runtime configuration; separate Render services exist, but their actual connectivity must be checked in the running application.
+- Never commit API keys or service credentials into the repository.
 - Auto-deploy is off. Future releases require an explicit Render deploy.
 
 ## Activation and verification
@@ -26,4 +25,4 @@ A successful build is not proof the market feeds work in the selected region. Af
 4. The UI reports feed timestamps honestly and keeps stale signals blocked.
 5. Inspect runtime memory and logs: the free service only has 512 MB RAM, so capacity is not yet verified.
 
-Deployment and live verification remain pending until a Render account is connected.
+The Render account is connected. The last confirmed live main-site deploy as of 2026-11-06 used branch `render-free`, commit `38fcddb239b85da443624674e1403ea7f4fa5580`. This statement does not replace checking each subsequent deployment.
