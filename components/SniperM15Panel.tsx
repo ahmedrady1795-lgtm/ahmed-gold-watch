@@ -976,7 +976,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          </text>
        </g>)}
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
-       <text x={split+5} y={17} fill="#9fc4d3" fontSize="10" textAnchor="start" direction="ltr">M15 · LIQUIDITY RADAR · V4</text>
+       <text x={split+5} y={17} fill="#9fc4d3" fontSize="10" textAnchor="start" direction="ltr">M15 · LEVEL MAP · V4 RADAR</text>
        {showExtra&&<text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
          textAnchor="start" direction="rtl">قنص الحركة · مسارات مراقبة مشروطة بمستويات مرصودة</text>}
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
