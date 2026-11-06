@@ -15,7 +15,16 @@ function load(file){
 const {everyM1Direction}=load('lib/sniper-m1-every-direction.ts');
 const {priceEveryM1Limit,EVERY_M1_EDGE_V6,EVERY_M1_MIN_NET_R}=
  load('lib/scalp-every-m1-economics.ts');
-const {advanceEveryM1}=load('lib/scalp-every-candle.ts');
+const {advanceEveryM1,everyM1StorageTier}=load('lib/scalp-every-candle.ts');
+assert.equal(everyM1StorageTier(true,false,true,false),'EPHEMERAL',
+  'Render Free /data file without disk is NOT persistent');
+assert.equal(everyM1StorageTier(false,true,true,false),'EPHEMERAL',
+  'temporary local paper evidence is never durable');
+assert.equal(everyM1StorageTier(false,false,true,false),'MEMORY',
+  'missing file is in-memory only');
+assert.equal(everyM1StorageTier(true,false,true,true),'VOLUME',
+  'actual Render mount can be called durable');
+
 const {buildM1CandleTape}=load('lib/sniper-m1-candle-tape.ts');
 const T=Date.parse('2026-11-05T11:00:00Z');
 const bars=Array.from({length:43},(_,i)=>{
