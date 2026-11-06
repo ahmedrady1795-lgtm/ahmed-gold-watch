@@ -40,8 +40,21 @@ const response=(status,header=null,data={ok:true})=>({status,ok:status===200,hea
  assert.equal(p1,same);assert.notEqual(p1,p2);assert.equal(calls.length,2);
  pending[0](response(200,null,{ok:true,marker:'a'}));pending[1](response(200,null,{ok:true,marker:'b'}));
  assert.equal((await p1).marker,'a');assert.equal((await p2).marker,'b');
+ // The same closed M1 bars remain fresh in the next 30-second worker
+ // cycle. A repeated identical request must NOT make another ML HTTP call.
+ now+=60000;
+ const repeated=await ml.getMlPrediction(b);
+ assert.equal(repeated.marker,'b','unchanged input reuses identical inference across cycles');
+ assert.equal(calls.length,2,'no second ML call for unchanged closed candles');
+ // A provider correction invalidates the entire input fingerprint and MUST
+ // fetch a new model prediction, never replay the old bullish/bearish side.
+ const corrected=b.map(c=>({...c}));corrected[100].close=100.75;
+ const changed=ml.getMlPrediction(corrected);
+ assert.equal(calls.length,3,'revised closed candle starts a new inference');
+ pending[2](response(200,null,{ok:true,marker:'corrected'}));
+ assert.equal((await changed).marker,'corrected');
  const p3=load('neural-prediction').getNeuralPrediction();env.NEURAL_ENABLED='0';
  assert.equal((await load('neural-prediction').getNeuralPrediction()).status,'DISABLED','disable wins over in-flight request');
- pending[2](response(200));await p3;
+ pending[3](response(200));await p3;
  console.log('PASS: shared 429 budget, Retry-After dates, transport reasons, keyed inference and in-flight opt-out');
 })().catch(e=>{console.error(e);process.exitCode=1;});
