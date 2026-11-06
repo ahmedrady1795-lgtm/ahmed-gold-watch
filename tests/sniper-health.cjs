@@ -18,13 +18,18 @@ const source=fs.readFileSync('app/api/sniper-health/route.ts','utf8');
 const code=ts.transpileModule(source,{compilerOptions:{
   target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS
 }}).outputText;
-const context=vm.createContext({Date:Clock,Response,console});
+const context=vm.createContext({Date:Clock,Response,console,
+ process:{env:{RENDER:'true',ML_ENGINE_URL:'https://ml.invalid',NEURAL_ENGINE_URL:'https://neural.invalid'}}});
 const factory=vm.runInContext('(function(exports,require){'+code+'\n})',context);
 factory(ex,name=>{
   if(name.endsWith('/ai-snapshot-cache'))
     return {getAiSnapshot:()=>snapshot};
   if(name.endsWith('/sniper-audit-store'))
     return {getSniperAudit:()=>audit};
+  if(name.endsWith('/ai-service-backoff'))
+    return {aiRateLimitState:(url)=>({
+      configured:Boolean(url),limited:Boolean(url&&url.includes('ml.invalid')),
+      retryInSeconds:url&&url.includes('ml.invalid')?180:0,consecutive429:url?2:0})};
   throw Error('Unexpected import '+name);
 });
 
@@ -34,6 +39,10 @@ factory(ex,name=>{
   assert.equal(fresh.operational,true,'fresh snapshot and ledger can operate on temporary storage');
   assert.equal(fresh.ai.mode,'PARTIAL');
   assert.equal(fresh.ai.readyCount,1);
+  assert.equal(fresh.ai.modelsReady,false,'up service must not equal certified model readiness');
+  assert.equal(fresh.ai.throttles.ml.limited,true);
+  assert.equal(fresh.ai.throttles.ml.retryInSeconds,180);
+  assert.equal(fresh.ai.throttles.neural.limited,false);
   assert.equal(fresh.audit.durable,false,
     'a temporary Render Free ledger must never be described as persistent');
   assert.equal(fresh.gold.scenario,'ACTIVE');
