@@ -32,8 +32,8 @@ assert.match(chart,/assessM15FrozenChartAlignment/);
 assert.match(chart,/!detached\?stable:null/,'detach stale forecast from live candle without re-anchoring');
 assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars;/);
 assert.match(chart,/الشموع المتوقعة لم تتغير/,'archive remains unchanged when visual forecast is hidden');
-assert.match(chart,/أول 12 شمعة للتقييم · امتداد الأهداف توضيحي غير زمني/,
- 'target illustration must not be presented as timed forecast evidence');
+assert.match(chart,/مسار مشروط دون شموع مستقبلية/,
+ 'future price path is not presented as observed OHLC')
 assert.match(badge,/<strong>◈ رادار الذهب<\/strong>/);
 assert.ok(badge.indexOf('{expanded&&<section')<badge.indexOf('sniper-gold-radar-prices'),
  'large radar data must remain behind tap-to-expand rather than obscuring candles');
