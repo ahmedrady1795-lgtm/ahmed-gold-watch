@@ -31,10 +31,12 @@ assert.equal(decide({...base,radar:null}).phase,'UNAVAILABLE');
 assert.equal(decide({...base,radar:{...radar,phase:'OFFLINE'}}).phase,'UNAVAILABLE');
 assert.equal(decide({...base,radar:{...radar,confirm:null}}).phase,'UNAVAILABLE');
 const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
-assert.match(chart,/assessRadarNextCandle/,'the first candle is assessed against radar evidence');
-assert.match(chart,/assessSniperEntryCandle/,'closed M1 candle is independently checked');
-assert.match(chart,/firstRadarCandle/,'decision is drawn above first projected candle');
-assert.match(chart,/formingVisible&&forming&&<g className="sniper-m15-live-partial"/,'authentic live M15 partial has an unmistakable outline');
+assert.match(chart,/formingVisible&&forming&&<g className="sniper-m15-live-partial"/,
+ 'live partial M15 remains source-backed and has a distinct outline');
+assert.match(chart,/<SniperLiquidityDecisionMap watch=\{watchMap\}/,
+ 'future pane no longer paints unverified first candle');
+assert.doesNotMatch(chart,/firstRadarCandle|renderedBars\.map|<SniperM15HuntOverlay/,
+ 'radar decision is research-only and does not masquerade as a future candle');
 const display=fs.readFileSync('components/OrderFlowRadar.tsx','utf8');
 assert.match(display,/onView\?\./,'radar state reaches M15 decision');
 console.log('PASS: radar/M1 two-source first-candle confirmation, expiry, venue isolation and OHLC');
