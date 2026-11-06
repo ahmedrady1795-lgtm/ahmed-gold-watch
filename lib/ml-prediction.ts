@@ -61,7 +61,7 @@ async function runMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPrediction>
   // before a new minute closed, increasing free-tier rate limiting.
   // prepareMlCandles above still rejects stale/gapped rows; ANY OHLC/volume
   // correction changes the full-row key and forces a fresh inference.
-  const cacheAge=now-cache?.at!;
+  const cacheAge=cache?now-cache.at:Infinity;
   if(cache&&cacheAge>=0&&cacheAge<110000&&cache.key===cacheKey)return cache.value;
   if(Date.now()<aiRetryAt(url))return {ok:false,status:'RATE_LIMITED',reason:'ML engine cooldown after HTTP 429',shadow:true};
   const controller=new AbortController();
