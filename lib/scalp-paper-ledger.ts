@@ -11,15 +11,29 @@ declare global {var __scalpPaperLedger:Ledger|undefined;}
 function load():Ledger{
   if(globalThis.__scalpPaperLedger)return globalThis.__scalpPaperLedger;
   let data:Ledger={version:1,lanes:{}};
-  try{const parsed=JSON.parse(fs.readFileSync('/data/scalp-paper-v1.json','utf8'));if(parsed.version===1&&parsed.lanes)data=parsed;}catch{}
+  // Render Free has no persistent disk. A /tmp fallback can preserve a paper
+  // session across Next route bundles but NOT across instance restarts.
+  for(const file of ['/data/scalp-paper-v1.json','/tmp/scalp-paper-v1.json']){
+    try{
+      const parsed=JSON.parse(fs.readFileSync(file,'utf8'));
+      if(parsed.version===1&&parsed.lanes){data=parsed;break;}
+    }catch{}
+  }
   globalThis.__scalpPaperLedger=data;return data;
 }
-function save(data:Ledger){
+function save(data:Ledger):{localSaved:boolean;durable:boolean}{
+  // The presence of /data does NOT imply an attached volume on Render Free.
+  // Keep the old /data path for actual disks; otherwise retain the current
+  // session on /tmp. Neither is broker trade history.
+  const useVolumeDir=fs.existsSync('/data');
+  const dir=useVolumeDir?'/data':'/tmp';
   try{
-    if(!fs.existsSync('/data'))return false;
-    fs.writeFileSync('/data/scalp-paper-v1.json.tmp',JSON.stringify(data));
-    fs.renameSync('/data/scalp-paper-v1.json.tmp','/data/scalp-paper-v1.json');return true;
-  }catch{return false;}
+    const file=dir+'/scalp-paper-v1.json';
+    fs.writeFileSync(file+'.tmp',JSON.stringify(data));
+    fs.renameSync(file+'.tmp',file);
+    const durable=useVolumeDir&&(!process.env.RENDER||Boolean(process.env.RENDER_DISK_MOUNT_PATH));
+    return {localSaved:true,durable};
+  }catch{return {localSaved:false,durable:false};}
 }
 const round=(v:number)=>Number(v.toFixed(3));
 // A fixed post-upgrade cohort avoids claiming that old historical fills
@@ -281,6 +295,8 @@ export function updateScalpLedger(asset:'GOLD'|'BTC',plans:ScalpPlan[],quote:Sca
       validation:verified.length<30?'COLLECTING':verified.reduce((s,t)=>s+Number(t.netR),0)/verified.length>.08&&negative>0&&positive/negative>=1.15?'POSITIVE_SAMPLE':'NEGATIVE_SAMPLE'
     }};
   });
-  const persisted=save(data);
-  return {mode:'PAPER_LIMIT_REFERENCE',persisted,lanes,note:'الدخول الورقي Limit فقط دون مطاردة السوق؛ الذهب التجريبي: جني مكسب صغير بعد التكلفة خلال 1–2 دقيقة عندما يتحرك السعر لصالح الخطة، أو وقف/خروج وقت؛ ليس تنفيذ وسيط ولا إثبات ربح. النتائج المجهولة لا تُحسب نجاحاً.'};
+  const storage=save(data);
+  return {mode:'PAPER_LIMIT_REFERENCE',persisted:storage.durable,
+    localSaved:storage.localSaved,persistence:storage.durable?'VOLUME':'NOT_DURABLE',
+    lanes,note:'الدخول الورقي Limit فقط دون مطاردة السوق؛ الذهب التجريبي: جني مكسب صغير بعد التكلفة خلال 1–2 دقيقة عندما يتحرك السعر لصالح الخطة، أو وقف/خروج وقت؛ ليس تنفيذ وسيط ولا إثبات ربح. النتائج المجهولة لا تُحسب نجاحاً.'};
 }
