@@ -109,12 +109,13 @@ function GoldEveryCandle({data}:{data:any}){
   return <section className="panel" aria-label="قنص كل شمعة M1 ورقي"
     style={{padding:16,marginBottom:14}}>
     <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
-      <strong>كل شمعة M1 · توقع أولًا، ثم LIMIT معلّق، ثم لمس موثّق</strong>
+      <strong>كل شمعة M1 · Limit قريب وسلبي V6 · ثم لمس موثّق</strong>
       <span style={{fontSize:12,opacity:.82}}>ورقي بحثي فقط · لا ينفّذ على Exness</span>
     </div>
     <p style={{fontSize:12,opacity:.80,margin:'8px 0'}}>
-      توقع لكل دقيقة مؤهلة؛ دخول LIMIT على تراجع داخل شمعة مغلقة، بهدف
-      صافي نظري ≥0.55R بعد تكلفة إضافية تقديرية. التوقعات الضعيفة بتحتاج
+      توقع لكل دقيقة مؤهلة؛ LIMIT قريب من Bid/Ask الحالي بدل انتظار منتصف جسم الشمعة السابقة.
+      السعر ثابت لحظة إصدار الأمر وغير قابل للتنفيذ كسعر Market.
+      الصافي النظري المستهدف ≥0.55R بعد تكلفة إضافية تقديرية؛ الاقتراب قد يزيد الدخول العكسي والخسائر. التوقعات الضعيفة بتحتاج
       تيكًا جديدًا يؤيد الاتجاه خلال 24 ثانية؛ مش هنستنى شمعة تانية.
       أي فرصة لا تصلح للتنفيذ
       تفضل متسجلة كتوقع، من غير تزوير دخول أو نجاح. مفيش ضمان للربح.
@@ -137,9 +138,10 @@ function GoldEveryCandle({data}:{data:any}){
       <span>مجهولة {data?.unknown??0}</span>
       <span>انعكاسات سيولة {data?.reversalSetups??0}</span>
       <span>عينات قديمة منفصلة {data?.legacyResults??0}</span>
-      <span>V5 نتائج LIMIT محسومة {data?.resolved??0}</span>
-      <span>V5 نجاح الصفقات الورقية {data?.observedWinPct!=null?data.observedWinPct+'%':'لا توجد عينة'}</span>
-      <span>النسخة القديمة: {data?.legacyResults??0} صفقة / {data?.legacyNetR??0}R (منفصلة)</span>
+      <span>V6 نتائج LIMIT محسومة {data?.resolved??0}</span>
+      <span>V6 نجاح الصفقات الورقية {data?.observedWinPct!=null?data.observedWinPct+'%':'لا توجد عينة'}</span>
+      <span>V5 السابق: {data?.priorV5?.resolved??0} صفقة / {data?.priorV5?.netR??0}R (فترة مختلفة)</span>
+      <span>إجمالي النسخ الأقدم: {data?.legacyResults??0} صفقة / {data?.legacyNetR??0}R (منفصلة)</span>
       <span>رفض قمة/قاع: {data?.byPattern?.reversal?.resolved??0} نتيجة / صافي {data?.byPattern?.reversal?.netR??0}R</span>
       <span>متابعة زخم: {data?.byPattern?.momentum?.resolved??0} نتيجة / صافي {data?.byPattern?.momentum?.netR??0}R</span>
     </div>
@@ -178,7 +180,7 @@ function GoldEveryCandle({data}:{data:any}){
         تجربة خروج مبكر بعد مهلة 3 ثوان وتيكين عكسيين متتاليين:
         {' '}{data?.learning?.fastExitShadow?.earlyExits??0} خروج افتراضي من
         {' '}{data?.learning?.fastExitShadow?.compared??0} صفقة LIMIT ورقية مكتملة جديدة.
-        {' '}صافي مسار V5 الحالي {data?.learning?.fastExitShadow?.baselineNetR??0}R
+        {' '}صافي مسار V6 الحالي {data?.learning?.fastExitShadow?.baselineNetR??0}R
         {' · '}صافي التجربة الافتراضية {data?.learning?.fastExitShadow?.shadowNetR??0}R.
         نفس الصفقات ونفس تكلفة Bid/Ask التقديرية، بدون تعديل الوقف أو التنفيذ،
         ولا نزعم تقليل الخسارة قبل رصد نتائج كافية.
@@ -265,8 +267,8 @@ function GoldEveryCandle({data}:{data:any}){
       والدقائق دي لا نحسبها نجاحًا،
       {' '}متوسط الصافي {data?.meanNetR!=null?fmt(data.meanNetR)+'R':'غير محسوب'}،
       {' '}العائد المستهدف مش نسبة نجاح. العائد الصافي المستهدف في
-      إعداد V5 لا يقل نظريًا عن 0.55R لكل وحدة مخاطرة؛ ونقطة التعادل
-      تختلف مع التنفيذ الفعلي وتوزيع الخسائر. وما نعتبرش V5 ناجحة
+      إعداد V6 لا يقل نظريًا عن 0.55R لكل وحدة مخاطرة؛ ونقطة التعادل
+      تختلف مع التنفيذ الفعلي وتوزيع الخسائر. وما نعتبرش V6 ناجحة
       إلا بعينة أمامية كبيرة صافيها موجب.
       {' '}مش دليل ربح حقيقي ولا نسبة نجاح معتمدة.
     </small>
