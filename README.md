@@ -1,5 +1,7 @@
 # Ahmed Gold Command
 
+> **Active Qannas production:** https://ahmed-gold-watch-free.onrender.com/ — source branch: `render-free`. The main site and its supporting services run on Render. Make all live-site changes against `render-free`; do not create or deploy duplicate sites from other branches.
+
 Rule-based trading command dashboard for gold and Bitcoin monitoring, technical analysis, backtesting/paper trading, and optional MT5/Exness bridge integration.
 
 ## Scalp desk (October 8, 2026)
