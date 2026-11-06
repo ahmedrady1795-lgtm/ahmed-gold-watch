@@ -49,16 +49,17 @@ assert.equal(buildM15WatchGuide(bars,now+4*3600000).ready,false,
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const summary=fs.readFileSync('components/SniperM15Summary.tsx','utf8');
 assert.match(panel,/showWatchGuide=!projected.ready&&watchGuide.ready/,
- 'the underlying M15 historical guide still computes watch states');
-assert.match(panel,/split=215,end=422/,
- 'the liquidity map keeps a dedicated pane even when M15 has no qualified plan');
-assert.match(panel,/<SniperLiquidityDecisionMap watch=\{watchMap\}/,
- 'M15 projects observed highs/lows instead of two artificial OHLC branches');
+  'watch-only analysis is independent of frozen/qualified trade signals');
+assert.match(panel,/split=projected.ready\|\|showWatchGuide\?215:422/,
+  'M15 actual chart reserves a genuine watch pane when no trade forecast exists');
+assert.match(panel,/className="sniper-m15-watch-guide"/,
+  'actual M15 chart renders two branches rather than hiding the scenario');
 assert.match(panel,/const projected=aligned\?\.scenario\?\?noScenario/,
- 'retrospective immutable scenarios remain available for forward scoring');
-assert.doesNotMatch(panel,/className="sniper-m15-watch-guide"|<SniperM15HuntOverlay/,
- 'the historical ATR watch route does not paint fake future candles');
-assert.doesNotMatch(panel,/sniper-minute-audit-strip/);
+  'strict pre-event ML predictions and forward scoring remain separate');
+assert.doesNotMatch(panel,/sniper-minute-audit-strip/,
+  'duplicate M1 stat strip is removed from the main chart entirely');
+assert.match(summary,/sniper-m15-watch-summary/,
+  'conditional up/down M15 ranges are explicitly labeled read-only');
 assert.match(summary,/sniper-m15-unavailable-details/,
- 'historical forecast detail remains accessible in a disclosure');
+  'trade-forecast blockers are still accessible but collapsed');
 console.log('PASS: closed-bar M15 two-path chart, tick stability, source gaps, historical-only expiry and no false trade authorization');

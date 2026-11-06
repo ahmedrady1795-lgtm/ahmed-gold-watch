@@ -29,15 +29,12 @@ assert.equal(gate({...core,live:4150}).reason,'MOVED_AWAY',
 const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const badge=fs.readFileSync('components/GoldRadarBadge.tsx','utf8');
 assert.match(chart,/assessM15FrozenChartAlignment/);
-assert.match(chart,/!detached\?stable:null/,
- 'prior hypothesis is detached from live pricing rather than repainted');
-assert.match(chart,/const shownBars=aligned\?\.scenario\.bars\.slice/,
- 'the original scored hypothetical OHLC stays immutable for research');
-assert.match(chart,/<SniperLiquidityDecisionMap watch=\{watchMap\}/,
- 'live forward pane instead shows historically observed price levels');
-assert.doesNotMatch(chart,/const displayBars=|renderedBars\.map/,
- 'old illustrative OHLC is removed from the active visualization');
+assert.match(chart,/!detached\?stable:null/,'detach stale forecast from live candle without re-anchoring');
+assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars;/);
+assert.match(chart,/الشموع المتوقعة لم تتغير/,'archive remains unchanged when visual forecast is hidden');
+assert.match(chart,/أول 12 شمعة للتقييم · امتداد الأهداف توضيحي غير زمني/,
+ 'target illustration must not be presented as timed forecast evidence');
 assert.match(badge,/<strong>◈ رادار الذهب<\/strong>/);
 assert.ok(badge.indexOf('{expanded&&<section')<badge.indexOf('sniper-gold-radar-prices'),
- 'large radar details remain behind tap-to-expand');
-console.log('PASS: immutable forecast proof retained for research; no forecast candles shown');
+ 'large radar data must remain behind tap-to-expand rather than obscuring candles');
+console.log('PASS: detached M15 routes hidden, frozen proof preserved, radar collapsed and targets honest');

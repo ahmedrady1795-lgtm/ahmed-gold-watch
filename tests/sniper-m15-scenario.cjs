@@ -131,34 +131,81 @@ assert.match(wrapper,/return <SniperM15Panel \{\.\.\.props\}\/>/,
  'legacy M1 screen must not be the active rendered sniper');
 assert.match(chart,/chartHigherFrames\?\.m15/,
  'real M15 historical source is selected, never M1 renamed M15');
-assert.match(chart,/<SniperLiquidityDecisionMap watch=\{watchMap\}/,
- 'M15 forward lane renders verified liquidity levels, never synthetic candles');
-assert.doesNotMatch(chart,/renderedBars\.map|<SniperM15HuntOverlay/,
- 'future candle simulation is no longer part of the live UI');
-assert.match(chart,/trueHistory\.map\(\(b,i\)=>candle/,
- 'historical M15 OHLC remains authentic');
-assert.match(chart,/forecast:\[\]/,
- 'future OHLC cannot distort real-price scaling');
-assert.match(chart,/const min=important\.length\?Math\.min\(\.\.\.important\)/);
-assert.match(chart,/const max=important\.length\?Math\.max\(\.\.\.important\)/);
-assert.match(chart,/formingVisible&&forming\?\[forming\.open,forming\.high,forming\.low,forming\.close\]/);
-assert.match(chart,/const W=430,H=704,left=8,split=215,end=422/);
-assert.match(chart,/steps:12/,'immutable original hypothesis still recorded for forward scoring');
-assert.match(chart,/compactM15ZoneAnnotations/);
-assert.match(chart,/className="sniper-m15-liquidity-label"/);
+assert.match(chart,/renderedBars\.map/,'only visible validated M15 bars are drawn');
+assert.match(chart,/scaleLevels\.filter/,'price level labels belong inside the plot');
+assert.match(chart,/const min=important\.length\?Math\.min\(\.\.\.important\)/,
+ 'M15 viewport minimum must come from observed prices when LIVE is unavailable');
+assert.match(chart,/const max=important\.length\?Math\.max\(\.\.\.important\)/,
+ 'M15 viewport maximum must come from observed prices when LIVE is unavailable');
+assert.doesNotMatch(chart,/Math\.min\(\.\.\.important,anchor\?\?1\)/,
+ 'No $1 synthetic fallback may collapse an 81k BTC candle chart to zero');
+assert.match(chart,/formingVisible&&forming\?\[forming\.open,forming\.high,forming\.low,forming\.close\]/,
+ 'Observed live M15 OHLC must share the exact price scale with closed candles');
+assert.match(chart,/scenario|سيناريو/);
+assert.doesNotMatch(chart,/AI NEXT|LIVE M1|محرك الاستراتيجيات يعمل|آخر شمعة/);
 assert.match(css,/\.sniper-m15-chart-box\{width:100%;height:clamp\(/);
-const map=fs.readFileSync('components/SniperLiquidityDecisionMap.tsx','utf8');
-assert.match(map,/watch\.upper\.slice\(0,2\)/);
-assert.match(map,/watch\.lower\.slice\(0,2\)/);
+// Widen the actual price plot and render only four evidence-grounded liquidity lines.
+assert.match(chart,/left=8,split=projected\\.ready\\|\\|showWatchGuide\\?215:422,end=422/,
+ 'when no forecast is valid, actual candles reclaim the full chart width');
+assert.match(chart,/className="sniper-m15-liquidity-label"/,
+ 'source-backed demand/supply/liquidity labels appear inside the chart');
+assert.doesNotMatch(chart,/railGap=29|x1=\{end\} x2=\{axis\+3\}/,
+ 'the oversized right-side price rail is completely removed');
+assert.match(chart,/const y=zoneLabelPoints\[i\]\.y,xBadge=split-7/,
+ 'Compact Arabic zone labels no longer need rectangle badges');
+assert.match(chart,/x2=\{split-4\} y1=\{top\} y2=\{top\}/,
+ 'historical liquidity ranges use thin boundaries, not filled boxes');
+assert.match(chart,/const compactZones=compactM15ZoneAnnotations/,
+ 'only compact nonboxed demand and supply word labels are shown');
+assert.match(chart,/textAnchor="start" direction="ltr">\{h\(trueHistory/,
+ 'left time axis cannot paint Arabic-direction text outside SVG');
+assert.match(css,/grid-template-areas:"asset frame liquidity" "price price bias"/,
+ 'mobile toolbar must wrap to two rows without clipping the market bias');
+assert.match(css,/width:100%!important;max-width:100%!important/,
+ 'no negative-margin overscroll that truncates target labels');
+assert.match(chart,/steps:12/,'short original 12-candle scenario is frozen and scored across future closes');
+assert.doesNotMatch(chart,/fillOpacity=\{future\?/,
+ 'M15 candle bodies remain opaque with no ghost-like future candles');
+assert.doesNotMatch(chart,/strokeDasharray=\{future\?'2 2':undefined\}/,
+ 'restore solid wicks to match the original genuine candle design');
+assert.match(chart,/أول 12 شمعة للتقييم · امتداد الأهداف توضيحي غير زمني/,
+ 'target extension is explicitly labelled unscored and not timed');
+assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars;/,
+ 'draw the original twelve analogue bars without added targets');
+assert.match(chart,/compactM15ZoneAnnotations/,'nearby liquidity labels are grouped, not drawn on top of one another');
+assert.doesNotMatch(chart,/sniper-m15-caption|sniper-m15-status/,
+ 'no technical paragraphs or scorecard underneath the mobile chart');
+assert.doesNotMatch(chart,/className="sniper-m15-price"/,
+ 'large duplicated live price must not occupy the header');
+assert.match(chart,/W=430,H=704,left=8,split=projected\\.ready\\|\\|showWatchGuide\\?215:422,end=422/,
+ 'a valid scenario keeps the split view; otherwise the actual chart uses full width');
+assert.match(css,/Compact full-canvas sniper v3/);
+assert.match(css,/display:flex!important;flex-direction:row;flex-wrap:nowrap/,
+ 'sniper header must use one short mobile row');
+assert.match(css,/height:clamp\(530px,calc\(100dvh - 192px\),900px\)!important/,
+ 'chart takes reclaimed vertical space and responds to viewport');
+assert.match(css,/\.sniper-m15-caption,\.sniper-m15-status\{display:none!important\}/,
+ 'all former diagnostic footers must remain invisible on mobile');
 const actualSummary=fs.readFileSync('components/SniperM15Summary.tsx','utf8');
 const theme=fs.readFileSync('app/m15-scenario-first.css','utf8');
 const layout=fs.readFileSync('app/layout.tsx','utf8');
 const summaryPos=chart.indexOf('<SniperM15Summary');
 const chartPos=chart.indexOf('className="sniper-m15-chart-box"');
 const diagnosticPos=chart.indexOf('className="sniper-m15-diagnostics"');
-assert.ok(summaryPos>0&&summaryPos<chartPos);
-assert.ok(diagnosticPos>chartPos);
-assert.match(actualSummary,/خريطة سيولة M15/);
-assert.match(theme,/\.sniper-m15-scenario-summary/);
-assert.match(layout,/m15-scenario-first\.css/);
-console.log('PASS: authentic M15 candles, scored frozen hypotheses and observed level-map UI');
+assert.ok(summaryPos>0&&summaryPos<chartPos,
+ 'the ACTUAL production M15 scenario is visible before the chart');
+assert.ok(diagnosticPos>chartPos,
+ 'radar and metrics follow the chart in collapsed optional details');
+assert.ok(chart.indexOf("className={'sniper-live-opportunity")>diagnosticPos,
+ 'live opportunity detail no longer blocks the first-screen chart');
+assert.doesNotMatch(chart,/className=\{'sniper-current-signal/,
+ 'duplicate current candle decision is removed from the visible layout');
+assert.match(actualSummary,/p\.ready\?'12 شمعة مشروطة'/,
+ 'forecast readiness and non-ready states have clearly distinct labels');
+assert.match(actualSummary,/p\.saved\?p\.detached/,
+ 'detached older forecast is presented as historical, not a fresh signal');
+assert.match(theme,/\.sniper-m15-scenario-summary/,
+ 'mobile scenario summary receives proper styling');
+assert.match(layout,/m15-scenario-first\.css/,
+ 'new live scenario styles are imported into the page');
+console.log('PASS: M15 historical OHLC, real partial source, scenario motifs, 3 TP levels, no fabricated touches and chart-first UI');

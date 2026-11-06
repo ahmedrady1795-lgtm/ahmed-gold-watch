@@ -16,23 +16,24 @@ const fmt=(v:number|null|undefined)=>v!=null&&Number.isFinite(v)&&v>0?
 export default function SniperM15Summary(p:Props){
   const label=p.side==='BUY'?'صعود':p.side==='SELL'?'هبوط':'انتظار';
   const validSide=p.side!=='WAIT';
-  const title=p.ready?'رصد M15 محفوظ · '+label:
+  const title=p.ready?'سيناريو M15 · '+label:
     p.saved?'سيناريو محفوظ · غير نشط':
-    validSide&&p.fresh?'مراقبة مبكرة · '+label:'خريطة سيولة M15';
-  const status=p.ready?'قراءة محفوظة للقياس':
-    p.saved?'قراءة تاريخية':
+    validSide&&p.fresh?'مراقبة مبكرة · '+label:'انتظار سيناريو M15';
+  const status=p.ready?'12 شمعة مشروطة':
+    p.saved?'توقع سابق':
     !p.marketOpen?'السوق مغلق':
-    p.providerTransition?'المصدر قيد التبديل':'مستويات مراقبة';
-  const message=p.ready?
-    'قراءة M15 محفوظة للمراجعة والقياس، وليست مسار شموع مستقبلية':
-    p.saved?p.detached?'السعر ابتعد عن القراءة السابقة؛ ليست إشارة حية':
-      p.paused?'القراءة محفوظة لكن البيانات متأخرة':
-      'قراءة محفوظة للمقارنة، وليست توصية دخول':
+    p.providerTransition?'المصدر قيد التبديل':'لا يوجد توقع معتمد';
+  const message=p.ready&&p.nextBar?
+    'الشمعة الأولى افتراضية: '+(p.nextBar.close>=p.nextBar.open?'صعود':'هبوط')+
+      ' · إغلاق توضيحي '+fmt(p.nextBar.close):
+    p.saved?p.detached?'السعر ابتعد عن التوقع المحفوظ؛ ليس توقعًا حيًا':
+      p.paused?'التوقع محفوظ لكن البيانات متأخرة':
+      'السيناريو القديم محفوظ للمراجعة وليس للدخول':
     !p.marketOpen?'آخر بيانات فقط · لا توجد إشارة حية':
     p.providerTransition?'ننتظر اكتمال تغيير مصدر الأسعار':
-    !p.fresh?'شموع M15 غير حديثة أو غير مكتملة':
-    p.watchGuide?.ready?'مراقبة مستويات M15 من إغلاقات فعلية':
-    p.signal??'نراقب مستويات القمم والقيعان قبل إصدار ترجيح جديد';
+    !p.fresh?'الشموع غير حديثة أو شروط M15 غير مكتملة':
+    p.watchGuide?.ready?p.watchGuide.reason+' · نطاق تحليلي للمراقبة فقط':
+    p.signal??'نراقب شروط الكسر قبل إصدار توقع شموع جديد';
   return <section className={'sniper-m15-scenario-summary '+(p.ready?'is-ready':p.saved?'is-saved':'is-watch')}
     aria-label="السيناريو الأساسي ظاهر دائمًا">
     <div className="sniper-m15-summary-head">
@@ -51,8 +52,14 @@ export default function SniperM15Summary(p:Props){
     </div>
     <p className="sniper-m15-summary-reason">{message}
       <small> · متابعة مشروطة، وليست أمر تداول.</small></p>
+    {!p.ready&&p.watchGuide?.ready&&<div className="sniper-m15-watch-summary">
+      <span>صعود مشروط <b dir="ltr">{fmt(p.watchGuide.up[2])}</b></span>
+      <span>هبوط مشروط <b dir="ltr">{fmt(p.watchGuide.down[2])}</b></span>
+      <small>{p.watchGuide.referenceOnly?'نطاق سابق · ليس حيًا':
+        'نطاق ATR من إغلاقات M15 · ليس TP أو إشارة دخول'}</small>
+    </div>}
     {!p.ready&&p.noForecastReason&&<details className="sniper-m15-unavailable-details">
-      <summary>تفاصيل شروط الرصد</summary>
+      <summary>ليه مفيش شموع توقع معتمدة؟</summary>
       <p>{p.noForecastReason}</p>
     </details>}
   </section>;

@@ -76,10 +76,8 @@ assert.match(panel,/const trueHistory=focusView\?recent\.slice\(-18\):recent/,
  'only 18 real closed M15 candles are shown in focus mode');
 assert.match(panel,/mode:focusView\?'FOCUS':'ALL'/,
  'viewport toggle must affect vertical price scale as well as candle count');
-assert.match(panel,/forecast:\[\]/,
- 'the active price scale never follows hypothetical future candlesticks');
-assert.match(panel,/<SniperLiquidityDecisionMap watch=\{watchMap\}/,
- 'the forecast pane is a market-level map');
+assert.match(panel,/forecast:projected\.ready\?projected\.bars:\[\.\.\.huntPreview\.buy,\.\.\.huntPreview\.sell\]/,
+ 'both bull and bear routes must determine watch-only focus scale');
 assert.match(panel,/onClick=\{\(\)=>setFocusView\(v=>!v\)\}/,
  'user can recover the original full context at any time');
 assert.match(overlay,/const stride=\(width-80\)\/6/,

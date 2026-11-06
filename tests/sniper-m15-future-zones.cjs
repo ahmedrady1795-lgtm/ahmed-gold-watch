@@ -53,23 +53,34 @@ const bad=[...history];bad[bad.length-1]={...bad.at(-1),
 assert.equal(conditionalM15BreakoutLevels({now,history:bad,
  sourceReady:true}).valid,false,'broken M15 feed blocks levels');
 const comp=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
-const map=fs.readFileSync('components/SniperLiquidityDecisionMap.tsx','utf8');
-assert.match(comp,/forwardSnapshot/,
- 'historical observation snapshots remain frozen between M15 closes');
-assert.match(comp,/prev\?\.key===candleKey\?prev/);
+assert.match(comp,/className="sniper-m15-future-zone"/);
+assert.match(comp,/showLiquidity&&forwardLabels\.map/);
+assert.match(comp,/forwardSnapshot/);
+assert.match(comp,/prev\?\.key===candleKey\?prev/,
+ 'forecast-side historical levels cannot change on every tick');
 assert.match(comp,/conditionalM15BreakoutLevels/);
 assert.match(comp,/safeSide==='WAIT'&&conditionalRange\.valid/,
- 'WAIT remains two-sided with real historical break levels');
+ 'BTC WAIT gets historical boundary prices, not a fake direction');
+assert.match(comp,/aligned\.goals\.filter\(g=>shownBars\.some\(b=>b\.low<=g\.price&&g\.price<=b\.high\)\)/,
+ 'unreached far H1/H4 structural pivot must not be called reachable M15 TP');
 assert.match(comp,/const stop=aligned\?\.stop\?\?null/,
- 'a retrospective stop is only attached to its original hypothesis');
-assert.doesNotMatch(comp,/const goals=stable\?\.goals\?\?/);
-assert.doesNotMatch(comp,/className="sniper-m15-future-zone"|showLiquidity&&forwardLabels\.map/,
- 'obsolete future-zone overlay no longer occupies the live chart');
-assert.match(comp,/<SniperLiquidityDecisionMap watch=\{watchMap\}/);
-assert.match(map,/ready\?\[/,'stale data cannot produce actionable levels');
-assert.match(map,/watch\.upper\.slice\(0,2\)/);
-assert.match(map,/watch\.lower\.slice\(0,2\)/);
-assert.match(comp,/className="sniper-m15-liquidity-label"/);
-assert.match(comp,/x=\{end-6\}/);
-assert.doesNotMatch(comp,/x=\{axis\+3\}/);
-console.log('PASS: frozen historical levels and two-sided WAIT; no simulated future drawing');
+ 'orphan stop must not appear when no active frozen M15 path exists');
+assert.doesNotMatch(comp,/const goals=stable\?\.goals\?\?/,
+ 'unverified structural goals cannot flatten future chart vertical scale');
+const annotated=comp.slice(comp.indexOf('className="sniper-m15-future-zone"'),
+ comp.indexOf('{trueHistory.map((b,i)=>candle',comp.indexOf('className="sniper-m15-future-zone"')));
+assert.doesNotMatch(annotated,/<rect\b/,
+ 'future candle viewport has no opaque zone label boxes');
+assert.doesNotMatch(annotated,/<text\b[^>]*className="sniper-m15-forecast-candle-price"/,
+ 'future candle bodies must not carry price labels; zone labels stay separate');
+assert.match(comp,/className="sniper-m15-liquidity-label"/,
+ 'four genuine liquidity labels now live inside the chart');
+assert.match(comp,/x=\{end-6\}/,
+ 'liquidity price tags must use full chart width, not a right rail');
+assert.doesNotMatch(comp,/x=\{axis\+3\}/,
+ 'no separate right-side price rail remains');
+const historyLabels=comp.slice(comp.indexOf("const y=zoneLabelPoints[i].y,xBadge=split-7"),
+ comp.indexOf('<title>{z.detail}</title>',comp.indexOf("const y=zoneLabelPoints[i].y,xBadge=split-7")));
+assert.doesNotMatch(historyLabels,/<rect\b/,
+ 'historical label must not cover the real candles');
+console.log('PASS: future-side zones, honest WAIT and TP guards, price-true liquidity labels inside expanded chart');
