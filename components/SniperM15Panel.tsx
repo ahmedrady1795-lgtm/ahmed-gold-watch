@@ -589,7 +589,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    // Do not let tick-by-tick quotes or price-filtered watch labels rescale
    // the entire candle field. The viewport follows closed bars and frozen levels.
    ...(stop!=null?[stop]:[]),
-   ...renderedBars.flatMap(c=>[c.high,c.low]),
+   ...renderedBars.map(c=>c.close),
    ...(showWatchGuide?[
      ...watchGuide.up,...watchGuide.down,
      watchGuide.upperTrigger??0,watchGuide.lowerTrigger??0
@@ -614,7 +614,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    lastPrice:chartReference,history:trueHistory,
    // In WATCH mode use both closed-M15-derived illustrative routes to size
    // the display. Ignore remote levels for vertical zoom; never move prices.
-   forecast:projected.ready?projected.bars:[...huntPreview.buy,...huntPreview.sell],
+   forecast:[],
    atr:projected.atr??watchGuide.atr});
  const {lo,hi}=viewport;
  const py=(p:number)=>plotTop+(hi-p)/(hi-lo)*(plotBottom-plotTop);
@@ -635,8 +635,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // 12 scored hypothesis bars plus an explicitly unscored target illustration.
  const projectedStride=(end-split-8)/Math.max(12,renderedBars.length);
  const realCandleWidth=clamp(actualStride*.68,2.2,5.2);
- const futureCandleWidth=clamp(projectedStride*.62,1.7,4);
- // Display a maximum of five DISTINCT actual OHLC zones. Several demand,
+  // Display a maximum of five DISTINCT actual OHLC zones. Several demand,
  // rejection and sweep levels can occupy the exact same pixels; painting
  // each translucent band over the others created the misleading red blob.
  // Keep ALL source zones in liquidity for analysis, suppress visual doubles.
@@ -687,10 +686,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  if(labelOverflow)for(const label of positionedLiquidityLabels)
    label.labelY-=labelOverflow;
  const candle=(open:number,high:number,low:number,close:number,xpos:number,width:number,
-   future:boolean,key:string)=> {
+   key:string)=> {
    const up=close>=open,color=up?'#39d6cc':'#fa5970';
    const top=Math.min(py(open),py(close)),height=Math.max(1,Math.abs(py(open)-py(close)));
-   return <g key={key} className={future?'sniper-m15-projected':'sniper-m15-real'}>
+   return <g key={key} className="sniper-m15-real">
      <line x1={xpos} x2={xpos} y1={py(high)} y2={py(low)}
        stroke={color} strokeWidth="1.05"/>
      <rect x={xpos-width/2} y={top} width={width} height={height}
@@ -761,7 +760,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    <div className="sniper-m15-view-controls" aria-label="عرض سيناريو القناص">
      <button type="button" className="sniper-m15-focus-toggle"
        aria-pressed={focusView} onClick={()=>setFocusView(v=>!v)}
-       title="قرب الشموع المتوقعة والأهداف دون تغيير سعرها أو شكلها الحقيقي">
+       title="تكبير الشموع الحقيقية ومسار السعر المشروط">
        {focusView?'سياق كامل':'تكبير الحركة القريبة'}</button>
      <button type="button" className="sniper-m15-extra-toggle"
        aria-pressed={showExtra} onClick={()=>setShowExtra(v=>!v)}
@@ -770,11 +769,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      {projected.ready&&<button type="button" className="sniper-m15-extension-toggle"
        aria-pressed={showHistoricalExtension}
        onClick={()=>setShowHistoricalExtension(v=>!v)}
-       title="امتداد بشموع توضيحية للأهداف؛ ليس توقعًا زمنيًا أو نتيجة فعلية">
-       {showHistoricalExtension?'عرض أول 12 شمعة':'السيناريو للأهداف'}</button>}
+       title="مد مسار السعر المشروط دون أي شموع مستقبلية">
+       {showHistoricalExtension?'أول 12 خطوة':'مد المسار للأهداف'}</button>}
    </div>
    <div className="sniper-m15-compact-status" role="status">
-     <span>{projected.ready?'سيناريو M15 · 12 شمعة':showWatchGuide?'نطاق مراقبة M15':'شموع M15 حقيقية'}
+     <span>{projected.ready?'سيناريو M15 · مسار مشروط':showWatchGuide?'نطاق مراقبة M15':'شموع M15 حقيقية'}
        {focusView?' · آخر 18 شمعة':' · كل التاريخ'}</span>
      <b dir="ltr">{formingVisible&&forming?'LIVE '+n(forming.close):
        latestClosed?'CLOSE '+n(latestClosed.close):'—'}</b>
@@ -782,7 +781,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
-         (projected.ready?'شموع M15 مغلقة مع سيناريو محفوظ من أنماط تاريخية؛ ليس مستقبلًا مؤكدًا. ':
+         (projected.ready?'شموع M15 حقيقية ومسار مشروط بلا شموع مستقبلية؛ ليس توقعًا مضمونًا. ':
            showWatchGuide?'شموع M15 مغلقة ومساران مشروطان من ATR للمراقبة، وليسا توقع شموع أو أوامر. ':
            'شموع M15 مغلقة فقط؛ لا يوجد نطاق مراقبة موثوق حاليًا. ')+
          (verifiedArchive.ready?'أرشيف حقيقي متحقق '+verifiedArchive.storedBars+' شمعة':'أرشيف سنوات غير متاح')+
@@ -924,7 +923,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            left={left} split={split} top={plotTop} bottom={plotBottom}
            py={py} timeX={timeX} visibleFrom={trueHistory[0]?.time}/>}
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
-           left+(i+.5)*actualStride,realCandleWidth,false,'real'+b.time))}
+           left+(i+.5)*actualStride,realCandleWidth,'real'+b.time))}
          {/* The next-M1 watch is fixed by prior CLOSED minute candles,
               not guessed from the color of this unfinished candle. */}
          {formingVisible&&forming&&marketOpen&&nextM1.ready&&
@@ -954,9 +953,20 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            paintOrder="stroke">
            {'سيناريو '+(chartSide==='BUY'?'صعود':'هبوط')}
          </text>}
-         {projected.ready&&renderedBars.map((b,i)=>
-           candle(b.open,b.high,b.low,b.close,split+5+(i+.5)*projectedStride,
-             futureCandleWidth,true,'future'+i))}
+         {/* The forecast is a conditional PRICE PATH, never hypothetical candlesticks. */}
+         {projected.ready&&renderedBars.length>0&&<g
+           className="sniper-m15-conditional-route">
+           <polyline
+             points={[[split-3,py(projected.bars[0].open)],
+               ...renderedBars.map((b,i)=>[
+                 split+5+(i+.5)*projectedStride,py(b.close)]
+               )].map(point=>point.join(',')).join(' ')}
+             stroke={chartSide==='BUY'?'#53e8b8':'#ff7798'}
+             strokeWidth="2" strokeDasharray="6 5" fill="none" opacity=".85"/>
+           <circle cx={split-3} cy={py(projected.bars[0].open)}
+             r="3.2" fill="#061a20" stroke="#e8c477" strokeWidth="1.6"/>
+           <title>مسار سعري مشروط من الشموع المغلقة؛ لا توجد شموع مستقبلية</title>
+         </g>}
          {projected.ready&&aligned&&forming&&elapsedSteps===0&&
            <g className="sniper-m15-anchor-link">
            {/* Pin the ORIGINAL observed issuance price. Live ticks must never
@@ -1051,7 +1061,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              fill="none" stroke="#a9e9ff" strokeOpacity=".5"
              strokeWidth=".7" strokeDasharray="2 3"/>
            {candle(forming.open,forming.high,forming.low,forming.close,
-             split-4,Math.max(3.6,realCandleWidth*1.6),false,
+             split-4,Math.max(3.6,realCandleWidth*1.6),
              'live-m15-'+forming.time)}
            <circle cx={split-4} cy={py(forming.close)} r="2.3"
              fill="#c0f7ff" stroke="#00212c" strokeWidth=".7"/>
@@ -1154,16 +1164,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          <title>{firstM15Stats.detail}</title>
        </g>}
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
-       <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'} fontSize="10" textAnchor="start" direction="ltr">{projected.ready?'M15 · FORECAST':showWatchGuide?'M15 · WATCH':'M15 · LIVE'}</text>
+       <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'} fontSize="10" textAnchor="start" direction="ltr">{projected.ready?'M15 · PATH':showWatchGuide?'M15 · WATCH':'M15 · LIVE'}</text>
        {showExtra&&<text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
-         textAnchor="start" direction="rtl">{projected.ready?'أول 12 شمعة للتقييم · امتداد الأهداف توضيحي غير زمني':showWatchGuide?'مساران مشروطان من M15 مغلق · ليست شموع مستقبلية':'شموع فعلية متصلة · لا توجد شموع توقع معتمدة الآن'}</text>}
+         textAnchor="start" direction="rtl">{projected.ready?'مسار مشروط دون شموع مستقبلية؛ التوقع الأصلي محفوظ للتقييم فقط':showWatchGuide?'مساران مشروطان من M15 مغلق · ليست شموع مستقبلية':'شموع فعلية متصلة · لا توجد شموع توقع معتمدة الآن'}</text>}
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(formingVisible&&forming?forming.time:latestClosed.time)}</text>}
        {aligned&&<text x={split+8} y={H-4} fill="#8acfb9" fontSize="8"
          textAnchor="start" direction="ltr">{'→ '+h(aligned.anchorTime+900000)}</text>}
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
-         {renderedBars.length?shownBars.length+' M15'+(showHistoricalExtension?' · امتداد أهداف غير زمني':''):'M15'}</text>
+         {renderedBars.length?'PATH'+(showHistoricalExtension?' · أهداف':''):'M15'}</text>
      </svg>
    </div>
      <SniperStructureRSI structure={structure}/>
