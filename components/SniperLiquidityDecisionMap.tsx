@@ -29,6 +29,7 @@ export default function SniperLiquidityDecisionMap(p:Props){
   const upper=ready?watch.upper.slice(0,2):[];
   const lower=ready?watch.lower.slice(0,2):[];
   const linePrices=route?route.targets.map(t=>t.price):[];
+  const evidenceEntries=ready?[...upper,...lower]:[];
   const hasUpper=upper.length>0,hasLower=lower.length>0;
   const x=split+11,w=end-split-22;
   const cy=top+(bottom-top)*.53;
@@ -170,7 +171,7 @@ export default function SniperLiquidityDecisionMap(p:Props){
 
     {/* Retain exact reference prices for discovery and accessibility. */}
     <g className="sniper-m15-source-level">
-      <title>{'سيولة M15/H1: '+[...upper,...lower]
+      <title>{'سيولة M15/H1: '+evidenceEntries
         .map(z=>z.source+' '+fmt(z.price)).join('، ')}</title>
     </g>
     <title>{linePrices.length?
