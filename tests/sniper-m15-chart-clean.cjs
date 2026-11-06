@@ -37,10 +37,9 @@ assert.match(component,/showLiquidity&&positionedLiquidityLabels\.map/,
  'source-backed demand/supply/pool price labels are preserved outside the chart');
 assert.match(component,/className="sniper-m15-liquidity-line"/,
  'four actual liquidity price lines remain on the chart');
-assert.match(component,/shownBars\.length\+' M15'/,
- 'original M15 evaluated bars remain identified');
-assert.match(component,/renderedBars\.map/,
- 'rendered original projected candle geometry is untouched');
+assert.match(component,/className="sniper-m15-conditional-route"/,
+ 'future reference closes form a conditional line');
+assert.doesNotMatch(component,/futureCandleWidth|sniper-m15-projected|M15 · FORECAST/)
 assert.match(layout,/m15-chart-clean\.css/,
  'mobile layout styles load last and cannot be overridden by older styles');
 assert.match(style,/\.sniper-m15-level-key\{display:grid/,
