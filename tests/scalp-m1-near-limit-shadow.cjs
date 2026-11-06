@@ -144,7 +144,7 @@ const audited=auditNearM1Shadow([
   nearLimitShadow:{...pending}},
  {strategyVersion:'V4',state:'STOP',netR:-2,
   nearLimitShadow:{...sellStop}},
- ]);
+ ],EVERY_M1_EDGE_V6);
 assert.equal(audited.issued,3);
 assert.equal(audited.placed,3);
 assert.equal(audited.touched,2);
