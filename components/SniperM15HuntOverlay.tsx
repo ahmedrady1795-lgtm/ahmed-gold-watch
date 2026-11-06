@@ -18,31 +18,6 @@ export default function SniperM15HuntOverlay(p:Props){
   const toPoints=(list:HuntPreviewCandle[])=>
     [[p.split+4,clip(p.py(f.anchor!))],
       ...list.map((b,i)=>[p.split+9+(i+.5)*stride,clip(p.py(b.close))])];
-  return <g className={'sniper-hunt-candles '+(selected?'preferred':'alternate')}
-      key={'hypothesis-'+side}>
-      {list.map((b,i)=>{
-        const x=p.split+9+(i+.5)*stride;
-        const yOpen=clip(p.py(b.open)),yClose=clip(p.py(b.close));
-        const yHigh=clip(p.py(b.high)),yLow=clip(p.py(b.low));
-        const top=Math.min(yOpen,yClose),height=Math.max(1.8,Math.abs(yOpen-yClose));
-        const rising=b.close>=b.open;
-        
-        return <g key={'sim-'+side+'-'+b.time}>
-          <line x1={x} x2={x} y1={yHigh} y2={yLow}
-            stroke={color[side]} strokeWidth={selected?1.7:1.1}
-            strokeOpacity={opacity} strokeDasharray={selected?'none':'2 3'}/>
-          <rect x={x-4} y={top} width="8" height={height} rx=".7"
-            stroke={color[side]} strokeWidth={selected?1.5:1}
-            strokeDasharray={selected?'none':'2 2'}
-            fill={rising?'#37ad8e':'#b54c68'}
-            fillOpacity={selected?(f.referenceOnly?0.13:0.48):0.17}
-            strokeOpacity={opacity}/>
-          <title>{(side==='BUY'?'احتمال صعود':'احتمال هبوط')+
-            ' · شمعة '+(i+1)+' · OHLC افتراضي غير مُتحقق'}</title>
-        </g>;
-      })}
-    </g>;
-  };
   return <g className="sniper-m15-hunt-overlay">
     {p.liquidity&&f.pools.map(pool=>{
       const up=pool.kind==='HIGH_POOL',c=up?'#ff8098':'#55dfad';
