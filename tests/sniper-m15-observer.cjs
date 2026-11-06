@@ -69,6 +69,7 @@ assert.match(hud,/تعارض اتجاه M1 مع M15/);
 assert.match(css,/\.sniper-hunt-hud-observation/);
 assert.match(panel,/buildM15HuntPreview\(actual,watchGuide,now\)/);
 assert.match(panel,/<SniperM15HuntOverlay forecast=\{huntPreview\}/);
-assert.match(overlay,/M15 · SIM \/ WATCH/);
-assert.match(overlay,/drawCandles\(side==='BUY'\?f.buy:f.sell,side\)/);
+assert.match(overlay,/M15 · PATH \/ WATCH/)
+assert.match(overlay,/polyline points=\{toPoints/);
+assert.doesNotMatch(overlay,/drawCandles\(|sniper-hunt-candles/)
 console.log('PASS: active multi-factor M15 watch with both old routes, structural sweep and data-integrity tests');
