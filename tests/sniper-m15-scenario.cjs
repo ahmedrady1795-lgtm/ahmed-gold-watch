@@ -131,7 +131,10 @@ assert.match(wrapper,/return <SniperM15Panel \{\.\.\.props\}\/>/,
  'legacy M1 screen must not be the active rendered sniper');
 assert.match(chart,/chartHigherFrames\?\.m15/,
  'real M15 historical source is selected, never M1 renamed M15');
-assert.match(chart,/renderedBars\.map/,'only visible validated M15 bars are drawn');
+assert.match(chart,/trueHistory\.map\(\(b,i\)=>candle/,
+ 'only true historical M15 bars become candles');
+assert.match(chart,/className="sniper-m15-conditional-route"/,
+ 'forecast plotted as a conditional line only')
 assert.match(chart,/scaleLevels\.filter/,'price level labels belong inside the plot');
 assert.match(chart,/const min=important\.length\?Math\.min\(\.\.\.important\)/,
  'M15 viewport minimum must come from observed prices when LIVE is unavailable');
