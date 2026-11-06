@@ -18,6 +18,11 @@ const response=(status,header=null,data={ok:true})=>({status,ok:status===200,hea
  const backoff=load('ai-service-backoff');
  backoff.recordAiResponse(env.ML_ENGINE_URL,429,'1800');
  assert.equal(backoff.aiRetryAt(env.ML_ENGINE_URL),now+1800000,'long Retry-After must not be clipped');
+ const transport=backoff.aiRateLimitState(env.ML_ENGINE_URL);
+ assert.equal(transport.limited,true);
+ assert.equal(transport.retryInSeconds,1800);
+ assert.equal(transport.consecutive429,1);
+ assert.equal(Object.keys(transport).includes('url'),false,'never expose private service URL');
  backoff.recordAiResponse(env.NEURAL_ENGINE_URL,429,new Date(now+3600000).toUTCString());
  assert.equal(backoff.aiRetryAt(env.NEURAL_ENGINE_URL),Math.floor((now+3600000)/1000)*1000,'HTTP-date honored');
  backoff.recordAiResponse(env.ML_ENGINE_URL,200,null);
@@ -34,6 +39,8 @@ const response=(status,header=null,data={ok:true})=>({status,ok:status===200,hea
  assert.equal(calls.length,0,'all clients honor shared budget');
  now+=3601000;
  backoff.recordAiResponse(env.ML_ENGINE_URL,200,null);backoff.recordAiResponse(env.NEURAL_ENGINE_URL,200,null);
+ assert.equal(backoff.aiRateLimitState(env.ML_ENGINE_URL).limited,false,
+   'once cooldown expires a healthy response clears stale throttle alerts');
  const pending=[];respond=()=>new Promise(resolve=>pending.push(resolve));
  const a=rows(),b=rows();b[100].close=100.5;
  const p1=ml.getMlPrediction(a),same=ml.getMlPrediction(a),p2=ml.getMlPrediction(b);
