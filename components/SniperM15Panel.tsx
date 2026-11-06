@@ -755,7 +755,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    <div className="sniper-hunter-workbench">
      <SniperLiquidityColumn history={actual.slice(-48)}
        price={price??null} preview={huntPreview} liquidityOn={showLiquidity}
-       structure={structure}/>
+       structure={structure} watch={watchMap} m1={nextM1}
+       priceFresh={Boolean(m.sniper.view.priceFresh)&&historyFresh&&!providerTransition}/>
      <div className="sniper-hunter-center">
    <div className="sniper-m15-view-controls" aria-label="عرض سيناريو القناص">
      <button type="button" className="sniper-m15-focus-toggle"
