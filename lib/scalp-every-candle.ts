@@ -8,6 +8,8 @@ import {chooseM1ShadowExpert,auditM1ShadowExpert,
   type ShadowM1Selection} from './scalp-m1-shadow-expert';
 import {watchM1FastExitShadow,auditM1FastExitShadow,
   M1_FAST_EXIT_SHADOW_V1} from './scalp-m1-fast-exit-shadow';
+import {newNearM1Shadow,advanceNearM1Shadow,auditNearM1Shadow,
+  NEAR_M1_LIMIT_SHADOW_V1,type NearM1Shadow} from './scalp-m1-near-limit-shadow';
 import {advanceForwardM1Pulse,auditForwardM1Pulse,M1_FORWARD_PULSE_V1,
   type ForwardPulse} from './scalp-m1-forward-pulse';
 import type {ScalpQuote} from './scalp-opportunities';
@@ -29,6 +31,7 @@ export type EveryAttempt={
   originalSide?:EverySide;onlineModel?:OnlineM1Choice['model'];
   onlineDecision?:OnlineM1Choice;
   shadowSide?:EverySide;shadowModel?:ShadowM1Selection['model'];
+  nearLimitShadow?:NearM1Shadow|null;
   shadowExitVersion?:string;shadowAdverseTicks?:number;
   shadowEarlyExitAt?:number|null;shadowEarlyExitPrice?:number|null;
   shadowEarlyExitNetR?:number|null;
@@ -192,6 +195,17 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
         anchorClose:t.anchorClose,atr:t.atr,
         forecastSide:t.side,historicalSource:t.chartSource
       });
+    // Independent early-resting LIMIT observer. It samples even when V5
+    // itself is NO_EDGE/expired, without modifying V5's actual order states.
+    if(t.nearLimitShadow?.version===NEAR_M1_LIMIT_SHADOW_V1){
+      const closed=raw.find(b=>b.time===t.anchorTime);
+      if(closed)t.nearLimitShadow=advanceNearM1Shadow(t.nearLimitShadow,{
+        side:t.side,issuedAt:t.issuedAt,atr:Number(t.atr),
+        previousOpen:closed.open,previousClose:closed.close,
+        costEstimate, historicalSource:t.chartSource,
+        now,quote:q
+      });
+    }
     if(final(t.state))continue;
     if(t.state==='AWAIT_QUOTE'){
       if(now>=t.expiryAt)
@@ -353,6 +367,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       id:signal.issuedAt,issuedAt:signal.issuedAt,side:proposed,
       originalSide:signal.side,onlineModel:online.model,onlineDecision:online,
       shadowSide:shadow.side,shadowModel:shadow.model,
+      nearLimitShadow:newNearM1Shadow(proposed,signal.issuedAt),
       shadowExitVersion:M1_FAST_EXIT_SHADOW_V1,shadowAdverseTicks:0,
       shadowEarlyExitAt:null,shadowEarlyExitPrice:null,shadowEarlyExitNetR:null,
       pressure:signal.pressure,weak:signal.weak,state:'AWAIT_QUOTE',
@@ -374,6 +389,15 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       note:'توقع حي مجمّد · '+(signal.weak?'دليل ضعيف للتعلم فقط':'مرشح بحثي غير معتمد')+'؛ انتظار أول Bid/Ask حقيقي بعد الإصدار'
     };
     history.push(t);
+    // The first matched post-open quote can also stage a near-price LIMIT
+    // reference; it NEVER fills on the same quote or becomes an MT5 order.
+    const closedForNear=raw.find(b=>b.time===signal.anchorTime);
+    if(closedForNear)t.nearLimitShadow=advanceNearM1Shadow(
+      t.nearLimitShadow!,{
+        side:t.side,issuedAt:t.issuedAt,atr:Number(t.atr),
+        previousOpen:closedForNear.open,previousClose:closedForNear.close,
+        costEstimate,historicalSource:chartSource,now,quote:q
+      });
     // First post-issue quote seeds the pulse; a second DISTINCT tick is
     // required before any early directional conclusion is frozen.
     t.pulse=advanceForwardM1Pulse({previous:null,quote:q,now,
@@ -405,6 +429,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   const settled=completed.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V5);
   const oldResults=completed.filter(t=>t.strategyVersion!==EVERY_M1_EDGE_V5);
   const fastExitShadow=auditM1FastExitShadow(settled,EVERY_M1_EDGE_V5);
+  const nearLimitShadow=auditNearM1Shadow(hist,EVERY_M1_EDGE_V5);
   const legacyResults=oldResults.length;
   const legacyNetR=round(oldResults.reduce((sum,t)=>sum+Number(t.netR),0));
   const results=settled.map(t=>Number(t.netR));
@@ -463,7 +488,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
       unknown:v4.filter(t=>t.directionObserved==='UNKNOWN').length,
       waiting:v4.filter(t=>t.directionObserved==null).length,
       hitPct:marked.length?round(directionHits/marked.length*100):null},
-    learning:{minimumPast:36,shadowExpert,fastExitShadow,
+    learning:{minimumPast:36,shadowExpert,fastExitShadow,nearLimitShadow,
       switched:v4.filter(t=>t.onlineModel==='ONLINE_INVERSION').length,
       byModel:{baseline:byModel('PRESSURE_SWEEP'),
         inversion:byModel('ONLINE_INVERSION')},
