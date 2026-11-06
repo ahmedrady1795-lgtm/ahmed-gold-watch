@@ -112,17 +112,14 @@ const plot=fs.readFileSync('components/SniperM15HuntOverlay.tsx','utf8');
 const theme=fs.readFileSync('app/smart-money-hunter.css','utf8');
 const layout=fs.readFileSync('app/layout.tsx','utf8');
 assert.match(panel,/buildM15HuntPreview\(actual,watchGuide,now\)/,
- 'scenario overlay must use the REAL closed-M15 guide');
-assert.match(panel,/<SniperM15HuntOverlay forecast=\{huntPreview\}/,
- 'actual M15 chart must render the realistic conditional candles');
+ 'closed-candle guide remains available for backward audit');
 assert.match(panel,/<SniperHuntHUD hunt=\{huntPreview\}/,
- 'liquidity and live bias appear as a compact live readout above candles');
-assert.match(panel,/className="sniper-m15-watch-guide"/,
- 'old conditional M15 watch region remains in the real SVG');
-assert.match(panel,/projected.ready&&renderedBars.map/,
- 'strict frozen and auditable M15 forecast mode must remain untouched');
-assert.match(plot,/OHLC افتراضي/,'what-if OHLC must be explicitly marked as illustrative');
-assert.match(plot,/sniper-hunt-pool/,'high/low stop clusters are visual zones, not hidden orders');
+ 'live hunt HUD remains above the chart');
+assert.match(panel,/<SniperLiquidityDecisionMap watch=\{watchMap\}/,
+ 'map displays real observed M15 and H1 liquidity levels');
+assert.match(panel,/forecast:\[\]/,'simulated candles cannot set chart price scale');
+assert.doesNotMatch(panel,/renderedBars\.map|<SniperM15HuntOverlay/,
+ 'the live scenario no longer paints synthetic candlesticks');
 assert.match(hud,/مؤشر غير مُعاير/,
  'non-calibrated price pattern strength must not masquerade as probability');
 assert.ok(m1.indexOf('<SniperMT5M1Chart')<m1.indexOf('<SniperM1CandleTape'),
