@@ -11,8 +11,8 @@ export default function SniperM1CandleTape({history,now}:{
  });
  return <section className="sniper-candle-tape" aria-label="مراجعة توقع اتجاه كل شمعة M1">
    <div className="sniper-candle-tape-title">
-     <strong>قنص الدقيقة · اختبار شمعة بشمعة</strong>
-     <span>{tape.graded?tape.aligned+' / '+tape.graded+' مطابقة اتجاه':'لا توجد نتائج اتجاه كافية'}</span>
+     <strong>قنص الدقيقة · إعادة اختبار تاريخية، مش توقعات LIVE</strong>
+     <span>{tape.graded?'تاريخي: '+tape.aligned+' / '+tape.graded+' اتجاه صحيح':'لا توجد نتائج اتجاه كافية'}</span>
    </div>
    <div className="sniper-candle-tape-rail">
      {tape.marks.length===0?<small className="sniper-candle-tape-no-data">
