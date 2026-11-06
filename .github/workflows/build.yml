@@ -31,6 +31,7 @@ jobs:
       - run: node tests/render-free-eco.cjs
       - run: node --experimental-strip-types tests/render-free-viewer-lease.mjs
       - run: node tests/ai-readiness.cjs
+      - run: node tests/sniper-health.cjs
       - run: node --check learning-worker.mjs
       - run: node tests/railway-eco.cjs
       - run: node tests/neural-optout.cjs
