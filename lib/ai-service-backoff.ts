@@ -6,6 +6,16 @@ const shared=globalThis as typeof globalThis & {__qannasAiBackoff?:Map<string,Bu
 const budgets=shared.__qannasAiBackoff ||= new Map<string,Budget>();
 const key=(url:string)=>{try{return new URL(url).origin;}catch{return url.trim();}};
 export function aiRetryAt(url:string):number{return budgets.get(key(url))?.until||0;}
+/** Safe diagnostic only. Do not expose provider hostnames, credentials,
+ * or treat retry expiration as model qualification.
+ */
+export function aiRateLimitState(url:string|undefined,now=Date.now()){
+ if(!url?.trim())return {configured:false,limited:false,retryInSeconds:0,consecutive429:0};
+ const b=budgets.get(key(url));
+ const seconds=b?Math.max(0,Math.ceil((b.until-now)/1000)):0;
+ return {configured:true,limited:seconds>0,retryInSeconds:seconds,
+   consecutive429:b?.failures||0};
+}
 export function recordAiResponse(url:string,status:number,retryAfter:string|null,now=Date.now()){
  const id=key(url),old=budgets.get(id);
  if(status===429){
