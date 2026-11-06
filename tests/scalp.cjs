@@ -381,7 +381,13 @@ const testArmedPlan={...buy,id:'test-frozen-limit-'+now,status:'ARMED',side:'BUY
   entry:4000.10,stop:3999.10,targets:[{price:4003.10,kind:'PROJECTION'}],
   cost:.10,netRR:2.6,expiresAt:now+60000};
 const frozen=updateScalpLedger('GOLD',[testArmedPlan],breakout().quote,now,breakout().c1);
-assert.equal(frozen.lanes[0].current?.limitType,'BUY_LIMIT','qualified plan waits for pending limit, not market fill');const changed={...testArmedPlan,entry:buy.entry+10,targets:[{price:9999,kind:'PROJECTION'}]};
+assert.equal(frozen.lanes[0].current?.limitType,'BUY_LIMIT','qualified plan waits for pending limit, not market fill');
+assert.equal(typeof frozen.localSaved,'boolean','paper session storage success is explicitly reported');
+assert.ok(['VOLUME','NOT_DURABLE'].includes(frozen.persistence),'paper storage must expose durability');
+if(process.env.RENDER&&!process.env.RENDER_DISK_MOUNT_PATH){
+  assert.equal(frozen.persisted,false,'Render Free local disk must never certify durable learning');
+  assert.equal(frozen.persistence,'NOT_DURABLE');
+}const changed={...testArmedPlan,entry:buy.entry+10,targets:[{price:9999,kind:'PROJECTION'}]};
 const repeated=updateScalpLedger('GOLD',[changed],
   {...quote(4000.45,now+1000),source:breakout().quote.source,bid:4000.44,ask:4000.455},now+1000,breakout().c1);assert.equal(repeated.lanes[0].current.plan.entry,frozen.lanes[0].current.plan.entry);assert.equal(repeated.lanes[0].stats.samples,0,'Unactivated setups do not count as trades');
 console.log('PASS: 27 scalp checks: buy/sell geometry, closed bars, bad data, costs, news, expiry, activation, frozen levels, stop slippage and conservative outcomes. Profitability is not established.');
