@@ -119,9 +119,14 @@ assert.match(panel,/<SniperHuntHUD hunt=\{huntPreview\}/,
  'liquidity and live bias appear as a compact live readout above candles');
 assert.match(panel,/className="sniper-m15-watch-guide"/,
  'old conditional M15 watch region remains in the real SVG');
-assert.match(panel,/projected.ready&&renderedBars.map/,
- 'strict frozen and auditable M15 forecast mode must remain untouched');
-assert.match(plot,/OHLC افتراضي/,'what-if OHLC must be explicitly marked as illustrative');
+assert.match(panel,/className="sniper-m15-conditional-route"/,
+ 'audited forecast is shown as a path only');
+assert.doesNotMatch(panel,/futureCandleWidth|sniper-m15-projected/,
+ 'no future candle bodies or wicks in the chart')
+assert.match(plot,/M15 · PATH \/ WATCH/,
+ 'watch preview retains dual conditional price tracks');
+assert.doesNotMatch(plot,/drawCandles\(|sniper-hunt-candles/,
+ 'watch overlay must never render hypothetical candle bodies')
 assert.match(plot,/sniper-hunt-pool/,'high/low stop clusters are visual zones, not hidden orders');
 assert.match(hud,/مؤشر غير مُعاير/,
  'non-calibrated price pattern strength must not masquerade as probability');
