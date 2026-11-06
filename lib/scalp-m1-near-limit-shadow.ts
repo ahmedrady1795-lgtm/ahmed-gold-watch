@@ -90,9 +90,26 @@ export function advanceNearM1Shadow(s:NearM1Shadow,a:NearM1Inputs):NearM1Shadow{
     if(s.state==='PENDING'){
       const safelyObserved=usable&&q.source===s.source&&
         at!>=expired-5000&&at!<=expired&&at!>last&&at!-last<=15_000;
-      return done(s,safelyObserved?'EXPIRED':'UNKNOWN',a.now,null,
-        safelyObserved?'انتهت الدقيقة دون لمس مرصود للـ Limit':
-          'انتهت الدقيقة أثناء فجوة تيكات؛ هل تم لمس Limit غير معلوم');
+      const px=s.side==='BUY'?ask:bid;
+      const crossed=safelyObserved&&
+        (s.side==='BUY'?
+          Number(s.lastExecutable)>Number(s.entry)&&px!<=Number(s.entry):
+          Number(s.lastExecutable)<Number(s.entry)&&px!>=Number(s.entry));
+      // A sampled crossing seen only after expiry cannot be counted as
+      // either a fill or a definite unfilled order.
+      return done(s,safelyObserved&&!crossed?'EXPIRED':'UNKNOWN',a.now,null,
+        safelyObserved&&!crossed?'انتهت الدقيقة دون لمس مرصود للـ Limit':
+          'انتهت الدقيقة أو ظهر كسر متأخر؛ ترتيب التنفيذ مجهول');
+    }
+    const currentEligible=usable&&q.source===s.source&&
+      at!>=expired-5000&&at!<=expired&&at!>last&&at!-last<=15_000;
+    if(currentEligible){
+      const exit=s.side==='BUY'?bid!:ask!;
+      const stopHit=s.side==='BUY'?exit<=Number(s.stop):exit>=Number(s.stop);
+      const tpHit=s.side==='BUY'?exit>=Number(s.tp):exit<=Number(s.tp);
+      if(stopHit)return done(s,'STOP',at!,exit,'وقف على آخر عرض صالح قبل انتهاء المدة');
+      if(tpHit)return done(s,'QUICK_TP',at!,exit,'هدف على آخر عرض صالح قبل انتهاء المدة');
+      return done(s,'TIME_EXIT',expired,exit,'خروج زمني بأحدث Bid/Ask قبل نهاية المدة');
     }
     const observedNearCutoff=Number(s.lastExitAt)>=expired-5000&&
       Number(s.lastExitAt)<=expired&&
