@@ -4,7 +4,7 @@ import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import SniperM15Summary from './SniperM15Summary';
 import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
-import SniperLiquidityDecisionMap from './SniperLiquidityDecisionMap';
+import SniperM15HuntOverlay from './SniperM15HuntOverlay';
 import {analyzeM15MarketStructure} from '../lib/sniper-market-structure';
 import SniperMarketStructureOverlay,{SniperStructureRSI} from './SniperMarketStructureOverlay';
 import SniperHuntHUD from './SniperHuntHUD';
@@ -830,15 +830,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              </text>
            </g>}
 
-         <SniperLiquidityDecisionMap watch={watchMap} ready={mapReady}
-           direction={mapDirection} m1Side={mapM1Side} m15Side={chartSide}
-           price={formingVisible&&forming?forming.close:price}
-           trigger={mapReady&&preMoveReady&&typeof preMove.trigger==='number'?
-             preMove.trigger:null}
-           invalidation={mapReady&&preMoveReady&&typeof preMove.invalidation==='number'?
-             preMove.invalidation:null}
-           split={split} end={end} top={plotTop} bottom={plotBottom}
-           lo={lo} hi={hi} py={py}/>
+         <SniperM15HuntOverlay forecast={huntPreview}
+           left={left} split={split} end={end}
+           top={plotTop} bottom={plotBottom} py={py}
+           liquidity={showLiquidity}/>
          {showLiquidity&&showExtra&&compactZones.map((z,i)=>{
            const color=z.kind==='MIXED'?
              z.label.includes('ارتداد')?'#41cfab':
@@ -934,9 +929,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          </text>
        </g>)}
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
-       <text x={split+5} y={17} fill="#9fc4d3" fontSize="10" textAnchor="start" direction="ltr">M15 · LEVEL MAP</text>
+       <text x={split+5} y={17} fill="#9fc4d3" fontSize="10" textAnchor="start" direction="ltr">M15 · PATH WATCH</text>
        {showExtra&&<text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
-         textAnchor="start" direction="rtl">مستويات مرصودة وليست شموع مستقبلية</text>}
+         textAnchor="start" direction="rtl">مساران مشروطان · بدون شموع مستقبلية</text>}
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
          textAnchor="start" direction="ltr">{h(trueHistory[0]?.time??latestClosed.time)}</text>}
        {latestClosed&&<text x={split} y={H-17} fill="#bacbd7" fontSize="11" textAnchor="middle" direction="ltr">{h(formingVisible&&forming?forming.time:latestClosed.time)}</text>}
