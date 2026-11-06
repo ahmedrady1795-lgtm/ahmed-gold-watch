@@ -1,5 +1,7 @@
 # Ahmed Gold Command
 
+> **Active Qannas production:** https://ahmed-gold-watch-free.onrender.com/ — source branch: `render-free`. The main site and its supporting services run on Render. Make all live-site changes against `render-free`; do not create or deploy duplicate sites from other branches.
+
 ## Qannas Spot Flow radar (October 21, 2026)
 - `/spot` is an independent Arabic Binance Spot USDT radar, linked from the Qannas home header. It does **not** change any gold/BTC candles, forecast graphics or execution settings.
 - `/api/spot-radar` reads Binance's public market-data host without API keys or placing trades. ExchangeInfo filters to tradable spot pairs; 24h tickers select a *sample*; closed, contiguous 1-minute candles supply executed quote volume and taker-buy ratio. Top-ranked pairs receive one 100-level order-book snapshot; price/spread/relative BTC momentum and breakout proximity contribute to a transparent 0–100 evidence score.
