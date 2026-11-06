@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import type {M1Bar} from './sniper-mt5-m1';
 import {everyM1Direction} from './sniper-m1-every-direction';
+import {auditPairedM1Direction} from './scalp-m1-paired-proof';
 import {priceEveryM1Limit,priceEveryM1NearLimit,
   EVERY_M1_EDGE_V4,EVERY_M1_EDGE_V5,EVERY_M1_EDGE_V6} from './scalp-every-m1-economics';
 import {requiresM1TickConfirmation,m1BidAskEvidence,M1_CONFIRM_WINDOW_MS} from './scalp-m1-tick-evidence';
@@ -30,7 +31,7 @@ export type EveryAttempt={
   tp:number|null;cost:number;extraCost?:number;spreadAtQuote?:number;
   strategyVersion?:string;pattern?:string;directionModel?:string;
   seedMid?:number;seedAt?:number;seedSource?:string;confirmedAt?:number|null;
-  originalSide?:EverySide;onlineModel?:OnlineM1Choice['model'];
+  originalSide?:EverySide;baselineSide?:EverySide|null;onlineModel?:OnlineM1Choice['model'];
   onlineDecision?:OnlineM1Choice;
   shadowSide?:EverySide;shadowModel?:ShadowM1Selection['model'];
   nearLimitShadow?:NearM1Shadow|null;
@@ -387,7 +388,14 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
     // bid/ask, rather than finalizing the opportunity as NO_BID_ASK.
     const t:EveryAttempt={
       id:signal.issuedAt,issuedAt:signal.issuedAt,side:proposed,
-      originalSide:signal.side,onlineModel:online.model,onlineDecision:online,
+      originalSide:signal.side,
+      // Freeze the independent LAST-CLOSED-CANDLE momentum baseline at issue.
+      // Doji has no directional baseline; it is excluded from paired results.
+      baselineSide:(()=>{
+        const anchor=raw.find(b=>b.time===signal.anchorTime);
+        return !anchor||anchor.close===anchor.open?null:
+          anchor.close>anchor.open?'BUY' as const:'SELL' as const;
+      })(),onlineModel:online.model,onlineDecision:online,
       shadowSide:shadow.side,shadowModel:shadow.model,
       nearLimitShadow:newNearM1Shadow(proposed,signal.issuedAt),
       shadowExitVersion:M1_FAST_EXIT_SHADOW_V1,shadowAdverseTicks:0,
@@ -473,6 +481,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     hist.filter(t=>t.pulseVersion===M1_FORWARD_PULSE_V1));
   const shadowExpert=auditM1ShadowExpert(hist);
   const directionHits=marked.filter(t=>t.side===t.directionObserved).length;
+  const pairedBaseline=auditPairedM1Direction(v4);
   const byEvidence=(weak:boolean)=>{
     const issued=v4.filter(t=>t.weak===weak);
     const graded=issued.filter(t=>t.directionObserved==='BUY'||t.directionObserved==='SELL');
@@ -517,7 +526,8 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
       flat:v4.filter(t=>t.directionObserved==='FLAT').length,
       unknown:v4.filter(t=>t.directionObserved==='UNKNOWN').length,
       waiting:v4.filter(t=>t.directionObserved==null).length,
-      hitPct:marked.length?round(directionHits/marked.length*100):null},
+      hitPct:marked.length?round(directionHits/marked.length*100):null,
+      pairedBaseline},
     learning:{minimumPast:36,shadowExpert,fastExitShadow,nearLimitShadow,
       latestForwardQuality:hist.at(-1)?.forwardQuality??null,
       unprovenGated:hist.filter(t=>!t.qualityTier?.includes('CANDIDATE')&&
