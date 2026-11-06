@@ -85,7 +85,7 @@ export function priceEveryM1NearLimit(input:{
   const extra=Math.max(0,cost-spread);
   // The offset is referenced to the CURRENT executable quote, not the last
   // closed candle midpoint. Fixed before any later observed tick/fill.
-  const depth=Math.max(.02,spread*.72,atr*.10);
+  const depth=Math.max(.02,spread*.50,atr*.03);
   if(depth>atr*.18)return null;
   const buy=side==='BUY';
   const entry=buy?lo(bid-depth):hi(ask+depth);
