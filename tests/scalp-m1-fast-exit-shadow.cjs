@@ -74,7 +74,7 @@ const engine=fs.readFileSync('lib/scalp-every-candle.ts','utf8');
 assert.match(engine,/t\.shadowEarlyExitNetR=priceAfterEntry\(t,observation\.earlyExitPrice\)/);
 assert.match(engine,/t\.shadowExitVersion===M1_FAST_EXIT_SHADOW_V1/);
 assert.match(engine,/shadowExitVersion:M1_FAST_EXIT_SHADOW_V1/);
-assert.match(engine,/fastExitShadow=auditM1FastExitShadow\(settled,EVERY_M1_EDGE_V5\)/);
+assert.match(engine,/fastExitShadow=auditM1FastExitShadow\(settled,EVERY_M1_EDGE_V6\)/);
 assert.match(engine,/if\(t\.side==='BUY'\?exit<=Number\(t\.stop\)/,
  'paper broker-like stop remains active and has not been loosened');
 const screen=fs.readFileSync('app/scalp/page.tsx','utf8');

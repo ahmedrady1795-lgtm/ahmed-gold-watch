@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import type {M1Bar} from './sniper-mt5-m1';
 import {everyM1Direction} from './sniper-m1-every-direction';
-import {priceEveryM1Limit,EVERY_M1_EDGE_V4,EVERY_M1_EDGE_V5} from './scalp-every-m1-economics';
+import {priceEveryM1Limit,priceEveryM1NearLimit,
+  EVERY_M1_EDGE_V4,EVERY_M1_EDGE_V5,EVERY_M1_EDGE_V6} from './scalp-every-m1-economics';
 import {requiresM1TickConfirmation,m1BidAskEvidence,M1_CONFIRM_WINDOW_MS} from './scalp-m1-tick-evidence';
 import {chooseOnlineM1,type OnlineM1Choice} from './scalp-m1-online-learning';
 import {chooseM1ShadowExpert,auditM1ShadowExpert,
@@ -139,7 +140,12 @@ function stageAfterQuote(t:EveryAttempt,raw:readonly M1Bar[],q:ScalpQuote,
   const atr=Number(t.atr);
   if(!last||!Number.isFinite(atr)||atr<=0||!Number.isFinite(cost))return false;
   const spread=Number(q.ask)-Number(q.bid);
-  const e=priceEveryM1Limit({
+  // Existing V5 paper orders keep their ORIGINAL frozen pricing if they
+  // were awaiting their first quote during the upgrade. Only newly issued V6
+  // attempts receive the near-price calculation.
+  const priceLimit=t.strategyVersion===EVERY_M1_EDGE_V6?
+    priceEveryM1NearLimit:priceEveryM1Limit;
+  const e=priceLimit({
     side:t.side,bid:Number(q.bid),ask:Number(q.ask),atr,cost,
     previousOpen:last.open,previousClose:last.close
   });
@@ -362,7 +368,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       chartSource,
       directionObserved:null,directionEvaluatedAt:null,
       pulseVersion:M1_FORWARD_PULSE_V1,pulse:null,
-      strategyVersion:EVERY_M1_EDGE_V5,pattern:signal.pattern,
+      strategyVersion:EVERY_M1_EDGE_V6,pattern:signal.pattern,
       directionModel:online.inverted?'ONLINE_INVERSION':
         signal.adaptive?.model??'PRESSURE_SWEEP',
       entry:null,stop:null,tp:null,
@@ -400,11 +406,12 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     Math.max(0,Math.round((t.issuedAt-hist[i-1].issuedAt)/60000)-1):n,0);
   const completed=hist.filter(t=>t.netR!=null&&
     ['QUICK_TP','STOP','TIME_EXIT'].includes(t.state));
-  // New geometry/reversal model gets a truly separate future cohort.
-  // Old cost-corrected tests must not validate today's changed payoff.
-  const settled=completed.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V5);
-  const oldResults=completed.filter(t=>t.strategyVersion!==EVERY_M1_EDGE_V5);
-  const fastExitShadow=auditM1FastExitShadow(settled,EVERY_M1_EDGE_V5);
+  // Near-price V6 cannot borrow earlier V5/V4 outcomes as proof of profit.
+  // Prior V5 trades remain archived separately with their original math.
+  const settled=completed.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V6);
+  const priorV5=completed.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V5);
+  const oldResults=completed.filter(t=>t.strategyVersion!==EVERY_M1_EDGE_V6);
+  const fastExitShadow=auditM1FastExitShadow(settled,EVERY_M1_EDGE_V6);
   const legacyResults=oldResults.length;
   const legacyNetR=round(oldResults.reduce((sum,t)=>sum+Number(t.netR),0));
   const results=settled.map(t=>Number(t.netR));
@@ -417,7 +424,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   };
   // Same frozen forward-direction model spans V4 and V5; only LIMIT P/L changes.
   const v4=hist.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V4||
-    t.strategyVersion===EVERY_M1_EDGE_V5);
+    t.strategyVersion===EVERY_M1_EDGE_V5||t.strategyVersion===EVERY_M1_EDGE_V6);
   const marked=v4.filter(t=>t.directionObserved==='BUY'||t.directionObserved==='SELL');
   const forwardPulse=auditForwardM1Pulse(
     hist.filter(t=>t.pulseVersion===M1_FORWARD_PULSE_V1));
@@ -456,6 +463,8 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     stops:settled.filter(t=>t.state==='STOP').length,
     timeExits:settled.filter(t=>t.state==='TIME_EXIT').length,
     legacyResults,legacyNetR,
+    priorV5:{resolved:priorV5.length,netR:round(priorV5.reduce(
+      (sum,t)=>sum+Number(t.netR),0)),wins:priorV5.filter(t=>Number(t.netR)>0).length},
     forwardPulse,
     forwardDirection:{issued:v4.length,graded:marked.length,hits:directionHits,
       misses:marked.length-directionHits,
@@ -473,12 +482,12 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     meanNetR:settled.length?round(net/settled.length):null,
     weakCount:hist.filter(t=>t.weak).length,
     strongCount:hist.filter(t=>!t.weak).length,
-    version:EVERY_M1_EDGE_V5,
+    version:EVERY_M1_EDGE_V6,
     nominalNetRMin:.55,
     breakEvenWinPctNominal:64.52,
     reversalSetups:hist.filter(t=>t.pattern==='SWEEP_REJECTION').length,
     byPattern:{reversal:breakdown('SWEEP_REJECTION'),momentum:breakdown('MOMENTUM')},
     latest:hist.at(-1)??null,
     recent:hist.slice(-8).reverse(),
-    note:'التعلم لا يستخدم أي شمعة مستقبلية عند إصدار التوقع. يتم تسجيل اتجاه الإغلاق لاحقًا؛ أي فجوة أو مصدر مختلف UNKNOWN. التعلم يحتاج 36 نتيجة أمامية سابقة متجانسة قبل تجربة تغيير اتجاه، وليس تدريب MT5 أو أمرًا حيًا. نتائج V3 منفصلة، وتخزين Render المجاني مؤقت.'};
+    note:'V6 LIMIT أقرب للسعر لكنه يظل ورقيًا وغير مضمون التنفيذ. كل التوقعات تصدر قبل الشمعة والنتائج بعد الإغلاق، والفجوات UNKNOWN. نتائج V5 محفوظة منفصلة ولا تثبت أفضلية V6. لا صفقات Exness حقيقية.'};
 }
