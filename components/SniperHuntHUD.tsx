@@ -12,6 +12,11 @@ export default function SniperHuntHUD(p:Props){
  const title=observedSide==='BUY'?'↗ صعود':observedSide==='SELL'?'↘ هبوط':'↔ توازن';
  const sweep=p.hunt.sweep==='HIGH_REJECTION'?'سحب قمة / رفض':
    p.hunt.sweep==='LOW_REJECTION'?'سحب قاع / ارتداد':'لا سحب مؤكد';
+ const observation=p.hunt.observation;
+ const quality=observation?.quality==='CLEAR'?'أدلة متوافقة':
+   observation?.quality==='MIXED'?'ترجيح مختلط':'ترجيح ضعيف';
+ const disagreement=Boolean(observation&&p.marketOpen&&p.m1.ready&&
+   p.m1.side!=='WAIT'&&p.m1.side!==observation.preferred);
  const nextM1=p.marketOpen&&p.m1.ready?
    p.m1.side==='BUY'?'↑ M1':p.m1.side==='SELL'?'↓ M1':'↔ M1':'M1 —';
  return <section className="sniper-hunt-hud" role="status"
@@ -28,6 +33,15 @@ export default function SniperHuntHUD(p:Props){
      <span><small>السيولة / الشموع</small><b>{sweep}</b></span>
      <span className="is-next"><small>الشمعة القادمة</small><b>{nextM1}</b></span>
    </div>
+   {p.hunt.ready&&observation&&<small className="sniper-hunt-hud-observation">
+     <b>{'راصد M15 · '+quality+' · صعود '+observation.buyPoints+
+        ' / هبوط '+observation.sellPoints}</b>
+     <span>{observation.reasons.slice(0,3).join(' · ')||
+        'لا دليل اتجاه كافٍ · المساران للمراقبة'}</span>
+     {(observation.warnings.length>0||disagreement)&&
+       <em>{[...observation.warnings.slice(0,1),
+         ...(disagreement?['تعارض اتجاه M1 مع M15']:[])].join(' · ')}</em>}
+   </small>}
    <small className="sniper-hunt-hud-state">
      {!p.marketOpen?'السوق مغلق · مرجع سابق':
        p.hunt.referenceOnly?'بيانات M15 سابقة · ليست إشارة حية':
