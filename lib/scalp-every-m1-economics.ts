@@ -4,6 +4,7 @@ export const EVERY_M1_EDGE_V2='EVERY_M1_EDGE_V2';
 export const EVERY_M1_EDGE_V3='EVERY_M1_ADAPTIVE_DIRECTION_V3';
 export const EVERY_M1_EDGE_V4='EVERY_M1_FORWARD_LEARNER_V4';
 export const EVERY_M1_EDGE_V5='EVERY_M1_TICK_CONFIRMED_LIMIT_V5';
+export const EVERY_M1_EDGE_V6='EVERY_M1_NEAR_PASSIVE_LIMIT_V6';
 export const EVERY_M1_MIN_NET_R=.55;
 export type EveryM1Economics={
   side:'BUY'|'SELL';entry:number;stop:number;tp:number;
@@ -60,4 +61,48 @@ export function priceEveryM1Limit(input:{
     netRewardR:round(netRewardR),
     breakEvenWinPct:round(100/(1+netRewardR)),
     retestDepth:round(buy?bid-entry:entry-ask)};
+}
+
+/**
+ * V6: an intentionally nearer, strictly passive LIMIT for each eligible M1
+ * forecast. No prior-body-mid pullback: requiring it on a fast impulsive
+ * candle often left the passive V5 order far behind the moving price.
+ *
+ * This is PAPER ONLY, not executable MT5 authorization. A closer limit can
+ * increase adverse fills and losses; performance starts a NEW forward cohort.
+ * No market orders, optimistic touches or same-quote fills.
+ */
+export function priceEveryM1NearLimit(input:{
+  side:'BUY'|'SELL';bid:number;ask:number;atr:number;
+  cost:number;previousOpen:number;previousClose:number
+}):EveryM1Economics|null{
+  const {side,bid,ask,atr,cost,previousOpen,previousClose}=input;
+  if(![bid,ask,atr,cost,previousOpen,previousClose].every(Number.isFinite)||
+    bid<=0||ask<=bid||atr<=0||cost<=0||
+    previousOpen<=0||previousClose<=0)return null;
+  const spread=ask-bid;
+  if(spread>cost+.01||spread>atr*.24)return null;
+  const extra=Math.max(0,cost-spread);
+  // The offset is referenced to the CURRENT executable quote, not the last
+  // closed candle midpoint. Fixed before any later observed tick/fill.
+  const depth=Math.max(.02,spread*.72,atr*.10);
+  if(depth>atr*.18)return null;
+  const buy=side==='BUY';
+  const entry=buy?lo(bid-depth):hi(ask+depth);
+  const realDepth=buy?bid-entry:entry-ask;
+  // Rounding may push the quote away by <= 0.01; fail closed on overshoot.
+  if(realDepth<=0||realDepth>atr*.18+.011)return null;
+  const nominalRisk=Math.max(atr*.42,spread*2.15,.14);
+  const stop=buy?lo(entry-nominalRisk):hi(entry+nominalRisk);
+  const risk=Math.abs(entry-stop);
+  const grossMove=extra+EVERY_M1_MIN_NET_R*(risk+extra);
+  const tp=buy?hi(entry+grossMove):lo(entry-grossMove);
+  const reward=buy?tp-entry:entry-tp;
+  const netRewardR=(reward-extra)/(risk+extra);
+  if(entry<=0||stop<=0||tp<=0||risk<=0||reward<=extra||
+    grossMove>atr*.72||netRewardR+1e-9<EVERY_M1_MIN_NET_R||
+    (buy&&entry>=bid)||(!buy&&entry<=ask))return null;
+  return {side,entry,stop,tp,extraCost:round(extra),spread:round(spread),
+    risk:round(risk),grossTargetMove:round(reward),netRewardR:round(netRewardR),
+    breakEvenWinPct:round(100/(1+netRewardR)),retestDepth:round(realDepth)};
 }
