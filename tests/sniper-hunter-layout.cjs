@@ -44,14 +44,18 @@ assert.ok(0<startIndex&&startIndex<liquidityIndex&&liquidityIndex<centerIndex&&
  centerIndex<chartIndex&&chartIndex<scenarioIndex&&scenarioIndex<endIndex&&endIndex<m1Index,
  'real M15 chart has left price-activity and right scenario sidebars, with M1 RESULTS visible below');
 assert.match(panel,/chartMode==='M1'\?<SniperM1CandleHunter/);
-assert.match(panel,/<SniperM15HuntOverlay forecast=\{huntPreview\}/,
- 'actual M15 conditional candles must remain on the live chart');
+assert.match(panel,/<SniperLiquidityDecisionMap watch=\{watchMap\}/,
+ 'M15 forecast pane now shows source-backed liquidity levels');
+assert.doesNotMatch(panel,/<SniperM15HuntOverlay|renderedBars\.map/,
+ 'old synthetic candle paths must not appear in the live chart');
 assert.match(panel,/className="sniper-m15-diagnostics"/,
  'detailed engine readings remain accessible but below the cockpit');
 assert.match(sidebars,/ليس دفتر أوامر/,
  'profile must not be sold as real L2/order book');
-assert.match(sidebars,/محطات محاكاة ATR/,
- 'simulated target stations are not implied live executions');
+assert.match(sidebars,/watch\.upper/);
+assert.match(sidebars,/watch\.lower/);
+assert.doesNotMatch(sidebars,/محطات محاكاة ATR/,
+ 'simulated ATR stops are removed from the scenario sidebar');
 assert.match(sidebars,/مستويات مستنتجة/,
  'liquidity clues are observed price zones not hidden institutional accounts');
 assert.doesNotMatch(sidebars,/87%|62%|38%|14 صفقة|ربح اليوم/,
