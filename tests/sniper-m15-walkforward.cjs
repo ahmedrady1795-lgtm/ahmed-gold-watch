@@ -33,5 +33,8 @@ const sparse=firstM15Evidence({status:'INSUFFICIENT',selected:0,evaluated:0,pair
 assert.equal(sparse.ready,false);
 assert.doesNotMatch(sparse.label,/\\d+%/);
 const ui=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
-assert.match(ui,/firstM15Stats\.label/);
+assert.match(ui,/const firstM15Stats=firstM15Evidence\(walkForward\)/,
+ 'statistical holdout continues to run behind the simplified chart');
+assert.doesNotMatch(ui,/firstM15Stats\.label/,
+ 'historical diagnostic numbers no longer overlay the liquidity map');
 console.log('PASS: paired M15 holdout, low-sample suppression, historical score is not a success probability');
