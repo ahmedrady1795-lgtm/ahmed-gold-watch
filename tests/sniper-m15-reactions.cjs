@@ -84,14 +84,12 @@ assert.match(component,/const projectedStride=\(end-split-8\)\/Math\.max\(12,ren
  'conditional drawing fits its candle count without changing the scored bars');
 assert.match(component,/const realCandleWidth=clamp\(actualStride\*\.68/,
  'real M15 width stays based on observed historical geometry');
-assert.match(component,/className="sniper-m15-conditional-route"/,
- 'conditional routes are price paths only');
-assert.match(component,/realCandleWidth,'real'\+b\.time/,
- 'actual historical candles preserve their geometry');
-assert.doesNotMatch(component,/futureCandleWidth|sniper-m15-projected/,
- 'no future OHLC bodies or wicks');
-assert.match(component,/renderedBars\.map\(\(b,i\)=>\[/,
- 'original saved bar closes form a conditional route');
+assert.match(component,/const futureCandleWidth=clamp\(projectedStride\*\.62,1\.7,4\);/,
+ 'classic right pane uses historical narrow solid candles');
+assert.match(component,/realCandleWidth,false,'real'\+b\.time/,
+ 'historical OHLC is rendered at its original width');
+assert.match(component,/futureCandleWidth,true,'future'\+i/,
+ 'future illustration is drawn as continuous full OHLC candles');
 assert.doesNotMatch(component,/const projectedSlots=Math\.max\(14/,
  'do not zoom up four forecast bars after a stop');
 assert.match(component,/stable\?\.scenario\.stopped/,
