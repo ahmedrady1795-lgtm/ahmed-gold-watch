@@ -52,6 +52,23 @@ assert.match(sidebars,/ليس دفتر أوامر/,
  'profile must not be sold as real L2/order book');
 assert.match(sidebars,/محطات محاكاة ATR/,
  'simulated target stations are not implied live executions');
+assert.match(panel,/watch=\{watchMap\} m1=\{nextM1\}/,
+ 'M1 direction and real M15\/H1 liquidity are wired into the scenario');
+assert.match(panel,/priceFresh=\{Boolean\(m\.sniper\.view\.priceFresh\)&&historyFresh/,
+ 'stale market observations cannot produce active watch levels');
+assert.match(sidebars,/watch\.asOf===guide\.anchorTime\+900000/,
+ 'scenario reference and finished M15 liquidity map must match');
+assert.match(sidebars,/Math\.max\(entry,quote\)\+atr\*\.08/,
+ 'bullish liquidity must be beyond both current quote and trigger');
+assert.match(sidebars,/Math\.min\(entry,quote\)-atr\*\.08/,
+ 'bearish liquidity must be beyond both current quote and trigger');
+assert.match(sidebars,/Math\.abs\(v\.price-quote\)<=atr\*4/,
+ 'nearby scalp watch excludes remote targets');
+assert.match(sidebars,/إبطال رصد M15/);
+assert.match(sidebars,/أقرب سيولة حقيقية/);
+assert.match(sidebars,/تعارض M1 وM15/);
+assert.match(sidebars,/تأكيد الإغلاق مطلوب/,
+ 'touching a threshold does not imply confirmed breakout or broker fill');
 assert.match(sidebars,/مستويات مستنتجة/,
  'liquidity clues are observed price zones not hidden institutional accounts');
 assert.doesNotMatch(sidebars,/87%|62%|38%|14 صفقة|ربح اليوم/,
