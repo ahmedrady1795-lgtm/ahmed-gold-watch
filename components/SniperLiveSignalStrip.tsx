@@ -1,5 +1,6 @@
 import type {LiveOpportunity} from '../lib/sniper-live-opportunity';
 import type {M1Priority} from '../lib/sniper-m1-priority';
+import type {EveryM1Direction} from '../lib/sniper-m1-every-direction';
 import {visibleSniperSignal} from '../lib/sniper-live-signal-strip';
 
 const fmt=(n:number|null|undefined)=>n!=null&&Number.isFinite(n)&&n>0?
@@ -7,7 +8,7 @@ const fmt=(n:number|null|undefined)=>n!=null&&Number.isFinite(n)&&n>0?
 
 export default function SniperLiveSignalStrip(p:{
   now:number;marketOpen:boolean;priceFresh:boolean;providerTransition:boolean;
-  opportunity:LiveOpportunity;priority:M1Priority;
+  opportunity:LiveOpportunity;priority:M1Priority;minute:EveryM1Direction|null;
 }){
   const s=visibleSniperSignal(p);
   const directions=s.side!=='WAIT';
@@ -15,10 +16,10 @@ export default function SniperLiveSignalStrip(p:{
        (s.side==='BUY'?' signal-buy':s.side==='SELL'?' signal-sell':'')}
      role="status" aria-live="polite" aria-label="إشارة القناص M1 بشكل واضح">
     <div className="sniper-m15-live-signal-head">
-      <span>إشارة القناص · M1</span>
+      <span>توقع القناص · M1</span>
       <strong>{s.title}</strong>
       <b>{s.kind==='BREAK'?'كسر مرصود':s.kind==='TESTING'?'اختبار':
-        s.kind==='PREPARE'?'إنذار مبكر':s.kind==='BIAS'?'ترجيح فقط':
+        s.kind==='PREPARE'?'إنذار مبكر':s.kind==='FORECAST'?'توقع شمعة M1':s.kind==='BIAS'?'ترجيح فقط':
         s.kind==='EXPIRED'?'ملغاة/قديمة':s.kind==='OFFLINE'?'غير متاحة':'انتظار'}</b>
     </div>
     <p>{s.description}</p>
@@ -30,6 +31,7 @@ export default function SniperLiveSignalStrip(p:{
     </div>
     <small className="sniper-m15-live-signal-disclaimer">
       {s.kind==='BREAK'?'كسر مؤكّد بالإغلاق فقط؛ ليس تأكيد تنفيذ أو دخول LIMIT.':
+       s.kind==='FORECAST'?'توقع اتجاه الشمعة الحالية من الشمعة السابقة، وقد يخطئ؛ ليس BUY/SELL لتنفيذ صفقة.':
        s.kind==='BIAS'?'اتجاه رصد من شموع مغلقة؛ ليس إشارة تنفيذ.':
        'مراقبة مشروطة، وليست أمر تداول.'}
       {' '}قوة القراءة ليست نسبة نجاح.
