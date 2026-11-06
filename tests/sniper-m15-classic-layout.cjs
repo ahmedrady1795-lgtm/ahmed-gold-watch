@@ -28,25 +28,22 @@ assert.equal(validate({...frozen,visualBars:bars.map((b,i)=>i===4?{...b,close:42
 assert.equal(validate({...frozen,visualBars:[...bars,bars[0]]},args),null,
  'extra route cannot extend beyond 48 M15 cells');
 const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
-assert.match(chart,/M15 · FORECAST/);
+const map=fs.readFileSync('components/SniperLiquidityDecisionMap.tsx','utf8');
+assert.match(chart,/M15 · LEVEL MAP/);
 assert.match(chart,/const recent=actual\.slice\(-72\)/);
-assert.match(chart,/const projectedStride=\(end-split-8\)\/Math\.max\(12,renderedBars\.length\);/);
-assert.match(chart,/const futureCandleWidth=clamp\(projectedStride\*\.62,1\.7,4\);/);
 assert.match(chart,/const realCandleWidth=clamp\(actualStride\*\.68,2\.2,5\.2\);/);
+assert.match(chart,/const split=215|split=215,end=422/);
 assert.match(chart,/const longer=buildM15Scenario\(\{\.\.\.modelInput,steps:48\}\)/);
 assert.match(chart,/const scenario=buildM15Scenario\(\{\.\.\.modelInput,steps:12\}\)/);
 assert.match(chart,/const visualBars=prefixMatches\?longer\.bars:scenario\.bars/);
-assert.match(chart,/targetRoute\?\.bars\.slice\(elapsedSteps\)\?\?displayBars/,
- 'full conditional route is displayed without rewriting the first 12 scored bars');
-assert.match(chart,/split=projected\.ready\|\|showWatchGuide\?215:422/,
- '12 timed bars have their own properly sized canvas, without flattening candles');
-assert.match(chart,/bars:scenario\.bars\.map\(b=>/,'proof ledger only stores 12 genuine scored bars');
-assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars/);
-assert.doesNotMatch(chart,/sniper-m15-signal-mark|signalMarks/,
- 'historical BUY/SELL markers must not pollute the ordinary price chart');
-assert.match(chart,/sniper-live-candle-bias/,
- 'the current live candle must carry its own visible BUY/SELL label');
-assert.match(chart,/extendIllustrativeM15ToTargets\(/,
- 'restore explicitly illustrative target continuation');
+assert.match(chart,/bars:scenario\.bars\.map\(b=>/,
+ 'immutable proof ledger still stores original 12-bar hypothetical evidence');
 assert.match(chart,/const aligned=stable&&validLive&&forming/);
-console.log('PASS: classic 120/48 M15 chart, authentic saved 12-bar prefix, immutable causal score, separate conditional TP illustration');
+assert.match(chart,/forecast:\[\]/,'hypotheses do not stretch the real price axis');
+assert.doesNotMatch(chart,/futureCandleWidth|renderedBars\.map/,
+ 'historical hypotheses are no longer painted as live future candles');
+assert.match(chart,/sniper-live-candle-bias/,
+ 'live observed candle retains its direction marker');
+assert.match(map,/watch\.upper\.slice\(0,2\)/);
+assert.match(map,/watch\.lower\.slice\(0,2\)/);
+console.log('PASS: frozen M15 evidence retained for scoring, while UI uses real-price liquidity map');
