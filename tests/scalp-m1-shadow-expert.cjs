@@ -3,10 +3,10 @@ const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
 const js=ts.transpileModule(fs.readFileSync('lib/scalp-m1-shadow-expert.ts','utf8'),{
  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
 }).outputText;
-const exports={};vm.runInNewContext(js,{exports,Number,Math,Date},{
+const out={};vm.runInNewContext(js,{exports:out,Number,Math,Date},{
  filename:'lib/scalp-m1-shadow-expert.ts'});
 const {chooseM1ShadowExpert,auditM1ShadowExpert,
- M1_SHADOW_TRAIN,M1_SHADOW_CHECK}=exports;
+ M1_SHADOW_TRAIN,M1_SHADOW_CHECK}=out;
 assert.equal(M1_SHADOW_TRAIN,8);
 assert.equal(M1_SHADOW_CHECK,8);
 const T=Date.parse('2026-11-06T01:00:00Z');
