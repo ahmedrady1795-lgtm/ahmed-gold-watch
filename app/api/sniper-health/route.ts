@@ -1,5 +1,6 @@
 import {getAiSnapshot} from '../../../lib/ai-snapshot-cache';
 import {getSniperAudit} from '../../../lib/sniper-audit-store';
+import {aiRateLimitState} from '../../../lib/ai-service-backoff';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -34,7 +35,17 @@ export async function GET(){
       ai:{mode:snapshotFresh?(readiness?.mode??'UNKNOWN'):'STALE',
         readyCount:snapshotFresh?Number(readiness?.readyCount||0):0,
         configuredCount:snapshotFresh?Number(readiness?.configuredCount||0):0,
-        failures:snapshotFresh?(readiness?.activeFailures||[]):[]},
+        failures:snapshotFresh?(readiness?.activeFailures||[]):[],
+        modelsReady:snapshotFresh&&readiness?.readyCount===readiness?.configuredCount&&
+          Number(readiness?.configuredCount||0)>0,
+        // Transport recovery and statistically validated directional edge are
+        // separate conditions. These fields report 429 only, never returns URLs.
+        throttles:{
+          ml:aiRateLimitState(process.env.ML_ENGINE_URL,now),
+          neural:process.env.NEURAL_ENABLED==='0'?
+            aiRateLimitState(undefined,now):
+            aiRateLimitState(process.env.NEURAL_ENGINE_URL,now)
+        }},
       audit:{fresh:auditFresh,ageMs:auditAge,persistence:audit.persistence,
         durable:audit.persistence==='VOLUME'},
       gold:detail('GOLD'),bitcoin:detail('BTC'),
