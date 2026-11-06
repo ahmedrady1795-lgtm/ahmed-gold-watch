@@ -171,8 +171,8 @@ assert.doesNotMatch(chart,/fillOpacity=\{future\?/,
  'M15 candle bodies remain opaque with no ghost-like future candles');
 assert.doesNotMatch(chart,/strokeDasharray=\{future\?'2 2':undefined\}/,
  'restore solid wicks to match the original genuine candle design');
-assert.match(chart,/أول 12 شمعة للتقييم · امتداد الأهداف توضيحي غير زمني/,
- 'target extension is explicitly labelled unscored and not timed');
+assert.match(chart,/مسار مشروط دون شموع مستقبلية/,
+ 'reference route is illustrative and never painted as future OHLC');
 assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars;/,
  'draw the original twelve analogue bars without added targets');
 assert.match(chart,/compactM15ZoneAnnotations/,'nearby liquidity labels are grouped, not drawn on top of one another');
