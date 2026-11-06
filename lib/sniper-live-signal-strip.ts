@@ -26,7 +26,7 @@ export function visibleSniperSignal(input:{
   if(o.phase==='CANCELLED')return wait('EXPIRED','الإشارة السابقة أُلغيت',
     o.reason||'السعر أبطل الكسر المرصود');
   const activeSide=o.side==='BUY'||o.side==='SELL'?o.side:null;
-  if(activeSide&&['BREAK_CONFIRMED','PREPARE','TESTING'].includes(o.phase)){
+  if(activeSide&&(o.phase==='BREAK_CONFIRMED'||o.phase==='PREPARE'||o.phase==='TESTING')){
     const age=o.sourceAt!=null?input.now-o.sourceAt:Infinity;
     if(o.phase==='BREAK_CONFIRMED'&&
       (!Number.isFinite(age)||age<0||age>120000))
