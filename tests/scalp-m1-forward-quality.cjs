@@ -13,7 +13,7 @@ const make=(hits,n=48,source='MT5',offset=0)=>Array.from({length:n},(_,i)=>{
  return {issuedAt,side:'BUY',originalSide:'BUY',
   pattern:'MOMENTUM',weak:false,chartSource:source,
   directionObserved:i<hits?'BUY':'SELL',
-  directionEvaluatedAt:issuedAt+60050};
+  directionEvaluatedAt:issuedAt+60000};
 });
 const bad=assess(signal,make(6), 'MT5');
 assert.equal(bad.status,'NO_EDGE','low historical accuracy cannot certify a signal');
