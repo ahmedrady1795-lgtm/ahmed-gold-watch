@@ -185,6 +185,22 @@ function GoldEveryCandle({data}:{data:any}){
         نفس الصفقات ونفس تكلفة Bid/Ask التقديرية، بدون تعديل الوقف أو التنفيذ،
         ولا نزعم تقليل الخسارة قبل رصد نتائج كافية.
       </p>
+      <p style={{fontSize:12,margin:'6px 0',opacity:.9}}>
+        اختبار الدخول المبكر: نفس LIMIT القريب V6 لكن على أول Bid/Ask
+        صالح خلال أول 12 ثانية، بدل انتظار تأكيد التيكات الضعيفة.
+        {' '}توقعات {data?.learning?.nearLimitShadow?.issued??0}
+        {' · '}أوامر مبكرة {data?.learning?.nearLimitShadow?.placed??0}
+        {' · '}لمسات ورقية في تيكات لاحقة {data?.learning?.nearLimitShadow?.touched??0}
+        {' · '}صفقات محسومة {data?.learning?.nearLimitShadow?.resolved??0}
+        {' · '}صافي تجريبي بعد التكاليف {data?.learning?.nearLimitShadow?.netR??0}R
+        {' · '}مجهول بسبب فجوات {data?.learning?.nearLimitShadow?.unknown??0}.
+        {' '}وعلى الصفقات اللي اكتملت عند الجانبين فقط:
+        {' '}{data?.learning?.nearLimitShadow?.sameCohort?.resolved??0}
+        {' '}صفقة · المبكر {data?.learning?.nearLimitShadow?.sameCohort?.nearNetR??0}R
+        {' '}مقابل V6 {data?.learning?.nearLimitShadow?.sameCohort?.originalNetR??0}R.
+        ده اختبار ورقي غير منفذ على Exness، ولا يتحول لـMarket،
+        وقد يزيد الدخول الخاسر؛ ما نغيّرش سياسة V6 قبل دليل كافي.
+      </p>
     </div>
     <div style={{padding:12,margin:'10px 0',borderRadius:10,
       border:'1px solid var(--border, rgba(160,165,180,.25))'}}
