@@ -54,6 +54,11 @@ export type EveryLedger={version:1;history:EveryAttempt[]};
 const EMPTY=():EveryLedger=>({version:1,history:[]});
 const PERSIST='/data/scalp-every-m1-v1.json';
 const TEMP='/tmp/scalp-every-m1-v1.json';
+export function everyM1StorageTier(volumeFile:boolean,tempFile:boolean,
+  onRender:boolean,diskMounted:boolean):'VOLUME'|'EPHEMERAL'|'MEMORY'{
+  if(volumeFile&&(!onRender||diskMounted))return 'VOLUME';
+  return volumeFile||tempFile?'EPHEMERAL':'MEMORY';
+}
 declare global{var __scalpEveryM1Ledger:EveryLedger|undefined;}
 let lastSaved=0;
 const round=(v:number)=>Number(v.toFixed(3));
@@ -487,7 +492,10 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
       hits:graded.filter(t=>t.side===t.directionObserved).length};
   };
   return {mode:'EVERY_CANDLE_PAPER_LIMIT_SHADOW',enabled:true,
-    storage:fs.existsSync(PERSIST)?'VOLUME':fs.existsSync(TEMP)?'EPHEMERAL':'MEMORY',
+    // /data without a mounted Render disk is still ephemeral. Never let a
+    // successful local write count as durable forward trading evidence.
+    storage:everyM1StorageTier(fs.existsSync(PERSIST),fs.existsSync(TEMP),
+      Boolean(process.env.RENDER),Boolean(process.env.RENDER_DISK_MOUNT_PATH)),
     proposals:hist.length,limitsIssued,awaitingQuote,confirming,missedMinutes,
     noEdge:hist.filter(t=>t.state==='NO_EDGE').length,
     tickConfirmed:hist.filter(t=>t.confirmedAt!=null).length,
