@@ -156,6 +156,18 @@ function GoldEveryCandle({data}:{data:any}){
         {' · '}محايد {data?.forwardDirection?.flat??0}
       </p>
       <p style={{fontSize:12,margin:'6px 0'}}>
+        <strong>مقارنة حقيقية مع اتجاه آخر شمعة مغلقة:</strong>
+        {' '}القناص {data?.forwardDirection?.pairedBaseline?.modelHits??0} صحيح،
+        {' '}والتوقع البسيط {data?.forwardDirection?.pairedBaseline?.baselineHits??0} صحيح
+        {' '}على نفس {data?.forwardDirection?.pairedBaseline?.n??0} شمعة.
+        {' '}فرق الدقة {data?.forwardDirection?.pairedBaseline?.liftPctPoints??'—'} نقطة مئوية.
+        {' '}الحكم: {data?.forwardDirection?.pairedBaseline?.status==='FORWARD_EDGE_CANDIDATE'?
+          'تحسّن أمامي مبدئي يحتاج تحقق أطول':
+          data?.forwardDirection?.pairedBaseline?.status==='NO_DEMONSTRATED_EDGE'?
+            'لم يثبت تفوق على المقارنة':'ما زلنا نجمع النتائج'}.
+        {' '}لا نحسب الشموع المحايدة أو النتائج المجهولة نجاحًا.
+      </p>
+      <p style={{fontSize:12,margin:'6px 0'}}>
         توقعات ضعيفة: {data?.learning?.byEvidence?.weak?.hits??0} صحيح من
         {' '}{data?.learning?.byEvidence?.weak?.graded??0}
         {' · '}توقعات أقوى نسبيًا:
