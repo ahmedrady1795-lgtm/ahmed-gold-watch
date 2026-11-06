@@ -183,6 +183,21 @@ function GoldEveryCandle({data}:{data:any}){
         نفس الصفقات ونفس تكلفة Bid/Ask التقديرية، بدون تعديل الوقف أو التنفيذ،
         ولا نزعم تقليل الخسارة قبل رصد نتائج كافية.
       </p>
+      <p style={{fontSize:12,margin:'6px 0',opacity:.9}}>
+        مختبر LIMIT الأقرب للسعر خلال أول 12 ثانية (ورقي مستقل):
+        {' '}توقعات {data?.learning?.nearLimitShadow?.issued??0}
+        {' · '}أوامر مبكرة {data?.learning?.nearLimitShadow?.placed??0}
+        {' · '}لمسات ورقية لاحقة {data?.learning?.nearLimitShadow?.touched??0}
+        {' · '}صفقات محسومة {data?.learning?.nearLimitShadow?.resolved??0}
+        {' · '}صافي بعد تكلفة تقديرية {data?.learning?.nearLimitShadow?.netR??0}R
+        {' · '}فجوة بيانات/ترتيب مجهول {data?.learning?.nearLimitShadow?.unknown??0}.
+        {' '}مقارنة عادلة على نفس الصفقات المكتملة عند الجانبين:
+        {' '}{data?.learning?.nearLimitShadow?.sameCohort?.resolved??0}
+        {' '}صفقة · المبكر {data?.learning?.nearLimitShadow?.sameCohort?.nearNetR??0}R
+        {' '}مقابل الحالي {data?.learning?.nearLimitShadow?.sameCohort?.originalNetR??0}R.
+        التجربة لا تستخدم Market ولا تحسب لمس السعر تنفيذ وسيط،
+        ومش هنعتمد زيادة الدخول قبل ما تثبت صافي أفضل على عينة مستقبلية كافية.
+      </p>
     </div>
     <div style={{padding:12,margin:'10px 0',borderRadius:10,
       border:'1px solid var(--border, rgba(160,165,180,.25))'}}
