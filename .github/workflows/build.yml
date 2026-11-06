@@ -2,9 +2,9 @@ name: Build Check
 
 on:
   push:
-    branches: [main, railway, render-free]
+    branches: [render-free]
   pull_request:
-    branches: [railway, render-free]
+    branches: [render-free]
   workflow_dispatch:
 
 permissions:
