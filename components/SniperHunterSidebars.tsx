@@ -1,5 +1,6 @@
 import type {M15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import type {M15WatchGuide} from '../lib/sniper-m15-watch-guide';
+import type {WatchPriceMap} from '../lib/sniper-m15-watch-prices';
 import type {M1Priority} from '../lib/sniper-m1-priority';
 import type {StructureSnapshot} from '../lib/sniper-market-structure';
 
@@ -69,15 +70,37 @@ export function SniperLiquidityColumn({history,price,preview,liquidityOn,structu
       </div>}
   </aside>;
 }
-export function SniperScenarioColumn({preview,guide,qualified,price,marketOpen,structure}:{
+export function SniperScenarioColumn({preview,guide,qualified,price,marketOpen,structure,watch,m1,priceFresh}:{
   preview:M15HuntPreview;guide:M15WatchGuide;qualified:boolean;
   price:number|null;marketOpen:boolean;structure:StructureSnapshot;
+  watch:WatchPriceMap;m1:M1Priority;priceFresh:boolean;
 }){
- const active=preview.ready&&!preview.referenceOnly&&marketOpen;
+ const active=preview.ready&&!preview.referenceOnly&&marketOpen&&priceFresh;
+ const levelsReady=active&&watch.ready&&guide.anchorTime!=null&&
+   watch.asOf===guide.anchorTime+900000;
+ const m1Conflict=active&&m1.ready&&m1.side!=='WAIT'&&
+   preview.preferred!=='WAIT'&&m1.side!==preview.preferred;
  const up=preview.buy,down=preview.sell;
  const row=(side:'BUY'|'SELL')=>{
   const rise=side==='BUY',candles=rise?up:down;
   const entry=rise?guide.upperTrigger:guide.lowerTrigger;
+  const invalidation=rise?guide.lowerTrigger:guide.upperTrigger;
+  const quote=price!=null&&Number.isFinite(price)&&price>0?price:null;
+  const atr=guide.atr??0;
+  const observed=levelsReady&&quote!=null&&entry!=null&&atr>0?
+    (rise?watch.upper:watch.lower).filter(v=>
+      (rise?v.price>Math.max(entry,quote)+atr*.08:
+        v.price<Math.min(entry,quote)-atr*.08)&&
+      Math.abs(v.price-quote)<=atr*4).slice(0,2):[];
+  const crossed=quote!=null&&entry!=null&&
+    (rise?quote>=entry:quote<=entry);
+  const invalid=quote!=null&&invalidation!=null&&
+    (rise?quote<=invalidation:quote>=invalidation);
+  const near=quote!=null&&entry!=null&&atr>0&&
+    Math.abs(quote-entry)<=atr*.30;
+  const state=!active?'بيانات غير حية':invalid?'تجاوز إبطال الرصد':
+    crossed?'السعر بعد مستوى الكسر · تأكيد الإغلاق مطلوب':
+    near?'قريب من مستوى الكسر':'انتظار الوصول لمستوى الكسر';
   return <section className={'sniper-hunter-path '+(rise?'rise':'fall')+
       (preview.preferred===side?' preferred':'')} key={side}>
     <div className="sniper-hunter-pathhead">
@@ -85,9 +108,13 @@ export function SniperScenarioColumn({preview,guide,qualified,price,marketOpen,s
       <strong>{rise?'مسار الصعود':'مسار الهبوط'}</strong>
       <small>{preview.preferred===side&&active?'المرجّح للمراقبة':'مسار بديل'}</small>
     </div>
-    <div><span>كسر مشروط</span><b dir="ltr">{fmt(entry)}</b></div>
-    <div><span>محطة 1</span><b dir="ltr">{fmt(candles[2]?.close)}</b></div>
-    <div><span>محطة 2</span><b dir="ltr">{fmt(candles[5]?.close)}</b></div>
+    <div><span>كسر مشروط M15</span><b dir="ltr">{fmt(entry)}</b></div>
+    <div><span>إبطال رصد M15</span><b dir="ltr">{fmt(invalidation)}</b></div>
+    <div><span>أقرب سيولة حقيقية</span><b dir="ltr">{fmt(observed[0]?.price)}</b></div>
+    <div><span>سيولة تالية</span><b dir="ltr">{fmt(observed[1]?.price)}</b></div>
+    <small>{state} · {observed[0]?.source??'لم يُرصد هدف قريب صالح'}</small>
+    <div><span>محطة توضيحية 1</span><b dir="ltr">{fmt(candles[2]?.close)}</b></div>
+    <div><span>محطة توضيحية 2</span><b dir="ltr">{fmt(candles[5]?.close)}</b></div>
     <small>محطات محاكاة ATR، ليست TP منفذًا أو مضمونًا.</small>
   </section>;
  };
@@ -98,6 +125,15 @@ export function SniperScenarioColumn({preview,guide,qualified,price,marketOpen,s
    </div>
    {preview.ready?<div className="sniper-hunter-scenario-stack">
      {row('BUY')}{row('SELL')}
+     <div className="sniper-hunter-sweep" role="status">
+       <strong>{'ترجيح M15 '+(preview.preferred==='BUY'?'صعود':
+         preview.preferred==='SELL'?'هبوط':'متوازن')}</strong>
+       <span>{'رصد M1 '+(!m1.ready?'غير حديث':m1.side==='BUY'?'صعود':
+         m1.side==='SELL'?'هبوط':'متوازن')}</span>
+       <small>{m1Conflict?'تعارض M1 وM15 · لا تأكيد اتجاه مشترك':
+         !active?'مراقبة تاريخية فقط':
+         'المساران للمراقبة · الأسعار المرجعية ليست أوامر تداول'}</small>
+     </div>
      {structure.ready&&structure.zones.length>0&&
        <div className="sniper-hunter-structure-zones">
          <strong>FVG / OB · مناطق مرصودة</strong>
