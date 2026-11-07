@@ -79,6 +79,43 @@ export function observedForwardReach(
     holdMinutes,reference:'non-overlapping closed M1 forward windows, not broker fills'};
 }
 
+/** Choose the NEAREST feasible, cost-covered TP1 rather than stretching
+ * to a distant historical pivot. All prices are in the instrument quote
+ * units; 0.01 is the existing dashboard plan display precision.
+ * The caller must still enforce the structure stop, fees, net R and the
+ * empirical forward-reach cap. No forced trade on an unviable quote.
+ */
+export function nearestFeasibleScalpTarget(input:{
+ side:BreakoutSide;entry:number;requiredMove:number;reachCap:number;
+ atr:number;pivots:readonly number[];
+}):{price:number;kind:'PROJECTION'|'STRUCTURE';distance:number}|null{
+ const {side,entry,requiredMove,reachCap,atr,pivots}=input;
+ if(![entry,requiredMove,reachCap,atr].every(Number.isFinite)||
+   entry<=0||requiredMove<=0||reachCap<=0||atr<=0)return null;
+ const dir=side==='BUY'?1:-1,tick=100;
+ // Outward rounding is necessary: rounding a minimum-risk TP down can
+ // silently fail its cost-inclusive floor, and mislabel a viable setup.
+ const raw=entry+dir*requiredMove;
+ const candidate=side==='BUY'?Math.ceil(raw*tick-1e-8)/tick:
+   Math.floor(raw*tick+1e-8)/tick;
+ const minDistance=dir*(candidate-entry);
+ if(candidate<=0||minDistance<=0||minDistance>reachCap+1e-8)return null;
+ // A genuine pivot is preferable ONLY when very near the feasible TP1.
+ // Otherwise use a disclosed projection at the smallest allowed move.
+ const proximity=Math.min(atr*.16,reachCap*.12);
+ const nearest=pivots.filter(p=>Number.isFinite(p)&&p>0&&
+   dir*(p-entry)>=minDistance-1e-8&&
+   dir*(p-entry)<=Math.min(reachCap,minDistance+proximity)+1e-8)
+   .sort((a,b)=>dir*(a-b))[0];
+ if(nearest==null)return {price:candidate,kind:'PROJECTION',distance:minDistance};
+ const rounded=side==='BUY'?Math.ceil(nearest*tick-1e-8)/tick:
+   Math.floor(nearest*tick+1e-8)/tick;
+ const distance=dir*(rounded-entry);
+ return rounded>0&&distance>=minDistance-1e-8&&distance<=reachCap+1e-8?
+   {price:rounded,kind:'STRUCTURE',distance}:
+   {price:candidate,kind:'PROJECTION',distance:minDistance};
+}
+
 // A previous ARMED directional setup must lose its eligibility if either the
 // CURRENT closed M1 or M5 trend now opposes it. Score history is not permission
 // to ignore a fresh M5 reversal. Sweeps remain reversal-oriented and are
