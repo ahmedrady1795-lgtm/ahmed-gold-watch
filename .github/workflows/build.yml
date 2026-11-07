@@ -98,6 +98,7 @@ jobs:
       - run: node tests/sniper-m1-candle-hunter.cjs
       - run: node tests/m1-adaptive-causal.cjs
       - run: node tests/m1-conflict-arbiter.cjs
+      - run: node tests/m1-regime-recovery.cjs
       - run: node tests/sniper-m1-intrabar-pulse.cjs
       - run: node tests/m1-forward-online-learning.cjs
       - run: node tests/scalp-m1-shadow-expert.cjs
@@ -119,6 +120,7 @@ jobs:
       - run: node tests/sniper-m15-mt5-viewport.cjs
       - run: node tests/sniper-m15-classic-layout.cjs
       - run: node tests/sniper-m15-walkforward.cjs
+      - run: node tests/sniper-m15-hunt-proof.cjs
       - run: node tests/sniper-m15-stability.cjs
       - run: node tests/sniper-m15-visual-alignment.cjs
       - run: node tests/sniper-m15-reactions.cjs
