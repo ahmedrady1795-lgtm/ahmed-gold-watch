@@ -1,3 +1,4 @@
+import type {CSSProperties} from 'react';
 import type {PreMovePressure} from '../lib/pre-move-pressure';
 import type {M15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import type {M1Priority} from '../lib/sniper-m1-priority';
@@ -32,14 +33,9 @@ export default function SniperM15PreMoveConsole(p:Props){
    stage==='PRE_BREAK'?'تهيئة محتملة قبل الكسر':
    stage==='M15_BIAS'?'ميل M15 مرصود · ينتظر تفعيلًا':'لم تتجمع قرائن كافية بعد';
  const ink=side==='BUY'?'#55eec8':side==='SELL'?'#ff8ba8':'#d9c692';
- const trigger=premove?p.preMove.trigger:stage==='M15_BIAS'?
-   (side==='BUY'?p.hunt.anchor!=null&&p.hunt.atr!=null?
-     p.hunt.anchor+p.hunt.atr*.52:null:
-     p.hunt.anchor!=null&&p.hunt.atr!=null?
-     p.hunt.anchor-p.hunt.atr*.52:null):null;
- // Only the PREMOVE trigger is sourced from the executable price range.
- // M15 ATR paths are illustrations and must NOT be mislabeled as triggers.
- const liveTrigger=premove?trigger:null;
+ // Only a real closed-M1/M5 PREMOVE setup provides a trigger. ATR
+ // watch paths from M15 are descriptive and never masquerade as a level.
+ const liveTrigger=premove?p.preMove.trigger:null;
  const invalidation=premove?p.preMove.invalidation:null;
  const compression=bounded(premove?p.preMove.compression:p.hunt.observation?.compressionPct??0);
  const pressure=bounded(premove?p.preMove.pressure:
@@ -51,7 +47,7 @@ export default function SniperM15PreMoveConsole(p:Props){
    m1&&side!=='WAIT'?'M1 معاكس':'M1 قيد المراقبة';
  return <section className={'sniper-early-console is-'+stage.toLowerCase()}
    aria-label="مركز استباق الحركة من شموع مغلقة" data-early-stage={stage}
-   style={{'--early-accent':ink} as React.CSSProperties}>
+   style={{'--early-accent':ink} as CSSProperties}>
    <div className="sniper-early-console-header">
      <span className="sniper-early-label">
        <i aria-hidden="true" className="sniper-early-dot"/>
