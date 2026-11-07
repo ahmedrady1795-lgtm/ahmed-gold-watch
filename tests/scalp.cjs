@@ -389,7 +389,7 @@ if(process.env.RENDER&&!process.env.RENDER_DISK_MOUNT_PATH){
   assert.equal(frozen.persistence,'NOT_DURABLE');
 }const changed={...testArmedPlan,entry:buy.entry+10,targets:[{price:9999,kind:'PROJECTION'}]};
 const repeated=updateScalpLedger('GOLD',[changed],
-  {...quote(4000.45,now+1000),source:breakout().quote.source,bid:4000.44,ask:4000.455},now+1000,breakout().c1);assert.equal(repeated.lanes[0].current.plan.entry,frozen.lanes[0].current.plan.entry);assert.equal(repeated.lanes[0].stats.samples,0,'Unactivated setups do not count as trades');
+  {...quote(4000.45,now+1000),source:breakout().quote.source,bid:4000.44,ask:4000.455},now+1000,breakout().c1);assert.equal(repeated.lanes[0].current.plan.entry,frozen.lanes[0].current.plan.entry);assert.equal(repeated.lanes[0].stats.samples,frozen.lanes[0].stats.samples,'Unactivated setups must not add any counted trades to existing history');
 console.log('PASS: 27 scalp checks: buy/sell geometry, closed bars, bad data, costs, news, expiry, activation, frozen levels, stop slippage and conservative outcomes. Profitability is not established.');
 
 // Production incident replay (2026-10-09 05:03:39Z): confirmed GOLD M5
