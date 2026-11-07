@@ -8,7 +8,7 @@ import {auditCandleHunter,displayCandleHunter,type CandleHunterLevel} from '../l
 import type {M1Bar} from '../lib/sniper-mt5-m1';
 import {everyM1Direction} from '../lib/sniper-m1-every-direction';
 import type {EveryM1Direction} from '../lib/sniper-m1-every-direction';
-import type {FlowProfileDecision} from '../lib/flow-profile-decision';
+import {flowAvailableBeforeM1,type FlowProfileDecision} from '../lib/flow-profile-decision';
 import {auditM1VisualEvidence} from '../lib/sniper-m1-visual-evidence';
 import {freshM1QuoteForWatch} from '../lib/sampled-live-candle';
 import {auditPrioritizedM1,grossBreakEvenPct}
@@ -36,7 +36,10 @@ export default function SniperM1CandleHunter(p:Props){
     [p.asset,p.historicalSource,closedAt,Math.floor(p.now/60000)]);
   const priorityAudit=useMemo(()=>auditPrioritizedM1(p.history,p.now,48),
     [p.history,Math.floor(p.now/60000)]);
-  const proposal=useMemo(()=>everyM1Direction(p.history,p.now,p.flow),
+  const proposal=useMemo(()=>
+    flowAvailableBeforeM1(p.flow,(p.history.at(-1)?.time??0)+60000)?
+      everyM1Direction(p.history,p.now,p.flow):
+      everyM1Direction(p.history,p.now),
     [p.history,Math.floor(p.now/60000),p.flow]);
   // Freeze the first proposed direction for each new closed M1. Later order
   // flow is shown as a fresh observation, never used to alter that prediction.
