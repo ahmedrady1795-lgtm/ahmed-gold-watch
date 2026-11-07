@@ -125,6 +125,7 @@ jobs:
       - run: node tests/sniper-m15-walkforward.cjs
       - run: node tests/sniper-m15-hunt-proof.cjs
       - run: node tests/sniper-m15-early-flow.cjs
+      - run: node tests/sniper-2026-intelligence.cjs
       - run: node tests/sniper-m15-stability.cjs
       - run: node tests/sniper-m15-visual-alignment.cjs
       - run: node tests/sniper-m15-reactions.cjs
