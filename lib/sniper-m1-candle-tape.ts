@@ -9,7 +9,7 @@ export type CandleTapeMark={
 };
 export type CandleTape={marks:CandleTapeMark[];graded:number;aligned:number;
   adaptiveGraded:number;adaptiveAligned:number;
-  baselineGraded:number;baselineAligned:number;
+  baselineGraded:number;baselineAligned:number;pairedModelHits:number;
   recentGraded:number;recentAligned:number;recentWeak:boolean};
 /**
  * Strictly causal, minute-by-minute direction check.
@@ -46,6 +46,7 @@ export function buildM1CandleTape(history:readonly M1Bar[],now:number,max=9):Can
     adaptiveAligned:marks.filter(x=>x.aligned===true&&x.adaptiveImproved).length,
     baselineGraded:paired.length,
     baselineAligned:paired.filter(x=>x.baseline===x.observed).length,
+    pairedModelHits:paired.filter(x=>x.aligned===true).length,
     recentGraded:recent.length,recentAligned:recent.filter(x=>x.aligned===true).length,
     recentWeak:recent.length>=6&&recent.filter(x=>x.aligned===true).length<=Math.floor(recent.length*.3)};
 }
