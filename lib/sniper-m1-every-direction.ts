@@ -303,9 +303,9 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Directi
   const relativeNow=relative?.model?rawCandidate(rows,relative.model):null;
   const applyRelative=Boolean(!applyRegime&&relativeNow&&pressureNow===candidate&&
     relativeNow!==candidate);
-  const applyRecovery=Boolean(!applyRelative&&recoveryNow&&pressureNow===candidate&&
+  const applyRecovery=Boolean(!applyRegime&&!applyRelative&&recoveryNow&&pressureNow===candidate&&
     recoveryNow!==candidate);
-  const applyConflict=Boolean(!applyRelative&&!applyRecovery&&pastConflict?.useFollow&&
+  const applyConflict=Boolean(!applyRegime&&!applyRelative&&!applyRecovery&&pastConflict?.useFollow&&
     pressureNow===candidate&&followNow&&followNow!==pressureNow);
   // A new pre-break pattern can correct a weak momentum guess, but must not
   // override a verified adaptive model, an observed sweep reversal or a
