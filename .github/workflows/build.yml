@@ -28,6 +28,7 @@ jobs:
       - run: node tests/web-source-resilience.cjs
       - run: node tests/scalp-learning.cjs
       - run: node tests/ai-transport-regression.cjs
+      - run: node tests/neural-request-budget.cjs
       - run: node tests/render-free-eco.cjs
       - run: node --experimental-strip-types tests/render-free-viewer-lease.mjs
       - run: node tests/ai-readiness.cjs
@@ -86,6 +87,7 @@ jobs:
       - run: node tests/chart-price-viewport.cjs
       - run: node tests/scalp-forward-reach.cjs
       - run: node tests/scalp-nearest-target.cjs
+      - run: node tests/scalp-cost-context.cjs
       - run: node tests/sniper-scorecard.cjs
       - run: node tests/forecast-journal.cjs
       - run: node tests/direction.cjs
@@ -98,6 +100,7 @@ jobs:
       - run: node tests/sniper-m1-candle-hunter.cjs
       - run: node tests/m1-adaptive-causal.cjs
       - run: node tests/m1-relative-edge.cjs
+      - run: node tests/m1-regime-expert.cjs
       - run: node tests/m1-conflict-arbiter.cjs
       - run: node tests/m1-regime-recovery.cjs
       - run: node tests/sniper-m1-intrabar-pulse.cjs
