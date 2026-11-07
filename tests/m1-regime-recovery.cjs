@@ -22,8 +22,8 @@ assert.equal(decide(Array.from({length:8},()=>same('SELL')),
  win).model,null,'do not flip a healthy existing pressure model');
 const s=fs.readFileSync('lib/sniper-m1-every-direction.ts','utf8');
 assert.match(s,/const recovery=adaptive\.improved\|\|reversal!=null\?null:recoverRecentM1\(rows\)/);
-assert.match(s,/const weak=applyRecovery\|\|applyConflict\?true/);
-assert.match(s,/const side=alternative\?\?\(applyRecovery\?/);
+assert.match(s,/const weak=applyRelative\|\|applyRecovery\|\|applyConflict\?true/);
+assert.match(s,/const side=alternative\?\?\(applyRelative\?/);
 const ledger=fs.readFileSync('lib/scalp-every-candle.ts','utf8');
 assert.match(ledger,/signal\.recentRecovery\?\.applied/);
 console.log('PASS: causal 8+8 pressure failure recovery; no one-window flip, weak-only research, frozen model provenance');
