@@ -1,10 +1,10 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
-const out={},module={exports:out};
+const out={};
 const js=ts.transpileModule(fs.readFileSync('lib/sniper-m15-hunt-preview.ts','utf8'),{
  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
 }).outputText;
-vm.runInNewContext(js,{exports:module.exports,require,Math,Number,Date},{filename:'sniper-m15-hunt-preview.ts'});
-const pressure=module.exports.observeM15HuntPressure;
+vm.runInNewContext(js,{exports:out,require,Math,Number,Date},{filename:'sniper-m15-hunt-preview.ts'});
+const pressure=out.observeM15HuntPressure;
 const T=Date.parse('2026-11-02T00:00:00Z'),BAR=900000;
 function rising(){
  return Array.from({length:16},(_,i)=>{
