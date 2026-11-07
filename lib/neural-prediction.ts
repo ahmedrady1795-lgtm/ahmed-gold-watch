@@ -11,19 +11,29 @@ export type NeuralPrediction={
 
 let cache:{at:number;value:NeuralPrediction}|null=null;
 let inflight:Promise<NeuralPrediction>|null=null;
+// Neural /predict has no candle fingerprint and a short price-path horizon.
+// Never replay a >10s prediction merely to reduce HTTP calls; return WAIT
+// between request-budget slots. A provider-side 429 backoff takes priority.
+let lastRemoteRequestAt=0;
+export const NEURAL_REMOTE_REQUEST_INTERVAL_MS=45000;
 
 async function runNeuralPrediction(now=Date.now()):Promise<NeuralPrediction>{
   // An unqualified model must be fully detachable without deleting its model files.
   // Apply this BEFORE the cache so disabling cannot replay a previous prediction.
   if(process.env.NEURAL_ENABLED==='0')
     return {ok:false,status:'DISABLED',ready:false,side:'WAIT',reason:'Neural suspended by operator'};
-  if(cache&&now-cache.at<10000)return cache.value;
   const url=String(process.env.NEURAL_ENGINE_URL||'').trim();
   if(!url)return {ok:false,status:'DISABLED',ready:false,side:'WAIT',reason:'NEURAL_ENGINE_URL missing'};
-  if(Date.now()<aiRetryAt(url))return {ok:false,status:'RATE_LIMITED',ready:false,side:'WAIT',reason:'Neural cooldown after HTTP 429'};
+  if(Date.now()<aiRetryAt(url))
+    return {ok:false,status:'RATE_LIMITED',ready:false,side:'WAIT',reason:'Neural cooldown after HTTP 429'};
+  if(cache&&now>=cache.at&&now-cache.at<10000)return cache.value;
+  if(lastRemoteRequestAt>0&&Date.now()-lastRemoteRequestAt<NEURAL_REMOTE_REQUEST_INTERVAL_MS)
+    return {ok:false,status:'REQUEST_BUDGET',ready:false,side:'WAIT',
+      reason:'Neural remote budget: waiting for next inference slot; old prediction withheld'};
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),8000);
   const started=Date.now();
+  lastRemoteRequestAt=started;
   try{
     const r=await fetch(url.replace(/\/$/,'')+'/predict',{
       cache:'no-store',signal:controller.signal,
