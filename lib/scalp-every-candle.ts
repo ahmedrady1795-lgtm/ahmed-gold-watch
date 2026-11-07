@@ -460,7 +460,43 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
  * This MUST remain separate by market, timestamp and source.
  */
 export function readEveryM1Evidence(asset:'GOLD'|'BTC',now=Date.now()){
-  const history=load(asset).history;
+  // Next app and worker bundles can retain DIFFERENT module globals. A health
+  // reader must inspect the newest shared session file, not cache the first
+  // empty ledger it happened to load before the background worker started.
+  const memory=load(asset).history;
+  const index=new Map<number,EveryAttempt>();
+  const ingest=(rows:readonly EveryAttempt[])=>{
+    for(const t of rows.slice(-360)){
+      if(!t||!Number.isSafeInteger(t.id)||t.id<=0||t.issuedAt!==t.id||
+        t.id>now+60000||!['BUY','SELL'].includes(t.side))continue;
+      const previous=index.get(t.id);
+      if(!previous){index.set(t.id,t);continue;}
+      if(previous.chartSource&&t.chartSource&&
+        previous.chartSource!==t.chartSource){
+        index.set(t.id,{...t,directionObserved:'UNKNOWN',
+          state:'UNKNOWN',netR:null,filledAt:null,closedAt:now,
+          note:'تعارض مصدر سجل الدقيقة؛ لا نتيجة معتمدة'});
+        continue;
+      }
+      const scored=(v:EveryAttempt)=>
+        Number(v.directionObserved!=null)*2+Number(v.netR!=null);
+      const revision=(v:EveryAttempt)=>Math.max(v.lastQuoteAt||0,
+        v.directionEvaluatedAt||0,v.closedAt||0,v.issuedAt||0);
+      if(scored(t)>scored(previous)||
+        (scored(t)===scored(previous)&&revision(t)>=revision(previous)))
+        index.set(t.id,t);
+    }
+  };
+  for(const file of [persistPath(asset),tempPath(asset)]){
+    try{
+      const stat=fs.statSync(file);
+      if(stat.size<=0||stat.size>1_500_000)continue;
+      const raw=JSON.parse(fs.readFileSync(file,'utf8'));
+      if(raw?.version===1&&Array.isArray(raw.history))ingest(raw.history);
+    }catch{}
+  }
+  ingest(memory);
+  const history=[...index.values()].sort((a,b)=>a.id-b.id).slice(-360);
   const recent=history.filter(t=>
     t.strategyVersion===EVERY_M1_EDGE_V4||
     t.strategyVersion===EVERY_M1_EDGE_V5||
