@@ -1,11 +1,12 @@
 import type {PreMovePressure} from '../lib/pre-move-pressure';
 import type {M15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import type {LocalFusion} from '../lib/sniper-local-fusion';
+import type {FlowProfileDecision} from '../lib/flow-profile-decision';
 import type {LiquidityMagnetView} from '../lib/sniper-liquidity-magnets';
 
 type Props={
  asset:'GOLD'|'BTC';fusion:LocalFusion;hunt:M15HuntPreview;
- preMove:PreMovePressure;liquidity:LiquidityMagnetView;
+ preMove:PreMovePressure;liquidity:LiquidityMagnetView;flow?:FlowProfileDecision|null;
  price:number|null;marketOpen:boolean;fresh:boolean;
  providerTransition:boolean;now:number;
 };
@@ -60,6 +61,9 @@ export default function SniperScenarioHero(p:Props){
            p.fusion.m1==='SELL'?'↓ هبوط':'—'}</b></span>
          <span>M15 <b>{p.fusion.m15==='BUY'?'↑ صعود':
            p.fusion.m15==='SELL'?'↓ هبوط':'—'}</b></span>
+         <span>POC × FLOW <b>{p.flow?.ready?
+           (p.flow.side==='BUY'?'↑ صعود':p.flow.side==='SELL'?'↓ هبوط':'متعارض'):
+           'غير متاح'}</b></span>
          <span>سيولة <b>{p.liquidity.ready?
            p.liquidity.sweep==='HIGH_RECLAIMED_DOWN'?'رفض قمة':
            p.liquidity.sweep==='LOW_RECLAIMED_UP'?'استرداد قاع':
@@ -85,7 +89,9 @@ export default function SniperScenarioHero(p:Props){
      </div>
    </div>
    <div className="sniper-scenario-hero-footer">
-     <span>{source}</span>
+     <span>{source} · {p.flow?.ready?
+       (p.flow.quality==='EXECUTED_SAMPLE'?'حجم منفذ Coinbase':'نشاط أسعار MT5 الاسترشادي'):
+       'بيانات التدفق غير مؤهلة'}</span>
      <span>المستويات مشروطة؛ لا شموع مستقبلية أو أهداف مضمونة</span>
      <span dir="ltr">QANNAS / OBSERVATION ONLY</span>
    </div>
