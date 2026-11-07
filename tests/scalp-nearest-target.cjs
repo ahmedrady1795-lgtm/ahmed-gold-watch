@@ -7,17 +7,17 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/scalp-selection.ts','
  {requiredScalpNetR:()=>1.25}:require(name),Math,Number});
 const target=e.nearestFeasibleScalpTarget;
 const buy={side:'BUY',entry:4000,requiredMove:.504,reachCap:1.50,
- atr:1.2,pivots:[4001.35,4001.10,4000.71]};
+ atr:1.2,pivots:[4001.35,4001.10,4000.66]};
 const x=target(buy);
-assert.ok(x&&x.price>=4000.51&&x.price<=4000.72);
-assert.equal(x.price,4000.71,'only a near feasible pivot can be used');
+assert.ok(x&&x.price>=4000.51&&x.price<=4000.67);
+assert.equal(x.price,4000.66,'only a near feasible pivot can be used');
 assert.equal(x.kind,'STRUCTURE');
 const far=target({...buy,pivots:[4001.35,4001.10]});
 assert.equal(far.price,4000.51,'far pivot must not stretch target even inside cap');
 assert.equal(far.kind,'PROJECTION');
 const sell=target({side:'SELL',entry:4000,requiredMove:.504,reachCap:1.5,
- atr:1.2,pivots:[3998.65,3998.9,3999.29]});
-assert.equal(sell.price,3999.29);
+ atr:1.2,pivots:[3998.65,3998.9,3999.34]});
+assert.equal(sell.price,3999.34);
 assert.equal(sell.kind,'STRUCTURE');
 assert.equal(target({side:'SELL',entry:4000,requiredMove:.504,
  reachCap:1.5,atr:1.2,pivots:[3998.5]}).price,3999.49);
