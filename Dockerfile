@@ -4,6 +4,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+RUN node tests/flow-profile-decision.cjs
 RUN node tests/gold-preparation-lead.mjs && node tests/chart-feed-isolation.cjs
 RUN node tests/sniper-risk-plan.cjs && node tests/next-move-cooldown.cjs && node tests/btc-provider-continuity.cjs && node tests/ai-service-warmup.cjs
 RUN node tests/web-source-resilience.cjs && node tests/scalp-learning.cjs && node tests/scalp.cjs && node tests/m1-adaptive-causal.cjs && node tests/m1-relative-edge.cjs && node tests/m1-regime-expert.cjs && node tests/m1-conflict-arbiter.cjs && node tests/m1-regime-recovery.cjs && node tests/m1-forward-online-learning.cjs && node tests/scalp-m1-tick-evidence.cjs && node tests/scalp-every-m1.cjs && node tests/scalp-btc-every-m1.cjs && node tests/scalp-m1-paired-proof.cjs && node tests/scalp-m1-forward-quality.cjs
