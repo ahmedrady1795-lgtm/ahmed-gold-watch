@@ -1222,7 +1222,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
         priceFresh={Boolean(m.sniper.view.priceFresh)&&historyFresh&&!providerTransition}/>
    </div>
    <div className="sniper-hunter-bottom">
-     <SniperM1CandleTape history={m.candles} now={now}/>
+     <SniperM1CandleTape history={m.candles} now={now} asset={asset}/>
      <SniperNextCandleCard priority={nextM1} marketOpen={marketOpen}/>
    </div>
    </>}
