@@ -3,6 +3,7 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import SniperM15Summary from './SniperM15Summary';
 import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
+import {auditM15HuntDirection} from '../lib/sniper-m15-hunt-proof';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
 import {analyzeM15MarketStructure} from '../lib/sniper-market-structure';
@@ -119,6 +120,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    {...sourceGuide,referenceOnly:true}:sourceGuide;
  const huntPreview=useMemo(()=>buildM15HuntPreview(actual,watchGuide,now),
    [actual,watchGuide,Math.floor(now/900000)]);
+ // Audit the EXACT observer driving the WATCH overlay, not the separate
+ // M15Bias experiment. This is historical replay, never broker profit.
+ const huntProof=useMemo(()=>auditM15HuntDirection(actual,now,120),
+   [actual,Math.floor(now/900000)]);
  const structure=useMemo(()=>analyzeM15MarketStructure(actual,now),
    [actual,Math.floor(now/900000)]);
  const nextM1=useMemo(()=>assessM1DirectionalPriority(m.candles,now),
@@ -940,7 +945,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
 
          {showWatchGuide&&watchGuide.anchor!=null&&
            <g className="sniper-m15-watch-guide">
-             <SniperM15HuntOverlay forecast={huntPreview}
+             <SniperM15HuntOverlay forecast={huntPreview} proof={huntProof}
                left={left} split={split} end={end}
                top={plotTop} bottom={plotBottom} py={py}
                liquidity={showLiquidity}/>
