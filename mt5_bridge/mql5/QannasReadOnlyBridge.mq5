@@ -6,7 +6,7 @@
 #property strict
 #property version "1.00"
 #property description "Read-only Exness MT5 tick and closed-candle uploader for Qannas"
-#property description "NO orders. No execution. Attach to the GOLD demo chart only."
+#property description "NO orders. Attach to XAUUSDm or BTCUSDm on demo MT5."
 
 input string QannasSiteURL="https://ahmed-gold-watch-free.onrender.com";
 input string QannasBridgeToken="";
@@ -43,9 +43,11 @@ string ClosedBarsJSON(const ENUM_TIMEFRAMES tf,const int count,const int digits)
 
 int OnInit()
   {
-   if(QannasSymbol!=_Symbol)
+   const bool isGold=(StringFind(QannasSymbol,"XAUUSD")==0);
+   const bool isBitcoin=(StringFind(QannasSymbol,"BTCUSD")==0);
+   if((!isGold&&!isBitcoin)||QannasSymbol!=_Symbol)
      {
-      Print("Qannas read-only: attach to chart matching QannasSymbol.");
+      Print("Qannas read-only: only matching XAUUSD/BTCUSD chart symbols supported.");
       return INIT_PARAMETERS_INCORRECT;
      }
    if(StringFind(QannasSiteURL,"https://")!=0 || StringLen(QannasBridgeToken)<32)
@@ -109,7 +111,8 @@ void OnTimer()
    string resultHeaders="";
    const string headers="Content-Type: application/json\r\nAuthorization: Bearer "+
                         QannasBridgeToken+"\r\n";
-   const string url=QannasSiteURL+"/api/mt5/status";
+   const bool isBitcoin=(StringFind(QannasSymbol,"BTCUSD")==0);
+   const string url=QannasSiteURL+(isBitcoin?"/api/mt5/btc-status":"/api/mt5/status");
    ResetLastError();
    const int http=WebRequest("POST",url,headers,6000,post,result,resultHeaders);
    if(http==200)
