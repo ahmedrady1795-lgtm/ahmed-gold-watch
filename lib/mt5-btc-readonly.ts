@@ -88,3 +88,19 @@ export function getMt5BtcStatus(now=Date.now()){
         m15:s.candles.c15.length,h1:s.candles.c60.length
       }:null}};
 }
+
+/**
+ * Broker-only input to the BTC demo planner; strictly requires freshly observed
+ * quote AND fully validated CLOSED Exness M1/M5/M15/H1 candles.
+ * Never derive this from Coinbase/Kraken spot quotes or UI paper fills.
+ */
+export function getMt5BtcVerifiedSnapshot(now=Date.now()){
+  const health=getMt5BtcStatus(now);
+  const s=latest;
+  if(!health.fresh||!health.candlesFresh||!s?.candles||
+     s.symbol!=='BTCUSDm'||s.mode!=='dry-run')return null;
+  return {
+    symbol:s.symbol,bid:s.bid,ask:s.ask,tickTimeMs:s.tickTimeMs,
+    observedAt:s.receivedAt,candles:s.candles
+  };
+}
