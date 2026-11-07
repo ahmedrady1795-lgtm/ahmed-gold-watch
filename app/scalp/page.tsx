@@ -404,6 +404,22 @@ export default function ScalpWorkspace(){
     {error&&<div className="fatal"><ShieldAlert size={16}/><div><strong>الاتصال غير مستقر</strong>
       <span>{error} · لا تعتمد على الأسعار المعروضة قبل عودة البيانات الحديثة.</span></div></div>}
     {asset!=='BTC'&&<ScalpCostContext data={desk?.gold?.executionEconomics} asset="GOLD"/>}
+    {asset!=='GOLD'&&<section className="panel" aria-label="اتصال Exness BTCUSDm"
+      style={{padding:13,marginBottom:12}}>
+      <strong>Exness MT5 · BTCUSDm · رصد فقط</strong>
+      <p style={{fontSize:12,margin:'7px 0',opacity:.85}}>
+        {desk?.bitcoin?.exnessBroker?.fresh?
+          'تم استقبال أسعار البيتكوين الحية من Exness':
+          'بانتظار أسعار البيتكوين من VPS'}
+        {' · '}
+        {desk?.bitcoin?.exnessBroker?.candlesFresh?
+          'الشموع مكتملة وحديثة':'الشموع غير مكتملة أو متأخرة'}
+      </p>
+      <small style={{opacity:.7}}>
+        أسعار Exness المعروضة للمراقبة، منفصلة عن محاكاة السكالب على Coinbase/Kraken.
+        لا تنفيذ أوامر على MT5.
+      </small>
+    </section>}
     {asset!=='GOLD'&&<ScalpCostContext data={desk?.bitcoin?.executionEconomics} asset="BTC"/>}
     {asset!=='BTC'&&<GoldEveryCandle data={desk?.gold?.everyCandle} asset="GOLD"/>}
     {asset!=='GOLD'&&<GoldEveryCandle data={desk?.bitcoin?.everyCandle} asset="BTC"/>}

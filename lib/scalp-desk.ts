@@ -11,6 +11,7 @@ import {validateDirectionChronologically} from './direction-walkforward';
 import {buildSniperDecision} from './sniper-decision-engine';
 import {observeScalpLead,MIN_SCALP_SHADOW_SCORE} from './scalp-lead-audit';
 import {observeEveryM1} from './scalp-every-candle';
+import {getMt5BtcStatus} from './mt5-btc-readonly';
 import {describeScalpCostContext} from './scalp-cost-context';
 
 function session(now:number){const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;return day!==6&&!(day===0&&h<22)&&!(day===5&&h>=21)&&!(day>=1&&day<=4&&h>=21&&h<22);}
@@ -265,7 +266,8 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
       m1:observeScalpLead('GOLD_M1',gold.quote,Date.now(),goldLeadCandidate(1)),
       m5:observeScalpLead('GOLD_M5',gold.quote,Date.now(),goldLeadCandidate(5))
     };
-    const bitcoin=goldOnly?null:make('BTC',market,bq,events,newsReady);
+    const bitcoin=goldOnly?null:{...make('BTC',market,bq,events,newsReady),
+      exnessBroker:getMt5BtcStatus()};
     // Monitor missing trade flow without leaking provider credentials or
     // treating a WATCH setup as an executed order.
     const measuredAt=Date.now();

@@ -43,7 +43,12 @@ const stubs={
   horizon:1,status:'BLOCKED',score:0,blockers:['not qualified'],aiCertification:'NO'})},
  './scalp-every-candle':{observeEveryM1:()=>({proposals:0,pending:0,active:0,filled:0,quickWins:0,stops:0,expired:0,unknown:0,netR:0,latest:null})},
  './scalp-lead-audit':{observeScalpLead:()=>({pending:0,total:0}),
-  MIN_SCALP_SHADOW_SCORE:55}
+  MIN_SCALP_SHADOW_SCORE:55},
+ './mt5-btc-readonly':{getMt5BtcStatus:()=>({connected:false,fresh:false,candlesFresh:false,status:null})},
+ './scalp-cost-context':{describeScalpCostContext:()=>({
+  costMode:'ESTIMATED_NOT_BROKER_VERIFIED',brokerExecutionVerified:false,
+  feasibility:'NO_DATA',costPerUnit:null,spreadPerUnit:null
+ })}
 };
 const output={},context={exports:output,
  require:name=>{
