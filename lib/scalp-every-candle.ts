@@ -28,6 +28,8 @@ export type EveryAttempt={
   id:number;issuedAt:number;side:EverySide;pressure:number;
   weak:boolean;state:EveryState;entry:number|null;stop:number|null;
   atr?:number;anchorTime?:number;anchorClose?:number;
+  marketRegime?:string;regimeEfficiency?:number;regimeCompression?:number;
+  dataQuality?:string;
   tp:number|null;cost:number;extraCost?:number;spreadAtQuote?:number;
   strategyVersion?:string;pattern?:string;directionModel?:string;
   seedMid?:number;seedAt?:number;seedSource?:string;confirmedAt?:number|null;
@@ -423,12 +425,16 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       qualityTier:needsExtraProof?'RESEARCH_WEAK':'RESEARCH_CANDIDATE',
       forwardQuality,
       atr:signal.atr,anchorTime:signal.anchorTime,
+      marketRegime:signal.marketRegime,regimeEfficiency:signal.regimeEfficiency,
+      regimeCompression:signal.regimeCompression,dataQuality:signal.dataQuality,
       anchorClose:raw.find(b=>b.time===signal.anchorTime)?.close,
       chartSource,
       directionObserved:null,directionEvaluatedAt:null,
       pulseVersion:M1_FORWARD_PULSE_V1,pulse:null,
       strategyVersion:EVERY_M1_EDGE_V6,pattern:signal.pattern,
       directionModel:online.inverted?'ONLINE_INVERSION':
+        signal.regimeExpert?.applied&&signal.regimeExpert.model?
+        'REGIME_'+signal.regimeExpert.model:
         signal.relativeEdge?.applied&&signal.relativeEdge.model?
         'RELATIVE_'+signal.relativeEdge.model:
         signal.recentRecovery?.applied&&signal.recentRecovery.model?
