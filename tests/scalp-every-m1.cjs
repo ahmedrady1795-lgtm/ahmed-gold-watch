@@ -191,7 +191,7 @@ assert.match(source,/limitsIssued,awaitingQuote,confirming,missedMinutes/,
 assert.match(source,/q\.at!<t\.issuedAt/,
  'never backdate a pending LIMIT before its prediction timestamp');
 const page=fs.readFileSync('app/scalp/page.tsx','utf8');
-assert.match(page,/GoldEveryCandle data=\{desk\?\.gold\?\.everyCandle\}/);
+assert.match(page,/GoldEveryCandle data=\{desk\?\.gold\?\.everyCandle\} asset="GOLD"/);
 const desk=fs.readFileSync('lib/scalp-desk.ts','utf8');
 assert.match(desk,/observeEveryM1\(input\.c1,quote,at/);
 assert.match(desk,/const qualityGates=plans\.map/,
