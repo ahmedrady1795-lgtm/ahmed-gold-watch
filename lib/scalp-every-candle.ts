@@ -101,11 +101,17 @@ function load(asset:EveryAsset):EveryLedger{
 }
 function save(ledger:EveryLedger,now:number,asset:EveryAsset){
   if(now-lastSaved[asset]<12000)return;
-  const file=fs.existsSync('/data')?persistPath(asset):tempPath(asset);
-  try{
-    fs.writeFileSync(file+'.tmp',JSON.stringify(ledger));
-    fs.renameSync(file+'.tmp',file);lastSaved[asset]=now;
-  }catch{}
+  // A directory existing is not evidence that it is writable. On Render
+  // Free, fall back to /tmp rather than silently losing the whole session.
+  const files=fs.existsSync('/data')?
+    [persistPath(asset),tempPath(asset)]:[tempPath(asset)];
+  for(const file of files){
+    try{
+      fs.writeFileSync(file+'.tmp',JSON.stringify(ledger));
+      fs.renameSync(file+'.tmp',file);
+      lastSaved[asset]=now;return;
+    }catch{}
+  }
 }
 function priceAfterEntry(t:EveryAttempt,px:number):number{
   const risk=Math.abs(Number(t.entry)-Number(t.stop));
