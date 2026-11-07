@@ -1,0 +1,159 @@
+/* QANNAS / Scenario Director, 2026. Loaded after all legacy cockpit skins.
+   No change to quotes, trades, projection math or immutable evidence. */
+.compact-sniper .sniper-scenario-hero{
+  --q-accent:#e7ca88;--q-accent-rgb:231,202,136;
+  margin:10px 12px 13px;padding:0;overflow:hidden;position:relative;
+  isolation:isolate;border-radius:19px;
+  border:1px solid rgba(var(--q-accent-rgb),.37);
+  background:linear-gradient(115deg,#0b2431 0%,#0b1828 45%,#111827 100%);
+  box-shadow:0 14px 36px #0007,inset 0 1px #ddfbff16;
+}
+.compact-sniper .sniper-scenario-hero.is-buy{
+  --q-accent:#6bf2c4;--q-accent-rgb:107,242,196;
+}
+.compact-sniper .sniper-scenario-hero.is-sell{
+  --q-accent:#ff9aad;--q-accent-rgb:255,154,173;
+}
+.sniper-scenario-hero:before{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:-1;
+  background:
+    radial-gradient(ellipse at 13% 25%,rgba(var(--q-accent-rgb),.15),transparent 36%),
+    linear-gradient(110deg,transparent 30%,#5dcbd608 30.1%,transparent 30.5%),
+    repeating-linear-gradient(90deg,transparent 0 41px,#ffffff05 42px,transparent 43px);
+}
+.sniper-scenario-hero-top{display:flex;align-items:center;justify-content:space-between;
+  gap:8px 18px;flex-wrap:wrap;padding:12px 19px 10px;
+  border-bottom:1px solid #8cbbce18}
+.sniper-scenario-identity{display:flex;align-items:center;gap:9px;direction:ltr}
+.sniper-scenario-icon{display:grid;place-items:center;width:35px;height:35px;
+  flex:none;border-radius:11px;color:var(--q-accent);
+  background:rgba(var(--q-accent-rgb),.10);
+  border:1px solid rgba(var(--q-accent-rgb),.32);font-size:21px}
+.sniper-scenario-identity>span:last-child{display:flex;flex-direction:column;gap:3px}
+.sniper-scenario-identity b{font-size:11px;font-weight:850;letter-spacing:1.7px;
+  color:#edf7fa}
+.sniper-scenario-identity small{font-size:9px;font-weight:700;
+  color:#a4c1d0;letter-spacing:.8px}
+.sniper-scenario-live-status{display:flex;align-items:center;gap:8px;
+  padding:6px 10px;border:1px solid #3c6170;border-radius:99px;
+  background:#102b3a;color:#c5dde4;font-size:10px;font-weight:650}
+.sniper-scenario-live-status i{display:inline-block;flex:none;width:7px;height:7px;
+  border-radius:50%;background:var(--q-accent);
+  box-shadow:0 0 0 4px rgba(var(--q-accent-rgb),.14)}
+.sniper-scenario-hero-main{display:grid;
+  grid-template-columns:minmax(0,1.38fr) 100px minmax(180px,.95fr);
+  gap:14px 22px;align-items:center;padding:16px 21px 20px}
+.sniper-scenario-direction{min-width:0}
+.sniper-scenario-direction>span{font-size:11px;color:#a9c7d3}
+.sniper-scenario-direction h2{font-size:clamp(24px,2.9vw,38px);
+  font-weight:880;line-height:1.28;letter-spacing:-.95px;
+  color:var(--q-accent);margin:5px 0 6px;
+  text-shadow:0 0 24px rgba(var(--q-accent-rgb),.16)}
+.sniper-scenario-direction p{color:#d6e8ed;font-size:12px;line-height:1.65;margin:0 0 12px}
+.sniper-scenario-evidence-pills{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.sniper-scenario-evidence-pills span{display:flex;align-items:center;
+  gap:8px;padding:6px 10px;background:#0b2b38b8;
+  border:1px solid #3b6975;border-radius:8px;
+  color:#9fc4d3;font-size:10px;direction:ltr}
+.sniper-scenario-evidence-pills b{font-size:10px;color:#e8f8f6;direction:rtl}
+.sniper-scenario-orbit{display:grid;justify-items:center;gap:12px;direction:ltr}
+.sniper-scenario-orbit-ring{display:grid;place-items:center;
+  width:91px;height:91px;border-radius:50%;
+  border:1px dashed rgba(var(--q-accent-rgb),.52);
+  box-shadow:0 0 0 9px rgba(var(--q-accent-rgb),.04),
+    0 0 0 19px rgba(var(--q-accent-rgb),.025),inset 0 0 30px rgba(var(--q-accent-rgb),.08);
+  background:radial-gradient(circle,#152e3b,#091924 72%)}
+.sniper-scenario-orbit-core{display:grid;place-items:center;width:58px;height:58px;
+  border:1px solid rgba(var(--q-accent-rgb),.6);border-radius:50%;
+  font-size:32px;font-weight:800;color:var(--q-accent);line-height:1;
+  background:rgba(var(--q-accent-rgb),.08)}
+.sniper-scenario-orbit>small{font-size:8px;font-weight:800;letter-spacing:1px;
+  color:var(--q-accent);white-space:nowrap}
+.sniper-scenario-levels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:7px;min-width:0}
+.sniper-scenario-levels>div{min-width:0;display:flex;flex-direction:column;gap:5px;
+  padding:11px 12px;background:#071925b8;border:1px solid #2a4f62;
+  border-radius:10px}
+.sniper-scenario-levels span{font-size:10px;color:#a7c6d2}
+.sniper-scenario-levels strong{color:#e8fafb;font-size:clamp(14px,1.35vw,18px);
+  font-weight:820;font-variant-numeric:tabular-nums;line-height:1.35;
+  min-width:0;overflow-wrap:anywhere}
+.sniper-scenario-levels>div:nth-child(2) strong{color:var(--q-accent)}
+.sniper-scenario-levels>div:nth-child(3) strong{color:#ffa5ab}
+.sniper-scenario-levels small{font-size:9px;color:#9fbac4;line-height:1.4}
+.sniper-scenario-hero-footer{display:flex;align-items:center;justify-content:space-between;
+  gap:6px 16px;flex-wrap:wrap;padding:9px 18px;
+  background:#05131ed9;border-top:1px solid #37566478;color:#9fbdca;font-size:10px}
+.sniper-scenario-hero-footer span:last-child{font-size:9px;letter-spacing:1px;
+  color:#b1c7d0}
+/* Chart gets the visual priority. The evidence deck remains accessible
+ * immediately below the genuine OHLC / scenario workbench. */
+.compact-sniper .sniper-intelligence-drawer{margin:12px 12px;
+  border:1px solid #2f556b;border-radius:13px;overflow:hidden;
+  background:linear-gradient(130deg,#0e2231,#0a1724)}
+.sniper-intelligence-drawer>summary{list-style:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:13px 16px;color:#c5e2ed;font-size:12px;line-height:1.6;
+  font-weight:700}
+.sniper-intelligence-drawer>summary::-webkit-details-marker{display:none}
+.sniper-intelligence-drawer-title b{font-size:11px;letter-spacing:1px;
+  font-weight:850;color:#79e0d0;margin-inline-end:6px}
+.sniper-intelligence-drawer>summary>span:last-child{font-size:22px;color:#8fd9cf;
+  transition:transform .15s ease}
+.sniper-intelligence-drawer[open]>summary>span:last-child{transform:rotate(45deg)}
+.sniper-intelligence-drawer[open]>summary{border-bottom:1px solid #345163}
+.sniper-intelligence-drawer>summary:focus-visible{outline:2px solid #8fdbd2;outline-offset:-3px}
+.sniper-intelligence-drawer .sniper-hunt-hud{margin:12px}
+.sniper-intelligence-drawer .sniper-early-console{margin:12px!important}
+.compact-sniper .sniper-hunter-workbench{margin-top:9px}
+/* Distinct actual-vs-hypothetical legend on the real SVG panel */
+.sniper-scenario-chart-legend{display:flex;gap:5px 16px;flex-wrap:wrap;
+  align-items:center;justify-content:space-between;padding:9px 13px;
+  margin:0;border:1px solid #2f556a;border-bottom:none;border-radius:12px 12px 0 0;
+  background:linear-gradient(120deg,#0e2937,#0a1b2a);color:#c5dce4;
+  font-size:10px;line-height:1.45}
+.sniper-scenario-chart-legend b{font-size:11px;color:#eff8f8}
+.sniper-scenario-chart-legend .is-actual:before,
+.sniper-scenario-chart-legend .is-conditional:before{
+  content:"";display:inline-block;vertical-align:middle;width:14px;height:7px;
+  margin-inline-end:6px;border-radius:3px;background:#4ddfc0}
+.sniper-scenario-chart-legend .is-conditional:before{
+  background:none;border-top:2px dashed #e8c686;border-radius:0}
+.compact-sniper .sniper-scenario-chart-legend+.sniper-m15-chart-box{
+  border-top-left-radius:0!important;border-top-right-radius:0!important}
+/* Deep emerald real candle glow, without touching OHLC geometry */
+.sniper-m15-real line{stroke-width:1.2}
+.sniper-m15-real rect{filter:drop-shadow(0 0 1px #39dcaf1f)}
+.sniper-m15-hunt-overlay .sniper-hunt-waypoint rect{rx:4}
+@media(max-width:1180px){
+ .sniper-scenario-hero-main{
+  grid-template-columns:minmax(0,1.25fr) minmax(80px,.25fr) minmax(185px,.8fr);
+  gap:13px}
+ .sniper-scenario-orbit-ring{width:75px;height:75px}
+ .sniper-scenario-orbit-core{width:49px;height:49px;font-size:27px}
+}
+@media(max-width:850px){
+ .sniper-scenario-hero-main{grid-template-columns:minmax(0,1fr) 90px;gap:13px}
+ .sniper-scenario-levels{grid-column:1/-1}
+ .sniper-scenario-direction h2{font-size:27px}
+}
+@media(max-width:550px){
+ .compact-sniper .sniper-scenario-hero{margin:8px 6px 10px;border-radius:13px}
+ .sniper-scenario-hero-top{padding:10px 12px}
+ .sniper-scenario-live-status{font-size:9px}
+ .sniper-scenario-hero-main{grid-template-columns:1fr;gap:11px;
+  padding:13px 12px}
+ .sniper-scenario-direction h2{font-size:26px}
+ .sniper-scenario-direction p{font-size:11px}
+ .sniper-scenario-orbit{display:none}
+ .sniper-scenario-levels{grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:6px}
+ .sniper-scenario-levels>div{padding:9px}
+ .sniper-scenario-levels strong{font-size:15px}
+ .sniper-scenario-hero-footer{padding:9px 12px;font-size:9px}
+ .compact-sniper .sniper-intelligence-drawer{margin:8px 6px}
+ .sniper-scenario-chart-legend{padding:8px;font-size:9px;gap:5px}
+}
+@media(prefers-reduced-motion:reduce){
+ .sniper-intelligence-drawer>summary>span:last-child{transition:none}
+}
