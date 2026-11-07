@@ -331,7 +331,11 @@ void OnTimer()
       return;
      }
    const string wire=CharArrayToString(response,0,ArraySize(response),CP_UTF8);
-   if(StringFind(wire,"QBTC1|WAIT|")==0)return;
+   if(StringFind(wire,"QBTC1|WAIT|")==0)
+     {
+      Note("server WAIT: "+StringSubstr(wire,11,80));
+      return;
+     }
    ValidateAndPlace(wire);
   }
 void OnDeinit(const int reason)
