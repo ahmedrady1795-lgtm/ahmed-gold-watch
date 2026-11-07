@@ -429,6 +429,8 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       pulseVersion:M1_FORWARD_PULSE_V1,pulse:null,
       strategyVersion:EVERY_M1_EDGE_V6,pattern:signal.pattern,
       directionModel:online.inverted?'ONLINE_INVERSION':
+        signal.relativeEdge?.applied&&signal.relativeEdge.model?
+        'RELATIVE_'+signal.relativeEdge.model:
         signal.recentRecovery?.applied&&signal.recentRecovery.model?
         'RECENT_'+signal.recentRecovery.model:
         signal.conflictOverride?.applied?'BODY_FOLLOW':
