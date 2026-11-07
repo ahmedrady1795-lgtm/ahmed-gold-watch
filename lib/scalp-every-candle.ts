@@ -410,6 +410,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       pulseVersion:M1_FORWARD_PULSE_V1,pulse:null,
       strategyVersion:EVERY_M1_EDGE_V6,pattern:signal.pattern,
       directionModel:online.inverted?'ONLINE_INVERSION':
+        signal.conflictOverride?.applied?'BODY_FOLLOW':
         signal.adaptive?.model??'PRESSURE_SWEEP',
       entry:null,stop:null,tp:null,
       cost:Number.isFinite(costEstimate)&&costEstimate>0?costEstimate:0,
