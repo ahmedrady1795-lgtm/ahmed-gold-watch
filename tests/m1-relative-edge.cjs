@@ -31,8 +31,8 @@ assert.equal(select(rows(6,10),rows(7,10).slice(0,9)).model,null,
 const source=fs.readFileSync('lib/sniper-m1-every-direction.ts','utf8');
 const ledger=fs.readFileSync('lib/scalp-every-candle.ts','utf8');
 assert.match(source,/recentRelativeEdge\(rows\)/);
-assert.match(source,/const side=alternative\?\?\(applyRelative\?/);
-assert.match(source,/const weak=flatCluster\|\|applyEarly\|\|applyRelative\|\|applyRecovery\|\|applyConflict\?true/,
+assert.match(source,/const side=alternative\?\?\(applyRegime\?/);
+assert.match(source,/const weak=flatCluster\|\|lowActivity\|\|applyRegime\|\|applyEarly\|\|applyRelative\|\|applyRecovery\|\|applyConflict\?true/,
  'historical fit is not broker authorization');
 assert.match(source,/i<rows\.length-12\?older:later/,
  'two chronologically nonoverlapping windows are required');
