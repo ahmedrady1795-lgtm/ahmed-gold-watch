@@ -64,8 +64,8 @@ assert.match(chart,/const recent=actual\.slice\(-72\)/,
  'show up to 120 observed M15 candles at the same scale as the 12 frozen forecast bars');
 assert.match(chart,/const projectedStride=\(end-split-8\)\/Math\.max\(12,renderedBars\.length\);/,
  'all drawing bars fit inside the scenario pane');
-assert.match(chart,/const futureCandleWidth=clamp\(projectedStride\*\.62,1\.7,4\);/,
- 'both panels must have identical candle body width');
+assert.match(chart,/const realCandleWidth=clamp\(actualStride\*\.68,2\.2,5\.2\);/,
+ 'historical M15 candle bodies retain legible width without invented future bars');
 assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars;/,
  'never draw forced target extension candles');
 console.log('PASS: MT5-style focus zoom, untouched closed candles and scored forecast, visual TP continuation and far-level labels');
