@@ -516,6 +516,15 @@ export function readEveryM1Evidence(asset:'GOLD'|'BTC',now=Date.now()){
     t.strategyVersion===EVERY_M1_EDGE_V5||
     t.strategyVersion===EVERY_M1_EDGE_V6);
   const paired=auditPairedM1Direction(recent);
+  const byRegime=Object.fromEntries(['TREND','RANGE','SQUEEZE','MIXED','LOW_ACTIVITY','INVALID'].map(group=>{
+    const xs=recent.filter(t=>t.marketRegime===group),
+      graded=xs.filter(t=>t.directionObserved==='BUY'||t.directionObserved==='SELL');
+    const hits=graded.filter(t=>t.side===t.directionObserved).length;
+    return [group,{issued:xs.length,graded:graded.length,hits,
+      hitPct:graded.length?Number((hits/graded.length*100).toFixed(2)):null,
+      flat:xs.filter(t=>t.directionObserved==='FLAT').length,
+      unknown:xs.filter(t=>t.directionObserved==='UNKNOWN').length}];
+  }));
   const finished=recent.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V6&&
     t.netR!=null&&['QUICK_TP','STOP','TIME_EXIT'].includes(t.state));
   const netR=finished.reduce((sum,t)=>sum+Number(t.netR),0);
@@ -526,7 +535,7 @@ export function readEveryM1Evidence(asset:'GOLD'|'BTC',now=Date.now()){
   return {asset,issued:recent.length,
     latestIssuedAt:latest?.issuedAt??null,
     latestAgeMs:latest?Math.max(0,now-latest.issuedAt):null,
-    paired,netR:round(netR),resolved:finished.length,
+    paired,byRegime,netR:round(netR),resolved:finished.length,
     wins:finished.filter(t=>Number(t.netR)>0).length,
     unknown:recent.filter(t=>t.directionObserved==='UNKNOWN').length,
     storage:stored,durable:stored==='VOLUME',
@@ -577,6 +586,15 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
   const shadowExpert=auditM1ShadowExpert(hist);
   const directionHits=marked.filter(t=>t.side===t.directionObserved).length;
   const pairedBaseline=auditPairedM1Direction(v4);
+  const byRegime=Object.fromEntries(['TREND','RANGE','SQUEEZE','MIXED','LOW_ACTIVITY','INVALID'].map(group=>{
+    const cohort=v4.filter(t=>t.marketRegime===group);
+    const observed=cohort.filter(t=>t.directionObserved==='BUY'||t.directionObserved==='SELL');
+    const hits=observed.filter(t=>t.side===t.directionObserved).length;
+    return [group,{issued:cohort.length,graded:observed.length,hits,
+      flat:cohort.filter(t=>t.directionObserved==='FLAT').length,
+      unknown:cohort.filter(t=>t.directionObserved==='UNKNOWN').length,
+      hitPct:observed.length?round(hits/observed.length*100):null}];
+  }));
   const byEvidence=(weak:boolean)=>{
     const issued=v4.filter(t=>t.weak===weak);
     const graded=issued.filter(t=>t.directionObserved==='BUY'||t.directionObserved==='SELL');
@@ -623,7 +641,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
       unknown:v4.filter(t=>t.directionObserved==='UNKNOWN').length,
       waiting:v4.filter(t=>t.directionObserved==null).length,
       hitPct:marked.length?round(directionHits/marked.length*100):null,
-      pairedBaseline},
+      pairedBaseline,byRegime},
     learning:{minimumPast:36,shadowExpert,fastExitShadow,nearLimitShadow,
       latestForwardQuality:hist.at(-1)?.forwardQuality??null,
       unprovenGated:hist.filter(t=>!t.qualityTier?.includes('CANDIDATE')&&
