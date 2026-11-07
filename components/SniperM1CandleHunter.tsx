@@ -1,12 +1,14 @@
 'use client';
 
-import {useMemo} from 'react';
+import {useMemo,useRef} from 'react';
 import SniperMT5M1Chart from './SniperMT5M1Chart';
 import SniperM1CandleTape from './SniperM1CandleTape';
 import SniperM1IntrabarPulse from './SniperM1IntrabarPulse';
 import {auditCandleHunter,displayCandleHunter,type CandleHunterLevel} from '../lib/sniper-m1-candle-hunter';
 import type {M1Bar} from '../lib/sniper-mt5-m1';
 import {everyM1Direction} from '../lib/sniper-m1-every-direction';
+import type {EveryM1Direction} from '../lib/sniper-m1-every-direction';
+import type {FlowProfileDecision} from '../lib/flow-profile-decision';
 import {auditM1VisualEvidence} from '../lib/sniper-m1-visual-evidence';
 import {freshM1QuoteForWatch} from '../lib/sampled-live-candle';
 import {auditPrioritizedM1,grossBreakEvenPct}
@@ -16,7 +18,7 @@ type Quote={ok?:boolean;price?:number;source?:string;sourceTime?:number}|null|un
 type Props={
   asset:'GOLD'|'BTC';history:M1Bar[];historicalSource:string;
   quote:Quote;now:number;marketOpen:boolean;sourceReady:boolean;
-  providerTransition:boolean
+  providerTransition:boolean;flow?:FlowProfileDecision|null
 };
 const fmt=(x:number)=>x.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 export default function SniperM1CandleHunter(p:Props){
@@ -34,8 +36,16 @@ export default function SniperM1CandleHunter(p:Props){
     [p.asset,p.historicalSource,closedAt,Math.floor(p.now/60000)]);
   const priorityAudit=useMemo(()=>auditPrioritizedM1(p.history,p.now,48),
     [p.history,Math.floor(p.now/60000)]);
-  const every=useMemo(()=>everyM1Direction(p.history,p.now),
-    [p.history,Math.floor(p.now/60000)]);
+  const proposal=useMemo(()=>everyM1Direction(p.history,p.now,p.flow),
+    [p.history,Math.floor(p.now/60000),p.flow]);
+  // Freeze the first proposed direction for each new closed M1. Later order
+  // flow is shown as a fresh observation, never used to alter that prediction.
+  const frozen=useRef<{key:string;forecast:EveryM1Direction}|null>(null);
+  const freezeKey=p.asset+':'+p.historicalSource+':'+String(proposal?.issuedAt||0);
+  if(proposal&&frozen.current?.key!==freezeKey)
+    frozen.current={key:freezeKey,forecast:proposal};
+  const every=proposal&&frozen.current?.key===freezeKey?
+    frozen.current.forecast:null;
   const favored=liveEligible&&every?.anchorTime===plan.candleTime?
     every.side:'WAIT';
   const nowPrice=Number(p.quote?.price);
@@ -90,6 +100,21 @@ export default function SniperM1CandleHunter(p:Props){
     </div>
     <div className="sniper-m1-priority" aria-label="ترجيح قنص الدقيقة على الإغلاقات الحقيقية">
       <strong>{visual.label}</strong>
+      <small aria-label="قراءة توزيع الحجم حسب السعر وتدفق الأوامر">
+        Volume Profile × Order Flow: {p.flow?.ready?
+          (p.flow.quality==='EXECUTED_SAMPLE'?'حجم صفقات منفذة من Coinbase':'نشاط تحديثات أسعار MT5 الاسترشادي'):
+          'بيانات غير مؤهلة'}
+        {' · '}POC {p.flow?.poc==null?'—':fmt(p.flow.poc)}
+        {' · '}VAH {p.flow?.vah==null?'—':fmt(p.flow.vah)}
+        {' · '}VAL {p.flow?.val==null?'—':fmt(p.flow.val)}
+        {' · '}الدلتا/الضغط {p.flow?.flowPct==null?'—':p.flow.flowPct.toFixed(1)+'%'}
+        {' · '}{p.flow?.reason||'لا تتوفر بيانات تدفق موثقة'}
+      </small>
+      {every?.flowEvidence&&<small role="status">
+        دليل ما قبل الشمعة: {every.flowEvidence.side==='BUY'?'شراء':'بيع'}
+        {' · '}{every.flowEvidence.applied?'دخل في الترجيح':'للمقارنة فقط'}
+        {' · '}الدرجة {every.flowEvidence.strength}/100 وليست نسبة نجاح
+      </small>}
       <span>{liveEligible&&every?
         'فرضية قبل بداية الشمعة · '+visual.reason+
         ' · الضغط '+every.pressure+'/100 (ليس احتمال نجاح)':display.reason}</span>
