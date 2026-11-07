@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const ui=fs.readFileSync('components/SniperM1CandleTape.tsx','utf8');
+const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
+const backend=fs.readFileSync('app/api/sniper-health/route.ts','utf8');
+const paper=fs.readFileSync('lib/scalp-every-candle.ts','utf8');
+assert.match(panel,/<SniperM1CandleTape history=\{m\.candles\} now=\{now\} asset=\{asset\}/);
+assert.match(ui,/fetch\('\/api\/sniper-health'/);
+assert.match(ui,/asset==='GOLD'\?\s*j\.paperM1\?\.gold:j\.paperM1\?\.bitcoin/);
+assert.match(ui,/مراقبة LIVE مُجمّدة/);
+assert.match(ui,/تخزين مؤقت قد يُفقد عند إعادة التشغيل/);
+assert.match(ui,/إعادة اختبار تاريخية، مش توقعات LIVE/);
+assert.match(backend,/paperM1:\{gold:readEveryM1Evidence\('GOLD',now\)/);
+assert.match(backend,/bitcoin:readEveryM1Evidence\('BTC',now\)/);
+assert.match(paper,/export function readEveryM1Evidence/);
+assert.match(paper,/verifiedBrokerTrades:0/);
+assert.doesNotMatch(ui,/fetch\('\/api\/mt5\/order'/);
+console.log('PASS: BTC and GOLD historical M1 tape remains separate from asset-specific frozen LIVE research, no broker instructions or false durable proof');
