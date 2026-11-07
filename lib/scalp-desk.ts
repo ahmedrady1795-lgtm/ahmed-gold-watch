@@ -92,8 +92,14 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
       // Exploratory, unfettered every-M1 lane: one predicted side and
       // hypothetical nonmarketable LIMIT per fresh closed candle, even if
       // the strict execution-ready plan says WATCH. No MT5 order authority.
-      const everyCandle=asset==='GOLD'?observeEveryM1(input.c1,quote,at,
-        Math.max(.01,Number(plans[0]?.cost||.58)),input.candleSource):null;
+      // BTC trades on weekends: its own frozen, prospective every-M1 cohort
+      // is separate from GOLD (timestamps, tick sizes, source, spreads).
+      // No MT5 execution is authorized from either paper lane.
+      const estimatedCost=Number(plans[0]?.cost);
+      const paperCost=Number.isFinite(estimatedCost)&&estimatedCost>0?
+        estimatedCost:asset==='GOLD'?.58:Math.max(.01,Number(quote.price||0)*.00012);
+      const everyCandle=observeEveryM1(input.c1,quote,at,
+        Math.max(.01,paperCost),input.candleSource,asset);
       const directionStudy=independentDirectionStudy(asset,input.c1,at,
         Math.max(0,Number(plans[0]?.cost||0)));
       const orderBook=asset==='BTC'&&liquidityResult.status==='fulfilled'?liquidityResult.value:null;
