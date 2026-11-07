@@ -1,8 +1,10 @@
 import {placeHuntWaypoints,type M15HuntPreview,type HuntPreviewCandle,type HuntSide} from '../lib/sniper-m15-hunt-preview';
+import type {M15HuntProof} from '../lib/sniper-m15-hunt-proof';
 
 type Props={
   forecast:M15HuntPreview;left:number;split:number;end:number;
   top:number;bottom:number;py:(price:number)=>number;liquidity:boolean;
+  proof?:M15HuntProof;
 };
 const color={BUY:'#53e8b8',SELL:'#ff7798'};
 export default function SniperM15HuntOverlay(p:Props){
@@ -13,6 +15,9 @@ export default function SniperM15HuntOverlay(p:Props){
   // Reserve a station rail. The forward half shows paths only, no future OHLC.
   const stride=(width-80)/6;
   const anchored=f.preferred!=='WAIT';
+  const clear=anchored&&f.observation?.quality==='CLEAR'&&
+    !f.observation.conflicting&&!f.referenceOnly;
+  const validated=clear&&p.proof?.status==='FORWARD_EDGE_CANDIDATE';
   const stations=placeHuntWaypoints(f,p.py,p.top,p.bottom);
   const toPoints=(list:HuntPreviewCandle[])=>
     [[p.split+4,clip(p.py(f.anchor!))],
@@ -62,9 +67,10 @@ export default function SniperM15HuntOverlay(p:Props){
         <polyline points={toPoints(side==='BUY'?f.buy:f.sell)
           .map(pt=>pt.join(',')).join(' ')}
           fill="none" stroke={color[side]}
-          strokeWidth={f.preferred===side?1.8:1.1}
-          strokeOpacity={f.referenceOnly?0.30:f.preferred===side?0.75:0.50}
-          strokeDasharray={f.preferred===side?'6 4':'2 6'}/>
+          strokeWidth={f.preferred===side?(clear?2.8:1.6):1.05}
+          strokeOpacity={f.referenceOnly?0.30:
+            f.preferred===side?(clear?0.92:0.68):(clear?0.25:0.43)}
+          strokeDasharray={f.preferred===side?'7 4':'2 7'}/>
         {/* Paths only: never show simulated candle bodies or wicks. */}
       </g>
     )}
@@ -73,12 +79,24 @@ export default function SniperM15HuntOverlay(p:Props){
       stroke="#000" strokeWidth="2" paintOrder="stroke" direction="ltr">
       {f.referenceOnly?'M15 · HISTORY':'M15 · PATH / WATCH'}
     </text>
+    <text x={p.split+8} y={p.top+32} fontSize="9" fontWeight="800"
+      fill={clear?color[f.preferred as HuntSide]:'#b1c1cb'}
+      textAnchor="start" stroke="#000" strokeWidth="2" paintOrder="stroke">
+      {f.referenceOnly?'سياق تاريخي فقط':
+       clear?(f.preferred==='BUY'?'↑ ترجيح صعود':'↓ ترجيح هبوط')+
+         (validated?' · تفوق مبدئي':' · غير مثبت'):
+       'تعارض أو ضعف · الاتجاه غير محسوم'}
+    </text>
     {f.sweep!=='NONE'&&<g>
       <circle cx={p.split+7} cy={clip(p.py(f.anchor))} r="4"
         fill="none" stroke="#e9ba55" strokeWidth="1.6"/>
       <title>{f.sweep==='HIGH_REJECTION'?
         'سحب قمة ثم رفض بإغلاق M15':'سحب قاع ثم ارتداد بإغلاق M15'}</title>
     </g>}
-    <title>مسارا السعر مشروطان من إغلاقات M15 وATR، ولا توجد شموع مستقبلية أو أوامر تداول. قوة القراءة ليست نسبة نجاح.</title>
+    <title>{'مسارا السعر مشروطان من إغلاقات M15 وATR، ولا توجد شموع مستقبلية أو أوامر تداول. '+
+      'المسار الأقوى معروض فقط عند تلاقي 3 دلائل مغلقة بلا تعارض. '+
+      'قياس الاتجاه نفسه: '+(p.proof?.status??'COLLECTING')+
+      ' · '+(p.proof?.n??0)+' شمعة تاريخية مقارنة باتجاه آخر جسم مغلق. '+
+      'ليست دقة متوقعة ولا أرباحًا.'}</title>
   </g>;
 }
