@@ -88,7 +88,7 @@ function GoldQuickResults({gold}:{gold:any}){
   </section>;
 }
 
-function GoldEveryCandle({data}:{data:any}){
+function GoldEveryCandle({data,asset='GOLD'}:{data:any;asset?:'GOLD'|'BTC'}){
   const latest=data?.latest;
   const stateLabel=(v:string)=>({
     AWAIT_QUOTE:'التوقع صادر · انتظار أول Bid/Ask بعد بداية الشمعة',
@@ -109,7 +109,7 @@ function GoldEveryCandle({data}:{data:any}){
   return <section className="panel" aria-label="قنص كل شمعة M1 ورقي"
     style={{padding:16,marginBottom:14}}>
     <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
-      <strong>كل شمعة M1 · Limit قريب وسلبي V6 · ثم لمس موثّق</strong>
+      <strong>{asset==='BTC'?'البيتكوين':'الذهب'} · كل شمعة M1 · Limit قريب V6 · لمس موثّق فقط</strong>
       <span style={{fontSize:12,opacity:.82}}>ورقي بحثي فقط · لا ينفّذ على Exness</span>
     </div>
     <p style={{fontSize:12,opacity:.80,margin:'8px 0'}}>
@@ -375,7 +375,8 @@ export default function ScalpWorkspace(){
     </div>
     {error&&<div className="fatal"><ShieldAlert size={16}/><div><strong>الاتصال غير مستقر</strong>
       <span>{error} · لا تعتمد على الأسعار المعروضة قبل عودة البيانات الحديثة.</span></div></div>}
-    {asset!=='BTC'&&<GoldEveryCandle data={desk?.gold?.everyCandle}/>}
+    {asset!=='BTC'&&<GoldEveryCandle data={desk?.gold?.everyCandle} asset="GOLD"/>}
+    {asset!=='GOLD'&&<GoldEveryCandle data={desk?.bitcoin?.everyCandle} asset="BTC"/>}
     {asset!=='BTC'&&<GoldLeadAudit audit={desk?.gold?.leadAudit}/>}
     {asset!=='BTC'&&<GoldQuickResults gold={desk?.gold}/>}
     <section className="content lite-content" aria-label="منصة سكالب مستقلة">
