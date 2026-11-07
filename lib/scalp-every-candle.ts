@@ -55,13 +55,23 @@ export type EveryLedger={version:1;history:EveryAttempt[]};
 const EMPTY=():EveryLedger=>({version:1,history:[]});
 const PERSIST='/data/scalp-every-m1-v1.json';
 const TEMP='/tmp/scalp-every-m1-v1.json';
+// Do not let BTC and GOLD share an issuedAt key, candle prices, quote source
+// or cost basis. Legacy GOLD storage stays at its original path.
+type EveryAsset='GOLD'|'BTC';
+const persistPath=(asset:EveryAsset)=>asset==='GOLD'?PERSIST:
+  '/data/scalp-every-m1-btc-v1.json';
+const tempPath=(asset:EveryAsset)=>asset==='GOLD'?TEMP:
+  '/tmp/scalp-every-m1-btc-v1.json';
 export function everyM1StorageTier(volumeFile:boolean,tempFile:boolean,
   onRender:boolean,diskMounted:boolean):'VOLUME'|'EPHEMERAL'|'MEMORY'{
   if(volumeFile&&(!onRender||diskMounted))return 'VOLUME';
   return volumeFile||tempFile?'EPHEMERAL':'MEMORY';
 }
-declare global{var __scalpEveryM1Ledger:EveryLedger|undefined;}
-let lastSaved=0;
+declare global{
+ var __scalpEveryM1Ledger:EveryLedger|undefined;
+ var __scalpEveryM1BtcLedger:EveryLedger|undefined;
+}
+const lastSaved:{GOLD:number;BTC:number}={GOLD:0,BTC:0};
 const round=(v:number)=>Number(v.toFixed(3));
 const final=(x:EveryState)=>!['AWAIT_QUOTE','CONFIRMING','PENDING','ACTIVE'].includes(x);
 const validQuote=(q:ScalpQuote,now:number)=>q.at!=null&&Number.isFinite(q.at)&&
@@ -69,10 +79,12 @@ const validQuote=(q:ScalpQuote,now:number)=>q.at!=null&&Number.isFinite(q.at)&&
 const validBook=(q:ScalpQuote)=>q.bid!=null&&q.ask!=null&&
   Number.isFinite(q.bid)&&Number.isFinite(q.ask)&&q.bid>0&&q.ask>q.bid;
 
-function load():EveryLedger{
-  if(globalThis.__scalpEveryM1Ledger)return globalThis.__scalpEveryM1Ledger;
+function load(asset:EveryAsset):EveryLedger{
+  const existing=asset==='GOLD'?globalThis.__scalpEveryM1Ledger:
+    globalThis.__scalpEveryM1BtcLedger;
+  if(existing)return existing;
   let ledger=EMPTY();
-  for(const file of [PERSIST,TEMP]){
+  for(const file of [persistPath(asset),tempPath(asset)]){
     try{
       const raw=fs.readFileSync(file,'utf8');
       if(raw.length>1_500_000)continue;
@@ -83,15 +95,16 @@ function load():EveryLedger{
       }
     }catch{}
   }
-  globalThis.__scalpEveryM1Ledger=ledger;
+  if(asset==='GOLD')globalThis.__scalpEveryM1Ledger=ledger;
+  else globalThis.__scalpEveryM1BtcLedger=ledger;
   return ledger;
 }
-function save(ledger:EveryLedger,now:number){
-  if(now-lastSaved<12000)return;
-  const file=fs.existsSync('/data')?PERSIST:TEMP;
+function save(ledger:EveryLedger,now:number,asset:EveryAsset){
+  if(now-lastSaved[asset]<12000)return;
+  const file=fs.existsSync('/data')?persistPath(asset):tempPath(asset);
   try{
     fs.writeFileSync(file+'.tmp',JSON.stringify(ledger));
-    fs.renameSync(file+'.tmp',file);lastSaved=now;
+    fs.renameSync(file+'.tmp',file);lastSaved[asset]=now;
   }catch{}
 }
 function priceAfterEntry(t:EveryAttempt,px:number):number{
@@ -443,10 +456,11 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
   ledger.history=history.slice(-360);
   return ledger;
 }
-export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost:number,chartSource?:string){
-  const l=load();
+export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost:number,
+  chartSource?:string,asset:EveryAsset='GOLD'){
+  const l=load(asset);
   advanceEveryM1(l,raw,q,now,cost,chartSource);
-  save(l,now);
+  save(l,now,asset);
   const hist=l.history;
   const active=hist.filter(t=>t.state==='ACTIVE');
   const pending=hist.filter(t=>t.state==='PENDING');
@@ -503,10 +517,11 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
     return {issued:selected.length,graded:graded.length,
       hits:graded.filter(t=>t.side===t.directionObserved).length};
   };
-  return {mode:'EVERY_CANDLE_PAPER_LIMIT_SHADOW',enabled:true,
+  return {mode:'EVERY_CANDLE_PAPER_LIMIT_SHADOW',asset,enabled:true,
     // /data without a mounted Render disk is still ephemeral. Never let a
     // successful local write count as durable forward trading evidence.
-    storage:everyM1StorageTier(fs.existsSync(PERSIST),fs.existsSync(TEMP),
+    storage:everyM1StorageTier(fs.existsSync(persistPath(asset)),
+      fs.existsSync(tempPath(asset)),
       Boolean(process.env.RENDER),Boolean(process.env.RENDER_DISK_MOUNT_PATH)),
     proposals:hist.length,limitsIssued,awaitingQuote,confirming,missedMinutes,
     noEdge:hist.filter(t=>t.state==='NO_EDGE').length,
