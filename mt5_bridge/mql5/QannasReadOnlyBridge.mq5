@@ -95,13 +95,16 @@ void OnTimer()
      }
    json+="}";
 
-   char post[];
-   const int count=StringToCharArray(json,post,0,StringLen(json),CP_UTF8);
+   uchar utf8[];
+   const int count=StringToCharArray(json,utf8,0,StringLen(json),CP_UTF8);
    if(count<=0)
      {
       Print("Qannas read-only: cannot encode JSON");
       return;
      }
+   char post[];
+   ArrayResize(post,count);
+   for(int i=0;i<count;i++)post[i]=(char)utf8[i];
    char result[];
    string resultHeaders="";
    const string headers="Content-Type: application/json\r\nAuthorization: Bearer "+
