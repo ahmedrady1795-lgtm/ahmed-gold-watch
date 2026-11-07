@@ -17,8 +17,10 @@ const scalp=load('lib/sniper-m1-candle-hunter.ts',{'./sniper-mt5-m1':mt5});
 const priority=load('lib/sniper-m1-priority.ts',{
  './sniper-mt5-m1':mt5,'./sniper-m1-candle-hunter':scalp
 });
+const conflict=load('lib/sniper-m1-conflict-arbiter.ts');
 const every=load('lib/sniper-m1-every-direction.ts',{
- './sniper-mt5-m1':mt5,'./sniper-m1-priority':priority
+ './sniper-mt5-m1':mt5,'./sniper-m1-priority':priority,
+ './sniper-m1-conflict-arbiter':conflict
 });
 const tape=load('lib/sniper-m1-candle-tape.ts',{
  './sniper-mt5-m1':mt5,'./sniper-m1-every-direction':every
