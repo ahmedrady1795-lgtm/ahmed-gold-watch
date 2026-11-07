@@ -4,10 +4,13 @@ export type CandleTapeMark={
   time:number;predicted:'BUY'|'SELL'|'WAIT';observed:'BUY'|'SELL'|'FLAT';
   aligned:boolean|null;weak:boolean;pressure:number;
   adaptiveModel:string|null;adaptiveImproved:boolean;
+  recoveryApplied:boolean;baseline:'BUY'|'SELL'|null;
   open:number;high:number;low:number;close:number;
 };
 export type CandleTape={marks:CandleTapeMark[];graded:number;aligned:number;
-  adaptiveGraded:number;adaptiveAligned:number};
+  adaptiveGraded:number;adaptiveAligned:number;
+  baselineGraded:number;baselineAligned:number;
+  recentGraded:number;recentAligned:number;recentWeak:boolean};
 /**
  * Strictly causal, minute-by-minute direction check.
  * Before candle C closes, derive a WATCH from candles preceding C only.
@@ -26,14 +29,23 @@ export function buildM1CandleTape(history:readonly M1Bar[],now:number,max=9):Can
       candle.close<candle.open?'SELL':'FLAT';
     const aligned=observed==='FLAT'?null:
       priority.side===observed;
+    const baseline=previous.close>previous.open?'BUY' as const:
+      previous.close<previous.open?'SELL' as const:null;
     marks.push({time:candle.time,predicted:priority.side,
       observed,aligned,weak:priority.weak,pressure:priority.pressure,
       adaptiveModel:priority.adaptive?.model??null,
       adaptiveImproved:priority.adaptive?.improved===true,
-      open:candle.open,high:candle.high,low:candle.low,close:candle.close});
+      recoveryApplied:priority.recentRecovery?.applied===true,
+      baseline,open:candle.open,high:candle.high,low:candle.low,close:candle.close});
   }
+  const paired=marks.filter(x=>x.baseline!=null&&x.aligned!=null);
+  const recent=marks.filter(x=>x.aligned!=null).slice(-8);
   return {marks,graded:marks.filter(x=>x.aligned!==null).length,
     aligned:marks.filter(x=>x.aligned===true).length,
     adaptiveGraded:marks.filter(x=>x.aligned!==null&&x.adaptiveImproved).length,
-    adaptiveAligned:marks.filter(x=>x.aligned===true&&x.adaptiveImproved).length};
+    adaptiveAligned:marks.filter(x=>x.aligned===true&&x.adaptiveImproved).length,
+    baselineGraded:paired.length,
+    baselineAligned:paired.filter(x=>x.baseline===x.observed).length,
+    recentGraded:recent.length,recentAligned:recent.filter(x=>x.aligned===true).length,
+    recentWeak:recent.length>=6&&recent.filter(x=>x.aligned===true).length<=Math.floor(recent.length*.3)};
 }
