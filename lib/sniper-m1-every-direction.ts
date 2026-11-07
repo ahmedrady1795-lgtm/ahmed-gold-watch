@@ -2,6 +2,7 @@ import {closedM1ChartBars,type M1Bar} from './sniper-mt5-m1';
 import {assessM1DirectionalPriority} from './sniper-m1-priority';
 import {assessM1Conflict,type M1ConflictResult} from './sniper-m1-conflict-arbiter';
 import {selectM1RegimeRecovery,type M1RecoveryRow,type M1RecoveryModel} from './sniper-m1-regime-recovery';
+import {selectM1RelativeEdge,type M1EdgeRow,type M1EdgeModel} from './sniper-m1-relative-edge';
 
 /** A causal BUY/SELL hypothesis for EVERY adjacent, freshly closed minute.
  * Unlike the certified entry engine, low-pressure minutes are NOT discarded:
@@ -14,6 +15,7 @@ export type EveryM1Direction={
   directionReason:string;
   conflictOverride?:{applied:boolean;trainN:number;trainFollowHits:number;checkN:number;checkFollowHits:number};
   recentRecovery?:{applied:boolean;model:M1RecoveryModel|null;trainN:number;checkN:number;pressureTrain:number;pressureCheck:number;challengerTrain:number;challengerCheck:number};
+  relativeEdge?:{applied:boolean;model:M1EdgeModel|null;trainN:number;checkN:number;trainHits:number;checkHits:number;trainPressureHits:number;checkPressureHits:number;reason:string};
   // A rolling, past-only comparison. Not an OOS broker/TP win rate.
   adaptive?:{
     model:'PRESSURE_SWEEP'|'BODY_FOLLOW'|'BODY_FADE'|'THREE_CLOSE'|'EXHAUSTION_FADE';
@@ -179,6 +181,33 @@ function recoverRecentM1(rows:readonly M1Bar[]){
  return selectM1RegimeRecovery(older,later);
 }
 
+/**
+ * Causally replay the SAME rawCandidate implementations, without looking at
+ * the candle being graded. 12 older decisions choose the challenger, 12
+ * later decisions check it. Disagreements and dojis cannot be counted as
+ * wins; source/gap guards are identical to production M1.
+ */
+function recentRelativeEdge(rows:readonly M1Bar[]){
+  if(rows.length<52||!isContiguous(rows.slice(-52)))return null;
+  const older:M1EdgeRow[]=[],later:M1EdgeRow[]=[];
+  for(let i=rows.length-24;i<rows.length;i++){
+    const p=rows.slice(0,i),actual=rows[i];
+    if(actual.close===actual.open)continue;
+    const pressure=rawCandidate(p,'PRESSURE_SWEEP');
+    const bodyFollow=rawCandidate(p,'BODY_FOLLOW');
+    const bodyFade=rawCandidate(p,'BODY_FADE');
+    const threeClose=rawCandidate(p,'THREE_CLOSE');
+    const exhaustionFade=rawCandidate(p,'EXHAUSTION_FADE');
+    if(!pressure||!bodyFollow||!bodyFade||!threeClose||!exhaustionFade)
+      continue;
+    (i<rows.length-12?older:later).push({
+      pressure,bodyFollow,bodyFade,threeClose,exhaustionFade,
+      actual:body(actual)
+    });
+  }
+  return selectM1RelativeEdge(older,later);
+}
+
 export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Direction|null{
   const rows=closedM1ChartBars(raw,now,72),last=rows.at(-1);
   if(rows.length<21||!last||now-last.time-60000<0||
@@ -222,18 +251,22 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Directi
   const alternative=adaptive.improved?rawCandidate(rows,adaptive.model):null;
   const pastConflict=adaptive.improved?null:pressureBodyConflict(rows);
   const recovery=adaptive.improved||reversal!=null?null:recoverRecentM1(rows);
+  const relative=adaptive.improved||reversal!=null?null:recentRelativeEdge(rows);
   const pressureNow=rawCandidate(rows,'PRESSURE_SWEEP');
   const followNow=rawCandidate(rows,'BODY_FOLLOW');
   const recoveryNow=recovery?.model?rawCandidate(rows,recovery.model):null;
-  const applyRecovery=Boolean(recoveryNow&&pressureNow===candidate&&
+  const relativeNow=relative?.model?rawCandidate(rows,relative.model):null;
+  const applyRelative=Boolean(relativeNow&&pressureNow===candidate&&
+    relativeNow!==candidate);
+  const applyRecovery=Boolean(!applyRelative&&recoveryNow&&pressureNow===candidate&&
     recoveryNow!==candidate);
-  const applyConflict=Boolean(!applyRecovery&&pastConflict?.useFollow&&
+  const applyConflict=Boolean(!applyRelative&&!applyRecovery&&pastConflict?.useFollow&&
     pressureNow===candidate&&followNow&&followNow!==pressureNow);
-  const side=alternative??(applyRecovery?recoveryNow!:
-    applyConflict?followNow!:candidate);
+  const side=alternative??(applyRelative?relativeNow!:
+    applyRecovery?recoveryNow!:applyConflict?followNow!:candidate);
   // A newly selected historical conflict challenger is NOT automatically
   // qualified for broker execution. It remains weak until new forward proof.
-  const weak=applyRecovery||applyConflict?true:adaptive.improved?false:
+  const weak=applyRelative||applyRecovery||applyConflict?true:adaptive.improved?false:
     p.side==='WAIT'||(reversal!=null&&reversal!==momentum)||p.pressureScore<35;
   return {issuedAt:last.time+60000,side,pressure:p.pressureScore,
     weak,atr,anchorTime:last.time,
@@ -245,7 +278,10 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Directi
       checkFollowHits:pastConflict.checkFollowHits
     }:undefined,
     recentRecovery:recovery?{...recovery,applied:applyRecovery}:undefined,
-    directionReason:applyRecovery?
+    relativeEdge:relative?{...relative,applied:applyRelative}:undefined,
+    directionReason:applyRelative?
+      'نموذج اتجاه بديل تفوق نسبيًا في فترتين تاريخيتين منفصلتين؛ يخضع للاختبار الأمامي':
+      applyRecovery?
       'مرشح إنقاذ بحثي بعد 8 تدريب + 8 مراجعة سابقة؛ ليس نتيجة LIVE مثبتة':
       applyConflict?
       'تجربة ترجيح اتجاه الجسم بعد تفوق في عينتين سابقتين؛ تحتاج إثباتًا أماميًا جديدًا':
