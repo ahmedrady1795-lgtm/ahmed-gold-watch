@@ -1,4 +1,4 @@
-import {getMarketData,getMt5BridgeStatus,getMt5FastSignal,getQuoteData} from '../../../lib/market-hub';
+import {getMarketData,getMt5BridgeStatus,getMt5FastSignal,getMt5GoldDomReading,getMt5GoldQuoteProfile,getQuoteData} from '../../../lib/market-hub';
 
 export const dynamic='force-dynamic';
 
@@ -21,6 +21,8 @@ export async function GET(){
       mode:'broker',
       source:'Exness/MT5',
       brokerSymbol:s.symbol,
+      brokerDepth:getMt5GoldDomReading(now),
+      quoteProfile:getMt5GoldQuoteProfile(now),
       fast
     },{headers:{
       'Cache-Control':'no-store, no-cache, must-revalidate',
