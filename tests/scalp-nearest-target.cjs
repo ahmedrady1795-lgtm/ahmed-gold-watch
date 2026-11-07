@@ -24,8 +24,9 @@ assert.equal(target({side:'SELL',entry:4000,requiredMove:.504,
 for(const side of ['BUY','SELL']){
  const v=target({side,entry:100,requiredMove:.605,reachCap:.60,atr:.9,pivots:[101,99]});
  assert.equal(v,null,'minimum required net move exceeding actual reach has no trade');
- assert.equal(target({side,entry:100,requiredMove:.595,reachCap:.6,
-   atr:.9,pivots:[]})?.distance,.6,'outward tick rounding must not erode R');
+ assert.ok(Math.abs((target({side,entry:100,requiredMove:.595,reachCap:.6,
+   atr:.9,pivots:[]})?.distance??NaN)-.6)<1e-8,
+  'outward tick rounding must not erode R');
 }
 assert.equal(target({...buy,requiredMove:1.8}),null);
 assert.equal(target({...buy,reachCap:NaN}),null);
