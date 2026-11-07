@@ -21,7 +21,7 @@ assert.equal(decide([...n(6,2),same,same],n(5,1)).useFollow,false,
 const latest=fs.readFileSync('lib/sniper-m1-every-direction.ts','utf8');
 assert.match(latest,/pressureBodyConflict\(rows\)/);
 assert.match(latest,/const alternative=adaptive\.improved\?rawCandidate/);
-assert.match(latest,/const weak=applyRelative\|\|applyRecovery\|\|applyConflict\?true/,
+assert.match(latest,/const weak=flatCluster\|\|applyEarly\|\|applyRelative\|\|applyRecovery\|\|applyConflict\?true/,
  'new research challenger cannot be promoted into entry-ready direction');
 assert.match(latest,/const pressureNow=rawCandidate\(rows,'PRESSURE_SWEEP'\)/);
 const ledger=fs.readFileSync('lib/scalp-every-candle.ts','utf8');
