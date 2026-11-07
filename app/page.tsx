@@ -310,6 +310,9 @@ export default function Home(){
         <div><strong>القناص <span>QANNAS</span></strong>
           <small>الرسم والسيناريو في شاشة واحدة</small></div>
       </div>
+      <div className="sniper-2026-edition" aria-label="واجهة القناص 2026">
+        <b>2026</b><small>MARKET INTELLIGENCE</small>
+      </div>
       <nav className="sniper-solo-nav" aria-label="التنقل في القناص">
         <a href="/spot" className="workspace-scalp-link">رادار Spot ↗</a>
         <a href="/scalp" className="workspace-scalp-link">سكالب الثواني ↗</a>
