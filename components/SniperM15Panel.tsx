@@ -9,6 +9,7 @@ import {auditM15HuntDirection} from '../lib/sniper-m15-hunt-proof';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
 import SniperM15PreMoveConsole from './SniperM15PreMoveConsole';
+import SniperScenarioHero from './SniperScenarioHero';
 import {analyzeM15MarketStructure} from '../lib/sniper-market-structure';
 import SniperMarketStructureOverlay,{SniperStructureRSI} from './SniperMarketStructureOverlay';
 import SniperHuntHUD from './SniperHuntHUD';
@@ -744,14 +745,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      quote={liveQuote} now={now} marketOpen={marketOpen}
      sourceReady={m.historyFresh&&m.sniper.view.priceFresh}
      providerTransition={providerTransition}/>:<>
-   <SniperHuntHUD hunt={huntPreview} m1={nextM1}
-      price={currentSignalPrice??null} marketOpen={marketOpen}
-      qualified={projected.ready} qualifiedSide={chartSide}/>
-   <SniperM15PreMoveConsole preMove={preMove} hunt={huntPreview}
-      m1={nextM1} liquidity={liquidityMagnets} fusion={localFusion}
-      marketOpen={marketOpen}
-      dataFresh={Boolean(m.sniper.view.priceFresh&&m.historyFresh&&
-        historyFresh)} providerTransition={providerTransition}/>
+   <SniperScenarioHero asset={asset} fusion={localFusion}
+      hunt={huntPreview} preMove={preMove} liquidity={liquidityMagnets}
+      price={currentSignalPrice??null} now={now}
+      marketOpen={marketOpen} fresh={Boolean(m.sniper.view.priceFresh&&
+        m.historyFresh&&historyFresh)} providerTransition={providerTransition}/>
    <details className="sniper-hunt-advanced">
      <summary>المستويات والتشخيص <span aria-hidden="true">＋</span></summary>
    <SniperM15Summary asset={asset} ready={projected.ready}
@@ -1237,6 +1235,19 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        structure={structure} watch={watchMap} m1={nextM1}
         priceFresh={Boolean(m.sniper.view.priceFresh)&&historyFresh&&!providerTransition}/>
    </div>
+   <details className="sniper-intelligence-drawer">
+     <summary><span className="sniper-intelligence-drawer-title">
+       <b>INTELLIGENCE DECK</b> · السيولة والتوافق الذكي والتهيئة المبكرة
+       </span><span aria-hidden="true">＋</span></summary>
+     <SniperHuntHUD hunt={huntPreview} m1={nextM1}
+       price={currentSignalPrice??null} marketOpen={marketOpen}
+       qualified={projected.ready} qualifiedSide={chartSide}/>
+     <SniperM15PreMoveConsole preMove={preMove} hunt={huntPreview}
+       m1={nextM1} liquidity={liquidityMagnets} fusion={localFusion}
+       marketOpen={marketOpen}
+       dataFresh={Boolean(m.sniper.view.priceFresh&&m.historyFresh&&
+         historyFresh)} providerTransition={providerTransition}/>
+   </details>
    <div className="sniper-hunter-bottom">
      <SniperM1CandleTape history={m.candles} now={now} asset={asset}/>
      <SniperNextCandleCard priority={nextM1} marketOpen={marketOpen}/>
