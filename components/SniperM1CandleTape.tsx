@@ -37,7 +37,8 @@ export default function SniperM1CandleTape({history,now}:{
              rx=".5" fill={color}/>
          </svg>
          <small dir="ltr">{time(m.time)}</small>
-         {m.adaptiveImproved?<small title="اختير من تدريب سابق وفحص لاحق؛ ليس إثبات ربح">متكيف</small>:
+         {m.recoveryApplied?<small title="تغيير بحثي بعد فشل الضغط في مجموعتين سابقتين؛ ليس توقعًا مؤكدًا">تجربة إنقاذ</small>:
+          m.adaptiveImproved?<small title="اختير من تدريب سابق وفحص لاحق؛ ليس إثبات ربح">متكيف</small>:
           m.weak&&<small title="توقع منخفض الأدلة، ليس نسبة نجاح">ضعيف</small>}
          <b>{m.predicted==='BUY'?'↑':m.predicted==='SELL'?'↓':'–'}
            <span>{m.aligned===true?'✓':m.aligned===false?'×':'·'}</span>
@@ -46,10 +47,17 @@ export default function SniperM1CandleTape({history,now}:{
      })}
    </div>
    <small className="sniper-candle-tape-caution">
-     جميع التوقعات الماضية {tape.aligned}/{tape.graded}، ومنها نموذج متكيف
-     {' '}{tape.adaptiveAligned}/{tape.adaptiveGraded} (إن وُجد).
-     {' '}المقارنة إعادة تشغيل تاريخية سببية، وليست إنذارات مجمدة حية أو أرباحًا.
-     الأخطاء والضعيف محسوبين ولا بنخفيهم.
+     {tape.recentWeak&&<>
+       <strong>تنبيه: توقعات القناص في آخر {tape.recentGraded} شموع تاريخية ضعيفة
+       ({tape.recentAligned} صحيح). لازم نختبر تغيير الطريقة قبل الوثوق فيها.</strong>{' '}
+     </>}
+     {' '}على نفس {tape.baselineGraded} شموع قابلة للمقارنة:
+     القناص {tape.pairedModelHits} صحيح، واتباع آخر جسم شمعة مغلقة
+     {' '}{tape.baselineAligned} صحيح.
+     {' '}إجمالي اختبار القناص {tape.aligned}/{tape.graded}، ومنها متكيف
+     {' '}{tape.adaptiveAligned}/{tape.adaptiveGraded}.
+     {' '}دي إعادة تشغيل تاريخية سببية وليست إنذارات LIVE مجمدة أو إثبات ربح.
+     الضعيف والأخطاء محسوبين ومش بنخفيهم.
    </small>
  </section>;
 }
