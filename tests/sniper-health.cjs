@@ -30,6 +30,12 @@ factory(ex,name=>{
     return {aiRateLimitState:(url)=>({
       configured:Boolean(url),limited:Boolean(url&&url.includes('ml.invalid')),
       retryInSeconds:url&&url.includes('ml.invalid')?180:0,consecutive429:url?2:0})};
+  if(name.endsWith('/scalp-every-candle'))
+    return {readEveryM1Evidence:(asset)=>({
+      asset,issued:asset==='BTC'?8:0,
+      paired:{status:'COLLECTING',n:0,modelHits:0,baselineHits:0},
+      netR:0,resolved:0,storage:'EPHEMERAL',durable:false,
+      verifiedBrokerTrades:0})};
   throw Error('Unexpected import '+name);
 });
 
@@ -43,6 +49,11 @@ factory(ex,name=>{
   assert.equal(fresh.ai.throttles.ml.limited,true);
   assert.equal(fresh.ai.throttles.ml.retryInSeconds,180);
   assert.equal(fresh.ai.throttles.neural.limited,false);
+  assert.equal(fresh.paperM1.bitcoin.asset,'BTC');
+  assert.equal(fresh.paperM1.bitcoin.issued,8);
+  assert.equal(fresh.paperM1.gold.asset,'GOLD');
+  assert.equal(fresh.paperM1.bitcoin.verifiedBrokerTrades,0);
+  assert.equal(fresh.paperM1.bitcoin.durable,false);
   assert.equal(fresh.audit.durable,false,
     'a temporary Render Free ledger must never be described as persistent');
   assert.equal(fresh.gold.scenario,'ACTIVE');
