@@ -116,7 +116,7 @@ export default function SniperM1CandleHunter(p:Props){
       historicalSource={p.historicalSource} quote={p.quote} now={p.now}
       marketOpen={p.marketOpen} providerTransition={p.providerTransition}
       levels={levels} referenceOnly={referenceOnly}/>
-    <SniperM1CandleTape history={p.history} now={p.now}/>
+    <SniperM1CandleTape history={p.history} now={p.now} asset={p.asset}/>
     <details className="sniper-m1-setup-details">
       <summary>{plan.ready?'الدخول والهدف والوقف · عرض المستويات':'تفاصيل شروط القنص'}</summary>
       <p className="sniper-m1-gross-risk">
