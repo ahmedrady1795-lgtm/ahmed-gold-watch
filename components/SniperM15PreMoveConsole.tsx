@@ -2,10 +2,13 @@ import type {CSSProperties} from 'react';
 import type {PreMovePressure} from '../lib/pre-move-pressure';
 import type {M15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import type {M1Priority} from '../lib/sniper-m1-priority';
+import type {LiquidityMagnetView} from '../lib/sniper-liquidity-magnets';
+import type {LocalFusion} from '../lib/sniper-local-fusion';
 
 type Side='BUY'|'SELL'|'WAIT';
 type Props={
  preMove:PreMovePressure;hunt:M15HuntPreview;m1:M1Priority;
+ liquidity:LiquidityMagnetView;fusion:LocalFusion;
  marketOpen:boolean;dataFresh:boolean;providerTransition:boolean;
 };
 const pretty=(v:number|null|undefined)=>v!=null&&Number.isFinite(v)&&v>0?
@@ -23,11 +26,10 @@ export default function SniperM15PreMoveConsole(p:Props){
    p.hunt.observation?.quality==='CLEAR'&&!p.hunt.observation?.conflicting&&
    p.hunt.preferred!=='WAIT';
  const m1=fresh&&p.m1.ready&&p.m1.side!=='WAIT';
- const opposed=Boolean(premove&&m15&&p.preMove.side!==p.hunt.preferred);
- const side:Side=!fresh||opposed?'WAIT':
-   premove?p.preMove.side:m15?p.hunt.preferred:'WAIT';
- const stage=!fresh?'STALE':opposed?'CONFLICT':
-   premove?'PRE_BREAK':m15?'M15_BIAS':'WAIT';
+ const side:Side=p.fusion.side;
+ const stage=!fresh?'STALE':p.fusion.phase==='DISAGREEMENT'?'CONFLICT':
+   p.fusion.phase==='EARLY_CANDIDATE'?'PRE_BREAK':
+   p.fusion.phase==='M15_CONFLUENCE'?'M15_BIAS':'WAIT';
  const headline=stage==='STALE'?'السوق أو البيانات غير جاهزة':
    stage==='CONFLICT'?'تعارض بين ضغط M1/M5 ومسار M15':
    stage==='PRE_BREAK'?'تهيئة محتملة قبل الكسر':
@@ -83,6 +85,49 @@ export default function SniperM15PreMoveConsole(p:Props){
        <span><small>اختبار الكسر</small><b dir="ltr">{pretty(liveTrigger)}</b></span>
        <span><small>إبطال الفكرة</small><b dir="ltr">{pretty(invalidation)}</b></span>
        <span><small>تأكيد الأطر</small><b>{m1Label}</b></span>
+     </div>
+   </div>
+   <div className="sniper-fusion-2026" aria-label="محرك التوافق الذكي المحلي">
+     <div>
+       <strong>LOCAL AI FUSION</strong>
+       <small>ترجيح سببي مستقل عن خدمات ML وNeural الخارجية</small>
+     </div>
+     <div className="sniper-fusion-votes" aria-label="توافق الأطر المغلقة">
+       <span>M1 <b>{p.fusion.m1==='BUY'?'↑':p.fusion.m1==='SELL'?'↓':'—'}</b></span>
+       <span>M15 <b>{p.fusion.m15==='BUY'?'↑':p.fusion.m15==='SELL'?'↓':'—'}</b></span>
+       <span>PREMOVE <b>{p.fusion.early==='BUY'?'↑':p.fusion.early==='SELL'?'↓':'—'}</b></span>
+       <span>CONFLUENCE <b>{p.fusion.phase==='OFFLINE'?'OFFLINE':
+         p.fusion.phase==='DISAGREEMENT'?'CONFLICT':
+         p.fusion.side==='WAIT'?'WATCH':p.fusion.side==='BUY'?'BUY WATCH':'SELL WATCH'}</b></span>
+     </div>
+     <small className="sniper-fusion-honesty">
+       درجة توافق الأدلة وصفية وليست احتمال نجاح، ولا تسمح بتنفيذ صفقة.
+     </small>
+   </div>
+   <div className="sniper-liquidity-magnets" aria-label="رادار مستويات السيولة المتكررة">
+     <div className="sniper-liquidity-magnets-head">
+       <strong>LIQUIDITY MAP 2026</strong>
+       <small>{p.liquidity.ready?p.liquidity.reason:
+         'أدلة M15 المغلقة غير كافية'}</small>
+     </div>
+     <div className="sniper-liquidity-magnet-cards">
+       <div><small>سيولة محتملة أعلى القمم</small>
+         <b dir="ltr">{pretty(p.liquidity.above?.price)}</b>
+         <span>{p.liquidity.above?
+           p.liquidity.above.touches+' اختبارات قمة · '+p.liquidity.above.distanceAtr+' ATR':
+           'لا تجمع مؤكد'}</span>
+       </div>
+       <div><small>سيولة محتملة أسفل القيعان</small>
+         <b dir="ltr">{pretty(p.liquidity.below?.price)}</b>
+         <span>{p.liquidity.below?
+           p.liquidity.below.touches+' اختبارات قاع · '+p.liquidity.below.distanceAtr+' ATR':
+           'لا تجمع مؤكد'}</span>
+       </div>
+       <div><small>سحب السيولة المكتمل</small>
+         <b>{p.liquidity.sweep==='HIGH_RECLAIMED_DOWN'?'رفض قمة':
+           p.liquidity.sweep==='LOW_RECLAIMED_UP'?'استرداد قاع':'غير مرصود'}</b>
+         <span>من OHLC مغلق فقط · ليس دفتر أوامر</span>
+       </div>
      </div>
    </div>
    <div className="sniper-early-evidence">
