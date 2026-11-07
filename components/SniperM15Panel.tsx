@@ -6,6 +6,7 @@ import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {auditM15HuntDirection} from '../lib/sniper-m15-hunt-proof';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
+import SniperM15PreMoveConsole from './SniperM15PreMoveConsole';
 import {analyzeM15MarketStructure} from '../lib/sniper-market-structure';
 import SniperMarketStructureOverlay,{SniperStructureRSI} from './SniperMarketStructureOverlay';
 import SniperHuntHUD from './SniperHuntHUD';
@@ -736,6 +737,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    <SniperHuntHUD hunt={huntPreview} m1={nextM1}
       price={currentSignalPrice??null} marketOpen={marketOpen}
       qualified={projected.ready} qualifiedSide={chartSide}/>
+   <SniperM15PreMoveConsole preMove={preMove} hunt={huntPreview}
+      m1={nextM1} marketOpen={marketOpen}
+      dataFresh={Boolean(m.sniper.view.priceFresh&&m.historyFresh&&
+        historyFresh)} providerTransition={providerTransition}/>
    <details className="sniper-hunt-advanced">
      <summary>المستويات والتشخيص <span aria-hidden="true">＋</span></summary>
    <SniperM15Summary asset={asset} ready={projected.ready}
@@ -798,13 +803,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            <rect x={left} y={plotTop} width={end-left} height={plotBottom-plotTop}/>
          </clipPath>
        </defs>
-       <rect width={W} height={H} fill="#000"/>
+       <rect width={W} height={H} fill="#050b13"/>
        {grid.map((v,i)=><line key={'grid'+i}
          x1={left} x2={end} y1={py(v)} y2={py(v)}
-         stroke="#1a2933" strokeDasharray="3 7" strokeWidth=".55"/>)}
+         stroke="#193549" strokeDasharray="2 8" strokeWidth=".7"/>)}
        {Array.from({length:8},(_,i)=><line key={'vx'+i} x1={left+i*(end-left)/7}
          x2={left+i*(end-left)/7} y1={plotTop} y2={plotBottom}
-         stroke="#1d2b3a" strokeDasharray="3 6" strokeWidth=".8"/>)}
+         stroke="#1a3543" strokeDasharray="2 9" strokeWidth=".65"/>)}
        <g clipPath={'url(#sniper-m15-clip-'+asset+')'}>
          {/* Only four authentic OHLC liquidity levels; colors match source areas. */}
          {showLiquidity&&liquidityLabels.map(z=><g key={'liquidity-band-'+z.key}
@@ -945,7 +950,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
 
          {showWatchGuide&&watchGuide.anchor!=null&&
            <g className="sniper-m15-watch-guide">
-             <SniperM15HuntOverlay forecast={huntPreview} proof={huntProof}
+             <SniperM15HuntOverlay forecast={huntPreview} proof={huntProof} asset={asset}
                left={left} split={split} end={end}
                top={plotTop} bottom={plotBottom} py={py}
                liquidity={showLiquidity}/>
