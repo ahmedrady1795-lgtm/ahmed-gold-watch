@@ -797,6 +797,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <b dir="ltr">{formingVisible&&forming?'LIVE '+n(forming.close):
        latestClosed?'CLOSE '+n(latestClosed.close):'—'}</b>
    </div>
+   <div className="sniper-scenario-chart-legend"
+     aria-label="مفتاح الشموع الحقيقية ومسارات المراقبة المشروطة">
+     <b>PRICE ACTION / M15</b>
+     <span className="is-actual">شموع حقيقية مغلقة</span>
+     <span className="is-conditional">{projected.ready?'مسار توقع مشروط':
+       showWatchGuide?'مسارا مراقبة من ATR':'لا مسار مؤهل الآن'}</span>
+   </div>
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
