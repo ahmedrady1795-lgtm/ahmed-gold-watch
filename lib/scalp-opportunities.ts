@@ -1,5 +1,5 @@
 import {ema,indicators,type Candle,type Event} from './engine';
-import {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid,chooseEligibleScalpPlan} from './scalp-selection';
+import {selectGoldM5Breakout,observedForwardReach,frozenTrendIsValid,chooseEligibleScalpPlan,nearestFeasibleScalpTarget} from './scalp-selection';
 import {detectScalpStrategies,rankScalpStrategies,describeScalpStrategies,type StrategyReview} from './scalp-strategies';
 import {detectLiquiditySweeps,activeConfirmedSweep} from './liquidity-sweep';
 import {detectDisplacementObFvg,activeStructureRetest,sameActiveStructureEvent,type DisplacementSetup} from './institutional-price-action';
@@ -274,9 +274,18 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     const pivots=[...a.slice(-60),...(horizon===5?b.slice(-24):[])].map(c=>chosen.side==='BUY'?c.high:c.low)
       .filter(x=>dir*(x-entry)>=minReward&&dir*(x-entry)<=targetCap)
       .sort((x,y)=>dir*(x-y));
-    const first=pivots[0];
-    const reward=first==null?minReward:dir*(first-entry);
-    const targets=[{price:round(entry+dir*reward),kind:first==null?'PROJECTION' as const:'STRUCTURE' as const}];
+    const nearest=nearestFeasibleScalpTarget({
+      side:chosen.side,entry,requiredMove:minReward,reachCap:targetCap,
+      atr:rangeAtr,pivots
+    });
+    if(!nearest)return {...plan,
+      id:asset+'-'+horizon+'-'+last.time+'-'+chosen.setup+'-'+chosen.side,
+      side:chosen.side,setup:chosen.setup,score:chosen.score,status:'WATCH' as const,
+      entry,stop,blockers:['التقريب السعري جعل أقرب هدف مجدٍ خارج مدى الحركة المتحقق'],
+      reason:'لا يوجد هدف يصلح بعد التقريب السعري والتكلفة',
+      trigger:'انتظار هدف واقعي بعد تكلفة التنفيذ'};
+    const reward=nearest.distance;
+    const targets=[{price:nearest.price,kind:nearest.kind}];
     for(let j=1;j<3;j++){
       const lastDistance=dir*(targets[j-1].price-entry);
       const structural=pivots.find(x=>dir*(x-entry)>lastDistance+atr*.3);
