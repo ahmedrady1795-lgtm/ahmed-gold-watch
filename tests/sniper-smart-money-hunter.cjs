@@ -129,7 +129,7 @@ assert.match(panel,/className="sniper-m15-conditional-route"/,
  'audited forecast is shown as a path only');
 assert.doesNotMatch(panel,/futureCandleWidth|sniper-m15-projected/,
  'no future candle bodies or wicks in the chart')
-assert.match(plot,/M15 · PATH \/ WATCH/,
+assert.match(plot,/M15 · EARLY PATH/,
  'watch preview retains dual conditional price tracks');
 assert.doesNotMatch(plot,/drawCandles\(|sniper-hunt-candles/,
  'watch overlay must never render hypothetical candle bodies')
