@@ -85,6 +85,7 @@ jobs:
       - run: node tests/btc-chart-source-guard.cjs
       - run: node tests/chart-price-viewport.cjs
       - run: node tests/scalp-forward-reach.cjs
+      - run: node tests/scalp-nearest-target.cjs
       - run: node tests/sniper-scorecard.cjs
       - run: node tests/forecast-journal.cjs
       - run: node tests/direction.cjs
@@ -96,6 +97,7 @@ jobs:
       - run: node tests/gold-radar-inline.cjs
       - run: node tests/sniper-m1-candle-hunter.cjs
       - run: node tests/m1-adaptive-causal.cjs
+      - run: node tests/m1-conflict-arbiter.cjs
       - run: node tests/sniper-m1-intrabar-pulse.cjs
       - run: node tests/m1-forward-online-learning.cjs
       - run: node tests/scalp-m1-shadow-expert.cjs
