@@ -456,6 +456,34 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
   ledger.history=history.slice(-360);
   return ledger;
 }
+/** Read-only evidence: never generate a prediction or fill on a health ping.
+ * This MUST remain separate by market, timestamp and source.
+ */
+export function readEveryM1Evidence(asset:'GOLD'|'BTC',now=Date.now()){
+  const history=load(asset).history;
+  const recent=history.filter(t=>
+    t.strategyVersion===EVERY_M1_EDGE_V4||
+    t.strategyVersion===EVERY_M1_EDGE_V5||
+    t.strategyVersion===EVERY_M1_EDGE_V6);
+  const paired=auditPairedM1Direction(recent);
+  const finished=recent.filter(t=>t.strategyVersion===EVERY_M1_EDGE_V6&&
+    t.netR!=null&&['QUICK_TP','STOP','TIME_EXIT'].includes(t.state));
+  const netR=finished.reduce((sum,t)=>sum+Number(t.netR),0);
+  const latest=recent.at(-1);
+  const stored=everyM1StorageTier(fs.existsSync(persistPath(asset)),
+    fs.existsSync(tempPath(asset)),Boolean(process.env.RENDER),
+    Boolean(process.env.RENDER_DISK_MOUNT_PATH));
+  return {asset,issued:recent.length,
+    latestIssuedAt:latest?.issuedAt??null,
+    latestAgeMs:latest?Math.max(0,now-latest.issuedAt):null,
+    paired,netR:round(netR),resolved:finished.length,
+    wins:finished.filter(t=>Number(t.netR)>0).length,
+    unknown:recent.filter(t=>t.directionObserved==='UNKNOWN').length,
+    storage:stored,durable:stored==='VOLUME',
+    verifiedBrokerTrades:0,
+    note:'Only frozen forward research; no Exness fills and no guaranteed success.'};
+}
+
 export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost:number,
   chartSource?:string,asset:EveryAsset='GOLD'){
   const l=load(asset);
