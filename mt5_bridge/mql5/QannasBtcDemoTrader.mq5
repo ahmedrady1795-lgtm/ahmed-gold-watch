@@ -135,6 +135,18 @@ void ManageOwnOpenPositions()
   }
 bool HistoryLimits()
   {
+   // Persistent per-account starting equity prevents an open loss or another
+   // EA's loss from being ignored just because no deal has closed yet.
+   const long utcDay=(long)TimeGMT()/86400;
+   const string equityKey=Key("EQ"+IntegerToString((int)utcDay));
+   const double currentEquity=AccountInfoDouble(ACCOUNT_EQUITY);
+   if(currentEquity<=0)return false;
+   if(!GlobalVariableCheck(equityKey))
+      GlobalVariableSet(equityKey,currentEquity);
+   const double startEquity=GlobalVariableGet(equityKey);
+   if(startEquity<=0||
+      currentEquity<=startEquity*(1.0-MaxDailyLossPct/100.0))
+      return false;
    const datetime now=TimeTradeServer();
    const datetime start=now-(now%86400);
    if(!HistorySelect(start,now))return false; // fail closed
