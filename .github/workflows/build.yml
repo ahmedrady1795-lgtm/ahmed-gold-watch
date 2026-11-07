@@ -20,6 +20,8 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      - run: node tests/flow-profile-decision.cjs
+      - run: npm run build
       - run: node tests/gold-preparation-lead.mjs
       - run: node tests/chart-feed-isolation.cjs
       - run: node tests/chart-refresh.cjs
@@ -93,7 +95,6 @@ jobs:
       - run: node tests/direction.cjs
       - run: node tests/movement.cjs
       - run: python3 -m compileall -q ml-service neural-service
-      - run: node tests/flow-profile-decision.cjs
       - run: node tests/order-flow-radar.mjs
       - run: node tests/sniper-radar-next-candle.cjs
       - run: node tests/sniper-m15-watch-prices.cjs
@@ -135,7 +136,6 @@ jobs:
       - run: node tests/sniper-m15-visual-alignment.cjs
       - run: node tests/sniper-m15-reactions.cjs
       - run: node tests/spot-radar.cjs
-      - run: npm run build
 
   microstructure-quality:
     runs-on: ubuntu-latest
