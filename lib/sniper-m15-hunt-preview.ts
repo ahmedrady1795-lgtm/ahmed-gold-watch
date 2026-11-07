@@ -12,6 +12,7 @@ export type M15HuntObservation={
   preferred:HuntSide;quality:'CLEAR'|'MIXED'|'WEAK';
   reasons:string[];warnings:string[];
   conflicting:boolean;matchedFactors:number;
+  earlyPattern:'RISING_BIDS'|'FALLING_OFFERS'|'NONE';compressionPct:number;
   // A pattern-comparison score, never a calibrated success probability.
   notTradeSignal:true
 };
@@ -46,6 +47,28 @@ export function observeM15HuntPressure(
      [b.open,b.high,b.low,b.close].some(v=>!Number.isFinite(v)||v<=0)||
      b.low>Math.min(b.open,b.close)||b.high<Math.max(b.open,b.close)||
      i>0&&b.time-a[i-1].time!==900000))return null;
+  // Closed-only microstructure proxy. A contracting 4-bar true range with
+  // climbing lows (or falling highs) is possible pre-expansion absorption,
+  // NOT proof of hidden limit orders or a future breakout.
+  const base=a.slice(4,12),tight=a.slice(-4);
+  const meanRange=(bars:readonly M15GuideBar[])=>
+    bars.reduce((sum,b)=>sum+b.high-b.low,0)/Math.max(1,bars.length);
+  const baseWidth=meanRange(base),recentWidth=meanRange(tight);
+  const compressionPct=Math.round(clamp(
+    baseWidth>0?(1-recentWidth/baseWidth)*100:0,0,100));
+  const contracting=baseWidth>atr*.05&&recentWidth<=baseWidth*.76;
+  const recent=tight.slice(-3);
+  const risingLows=recent.every((b,i)=>i===0||b.low>recent[i-1].low+atr*.012);
+  const fallingHighs=recent.every((b,i)=>i===0||b.high<recent[i-1].high-atr*.012);
+  const upperHalf=last.close>=
+    Math.min(...tight.map(b=>b.low))+
+    (Math.max(...tight.map(b=>b.high))-Math.min(...tight.map(b=>b.low)))*.57;
+  const lowerHalf=last.close<=
+    Math.min(...tight.map(b=>b.low))+
+    (Math.max(...tight.map(b=>b.high))-Math.min(...tight.map(b=>b.low)))*.43;
+  const earlyPattern:M15HuntObservation['earlyPattern']=
+    contracting&&risingLows&&!fallingHighs&&upperHalf?'RISING_BIDS':
+    contracting&&fallingHighs&&!risingLows&&lowerHalf?'FALLING_OFFERS':'NONE';
   let buy=0,sell=0;
   const reasons:string[]=[],warnings:string[]=[];
   const vote=(side:HuntSide,points:number,reason:string)=>{
@@ -87,6 +110,10 @@ export function observeM15HuntPressure(
     vote('SELL',1,'ذيل رفض علوي');
   if(lower>=.46&&lower>upper*1.7&&last.close>=last.open)
     vote('BUY',1,'ذيل رفض سفلي');
+  if(earlyPattern==='RISING_BIDS')
+    vote('BUY',3,'انضغاط النطاق + قيعان متصاعدة قبل الكسر');
+  if(earlyPattern==='FALLING_OFFERS')
+    vote('SELL',3,'انضغاط النطاق + قمم هابطة قبل الكسر');
   if(guideBias!=='WAIT')
     vote(guideBias,1,'ميل نطاق M15');
   // A neutral chart still has a watch preference; never turn a faint pattern
@@ -107,7 +134,8 @@ export function observeM15HuntPressure(
   if(quality==='WEAK')warnings.push('ميل ضعيف؛ لا تأكيد دخول');
   if(!reasons.length)warnings.push('لا توجد دلائل اتجاه كافية؛ مجرد مراقبة');
   return {buyPoints:buy,sellPoints:sell,preferred,quality,
-    reasons,warnings,conflicting,matchedFactors,notTradeSignal:true};
+    reasons,warnings,conflicting,matchedFactors,earlyPattern,
+    compressionPct,notTradeSignal:true};
 }
 
 
