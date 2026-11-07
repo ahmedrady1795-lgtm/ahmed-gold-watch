@@ -93,6 +93,16 @@ export default function SniperM1CandleHunter(p:Props){
       <span>{liveEligible&&every?
         'فرضية قبل بداية الشمعة · '+visual.reason+
         ' · الضغط '+every.pressure+'/100 (ليس احتمال نجاح)':display.reason}</span>
+      {liveEligible&&every?.dataQuality==='FLAT_CLUSTER'&&
+        <small className="sniper-m1-data-warning" role="status">
+          جودة السعر تحتاج مراجعة: {every.flatRecent} شموع مغلقة محايدة من آخر 6.
+          التوقع ما زال بحثيًا، لكن لا يُعتمد اتجاه ولا تنفيذ من مصدر غير واضح.
+        </small>}
+      {liveEligible&&every?.pattern==='PRE_BREAK'&&
+        <small className="sniper-m1-prebreak-evidence">
+          EARLY SQUEEZE · انضغاط M1 {every.preBreakCompression}/100 ·
+          قيعان صاعدة أو قمم هابطة قبل كسر النطاق · يحتاج تحققًا أماميًا.
+        </small>}
       {visual.liveConflict&&<small className="sniper-m1-live-conflict">
         تنبيه: حركة التيكات الحالية عكس توقع بداية الدقيقة؛ لا نعيد كتابة التوقع أو نحسب نتيجة قبل الإغلاق.
       </small>}
