@@ -6,7 +6,7 @@ export type FlowSide='BUY'|'SELL'|'WAIT';
 export type FlowProfileDecision={
  ready:boolean;side:FlowSide;quality:'EXECUTED_SAMPLE'|'INDICATIVE_BROKER'|'UNAVAILABLE';
  profileBasis:'EXECUTED_TRADES'|'QUOTE_UPDATES'|'NONE';
- asOf:number|null;poc:number|null;vah:number|null;val:number|null;
+ asOf:number|null;observedAt:number|null;poc:number|null;vah:number|null;val:number|null;
  flowPct:number|null;depthPct:number|null;strength:number;
  profileReady:boolean;orderFlowReady:boolean;confirmed:boolean;
  source:string;reason:string;actionable:false
@@ -15,7 +15,7 @@ type GoldInput={mode?:string;source?:string;brokerSymbol?:string|null;
   brokerDepth?:Mt5GoldDomReading|null;quoteProfile?:Mt5QuoteProfile|null};
 const blank=(reason:string):FlowProfileDecision=>({
  ready:false,side:'WAIT',quality:'UNAVAILABLE',profileBasis:'NONE',
- asOf:null,poc:null,vah:null,val:null,flowPct:null,depthPct:null,
+ asOf:null,observedAt:null,poc:null,vah:null,val:null,flowPct:null,depthPct:null,
  strength:0,profileReady:false,orderFlowReady:false,confirmed:false,
  source:'NONE',reason,actionable:false
 });
@@ -30,7 +30,7 @@ const recent=(at:unknown,now:number,maxMs:number)=>
  * input is stale/invalid the result is WAIT and never trade-authorizing.
  */
 export function assessFlowProfile(input:{
- asset:'GOLD'|'BTC';price:number|null;now:number;
+ asset:'GOLD'|'BTC';price:number|null;now:number;observedAt?:number|null;
  sourceMatches:boolean;btc?:BtcOrderflow|null;gold?:GoldInput|null;
  bookSide?:FlowSide
 }):FlowProfileDecision{
@@ -55,7 +55,8 @@ export function assessFlowProfile(input:{
      input.bookSide!==deltaSide&&deltaSide!=='WAIT');
    const side:FlowSide=!bookConflict&&deltaSide===location?deltaSide:'WAIT';
    return {ready:true,side,quality:'EXECUTED_SAMPLE',
-     profileBasis:'EXECUTED_TRADES',asOf:f.asOf,poc:p.poc,vah:p.vah,val:p.val,
+     profileBasis:'EXECUTED_TRADES',asOf:f.asOf,
+     observedAt:input.observedAt??null,poc:p.poc,vah:p.vah,val:p.val,
      flowPct:delta,depthPct:null,
      strength:side==='WAIT'?0:Math.min(90,Math.round(40+Math.abs(delta)*.55+
        Math.min(15,f.coverage.trades/40))),
@@ -80,6 +81,7 @@ export function assessFlowProfile(input:{
  const side:FlowSide=quoteSide===depthSide&&quoteSide===location?quoteSide:'WAIT';
  return {ready:true,side,quality:'INDICATIVE_BROKER',
    profileBasis:'QUOTE_UPDATES',asOf:Math.min(p.asOf!,d.asOf!),
+   observedAt:input.observedAt??null,
    poc:p.poc,vah:p.vah,val:p.val,flowPct:pressure,depthPct:depth,
    strength:side==='WAIT'?0:Math.min(62,Math.round(25+
      Math.min(Math.abs(pressure),Math.abs(depth))*.45)),
@@ -96,5 +98,7 @@ export function assessFlowProfile(input:{
 export function flowAvailableBeforeM1(f:FlowProfileDecision|null|undefined,
  issuedAt:number):boolean{
  return Boolean(f?.ready&&f.side!=='WAIT'&&f.asOf!=null&&
-   Number.isFinite(issuedAt)&&f.asOf<=issuedAt&&issuedAt-f.asOf<=15000);
+   f.observedAt!=null&&Number.isFinite(f.observedAt)&&
+   Number.isFinite(issuedAt)&&f.asOf<=issuedAt&&issuedAt-f.asOf<=15000&&
+   f.observedAt<=issuedAt&&issuedAt-f.observedAt<=15000);
 }
