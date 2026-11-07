@@ -318,25 +318,26 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number,
     !applyRelative&&!applyRecovery&&!applyConflict&&
     early?.ready&&early.side!=='WAIT'&&early.side!==candidate&&
     (p.side==='WAIT'||p.pressureScore<35));
-  const technicalSide=alternative??(applyRegime?regimeNow!:
+  const side=alternative??(applyRegime?regimeNow!:
     applyRelative?relativeNow!:applyRecovery?recoveryNow!:
     applyConflict?followNow!:applyEarly?early!.side as 'BUY'|'SELL':candidate);
   // A newly selected historical conflict challenger is NOT automatically
   // qualified for broker execution. It remains weak until new forward proof.
-  const technicalWeak=flatCluster||lowActivity||applyRegime||applyEarly||applyRelative||applyRecovery||applyConflict?true:adaptive.improved?false:
+  const weak=flatCluster||lowActivity||applyRegime||applyEarly||applyRelative||applyRecovery||applyConflict?true:adaptive.improved?false:
     p.side==='WAIT'||(reversal!=null&&reversal!==momentum)||p.pressureScore<35;
   // Only evidence actually received before the next minute may influence the
   // first hypothesis; later flow cannot repaint a prior forecast.
   const causalFlow=flowAvailableBeforeM1(flow,last.time+60000)&&
     (flow?.side==='BUY'||flow?.side==='SELL')?flow:null;
-  const flowOpposes=Boolean(causalFlow&&causalFlow.side!==technicalSide);
-  const flowApplied=Boolean(causalFlow&&technicalWeak&&
+  const flowOpposes=Boolean(causalFlow&&causalFlow.side!==side);
+  const flowApplied=Boolean(causalFlow&&weak&&
     !flatCluster&&!lowActivity&&causalFlow.strength>=45);
-  const side:'BUY'|'SELL'=flowApplied?causalFlow!.side as 'BUY'|'SELL':technicalSide;
-  const weak=technicalWeak||flowOpposes||
+  const selectedSide:'BUY'|'SELL'=flowApplied?
+    causalFlow!.side as 'BUY'|'SELL':side;
+  const selectedWeak=weak||flowOpposes||
     Boolean(causalFlow?.quality==='INDICATIVE_BROKER');
-  return {issuedAt:last.time+60000,side,pressure:p.pressureScore,
-    weak,atr,anchorTime:last.time,
+  return {issuedAt:last.time+60000,side:selectedSide,pressure:p.pressureScore,
+    weak:selectedWeak,atr,anchorTime:last.time,
     flowEvidence:causalFlow?{
       side:causalFlow.side as 'BUY'|'SELL',quality:causalFlow.quality,
       strength:causalFlow.strength,applied:flowApplied,preIssued:true as const
