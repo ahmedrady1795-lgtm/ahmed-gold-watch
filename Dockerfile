@@ -18,6 +18,7 @@ RUN node tests/sniper-m15-focus-watch.cjs && node tests/sniper-market-structure.
 RUN node tests/sniper-live-opportunity.cjs && node tests/sniper-movement-proof.cjs
 RUN node tests/spot-radar.cjs && node tests/spot-accumulation.cjs && node tests/binance-cooldown.cjs
 RUN node tests/ai-transport-regression.cjs && node tests/neural-request-budget.cjs && node tests/sniper-health.cjs
+RUN node --experimental-strip-types tests/mt5-btc-demo-plan.mjs
 RUN node --experimental-strip-types tests/spot-forward-audit.mjs
 # Nonblocking upstream probes distinguish API outages from algorithm bugs.
 RUN node scripts/spot-market-probe.mjs
