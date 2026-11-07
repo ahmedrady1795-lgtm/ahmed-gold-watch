@@ -1,9 +1,11 @@
 const assert=require('node:assert/strict'),fs=require('node:fs');
 const ui=fs.readFileSync('components/SniperM1CandleTape.tsx','utf8');
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
+const hunter=fs.readFileSync('components/SniperM1CandleHunter.tsx','utf8');
 const backend=fs.readFileSync('app/api/sniper-health/route.ts','utf8');
 const paper=fs.readFileSync('lib/scalp-every-candle.ts','utf8');
 assert.match(panel,/<SniperM1CandleTape history=\{m\.candles\} now=\{now\} asset=\{asset\}/);
+assert.match(hunter,/<SniperM1CandleTape history=\{p\.history\} now=\{p\.now\} asset=\{p\.asset\}/);
 assert.match(ui,/fetch\('\/api\/sniper-health'/);
 assert.match(ui,/asset==='GOLD'\?\s*j\.paperM1\?\.gold:j\.paperM1\?\.bitcoin/);
 assert.match(ui,/مراقبة LIVE مُجمّدة/);
