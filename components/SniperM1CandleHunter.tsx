@@ -93,6 +93,22 @@ export default function SniperM1CandleHunter(p:Props){
       <span>{liveEligible&&every?
         'فرضية قبل بداية الشمعة · '+visual.reason+
         ' · الضغط '+every.pressure+'/100 (ليس احتمال نجاح)':display.reason}</span>
+      {liveEligible&&every&&<small className="sniper-m1-regime-display">
+        حالة الدقيقة: {every.marketRegime==='TREND'?'اتجاه':
+          every.marketRegime==='RANGE'?'تذبذب جانبي':
+          every.marketRegime==='SQUEEZE'?'انضغاط':
+          every.marketRegime==='LOW_ACTIVITY'?'نشاط منخفض':
+          every.marketRegime==='MIXED'?'حركة مختلطة':'بيانات غير كافية'}
+        {' · '}كفاءة الاتجاه {Math.round(every.regimeEfficiency*100)}%
+        {' · '}انضغاط {every.regimeCompression}/100
+        {' · '}اختيار النموذج: {every.regimeExpert?.applied?
+          'متكيف مع السوق (بحثي)':'قواعد M1 الأساسية'}
+      </small>}
+      {liveEligible&&every?.dataQuality==='LOW_ACTIVITY'&&
+        <small className="sniper-m1-data-warning" role="status">
+          حركة M1 ضعيفة للغاية؛ نحتفظ بالتوقع للمراجعة
+          لكن لا نعتبره فرصة سكالب مربحة لمجرد اتجاه شمعة صغيرة.
+        </small>}
       {liveEligible&&every?.dataQuality==='FLAT_CLUSTER'&&
         <small className="sniper-m1-data-warning" role="status">
           جودة السعر تحتاج مراجعة: {every.flatRecent} شموع مغلقة محايدة من آخر 6.
