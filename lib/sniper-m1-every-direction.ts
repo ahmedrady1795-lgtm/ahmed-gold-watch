@@ -1,5 +1,6 @@
 import {closedM1ChartBars,type M1Bar} from './sniper-mt5-m1';
 import {assessM1DirectionalPriority} from './sniper-m1-priority';
+import {assessM1Conflict,type M1ConflictResult} from './sniper-m1-conflict-arbiter';
 
 /** A causal BUY/SELL hypothesis for EVERY adjacent, freshly closed minute.
  * Unlike the certified entry engine, low-pressure minutes are NOT discarded:
@@ -10,6 +11,7 @@ export type EveryM1Direction={
   issuedAt:number;side:'BUY'|'SELL';pressure:number;weak:boolean;
   atr:number;anchorTime:number;pattern:'SWEEP_REJECTION'|'MOMENTUM';
   directionReason:string;
+  conflictOverride?:{applied:boolean;trainN:number;trainFollowHits:number;checkN:number;checkFollowHits:number};
   // A rolling, past-only comparison. Not an OOS broker/TP win rate.
   adaptive?:{
     model:'PRESSURE_SWEEP'|'BODY_FOLLOW'|'BODY_FADE'|'THREE_CLOSE'|'EXHAUSTION_FADE';
@@ -134,6 +136,26 @@ function chooseAdaptive(rows:readonly M1Bar[]){
     simpleCheckHits:reportedCheck.baselineHits,improved};
 }
 
+/** Two separated past-only windows. Never score the current, unclosed M1.
+ * Research arbitration applies only on a CURRENT pressure/body disagreement;
+ * it cannot borrow the already-validated alternating-candle adaptive head.
+ */
+function pressureBodyConflict(rows:readonly M1Bar[]){
+ if(rows.length<64||!isContiguous(rows.slice(-64)))return null;
+ const train:M1ConflictResult[]=[],check:M1ConflictResult[]=[];
+ const start=rows.length-42,split=rows.length-14;
+ for(let i=start;i<rows.length;i++){
+   const actual=rows[i];
+   if(actual.close===actual.open)continue;
+   const prefix=rows.slice(0,i);
+   const pressure=rawCandidate(prefix,'PRESSURE_SWEEP');
+   const follow=rawCandidate(prefix,'BODY_FOLLOW');
+   if(!pressure||!follow||pressure===follow)continue;
+   (i<split?train:check).push({pressure,follow,actual:body(actual)});
+ }
+ return assessM1Conflict(train,check);
+}
+
 export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Direction|null{
   const rows=closedM1ChartBars(raw,now,72),last=rows.at(-1);
   if(rows.length<21||!last||now-last.time-60000<0||
@@ -175,14 +197,28 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Directi
   const candidate=reversal||momentum;
   const adaptive=chooseAdaptive(rows);
   const alternative=adaptive.improved?rawCandidate(rows,adaptive.model):null;
-  const side=alternative??candidate;
-  const weak=adaptive.improved?false:
+  const pastConflict=adaptive.improved?null:pressureBodyConflict(rows);
+  const pressureNow=rawCandidate(rows,'PRESSURE_SWEEP');
+  const followNow=rawCandidate(rows,'BODY_FOLLOW');
+  const applyConflict=Boolean(pastConflict?.useFollow&&
+    pressureNow===candidate&&followNow&&followNow!==pressureNow);
+  const side=alternative??(applyConflict?followNow!:candidate);
+  // A newly selected historical conflict challenger is NOT automatically
+  // qualified for broker execution. It remains weak until new forward proof.
+  const weak=applyConflict?true:adaptive.improved?false:
     p.side==='WAIT'||(reversal!=null&&reversal!==momentum)||p.pressureScore<35;
   return {issuedAt:last.time+60000,side,pressure:p.pressureScore,
     weak,atr,anchorTime:last.time,
     pattern:reversal?'SWEEP_REJECTION':'MOMENTUM',
     adaptive,
-    directionReason:adaptive.improved?
+    conflictOverride:pastConflict?{
+      applied:applyConflict,trainN:pastConflict.trainN,
+      trainFollowHits:pastConflict.trainFollowHits,checkN:pastConflict.checkN,
+      checkFollowHits:pastConflict.checkFollowHits
+    }:undefined,
+    directionReason:applyConflict?
+      'تجربة ترجيح اتجاه الجسم بعد تفوق في عينتين سابقتين؛ تحتاج إثباتًا أماميًا جديدًا':
+      adaptive.improved?
       'اختيار متكيف بعد تحقق تاريخي متتابع؛ ليس ضمانًا لشمعة جديدة':
       reversal?'رفض كسر قمة/قاع بعد سحب سيولة في شمعة مغلقة':
       'ترجيح من إغلاق وزخم شموع ماضية فقط'};
