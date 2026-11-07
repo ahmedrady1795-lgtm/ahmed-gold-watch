@@ -1,5 +1,5 @@
 import {closedM1ChartBars,type M1Bar} from './sniper-mt5-m1';
-import {flowAvailableBeforeM1,type FlowProfileDecision} from './flow-profile-decision';
+import type {FlowProfileDecision} from './flow-profile-decision';
 import {assessM1DirectionalPriority} from './sniper-m1-priority';
 import {assessM1Conflict,type M1ConflictResult} from './sniper-m1-conflict-arbiter';
 import {selectM1RegimeRecovery,type M1RecoveryRow,type M1RecoveryModel} from './sniper-m1-regime-recovery';
@@ -246,6 +246,14 @@ function historicalRegimeExpert(rows:readonly M1Bar[],regime:M1MarketRegime){
  return selectRegimeM1Expert(regime,older,later);
 }
 
+// Kept local to the isolated, pure M1 predictor: research fixtures and
+// the paper engine load it without network/DOM/singleton dependencies.
+const preIssuedFlow=(flow:FlowProfileDecision|null|undefined,at:number)=>Boolean(
+  flow?.ready&&flow.side!=='WAIT'&&flow.asOf!=null&&
+  flow.observedAt!=null&&Number.isFinite(flow.observedAt)&&
+  Number.isFinite(at)&&flow.asOf<=at&&at-flow.asOf<=15000&&
+  flow.observedAt<=at&&at-flow.observedAt<=15000);
+
 export function everyM1Direction(raw:readonly M1Bar[],now:number,
  flow?:FlowProfileDecision|null):EveryM1Direction|null{
   const rows=closedM1ChartBars(raw,now,72),last=rows.at(-1);
@@ -327,7 +335,7 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number,
     p.side==='WAIT'||(reversal!=null&&reversal!==momentum)||p.pressureScore<35;
   // Only evidence actually received before the next minute may influence the
   // first hypothesis; later flow cannot repaint a prior forecast.
-  const causalFlow=flowAvailableBeforeM1(flow,last.time+60000)&&
+  const causalFlow=preIssuedFlow(flow,last.time+60000)&&
     (flow?.side==='BUY'||flow?.side==='SELL')?flow:null;
   const flowOpposes=Boolean(causalFlow&&causalFlow.side!==side);
   const flowApplied=Boolean(causalFlow&&weak&&
