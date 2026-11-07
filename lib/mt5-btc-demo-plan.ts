@@ -60,6 +60,8 @@ export function planBtcDemoLimit(s:BtcDemoSnapshot|null,now=Date.now()):BtcDemoD
   const a=atr(c1),m5a=atr(c5);
   if(!Number.isFinite(a)||!Number.isFinite(m5a)||
     a<spread*3||a<=0||m5a<=0)return wait('VOLATILITY_TOO_LOW');
+  if(Math.abs(c5.at(-1)!.close-last.close)>
+     Math.max(4*m5a,mid*.006))return wait('M5_BROKER_CONTEXT_MISMATCH');
   if(last.high-last.low>2.7*a)return wait('SPIKE_CANDLE');
   if(Math.abs(mid-last.close)>0.65*a)return wait('PRICE_AWAY_FROM_CLOSED_M1');
   const trend1=ema(c1,8)-ema(c1,21);
