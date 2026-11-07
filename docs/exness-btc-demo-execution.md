@@ -59,16 +59,24 @@ execution signals.
    there are no pending orders. A pending order expires after <=15 seconds
    even if the EA goes offline. Already-filled positions retain broker SL/TP;
    avoid forcibly terminating MT5 before checking them.
-6. The experiment caps volume so estimated SL loss is <=0.1% of demo equity,
-   max 3 filled trades/day, max 0.5% realized daily demo loss and one BTC
-   position/order at a time, with a 120s max-hold rule. Broker min lots,
-   incomplete history, stale quotes, excessive spread, missing stop rules,
-   or unsupported expiration stop execution.
+6. Fast demo profile (v1.01): risk budget <=0.05% of demo equity
+   at the stop per fill, <=4 broker-filled entries in a rolling 60-second
+   window, max 360/day (failsafe, NOT a target), and max 0.5% daily loss.
+   A single BTC position or pending order may exist at a time, with a 30s
+   max-hold exit; separate setups may occur within the same M1 bar ONLY if
+   three different, recent Exness broker tick observations show a real new
+   pullback reversal. Broker minimum lot, stale quotes, spread, stop-level,
+   missing candle history, and unsupported expiry all veto an order. No fixed
+   120-second artificial cooldown: minimum gap between submitted limit
+   attempts is 10 seconds. This is capacity, not a guaranteed trade rate.
 
 ## Important limitations
 
 - This is an **unverified trading hypothesis**: trend alignment, closed M1
-  confirmation, low spread, and passive retest order. No proved win rate.
+  confirmation, new Exness tick reversal, low spread, and passive retest
+  order. No proved win rate. At high frequency, spread, commissions and
+  slippage can dominate; a 0.05% estimated stop loss is NOT a guaranteed
+  maximum realized loss.
 - Exness BTCUSDm is a CFD and is not identical to BTC spot; commission,
   slippage, liquidity, financing costs and broker fill rules can vary.
 - There is no reliable full executed order flow/true consolidated DOM from
