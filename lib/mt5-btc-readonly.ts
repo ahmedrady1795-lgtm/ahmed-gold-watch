@@ -3,9 +3,11 @@ import type {Candle} from './engine';
 // Separate read-only BTC/Exness CFD feed: never reuse XAU/USD market state,
 // BTC-USD exchange fills, or the broker execution signal endpoint.
 type ClosedSeries={c1:Candle[];c5:Candle[];c15:Candle[];c60:Candle[]};
+type BrokerTick={time:number;bid:number;ask:number};
 type BtcBrokerState={
   symbol:string;bid:number;ask:number;tickTimeMs:number;receivedAt:number;
   mode:'dry-run';candles:ClosedSeries|null;candlesReceivedAt:number|null;
+  ticks:BrokerTick[];
 };
 let latest:BtcBrokerState|null=null;
 const PERIODS={c1:60000,c5:300000,c15:900000,c60:3600000} as const;
@@ -64,8 +66,15 @@ export function setMt5BtcStatus(input:unknown,now=Date.now()){
     // Do not treat partial or future bars as broker-verified context.
     if(completeCandles(parsed,now)){candles=parsed;candlesReceivedAt=now;}
   }
+  const ticks=latest?.symbol===symbol?latest.ticks.filter(x=>
+    now-x.time>=0&&now-x.time<=35000):[];
+  // Each timestamp represents one actual broker quote observation. Repeated
+  // WebRequests with an unchanged quote must NOT be new scalp signals.
+  if(!ticks.length||tickTimeMs>ticks[ticks.length-1].time){
+    if(now-tickTimeMs<=8000)ticks.push({time:tickTimeMs,bid,ask});
+  }
   latest={symbol,bid,ask,tickTimeMs,receivedAt:now,mode:'dry-run',
-    candles,candlesReceivedAt};
+    candles,candlesReceivedAt,ticks:ticks.slice(-12)};
   return getMt5BtcStatus(now);
 }
 export function getMt5BtcStatus(now=Date.now()){
@@ -101,6 +110,6 @@ export function getMt5BtcVerifiedSnapshot(now=Date.now()){
      s.symbol!=='BTCUSDm'||s.mode!=='dry-run')return null;
   return {
     symbol:s.symbol,bid:s.bid,ask:s.ask,tickTimeMs:s.tickTimeMs,
-    observedAt:s.receivedAt,candles:s.candles
+    observedAt:s.receivedAt,candles:s.candles,ticks:[...s.ticks]
   };
 }
