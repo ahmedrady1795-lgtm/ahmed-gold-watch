@@ -4,6 +4,8 @@ import {assessM1Conflict,type M1ConflictResult} from './sniper-m1-conflict-arbit
 import {selectM1RegimeRecovery,type M1RecoveryRow,type M1RecoveryModel} from './sniper-m1-regime-recovery';
 import {selectM1RelativeEdge,type M1EdgeRow,type M1EdgeModel} from './sniper-m1-relative-edge';
 import {detectM1PreBreak} from './sniper-m1-prebreak';
+import {classifyM1MarketRegime,type M1MarketRegime} from './sniper-m1-market-regime';
+import {selectRegimeM1Expert,type RegimeExpertRow,type RegimeExpert} from './sniper-m1-regime-selector';
 
 /** A causal BUY/SELL hypothesis for EVERY adjacent, freshly closed minute.
  * Unlike the certified entry engine, low-pressure minutes are NOT discarded:
@@ -13,7 +15,11 @@ import {detectM1PreBreak} from './sniper-m1-prebreak';
 export type EveryM1Direction={
   issuedAt:number;side:'BUY'|'SELL';pressure:number;weak:boolean;
   atr:number;anchorTime:number;pattern:'SWEEP_REJECTION'|'MOMENTUM'|'PRE_BREAK';
-  dataQuality:'NORMAL'|'FLAT_CLUSTER';flatRecent:number;preBreakCompression:number;
+  dataQuality:'NORMAL'|'FLAT_CLUSTER'|'LOW_ACTIVITY';flatRecent:number;preBreakCompression:number;
+  marketRegime:M1MarketRegime;regimeEfficiency:number;regimeCompression:number;
+  regimeExpert?:{applied:boolean;model:RegimeExpert|null;trainN:number;checkN:number;
+    trainHits:number;checkHits:number;trainPressureHits:number;
+    checkPressureHits:number;reason:string};
   directionReason:string;
   conflictOverride?:{applied:boolean;trainN:number;trainFollowHits:number;checkN:number;checkFollowHits:number};
   recentRecovery?:{applied:boolean;model:M1RecoveryModel|null;trainN:number;checkN:number;pressureTrain:number;pressureCheck:number;challengerTrain:number;challengerCheck:number};
@@ -210,6 +216,33 @@ function recentRelativeEdge(rows:readonly M1Bar[]){
   return selectM1RelativeEdge(older,later);
 }
 
+/** Same-regime research selection is split into 15 EARLIER and 15 LATER
+ * past outcomes, strictly before the candle currently being predicted.
+ * No partial candle, future bid/ask or hypothetical limit outcome is used.
+ */
+function historicalRegimeExpert(rows:readonly M1Bar[],regime:M1MarketRegime){
+ if(rows.length<64||!isContiguous(rows.slice(-64)))return null;
+ const older:RegimeExpertRow[]=[],later:RegimeExpertRow[]=[];
+ for(let i=rows.length-30;i<rows.length;i++){
+   const prefix=rows.slice(0,i),actual=rows[i];
+   if(actual.close===actual.open)continue;
+   const group=classifyM1MarketRegime(prefix,prefix.at(-1)!.time+60000);
+   if(!group.ready)continue;
+   const pressure=rawCandidate(prefix,'PRESSURE_SWEEP');
+   const bodyFollow=rawCandidate(prefix,'BODY_FOLLOW');
+   const bodyFade=rawCandidate(prefix,'BODY_FADE');
+   const threeClose=rawCandidate(prefix,'THREE_CLOSE');
+   const exhaustionFade=rawCandidate(prefix,'EXHAUSTION_FADE');
+   if(!pressure||!bodyFollow||!bodyFade||!threeClose||!exhaustionFade)
+     continue;
+   (i<rows.length-15?older:later).push({
+     regime:group.regime,observed:body(actual),pressure,bodyFollow,
+     bodyFade,threeClose,exhaustionFade
+   });
+ }
+ return selectRegimeM1Expert(regime,older,later);
+}
+
 export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Direction|null{
   const rows=closedM1ChartBars(raw,now,72),last=rows.at(-1);
   if(rows.length<21||!last||now-last.time-60000<0||
@@ -251,17 +284,24 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Directi
   const early=rows.length>=32?detectM1PreBreak(rows,now):null;
   const flatRecent=rows.slice(-6).filter(b=>b.open===b.close).length;
   const flatCluster=flatRecent>=4;
+  const marketRegime=classifyM1MarketRegime(rows,now);
+  const lowActivity=marketRegime.regime==='LOW_ACTIVITY';
   const candidate=reversal||momentum;
   const adaptive=chooseAdaptive(rows);
   const alternative=adaptive.improved?rawCandidate(rows,adaptive.model):null;
+  const regimeExpert=adaptive.improved||reversal!=null||!marketRegime.ready?
+    null:historicalRegimeExpert(rows,marketRegime.regime);
   const pastConflict=adaptive.improved?null:pressureBodyConflict(rows);
   const recovery=adaptive.improved||reversal!=null?null:recoverRecentM1(rows);
   const relative=adaptive.improved||reversal!=null?null:recentRelativeEdge(rows);
   const pressureNow=rawCandidate(rows,'PRESSURE_SWEEP');
+  const regimeNow=regimeExpert?.model?rawCandidate(rows,regimeExpert.model):null;
+  const applyRegime=Boolean(!flatCluster&&!lowActivity&&regimeNow&&
+    pressureNow===candidate&&regimeNow!==candidate);
   const followNow=rawCandidate(rows,'BODY_FOLLOW');
   const recoveryNow=recovery?.model?rawCandidate(rows,recovery.model):null;
   const relativeNow=relative?.model?rawCandidate(rows,relative.model):null;
-  const applyRelative=Boolean(relativeNow&&pressureNow===candidate&&
+  const applyRelative=Boolean(!applyRegime&&relativeNow&&pressureNow===candidate&&
     relativeNow!==candidate);
   const applyRecovery=Boolean(!applyRelative&&recoveryNow&&pressureNow===candidate&&
     recoveryNow!==candidate);
@@ -270,22 +310,26 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Directi
   // A new pre-break pattern can correct a weak momentum guess, but must not
   // override a verified adaptive model, an observed sweep reversal or a
   // challenger already selected using two historical windows.
-  const applyEarly=Boolean(!flatCluster&&!reversal&&!adaptive.improved&&
+  const applyEarly=Boolean(!flatCluster&&!lowActivity&&!applyRegime&&!reversal&&!adaptive.improved&&
     !applyRelative&&!applyRecovery&&!applyConflict&&
     early?.ready&&early.side!=='WAIT'&&early.side!==candidate&&
     (p.side==='WAIT'||p.pressureScore<35));
-  const side=alternative??(applyRelative?relativeNow!:
-    applyRecovery?recoveryNow!:applyConflict?followNow!:
-    applyEarly?early!.side as 'BUY'|'SELL':candidate);
+  const side=alternative??(applyRegime?regimeNow!:
+    applyRelative?relativeNow!:applyRecovery?recoveryNow!:
+    applyConflict?followNow!:applyEarly?early!.side as 'BUY'|'SELL':candidate);
   // A newly selected historical conflict challenger is NOT automatically
   // qualified for broker execution. It remains weak until new forward proof.
-  const weak=flatCluster||applyEarly||applyRelative||applyRecovery||applyConflict?true:adaptive.improved?false:
+  const weak=flatCluster||lowActivity||applyRegime||applyEarly||applyRelative||applyRecovery||applyConflict?true:adaptive.improved?false:
     p.side==='WAIT'||(reversal!=null&&reversal!==momentum)||p.pressureScore<35;
   return {issuedAt:last.time+60000,side,pressure:p.pressureScore,
     weak,atr,anchorTime:last.time,
     pattern:reversal?'SWEEP_REJECTION':applyEarly?'PRE_BREAK':'MOMENTUM',
-    dataQuality:flatCluster?'FLAT_CLUSTER':'NORMAL',flatRecent,
+    dataQuality:flatCluster?'FLAT_CLUSTER':lowActivity?'LOW_ACTIVITY':'NORMAL',flatRecent,
     preBreakCompression:early?.compression??0,
+    marketRegime:marketRegime.regime,
+    regimeEfficiency:marketRegime.efficiency,
+    regimeCompression:marketRegime.compression,
+    regimeExpert:regimeExpert?{...regimeExpert,applied:applyRegime}:undefined,
     adaptive,
     conflictOverride:pastConflict?{
       applied:applyConflict,trainN:pastConflict.trainN,
@@ -296,6 +340,11 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Directi
     relativeEdge:relative?{...relative,applied:applyRelative}:undefined,
     directionReason:flatCluster?
       'تكرار شموع M1 محايدة؛ احتمال دقة تغذية ضعيفة، التوقع بحثي ولا يرفع الثقة':
+      lowActivity?
+      'حركة دقيقة ضعيفة أو شموع محايدة؛ لا ترخيص سكالب من اتجاه بحثي':
+      applyRegime?
+      'اختيار نموذج M1 مناسب لحالة السوق بعد تفوق في فترتين تاريخيتين منفصلتين؛ يحتاج إثباتًا جديدًا':
+      
       applyEarly?
       'انضغاط نطاق M1 وقيعان صاعدة/قمم هابطة قبل الكسر؛ تجربة بحثية ضعيفة الثقة':
       applyRelative?
