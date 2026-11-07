@@ -1,8 +1,8 @@
 const assert=require('node:assert/strict'),fs=require('node:fs');
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const overlay=fs.readFileSync('components/SniperM15HuntOverlay.tsx','utf8');
-assert.match(panel,/M15 · PATH/);
-assert.match(overlay,/M15 · PATH \/ WATCH/);
+assert.match(panel,/SniperM15HuntOverlay/);
+assert.match(overlay,/M15 · EARLY PATH/);
 assert.match(panel,/className="sniper-m15-conditional-route"/);
 assert.match(panel,/renderedBars\.map\(\(b,i\)=>\[/);
 assert.match(overlay,/\(\['BUY','SELL'\] as const\)\.map/);
