@@ -5,6 +5,7 @@ import SniperM15Summary from './SniperM15Summary';
 import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {detectLiquidityMagnets} from '../lib/sniper-liquidity-magnets';
 import {fuseLocalSniper} from '../lib/sniper-local-fusion';
+import {assessFlowProfile} from '../lib/flow-profile-decision';
 import {auditM15HuntDirection} from '../lib/sniper-m15-hunt-proof';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
@@ -78,6 +79,26 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
  const onRadarView=useCallback((v:RadarView|null)=>setLiveRadar(v),[]);
  const asset=assetView==='ALL'?chosen:assetView;
+ const [flowPacket,setFlowPacket]=useState<{asset:'GOLD'|'BTC';data:any}|null>(null);
+ useEffect(()=>{
+   let closed=false,busy=false;
+   const controller=new AbortController();
+   const read=async()=>{
+     if(closed||busy||document.visibilityState!=='visible')return;
+     busy=true;
+     try{
+       const r=await fetch(asset==='BTC'?'/api/orderflow':'/api/gold-tick',{
+         cache:'no-store',signal:AbortSignal.any([
+           controller.signal,AbortSignal.timeout(6000)])});
+       const data=await r.json();
+       if(!closed)setFlowPacket({asset,data:r.ok?data:null});
+     }catch{if(!closed)setFlowPacket(null);}
+     finally{busy=false;}
+   };
+   void read();
+   const timer=setInterval(()=>{void read();},6000);
+   return()=>{closed=true;controller.abort();clearInterval(timer);};
+ },[asset]);
  const [archiveState,setArchiveState]=useState<{
    asset:'GOLD'|'BTC';ledger:unknown;status:string}|null>(null);
  const lastArchivePoll=useRef<{asset:string;at:number}|null>(null);
@@ -156,16 +177,32 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  }),[asset,m.candles,x?.chartHigherFrames?.m5,now]);
  const liquidityMagnets=useMemo(()=>detectLiquidityMagnets(actual,now,64),
    [actual,Math.floor(now/900000)]);
+ const flowProfile=useMemo(()=>assessFlowProfile({
+   asset,now,price:m.price,
+   sourceMatches:asset==='BTC'?
+     /coinbase/i.test(String(x?.candleSource||'')):
+     /exness\/mt5/i.test(String(x?.candleSource||'')),
+   btc:asset==='BTC'&&flowPacket?.asset==='BTC'?flowPacket.data:null,
+   gold:asset==='GOLD'&&flowPacket?.asset==='GOLD'?flowPacket.data:null,
+   bookSide:asset==='BTC'&&liveRadar&&
+     (liveRadar.phase==='PREPARE'||liveRadar.phase==='CONFIRMED')?
+       liveRadar.side:'WAIT'
+ }),[asset,now,m.price,x?.candleSource,flowPacket,liveRadar]);
  const localFusion=useMemo(()=>fuseLocalSniper({
    preMove,hunt:huntPreview,m1:nextM1,liquidity:liquidityMagnets,
    marketOpen,fresh:Boolean(m.sniper.view.priceFresh&&
-     m.historyFresh&&historyFresh),providerTransition
+     m.historyFresh&&historyFresh),providerTransition,flowProfile
  }),[preMove,huntPreview,nextM1,liquidityMagnets,marketOpen,
-    m.sniper.view.priceFresh,m.historyFresh,historyFresh,providerTransition]);
+    m.sniper.view.priceFresh,m.historyFresh,historyFresh,providerTransition,flowProfile]);
  const observedSide=m15Bias.side;
  const side: 'BUY'|'SELL'|'WAIT' = m15ObservationSide(observedSide,m.bias);
+ // Flow/profile is primary when fresh and aligned with closed-candle votes.
+ // Missing flow leaves the historical analysis available as a WATCH; conflicting
+ // flow cannot issue a frozen bullish/bearish scenario against the tape.
+ const evidenceSide=flowProfile.ready&&flowProfile.side!=='WAIT'?
+   localFusion.side:side;
  const safeSide=providerTransition||!marketOpen||!historyFresh||
-   !m.sniper.view.priceFresh?'WAIT':side;
+   !m.sniper.view.priceFresh?'WAIT':evidenceSide;
  const outlook=useMemo(()=>buildDistantMovementOutlook({
    asset,side:safeSide,price:m.price,now,priceFresh:m.sniper.view.priceFresh&&
      m.observationFresh,historyFresh,marketOpen,providerTransition,
@@ -744,9 +781,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      history={m.candles} historicalSource={String(x?.candleSource||'')}
      quote={liveQuote} now={now} marketOpen={marketOpen}
      sourceReady={m.historyFresh&&m.sniper.view.priceFresh}
-     providerTransition={providerTransition}/>:<>
+     providerTransition={providerTransition} flow={flowProfile}/>:<>
    <SniperScenarioHero asset={asset} fusion={localFusion}
       hunt={huntPreview} preMove={preMove} liquidity={liquidityMagnets}
+      flow={flowProfile}
       price={currentSignalPrice??null} now={now}
       marketOpen={marketOpen} fresh={Boolean(m.sniper.view.priceFresh&&
         m.historyFresh&&historyFresh)} providerTransition={providerTransition}/>
