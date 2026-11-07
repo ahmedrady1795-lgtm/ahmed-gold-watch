@@ -3,6 +3,7 @@ import {assessM1DirectionalPriority} from './sniper-m1-priority';
 import {assessM1Conflict,type M1ConflictResult} from './sniper-m1-conflict-arbiter';
 import {selectM1RegimeRecovery,type M1RecoveryRow,type M1RecoveryModel} from './sniper-m1-regime-recovery';
 import {selectM1RelativeEdge,type M1EdgeRow,type M1EdgeModel} from './sniper-m1-relative-edge';
+import {detectM1PreBreak} from './sniper-m1-prebreak';
 
 /** A causal BUY/SELL hypothesis for EVERY adjacent, freshly closed minute.
  * Unlike the certified entry engine, low-pressure minutes are NOT discarded:
@@ -11,7 +12,8 @@ import {selectM1RelativeEdge,type M1EdgeRow,type M1EdgeModel} from './sniper-m1-
  */
 export type EveryM1Direction={
   issuedAt:number;side:'BUY'|'SELL';pressure:number;weak:boolean;
-  atr:number;anchorTime:number;pattern:'SWEEP_REJECTION'|'MOMENTUM';
+  atr:number;anchorTime:number;pattern:'SWEEP_REJECTION'|'MOMENTUM'|'PRE_BREAK';
+  dataQuality:'NORMAL'|'FLAT_CLUSTER';flatRecent:number;preBreakCompression:number;
   directionReason:string;
   conflictOverride?:{applied:boolean;trainN:number;trainFollowHits:number;checkN:number;checkFollowHits:number};
   recentRecovery?:{applied:boolean;model:M1RecoveryModel|null;trainN:number;checkN:number;pressureTrain:number;pressureCheck:number;challengerTrain:number;challengerCheck:number};
@@ -246,6 +248,9 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Directi
     signed>0?'BUY':signed<0?'SELL':
       last.close>last.open?'BUY':last.close<last.open?'SELL':
         last.close>=prev.close?'BUY':'SELL';
+  const early=rows.length>=32?detectM1PreBreak(rows,now):null;
+  const flatRecent=rows.slice(-6).filter(b=>b.open===b.close).length;
+  const flatCluster=flatRecent>=4;
   const candidate=reversal||momentum;
   const adaptive=chooseAdaptive(rows);
   const alternative=adaptive.improved?rawCandidate(rows,adaptive.model):null;
@@ -262,15 +267,25 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Directi
     recoveryNow!==candidate);
   const applyConflict=Boolean(!applyRelative&&!applyRecovery&&pastConflict?.useFollow&&
     pressureNow===candidate&&followNow&&followNow!==pressureNow);
+  // A new pre-break pattern can correct a weak momentum guess, but must not
+  // override a verified adaptive model, an observed sweep reversal or a
+  // challenger already selected using two historical windows.
+  const applyEarly=Boolean(!flatCluster&&!reversal&&!adaptive.improved&&
+    !applyRelative&&!applyRecovery&&!applyConflict&&
+    early?.ready&&early.side!=='WAIT'&&early.side!==candidate&&
+    (p.side==='WAIT'||p.pressureScore<35));
   const side=alternative??(applyRelative?relativeNow!:
-    applyRecovery?recoveryNow!:applyConflict?followNow!:candidate);
+    applyRecovery?recoveryNow!:applyConflict?followNow!:
+    applyEarly?early!.side as 'BUY'|'SELL':candidate);
   // A newly selected historical conflict challenger is NOT automatically
   // qualified for broker execution. It remains weak until new forward proof.
-  const weak=applyRelative||applyRecovery||applyConflict?true:adaptive.improved?false:
+  const weak=flatCluster||applyEarly||applyRelative||applyRecovery||applyConflict?true:adaptive.improved?false:
     p.side==='WAIT'||(reversal!=null&&reversal!==momentum)||p.pressureScore<35;
   return {issuedAt:last.time+60000,side,pressure:p.pressureScore,
     weak,atr,anchorTime:last.time,
-    pattern:reversal?'SWEEP_REJECTION':'MOMENTUM',
+    pattern:reversal?'SWEEP_REJECTION':applyEarly?'PRE_BREAK':'MOMENTUM',
+    dataQuality:flatCluster?'FLAT_CLUSTER':'NORMAL',flatRecent,
+    preBreakCompression:early?.compression??0,
     adaptive,
     conflictOverride:pastConflict?{
       applied:applyConflict,trainN:pastConflict.trainN,
@@ -279,7 +294,11 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Directi
     }:undefined,
     recentRecovery:recovery?{...recovery,applied:applyRecovery}:undefined,
     relativeEdge:relative?{...relative,applied:applyRelative}:undefined,
-    directionReason:applyRelative?
+    directionReason:flatCluster?
+      'تكرار شموع M1 محايدة؛ احتمال دقة تغذية ضعيفة، التوقع بحثي ولا يرفع الثقة':
+      applyEarly?
+      'انضغاط نطاق M1 وقيعان صاعدة/قمم هابطة قبل الكسر؛ تجربة بحثية ضعيفة الثقة':
+      applyRelative?
       'نموذج اتجاه بديل تفوق نسبيًا في فترتين تاريخيتين منفصلتين؛ يخضع للاختبار الأمامي':
       applyRecovery?
       'مرشح إنقاذ بحثي بعد 8 تدريب + 8 مراجعة سابقة؛ ليس نتيجة LIVE مثبتة':
