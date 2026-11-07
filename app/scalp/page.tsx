@@ -88,6 +88,34 @@ function GoldQuickResults({gold}:{gold:any}){
   </section>;
 }
 
+function ScalpCostContext({data,asset}:{data:any;asset:'GOLD'|'BTC'}){
+  if(!data)return null;
+  const perUnit=Number(data.costPerUnit),range=Number(data.medianObservedM1Range);
+  const ratio=Number(data.costToRange);
+  return <section className="panel" aria-label="ملاءمة التكلفة الفعلية للسكالب"
+    style={{padding:13,marginBottom:12,borderColor:data.feasibility==='COST_DOMINATED'?'#b97448':undefined}}>
+    <strong>اقتصاديات التنفيذ · {asset==='BTC'?'BTC':'الذهب'}</strong>
+    <p style={{fontSize:12,opacity:.83,margin:'7px 0'}}>
+      {data.quoteVenue==='PUBLIC_SPOT'?'السعر من بورصة Spot وليس حساب Exness':
+       data.quoteVenue==='BROKER_FEED'?'سعر وسيط؛ العمولات والانزلاق ما زالت تقديرية':
+       'مصدر التنفيذ غير متحقق منه'}
+      {' · '}التكلفة المقدرة لكل وحدة{' '}
+      <b dir="ltr">{Number.isFinite(perUnit)&&perUnit>0?perUnit.toFixed(2):'—'}</b>
+      {' · '}متوسط مدى الدقيقة الوسيط{' '}
+      <b dir="ltr">{Number.isFinite(range)&&range>0?range.toFixed(2):'—'}</b>
+      {Number.isFinite(ratio)&&ratio>0?
+        ' · تكلفة/مدى '+ratio.toFixed(2)+'×':''}
+    </p>
+    <small style={{opacity:.75}}>
+      {data.feasibility==='COST_DOMINATED'?
+        'تكلفة الصفقة المقدّرة أكبر من مدى دقيقة تاريخية كاملة؛ لا هدف سكالب صافي موثق.':
+       data.feasibility==='MARGINAL'?
+        'تكلفة مرتفعة بالنسبة لحركة الدقيقة؛ يحتاج هدفًا قابلًا للتنفيذ بعد السبريد.':
+       'قراءة بحثية فقط. لا أرباح وسيط مؤكدة ولا افتراض تطابق أسعار Coinbase مع Exness.'}
+    </small>
+  </section>;
+}
+
 function GoldEveryCandle({data,asset='GOLD'}:{data:any;asset?:'GOLD'|'BTC'}){
   const latest=data?.latest;
   const stateLabel=(v:string)=>({
@@ -375,6 +403,8 @@ export default function ScalpWorkspace(){
     </div>
     {error&&<div className="fatal"><ShieldAlert size={16}/><div><strong>الاتصال غير مستقر</strong>
       <span>{error} · لا تعتمد على الأسعار المعروضة قبل عودة البيانات الحديثة.</span></div></div>}
+    {asset!=='BTC'&&<ScalpCostContext data={desk?.gold?.executionEconomics} asset="GOLD"/>}
+    {asset!=='GOLD'&&<ScalpCostContext data={desk?.bitcoin?.executionEconomics} asset="BTC"/>}
     {asset!=='BTC'&&<GoldEveryCandle data={desk?.gold?.everyCandle} asset="GOLD"/>}
     {asset!=='GOLD'&&<GoldEveryCandle data={desk?.bitcoin?.everyCandle} asset="BTC"/>}
     {asset!=='BTC'&&<GoldLeadAudit audit={desk?.gold?.leadAudit}/>}
