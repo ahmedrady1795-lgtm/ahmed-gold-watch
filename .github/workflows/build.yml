@@ -97,6 +97,7 @@ jobs:
       - run: node tests/gold-radar-inline.cjs
       - run: node tests/sniper-m1-candle-hunter.cjs
       - run: node tests/m1-adaptive-causal.cjs
+      - run: node tests/m1-relative-edge.cjs
       - run: node tests/m1-conflict-arbiter.cjs
       - run: node tests/m1-regime-recovery.cjs
       - run: node tests/sniper-m1-intrabar-pulse.cjs
