@@ -17,6 +17,11 @@ const price=c1.at(-1).close;
 const c5=bars(minute*5,240,5,price-239*5,20);
 const fresh={symbol:'BTCUSDm',bid:price+0.5,ask:price+3,
   tickTimeMs:now-200,observedAt:now-300,
+  ticks:[
+    {time:now-10200,bid:price+0.2,ask:price+2.7},
+    {time:now-5200,bid:price-1.0,ask:price+1.5},
+    {time:now-200,bid:price+0.5,ask:price+3}
+  ],
   candles:{c1,c5,c15:bars(minute*15),c60:bars(minute*60)}};
 const buy=planBtcDemoLimit(fresh,now);
 assert.equal(buy.ready,true,JSON.stringify(buy));
@@ -26,6 +31,8 @@ if(buy.ready){
   assert.ok(buy.entry<fresh.bid,'passive BUY limit, never market price');
   assert.ok(buy.stop<buy.entry&&buy.target>buy.entry);
   assert.ok(buy.expiresAt-now<=15000);
+  assert.equal(buy.signalTickTimeMs,now-200);
+  assert.equal(formatBtcDemoWire(buy).trim().split('|').length,12);
   assert.ok(formatBtcDemoWire(buy).startsWith('QBTC1|BUY_LIMIT|BTCUSDm|'));
 }
 const shortM1=c1.map(x=>({...x,open:150000-x.open,
@@ -34,6 +41,11 @@ const shortM5=c5.map(x=>({...x,open:150000-x.open,
   close:150000-x.close,high:150000-x.low,low:150000-x.high}));
 const short=shortM1.at(-1).close;
 const sell=planBtcDemoLimit({...fresh,bid:short-3,ask:short-.5,
+  ticks:[
+    {time:now-10200,bid:short-3.2,ask:short-.7},
+    {time:now-5200,bid:short-1,ask:short+1.5},
+    {time:now-200,bid:short-3,ask:short-.5}
+  ],
   candles:{...fresh.candles,c1:shortM1,c5:shortM5}},now);
 assert.equal(sell.ready,true,JSON.stringify(sell));
 if(sell.ready){
@@ -43,6 +55,11 @@ if(sell.ready){
 }
 for(const [label,bad] of [
   ['no data',null],
+  ['missing three tick reversal',{...fresh,ticks:[]}],
+  ['duplicate tick sample',{...fresh,ticks:fresh.ticks.map((x,i)=>
+    i===1?{...x,time:fresh.ticks[0].time}:x)}],
+  ['stale intraminute tick pattern',{...fresh,ticks:fresh.ticks.map((x,i)=>
+    i===0?{...x,time:now-30000}:x)}],
   ['wrong symbol',{...fresh,symbol:'XAUUSDm'}],
   ['stale tick',{...fresh,tickTimeMs:now-15000}],
   ['M5 venue mismatch',{...fresh,candles:{...fresh.candles,c5:bars(minute*5,240,5,75000,20)}}],
@@ -71,7 +88,12 @@ assert.match(ea,/EnableDemoOrders=false/);
 assert.match(ea,/I_ENABLE_DEMO_ONLY_V1/);
 assert.match(ea,/TRADE_RETCODE_PLACED/);
 assert.match(ea,/ORDER_TIME_SPECIFIED/);
-assert.match(ea,/MaxRiskPerTradePct>0\.10/);
+assert.match(ea,/MaxRiskPerTradePct>0\.05/);
+assert.match(ea,/MaxFilledTradesPerMinute>4/);
+assert.match(ea,/MaxFilledTradesPerDay>360/);
+assert.match(ea,/MaxPositionHoldSeconds>30/);
+assert.match(ea,/GlobalVariableSet\(signalKey,\(double\)signalTick\)/);
+assert.match(ea,/TimeGMT\(\)-GlobalVariableGet\(cooldownKey\)<10/);
 assert.match(ea,/MaxDailyLossPct>0\.50/);
 assert.match(ea,/HistoryLimits\(\)/);
 assert.match(ea,/GlobalVariableSet\(signalKey/);
@@ -82,4 +104,4 @@ assert.match(ea,/trade\.PositionClose\(ticket\)/);
 assert.match(ea,/trade\.OrderDelete\(ticket\)/);
 assert.doesNotMatch(ea,/trade\.Buy\(|trade\.Sell\(|\bOrderSend\(/,
   'never send an instant market order');
-console.log('PASS: demo LIMIT planning, gaps/stale/spread vetoes, and strict broker-local execution guards');
+console.log('PASS: intraminute BTC demo LIMIT tick-reversal/unique-quote signals, 4/min guard, 0.05% risk, 30s hold');

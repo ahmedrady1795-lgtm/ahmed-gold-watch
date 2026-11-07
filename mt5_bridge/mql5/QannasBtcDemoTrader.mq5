@@ -4,7 +4,7 @@
 //| No live accounts, no market entries, no DLLs, no unprotected risk.|
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.00"
+#property version "1.01"
 #property description "BTCUSDm pending LIMIT demo-only EA. OFF by default."
 #property description "Rejects real accounts even if enabled; broker SL/TP required."
 
@@ -16,10 +16,11 @@ input string BridgeToken="";
 input long   ExpectedDemoLogin=0;
 input bool   EnableDemoOrders=false;
 input string DemoConfirmation="";  // type EXACTLY: I_ENABLE_DEMO_ONLY_V1
-input double MaxRiskPerTradePct=0.10;
+input double MaxRiskPerTradePct=0.05;
 input double MaxDailyLossPct=0.50;
-input int    MaxFilledTradesPerDay=3;
-input int    MaxPositionHoldSeconds=120;
+input int    MaxFilledTradesPerDay=360;
+input int    MaxFilledTradesPerMinute=4;
+input int    MaxPositionHoldSeconds=30;
 input ulong  TradeMagic=56017952026;
 
 datetime lastRequestAt=0;
@@ -40,10 +41,11 @@ bool LocalAccountSafe()
       return false;
    if(StringFind(SiteURL,"https://")!=0 || StringLen(BridgeToken)<32)
       return false;
-   if(MaxRiskPerTradePct<=0||MaxRiskPerTradePct>0.10||
+   if(MaxRiskPerTradePct<=0||MaxRiskPerTradePct>0.05||
       MaxDailyLossPct<=0||MaxDailyLossPct>0.50||
-      MaxFilledTradesPerDay<1||MaxFilledTradesPerDay>3||
-      MaxPositionHoldSeconds<15||MaxPositionHoldSeconds>120)
+      MaxFilledTradesPerDay<1||MaxFilledTradesPerDay>360||
+      MaxFilledTradesPerMinute<1||MaxFilledTradesPerMinute>4||
+      MaxPositionHoldSeconds<15||MaxPositionHoldSeconds>30)
       return false;
    return true;
   }
@@ -151,6 +153,7 @@ bool HistoryLimits()
    const datetime start=now-(now%86400);
    if(!HistorySelect(start,now))return false; // fail closed
    int entries=0;
+   int entriesLastMinute=0;
    double pnl=0;
    for(int i=0;i<HistoryDealsTotal();i++)
      {
@@ -158,12 +161,18 @@ bool HistoryLimits()
       if(ticket==0||HistoryDealGetString(ticket,DEAL_SYMBOL)!=_Symbol||
          (ulong)HistoryDealGetInteger(ticket,DEAL_MAGIC)!=TradeMagic)continue;
       const ENUM_DEAL_ENTRY entry=(ENUM_DEAL_ENTRY)HistoryDealGetInteger(ticket,DEAL_ENTRY);
-      if(entry==DEAL_ENTRY_IN||entry==DEAL_ENTRY_INOUT)entries++;
+      if(entry==DEAL_ENTRY_IN||entry==DEAL_ENTRY_INOUT)
+        {
+         entries++;
+         if((datetime)HistoryDealGetInteger(ticket,DEAL_TIME)>=now-60)
+            entriesLastMinute++;
+        }
       pnl+=HistoryDealGetDouble(ticket,DEAL_PROFIT)+
            HistoryDealGetDouble(ticket,DEAL_COMMISSION)+
            HistoryDealGetDouble(ticket,DEAL_SWAP);
      }
-   if(entries>=MaxFilledTradesPerDay)return false;
+   if(entries>=MaxFilledTradesPerDay||
+      entriesLastMinute>=MaxFilledTradesPerMinute)return false;
    const double balance=AccountInfoDouble(ACCOUNT_BALANCE);
    if(balance<=0||pnl<=-balance*MaxDailyLossPct/100.0)return false;
    return true;
@@ -205,7 +214,7 @@ bool ValidateAndPlace(const string wire)
    string parts[];
    string text=wire;
    StringTrimLeft(text);StringTrimRight(text);
-   if(StringSplit(text,'|',parts)!=11||parts[0]!="QBTC1")return false;
+   if(StringSplit(text,'|',parts)!=12||parts[0]!="QBTC1")return false;
    if(parts[1]!="BUY_LIMIT"&&parts[1]!="SELL_LIMIT")return false;
    if(parts[2]!=_Symbol)return false;
    const long candleAt=StringToInteger(parts[3]);
@@ -216,9 +225,12 @@ bool ValidateAndPlace(const string wire)
    const double serverBid=StringToDouble(parts[8]);
    const double serverAsk=StringToDouble(parts[9]);
    const double serverAtr=StringToDouble(parts[10]);
+   const long signalTick=StringToInteger(parts[11]);
    const long nowMs=(long)TimeGMT()*1000;
    if(candleAt<=0||nowMs-candleAt<60000||
-      nowMs-candleAt>105000||expiresAt<=nowMs+3000||
+      nowMs-candleAt>119000||
+      signalTick<=0||nowMs-signalTick<0||nowMs-signalTick>8000||
+      expiresAt<=nowMs+3000||
       expiresAt>nowMs+20000||!LocalClosedBarMatches(candleAt))return false;
    if(!MathIsValidNumber(entry)||!MathIsValidNumber(sl)||
       !MathIsValidNumber(tp)||!MathIsValidNumber(serverBid)||
@@ -270,14 +282,15 @@ bool ValidateAndPlace(const string wire)
       return false;
    if(SymbolExposure()>0||!HistoryLimits())return false;
    const string signalKey=Key("LAST");
-   if(GlobalVariableCheck(signalKey)&&GlobalVariableGet(signalKey)>=candleAt)
+   // Deduplicate the broker tick setup, not the whole M1 candle.
+   if(GlobalVariableCheck(signalKey)&&GlobalVariableGet(signalKey)>=signalTick)
       return false;
    const string cooldownKey=Key("COOL");
    if(GlobalVariableCheck(cooldownKey)&&
-      TimeGMT()-GlobalVariableGet(cooldownKey)<120)return false;
+      TimeGMT()-GlobalVariableGet(cooldownKey)<10)return false;
    const ENUM_ORDER_TYPE type=buy?ORDER_TYPE_BUY_LIMIT:ORDER_TYPE_SELL_LIMIT;
    const double vol=ChooseLot(type,entry,sl);
-   if(vol<=0){Note("broker minimum lot exceeds 0.10% risk, or no free margin");return false;}
+   if(vol<=0){Note("broker minimum lot exceeds 0.05% risk, or no free margin");return false;}
    // Broker-expiring pending LIMIT: never convert rejected LIMIT to a DEAL.
    const datetime expiry=TimeTradeServer()+
       (int)MathMin(15,MathMax(4,(expiresAt-nowMs)/1000));
@@ -292,7 +305,7 @@ bool ValidateAndPlace(const string wire)
       Note(StringFormat("pending LIMIT rejected by broker, retcode=%u",retcode));
       return false;
      }
-   GlobalVariableSet(signalKey,(double)candleAt);
+   GlobalVariableSet(signalKey,(double)signalTick);
    GlobalVariableSet(cooldownKey,(double)TimeGMT());
    PrintFormat("Qannas BTC DEMO: broker pending %s lot=%.8f entry=%.*f SL=%.*f TP=%.*f",
                parts[1],vol,digits,entry,digits,sl,digits,tp);
@@ -318,7 +331,7 @@ void OnTimer()
    if(now-lastRequestAt<3)return;
    lastRequestAt=now;
    if(SymbolExposure()>0)return; // owned/unowned position OR pending blocks new entry
-   if(!HistoryLimits()){Note("daily trade/loss cap");return;}
+   if(!HistoryLimits()){Note("minute/day trade count or loss stop");return;}
    const string headers="Authorization: Bearer "+BridgeToken+"\r\n";
    char request[],response[];
    string responseHeaders="";

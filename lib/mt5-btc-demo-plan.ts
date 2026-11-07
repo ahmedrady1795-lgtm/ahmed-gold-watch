@@ -2,12 +2,13 @@ import type {Candle} from './engine';
 
 export type BtcDemoSnapshot={
   symbol:string;bid:number;ask:number;tickTimeMs:number;observedAt:number;
+  ticks:{time:number;bid:number;ask:number}[];
   candles:{c1:Candle[];c5:Candle[];c15:Candle[];c60:Candle[]};
 };
 export type BtcDemoDecision=
   |{ready:false;reason:string}
   |{ready:true;side:'BUY_LIMIT'|'SELL_LIMIT';symbol:'BTCUSDm';
-    candleAt:number;expiresAt:number;entry:number;stop:number;target:number;
+    candleAt:number;signalTickTimeMs:number;expiresAt:number;entry:number;stop:number;target:number;
     bid:number;ask:number;atr:number};
 
 function ema(rows:Candle[],length:number){
@@ -50,7 +51,7 @@ export function planBtcDemoLimit(s:BtcDemoSnapshot|null,now=Date.now()):BtcDemoD
     return wait('HISTORY_GAP');
   const last=c1.at(-1)!;
   const closedAt=last.time+60000;
-  if(closedAt>now||now-closedAt>45000)return wait('CLOSED_M1_TOO_OLD');
+  if(closedAt>now||now-closedAt>59000)return wait('CLOSED_M1_TOO_OLD');
   if(now-s.tickTimeMs<0||now-s.tickTimeMs>8000||
     now-s.observedAt<0||now-s.observedAt>15000)
     return wait('STALE_BROKER_QUOTE');
@@ -80,6 +81,22 @@ export function planBtcDemoLimit(s:BtcDemoSnapshot|null,now=Date.now()):BtcDemoD
   const bearish=last.close<last.open&&last.close<=c1.at(-2)!.close;
   if(side==='BUY_LIMIT'&&!bullish||side==='SELL_LIMIT'&&!bearish)
     return wait('LAST_CLOSED_BAR_UNCONFIRMED');
+  // Require a NEW, time-ordered 3-tick reversal from Exness itself.
+  // Without it there is no new intra-minute setup, even when M1 trend agrees.
+  const trail=s.ticks?.slice(-3)??[];
+  if(trail.length!==3||trail[2].time!==s.tickTimeMs||
+     trail[0].time>=trail[1].time||trail[1].time>=trail[2].time||
+     now-trail[0].time>25000||trail[0].time>now||
+     trail.some(x=>!Number.isFinite(x.bid)||!Number.isFinite(x.ask)||
+       x.bid<=0||x.ask<=x.bid))return wait('NO_FRESH_THREE_TICK_SETUP');
+  const v=trail.map(x=>(x.bid+x.ask)/2);
+  const minReversal=Math.max(spread*.35,a*.025);
+  const buyTurn=v[0]-v[1]>=minReversal&&v[2]-v[1]>=minReversal&&
+    v[2]-v[0]<.35*a;
+  const sellTurn=v[1]-v[0]>=minReversal&&v[1]-v[2]>=minReversal&&
+    v[0]-v[2]<.35*a;
+  if(side==='BUY_LIMIT'&&!buyTurn||side==='SELL_LIMIT'&&!sellTurn)
+    return wait('NO_NEW_TICK_REVERSAL');
   const lastSix=c1.slice(-6),padding=spread*.15;
   let entry:number,stop:number,target:number;
   if(side==='BUY_LIMIT'){
@@ -102,11 +119,11 @@ export function planBtcDemoLimit(s:BtcDemoSnapshot|null,now=Date.now()):BtcDemoD
   // A fixed, short expiry prevents a stale candidate from turning into a
   // passive order after the scenario has moved. Broker must enforce this too.
   return {ready:true,side,symbol:'BTCUSDm',candleAt:last.time,
-    expiresAt:Math.min(now+15000,closedAt+55000),
+    signalTickTimeMs:s.tickTimeMs,expiresAt:now+11000,
     entry,stop,target,bid:price(s.bid),ask:price(s.ask),atr:price(a)};
 }
 export function formatBtcDemoWire(d:BtcDemoDecision){
   if(!d.ready)return 'QBTC1|WAIT|'+d.reason+'\n';
   return ['QBTC1',d.side,d.symbol,d.candleAt,d.expiresAt,
-    d.entry,d.stop,d.target,d.bid,d.ask,d.atr].join('|')+'\n';
+    d.entry,d.stop,d.target,d.bid,d.ask,d.atr,d.signalTickTimeMs].join('|')+'\n';
 }
