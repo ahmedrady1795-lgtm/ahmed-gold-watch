@@ -56,7 +56,7 @@ for(const [label,bad] of [
 ] ){
   const result=planBtcDemoLimit(bad,now);
   assert.equal(result.ready,false,label);
-  assert.match(formatBtcDemoWire(result),/^QBTC1\|WAIT\|[A-Z_]+\n$/,label);
+  assert.match(formatBtcDemoWire(result),/^QBTC1\|WAIT\|[A-Z0-9_]+\n$/,label);
 }
 const api=fs.readFileSync('app/api/mt5/btc-demo-signal/route.ts','utf8');
 const ea=fs.readFileSync('mt5_bridge/mql5/QannasBtcDemoTrader.mq5','utf8');
