@@ -106,6 +106,7 @@ jobs:
       - run: node tests/scalp-m1-near-limit-shadow.cjs
       - run: node tests/scalp-m1-tick-evidence.cjs
       - run: node tests/scalp-every-m1.cjs
+      - run: node tests/scalp-btc-every-m1.cjs
       - run: node tests/scalp-m1-paired-proof.cjs
       - run: node tests/scalp-m1-near-passive-v6.cjs
       - run: node tests/sniper-m1-priority.cjs
