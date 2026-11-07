@@ -10,6 +10,7 @@ import requests
 from dotenv import load_dotenv
 import MetaTrader5 as mt5
 from limit_scalper import build_limit_plan
+from pending_guard import pending_cancel_reason
 
 load_dotenv()
 SITE_URL=os.getenv('SITE_URL','').rstrip('/')
@@ -497,6 +498,44 @@ def send(signal,s):
         return True,f'LIMIT PENDING placed ticket={result.order} at {entry}; not a filled trade',s
     return False,f'pending LIMIT rejected retcode={getattr(result,"retcode",None)}',s
 
+def reconcile_pending_orders(data,s):
+    """Cancel only this bridge's own still-pending LIMITs when approval is lost.
+
+    Never touch another EA's orders. Broker-side expiry is still a backup;
+    a canceled signal / kill switch should not wait for that expiry.
+    """
+    if not LIVE:return
+    account=mt5.account_info()
+    if account is None or int(getattr(account,'login',0) or 0)!=int(EXPECTED_LOGIN or 0):
+        raise RuntimeError('cannot reconcile pending limits: pinned broker account unavailable')
+    orders=mt5.orders_get(symbol=SYMBOL)
+    if orders is None:raise RuntimeError('cannot inspect broker pending orders')
+    owned=[order for order in orders
+           if int(getattr(order,'magic',0) or 0)==MAGIC
+           and int(getattr(order,'type',-1)) in (mt5.ORDER_TYPE_BUY_LIMIT,mt5.ORDER_TYPE_SELL_LIMIT)]
+    if not owned:return
+    info=symbol_ready()
+    tick=mt5.symbol_info_tick(SYMBOL) if info else None
+    tick_msc=int(getattr(tick,'time_msc',0) or 0) if tick else 0
+    age_ms=int(time.time()*1000)-tick_msc if tick_msc else None
+    spread_pts=broker_spread(info,tick) if info and tick else None
+    reason=pending_cancel_reason(
+        response=data,last_signal_id=s.get('last_signal',''),
+        local_kill=KILL_SWITCH.exists(),broker_symbol=SYMBOL,
+        tick_age_ms=age_ms,spread_points=spread_pts,
+        max_tick_age_ms=MAX_TICK_AGE_MS,max_spread_points=MAX_SPREAD_POINTS,
+        now_ms=int(time.time()*1000))
+    if reason is None:return
+    for order in owned:
+        # REMOVE only, never a market close or a replacement entry.
+        request={'action':mt5.TRADE_ACTION_REMOVE,'order':int(order.ticket),
+                 'symbol':SYMBOL,'magic':MAGIC}
+        result=mt5.order_send(request)
+        if result is None or int(getattr(result,'retcode',-1))!=int(getattr(mt5,'TRADE_RETCODE_DONE',10009)):
+            raise RuntimeError(f'pending LIMIT cancellation failed: ticket={order.ticket} reason={reason} retcode={getattr(result,"retcode",None)}')
+        log('PENDING LIMIT CANCELED',int(order.ticket),'reason',reason)
+
+
 def main():
     if not SITE_URL.startswith('https://') or not TOKEN:sys.exit('Set SITE_URL=https://... and MT5_BRIDGE_TOKEN in .env')
     if LIVE and (LIVE_ACK!=LIVE_ACK_REQUIRED or not EXPECTED_LOGIN.isdigit()):
@@ -515,6 +554,7 @@ def main():
             data=site_signal()
             failures=0
             if not data.get('ok'):raise RuntimeError(str(data))
+            reconcile_pending_orders(data,s)
             if not data.get('allowed') or not data.get('signal'):time.sleep(POLL);continue
             now_ms=int(time.time()*1000)
             issued_at=int(data.get('issuedAt',0) or 0);expires_at=int(data.get('expiresAt',0) or 0)
@@ -531,6 +571,10 @@ def main():
         except KeyboardInterrupt:break
         except Exception as e:
             failures+=1;log('watchdog error',repr(e),'failures',failures)
+            if LIVE:
+                try:reconcile_pending_orders(None,s)
+                except Exception as cancel_error:
+                    log('CRITICAL: cannot revoke pending LIMIT while disconnected',repr(cancel_error))
             close_market_book()
             try:mt5.shutdown()
             except:pass
