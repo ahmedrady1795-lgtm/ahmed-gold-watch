@@ -79,7 +79,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
  const onRadarView=useCallback((v:RadarView|null)=>setLiveRadar(v),[]);
  const asset=assetView==='ALL'?chosen:assetView;
- const [flowPacket,setFlowPacket]=useState<{asset:'GOLD'|'BTC';data:any}|null>(null);
+ const [flowPacket,setFlowPacket]=useState<{asset:'GOLD'|'BTC';data:any;observedAt:number}|null>(null);
  useEffect(()=>{
    let closed=false,busy=false;
    const controller=new AbortController();
@@ -91,7 +91,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          cache:'no-store',signal:AbortSignal.any([
            controller.signal,AbortSignal.timeout(6000)])});
        const data=await r.json();
-       if(!closed)setFlowPacket({asset,data:r.ok?data:null});
+       if(!closed)setFlowPacket({asset,data:r.ok?data:null,observedAt:Date.now()});
      }catch{if(!closed)setFlowPacket(null);}
      finally{busy=false;}
    };
@@ -179,15 +179,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    [actual,Math.floor(now/900000)]);
  const flowProfile=useMemo(()=>assessFlowProfile({
    asset,now,price:m.price,
+   observedAt:flowPacket?.observedAt??null,
    sourceMatches:asset==='BTC'?
-     /coinbase/i.test(String(x?.candleSource||'')):
-     /exness\/mt5/i.test(String(x?.candleSource||'')),
+     (/coinbase/i.test(String(x?.candleSource||''))&&
+       /coinbase/i.test(String(liveQuote?.source||''))):
+     (/exness\/mt5/i.test(String(x?.candleSource||''))&&
+       /exness\/mt5/i.test(String(liveQuote?.source||''))),
    btc:asset==='BTC'&&flowPacket?.asset==='BTC'?flowPacket.data:null,
    gold:asset==='GOLD'&&flowPacket?.asset==='GOLD'?flowPacket.data:null,
    bookSide:asset==='BTC'&&liveRadar&&
      (liveRadar.phase==='PREPARE'||liveRadar.phase==='CONFIRMED')?
        liveRadar.side:'WAIT'
- }),[asset,now,m.price,x?.candleSource,flowPacket,liveRadar]);
+ }),[asset,now,m.price,x?.candleSource,liveQuote?.source,flowPacket,liveRadar]);
  const localFusion=useMemo(()=>fuseLocalSniper({
    preMove,hunt:huntPreview,m1:nextM1,liquidity:liquidityMagnets,
    marketOpen,fresh:Boolean(m.sniper.view.priceFresh&&
