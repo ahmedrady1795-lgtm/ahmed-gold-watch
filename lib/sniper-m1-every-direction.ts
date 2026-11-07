@@ -1,4 +1,5 @@
 import {closedM1ChartBars,type M1Bar} from './sniper-mt5-m1';
+import {flowAvailableBeforeM1,type FlowProfileDecision} from './flow-profile-decision';
 import {assessM1DirectionalPriority} from './sniper-m1-priority';
 import {assessM1Conflict,type M1ConflictResult} from './sniper-m1-conflict-arbiter';
 import {selectM1RegimeRecovery,type M1RecoveryRow,type M1RecoveryModel} from './sniper-m1-regime-recovery';
@@ -21,6 +22,8 @@ export type EveryM1Direction={
     trainHits:number;checkHits:number;trainPressureHits:number;
     checkPressureHits:number;reason:string};
   directionReason:string;
+  flowEvidence?:{side:'BUY'|'SELL';quality:FlowProfileDecision['quality'];
+    strength:number;applied:boolean;preIssued:true};
   conflictOverride?:{applied:boolean;trainN:number;trainFollowHits:number;checkN:number;checkFollowHits:number};
   recentRecovery?:{applied:boolean;model:M1RecoveryModel|null;trainN:number;checkN:number;pressureTrain:number;pressureCheck:number;challengerTrain:number;challengerCheck:number};
   relativeEdge?:{applied:boolean;model:M1EdgeModel|null;trainN:number;checkN:number;trainHits:number;checkHits:number;trainPressureHits:number;checkPressureHits:number;reason:string};
@@ -243,7 +246,8 @@ function historicalRegimeExpert(rows:readonly M1Bar[],regime:M1MarketRegime){
  return selectRegimeM1Expert(regime,older,later);
 }
 
-export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Direction|null{
+export function everyM1Direction(raw:readonly M1Bar[],now:number,
+ flow?:FlowProfileDecision|null):EveryM1Direction|null{
   const rows=closedM1ChartBars(raw,now,72),last=rows.at(-1);
   if(rows.length<21||!last||now-last.time-60000<0||
     now-last.time-60000>=60000)return null;
@@ -314,15 +318,29 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Directi
     !applyRelative&&!applyRecovery&&!applyConflict&&
     early?.ready&&early.side!=='WAIT'&&early.side!==candidate&&
     (p.side==='WAIT'||p.pressureScore<35));
-  const side=alternative??(applyRegime?regimeNow!:
+  const technicalSide=alternative??(applyRegime?regimeNow!:
     applyRelative?relativeNow!:applyRecovery?recoveryNow!:
     applyConflict?followNow!:applyEarly?early!.side as 'BUY'|'SELL':candidate);
   // A newly selected historical conflict challenger is NOT automatically
   // qualified for broker execution. It remains weak until new forward proof.
-  const weak=flatCluster||lowActivity||applyRegime||applyEarly||applyRelative||applyRecovery||applyConflict?true:adaptive.improved?false:
+  const technicalWeak=flatCluster||lowActivity||applyRegime||applyEarly||applyRelative||applyRecovery||applyConflict?true:adaptive.improved?false:
     p.side==='WAIT'||(reversal!=null&&reversal!==momentum)||p.pressureScore<35;
+  // Only evidence actually received before the next minute may influence the
+  // first hypothesis; later flow cannot repaint a prior forecast.
+  const causalFlow=flowAvailableBeforeM1(flow,last.time+60000)&&
+    (flow?.side==='BUY'||flow?.side==='SELL')?flow:null;
+  const flowOpposes=Boolean(causalFlow&&causalFlow.side!==technicalSide);
+  const flowApplied=Boolean(causalFlow&&technicalWeak&&
+    !flatCluster&&!lowActivity&&causalFlow.strength>=45);
+  const side:'BUY'|'SELL'=flowApplied?causalFlow!.side as 'BUY'|'SELL':technicalSide;
+  const weak=technicalWeak||flowOpposes||
+    Boolean(causalFlow?.quality==='INDICATIVE_BROKER');
   return {issuedAt:last.time+60000,side,pressure:p.pressureScore,
     weak,atr,anchorTime:last.time,
+    flowEvidence:causalFlow?{
+      side:causalFlow.side as 'BUY'|'SELL',quality:causalFlow.quality,
+      strength:causalFlow.strength,applied:flowApplied,preIssued:true as const
+    }:undefined,
     pattern:reversal?'SWEEP_REJECTION':applyEarly?'PRE_BREAK':'MOMENTUM',
     dataQuality:flatCluster?'FLAT_CLUSTER':lowActivity?'LOW_ACTIVITY':'NORMAL',flatRecent,
     preBreakCompression:early?.compression??0,
@@ -338,7 +356,12 @@ export function everyM1Direction(raw:readonly M1Bar[],now:number):EveryM1Directi
     }:undefined,
     recentRecovery:recovery?{...recovery,applied:applyRecovery}:undefined,
     relativeEdge:relative?{...relative,applied:applyRelative}:undefined,
-    directionReason:flatCluster?
+    directionReason:flowApplied?
+      (causalFlow!.quality==='EXECUTED_SAMPLE'?
+       'ترجيح M1 البحثي من POC ودلتا صفقات منفذة لوحظت قبل الدقيقة':
+       'ترجيح M1 البحثي من نشاط أسعار وعمق وسيط MT5، لا من حجم عقود منفذ'):
+      flowOpposes?'تعارض قراءة الأسعار مع تدفق موثّق قبل الشمعة؛ الثقة ضعيفة':
+      flatCluster?
       'تكرار شموع M1 محايدة؛ احتمال دقة تغذية ضعيفة، التوقع بحثي ولا يرفع الثقة':
       lowActivity?
       'حركة دقيقة ضعيفة أو شموع محايدة؛ لا ترخيص سكالب من اتجاه بحثي':
