@@ -253,7 +253,7 @@ bool ValidateAndPlace(const string wire)
    if((orderModes & SYMBOL_ORDER_LIMIT)==0 ||
       (orderModes & SYMBOL_ORDER_SL)==0 ||
       (orderModes & SYMBOL_ORDER_TP)==0 ||
-      (expirationModes & SYMBOL_EXP_TIME_SPECIFIED)==0)return false;
+      (expirationModes & SYMBOL_EXPIRATION_SPECIFIED)==0)return false;
    if(SymbolInfoInteger(_Symbol,SYMBOL_TRADE_MODE)!=SYMBOL_TRADE_MODE_FULL)
       return false;
    if(SymbolExposure()>0||!HistoryLimits())return false;
