@@ -1,6 +1,7 @@
 import {getAiSnapshot} from '../../../lib/ai-snapshot-cache';
 import {getSniperAudit} from '../../../lib/sniper-audit-store';
 import {aiRateLimitState} from '../../../lib/ai-service-backoff';
+import {readEveryM1Evidence} from '../../../lib/scalp-every-candle';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -49,6 +50,8 @@ export async function GET(){
       audit:{fresh:auditFresh,ageMs:auditAge,persistence:audit.persistence,
         durable:audit.persistence==='VOLUME'},
       gold:detail('GOLD'),bitcoin:detail('BTC'),
+      paperM1:{gold:readEveryM1Evidence('GOLD',now),
+        bitcoin:readEveryM1Evidence('BTC',now)},
       note:'Research and paper tracking only. This diagnostic is not a broker entry or profit certification.'
     },{headers:{'Cache-Control':'private, no-store'}});
   }catch{
