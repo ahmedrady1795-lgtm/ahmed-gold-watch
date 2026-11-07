@@ -110,6 +110,7 @@ jobs:
       - run: node tests/scalp-m1-paired-proof.cjs
       - run: node tests/scalp-m1-near-passive-v6.cjs
       - run: node tests/sniper-m1-priority.cjs
+      - run: node tests/sniper-m1-live-proof-ui.cjs
       - run: node tests/sniper-m15-focus-watch.cjs
       - run: node tests/sniper-market-structure.cjs
       - run: node tests/sniper-hunter-layout.cjs
