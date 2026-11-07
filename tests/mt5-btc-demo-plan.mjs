@@ -12,8 +12,9 @@ function bars(period,count=240,increment=2,base=75000,width=12){
       tickVolume:120};
   });
 }
-const c1=bars(minute,240,2,75000,10),c5=bars(minute*5,240,5,75000,20);
+const c1=bars(minute,240,2,75000,10);
 const price=c1.at(-1).close;
+const c5=bars(minute*5,240,5,price-239*5,20);
 const fresh={symbol:'BTCUSDm',bid:price+0.5,ask:price+3,
   tickTimeMs:now-200,observedAt:now-300,
   candles:{c1,c5,c15:bars(minute*15),c60:bars(minute*60)}};
@@ -44,6 +45,7 @@ for(const [label,bad] of [
   ['no data',null],
   ['wrong symbol',{...fresh,symbol:'XAUUSDm'}],
   ['stale tick',{...fresh,tickTimeMs:now-15000}],
+  ['M5 venue mismatch',{...fresh,candles:{...fresh.candles,c5:bars(minute*5,240,5,75000,20)}}],
   ['stale bridge',{...fresh,observedAt:now-20000}],
   ['huge spread',{...fresh,ask:fresh.bid+200}],
   ['missing M1',{...fresh,candles:{...fresh.candles,c1:[]}}],
