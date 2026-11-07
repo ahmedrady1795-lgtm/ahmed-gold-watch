@@ -3,6 +3,7 @@ import type { Candle, Event } from './engine';
 
 import {normalizeMt5GoldDom,analyzeMt5GoldDom} from './gold-mt5-dom';
 import type {Mt5DomSnapshot} from './gold-mt5-dom';
+import {buildMt5QuoteProfile} from './mt5-quote-profile';
 export type BackgroundPoint = {
   key: 'dxy' | 'us2y' | 'us10y';
   label: string;
@@ -89,6 +90,10 @@ export function getMt5GoldDomReading(now=Date.now()){
    now,symbol:null,snapshots:[],unavailableReason:'NO_FRESH_MT5_BRIDGE'});
  return analyzeMt5GoldDom({now,symbol:bridge.status.symbol,
    snapshots:mt5DomSamples,unavailableReason:mt5DomUnavailableReason});
+}
+export function getMt5GoldQuoteProfile(now=Date.now()){
+  const s=getMt5BridgeStatus(now);
+  return buildMt5QuoteProfile(s.fresh?mt5FastTicks:[],now);
 }
 let backgroundCache: Cache<BackgroundPoint[]> | null = null;
 
