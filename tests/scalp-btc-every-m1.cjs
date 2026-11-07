@@ -15,6 +15,24 @@ function load(file){
 }
 const sharedGlobals={};
 const {observeEveryM1}=load('lib/scalp-every-candle.ts');
+// Simulate the Next.js health route with a separate module/global cache.
+// It initializes BEFORE the paper worker, then must see later file writes.
+function separateReader(){
+ const cache=new Map(),globals={};
+ function open(file){
+  file=path.resolve(file);if(cache.has(file))return cache.get(file);
+  const exports={};cache.set(file,exports);
+  const js=ts.transpileModule(fs.readFileSync(file,'utf8'),{
+    compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,esModuleInterop:true}
+  }).outputText;
+  vm.runInNewContext(js,{exports,require:id=>id.startsWith('.')?
+    open(path.resolve(path.dirname(file),id+'.ts')):require(id),
+    console,Date,Math,Number,globalThis:globals,process:{env:{RENDER:'true'}},
+    setTimeout,clearTimeout},{filename:file});
+  return exports;
+ }
+ return open('lib/scalp-every-candle.ts');
+}
 const T=Date.parse('2026-11-05T11:00:00Z'),MINUTE=60000;
 const make=(start,step)=>Array.from({length:43},(_,i)=>{
  const open=start+i*step,close=open+step*.6;
@@ -22,6 +40,8 @@ const make=(start,step)=>Array.from({length:43},(_,i)=>{
 });
 const gold=make(100,.06),btc=make(75000,1.2);
 const issued=gold.at(-1).time+MINUTE,now=issued+200;
+const reader=separateReader();
+reader.readEveryM1Evidence('BTC',now);
 const goldQ={price:102.60,bid:102.59,ask:102.61,at:issued+100,source:'MT5-GOLD-TEST'};
 const btcQ={price:75051,bid:75050.9,ask:75051.1,at:issued+100,source:'COINBASE-BTC-TEST'};
 const g1=observeEveryM1(gold,goldQ,now,.03,'TEST GOLD M1','GOLD');
@@ -43,6 +63,14 @@ const b2=observeEveryM1(btcNext,{...btcQ,at:issued+MINUTE+100},
  issued+MINUTE+200,1,'TEST BTC M1','BTC');
 assert.equal(b2.proposals,2,'next BTC candle must record a second independent hypothesis');
 assert.equal(observeEveryM1(gold,goldQ,now+200,.03,'TEST GOLD M1','GOLD').proposals,1);
+const fromOtherModule=reader.readEveryM1Evidence('BTC',issued+MINUTE+300);
+assert.equal(fromOtherModule.issued,2,
+  'a stale health-route module must pick up worker-written BTC M1 files');
+assert.equal(fromOtherModule.asset,'BTC');
+assert.equal(fromOtherModule.durable,false,'Render Free must not certify persistence');
+assert.equal(fromOtherModule.verifiedBrokerTrades,0);
+const goldProof=reader.readEveryM1Evidence('GOLD',issued+MINUTE+300);
+assert.equal(goldProof.issued,1,'cross-bundle BTC observations cannot pollute GOLD');
 const desk=fs.readFileSync('lib/scalp-desk.ts','utf8');
 assert.match(desk,/observeEveryM1\(input\.c1,quote,at,/);
 assert.match(desk,/paperCost\),input\.candleSource,asset\)/,
