@@ -3,6 +3,8 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import SniperM15Summary from './SniperM15Summary';
 import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
+import {detectLiquidityMagnets} from '../lib/sniper-liquidity-magnets';
+import {fuseLocalSniper} from '../lib/sniper-local-fusion';
 import {auditM15HuntDirection} from '../lib/sniper-m15-hunt-proof';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
@@ -151,6 +153,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    asset,c1:m.candles,c5:Array.isArray(x?.chartHigherFrames?.m5)?
      x.chartHigherFrames.m5:[],now
  }),[asset,m.candles,x?.chartHigherFrames?.m5,now]);
+ const liquidityMagnets=useMemo(()=>detectLiquidityMagnets(actual,now,64),
+   [actual,Math.floor(now/900000)]);
+ const localFusion=useMemo(()=>fuseLocalSniper({
+   preMove,hunt:huntPreview,m1:nextM1,liquidity:liquidityMagnets,
+   marketOpen,fresh:Boolean(m.sniper.view.priceFresh&&
+     m.historyFresh&&historyFresh),providerTransition
+ }),[preMove,huntPreview,nextM1,liquidityMagnets,marketOpen,
+    m.sniper.view.priceFresh,m.historyFresh,historyFresh,providerTransition]);
  const observedSide=m15Bias.side;
  const side: 'BUY'|'SELL'|'WAIT' = m15ObservationSide(observedSide,m.bias);
  const safeSide=providerTransition||!marketOpen||!historyFresh||
@@ -738,7 +748,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
       price={currentSignalPrice??null} marketOpen={marketOpen}
       qualified={projected.ready} qualifiedSide={chartSide}/>
    <SniperM15PreMoveConsole preMove={preMove} hunt={huntPreview}
-      m1={nextM1} marketOpen={marketOpen}
+      m1={nextM1} liquidity={liquidityMagnets} fusion={localFusion}
+      marketOpen={marketOpen}
       dataFresh={Boolean(m.sniper.view.priceFresh&&m.historyFresh&&
         historyFresh)} providerTransition={providerTransition}/>
    <details className="sniper-hunt-advanced">
