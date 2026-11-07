@@ -2131,3 +2131,81 @@ body:has(.modern-workspace.compact-sniper){
  .render-scenario-first-reason{font-size:11px;margin:7px 0}
 }
 @media(max-width:390px){.render-scenario-first-targets{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* Qannas Early Flow / 2026: modern, source-led pre-move scenario cockpit.
+   The bars are DESCRIPTIVE (compression/price pressure), never win rates. */
+.sniper-m15-panel .sniper-early-console{
+ --early-accent:#dbc491;position:relative;isolation:isolate;overflow:hidden;
+ margin:12px 10px 15px;padding:16px 18px 13px;
+ border:1px solid color-mix(in srgb,var(--early-accent) 35%,#29445b);
+ border-radius:19px;color:#e9f5f6;
+ background:radial-gradient(ellipse at 5% 5%,color-mix(in srgb,var(--early-accent) 13%,transparent),transparent 55%),
+   linear-gradient(126deg,#142938 0%,#0a1925 51%,#08121d 100%);
+ box-shadow:0 14px 42px #0004,inset 0 1px #ffffff10;
+}
+.sniper-early-console:after{
+ content:"";pointer-events:none;position:absolute;inset:0;
+ background:repeating-linear-gradient(90deg,transparent 0 39px,#ffffff06 40px,transparent 41px);
+ opacity:.16;z-index:-1;
+}
+.sniper-early-console-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:13px}
+.sniper-early-label{display:inline-flex;align-items:center;flex-wrap:wrap;gap:7px;
+ font-weight:850;font-size:11px;letter-spacing:1.3px;direction:ltr;color:#f4f4e3}
+.sniper-early-label small{color:#a5c7d5;font-size:11px;letter-spacing:0;direction:rtl;font-weight:650}
+.sniper-early-dot{display:inline-block;width:8px;height:8px;border-radius:50%;
+ background:var(--early-accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--early-accent) 16%,transparent)}
+.sniper-early-phase{color:var(--early-accent);direction:ltr;font-size:10px;
+ font-weight:750;letter-spacing:.8px;padding:5px 9px;
+ border:1px solid color-mix(in srgb,var(--early-accent) 38%,transparent);
+ background:color-mix(in srgb,var(--early-accent) 9%,transparent);border-radius:8px}
+.sniper-early-body{display:grid;grid-template-columns:minmax(180px,1.25fr) minmax(170px,1fr) minmax(150px,.9fr);
+ gap:16px;align-items:center}
+.sniper-early-direction{display:flex;flex-direction:column;gap:5px;min-width:0}
+.sniper-early-kicker{font-size:10px;color:#aac7d1}
+.sniper-early-direction strong{font-size:clamp(17px,2vw,25px);line-height:1.4;color:var(--early-accent);letter-spacing:-.5px}
+.sniper-early-direction>small{font-size:11px;color:#c4d6df;line-height:1.6}
+.sniper-early-telemetry{display:grid;gap:12px;min-width:0}
+.sniper-early-meter{display:flex;flex-direction:column;gap:6px}
+.sniper-early-meter>span{display:flex;align-items:center;justify-content:space-between;gap:8px;
+ font-size:10px;color:#c5d6de}
+.sniper-early-meter b{font-weight:650}
+.sniper-early-meter em{font-style:normal;font-variant-numeric:tabular-nums;color:#e5edf1}
+.sniper-early-meter>div{height:6px;border-radius:99px;background:#223d4c;overflow:hidden}
+.sniper-early-meter i{display:block;height:100%;border-radius:99px;background:
+ linear-gradient(90deg,#4b8499,var(--early-accent));transition:width .35s ease;max-width:100%}
+.sniper-early-levels{display:grid;gap:6px;min-width:0}
+.sniper-early-levels>span{display:flex;align-items:center;justify-content:space-between;gap:8px;
+ padding:6px 8px;border:1px solid #ffffff13;border-radius:9px;background:#07131c8c}
+.sniper-early-levels small{font-size:9px;color:#a5bdc9;white-space:nowrap}
+.sniper-early-levels b{font-size:12px;color:#e7f2f4;font-variant-numeric:tabular-nums}
+.sniper-early-evidence{display:flex;flex-wrap:wrap;gap:5px;margin-top:13px}
+.sniper-early-evidence>span{font-size:10px;line-height:1.4;
+ background:#0d2934;border:1px solid #275467;border-radius:7px;
+ padding:5px 8px;color:#c8e3eb}
+.sniper-early-disclaimer{display:block;color:#96b1be;font-size:10px;
+ line-height:1.6;margin-top:10px}
+.sniper-m15-panel .sniper-m15-chart-box{
+ background:#050b13;border:1px solid #223d4a;
+ box-shadow:0 12px 30px #0006,inset 0 0 0 1px #e1d19a0d;
+ border-radius:13px;overflow:hidden
+}
+@media(max-width:980px){
+ .sniper-early-body{grid-template-columns:minmax(160px,1fr) minmax(160px,1fr)}
+ .sniper-early-levels{grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr))}
+ .sniper-early-levels>span{flex-wrap:wrap}
+}
+@media(max-width:600px){
+ .sniper-m15-panel .sniper-early-console{margin:8px 5px 11px;padding:12px;border-radius:13px}
+ .sniper-early-body{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+ .sniper-early-direction strong{font-size:18px}
+ .sniper-early-levels{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+ .sniper-early-levels>span{flex-direction:column;align-items:start;gap:3px;padding:6px}
+ .sniper-early-levels small{white-space:normal}
+ .sniper-early-levels b{font-size:11px}
+ .sniper-early-phase{font-size:9px}
+ .sniper-early-telemetry{gap:10px}
+ .sniper-early-evidence>span{font-size:9px}
+ .sniper-m15-panel .sniper-m15-chart-box{border-radius:9px}
+}
+@media(prefers-reduced-motion:reduce){.sniper-early-meter i{transition:none}}
