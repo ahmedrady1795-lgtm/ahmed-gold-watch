@@ -20,11 +20,13 @@ const priority=load('lib/sniper-m1-priority.ts',{
 const conflict=load('lib/sniper-m1-conflict-arbiter.ts');
 const recovery=load('lib/sniper-m1-regime-recovery.ts');
 const relative=load('lib/sniper-m1-relative-edge.ts');
+const prebreak=load('lib/sniper-m1-prebreak.ts');
 const every=load('lib/sniper-m1-every-direction.ts',{
  './sniper-mt5-m1':mt5,'./sniper-m1-priority':priority,
  './sniper-m1-conflict-arbiter':conflict,
  './sniper-m1-regime-recovery':recovery,
- './sniper-m1-relative-edge':relative
+ './sniper-m1-relative-edge':relative,
+ './sniper-m1-prebreak':prebreak
 });
 const tape=load('lib/sniper-m1-candle-tape.ts',{
  './sniper-mt5-m1':mt5,'./sniper-m1-every-direction':every
