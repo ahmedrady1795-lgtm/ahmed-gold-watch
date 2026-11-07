@@ -86,7 +86,7 @@ const style=fs.readFileSync('app/qannas-2026.css','utf8');
 const layout=fs.readFileSync('app/layout.tsx','utf8');
 assert.ok(script.includes('detectM1PreBreak(rows,now)'));
 assert.ok(script.includes('const flatRecent=rows.slice(-6).filter'));
-assert.ok(script.includes('flatCluster||applyEarly||applyRelative'));
+assert.ok(script.includes('flatCluster||lowActivity||applyRegime||applyEarly||applyRelative'));
 assert.ok(script.includes('applyEarly?early!.side'));
 assert.ok(ui.includes('LOCAL AI FUSION'));
 assert.ok(ui.includes('LIQUIDITY MAP 2026'));
