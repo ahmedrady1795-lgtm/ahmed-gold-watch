@@ -4,7 +4,7 @@
 //| No LIVE accounts; separate MARKET opt-in; broker stops required. |
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.04"
+#property version "1.05"
 #property description "BTCUSDm DEMO LIMIT or separately opted-in MARKET EA. OFF by default."
 #property description "Rejects real accounts even if enabled; broker SL/TP required."
 
@@ -17,14 +17,16 @@ input long   ExpectedDemoLogin=0;
 input bool   EnableDemoOrders=false;
 input string DemoConfirmation="";  // type EXACTLY: I_ENABLE_DEMO_ONLY_V1
 // Market execution requires TWO additional, explicitly configured inputs.
-// Compile v1.03, verify the DEMO account, then opt in. Default remains LIMIT.
+// Compile v1.05, verify the DEMO account, then opt in. Default remains LIMIT.
 input bool   UseDemoMarketEntries=false;
 input string DemoMarketConfirmation=""; // I_ENABLE_DEMO_MARKET_ONLY_V1
-input int    MaxMarketEntriesPerM1=2;
+input int    MaxMarketEntriesPerM1=3;
+input int    MarketReentryCooldownSeconds=7;
+input int    MarketSignalPollSeconds=2;
 input double MaxRiskPerTradePct=0.05;
 input double MaxDailyLossPct=0.50;
 input int    MaxFilledTradesPerDay=360;
-input int    MaxFilledTradesPerMinute=4;
+input int    MaxFilledTradesPerMinute=6;
 input int    MaxPositionHoldSeconds=30;
 input int    MarketLossGraceSeconds=10;
 input double MarketQuickProfitRiskFraction=0.35;
@@ -62,13 +64,15 @@ bool LocalAccountSafe()
    if(MaxRiskPerTradePct<=0||MaxRiskPerTradePct>0.05||
       MaxDailyLossPct<=0||MaxDailyLossPct>0.50||
       MaxFilledTradesPerDay<1||MaxFilledTradesPerDay>360||
-      MaxFilledTradesPerMinute<1||MaxFilledTradesPerMinute>4||
+      MaxFilledTradesPerMinute<1||MaxFilledTradesPerMinute>6||
       MaxPositionHoldSeconds<15||MaxPositionHoldSeconds>30||
       MarketLossGraceSeconds<8||MarketLossGraceSeconds>15||
       MarketQuickProfitRiskFraction<0.25||MarketQuickProfitRiskFraction>0.60||
       MarketEarlyLossRiskFraction<0.50||MarketEarlyLossRiskFraction>0.80||
       LocalPendingLifetimeSeconds<5||LocalPendingLifetimeSeconds>15||
-      MaxMarketEntriesPerM1<1||MaxMarketEntriesPerM1>2)
+      MaxMarketEntriesPerM1<1||MaxMarketEntriesPerM1>3||
+      MarketReentryCooldownSeconds<6||MarketReentryCooldownSeconds>10||
+      MarketSignalPollSeconds<2||MarketSignalPollSeconds>4)
       return false;
    return true;
   }
@@ -100,6 +104,10 @@ int OnInit()
          EnableDemoOrders?"requested (gates still apply)":"OFF / observation only");
    Print("Qannas BTC DEMO: entry mode=",
       UseDemoMarketEntries?"MARKET (requires separate opt-in)":"LIMIT");
+   if(UseDemoMarketEntries)
+      PrintFormat("Qannas BTC DEMO MARKET FREQUENCY: <=%d filled/min, <=%d/M1; cooldown >=%d sec; signal poll >=%d sec; one position and strict 0.05%% risk per trade",
+          MaxFilledTradesPerMinute,MaxMarketEntriesPerM1,
+          MarketReentryCooldownSeconds,MarketSignalPollSeconds);
    if(UseDemoMarketEntries)
       PrintFormat("Qannas BTC DEMO MARKET EXIT: profit>=%.2f of risk budget; adverse<=-%.2f after %d sec, time exit %d sec; slippage not capped",
           MarketQuickProfitRiskFraction,MarketEarlyLossRiskFraction,
@@ -271,8 +279,12 @@ bool HistoryLimits()
            HistoryDealGetDouble(ticket,DEAL_COMMISSION)+
            HistoryDealGetDouble(ticket,DEAL_SWAP);
      }
+   // The faster six/minute allowance belongs exclusively to demo Market
+   // mode. The legacy pending-LIMIT execution remains capped at four/minute.
+   const int allowedPerMinute=UseDemoMarketEntries?
+      MaxFilledTradesPerMinute:(int)MathMin(MaxFilledTradesPerMinute,4);
    if(entries>=MaxFilledTradesPerDay||
-      entriesLastMinute>=MaxFilledTradesPerMinute)return false;
+      entriesLastMinute>=allowedPerMinute)return false;
    const double balance=AccountInfoDouble(ACCOUNT_BALANCE);
    if(balance<=0||pnl<=-balance*MaxDailyLossPct/100.0)return false;
    return true;
@@ -413,7 +425,8 @@ bool ValidateAndPlaceMarket(const string wire)
    if(GlobalVariableCheck(signalKey)&&
       GlobalVariableGet(signalKey)>=signalTick)return false;
    if(GlobalVariableCheck(cooldownKey)&&
-      TimeGMT()-GlobalVariableGet(cooldownKey)<10)return false;
+      TimeGMT()-GlobalVariableGet(cooldownKey)<MarketReentryCooldownSeconds)
+      return false;
    const double point=SymbolInfoDouble(_Symbol,SYMBOL_POINT);
    const double tickSize=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
    const int digits=(int)SymbolInfoInteger(_Symbol,SYMBOL_DIGITS);
@@ -605,7 +618,8 @@ void OnTimer()
       return;
      }
    const datetime now=TimeLocal();
-   if(now-lastRequestAt<3)return;
+   const int pollEvery=UseDemoMarketEntries?MarketSignalPollSeconds:3;
+   if(now-lastRequestAt<pollEvery)return;
    lastRequestAt=now;
    if(SymbolExposure()>0)return; // owned/unowned position OR pending blocks new entry
    if(!HistoryLimits()){Note("minute/day trade count or loss stop");return;}

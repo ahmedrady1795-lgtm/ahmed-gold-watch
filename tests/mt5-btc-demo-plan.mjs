@@ -170,7 +170,7 @@ assert.match(ea,/I_ENABLE_DEMO_ONLY_V1/);
 assert.match(ea,/TRADE_RETCODE_PLACED/);
 assert.match(ea,/ORDER_TIME_SPECIFIED/);
 assert.match(ea,/MaxRiskPerTradePct>0\.05/);
-assert.match(ea,/MaxFilledTradesPerMinute>4/);
+assert.match(ea,/MaxFilledTradesPerMinute>6/);
 assert.match(ea,/MaxFilledTradesPerDay>360/);
 assert.match(ea,/MaxPositionHoldSeconds>30/);
 assert.match(ea,/GlobalVariableSet\(signalKey,\(double\)signalTick\)/);
@@ -192,7 +192,7 @@ assert.doesNotMatch(legacyLimitPath,/trade\.Buy\(|trade\.Sell\(|\bOrderSend\(/,
 // Keep the broker-side expiry long enough to be valid, but cancel the LIMIT
 // locally within 11s using broker-persisted ORDER_TIME_SETUP. Never leave GTC
 // orders behind or convert these failures into market orders.
-assert.match(ea,/#property version "1\.04"/);
+assert.match(ea,/#property version "1\.05"/);
 assert.match(ea,/BROKER_PENDING_EXPIRY_SECONDS=180/);
 assert.match(ea,/LocalPendingLifetimeSeconds=11/);
 assert.match(ea,/LocalPendingLifetimeSeconds>15/);
@@ -206,7 +206,7 @@ assert.match(ea,/TRADE_RETCODE_INVALID_EXPIRATION/);
 assert.doesNotMatch(ea,/\(int\)MathMin\(15,MathMax\(4/);
 assert.doesNotMatch(ea,/ORDER_TIME_GTC|ORDER_TIME_DAY/, 'no unbounded expiration fallback');
 
-console.log('PASS: intraminute BTC demo LIMIT tick-reversal/unique-quote signals, 4/min guard, 0.05% risk, 30s hold');
+console.log('PASS: intraminute BTC demo LIMIT tick-reversal/unique-quote signals, 6/min shared DEMO safety cap, 0.05% risk, 30s hold');
 // Real authenticated EA poll responses, not browser GETs, own the rolling
 // diagnostics counters. A one-off snapshot is not evidence of repeated trades.
 for(let i=0;i<4;i++)
