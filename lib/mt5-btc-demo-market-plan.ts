@@ -48,7 +48,8 @@ export function planBtcDemoMarket(s:BtcDemoSnapshot|null,now=Date.now()):BtcDemo
   const last=c1.at(-1)!;
   const barEnd=last.time+60000;
   const barAge=now-barEnd;
-  if(barAge<0||barAge>50000)return wait('CLOSED_M1_TOO_OLD');
+  // The EA closes at the END of the entry M1, so only issue early candidates.
+  if(barAge<0||barAge>35000)return wait('CLOSED_M1_TOO_OLD');
   if(now-s.tickTimeMs<0||now-s.tickTimeMs>6000||
      now-s.observedAt<0||now-s.observedAt>12000)
     return wait('STALE_BROKER_QUOTE');
@@ -60,16 +61,27 @@ export function planBtcDemoMarket(s:BtcDemoSnapshot|null,now=Date.now()):BtcDemo
     a<1.35*spread||a5<1.35*spread)return wait('NO_COST_COVERED_M1_MOVE');
   if(Math.abs(c5.at(-1)!.close-last.close)>
     Math.max(4*a5,mid*.006))return wait('M5_BROKER_CONTEXT_MISMATCH');
-  if(last.high-last.low>2.7*a)return wait('SHOCK_CANDLE');
-  if(Math.abs(mid-last.close)>0.85*a)return wait('PRICE_DISLOCATED');
+  if(last.high-last.low>4.0*a)return wait('SHOCK_CANDLE');
+  if(Math.abs(mid-last.close)>1.8*a)return wait('PRICE_DISLOCATED');
   const observedTickVolume=Number(last.tickVolume??0);
   if(!Number.isFinite(observedTickVolume)||observedTickVolume<=0)
     return wait('NO_OBSERVED_VOLUME');
   const body=last.close-last.open;
   const movingBias=ema(c1,8)-ema(c1,21);
-  // A doji alone is not a directional signal: require credible closed-bar EMA.
-  const bias=Math.abs(body)>=.05*a?body:movingBias;
-  if(!Number.isFinite(bias)||Math.abs(bias)<.05*a)
+  // All fresh M1 candles get a directional attempt: combine previous-bar
+  // pressure with trend and available LIVE broker quote momentum. Broker
+  // ticks are price changes, NOT actual Level-2/order-book flow.
+  const ticks=s.ticks.filter(t=>Number.isFinite(t.bid)&&Number.isFinite(t.ask)&&
+    t.ask>=t.bid&&now-t.time>=0&&now-t.time<=20000);
+  const tickPressure=ticks.length>=2?
+    ((ticks.at(-1)!.bid+ticks.at(-1)!.ask)-
+      (ticks[0].bid+ticks[0].ask))/2:0;
+  const trend=Number.isFinite(movingBias)?movingBias:0;
+  const combined=.48*body+.37*trend+.15*tickPressure;
+  const bias=Math.abs(combined)>1e-8?combined:
+    (Math.abs(body)>1e-8?body:Math.abs(trend)>1e-8?trend:tickPressure);
+  // A genuinely information-free/flat tape cannot justify invented direction.
+  if(!Number.isFinite(bias)||Math.abs(bias)<=1e-8)
     return wait('DIRECTION_UNCONFIRMED');
   const risk=Math.max(.60*a,1.35*spread);
   const reward=Math.max(1.45*risk,2.5*spread);

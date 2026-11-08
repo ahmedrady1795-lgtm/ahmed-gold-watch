@@ -89,6 +89,40 @@ for(const [name,input,expected] of [
   assert.match(formatBtcDemoMarketWire(d),/^QBTCM1\|WAIT\|[A-Z0-9_]+\n$/);
 }
 
+// Each fresh M1 is considered early; late entry gets rejected so
+// positions can be held until the END of their actual entry minute.
+const lateNow=now+26000;
+assert.deepEqual(planBtcDemoMarket({...valid,
+  tickTimeMs:lateNow-200,observedAt:lateNow-300},lateNow),
+  {ready:false,reason:'CLOSED_M1_TOO_OLD'});
+// Broker tick movement can resolve an otherwise flat last M1 without
+// pretending to have Level-2 order book data.
+const flatC1=c1.map(x=>({...x,open:price,close:price,
+  low:price-10,high:price+10}));
+const tickDriven=planBtcDemoMarket({...valid,ticks:[
+  {time:now-3000,bid:price-1,ask:price+1},
+  {time:now-200,bid:price+.5,ask:price+3}
+],candles:{...valid.candles,c1:flatC1}},now);
+assert.equal(tickDriven.ready,true,JSON.stringify(tickDriven));
+if(tickDriven.ready)assert.equal(tickDriven.side,'BUY_MARKET');
+// Simulate eight successive healthy M1 bars: one candidate assessment
+// for each minute. This is signal coverage only, NOT 8 wins or fills.
+let advancing=c1;
+for(let n=1;n<=8;n++){
+  const previous=advancing.at(-1);
+  const close=previous.close+(n%2?-2:3);
+  const nextBar={time:previous.time+minute,
+    open:previous.close,close,high:Math.max(close,previous.close)+10,
+    low:Math.min(close,previous.close)-10,tickVolume:90+n};
+  advancing=[...advancing.slice(1),nextBar];
+  const evaluationTime=now+n*minute;
+  const quote={...valid,bid:close+.5,ask:close+3,
+    tickTimeMs:evaluationTime-200,observedAt:evaluationTime-300,
+    candles:{...valid.candles,c1:advancing}};
+  const attempted=planBtcDemoMarket(quote,evaluationTime);
+  assert.equal(attempted.ready,true,`fresh M1 number ${n}: ${JSON.stringify(attempted)}`);
+  if(attempted.ready)assert.equal(attempted.candleAt,nextBar.time);
+}
 recordBtcDemoMarketDecision(buy,now-3000);
 recordBtcDemoMarketDecision({ready:false,reason:'BROKER_NOT_FRESH'},now-2000);
 recordBtcDemoMarketDecision({ready:false,reason:'BROKER_NOT_FRESH'},now);
@@ -109,16 +143,16 @@ assert.match(status,/demoMarketDiagnostics:/);
 assert.match(status,/actualMarketEaPolls:btcDemoMarketStats\(now\)/);
 assert.match(limitRoute,/MT5_BTC_DEMO_SIGNALS_ENABLED!=='true'/);
 assert.doesNotMatch(marketRoute,/OrderSend|trade\.Buy|trade\.Sell/);
-assert.match(ea,/#property version "1\.06"/);
+assert.match(ea,/#property version "1\.07"/);
 assert.match(ea,/UseDemoMarketEntries=false/);
 assert.match(ea,/DemoMarketConfirmation=""/);
 assert.match(ea,/I_ENABLE_DEMO_MARKET_ONLY_V1/);
 assert.match(ea,/ACCOUNT_TRADE_MODE_DEMO/);
 assert.match(ea,/ExpectedDemoLogin/);
 assert.match(ea,/EnableDemoOrders=false/);
-assert.match(ea,/MaxRiskPerTradePct>0\.05/);
-assert.match(ea,/MaxDailyLossUSD=40\.00/);
-assert.match(ea,/MaxDailyLossUSD>40\.00/);
+assert.match(ea,/MaxRiskPerTradePct>0\.10/);
+assert.match(ea,/MaxDailyLossUSD=100\.00/);
+assert.match(ea,/MaxDailyLossUSD>100\.00/);
 assert.match(ea,/ACCOUNT_CURRENCY/);
 assert.match(ea,/currentEquity<=startEquity-MaxDailyLossUSD/);
 assert.match(ea,/pnl<=-MaxDailyLossUSD/);
@@ -132,30 +166,48 @@ assert.match(ea,/TRADE_TRANSACTION_DEAL_ADD/);
 assert.match(ea,/Qannas BTC DEMO BROKER DEAL/);
 assert.match(ea,/DEAL_REASON/);
 assert.doesNotMatch(ea,/MaxDailyLossPct/);
-assert.match(ea,/MaxFilledTradesPerMinute>6/);
-assert.match(ea,/MaxMarketEntriesPerM1>3/);
+assert.match(ea,/MaxFilledTradesPerMinute>9/);
+assert.match(ea,/MaxMarketEntriesPerM1>4/);
 
 // Higher frequency is DEMO-only, with strict per-M1/rolling-minute ceilings.
-// The volume calculation and old 0.05% per-order stop-risk cap are unchanged;
-// escalating volume to recover a losing trade must never be introduced.
-assert.match(ea,/MaxFilledTradesPerMinute=6/);
+// MARKET uses higher risk-sized volume and up to three HEDGING positions;
+ // legacy LIMIT remains capped to 0.05%, and no martingale is allowed.
+assert.match(ea,/MaxFilledTradesPerMinute=9/);
 assert.match(ea,/const int allowedPerMinute=UseDemoMarketEntries\?/);
 assert.match(ea,/MathMin\(MaxFilledTradesPerMinute,4\)/);
 assert.match(ea,/entriesLastMinute>=allowedPerMinute/);
-assert.match(ea,/MaxMarketEntriesPerM1=3/);
-assert.match(ea,/MarketReentryCooldownSeconds=7/);
+assert.match(ea,/MaxMarketEntriesPerM1=4/);
+assert.match(ea,/MarketReentryCooldownSeconds=4/);
 assert.match(ea,/MarketSignalPollSeconds=2/);
-assert.match(ea,/MarketReentryCooldownSeconds<6\|\|MarketReentryCooldownSeconds>10/);
+assert.match(ea,/MarketExitAtMinuteEnd=true/);
+assert.match(ea,/MarketLatestEntrySecond=35/);
+assert.match(ea,/M1_ENTRY_MINUTE_END/);
+assert.match(ea,/DailyEquityStopReached\(\)/);
+assert.match(ea,/MaxDailyLossUSD=100\.00/);
+assert.match(ea,/MaxCombinedStopRiskPct>0\.30/);
+assert.match(ea,/MaxConcurrentMarketPositions>3/);
+assert.match(ea,/const datetime minuteEnd=\(datetime\)/);
+assert.match(ea,/MarketExitAtMinuteEnd&&/);
+assert.match(ea,/if\(!UseDemoMarketEntries&&SymbolExposure\(\)>0\)/);
+assert.match(ea,/MarketReentryCooldownSeconds<3\|\|MarketReentryCooldownSeconds>10/);
 assert.match(ea,/MarketSignalPollSeconds<2\|\|MarketSignalPollSeconds>4/);
 assert.match(ea,/TimeGMT\(\)-GlobalVariableGet\(cooldownKey\)<MarketReentryCooldownSeconds/);
 assert.match(ea,/const int pollEvery=UseDemoMarketEntries\?MarketSignalPollSeconds:3/);
 assert.match(ea,/MaxRiskPerTradePct\/100\.0\*\.80/);
-assert.match(ea,/PositionsTotal\(\)>0\|\|OrdersTotal\(\)>0/);
+assert.match(ea,/MarketStackingSafe\(buy,lots,entry,sl,slipAllowance\)/);
+assert.match(ea,/AccountInfoInteger\(ACCOUNT_MARGIN_MODE\)!=ACCOUNT_MARGIN_MODE_RETAIL_HEDGING/);
+assert.match(ea,/PositionGetInteger\(POSITION_MAGIC\)/);
+assert.match(ea,/MaxConcurrentMarketPositions=3/);
+assert.match(ea,/MaxCombinedStopRiskPct=0\.30/);
 assert.doesNotMatch(ea,/Martingale|MartingaleMultiplier|RecoverLossLot|DoubleAfterLoss/i);
 
 assert.match(ea,/HistoryLimits\(\)/);
 assert.match(ea,/SymbolExposure\(\)>0/);
-assert.match(ea,/PositionsTotal\(\)>0\|\|OrdersTotal\(\)>0/);
+assert.match(ea,/MarketStackingSafe\(buy,lots,entry,sl,slipAllowance\)/);
+assert.match(ea,/AccountInfoInteger\(ACCOUNT_MARGIN_MODE\)!=ACCOUNT_MARGIN_MODE_RETAIL_HEDGING/);
+assert.match(ea,/PositionGetInteger\(POSITION_MAGIC\)/);
+assert.match(ea,/MaxConcurrentMarketPositions=3/);
+assert.match(ea,/MaxCombinedStopRiskPct=0\.30/);
 assert.match(ea,/MaxPositionHoldSeconds>30/);
 assert.match(ea,/MarketLossGraceSeconds=10/);
 assert.match(ea,/MarketQuickProfitRiskFraction=0\.35/);
@@ -167,7 +219,7 @@ assert.match(ea,/POSITION_PROFIT/);
 assert.match(ea,/POSITION_SWAP/);
 assert.match(ea,/if\(floating>=profitTake\)/);
 assert.match(ea,/else if\(age>=MarketLossGraceSeconds&&floating<=-lossCut\)/);
-assert.match(ea,/if\(why==""&&age>=MaxPositionHoldSeconds\)/);
+assert.match(ea,/if\(why==""&&\(!isMarket\|\|!MarketExitAtMinuteEnd\)&&age>=MaxPositionHoldSeconds\)/);
 assert.match(ea,/QUICK_FLOATING_PROFIT/);
 assert.match(ea,/EARLY_ADVERSE_LOSS/);
 assert.match(ea,/MISSING_BROKER_SL_TP/);
@@ -193,4 +245,4 @@ assert.match(ea,/UseDemoMarketEntries\?"\/api\/mt5\/btc-demo-market-signal"/);
 assert.match(ea,/trade\.BuyLimit\(/); // legacy fallback is separate, not mixed
 assert.match(ea,/trade\.SellLimit\(/);
 assert.doesNotMatch(ea,/\bOrderSend\(/);
-console.log('PASS: separately opted-in Exness BTC DEMO MARKET candidate/stop-risk validation, one-position guard, no live account or disabled-mode entry');
+console.log('PASS: separately opted-in Exness BTC DEMO MARKET candidate/stop-risk validation, same-side risk-capped multi-position guard and M1-end exit; no live account');
