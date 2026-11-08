@@ -77,10 +77,12 @@ execution signals.
    reports. Verify that an active pending order has an SL, TP, and expiration.
    Do not assume a pending order was filled. Record fills, costs, and net PnL.
 5. To stop, disable EA demo execution input and remove the EA after confirming
-   there are no pending orders. A pending order expires after <=15 seconds
-   even if the EA goes offline. Already-filled positions retain broker SL/TP;
-   avoid forcibly terminating MT5 before checking them.
-6. Fast demo profile (v1.01): risk budget <=0.05% of demo equity
+   there are no pending orders. With EA v1.02, a new LIMIT is canceled locally
+   after **11 seconds** on the normal 3-second timer; if MT5/VPS disconnects,
+   Exness may retain it until the **180-second broker expiry**. An offline EA
+   CANNOT perform its own fast cancellation. Already-filled positions retain
+   broker SL/TP; check the Trade tab before shutting down the VPS.
+6. Fast demo profile (v1.02): risk budget <=0.05% of demo equity
    at the stop per fill, <=4 broker-filled entries in a rolling 60-second
    window, max 360/day (failsafe, NOT a target), and max 0.5% daily loss.
    A single BTC position or pending order may exist at a time, with a 30s
@@ -90,6 +92,22 @@ execution signals.
    missing candle history, and unsupported expiry all veto an order. No fixed
    120-second artificial cooldown: minimum gap between submitted limit
    attempts is 10 seconds. This is capacity, not a guaranteed trade rate.
+
+7. **Exness error 10022 fix** (new EA download and MetaEditor Compile needed):
+   Earlier v1.01 sent a 4–15 second `ORDER_TIME_SPECIFIED` expiration to
+   the broker, which rejected pending LIMIT orders with `10022` (invalid
+   expiration). v1.02 requests a longer **180-second broker-side expiration**,
+   then automatically deletes its own orders after **11 seconds**, even if the
+   robot restarts (using `ORDER_TIME_SETUP`). There is no GTC or market order
+   fallback. If Exness still returns 10022, the EA logs broker's supported
+   expiry mode and both server/expiry timestamps; stop further changes until
+   the log confirms the specific broker restriction.
+
+8. On the VPS **replace only** `QannasBtcDemoTrader.mq5`, not the read-only
+   price bridge. For safety turn off Algo Trading, download and compile
+   v1.02, confirm zero errors/warnings, check the right Demo account, risk
+   inputs and opt-in, then re-enable demo trading after reviewing the
+   changed expiry settings. A GitHub Node build does not compile MQL5.
 
 ## Important limitations
 

@@ -183,6 +183,24 @@ assert.match(ea,/trade\.PositionClose\(ticket\)/);
 assert.match(ea,/trade\.OrderDelete\(ticket\)/);
 assert.doesNotMatch(ea,/trade\.Buy\(|trade\.Sell\(|\bOrderSend\(/,
   'never send an instant market order');
+// Exness demo rejected 4-15s ORDER_TIME_SPECIFIED with retcode 10022.
+// Keep the broker-side expiry long enough to be valid, but cancel the LIMIT
+// locally within 11s using broker-persisted ORDER_TIME_SETUP. Never leave GTC
+// orders behind or convert these failures into market orders.
+assert.match(ea,/#property version "1\.02"/);
+assert.match(ea,/BROKER_PENDING_EXPIRY_SECONDS=180/);
+assert.match(ea,/LocalPendingLifetimeSeconds=11/);
+assert.match(ea,/LocalPendingLifetimeSeconds>15/);
+assert.match(ea,/const datetime brokerNow=TimeTradeServer\(\)/);
+assert.match(ea,/const datetime expiry=brokerNow\+BROKER_PENDING_EXPIRY_SECONDS/);
+assert.match(ea,/const datetime setup=\(datetime\)OrderGetInteger\(ORDER_TIME_SETUP\)/);
+assert.match(ea,/now-setup<LocalPendingLifetimeSeconds/);
+assert.match(ea,/CancelStaleOwnedPending\(\);/);
+assert.match(ea,/trade\.OrderDelete\(ticket\)/);
+assert.match(ea,/TRADE_RETCODE_INVALID_EXPIRATION/);
+assert.doesNotMatch(ea,/\(int\)MathMin\(15,MathMax\(4/);
+assert.doesNotMatch(ea,/ORDER_TIME_GTC|ORDER_TIME_DAY/, 'no unbounded expiration fallback');
+
 console.log('PASS: intraminute BTC demo LIMIT tick-reversal/unique-quote signals, 4/min guard, 0.05% risk, 30s hold');
 // Real authenticated EA poll responses, not browser GETs, own the rolling
 // diagnostics counters. A one-off snapshot is not evidence of repeated trades.
