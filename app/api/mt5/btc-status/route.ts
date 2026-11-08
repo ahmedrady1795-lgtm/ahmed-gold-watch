@@ -1,6 +1,6 @@
 import {getRuntimeEnv} from '../../../../lib/runtime';
 import {getMt5BtcStatus,getMt5BtcVerifiedSnapshot,setMt5BtcStatus} from '../../../../lib/mt5-btc-readonly';
-import {planBtcDemoLimit} from '../../../../lib/mt5-btc-demo-plan';
+import {planBtcDemoEveryCandle} from '../../../../lib/mt5-btc-demo-plan';
 import {btcDemoWaitStats} from '../../../../lib/mt5-btc-demo-diagnostics';
 
 export const dynamic='force-dynamic';
@@ -35,7 +35,7 @@ export async function GET(){
   // The public read-only status shows WAIT reasons, never actual order levels.
   // Actual broker order placement still requires the authenticated signal
   // endpoint, confirmed DEMO account, and the locally enabled MT5 EA.
-  const decision=planBtcDemoLimit(verified,now);
+  const decision=planBtcDemoEveryCandle(verified,now);
   const m1=verified?.candles.c1??[];
   let atrM1:number|null=null;
   if(m1.length>=15){
@@ -57,6 +57,8 @@ export async function GET(){
       signalEnabled:getRuntimeEnv().MT5_BTC_DEMO_SIGNALS_ENABLED==='true',
       brokerCandlesVerified:Boolean(verified),
       candidateNow:decision.ready,
+      demoEveryM1CandleMode:true,
+      candidateStrategy:decision.ready?decision.strategy??null:null,
       waitReason:decision.ready?'CANDIDATE_READY':decision.reason,
       spreadUsd:spread,m1AtrUsd:atrM1,m1AtrToSpread:ratio,
       uniqueRecentTickSamples:verified?.ticks.length??0,

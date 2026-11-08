@@ -9,7 +9,7 @@ export type BtcDemoDecision=
   |{ready:false;reason:string}
   |{ready:true;side:'BUY_LIMIT'|'SELL_LIMIT';symbol:'BTCUSDm';
     candleAt:number;signalTickTimeMs:number;expiresAt:number;entry:number;stop:number;target:number;
-    bid:number;ask:number;atr:number};
+    bid:number;ask:number;atr:number;strategy?:'TICK_REVERSAL'|'PER_CANDLE'};
 
 function ema(rows:Candle[],length:number){
   const chosen=rows.slice(-Math.max(80,length*3));
@@ -128,6 +128,89 @@ export function planBtcDemoLimit(s:BtcDemoSnapshot|null,now=Date.now()):BtcDemoD
     signalTickTimeMs:s.tickTimeMs,expiresAt:now+11000,
     entry,stop,target,bid:price(s.bid),ask:price(s.ask),atr:price(a)};
 }
+/**
+ * Explicit DEMO-only "every M1 candle" capacity mode.
+ *
+ * Try to construct one inexpensive PASSIVE LIMIT setup near the beginning of
+ * every new live M1 candle when the more selective tick-reversal strategy
+ * returns WAIT for a signal-formation reason. It is NOT a promise of an actual
+ * broker order, fill, profit or guaranteed entry on every bar. The MT5 demo
+ * EA can and must still decline orders for lot, spread, stops, exposure or
+ * daily-risk limits. Never override a stale/missing quote or adverse costs.
+ *
+ * This fallback does not require 3 unique broker ticks, since the goal is to
+ * make a separate attempt on each freshly completed broker M1 candle, not
+ * wait for a rare intraminute 3-tick pattern.
+ */
+export function planBtcDemoEveryCandle(s:BtcDemoSnapshot|null,now=Date.now()):BtcDemoDecision{
+  const primary=planBtcDemoLimit(s,now);
+  if(primary.ready)return {...primary,strategy:'TICK_REVERSAL'};
+  const allowFallback=new Set([
+    'TREND_NOT_ALIGNED','WEAK_OBSERVED_TICK_VOLUME',
+    'LAST_CLOSED_BAR_UNCONFIRMED','NO_FRESH_THREE_TICK_SETUP',
+    'NO_NEW_TICK_REVERSAL','BUY_LIMIT_GEOMETRY','SELL_LIMIT_GEOMETRY'
+  ]);
+  if(!s||!allowFallback.has(primary.reason))return primary;
+  const {c1,c5}=s.candles;
+  if(!continuous(c1,60000,36)||!continuous(c5,300000,26))
+    return wait('HISTORY_GAP');
+  const last=c1.at(-1)!;
+  const closedAt=last.time+60000;
+  // At the opening of every M1, try promptly rather than churning into the
+  // late portion of that candle. This is broker-clock anchored, not UI time.
+  if(closedAt>now||now-closedAt>50000)return wait('PER_CANDLE_WINDOW_PASSED');
+  if(s.symbol!=='BTCUSDm'||s.tickTimeMs>now||now-s.tickTimeMs>5000||
+     now-s.observedAt>12000||now-s.observedAt<0)
+    return wait('STALE_BROKER_QUOTE');
+  const spread=s.ask-s.bid,mid=(s.ask+s.bid)/2;
+  const a=atr(c1),a5=atr(c5);
+  if(!Number.isFinite(mid)||mid<=0||spread<=0||
+     spread/mid>0.0004)return wait('SPREAD_TOO_WIDE');
+  if(!Number.isFinite(a)||!Number.isFinite(a5)||
+     a<1.5*spread||a5<1.5*spread)
+    return wait('VOLATILITY_TOO_LOW');
+  if(Math.abs(mid-last.close)>.65*a||
+     last.high-last.low>2.7*a)return wait('PRICE_DISLOCATED');
+  if(Math.abs(c5.at(-1)!.close-last.close)>
+     Math.max(4*a5,mid*.006))return wait('M5_BROKER_CONTEXT_MISMATCH');
+  const body=last.close-last.open;
+  const m1Tilt=ema(c1,8)-ema(c1,21);
+  // An undecided doji can use the closed M1 trend; if both are zero, WAIT.
+  const tilt=Math.abs(body)>=.035*a?body:m1Tilt;
+  if(!Number.isFinite(tilt)||Math.abs(tilt)<.025*a)
+    return wait('NO_DIRECTIONAL_EVIDENCE');
+  if(last.tickVolume===0)return wait('NO_OBSERVED_TICK_VOLUME');
+  const side=tilt>0?'BUY_LIMIT':'SELL_LIMIT';
+  const reward=Math.max(2.50*spread,.85*a);
+  const risk=Math.max(.55*a,reward/1.5);
+  const gap=Math.max(.20*spread,.08*a);
+  // Server and locally compiled EA enforce matching LIMIT-only, RR, price
+  // distance and daily-risk geometry; don't emit impossible tight targets.
+  if(reward>2.20*a||risk>1.40*a||gap>.5*a||
+     reward/risk<1.40)return wait('PER_CANDLE_COST_UNCOVERED');
+  let entry:number,stop:number,target:number;
+  if(side==='BUY_LIMIT'){
+    entry=price(s.bid-gap);
+    stop=price(entry-risk);
+    target=price(entry+reward);
+    if(entry<=0||stop<=0||entry>=s.bid||stop>=entry||
+       target<=entry||target-entry<2.4*spread)
+      return wait('PER_CANDLE_LIMIT_GEOMETRY');
+  }else{
+    entry=price(s.ask+gap);
+    stop=price(entry+risk);
+    target=price(entry-reward);
+    if(target<=0||entry<=s.ask||stop<=entry||target>=entry||
+       entry-target<2.4*spread)
+      return wait('PER_CANDLE_LIMIT_GEOMETRY');
+  }
+  return {ready:true,side,symbol:'BTCUSDm',candleAt:last.time,
+    signalTickTimeMs:s.tickTimeMs,
+    expiresAt:Math.min(now+11000,closedAt+58000),
+    entry,stop,target,bid:price(s.bid),ask:price(s.ask),atr:price(a),
+    strategy:'PER_CANDLE'};
+}
+
 export function formatBtcDemoWire(d:BtcDemoDecision){
   if(!d.ready)return 'QBTC1|WAIT|'+d.reason+'\n';
   return ['QBTC1',d.side,d.symbol,d.candleAt,d.expiresAt,

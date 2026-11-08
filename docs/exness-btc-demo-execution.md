@@ -22,6 +22,20 @@ execution signals.
   stay on its own chart.
 - There is **no market entry fallback**. Only broker-expiring pending LIMIT
   orders with SL and TP attached to the order request are permitted.
+
+- **Every M1 candle (DEMO only)**: when the primary tick-reversal signal is
+  absent, the server now tries a second passive LIMIT **candidate** during
+  the first 50 seconds after each newly completed Exness M1 bar. It uses the
+  observed candle body (or closed M1 EMA when indecisive), current authentic
+  broker bid/ask, measured ATR and a TP that still covers at least 2.4 times
+  the current spread. It does **not** bypass stale/missing data, unreasonable
+  spread, dislocated prices, unobserved direction, missing volume, account
+  safety, stop/target geometry or Exness minimum-lot checks.
+  This means **try to qualify every candle**, not promise a filled position
+  on every candle. A LIMIT can expire unfilled; an already open position,
+  loss cap, risk budget or broker restrictions can block the next attempt.
+  There is no automatic market-order fallback and no guaranteed win rate.
+
 - The demo BTC M1 ATR precheck uses a 1.5x ATR/quoted-spread floor instead
   of a blanket 3x requirement, since the latter incorrectly hid potentially
   viable short retests behind `VOLATILITY_TOO_LOW`. **This is not a signal
