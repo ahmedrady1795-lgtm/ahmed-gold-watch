@@ -35,6 +35,19 @@ if(buy.ready){
   assert.equal(formatBtcDemoMarketWire(buy).trim().split('|').length,11);
   assert.match(formatBtcDemoMarketWire(buy),/^QBTCM1\|BUY_MARKET\|BTCUSDm\|/);
 }
+// Live Exness screenshot: ~6.40 USD spread against ~9.5 USD M1 ATR.
+// That borderline 1.49 ratio may qualify only if a properly priced TP still
+// exceeds 2.4 spreads; it is never a mandate to send an order.
+const narrowC1=c1.map(x=>({...x,high:x.close+4.75,low:x.close-4.75}));
+const borderline={...valid,ask:valid.bid+6.4,
+  candles:{...valid.candles,c1:narrowC1}};
+const costCovered=planBtcDemoMarket(borderline,now);
+assert.equal(costCovered.ready,true,JSON.stringify(costCovered));
+if(costCovered.ready){
+  assert.ok(costCovered.targetDistance>=2.4*6.4);
+  assert.ok(costCovered.targetDistance>=1.4*costCovered.stopDistance);
+}
+
 const shortC1=c1.map(x=>({...x,open:150000-x.open,
   close:150000-x.close,high:150000-x.low,low:150000-x.high}));
 const shortC5=c5.map(x=>({...x,open:150000-x.open,
