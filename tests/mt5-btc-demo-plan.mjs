@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+// GitHub CI already runs this file; exercise the independent MARKET gates too.
+import './mt5-btc-demo-market-plan.mjs';
 import {planBtcDemoLimit,planBtcDemoEveryCandle,formatBtcDemoWire} from '../lib/mt5-btc-demo-plan.ts';
 import {recordBtcDemoSignalDecision,btcDemoWaitStats} from '../lib/mt5-btc-demo-diagnostics.ts';
 
