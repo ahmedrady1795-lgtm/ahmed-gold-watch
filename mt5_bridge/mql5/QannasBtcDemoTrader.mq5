@@ -538,6 +538,12 @@ void OnTimer()
       Note("demo trading OFF. Requires user opt-in and exact confirmation.");
       return;
      }
+   if(UseDemoMarketEntries&&
+      DemoMarketConfirmation!="I_ENABLE_DEMO_MARKET_ONLY_V1")
+     {
+      Note("MARKET test remains OFF; explicit DEMO MARKET confirmation required.");
+      return;
+     }
    if(!TerminalCanTrade())
      {
       Note("Algo Trading disabled or terminal disconnected");
@@ -551,7 +557,9 @@ void OnTimer()
    const string headers="Authorization: Bearer "+BridgeToken+"\r\n";
    char request[],response[];
    string responseHeaders="";
-   const string url=SiteURL+"/api/mt5/btc-demo-signal";
+   const string url=SiteURL+
+      (UseDemoMarketEntries?"/api/mt5/btc-demo-market-signal":
+                            "/api/mt5/btc-demo-signal");
    ResetLastError();
    const int http=WebRequest("GET",url,headers,4000,request,response,responseHeaders);
    if(http!=200)
@@ -560,12 +568,24 @@ void OnTimer()
       return;
      }
    const string wire=CharArrayToString(response,0,ArraySize(response),CP_UTF8);
-   if(StringFind(wire,"QBTC1|WAIT|")==0)
+   if(UseDemoMarketEntries)
      {
-      Note("server WAIT: "+StringSubstr(wire,11,80));
-      return;
+      if(StringFind(wire,"QBTCM1|WAIT|")==0)
+        {
+         Note("server MARKET WAIT: "+StringSubstr(wire,12,80));
+         return;
+        }
+      ValidateAndPlaceMarket(wire);
      }
-   ValidateAndPlace(wire);
+   else
+     {
+      if(StringFind(wire,"QBTC1|WAIT|")==0)
+        {
+         Note("server WAIT: "+StringSubstr(wire,11,80));
+         return;
+        }
+      ValidateAndPlace(wire);
+     }
   }
 void OnDeinit(const int reason)
   {
@@ -574,4 +594,4 @@ void OnDeinit(const int reason)
    CancelOwnedPending();
    Print("Qannas BTC DEMO: stopped. Existing demo positions retain broker SL/TP.");
   }
-// Does not import DLLs, place market entries, or trade live accounts.
+// DEMO only: never trade real accounts; MARKET requires independent opt-in.
