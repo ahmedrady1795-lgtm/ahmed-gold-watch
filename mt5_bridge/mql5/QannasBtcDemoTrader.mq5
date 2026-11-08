@@ -38,7 +38,9 @@ input double MarketExitCostReserveUSD=0.25; // per-position closing-fee/slippage
 // Separate explicit fixed-0.50-lot basket EXPERIMENT, DEMO HEDGING ONLY.
 input bool   UseFixedDemoBasket=false; // OFF unless independently authorized
 input string DemoBasketConfirmation=""; // I_ENABLE_BTC_DEMO_BASKET_V1
-input double DemoBasketFixedLot=0.50; // MT5 lots, NOT guaranteed BTC units
+input double DemoBasketFixedLot=0.50; // MT5 lots, NOT necessarily units of BTC
+input double DemoBasketMaxRiskPct=0.30; // max 0.30% estimated risk per fixed-lot position
+input double DemoBasketMaxCombinedRiskPct=1.80; // max 1.80% estimated group stop risk
 input int    DemoBasketTargetPositions=4; // choice: 4 or 6 simultaneous
 input double DemoBasketTakeProfitUSD=10.00; // estimated net BASKET target
 input double DemoBasketStopLossUSD=5.00; // estimated net BASKET loss-close trigger
@@ -97,6 +99,9 @@ bool LocalAccountSafe()
       MarketExitCostReserveUSD<0||MarketExitCostReserveUSD>2.00||
        (DemoBasketTargetPositions!=4&&DemoBasketTargetPositions!=6)||
        MathAbs(DemoBasketFixedLot-0.50)>0.00000001||
+       DemoBasketMaxRiskPct<=0||DemoBasketMaxRiskPct>0.30||
+       DemoBasketMaxCombinedRiskPct<=0||DemoBasketMaxCombinedRiskPct>1.80||
+       DemoBasketMaxCombinedRiskPct<DemoBasketMaxRiskPct||
        DemoBasketTakeProfitUSD!=10.00||
        DemoBasketStopLossUSD!=5.00||
        DemoBasketMaxHoldSeconds<20||DemoBasketMaxHoldSeconds>60||
@@ -160,6 +165,9 @@ int OnInit()
                   DemoBasketFixedLot,DemoBasketTargetPositions,
                   DemoBasketTakeProfitUSD,DemoBasketStopLossUSD,
                   DemoBasketReentryPauseSeconds);
+   if(UseFixedDemoBasket)
+      PrintFormat("Qannas BTC DEMO basket contract size: %.8f base units per MT5 lot (broker specification); fixed 0.50 is LOTS not necessarily 0.50 BTC",
+                  SymbolInfoDouble(_Symbol,SYMBOL_TRADE_CONTRACT_SIZE));
    PrintFormat("Qannas BTC DEMO: expiry policy broker=%d sec, local cancellation=%d sec, allowed expiry modes=%I64d",
       BROKER_PENDING_EXPIRY_SECONDS,LocalPendingLifetimeSeconds,
       SymbolInfoInteger(_Symbol,SYMBOL_EXPIRATION_MODE));
