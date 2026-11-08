@@ -955,6 +955,8 @@ void OnTimer()
         {
          if(SymbolExposure()>0)return; // never refill while previous group closes
          GlobalVariableDel(closingKey);
+         // Restart countdown begins AFTER confirmation of zero exposure.
+         GlobalVariableSet(Key("BASKET_LAST_EXIT"),(double)TimeGMT());
         }
       const string lastExit=Key("BASKET_LAST_EXIT");
       if(GlobalVariableCheck(lastExit)&&
