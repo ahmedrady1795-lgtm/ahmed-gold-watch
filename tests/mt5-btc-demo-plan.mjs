@@ -97,7 +97,8 @@ if(next.ready&&perCandle.ready){
   assert.equal(next.candleAt-perCandle.candleAt,60000);
   assert.ok(next.expiresAt-nextNow<=15000);
 }
-assert.deepEqual(planBtcDemoEveryCandle(noTickSetup,now+40000),
+assert.deepEqual(planBtcDemoEveryCandle({...noTickSetup,
+  tickTimeMs:now+40000-200,observedAt:now+40000-300},now+40000),
   {ready:false,reason:'PER_CANDLE_WINDOW_PASSED'},
   'do not chase late M1 candles');
 assert.deepEqual(planBtcDemoEveryCandle({...noTickSetup,tickTimeMs:now-20000},now),
