@@ -17,7 +17,7 @@ input long   ExpectedDemoLogin=0;
 input bool   EnableDemoOrders=false;
 input string DemoConfirmation="";  // type EXACTLY: I_ENABLE_DEMO_ONLY_V1
 // Market execution requires TWO additional, explicitly configured inputs.
-// Compile v1.05, verify the DEMO account, then opt in. Default remains LIMIT.
+// Compile v1.06, verify the DEMO account, then opt in. Default remains LIMIT.
 input bool   UseDemoMarketEntries=false;
 input string DemoMarketConfirmation=""; // I_ENABLE_DEMO_MARKET_ONLY_V1
 input int    MaxMarketEntriesPerM1=3;
@@ -373,7 +373,7 @@ double ChooseDemoMarketLot(const bool buy,const double entry,
   }
 bool MarketFilledLimitForM1(const long candleAtMs)
   {
-   // A second independent limit beyond the 4 fills/rolling minute safeguard.
+   // Additional M1 cap beyond the mode-specific rolling-minute limit.
    const datetime from=(datetime)(candleAtMs/1000+60);
    const datetime until=TimeTradeServer();
    if(until<from||!HistorySelect(from,until))return false;
