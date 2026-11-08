@@ -424,7 +424,7 @@ bool MarketFilledLimitForM1(const long candleAtMs)
   }
 // Same-symbol, same-side HEDGING stack. Reject unrelated positions and
 // pending orders, enforce stops and cumulative broker-calculated stop risk.
-// Never use naked positions, trade doubling, or martingale recovery.
+// No naked positions and no volume multiplication after prior losses.
 bool MarketStackingSafe(const bool buy,const double lots,
                         const double entry,const double sl,
                         const double slipAllowance)
