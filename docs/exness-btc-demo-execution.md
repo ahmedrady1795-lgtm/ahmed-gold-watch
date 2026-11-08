@@ -22,6 +22,13 @@ execution signals.
   stay on its own chart.
 - There is **no market entry fallback**. Only broker-expiring pending LIMIT
   orders with SL and TP attached to the order request are permitted.
+- The demo BTC M1 ATR precheck uses a 1.5x ATR/quoted-spread floor instead
+  of a blanket 3x requirement, since the latter incorrectly hid potentially
+  viable short retests behind `VOLATILITY_TOO_LOW`. **This is not a signal
+  frequency target.** New unique broker ticks, aligned M1/M5 trend,
+  a passive limit entry, broker SL/TP geometry, a profit target of at least
+  2.4x quoted spread and all local demo risk caps remain mandatory.
+  When spread dominates the available motion, the correct answer remains WAIT.
 
 ## Before starting
 

@@ -35,6 +35,36 @@ if(buy.ready){
   assert.equal(formatBtcDemoWire(buy).trim().split('|').length,12);
   assert.ok(formatBtcDemoWire(buy).startsWith('QBTC1|BUY_LIMIT|BTCUSDm|'));
 }
+// Regression from an Exness-like BTC quote: roughly $6 spread vs $14
+// observed M1 ATR. The old 3x spread requirement rejected this setup before
+// the limit-entry cost/SL/TP checks could assess it.
+const lowerRangeC1=c1.map(x=>({...x,high:x.close+7,low:x.close-7}));
+const moderateCost={...fresh,bid:price+.5,ask:price+6.5,
+  ticks:[
+    {time:now-10200,bid:price+.2,ask:price+6.2},
+    {time:now-5200,bid:price-2.2,ask:price+3.8},
+    {time:now-200,bid:price+.5,ask:price+6.5}
+  ],
+  candles:{...fresh.candles,c1:lowerRangeC1}};
+const costAware=planBtcDemoLimit(moderateCost,now);
+assert.equal(costAware.ready,true,
+  'a fresh broker-verified 2.33x ATR/spread setup must reach geometry checks: '+JSON.stringify(costAware));
+if(costAware.ready){
+  assert.equal(costAware.side,'BUY_LIMIT');
+  assert.ok(costAware.entry<moderateCost.bid);
+  assert.ok(costAware.stop<costAware.entry&&costAware.target>costAware.entry);
+  assert.ok(costAware.target-costAware.entry>=2.4*(moderateCost.ask-moderateCost.bid)-.01,
+    'cost-covered TP required after relaxing the pre-filter');
+}
+const noCostCoverage=planBtcDemoLimit({...moderateCost,ask:price+11.5},now);
+assert.deepEqual(noCostCoverage,{ready:false,reason:'VOLATILITY_TOO_LOW'},
+  '14 USD ATR must not qualify against 11 USD spread');
+const weakM5=planBtcDemoLimit({...moderateCost,candles:{
+  ...moderateCost.candles,c5:c5.map(x=>({...x,high:x.close+3,low:x.close-3}))
+}},now);
+assert.deepEqual(weakM5,{ready:false,reason:'VOLATILITY_TOO_LOW'},
+  'M5 context with too little motion relative to fees must still wait');
+
 const shortM1=c1.map(x=>({...x,open:150000-x.open,
   close:150000-x.close,high:150000-x.low,low:150000-x.high}));
 const shortM5=c5.map(x=>({...x,open:150000-x.open,
