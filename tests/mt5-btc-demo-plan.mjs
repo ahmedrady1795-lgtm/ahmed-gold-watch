@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {planBtcDemoLimit,formatBtcDemoWire} from '../lib/mt5-btc-demo-plan.ts';
+import {planBtcDemoLimit,planBtcDemoEveryCandle,formatBtcDemoWire} from '../lib/mt5-btc-demo-plan.ts';
 import {recordBtcDemoSignalDecision,btcDemoWaitStats} from '../lib/mt5-btc-demo-diagnostics.ts';
 
 const minute=60000,now=Date.UTC(2026,10,8,15,34,13);
@@ -65,6 +65,53 @@ const weakM5=planBtcDemoLimit({...moderateCost,candles:{
 }},now);
 assert.deepEqual(weakM5,{ready:false,reason:'VOLATILITY_TOO_LOW'},
   'M5 context with too little motion relative to fees must still wait');
+
+// Explicit every-M1 demo fallback: valid stale-safe cost-covered pending
+// LIMIT candidate even when the original 3-tick reversal has NOT formed.
+const noTickSetup={...fresh,ticks:[]};
+assert.deepEqual(planBtcDemoLimit(noTickSetup,now),
+  {ready:false,reason:'NO_FRESH_THREE_TICK_SETUP'});
+const perCandle=planBtcDemoEveryCandle(noTickSetup,now);
+assert.equal(perCandle.ready,true,JSON.stringify(perCandle));
+if(perCandle.ready){
+  assert.equal(perCandle.strategy,'PER_CANDLE');
+  assert.equal(perCandle.candleAt,c1.at(-1).time);
+  assert.equal(perCandle.side,'BUY_LIMIT');
+  assert.ok(perCandle.entry<noTickSetup.bid);
+  assert.ok(perCandle.stop<perCandle.entry&&perCandle.target>perCandle.entry);
+  assert.ok(perCandle.target-perCandle.entry>=2.4*(noTickSetup.ask-noTickSetup.bid));
+  assert.equal(formatBtcDemoWire(perCandle).trim().split('|').length,12);
+}
+const withTickPattern=planBtcDemoEveryCandle(fresh,now);
+assert.equal(withTickPattern.ready,true);
+if(withTickPattern.ready)assert.equal(withTickPattern.strategy,'TICK_REVERSAL');
+const nextNow=now+60000;
+const lastCurrent=c1.at(-1);
+const nextC1=[...c1.slice(1),{time:lastCurrent.time+60000,
+  open:price,close:price+2,high:price+12,low:price-8,tickVolume:120}];
+const next=planBtcDemoEveryCandle({...noTickSetup,
+  bid:price+2.5,ask:price+5,tickTimeMs:nextNow-200,
+  observedAt:nextNow-300,candles:{...noTickSetup.candles,c1:nextC1}},nextNow);
+assert.equal(next.ready,true,'next M1 should be assessed separately: '+JSON.stringify(next));
+if(next.ready&&perCandle.ready){
+  assert.equal(next.candleAt-perCandle.candleAt,60000);
+  assert.ok(next.expiresAt-nextNow<=15000);
+}
+assert.deepEqual(planBtcDemoEveryCandle(noTickSetup,now+30000),
+  {ready:false,reason:'PER_CANDLE_WINDOW_PASSED'},
+  'do not chase late M1 candles');
+assert.deepEqual(planBtcDemoEveryCandle({...noTickSetup,tickTimeMs:now-20000},now),
+  {ready:false,reason:'STALE_BROKER_QUOTE'});
+assert.deepEqual(planBtcDemoEveryCandle({...noTickSetup,ask:noTickSetup.bid+100},now),
+  {ready:false,reason:'SPREAD_TOO_WIDE'});
+assert.deepEqual(planBtcDemoEveryCandle({...noTickSetup,ask:noTickSetup.bid+19},now),
+  {ready:false,reason:'VOLATILITY_TOO_LOW'},
+  'cannot force a trade when spread absorbs recent observed movement');
+const undirected=c1.map(x=>({...x,open:price,close:price,high:price+10,low:price-10}));
+assert.deepEqual(planBtcDemoEveryCandle({...noTickSetup,
+  candles:{...noTickSetup.candles,c1:undirected}},now),
+  {ready:false,reason:'NO_DIRECTIONAL_EVIDENCE'},
+  'cannot invent direction without a genuine nonzero movement');
 
 const shortM1=c1.map(x=>({...x,open:150000-x.open,
   close:150000-x.close,high:150000-x.low,low:150000-x.high}));
@@ -149,6 +196,8 @@ assert.equal(btcDemoWaitStats(now+10*60000+1000).observations,0);
 const statusRoute=fs.readFileSync('app/api/mt5/btc-status/route.ts','utf8');
 const signalRoute=fs.readFileSync('app/api/mt5/btc-demo-signal/route.ts','utf8');
 assert.match(signalRoute,/recordBtcDemoSignalDecision\(decision,now\)/);
+assert.match(signalRoute,/planBtcDemoEveryCandle\(getMt5BtcVerifiedSnapshot\(now\),now\)/);
+assert.match(statusRoute,/demoEveryM1CandleMode:true/);
 assert.match(statusRoute,/demoDiagnostics:/);
 assert.match(statusRoute,/actualEaPolls:btcDemoWaitStats\(now\)/);
 assert.match(statusRoute,/getMt5BtcVerifiedSnapshot\(now\)/);
