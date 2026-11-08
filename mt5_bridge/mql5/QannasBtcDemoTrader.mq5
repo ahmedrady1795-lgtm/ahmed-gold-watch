@@ -330,7 +330,7 @@ void ManageOwnOpenPositions()
       now-oldest>=DemoBasketMaxHoldSeconds;
    const string closingKey=Key("BASKET_CLOSING");
    bool closing=UseFixedDemoBasket&&GlobalVariableCheck(closingKey);
-   if(UseFixedDemoBasket&&(fixedTake||fixedLoss||timedOut))
+   if(UseFixedDemoBasket&&!closing&&(fixedTake||fixedLoss||timedOut))
      {
       GlobalVariableSet(closingKey,1.0); // latched until every position closes
       GlobalVariableSet(Key("BASKET_LAST_EXIT"),(double)TimeGMT());
@@ -929,6 +929,19 @@ void OnTimer()
    if(now-lastRequestAt<pollEvery)return;
    lastRequestAt=now;
    if(!UseDemoMarketEntries&&SymbolExposure()>0)return; // preserve LIMIT single-exposure policy
+   if(UseFixedDemoBasket)
+     {
+      const string closingKey=Key("BASKET_CLOSING");
+      if(GlobalVariableCheck(closingKey))
+        {
+         if(SymbolExposure()>0)return; // never refill while previous group closes
+         GlobalVariableDel(closingKey);
+        }
+      const string lastExit=Key("BASKET_LAST_EXIT");
+      if(GlobalVariableCheck(lastExit)&&
+         TimeGMT()-GlobalVariableGet(lastExit)<DemoBasketReentryPauseSeconds)
+         return;
+     }
    if(!HistoryLimits())
      {
       CancelOwnedPending();
