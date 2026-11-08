@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {planBtcDemoLimit,formatBtcDemoWire} from '../lib/mt5-btc-demo-plan.ts';
+import {recordBtcDemoSignalDecision,btcDemoWaitStats} from '../lib/mt5-btc-demo-diagnostics.ts';
 
 const minute=60000,now=Date.UTC(2026,10,8,15,34,13);
 function bars(period,count=240,increment=2,base=75000,width=12){
@@ -135,3 +136,24 @@ assert.match(ea,/trade\.OrderDelete\(ticket\)/);
 assert.doesNotMatch(ea,/trade\.Buy\(|trade\.Sell\(|\bOrderSend\(/,
   'never send an instant market order');
 console.log('PASS: intraminute BTC demo LIMIT tick-reversal/unique-quote signals, 4/min guard, 0.05% risk, 30s hold');
+// Real authenticated EA poll responses, not browser GETs, own the rolling
+// diagnostics counters. A one-off snapshot is not evidence of repeated trades.
+for(let i=0;i<4;i++)
+  recordBtcDemoSignalDecision({ready:false,reason:'VOLATILITY_TOO_LOW'},now-5000+i);
+recordBtcDemoSignalDecision(buy,now);
+const stats=btcDemoWaitStats(now);
+assert.equal(stats.observations,5);
+assert.equal(stats.lastDecision,'CANDIDATE_READY');
+assert.deepEqual(stats.topReasons[0],{reason:'VOLATILITY_TOO_LOW',count:4});
+assert.equal(btcDemoWaitStats(now+10*60000+1000).observations,0);
+const statusRoute=fs.readFileSync('app/api/mt5/btc-status/route.ts','utf8');
+const signalRoute=fs.readFileSync('app/api/mt5/btc-demo-signal/route.ts','utf8');
+assert.match(signalRoute,/recordBtcDemoSignalDecision\(decision,now\)/);
+assert.match(statusRoute,/demoDiagnostics:/);
+assert.match(statusRoute,/actualEaPolls:btcDemoWaitStats\(now\)/);
+assert.match(statusRoute,/getMt5BtcVerifiedSnapshot\(now\)/);
+assert.match(statusRoute,/waitReason:/);
+assert.match(statusRoute,/Cache-Control':'private, no-store'/);
+assert.doesNotMatch(statusRoute,/trade\.Buy|trade\.Sell|OrderSend|BridgeToken|Authorization: Bearer/i);
+console.log('PASS: BTC demo only diagnostics from authentic EA polling, 10-minute WAIT distribution and no order exposure');
+
