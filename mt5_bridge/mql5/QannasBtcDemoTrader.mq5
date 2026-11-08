@@ -195,12 +195,25 @@ int SymbolExposure()
 // it does NOT establish final net P/L after commission or close slippage.
 // Do not exit on mere +$0.01: require a modest *positive* risk-budget
 // threshold, then verify the actually realized deal in History.
+// Persisted UTC-day equity snapshot used by the entry guard.
+bool DailyEquityStopReached()
+  {
+   const double eq=AccountInfoDouble(ACCOUNT_EQUITY);
+   if(eq<=0)return true;
+   const long utcDay=(long)TimeGMT()/86400;
+   const string key=Key("EQ"+IntegerToString((int)utcDay));
+   if(!GlobalVariableCheck(key))GlobalVariableSet(key,eq);
+   const double baseline=GlobalVariableGet(key);
+   return baseline<=0||eq<=baseline-MaxDailyLossUSD;
+  }
+
 void ManageOwnOpenPositions()
   {
    if(!LocalAccountSafe()||!TerminalCanTrade())return;
    const datetime now=TimeTradeServer();
    if(now<=0||now==lastPositionScanAt)return; // <= 1 position scan per second
    lastPositionScanAt=now;
+   const bool emergency=DailyEquityStopReached();
    for(int i=PositionsTotal()-1;i>=0;i--)
      {
       const ulong ticket=PositionGetTicket(i);
@@ -218,7 +231,8 @@ void ManageOwnOpenPositions()
       const double profitTake=MathMax(0.15,riskBudget*MarketQuickProfitRiskFraction);
       const double lossCut=riskBudget*MarketEarlyLossRiskFraction;
       string why="";
-      if(sl<=0||tp<=0)
+      if(emergency)why="DAILY_USD_EQUITY_STOP";
+      else if(sl<=0||tp<=0)
          why="MISSING_BROKER_SL_TP";
       else if(isMarket&&MathIsValidNumber(floating)&&riskBudget>0)
         {
@@ -705,7 +719,12 @@ void OnTimer()
    if(now-lastRequestAt<pollEvery)return;
    lastRequestAt=now;
    if(!UseDemoMarketEntries&&SymbolExposure()>0)return; // preserve LIMIT single-exposure policy
-   if(!HistoryLimits()){Note("entry stopped: "+lastHistoryBlockReason);return;}
+   if(!HistoryLimits())
+     {
+      CancelOwnedPending();
+      Note("entry stopped: "+lastHistoryBlockReason);
+      return;
+     }
    const string headers="Authorization: Bearer "+BridgeToken+"\r\n";
    char request[],response[];
    string responseHeaders="";
