@@ -184,7 +184,7 @@ assert.match(ea,/MarketLatestEntrySecond=35/);
 assert.match(ea,/M1_ENTRY_MINUTE_END/);
 assert.match(ea,/DailyEquityStopReached\(\)/);
 assert.match(ea,/MaxDailyLossUSD=100\.00/);
-assert.match(ea,/MaxCombinedStopRiskPct>1\.20/);
+assert.match(ea,/MaxCombinedStopRiskPct>1\.80/);
 assert.match(ea,/MaxConcurrentMarketPositions>10/);
 assert.match(ea,/const datetime minuteEnd=\(datetime\)/);
 assert.match(ea,/MarketExitAtMinuteEnd&&/);
