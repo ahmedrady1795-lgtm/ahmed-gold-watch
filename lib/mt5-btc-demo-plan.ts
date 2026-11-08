@@ -59,8 +59,14 @@ export function planBtcDemoLimit(s:BtcDemoSnapshot|null,now=Date.now()):BtcDemoD
   if(!Number.isFinite(mid)||mid<=0||!Number.isFinite(spread)||
     spread<=0||spread/mid>0.0004)return wait('SPREAD_TOO_WIDE');
   const a=atr(c1),m5a=atr(c5);
+  // A 3x-ATR/spread requirement rejected otherwise feasible BTC M1 retests.
+  // This is a *precheck*, not permission to trade a loss-making spread:
+  // both sides still need a fresh 3-tick Exness reversal, SL/TP geometry,
+  // a passive LIMIT entry and a target covering >=2.4 observed spreads.
+  // Keep a smaller noise floor; do not waive the later cost/stop safeguards.
   if(!Number.isFinite(a)||!Number.isFinite(m5a)||
-    a<spread*3||a<=0||m5a<=0)return wait('VOLATILITY_TOO_LOW');
+    a<=0||m5a<=0||a<spread*1.5||m5a<spread*1.5)
+    return wait('VOLATILITY_TOO_LOW');
   if(Math.abs(c5.at(-1)!.close-last.close)>
      Math.max(4*m5a,mid*.006))return wait('M5_BROKER_CONTEXT_MISMATCH');
   if(last.high-last.low>2.7*a)return wait('SPIKE_CANDLE');
