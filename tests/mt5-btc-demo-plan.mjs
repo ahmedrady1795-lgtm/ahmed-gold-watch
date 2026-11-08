@@ -192,7 +192,7 @@ assert.doesNotMatch(legacyLimitPath,/trade\.Buy\(|trade\.Sell\(|\bOrderSend\(/,
 // Keep the broker-side expiry long enough to be valid, but cancel the LIMIT
 // locally within 11s using broker-persisted ORDER_TIME_SETUP. Never leave GTC
 // orders behind or convert these failures into market orders.
-assert.match(ea,/#property version "1\.02"/);
+assert.match(ea,/#property version "1\.03"/);
 assert.match(ea,/BROKER_PENDING_EXPIRY_SECONDS=180/);
 assert.match(ea,/LocalPendingLifetimeSeconds=11/);
 assert.match(ea,/LocalPendingLifetimeSeconds>15/);
