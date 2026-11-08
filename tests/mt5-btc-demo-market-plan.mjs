@@ -125,6 +125,9 @@ assert.match(ea,/MaxMarketEntriesPerM1>3/);
 // The volume calculation and old 0.05% per-order stop-risk cap are unchanged;
 // escalating volume to recover a losing trade must never be introduced.
 assert.match(ea,/MaxFilledTradesPerMinute=6/);
+assert.match(ea,/const int allowedPerMinute=UseDemoMarketEntries\?/);
+assert.match(ea,/MathMin\(MaxFilledTradesPerMinute,4\)/);
+assert.match(ea,/entriesLastMinute>=allowedPerMinute/);
 assert.match(ea,/MaxMarketEntriesPerM1=3/);
 assert.match(ea,/MarketReentryCooldownSeconds=7/);
 assert.match(ea,/MarketSignalPollSeconds=2/);
