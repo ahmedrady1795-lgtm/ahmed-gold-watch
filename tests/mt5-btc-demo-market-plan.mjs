@@ -109,7 +109,7 @@ assert.match(status,/demoMarketDiagnostics:/);
 assert.match(status,/actualMarketEaPolls:btcDemoMarketStats\(now\)/);
 assert.match(limitRoute,/MT5_BTC_DEMO_SIGNALS_ENABLED!=='true'/);
 assert.doesNotMatch(marketRoute,/OrderSend|trade\.Buy|trade\.Sell/);
-assert.match(ea,/#property version "1\.04"/);
+assert.match(ea,/#property version "1\.05"/);
 assert.match(ea,/UseDemoMarketEntries=false/);
 assert.match(ea,/DemoMarketConfirmation=""/);
 assert.match(ea,/I_ENABLE_DEMO_MARKET_ONLY_V1/);
@@ -118,8 +118,24 @@ assert.match(ea,/ExpectedDemoLogin/);
 assert.match(ea,/EnableDemoOrders=false/);
 assert.match(ea,/MaxRiskPerTradePct>0\.05/);
 assert.match(ea,/MaxDailyLossPct>0\.50/);
-assert.match(ea,/MaxFilledTradesPerMinute>4/);
-assert.match(ea,/MaxMarketEntriesPerM1>2/);
+assert.match(ea,/MaxFilledTradesPerMinute>6/);
+assert.match(ea,/MaxMarketEntriesPerM1>3/);
+
+// Higher frequency is DEMO-only, with strict per-M1/rolling-minute ceilings.
+// The volume calculation and old 0.05% per-order stop-risk cap are unchanged;
+// escalating volume to recover a losing trade must never be introduced.
+assert.match(ea,/MaxFilledTradesPerMinute=6/);
+assert.match(ea,/MaxMarketEntriesPerM1=3/);
+assert.match(ea,/MarketReentryCooldownSeconds=7/);
+assert.match(ea,/MarketSignalPollSeconds=2/);
+assert.match(ea,/MarketReentryCooldownSeconds<6\|\|MarketReentryCooldownSeconds>10/);
+assert.match(ea,/MarketSignalPollSeconds<2\|\|MarketSignalPollSeconds>4/);
+assert.match(ea,/TimeGMT\(\)-GlobalVariableGet\(cooldownKey\)<MarketReentryCooldownSeconds/);
+assert.match(ea,/const int pollEvery=UseDemoMarketEntries\?MarketSignalPollSeconds:3/);
+assert.match(ea,/MaxRiskPerTradePct\/100\.0\*\.80/);
+assert.match(ea,/PositionsTotal\(\)>0\|\|OrdersTotal\(\)>0/);
+assert.doesNotMatch(ea,/Martingale|MartingaleMultiplier|RecoverLossLot|DoubleAfterLoss/i);
+
 assert.match(ea,/HistoryLimits\(\)/);
 assert.match(ea,/SymbolExposure\(\)>0/);
 assert.match(ea,/PositionsTotal\(\)>0\|\|OrdersTotal\(\)>0/);
