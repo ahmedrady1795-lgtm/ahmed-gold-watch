@@ -169,11 +169,11 @@ assert.match(ea,/EnableDemoOrders=false/);
 assert.match(ea,/I_ENABLE_DEMO_ONLY_V1/);
 assert.match(ea,/TRADE_RETCODE_PLACED/);
 assert.match(ea,/ORDER_TIME_SPECIFIED/);
-assert.match(ea,/MaxRiskPerTradePct>0\.10/);
-assert.match(ea,/MaxFilledTradesPerMinute>9/);
+assert.match(ea,/MaxRiskPerTradePct>0\.12/);
+assert.match(ea,/MaxFilledTradesPerMinute>10/);
 assert.match(ea,/MarketExitAtMinuteEnd=true/);
 assert.match(ea,/MarketLatestEntrySecond=35/);
-assert.match(ea,/MaxConcurrentMarketPositions=3/);
+assert.match(ea,/MaxConcurrentMarketPositions=10/);
 assert.match(ea,/MaxFilledTradesPerDay>1200/);
 assert.match(ea,/MaxPositionHoldSeconds>30/);
 assert.match(ea,/GlobalVariableSet\(signalKey,\(double\)signalTick\)/);
@@ -199,7 +199,7 @@ assert.doesNotMatch(legacyLimitPath,/trade\.Buy\(|trade\.Sell\(|\bOrderSend\(/,
 // Keep the broker-side expiry long enough to be valid, but cancel the LIMIT
 // locally within 11s using broker-persisted ORDER_TIME_SETUP. Never leave GTC
 // orders behind or convert these failures into market orders.
-assert.match(ea,/#property version "1\.07"/);
+assert.match(ea,/#property version "1\.08"/);
 assert.match(ea,/BROKER_PENDING_EXPIRY_SECONDS=180/);
 assert.match(ea,/LocalPendingLifetimeSeconds=11/);
 assert.match(ea,/LocalPendingLifetimeSeconds>15/);
