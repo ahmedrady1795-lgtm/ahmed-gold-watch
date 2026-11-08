@@ -517,6 +517,47 @@ double ChooseDemoMarketLot(const bool buy,const double entry,
       margin<=0||margin>AccountInfoDouble(ACCOUNT_MARGIN_FREE)*.5)return 0;
    return lots;
   }
+// 0.50 MT5 lots are permitted only when the Exness DEMO contract, spread,
+// stop loss and margin can support the requested basket loss trigger.
+// Reject the entire strategy while its expected aggregate entry spread alone
+// would consume most of the USD 5 group-loss budget.
+double ChooseFixedDemoBasketLot(const bool buy,const double entry,
+                                const double stop,const double slipAllowance,
+                                const double bid,const double ask)
+  {
+   if(!UseFixedDemoBasket)return 0.0;
+   const double vol=DemoBasketFixedLot;
+   const double minLot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+   const double maxLot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
+   const double step=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
+   if(step<=0||vol<minLot||vol>maxLot||
+      MathAbs(MathRound(vol/step)*step-vol)>1.0e-7)return 0.0;
+   const ENUM_ORDER_TYPE side=buy?ORDER_TYPE_BUY:ORDER_TYPE_SELL;
+   const double worstEntry=buy?entry+slipAllowance:entry-slipAllowance;
+   const double worstStop=buy?stop-slipAllowance:stop+slipAllowance;
+   double atStop=0.0,spreadCost=0.0,margin=0.0;
+   if(!OrderCalcProfit(side,_Symbol,vol,worstEntry,worstStop,atStop)||
+      !MathIsValidNumber(atStop)||atStop>=0)return 0.0;
+   // MT5 quote P/L for immediate exit at the opposite side of the spread.
+   if(!OrderCalcProfit(side,_Symbol,vol,entry,buy?bid:ask,spreadCost)||
+      !MathIsValidNumber(spreadCost)||spreadCost>=0)return 0.0;
+   const double aggregateEntryCost=(-spreadCost+MarketExitCostReserveUSD)*
+                                    DemoBasketTargetPositions;
+   if(aggregateEntryCost>=0.80*DemoBasketStopLossUSD)
+     {
+      Note(StringFormat("FIXED BASKET WAIT: projected opening cost=%.2f exceeds 80%% of USD %.2f loss trigger",
+                        aggregateEntryCost,DemoBasketStopLossUSD));
+      return 0.0;
+     }
+   const double riskBudget=AccountInfoDouble(ACCOUNT_EQUITY)*
+                           DemoBasketMaxRiskPct/100.0*0.80;
+   if(-atStop>riskBudget)return 0.0;
+   if(!OrderCalcMargin(side,_Symbol,vol,entry,margin)||margin<=0||
+      margin>AccountInfoDouble(ACCOUNT_MARGIN_FREE)*0.35)
+      return 0.0;
+   return vol;
+  }
+
 bool MarketFilledLimitForM1(const long candleAtMs)
   {
    // Additional M1 cap beyond the mode-specific rolling-minute limit.
@@ -569,7 +610,9 @@ bool MarketStackingSafe(const bool buy,const double lots,
       combinedStopLoss+=MathMax(0.0,-result);
       count++;
      }
-   if(count>=MaxConcurrentMarketPositions)return false;
+   const int positionLimit=UseFixedDemoBasket?DemoBasketTargetPositions:
+                            MaxConcurrentMarketPositions;
+   if(count>=positionLimit)return false;
    const double worstEntry=buy?entry+slipAllowance:entry-slipAllowance;
    const double worstStop=buy?sl-slipAllowance:sl+slipAllowance;
    double incoming=0;
@@ -579,8 +622,10 @@ bool MarketStackingSafe(const bool buy,const double lots,
       !MathIsValidNumber(incoming)||incoming>=0)
       return false;
    // Reserve margin for fills/fees, this is an estimate, not a hard guarantee.
+   const double combinedPct=UseFixedDemoBasket?
+                            DemoBasketMaxCombinedRiskPct:MaxCombinedStopRiskPct;
    const double combinedBudget=AccountInfoDouble(ACCOUNT_EQUITY)*
-                               MaxCombinedStopRiskPct/100.0*0.80;
+                               combinedPct/100.0*0.80;
    return combinedStopLoss+(-incoming)<=combinedBudget;
   }
 
@@ -675,7 +720,10 @@ bool ValidateAndPlaceMarket(const string wire)
       if(sl<=tick.ask+minDist||tp>=tick.ask-minDist)return false;
      }
    const double slipAllowance=MathMax(point,MathMin(.5*spread,.15*serverAtr));
-   const double lots=ChooseDemoMarketLot(buy,entry,sl,slipAllowance);
+   // Fixed MT5 lots are never silently reduced: exact 0.50 or WAIT.
+   const double lots=UseFixedDemoBasket?
+      ChooseFixedDemoBasketLot(buy,entry,sl,slipAllowance,tick.bid,tick.ask):
+      ChooseDemoMarketLot(buy,entry,sl,slipAllowance);
    if(lots<=0)
      {
       Note("demo MARKET blocked: broker min lot or buffered loss exceeds configured risk");
