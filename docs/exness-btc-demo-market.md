@@ -1,4 +1,4 @@
-# Qannas BTCUSDm — DEMO-only MARKET scalp experiment (EA v1.05)
+# Qannas BTCUSDm — DEMO-only MARKET scalp experiment (EA v1.06)
 
 This is **experimental Exness BTCUSDm demo trading**, not investment advice,
 not a profitable strategy, and not a way to copy the video's growing lots
@@ -15,7 +15,7 @@ strategy remains available and unchanged when Market mode is disabled.
    `MT5_BTC_DEMO_MARKET_SIGNALS_ENABLED=true` (default OFF), and emits
    `QBTCM1|BUY_MARKET...`, `SELL_MARKET...`, or `WAIT`. It **never** sends
    orders to Exness. The old LIMIT signal endpoint/flag is separate.
-3. EA `QannasBtcDemoTrader.mq5` v1.05 adds a new explicit
+3. EA `QannasBtcDemoTrader.mq5` v1.06 keeps the explicit
    `UseDemoMarketEntries=false` switch (LIMIT remains default), plus
    `DemoMarketConfirmation`, whose exact opt-in is
    `I_ENABLE_DEMO_MARKET_ONLY_V1`. Existing `EnableDemoOrders=true` AND
@@ -36,17 +36,25 @@ strategy remains available and unchanged when Market mode is disabled.
   20% budget reserve for modeled fees and bounded price deviation; actual
   realized loss can still exceed this from slippage, commission, execution
   failures, or stop gaps. No hard guarantee.
-- <=0.5% account equity drawdown against the persistent UTC day-start
-  checkpoint, own-day realized loss cap <=0.5%, <=6 filled entries per
-  rolling 60 seconds, <=3 market entries per new M1, max 360/day failsafe,
-  7-second minimum cooldown after a confirmed fill (DEMO Market v1.05).
+- **USD $40 maximum daily loss**, checked against both the persistent UTC-day
+  starting-equity checkpoint (including other trading activity and open P/L)
+  and the EA's net realized daily P/L, including commission, swap, and fees.
+  The account must be USD-denominated and DEMO-only. This replaces the previous
+  0.5% (~$10 on a $2,000 account) entry-blocking threshold, which cannot be
+  increased from MT5 Inputs without upgrading the EA. Stops/fills may slip
+  beyond $40; this is an entry-prevention guard, not a guaranteed loss ceiling.
+  The per-order maximum estimated stop risk remains **0.05% of equity**,
+  unchanged. <=6 filled entries per rolling 60 seconds, <=3 market entries
+  per new M1, max 360/day failsafe, and 7-second minimum cooldown remain.
+  Reaching a daily loss stop is not an instruction to resume immediately;
+  investigate negative expectancy first. (DEMO Market v1.06).
   Signal polling in Market mode can be as frequent as every 2 seconds;
   these are **capacity ceilings, not promised profitable trades**.
   Real Exness price freshness, distinct signals, spread, the one-position
   limit and stop/risk checks still prevent unqualified entries.
 - **At most ONE position or pending order anywhere on this demo account**
   before any new Market entry. No martingale or growing lot multiplier.
-  v1.05 checks existing demo MARKET positions on every BTC tick (and a
+  v1.06 checks existing demo MARKET positions on every BTC tick (and a
   one-second fallback timer) to exit when:
     - **QUICK_FLOATING_PROFIT:** mark-to-market P/L, after the spread, reaches
       35% of the 0.05%-of-equity risk budget (floor 0.15 account currency).
@@ -81,7 +89,7 @@ strategy remains available and unchanged when Market mode is disabled.
 1. **Turn Algo Trading OFF** on the Exness VPS. Open MT5 Trade tab and confirm
    no open BTCUSDm position or unexpired pending LIMIT order before switching.
    Keep the current BTCUSDm read-only bridge on its own chart.
-2. Replace the existing BTCUSDm `QannasBtcDemoTrader.mq5` with **v1.05**
+2. Replace the existing BTCUSDm `QannasBtcDemoTrader.mq5` with **v1.06**
    from the `render-free` branch, run MetaEditor **Compile**, and verify
    **0 errors / 0 warnings**. GitHub CI does **not** compile MQL5; it only
    checks source/tests.
@@ -110,8 +118,25 @@ Algo Trading; manage them explicitly on the DEMO terminal.
 
 No real-account orders, no market lot doubling, no high-leverage imitation
 of a social-media video. Earlier Market EA versions executed actual **demo** trades with net losses.
-The v1.05 quick-exit and higher-frequency settings have NOT been compiled or
+The $40 setting is a *higher loss tolerance*, not an improvement in signal accuracy.
+In the 2026-11-08 DEMO screenshot, cumulative net P/L was about -$9.90,
+with 0.06-0.09 BTCUSDm lots and numerous small stopped-out trades. The current
+server MARKET planner primarily follows the most recently closed M1 candle
+body (or EMA bias for small bodies), so it is not a calibrated pre-candle
+prediction or a validated order-flow strategy. The EA also takes quick floating
+profit at 35% of its per-trade risk budget but may wait until a 60% budget loss
+after a 10-second grace (or broker stop), so ignoring other costs the simplistic
+payoff ratio requires >63% wins to break even. Recent observed Exness spread
+was ~$6.40 in BTC quote units against ~$10.47 M1 ATR: for a 0.06-lot BTC
+position that can imply ~$0.38 in immediate spread cost, depending on
+broker contract specifications. Analyze complete broker deals (spread,
+opening/closing quote, time held, cause of exit) before raising trade count.
+The v1.06 daily-stop adjustment and existing quick-exit settings have NOT been compiled or
 validated against Exness broker fills on the user's VPS. Only change the
 single EA while Algo Trading is disabled and the Trade tab shows no existing
 orders or positions. Confirm v1.05 in MetaEditor, test 0 errors/warnings,
 then inspect deal-level net results rather than only number of entries.
+The new MT5 Inputs field is `MaxDailyLossUSD=40.00` instead of the old
+`MaxDailyLossPct=0.50`. The changes are **source-only** until manually
+compiled and installed on the demo terminal; updating GitHub or Render
+does not replace an attached EX5.
