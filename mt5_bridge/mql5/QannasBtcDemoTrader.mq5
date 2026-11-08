@@ -1,7 +1,7 @@
 //+------------------------------------------------------------------+
 //| QannasBtcDemoTrader.mq5 - separately authorized DEMO-only trader |
 //| Attach on SECOND BTCUSDm chart (keep read-only feed on first).    |
-//| No live accounts, no market entries, no DLLs, no unprotected risk.|
+//| No LIVE accounts; separate MARKET opt-in; broker stops required. |
 //+------------------------------------------------------------------+
 #property strict
 #property version "1.03"
