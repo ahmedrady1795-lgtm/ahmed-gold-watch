@@ -4,7 +4,7 @@
 //| No live accounts, no market entries, no DLLs, no unprotected risk.|
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.01"
+#property version "1.02"
 #property description "BTCUSDm pending LIMIT demo-only EA. OFF by default."
 #property description "Rejects real accounts even if enabled; broker SL/TP required."
 
@@ -21,7 +21,14 @@ input double MaxDailyLossPct=0.50;
 input int    MaxFilledTradesPerDay=360;
 input int    MaxFilledTradesPerMinute=4;
 input int    MaxPositionHoldSeconds=30;
+input int    LocalPendingLifetimeSeconds=11;
 input ulong  TradeMagic=56017952026;
+
+// Broker-side expiration and strategy-side expiry are NOT identical.
+// Exness demo rejected 4-15s broker expiration with retcode 10022.
+// Ask broker for a 3-minute bounded expiry; locally CANCEL LIMIT at 11s.
+// Never fall back to an unbounded GTC or market entry.
+const int BROKER_PENDING_EXPIRY_SECONDS=180;
 
 datetime lastRequestAt=0;
 datetime lastLogAt=0;
@@ -45,7 +52,8 @@ bool LocalAccountSafe()
       MaxDailyLossPct<=0||MaxDailyLossPct>0.50||
       MaxFilledTradesPerDay<1||MaxFilledTradesPerDay>360||
       MaxFilledTradesPerMinute<1||MaxFilledTradesPerMinute>4||
-      MaxPositionHoldSeconds<15||MaxPositionHoldSeconds>30)
+      MaxPositionHoldSeconds<15||MaxPositionHoldSeconds>30||
+      LocalPendingLifetimeSeconds<5||LocalPendingLifetimeSeconds>15)
       return false;
    return true;
   }
@@ -75,6 +83,9 @@ int OnInit()
    started=true;
    Print("Qannas BTC DEMO: initialized on verified DEMO account; orders ",
          EnableDemoOrders?"requested (gates still apply)":"OFF / observation only");
+   PrintFormat("Qannas BTC DEMO: expiry policy broker=%d sec, local cancellation=%d sec, allowed expiry modes=%I64d",
+      BROKER_PENDING_EXPIRY_SECONDS,LocalPendingLifetimeSeconds,
+      SymbolInfoInteger(_Symbol,SYMBOL_EXPIRATION_MODE));
    return INIT_SUCCEEDED;
   }
 bool OwnPending(const ulong ticket)
@@ -97,6 +108,32 @@ void CancelOwnedPending()
                            trade.ResultRetcode()));
      }
   }
+// Delete pending LIMIT orders using the broker order's persistent setup
+// timestamp, so cleanup survives MT5 terminal/EA restarts. Broker expiry is
+// a 3-minute worst-case backstop if the VPS loses connectivity before delete.
+void CancelStaleOwnedPending()
+  {
+   if(!LocalAccountSafe()||!TerminalCanTrade())return;
+   const datetime now=TimeTradeServer();
+   if(now<=0)return;
+   for(int i=OrdersTotal()-1;i>=0;i--)
+     {
+      const ulong ticket=OrderGetTicket(i);
+      if(!OwnPending(ticket))continue;
+      const datetime setup=(datetime)OrderGetInteger(ORDER_TIME_SETUP);
+      // Unknown setup time is suspicious; fail closed and cancel the order.
+      if(setup>0 && now-setup<LocalPendingLifetimeSeconds && setup<=now)
+         continue;
+      if(trade.OrderDelete(ticket) &&
+         trade.ResultRetcode()==TRADE_RETCODE_DONE)
+         PrintFormat("Qannas BTC DEMO: locally expired pending LIMIT %I64u after %d seconds",
+                     ticket,LocalPendingLifetimeSeconds);
+      else
+         Note(StringFormat("could not cancel expired LIMIT ticket=%I64u retcode=%u",
+                           ticket,trade.ResultRetcode()));
+     }
+  }
+
 int SymbolExposure()
   {
    int n=0;
@@ -291,10 +328,15 @@ bool ValidateAndPlace(const string wire)
    const ENUM_ORDER_TYPE type=buy?ORDER_TYPE_BUY_LIMIT:ORDER_TYPE_SELL_LIMIT;
    const double vol=ChooseLot(type,entry,sl);
    if(vol<=0){Note("broker minimum lot exceeds 0.05% risk, or no free margin");return false;}
-   // Broker-expiring pending LIMIT: never convert rejected LIMIT to a DEAL.
-   const datetime expiry=TimeTradeServer()+
-      (int)MathMin(15,MathMax(4,(expiresAt-nowMs)/1000));
-   if(expiry<=TimeTradeServer())return false;
+   // Previous 4-15 second broker expiry failed on Exness demo with
+   // TRADE_RETCODE_INVALID_EXPIRATION (10022). Preserve the server signal's
+   // <=20-second freshness validation ABOVE, but do not send that tiny TTL
+   // as a broker expiration timestamp. Cancel locally on every timer tick
+   // after LocalPendingLifetimeSeconds and use a bounded broker fallback.
+   const datetime brokerNow=TimeTradeServer();
+   if(brokerNow<=0)return false;
+   const datetime expiry=brokerNow+BROKER_PENDING_EXPIRY_SECONDS;
+   if(expiry<=brokerNow)return false;
    bool ok=buy?trade.BuyLimit(vol,entry,_Symbol,sl,tp,
                ORDER_TIME_SPECIFIED,expiry,"QB-DEMO-BTC"):
                trade.SellLimit(vol,entry,_Symbol,sl,tp,
@@ -302,7 +344,12 @@ bool ValidateAndPlace(const string wire)
    const uint retcode=trade.ResultRetcode();
    if(!ok||(retcode!=TRADE_RETCODE_PLACED&&retcode!=TRADE_RETCODE_DONE))
      {
-      Note(StringFormat("pending LIMIT rejected by broker, retcode=%u",retcode));
+      PrintFormat("Qannas BTC DEMO: pending LIMIT REJECTED retcode=%u expiryModes=%I64d brokerAt=%s expiryAt=%s",
+                  retcode,expirationModes,
+                  TimeToString(brokerNow,TIME_DATE|TIME_SECONDS),
+                  TimeToString(expiry,TIME_DATE|TIME_SECONDS));
+      if(retcode==TRADE_RETCODE_INVALID_EXPIRATION)
+         Print("Qannas BTC DEMO: broker still rejects even 180-second specified expiry; no GTC/market fallback.");
       return false;
      }
    GlobalVariableSet(signalKey,(double)signalTick);
@@ -316,6 +363,7 @@ void OnTimer()
    // Broker demo-account check runs on every poll, not only initialization.
    if(!LocalAccountSafe())return;
    ManageOwnOpenPositions();
+   CancelStaleOwnedPending();
    if(!EnableDemoOrders||DemoConfirmation!="I_ENABLE_DEMO_ONLY_V1")
      {
       CancelOwnedPending();
