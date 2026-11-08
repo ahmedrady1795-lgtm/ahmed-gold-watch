@@ -20,17 +20,19 @@ input string DemoConfirmation="";  // type EXACTLY: I_ENABLE_DEMO_ONLY_V1
 // Compile v1.07, verify the DEMO account, then opt in. Default remains LIMIT.
 input bool   UseDemoMarketEntries=false;
 input string DemoMarketConfirmation=""; // I_ENABLE_DEMO_MARKET_ONLY_V1
-input int    MaxMarketEntriesPerM1=3;
-input int    MarketReentryCooldownSeconds=7;
+input int    MaxMarketEntriesPerM1=4;
+input int    MarketReentryCooldownSeconds=4;
 input int    MarketSignalPollSeconds=2;
 input double MaxRiskPerTradePct=0.10; // DEMO only, estimated per-position stop risk
 input double MaxDailyLossUSD=100.00; // USD daily stop; slippage can exceed
-input int    MaxConcurrentMarketPositions=2; // DEMO HEDGING accounts only
-input double MaxCombinedStopRiskPct=0.20; // combined estimated stop risk
-input int    MaxFilledTradesPerDay=360;
-input int    MaxFilledTradesPerMinute=6;
-input int    MaxPositionHoldSeconds=30;
-input int    MarketLossGraceSeconds=10;
+input int    MaxConcurrentMarketPositions=3; // DEMO HEDGING accounts only
+input double MaxCombinedStopRiskPct=0.30; // combined estimated stop risk
+input int    MaxFilledTradesPerDay=1200;
+input int    MaxFilledTradesPerMinute=9;
+input int    MaxPositionHoldSeconds=30; // legacy LIMIT; market closes at its own M1 boundary
+input bool   MarketExitAtMinuteEnd=true; // MARKET: allow price time, then close at entry M1 end
+input int    MarketLatestEntrySecond=35; // ensure at least ~25 seconds of that M1 remain
+input int    MarketLossGraceSeconds=10; // legacy only when minute-end mode is OFF
 input double MarketQuickProfitRiskFraction=0.35;
 input double MarketEarlyLossRiskFraction=0.60;
 input int    LocalPendingLifetimeSeconds=11;
@@ -70,18 +72,19 @@ bool LocalAccountSafe()
    if(AccountInfoString(ACCOUNT_CURRENCY)!="USD"||
       MaxRiskPerTradePct<=0||MaxRiskPerTradePct>0.10||
       MaxDailyLossUSD<=0||MaxDailyLossUSD>100.00||
-      MaxConcurrentMarketPositions<1||MaxConcurrentMarketPositions>2||
-      MaxCombinedStopRiskPct<=0||MaxCombinedStopRiskPct>0.20||
+      MaxConcurrentMarketPositions<1||MaxConcurrentMarketPositions>3||
+      MaxCombinedStopRiskPct<=0||MaxCombinedStopRiskPct>0.30||
       MaxCombinedStopRiskPct<MaxRiskPerTradePct||
-      MaxFilledTradesPerDay<1||MaxFilledTradesPerDay>360||
-      MaxFilledTradesPerMinute<1||MaxFilledTradesPerMinute>6||
+      MaxFilledTradesPerDay<1||MaxFilledTradesPerDay>1200||
+      MaxFilledTradesPerMinute<1||MaxFilledTradesPerMinute>9||
       MaxPositionHoldSeconds<15||MaxPositionHoldSeconds>30||
       MarketLossGraceSeconds<8||MarketLossGraceSeconds>15||
       MarketQuickProfitRiskFraction<0.25||MarketQuickProfitRiskFraction>0.60||
       MarketEarlyLossRiskFraction<0.50||MarketEarlyLossRiskFraction>0.80||
       LocalPendingLifetimeSeconds<5||LocalPendingLifetimeSeconds>15||
-      MaxMarketEntriesPerM1<1||MaxMarketEntriesPerM1>3||
-      MarketReentryCooldownSeconds<6||MarketReentryCooldownSeconds>10||
+      MaxMarketEntriesPerM1<1||MaxMarketEntriesPerM1>4||
+      MarketReentryCooldownSeconds<3||MarketReentryCooldownSeconds>10||
+      MarketLatestEntrySecond<20||MarketLatestEntrySecond>40||
       MarketSignalPollSeconds<2||MarketSignalPollSeconds>4)
       return false;
    return true;
@@ -122,9 +125,8 @@ int OnInit()
           MarketReentryCooldownSeconds,MarketSignalPollSeconds,
           MaxConcurrentMarketPositions,MaxRiskPerTradePct);
    if(UseDemoMarketEntries)
-      PrintFormat("Qannas BTC DEMO MARKET EXIT: profit>=%.2f of risk budget; adverse<=-%.2f after %d sec, time exit %d sec; slippage not capped",
-          MarketQuickProfitRiskFraction,MarketEarlyLossRiskFraction,
-          MarketLossGraceSeconds,MaxPositionHoldSeconds);
+      PrintFormat("Qannas BTC DEMO MARKET EXIT: entry-M1-end=%s; latest entry second=%d; broker SL/TP always active; no early profit/adverse floating close in minute mode",
+          MarketExitAtMinuteEnd?"ON":"OFF",MarketLatestEntrySecond);
    PrintFormat("Qannas BTC DEMO: expiry policy broker=%d sec, local cancellation=%d sec, allowed expiry modes=%I64d",
       BROKER_PENDING_EXPIRY_SECONDS,LocalPendingLifetimeSeconds,
       SymbolInfoInteger(_Symbol,SYMBOL_EXPIRATION_MODE));
@@ -234,6 +236,14 @@ void ManageOwnOpenPositions()
       if(emergency)why="DAILY_USD_EQUITY_STOP";
       else if(sl<=0||tp<=0)
          why="MISSING_BROKER_SL_TP";
+      else if(isMarket&&MarketExitAtMinuteEnd)
+        {
+         // Use broker server time and actual ENTRY minute. Do not close
+         // early because of small floating profit or temporary pullback.
+         // SL/TP and emergency equity close remain active at the broker.
+         const datetime minuteEnd=(datetime)(((long)opened/60+1)*60);
+         if(now>=minuteEnd)why="M1_ENTRY_MINUTE_END";
+        }
       else if(isMarket&&MathIsValidNumber(floating)&&riskBudget>0)
         {
          if(floating>=profitTake)
@@ -241,7 +251,7 @@ void ManageOwnOpenPositions()
          else if(age>=MarketLossGraceSeconds&&floating<=-lossCut)
             why="EARLY_ADVERSE_LOSS";
         }
-      if(why==""&&age>=MaxPositionHoldSeconds)
+      if(why==""&&(!isMarket||!MarketExitAtMinuteEnd)&&age>=MaxPositionHoldSeconds)
          why="MAX_HOLD_TIME";
       if(why=="")continue;
       // A CLOSE request is not proof of a broker close. Check retcode and
@@ -495,6 +505,12 @@ bool ValidateAndPlaceMarket(const string wire)
    if(!SymbolInfoTick(_Symbol,tick))return false;
    const long tickAge=nowMs-tick.time_msc;
    if(tickAge<0||tickAge>3000||tick.bid<=0||tick.ask<=tick.bid)return false;
+   // Place early in the ACTIVE M1 to give the position time until candle close.
+   // Re-evaluate every new M1; do not open seconds before forced minute-end exit.
+   const datetime brokerNow=TimeTradeServer();
+   if(MarketExitAtMinuteEnd&&
+      (brokerNow<=0||(int)(brokerNow%60)>MarketLatestEntrySecond))
+      return false;
    const double spread=tick.ask-tick.bid;
    const double mid=(tick.ask+tick.bid)/2.0;
    if(spread<=0||mid<=0||spread/mid>0.0004||
