@@ -105,6 +105,24 @@ const tickDriven=planBtcDemoMarket({...valid,ticks:[
 ],candles:{...valid.candles,c1:flatC1}},now);
 assert.equal(tickDriven.ready,true,JSON.stringify(tickDriven));
 if(tickDriven.ready)assert.equal(tickDriven.side,'BUY_MARKET');
+// Simulate eight successive healthy M1 bars: one candidate assessment
+// for each minute. This is signal coverage only, NOT 8 wins or fills.
+let advancing=c1;
+for(let n=1;n<=8;n++){
+  const previous=advancing.at(-1)!;
+  const close=previous.close+(n%2?-2:3);
+  const nextBar={time:previous.time+minute,
+    open:previous.close,close,high:Math.max(close,previous.close)+10,
+    low:Math.min(close,previous.close)-10,tickVolume:90+n};
+  advancing=[...advancing.slice(1),nextBar];
+  const evaluationTime=now+n*minute;
+  const quote={...valid,bid:close+.5,ask:close+3,
+    tickTimeMs:evaluationTime-200,observedAt:evaluationTime-300,
+    candles:{...valid.candles,c1:advancing}};
+  const attempted=planBtcDemoMarket(quote,evaluationTime);
+  assert.equal(attempted.ready,true,`fresh M1 number ${n}: ${JSON.stringify(attempted)}`);
+  if(attempted.ready)assert.equal(attempted.candleAt,nextBar.time);
+}
 recordBtcDemoMarketDecision(buy,now-3000);
 recordBtcDemoMarketDecision({ready:false,reason:'BROKER_NOT_FRESH'},now-2000);
 recordBtcDemoMarketDecision({ready:false,reason:'BROKER_NOT_FRESH'},now);
