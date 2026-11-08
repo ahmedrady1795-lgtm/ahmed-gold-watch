@@ -1,6 +1,7 @@
 import {getRuntimeEnv} from '../../../../lib/runtime';
 import {getMt5BtcVerifiedSnapshot} from '../../../../lib/mt5-btc-readonly';
 import {formatBtcDemoWire,planBtcDemoLimit} from '../../../../lib/mt5-btc-demo-plan';
+import {recordBtcDemoSignalDecision} from '../../../../lib/mt5-btc-demo-diagnostics';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -30,6 +31,8 @@ export async function GET(request:Request){
 
   // Even an accidentally enabled global live-execution mode cannot authorize
   // this endpoint to issue demo instructions.
-  const decision=planBtcDemoLimit(getMt5BtcVerifiedSnapshot());
+  const now=Date.now();
+  const decision=planBtcDemoLimit(getMt5BtcVerifiedSnapshot(now),now);
+  recordBtcDemoSignalDecision(decision,now);
   return plain(formatBtcDemoWire(decision));
 }
