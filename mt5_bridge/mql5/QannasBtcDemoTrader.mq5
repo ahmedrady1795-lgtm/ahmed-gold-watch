@@ -4,7 +4,7 @@
 //| No LIVE accounts; separate MARKET opt-in; broker stops required. |
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.07"
+#property version "1.08"
 #property description "BTCUSDm DEMO LIMIT or separately opted-in MARKET EA. OFF by default."
 #property description "Rejects real accounts even if enabled; broker SL/TP required."
 
@@ -17,20 +17,24 @@ input long   ExpectedDemoLogin=0;
 input bool   EnableDemoOrders=false;
 input string DemoConfirmation="";  // type EXACTLY: I_ENABLE_DEMO_ONLY_V1
 // Market execution requires TWO additional, explicitly configured inputs.
-// Compile v1.07, verify the DEMO account, then opt in. Default remains LIMIT.
+// Compile v1.08, verify the DEMO account, then opt in. Default remains LIMIT.
 input bool   UseDemoMarketEntries=false;
 input string DemoMarketConfirmation=""; // I_ENABLE_DEMO_MARKET_ONLY_V1
-input int    MaxMarketEntriesPerM1=4;
+input int    MaxMarketEntriesPerM1=10;
 input int    MarketReentryCooldownSeconds=4;
 input int    MarketSignalPollSeconds=2;
-input double MaxRiskPerTradePct=0.10; // DEMO only, estimated per-position stop risk
+input double MaxRiskPerTradePct=0.12; // DEMO only, estimated per-position stop risk
 input double MaxDailyLossUSD=100.00; // USD daily stop; slippage can exceed
-input int    MaxConcurrentMarketPositions=3; // DEMO HEDGING accounts only
-input double MaxCombinedStopRiskPct=0.30; // combined estimated stop risk
+input int    MaxConcurrentMarketPositions=10; // DEMO HEDGING accounts only
+input double MaxCombinedStopRiskPct=1.20; // combined estimated stop risk
 input int    MaxFilledTradesPerDay=1200;
-input int    MaxFilledTradesPerMinute=9;
+input int    MaxFilledTradesPerMinute=10;
 input int    MaxPositionHoldSeconds=30; // legacy LIMIT; market closes at its own M1 boundary
-input bool   MarketExitAtMinuteEnd=true; // MARKET: allow price time, then close at entry M1 end
+input bool   MarketExitAtMinuteEnd=true; // fallback close at end of entry M1
+input bool   MarketQuickNetProfitExit=true; // close winning MARKET positions as soon as threshold is reached
+input double MarketNetProfitTargetUSD=2.00; // desired net profit PER position
+input double MarketBasketProfitTargetUSD=20.00; // total net floating profit to close all owned positions
+input double MarketExitCostReserveUSD=0.25; // per-position reserve for potential closing charges/slippage
 input int    MarketLatestEntrySecond=35; // ensure at least ~25 seconds of that M1 remain
 input int    MarketLossGraceSeconds=10; // legacy only when minute-end mode is OFF
 input double MarketQuickProfitRiskFraction=0.35;
@@ -70,19 +74,22 @@ bool LocalAccountSafe()
    if(StringFind(SiteURL,"https://")!=0 || StringLen(BridgeToken)<32)
       return false;
    if(AccountInfoString(ACCOUNT_CURRENCY)!="USD"||
-      MaxRiskPerTradePct<=0||MaxRiskPerTradePct>0.10||
+      MaxRiskPerTradePct<=0||MaxRiskPerTradePct>0.12||
       MaxDailyLossUSD<=0||MaxDailyLossUSD>100.00||
-      MaxConcurrentMarketPositions<1||MaxConcurrentMarketPositions>3||
-      MaxCombinedStopRiskPct<=0||MaxCombinedStopRiskPct>0.30||
+      MaxConcurrentMarketPositions<1||MaxConcurrentMarketPositions>10||
+      MaxCombinedStopRiskPct<=0||MaxCombinedStopRiskPct>1.20||
       MaxCombinedStopRiskPct<MaxRiskPerTradePct||
+      MarketNetProfitTargetUSD<0.50||MarketNetProfitTargetUSD>20.00||
+      MarketBasketProfitTargetUSD<2.00||MarketBasketProfitTargetUSD>50.00||
+      MarketExitCostReserveUSD<0||MarketExitCostReserveUSD>2.00||
       MaxFilledTradesPerDay<1||MaxFilledTradesPerDay>1200||
-      MaxFilledTradesPerMinute<1||MaxFilledTradesPerMinute>9||
+      MaxFilledTradesPerMinute<1||MaxFilledTradesPerMinute>10||
       MaxPositionHoldSeconds<15||MaxPositionHoldSeconds>30||
       MarketLossGraceSeconds<8||MarketLossGraceSeconds>15||
       MarketQuickProfitRiskFraction<0.25||MarketQuickProfitRiskFraction>0.60||
       MarketEarlyLossRiskFraction<0.50||MarketEarlyLossRiskFraction>0.80||
       LocalPendingLifetimeSeconds<5||LocalPendingLifetimeSeconds>15||
-      MaxMarketEntriesPerM1<1||MaxMarketEntriesPerM1>4||
+      MaxMarketEntriesPerM1<1||MaxMarketEntriesPerM1>10||
       MarketReentryCooldownSeconds<3||MarketReentryCooldownSeconds>10||
       MarketLatestEntrySecond<20||MarketLatestEntrySecond>40||
       MarketSignalPollSeconds<2||MarketSignalPollSeconds>4)
@@ -125,7 +132,9 @@ int OnInit()
           MarketReentryCooldownSeconds,MarketSignalPollSeconds,
           MaxConcurrentMarketPositions,MaxRiskPerTradePct);
    if(UseDemoMarketEntries)
-      PrintFormat("Qannas BTC DEMO MARKET EXIT: entry-M1-end=%s; latest entry second=%d; broker SL/TP always active; no early profit/adverse floating close in minute mode",
+      PrintFormat("Qannas BTC DEMO MARKET EXIT: quickNet=%s per-position=USD %.2f basket=USD %.2f feeReserve/position=USD %.2f M1-end=%s latest-entry-second=%d broker SL/TP always active",
+          MarketQuickNetProfitExit?"ON":"OFF",MarketNetProfitTargetUSD,
+          MarketBasketProfitTargetUSD,MarketExitCostReserveUSD,
           MarketExitAtMinuteEnd?"ON":"OFF",MarketLatestEntrySecond);
    PrintFormat("Qannas BTC DEMO: expiry policy broker=%d sec, local cancellation=%d sec, allowed expiry modes=%I64d",
       BROKER_PENDING_EXPIRY_SECONDS,LocalPendingLifetimeSeconds,
