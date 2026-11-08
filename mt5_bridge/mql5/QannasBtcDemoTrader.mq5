@@ -4,7 +4,7 @@
 //| No LIVE accounts; separate MARKET opt-in; broker stops required. |
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.03"
+#property version "1.04"
 #property description "BTCUSDm DEMO LIMIT or separately opted-in MARKET EA. OFF by default."
 #property description "Rejects real accounts even if enabled; broker SL/TP required."
 
@@ -26,6 +26,9 @@ input double MaxDailyLossPct=0.50;
 input int    MaxFilledTradesPerDay=360;
 input int    MaxFilledTradesPerMinute=4;
 input int    MaxPositionHoldSeconds=30;
+input int    MarketLossGraceSeconds=10;
+input double MarketQuickProfitRiskFraction=0.35;
+input double MarketEarlyLossRiskFraction=0.60;
 input int    LocalPendingLifetimeSeconds=11;
 input ulong  TradeMagic=56017952026;
 
@@ -37,6 +40,9 @@ const int BROKER_PENDING_EXPIRY_SECONDS=180;
 
 datetime lastRequestAt=0;
 datetime lastLogAt=0;
+datetime lastPositionScanAt=0;
+datetime lastCloseAttemptAt=0;
+ulong lastCloseAttemptTicket=0;
 bool started=false;
 
 string Key(const string suffix)
@@ -58,6 +64,9 @@ bool LocalAccountSafe()
       MaxFilledTradesPerDay<1||MaxFilledTradesPerDay>360||
       MaxFilledTradesPerMinute<1||MaxFilledTradesPerMinute>4||
       MaxPositionHoldSeconds<15||MaxPositionHoldSeconds>30||
+      MarketLossGraceSeconds<8||MarketLossGraceSeconds>15||
+      MarketQuickProfitRiskFraction<0.25||MarketQuickProfitRiskFraction>0.60||
+      MarketEarlyLossRiskFraction<0.50||MarketEarlyLossRiskFraction>0.80||
       LocalPendingLifetimeSeconds<5||LocalPendingLifetimeSeconds>15||
       MaxMarketEntriesPerM1<1||MaxMarketEntriesPerM1>2)
       return false;
@@ -85,12 +94,16 @@ int OnInit()
    trade.SetExpertMagicNumber(TradeMagic);
    trade.SetAsyncMode(false);
    trade.SetTypeFillingBySymbol(_Symbol);
-   if(!EventSetTimer(3))return INIT_FAILED;
+   if(!EventSetTimer(UseDemoMarketEntries?1:3))return INIT_FAILED;
    started=true;
    Print("Qannas BTC DEMO: initialized on verified DEMO account; orders ",
          EnableDemoOrders?"requested (gates still apply)":"OFF / observation only");
    Print("Qannas BTC DEMO: entry mode=",
       UseDemoMarketEntries?"MARKET (requires separate opt-in)":"LIMIT");
+   if(UseDemoMarketEntries)
+      PrintFormat("Qannas BTC DEMO MARKET EXIT: profit>=%.2f of risk budget; adverse<=-%.2f after %d sec, time exit %d sec; slippage not capped",
+          MarketQuickProfitRiskFraction,MarketEarlyLossRiskFraction,
+          MarketLossGraceSeconds,MaxPositionHoldSeconds);
    PrintFormat("Qannas BTC DEMO: expiry policy broker=%d sec, local cancellation=%d sec, allowed expiry modes=%I64d",
       BROKER_PENDING_EXPIRY_SECONDS,LocalPendingLifetimeSeconds,
       SymbolInfoInteger(_Symbol,SYMBOL_EXPIRATION_MODE));
@@ -157,10 +170,16 @@ int SymbolExposure()
      }
    return n;
   }
+// Exness POSITION_PROFIT is floating price P/L (including spread cost);
+// it does NOT establish final net P/L after commission or close slippage.
+// Do not exit on mere +$0.01: require a modest *positive* risk-budget
+// threshold, then verify the actually realized deal in History.
 void ManageOwnOpenPositions()
   {
    if(!LocalAccountSafe()||!TerminalCanTrade())return;
    const datetime now=TimeTradeServer();
+   if(now<=0||now==lastPositionScanAt)return; // <= 1 position scan per second
+   lastPositionScanAt=now;
    for(int i=PositionsTotal()-1;i>=0;i--)
      {
       const ulong ticket=PositionGetTicket(i);
@@ -169,17 +188,53 @@ void ManageOwnOpenPositions()
       const datetime opened=(datetime)PositionGetInteger(POSITION_TIME);
       const double sl=PositionGetDouble(POSITION_SL);
       const double tp=PositionGetDouble(POSITION_TP);
-      // Never leave a known unprotected demo position without intervention.
-      if(sl<=0||tp<=0||now-opened>=MaxPositionHoldSeconds)
+      const double floating=PositionGetDouble(POSITION_PROFIT)+
+                            PositionGetDouble(POSITION_SWAP);
+      const int age=(int)(now-opened);
+      const bool isMarket=UseDemoMarketEntries;
+      const double equity=AccountInfoDouble(ACCOUNT_EQUITY);
+      const double riskBudget=equity*MaxRiskPerTradePct/100.0;
+      const double profitTake=MathMax(0.15,riskBudget*MarketQuickProfitRiskFraction);
+      const double lossCut=riskBudget*MarketEarlyLossRiskFraction;
+      string why="";
+      if(sl<=0||tp<=0)
+         why="MISSING_BROKER_SL_TP";
+      else if(isMarket&&MathIsValidNumber(floating)&&riskBudget>0)
         {
-         if(!trade.PositionClose(ticket))
-            Note(StringFormat("demo close failed, retcode=%u",
-                              trade.ResultRetcode()));
-         else
-            Print("Qannas BTC DEMO: closed own position (time or missing SL/TP).");
+         if(floating>=profitTake)
+            why="QUICK_FLOATING_PROFIT";
+         else if(age>=MarketLossGraceSeconds&&floating<=-lossCut)
+            why="EARLY_ADVERSE_LOSS";
         }
+      if(why==""&&age>=MaxPositionHoldSeconds)
+         why="MAX_HOLD_TIME";
+      if(why=="")continue;
+      // A CLOSE request is not proof of a broker close. Check retcode and
+      // re-read Positions later, with a guard against duplicate requests.
+      if(lastCloseAttemptTicket==ticket&&now-lastCloseAttemptAt<2)
+         continue;
+      lastCloseAttemptAt=now;
+      lastCloseAttemptTicket=ticket;
+      const bool sent=trade.PositionClose(ticket);
+      const uint rc=trade.ResultRetcode();
+      if(sent&&(rc==TRADE_RETCODE_DONE||rc==TRADE_RETCODE_DONE_PARTIAL))
+         PrintFormat("Qannas BTC DEMO EXIT: requested=%s ticket=%I64u age=%d floatingPnL=%.2f riskBudget=%.2f brokerRetcode=%u; check History for final net",
+            why,ticket,age,floating,riskBudget,rc);
+      else
+         PrintFormat("Qannas BTC DEMO EXIT FAILED: reason=%s ticket=%I64u age=%d floatingPnL=%.2f retcode=%u; broker SL/TP remains if present",
+            why,ticket,age,floating,rc);
      }
   }
+void OnTick()
+  {
+   // Fast management of an EXISTING DEMO MARKET position without waiting for
+   // the next signal WebRequest (which may take several seconds).
+   if(UseDemoMarketEntries&&EnableDemoOrders&&
+      DemoConfirmation=="I_ENABLE_DEMO_ONLY_V1"&&
+      DemoMarketConfirmation=="I_ENABLE_DEMO_MARKET_ONLY_V1")
+      ManageOwnOpenPositions();
+  }
+
 bool HistoryLimits()
   {
    // Persistent per-account starting equity prevents an open loss or another

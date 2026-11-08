@@ -1,4 +1,4 @@
-# Qannas BTCUSDm — DEMO-only MARKET scalp experiment (EA v1.03)
+# Qannas BTCUSDm — DEMO-only MARKET scalp experiment (EA v1.04)
 
 This is **experimental Exness BTCUSDm demo trading**, not investment advice,
 not a profitable strategy, and not a way to copy the video's growing lots
@@ -15,7 +15,7 @@ strategy remains available and unchanged when Market mode is disabled.
    `MT5_BTC_DEMO_MARKET_SIGNALS_ENABLED=true` (default OFF), and emits
    `QBTCM1|BUY_MARKET...`, `SELL_MARKET...`, or `WAIT`. It **never** sends
    orders to Exness. The old LIMIT signal endpoint/flag is separate.
-3. EA `QannasBtcDemoTrader.mq5` v1.03 adds a new explicit
+3. EA `QannasBtcDemoTrader.mq5` v1.04 adds a new explicit
    `UseDemoMarketEntries=false` switch (LIMIT remains default), plus
    `DemoMarketConfirmation`, whose exact opt-in is
    `I_ENABLE_DEMO_MARKET_ONLY_V1`. Existing `EnableDemoOrders=true` AND
@@ -42,9 +42,26 @@ strategy remains available and unchanged when Market mode is disabled.
   10-second minimum cooldown after a confirmed fill.
 - **At most ONE position or pending order anywhere on this demo account**
   before any new Market entry. No martingale or growing lot multiplier.
-  Exit at broker SL/TP or a maximum 30-second local holding period;
-  if the VPS disconnects, local time exits may fail but protective
-  broker SL/TP should remain.
+  v1.04 checks existing demo MARKET positions on every BTC tick (and a
+  one-second fallback timer) to exit when:
+    - **QUICK_FLOATING_PROFIT:** mark-to-market P/L, after the spread, reaches
+      35% of the 0.05%-of-equity risk budget (floor 0.15 account currency).
+      This is **not a guarantee of a final net profit**, since commissions
+      and close slippage can still apply.
+    - **EARLY_ADVERSE_LOSS:** after a 10-second grace period, floating loss
+      reaches 60% of the risk budget; don't instantly cut the entry spread.
+    - **MISSING_BROKER_SL_TP:** immediate emergency close request, even
+      before the 10-second grace.
+    - **MAX_HOLD_TIME:** maximum 30-second local holding period remains.
+  Close requests log the distinct reason, floating P/L and broker return
+  code. A `PositionClose()` boolean is **not proof of execution**; verify
+  actual fills in MT5 History. If the VPS disconnects, local exit logic
+  cannot operate, while existing broker SL/TP should remain.
+- Automatic lot sizing stays **under** the 0.05% estimated risk-per-trade
+  cap, with a further 20% buffer for modeled slippage. In the already
+  unprofitable demo sample, unconditionally raising lots would magnify
+  losses, not manufacture instant profit. Actual losses can exceed the
+  estimated stop budget because of spread, slippage or broker execution.
 - Each candidate requires an authentic recently closed BTCUSDm M1 bar,
   fresh actual broker quote, enough measured motion to cover >=2.4 spreads
   in target distance, an observed directional body or credible EMA,
@@ -56,7 +73,7 @@ strategy remains available and unchanged when Market mode is disabled.
 1. **Turn Algo Trading OFF** on the Exness VPS. Open MT5 Trade tab and confirm
    no open BTCUSDm position or unexpired pending LIMIT order before switching.
    Keep the current BTCUSDm read-only bridge on its own chart.
-2. Replace the existing BTCUSDm `QannasBtcDemoTrader.mq5` with **v1.03**
+2. Replace the existing BTCUSDm `QannasBtcDemoTrader.mq5` with **v1.04**
    from the `render-free` branch, run MetaEditor **Compile**, and verify
    **0 errors / 0 warnings**. GitHub CI does **not** compile MQL5; it only
    checks source/tests.
@@ -84,5 +101,6 @@ broker-side SL/TP and are NOT automatically closed just by toggling
 Algo Trading; manage them explicitly on the DEMO terminal.
 
 No real-account orders, no market lot doubling, no high-leverage imitation
-of a social-media video. This code has NOT yet passed a real Exness demo
-order-fill/SL/TP test in the user's MT5 terminal.
+of a social-media video. The earlier v1.03 Market EA did execute real **demo** trades, with reported
+net losses; the new v1.04 exit strategy has NOT yet been compiled in MT5 or
+validated on real Exness demo fills. Do not assume it is profitable.
