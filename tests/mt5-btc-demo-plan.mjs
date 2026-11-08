@@ -169,7 +169,7 @@ assert.match(ea,/EnableDemoOrders=false/);
 assert.match(ea,/I_ENABLE_DEMO_ONLY_V1/);
 assert.match(ea,/TRADE_RETCODE_PLACED/);
 assert.match(ea,/ORDER_TIME_SPECIFIED/);
-assert.match(ea,/MaxRiskPerTradePct>0\.30/);
+assert.match(ea,/MaxRiskPerTradePct>0\.12/);
 assert.match(ea,/MaxFilledTradesPerMinute>10/);
 assert.match(ea,/MarketExitAtMinuteEnd=true/);
 assert.match(ea,/MarketLatestEntrySecond=35/);
