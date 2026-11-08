@@ -1,4 +1,4 @@
-# Qannas BTCUSDm — DEMO-only MARKET scalp experiment (EA v1.04)
+# Qannas BTCUSDm — DEMO-only MARKET scalp experiment (EA v1.05)
 
 This is **experimental Exness BTCUSDm demo trading**, not investment advice,
 not a profitable strategy, and not a way to copy the video's growing lots
@@ -15,7 +15,7 @@ strategy remains available and unchanged when Market mode is disabled.
    `MT5_BTC_DEMO_MARKET_SIGNALS_ENABLED=true` (default OFF), and emits
    `QBTCM1|BUY_MARKET...`, `SELL_MARKET...`, or `WAIT`. It **never** sends
    orders to Exness. The old LIMIT signal endpoint/flag is separate.
-3. EA `QannasBtcDemoTrader.mq5` v1.04 adds a new explicit
+3. EA `QannasBtcDemoTrader.mq5` v1.05 adds a new explicit
    `UseDemoMarketEntries=false` switch (LIMIT remains default), plus
    `DemoMarketConfirmation`, whose exact opt-in is
    `I_ENABLE_DEMO_MARKET_ONLY_V1`. Existing `EnableDemoOrders=true` AND
@@ -37,12 +37,16 @@ strategy remains available and unchanged when Market mode is disabled.
   realized loss can still exceed this from slippage, commission, execution
   failures, or stop gaps. No hard guarantee.
 - <=0.5% account equity drawdown against the persistent UTC day-start
-  checkpoint, own-day realized loss cap <=0.5%, <=4 filled entries per
-  rolling 60 seconds, <=2 market entries per new M1, max 360/day failsafe,
-  10-second minimum cooldown after a confirmed fill.
+  checkpoint, own-day realized loss cap <=0.5%, <=6 filled entries per
+  rolling 60 seconds, <=3 market entries per new M1, max 360/day failsafe,
+  7-second minimum cooldown after a confirmed fill (DEMO Market v1.05).
+  Signal polling in Market mode can be as frequent as every 2 seconds;
+  these are **capacity ceilings, not promised profitable trades**.
+  Real Exness price freshness, distinct signals, spread, the one-position
+  limit and stop/risk checks still prevent unqualified entries.
 - **At most ONE position or pending order anywhere on this demo account**
   before any new Market entry. No martingale or growing lot multiplier.
-  v1.04 checks existing demo MARKET positions on every BTC tick (and a
+  v1.05 checks existing demo MARKET positions on every BTC tick (and a
   one-second fallback timer) to exit when:
     - **QUICK_FLOATING_PROFIT:** mark-to-market P/L, after the spread, reaches
       35% of the 0.05%-of-equity risk budget (floor 0.15 account currency).
@@ -58,7 +62,11 @@ strategy remains available and unchanged when Market mode is disabled.
   actual fills in MT5 History. If the VPS disconnects, local exit logic
   cannot operate, while existing broker SL/TP should remain.
 - Automatic lot sizing stays **under** the 0.05% estimated risk-per-trade
-  cap, with a further 20% buffer for modeled slippage. In the already
+  cap, with a further 20% buffer for modeled slippage.
+  **No volume increase after a losing deal and no automatic recovery/martingale.**
+  More trade opportunities mean more spread and slippage exposure. A future
+  increase in lot sizing needs a demonstrated profitable net execution sample
+  and explicit separate risk-budget consent; it is not part of v1.05. In the already
   unprofitable demo sample, unconditionally raising lots would magnify
   losses, not manufacture instant profit. Actual losses can exceed the
   estimated stop budget because of spread, slippage or broker execution.
@@ -73,7 +81,7 @@ strategy remains available and unchanged when Market mode is disabled.
 1. **Turn Algo Trading OFF** on the Exness VPS. Open MT5 Trade tab and confirm
    no open BTCUSDm position or unexpired pending LIMIT order before switching.
    Keep the current BTCUSDm read-only bridge on its own chart.
-2. Replace the existing BTCUSDm `QannasBtcDemoTrader.mq5` with **v1.04**
+2. Replace the existing BTCUSDm `QannasBtcDemoTrader.mq5` with **v1.05**
    from the `render-free` branch, run MetaEditor **Compile**, and verify
    **0 errors / 0 warnings**. GitHub CI does **not** compile MQL5; it only
    checks source/tests.
@@ -101,6 +109,9 @@ broker-side SL/TP and are NOT automatically closed just by toggling
 Algo Trading; manage them explicitly on the DEMO terminal.
 
 No real-account orders, no market lot doubling, no high-leverage imitation
-of a social-media video. The earlier v1.03 Market EA did execute real **demo** trades, with reported
-net losses; the new v1.04 exit strategy has NOT yet been compiled in MT5 or
-validated on real Exness demo fills. Do not assume it is profitable.
+of a social-media video. Earlier Market EA versions executed actual **demo** trades with net losses.
+The v1.05 quick-exit and higher-frequency settings have NOT been compiled or
+validated against Exness broker fills on the user's VPS. Only change the
+single EA while Algo Trading is disabled and the Trade tab shows no existing
+orders or positions. Confirm v1.05 in MetaEditor, test 0 errors/warnings,
+then inspect deal-level net results rather than only number of entries.
