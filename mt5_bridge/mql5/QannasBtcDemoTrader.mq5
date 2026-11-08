@@ -4,7 +4,7 @@
 //| No LIVE accounts; separate MARKET opt-in; broker stops required. |
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.06"
+#property version "1.07"
 #property description "BTCUSDm DEMO LIMIT or separately opted-in MARKET EA. OFF by default."
 #property description "Rejects real accounts even if enabled; broker SL/TP required."
 
@@ -17,14 +17,16 @@ input long   ExpectedDemoLogin=0;
 input bool   EnableDemoOrders=false;
 input string DemoConfirmation="";  // type EXACTLY: I_ENABLE_DEMO_ONLY_V1
 // Market execution requires TWO additional, explicitly configured inputs.
-// Compile v1.06, verify the DEMO account, then opt in. Default remains LIMIT.
+// Compile v1.07, verify the DEMO account, then opt in. Default remains LIMIT.
 input bool   UseDemoMarketEntries=false;
 input string DemoMarketConfirmation=""; // I_ENABLE_DEMO_MARKET_ONLY_V1
 input int    MaxMarketEntriesPerM1=3;
 input int    MarketReentryCooldownSeconds=7;
 input int    MarketSignalPollSeconds=2;
-input double MaxRiskPerTradePct=0.05;
-input double MaxDailyLossUSD=40.00; // demo USD-only hard limit
+input double MaxRiskPerTradePct=0.10; // DEMO only, estimated per-position stop risk
+input double MaxDailyLossUSD=100.00; // USD daily stop; slippage can exceed
+input int    MaxConcurrentMarketPositions=2; // DEMO HEDGING accounts only
+input double MaxCombinedStopRiskPct=0.20; // combined estimated stop risk
 input int    MaxFilledTradesPerDay=360;
 input int    MaxFilledTradesPerMinute=6;
 input int    MaxPositionHoldSeconds=30;
@@ -60,11 +62,17 @@ bool LocalAccountSafe()
       AccountInfoInteger(ACCOUNT_LOGIN)!=ExpectedDemoLogin)return false;
    if(AccountInfoInteger(ACCOUNT_TRADE_MODE)!=ACCOUNT_TRADE_MODE_DEMO)
       return false;
+   if(UseDemoMarketEntries&&
+      AccountInfoInteger(ACCOUNT_MARGIN_MODE)!=ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
+      return false; // distinct simultaneous positions require HEDGING
    if(StringFind(SiteURL,"https://")!=0 || StringLen(BridgeToken)<32)
       return false;
    if(AccountInfoString(ACCOUNT_CURRENCY)!="USD"||
-      MaxRiskPerTradePct<=0||MaxRiskPerTradePct>0.05||
-      MaxDailyLossUSD<=0||MaxDailyLossUSD>40.00||
+      MaxRiskPerTradePct<=0||MaxRiskPerTradePct>0.10||
+      MaxDailyLossUSD<=0||MaxDailyLossUSD>100.00||
+      MaxConcurrentMarketPositions<1||MaxConcurrentMarketPositions>2||
+      MaxCombinedStopRiskPct<=0||MaxCombinedStopRiskPct>0.20||
+      MaxCombinedStopRiskPct<MaxRiskPerTradePct||
       MaxFilledTradesPerDay<1||MaxFilledTradesPerDay>360||
       MaxFilledTradesPerMinute<1||MaxFilledTradesPerMinute>6||
       MaxPositionHoldSeconds<15||MaxPositionHoldSeconds>30||
@@ -97,7 +105,8 @@ int OnInit()
       Print("Qannas BTC DEMO: REFUSED account/symbol/token/risk limits. No orders.");
       return INIT_PARAMETERS_INCORRECT;
      }
-   PrintFormat("Qannas BTC DEMO DAILY STOP: USD %.2f, equity and own realized net; per-trade risk <=0.05%%; slippage not guaranteed",MaxDailyLossUSD);
+   PrintFormat("Qannas BTC DEMO DAILY STOP USD %.2f; risk<=%.2f%%/position; combined<=%.2f%%; max simultaneous=%d; fills may slip",
+               MaxDailyLossUSD,MaxRiskPerTradePct,MaxCombinedStopRiskPct,MaxConcurrentMarketPositions);
    trade.SetExpertMagicNumber(TradeMagic);
    trade.SetAsyncMode(false);
    trade.SetTypeFillingBySymbol(_Symbol);
@@ -108,9 +117,10 @@ int OnInit()
    Print("Qannas BTC DEMO: entry mode=",
       UseDemoMarketEntries?"MARKET (requires separate opt-in)":"LIMIT");
    if(UseDemoMarketEntries)
-      PrintFormat("Qannas BTC DEMO MARKET FREQUENCY: <=%d filled/min, <=%d/M1; cooldown >=%d sec; signal poll >=%d sec; one position and strict 0.05%% risk per trade",
+      PrintFormat("Qannas BTC DEMO MARKET FREQUENCY: <=%d filled/min, <=%d/M1; cooldown >=%d sec; signal poll >=%d sec; up to %d same-side positions, estimated risk <=%.2f%% each",
           MaxFilledTradesPerMinute,MaxMarketEntriesPerM1,
-          MarketReentryCooldownSeconds,MarketSignalPollSeconds);
+          MarketReentryCooldownSeconds,MarketSignalPollSeconds,
+          MaxConcurrentMarketPositions,MaxRiskPerTradePct);
    if(UseDemoMarketEntries)
       PrintFormat("Qannas BTC DEMO MARKET EXIT: profit>=%.2f of risk budget; adverse<=-%.2f after %d sec, time exit %d sec; slippage not capped",
           MarketQuickProfitRiskFraction,MarketEarlyLossRiskFraction,
@@ -388,6 +398,56 @@ bool MarketFilledLimitForM1(const long candleAtMs)
      }
    return count<MaxMarketEntriesPerM1;
   }
+// Same-symbol, same-side HEDGING stack. Reject unrelated positions and
+// pending orders, enforce stops and cumulative broker-calculated stop risk.
+// Never use naked positions, trade doubling, or martingale recovery.
+bool MarketStackingSafe(const bool buy,const double lots,
+                        const double entry,const double sl,
+                        const double slipAllowance)
+  {
+   if(!UseDemoMarketEntries||lots<=0||
+      AccountInfoInteger(ACCOUNT_MARGIN_MODE)!=ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
+      return false;
+   if(OrdersTotal()>0)return false;
+   const ENUM_POSITION_TYPE desired=buy?POSITION_TYPE_BUY:POSITION_TYPE_SELL;
+   double combinedStopLoss=0.0;
+   int count=0;
+   for(int i=0;i<PositionsTotal();i++)
+     {
+      const ulong ticket=PositionGetTicket(i);
+      if(ticket==0)return false;
+      if(PositionGetString(POSITION_SYMBOL)!=_Symbol||
+         (ulong)PositionGetInteger(POSITION_MAGIC)!=TradeMagic)
+         return false; // no stacking across unowned accounts or strategies
+      if((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE)!=desired)
+         return false;
+      const double opened=PositionGetDouble(POSITION_PRICE_OPEN);
+      const double stop=PositionGetDouble(POSITION_SL);
+      const double volume=PositionGetDouble(POSITION_VOLUME);
+      double result=0;
+      if(stop<=0||volume<=0||opened<=0||
+         !OrderCalcProfit(buy?ORDER_TYPE_BUY:ORDER_TYPE_SELL,
+                          _Symbol,volume,opened,stop,result)||
+         !MathIsValidNumber(result))
+         return false;
+      combinedStopLoss+=MathMax(0.0,-result);
+      count++;
+     }
+   if(count>=MaxConcurrentMarketPositions)return false;
+   const double worstEntry=buy?entry+slipAllowance:entry-slipAllowance;
+   const double worstStop=buy?sl-slipAllowance:sl+slipAllowance;
+   double incoming=0;
+   if(worstEntry<=0||worstStop<=0||
+      !OrderCalcProfit(buy?ORDER_TYPE_BUY:ORDER_TYPE_SELL,
+                       _Symbol,lots,worstEntry,worstStop,incoming)||
+      !MathIsValidNumber(incoming)||incoming>=0)
+      return false;
+   // Reserve margin for fills/fees, this is an estimate, not a hard guarantee.
+   const double combinedBudget=AccountInfoDouble(ACCOUNT_EQUITY)*
+                               MaxCombinedStopRiskPct/100.0*0.80;
+   return combinedStopLoss+(-incoming)<=combinedBudget;
+  }
+
 bool ValidateAndPlaceMarket(const string wire)
   {
    string parts[];
@@ -437,8 +497,7 @@ bool ValidateAndPlaceMarket(const string wire)
       (modes&SYMBOL_ORDER_TP)==0 ||
       SymbolInfoInteger(_Symbol,SYMBOL_TRADE_MODE)!=SYMBOL_TRADE_MODE_FULL)
       return false;
-   if(PositionsTotal()>0||OrdersTotal()>0||!HistoryLimits()||
-      !MarketFilledLimitForM1(candleAt))return false;
+   if(!HistoryLimits()||!MarketFilledLimitForM1(candleAt))return false;
    const string signalKey=Key("LASTMARKET");
    const string cooldownKey=Key("COOL");
    if(GlobalVariableCheck(signalKey)&&
@@ -477,7 +536,12 @@ bool ValidateAndPlaceMarket(const string wire)
    const double lots=ChooseDemoMarketLot(buy,entry,sl,slipAllowance);
    if(lots<=0)
      {
-      Note("demo MARKET blocked: broker min lot or buffered loss exceeds 0.05% risk");
+      Note("demo MARKET blocked: broker min lot or buffered loss exceeds configured risk");
+      return false;
+     }
+   if(!MarketStackingSafe(buy,lots,entry,sl,slipAllowance))
+     {
+      Note("demo MARKET blocked: position cap, direction conflict, or combined stop risk");
       return false;
      }
    trade.SetDeviationInPoints((ulong)MathMax(1.0,MathFloor(slipAllowance/point)));
@@ -640,7 +704,7 @@ void OnTimer()
    const int pollEvery=UseDemoMarketEntries?MarketSignalPollSeconds:3;
    if(now-lastRequestAt<pollEvery)return;
    lastRequestAt=now;
-   if(SymbolExposure()>0)return; // owned/unowned position OR pending blocks new entry
+   if(!UseDemoMarketEntries&&SymbolExposure()>0)return; // preserve LIMIT single-exposure policy
    if(!HistoryLimits()){Note("entry stopped: "+lastHistoryBlockReason);return;}
    const string headers="Authorization: Bearer "+BridgeToken+"\r\n";
    char request[],response[];
