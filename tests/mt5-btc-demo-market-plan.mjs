@@ -109,7 +109,7 @@ if(tickDriven.ready)assert.equal(tickDriven.side,'BUY_MARKET');
 // for each minute. This is signal coverage only, NOT 8 wins or fills.
 let advancing=c1;
 for(let n=1;n<=8;n++){
-  const previous=advancing.at(-1)!;
+  const previous=advancing.at(-1);
   const close=previous.close+(n%2?-2:3);
   const nextBar={time:previous.time+minute,
     open:previous.close,close,high:Math.max(close,previous.close)+10,
