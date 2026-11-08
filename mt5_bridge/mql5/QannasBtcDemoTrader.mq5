@@ -4,7 +4,7 @@
 //| No LIVE accounts; separate MARKET opt-in; broker stops required. |
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.08"
+#property version "1.10"
 #property description "BTCUSDm DEMO LIMIT or separately opted-in MARKET EA. OFF by default."
 #property description "Rejects real accounts even if enabled; broker SL/TP required."
 
@@ -17,7 +17,7 @@ input long   ExpectedDemoLogin=0;
 input bool   EnableDemoOrders=false;
 input string DemoConfirmation="";  // type EXACTLY: I_ENABLE_DEMO_ONLY_V1
 // Market execution requires TWO additional, explicitly configured inputs.
-// Compile v1.08, verify the DEMO account, then opt in. Default remains LIMIT.
+// Compile v1.10, verify the DEMO account, then opt in. Default remains LIMIT.
 input bool   UseDemoMarketEntries=false;
 input string DemoMarketConfirmation=""; // I_ENABLE_DEMO_MARKET_ONLY_V1
 input int    MaxMarketEntriesPerM1=10;
@@ -34,7 +34,18 @@ input bool   MarketExitAtMinuteEnd=true; // fallback close at end of entry M1
 input bool   MarketQuickNetProfitExit=true; // close winning MARKET positions as soon as threshold is reached
 input double MarketNetProfitTargetUSD=2.00; // desired net profit PER position
 input double MarketBasketProfitTargetUSD=20.00; // total net floating profit to close all owned positions
-input double MarketExitCostReserveUSD=0.25; // per-position reserve for potential closing charges/slippage
+input double MarketExitCostReserveUSD=0.25; // per-position closing-fee/slippage reserve
+// Separately authorized 8.00-MT5-lot basket EXPERIMENT, DEMO HEDGING ONLY.
+input bool   UseFixedDemoBasket=false; // OFF unless independently authorized
+input string DemoBasketConfirmation=""; // I_ENABLE_BTC_DEMO_BASKET_V1
+input double DemoBasketFixedLot=8.00; // requested lots; fail closed if spread/risk/margin are too high
+input double DemoBasketMaxRiskPct=0.30; // max 0.30% estimated risk per fixed-lot position
+input double DemoBasketMaxCombinedRiskPct=1.80; // max 1.80% estimated group stop risk
+input int    DemoBasketTargetPositions=4; // choice: 4 or 6 simultaneous
+input double DemoBasketTakeProfitUSD=10.00; // estimated net BASKET target
+input double DemoBasketStopLossUSD=5.00; // estimated net BASKET loss-close trigger
+input int    DemoBasketMaxHoldSeconds=60; // bounded even if neither target hits
+input int    DemoBasketReentryPauseSeconds=3; // avoid same-tick closing/reopening
 input int    MarketLatestEntrySecond=35; // ensure at least ~25 seconds of that M1 remain
 input int    MarketLossGraceSeconds=10; // legacy only when minute-end mode is OFF
 input double MarketQuickProfitRiskFraction=0.35;
@@ -71,6 +82,10 @@ bool LocalAccountSafe()
    if(UseDemoMarketEntries&&
       AccountInfoInteger(ACCOUNT_MARGIN_MODE)!=ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
       return false; // distinct simultaneous positions require HEDGING
+   if(UseFixedDemoBasket&&
+      (!UseDemoMarketEntries||
+       DemoBasketConfirmation!="I_ENABLE_BTC_DEMO_BASKET_V1"))
+      return false; // independent user permission for high-volume demo experiment
    if(StringFind(SiteURL,"https://")!=0 || StringLen(BridgeToken)<32)
       return false;
    if(AccountInfoString(ACCOUNT_CURRENCY)!="USD"||
@@ -82,6 +97,15 @@ bool LocalAccountSafe()
       MarketNetProfitTargetUSD<0.50||MarketNetProfitTargetUSD>20.00||
       MarketBasketProfitTargetUSD<2.00||MarketBasketProfitTargetUSD>50.00||
       MarketExitCostReserveUSD<0||MarketExitCostReserveUSD>2.00||
+       (DemoBasketTargetPositions!=4&&DemoBasketTargetPositions!=6)||
+       MathAbs(DemoBasketFixedLot-8.00)>0.00000001||
+       DemoBasketMaxRiskPct<=0||DemoBasketMaxRiskPct>0.30||
+       DemoBasketMaxCombinedRiskPct<=0||DemoBasketMaxCombinedRiskPct>1.80||
+       DemoBasketMaxCombinedRiskPct<DemoBasketMaxRiskPct||
+       DemoBasketTakeProfitUSD!=10.00||
+       DemoBasketStopLossUSD!=5.00||
+       DemoBasketMaxHoldSeconds<20||DemoBasketMaxHoldSeconds>60||
+       DemoBasketReentryPauseSeconds<3||DemoBasketReentryPauseSeconds>10||
       MaxFilledTradesPerDay<1||MaxFilledTradesPerDay>1200||
       MaxFilledTradesPerMinute<1||MaxFilledTradesPerMinute>10||
       MaxPositionHoldSeconds<15||MaxPositionHoldSeconds>30||
@@ -136,6 +160,14 @@ int OnInit()
           MarketQuickNetProfitExit?"ON":"OFF",MarketNetProfitTargetUSD,
           MarketBasketProfitTargetUSD,MarketExitCostReserveUSD,
           MarketExitAtMinuteEnd?"ON":"OFF",MarketLatestEntrySecond);
+   if(UseFixedDemoBasket)
+      PrintFormat("Qannas BTC DEMO BASKET: fixed LOT=%.2f count=%d estimated-net TP=+%.2f USD STOP=-%.2f USD cyclePause=%d sec; DEMO ONLY; not a guaranteed P/L cap",
+                  DemoBasketFixedLot,DemoBasketTargetPositions,
+                  DemoBasketTakeProfitUSD,DemoBasketStopLossUSD,
+                  DemoBasketReentryPauseSeconds);
+   if(UseFixedDemoBasket)
+      PrintFormat("Qannas BTC DEMO basket contract size: %.8f base units per MT5 lot (broker specification); requested 8.00 lots are NOT necessarily 8 BTC",
+                  SymbolInfoDouble(_Symbol,SYMBOL_TRADE_CONTRACT_SIZE));
    PrintFormat("Qannas BTC DEMO: expiry policy broker=%d sec, local cancellation=%d sec, allowed expiry modes=%I64d",
       BROKER_PENDING_EXPIRY_SECONDS,LocalPendingLifetimeSeconds,
       SymbolInfoInteger(_Symbol,SYMBOL_EXPIRATION_MODE));
@@ -276,10 +308,50 @@ void ManageOwnOpenPositions()
    const bool emergency=DailyEquityStopReached();
    double basketNet=0.0;
    int basketCount=0;
-   const bool basketKnown=UseDemoMarketEntries&&MarketQuickNetProfitExit&&
+   const bool basketKnown=UseDemoMarketEntries&&
+      (UseFixedDemoBasket||MarketQuickNetProfitExit)&&
       MarketBasketEstimatedNet(basketNet,basketCount);
-   const bool takeBasket=basketKnown&&basketCount>=2&&
+   const bool takeBasket=!UseFixedDemoBasket&&basketKnown&&basketCount>=2&&
       basketNet>=MarketBasketProfitTargetUSD;
+   const bool fixedTake=UseFixedDemoBasket&&basketKnown&&
+      basketNet>=DemoBasketTakeProfitUSD;
+   const bool fixedLoss=UseFixedDemoBasket&&basketKnown&&
+      basketNet<=-DemoBasketStopLossUSD;
+   datetime oldest=now;
+   int observedBasketPositions=0;
+   double fallbackBasketFloating=0.0;
+   for(int j=0;j<PositionsTotal();j++)
+     {
+      const ulong id=PositionGetTicket(j);
+      if(id==0||PositionGetString(POSITION_SYMBOL)!=_Symbol||
+         (ulong)PositionGetInteger(POSITION_MAGIC)!=TradeMagic)continue;
+      observedBasketPositions++;
+      fallbackBasketFloating+=PositionGetDouble(POSITION_PROFIT)+
+                              PositionGetDouble(POSITION_SWAP)-
+                              MarketExitCostReserveUSD;
+      const datetime ts=(datetime)PositionGetInteger(POSITION_TIME);
+      if(ts>0&&ts<oldest)oldest=ts;
+     }
+   const bool timedOut=UseFixedDemoBasket&&observedBasketPositions>0&&
+      now-oldest>=DemoBasketMaxHoldSeconds;
+   // When broker fee records cannot be selected, a conservative floating
+   // downside still initiates close; do NOT infer profitability without fees.
+   const bool emergencyFloatingLoss=UseFixedDemoBasket&&
+      !basketKnown&&observedBasketPositions>0&&
+      fallbackBasketFloating<=-DemoBasketStopLossUSD;
+   const string closingKey=Key("BASKET_CLOSING");
+   bool closing=UseFixedDemoBasket&&GlobalVariableCheck(closingKey);
+   if(UseFixedDemoBasket&&!closing&&
+      (fixedTake||fixedLoss||timedOut||emergencyFloatingLoss))
+     {
+      GlobalVariableSet(closingKey,1.0); // latched until every position closes
+      GlobalVariableSet(Key("BASKET_LAST_EXIT"),(double)TimeGMT());
+      closing=true;
+      PrintFormat("Qannas DEMO BASKET CLOSE trigger: netEstimate=%.2f trades=%d reason=%s; actual net may slip",
+                  basketNet,basketCount,fixedLoss?"LOSS_-5":
+                  fixedTake?"PROFIT_+10":emergencyFloatingLoss?
+                  "FALLBACK_LOSS_-5":"MAX_HOLD");
+     }
    for(int i=PositionsTotal()-1;i>=0;i--)
      {
       const ulong ticket=PositionGetTicket(i);
@@ -300,6 +372,12 @@ void ManageOwnOpenPositions()
       if(emergency)why="DAILY_USD_EQUITY_STOP";
       else if(sl<=0||tp<=0)
          why="MISSING_BROKER_SL_TP";
+      else if(isMarket&&UseFixedDemoBasket)
+        {
+         if(closing)why="BASKET_CLOSE_LATCHED";
+         // While assembling 4/6 positions, do not take USD 2 single-trade exits.
+         // The entire batch is closed on +10, -5 or max hold.
+        }
       else if(isMarket&&MarketQuickNetProfitExit)
         {
          if(takeBasket)
@@ -317,21 +395,22 @@ void ManageOwnOpenPositions()
               }
            }
         }
-      if(why==""&&isMarket&&MarketExitAtMinuteEnd)
+      if(why==""&&isMarket&&!UseFixedDemoBasket&&MarketExitAtMinuteEnd)
         {
          // Fallback at the end of the position's actual entry minute.
          // SL/TP and daily loss shutdown can still execute sooner.
          const datetime minuteEnd=(datetime)(((long)opened/60+1)*60);
          if(now>=minuteEnd)why="M1_ENTRY_MINUTE_END";
         }
-      else if(why==""&&isMarket&&!MarketExitAtMinuteEnd&&
+      else if(why==""&&isMarket&&!UseFixedDemoBasket&&!MarketExitAtMinuteEnd&&
               MathIsValidNumber(floating)&&riskBudget>0)
         {
          if(floating>=profitTake)why="QUICK_FLOATING_PROFIT";
          else if(age>=MarketLossGraceSeconds&&floating<=-lossCut)
             why="EARLY_ADVERSE_LOSS";
         }
-      if(why==""&&(!isMarket||!MarketExitAtMinuteEnd)&&age>=MaxPositionHoldSeconds)
+      if(why==""&&(!isMarket||(!MarketExitAtMinuteEnd&&!UseFixedDemoBasket))&&
+         age>=MaxPositionHoldSeconds)
          why="MAX_HOLD_TIME";
       if(why=="")continue;
       // A CLOSE request is not proof of a broker close. Check retcode and
@@ -485,6 +564,47 @@ double ChooseDemoMarketLot(const bool buy,const double entry,
       margin<=0||margin>AccountInfoDouble(ACCOUNT_MARGIN_FREE)*.5)return 0;
    return lots;
   }
+// 8.00 MT5 lots permitted only if DEMO broker contract and spread,
+// stop loss and margin can support the requested basket loss trigger.
+// Reject the entire strategy while its expected aggregate entry spread alone
+// would consume most of the USD 5 group-loss budget.
+double ChooseFixedDemoBasketLot(const bool buy,const double entry,
+                                const double stop,const double slipAllowance,
+                                const double bid,const double ask)
+  {
+   if(!UseFixedDemoBasket)return 0.0;
+   const double vol=DemoBasketFixedLot;
+   const double minLot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+   const double maxLot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
+   const double step=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
+   if(step<=0||vol<minLot||vol>maxLot||
+      MathAbs(MathRound(vol/step)*step-vol)>1.0e-7)return 0.0;
+   const ENUM_ORDER_TYPE side=buy?ORDER_TYPE_BUY:ORDER_TYPE_SELL;
+   const double worstEntry=buy?entry+slipAllowance:entry-slipAllowance;
+   const double worstStop=buy?stop-slipAllowance:stop+slipAllowance;
+   double atStop=0.0,spreadCost=0.0,margin=0.0;
+   if(!OrderCalcProfit(side,_Symbol,vol,worstEntry,worstStop,atStop)||
+      !MathIsValidNumber(atStop)||atStop>=0)return 0.0;
+   // MT5 quote P/L for immediate exit at the opposite side of the spread.
+   if(!OrderCalcProfit(side,_Symbol,vol,entry,buy?bid:ask,spreadCost)||
+      !MathIsValidNumber(spreadCost)||spreadCost>=0)return 0.0;
+   const double aggregateEntryCost=(-spreadCost+MarketExitCostReserveUSD)*
+                                    DemoBasketTargetPositions;
+   if(aggregateEntryCost>=0.80*DemoBasketStopLossUSD)
+     {
+      Note(StringFormat("FIXED BASKET WAIT: projected opening cost=%.2f exceeds 80%% of USD %.2f loss trigger",
+                        aggregateEntryCost,DemoBasketStopLossUSD));
+      return 0.0;
+     }
+   const double riskBudget=AccountInfoDouble(ACCOUNT_EQUITY)*
+                           DemoBasketMaxRiskPct/100.0*0.80;
+   if(-atStop>riskBudget)return 0.0;
+   if(!OrderCalcMargin(side,_Symbol,vol,entry,margin)||margin<=0||
+      margin>AccountInfoDouble(ACCOUNT_MARGIN_FREE)*0.35)
+      return 0.0;
+   return vol;
+  }
+
 bool MarketFilledLimitForM1(const long candleAtMs)
   {
    // Additional M1 cap beyond the mode-specific rolling-minute limit.
@@ -537,7 +657,9 @@ bool MarketStackingSafe(const bool buy,const double lots,
       combinedStopLoss+=MathMax(0.0,-result);
       count++;
      }
-   if(count>=MaxConcurrentMarketPositions)return false;
+   const int positionLimit=UseFixedDemoBasket?DemoBasketTargetPositions:
+                            MaxConcurrentMarketPositions;
+   if(count>=positionLimit)return false;
    const double worstEntry=buy?entry+slipAllowance:entry-slipAllowance;
    const double worstStop=buy?sl-slipAllowance:sl+slipAllowance;
    double incoming=0;
@@ -547,8 +669,10 @@ bool MarketStackingSafe(const bool buy,const double lots,
       !MathIsValidNumber(incoming)||incoming>=0)
       return false;
    // Reserve margin for fills/fees, this is an estimate, not a hard guarantee.
+   const double combinedPct=UseFixedDemoBasket?
+                            DemoBasketMaxCombinedRiskPct:MaxCombinedStopRiskPct;
    const double combinedBudget=AccountInfoDouble(ACCOUNT_EQUITY)*
-                               MaxCombinedStopRiskPct/100.0*0.80;
+                               combinedPct/100.0*0.80;
    return combinedStopLoss+(-incoming)<=combinedBudget;
   }
 
@@ -608,6 +732,12 @@ bool ValidateAndPlaceMarket(const string wire)
       SymbolInfoInteger(_Symbol,SYMBOL_TRADE_MODE)!=SYMBOL_TRADE_MODE_FULL)
       return false;
    if(!HistoryLimits()||!MarketFilledLimitForM1(candleAt))return false;
+   if(UseFixedDemoBasket&&SymbolExposure()>0)
+     {
+      double netCheck=0.0;
+      int counted=0;
+      if(!MarketBasketEstimatedNet(netCheck,counted))return false;
+     }
    const string signalKey=Key("LASTMARKET");
    const string cooldownKey=Key("COOL");
    if(GlobalVariableCheck(signalKey)&&
@@ -643,7 +773,10 @@ bool ValidateAndPlaceMarket(const string wire)
       if(sl<=tick.ask+minDist||tp>=tick.ask-minDist)return false;
      }
    const double slipAllowance=MathMax(point,MathMin(.5*spread,.15*serverAtr));
-   const double lots=ChooseDemoMarketLot(buy,entry,sl,slipAllowance);
+   // Fixed MT5 lots are never silently reduced: exact 8.00 or WAIT.
+   const double lots=UseFixedDemoBasket?
+      ChooseFixedDemoBasketLot(buy,entry,sl,slipAllowance,tick.bid,tick.ask):
+      ChooseDemoMarketLot(buy,entry,sl,slipAllowance);
    if(lots<=0)
      {
       Note("demo MARKET blocked: broker min lot or buffered loss exceeds configured risk");
@@ -815,6 +948,21 @@ void OnTimer()
    if(now-lastRequestAt<pollEvery)return;
    lastRequestAt=now;
    if(!UseDemoMarketEntries&&SymbolExposure()>0)return; // preserve LIMIT single-exposure policy
+   if(UseFixedDemoBasket)
+     {
+      const string closingKey=Key("BASKET_CLOSING");
+      if(GlobalVariableCheck(closingKey))
+        {
+         if(SymbolExposure()>0)return; // never refill while previous group closes
+         GlobalVariableDel(closingKey);
+         // Restart countdown begins AFTER confirmation of zero exposure.
+         GlobalVariableSet(Key("BASKET_LAST_EXIT"),(double)TimeGMT());
+        }
+      const string lastExit=Key("BASKET_LAST_EXIT");
+      if(GlobalVariableCheck(lastExit)&&
+         TimeGMT()-GlobalVariableGet(lastExit)<DemoBasketReentryPauseSeconds)
+         return;
+     }
    if(!HistoryLimits())
      {
       CancelOwnedPending();
