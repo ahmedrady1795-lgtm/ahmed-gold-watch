@@ -218,6 +218,55 @@ bool DailyEquityStopReached()
    return baseline<=0||eq<=baseline-MaxDailyLossUSD;
   }
 
+// Read fees already charged at entry to the position identifier.
+// POSITION_PROFIT includes current bid/ask spread but not all commissions.
+// This is an estimated executable net; exit fees and slippage can differ.
+bool OpeningFeesForPosition(const long positionId,const datetime opened,
+                            double &fees)
+  {
+   fees=0.0;
+   if(positionId<=0)return false;
+   const datetime now=TimeTradeServer();
+   if(now<=0||!HistorySelect(opened-600,now))return false;
+   for(int i=0;i<HistoryDealsTotal();i++)
+     {
+      const ulong deal=HistoryDealGetTicket(i);
+      if(deal==0||
+         (long)HistoryDealGetInteger(deal,DEAL_POSITION_ID)!=positionId||
+         HistoryDealGetString(deal,DEAL_SYMBOL)!=_Symbol)
+         continue;
+      const ENUM_DEAL_ENTRY e=(ENUM_DEAL_ENTRY)HistoryDealGetInteger(deal,DEAL_ENTRY);
+      if(e!=DEAL_ENTRY_IN&&e!=DEAL_ENTRY_INOUT)continue;
+      fees+=HistoryDealGetDouble(deal,DEAL_COMMISSION)+
+            HistoryDealGetDouble(deal,DEAL_FEE);
+     }
+   return MathIsValidNumber(fees);
+  }
+
+bool MarketBasketEstimatedNet(double &estimatedNet,int &positions)
+  {
+   estimatedNet=0.0;
+   positions=0;
+   for(int i=0;i<PositionsTotal();i++)
+     {
+      const ulong ticket=PositionGetTicket(i);
+      if(ticket==0)return false;
+      if(PositionGetString(POSITION_SYMBOL)!=_Symbol||
+         (ulong)PositionGetInteger(POSITION_MAGIC)!=TradeMagic)
+         continue;
+      double postedFees=0;
+      if(!OpeningFeesForPosition(
+             (long)PositionGetInteger(POSITION_IDENTIFIER),
+             (datetime)PositionGetInteger(POSITION_TIME),postedFees))
+         return false; // no blind close on incomplete fees
+      estimatedNet+=PositionGetDouble(POSITION_PROFIT)+
+                    PositionGetDouble(POSITION_SWAP)+postedFees-
+                    MarketExitCostReserveUSD;
+      positions++;
+     }
+   return positions>0&&MathIsValidNumber(estimatedNet);
+  }
+
 void ManageOwnOpenPositions()
   {
    if(!LocalAccountSafe()||!TerminalCanTrade())return;
@@ -225,6 +274,12 @@ void ManageOwnOpenPositions()
    if(now<=0||now==lastPositionScanAt)return; // <= 1 position scan per second
    lastPositionScanAt=now;
    const bool emergency=DailyEquityStopReached();
+   double basketNet=0.0;
+   int basketCount=0;
+   const bool basketKnown=UseDemoMarketEntries&&MarketQuickNetProfitExit&&
+      MarketBasketEstimatedNet(basketNet,basketCount);
+   const bool takeBasket=basketKnown&&basketCount>=2&&
+      basketNet>=MarketBasketProfitTargetUSD;
    for(int i=PositionsTotal()-1;i>=0;i--)
      {
       const ulong ticket=PositionGetTicket(i);
@@ -245,18 +300,34 @@ void ManageOwnOpenPositions()
       if(emergency)why="DAILY_USD_EQUITY_STOP";
       else if(sl<=0||tp<=0)
          why="MISSING_BROKER_SL_TP";
-      else if(isMarket&&MarketExitAtMinuteEnd)
+      else if(isMarket&&MarketQuickNetProfitExit)
         {
-         // Use broker server time and actual ENTRY minute. Do not close
-         // early because of small floating profit or temporary pullback.
-         // SL/TP and emergency equity close remain active at the broker.
+         if(takeBasket)
+            why="BASKET_EST_NET_PROFIT";
+         else
+           {
+            double postedFees=0.0;
+            if(OpeningFeesForPosition(
+               (long)PositionGetInteger(POSITION_IDENTIFIER),opened,postedFees))
+              {
+               const double estimatedNet=floating+postedFees-MarketExitCostReserveUSD;
+               if(MathIsValidNumber(estimatedNet)&&
+                  estimatedNet>=MarketNetProfitTargetUSD)
+                  why="QUICK_EST_NET_PROFIT";
+              }
+           }
+        }
+      if(why==""&&isMarket&&MarketExitAtMinuteEnd)
+        {
+         // Fallback at the end of the position's actual entry minute.
+         // SL/TP and daily loss shutdown can still execute sooner.
          const datetime minuteEnd=(datetime)(((long)opened/60+1)*60);
          if(now>=minuteEnd)why="M1_ENTRY_MINUTE_END";
         }
-      else if(isMarket&&MathIsValidNumber(floating)&&riskBudget>0)
+      else if(why==""&&isMarket&&!MarketExitAtMinuteEnd&&
+              MathIsValidNumber(floating)&&riskBudget>0)
         {
-         if(floating>=profitTake)
-            why="QUICK_FLOATING_PROFIT";
+         if(floating>=profitTake)why="QUICK_FLOATING_PROFIT";
          else if(age>=MarketLossGraceSeconds&&floating<=-lossCut)
             why="EARLY_ADVERSE_LOSS";
         }
