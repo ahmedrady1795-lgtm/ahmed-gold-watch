@@ -254,6 +254,166 @@ double ChooseLot(const ENUM_ORDER_TYPE side,double entry,double stop)
       margin<=0||margin>AccountInfoDouble(ACCOUNT_MARGIN_FREE)*.5)return 0;
    return vol;
   }
+// Broker-only demo market entry uses the LOCAL quote to set both protective
+// prices, not the server's stale candidate entry. Cost/slippage are estimated;
+// realized fills and stops can still slip beyond the planned loss.
+double ChooseDemoMarketLot(const bool buy,const double entry,
+                           const double stop,const double slipAllowance)
+  {
+   const ENUM_ORDER_TYPE type=buy?ORDER_TYPE_BUY:ORDER_TYPE_SELL;
+   const double minLot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+   const double maxLot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
+   const double step=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
+   if(minLot<=0||maxLot<minLot||step<=0)return 0;
+   const double worstEntry=buy?entry+slipAllowance:entry-slipAllowance;
+   const double worstStop=buy?stop-slipAllowance:stop+slipAllowance;
+   double atMin=0;
+   if(worstEntry<=0||worstStop<=0||
+      !OrderCalcProfit(type,_Symbol,minLot,worstEntry,worstStop,atMin)||
+      !MathIsValidNumber(atMin)||atMin>=0)return 0;
+   // Hold back 20% of the stated stop-risk budget for fee/slippage uncertainty.
+   const double budget=AccountInfoDouble(ACCOUNT_EQUITY)*
+                       MaxRiskPerTradePct/100.0*.80;
+   if(budget<=0||-atMin>budget)return 0;
+   const double lotsRaw=MathMin(maxLot,minLot*budget/(-atMin));
+   const double lots=NormalizeDouble(MathFloor((lotsRaw+1e-9)/step)*step,8);
+   if(lots<minLot||lots>maxLot)return 0;
+   double loss=0,margin=0;
+   if(!OrderCalcProfit(type,_Symbol,lots,worstEntry,worstStop,loss)||
+      !MathIsValidNumber(loss)||-loss>budget)return 0;
+   if(!OrderCalcMargin(type,_Symbol,lots,worstEntry,margin)||
+      margin<=0||margin>AccountInfoDouble(ACCOUNT_MARGIN_FREE)*.5)return 0;
+   return lots;
+  }
+bool MarketFilledLimitForM1(const long candleAtMs)
+  {
+   // A second independent limit beyond the 4 fills/rolling minute safeguard.
+   const datetime from=(datetime)(candleAtMs/1000+60);
+   const datetime until=TimeTradeServer();
+   if(until<from||!HistorySelect(from,until))return false;
+   int count=0;
+   for(int i=0;i<HistoryDealsTotal();i++)
+     {
+      const ulong ticket=HistoryDealGetTicket(i);
+      if(ticket==0||HistoryDealGetString(ticket,DEAL_SYMBOL)!=_Symbol||
+        (ulong)HistoryDealGetInteger(ticket,DEAL_MAGIC)!=TradeMagic)continue;
+      const ENUM_DEAL_ENTRY e=(ENUM_DEAL_ENTRY)HistoryDealGetInteger(ticket,DEAL_ENTRY);
+      if(e==DEAL_ENTRY_IN||e==DEAL_ENTRY_INOUT)count++;
+     }
+   return count<MaxMarketEntriesPerM1;
+  }
+bool ValidateAndPlaceMarket(const string wire)
+  {
+   string parts[];
+   string raw=wire;
+   StringTrimLeft(raw);StringTrimRight(raw);
+   if(StringSplit(raw,'|',parts)!=11||parts[0]!="QBTCM1")return false;
+   if(parts[1]!="BUY_MARKET"&&parts[1]!="SELL_MARKET")return false;
+   if(parts[2]!=_Symbol)return false;
+   const bool buy=parts[1]=="BUY_MARKET";
+   const long candleAt=StringToInteger(parts[3]);
+   const long expiresAt=StringToInteger(parts[4]);
+   const double riskDist=StringToDouble(parts[5]);
+   const double rewardDist=StringToDouble(parts[6]);
+   const double serverBid=StringToDouble(parts[7]);
+   const double serverAsk=StringToDouble(parts[8]);
+   const double serverAtr=StringToDouble(parts[9]);
+   const long signalTick=StringToInteger(parts[10]);
+   const long nowMs=(long)TimeGMT()*1000;
+   if(candleAt<=0||nowMs-candleAt<60000||nowMs-candleAt>119000||
+      signalTick<=0||signalTick>nowMs||nowMs-signalTick>6000||
+      expiresAt<=nowMs+1500||expiresAt>nowMs+12000||
+      !LocalClosedBarMatches(candleAt))return false;
+   if(!MathIsValidNumber(riskDist)||!MathIsValidNumber(rewardDist)||
+      !MathIsValidNumber(serverBid)||!MathIsValidNumber(serverAsk)||
+      !MathIsValidNumber(serverAtr)||
+      riskDist<=0||rewardDist<=0||serverBid<=0||
+      serverAsk<=serverBid||serverAtr<=0||
+      riskDist>1.4*serverAtr||rewardDist>2.25*serverAtr||
+      rewardDist<1.4*riskDist)return false;
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol,tick))return false;
+   const long tickAge=nowMs-tick.time_msc;
+   if(tickAge<0||tickAge>3000||tick.bid<=0||tick.ask<=tick.bid)return false;
+   const double spread=tick.ask-tick.bid;
+   const double mid=(tick.ask+tick.bid)/2.0;
+   if(spread<=0||mid<=0||spread/mid>0.0004||
+      serverAsk-serverBid<=0)return false;
+   // A quote that moved too far after the server observation is NOT a new
+   // opportunity. Do not chase: request another broker-verified candidate.
+   const double tolerance=MathMax(.4*spread,.15*serverAtr);
+   if(MathAbs(tick.bid-serverBid)>tolerance||
+      MathAbs(tick.ask-serverAsk)>tolerance)return false;
+   if(rewardDist<2.4*spread)return false;
+   const long modes=SymbolInfoInteger(_Symbol,SYMBOL_ORDER_MODE);
+   if((modes&SYMBOL_ORDER_MARKET)==0 ||
+      (modes&SYMBOL_ORDER_SL)==0 ||
+      (modes&SYMBOL_ORDER_TP)==0 ||
+      SymbolInfoInteger(_Symbol,SYMBOL_TRADE_MODE)!=SYMBOL_TRADE_MODE_FULL)
+      return false;
+   if(PositionsTotal()>0||OrdersTotal()>0||!HistoryLimits()||
+      !MarketFilledLimitForM1(candleAt))return false;
+   const string signalKey=Key("LASTMARKET");
+   const string cooldownKey=Key("COOL");
+   if(GlobalVariableCheck(signalKey)&&
+      GlobalVariableGet(signalKey)>=signalTick)return false;
+   if(GlobalVariableCheck(cooldownKey)&&
+      TimeGMT()-GlobalVariableGet(cooldownKey)<10)return false;
+   const double point=SymbolInfoDouble(_Symbol,SYMBOL_POINT);
+   const double tickSize=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
+   const int digits=(int)SymbolInfoInteger(_Symbol,SYMBOL_DIGITS);
+   if(point<=0||tickSize<=0)return false;
+   const double minDist=MathMax(point,
+      MathMax((double)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_STOPS_LEVEL),
+              (double)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_FREEZE_LEVEL))*point);
+   const double entry=buy?tick.ask:tick.bid;
+   // Round protective levels to the actual instrument tick-size grid.
+   const double sl=buy?
+      NormalizeDouble(MathFloor((entry-riskDist)/tickSize)*tickSize,digits):
+      NormalizeDouble(MathCeil((entry+riskDist)/tickSize)*tickSize,digits);
+   const double tp=buy?
+      NormalizeDouble(MathCeil((entry+rewardDist)/tickSize)*tickSize,digits):
+      NormalizeDouble(MathFloor((entry-rewardDist)/tickSize)*tickSize,digits);
+   const double stopRisk=MathAbs(entry-sl),targetGain=MathAbs(entry-tp);
+   if(sl<=0||tp<=0||stopRisk<=minDist||
+      stopRisk>1.5*serverAtr||targetGain>2.4*serverAtr||
+      targetGain<1.4*stopRisk||targetGain<2.4*spread)return false;
+   if(buy)
+     {
+      if(sl>=tick.bid-minDist||tp<=tick.bid+minDist)return false;
+     }
+   else
+     {
+      if(sl<=tick.ask+minDist||tp>=tick.ask-minDist)return false;
+     }
+   const double slipAllowance=MathMax(point,MathMin(.5*spread,.15*serverAtr));
+   const double lots=ChooseDemoMarketLot(buy,entry,sl,slipAllowance);
+   if(lots<=0)
+     {
+      Note("demo MARKET blocked: broker min lot or buffered loss exceeds 0.05% risk");
+      return false;
+     }
+   trade.SetDeviationInPoints((ulong)MathMax(1.0,MathFloor(slipAllowance/point)));
+   // No pending-order fallback and no naked trade: SL and TP in the REQUEST.
+   const bool sent=buy?
+      trade.Buy(lots,_Symbol,entry,sl,tp,"QB-DEMO-MKT"):
+      trade.Sell(lots,_Symbol,entry,sl,tp,"QB-DEMO-MKT");
+   const uint retcode=trade.ResultRetcode();
+   if(!sent||(retcode!=TRADE_RETCODE_DONE&&retcode!=TRADE_RETCODE_DONE_PARTIAL))
+     {
+      PrintFormat("Qannas BTC DEMO MARKET: NOT FILLED retcode=%u",retcode);
+      return false;
+     }
+   GlobalVariableSet(signalKey,(double)signalTick);
+   GlobalVariableSet(cooldownKey,(double)TimeGMT());
+   PrintFormat("Qannas BTC DEMO MARKET: broker executed %s lots=%.8f entry=%.*f SL=%.*f TP=%.*f retcode=%u deal=%I64u",
+               parts[1],lots,digits,entry,digits,sl,digits,tp,retcode,trade.ResultDeal());
+   // Verify a broker SL/TP was created; the existing position manager
+   // attempts immediate closure if protective levels are missing.
+   ManageOwnOpenPositions();
+   return true;
+  }
+
 bool ValidateAndPlace(const string wire)
   {
    string parts[];
