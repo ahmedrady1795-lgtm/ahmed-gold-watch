@@ -25,7 +25,7 @@ execution signals.
 
 - **Every M1 candle (DEMO only)**: when the primary tick-reversal signal is
   absent, the server now tries a second passive LIMIT **candidate** during
-  the first 25 seconds after each newly completed Exness M1 bar. It uses the
+  the first 50 seconds after each newly completed Exness M1 bar. It uses the
   observed candle body (or closed M1 EMA when indecisive), current authentic
   broker bid/ask, measured ATR and a TP that still covers at least 2.4 times
   the current spread. It does **not** bypass stale/missing data, unreasonable
