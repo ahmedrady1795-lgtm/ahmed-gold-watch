@@ -4,7 +4,7 @@
 //| No LIVE accounts; separate MARKET opt-in; broker stops required. |
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.08"
+#property version "1.09"
 #property description "BTCUSDm DEMO LIMIT or separately opted-in MARKET EA. OFF by default."
 #property description "Rejects real accounts even if enabled; broker SL/TP required."
 
@@ -17,7 +17,7 @@ input long   ExpectedDemoLogin=0;
 input bool   EnableDemoOrders=false;
 input string DemoConfirmation="";  // type EXACTLY: I_ENABLE_DEMO_ONLY_V1
 // Market execution requires TWO additional, explicitly configured inputs.
-// Compile v1.08, verify the DEMO account, then opt in. Default remains LIMIT.
+// Compile v1.09, verify the DEMO account, then opt in. Default remains LIMIT.
 input bool   UseDemoMarketEntries=false;
 input string DemoMarketConfirmation=""; // I_ENABLE_DEMO_MARKET_ONLY_V1
 input int    MaxMarketEntriesPerM1=10;
@@ -34,7 +34,16 @@ input bool   MarketExitAtMinuteEnd=true; // fallback close at end of entry M1
 input bool   MarketQuickNetProfitExit=true; // close winning MARKET positions as soon as threshold is reached
 input double MarketNetProfitTargetUSD=2.00; // desired net profit PER position
 input double MarketBasketProfitTargetUSD=20.00; // total net floating profit to close all owned positions
-input double MarketExitCostReserveUSD=0.25; // per-position reserve for potential closing charges/slippage
+input double MarketExitCostReserveUSD=0.25; // per-position closing-fee/slippage reserve
+// Separate explicit fixed-0.50-lot basket EXPERIMENT, DEMO HEDGING ONLY.
+input bool   UseFixedDemoBasket=false; // OFF unless independently authorized
+input string DemoBasketConfirmation=""; // I_ENABLE_BTC_DEMO_BASKET_V1
+input double DemoBasketFixedLot=0.50; // MT5 lots, NOT guaranteed BTC units
+input int    DemoBasketTargetPositions=4; // choice: 4 or 6 simultaneous
+input double DemoBasketTakeProfitUSD=10.00; // estimated net BASKET target
+input double DemoBasketStopLossUSD=5.00; // estimated net BASKET loss-close trigger
+input int    DemoBasketMaxHoldSeconds=60; // bounded even if neither target hits
+input int    DemoBasketReentryPauseSeconds=3; // avoid same-tick closing/reopening
 input int    MarketLatestEntrySecond=35; // ensure at least ~25 seconds of that M1 remain
 input int    MarketLossGraceSeconds=10; // legacy only when minute-end mode is OFF
 input double MarketQuickProfitRiskFraction=0.35;
@@ -71,17 +80,27 @@ bool LocalAccountSafe()
    if(UseDemoMarketEntries&&
       AccountInfoInteger(ACCOUNT_MARGIN_MODE)!=ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
       return false; // distinct simultaneous positions require HEDGING
+   if(UseFixedDemoBasket&&
+      (!UseDemoMarketEntries||
+       DemoBasketConfirmation!="I_ENABLE_BTC_DEMO_BASKET_V1"))
+      return false; // independent user permission for high-volume demo experiment
    if(StringFind(SiteURL,"https://")!=0 || StringLen(BridgeToken)<32)
       return false;
    if(AccountInfoString(ACCOUNT_CURRENCY)!="USD"||
-      MaxRiskPerTradePct<=0||MaxRiskPerTradePct>0.12||
+      MaxRiskPerTradePct<=0||MaxRiskPerTradePct>0.30||
       MaxDailyLossUSD<=0||MaxDailyLossUSD>100.00||
       MaxConcurrentMarketPositions<1||MaxConcurrentMarketPositions>10||
-      MaxCombinedStopRiskPct<=0||MaxCombinedStopRiskPct>1.20||
+      MaxCombinedStopRiskPct<=0||MaxCombinedStopRiskPct>1.80||
       MaxCombinedStopRiskPct<MaxRiskPerTradePct||
       MarketNetProfitTargetUSD<0.50||MarketNetProfitTargetUSD>20.00||
       MarketBasketProfitTargetUSD<2.00||MarketBasketProfitTargetUSD>50.00||
       MarketExitCostReserveUSD<0||MarketExitCostReserveUSD>2.00||
+       (DemoBasketTargetPositions!=4&&DemoBasketTargetPositions!=6)||
+       MathAbs(DemoBasketFixedLot-0.50)>0.00000001||
+       DemoBasketTakeProfitUSD!=10.00||
+       DemoBasketStopLossUSD!=5.00||
+       DemoBasketMaxHoldSeconds<20||DemoBasketMaxHoldSeconds>60||
+       DemoBasketReentryPauseSeconds<3||DemoBasketReentryPauseSeconds>10||
       MaxFilledTradesPerDay<1||MaxFilledTradesPerDay>1200||
       MaxFilledTradesPerMinute<1||MaxFilledTradesPerMinute>10||
       MaxPositionHoldSeconds<15||MaxPositionHoldSeconds>30||
@@ -136,6 +155,11 @@ int OnInit()
           MarketQuickNetProfitExit?"ON":"OFF",MarketNetProfitTargetUSD,
           MarketBasketProfitTargetUSD,MarketExitCostReserveUSD,
           MarketExitAtMinuteEnd?"ON":"OFF",MarketLatestEntrySecond);
+   if(UseFixedDemoBasket)
+      PrintFormat("Qannas BTC DEMO BASKET: fixed LOT=%.2f count=%d estimated-net TP=+%.2f USD STOP=-%.2f USD cyclePause=%d sec; DEMO ONLY; not a guaranteed P/L cap",
+                  DemoBasketFixedLot,DemoBasketTargetPositions,
+                  DemoBasketTakeProfitUSD,DemoBasketStopLossUSD,
+                  DemoBasketReentryPauseSeconds);
    PrintFormat("Qannas BTC DEMO: expiry policy broker=%d sec, local cancellation=%d sec, allowed expiry modes=%I64d",
       BROKER_PENDING_EXPIRY_SECONDS,LocalPendingLifetimeSeconds,
       SymbolInfoInteger(_Symbol,SYMBOL_EXPIRATION_MODE));
