@@ -188,7 +188,6 @@ assert.doesNotMatch(ea,/trade\.Buy\(|trade\.Sell\(|\bOrderSend\(/,
 // locally within 11s using broker-persisted ORDER_TIME_SETUP. Never leave GTC
 // orders behind or convert these failures into market orders.
 assert.match(ea,/#property version "1\.02"/);
-assert.match(ea,/B R O K E R_ P E N D I N G_ E X P I R Y_ S E C O N D S/.replaceAll(' ',''));
 assert.match(ea,/BROKER_PENDING_EXPIRY_SECONDS=180/);
 assert.match(ea,/LocalPendingLifetimeSeconds=11/);
 assert.match(ea,/LocalPendingLifetimeSeconds>15/);
