@@ -4,7 +4,7 @@
 //| No LIVE accounts; separate MARKET opt-in; broker stops required. |
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.09"
+#property version "1.10"
 #property description "BTCUSDm DEMO LIMIT or separately opted-in MARKET EA. OFF by default."
 #property description "Rejects real accounts even if enabled; broker SL/TP required."
 
@@ -17,7 +17,7 @@ input long   ExpectedDemoLogin=0;
 input bool   EnableDemoOrders=false;
 input string DemoConfirmation="";  // type EXACTLY: I_ENABLE_DEMO_ONLY_V1
 // Market execution requires TWO additional, explicitly configured inputs.
-// Compile v1.09, verify the DEMO account, then opt in. Default remains LIMIT.
+// Compile v1.10, verify the DEMO account, then opt in. Default remains LIMIT.
 input bool   UseDemoMarketEntries=false;
 input string DemoMarketConfirmation=""; // I_ENABLE_DEMO_MARKET_ONLY_V1
 input int    MaxMarketEntriesPerM1=10;
@@ -35,10 +35,10 @@ input bool   MarketQuickNetProfitExit=true; // close winning MARKET positions as
 input double MarketNetProfitTargetUSD=2.00; // desired net profit PER position
 input double MarketBasketProfitTargetUSD=20.00; // total net floating profit to close all owned positions
 input double MarketExitCostReserveUSD=0.25; // per-position closing-fee/slippage reserve
-// Separate explicit fixed-0.50-lot basket EXPERIMENT, DEMO HEDGING ONLY.
+// Separately authorized 8.00-MT5-lot basket EXPERIMENT, DEMO HEDGING ONLY.
 input bool   UseFixedDemoBasket=false; // OFF unless independently authorized
 input string DemoBasketConfirmation=""; // I_ENABLE_BTC_DEMO_BASKET_V1
-input double DemoBasketFixedLot=0.50; // MT5 lots, NOT necessarily units of BTC
+input double DemoBasketFixedLot=8.00; // requested lots; fail closed if spread/risk/margin are too high
 input double DemoBasketMaxRiskPct=0.30; // max 0.30% estimated risk per fixed-lot position
 input double DemoBasketMaxCombinedRiskPct=1.80; // max 1.80% estimated group stop risk
 input int    DemoBasketTargetPositions=4; // choice: 4 or 6 simultaneous
@@ -98,7 +98,7 @@ bool LocalAccountSafe()
       MarketBasketProfitTargetUSD<2.00||MarketBasketProfitTargetUSD>50.00||
       MarketExitCostReserveUSD<0||MarketExitCostReserveUSD>2.00||
        (DemoBasketTargetPositions!=4&&DemoBasketTargetPositions!=6)||
-       MathAbs(DemoBasketFixedLot-0.50)>0.00000001||
+       MathAbs(DemoBasketFixedLot-8.00)>0.00000001||
        DemoBasketMaxRiskPct<=0||DemoBasketMaxRiskPct>0.30||
        DemoBasketMaxCombinedRiskPct<=0||DemoBasketMaxCombinedRiskPct>1.80||
        DemoBasketMaxCombinedRiskPct<DemoBasketMaxRiskPct||
@@ -166,7 +166,7 @@ int OnInit()
                   DemoBasketTakeProfitUSD,DemoBasketStopLossUSD,
                   DemoBasketReentryPauseSeconds);
    if(UseFixedDemoBasket)
-      PrintFormat("Qannas BTC DEMO basket contract size: %.8f base units per MT5 lot (broker specification); fixed 0.50 is LOTS not necessarily 0.50 BTC",
+      PrintFormat("Qannas BTC DEMO basket contract size: %.8f base units per MT5 lot (broker specification); requested 8.00 lots are NOT necessarily 8 BTC",
                   SymbolInfoDouble(_Symbol,SYMBOL_TRADE_CONTRACT_SIZE));
    PrintFormat("Qannas BTC DEMO: expiry policy broker=%d sec, local cancellation=%d sec, allowed expiry modes=%I64d",
       BROKER_PENDING_EXPIRY_SECONDS,LocalPendingLifetimeSeconds,
@@ -564,7 +564,7 @@ double ChooseDemoMarketLot(const bool buy,const double entry,
       margin<=0||margin>AccountInfoDouble(ACCOUNT_MARGIN_FREE)*.5)return 0;
    return lots;
   }
-// 0.50 MT5 lots are permitted only when the Exness DEMO contract, spread,
+// 8.00 MT5 lots permitted only if DEMO broker contract and spread,
 // stop loss and margin can support the requested basket loss trigger.
 // Reject the entire strategy while its expected aggregate entry spread alone
 // would consume most of the USD 5 group-loss budget.
@@ -773,7 +773,7 @@ bool ValidateAndPlaceMarket(const string wire)
       if(sl<=tick.ask+minDist||tp>=tick.ask-minDist)return false;
      }
    const double slipAllowance=MathMax(point,MathMin(.5*spread,.15*serverAtr));
-   // Fixed MT5 lots are never silently reduced: exact 0.50 or WAIT.
+   // Fixed MT5 lots are never silently reduced: exact 8.00 or WAIT.
    const double lots=UseFixedDemoBasket?
       ChooseFixedDemoBasketLot(buy,entry,sl,slipAllowance,tick.bid,tick.ask):
       ChooseDemoMarketLot(buy,entry,sl,slipAllowance);
