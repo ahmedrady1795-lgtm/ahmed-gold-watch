@@ -131,7 +131,7 @@ was ~$6.40 in BTC quote units against ~$10.47 M1 ATR: for a 0.06-lot BTC
 position that can imply ~$0.38 in immediate spread cost, depending on
 broker contract specifications. Analyze complete broker deals (spread,
 opening/closing quote, time held, cause of exit) before raising trade count.
-The v1.06 daily-stop adjustment and existing quick-exit settings have NOT been compiled or
+The v1.06 daily-stop adjustment, broker-deal audit and existing quick-exit settings have NOT been compiled or
 validated against Exness broker fills on the user's VPS. Only change the
 single EA while Algo Trading is disabled and the Trade tab shows no existing
 orders or positions. Confirm v1.05 in MetaEditor, test 0 errors/warnings,
@@ -140,3 +140,5 @@ The new MT5 Inputs field is `MaxDailyLossUSD=40.00` instead of the old
 `MaxDailyLossPct=0.50`. The changes are **source-only** until manually
 compiled and installed on the demo terminal; updating GitHub or Render
 does not replace an attached EX5.
+
+Broker-deal telemetry in v1.06 prints `Qannas BTC DEMO BROKER DEAL` with exit reason, gross profit, commission, swap, fee and per-deal net. Include *opening and closing* deals for complete position P/L; the deal-level number alone is not the full round-trip result.
