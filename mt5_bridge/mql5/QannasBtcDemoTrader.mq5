@@ -4,8 +4,8 @@
 //| No live accounts, no market entries, no DLLs, no unprotected risk.|
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.02"
-#property description "BTCUSDm pending LIMIT demo-only EA. OFF by default."
+#property version "1.03"
+#property description "BTCUSDm DEMO LIMIT or separately opted-in MARKET EA. OFF by default."
 #property description "Rejects real accounts even if enabled; broker SL/TP required."
 
 #include <Trade/Trade.mqh>
@@ -16,6 +16,11 @@ input string BridgeToken="";
 input long   ExpectedDemoLogin=0;
 input bool   EnableDemoOrders=false;
 input string DemoConfirmation="";  // type EXACTLY: I_ENABLE_DEMO_ONLY_V1
+// Market execution requires TWO additional, explicitly configured inputs.
+// Compile v1.03, verify the DEMO account, then opt in. Default remains LIMIT.
+input bool   UseDemoMarketEntries=false;
+input string DemoMarketConfirmation=""; // I_ENABLE_DEMO_MARKET_ONLY_V1
+input int    MaxMarketEntriesPerM1=2;
 input double MaxRiskPerTradePct=0.05;
 input double MaxDailyLossPct=0.50;
 input int    MaxFilledTradesPerDay=360;
@@ -53,7 +58,8 @@ bool LocalAccountSafe()
       MaxFilledTradesPerDay<1||MaxFilledTradesPerDay>360||
       MaxFilledTradesPerMinute<1||MaxFilledTradesPerMinute>4||
       MaxPositionHoldSeconds<15||MaxPositionHoldSeconds>30||
-      LocalPendingLifetimeSeconds<5||LocalPendingLifetimeSeconds>15)
+      LocalPendingLifetimeSeconds<5||LocalPendingLifetimeSeconds>15||
+      MaxMarketEntriesPerM1<1||MaxMarketEntriesPerM1>2)
       return false;
    return true;
   }
@@ -83,6 +89,8 @@ int OnInit()
    started=true;
    Print("Qannas BTC DEMO: initialized on verified DEMO account; orders ",
          EnableDemoOrders?"requested (gates still apply)":"OFF / observation only");
+   Print("Qannas BTC DEMO: entry mode=",
+      UseDemoMarketEntries?"MARKET (requires separate opt-in)":"LIMIT");
    PrintFormat("Qannas BTC DEMO: expiry policy broker=%d sec, local cancellation=%d sec, allowed expiry modes=%I64d",
       BROKER_PENDING_EXPIRY_SECONDS,LocalPendingLifetimeSeconds,
       SymbolInfoInteger(_Symbol,SYMBOL_EXPIRATION_MODE));
