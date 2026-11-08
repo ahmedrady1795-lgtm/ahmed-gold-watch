@@ -279,8 +279,12 @@ bool HistoryLimits()
            HistoryDealGetDouble(ticket,DEAL_COMMISSION)+
            HistoryDealGetDouble(ticket,DEAL_SWAP);
      }
+   // The faster six/minute allowance belongs exclusively to demo Market
+   // mode. The legacy pending-LIMIT execution remains capped at four/minute.
+   const int allowedPerMinute=UseDemoMarketEntries?
+      MaxFilledTradesPerMinute:(int)MathMin(MaxFilledTradesPerMinute,4);
    if(entries>=MaxFilledTradesPerDay||
-      entriesLastMinute>=MaxFilledTradesPerMinute)return false;
+      entriesLastMinute>=allowedPerMinute)return false;
    const double balance=AccountInfoDouble(ACCOUNT_BALANCE);
    if(balance<=0||pnl<=-balance*MaxDailyLossPct/100.0)return false;
    return true;
