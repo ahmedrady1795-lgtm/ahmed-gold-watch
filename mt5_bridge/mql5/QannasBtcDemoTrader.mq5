@@ -318,26 +318,39 @@ void ManageOwnOpenPositions()
    const bool fixedLoss=UseFixedDemoBasket&&basketKnown&&
       basketNet<=-DemoBasketStopLossUSD;
    datetime oldest=now;
+   int observedBasketPositions=0;
+   double fallbackBasketFloating=0.0;
    for(int j=0;j<PositionsTotal();j++)
      {
       const ulong id=PositionGetTicket(j);
       if(id==0||PositionGetString(POSITION_SYMBOL)!=_Symbol||
          (ulong)PositionGetInteger(POSITION_MAGIC)!=TradeMagic)continue;
+      observedBasketPositions++;
+      fallbackBasketFloating+=PositionGetDouble(POSITION_PROFIT)+
+                              PositionGetDouble(POSITION_SWAP)-
+                              MarketExitCostReserveUSD;
       const datetime ts=(datetime)PositionGetInteger(POSITION_TIME);
       if(ts>0&&ts<oldest)oldest=ts;
      }
-   const bool timedOut=UseFixedDemoBasket&&basketCount>0&&
+   const bool timedOut=UseFixedDemoBasket&&observedBasketPositions>0&&
       now-oldest>=DemoBasketMaxHoldSeconds;
+   // When broker fee records cannot be selected, a conservative floating
+   // downside still initiates close; do NOT infer profitability without fees.
+   const bool emergencyFloatingLoss=UseFixedDemoBasket&&
+      !basketKnown&&observedBasketPositions>0&&
+      fallbackBasketFloating<=-DemoBasketStopLossUSD;
    const string closingKey=Key("BASKET_CLOSING");
    bool closing=UseFixedDemoBasket&&GlobalVariableCheck(closingKey);
-   if(UseFixedDemoBasket&&!closing&&(fixedTake||fixedLoss||timedOut))
+   if(UseFixedDemoBasket&&!closing&&
+      (fixedTake||fixedLoss||timedOut||emergencyFloatingLoss))
      {
       GlobalVariableSet(closingKey,1.0); // latched until every position closes
       GlobalVariableSet(Key("BASKET_LAST_EXIT"),(double)TimeGMT());
       closing=true;
       PrintFormat("Qannas DEMO BASKET CLOSE trigger: netEstimate=%.2f trades=%d reason=%s; actual net may slip",
                   basketNet,basketCount,fixedLoss?"LOSS_-5":
-                  fixedTake?"PROFIT_+10":"MAX_HOLD");
+                  fixedTake?"PROFIT_+10":emergencyFloatingLoss?
+                  "FALLBACK_LOSS_-5":"MAX_HOLD");
      }
    for(int i=PositionsTotal()-1;i>=0;i--)
      {
@@ -719,6 +732,12 @@ bool ValidateAndPlaceMarket(const string wire)
       SymbolInfoInteger(_Symbol,SYMBOL_TRADE_MODE)!=SYMBOL_TRADE_MODE_FULL)
       return false;
    if(!HistoryLimits()||!MarketFilledLimitForM1(candleAt))return false;
+   if(UseFixedDemoBasket&&SymbolExposure()>0)
+     {
+      double netCheck=0.0;
+      int counted=0;
+      if(!MarketBasketEstimatedNet(netCheck,counted))return false;
+     }
    const string signalKey=Key("LASTMARKET");
    const string cooldownKey=Key("COOL");
    if(GlobalVariableCheck(signalKey)&&
