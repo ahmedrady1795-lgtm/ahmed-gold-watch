@@ -183,8 +183,11 @@ assert.match(ea,/trade\.BuyLimit\(/);
 assert.match(ea,/trade\.SellLimit\(/);
 assert.match(ea,/trade\.PositionClose\(ticket\)/);
 assert.match(ea,/trade\.OrderDelete\(ticket\)/);
-assert.doesNotMatch(ea,/trade\.Buy\(|trade\.Sell\(|\bOrderSend\(/,
-  'never send an instant market order');
+const legacyLimitPath=ea.split('bool ValidateAndPlace(const string wire)')[1]
+  ?.split('void OnTimer()')[0];
+assert.ok(legacyLimitPath,'legacy LIMIT entry must still exist');
+assert.doesNotMatch(legacyLimitPath,/trade\.Buy\(|trade\.Sell\(|\bOrderSend\(/,
+  'the existing LIMIT path must not become an implicit market fallback');
 // Exness demo rejected 4-15s ORDER_TIME_SPECIFIED with retcode 10022.
 // Keep the broker-side expiry long enough to be valid, but cancel the LIMIT
 // locally within 11s using broker-persisted ORDER_TIME_SETUP. Never leave GTC
