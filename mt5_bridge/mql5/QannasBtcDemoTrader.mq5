@@ -89,10 +89,10 @@ bool LocalAccountSafe()
    if(StringFind(SiteURL,"https://")!=0 || StringLen(BridgeToken)<32)
       return false;
    if(AccountInfoString(ACCOUNT_CURRENCY)!="USD"||
-      MaxRiskPerTradePct<=0||MaxRiskPerTradePct>0.30||
+      MaxRiskPerTradePct<=0||MaxRiskPerTradePct>0.12||
       MaxDailyLossUSD<=0||MaxDailyLossUSD>100.00||
       MaxConcurrentMarketPositions<1||MaxConcurrentMarketPositions>10||
-      MaxCombinedStopRiskPct<=0||MaxCombinedStopRiskPct>1.80||
+      MaxCombinedStopRiskPct<=0||MaxCombinedStopRiskPct>1.20||
       MaxCombinedStopRiskPct<MaxRiskPerTradePct||
       MarketNetProfitTargetUSD<0.50||MarketNetProfitTargetUSD>20.00||
       MarketBasketProfitTargetUSD<2.00||MarketBasketProfitTargetUSD>50.00||
