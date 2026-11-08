@@ -158,7 +158,7 @@ export function planBtcDemoEveryCandle(s:BtcDemoSnapshot|null,now=Date.now()):Bt
   const closedAt=last.time+60000;
   // At the opening of every M1, try promptly rather than churning into the
   // late portion of that candle. This is broker-clock anchored, not UI time.
-  if(closedAt>now||now-closedAt>25000)return wait('PER_CANDLE_WINDOW_PASSED');
+  if(closedAt>now||now-closedAt>50000)return wait('PER_CANDLE_WINDOW_PASSED');
   if(s.symbol!=='BTCUSDm'||s.tickTimeMs>now||now-s.tickTimeMs>5000||
      now-s.observedAt>12000||now-s.observedAt<0)
     return wait('STALE_BROKER_QUOTE');
@@ -205,7 +205,8 @@ export function planBtcDemoEveryCandle(s:BtcDemoSnapshot|null,now=Date.now()):Bt
       return wait('PER_CANDLE_LIMIT_GEOMETRY');
   }
   return {ready:true,side,symbol:'BTCUSDm',candleAt:last.time,
-    signalTickTimeMs:s.tickTimeMs,expiresAt:now+11000,
+    signalTickTimeMs:s.tickTimeMs,
+    expiresAt:Math.min(now+11000,closedAt+58000),
     entry,stop,target,bid:price(s.bid),ask:price(s.ask),atr:price(a),
     strategy:'PER_CANDLE'};
 }
