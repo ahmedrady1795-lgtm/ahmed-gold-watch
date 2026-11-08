@@ -57,7 +57,7 @@ export function planBtcDemoMarket(s:BtcDemoSnapshot|null,now=Date.now()):BtcDemo
      mid<=0||spread/mid>0.0004)return wait('SPREAD_TOO_WIDE');
   const a=atr(c1),a5=atr(c5);
   if(!Number.isFinite(a)||!Number.isFinite(a5)||a<=0||a5<=0||
-    a<1.5*spread||a5<1.5*spread)return wait('NO_COST_COVERED_M1_MOVE');
+    a<1.35*spread||a5<1.35*spread)return wait('NO_COST_COVERED_M1_MOVE');
   if(Math.abs(c5.at(-1)!.close-last.close)>
     Math.max(4*a5,mid*.006))return wait('M5_BROKER_CONTEXT_MISMATCH');
   if(last.high-last.low>2.7*a)return wait('SHOCK_CANDLE');
