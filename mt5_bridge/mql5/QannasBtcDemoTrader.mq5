@@ -308,10 +308,37 @@ void ManageOwnOpenPositions()
    const bool emergency=DailyEquityStopReached();
    double basketNet=0.0;
    int basketCount=0;
-   const bool basketKnown=UseDemoMarketEntries&&MarketQuickNetProfitExit&&
+   const bool basketKnown=UseDemoMarketEntries&&
+      (UseFixedDemoBasket||MarketQuickNetProfitExit)&&
       MarketBasketEstimatedNet(basketNet,basketCount);
-   const bool takeBasket=basketKnown&&basketCount>=2&&
+   const bool takeBasket=!UseFixedDemoBasket&&basketKnown&&basketCount>=2&&
       basketNet>=MarketBasketProfitTargetUSD;
+   const bool fixedTake=UseFixedDemoBasket&&basketKnown&&
+      basketNet>=DemoBasketTakeProfitUSD;
+   const bool fixedLoss=UseFixedDemoBasket&&basketKnown&&
+      basketNet<=-DemoBasketStopLossUSD;
+   datetime oldest=now;
+   for(int j=0;j<PositionsTotal();j++)
+     {
+      const ulong id=PositionGetTicket(j);
+      if(id==0||PositionGetString(POSITION_SYMBOL)!=_Symbol||
+         (ulong)PositionGetInteger(POSITION_MAGIC)!=TradeMagic)continue;
+      const datetime ts=(datetime)PositionGetInteger(POSITION_TIME);
+      if(ts>0&&ts<oldest)oldest=ts;
+     }
+   const bool timedOut=UseFixedDemoBasket&&basketCount>0&&
+      now-oldest>=DemoBasketMaxHoldSeconds;
+   const string closingKey=Key("BASKET_CLOSING");
+   bool closing=UseFixedDemoBasket&&GlobalVariableCheck(closingKey);
+   if(UseFixedDemoBasket&&(fixedTake||fixedLoss||timedOut))
+     {
+      GlobalVariableSet(closingKey,1.0); // latched until every position closes
+      GlobalVariableSet(Key("BASKET_LAST_EXIT"),(double)TimeGMT());
+      closing=true;
+      PrintFormat("Qannas DEMO BASKET CLOSE trigger: netEstimate=%.2f trades=%d reason=%s; actual net may slip",
+                  basketNet,basketCount,fixedLoss?"LOSS_-5":
+                  fixedTake?"PROFIT_+10":"MAX_HOLD");
+     }
    for(int i=PositionsTotal()-1;i>=0;i--)
      {
       const ulong ticket=PositionGetTicket(i);
@@ -332,6 +359,12 @@ void ManageOwnOpenPositions()
       if(emergency)why="DAILY_USD_EQUITY_STOP";
       else if(sl<=0||tp<=0)
          why="MISSING_BROKER_SL_TP";
+      else if(isMarket&&UseFixedDemoBasket)
+        {
+         if(closing)why="BASKET_CLOSE_LATCHED";
+         // While assembling 4/6 positions, do not take USD 2 single-trade exits.
+         // The entire batch is closed on +10, -5 or max hold.
+        }
       else if(isMarket&&MarketQuickNetProfitExit)
         {
          if(takeBasket)
@@ -349,21 +382,22 @@ void ManageOwnOpenPositions()
               }
            }
         }
-      if(why==""&&isMarket&&MarketExitAtMinuteEnd)
+      if(why==""&&isMarket&&!UseFixedDemoBasket&&MarketExitAtMinuteEnd)
         {
          // Fallback at the end of the position's actual entry minute.
          // SL/TP and daily loss shutdown can still execute sooner.
          const datetime minuteEnd=(datetime)(((long)opened/60+1)*60);
          if(now>=minuteEnd)why="M1_ENTRY_MINUTE_END";
         }
-      else if(why==""&&isMarket&&!MarketExitAtMinuteEnd&&
+      else if(why==""&&isMarket&&!UseFixedDemoBasket&&!MarketExitAtMinuteEnd&&
               MathIsValidNumber(floating)&&riskBudget>0)
         {
          if(floating>=profitTake)why="QUICK_FLOATING_PROFIT";
          else if(age>=MarketLossGraceSeconds&&floating<=-lossCut)
             why="EARLY_ADVERSE_LOSS";
         }
-      if(why==""&&(!isMarket||!MarketExitAtMinuteEnd)&&age>=MaxPositionHoldSeconds)
+      if(why==""&&(!isMarket||(!MarketExitAtMinuteEnd&&!UseFixedDemoBasket))&&
+         age>=MaxPositionHoldSeconds)
          why="MAX_HOLD_TIME";
       if(why=="")continue;
       // A CLOSE request is not proof of a broker close. Check retcode and
