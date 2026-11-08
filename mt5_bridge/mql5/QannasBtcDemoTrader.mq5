@@ -675,6 +675,32 @@ void OnTimer()
       ValidateAndPlace(wire);
      }
   }
+// Deal-level audit: logs real broker fills (not claimed order requests).
+// Compare closing deal and opening commission in MT5 History before judging
+// strategy profitability; a deal is not necessarily a complete position.
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                        const MqlTradeRequest &request,
+                        const MqlTradeResult &result)
+  {
+   if(trans.type!=TRADE_TRANSACTION_DEAL_ADD||trans.deal==0)return;
+   if(!HistoryDealSelect(trans.deal))return;
+   if(HistoryDealGetString(trans.deal,DEAL_SYMBOL)!=_Symbol||
+      (ulong)HistoryDealGetInteger(trans.deal,DEAL_MAGIC)!=TradeMagic)
+      return;
+   const ENUM_DEAL_ENTRY entry=(ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal,DEAL_ENTRY);
+   const ENUM_DEAL_REASON reason=(ENUM_DEAL_REASON)HistoryDealGetInteger(trans.deal,DEAL_REASON);
+   const double profit=HistoryDealGetDouble(trans.deal,DEAL_PROFIT);
+   const double commission=HistoryDealGetDouble(trans.deal,DEAL_COMMISSION);
+   const double swap=HistoryDealGetDouble(trans.deal,DEAL_SWAP);
+   const double fee=HistoryDealGetDouble(trans.deal,DEAL_FEE);
+   const double dealNet=profit+commission+swap+fee;
+   const double price=HistoryDealGetDouble(trans.deal,DEAL_PRICE);
+   const double volume=HistoryDealGetDouble(trans.deal,DEAL_VOLUME);
+   PrintFormat("Qannas BTC DEMO BROKER DEAL: id=%I64u entry=%s reason=%s volume=%.2f price=%.2f gross=%.2f commission=%.2f fee=%.2f swap=%.2f dealNet=%.2f; sum related deals for whole-trade net",
+               trans.deal,EnumToString(entry),EnumToString(reason),
+               volume,price,profit,commission,fee,swap,dealNet);
+  }
+
 void OnDeinit(const int reason)
   {
    EventKillTimer();
