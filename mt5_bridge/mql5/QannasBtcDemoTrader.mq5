@@ -4,7 +4,7 @@
 //| No LIVE accounts; separate MARKET opt-in; broker stops required. |
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.05"
+#property version "1.06"
 #property description "BTCUSDm DEMO LIMIT or separately opted-in MARKET EA. OFF by default."
 #property description "Rejects real accounts even if enabled; broker SL/TP required."
 
@@ -17,14 +17,14 @@ input long   ExpectedDemoLogin=0;
 input bool   EnableDemoOrders=false;
 input string DemoConfirmation="";  // type EXACTLY: I_ENABLE_DEMO_ONLY_V1
 // Market execution requires TWO additional, explicitly configured inputs.
-// Compile v1.05, verify the DEMO account, then opt in. Default remains LIMIT.
+// Compile v1.06, verify the DEMO account, then opt in. Default remains LIMIT.
 input bool   UseDemoMarketEntries=false;
 input string DemoMarketConfirmation=""; // I_ENABLE_DEMO_MARKET_ONLY_V1
 input int    MaxMarketEntriesPerM1=3;
 input int    MarketReentryCooldownSeconds=7;
 input int    MarketSignalPollSeconds=2;
 input double MaxRiskPerTradePct=0.05;
-input double MaxDailyLossPct=0.50;
+input double MaxDailyLossUSD=40.00; // demo USD-only hard limit
 input int    MaxFilledTradesPerDay=360;
 input int    MaxFilledTradesPerMinute=6;
 input int    MaxPositionHoldSeconds=30;
@@ -46,6 +46,7 @@ datetime lastPositionScanAt=0;
 datetime lastCloseAttemptAt=0;
 ulong lastCloseAttemptTicket=0;
 bool started=false;
+string lastHistoryBlockReason="";
 
 string Key(const string suffix)
   {
@@ -61,8 +62,9 @@ bool LocalAccountSafe()
       return false;
    if(StringFind(SiteURL,"https://")!=0 || StringLen(BridgeToken)<32)
       return false;
-   if(MaxRiskPerTradePct<=0||MaxRiskPerTradePct>0.05||
-      MaxDailyLossPct<=0||MaxDailyLossPct>0.50||
+   if(AccountInfoString(ACCOUNT_CURRENCY)!="USD"||
+      MaxRiskPerTradePct<=0||MaxRiskPerTradePct>0.05||
+      MaxDailyLossUSD<=0||MaxDailyLossUSD>40.00||
       MaxFilledTradesPerDay<1||MaxFilledTradesPerDay>360||
       MaxFilledTradesPerMinute<1||MaxFilledTradesPerMinute>6||
       MaxPositionHoldSeconds<15||MaxPositionHoldSeconds>30||
@@ -95,6 +97,7 @@ int OnInit()
       Print("Qannas BTC DEMO: REFUSED account/symbol/token/risk limits. No orders.");
       return INIT_PARAMETERS_INCORRECT;
      }
+   PrintFormat("Qannas BTC DEMO DAILY STOP: USD %.2f, equity and own realized net; per-trade risk <=0.05%%; slippage not guaranteed",MaxDailyLossUSD);
    trade.SetExpertMagicNumber(TradeMagic);
    trade.SetAsyncMode(false);
    trade.SetTypeFillingBySymbol(_Symbol);
@@ -245,21 +248,27 @@ void OnTick()
 
 bool HistoryLimits()
   {
-   // Persistent per-account starting equity prevents an open loss or another
-   // EA's loss from being ignored just because no deal has closed yet.
+   lastHistoryBlockReason="";
+   // Keep a persistent UTC-day equity checkpoint: existing open losses and
+   // drawdown from other EAs count. EA restarts must not reset the loss limit.
    const long utcDay=(long)TimeGMT()/86400;
    const string equityKey=Key("EQ"+IntegerToString((int)utcDay));
    const double currentEquity=AccountInfoDouble(ACCOUNT_EQUITY);
-   if(currentEquity<=0)return false;
+   if(currentEquity<=0){lastHistoryBlockReason="EQUITY_UNAVAILABLE";return false;}
    if(!GlobalVariableCheck(equityKey))
       GlobalVariableSet(equityKey,currentEquity);
    const double startEquity=GlobalVariableGet(equityKey);
-   if(startEquity<=0||
-      currentEquity<=startEquity*(1.0-MaxDailyLossPct/100.0))
+   if(startEquity<=0)
+     {lastHistoryBlockReason="DAY_START_EQUITY_UNAVAILABLE";return false;}
+   if(currentEquity<=startEquity-MaxDailyLossUSD)
+     {
+      lastHistoryBlockReason=StringFormat("DAILY_EQUITY_STOP: start=%.2f equity=%.2f limitUSD=%.2f",
+                                         startEquity,currentEquity,MaxDailyLossUSD);
       return false;
+     }
    const datetime now=TimeTradeServer();
    const datetime start=now-(now%86400);
-   if(!HistorySelect(start,now))return false; // fail closed
+   if(!HistorySelect(start,now)){lastHistoryBlockReason="HISTORY_SELECT_FAILED";return false;} // fail closed
    int entries=0;
    int entriesLastMinute=0;
    double pnl=0;
@@ -277,16 +286,26 @@ bool HistoryLimits()
         }
       pnl+=HistoryDealGetDouble(ticket,DEAL_PROFIT)+
            HistoryDealGetDouble(ticket,DEAL_COMMISSION)+
-           HistoryDealGetDouble(ticket,DEAL_SWAP);
+           HistoryDealGetDouble(ticket,DEAL_SWAP)+
+           HistoryDealGetDouble(ticket,DEAL_FEE);
      }
    // The faster six/minute allowance belongs exclusively to demo Market
    // mode. The legacy pending-LIMIT execution remains capped at four/minute.
    const int allowedPerMinute=UseDemoMarketEntries?
       MaxFilledTradesPerMinute:(int)MathMin(MaxFilledTradesPerMinute,4);
-   if(entries>=MaxFilledTradesPerDay||
-      entriesLastMinute>=allowedPerMinute)return false;
+   if(entries>=MaxFilledTradesPerDay)
+     {lastHistoryBlockReason="FILLED_TRADES_DAY_LIMIT";return false;}
+   if(entriesLastMinute>=allowedPerMinute)
+     {lastHistoryBlockReason="FILLED_TRADES_MINUTE_LIMIT";return false;}
    const double balance=AccountInfoDouble(ACCOUNT_BALANCE);
-   if(balance<=0||pnl<=-balance*MaxDailyLossPct/100.0)return false;
+   if(balance<=0)
+     {lastHistoryBlockReason="BALANCE_UNAVAILABLE";return false;}
+   if(pnl<=-MaxDailyLossUSD)
+     {
+      lastHistoryBlockReason=StringFormat("DAILY_REALIZED_STOP: net=%.2f limitUSD=%.2f",
+                                         pnl,MaxDailyLossUSD);
+      return false;
+     }
    return true;
   }
 bool LocalClosedBarMatches(const long candleAtMs)
@@ -354,7 +373,7 @@ double ChooseDemoMarketLot(const bool buy,const double entry,
   }
 bool MarketFilledLimitForM1(const long candleAtMs)
   {
-   // A second independent limit beyond the 4 fills/rolling minute safeguard.
+   // Additional M1 cap beyond the mode-specific rolling-minute limit.
    const datetime from=(datetime)(candleAtMs/1000+60);
    const datetime until=TimeTradeServer();
    if(until<from||!HistorySelect(from,until))return false;
@@ -622,7 +641,7 @@ void OnTimer()
    if(now-lastRequestAt<pollEvery)return;
    lastRequestAt=now;
    if(SymbolExposure()>0)return; // owned/unowned position OR pending blocks new entry
-   if(!HistoryLimits()){Note("minute/day trade count or loss stop");return;}
+   if(!HistoryLimits()){Note("entry stopped: "+lastHistoryBlockReason);return;}
    const string headers="Authorization: Bearer "+BridgeToken+"\r\n";
    char request[],response[];
    string responseHeaders="";
@@ -656,6 +675,32 @@ void OnTimer()
       ValidateAndPlace(wire);
      }
   }
+// Deal-level audit: logs real broker fills (not claimed order requests).
+// Compare closing deal and opening commission in MT5 History before judging
+// strategy profitability; a deal is not necessarily a complete position.
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                        const MqlTradeRequest &request,
+                        const MqlTradeResult &result)
+  {
+   if(trans.type!=TRADE_TRANSACTION_DEAL_ADD||trans.deal==0)return;
+   if(!HistoryDealSelect(trans.deal))return;
+   if(HistoryDealGetString(trans.deal,DEAL_SYMBOL)!=_Symbol||
+      (ulong)HistoryDealGetInteger(trans.deal,DEAL_MAGIC)!=TradeMagic)
+      return;
+   const ENUM_DEAL_ENTRY entry=(ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal,DEAL_ENTRY);
+   const ENUM_DEAL_REASON reason=(ENUM_DEAL_REASON)HistoryDealGetInteger(trans.deal,DEAL_REASON);
+   const double profit=HistoryDealGetDouble(trans.deal,DEAL_PROFIT);
+   const double commission=HistoryDealGetDouble(trans.deal,DEAL_COMMISSION);
+   const double swap=HistoryDealGetDouble(trans.deal,DEAL_SWAP);
+   const double fee=HistoryDealGetDouble(trans.deal,DEAL_FEE);
+   const double dealNet=profit+commission+swap+fee;
+   const double price=HistoryDealGetDouble(trans.deal,DEAL_PRICE);
+   const double volume=HistoryDealGetDouble(trans.deal,DEAL_VOLUME);
+   PrintFormat("Qannas BTC DEMO BROKER DEAL: id=%I64u entry=%s reason=%s volume=%.2f price=%.2f gross=%.2f commission=%.2f fee=%.2f swap=%.2f dealNet=%.2f; sum related deals for whole-trade net",
+               trans.deal,EnumToString(entry),EnumToString(reason),
+               volume,price,profit,commission,fee,swap,dealNet);
+  }
+
 void OnDeinit(const int reason)
   {
    EventKillTimer();
