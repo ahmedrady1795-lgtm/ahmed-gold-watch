@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+// GitHub CI already runs this file; exercise the independent MARKET gates too.
+import './mt5-btc-demo-market-plan.mjs';
 import {planBtcDemoLimit,planBtcDemoEveryCandle,formatBtcDemoWire} from '../lib/mt5-btc-demo-plan.ts';
 import {recordBtcDemoSignalDecision,btcDemoWaitStats} from '../lib/mt5-btc-demo-diagnostics.ts';
 
@@ -181,13 +183,16 @@ assert.match(ea,/trade\.BuyLimit\(/);
 assert.match(ea,/trade\.SellLimit\(/);
 assert.match(ea,/trade\.PositionClose\(ticket\)/);
 assert.match(ea,/trade\.OrderDelete\(ticket\)/);
-assert.doesNotMatch(ea,/trade\.Buy\(|trade\.Sell\(|\bOrderSend\(/,
-  'never send an instant market order');
+const legacyLimitPath=ea.split('bool ValidateAndPlace(const string wire)')[1]
+  ?.split('void OnTimer()')[0];
+assert.ok(legacyLimitPath,'legacy LIMIT entry must still exist');
+assert.doesNotMatch(legacyLimitPath,/trade\.Buy\(|trade\.Sell\(|\bOrderSend\(/,
+  'the existing LIMIT path must not become an implicit market fallback');
 // Exness demo rejected 4-15s ORDER_TIME_SPECIFIED with retcode 10022.
 // Keep the broker-side expiry long enough to be valid, but cancel the LIMIT
 // locally within 11s using broker-persisted ORDER_TIME_SETUP. Never leave GTC
 // orders behind or convert these failures into market orders.
-assert.match(ea,/#property version "1\.02"/);
+assert.match(ea,/#property version "1\.03"/);
 assert.match(ea,/BROKER_PENDING_EXPIRY_SECONDS=180/);
 assert.match(ea,/LocalPendingLifetimeSeconds=11/);
 assert.match(ea,/LocalPendingLifetimeSeconds>15/);

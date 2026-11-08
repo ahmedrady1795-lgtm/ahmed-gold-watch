@@ -2,6 +2,8 @@ import {getRuntimeEnv} from '../../../../lib/runtime';
 import {getMt5BtcStatus,getMt5BtcVerifiedSnapshot,setMt5BtcStatus} from '../../../../lib/mt5-btc-readonly';
 import {planBtcDemoEveryCandle} from '../../../../lib/mt5-btc-demo-plan';
 import {btcDemoWaitStats} from '../../../../lib/mt5-btc-demo-diagnostics';
+import {planBtcDemoMarket} from '../../../../lib/mt5-btc-demo-market-plan';
+import {btcDemoMarketStats} from '../../../../lib/mt5-btc-demo-market-diagnostics';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -36,6 +38,7 @@ export async function GET(){
   // Actual broker order placement still requires the authenticated signal
   // endpoint, confirmed DEMO account, and the locally enabled MT5 EA.
   const decision=planBtcDemoEveryCandle(verified,now);
+  const market=planBtcDemoMarket(verified,now);
   const m1=verified?.candles.c1??[];
   let atrM1:number|null=null;
   if(m1.length>=15){
@@ -65,6 +68,12 @@ export async function GET(){
       lastClosedM1AgeMs:verified?.candles.c1.length?
         now-(verified.candles.c1.at(-1)!.time+60000):null,
       actualEaPolls:btcDemoWaitStats(now)
+    },
+    demoMarketDiagnostics:{
+      marketSignalEnabled:getRuntimeEnv().MT5_BTC_DEMO_MARKET_SIGNALS_ENABLED==='true',
+      candidateNow:market.ready,
+      waitReason:market.ready?'CANDIDATE_READY':market.reason,
+      actualMarketEaPolls:btcDemoMarketStats(now)
     }
   },{headers:{'Cache-Control':'private, no-store'}});
 }
