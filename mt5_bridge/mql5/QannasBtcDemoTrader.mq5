@@ -350,7 +350,7 @@ double ChooseLot(const ENUM_ORDER_TYPE side,double entry,double stop)
    if(!OrderCalcProfit(calc,_Symbol,minLot,entry,stop,lossAtMin)||
       !MathIsValidNumber(lossAtMin)||lossAtMin>=0)return 0;
    const double equity=AccountInfoDouble(ACCOUNT_EQUITY);
-   const double budget=equity*MaxRiskPerTradePct/100.0;
+   const double budget=equity*MathMin(MaxRiskPerTradePct,0.05)/100.0; // legacy LIMIT risk stays <=0.05%
    if(budget<=0||-lossAtMin>budget)return 0;
    const double rawLots=MathMin(maxLot,minLot*budget/(-lossAtMin));
    double vol=MathFloor((rawLots+1e-9)/step)*step;
