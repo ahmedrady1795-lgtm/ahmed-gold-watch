@@ -110,7 +110,7 @@ const api=fs.readFileSync('app/api/mt5/btc-demo-signal/route.ts','utf8');
 const ea=fs.readFileSync('mt5_bridge/mql5/QannasBtcDemoTrader.mq5','utf8');
 assert.match(api,/MT5_BTC_DEMO_SIGNALS_ENABLED!=='true'/,
   'server demo signal remains off without explicit opt-in');
-assert.match(api,/getMt5BtcVerifiedSnapshot\(\)/,
+assert.match(api,/getMt5BtcVerifiedSnapshot\(now\)/,
   'server must use broker-only validated history');
 assert.match(api,/MT5_BRIDGE_TOKEN/);
 assert.match(ea,/ACCOUNT_TRADE_MODE_DEMO/);
