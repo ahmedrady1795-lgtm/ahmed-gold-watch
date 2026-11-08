@@ -62,7 +62,8 @@ export function planBtcDemoMarket(s:BtcDemoSnapshot|null,now=Date.now()):BtcDemo
     Math.max(4*a5,mid*.006))return wait('M5_BROKER_CONTEXT_MISMATCH');
   if(last.high-last.low>2.7*a)return wait('SHOCK_CANDLE');
   if(Math.abs(mid-last.close)>0.85*a)return wait('PRICE_DISLOCATED');
-  if(!Number.isFinite(last.tickVolume)||last.tickVolume<=0)
+  const observedTickVolume=Number(last.tickVolume??0);
+  if(!Number.isFinite(observedTickVolume)||observedTickVolume<=0)
     return wait('NO_OBSERVED_VOLUME');
   const body=last.close-last.open;
   const movingBias=ema(c1,8)-ema(c1,21);
