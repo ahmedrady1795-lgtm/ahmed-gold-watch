@@ -31,6 +31,8 @@ input bool   InpManualPause          = false;  // Manually pause NEW entries; ex
 input ENUM_AQ_DIRECTION InpTradeDirection=AQ_BOTH; // Both / BUY only / SELL only
 input bool   InpEnableDailyStop      = false;  // User decides whether daily loss auto-lock is enabled
 input ENUM_AQ_ENTRY_STYLE InpEntryStyle = AQ_FAST; // Change entry strictness in Inputs
+input bool   InpEnableAdaptiveWeights = true;   // Learn gently from CLOSED candle direction, never promise profits
+input double InpModelLearningRate     = 0.015;  // Bounded online adaptation to directional errors
 input bool   InpUseSignalFilter      = false;  // OFF = 2-sided STOP ladder, no M1/M5 hesitation
 input bool   InpCancelOppositeOnFill = true;   // Remove opposite STOP orders after a fill
 input int    InpStopLevelsPerSide    = 3;      // BUY STOP levels + SELL STOP levels
@@ -92,6 +94,8 @@ string    g_status = "Ready";
 string    g_lastLimitEntryKey="";
 datetime  g_lastLimitOrderBar=0;
 int       g_barAttempts=0;
+int       g_barFills=0;
+int       g_barClosedDeals=0;
 
 #define AQ_FEATURE_COUNT 6
 double    g_modelWeights[AQ_FEATURE_COUNT];
@@ -489,13 +493,16 @@ void LogPredictionResult(datetime closedBar,int actual,double move)
       g_predictionsCorrect+=correct;
       // Online logistic update, using ONLY the next closed candle outcome.
       // It never changes an already published prediction.
-      double probability=1.0/(1.0+MathExp(-Bound(g_predictionScore,-6.0,6.0)));
-      double error=(actual>0?1.0:0.0)-probability;
-      for(int k=0;k<AQ_FEATURE_COUNT;k++)
+      if(InpEnableAdaptiveWeights)
       {
-         double next=g_modelWeights[k]+0.015*error*g_predictionFeatures[k];
-         g_modelWeights[k]=Bound(next,-1.25,1.25);
-         GlobalVariableSet(g_modelKey+IntegerToString(k),g_modelWeights[k]);
+         double probability=1.0/(1.0+MathExp(-Bound(g_predictionScore,-6.0,6.0)));
+         double error=(actual>0?1.0:0.0)-probability;
+         for(int k=0;k<AQ_FEATURE_COUNT;k++)
+         {
+            double next=g_modelWeights[k]+InpModelLearningRate*error*g_predictionFeatures[k];
+            g_modelWeights[k]=Bound(next,-1.25,1.25);
+            GlobalVariableSet(g_modelKey+IntegerToString(k),g_modelWeights[k]);
+         }
       }
    }
    // Append one completed prediction per bar; source data can be inspected
@@ -508,7 +515,7 @@ void LogPredictionResult(datetime closedBar,int actual,double move)
       FileWrite(file,TimeToString(closedBar,TIME_DATE|TIME_MINUTES),
                 g_predictionSide,DoubleToString(g_predictionScore,4),
                 actual,DoubleToString(move,_Digits),correct,
-                g_ordersThisBar,g_barAttempts,
+                g_ordersThisBar,g_barAttempts,g_barFills,g_barClosedDeals,
                 DoubleToString(g_pocPrice,_Digits));
       FileClose(file);
    }
@@ -1002,7 +1009,7 @@ void DisplayStatus(double closed,double floating,int active)
            " | Floating est: ",DoubleToString(floating,2),
            "\nM1 forecast: ",g_predictionBar==g_barStart?(g_predictionSide>0?"BUY":"SELL"):"WAIT",
            " | Forward hits: ",g_predictionsCorrect,"/",g_predictionsResolved,
-           "\nPlaced this candle: ",g_ordersThisBar,"/",InpMaxEntriesPerM1,
+           "\nPlaced: ",g_ordersThisBar," | Filled: ",g_barFills,
            " | ",g_dayLocked?"DAY LOCK":(InpManualPause?"MANUAL PAUSE":"ACTIVE")," | ",g_status);
 }
 
@@ -1018,6 +1025,8 @@ void Pulse()
       g_barStart=bar;
       g_ordersThisBar=0;
       g_barAttempts=0;
+      g_barFills=0;
+      g_barClosedDeals=0;
       g_upTicks=0;
       g_downTicks=0;
       g_recentTickCount=0;
@@ -1145,6 +1154,7 @@ int OnInit()
       InpMaxZoneSnapPrice<=0 || InpMaxZoneSnapPrice>InpMaxLimitDistancePrice ||
       InpEarlyExitLossUsd<=0 || InpEarlyExitLossUsd>InpMaxLossUsd ||
       InpEarlyExitMinAgeSec<1 ||
+      InpModelLearningRate<0 || InpModelLearningRate>0.10 ||
       InpMaxPendingAgeSec<2 || InpCancelDistancePrice<=0 ||
       InpFrozenCancelRetrySec<1 || InpDailyStopUsd<=0 ||
       (InpEnableDailyStop && InpDailyStopUsd<=InpMaxLossUsd) ||
@@ -1196,6 +1206,8 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    if((ulong)HistoryDealGetInteger(trans.deal,DEAL_MAGIC)!=InpMagic)return;
    ENUM_DEAL_ENTRY kind=(ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal,DEAL_ENTRY);
    if(kind!=DEAL_ENTRY_IN && kind!=DEAL_ENTRY_OUT && kind!=DEAL_ENTRY_INOUT)return;
+   if(kind==DEAL_ENTRY_IN)g_barFills++;
+   else g_barClosedDeals++;
    double net=HistoryDealGetDouble(trans.deal,DEAL_PROFIT)
              +HistoryDealGetDouble(trans.deal,DEAL_COMMISSION)
              +HistoryDealGetDouble(trans.deal,DEAL_SWAP)
