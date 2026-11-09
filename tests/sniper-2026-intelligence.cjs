@@ -33,8 +33,26 @@ assert.equal(radar.notTradeSignal,true);
 assert.equal(detectLiquidityMagnets(pivots,now15+4*3600000).ready,false,
  'stale OHLC cannot produce an active liquidity map');
 const gap=pivots.map(b=>({...b}));gap[15].time+=30000;
-assert.equal(detectLiquidityMagnets(gap,now15).ready,false,
- 'a gap is not a fresh historical swing');
+assert.equal(detectLiquidityMagnets(gap,now15).ready,true,
+ 'an older gap must not block 32 contiguous closed bars after it');
+const recentGap=pivots.map(b=>({...b}));recentGap[39].time+=30000;
+assert.equal(detectLiquidityMagnets(recentGap,now15).ready,false,
+ 'a gap in the newest 32 bars cannot be bridged');
+const beforeWeekend=pivots.slice(0,24).map((b,i)=>({
+ ...b,time:Date.parse('2026-11-06T12:00:00Z')+i*M15
+}));
+const afterWeekend=pivots.slice(-40).map((b,i)=>({
+ ...b,time:Date.parse('2026-11-08T23:00:00Z')+i*M15
+}));
+const monday=detectLiquidityMagnets([...beforeWeekend,...afterWeekend],
+ afterWeekend.at(-1).time+M15);
+assert.equal(monday.ready,true,monday.reason);
+assert.ok(monday.above?.touches>=2&&monday.below?.touches>=2,
+ 'Monday liquidity comes from completed post-weekend pivots only');
+const tooShort=detectLiquidityMagnets([...beforeWeekend,...afterWeekend.slice(0,31)],
+ afterWeekend[30].time+M15);
+assert.equal(tooShort.ready,false,
+ 'the market reopening must first accumulate 32 genuine closed M15 bars');
 const future=pivots.map(b=>({...b}));future.at(-1).time+=M15;
 assert.equal(detectLiquidityMagnets(future,now15).ready,false,
  'incomplete or future M15 bar must not be used');
