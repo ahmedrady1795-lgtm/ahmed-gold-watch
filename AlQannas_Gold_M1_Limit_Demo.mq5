@@ -5,8 +5,8 @@
 //| This EA does NOT call the Al-Qannas website/AI.                  |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "1.12"
-#property description "Al-Qannas Gold M1 Limit v1.12: User-controlled risk and directional filters. DEMO ONLY."
+#property version   "1.13"
+#property description "Al-Qannas Gold M1 Limit v1.13: Near-price LIMIT and stale order cleanup. DEMO ONLY."
 #include <Trade/Trade.mqh>
 
 enum ENUM_AQ_ENTRY_STYLE
@@ -37,7 +37,10 @@ input double InpMinM5Alignment       = 0.12;   // Minimum agreement from last CL
 input int    InpMinTickConfirm       = 8;      // Minimum price-change ticks before first M1 signal
 input double InpMaxSpreadRangeRatio  = 0.35;   // Spread cannot dominate recent M1 range
 input double InpMaxLiveCandleRange   = 2.20;   // Skip live M1 spikes over mean range
-input double InpEntryPullbackRange   = 0.12;   // Pending limit distance as a fraction of M1 range
+input double InpEntryPullbackRange   = 0.025;  // Small pending LIMIT pullback as fraction of M1 range
+input double InpMaxLimitDistancePrice = 0.70;  // MAX XAUUSD price distance from current executable quote
+input int    InpMaxPendingAgeSec     = 18;     // Cancel unfilled LIMIT quickly (no old-candle traps)
+input bool   InpCancelOnFlowFlip     = false;  // Optional: turning ON may cancel valid pullback LIMIT fills
 input double InpM5ConflictScore      = 0.80;   // Skip strong M5 trend conflicts
 input double InpDailyStopUsd         = 40.00;  // Used only when InpEnableDailyStop=true
 input double InpCostReserveUsd       = 0.20;   // Estimated round-trip costs per trade
@@ -45,6 +48,7 @@ input int    InpMaxHoldSeconds       = 180;    // Allow more time for winning mo
 input int    InpMaxConcurrent       = 4;      // Open positions + pending orders
 input int    InpMaxEntriesPerM1      = 4;      // Pending LIMIT attempts per minute
 input int    InpMinOrderSpacingSec   = 10;     // Don't spam the trade server
+input int    InpFrozenRetrySeconds   = 5;      // Back off failed broker-frozen position closes
 input double InpMaxSpreadPrice       = 0.80;   // XAU price units (not points)
 input ulong  InpMagic                = 560179505;
 input bool   InpShowChartStatus      = true;
@@ -290,6 +294,8 @@ void ManagePositions(bool forceClose=false)
                                PositionGetDouble(POSITION_VOLUME),
                                PositionGetDouble(POSITION_SWAP),protectedNet);
 
+      string closeRetryKey="AQCloseFrozen_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))
+                           +"_"+IntegerToString((long)InpMagic)+"_"+IntegerToString((long)ticket);
       int age=(int)(now-(datetime)PositionGetInteger(POSITION_TIME));
       bool hardProfit=(net>=InpTakeNetUsd);
       // A gap below the profit floor must ALSO exit; never require net>0.
@@ -297,6 +303,10 @@ void ManagePositions(bool forceClose=false)
       bool lossStop=(net<=-InpMaxLossUsd);
       bool timeStop=(age>=InpMaxHoldSeconds);
       if(!forceClose && !hardProfit && !trailingExit && !lossStop && !timeStop)continue;
+      // Broker frozen restriction (10029) is not solvable by spamming Close().
+      // Original broker SL/TP remains active while waiting to retry.
+      if(GlobalVariableCheck(closeRetryKey) &&
+         now-(datetime)GlobalVariableGet(closeRetryKey)<InpFrozenRetrySeconds)continue;
       if(now-g_lastCloseAttempt<2 && !forceClose && !lossStop)continue;
       g_lastCloseAttempt=now;
       bool sent=g_trade.PositionClose(ticket);
@@ -308,6 +318,19 @@ void ManagePositions(bool forceClose=false)
            forceClose?"DAY_LOCK":hardProfit?"HARD_TP":lossStop?"LOSS_STOP":
            trailingExit?"PROFIT_TRAIL":"MAX_HOLD");
          GlobalVariableDel(key);
+         GlobalVariableDel(closeRetryKey);
+      }
+      else if(rc==TRADE_RETCODE_POSITION_CLOSED)
+      {
+         // MT5 already closed it in the background; not an unresolved failure.
+         GlobalVariableDel(key);
+         GlobalVariableDel(closeRetryKey);
+      }
+      else if(rc==TRADE_RETCODE_FROZEN)
+      {
+         GlobalVariableSet(closeRetryKey,(double)now);
+         PrintFormat("Al-Qannas CLOSE frozen #%I64u: retry in %d sec; broker SL remains",
+                     ticket,InpFrozenRetrySeconds);
       }
       else
          PrintFormat("Al-Qannas CLOSE failed #%I64u retcode=%u %s",
@@ -476,6 +499,37 @@ int LocalSignal()
                          side>0?"BUY":"SELL",score,dirM5,dirFlow);
    return side;
 }
+void CancelStaleLimits()
+{
+   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) ||
+      !MQLInfoInteger(MQL_TRADE_ALLOWED))return;
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol,tick) || tick.bid<=0 || tick.ask<=tick.bid)return;
+   datetime now=ServerNow();
+   double flow=RecentTickFlow();
+   for(int i=OrdersTotal()-1;i>=0;i--)
+   {
+      ulong ticket=OrderGetTicket(i);
+      if(ticket==0 || !OrderSelect(ticket) || !OwnLimitOrder())continue;
+      ENUM_ORDER_TYPE type=(ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+      int side=(type==ORDER_TYPE_BUY_LIMIT?1:-1);
+      double price=OrderGetDouble(ORDER_PRICE_OPEN);
+      double distance=(side>0?tick.ask-price:price-tick.bid);
+      int age=(int)(now-(datetime)OrderGetInteger(ORDER_TIME_SETUP));
+      bool tooOld=(age>=InpMaxPendingAgeSec);
+      bool tooFar=(distance>InpMaxLimitDistancePrice+TickSize()*0.5);
+      bool flowFlip=(InpCancelOnFlowFlip && g_recentTickCount>=8 &&
+                     side*flow< -0.60);
+      if(!tooOld && !tooFar && !flowFlip)continue;
+      if(g_trade.OrderDelete(ticket) && g_trade.ResultRetcode()==TRADE_RETCODE_DONE)
+         PrintFormat("Al-Qannas STALE LIMIT removed #%I64u age=%d distance=%.3f flow=%.2f",
+                     ticket,age,distance,flow);
+      else if(g_trade.ResultRetcode()!=TRADE_RETCODE_FROZEN)
+         PrintFormat("Al-Qannas stale limit cancel rejected #%I64u retcode=%u",
+                     ticket,g_trade.ResultRetcode());
+   }
+}
+
 bool PriceCashPerOne(int side,double entry,double &usd)
 {
    double pnl=0.0;
@@ -500,6 +554,16 @@ bool PlaceLimit(int side)
    gap=MathMax(gap,minDist-spread+2.0*TickSize());
    double entry=(side>0 ? PriceRound(tick.bid-gap,-1) : PriceRound(tick.ask+gap,1));
    if(entry<=0) return false;
+   // A LIMIT never chases an unreachable level. The distance is measured from
+   // ASK for BUY LIMIT and BID for SELL LIMIT, i.e. executable-side quotes.
+   // Keep the broker minimum stop distance; SKIP if it requires a distant order.
+   double quoteDistance=(side>0?tick.ask-entry:entry-tick.bid);
+   if(quoteDistance>InpMaxLimitDistancePrice+TickSize()*0.5)
+   {
+      g_status=StringFormat("LIMIT too far: %.3f > max %.3f",
+                            quoteDistance,InpMaxLimitDistancePrice);
+      return false;
+   }
    if(side>0 && tick.ask-entry<minDist-1e-7) return false;
    if(side<0 && entry-tick.bid<minDist-1e-7) return false;
 
@@ -611,6 +675,7 @@ void Pulse()
    }
    if(g_dayLocked) RemoveOwnLimits(true);
    ManagePositions(g_dayLocked);
+   if(!g_dayLocked)CancelStaleLimits(); // Remove distant, outdated, or reversed entries.
    int active=CountActive();
    DisplayStatus(closed,floating,active);
    if(!historyOK || g_dayLocked || g_barStart<=0 || !ExactVolume()) return;
@@ -676,11 +741,12 @@ int OnInit()
       InpMinSignalScore<0 || InpM5ConflictScore<0 || InpMinM5Alignment<0 ||
       InpMinTickConfirm<0 || InpMaxSpreadRangeRatio<=0 ||
       InpMaxLiveCandleRange<=0 || InpEntryPullbackRange<0 ||
-      InpEntryPullbackRange>1 || InpDailyStopUsd<=0 ||
+      InpEntryPullbackRange>1 || InpMaxLimitDistancePrice<=2.0*TickSize() ||
+      InpMaxPendingAgeSec<2 || InpDailyStopUsd<=0 ||
       (InpEnableDailyStop && InpDailyStopUsd<=InpMaxLossUsd) ||
       InpMaxHoldSeconds<1 || InpMaxConcurrent<1 || InpMaxConcurrent>20 ||
       InpMaxEntriesPerM1<1 || InpMaxEntriesPerM1>30 ||
-      InpMinOrderSpacingSec<1 || InpMaxSpreadPrice<=0)
+      InpMinOrderSpacingSec<1 || InpFrozenRetrySeconds<1 || InpMaxSpreadPrice<=0)
    {
       Alert("Al-Qannas invalid Expert Inputs. Check risk, volume step, and entry settings.");
       return INIT_PARAMETERS_INCORRECT;
@@ -695,7 +761,7 @@ int OnInit()
    g_trade.SetAsyncMode(false);
    ReadDay();
    EventSetTimer(1);
-   PrintFormat("Al-Qannas Gold DEMO v1.12: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
+   PrintFormat("Al-Qannas Gold DEMO v1.13: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
        _Symbol,InpLots,InpTakeNetUsd,InpMaxLossUsd,InpTrailArmUsd,InpTrailStartUsd,InpTrailGivebackUsd,InpDailyStopUsd);
    return INIT_SUCCEEDED;
 }
