@@ -44,6 +44,7 @@ import {assessSniperLiveOpportunity} from '../lib/sniper-live-opportunity';
 import {advanceMovementProof,movementProofScore,safeMovementProof,type MovementProof} from '../lib/sniper-movement-proof';
 import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
 import {buildM15LiquidityBoard} from '../lib/sniper-m15-liquidity-board';
+import {assessM15RouteObstacle} from '../lib/sniper-m15-route-obstacle';
 import {assessM15ScenarioIssuance} from '../lib/sniper-m15-evidence-issuance';
 import {buildM15WatchPriceMap} from '../lib/sniper-m15-watch-prices';
 import {buildM15ReactionMap,emptyReactionMap} from '../lib/sniper-m15-reactions';
@@ -369,6 +370,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      safeSide==='SELL'?v>anchor:false);
  const scenarioStop=validStop(proposedStop)?proposedStop:
    validStop(swingStop)?swingStop:null;
+ const routeObstacle=assessM15RouteObstacle({
+   side:asset==='GOLD'?safeSide:'WAIT',anchor,goals:proposedGoals,
+   zones:zoneBoard.items,closed:actual,now,atr:watchMap.atr
+ });
  const confirmedEvents=Array.isArray(m.fourHour?.events)?m.fourHour.events:[];
  const latestBos=confirmedEvents.filter((e:any)=>
    (e?.kind==='BOS_UP'||e?.kind==='BOS_DOWN')&&
@@ -436,13 +441,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    liveOpportunity,m.candles]);
  const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
    [movementRecords,asset]);
- const issuance=assessM15ScenarioIssuance({
+ const rawIssuance=assessM15ScenarioIssuance({
    side:safeSide,qualified,radarStatus:radar.status,radarSide:radar.side,
    m15Side:m15Bias.side,m15Votes:m15Bias.votes,
    structuralActive:m.bias.active,structuralSide:m.bias.side,
    structuralAgreement:m.bias.agreement,fresh:freshObservation,
    goals:proposedGoals.length,stop:scenarioStop,anchor
  });
+ // Supply/demand must be crossed before a NEW directional route is issued.
+ // Frozen prior forecasts are preserved for honest walk-forward scoring.
+ const issuance=routeObstacle.blocked?{
+   allowed:false,level:'WAIT' as const,reason:routeObstacle.reason
+ }:rawIssuance;
  const freezeDecision=frozenM15Decision({
    old:frozen&&frozen.source===String(x?.candleSource||'')?{asset:frozen.asset,closedTime:frozen.closedTime,
      side:frozen.side,stop:frozen.stop,createdAt:frozen.createdAt,
@@ -529,7 +539,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      atr:stable.scenario.atr,elapsedSteps:comparisonStep
    }):null;
  const detached=visualAlignment?.reason==='MOVED_AWAY';
- const lifecycle=paused?'السيناريو محفوظ · البيانات متأخرة':
+ const lifecycle=routeObstacle.blocked?
+   (stable?'سيناريو سابق محفوظ للمراجعة · ':'')+routeObstacle.reason:
+   paused?'السيناريو محفوظ · البيانات متأخرة':
    awaitingReplacement?'السيناريو السابق محفوظ · تقييم إغلاق M15':
    detached?'حركة LIVE تجاوزت نطاق توقع M15 المحفوظ · انتظار إغلاق الشمعة دون إعادة رسم':
    stable?.scenario.stopped?'محاكاة M15 لامست الإبطال عند الشمعة '+
@@ -847,7 +859,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      aria-label="مفتاح الشموع الحقيقية ومسارات المراقبة المشروطة">
      <b>PRICE ACTION / M15</b>
      <span className="is-actual">شموع حقيقية مغلقة</span>
-     <span className="is-conditional">{projected.ready?'مسار توقع مشروط':
+     <span className="is-conditional">{routeObstacle.blocked?
+       routeObstacle.reason:
+       projected.ready?'مسار توقع مشروط':
        showWatchGuide?'مسارا مراقبة من ATR':'لا مسار مؤهل الآن'}</span>
    </div>
    <div className="sniper-m15-chart-box" id="sniper-performance"
@@ -1034,7 +1048,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                  split+5+(i+.5)*projectedStride,py(b.close)]
                )].map(point=>point.join(',')).join(' ')}
              stroke={chartSide==='BUY'?'#53e8b8':'#ff7798'}
-             strokeWidth="2" strokeDasharray="6 5" fill="none" opacity=".85"/>
+             strokeWidth="2" strokeDasharray="6 5" fill="none"
+             opacity={routeObstacle.blocked?.25:.85}/>
            <circle cx={split-3} cy={py(projected.bars[0].open)}
              r="3.2" fill="#061a20" stroke="#e8c477" strokeWidth="1.6"/>
            <title>مسار سعري مشروط من الشموع المغلقة؛ لا توجد شموع مستقبلية</title>
