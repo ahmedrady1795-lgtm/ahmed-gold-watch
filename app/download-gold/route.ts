@@ -8,13 +8,13 @@ export const dynamic='force-dynamic';
 export async function GET(){
   try{
     const filename='AlQannas_Gold_M1_Limit_Demo.mq5';
-    const buffer=await readFile(path.join(process.cwd(),'public','downloads',filename));
-    return new Response(buffer,{
+    const source=await readFile(path.join(process.cwd(),'public','downloads',filename),'utf8');
+    return new Response(source,{
       status:200,
       headers:{
         'Content-Type':'application/octet-stream',
         'Content-Disposition':`attachment; filename="${filename}"`,
-        'Content-Length':String(buffer.length),
+        'Content-Length':String(Buffer.byteLength(source,'utf8')),
         'Cache-Control':'no-store, max-age=0',
         'X-Content-Type-Options':'nosniff'
       }
