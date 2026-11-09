@@ -12,26 +12,29 @@ export type Mt5QuoteProfile={
  reason:string;actionable:false
 };
 const round=(x:number,d=2)=>Number(x.toFixed(d));
-const empty=(reason:string):Mt5QuoteProfile=>({
- ready:false,source:'MT5_QUOTE_TICKS',basis:'QUOTE_UPDATE_COUNT',asOf:null,
- from:null,samples:0,seconds:0,poc:null,vah:null,val:null,binSize:null,
+const empty=(reason:string,rows:readonly BrokerQuoteTick[]=[]):Mt5QuoteProfile=>({
+ ready:false,source:'MT5_QUOTE_TICKS',basis:'QUOTE_UPDATE_COUNT',
+ asOf:rows.at(-1)?.receivedAt??null,from:rows[0]?.receivedAt??null,
+ samples:rows.length,
+ seconds:rows.length>1?round((rows.at(-1)!.receivedAt-rows[0].receivedAt)/1000,1):0,
+ poc:null,vah:null,val:null,binSize:null,
  upticks:0,downticks:0,directionalPct:0,reason,actionable:false
 });
 export function buildMt5QuoteProfile(raw:readonly BrokerQuoteTick[],now:number):Mt5QuoteProfile{
  if(!Number.isFinite(now)||now<=0)return empty('وقت الرصد غير صالح');
  const rows=raw.filter(t=>t&&[t.at,t.receivedAt,t.price,t.bid,t.ask].every(Number.isFinite)&&
    t.at>0&&t.at<=now+1000&&t.receivedAt<=now+1000&&
-   now-t.receivedAt>=0&&now-t.receivedAt<=30000&&
+   now-t.receivedAt>=0&&now-t.receivedAt<=90000&&
    t.price>0&&t.bid>0&&t.ask>=t.bid&&t.price>=t.bid-2*(t.ask-t.bid)&&
    t.price<=t.ask+2*(t.ask-t.bid))
    .sort((a,b)=>a.at-b.at||a.receivedAt-b.receivedAt)
    .filter((t,i,a)=>i===0||t.at!==a[i-1].at||t.price!==a[i-1].price)
    .slice(-600);
  const newest=rows.at(-1),first=rows[0];
- if(!newest||!first||rows.length<12)return empty('عينات تحديث سعر MT5 غير كافية');
- if(now-newest.receivedAt>3500)return empty('تحديثات أسعار MT5 متأخرة');
+ if(!newest||!first||rows.length<12)return empty('عينات تحديث سعر MT5 غير كافية',rows);
+ if(now-newest.receivedAt>8000)return empty('تحديثات أسعار MT5 متأخرة',rows);
  const span=newest.receivedAt-first.receivedAt;
- if(span<6000)return empty('يلزم رصد تحديثات السعر لمدة 6 ثوانٍ على الأقل');
+ if(span<6000)return empty('يلزم رصد تحديثات السعر لمدة 6 ثوانٍ على الأقل',rows);
  const midSpread=rows.reduce((s,t)=>s+t.ask-t.bid,0)/rows.length;
  // A stable quoted-price grid; do NOT invent trade sizes from tickVolume.
  const step=Math.max(.01,round(Math.max(midSpread*.75,newest.price*.000005),2));
@@ -42,7 +45,7 @@ export function buildMt5QuoteProfile(raw:readonly BrokerQuoteTick[],now:number):
    bins.set(price,(bins.get(price)||0)+1);
    if(i>0){if(t.price>rows[i-1].price)up++;else if(t.price<rows[i-1].price)down++;}
  }
- if(bins.size<2)return empty('لا توجد مستويات سعرية مختلفة في عينة التحديثات');
+ if(bins.size<2)return empty('لا توجد مستويات سعرية مختلفة في عينة التحديثات',rows);
  const sorted=[...bins.entries()].sort((a,b)=>a[0]-b[0]);
  let pivot=0;
  for(let i=1;i<sorted.length;i++)
