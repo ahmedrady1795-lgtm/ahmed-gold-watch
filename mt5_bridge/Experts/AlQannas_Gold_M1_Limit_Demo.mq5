@@ -89,6 +89,20 @@ string    g_lastLimitEntryKey="";
 datetime  g_lastLimitOrderBar=0;
 int       g_barAttempts=0;
 
+#define AQ_FEATURE_COUNT 6
+double    g_modelWeights[AQ_FEATURE_COUNT];
+double    g_predictionFeatures[AQ_FEATURE_COUNT];
+string    g_modelKey="";
+datetime  g_predictionBar=0;
+int       g_predictionSide=0;
+double    g_predictionScore=0.0;
+int       g_predictionsResolved=0;
+int       g_predictionsCorrect=0;
+double    g_buyZone=0.0;
+double    g_sellZone=0.0;
+double    g_pocPrice=0.0;
+
+
 // All calls to submit a new order fail closed outside an MT5 DEMO account.
 bool DemoAccount()
 {
@@ -439,11 +453,89 @@ double RecentTickFlow()
    return sum/(double)g_recentTickCount;
 }
 
+double Bound(double value,double low,double high)
+{
+   return MathMax(low,MathMin(high,value));
+}
+
+void InitPredictionModel()
+{
+   g_modelKey="AQModel_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+"_"+
+              _Symbol+"_"+IntegerToString((long)InpMagic)+"_";
+   double starting[AQ_FEATURE_COUNT]={0.36,0.31,0.26,0.32,0.16,0.19};
+   for(int k=0;k<AQ_FEATURE_COUNT;k++)
+   {
+      string key=g_modelKey+IntegerToString(k);
+      g_modelWeights[k]=starting[k];
+      if(GlobalVariableCheck(key))
+         g_modelWeights[k]=Bound(GlobalVariableGet(key),-1.25,1.25);
+      g_predictionFeatures[k]=0.0;
+   }
+}
+
+void LogPredictionResult(datetime closedBar,int actual,double move)
+{
+   int correct=(actual!=0 && actual==g_predictionSide?1:0);
+   if(actual!=0)
+   {
+      g_predictionsResolved++;
+      g_predictionsCorrect+=correct;
+      // Online logistic update, using ONLY the next closed candle outcome.
+      // It never changes an already published prediction.
+      double probability=1.0/(1.0+MathExp(-Bound(g_predictionScore,-6.0,6.0)));
+      double error=(actual>0?1.0:0.0)-probability;
+      for(int k=0;k<AQ_FEATURE_COUNT;k++)
+      {
+         double next=g_modelWeights[k]+0.015*error*g_predictionFeatures[k];
+         g_modelWeights[k]=Bound(next,-1.25,1.25);
+         GlobalVariableSet(g_modelKey+IntegerToString(k),g_modelWeights[k]);
+      }
+   }
+   // Append one completed prediction per bar; source data can be inspected
+   // without requiring a dashboard or assuming actual exchange order flow.
+   int file=FileOpen("AlQannas_Gold_M1_Predictions.csv",
+                     FILE_READ|FILE_WRITE|FILE_CSV|FILE_SHARE_READ,';');
+   if(file!=INVALID_HANDLE)
+   {
+      FileSeek(file,0,SEEK_END);
+      FileWrite(file,TimeToString(closedBar,TIME_DATE|TIME_MINUTES),
+                g_predictionSide,DoubleToString(g_predictionScore,4),
+                actual,DoubleToString(move,_Digits),correct,
+                g_ordersThisBar,g_barAttempts,
+                DoubleToString(g_pocPrice,_Digits));
+      FileClose(file);
+   }
+   PrintFormat("AQ_M1_EVAL bar=%s forecast=%s score=%.3f actual=%s movement=%.*f hit=%d sample=%d accuracy=%.1f%% limit_sent=%d attempts=%d",
+               TimeToString(closedBar,TIME_DATE|TIME_MINUTES),
+               g_predictionSide>0?"BUY":"SELL",g_predictionScore,
+               actual>0?"UP":(actual<0?"DOWN":"FLAT"),
+               _Digits,move,correct,g_predictionsResolved,
+               100.0*g_predictionsCorrect/MathMax(1,g_predictionsResolved),
+               g_ordersThisBar,g_barAttempts);
+}
+
+void FinalizePreviousCandle(datetime oldBar)
+{
+   if(oldBar<=0 || g_predictionBar!=oldBar || g_predictionSide==0)return;
+   datetime latestClosed=iTime(_Symbol,PERIOD_M1,1);
+   if(latestClosed!=oldBar)return; // Don't train on a mismatched candle after a gap.
+   double open=iOpen(_Symbol,PERIOD_M1,1);
+   double close=iClose(_Symbol,PERIOD_M1,1);
+   if(open<=0 || close<=0)return;
+   int actual=(close>open+TickSize()*0.5?1:(close<open-TickSize()*0.5?-1:0));
+   LogPredictionResult(oldBar,actual,close-open);
+}
+
 int LocalSignal()
 {
-   // All historic input candles are CLOSED (shift 1), so no M5 look-ahead.
-   // The live M1 bar and recent bid/ask ticks only confirm current direction.
-   // This is heuristic MT5 analysis, not exchange order flow or Render AI.
+   if(g_predictionBar==g_barStart && g_predictionSide!=0)
+   {
+      g_status=StringFormat("M1 early %s, score %.2f",
+                            g_predictionSide>0?"BUY":"SELL",g_predictionScore);
+      return g_predictionSide;
+   }
+   // Closed M1/M5 candles are the only historic inputs. Current M1 and recent
+   // tick changes are observed at prediction time, never future bars.
    MqlRates bars[],m5[],live[];
    ArraySetAsSeries(bars,true);
    ArraySetAsSeries(m5,true);
@@ -452,122 +544,115 @@ int LocalSignal()
    int n5=CopyRates(_Symbol,PERIOD_M5,1,12,m5);
    if(n<16 || n5<8 || CopyRates(_Symbol,PERIOD_M1,0,1,live)!=1)
    {
-      g_status="Waiting for closed M1/M5 history";
+      g_status="Waiting for M1/M5 historical bars";
+      return 0;
+   }
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol,tick) || tick.ask<=tick.bid || tick.bid<=0)
+   {
+      g_status="Waiting for valid executable quote";
       return 0;
    }
    double low=bars[0].low,high=bars[0].high,avgRange=0.0;
-   for(int i=0;i<n;i++)
+   double bullVol=0.0,bearVol=0.0,totalVol=0.0;
+   double volumeBins[16];
+   ArrayInitialize(volumeBins,0.0);
+   for(int k=0;k<n;k++)
    {
-      low=MathMin(low,bars[i].low);
-      high=MathMax(high,bars[i].high);
-      avgRange+=MathMax(_Point,bars[i].high-bars[i].low);
+      low=MathMin(low,bars[k].low);
+      high=MathMax(high,bars[k].high);
+      avgRange+=MathMax(TickSize(),bars[k].high-bars[k].low);
+      double volume=(double)bars[k].tick_volume;
+      totalVol+=volume;
+      if(bars[k].close>bars[k].open)bullVol+=volume;
+      else if(bars[k].close<bars[k].open)bearVol+=volume;
    }
-   avgRange=MathMax(_Point,avgRange/n);
-   g_referenceM1Range=avgRange; // Shared with pending-LIMIT pullback placement.
-
-   MqlTick tick;
-   if(!SymbolInfoTick(_Symbol,tick) || tick.ask<=tick.bid || tick.bid<=0)return 0;
-   double spread=tick.ask-tick.bid;
-   if(spread/avgRange>InpMaxSpreadRangeRatio)
-   {
-      g_status="Spread large relative to M1 range";
-      return 0;
-   }
-   double liveRange=MathMax(live[0].high,tick.ask)-MathMin(live[0].low,tick.bid);
-   if(liveRange>avgRange*InpMaxLiveCandleRange)
-   {
-      g_status="Live M1 spike / stretched candle";
-      return 0;
-   }
-   if(g_recentTickCount<InpMinTickConfirm)
-   {
-      g_status="Collecting recent ticks";
-      return 0;
-   }
-   double flow=RecentTickFlow();
-   double avgM5=0.0;
-   for(int i=0;i<n5;i++)
-      avgM5+=MathMax(_Point,m5[i].high-m5[i].low);
-   avgM5=MathMax(_Point,avgM5/n5);
-   double m5trend=(m5[0].close-m5[3].close)/avgM5;
-   double m5LastBody=(m5[0].close-m5[0].open)/avgM5;
-   double m1momentum=(bars[0].close-bars[3].close)/avgRange;
-   double m1body=(bars[0].close-bars[0].open)/avgRange;
-   double m1WickReject=(MathMin(bars[0].open,bars[0].close)-bars[0].low
-                        -bars[0].high+MathMax(bars[0].open,bars[0].close))/avgRange;
-   double mid=(tick.bid+tick.ask)*0.5;
-   double liveBody=(mid-live[0].open)/avgRange;
-
-   // Approximate price-volume concentration using M1 tick volumes. Not real
-   // exchange traded volume or a volume-profile/order-book feed.
-   double poc=(low+high)*0.5;
+   avgRange=MathMax(TickSize(),avgRange/n);
+   g_referenceM1Range=avgRange;
+   g_pocPrice=(low+high)*0.5;
    if(high-low>TickSize())
    {
-      double hist[12];
-      ArrayInitialize(hist,0.0);
-      for(int i=0;i<n;i++)
+      for(int k=0;k<n;k++)
       {
-         double typical=(bars[i].high+bars[i].low+bars[i].close)/3.0;
-         int k=(int)MathFloor((typical-low)/(high-low)*12.0);
-         if(k<0)k=0;
-         if(k>11)k=11;
-         hist[k]+(double)bars[i].tick_volume;
+         double typical=(bars[k].high+bars[k].low+bars[k].close)/3.0;
+         int index=(int)Bound(MathFloor((typical-low)/(high-low)*16.0),0,15);
+         volumeBins[index]+=(double)bars[k].tick_volume;
       }
       int best=0;
-      for(int i=1;i<12;i++)if(hist[i]>hist[best])best=i;
-      poc=low+(best+0.5)*(high-low)/12.0;
+      for(int k=1;k<16;k++)if(volumeBins[k]>volumeBins[best])best=k;
+      g_pocPrice=low+(best+0.5)*(high-low)/16.0;
    }
 
-   // Weight closed M5 trend, closed M1 structure and the most recent ticks.
-   double score=0.52*m5trend+0.18*m5LastBody+0.30*m1momentum+
-                0.36*m1body+0.28*flow+0.26*liveBody+
-                0.13*m1WickReject+0.10*(mid-poc)/avgRange;
+   double swingLow=bars[1].low,swingHigh=bars[1].high;
+   for(int k=2;k<=8;k++)
+   {
+      swingLow=MathMin(swingLow,bars[k].low);
+      swingHigh=MathMax(swingHigh,bars[k].high);
+   }
+   bool sweptLow=(bars[0].low<swingLow-TickSize() &&
+                  bars[0].close>swingLow);
+   bool sweptHigh=(bars[0].high>swingHigh+TickSize() &&
+                   bars[0].close<swingHigh);
+   double sweep=(sweptLow?1.0:0.0)-(sweptHigh?1.0:0.0);
+   double barRange=MathMax(TickSize(),bars[0].high-bars[0].low);
+   double lowerWick=(MathMin(bars[0].open,bars[0].close)-bars[0].low)/barRange;
+   double upperWick=(bars[0].high-MathMax(bars[0].open,bars[0].close))/barRange;
+   double rejection=lowerWick-upperWick;
+   double volumePressure=(totalVol>0?(bullVol-bearVol)/totalVol:0.0);
+   double m1Momentum=(bars[0].close-bars[3].close)/avgRange;
+   double avgM5=0.0;
+   for(int k=0;k<n5;k++)
+      avgM5+=MathMax(TickSize(),m5[k].high-m5[k].low);
+   avgM5=MathMax(TickSize(),avgM5/n5);
+   double m5Momentum=(m5[0].close-m5[3].close)/avgM5;
+   double flow=RecentTickFlow();
+   double mid=(tick.bid+tick.ask)*0.5;
+   double liveBody=(mid-live[0].open)/avgRange;
+   double m1Body=(bars[0].close-bars[0].open)/avgRange;
+
+   double f[AQ_FEATURE_COUNT];
+   f[0]=Bound(m1Momentum/1.8,-1.0,1.0);
+   f[1]=Bound(m5Momentum/2.2,-1.0,1.0);
+   f[2]=Bound(0.45*flow+0.55*volumePressure,-1.0,1.0);
+   f[3]=Bound(0.75*sweep+0.60*rejection,-1.0,1.0);
+   f[4]=Bound((mid-g_pocPrice)/MathMax(avgRange,TickSize()),-1.0,1.0);
+   f[5]=Bound(0.45*liveBody+0.55*m1Body,-1.0,1.0);
+   double score=0.0;
+   for(int k=0;k<AQ_FEATURE_COUNT;k++)
+      score+=g_modelWeights[k]*f[k];
    if(!MathIsValidNumber(score))
    {
-      g_status="Invalid directional score";
+      g_status="Invalid candle scoring value";
       return 0;
    }
-   double threshold=InpMinSignalScore;
-   if(InpEntryStyle==AQ_FAST)threshold*=0.70;
-   if(InpEntryStyle==AQ_PRECISION)threshold*=1.40;
-   if(MathAbs(score)<threshold)
-   {
-      g_status="Direction confidence too low";
-      return 0;
-   }
+   // Do NOT use the old multi-filter M5 consensus veto or confidence gate.
+   // Every valid M1 candle gets a directional forecast promptly; entries are
+   // still subject to available quotes, server rules, SL and spread costs.
    int side=(score>0.0?1:-1);
-   double dirM5=side*(0.80*m5trend+0.20*m5LastBody);
-   double dirM1=side*(0.70*m1momentum+0.30*m1body);
-   double dirFlow=side*flow;
-   double dirLive=side*liveBody;
-
-   // Do not buy a one-minute rebound against a sustained M5 selloff, or
-   // sell a one-minute dip against a sustained M5 rally.
-   if(dirM5<=-InpM5ConflictScore)
+   if(MathAbs(score)<0.025)
    {
-      g_status="Strong opposite M5 trend";
-      return 0;
+      double fallback=0.55*m1Body+0.30*m1Momentum+0.15*flow;
+      if(MathAbs(fallback)<0.001)fallback=m5Momentum;
+      side=(fallback>=0.0?1:-1);
    }
-   if(InpEntryStyle>=AQ_BALANCED &&
-      (dirM5<InpMinM5Alignment || dirM1<=0.0 || dirFlow<-0.18 ||
-       dirLive<-0.25))
-   {
-      g_status="M1 / M5 / tick trend mismatch";
-      return 0;
-   }
-   if(InpEntryStyle==AQ_PRECISION &&
-      (dirFlow<0.12 || dirLive<-0.02 || dirM1<0.12 ||
-       dirM5<InpMinM5Alignment*1.70))
-   {
-      g_status="Precision entry not yet confirmed";
-      return 0;
-   }
-   // The score is diagnostic only; only a successful broker LIMIT order
-   // is an actual trade. No prediction accuracy is implied.
-   g_status=StringFormat("Directional %s score=%.2f m5=%.2f flow=%.2f",
-                         side>0?"BUY":"SELL",score,dirM5,dirFlow);
+   // Approximate demand/supply references for a close LIMIT pullback; only
+   // the executed broker Bid/Ask and minimum stop distance decide viability.
+   g_buyZone=(sweptLow?bars[0].low:
+             MathMin(bars[0].low,g_pocPrice));
+   g_sellZone=(sweptHigh?bars[0].high:
+              MathMax(bars[0].high,g_pocPrice));
+   g_predictionBar=g_barStart;
+   g_predictionSide=side;
+   g_predictionScore=score;
+   for(int k=0;k<AQ_FEATURE_COUNT;k++)g_predictionFeatures[k]=f[k];
+   g_status=StringFormat("M1 %s score %.2f | sweep %.2f | flow %.2f | poc %.*f",
+                         side>0?"BUY":"SELL",score,sweep,flow,_Digits,g_pocPrice);
+   PrintFormat("AQ_M1_FORECAST bar=%s side=%s score=%.3f sweep=%.2f flow=%.2f poc=%.*f",
+               TimeToString(g_barStart,TIME_DATE|TIME_MINUTES),
+               side>0?"BUY":"SELL",score,sweep,flow,_Digits,g_pocPrice);
    return side;
 }
+
 void CancelStaleStops()
 {
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) ||
@@ -895,6 +980,7 @@ void Pulse()
    datetime bar=iTime(_Symbol,PERIOD_M1,0);
    if(bar>0 && bar!=g_barStart)
    {
+      FinalizePreviousCandle(g_barStart);
       g_barStart=bar;
       g_ordersThisBar=0;
       g_barAttempts=0;
@@ -1034,6 +1120,7 @@ int OnInit()
    {
       Alert("Gold symbol does not allow the selected pending order mode");return INIT_FAILED;
    }
+   InitPredictionModel();
    g_lastLimitEntryKey="AQ_LastLimit_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))
         +"_"+_Symbol+"_"+IntegerToString((long)InpMagic);
    if(GlobalVariableCheck(g_lastLimitEntryKey))
