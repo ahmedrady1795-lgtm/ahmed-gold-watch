@@ -4,14 +4,19 @@ import fs from 'node:fs';
 const code=fs.readFileSync('public/downloads/AlQannas_Candle_Chaser_Gold_M1_Demo.mq5','utf8');
 const download=fs.readFileSync('app/download-candle-chaser/route.ts','utf8');
 
-assert.match(code,/#property version "1\.05"/);
-assert.match(download,/source\.includes\('#property version "1\.05"'\)/);
+assert.match(code,/#property version "1\.06"/);
+assert.match(download,/source\.includes\('#property version "1\.06"'\)/);
 assert.match(download,/Content-Disposition/);
 assert.match(code,/bool IsDemo\(\)/);
 assert.match(code,/if\(!IsDemo\(\)\)/);
 assert.match(code,/input double InpLots\s*= 0\.02/);
-assert.match(code,/InpEnableDailyStop\s*= true/);
+assert.match(code,/InpEnableDailyStop\s*= false/);
 assert.match(code,/InpDailyStopUsd\s*= 40\.00/);
+assert.match(code,/if\(!InpEnableDailyStop\)/);
+assert.match(code,/g_dayLocked=false;/);
+assert.match(code,/GlobalVariableCheck\(g_dayLockKey\)/);
+assert.match(code,/reason="LOSS_AFTER_GRACE"/);
+assert.match(code,/ProtectedPrices\(direction,level,volume,sl,tp\)/);
 assert.match(code,/if\(!InpEnableDailyStop\)return false/);
 assert.match(code,/GlobalVariableSet\(g_dayLockKey,1\)/);
 
@@ -85,4 +90,4 @@ assert.match(code,/else if\(age>=InpMaxHoldSec\)/);
 assert.doesNotMatch(code,/else if\(net<=-InpMaxLossUsd\)reason="LOSS_LIMIT"/);
 assert.doesNotMatch(code,/TRADE_MODE_REAL.*trade\.Buy\(/s);
 
-console.log('PASS: Gold Candle Chaser 1.05 demo payoff + one-way STOP ratchet, cost-aware one-side STOP, M1\/M5 closed-bar guard, daily stop and loss cooldown. Static checks only; not a broker/backtest proof.');
+console.log('PASS: Gold Candle Chaser 1.06 demo payoff + one-way STOP ratchet, cost-aware one-side STOP, M1\/M5 closed-bar guard, daily stop and loss cooldown. Static checks only; not a broker/backtest proof.');
