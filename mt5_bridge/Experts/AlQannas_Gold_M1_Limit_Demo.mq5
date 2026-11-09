@@ -367,9 +367,8 @@ void ManagePositions(bool forceClose=false)
          GlobalVariableSet(key,peak); // High-water mark persists if EA restarts.
       }
 
-      // New exit policy: do not close at the first +$0.70.
-      // At peak +$2.25, try to lock at least +$1.50 using broker stop levels.
-      // From +$3.00 peak onward, preserve peak minus $0.80.
+      // Net-profit thresholds are editable. A smaller TP is sought without
+      // opening a market-entry trade; broker freeze/spread can delay exits.
       double protectedNet=0.0;
       if(peak>=InpTrailArmUsd)protectedNet=InpProfitLockUsd;
       if(peak>=InpTrailStartUsd)
@@ -389,7 +388,11 @@ void ManagePositions(bool forceClose=false)
       bool trailingExit=(protectedNet>0 && net<=protectedNet);
       bool lossStop=(net<=-InpMaxLossUsd);
       bool timeStop=(age>=InpMaxHoldSeconds);
-      if(!forceClose && !hardProfit && !trailingExit && !lossStop && !timeStop)continue;
+      bool reverseExit=(InpExitOnTickReversal && age>=InpEarlyExitMinAgeSec &&
+                        g_recentTickCount>=8 && net<=-InpEarlyExitLossUsd &&
+                        side*RecentTickFlow() < -0.65);
+      if(!forceClose && !hardProfit && !trailingExit && !lossStop &&
+         !timeStop && !reverseExit)continue;
       // Broker frozen restriction (10029) is not solvable by spamming Close().
       // Original broker SL/TP remains active while waiting to retry.
       if(GlobalVariableCheck(closeRetryKey) &&
@@ -403,7 +406,7 @@ void ManagePositions(bool forceClose=false)
          PrintFormat("Al-Qannas CLOSE #%I64u net_est=%.2f peak=%.2f age=%d reason=%s",
            ticket,net,peak,age,
            forceClose?"DAY_LOCK":hardProfit?"HARD_TP":lossStop?"LOSS_STOP":
-           trailingExit?"PROFIT_TRAIL":"MAX_HOLD");
+           trailingExit?"PROFIT_TRAIL":reverseExit?"FLOW_INVALIDATION":"MAX_HOLD");
          GlobalVariableDel(key);
          GlobalVariableDel(closeRetryKey);
       }
@@ -982,6 +985,8 @@ void DisplayStatus(double closed,double floating,int active)
            "\nLot ",DoubleToString(InpLots,2)," | Pending+open: ",active,"/",InpMaxConcurrent,
            "\nDaily closed USD: ",DoubleToString(closed,2),
            " | Floating est: ",DoubleToString(floating,2),
+           "\nM1 forecast: ",g_predictionBar==g_barStart?(g_predictionSide>0?"BUY":"SELL"):"WAIT",
+           " | Forward hits: ",g_predictionsCorrect,"/",g_predictionsResolved,
            "\nPlaced this candle: ",g_ordersThisBar,"/",InpMaxEntriesPerM1,
            " | ",g_dayLocked?"DAY LOCK":(InpManualPause?"MANUAL PAUSE":"ACTIVE")," | ",g_status);
 }
@@ -1025,6 +1030,10 @@ void Pulse()
       InpCancelOppositeOnFill && openSide!=0 && openSide!=2)
       RemoveOppositeStops(openSide);
    int active=CountActive();
+   // Predict EVERY valid candle, including while an earlier position is open.
+   // Forecast freezes at first available quote and is evaluated next minute.
+   if(g_barStart>0 && g_predictionBar!=g_barStart)
+      LocalSignal();
    DisplayStatus(closed,floating,active);
    if(!historyOK || g_dayLocked || g_barStart<=0 || !ExactVolume()) return;
    if(InpManualPause)
@@ -1160,5 +1169,39 @@ void OnDeinit(const int reason)
    RemoveOwnLimits(true); // Avoid leaving unfilled GTC orders after EA removal.
    Comment("");
 }
+// Trade-by-trade broker deal audit. Only a completed broker DEAL is recorded,
+// not a pending order or a fabricated backtest profit.
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                        const MqlTradeRequest &request,
+                        const MqlTradeResult &result)
+{
+   if(trans.type!=TRADE_TRANSACTION_DEAL_ADD || trans.deal==0)return;
+   if(!HistoryDealSelect(trans.deal))return;
+   if(HistoryDealGetString(trans.deal,DEAL_SYMBOL)!=_Symbol)return;
+   if((ulong)HistoryDealGetInteger(trans.deal,DEAL_MAGIC)!=InpMagic)return;
+   ENUM_DEAL_ENTRY kind=(ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal,DEAL_ENTRY);
+   if(kind!=DEAL_ENTRY_IN && kind!=DEAL_ENTRY_OUT && kind!=DEAL_ENTRY_INOUT)return;
+   double net=HistoryDealGetDouble(trans.deal,DEAL_PROFIT)
+             +HistoryDealGetDouble(trans.deal,DEAL_COMMISSION)
+             +HistoryDealGetDouble(trans.deal,DEAL_SWAP)
+             +HistoryDealGetDouble(trans.deal,DEAL_FEE);
+   double price=HistoryDealGetDouble(trans.deal,DEAL_PRICE);
+   double volume=HistoryDealGetDouble(trans.deal,DEAL_VOLUME);
+   datetime when=(datetime)HistoryDealGetInteger(trans.deal,DEAL_TIME);
+   int file=FileOpen("AlQannas_Gold_Trades.csv",
+                     FILE_READ|FILE_WRITE|FILE_CSV|FILE_SHARE_READ,';');
+   if(file!=INVALID_HANDLE)
+   {
+      FileSeek(file,0,SEEK_END);
+      FileWrite(file,TimeToString(when,TIME_DATE|TIME_SECONDS),
+                (long)trans.deal,kind==DEAL_ENTRY_IN?"IN":"OUT",
+                DoubleToString(volume,2),DoubleToString(price,_Digits),
+                DoubleToString(net,2));
+      FileClose(file);
+   }
+   PrintFormat("AQ_TRADE_DEAL deal=%I64u direction=%s vol=%.2f price=%.*f net=%.2f",
+               trans.deal,kind==DEAL_ENTRY_IN?"IN":"OUT",volume,_Digits,price,net);
+}
+
 void OnTick() {UpdateTickPressure();Pulse();}
 void OnTimer(){Pulse();}
