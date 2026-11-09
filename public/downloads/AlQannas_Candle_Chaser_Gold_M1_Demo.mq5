@@ -5,12 +5,13 @@
 //| Separate from Gold LIMIT and Sniper 2.0 EAs; no profit guarantee.|
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.04"
-#property description "Candle Chaser 1.04: loss grace, longer hold, fast profit then rearm. DEMO ONLY."
+#property version "1.05"
+#property description "Candle Chaser 1.05: broker-cost-aware volume and truthful WAIT logs. DEMO ONLY."
 #include <Trade/Trade.mqh>
 
 input bool   InpManualPause             = false;  // Pause NEW orders, manage existing trades
-input double InpLots                    = 0.02;   // DEMO starter size; NOT the video's risky volume
+input double InpLots                    = 0.02;   // Maximum DEMO lot, never increased
+input bool   InpAutoReduceLots          = true;   // If 0.02 cost is too high, try smaller broker lot
 input double InpArmDistancePrice        = 0.20;   // Follow M1 with BUY STOP above ASK / SELL STOP below BID
 input double InpRepriceStepPrice        = 0.12;   // Move pending stops after quote moves by this much
 input int    InpRepriceCooldownSec      = 3;      // Minimum interval between moving one pending order
@@ -21,7 +22,7 @@ input double InpMaxLossUsd             = 1.25;   // Intended per-position SL bud
 input double InpCostReserveUsd         = 0.20;   // Conservative estimated fees, excludes unknown slippage
 input int    InpMaxHoldSec             = 150;    // Allow up to 2.5 min for a winning movement
 input int    InpLocalLossGraceSec       = 18;     // Don't panic-close initial floating spread loss
-input double InpMaxEntryCostToLossRatio = 0.50;   // Spread/fees should consume at most half SL budget
+input double InpMaxEntryCostToLossRatio = 0.70;   // Allow up to 70% of stop budget incl fees (remaining buffer)
 input int    InpMaxFillsPerM1          = 20;     // Allows repeated entries per M1; one open at a time
 input int    InpMaxPendingAgeSec       = 50;     // Replace stale pending stops
 input bool   InpCancelOnNewBar         = true;   // Follow the new M1 instead of stale previous levels
@@ -153,21 +154,21 @@ bool ProperLot()
    double steps=InpLots/step;
    return MathAbs(steps-MathRound(steps))<1e-6;
 }
-bool MoneyPerPriceUnit(int direction,double entry,double &cash)
+bool MoneyPerPriceUnit(int direction,double entry,double volume,double &cash)
 {
    double profit=0.0;
    ENUM_ORDER_TYPE t=(direction>0?ORDER_TYPE_BUY:ORDER_TYPE_SELL);
    double next=(direction>0?entry+1.0:entry-1.0);
-   if(next<=0 || !OrderCalcProfit(t,_Symbol,InpLots,entry,next,profit))return false;
+   if(next<=0 || !OrderCalcProfit(t,_Symbol,volume,entry,next,profit))return false;
    cash=MathAbs(profit);
    return cash>0;
 }
 // Return an SL and TP prevalidated against price tick, broker minimum distance
 // and intended dollar risk. Some market slippage/freeze can still overrun.
-bool ProtectedPrices(int direction,double entry,double &sl,double &tp)
+bool ProtectedPrices(int direction,double entry,double volume,double &sl,double &tp)
 {
    double cash=0;
-   if(!MoneyPerPriceUnit(direction,entry,cash))
+   if(!MoneyPerPriceUnit(direction,entry,volume,cash))
    {g_status="OrderCalcProfit unavailable";return false;}
    double budget=InpMaxLossUsd-InpCostReserveUsd;
    double minDist=StopLevel();
@@ -184,7 +185,7 @@ bool ProtectedPrices(int direction,double entry,double &sl,double &tp)
       MathAbs(tp-entry)<minDist)return false;
    double worst=0;
    ENUM_ORDER_TYPE t=(direction>0?ORDER_TYPE_BUY:ORDER_TYPE_SELL);
-   if(!OrderCalcProfit(t,_Symbol,InpLots,entry,sl,worst))return false;
+   if(!OrderCalcProfit(t,_Symbol,volume,entry,sl,worst))return false;
    if(-worst+InpCostReserveUsd>InpMaxLossUsd+0.01)return false;
    return true;
 }
@@ -353,15 +354,15 @@ void ManagePositions()
       }
    }
 }
-bool PlaceStop(int direction,double level)
+bool PlaceStop(int direction,double level,double volume)
 {
    double sl,tp;
-   if(!ProtectedPrices(direction,level,sl,tp))return false;
+   if(!ProtectedPrices(direction,level,volume,sl,tp))return false;
    ENUM_ORDER_TYPE_TIME life;datetime until;
    if(!Expiration(life,until))return false;
    bool ok=(direction>0
-      ?g_trade.BuyStop(InpLots,level,_Symbol,sl,tp,life,until,"CHASER BUY STOP")
-      :g_trade.SellStop(InpLots,level,_Symbol,sl,tp,life,until,"CHASER SELL STOP"));
+      ?g_trade.BuyStop(volume,level,_Symbol,sl,tp,life,until,"CHASER BUY STOP")
+      :g_trade.SellStop(volume,level,_Symbol,sl,tp,life,until,"CHASER SELL STOP"));
    uint rc=g_trade.ResultRetcode();
    g_requestsThisBar++;
    if(!ok || (rc!=TRADE_RETCODE_PLACED && rc!=TRADE_RETCODE_DONE))
@@ -374,7 +375,7 @@ bool PlaceStop(int direction,double level)
    }
    PrintFormat("AQ_CHASER %s STOP PLACED #%I64u price=%.*f lot=%.2f SL=%.*f TP=%.*f",
                direction>0?"BUY":"SELL",g_trade.ResultOrder(),_Digits,level,
-               InpLots,_Digits,sl,_Digits,tp);
+               volume,_Digits,sl,_Digits,tp);
    g_status="Moving STOP bracket active";
    if(direction>0)g_lastBuyReprice=Clock();else g_lastSellReprice=Clock();
    return true;
@@ -395,8 +396,12 @@ bool FollowStop(int direction,ulong ticket,double desired,const MqlTick &tick)
    if(direction>0 && desired>=previous-Unit()*0.5)return false;
    if(direction<0 && desired<=previous+Unit()*0.5)return false;
    if(StopIsFrozen(ticket,tick))return false;
+   // Reprice protects the exact volume of the broker's existing order.
+   double existingVolume=OrderGetDouble(ORDER_VOLUME_CURRENT);
    double sl,tp;
-   if(!ProtectedPrices(direction,desired,sl,tp))return false;
+   if(existingVolume<=0 ||
+      !ProtectedPrices(direction,desired,existingVolume,sl,tp))
+      return false;
    ENUM_ORDER_TYPE_TIME lifetime=(ENUM_ORDER_TYPE_TIME)OrderGetInteger(ORDER_TYPE_TIME);
    datetime expiry=(datetime)OrderGetInteger(ORDER_TIME_EXPIRATION);
    bool sent=g_trade.OrderModify(ticket,desired,sl,tp,lifetime,expiry);
@@ -596,7 +601,7 @@ int OnInit()
        InpLocalLossGraceSec<0 || InpLocalLossGraceSec>60 ||
        InpMaxHoldSec<=InpLocalLossGraceSec ||
        InpMaxEntryCostToLossRatio<=0 ||
-       InpMaxEntryCostToLossRatio>0.80)
+       InpMaxEntryCostToLossRatio>0.85)
    {Alert("Candle Chaser invalid Inputs: review lots, stop, target, timing.");return INIT_PARAMETERS_INCORRECT;}
    int allowed=(int)SymbolInfoInteger(_Symbol,SYMBOL_ORDER_MODE);
    if((allowed&SYMBOL_ORDER_STOP)!=SYMBOL_ORDER_STOP)
@@ -606,7 +611,7 @@ int OnInit()
    g_trade.SetTypeFillingBySymbol(_Symbol);
    g_trade.SetAsyncMode(false);
    RefreshTradingDay();
-   PrintFormat("AQ_CHASER START v1.04 DEMO LOSS_GRACE symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
+   PrintFormat("AQ_CHASER START v1.05 DEMO ADAPTIVE_VOLUME symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
                _Symbol,InpLots,InpArmDistancePrice,InpRepriceStepPrice,
                InpCloseNetProfitUsd,InpMaxLossUsd);
    EventSetTimer(1);
