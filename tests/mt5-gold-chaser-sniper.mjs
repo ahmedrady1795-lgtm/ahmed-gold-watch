@@ -35,7 +35,7 @@ assert.deepEqual(decideGoldDemoSniperSignal({...valid,ambush:{...valid.ambush,pl
   {ready:false,reason:'AMBUSH_NOT_EXECUTABLE'});
 assert.deepEqual(decideGoldDemoSniperSignal({...valid,ambush:{...valid.ambush,plan:{...valid.ambush.plan,side:'SELL'}}},now,'XAUUSDm'),
   {ready:false,reason:'AMBUSH_SIDE_CONFLICT'});
-assert.deepEqual(decideGoldDemoSniperSignal({...valid,ambush:{...valid.ambush,trade:{...valid.ambush.trade,entry:4000}}},now,'XAUUSDm'),
+assert.deepEqual(decideGoldDemoSniperSignal({...valid,ambush:{...valid.ambush,trade:{...valid.ambush.trade,entry:4102,tp:4104.2}}},now,'XAUUSDm'),
   {ready:false,reason:'SNIPER_PRICE_NOT_CURRENT'});
 assert.equal(goldDemoSniperWire({ready:false,reason:'NO_SIGNAL'}),'QGOLD1|WAIT|NO_SIGNAL\n');
 
