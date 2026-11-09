@@ -40,7 +40,9 @@ input double InpFirstStopOffsetPrice = 0.30;   // First level above ASK / below 
 input double InpStopStepPrice        = 0.30;   // Distance between consecutive ladder levels
 input double InpMaxStopDistancePrice = 1.50;   // Hard max distance from executable quote
 input double InpLots                 = 0.02;   // Video-style starter volume, broker step applies
-input double InpTakeNetUsd           = 1.50;   // Demo hard TP estimated net USD
+input double InpTakeNetUsd           = 1.50;   // Preferred broker net TP when liquidity room permits
+input double InpMinNetTakeUsd        = 1.00;   // Minimum estimated net TP if nearby liquidity is closer
+input double InpLiquidityBufferPrice = 0.05;   // Close just BEFORE nearest opposing liquidity
 input double InpMaxLossUsd           = 2.50;   // Intended max loss USD (broker SL/fast moves can overrun)
 input double InpTrailArmUsd          = 0.90;   // Attempt +$1.50 profit lock when peak exceeds $2.00
 input double InpTrailStartUsd        = 1.20;   // Start following the winning peak
@@ -525,7 +527,7 @@ void LogPredictionResult(datetime closedBar,int actual,double move)
                 DoubleToString(g_pocPrice,_Digits));
       FileClose(file);
    }
-   PrintFormat("AQ_M1_EVAL bar=%s forecast=%s score=%.3f actual=%s movement=%.*f hit=%d sample=%d accuracy=%.1f%% limit_sent=%d attempts=%d",
+   PrintFormat("AQ2_M1_EVAL bar=%s forecast=%s score=%.3f actual=%s movement=%.*f hit=%d sample=%d accuracy=%.1f%% limit_sent=%d attempts=%d",
                TimeToString(closedBar,TIME_DATE|TIME_MINUTES),
                g_predictionSide>0?"BUY":"SELL",g_predictionScore,
                actual>0?"UP":(actual<0?"DOWN":"FLAT"),
@@ -918,6 +920,14 @@ bool PlaceLimit(int side)
    if(stopDist<minDist+TickSize())
    {g_status="Lot too large for $ stop and broker minimum SL";return false;}
    double tpDist=MathMax(minDist+TickSize(),(InpTakeNetUsd+InpCostReserveUsd)/usdPerOne);
+   double minTP=MathMax(minDist+TickSize(),(InpMinNetTakeUsd+InpCostReserveUsd)/usdPerOne);
+   double nextLiquidity=(side>0?g_nearestUpLiquidity:g_nearestDownLiquidity);
+   double room=(side>0?nextLiquidity-entry:entry-nextLiquidity);
+   // Place the broker TP before opposing liquidity if the room still clears
+   // minimum profit and Exness stop-level requirements.
+   if(nextLiquidity>0 && room>minTP+InpLiquidityBufferPrice+TickSize() &&
+      room<tpDist+InpLiquidityBufferPrice)
+      tpDist=MathMax(minTP,room-InpLiquidityBufferPrice);
    double sl=(side>0?PriceRound(entry-stopDist,1):PriceRound(entry+stopDist,-1));
    double tp=(side>0?PriceRound(entry+tpDist,1):PriceRound(entry-tpDist,-1));
    if(sl<=0 || tp<=0 || MathAbs(entry-sl)<minDist || MathAbs(tp-entry)<minDist)return false;
@@ -958,9 +968,11 @@ bool PlaceLimit(int side)
    g_lastLimitOrderBar=g_barStart;
    if(g_lastLimitEntryKey!="")GlobalVariableSet(g_lastLimitEntryKey,(double)g_barStart);
    g_status="SNIPER2 LIMIT placed";
-   PrintFormat("Al-Qannas %s LIMIT #%I64u lot=%.2f bid=%.*f ask=%.*f entry=%.*f gap=%.3f SL=%.*f TP=%.*f",
+   PrintFormat("AQ2 %s LIMIT #%I64u lot=%.2f setup=%s trend=%.2f liquidity=%.2f bid=%.*f ask=%.*f entry=%.*f gap=%.3f SL=%.*f TP=%.*f next_pool=%.*f",
                side>0?"BUY":"SELL",g_trade.ResultOrder(),InpLots,
-               _Digits,tick.bid,_Digits,tick.ask,_Digits,entry,quoteDistance,_Digits,sl,_Digits,tp);
+               g_signalMode,g_trendBias,g_liquidityBias,
+               _Digits,tick.bid,_Digits,tick.ask,_Digits,entry,quoteDistance,
+               _Digits,sl,_Digits,tp,_Digits,nextLiquidity);
    return true;
 }
 
@@ -1218,7 +1230,9 @@ int OnInit()
       InpMaxStopDistancePrice<InpFirstStopOffsetPrice ||
       (int)InpEntryStyle<0 || (int)InpEntryStyle>2 ||
       (int)InpTradeDirection<0 || (int)InpTradeDirection>2 ||
-      InpTakeNetUsd<=0 || InpMaxLossUsd<=InpCostReserveUsd ||
+      InpTakeNetUsd<=0 || InpMinNetTakeUsd<=0 ||
+      InpMinNetTakeUsd>InpTakeNetUsd || InpLiquidityBufferPrice<0 ||
+      InpMaxLossUsd<=InpCostReserveUsd ||
       InpTrailArmUsd<=0 || InpTrailStartUsd<=InpTrailArmUsd ||
       InpTrailGivebackUsd<=0 || InpTrailGivebackUsd>=InpTrailStartUsd ||
       InpProfitLockUsd<=0 || InpProfitLockUsd>=InpTrailArmUsd ||
@@ -1305,7 +1319,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
                 DoubleToString(net,2));
       FileClose(file);
    }
-   PrintFormat("AQ_TRADE_DEAL deal=%I64u direction=%s vol=%.2f price=%.*f net=%.2f",
+   PrintFormat("AQ2_TRADE_DEAL deal=%I64u direction=%s vol=%.2f price=%.*f net=%.2f",
                trans.deal,kind==DEAL_ENTRY_IN?"IN":"OUT",volume,_Digits,price,net);
 }
 
