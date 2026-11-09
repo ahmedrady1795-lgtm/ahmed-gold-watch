@@ -16,11 +16,16 @@ const deck=panel.indexOf('className="sniper-intelligence-drawer"');
 assert.ok(start>=0&&chart>start&&deck>chart,
  'modern compact scenario comes before true OHLC, full analytics follow the chart');
 const heroStart=panel.indexOf('<SniperScenarioHero asset=');
-const dataFresh=panel.slice(heroStart,heroStart+450);
+const heroEnd=panel.indexOf('/>',heroStart);
+assert.ok(heroEnd>heroStart,'scenario hero props must be fully closed');
+const dataFresh=panel.slice(heroStart,heroEnd+2);
 assert.match(dataFresh,/fresh=\{Boolean\(m\.sniper\.view\.priceFresh&&/);
+assert.match(dataFresh,/quoteSamples=\{/,'quote warm-up diagnostics are visible');
 assert.match(dataFresh,/providerTransition=\{providerTransition\}/);
 assert.match(hero,/data-source-ready=\{connected\}/);
 assert.match(hero,/const connected=p\.marketOpen&&p\.fresh&&!p\.providerTransition&&p\.fusion\.ready/);
+assert.match(hero,/m1M15Conflict/,'do not hide conflicting closed-candle directions');
+assert.match(hero,/sourceMismatch/,'source mismatch must not be disguised as flow');
 assert.match(hero,/const trigger=candidate\?p\.preMove\.trigger:null/);
 assert.match(hero,/const invalidation=candidate\?p\.preMove\.invalidation:null/);
 assert.match(hero,/const liquidity=p\.liquidity\.ready\?/);

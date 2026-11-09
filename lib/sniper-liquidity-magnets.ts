@@ -27,14 +27,25 @@ export function detectLiquidityMagnets(
   input:readonly M15GuideBar[],now:number,window=64
 ):LiquidityMagnetView{
   if(!Number.isFinite(now))return empty('وقت المصدر غير صالح');
-  // Strictly use the last contiguous CLOSED run, never bridge venue gaps.
-  const rows=input.slice(-Math.max(32,Math.min(96,Math.floor(window)||64)));
-  if(rows.length<32)return empty('نحتاج 32 شمعة M15 مغلقة');
-  if(rows.some((b,i)=>!Number.isSafeInteger(b.time)||b.time%900000!==0||
-      b.time+900000>now||![b.open,b.high,b.low,b.close].every(v=>
-      Number.isFinite(v)&&v>0)||b.high<Math.max(b.open,b.close)||
-      b.low>Math.min(b.open,b.close)||i>0&&b.time-rows[i-1].time!==900000))
-    return empty('سلسلة M15 ناقصة أو غير مغلقة');
+  // Use the newest contiguous CLOSED run only. A weekend/session gap
+  // outside that run must not disable 32+ valid recent M15 candles.
+  // Never stitch disjoint runs or silently bypass a gap in the recent 32.
+  const candidate=input.slice(-Math.max(32,Math.min(96,Math.floor(window)||64)));
+  if(candidate.length<32)return empty('نحتاج 32 شمعة M15 مغلقة');
+  const valid=(b:M15GuideBar)=>
+    Number.isSafeInteger(b.time)&&b.time%900000===0&&
+    b.time+900000<=now&&[b.open,b.high,b.low,b.close].every(v=>
+      Number.isFinite(v)&&v>0)&&b.high>=Math.max(b.open,b.close)&&
+    b.low<=Math.min(b.open,b.close)&&b.low<=b.high;
+  let start=candidate.length;
+  for(let i=candidate.length-1;i>=0;i--){
+    const b=candidate[i];
+    if(!valid(b)||(i<candidate.length-1&&
+        candidate[i+1].time-b.time!==900000))break;
+    start=i;
+  }
+  const rows=candidate.slice(start);
+  if(rows.length<32)return empty('نحتاج 32 شمعة M15 مغلقة ومتجاورة بعد آخر فجوة');
   const end=rows.at(-1)!;
   const age=now-(end.time+900000);
   if(age<0||age>3600000)return empty('قمم وقيعان M15 قديمة للمراقبة الحالية');

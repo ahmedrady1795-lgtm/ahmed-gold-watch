@@ -788,6 +788,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    <SniperScenarioHero asset={asset} fusion={localFusion}
       hunt={huntPreview} preMove={preMove} liquidity={liquidityMagnets}
       flow={flowProfile}
+      quoteSamples={asset==='GOLD'&&flowPacket?.asset==='GOLD'&&
+        flowPacket.data?.mode==='broker'?
+        Number(flowPacket.data.quoteProfile?.samples??0):null}
+      quoteSampleReason={asset==='GOLD'&&flowPacket?.asset==='GOLD'?
+        String(flowPacket.data?.quoteProfile?.reason||''):null}
       price={currentSignalPrice??null} now={now}
       marketOpen={marketOpen} fresh={Boolean(m.sniper.view.priceFresh&&
         m.historyFresh)} providerTransition={providerTransition}/>
