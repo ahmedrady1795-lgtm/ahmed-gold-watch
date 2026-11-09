@@ -1,3 +1,17 @@
+# Al-Qannas Gold v1.17 — LIMIT or STOP from Expert → Inputs
+
+**Default: `InpOrderStyle = AQ_LIMIT_PULLBACK`.** The user reported immediate losses on the v1.16 two-sided STOP ladder due to breakout entries, whipsaw and spread. v1.17 restores BUY LIMIT/SELL LIMIT pullback orders driven by the current M1/M5 local-direction signal, as before v1.16. This is not a guarantee that each entry wins or starts in positive P/L: BID/ASK spread applies at execution.
+
+To try the video-style breakout ladder again without replacing the EA, select `InpOrderStyle = AQ_STOP_BREAKOUT` from MT5 → F7 → Inputs. On switching the mode, the EA tries to delete its pending orders of the *other* type before placing new orders. Broker-frozen orders may delay the switch; check the Trade tab and ensure no old pending orders remain. Open positions continue to be managed.
+
+`InpLots=0.01` default, `InpMaxLossUsd=3.00` intended per-position nominal cap and `InpTakeNetUsd=3.00` default. The user controls the settings; but `InpEnableDailyStop=false` means no daily portfolio cutoff. The 2026-11-09 demo screenshots displayed substantial losses and high lots; do not raise exposure in response to that. Check the broker stop-level and spread. There is **no proven win rate**, backtest or MT5 MetaEditor compile certification from the GitHub static checks alone.
+
+**Direct attachment download** (same Firefox bookmark): https://ahmed-gold-watch-free.onrender.com/download-gold
+
+Steps: on MT5 DEMO, stop new trading, inspect pending orders and broker SL/TP, download the new `.mq5`, replace it in MQL5/Experts, compile in MetaEditor with F7 (requires 0 errors), attach to XAUUSDm M1, verify Experts log contains `v1.17 LIMIT`, and test a handful of trades before extended running. The H1 read-only bridge stays unchanged.
+
+---
+
 # Al-Qannas Gold M1 STOP LADDER v1.16 — Exness DEMO
 
 This is an upgrade of the existing MetaTrader 5 EA, NOT a new Render strategy or connection to the dashboard AI.
