@@ -5,8 +5,8 @@
 //| This EA does NOT call the Al-Qannas website/AI.                  |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "1.14"
-#property description "Al-Qannas Gold M1 Limit v1.13: Limit lifecycle controls & broker freeze backoff. DEMO ONLY."
+#property version   "1.15"
+#property description "Al-Qannas Gold M1 Limit v1.15: Live bid/ask validation and pending order lifecycle. DEMO ONLY."
 #include <Trade/Trade.mqh>
 
 enum ENUM_AQ_ENTRY_STYLE
@@ -39,7 +39,8 @@ input double InpMaxSpreadRangeRatio  = 0.35;   // Spread cannot dominate recent 
 input double InpMaxLiveCandleRange   = 2.20;   // Skip live M1 spikes over mean range
 input double InpEntryPullbackRange   = 0.025;  // Small pending LIMIT pullback as fraction of M1 range
 input double InpMaxLimitDistancePrice = 0.70;  // MAX XAUUSD price distance from current executable quote
-input int    InpMaxPendingAgeSec     = 30;     // Age before canceling an unfilled LIMIT
+input int    InpMaxPendingAgeSec     = 75;     // Pending order maximum age in seconds
+input bool   InpCancelOnNewBar       = false;  // OFF: don't remove valid pending limits on new M1 bars
 input bool   InpCancelOnPriceDrift   = false;  // OFF: do NOT cancel a LIMIT just because quote moved
 input double InpCancelDistancePrice  = 3.00;   // Separate XAU price distance to cancel if enabled
 input int    InpFrozenCancelRetrySec = 10;     // Cooldown after broker refuses to cancel as frozen
@@ -678,8 +679,9 @@ bool PlaceLimit(int side)
    g_ordersThisBar++;
    g_lastOrderAt=now;
    g_status="LIMIT placed";
-   PrintFormat("Al-Qannas %s LIMIT lot=%.2f entry=%.*f SL=%.*f TP=%.*f ticket=%I64u",
-      (side>0?"BUY":"SELL"),InpLots,_Digits,entry,_Digits,sl,_Digits,tp,g_trade.ResultOrder());
+   PrintFormat("Al-Qannas %s LIMIT placed #%I64u lot=%.2f bid=%.*f ask=%.*f entry=%.*f distance=%.3f SL=%.*f TP=%.*f BUY fills on ASK / SELL fills on BID",
+      (side>0?"BUY":"SELL"),g_trade.ResultOrder(),InpLots,
+      _Digits,tick.bid,_Digits,tick.ask,_Digits,entry,quoteDistance,_Digits,sl,_Digits,tp);
    return true;
 }
 
@@ -708,7 +710,8 @@ void Pulse()
       g_downTicks=0;
       g_recentTickCount=0;
       g_recentTickIndex=0;
-      RemoveOwnLimits(false); // Expire the prior candle's unfilled orders.
+      if(InpCancelOnNewBar)
+         RemoveOwnLimits(false); // Optional: expires previous candle's unfilled orders.
    }
 
    double closed=0.0;
@@ -724,7 +727,7 @@ void Pulse()
    }
    if(g_dayLocked) RemoveOwnLimits(true);
    ManagePositions(g_dayLocked);
-   if(!g_dayLocked)CancelStaleLimits(); // Remove distant, outdated, or reversed entries.
+   if(!g_dayLocked)CancelStaleLimits(); // TTL and optional drift/flow cancellation only.
    int active=CountActive();
    DisplayStatus(closed,floating,active);
    if(!historyOK || g_dayLocked || g_barStart<=0 || !ExactVolume()) return;
@@ -811,7 +814,7 @@ int OnInit()
    g_trade.SetAsyncMode(false);
    ReadDay();
    EventSetTimer(1);
-   PrintFormat("Al-Qannas Gold DEMO v1.14: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
+   PrintFormat("Al-Qannas Gold DEMO v1.15: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
        _Symbol,InpLots,InpTakeNetUsd,InpMaxLossUsd,InpTrailArmUsd,InpTrailStartUsd,InpTrailGivebackUsd,InpDailyStopUsd);
    return INIT_SUCCEEDED;
 }
