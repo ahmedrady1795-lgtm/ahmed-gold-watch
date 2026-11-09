@@ -40,7 +40,7 @@ input double InpMaxLiveCandleRange   = 2.20;   // Skip live M1 spikes over mean 
 input double InpEntryPullbackRange   = 0.025;  // Small pending LIMIT pullback as fraction of M1 range
 input double InpMaxLimitDistancePrice = 0.70;  // MAX XAUUSD price distance from current executable quote
 input int    InpMaxPendingAgeSec     = 18;     // Cancel unfilled LIMIT quickly (no old-candle traps)
-input bool   InpCancelOnFlowFlip     = true;   // Remove unfilled order if recent tick direction reverses
+input bool   InpCancelOnFlowFlip     = false;  // Optional: turning ON may cancel valid pullback LIMIT fills
 input double InpM5ConflictScore      = 0.80;   // Skip strong M5 trend conflicts
 input double InpDailyStopUsd         = 40.00;  // Used only when InpEnableDailyStop=true
 input double InpCostReserveUsd       = 0.20;   // Estimated round-trip costs per trade
