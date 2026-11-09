@@ -52,6 +52,9 @@ int       g_upTicks = 0;
 int       g_downTicks = 0;
 double    g_previousMid = 0.0;
 double    g_referenceM1Range = 0.0;
+int       g_recentTickDirections[32];
+int       g_recentTickCount = 0;
+int       g_recentTickIndex = 0;
 bool      g_dayLocked = false;
 string    g_lockKey = "";
 string    g_status = "Ready";
@@ -307,27 +310,52 @@ void ManagePositions(bool forceClose=false)
 void UpdateTickPressure()
 {
    MqlTick tick;
-   if(!SymbolInfoTick(_Symbol,tick) || tick.ask<=tick.bid || tick.bid<=0) return;
+   if(!SymbolInfoTick(_Symbol,tick) || tick.ask<=tick.bid || tick.bid<=0)return;
    double mid=(tick.bid+tick.ask)*0.5;
-   if(g_previousMid>0)
+   if(g_previousMid>0.0)
    {
-      if(mid>g_previousMid+_Point*0.25) g_upTicks++;
-      if(mid<g_previousMid-_Point*0.25) g_downTicks++;
+      int direction=0;
+      if(mid>g_previousMid+_Point*0.25)direction=1;
+      if(mid<g_previousMid-_Point*0.25)direction=-1;
+      if(direction!=0)
+      {
+         if(direction>0)g_upTicks++;
+         else g_downTicks++;
+         // Only the last 32 changing ticks affect the short-term entry signal.
+         // Cumulative M1 tick counts can conceal sudden reversals.
+         g_recentTickDirections[g_recentTickIndex]=direction;
+         g_recentTickIndex=(g_recentTickIndex+1)%32;
+         if(g_recentTickCount<32)g_recentTickCount++;
+      }
    }
    g_previousMid=mid;
 }
 
+double RecentTickFlow()
+{
+   if(g_recentTickCount<=0)return 0.0;
+   double sum=0.0;
+   for(int i=0;i<g_recentTickCount;i++)
+      sum+=(double)g_recentTickDirections[i];
+   return sum/(double)g_recentTickCount;
+}
+
 int LocalSignal()
 {
-   // Every M1 candle is evaluated. Predict from CLOSED M1 + CLOSED M5 candles,
-   // short-term tick pressure, and approximate tick-volume distribution by price.
-   // This is NOT real exchange order flow or AI sourced from the Render site.
-   MqlRates bars[],m5[];
+   // All historic input candles are CLOSED (shift 1), so no M5 look-ahead.
+   // The live M1 bar and recent bid/ask ticks only confirm current direction.
+   // This is heuristic MT5 analysis, not exchange order flow or Render AI.
+   MqlRates bars[],m5[],live[];
    ArraySetAsSeries(bars,true);
    ArraySetAsSeries(m5,true);
+   ArraySetAsSeries(live,true);
    int n=CopyRates(_Symbol,PERIOD_M1,1,24,bars);
    int n5=CopyRates(_Symbol,PERIOD_M5,1,12,m5);
-   if(n<8 || n5<5)return 0;
+   if(n<16 || n5<8 || CopyRates(_Symbol,PERIOD_M1,0,1,live)!=1)
+   {
+      g_status="Waiting for closed M1/M5 history";
+      return 0;
+   }
    double low=bars[0].low,high=bars[0].high,avgRange=0.0;
    for(int i=0;i<n;i++)
    {
@@ -336,55 +364,110 @@ int LocalSignal()
       avgRange+=MathMax(_Point,bars[i].high-bars[i].low);
    }
    avgRange=MathMax(_Point,avgRange/n);
+   g_referenceM1Range=avgRange; // Shared with pending-LIMIT pullback placement.
 
-   // Rough "volume by price" using tick counts of closed candles. Not true POC.
-   double poc=(high+low)*0.5;
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol,tick) || tick.ask<=tick.bid || tick.bid<=0)return 0;
+   double spread=tick.ask-tick.bid;
+   if(spread/avgRange>InpMaxSpreadRangeRatio)
+   {
+      g_status="Spread large relative to M1 range";
+      return 0;
+   }
+   double liveRange=MathMax(live[0].high,tick.ask)-MathMin(live[0].low,tick.bid);
+   if(liveRange>avgRange*InpMaxLiveCandleRange)
+   {
+      g_status="Live M1 spike / stretched candle";
+      return 0;
+   }
+   if(g_recentTickCount<InpMinTickConfirm)
+   {
+      g_status="Collecting recent ticks";
+      return 0;
+   }
+   double flow=RecentTickFlow();
+   double avgM5=0.0;
+   for(int i=0;i<n5;i++)
+      avgM5+=MathMax(_Point,m5[i].high-m5[i].low);
+   avgM5=MathMax(_Point,avgM5/n5);
+   double m5trend=(m5[0].close-m5[3].close)/avgM5;
+   double m5LastBody=(m5[0].close-m5[0].open)/avgM5;
+   double m1momentum=(bars[0].close-bars[3].close)/avgRange;
+   double m1body=(bars[0].close-bars[0].open)/avgRange;
+   double m1WickReject=(MathMin(bars[0].open,bars[0].close)-bars[0].low
+                        -bars[0].high+MathMax(bars[0].open,bars[0].close))/avgRange;
+   double mid=(tick.bid+tick.ask)*0.5;
+   double liveBody=(mid-live[0].open)/avgRange;
+
+   // Approximate price-volume concentration using M1 tick volumes. Not real
+   // exchange traded volume or a volume-profile/order-book feed.
+   double poc=(low+high)*0.5;
    if(high-low>TickSize())
    {
       double hist[12];
       ArrayInitialize(hist,0.0);
-      for(int j=0;j<n;j++)
+      for(int i=0;i<n;i++)
       {
-         double typical=(bars[j].high+bars[j].low+bars[j].close)/3.0;
+         double typical=(bars[i].high+bars[i].low+bars[i].close)/3.0;
          int k=(int)MathFloor((typical-low)/(high-low)*12.0);
-         k=(int)MathMax(0,MathMin(11,k));
-         hist[k]+=(double)bars[j].tick_volume;
+         if(k<0)k=0;
+         if(k>11)k=11;
+         hist[k]+(double)bars[i].tick_volume;
       }
       int best=0;
-      for(int j=1;j<12;j++)if(hist[j]>hist[best])best=j;
+      for(int i=1;i<12;i++)if(hist[i]>hist[best])best=i;
       poc=low+(best+0.5)*(high-low)/12.0;
    }
-   double m5range=0;
-   for(int i=0;i<n5;i++)
-      m5range+=MathMax(_Point,m5[i].high-m5[i].low);
-   m5range=MathMax(_Point,m5range/n5);
 
-   double momentum=(bars[0].close-bars[3].close)/avgRange;
-   double body=(bars[0].close-bars[0].open)/avgRange;
-   double trend5=(m5[0].close-m5[3].close)/m5range;
-   double upperWick=bars[0].high-MathMax(bars[0].open,bars[0].close);
-   double lowerWick=MathMin(bars[0].open,bars[0].close)-bars[0].low;
-   double rejection=(lowerWick-upperWick)/avgRange;
-
-   MqlTick tick;
-   if(!SymbolInfoTick(_Symbol,tick) || tick.ask<=tick.bid)return 0;
-   double mid=(tick.ask+tick.bid)*0.5;
-   double flow=(g_upTicks-g_downTicks)/(double)MathMax(1,g_upTicks+g_downTicks);
-   double score=0.42*momentum+0.52*body+0.35*flow+
-                0.55*trend5+0.16*(mid-poc)/avgRange+0.20*rejection;
-   if(!MathIsValidNumber(score) || MathAbs(score)<InpMinSignalScore)
+   // Weight closed M5 trend, closed M1 structure and the most recent ticks.
+   double score=0.52*m5trend+0.18*m5LastBody+0.30*m1momentum+
+                0.36*m1body+0.28*flow+0.26*liveBody+
+                0.13*m1WickReject+0.10*(mid-poc)/avgRange;
+   if(!MathIsValidNumber(score))
    {
-      g_status="M1 signal ambiguous";
+      g_status="Invalid directional score";
       return 0;
    }
-   // Strong opposing M5 trend is an important warning against buying/selling
-   // merely because of a noisy one-minute candle.
-   if(MathAbs(trend5)>=InpM5ConflictScore && score*trend5<0)
+   double threshold=InpMinSignalScore;
+   if(InpEntryStyle==AQ_FAST)threshold*=0.70;
+   if(InpEntryStyle==AQ_PRECISION)threshold*=1.40;
+   if(MathAbs(score)<threshold)
    {
-      g_status="Conflicting M5 trend";
+      g_status="Direction confidence too low";
       return 0;
    }
-   return (score>0?1:-1);
+   int side=(score>0.0?1:-1);
+   double dirM5=side*(0.80*m5trend+0.20*m5LastBody);
+   double dirM1=side*(0.70*m1momentum+0.30*m1body);
+   double dirFlow=side*flow;
+   double dirLive=side*liveBody;
+
+   // Do not buy a one-minute rebound against a sustained M5 selloff, or
+   // sell a one-minute dip against a sustained M5 rally.
+   if(dirM5<=-InpM5ConflictScore)
+   {
+      g_status="Strong opposite M5 trend";
+      return 0;
+   }
+   if(InpEntryStyle>=AQ_BALANCED &&
+      (dirM5<InpMinM5Alignment || dirM1<=0.0 || dirFlow<-0.18 ||
+       dirLive<-0.25))
+   {
+      g_status="M1 / M5 / tick trend mismatch";
+      return 0;
+   }
+   if(InpEntryStyle==AQ_PRECISION &&
+      (dirFlow<0.12 || dirLive<-0.02 || dirM1<0.12 ||
+       dirM5<InpMinM5Alignment*1.70))
+   {
+      g_status="Precision entry not yet confirmed";
+      return 0;
+   }
+   // The score is diagnostic only; only a successful broker LIMIT order
+   // is an actual trade. No prediction accuracy is implied.
+   g_status=StringFormat("Directional %s score=%.2f m5=%.2f flow=%.2f",
+                         side>0?"BUY":"SELL",score,dirM5,dirFlow);
+   return side;
 }
 bool PriceCashPerOne(int side,double entry,double &usd)
 {
@@ -503,6 +586,8 @@ void Pulse()
       g_ordersThisBar=0;
       g_upTicks=0;
       g_downTicks=0;
+      g_recentTickCount=0;
+      g_recentTickIndex=0;
       RemoveOwnLimits(false); // Expire the prior candle's unfilled orders.
    }
 
