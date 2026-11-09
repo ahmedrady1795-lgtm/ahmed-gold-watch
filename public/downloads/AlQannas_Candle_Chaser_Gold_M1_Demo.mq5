@@ -5,8 +5,8 @@
 //| Separate from Gold LIMIT and Sniper 2.0 EAs; no profit guarantee.|
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.02"
-#property description "Candle Chaser 1.02: directional STOP, balanced targets, cooldown and day lock. DEMO ONLY."
+#property version "1.03"
+#property description "Candle Chaser 1.03: one-way trailing STOP, confirmed direction, capped costs. DEMO ONLY."
 #include <Trade/Trade.mqh>
 
 input bool   InpManualPause             = false;  // Pause NEW orders, manage existing trades
@@ -382,6 +382,13 @@ bool FollowStop(int direction,ulong ticket,double desired,const MqlTick &tick)
    datetime last=(direction>0?g_lastBuyReprice:g_lastSellReprice);
    if(MathAbs(previous-desired)<InpRepriceStepPrice-Unit()*0.5 ||
       now-last<InpRepriceCooldownSec)return false;
+   // One-way ratchet: a BUY STOP may be lowered after price retraces,
+   // never raised as price rallies toward its trigger; a SELL STOP may
+   // be raised after a bounce, never lowered as price falls toward it.
+   // Old bidirectional repricing chased breakouts away from the current
+   // market and amplified reversal entries observed in the demo video.
+   if(direction>0 && desired>=previous-Unit()*0.5)return false;
+   if(direction<0 && desired<=previous+Unit()*0.5)return false;
    if(StopIsFrozen(ticket,tick))return false;
    double sl,tp;
    if(!ProtectedPrices(direction,desired,sl,tp))return false;
@@ -587,7 +594,7 @@ int OnInit()
    g_trade.SetTypeFillingBySymbol(_Symbol);
    g_trade.SetAsyncMode(false);
    RefreshTradingDay();
-   PrintFormat("AQ_CHASER START v1.02 DEMO DIRECTIONAL symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
+   PrintFormat("AQ_CHASER START v1.03 DEMO ONE_WAY_STOP symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
                _Symbol,InpLots,InpArmDistancePrice,InpRepriceStepPrice,
                InpCloseNetProfitUsd,InpMaxLossUsd);
    EventSetTimer(1);

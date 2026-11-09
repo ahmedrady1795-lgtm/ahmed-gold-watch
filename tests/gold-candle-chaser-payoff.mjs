@@ -4,8 +4,8 @@ import fs from 'node:fs';
 const code=fs.readFileSync('public/downloads/AlQannas_Candle_Chaser_Gold_M1_Demo.mq5','utf8');
 const download=fs.readFileSync('app/download-candle-chaser/route.ts','utf8');
 
-assert.match(code,/#property version "1\.02"/);
-assert.match(download,/source\.includes\('#property version "1\.02"'\)/);
+assert.match(code,/#property version "1\.03"/);
+assert.match(download,/source\.includes\('#property version "1\.03"'\)/);
 assert.match(download,/Content-Disposition/);
 assert.match(code,/bool IsDemo\(\)/);
 assert.match(code,/if\(!IsDemo\(\)\)/);
@@ -44,6 +44,13 @@ assert.match(code,/ProtectedPrices\(direction,level,sl,tp\)/);
 assert.match(code,/g_trade\.BuyStop\(/);
 assert.match(code,/g_trade\.SellStop\(/);
 
+// A STOP may follow a retracement, but must never run away ahead
+// of a favorable price move; this prevents perpetual breakout chasing.
+const ratchet=code.split('bool FollowStop(')[1]?.split('int ConfirmedChaseDirection(')[0];
+assert.ok(ratchet,'Expected one-way pending STOP ratchet');
+assert.match(ratchet,/if\(direction>0 && desired>=previous-Unit\(\)\*0\.5\)return false/);
+assert.match(ratchet,/if\(direction<0 && desired<=previous\+Unit\(\)\*0\.5\)return false/);
+assert.match(ratchet,/g_trade\.OrderModify\(ticket,desired,sl,tp,lifetime,expiry\)/);
 const follow=code.split('void FollowBracket()')[1]?.split('void ExpireStaleStops()')[0];
 assert.ok(follow,'Must retain moving STOP chaser mode');
 assert.match(follow,/TryCancel\(oppositeTicket,"SIDE_CONFLICT"\)/);
@@ -53,4 +60,4 @@ assert.doesNotMatch(follow,/PlaceStop\(1,buy\)|PlaceStop\(-1,sell\)/);
 assert.match(code,/InpMaxFillsPerM1\s*= 20/);
 assert.doesNotMatch(code,/TRADE_MODE_REAL.*trade\.Buy\(/s);
 
-console.log('PASS: Gold Candle Chaser 1.02 demo payoff, cost-aware one-side STOP, M1\/M5 closed-bar guard, daily stop and loss cooldown. Static checks only; not a broker/backtest proof.');
+console.log('PASS: Gold Candle Chaser 1.03 demo payoff + one-way STOP ratchet, cost-aware one-side STOP, M1\/M5 closed-bar guard, daily stop and loss cooldown. Static checks only; not a broker/backtest proof.');
