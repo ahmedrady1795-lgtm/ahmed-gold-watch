@@ -297,20 +297,33 @@ bool PlaceLimit(int side)
    if(!OrderCalcProfit(type,_Symbol,InpLots,entry,sl,worst)) return false;
    if(-worst+InpCostReserveUsd>InpMaxLossUsd+0.01) return false;
 
-   datetime expiry=g_barStart+60;
+   // Broker-side SPECIFIED expiration of just a few seconds often returns
+   // TRADE_RETCODE_INVALID_EXPIRATION (10022). Prefer broker-supported GTC;
+   // this EA explicitly removes all pending limits from the previous M1 bar
+   // and on EA removal, regardless of broker expiration mode.
    datetime now=ServerNow();
-   if(now >= expiry-8) return false;
+   if(now >= g_barStart+52) return false; // No entry at very end of M1 candle.
    int flags=(int)SymbolInfoInteger(_Symbol,SYMBOL_EXPIRATION_MODE);
    ENUM_ORDER_TYPE_TIME lifetime=ORDER_TIME_GTC;
    datetime until=0;
-   if((flags & SYMBOL_EXPIRATION_SPECIFIED)==SYMBOL_EXPIRATION_SPECIFIED)
+   if((flags & SYMBOL_EXPIRATION_GTC)==SYMBOL_EXPIRATION_GTC)
    {
-      lifetime=ORDER_TIME_SPECIFIED;
-      until=expiry;
+      lifetime=ORDER_TIME_GTC;
    }
-   else if((flags & SYMBOL_EXPIRATION_GTC)!=SYMBOL_EXPIRATION_GTC)
+   else if((flags & SYMBOL_EXPIRATION_DAY)==SYMBOL_EXPIRATION_DAY)
    {
-      g_status="Broker rejects order expiry modes";return false;
+      lifetime=ORDER_TIME_DAY;
+   }
+   else if((flags & SYMBOL_EXPIRATION_SPECIFIED)==SYMBOL_EXPIRATION_SPECIFIED)
+   {
+      // Specify a non-immediate broker expiration; still cancel at next M1 bar.
+      lifetime=ORDER_TIME_SPECIFIED;
+      until=now+3600;
+   }
+   else
+   {
+      g_status="No supported safe pending-order expiration mode";
+      return false;
    }
 
    // Limit retry rate even if the broker/client REJECTS the request.
@@ -324,8 +337,8 @@ bool PlaceLimit(int side)
    if(!ok || (ret!=TRADE_RETCODE_PLACED && ret!=TRADE_RETCODE_DONE))
    {
       g_status="Limit rejected: "+g_trade.ResultRetcodeDescription();
-      PrintFormat("Al-Qannas LIMIT rejected %s %.3f retcode=%u %s",
-         (side>0?"BUY":"SELL"),entry,ret,g_trade.ResultRetcodeDescription());
+      PrintFormat("Al-Qannas LIMIT rejected %s %.3f retcode=%u expiration_mode=%d expiry_flags=%d %s",
+         (side>0?"BUY":"SELL"),entry,ret,(int)lifetime,flags,g_trade.ResultRetcodeDescription());
       return false;
    }
    g_ordersThisBar++;
