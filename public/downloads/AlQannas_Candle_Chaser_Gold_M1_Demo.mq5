@@ -399,6 +399,46 @@ bool FollowStop(int direction,ulong ticket,double desired,const MqlTick &tick)
    g_status="Reprice delayed: "+g_trade.ResultRetcodeDescription();
    return false;
 }
+// Use completed Exness M1/M5 bars plus the latest broker quote.
+// A trend candidate is not a guaranteed pre-candle prediction.
+int ConfirmedChaseDirection(const MqlTick &tick)
+{
+   MqlRates m1[],m5[];
+   // CopyRates writes the oldest bar first in non-series arrays.
+   if(CopyRates(_Symbol,PERIOD_M1,1,3,m1)!=3 ||
+      CopyRates(_Symbol,PERIOD_M5,1,2,m5)!=2)
+   {g_status="WAIT: closed M1/M5 candles missing";return 0;}
+   double body=m1[2].close-m1[2].open;
+   double continuation=m1[2].close-m1[1].close;
+   double live=tick.bid-m1[2].close;
+   double score=0.60*body+0.25*continuation+0.15*live;
+   if(!MathIsValidNumber(score) ||
+      MathAbs(score)<InpMinDirectionScorePrice)
+   {g_status="WAIT: weak M1 directional pressure";return 0;}
+   double m5Body=m5[1].close-m5[1].open;
+   if(score*m5Body<0.0 &&
+      MathAbs(m5Body)>=InpM5ConflictBodyPrice)
+   {g_status="WAIT: strong opposite completed M5 candle";return 0;}
+   return (score>0.0?1:-1);
+}
+
+// A wide spread can make a +1.25 USD take unreachable after costs.
+// OrderCalcProfit uses the current Exness symbol contract, not a guessed lot.
+bool EntryCostsAllow(const MqlTick &tick)
+{
+   double pnl=0.0;
+   if(!OrderCalcProfit(ORDER_TYPE_BUY,_Symbol,InpLots,
+                       tick.ask,tick.bid,pnl) ||
+      !MathIsValidNumber(pnl))
+   {g_status="WAIT: broker cost model unavailable";return false;}
+   double initialCost=MathMax(0.0,-pnl)+InpCostReserveUsd;
+   if(initialCost>=InpCloseNetProfitUsd*InpMaxEntryCostToWinRatio)
+   {
+      g_status="WAIT: spread+fee reserve too costly for profit goal";
+      return false;
+   }
+   return true;
+}
 void FollowBracket()
 {
    MqlTick tick;
@@ -406,6 +446,17 @@ void FollowBracket()
    {g_status="Waiting for live XAU Bid/Ask";return;}
    if(tick.ask-tick.bid>InpMaxSpreadPrice)
    {g_status="Spread too wide for chase";return;}
+   if(!EntryCostsAllow(tick))
+   {
+      CancelAllPending("COST_TOO_HIGH");
+      return;
+   }
+   if(g_lastLossDealAt>0 && Clock()-g_lastLossDealAt<InpLossCooldownSec)
+   {
+      CancelAllPending("LOSS_COOLDOWN");
+      g_status="WAIT: loss reentry cooldown";
+      return;
+   }
    if(PositionCount()>0)
    {
       CancelAllPending("POSITION_FILLED");
@@ -418,26 +469,31 @@ void FollowBracket()
    double buy=RoundToTick(tick.ask+distance,1);
    double sell=RoundToTick(tick.bid-distance,-1);
    if(buy<=tick.ask || sell<=0 || sell>=tick.bid)return;
-   ulong buyTicket=StopTicket(1),sellTicket=StopTicket(-1);
-   // Do NOT stack an unlimited ladder. There is at most one STOP per side.
-   // Keep existing pending orders when possible, reprice with a cooldown.
-   if(buyTicket!=0)FollowStop(1,buyTicket,buy,tick);
-   if(sellTicket!=0)FollowStop(-1,sellTicket,sell,tick);
-   // Install BOTH sides in the same quote cycle. Older code delayed the
-   // second side until the following second, missing fast M1 candles.
-   // Recheck positions after BUY STOP submission: a fill may occur instantly.
-   if(StopTicket(1)==0 && Clock()-g_lastBracketBuild>=1)
+   // The old both-sided bracket repeatedly bought and sold noise.
+   // Only one pending STOP may exist, with M1 direction and M5 conflict check.
+   const int direction=ConfirmedChaseDirection(tick);
+   if(direction==0)
    {
-      g_lastBracketBuild=Clock(); // limit retries if broker rejects order
-      PlaceStop(1,buy);
+      CancelAllPending("NO_CONFIRMED_DIRECTION");
+      return;
    }
-   if(PositionCount()==0 && StopTicket(-1)==0 &&
-      (StopTicket(1)!=0 || Clock()-g_lastBracketBuild>=1))
+   const int opposite=-direction;
+   ulong oppositeTicket=StopTicket(opposite);
+   if(oppositeTicket!=0)
+   {
+      TryCancel(oppositeTicket,"SIDE_CONFLICT");
+      if(StopTicket(opposite)!=0)return; // frozen order cannot coexist with new side
+   }
+   double desired=(direction>0?buy:sell);
+   ulong active=StopTicket(direction);
+   if(active!=0)
+      FollowStop(direction,active,desired,tick);
+   else if(PositionCount()==0 && Clock()-g_lastBracketBuild>=1)
    {
       g_lastBracketBuild=Clock();
-      PlaceStop(-1,sell);
+      PlaceStop(direction,desired);
    }
-   if(StopTicket(1)!=0 && StopTicket(-1)!=0)
+   if(StopTicket(direction)!=0)
       g_rearmOnNextPulse=false;
 }
 void ExpireStaleStops()
