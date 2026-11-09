@@ -8,6 +8,7 @@ type Props={
  asset:'GOLD'|'BTC';fusion:LocalFusion;hunt:M15HuntPreview;
  preMove:PreMovePressure;liquidity:LiquidityMagnetView;flow?:FlowProfileDecision|null;
  price:number|null;marketOpen:boolean;fresh:boolean;
+ quoteSamples?:number|null;quoteSampleReason?:string|null;
  providerTransition:boolean;now:number;
 };
 const priceText=(n:number|null|undefined)=>n!=null&&Number.isFinite(n)&&n>0?
@@ -20,10 +21,25 @@ const priceText=(n:number|null|undefined)=>n!=null&&Number.isFinite(n)&&n>0?
 export default function SniperScenarioHero(p:Props){
  const connected=p.marketOpen&&p.fresh&&!p.providerTransition&&p.fusion.ready;
  const quoteOnly=Boolean(p.flow?.profileReady&&!p.flow?.orderFlowReady);
+ const sourceMismatch=String(p.flow?.reason||'').includes('نفس منصة بيانات التدفق');
+ const sampleCount=typeof p.quoteSamples==='number'&&Number.isFinite(p.quoteSamples)?
+   Math.max(0,Math.floor(p.quoteSamples)):null;
+ const flowStatus=p.flow?.ready?
+   p.flow.side==='BUY'?'↑ صعود':p.flow.side==='SELL'?'↓ هبوط':'متعارض':
+   quoteOnly?'POC سعري · DOM —':
+   sourceMismatch?'مصادر مختلفة':
+   sampleCount!=null&&sampleCount<12?sampleCount+'/12 عينة':
+   'غير متاح';
+ const m1M15Conflict=p.fusion.m1!=='WAIT'&&p.fusion.m15!=='WAIT'&&
+   p.fusion.m1!==p.fusion.m15;
+ const liquidityStatus=!p.liquidity.ready?'غير متاحة':
+   p.liquidity.sweep==='HIGH_RECLAIMED_DOWN'?'رفض قمة':
+   p.liquidity.sweep==='LOW_RECLAIMED_UP'?'استرداد قاع':
+   p.liquidity.above||p.liquidity.below?'مستويات مرصودة':'لا تجمع متكرر';
  const side=connected?p.fusion.side:'WAIT';
  const direction=side==='BUY'?'الصعود المرجّح':side==='SELL'?'الهبوط المرجّح':'مراقبة الحركة';
  const headline=!connected?'بيانات السوق غير جاهزة':
-   p.fusion.phase==='DISAGREEMENT'?'قراءات الاتجاه متعارضة':
+   m1M15Conflict||p.fusion.phase==='DISAGREEMENT'?'تعارض اتجاه M1 وM15؛ مراقبة':
    side==='WAIT'?'نراقب قبل صدور إشارة مبكرة موثوقة':
    p.fusion.phase==='EARLY_CANDIDATE'?'توافق التهيئة المبكرة قبل اختبار الكسر':
    'توافق الاتجاه على إغلاقات الأطر';
@@ -62,13 +78,8 @@ export default function SniperScenarioHero(p:Props){
            p.fusion.m1==='SELL'?'↓ هبوط':'—'}</b></span>
          <span>M15 <b>{p.fusion.m15==='BUY'?'↑ صعود':
            p.fusion.m15==='SELL'?'↓ هبوط':'—'}</b></span>
-         <span>POC × FLOW <b>{p.flow?.ready?
-           (p.flow.side==='BUY'?'↑ صعود':p.flow.side==='SELL'?'↓ هبوط':'متعارض'):
-           quoteOnly?'POC سعري · DOM —':'غير متاح'}</b></span>
-         <span>سيولة <b>{p.liquidity.ready?
-           p.liquidity.sweep==='HIGH_RECLAIMED_DOWN'?'رفض قمة':
-           p.liquidity.sweep==='LOW_RECLAIMED_UP'?'استرداد قاع':
-           'مستويات مرصودة':'غير متاحة'}</b></span>
+         <span title={p.flow?.reason||p.quoteSampleReason||undefined}>POC × FLOW <b>{flowStatus}</b></span>
+         <span title={p.liquidity.reason}>سيولة <b>{liquidityStatus}</b></span>
        </div>
      </div>
      <div className="sniper-scenario-orbit" aria-hidden="true">
@@ -92,7 +103,10 @@ export default function SniperScenarioHero(p:Props){
    <div className="sniper-scenario-hero-footer">
      <span>{source} · {p.flow?.ready?
        (p.flow.quality==='EXECUTED_SAMPLE'?'حجم منفذ Coinbase':'نشاط أسعار MT5 الاسترشادي'):
-       quoteOnly?'بروفايل نشاط السعر فقط · DOM غير متاح':'بيانات التدفق غير مؤهلة'}</span>
+       quoteOnly?'بروفايل نشاط السعر فقط · DOM غير متاح':
+       sourceMismatch?'مصدر السعر والشموع مختلف؛ لا دمج للتحليل':
+       sampleCount!=null&&sampleCount<12?'تجميع عينات MT5 حقيقية':
+       'بيانات التدفق غير مؤهلة'}</span>
      <span>المستويات مشروطة؛ لا شموع مستقبلية أو أهداف مضمونة</span>
      <span dir="ltr">QANNAS / OBSERVATION ONLY</span>
    </div>
