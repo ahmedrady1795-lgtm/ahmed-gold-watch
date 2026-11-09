@@ -1,12 +1,12 @@
 //+------------------------------------------------------------------+
-//| AL-QANNAS CANDLE CHASER v1.00 - EXNESS DEMO ONLY                  |
+//| AL-QANNAS CANDLE CHASER v1.02 - EXNESS DEMO ONLY                  |
 //| Inspired by the visible MT5 video: trailing BUY STOP/SELL STOP  |
 //| pending orders which become actual BUY/SELL deals on activation. |
 //| Separate from Gold LIMIT and Sniper 2.0 EAs; no profit guarantee.|
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.01"
-#property description "Candle Chaser 1.01: rearm STOP chase on every closed trade, without waiting next M1. DEMO ONLY."
+#property version "1.02"
+#property description "Candle Chaser 1.02: directional STOP, balanced targets, cooldown and day lock. DEMO ONLY."
 #include <Trade/Trade.mqh>
 
 input bool   InpManualPause             = false;  // Pause NEW orders, manage existing trades
@@ -15,16 +15,20 @@ input double InpArmDistancePrice        = 0.20;   // Follow M1 with BUY STOP abo
 input double InpRepriceStepPrice        = 0.12;   // Move pending stops after quote moves by this much
 input int    InpRepriceCooldownSec      = 3;      // Minimum interval between moving one pending order
 input double InpMaxSpreadPrice          = 0.85;   // Never chase an excessive bid/ask spread
-input double InpCloseNetProfitUsd       = 0.65;   // Ask for immediate exit at this ESTIMATED net profit
-input double InpBrokerTargetNetUsd      = 1.00;   // Attach broker TP as backup
-input double InpMaxLossUsd             = 1.80;   // Intended per-position SL budget, not a fill guarantee
+input double InpCloseNetProfitUsd       = 1.25;   // Ask for immediate exit at this ESTIMATED net profit
+input double InpBrokerTargetNetUsd      = 1.65;   // Attach broker TP as backup
+input double InpMaxLossUsd             = 1.25;   // Intended per-position SL budget, not a fill guarantee
 input double InpCostReserveUsd         = 0.20;   // Conservative estimated fees, excludes unknown slippage
 input int    InpMaxHoldSec             = 85;     // Exit old position instead of holding indefinitely
 input int    InpMaxFillsPerM1          = 20;     // Allows repeated entries per M1; one open at a time
 input int    InpMaxPendingAgeSec       = 50;     // Replace stale pending stops
 input bool   InpCancelOnNewBar         = true;   // Follow the new M1 instead of stale previous levels
-input bool   InpEnableDailyStop        = false;  // Optional cumulative day limit; user controlled
+input bool   InpEnableDailyStop        = true;   // Optional cumulative day limit; user controlled
 input double InpDailyStopUsd           = 40.00;  // Used only if enabled
+input double InpMinDirectionScorePrice  = 0.18;   // Completed M1 plus current bid pressure
+input double InpM5ConflictBodyPrice    = 1.50;   // Avoid strong opposite completed M5 candle
+input double InpMaxEntryCostToWinRatio  = 0.70;   // (spread + reserve) / intended profit
+input int    InpLossCooldownSec        = 15;     // Short pause after losing broker exit
 input int    InpFrozenRetrySec         = 5;      // Slow down retcode 10029 retries
 input ulong  InpMagic                  = 560179530; // Different from all previous Al-Qannas EAs
 input bool   InpShowStatus             = true;
@@ -37,6 +41,7 @@ datetime g_lastSellReprice=0;
 datetime g_lastCancelAttempt=0;
 datetime g_lastCloseAttempt=0;
 datetime g_lastBracketBuild=0;
+datetime g_lastLossDealAt=0;
 bool     g_rearmOnNextPulse=false; // Priority rearm as soon as position closes
 int      g_fillsThisBar=0;
 int      g_requestsThisBar=0;
@@ -394,6 +399,46 @@ bool FollowStop(int direction,ulong ticket,double desired,const MqlTick &tick)
    g_status="Reprice delayed: "+g_trade.ResultRetcodeDescription();
    return false;
 }
+// Use completed Exness M1/M5 bars plus the latest broker quote.
+// A trend candidate is not a guaranteed pre-candle prediction.
+int ConfirmedChaseDirection(const MqlTick &tick)
+{
+   MqlRates m1[],m5[];
+   // CopyRates writes the oldest bar first in non-series arrays.
+   if(CopyRates(_Symbol,PERIOD_M1,1,3,m1)!=3 ||
+      CopyRates(_Symbol,PERIOD_M5,1,2,m5)!=2)
+   {g_status="WAIT: closed M1/M5 candles missing";return 0;}
+   double body=m1[2].close-m1[2].open;
+   double continuation=m1[2].close-m1[1].close;
+   double live=tick.bid-m1[2].close;
+   double score=0.60*body+0.25*continuation+0.15*live;
+   if(!MathIsValidNumber(score) ||
+      MathAbs(score)<InpMinDirectionScorePrice)
+   {g_status="WAIT: weak M1 directional pressure";return 0;}
+   double m5Body=m5[1].close-m5[1].open;
+   if(score*m5Body<0.0 &&
+      MathAbs(m5Body)>=InpM5ConflictBodyPrice)
+   {g_status="WAIT: strong opposite completed M5 candle";return 0;}
+   return (score>0.0?1:-1);
+}
+
+// A wide spread can make a +1.25 USD take unreachable after costs.
+// OrderCalcProfit uses the current Exness symbol contract, not a guessed lot.
+bool EntryCostsAllow(const MqlTick &tick)
+{
+   double pnl=0.0;
+   if(!OrderCalcProfit(ORDER_TYPE_BUY,_Symbol,InpLots,
+                       tick.ask,tick.bid,pnl) ||
+      !MathIsValidNumber(pnl))
+   {g_status="WAIT: broker cost model unavailable";return false;}
+   double initialCost=MathMax(0.0,-pnl)+InpCostReserveUsd;
+   if(initialCost>=InpCloseNetProfitUsd*InpMaxEntryCostToWinRatio)
+   {
+      g_status="WAIT: spread+fee reserve too costly for profit goal";
+      return false;
+   }
+   return true;
+}
 void FollowBracket()
 {
    MqlTick tick;
@@ -401,6 +446,17 @@ void FollowBracket()
    {g_status="Waiting for live XAU Bid/Ask";return;}
    if(tick.ask-tick.bid>InpMaxSpreadPrice)
    {g_status="Spread too wide for chase";return;}
+   if(!EntryCostsAllow(tick))
+   {
+      CancelAllPending("COST_TOO_HIGH");
+      return;
+   }
+   if(g_lastLossDealAt>0 && Clock()-g_lastLossDealAt<InpLossCooldownSec)
+   {
+      CancelAllPending("LOSS_COOLDOWN");
+      g_status="WAIT: loss reentry cooldown";
+      return;
+   }
    if(PositionCount()>0)
    {
       CancelAllPending("POSITION_FILLED");
@@ -413,26 +469,31 @@ void FollowBracket()
    double buy=RoundToTick(tick.ask+distance,1);
    double sell=RoundToTick(tick.bid-distance,-1);
    if(buy<=tick.ask || sell<=0 || sell>=tick.bid)return;
-   ulong buyTicket=StopTicket(1),sellTicket=StopTicket(-1);
-   // Do NOT stack an unlimited ladder. There is at most one STOP per side.
-   // Keep existing pending orders when possible, reprice with a cooldown.
-   if(buyTicket!=0)FollowStop(1,buyTicket,buy,tick);
-   if(sellTicket!=0)FollowStop(-1,sellTicket,sell,tick);
-   // Install BOTH sides in the same quote cycle. Older code delayed the
-   // second side until the following second, missing fast M1 candles.
-   // Recheck positions after BUY STOP submission: a fill may occur instantly.
-   if(StopTicket(1)==0 && Clock()-g_lastBracketBuild>=1)
+   // The old both-sided bracket repeatedly bought and sold noise.
+   // Only one pending STOP may exist, with M1 direction and M5 conflict check.
+   const int direction=ConfirmedChaseDirection(tick);
+   if(direction==0)
    {
-      g_lastBracketBuild=Clock(); // limit retries if broker rejects order
-      PlaceStop(1,buy);
+      CancelAllPending("NO_CONFIRMED_DIRECTION");
+      return;
    }
-   if(PositionCount()==0 && StopTicket(-1)==0 &&
-      (StopTicket(1)!=0 || Clock()-g_lastBracketBuild>=1))
+   const int opposite=-direction;
+   ulong oppositeTicket=StopTicket(opposite);
+   if(oppositeTicket!=0)
+   {
+      TryCancel(oppositeTicket,"SIDE_CONFLICT");
+      if(StopTicket(opposite)!=0)return; // frozen order cannot coexist with new side
+   }
+   double desired=(direction>0?buy:sell);
+   ulong active=StopTicket(direction);
+   if(active!=0)
+      FollowStop(direction,active,desired,tick);
+   else if(PositionCount()==0 && Clock()-g_lastBracketBuild>=1)
    {
       g_lastBracketBuild=Clock();
-      PlaceStop(-1,sell);
+      PlaceStop(direction,desired);
    }
-   if(StopTicket(1)!=0 && StopTicket(-1)!=0)
+   if(StopTicket(direction)!=0)
       g_rearmOnNextPulse=false;
 }
 void ExpireStaleStops()
@@ -450,7 +511,7 @@ void ShowStatus()
 {
    if(!InpShowStatus)return;
    Comment("AL-QANNAS CANDLE CHASER | GOLD DEMO M1",
-           "\nSTOP bracket follows ASK/BID. NOT market ENTRY.",
+           "\nDIRECTIONAL STOP follows M1/M5 and ASK/BID.",
            "\nLot ",DoubleToString(InpLots,2),
            " | Pending ",PendingCount()," | Open ",PositionCount(),
            "\nM1 fills ",g_fillsThisBar,"/",InpMaxFillsPerM1,
@@ -513,7 +574,10 @@ int OnInit()
       InpBrokerTargetNetUsd<InpCloseNetProfitUsd ||
       InpCostReserveUsd<0 || InpMaxLossUsd<=InpCostReserveUsd ||
       InpMaxHoldSec<5 || InpMaxFillsPerM1<1 || InpMaxFillsPerM1>60 ||
-      InpMaxPendingAgeSec<5 || InpDailyStopUsd<=0 || InpFrozenRetrySec<1)
+      InpMaxPendingAgeSec<5 || InpDailyStopUsd<=0 || InpFrozenRetrySec<1 ||
+       InpMinDirectionScorePrice<=0 || InpM5ConflictBodyPrice<0 ||
+       InpMaxEntryCostToWinRatio<=0 || InpMaxEntryCostToWinRatio>1.0 ||
+       InpLossCooldownSec<0 || InpLossCooldownSec>90)
    {Alert("Candle Chaser invalid Inputs: review lots, stop, target, timing.");return INIT_PARAMETERS_INCORRECT;}
    int allowed=(int)SymbolInfoInteger(_Symbol,SYMBOL_ORDER_MODE);
    if((allowed&SYMBOL_ORDER_STOP)!=SYMBOL_ORDER_STOP)
@@ -523,7 +587,7 @@ int OnInit()
    g_trade.SetTypeFillingBySymbol(_Symbol);
    g_trade.SetAsyncMode(false);
    RefreshTradingDay();
-   PrintFormat("AQ_CHASER START v1.01 DEMO REARM symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
+   PrintFormat("AQ_CHASER START v1.02 DEMO DIRECTIONAL symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
                _Symbol,InpLots,InpArmDistancePrice,InpRepriceStepPrice,
                InpCloseNetProfitUsd,InpMaxLossUsd);
    EventSetTimer(1);
@@ -558,12 +622,23 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    else if(entry==DEAL_ENTRY_OUT || entry==DEAL_ENTRY_INOUT)
    {
       g_totalCloses++;
+      const double closingNet=HistoryDealGetDouble(trans.deal,DEAL_PROFIT)+
+          HistoryDealGetDouble(trans.deal,DEAL_COMMISSION)+
+          HistoryDealGetDouble(trans.deal,DEAL_SWAP)+
+          HistoryDealGetDouble(trans.deal,DEAL_FEE);
+      if(closingNet<0.0)
+      {
+         g_lastLossDealAt=Clock();
+         CancelAllPending("AFTER_LOSS");
+         PrintFormat("AQ_CHASER loss cooldown %d sec after net %.2f",
+                     InpLossCooldownSec,closingNet);
+      }
       // This also catches server-side SL/TP fills and close confirmations.
       // PositionCount() in FollowBracket prevents overlapping fresh entries.
       g_rearmOnNextPulse=true;
       g_lastPulseSecond=-1;
       g_lastBracketBuild=0;
-      PrintFormat("AQ_CHASER REARM after exit deal=%I64u, next quote/timer in same M1",trans.deal);
+      PrintFormat("AQ_CHASER exit deal=%I64u; next confirmed signal after any loss cooldown",trans.deal);
    }
    double profit=HistoryDealGetDouble(trans.deal,DEAL_PROFIT)
                 +HistoryDealGetDouble(trans.deal,DEAL_COMMISSION)
