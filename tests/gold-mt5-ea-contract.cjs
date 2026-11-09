@@ -6,18 +6,20 @@ const src=fs.readFileSync(path.join(__dirname,'..','mt5_bridge','Experts',
                                    'AlQannas_Gold_M1_Limit_Demo.mq5'),'utf8');
 const includes=(pattern,reason)=>assert.match(src,pattern,reason);
 
-includes(/#property version\s+"1\.10"/,'new version');
+includes(/#property version\s+"1\.11"/,'new version');
 includes(/ACCOUNT_TRADE_MODE_DEMO/,'demo-only broker orders');
 includes(/MathAbs\(InpLots-0\.05\)/,'fixed exact 0.05 lots');
 includes(/g_trade\.BuyLimit\(/,'BUY pending Limit');
 includes(/g_trade\.SellLimit\(/,'SELL pending Limit');
 assert.doesNotMatch(src,/g_trade\.(?:Buy|Sell)\(/,'no Market entries');
 includes(/InpTakeNetUsd\s*=\s*6\.00/,'no tiny fixed TP at 0.70 USD');
-includes(/InpMaxLossUsd\s*=\s*5\.50/,'bounded nominal per-trade loss');
+includes(/InpMaxLossUsd\s*=\s*3\.00/,'bounded nominal per-trade loss');
 includes(/InpDailyStopUsd\s*=\s*40\.00/,'daily risk budget remains');
-includes(/InpTrailArmUsd\s*=\s*1\.40/,'profit lock activation');
+includes(/InpTrailArmUsd\s*=\s*2\.25/,'profit lock activation');
+includes(/InpProfitLockUsd\s*=\s*1\.50/,'protected net profit target');
 includes(/InpTrailStartUsd\s*=\s*3\.00/,'profit runner activation');
 includes(/peak-InpTrailGivebackUsd/,'peak-relative trailing exit');
+includes(/bool trailingExit=\(protectedNet>0 && net<=protectedNet\);/,'close even if profit drops through zero');
 includes(/g_trade\.PositionModify\(ticket,proposed,currentTp\)/,'attempts broker side SL protection');
 includes(/GlobalVariableSet\(key,peak\)/,'persist profit peaks across EA reloads');
 includes(/CopyRates\(_Symbol,PERIOD_M1,1,24,bars\)/,'only closed M1 candles');
