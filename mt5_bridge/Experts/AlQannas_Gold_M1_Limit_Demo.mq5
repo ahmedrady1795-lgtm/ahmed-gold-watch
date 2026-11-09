@@ -5,8 +5,8 @@
 //| This EA does NOT call the Al-Qannas website/AI.                  |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "1.13"
-#property description "Al-Qannas Gold M1 Limit v1.13: Near-price LIMIT and stale order cleanup. DEMO ONLY."
+#property version   "1.14"
+#property description "Al-Qannas Gold M1 Limit v1.13: Limit lifecycle controls & broker freeze backoff. DEMO ONLY."
 #include <Trade/Trade.mqh>
 
 enum ENUM_AQ_ENTRY_STYLE
@@ -39,7 +39,10 @@ input double InpMaxSpreadRangeRatio  = 0.35;   // Spread cannot dominate recent 
 input double InpMaxLiveCandleRange   = 2.20;   // Skip live M1 spikes over mean range
 input double InpEntryPullbackRange   = 0.025;  // Small pending LIMIT pullback as fraction of M1 range
 input double InpMaxLimitDistancePrice = 0.70;  // MAX XAUUSD price distance from current executable quote
-input int    InpMaxPendingAgeSec     = 18;     // Cancel unfilled LIMIT quickly (no old-candle traps)
+input int    InpMaxPendingAgeSec     = 30;     // Age before canceling an unfilled LIMIT
+input bool   InpCancelOnPriceDrift   = false;  // OFF: do NOT cancel a LIMIT just because quote moved
+input double InpCancelDistancePrice  = 3.00;   // Separate XAU price distance to cancel if enabled
+input int    InpFrozenCancelRetrySec = 10;     // Cooldown after broker refuses to cancel as frozen
 input bool   InpCancelOnFlowFlip     = false;  // Optional: turning ON may cancel valid pullback LIMIT fills
 input double InpM5ConflictScore      = 0.80;   // Skip strong M5 trend conflicts
 input double InpDailyStopUsd         = 40.00;  // Used only when InpEnableDailyStop=true
@@ -200,16 +203,65 @@ double FloatingEstimate()
    return net;
 }
 
+string CancelRetryKey(ulong ticket)
+{
+   return "AQCancel_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+"_"
+         +IntegerToString((long)InpMagic)+"_"+IntegerToString((long)ticket);
+}
+
+bool CancelPendingIfPossible(ulong ticket,string reason)
+{
+   if(!OrderSelect(ticket) || !OwnLimitOrder())return false;
+   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) ||
+      !MQLInfoInteger(MQL_TRADE_ALLOWED))return false;
+   string key=CancelRetryKey(ticket);
+   datetime now=ServerNow();
+   if(GlobalVariableCheck(key) &&
+      now-(datetime)GlobalVariableGet(key)<InpFrozenCancelRetrySec)return false;
+
+   // Broker freeze-level restricts pending order deletion near its price.
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol,tick) || tick.ask<=tick.bid)return false;
+   ENUM_ORDER_TYPE type=(ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+   double entry=OrderGetDouble(ORDER_PRICE_OPEN);
+   double quote=(type==ORDER_TYPE_BUY_LIMIT?tick.ask:tick.bid);
+   double freeze=(double)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_FREEZE_LEVEL)*_Point;
+   if(freeze>0 && MathAbs(quote-entry)<=freeze+TickSize())
+   {
+      GlobalVariableSet(key,(double)now);
+      return false;
+   }
+   bool sent=g_trade.OrderDelete(ticket);
+   uint rc=g_trade.ResultRetcode();
+   if(sent && rc==TRADE_RETCODE_DONE)
+   {
+      GlobalVariableDel(key);
+      PrintFormat("Al-Qannas pending LIMIT canceled #%I64u reason=%s",ticket,reason);
+      return true;
+   }
+   if(rc==TRADE_RETCODE_FROZEN || rc==TRADE_RETCODE_INVALID)
+   {
+      GlobalVariableSet(key,(double)now);
+      PrintFormat("Al-Qannas pending cancel deferred #%I64u code=%u retry in %d s",
+                  ticket,rc,InpFrozenCancelRetrySec);
+   }
+   else if(rc!=TRADE_RETCODE_ORDER_CHANGED)
+   {
+      PrintFormat("Al-Qannas pending cancel rejected #%I64u retcode=%u %s",
+                  ticket,rc,g_trade.ResultRetcodeDescription());
+   }
+   return false;
+}
+
 void RemoveOwnLimits(bool all=false)
 {
    for(int i=OrdersTotal()-1;i>=0;i--)
    {
       ulong ticket=OrderGetTicket(i);
-      if(ticket==0 || !OrderSelect(ticket) || !OwnLimitOrder()) continue;
+      if(ticket==0 || !OrderSelect(ticket) || !OwnLimitOrder())continue;
       datetime created=(datetime)OrderGetInteger(ORDER_TIME_SETUP);
-      if(!all && created >= g_barStart && ServerNow() < g_barStart+60) continue;
-      if(!g_trade.OrderDelete(ticket))
-         PrintFormat("Al-Qannas pending delete failure #%I64u code=%u",ticket,g_trade.ResultRetcode());
+      if(!all && created>=g_barStart && ServerNow()<g_barStart+60)continue;
+      CancelPendingIfPossible(ticket,all?"USER/DAY/REMOVE":"NEW_M1_BAR");
    }
 }
 
@@ -517,16 +569,13 @@ void CancelStaleLimits()
       double distance=(side>0?tick.ask-price:price-tick.bid);
       int age=(int)(now-(datetime)OrderGetInteger(ORDER_TIME_SETUP));
       bool tooOld=(age>=InpMaxPendingAgeSec);
-      bool tooFar=(distance>InpMaxLimitDistancePrice+TickSize()*0.5);
+      bool priceDrift=(InpCancelOnPriceDrift &&
+                       distance>InpCancelDistancePrice+TickSize()*0.5);
       bool flowFlip=(InpCancelOnFlowFlip && g_recentTickCount>=8 &&
                      side*flow< -0.60);
-      if(!tooOld && !tooFar && !flowFlip)continue;
-      if(g_trade.OrderDelete(ticket) && g_trade.ResultRetcode()==TRADE_RETCODE_DONE)
-         PrintFormat("Al-Qannas STALE LIMIT removed #%I64u age=%d distance=%.3f flow=%.2f",
-                     ticket,age,distance,flow);
-      else if(g_trade.ResultRetcode()!=TRADE_RETCODE_FROZEN)
-         PrintFormat("Al-Qannas stale limit cancel rejected #%I64u retcode=%u",
-                     ticket,g_trade.ResultRetcode());
+      if(!tooOld && !priceDrift && !flowFlip)continue;
+      string reason=tooOld?"PENDING_AGE":priceDrift?"PRICE_DRIFT":"TICK_FLOW_FLIP";
+      CancelPendingIfPossible(ticket,reason);
    }
 }
 
@@ -742,7 +791,8 @@ int OnInit()
       InpMinTickConfirm<0 || InpMaxSpreadRangeRatio<=0 ||
       InpMaxLiveCandleRange<=0 || InpEntryPullbackRange<0 ||
       InpEntryPullbackRange>1 || InpMaxLimitDistancePrice<=2.0*TickSize() ||
-      InpMaxPendingAgeSec<2 || InpDailyStopUsd<=0 ||
+      InpMaxPendingAgeSec<2 || InpCancelDistancePrice<=0 ||
+      InpFrozenCancelRetrySec<1 || InpDailyStopUsd<=0 ||
       (InpEnableDailyStop && InpDailyStopUsd<=InpMaxLossUsd) ||
       InpMaxHoldSeconds<1 || InpMaxConcurrent<1 || InpMaxConcurrent>20 ||
       InpMaxEntriesPerM1<1 || InpMaxEntriesPerM1>30 ||
@@ -761,7 +811,7 @@ int OnInit()
    g_trade.SetAsyncMode(false);
    ReadDay();
    EventSetTimer(1);
-   PrintFormat("Al-Qannas Gold DEMO v1.13: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
+   PrintFormat("Al-Qannas Gold DEMO v1.14: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
        _Symbol,InpLots,InpTakeNetUsd,InpMaxLossUsd,InpTrailArmUsd,InpTrailStartUsd,InpTrailGivebackUsd,InpDailyStopUsd);
    return INIT_SUCCEEDED;
 }
