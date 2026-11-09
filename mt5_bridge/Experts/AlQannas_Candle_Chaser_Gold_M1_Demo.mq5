@@ -31,6 +31,7 @@ input bool   InpShowStatus             = true;
 
 CTrade g_trade;
 datetime g_barTime=0;
+datetime g_dayStarted=0;
 datetime g_lastBuyReprice=0;
 datetime g_lastSellReprice=0;
 datetime g_lastCancelAttempt=0;
@@ -259,6 +260,32 @@ double FloatingProfit()
    }
    return profit;
 }
+void RefreshTradingDay()
+{
+   MqlDateTime d;TimeToStruct(Clock(),d);
+   d.hour=0;d.min=0;d.sec=0;
+   datetime today=StructToTime(d);
+   if(today==g_dayStarted)return;
+   g_dayStarted=today;
+   g_dayLockKey="AQChaser_Day_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+
+                "_"+_Symbol+"_"+IntegerToString((long)InpMagic)+
+                "_"+IntegerToString((long)today);
+   g_dayLocked=(InpEnableDailyStop && GlobalVariableCheck(g_dayLockKey));
+}
+int FillsOnBar(datetime bar)
+{
+   if(bar<=0 || !HistorySelect(bar,Clock()+1))return 0;
+   int total=0;
+   for(int i=0;i<HistoryDealsTotal();i++)
+   {
+      ulong id=HistoryDealGetTicket(i);
+      if(id==0 || HistoryDealGetString(id,DEAL_SYMBOL)!=_Symbol ||
+         (ulong)HistoryDealGetInteger(id,DEAL_MAGIC)!=InpMagic)continue;
+      if((ENUM_DEAL_ENTRY)HistoryDealGetInteger(id,DEAL_ENTRY)==DEAL_ENTRY_IN)
+         total++;
+   }
+   return total;
+}
 bool RiskStop()
 {
    if(!InpEnableDailyStop)return false;
@@ -418,12 +445,13 @@ void ShowStatus()
 void Pulse()
 {
    if(!IsDemo())return;
+   RefreshTradingDay();
    datetime now=Clock();
    datetime candle=iTime(_Symbol,PERIOD_M1,0);
    if(candle!=0 && candle!=g_barTime)
    {
       g_barTime=candle;
-      g_fillsThisBar=0;
+      g_fillsThisBar=FillsOnBar(candle);
       g_requestsThisBar=0;
       g_lastPulseSecond=-1;
       if(InpCancelOnNewBar)CancelAllPending("NEW_M1");
@@ -472,10 +500,7 @@ int OnInit()
    g_trade.SetDeviationInPoints(30);
    g_trade.SetTypeFillingBySymbol(_Symbol);
    g_trade.SetAsyncMode(false);
-   g_dayLockKey="AQChaser_Day_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+
-                "_"+_Symbol+"_"+IntegerToString((long)InpMagic);
-   if(InpEnableDailyStop && GlobalVariableCheck(g_dayLockKey))
-      g_dayLocked=(GlobalVariableGet(g_dayLockKey)>0);
+   RefreshTradingDay();
    PrintFormat("AQ_CHASER START v1.00 DEMO ONLY symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
                _Symbol,InpLots,InpArmDistancePrice,InpRepriceStepPrice,
                InpCloseNetProfitUsd,InpMaxLossUsd);
@@ -504,6 +529,9 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       g_fillsThisBar++;
       g_totalFills++;
       g_status="STOP triggered into a live position";
+      // Opposite pending STOP is OCO-like: promptly request cancel on fill.
+      // Broker freezes or simultaneous spikes can still execute both orders.
+      CancelAllPending("DEAL_FILLED_CANCEL_OPPOSITE");
    }
    else if(entry==DEAL_ENTRY_OUT || entry==DEAL_ENTRY_INOUT)g_totalCloses++;
    double profit=HistoryDealGetDouble(trans.deal,DEAL_PROFIT)
