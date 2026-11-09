@@ -1,6 +1,6 @@
 # Al-Qannas Gold M1 LIMIT — Exness MT5 DEMO EA
 
-Source: [AlQannas_Gold_M1_Limit_Demo.mq5](Experts/AlQannas_Gold_M1_Limit_Demo.mq5)
+Source: [AlQannas_Gold_M1_Limit_Demo.mq5](AlQannas_Gold_M1_Limit_Demo.mq5)
 
 ## تثبيت البوت على Windows VPS الحالي
 
