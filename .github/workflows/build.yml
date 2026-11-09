@@ -130,6 +130,7 @@ jobs:
       - run: node tests/sniper-m15-chart-clean.cjs
       - run: node tests/sniper-m15-watch-guide.cjs
       - run: node tests/sniper-m15-scenario.cjs
+      - run: node tests/sniper-m15-archive.cjs
       - run: node tests/sniper-m15-analogue-obstacle.cjs
       - run: node tests/sniper-m15-target-bridge.cjs
       - run: node tests/sniper-m15-mt5-viewport.cjs
