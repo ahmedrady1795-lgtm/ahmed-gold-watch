@@ -45,6 +45,7 @@ datetime g_lastCancelAttempt=0;
 datetime g_lastCloseAttempt=0;
 datetime g_lastBracketBuild=0;
 datetime g_lastLossDealAt=0;
+datetime g_lastEntryDiagnosisAt=0;
 bool     g_rearmOnNextPulse=false; // Priority rearm as soon as position closes
 int      g_fillsThisBar=0;
 int      g_requestsThisBar=0;
@@ -441,23 +442,54 @@ int ConfirmedChaseDirection(const MqlTick &tick)
 
 // A wide spread can make a +1.25 USD take unreachable after costs.
 // OrderCalcProfit uses the current Exness symbol contract, not a guessed lot.
-bool EntryCostsAllow(const MqlTick &tick)
+bool EntryCostsAllow(const MqlTick &tick,double volume)
 {
    double pnl=0.0;
-   if(!OrderCalcProfit(ORDER_TYPE_BUY,_Symbol,InpLots,
+   if(volume<=0 ||
+      !OrderCalcProfit(ORDER_TYPE_BUY,_Symbol,volume,
                        tick.ask,tick.bid,pnl) ||
       !MathIsValidNumber(pnl))
    {g_status="WAIT: broker cost model unavailable";return false;}
-   double initialCost=MathMax(0.0,-pnl)+InpCostReserveUsd;
+   const double initialCost=MathMax(0.0,-pnl)+InpCostReserveUsd;
    if(initialCost>=InpCloseNetProfitUsd*InpMaxEntryCostToWinRatio ||
       initialCost>=InpMaxLossUsd*InpMaxEntryCostToLossRatio)
    {
-      // A large opening spread would eat the SL budget before price moves.
-      // A time grace cannot override broker-side stop execution.
-      g_status="WAIT: spread+fees too costly for profit or stop budget";
+      // Always use broker-measured cost, never assume 100 oz per lot.
+      g_status="WAIT: spread + fees consume most of USD stop/target";
       return false;
    }
    return true;
+}
+
+// In this DEMO experiment InpLots is an upper bound.  On an expensive quote,
+// 0.02 can never survive a 1.25 USD stop. Try 0.01 only if the broker lists
+// it as valid, without widening the stop or silently increasing risk.
+double ChosenLotForQuote(const MqlTick &tick,int direction,double level)
+{
+   const double minLot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+   const double step=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
+   if(minLot<=0 || step<=0 || level<=0)return 0.0;
+   int slots=(int)MathFloor((InpLots-minLot)/step+0.000001);
+   if(slots<0)return 0.0;
+   slots=(int)MathMin(slots,1000);
+   for(int i=0;i<=slots;i++)
+   {
+      const double lot=NormalizeDouble(InpLots-i*step,8);
+      if(lot<minLot-0.00000001)break;
+      if(!InpAutoReduceLots && i>0)break;
+      if(!EntryCostsAllow(tick,lot))continue;
+      double sl=0.0,tp=0.0;
+      if(!ProtectedPrices(direction,level,lot,sl,tp))continue;
+      return lot;
+   }
+   if(Clock()-g_lastEntryDiagnosisAt>=15)
+   {
+      g_lastEntryDiagnosisAt=Clock();
+      PrintFormat("AQ_CHASER WAIT: no volume within target/SL; symbol=%s spread=%.3f maxLot=%.2f brokerMinLot=%.2f brokerStopDistance=%.3f target=%.2f SL=%.2f lastReason=%s",
+                  _Symbol,tick.ask-tick.bid,InpLots,minLot,StopLevel(),
+                  InpCloseNetProfitUsd,InpMaxLossUsd,g_status);
+   }
+   return 0.0;
 }
 void FollowBracket()
 {
@@ -466,11 +498,6 @@ void FollowBracket()
    {g_status="Waiting for live XAU Bid/Ask";return;}
    if(tick.ask-tick.bid>InpMaxSpreadPrice)
    {g_status="Spread too wide for chase";return;}
-   if(!EntryCostsAllow(tick))
-   {
-      CancelAllPending("COST_TOO_HIGH");
-      return;
-   }
    if(g_lastLossDealAt>0 && Clock()-g_lastLossDealAt<InpLossCooldownSec)
    {
       CancelAllPending("LOSS_COOLDOWN");
@@ -504,14 +531,31 @@ void FollowBracket()
       TryCancel(oppositeTicket,"SIDE_CONFLICT");
       if(StopTicket(opposite)!=0)return; // frozen order cannot coexist with new side
    }
-   double desired=(direction>0?buy:sell);
+   const double desired=(direction>0?buy:sell);
+   const double selectedLot=ChosenLotForQuote(tick,direction,desired);
    ulong active=StopTicket(direction);
+   if(selectedLot<=0)
+   {
+      CancelAllPending("NO_VALID_BROKER_RISK_VOLUME");
+      return;
+   }
+   if(active!=0)
+   {
+      if(!OrderSelect(active))return;
+      const double activeLot=OrderGetDouble(ORDER_VOLUME_CURRENT);
+      if(activeLot>selectedLot+0.00000001)
+      {
+         TryCancel(active,"REDUCE_LOT_TO_FIT_SPREAD");
+         if(StopTicket(direction)!=0)return;
+         active=0;
+      }
+   }
    if(active!=0)
       FollowStop(direction,active,desired,tick);
    else if(PositionCount()==0 && Clock()-g_lastBracketBuild>=1)
    {
       g_lastBracketBuild=Clock();
-      PlaceStop(direction,desired);
+      PlaceStop(direction,desired,selectedLot);
    }
    if(StopTicket(direction)!=0)
       g_rearmOnNextPulse=false;
@@ -532,7 +576,7 @@ void ShowStatus()
    if(!InpShowStatus)return;
    Comment("AL-QANNAS CANDLE CHASER | GOLD DEMO M1",
            "\nDIRECTIONAL STOP follows M1/M5 and ASK/BID.",
-           "\nLot ",DoubleToString(InpLots,2),
+           "\nMax lot ",DoubleToString(InpLots,2),
            " | Pending ",PendingCount()," | Open ",PositionCount(),
            "\nM1 fills ",g_fillsThisBar,"/",InpMaxFillsPerM1,
            " | Total fills ",g_totalFills," | closed deals ",g_totalCloses,
