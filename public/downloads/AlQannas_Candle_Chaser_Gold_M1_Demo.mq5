@@ -5,8 +5,8 @@
 //| Separate from Gold LIMIT and Sniper 2.0 EAs; no profit guarantee.|
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.00"
-#property description "Candle Chaser: twin moving STOP pending orders, demo-only, close small net profit, hard broker SL/TP"
+#property version "1.01"
+#property description "Candle Chaser 1.01: rearm STOP chase on every closed trade, without waiting next M1. DEMO ONLY."
 #include <Trade/Trade.mqh>
 
 input bool   InpManualPause             = false;  // Pause NEW orders, manage existing trades
@@ -20,7 +20,7 @@ input double InpBrokerTargetNetUsd      = 1.00;   // Attach broker TP as backup
 input double InpMaxLossUsd             = 1.80;   // Intended per-position SL budget, not a fill guarantee
 input double InpCostReserveUsd         = 0.20;   // Conservative estimated fees, excludes unknown slippage
 input int    InpMaxHoldSec             = 85;     // Exit old position instead of holding indefinitely
-input int    InpMaxFillsPerM1          = 2;      // Up to 2 actual fills per M1, one OPEN at a time
+input int    InpMaxFillsPerM1          = 20;     // Allows repeated entries per M1; one open at a time
 input int    InpMaxPendingAgeSec       = 50;     // Replace stale pending stops
 input bool   InpCancelOnNewBar         = true;   // Follow the new M1 instead of stale previous levels
 input bool   InpEnableDailyStop        = false;  // Optional cumulative day limit; user controlled
@@ -37,6 +37,7 @@ datetime g_lastSellReprice=0;
 datetime g_lastCancelAttempt=0;
 datetime g_lastCloseAttempt=0;
 datetime g_lastBracketBuild=0;
+bool     g_rearmOnNextPulse=false; // Priority rearm as soon as position closes
 int      g_fillsThisBar=0;
 int      g_requestsThisBar=0;
 int      g_totalFills=0;
@@ -323,7 +324,15 @@ void ManagePositions()
       uint rc=g_trade.ResultRetcode();
       if(done && (rc==TRADE_RETCODE_DONE || rc==TRADE_RETCODE_DONE_PARTIAL))
       {
-         PrintFormat("AQ_CHASER CLOSE #%I64u net_est=%.2f age=%d reason=%s",
+         // A fully closed position should be followed by a fresh STOP chase
+         // at the next tick (or the 1-second timer), in the SAME M1 candle.
+         // Partial close is not a fresh-entry signal.
+         if(rc==TRADE_RETCODE_DONE)
+         {
+            g_rearmOnNextPulse=true;
+            g_lastPulseSecond=-1;
+         }
+         PrintFormat("AQ_CHASER CLOSE #%I64u net_est=%.2f age=%d reason=%s next=REARM",
                      ticket,net,age,reason);
       }
       else if(rc!=TRADE_RETCODE_POSITION_CLOSED)
@@ -409,16 +418,22 @@ void FollowBracket()
    // Keep existing pending orders when possible, reprice with a cooldown.
    if(buyTicket!=0)FollowStop(1,buyTicket,buy,tick);
    if(sellTicket!=0)FollowStop(-1,sellTicket,sell,tick);
+   // Install BOTH sides in the same quote cycle. Older code delayed the
+   // second side until the following second, missing fast M1 candles.
+   // Recheck positions after BUY STOP submission: a fill may occur instantly.
    if(StopTicket(1)==0 && Clock()-g_lastBracketBuild>=1)
    {
-      g_lastBracketBuild=Clock();
+      g_lastBracketBuild=Clock(); // limit retries if broker rejects order
       PlaceStop(1,buy);
    }
-   if(StopTicket(-1)==0 && Clock()-g_lastBracketBuild>=1)
+   if(PositionCount()==0 && StopTicket(-1)==0 &&
+      (StopTicket(1)!=0 || Clock()-g_lastBracketBuild>=1))
    {
       g_lastBracketBuild=Clock();
       PlaceStop(-1,sell);
    }
+   if(StopTicket(1)!=0 && StopTicket(-1)!=0)
+      g_rearmOnNextPulse=false;
 }
 void ExpireStaleStops()
 {
@@ -460,7 +475,12 @@ void Pulse()
    }
    ManagePositions(); // Check profits on EACH tick, even during throttle.
    int second=(int)(now%2147483600);
-   if(second==g_lastPulseSecond)return;
+   // Deal-close event may arrive in the very same second: bypass the usual
+   // one-second bracket refresh throttle ONCE on the next tick/timer cycle.
+   // Do not spin on every tick if the broker cannot accept a STOP bracket.
+   bool priorityRearm=g_rearmOnNextPulse;
+   g_rearmOnNextPulse=false;
+   if(second==g_lastPulseSecond && !priorityRearm)return;
    g_lastPulseSecond=second;
    if(RiskStop())
    {
@@ -492,7 +512,7 @@ int OnInit()
       InpMaxSpreadPrice<=0 || InpCloseNetProfitUsd<=0 ||
       InpBrokerTargetNetUsd<InpCloseNetProfitUsd ||
       InpCostReserveUsd<0 || InpMaxLossUsd<=InpCostReserveUsd ||
-      InpMaxHoldSec<5 || InpMaxFillsPerM1<1 || InpMaxFillsPerM1>6 ||
+      InpMaxHoldSec<5 || InpMaxFillsPerM1<1 || InpMaxFillsPerM1>60 ||
       InpMaxPendingAgeSec<5 || InpDailyStopUsd<=0 || InpFrozenRetrySec<1)
    {Alert("Candle Chaser invalid Inputs: review lots, stop, target, timing.");return INIT_PARAMETERS_INCORRECT;}
    int allowed=(int)SymbolInfoInteger(_Symbol,SYMBOL_ORDER_MODE);
@@ -503,7 +523,7 @@ int OnInit()
    g_trade.SetTypeFillingBySymbol(_Symbol);
    g_trade.SetAsyncMode(false);
    RefreshTradingDay();
-   PrintFormat("AQ_CHASER START v1.00 DEMO ONLY symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
+   PrintFormat("AQ_CHASER START v1.01 DEMO REARM symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
                _Symbol,InpLots,InpArmDistancePrice,InpRepriceStepPrice,
                InpCloseNetProfitUsd,InpMaxLossUsd);
    EventSetTimer(1);
@@ -535,7 +555,16 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       // Broker freezes or simultaneous spikes can still execute both orders.
       CancelAllPending("DEAL_FILLED_CANCEL_OPPOSITE");
    }
-   else if(entry==DEAL_ENTRY_OUT || entry==DEAL_ENTRY_INOUT)g_totalCloses++;
+   else if(entry==DEAL_ENTRY_OUT || entry==DEAL_ENTRY_INOUT)
+   {
+      g_totalCloses++;
+      // This also catches server-side SL/TP fills and close confirmations.
+      // PositionCount() in FollowBracket prevents overlapping fresh entries.
+      g_rearmOnNextPulse=true;
+      g_lastPulseSecond=-1;
+      g_lastBracketBuild=0;
+      PrintFormat("AQ_CHASER REARM after exit deal=%I64u, next quote/timer in same M1",trans.deal);
+   }
    double profit=HistoryDealGetDouble(trans.deal,DEAL_PROFIT)
                 +HistoryDealGetDouble(trans.deal,DEAL_COMMISSION)
                 +HistoryDealGetDouble(trans.deal,DEAL_SWAP)
