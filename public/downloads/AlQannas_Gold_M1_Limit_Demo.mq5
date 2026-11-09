@@ -5,8 +5,8 @@
 //| This EA does NOT call the Al-Qannas website/AI.                  |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "1.17"
-#property description "Al-Qannas Gold v1.17: user-selectable LIMIT pullback or STOP ladder, DEMO ONLY."
+#property version   "1.18"
+#property description "Al-Qannas Gold v1.18: fast M1 liquidity LIMIT sniper or optional STOP ladder, DEMO ONLY."
 #include <Trade/Trade.mqh>
 
 enum ENUM_AQ_ENTRY_STYLE
@@ -26,33 +26,36 @@ enum ENUM_AQ_DIRECTION
    AQ_BUYS_ONLY=1,
    AQ_SELLS_ONLY=2
 };
-input ENUM_AQ_ORDER_STYLE InpOrderStyle=AQ_LIMIT_PULLBACK; // LIMIT by default; switch to STOP ladder in Inputs
+input ENUM_AQ_ORDER_STYLE InpOrderStyle=AQ_LIMIT_PULLBACK; // FAST M1 LIMIT sniper; STOP optional
 input bool   InpManualPause          = false;  // Manually pause NEW entries; existing positions still managed
 input ENUM_AQ_DIRECTION InpTradeDirection=AQ_BOTH; // Both / BUY only / SELL only
 input bool   InpEnableDailyStop      = false;  // User decides whether daily loss auto-lock is enabled
-input ENUM_AQ_ENTRY_STYLE InpEntryStyle = AQ_BALANCED; // Change entry strictness in Inputs
+input ENUM_AQ_ENTRY_STYLE InpEntryStyle = AQ_FAST; // Change entry strictness in Inputs
+input bool   InpEnableAdaptiveWeights = true;   // Learn gently from CLOSED candle direction, never promise profits
+input double InpModelLearningRate     = 0.015;  // Bounded online adaptation to directional errors
 input bool   InpUseSignalFilter      = false;  // OFF = 2-sided STOP ladder, no M1/M5 hesitation
 input bool   InpCancelOppositeOnFill = true;   // Remove opposite STOP orders after a fill
 input int    InpStopLevelsPerSide    = 3;      // BUY STOP levels + SELL STOP levels
 input double InpFirstStopOffsetPrice = 0.30;   // First level above ASK / below BID (XAU price units)
 input double InpStopStepPrice        = 0.30;   // Distance between consecutive ladder levels
 input double InpMaxStopDistancePrice = 1.50;   // Hard max distance from executable quote
-input double InpLots                 = 0.01;   // Video-style starter volume, broker step applies
-input double InpTakeNetUsd           = 3.00;   // Demo hard TP estimated net USD
+input double InpLots                 = 0.02;   // Video-style starter volume, broker step applies
+input double InpTakeNetUsd           = 1.50;   // Demo hard TP estimated net USD
 input double InpMaxLossUsd           = 3.00;   // Intended max loss USD (broker SL/fast moves can overrun)
-input double InpTrailArmUsd          = 2.00;   // Attempt +$1.50 profit lock when peak exceeds $2.00
-input double InpTrailStartUsd        = 2.50;   // Start following the winning peak
-input double InpTrailGivebackUsd     = 0.50;   // Allowed giveback from best net profit
-input double InpProfitLockUsd        = 1.50;   // Minimum targeted protected net profit (not guaranteed)
+input double InpTrailArmUsd          = 0.90;   // Attempt +$1.50 profit lock when peak exceeds $2.00
+input double InpTrailStartUsd        = 1.20;   // Start following the winning peak
+input double InpTrailGivebackUsd     = 0.30;   // Allowed giveback from best net profit
+input double InpProfitLockUsd        = 0.50;   // Minimum targeted protected net profit (not guaranteed)
 input double InpMinSignalScore       = 0.45;   // Entry confidence threshold (higher = fewer entries)
 input double InpMinM5Alignment       = 0.12;   // Minimum agreement from last CLOSED M5 candles
 input int    InpMinTickConfirm       = 8;      // Minimum price-change ticks before first M1 signal
 input double InpMaxSpreadRangeRatio  = 0.35;   // Spread cannot dominate recent M1 range
 input double InpMaxLiveCandleRange   = 2.20;   // Skip live M1 spikes over mean range
-input double InpEntryPullbackRange   = 0.025;  // Small pending LIMIT pullback as fraction of M1 range
-input double InpMaxLimitDistancePrice = 0.70;  // MAX XAUUSD price distance from current executable quote
-input int    InpMaxPendingAgeSec     = 75;     // Rebuild aging STOP ladder after this many seconds
-input bool   InpCancelOnNewBar       = false;  // OFF: don't remove valid pending limits on new M1 bars
+input double InpEntryPullbackRange   = 0.010;  // Small pending LIMIT pullback as fraction of M1 range
+input double InpMaxLimitDistancePrice = 0.70;  // MAX XAU price distance from executable quote
+input double InpMaxZoneSnapPrice      = 0.45;  // Use liquidity zone if reasonably close to quote
+input int    InpMaxPendingAgeSec     = 55;     // Rebuild aging STOP ladder after this many seconds
+input bool   InpCancelOnNewBar       = true;  // OFF: don't remove valid pending limits on new M1 bars
 input bool   InpCancelOnPriceDrift   = false;  // OFF: do NOT cancel a LIMIT just because quote moved
 input double InpCancelDistancePrice  = 3.00;   // Separate XAU price distance to cancel if enabled
 input int    InpFrozenCancelRetrySec = 10;     // Cooldown after broker refuses to cancel as frozen
@@ -60,10 +63,13 @@ input bool   InpCancelOnFlowFlip     = false;  // Optional: turning ON may cance
 input double InpM5ConflictScore      = 0.80;   // Skip strong M5 trend conflicts
 input double InpDailyStopUsd         = 40.00;  // Used only when InpEnableDailyStop=true
 input double InpCostReserveUsd       = 0.20;   // Estimated round-trip costs per trade
-input int    InpMaxHoldSeconds       = 180;    // Allow more time for winning moves without endless holding
-input int    InpMaxConcurrent       = 6;      // Open positions + pending orders combined
-input int    InpMaxEntriesPerM1      = 8;      // STOP placement successes per minute
+input int    InpMaxHoldSeconds       = 120;    // Allow more time for winning moves without endless holding
+input int    InpMaxConcurrent       = 1;      // Open positions + pending orders combined
+input int    InpMaxEntriesPerM1      = 1;      // STOP placement successes per minute
 input int    InpMinOrderSpacingSec   = 2;      // Minimum seconds between STOP placement batches
+input bool   InpExitOnTickReversal   = true;   // Cut adverse position on strong opposite short-term tick pressure
+input double InpEarlyExitLossUsd     = 1.30;   // Loss threshold for early reversal exit (not guaranteed)
+input int    InpEarlyExitMinAgeSec   = 12;     // Let entries settle briefly before reversal check
 input int    InpFrozenRetrySeconds   = 5;      // Back off failed broker-frozen position closes
 input double InpMaxSpreadPrice       = 0.80;   // XAU price units (not points)
 input ulong  InpMagic                = 560179505;
@@ -85,6 +91,25 @@ int       g_recentTickIndex = 0;
 bool      g_dayLocked = false;
 string    g_lockKey = "";
 string    g_status = "Ready";
+string    g_lastLimitEntryKey="";
+datetime  g_lastLimitOrderBar=0;
+int       g_barAttempts=0;
+int       g_barFills=0;
+int       g_barClosedDeals=0;
+
+#define AQ_FEATURE_COUNT 6
+double    g_modelWeights[AQ_FEATURE_COUNT];
+double    g_predictionFeatures[AQ_FEATURE_COUNT];
+string    g_modelKey="";
+datetime  g_predictionBar=0;
+int       g_predictionSide=0;
+double    g_predictionScore=0.0;
+int       g_predictionsResolved=0;
+int       g_predictionsCorrect=0;
+double    g_buyZone=0.0;
+double    g_sellZone=0.0;
+double    g_pocPrice=0.0;
+
 
 // All calls to submit a new order fail closed outside an MT5 DEMO account.
 bool DemoAccount()
@@ -346,9 +371,8 @@ void ManagePositions(bool forceClose=false)
          GlobalVariableSet(key,peak); // High-water mark persists if EA restarts.
       }
 
-      // New exit policy: do not close at the first +$0.70.
-      // At peak +$2.25, try to lock at least +$1.50 using broker stop levels.
-      // From +$3.00 peak onward, preserve peak minus $0.80.
+      // Net-profit thresholds are editable. A smaller TP is sought without
+      // opening a market-entry trade; broker freeze/spread can delay exits.
       double protectedNet=0.0;
       if(peak>=InpTrailArmUsd)protectedNet=InpProfitLockUsd;
       if(peak>=InpTrailStartUsd)
@@ -368,7 +392,11 @@ void ManagePositions(bool forceClose=false)
       bool trailingExit=(protectedNet>0 && net<=protectedNet);
       bool lossStop=(net<=-InpMaxLossUsd);
       bool timeStop=(age>=InpMaxHoldSeconds);
-      if(!forceClose && !hardProfit && !trailingExit && !lossStop && !timeStop)continue;
+      bool reverseExit=(InpExitOnTickReversal && age>=InpEarlyExitMinAgeSec &&
+                        g_recentTickCount>=8 && net<=-InpEarlyExitLossUsd &&
+                        side*RecentTickFlow() < -0.65);
+      if(!forceClose && !hardProfit && !trailingExit && !lossStop &&
+         !timeStop && !reverseExit)continue;
       // Broker frozen restriction (10029) is not solvable by spamming Close().
       // Original broker SL/TP remains active while waiting to retry.
       if(GlobalVariableCheck(closeRetryKey) &&
@@ -382,7 +410,7 @@ void ManagePositions(bool forceClose=false)
          PrintFormat("Al-Qannas CLOSE #%I64u net_est=%.2f peak=%.2f age=%d reason=%s",
            ticket,net,peak,age,
            forceClose?"DAY_LOCK":hardProfit?"HARD_TP":lossStop?"LOSS_STOP":
-           trailingExit?"PROFIT_TRAIL":"MAX_HOLD");
+           trailingExit?"PROFIT_TRAIL":reverseExit?"FLOW_INVALIDATION":"MAX_HOLD");
          GlobalVariableDel(key);
          GlobalVariableDel(closeRetryKey);
       }
@@ -436,11 +464,92 @@ double RecentTickFlow()
    return sum/(double)g_recentTickCount;
 }
 
+double Bound(double value,double low,double high)
+{
+   return MathMax(low,MathMin(high,value));
+}
+
+void InitPredictionModel()
+{
+   g_modelKey="AQModel_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+"_"+
+              _Symbol+"_"+IntegerToString((long)InpMagic)+"_";
+   double starting[AQ_FEATURE_COUNT]={0.36,0.31,0.26,0.32,0.16,0.19};
+   for(int k=0;k<AQ_FEATURE_COUNT;k++)
+   {
+      string key=g_modelKey+IntegerToString(k);
+      g_modelWeights[k]=starting[k];
+      if(GlobalVariableCheck(key))
+         g_modelWeights[k]=Bound(GlobalVariableGet(key),-1.25,1.25);
+      g_predictionFeatures[k]=0.0;
+   }
+}
+
+void LogPredictionResult(datetime closedBar,int actual,double move)
+{
+   int correct=(actual!=0 && actual==g_predictionSide?1:0);
+   if(actual!=0)
+   {
+      g_predictionsResolved++;
+      g_predictionsCorrect+=correct;
+      // Online logistic update, using ONLY the next closed candle outcome.
+      // It never changes an already published prediction.
+      if(InpEnableAdaptiveWeights)
+      {
+         double probability=1.0/(1.0+MathExp(-Bound(g_predictionScore,-6.0,6.0)));
+         double error=(actual>0?1.0:0.0)-probability;
+         for(int k=0;k<AQ_FEATURE_COUNT;k++)
+         {
+            double next=g_modelWeights[k]+InpModelLearningRate*error*g_predictionFeatures[k];
+            g_modelWeights[k]=Bound(next,-1.25,1.25);
+            GlobalVariableSet(g_modelKey+IntegerToString(k),g_modelWeights[k]);
+         }
+      }
+   }
+   // Append one completed prediction per bar; source data can be inspected
+   // without requiring a dashboard or assuming actual exchange order flow.
+   int file=FileOpen("AlQannas_Gold_M1_Predictions.csv",
+                     FILE_READ|FILE_WRITE|FILE_CSV|FILE_SHARE_READ,';');
+   if(file!=INVALID_HANDLE)
+   {
+      FileSeek(file,0,SEEK_END);
+      FileWrite(file,TimeToString(closedBar,TIME_DATE|TIME_MINUTES),
+                g_predictionSide,DoubleToString(g_predictionScore,4),
+                actual,DoubleToString(move,_Digits),correct,
+                g_ordersThisBar,g_barAttempts,g_barFills,g_barClosedDeals,
+                DoubleToString(g_pocPrice,_Digits));
+      FileClose(file);
+   }
+   PrintFormat("AQ_M1_EVAL bar=%s forecast=%s score=%.3f actual=%s movement=%.*f hit=%d sample=%d accuracy=%.1f%% limit_sent=%d attempts=%d",
+               TimeToString(closedBar,TIME_DATE|TIME_MINUTES),
+               g_predictionSide>0?"BUY":"SELL",g_predictionScore,
+               actual>0?"UP":(actual<0?"DOWN":"FLAT"),
+               _Digits,move,correct,g_predictionsResolved,
+               100.0*g_predictionsCorrect/MathMax(1,g_predictionsResolved),
+               g_ordersThisBar,g_barAttempts);
+}
+
+void FinalizePreviousCandle(datetime oldBar)
+{
+   if(oldBar<=0 || g_predictionBar!=oldBar || g_predictionSide==0)return;
+   datetime latestClosed=iTime(_Symbol,PERIOD_M1,1);
+   if(latestClosed!=oldBar)return; // Don't train on a mismatched candle after a gap.
+   double open=iOpen(_Symbol,PERIOD_M1,1);
+   double close=iClose(_Symbol,PERIOD_M1,1);
+   if(open<=0 || close<=0)return;
+   int actual=(close>open+TickSize()*0.5?1:(close<open-TickSize()*0.5?-1:0));
+   LogPredictionResult(oldBar,actual,close-open);
+}
+
 int LocalSignal()
 {
-   // All historic input candles are CLOSED (shift 1), so no M5 look-ahead.
-   // The live M1 bar and recent bid/ask ticks only confirm current direction.
-   // This is heuristic MT5 analysis, not exchange order flow or Render AI.
+   if(g_predictionBar==g_barStart && g_predictionSide!=0)
+   {
+      g_status=StringFormat("M1 early %s, score %.2f",
+                            g_predictionSide>0?"BUY":"SELL",g_predictionScore);
+      return g_predictionSide;
+   }
+   // Closed M1/M5 candles are the only historic inputs. Current M1 and recent
+   // tick changes are observed at prediction time, never future bars.
    MqlRates bars[],m5[],live[];
    ArraySetAsSeries(bars,true);
    ArraySetAsSeries(m5,true);
@@ -449,122 +558,130 @@ int LocalSignal()
    int n5=CopyRates(_Symbol,PERIOD_M5,1,12,m5);
    if(n<16 || n5<8 || CopyRates(_Symbol,PERIOD_M1,0,1,live)!=1)
    {
-      g_status="Waiting for closed M1/M5 history";
+      g_status="Waiting for M1/M5 historical bars";
+      return 0;
+   }
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol,tick) || tick.ask<=tick.bid || tick.bid<=0)
+   {
+      g_status="Waiting for valid executable quote";
       return 0;
    }
    double low=bars[0].low,high=bars[0].high,avgRange=0.0;
-   for(int i=0;i<n;i++)
+   double bullVol=0.0,bearVol=0.0,totalVol=0.0;
+   double volumeBins[16];
+   ArrayInitialize(volumeBins,0.0);
+   for(int k=0;k<n;k++)
    {
-      low=MathMin(low,bars[i].low);
-      high=MathMax(high,bars[i].high);
-      avgRange+=MathMax(_Point,bars[i].high-bars[i].low);
+      low=MathMin(low,bars[k].low);
+      high=MathMax(high,bars[k].high);
+      avgRange+=MathMax(TickSize(),bars[k].high-bars[k].low);
+      double volume=(double)bars[k].tick_volume;
+      totalVol+=volume;
+      if(bars[k].close>bars[k].open)bullVol+=volume;
+      else if(bars[k].close<bars[k].open)bearVol+=volume;
    }
-   avgRange=MathMax(_Point,avgRange/n);
-   g_referenceM1Range=avgRange; // Shared with pending-LIMIT pullback placement.
-
-   MqlTick tick;
-   if(!SymbolInfoTick(_Symbol,tick) || tick.ask<=tick.bid || tick.bid<=0)return 0;
-   double spread=tick.ask-tick.bid;
-   if(spread/avgRange>InpMaxSpreadRangeRatio)
-   {
-      g_status="Spread large relative to M1 range";
-      return 0;
-   }
-   double liveRange=MathMax(live[0].high,tick.ask)-MathMin(live[0].low,tick.bid);
-   if(liveRange>avgRange*InpMaxLiveCandleRange)
-   {
-      g_status="Live M1 spike / stretched candle";
-      return 0;
-   }
-   if(g_recentTickCount<InpMinTickConfirm)
-   {
-      g_status="Collecting recent ticks";
-      return 0;
-   }
-   double flow=RecentTickFlow();
-   double avgM5=0.0;
-   for(int i=0;i<n5;i++)
-      avgM5+=MathMax(_Point,m5[i].high-m5[i].low);
-   avgM5=MathMax(_Point,avgM5/n5);
-   double m5trend=(m5[0].close-m5[3].close)/avgM5;
-   double m5LastBody=(m5[0].close-m5[0].open)/avgM5;
-   double m1momentum=(bars[0].close-bars[3].close)/avgRange;
-   double m1body=(bars[0].close-bars[0].open)/avgRange;
-   double m1WickReject=(MathMin(bars[0].open,bars[0].close)-bars[0].low
-                        -bars[0].high+MathMax(bars[0].open,bars[0].close))/avgRange;
-   double mid=(tick.bid+tick.ask)*0.5;
-   double liveBody=(mid-live[0].open)/avgRange;
-
-   // Approximate price-volume concentration using M1 tick volumes. Not real
-   // exchange traded volume or a volume-profile/order-book feed.
-   double poc=(low+high)*0.5;
+   avgRange=MathMax(TickSize(),avgRange/n);
+   g_referenceM1Range=avgRange;
+   g_pocPrice=(low+high)*0.5;
    if(high-low>TickSize())
    {
-      double hist[12];
-      ArrayInitialize(hist,0.0);
-      for(int i=0;i<n;i++)
+      for(int k=0;k<n;k++)
       {
-         double typical=(bars[i].high+bars[i].low+bars[i].close)/3.0;
-         int k=(int)MathFloor((typical-low)/(high-low)*12.0);
-         if(k<0)k=0;
-         if(k>11)k=11;
-         hist[k]+(double)bars[i].tick_volume;
+         double typical=(bars[k].high+bars[k].low+bars[k].close)/3.0;
+         int index=(int)Bound(MathFloor((typical-low)/(high-low)*16.0),0,15);
+         volumeBins[index]+=(double)bars[k].tick_volume;
       }
       int best=0;
-      for(int i=1;i<12;i++)if(hist[i]>hist[best])best=i;
-      poc=low+(best+0.5)*(high-low)/12.0;
+      for(int k=1;k<16;k++)if(volumeBins[k]>volumeBins[best])best=k;
+      g_pocPrice=low+(best+0.5)*(high-low)/16.0;
    }
 
-   // Weight closed M5 trend, closed M1 structure and the most recent ticks.
-   double score=0.52*m5trend+0.18*m5LastBody+0.30*m1momentum+
-                0.36*m1body+0.28*flow+0.26*liveBody+
-                0.13*m1WickReject+0.10*(mid-poc)/avgRange;
+   double swingLow=bars[1].low,swingHigh=bars[1].high;
+   for(int k=2;k<=8;k++)
+   {
+      swingLow=MathMin(swingLow,bars[k].low);
+      swingHigh=MathMax(swingHigh,bars[k].high);
+   }
+   bool sweptLow=(bars[0].low<swingLow-TickSize() &&
+                  bars[0].close>swingLow);
+   bool sweptHigh=(bars[0].high>swingHigh+TickSize() &&
+                   bars[0].close<swingHigh);
+   double sweep=(sweptLow?1.0:0.0)-(sweptHigh?1.0:0.0);
+   double barRange=MathMax(TickSize(),bars[0].high-bars[0].low);
+   double lowerWick=(MathMin(bars[0].open,bars[0].close)-bars[0].low)/barRange;
+   double upperWick=(bars[0].high-MathMax(bars[0].open,bars[0].close))/barRange;
+   double rejection=lowerWick-upperWick;
+   double volumePressure=(totalVol>0?(bullVol-bearVol)/totalVol:0.0);
+   double m1Momentum=(bars[0].close-bars[3].close)/avgRange;
+   double avgM5=0.0;
+   for(int k=0;k<n5;k++)
+      avgM5+=MathMax(TickSize(),m5[k].high-m5[k].low);
+   avgM5=MathMax(TickSize(),avgM5/n5);
+   double m5Momentum=(m5[0].close-m5[3].close)/avgM5;
+   double flow=RecentTickFlow();
+   double mid=(tick.bid+tick.ask)*0.5;
+   double liveBody=(mid-live[0].open)/avgRange;
+   double m1Body=(bars[0].close-bars[0].open)/avgRange;
+
+   double f[AQ_FEATURE_COUNT];
+   f[0]=Bound(m1Momentum/1.8,-1.0,1.0);
+   f[1]=Bound(m5Momentum/2.2,-1.0,1.0);
+   f[2]=Bound(0.45*flow+0.55*volumePressure,-1.0,1.0);
+   f[3]=Bound(0.75*sweep+0.60*rejection,-1.0,1.0);
+   f[4]=Bound((mid-g_pocPrice)/MathMax(avgRange,TickSize()),-1.0,1.0);
+   f[5]=Bound(0.45*liveBody+0.55*m1Body,-1.0,1.0);
+   double score=0.0;
+   for(int k=0;k<AQ_FEATURE_COUNT;k++)
+      score+=g_modelWeights[k]*f[k];
    if(!MathIsValidNumber(score))
    {
-      g_status="Invalid directional score";
+      g_status="Invalid candle scoring value";
       return 0;
    }
-   double threshold=InpMinSignalScore;
-   if(InpEntryStyle==AQ_FAST)threshold*=0.70;
-   if(InpEntryStyle==AQ_PRECISION)threshold*=1.40;
-   if(MathAbs(score)<threshold)
-   {
-      g_status="Direction confidence too low";
-      return 0;
-   }
+   // Do NOT use the old multi-filter M5 consensus veto or confidence gate.
+   // Every valid M1 candle gets a directional forecast promptly; entries are
+   // still subject to available quotes, server rules, SL and spread costs.
    int side=(score>0.0?1:-1);
-   double dirM5=side*(0.80*m5trend+0.20*m5LastBody);
-   double dirM1=side*(0.70*m1momentum+0.30*m1body);
-   double dirFlow=side*flow;
-   double dirLive=side*liveBody;
-
-   // Do not buy a one-minute rebound against a sustained M5 selloff, or
-   // sell a one-minute dip against a sustained M5 rally.
-   if(dirM5<=-InpM5ConflictScore)
+   if(MathAbs(score)<0.025)
    {
-      g_status="Strong opposite M5 trend";
-      return 0;
+      double fallback=0.55*m1Body+0.30*m1Momentum+0.15*flow;
+      if(MathAbs(fallback)<0.001)fallback=m5Momentum;
+      side=(fallback>=0.0?1:-1);
    }
-   if(InpEntryStyle>=AQ_BALANCED &&
-      (dirM5<InpMinM5Alignment || dirM1<=0.0 || dirFlow<-0.18 ||
-       dirLive<-0.25))
+   // Approximate demand/supply references for a close LIMIT pullback; only
+   // the executed broker Bid/Ask and minimum stop distance decide viability.
+   // Nearest previously traded rejection/support levels, not a distant
+   // all-session min/max. POC participates only when on the pullback side.
+   g_buyZone=0.0;
+   g_sellZone=0.0;
+   for(int k=0;k<12;k++)
    {
-      g_status="M1 / M5 / tick trend mismatch";
-      return 0;
+      double support=bars[k].low;
+      double resistance=bars[k].high;
+      if(support<tick.bid-TickSize() && support>g_buyZone)
+         g_buyZone=support;
+      if(resistance>tick.ask+TickSize() &&
+         (g_sellZone<=0.0 || resistance<g_sellZone))
+         g_sellZone=resistance;
    }
-   if(InpEntryStyle==AQ_PRECISION &&
-      (dirFlow<0.12 || dirLive<-0.02 || dirM1<0.12 ||
-       dirM5<InpMinM5Alignment*1.70))
-   {
-      g_status="Precision entry not yet confirmed";
-      return 0;
-   }
-   // The score is diagnostic only; only a successful broker LIMIT order
-   // is an actual trade. No prediction accuracy is implied.
-   g_status=StringFormat("Directional %s score=%.2f m5=%.2f flow=%.2f",
-                         side>0?"BUY":"SELL",score,dirM5,dirFlow);
+   if(g_pocPrice<tick.bid-TickSize() && g_pocPrice>g_buyZone)
+      g_buyZone=g_pocPrice;
+   if(g_pocPrice>tick.ask+TickSize() &&
+      (g_sellZone<=0.0 || g_pocPrice<g_sellZone))
+      g_sellZone=g_pocPrice;
+   g_predictionBar=g_barStart;
+   g_predictionSide=side;
+   g_predictionScore=score;
+   for(int k=0;k<AQ_FEATURE_COUNT;k++)g_predictionFeatures[k]=f[k];
+   g_status=StringFormat("M1 %s score %.2f | sweep %.2f | flow %.2f | poc %.*f",
+                         side>0?"BUY":"SELL",score,sweep,flow,_Digits,g_pocPrice);
+   PrintFormat("AQ_M1_FORECAST bar=%s side=%s score=%.3f sweep=%.2f flow=%.2f poc=%.*f",
+               TimeToString(g_barStart,TIME_DATE|TIME_MINUTES),
+               side>0?"BUY":"SELL",score,sweep,flow,_Digits,g_pocPrice);
    return side;
 }
+
 void CancelStaleStops()
 {
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) ||
@@ -696,6 +813,16 @@ bool PlaceLimit(int side)
    gap=MathMax(gap,minDist-spread+2.0*TickSize());
    double entry=(side>0?PriceRound(tick.bid-gap,-1):
                         PriceRound(tick.ask+gap,1));
+   // Prefer a nearby supply/demand / high-volume pullback level, without
+   // waiting for distant zones and losing every fast M1 opportunity.
+   double zone=(side>0?g_buyZone:g_sellZone);
+   double zoneDistance=(side>0?tick.ask-zone:zone-tick.bid);
+   double distanceCap=MathMin(InpMaxZoneSnapPrice,InpMaxLimitDistancePrice);
+   bool zoneValid=(zone>0 && zoneDistance>=minDist+TickSize() &&
+                   zoneDistance<=distanceCap+TickSize()*0.5 &&
+                   (side>0?zone<tick.bid:zone>tick.ask));
+   if(zoneValid)
+      entry=(side>0?PriceRound(zone,-1):PriceRound(zone,1));
    if(entry<=0)return false;
    // Only place a BUY LIMIT under the bid or SELL LIMIT over the ask.
    double quoteDistance=(side>0?tick.ask-entry:entry-tick.bid);
@@ -736,6 +863,7 @@ bool PlaceLimit(int side)
    else {g_status="No supported LIMIT expiration mode";return false;}
 
    g_lastOrderAt=now;
+   g_barAttempts++;
    bool sent=false;
    if(side>0)
       sent=g_trade.BuyLimit(InpLots,entry,_Symbol,sl,tp,lifetime,until,"AQ Gold demo BUY LIMIT");
@@ -750,6 +878,8 @@ bool PlaceLimit(int side)
       return false;
    }
    g_ordersThisBar++;
+   g_lastLimitOrderBar=g_barStart;
+   if(g_lastLimitEntryKey!="")GlobalVariableSet(g_lastLimitEntryKey,(double)g_barStart);
    g_status="LIMIT pullback order placed";
    PrintFormat("Al-Qannas %s LIMIT #%I64u lot=%.2f bid=%.*f ask=%.*f entry=%.*f gap=%.3f SL=%.*f TP=%.*f",
                side>0?"BUY":"SELL",g_trade.ResultOrder(),InpLots,
@@ -877,7 +1007,9 @@ void DisplayStatus(double closed,double floating,int active)
            "\nLot ",DoubleToString(InpLots,2)," | Pending+open: ",active,"/",InpMaxConcurrent,
            "\nDaily closed USD: ",DoubleToString(closed,2),
            " | Floating est: ",DoubleToString(floating,2),
-           "\nPlaced this candle: ",g_ordersThisBar,"/",InpMaxEntriesPerM1,
+           "\nM1 forecast: ",g_predictionBar==g_barStart?(g_predictionSide>0?"BUY":"SELL"):"WAIT",
+           " | Forward hits: ",g_predictionsCorrect,"/",g_predictionsResolved,
+           "\nPlaced: ",g_ordersThisBar," | Filled: ",g_barFills,
            " | ",g_dayLocked?"DAY LOCK":(InpManualPause?"MANUAL PAUSE":"ACTIVE")," | ",g_status);
 }
 
@@ -889,8 +1021,12 @@ void Pulse()
    datetime bar=iTime(_Symbol,PERIOD_M1,0);
    if(bar>0 && bar!=g_barStart)
    {
+      FinalizePreviousCandle(g_barStart);
       g_barStart=bar;
       g_ordersThisBar=0;
+      g_barAttempts=0;
+      g_barFills=0;
+      g_barClosedDeals=0;
       g_upTicks=0;
       g_downTicks=0;
       g_recentTickCount=0;
@@ -918,6 +1054,10 @@ void Pulse()
       InpCancelOppositeOnFill && openSide!=0 && openSide!=2)
       RemoveOppositeStops(openSide);
    int active=CountActive();
+   // Predict EVERY valid candle, including while an earlier position is open.
+   // Forecast freezes at first available quote and is evaluated next minute.
+   if(g_barStart>0 && g_predictionBar!=g_barStart)
+      LocalSignal();
    DisplayStatus(closed,floating,active);
    if(!historyOK || g_dayLocked || g_barStart<=0 || !ExactVolume()) return;
    if(InpManualPause)
@@ -948,10 +1088,17 @@ void Pulse()
    if((ENUM_SYMBOL_TRADE_MODE)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_MODE)!=SYMBOL_TRADE_MODE_FULL) return;
    if(ServerNow()-g_lastOrderAt<InpMinOrderSpacingSec) return;
    if(g_ordersThisBar>=InpMaxEntriesPerM1) return;
-   int slots=(int)InpMaxConcurrent;
+   int slots=(InpOrderStyle==AQ_LIMIT_PULLBACK?1:(int)InpMaxConcurrent);
    if((ENUM_ACCOUNT_MARGIN_MODE)AccountInfoInteger(ACCOUNT_MARGIN_MODE)!=ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
-      slots=1; // Netting accounts cannot independently manage four positions.
+      slots=1;
    if(active>=slots) return;
+   // Persist the M1 order guard so a MetaEditor recompile/reload doesn't place
+   // a second LIMIT in the same candle after the first order has closed.
+   if(InpOrderStyle==AQ_LIMIT_PULLBACK && g_lastLimitOrderBar==g_barStart)
+   {
+      g_status="Already sent 1 LIMIT this candle";
+      return;
+   }
    if(HasOtherModeOrders())
    {
       g_status="Other-mode pending orders; waiting for broker cancellation";
@@ -1004,6 +1151,10 @@ int OnInit()
       InpMinTickConfirm<0 || InpMaxSpreadRangeRatio<=0 ||
       InpMaxLiveCandleRange<=0 || InpEntryPullbackRange<0 ||
       InpEntryPullbackRange>1 || InpMaxLimitDistancePrice<=2.0*TickSize() ||
+      InpMaxZoneSnapPrice<=0 || InpMaxZoneSnapPrice>InpMaxLimitDistancePrice ||
+      InpEarlyExitLossUsd<=0 || InpEarlyExitLossUsd>InpMaxLossUsd ||
+      InpEarlyExitMinAgeSec<1 ||
+      InpModelLearningRate<0 || InpModelLearningRate>0.10 ||
       InpMaxPendingAgeSec<2 || InpCancelDistancePrice<=0 ||
       InpFrozenCancelRetrySec<1 || InpDailyStopUsd<=0 ||
       (InpEnableDailyStop && InpDailyStopUsd<=InpMaxLossUsd) ||
@@ -1020,13 +1171,18 @@ int OnInit()
    {
       Alert("Gold symbol does not allow the selected pending order mode");return INIT_FAILED;
    }
+   InitPredictionModel();
+   g_lastLimitEntryKey="AQ_LastLimit_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))
+        +"_"+_Symbol+"_"+IntegerToString((long)InpMagic);
+   if(GlobalVariableCheck(g_lastLimitEntryKey))
+      g_lastLimitOrderBar=(datetime)GlobalVariableGet(g_lastLimitEntryKey);
    g_trade.SetExpertMagicNumber(InpMagic);
    g_trade.SetDeviationInPoints(30);
    g_trade.SetTypeFillingBySymbol(_Symbol);
    g_trade.SetAsyncMode(false);
    ReadDay();
    EventSetTimer(1);
-   PrintFormat("Al-Qannas Gold DEMO v1.17 %s: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
+   PrintFormat("Al-Qannas Gold DEMO v1.18 %s: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
        (InpOrderStyle==AQ_LIMIT_PULLBACK?"LIMIT":"STOP_LADDER"),
        _Symbol,InpLots,InpTakeNetUsd,InpMaxLossUsd,InpTrailArmUsd,InpTrailStartUsd,InpTrailGivebackUsd,InpDailyStopUsd);
    return INIT_SUCCEEDED;
@@ -1038,5 +1194,41 @@ void OnDeinit(const int reason)
    RemoveOwnLimits(true); // Avoid leaving unfilled GTC orders after EA removal.
    Comment("");
 }
+// Trade-by-trade broker deal audit. Only a completed broker DEAL is recorded,
+// not a pending order or a fabricated backtest profit.
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                        const MqlTradeRequest &request,
+                        const MqlTradeResult &result)
+{
+   if(trans.type!=TRADE_TRANSACTION_DEAL_ADD || trans.deal==0)return;
+   if(!HistoryDealSelect(trans.deal))return;
+   if(HistoryDealGetString(trans.deal,DEAL_SYMBOL)!=_Symbol)return;
+   if((ulong)HistoryDealGetInteger(trans.deal,DEAL_MAGIC)!=InpMagic)return;
+   ENUM_DEAL_ENTRY kind=(ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal,DEAL_ENTRY);
+   if(kind!=DEAL_ENTRY_IN && kind!=DEAL_ENTRY_OUT && kind!=DEAL_ENTRY_INOUT)return;
+   if(kind==DEAL_ENTRY_IN)g_barFills++;
+   else g_barClosedDeals++;
+   double net=HistoryDealGetDouble(trans.deal,DEAL_PROFIT)
+             +HistoryDealGetDouble(trans.deal,DEAL_COMMISSION)
+             +HistoryDealGetDouble(trans.deal,DEAL_SWAP)
+             +HistoryDealGetDouble(trans.deal,DEAL_FEE);
+   double price=HistoryDealGetDouble(trans.deal,DEAL_PRICE);
+   double volume=HistoryDealGetDouble(trans.deal,DEAL_VOLUME);
+   datetime when=(datetime)HistoryDealGetInteger(trans.deal,DEAL_TIME);
+   int file=FileOpen("AlQannas_Gold_Trades.csv",
+                     FILE_READ|FILE_WRITE|FILE_CSV|FILE_SHARE_READ,';');
+   if(file!=INVALID_HANDLE)
+   {
+      FileSeek(file,0,SEEK_END);
+      FileWrite(file,TimeToString(when,TIME_DATE|TIME_SECONDS),
+                (long)trans.deal,kind==DEAL_ENTRY_IN?"IN":"OUT",
+                DoubleToString(volume,2),DoubleToString(price,_Digits),
+                DoubleToString(net,2));
+      FileClose(file);
+   }
+   PrintFormat("AQ_TRADE_DEAL deal=%I64u direction=%s vol=%.2f price=%.*f net=%.2f",
+               trans.deal,kind==DEAL_ENTRY_IN?"IN":"OUT",volume,_Digits,price,net);
+}
+
 void OnTick() {UpdateTickPressure();Pulse();}
 void OnTimer(){Pulse();}
