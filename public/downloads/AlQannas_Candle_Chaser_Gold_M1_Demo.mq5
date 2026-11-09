@@ -1,12 +1,12 @@
 //+------------------------------------------------------------------+
-//| AL-QANNAS CANDLE CHASER v1.00 - EXNESS DEMO ONLY                  |
+//| AL-QANNAS CANDLE CHASER v1.02 - EXNESS DEMO ONLY                  |
 //| Inspired by the visible MT5 video: trailing BUY STOP/SELL STOP  |
 //| pending orders which become actual BUY/SELL deals on activation. |
 //| Separate from Gold LIMIT and Sniper 2.0 EAs; no profit guarantee.|
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.01"
-#property description "Candle Chaser 1.01: rearm STOP chase on every closed trade, without waiting next M1. DEMO ONLY."
+#property version "1.02"
+#property description "Candle Chaser 1.02: directional STOP, balanced targets, cooldown and day lock. DEMO ONLY."
 #include <Trade/Trade.mqh>
 
 input bool   InpManualPause             = false;  // Pause NEW orders, manage existing trades
@@ -15,16 +15,20 @@ input double InpArmDistancePrice        = 0.20;   // Follow M1 with BUY STOP abo
 input double InpRepriceStepPrice        = 0.12;   // Move pending stops after quote moves by this much
 input int    InpRepriceCooldownSec      = 3;      // Minimum interval between moving one pending order
 input double InpMaxSpreadPrice          = 0.85;   // Never chase an excessive bid/ask spread
-input double InpCloseNetProfitUsd       = 0.65;   // Ask for immediate exit at this ESTIMATED net profit
-input double InpBrokerTargetNetUsd      = 1.00;   // Attach broker TP as backup
-input double InpMaxLossUsd             = 1.80;   // Intended per-position SL budget, not a fill guarantee
+input double InpCloseNetProfitUsd       = 1.25;   // Ask for immediate exit at this ESTIMATED net profit
+input double InpBrokerTargetNetUsd      = 1.65;   // Attach broker TP as backup
+input double InpMaxLossUsd             = 1.25;   // Intended per-position SL budget, not a fill guarantee
 input double InpCostReserveUsd         = 0.20;   // Conservative estimated fees, excludes unknown slippage
 input int    InpMaxHoldSec             = 85;     // Exit old position instead of holding indefinitely
 input int    InpMaxFillsPerM1          = 20;     // Allows repeated entries per M1; one open at a time
 input int    InpMaxPendingAgeSec       = 50;     // Replace stale pending stops
 input bool   InpCancelOnNewBar         = true;   // Follow the new M1 instead of stale previous levels
-input bool   InpEnableDailyStop        = false;  // Optional cumulative day limit; user controlled
+input bool   InpEnableDailyStop        = true;   // Optional cumulative day limit; user controlled
 input double InpDailyStopUsd           = 40.00;  // Used only if enabled
+input double InpMinDirectionScorePrice  = 0.18;   // Completed M1 plus current bid pressure
+input double InpM5ConflictBodyPrice    = 1.50;   // Avoid strong opposite completed M5 candle
+input double InpMaxEntryCostToWinRatio  = 0.70;   // (spread + reserve) / intended profit
+input int    InpLossCooldownSec        = 15;     // Short pause after losing broker exit
 input int    InpFrozenRetrySec         = 5;      // Slow down retcode 10029 retries
 input ulong  InpMagic                  = 560179530; // Different from all previous Al-Qannas EAs
 input bool   InpShowStatus             = true;
@@ -37,6 +41,7 @@ datetime g_lastSellReprice=0;
 datetime g_lastCancelAttempt=0;
 datetime g_lastCloseAttempt=0;
 datetime g_lastBracketBuild=0;
+datetime g_lastLossDealAt=0;
 bool     g_rearmOnNextPulse=false; // Priority rearm as soon as position closes
 int      g_fillsThisBar=0;
 int      g_requestsThisBar=0;
@@ -513,7 +518,10 @@ int OnInit()
       InpBrokerTargetNetUsd<InpCloseNetProfitUsd ||
       InpCostReserveUsd<0 || InpMaxLossUsd<=InpCostReserveUsd ||
       InpMaxHoldSec<5 || InpMaxFillsPerM1<1 || InpMaxFillsPerM1>60 ||
-      InpMaxPendingAgeSec<5 || InpDailyStopUsd<=0 || InpFrozenRetrySec<1)
+      InpMaxPendingAgeSec<5 || InpDailyStopUsd<=0 || InpFrozenRetrySec<1 ||
+       InpMinDirectionScorePrice<=0 || InpM5ConflictBodyPrice<0 ||
+       InpMaxEntryCostToWinRatio<=0 || InpMaxEntryCostToWinRatio>1.0 ||
+       InpLossCooldownSec<0 || InpLossCooldownSec>90)
    {Alert("Candle Chaser invalid Inputs: review lots, stop, target, timing.");return INIT_PARAMETERS_INCORRECT;}
    int allowed=(int)SymbolInfoInteger(_Symbol,SYMBOL_ORDER_MODE);
    if((allowed&SYMBOL_ORDER_STOP)!=SYMBOL_ORDER_STOP)
@@ -523,7 +531,7 @@ int OnInit()
    g_trade.SetTypeFillingBySymbol(_Symbol);
    g_trade.SetAsyncMode(false);
    RefreshTradingDay();
-   PrintFormat("AQ_CHASER START v1.01 DEMO REARM symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
+   PrintFormat("AQ_CHASER START v1.02 DEMO DIRECTIONAL symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
                _Symbol,InpLots,InpArmDistancePrice,InpRepriceStepPrice,
                InpCloseNetProfitUsd,InpMaxLossUsd);
    EventSetTimer(1);
