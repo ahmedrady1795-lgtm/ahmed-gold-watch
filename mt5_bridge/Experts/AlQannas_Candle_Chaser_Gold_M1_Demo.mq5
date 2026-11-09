@@ -476,8 +476,11 @@ void Pulse()
    ManagePositions(); // Check profits on EACH tick, even during throttle.
    int second=(int)(now%2147483600);
    // Deal-close event may arrive in the very same second: bypass the usual
-   // one-second bracket refresh throttle and immediately rearm on next tick.
-   if(second==g_lastPulseSecond && !g_rearmOnNextPulse)return;
+   // one-second bracket refresh throttle ONCE on the next tick/timer cycle.
+   // Do not spin on every tick if the broker cannot accept a STOP bracket.
+   bool priorityRearm=g_rearmOnNextPulse;
+   g_rearmOnNextPulse=false;
+   if(second==g_lastPulseSecond && !priorityRearm)return;
    g_lastPulseSecond=second;
    if(RiskStop())
    {
