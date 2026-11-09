@@ -1,38 +1,31 @@
-// Gold STOP ladder source-contract checks. This does not compile MQL5 or prove profit.
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const src = fs.readFileSync(path.join(__dirname, '..', 'mt5_bridge', 'Experts',
-  'AlQannas_Gold_M1_Limit_Demo.mq5'), 'utf8');
-const check=(pattern,reason)=>assert.match(src,pattern,reason);
-
-check(/#property version\s+"1\.16"/,'v1.16 version present');
-check(/ACCOUNT_TRADE_MODE_DEMO/,'demo only');
-check(/SYMBOL_ORDER_STOP/,'broker supports STOP pending orders');
-check(/g_trade\.BuyStop\(/,'places BUY STOP above ASK');
-check(/g_trade\.SellStop\(/,'places SELL STOP below BID');
-assert.doesNotMatch(src,/g_trade\.(?:BuyLimit|SellLimit|Buy|Sell)\(/,
-  'new orders must NOT be limit or market orders');
-check(/InpLots\s*=\s*0\.01/,'video-style starter volume');
-check(/InpStopLevelsPerSide\s*=\s*3/,'3 ladder levels per side');
-check(/InpFirstStopOffsetPrice\s*=\s*0\.30/,'first STOP offset');
-check(/InpStopStepPrice\s*=\s*0\.30/,'STOP ladder step');
-check(/InpMaxStopDistancePrice\s*=\s*1\.50/,'skip orders far from quote');
-check(/InpMaxConcurrent\s*=\s*6/,'cap total pending plus positions');
-check(/InpUseSignalFilter\s*=\s*false/,'2-sided ladder does not wait on M5');
-check(/InpCancelOppositeOnFill\s*=\s*true/,'opposite-side pending cleanup after fill');
-check(/RemoveOppositeStops\(openSide\)/,'opposite-side cancellation active');
-check(/HasLegacyLimits\(\)/,'old LIMIT orders detected and canceled');
-check(/InpManualPause\s*=\s*false/,'user-controlled pause');
-check(/InpEnableDailyStop\s*=\s*false/,'user may enable daily loss guard');
-check(/InpMaxLossUsd\s*=\s*3\.00/,'per-position intended risk target');
-check(/InpProfitLockUsd\s*=\s*1\.50/,'requested profit lock');
-check(/g_trade\.PositionModify\(ticket,proposed,currentTp\)/,'broker-side stop profit protection');
-check(/OrderCalcProfit\(profitType,_Symbol,InpLots,entry,sl,worst\)/,'order loss calculation');
-check(/TRADE_RETCODE_FROZEN/,'frozen broker order cooldown');
-check(/bool trailingExit=\(protectedNet>0 && net<=protectedNet\)/,'profit trail handles gap');
-check(/CancelPendingIfPossible\(ticket,reason\)/,'stale STOP cancel handles freeze');
-check(/InpMaxPendingAgeSec\s*=\s*75/,'STOP pending max age');
-check(/InpTradeDirection=AQ_BOTH/,'user controls trading side');
-assert.doesNotMatch(src,/WebRequest\(/,'MT5 trading EA does not fetch website AI');
-console.log('Gold v1.16 STOP ladder contract passed (compile/forward test still needed).');
+// Static MQL5 source-contract checks, NOT a MetaEditor compile or profitability backtest.
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const src=fs.readFileSync(path.join(__dirname,'..','mt5_bridge','Experts',
+  'AlQannas_Gold_M1_Limit_Demo.mq5'),'utf8');
+const check=(pattern,why)=>assert.match(src,pattern,why);
+check(/#property version\s+"1\.17"/,'v1.17 build');
+check(/ACCOUNT_TRADE_MODE_DEMO/,'DEMO mode guard');
+check(/InpOrderStyle=AQ_LIMIT_PULLBACK/,'LIMIT is the user-editable default');
+check(/AQ_STOP_BREAKOUT=1/,'STOP ladder remains available in Inputs');
+check(/g_trade\.BuyLimit\(/,'BUY LIMIT path exists');
+check(/g_trade\.SellLimit\(/,'SELL LIMIT path exists');
+check(/g_trade\.BuyStop\(/,'BUY STOP path exists');
+check(/g_trade\.SellStop\(/,'SELL STOP path exists');
+assert.doesNotMatch(src,/g_trade\.(?:Buy|Sell)\(/,'market orders are not used for entries');
+check(/if\(InpOrderStyle==AQ_LIMIT_PULLBACK\)\s*\{\s*int side=LocalSignal\(\)/,
+ 'LIMIT entry uses the M1/M5 directional prediction instead of both-sided STOP ladder');
+check(/if\(HasOtherModeOrders\(\)\)/,'no mixed old and new pending order types');
+check(/CancelPendingIfPossible\(ticket,"ORDER_MODE_SWITCH"\)/,'old mode pending orders canceled on switch');
+check(/InpCancelOppositeOnFill/,'opposite STOP cancellation retained');
+check(/InpUseSignalFilter\s*=\s*false/,'STOP may follow direct breakout if selected');
+check(/InpLots\s*=\s*0\.01/,'conservative demo starting lot');
+check(/InpMaxLossUsd\s*=\s*3\.00/,'per-position loss protection target');
+check(/InpProfitLockUsd\s*=\s*1\.50/,'profit lock control');
+check(/OrderCalcProfit\(profitType,_Symbol,InpLots,entry,sl,worst\)/,
+ 'broker order P/L checked for both entry types');
+check(/SYMBOL_ORDER_LIMIT:SYMBOL_ORDER_STOP/,'selected pending order type checked against broker support');
+check(/TRADE_RETCODE_FROZEN/,'frozen cancel and exit handling');
+assert.doesNotMatch(src,/WebRequest\(/,'site AI not falsely connected to MT5 orders');
+console.log('Gold v1.17 selectable pending-order type static checks passed.');
