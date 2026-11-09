@@ -6,7 +6,7 @@ const src=fs.readFileSync(path.join(__dirname,'..','mt5_bridge','Experts',
                                    'AlQannas_Gold_M1_Limit_Demo.mq5'),'utf8');
 const includes=(pattern,reason)=>assert.match(src,pattern,reason);
 
-includes(/#property version\s+"1\.14"/,'new version');
+includes(/#property version\s+"1\.15"/,'new version');
 includes(/ACCOUNT_TRADE_MODE_DEMO/,'demo-only broker orders');
 includes(/!ExactVolume\(\)/,'broker volume min\/max\/step validation');
 includes(/g_trade\.BuyLimit\(/,'BUY pending Limit');
@@ -37,7 +37,10 @@ includes(/dirFlow<-0\.18/,'short term tick disagreement can block entry');
 includes(/InpEntryPullbackRange\s*=\s*0\.025/,'pending LIMIT pullback reduced');
 includes(/InpMaxLimitDistancePrice\s*=\s*0\.70/,'maximum allowed LIMIT distance configurable');
 includes(/quoteDistance>InpMaxLimitDistancePrice/,'skip distant LIMIT placement');
-includes(/InpMaxPendingAgeSec\s*=\s*30/,'unfilled pending expiry configurable');
+includes(/InpMaxPendingAgeSec\s*=\s*75/,'pending expiry set for pullbacks');
+includes(/InpCancelOnNewBar\s*=\s*false/,'do not wipe valid pending limit every M1 bar');
+includes(/if\(InpCancelOnNewBar\)/,'old candle cleanup optional');
+includes(/BUY fills on ASK \/ SELL fills on BID/,'use executable prices for diagnostics');
 includes(/InpCancelOnPriceDrift\s*=\s*false/,'do not cancel from mere price drift by default');
 includes(/InpCancelDistancePrice\s*=\s*3\.00/,'separate placement and cancel distance');
 includes(/InpFrozenCancelRetrySec\s*=\s*10/,'broker frozen cancel cooldown');
