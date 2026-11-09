@@ -16,7 +16,7 @@ Windows/VPS bridge for MetaTrader 5. It is fail-closed and **dry-run by default*
 4. Keep `LIVE_TRADING=false` for dry-run/forward testing.
 5. Run `run_bridge.bat`.
 
-Two switches are required before a real order can be sent: `MT5_AUTOTRADE_ENABLED=true` on the site and `LIVE_TRADING=true` on the bridge. A local `KILL_SWITCH` file stops new orders immediately.
+Live broker trading is intentionally **disabled** in this candidate: the legacy execution route sends Market orders, contrary to the requested Limit-only behavior. The two historical live switches are not sufficient to enable it. The local `KILL_SWITCH` still stops new demo entries. Real orders require a separately validated MT5 demo pending-Limit executor.
 
 ## Candle synchronization and minimum-lot safety
 The bridge uploads closed M1/M5/M15/H1 candles from the broker every ~15 seconds. While that snapshot is fresh, the website computes indicators from the same MT5/Exness market used for execution. Position sizing never rounds a risk size upward to the broker minimum lot: if the minimum lot would exceed the configured cash-risk budget, the trade is rejected. Blocked attempts are rate-limited per signal.
