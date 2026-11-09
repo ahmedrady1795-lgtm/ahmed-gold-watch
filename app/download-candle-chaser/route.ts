@@ -9,7 +9,7 @@ export async function GET() {
   const filename='AlQannas_Candle_Chaser_Gold_M1_Demo.mq5';
   try {
     const source=await readFile(path.join(process.cwd(),'public','downloads',filename),'utf8');
-    if(!source.includes('#property version "1.04"') ||
+    if(!source.includes('#property version "1.05"') ||
        !source.includes('InpMagic                  = 560179530') ||
        !source.includes('g_trade.BuyStop(') ||
        !source.includes('g_trade.SellStop('))
