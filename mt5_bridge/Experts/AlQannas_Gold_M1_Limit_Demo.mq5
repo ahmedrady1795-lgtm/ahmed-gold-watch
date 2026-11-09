@@ -5,8 +5,8 @@
 //| This EA does NOT call the Al-Qannas website/AI.                  |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "1.17"
-#property description "Al-Qannas Gold v1.17: user-selectable LIMIT pullback or STOP ladder, DEMO ONLY."
+#property version   "1.18"
+#property description "Al-Qannas Gold v1.18: fast M1 liquidity LIMIT sniper or optional STOP ladder, DEMO ONLY."
 #include <Trade/Trade.mqh>
 
 enum ENUM_AQ_ENTRY_STYLE
@@ -26,33 +26,33 @@ enum ENUM_AQ_DIRECTION
    AQ_BUYS_ONLY=1,
    AQ_SELLS_ONLY=2
 };
-input ENUM_AQ_ORDER_STYLE InpOrderStyle=AQ_LIMIT_PULLBACK; // LIMIT by default; switch to STOP ladder in Inputs
+input ENUM_AQ_ORDER_STYLE InpOrderStyle=AQ_LIMIT_PULLBACK; // FAST M1 LIMIT sniper; STOP optional
 input bool   InpManualPause          = false;  // Manually pause NEW entries; existing positions still managed
 input ENUM_AQ_DIRECTION InpTradeDirection=AQ_BOTH; // Both / BUY only / SELL only
 input bool   InpEnableDailyStop      = false;  // User decides whether daily loss auto-lock is enabled
-input ENUM_AQ_ENTRY_STYLE InpEntryStyle = AQ_BALANCED; // Change entry strictness in Inputs
+input ENUM_AQ_ENTRY_STYLE InpEntryStyle = AQ_FAST; // Change entry strictness in Inputs
 input bool   InpUseSignalFilter      = false;  // OFF = 2-sided STOP ladder, no M1/M5 hesitation
 input bool   InpCancelOppositeOnFill = true;   // Remove opposite STOP orders after a fill
 input int    InpStopLevelsPerSide    = 3;      // BUY STOP levels + SELL STOP levels
 input double InpFirstStopOffsetPrice = 0.30;   // First level above ASK / below BID (XAU price units)
 input double InpStopStepPrice        = 0.30;   // Distance between consecutive ladder levels
 input double InpMaxStopDistancePrice = 1.50;   // Hard max distance from executable quote
-input double InpLots                 = 0.01;   // Video-style starter volume, broker step applies
-input double InpTakeNetUsd           = 3.00;   // Demo hard TP estimated net USD
+input double InpLots                 = 0.02;   // Video-style starter volume, broker step applies
+input double InpTakeNetUsd           = 1.50;   // Demo hard TP estimated net USD
 input double InpMaxLossUsd           = 3.00;   // Intended max loss USD (broker SL/fast moves can overrun)
-input double InpTrailArmUsd          = 2.00;   // Attempt +$1.50 profit lock when peak exceeds $2.00
-input double InpTrailStartUsd        = 2.50;   // Start following the winning peak
-input double InpTrailGivebackUsd     = 0.50;   // Allowed giveback from best net profit
-input double InpProfitLockUsd        = 1.50;   // Minimum targeted protected net profit (not guaranteed)
+input double InpTrailArmUsd          = 0.90;   // Attempt +$1.50 profit lock when peak exceeds $2.00
+input double InpTrailStartUsd        = 1.20;   // Start following the winning peak
+input double InpTrailGivebackUsd     = 0.30;   // Allowed giveback from best net profit
+input double InpProfitLockUsd        = 0.50;   // Minimum targeted protected net profit (not guaranteed)
 input double InpMinSignalScore       = 0.45;   // Entry confidence threshold (higher = fewer entries)
 input double InpMinM5Alignment       = 0.12;   // Minimum agreement from last CLOSED M5 candles
 input int    InpMinTickConfirm       = 8;      // Minimum price-change ticks before first M1 signal
 input double InpMaxSpreadRangeRatio  = 0.35;   // Spread cannot dominate recent M1 range
 input double InpMaxLiveCandleRange   = 2.20;   // Skip live M1 spikes over mean range
-input double InpEntryPullbackRange   = 0.025;  // Small pending LIMIT pullback as fraction of M1 range
+input double InpEntryPullbackRange   = 0.010;  // Small pending LIMIT pullback as fraction of M1 range
 input double InpMaxLimitDistancePrice = 0.70;  // MAX XAUUSD price distance from current executable quote
-input int    InpMaxPendingAgeSec     = 75;     // Rebuild aging STOP ladder after this many seconds
-input bool   InpCancelOnNewBar       = false;  // OFF: don't remove valid pending limits on new M1 bars
+input int    InpMaxPendingAgeSec     = 55;     // Rebuild aging STOP ladder after this many seconds
+input bool   InpCancelOnNewBar       = true;  // OFF: don't remove valid pending limits on new M1 bars
 input bool   InpCancelOnPriceDrift   = false;  // OFF: do NOT cancel a LIMIT just because quote moved
 input double InpCancelDistancePrice  = 3.00;   // Separate XAU price distance to cancel if enabled
 input int    InpFrozenCancelRetrySec = 10;     // Cooldown after broker refuses to cancel as frozen
@@ -60,9 +60,9 @@ input bool   InpCancelOnFlowFlip     = false;  // Optional: turning ON may cance
 input double InpM5ConflictScore      = 0.80;   // Skip strong M5 trend conflicts
 input double InpDailyStopUsd         = 40.00;  // Used only when InpEnableDailyStop=true
 input double InpCostReserveUsd       = 0.20;   // Estimated round-trip costs per trade
-input int    InpMaxHoldSeconds       = 180;    // Allow more time for winning moves without endless holding
-input int    InpMaxConcurrent       = 6;      // Open positions + pending orders combined
-input int    InpMaxEntriesPerM1      = 8;      // STOP placement successes per minute
+input int    InpMaxHoldSeconds       = 120;    // Allow more time for winning moves without endless holding
+input int    InpMaxConcurrent       = 1;      // Open positions + pending orders combined
+input int    InpMaxEntriesPerM1      = 1;      // STOP placement successes per minute
 input int    InpMinOrderSpacingSec   = 2;      // Minimum seconds between STOP placement batches
 input int    InpFrozenRetrySeconds   = 5;      // Back off failed broker-frozen position closes
 input double InpMaxSpreadPrice       = 0.80;   // XAU price units (not points)
@@ -85,6 +85,9 @@ int       g_recentTickIndex = 0;
 bool      g_dayLocked = false;
 string    g_lockKey = "";
 string    g_status = "Ready";
+string    g_lastLimitEntryKey="";
+datetime  g_lastLimitOrderBar=0;
+int       g_barAttempts=0;
 
 // All calls to submit a new order fail closed outside an MT5 DEMO account.
 bool DemoAccount()
@@ -736,6 +739,7 @@ bool PlaceLimit(int side)
    else {g_status="No supported LIMIT expiration mode";return false;}
 
    g_lastOrderAt=now;
+   g_barAttempts++;
    bool sent=false;
    if(side>0)
       sent=g_trade.BuyLimit(InpLots,entry,_Symbol,sl,tp,lifetime,until,"AQ Gold demo BUY LIMIT");
@@ -750,6 +754,8 @@ bool PlaceLimit(int side)
       return false;
    }
    g_ordersThisBar++;
+   g_lastLimitOrderBar=g_barStart;
+   if(g_lastLimitEntryKey!="")GlobalVariableSet(g_lastLimitEntryKey,(double)g_barStart);
    g_status="LIMIT pullback order placed";
    PrintFormat("Al-Qannas %s LIMIT #%I64u lot=%.2f bid=%.*f ask=%.*f entry=%.*f gap=%.3f SL=%.*f TP=%.*f",
                side>0?"BUY":"SELL",g_trade.ResultOrder(),InpLots,
@@ -891,6 +897,7 @@ void Pulse()
    {
       g_barStart=bar;
       g_ordersThisBar=0;
+      g_barAttempts=0;
       g_upTicks=0;
       g_downTicks=0;
       g_recentTickCount=0;
@@ -948,10 +955,17 @@ void Pulse()
    if((ENUM_SYMBOL_TRADE_MODE)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_MODE)!=SYMBOL_TRADE_MODE_FULL) return;
    if(ServerNow()-g_lastOrderAt<InpMinOrderSpacingSec) return;
    if(g_ordersThisBar>=InpMaxEntriesPerM1) return;
-   int slots=(int)InpMaxConcurrent;
+   int slots=(InpOrderStyle==AQ_LIMIT_PULLBACK?1:(int)InpMaxConcurrent);
    if((ENUM_ACCOUNT_MARGIN_MODE)AccountInfoInteger(ACCOUNT_MARGIN_MODE)!=ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
-      slots=1; // Netting accounts cannot independently manage four positions.
+      slots=1;
    if(active>=slots) return;
+   // Persist the M1 order guard so a MetaEditor recompile/reload doesn't place
+   // a second LIMIT in the same candle after the first order has closed.
+   if(InpOrderStyle==AQ_LIMIT_PULLBACK && g_lastLimitOrderBar==g_barStart)
+   {
+      g_status="Already sent 1 LIMIT this candle";
+      return;
+   }
    if(HasOtherModeOrders())
    {
       g_status="Other-mode pending orders; waiting for broker cancellation";
@@ -1020,13 +1034,17 @@ int OnInit()
    {
       Alert("Gold symbol does not allow the selected pending order mode");return INIT_FAILED;
    }
+   g_lastLimitEntryKey="AQ_LastLimit_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))
+        +"_"+_Symbol+"_"+IntegerToString((long)InpMagic);
+   if(GlobalVariableCheck(g_lastLimitEntryKey))
+      g_lastLimitOrderBar=(datetime)GlobalVariableGet(g_lastLimitEntryKey);
    g_trade.SetExpertMagicNumber(InpMagic);
    g_trade.SetDeviationInPoints(30);
    g_trade.SetTypeFillingBySymbol(_Symbol);
    g_trade.SetAsyncMode(false);
    ReadDay();
    EventSetTimer(1);
-   PrintFormat("Al-Qannas Gold DEMO v1.17 %s: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
+   PrintFormat("Al-Qannas Gold DEMO v1.18 %s: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
        (InpOrderStyle==AQ_LIMIT_PULLBACK?"LIMIT":"STOP_LADDER"),
        _Symbol,InpLots,InpTakeNetUsd,InpMaxLossUsd,InpTrailArmUsd,InpTrailStartUsd,InpTrailGivebackUsd,InpDailyStopUsd);
    return INIT_SUCCEEDED;
