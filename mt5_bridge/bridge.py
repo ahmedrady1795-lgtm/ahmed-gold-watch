@@ -328,6 +328,7 @@ def size_for_risk(account,info,order_type,entry,sl,risk_pct):
 def broker_spread(info,tick):return (tick.ask-tick.bid)/float(info.point) if info.point else 10**9
 
 def send(signal,s):
+    if LIVE:return False,'LIVE orders disabled: legacy market execution is not approved; validate pending LIMIT on broker demo first',s
     info=symbol_ready();tick=mt5.symbol_info_tick(SYMBOL) if info else None;account=mt5.account_info()
     if not info or tick is None or account is None:return False,'MT5 data unavailable',s
     allowed,risk_status,loss_streak=risk_guard(account,s)
