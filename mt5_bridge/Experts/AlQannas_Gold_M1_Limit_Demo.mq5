@@ -5,17 +5,17 @@
 //| This EA does NOT call the Al-Qannas website/AI.                  |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "1.10"
-#property description "Al-Qannas Gold M1 Limit: M5 trend and profit runner. DEMO ONLY."
+#property version   "1.11"
+#property description "Al-Qannas Gold M1 Limit v1.11: +$1.50 lock, $3 loss. DEMO ONLY."
 #include <Trade/Trade.mqh>
 
 input double InpLots                 = 0.05;   // Fixed exact volume
 input double InpTakeNetUsd           = 6.00;   // Hard broker TP estimated net USD (NOT first tiny profit)
-input double InpMaxLossUsd           = 5.50;   // Smaller intended max loss per position
-input double InpTrailArmUsd          = 1.40;   // Once here, protect an initial net profit floor
+input double InpMaxLossUsd           = 3.00;   // Intended max loss USD (broker SL/fast moves can overrun)
+input double InpTrailArmUsd          = 2.25;   // At this peak, attempt to lock +$1.50 net
 input double InpTrailStartUsd        = 3.00;   // Start trailing best net profit from this peak
 input double InpTrailGivebackUsd     = 0.80;   // Max giveback from peak, once trailing
-input double InpProfitLockUsd        = 0.45;   // Minimum locked net profit when trade was profitable
+input double InpProfitLockUsd        = 1.50;   // Minimum targeted protected net profit (not guaranteed)
 input double InpMinSignalScore       = 0.28;   // Skip ambiguous near-zero prediction scores
 input double InpM5ConflictScore      = 0.80;   // Skip strong M5 trend conflicts
 input double InpDailyStopUsd         = 40.00;  // Stop new entries on daily net loss
@@ -250,7 +250,7 @@ void ManagePositions(bool forceClose=false)
       }
 
       // New exit policy: do not close at the first +$0.70.
-      // After +$1.40 in peak, lock at least +$0.45.
+      // At peak +$2.25, try to lock at least +$1.50 using broker stop levels.
       // From +$3.00 peak onward, preserve peak minus $0.80.
       double protectedNet=0.0;
       if(peak>=InpTrailArmUsd)protectedNet=InpProfitLockUsd;
@@ -265,7 +265,8 @@ void ManagePositions(bool forceClose=false)
 
       int age=(int)(now-(datetime)PositionGetInteger(POSITION_TIME));
       bool hardProfit=(net>=InpTakeNetUsd);
-      bool trailingExit=(protectedNet>0 && net>0 && net<=protectedNet);
+      // A gap below the profit floor must ALSO exit; never require net>0.
+      bool trailingExit=(protectedNet>0 && net<=protectedNet);
       bool lossStop=(net<=-InpMaxLossUsd);
       bool timeStop=(age>=InpMaxHoldSeconds);
       if(!forceClose && !hardProfit && !trailingExit && !lossStop && !timeStop)continue;
@@ -568,7 +569,7 @@ int OnInit()
    g_trade.SetAsyncMode(false);
    ReadDay();
    EventSetTimer(1);
-   PrintFormat("Al-Qannas Gold DEMO v1.10: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
+   PrintFormat("Al-Qannas Gold DEMO v1.11: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
        _Symbol,InpLots,InpTakeNetUsd,InpMaxLossUsd,InpTrailArmUsd,InpTrailStartUsd,InpTrailGivebackUsd,InpDailyStopUsd);
    return INIT_SUCCEEDED;
 }
