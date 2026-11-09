@@ -55,7 +55,7 @@ const follow=code.split('void FollowBracket()')[1]?.split('void ExpireStaleStops
 assert.ok(follow,'Must retain moving STOP chaser mode');
 assert.match(follow,/TryCancel\(oppositeTicket,"SIDE_CONFLICT"\)/);
 assert.match(follow,/if\(StopTicket\(opposite\)!=0\)return/);
-assert.match(follow,/PlaceStop\(direction,desired\)/);
+assert.match(follow,/PlaceStop\(direction,desired,selectedLot\)/);
 assert.doesNotMatch(follow,/PlaceStop\(1,buy\)|PlaceStop\(-1,sell\)/);
 assert.match(code,/InpMaxFillsPerM1\s*= 20/);
 assert.match(code,/InpAutoReduceLots\s*= true/);
