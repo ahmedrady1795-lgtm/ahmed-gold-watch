@@ -6,7 +6,7 @@ const src=fs.readFileSync(path.join(__dirname,'..','mt5_bridge','Experts',
                                    'AlQannas_Gold_M1_Limit_Demo.mq5'),'utf8');
 const includes=(pattern,reason)=>assert.match(src,pattern,reason);
 
-includes(/#property version\s+"1\.12"/,'new version');
+includes(/#property version\s+"1\.13"/,'new version');
 includes(/ACCOUNT_TRADE_MODE_DEMO/,'demo-only broker orders');
 includes(/!ExactVolume\(\)/,'broker volume min\/max\/step validation');
 includes(/g_trade\.BuyLimit\(/,'BUY pending Limit');
@@ -34,7 +34,15 @@ includes(/InpEntryStyle = AQ_BALANCED/,'entry mode customizable');
 includes(/g_recentTickDirections\[32\]/,'recent 32 price-change ticks used');
 includes(/dirM5<InpMinM5Alignment/,'M5 disagreement can block entry');
 includes(/dirFlow<-0\.18/,'short term tick disagreement can block entry');
-includes(/InpEntryPullbackRange\s*=\s*0\.12/,'limit order placement uses configurable pullback');
+includes(/InpEntryPullbackRange\s*=\s*0\.025/,'pending LIMIT pullback reduced');
+includes(/InpMaxLimitDistancePrice\s*=\s*0\.70/,'maximum allowed LIMIT distance configurable');
+includes(/quoteDistance>InpMaxLimitDistancePrice/,'skip distant LIMIT placement');
+includes(/InpMaxPendingAgeSec\s*=\s*18/,'unfilled pending expiry configurable');
+includes(/bool tooFar=\(distance>InpMaxLimitDistancePrice/,'outdated far pending order removed');
+includes(/CancelStaleLimits\(\);/,'stale LIMIT cancellation runs');
+includes(/InpCancelOnFlowFlip\s*=\s*false/,'optional tick-flow flip avoids canceling expected pullbacks');
+includes(/TRADE_RETCODE_FROZEN/,'frozen close has broker-aware retry cooldown');
+includes(/TRADE_RETCODE_POSITION_CLOSED/,'already-closed position not treated as failure');
 includes(/MathAbs\(score\)<threshold/,'skip ambiguous predictions');
 includes(/dirM5<=-InpM5ConflictScore/,'M5 conflict check');
 includes(/MQLInfoInteger\(MQL_TRADE_ALLOWED\)/,'client automated-trade guard');
