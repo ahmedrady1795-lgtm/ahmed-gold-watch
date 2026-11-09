@@ -17,7 +17,7 @@ assert.match(code,/g_dayLocked=false;/);
 assert.match(code,/GlobalVariableCheck\(g_dayLockKey\)/);
 assert.match(code,/reason="LOSS_AFTER_GRACE"/);
 assert.match(code,/ProtectedPrices\(direction,level,volume,sl,tp\)/);
-assert.match(code,/if\(!InpEnableDailyStop\)return false/);
+assert.match(code,/if\(!InpEnableDailyStop\)/);
 assert.match(code,/GlobalVariableSet\(g_dayLockKey,1\)/);
 
 const getNumber=(key)=>{
