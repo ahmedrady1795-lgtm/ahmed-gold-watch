@@ -35,6 +35,9 @@ export function assessFlowProfile(input:{
  bookSide?:FlowSide
 }):FlowProfileDecision{
  const {asset,now}=input,price=input.price;
+ // External GOLD quotes keep the chart alive but are not an MT5 flow feed.
+ if(input.asset==='GOLD'&&input.gold?.mode!=='broker')
+   return blank('لا يوجد اتصال مباشر Exness/MT5؛ السعر الخارجي للمراقبة فقط');
  if(!input.sourceMatches)return blank('السعر والشموع ليسا من نفس منصة بيانات التدفق؛ لا ندمج أسواق مختلفة');
  if(!validPrice(price)||!Number.isFinite(now))return blank('لا يوجد سعر موثوق');
  if(asset==='BTC'){

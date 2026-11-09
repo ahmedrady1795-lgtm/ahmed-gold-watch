@@ -21,6 +21,7 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: node tests/flow-profile-decision.cjs
+      - run: node tests/gold-source-continuity.cjs
       - run: npm run build
       - run: node tests/gold-preparation-lead.mjs
       - run: node tests/chart-feed-isolation.cjs

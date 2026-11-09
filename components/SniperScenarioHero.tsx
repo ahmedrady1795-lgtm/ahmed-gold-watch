@@ -22,11 +22,14 @@ export default function SniperScenarioHero(p:Props){
  const connected=p.marketOpen&&p.fresh&&!p.providerTransition&&p.fusion.ready;
  const quoteOnly=Boolean(p.flow?.profileReady&&!p.flow?.orderFlowReady);
  const sourceMismatch=String(p.flow?.reason||'').includes('نفس منصة بيانات التدفق');
+ const brokerOffline=p.asset==='GOLD'&&
+   String(p.flow?.reason||'').includes('لا يوجد اتصال مباشر Exness/MT5');
  const sampleCount=typeof p.quoteSamples==='number'&&Number.isFinite(p.quoteSamples)?
    Math.max(0,Math.floor(p.quoteSamples)):null;
  const flowStatus=p.flow?.ready?
    p.flow.side==='BUY'?'↑ صعود':p.flow.side==='SELL'?'↓ هبوط':'متعارض':
    quoteOnly?'POC سعري · DOM —':
+   brokerOffline?'MT5 غير متصل':
    sourceMismatch?'مصادر مختلفة':
    sampleCount!=null&&sampleCount<12?sampleCount+'/12 عينة':
    'غير متاح';
@@ -104,6 +107,7 @@ export default function SniperScenarioHero(p:Props){
      <span>{source} · {p.flow?.ready?
        (p.flow.quality==='EXECUTED_SAMPLE'?'حجم منفذ Coinbase':'نشاط أسعار MT5 الاسترشادي'):
        quoteOnly?'بروفايل نشاط السعر فقط · DOM غير متاح':
+       brokerOffline?'السعر الاحتياطي للمراقبة فقط · اتصال MT5 غير موجود':
        sourceMismatch?'مصدر السعر والشموع مختلف؛ لا دمج للتحليل':
        sampleCount!=null&&sampleCount<12?'تجميع عينات MT5 حقيقية':
        'بيانات التدفق غير مؤهلة'}</span>

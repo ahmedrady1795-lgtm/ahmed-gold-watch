@@ -80,6 +80,13 @@ assert.equal(gold.actionable,false);
 const noDom=assessFlowProfile({asset:'GOLD',price:4000.09,now,
  sourceMatches:true,gold:{mode:'broker',brokerSymbol:'XAUUSDm',
  brokerDepth:null,quoteProfile}});
+const externalGold=assessFlowProfile({asset:'GOLD',price:4000.09,now,
+  sourceMatches:false,gold:{mode:'external',brokerSymbol:null,quoteProfile:null}});
+assert.equal(externalGold.ready,false);
+assert.equal(externalGold.profileReady,false);
+assert.equal(externalGold.side,'WAIT');
+assert.match(externalGold.reason,/لا يوجد اتصال مباشر Exness\/MT5/,
+ 'external Biquote never becomes a false mixed-source MT5 flow');
 assert.equal(noDom.ready,false);
 assert.equal(noDom.profileReady,true,'quote-only POC should be observable without DOM');
 assert.equal(noDom.orderFlowReady,false);
