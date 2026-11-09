@@ -34,7 +34,7 @@ assert.match(code,/CopyRates\(_Symbol,PERIOD_M5,1,2,m5\)/);
 assert.match(code,/InpMinDirectionScorePrice/);
 assert.match(code,/InpM5ConflictBodyPrice/);
 assert.match(code,/int direction=ConfirmedChaseDirection\(tick\)/);
-assert.match(code,/EntryCostsAllow\(tick\)/);
+assert.match(code,/EntryCostsAllow\(tick,lot\)/);
 assert.match(code,/initialCost>=InpCloseNetProfitUsd\*InpMaxEntryCostToWinRatio/);
 assert.match(code,/Clock\(\)-g_lastLossDealAt<InpLossCooldownSec/);
 assert.match(code,/g_lastLossDealAt=Clock\(\)/);
