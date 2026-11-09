@@ -313,6 +313,8 @@ bool PlaceLimit(int side)
       g_status="Broker rejects order expiry modes";return false;
    }
 
+   // Limit retry rate even if the broker/client REJECTS the request.
+   g_lastOrderAt=ServerNow();
    bool ok=false;
    if(side>0)
       ok=g_trade.BuyLimit(InpLots,entry,_Symbol,sl,tp,lifetime,until,"AQ Gold demo BUY LIMIT");
@@ -376,7 +378,24 @@ void Pulse()
    int active=CountActive();
    DisplayStatus(closed,floating,active);
    if(!historyOK || g_dayLocked || g_barStart<=0 || !ExactVolume()) return;
-   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) || !AccountInfoInteger(ACCOUNT_TRADE_EXPERT)) return;
+   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+   {
+      g_status="Enable Algo Trading in terminal (Ctrl+O > Expert Advisors)";
+      DisplayStatus(closed,floating,active);
+      return;
+   }
+   if(!MQLInfoInteger(MQL_TRADE_ALLOWED))
+   {
+      g_status="Allow Algo Trading for THIS EA (F7 > Common)";
+      DisplayStatus(closed,floating,active);
+      return;
+   }
+   if(!AccountInfoInteger(ACCOUNT_TRADE_EXPERT))
+   {
+      g_status="Broker/account prohibits automated trading";
+      DisplayStatus(closed,floating,active);
+      return;
+   }
    if((ENUM_SYMBOL_TRADE_MODE)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_MODE)!=SYMBOL_TRADE_MODE_FULL) return;
    if(ServerNow()-g_lastOrderAt<InpMinOrderSpacingSec) return;
    if(g_ordersThisBar>=InpMaxEntriesPerM1) return;
