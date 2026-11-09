@@ -5,11 +5,16 @@
 //| Separate from Gold LIMIT and Sniper 2.0 EAs; no profit guarantee.|
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.06"
-#property description "Candle Chaser 1.06: optional daily stop OFF unless user opts in. DEMO ONLY."
+#property version "1.07"
+#property description "Candle Chaser 1.07: authenticated GOLD Ambush direction from Qannas; demo STOP only."
 #include <Trade/Trade.mqh>
 
 input bool   InpManualPause             = false;  // Pause NEW orders, manage existing trades
+input bool   InpUseSniperAnalysis       = true;   // Sniper Ambush has sole entry direction authority
+input string InpSniperSiteURL           = "https://ahmed-gold-watch-free.onrender.com";
+input string InpSniperBridgeToken       = "";     // Copy privately from the GOLD read-only bridge
+input int    InpSniperPollSeconds       = 2;      // HTTPS poll on timer, not on every tick
+input double InpSniperMaxQuoteDrift     = 0.65;   // Reject server/broker price disagreement
 input double InpLots                    = 0.02;   // Maximum DEMO lot, never increased
 input bool   InpAutoReduceLots          = true;   // If 0.02 cost is too high, try smaller broker lot
 input double InpArmDistancePrice        = 0.20;   // Follow M1 with BUY STOP above ASK / SELL STOP below BID
@@ -46,6 +51,14 @@ datetime g_lastCloseAttempt=0;
 datetime g_lastBracketBuild=0;
 datetime g_lastLossDealAt=0;
 datetime g_lastEntryDiagnosisAt=0;
+datetime g_lastSniperPollAt=0;
+datetime g_lastSniperLogAt=0;
+int      g_sniperDirection=0;
+long     g_sniperExpiresAtMs=0;
+double   g_sniperBid=0.0;
+double   g_sniperAsk=0.0;
+int      g_sniperConfidence=0;
+string   g_sniperWaitReason="STARTING";
 bool     g_rearmOnNextPulse=false; // Priority rearm as soon as position closes
 int      g_fillsThisBar=0;
 int      g_requestsThisBar=0;
@@ -425,8 +438,103 @@ bool FollowStop(int direction,ulong ticket,double desired,const MqlTick &tick)
 }
 // Use completed Exness M1/M5 bars plus the latest broker quote.
 // A trend candidate is not a guaranteed pre-candle prediction.
+// Read-only HTTPS decision from the existing Qannas GOLD AMBUSH engine.
+// Only the EA on a DEMO account has trading capabilities. NEVER fall back
+// to a local direction when the sniper reports WAIT, is stale or offline.
+void PollGoldSniper()
+{
+   if(!InpUseSniperAnalysis)return;
+   const datetime now=Clock();
+   if(g_lastSniperPollAt>0 && now-g_lastSniperPollAt<InpSniperPollSeconds)
+      return;
+   g_lastSniperPollAt=now;
+   g_sniperDirection=0;
+   g_sniperExpiresAtMs=0;
+   char empty[],reply[];
+   string responseHeaders="";
+   const string headers="Authorization: Bearer "+InpSniperBridgeToken+"\r\n";
+   const string url=InpSniperSiteURL+"/api/mt5/gold-demo-chaser-signal";
+   ResetLastError();
+   const int http=WebRequest("GET",url,headers,3500,empty,reply,responseHeaders);
+   if(http!=200)
+   {
+      g_sniperWaitReason="HTTP_"+IntegerToString(http);
+      g_status="QANNAS WAIT: "+g_sniperWaitReason;
+   }
+   else
+   {
+      string wire=CharArrayToString(reply,0,ArraySize(reply),CP_UTF8);
+      StringTrimLeft(wire);StringTrimRight(wire);
+      string parts[];
+      const int n=StringSplit(wire,StringGetCharacter("|",0),parts);
+      if(n>=3 && parts[0]=="QGOLD1" && parts[1]=="WAIT")
+      {
+         g_sniperWaitReason=parts[2];
+         g_status="QANNAS WAIT: "+g_sniperWaitReason;
+      }
+      else if(n==8 && parts[0]=="QGOLD1" &&
+              (parts[1]=="BUY"||parts[1]=="SELL") &&
+              parts[2]==_Symbol)
+      {
+         const long issued=(long)StringToInteger(parts[3]);
+         const long expires=(long)StringToInteger(parts[4]);
+         const long nowMs=(long)TimeGMT()*1000;
+         const double bid=StringToDouble(parts[5]);
+         const double ask=StringToDouble(parts[6]);
+         const int score=(int)StringToInteger(parts[7]);
+         MqlTick local;
+         if(issued>0 && expires>nowMs+100 && issued<=nowMs+1500 &&
+            nowMs-issued>=-1500 && nowMs-issued<=4000 &&
+            expires-issued>300 && expires-issued<=2500 &&
+            score>=55 && score<=100 && ask>bid && bid>0 &&
+            CurrentQuote(local) &&
+            MathAbs(local.bid-bid)<=InpSniperMaxQuoteDrift &&
+            MathAbs(local.ask-ask)<=InpSniperMaxQuoteDrift)
+         {
+            g_sniperDirection=(parts[1]=="BUY"?1:-1);
+            g_sniperExpiresAtMs=expires;
+            g_sniperBid=bid;
+            g_sniperAsk=ask;
+            g_sniperConfidence=score;
+            g_sniperWaitReason="READY";
+            g_status=StringFormat("QANNAS AMBUSH %s score=%d",
+                                  parts[1],score);
+         }
+         else
+         {
+            g_sniperWaitReason="STALE_SIGNAL_OR_PRICE_DRIFT";
+            g_status="QANNAS WAIT: "+g_sniperWaitReason;
+         }
+      }
+      else
+      {
+         g_sniperWaitReason="BAD_SIGNAL_FORMAT";
+         g_status="QANNAS WAIT: "+g_sniperWaitReason;
+      }
+   }
+   if(now-g_lastSniperLogAt>=15)
+   {
+      g_lastSniperLogAt=now;
+      PrintFormat("AQ_CHASER SNIPER: direction=%d confidence=%d expires=%I64d wait=%s",
+                  g_sniperDirection,g_sniperConfidence,g_sniperExpiresAtMs,
+                  g_sniperWaitReason);
+   }
+}
 int ConfirmedChaseDirection(const MqlTick &tick)
 {
+   if(InpUseSniperAnalysis)
+   {
+      const long nowMs=(long)TimeGMT()*1000;
+      if(g_sniperDirection==0 || g_sniperExpiresAtMs<=nowMs ||
+         MathAbs(tick.bid-g_sniperBid)>InpSniperMaxQuoteDrift ||
+         MathAbs(tick.ask-g_sniperAsk)>InpSniperMaxQuoteDrift)
+      {
+         g_status="QANNAS WAIT: "+g_sniperWaitReason;
+         return 0;
+      }
+      return g_sniperDirection;
+   }
+   // Explicit manual fallback for isolated LOCAL-M1 DEMO comparisons only.
    MqlRates m1[],m5[];
    // CopyRates writes the oldest bar first in non-series arrays.
    if(CopyRates(_Symbol,PERIOD_M1,1,3,m1)!=3 ||
@@ -581,7 +689,7 @@ void ShowStatus()
 {
    if(!InpShowStatus)return;
    Comment("AL-QANNAS CANDLE CHASER | GOLD DEMO M1",
-           "\nDIRECTIONAL STOP follows M1/M5 and ASK/BID.",
+           "\nSignal: ",InpUseSniperAnalysis?"RENDER SNIPER AMBUSH":"LOCAL M1/M5 TEST",
            "\nMax lot ",DoubleToString(InpLots,2),
            " | Pending ",PendingCount()," | Open ",PositionCount(),
            "\nM1 fills ",g_fillsThisBar,"/",InpMaxFillsPerM1,
@@ -638,6 +746,14 @@ int OnInit()
    if(!IsDemo()){Alert("Candle Chaser blocks real-money trading");return INIT_FAILED;}
    if(AccountInfoString(ACCOUNT_CURRENCY)!="USD")
    {Alert("Candle Chaser requires a USD demo account");return INIT_FAILED;}
+   if(InpUseSniperAnalysis &&
+      (StringFind(InpSniperSiteURL,"https://")!=0 ||
+       StringLen(InpSniperBridgeToken)<32))
+   {
+      Print("AQ_CHASER: Sniper Ambush requires private BridgeToken and HTTPS site URL in Inputs.");
+      Alert("Sniper entry mode: set site HTTPS + GOLD bridge token (32+ chars).");
+      return INIT_PARAMETERS_INCORRECT;
+   }
    if(!ProperLot() || InpArmDistancePrice<=0 || InpRepriceStepPrice<=0 ||
       InpRepriceCooldownSec<1 || InpRepriceCooldownSec>120 ||
       InpMaxSpreadPrice<=0 || InpCloseNetProfitUsd<=0 ||
@@ -651,7 +767,9 @@ int OnInit()
        InpLocalLossGraceSec<0 || InpLocalLossGraceSec>60 ||
        InpMaxHoldSec<=InpLocalLossGraceSec ||
        InpMaxEntryCostToLossRatio<=0 ||
-       InpMaxEntryCostToLossRatio>0.85)
+       InpMaxEntryCostToLossRatio>0.85 ||
+       InpSniperPollSeconds<1 || InpSniperPollSeconds>30 ||
+       InpSniperMaxQuoteDrift<=0 || InpSniperMaxQuoteDrift>2.0)
    {Alert("Candle Chaser invalid Inputs: review lots, stop, target, timing.");return INIT_PARAMETERS_INCORRECT;}
    int allowed=(int)SymbolInfoInteger(_Symbol,SYMBOL_ORDER_MODE);
    if((allowed&SYMBOL_ORDER_STOP)!=SYMBOL_ORDER_STOP)
@@ -661,7 +779,7 @@ int OnInit()
    g_trade.SetTypeFillingBySymbol(_Symbol);
    g_trade.SetAsyncMode(false);
    RefreshTradingDay();
-   PrintFormat("AQ_CHASER START v1.06 DEMO DAY_STOP_OPT_IN symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
+   PrintFormat("AQ_CHASER START v1.07 DEMO SNIPER_AMBUSH symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
                _Symbol,InpLots,InpArmDistancePrice,InpRepriceStepPrice,
                InpCloseNetProfitUsd,InpMaxLossUsd);
    EventSetTimer(1);
@@ -674,7 +792,13 @@ void OnDeinit(const int reason)
    Comment("");
 }
 void OnTick(){Pulse();}
-void OnTimer(){Pulse();}
+void OnTimer()
+{
+   // WebRequest is intentionally timer-only; OnTick manages exits without
+   // starting a new HTTPS request each tick. Broker SL/TP are always attached.
+   if(InpUseSniperAnalysis && IsDemo())PollGoldSniper();
+   Pulse();
+}
 void OnTradeTransaction(const MqlTradeTransaction &trans,
                         const MqlTradeRequest &request,
                         const MqlTradeResult &result)
