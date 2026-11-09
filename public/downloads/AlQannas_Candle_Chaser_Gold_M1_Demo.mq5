@@ -5,8 +5,8 @@
 //| Separate from Gold LIMIT and Sniper 2.0 EAs; no profit guarantee.|
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.03"
-#property description "Candle Chaser 1.03: one-way trailing STOP, confirmed direction, capped costs. DEMO ONLY."
+#property version "1.04"
+#property description "Candle Chaser 1.04: loss grace, longer hold, fast profit then rearm. DEMO ONLY."
 #include <Trade/Trade.mqh>
 
 input bool   InpManualPause             = false;  // Pause NEW orders, manage existing trades
@@ -19,7 +19,9 @@ input double InpCloseNetProfitUsd       = 1.25;   // Ask for immediate exit at t
 input double InpBrokerTargetNetUsd      = 1.65;   // Attach broker TP as backup
 input double InpMaxLossUsd             = 1.25;   // Intended per-position SL budget, not a fill guarantee
 input double InpCostReserveUsd         = 0.20;   // Conservative estimated fees, excludes unknown slippage
-input int    InpMaxHoldSec             = 85;     // Exit old position instead of holding indefinitely
+input int    InpMaxHoldSec             = 150;    // Allow up to 2.5 min for a winning movement
+input int    InpLocalLossGraceSec       = 18;     // Don't panic-close initial floating spread loss
+input double InpMaxEntryCostToLossRatio = 0.50;   // Spread/fees should consume at most half SL budget
 input int    InpMaxFillsPerM1          = 20;     // Allows repeated entries per M1; one open at a time
 input int    InpMaxPendingAgeSec       = 50;     // Replace stale pending stops
 input bool   InpCancelOnNewBar         = true;   // Follow the new M1 instead of stale previous levels
@@ -317,10 +319,13 @@ void ManagePositions()
                 +PositionGetDouble(POSITION_SWAP)-InpCostReserveUsd;
       int age=(int)(now-(datetime)PositionGetInteger(POSITION_TIME));
       string reason="";
-      if(net>=InpCloseNetProfitUsd)reason="FAST_NET_PROFIT";
-      else if(net<=-InpMaxLossUsd)reason="LOSS_LIMIT";
+      if(g_dayLocked)reason="DAY_LOCK";
+      else if(net>=InpCloseNetProfitUsd)reason="FAST_NET_PROFIT";
+      else if(net<=-InpMaxLossUsd && age>=InpLocalLossGraceSec)
+         reason="LOSS_AFTER_GRACE";
       else if(age>=InpMaxHoldSec)reason="MAX_HOLD";
-      else if(g_dayLocked)reason="DAY_LOCK";
+      // During the initial grace, EA doesn't close for floating loss.
+      // Broker SL/TP remain active and CAN still fill before grace ends.
       if(reason=="")continue;
       if(now-g_lastCloseAttempt<InpFrozenRetrySec)continue;
       if(!BrokerTradeReady())return;
@@ -337,7 +342,7 @@ void ManagePositions()
             g_rearmOnNextPulse=true;
             g_lastPulseSecond=-1;
          }
-         PrintFormat("AQ_CHASER CLOSE #%I64u net_est=%.2f age=%d reason=%s next=REARM",
+         PrintFormat("AQ_CHASER CLOSE #%I64u net_est=%.2f age=%d reason=%s next=REARM_AFTER_FULL_CLOSE",
                      ticket,net,age,reason);
       }
       else if(rc!=TRADE_RETCODE_POSITION_CLOSED)
@@ -439,9 +444,12 @@ bool EntryCostsAllow(const MqlTick &tick)
       !MathIsValidNumber(pnl))
    {g_status="WAIT: broker cost model unavailable";return false;}
    double initialCost=MathMax(0.0,-pnl)+InpCostReserveUsd;
-   if(initialCost>=InpCloseNetProfitUsd*InpMaxEntryCostToWinRatio)
+   if(initialCost>=InpCloseNetProfitUsd*InpMaxEntryCostToWinRatio ||
+      initialCost>=InpMaxLossUsd*InpMaxEntryCostToLossRatio)
    {
-      g_status="WAIT: spread+fee reserve too costly for profit goal";
+      // A large opening spread would eat the SL budget before price moves.
+      // A time grace cannot override broker-side stop execution.
+      g_status="WAIT: spread+fees too costly for profit or stop budget";
       return false;
    }
    return true;
@@ -584,7 +592,11 @@ int OnInit()
       InpMaxPendingAgeSec<5 || InpDailyStopUsd<=0 || InpFrozenRetrySec<1 ||
        InpMinDirectionScorePrice<=0 || InpM5ConflictBodyPrice<0 ||
        InpMaxEntryCostToWinRatio<=0 || InpMaxEntryCostToWinRatio>1.0 ||
-       InpLossCooldownSec<0 || InpLossCooldownSec>90)
+       InpLossCooldownSec<0 || InpLossCooldownSec>90 ||
+       InpLocalLossGraceSec<0 || InpLocalLossGraceSec>60 ||
+       InpMaxHoldSec<=InpLocalLossGraceSec ||
+       InpMaxEntryCostToLossRatio<=0 ||
+       InpMaxEntryCostToLossRatio>0.80)
    {Alert("Candle Chaser invalid Inputs: review lots, stop, target, timing.");return INIT_PARAMETERS_INCORRECT;}
    int allowed=(int)SymbolInfoInteger(_Symbol,SYMBOL_ORDER_MODE);
    if((allowed&SYMBOL_ORDER_STOP)!=SYMBOL_ORDER_STOP)
@@ -594,7 +606,7 @@ int OnInit()
    g_trade.SetTypeFillingBySymbol(_Symbol);
    g_trade.SetAsyncMode(false);
    RefreshTradingDay();
-   PrintFormat("AQ_CHASER START v1.03 DEMO ONE_WAY_STOP symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
+   PrintFormat("AQ_CHASER START v1.04 DEMO LOSS_GRACE symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
                _Symbol,InpLots,InpArmDistancePrice,InpRepriceStepPrice,
                InpCloseNetProfitUsd,InpMaxLossUsd);
    EventSetTimer(1);
@@ -664,5 +676,8 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
                 DoubleToString(profit,2));
       FileClose(file);
    }
-   PrintFormat("AQ_CHASER DEAL %I64u entry=%d net=%.2f",trans.deal,(int)entry,profit);
+   const ENUM_DEAL_REASON brokerReason=
+      (ENUM_DEAL_REASON)HistoryDealGetInteger(trans.deal,DEAL_REASON);
+   PrintFormat("AQ_CHASER DEAL %I64u entry=%d net=%.2f brokerReason=%s",
+               trans.deal,(int)entry,profit,EnumToString(brokerReason));
 }
