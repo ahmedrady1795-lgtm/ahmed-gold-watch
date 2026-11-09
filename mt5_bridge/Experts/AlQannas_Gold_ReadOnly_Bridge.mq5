@@ -101,8 +101,8 @@ string BookJson()
       }
    }
    bids+="]";asks+="]";
-   return "{\"available\":"+string((nb>0 && na>0)?"true":"false")
-         +",\"reason\":"+string((nb>0 && na>0)?"null":"\"order_book_unavailable\"")
+   return "{\"available\":"+((nb>0 && na>0)?"true":"false")
+         +",\"reason\":"+((nb>0 && na>0)?"null":"\"order_book_unavailable\"")
          +",\"bids\":"+bids+",\"asks\":"+asks+"}";
 }
 
