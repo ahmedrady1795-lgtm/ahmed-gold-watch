@@ -19,6 +19,7 @@ const priceText=(n:number|null|undefined)=>n!=null&&Number.isFinite(n)&&n>0?
  */
 export default function SniperScenarioHero(p:Props){
  const connected=p.marketOpen&&p.fresh&&!p.providerTransition&&p.fusion.ready;
+ const quoteOnly=Boolean(p.flow?.profileReady&&!p.flow?.orderFlowReady);
  const side=connected?p.fusion.side:'WAIT';
  const direction=side==='BUY'?'الصعود المرجّح':side==='SELL'?'الهبوط المرجّح':'مراقبة الحركة';
  const headline=!connected?'بيانات السوق غير جاهزة':
@@ -63,7 +64,7 @@ export default function SniperScenarioHero(p:Props){
            p.fusion.m15==='SELL'?'↓ هبوط':'—'}</b></span>
          <span>POC × FLOW <b>{p.flow?.ready?
            (p.flow.side==='BUY'?'↑ صعود':p.flow.side==='SELL'?'↓ هبوط':'متعارض'):
-           'غير متاح'}</b></span>
+           quoteOnly?'POC سعري · DOM —':'غير متاح'}</b></span>
          <span>سيولة <b>{p.liquidity.ready?
            p.liquidity.sweep==='HIGH_RECLAIMED_DOWN'?'رفض قمة':
            p.liquidity.sweep==='LOW_RECLAIMED_UP'?'استرداد قاع':
@@ -91,7 +92,7 @@ export default function SniperScenarioHero(p:Props){
    <div className="sniper-scenario-hero-footer">
      <span>{source} · {p.flow?.ready?
        (p.flow.quality==='EXECUTED_SAMPLE'?'حجم منفذ Coinbase':'نشاط أسعار MT5 الاسترشادي'):
-       'بيانات التدفق غير مؤهلة'}</span>
+       quoteOnly?'بروفايل نشاط السعر فقط · DOM غير متاح':'بيانات التدفق غير مؤهلة'}</span>
      <span>المستويات مشروطة؛ لا شموع مستقبلية أو أهداف مضمونة</span>
      <span dir="ltr">QANNAS / OBSERVATION ONLY</span>
    </div>
