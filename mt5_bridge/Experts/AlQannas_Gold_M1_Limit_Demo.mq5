@@ -644,10 +644,25 @@ int LocalSignal()
    }
    // Approximate demand/supply references for a close LIMIT pullback; only
    // the executed broker Bid/Ask and minimum stop distance decide viability.
-   g_buyZone=(sweptLow?bars[0].low:
-             MathMin(bars[0].low,g_pocPrice));
-   g_sellZone=(sweptHigh?bars[0].high:
-              MathMax(bars[0].high,g_pocPrice));
+   // Nearest previously traded rejection/support levels, not a distant
+   // all-session min/max. POC participates only when on the pullback side.
+   g_buyZone=0.0;
+   g_sellZone=0.0;
+   for(int k=0;k<12;k++)
+   {
+      double support=bars[k].low;
+      double resistance=bars[k].high;
+      if(support<tick.bid-TickSize() && support>g_buyZone)
+         g_buyZone=support;
+      if(resistance>tick.ask+TickSize() &&
+         (g_sellZone<=0.0 || resistance<g_sellZone))
+         g_sellZone=resistance;
+   }
+   if(g_pocPrice<tick.bid-TickSize() && g_pocPrice>g_buyZone)
+      g_buyZone=g_pocPrice;
+   if(g_pocPrice>tick.ask+TickSize() &&
+      (g_sellZone<=0.0 || g_pocPrice<g_sellZone))
+      g_sellZone=g_pocPrice;
    g_predictionBar=g_barStart;
    g_predictionSide=side;
    g_predictionScore=score;
