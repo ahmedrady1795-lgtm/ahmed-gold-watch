@@ -50,7 +50,8 @@ input int    InpMinTickConfirm       = 8;      // Minimum price-change ticks bef
 input double InpMaxSpreadRangeRatio  = 0.35;   // Spread cannot dominate recent M1 range
 input double InpMaxLiveCandleRange   = 2.20;   // Skip live M1 spikes over mean range
 input double InpEntryPullbackRange   = 0.010;  // Small pending LIMIT pullback as fraction of M1 range
-input double InpMaxLimitDistancePrice = 0.70;  // MAX XAUUSD price distance from current executable quote
+input double InpMaxLimitDistancePrice = 0.70;  // MAX XAU price distance from executable quote
+input double InpMaxZoneSnapPrice      = 0.45;  // Use liquidity zone if reasonably close to quote
 input int    InpMaxPendingAgeSec     = 55;     // Rebuild aging STOP ladder after this many seconds
 input bool   InpCancelOnNewBar       = true;  // OFF: don't remove valid pending limits on new M1 bars
 input bool   InpCancelOnPriceDrift   = false;  // OFF: do NOT cancel a LIMIT just because quote moved
@@ -64,6 +65,9 @@ input int    InpMaxHoldSeconds       = 120;    // Allow more time for winning mo
 input int    InpMaxConcurrent       = 1;      // Open positions + pending orders combined
 input int    InpMaxEntriesPerM1      = 1;      // STOP placement successes per minute
 input int    InpMinOrderSpacingSec   = 2;      // Minimum seconds between STOP placement batches
+input bool   InpExitOnTickReversal   = true;   // Cut adverse position on strong opposite short-term tick pressure
+input double InpEarlyExitLossUsd     = 1.30;   // Loss threshold for early reversal exit (not guaranteed)
+input int    InpEarlyExitMinAgeSec   = 12;     // Let entries settle briefly before reversal check
 input int    InpFrozenRetrySeconds   = 5;      // Back off failed broker-frozen position closes
 input double InpMaxSpreadPrice       = 0.80;   // XAU price units (not points)
 input ulong  InpMagic                = 560179505;
@@ -784,6 +788,16 @@ bool PlaceLimit(int side)
    gap=MathMax(gap,minDist-spread+2.0*TickSize());
    double entry=(side>0?PriceRound(tick.bid-gap,-1):
                         PriceRound(tick.ask+gap,1));
+   // Prefer a nearby supply/demand / high-volume pullback level, without
+   // waiting for distant zones and losing every fast M1 opportunity.
+   double zone=(side>0?g_buyZone:g_sellZone);
+   double zoneDistance=(side>0?tick.ask-zone:zone-tick.bid);
+   double distanceCap=MathMin(InpMaxZoneSnapPrice,InpMaxLimitDistancePrice);
+   bool zoneValid=(zone>0 && zoneDistance>=minDist+TickSize() &&
+                   zoneDistance<=distanceCap+TickSize()*0.5 &&
+                   (side>0?zone<tick.bid:zone>tick.ask));
+   if(zoneValid)
+      entry=(side>0?PriceRound(zone,-1):PriceRound(zone,1));
    if(entry<=0)return false;
    // Only place a BUY LIMIT under the bid or SELL LIMIT over the ask.
    double quoteDistance=(side>0?tick.ask-entry:entry-tick.bid);
@@ -1104,6 +1118,9 @@ int OnInit()
       InpMinTickConfirm<0 || InpMaxSpreadRangeRatio<=0 ||
       InpMaxLiveCandleRange<=0 || InpEntryPullbackRange<0 ||
       InpEntryPullbackRange>1 || InpMaxLimitDistancePrice<=2.0*TickSize() ||
+      InpMaxZoneSnapPrice<=0 || InpMaxZoneSnapPrice>InpMaxLimitDistancePrice ||
+      InpEarlyExitLossUsd<=0 || InpEarlyExitLossUsd>InpMaxLossUsd ||
+      InpEarlyExitMinAgeSec<1 ||
       InpMaxPendingAgeSec<2 || InpCancelDistancePrice<=0 ||
       InpFrozenCancelRetrySec<1 || InpDailyStopUsd<=0 ||
       (InpEnableDailyStop && InpDailyStopUsd<=InpMaxLossUsd) ||
