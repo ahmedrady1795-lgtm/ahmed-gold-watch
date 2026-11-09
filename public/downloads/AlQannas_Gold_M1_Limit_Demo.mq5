@@ -5,8 +5,8 @@
 //| This EA does NOT call the Al-Qannas website/AI.                  |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "1.16"
-#property description "Al-Qannas Gold M1 STOP LADDER v1.16: 2-sided STOP grid, DEMO ONLY."
+#property version   "1.17"
+#property description "Al-Qannas Gold v1.17: user-selectable LIMIT pullback or STOP ladder, DEMO ONLY."
 #include <Trade/Trade.mqh>
 
 enum ENUM_AQ_ENTRY_STYLE
@@ -15,12 +15,18 @@ enum ENUM_AQ_ENTRY_STYLE
    AQ_BALANCED=1,       // M1 + M5 directional agreement
    AQ_PRECISION=2       // Stronger consensus, fewer entries
 };
+enum ENUM_AQ_ORDER_STYLE
+{
+   AQ_LIMIT_PULLBACK=0, // BUY LIMIT below Bid / SELL LIMIT above Ask
+   AQ_STOP_BREAKOUT=1   // BUY STOP above Ask / SELL STOP below Bid
+};
 enum ENUM_AQ_DIRECTION
 {
    AQ_BOTH=0,
    AQ_BUYS_ONLY=1,
    AQ_SELLS_ONLY=2
 };
+input ENUM_AQ_ORDER_STYLE InpOrderStyle=AQ_LIMIT_PULLBACK; // LIMIT by default; switch to STOP ladder in Inputs
 input bool   InpManualPause          = false;  // Manually pause NEW entries; existing positions still managed
 input ENUM_AQ_DIRECTION InpTradeDirection=AQ_BOTH; // Both / BUY only / SELL only
 input bool   InpEnableDailyStop      = false;  // User decides whether daily loss auto-lock is enabled
@@ -572,7 +578,9 @@ void CancelStaleStops()
       ulong ticket=OrderGetTicket(i);
       if(ticket==0 || !OrderSelect(ticket) || !OwnPendingOrder())continue;
       ENUM_ORDER_TYPE type=(ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
-      bool legacy=(type==ORDER_TYPE_BUY_LIMIT || type==ORDER_TYPE_SELL_LIMIT);
+      bool isLimit=(type==ORDER_TYPE_BUY_LIMIT || type==ORDER_TYPE_SELL_LIMIT);
+      bool foreignMode=(isLimit && InpOrderStyle==AQ_STOP_BREAKOUT) ||
+                       (!isLimit && InpOrderStyle==AQ_LIMIT_PULLBACK);
       int side=(type==ORDER_TYPE_BUY_STOP || type==ORDER_TYPE_BUY_LIMIT?1:-1);
       double entry=OrderGetDouble(ORDER_PRICE_OPEN);
       double distance=MathAbs((side>0?tick.ask:tick.bid)-entry);
@@ -582,15 +590,16 @@ void CancelStaleStops()
                        distance>InpCancelDistancePrice+TickSize()*0.5);
       bool flowFlip=(InpCancelOnFlowFlip && g_recentTickCount>=8 &&
                      side*flow< -0.60);
-      if(!legacy && !tooOld && !priceDrift && !flowFlip)continue;
-      string reason=legacy?"LEGACY_LIMIT":tooOld?"PENDING_AGE":
+      if(!foreignMode && !tooOld && !priceDrift && !flowFlip)continue;
+      string reason=foreignMode?"ORDER_MODE_SWITCH":tooOld?"PENDING_AGE":
                     priceDrift?"PRICE_DRIFT":"TICK_FLOW_FLIP";
       CancelPendingIfPossible(ticket,reason);
    }
 }
 
-// Do not mix old LIMIT orders from v1.15 with new STOP ladder orders.
-bool HasLegacyLimits()
+// When changing Inputs from STOP to LIMIT, cancel foreign pending orders.
+// Don't place new orders until old, possibly frozen broker pending orders disappear.
+bool HasOtherModeOrders()
 {
    bool found=false;
    for(int i=OrdersTotal()-1;i>=0;i--)
@@ -598,9 +607,12 @@ bool HasLegacyLimits()
       ulong ticket=OrderGetTicket(i);
       if(ticket==0 || !OrderSelect(ticket) || !OwnPendingOrder())continue;
       ENUM_ORDER_TYPE type=(ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
-      if(type!=ORDER_TYPE_BUY_LIMIT && type!=ORDER_TYPE_SELL_LIMIT)continue;
+      bool isLimit=(type==ORDER_TYPE_BUY_LIMIT || type==ORDER_TYPE_SELL_LIMIT);
+      bool foreignMode=(isLimit && InpOrderStyle==AQ_STOP_BREAKOUT) ||
+                       (!isLimit && InpOrderStyle==AQ_LIMIT_PULLBACK);
+      if(!foreignMode)continue;
       found=true;
-      CancelPendingIfPossible(ticket,"LEGACY_MIGRATION");
+      CancelPendingIfPossible(ticket,"ORDER_MODE_SWITCH");
    }
    return found;
 }
@@ -669,6 +681,80 @@ bool PriceCashPerOne(int side,double entry,double &usd)
    if(!OrderCalcProfit(type,_Symbol,InpLots,entry,target,pnl)) return false;
    usd=MathAbs(pnl);
    return (usd>0.00001);
+}
+
+bool PlaceLimit(int side)
+{
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol,tick) || tick.bid<=0 || tick.ask<=tick.bid)return false;
+   double spread=tick.ask-tick.bid;
+   if(spread>InpMaxSpreadPrice){g_status="Spread too wide for LIMIT";return false;}
+   if(ServerNow()-(datetime)tick.time>3){g_status="Quote stale";return false;}
+   double minDist=MinimumDistance();
+   double gap=MathMax(2.0*TickSize(),
+                      MathMax(spread*0.20,InpEntryPullbackRange*g_referenceM1Range));
+   gap=MathMax(gap,minDist-spread+2.0*TickSize());
+   double entry=(side>0?PriceRound(tick.bid-gap,-1):
+                        PriceRound(tick.ask+gap,1));
+   if(entry<=0)return false;
+   // Only place a BUY LIMIT under the bid or SELL LIMIT over the ask.
+   double quoteDistance=(side>0?tick.ask-entry:entry-tick.bid);
+   if(quoteDistance>InpMaxLimitDistancePrice+TickSize()*0.5)
+   {
+      g_status="LIMIT too far from live quote";
+      return false;
+   }
+   if(quoteDistance<minDist-TickSize()*0.5)return false;
+   double usdPerOne=0;
+   if(!PriceCashPerOne(side,entry,usdPerOne))
+   {g_status="OrderCalcProfit failed";return false;}
+   double budget=InpMaxLossUsd-InpCostReserveUsd;
+   if(budget<=0)return false;
+   double stopDist=budget/usdPerOne;
+   if(stopDist<minDist+TickSize())
+   {g_status="Lot too large for $ stop and broker minimum SL";return false;}
+   double tpDist=MathMax(minDist+TickSize(),(InpTakeNetUsd+InpCostReserveUsd)/usdPerOne);
+   double sl=(side>0?PriceRound(entry-stopDist,1):PriceRound(entry+stopDist,-1));
+   double tp=(side>0?PriceRound(entry+tpDist,1):PriceRound(entry-tpDist,-1));
+   if(sl<=0 || tp<=0 || MathAbs(entry-sl)<minDist || MathAbs(tp-entry)<minDist)return false;
+   double worst=0.0;
+   ENUM_ORDER_TYPE profitType=(side>0?ORDER_TYPE_BUY:ORDER_TYPE_SELL);
+   if(!OrderCalcProfit(profitType,_Symbol,InpLots,entry,sl,worst))return false;
+   if(-worst+InpCostReserveUsd>InpMaxLossUsd+0.01)return false;
+
+   datetime now=ServerNow();
+   int flags=(int)SymbolInfoInteger(_Symbol,SYMBOL_EXPIRATION_MODE);
+   ENUM_ORDER_TYPE_TIME lifetime=ORDER_TIME_GTC;
+   datetime until=0;
+   if((flags & SYMBOL_EXPIRATION_GTC)==SYMBOL_EXPIRATION_GTC)lifetime=ORDER_TIME_GTC;
+   else if((flags & SYMBOL_EXPIRATION_DAY)==SYMBOL_EXPIRATION_DAY)lifetime=ORDER_TIME_DAY;
+   else if((flags & SYMBOL_EXPIRATION_SPECIFIED)==SYMBOL_EXPIRATION_SPECIFIED)
+   {
+      lifetime=ORDER_TIME_SPECIFIED;
+      until=now+3600;
+   }
+   else {g_status="No supported LIMIT expiration mode";return false;}
+
+   g_lastOrderAt=now;
+   bool sent=false;
+   if(side>0)
+      sent=g_trade.BuyLimit(InpLots,entry,_Symbol,sl,tp,lifetime,until,"AQ Gold demo BUY LIMIT");
+   else
+      sent=g_trade.SellLimit(InpLots,entry,_Symbol,sl,tp,lifetime,until,"AQ Gold demo SELL LIMIT");
+   uint ret=g_trade.ResultRetcode();
+   if(!sent || (ret!=TRADE_RETCODE_PLACED && ret!=TRADE_RETCODE_DONE))
+   {
+      g_status="LIMIT rejected: "+g_trade.ResultRetcodeDescription();
+      PrintFormat("Al-Qannas %s LIMIT rejected entry=%.*f retcode=%u %s",
+                  side>0?"BUY":"SELL",_Digits,entry,ret,g_trade.ResultRetcodeDescription());
+      return false;
+   }
+   g_ordersThisBar++;
+   g_status="LIMIT pullback order placed";
+   PrintFormat("Al-Qannas %s LIMIT #%I64u lot=%.2f bid=%.*f ask=%.*f entry=%.*f gap=%.3f SL=%.*f TP=%.*f",
+               side>0?"BUY":"SELL",g_trade.ResultOrder(),InpLots,
+               _Digits,tick.bid,_Digits,tick.ask,_Digits,entry,quoteDistance,_Digits,sl,_Digits,tp);
+   return true;
 }
 
 bool PlaceStop(int side,double entry)
@@ -785,7 +871,9 @@ void BuildStopLadder(int openSide)
 void DisplayStatus(double closed,double floating,int active)
 {
    if(!InpShowChartStatus) return;
-   Comment("AL-QANNAS GOLD | DEMO STOP LADDER | M1",
+   Comment(InpOrderStyle==AQ_LIMIT_PULLBACK?
+           "AL-QANNAS GOLD | DEMO LIMIT | M1":
+           "AL-QANNAS GOLD | DEMO STOP LADDER | M1",
            "\nLot ",DoubleToString(InpLots,2)," | Pending+open: ",active,"/",InpMaxConcurrent,
            "\nDaily closed USD: ",DoubleToString(closed,2),
            " | Floating est: ",DoubleToString(floating,2),
@@ -826,7 +914,8 @@ void Pulse()
    ManagePositions(g_dayLocked);
    if(!g_dayLocked)CancelStaleStops();
    int openSide=OpenDirection();
-   if(InpCancelOppositeOnFill && openSide!=0 && openSide!=2)
+   if(InpOrderStyle==AQ_STOP_BREAKOUT &&
+      InpCancelOppositeOnFill && openSide!=0 && openSide!=2)
       RemoveOppositeStops(openSide);
    int active=CountActive();
    DisplayStatus(closed,floating,active);
@@ -863,19 +952,29 @@ void Pulse()
    if((ENUM_ACCOUNT_MARGIN_MODE)AccountInfoInteger(ACCOUNT_MARGIN_MODE)!=ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
       slots=1; // Netting accounts cannot independently manage four positions.
    if(active>=slots) return;
-   if(HasLegacyLimits())
+   if(HasOtherModeOrders())
    {
-      g_status="OLD LIMIT pending; remove legacy orders first";
+      g_status="Other-mode pending orders; waiting for broker cancellation";
       DisplayStatus(closed,floating,CountActive());
       return;
    }
-   if(openSide==2 && InpCancelOppositeOnFill)
+   if(InpOrderStyle==AQ_LIMIT_PULLBACK)
    {
-      g_status="Both position directions open; no new STOP ladder";
-      DisplayStatus(closed,floating,active);
-      return;
+      int side=LocalSignal();
+      if(side>0 && InpTradeDirection==AQ_SELLS_ONLY)side=0;
+      if(side<0 && InpTradeDirection==AQ_BUYS_ONLY)side=0;
+      if(side!=0)PlaceLimit(side);
    }
-   BuildStopLadder(openSide);
+   else
+   {
+      if(openSide==2 && InpCancelOppositeOnFill)
+      {
+         g_status="Both position directions open; no new STOP ladder";
+         DisplayStatus(closed,floating,active);
+         return;
+      }
+      BuildStopLadder(openSide);
+   }
 }
 
 int OnInit()
@@ -892,7 +991,7 @@ int OnInit()
    {
       Alert("Al-Qannas Gold EA dollar thresholds require a USD account");return INIT_FAILED;
    }
-   if(!ExactVolume() || InpStopLevelsPerSide<1 || InpStopLevelsPerSide>10 ||
+   if(!ExactVolume() || (int)InpOrderStyle<0 || (int)InpOrderStyle>1 || InpStopLevelsPerSide<1 || InpStopLevelsPerSide>10 ||
       InpFirstStopOffsetPrice<=0 || InpStopStepPrice<=0 ||
       InpMaxStopDistancePrice<InpFirstStopOffsetPrice ||
       (int)InpEntryStyle<0 || (int)InpEntryStyle>2 ||
@@ -915,9 +1014,11 @@ int OnInit()
       Alert("Al-Qannas invalid Expert Inputs. Check risk, volume step, and entry settings.");
       return INIT_PARAMETERS_INCORRECT;
    }
-   if(((int)SymbolInfoInteger(_Symbol,SYMBOL_ORDER_MODE) & SYMBOL_ORDER_STOP)!=SYMBOL_ORDER_STOP)
+   int allowedOrders=(int)SymbolInfoInteger(_Symbol,SYMBOL_ORDER_MODE);
+   int needed=(InpOrderStyle==AQ_LIMIT_PULLBACK?SYMBOL_ORDER_LIMIT:SYMBOL_ORDER_STOP);
+   if((allowedOrders & needed)!=needed)
    {
-      Alert("Exness gold symbol does not allow pending STOP orders");return INIT_FAILED;
+      Alert("Gold symbol does not allow the selected pending order mode");return INIT_FAILED;
    }
    g_trade.SetExpertMagicNumber(InpMagic);
    g_trade.SetDeviationInPoints(30);
@@ -925,7 +1026,8 @@ int OnInit()
    g_trade.SetAsyncMode(false);
    ReadDay();
    EventSetTimer(1);
-   PrintFormat("Al-Qannas Gold DEMO STOP LADDER v1.16: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
+   PrintFormat("Al-Qannas Gold DEMO v1.17 %s: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
+       (InpOrderStyle==AQ_LIMIT_PULLBACK?"LIMIT":"STOP_LADDER"),
        _Symbol,InpLots,InpTakeNetUsd,InpMaxLossUsd,InpTrailArmUsd,InpTrailStartUsd,InpTrailGivebackUsd,InpDailyStopUsd);
    return INIT_SUCCEEDED;
 }
