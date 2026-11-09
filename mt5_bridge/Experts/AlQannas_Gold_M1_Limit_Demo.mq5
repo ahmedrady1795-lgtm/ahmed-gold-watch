@@ -5,20 +5,34 @@
 //| This EA does NOT call the Al-Qannas website/AI.                  |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "1.11"
-#property description "Al-Qannas Gold M1 Limit v1.11: +$1.50 lock, $3 loss. DEMO ONLY."
+#property version   "1.12"
+#property description "Al-Qannas Gold M1 Limit v1.12: User-controlled risk and directional filters. DEMO ONLY."
 #include <Trade/Trade.mqh>
 
-input double InpLots                 = 0.05;   // Fixed exact volume
+enum ENUM_AQ_ENTRY_STYLE
+{
+   AQ_FAST=0,           // More signals, less confirmation
+   AQ_BALANCED=1,       // M1 + M5 directional agreement
+   AQ_PRECISION=2       // Stronger consensus, fewer entries
+};
+input bool   InpManualPause          = false;  // Manually pause NEW entries; existing positions still managed
+input bool   InpEnableDailyStop      = false;  // User decides whether daily loss auto-lock is enabled
+input ENUM_AQ_ENTRY_STYLE InpEntryStyle = AQ_BALANCED; // Change entry strictness in Inputs
+input double InpLots                 = 0.05;   // Set volume yourself; broker min/max/step applies
 input double InpTakeNetUsd           = 6.00;   // Hard broker TP estimated net USD (NOT first tiny profit)
 input double InpMaxLossUsd           = 3.00;   // Intended max loss USD (broker SL/fast moves can overrun)
 input double InpTrailArmUsd          = 2.25;   // At this peak, attempt to lock +$1.50 net
 input double InpTrailStartUsd        = 3.00;   // Start trailing best net profit from this peak
 input double InpTrailGivebackUsd     = 0.80;   // Max giveback from peak, once trailing
 input double InpProfitLockUsd        = 1.50;   // Minimum targeted protected net profit (not guaranteed)
-input double InpMinSignalScore       = 0.28;   // Skip ambiguous near-zero prediction scores
+input double InpMinSignalScore       = 0.45;   // Entry confidence threshold (higher = fewer entries)
+input double InpMinM5Alignment       = 0.12;   // Minimum agreement from last CLOSED M5 candles
+input int    InpMinTickConfirm       = 8;      // Minimum price-change ticks before first M1 signal
+input double InpMaxSpreadRangeRatio  = 0.35;   // Spread cannot dominate recent M1 range
+input double InpMaxLiveCandleRange   = 2.20;   // Skip live M1 spikes over mean range
+input double InpEntryPullbackRange   = 0.12;   // Pending limit distance as a fraction of M1 range
 input double InpM5ConflictScore      = 0.80;   // Skip strong M5 trend conflicts
-input double InpDailyStopUsd         = 40.00;  // Stop new entries on daily net loss
+input double InpDailyStopUsd         = 40.00;  // Used only when InpEnableDailyStop=true
 input double InpCostReserveUsd       = 0.20;   // Estimated round-trip costs per trade
 input int    InpMaxHoldSeconds       = 180;    // Allow more time for winning moves without endless holding
 input int    InpMaxConcurrent       = 4;      // Open positions + pending orders
@@ -37,6 +51,7 @@ int       g_ordersThisBar = 0;
 int       g_upTicks = 0;
 int       g_downTicks = 0;
 double    g_previousMid = 0.0;
+double    g_referenceM1Range = 0.0;
 bool      g_dayLocked = false;
 string    g_lockKey = "";
 string    g_status = "Ready";
@@ -105,8 +120,10 @@ void ReadDay()
    g_dayLocked = false;
    g_lockKey="AQG_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+
              "_"+IntegerToString((long)InpMagic)+"_"+IntegerToString((long)today);
-   if(GlobalVariableCheck(g_lockKey)) g_dayLocked = true;
-   Print("Al-Qannas: new server trading day. Locked=",g_dayLocked);
+   // A stored old day-lock is ignored when the user disables the daily stop.
+   if(InpEnableDailyStop && GlobalVariableCheck(g_lockKey)) g_dayLocked = true;
+   PrintFormat("Al-Qannas: day=%I64d user daily stop=%s locked=%s",
+               (long)today,(InpEnableDailyStop?"ON":"OFF"),(g_dayLocked?"YES":"NO"));
 }
 
 bool ClosedProfitToday(double &result)
@@ -386,7 +403,9 @@ bool PlaceLimit(int side)
    double spread=tick.ask-tick.bid;
    if(spread<=0 || spread>InpMaxSpreadPrice) { g_status="Spread too wide";return false; }
    if(ServerNow()-(datetime)tick.time>3) { g_status="Quote stale";return false; }
-   double gap=MathMax(2.0*TickSize(),spread*0.20);
+   // Wait for a modest pullback rather than placing a limit on the quote edge.
+   double gap=MathMax(2.0*TickSize(),
+                      MathMax(spread*0.20,InpEntryPullbackRange*g_referenceM1Range));
    double minDist=MinimumDistance();
    gap=MathMax(gap,minDist-spread+2.0*TickSize());
    double entry=(side>0 ? PriceRound(tick.bid-gap,-1) : PriceRound(tick.ask+gap,1));
@@ -399,7 +418,7 @@ bool PlaceLimit(int side)
    double budget=InpMaxLossUsd-InpCostReserveUsd;
    if(budget<=0) return false;
    double stopDist=budget/usdPerOne;
-   if(stopDist<minDist+TickSize()) {g_status="0.05 lot exceeds $ loss budget";return false;}
+   if(stopDist<minDist+TickSize()) {g_status="Lot + $ loss limit cannot meet broker minimum SL distance";return false;}
    double tpDist=MathMax(minDist+TickSize(),(InpTakeNetUsd+InpCostReserveUsd)/usdPerOne);
    double sl=(side>0 ? PriceRound(entry-stopDist,1) : PriceRound(entry+stopDist,-1));
    double tp=(side>0 ? PriceRound(entry+tpDist,1) : PriceRound(entry-tpDist,-1));
@@ -465,11 +484,11 @@ void DisplayStatus(double closed,double floating,int active)
 {
    if(!InpShowChartStatus) return;
    Comment("AL-QANNAS GOLD | DEMO LIMIT | M1",
-           "\nLot 0.05 | Pending+open: ",active,"/",InpMaxConcurrent,
+           "\nLot ",DoubleToString(InpLots,2)," | Pending+open: ",active,"/",InpMaxConcurrent,
            "\nDaily closed USD: ",DoubleToString(closed,2),
            " | Floating est: ",DoubleToString(floating,2),
            "\nPlaced this candle: ",g_ordersThisBar,"/",InpMaxEntriesPerM1,
-           " | ",g_dayLocked?"LOCKED":"ACTIVE"," | ",g_status);
+           " | ",g_dayLocked?"DAY LOCK":(InpManualPause?"MANUAL PAUSE":"ACTIVE")," | ",g_status);
 }
 
 void Pulse()
@@ -491,7 +510,7 @@ void Pulse()
    bool historyOK=ClosedProfitToday(closed);
    double floating=FloatingEstimate();
    if(!historyOK) {g_status="History unavailable - no new entry";}
-   if(historyOK && !g_dayLocked && closed+floating<=-InpDailyStopUsd)
+   if(InpEnableDailyStop && historyOK && !g_dayLocked && closed+floating<=-InpDailyStopUsd)
    {
       g_dayLocked=true;
       GlobalVariableSet(g_lockKey,1.0);
@@ -503,6 +522,12 @@ void Pulse()
    int active=CountActive();
    DisplayStatus(closed,floating,active);
    if(!historyOK || g_dayLocked || g_barStart<=0 || !ExactVolume()) return;
+   if(InpManualPause)
+   {
+      g_status="Manual NEW ENTRY pause from Expert Inputs";
+      DisplayStatus(closed,floating,active);
+      return;
+   }
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
    {
       g_status="Enable Algo Trading in terminal (Ctrl+O > Expert Advisors)";
@@ -546,18 +571,22 @@ int OnInit()
    {
       Alert("Al-Qannas Gold EA dollar thresholds require a USD account");return INIT_FAILED;
    }
-   if(MathAbs(InpLots-0.05)>0.000001 || !ExactVolume() ||
-      InpTakeNetUsd<=InpTrailStartUsd || InpMaxLossUsd<=InpCostReserveUsd ||
+   if(!ExactVolume() ||
+      InpTakeNetUsd<=0 || InpMaxLossUsd<=InpCostReserveUsd ||
       InpTrailArmUsd<=0 || InpTrailStartUsd<=InpTrailArmUsd ||
       InpTrailGivebackUsd<=0 || InpTrailGivebackUsd>=InpTrailStartUsd ||
       InpProfitLockUsd<=0 || InpProfitLockUsd>=InpTrailArmUsd ||
-      InpMinSignalScore<0 || InpM5ConflictScore<=0 ||
-      InpDailyStopUsd<=InpMaxLossUsd || InpMaxHoldSeconds<30 ||
-      InpMaxConcurrent<1 || InpMaxConcurrent>4 ||
-      InpMaxEntriesPerM1<1 || InpMaxEntriesPerM1>4 ||
-      InpMinOrderSpacingSec<2 || InpMaxSpreadPrice<=0)
+      InpMinSignalScore<0 || InpM5ConflictScore<0 || InpMinM5Alignment<0 ||
+      InpMinTickConfirm<0 || InpMaxSpreadRangeRatio<=0 ||
+      InpMaxLiveCandleRange<=0 || InpEntryPullbackRange<0 ||
+      InpEntryPullbackRange>1 || InpDailyStopUsd<=0 ||
+      (InpEnableDailyStop && InpDailyStopUsd<=InpMaxLossUsd) ||
+      InpMaxHoldSeconds<1 || InpMaxConcurrent<1 || InpMaxConcurrent>20 ||
+      InpMaxEntriesPerM1<1 || InpMaxEntriesPerM1>30 ||
+      InpMinOrderSpacingSec<1 || InpMaxSpreadPrice<=0)
    {
-      Alert("Al-Qannas invalid setup; exact lot 0.05 / valid risk settings required");return INIT_PARAMETERS_INCORRECT;
+      Alert("Al-Qannas invalid Expert Inputs. Check risk, volume step, and entry settings.");
+      return INIT_PARAMETERS_INCORRECT;
    }
    if(((int)SymbolInfoInteger(_Symbol,SYMBOL_ORDER_MODE) & SYMBOL_ORDER_LIMIT)!=SYMBOL_ORDER_LIMIT)
    {
@@ -569,7 +598,7 @@ int OnInit()
    g_trade.SetAsyncMode(false);
    ReadDay();
    EventSetTimer(1);
-   PrintFormat("Al-Qannas Gold DEMO v1.11: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
+   PrintFormat("Al-Qannas Gold DEMO v1.12: %s lot=%.2f hardTP=%.2f stop=%.2f arm=%.2f trail=%.2f giveback=%.2f daily=%.2f",
        _Symbol,InpLots,InpTakeNetUsd,InpMaxLossUsd,InpTrailArmUsd,InpTrailStartUsd,InpTrailGivebackUsd,InpDailyStopUsd);
    return INIT_SUCCEEDED;
 }
