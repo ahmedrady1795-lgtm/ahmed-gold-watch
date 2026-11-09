@@ -52,7 +52,10 @@ yes(/g_predictionBar=g_barStart/,'M1 prediction timestamp before candle close');
 yes(/FinalizePreviousCandle\(g_barStart\)/,'evaluate previous only on next candle');
 yes(/g_predictionBar==g_barStart && g_predictionSide!=0/,'avoid repaint');
 yes(/g_predictionFeatures\[k\]=f\[k\]/,'feature snapshot for next candle');
-yes(/0\.015\*error\*g_predictionFeatures\[k\]/,'bounded online learning');
+yes(/InpModelLearningRate\*error\*g_predictionFeatures\[k\]/,'bounded online learning');
+yes(/InpEnableAdaptiveWeights\s*=\s*true/,'adaptive model is user controlled');
+yes(/InpModelLearningRate\s*=\s*0\.015/,'bounded default online learning speed');
+yes(/g_barFills\+\+/,'broker-confirmed filled-deal counter');
 yes(/GlobalVariableSet\(g_modelKey\+IntegerToString\(k\),g_modelWeights\[k\]\)/,
     'online model persistent across restarts');
 yes(/AlQannas_Gold_M1_Predictions\.csv/,'forward-only prediction audit');
