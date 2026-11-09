@@ -15,7 +15,14 @@ enum ENUM_AQ_ENTRY_STYLE
    AQ_BALANCED=1,       // M1 + M5 directional agreement
    AQ_PRECISION=2       // Stronger consensus, fewer entries
 };
+enum ENUM_AQ_DIRECTION
+{
+   AQ_BOTH=0,
+   AQ_BUYS_ONLY=1,
+   AQ_SELLS_ONLY=2
+};
 input bool   InpManualPause          = false;  // Manually pause NEW entries; existing positions still managed
+input ENUM_AQ_DIRECTION InpTradeDirection=AQ_BOTH; // Both / BUY only / SELL only
 input bool   InpEnableDailyStop      = false;  // User decides whether daily loss auto-lock is enabled
 input ENUM_AQ_ENTRY_STYLE InpEntryStyle = AQ_BALANCED; // Change entry strictness in Inputs
 input double InpLots                 = 0.05;   // Set volume yourself; broker min/max/step applies
@@ -609,8 +616,9 @@ void Pulse()
    if(!historyOK || g_dayLocked || g_barStart<=0 || !ExactVolume()) return;
    if(InpManualPause)
    {
+      RemoveOwnLimits(true); // Avoid filling an old LIMIT while manually paused.
       g_status="Manual NEW ENTRY pause from Expert Inputs";
-      DisplayStatus(closed,floating,active);
+      DisplayStatus(closed,floating,CountActive());
       return;
    }
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
@@ -639,6 +647,8 @@ void Pulse()
       slots=1; // Netting accounts cannot independently manage four positions.
    if(active>=slots) return;
    int side=LocalSignal();
+   if(side>0 && InpTradeDirection==AQ_SELLS_ONLY)side=0;
+   if(side<0 && InpTradeDirection==AQ_BUYS_ONLY)side=0;
    if(side!=0) PlaceLimit(side);
 }
 
@@ -657,6 +667,8 @@ int OnInit()
       Alert("Al-Qannas Gold EA dollar thresholds require a USD account");return INIT_FAILED;
    }
    if(!ExactVolume() ||
+      (int)InpEntryStyle<0 || (int)InpEntryStyle>2 ||
+      (int)InpTradeDirection<0 || (int)InpTradeDirection>2 ||
       InpTakeNetUsd<=0 || InpMaxLossUsd<=InpCostReserveUsd ||
       InpTrailArmUsd<=0 || InpTrailStartUsd<=InpTrailArmUsd ||
       InpTrailGivebackUsd<=0 || InpTrailGivebackUsd>=InpTrailStartUsd ||
