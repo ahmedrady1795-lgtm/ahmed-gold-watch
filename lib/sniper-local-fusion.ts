@@ -22,13 +22,13 @@ export type LocalFusion={
 export function fuseLocalSniper(input:{
   preMove:PreMovePressure;hunt:M15HuntPreview;m1:M1Priority;
   liquidity:LiquidityMagnetView;marketOpen:boolean;
-  fresh:boolean;providerTransition:boolean;flowProfile?:FlowProfileDecision|null
+  fresh:boolean;m15Fresh?:boolean;providerTransition:boolean;flowProfile?:FlowProfileDecision|null
 }):LocalFusion{
   const {preMove:p,hunt:h,m1,liquidity:l}=input;
   const live=input.marketOpen&&input.fresh&&!input.providerTransition;
   const early: FusionSide=live&&p.ok&&
     (p.stage==='ARMED'||p.stage==='BUILDING')?p.side:'WAIT';
-  const m15:FusionSide=live&&h.ready&&!h.referenceOnly&&
+  const m15:FusionSide=live&&input.m15Fresh!==false&&h.ready&&!h.referenceOnly&&
     h.observation?.quality==='CLEAR'&&!h.observation.conflicting?
     h.preferred:'WAIT';
   const m1Side:FusionSide=live&&m1.ready&&m1.side!=='WAIT'?
