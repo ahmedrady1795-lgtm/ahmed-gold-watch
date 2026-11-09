@@ -25,9 +25,9 @@ const recent=(at:unknown,now:number,maxMs:number)=>
  typeof at==='number'&&Number.isFinite(at)&&at>0&&at<=now+2000&&now-at>=0&&now-at<=maxMs;
 /**
  * Causal-at-observation evidence. BTC: a partial, single-venue executed tape.
- * GOLD: broker-quoted price updates + displayed DOM (NOT executed volume).
- * No fabricated volumes or probabilistic win-rate claims. If either required
- * input is stale/invalid the result is WAIT and never trade-authorizing.
+ * GOLD: broker quote updates and optional displayed DOM (NOT executed volume).
+ * Show a quote-only POC when DOM is missing, without treating it as flow
+ * agreement, a real exchange volume profile, or broker execution evidence.
  */
 export function assessFlowProfile(input:{
  asset:'GOLD'|'BTC';price:number|null;now:number;observedAt?:number|null;
@@ -69,11 +69,20 @@ export function assessFlowProfile(input:{
  }
  const g=input.gold,p=g?.quoteProfile,d=g?.brokerDepth;
  if(g?.mode!=='broker'||!/^XAUUSD[a-z0-9._-]*$/i.test(String(g?.brokerSymbol||''))||
-   !p?.ready||!d?.available||!recent(p.asOf,now,4000)||
-   !recent(d.asOf,now,7000)||p.samples<12||d.samples<3||
-   !validPrice(p.poc)||!validPrice(p.vah)||!validPrice(p.val)||
-   typeof d.imbalancePct!=='number'||!Number.isFinite(d.imbalancePct))
-   return blank('الذهب يحتاج MT5 متصلًا، عينات سعرية حديثة وعمق وسيط متتابعًا؛ لا توجد صفقات GC منفذة');
+   !p?.ready||!recent(p.asOf,now,8000)||p.samples<12||
+   !validPrice(p.poc)||!validPrice(p.vah)||!validPrice(p.val))
+   return blank('الذهب يحتاج عينات Bid/Ask حديثة من نفس وسيط MT5؛ لا توجد صفقات GC منفذة');
+ if(!d?.available||!recent(d.asOf,now,7000)||d.samples<3||
+    typeof d.imbalancePct!=='number'||!Number.isFinite(d.imbalancePct)){
+   // Indicative price activity is visible, but absent depth never votes.
+   return {ready:false,side:'WAIT',quality:'INDICATIVE_BROKER',
+     profileBasis:'QUOTE_UPDATES',asOf:p.asOf,observedAt:input.observedAt??null,
+     poc:p.poc,vah:p.vah,val:p.val,flowPct:p.directionalPct,depthPct:null,
+     strength:0,profileReady:true,orderFlowReady:false,confirmed:false,
+     source:'Exness/MT5 quote updates only',
+     reason:'بروفايل نشاط السعر متاح من MT5؛ عمق السوق DOM غير متاح ولا يوجد حجم صفقات منفذة',
+     actionable:false};
+ }
  const pressure=p.directionalPct,depth=d.imbalancePct;
  const quoteSide:FlowSide=pressure>=12?'BUY':pressure<=-12?'SELL':'WAIT';
  const depthSide:FlowSide=depth>=12?'BUY':depth<=-12?'SELL':'WAIT';
