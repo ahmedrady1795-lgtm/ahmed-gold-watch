@@ -207,15 +207,23 @@ void ProtectProfitAtBroker(ulong ticket,int side,double entry,double currentSl,
                           +2.0*TickSize();
    MqlTick t;
    if(!SymbolInfoTick(_Symbol,t))return;
+   // Do not flood the trade server with modifications for each tick.
+   double minimumTightening=MathMax(2.0*TickSize(),0.25/usdPerPrice);
    if(side>0)
    {
-      if(proposed>=t.bid-minimum || proposed<=entry || proposed<=currentSl+2.0*TickSize())return;
+      if(proposed>=t.bid-minimum || proposed<=entry ||
+         proposed<=currentSl+minimumTightening)return;
    }
    else
    {
       if(proposed<=t.ask+minimum || proposed>=entry ||
-         (currentSl>0 && proposed>=currentSl-2.0*TickSize()))return;
+         (currentSl>0 && proposed>=currentSl-minimumTightening))return;
    }
+   string modifyKey="AQMod_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+"_"+
+                    IntegerToString((long)InpMagic)+"_"+IntegerToString((long)ticket);
+   datetime lastAttempt=(GlobalVariableCheck(modifyKey)?(datetime)GlobalVariableGet(modifyKey):0);
+   if(ServerNow()-lastAttempt<2)return;
+   GlobalVariableSet(modifyKey,(double)ServerNow()); // Also rate-limit rejections.
    bool requested=g_trade.PositionModify(ticket,proposed,currentTp);
    uint rc=g_trade.ResultRetcode();
    if(requested && rc==TRADE_RETCODE_DONE)
