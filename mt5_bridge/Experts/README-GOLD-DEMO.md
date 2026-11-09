@@ -1,68 +1,57 @@
-# Al-Qannas Gold v1.17 — LIMIT or STOP from Expert → Inputs
+# Al-Qannas Gold M1 v1.18 — fast single-LIMIT scalping (Exness DEMO)
 
-**Default: `InpOrderStyle = AQ_LIMIT_PULLBACK`.** The user reported immediate losses on the v1.16 two-sided STOP ladder due to breakout entries, whipsaw and spread. v1.17 restores BUY LIMIT/SELL LIMIT pullback orders driven by the current M1/M5 local-direction signal, as before v1.16. This is not a guarantee that each entry wins or starts in positive P/L: BID/ASK spread applies at execution.
+The existing MQL5 Expert Advisor now defaults to **one BUY LIMIT or SELL LIMIT order per M1 candle**, with a user-selectable alternative STOP mode. The main objective is to analyze each candle promptly and attempt a close-to-price pullback entry, not wait for multiple confirming indicators. A pending LIMIT may not fill if price never revisits it; one attempted order is not a guaranteed trade or a guaranteed profit.
 
-To try the video-style breakout ladder again without replacing the EA, select `InpOrderStyle = AQ_STOP_BREAKOUT` from MT5 → F7 → Inputs. On switching the mode, the EA tries to delete its pending orders of the *other* type before placing new orders. Broker-frozen orders may delay the switch; check the Trade tab and ensure no old pending orders remain. Open positions continue to be managed.
+## What changed in v1.18
 
-`InpLots=0.01` default, `InpMaxLossUsd=3.00` intended per-position nominal cap and `InpTakeNetUsd=3.00` default. The user controls the settings; but `InpEnableDailyStop=false` means no daily portfolio cutoff. The 2026-11-09 demo screenshots displayed substantial losses and high lots; do not raise exposure in response to that. Check the broker stop-level and spread. There is **no proven win rate**, backtest or MT5 MetaEditor compile certification from the GitHub static checks alone.
+- **Early M1 prediction:** use 24 already-closed M1 bars, 12 already-closed M5 bars, current quote/live M1 and the most recent tick direction changes. On each candle the first valid forecast is frozen and then compared with the *completed* M1 candle at the next bar. No lookahead/repainting of archived predictions.
+- **Liquidity traps:** detect sweeps of the previous 8 M1 swing highs/lows followed by a reclaimed close, plus rejection wicks.
+- **Tick flow and volume by price:** short-term bid/ask changes and tick-volume imbalance are local **proxies**, not institutional/exchange order-flow data. The M1 tick-volume-by-price histogram estimates a high-volume node (POC). Nearest closed-candle support/resistance or POC is considered for a LIMIT, but distant levels are not forced.
+- **No overstrict multi-gate:** the fast LIMIT path does not require a minimum prediction score, 8 tick confirmations, or unanimous M5/M1 agreement. Every valid candle gets a forecast and a directional LIMIT candidate, while broker volume, price, spread, SL, account and open-order risk rules still apply.
+- **One per M1:** at most one successfully placed LIMIT per candle, even after it fills/closes. The last accepted bar is stored in MT5 terminal GlobalVariables across recompiles/restarts. Maximum pending plus open exposure in LIMIT mode is one, regardless of the STOP ladder slots. Unfilled pending are normally canceled on the next M1 bar, subject to Exness freeze rules.
+- **Small-profit exits:** early TP, adjustable stop budget, broker-side SL/TP, early adverse tick-flow exit and optional broker-side profit protection. Brokers may freeze closing or slip through stop/TP; the $ amounts are intended thresholds, not execution guarantees.
+- **Bounded online adaptation:** after a predicted M1 candle fully closes, update six local model weights by a small capped logistic adjustment. These weights are persistent across restarts. This is *online statistical adaptation of next-candle direction*, **not** a trained market-making AI feed, and it is not proven to improve profits.
+- **Evidence:** forward prediction results are appended to `MQL5/Files/AlQannas_Gold_M1_Predictions.csv`; actual MT5 entry/exit deals (price, volume, net amount) are logged to `MQL5/Files/AlQannas_Gold_Trades.csv` when the broker reports them. Chart status shows forward direction hits and this-bar placed/filled orders. A prediction hit is NOT the same as a profitable filled trade.
 
-**Direct attachment download** (same Firefox bookmark): https://ahmed-gold-watch-free.onrender.com/download-gold
+## Defaults (all editable in Expert → Inputs)
 
-Steps: on MT5 DEMO, stop new trading, inspect pending orders and broker SL/TP, download the new `.mq5`, replace it in MQL5/Experts, compile in MetaEditor with F7 (requires 0 errors), attach to XAUUSDm M1, verify Experts log contains `v1.17 LIMIT`, and test a handful of trades before extended running. The H1 read-only bridge stays unchanged.
-
----
-
-# Al-Qannas Gold M1 STOP LADDER v1.16 — Exness DEMO
-
-This is an upgrade of the existing MetaTrader 5 EA, NOT a new Render strategy or connection to the dashboard AI.
-
-## The video-style entry logic
-
-- Places **BUY STOP** above current **ASK** and **SELL STOP** below current **BID**.
-- Defaults: **0.01 lot**, **3 pending levels on each side**, first level **0.30 XAU price units** above/below current executable quote, with a **0.30 price-unit step**.
-- Checks `SYMBOL_TRADE_STOPS_LEVEL` and the broker's allowable order modes. If Exness requires a wider distance, adjust upward or skip; the EA does not violate the server minimum.
-- Limits all positions plus pending orders to `InpMaxConcurrent=6`. If the opposite side opens, it attempts to cancel remaining opposite pending stops (`InpCancelOppositeOnFill=true`), but both sides may fill during a sharp whipsaw before cancellation is possible.
-- `InpUseSignalFilter=false` avoids the older M1/M5 directional filters that caused long waits. The ladder reacts to breakouts; **it does not predict the future or guarantee winning candles**.
-- Replenishes missing levels at configurable batches (minimum 2 seconds between batches), subject to spread/available slots and user permissions.
-- Outstanding stops are canceled by the EA after `InpMaxPendingAgeSec=75` seconds, on an optional new-bar cancel, when paused, or when removed. Broker freeze levels can prevent their cancellation temporarily.
-
-## User-controlled Inputs
-
-| Input | Default | Purpose |
+| Input | Default | Meaning |
 | --- | --- | --- |
-| `InpLots` | `0.01` | Volume for each order; broker minimum/step rules |
-| `InpStopLevelsPerSide` | `3` | How many BUY STOP and SELL STOP ladder levels |
-| `InpFirstStopOffsetPrice` | `0.30` | First stop level's price distance |
-| `InpStopStepPrice` | `0.30` | Price interval between levels |
-| `InpMaxStopDistancePrice` | `1.50` | Hard cap on the distance of a proposed STOP order |
-| `InpUseSignalFilter` | `false` | Optional local M1/M5 signal check |
-| `InpCancelOppositeOnFill` | `true` | OCO-like cancellation attempt of opposite pending orders |
-| `InpMaxConcurrent` | `6` | Pending and open combined |
-| `InpMaxEntriesPerM1` | `8` | Maximum successful order placements per minute |
-| `InpMinOrderSpacingSec` | `2` | Delay between placement batches |
-| `InpMaxPendingAgeSec` | `75` | Cancel pending stops after they age |
-| `InpTakeNetUsd` | `3.00` | Estimated TP per position; costs are modeled, not guaranteed |
-| `InpMaxLossUsd` | `3.00` | Intended max loss per position via broker SL; gaps/slippage can overrun |
-| `InpTrailArmUsd` | `2.00` | Peak net-profit threshold to attempt +$1.50 SL protection |
-| `InpProfitLockUsd` | `1.50` | Intended protected profit, not guaranteed |
-| `InpEnableDailyStop` | `false` | User may enable daily lock (default remains off per request) |
-| `InpManualPause` | `false` | No new positions; tries to cancel pending while still managing open positions |
+| `InpOrderStyle` | `AQ_LIMIT_PULLBACK` | BUY LIMIT / SELL LIMIT; STOP breakout optional |
+| `InpEntryStyle` | `AQ_FAST` | Legacy setting; fast LIMIT model itself uses no confidence veto |
+| `InpLots` | `0.02` | Conservative test volume; higher lot magnifies loss and profit |
+| `InpTakeNetUsd` | `1.50` | Target net USD for quick exit; spread already affects floating P/L |
+| `InpMaxLossUsd` | `3.00` | Intended nominal worst loss/position; slippage can exceed |
+| `InpTrailArmUsd` | `0.90` | Start trying to protect positive profit |
+| `InpProfitLockUsd` | `0.50` | Minimum desired protected profit |
+| `InpTrailStartUsd` | `1.20` | Start trailing peak profit |
+| `InpTrailGivebackUsd` | `0.30` | Peak giveback during trail |
+| `InpExitOnTickReversal` | `true` | Exit after major adverse tick reversal at net loss threshold |
+| `InpEarlyExitLossUsd` | `1.30` | Early reversal-loss trigger |
+| `InpEarlyExitMinAgeSec` | `12` | Minimum time before reversal exit |
+| `InpMaxHoldSeconds` | `120` | Timer exit if no other condition triggers |
+| `InpMaxConcurrent` | `1` | Maximum combined pending/open; forced to 1 in LIMIT mode |
+| `InpMaxEntriesPerM1` | `1` | Successfully placed pending orders per M1 |
+| `InpCancelOnNewBar` | `true` | Remove unfilled order at next candle boundary |
+| `InpMaxPendingAgeSec` | `55` | Remove older pending orders |
+| `InpEntryPullbackRange` | `0.010` | Fraction of recent M1 range toward a near-price limit |
+| `InpMaxLimitDistancePrice` | `0.70` | Price-distance bound from executable quote |
+| `InpMaxZoneSnapPrice` | `0.45` | Maximum distance to prefer a support/resistance/POC level |
+| `InpEnableAdaptiveWeights` | `true` | Update model weights only after predicted candle closes |
+| `InpModelLearningRate` | `0.015` | Maximum 0.10, bounded online parameter update |
+| `InpEnableDailyStop` | `false` | No default daily loss shutdown (editable) |
+| `InpDailyStopUsd` | `40.00` | Only activates if user enables daily stop |
 
-Other existing risk and execution inputs remain editable. Do **not** increase lot or number of orders to compensate for prior losses.
+The STOP ladder remains present for backward compatibility but is **not** the intended new mode. Account must be a USD-denominated MetaTrader 5 DEMO account using XAU/GOLD on **M1**. The H1 MT5 bridge continues to be read-only and does not supply EA trading signals. No market *entry* orders are sent: market Buy/Sell may appear in MT5 logs to close filled positions, which is expected.
 
-## Install on the current Windows VPS
+## Install and verify
 
-1. Before replacing the current EA, review all **Trade** tab open positions and pending orders. The old version may have pending LIMIT orders; an old frozen order may remain and must be checked manually.
-2. On Exness **DEMO** MT5, stop new entries and make sure existing positions have correct broker SL/TP. Do not switch EAs with unmanaged live positions.
-3. Download `AlQannas_Gold_M1_Limit_Demo.mq5` from the production attachment endpoint `https://ahmed-gold-watch-free.onrender.com/download-gold`. The filename is unchanged so it can replace the old EA, but version v1.16 now sends **STOP** pending orders, not LIMIT.
-4. MT5 -> File -> Open Data Folder -> `MQL5/Experts`. Replace the mq5 file; MetaEditor -> open -> **F7 Compile**. The result must report 0 errors. On the GOLD M1 chart, detach old EA and attach the newly compiled `AlQannas_Gold_M1_Limit_Demo` with its new Inputs. Keep the H1 read-only bridge in place.
-5. Verify the Experts log: `STOP LADDER v1.16`, `BUY STOP`, `SELL STOP`, and actual pending order tickets. Confirm both order types, broker SL/TP, and resulting fills on Exness demo.
-6. No proof of accuracy/profitability has been established; source tests and deployment success do not substitute for MetaEditor compile or a forward demo test.
+1. On the DEMO VPS pause trading and inspect existing **Trade** tab positions and old STOP/LIMIT pending orders. Frozen pending may need manual review; do not assume swapping the EA automatically eliminates them.
+2. Download from the same known Firefox attachment URL: **https://ahmed-gold-watch-free.onrender.com/download-gold**. Filename remains `AlQannas_Gold_M1_Limit_Demo.mq5`.
+3. Replace the old file in `MQL5/Experts`; open in MetaEditor and **F7 Compile**. Confirm **0 errors**. Re-attach to GOLD M1 (leave H1 read-only bridge running). On **F7 → Inputs**, use **Reset** if prior v1.16/1.17 settings such as large lot or STOP remain; confirm `AQ_LIMIT_PULLBACK`, `0.02`, `$1.50` TP and `$3` stop.
+4. Keep **Algo Trading** green and allow EA trading on this chart. Review Experts for `v1.18 LIMIT`, `AQ_M1_FORECAST`, `AQ_M1_EVAL`, successful `BUY LIMIT`/`SELL LIMIT` placements, and actual MT5 fills; check `MQL5/Files` CSV audit logs.
+5. Start with small-lot demo. Record at least dozens of *filled* trades across different conditions and evaluate actual **net realized profit, win/loss counts, fill rate and max drawdown** before raising size. A static source-contract check is not a MetaEditor compile, a broker fill test or proof of profitable scalping.
 
-## Safety and known limitations
+### Critical risk note
 
-- **DEMO-only** hard check; gold symbol and USD account only.
-- The original MT5 EA remains local. The Render bridge sends data and doesn't direct real broker entries.
-- The **server SL/TP** on each pending stop is intended to limit risk, but freezing, gaps, spread and slippage may produce a worse result. Activating a ladder creates exposure to multiple fills.
-- `InpEnableDailyStop=false` allows accumulated losses to continue without daily automated cutoff. Consider enabling it for unattended demo tests.
-- The video does not reveal the original bot's secret strategy or true performance. This reproduces its visible breakout STOP-order architecture, not its unknown accuracy or returns.
+Gold M1 short-term scalping with an automated LIMIT per minute and a higher lot has potentially substantial losses. SL, $1.50 TP and profit locking are targets; order freezing, spread, gaps and broker execution may prevent exact exits. `InpEnableDailyStop=false` can allow consecutive losses beyond $40. Consider enabling the daily lock for unattended testing. There is no 100% profitable-entry guarantee.
