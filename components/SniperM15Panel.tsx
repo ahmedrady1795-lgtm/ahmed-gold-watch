@@ -1027,6 +1027,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {showWatchGuide&&watchGuide.anchor!=null&&
            <g className="sniper-m15-watch-guide">
              <SniperM15HuntOverlay forecast={huntPreview} proof={huntProof} asset={asset}
+               obstruction={routeObstacle}
                left={left} split={split} end={end}
                top={plotTop} bottom={plotBottom} py={py}
                liquidity={showLiquidity}/>
