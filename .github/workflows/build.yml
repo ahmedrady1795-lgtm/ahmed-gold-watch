@@ -45,4 +45,6 @@ jobs:
       - run: node tests/movement.cjs
       - run: python3 -m compileall -q ml-service neural-service
       - run: python3 -m py_compile mt5_bridge/bridge.py
+      - run: python3 -m py_compile mt5_bridge/demo_limit_logic.py
+      - run: python3 -m unittest discover -s tests -p test_demo_limit_logic.py
       - run: npm run build
