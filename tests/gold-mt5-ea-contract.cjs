@@ -6,7 +6,7 @@ const src=fs.readFileSync(path.join(__dirname,'..','mt5_bridge','Experts',
                                    'AlQannas_Gold_M1_Limit_Demo.mq5'),'utf8');
 const includes=(pattern,reason)=>assert.match(src,pattern,reason);
 
-includes(/#property version\s+"1\.13"/,'new version');
+includes(/#property version\s+"1\.14"/,'new version');
 includes(/ACCOUNT_TRADE_MODE_DEMO/,'demo-only broker orders');
 includes(/!ExactVolume\(\)/,'broker volume min\/max\/step validation');
 includes(/g_trade\.BuyLimit\(/,'BUY pending Limit');
@@ -37,8 +37,12 @@ includes(/dirFlow<-0\.18/,'short term tick disagreement can block entry');
 includes(/InpEntryPullbackRange\s*=\s*0\.025/,'pending LIMIT pullback reduced');
 includes(/InpMaxLimitDistancePrice\s*=\s*0\.70/,'maximum allowed LIMIT distance configurable');
 includes(/quoteDistance>InpMaxLimitDistancePrice/,'skip distant LIMIT placement');
-includes(/InpMaxPendingAgeSec\s*=\s*18/,'unfilled pending expiry configurable');
-includes(/bool tooFar=\(distance>InpMaxLimitDistancePrice/,'outdated far pending order removed');
+includes(/InpMaxPendingAgeSec\s*=\s*30/,'unfilled pending expiry configurable');
+includes(/InpCancelOnPriceDrift\s*=\s*false/,'do not cancel from mere price drift by default');
+includes(/InpCancelDistancePrice\s*=\s*3\.00/,'separate placement and cancel distance');
+includes(/InpFrozenCancelRetrySec\s*=\s*10/,'broker frozen cancel cooldown');
+includes(/CancelPendingIfPossible\(ticket,reason\)/,'broker-aware cancellation helper');
+includes(/bool priceDrift=\(InpCancelOnPriceDrift/,'far cancel opt-in only');
 includes(/CancelStaleLimits\(\);/,'stale LIMIT cancellation runs');
 includes(/InpCancelOnFlowFlip\s*=\s*false/,'optional tick-flow flip avoids canceling expected pullbacks');
 includes(/TRADE_RETCODE_FROZEN/,'frozen close has broker-aware retry cooldown');
