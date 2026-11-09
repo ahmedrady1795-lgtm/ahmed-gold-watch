@@ -198,11 +198,12 @@ export function buildM15Scenario(input:{
  let goalIndex=0;
  const count=Math.max(6,Math.min(48,Math.floor(input.steps??36)));
  for(let stage=0;stage<Math.ceil(count/6);stage++){
-   let best=-1,bestScore=Infinity;
+   const similar:{i:number;score:number;refUnit:number;net:number}[]=[];
    let bestBars:ScenarioM15Bar[]=[];
    const currentRegime=regime(context,atr);
-   // Score past context only, never the outcome against live future candles.
-   // Filter outcomes by the requested directional scenario, not by TP distance.
+   // Rank ALL historical matches using PAST context only, including examples
+   // that went the opposite way. Filtering for past winners creates a
+   // misleading, survivorship-biased directional chart.
    for(let i=12;i+6<=source.length-2;i++){
      const group=source.slice(i-12,i+6);
      if(group.some((b,j)=>j>0&&!joined(group[j-1],b)))continue;
@@ -210,7 +211,6 @@ export function buildM15Scenario(input:{
      if(refUnit<=0||refUnit>price*.08)continue;
      const future=source.slice(i,i+6);
      const net=dir*(future.at(-1)!.close-future[0].open);
-     if(net<refUnit*.18)continue;
      const before=source.slice(i-6,i);
      let score=0;
      for(let j=0;j<6;j++){
@@ -228,15 +228,35 @@ export function buildM15Scenario(input:{
      if(chosen.some(prior=>abs(prior-i)<12))score+=1.5;
      // deterministic tie break favour recent genuine windows
      score+=(source.length-i)/source.length*.05;
-     if(score<bestScore){
-       const candidate=preview(future.slice(0,Math.min(6,count-output.length)),
-         price,refUnit);
-       if(!candidate||!candidate.length)continue;
-       best=i;bestScore=score;bestBars=candidate;
-     }
+     similar.push({i,score,refUnit,net});
    }
-   if(best<0)break;
-   chosen.push(best);
+   similar.sort((a,b)=>a.score-b.score||b.i-a.i);
+   const nearest:typeof similar=[];
+   for(const candidate of similar){
+     // An overlapping historical window is not independent corroboration.
+     if(nearest.some(x=>Math.abs(x.i-candidate.i)<12))continue;
+     nearest.push(candidate);
+     if(nearest.length===5)break;
+   }
+   if(nearest.length<3)return empty(
+     'لا توجد نظائر تاريخية مستقلة كافية لتقدير المسار',base.length,years);
+   const support=nearest.filter(x=>x.net>=x.refUnit*.18).length;
+   if(support<Math.ceil(nearest.length*.6))return empty(
+     'أقرب النظائر التاريخية لا تتفق على اتجاه الحركة؛ مسارا مراقبة فقط',
+     base.length,years);
+   // Only the highest-similarity analogue may supply the future route.
+   // Never skip the nearest losing/stopped analogue to cherry-pick a winner.
+   const best=nearest[0];
+   if(best.net<best.refUnit*.18)return empty(
+     'أقرب نظير تاريخي يعاكس الاتجاه؛ لا نرسم استمرارًا متفائلًا',
+     base.length,years);
+   const following=source.slice(best.i,best.i+Math.min(6,count-output.length));
+   const candidate=preview(following,price,best.refUnit);
+   if(!candidate||!candidate.length)return empty(
+     'أقرب مسار تاريخي لمس الإبطال؛ لا نخفي الخسارة باختيار مسار بديل',
+     base.length,years);
+   bestBars=candidate;
+   chosen.push(best.i);
    for(const candidate of bestBars){
      const bar={...candidate,step:output.length+1};
      output.push(bar);price=bar.close;
