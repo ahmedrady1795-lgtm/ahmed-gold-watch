@@ -1,0 +1,557 @@
+//+------------------------------------------------------------------+
+//| AL-QANNAS CANDLE CHASER v1.00 - EXNESS DEMO ONLY                  |
+//| Inspired by the visible MT5 video: trailing BUY STOP/SELL STOP  |
+//| pending orders which become actual BUY/SELL deals on activation. |
+//| Separate from Gold LIMIT and Sniper 2.0 EAs; no profit guarantee.|
+//+------------------------------------------------------------------+
+#property strict
+#property version "1.00"
+#property description "Candle Chaser: twin moving STOP pending orders, demo-only, close small net profit, hard broker SL/TP"
+#include <Trade/Trade.mqh>
+
+input bool   InpManualPause             = false;  // Pause NEW orders, manage existing trades
+input double InpLots                    = 0.02;   // DEMO starter size; NOT the video's risky volume
+input double InpArmDistancePrice        = 0.20;   // Follow M1 with BUY STOP above ASK / SELL STOP below BID
+input double InpRepriceStepPrice        = 0.12;   // Move pending stops after quote moves by this much
+input int    InpRepriceCooldownSec      = 3;      // Minimum interval between moving one pending order
+input double InpMaxSpreadPrice          = 0.85;   // Never chase an excessive bid/ask spread
+input double InpCloseNetProfitUsd       = 0.65;   // Ask for immediate exit at this ESTIMATED net profit
+input double InpBrokerTargetNetUsd      = 1.00;   // Attach broker TP as backup
+input double InpMaxLossUsd             = 1.80;   // Intended per-position SL budget, not a fill guarantee
+input double InpCostReserveUsd         = 0.20;   // Conservative estimated fees, excludes unknown slippage
+input int    InpMaxHoldSec             = 85;     // Exit old position instead of holding indefinitely
+input int    InpMaxFillsPerM1          = 2;      // Up to 2 actual fills per M1, one OPEN at a time
+input int    InpMaxPendingAgeSec       = 50;     // Replace stale pending stops
+input bool   InpCancelOnNewBar         = true;   // Follow the new M1 instead of stale previous levels
+input bool   InpEnableDailyStop        = false;  // Optional cumulative day limit; user controlled
+input double InpDailyStopUsd           = 40.00;  // Used only if enabled
+input int    InpFrozenRetrySec         = 5;      // Slow down retcode 10029 retries
+input ulong  InpMagic                  = 560179530; // Different from all previous Al-Qannas EAs
+input bool   InpShowStatus             = true;
+
+CTrade g_trade;
+datetime g_barTime=0;
+datetime g_dayStarted=0;
+datetime g_lastBuyReprice=0;
+datetime g_lastSellReprice=0;
+datetime g_lastCancelAttempt=0;
+datetime g_lastCloseAttempt=0;
+datetime g_lastBracketBuild=0;
+int      g_fillsThisBar=0;
+int      g_requestsThisBar=0;
+int      g_totalFills=0;
+int      g_totalCloses=0;
+string   g_status="Starting";
+string   g_lastFillKey="";
+string   g_dayLockKey="";
+bool     g_dayLocked=false;
+double   g_candleFirstBid=0.0;
+double   g_candleHigh=0.0;
+double   g_candleLow=0.0;
+int      g_lastPulseSecond=-1;
+
+bool IsDemo()
+{
+   return (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE)==ACCOUNT_TRADE_MODE_DEMO;
+}
+datetime Clock(){return TimeCurrent();}
+double Unit()
+{
+   double step=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
+   return (step>0?step:_Point);
+}
+double RoundToTick(double price,int direction)
+{
+   double step=Unit();
+   if(direction>0)return NormalizeDouble(MathCeil(price/step-1e-8)*step,_Digits);
+   if(direction<0)return NormalizeDouble(MathFloor(price/step+1e-8)*step,_Digits);
+   return NormalizeDouble(MathRound(price/step)*step,_Digits);
+}
+double StopLevel()
+{
+   return MathMax(Unit(),(double)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_STOPS_LEVEL)*_Point+Unit());
+}
+double FreezeLevel()
+{
+   return (double)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_FREEZE_LEVEL)*_Point+Unit();
+}
+bool CurrentQuote(MqlTick &tick)
+{
+   return (SymbolInfoTick(_Symbol,tick) && tick.bid>0 && tick.ask>tick.bid &&
+           Clock()-(datetime)tick.time<=5);
+}
+bool OwnSelectedPosition()
+{
+   return PositionGetString(POSITION_SYMBOL)==_Symbol &&
+          (ulong)PositionGetInteger(POSITION_MAGIC)==InpMagic;
+}
+bool OwnSelectedOrder()
+{
+   if(OrderGetString(ORDER_SYMBOL)!=_Symbol ||
+      (ulong)OrderGetInteger(ORDER_MAGIC)!=InpMagic)return false;
+   ENUM_ORDER_TYPE t=(ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+   return t==ORDER_TYPE_BUY_STOP || t==ORDER_TYPE_SELL_STOP;
+}
+int PositionCount()
+{
+   int n=0;
+   for(int i=PositionsTotal()-1;i>=0;i--)
+   {
+      ulong ticket=PositionGetTicket(i);
+      if(ticket!=0 && PositionSelectByTicket(ticket) && OwnSelectedPosition())n++;
+   }
+   return n;
+}
+int PendingCount()
+{
+   int n=0;
+   for(int i=OrdersTotal()-1;i>=0;i--)
+   {
+      ulong ticket=OrderGetTicket(i);
+      if(ticket!=0 && OrderSelect(ticket) && OwnSelectedOrder())n++;
+   }
+   return n;
+}
+ulong StopTicket(int direction)
+{
+   for(int i=OrdersTotal()-1;i>=0;i--)
+   {
+      ulong ticket=OrderGetTicket(i);
+      if(ticket==0 || !OrderSelect(ticket) || !OwnSelectedOrder())continue;
+      ENUM_ORDER_TYPE t=(ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+      if((direction>0 && t==ORDER_TYPE_BUY_STOP) ||
+         (direction<0 && t==ORDER_TYPE_SELL_STOP))return ticket;
+   }
+   return 0;
+}
+bool BrokerTradeReady()
+{
+   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+   {g_status="Enable terminal Algo Trading";return false;}
+   if(!MQLInfoInteger(MQL_TRADE_ALLOWED))
+   {g_status="Enable EA Algo Trading on chart";return false;}
+   if(!AccountInfoInteger(ACCOUNT_TRADE_EXPERT))
+   {g_status="Broker disables EA trading";return false;}
+   if((ENUM_SYMBOL_TRADE_MODE)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_MODE)!=SYMBOL_TRADE_MODE_FULL)
+   {g_status="Symbol not fully tradeable";return false;}
+   return true;
+}
+bool ProperLot()
+{
+   double min=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+   double max=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
+   double step=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
+   if(step<=0 || InpLots<min-1e-9 || InpLots>max+1e-9)return false;
+   double steps=InpLots/step;
+   return MathAbs(steps-MathRound(steps))<1e-6;
+}
+bool MoneyPerPriceUnit(int direction,double entry,double &cash)
+{
+   double profit=0.0;
+   ENUM_ORDER_TYPE t=(direction>0?ORDER_TYPE_BUY:ORDER_TYPE_SELL);
+   double next=(direction>0?entry+1.0:entry-1.0);
+   if(next<=0 || !OrderCalcProfit(t,_Symbol,InpLots,entry,next,profit))return false;
+   cash=MathAbs(profit);
+   return cash>0;
+}
+// Return an SL and TP prevalidated against price tick, broker minimum distance
+// and intended dollar risk. Some market slippage/freeze can still overrun.
+bool ProtectedPrices(int direction,double entry,double &sl,double &tp)
+{
+   double cash=0;
+   if(!MoneyPerPriceUnit(direction,entry,cash))
+   {g_status="OrderCalcProfit unavailable";return false;}
+   double budget=InpMaxLossUsd-InpCostReserveUsd;
+   double minDist=StopLevel();
+   double slDistance=budget/cash;
+   if(slDistance<minDist+Unit())
+   {g_status="Lot/risk incompatible with broker minimum SL";return false;}
+   double tpDistance=MathMax(minDist+2*Unit(),
+             (InpBrokerTargetNetUsd+InpCostReserveUsd)/cash);
+   sl=(direction>0?RoundToTick(entry-slDistance,1):
+                   RoundToTick(entry+slDistance,-1));
+   tp=(direction>0?RoundToTick(entry+tpDistance,1):
+                   RoundToTick(entry-tpDistance,-1));
+   if(sl<=0 || tp<=0 || MathAbs(entry-sl)<minDist ||
+      MathAbs(tp-entry)<minDist)return false;
+   double worst=0;
+   ENUM_ORDER_TYPE t=(direction>0?ORDER_TYPE_BUY:ORDER_TYPE_SELL);
+   if(!OrderCalcProfit(t,_Symbol,InpLots,entry,sl,worst))return false;
+   if(-worst+InpCostReserveUsd>InpMaxLossUsd+0.01)return false;
+   return true;
+}
+bool Expiration(ENUM_ORDER_TYPE_TIME &lifetime,datetime &until)
+{
+   int f=(int)SymbolInfoInteger(_Symbol,SYMBOL_EXPIRATION_MODE);
+   lifetime=ORDER_TIME_GTC;until=0;
+   if((f&SYMBOL_EXPIRATION_GTC)==SYMBOL_EXPIRATION_GTC)return true;
+   if((f&SYMBOL_EXPIRATION_DAY)==SYMBOL_EXPIRATION_DAY)
+   {lifetime=ORDER_TIME_DAY;return true;}
+   if((f&SYMBOL_EXPIRATION_SPECIFIED)==SYMBOL_EXPIRATION_SPECIFIED)
+   {lifetime=ORDER_TIME_SPECIFIED;until=Clock()+3600;return true;}
+   g_status="Broker does not support pending STOP expiry";
+   return false;
+}
+bool StopIsFrozen(ulong ticket,const MqlTick &tick)
+{
+   if(!OrderSelect(ticket))return false;
+   ENUM_ORDER_TYPE t=(ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+   double entry=OrderGetDouble(ORDER_PRICE_OPEN);
+   double quote=(t==ORDER_TYPE_BUY_STOP?tick.ask:tick.bid);
+   return MathAbs(entry-quote)<=FreezeLevel();
+}
+bool TryCancel(ulong ticket,string reason)
+{
+   if(!BrokerTradeReady() || !OrderSelect(ticket) || !OwnSelectedOrder())return false;
+   datetime now=Clock();
+   if(now-g_lastCancelAttempt<InpFrozenRetrySec)return false;
+   MqlTick tick;
+   if(CurrentQuote(tick) && StopIsFrozen(ticket,tick))
+   {g_status="Broker freeze: pending cancel deferred";return false;}
+   bool ok=g_trade.OrderDelete(ticket);
+   uint rc=g_trade.ResultRetcode();
+   if(ok && rc==TRADE_RETCODE_DONE)
+   {
+      // Successful cancels must not throttle the opposite pending stop.
+      g_lastCancelAttempt=0;
+      PrintFormat("AQ_CHASER CANCEL #%I64u reason=%s",ticket,reason);
+      return true;
+   }
+   g_lastCancelAttempt=now; // Only broker refusals use retry cooldown.
+   g_status="Cancel retry: "+g_trade.ResultRetcodeDescription();
+   PrintFormat("AQ_CHASER CANCEL rejected #%I64u rc=%u reason=%s",ticket,rc,reason);
+   return false;
+}
+void CancelAllPending(string reason)
+{
+   for(int i=OrdersTotal()-1;i>=0;i--)
+   {
+      ulong ticket=OrderGetTicket(i);
+      if(ticket==0 || !OrderSelect(ticket) || !OwnSelectedOrder())continue;
+      TryCancel(ticket,reason);
+   }
+}
+bool DayProfit(double &sum)
+{
+   sum=0;
+   MqlDateTime date;TimeToStruct(Clock(),date);
+   date.hour=0;date.min=0;date.sec=0;
+   datetime start=StructToTime(date);
+   if(!HistorySelect(start,Clock()+1))return false;
+   for(int i=0;i<HistoryDealsTotal();i++)
+   {
+      ulong id=HistoryDealGetTicket(i);
+      if(id==0)continue;
+      if(HistoryDealGetString(id,DEAL_SYMBOL)!=_Symbol ||
+         (ulong)HistoryDealGetInteger(id,DEAL_MAGIC)!=InpMagic)continue;
+      sum+=HistoryDealGetDouble(id,DEAL_PROFIT)
+          +HistoryDealGetDouble(id,DEAL_COMMISSION)
+          +HistoryDealGetDouble(id,DEAL_SWAP)
+          +HistoryDealGetDouble(id,DEAL_FEE);
+   }
+   return true;
+}
+double FloatingProfit()
+{
+   double profit=0;
+   for(int i=PositionsTotal()-1;i>=0;i--)
+   {
+      ulong ticket=PositionGetTicket(i);
+      if(ticket==0 || !PositionSelectByTicket(ticket) || !OwnSelectedPosition())continue;
+      profit+=PositionGetDouble(POSITION_PROFIT)+PositionGetDouble(POSITION_SWAP);
+   }
+   return profit;
+}
+void RefreshTradingDay()
+{
+   MqlDateTime d;TimeToStruct(Clock(),d);
+   d.hour=0;d.min=0;d.sec=0;
+   datetime today=StructToTime(d);
+   if(today==g_dayStarted)return;
+   g_dayStarted=today;
+   g_dayLockKey="AQChaser_Day_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+
+                "_"+_Symbol+"_"+IntegerToString((long)InpMagic)+
+                "_"+IntegerToString((long)today);
+   g_dayLocked=(InpEnableDailyStop && GlobalVariableCheck(g_dayLockKey));
+}
+int FillsOnBar(datetime bar)
+{
+   if(bar<=0 || !HistorySelect(bar,Clock()+1))return 0;
+   int total=0;
+   for(int i=0;i<HistoryDealsTotal();i++)
+   {
+      ulong id=HistoryDealGetTicket(i);
+      if(id==0 || HistoryDealGetString(id,DEAL_SYMBOL)!=_Symbol ||
+         (ulong)HistoryDealGetInteger(id,DEAL_MAGIC)!=InpMagic)continue;
+      if((ENUM_DEAL_ENTRY)HistoryDealGetInteger(id,DEAL_ENTRY)==DEAL_ENTRY_IN)
+         total++;
+   }
+   return total;
+}
+bool RiskStop()
+{
+   if(!InpEnableDailyStop)return false;
+   double closed=0;
+   if(!DayProfit(closed)){g_status="Daily history unavailable";return true;}
+   if(closed+FloatingProfit()<=-InpDailyStopUsd)
+   {
+      g_dayLocked=true;
+      GlobalVariableSet(g_dayLockKey,1);
+   }
+   return g_dayLocked;
+}
+void ManagePositions()
+{
+   datetime now=Clock();
+   for(int i=PositionsTotal()-1;i>=0;i--)
+   {
+      ulong ticket=PositionGetTicket(i);
+      if(ticket==0 || !PositionSelectByTicket(ticket) || !OwnSelectedPosition())continue;
+      double net=PositionGetDouble(POSITION_PROFIT)
+                +PositionGetDouble(POSITION_SWAP)-InpCostReserveUsd;
+      int age=(int)(now-(datetime)PositionGetInteger(POSITION_TIME));
+      string reason="";
+      if(net>=InpCloseNetProfitUsd)reason="FAST_NET_PROFIT";
+      else if(net<=-InpMaxLossUsd)reason="LOSS_LIMIT";
+      else if(age>=InpMaxHoldSec)reason="MAX_HOLD";
+      else if(g_dayLocked)reason="DAY_LOCK";
+      if(reason=="")continue;
+      if(now-g_lastCloseAttempt<InpFrozenRetrySec)continue;
+      if(!BrokerTradeReady())return;
+      g_lastCloseAttempt=now;
+      bool done=g_trade.PositionClose(ticket);
+      uint rc=g_trade.ResultRetcode();
+      if(done && (rc==TRADE_RETCODE_DONE || rc==TRADE_RETCODE_DONE_PARTIAL))
+      {
+         PrintFormat("AQ_CHASER CLOSE #%I64u net_est=%.2f age=%d reason=%s",
+                     ticket,net,age,reason);
+      }
+      else if(rc!=TRADE_RETCODE_POSITION_CLOSED)
+      {
+         g_status="Close retry: "+g_trade.ResultRetcodeDescription();
+         PrintFormat("AQ_CHASER CLOSE refused #%I64u rc=%u reason=%s",
+                     ticket,rc,reason);
+      }
+   }
+}
+bool PlaceStop(int direction,double level)
+{
+   double sl,tp;
+   if(!ProtectedPrices(direction,level,sl,tp))return false;
+   ENUM_ORDER_TYPE_TIME life;datetime until;
+   if(!Expiration(life,until))return false;
+   bool ok=(direction>0
+      ?g_trade.BuyStop(InpLots,level,_Symbol,sl,tp,life,until,"CHASER BUY STOP")
+      :g_trade.SellStop(InpLots,level,_Symbol,sl,tp,life,until,"CHASER SELL STOP"));
+   uint rc=g_trade.ResultRetcode();
+   g_requestsThisBar++;
+   if(!ok || (rc!=TRADE_RETCODE_PLACED && rc!=TRADE_RETCODE_DONE))
+   {
+      g_status="STOP rejected: "+g_trade.ResultRetcodeDescription();
+      PrintFormat("AQ_CHASER %s STOP rejected price=%.*f rc=%u %s",
+                  direction>0?"BUY":"SELL",_Digits,level,rc,
+                  g_trade.ResultRetcodeDescription());
+      return false;
+   }
+   PrintFormat("AQ_CHASER %s STOP PLACED #%I64u price=%.*f lot=%.2f SL=%.*f TP=%.*f",
+               direction>0?"BUY":"SELL",g_trade.ResultOrder(),_Digits,level,
+               InpLots,_Digits,sl,_Digits,tp);
+   g_status="Moving STOP bracket active";
+   if(direction>0)g_lastBuyReprice=Clock();else g_lastSellReprice=Clock();
+   return true;
+}
+bool FollowStop(int direction,ulong ticket,double desired,const MqlTick &tick)
+{
+   if(!OrderSelect(ticket) || !OwnSelectedOrder())return false;
+   double previous=OrderGetDouble(ORDER_PRICE_OPEN);
+   datetime now=Clock();
+   datetime last=(direction>0?g_lastBuyReprice:g_lastSellReprice);
+   if(MathAbs(previous-desired)<InpRepriceStepPrice-Unit()*0.5 ||
+      now-last<InpRepriceCooldownSec)return false;
+   if(StopIsFrozen(ticket,tick))return false;
+   double sl,tp;
+   if(!ProtectedPrices(direction,desired,sl,tp))return false;
+   ENUM_ORDER_TYPE_TIME lifetime=(ENUM_ORDER_TYPE_TIME)OrderGetInteger(ORDER_TYPE_TIME);
+   datetime expiry=(datetime)OrderGetInteger(ORDER_TIME_EXPIRATION);
+   bool sent=g_trade.OrderModify(ticket,desired,sl,tp,lifetime,expiry);
+   uint rc=g_trade.ResultRetcode();
+   if(direction>0)g_lastBuyReprice=now;else g_lastSellReprice=now;
+   if(sent && rc==TRADE_RETCODE_DONE)
+   {
+      PrintFormat("AQ_CHASER %s STOP FOLLOW #%I64u old=%.*f new=%.*f",
+                  direction>0?"BUY":"SELL",ticket,_Digits,previous,_Digits,desired);
+      return true;
+   }
+   g_status="Reprice delayed: "+g_trade.ResultRetcodeDescription();
+   return false;
+}
+void FollowBracket()
+{
+   MqlTick tick;
+   if(!CurrentQuote(tick))
+   {g_status="Waiting for live XAU Bid/Ask";return;}
+   if(tick.ask-tick.bid>InpMaxSpreadPrice)
+   {g_status="Spread too wide for chase";return;}
+   if(PositionCount()>0)
+   {
+      CancelAllPending("POSITION_FILLED");
+      return;
+   }
+   if(g_fillsThisBar>=InpMaxFillsPerM1)
+   {CancelAllPending("M1_FILL_LIMIT");g_status="M1 fill quota complete";return;}
+   if(!BrokerTradeReady())return;
+   double distance=MathMax(InpArmDistancePrice,StopLevel()+Unit());
+   double buy=RoundToTick(tick.ask+distance,1);
+   double sell=RoundToTick(tick.bid-distance,-1);
+   if(buy<=tick.ask || sell<=0 || sell>=tick.bid)return;
+   ulong buyTicket=StopTicket(1),sellTicket=StopTicket(-1);
+   // Do NOT stack an unlimited ladder. There is at most one STOP per side.
+   // Keep existing pending orders when possible, reprice with a cooldown.
+   if(buyTicket!=0)FollowStop(1,buyTicket,buy,tick);
+   if(sellTicket!=0)FollowStop(-1,sellTicket,sell,tick);
+   if(StopTicket(1)==0 && Clock()-g_lastBracketBuild>=1)
+   {
+      g_lastBracketBuild=Clock();
+      PlaceStop(1,buy);
+   }
+   if(StopTicket(-1)==0 && Clock()-g_lastBracketBuild>=1)
+   {
+      g_lastBracketBuild=Clock();
+      PlaceStop(-1,sell);
+   }
+}
+void ExpireStaleStops()
+{
+   datetime now=Clock();
+   for(int i=OrdersTotal()-1;i>=0;i--)
+   {
+      ulong ticket=OrderGetTicket(i);
+      if(ticket==0 || !OrderSelect(ticket) || !OwnSelectedOrder())continue;
+      int age=(int)(now-(datetime)OrderGetInteger(ORDER_TIME_SETUP));
+      if(age>=InpMaxPendingAgeSec)TryCancel(ticket,"PENDING_AGE");
+   }
+}
+void ShowStatus()
+{
+   if(!InpShowStatus)return;
+   Comment("AL-QANNAS CANDLE CHASER | GOLD DEMO M1",
+           "\nSTOP bracket follows ASK/BID. NOT market ENTRY.",
+           "\nLot ",DoubleToString(InpLots,2),
+           " | Pending ",PendingCount()," | Open ",PositionCount(),
+           "\nM1 fills ",g_fillsThisBar,"/",InpMaxFillsPerM1,
+           " | Total fills ",g_totalFills," | closed deals ",g_totalCloses,
+           "\nNet floating est ",DoubleToString(FloatingProfit()-InpCostReserveUsd,2),
+           " | ",(InpManualPause?"PAUSED":g_dayLocked?"DAY STOP":"ACTIVE"),
+           "\n",g_status);
+}
+void Pulse()
+{
+   if(!IsDemo())return;
+   RefreshTradingDay();
+   datetime now=Clock();
+   datetime candle=iTime(_Symbol,PERIOD_M1,0);
+   if(candle!=0 && candle!=g_barTime)
+   {
+      g_barTime=candle;
+      g_fillsThisBar=FillsOnBar(candle);
+      g_requestsThisBar=0;
+      g_lastPulseSecond=-1;
+      if(InpCancelOnNewBar)CancelAllPending("NEW_M1");
+   }
+   ManagePositions(); // Check profits on EACH tick, even during throttle.
+   int second=(int)(now%2147483600);
+   if(second==g_lastPulseSecond)return;
+   g_lastPulseSecond=second;
+   if(RiskStop())
+   {
+      CancelAllPending("DAILY_STOP");
+      g_status="Optional day stop triggered";
+      ShowStatus();return;
+   }
+   if(InpManualPause)
+   {
+      CancelAllPending("MANUAL_PAUSE");
+      g_status="Manual pause: no new STOPs";
+      ShowStatus();return;
+   }
+   ExpireStaleStops();
+   FollowBracket();
+   ShowStatus();
+}
+int OnInit()
+{
+   if(_Period!=PERIOD_M1){Alert("Candle Chaser requires GOLD M1");return INIT_FAILED;}
+   string sym=_Symbol;StringToUpper(sym);
+   if(StringFind(sym,"XAU")<0 && StringFind(sym,"GOLD")<0)
+   {Alert("Use GOLD / XAUUSD M1");return INIT_FAILED;}
+   if(!IsDemo()){Alert("Candle Chaser blocks real-money trading");return INIT_FAILED;}
+   if(AccountInfoString(ACCOUNT_CURRENCY)!="USD")
+   {Alert("Candle Chaser requires a USD demo account");return INIT_FAILED;}
+   if(!ProperLot() || InpArmDistancePrice<=0 || InpRepriceStepPrice<=0 ||
+      InpRepriceCooldownSec<1 || InpRepriceCooldownSec>120 ||
+      InpMaxSpreadPrice<=0 || InpCloseNetProfitUsd<=0 ||
+      InpBrokerTargetNetUsd<InpCloseNetProfitUsd ||
+      InpCostReserveUsd<0 || InpMaxLossUsd<=InpCostReserveUsd ||
+      InpMaxHoldSec<5 || InpMaxFillsPerM1<1 || InpMaxFillsPerM1>6 ||
+      InpMaxPendingAgeSec<5 || InpDailyStopUsd<=0 || InpFrozenRetrySec<1)
+   {Alert("Candle Chaser invalid Inputs: review lots, stop, target, timing.");return INIT_PARAMETERS_INCORRECT;}
+   int allowed=(int)SymbolInfoInteger(_Symbol,SYMBOL_ORDER_MODE);
+   if((allowed&SYMBOL_ORDER_STOP)!=SYMBOL_ORDER_STOP)
+   {Alert("Symbol does not permit BUY STOP / SELL STOP");return INIT_FAILED;}
+   g_trade.SetExpertMagicNumber(InpMagic);
+   g_trade.SetDeviationInPoints(30);
+   g_trade.SetTypeFillingBySymbol(_Symbol);
+   g_trade.SetAsyncMode(false);
+   RefreshTradingDay();
+   PrintFormat("AQ_CHASER START v1.00 DEMO ONLY symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
+               _Symbol,InpLots,InpArmDistancePrice,InpRepriceStepPrice,
+               InpCloseNetProfitUsd,InpMaxLossUsd);
+   EventSetTimer(1);
+   return INIT_SUCCEEDED;
+}
+void OnDeinit(const int reason)
+{
+   EventKillTimer();
+   CancelAllPending("EA_DETACH");
+   Comment("");
+}
+void OnTick(){Pulse();}
+void OnTimer(){Pulse();}
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                        const MqlTradeRequest &request,
+                        const MqlTradeResult &result)
+{
+   if(trans.type!=TRADE_TRANSACTION_DEAL_ADD || trans.deal==0)return;
+   if(!HistoryDealSelect(trans.deal))return;
+   if(HistoryDealGetString(trans.deal,DEAL_SYMBOL)!=_Symbol ||
+      (ulong)HistoryDealGetInteger(trans.deal,DEAL_MAGIC)!=InpMagic)return;
+   ENUM_DEAL_ENTRY entry=(ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal,DEAL_ENTRY);
+   if(entry==DEAL_ENTRY_IN)
+   {
+      g_fillsThisBar++;
+      g_totalFills++;
+      g_status="STOP triggered into a live position";
+      // Opposite pending STOP is OCO-like: promptly request cancel on fill.
+      // Broker freezes or simultaneous spikes can still execute both orders.
+      CancelAllPending("DEAL_FILLED_CANCEL_OPPOSITE");
+   }
+   else if(entry==DEAL_ENTRY_OUT || entry==DEAL_ENTRY_INOUT)g_totalCloses++;
+   double profit=HistoryDealGetDouble(trans.deal,DEAL_PROFIT)
+                +HistoryDealGetDouble(trans.deal,DEAL_COMMISSION)
+                +HistoryDealGetDouble(trans.deal,DEAL_SWAP)
+                +HistoryDealGetDouble(trans.deal,DEAL_FEE);
+   int file=FileOpen("AlQannas_Candle_Chaser_Deals.csv",
+         FILE_READ|FILE_WRITE|FILE_CSV|FILE_SHARE_READ,';');
+   if(file!=INVALID_HANDLE)
+   {
+      FileSeek(file,0,SEEK_END);
+      FileWrite(file,TimeToString((datetime)HistoryDealGetInteger(trans.deal,DEAL_TIME),
+                   TIME_DATE|TIME_SECONDS),
+                (long)trans.deal,(int)entry,
+                DoubleToString(HistoryDealGetDouble(trans.deal,DEAL_VOLUME),2),
+                DoubleToString(HistoryDealGetDouble(trans.deal,DEAL_PRICE),_Digits),
+                DoubleToString(profit,2));
+      FileClose(file);
+   }
+   PrintFormat("AQ_CHASER DEAL %I64u entry=%d net=%.2f",trans.deal,(int)entry,profit);
+}
