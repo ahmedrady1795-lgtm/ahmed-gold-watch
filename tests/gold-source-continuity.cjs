@@ -36,6 +36,7 @@ assert.equal(barsFresh(row(-60000),row(4*60000),
  row(14*60000),row(59*60000),clock,false),false,
  'future candle timestamps must not count as broker history');
 const requested=[];
+const fixedGoldTime=clock-1000;
 const mockFetch=async(url)=>{
  requested.push(url);
  if(url.includes('biquote.io/api/XAUUSD?'))
@@ -43,7 +44,7 @@ const mockFetch=async(url)=>{
       timestamp:new Date(clock-80000).toISOString(),
       quoteAgeSeconds:80,marketState:'open',stale:true})};
  if(url.includes('data-asg.goldprice.org'))
-   return {ok:true,json:async()=>({ts:clock-1000,items:[{xauPrice:4112.34}]})};
+   return {ok:true,json:async()=>({ts:fixedGoldTime,items:[{xauPrice:4112.34}]})};
  return {ok:false,status:503,json:async()=>({message:'unavailable'})};
 };
 const hub=load('lib/market-hub.ts',id=>{
