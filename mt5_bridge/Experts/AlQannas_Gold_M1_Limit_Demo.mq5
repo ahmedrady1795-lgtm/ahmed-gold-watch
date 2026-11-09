@@ -48,6 +48,7 @@ input int    InpMaxHoldSeconds       = 180;    // Allow more time for winning mo
 input int    InpMaxConcurrent       = 4;      // Open positions + pending orders
 input int    InpMaxEntriesPerM1      = 4;      // Pending LIMIT attempts per minute
 input int    InpMinOrderSpacingSec   = 10;     // Don't spam the trade server
+input int    InpFrozenRetrySeconds   = 5;      // Back off failed broker-frozen position closes
 input double InpMaxSpreadPrice       = 0.80;   // XAU price units (not points)
 input ulong  InpMagic                = 560179505;
 input bool   InpShowChartStatus      = true;
@@ -293,6 +294,8 @@ void ManagePositions(bool forceClose=false)
                                PositionGetDouble(POSITION_VOLUME),
                                PositionGetDouble(POSITION_SWAP),protectedNet);
 
+      string closeRetryKey="AQCloseFrozen_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))
+                           +"_"+IntegerToString((long)InpMagic)+"_"+IntegerToString((long)ticket);
       int age=(int)(now-(datetime)PositionGetInteger(POSITION_TIME));
       bool hardProfit=(net>=InpTakeNetUsd);
       // A gap below the profit floor must ALSO exit; never require net>0.
@@ -300,6 +303,10 @@ void ManagePositions(bool forceClose=false)
       bool lossStop=(net<=-InpMaxLossUsd);
       bool timeStop=(age>=InpMaxHoldSeconds);
       if(!forceClose && !hardProfit && !trailingExit && !lossStop && !timeStop)continue;
+      // Broker frozen restriction (10029) is not solvable by spamming Close().
+      // Original broker SL/TP remains active while waiting to retry.
+      if(GlobalVariableCheck(closeRetryKey) &&
+         now-(datetime)GlobalVariableGet(closeRetryKey)<InpFrozenRetrySeconds)continue;
       if(now-g_lastCloseAttempt<2 && !forceClose && !lossStop)continue;
       g_lastCloseAttempt=now;
       bool sent=g_trade.PositionClose(ticket);
@@ -311,6 +318,19 @@ void ManagePositions(bool forceClose=false)
            forceClose?"DAY_LOCK":hardProfit?"HARD_TP":lossStop?"LOSS_STOP":
            trailingExit?"PROFIT_TRAIL":"MAX_HOLD");
          GlobalVariableDel(key);
+         GlobalVariableDel(closeRetryKey);
+      }
+      else if(rc==TRADE_RETCODE_POSITION_CLOSED)
+      {
+         // MT5 already closed it in the background; not an unresolved failure.
+         GlobalVariableDel(key);
+         GlobalVariableDel(closeRetryKey);
+      }
+      else if(rc==TRADE_RETCODE_FROZEN)
+      {
+         GlobalVariableSet(closeRetryKey,(double)now);
+         PrintFormat("Al-Qannas CLOSE frozen #%I64u: retry in %d sec; broker SL remains",
+                     ticket,InpFrozenRetrySeconds);
       }
       else
          PrintFormat("Al-Qannas CLOSE failed #%I64u retcode=%u %s",
@@ -726,7 +746,7 @@ int OnInit()
       (InpEnableDailyStop && InpDailyStopUsd<=InpMaxLossUsd) ||
       InpMaxHoldSeconds<1 || InpMaxConcurrent<1 || InpMaxConcurrent>20 ||
       InpMaxEntriesPerM1<1 || InpMaxEntriesPerM1>30 ||
-      InpMinOrderSpacingSec<1 || InpMaxSpreadPrice<=0)
+      InpMinOrderSpacingSec<1 || InpFrozenRetrySeconds<1 || InpMaxSpreadPrice<=0)
    {
       Alert("Al-Qannas invalid Expert Inputs. Check risk, volume step, and entry settings.");
       return INIT_PARAMETERS_INCORRECT;
