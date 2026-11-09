@@ -22,11 +22,45 @@ Two switches are required before a real order can be sent: `MT5_AUTOTRADE_ENABLE
 The bridge uploads closed M1/M5/M15/H1 candles from the broker every ~15 seconds. While that snapshot is fresh, the website computes indicators from the same MT5/Exness market used for execution. Position sizing never rounds a risk size upward to the broker minimum lot: if the minimum lot would exceed the configured cash-risk budget, the trade is rejected. Blocked attempts are rate-limited per signal.
 
 
-## Fast scalp learning demo
-Set `SCALP_DEMO_MODE=true` while `LIVE_TRADING=false`. The bridge polls the demo-only scalp endpoint, opens a virtual trade only after Ambush V10 approves it, and uses a quick-capture exit profile.
+## Virtual M1 pending-limit scalp demo (Gold)
 
-The quick-capture profile defaults to a short maximum hold, a take-profit sized above the live spread, a nearby stop, profit-lock after a favorable move, and immediate exits when flow weakens or flips. Entry confidence rises automatically after a losing streak. All demo results are journaled with net points, win rate, profit factor, best excursion, and worst excursion.
+The scalp demo is a **virtual forward test**, NOT a broker demo order executor.
+Even when connected to an Exness MT5 demo account, it submits **zero**
+broker orders. Therefore its simulated trades do not count toward broker
+trading-day or VPS eligibility conditions. Never treat virtual performance as
+proof of achievable real-money fills.
 
-Recommended starting values are already included in `.env.example`: 12-second max hold, 66 minimum confidence, TP about 2.2× spread, SL about 1.6× spread, and a trailing profit-lock. These are forward-test parameters, not guaranteed-profit settings.
+Set SCALP_DEMO_MODE=true and LIVE_TRADING=false.
+The SITE_URL in the example now points to the single Render deployment.
 
-Keep `LIVE_TRADING=false` until a meaningful demo sample shows positive net points after spread, profit factor above 1, and controlled loss streaks.
+- Every fresh MT5 M1 candle is eligible for up to four candidate entries.
+  Only an active, authorized Ambush execution signal can create a candidate.
+  No trade is forced when there is no valid signal.
+- SCALP_DEMO_LOT=0.05 is an **exact** virtual lot. If the MT5 symbol's
+  min/max/step cannot represent 0.05, no trade is recorded.
+- Place a **simulated BUY LIMIT** below ask, or **SELL LIMIT** above bid.
+  Count an entry only if the later MT5 quote touches the pending limit.
+  Pending orders expire at the end of the M1 candle; track expired vs filled.
+- Measure estimated account-currency P/L with MT5 order_calc_profit,
+  using bid to exit BUY and ask to exit SELL. This configuration requires a
+  **USD-denominated** MT5 account for dollar profit/loss thresholds.
+  Apply a configurable extra cost buffer to avoid over-reporting small profits.
+- Take the first net profit at or above SCALP_DEMO_MIN_PROFIT_USD=0.50.
+  Negative floating P/L alone and weak/opposite signals no longer force an
+  early exit. However, a 7 USD loss budget / stop and a 90-second max holding
+  time still apply. Volatile quotes can jump beyond a stop.
+- The 40 USD daily closed-loss threshold prevents new virtual orders for
+  the remainder of that UTC day. Active virtual positions are still evaluated.
+  A local KILL_SWITCH stops new entries.
+- Journal virtual pending, fill, cancellation and exit events, with
+  filled/expired counts, net USD, USD profit factor, and win rate.
+
+Run python -m unittest discover -s tests -p test_demo_limit_logic.py from
+the repository root to test quote and exit rules. The GitHub build workflow
+also checks Python syntax. These are deterministic unit tests, **not** a
+profitable backtest or five-day forward-test result.
+
+Do not enable real execution based on the simulated numbers. Test on an
+actual Exness MT5 **demo account** through a separate broker order-execution
+path, measure all commissions/slippage, and review drawdown before making
+any decision about a live account.
