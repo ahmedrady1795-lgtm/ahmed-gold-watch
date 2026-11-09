@@ -20,6 +20,19 @@ assert.equal(quoteProfile.ready,true);
 assert.equal(quoteProfile.basis,'QUOTE_UPDATE_COUNT');
 assert.ok(quoteProfile.poc>=quoteProfile.val&&quoteProfile.poc<=quoteProfile.vah);
 assert.equal(quoteProfile.actionable,false);
+const slowTicks=Array.from({length:13},(_,i)=>{
+ const at=now-65000+i*5000,mid=4000+(i%3)*.08;
+ return {at,receivedAt:at,price:mid,bid:mid-.05,ask:mid+.05};
+});
+const slowProfile=buildMt5QuoteProfile(slowTicks,now);
+assert.equal(slowProfile.ready,true,
+ 'five-second MT5 polls should eventually provide an indicative profile');
+assert.equal(slowProfile.samples,13);
+const warming=buildMt5QuoteProfile(slowTicks.slice(-6),now);
+assert.equal(warming.ready,false);
+assert.equal(warming.samples,6,'warm-up sample counts must not be zeroed');
+assert.equal(buildMt5QuoteProfile(slowTicks,now+15000).ready,false,
+ 'stale quotes must not pass a live-profile check');
 assert.equal(buildMt5QuoteProfile(ticks,now+50000).ready,false);
 const btc={
  ok:true,status:'LIVE_SAMPLE',asOf:now-2000,fetchedAt:now-1700,
@@ -68,6 +81,12 @@ const noDom=assessFlowProfile({asset:'GOLD',price:4000.09,now,
  sourceMatches:true,gold:{mode:'broker',brokerSymbol:'XAUUSDm',
  brokerDepth:null,quoteProfile}});
 assert.equal(noDom.ready,false);
+assert.equal(noDom.profileReady,true,'quote-only POC should be observable without DOM');
+assert.equal(noDom.orderFlowReady,false);
+assert.equal(noDom.side,'WAIT','missing DOM must not invent flow direction');
+assert.equal(noDom.profileBasis,'QUOTE_UPDATES');
+assert.equal(noDom.confirmed,false);
+assert.equal(noDom.actionable,false);
 const input={marketOpen:true,fresh:true,providerTransition:false,
  preMove:{ok:true,stage:'ARMED',side:'BUY'},
  hunt:{ready:true,referenceOnly:false,observation:{quality:'CLEAR',
@@ -79,4 +98,9 @@ assert.equal(fuseLocalSniper({...input,flowProfile:{...buy,side:'SELL'}}).side,'
  'strong opposing order flow cannot mint a bullish scenario');
 assert.equal(fuseLocalSniper({...input,flowProfile:null}).side,'BUY',
  'missing sample does not become a fabricated SELL flow');
+const noM15=fuseLocalSniper({...input,m15Fresh:false,flowProfile:null,
+ preMove:{ok:false,stage:'WAIT',side:'WAIT'}});
+assert.equal(noM15.m15,'WAIT','stale M15 cannot vote in M1-only observation');
+assert.equal(noM15.m1,'BUY','fresh M1 should remain visible when M15 is stale');
+assert.equal(noM15.tradeAuthorized,false);
 console.log('Flow profile and next-candle causality tests passed');

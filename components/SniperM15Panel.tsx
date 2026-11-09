@@ -194,7 +194,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const localFusion=useMemo(()=>fuseLocalSniper({
    preMove,hunt:huntPreview,m1:nextM1,liquidity:liquidityMagnets,
    marketOpen,fresh:Boolean(m.sniper.view.priceFresh&&
-     m.historyFresh&&historyFresh),providerTransition,flowProfile
+     m.historyFresh),m15Fresh:historyFresh,providerTransition,flowProfile
  }),[preMove,huntPreview,nextM1,liquidityMagnets,marketOpen,
     m.sniper.view.priceFresh,m.historyFresh,historyFresh,providerTransition,flowProfile]);
  const observedSide=m15Bias.side;
@@ -790,7 +790,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
       flow={flowProfile}
       price={currentSignalPrice??null} now={now}
       marketOpen={marketOpen} fresh={Boolean(m.sniper.view.priceFresh&&
-        m.historyFresh&&historyFresh)} providerTransition={providerTransition}/>
+        m.historyFresh)} providerTransition={providerTransition}/>
    <details className="sniper-hunt-advanced">
      <summary>المستويات والتشخيص <span aria-hidden="true">＋</span></summary>
    <SniperM15Summary asset={asset} ready={projected.ready}

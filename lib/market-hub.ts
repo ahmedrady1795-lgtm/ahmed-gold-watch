@@ -4,6 +4,7 @@ import type { Candle, Event } from './engine';
 import {normalizeMt5GoldDom,analyzeMt5GoldDom} from './gold-mt5-dom';
 import type {Mt5DomSnapshot} from './gold-mt5-dom';
 import {buildMt5QuoteProfile} from './mt5-quote-profile';
+import type {BrokerQuoteTick} from './mt5-quote-profile';
 export type BackgroundPoint = {
   key: 'dxy' | 'us2y' | 'us10y';
   label: string;
@@ -82,6 +83,8 @@ function emitMt5BridgeUpdate(status:Mt5BridgeStatus){
 type FastSide='BUY'|'SELL'|'WAIT';
 type Mt5FastTick={at:number;receivedAt:number;price:number;bid:number;ask:number;tickVolume:number|null;flags:number|null;bidDepth:number;askDepth:number;bookImbalance:number};
 let mt5FastTicks:Mt5FastTick[]=[];
+// Retain distinct broker quotes for a slow bridge without changing fast signals.
+let mt5QuoteTicks:BrokerQuoteTick[]=[];
 let mt5DomSamples:Mt5DomSnapshot[]=[];
 let mt5DomUnavailableReason='NO_MT5_CONNECTION';
 export function getMt5GoldDomReading(now=Date.now()){
@@ -93,7 +96,7 @@ export function getMt5GoldDomReading(now=Date.now()){
 }
 export function getMt5GoldQuoteProfile(now=Date.now()){
   const s=getMt5BridgeStatus(now);
-  return buildMt5QuoteProfile(s.fresh?mt5FastTicks:[],now);
+  return buildMt5QuoteProfile(s.fresh?mt5QuoteTicks:[],now);
 }
 let backgroundCache: Cache<BackgroundPoint[]> | null = null;
 
@@ -131,6 +134,10 @@ export function setMt5BridgeStatus(input:unknown):Mt5BridgeStatus{
   let candleSet=mt5State?.candles??null,candlesReceivedAt=mt5State?.candlesReceivedAt??null;
   if(body.candles&&typeof body.candles==='object'){try{const candidate={c1:mt5Candles(body.candles.c1),c5:mt5Candles(body.candles.c5),c15:mt5Candles(body.candles.c15),c60:mt5Candles(body.candles.c60)};if(candidate.c1.length>=80&&candidate.c5.length>=220&&candidate.c15.length>=220&&candidate.c60.length>=220){candleSet=candidate;candlesReceivedAt=Date.now();}}catch{}}
   const receivedAt=Date.now(),lastPrice=num(body.last),mid=lastPrice&&lastPrice>0?lastPrice:(bid+ask)/2;
+  // Never merge ticks from different MT5 symbols.
+  if(mt5State?.symbol&&mt5State.symbol!==symbol){
+    mt5FastTicks=[];mt5QuoteTicks=[];mt5DomSamples=[];
+  }
   const tickVol=num(body?.microstructure?.tickVolume),tickFlags=num(body?.microstructure?.tickFlags);
   const ob=body?.microstructure?.orderBook;
   const normalizedBook=normalizeMt5GoldDom(ob,{
@@ -153,6 +160,12 @@ export function setMt5BridgeStatus(input:unknown):Mt5BridgeStatus{
   const bidDepth=normalizedBook.sample?.bidVolume??0;
   const askDepth=normalizedBook.sample?.askVolume??0;
   const bookImbalance=normalizedBook.sample?.imbalance??0;
+  // Profile records real changes in quoted Bid/Ask, not fake traded volume.
+  const lastQuote=mt5QuoteTicks.at(-1),quotedMid=(bid+ask)/2;
+  if(!lastQuote||tickTimeMs>lastQuote.at||
+     (tickTimeMs===lastQuote.at&&(bid!==lastQuote.bid||ask!==lastQuote.ask)))
+    mt5QuoteTicks.push({at:tickTimeMs,receivedAt,price:quotedMid,bid,ask});
+  mt5QuoteTicks=mt5QuoteTicks.filter(t=>receivedAt-t.receivedAt<=90000).slice(-600);
   const lastFast=mt5FastTicks.at(-1);
   if(!lastFast||tickTimeMs>lastFast.at||Math.abs(mid-lastFast.price)>1e-9||Math.abs(bookImbalance-lastFast.bookImbalance)>=1){
     mt5FastTicks.push({at:tickTimeMs,receivedAt,price:mid,bid,ask,tickVolume:tickVol,flags:tickFlags,bidDepth,askDepth,bookImbalance});
