@@ -1,52 +1,54 @@
-# Al-Qannas Gold M1 LIMIT — Exness MT5 DEMO EA
+# Al-Qannas Gold M1 STOP LADDER v1.16 — Exness DEMO
 
-Source: [AlQannas_Gold_M1_Limit_Demo.mq5](AlQannas_Gold_M1_Limit_Demo.mq5)
+This is an upgrade of the existing MetaTrader 5 EA, NOT a new Render strategy or connection to the dashboard AI.
 
-## تثبيت البوت على Windows VPS الحالي
+## The video-style entry logic
 
-1. افتح سطح مكتب الـVPS الموجود عن طريق Remote Desktop. لا تحتاج VPS جديد.
-2. افتح MetaTrader 5 لحساب Exness Demo، وتأكد أن الحساب Demo وليس Real وأن عملته USD.
-3. افتح رابط ملف mq5 أعلاه في متصفح الـVPS، اضغط Raw / Download raw file واحفظه باسم AlQannas_Gold_M1_Limit_Demo.mq5. تأكد أن امتداده ليس txt.
-4. في MT5 اختر File → Open Data Folder → MQL5 → Experts وضع ملف mq5 هناك.
-5. افتح MetaEditor بالضغط على F4 من MT5، وافتح الملف واضغط F7 (Compile). يلزم ظهور 0 errors. إن ظهر خطأ لا تشغل نسخة ex5 قديمة.
-6. افتح شارت XAUUSDm أو رمز الذهب الصحيح لدى Exness على M1.
-7. افتح Navigator → Expert Advisors ثم Refresh ثم اسحب AlQannas_Gold_M1_Limit_Demo على الشارت.
-8. في Inputs: InpManualPause=false لإيقاف/تشغيل المداخلات يدويًا (عند true تلغى أوامر Limit المعلقة، وتستمر إدارة الصفقات المفتوحة)، InpEnableDailyStop=false افتراضيًا (توقف اليوم اختياري تمامًا)، InpEntryStyle=AQ_BALANCED (اختر AQ_FAST / AQ_BALANCED / AQ_PRECISION)، InpTradeDirection=AQ_BOTH (BUY فقط أو SELL فقط أو الاثنين)، Lots=0.05 قابل للتعديل حسب حدود الوسيط، TakeNetUsd=6، MaxLossUsd=3، TrailArmUsd=2.25، ProfitLockUsd=1.50، DailyStopUsd=40 فقط إذا فعّلت InpEnableDailyStop، MaxHoldSeconds=180. بقية الخيارات (السبريد، تأكيد التيكات، عدد الصفقات، مهلة الدخول، تراجع الربح، مسافة Limit القصوى، صلاحية Limit المعلق، وفترة إعادة المحاولة عند تجميد أمر الإغلاق) كلها متاحة من Expert → Inputs.
-9. فعّل Allow Algo Trading من إعدادات EA وAlgo Trading من شريط MT5 فقط على حساب Demo.
-10. تابع Experts لمعرفة أي رفض للوسيط، وTrade/Orders للأوامر المعلقة، وHistory للصفقات المنفذة. أمر Limit قد ينتهي بدون تنفيذ.
+- Places **BUY STOP** above current **ASK** and **SELL STOP** below current **BID**.
+- Defaults: **0.01 lot**, **3 pending levels on each side**, first level **0.30 XAU price units** above/below current executable quote, with a **0.30 price-unit step**.
+- Checks `SYMBOL_TRADE_STOPS_LEVEL` and the broker's allowable order modes. If Exness requires a wider distance, adjust upward or skip; the EA does not violate the server minimum.
+- Limits all positions plus pending orders to `InpMaxConcurrent=6`. If the opposite side opens, it attempts to cancel remaining opposite pending stops (`InpCancelOppositeOnFill=true`), but both sides may fill during a sharp whipsaw before cancellation is possible.
+- `InpUseSignalFilter=false` avoids the older M1/M5 directional filters that caused long waits. The ladder reacts to breakouts; **it does not predict the future or guarantee winning candles**.
+- Replenishes missing levels at configurable batches (minimum 2 seconds between batches), subject to spread/available slots and user permissions.
+- Outstanding stops are canceled by the EA after `InpMaxPendingAgeSec=75` seconds, on an optional new-bar cancel, when paused, or when removed. Broker freeze levels can prevent their cancellation temporarily.
 
-## معلومات تشغيل مهمة
+## User-controlled Inputs
 
-- النسخة تضع أوامر Limit فعلية عند الوسيط على حساب Exness Demo فقط؛ الكود يرفض الحساب الحقيقي.
-- القرار يعتمد محليًا على زخم شموع M1 وضغط تغيّر أسعار ticks وتقدير tick-volume عند مناطق الأسعار. لا تستدعي محركات ذكاء القناص الموجودة على موقع Render؛ ربطها يحتاج خطوة تكامل منفصلة.
-- تفحص كل شمعة دقيقة، وتسمح حتى 4 محاولات Limit في الدقيقة مع بقاء 4 مراكز أو أوامر معلقة كحد أقصى في حساب Hedging. لا تضمن تنفيذ كل أمر أو وجود ربح.
-- في نسخة v1.14 لا تغلق الصفقة عند أول 0.70 دولار. هدف الربح الصلب عند الوسيط نحو 6 دولارات صافيًا بالتقدير، بعد خصم احتياطي تكاليف افتراضي 0.20 دولار.
-- عندما يرتفع أعلى ربح تقديري إلى 2.25 دولار، يحاول البوت تأمين 1.50 دولار صافيًا عبر تعديل وقف خسارة الصفقة لدى الوسيط (إذا سمحت مستويات الوقف والتجميد والسبريد). وعند وصول أعلى ربح إلى 3.00 دولارات، يبدأ تتبّع أعلى ربح مع السماح بتراجع قدره 0.80 دولار؛ فإن نزل دون مستوى الحماية، يحاول إغلاق الصفقة محليًا حتى لو تراجعت إلى خسارة. مستويات الحماية أهداف تقديرية وليست ضمانًا؛ التنفيذ يعتمد على الاتصال والوسيط والانزلاق السعري.
-- يخزن أعلى ربح لكل صفقة في متغير عام في منصة MT5، حتى لا تضيع معلومات الربح بمجرد إعادة تحميل الـEA. يحاول أيضًا وضع الحماية لدى الوسيط؛ إذا تعذّر تعديل وقف الخسارة، فإن خروج التريل المحلي يحتاج أن يبقى MT5/EA شغالًا.
-- تضع SL وTP لدى الوسيط لكل أمر. الخسارة المستهدفة الآن 3.00 دولارات لكل صفقة؛ قد تتجاوز الخسارة هذا المبلغ بسبب الانزلاق أو الفجوات أو العمولات الفعلية.
-- مدة الاحتفاظ القصوى 180 ثانية ما لم يصل TP/SL أو هدف حماية الربح قبلها. لا تنتظر الخسارة للأبد.
-- تطوير اتجاه الدخول يعتمد على شموع M1 ومقارنة الاتجاه بشموع M5 مغلقة، وقراءة ضغط تغيّر الأسعار، وتقدير tick-volume volume-by-price. التداول مازال محليًا ولا يستخدم ذكاء الموقع. ولا توجد حتى الآن نتائج backtest أو forward-test تثبت تحسن الدقة.
-- مشكلة رفض إغلاق الصفقات retcode=10029 FROZEN لا يمكن تجاوز حظر الوسيط عليها. بدل إعادة المحاولة كل ثانية تسجل v1.13 فترة انتظار InpFrozenRetrySeconds=5 قبل إعادة المحاولة. يبقى وقف الخسارة والهدف لدى الوسيط خاضعين لسياساته والسبريد والانزلاق.
-- لا تستبدل الملف أو توقف الـEA أثناء وجود مراكز مفتوحة دون التأكد من أوامر SL/TP ومتابعتها؛ إزالة الـEA تُوقف الحماية البرمجية المستمرة للربح.
-- في نسخة v1.14 حد الخسارة اليومية **غير مفعّل افتراضيًا** وتتحكم فيه وحدك عبر InpEnableDailyStop. عند تفعيله فقط، يوقف إدخالات جديدة إذا وصلت الخسارة الإجمالية (المحقق + العائم المقدر) إلى -InpDailyStopUsd، ويحاول إغلاق الصفقات. عند إيقافه لا يطبق قفل اليوم المحفوظ سابقًا، لكن **قد تتراكم خسائر أكبر** من القيمة السابقة؛ المراقبة عليك. لتوقف البوت يدويًا عن فتح صفقات جديدة دون إزالة EA استخدم InpManualPause=true، مع استمرار إدارة المراكز المفتوحة.
-- Input InpEntryStyle يتحكم في قوة تأكيد دخول الاتجاه. AQ_FAST يسمح بإشارات أكثر، AQ_BALANCED يطلب توافق اتجاه آخر M5 مغلقة مع M1 وضغط أسعار حديث، AQ_PRECISION يطلب توافق أقوى. لا يمكن تأكيد زيادة الدقة دون اختبار Exness DEMO تاريخي وأمامي. InpMinSignalScore يتحكم في قوة الإشارة المطلوبة؛ زيادته قد تقلل الصفقات.
-- مصدر ضغط الأسعار الآن آخر 32 تغيّرًا في منتصف سعر Bid/Ask وليس مجمل الدقيقة، لتقليل إشارات استمرار اتجاه انتهى. والطلب يستخدم LIMIT عند ارتداد سعري صغير قابل للتعديل بواسطة InpEntryPullbackRange. في v1.13 تم تقليل قيمته الافتراضية إلى 0.025، مع إضافة InpMaxLimitDistancePrice=0.70 من السعر التنفيذي؛ إذا فرض الوسيط مسافة أكبر من الحد المحدد يتخطى الفرصة بدل وضع Limit بعيد. كما يُلغي الـEA الأمر المعلق إذا استمر دون تنفيذ أكثر من InpMaxPendingAgeSec=18 ثانية أو صار أبعد من الحد المسموح، ويمكن تفعيل إلغاء الأمر عند انعكاس ضغط الأسعار عبر InpCancelOnFlowFlip (معطل افتراضيًا لأن الارتداد العادي قد يُشبه الانعكاس). لا يتم استخدام بيانات تدفق أوامر حقيقية.
-- بعد **تثبيت هذه النسخة مرة واحدة**، كل إعدادات المخاطرة والسرعة وأنواع الإشارات الموجودة في Inputs قابلة للتغيير دون تحميل الملف أو إعادة الـCompile. أمّا تغيير خوارزمية الكود نفسها في المستقبل فيستلزم إصدارًا جديدًا وتنصيبه.
-- جميع الأوامر تظل Exness DEMO ONLY. تعطيل حد الخسارة اليومي لا يلغى SL الفردي المُرسل للوسيط ولا يضمن حدًا أقصى للخسائر بسبب الانزلاق.
-- في حساب Netting يسمح بمركز واحد فقط. الحساب Hedging يسمح بأربعة مراكز/أوامر معًا.
-- عند إزالة EA يحذف أوامره المعلقة، لكنه لا يغلق المراكز القائمة تلقائيًا؛ راقبها يدويًا.
-- اختبار GitHub لا يساوي Compile فعلي. لا تدّعي نجاح تشغيله إلا عند ظهور 0 errors داخل MetaEditor ونجاح أوامر Demo على MT5.
-- لا تفترض أن صفقات Demo تستوفي شروط الحفاظ على VPS؛ راجع شروط Exness الحالية بحسابك.
+| Input | Default | Purpose |
+| --- | --- | --- |
+| `InpLots` | `0.01` | Volume for each order; broker minimum/step rules |
+| `InpStopLevelsPerSide` | `3` | How many BUY STOP and SELL STOP ladder levels |
+| `InpFirstStopOffsetPrice` | `0.30` | First stop level's price distance |
+| `InpStopStepPrice` | `0.30` | Price interval between levels |
+| `InpMaxStopDistancePrice` | `1.50` | Hard cap on the distance of a proposed STOP order |
+| `InpUseSignalFilter` | `false` | Optional local M1/M5 signal check |
+| `InpCancelOppositeOnFill` | `true` | OCO-like cancellation attempt of opposite pending orders |
+| `InpMaxConcurrent` | `6` | Pending and open combined |
+| `InpMaxEntriesPerM1` | `8` | Maximum successful order placements per minute |
+| `InpMinOrderSpacingSec` | `2` | Delay between placement batches |
+| `InpMaxPendingAgeSec` | `75` | Cancel pending stops after they age |
+| `InpTakeNetUsd` | `3.00` | Estimated TP per position; costs are modeled, not guaranteed |
+| `InpMaxLossUsd` | `3.00` | Intended max loss per position via broker SL; gaps/slippage can overrun |
+| `InpTrailArmUsd` | `2.00` | Peak net-profit threshold to attempt +$1.50 SL protection |
+| `InpProfitLockUsd` | `1.50` | Intended protected profit, not guaranteed |
+| `InpEnableDailyStop` | `false` | User may enable daily lock (default remains off per request) |
+| `InpManualPause` | `false` | No new positions; tries to cancel pending while still managing open positions |
 
-## إصلاح إلغاء أوامر LIMIT — v1.14
-- InpMaxLimitDistancePrice: الحد الأقصى **لوضع** الأمر، ولا يُستخدم تلقائيًا لإلغائه بعد ثوانٍ.
-- InpMaxPendingAgeSec=30: يلغي البوت LIMIT المعلق بعد 30 ثانية كإعداد افتراضي (أو عند بداية شمعة M1 التالية)، ما لم يمنع الوسيط الحذف.
-- InpCancelOnPriceDrift=false افتراضيًا: يمنع إلغاء LIMIT بمجرد ابتعاد السعر بعد وضعه. إذا فعّله المستخدم يستعمل InpCancelDistancePrice=3.00، وهي مستقلة عن مسافة وضع Limit.
-- InpFrozenCancelRetrySec=10: عند رفض إلغاء أمر معلق بسبب frozen أو invalid يهدأ الطلب 10 ثوانٍ؛ لا يمكن تجاوز تجميد الوسيط بقوة.
-- حجم لوت 0.80 الذي ظهر في تجربة المستخدم يمكن أن يسبب خسائر أكبر بكثير من لوت 0.05، وكذلك الخسارة اليومية كانت مرتفعة. هذه التحسينات لا تثبت زيادة الدقة أو الربحية؛ التحقق يحتاج Compile داخل MetaEditor وتداول Demo مراقب.
+Other existing risk and execution inputs remain editable. Do **not** increase lot or number of orders to compensate for prior losses.
 
-## تعديل v1.15: السعر عدى على خط الأمر ولم يُنفّذ
-- BUY LIMIT لا يتنفّذ لمجرد نزول شمعة BID لخطه؛ التنفيذ مشروط بوصول ASK عند الوسيط إلى سعر الأمر أو أقل. SELL LIMIT يتنفذ بوصول BID إلى سعر الأمر أو أعلى. يُطبع Bid/Ask وسعر الأمر وقت الإنشاء داخل Experts.
-- InpCancelOnNewBar=false افتراضيًا: البوت لا يلغي أمر LIMIT المعلق عند انتقال الشارت إلى شمعة M1 جديدة. اختياري من Inputs.
-- InpMaxPendingAgeSec=75 ثانية: المهلة الافتراضية للأمر المعلق؛ يمكن تغييرها من Inputs. بقاء الأمر مدة أطول قد ينفذه بعد تغير الاتجاه؛ راقب مخاطرة الأوامر المعلقة خاصة مع لوت 0.80.
-- عند تثبيت نسخة جديدة من EA، وظيفة OnDeinit تحاول إلغاء الأوامر المعلقة؛ إذا كان الوسيط مجمّدًا فقد تبقى أوامر تحتاج متابعة يدوية. عدم التنفيذ رغم لمس خط BID/ASK قد يكون بسبب فرق السبريد أو وقت الإلغاء أو شروط Exness وليس بالضرورة خلل في البوت.
+## Install on the current Windows VPS
+
+1. Before replacing the current EA, review all **Trade** tab open positions and pending orders. The old version may have pending LIMIT orders; an old frozen order may remain and must be checked manually.
+2. On Exness **DEMO** MT5, stop new entries and make sure existing positions have correct broker SL/TP. Do not switch EAs with unmanaged live positions.
+3. Download `AlQannas_Gold_M1_Limit_Demo.mq5` from the production attachment endpoint `https://ahmed-gold-watch-free.onrender.com/download-gold`. The filename is unchanged so it can replace the old EA, but version v1.16 now sends **STOP** pending orders, not LIMIT.
+4. MT5 -> File -> Open Data Folder -> `MQL5/Experts`. Replace the mq5 file; MetaEditor -> open -> **F7 Compile**. The result must report 0 errors. On the GOLD M1 chart, detach old EA and attach the newly compiled `AlQannas_Gold_M1_Limit_Demo` with its new Inputs. Keep the H1 read-only bridge in place.
+5. Verify the Experts log: `STOP LADDER v1.16`, `BUY STOP`, `SELL STOP`, and actual pending order tickets. Confirm both order types, broker SL/TP, and resulting fills on Exness demo.
+6. No proof of accuracy/profitability has been established; source tests and deployment success do not substitute for MetaEditor compile or a forward demo test.
+
+## Safety and known limitations
+
+- **DEMO-only** hard check; gold symbol and USD account only.
+- The original MT5 EA remains local. The Render bridge sends data and doesn't direct real broker entries.
+- The **server SL/TP** on each pending stop is intended to limit risk, but freezing, gaps, spread and slippage may produce a worse result. Activating a ladder creates exposure to multiple fills.
+- `InpEnableDailyStop=false` allows accumulated losses to continue without daily automated cutoff. Consider enabling it for unattended demo tests.
+- The video does not reveal the original bot's secret strategy or true performance. This reproduces its visible breakout STOP-order architecture, not its unknown accuracy or returns.
