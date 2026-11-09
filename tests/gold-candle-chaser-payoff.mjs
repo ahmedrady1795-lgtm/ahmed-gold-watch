@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+const code=fs.readFileSync('public/downloads/AlQannas_Candle_Chaser_Gold_M1_Demo.mq5','utf8');
+const download=fs.readFileSync('app/download-candle-chaser/route.ts','utf8');
+
+assert.match(code,/#property version "1\.02"/);
+assert.match(download,/source\.includes\('#property version "1\.02"'\)/);
+assert.match(download,/Content-Disposition/);
+assert.match(code,/bool IsDemo\(\)/);
+assert.match(code,/if\(!IsDemo\(\)\)/);
+assert.match(code,/input double InpLots\s*= 0\.02/);
+assert.match(code,/InpEnableDailyStop\s*= true/);
+assert.match(code,/InpDailyStopUsd\s*= 40\.00/);
+assert.match(code,/if\(!InpEnableDailyStop\)return false/);
+assert.match(code,/GlobalVariableSet\(g_dayLockKey,1\)/);
+
+const getNumber=(key)=>{
+ const match=code.match(new RegExp('input double '+key+'\\s*= ([0-9.]+);'));
+ assert.ok(match,key+' should remain a configurable input');
+ return Number(match[1]);
+};
+const quick=getNumber('InpCloseNetProfitUsd');
+const tp=getNumber('InpBrokerTargetNetUsd');
+const stop=getNumber('InpMaxLossUsd');
+assert.equal(quick,1.25);
+assert.equal(tp,1.65);
+assert.equal(stop,1.25);
+assert.ok(quick/stop>=1);
+assert.ok(quick/(quick+stop)<.55);
+assert.match(code,/ConfirmedChaseDirection\(const MqlTick &tick\)/);
+assert.match(code,/CopyRates\(_Symbol,PERIOD_M1,1,3,m1\)/);
+assert.match(code,/CopyRates\(_Symbol,PERIOD_M5,1,2,m5\)/);
+assert.match(code,/InpMinDirectionScorePrice/);
+assert.match(code,/InpM5ConflictBodyPrice/);
+assert.match(code,/int direction=ConfirmedChaseDirection\(tick\)/);
+assert.match(code,/EntryCostsAllow\(tick\)/);
+assert.match(code,/initialCost>=InpCloseNetProfitUsd\*InpMaxEntryCostToWinRatio/);
+assert.match(code,/Clock\(\)-g_lastLossDealAt<InpLossCooldownSec/);
+assert.match(code,/g_lastLossDealAt=Clock\(\)/);
+assert.match(code,/closingNet<0\.0/);
+assert.match(code,/CancelAllPending\("AFTER_LOSS"\)/);
+assert.match(code,/ProtectedPrices\(direction,level,sl,tp\)/);
+assert.match(code,/g_trade\.BuyStop\(/);
+assert.match(code,/g_trade\.SellStop\(/);
+
+const follow=code.split('void FollowBracket()')[1]?.split('void ExpireStaleStops()')[0];
+assert.ok(follow,'Must retain moving STOP chaser mode');
+assert.match(follow,/TryCancel\(oppositeTicket,"SIDE_CONFLICT"\)/);
+assert.match(follow,/if\(StopTicket\(opposite\)!=0\)return/);
+assert.match(follow,/PlaceStop\(direction,desired\)/);
+assert.doesNotMatch(follow,/PlaceStop\(1,buy\)|PlaceStop\(-1,sell\)/);
+assert.match(code,/InpMaxFillsPerM1\s*= 20/);
+assert.doesNotMatch(code,/TRADE_MODE_REAL.*trade\.Buy\(/s);
+
+console.log('PASS: Gold Candle Chaser 1.02 demo payoff, cost-aware one-side STOP, M1\/M5 closed-bar guard, daily stop and loss cooldown. Static checks only; not a broker/backtest proof.');
