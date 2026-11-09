@@ -9,7 +9,7 @@ export async function GET() {
   const filename = 'AlQannas_Gold_M1_Limit_Demo.mq5';
   try {
     const source = await readFile(path.join(process.cwd(), 'public', 'downloads', filename), 'utf8');
-    if (!source.includes('#property version   "1.15"'))
+    if (!source.includes('#property version   "1.16"'))
       return new Response('Gold EA download version mismatch', {status: 503});
     return new Response(source, {
       status: 200,
