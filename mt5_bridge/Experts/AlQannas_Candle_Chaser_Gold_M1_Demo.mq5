@@ -208,14 +208,16 @@ bool TryCancel(ulong ticket,string reason)
    MqlTick tick;
    if(CurrentQuote(tick) && StopIsFrozen(ticket,tick))
    {g_status="Broker freeze: pending cancel deferred";return false;}
-   g_lastCancelAttempt=now;
    bool ok=g_trade.OrderDelete(ticket);
    uint rc=g_trade.ResultRetcode();
    if(ok && rc==TRADE_RETCODE_DONE)
    {
+      // Successful cancels must not throttle the opposite pending stop.
+      g_lastCancelAttempt=0;
       PrintFormat("AQ_CHASER CANCEL #%I64u reason=%s",ticket,reason);
       return true;
    }
+   g_lastCancelAttempt=now; // Only broker refusals use retry cooldown.
    g_status="Cancel retry: "+g_trade.ResultRetcodeDescription();
    PrintFormat("AQ_CHASER CANCEL rejected #%I64u rc=%u reason=%s",ticket,rc,reason);
    return false;
