@@ -5,8 +5,8 @@
 //| Separate from Gold LIMIT and Sniper 2.0 EAs; no profit guarantee.|
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.05"
-#property description "Candle Chaser 1.05: broker-cost-aware volume and truthful WAIT logs. DEMO ONLY."
+#property version "1.06"
+#property description "Candle Chaser 1.06: optional daily stop OFF unless user opts in. DEMO ONLY."
 #include <Trade/Trade.mqh>
 
 input bool   InpManualPause             = false;  // Pause NEW orders, manage existing trades
@@ -26,7 +26,7 @@ input double InpMaxEntryCostToLossRatio = 0.70;   // Allow up to 70% of stop bud
 input int    InpMaxFillsPerM1          = 20;     // Allows repeated entries per M1; one open at a time
 input int    InpMaxPendingAgeSec       = 50;     // Replace stale pending stops
 input bool   InpCancelOnNewBar         = true;   // Follow the new M1 instead of stale previous levels
-input bool   InpEnableDailyStop        = true;   // Optional cumulative day limit; user controlled
+input bool   InpEnableDailyStop        = false;  // OFF by default, only enable at user request
 input double InpDailyStopUsd           = 40.00;  // Used only if enabled
 input double InpMinDirectionScorePrice  = 0.18;   // Completed M1 plus current bid pressure
 input double InpM5ConflictBodyPrice    = 1.50;   // Avoid strong opposite completed M5 candle
@@ -300,7 +300,13 @@ int FillsOnBar(datetime bar)
 }
 bool RiskStop()
 {
-   if(!InpEnableDailyStop)return false;
+   if(!InpEnableDailyStop)
+   {
+      // User did not opt into a daily stop. Do not let a previously
+      // persisted lock from an older EA version block new entries.
+      g_dayLocked=false;
+      return false;
+   }
    double closed=0;
    if(!DayProfit(closed)){g_status="Daily history unavailable";return true;}
    if(closed+FloatingProfit()<=-InpDailyStopUsd)
@@ -655,7 +661,7 @@ int OnInit()
    g_trade.SetTypeFillingBySymbol(_Symbol);
    g_trade.SetAsyncMode(false);
    RefreshTradingDay();
-   PrintFormat("AQ_CHASER START v1.05 DEMO ADAPTIVE_VOLUME symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
+   PrintFormat("AQ_CHASER START v1.06 DEMO DAY_STOP_OPT_IN symbol=%s lot=%.2f arm=%.3f follow=%.3f netClose=%.2f maxLoss=%.2f",
                _Symbol,InpLots,InpArmDistancePrice,InpRepriceStepPrice,
                InpCloseNetProfitUsd,InpMaxLossUsd);
    EventSetTimer(1);
