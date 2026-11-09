@@ -6,15 +6,21 @@ const src=fs.readFileSync(path.join(__dirname,'..','mt5_bridge','Experts',
                                    'AlQannas_Gold_M1_Limit_Demo.mq5'),'utf8');
 const includes=(pattern,reason)=>assert.match(src,pattern,reason);
 
-includes(/#property version\s+"1\.11"/,'new version');
+includes(/#property version\s+"1\.12"/,'new version');
 includes(/ACCOUNT_TRADE_MODE_DEMO/,'demo-only broker orders');
-includes(/MathAbs\(InpLots-0\.05\)/,'fixed exact 0.05 lots');
+includes(/!ExactVolume\(\)/,'broker volume min\/max\/step validation');
 includes(/g_trade\.BuyLimit\(/,'BUY pending Limit');
 includes(/g_trade\.SellLimit\(/,'SELL pending Limit');
 assert.doesNotMatch(src,/g_trade\.(?:Buy|Sell)\(/,'no Market entries');
 includes(/InpTakeNetUsd\s*=\s*6\.00/,'no tiny fixed TP at 0.70 USD');
 includes(/InpMaxLossUsd\s*=\s*3\.00/,'bounded nominal per-trade loss');
-includes(/InpDailyStopUsd\s*=\s*40\.00/,'daily risk budget remains');
+includes(/InpDailyStopUsd\s*=\s*40\.00/,'daily limit remains user editable');
+includes(/InpEnableDailyStop\s*=\s*false/,'daily stop optional, default off');
+includes(/InpManualPause\s*=\s*false/,'manual pause selectable');
+includes(/if\(InpEnableDailyStop && historyOK/,'automatic day stop only when user enabled');
+includes(/if\(InpEnableDailyStop && GlobalVariableCheck\(g_lockKey\)\)/,'ignore old daily lock when disabled');
+includes(/RemoveOwnLimits\(true\); \/\/ Avoid filling an old LIMIT while manually paused/,'pause cancels pending orders');
+includes(/InpTradeDirection=AQ_BOTH/,'manual BUY\/SELL selection');
 includes(/InpTrailArmUsd\s*=\s*2\.25/,'profit lock activation');
 includes(/InpProfitLockUsd\s*=\s*1\.50/,'protected net profit target');
 includes(/InpTrailStartUsd\s*=\s*3\.00/,'profit runner activation');
@@ -24,6 +30,11 @@ includes(/g_trade\.PositionModify\(ticket,proposed,currentTp\)/,'attempts broker
 includes(/GlobalVariableSet\(key,peak\)/,'persist profit peaks across EA reloads');
 includes(/CopyRates\(_Symbol,PERIOD_M1,1,24,bars\)/,'only closed M1 candles');
 includes(/CopyRates\(_Symbol,PERIOD_M5,1,12,m5\)/,'only closed M5 candles');
+includes(/InpEntryStyle = AQ_BALANCED/,'entry mode customizable');
+includes(/g_recentTickDirections\[32\]/,'recent 32 price-change ticks used');
+includes(/dirM5<InpMinM5Alignment/,'M5 disagreement can block entry');
+includes(/dirFlow<-0\.18/,'short term tick disagreement can block entry');
+includes(/InpEntryPullbackRange\s*=\s*0\.12/,'limit order placement uses configurable pullback');
 includes(/MathAbs\(score\)<InpMinSignalScore/,'skip ambiguous predictions');
 includes(/MathAbs\(trend5\)>=InpM5ConflictScore/,'M5 conflict check');
 includes(/MQLInfoInteger\(MQL_TRADE_ALLOWED\)/,'client automated-trade guard');
