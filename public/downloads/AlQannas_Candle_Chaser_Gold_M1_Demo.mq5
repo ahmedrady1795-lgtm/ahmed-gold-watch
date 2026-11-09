@@ -511,7 +511,7 @@ void ShowStatus()
 {
    if(!InpShowStatus)return;
    Comment("AL-QANNAS CANDLE CHASER | GOLD DEMO M1",
-           "\nSTOP bracket follows ASK/BID. NOT market ENTRY.",
+           "\nDIRECTIONAL STOP follows M1/M5 and ASK/BID.",
            "\nLot ",DoubleToString(InpLots,2),
            " | Pending ",PendingCount()," | Open ",PositionCount(),
            "\nM1 fills ",g_fillsThisBar,"/",InpMaxFillsPerM1,
@@ -622,12 +622,23 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    else if(entry==DEAL_ENTRY_OUT || entry==DEAL_ENTRY_INOUT)
    {
       g_totalCloses++;
+      const double closingNet=HistoryDealGetDouble(trans.deal,DEAL_PROFIT)+
+          HistoryDealGetDouble(trans.deal,DEAL_COMMISSION)+
+          HistoryDealGetDouble(trans.deal,DEAL_SWAP)+
+          HistoryDealGetDouble(trans.deal,DEAL_FEE);
+      if(closingNet<0.0)
+      {
+         g_lastLossDealAt=Clock();
+         CancelAllPending("AFTER_LOSS");
+         PrintFormat("AQ_CHASER loss cooldown %d sec after net %.2f",
+                     InpLossCooldownSec,closingNet);
+      }
       // This also catches server-side SL/TP fills and close confirmations.
       // PositionCount() in FollowBracket prevents overlapping fresh entries.
       g_rearmOnNextPulse=true;
       g_lastPulseSecond=-1;
       g_lastBracketBuild=0;
-      PrintFormat("AQ_CHASER REARM after exit deal=%I64u, next quote/timer in same M1",trans.deal);
+      PrintFormat("AQ_CHASER exit deal=%I64u; next confirmed signal after any loss cooldown",trans.deal);
    }
    double profit=HistoryDealGetDouble(trans.deal,DEAL_PROFIT)
                 +HistoryDealGetDouble(trans.deal,DEAL_COMMISSION)
