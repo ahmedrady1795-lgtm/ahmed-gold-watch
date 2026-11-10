@@ -1317,8 +1317,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <SniperM15PreMoveConsole preMove={preMove} hunt={huntPreview}
        m1={nextM1} liquidity={liquidityMagnets} fusion={localFusion}
        marketOpen={marketOpen}
-       dataFresh={Boolean(m.sniper.view.priceFresh&&m.historyFresh&&
-         historyFresh)} providerTransition={providerTransition}/>
+       dataFresh={Boolean(m.sniper.view.priceFresh&&m.historyFresh)}
+       providerTransition={providerTransition}/>
    </details>
    <div className="sniper-hunter-bottom">
      <SniperM1CandleTape history={m.candles} now={now} asset={asset}/>
