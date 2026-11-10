@@ -1035,6 +1035,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {showWatchGuide&&watchGuide.anchor!=null&&
            <g className="sniper-m15-watch-guide">
              <SniperM15HuntOverlay forecast={huntPreview} proof={huntProof} asset={asset}
+               m1={nextM1} marketOpen={marketOpen}
+               flowSide={flowProfile.ready?flowProfile.side:'WAIT'}
                obstruction={routeObstacle}
                left={left} split={split} end={end}
                top={plotTop} bottom={plotBottom} py={py}
@@ -1317,6 +1319,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <b>INTELLIGENCE DECK</b> · السيولة والتوافق الذكي والتهيئة المبكرة
        </span><span aria-hidden="true">＋</span></summary>
      <SniperHuntHUD hunt={huntPreview} m1={nextM1}
+       proof={huntProof} flowSide={flowProfile.ready?flowProfile.side:'WAIT'}
        price={currentSignalPrice??null} marketOpen={marketOpen}
        qualified={projected.ready} qualifiedSide={chartSide}/>
      <SniperM15PreMoveConsole preMove={preMove} hunt={huntPreview}
