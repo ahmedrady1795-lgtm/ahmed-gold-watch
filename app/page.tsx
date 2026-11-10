@@ -319,14 +319,13 @@ export default function Home(){
       </nav>
     </header>
     <section className="content lite-content" aria-label="القناص الذكي">
+      {/* Visible one-line news ticker with independently expandable details.
+          A major scheduled US release must not hide behind nested drawers. */}
+      <section id="market-news" className="sniper-home-news" aria-label="أخبار السوق">
+        <NewsCommandCenter now={now}/>
+      </section>
       <AICommandCenter assetView="ALL" data={aiData} chartData={chartData} error={aiError} now={now} goldLive={goldTick}
         btcLive={chartBtcQuote}/>
-      <details className="sniper-news-collapsible">
-        <summary>أخبار السوق والمواعيد الاقتصادية · عرض عند الحاجة</summary>
-        <section id="market-news" className="sniper-home-news" aria-label="أخبار السوق">
-          <NewsCommandCenter now={now}/>
-        </section>
-      </details>
     </section>
   </main>;
 }
