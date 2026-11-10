@@ -322,7 +322,10 @@ export default function Home(){
       {/* Visible one-line news ticker with independently expandable details.
           A major scheduled US release must not hide behind nested drawers. */}
       <section id="market-news" className="sniper-home-news" aria-label="أخبار السوق">
-        <NewsCommandCenter now={now}/>
+        <NewsCommandCenter now={now}
+           goldCandles={chartData?.gold?.chartCandles??aiData?.gold?.chartCandles??[]}
+           goldSource={String(chartData?.gold?.candleSource??aiData?.gold?.candleSource??'')}
+           goldProviderTransition={Boolean(chartData?.gold?.providerTransition)}/>
       </section>
       <AICommandCenter assetView="ALL" data={aiData} chartData={chartData} error={aiError} now={now} goldLive={goldTick}
         btcLive={chartBtcQuote}/>
