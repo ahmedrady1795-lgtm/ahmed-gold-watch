@@ -41,7 +41,7 @@ const beforeCpi=economicNewsTimeline([{
   name:'Consumer Price Index',time:cpiTime,importance:3
 }],null,Date.parse('2026-11-10T01:33:00Z'));
 assert.equal(beforeCpi.alerts.length,0,'at 05:33 Dubai CPI is outside 8h');
-assert.equal(beforeCpi.upcoming.length,1,'CPI still belongs to today's schedule');
+assert.equal(beforeCpi.upcoming.length,1,"CPI still belongs to today\'s schedule");
 assert.equal(cpi.recent.length,1,'CPI must stay on the daily news tape pending Actual');
 assert.equal(cpi.recent[0].name,'Consumer Price Index');
 assert.equal(economicNewsTimeline([{name:'CPI yesterday',time:cpiTime}],
