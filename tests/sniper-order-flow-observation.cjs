@@ -76,7 +76,7 @@ const css=fs.readFileSync('app/qannas-scenario-2026.css','utf8');
 assert.match(chart,/observeSniperOrderFlow/);
 assert.match(chart,/<SniperOrderFlowStrip data=\{flowObservation\}/);
 assert.match(ui,/ORDER FLOW/);
-assert.match(ui,/ليست تداولات منفذة|ليست حجمًا منفذًا/);
+assert.match(ui,/ليس حجمًا منفذًا|ليست تداولات منفذة/);
 assert.match(ui,/data-flow-status=\{data.status\}/);
 assert.doesNotMatch(ui,/placeOrder|OrderSend|setTrade|sendTrade/);
 assert.match(css,/\.sniper-orderflow-strip/);
