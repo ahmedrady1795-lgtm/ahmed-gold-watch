@@ -1,5 +1,6 @@
 import {getRuntimeEnv} from './runtime';
 import type { Candle, Event } from './engine';
+import {appendVerifiedBlsReleases} from './news-verified-bls';
 
 import {normalizeMt5GoldDom,analyzeMt5GoldDom} from './gold-mt5-dom';
 import type {Mt5DomSnapshot} from './gold-mt5-dom';
@@ -443,6 +444,9 @@ export async function getMarketData(options:{force?:boolean}={}):Promise<MarketD
     }catch{result.errors.push('Trading Economics غير متاح؛ تم التحويل إلى المصادر المجانية.');}}
     try{collected.push(...await calendarFromFaireconomy());}catch{result.errors.push('تقويم USD الأسبوعي غير متاح/قديم؛ تم تجاهله.');}
     try{collected.push(...await calendarFromOfficialUS(now));}catch{result.errors.push('تعذر الوصول إلى جزء من جداول BLS/BEA الرسمية.');}
+    // Preserve an independently verified BLS schedule if live calendars
+    // temporarily omit an imminent release (not an Actual data result).
+    appendVerifiedBlsReleases(collected,now);
     const merged=new Map<string,Event>();
     for(const e of collected){
       const key=e.name.toLowerCase().replace(/\s+/g,' ').trim()+'|'+Math.round(e.time/3600000);
@@ -513,6 +517,8 @@ export async function getNewsCalendarFeed(now=Date.now()):Promise<NewsCalendarFe
       catch{errors.push('تعذر قراءة مواعيد BLS/BEA الرسمية');}
     })());
     await Promise.all(tasks);
+    // The ticker calendar remains independent from the heavy market feed.
+    appendVerifiedBlsReleases(collected,now);
     const merged=new Map<string,Event>();
     for(const e of collected){
       if(!Number.isFinite(e.time)||!String(e.name||'').trim())continue;
