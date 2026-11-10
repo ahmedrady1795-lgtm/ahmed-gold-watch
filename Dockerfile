@@ -4,7 +4,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN node tests/news-verified-bls.cjs
+RUN node tests/news-verified-bls.cjs && node tests/pre-news-gold-lean.cjs
 RUN node tests/flow-profile-decision.cjs
 RUN node tests/gold-preparation-lead.mjs && node tests/chart-feed-isolation.cjs
 RUN node tests/sniper-risk-plan.cjs && node tests/next-move-cooldown.cjs && node tests/btc-provider-continuity.cjs && node tests/ai-service-warmup.cjs
