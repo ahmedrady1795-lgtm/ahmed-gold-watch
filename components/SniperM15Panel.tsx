@@ -165,6 +165,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      Math.floor(now/900000):0]);
  const firstM15Stats=firstM15Evidence(walkForward);
  const recent=actual.slice(-72);
+ // LIVE market reading can resume after 16 genuine continuous closes.
+ // Trading qualification and frozen forward-outcome evidence still use 24.
+ const m15AnalysisReady=actual.length>=16&&
+   actual.slice(-16).every((b,i,a)=>i===0||b.time-a[i-1].time===900000)&&
+   now-(actual.at(-1)!.time+900000)<=36*60000;
  const historyFresh=actual.length>=24&&
    actual.slice(-24).every((b,i,a)=>i===0||b.time-a[i-1].time===900000)&&
    now-(actual.at(-1)!.time+900000)<=36*60000;
@@ -195,9 +200,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const localFusion=useMemo(()=>fuseLocalSniper({
    preMove,hunt:huntPreview,m1:nextM1,liquidity:liquidityMagnets,
    marketOpen,fresh:Boolean(m.sniper.view.priceFresh&&
-     m.historyFresh),m15Fresh:historyFresh,providerTransition,flowProfile
+     m.historyFresh),m15Fresh:m15AnalysisReady,providerTransition,flowProfile
  }),[preMove,huntPreview,nextM1,liquidityMagnets,marketOpen,
-    m.sniper.view.priceFresh,m.historyFresh,historyFresh,providerTransition,flowProfile]);
+    m.sniper.view.priceFresh,m.historyFresh,m15AnalysisReady,providerTransition,flowProfile]);
  const observedSide=m15Bias.side;
  const side: 'BUY'|'SELL'|'WAIT' = m15ObservationSide(observedSide,m.bias);
  // Flow/profile is primary when fresh and aligned with closed-candle votes.
