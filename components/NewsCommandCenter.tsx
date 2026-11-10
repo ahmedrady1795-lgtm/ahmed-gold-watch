@@ -63,11 +63,19 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
     document.addEventListener('visibilitychange',visibility);
     return()=>{closed=true;clearInterval(interval);document.removeEventListener('visibilitychange',visibility);};
   },[]);
-  const {alerts,recent}=economicNewsTimeline(feed?.events??events,feed?null:featuredEvent,now);
-  const highlighted=[...alerts].sort((a,b)=>
-    Number(b.importance||1)-Number(a.importance||1)||Number(a.time)-Number(b.time))[0]
-    ??[...recent].sort((a,b)=>
-      Number(b.importance||1)-Number(a.importance||1)||Number(b.time)-Number(a.time))[0];
+  const {upcoming,alerts,recent}=economicNewsTimeline(feed?.events??events,feed?null:featuredEvent,now);
+  const dubaiDay=(at:number)=>new Intl.DateTimeFormat('en-CA',{
+    timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'
+  }).format(new Date(at));
+  const today=dubaiDay(now);
+  // The 8-hour alert still exists, but a release later TODAY must stay
+  // visible from early morning. No fabricated event if the provider is empty.
+  const todayUpcoming=upcoming.filter(e=>dubaiDay(Number(e.time))===today);
+  const ranked=(xs:typeof alerts)=>[...xs].sort((a,b)=>
+    Number(b.importance||1)-Number(a.importance||1)||Number(a.time)-Number(b.time));
+  const highlighted=ranked(alerts)[0]??ranked(todayUpcoming)[0]??
+    [...recent].sort((a,b)=>Number(b.importance||1)-Number(a.importance||1)||
+      Number(b.time)-Number(a.time))[0];
   const released=Boolean(highlighted&&Number(highlighted.time)<now);
   const actualReady=Boolean(released&&String(highlighted?.actual||'').trim());
   const eventState=released?(actualReady?'النتيجة صدرت':'نتيجة الخبر قيد التحديث'):
@@ -76,11 +84,11 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
   // The featured release is already prominent above; do not repeat it below.
   const remainingAlerts=alerts.filter(e=>e!==highlighted);
   const outlook=classifyMacroNews(highlighted?.name);
-  return <details className="news-ticker-shell" aria-label="الأخبار وتأثيرها المحتمل خلال 8 ساعات">
-    <summary className="news-ticker-line" title={highlighted?outlook.disclaimer:'متابعة أهم أخبار الثماني ساعات'}>
-      <span className="news-ticker-tag">أخبار 8س</span>
+  return <details className="news-ticker-shell" aria-label="أهم أخبار اليوم وتأثيرها المحتمل على الذهب">
+    <summary className="news-ticker-line" title={highlighted?outlook.disclaimer:'متابعة أهم أخبار اليوم'}>
+      <span className="news-ticker-tag">خبر اليوم</span>
       <span className="news-ticker-countdown">{highlighted?eventState:error?'التحديث متأخر':'لا أخبار قادمة'}</span>
-      <strong className="news-ticker-title">{highlighted?.name||'لا يوجد حدث اقتصادي مؤكد خلال 8 ساعات'}</strong>
+      <strong className="news-ticker-title">{highlighted?.name||'لا يوجد خبر اقتصادي مؤكد اليوم'}</strong>
       {highlighted&&<span className="news-ticker-forecast">{actualReady?'فعلي: '+String(highlighted.actual):
          'توقع: '+String(highlighted.forecast||'غير متوفر')}</span>}
       {highlighted&&<span className={'news-ticker-impact '+(outlook.kind==='UNCERTAIN'?'news-ticker-uncertain':'')}>
@@ -90,7 +98,7 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
     </summary>
     <div className="panel newscommand standalone-news home-news-compact news-ticker-details">
     <header className="standalone-news-head">
-      <div><span className="eyebrow">NEWS · 8H · UAE</span>
+      <div><span className="eyebrow">NEWS · TODAY · UAE</span>
         <h2><Newspaper size={16}/> رادار الأخبار</h2></div>
       <small>{feed?'آخر جلب: '+new Date(feed.checkedAt).toLocaleTimeString('ar-AE',{timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'}):'جارٍ قراءة التقويم'}</small>
     </header>
@@ -103,7 +111,7 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
       <strong className="news-headline-title">{highlighted.name}</strong>
       <span className="news-headline-numbers">الفعلي {actualReady?String(highlighted.actual):'لم يتم تأكيده بعد'} · المتوقع {String(highlighted.forecast||'—')} · السابق {String(highlighted.previous||'—')}</span>
       <small>{dateLabel(Number(highlighted.time))} · السيناريو مرتبط بالنتيجة الفعلية، لا توجد نسبة اتجاه مؤكدة.</small>
-    </div>:<p className="news-eight-empty">{error?'لم نتمكن من تأكيد الأحداث القادمة.':'لا يوجد خبر مؤكد خلال الثماني ساعات القادمة.'}</p>}
+    </div>:<p className="news-eight-empty">{error?'لم نتمكن من تأكيد الأحداث القادمة.':'لا يوجد خبر اقتصادي مؤكد اليوم في المصدر.'}</p>}
     {remainingAlerts.length>0&&<details className="news-all-details">
       <summary>باقي أخبار الـ8 ساعات ({remainingAlerts.length}) {next&&highlighted!==next?'· أقرب خبر بعد '+timeLeft(Number(next.time),now):''}</summary>
       <div className="news-eight-hour">
