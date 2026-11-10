@@ -2209,3 +2209,22 @@ body:has(.modern-workspace.compact-sniper){
  .sniper-m15-panel .sniper-m15-chart-box{border-radius:9px}
 }
 @media(prefers-reduced-motion:reduce){.sniper-early-meter i{transition:none}}
+
+
+/* Compact, pre-release XAU positioning. Never presented as an Actual forecast. */
+.news-ticker-prebias{flex:none;white-space:nowrap;font-size:11px;font-weight:800;
+  padding:4px 7px;border:1px solid #55758b;border-radius:6px;background:#183445;color:#e6eef4}
+.news-ticker-prebias-up{border-color:#3c927c;background:#123e3b;color:#a9edcf}
+.news-ticker-prebias-down{border-color:#a56579;background:#422634;color:#ffb0c2}
+.news-ticker-prebias-wait{border-color:#7b7281;background:#302c38;color:#e3d3c1}
+.news-prebias-detail{margin:8px 0;padding:10px 12px;border:1px solid #46697f;
+  border-radius:9px;background:#132a39;color:#dae8f0}
+.news-prebias-up{border-color:#317d67}.news-prebias-down{border-color:#9c5875}
+.news-prebias-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.news-prebias-top strong{font-size:13px}.news-prebias-top small{font-size:11px;color:#afc7d4}
+.news-prebias-detail p{margin:6px 0;font-size:12px}.news-prebias-detail>small{color:#9db6c5;font-size:10px;line-height:1.5}
+@media(max-width:760px){
+ .news-ticker-line:has(.news-ticker-prebias) .news-ticker-impact{display:none}
+ .news-ticker-prebias{font-size:10px}
+ .news-ticker-line:has(.news-ticker-prebias) .news-ticker-title{max-width:28vw}
+}
