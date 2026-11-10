@@ -9,9 +9,9 @@ assert.doesNotMatch(page,/href="#sniper-performance"/,'no performance navigation
 const m15=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.doesNotMatch(m15,/sniper-m15-results-trigger|sniper-m15-results-overlay|نتائج القناص/,
  'hide the performance panel and its trigger from gold and BTC');
-assert.match(page,/id="market-news"/,'news remains accessible below the chart');
-assert.ok(page.indexOf('<AICommandCenter')<page.indexOf('<NewsCommandCenter'),
- 'chart-first surface precedes optional macro ticker');
+assert.match(page,/id="market-news"/,'news remains accessible above the chart');
+assert.ok(page.indexOf('<NewsCommandCenter')<page.indexOf('<AICommandCenter'),
+ 'compact today macro ticker precedes the large chart');
 assert.equal((page.match(/<NewsCommandCenter/g)||[]).length,1,'no duplicate calendar');
 const heroStart=chart.indexOf("className={'render-scenario-first");
 const chartStart=chart.indexOf("className={'forecast-visual-layout");
