@@ -1,4 +1,6 @@
 import type {M15HuntPreview} from '../lib/sniper-m15-hunt-preview';
+import type {M15HuntProof} from '../lib/sniper-m15-hunt-proof';
+import {assessM15HuntDisplay} from '../lib/sniper-m15-display-evidence';
 import type {M15WatchGuide} from '../lib/sniper-m15-watch-guide';
 import type {WatchPriceMap} from '../lib/sniper-m15-watch-prices';
 import type {M1Priority} from '../lib/sniper-m1-priority';
@@ -70,16 +72,20 @@ export function SniperLiquidityColumn({history,price,preview,liquidityOn,structu
       </div>}
   </aside>;
 }
-export function SniperScenarioColumn({preview,guide,qualified,price,marketOpen,structure,watch,m1,priceFresh}:{
+export function SniperScenarioColumn({preview,guide,qualified,price,marketOpen,structure,watch,m1,priceFresh,proof,flowSide}:{
   preview:M15HuntPreview;guide:M15WatchGuide;qualified:boolean;
   price:number|null;marketOpen:boolean;structure:StructureSnapshot;
   watch:WatchPriceMap;m1:M1Priority;priceFresh:boolean;
+  proof?:M15HuntProof;flowSide?:'BUY'|'SELL'|'WAIT';
 }){
  const active=preview.ready&&!preview.referenceOnly&&marketOpen&&priceFresh;
+ const evidence=assessM15HuntDisplay({
+   hunt:preview,m1,proof,marketOpen:marketOpen&&priceFresh,flowSide
+ });
+ const visualSide=evidence.side;
  const levelsReady=active&&watch.ready&&guide.anchorTime!=null&&
    watch.asOf===guide.anchorTime+900000;
- const m1Conflict=active&&m1.ready&&m1.side!=='WAIT'&&
-   preview.preferred!=='WAIT'&&m1.side!==preview.preferred;
+ const m1Conflict=evidence.state==='CONFLICT';
  const up=preview.buy,down=preview.sell;
  const row=(side:'BUY'|'SELL')=>{
   const rise=side==='BUY',candles=rise?up:down;
@@ -102,11 +108,12 @@ export function SniperScenarioColumn({preview,guide,qualified,price,marketOpen,s
     crossed?'السعر بعد مستوى الكسر · تأكيد الإغلاق مطلوب':
     near?'قريب من مستوى الكسر':'انتظار الوصول لمستوى الكسر';
   return <section className={'sniper-hunter-path '+(rise?'rise':'fall')+
-      (preview.preferred===side?' preferred':'')} key={side}>
+      (visualSide===side&&active?' preferred':'')} key={side}>
     <div className="sniper-hunter-pathhead">
       <span>{rise?'↗':'↘'}</span>
       <strong>{rise?'مسار الصعود':'مسار الهبوط'}</strong>
-      <small>{preview.preferred===side&&active?'المرجّح للمراقبة':'مسار بديل'}</small>
+      <small>{visualSide==='WAIT'?'مسار مشروط':
+        visualSide===side&&active?'المرجّح للمراقبة':'مسار بديل'}</small>
     </div>
     <div><span>كسر مشروط M15</span><b dir="ltr">{fmt(entry)}</b></div>
     <div><span>إبطال رصد M15</span><b dir="ltr">{fmt(invalidation)}</b></div>
@@ -126,12 +133,13 @@ export function SniperScenarioColumn({preview,guide,qualified,price,marketOpen,s
    {preview.ready?<div className="sniper-hunter-scenario-stack">
      {row('BUY')}{row('SELL')}
      <div className="sniper-hunter-sweep" role="status">
-       <strong>{'ترجيح M15 '+(preview.preferred==='BUY'?'صعود':
-         preview.preferred==='SELL'?'هبوط':'متوازن')}</strong>
+       <strong>{visualSide==='WAIT'?'M15 · لا ترجيح موثوق':
+         'مراقبة M15 '+(visualSide==='BUY'?'صعود':'هبوط')}</strong>
        <span>{'رصد M1 '+(!m1.ready?'غير حديث':m1.side==='BUY'?'صعود':
          m1.side==='SELL'?'هبوط':'متوازن')}</span>
-       <small>{m1Conflict?'تعارض M1 وM15 · لا تأكيد اتجاه مشترك':
-         !active?'مراقبة تاريخية فقط':
+       <small>{!active?'مراقبة تاريخية فقط':
+         m1Conflict?evidence.reason:
+         visualSide==='WAIT'?evidence.reason:
          'المساران للمراقبة · الأسعار المرجعية ليست أوامر تداول'}</small>
      </div>
      {structure.ready&&structure.zones.length>0&&
