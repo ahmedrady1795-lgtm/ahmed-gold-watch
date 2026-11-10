@@ -3,6 +3,7 @@ import {useEffect,useState} from 'react';
 import {Clock3,Newspaper} from 'lucide-react';
 import {economicNewsTimeline} from '../lib/news-alert-window';
 import {classifyMacroNews} from '../lib/news-impact-outlook';
+import {buildPreNewsGoldLean} from '../lib/pre-news-gold-lean';
 
 function timeLeft(ts:number,now:number){
   const minutes=Math.max(0,Math.ceil((ts-now)/60000));
@@ -39,7 +40,8 @@ function NewsEventCard({event,now}:any){
     {/^https:\/\//.test(String(event.source||''))&&<a href={event.source} target="_blank" rel="noopener noreferrer">مصدر الخبر ↗</a>}
   </article>;
 }
-export default function NewsCommandCenter({events=[],now=Date.now(),featuredEvent=null}:any){
+export default function NewsCommandCenter({events=[],now=Date.now(),featuredEvent=null,
+  goldCandles=[],goldSource='',goldProviderTransition=false}:any){
   const [feed,setFeed]=useState<any>(null);
   const [error,setError]=useState(false);
   useEffect(()=>{
@@ -84,11 +86,19 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
   // The featured release is already prominent above; do not repeat it below.
   const remainingAlerts=alerts.filter(e=>e!==highlighted);
   const outlook=classifyMacroNews(highlighted?.name);
+  const preLean=highlighted&&Number(highlighted.time)>now
+    ?buildPreNewsGoldLean({eventTime:Number(highlighted.time),now,
+      candles:goldCandles,source:String(goldSource),
+      providerTransition:Boolean(goldProviderTransition)}):null;
+  const preLabel=preLean?.side==='UP'?'↑ ميل صعود':preLean?.side==='DOWN'?'↓ ميل هبوط':'↔ غير محسوم';
   return <details className="news-ticker-shell" aria-label="أهم أخبار اليوم وتأثيرها المحتمل على الذهب">
     <summary className="news-ticker-line" title={highlighted?outlook.disclaimer:'متابعة أهم أخبار اليوم'}>
       <span className="news-ticker-tag">خبر اليوم</span>
       <span className="news-ticker-countdown">{highlighted?eventState:error?'التحديث متأخر':'لا أخبار قادمة'}</span>
       <strong className="news-ticker-title">{highlighted?.name||'لا يوجد خبر اقتصادي مؤكد اليوم'}</strong>
+      {preLean?.visible&&<span className={'news-ticker-prebias news-ticker-prebias-'+preLean.side.toLowerCase()}
+        title="حركة السعر قبل الخبر؛ لا تتنبأ بنتيجة الإعلان أو اتجاهه المؤكد بعد الصدور">
+        {preLabel}</span>}
       {highlighted&&<span className="news-ticker-forecast">{actualReady?'فعلي: '+String(highlighted.actual):
          'توقع: '+String(highlighted.forecast||'غير متوفر')}</span>}
       {highlighted&&<span className={'news-ticker-impact '+(outlook.kind==='UNCERTAIN'?'news-ticker-uncertain':'')}>
@@ -112,6 +122,14 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
       <span className="news-headline-numbers">الفعلي {actualReady?String(highlighted.actual):'لم يتم تأكيده بعد'} · المتوقع {String(highlighted.forecast||'—')} · السابق {String(highlighted.previous||'—')}</span>
       <small>{dateLabel(Number(highlighted.time))} · السيناريو مرتبط بالنتيجة الفعلية، لا توجد نسبة اتجاه مؤكدة.</small>
     </div>:<p className="news-eight-empty">{error?'لم نتمكن من تأكيد الأحداث القادمة.':'لا يوجد خبر اقتصادي مؤكد اليوم في المصدر.'}</p>}
+    {preLean?.visible&&<div className={'news-prebias-detail news-prebias-'+preLean.side.toLowerCase()} role="status">
+      <div className="news-prebias-top">
+        <strong>ترجيح الذهب قبل الخبر بـ{preLean.minutesLeft} دقيقة: {preLabel}</strong>
+        <small>{preLean.quality==='STRONG'?'توافق حركة مرتفع':preLean.quality==='MEDIUM'?'توافق حركة متوسط':'بيانات غير كافية'}</small>
+      </div>
+      <p>{preLean.reason} · {preLean.evidence}</p>
+      <small>ترجيح من حركة XAUUSD قبل الإصدار، وليس توقعًا لرقم الخبر أو ضمانًا لحركة الذهب بعده. لا يستخدم Actual المستقبلي ولا يفعّل صفقة.</small>
+    </div>}
     {remainingAlerts.length>0&&<details className="news-all-details">
       <summary>باقي أخبار الـ8 ساعات ({remainingAlerts.length}) {next&&highlighted!==next?'· أقرب خبر بعد '+timeLeft(Number(next.time),now):''}</summary>
       <div className="news-eight-hour">
