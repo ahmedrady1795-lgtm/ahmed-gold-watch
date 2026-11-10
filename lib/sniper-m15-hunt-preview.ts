@@ -140,7 +140,9 @@ export function observeM15HuntPressure(
 
 
 /**
- * An educational what-if sequence from 16 *closed* contiguous M15 bars.
+ * An educational what-if sequence from 16 real closed M15 bars.
+ * Missing whole 15-minute slots allow only an unranked historical two-way
+ * reference; no synthetic candles are inserted into the observed tape.
  * Both scenarios exist even when bias is WAIT. These are NOT future trades
  * or a model trained/calibrated to predict individual candle closes.
  *
@@ -157,9 +159,10 @@ export function buildM15HuntPreview(
   if(!last||rows.length<16||last.time!==guide.anchorTime||
     last.close!==guide.anchor||last.time+900000>now)
     return blank('إغلاق M15 لا يطابق مرجع السيناريو');
-  for(let i=1;i<rows.length;i++){
-    if(rows[i].time-rows[i-1].time!==900000)return blank('فجوة بين شموع M15');
-  }
+  const sparse=rows.some((b,i)=>i>0&&b.time-rows[i-1].time!==900000);
+  // The source guide permits sparse, ALIGNED real M15 bars only in
+  // referenceOnly mode. Never infer a preferred direction from broken spans.
+  if(sparse&&!guide.referenceOnly)return blank('فجوة بين شموع M15');
   const atr=guide.atr,anchor=guide.anchor;
   const trailing=rows.slice(-13,-1);
   const previousHigh=Math.max(...trailing.map(b=>b.high));
@@ -170,18 +173,19 @@ export function buildM15HuntPreview(
     last.close<previousHigh&&last.close<last.open;
   const lowRejection=last.low<previousLow-atr*.04&&
     last.close>previousLow&&last.close>last.open;
-  const sweep:HuntSweep=highRejection?'HIGH_REJECTION':
+  const sweep:HuntSweep=sparse?'NONE':highRejection?'HIGH_REJECTION':
     lowRejection?'LOW_REJECTION':'NONE';
-  const observation=observeM15HuntPressure(rows,atr,guide.bias,sweep);
-  if(!observation)return blank('تعذر تحليل شموع M15 المغلقة');
-  // Even weak/noisy observations remain visible as watch hypotheses;
-  // execution and data-integrity gates are never bypassed.
-  const preferred:HuntSide|'WAIT'=observation.preferred;
-  const delta=Math.abs(observation.buyPoints-observation.sellPoints);
+  const observation=sparse?undefined:
+    observeM15HuntPressure(rows,atr,guide.bias,sweep)??undefined;
+  if(!observation&&!sparse)return blank('تعذر تحليل شموع M15 المغلقة');
+  // A gap is a data-integrity problem: no side, strength or replay hit.
+  // Both branches are volatility reference paths, NOT a BUY/SELL forecast.
+  const preferred:HuntSide|'WAIT'=sparse?'WAIT':observation!.preferred;
+  const delta=observation?Math.abs(observation.buyPoints-observation.sellPoints):0;
   // This is a descriptive pattern-strength index; NOT a win probability.
-  const strength=Math.round(clamp(
-    25+delta*5+observation.matchedFactors*3-
-    (observation.conflicting?12:0),15,89
+  const strength=sparse?0:Math.round(clamp(
+    25+delta*5+observation!.matchedFactors*3-
+    (observation!.conflicting?12:0),15,89
   ));
   const make=(side:HuntSide):HuntPreviewCandle[]=>{
     const polarity=side==='BUY'?1:-1;
@@ -206,7 +210,7 @@ export function buildM15HuntPreview(
       high:price(previousLow+buffer)}
   ];
   return {ready:true,reason:guide.reason,anchor,anchorTime:guide.anchorTime,
-    preferred,strength,sweep,referenceOnly:guide.referenceOnly,atr,
+    preferred,strength,sweep,referenceOnly:guide.referenceOnly||sparse,atr,
     buy:make('BUY'),sell:make('SELL'),pools,observation};
 }
 
