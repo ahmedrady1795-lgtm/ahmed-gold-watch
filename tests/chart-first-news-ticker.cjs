@@ -22,6 +22,8 @@ assert.ok(page.indexOf('<NewsCommandCenter')<page.indexOf('<AICommandCenter'),
   'today releases must be visible as a compact ticker above the chart');
 assert.doesNotMatch(page,/sniper-news-collapsible/);
 assert.match(news,/نتيجة الخبر قيد التحديث/);
+assert.match(news,/todayUpcoming/,'today schedule must appear even outside 8h');
+assert.match(news,/NEWS · TODAY · UAE/);
 assert.equal((page.match(/<NewsCommandCenter/g)||[]).length,1);
 assert.match(news,/<details className="news-ticker-shell"/);
 assert.match(news,/<summary className="news-ticker-line"/);
