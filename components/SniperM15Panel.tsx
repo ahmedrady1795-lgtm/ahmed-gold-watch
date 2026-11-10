@@ -6,6 +6,8 @@ import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {detectLiquidityMagnets} from '../lib/sniper-liquidity-magnets';
 import {fuseLocalSniper} from '../lib/sniper-local-fusion';
 import {assessFlowProfile} from '../lib/flow-profile-decision';
+import {observeSniperOrderFlow} from '../lib/sniper-order-flow-observation';
+import SniperOrderFlowStrip from './SniperOrderFlowStrip';
 import {auditM15HuntDirection} from '../lib/sniper-m15-hunt-proof';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
@@ -197,6 +199,22 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      (liveRadar.phase==='PREPARE'||liveRadar.phase==='CONFIRMED')?
        liveRadar.side:'WAIT'
  }),[asset,now,m.price,x?.candleSource,liveQuote?.source,flowPacket,liveRadar]);
+ // The live Order Flow band reads only the same provider as this chart.
+ // Missing broker depth is shown as quote activity or price-action proxy,
+ // never as an executed trade or an actionable BUY/SELL.
+ const flowObservation=useMemo(()=>observeSniperOrderFlow({
+   asset,now,flow:flowProfile,marketFresh:marketOpen&&
+     Boolean(m.sniper.view.priceFresh)&&!providerTransition,
+   sourceMatches:asset==='BTC'?
+     (/coinbase/i.test(String(x?.candleSource||''))&&
+      /coinbase/i.test(String(liveQuote?.source||''))):
+     (/exness\/mt5/i.test(String(x?.candleSource||''))&&
+      /exness\/mt5/i.test(String(liveQuote?.source||''))),
+   m1:m.candles,
+   brokerDepth:asset==='GOLD'&&flowPacket?.asset==='GOLD'?
+     flowPacket.data?.brokerDepth:null
+ }),[asset,now,flowProfile,marketOpen,m.sniper.view.priceFresh,
+    providerTransition,x?.candleSource,liveQuote?.source,m.candles,flowPacket]);
  const localFusion=useMemo(()=>fuseLocalSniper({
    preMove,hunt:huntPreview,m1:nextM1,liquidity:liquidityMagnets,
    marketOpen,fresh:Boolean(m.sniper.view.priceFresh&&
@@ -797,6 +815,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <button type="button" aria-pressed={chartMode==='M15'}
        onClick={()=>setChartMode('M15')}>M15 · رسم السيناريو</button>
    </nav>
+   <SniperOrderFlowStrip data={flowObservation}/>
    {chartMode==='M1'?<SniperM1CandleHunter asset={asset}
      history={m.candles} historicalSource={String(x?.candleSource||'')}
      quote={liveQuote} now={now} marketOpen={marketOpen}
