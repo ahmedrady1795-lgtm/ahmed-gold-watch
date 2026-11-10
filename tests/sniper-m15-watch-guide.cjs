@@ -34,6 +34,29 @@ const gapped=bars.map(x=>({...x}));
 gapped[gapped.length-3].time+=60000;
 assert.equal(buildM15WatchGuide(gapped,now).ready,false,
   'M15 gaps cannot be interpolated into directional price ranges');
+// Whole-slot gaps do not erase observational levels. Never call them a
+// qualified signal or fill the missing bars with fabricated OHLC.
+const omitted=bars.filter((_,i)=>i!==bars.length-5);
+const partialWatch=buildM15WatchGuide(omitted,now);
+assert.equal(partialWatch.ready,true,partialWatch.reason);
+assert.equal(partialWatch.referenceOnly,true);
+assert.equal(partialWatch.bias,'WAIT');
+assert.match(partialWatch.reason,/فجوات M15/);
+const huntMod={exports:{}};
+vm.runInNewContext(ts.transpileModule(
+  fs.readFileSync('lib/sniper-m15-hunt-preview.ts','utf8'),{
+  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
+}).outputText,{module:huntMod,exports:huntMod.exports});
+const sparseHunt=huntMod.exports.buildM15HuntPreview(omitted,partialWatch,now);
+assert.equal(sparseHunt.ready,true,sparseHunt.reason);
+assert.equal(sparseHunt.referenceOnly,true);
+assert.equal(sparseHunt.preferred,'WAIT');
+assert.equal(sparseHunt.strength,0);
+assert.equal(sparseHunt.observation,undefined);
+assert.equal(sparseHunt.buy.length,6);
+assert.equal(sparseHunt.sell.length,6);
+const overlay=fs.readFileSync('components/SniperM15HuntOverlay.tsx','utf8');
+assert.match(overlay,/M15 · GAP WATCH/);
 const partial=bars.map(x=>({...x}));
 partial[partial.length-1].time+=M15;
 assert.equal(buildM15WatchGuide(partial,now).ready,false,
