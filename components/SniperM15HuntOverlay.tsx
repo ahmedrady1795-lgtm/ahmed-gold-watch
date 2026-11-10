@@ -74,7 +74,7 @@ export default function SniperM15HuntOverlay(p:Props){
         className="sniper-hunt-waypoint">
         <line x1={p.split+6} x2={p.end-77} y1={m.lineY} y2={m.lineY}
           stroke={ink} strokeWidth={m.stage===2?1.45:0.95}
-          strokeOpacity={f.referenceOnly?0.2:
+          strokeOpacity={f.referenceOnly?(f.observation?0.2:0.53):
             clear&&m.side!==f.preferred?0.24:0.74}
           strokeDasharray={m.stage===2?'5 4':'2 5'}/>
         <path d={'M '+(p.end-76)+' '+m.lineY+
@@ -106,7 +106,7 @@ export default function SniperM15HuntOverlay(p:Props){
           fill="none"
           stroke={anchored&&f.preferred===side?'url(#'+uid+'-line)':color[side]}
           strokeWidth={anchored&&f.preferred===side?(clear?3.6:2.4):1.1}
-          strokeOpacity={f.referenceOnly?0.22:blocked?.28:
+          strokeOpacity={f.referenceOnly?(f.observation?0.22:0.58):blocked?.28:
             f.preferred===side?(clear?1:.79):(clear?.22:.34)}
           strokeLinecap="round" strokeLinejoin="round"
           strokeDasharray={f.preferred===side?'9 5':'2 9'}/>
@@ -121,12 +121,12 @@ export default function SniperM15HuntOverlay(p:Props){
     <text x={p.split+8} y={p.top+15} fontSize="10"
       fontWeight="800" fill="#eac883" textAnchor="start"
       stroke="#000" strokeWidth="2" paintOrder="stroke" direction="ltr">
-      {f.referenceOnly?'M15 · HISTORY':'M15 · EARLY PATH'}
+      {f.referenceOnly?(f.observation?'M15 · HISTORY':'M15 · GAP WATCH'):'M15 · EARLY PATH'}
     </text>
     <text x={p.split+8} y={p.top+32} fontSize="9" fontWeight="800"
       fill={clear?color[f.preferred as HuntSide]:'#b1c1cb'}
       textAnchor="start" stroke="#000" strokeWidth="2" paintOrder="stroke">
-      {f.referenceOnly?'سياق تاريخي فقط':
+      {f.referenceOnly?(f.observation?'سياق تاريخي فقط':'فجوات في المصدر · مساران للمراقبة فقط'):
        blocked?'مقاومة / طلب غير مكسور · لا استمرار مؤكد':
        clear?(f.preferred==='BUY'?'↑ المسار المرجح':'↓ المسار المرجح')+
          (validated?' · تفوق تاريخي أولي':' · يحتاج إثباتًا'):
