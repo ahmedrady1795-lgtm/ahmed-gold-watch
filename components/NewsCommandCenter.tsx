@@ -65,7 +65,13 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
   },[]);
   const {alerts,recent}=economicNewsTimeline(feed?.events??events,feed?null:featuredEvent,now);
   const highlighted=[...alerts].sort((a,b)=>
-    Number(b.importance||1)-Number(a.importance||1)||Number(a.time)-Number(b.time))[0];
+    Number(b.importance||1)-Number(a.importance||1)||Number(a.time)-Number(b.time))[0]
+    ??[...recent].sort((a,b)=>
+      Number(b.importance||1)-Number(a.importance||1)||Number(b.time)-Number(a.time))[0];
+  const released=Boolean(highlighted&&Number(highlighted.time)<now);
+  const actualReady=Boolean(released&&String(highlighted?.actual||'').trim());
+  const eventState=released?(actualReady?'النتيجة صدرت':'نتيجة الخبر قيد التحديث'):
+    highlighted?'بعد '+timeLeft(Number(highlighted.time),now):'';
   const next=alerts[0];
   // The featured release is already prominent above; do not repeat it below.
   const remainingAlerts=alerts.filter(e=>e!==highlighted);
@@ -73,9 +79,10 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
   return <details className="news-ticker-shell" aria-label="الأخبار وتأثيرها المحتمل خلال 8 ساعات">
     <summary className="news-ticker-line" title={highlighted?outlook.disclaimer:'متابعة أهم أخبار الثماني ساعات'}>
       <span className="news-ticker-tag">أخبار 8س</span>
-      <span className="news-ticker-countdown">{highlighted?'بعد '+timeLeft(Number(highlighted.time),now):error?'التحديث متأخر':'لا أخبار قادمة'}</span>
+      <span className="news-ticker-countdown">{highlighted?eventState:error?'التحديث متأخر':'لا أخبار قادمة'}</span>
       <strong className="news-ticker-title">{highlighted?.name||'لا يوجد حدث اقتصادي مؤكد خلال 8 ساعات'}</strong>
-      {highlighted&&<span className="news-ticker-forecast">توقع: {String(highlighted.forecast||'غير متوفر')}</span>}
+      {highlighted&&<span className="news-ticker-forecast">{actualReady?'فعلي: '+String(highlighted.actual):
+         'توقع: '+String(highlighted.forecast||'غير متوفر')}</span>}
       {highlighted&&<span className={'news-ticker-impact '+(outlook.kind==='UNCERTAIN'?'news-ticker-uncertain':'')}>
         {outlook.higher} <span className="news-ticker-divider">/</span> {outlook.lower}
       </span>}
@@ -91,10 +98,10 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
     {highlighted?<div className="news-headline">
       <span className="news-headline-meta">
         <strong>{Number(highlighted.importance)>=3?'أهم خبر مرتفع التأثير':'خبر اقتصادي قادم'}</strong>
-        <small><Clock3 size={13}/> بعد {timeLeft(Number(highlighted.time),now)}</small>
+        <small><Clock3 size={13}/> {eventState}</small>
       </span>
       <strong className="news-headline-title">{highlighted.name}</strong>
-      <span className="news-headline-numbers">المتوقع {String(highlighted.forecast||'—')} · السابق {String(highlighted.previous||'—')}</span>
+      <span className="news-headline-numbers">الفعلي {actualReady?String(highlighted.actual):'لم يتم تأكيده بعد'} · المتوقع {String(highlighted.forecast||'—')} · السابق {String(highlighted.previous||'—')}</span>
       <small>{dateLabel(Number(highlighted.time))} · السيناريو مرتبط بالنتيجة الفعلية، لا توجد نسبة اتجاه مؤكدة.</small>
     </div>:<p className="news-eight-empty">{error?'لم نتمكن من تأكيد الأحداث القادمة.':'لا يوجد خبر مؤكد خلال الثماني ساعات القادمة.'}</p>}
     {remainingAlerts.length>0&&<details className="news-all-details">
@@ -103,12 +110,12 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
         {remainingAlerts.map((e:any)=><NewsEventCard key={e.id||e.name+e.time} event={e} now={now}/>)}
       </div>
     </details>}
-    {recent.length>0&&<details className="news-all-details">
-      <summary>نتائج الأخبار الصادرة مؤخرًا ({recent.length})</summary>
-      <div className="news-post-release">{recent.map((e:any)=><span key={e.id||e.name+e.time}>
-        {e.name}: الفعلي {e.actual||'—'} · المتوقع {e.forecast||'—'}
-      </span>)}</div>
-    </details>}
+    {recent.filter(e=>e!==highlighted).length>0&&<details className="news-all-details">
+       <summary>أخبار اليوم بعد موعد صدورها ({recent.filter(e=>e!==highlighted).length})</summary>
+       <div className="news-post-release">{recent.filter(e=>e!==highlighted).map((e:any)=><span key={e.id||e.name+e.time}>
+         {e.name}: الفعلي {e.actual||'قيد التحديث'} · المتوقع {e.forecast||'—'}
+       </span>)}</div>
+     </details>}
     <p className="news-ticker-caveat">{outlook.disclaimer}</p>
     </div>
   </details>;
