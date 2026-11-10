@@ -21,8 +21,8 @@ assert.match(ui,/className="sniper-evidence-drawer"/,
 assert.ok(ui.indexOf('className="sniper-data-health"')>ui.indexOf('className="sniper-evidence-drawer"'),
   'the detailed data health readout is within the deep-analysis drawer');
 assert.match(page,/<NewsCommandCenter now=\{now\}/);
-assert.ok(page.indexOf('<AICommandCenter')<page.indexOf('<NewsCommandCenter'),
-  'chart-first cockpit must precede the opt-in economic news ticker');
+assert.ok(page.indexOf('<NewsCommandCenter')<page.indexOf('<AICommandCenter'),
+  'compact high-impact news strip stays visible above the chart');
 assert.match(news,/className="news-ticker-shell"/);
 assert.match(css,/QANNAS 2026 terminal/);
 assert.match(css,/\.compact-sniper \.forecast-chart-tools button\[aria-pressed=true\]/);
