@@ -18,8 +18,10 @@ const page=fs.readFileSync('app/page.tsx','utf8');
 const news=fs.readFileSync('components/NewsCommandCenter.tsx','utf8');
 const chart=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 const css=fs.readFileSync('app/workspace.css','utf8');
-assert.ok(page.indexOf('<AICommandCenter')<page.indexOf('<NewsCommandCenter'),
-  'chart-first cockpit must precede the opt-in economic news ticker');
+assert.ok(page.indexOf('<NewsCommandCenter')<page.indexOf('<AICommandCenter'),
+  'today releases must be visible as a compact ticker above the chart');
+assert.doesNotMatch(page,/sniper-news-collapsible/);
+assert.match(news,/نتيجة الخبر قيد التحديث/);
 assert.equal((page.match(/<NewsCommandCenter/g)||[]).length,1);
 assert.match(news,/<details className="news-ticker-shell"/);
 assert.match(news,/<summary className="news-ticker-line"/);
