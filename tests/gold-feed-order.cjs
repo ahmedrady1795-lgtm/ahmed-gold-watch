@@ -55,7 +55,9 @@ assert.equal(repaired.bars.every((b,i,a)=>i===0||b.time-a[i-1].time===M15),true)
 const partial=short.filter(b=>b.time!==missingAt+M5);
 assert.equal(repairGoldM15FromM5(partial,native,now).added,0,
   'one missing source M5 prevents fabricated fifteen-minute candles');
-const corrupt=native.map(b=>b.time===m15[35].time?{...b,close:b.close+1}:b);
+const corrupt=native.map(b=>b.time===m15[35].time?{...b,close:b.close+1,high:b.high+1}:b);
+assert.equal(repairGoldM15FromM5(short,[...native,{...m15[38],open:-5}],now).status,'SOURCE_CONFLICT',
+  'invalid native OHLC cannot masquerade as a missing bar');
 assert.equal(repairGoldM15FromM5(short,corrupt,now).status,'SOURCE_CONFLICT',
   'mismatched source never fills gaps across different OHLC feeds');
 const future=repairGoldM15FromM5([...short,
