@@ -32,6 +32,12 @@ export function repairGoldM15FromM5(
     ({bars:[...(native||[])],added:0,verifiedOverlaps,status});
   if(!Array.isArray(m5)||!Array.isArray(native)||!Number.isFinite(now))
     return unchanged('NOT_ENOUGH_OVERLAP');
+  // Reject broken native bars in the recent source window. Omitting a
+  // malformed native candle from the comparison is NOT proof of agreement.
+  const recentNativeMalformed=native.some(b=>b&&
+    Number.isFinite(b.time)&&b.time+M15<=now&&
+    b.time>=now-24*3600000&&!valid(b,M15,now));
+  if(recentNativeMalformed)return unchanged('SOURCE_CONFLICT');
   const nativeByTime=new Map<number,GoldOHLC>();
   for(const bar of native)if(valid(bar,M15,now))nativeByTime.set(bar.time,bar);
   const groups=new Map<number,GoldOHLC[]>();
@@ -48,7 +54,7 @@ export function repairGoldM15FromM5(
     if(ordered.length!==3||ordered.some((b,i)=>b.time!==at+i*M5)||
       at+M15>now)continue;
     const validVolume=(k:'tickVolume'|'realVolume')=>
-      ordered.every(b=>typeof b[k]==='number'&&Number.isFinite(b[k])&&b[k]!>=0);
+      ordered.every(b=>typeof b[k]==='number'&&Number.isFinite(b[k])&&Number(b[k])>=0);
     const bar:GoldOHLC={time:at,open:ordered[0].open,close:ordered[2].close,
       high:Math.max(...ordered.map(b=>b.high)),
       low:Math.min(...ordered.map(b=>b.low))};
