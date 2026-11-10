@@ -30,6 +30,19 @@ result=economicNewsTimeline(
   [evt('Duplicate',3600000),evt('Duplicate',3600000,{id:'other-id'})],
   evt('Duplicate',3600000,{id:'other-featured'}),now);
 assert.equal(result.alerts.length,1,'Same event time/name is not shown three times');
+// Actual is empty for a scheduled CPI release three minutes after the time.
+const cpiTime=Date.parse('2026-11-10T13:30:00Z');
+const cpi=economicNewsTimeline([{
+  name:'Consumer Price Index',time:cpiTime,
+  importance:3,actual:'',source:'https://www.bls.gov/schedule/news_release/'
+}],null,Date.parse('2026-11-10T13:33:00Z'));
+assert.equal(cpi.alerts.length,0);
+assert.equal(cpi.recent.length,1,'CPI must stay on the daily news tape pending Actual');
+assert.equal(cpi.recent[0].name,'Consumer Price Index');
+assert.equal(economicNewsTimeline([{name:'CPI yesterday',time:cpiTime}],
+ null,Date.parse('2026-11-11T07:00:00Z')).recent.length,0);
+const api=fs.readFileSync('app/api/news/route.ts','utf8');
+assert.match(api,/AGE_MS=24\\*60\\*60\\*1000/);
 result=economicNewsTimeline([],null,now);
 assert.equal(result.alerts.length,0,'No fake event when feed is empty');
 console.log('PASS: news alert appears exactly eight hours prior, never early or without source event');
