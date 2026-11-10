@@ -76,6 +76,16 @@ assert.match(displayEvidence,/القراءة متعارضة · مساران مش
 assert.match(overlay,/المسار المرجح/);
 assert.match(overlay,/M15 · EARLY PATH/);
 assert.match(overlay,/M15 · FRAME CONFLICT/);
+assert.match(overlay,/M15 · DUAL WATCH/);
+assert.match(overlay,/data-visual-state=\{evidence.state\}/);
+assert.match(overlay,/!anchored\?'#9fb4bc'/,
+ 'neutral evidence cannot produce a bold one-sided BUY or SELL route');
+const sidebar=fs.readFileSync('components/SniperHunterSidebars.tsx','utf8');
+assert.match(sidebar,/assessM15HuntDisplay/);
+assert.match(sidebar,/visualSide===side&&active/);
+assert.match(sidebar,/M15 · لا ترجيح موثوق/);
+assert.doesNotMatch(sidebar,/preview.preferred===side/);
+assert.match(chart,/proof=\{huntProof\} flowSide=\{flowProfile.ready/);
 assert.match(overlay,/assessM15HuntDisplay/);
 assert.match(chart,/m1=\{nextM1\} marketOpen=\{marketOpen\}/);
 console.log('PASS: exact M15 WATCH historical replay, paired prior-body baseline, no cross-sample claim, source gaps and early-candle exclusions');
