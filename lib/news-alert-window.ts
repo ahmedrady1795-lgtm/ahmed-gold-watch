@@ -18,7 +18,13 @@ export function economicNewsTimeline(
   // Show every confirmed release in the eight-hour window; never drop a
   // high-impact event merely because earlier lower-impact ones filled a cap.
   const alerts=upcoming.filter(e=>Number(e.time)-now<=NEWS_EARLY_MS);
-  const recent=unique.filter(e=>Number(e.time)<now&&Number(e.time)>=now-10*60000&&
-    String(e.actual??'').trim()).slice(-2);
+  // Retain today's real scheduled releases even if Actual is not published yet.
+  // This is a calendar reminder, never a fabricated actual economic reading.
+  const dubaiDay=(time:number)=>new Intl.DateTimeFormat('en-CA',{
+    timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'
+  }).format(new Date(time));
+  const day=dubaiDay(now);
+  const recent=unique.filter(e=>Number(e.time)<now&&
+    Number(e.time)>=now-24*3600000&&dubaiDay(Number(e.time))===day).slice(-8);
   return {upcoming,alerts,recent};
 }
