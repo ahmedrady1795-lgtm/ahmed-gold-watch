@@ -37,12 +37,18 @@ const cpi=economicNewsTimeline([{
   importance:3,actual:'',source:'https://www.bls.gov/schedule/news_release/'
 }],null,Date.parse('2026-11-10T13:33:00Z'));
 assert.equal(cpi.alerts.length,0);
+const beforeCpi=economicNewsTimeline([{
+  name:'Consumer Price Index',time:cpiTime,importance:3
+}],null,Date.parse('2026-11-10T01:33:00Z'));
+assert.equal(beforeCpi.alerts.length,0,'at 05:33 Dubai CPI is outside 8h');
+assert.equal(beforeCpi.upcoming.length,1,'CPI still belongs to today's schedule');
 assert.equal(cpi.recent.length,1,'CPI must stay on the daily news tape pending Actual');
 assert.equal(cpi.recent[0].name,'Consumer Price Index');
 assert.equal(economicNewsTimeline([{name:'CPI yesterday',time:cpiTime}],
  null,Date.parse('2026-11-11T07:00:00Z')).recent.length,0);
 const api=fs.readFileSync('app/api/news/route.ts','utf8');
-assert.match(api,/AGE_MS=24\\*60\\*60\\*1000/);
+assert.ok(api.includes('AGE_MS=24*60*60*1000'));
+assert.ok(api.includes('WINDOW_MS=24*60*60*1000'));
 result=economicNewsTimeline([],null,now);
 assert.equal(result.alerts.length,0,'No fake event when feed is empty');
 console.log('PASS: news alert appears exactly eight hours prior, never early or without source event');
