@@ -11,6 +11,9 @@ vm.runInNewContext(transpiled,{
   module:mod,exports:mod.exports,
   require:id=>{
     if(id==='react/jsx-runtime')return {jsx:()=>null,jsxs:()=>null,Fragment:()=>null};
+    if(id==='../lib/sniper-m15-display-evidence')
+      return {assessM15HuntDisplay:()=>({
+        state:'UNCERTAIN',side:'WAIT',reason:'مساران للمراقبة'})};
     throw Error('Unexpected dynamic module: '+id);
   }
 },{filename:'components/SniperHunterSidebars.tsx'});
@@ -66,7 +69,10 @@ assert.match(sidebars,/Math\.abs\(v\.price-quote\)<=atr\*4/,
  'nearby scalp watch excludes remote targets');
 assert.match(sidebars,/إبطال رصد M15/);
 assert.match(sidebars,/أقرب سيولة حقيقية/);
-assert.match(sidebars,/تعارض M1 وM15/);
+const decision=fs.readFileSync('lib/sniper-m15-display-evidence.ts','utf8');
+assert.match(decision,/تعارض M1 مع M15/);
+assert.match(sidebars,/evidence.state==='CONFLICT'/);
+assert.match(sidebars,/M15 · لا ترجيح موثوق/);
 assert.match(sidebars,/تأكيد الإغلاق مطلوب/,
  'touching a threshold does not imply confirmed breakout or broker fill');
 assert.match(sidebars,/مستويات مستنتجة/,
