@@ -1310,6 +1310,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      </div>}
      </div>
      <SniperScenarioColumn preview={huntPreview} guide={watchGuide}
+       proof={huntProof} flowSide={flowProfile.ready?flowProfile.side:'WAIT'}
        qualified={projected.ready} price={price??null} marketOpen={marketOpen}
        structure={structure} watch={watchMap} m1={nextM1}
         priceFresh={Boolean(m.sniper.view.priceFresh)&&historyFresh&&!providerTransition}/>
