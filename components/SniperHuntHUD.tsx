@@ -53,7 +53,7 @@ export default function SniperHuntHUD(p:Props){
    <small className="sniper-hunt-hud-state">
      {!p.marketOpen?'السوق مغلق · مرجع سابق':
        p.hunt.referenceOnly?'بيانات M15 سابقة · ليست إشارة حية':
-       evidence.reason+' · قوة النمط ليست احتمال نجاح'}
+       evidence.reason+' · قوة النمط مؤشر غير مُعاير وليست احتمال نجاح'}
    </small>
  </section>;
 }
