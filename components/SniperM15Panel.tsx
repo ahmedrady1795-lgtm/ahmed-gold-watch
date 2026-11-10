@@ -850,7 +850,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {showHistoricalExtension?'أول 12 خطوة':'مد المسار للأهداف'}</button>}
    </div>
    <div className="sniper-m15-compact-status" role="status">
-     <span>{projected.ready?'سيناريو M15 · مسار مشروط':showWatchGuide?'نطاق مراقبة M15':'شموع M15 حقيقية'}
+     <span>{projected.ready?'سيناريو M15 · مسار مشروط':showWatchGuide?
+       (watchGuide.referenceOnly?'مراقبة M15 جزئية · بلا إشارة دخول':'نطاق مراقبة M15'):'شموع M15 حقيقية'}
        {focusView?' · آخر 18 شمعة':' · كل التاريخ'}</span>
      <b dir="ltr">{formingVisible&&forming?'LIVE '+n(forming.close):
        latestClosed?'CLOSE '+n(latestClosed.close):'—'}</b>
@@ -862,7 +863,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <span className="is-conditional">{routeObstacle.blocked?
        routeObstacle.reason:
        projected.ready?'مسار توقع مشروط':
-       showWatchGuide?'مسارا مراقبة من ATR':'لا مسار مؤهل الآن'}</span>
+       showWatchGuide?(watchGuide.referenceOnly?
+         'فجوات المصدر · مسارا مراقبة تاريخيان فقط':'مسارا مراقبة من ATR'):
+         watchGuide.reason||'لا مسار مؤهل الآن'}</span>
    </div>
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
