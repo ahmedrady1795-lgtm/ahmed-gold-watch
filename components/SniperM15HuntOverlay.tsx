@@ -42,7 +42,8 @@ export default function SniperM15HuntOverlay(p:Props){
     }
     return points;
   };
-  return <g className="sniper-m15-hunt-overlay">
+  return <g className="sniper-m15-hunt-overlay"
+    data-visual-state={evidence.state} data-visual-side={visualSide}>
     <defs>
       <linearGradient id={uid+'-panel'} x1="0" y1="0" x2="1" y2="0">
         <stop offset="0%" stopColor="#102330" stopOpacity=".72"/>
@@ -75,7 +76,7 @@ export default function SniperM15HuntOverlay(p:Props){
     {/* Price-TRUE watch waypoints. Only caption Y is shifted to avoid
         overlaps; these are conditional simulated stations, not TP fills. */}
     {stations.map(m=>{
-      const ink=color[m.side],isUp=m.side==='BUY';
+      const ink=anchored?color[m.side]:'#a8bbc5',isUp=m.side==='BUY';
       return <g key={'station-'+m.side+'-'+m.stage}
         className="sniper-hunt-waypoint">
         <line x1={p.split+6} x2={p.end-77} y1={m.lineY} y2={m.lineY}
@@ -110,10 +111,11 @@ export default function SniperM15HuntOverlay(p:Props){
         <polyline points={toPoints(side==='BUY'?f.buy:f.sell,side)
           .map(pt=>pt.join(',')).join(' ')}
           fill="none"
-          stroke={anchored&&visualSide===side?'url(#'+uid+'-line)':color[side]}
-          strokeWidth={anchored&&visualSide===side?(clear?3.4:2.2):1.1}
-          strokeOpacity={f.referenceOnly?(f.observation?0.22:0.58):blocked?.28:
-            !anchored?.38:visualSide===side?(clear?.9:.7):.25}
+          stroke={!anchored?'#9fb4bc':
+            visualSide===side?'url(#'+uid+'-line)':color[side]}
+          strokeWidth={!anchored?1.1:visualSide===side?(clear?3.4:2.2):1.1}
+          strokeOpacity={f.referenceOnly?.23:blocked?.24:
+            !anchored?.45:visualSide===side?(clear?.9:.7):.25}
           strokeLinecap="round" strokeLinejoin="round"
           strokeDasharray={anchored&&visualSide===side?'9 5':'2 9'}/>
         {anchored&&visualSide===side&&!f.referenceOnly&&
@@ -128,7 +130,8 @@ export default function SniperM15HuntOverlay(p:Props){
       fontWeight="800" fill="#eac883" textAnchor="start"
       stroke="#000" strokeWidth="2" paintOrder="stroke" direction="ltr">
       {f.referenceOnly?(f.observation?'M15 · HISTORY':'M15 · GAP WATCH'):
-        evidence.state==='CONFLICT'?'M15 · FRAME CONFLICT':'M15 · EARLY PATH'}
+        evidence.state==='CONFLICT'?'M15 · FRAME CONFLICT':
+        !anchored?'M15 · DUAL WATCH':'M15 · EARLY PATH'}
     </text>
     <text x={p.split+8} y={p.top+32} fontSize="9" fontWeight="800"
       fill={anchored?color[visualSide as HuntSide]:'#b1c1cb'}
