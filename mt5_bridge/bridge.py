@@ -9,6 +9,7 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 import MetaTrader5 as mt5
+from demo_limit_logic import limit_entry, limit_touched, exit_reason
 
 load_dotenv()
 SITE_URL=os.getenv('SITE_URL','').rstrip('/')
@@ -34,12 +35,18 @@ CANDLE_COUNT=max(240,min(500,int(os.getenv('MT5_CANDLE_COUNT','300'))))
 MAGIC=int(os.getenv('MT5_MAGIC','5601795'))
 SCALP_DEMO=os.getenv('SCALP_DEMO_MODE','false').lower()=='true'
 SCALP_DEMO_POLL=max(0.5,float(os.getenv('SCALP_DEMO_POLL_SECONDS','1.0')))
-SCALP_QUICK_MAX_HOLD=max(5,min(30,float(os.getenv('SCALP_QUICK_MAX_HOLD_SECONDS','30'))))
-SCALP_QUICK_MIN_CONF=max(50,min(88,float(os.getenv('SCALP_QUICK_MIN_CONFIDENCE','66'))))
+SCALP_QUICK_MAX_HOLD=max(15,min(120,float(os.getenv('SCALP_QUICK_MAX_HOLD_SECONDS','90'))))
+SCALP_QUICK_MIN_CONF=max(50,min(88,float(os.getenv('SCALP_QUICK_MIN_CONFIDENCE','58'))))
 SCALP_QUICK_TP_SPREAD_MULT=max(1.4,min(4.0,float(os.getenv('SCALP_QUICK_TP_SPREAD_MULT','2.2'))))
 SCALP_QUICK_SL_SPREAD_MULT=max(1.1,min(3.0,float(os.getenv('SCALP_QUICK_SL_SPREAD_MULT','1.6'))))
 SCALP_QUICK_LOCK_TRIGGER=max(1.0,min(3.0,float(os.getenv('SCALP_QUICK_LOCK_TRIGGER','1.35'))))
 SCALP_QUICK_GIVEBACK=max(0.35,min(1.5,float(os.getenv('SCALP_QUICK_GIVEBACK_SPREAD','0.65'))))
+SCALP_DEMO_LOT=float(os.getenv('SCALP_DEMO_LOT','0.05'))
+SCALP_DEMO_MIN_PROFIT_USD=max(0.05,float(os.getenv('SCALP_DEMO_MIN_PROFIT_USD','0.50')))
+SCALP_DEMO_MAX_LOSS_USD=max(1.0,float(os.getenv('SCALP_DEMO_MAX_LOSS_USD','7')))
+SCALP_DEMO_DAILY_LOSS_USD=max(1.0,float(os.getenv('SCALP_DEMO_DAILY_LOSS_USD','40')))
+SCALP_DEMO_COST_BUFFER_USD=max(0.0,float(os.getenv('SCALP_DEMO_COST_BUFFER_USD','0.10')))
+SCALP_DEMO_MAX_ENTRIES_PER_CANDLE=max(1,min(6,int(os.getenv('SCALP_DEMO_MAX_ENTRIES_PER_CANDLE','4'))))
 STATE=Path(__file__).with_name('.state.json')
 KILL_SWITCH=Path(os.getenv('KILL_SWITCH_FILE',str(Path(__file__).with_name('KILL_SWITCH'))))
 
@@ -115,94 +122,146 @@ def journal_demo(event,pos,reason='',extra=None):
     except Exception as e:log('demo journal failed',repr(e))
 
 def scalp_demo_step(s):
+    """Simulate limit placement/fills on live MT5 quotes; NEVER sends broker orders."""
     if LIVE or not SCALP_DEMO:return s
     info=symbol_ready();tick=mt5.symbol_info_tick(SYMBOL) if info else None
-    if not info or tick is None:return s
-    data=scalp_demo_signal()
-    if not data.get('ok') or not data.get('demoOnly'):return s
+    account=mt5.account_info()
+    if not info or tick is None or not account:return s
+    if str(getattr(account,'currency','')).upper()!='USD':
+        log('SCALP DEMO: USD profit targets require a USD-denominated account');return s
+    now=time.time();bid=float(tick.bid);ask=float(tick.ask);point=float(info.point or 0)
+    if point<=0 or bid<=0 or ask<=bid:return s
+    age_ms=int(now*1000)-int(getattr(tick,'time_msc',0) or 0)
+    if age_ms>MAX_TICK_AGE_MS:
+        log('SCALP DEMO: stale broker tick',age_ms);return s
+    spread_points=(ask-bid)/point
+    candle=int(now//60)
+    if s.get('demo_candle')!=candle:
+        s['demo_candle']=candle;s['demo_candle_entries']=0
+    st=s.get('demo_stats') or {}
+    day=datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    if st.get('session_date')!=day:
+        st['session_date']=day;st['session_net_usd']=0.0
+    s['demo_stats']=st
+    try:
+        data=scalp_demo_signal()
+    except Exception as e:
+        log('SCALP DEMO signal unavailable',repr(e));data={}
     ambush=data.get('ambush') or {}
+    volume=SCALP_DEMO_LOT
+    # Fixed 0.05 means exactly 0.05: never round UP/DOWN or silently resize.
+    normalized=normalize_volume(info,volume)
+    valid_volume=normalized is not None and abs(normalized-volume)<1e-8
+    def net_profit(side,entry,exit_price,lot):
+        typ=mt5.ORDER_TYPE_BUY if side=='BUY' else mt5.ORDER_TYPE_SELL
+        gross=mt5.order_calc_profit(typ,SYMBOL,lot,entry,exit_price)
+        return None if gross is None else float(gross)-SCALP_DEMO_COST_BUFFER_USD
+
     pos=s.get('demo_position')
-    now=time.time();bid=float(tick.bid);ask=float(tick.ask);point=float(info.point or 1)
-    spread_points=max(0.0,(ask-bid)/point if point else 0.0)
-
     if pos:
-        side=pos.get('side');entry=float(pos['entry']);exit_px=bid if side=='BUY' else ask
-        pnl=(exit_px-entry)/point*(1 if side=='BUY' else -1)
-        pos['best_points']=max(float(pos.get('best_points',-10**9)),pnl)
-        pos['worst_points']=min(float(pos.get('worst_points',10**9)),pnl)
-
-        hit_tp=exit_px>=float(pos['tp']) if side=='BUY' else exit_px<=float(pos['tp'])
+        side=str(pos.get('side'));entry=float(pos['entry'])
+        exit_px=bid if side=='BUY' else ask
+        pnl_points=(exit_px-entry)/point*(1 if side=='BUY' else -1)
+        pnl_usd=net_profit(side,entry,exit_px,float(pos.get('volume',volume)))
+        if pnl_usd is None:return s
+        pos['best_points']=max(float(pos.get('best_points',-1e9)),pnl_points)
+        pos['worst_points']=min(float(pos.get('worst_points',1e9)),pnl_points)
         hit_sl=exit_px<=float(pos['sl']) if side=='BUY' else exit_px>=float(pos['sl'])
-        timed=now-float(pos.get('opened_at',now))>=float(pos.get('max_hold_seconds',SCALP_QUICK_MAX_HOLD))
-
-        live_side=str(ambush.get('side','WAIT'))
-        live_active=bool(ambush.get('active'))
-        live_conf=float(ambush.get('confidence',0) or 0)
-        opposite=live_active and live_side in ('BUY','SELL') and live_side!=side
-        weak=not live_active or live_side=='WAIT' or live_conf<max(42.0,float(pos.get('entry_confidence',SCALP_QUICK_MIN_CONF))*.70)
-        pos['weak_polls']=int(pos.get('weak_polls',0))+1 if weak else 0
-
-        lock_trigger=max(float(pos.get('spread_points',spread_points))*SCALP_QUICK_LOCK_TRIGGER,float(pos.get('tp_points',0))*0.45)
-        giveback=max(3.0,float(pos.get('spread_points',spread_points))*SCALP_QUICK_GIVEBACK)
-        profit_lock=bool(float(pos.get('best_points',0))>=lock_trigger and pnl>0 and float(pos.get('best_points',0))-pnl>=giveback)
-        weak_exit=bool(pos.get('weak_polls',0)>=2 and now-float(pos.get('opened_at',now))>=2.0)
-        fast_loss_cut=bool(pnl<0 and pos.get('weak_polls',0)>=1 and abs(pnl)>=max(3.0,spread_points*.55))
-
-        if hit_tp or hit_sl or profit_lock or opposite or fast_loss_cut or weak_exit or timed:
-            reason='TP' if hit_tp else 'SL' if hit_sl else 'PROFIT_LOCK' if profit_lock else 'FLOW_FLIP' if opposite else 'FAST_LOSS_CUT' if fast_loss_cut else 'WEAK_FLOW' if weak_exit else 'TIME'
-            pos.update({'closed_at':now,'exit':exit_px,'pnl_points':round(pnl,1),'close_reason':reason})
-            st=s.get('demo_stats') or {}
+        reason=exit_reason(pnl_usd,SCALP_DEMO_MIN_PROFIT_USD,SCALP_DEMO_MAX_LOSS_USD,
+                           now-float(pos.get('opened_at',now)),SCALP_QUICK_MAX_HOLD,hit_sl)
+        if reason:
+            pos.update({'closed_at':now,'exit':exit_px,'pnl_points':round(pnl_points,2),
+                        'pnl_usd':round(pnl_usd,2),'close_reason':reason})
             st['trades']=int(st.get('trades',0))+1
-            if pnl>0:
+            if pnl_usd>0:
                 st['wins']=int(st.get('wins',0))+1
-                st['gross_win_points']=round(float(st.get('gross_win_points',0))+pnl,1)
+                st['gross_win_points']=round(float(st.get('gross_win_points',0))+max(0,pnl_points),2)
+                st['gross_win_usd']=round(float(st.get('gross_win_usd',0))+pnl_usd,2)
                 st['loss_streak']=0
             else:
                 st['losses']=int(st.get('losses',0))+1
-                st['gross_loss_points']=round(float(st.get('gross_loss_points',0))+abs(pnl),1)
+                st['gross_loss_points']=round(float(st.get('gross_loss_points',0))+abs(min(0,pnl_points)),2)
+                st['gross_loss_usd']=round(float(st.get('gross_loss_usd',0))+abs(pnl_usd),2)
                 st['loss_streak']=int(st.get('loss_streak',0))+1
-            st['net_points']=round(float(st.get('net_points',0))+pnl,1)
-            gw=float(st.get('gross_win_points',0));gl=float(st.get('gross_loss_points',0))
-            st['profit_factor']=round(gw/gl,2) if gl>0 else (9.99 if gw>0 else 0.0)
-            st['win_rate']=round(float(st.get('wins',0))/max(1,int(st.get('trades',0)))*100,1)
+            st['net_points']=round(float(st.get('net_points',0))+pnl_points,2)
+            st['net_usd']=round(float(st.get('net_usd',0))+pnl_usd,2)
+            st['session_net_usd']=round(float(st.get('session_net_usd',0))+pnl_usd,2)
+            gw=float(st.get('gross_win_usd',0));gl=float(st.get('gross_loss_usd',0))
+            st['profit_factor']=round(gw/gl,2) if gl>0 else (None if gw>0 else 0.0)
+            st['win_rate']=round(100*int(st.get('wins',0))/max(1,int(st['trades'])),1)
             s['demo_stats']=st
-            log('SCALP DEMO EXIT',side,reason,'entry',entry,'exit',exit_px,'pnl_pts',round(pnl,1),'best',round(float(pos.get('best_points',0)),1),'worst',round(float(pos.get('worst_points',0)),1),'stats',st)
-            journal_demo('closed',pos,reason,{'stats':st,'bestPoints':pos.get('best_points'),'worstPoints':pos.get('worst_points')})
+            log('SCALP DEMO LIMIT EXIT',side,reason,'USD',round(pnl_usd,2),'points',round(pnl_points,1),'stats',st)
+            journal_demo('closed',pos,reason,{'stats':st,'pnlUsd':round(pnl_usd,2),
+                                             'volume':pos.get('volume'),'bestPoints':pos.get('best_points'),
+                                             'worstPoints':pos.get('worst_points')})
             s['demo_position']=None
         return s
 
-    plan=ambush.get('plan') or data.get('plan')
-    if not ambush.get('active') or not plan:return s
-    if int(plan.get('expiresAt',0) or 0)<int(time.time()*1000):return s
-    side=str(plan.get('side',ambush.get('side','WAIT')))
-    confidence=float(ambush.get('confidence',0) or 0)
-    st=s.get('demo_stats') or {}
-    dynamic_min_conf=SCALP_QUICK_MIN_CONF+min(10.0,float(st.get('loss_streak',0))*2.5)
-    if side not in ('BUY','SELL') or confidence<dynamic_min_conf:return s
+    pending=s.get('demo_pending')
+    if pending:
+        if now>=float(pending['expires_at']) or candle!=int(pending['candle']):
+            st['pending_expired']=int(st.get('pending_expired',0))+1
+            journal_demo('cancelled',pending,'LIMIT_EXPIRED')
+            s['demo_pending']=None
+            return s
+        if limit_touched(pending['side'],float(pending['entry']),bid,ask):
+            # Conservative fill: at LIMIT price, never invent a better execution.
+            pos=dict(pending);pos['opened_at']=now
+            pos['best_points']=(bid-pos['entry'])/point if pos['side']=='BUY' else (pos['entry']-ask)/point
+            pos['worst_points']=pos['best_points']
+            s['demo_position']=pos;s['demo_pending']=None
+            st['pending_filled']=int(st.get('pending_filled',0))+1
+            log('SCALP DEMO LIMIT FILL',pos['side'],'at',pos['entry'],'lot',pos['volume'])
+            journal_demo('opened',pos,'LIMIT_TOUCHED',{'volume':pos['volume'],'pendingSeconds':round(now-pos['created_at'],2)})
+        return s
+
+    if KILL_SWITCH.exists() or not valid_volume:return s
+    if float(st.get('session_net_usd',0))<=-SCALP_DEMO_DAILY_LOSS_USD:return s
+    if int(s.get('demo_candle_entries',0))>=SCALP_DEMO_MAX_ENTRIES_PER_CANDLE:return s
     if spread_points<=0 or spread_points>MAX_SPREAD_POINTS:return s
-
-    entry=ask if side=='BUY' else bid
-    ref=float(plan.get('entry',entry));sl_ref=float(plan.get('sl',entry));tp_ref=float(plan.get('tp',entry))
-    plan_sl_points=abs(ref-sl_ref)/point if point else 0.0
-    plan_tp_points=abs(tp_ref-ref)/point if point else 0.0
-
-    # Quick-capture profile: target must clear current spread/cost, but is capped so we exit before momentum fades.
-    tp_points=max(spread_points*SCALP_QUICK_TP_SPREAD_MULT,min(plan_tp_points if plan_tp_points>0 else spread_points*3.0,spread_points*3.2))
-    sl_points=max(spread_points*SCALP_QUICK_SL_SPREAD_MULT,min(plan_sl_points if plan_sl_points>0 else spread_points*2.0,tp_points*.92))
-    tp_points=max(3.0,tp_points);sl_points=max(3.0,sl_points)
-
-    pos={
-        'id':plan.get('id'),'side':side,'entry':entry,
-        'sl':entry-sl_points*point if side=='BUY' else entry+sl_points*point,
-        'tp':entry+tp_points*point if side=='BUY' else entry-tp_points*point,
-        'opened_at':now,'max_hold_seconds':min(SCALP_QUICK_MAX_HOLD,float(plan.get('maxHoldSeconds',SCALP_QUICK_MAX_HOLD) or SCALP_QUICK_MAX_HOLD)),
-        'confidence':confidence,'entry_confidence':confidence,'latency_ms':round(float(data.get('_site_latency_ms',0)),1),
-        'spread_points':round(spread_points,1),'tp_points':round(tp_points,1),'sl_points':round(sl_points,1),
-        'best_points':-spread_points,'worst_points':-spread_points,'weak_polls':0
+    if not data.get('ok') or not data.get('ready') or not data.get('demoOnly'):return s
+    if int(data.get('expiresAt',0) or 0)<int(now*1000):return s
+    plan=ambush.get('plan') or {}
+    trade=ambush.get('trade') or {}
+    if not isinstance(plan,dict) or not isinstance(trade,dict):return s
+    if not ambush.get('active') or plan.get('status')!='EXECUTE':return s
+    if not isinstance(plan.get('entry'),dict) or not plan['entry'].get('ready'):return s
+    side=str(ambush.get('side','WAIT'))
+    confidence=float(ambush.get('confidence',0) or 0)
+    if side not in ('BUY','SELL') or confidence<SCALP_QUICK_MIN_CONF:return s
+    if str(trade.get('side','')).upper()!=side:return s
+    price=limit_entry(side,bid,ask,point,int(info.digits),int(getattr(info,'trade_stops_level',0) or 0))
+    if price is None:return s
+    typ=mt5.ORDER_TYPE_BUY if side=='BUY' else mt5.ORDER_TYPE_SELL
+    one_point=mt5.order_calc_profit(typ,SYMBOL,volume,price,price+point if side=='BUY' else price-point)
+    value_per_point=abs(float(one_point or 0))
+    if value_per_point<=0:return s
+    max_loss_points=(SCALP_DEMO_MAX_LOSS_USD-SCALP_DEMO_COST_BUFFER_USD)/value_per_point
+    minimum_points=max(1.0,float(getattr(info,'trade_stops_level',0) or 0))
+    if max_loss_points<minimum_points:return s
+    try:
+        ref=float(trade['entry']);ref_sl=float(trade['sl']);ref_tp=float(trade['tp'])
+    except (KeyError,TypeError,ValueError):return s
+    if not all(math.isfinite(v) for v in (ref,ref_sl,ref_tp)):return s
+    intended_stop=abs(ref-ref_sl)/point
+    stop_pts=max(minimum_points,min(max_loss_points,intended_stop if intended_stop>0 else max_loss_points))
+    intended_target=abs(ref_tp-ref)/point
+    target_pts=max(minimum_points,(SCALP_DEMO_MIN_PROFIT_USD+SCALP_DEMO_COST_BUFFER_USD)/value_per_point,
+                   min(intended_target if intended_target>0 else spread_points*2.5,spread_points*3.0))
+    sign=1 if side=='BUY' else -1
+    pending={
+        'id':str(trade.get('time',int(now*1000)))+':'+str(candle)+':'+str(s.get('demo_candle_entries',0)),
+        'side':side,'entry':price,'volume':volume,'sl':round(price-sign*stop_pts*point,int(info.digits)),
+        'tp':round(price+sign*target_pts*point,int(info.digits)),
+        'created_at':now,'expires_at':float((candle+1)*60),'candle':candle,
+        'confidence':confidence,'latency_ms':round(float(data.get('_site_latency_ms',0)),1),
+        'spread_points':round(spread_points,1),'tp_points':round(target_pts,1),'sl_points':round(stop_pts,1)
     }
-    s['demo_position']=pos
-    log('SCALP DEMO ENTRY',side,'entry',entry,'sl',pos['sl'],'tp',pos['tp'],'tp_pts',round(tp_points,1),'sl_pts',round(sl_points,1),'spread_pts',round(spread_points,1),'hold',pos['max_hold_seconds'],'confidence',confidence,'latency_ms',pos['latency_ms'])
-    journal_demo('opened',pos,'QUICK_CAPTURE_ENTRY',{'ambush':ambush,'dynamicMinConfidence':dynamic_min_conf})
+    s['demo_pending']=pending
+    s['demo_candle_entries']=int(s.get('demo_candle_entries',0))+1
+    st['pending_created']=int(st.get('pending_created',0))+1
+    log('SCALP DEMO LIMIT PLACED',side,'limit',price,'lot',volume,'expires',pending['expires_at'])
+    journal_demo('pending',pending,'M1_LIMIT_PLACED',{'volume':volume,'ambushPlan':plan,'minNetProfitUsd':SCALP_DEMO_MIN_PROFIT_USD})
     return s
 
 def journal_execution(signal,ok,message,s):
@@ -269,6 +328,7 @@ def size_for_risk(account,info,order_type,entry,sl,risk_pct):
 def broker_spread(info,tick):return (tick.ask-tick.bid)/float(info.point) if info.point else 10**9
 
 def send(signal,s):
+    if LIVE:return False,'LIVE orders disabled: legacy market execution is not approved; validate pending LIMIT on broker demo first',s
     info=symbol_ready();tick=mt5.symbol_info_tick(SYMBOL) if info else None;account=mt5.account_info()
     if not info or tick is None or account is None:return False,'MT5 data unavailable',s
     allowed,risk_status,loss_streak=risk_guard(account,s)
