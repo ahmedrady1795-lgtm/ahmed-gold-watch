@@ -27,6 +27,7 @@ jobs:
       - run: node tests/gold-trap-radar.cjs
       - run: node tests/core-quality.cjs
       - run: node tests/scalp.cjs
+      - run: node tests/gold-mt5-ea-contract.cjs
       - run: node tests/news-alert-window.cjs
       - run: node tests/scalp-presentation.cjs
       - run: node tests/next-move-view.cjs
