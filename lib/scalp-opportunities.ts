@@ -167,6 +167,14 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       const entry=round(edge+dir*atr*.12);
       const risk=Math.max(rangeAtr*(horizon===1?.82:.75),cost*1.85,Math.abs(entry-f21)*.50);
       const move=Math.max(risk*1.75+cost*2.2,rangeAtr*(horizon===1?1.6:1.8));
+      // Do not invent conditional breakout levels larger than the observed
+      // NEXT-window movement of closed M1 bars.
+      const watchReach=observedForwardReach(a,trend1 as 'BUY'|'SELL',horizon);
+      if(watchReach.samples>=30&&
+         (watchReach.favorableP20==null||move>watchReach.favorableP20))
+        return stableCandidate({...plan,
+          blockers:['الهدف أبعد من الحركة المواتية المعتادة خلال مدة السكالب'],
+          reason:'الشموع التالية تاريخياً لم تدعم الهدف المشروط'},now,p!,cost);
       // Never fabricate breakout levels if even M5 volatility cannot cover
       // projected round-trip fees, stop and target at their expected horizon.
       if(risk>rangeAtr*(horizon===1?1.8:1.7)||
@@ -230,15 +238,32 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
     // current quote; GOLD M1 and BTC retain the conservative baseline.
     const activeGoldM5=asset==='GOLD'&&horizon===5;
     const targetNetR=chosen.setup==='RETEST'?1.65:activeGoldM5?1.30:1.45;
+    // Next-bar movement, not the breakout candle itself, determines the
+    // maximum plausible WATCH T1. P20 does NOT imply an 80% profitable
+    // trade: entry timing, stop-first ordering and fees still apply.
+    const historical=(horizon===1?a.slice(-80):b.slice(-60));
+    const favorable=historical.map(c=>Math.max(0,
+      chosen.side==='BUY'?c.high-c.open:c.open-c.low));
+    const forwardReach=asset==='GOLD'
+      ?observedForwardReach(a,chosen.side,horizon):null;
+    const empiricalReach=forwardReach&&forwardReach.samples>=30&&
+      forwardReach.favorableP20!=null
+      ?forwardReach.favorableP20:quantile(favorable,asset==='GOLD'?.20:horizon===1?.55:.75);
     const minReward=Math.max(risk*targetNetR+cost*(targetNetR+1),cost*3);
     const maxRisk=rangeAtr*(horizon===1?1.6:1.65);
     const pivots=[...a.slice(-60),...(horizon===5?b.slice(-24):[])].map(c=>chosen.side==='BUY'?c.high:c.low)
       .filter(x=>dir*(x-entry)>=minReward&&dir*(x-entry)<=maxMove)
       .sort((x,y)=>dir*(x-y));
     const first=pivots[0];
-    const reward=first==null?minReward:dir*(first-entry);
-    const targets=[{price:round(entry+dir*reward),kind:first==null?'PROJECTION' as const:'STRUCTURE' as const}];
-    for(let j=1;j<3;j++){
+    const nominalReward=first==null?minReward:dir*(first-entry);
+    const limitedByReach=empiricalReach!=null&&historical.length>=40&&
+      nominalReward>empiricalReach;
+    // Keep unactionable watch levels inside the observed movement range;
+    // never show an invented T2/T3 when the first target already fails.
+    const reward=limitedByReach?Math.max(.01,Math.min(nominalReward,empiricalReach!)):nominalReward;
+    const targets=[{price:round(entry+dir*reward),
+      kind:limitedByReach?'PROJECTION' as const:first==null?'PROJECTION' as const:'STRUCTURE' as const}];
+    for(let j=1;j<3&&!limitedByReach;j++){
       const lastDistance=dir*(targets[j-1].price-entry);
       const structural=pivots.find(x=>dir*(x-entry)>lastDistance+atr*.3);
       const distance=structural==null?lastDistance+Math.max(atr*.45,risk*.5):dir*(structural-entry);
@@ -254,25 +279,8 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
         {label:'نسبة ذيل رفض الاختراق',side:'WAIT',value:round(Number(goldM5Breakout.wickRatio)*100)+'%'}
       );
     }
-    // Five of seven historical GOLD M1 outcomes exited on the clock, not T1.
-    // A 1-minute plan needs a realistic one-minute destination. Measure
-    // favorable open-to-extreme travel in the SAME horizon's closed candles.
-    // This is an optimistic ceiling: true entry timing may have less room.
-    const historical=(horizon===1?a.slice(-80):b.slice(-60));
-    const favorable=historical.map(c=>Math.max(0,
-      chosen.side==='BUY'?c.high-c.open:c.open-c.low));
-    // GOLD M5 uses what price ACTUALLY traveled over the NEXT five
-    // completed M1 bars after a hypothetical historical entry, not what
-    // happened during the same completed M5 candle. Take non-overlapping
-    // windows to reduce correlated observations. Fallback conservatively if
-    // the broker-derived M1 history lacks 30 complete windows.
-    const forwardReach=asset==='GOLD'&&horizon===5
-      ?observedForwardReach(a,chosen.side,5):null;
-    const empiricalReach=forwardReach&&forwardReach.samples>=30&&
-      forwardReach.favorableP75!=null
-      ?forwardReach.favorableP75:quantile(favorable,horizon===1?.55:.75);
-    if(empiricalReach!=null&&historical.length>=40&&
-       actualReward>empiricalReach*(horizon===1?1:1.15)){
+    // A conservative WATCH display is not an approved entry.
+    if(limitedByReach){
       reasons.push('الهدف أبعد من الحركة المواتية المعتادة خلال '+(horizon===1?'دقيقة':'خمس دقائق')+
         '؛ احتمال الخروج بالوقت أو التكلفة مرتفع');
     }
@@ -334,13 +342,13 @@ export function buildScalpPlans(input:ScalpInput):ScalpPlan[]{
       plan.evidence.push({
         label:'عينة الحركة بعد الدخول',side:'WAIT',
         value:forwardReach.samples>=30
-          ?forwardReach.samples+' نوافذ تاريخية M5 غير متداخلة · P75'
+          ?forwardReach.samples+' نافذة حركة تالية غير متداخلة · P20 (ليس ربحاً)'
           :'بيانات 5 دقائق مستقبلية غير كافية؛ قياس الشموع المحافظ'
       });
       plan.evidence.push({
         label:'ارتداد معاكس تاريخي بعد الدخول',side:'WAIT',
         value:forwardReach.adverseP50!=null?
-          round(forwardReach.adverseP50)+' $ · وسيط 5 دقائق (معلومة لا ضمان)': 'غير متاح'
+          round(forwardReach.adverseP50)+' $ · وسيط '+horizon+' دقيقة (معلومة لا ضمان)': 'غير متاح'
       });
     }
     // A missing optional news feed is not itself a scheduled major release.

@@ -88,7 +88,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
     });
   }
   const ageMin=m.historyAge==null?null:Math.ceil(m.historyAge/60000);
-  const stateLabel=statusReady?'سيناريو مؤهل · مسجل':watchReady&&m.heldBias?'اتجاه مثبت · أهداف مراقبة':watchReady?'أهداف بعيدة · مراقبة فقط':
+  const stateLabel=statusReady?'سيناريو مؤهل · مسجل':watchReady?'مدى الشمعة القادمة M1 · مراقبة فقط':
     m.bias.active&&m.bias.side!=='WAIT'?(m.heldBias?'اتجاه محفوظ · تحقق مستمر':'الاتجاه مرصود · جارٍ البحث عن مستوى بعيد'):
     m.bias.active?'سوق عرضي · التحليل مستمر':
     m.status==='STALE_CANDLES'?'سوق متوقف أو شموع متأخرة':
@@ -98,7 +98,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
   const reboundBuy=m.fourHour.zones.filter(z=>z.side==='BUY');
   const reboundSell=m.fourHour.zones.filter(z=>z.side==='SELL');
   const statusText=statusReady?(journal?.message||sn.stageText):
-    watchReady?(m.bias.active?m.bias.reason+' · مستويات مرصودة من H1/H4، وليست إشارة دخول':sn.view.reason):
+    watchReady?'قراءة زخم آخر شموع M1 المغلقة مع سياق M5 · مستوى P20 من '+(m.nearTermEvidence?.samples??0)+' نافذة تاريخية · مراقبة فقط، وليس احتمال ربح أو أمر دخول':
     m.bias.label+' · '+m.bias.reason;
   const activation=statusReady&&sn.activation?'خلال '+sn.activation.min+'–'+sn.activation.max+' د':'—';
   const arrival=statusReady&&sn.arrival?'خلال '+sn.arrival.min+'–'+sn.arrival.max+' د':'غير محدد';
@@ -159,16 +159,16 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
             {m.displayTargets.slice(0,3).map(t=>{
               const eta=overlay.timing.find(x=>x.stage===t.stage)?.eta;
               return <div key={t.stage}>
-                <small>{statusReady?'TP'+t.stage:'هدف مراقبة '+t.stage}</small>
+                <small>{statusReady?'TP'+t.stage:'مدى محتمل للشمعة التالية'}</small>
                 <strong dir="ltr">{fmt(t.price)}</strong>
-                <span>{eta?eta.min+'–'+eta.max+' دقيقة · تقدير مشروط':'وقت الوصول غير مؤكد'}</span>
+                <span>{watchReady?'نافذة M1 التالية · تقدير من حركة تاريخية':eta?eta.min+'–'+eta.max+' دقيقة · تقدير مشروط':'وقت الوصول غير مؤكد'}</span>
               </div>;
             })}
           </div>:
           <p className="forecast-scenario-no-goals">لا توجد أهداف مؤهلة أو معتمدة حاليًا.</p>}
         <p className="forecast-scenario-condition">
           <Crosshair size={14}/>
-          {overlay.ready?(
+          {watchReady?'مراقبة فقط: الشمعة التالية قد لا تصل للمستوى، ويجب تقييم السبريد والوقف قبل أي دخول':overlay.ready?(
             rise?'شرط متابعة الصعود: إغلاق شمعتين M5 فوق مستوى الكسر، مع بقية شروط التفعيل':
             fall?'شرط متابعة الهبوط: إغلاق شمعتين M5 تحت مستوى الكسر، مع بقية شروط التفعيل':
             'المراقبة: ننتظر كسرًا مؤكّدًا بشمعتين M5 فوق '+fmt(overlay.breakoutUp)+' أو تحت '+fmt(overlay.breakoutDown)
@@ -312,7 +312,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
           </div>
           <div className="forecast-visual-legend">
             <span><i className="forecast-legend-history"/> شموع فعلية</span>
-            <span><i className="forecast-legend-projection"/> {watchReady?'مسار مستويات بعيد · توضيحي':'سيناريو مشروط'}</span>
+            <span><i className="forecast-legend-projection"/> {watchReady?'مدى حركة M1 · غير تنفيذي':'سيناريو مشروط'}</span>
             <span><i className="forecast-legend-target"/> مناطق أهداف</span>
             <span><i className="forecast-legend-rebound"/> مناطق سيولة</span>
 
