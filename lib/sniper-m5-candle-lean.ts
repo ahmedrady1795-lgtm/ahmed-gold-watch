@@ -5,6 +5,7 @@
  * NOT an entry, broker order, win probability, or future OHLC.
  */
 type Bar={time:number;open:number;high:number;low:number;close:number};
+import type {FlowProfileDecision} from './flow-profile-decision';
 type Side='BUY'|'SELL'|'WAIT';
 export type M5CandleLean={
  phase:'OPEN'|'FOLLOW'|'CLOSE'|'WAIT';side:Side;issuedFor:number|null;
@@ -20,7 +21,7 @@ const none=(reason:string):M5CandleLean=>({
 });
 export function assessM5CandleLean(input:{
  now:number;price:number|null;sourceReady:boolean;
- m1:unknown;m5?:unknown;
+ m1:unknown;m5?:unknown;flow?:FlowProfileDecision|null;
 }):M5CandleLean{
  const {now,price}=input;
  if(!input.sourceReady||!Number.isFinite(now)||!Number.isFinite(price)||
@@ -81,15 +82,29 @@ export function assessM5CandleLean(input:{
    .12*clamp(closeLocation)+.06*m5Slope;
  // Momentum alone is not evidence of a pre-move opportunity. Keep
  // continuation as a distinct, explicitly labelled observer.
- const side:Side=reversalSide!=='WAIT'?reversalSide:
-   pressure>=.12?'BUY':pressure<=-.12?'SELL':'WAIT';
- if(side==='WAIT')return none('لا يوجد ترجيح اتجاه من بيانات مغلقة');
+ const momentumSide:Side=pressure>=.12?'BUY':pressure<=-.12?'SELL':'WAIT';
+ // Use only genuinely timestamped, same-source flow available BEFORE
+ // the observation. Missing MT5 DOM is never treated as agreement.
+ const f=input.flow;
+ const flowValid=Boolean(f?.ready&&f.side!=='WAIT'&&f.asOf!=null&&
+   f.observedAt!=null&&f.asOf<=now&&f.observedAt<=now&&
+   now-f.asOf<=15000&&now-f.observedAt<=15000);
+ const flowSide:Side=flowValid?f!.side:'WAIT';
+ const candidate:Side=reversalSide!=='WAIT'?reversalSide:momentumSide;
+ // A conflicting verified flow observation is a veto, not a reversed
+ // order. Missing flow remains explicitly unconfirmed price action.
+ const side:Side=flowSide!=='WAIT'&&candidate!==flowSide?'WAIT':candidate;
+ if(side==='WAIT')return none(flowSide!=='WAIT'&&candidate!==flowSide?
+   'تعارض قراءة السيولة السعرية مع تدفق المصدر نفسه؛ لا إشارة':
+   'لا يوجد ترجيح اتجاه من بيانات مغلقة');
  const kind=reversalSide!=='WAIT'?'انعكاس محتمل بعد سحب قمة/قاع سابق':
    'استمرار محتمل من زخم مغلق (ليس توقع انعكاس)';
  return {phase,side,issuedFor:cut,observedAfterMs:Math.max(0,now-cut),
    strength:Math.min(90,Math.round(Math.abs(pressure)*100)),
    reason:(phase==='OPEN'?'قراءة بداية M5':phase==='FOLLOW'?'قراءة أثناء M5':'قراءة نهاية M5')+
     ' · '+kind+(m5Valid?' · سياق M5':'')+
+    (flowSide!=='WAIT'?' · تدفق المصدر متوافق':
+     ' · Order Flow الحقيقي غير مؤكد؛ قراءة حركة سعر فقط')+
     (cut>latestClose?' · وصول M1 متأخر دقيقة':'')+
     ' · توقع غير مؤكد، لا يمثل أمر تداول أو تدفق أوامر حقيقي',
    tradeEligible:false};
