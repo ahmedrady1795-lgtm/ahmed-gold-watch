@@ -13,6 +13,10 @@ export type MovementProof={
  trigger:number|null;invalidation:number|null;target:number|null;
  status:'PENDING'|'TARGET'|'STOP'|'TIMEOUT'|'AMBIGUOUS'|'UNKNOWN'|'NO_TARGET';
  resolvedAt:number|null;detectedAfterMs:number;leadSeconds:number|null;
+ // Next complete M5 candle after issuance, scored only when it has closed.
+ // Old records without this field remain unscored, never retroactively relabeled.
+ m5Outcome?:'PENDING'|'CORRECT'|'WRONG'|'FLAT'|'UNKNOWN';
+ m5ResolvedAt?:number|null;
 };
 type Opportunity={phase:string;side:string;sourceAt:number|null;
  trigger:number|null;invalidation:number|null;targets:number[];
@@ -29,22 +33,48 @@ export function safeMovementProof(raw:unknown):MovementProof[]{
   (x.kind==='EARLY'||x.kind==='BREAK')&&(x.side==='BUY'||x.side==='SELL')&&
   valid(x.issuedAt)&&valid(x.sourceAt)&&valid(x.priceAt)&&x.priceAt>0&&
   (x.quality==null||['SETUP','COUNTERTREND','OBSERVATION'].includes(x.quality))&&
+  (x.m5Outcome==null||['PENDING','CORRECT','WRONG','FLAT','UNKNOWN'].includes(x.m5Outcome))&&
   ['PENDING','TARGET','STOP','TIMEOUT','AMBIGUOUS','UNKNOWN','NO_TARGET'].includes(x.status)&&
   (x.target==null||valid(x.target))&&(x.invalidation==null||valid(x.invalidation))
  ).slice(-2000).map((x:any)=>({...x,leadSeconds:valid(x.leadSeconds)?x.leadSeconds:null}));
 }
 export function advanceMovementProof(input:{
  prior:MovementProof[];now:number;asset:'GOLD'|'BTC';source:string;
- price:number|null;signal:Opportunity;bars:unknown
+ price:number|null;signal:Opportunity;bars:unknown;m5Bars?:unknown
 }):MovementProof[]{
  const {now,asset,source,signal}=input;
  if(!valid(now)||now<=0||!source)return input.prior;
  const rows=(Array.isArray(input.bars)?input.bars:[]).filter(good)
   .filter(x=>x.time+60000<=now).sort((a,b)=>a.time-b.time);
  const unique=[...new Map(rows.map(x=>[x.time,x])).values()].sort((a,b)=>a.time-b.time);
+ const m5=(Array.isArray(input.m5Bars)?input.m5Bars:[]).filter(good)
+  .filter(x=>x.time%300000===0&&x.time+300000<=now)
+  .sort((a,b)=>a.time-b.time);
+ const completeM5=new Map(m5.map(x=>[x.time,x]));
  let modified=false;
  let next=input.prior.map(item=>{
-  if(item.asset!==asset||item.source!==source||item.status!=='PENDING')return item;
+  if(item.asset!==asset||item.source!==source)return item;
+  // Exactly the NEXT fully observable M5 candle; no unfinished or preceding OHLC.
+  // This audit is distinct from target/stop outcomes and never implies P&L.
+  if(item.m5Outcome==='PENDING'){
+    const start=Math.ceil(item.issuedAt/300000)*300000;
+    const closeAt=start+300000;
+    if(now>=closeAt){
+      const candle=completeM5.get(start);
+      if(candle){
+        const tolerance=Math.max(.01,item.priceAt*.000002);
+        const move=item.side==='BUY'?candle.close-item.priceAt:
+          item.priceAt-candle.close;
+        item={...item,m5Outcome:Math.abs(move)<=tolerance?'FLAT':
+          move>0?'CORRECT':'WRONG',m5ResolvedAt:closeAt};
+        modified=true;
+      }else if(now>closeAt+600000){
+        item={...item,m5Outcome:'UNKNOWN',m5ResolvedAt:closeAt};
+        modified=true;
+      }
+    }
+  }
+  if(item.status!=='PENDING')return item;
   const first=Math.ceil(item.issuedAt/60000)*60000;
   const end=item.issuedAt+horizon;
   const later=unique.filter(c=>c.time>=first&&c.time<end);
@@ -90,7 +120,8 @@ export function advanceMovementProof(input:{
        invalidation,target,
        status:target==null?'NO_TARGET':'PENDING',resolvedAt:null,
        detectedAfterMs:Math.max(0,now-signal.sourceAt),
-       leadSeconds:early?Math.round((signal.sourceAt-early.issuedAt)/1000):null
+       leadSeconds:early?Math.round((signal.sourceAt-early.issuedAt)/1000):null,
+       m5Outcome:'PENDING',m5ResolvedAt:null
      }];modified=true;
    }
  }
@@ -104,6 +135,11 @@ export function movementProofScore(rows:MovementProof[],asset:'GOLD'|'BTC'){
  const qualified=breaks.filter(x=>x.quality==='SETUP');
  const qualifiedSettled=qualified.filter(x=>['TARGET','STOP','TIMEOUT'].includes(x.status));
  const qualifiedHits=qualifiedSettled.filter(x=>x.status==='TARGET');
+ const m5Scored=breaks.filter(x=>x.m5Outcome==='CORRECT'||x.m5Outcome==='WRONG');
+ const m5Correct=m5Scored.filter(x=>x.m5Outcome==='CORRECT');
+ const earlyM5Scored=all.filter(x=>x.kind==='EARLY'&&
+   (x.m5Outcome==='CORRECT'||x.m5Outcome==='WRONG'));
+ const earlyM5Correct=earlyM5Scored.filter(x=>x.m5Outcome==='CORRECT');
  const lags=breaks.map(x=>x.detectedAfterMs/1000).filter(x=>valid(x)&&x>=0);
  const leads=breaks.map(x=>x.leadSeconds).filter(valid).filter(x=>x>=0);
  return {
@@ -114,6 +150,11 @@ export function movementProofScore(rows:MovementProof[],asset:'GOLD'|'BTC'){
   qualifiedRate:qualifiedSettled.length?
     Math.round(100*qualifiedHits.length/qualifiedSettled.length):null,
   countertrend:breaks.filter(x=>x.quality==='COUNTERTREND').length,
+  m5Scored:m5Scored.length,m5Correct:m5Correct.length,
+  m5Rate:m5Scored.length?Math.round(100*m5Correct.length/m5Scored.length):null,
+  earlyM5Scored:earlyM5Scored.length,earlyM5Correct:earlyM5Correct.length,
+  earlyM5Rate:earlyM5Scored.length?
+    Math.round(100*earlyM5Correct.length/earlyM5Scored.length):null,
   legacy:breaks.filter(x=>x.quality==null).length,
   stops:settled.filter(x=>x.status==='STOP').length,
   targetRate:settled.length?Math.round(100*hits.length/settled.length):null,
