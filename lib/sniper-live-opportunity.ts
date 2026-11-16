@@ -79,11 +79,14 @@ export function assessSniperLiveOpportunity(input:{
    const m15Opposed=m15Side!=='WAIT'&&m15Side!==side;
    const reward=goalPrices.length?(side==='BUY'?goalPrices[0]-price:price-goalPrices[0]):0;
    const risk=invalidation!=null?(side==='BUY'?price-invalidation:invalidation-price):0;
+   // Do not promote a breakout after the quote already ran far beyond its trigger.
+   const chaseDistance=trigger!=null?(side==='BUY'?price-trigger:trigger-price):Infinity;
+   const notChasing=chaseDistance>=-atr*.18&&chaseDistance<=atr*1.2;
    // This label grades the observed setup, NOT a proven win probability or order.
    // Opposing higher frames remain visible, but never masquerade as entry calls.
    const quality:LiveOpportunity['quality']=phase!=='BREAK_CONFIRMED'||side==='WAIT'?
      'OBSERVATION':m5Opposed||m15Opposed?'COUNTERTREND':
-     m5Side===side&&strength>=55&&risk>0&&risk<=atr*3&&
+     m5Side===side&&strength>=55&&notChasing&&risk>0&&risk<=atr*3&&
        reward>0&&reward<=atr*4&&reward/(risk+atr*.1)>=.9?
        'SETUP':'OBSERVATION';
    return {phase,side,trigger:trigger==null?null:round(trigger),
@@ -97,8 +100,9 @@ export function assessSniperLiveOpportunity(input:{
        'لا يوجد هدف M15/H1 صالح أمام السعر الحالي؛ لا نستنتج هدفًا وهميًا',
      tradeEligible:false};
  };
- // Scan a wider recent window: fast breaks may be missed when polling is delayed.
- // Only closed M1 candles count; stale events are ignored rather than replayed as fresh.
+ // Scan recent closed M1 evidence but only issue a LIVE chart label within
+ // 90 seconds of the actual close. Older breakouts are NOT new opportunities.
+ // Historical records are independently retained at their original issue times.
  if(atr>0)for(let i=m1.length-1;i>=Math.max(12,m1.length-12);i--){
    const bar=m1[i],history=m1.slice(i-12,i);
    const hi=Math.max(...history.map(b=>b.high));
@@ -117,7 +121,7 @@ export function assessSniperLiveOpportunity(input:{
      Math.min(...history.slice(-6).map(x=>x.low));
    const eventAt=bar.time+60000;
    const age=now-eventAt;
-   if(age<0||age>8*60000)continue;
+   if(age<0||age>90000)continue;
    const cancelled=sell?price>trigger+atr*.25:price<trigger-atr*.25;
    const retesting=Math.abs(price-trigger)<=atr*.35;
    const strength=48+Math.min(22,body/atr*8)+(m5Side===side?9:0)-
