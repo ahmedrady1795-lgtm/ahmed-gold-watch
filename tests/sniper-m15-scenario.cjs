@@ -212,3 +212,25 @@ assert.match(theme,/\.sniper-m15-scenario-summary/,
 assert.match(layout,/m15-scenario-first\.css/,
  'new live scenario styles are imported into the page');
 console.log('PASS: M15 historical OHLC, real partial source, scenario motifs, 3 TP levels, no fabricated touches and chart-first UI');
+
+// M5 display uses a five-minute bucket, independent of the M15 analysis clock.
+const fiveStart=Date.parse('2026-11-16T06:05:00Z');
+const fiveNow=fiveStart+125000;
+const fiveMinutes=[0,1].map(i=>({time:fiveStart+i*60000,open:100+i,
+ high:102+i,low:99+i,close:101+i}));
+const fiveTick=observeM15Tick(null,{now:fiveNow,at:fiveNow-1000,price:104,
+ source:'Exness MT5',historySource:'Exness MT5',period:300000});
+assert.equal(fiveTick.time,fiveStart,'M5 tick anchored to 06:05, not 06:00');
+const fiveCandle=sampledLiveM15(fiveMinutes,fiveNow,fiveTick,'Exness MT5',300000);
+assert.equal(fiveCandle.time,fiveStart);
+assert.equal(fiveCandle.open,100);
+assert.equal(fiveCandle.high,104);
+assert.equal(fiveCandle.low,99);
+assert.equal(fiveCandle.close,104);
+assert.equal(fiveCandle.minutes,2);
+const rolled=observeM15Tick(fiveTick,{now:fiveStart+300100,at:fiveStart+300100,
+ price:103,source:'Exness MT5',historySource:'Exness MT5',period:300000});
+assert.equal(rolled.time,fiveStart+300000);
+assert.equal(rolled.open,103,'new M5 starts from its own first observed tick');
+assert.equal(rolled.high,103,'prior bucket high cannot leak into next M5');
+console.log('PASS: real M5 OHLC aggregation, tick updates and five-minute rollover');

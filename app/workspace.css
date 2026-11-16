@@ -2228,3 +2228,10 @@ body:has(.modern-workspace.compact-sniper){
  .news-ticker-prebias{font-size:10px}
  .news-ticker-line:has(.news-ticker-prebias) .news-ticker-title{max-width:28vw}
 }
+
+.sniper-opportunity-history{margin:8px;padding:10px;border:1px solid #294858;border-radius:8px;background:#0a1924;color:#d3e5ec;font-size:12px}
+.sniper-opportunity-history summary{cursor:pointer;font-weight:700}
+.sniper-opportunity-history small{display:block;margin:8px 0;color:#99b4c2;line-height:1.7}
+.sniper-opportunity-history table{width:100%;border-collapse:collapse;white-space:nowrap}
+.sniper-opportunity-history th,.sniper-opportunity-history td{padding:9px 8px;border-bottom:1px solid #223c49;text-align:center}
+.sniper-opportunity-history button{padding:6px 12px;margin-top:8px;background:#153544;color:#d3e5ec;border:1px solid #426477;border-radius:5px}

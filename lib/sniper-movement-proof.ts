@@ -28,7 +28,7 @@ export function safeMovementProof(raw:unknown):MovementProof[]{
   valid(x.issuedAt)&&valid(x.sourceAt)&&valid(x.priceAt)&&x.priceAt>0&&
   ['PENDING','TARGET','STOP','TIMEOUT','AMBIGUOUS','UNKNOWN','NO_TARGET'].includes(x.status)&&
   (x.target==null||valid(x.target))&&(x.invalidation==null||valid(x.invalidation))
- ).slice(-300).map((x:any)=>({...x,leadSeconds:valid(x.leadSeconds)?x.leadSeconds:null}));
+ ).slice(-2000).map((x:any)=>({...x,leadSeconds:valid(x.leadSeconds)?x.leadSeconds:null}));
 }
 export function advanceMovementProof(input:{
  prior:MovementProof[];now:number;asset:'GOLD'|'BTC';source:string;
@@ -90,7 +90,7 @@ export function advanceMovementProof(input:{
      }];modified=true;
    }
  }
- return modified?next.slice(-300):input.prior;
+ return modified?next.slice(-2000):input.prior;
 }
 export function movementProofScore(rows:MovementProof[],asset:'GOLD'|'BTC'){
  const all=rows.filter(x=>x.asset===asset);

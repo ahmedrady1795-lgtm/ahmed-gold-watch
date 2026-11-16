@@ -50,14 +50,15 @@ const venue=(s:string)=>{
    v.includes('exness')?'EXNESS':'UNKNOWN';
 };
 export function observeM15Tick(prev:ObservedM15|null,input:{
- now:number;at:number;price:number;source:string;historySource:string
+ now:number;at:number;price:number;source:string;historySource:string;period?:number
 }):ObservedM15|null{
  const {now,at,price,source,historySource}=input,feed=venue(source);
  if(feed==='UNKNOWN'||feed!==venue(historySource)||
    ![now,at,price].every(Number.isFinite)||price<=0||
    at>now+1000||now-at>10000||at<=0)return null;
- const time=Math.floor(at/900000)*900000;
- if(time!==Math.floor(now/900000)*900000)return null;
+ const period=input.period===300000?300000:900000;
+ const time=Math.floor(at/period)*period;
+ if(time!==Math.floor(now/period)*period)return null;
  if(!prev||prev.time!==time||prev.venue!==feed)
    return {time,open:price,high:price,low:price,close:price,
      lastAt:at,count:1,venue:feed};
@@ -66,8 +67,8 @@ export function observeM15Tick(prev:ObservedM15|null,input:{
    close:price,lastAt:at,count:prev.count+1};
 }
 export function sampledLiveM15(raw:readonly M15Bar[],now:number,
- observed:ObservedM15|null=null,historySource=''){
- const start=Math.floor(now/900000)*900000;
+ observed:ObservedM15|null=null,historySource='',period=900000){
+ const start=Math.floor(now/period)*period;
  const minutes=raw.filter(b=>b.time>=start&&b.time<now&&
    b.time%60000===0&&b.time+60000<=now&&
    [b.open,b.high,b.low,b.close].every(Number.isFinite)&&

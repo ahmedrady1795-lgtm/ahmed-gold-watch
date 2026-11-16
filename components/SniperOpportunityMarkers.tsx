@@ -1,4 +1,5 @@
 import type {LiveOpportunity} from '../lib/sniper-live-opportunity';
+import {outcomeLabel} from './SniperOpportunityHistory';
 import type {MovementProof} from '../lib/sniper-movement-proof';
 
 type Props={signal:LiveOpportunity;records:MovementProof[];asset:'GOLD'|'BTC';
@@ -18,12 +19,17 @@ export default function SniperOpportunityMarkers(p:Props){
  for(const r of rows){
    if(shown.some(s=>Math.abs(p.timeX(s.issuedAt)-p.timeX(r.issuedAt))<54&&
      Math.abs(p.py(s.priceAt)-p.py(r.priceAt))<34))continue;
-   shown.push(r);if(shown.length===6)break;
+   shown.push(r);
  }
  const s=p.signal;
  const active=['PREPARE','TESTING','BREAK_CONFIRMED'].includes(s.phase)&&
    (s.side==='BUY'||s.side==='SELL')&&s.trigger!=null&&visible(s.trigger);
  return <g className="sniper-opportunity-markers" aria-label="أماكن فرص الشراء والبيع">
+   {rows.filter(r=>!shown.includes(r)).map(r=><g key={r.id}>
+     <circle cx={p.timeX(r.issuedAt)} cy={p.py(r.priceAt)} r="2.6"
+       fill={r.side==='BUY'?'#57efb8':'#ff8095'}/>
+     <title>{(r.side==='BUY'?'شراء':'بيع')+' · '+r.priceAt.toFixed(2)+' · '+outcomeLabel[r.status]}</title>
+   </g>)}
    {shown.map(r=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt),buy=r.side==='BUY';
      const ink=buy?'#57efb8':'#ff8095',labelY=fit(y+(buy?23:-23));
@@ -31,19 +37,19 @@ export default function SniperOpportunityMarkers(p:Props){
      return <g key={r.id} data-side={r.side} data-issued-at={r.issuedAt}>
        <title>{(buy?'شراء':'بيع')+' · رصد سابق عند '+r.priceAt.toFixed(2)+
          ' · '+new Date(r.issuedAt).toLocaleTimeString('en-GB',{timeZone:'Asia/Dubai'})+
-         ' · إشارة تحليلية مسجلة وليست صفقة منفذة'}</title>
+         ' · '+outcomeLabel[r.status]+' · إشارة تحليلية مسجلة وليست صفقة منفذة'}</title>
        <line x1={x} x2={labelX} y1={y} y2={labelY} stroke={ink} strokeWidth="1"/>
        <circle cx={x} cy={y} r="3" fill={ink}/>
        <rect x={labelX-24} y={labelY-10} width="48" height="20" rx="5"
          fill="#081d29" stroke={ink} strokeOpacity=".7"/>
        <text x={labelX} y={labelY+4} textAnchor="middle" direction="rtl"
-         fontSize="11" fontWeight="800" fill={ink}>{buy?'شراء':'بيع'}</text>
+         fontSize="11" fontWeight="800" fill={ink}>{(buy?'شراء':'بيع')+(r.status==='TARGET'?' ✓':r.status==='STOP'?' ✕':'')}</text>
      </g>;
    })}
    {active&&(()=>{
      const buy=s.side==='BUY',confirmed=s.phase==='BREAK_CONFIRMED';
      const ink=buy?'#57efb8':'#ff8095',y=p.py(s.trigger!);
-     const x=p.split+12,width=Math.min(126,p.end-x-4),labelY=fit(y);
+     const width=126,x=Math.min(p.split+12,p.end-width-4),labelY=fit(y);
      const label=(confirmed?'':'ترقب ')+(buy?'شراء':'بيع');
      return <g data-phase={s.phase} aria-label={label+' عند '+s.trigger!.toFixed(2)}>
        <title>{s.reason+' · المستوى '+s.trigger!.toFixed(2)+

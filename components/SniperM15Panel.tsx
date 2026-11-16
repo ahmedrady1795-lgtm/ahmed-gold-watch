@@ -44,6 +44,7 @@ import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {detectPreMovePressure} from '../lib/pre-move-pressure';
 import {assessSniperLiveOpportunity} from '../lib/sniper-live-opportunity';
 import SniperOpportunityMarkers from './SniperOpportunityMarkers';
+import SniperOpportunityHistory from './SniperOpportunityHistory';
 import {advanceMovementProof,movementProofScore,safeMovementProof,type MovementProof} from '../lib/sniper-movement-proof';
 import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
 import {buildM15LiquidityBoard} from '../lib/sniper-m15-liquidity-board';
@@ -125,13 +126,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const x=asset==='GOLD'?data?.gold:data?.bitcoin;
  const liveQuote=asset==='GOLD'?goldLive:btcLive;
  const [observedM15,setObservedM15]=useState<ObservedM15|null>(null);
- // Use same-venue observed ticks to update the live M15 OHLC between M1 closes.
+ const observedFeedKey=useRef('');
+ // Preserve observed M5 extrema across a temporary quote outage, never across feeds.
  useEffect(()=>{
-   setObservedM15(prev=>observeM15Tick(prev,{
+   const key=[asset,x?.candleSource,liveQuote?.source].join(':');
+   const sameFeed=observedFeedKey.current===key;
+   observedFeedKey.current=key;
+   setObservedM15(prev=>observeM15Tick(sameFeed?prev:null,{
      now,at:Number(liveQuote?.sourceTime),price:Number(liveQuote?.price),
      source:String(liveQuote?.source||''),
-     historySource:String(x?.candleSource||'')
-   }));
+     historySource:String(x?.candleSource||''),period:300000
+   })??(sameFeed&&prev?.time===Math.floor(now/300000)*300000?prev:null));
  },[asset,now,liveQuote?.sourceTime,liveQuote?.price,liveQuote?.source,x?.candleSource]);
  const marketOpen=asset==='BTC'||goldMarketSession(now).open;
  const providerTransition=asset==='BTC'&&Boolean(x?.providerTransition);
@@ -247,17 +252,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    outlook.invalidation??(m.watchReady?m.displayStop:null);
  // The chart may use closed M15/H1 targets even when no qualified trade exists.
  // Missing targets do not force an invented TP or a permanently blank chart.
- const forming=sampledLiveM15(m.candles,now,observedM15,String(x?.candleSource||''));
- // Live M15 combines closed M1 OHLC with actual same-venue sampled ticks.
+ const forming=sampledLiveM15(m.candles,now,observedM15,String(x?.candleSource||''),300000);
+ // Live M5 combines closed M1 OHLC with actual same-venue sampled ticks.
  const lastClosedM1=m.candles.at(-1);
  const m1Recent=Boolean(lastClosedM1&&Number.isFinite(lastClosedM1.time)&&
    now-lastClosedM1.time-60000>=0&&now-lastClosedM1.time-60000<125000);
  const tickRecent=Boolean(observedM15&&observedM15.time===
-   Math.floor(now/900000)*900000&&now-observedM15.lastAt<=10000);
- // Show observed live partial M15 independently of gaps in older M15 bars.
+   Math.floor(now/300000)*300000&&now-observedM15.lastAt<=10000);
+ // Show observed live partial M5 independently of gaps in older analysis bars.
  // Forecast issuance and trade eligibility still require verified history.
  const formingVisible=Boolean(forming&&!providerTransition&&
-   marketOpen&&forming.time===Math.floor(now/900000)*900000&&
+   marketOpen&&forming.time===Math.floor(now/300000)*300000&&
    (m1Recent||tickRecent));
  const validLive=formingVisible&&m.historyFresh&&m.sniper.view.priceFresh;
  // Do not start an apparently FUTURE M15 route at the prior closed candle
@@ -268,9 +273,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // and redraw the forecast every few seconds.
  const anchor=validLive&&forming&&m.candles.at(-1)?
    m.candles.at(-1)!.close:null;
- // Draw the nearest 18 authentic M15 candles by default. Older, real
- // candles remain available via the context toggle; neither mode edits OHLC.
- const trueHistory=focusView?recent.slice(-18):recent;
+ // The context toggle adds older actual candles without changing their OHLC.
+ // Keep analysis on M15, but render genuine source-backed M5 OHLC.
+ const realM5=useMemo(()=>{
+   const raw=Array.isArray(x?.chartHigherFrames?.m5)?x.chartHigherFrames.m5:[];
+   const bars=raw.filter((b:any)=>b&&[b.time,b.open,b.high,b.low,b.close].every(Number.isFinite)&&
+     b.time>0&&b.time%300000===0&&b.time+300000<=now&&b.low>0&&
+     b.high>=Math.max(b.open,b.close)&&b.low<=Math.min(b.open,b.close));
+   return [...new Map<number,{time:number;open:number;high:number;low:number;close:number}>(
+     bars.map((b:any)=>[b.time,b] as const)).values()].sort((a,b)=>a.time-b.time);
+ },[x?.chartHigherFrames?.m5,now]);
+ const trueHistory=realM5.slice(focusView?-48:-144);
  const price=m.price;
  const pools=useMemo(()=>buildChartOverlay({
    now,price:m.price,historyFresh:m.historyFresh,
@@ -453,7 +466,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  useEffect(()=>{
    if(!movementProofLoaded)return;
    try{window.localStorage.setItem('qannas-movement-proof-v1',
-     JSON.stringify(movementRecords.slice(-300)));}catch{}
+     JSON.stringify(movementRecords.slice(-2000)));}catch{}
  },[movementRecords,movementProofLoaded]);
  useEffect(()=>{
    if(!movementProofLoaded)return;
@@ -664,7 +677,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  });
  const phase=sniperPhaseBadge({ready:liquidity.ready,
    contextKind:liquidity.context?.kind,phase:liquidity.phase,side:chartSide});
- const W=430,H=704,left=8,split=projected.ready||showWatchGuide?215:422,end=422,
+ const W=492,H=704,left=8,split=projected.ready||showWatchGuide?280:400,end=422,
    plotTop=26,plotBottom=H-33;
  // A single absolute price axis contains EVERY currently valid target and
  // stop. No fake vertical positioning of offscreen targets.
@@ -703,7 +716,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      typeof v==='number'&&Number.isFinite(v)&&v>0)??null;
  const min=important.length?Math.min(...important):(chartReference??1);
  const max=important.length?Math.max(...important):(chartReference??1);
- const viewport=mt5M15Viewport({mode:focusView?'FOCUS':'ALL',allLow:min,allHigh:max,
+ const viewport=mt5M15Viewport({mode:'ALL',allLow:Math.min(...trueHistory.flatMap(b=>[b.low]),...liveScaleValues,chartReference??min),
+   allHigh:Math.max(...trueHistory.flatMap(b=>[b.high]),...liveScaleValues,chartReference??max),
    lastPrice:chartReference,history:trueHistory,
    // In WATCH mode use both closed-M15-derived illustrative routes to size
    // the display. Ignore remote levels for vertical zoom; never move prices.
@@ -719,15 +733,20 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ...(price!=null?[{key:'LIVE',price,kind:'PRICE'}]:[])
  ];
  const actualStride=(split-left-5)/Math.max(trueHistory.length,1);
- const timeX=(time:number)=>left+
-   clamp((time-(trueHistory[0]?.time??time))/900000,0,trueHistory.length)*actualStride;
+ const timeX=(time:number)=>{
+   const i=trueHistory.findIndex(b=>b.time>time);
+   if(i===0)return left;
+   const index=i<0?trueHistory.length-1:i-1;
+   const bar=trueHistory[index];
+   return left+(bar?index+clamp((time-bar.time)/300000,0,1):0)*actualStride;
+ };
  const liquidityColor=(kind:string)=>
    kind==='DEMAND'||kind==='LOW_POOL'||kind==='REBOUND_UP'?
    '#41cfab':'#ff7b90';
  // Identical M15 candle geometry on both sides. The original forecast is
  // 12 scored hypothesis bars plus an explicitly unscored target illustration.
  const projectedStride=(end-split-8)/Math.max(12,renderedBars.length);
- const realCandleWidth=clamp(actualStride*.68,2.2,5.2);
+ const realCandleWidth=clamp(actualStride*.68,.8,5.2);
   // Display a maximum of five DISTINCT actual OHLC zones. Several demand,
  // rejection and sweep levels can occupy the exact same pixels; painting
  // each translucent band over the others created the misleading red blob.
@@ -793,16 +812,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const labelBy=(s:string)=>s==='SL'?'إبطال':s==='LIVE'?'LIVE':
    s.startsWith('WATCH')?'رصد'+s.slice(5):s;
  const grid=Array.from({length:9},(_,i)=>lo+(hi-lo)*i/8);
- const latestClosed=actual.at(-1);
+ const latestClosed=trueHistory.at(-1);
  // Opportunity labels use the live observer and its immutable issued records.
  return <section className="sniper-m15-panel" dir="rtl"
-   aria-label="القناص: شموع ربع ساعة فعلية وسيناريو M15 تاريخي مشروط">
+   aria-label="القناص: شموع خمس دقائق فعلية وسياق تحليل M15 مشروط">
    <header className="sniper-m15-head">
      {assetView==='ALL'?<div className="sniper-m15-assets" role="group" aria-label="الأصل">
        <button type="button" onClick={()=>setChosen('GOLD')} aria-pressed={asset==='GOLD'}>XAUUSD</button>
        <button type="button" onClick={()=>setChosen('BTC')} aria-pressed={asset==='BTC'}>BTCUSD</button>
      </div>:<b>{asset==='GOLD'?'XAUUSD':'BTCUSD'}</b>}
-     <b className="sniper-m15-frame">{chartMode}</b>
+     <b className="sniper-m15-frame">{chartMode==='M15'?'M5':chartMode}</b>
      {chartMode==='M15'&&<button type="button" className="sniper-m15-liquidity-toggle"
        aria-pressed={showLiquidity} onClick={()=>setShowLiquidity(v=>!v)}
        title="مناطق سيولة القمم والقيعان، الطلب والعرض والارتداد أو الرفض بعد إغلاق M15">
@@ -812,7 +831,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <button type="button" aria-pressed={chartMode==='M1'}
        onClick={()=>setChartMode('M1')}>M1 · قنص كل شمعة</button>
      <button type="button" aria-pressed={chartMode==='M15'}
-       onClick={()=>setChartMode('M15')}>M15 · رسم السيناريو</button>
+       onClick={()=>setChartMode('M15')}>M5 · رسم السيناريو</button>
    </nav>
    <SniperOrderFlowStrip data={flowObservation}/>
    {chartMode==='M1'?<SniperM1CandleHunter asset={asset}
@@ -874,14 +893,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    </div>
    <div className="sniper-m15-compact-status" role="status">
      <span>{projected.ready?'سيناريو M15 · مسار مشروط':showWatchGuide?
-       (watchGuide.referenceOnly?'مراقبة M15 جزئية · بلا إشارة دخول':'نطاق مراقبة M15'):'شموع M15 حقيقية'}
-       {focusView?' · آخر 18 شمعة':' · كل التاريخ'}</span>
+       (watchGuide.referenceOnly?'مراقبة M15 جزئية · بلا إشارة دخول':'نطاق مراقبة M15'):'شموع M5 حقيقية'}
+       {' · شموع M5: '+trueHistory.length}</span>
      <b dir="ltr">{formingVisible&&forming?'LIVE '+n(forming.close):
        latestClosed?'CLOSE '+n(latestClosed.close):'—'}</b>
    </div>
    <div className="sniper-scenario-chart-legend"
      aria-label="مفتاح الشموع الحقيقية ومسارات المراقبة المشروطة">
-     <b>PRICE ACTION / M15</b>
+     <b>PRICE ACTION / M5</b>
      <span className="is-actual">شموع حقيقية مغلقة</span>
      <span className="is-conditional">{routeObstacle.blocked?
        routeObstacle.reason:
@@ -893,9 +912,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
-         (projected.ready?'شموع M15 حقيقية ومسار مشروط بلا شموع مستقبلية؛ ليس توقعًا مضمونًا. ':
-           showWatchGuide?'شموع M15 مغلقة ومساران مشروطان من ATR للمراقبة، وليسا توقع شموع أو أوامر. ':
-           'شموع M15 مغلقة فقط؛ لا يوجد نطاق مراقبة موثوق حاليًا. ')+
+         (projected.ready?'شموع M5 حقيقية ومسار M15 مشروط بلا شموع مستقبلية؛ ليس توقعًا مضمونًا. ':
+           showWatchGuide?'شموع M5 مغلقة ومساران مشروطان من ATR للمراقبة، وليسا توقع شموع أو أوامر. ':
+           'شموع M5 مغلقة فقط؛ لا يوجد نطاق مراقبة موثوق حاليًا. ')+
          (verifiedArchive.ready?'أرشيف حقيقي متحقق '+verifiedArchive.storedBars+' شمعة':'أرشيف سنوات غير متاح')+
          '. تقييم خارج العينة '+walkForward.selected+' قرارًا، لا يثبت أفضلية.'
        }
@@ -1177,7 +1196,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              fill="none" stroke="#a9e9ff" strokeOpacity=".5"
              strokeWidth=".7" strokeDasharray="2 3"/>
            {candle(forming.open,forming.high,forming.low,forming.close,
-             split-4,Math.max(3.6,realCandleWidth*1.6),
+             split-4,realCandleWidth,
              'live-m15-'+forming.time)}
            <circle cx={split-4} cy={py(forming.close)} r="2.3"
              fill="#c0f7ff" stroke="#00212c" strokeWidth=".7"/>
@@ -1196,7 +1215,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                {formingBias==='BUY'?'BUY':'SELL'}
              </text>
            </g>}
-           <title>{'شمعة M15 جارية وليست مغلقة: '+n(forming.close)+
+           <title>{'شمعة M5 جارية وليست مغلقة: '+n(forming.close)+
              ' · شموع M1 '+forming.minutes+
               ' · عينات تيك '+forming.sampledTicks+
               (forming.minutes===0?' · رصد تيك جزئي، ليس شمعة مكتملة':'')}</title>
@@ -1279,11 +1298,23 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            {firstM15Stats.label}</text>
          <title>{firstM15Stats.detail}</title>
        </g>}
+       <g className="sniper-price-axis" aria-label="تدريج السعر">
+         <rect x={end+1} y={plotTop} width={W-end-1} height={plotBottom-plotTop} fill="#0b1722"/>
+         {grid.map((v,i)=><text key={i} x={W-4} y={py(v)+4} textAnchor="end"
+           direction="ltr" fill="#c6d6e4" fontSize="10">{v.toFixed(2)}</text>)}
+         {chartReference!=null&&<>
+           <line x1={left} x2={end} y1={py(chartReference)} y2={py(chartReference)}
+             stroke="#60dfd0" strokeDasharray="3 3" strokeWidth=".8"/>
+           <rect x={end+1} y={clamp(py(chartReference)-11,plotTop,plotBottom-22)} width={W-end-2} height="22" fill="#12685f"/>
+           <text x={W-4} y={clamp(py(chartReference)-11,plotTop,plotBottom-22)+15}
+             textAnchor="end" direction="ltr" fontSize="10" fontWeight="800" fill="white">{chartReference.toFixed(2)}</text>
+         </>}
+       </g>
        <SniperOpportunityMarkers signal={liveOpportunity} records={movementRecords}
          asset={asset} source={String(x?.candleSource||'')}
          from={trueHistory[0]?.time??now} now={now} left={left} split={split}
          end={end} top={plotTop} bottom={plotBottom} py={py} timeX={timeX}/>
-       <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
+       <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M5 · REAL</text>
        <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'} fontSize="10" textAnchor="start" direction="ltr">{projected.ready?'M15 · PATH':showWatchGuide?'M15 · WATCH':'M15 · LIVE'}</text>
        {showExtra&&<text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
          textAnchor="start" direction="rtl">{projected.ready?'مسار مشروط دون شموع مستقبلية؛ التوقع الأصلي محفوظ للتقييم فقط':showWatchGuide?'مساران مشروطان من M15 مغلق · ليست شموع مستقبلية':'شموع فعلية متصلة · لا توجد شموع توقع معتمدة الآن'}</text>}
@@ -1293,9 +1324,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {aligned&&<text x={split+8} y={H-4} fill="#8acfb9" fontSize="8"
          textAnchor="start" direction="ltr">{'→ '+h(aligned.anchorTime+900000)}</text>}
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
-         {renderedBars.length?'PATH'+(showHistoricalExtension?' · أهداف':''):'M15'}</text>
+         {renderedBars.length?'PATH'+(showHistoricalExtension?' · أهداف':''):'M5'}</text>
      </svg>
    </div>
+     <small style={{display:'block',padding:'8px',color:'#aac5d3'}}>
+       شموع M5 فعلية · {String(x?.candleSource||'المصدر غير متاح')} · سياق التحليل M15
+     </small>
+     <SniperOpportunityHistory key={asset} records={movementRecords} asset={asset}/>
      <SniperStructureRSI structure={structure}/>
      {(scaleLevels.some(level=>level.kind!=='PRICE')||
         showLiquidity&&positionedLiquidityLabels.length>0)&&

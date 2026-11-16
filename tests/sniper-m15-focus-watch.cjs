@@ -72,10 +72,10 @@ const structureOverlay=fs.readFileSync('components/SniperMarketStructureOverlay.
 const style=fs.readFileSync('app/hunter-cockpit-layout.css','utf8');
 assert.match(panel,/const \[focusView,setFocusView\]=useState\(true\)/,
  'on mobile the first M15 screen must default to an actual-price FOCUS, not ALL');
-assert.match(panel,/const trueHistory=focusView\?recent\.slice\(-18\):recent/,
- 'only 18 real closed M15 candles are shown in focus mode');
-assert.match(panel,/mode:focusView\?'FOCUS':'ALL'/,
- 'viewport toggle must affect vertical price scale as well as candle count');
+assert.match(panel,/const trueHistory=realM5\.slice\(focusView\?-48:-144\)/,
+ '48 real M5 candles by default, up to 144 in context mode');
+assert.match(panel,/mode:'ALL',allLow:Math\.min\(\.\.\.trueHistory/,
+ 'viewport follows displayed real candles, not distant scenario levels');
 assert.match(panel,/forecast:\[\]/,
  'simulated OHLC cannot distort the authentic candle axis')
 assert.match(panel,/onClick=\{\(\)=>setFocusView\(v=>!v\)\}/,
