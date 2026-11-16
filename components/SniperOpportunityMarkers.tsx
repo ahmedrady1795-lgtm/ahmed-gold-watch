@@ -21,10 +21,37 @@ export default function SniperOpportunityMarkers(p:Props){
      Math.abs(p.py(s.priceAt)-p.py(r.priceAt))<34))continue;
    shown.push(r);
  }
+ // Keep genuinely issued PRE-break warnings visible at their original
+ // observation time. Never backfill an early alert from a later breakout.
+ const early=p.records.filter(r=>r.asset===p.asset&&r.source===p.source&&
+   r.kind==='EARLY'&&r.issuedAt>=p.from&&r.issuedAt<=p.now&&visible(r.priceAt))
+   .sort((a,b)=>b.issuedAt-a.issuedAt);
+ const earlyShown:MovementProof[]=[];
+ for(const r of early){
+   if(earlyShown.length>=8)break;
+   if(earlyShown.some(e=>Math.abs(p.timeX(e.issuedAt)-p.timeX(r.issuedAt))<35&&
+     Math.abs(p.py(e.priceAt)-p.py(r.priceAt))<24))continue;
+   earlyShown.push(r);
+ }
  const s=p.signal;
  const active=['PREPARE','TESTING','BREAK_CONFIRMED'].includes(s.phase)&&
    (s.side==='BUY'||s.side==='SELL')&&s.trigger!=null&&visible(s.trigger);
- return <g className="sniper-opportunity-markers" aria-label="أماكن فرص الشراء والبيع">
+ return <g className="sniper-opportunity-markers" aria-label="أماكن الرصد المبكر والشراء والبيع">
+   {earlyShown.map((r,i)=>{
+     const x=p.timeX(r.issuedAt),y=p.py(r.priceAt),buy=r.side==='BUY';
+     const ink='#e0be78';
+     return <g key={r.id} data-kind="EARLY" data-issued-at={r.issuedAt}>
+       <path d={buy?`M${x} ${y-8} L${x-6} ${y+2} L${x+6} ${y+2} Z`:
+         `M${x} ${y+8} L${x-6} ${y-2} L${x+6} ${y-2} Z`}
+         stroke={ink} strokeWidth="1.3" fill="#2c2414"/>
+       <title>{'ترقب '+(buy?'شراء':'بيع')+' قبل الكسر · '+
+         r.priceAt.toFixed(2)+' · '+outcomeLabel[r.status]+
+         ' · محفوظ عند الرصد وليس إشارة تنفيذ'}</title>
+       {i<3&&<text x={Math.max(p.left+22,Math.min(p.split-22,x))}
+         y={fit(y+(buy?17:-14))} textAnchor="middle" direction="rtl"
+         fontSize="8.5" fontWeight="700" fill={ink}>{buy?'ترقب ↑':'ترقب ↓'}</text>}
+     </g>;
+   })}
    {rows.filter(r=>!shown.includes(r)).map(r=><g key={r.id}>
      <circle cx={p.timeX(r.issuedAt)} cy={p.py(r.priceAt)} r="2.6"
        fill={r.side==='BUY'?'#57efb8':'#ff8095'}/>
@@ -32,12 +59,14 @@ export default function SniperOpportunityMarkers(p:Props){
    </g>)}
    {shown.map(r=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt),buy=r.side==='BUY';
-     const ink=r.quality==='COUNTERTREND'?'#dfbb80':
+     const ink=r.quality==null?'#96a3b5':
+       r.quality==='COUNTERTREND'?'#dfbb80':
        r.quality==='OBSERVATION'?'#9bafc6':buy?'#57efb8':'#ff8095';
      const labelY=fit(y+(buy?23:-23));
-     const labelX=Math.max(p.left+34,Math.min(p.split-34,x));
+     const labelX=Math.max(p.left+43,Math.min(p.split-43,x));
      const action=(buy?'شراء':'بيع');
-     const label=r.quality==='COUNTERTREND'?action+' ⚠':
+     const label=r.quality==null?'قديم '+action:
+       r.quality==='COUNTERTREND'?action+' ⚠':
        r.quality==='OBSERVATION'?'رصد '+(buy?'↑':'↓'):action;
      return <g key={r.id} data-side={r.side} data-issued-at={r.issuedAt}>
        <title>{(buy?'شراء':'بيع')+' · رصد سابق عند '+r.priceAt.toFixed(2)+
@@ -48,7 +77,7 @@ export default function SniperOpportunityMarkers(p:Props){
          ' · إشارة تحليلية مسجلة وليست صفقة منفذة'}</title>
        <line x1={x} x2={labelX} y1={y} y2={labelY} stroke={ink} strokeWidth="1"/>
        <circle cx={x} cy={y} r="3" fill={ink}/>
-       <rect x={labelX-32} y={labelY-10} width="64" height="20" rx="5"
+       <rect x={labelX-40} y={labelY-10} width="80" height="20" rx="5"
          fill="#081d29" stroke={ink} strokeOpacity=".7"/>
        <text x={labelX} y={labelY+4} textAnchor="middle" direction="rtl"
          fontSize="10.3" fontWeight="800" fill={ink}>{label+(r.status==='TARGET'?' ✓':r.status==='STOP'?' ✕':'')}</text>
