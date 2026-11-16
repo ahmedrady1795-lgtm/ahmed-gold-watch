@@ -499,6 +499,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    .sort((a,b)=>b.issuedAt-a.issuedAt)[0];
  const earlySide=currentCandleRecord?.side??candleLean.side;
  const earlyPhase=currentCandleRecord?.kind??candleLean.phase;
+ const hasEarlySignal=Boolean(currentCandleRecord||candleLean.phase!=='WAIT');
  const rawIssuance=assessM15ScenarioIssuance({
    side:safeSide,qualified,radarStatus:radar.status,radarSide:radar.side,
    m15Side:m15Bias.side,m15Votes:m15Bias.votes,
@@ -923,10 +924,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      earlySide==='SELL'?'is-sell':'is-wait')} role="status"
      aria-label="توقع مراقبة مبكر لاتجاه M5، وليس تنفيذ صفقة">
      <strong>{earlySide==='BUY'?'شراء ↑':earlySide==='SELL'?'بيع ↓':'ترقب M5'}</strong>
-     <span>{earlySide!=='WAIT'?
+     <span>{hasEarlySignal?
        (earlyPhase==='CLOSE'?'آخر دقيقة من الشمعة':'بداية الشمعة')+
        ' · اتجاه متوقع غير مؤكد':'انتظار دليل من إغلاق M1'}</span>
-     <small>{earlySide!=='WAIT'?'السعر عند الرصد '+
+     <small>{hasEarlySignal?'السعر عند الرصد '+
        n(currentCandleRecord?.priceAt??price):'قراءة مبكرة وليست صفقة'}</small>
    </div>
    <div className="sniper-scenario-chart-legend"
