@@ -9,12 +9,14 @@ type Bar={time:number;open:number;high:number;low:number;close:number};
 export type MovementProof={
  id:string;asset:'GOLD'|'BTC';source:string;kind:'EARLY'|'BREAK';
  side:Side;sourceAt:number;issuedAt:number;priceAt:number;
+ quality?:'SETUP'|'COUNTERTREND'|'OBSERVATION';
  trigger:number|null;invalidation:number|null;target:number|null;
  status:'PENDING'|'TARGET'|'STOP'|'TIMEOUT'|'AMBIGUOUS'|'UNKNOWN'|'NO_TARGET';
  resolvedAt:number|null;detectedAfterMs:number;leadSeconds:number|null;
 };
 type Opportunity={phase:string;side:string;sourceAt:number|null;
- trigger:number|null;invalidation:number|null;targets:number[]};
+ trigger:number|null;invalidation:number|null;targets:number[];
+ quality?:'SETUP'|'COUNTERTREND'|'OBSERVATION'};
 const horizon=60*60000;
 const valid=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
 const good=(x:any):x is Bar=>x&&[x.time,x.open,x.high,x.low,x.close].every(valid)&&
@@ -26,6 +28,7 @@ export function safeMovementProof(raw:unknown):MovementProof[]{
   (x.asset==='GOLD'||x.asset==='BTC')&&typeof x.source==='string'&&x.source.length<150&&
   (x.kind==='EARLY'||x.kind==='BREAK')&&(x.side==='BUY'||x.side==='SELL')&&
   valid(x.issuedAt)&&valid(x.sourceAt)&&valid(x.priceAt)&&x.priceAt>0&&
+  (x.quality==null||['SETUP','COUNTERTREND','OBSERVATION'].includes(x.quality))&&
   ['PENDING','TARGET','STOP','TIMEOUT','AMBIGUOUS','UNKNOWN','NO_TARGET'].includes(x.status)&&
   (x.target==null||valid(x.target))&&(x.invalidation==null||valid(x.invalidation))
  ).slice(-2000).map((x:any)=>({...x,leadSeconds:valid(x.leadSeconds)?x.leadSeconds:null}));
@@ -81,6 +84,7 @@ export function advanceMovementProof(input:{
        signal.sourceAt!-x.issuedAt<=30*60000).at(-1):undefined;
      next=[...next,{
        id,asset,source,kind,side:signal.side,sourceAt:signal.sourceAt,
+       quality:signal.quality??'OBSERVATION',
        issuedAt:now,priceAt:input.price,
        trigger:valid(signal.trigger)?signal.trigger:null,
        invalidation,target,
@@ -97,11 +101,21 @@ export function movementProofScore(rows:MovementProof[],asset:'GOLD'|'BTC'){
  const breaks=all.filter(x=>x.kind==='BREAK');
  const hits=breaks.filter(x=>x.status==='TARGET');
  const settled=breaks.filter(x=>['TARGET','STOP','TIMEOUT'].includes(x.status));
+ const qualified=breaks.filter(x=>x.quality==='SETUP');
+ const qualifiedSettled=qualified.filter(x=>['TARGET','STOP','TIMEOUT'].includes(x.status));
+ const qualifiedHits=qualifiedSettled.filter(x=>x.status==='TARGET');
  const lags=breaks.map(x=>x.detectedAfterMs/1000).filter(x=>valid(x)&&x>=0);
  const leads=breaks.map(x=>x.leadSeconds).filter(valid).filter(x=>x>=0);
  return {
   alerts:all.length,early:all.filter(x=>x.kind==='EARLY').length,breaks:breaks.length,
   hits:hits.length,settled:settled.length,
+  qualified:qualified.length,qualifiedSettled:qualifiedSettled.length,
+  qualifiedHits:qualifiedHits.length,
+  qualifiedRate:qualifiedSettled.length?
+    Math.round(100*qualifiedHits.length/qualifiedSettled.length):null,
+  countertrend:breaks.filter(x=>x.quality==='COUNTERTREND').length,
+  legacy:breaks.filter(x=>x.quality==null).length,
+  stops:settled.filter(x=>x.status==='STOP').length,
   targetRate:settled.length?Math.round(100*hits.length/settled.length):null,
   pending:all.filter(x=>x.status==='PENDING').length,
   missingTarget:all.filter(x=>x.status==='NO_TARGET').length,
