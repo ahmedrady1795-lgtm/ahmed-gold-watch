@@ -16,9 +16,7 @@ import SniperScenarioHero from './SniperScenarioHero';
 import {analyzeM15MarketStructure} from '../lib/sniper-market-structure';
 import SniperMarketStructureOverlay,{SniperStructureRSI} from './SniperMarketStructureOverlay';
 import SniperHuntHUD from './SniperHuntHUD';
-import SniperM1CandleTape from './SniperM1CandleTape';
-import {SniperLiquidityColumn,SniperScenarioColumn,SniperNextCandleCard} from './SniperHunterSidebars';
-import SniperM1CandleHunter from './SniperM1CandleHunter';
+import {SniperLiquidityColumn,SniperScenarioColumn} from './SniperHunterSidebars';
 import {extendIllustrativeM15ToTargets} from '../lib/sniper-m15-target-bridge';
 import {buildM15WatchGuide} from '../lib/sniper-m15-watch-guide';
 import OrderFlowRadar from './OrderFlowRadar';
@@ -78,7 +76,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
 }){
  const [chosen,setChosen]=useState<'GOLD'|'BTC'>('GOLD');
  const [showLiquidity,setShowLiquidity]=useState(true);
- const [chartMode,setChartMode]=useState<'M1'|'M15'>('M15');
  const [showExtra,setShowExtra]=useState(false);
  const [showHistoricalExtension,setShowHistoricalExtension]=useState(false);
  const [focusView,setFocusView]=useState(true);
@@ -848,23 +845,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <button type="button" onClick={()=>setChosen('GOLD')} aria-pressed={asset==='GOLD'}>XAUUSD</button>
        <button type="button" onClick={()=>setChosen('BTC')} aria-pressed={asset==='BTC'}>BTCUSD</button>
      </div>:<b>{asset==='GOLD'?'XAUUSD':'BTCUSD'}</b>}
-     <b className="sniper-m15-frame">{chartMode==='M15'?'M5':chartMode}</b>
-     {chartMode==='M15'&&<button type="button" className="sniper-m15-liquidity-toggle"
+     <b className="sniper-m15-frame">M5</b>
+     {<button type="button" className="sniper-m15-liquidity-toggle"
        aria-pressed={showLiquidity} onClick={()=>setShowLiquidity(v=>!v)}
        title="مناطق سيولة القمم والقيعان، الطلب والعرض والارتداد أو الرفض بعد إغلاق M15">
        {showLiquidity?'المناطق ✓':'المناطق'}</button>}
    </header>
-   <nav className="sniper-candle-mode" aria-label="اختيار سرعة القنص">
-     <button type="button" aria-pressed={chartMode==='M1'}
-       onClick={()=>setChartMode('M1')}>M1 · قنص كل شمعة</button>
-     <button type="button" aria-pressed={chartMode==='M15'}
-       onClick={()=>setChartMode('M15')}>M5 · رسم السيناريو</button>
-   </nav>
-   {chartMode==='M1'?<SniperM1CandleHunter asset={asset}
-     history={m.candles} historicalSource={String(x?.candleSource||'')}
-     quote={liveQuote} now={now} marketOpen={marketOpen}
-     sourceReady={m.historyFresh&&m.sniper.view.priceFresh}
-     providerTransition={providerTransition} flow={flowProfile}/>:<>
+   <>
    <SniperScenarioHero asset={asset} fusion={localFusion}
       hunt={huntPreview} preMove={preMove} liquidity={liquidityMagnets}
       flow={flowProfile}
@@ -1450,10 +1437,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        dataFresh={Boolean(m.sniper.view.priceFresh&&m.historyFresh)}
        providerTransition={providerTransition}/>
    </details>
-   <div className="sniper-hunter-bottom">
-     <SniperM1CandleTape history={m.candles} now={now} asset={asset}/>
-     <SniperNextCandleCard priority={nextM1} marketOpen={marketOpen}/>
-   </div>
    </>}
    <details className="sniper-m15-diagnostics">
      <summary>تفاصيل إضافية: الرادار والاختبارات والسيولة</summary>
