@@ -33,10 +33,42 @@ export default function SniperOpportunityMarkers(p:Props){
      Math.abs(p.py(e.priceAt)-p.py(r.priceAt))<24))continue;
    earlyShown.push(r);
  }
+ // A real first/last-minute observation is pinned to the original M5
+ // candle. Never reconstruct missing buy/sell labels after price has moved.
+ const m5Issued=p.records.filter(r=>r.asset===p.asset&&r.source===p.source&&
+   (r.kind==='OPEN'||r.kind==='CLOSE')&&r.issuedAt>=p.from&&
+   r.issuedAt<=p.now&&visible(r.priceAt))
+   .sort((a,b)=>b.issuedAt-a.issuedAt).slice(0,12);
  const s=p.signal;
  const active=['PREPARE','TESTING','BREAK_CONFIRMED'].includes(s.phase)&&
    (s.side==='BUY'||s.side==='SELL')&&s.trigger!=null&&visible(s.trigger);
  return <g className="sniper-opportunity-markers" aria-label="أماكن الرصد المبكر والشراء والبيع">
+   {m5Issued.map((r,i)=>{
+     const x=p.timeX(r.issuedAt),y=p.py(r.priceAt);
+     const buy=r.side==='BUY',ink=buy?'#5ef2b7':'#ff839c';
+     const labelY=fit(y+(buy?28:-28));
+     return <g key={r.id} data-kind={r.kind}
+       data-issued-at={r.issuedAt} data-side={r.side}>
+       <circle cx={x} cy={y} r={i<4?4:2.6} fill={ink}
+         stroke="#06151b" strokeWidth="1.2"/>
+       {i<4&&<>
+         <line x1={x} x2={x} y1={y} y2={labelY} stroke={ink}
+           strokeOpacity=".85" strokeWidth=".9"/>
+         <rect x={Math.max(p.left+27,Math.min(p.split-27,x))-26}
+           y={labelY-10} width="52" height="20" rx="5"
+           fill="#071c26" stroke={ink} strokeWidth=".9"/>
+         <text x={Math.max(p.left+27,Math.min(p.split-27,x))}
+           y={labelY+3.5} textAnchor="middle" direction="rtl"
+           fontSize="9.9" fontWeight="800" fill={ink}>
+           {(buy?'شراء':'بيع')+(r.m5Outcome==='CORRECT'?' ✓':
+             r.m5Outcome==='WRONG'?' ✕':'')}</text>
+       </>}
+       <title>{(buy?'شراء':'بيع')+' · '+(r.kind==='OPEN'?'بداية M5':'نهاية M5')+
+         ' · '+r.priceAt.toFixed(2)+' · '+(r.m5Outcome==='CORRECT'?'اتجاه صحيح':
+         r.m5Outcome==='WRONG'?'اتجاه خاطئ':'نتيجة قيد القياس')+
+         ' · توقع مرصود وقتها، ليس صفقة منفذة'}</title>
+     </g>;
+   })}
    {earlyShown.map((r,i)=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt),buy=r.side==='BUY';
      const ink='#e0be78';
