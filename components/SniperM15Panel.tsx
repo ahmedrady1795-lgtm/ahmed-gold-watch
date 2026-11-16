@@ -926,7 +926,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <strong>{earlySide==='BUY'?'شراء ↑':earlySide==='SELL'?'بيع ↓':'ترقب M5'}</strong>
      <span>{hasEarlySignal?
        (earlyPhase==='CLOSE'?'آخر دقيقة من الشمعة':earlyPhase==='FOLLOW'?'أثناء الشمعة':'بداية الشمعة')+
-       ' · اتجاه متوقع غير مؤكد':candleLean.reason}</span>
+       ' · '+(candleLean.reason.includes('انعكاس محتمل')?'انعكاس مبكر محتمل':
+        candleLean.reason.includes('استمرار محتمل')?'استمرار بعد زخم مغلق':'اتجاه متوقع غير مؤكد'):
+        candleLean.reason}</span>
      <small>{hasEarlySignal?'السعر عند الرصد '+
        n(currentCandleRecord?.priceAt??price):'بانتظار بيانات صالحة أو ترجيح اتجاه'}</small>
    </div>
