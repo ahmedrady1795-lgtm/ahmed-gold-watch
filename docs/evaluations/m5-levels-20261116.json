@@ -1,0 +1,51 @@
+{
+  "source": "Biquote · MT5 XAUUSD candles",
+  "checkedAt": 1794835439748,
+  "splitAt": 1794828180000,
+  "models": {
+    "momentum": {
+      "development": {
+        "signals": 71,
+        "correct": 27,
+        "wrong": 44,
+        "flat": 0,
+        "target": 0,
+        "stop": 0,
+        "ambiguous": 0,
+        "unresolved": 0
+      },
+      "holdout": {
+        "signals": 55,
+        "correct": 28,
+        "wrong": 27,
+        "flat": 0,
+        "target": 0,
+        "stop": 0,
+        "ambiguous": 0,
+        "unresolved": 0
+      }
+    },
+    "levelsExperimental": {
+      "development": {
+        "signals": 13,
+        "correct": 6,
+        "wrong": 7,
+        "flat": 0,
+        "target": 2,
+        "stop": 3,
+        "ambiguous": 0,
+        "unresolved": 8
+      },
+      "holdout": {
+        "signals": 10,
+        "correct": 4,
+        "wrong": 6,
+        "flat": 0,
+        "target": 2,
+        "stop": 3,
+        "ambiguous": 0,
+        "unresolved": 5
+      }
+    }
+  }
+}
