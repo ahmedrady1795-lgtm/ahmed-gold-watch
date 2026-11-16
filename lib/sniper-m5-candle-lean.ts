@@ -7,7 +7,7 @@
 type Bar={time:number;open:number;high:number;low:number;close:number};
 type Side='BUY'|'SELL'|'WAIT';
 export type M5CandleLean={
- phase:'OPEN'|'CLOSE'|'WAIT';side:Side;issuedFor:number|null;
+ phase:'OPEN'|'FOLLOW'|'CLOSE'|'WAIT';side:Side;issuedFor:number|null;
  observedAfterMs:number;strength:number;reason:string;tradeEligible:false;
 };
 const good=(c:Bar)=>c&&[c.time,c.open,c.high,c.low,c.close]
@@ -29,15 +29,17 @@ export function assessM5CandleLean(input:{
  const elapsed=now-start;
  // Signal on the opening M1, or in the final minute ahead of M5 close.
  // Do not backfill old signals after the window has passed.
- const phase:'OPEN'|'CLOSE'|'WAIT'=elapsed<90000?'OPEN':
-   elapsed>=240000&&elapsed<300000?'CLOSE':'WAIT';
- if(phase==='WAIT')return none('بانتظار نافذة بداية أو نهاية M5');
- const cut=start+(phase==='OPEN'?0:240000);
+ const phase:'OPEN'|'FOLLOW'|'CLOSE'|'WAIT'=elapsed<90000?'OPEN':
+   elapsed>=240000&&elapsed<300000?'CLOSE':'FOLLOW';
+ const cut=phase==='OPEN'?start:phase==='CLOSE'?start+240000:
+   Math.floor(now/60000)*60000;
  const unique=new Map<number,Bar>();
  for(const b of Array.isArray(input.m1)?input.m1:[])
   if(good(b)&&b.time+60000<=cut)unique.set(b.time,b);
  const rows=[...unique.values()].sort((a,b)=>a.time-b.time).slice(-18);
- if(rows.length<18||rows.at(-1)!.time+60000!==cut||
+ const latestClose=rows.at(-1)?rows.at(-1)!.time+60000:0;
+ // Allow one delayed publication, but never bridge an internal gap or use stale evidence.
+ if(rows.length<18||cut-latestClose<0||cut-latestClose>60000||now-latestClose>120000||
    rows.some((b,i)=>i>0&&b.time-rows[i-1].time!==60000))
    return none('إغلاقات M1 الأخيرة ناقصة؛ لا نختلق اتجاهًا');
  const tr=rows.slice(1).map((b,i)=>Math.max(b.high-b.low,
@@ -66,8 +68,9 @@ export function assessM5CandleLean(input:{
  if(side==='WAIT')return none('الحركة الحالية غير كافية لترجيح شراء أو بيع');
  return {phase,side,issuedFor:cut,observedAfterMs:Math.max(0,now-cut),
    strength:Math.min(90,Math.round(Math.abs(pressure)*100)),
-   reason:(phase==='OPEN'?'قراءة بداية M5':'قراءة نهاية M5')+
+   reason:(phase==='OPEN'?'قراءة بداية M5':phase==='FOLLOW'?'قراءة أثناء M5':'قراءة نهاية M5')+
     ' من إغلاقات M1 السابقة فقط'+(m5Valid?' وسياق M5':'')+
+    (cut>latestClose?' · وصول M1 متأخر دقيقة':'')+
     ' · اتجاه مراقبة مبكر، غير مؤكد وغير قابل للتنفيذ',
    tradeEligible:false};
 }

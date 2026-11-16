@@ -33,8 +33,8 @@ assert.ok(opened.strength>0);
 assert.equal(run({...data,m1:[...history,{
  time:start,open:102.9,high:103.5,low:99,close:99.5}]}).side,
  'BUY','unfinished future bar cannot change candle-open prediction');
-assert.equal(run({...data,now:start+110000}).phase,'WAIT',
- 'late arrival must not invent an opening call');
+assert.equal(run({...data,now:start+110000}).phase,'FOLLOW',
+ 'mid-candle arrival is labeled FOLLOW, never backdated to OPEN');
 assert.equal(run({...data,m1:history.slice(0,17)}).phase,'WAIT',
  'missing latest M1 close cannot be substituted');
 assert.equal(run({...data,sourceReady:false}).phase,'WAIT');
@@ -83,3 +83,25 @@ const noHindsight=step({...base,now:start+five+1000,price:101.8,
 assert.equal(noHindsight[0].m5Outcome,undefined,
  'old records never gain fabricated retroactive directional grades');
 console.log('PASS: real M5 open/end signals from prior M1, no-lookahead, recording, future-only scoring and legacy retention');
+
+const delayed=run({...data,m1:m1.slice(0,17).concat([]),now:start+30000});
+assert.equal(delayed.phase,'WAIT','still requires sufficient contiguous history');
+const extra={...history[0],time:history[0].time-minute};
+const oneMinuteLate=run({...data,now:start+30000,m1:[extra,...history.slice(0,-1)]});
+assert.equal(oneMinuteLate.phase,'OPEN','one delayed publication is not an internal gap');
+assert.match(oneMinuteLate.reason,/متأخر/);
+assert.equal(run({...data,now:start+89000,m1:[extra,...history.slice(0,-1)]}).phase,
+ 'WAIT','evidence older than two minutes is stale');
+const follow=run({...data,now:start+125000,m1:m1.slice(0,20)});
+assert.equal(follow.phase,'FOLLOW');
+const followed=step({...base,now:start+125000,candleLean:follow});
+assert.equal(followed[0].kind,'FOLLOW');
+assert.equal(followed[0].issuedAt,start+125000,'never backdate middle-of-candle signals');
+assert.equal(safe(followed).length,1,'FOLLOW survives persistence');
+assert.equal(step({...base,now:start+126000,prior:followed,candleLean:follow}),followed,
+ 'FOLLOW is frozen once per M5 and does not repaint');
+const followScored=step({...base,now:start+five+5000,prior:followed,
+ m5Bars:[{time:start,open:102,high:104,low:101,close:103.5}]});
+assert.equal(followScored[0].m5Outcome,'CORRECT');
+assert.equal(stats(followScored,'GOLD').followingHits,1);
+console.log('PASS: bounded provider lag, mid-candle issuance, persistence and forward-only scoring');

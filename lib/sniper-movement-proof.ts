@@ -7,7 +7,7 @@
 type Side='BUY'|'SELL';
 type Bar={time:number;open:number;high:number;low:number;close:number};
 export type MovementProof={
- id:string;asset:'GOLD'|'BTC';source:string;kind:'EARLY'|'BREAK'|'OPEN'|'CLOSE';
+ id:string;asset:'GOLD'|'BTC';source:string;kind:'EARLY'|'BREAK'|'OPEN'|'FOLLOW'|'CLOSE';
  side:Side;sourceAt:number;issuedAt:number;priceAt:number;
  quality?:'SETUP'|'COUNTERTREND'|'OBSERVATION';
  trigger:number|null;invalidation:number|null;target:number|null;
@@ -30,7 +30,7 @@ export function safeMovementProof(raw:unknown):MovementProof[]{
  if(!Array.isArray(raw))return [];
  return raw.filter((x:any)=>x&&typeof x.id==='string'&&x.id.length<220&&
   (x.asset==='GOLD'||x.asset==='BTC')&&typeof x.source==='string'&&x.source.length<150&&
-  (x.kind==='EARLY'||x.kind==='BREAK'||x.kind==='OPEN'||x.kind==='CLOSE')&&(x.side==='BUY'||x.side==='SELL')&&
+  (x.kind==='EARLY'||x.kind==='BREAK'||x.kind==='OPEN'||x.kind==='FOLLOW'||x.kind==='CLOSE')&&(x.side==='BUY'||x.side==='SELL')&&
   valid(x.issuedAt)&&valid(x.sourceAt)&&valid(x.priceAt)&&x.priceAt>0&&
   (x.quality==null||['SETUP','COUNTERTREND','OBSERVATION'].includes(x.quality))&&
   (x.m5Outcome==null||['PENDING','CORRECT','WRONG','FLAT','UNKNOWN'].includes(x.m5Outcome))&&
@@ -41,7 +41,7 @@ export function safeMovementProof(raw:unknown):MovementProof[]{
 export function advanceMovementProof(input:{
  prior:MovementProof[];now:number;asset:'GOLD'|'BTC';source:string;
  price:number|null;signal:Opportunity;bars:unknown;m5Bars?:unknown;
- candleLean?:{phase:'OPEN'|'CLOSE'|'WAIT';side:'BUY'|'SELL'|'WAIT';issuedFor:number|null}
+ candleLean?:{phase:'OPEN'|'FOLLOW'|'CLOSE'|'WAIT';side:'BUY'|'SELL'|'WAIT';issuedFor:number|null}
 }):MovementProof[]{
  const {now,asset,source,signal}=input;
  if(!valid(now)||now<=0||!source)return input.prior;
@@ -58,7 +58,7 @@ export function advanceMovementProof(input:{
   // Exactly the NEXT fully observable M5 candle; no unfinished or preceding OHLC.
   // This audit is distinct from target/stop outcomes and never implies P&L.
   if(item.m5Outcome==='PENDING'){
-    const start=item.kind==='OPEN'||item.kind==='CLOSE'?
+    const start=item.kind==='OPEN'||item.kind==='FOLLOW'||item.kind==='CLOSE'?
       Math.floor(item.issuedAt/300000)*300000:
       Math.ceil(item.issuedAt/300000)*300000;
     const closeAt=start+300000;
@@ -131,7 +131,7 @@ export function advanceMovementProof(input:{
  // Record only when this phase really became visible; NEVER construct
  // entries retrospectively from later candles or the finished M5 outcome.
  const lean=input.candleLean;
- if(lean&&(lean.phase==='OPEN'||lean.phase==='CLOSE')&&
+ if(lean&&(lean.phase==='OPEN'||lean.phase==='FOLLOW'||lean.phase==='CLOSE')&&
    (lean.side==='BUY'||lean.side==='SELL')&&valid(input.price)&&
    input.price>0&&valid(lean.issuedFor)&&lean.issuedFor>0&&
    now>=lean.issuedFor&&now-lean.issuedFor<=90000){
@@ -165,15 +165,18 @@ export function movementProofScore(rows:MovementProof[],asset:'GOLD'|'BTC'){
  const earlyM5Correct=earlyM5Scored.filter(x=>x.m5Outcome==='CORRECT');
  const opens=all.filter(x=>x.kind==='OPEN');
  const closes=all.filter(x=>x.kind==='CLOSE');
+ const follows=all.filter(x=>x.kind==='FOLLOW');
  const scored=(rows:MovementProof[])=>rows.filter(x=>
    x.m5Outcome==='CORRECT'||x.m5Outcome==='WRONG');
- const openingScored=scored(opens),closingScored=scored(closes);
+ const openingScored=scored(opens),closingScored=scored(closes),followingScored=scored(follows);
  const openingHits=openingScored.filter(x=>x.m5Outcome==='CORRECT').length;
  const closingHits=closingScored.filter(x=>x.m5Outcome==='CORRECT').length;
  const lags=breaks.map(x=>x.detectedAfterMs/1000).filter(x=>valid(x)&&x>=0);
  const leads=breaks.map(x=>x.leadSeconds).filter(valid).filter(x=>x>=0);
  return {
   alerts:all.length,early:all.filter(x=>x.kind==='EARLY').length,breaks:breaks.length,
+  followings:follows.length,followingScored:followingScored.length,
+  followingHits:followingScored.filter(x=>x.m5Outcome==='CORRECT').length,
   openings:opens.length,openingScored:openingScored.length,
   openingHits,openingRate:openingScored.length?
     Math.round(100*openingHits/openingScored.length):null,

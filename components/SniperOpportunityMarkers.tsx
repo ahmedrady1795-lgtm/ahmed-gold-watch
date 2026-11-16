@@ -36,7 +36,7 @@ export default function SniperOpportunityMarkers(p:Props){
  // A real first/last-minute observation is pinned to the original M5
  // candle. Never reconstruct missing buy/sell labels after price has moved.
  const m5Issued=p.records.filter(r=>r.asset===p.asset&&r.source===p.source&&
-   (r.kind==='OPEN'||r.kind==='CLOSE')&&r.issuedAt>=p.from&&
+   (r.kind==='OPEN'||r.kind==='FOLLOW'||r.kind==='CLOSE')&&r.issuedAt>=p.from&&
    r.issuedAt<=p.now&&visible(r.priceAt))
    .sort((a,b)=>b.issuedAt-a.issuedAt).slice(0,12);
  const s=p.signal;
@@ -63,7 +63,7 @@ export default function SniperOpportunityMarkers(p:Props){
            {(buy?'شراء':'بيع')+(r.m5Outcome==='CORRECT'?' ✓':
              r.m5Outcome==='WRONG'?' ✕':'')}</text>
        </>}
-       <title>{(buy?'شراء':'بيع')+' · '+(r.kind==='OPEN'?'بداية M5':'نهاية M5')+
+       <title>{(buy?'شراء':'بيع')+' · '+(r.kind==='OPEN'?'بداية M5':r.kind==='FOLLOW'?'أثناء M5':'نهاية M5')+
          ' · '+r.priceAt.toFixed(2)+' · '+(r.m5Outcome==='CORRECT'?'اتجاه صحيح':
          r.m5Outcome==='WRONG'?'اتجاه خاطئ':'نتيجة قيد القياس')+
          ' · توقع مرصود وقتها، ليس صفقة منفذة'}</title>
