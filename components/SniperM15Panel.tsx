@@ -476,10 +476,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    if(!movementProofLoaded)return;
    setMovementRecords(prior=>advanceMovementProof({
      prior,now,asset,source:String(x?.candleSource||''),
-     price,signal:liveOpportunity,bars:m.candles
+     price,signal:liveOpportunity,bars:m.candles,
+     m5Bars:x?.chartHigherFrames?.m5
    }));
  },[movementProofLoaded,now,asset,x?.candleSource,price,
-   liveOpportunity,m.candles]);
+   liveOpportunity,m.candles,x?.chartHigherFrames?.m5]);
  const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
    [movementRecords,asset]);
  const rawIssuance=assessM15ScenarioIssuance({
@@ -1342,8 +1343,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {movementStats.qualifiedRate!=null?' · '+movementStats.qualifiedRate+'%':''}</span>
        <span>كسور عكس الاتجاه: <b>{movementStats.countertrend}</b></span>
        <span>إشارات قديمة غير مصنفة: <b>{movementStats.legacy}</b></span>
+       <span>اتجاه الكسر في أول M5 كامل: <b>{movementStats.m5Correct}/{movementStats.m5Scored}</b>
+         {movementStats.m5Rate!=null?' · '+movementStats.m5Rate+'%':''}</span>
+       <span>الإنذار المبكر في أول M5 كامل: <b>{movementStats.earlyM5Correct}/{movementStats.earlyM5Scored}</b>
+         {movementStats.earlyM5Rate!=null?' · '+movementStats.earlyM5Rate+'%':''}</span>
        <small style={{flexBasis:'100%',opacity:.75}}>النتائج من شموع مغلقة بعد الرصد،
-         وليست أرباح صفقات أو ضمانًا للدقة.</small>
+         ولا أرباح صفقات. M5 يُقاس بعد أول شمعة كاملة تبدأ عقب الرصد؛
+         ولا يُعاد تصنيف السجل القديم.</small>
      </div>
      <SniperOpportunityHistory key={asset} records={movementRecords} asset={asset}/>
      <SniperStructureRSI structure={structure}/>
