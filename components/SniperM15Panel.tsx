@@ -43,6 +43,7 @@ import {goldMarketSession} from '../lib/gold-market-session';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {detectPreMovePressure} from '../lib/pre-move-pressure';
 import {assessSniperLiveOpportunity} from '../lib/sniper-live-opportunity';
+import SniperOpportunityMarkers from './SniperOpportunityMarkers';
 import {advanceMovementProof,movementProofScore,safeMovementProof,type MovementProof} from '../lib/sniper-movement-proof';
 import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
 import {buildM15LiquidityBoard} from '../lib/sniper-m15-liquidity-board';
@@ -793,9 +794,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    s.startsWith('WATCH')?'رصد'+s.slice(5):s;
  const grid=Array.from({length:9},(_,i)=>lo+(hi-lo)*i/8);
  const latestClosed=actual.at(-1);
- // Confirmed M15 pivot-break markers: only closed candles, never a live guess.
- // Historical BUY/SELL markers are deliberately not drawn on the ordinary
- // price chart. Direction belongs to the scenario pane and the live candle.
+ // Opportunity labels use the live observer and its immutable issued records.
  return <section className="sniper-m15-panel" dir="rtl"
    aria-label="القناص: شموع ربع ساعة فعلية وسيناريو M15 تاريخي مشروط">
    <header className="sniper-m15-head">
@@ -1280,6 +1279,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            {firstM15Stats.label}</text>
          <title>{firstM15Stats.detail}</title>
        </g>}
+       <SniperOpportunityMarkers signal={liveOpportunity} records={movementRecords}
+         asset={asset} source={String(x?.candleSource||'')}
+         from={trueHistory[0]?.time??now} now={now} left={left} split={split}
+         end={end} top={plotTop} bottom={plotBottom} py={py} timeX={timeX}/>
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M15 · REAL</text>
        <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'} fontSize="10" textAnchor="start" direction="ltr">{projected.ready?'M15 · PATH':showWatchGuide?'M15 · WATCH':'M15 · LIVE'}</text>
        {showExtra&&<text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
