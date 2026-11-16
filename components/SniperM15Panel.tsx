@@ -43,6 +43,7 @@ import {goldMarketSession} from '../lib/gold-market-session';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {detectPreMovePressure} from '../lib/pre-move-pressure';
 import {assessSniperLiveOpportunity} from '../lib/sniper-live-opportunity';
+import {assessM5CandleLean} from '../lib/sniper-m5-candle-lean';
 import SniperOpportunityMarkers from './SniperOpportunityMarkers';
 import SniperOpportunityHistory from './SniperOpportunityHistory';
 import {advanceMovementProof,movementProofScore,safeMovementProof,type MovementProof} from '../lib/sniper-movement-proof';
@@ -440,6 +441,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Never derive BUY/SELL from the colour of an unfinished candle. The live
  // candle is display-only; direction comes from closed-bar PREMOVE or M1 proof.
  const formingBias: 'BUY'|'SELL'|'WAIT'='WAIT';
+ // Earlier closed M1 at the open/final-minute cutoff predicts M5 direction.
+ const candleLean=useMemo(()=>assessM5CandleLean({
+   now,price,sourceReady:marketOpen&&m.historyFresh&&
+     m.sniper.view.priceFresh&&!providerTransition,
+   m1:m.candles,m5:x?.chartHigherFrames?.m5
+ }),[now,price,marketOpen,m.historyFresh,m.sniper.view.priceFresh,
+   providerTransition,m.candles,x?.chartHigherFrames?.m5]);
  const currentSignalSide=liveOpportunity.phase==='BREAK_CONFIRMED'||
    liveOpportunity.phase==='PREPARE'||liveOpportunity.phase==='TESTING'?
      liveOpportunity.side:'WAIT';
@@ -477,12 +485,20 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    setMovementRecords(prior=>advanceMovementProof({
      prior,now,asset,source:String(x?.candleSource||''),
      price,signal:liveOpportunity,bars:m.candles,
-     m5Bars:x?.chartHigherFrames?.m5
+     m5Bars:x?.chartHigherFrames?.m5,candleLean
    }));
  },[movementProofLoaded,now,asset,x?.candleSource,price,
-   liveOpportunity,m.candles,x?.chartHigherFrames?.m5]);
+   liveOpportunity,candleLean,m.candles,x?.chartHigherFrames?.m5]);
  const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
    [movementRecords,asset]);
+ const candleStart=Math.floor(now/300000)*300000;
+ const currentCandleRecord=movementRecords.filter(r=>r.asset===asset&&
+   r.source===String(x?.candleSource||'')&&
+   (r.kind==='OPEN'||r.kind==='CLOSE')&&
+   r.issuedAt>=candleStart&&r.issuedAt<=now)
+   .sort((a,b)=>b.issuedAt-a.issuedAt)[0];
+ const earlySide=currentCandleRecord?.side??candleLean.side;
+ const earlyPhase=currentCandleRecord?.kind??candleLean.phase;
  const rawIssuance=assessM15ScenarioIssuance({
    side:safeSide,qualified,radarStatus:radar.status,radarSide:radar.side,
    m15Side:m15Bias.side,m15Votes:m15Bias.votes,
@@ -838,7 +854,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <button type="button" aria-pressed={chartMode==='M15'}
        onClick={()=>setChartMode('M15')}>M5 · رسم السيناريو</button>
    </nav>
-   <SniperOrderFlowStrip data={flowObservation}/>
    {chartMode==='M1'?<SniperM1CandleHunter asset={asset}
      history={m.candles} historicalSource={String(x?.candleSource||'')}
      quote={liveQuote} now={now} marketOpen={marketOpen}
@@ -857,6 +872,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
         m.historyFresh)} providerTransition={providerTransition}/>
    <details className="sniper-hunt-advanced">
      <summary>المستويات والتشخيص <span aria-hidden="true">＋</span></summary>
+     <SniperOrderFlowStrip data={flowObservation}/>
    <SniperM15Summary asset={asset} ready={projected.ready}
      saved={Boolean(stable&&!projected.ready)} paused={paused} detached={detached}
      marketOpen={marketOpen} providerTransition={providerTransition}
@@ -902,6 +918,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {' · شموع M5: '+trueHistory.length}</span>
      <b dir="ltr">{formingVisible&&forming?'LIVE '+n(forming.close):
        latestClosed?'CLOSE '+n(latestClosed.close):'—'}</b>
+   </div>
+   <div className={'sniper-m5-early-signal '+(earlySide==='BUY'?'is-buy':
+     earlySide==='SELL'?'is-sell':'is-wait')} role="status"
+     aria-label="توقع مراقبة مبكر لاتجاه M5، وليس تنفيذ صفقة">
+     <strong>{earlySide==='BUY'?'شراء ↑':earlySide==='SELL'?'بيع ↓':'ترقب M5'}</strong>
+     <span>{earlySide!=='WAIT'?
+       (earlyPhase==='CLOSE'?'آخر دقيقة من الشمعة':'بداية الشمعة')+
+       ' · اتجاه متوقع غير مؤكد':'انتظار دليل من إغلاق M1'}</span>
+     <small>{earlySide!=='WAIT'?'السعر عند الرصد '+
+       n(currentCandleRecord?.priceAt??price):'قراءة مبكرة وليست صفقة'}</small>
    </div>
    <div className="sniper-scenario-chart-legend"
      aria-label="مفتاح الشموع الحقيقية ومسارات المراقبة المشروطة">
@@ -1335,10 +1361,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <small style={{display:'block',padding:'8px',color:'#aac5d3'}}>
        شموع M5 فعلية · {String(x?.candleSource||'المصدر غير متاح')} · سياق التحليل M15
      </small>
+     <details className="sniper-performance-drawer">
+       <summary>نتيجة قنص M5 · بداية {movementStats.openingHits}/{movementStats.openingScored} · نهاية {movementStats.closingHits}/{movementStats.closingScored} <span>＋</span></summary>
      <div className="sniper-movement-summary" role="status" style={{
        display:'flex',flexWrap:'wrap',gap:'8px 15px',padding:'9px 12px',
        fontSize:12,color:'#bad8e6',borderBottom:'1px solid #27465a'}}>
-       <span>فرص مؤهلة مشروطًا: <b>{movementStats.qualified}</b></span>
+       <span>إشارات بداية M5: <b>{movementStats.openingHits}/{movementStats.openingScored}</b></span>
+       <span>إشارات نهاية M5: <b>{movementStats.closingHits}/{movementStats.closingScored}</b></span>
+       <span>كسور مؤهلة مشروطًا: <b>{movementStats.qualified}</b></span>
        <span>أهداف محققة: <b>{movementStats.qualifiedHits}/{movementStats.qualifiedSettled}</b>
          {movementStats.qualifiedRate!=null?' · '+movementStats.qualifiedRate+'%':''}</span>
        <span>كسور عكس الاتجاه: <b>{movementStats.countertrend}</b></span>
@@ -1353,6 +1383,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      </div>
      <SniperOpportunityHistory key={asset} records={movementRecords} asset={asset}/>
      <SniperStructureRSI structure={structure}/>
+     </details>
      {(scaleLevels.some(level=>level.kind!=='PRICE')||
         showLiquidity&&positionedLiquidityLabels.length>0)&&
        <div className="sniper-m15-levels-below" aria-label="دليل المستويات أسفل الرسم">
