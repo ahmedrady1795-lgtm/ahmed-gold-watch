@@ -48,4 +48,38 @@ assert.equal(step({prior:issued,now:start+240000,asset:'BTC',source:'different',
  signal:{phase:'WATCH',side:'WAIT',sourceAt:null,targets:[],trigger:null,invalidation:null},
  bars:[c(2,130,20)]})[0].status,'PENDING','different asset cannot settle gold');
 assert.equal(safe([{bogus:true},...issued]).length,1);
+// Only a complete next M5 candle can score direction. The M1 target may
+// already be settled, but no M5 score exists before the actual close.
+assert.equal(withBreak[1].m5Outcome,'PENDING');
+const m5Bar={time:start+5*60000,open:100.5,high:101.4,low:99.9,close:101.1};
+const tooSoon=step({prior:withBreak,now:start+9*60000,asset:'GOLD',
+ source:'same-provider',price:101,signal:{phase:'WATCH',side:'WAIT',
+ sourceAt:null,trigger:null,invalidation:null,targets:[]},bars:[],
+ m5Bars:[m5Bar]});
+assert.equal(tooSoon[1].m5Outcome,'PENDING',
+ 'unfinished M5 never scores movement');
+const afterM5=step({prior:withBreak,now:start+10*60000+1000,
+ asset:'GOLD',source:'same-provider',price:101,signal:{phase:'WATCH',
+ side:'WAIT',sourceAt:null,trigger:null,invalidation:null,targets:[]},
+ bars:[],m5Bars:[m5Bar]});
+assert.equal(afterM5[1].m5Outcome,'CORRECT');
+assert.equal(afterM5[0].m5Outcome,'CORRECT');
+assert.equal(score(afterM5,'GOLD').m5Scored,1,
+ 'score confirmed breaks separately from true early alerts');
+assert.equal(score(afterM5,'GOLD').earlyM5Scored,1);
+assert.equal(score(afterM5,'GOLD').m5Rate,100);
+const legacy={...withBreak[1]};delete legacy.m5Outcome;
+const untouchedLegacy=step({prior:[legacy],now:start+10*60000+1000,
+ asset:'GOLD',source:'same-provider',price:101,
+ signal:{phase:'WATCH',side:'WAIT',sourceAt:null,
+ trigger:null,invalidation:null,targets:[]},bars:[],m5Bars:[m5Bar]});
+assert.equal(untouchedLegacy[0].m5Outcome,undefined,
+ 'legacy events cannot gain hindsight M5 grades after the rollout');
+const wrong=step({prior:withBreak,now:start+10*60000+1000,
+ asset:'GOLD',source:'same-provider',price:98,
+ signal:{phase:'WATCH',side:'WAIT',sourceAt:null,
+ trigger:null,invalidation:null,targets:[]},bars:[],
+ m5Bars:[{...m5Bar,close:99.0,low:98.5}]});
+assert.equal(wrong[1].m5Outcome,'WRONG');
+assert.equal(score(wrong,'GOLD').m5Rate,0);
 console.log('PASS: forward-only movement scorecard, no goal fabrication, time-to-detection and unambiguous future M1 scoring');
