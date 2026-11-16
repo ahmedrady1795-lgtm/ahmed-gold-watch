@@ -39,6 +39,17 @@ export default function SniperOpportunityMarkers(p:Props){
    (r.kind==='OPEN'||r.kind==='FOLLOW'||r.kind==='CLOSE')&&r.issuedAt>=p.from&&
    r.issuedAt<=p.now&&visible(r.priceAt))
    .sort((a,b)=>b.issuedAt-a.issuedAt).slice(0,12);
+ const recentM5=m5Issued.slice(0,6);
+ // Keep each historical point, but only one caption per nearby cluster.
+ const m5Captioned:MovementProof[]=[];
+ for(const r of recentM5){
+   if(m5Captioned.some(e=>Math.abs(p.timeX(e.issuedAt)-p.timeX(r.issuedAt))<55&&
+     Math.abs(p.py(e.priceAt)-p.py(r.priceAt))<42))continue;
+   m5Captioned.push(r);
+ }
+ const nearM5=(r:MovementProof)=>m5Captioned.some(e=>
+   Math.abs(p.timeX(e.issuedAt)-p.timeX(r.issuedAt))<60&&
+   Math.abs(p.py(e.priceAt)-p.py(r.priceAt))<40);
  const s=p.signal;
  const active=['PREPARE','TESTING','BREAK_CONFIRMED'].includes(s.phase)&&
    (s.side==='BUY'||s.side==='SELL')&&s.trigger!=null&&visible(s.trigger);
@@ -46,12 +57,13 @@ export default function SniperOpportunityMarkers(p:Props){
    {m5Issued.map((r,i)=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt);
      const buy=r.side==='BUY',ink=buy?'#5ef2b7':'#ff839c';
-     const labelY=fit(y+(buy?28:-28));
+     const caption=m5Captioned.includes(r);
+     const labelY=fit(y+(buy?30:-30));
      return <g key={r.id} data-kind={r.kind}
        data-issued-at={r.issuedAt} data-side={r.side}>
-       <circle cx={x} cy={y} r={i<4?4:2.6} fill={ink}
+       <circle cx={x} cy={y} r={caption?4:2.6} fill={ink}
          stroke="#06151b" strokeWidth="1.2"/>
-       {i<4&&<>
+       {caption&&<>
          <line x1={x} x2={x} y1={y} y2={labelY} stroke={ink}
            strokeOpacity=".85" strokeWidth=".9"/>
          <rect x={Math.max(p.left+27,Math.min(p.split-27,x))-26}
@@ -69,7 +81,7 @@ export default function SniperOpportunityMarkers(p:Props){
          ' · توقع مرصود وقتها، ليس صفقة منفذة'}</title>
      </g>;
    })}
-   {earlyShown.map((r,i)=>{
+   {earlyShown.filter(r=>!nearM5(r)).map((r,i)=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt),buy=r.side==='BUY';
      const ink='#e0be78';
      return <g key={r.id} data-kind="EARLY" data-issued-at={r.issuedAt}>
@@ -89,7 +101,7 @@ export default function SniperOpportunityMarkers(p:Props){
        fill={r.side==='BUY'?'#57efb8':'#ff8095'}/>
      <title>{(r.side==='BUY'?'شراء':'بيع')+' · '+r.priceAt.toFixed(2)+' · '+outcomeLabel[r.status]}</title>
    </g>)}
-   {shown.map(r=>{
+   {shown.filter(r=>!nearM5(r)).map(r=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt),buy=r.side==='BUY';
      const ink=r.quality==null?'#96a3b5':
        r.quality==='COUNTERTREND'?'#dfbb80':
@@ -99,7 +111,7 @@ export default function SniperOpportunityMarkers(p:Props){
      const action=(buy?'شراء':'بيع');
      const label=r.quality==null?action:
        r.quality==='COUNTERTREND'?action+' ⚠':
-       r.quality==='OBSERVATION'?'رصد '+(buy?'↑':'↓'):action;
+       r.quality==='OBSERVATION'?action:action;
      return <g key={r.id} data-side={r.side} data-issued-at={r.issuedAt}>
        <title>{(buy?'شراء':'بيع')+' · رصد سابق عند '+r.priceAt.toFixed(2)+
          ' · '+new Date(r.issuedAt).toLocaleTimeString('en-GB',{timeZone:'Asia/Dubai'})+
@@ -115,7 +127,7 @@ export default function SniperOpportunityMarkers(p:Props){
          fontSize="10.3" fontWeight="800" fill={ink}>{label+(r.status==='TARGET'?' ✓':r.status==='STOP'?' ✕':'')}</text>
      </g>;
    })}
-   {active&&(()=>{
+   {active&&!m5Captioned.some(r=>Math.abs(p.py(r.priceAt)-p.py(s.trigger??0))<42)&&(()=>{
      const buy=s.side==='BUY',confirmed=s.phase==='BREAK_CONFIRMED';
      const ink=s.quality==='COUNTERTREND'?'#dfbb80':
        s.quality==='OBSERVATION'?'#9bafc6':buy?'#57efb8':'#ff8095';
