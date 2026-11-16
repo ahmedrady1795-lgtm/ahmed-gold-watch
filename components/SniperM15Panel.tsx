@@ -432,9 +432,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    // Do not let stale M5/M15/H1 history suppress an otherwise valid M1 watch.
    now,price,sourceReady:marketOpen&&m.sniper.view.priceFresh&&
      !providerTransition,
-   c1:m.candles,c5:x?.chartHigherFrames?.m5,preMove,watch:watchMap
+   c1:m.candles,c5:x?.chartHigherFrames?.m5,preMove,watch:watchMap,
+   m15Side:m15AnalysisReady?m15Bias.side:'WAIT'
  }),[now,price,marketOpen,m.sniper.view.priceFresh,m.historyFresh,
-   providerTransition,m.candles,x?.chartHigherFrames?.m5,preMove,watchMap]);
+   providerTransition,m.candles,x?.chartHigherFrames?.m5,preMove,watchMap,
+   m15AnalysisReady,m15Bias.side]);
  // Never derive BUY/SELL from the colour of an unfinished candle. The live
  // candle is display-only; direction comes from closed-bar PREMOVE or M1 proof.
  const formingBias: 'BUY'|'SELL'|'WAIT'='WAIT';
@@ -442,8 +444,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    liveOpportunity.phase==='PREPARE'||liveOpportunity.phase==='TESTING'?
      liveOpportunity.side:'WAIT';
  const currentSignalLabel=liveOpportunity.phase==='BREAK_CONFIRMED'?
-   (liveOpportunity.side==='BUY'?'شراء مؤكد بإغلاق M1':
-    liveOpportunity.side==='SELL'?'بيع مؤكد بإغلاق M1':'انتظار'):
+   (liveOpportunity.quality==='SETUP'?
+     (liveOpportunity.side==='BUY'?'فرصة شراء مشروطة':'فرصة بيع مشروطة'):
+    liveOpportunity.quality==='COUNTERTREND'?'كسر M1 عكس الاتجاه الأعلى':
+     'كسر M1 مرصود · لم يستوفِ شروط الفرصة'):
    liveOpportunity.phase==='PREPARE'?
     (liveOpportunity.side==='BUY'?'ترقب شراء قبل الكسر':'ترقب بيع قبل الكسر'):
    liveOpportunity.phase==='TESTING'?
@@ -1330,6 +1334,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <small style={{display:'block',padding:'8px',color:'#aac5d3'}}>
        شموع M5 فعلية · {String(x?.candleSource||'المصدر غير متاح')} · سياق التحليل M15
      </small>
+     <div className="sniper-movement-summary" role="status" style={{
+       display:'flex',flexWrap:'wrap',gap:'8px 15px',padding:'9px 12px',
+       fontSize:12,color:'#bad8e6',borderBottom:'1px solid #27465a'}}>
+       <span>فرص مؤهلة مشروطًا: <b>{movementStats.qualified}</b></span>
+       <span>أهداف محققة: <b>{movementStats.qualifiedHits}/{movementStats.qualifiedSettled}</b>
+         {movementStats.qualifiedRate!=null?' · '+movementStats.qualifiedRate+'%':''}</span>
+       <span>كسور عكس الاتجاه: <b>{movementStats.countertrend}</b></span>
+       <span>إشارات قديمة غير مصنفة: <b>{movementStats.legacy}</b></span>
+       <small style={{flexBasis:'100%',opacity:.75}}>النتائج من شموع مغلقة بعد الرصد،
+         وليست أرباح صفقات أو ضمانًا للدقة.</small>
+     </div>
      <SniperOpportunityHistory key={asset} records={movementRecords} asset={asset}/>
      <SniperStructureRSI structure={structure}/>
      {(scaleLevels.some(level=>level.kind!=='PRICE')||
@@ -1425,6 +1440,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <small>{liveOpportunity.reason}
        {liveOpportunity.side!=='WAIT'?' · '+liveOpportunity.targetNote:''}
        {liveOpportunity.higherFrame==='OPPOSED'?' · M5 يعارض الكسر':''}
+       {liveOpportunity.m15Context==='OPPOSED'?' · M15 يعارض الكسر':''}
+       {liveOpportunity.quality==='SETUP'?' · متوافق مع شروط الفرصة الورقية':
+         liveOpportunity.quality==='COUNTERTREND'?' · رصد عكسي لا يُعرض كفرصة دخول':
+         ' · رصد غير مؤهل'}
        {' · رصد وليست إشارة تنفيذ'}</small>
    </div>
     <div className="sniper-movement-metrics" aria-label="نتائج رادار الحركة المقاسة من شموع لاحقة">
@@ -1435,7 +1454,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        movementStats.averageLagSeconds+'ث'}</b></span>
      <span>إنذار سبق الكسر <b>{movementStats.earlyLeads}/{movementStats.breaks}
        {movementStats.averageLeadSeconds!=null?' · '+movementStats.averageLeadSeconds+'ث':''}</b></span>
-     <span>وصول T1 <b>{movementStats.hits}/{movementStats.settled}
+     <span>وصول T1 لكل الكسور <b>{movementStats.hits}/{movementStats.settled}
        {movementStats.targetRate!=null?' ('+movementStats.targetRate+'%)':''}</b></span>
      <small>قياس محلي عند فتح الصفحة ومن شموع M1 أُغلقت بعد إصدار الإنذار ·
        {movementStats.pending?' '+movementStats.pending+' نتيجة معلقة ·':''}
