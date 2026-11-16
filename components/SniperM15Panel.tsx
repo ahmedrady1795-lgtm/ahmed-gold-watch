@@ -443,8 +443,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const formingBias: 'BUY'|'SELL'|'WAIT'='WAIT';
  // Earlier closed M1 at the open/final-minute cutoff predicts M5 direction.
  const candleLean=useMemo(()=>assessM5CandleLean({
-   now,price,sourceReady:marketOpen&&m.historyFresh&&
-     m.sniper.view.priceFresh&&!providerTransition,
+   now,price,sourceReady:marketOpen&&m.sniper.view.priceFresh&&
+     !providerTransition,
    m1:m.candles,m5:x?.chartHigherFrames?.m5
  }),[now,price,marketOpen,m.historyFresh,m.sniper.view.priceFresh,
    providerTransition,m.candles,x?.chartHigherFrames?.m5]);
