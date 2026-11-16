@@ -62,15 +62,35 @@ export function assessM5CandleLean(input:{
    lastM5.time-prevM5.time===300000;
  const m5Slope=m5Valid?clamp((lastM5!.close-prevM5!.close)/
    Math.max(atr*3,.01)):0;
+ // Independent, causal pre-move setup: sweep of a PREVIOUS liquidity
+ // extreme followed by rejection back inside the old range. The sweep
+ // candle must be fully closed; no live/current M5 high/low is consulted.
+ const before=rows.slice(-10,-1);
+ const priorHigh=Math.max(...before.map(b=>b.high));
+ const priorLow=Math.min(...before.map(b=>b.low));
+ const sweepUp=last.high>priorHigh+atr*.08&&
+   last.close<priorHigh&&last.close<=last.low+(last.high-last.low)*.45&&
+   last.high-Math.max(last.open,last.close)>=atr*.3;
+ const sweepDown=last.low<priorLow-atr*.08&&
+   last.close>priorLow&&last.close>=last.high-(last.high-last.low)*.45&&
+   Math.min(last.open,last.close)-last.low>=atr*.3;
+ // This is a reversal HYPOTHESIS, not proof of order flow or liquidity.
+ const reversalSide:Side=sweepDown&&!sweepUp?'BUY':
+   sweepUp&&!sweepDown?'SELL':'WAIT';
  const pressure=.58*clamp(momentum)+.24*clamp(body)+
    .12*clamp(closeLocation)+.06*m5Slope;
- const side:Side=pressure>=.12?'BUY':pressure<=-.12?'SELL':'WAIT';
- if(side==='WAIT')return none('الحركة الحالية غير كافية لترجيح شراء أو بيع');
+ // Momentum alone is not evidence of a pre-move opportunity. Keep
+ // continuation as a distinct, explicitly labelled observer.
+ const side:Side=reversalSide!=='WAIT'?reversalSide:
+   pressure>=.12?'BUY':pressure<=-.12?'SELL':'WAIT';
+ if(side==='WAIT')return none('لا يوجد ترجيح اتجاه من بيانات مغلقة');
+ const kind=reversalSide!=='WAIT'?'انعكاس محتمل بعد سحب قمة/قاع سابق':
+   'استمرار محتمل من زخم مغلق (ليس توقع انعكاس)';
  return {phase,side,issuedFor:cut,observedAfterMs:Math.max(0,now-cut),
    strength:Math.min(90,Math.round(Math.abs(pressure)*100)),
    reason:(phase==='OPEN'?'قراءة بداية M5':phase==='FOLLOW'?'قراءة أثناء M5':'قراءة نهاية M5')+
-    ' من إغلاقات M1 السابقة فقط'+(m5Valid?' وسياق M5':'')+
+    ' · '+kind+(m5Valid?' · سياق M5':'')+
     (cut>latestClose?' · وصول M1 متأخر دقيقة':'')+
-    ' · اتجاه مراقبة مبكر، غير مؤكد وغير قابل للتنفيذ',
+    ' · توقع غير مؤكد، لا يمثل أمر تداول أو تدفق أوامر حقيقي',
    tradeEligible:false};
 }
