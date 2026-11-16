@@ -32,25 +32,37 @@ export default function SniperOpportunityMarkers(p:Props){
    </g>)}
    {shown.map(r=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt),buy=r.side==='BUY';
-     const ink=buy?'#57efb8':'#ff8095',labelY=fit(y+(buy?23:-23));
-     const labelX=Math.max(p.left+26,Math.min(p.split-26,x));
+     const ink=r.quality==='COUNTERTREND'?'#dfbb80':
+       r.quality==='OBSERVATION'?'#9bafc6':buy?'#57efb8':'#ff8095';
+     const labelY=fit(y+(buy?23:-23));
+     const labelX=Math.max(p.left+34,Math.min(p.split-34,x));
+     const action=(buy?'شراء':'بيع');
+     const label=r.quality==='COUNTERTREND'?action+' ⚠':
+       r.quality==='OBSERVATION'?'رصد '+(buy?'↑':'↓'):action;
      return <g key={r.id} data-side={r.side} data-issued-at={r.issuedAt}>
        <title>{(buy?'شراء':'بيع')+' · رصد سابق عند '+r.priceAt.toFixed(2)+
          ' · '+new Date(r.issuedAt).toLocaleTimeString('en-GB',{timeZone:'Asia/Dubai'})+
-         ' · '+outcomeLabel[r.status]+' · إشارة تحليلية مسجلة وليست صفقة منفذة'}</title>
+         ' · '+outcomeLabel[r.status]+' · '+
+         (r.quality==='SETUP'?'فرصة مشروطة':r.quality==='COUNTERTREND'?'عكس الاتجاه الأعلى':
+           r.quality==='OBSERVATION'?'كسر مرصود دون شروط الفرصة':'إشارة قديمة غير مصنفة')+
+         ' · إشارة تحليلية مسجلة وليست صفقة منفذة'}</title>
        <line x1={x} x2={labelX} y1={y} y2={labelY} stroke={ink} strokeWidth="1"/>
        <circle cx={x} cy={y} r="3" fill={ink}/>
-       <rect x={labelX-24} y={labelY-10} width="48" height="20" rx="5"
+       <rect x={labelX-32} y={labelY-10} width="64" height="20" rx="5"
          fill="#081d29" stroke={ink} strokeOpacity=".7"/>
        <text x={labelX} y={labelY+4} textAnchor="middle" direction="rtl"
-         fontSize="11" fontWeight="800" fill={ink}>{(buy?'شراء':'بيع')+(r.status==='TARGET'?' ✓':r.status==='STOP'?' ✕':'')}</text>
+         fontSize="10.3" fontWeight="800" fill={ink}>{label+(r.status==='TARGET'?' ✓':r.status==='STOP'?' ✕':'')}</text>
      </g>;
    })}
    {active&&(()=>{
      const buy=s.side==='BUY',confirmed=s.phase==='BREAK_CONFIRMED';
-     const ink=buy?'#57efb8':'#ff8095',y=p.py(s.trigger!);
+     const ink=s.quality==='COUNTERTREND'?'#dfbb80':
+       s.quality==='OBSERVATION'?'#9bafc6':buy?'#57efb8':'#ff8095';
+     const y=p.py(s.trigger!);
      const width=126,x=Math.min(p.split+12,p.end-width-4),labelY=fit(y);
-     const label=(confirmed?'':'ترقب ')+(buy?'شراء':'بيع');
+     const label=confirmed?(s.quality==='SETUP'?(buy?'شراء':'بيع'):
+       s.quality==='COUNTERTREND'?'رصد عكسي':(buy?'رصد صعود':'رصد هبوط')):
+       'ترقب '+(buy?'صعود':'هبوط');
      return <g data-phase={s.phase} aria-label={label+' عند '+s.trigger!.toFixed(2)}>
        <title>{s.reason+' · المستوى '+s.trigger!.toFixed(2)+
          ' · إشارة تحليلية وليست ضمان ربح أو أمر تنفيذ'}</title>
