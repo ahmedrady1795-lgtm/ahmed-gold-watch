@@ -124,3 +124,22 @@ const stillPrior=run({...data,m1:[...reversalBase,bullishSweep,
  {time:start,open:99,high:105,low:98,close:104}]});
 assert.equal(stillPrior.side,'BUY','current unfinished candle cannot flip prior reversal');
 console.log('PASS: pre-move sweep rejection BUY/SELL on closed M1 only');
+
+const firstNewMinute={...bearishSweep,time:start};
+const freshMinute=run({...data,now:start+61000,m1:[...reversalBase,bullishSweep,firstNewMinute]});
+assert.equal(freshMinute.phase,'FOLLOW');
+assert.equal(freshMinute.issuedFor,start+60000);
+assert.equal(freshMinute.side,'SELL','new closed M1 sweep is read before 90-second boundary');
+const continuing=step({...base,now:start+125000,candleLean:{...follow,reason:'استمرار محتمل'}});
+const reversingLater=step({...base,now:start+185000,prior:continuing,
+ candleLean:{...follow,issuedFor:start+180000,side:'SELL',reason:'انعكاس محتمل'}});
+assert.equal(reversingLater.length,2,'continuation does not hide later same-phase reversal');
+assert.equal(reversingLater[0].id,continuing[0].id);
+assert.equal(reversingLater[0].side,continuing[0].side,'prior observation is never rewritten');
+assert.equal(reversingLater[1].issuedAt,start+185000,'reversal timestamp is observation time');
+assert.equal(step({...base,now:start+186000,prior:reversingLater,
+ candleLean:{...follow,issuedFor:start+180000,side:'SELL',reason:'انعكاس محتمل'}}),reversingLater,'no duplicate reversal');
+const legacyReversal={...continuing[0],setupType:'REVERSAL',side:'SELL'};
+assert.equal(step({...base,now:start+186000,prior:[legacyReversal],
+ candleLean:{...follow,issuedFor:start+180000,side:'SELL',reason:'انعكاس محتمل'}}).length,1,'legacy reversal stays deduplicated');
+console.log('PASS: immediate closed-minute evidence, independent reversal recording, frozen history');

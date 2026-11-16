@@ -29,10 +29,10 @@ export function assessM5CandleLean(input:{
  const elapsed=now-start;
  // Signal on the opening M1, or in the final minute ahead of M5 close.
  // Do not backfill old signals after the window has passed.
- const phase:'OPEN'|'FOLLOW'|'CLOSE'|'WAIT'=elapsed<90000?'OPEN':
+ const phase:'OPEN'|'FOLLOW'|'CLOSE'|'WAIT'=elapsed<60000?'OPEN':
    elapsed>=240000&&elapsed<300000?'CLOSE':'FOLLOW';
- const cut=phase==='OPEN'?start:phase==='CLOSE'?start+240000:
-   Math.floor(now/60000)*60000;
+ // Consume each newly closed minute immediately, including minute one.
+ const cut=Math.floor(now/60000)*60000;
  const unique=new Map<number,Bar>();
  for(const b of Array.isArray(input.m1)?input.m1:[])
   if(good(b)&&b.time+60000<=cut)unique.set(b.time,b);

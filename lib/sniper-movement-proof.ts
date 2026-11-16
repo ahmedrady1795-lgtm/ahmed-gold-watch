@@ -139,10 +139,16 @@ export function advanceMovementProof(input:{
    now>=lean.issuedFor&&now-lean.issuedFor<=90000){
    const candleStart=Math.floor(now/300000)*300000;
    if(Math.floor(lean.issuedFor/300000)===Math.floor(now/300000)){
-     const id=[asset,source,lean.phase,candleStart].join(':');
-     if(!next.some(x=>x.id===id)){
+     const setupType=lean.reason?.includes('انعكاس محتمل')?'REVERSAL':'CONTINUATION';
+     const baseId=[asset,source,lean.phase,candleStart].join(':');
+     // A prior continuation must not swallow a newly observed reversal.
+     // Preserve legacy IDs, and freeze at most one reversal per side/phase.
+     const id=setupType==='REVERSAL'?baseId+':REVERSAL:'+lean.side:baseId;
+     const already=next.some(x=>x.id===id||(setupType==='REVERSAL'&&
+       x.id===baseId&&x.setupType==='REVERSAL'&&x.side===lean.side));
+     if(!already){
        next.push({id,asset,source,kind:lean.phase,side:lean.side,
-         setupType:lean.reason?.includes('انعكاس محتمل')?'REVERSAL':'CONTINUATION',
+         setupType,
          quality:'OBSERVATION',sourceAt:lean.issuedFor,issuedAt:now,
          priceAt:input.price,trigger:null,invalidation:null,target:null,
          status:'NO_TARGET',resolvedAt:null,detectedAfterMs:now-lean.issuedFor,

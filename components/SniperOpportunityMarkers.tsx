@@ -38,7 +38,7 @@ export default function SniperOpportunityMarkers(p:Props){
  const m5Issued=p.records.filter(r=>r.asset===p.asset&&r.source===p.source&&
    (r.kind==='OPEN'||r.kind==='FOLLOW'||r.kind==='CLOSE')&&r.issuedAt>=p.from&&
    r.issuedAt<=p.now&&visible(r.priceAt))
-   .sort((a,b)=>b.issuedAt-a.issuedAt).slice(0,12);
+   .sort((a,b)=>b.issuedAt-a.issuedAt);
  const recentM5=m5Issued.slice(0,6);
  // Keep each historical point, but only one caption per nearby cluster.
  const m5Captioned:MovementProof[]=[];
