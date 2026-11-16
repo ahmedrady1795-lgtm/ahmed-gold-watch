@@ -43,8 +43,8 @@ const centerIndex=panel.indexOf('className="sniper-hunter-center"');
 const scenarioIndex=panel.indexOf('<SniperScenarioColumn ');
 const endIndex=panel.indexOf('className="sniper-hunter-bottom"');
 assert.ok(0<startIndex&&startIndex<liquidityIndex&&liquidityIndex<centerIndex&&
- centerIndex<chartIndex&&chartIndex<scenarioIndex&&scenarioIndex<endIndex,
- 'M5 chart retains its liquidity and scenario panels without failed M1 tape');
+ centerIndex<chartIndex&&chartIndex<scenarioIndex&&endIndex===-1,
+ 'M5 chart retains liquidity/sidebars while removing the failed M1 bottom panel');
 assert.doesNotMatch(panel,/<SniperM1CandleHunter|<SniperM1CandleTape|قنص كل شمعة/,
  'removed M1 each-candle mode cannot reappear in the live cockpit');
 assert.match(panel,/<SniperM15HuntOverlay forecast=\{huntPreview\}/,
