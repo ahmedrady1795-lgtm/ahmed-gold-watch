@@ -4,7 +4,10 @@ const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const hunter=fs.readFileSync('components/SniperM1CandleHunter.tsx','utf8');
 const backend=fs.readFileSync('app/api/sniper-health/route.ts','utf8');
 const paper=fs.readFileSync('lib/scalp-every-candle.ts','utf8');
-assert.match(panel,/<SniperM1CandleTape history=\{m\.candles\} now=\{now\} asset=\{asset\}/);
+assert.doesNotMatch(panel,/<SniperM1CandleTape|<SniperM1CandleHunter|قنص كل شمعة/,
+ 'failed M1 every-candle screen remains removed from live M5 cockpit');
+assert.match(panel,/<SniperOpportunityMarkers /,
+ 'M5 chart continues to show immutable opportunity markers');
 assert.match(hunter,/<SniperM1CandleTape history=\{p\.history\} now=\{p\.now\} asset=\{p\.asset\}/);
 assert.match(ui,/fetch\('\/api\/sniper-health'/);
 assert.match(ui,/asset==='GOLD'\?\s*j\.paperM1\?\.gold:j\.paperM1\?\.bitcoin/);
