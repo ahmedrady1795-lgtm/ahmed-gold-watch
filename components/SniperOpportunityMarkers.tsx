@@ -65,7 +65,7 @@ export default function SniperOpportunityMarkers(p:Props){
      const labelY=fit(y+(buy?23:-23));
      const labelX=Math.max(p.left+43,Math.min(p.split-43,x));
      const action=(buy?'شراء':'بيع');
-     const label=r.quality==null?'قديم '+action:
+     const label=r.quality==null?action:
        r.quality==='COUNTERTREND'?action+' ⚠':
        r.quality==='OBSERVATION'?'رصد '+(buy?'↑':'↓'):action;
      return <g key={r.id} data-side={r.side} data-issued-at={r.issuedAt}>
