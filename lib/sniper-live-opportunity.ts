@@ -13,6 +13,8 @@ export type LiveOpportunity={
   side:Side;trigger:number|null;invalidation:number|null;
   targets:number[];sourceAt:number|null;strength:number;
   higherFrame:'ALIGNED'|'OPPOSED'|'NEUTRAL';
+  m15Context:'ALIGNED'|'OPPOSED'|'NEUTRAL';
+  quality:'SETUP'|'COUNTERTREND'|'OBSERVATION';
   reason:string;targetNote:string;tradeEligible:false;
 };
 const finite=(x:unknown):x is number=>typeof x==='number'&&Number.isFinite(x);
@@ -34,11 +36,11 @@ function contiguous(bars:Bar[],period:number,n:number){
 }
 export function assessSniperLiveOpportunity(input:{
  now:number;price:number|null;sourceReady:boolean;c1:unknown;c5:unknown;
- preMove?:PreMove|null;watch?:Watch|null
+ preMove?:PreMove|null;watch?:Watch|null;m15Side?:Side
 }):LiveOpportunity{
  const empty=(reason:string,phase:LiveOpportunity['phase']='OFFLINE'):LiveOpportunity=>({
    phase,side:'WAIT',trigger:null,invalidation:null,targets:[],sourceAt:null,
-   strength:0,higherFrame:'NEUTRAL',reason,targetNote:'لا أهداف جديدة موثوقة',tradeEligible:false
+   strength:0,higherFrame:'NEUTRAL',m15Context:'NEUTRAL',quality:'OBSERVATION',reason,targetNote:'لا أهداف جديدة موثوقة',tradeEligible:false
  });
  const {now,price}=input;
  if(!input.sourceReady||!finite(now)||!finite(price)||price<=0)
@@ -54,7 +56,8 @@ export function assessSniperLiveOpportunity(input:{
    b.high-b.low,Math.abs(b.high-tail[i].close),Math.abs(b.low-tail[i].close)));
  const atr=tr.length?tr.reduce((sum,x)=>sum+x,0)/tr.length:0;
  const frameDelta=m5.length>=3?m5.at(-1)!.close-m5.at(-3)!.close:0;
- const m5Side:Side=m5.length<3||!(atr>0)||Math.abs(frameDelta)<atr*.35?
+ const m5Side:Side=m5.length<3||!m5Fresh||!contiguous(m5,300000,3)||
+   !(atr>0)||Math.abs(frameDelta)<atr*.35?
    'WAIT':frameDelta>0?'BUY':'SELL';
  const targets=(s:Side)=>{
    if(!input.watch?.ready||s==='WAIT')return [];
@@ -70,11 +73,25 @@ export function assessSniperLiveOpportunity(input:{
  const output=(phase:LiveOpportunity['phase'],side:Side,trigger:number|null,
      invalidation:number|null,sourceAt:number,strength:number,reason:string):LiveOpportunity=>{
    const goalPrices=targets(side);
+   const m15Side=input.m15Side==='BUY'||input.m15Side==='SELL'?
+     input.m15Side:'WAIT';
+   const m5Opposed=m5Side!=='WAIT'&&m5Side!==side;
+   const m15Opposed=m15Side!=='WAIT'&&m15Side!==side;
+   const reward=goalPrices.length?(side==='BUY'?goalPrices[0]-price:price-goalPrices[0]):0;
+   const risk=invalidation!=null?(side==='BUY'?price-invalidation:invalidation-price):0;
+   // This label grades the observed setup, NOT a proven win probability or order.
+   // Opposing higher frames remain visible, but never masquerade as entry calls.
+   const quality:LiveOpportunity['quality']=phase!=='BREAK_CONFIRMED'||side==='WAIT'?
+     'OBSERVATION':m5Opposed||m15Opposed?'COUNTERTREND':
+     m5Side===side&&strength>=55&&risk>0&&risk<=atr*3&&
+       reward>0&&reward<=atr*4&&reward/(risk+atr*.1)>=.9?
+       'SETUP':'OBSERVATION';
    return {phase,side,trigger:trigger==null?null:round(trigger),
      invalidation:invalidation==null?null:round(invalidation),
      sourceAt,strength:Math.round(clamp(strength,0,90)),targets:goalPrices,
      higherFrame:m5Side==='WAIT'?'NEUTRAL':m5Side===side?'ALIGNED':'OPPOSED',
-     reason,
+     m15Context:m15Side==='WAIT'?'NEUTRAL':m15Side===side?'ALIGNED':'OPPOSED',
+     quality,reason,
      targetNote:goalPrices.length?
        'أهداف هيكلية M15/H1 أمام السعر الحي، ليست وصولًا مضمونًا':
        'لا يوجد هدف M15/H1 صالح أمام السعر الحالي؛ لا نستنتج هدفًا وهميًا',
