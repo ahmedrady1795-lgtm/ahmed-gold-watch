@@ -698,7 +698,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  });
  const phase=sniperPhaseBadge({ready:liquidity.ready,
    contextKind:liquidity.context?.kind,phase:liquidity.phase,side:chartSide});
- const W=492,H=704,left=8,split=projected.ready||showWatchGuide?280:400,end=422,
+ const W=492,H=704,left=8,split=projected.ready||showWatchGuide?320:400,end=422,
    plotTop=26,plotBottom=H-33;
  // A single absolute price axis contains EVERY currently valid target and
  // stop. No fake vertical positioning of offscreen targets.
@@ -1192,7 +1192,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              <title>{z.detail}</title>
            </g>;
          })}
-         {showLiquidity&&liquidity.context&&(()=>{
+         {showLiquidity&&showExtra&&liquidity.context&&(()=>{
            const z=liquidity.context!,color=z.kind==='ACCUMULATION'?'#66e9b9':
              z.kind==='DISTRIBUTION'?'#ffac8e':'#eccc87';
            const xa=timeX(z.from),xb=Math.min(split,timeX(z.to));
@@ -1358,8 +1358,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {renderedBars.length?'PATH'+(showHistoricalExtension?' · أهداف':''):'M5'}</text>
      </svg>
    </div>
-     <small style={{display:'block',padding:'8px',color:'#aac5d3'}}>
-       شموع M5 فعلية · {String(x?.candleSource||'المصدر غير متاح')} · سياق التحليل M15
+     <small className="sniper-chart-source-note">
+       شموع M5 فعلية · {String(x?.candleSource||'المصدر غير متاح')}
      </small>
      <details className="sniper-performance-drawer">
        <summary>نتيجة قنص M5 · بداية {movementStats.openingHits}/{movementStats.openingScored} · نهاية {movementStats.closingHits}/{movementStats.closingScored} <span>＋</span></summary>
