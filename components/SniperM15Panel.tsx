@@ -497,7 +497,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    (r.kind==='OPEN'||r.kind==='FOLLOW'||r.kind==='CLOSE')&&
    r.issuedAt>=candleStart&&r.issuedAt<=now)
    .sort((a,b)=>b.issuedAt-a.issuedAt)[0];
- const earlySide=currentCandleRecord?.side??candleLean.side;
+ // Surface a real pre-break setup before momentum-only observations.
+ const showPreparation=liveOpportunity.phase==='PREPARE'&&liveOpportunity.side!=='WAIT';
+ const earlySide=showPreparation?liveOpportunity.side:currentCandleRecord?.side??candleLean.side;
  const earlyPhase=currentCandleRecord?.kind??candleLean.phase;
  const hasEarlySignal=Boolean(currentCandleRecord||candleLean.phase!=='WAIT');
  const earlyType=currentCandleRecord?.setupType??
@@ -926,13 +928,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    <div className={'sniper-m5-early-signal '+(earlySide==='BUY'?'is-buy':
      earlySide==='SELL'?'is-sell':'is-wait')} role="status"
      aria-label="توقع مراقبة مبكر لاتجاه M5، وليس تنفيذ صفقة">
-     <strong>{earlySide==='BUY'?'شراء ↑':earlySide==='SELL'?'بيع ↓':'ترقب M5'}</strong>
-     <span>{hasEarlySignal?
+     <strong>{(showPreparation?'ترقب ':'')+(earlySide==='BUY'?'شراء ↑':earlySide==='SELL'?'بيع ↓':'ترقب M5')}</strong>
+     <span>{showPreparation?'تهيئة قبل الكسر · التفعيل بإغلاق M1 عند '+n(liveOpportunity.trigger)+' · إبطال '+n(liveOpportunity.invalidation):hasEarlySignal?
        (earlyPhase==='CLOSE'?'آخر دقيقة من الشمعة':earlyPhase==='FOLLOW'?'أثناء الشمعة':'بداية الشمعة')+
        ' · '+(earlyType==='REVERSAL'?'انعكاس مبكر محتمل':
         earlyType==='CONTINUATION'?'استمرار بعد زخم مغلق':'اتجاه متوقع غير مؤكد'):
         candleLean.reason}</span>
-     <small>{hasEarlySignal?'السعر عند الرصد '+
+     <small>{showPreparation?'توقع مشروط قبل الحركة، وليس إشارة دخول مؤكدة':hasEarlySignal?'السعر عند الرصد '+
        n(currentCandleRecord?.priceAt??price):'بانتظار بيانات صالحة أو ترجيح اتجاه'}</small>
    </div>
    <div className="sniper-scenario-chart-legend"

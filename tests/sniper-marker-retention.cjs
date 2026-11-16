@@ -7,3 +7,16 @@ const html=renderToStaticMarkup(React.createElement('svg',null,React.createEleme
 assert.equal((html.match(/data-kind="FOLLOW"/g)||[]).length,20,'every visible historical point survives, including older than last twelve');
 assert.ok(html.includes('data-issued-at="1000"'),'oldest original timestamp remains visible');
 console.log('PASS: all visible historical M5 points rendered without rewriting timestamps');
+const props={signal:{phase:'WATCH'},asset:'GOLD',source:'test',from:0,now:30000,left:0,split:1000,end:1100,top:0,bottom:500,py:x=>x,timeX:t=>t/30};
+for(const outcome of ['WRONG','CORRECT']){
+ const rendered=renderToStaticMarkup(React.createElement('svg',null,React.createElement(Markers,{...props,records:[{...records[19],m5Outcome:outcome}]})));
+ const captions=[...rendered.matchAll(/<text[^>]*>(.*?)<\/text>/g)].map(x=>x[1]);
+ assert.ok(captions.includes('شراء'));
+ assert.ok(captions.every(x=>!/[✓✕]/.test(x)),'candle direction cannot masquerade as trade success/failure');
+}
+const History=load('components/SniperOpportunityHistory.tsx').default;
+const history=renderToStaticMarkup(React.createElement(History,{asset:'GOLD',records:[{...records[0],kind:'EARLY',status:'NO_TARGET',m5Outcome:'WRONG',target:null,invalidation:null}]}));
+assert.ok(history.includes('ترقب قبل الكسر'),'pre-break warning appears in audit history');
+assert.ok(history.includes('الإغلاق خالف الاتجاه'),'direction outcome remains visible and explicitly identified');
+assert.ok(history.includes('لا توجد خطة هدف'),'no target is invented for old records');
+console.log('PASS: honest directional labels and retained pre-break audit');

@@ -72,12 +72,11 @@ export default function SniperOpportunityMarkers(p:Props){
          <text x={Math.max(p.left+27,Math.min(p.split-27,x))}
            y={labelY+3.5} textAnchor="middle" direction="rtl"
            fontSize="9.9" fontWeight="800" fill={ink}>
-           {(buy?'شراء':'بيع')+(r.m5Outcome==='CORRECT'?' ✓':
-             r.m5Outcome==='WRONG'?' ✕':'')}</text>
+           {buy?'شراء':'بيع'}</text>
        </>}
        <title>{(buy?'شراء':'بيع')+' · '+(r.kind==='OPEN'?'بداية M5':r.kind==='FOLLOW'?'أثناء M5':'نهاية M5')+
-         ' · '+r.priceAt.toFixed(2)+' · '+(r.m5Outcome==='CORRECT'?'اتجاه صحيح':
-         r.m5Outcome==='WRONG'?'اتجاه خاطئ':'نتيجة قيد القياس')+
+         ' · '+r.priceAt.toFixed(2)+' · '+(r.m5Outcome==='CORRECT'?'إغلاق M5 وافق الاتجاه فقط':
+         r.m5Outcome==='WRONG'?'إغلاق M5 خالف الاتجاه فقط':'تقييم إغلاق M5 قيد القياس')+
          ' · توقع مرصود وقتها، ليس صفقة منفذة'}</title>
      </g>;
    })}
