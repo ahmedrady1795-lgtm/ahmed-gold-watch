@@ -500,6 +500,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const earlySide=currentCandleRecord?.side??candleLean.side;
  const earlyPhase=currentCandleRecord?.kind??candleLean.phase;
  const hasEarlySignal=Boolean(currentCandleRecord||candleLean.phase!=='WAIT');
+ const earlyType=currentCandleRecord?.setupType??
+   (candleLean.reason.includes('انعكاس محتمل')?'REVERSAL':
+    candleLean.reason.includes('استمرار محتمل')?'CONTINUATION':null);
  const rawIssuance=assessM15ScenarioIssuance({
    side:safeSide,qualified,radarStatus:radar.status,radarSide:radar.side,
    m15Side:m15Bias.side,m15Votes:m15Bias.votes,
@@ -926,8 +929,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <strong>{earlySide==='BUY'?'شراء ↑':earlySide==='SELL'?'بيع ↓':'ترقب M5'}</strong>
      <span>{hasEarlySignal?
        (earlyPhase==='CLOSE'?'آخر دقيقة من الشمعة':earlyPhase==='FOLLOW'?'أثناء الشمعة':'بداية الشمعة')+
-       ' · '+(candleLean.reason.includes('انعكاس محتمل')?'انعكاس مبكر محتمل':
-        candleLean.reason.includes('استمرار محتمل')?'استمرار بعد زخم مغلق':'اتجاه متوقع غير مؤكد'):
+       ' · '+(earlyType==='REVERSAL'?'انعكاس مبكر محتمل':
+        earlyType==='CONTINUATION'?'استمرار بعد زخم مغلق':'اتجاه متوقع غير مؤكد'):
         candleLean.reason}</span>
      <small>{hasEarlySignal?'السعر عند الرصد '+
        n(currentCandleRecord?.priceAt??price):'بانتظار بيانات صالحة أو ترجيح اتجاه'}</small>
@@ -1365,6 +1368,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        شموع M5 فعلية · {String(x?.candleSource||'المصدر غير متاح')}
      </small>
      <details className="sniper-performance-drawer">
+       <div style={{padding:'8px 12px',fontSize:12,color:'#b8d9e5'}}>
+         انعكاس مبكر: {movementStats.reversalHits}/{movementStats.reversalScored}
+         {' · '}استمرار: {movementStats.continuationHits}/{movementStats.continuationScored}
+       </div>
        <summary>نتيجة قنص M5 · بداية {movementStats.openingHits}/{movementStats.openingScored} · متابعة {movementStats.followingHits}/{movementStats.followingScored} · نهاية {movementStats.closingHits}/{movementStats.closingScored} <span>＋</span></summary>
      <div className="sniper-movement-summary" role="status" style={{
        display:'flex',flexWrap:'wrap',gap:'8px 15px',padding:'9px 12px',
