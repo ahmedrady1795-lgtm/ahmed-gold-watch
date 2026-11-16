@@ -149,19 +149,18 @@ const snippet=fs.readFileSync('components/SniperM1CandleHunter.tsx','utf8');
 const chart=fs.readFileSync('components/SniperMT5M1Chart.tsx','utf8');
 const css=fs.readFileSync('app/m1-candle-hunter.css','utf8');
 const layout=fs.readFileSync('app/layout.tsx','utf8');
-assert.match(panel,/chartMode,setChartMode/);
-assert.match(panel,/chartMode==='M1'\?<SniperM1CandleHunter/,
- 'minute scalp remains directly accessible in the visible mode switch');
-assert.match(panel,/useState<\x27M1\x27\|\x27M15\x27>\(\x27M15\x27\)/,
- 'actual M15 future-candle chart is the default visible scenario');
+assert.doesNotMatch(panel,/chartMode,setChartMode|<SniperM1CandleHunter|قنص كل شمعة/,
+ 'discontinued M1 chart must not be mounted');
+assert.match(panel,/className="sniper-m15-chart-box"/,
+ 'real M5 scenario remains visible');
 assert.doesNotMatch(panel,/sniper-minute-audit-strip/,
  'M1 audit appears once, in the scalp component rather than repeated over M15');
 assert.match(panel,/noForecastReason=\{!projected.ready\?lifecycle:null\}/,
  'unavailable M15 projections must disclose their gating reason');
 assert.match(snippet,/sniper-m1-gross-risk/,
  'sub-1R M1 target/stop geometry is flagged before any trade claims');
-assert.match(panel,/chartMode==='M15'/,
- 'original M15 scenario must remain available');
+assert.match(panel,/<SniperScenarioHero /,
+ 'original M15 scenario stays accessible without M1 mode switch');
 assert.match(snippet,/BUY BREAK/);
 assert.match(snippet,/SELL BREAK/);
 assert.match(snippet,/auditCandleHunter/);
