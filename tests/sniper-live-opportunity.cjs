@@ -53,4 +53,16 @@ const testing=run({...data,c1:base,c5:five(base),price:99.5,
  preMove:{ok:true,stage:'ARMED',side:'SELL',sourceAt:now-15000,
  trigger:99.7,invalidation:100.5,readiness:62}});
 assert.equal(testing.phase,'TESTING','unclosed break stays provisional');
+// A several-minute-old breakout must not be advertised as a fresh opportunity
+// merely because a newer candle arrived and the chart polled again.
+const afterBreak=[...sell,...[60,61,62].map(i=>({
+  time:start+i*60000,open:100.04,close:100.01,high:100.17,low:99.87
+}))];
+const noReplay=run({...data,now:start+63*60000+2000,price:100.02,
+  c1:afterBreak,c5:five(afterBreak.slice(0,60))});
+assert.notEqual(noReplay.phase,'BREAK_CONFIRMED',
+ 'no old breakout may be replayed into the live label after 90 seconds');
+assert.notEqual(noReplay.quality,'SETUP');
+assert.equal(result.quality,'OBSERVATION',
+ 'an extended move with poor present risk/reward is not a qualified chase');
 console.log('PASS: live movement M1 breakout, early pre-move, future-bar exclusion, missing targets, reversal and stale feed');
