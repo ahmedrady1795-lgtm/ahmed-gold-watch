@@ -42,11 +42,11 @@ const liquidityIndex=panel.indexOf('<SniperLiquidityColumn ');
 const centerIndex=panel.indexOf('className="sniper-hunter-center"');
 const scenarioIndex=panel.indexOf('<SniperScenarioColumn ');
 const endIndex=panel.indexOf('className="sniper-hunter-bottom"');
-const m1Index=panel.indexOf('<SniperM1CandleTape ',endIndex);
 assert.ok(0<startIndex&&startIndex<liquidityIndex&&liquidityIndex<centerIndex&&
- centerIndex<chartIndex&&chartIndex<scenarioIndex&&scenarioIndex<endIndex&&endIndex<m1Index,
- 'real M15 chart has left price-activity and right scenario sidebars, with M1 RESULTS visible below');
-assert.match(panel,/chartMode==='M1'\?<SniperM1CandleHunter/);
+ centerIndex<chartIndex&&chartIndex<scenarioIndex&&scenarioIndex<endIndex,
+ 'M5 chart retains its liquidity and scenario panels without failed M1 tape');
+assert.doesNotMatch(panel,/<SniperM1CandleHunter|<SniperM1CandleTape|قنص كل شمعة/,
+ 'removed M1 each-candle mode cannot reappear in the live cockpit');
 assert.match(panel,/<SniperM15HuntOverlay forecast=\{huntPreview\}/,
  'actual M15 conditional candles must remain on the live chart');
 assert.match(panel,/className="sniper-m15-diagnostics"/,
