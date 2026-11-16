@@ -846,10 +846,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <button type="button" onClick={()=>setChosen('BTC')} aria-pressed={asset==='BTC'}>BTCUSD</button>
      </div>:<b>{asset==='GOLD'?'XAUUSD':'BTCUSD'}</b>}
      <b className="sniper-m15-frame">M5</b>
-     {<button type="button" className="sniper-m15-liquidity-toggle"
+     <button type="button" className="sniper-m15-liquidity-toggle"
        aria-pressed={showLiquidity} onClick={()=>setShowLiquidity(v=>!v)}
        title="مناطق سيولة القمم والقيعان، الطلب والعرض والارتداد أو الرفض بعد إغلاق M15">
-       {showLiquidity?'المناطق ✓':'المناطق'}</button>}
+       {showLiquidity?'المناطق ✓':'المناطق'}</button>
    </header>
    <>
    <SniperScenarioHero asset={asset} fusion={localFusion}
@@ -1437,7 +1437,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        dataFresh={Boolean(m.sniper.view.priceFresh&&m.historyFresh)}
        providerTransition={providerTransition}/>
    </details>
-   </>}
+   </>
    <details className="sniper-m15-diagnostics">
      <summary>تفاصيل إضافية: الرادار والاختبارات والسيولة</summary>
      <div className="sniper-m15-diagnostics-content">
