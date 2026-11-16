@@ -105,3 +105,22 @@ const followScored=step({...base,now:start+five+5000,prior:followed,
 assert.equal(followScored[0].m5Outcome,'CORRECT');
 assert.equal(stats(followScored,'GOLD').followingHits,1);
 console.log('PASS: bounded provider lag, mid-candle issuance, persistence and forward-only scoring');
+
+const reversalBase=Array.from({length:17},(_,i)=>({
+ time:start-(18-i)*minute,open:100,close:100.04,
+ high:100.35,low:99.65
+}));
+const bullishSweep={time:start-minute,open:99.9,high:100.1,
+ low:99.2,close:99.85};
+const bearishSweep={time:start-minute,open:100.1,high:100.8,
+ low:99.9,close:100.15};
+const reverseBuy=run({...data,m1:[...reversalBase,bullishSweep]});
+const reverseSell=run({...data,m1:[...reversalBase,bearishSweep]});
+assert.equal(reverseBuy.side,'BUY','rejection after sweep of prior lows');
+assert.equal(reverseSell.side,'SELL','rejection after sweep of prior highs');
+assert.match(reverseBuy.reason,/انعكاس محتمل/);
+assert.match(reverseSell.reason,/انعكاس محتمل/);
+const stillPrior=run({...data,m1:[...reversalBase,bullishSweep,
+ {time:start,open:99,high:105,low:98,close:104}]});
+assert.equal(stillPrior.side,'BUY','current unfinished candle cannot flip prior reversal');
+console.log('PASS: pre-move sweep rejection BUY/SELL on closed M1 only');
