@@ -442,9 +442,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const candleLean=useMemo(()=>assessM5CandleLean({
    now,price,sourceReady:marketOpen&&m.sniper.view.priceFresh&&
      !providerTransition,
-   m1:m.candles,m5:x?.chartHigherFrames?.m5
+   m1:m.candles,m5:x?.chartHigherFrames?.m5,flow:flowProfile
  }),[now,price,marketOpen,m.historyFresh,m.sniper.view.priceFresh,
-   providerTransition,m.candles,x?.chartHigherFrames?.m5]);
+   providerTransition,m.candles,x?.chartHigherFrames?.m5,flowProfile]);
  const currentSignalSide=liveOpportunity.phase==='BREAK_CONFIRMED'||
    liveOpportunity.phase==='PREPARE'||liveOpportunity.phase==='TESTING'?
      liveOpportunity.side:'WAIT';
