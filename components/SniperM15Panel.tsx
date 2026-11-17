@@ -1392,6 +1392,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {movementStats.m5Rate!=null?' · '+movementStats.m5Rate+'%':''}</span>
        <span>الإنذار المبكر في أول M5 كامل: <b>{movementStats.earlyM5Correct}/{movementStats.earlyM5Scored}</b>
          {movementStats.earlyM5Rate!=null?' · '+movementStats.earlyM5Rate+'%':''}</span>
+       <span>بداية موجة خلال 3 شموع M1 بعد الترصد: <b>
+         {movementStats.onsetFirst}/{movementStats.onsetAudited}</b>
+         {' · '}تحرك ضدها أولًا {movementStats.onsetAdverse}
+         {' · '}بلا حركة {movementStats.onsetNoMove}
+         {' · '}غير محسوم {movementStats.onsetUncertain}
+         {' · '}معلق {movementStats.onsetPending}
+         {movementStats.onsetMeanDelaySeconds!=null?
+           ' · زمن الرصد حتى أول حركة محسومة '+movementStats.onsetMeanDelaySeconds+'ث':''}
+       </span>
        <small style={{flexBasis:'100%',opacity:.75}}>النتائج من شموع مغلقة بعد الرصد،
          ولا أرباح صفقات. M5 يُقاس بعد أول شمعة كاملة تبدأ عقب الرصد؛
          ولا يُعاد تصنيف السجل القديم.</small>
