@@ -7,14 +7,16 @@ const layout=fs.readFileSync('app/layout.tsx','utf8');
 const page=fs.readFileSync('app/page.tsx','utf8');
 const overlay=fs.readFileSync('components/SniperM15HuntOverlay.tsx','utf8');
 assert.match(panel,/<SniperScenarioHero asset=\{asset\} fusion=\{localFusion\}/);
-assert.match(panel,/className="sniper-scenario-chart-legend"/);
+assert.match(panel,/className="sniper-m5-chart-status"/);
+assert.doesNotMatch(panel,/className="sniper-scenario-chart-legend"/,
+ 'screen-width prose legend is moved off the chart-first surface');
 assert.match(panel,/className="sniper-intelligence-drawer"/);
 assert.match(panel,/<SniperM15PreMoveConsole preMove=\{preMove\} hunt=\{huntPreview\}/);
 const start=panel.indexOf('<SniperScenarioHero asset=');
 const chart=panel.indexOf('className="sniper-m15-chart-box"');
 const deck=panel.indexOf('className="sniper-intelligence-drawer"');
-assert.ok(start>=0&&chart>start&&deck>chart,
- 'modern compact scenario comes before true OHLC, full analytics follow the chart');
+assert.ok(chart>=0&&deck>chart&&start>deck,
+ 'M5 candles are first; optional analysis starts only after the chart');
 const heroStart=panel.indexOf('<SniperScenarioHero asset=');
 const heroEnd=panel.indexOf('/>',heroStart);
 assert.ok(heroEnd>heroStart,'scenario hero props must be fully closed');
