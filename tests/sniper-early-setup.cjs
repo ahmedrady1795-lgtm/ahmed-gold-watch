@@ -191,6 +191,51 @@ notActuallyCoiling[16].high=100.33; // breaks the lower-high squeeze
 assert.notEqual(step({...base,bars:notActuallyCoiling,price:100.10,
  m1Side:'BUY',m15Side:'BUY'})?.setupKind,'COIL',
  'flat noisy M1 is not predictive compression');
+// PROSPECTIVE level watch: pre-existing closed-M15/H1 support is observed
+// while M1 is still approaching it, BEFORE the price bounced or broke high.
+const towardSupport=bars.map((b,i)=>({...b,close:i===15?100.3:i===16?100.2:100}));
+towardSupport[16]={...towardSupport[16],open:100.3,close:100.2,high:100.32,low:99.8};
+towardSupport[17]={...towardSupport[17],open:100.2,close:100,high:100.31,low:99.6};
+const supportWatch={ready:true,asOf:now-5*60000,atr:1,
+ upper:[],lower:[{key:'DOWN1',price:99.55,side:'SELL',stage:1,
+ source:'M15',kind:'SWING',actionable:false}]};
+const support=step({...base,bars:towardSupport,price:100,
+ m1Side:'SELL',m15Side:'SELL',watch:supportWatch});
+assert.equal(support?.setupKind,'ZONE','support is monitored before price rises, even against M15 downtrend');
+assert.equal(support?.side,'BUY');
+assert.equal(support?.phase,'ARMED');
+assert.ok(support?.trigger>100&&support?.armedAt===now);
+assert.match(support.reason,/دعم M15/);
+assert.equal(step({...base,bars:towardSupport,price:support.trigger+.01,
+ watch:supportWatch,m1Side:'SELL',m15Side:'SELL'}),null,
+ 'no backdated BUY setup once the support bounce already broke its trigger');
+assert.equal(step({...base,bars:towardSupport,price:99.4,
+ watch:supportWatch,m1Side:'SELL',m15Side:'SELL'}),null,
+ 'do not arm BUY after support has already been lost');
+assert.equal(step({...base,bars:towardSupport,price:100,
+ watch:{...supportWatch,asOf:now+10000}}),null,
+ 'future M15 support cannot create a past early alert');
+assert.equal(step({...base,bars:towardSupport,price:100,
+ watch:{...supportWatch,asOf:now-65*60000}}),null,
+ 'stale old historical watch map cannot issue a fresh early signal');
+assert.equal(step({...base,bars:towardSupport,price:100,
+ watch:supportWatch,flow:{...brokerFlow,side:'SELL'}}),null,
+ 'contradictory fresh same-venue order flow vetoes BUY at support');
+assert.equal(step({...base,bars:towardSupport,price:100,
+ watch:supportWatch,liquidity:liqOpposed}),null,
+ 'fresh opposing M15 sweep vetoes a countertrend buy watch');
+const towardResistance=bars.map((b,i)=>({...b,
+ close:i===15?100.0:i===16?100.2:i===17?100.3:100}));
+towardResistance[16]={...towardResistance[16],open:100,close:100.2,high:100.4,low:99.8};
+towardResistance[17]={...towardResistance[17],open:100.2,close:100.3,high:100.5,low:99.9};
+const resistanceWatch={...supportWatch,lower:[],upper:[
+ {key:'UP1',price:100.8,side:'BUY',stage:1,
+ source:'H1',kind:'RANGE',actionable:false}]};
+const resistance=step({...base,bars:towardResistance,price:100.4,
+ m1Side:'BUY',m15Side:'BUY',watch:resistanceWatch});
+assert.equal(resistance?.setupKind,'ZONE','H1 resistance works symmetrically');
+assert.equal(resistance?.side,'SELL');
+assert.match(resistance.reason,/مقاومة H1/);
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(panel,/hasDirectionalWatch\?\(watchIsReversal\?/,
  'on-chart status distinguishes reversal and continuation waves');
@@ -229,6 +274,8 @@ assert.match(markerSvg,/const labelText=movementObservationLabel\(r\)/,
  'M1 bounce and reversal captions are observations, not entry recommendations');
 assert.match(markerSvg,/return null; \/\/ keep the real price dot/,
  'overfull chart must retain original marker anchors instead of inventing prices');
+assert.match(panel,/liquidity:liquidityMagnets,watch:watchMap/,
+ 'frozen M15/H1 support-resistance is actually wired into the live watch');
 assert.match(panel,/evidenceScore=\{trackedSetup\?\.score\?\?null\}/,
  'frozen evidence checklist reaches the chart, not a separate banner');
 assert.match(markerSvg,/اختبار /,
