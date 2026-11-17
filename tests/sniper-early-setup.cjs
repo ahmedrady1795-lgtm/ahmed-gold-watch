@@ -45,11 +45,30 @@ assert.equal(step({...base,opportunity:op,price:100.4}),null,'opening page after
 const movedOp={...op,trigger:101};
 const waiting=step({...base,now:now+3000,prior:armed,price:100.1,opportunity:movedOp});
 assert.equal(waiting.trigger,100.3,'levels freeze before crossing');
-const hit=step({...base,now:now+6000,prior:waiting,price:100.32});
-assert.equal(hit.phase,'TRIGGERED','live tick activates without waiting for M1 close');
-assert.equal(hit.triggeredAt,now+6000);
-assert.equal(hit.priceAt,100.32);
-const later=step({...base,now:now+8000,prior:hit,price:100.5});
+const firstCross=step({...base,now:now+6000,prior:waiting,price:100.32,quoteAt:now+6000});
+assert.equal(firstCross.phase,'ARMED','first tick above the level is only a test');
+assert.equal(signal(firstCross).phase,'TESTING','first breakout tick never advertises entry');
+const repeatedQuote=step({...base,now:now+7000,prior:firstCross,
+ price:100.33,quoteAt:now+6000});
+assert.equal(repeatedQuote.phase,'ARMED','same quote timestamp must not confirm');
+const recross=step({...base,now:now+8000,prior:firstCross,
+ price:100.1,quoteAt:now+8000});
+assert.equal(recross.phase,'CANCELLED','failed first-tick break is canceled early');
+assert.match(recross.reason,/فشل اختبار الاختراق/);
+const tooSoon=step({...base,now:now+7500,prior:firstCross,
+ price:100.34,quoteAt:now+7500});
+assert.equal(tooSoon.phase,'ARMED','minimum quote separation must elapse');
+const hit=step({...base,now:now+9000,prior:tooSoon,
+ price:100.36,quoteAt:now+9000});
+assert.equal(hit.phase,'TRIGGERED','later fresh quote confirms level after the hold');
+assert.equal(hit.triggeredAt,now+9000);
+assert.equal(hit.priceAt,100.36);
+const later=step({...base,now:now+11000,prior:hit,price:100.5});
+const falseBreak=step({...base,now:now+12000,prior:hit,price:100.05,
+ quoteAt:now+12000});
+assert.equal(falseBreak.phase,'CANCELLED','post-confirmation reclaim must cancel stale BUY');
+assert.match(falseBreak.reason,/فشل اختراق شراء/);
+assert.equal(signal(falseBreak).side,'WAIT','rejected breakout is no longer an active buy');
 assert.equal(later.triggeredAt,hit.triggeredAt);assert.equal(later.priceAt,hit.priceAt);
 assert.equal(step({...base,now:now+3000,prior:armed,price:101.5}).phase,'CANCELLED','no gap chase');
 assert.equal(step({...base,now:now+3000,prior:armed,price:99.3}).phase,'CANCELLED');
@@ -63,7 +82,10 @@ const touched={time:now-1000,open:100,high:100.4,low:99.9,close:100};
 assert.equal(step({...base,opportunity:op,bars:[...bars,touched]}),null,'intrabar breakout and return is not a new preparation');
 const sell=step({...base,opportunity:{...op,side:'SELL',trigger:99.7,invalidation:100.6,targets:[98]}});
 assert.equal(sell.phase,'ARMED');
-assert.equal(step({...base,prior:sell,now:now+3000,price:99.68}).phase,'TRIGGERED');
+const sellTest=step({...base,prior:sell,now:now+3000,price:99.68,quoteAt:now+3000});
+assert.equal(sellTest.phase,'ARMED','SELL also waits for independent observation');
+assert.equal(step({...base,prior:sellTest,now:now+6000,price:99.64,
+ quoteAt:now+6000}).phase,'TRIGGERED','SELL confirms on later quote');
 const reversal=step({...base,price:100,lean:{...lean,reason:'انعكاس محتمل بعد سحب قمة/قاع سابق'}});
 assert.equal(reversal.phase,'ARMED');assert.equal(reversal.trigger,100.55);
 assert.equal(step({...base,price:101,lean:{...lean,reason:'انعكاس محتمل'}}),null,'late reversal is not chased');
@@ -114,7 +136,11 @@ assert.match(panel,/اتجاه مرصود بعد بدء الحركة/,
  'an already-moving wave is labeled explicitly as non-predictive');
 assert.match(panel,/candleLean\.reason\.includes\(\x27انعكاس محتمل\x27\)/,
  'only observed sweep reversals may reenter marker journal');
-console.log('PASS early setup: pre-arm, frozen levels, live crossing, no momentum/backfill/chase, stale/gap cancellation and source isolation');
+assert.match(panel,/showCrossTest\?'اختبار اختراق /,
+ 'first quote crossing must remain visually testing, not BUY/SELL');
+assert.match(panel,/showRejected\?'فشل اختراق /,
+ 'fast failed breakout must be visible without erasing issued records');
+console.log('PASS early setup: frozen prearm, 2.5s distinct quote confirmation, false-break cancellation, audit integrity and no chase');
 // New marker timestamps are first observations, never level-touch backfills.
 const proofMod={exports:{}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/sniper-movement-proof.ts','utf8'),{
@@ -124,8 +150,8 @@ const record=proofMod.exports.advanceMovementProof;
 const evidence={prior:[],asset:'GOLD',source:'venue',bars:[],price:100,now,signal:signal(armed)};
 const early=record(evidence);
 const triggered=record({...evidence,prior:early,now:hit.triggeredAt,price:hit.priceAt,signal:signal(hit)});
-assert.equal(triggered.length,2);assert.equal(triggered[1].leadSeconds,6);
-assert.equal(triggered[1].issuedAt,hit.triggeredAt);assert.equal(triggered[1].priceAt,100.32);
+assert.equal(triggered.length,2);assert.equal(triggered[1].leadSeconds,9);
+assert.equal(triggered[1].issuedAt,hit.triggeredAt);assert.equal(triggered[1].priceAt,100.36);
 const unrelated=record({...evidence,prior:[{...early[0],trigger:101}],now:hit.triggeredAt,price:hit.priceAt,signal:signal(hit)});
 assert.equal(unrelated[1].leadSeconds,null,'unrelated same-side preparation cannot count as prior warning');
 console.log('PASS forward record: exact setup linkage, timestamp and first trigger price');
