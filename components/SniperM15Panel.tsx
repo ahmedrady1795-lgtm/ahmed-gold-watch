@@ -473,6 +473,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const hasDirectionalWatch=earlyOpportunity.side==='WAIT'&&
    candleLean.side!=='WAIT'&&candleLean.phase!=='WAIT';
  const watchIsReversal=hasDirectionalWatch&&candleLean.reason.includes('انعكاس محتمل');
+ const watchAgainstM15=hasDirectionalWatch&&!watchIsReversal&&
+   localFusion.m15!=='WAIT'&&candleLean.side!==localFusion.m15;
  const currentSignalSide=earlyOpportunity.side;
  const currentSignalLabel=earlyOpportunity.phase==='PREPARE'?
    (earlyOpportunity.side==='BUY'?'ترقب شراء قبل الكسر':'ترقب بيع قبل الكسر'):
@@ -501,13 +503,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      prior,now,asset,source:String(x?.candleSource||''),
      price,signal:earlyOpportunity,bars:m.candles,
      m5Bars:x?.chartHigherFrames?.m5,
+     frameTrend:localFusion.m15,
      // Freeze FIRST observed closed-M1 directional wave, including continuation.
      // Movement journal deduplicates same-side waves; these are NOT trade entries.
      candleLean:hasDirectionalWatch?candleLean:undefined
    }));
  },[movementProofLoaded,now,asset,x?.candleSource,price,
    earlyOpportunity,candleLean,hasDirectionalWatch,m.candles,
-   x?.chartHigherFrames?.m5]);
+   x?.chartHigherFrames?.m5,localFusion.m15]);
  const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
    [movementRecords,asset]);
  const showPreparation=earlyOpportunity.phase==='PREPARE';
@@ -527,14 +530,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    showRejected?'فشل اختراق '+(drawingSide==='BUY'?'شراء':'بيع'):
    hasEarlySignal?'رصد '+(drawingSide==='BUY'?'شراء':'بيع'):
    hasDirectionalWatch?(watchIsReversal?
-     'مراقبة انعكاس '+(drawingSide==='BUY'?'صعود':'هبوط'):
-     'متابعة '+(drawingSide==='BUY'?'صعود':'هبوط')):'ترقب M5';
+     'احتمال انعكاس '+(drawingSide==='BUY'?'صاعد':'هابط'):
+     watchAgainstM15?'ارتداد '+(drawingSide==='BUY'?'صاعد':'هابط'):
+     'متابعة '+(drawingSide==='BUY'?'صعود':'هبوط')):
+   marketOpen&&m.sniper.view.priceFresh&&m.historyFresh&&!providerTransition?
+     'مراقبة نطاق M5':'تحديث السوق M5';
  // Qualitative evidence checklist, not a predicted success rate.
  const drawingBadge=(showPreparation||showCrossTest)&&trackedSetup?.score!=null?
    drawingLabel+' · '+trackedSetup.score+'/10':drawingLabel;
  const drawingReason=showPreparation||showCrossTest||showRejected||hasEarlySignal?
    (trackedSetup?.reason||'إعداد غير متاح'):
    hasDirectionalWatch?(watchIsReversal?'احتمال انعكاس غير مؤكد':
+     watchAgainstM15?'ارتداد عكس سياق M15؛ ليس إشارة دخول':
      'اتجاه مرصود بعد بدء الحركة؛ ليس إنذارًا مبكرًا أو أمر دخول'):
    earlyOpportunity.reason;
  const drawingColor=drawingSide==='BUY'?'#64e8b2':
