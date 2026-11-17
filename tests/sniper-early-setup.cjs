@@ -16,6 +16,31 @@ const armed=step({...base,opportunity:op});
 assert.equal(armed.phase,'ARMED');
 assert.equal(signal(armed).phase,'PREPARE');
 assert.equal(armed.armedAt,now);
+// Order-flow and volume-at-price are part of the live PRE-arm decision,
+// but only if genuine same-venue observations predate the decision.
+const brokerFlow={ready:true,side:'BUY',asOf:now-3000,observedAt:now-2000,
+ quality:'INDICATIVE_BROKER',profileReady:true,poc:99.9,vah:100.2,val:99.6};
+const flowAgree=step({...base,opportunity:op,flow:brokerFlow});
+assert.equal(flowAgree.phase,'ARMED');
+assert.match(flowAgree.reason,/POC/,'aligned broker profile is labelled indicative');
+const flowReject=step({...base,opportunity:op,flow:{...brokerFlow,side:'SELL'}});
+assert.equal(flowReject,null,'contradictory same-venue DOM/profile cannot arm');
+const staleFlow=step({...base,opportunity:op,flow:{...brokerFlow,side:'SELL',asOf:now-20000}});
+assert.equal(staleFlow.phase,'ARMED','stale flow never vetoes or confirms');
+assert.match(staleFlow.reason,/غير مؤكد/);
+const futureFlow=step({...base,opportunity:op,flow:{...brokerFlow,side:'SELL',asOf:now+1000}});
+assert.equal(futureFlow.phase,'ARMED','future flow cannot alter an earlier decision');
+const liqOpposed={ready:true,sourceAt:now-2000,sweep:'HIGH_RECLAIMED_DOWN'};
+assert.equal(step({...base,opportunity:op,liquidity:liqOpposed}),null,
+ 'confirmed opposing M15 liquidity sweep vetoes early BUY');
+const liqAgree={...liqOpposed,sweep:'LOW_RECLAIMED_UP'};
+assert.match(step({...base,opportunity:op,liquidity:liqAgree}).reason,/سيولة M15/);
+assert.equal(step({...base,opportunity:op,
+ liquidity:{...liqOpposed,sourceAt:now-700000}}).phase,'ARMED',
+ 'expired M15 sweep must not veto');
+assert.equal(step({...base,opportunity:op,prior:armed,
+ flow:{...brokerFlow,side:'SELL',asOf:now+1000,observedAt:now+1000},
+ now:now+2000}).phase,'CANCELLED','opposing fresh flow cancels an armed setup before crossing');
 assert.equal(step({...base,opportunity:op,price:100.4}),null,'opening page after breakout cannot backfill preparation');
 const movedOp={...op,trigger:101};
 const waiting=step({...base,now:now+3000,prior:armed,price:100.1,opportunity:movedOp});
