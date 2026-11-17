@@ -67,6 +67,25 @@ assert.equal(step({...base,prior:sell,now:now+3000,price:99.68}).phase,'TRIGGERE
 const reversal=step({...base,price:100,lean:{...lean,reason:'انعكاس محتمل بعد سحب قمة/قاع سابق'}});
 assert.equal(reversal.phase,'ARMED');assert.equal(reversal.trigger,100.55);
 assert.equal(step({...base,price:101,lean:{...lean,reason:'انعكاس محتمل'}}),null,'late reversal is not chased');
+// Fresh closed-M1 compression beside a prior swing creates a WATCH level
+// before price breaks it; no DOM or executed volume is claimed.
+const compressionBars=bars.map((b,i)=>({
+ ...b,open:100,close:100,high:i<14?100.5:100.25,
+ low:i<14?99.5:99.85
+}));
+compressionBars[14]={...compressionBars[14],open:100.15,close:100.05,high:100.43,low:99.94};
+compressionBars[15]={...compressionBars[15],open:100.08,close:100.02,high:100.22,low:99.91};
+compressionBars[16]={...compressionBars[16],open:100.03,close:99.98,high:100.18,low:99.87};
+compressionBars[17]={...compressionBars[17],open:99.99,close:99.95,high:100.15,low:99.86};
+const compressed=step({...base,bars:compressionBars,price:99.96});
+assert.equal(compressed?.phase,'ARMED','compressed swing should arm before break');
+assert.equal(compressed?.side,'SELL');
+assert.match(compressed.reason,/انضغاط M1/);
+assert.ok(compressed.trigger<99.96,'trigger must be ahead of price');
+assert.equal(step({...base,bars:compressionBars,price:compressed.trigger-.01}),null,
+ 'late quote below the trigger cannot invent an earlier setup');
+assert.equal(step({...base,bars:compressionBars,price:99.96,
+ flow:{...brokerFlow,side:'BUY'}}),null,'opposing flow vetoes compression');
 console.log('PASS early setup: pre-arm, frozen levels, live crossing, no momentum/backfill/chase, stale/gap cancellation and source isolation');
 // New marker timestamps are first observations, never level-touch backfills.
 const proofMod={exports:{}};
