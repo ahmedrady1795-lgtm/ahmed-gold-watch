@@ -280,6 +280,48 @@ assert.equal(impulse(oneWick,now),'WAIT',
  'a single long wick cannot pretend to establish a causal M1 closed-body impulse');
 assert.equal(impulse(sharp,now+180000),'WAIT',
  'stale M1 data cannot cancel new setups as if live');
+// New structural pre-break path has PRIOR support/resistance and must be
+// first observed BEFORE the boundary breaks, with symmetric bullish/bearish
+// cases. Two independently closed-frame votes can beat a conflicting first
+// pattern without inventing real executed order flow.
+const floorBars=bars.map(b=>({...b,open:100.7,close:100.6,high:101.6,low:99.0}));
+floorBars[15]={...floorBars[15],open:100.5,close:100.15,high:100.75,low:99.5};
+floorBars[16]={...floorBars[16],open:100.15,close:99.8,high:100.5,low:99.35};
+floorBars[17]={...floorBars[17],open:99.8,close:99.3,high:100.18,low:99.12};
+const floorSell=step({...base,bars:floorBars,price:99.32,
+ m1Side:'SELL',m15Side:'SELL'});
+assert.equal(floorSell?.setupKind,'STRUCTURE',
+ 'pre-break lower highs ahead of an older floor should qualify a SELL watch');
+assert.equal(floorSell?.side,'SELL');
+assert.equal(floorSell?.phase,'ARMED');
+assert.ok(floorSell.trigger<99.32&&floorSell.armedAt===now);
+assert.match(floorSell.reason,/كسر قاع/);
+const competingBuy={...op,trigger:100.05,invalidation:98.7};
+const preferredSell=step({...base,bars:floorBars,price:99.32,
+ opportunity:competingBuy,m1Side:'SELL',m15Side:'SELL'});
+assert.equal(preferredSell?.setupKind,'STRUCTURE',
+ 'two closed frame bearish votes may outrank an early contradictory BUY pattern');
+assert.equal(preferredSell?.side,'SELL');
+assert.equal(step({...base,bars:floorBars,price:98.8,
+ m1Side:'SELL',m15Side:'SELL'}),null,
+ 'never invent SELL after the older support has already broken');
+const ceilingBars=bars.map(b=>({...b,open:99.3,close:99.4,high:101,low:98.2}));
+ceilingBars[15]={...ceilingBars[15],open:99.8,close:100.2,high:100.45,low:99.10};
+ceilingBars[16]={...ceilingBars[16],open:100.2,close:100.55,high:100.75,low:99.38};
+ceilingBars[17]={...ceilingBars[17],open:100.55,close:100.82,high:100.92,low:99.66};
+const ceilingBuy=step({...base,bars:ceilingBars,price:100.8,
+ m1Side:'BUY',m15Side:'BUY'});
+assert.equal(ceilingBuy?.setupKind,'STRUCTURE',
+ 'bullish higher lows should symmetrically arm only before old high breaks');
+assert.equal(ceilingBuy?.side,'BUY');
+assert.ok(ceilingBuy.trigger>100.8);
+const noFrameVote=step({...base,bars:floorBars,price:99.32});
+assert.notEqual(noFrameVote?.setupKind,'STRUCTURE',
+ 'news, VIX, or a single red candle cannot independently fabricate a trade setup');
+const futureCompeting=step({...base,bars:floorBars,price:99.32,
+ m1Side:'SELL',m15Side:'SELL',opportunity:{...competingBuy,sourceAt:now+1000}});
+assert.equal(futureCompeting?.side,'SELL',
+ 'future pre-move BUY may never override older legitimate SELL evidence');
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(panel,/hasDirectionalWatch\?\(watchIsReversal\?/,
  'on-chart status distinguishes reversal and continuation waves');
