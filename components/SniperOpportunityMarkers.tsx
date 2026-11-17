@@ -65,6 +65,14 @@ export default function SniperOpportunityMarkers(p:Props){
      Math.abs(p.py(e.priceAt)-p.py(r.priceAt))<42))continue;
    m5Captioned.push(r);
  }
+ // Reserve labels for ACTUAL pre-break alerts ahead of later wave labels.
+ // This makes genuinely early observations legible without losing old dots.
+ const earlyLabels=new Map<string,{x:number;y:number}>();
+ for(const r of earlyShown.slice(0,3)){
+   const px=p.timeX(r.issuedAt),py=p.py(r.priceAt);
+   const chosen=placeLabel(px,py,52,14,r.side==='BUY'?19:-19);
+   if(chosen)earlyLabels.set(r.id,chosen);
+ }
  const nearM5=(r:MovementProof)=>m5Captioned.some(e=>
    Math.abs(p.timeX(e.issuedAt)-p.timeX(r.issuedAt))<60&&
    Math.abs(p.py(e.priceAt)-p.py(r.priceAt))<40);
@@ -114,8 +122,8 @@ export default function SniperOpportunityMarkers(p:Props){
        <title>{'ترقب '+(buy?'شراء':'بيع')+' قبل الكسر · '+
          r.priceAt.toFixed(2)+' · '+outcomeLabel[r.status]+
          ' · محفوظ عند الرصد وليس إشارة تنفيذ'}</title>
-       {i<3&&<text x={Math.max(p.left+22,Math.min(p.split-22,x))}
-         y={fit(y+(buy?17:-14))} textAnchor="middle" direction="rtl"
+       {earlyLabels.has(r.id)&&<text x={earlyLabels.get(r.id)!.x}
+         y={earlyLabels.get(r.id)!.y+4} textAnchor="middle" direction="rtl"
          fontSize="8.5" fontWeight="700" fill={ink}>{buy?'ترقب ↑':'ترقب ↓'}</text>}
      </g>;
    })}
