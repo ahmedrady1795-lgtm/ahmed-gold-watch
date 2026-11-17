@@ -82,4 +82,30 @@ const wrong=step({prior:withBreak,now:start+10*60000+1000,
  m5Bars:[{...m5Bar,close:99.0,low:98.5}]});
 assert.equal(wrong[1].m5Outcome,'WRONG');
 assert.equal(score(wrong,'GOLD').m5Rate,0);
+// One bearish observation per wave, not a signal on every candle or a
+// fictitious historical sell marker. New direction can be recorded at its
+// FIRST real observation with the original timestamp.
+const noEntry={phase:'WATCH',side:'WAIT',sourceAt:null,trigger:null,
+ invalidation:null,targets:[]};
+const fall=step({prior:[],now:start+2*60000+7000,asset:'GOLD',
+ source:'same-provider',price:99,signal:noEntry,bars:[],
+ candleLean:{phase:'FOLLOW',side:'SELL',issuedFor:start+2*60000,
+ reason:'استمرار محتمل من زخم مغلق'}});
+assert.equal(fall.length,1);
+assert.equal(fall[0].side,'SELL');
+assert.equal(fall[0].setupType,'CONTINUATION');
+assert.equal(fall[0].issuedAt,start+2*60000+7000);
+const sameFall=step({prior:fall,now:start+7*60000+7000,asset:'GOLD',
+ source:'same-provider',price:97,signal:noEntry,bars:[],
+ candleLean:{phase:'FOLLOW',side:'SELL',issuedFor:start+7*60000,
+ reason:'استمرار محتمل من زخم مغلق'}});
+assert.equal(sameFall.length,1,'repeated lower candles cannot spam sell captions');
+const flipped=step({prior:sameFall,now:start+8*60000+7000,asset:'GOLD',
+ source:'same-provider',price:98,signal:noEntry,bars:[],
+ candleLean:{phase:'FOLLOW',side:'BUY',issuedFor:start+8*60000,
+ reason:'استمرار محتمل من زخم مغلق'}});
+assert.equal(flipped.length,2,'a newly observed opposite wave should be visible');
+assert.equal(flipped[1].side,'BUY');
+assert.equal(flipped[0].issuedAt,fall[0].issuedAt,
+ 'old sell timestamp and entry price remain immutable');
 console.log('PASS: forward-only movement scorecard, no goal fabrication, time-to-detection and unambiguous future M1 scoring');
