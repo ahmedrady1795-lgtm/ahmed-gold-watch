@@ -2,7 +2,8 @@ import type {LiveOpportunity} from '../lib/sniper-live-opportunity';
 import {outcomeLabel} from './SniperOpportunityHistory';
 import type {MovementProof} from '../lib/sniper-movement-proof';
 
-type Props={signal:LiveOpportunity;records:MovementProof[];asset:'GOLD'|'BTC';
+type Props={signal:LiveOpportunity;records:MovementProof[];evidenceScore?:number|null;
+ asset:'GOLD'|'BTC';
  source:string;from:number;now:number;left:number;split:number;end:number;
  top:number;bottom:number;py:(price:number)=>number;timeX:(time:number)=>number};
 
@@ -140,10 +141,12 @@ export default function SniperOpportunityMarkers(p:Props){
      const y=p.py(s.trigger!);
      const width=126,x=Math.min(p.split+12,p.end-width-4),labelY=fit(y);
      const label=confirmed?(s.quality==='SETUP'?(buy?'شراء':'بيع'):
-       s.quality==='COUNTERTREND'?'رصد عكسي':(buy?'رصد صعود':'رصد هبوط')):
-       'ترقب '+(buy?'صعود':'هبوط');
+       s.quality==='COUNTERTREND'?'رصد عكسي':(buy?'رصد شراء':'رصد بيع')):
+       s.phase==='TESTING'?'اختبار '+(buy?'شراء':'بيع'):
+       'ترقب '+(buy?'شراء':'بيع');
      return <g data-phase={s.phase} aria-label={label+' عند '+s.trigger!.toFixed(2)}>
        <title>{s.reason+' · المستوى '+s.trigger!.toFixed(2)+
+         (p.evidenceScore!=null?' · أدلة '+p.evidenceScore+'/10 (ليست احتمال نجاح)':'')+
          ' · إشارة تحليلية وليست ضمان ربح أو أمر تنفيذ'}</title>
        <line x1={p.split-5} x2={x+width} y1={y} y2={y}
          stroke={ink} strokeWidth="1.3" strokeDasharray={confirmed?undefined:'4 3'}/>
