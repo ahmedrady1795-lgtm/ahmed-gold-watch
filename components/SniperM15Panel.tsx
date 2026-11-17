@@ -436,6 +436,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  }),[now,price,marketOpen,m.sniper.view.priceFresh,m.historyFresh,
    providerTransition,m.candles,x?.chartHigherFrames?.m5,preMove,watchMap,
    m15AnalysisReady,m15Bias.side]);
+ // Use the direct closed-M15 bias for entry context. The separate visual
+ // scenario can be reference-only without disabling local M1 preparation.
+ const entryTrend=m15AnalysisReady?m15Bias.side:'WAIT';
  // Never derive BUY/SELL from the colour of an unfinished candle. The live
  // candle is display-only; direction comes from closed-bar PREMOVE or M1 proof.
  const formingBias: 'BUY'|'SELL'|'WAIT'='WAIT';
@@ -445,10 +448,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      !providerTransition,
    m1:m.candles,m5:x?.chartHigherFrames?.m5,flow:flowProfile,
    m1Side:nextM1.ready?nextM1.side:'WAIT',
-   m15Side:localFusion.m15
+   m15Side:entryTrend
  }),[now,price,marketOpen,m.historyFresh,m.sniper.view.priceFresh,
    providerTransition,m.candles,x?.chartHigherFrames?.m5,flowProfile,
-   nextM1.ready,nextM1.side,localFusion.m15]);
+   nextM1.ready,nextM1.side,entryTrend]);
  // Arm in this session before crossing. Historical momentum markers are
  // retained for audit but never reused as the current early opportunity.
  const [earlyState,setEarlyState]=useState<EarlySetup|null>(null);
@@ -461,11 +464,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    bars:m.candles,opportunity:liveOpportunity,lean:candleLean,
    flow:flowProfile,liquidity:liquidityMagnets,watch:watchMap,
    m1Side:nextM1.ready?nextM1.side:'WAIT',
-   m15Side:localFusion.m15
+   m15Side:entryTrend
  }),[earlyState,asset,x?.candleSource,now,price,liveQuote?.sourceTime,
    marketOpen,m.sniper.view.priceFresh,providerTransition,m.candles,
    liveOpportunity,candleLean,flowProfile,liquidityMagnets,watchMap,
-   nextM1.ready,nextM1.side,localFusion.m15]);
+   nextM1.ready,nextM1.side,entryTrend]);
  useEffect(()=>{if(trackedSetup!==earlyState)setEarlyState(trackedSetup);},[trackedSetup,earlyState]);
  const earlyOpportunity=useMemo(()=>earlySetupOpportunity(trackedSetup),[trackedSetup]);
  // Show the closed-M1 directional hypothesis as WATCH when no pre-break
@@ -474,7 +477,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    candleLean.side!=='WAIT'&&candleLean.phase!=='WAIT';
  const watchIsReversal=hasDirectionalWatch&&candleLean.reason.includes('انعكاس محتمل');
  const watchAgainstM15=hasDirectionalWatch&&!watchIsReversal&&
-   localFusion.m15!=='WAIT'&&candleLean.side!==localFusion.m15;
+   entryTrend!=='WAIT'&&candleLean.side!==entryTrend;
  const currentSignalSide=earlyOpportunity.side;
  const currentSignalLabel=earlyOpportunity.phase==='PREPARE'?
    (earlyOpportunity.side==='BUY'?'ترقب شراء قبل الكسر':'ترقب بيع قبل الكسر'):
@@ -503,14 +506,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      prior,now,asset,source:String(x?.candleSource||''),
      price,signal:earlyOpportunity,bars:m.candles,
      m5Bars:x?.chartHigherFrames?.m5,
-     frameTrend:localFusion.m15,
+     frameTrend:entryTrend,
      // Freeze FIRST observed closed-M1 directional wave, including continuation.
      // Movement journal deduplicates same-side waves; these are NOT trade entries.
      candleLean:hasDirectionalWatch?candleLean:undefined
    }));
  },[movementProofLoaded,now,asset,x?.candleSource,price,
    earlyOpportunity,candleLean,hasDirectionalWatch,m.candles,
-   x?.chartHigherFrames?.m5,localFusion.m15]);
+   x?.chartHigherFrames?.m5,entryTrend]);
  const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
    [movementRecords,asset]);
  const showPreparation=earlyOpportunity.phase==='PREPARE';

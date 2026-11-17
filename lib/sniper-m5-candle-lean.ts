@@ -104,6 +104,12 @@ export function assessM5CandleLean(input:{
    reversalSide==='BUY'?price<=last.low+atr*.02:false;
  const reversalLive=reversalSide!=='WAIT'&&!contraryTrend&&!reclaimedAgainstReversal;
  const candidate:Side=reversalLive?reversalSide:momentumSide;
+ // A closed-bar continuation is no longer a current direction once the
+ // live quote breaks that bar's opposite edge. Invalidate, do not fabricate
+ // a reverse signal from the unfinished candle.
+ const continuationFailed=!reversalLive&&
+   (candidate==='BUY'?price<last.low-atr*.08:
+    candidate==='SELL'?price>last.high+atr*.08:false);
  // If the swept wick has already failed, stale closed-candle momentum
  // CANNOT independently recreate the same bearish/bullish reversal claim.
  const staleOpposite=reversalSide!=='WAIT'&&
@@ -111,9 +117,10 @@ export function assessM5CandleLean(input:{
  const crossFrameOpposite=contraryTrend&&candidate!==alignedTrend;
  // A conflicting verified flow observation is a veto, not a reversed
  // order. Missing flow remains explicitly unconfirmed price action.
- const side:Side=staleOpposite||crossFrameOpposite||
+ const side:Side=continuationFailed||staleOpposite||crossFrameOpposite||
    (flowSide!=='WAIT'&&candidate!==flowSide)?'WAIT':candidate;
- if(side==='WAIT')return none(staleOpposite?
+ if(side==='WAIT')return none(continuationFailed?
+   'السعر كسر نطاق آخر شمعة عكس القراءة؛ متابعة الاتجاه السابق ملغاة':staleOpposite?
    'السعر تجاوز ذيل سحب السيولة؛ الانعكاس القديم لم يعد صالحًا':
    crossFrameOpposite?
    'رفض قمة/قاع M1 غير مؤكد مع توافق M1 وM15 في الاتجاه المقابل':

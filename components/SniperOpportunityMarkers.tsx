@@ -166,7 +166,7 @@ export default function SniperOpportunityMarkers(p:Props){
        fill={r.side==='BUY'?'#57efb8':'#ff8095'}/>
      <title>{(r.side==='BUY'?'شراء':'بيع')+' · '+r.priceAt.toFixed(2)+' · '+outcomeLabel[r.status]}</title>
    </g>)}
-   {shown.filter(r=>!nearM5(r)).map(r=>{
+   {shown.filter(r=>r.quality==='SETUP'||!nearM5(r)).map(r=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt),buy=r.side==='BUY';
      const ink=r.quality==null?'#96a3b5':
        r.quality==='COUNTERTREND'?'#dfbb80':

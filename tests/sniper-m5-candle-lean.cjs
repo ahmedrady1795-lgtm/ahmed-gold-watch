@@ -92,7 +92,7 @@ assert.equal(oneMinuteLate.phase,'OPEN','one delayed publication is not an inter
 assert.match(oneMinuteLate.reason,/متأخر/);
 assert.equal(run({...data,now:start+89000,m1:[extra,...history.slice(0,-1)]}).phase,
  'WAIT','evidence older than two minutes is stale');
-const follow=run({...data,now:start+125000,m1:m1.slice(0,20)});
+const follow=run({...data,now:start+125000,price:m1[19].close,m1:m1.slice(0,20)});
 assert.equal(follow.phase,'FOLLOW');
 const followed=step({...base,now:start+125000,candleLean:follow});
 assert.equal(followed[0].kind,'FOLLOW');
