@@ -80,6 +80,13 @@ export default function SniperOpportunityMarkers(p:Props){
  }
  // Reserve labels for ACTUAL pre-break alerts ahead of later wave labels.
  // This makes genuinely early observations legible without losing old dots.
+ const lifecycleLabel:Record<string,string>={
+   PENDING:'الإعداد ما زال تحت المراقبة',
+   ACTIVATED:'تم رصد تفعيل مستوى الإعداد لاحقًا',
+   INVALIDATED:'الإعداد السابق أُلغي بكسر إبطاله؛ ليست صفقة خاسرة منفذة',
+   CANCELLED:'الإعداد السابق أُلغي قبل التفعيل',
+   EXPIRED:'انتهت صلاحية الإعداد من غير تفعيل مؤهل'
+ };
  const onsetLabel:Record<string,string>={
    PENDING:'جارٍ رصد بداية الموجة',
    MOVE_FIRST:'بدأت حركة مؤيدة بعد التنبيه',
@@ -135,14 +142,21 @@ export default function SniperOpportunityMarkers(p:Props){
    })}
    {earlyShown.map((r,i)=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt),buy=r.side==='BUY';
-     const ink='#e0be78';
+     const ended=r.setupLifecycle==='INVALIDATED'||
+       r.setupLifecycle==='CANCELLED'||r.setupLifecycle==='EXPIRED';
+     const ink=ended?'#b4a5ad':'#e0be78';
      return <g key={r.id} data-kind="EARLY" data-issued-at={r.issuedAt}
-       data-onset={r.onsetOutcome??'NOT_AUDITED'}>
+       data-onset={r.onsetOutcome??'NOT_AUDITED'}
+       data-lifecycle={r.setupLifecycle??'NOT_AUDITED'}>
        <path d={buy?`M${x} ${y-8} L${x-6} ${y+2} L${x+6} ${y+2} Z`:
          `M${x} ${y+8} L${x-6} ${y-2} L${x+6} ${y-2} Z`}
          stroke={ink} strokeWidth="1.3" fill="#2c2414"/>
+       {ended&&<text x={x+8} y={y-7} fontSize="11"
+         fill="#fa92a4" fontWeight="900">×</text>}
        <title>{'ترقب '+(buy?'شراء':'بيع')+' قبل الكسر · '+
          r.priceAt.toFixed(2)+' · '+outcomeLabel[r.status]+
+         (r.setupLifecycle?' · '+lifecycleLabel[r.setupLifecycle]:
+           ' · حالة الإعداد غير مسجلة وقت إصدار هذه العلامة')+
          (r.onsetOutcome?' · '+onsetLabel[r.onsetOutcome]: ' · لم تكن خاضعة لتقييم بداية الموجة')+
          (r.onsetDelaySeconds!=null?' · بعد '+r.onsetDelaySeconds+'ث':'')+
          ' · محفوظ عند الرصد وليس إشارة تنفيذ'}</title>
@@ -156,7 +170,8 @@ export default function SniperOpportunityMarkers(p:Props){
          <text x={earlyLabels.get(r.id)!.x}
            y={earlyLabels.get(r.id)!.y+4} textAnchor="middle" direction="rtl"
            fontSize="9.5" fontWeight="800" fill={ink}>
-           {buy?'ترقب شراء':'ترقب بيع'}
+           {(buy?'ترقب شراء':'ترقب بيع')+
+             (ended?' ×':'')}
          </text>
        </>}
      </g>;
