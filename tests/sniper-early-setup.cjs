@@ -182,6 +182,16 @@ assert.doesNotMatch(panel,/className=\{\x27sniper-m5-early-signal/,
 const markerSvg=fs.readFileSync('components/SniperOpportunityMarkers.tsx','utf8');
 assert.match(markerSvg,/رصد بيع/,'bearish wave has visible sell observation on chart');
 assert.match(markerSvg,/رصد شراء/,'bullish wave has visible buy observation on chart');
+assert.match(markerSvg,/const placeLabel=/,
+ 'historical labels have a deterministic no-collision allocator');
+assert.match(markerSvg,/occupied\.every/,
+ 'older and newer captions must not overlap on mobile');
+assert.match(markerSvg,/if\(chosen\)earlyLabels\.set/,
+ 'pre-break watch labels get priority over late momentum observations');
+assert.match(markerSvg,/const labelText=buy\?'رصد شراء':'رصد بيع'/,
+ 'closed-M1 momentum or reversal always says observation, not entry');
+assert.match(markerSvg,/return null; \/\/ keep the real price dot/,
+ 'overfull chart must retain original marker anchors instead of inventing prices');
 assert.match(panel,/evidenceScore=\{trackedSetup\?\.score\?\?null\}/,
  'frozen evidence checklist reaches the chart, not a separate banner');
 assert.match(markerSvg,/اختبار /,
