@@ -10,6 +10,23 @@ type Props={signal:LiveOpportunity;records:MovementProof[];evidenceScore?:number
 /** Show only observations actually issued, never reconstructed hindsight entries. */
 export default function SniperOpportunityMarkers(p:Props){
  const fit=(y:number)=>Math.max(p.top+15,Math.min(p.bottom-15,y));
+ // Each marker stays anchored to its REAL issuance time/price. Only caption
+ // positions may move to avoid covering price bars or another caption.
+ const occupied:{l:number;r:number;t:number;b:number}[]=[];
+ const placeLabel=(x:number,y:number,w:number,h:number,offset:number)=>{
+   const dx=[0,-25,25,-55,55,-86,86];
+   const offsets=[offset,offset*1.65,-offset*0.85,offset*2.2];
+   for(const dy of offsets)for(const shift of dx){
+     const cx=Math.min(p.split-w/2-4,Math.max(p.left+w/2+4,x+shift));
+     const cy=Math.min(p.bottom-h/2-4,Math.max(p.top+h/2+4,y+dy));
+     const box={l:cx-w/2,r:cx+w/2,t:cy-h/2,b:cy+h/2};
+     if(occupied.every(b=>box.r+5<b.l||box.l-5>b.r||
+       box.b+4<b.t||box.t-4>b.b)){
+       occupied.push(box);return {x:cx,y:cy};
+     }
+   }
+   return null; // keep the real price dot, omit only an overlapping caption
+ };
  const visible=(price:number)=>Number.isFinite(price)&&price>0&&
    p.py(price)>=p.top&&p.py(price)<=p.bottom;
  const rows=p.records.filter(r=>r.asset===p.asset&&r.source===p.source&&
@@ -60,18 +77,17 @@ export default function SniperOpportunityMarkers(p:Props){
      const buy=r.side==='BUY',ink=buy?'#5ef2b7':'#ff839c';
      const followsWave=r.setupType==='CONTINUATION';
      const caption=m5Captioned.includes(r);
-     const labelY=fit(y+(buy?30:-30));
-     const labelText=followsWave?(buy?'رصد شراء':'رصد بيع'):
-       (buy?'شراء':'بيع');
-     const labelWidth=followsWave?76:52;
-     const labelX=Math.max(p.left+labelWidth/2+2,
-       Math.min(p.split-labelWidth/2-2,x));
+     const labelText=buy?'رصد شراء':'رصد بيع';
+     // A closed M1 reversal is an observation, NEVER an entry.
+     const labelWidth=77;
+     const placement=caption?placeLabel(x,y,labelWidth,20,buy?30:-30):null;
+     const labelX=placement?.x??x,labelY=placement?.y??y;
      return <g key={r.id} data-kind={r.kind}
        data-issued-at={r.issuedAt} data-side={r.side}>
        <circle cx={x} cy={y} r={caption?4:2.6} fill={ink}
          stroke="#06151b" strokeWidth="1.2"/>
-       {caption&&<>
-         <line x1={x} x2={x} y1={y} y2={labelY} stroke={ink}
+       {placement&&<>
+         <line x1={x} x2={labelX} y1={y} y2={labelY} stroke={ink}
            strokeOpacity=".85" strokeWidth=".9"/>
          <rect x={labelX-labelWidth/2}
            y={labelY-10} width={labelWidth} height="20" rx="5"
@@ -113,12 +129,13 @@ export default function SniperOpportunityMarkers(p:Props){
      const ink=r.quality==null?'#96a3b5':
        r.quality==='COUNTERTREND'?'#dfbb80':
        r.quality==='OBSERVATION'?'#9bafc6':buy?'#57efb8':'#ff8095';
-     const labelY=fit(y+(buy?23:-23));
-     const labelX=Math.max(p.left+43,Math.min(p.split-43,x));
      const action=(buy?'شراء':'بيع');
-     const label=r.quality==null?action:
-       r.quality==='COUNTERTREND'?action+' ⚠':
-       r.quality==='OBSERVATION'?action:action;
+     const label=r.quality==='SETUP'?action:
+       r.quality==='COUNTERTREND'?'رصد '+action+' ⚠':'رصد '+action;
+     const width=r.quality==='COUNTERTREND'?91:
+       r.quality==='SETUP'?67:84;
+     const placement=placeLabel(x,y,width,20,buy?29:-29);
+     const labelX=placement?.x??x,labelY=placement?.y??y;
      return <g key={r.id} data-side={r.side} data-issued-at={r.issuedAt}>
        <title>{(buy?'شراء':'بيع')+' · رصد سابق عند '+r.priceAt.toFixed(2)+
          ' · '+new Date(r.issuedAt).toLocaleTimeString('en-GB',{timeZone:'Asia/Dubai'})+
@@ -126,12 +143,15 @@ export default function SniperOpportunityMarkers(p:Props){
          (r.quality==='SETUP'?'فرصة مشروطة':r.quality==='COUNTERTREND'?'عكس الاتجاه الأعلى':
            r.quality==='OBSERVATION'?'كسر مرصود دون شروط الفرصة':'إشارة قديمة غير مصنفة')+
          ' · إشارة تحليلية مسجلة وليست صفقة منفذة'}</title>
-       <line x1={x} x2={labelX} y1={y} y2={labelY} stroke={ink} strokeWidth="1"/>
+       {placement&&<line x1={x} x2={labelX} y1={y} y2={labelY}
+         stroke={ink} strokeWidth="1"/>}
        <circle cx={x} cy={y} r="3" fill={ink}/>
-       <rect x={labelX-40} y={labelY-10} width="80" height="20" rx="5"
-         fill="#081d29" stroke={ink} strokeOpacity=".7"/>
-       <text x={labelX} y={labelY+4} textAnchor="middle" direction="rtl"
-         fontSize="10.3" fontWeight="800" fill={ink}>{label+(r.status==='TARGET'?' ✓':r.status==='STOP'?' ✕':'')}</text>
+       {placement&&<>
+         <rect x={labelX-width/2} y={labelY-10} width={width} height="20" rx="5"
+           fill="#081d29" stroke={ink} strokeOpacity=".7"/>
+         <text x={labelX} y={labelY+4} textAnchor="middle" direction="rtl"
+           fontSize="9.6" fontWeight="800" fill={ink}>{label+(r.status==='TARGET'?' ✓':r.status==='STOP'?' ✕':'')}</text>
+       </>}
      </g>;
    })}
    {active&&!m5Captioned.some(r=>Math.abs(p.py(r.priceAt)-p.py(s.trigger??0))<42)&&(()=>{
