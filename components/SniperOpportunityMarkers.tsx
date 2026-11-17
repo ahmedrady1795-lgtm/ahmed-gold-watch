@@ -57,8 +57,14 @@ export default function SniperOpportunityMarkers(p:Props){
    {m5Issued.map((r,i)=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt);
      const buy=r.side==='BUY',ink=buy?'#5ef2b7':'#ff839c';
+     const followsWave=r.setupType==='CONTINUATION';
      const caption=m5Captioned.includes(r);
      const labelY=fit(y+(buy?30:-30));
+     const labelText=followsWave?(buy?'رصد صعود':'رصد هبوط'):
+       (buy?'شراء':'بيع');
+     const labelWidth=followsWave?76:52;
+     const labelX=Math.max(p.left+labelWidth/2+2,
+       Math.min(p.split-labelWidth/2-2,x));
      return <g key={r.id} data-kind={r.kind}
        data-issued-at={r.issuedAt} data-side={r.side}>
        <circle cx={x} cy={y} r={caption?4:2.6} fill={ink}
@@ -66,15 +72,16 @@ export default function SniperOpportunityMarkers(p:Props){
        {caption&&<>
          <line x1={x} x2={x} y1={y} y2={labelY} stroke={ink}
            strokeOpacity=".85" strokeWidth=".9"/>
-         <rect x={Math.max(p.left+27,Math.min(p.split-27,x))-26}
-           y={labelY-10} width="52" height="20" rx="5"
+         <rect x={labelX-labelWidth/2}
+           y={labelY-10} width={labelWidth} height="20" rx="5"
            fill="#071c26" stroke={ink} strokeWidth=".9"/>
-         <text x={Math.max(p.left+27,Math.min(p.split-27,x))}
+         <text x={labelX}
            y={labelY+3.5} textAnchor="middle" direction="rtl"
-           fontSize="9.9" fontWeight="800" fill={ink}>
-           {buy?'شراء':'بيع'}</text>
+           fontSize="9.1" fontWeight="800" fill={ink}>
+           {labelText}</text>
        </>}
-       <title>{(buy?'شراء':'بيع')+' · '+(r.kind==='OPEN'?'بداية M5':r.kind==='FOLLOW'?'أثناء M5':'نهاية M5')+
+       <title>{(followsWave?'رصد اتجاه وليس إشارة دخول '+(buy?'صاعد':'هابط'):
+         (buy?'شراء':'بيع'))+' · '+(r.kind==='OPEN'?'بداية M5':r.kind==='FOLLOW'?'أثناء M5':'نهاية M5')+
          ' · '+r.priceAt.toFixed(2)+' · '+(r.m5Outcome==='CORRECT'?'إغلاق M5 وافق الاتجاه فقط':
          r.m5Outcome==='WRONG'?'إغلاق M5 خالف الاتجاه فقط':'تقييم إغلاق M5 قيد القياس')+
          ' · توقع مرصود وقتها، ليس صفقة منفذة'}</title>
