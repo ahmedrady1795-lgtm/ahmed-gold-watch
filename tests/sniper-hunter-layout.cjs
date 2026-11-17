@@ -42,9 +42,11 @@ const liquidityIndex=panel.indexOf('<SniperLiquidityColumn ');
 const centerIndex=panel.indexOf('className="sniper-hunter-center"');
 const scenarioIndex=panel.indexOf('<SniperScenarioColumn ');
 const endIndex=panel.indexOf('className="sniper-hunter-bottom"');
-assert.ok(0<startIndex&&startIndex<liquidityIndex&&liquidityIndex<centerIndex&&
- centerIndex<chartIndex&&chartIndex<scenarioIndex&&endIndex===-1,
- 'M5 chart retains liquidity/sidebars while removing the failed M1 bottom panel');
+assert.ok(0<startIndex&&startIndex<centerIndex&&centerIndex<chartIndex&&
+ chartIndex<liquidityIndex&&liquidityIndex<scenarioIndex&&endIndex===-1,
+ 'real M5 chart is the only default surface; sidebars are in closed diagnostics below');
+assert.match(panel,/style=\{\{display:"block"\}\}/,
+ 'chart workbench must use the full available width, not old three-column slots');
 assert.doesNotMatch(panel,/<SniperM1CandleHunter|<SniperM1CandleTape|قنص كل شمعة/,
  'removed M1 each-candle mode cannot reappear in the live cockpit');
 assert.match(panel,/<SniperM15HuntOverlay forecast=\{huntPreview\}/,
@@ -87,4 +89,4 @@ assert.match(css,/\.sniper-hunter-center\{order:0\}/,
 assert.match(root,/hunter-cockpit-layout\.css/);
 assert.match(page,/AICommandCenter assetView="ALL"/,
  'production homepage continues to mount the same real chart data flow');
-console.log('PASS: production three-column dashboard with actual market data, always-visible M1 tape, responsive chart-first mobile and no fictional PnL');
+console.log('PASS: single M5 chart first, optional liquidity sidebar and scenario diagnosis below, no fabricated trade data');
