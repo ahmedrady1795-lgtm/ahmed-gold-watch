@@ -204,7 +204,18 @@ const support=step({...base,bars:towardSupport,price:100,
  m1Side:'SELL',m15Side:'SELL',watch:supportWatch});
 assert.equal(support?.setupKind,'ZONE','support is monitored before price rises, even against M15 downtrend');
 assert.equal(support?.side,'BUY');
-assert.equal(support?.phase,'ARMED');
+assert.equal(support?.phase,'OBSERVING','support is only observed, not an unqualified BUY setup');
+assert.equal(signal(support).phase,'WATCH','support at low evidence never advertises PREPARE BUY');
+assert.equal(signal(support).side,'WAIT','zone observation cannot emit a trade direction');
+const earlyQuote=step({...base,prior:support,now:now+5000,
+ price:support.trigger+.02,quoteAt:now+5000});
+assert.equal(earlyQuote.phase,'EXPIRED',
+ 'a price bounce from support cannot confirm a 3/10 BUY by itself');
+assert.equal(signal(earlyQuote).side,'WAIT');
+const stillWatching=step({...base,prior:support,now:now+3000,
+ price:100.05});
+assert.equal(stillWatching.phase,'OBSERVING',
+ 'monitor historical support continuously while price stays in zone');
 assert.ok(support?.trigger>100&&support?.armedAt===now);
 assert.match(support.reason,/دعم M15/);
 assert.equal(step({...base,bars:towardSupport,price:support.trigger+.01,
@@ -277,6 +288,10 @@ assert.match(markerSvg,/return null; \/\/ keep the real price dot/,
  'overfull chart must retain original marker anchors instead of inventing prices');
 assert.match(panel,/liquidity:liquidityMagnets,watch:watchMap/,
  'frozen M15/H1 support-resistance is actually wired into the live watch');
+assert.match(panel,/const showZoneObservation=trackedSetup\?\.phase==='OBSERVING'/,
+ 'M5 chart exposes support observations separately from BUY setups');
+assert.match(panel,/مراقبة /,
+ 'the active chart is never muted or mislabeled as an entry');
 assert.match(panel,/evidenceScore=\{trackedSetup\?\.score\?\?null\}/,
  'frozen evidence checklist reaches the chart, not a separate banner');
 assert.match(markerSvg,/اختبار /,
