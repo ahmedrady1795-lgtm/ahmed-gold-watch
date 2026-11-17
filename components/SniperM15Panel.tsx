@@ -466,6 +466,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // setup was armed; never promote it into an execution-worthy BUY/SELL.
  const hasDirectionalWatch=earlyOpportunity.side==='WAIT'&&
    candleLean.side!=='WAIT'&&candleLean.phase!=='WAIT';
+ const watchIsReversal=hasDirectionalWatch&&candleLean.reason.includes('انعكاس محتمل');
  const currentSignalSide=earlyOpportunity.side;
  const currentSignalLabel=earlyOpportunity.phase==='PREPARE'?
    (earlyOpportunity.side==='BUY'?'ترقب شراء قبل الكسر':'ترقب بيع قبل الكسر'):
@@ -916,17 +917,21 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    </div>
    <div className={'sniper-m5-early-signal '+(earlySide==='BUY'?'is-buy':
      earlySide==='SELL'?'is-sell':'is-wait')} role="status"
-     aria-label="توقع مراقبة مبكر لاتجاه M5، وليس تنفيذ صفقة">
+     aria-label="قراءة M5: متابعة اتجاه أو مراقبة انعكاس أو إعداد مبكر؛ ليست صفقة منفذة">
      <strong>{showPreparation?'ترقب '+(earlySide==='BUY'?'شراء ↑':'بيع ↓'):
        hasEarlySignal?(earlySide==='BUY'?'رصد شراء ↑':'رصد بيع ↓'):
-       hasDirectionalWatch?'مراقبة '+(earlySide==='BUY'?'شراء ↑':'بيع ↓'):
+       hasDirectionalWatch?(watchIsReversal?
+         'مراقبة انعكاس '+(earlySide==='BUY'?'لأعلى ↑':'لأسفل ↓'):
+         'متابعة '+(earlySide==='BUY'?'صعود ↑':'هبوط ↓')):
        'ترقب M5'}</strong>
      <span>{showPreparation?trackedSetup!.reason+' · تفعيل عند عبور '+n(trackedSetup!.trigger)+
        ' · إبطال '+n(trackedSetup!.invalidation):
        hasDirectionalWatch||earlyOpportunity.phase==='WATCH'?candleLean.reason:earlyOpportunity.reason}</span>
      <small>{showPreparation?'إعداد مسجل '+h(trackedSetup!.armedAt)+' · توقع مشروط':
        hasEarlySignal?'تفعيل مرصود عند '+n(trackedSetup!.priceAt)+' · '+h(trackedSetup!.triggeredAt!):
-       hasDirectionalWatch?'ميل من شموع M1 المغلقة؛ ليس إشارة دخول حتى يظهر إعداد مؤهل':
+       hasDirectionalWatch?(watchIsReversal?
+         'انعكاس محتمل بعد شمعة مغلقة؛ ليس إشارة دخول مؤكدة':
+         'اتجاه مرصود بعد بدء الحركة؛ ليس إنذارًا مبكرًا أو أمر دخول'):
        'لا توجد فرصة مبكرة مؤهلة حاليًا'}</small>
    </div>
    <div className="sniper-scenario-chart-legend"
