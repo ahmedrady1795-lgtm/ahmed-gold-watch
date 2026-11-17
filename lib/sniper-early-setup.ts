@@ -57,8 +57,8 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    }
    return prior.lastPrice===price&&prior.lastAt===now?prior:{...prior,lastPrice:price,lastAt:now};
  }
- // A cancelled/finished setup cannot immediately re-arm in the same wave.
- if(prior&&now<prior.expiresAt)return prior;
+ // Re-arm a cancelled/expired setup only after TWO NEW complete M1 bars,
+ // instead of locking out the whole five-minute wave after a feed hiccup.
  const rows=(Array.isArray(input.bars)?input.bars:[]).filter((b:Bar)=>b&&
    [b.time,b.open,b.high,b.low,b.close].every(Number.isFinite)&&b.time>0&&
    b.time%60000===0&&b.time+60000<=now&&b.low>0&&
@@ -67,7 +67,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    .sort((a,b)=>a.time-b.time).slice(-18);
  if(bars.length<18||bars.some((b,i)=>i>0&&b.time-bars[i-1].time!==60000))return prior;
  const last=bars.at(-1)!,sourceAt=last.time+60000;
- if(now-sourceAt>90000||prior&&sourceAt<=prior.sourceAt)return prior;
+ if(now-sourceAt>90000||prior&&sourceAt<=prior.sourceAt+60000)return prior;
  const ranges=bars.slice(1).map((b,i)=>Math.max(b.high-b.low,
    Math.abs(b.high-bars[i].close),Math.abs(b.low-bars[i].close)));
  const atr=ranges.slice(-14).reduce((a,b)=>a+b,0)/14;
@@ -116,6 +116,32 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      invalidation=side==='SELL'?Math.max(...recent.map(b=>b.high))+atr*.1:
        Math.min(...recent.map(b=>b.low))-atr*.1;
      reason='انضغاط M1 قرب مستوى سيولة سعري سابق؛ مراقبة كسر مبكر';
+   }
+ }
+ // Rejection/reclaim of a PRE-EXISTING closed-M1 swing. We only arm an
+ // unbroken local trigger; the rejection alone is not a BUY/SELL order.
+ if(!side){
+   const baseline=bars.slice(-16,-4),test=bars.slice(-4);
+   const oldHigh=Math.max(...baseline.map(b=>b.high));
+   const oldLow=Math.min(...baseline.map(b=>b.low));
+   const localHigh=Math.max(...test.map(b=>b.high));
+   const localLow=Math.min(...test.map(b=>b.low));
+   const testEnd=test.at(-1)!;
+   const sweepLow=test.some(b=>b.low<oldLow+atr*.08)&&
+     testEnd.close>oldLow+atr*.12&&
+     testEnd.close>test[1].close+atr*.08&&
+     test.some(b=>b.close<b.open)&&
+     testEnd.close-localLow<atr*1.5;
+   const sweepHigh=test.some(b=>b.high>oldHigh-atr*.08)&&
+     testEnd.close<oldHigh-atr*.12&&
+     testEnd.close<test[1].close-atr*.08&&
+     test.some(b=>b.close>b.open)&&
+     localHigh-testEnd.close<atr*1.5;
+   if(sweepLow!==sweepHigh){
+     side=sweepLow?'BUY':'SELL';
+     trigger=side==='BUY'?localHigh+atr*.04:localLow-atr*.04;
+     invalidation=side==='BUY'?localLow-atr*.08:localHigh+atr*.08;
+     reason='استرداد مستوى سعري سابق بعد اختبار السيولة · مراقبة تفعيل مبكر';
    }
  }
  if(!side||![trigger,invalidation].every(Number.isFinite))return prior;
