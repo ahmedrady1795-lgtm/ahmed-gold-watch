@@ -168,6 +168,29 @@ const retryConfirm=step({...base,prior:retryCross,now:now+12000,
 assert.equal(retryConfirm.phase,'TRIGGERED');
 assert.match(retryConfirm.reason,/إعادة اختبار/);
 assert.equal(retryConfirm.triggeredAt,now+12000);
+// START-OF-WAVE coil: 3 closed M1 candles contract BEFORE a possible
+// directional break. Neither the same-time price nor future bars create it.
+const coilBars=bars.map(b=>({...b}));
+coilBars[15]={...coilBars[15],open:99.95,close:100.07,high:100.28,low:99.82};
+coilBars[16]={...coilBars[16],open:100.07,close:100.09,high:100.22,low:99.90};
+coilBars[17]={...coilBars[17],open:100.09,close:100.10,high:100.16,low:99.97};
+const coilPlan=step({...base,bars:coilBars,price:100.10,
+ m1Side:'BUY',m15Side:'BUY'});
+assert.equal(coilPlan?.setupKind,'COIL','squeezed M1 must arm M15-aligned pre-wave plan');
+assert.equal(coilPlan?.phase,'ARMED');
+assert.equal(coilPlan?.side,'BUY');
+assert.ok(coilPlan.trigger>100.10&&coilPlan.armedAt===now,
+ 'arm only from observations available before the first break');
+assert.equal(step({...base,bars:coilBars,price:100.10,m15Side:'WAIT'}),null,
+ 'no fabricated BUY from a neutral directional squeeze');
+assert.equal(step({...base,bars:coilBars,price:coilPlan.trigger+.01,
+ m1Side:'BUY',m15Side:'BUY'}),null,
+ 'opening after the coil break cannot backdate a new preparation');
+const notActuallyCoiling=coilBars.map(b=>({...b}));
+notActuallyCoiling[16].high=100.33; // breaks the lower-high squeeze
+assert.notEqual(step({...base,bars:notActuallyCoiling,price:100.10,
+ m1Side:'BUY',m15Side:'BUY'})?.setupKind,'COIL',
+ 'flat noisy M1 is not predictive compression');
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(panel,/hasDirectionalWatch\?\(watchIsReversal\?/,
  'on-chart status distinguishes reversal and continuation waves');
