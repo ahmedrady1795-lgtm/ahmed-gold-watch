@@ -12,6 +12,35 @@ export type EarlySetup={
  targets:number[];reason:string;score?:number;setupKind?:'PRESSURE'|'SWEEP'|'COMPRESSION'|'RECLAIM'|'MICRO'|'COIL'|'ZONE'|'PULLBACK';retestAt?:number|null;
  trendSide?:'BUY'|'SELL'|'WAIT';flowAligned?:boolean;
 };
+/** A confirmed impulse is a description of CLOSED M1 momentum, not a
+ * predictive SELL/BUY signal. We use it only to veto stale countertrend
+ * preparation, never to fabricate a new trade. */
+export function closedM1Impulse(raw:unknown,now:number):'BUY'|'SELL'|'WAIT'{
+ if(!Array.isArray(raw))return 'WAIT';
+ const candles=raw.filter((b:Bar)=>b&&
+   [b.time,b.open,b.high,b.low,b.close].every(Number.isFinite)&&
+   b.time>0&&b.time%60000===0&&b.time+60000<=now&&b.low>0&&
+   b.high>=Math.max(b.open,b.close)&&b.low<=Math.min(b.open,b.close))
+   .sort((a:Bar,b:Bar)=>a.time-b.time).slice(-15) as Bar[];
+ if(candles.length<15||candles.some((b,i)=>i>0&&b.time-candles[i-1].time!==60000))
+   return 'WAIT';
+ if(now-(candles.at(-1)!.time+60000)>90000)return 'WAIT';
+ const ranges=candles.slice(1).map((b,i)=>Math.max(
+   b.high-b.low,Math.abs(b.high-candles[i].close),Math.abs(b.low-candles[i].close)));
+ const atr=ranges.reduce((a,b)=>a+b,0)/ranges.length;
+ if(!(atr>0))return 'WAIT';
+ const last=candles.at(-1)!,old=candles.at(-4)!;
+ const tail=candles.slice(-3);
+ const downBodies=tail.filter(b=>b.close<b.open-atr*.12).length;
+ const upBodies=tail.filter(b=>b.close>b.open+atr*.12).length;
+ const priorFloor=Math.min(...candles.slice(-11,-3).map(b=>b.low));
+ const priorCeiling=Math.max(...candles.slice(-11,-3).map(b=>b.high));
+ const down=old.close-last.close>=atr*1.25&&downBodies>=2&&
+   last.close<priorFloor-atr*.05;
+ const up=last.close-old.close>=atr*1.25&&upBodies>=2&&
+   last.close>priorCeiling+atr*.05;
+ return down&&!up?'SELL':up&&!down?'BUY':'WAIT';
+}
 /** Session-only arming: reloading cannot invent an earlier observation. */
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
  price:number|null;quoteAt?:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
@@ -37,6 +66,15 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    liq.sourceAt<=now&&now-liq.sourceAt<=600000);
  const sweptSide=liveSweep&&liq?.sweep==='HIGH_RECLAIMED_DOWN'?'SELL':
    liveSweep&&liq?.sweep==='LOW_RECLAIMED_UP'?'BUY':'WAIT';
+ // An independent, recent M1 closed-candle displacement invalidates
+ // a counter-direction WATCH immediately. This avoids stale BUY banners through
+ // a fast support breakdown while retaining continuous M5 direction monitoring.
+ const closedImpulse=closedM1Impulse(input.bars,now);
+ if(prior&&(prior.phase==='ARMED'||prior.phase==='OBSERVING')&&
+   closedImpulse!=='WAIT'&&closedImpulse!==prior.side)
+   return {...prior,phase:'CANCELLED',lastAt:now,lastPrice:price,
+     reason:'إلغاء الترصد: موجة '+(closedImpulse==='SELL'?'هبوط':'صعود')+
+       ' مؤكدة من M1 المغلق ضد الإعداد؛ ليس تنبؤ دخول'};
  // A historical support/resistance approach is a ZONE OBSERVATION,
  // not a BUY/SELL setup. It cannot be triggered by a quote crossing its
  // exploratory line. Later, separate closed-M1 reclaim/pressure evidence can
@@ -347,6 +385,11 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    }
  }
  if(!side||![trigger,invalidation].every(Number.isFinite))return prior;
+ // A recent directional displacement is a veto on fresh countertrend arming.
+ // Reversal monitoring at a historical zone stays observable; a BUY/SELL
+ // preparation needs new closed-bar evidence AFTER the impulse has ended.
+ if(setupKind!=='ZONE'&&closedImpulse!=='WAIT'&&side!==closedImpulse)
+   return prior;
  // A same-venue flow/profile contradiction or fresh M15 sweep can veto setup
  // BEFORE it is armed. Missing depth/profile does not fabricate a positive vote.
  if((flowSide!=='WAIT'&&flowSide!==side)||
