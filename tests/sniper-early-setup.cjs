@@ -251,12 +251,12 @@ assert.equal(resistance?.side,'SELL');
 assert.match(resistance.reason,/مقاومة H1/);
 // A strong price-only M1 bearish displacement INVALIDATES an earlier BUY
 // watch before its wider structural stop. It is still NOT a SELL entry.
-const sharp=Array.from({length:15},(_,i)=>({
- time:now-1000-(15-i)*60000,open:100,close:100,high:100.2,low:99.8
+const sharp=Array.from({length:18},(_,i)=>({
+ time:now-1000-(18-i)*60000,open:100,close:100,high:100.2,low:99.8
 }));
-sharp[12]={...sharp[12],open:100,close:99.8,high:100.1,low:99.7};
-sharp[13]={...sharp[13],open:99.8,close:99.2,high:99.85,low:99.1};
-sharp[14]={...sharp[14],open:99.2,close:98.5,high:99.25,low:98.3};
+sharp[15]={...sharp[15],open:100,close:99.8,high:100.1,low:99.7};
+sharp[16]={...sharp[16],open:99.8,close:99.2,high:99.85,low:99.1};
+sharp[17]={...sharp[17],open:99.2,close:98.5,high:99.25,low:98.3};
 assert.equal(impulse(sharp,now),'SELL','only closed M1 cascade confirms bearish displacement');
 const sharpOpposed=step({...base,prior:armed,now:now+3000,
  price:99.7,bars:sharp});
@@ -273,7 +273,7 @@ const sellContinuation=step({...base,bars:sharp,price:98.7,
  opportunity:{...op,side:'SELL',trigger:98.4,invalidation:99.7,targets:[97]}});
 assert.equal(sellContinuation?.side,'SELL',
  'strong downside move may still arm a new ahead-of-price sell setup');
-const oneWick=sharp.map((b,i)=>i===14?
+const oneWick=sharp.map((b,i)=>i===17?
  {...b,open:100,close:100,high:105,low:95}:{
  ...b,open:100,close:100,high:100.2,low:99.8});
 assert.equal(impulse(oneWick,now),'WAIT',
