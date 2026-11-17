@@ -1,5 +1,7 @@
 'use client';
 
+import {buildNewsIntelligence} from '../lib/news-intelligence';
+import {assessSniperMarketContext,type SentimentReading} from '../lib/sniper-market-context';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import SniperM15Summary from './SniperM15Summary';
 import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
@@ -83,6 +85,34 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
  const onRadarView=useCallback((v:RadarView|null)=>setLiveRadar(v),[]);
  const asset=assetView==='ALL'?chosen:assetView;
+ // Optional context has its own cadence; never wait for AI services to draw signals.
+ const [contextPacket,setContextPacket]=useState<{asset:'GOLD'|'BTC';news:any;observedAt:number;sentiment:SentimentReading|null}|null>(null);
+ useEffect(()=>{
+   let closed=false,busy=false;const controller=new AbortController();
+   const read=async()=>{
+     if(closed||busy||document.visibilityState!=='visible')return;
+     busy=true;
+     const json=async(url:string)=>{const r=await fetch(url,{cache:'no-store',
+       signal:AbortSignal.any([controller.signal,AbortSignal.timeout(6500)])});
+       if(!r.ok)throw new Error('context unavailable');return r.json();};
+     try{
+       const [news,sentiment]=await Promise.allSettled([json('/api/news'),json('/api/market-sentiment?asset='+asset)]);
+       if(!closed)setContextPacket({asset,observedAt:Date.now(),
+         news:news.status==='fulfilled'?news.value:null,
+         sentiment:sentiment.status==='fulfilled'?sentiment.value:null});
+     }finally{busy=false;}
+   };
+   void read();const timer=setInterval(()=>{void read();},90000);
+   return()=>{closed=true;controller.abort();clearInterval(timer);};
+ },[asset]);
+ const marketContext=useMemo(()=>{
+   const packet=contextPacket?.asset===asset?contextPacket:null;
+   const feed=packet?.news;
+   return assessSniperMarketContext({asset,now,
+     news:feed?.ok?buildNewsIntelligence(asset,Array.isArray(feed.events)?feed.events:[],now):null,
+     newsObservedAt:feed?.checkedAt,newsReady:Boolean(feed?.newsReady),
+     sentiment:packet?.sentiment});
+ },[asset,now,contextPacket]);
  const [flowPacket,setFlowPacket]=useState<{asset:'GOLD'|'BTC';data:any;observedAt:number}|null>(null);
  useEffect(()=>{
    let closed=false,busy=false;
@@ -462,12 +492,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ready:marketOpen&&m.sniper.view.priceFresh&&!providerTransition&&
      liveOpportunity.phase!=='OFFLINE',
    bars:m.candles,opportunity:liveOpportunity,lean:candleLean,
-   flow:flowProfile,liquidity:liquidityMagnets,watch:watchMap,
+   flow:flowProfile,liquidity:liquidityMagnets,watch:watchMap,marketContext,
    m1Side:nextM1.ready?nextM1.side:'WAIT',
    m15Side:entryTrend
  }),[earlyState,asset,x?.candleSource,now,price,liveQuote?.sourceTime,
    marketOpen,m.sniper.view.priceFresh,providerTransition,m.candles,
-   liveOpportunity,candleLean,flowProfile,liquidityMagnets,watchMap,
+   liveOpportunity,candleLean,flowProfile,liquidityMagnets,watchMap,marketContext,
    nextM1.ready,nextM1.side,entryTrend]);
  useEffect(()=>{if(trackedSetup!==earlyState)setEarlyState(trackedSetup);},[trackedSetup,earlyState]);
  const earlyOpportunity=useMemo(()=>earlySetupOpportunity(trackedSetup),[trackedSetup]);
@@ -1356,8 +1386,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          end={end} top={plotTop} bottom={plotBottom} py={py} timeX={timeX}/>
        {/* Compact chart-only directional readout. Source details via tooltip. */}
        <g className="sniper-m5-chart-status" role="status"
-         aria-label={drawingBadge+' · '+drawingReason}>
-         <title>{drawingBadge+' · '+drawingReason+
+         aria-label={drawingBadge+' · '+drawingReason+' · '+marketContext.reason}>
+         <title>{drawingBadge+' · '+drawingReason+' · '+marketContext.reason+
            ' · قراءة غير مؤكدة وليست صفقة أو أمر تداول'}</title>
          <rect x={left+7} y={plotTop+7} rx="5" width="136" height="23"
            fill="#071923" fillOpacity=".94" stroke={drawingColor} strokeWidth=".9"/>

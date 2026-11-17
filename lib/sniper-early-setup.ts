@@ -1,3 +1,4 @@
+import type {SniperMarketContext} from './sniper-market-context';
 import type {LiveOpportunity} from './sniper-live-opportunity';
 import type {M5CandleLean} from './sniper-m5-candle-lean';
 import type {FlowProfileDecision} from './flow-profile-decision';
@@ -9,8 +10,8 @@ export type EarlySetup={
  sourceAt:number;armedAt:number;expiresAt:number;trigger:number;invalidation:number;
  crossedAt?:number|null;crossedQuoteAt?:number|null;
  atr:number;priceAt:number;lastPrice:number;lastAt:number;triggeredAt:number|null;
- targets:number[];reason:string;score?:number;setupKind?:'PRESSURE'|'SWEEP'|'COMPRESSION'|'RECLAIM'|'MICRO'|'COIL'|'ZONE'|'PULLBACK';retestAt?:number|null;
- trendSide?:'BUY'|'SELL'|'WAIT';flowAligned?:boolean;
+ targets:number[];reason:string;score?:number;setupKind?:'PRESSURE'|'SWEEP'|'COMPRESSION'|'RECLAIM'|'MICRO'|'COIL'|'ZONE'|'PULLBACK'|'PROFILE';retestAt?:number|null;
+ trendSide?:'BUY'|'SELL'|'WAIT';flowAligned?:boolean;localStructureAligned?:boolean;contextNote?:string;
 };
 /** A confirmed impulse is a description of CLOSED M1 momentum, not a
  * predictive SELL/BUY signal. We use it only to veto stale countertrend
@@ -45,7 +46,7 @@ export function closedM1Impulse(raw:unknown,now:number):'BUY'|'SELL'|'WAIT'{
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
  price:number|null;quoteAt?:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
  flow?:FlowProfileDecision|null;liquidity?:LiquidityMagnetView|null;
- watch?:WatchPriceMap|null;
+ watch?:WatchPriceMap|null;marketContext?:SniperMarketContext|null;
  m1Side?:'BUY'|'SELL'|'WAIT';m15Side?:'BUY'|'SELL'|'WAIT'}):EarlySetup|null{
  const {now,price}=input;
  let prior=input.prior?.scope===input.scope?input.prior:null;
@@ -182,6 +183,8 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    Math.abs(b.high-bars[i].close),Math.abs(b.low-bars[i].close)));
  const atr=ranges.slice(-14).reduce((a,b)=>a+b,0)/14;
  if(!(atr>0)||atr>price*.04)return prior;
+ const ctx=input.marketContext;
+ const contextFresh=Boolean(ctx&&Number.isFinite(ctx.asOf)&&ctx.asOf<=now&&now-ctx.asOf<=180000);
  const op=input.opportunity;
  let side:'BUY'|'SELL'|null=null,trigger=0,invalidation=0;
  let setupKind:EarlySetup['setupKind']='PRESSURE';
@@ -191,7 +194,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  // before it breaks, rather than waiting for the entire old swing to break.
  // M15 or actual same-venue flow supplies context; price momentum alone does not.
  const context=flowSide!=='WAIT'?flowSide:(input.m15Side??'WAIT');
- if(context!=='WAIT'){
+ if(!side&&context!=='WAIT'){
    const impulse=bars.slice(-6,-2),pause=bars.slice(-2);
    const sign=context==='BUY'?1:-1;
    const drive=sign*(impulse.at(-1)!.close-impulse[0].open);
@@ -343,6 +346,25 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      reason='انضغاط M1 قبل بداية موجة محتملة · مستوى كسر مراقب';
    }
  }
+ // Value-area rejection is a separate opportunity source, not a mandatory
+ // gate. Quote-only profiles remain indicative and earn NO executed-flow vote.
+ const profileFresh=Boolean(flow?.profileReady&&
+   (flow.profileBasis==='EXECUTED_TRADES'||flow.profileBasis==='QUOTE_UPDATES')&&flow.asOf!=null&&flow.observedAt!=null&&
+   flow.asOf<=now&&flow.observedAt<=now&&now-flow.asOf<=15000&&now-flow.observedAt<=15000);
+ if(!side&&profileFresh&&[flow!.poc,flow!.val,flow!.vah].every(v=>typeof v==='number'&&Number.isFinite(v)&&v>0)&&
+   flow!.val!<flow!.vah!&&flow!.poc!>=flow!.val!&&flow!.poc!<=flow!.vah!){
+   const buy=last.low<flow!.val!-atr*.04&&last.close>flow!.val!+atr*.04&&
+     last.close>last.open&&price>flow!.val!&&last.high+atr*.135<flow!.poc!;
+   const sell=last.high>flow!.vah!+atr*.04&&last.close<flow!.vah!-atr*.04&&
+     last.close<last.open&&price<flow!.vah!&&last.low-atr*.135>flow!.poc!;
+   if(buy!==sell){
+     side=buy?'BUY':'SELL';setupKind='PROFILE';
+     trigger=buy?last.high+atr*.035:last.low-atr*.035;
+     invalidation=buy?last.low-atr*.12:last.high+atr*.12;
+     reason='رفض حافة البروفايل الحالي واسترداد نطاق القيمة؛ رصد الكسر المحلي قبل حدوثه'+
+       (flow!.profileBasis==='EXECUTED_TRADES'?' · عينة حجم منفذ':' · نشاط أسعار استرشادي، ليس حجم تنفيذ');
+   }
+ }
  // PRE-ZONE WATCH: a pre-existing M15/H1 price low/high is known BEFORE
  // price touches it. This arms a nearby break level while the M1 move is
  // approaching the zone, never after the turn or by repurposing a LIVE wick.
@@ -411,7 +433,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  const directionalClose=side==='BUY'?
    last.close>bars.at(-3)!.close+atr*.09:
    last.close<bars.at(-3)!.close-atr*.09;
- const evidenceScore=Math.min(10,2+
+ const priceEvidenceScore=Math.min(10,2+
    (shortHeight>0&&shortHeight<=atr*1.65?1:0)+
    (Math.abs(trigger-price)<=atr*.65?1:0)+
    (directionalClose?1:0)+
@@ -422,7 +444,15 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    (sweptSide===side?1:0));
  // New MICRO setup is admitted from at least four independent checklist
  // points; existing confirmed compression/sweep plans retain their rules.
- if(setupKind==='MICRO'&&evidenceScore<4)return prior;
+ if(setupKind==='MICRO'&&priceEvidenceScore<4)return prior;
+ // News/sentiment cannot qualify a weak price setup on their own.
+ const newsAdjustment=contextFresh&&ctx!.newsSide!=='WAIT'?(ctx!.newsSide===side ? .5 : -.5):0;
+ const stressed=contextFresh&&(ctx!.stress||ctx!.newsRisk>=75);
+ const regimeAdjustment=stressed?(setupKind==='PULLBACK'||setupKind==='PROFILE' ? .5 : -.5):0;
+ const evidenceScore=Math.max(0,Math.min(10,priceEvidenceScore+newsAdjustment+regimeAdjustment));
+ const localStructureAligned=input.m1Side===side&&priceEvidenceScore>=6&&
+   ['PULLBACK','RECLAIM','COMPRESSION','PROFILE'].includes(setupKind);
+ if(contextFresh)reason+=' · '+ctx!.reason;
  reason+=' · أدلة '+evidenceScore+'/10 (ليست نسبة نجاح)';
  const remaining=side==='BUY'?trigger-price:price-trigger;
  const risk=side==='BUY'?price-invalidation:invalidation-price;
@@ -440,6 +470,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  const levelPrices=watchFresh?(side==='BUY'?input.watch!.upper:input.watch!.lower)
    .map(l=>l.price):[];
  const targetPrices=[...(op.side===side?op.targets:[]),...levelPrices,
+   ...(setupKind==='PROFILE'&&flow?.poc!=null?[flow.poc]:[]),
    ...bars.slice(0,-2).map(b=>side==='BUY'?b.high:b.low)]
    .filter(t=>Number.isFinite(t)&&(side==='BUY'?t>trigger+atr*.1:t<trigger-atr*.1))
    .sort((a,b)=>side==='BUY'?a-b:b-a);
@@ -450,7 +481,8 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    sourceAt,armedAt:now,expiresAt:now+180000,
    trigger,invalidation,atr,priceAt:price,lastPrice:price,lastAt:now,triggeredAt:null,
    crossedAt:null,crossedQuoteAt:null,retestAt:null,score:evidenceScore,setupKind,
-   trendSide:input.m15Side??'WAIT',flowAligned:flowSide===side,
+   trendSide:input.m15Side??'WAIT',flowAligned:flowSide===side,localStructureAligned,
+   contextNote:contextFresh?ctx!.reason:undefined,
    targets:targets.slice(0,3),reason};
 }
 export function earlySetupOpportunity(state:EarlySetup|null):LiveOpportunity{
@@ -462,7 +494,7 @@ export function earlySetupOpportunity(state:EarlySetup|null):LiveOpportunity{
  const risk=state?direction*(state.priceAt-state.invalidation):0;
  const reward=state?.targets.length?direction*(state.targets[0]-state.priceAt):0;
  const qualified=state?.phase==='TRIGGERED'&&!opposed&&
-   (context==='ALIGNED'||state.flowAligned===true)&&
+   (context==='ALIGNED'||state.flowAligned===true||state.localStructureAligned===true)&&
    (state.score??0)>=4&&risk>0&&risk<=state.atr*3&&
    reward>=risk&&reward<=state.atr*4;
  return {phase:state?.phase==='OBSERVING'?'WATCH':
