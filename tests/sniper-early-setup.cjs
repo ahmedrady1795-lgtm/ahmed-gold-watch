@@ -3,7 +3,8 @@ const mod={exports:{}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/sniper-early-setup.ts','utf8'),{
  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
 }).outputText,{module:mod,exports:mod.exports});
-const {advanceEarlySetup:step,earlySetupOpportunity:signal}=mod.exports;
+const {advanceEarlySetup:step,earlySetupOpportunity:signal,
+ closedM1Impulse:impulse}=mod.exports;
 const now=Date.parse('2026-11-17T10:00:00Z')+1000;
 const bars=Array.from({length:18},(_,i)=>({time:now-1000-(18-i)*60000,
  open:100,close:100,high:100.5,low:99.5}));
@@ -248,6 +249,37 @@ const resistance=step({...base,bars:towardResistance,price:100.4,
 assert.equal(resistance?.setupKind,'ZONE','H1 resistance works symmetrically');
 assert.equal(resistance?.side,'SELL');
 assert.match(resistance.reason,/مقاومة H1/);
+// A strong price-only M1 bearish displacement INVALIDATES an earlier BUY
+// watch before its wider structural stop. It is still NOT a SELL entry.
+const sharp=Array.from({length:15},(_,i)=>({
+ time:now-1000-(15-i)*60000,open:100,close:100,high:100.2,low:99.8
+}));
+sharp[12]={...sharp[12],open:100,close:99.8,high:100.1,low:99.7};
+sharp[13]={...sharp[13],open:99.8,close:99.2,high:99.85,low:99.1};
+sharp[14]={...sharp[14],open:99.2,close:98.5,high:99.25,low:98.3};
+assert.equal(impulse(sharp,now),'SELL','only closed M1 cascade confirms bearish displacement');
+const sharpOpposed=step({...base,prior:armed,now:now+3000,
+ price:99.7,bars:sharp});
+assert.equal(sharpOpposed.phase,'CANCELLED',
+ 'active pre-BUY must cancel on a confirmed bearish break before a later quote-only recovery');
+assert.match(sharpOpposed.reason,/موجة هبوط/);
+assert.equal(signal(sharpOpposed).side,'WAIT',
+ 'closed down-impulse cancellation is NOT a new sell entry');
+const buyIntoDump=step({...base,bars:sharp,price:98.7,
+ opportunity:{...op,trigger:98.9,invalidation:98.3}});
+assert.equal(buyIntoDump,null,
+ 'do not create another countertrend BUY directly into closed M1 down-impulse');
+const sellContinuation=step({...base,bars:sharp,price:98.7,
+ opportunity:{...op,side:'SELL',trigger:98.4,invalidation:99.7,targets:[97]}});
+assert.equal(sellContinuation?.side,'SELL',
+ 'strong downside move may still arm a new ahead-of-price sell setup');
+const oneWick=sharp.map((b,i)=>i===14?
+ {...b,open:100,close:100,high:105,low:95}:{
+ ...b,open:100,close:100,high:100.2,low:99.8});
+assert.equal(impulse(oneWick,now),'WAIT',
+ 'a single long wick cannot pretend to establish a causal M1 closed-body impulse');
+assert.equal(impulse(sharp,now+180000),'WAIT',
+ 'stale M1 data cannot cancel new setups as if live');
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(panel,/hasDirectionalWatch\?\(watchIsReversal\?/,
  'on-chart status distinguishes reversal and continuation waves');
