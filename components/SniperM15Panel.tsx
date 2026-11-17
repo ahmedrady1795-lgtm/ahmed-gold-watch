@@ -459,12 +459,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ready:marketOpen&&m.sniper.view.priceFresh&&!providerTransition&&
      liveOpportunity.phase!=='OFFLINE',
    bars:m.candles,opportunity:liveOpportunity,lean:candleLean,
-   flow:flowProfile,liquidity:liquidityMagnets,
+   flow:flowProfile,liquidity:liquidityMagnets,watch:watchMap,
    m1Side:nextM1.ready?nextM1.side:'WAIT',
    m15Side:localFusion.m15
  }),[earlyState,asset,x?.candleSource,now,price,liveQuote?.sourceTime,
    marketOpen,m.sniper.view.priceFresh,providerTransition,m.candles,
-   liveOpportunity,candleLean,flowProfile,liquidityMagnets,
+   liveOpportunity,candleLean,flowProfile,liquidityMagnets,watchMap,
    nextM1.ready,nextM1.side,localFusion.m15]);
  useEffect(()=>{if(trackedSetup!==earlyState)setEarlyState(trackedSetup);},[trackedSetup,earlyState]);
  const earlyOpportunity=useMemo(()=>earlySetupOpportunity(trackedSetup),[trackedSetup]);
