@@ -8,7 +8,7 @@ export type EarlySetup={
  sourceAt:number;armedAt:number;expiresAt:number;trigger:number;invalidation:number;
  crossedAt?:number|null;crossedQuoteAt?:number|null;
  atr:number;priceAt:number;lastPrice:number;lastAt:number;triggeredAt:number|null;
- targets:number[];reason:string;score?:number;setupKind?:'PRESSURE'|'SWEEP'|'COMPRESSION'|'RECLAIM'|'MICRO';retestAt?:number|null;
+ targets:number[];reason:string;score?:number;setupKind?:'PRESSURE'|'SWEEP'|'COMPRESSION'|'RECLAIM'|'MICRO'|'COIL';retestAt?:number|null;
 };
 /** Session-only arming: reloading cannot invent an earlier observation. */
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
@@ -212,6 +212,35 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
        invalidation=up?tinyLow-atr*.12:tinyHigh+atr*.12;
        reason='ضغط صغير M1 قبل الكسر داخل نطاق سعري أقدم';
      }
+   }
+ }
+ // Start-of-wave COIL: three COMPLETED M1 candles squeeze, with
+ // progressively lower highs AND higher lows. M15 must supply the bias.
+ // Do not treat a squeeze as a trade: arm the unbroken edge first.
+ if(!side&&(input.m15Side==='BUY'||input.m15Side==='SELL')){
+   const old=bars.slice(-15,-3),coil=bars.slice(-3);
+   const olderWidth=Math.max(...old.map(b=>b.high))-
+     Math.min(...old.map(b=>b.low));
+   const top=Math.max(...coil.map(b=>b.high));
+   const bottom=Math.min(...coil.map(b=>b.low));
+   const width=top-bottom;
+   const lowerHighs=coil[0].high>coil[1].high+atr*.025&&
+     coil[1].high>coil[2].high+atr*.025;
+   const higherLows=coil[0].low+atr*.025<coil[1].low&&
+     coil[1].low+atr*.025<coil[2].low;
+   const compact=width>=atr*.22&&width<=atr*1.25&&
+     olderWidth>=width*1.8;
+   const center=(top+bottom)/2;
+   const higher=input.m15Side;
+   const directional= higher==='BUY'?coil[2].close>=center:
+     coil[2].close<=center;
+   const oppositeMicro=input.m1Side!=='WAIT'&&
+     input.m1Side!=null&&input.m1Side!==higher;
+   if(lowerHighs&&higherLows&&compact&&directional&&!oppositeMicro){
+     side=higher;setupKind='COIL';
+     trigger=side==='BUY'?top+atr*.045:bottom-atr*.045;
+     invalidation=side==='BUY'?bottom-atr*.1:top+atr*.1;
+     reason='انضغاط M1 قبل بداية موجة محتملة · مستوى كسر مراقب';
    }
  }
  if(!side||![trigger,invalidation].every(Number.isFinite))return prior;
