@@ -459,6 +459,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    providerTransition,m.candles,liveOpportunity,candleLean,flowProfile,liquidityMagnets]);
  useEffect(()=>{if(trackedSetup!==earlyState)setEarlyState(trackedSetup);},[trackedSetup,earlyState]);
  const earlyOpportunity=useMemo(()=>earlySetupOpportunity(trackedSetup),[trackedSetup]);
+ // Show the closed-M1 directional hypothesis as WATCH when no pre-break
+ // setup was armed; never promote it into an execution-worthy BUY/SELL.
+ const hasDirectionalWatch=earlyOpportunity.side==='WAIT'&&
+   candleLean.side!=='WAIT'&&candleLean.phase!=='WAIT';
  const currentSignalSide=earlyOpportunity.side;
  const currentSignalLabel=earlyOpportunity.phase==='PREPARE'?
    (earlyOpportunity.side==='BUY'?'ترقب شراء قبل الكسر':'ترقب بيع قبل الكسر'):
@@ -486,14 +490,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    setMovementRecords(prior=>advanceMovementProof({
      prior,now,asset,source:String(x?.candleSource||''),
      price,signal:earlyOpportunity,bars:m.candles,
-     m5Bars:x?.chartHigherFrames?.m5
+     m5Bars:x?.chartHigherFrames?.m5,
+     // Record only observed sweep reversals; NEVER restart every-candle spam.
+     candleLean:candleLean.reason.includes('انعكاس محتمل')?candleLean:undefined
    }));
  },[movementProofLoaded,now,asset,x?.candleSource,price,
-   earlyOpportunity,m.candles,x?.chartHigherFrames?.m5]);
+   earlyOpportunity,candleLean,m.candles,x?.chartHigherFrames?.m5]);
  const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
    [movementRecords,asset]);
  const showPreparation=earlyOpportunity.phase==='PREPARE';
- const earlySide=earlyOpportunity.side;
+ const earlySide=hasDirectionalWatch?candleLean.side:earlyOpportunity.side;
  const hasEarlySignal=earlyOpportunity.phase==='BREAK_CONFIRMED';
  const rawIssuance=assessM15ScenarioIssuance({
    side:safeSide,qualified,radarStatus:radar.status,radarSide:radar.side,
@@ -865,14 +871,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      fresh={freshObservation} side={projected.ready?chartSide:
        currentSignalSide!=='WAIT'?currentSignalSide:safeSide}
      price={currentSignalPrice}
-     trigger={currentSignalSide!=='WAIT'?liveOpportunity.trigger:null}
+     trigger={currentSignalSide!=='WAIT'?trackedSetup?.trigger??null:null}
      upper={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.upper:
        showWatchGuide?watchGuide.upperTrigger:null}
      lower={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.lower:
        showWatchGuide?watchGuide.lowerTrigger:null}
-     stop={projected.ready?stop:stable?.stop??(currentSignalSide!=='WAIT'?liveOpportunity.invalidation:null)}
+     stop={projected.ready?stop:stable?.stop??(currentSignalSide!=='WAIT'?trackedSetup?.invalidation??null:null)}
      targets={projected.ready||stable?stable?.goals??[]:
-       currentSignalSide!=='WAIT'?liveOpportunity.targets.map((price,i)=>({stage:i+1,price})):[]}
+       currentSignalSide!=='WAIT'?(trackedSetup?.targets??[]).map((price,i)=>({stage:i+1,price})):[]}
      nextBar={projected.ready?shownBars[0]??null:null}
      signal={currentSignalSide!=='WAIT'?currentSignalLabel:null}
      noForecastReason={!projected.ready?lifecycle:null}
@@ -908,12 +914,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    <div className={'sniper-m5-early-signal '+(earlySide==='BUY'?'is-buy':
      earlySide==='SELL'?'is-sell':'is-wait')} role="status"
      aria-label="توقع مراقبة مبكر لاتجاه M5، وليس تنفيذ صفقة">
-     <strong>{(showPreparation?'ترقب ':'')+(earlySide==='BUY'?'شراء ↑':earlySide==='SELL'?'بيع ↓':'ترقب M5')}</strong>
+     <strong>{showPreparation?'ترقب '+(earlySide==='BUY'?'شراء ↑':'بيع ↓'):
+       hasEarlySignal?(earlySide==='BUY'?'رصد شراء ↑':'رصد بيع ↓'):
+       hasDirectionalWatch?'مراقبة '+(earlySide==='BUY'?'شراء ↑':'بيع ↓'):
+       'ترقب M5'}</strong>
      <span>{showPreparation?trackedSetup!.reason+' · تفعيل عند عبور '+n(trackedSetup!.trigger)+
-       ' · إبطال '+n(trackedSetup!.invalidation):earlyOpportunity.reason}</span>
+       ' · إبطال '+n(trackedSetup!.invalidation):
+       hasDirectionalWatch?candleLean.reason:earlyOpportunity.reason}</span>
      <small>{showPreparation?'إعداد مسجل '+h(trackedSetup!.armedAt)+' · توقع مشروط':
-       hasEarlySignal?'السعر عند التفعيل '+n(trackedSetup!.priceAt)+' · '+h(trackedSetup!.triggeredAt!):
-       'لا توجد إشارة مبكرة سارية'}</small>
+       hasEarlySignal?'تفعيل مرصود عند '+n(trackedSetup!.priceAt)+' · '+h(trackedSetup!.triggeredAt!):
+       hasDirectionalWatch?'ميل من شموع M1 المغلقة؛ ليس إشارة دخول حتى يظهر إعداد مؤهل':
+       'لا توجد فرصة مبكرة مؤهلة حاليًا'}</small>
    </div>
    <div className="sniper-scenario-chart-legend"
      aria-label="مفتاح الشموع الحقيقية ومسارات المراقبة المشروطة">
