@@ -6,12 +6,13 @@ type Bar={time:number;open:number;high:number;low:number;close:number};
 export type EarlySetup={
  scope:string;side:'BUY'|'SELL';phase:'ARMED'|'TRIGGERED'|'CANCELLED'|'EXPIRED';
  sourceAt:number;armedAt:number;expiresAt:number;trigger:number;invalidation:number;
+ crossedAt?:number|null;crossedQuoteAt?:number|null;
  atr:number;priceAt:number;lastPrice:number;lastAt:number;triggeredAt:number|null;
  targets:number[];reason:string;
 };
 /** Session-only arming: reloading cannot invent an earlier observation. */
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
- price:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
+ price:number|null;quoteAt?:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
  flow?:FlowProfileDecision|null;liquidity?:LiquidityMagnetView|null}):EarlySetup|null{
  const {now,price}=input;
  let prior=input.prior?.scope===input.scope?input.prior:null;
@@ -41,6 +42,16 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
        'سحب سيولة M15 مغلق يعارض الإعداد المبكر'};
  if(prior&&(prior.phase==='ARMED'||prior.phase==='TRIGGERED')){
    const invalid=prior.side==='BUY'?price<=prior.invalidation:price>=prior.invalidation;
+   // A recent activated breakout returning through its frozen level is a
+   // FAILED BREAK, even if the much farther structural stop remains untouched.
+   // Keep the historical BREAK marker for forward audit, never erase it.
+   const rejected=prior.phase==='TRIGGERED'&&prior.triggeredAt!=null&&
+     now-prior.triggeredAt<=60000&&
+     (prior.side==='BUY'?price<prior.trigger-prior.atr*.12:
+       price>prior.trigger+prior.atr*.12);
+   if(rejected)return {...prior,phase:'CANCELLED',lastAt:now,lastPrice:price,
+     reason:'فشل اختراق '+(prior.side==='BUY'?'شراء':'بيع')+
+       '؛ السعر عاد عبر مستوى التفعيل بعد الإشارة'};
    const expired=now>=prior.expiresAt;
    const gap=now-prior.lastAt>15000;
    if(invalid||expired||gap)return {...prior,phase:expired?'EXPIRED':'CANCELLED',lastAt:now,
@@ -51,9 +62,28 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    if(crossed){
      const extension=Math.abs(price-prior.trigger);
      if(extension>prior.atr*.35)return {...prior,phase:'CANCELLED',lastAt:now,
-       reason:'السعر تجاوز منطقة التفعيل؛ لا نطارد الموجة'};
+       lastPrice:price,reason:'السعر تجاوز منطقة التفعيل؛ لا نطارد الموجة'};
+     const quoteAt=input.quoteAt!=null&&Number.isFinite(input.quoteAt)?
+       input.quoteAt:now;
+     if(prior.crossedAt==null)return {...prior,crossedAt:now,
+       crossedQuoteAt:quoteAt,lastPrice:price,lastAt:now,
+       reason:'اختبار عبور مستوى '+(prior.side==='BUY'?'الشراء':'البيع')+
+         '؛ لم تثبت متابعة السعر بعد'};
+     // Two distinct fresh observations separated by >= 2.5s, not a one-tick wick.
+     // Confirmation records the LATER observed price/time, never backdates it.
+     const laterQuote=quoteAt>(prior.crossedQuoteAt??prior.crossedAt);
+     if(now-prior.crossedAt<2500||!laterQuote||
+       extension<prior.atr*.04)return {...prior,lastPrice:price,lastAt:now};
      return {...prior,phase:'TRIGGERED',triggeredAt:now,priceAt:price,lastPrice:price,lastAt:now,
-       reason:'عبور حي لمستوى إعداد مسجل قبل الكسر'};
+       reason:'تفعيل بعد عبور حي مستمر ومراقب لمستوى إعداد سابق'};
+   }
+   if(prior.crossedAt!=null){
+     const reversal=prior.side==='BUY'?price<prior.trigger-prior.atr*.08:
+       price>prior.trigger+prior.atr*.08;
+     if(reversal)return {...prior,phase:'CANCELLED',lastAt:now,lastPrice:price,
+       reason:'فشل اختبار الاختراق؛ عودة السعر تحت/فوق مستوى التفعيل قبل التأكيد'};
+     return {...prior,crossedAt:null,crossedQuoteAt:null,lastPrice:price,lastAt:now,
+       reason:'انتهى اختبار العبور بلا تأكيد؛ متابعة مستوى الإعداد'};
    }
    return prior.lastPrice===price&&prior.lastAt===now?prior:{...prior,lastPrice:price,lastAt:now};
  }
@@ -166,11 +196,13 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  if(remaining<=0||remaining>atr*.8||risk<=0||touched)return prior;
  return {scope:input.scope,side,phase:'ARMED',sourceAt,armedAt:now,expiresAt:now+300000,
    trigger,invalidation,atr,priceAt:price,lastPrice:price,lastAt:now,triggeredAt:null,
+   crossedAt:null,crossedQuoteAt:null,
    targets:op.side===side?op.targets.filter(t=>side==='BUY'?t>trigger:t<trigger):[],reason};
 }
 export function earlySetupOpportunity(state:EarlySetup|null):LiveOpportunity{
  const active=state?.phase==='ARMED'||state?.phase==='TRIGGERED';
- return {phase:state?.phase==='ARMED'?'PREPARE':state?.phase==='TRIGGERED'?'BREAK_CONFIRMED':
+ return {phase:state?.phase==='ARMED'?(state.crossedAt!=null?'TESTING':'PREPARE'):
+   state?.phase==='TRIGGERED'?'BREAK_CONFIRMED':
    state?'CANCELLED':'WATCH',side:active?state!.side:'WAIT',
    trigger:state?.trigger??null,invalidation:state?.invalidation??null,
    targets:active?state!.targets:[],sourceAt:state?.triggeredAt??state?.sourceAt??null,
