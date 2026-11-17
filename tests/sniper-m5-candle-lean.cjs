@@ -114,19 +114,37 @@ const bullishSweep={time:start-minute,open:99.9,high:100.1,
  low:99.2,close:99.85};
 const bearishSweep={time:start-minute,open:100.1,high:100.8,
  low:99.9,close:100.15};
-const reverseBuy=run({...data,m1:[...reversalBase,bullishSweep]});
-const reverseSell=run({...data,m1:[...reversalBase,bearishSweep]});
+const reverseBuy=run({...data,m1:[...reversalBase,bullishSweep],price:99.85});
+const reverseSell=run({...data,m1:[...reversalBase,bearishSweep],price:100.15});
 assert.equal(reverseBuy.side,'BUY','rejection after sweep of prior lows');
 assert.equal(reverseSell.side,'SELL','rejection after sweep of prior highs');
 assert.match(reverseBuy.reason,/انعكاس محتمل/);
 assert.match(reverseSell.reason,/انعكاس محتمل/);
 const stillPrior=run({...data,m1:[...reversalBase,bullishSweep,
- {time:start,open:99,high:105,low:98,close:104}]});
+ {time:start,open:99,high:105,low:98,close:104}],price:99.85});
 assert.equal(stillPrior.side,'BUY','current unfinished candle cannot flip prior reversal');
+// Regression: a bullish M1+M15 context does not turn one upper wick
+// into a SELL watch; an invalidated upper wick cannot be sold retroactively.
+const risingFrames=run({...data,m1:[...reversalBase,bearishSweep],
+ price:100.15,m1Side:'BUY',m15Side:'BUY'});
+assert.notEqual(risingFrames.side,'SELL',
+ 'one upper wick cannot outvote aligned bullish M1 and M15');
+const breachedWick=run({...data,m1:[...reversalBase,bearishSweep],
+ price:100.95,m1Side:'WAIT',m15Side:'WAIT'});
+assert.notEqual(breachedWick.side,'SELL',
+ 'a quote past the swept wick invalidates a previous reversal');
+const fallingFrames=run({...data,m1:[...reversalBase,bullishSweep],
+ price:99.85,m1Side:'SELL',m15Side:'SELL'});
+assert.notEqual(fallingFrames.side,'BUY',
+ 'one lower wick cannot outvote aligned bearish M1 and M15');
+assert.equal(run({...data,m1:[...reversalBase,bearishSweep],
+ price:100.15,m1Side:'SELL',m15Side:'SELL'}).side,'SELL',
+ 'matched higher frames may still observe a genuine same-way rejection');
+console.log('PASS: countertrend M5 wick rejection, live breach, and M1/M15 agreement');
 console.log('PASS: pre-move sweep rejection BUY/SELL on closed M1 only');
 
 const firstNewMinute={...bearishSweep,time:start};
-const freshMinute=run({...data,now:start+61000,m1:[...reversalBase,bullishSweep,firstNewMinute]});
+const freshMinute=run({...data,now:start+61000,m1:[...reversalBase,bullishSweep,firstNewMinute],price:100.15});
 assert.equal(freshMinute.phase,'FOLLOW');
 assert.equal(freshMinute.issuedFor,start+60000);
 assert.equal(freshMinute.side,'SELL','new closed M1 sweep is read before 90-second boundary');
