@@ -86,6 +86,38 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    invalidation=side==='BUY'?last.low-atr*.05:last.high+atr*.05;
    reason='استرداد مستوى بعد سحب قمة أو قاع';
  }
+ // Third independent PRE-MOVE setup: closed M1 compression beside a previously
+ // observed swing. This is a price/liquidity proxy, NOT live resting orders.
+ // It arms a level ahead of the quote; it never backfills a crossed level.
+ if(!side&&bars.length>=18){
+   const priorRange=bars.slice(-18,-4);
+   const recent=bars.slice(-4);
+   const high=Math.max(...priorRange.map(b=>b.high));
+   const low=Math.min(...priorRange.map(b=>b.low));
+   const width=Math.max(...recent.map(b=>b.high))-
+     Math.min(...recent.map(b=>b.low));
+   const tight=width>0&&width<=atr*1.65;
+   const last4=recent.map(b=>b.close);
+   const slope=last4.at(-1)!-last4[0];
+   const upperReject=recent.some(b=>b.high>=high-atr*.18&&
+     b.close<b.high-atr*.18);
+   const lowerReject=recent.some(b=>b.low<=low+atr*.18&&
+     b.close>b.low+atr*.18);
+   const swingSell=tight&&upperReject&&!lowerReject&&
+     last.close<high&&slope<0&&price<high&&
+     price>low&&price-last.low<=atr*.65;
+   const swingBuy=tight&&lowerReject&&!upperReject&&
+     last.close>low&&slope>0&&price>low&&
+     price<high&&last.high-price<=atr*.65;
+   if(swingSell!==swingBuy){
+     side=swingSell?'SELL':'BUY';
+     trigger=side==='SELL'?Math.min(...recent.map(b=>b.low))-atr*.04:
+       Math.max(...recent.map(b=>b.high))+atr*.04;
+     invalidation=side==='SELL'?Math.max(...recent.map(b=>b.high))+atr*.1:
+       Math.min(...recent.map(b=>b.low))-atr*.1;
+     reason='انضغاط M1 قرب مستوى سيولة سعري سابق؛ مراقبة كسر مبكر';
+   }
+ }
  if(!side||![trigger,invalidation].every(Number.isFinite))return prior;
  // A same-venue flow/profile contradiction or fresh M15 sweep can veto setup
  // BEFORE it is armed. Missing depth/profile does not fabricate a positive vote.
