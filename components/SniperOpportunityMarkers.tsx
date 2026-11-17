@@ -57,7 +57,19 @@ export default function SniperOpportunityMarkers(p:Props){
    (r.kind==='OPEN'||r.kind==='FOLLOW'||r.kind==='CLOSE')&&r.issuedAt>=p.from&&
    r.issuedAt<=p.now&&visible(r.priceAt))
    .sort((a,b)=>b.issuedAt-a.issuedAt);
- const recentM5=m5Issued.slice(0,6);
+ // Only caption the FIRST observation of a distinct directional wave.
+ // Historical dots (including repeated observations) remain at their original
+ // price and issuance time for review. A new opposite wave or a 45m gap can
+ // start a fresh caption; an ongoing decline is not six new sell entries.
+ const waveIds=new Set<string>();
+ let priorWaveRecord:MovementProof|null=null;
+ for(const record of [...m5Issued].reverse()){
+   if(!priorWaveRecord||record.side!==priorWaveRecord.side||
+     record.issuedAt-priorWaveRecord.issuedAt>45*60000)
+     waveIds.add(record.id);
+   priorWaveRecord=record;
+ }
+ const recentM5=m5Issued.filter(r=>waveIds.has(r.id)).slice(0,4);
  // Keep each historical point, but only one caption per nearby cluster.
  const m5Captioned:MovementProof[]=[];
  for(const r of recentM5){
@@ -70,7 +82,7 @@ export default function SniperOpportunityMarkers(p:Props){
  const earlyLabels=new Map<string,{x:number;y:number}>();
  for(const r of earlyShown.slice(0,3)){
    const px=p.timeX(r.issuedAt),py=p.py(r.priceAt);
-   const chosen=placeLabel(px,py,52,14,r.side==='BUY'?19:-19);
+   const chosen=placeLabel(px,py,78,20,r.side==='BUY'?27:-27);
    if(chosen)earlyLabels.set(r.id,chosen);
  }
  const nearM5=(r:MovementProof)=>m5Captioned.some(e=>
@@ -112,7 +124,7 @@ export default function SniperOpportunityMarkers(p:Props){
          ' · توقع مرصود وقتها، ليس صفقة منفذة'}</title>
      </g>;
    })}
-   {earlyShown.filter(r=>!nearM5(r)).map((r,i)=>{
+   {earlyShown.map((r,i)=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt),buy=r.side==='BUY';
      const ink='#e0be78';
      return <g key={r.id} data-kind="EARLY" data-issued-at={r.issuedAt}>
@@ -122,9 +134,19 @@ export default function SniperOpportunityMarkers(p:Props){
        <title>{'ترقب '+(buy?'شراء':'بيع')+' قبل الكسر · '+
          r.priceAt.toFixed(2)+' · '+outcomeLabel[r.status]+
          ' · محفوظ عند الرصد وليس إشارة تنفيذ'}</title>
-       {earlyLabels.has(r.id)&&<text x={earlyLabels.get(r.id)!.x}
-         y={earlyLabels.get(r.id)!.y+4} textAnchor="middle" direction="rtl"
-         fontSize="8.5" fontWeight="700" fill={ink}>{buy?'ترقب ↑':'ترقب ↓'}</text>}
+       {earlyLabels.has(r.id)&&<>
+         <line x1={x} y1={y}
+           x2={earlyLabels.get(r.id)!.x} y2={earlyLabels.get(r.id)!.y}
+           stroke={ink} strokeWidth=".9" strokeOpacity=".85"/>
+         <rect x={earlyLabels.get(r.id)!.x-39}
+           y={earlyLabels.get(r.id)!.y-10} width="78" height="20" rx="5"
+           fill="#1b1c1b" stroke={ink} strokeWidth="1.1"/>
+         <text x={earlyLabels.get(r.id)!.x}
+           y={earlyLabels.get(r.id)!.y+4} textAnchor="middle" direction="rtl"
+           fontSize="9.5" fontWeight="800" fill={ink}>
+           {buy?'ترقب شراء':'ترقب بيع'}
+         </text>
+       </>}
      </g>;
    })}
    {rows.filter(r=>!shown.includes(r)).map(r=><g key={r.id}>
