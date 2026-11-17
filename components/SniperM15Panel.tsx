@@ -516,6 +516,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    x?.chartHigherFrames?.m5,entryTrend]);
  const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
    [movementRecords,asset]);
+ const showZoneObservation=trackedSetup?.phase==='OBSERVING';
  const showPreparation=earlyOpportunity.phase==='PREPARE';
  const showCrossTest=earlyOpportunity.phase==='TESTING';
  const showRejected=trackedSetup?.phase==='CANCELLED'&&
@@ -526,9 +527,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const hasEarlySignal=earlyOpportunity.phase==='BREAK_CONFIRMED';
  // All default analysis appears on the chart. Full explanations are available
  // in an optional closed drawer, not in multi-line blocks above the candles.
- const drawingSide=showPreparation||showCrossTest||showRejected||hasEarlySignal?
+ const drawingSide=showZoneObservation?'WAIT':
+   showPreparation||showCrossTest||showRejected||hasEarlySignal?
    trackedSetup?.side??'WAIT':hasDirectionalWatch?candleLean.side:'WAIT';
- const drawingLabel=showPreparation?'ترقب '+(drawingSide==='BUY'?'شراء':'بيع'):
+ const drawingLabel=showZoneObservation?
+   'مراقبة '+(trackedSetup?.side==='BUY'?'دعم':'مقاومة'):
+   showPreparation?'ترقب '+(drawingSide==='BUY'?'شراء':'بيع'):
    showCrossTest?'اختبار اختراق '+(drawingSide==='BUY'?'شراء':'بيع'):
    showRejected?'فشل اختراق '+(drawingSide==='BUY'?'شراء':'بيع'):
    hasEarlySignal?'رصد '+(drawingSide==='BUY'?'شراء':'بيع'):
@@ -539,15 +543,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    marketOpen&&m.sniper.view.priceFresh&&m.historyFresh&&!providerTransition?
      'مراقبة نطاق M5':'تحديث السوق M5';
  // Qualitative evidence checklist, not a predicted success rate.
- const drawingBadge=(showPreparation||showCrossTest)&&trackedSetup?.score!=null?
+ const drawingBadge=(showZoneObservation||showPreparation||showCrossTest)&&trackedSetup?.score!=null?
    drawingLabel+' · '+trackedSetup.score+'/10':drawingLabel;
- const drawingReason=showPreparation||showCrossTest||showRejected||hasEarlySignal?
+ const drawingReason=showZoneObservation?
+   (trackedSetup?.reason||'')+' · مستوى مراقبة فقط؛ لا توجد إشارة شراء/بيع مؤهلة':
+   showPreparation||showCrossTest||showRejected||hasEarlySignal?
    (trackedSetup?.reason||'إعداد غير متاح'):
    hasDirectionalWatch?(watchIsReversal?'احتمال انعكاس غير مؤكد':
      watchAgainstM15?'ارتداد عكس سياق M15؛ ليس إشارة دخول':
      'اتجاه مرصود بعد بدء الحركة؛ ليس إنذارًا مبكرًا أو أمر دخول'):
    earlyOpportunity.reason;
- const drawingColor=drawingSide==='BUY'?'#64e8b2':
+ const drawingColor=showZoneObservation?'#ebd08d':
+   drawingSide==='BUY'?'#64e8b2':
    drawingSide==='SELL'?'#fa92a4':'#ebd08d';
  const rawIssuance=assessM15ScenarioIssuance({
    side:safeSide,qualified,radarStatus:radar.status,radarSide:radar.side,
