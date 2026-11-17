@@ -134,8 +134,11 @@ assert.match(panel,/hasDirectionalWatch\?\(watchIsReversal\?/,
 assert.match(panel,/متابعة /,'momentum following cannot be advertised as early BUY or SELL');
 assert.match(panel,/اتجاه مرصود بعد بدء الحركة/,
  'an already-moving wave is labeled explicitly as non-predictive');
-assert.match(panel,/candleLean\.reason\.includes\(\x27انعكاس محتمل\x27\)/,
- 'only observed sweep reversals may reenter marker journal');
+assert.match(panel,/candleLean:hasDirectionalWatch\?candleLean:undefined/,
+ 'live closed-M1 directional waves, not only reversal wicks, enter the journal');
+const markerSvg=fs.readFileSync('components/SniperOpportunityMarkers.tsx','utf8');
+assert.match(markerSvg,/رصد بيع/,'bearish wave has visible sell observation on chart');
+assert.match(markerSvg,/رصد شراء/,'bullish wave has visible buy observation on chart');
 assert.match(panel,/showCrossTest\?'اختبار اختراق /,
  'first quote crossing must remain visually testing, not BUY/SELL');
 assert.match(panel,/showRejected\?'فشل اختراق /,
