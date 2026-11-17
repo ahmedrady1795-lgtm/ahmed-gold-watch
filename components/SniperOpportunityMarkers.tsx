@@ -60,7 +60,7 @@ export default function SniperOpportunityMarkers(p:Props){
      const followsWave=r.setupType==='CONTINUATION';
      const caption=m5Captioned.includes(r);
      const labelY=fit(y+(buy?30:-30));
-     const labelText=followsWave?(buy?'رصد صعود':'رصد هبوط'):
+     const labelText=followsWave?(buy?'رصد شراء':'رصد بيع'):
        (buy?'شراء':'بيع');
      const labelWidth=followsWave?76:52;
      const labelX=Math.max(p.left+labelWidth/2+2,
