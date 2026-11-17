@@ -95,7 +95,7 @@ assert.equal(fall.length,1);
 assert.equal(fall[0].side,'SELL');
 assert.equal(fall[0].setupType,'CONTINUATION');
 assert.equal(fall[0].frameTrend,'SELL','higher-frame side is frozen at observation');
-assert.equal(proof.exports.movementObservationLabel(fall[0]),'متابعة هبوط',
+assert.equal(mod.exports.movementObservationLabel(fall[0]),'متابعة هبوط',
  'a decline is continuously visible without claiming an entry');
 assert.equal(fall[0].issuedAt,start+2*60000+7000);
 const sameFall=step({prior:fall,now:start+7*60000+7000,asset:'GOLD',
@@ -109,12 +109,12 @@ const flipped=step({prior:sameFall,now:start+8*60000+7000,asset:'GOLD',
  reason:'استمرار محتمل من زخم مغلق'},frameTrend:'SELL'});
 assert.equal(flipped.length,2,'a newly observed opposite wave should be visible');
 assert.equal(flipped[1].side,'BUY');
-assert.equal(proof.exports.movementObservationLabel(flipped[1]),'ارتداد صاعد',
+assert.equal(mod.exports.movementObservationLabel(flipped[1]),'ارتداد صاعد',
  'opposite M1 bounce inside bearish M15 is NOT a BUY entry');
-assert.equal(proof.exports.movementObservationLabel({
+assert.equal(mod.exports.movementObservationLabel({
  side:'SELL',setupType:'REVERSAL',frameTrend:'BUY'}),'انعكاس هابط؟',
  'unconfirmed reversal is never marketed as confirmed SELL');
-assert.equal(proof.exports.movementObservationLabel({
+assert.equal(mod.exports.movementObservationLabel({
  side:'BUY',setupType:'CONTINUATION'}),'متابعة صعود',
  'old history without frozen M15 cannot be relabeled retroactively');
 assert.equal(flipped[0].issuedAt,fall[0].issuedAt,
