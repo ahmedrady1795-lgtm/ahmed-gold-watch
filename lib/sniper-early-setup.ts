@@ -8,12 +8,13 @@ export type EarlySetup={
  sourceAt:number;armedAt:number;expiresAt:number;trigger:number;invalidation:number;
  crossedAt?:number|null;crossedQuoteAt?:number|null;
  atr:number;priceAt:number;lastPrice:number;lastAt:number;triggeredAt:number|null;
- targets:number[];reason:string;
+ targets:number[];reason:string;score?:number;setupKind?:'PRESSURE'|'SWEEP'|'COMPRESSION'|'RECLAIM'|'MICRO';retestAt?:number|null;
 };
 /** Session-only arming: reloading cannot invent an earlier observation. */
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
  price:number|null;quoteAt?:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
- flow?:FlowProfileDecision|null;liquidity?:LiquidityMagnetView|null}):EarlySetup|null{
+ flow?:FlowProfileDecision|null;liquidity?:LiquidityMagnetView|null;
+ m1Side?:'BUY'|'SELL'|'WAIT';m15Side?:'BUY'|'SELL'|'WAIT'}):EarlySetup|null{
  const {now,price}=input;
  let prior=input.prior?.scope===input.scope?input.prior:null;
  if(!Number.isFinite(now)||price==null||!Number.isFinite(price)||price<=0)return null;
@@ -75,15 +76,20 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      if(now-prior.crossedAt<2500||!laterQuote||
        extension<prior.atr*.04)return {...prior,lastPrice:price,lastAt:now};
      return {...prior,phase:'TRIGGERED',triggeredAt:now,priceAt:price,lastPrice:price,lastAt:now,
-       reason:'تفعيل بعد عبور حي مستمر ومراقب لمستوى إعداد سابق'};
+       reason:prior.retestAt!=null?
+         'تفعيل بعد إعادة اختبار وعبور جديد على عرضين حديثين':
+         'تفعيل بعد عبور حي مستمر ومراقب لمستوى إعداد سابق'};
    }
    if(prior.crossedAt!=null){
      const reversal=prior.side==='BUY'?price<prior.trigger-prior.atr*.08:
        price>prior.trigger+prior.atr*.08;
      if(reversal)return {...prior,phase:'CANCELLED',lastAt:now,lastPrice:price,
        reason:'فشل اختبار الاختراق؛ عودة السعر تحت/فوق مستوى التفعيل قبل التأكيد'};
-     return {...prior,crossedAt:null,crossedQuoteAt:null,lastPrice:price,lastAt:now,
-       reason:'انتهى اختبار العبور بلا تأكيد؛ متابعة مستوى الإعداد'};
+     // A near-level pullback is only a RETEST OBSERVATION: it must cross again
+     // on two fresh quotes to become an actual confirmed signal.
+     return {...prior,crossedAt:null,crossedQuoteAt:null,
+       retestAt:now,lastPrice:price,lastAt:now,
+       reason:'إعادة اختبار قريبة من مستوى الكسر؛ انتظار عبور جديد'};
    }
    return prior.lastPrice===price&&prior.lastAt===now?prior:{...prior,lastPrice:price,lastAt:now};
  }
@@ -104,6 +110,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  if(!(atr>0)||atr>price*.04)return prior;
  const op=input.opportunity;
  let side:'BUY'|'SELL'|null=null,trigger=0,invalidation=0;
+ let setupKind:EarlySetup['setupKind']='PRESSURE';
  let reason='';
  if(op.phase==='PREPARE'&&(op.side==='BUY'||op.side==='SELL')&&
    op.trigger!=null&&op.invalidation!=null&&op.sourceAt!=null&&now-op.sourceAt<=90000){
@@ -111,7 +118,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    reason='ضغط سعري قبل الكسر';
  }else if(input.lean.side!=='WAIT'&&input.lean.reason.includes('انعكاس محتمل')){
    // Sweep rejection supplies a level to watch, not an immediate BUY/SELL.
-   side=input.lean.side;
+   side=input.lean.side;setupKind='SWEEP';
    trigger=side==='BUY'?last.high+atr*.05:last.low-atr*.05;
    invalidation=side==='BUY'?last.low-atr*.05:last.high+atr*.05;
    reason='استرداد مستوى بعد سحب قمة أو قاع';
@@ -140,7 +147,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      last.close>low&&slope>0&&price>low&&
      price<high&&last.high-price<=atr*.65;
    if(swingSell!==swingBuy){
-     side=swingSell?'SELL':'BUY';
+     side=swingSell?'SELL':'BUY';setupKind='COMPRESSION';
      trigger=side==='SELL'?Math.min(...recent.map(b=>b.low))-atr*.04:
        Math.max(...recent.map(b=>b.high))+atr*.04;
      invalidation=side==='SELL'?Math.max(...recent.map(b=>b.high))+atr*.1:
@@ -168,10 +175,43 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      test.some(b=>b.close>b.open)&&
      localHigh-testEnd.close<atr*1.5;
    if(sweepLow!==sweepHigh){
-     side=sweepLow?'BUY':'SELL';
+     side=sweepLow?'BUY':'SELL';setupKind='RECLAIM';
      trigger=side==='BUY'?localHigh+atr*.04:localLow-atr*.04;
      invalidation=side==='BUY'?localLow-atr*.08:localHigh+atr*.08;
      reason='استرداد مستوى سعري سابق بعد اختبار السيولة · مراقبة تفعيل مبكر';
+   }
+ }
+ // Additional early, closed-bar MICRO preparation. A 3-minute range must
+ // contract INSIDE an older observed 11-minute range, before either boundary
+ // breaks. Direction needs rising lows/falling highs and a directional close.
+ // This is price structure, NOT executed Order Flow or a guaranteed impulse.
+ if(!side){
+   const older=bars.slice(-14,-3),micro=bars.slice(-3);
+   const olderHigh=Math.max(...older.map(b=>b.high));
+   const olderLow=Math.min(...older.map(b=>b.low));
+   const tinyHigh=Math.max(...micro.map(b=>b.high));
+   const tinyLow=Math.min(...micro.map(b=>b.low));
+   const narrow=tinyHigh-tinyLow>0&&tinyHigh-tinyLow<=atr*1.45&&
+     tinyHigh-tinyLow<=(olderHigh-olderLow)*.55;
+   const inside=tinyHigh<olderHigh-atr*.025&&tinyLow>olderLow+atr*.025;
+   const up=narrow&&inside&&micro[1].low>=micro[0].low-atr*.07&&
+     micro[2].low>=micro[1].low-atr*.07&&
+     micro[2].close>micro[0].close+atr*.12&&
+     micro[2].close>micro[2].open;
+   const down=narrow&&inside&&micro[1].high<=micro[0].high+atr*.07&&
+     micro[2].high<=micro[1].high+atr*.07&&
+     micro[2].close<micro[0].close-atr*.12&&
+     micro[2].close<micro[2].open;
+   if(up!==down){
+     const candidate=up?'BUY':'SELL';
+     const higher=input.m15Side??'WAIT';
+     // Do not sell only because a rising trend briefly paused, or vice versa.
+     if(higher==='WAIT'||higher===candidate||sweptSide===candidate){
+       side=candidate;setupKind='MICRO';
+       trigger=up?tinyHigh+atr*.05:tinyLow-atr*.05;
+       invalidation=up?tinyLow-atr*.12:tinyHigh+atr*.12;
+       reason='ضغط صغير M1 قبل الكسر داخل نطاق سعري أقدم';
+     }
    }
  }
  if(!side||![trigger,invalidation].every(Number.isFinite))return prior;
@@ -185,6 +225,30 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      ' · POC ونشاط عمق وسيط MT5 استرشادي';
  }else reason+=' · Order Flow المنفذ غير مؤكد';
  if(sweptSide===side)reason+=' · سحب سيولة M15 مغلق يدعم الاتجاه';
+ // Evidence count is a qualitative checklist, NEVER a win probability.
+ // Absent real DOM cannot earn a flow point or block price-only analysis.
+ const last3=bars.slice(-3);
+ const shortHeight=Math.max(...last3.map(b=>b.high))-
+   Math.min(...last3.map(b=>b.low));
+ const older=bars.slice(-16,-4);
+ const observedEdge=side==='BUY'?Math.max(...older.map(b=>b.high)):
+   Math.min(...older.map(b=>b.low));
+ const directionalClose=side==='BUY'?
+   last.close>bars.at(-3)!.close+atr*.09:
+   last.close<bars.at(-3)!.close-atr*.09;
+ const evidenceScore=Math.min(10,2+
+   (shortHeight>0&&shortHeight<=atr*1.65?1:0)+
+   (Math.abs(trigger-price)<=atr*.65?1:0)+
+   (directionalClose?1:0)+
+   (Math.abs(observedEdge-trigger)<=atr*.55?1:0)+
+   (input.m1Side===side?1:0)+
+   (input.m15Side===side?1:0)+
+   (flowSide===side?1:0)+
+   (sweptSide===side?1:0));
+ // New MICRO setup is admitted from at least four independent checklist
+ // points; existing confirmed compression/sweep plans retain their rules.
+ if(setupKind==='MICRO'&&evidenceScore<4)return prior;
+ reason+=' · أدلة '+evidenceScore+'/10 (ليست نسبة نجاح)';
  const remaining=side==='BUY'?trigger-price:price-trigger;
  const risk=side==='BUY'?price-invalidation:invalidation-price;
  // Must be first observed BEFORE crossing, near a defined level. Reject a
@@ -194,9 +258,9 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      b.time>=sourceAt&&b.time<=now&&Number.isFinite(b.high)&&Number.isFinite(b.low)&&
      (side==='BUY'?b.high>=trigger:b.low<=trigger));
  if(remaining<=0||remaining>atr*.8||risk<=0||touched)return prior;
- return {scope:input.scope,side,phase:'ARMED',sourceAt,armedAt:now,expiresAt:now+300000,
+ return {scope:input.scope,side,phase:'ARMED',sourceAt,armedAt:now,expiresAt:now+180000,
    trigger,invalidation,atr,priceAt:price,lastPrice:price,lastAt:now,triggeredAt:null,
-   crossedAt:null,crossedQuoteAt:null,
+   crossedAt:null,crossedQuoteAt:null,retestAt:null,evidenceScore,score:evidenceScore,setupKind,
    targets:op.side===side?op.targets.filter(t=>side==='BUY'?t>trigger:t<trigger):[],reason};
 }
 export function earlySetupOpportunity(state:EarlySetup|null):LiveOpportunity{
