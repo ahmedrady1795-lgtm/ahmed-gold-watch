@@ -920,7 +920,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        'ترقب M5'}</strong>
      <span>{showPreparation?trackedSetup!.reason+' · تفعيل عند عبور '+n(trackedSetup!.trigger)+
        ' · إبطال '+n(trackedSetup!.invalidation):
-       hasDirectionalWatch?candleLean.reason:earlyOpportunity.reason}</span>
+       hasDirectionalWatch||earlyOpportunity.phase==='WATCH'?candleLean.reason:earlyOpportunity.reason}</span>
      <small>{showPreparation?'إعداد مسجل '+h(trackedSetup!.armedAt)+' · توقع مشروط':
        hasEarlySignal?'تفعيل مرصود عند '+n(trackedSetup!.priceAt)+' · '+h(trackedSetup!.triggeredAt!):
        hasDirectionalWatch?'ميل من شموع M1 المغلقة؛ ليس إشارة دخول حتى يظهر إعداد مؤهل':
