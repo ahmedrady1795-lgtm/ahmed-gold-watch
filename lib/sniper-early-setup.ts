@@ -5,7 +5,7 @@ import type {LiquidityMagnetView} from './sniper-liquidity-magnets';
 import type {WatchPriceMap} from './sniper-m15-watch-prices';
 type Bar={time:number;open:number;high:number;low:number;close:number};
 export type EarlySetup={
- scope:string;side:'BUY'|'SELL';phase:'ARMED'|'TRIGGERED'|'CANCELLED'|'EXPIRED';
+ scope:string;side:'BUY'|'SELL';phase:'OBSERVING'|'ARMED'|'TRIGGERED'|'CANCELLED'|'EXPIRED';
  sourceAt:number;armedAt:number;expiresAt:number;trigger:number;invalidation:number;
  crossedAt?:number|null;crossedQuoteAt?:number|null;
  atr:number;priceAt:number;lastPrice:number;lastAt:number;triggeredAt:number|null;
@@ -37,6 +37,24 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    liq.sourceAt<=now&&now-liq.sourceAt<=600000);
  const sweptSide=liveSweep&&liq?.sweep==='HIGH_RECLAIMED_DOWN'?'SELL':
    liveSweep&&liq?.sweep==='LOW_RECLAIMED_UP'?'BUY':'WAIT';
+ // A historical support/resistance approach is a ZONE OBSERVATION,
+ // not a BUY/SELL setup. It cannot be triggered by a quote crossing its
+ // exploratory line. Later, separate closed-M1 reclaim/pressure evidence can
+ // arm a new setup; never retrospectively promote the old observation.
+ if(prior?.phase==='OBSERVING'){
+   const breached=prior.side==='BUY'?price<=prior.invalidation:
+     price>=prior.invalidation;
+   const departed=prior.side==='BUY'?price>=prior.trigger:
+     price<=prior.trigger;
+   const expired=now>=prior.expiresAt;
+   const gap=now-prior.lastAt>15000;
+   if(breached||departed||expired||gap)return {...prior,
+     phase:breached||gap?'CANCELLED':'EXPIRED',lastAt:now,lastPrice:price,
+     reason:breached?'السعر اخترق منطقة المراقبة ضد الانعكاس':
+       departed?'غادر السعر نطاق المراقبة؛ لم تُرصد تهيئة انعكاس مؤهلة':
+       expired?'انتهت مراقبة المنطقة دون تهيئة مؤهلة':
+       'انقطعت متابعة السعر؛ انتهت مراقبة المنطقة'};
+ }
  if((prior?.phase==='ARMED'||prior?.phase==='TRIGGERED')&&
    ((flowSide!=='WAIT'&&flowSide!==prior.side)||
     (sweptSide!=='WAIT'&&sweptSide!==prior.side)))
@@ -323,7 +341,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      // contradictory evidence; an unavailable sweep is NOT agreement.
      if(sweptSide!=='WAIT'&&sweptSide!==l.plan)continue;
      side=l.plan;setupKind='ZONE';trigger=localTrigger;invalidation=invalid;
-     reason='ترقب انعكاس قرب '+(buy?'دعم':'مقاومة')+' '+l.source+
+     reason='مراقبة '+(buy?'دعم':'مقاومة')+' '+l.source+
        ' مثبت سابقًا؛ قبل اختبار كسر M1';
      break;
    }
@@ -385,7 +403,8 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  const targets:number[]=[];
  for(const target of targetPrices)
    if(!targets.some(t=>Math.abs(t-target)<atr*.1))targets.push(target);
- return {scope:input.scope,side,phase:'ARMED',sourceAt,armedAt:now,expiresAt:now+180000,
+ return {scope:input.scope,side,phase:setupKind==='ZONE'?'OBSERVING':'ARMED',
+   sourceAt,armedAt:now,expiresAt:now+180000,
    trigger,invalidation,atr,priceAt:price,lastPrice:price,lastAt:now,triggeredAt:null,
    crossedAt:null,crossedQuoteAt:null,retestAt:null,score:evidenceScore,setupKind,
    trendSide:input.m15Side??'WAIT',flowAligned:flowSide===side,
@@ -403,7 +422,8 @@ export function earlySetupOpportunity(state:EarlySetup|null):LiveOpportunity{
    (context==='ALIGNED'||state.flowAligned===true)&&
    (state.score??0)>=4&&risk>0&&risk<=state.atr*3&&
    reward>=risk&&reward<=state.atr*4;
- return {phase:state?.phase==='ARMED'?(state.crossedAt!=null?'TESTING':'PREPARE'):
+ return {phase:state?.phase==='OBSERVING'?'WATCH':
+   state?.phase==='ARMED'?(state.crossedAt!=null?'TESTING':'PREPARE'):
    state?.phase==='TRIGGERED'?'BREAK_CONFIRMED':
    state?'CANCELLED':'WATCH',side:active?state!.side:'WAIT',
    trigger:state?.trigger??null,invalidation:state?.invalidation??null,
