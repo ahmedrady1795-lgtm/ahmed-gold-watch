@@ -19,6 +19,40 @@ const none=(reason:string):M5CandleLean=>({
  phase:'WAIT',side:'WAIT',issuedFor:null,observedAfterMs:0,strength:0,
  reason,tradeEligible:false
 });
+/** Honest M5 fallback when 18 contiguous M1 closes are missing.
+ * This is a lagging closed-M5 trend observation, NEVER a prebreak trade.
+ * It does not borrow a future/current forming candle or cached old prices. */
+export function observeClosedM5Trend(input:{now:number;price:number|null;
+ sourceReady:boolean;m5:unknown}):{side:Side;ready:boolean;reason:string}{
+ const missing=(reason:string)=>({side:'WAIT' as const,ready:false,reason});
+ if(!input.sourceReady||!Number.isFinite(input.now)||
+   input.price==null||!Number.isFinite(input.price)||input.price<=0)
+   return missing('السعر الحالي أو مصدر M5 غير حديث');
+ const keyed=new Map<number,Bar>();
+ for(const b of Array.isArray(input.m5)?input.m5:[])
+   if(good(b)&&b.time%300000===0&&b.time+300000<=input.now)
+     keyed.set(b.time,b);
+ const tail=[...keyed.values()].sort((a,b)=>a.time-b.time).slice(-5);
+ if(tail.length<5||
+   tail.some((b,i)=>i>0&&b.time-tail[i-1].time!==300000)||
+   input.now-(tail[4].time+300000)>300000)
+   return missing('إغلاقات M5 الأخيرة متأخرة أو ناقصة؛ لا ننسب لها اتجاهًا حيًا');
+ const tr=tail.slice(1).map((b,i)=>Math.max(
+   b.high-b.low,Math.abs(b.high-tail[i].close),
+   Math.abs(b.low-tail[i].close)));
+ const atr=tr.reduce((a,b)=>a+b,0)/tr.length;
+ if(!(atr>0)||atr>input.price*.04)return missing('تذبذب M5 غير صالح');
+ const delta=tail[4].close-tail[1].close;
+ const recent=tail.slice(-3);
+ const upBodies=recent.filter(b=>b.close>b.open+atr*.12).length;
+ const downBodies=recent.filter(b=>b.open>b.close+atr*.12).length;
+ const buy=delta>=atr*.55&&upBodies>=2;
+ const sell=delta<=-atr*.55&&downBodies>=2;
+ return {ready:true,side:buy&&!sell?'BUY':sell&&!buy?'SELL':'WAIT',
+   reason:buy&&!sell?'متابعة صعود من إغلاقات M5؛ ليست ترقب شراء مبكر':
+     sell&&!buy?'متابعة هبوط من إغلاقات M5؛ ليست ترقب بيع مبكر':
+     'إغلاقات M5 حديثة لكن بلا اتجاه كافٍ لتأكيد المتابعة'};
+}
 export function assessM5CandleLean(input:{
  now:number;price:number|null;sourceReady:boolean;
  m1:unknown;m5?:unknown;flow?:FlowProfileDecision|null;
