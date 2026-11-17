@@ -194,6 +194,7 @@ assert.notEqual(step({...base,bars:notActuallyCoiling,price:100.10,
 // PROSPECTIVE level watch: pre-existing closed-M15/H1 support is observed
 // while M1 is still approaching it, BEFORE the price bounced or broke high.
 const towardSupport=bars.map((b,i)=>({...b,close:i===15?100.3:i===16?100.2:100}));
+towardSupport[15]={...towardSupport[15],open:100.35,close:100.3};
 towardSupport[16]={...towardSupport[16],open:100.3,close:100.2,high:100.32,low:99.8};
 towardSupport[17]={...towardSupport[17],open:100.2,close:100,high:100.31,low:99.6};
 const supportWatch={ready:true,asOf:now-5*60000,atr:1,
