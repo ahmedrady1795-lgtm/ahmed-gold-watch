@@ -260,7 +260,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  if(remaining<=0||remaining>atr*.8||risk<=0||touched)return prior;
  return {scope:input.scope,side,phase:'ARMED',sourceAt,armedAt:now,expiresAt:now+180000,
    trigger,invalidation,atr,priceAt:price,lastPrice:price,lastAt:now,triggeredAt:null,
-   crossedAt:null,crossedQuoteAt:null,retestAt:null,evidenceScore,score:evidenceScore,setupKind,
+   crossedAt:null,crossedQuoteAt:null,retestAt:null,score:evidenceScore,setupKind,
    targets:op.side===side?op.targets.filter(t=>side==='BUY'?t>trigger:t<trigger):[],reason};
 }
 export function earlySetupOpportunity(state:EarlySetup|null):LiveOpportunity{
