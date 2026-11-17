@@ -443,9 +443,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const candleLean=useMemo(()=>assessM5CandleLean({
    now,price,sourceReady:marketOpen&&m.sniper.view.priceFresh&&
      !providerTransition,
-   m1:m.candles,m5:x?.chartHigherFrames?.m5,flow:flowProfile
+   m1:m.candles,m5:x?.chartHigherFrames?.m5,flow:flowProfile,
+   m1Side:nextM1.ready?nextM1.side:'WAIT',
+   m15Side:localFusion.m15
  }),[now,price,marketOpen,m.historyFresh,m.sniper.view.priceFresh,
-   providerTransition,m.candles,x?.chartHigherFrames?.m5,flowProfile]);
+   providerTransition,m.candles,x?.chartHigherFrames?.m5,flowProfile,
+   nextM1.ready,nextM1.side,localFusion.m15]);
  // Arm in this session before crossing. Historical momentum markers are
  // retained for audit but never reused as the current early opportunity.
  const [earlyState,setEarlyState]=useState<EarlySetup|null>(null);
