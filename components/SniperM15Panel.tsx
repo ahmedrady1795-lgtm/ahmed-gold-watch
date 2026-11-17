@@ -454,12 +454,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [earlyState,setEarlyState]=useState<EarlySetup|null>(null);
  const trackedSetup=useMemo(()=>advanceEarlySetup({
    prior:earlyState,scope:asset+':'+String(x?.candleSource||''),now,price,
+   quoteAt:Number.isFinite(Number(liveQuote?.sourceTime))?
+     Number(liveQuote?.sourceTime):null,
    ready:marketOpen&&m.sniper.view.priceFresh&&!providerTransition&&
      liveOpportunity.phase!=='OFFLINE',
    bars:m.candles,opportunity:liveOpportunity,lean:candleLean,
    flow:flowProfile,liquidity:liquidityMagnets
- }),[earlyState,asset,x?.candleSource,now,price,marketOpen,m.sniper.view.priceFresh,
-   providerTransition,m.candles,liveOpportunity,candleLean,flowProfile,liquidityMagnets]);
+ }),[earlyState,asset,x?.candleSource,now,price,liveQuote?.sourceTime,
+   marketOpen,m.sniper.view.priceFresh,providerTransition,m.candles,
+   liveOpportunity,candleLean,flowProfile,liquidityMagnets]);
  useEffect(()=>{if(trackedSetup!==earlyState)setEarlyState(trackedSetup);},[trackedSetup,earlyState]);
  const earlyOpportunity=useMemo(()=>earlySetupOpportunity(trackedSetup),[trackedSetup]);
  // Show the closed-M1 directional hypothesis as WATCH when no pre-break
@@ -503,7 +506,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
    [movementRecords,asset]);
  const showPreparation=earlyOpportunity.phase==='PREPARE';
- const earlySide=hasDirectionalWatch?candleLean.side:earlyOpportunity.side;
+ const showCrossTest=earlyOpportunity.phase==='TESTING';
+ const showRejected=trackedSetup?.phase==='CANCELLED'&&
+   trackedSetup.reason.includes('فشل اختبار الاختراق')||
+   trackedSetup?.phase==='CANCELLED'&&trackedSetup.reason.includes('فشل اختراق');
+ const earlySide=showRejected?trackedSetup!.side:
+   hasDirectionalWatch?candleLean.side:earlyOpportunity.side;
  const hasEarlySignal=earlyOpportunity.phase==='BREAK_CONFIRMED';
  const rawIssuance=assessM15ScenarioIssuance({
    side:safeSide,qualified,radarStatus:radar.status,radarSide:radar.side,
@@ -919,16 +927,24 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      earlySide==='SELL'?'is-sell':'is-wait')} role="status"
      aria-label="قراءة M5: متابعة اتجاه أو مراقبة انعكاس أو إعداد مبكر؛ ليست صفقة منفذة">
      <strong>{showPreparation?'ترقب '+(earlySide==='BUY'?'شراء ↑':'بيع ↓'):
+       showCrossTest?'اختبار اختراق '+(earlySide==='BUY'?'شراء ↑':'بيع ↓'):
+       showRejected?'فشل اختراق '+(earlySide==='BUY'?'شراء':'بيع'):
        hasEarlySignal?(earlySide==='BUY'?'رصد شراء ↑':'رصد بيع ↓'):
        hasDirectionalWatch?(watchIsReversal?
          'مراقبة انعكاس '+(earlySide==='BUY'?'لأعلى ↑':'لأسفل ↓'):
          'متابعة '+(earlySide==='BUY'?'صعود ↑':'هبوط ↓')):
        'ترقب M5'}</strong>
-     <span>{showPreparation?trackedSetup!.reason+' · تفعيل عند عبور '+n(trackedSetup!.trigger)+
+     <span>{showPreparation||showCrossTest?
+       trackedSetup!.reason+' · مستوى التفعيل '+n(trackedSetup!.trigger)+
        ' · إبطال '+n(trackedSetup!.invalidation):
+       showRejected?trackedSetup!.reason+' · تم الاحتفاظ بالرصد القديم للتقييم':
+       hasEarlySignal?trackedSetup!.reason+' · الإبطال '+n(trackedSetup!.invalidation):
        hasDirectionalWatch||earlyOpportunity.phase==='WATCH'?candleLean.reason:earlyOpportunity.reason}</span>
-     <small>{showPreparation?'إعداد مسجل '+h(trackedSetup!.armedAt)+' · توقع مشروط':
-       hasEarlySignal?'تفعيل مرصود عند '+n(trackedSetup!.priceAt)+' · '+h(trackedSetup!.triggeredAt!):
+     <small>{showPreparation?'إعداد سابق '+h(trackedSetup!.armedAt)+' · قيد المراقبة':
+       showCrossTest?'عبور واحد لا يكفي؛ اختبار ثبات السعر مع عرض أحدث':
+       showRejected?'إلغاء التفعيل بعد رفض الكسر؛ ليست إشارة دخول سارية':
+       hasEarlySignal?'تفعيل مرصود عند '+n(trackedSetup!.priceAt)+' · '+h(trackedSetup!.triggeredAt!)+
+         ' · يحتاج استمرارًا فوق/تحت المستوى':
        hasDirectionalWatch?(watchIsReversal?
          'انعكاس محتمل بعد شمعة مغلقة؛ ليس إشارة دخول مؤكدة':
          'اتجاه مرصود بعد بدء الحركة؛ ليس إنذارًا مبكرًا أو أمر دخول'):
