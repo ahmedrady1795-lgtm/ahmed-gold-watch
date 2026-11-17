@@ -189,56 +189,6 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  let side:'BUY'|'SELL'|null=null,trigger=0,invalidation=0;
  let setupKind:EarlySetup['setupKind']='PRESSURE';
  let reason='';
- // STRUCTURE-EDGE COMPETITOR. Detect a potential BOS on three COMPLETED
- // M1 candles APPROACHING a historical low/high, never after the break.
- // A lower-high sequence near an older floor can beat a contradictory
- // single-pattern BUY. This is NOT a sell fill or guaranteed breakdown.
- const olderEdge=bars.slice(-15,-3),edgeTail=bars.slice(-3);
- const olderHigh=Math.max(...olderEdge.map(b=>b.high));
- const olderLow=Math.min(...olderEdge.map(b=>b.low));
- const downSequence=edgeTail[0].high>edgeTail[1].high+atr*.035&&
-   edgeTail[1].high>edgeTail[2].high+atr*.035&&
-   edgeTail[2].close<edgeTail[0].close-atr*.20&&
-   edgeTail[2].close<edgeTail[2].open;
- const upSequence=edgeTail[0].low+atr*.035<edgeTail[1].low&&
-   edgeTail[1].low+atr*.035<edgeTail[2].low&&
-   edgeTail[2].close>edgeTail[0].close+atr*.20&&
-   edgeTail[2].close>edgeTail[2].open;
- const nearLow=last.close>olderLow+atr*.035&&
-   last.close<olderLow+atr*.60&&
-   price>olderLow+atr*.025&&price<olderLow+atr*.72;
- const nearHigh=last.close<olderHigh-atr*.035&&
-   last.close>olderHigh-atr*.60&&
-   price<olderHigh-atr*.025&&price>olderHigh-atr*.72;
- const structureSell=downSequence&&nearLow;
- const structureBuy=upSequence&&nearHigh;
- const structureSide:'BUY'|'SELL'|null=structureSell!==structureBuy?
-   structureSell?'SELL':'BUY':null;
- if(structureSide){
-   const trendVotes=Number(input.m1Side===structureSide)+
-     Number(input.m15Side===structureSide)+Number(flowSide===structureSide);
-   const againstSweep=sweptSide!=='WAIT'&&sweptSide!==structureSide;
-   const canChallenge=side==null||(
-     side!==structureSide&&trendVotes>=2);
-   if(canChallenge&&trendVotes>=1&&!againstSweep){
-     const lower=Math.min(...edgeTail.map(b=>b.low));
-     const upper=Math.max(...edgeTail.map(b=>b.high));
-     // The original range edge must not have been crossed by price/close.
-     // Existing final touched/extension checks still apply.
-     const edgeTrigger=structureSide==='SELL'?
-       Math.min(olderLow,lower)-atr*.035:
-       Math.max(olderHigh,upper)+atr*.035;
-     const edgeInvalid=structureSide==='SELL'?upper+atr*.12:
-       lower-atr*.12;
-     if(structureSide==='SELL'?edgeTrigger<price:edgeTrigger>price){
-       side=structureSide;setupKind='STRUCTURE';
-       trigger=edgeTrigger;invalidation=edgeInvalid;
-       reason='اقتراب M1 من '+(structureSide==='SELL'?'كسر قاع':'كسر قمة')+
-         ' تاريخي مع '+(structureSide==='SELL'?'قمم أدنى':'قيعان أعلى')+
-         '؛ تهيئة سابقة للكسر وليست متابعة بعده';
-     }
-   }
- }
  // Trend pullback: a completed impulse, followed by two contracting candles
  // against it, holding the impulse origin. Arm the LOCAL resumption edge,
  // before it breaks, rather than waiting for the entire old swing to break.
@@ -454,6 +404,56 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      reason='مراقبة '+(buy?'دعم':'مقاومة')+' '+l.source+
        ' مثبت سابقًا؛ قبل اختبار كسر M1';
      break;
+   }
+ }
+ // STRUCTURE-EDGE COMPETITOR. Detect a potential BOS on three COMPLETED
+ // M1 candles APPROACHING a historical low/high, never after the break.
+ // A lower-high sequence near an older floor can beat a contradictory
+ // single-pattern BUY. This is NOT a sell fill or guaranteed breakdown.
+ const olderEdge=bars.slice(-15,-3),edgeTail=bars.slice(-3);
+ const olderHigh=Math.max(...olderEdge.map(b=>b.high));
+ const olderLow=Math.min(...olderEdge.map(b=>b.low));
+ const downSequence=edgeTail[0].high>edgeTail[1].high+atr*.035&&
+   edgeTail[1].high>edgeTail[2].high+atr*.035&&
+   edgeTail[2].close<edgeTail[0].close-atr*.20&&
+   edgeTail[2].close<edgeTail[2].open;
+ const upSequence=edgeTail[0].low+atr*.035<edgeTail[1].low&&
+   edgeTail[1].low+atr*.035<edgeTail[2].low&&
+   edgeTail[2].close>edgeTail[0].close+atr*.20&&
+   edgeTail[2].close>edgeTail[2].open;
+ const nearLow=last.close>olderLow+atr*.035&&
+   last.close<olderLow+atr*.60&&
+   price>olderLow+atr*.025&&price<olderLow+atr*.72;
+ const nearHigh=last.close<olderHigh-atr*.035&&
+   last.close>olderHigh-atr*.60&&
+   price<olderHigh-atr*.025&&price>olderHigh-atr*.72;
+ const structureSell=downSequence&&nearLow;
+ const structureBuy=upSequence&&nearHigh;
+ const structureSide:'BUY'|'SELL'|null=structureSell!==structureBuy?
+   structureSell?'SELL':'BUY':null;
+ if(structureSide){
+   const trendVotes=Number(input.m1Side===structureSide)+
+     Number(input.m15Side===structureSide)+Number(flowSide===structureSide);
+   const againstSweep=sweptSide!=='WAIT'&&sweptSide!==structureSide;
+   const canChallenge=side==null||(
+     side!==structureSide&&trendVotes>=2);
+   if(canChallenge&&trendVotes>=1&&!againstSweep){
+     const lower=Math.min(...edgeTail.map(b=>b.low));
+     const upper=Math.max(...edgeTail.map(b=>b.high));
+     // The original range edge must not have been crossed by price/close.
+     // Existing final touched/extension checks still apply.
+     const edgeTrigger=structureSide==='SELL'?
+       Math.min(olderLow,lower)-atr*.035:
+       Math.max(olderHigh,upper)+atr*.035;
+     const edgeInvalid=structureSide==='SELL'?upper+atr*.12:
+       lower-atr*.12;
+     if(structureSide==='SELL'?edgeTrigger<price:edgeTrigger>price){
+       side=structureSide;setupKind='STRUCTURE';
+       trigger=edgeTrigger;invalidation=edgeInvalid;
+       reason='اقتراب M1 من '+(structureSide==='SELL'?'كسر قاع':'كسر قمة')+
+         ' تاريخي مع '+(structureSide==='SELL'?'قمم أدنى':'قيعان أعلى')+
+         '؛ تهيئة سابقة للكسر وليست متابعة بعده';
+     }
    }
  }
  if(!side||![trigger,invalidation].every(Number.isFinite))return prior;
