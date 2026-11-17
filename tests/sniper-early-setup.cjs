@@ -86,6 +86,31 @@ assert.equal(step({...base,bars:compressionBars,price:compressed.trigger-.01}),n
  'late quote below the trigger cannot invent an earlier setup');
 assert.equal(step({...base,bars:compressionBars,price:99.96,
  flow:{...brokerFlow,side:'BUY'}}),null,'opposing flow vetoes compression');
+// Pre-existing M1 support reclaimed by completed candles; watch is emitted
+// BEFORE the next local high, never reconstructed after a breakout.
+const recoveryBars=bars.map((b,i)=>({
+ ...b,open:100,high:101,low:99,close:100
+}));
+recoveryBars[14]={...recoveryBars[14],open:99.8,high:100,low:98.93,close:99.4};
+recoveryBars[15]={...recoveryBars[15],open:99.4,high:99.7,low:99.05,close:99.2};
+recoveryBars[16]={...recoveryBars[16],open:99.2,high:99.86,low:99.12,close:99.55};
+recoveryBars[17]={...recoveryBars[17],open:99.55,high:99.93,low:99.44,close:99.77};
+const reclaimed=step({...base,bars:recoveryBars,price:99.84});
+assert.equal(reclaimed?.phase,'ARMED','M1 support reclaim must arm ahead of fresh local high');
+assert.equal(reclaimed?.side,'BUY');
+assert.match(reclaimed.reason,/استرداد مستوى سعري/);
+assert.ok(reclaimed.trigger>99.84);
+assert.equal(step({...base,bars:recoveryBars,price:reclaimed.trigger+.03}),null,
+ 'no late entry after reclaimed high has already broken');
+const cancelledOld={...reclaimed,phase:'CANCELLED',sourceAt:now-5*60000,
+ armedAt:now-5*60000,lastAt:now-3000,expiresAt:now+2*60000};
+assert.equal(step({...base,bars:recoveryBars,price:99.84,prior:cancelledOld})?.phase,
+ 'ARMED','feed recovery can rearm after two NEW closed M1 bars');
+const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
+assert.match(panel,/hasDirectionalWatch\?\x27مراقبة \x27/,
+ 'live M1 direction must be visible as watch, not a fake entry');
+assert.match(panel,/candleLean\.reason\.includes\(\x27انعكاس محتمل\x27\)/,
+ 'only observed sweep reversals may reenter marker journal');
 console.log('PASS early setup: pre-arm, frozen levels, live crossing, no momentum/backfill/chase, stale/gap cancellation and source isolation');
 // New marker timestamps are first observations, never level-touch backfills.
 const proofMod={exports:{}};
