@@ -8,6 +8,7 @@ function load(path){
  return mod.exports;
 }
 const run=load('lib/sniper-m5-candle-lean.ts').assessM5CandleLean;
+const m5Context=load('lib/sniper-m5-candle-lean.ts').observeClosedM5Trend;
 const {advanceMovementProof:step,movementProofScore:stats,safeMovementProof:safe}=
  load('lib/sniper-movement-proof.ts');
 const start=Date.parse('2026-11-16T10:00:00Z');
@@ -82,6 +83,44 @@ const noHindsight=step({...base,now:start+five+1000,price:101.8,
  m5Bars:[completed]});
 assert.equal(noHindsight[0].m5Outcome,undefined,
  'old records never gain fabricated retroactive directional grades');
+// Missing contiguous M1 must not make an otherwise valid M5 observer go
+// silent. The fallback uses CLOSED M5 only; it never creates a BUY/SELL order.
+const downM5=Array.from({length:5},(_,i)=>{
+ const open=104-i*.8;
+ return {time:start-(5-i)*five,open,close:open-.55,
+   high:open+.14,low:open-.72};
+});
+const downWatch=m5Context({now:start+5000,price:100.2,
+ sourceReady:true,m5:downM5});
+assert.equal(downWatch.side,'SELL');
+assert.equal(downWatch.ready,true);
+assert.match(downWatch.reason,/ليست ترقب بيع مبكر/);
+const upM5=downM5.map((_,i)=>{
+ const open=99+i*.8;
+ return {time:start-(5-i)*five,open,close:open+.55,
+   high:open+.72,low:open-.14};
+});
+assert.equal(m5Context({now:start+5000,price:102.5,
+ sourceReady:true,m5:upM5}).side,'BUY','upside M5 fallback must be symmetric');
+assert.equal(m5Context({now:start+5000,price:100.2,
+ sourceReady:true,m5:[...downM5,{
+ time:start,open:88,close:125,high:126,low:87}]}).side,'SELL',
+ 'forming five-minute candle must NEVER reverse the previous closed observation');
+assert.equal(m5Context({now:start+5000,price:100.2,
+ sourceReady:true,m5:downM5.filter((_,i)=>i!==2)}).ready,false,
+ 'internal M5 candle gap is not silently interpolated');
+assert.equal(m5Context({now:start+6*minute,price:100.2,
+ sourceReady:true,m5:downM5}).side,'WAIT','old completed M5 cannot claim to be live');
+assert.equal(m5Context({now:start+5000,price:100.2,
+ sourceReady:false,m5:downM5}).side,'WAIT',
+ 'disconnected price source cannot feed M5 direction');
+const statusPanel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
+assert.match(statusPanel,/hasM5Fallback\?'متابعة '/,
+ 'historical closed-M5 fallback appears directly in chart headline');
+assert.match(statusPanel,/closedM5Context\.reason/,
+ 'stale M1 is reported honestly instead of an endless generic market-update badge');
+assert.doesNotMatch(statusPanel,/candleLean:hasM5Fallback/,
+ 'a slow M5 fallback never becomes an entry signal or early-signal journal row');
 console.log('PASS: real M5 open/end signals from prior M1, no-lookahead, recording, future-only scoring and legacy retention');
 
 const delayed=run({...data,m1:m1.slice(0,17).concat([]),now:start+30000});
