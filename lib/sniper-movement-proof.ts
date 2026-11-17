@@ -115,7 +115,8 @@ export function advanceMovementProof(input:{
        (signal.side==='BUY'?signal.invalidation<input.price:signal.invalidation>input.price)?
          signal.invalidation:null;
      const early=kind==='BREAK'?next.filter(x=>x.asset===asset&&x.source===source&&
-       x.kind==='EARLY'&&x.side===signal.side&&x.issuedAt<=signal.sourceAt!&&
+       x.kind==='EARLY'&&x.side===signal.side&&x.trigger===signal.trigger&&
+       x.invalidation===signal.invalidation&&x.issuedAt<signal.sourceAt!&&
        signal.sourceAt!-x.issuedAt<=30*60000).at(-1):undefined;
      next=[...next,{
        id,asset,source,kind,side:signal.side,sourceAt:signal.sourceAt,

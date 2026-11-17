@@ -41,6 +41,7 @@ import {goldMarketSession} from '../lib/gold-market-session';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {detectPreMovePressure} from '../lib/pre-move-pressure';
 import {assessSniperLiveOpportunity} from '../lib/sniper-live-opportunity';
+import {advanceEarlySetup,earlySetupOpportunity,type EarlySetup} from '../lib/sniper-early-setup';
 import {assessM5CandleLean} from '../lib/sniper-m5-candle-lean';
 import SniperOpportunityMarkers from './SniperOpportunityMarkers';
 import SniperOpportunityHistory from './SniperOpportunityHistory';
@@ -445,23 +446,25 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    m1:m.candles,m5:x?.chartHigherFrames?.m5,flow:flowProfile
  }),[now,price,marketOpen,m.historyFresh,m.sniper.view.priceFresh,
    providerTransition,m.candles,x?.chartHigherFrames?.m5,flowProfile]);
- const currentSignalSide=liveOpportunity.phase==='BREAK_CONFIRMED'||
-   liveOpportunity.phase==='PREPARE'||liveOpportunity.phase==='TESTING'?
-     liveOpportunity.side:'WAIT';
- const currentSignalLabel=liveOpportunity.phase==='BREAK_CONFIRMED'?
-   (liveOpportunity.quality==='SETUP'?
-     (liveOpportunity.side==='BUY'?'فرصة شراء مشروطة':'فرصة بيع مشروطة'):
-    liveOpportunity.quality==='COUNTERTREND'?'كسر M1 عكس الاتجاه الأعلى':
-     'كسر M1 مرصود · لم يستوفِ شروط الفرصة'):
-   liveOpportunity.phase==='PREPARE'?
-    (liveOpportunity.side==='BUY'?'ترقب شراء قبل الكسر':'ترقب بيع قبل الكسر'):
-   liveOpportunity.phase==='TESTING'?
-    (liveOpportunity.side==='BUY'?'اختبار كسر صاعد':'اختبار كسر هابط'):
-   liveOpportunity.phase==='CANCELLED'?'الكسر ملغي':
-   liveOpportunity.phase==='OFFLINE'?'البيانات غير جاهزة':
-   preMoveReady?'ضغط مبكر '+(preMove.side==='BUY'?'صاعد':'هابط')+' من شموع مغلقة':
-   'انتظار قراءة مسبقة من M1/M5';
- const currentSignalPrice=formingVisible&&forming?forming.close:price;
+ // Arm in this session before crossing. Historical momentum markers are
+ // retained for audit but never reused as the current early opportunity.
+ const [earlyState,setEarlyState]=useState<EarlySetup|null>(null);
+ const trackedSetup=useMemo(()=>advanceEarlySetup({
+   prior:earlyState,scope:asset+':'+String(x?.candleSource||''),now,price,
+   ready:marketOpen&&m.sniper.view.priceFresh&&!providerTransition&&
+     liveOpportunity.phase!=='OFFLINE',
+   bars:m.candles,opportunity:liveOpportunity,lean:candleLean
+ }),[earlyState,asset,x?.candleSource,now,price,marketOpen,m.sniper.view.priceFresh,
+   providerTransition,m.candles,liveOpportunity,candleLean]);
+ useEffect(()=>{if(trackedSetup!==earlyState)setEarlyState(trackedSetup);},[trackedSetup,earlyState]);
+ const earlyOpportunity=useMemo(()=>earlySetupOpportunity(trackedSetup),[trackedSetup]);
+ const currentSignalSide=earlyOpportunity.side;
+ const currentSignalLabel=earlyOpportunity.phase==='PREPARE'?
+   (earlyOpportunity.side==='BUY'?'ترقب شراء قبل الكسر':'ترقب بيع قبل الكسر'):
+   earlyOpportunity.phase==='BREAK_CONFIRMED'?
+   (earlyOpportunity.side==='BUY'?'شراء من إعداد مسبق':'بيع من إعداد مسبق'):
+   earlyOpportunity.reason;
+ const currentSignalPrice=trackedSetup?.phase==='TRIGGERED'?trackedSetup.priceAt:price;
  // Keep first-issued target levels immutable; only future CLOSED M1 can score them.
  const [movementRecords,setMovementRecords]=useState<MovementProof[]>([]);
  const [movementProofLoaded,setMovementProofLoaded]=useState(false);
@@ -481,27 +484,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    if(!movementProofLoaded)return;
    setMovementRecords(prior=>advanceMovementProof({
      prior,now,asset,source:String(x?.candleSource||''),
-     price,signal:liveOpportunity,bars:m.candles,
-     m5Bars:x?.chartHigherFrames?.m5,candleLean
+     price,signal:earlyOpportunity,bars:m.candles,
+     m5Bars:x?.chartHigherFrames?.m5
    }));
  },[movementProofLoaded,now,asset,x?.candleSource,price,
-   liveOpportunity,candleLean,m.candles,x?.chartHigherFrames?.m5]);
+   earlyOpportunity,m.candles,x?.chartHigherFrames?.m5]);
  const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
    [movementRecords,asset]);
- const candleStart=Math.floor(now/300000)*300000;
- const currentCandleRecord=movementRecords.filter(r=>r.asset===asset&&
-   r.source===String(x?.candleSource||'')&&
-   (r.kind==='OPEN'||r.kind==='FOLLOW'||r.kind==='CLOSE')&&
-   r.issuedAt>=candleStart&&r.issuedAt<=now)
-   .sort((a,b)=>b.issuedAt-a.issuedAt)[0];
- // Surface a real pre-break setup before momentum-only observations.
- const showPreparation=liveOpportunity.phase==='PREPARE'&&liveOpportunity.side!=='WAIT';
- const earlySide=showPreparation?liveOpportunity.side:currentCandleRecord?.side??candleLean.side;
- const earlyPhase=currentCandleRecord?.kind??candleLean.phase;
- const hasEarlySignal=Boolean(currentCandleRecord||candleLean.phase!=='WAIT');
- const earlyType=currentCandleRecord?.setupType??
-   (candleLean.reason.includes('انعكاس محتمل')?'REVERSAL':
-    candleLean.reason.includes('استمرار محتمل')?'CONTINUATION':null);
+ const showPreparation=earlyOpportunity.phase==='PREPARE';
+ const earlySide=earlyOpportunity.side;
+ const hasEarlySignal=earlyOpportunity.phase==='BREAK_CONFIRMED';
  const rawIssuance=assessM15ScenarioIssuance({
    side:safeSide,qualified,radarStatus:radar.status,radarSide:radar.side,
    m15Side:m15Bias.side,m15Votes:m15Bias.votes,
@@ -916,13 +908,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      earlySide==='SELL'?'is-sell':'is-wait')} role="status"
      aria-label="توقع مراقبة مبكر لاتجاه M5، وليس تنفيذ صفقة">
      <strong>{(showPreparation?'ترقب ':'')+(earlySide==='BUY'?'شراء ↑':earlySide==='SELL'?'بيع ↓':'ترقب M5')}</strong>
-     <span>{showPreparation?'تهيئة قبل الكسر · التفعيل بإغلاق M1 عند '+n(liveOpportunity.trigger)+' · إبطال '+n(liveOpportunity.invalidation):hasEarlySignal?
-       (earlyPhase==='CLOSE'?'آخر دقيقة من الشمعة':earlyPhase==='FOLLOW'?'أثناء الشمعة':'بداية الشمعة')+
-       ' · '+(earlyType==='REVERSAL'?'انعكاس مبكر محتمل':
-        earlyType==='CONTINUATION'?'استمرار بعد زخم مغلق':'اتجاه متوقع غير مؤكد'):
-        candleLean.reason}</span>
-     <small>{showPreparation?'توقع مشروط قبل الحركة، وليس إشارة دخول مؤكدة':hasEarlySignal?'السعر عند الرصد '+
-       n(currentCandleRecord?.priceAt??price):'بانتظار بيانات صالحة أو ترجيح اتجاه'}</small>
+     <span>{showPreparation?trackedSetup!.reason+' · تفعيل عند عبور '+n(trackedSetup!.trigger)+
+       ' · إبطال '+n(trackedSetup!.invalidation):earlyOpportunity.reason}</span>
+     <small>{showPreparation?'إعداد مسجل '+h(trackedSetup!.armedAt)+' · توقع مشروط':
+       hasEarlySignal?'السعر عند التفعيل '+n(trackedSetup!.priceAt)+' · '+h(trackedSetup!.triggeredAt!):
+       'لا توجد إشارة مبكرة سارية'}</small>
    </div>
    <div className="sniper-scenario-chart-legend"
      aria-label="مفتاح الشموع الحقيقية ومسارات المراقبة المشروطة">
@@ -1336,7 +1326,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              textAnchor="end" direction="ltr" fontSize="10" fontWeight="800" fill="white">{chartReference.toFixed(2)}</text>
          </>}
        </g>
-       <SniperOpportunityMarkers signal={liveOpportunity} records={movementRecords}
+       <SniperOpportunityMarkers signal={earlyOpportunity} records={movementRecords}
          asset={asset} source={String(x?.candleSource||'')}
          from={trueHistory[0]?.time??now} now={now} left={left} split={split}
          end={end} top={plotTop} bottom={plotBottom} py={py} timeX={timeX}/>
