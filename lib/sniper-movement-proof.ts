@@ -142,12 +142,24 @@ export function advanceMovementProof(input:{
    if(Math.floor(lean.issuedFor/300000)===Math.floor(now/300000)){
      const setupType=lean.reason?.includes('انعكاس محتمل')?'REVERSAL':'CONTINUATION';
      const baseId=[asset,source,lean.phase,candleStart].join(':');
-     // A prior continuation must not swallow a newly observed reversal.
-     // Preserve legacy IDs, and freeze at most one reversal per side/phase.
-     const id=setupType==='REVERSAL'?baseId+':REVERSAL:'+lean.side:baseId;
-     const already=next.some(x=>x.id===id||(setupType==='REVERSAL'&&
-       x.id===baseId&&x.setupType==='REVERSAL'&&x.side===lean.side));
-     if(!already){
+     // Include direction for new continuation waves. Legacy records remain
+     // immutable, and one same-direction wave cannot spam every M5 candle.
+     const id=baseId+':'+setupType+':'+lean.side;
+     const already=next.some(x=>x.id===id||
+       (x.asset===asset&&x.source===source&&x.kind===lean.phase&&
+         x.side===lean.side&&x.setupType===setupType&&
+         Math.floor(x.issuedAt/300000)===Math.floor(now/300000))||
+       (setupType==='REVERSAL'&&x.id===baseId&&
+         x.setupType==='REVERSAL'&&x.side===lean.side));
+     // One marker per side per wave, not one marker per candle.
+     // An opposite-direction wave can mark at its first observed minute.
+     const lastContinuation=next.filter(x=>x.asset===asset&&x.source===source&&
+       x.setupType==='CONTINUATION'&&
+       (x.kind==='OPEN'||x.kind==='FOLLOW'||x.kind==='CLOSE')&&
+       x.issuedAt<=now).sort((a,b)=>a.issuedAt-b.issuedAt).at(-1);
+     const repeatedWave=setupType==='CONTINUATION'&&
+       lastContinuation?.side===lean.side&&now-lastContinuation.issuedAt<15*60000;
+     if(!already&&!repeatedWave){
        next.push({id,asset,source,kind:lean.phase,side:lean.side,
          setupType,
          quality:'OBSERVATION',sourceAt:lean.issuedFor,issuedAt:now,
