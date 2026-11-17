@@ -20,6 +20,12 @@ export type MovementProof={
  // Old records without this field remain unscored, never retroactively relabeled.
  m5Outcome?:'PENDING'|'CORRECT'|'WRONG'|'FLAT'|'UNKNOWN';
  m5ResolvedAt?:number|null;
+ // Forward-only start-of-wave audit. Threshold frozen at first EARLY issuance;
+ // no backfilling older events that lacked a threshold at the time.
+ onsetDistance?:number;
+ onsetOutcome?:'PENDING'|'MOVE_FIRST'|'ADVERSE_FIRST'|'NO_MOVE'|'AMBIGUOUS'|'UNKNOWN';
+ onsetResolvedAt?:number|null;
+ onsetDelaySeconds?:number|null;
 };
 type Opportunity={phase:string;side:string;sourceAt:number|null;
  trigger:number|null;invalidation:number|null;targets:number[];
@@ -39,6 +45,9 @@ export function safeMovementProof(raw:unknown):MovementProof[]{
   (x.setupType==null||x.setupType==='REVERSAL'||x.setupType==='CONTINUATION')&&
   (x.frameTrend==null||['BUY','SELL','WAIT'].includes(x.frameTrend))&&
   (x.m5Outcome==null||['PENDING','CORRECT','WRONG','FLAT','UNKNOWN'].includes(x.m5Outcome))&&
+  (x.onsetDistance==null||valid(x.onsetDistance)&&x.onsetDistance>0)&&
+  (x.onsetOutcome==null||['PENDING','MOVE_FIRST','ADVERSE_FIRST','NO_MOVE','AMBIGUOUS','UNKNOWN'].includes(x.onsetOutcome))&&
+  (x.onsetDelaySeconds==null||valid(x.onsetDelaySeconds)&&x.onsetDelaySeconds>=0)&&
   ['PENDING','TARGET','STOP','TIMEOUT','AMBIGUOUS','UNKNOWN','NO_TARGET'].includes(x.status)&&
   (x.target==null||valid(x.target))&&(x.invalidation==null||valid(x.invalidation))
  ).slice(-2000).map((x:any)=>({...x,leadSeconds:valid(x.leadSeconds)?x.leadSeconds:null}));
@@ -83,6 +92,43 @@ export function advanceMovementProof(input:{
       }
     }
   }
+  // Evaluate only EARLY alerts that froze a measurable threshold at issuance.
+  // A completed M1 is the earliest evidence. High+low touching BOTH barriers
+  // in the same minute is ambiguous; there are no imaginary intrabar fills.
+  if(item.kind==='EARLY'&&item.onsetOutcome==='PENDING'&&
+    valid(item.onsetDistance)&&item.onsetDistance>0){
+    const first=Math.ceil(item.issuedAt/60000)*60000;
+    const end=first+3*60000;
+    let expected=first;
+    let outcome:MovementProof['onsetOutcome']='PENDING';
+    let resolvedAt:number|null=null;
+    for(const bar of unique){
+      if(bar.time<first||bar.time>=end)continue;
+      if(bar.time!==expected){outcome='UNKNOWN';resolvedAt=bar.time+60000;break;}
+      expected=bar.time+60000;
+      const inDirection=item.side==='BUY'?
+        bar.high>=item.priceAt+item.onsetDistance:
+        bar.low<=item.priceAt-item.onsetDistance;
+      const against=item.side==='BUY'?
+        bar.low<=item.priceAt-item.onsetDistance*.7:
+        bar.high>=item.priceAt+item.onsetDistance*.7;
+      if(inDirection||against){
+        outcome=inDirection&&against?'AMBIGUOUS':
+          inDirection?'MOVE_FIRST':'ADVERSE_FIRST';
+        resolvedAt=bar.time+60000;break;
+      }
+    }
+    if(outcome==='PENDING'&&now>=end){
+      outcome=expected===end?'NO_MOVE':'UNKNOWN';
+      resolvedAt=end;
+    }
+    if(outcome!=='PENDING'){
+      item={...item,onsetOutcome:outcome,onsetResolvedAt:resolvedAt,
+        onsetDelaySeconds:outcome==='MOVE_FIRST'&&resolvedAt!=null?
+          Math.max(0,Math.round((resolvedAt-item.issuedAt)/1000)):null};
+      modified=true;
+    }
+  }
   if(item.status!=='PENDING')return item;
   const first=Math.ceil(item.issuedAt/60000)*60000;
   const end=item.issuedAt+horizon;
@@ -122,6 +168,20 @@ export function advanceMovementProof(input:{
        x.kind==='EARLY'&&x.side===signal.side&&x.trigger===signal.trigger&&
        x.invalidation===signal.invalidation&&x.issuedAt<signal.sourceAt!&&
        signal.sourceAt!-x.issuedAt<=30*60000).at(-1):undefined;
+     // The wave threshold is computed from fourteen contiguous M1 true
+     // ranges ending BEFORE issuance, so old journal rows cannot be scored
+     // against a volatility estimate discovered after the fact.
+     const before=unique.filter(b=>b.time+60000<=now).slice(-15);
+     const contiguous=before.length===15&&before.every((b,i)=>
+       i===0||b.time-before[i-1].time===60000);
+     const trueRanges=contiguous?before.slice(1).map((b,i)=>Math.max(
+       b.high-b.low,Math.abs(b.high-before[i].close),
+       Math.abs(b.low-before[i].close))):[];
+     const frozenAtr=trueRanges.length===14?
+       trueRanges.reduce((sum,val)=>sum+val,0)/14:null;
+     const onsetDistance=kind==='EARLY'&&frozenAtr!=null&&
+       Number.isFinite(frozenAtr)&&frozenAtr>0?
+       Math.max(.01,frozenAtr*.6):null;
      next=[...next,{
        id,asset,source,kind,side:signal.side,sourceAt:signal.sourceAt,
        quality:signal.quality??'OBSERVATION',
@@ -131,7 +191,10 @@ export function advanceMovementProof(input:{
        status:target==null?'NO_TARGET':'PENDING',resolvedAt:null,
        detectedAfterMs:Math.max(0,now-signal.sourceAt),
        leadSeconds:early?Math.round((signal.sourceAt-early.issuedAt)/1000):null,
-       m5Outcome:'PENDING',m5ResolvedAt:null
+       m5Outcome:'PENDING',m5ResolvedAt:null,
+       ...(onsetDistance==null?{}:{
+         onsetDistance,onsetOutcome:'PENDING' as const,onsetResolvedAt:null,
+         onsetDelaySeconds:null})
      }];modified=true;
    }
  }
@@ -214,6 +277,14 @@ export function movementProofScore(rows:MovementProof[],asset:'GOLD'|'BTC'){
  const closingHits=closingScored.filter(x=>x.m5Outcome==='CORRECT').length;
  const lags=breaks.map(x=>x.detectedAfterMs/1000).filter(x=>valid(x)&&x>=0);
  const leads=breaks.map(x=>x.leadSeconds).filter(valid).filter(x=>x>=0);
+ const onset=all.filter(x=>x.kind==='EARLY'&&x.onsetOutcome!=null);
+ const onsetSettled=onset.filter(x=>x.onsetOutcome!=='PENDING');
+ const onsetFirst=onsetSettled.filter(x=>x.onsetOutcome==='MOVE_FIRST');
+ const onsetAdverse=onsetSettled.filter(x=>x.onsetOutcome==='ADVERSE_FIRST');
+ const onsetNoMove=onsetSettled.filter(x=>x.onsetOutcome==='NO_MOVE');
+ const onsetUncertain=onsetSettled.filter(x=>
+   x.onsetOutcome==='AMBIGUOUS'||x.onsetOutcome==='UNKNOWN');
+ const onsetDelays=onsetFirst.map(x=>x.onsetDelaySeconds).filter(valid);
  return {
   alerts:all.length,early:all.filter(x=>x.kind==='EARLY').length,breaks:breaks.length,
   followings:follows.length,followingScored:followingScored.length,
@@ -245,6 +316,12 @@ export function movementProofScore(rows:MovementProof[],asset:'GOLD'|'BTC'){
   missingTarget:all.filter(x=>x.status==='NO_TARGET').length,
   unscored:all.filter(x=>x.status==='UNKNOWN'||x.status==='AMBIGUOUS').length,
   averageLagSeconds:lags.length?Math.round(lags.reduce((a,b)=>a+b,0)/lags.length):null,
+  onsetAudited:onsetSettled.length,
+  onsetFirst:onsetFirst.length,onsetAdverse:onsetAdverse.length,
+  onsetNoMove:onsetNoMove.length,onsetUncertain:onsetUncertain.length,
+  onsetPending:onset.filter(x=>x.onsetOutcome==='PENDING').length,
+  onsetMeanDelaySeconds:onsetDelays.length?
+    Math.round(onsetDelays.reduce((a,b)=>a+b,0)/onsetDelays.length):null,
   earlyLeads:leads.length,
   averageLeadSeconds:leads.length?Math.round(leads.reduce((a,b)=>a+b,0)/leads.length):null,
   statisticallyThin:settled.length<30
