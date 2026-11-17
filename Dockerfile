@@ -16,7 +16,7 @@ RUN node tests/sniper-m1-live-proof-ui.cjs && node tests/sniper-m15-snapshot.cjs
 RUN node tests/gc-futures-feed.cjs && node tests/institutional-preparation-radar.cjs && node tests/gold-mt5-dom.cjs && node tests/gold-liquidity-radar.mjs && node tests/sniper-m15-walkforward.cjs && node tests/order-flow-microstructure.cjs && node tests/radar-shadow-score.cjs && node tests/order-flow-radar.mjs && node tests/sniper-radar-next-candle.cjs
 # Spot liquidity and absorption checks are mandatory before publishing the dashboard.
 RUN node tests/sniper-m15-focus-watch.cjs && node tests/sniper-market-structure.cjs && node tests/sniper-hunter-layout.cjs && node tests/sniper-smart-money-hunter.cjs && node tests/sniper-m15-observer.cjs && node tests/sniper-no-future-candles.cjs && node tests/sniper-m15-chart-clean.cjs && node tests/sniper-m15-watch-guide.cjs && node tests/sniper-m1-candle-hunter.cjs && node tests/sniper-m1-priority.cjs
-RUN node tests/sniper-live-opportunity.cjs && node tests/sniper-movement-proof.cjs && node tests/sniper-m5-candle-lean.cjs
+RUN node tests/sniper-live-opportunity.cjs && node tests/sniper-movement-proof.cjs && node tests/sniper-m5-candle-lean.cjs && node tests/sniper-early-setup.cjs
 RUN node tests/spot-radar.cjs && node tests/spot-accumulation.cjs && node tests/binance-cooldown.cjs
 RUN node tests/ai-transport-regression.cjs && node tests/neural-request-budget.cjs && node tests/sniper-health.cjs
 RUN node --experimental-strip-types tests/mt5-btc-demo-plan.mjs
