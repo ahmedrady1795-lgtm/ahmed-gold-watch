@@ -515,6 +515,24 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const earlySide=showRejected?trackedSetup!.side:
    hasDirectionalWatch?candleLean.side:earlyOpportunity.side;
  const hasEarlySignal=earlyOpportunity.phase==='BREAK_CONFIRMED';
+ // All default analysis appears on the chart. Full explanations are available
+ // in an optional closed drawer, not in multi-line blocks above the candles.
+ const drawingSide=showPreparation||showCrossTest||showRejected||hasEarlySignal?
+   trackedSetup?.side??'WAIT':hasDirectionalWatch?candleLean.side:'WAIT';
+ const drawingLabel=showPreparation?'ترقب '+(drawingSide==='BUY'?'شراء':'بيع'):
+   showCrossTest?'اختبار اختراق '+(drawingSide==='BUY'?'شراء':'بيع'):
+   showRejected?'فشل اختراق '+(drawingSide==='BUY'?'شراء':'بيع'):
+   hasEarlySignal?'رصد '+(drawingSide==='BUY'?'شراء':'بيع'):
+   hasDirectionalWatch?(watchIsReversal?
+     'مراقبة انعكاس '+(drawingSide==='BUY'?'صعود':'هبوط'):
+     'متابعة '+(drawingSide==='BUY'?'صعود':'هبوط')):'ترقب M5';
+ const drawingReason=showPreparation||showCrossTest||showRejected||hasEarlySignal?
+   (trackedSetup?.reason||'إعداد غير متاح'):
+   hasDirectionalWatch?(watchIsReversal?'احتمال انعكاس غير مؤكد':
+     'اتجاه مرصود بعد بدء الحركة؛ ليس إنذارًا مبكرًا أو أمر دخول'):
+   earlyOpportunity.reason;
+ const drawingColor=drawingSide==='BUY'?'#64e8b2':
+   drawingSide==='SELL'?'#fa92a4':'#ebd08d';
  const rawIssuance=assessM15ScenarioIssuance({
    side:safeSide,qualified,radarStatus:radar.status,radarSide:radar.side,
    m15Side:m15Bias.side,m15Votes:m15Bias.votes,
@@ -865,17 +883,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {showLiquidity?'المناطق ✓':'المناطق'}</button>
    </header>
    <>
-   <SniperScenarioHero asset={asset} fusion={localFusion}
-      hunt={huntPreview} preMove={preMove} liquidity={liquidityMagnets}
-      flow={flowProfile}
-      quoteSamples={asset==='GOLD'&&flowPacket?.asset==='GOLD'&&
-        flowPacket.data?.mode==='broker'?
-        Number(flowPacket.data.quoteProfile?.samples??0):null}
-      quoteSampleReason={asset==='GOLD'&&flowPacket?.asset==='GOLD'?
-        String(flowPacket.data?.quoteProfile?.reason||''):null}
-      price={currentSignalPrice??null} now={now}
-      marketOpen={marketOpen} fresh={Boolean(m.sniper.view.priceFresh&&
-        m.historyFresh)} providerTransition={providerTransition}/>
+   
    <details className="sniper-hunt-advanced">
      <summary>المستويات والتشخيص <span aria-hidden="true">＋</span></summary>
      <SniperOrderFlowStrip data={flowObservation}/>
@@ -898,11 +906,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      noForecastReason={!projected.ready?lifecycle:null}
      watchGuide={showWatchGuide?watchGuide:null}/>
    </details>
-   <div className="sniper-hunter-workbench">
-     <SniperLiquidityColumn history={actual.slice(-48)}
-       price={price??null} preview={huntPreview} liquidityOn={showLiquidity}
-       structure={structure}/>
-     <div className="sniper-hunter-center">
+   <div className="sniper-hunter-workbench" style={{display:"block"}}>
+     
+     <div className="sniper-hunter-center" style={{width:"100%",maxWidth:"none"}}>
    <div className="sniper-m15-view-controls" aria-label="عرض سيناريو القناص">
      <button type="button" className="sniper-m15-focus-toggle"
        aria-pressed={focusView} onClick={()=>setFocusView(v=>!v)}
@@ -918,51 +924,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        title="مد مسار السعر المشروط دون أي شموع مستقبلية">
        {showHistoricalExtension?'أول 12 خطوة':'مد المسار للأهداف'}</button>}
    </div>
-   <div className="sniper-m15-compact-status" role="status">
-     <span>{projected.ready?'سيناريو M15 · مسار مشروط':showWatchGuide?
-       (watchGuide.referenceOnly?'مراقبة M15 جزئية · بلا إشارة دخول':'نطاق مراقبة M15'):'شموع M5 حقيقية'}
-       {' · شموع M5: '+trueHistory.length}</span>
-     <b dir="ltr">{formingVisible&&forming?'LIVE '+n(forming.close):
-       latestClosed?'CLOSE '+n(latestClosed.close):'—'}</b>
-   </div>
-   <div className={'sniper-m5-early-signal '+(earlySide==='BUY'?'is-buy':
-     earlySide==='SELL'?'is-sell':'is-wait')} role="status"
-     aria-label="قراءة M5: متابعة اتجاه أو مراقبة انعكاس أو إعداد مبكر؛ ليست صفقة منفذة">
-     <strong>{showPreparation?'ترقب '+(earlySide==='BUY'?'شراء ↑':'بيع ↓'):
-       showCrossTest?'اختبار اختراق '+(earlySide==='BUY'?'شراء ↑':'بيع ↓'):
-       showRejected?'فشل اختراق '+(earlySide==='BUY'?'شراء':'بيع'):
-       hasEarlySignal?(earlySide==='BUY'?'رصد شراء ↑':'رصد بيع ↓'):
-       hasDirectionalWatch?(watchIsReversal?
-         'مراقبة انعكاس '+(earlySide==='BUY'?'لأعلى ↑':'لأسفل ↓'):
-         'متابعة '+(earlySide==='BUY'?'صعود ↑':'هبوط ↓')):
-       'ترقب M5'}</strong>
-     <span>{showPreparation||showCrossTest?
-       trackedSetup!.reason+' · مستوى التفعيل '+n(trackedSetup!.trigger)+
-       ' · إبطال '+n(trackedSetup!.invalidation):
-       showRejected?trackedSetup!.reason+' · تم الاحتفاظ بالرصد القديم للتقييم':
-       hasEarlySignal?trackedSetup!.reason+' · الإبطال '+n(trackedSetup!.invalidation):
-       hasDirectionalWatch||earlyOpportunity.phase==='WATCH'?candleLean.reason:earlyOpportunity.reason}</span>
-     <small>{showPreparation?'إعداد سابق '+h(trackedSetup!.armedAt)+' · قيد المراقبة':
-       showCrossTest?'عبور واحد لا يكفي؛ اختبار ثبات السعر مع عرض أحدث':
-       showRejected?'إلغاء التفعيل بعد رفض الكسر؛ ليست إشارة دخول سارية':
-       hasEarlySignal?'تفعيل مرصود عند '+n(trackedSetup!.priceAt)+' · '+h(trackedSetup!.triggeredAt!)+
-         ' · يحتاج استمرارًا فوق/تحت المستوى':
-       hasDirectionalWatch?(watchIsReversal?
-         'انعكاس محتمل بعد شمعة مغلقة؛ ليس إشارة دخول مؤكدة':
-         'اتجاه مرصود بعد بدء الحركة؛ ليس إنذارًا مبكرًا أو أمر دخول'):
-       'لا توجد فرصة مبكرة مؤهلة حاليًا'}</small>
-   </div>
-   <div className="sniper-scenario-chart-legend"
-     aria-label="مفتاح الشموع الحقيقية ومسارات المراقبة المشروطة">
-     <b>PRICE ACTION / M5</b>
-     <span className="is-actual">شموع حقيقية مغلقة</span>
-     <span className="is-conditional">{routeObstacle.blocked?
-       routeObstacle.reason:
-       projected.ready?'مسار توقع مشروط':
-       showWatchGuide?(watchGuide.referenceOnly?
-         'فجوات المصدر · مسارا مراقبة تاريخيان فقط':'مسارا مراقبة من ATR'):
-         watchGuide.reason||'لا مسار مؤهل الآن'}</span>
-   </div>
+   {/* Compact signal status is printed INSIDE real M5 SVG, not a giant paragraph. */}
    <div className="sniper-m15-chart-box" id="sniper-performance"
      data-clean={!showExtra}>
      <svg viewBox={'0 0 '+W+' '+H} role="img" aria-label={
@@ -1368,6 +1330,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          asset={asset} source={String(x?.candleSource||'')}
          from={trueHistory[0]?.time??now} now={now} left={left} split={split}
          end={end} top={plotTop} bottom={plotBottom} py={py} timeX={timeX}/>
+       {/* Compact chart-only directional readout. Source details via tooltip. */}
+       <g className="sniper-m5-chart-status" role="status"
+         aria-label={drawingLabel+' · '+drawingReason}>
+         <title>{drawingLabel+' · '+drawingReason+
+           ' · قراءة غير مؤكدة وليست صفقة أو أمر تداول'}</title>
+         <rect x={left+7} y={plotTop+7} rx="5" width="136" height="23"
+           fill="#071923" fillOpacity=".94" stroke={drawingColor} strokeWidth=".9"/>
+         <text x={left+75} y={plotTop+22} textAnchor="middle" direction="rtl"
+           fill={drawingColor} fontSize="10.8" fontWeight="800">
+           {drawingLabel}
+         </text>
+       </g>
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M5 · REAL</text>
        <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'} fontSize="10" textAnchor="start" direction="ltr">{projected.ready?'M15 · PATH':showWatchGuide?'M15 · WATCH':'M15 · LIVE'}</text>
        {showExtra&&<text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
@@ -1445,11 +1419,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        </>:<small>{watchMap.reason} · لا أهداف افتراضية</small>}
      </div>}
      </div>
-     <SniperScenarioColumn preview={huntPreview} guide={watchGuide}
-       proof={huntProof} flowSide={flowProfile.ready?flowProfile.side:'WAIT'}
-       qualified={projected.ready} price={price??null} marketOpen={marketOpen}
-       structure={structure} watch={watchMap} m1={nextM1}
-        priceFresh={Boolean(m.sniper.view.priceFresh)&&historyFresh&&!providerTransition}/>
+     
    </div>
    <details className="sniper-intelligence-drawer">
      <summary><span className="sniper-intelligence-drawer-title">
@@ -1467,8 +1437,27 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    </details>
    </>
    <details className="sniper-m15-diagnostics">
-     <summary>تفاصيل إضافية: الرادار والاختبارات والسيولة</summary>
+     <summary>الشرح والتشخيص (اختياري)</summary>
      <div className="sniper-m15-diagnostics-content">
+       <SniperScenarioHero asset={asset} fusion={localFusion}
+      hunt={huntPreview} preMove={preMove} liquidity={liquidityMagnets}
+      flow={flowProfile}
+      quoteSamples={asset==='GOLD'&&flowPacket?.asset==='GOLD'&&
+        flowPacket.data?.mode==='broker'?
+        Number(flowPacket.data.quoteProfile?.samples??0):null}
+      quoteSampleReason={asset==='GOLD'&&flowPacket?.asset==='GOLD'?
+        String(flowPacket.data?.quoteProfile?.reason||''):null}
+      price={currentSignalPrice??null} now={now}
+      marketOpen={marketOpen} fresh={Boolean(m.sniper.view.priceFresh&&
+        m.historyFresh)} providerTransition={providerTransition}/>
+       <SniperLiquidityColumn history={actual.slice(-48)}
+       price={price??null} preview={huntPreview} liquidityOn={showLiquidity}
+       structure={structure}/>
+       <SniperScenarioColumn preview={huntPreview} guide={watchGuide}
+       proof={huntProof} flowSide={flowProfile.ready?flowProfile.side:'WAIT'}
+       qualified={projected.ready} price={price??null} marketOpen={marketOpen}
+       structure={structure} watch={watchMap} m1={nextM1}
+        priceFresh={Boolean(m.sniper.view.priceFresh)&&historyFresh&&!providerTransition}/>
      <span className={'sniper-m15-phase '+(phase.confirmed?'confirmed':'neutral')}
        title={(liquidity.ready?liquidity.reason:'لا توجد قراءة محدثة')+
          ' · تقييم زمني M15: '+walkForward.correct+'/'+walkForward.selected+
