@@ -1,5 +1,7 @@
 import type {LiveOpportunity} from './sniper-live-opportunity';
 import type {M5CandleLean} from './sniper-m5-candle-lean';
+import type {FlowProfileDecision} from './flow-profile-decision';
+import type {LiquidityMagnetView} from './sniper-liquidity-magnets';
 type Bar={time:number;open:number;high:number;low:number;close:number};
 export type EarlySetup={
  scope:string;side:'BUY'|'SELL';phase:'ARMED'|'TRIGGERED'|'CANCELLED'|'EXPIRED';
@@ -9,12 +11,34 @@ export type EarlySetup={
 };
 /** Session-only arming: reloading cannot invent an earlier observation. */
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
- price:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean}):EarlySetup|null{
+ price:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
+ flow?:FlowProfileDecision|null;liquidity?:LiquidityMagnetView|null}):EarlySetup|null{
  const {now,price}=input;
  let prior=input.prior?.scope===input.scope?input.prior:null;
  if(!Number.isFinite(now)||price==null||!Number.isFinite(price)||price<=0)return null;
  if(prior&&now<prior.lastAt)return null;
  if(!input.ready)return prior?(prior.phase==='CANCELLED'?prior:{...prior,phase:'CANCELLED',lastAt:now,reason:'البيانات غير حديثة؛ الإعداد ملغي'}):null;
+ // Count flow/profile ONLY if it was observed on the matching venue before this
+ // decision, with a fresh real timestamp. Unavailable DOM is never agreement.
+ const flow=input.flow;
+ const hasFlow=Boolean(flow?.ready&&flow.side!=='WAIT'&&
+   Number.isFinite(flow.asOf)&&Number.isFinite(flow.observedAt)&&
+   flow.asOf!<=now&&flow.observedAt!<=now&&
+   now-flow.asOf!<=15000&&now-flow.observedAt!<=15000);
+ const flowSide=hasFlow?flow!.side:'WAIT';
+ // M15 liquidity is a CLOSED-CANDLE swing/sweep proxy, not actual resting orders.
+ const liq=input.liquidity;
+ const liveSweep=Boolean(liq?.ready&&liq.sourceAt!=null&&
+   liq.sourceAt<=now&&now-liq.sourceAt<=600000);
+ const sweptSide=liveSweep&&liq?.sweep==='HIGH_RECLAIMED_DOWN'?'SELL':
+   liveSweep&&liq?.sweep==='LOW_RECLAIMED_UP'?'BUY':'WAIT';
+ if(prior?.phase==='ARMED'&&
+   ((flowSide!=='WAIT'&&flowSide!==prior.side)||
+    (sweptSide!=='WAIT'&&sweptSide!==prior.side)))
+   return {...prior,phase:'CANCELLED',lastAt:now,
+     reason:flowSide!=='WAIT'&&flowSide!==prior.side?
+       'تدفق المصدر والبروفايل يعارضان الإعداد المبكر':
+       'سحب سيولة M15 مغلق يعارض الإعداد المبكر'};
  if(prior&&(prior.phase==='ARMED'||prior.phase==='TRIGGERED')){
    const invalid=prior.side==='BUY'?price<=prior.invalidation:price>=prior.invalidation;
    const expired=now>=prior.expiresAt;
@@ -63,6 +87,16 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    reason='استرداد مستوى بعد سحب قمة أو قاع';
  }
  if(!side||![trigger,invalidation].every(Number.isFinite))return prior;
+ // A same-venue flow/profile contradiction or fresh M15 sweep can veto setup
+ // BEFORE it is armed. Missing depth/profile does not fabricate a positive vote.
+ if((flowSide!=='WAIT'&&flowSide!==side)||
+    (sweptSide!=='WAIT'&&sweptSide!==side))return prior;
+ if(flowSide===side){
+   reason+=flow!.quality==='EXECUTED_SAMPLE'?
+     ' · دلتا الصفقات وPOC من نفس المصدر':
+     ' · POC ونشاط عمق وسيط MT5 استرشادي';
+ }else reason+=' · Order Flow المنفذ غير مؤكد';
+ if(sweptSide===side)reason+=' · سحب سيولة M15 مغلق يدعم الاتجاه';
  const remaining=side==='BUY'?trigger-price:price-trigger;
  const risk=side==='BUY'?price-invalidation:invalidation-price;
  // Must be first observed BEFORE crossing, near a defined level. Reject a
