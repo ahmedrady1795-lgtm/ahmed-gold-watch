@@ -26,6 +26,10 @@ export type MovementProof={
  onsetOutcome?:'PENDING'|'MOVE_FIRST'|'ADVERSE_FIRST'|'NO_MOVE'|'AMBIGUOUS'|'UNKNOWN';
  onsetResolvedAt?:number|null;
  onsetDelaySeconds?:number|null;
+ // Issued setup lifecycle, frozen prospectively as live state changes.
+ // Older rows remain unclassified; no historical retroactive invention.
+ setupLifecycle?:'PENDING'|'ACTIVATED'|'INVALIDATED'|'CANCELLED'|'EXPIRED';
+ setupResolvedAt?:number|null;
 };
 type Opportunity={phase:string;side:string;sourceAt:number|null;
  trigger:number|null;invalidation:number|null;targets:number[];
@@ -48,6 +52,8 @@ export function safeMovementProof(raw:unknown):MovementProof[]{
   (x.onsetDistance==null||valid(x.onsetDistance)&&x.onsetDistance>0)&&
   (x.onsetOutcome==null||['PENDING','MOVE_FIRST','ADVERSE_FIRST','NO_MOVE','AMBIGUOUS','UNKNOWN'].includes(x.onsetOutcome))&&
   (x.onsetDelaySeconds==null||valid(x.onsetDelaySeconds)&&x.onsetDelaySeconds>=0)&&
+  (x.setupLifecycle==null||['PENDING','ACTIVATED','INVALIDATED','CANCELLED','EXPIRED'].includes(x.setupLifecycle))&&
+  (x.setupResolvedAt==null||valid(x.setupResolvedAt)&&x.setupResolvedAt>=x.issuedAt)&&
   ['PENDING','TARGET','STOP','TIMEOUT','AMBIGUOUS','UNKNOWN','NO_TARGET'].includes(x.status)&&
   (x.target==null||valid(x.target))&&(x.invalidation==null||valid(x.invalidation))
  ).slice(-2000).map((x:any)=>({...x,leadSeconds:valid(x.leadSeconds)?x.leadSeconds:null}));
@@ -57,6 +63,8 @@ export function advanceMovementProof(input:{
  price:number|null;signal:Opportunity;bars:unknown;m5Bars?:unknown;
  candleLean?:{phase:'OPEN'|'FOLLOW'|'CLOSE'|'WAIT';side:'BUY'|'SELL'|'WAIT';issuedFor:number|null;reason?:string};
  frameTrend?:'BUY'|'SELL'|'WAIT';
+ setupState?:{side:'BUY'|'SELL';phase:string;sourceAt:number;trigger:number;
+   invalidation:number;lastAt:number;lastPrice:number;reason?:string}|null;
 }):MovementProof[]{
  const {now,asset,source,signal}=input;
  if(!valid(now)||now<=0||!source)return input.prior;
@@ -70,6 +78,27 @@ export function advanceMovementProof(input:{
  let modified=false;
  let next=input.prior.map(item=>{
   if(item.asset!==asset||item.source!==source)return item;
+  // A recorded PRE-break watch never disappears, but its confirmed later
+  // cancellation/activation must be shown beside the original issuance.
+  // Only a matching live state observed in this browser may update new rows.
+  const state=input.setupState;
+  if(item.kind==='EARLY'&&item.setupLifecycle==='PENDING'&&state&&
+     item.sourceAt===state.sourceAt&&item.side===state.side&&
+     item.trigger===state.trigger&&item.invalidation===state.invalidation&&
+     now>=state.lastAt&&state.lastAt>=item.issuedAt){
+    const terminal=state.phase==='TRIGGERED'||state.phase==='CANCELLED'||
+      state.phase==='EXPIRED';
+    if(terminal){
+      const crossed=state.side==='BUY'?
+        state.lastPrice<=state.invalidation:state.lastPrice>=state.invalidation;
+      const status:NonNullable<MovementProof['setupLifecycle']>=
+        state.phase==='TRIGGERED'?'ACTIVATED':
+        crossed?'INVALIDATED':
+        state.phase==='EXPIRED'?'EXPIRED':'CANCELLED';
+      item={...item,setupLifecycle:status,setupResolvedAt:state.lastAt};
+      modified=true;
+    }
+  }
   // Exactly the NEXT fully observable M5 candle; no unfinished or preceding OHLC.
   // This audit is distinct from target/stop outcomes and never implies P&L.
   if(item.m5Outcome==='PENDING'){
@@ -192,6 +221,7 @@ export function advanceMovementProof(input:{
        detectedAfterMs:Math.max(0,now-signal.sourceAt),
        leadSeconds:early?Math.round((signal.sourceAt-early.issuedAt)/1000):null,
        m5Outcome:'PENDING',m5ResolvedAt:null,
+       ...(kind==='EARLY'?{setupLifecycle:'PENDING' as const,setupResolvedAt:null}:{}),
        ...(onsetDistance==null?{}:{
          onsetDistance,onsetOutcome:'PENDING' as const,onsetResolvedAt:null,
          onsetDelaySeconds:null})
