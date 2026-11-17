@@ -11,6 +11,8 @@ export type MovementProof={
  side:Side;sourceAt:number;issuedAt:number;priceAt:number;
  quality?:'SETUP'|'COUNTERTREND'|'OBSERVATION';
  setupType?:'REVERSAL'|'CONTINUATION';
+ // M15 direction frozen when FIRST observed: later moves never rewrite labels.
+ frameTrend?:'BUY'|'SELL'|'WAIT';
  trigger:number|null;invalidation:number|null;target:number|null;
  status:'PENDING'|'TARGET'|'STOP'|'TIMEOUT'|'AMBIGUOUS'|'UNKNOWN'|'NO_TARGET';
  resolvedAt:number|null;detectedAfterMs:number;leadSeconds:number|null;
@@ -35,6 +37,7 @@ export function safeMovementProof(raw:unknown):MovementProof[]{
   valid(x.issuedAt)&&valid(x.sourceAt)&&valid(x.priceAt)&&x.priceAt>0&&
   (x.quality==null||['SETUP','COUNTERTREND','OBSERVATION'].includes(x.quality))&&
   (x.setupType==null||x.setupType==='REVERSAL'||x.setupType==='CONTINUATION')&&
+  (x.frameTrend==null||['BUY','SELL','WAIT'].includes(x.frameTrend))&&
   (x.m5Outcome==null||['PENDING','CORRECT','WRONG','FLAT','UNKNOWN'].includes(x.m5Outcome))&&
   ['PENDING','TARGET','STOP','TIMEOUT','AMBIGUOUS','UNKNOWN','NO_TARGET'].includes(x.status)&&
   (x.target==null||valid(x.target))&&(x.invalidation==null||valid(x.invalidation))
@@ -43,7 +46,8 @@ export function safeMovementProof(raw:unknown):MovementProof[]{
 export function advanceMovementProof(input:{
  prior:MovementProof[];now:number;asset:'GOLD'|'BTC';source:string;
  price:number|null;signal:Opportunity;bars:unknown;m5Bars?:unknown;
- candleLean?:{phase:'OPEN'|'FOLLOW'|'CLOSE'|'WAIT';side:'BUY'|'SELL'|'WAIT';issuedFor:number|null;reason?:string}
+ candleLean?:{phase:'OPEN'|'FOLLOW'|'CLOSE'|'WAIT';side:'BUY'|'SELL'|'WAIT';issuedFor:number|null;reason?:string};
+ frameTrend?:'BUY'|'SELL'|'WAIT';
 }):MovementProof[]{
  const {now,asset,source,signal}=input;
  if(!valid(now)||now<=0||!source)return input.prior;
@@ -161,7 +165,7 @@ export function advanceMovementProof(input:{
        lastContinuation?.side===lean.side&&now-lastContinuation.issuedAt<15*60000;
      if(!already&&!repeatedWave){
        next.push({id,asset,source,kind:lean.phase,side:lean.side,
-         setupType,
+         setupType,frameTrend:input.frameTrend??'WAIT',
          quality:'OBSERVATION',sourceAt:lean.issuedFor,issuedAt:now,
          priceAt:input.price,trigger:null,invalidation:null,target:null,
          status:'NO_TARGET',resolvedAt:null,detectedAfterMs:now-lean.issuedFor,
@@ -171,6 +175,16 @@ export function advanceMovementProof(input:{
    }
  }
  return modified?next.slice(-2000):input.prior;
+}
+/** Movement observations are not BUY/SELL entry signals.
+ * A short rising bounce against the frozen M15 trend is a rebound, not a BUY.
+ * Legacy rows keep neutral context rather than guessing past M15 conditions. */
+export function movementObservationLabel(r:Pick<MovementProof,'side'|'setupType'|'frameTrend'>):string{
+ const up=r.side==='BUY';
+ if(r.setupType==='REVERSAL')return up?'انعكاس صاعد؟':'انعكاس هابط؟';
+ if(r.frameTrend&&r.frameTrend!=='WAIT'&&r.frameTrend!==r.side)
+   return up?'ارتداد صاعد':'ارتداد هابط';
+ return up?'متابعة صعود':'متابعة هبوط';
 }
 export function movementProofScore(rows:MovementProof[],asset:'GOLD'|'BTC'){
  const all=rows.filter(x=>x.asset===asset);
