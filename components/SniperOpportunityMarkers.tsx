@@ -80,6 +80,14 @@ export default function SniperOpportunityMarkers(p:Props){
  }
  // Reserve labels for ACTUAL pre-break alerts ahead of later wave labels.
  // This makes genuinely early observations legible without losing old dots.
+ const onsetLabel:Record<string,string>={
+   PENDING:'جارٍ رصد بداية الموجة',
+   MOVE_FIRST:'بدأت حركة مؤيدة بعد التنبيه',
+   ADVERSE_FIRST:'بدأت حركة عكس التنبيه',
+   NO_MOVE:'لم تبدأ موجة مؤهلة خلال ثلاث دقائق',
+   AMBIGUOUS:'لم يُعرف ترتيب لمس المستويين في شمعة واحدة',
+   UNKNOWN:'بيانات غير كافية للحكم'
+ };
  const earlyLabels=new Map<string,{x:number;y:number}>();
  for(const r of earlyShown.slice(0,3)){
    const px=p.timeX(r.issuedAt),py=p.py(r.priceAt);
@@ -128,12 +136,15 @@ export default function SniperOpportunityMarkers(p:Props){
    {earlyShown.map((r,i)=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt),buy=r.side==='BUY';
      const ink='#e0be78';
-     return <g key={r.id} data-kind="EARLY" data-issued-at={r.issuedAt}>
+     return <g key={r.id} data-kind="EARLY" data-issued-at={r.issuedAt}
+       data-onset={r.onsetOutcome??'NOT_AUDITED'}>
        <path d={buy?`M${x} ${y-8} L${x-6} ${y+2} L${x+6} ${y+2} Z`:
          `M${x} ${y+8} L${x-6} ${y-2} L${x+6} ${y-2} Z`}
          stroke={ink} strokeWidth="1.3" fill="#2c2414"/>
        <title>{'ترقب '+(buy?'شراء':'بيع')+' قبل الكسر · '+
          r.priceAt.toFixed(2)+' · '+outcomeLabel[r.status]+
+         (r.onsetOutcome?' · '+onsetLabel[r.onsetOutcome]: ' · لم تكن خاضعة لتقييم بداية الموجة')+
+         (r.onsetDelaySeconds!=null?' · بعد '+r.onsetDelaySeconds+'ث':'')+
          ' · محفوظ عند الرصد وليس إشارة تنفيذ'}</title>
        {earlyLabels.has(r.id)&&<>
          <line x1={x} y1={y}
