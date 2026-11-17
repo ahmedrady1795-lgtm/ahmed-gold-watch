@@ -22,8 +22,10 @@ assert.match(component,/\{showExtra&&<text x=\{split\+8\} y=\{clamp\(y-4/,
   'target labels no longer overlap future candles by default');
 assert.match(component,/\{showExtra&&<text x=\{split-15\} y=\{Math\.max\(plotTop\+13/,
   'live price no longer collides with nearby supply/demand labels');
-assert.match(component,/sniper-m15-compact-status/,
-  'live quote remains visible in a quiet header above the real chart');
+assert.match(component,/className="sniper-m5-chart-status"/,
+  'compact observation status is printed inside the actual real M5 SVG');
+assert.doesNotMatch(component,/className="sniper-m15-compact-status"/,
+  'separate quote banner above M5 chart has been removed');
 const svgEnd=component.indexOf('     </svg>',component.indexOf('className="sniper-m15-chart-box"'));
 const chartEnd=component.indexOf('   </div>',svgEnd);
 const legend=component.indexOf('className="sniper-m15-levels-below"',svgEnd);
