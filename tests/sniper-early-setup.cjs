@@ -180,8 +180,10 @@ assert.match(panel,/className="sniper-m5-chart-status"/,
 assert.doesNotMatch(panel,/className=\{\x27sniper-m5-early-signal/,
  'giant multi-line early signal banner must not appear above chart');
 const markerSvg=fs.readFileSync('components/SniperOpportunityMarkers.tsx','utf8');
-assert.match(markerSvg,/رصد بيع/,'bearish wave has visible sell observation on chart');
-assert.match(markerSvg,/رصد شراء/,'bullish wave has visible buy observation on chart');
+assert.match(markerSvg,/movementObservationLabel\(r\)/,
+ 'M5 observed waves are labelled contextually, not falsely displayed as entry SELL');
+assert.match(markerSvg,/const label=r.quality==='SETUP'\?action:/,
+ 'qualified prearmed trade markers keep BUY/SELL labels');
 assert.match(markerSvg,/const placeLabel=/,
  'historical labels have a deterministic no-collision allocator');
 assert.match(markerSvg,/occupied\.every/,
@@ -200,8 +202,8 @@ assert.match(markerSvg,/ترقب شراء/,
  'early BUY warning is clearly labeled directly on the chart before any break');
 assert.match(markerSvg,/ترقب بيع/,
  'early SELL warning is clearly labeled directly on the chart before any break');
-assert.match(markerSvg,/const labelText=buy\?'رصد شراء':'رصد بيع'/,
- 'closed-M1 momentum or reversal always says observation, not entry');
+assert.match(markerSvg,/const labelText=movementObservationLabel\(r\)/,
+ 'M1 bounce and reversal captions are observations, not entry recommendations');
 assert.match(markerSvg,/return null; \/\/ keep the real price dot/,
  'overfull chart must retain original marker anchors instead of inventing prices');
 assert.match(panel,/evidenceScore=\{trackedSetup\?\.score\?\?null\}/,
