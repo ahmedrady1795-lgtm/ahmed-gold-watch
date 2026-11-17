@@ -453,9 +453,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    prior:earlyState,scope:asset+':'+String(x?.candleSource||''),now,price,
    ready:marketOpen&&m.sniper.view.priceFresh&&!providerTransition&&
      liveOpportunity.phase!=='OFFLINE',
-   bars:m.candles,opportunity:liveOpportunity,lean:candleLean
+   bars:m.candles,opportunity:liveOpportunity,lean:candleLean,
+   flow:flowProfile,liquidity:liquidityMagnets
  }),[earlyState,asset,x?.candleSource,now,price,marketOpen,m.sniper.view.priceFresh,
-   providerTransition,m.candles,liveOpportunity,candleLean]);
+   providerTransition,m.candles,liveOpportunity,candleLean,flowProfile,liquidityMagnets]);
  useEffect(()=>{if(trackedSetup!==earlyState)setEarlyState(trackedSetup);},[trackedSetup,earlyState]);
  const earlyOpportunity=useMemo(()=>earlySetupOpportunity(trackedSetup),[trackedSetup]);
  const currentSignalSide=earlyOpportunity.side;
