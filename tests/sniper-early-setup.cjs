@@ -107,8 +107,11 @@ const cancelledOld={...reclaimed,phase:'CANCELLED',sourceAt:now-5*60000,
 assert.equal(step({...base,bars:recoveryBars,price:99.6,prior:cancelledOld})?.phase,
  'ARMED','feed recovery can rearm after two NEW closed M1 bars');
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
-assert.match(panel,/hasDirectionalWatch\?\x27مراقبة \x27/,
- 'live M1 direction must be visible as watch, not a fake entry');
+assert.match(panel,/hasDirectionalWatch\?\(watchIsReversal\?/,
+ 'M5 direction display must distinguish reversal from late momentum following');
+assert.match(panel,/متابعة /,'momentum following cannot be advertised as early BUY or SELL');
+assert.match(panel,/اتجاه مرصود بعد بدء الحركة/,
+ 'an already-moving wave is labeled explicitly as non-predictive');
 assert.match(panel,/candleLean\.reason\.includes\(\x27انعكاس محتمل\x27\)/,
  'only observed sweep reversals may reenter marker journal');
 console.log('PASS early setup: pre-arm, frozen levels, live crossing, no momentum/backfill/chase, stale/gap cancellation and source isolation');
