@@ -459,10 +459,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ready:marketOpen&&m.sniper.view.priceFresh&&!providerTransition&&
      liveOpportunity.phase!=='OFFLINE',
    bars:m.candles,opportunity:liveOpportunity,lean:candleLean,
-   flow:flowProfile,liquidity:liquidityMagnets
+   flow:flowProfile,liquidity:liquidityMagnets,
+   m1Side:nextM1.ready?nextM1.side:'WAIT',
+   m15Side:localFusion.m15
  }),[earlyState,asset,x?.candleSource,now,price,liveQuote?.sourceTime,
    marketOpen,m.sniper.view.priceFresh,providerTransition,m.candles,
-   liveOpportunity,candleLean,flowProfile,liquidityMagnets]);
+   liveOpportunity,candleLean,flowProfile,liquidityMagnets,
+   nextM1.ready,nextM1.side,localFusion.m15]);
  useEffect(()=>{if(trackedSetup!==earlyState)setEarlyState(trackedSetup);},[trackedSetup,earlyState]);
  const earlyOpportunity=useMemo(()=>earlySetupOpportunity(trackedSetup),[trackedSetup]);
  // Show the closed-M1 directional hypothesis as WATCH when no pre-break
@@ -526,6 +529,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    hasDirectionalWatch?(watchIsReversal?
      'مراقبة انعكاس '+(drawingSide==='BUY'?'صعود':'هبوط'):
      'متابعة '+(drawingSide==='BUY'?'صعود':'هبوط')):'ترقب M5';
+ // Qualitative evidence checklist, not a predicted success rate.
+ const drawingBadge=(showPreparation||showCrossTest)&&trackedSetup?.score!=null?
+   drawingLabel+' · '+trackedSetup.score+'/10':drawingLabel;
  const drawingReason=showPreparation||showCrossTest||showRejected||hasEarlySignal?
    (trackedSetup?.reason||'إعداد غير متاح'):
    hasDirectionalWatch?(watchIsReversal?'احتمال انعكاس غير مؤكد':
@@ -1327,19 +1333,20 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          </>}
        </g>
        <SniperOpportunityMarkers signal={earlyOpportunity} records={movementRecords}
+         evidenceScore={trackedSetup?.score??null}
          asset={asset} source={String(x?.candleSource||'')}
          from={trueHistory[0]?.time??now} now={now} left={left} split={split}
          end={end} top={plotTop} bottom={plotBottom} py={py} timeX={timeX}/>
        {/* Compact chart-only directional readout. Source details via tooltip. */}
        <g className="sniper-m5-chart-status" role="status"
-         aria-label={drawingLabel+' · '+drawingReason}>
-         <title>{drawingLabel+' · '+drawingReason+
+         aria-label={drawingBadge+' · '+drawingReason}>
+         <title>{drawingBadge+' · '+drawingReason+
            ' · قراءة غير مؤكدة وليست صفقة أو أمر تداول'}</title>
          <rect x={left+7} y={plotTop+7} rx="5" width="136" height="23"
            fill="#071923" fillOpacity=".94" stroke={drawingColor} strokeWidth=".9"/>
          <text x={left+75} y={plotTop+22} textAnchor="middle" direction="rtl"
            fill={drawingColor} fontSize="10.8" fontWeight="800">
-           {drawingLabel}
+           {drawingBadge}
          </text>
        </g>
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M5 · REAL</text>
