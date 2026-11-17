@@ -22,6 +22,7 @@ const none=(reason:string):M5CandleLean=>({
 export function assessM5CandleLean(input:{
  now:number;price:number|null;sourceReady:boolean;
  m1:unknown;m5?:unknown;flow?:FlowProfileDecision|null;
+ m1Side?:Side;m15Side?:Side;
 }):M5CandleLean{
  const {now,price}=input;
  if(!input.sourceReady||!Number.isFinite(now)||!Number.isFinite(price)||
@@ -90,14 +91,36 @@ export function assessM5CandleLean(input:{
    f.observedAt!=null&&f.asOf<=now&&f.observedAt<=now&&
    now-f.asOf<=15000&&now-f.observedAt<=15000);
  const flowSide:Side=flowValid?f!.side:'WAIT';
- const candidate:Side=reversalSide!=='WAIT'?reversalSide:momentumSide;
+ // A swept wick is an OBSERVATION, not enough to sell into a rising M1+M15.
+ // A current quote beyond the swept wick invalidates the old reversal thesis.
+ // M1 and M15 here are independently computed from COMPLETED candles.
+ const m1Frame=input.m1Side==='BUY'||input.m1Side==='SELL'?input.m1Side:'WAIT';
+ const m15Frame=input.m15Side==='BUY'||input.m15Side==='SELL'?input.m15Side:'WAIT';
+ const alignedTrend=m1Frame===m15Frame?m1Frame:'WAIT';
+ const contraryTrend=reversalSide!=='WAIT'&&alignedTrend!=='WAIT'&&
+   reversalSide!==alignedTrend&&flowSide!==reversalSide;
+ const reclaimedAgainstReversal=reversalSide==='SELL'?
+   price>=last.high-atr*.02:
+   reversalSide==='BUY'?price<=last.low+atr*.02:false;
+ const reversalLive=reversalSide!=='WAIT'&&!contraryTrend&&!reclaimedAgainstReversal;
+ const candidate:Side=reversalLive?reversalSide:momentumSide;
+ // If the swept wick has already failed, stale closed-candle momentum
+ // CANNOT independently recreate the same bearish/bullish reversal claim.
+ const staleOpposite=reversalSide!=='WAIT'&&
+   reclaimedAgainstReversal&&candidate===reversalSide;
+ const crossFrameOpposite=contraryTrend&&candidate!==alignedTrend;
  // A conflicting verified flow observation is a veto, not a reversed
  // order. Missing flow remains explicitly unconfirmed price action.
- const side:Side=flowSide!=='WAIT'&&candidate!==flowSide?'WAIT':candidate;
- if(side==='WAIT')return none(flowSide!=='WAIT'&&candidate!==flowSide?
+ const side:Side=staleOpposite||crossFrameOpposite||
+   (flowSide!=='WAIT'&&candidate!==flowSide)?'WAIT':candidate;
+ if(side==='WAIT')return none(staleOpposite?
+   'السعر تجاوز ذيل سحب السيولة؛ الانعكاس القديم لم يعد صالحًا':
+   crossFrameOpposite?
+   'رفض قمة/قاع M1 غير مؤكد مع توافق M1 وM15 في الاتجاه المقابل':
+   flowSide!=='WAIT'&&candidate!==flowSide?
    'تعارض قراءة السيولة السعرية مع تدفق المصدر نفسه؛ لا إشارة':
    'لا يوجد ترجيح اتجاه من بيانات مغلقة');
- const kind=reversalSide!=='WAIT'?'انعكاس محتمل بعد سحب قمة/قاع سابق':
+ const kind=reversalLive?'انعكاس محتمل بعد سحب قمة/قاع سابق':
    'استمرار محتمل من زخم مغلق (ليس توقع انعكاس)';
  return {phase,side,issuedFor:cut,observedAfterMs:Math.max(0,now-cut),
    strength:Math.min(90,Math.round(Math.abs(pressure)*100)),
