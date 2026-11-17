@@ -427,8 +427,12 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  const nearHigh=last.close<olderHigh-atr*.035&&
    last.close>olderHigh-atr*.60&&
    price<olderHigh-atr*.025&&price>olderHigh-atr*.72;
- const structureSell=downSequence&&nearLow;
- const structureBuy=upSequence&&nearHigh;
+ // A gentle drift next to support/resistance is not a BOS pre-move.
+ // Require at least two decisive CLOSED bodies in the expected direction.
+ const bearishBodies=edgeTail.filter(b=>b.open-b.close>atr*.12).length;
+ const bullishBodies=edgeTail.filter(b=>b.close-b.open>atr*.12).length;
+ const structureSell=downSequence&&nearLow&&bearishBodies>=2;
+ const structureBuy=upSequence&&nearHigh&&bullishBodies>=2;
  const structureSide:'BUY'|'SELL'|null=structureSell!==structureBuy?
    structureSell?'SELL':'BUY':null;
  if(structureSide){
