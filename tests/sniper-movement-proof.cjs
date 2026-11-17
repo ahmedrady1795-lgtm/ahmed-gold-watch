@@ -119,4 +119,63 @@ assert.equal(mod.exports.movementObservationLabel({
  'old history without frozen M15 cannot be relabeled retroactively');
 assert.equal(flipped[0].issuedAt,fall[0].issuedAt,
  'old sell timestamp and entry price remain immutable');
+// PROSPECTIVE audit of the first wave after a true PREPARE observation:
+// frozen fourteen-bar ATR, three later completed M1, never historical fill.
+const auditBars=Array.from({length:15},(_,i)=>c(i,100.4,99.6));
+const issuedAt=start+15*60000+1000;
+const onsetPre={...pre,sourceAt:start+15*60000};
+const observed=step({prior:[],now:issuedAt,asset:'GOLD',source:'same-provider',
+ price:100,signal:onsetPre,bars:auditBars});
+assert.equal(observed.length,1);
+assert.equal(observed[0].onsetOutcome,'PENDING');
+assert.ok(observed[0].onsetDistance>.4&&observed[0].onsetDistance<.5,
+ 'directional displacement threshold frozen from fourteen closed true ranges');
+const cleanSignal={phase:'WATCH',side:'WAIT',sourceAt:null,
+ trigger:null,invalidation:null,targets:[]};
+const firstFuture=c(16,100.7,99.8);
+const unfinished=step({prior:observed,now:start+16*60000+30000,
+ asset:'GOLD',source:'same-provider',price:100,signal:cleanSignal,
+ bars:[...auditBars,firstFuture]});
+assert.equal(unfinished[0].onsetOutcome,'PENDING',
+ 'unfinished future minute is never graded');
+const wave=step({prior:observed,now:start+17*60000,
+ asset:'GOLD',source:'same-provider',price:100.6,signal:cleanSignal,
+ bars:[...auditBars,firstFuture]});
+assert.equal(wave[0].onsetOutcome,'MOVE_FIRST',
+ 'real favorable wave reached frozen ATR threshold after the alert');
+assert.ok(wave[0].onsetDelaySeconds>60);
+assert.equal(score(wave,'GOLD').onsetFirst,1);
+const oppositeFirst=step({prior:observed,now:start+17*60000,
+ asset:'GOLD',source:'same-provider',price:99.7,signal:cleanSignal,
+ bars:[...auditBars,c(16,100.2,99.6)]});
+assert.equal(oppositeFirst[0].onsetOutcome,'ADVERSE_FIRST');
+const bothSameMinute=step({prior:observed,now:start+17*60000,
+ asset:'GOLD',source:'same-provider',price:100,signal:cleanSignal,
+ bars:[...auditBars,c(16,100.7,99.6)]});
+assert.equal(bothSameMinute[0].onsetOutcome,'AMBIGUOUS',
+ 'both M1 wick barriers cannot establish which direction moved first');
+const flatThree=[16,17,18].map(i=>c(i,100.2,99.8));
+const flat=step({prior:observed,now:start+19*60000+1000,
+ asset:'GOLD',source:'same-provider',price:100,signal:cleanSignal,
+ bars:[...auditBars,...flatThree]});
+assert.equal(flat[0].onsetOutcome,'NO_MOVE',
+ 'do not reward a forecast unless a later threshold was reached');
+const missing=step({prior:observed,now:start+19*60000+1000,
+ asset:'GOLD',source:'same-provider',price:100,signal:cleanSignal,
+ bars:[...auditBars,flatThree[0],flatThree[2]]});
+assert.equal(missing[0].onsetOutcome,'UNKNOWN',
+ 'data gap is not automatically a loss or a win');
+const oldEarly={...observed[0]};
+delete oldEarly.onsetOutcome;
+delete oldEarly.onsetDistance;
+const legacyAudit=step({prior:[oldEarly],now:start+19*60000+1000,
+ asset:'GOLD',source:'same-provider',price:100,signal:cleanSignal,
+ bars:[...auditBars,...flatThree]});
+assert.equal(legacyAudit[0].onsetOutcome,undefined,
+ 'historical alerts cannot receive a threshold discovered after issuance');
+const anotherVenue=step({prior:observed,now:start+19*60000+1000,
+ asset:'GOLD',source:'another-venue',price:100,signal:cleanSignal,
+ bars:[...auditBars,...flatThree]});
+assert.equal(anotherVenue[0].onsetOutcome,'PENDING','cross-venue M1 cannot settle a gold alert');
+assert.equal(safe(wave)[0].onsetOutcome,'MOVE_FIRST');
 console.log('PASS: forward-only movement scorecard, no goal fabrication, time-to-detection and unambiguous future M1 scoring');
