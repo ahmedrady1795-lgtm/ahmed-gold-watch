@@ -1,5 +1,6 @@
 import type {LiveOpportunity} from '../lib/sniper-live-opportunity';
 import {outcomeLabel} from './SniperOpportunityHistory';
+import {movementObservationLabel} from '../lib/sniper-movement-proof';
 import type {MovementProof} from '../lib/sniper-movement-proof';
 
 type Props={signal:LiveOpportunity;records:MovementProof[];evidenceScore?:number|null;
@@ -97,9 +98,10 @@ export default function SniperOpportunityMarkers(p:Props){
      const buy=r.side==='BUY',ink=buy?'#5ef2b7':'#ff839c';
      const followsWave=r.setupType==='CONTINUATION';
      const caption=m5Captioned.includes(r);
-     const labelText=buy?'رصد شراء':'رصد بيع';
-     // A closed M1 reversal is an observation, NEVER an entry.
-     const labelWidth=77;
+     // Closed-M1 observations may be follow-through or a short countertrend
+     // rebound; only a prearmed break may say BUY/SELL.
+     const labelText=movementObservationLabel(r);
+     const labelWidth=92;
      const placement=caption?placeLabel(x,y,labelWidth,20,buy?30:-30):null;
      const labelX=placement?.x??x,labelY=placement?.y??y;
      return <g key={r.id} data-kind={r.kind}
@@ -117,8 +119,7 @@ export default function SniperOpportunityMarkers(p:Props){
            fontSize="9.1" fontWeight="800" fill={ink}>
            {labelText}</text>
        </>}
-       <title>{(followsWave?'رصد اتجاه وليس إشارة دخول '+(buy?'صاعد':'هابط'):
-         (buy?'شراء':'بيع'))+' · '+(r.kind==='OPEN'?'بداية M5':r.kind==='FOLLOW'?'أثناء M5':'نهاية M5')+
+       <title>{labelText+' · '+(r.kind==='OPEN'?'بداية M5':r.kind==='FOLLOW'?'أثناء M5':'نهاية M5')+
          ' · '+r.priceAt.toFixed(2)+' · '+(r.m5Outcome==='CORRECT'?'إغلاق M5 وافق الاتجاه فقط':
          r.m5Outcome==='WRONG'?'إغلاق M5 خالف الاتجاه فقط':'تقييم إغلاق M5 قيد القياس')+
          ' · توقع مرصود وقتها، ليس صفقة منفذة'}</title>
@@ -161,9 +162,10 @@ export default function SniperOpportunityMarkers(p:Props){
        r.quality==='OBSERVATION'?'#9bafc6':buy?'#57efb8':'#ff8095';
      const action=(buy?'شراء':'بيع');
      const label=r.quality==='SETUP'?action:
-       r.quality==='COUNTERTREND'?'رصد '+action+' ⚠':'رصد '+action;
-     const width=r.quality==='COUNTERTREND'?91:
-       r.quality==='SETUP'?67:84;
+       r.quality==='COUNTERTREND'?'انعكاس غير مؤكد':
+       (buy?'اختراق صاعد':'اختراق هابط');
+     const width=r.quality==='COUNTERTREND'?108:
+       r.quality==='SETUP'?67:88;
      const placement=placeLabel(x,y,width,20,buy?29:-29);
      const labelX=placement?.x??x,labelY=placement?.y??y;
      return <g key={r.id} data-side={r.side} data-issued-at={r.issuedAt}>
@@ -191,7 +193,8 @@ export default function SniperOpportunityMarkers(p:Props){
      const y=p.py(s.trigger!);
      const width=126,x=Math.min(p.split+12,p.end-width-4),labelY=fit(y);
      const label=confirmed?(s.quality==='SETUP'?(buy?'شراء':'بيع'):
-       s.quality==='COUNTERTREND'?'رصد عكسي':(buy?'رصد شراء':'رصد بيع')):
+       s.quality==='COUNTERTREND'?'انعكاس غير مؤكد':
+       (buy?'اختراق صاعد':'اختراق هابط')):
        s.phase==='TESTING'?'اختبار '+(buy?'شراء':'بيع'):
        'ترقب '+(buy?'شراء':'بيع');
      return <g data-phase={s.phase} aria-label={label+' عند '+s.trigger!.toFixed(2)}>
