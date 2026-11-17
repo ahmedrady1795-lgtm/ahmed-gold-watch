@@ -128,6 +128,46 @@ const cancelledOld={...reclaimed,phase:'CANCELLED',sourceAt:now-5*60000,
  armedAt:now-5*60000,lastAt:now-3000,expiresAt:now+2*60000};
 assert.equal(step({...base,bars:recoveryBars,price:99.6,prior:cancelledOld})?.phase,
  'ARMED','feed recovery can rearm after two NEW closed M1 bars');
+// Closed-M1 micro compression: original older range must exist BEFORE
+// the new three-minute higher-low sequence. A watch is armed before breakout.
+const microBars=bars.map((b,i)=>({...b,open:100,close:100,
+ high:101.2,low:98.8}));
+microBars[15]={...microBars[15],open:99.8,close:99.94,high:100.16,low:99.7};
+microBars[16]={...microBars[16],open:99.94,close:100.1,high:100.22,low:99.83};
+microBars[17]={...microBars[17],open:100.1,close:100.3,high:100.4,low:100.0};
+const micro=step({...base,bars:microBars,price:100.35,
+ m1Side:'BUY',m15Side:'BUY'});
+assert.equal(micro?.setupKind,'MICRO','detect actual pre-break micro higher lows');
+assert.equal(micro?.phase,'ARMED');
+assert.equal(micro?.side,'BUY');
+assert.ok(micro.trigger>100.35,'micro trigger must still be unbroken');
+assert.ok(micro.score>=4&&micro.score<=10,'score is a bounded checklist');
+assert.match(micro.reason,/أدلة.*ليست نسبة نجاح/,
+ 'the checklist must never be sold as a success probability');
+assert.equal(micro.expiresAt-now,180000,'early watches expire in three M1 candles');
+assert.equal(step({...base,bars:microBars,price:micro.trigger+.01,
+ m1Side:'BUY',m15Side:'BUY'}),null,
+ 'no hindsight PREPARE for a breakout that already occurred');
+assert.equal(step({...base,bars:microBars,price:100.35,
+ m1Side:'BUY',m15Side:'SELL'}),null,
+ 'no micro SELL/BUY contra a clearly opposed M15 without a sweep');
+
+// A near-level pullback gives a real retest path but NEVER turns the first
+// crossed tick into a confirmed fill or backdates the later activation.
+const firstTest=step({...base,prior:armed,now:now+6000,
+ price:100.32,quoteAt:now+6000});
+const retest=step({...base,prior:firstTest,now:now+7500,
+ price:100.295,quoteAt:now+7500});
+assert.equal(retest.phase,'ARMED');
+assert.equal(retest.retestAt,now+7500);
+const retryCross=step({...base,prior:retest,now:now+9000,
+ price:100.34,quoteAt:now+9000});
+assert.equal(signal(retryCross).phase,'TESTING','retest is not entry');
+const retryConfirm=step({...base,prior:retryCross,now:now+12000,
+ price:100.36,quoteAt:now+12000});
+assert.equal(retryConfirm.phase,'TRIGGERED');
+assert.match(retryConfirm.reason,/إعادة اختبار/);
+assert.equal(retryConfirm.triggeredAt,now+12000);
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(panel,/hasDirectionalWatch\?\(watchIsReversal\?/,
  'on-chart status distinguishes reversal and continuation waves');
@@ -142,6 +182,12 @@ assert.doesNotMatch(panel,/className=\{\x27sniper-m5-early-signal/,
 const markerSvg=fs.readFileSync('components/SniperOpportunityMarkers.tsx','utf8');
 assert.match(markerSvg,/رصد بيع/,'bearish wave has visible sell observation on chart');
 assert.match(markerSvg,/رصد شراء/,'bullish wave has visible buy observation on chart');
+assert.match(panel,/evidenceScore=\{trackedSetup\?\.score\?\?null\}/,
+ 'frozen evidence checklist reaches the chart, not a separate banner');
+assert.match(markerSvg,/اختبار /,
+ 'the chart distinguishes a testing tick from BUY or SELL activation');
+assert.match(markerSvg,/ترقب /,
+ 'the chart shows the pre-break price marker before live trigger');
 assert.match(panel,/showCrossTest\?'اختبار اختراق /,
  'first quote crossing remains explicitly testing');
 assert.match(panel,/showRejected\?'فشل اختراق /,
