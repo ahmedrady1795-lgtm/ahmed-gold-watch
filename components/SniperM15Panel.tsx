@@ -506,14 +506,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      prior,now,asset,source:String(x?.candleSource||''),
      price,signal:earlyOpportunity,bars:m.candles,
      m5Bars:x?.chartHigherFrames?.m5,
-     frameTrend:entryTrend,
+     frameTrend:entryTrend,setupState:trackedSetup,
      // Freeze FIRST observed closed-M1 directional wave, including continuation.
      // Movement journal deduplicates same-side waves; these are NOT trade entries.
      candleLean:hasDirectionalWatch?candleLean:undefined
    }));
  },[movementProofLoaded,now,asset,x?.candleSource,price,
    earlyOpportunity,candleLean,hasDirectionalWatch,m.candles,
-   x?.chartHigherFrames?.m5,entryTrend]);
+   x?.chartHigherFrames?.m5,entryTrend,trackedSetup]);
  const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
    [movementRecords,asset]);
  const showZoneObservation=trackedSetup?.phase==='OBSERVING';
