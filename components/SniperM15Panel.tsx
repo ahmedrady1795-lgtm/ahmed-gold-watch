@@ -44,7 +44,7 @@ import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {detectPreMovePressure} from '../lib/pre-move-pressure';
 import {assessSniperLiveOpportunity} from '../lib/sniper-live-opportunity';
 import {advanceEarlySetup,earlySetupOpportunity,type EarlySetup} from '../lib/sniper-early-setup';
-import {assessM5CandleLean} from '../lib/sniper-m5-candle-lean';
+import {assessM5CandleLean,observeClosedM5Trend} from '../lib/sniper-m5-candle-lean';
 import SniperOpportunityMarkers from './SniperOpportunityMarkers';
 import SniperOpportunityHistory from './SniperOpportunityHistory';
 import {advanceMovementProof,movementProofScore,safeMovementProof,type MovementProof} from '../lib/sniper-movement-proof';
@@ -482,6 +482,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  }),[now,price,marketOpen,m.historyFresh,m.sniper.view.priceFresh,
    providerTransition,m.candles,x?.chartHigherFrames?.m5,flowProfile,
    nextM1.ready,nextM1.side,entryTrend]);
+ // A non-entry M5 context remains visible when M1 closes are delayed. Never
+ // upgrade this slower reading to an early BUY/SELL or journal it as a signal.
+ const closedM5Context=useMemo(()=>observeClosedM5Trend({
+   now,price,sourceReady:marketOpen&&m.sniper.view.priceFresh&&
+     !providerTransition,m5:x?.chartHigherFrames?.m5
+ }),[now,price,marketOpen,m.sniper.view.priceFresh,
+   providerTransition,x?.chartHigherFrames?.m5]);
  // Arm in this session before crossing. Historical momentum markers are
  // retained for audit but never reused as the current early opportunity.
  const [earlyState,setEarlyState]=useState<EarlySetup|null>(null);
@@ -505,6 +512,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // setup was armed; never promote it into an execution-worthy BUY/SELL.
  const hasDirectionalWatch=earlyOpportunity.side==='WAIT'&&
    candleLean.side!=='WAIT'&&candleLean.phase!=='WAIT';
+ const hasM5Fallback=earlyOpportunity.side==='WAIT'&&!hasDirectionalWatch&&
+   closedM5Context.ready&&closedM5Context.side!=='WAIT';
  const watchIsReversal=hasDirectionalWatch&&candleLean.reason.includes('انعكاس محتمل');
  const watchAgainstM15=hasDirectionalWatch&&!watchIsReversal&&
    entryTrend!=='WAIT'&&candleLean.side!==entryTrend;
@@ -559,7 +568,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // in an optional closed drawer, not in multi-line blocks above the candles.
  const drawingSide=showZoneObservation?'WAIT':
    showPreparation||showCrossTest||showRejected||hasEarlySignal?
-   trackedSetup?.side??'WAIT':hasDirectionalWatch?candleLean.side:'WAIT';
+   trackedSetup?.side??'WAIT':hasDirectionalWatch?candleLean.side:
+   hasM5Fallback?closedM5Context.side:'WAIT';
  const drawingLabel=showZoneObservation?
    'مراقبة '+(trackedSetup?.side==='BUY'?'دعم':'مقاومة'):
    showPreparation?'ترقب '+(drawingSide==='BUY'?'شراء':'بيع'):
@@ -570,8 +580,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      'احتمال انعكاس '+(drawingSide==='BUY'?'صاعد':'هابط'):
      watchAgainstM15?'ارتداد '+(drawingSide==='BUY'?'صاعد':'هابط'):
      'متابعة '+(drawingSide==='BUY'?'صعود':'هبوط')):
-   marketOpen&&m.sniper.view.priceFresh&&m.historyFresh&&!providerTransition?
-     'مراقبة نطاق M5':'تحديث السوق M5';
+   hasM5Fallback?'متابعة '+(drawingSide==='BUY'?'صعود':'هبوط')+' M5':
+   marketOpen&&m.sniper.view.priceFresh&&!providerTransition?
+     closedM5Context.ready?'مراقبة نطاق M5':'M1 / M5 غير مكتمل':
+   'تحديث مصدر السوق';
  // Qualitative evidence checklist, not a predicted success rate.
  const drawingBadge=(showZoneObservation||showPreparation||showCrossTest)&&trackedSetup?.score!=null?
    drawingLabel+' · '+trackedSetup.score+'/10':drawingLabel;
@@ -582,6 +594,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    hasDirectionalWatch?(watchIsReversal?'احتمال انعكاس غير مؤكد':
      watchAgainstM15?'ارتداد عكس سياق M15؛ ليس إشارة دخول':
      'اتجاه مرصود بعد بدء الحركة؛ ليس إنذارًا مبكرًا أو أمر دخول'):
+   hasM5Fallback?closedM5Context.reason:
+   marketOpen&&m.sniper.view.priceFresh&&!providerTransition?
+     candleLean.reason+' · '+closedM5Context.reason:
    earlyOpportunity.reason;
  const drawingColor=showZoneObservation?'#ebd08d':
    drawingSide==='BUY'?'#64e8b2':
