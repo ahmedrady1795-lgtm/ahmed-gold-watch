@@ -130,19 +130,22 @@ assert.equal(step({...base,bars:recoveryBars,price:99.6,prior:cancelledOld})?.ph
  'ARMED','feed recovery can rearm after two NEW closed M1 bars');
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(panel,/hasDirectionalWatch\?\(watchIsReversal\?/,
- 'M5 direction display must distinguish reversal from late momentum following');
-assert.match(panel,/متابعة /,'momentum following cannot be advertised as early BUY or SELL');
+ 'on-chart status distinguishes reversal and continuation waves');
 assert.match(panel,/اتجاه مرصود بعد بدء الحركة/,
- 'an already-moving wave is labeled explicitly as non-predictive');
+ 'on-chart tooltip labels continuation as observed after movement starts');
 assert.match(panel,/candleLean:hasDirectionalWatch\?candleLean:undefined/,
- 'live closed-M1 directional waves, not only reversal wicks, enter the journal');
+ 'live closed-M1 waves are journaled, not only reversal wicks');
+assert.match(panel,/className="sniper-m5-chart-status"/,
+ 'default compact status is anchored inside actual M5 SVG');
+assert.doesNotMatch(panel,/className=\{\x27sniper-m5-early-signal/,
+ 'giant multi-line early signal banner must not appear above chart');
 const markerSvg=fs.readFileSync('components/SniperOpportunityMarkers.tsx','utf8');
 assert.match(markerSvg,/رصد بيع/,'bearish wave has visible sell observation on chart');
 assert.match(markerSvg,/رصد شراء/,'bullish wave has visible buy observation on chart');
 assert.match(panel,/showCrossTest\?'اختبار اختراق /,
- 'first quote crossing must remain visually testing, not BUY/SELL');
+ 'first quote crossing remains explicitly testing');
 assert.match(panel,/showRejected\?'فشل اختراق /,
- 'fast failed breakout must be visible without erasing issued records');
+ 'rejected breakout is clearly shown inside chart');
 console.log('PASS early setup: frozen prearm, 2.5s distinct quote confirmation, false-break cancellation, audit integrity and no chase');
 // New marker timestamps are first observations, never level-touch backfills.
 const proofMod={exports:{}};
