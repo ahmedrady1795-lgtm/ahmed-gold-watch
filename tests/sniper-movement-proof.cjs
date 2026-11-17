@@ -17,6 +17,44 @@ assert.equal(issued.length,1);
 assert.equal(issued[0].status,'PENDING');
 assert.equal(issued[0].kind,'EARLY');
 assert.equal(issued[0].target,101);
+assert.equal(issued[0].setupLifecycle,'PENDING',
+ 'new genuine alerts are lifecycle-audited only from their live issue time');
+const terminalState={side:'BUY',phase:'CANCELLED',sourceAt:pre.sourceAt,
+ trigger:pre.trigger,invalidation:pre.invalidation,lastAt:start+71000,
+ lastPrice:98.8,reason:'كسر مستوى الإبطال'};
+const invalidated=step({prior:issued,now:start+72000,asset:'GOLD',
+ source:'same-provider',price:98.8,signal:{phase:'WATCH',side:'WAIT',
+ sourceAt:null,trigger:null,invalidation:null,targets:[]},
+ setupState:terminalState,bars:[]});
+assert.equal(invalidated[0].setupLifecycle,'INVALIDATED',
+ 'a historical BUY watch must show a later observed invalidation');
+assert.equal(invalidated[0].issuedAt,issued[0].issuedAt);
+assert.equal(invalidated[0].priceAt,issued[0].priceAt);
+assert.equal(invalidated[0].setupResolvedAt,terminalState.lastAt);
+const activated=step({prior:issued,now:start+72000,asset:'GOLD',
+ source:'same-provider',price:100.5,signal:{phase:'WATCH',side:'WAIT',
+ sourceAt:null,trigger:null,invalidation:null,targets:[]},
+ setupState:{...terminalState,phase:'TRIGGERED',lastPrice:100.5},bars:[]});
+assert.equal(activated[0].setupLifecycle,'ACTIVATED');
+const notSamePlan=step({prior:issued,now:start+72000,asset:'GOLD',
+ source:'same-provider',price:98.8,signal:{phase:'WATCH',side:'WAIT',
+ sourceAt:null,trigger:null,invalidation:null,targets:[]},
+ setupState:{...terminalState,sourceAt:pre.sourceAt+60000},bars:[]});
+assert.equal(notSamePlan[0].setupLifecycle,'PENDING',
+ 'another setup cannot invalidate a differently timestamped previous alert');
+const oldSetup={...issued[0]};delete oldSetup.setupLifecycle;
+const legacySetup=step({prior:[oldSetup],now:start+72000,asset:'GOLD',
+ source:'same-provider',price:98.8,signal:{phase:'WATCH',side:'WAIT',
+ sourceAt:null,trigger:null,invalidation:null,targets:[]},
+ setupState:terminalState,bars:[]});
+assert.equal(legacySetup[0].setupLifecycle,undefined,
+ 'old events cannot be retroactively marked invalid without a real live lifecycle');
+assert.equal(safe(invalidated)[0].setupLifecycle,'INVALIDATED');
+const svg=fs.readFileSync('components/SniperOpportunityMarkers.tsx','utf8');
+assert.match(svg,/data-lifecycle=/,
+ 'the chart should show historical early alert lifecycle status without moving price');
+assert.match(svg,/ended\?' ×':''/,
+ 'invalidated chart watches are visually distinct from pending BUY watches');
 const dup=step({prior:issued,now:start+70000,asset:'GOLD',source:'same-provider',
  price:100,signal:pre,bars:[]});
 assert.equal(dup,issued,'no duplicate on every client quote');
