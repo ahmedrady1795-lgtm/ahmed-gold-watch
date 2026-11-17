@@ -2,18 +2,20 @@ import type {LiveOpportunity} from './sniper-live-opportunity';
 import type {M5CandleLean} from './sniper-m5-candle-lean';
 import type {FlowProfileDecision} from './flow-profile-decision';
 import type {LiquidityMagnetView} from './sniper-liquidity-magnets';
+import type {WatchPriceMap} from './sniper-m15-watch-prices';
 type Bar={time:number;open:number;high:number;low:number;close:number};
 export type EarlySetup={
  scope:string;side:'BUY'|'SELL';phase:'ARMED'|'TRIGGERED'|'CANCELLED'|'EXPIRED';
  sourceAt:number;armedAt:number;expiresAt:number;trigger:number;invalidation:number;
  crossedAt?:number|null;crossedQuoteAt?:number|null;
  atr:number;priceAt:number;lastPrice:number;lastAt:number;triggeredAt:number|null;
- targets:number[];reason:string;score?:number;setupKind?:'PRESSURE'|'SWEEP'|'COMPRESSION'|'RECLAIM'|'MICRO'|'COIL';retestAt?:number|null;
+ targets:number[];reason:string;score?:number;setupKind?:'PRESSURE'|'SWEEP'|'COMPRESSION'|'RECLAIM'|'MICRO'|'COIL'|'ZONE';retestAt?:number|null;
 };
 /** Session-only arming: reloading cannot invent an earlier observation. */
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
  price:number|null;quoteAt?:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
  flow?:FlowProfileDecision|null;liquidity?:LiquidityMagnetView|null;
+ watch?:WatchPriceMap|null;
  m1Side?:'BUY'|'SELL'|'WAIT';m15Side?:'BUY'|'SELL'|'WAIT'}):EarlySetup|null{
  const {now,price}=input;
  let prior=input.prior?.scope===input.scope?input.prior:null;
@@ -241,6 +243,47 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      trigger=side==='BUY'?top+atr*.045:bottom-atr*.045;
      invalidation=side==='BUY'?bottom-atr*.1:top+atr*.1;
      reason='انضغاط M1 قبل بداية موجة محتملة · مستوى كسر مراقب';
+   }
+ }
+ // PRE-ZONE WATCH: a pre-existing M15/H1 price low/high is known BEFORE
+ // price touches it. This arms a nearby break level while the M1 move is
+ // approaching the zone, never after the turn or by repurposing a LIVE wick.
+ // These are historical swing references, NOT resting exchange orders.
+ if(!side&&input.watch?.ready&&input.watch.asOf!=null&&
+   input.watch.asOf<=sourceAt&&now-input.watch.asOf<=3600000){
+   const map=input.watch;
+   const levels=[
+     ...map.lower.map(l=>({...l,plan:'BUY' as const})),
+     ...map.upper.map(l=>({...l,plan:'SELL' as const}))
+   ].filter(l=>l.price>0&&Number.isFinite(l.price)&&
+     (l.source==='M15'||l.source==='H1')&&
+     (l.kind==='SWING'||l.kind==='RANGE'))
+    .sort((a,b)=>Math.abs(a.price-price)-Math.abs(b.price-price));
+   for(const l of levels){
+     const buy=l.plan==='BUY';
+     const away=buy?price-l.price:l.price-price;
+     // Only APPROACH from the safe side of the level, not a bounce
+     // which has already passed or a distant trend continuation.
+     const movingToward=buy?
+       last.close<bars.at(-3)!.close-atr*.08:
+       last.close>bars.at(-3)!.close+atr*.08;
+     const atZone=away>=atr*.07&&away<=atr*.8&&
+       (buy?last.low<=l.price+atr*.65:last.high>=l.price-atr*.65);
+     const entryHigh=Math.max(...bars.slice(-2).map(b=>b.high));
+     const entryLow=Math.min(...bars.slice(-2).map(b=>b.low));
+     const localTrigger=buy?entryHigh+atr*.035:entryLow-atr*.035;
+     const invalid=buy?l.price-atr*.42:l.price+atr*.42;
+     const ahead=buy?localTrigger>price+atr*.045:
+       localTrigger<price-atr*.045;
+     const distance=Math.abs(localTrigger-price);
+     if(!atZone||!movingToward||!ahead||distance>atr*.75)continue;
+     // A recent confirmed M15 sweep against the proposed reversal is
+     // contradictory evidence; an unavailable sweep is NOT agreement.
+     if(sweptSide!=='WAIT'&&sweptSide!==l.plan)continue;
+     side=l.plan;setupKind='ZONE';trigger=localTrigger;invalidation=invalid;
+     reason='ترقب انعكاس قرب '+(buy?'دعم':'مقاومة')+' '+l.source+
+       ' مثبت سابقًا؛ قبل اختبار كسر M1';
+     break;
    }
  }
  if(!side||![trigger,invalidation].every(Number.isFinite))return prior;
