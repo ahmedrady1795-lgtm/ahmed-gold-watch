@@ -20,3 +20,24 @@ assert.ok(history.includes('ترقب قبل الكسر'),'pre-break warning appe
 assert.ok(history.includes('الإغلاق خالف الاتجاه'),'direction outcome remains visible and explicitly identified');
 assert.ok(history.includes('لا توجد خطة هدف'),'no target is invented for old records');
 console.log('PASS: honest directional labels and retained pre-break audit');
+const render=(extra)=>renderToStaticMarkup(React.createElement('svg',null,
+ React.createElement(Markers,{...props,...extra})));
+const current={phase:'BREAK_CONFIRMED',side:'SELL',trigger:119,quality:'SETUP',reason:'test'};
+const live=render({records:[records[19]],signal:current});
+assert.ok(live.includes('data-phase="BREAK_CONFIRMED"'),
+ 'nearby historical M5 observation cannot hide the current confirmed setup');
+const earlyRows=records.map(r=>({...r,kind:'EARLY',setupLifecycle:'PENDING'}));
+const earlyHtml=render({records:earlyRows});
+assert.equal((earlyHtml.match(/data-kind="EARLY"/g)||[]).length,20,
+ 'caption limits must not remove earlier pre-break observation points');
+const crowded=[...records,{...records[19],id:'qualified',kind:'BREAK',
+ side:'SELL',quality:'SETUP',status:'PENDING'}];
+const qualified=render({records:crowded});
+assert.match(qualified,/>بيع<\/text>/,
+ 'qualified entry reserves a caption before nearby observation labels');
+const nearbyBreak={...records[19],id:'observed-break',kind:'BREAK',
+ side:'SELL',quality:'OBSERVATION',status:'PENDING'};
+const nearby=render({records:[records[19],nearbyBreak]});
+assert.equal((nearby.match(/<circle /g)||[]).length,2,
+ 'an omitted nearby caption must retain the original breakout dot');
+console.log('PASS: current setup visibility, qualified caption priority, all early/break points retained');

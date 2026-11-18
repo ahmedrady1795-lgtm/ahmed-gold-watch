@@ -348,7 +348,7 @@ assert.match(markerSvg,/waveIds\.add\(record\.id\)/,
  'late observations are grouped by actual directional wave, not treated as multiple entries');
 assert.match(markerSvg,/m5Issued\.filter\(r=>waveIds\.has\(r\.id\)\)\.slice\(0,4\)/,
  'show only four genuine M5 wave-start captions while keeping every historical dot');
-assert.match(markerSvg,/\{earlyShown\.map\(\(r,i\)=>\{/,
+assert.match(markerSvg,/\{early\.map\(\(r,i\)=>\{/,
  'genuine pre-break markers must never be hidden behind late M5 observations');
 assert.doesNotMatch(markerSvg,/earlyShown\.filter\(r=>!nearM5\(r\)\)/,
  'close-by late M5 dots may not erase a real prior alert');

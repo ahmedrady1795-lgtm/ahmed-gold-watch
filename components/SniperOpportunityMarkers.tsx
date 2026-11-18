@@ -96,6 +96,13 @@ export default function SniperOpportunityMarkers(p:Props){
    UNKNOWN:'بيانات غير كافية للحكم'
  };
  const earlyLabels=new Map<string,{x:number;y:number}>();
+ // Reserve qualified entries before observational captions.
+ const breakLabels=new Map<string,{x:number;y:number}>();
+ for(const r of shown.filter(r=>r.quality==='SETUP')){
+   const chosen=placeLabel(p.timeX(r.issuedAt),p.py(r.priceAt),67,20,
+     r.side==='BUY'?29:-29);
+   if(chosen)breakLabels.set(r.id,chosen);
+ }
  for(const r of earlyShown.slice(0,3)){
    const px=p.timeX(r.issuedAt),py=p.py(r.priceAt);
    const chosen=placeLabel(px,py,78,20,r.side==='BUY'?27:-27);
@@ -111,7 +118,8 @@ export default function SniperOpportunityMarkers(p:Props){
    {m5Issued.map((r,i)=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt);
      const buy=r.side==='BUY',ink=buy?'#5ef2b7':'#ff839c';
-     const followsWave=r.setupType==='CONTINUATION';
+     const observedAt=new Date(r.issuedAt).toLocaleTimeString('en-GB',
+       {timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'});
      const caption=m5Captioned.includes(r);
      // Closed-M1 observations may be follow-through or a short countertrend
      // rebound; only a prearmed break may say BUY/SELL.
@@ -137,10 +145,10 @@ export default function SniperOpportunityMarkers(p:Props){
        <title>{labelText+' · '+(r.kind==='OPEN'?'بداية M5':r.kind==='FOLLOW'?'أثناء M5':'نهاية M5')+
          ' · '+r.priceAt.toFixed(2)+' · '+(r.m5Outcome==='CORRECT'?'إغلاق M5 وافق الاتجاه فقط':
          r.m5Outcome==='WRONG'?'إغلاق M5 خالف الاتجاه فقط':'تقييم إغلاق M5 قيد القياس')+
-         ' · توقع مرصود وقتها، ليس صفقة منفذة'}</title>
+         ' · وقت الرصد '+observedAt+' بتوقيت دبي · توقع مرصود وقتها، ليس صفقة منفذة'}</title>
      </g>;
    })}
-   {earlyShown.map((r,i)=>{
+   {early.map((r,i)=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt),buy=r.side==='BUY';
      const ended=r.setupLifecycle==='INVALIDATED'||
        r.setupLifecycle==='CANCELLED'||r.setupLifecycle==='EXPIRED';
@@ -181,7 +189,7 @@ export default function SniperOpportunityMarkers(p:Props){
        fill={r.side==='BUY'?'#57efb8':'#ff8095'}/>
      <title>{(r.side==='BUY'?'شراء':'بيع')+' · '+r.priceAt.toFixed(2)+' · '+outcomeLabel[r.status]}</title>
    </g>)}
-   {shown.filter(r=>r.quality==='SETUP'||!nearM5(r)).map(r=>{
+   {shown.map(r=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt),buy=r.side==='BUY';
      const ink=r.quality==null?'#96a3b5':
        r.quality==='COUNTERTREND'?'#dfbb80':
@@ -192,7 +200,8 @@ export default function SniperOpportunityMarkers(p:Props){
        (buy?'اختراق صاعد':'اختراق هابط');
      const width=r.quality==='COUNTERTREND'?108:
        r.quality==='SETUP'?67:88;
-     const placement=placeLabel(x,y,width,20,buy?29:-29);
+     const placement=r.quality==='SETUP'?breakLabels.get(r.id):
+       nearM5(r)?null:placeLabel(x,y,width,20,buy?29:-29);
      const labelX=placement?.x??x,labelY=placement?.y??y;
      return <g key={r.id} data-side={r.side} data-issued-at={r.issuedAt}>
        <title>{(buy?'شراء':'بيع')+' · رصد سابق عند '+r.priceAt.toFixed(2)+
@@ -212,7 +221,8 @@ export default function SniperOpportunityMarkers(p:Props){
        </>}
      </g>;
    })}
-   {active&&!m5Captioned.some(r=>Math.abs(p.py(r.priceAt)-p.py(s.trigger??0))<42)&&(()=>{
+   {/* A historical observation must never hide the current setup. */}
+   {active&&(()=>{
      const buy=s.side==='BUY',confirmed=s.phase==='BREAK_CONFIRMED';
      const ink=s.quality==='COUNTERTREND'?'#dfbb80':
        s.quality==='OBSERVATION'?'#9bafc6':buy?'#57efb8':'#ff8095';
