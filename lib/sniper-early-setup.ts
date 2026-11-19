@@ -12,6 +12,7 @@ export type EarlySetup={
  atr:number;priceAt:number;lastPrice:number;lastAt:number;triggeredAt:number|null;
  targets:number[];reason:string;score?:number;setupKind?:'PRESSURE'|'SWEEP'|'COMPRESSION'|'RECLAIM'|'MICRO'|'COIL'|'ZONE'|'PULLBACK'|'PROFILE'|'STRUCTURE';retestAt?:number|null;
  trendSide?:'BUY'|'SELL'|'WAIT';flowAligned?:boolean;localStructureAligned?:boolean;contextNote?:string;
+ selectionMargin?:number|null;selectionAgreement?:boolean;selectionConflict?:boolean;
 };
 /** A confirmed impulse is a description of CLOSED M1 momentum, not a
  * predictive SELL/BUY signal. We use it only to veto stale countertrend
@@ -567,11 +568,21 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  const chosen=ranked[0]?.c;
  if(!chosen)return prior;
  ({side,setupKind,trigger,invalidation,reason}=chosen);
- if(ranked.length>1&&ranked[1].c.side!==side){
-   const margin=ranked[0].rank-ranked[1].rank;
-   reason+=' · نماذج متعارضة؛ الأفضل حاليًا بفارق أدلة '+
-     margin.toFixed(1)+' (ليس احتمال نجاح)';
- }
+ // Prospective consensus is counted by DISTINCT detector types, not the
+ // number of correlated labels produced by the same few M1 candles.
+ // The closest opposite direction, not the arbitrary second row, measures
+ // true ambiguity in the winner. All figures are quality evidence, NOT P(win).
+ const contrary=ranked.find(r=>r.c.side!==side);
+ const selectionMargin=contrary?ranked[0].rank-contrary.rank:null;
+ const selectionAgreement=ranked.some(r=>r!==ranked[0]&&
+   r.c.side===side&&r.c.setupKind!==chosen.setupKind);
+ const selectionConflict=selectionMargin!=null&&selectionMargin<.8;
+ if(selectionAgreement)
+   reason+=' · نموذجان مختلفان يؤيدان الاتجاه (ليس تأكيدًا مستقلًا من بورصة)';
+ if(contrary)
+   reason+=' · نموذج عكسي مرصود بفارق '+selectionMargin!.toFixed(1)+
+     (selectionConflict?'؛ الإعداد متنازع عليه':'؛ الترجيح أوضح')+
+     ' (ليس احتمال نجاح)';
  if(!side||![trigger,invalidation].every(Number.isFinite))return prior;
  // A recent directional displacement is a veto on fresh countertrend arming.
  // Reversal monitoring at a historical zone stays observable; a BUY/SELL
@@ -626,7 +637,13 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  const newsAdjustment=contextFresh&&ctx!.newsSide!=='WAIT'?(ctx!.newsSide===side ? .5 : -.5):0;
  const stressed=contextFresh&&(ctx!.stress||ctx!.newsRisk>=75);
  const regimeAdjustment=stressed?(setupKind==='PULLBACK'||setupKind==='PROFILE' ? .5 : -.5):0;
- const evidenceScore=Math.max(0,Math.min(10,priceEvidenceScore+newsAdjustment+regimeAdjustment));
+ // A weak near-tie must not masquerade as a high-confidence signal.
+ // Keep watching/arming rather than blanket-blocking price analysis.
+ const agreementAdjustment=selectionAgreement?.5:0;
+ const conflictAdjustment=selectionConflict?-1.5:0;
+ const evidenceScore=Math.max(0,Math.min(10,
+   priceEvidenceScore+newsAdjustment+regimeAdjustment+
+   agreementAdjustment+conflictAdjustment));
  const localStructureAligned=input.m1Side===side&&priceEvidenceScore>=6&&
    ['PULLBACK','RECLAIM','COMPRESSION','PROFILE','STRUCTURE'].includes(setupKind);
  if(contextFresh)reason+=' · '+ctx!.reason;
@@ -660,6 +677,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    crossedAt:null,crossedQuoteAt:null,retestAt:null,score:evidenceScore,setupKind,
    trendSide:input.m15Side??'WAIT',flowAligned:flowSide===side,localStructureAligned,
    contextNote:contextFresh?ctx!.reason:undefined,
+   selectionMargin,selectionAgreement,selectionConflict,
    targets:targets.slice(0,3),reason};
 }
 export function earlySetupOpportunity(state:EarlySetup|null):LiveOpportunity{
@@ -672,7 +690,8 @@ export function earlySetupOpportunity(state:EarlySetup|null):LiveOpportunity{
  const reward=state?.targets.length?direction*(state.targets[0]-state.priceAt):0;
  const qualified=state?.phase==='TRIGGERED'&&!opposed&&
    (context==='ALIGNED'||state.flowAligned===true||state.localStructureAligned===true)&&
-   (state.score??0)>=4&&risk>0&&risk<=state.atr*3&&
+   (state.score??0)>=4&&state.selectionConflict!==true&&
+   risk>0&&risk<=state.atr*3&&
    reward>=risk&&reward<=state.atr*4;
  return {phase:state?.phase==='OBSERVING'?'WATCH':
    state?.phase==='ARMED'?(state.crossedAt!=null?'TESTING':'PREPARE'):
