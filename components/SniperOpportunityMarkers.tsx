@@ -70,7 +70,7 @@ export default function SniperOpportunityMarkers(p:Props){
      waveIds.add(record.id);
    priorWaveRecord=record;
  }
- const recentM5=m5Issued.filter(r=>waveIds.has(r.id)).slice(0,4);
+ const recentM5=m5Issued.filter(r=>waveIds.has(r.id)).slice(0,3);
  // Keep each historical point, but only one caption per nearby cluster.
  const m5Captioned:MovementProof[]=[];
  for(const r of recentM5){
@@ -95,16 +95,31 @@ export default function SniperOpportunityMarkers(p:Props){
    AMBIGUOUS:'لم يُعرف ترتيب لمس المستويين في شمعة واحدة',
    UNKNOWN:'بيانات غير كافية للحكم'
  };
+ const s=p.signal;
+ const active=['PREPARE','TESTING','BREAK_CONFIRMED'].includes(s.phase)&&
+   (s.side==='BUY'||s.side==='SELL')&&s.trigger!=null&&visible(s.trigger);
+ // The current setup owns a small lane beside the live candle. Keep every
+ // older price dot and timestamp, but do not print contradictory-looking
+ // historic M5 captions right on top of today's actionable watch.
+ const nearCurrent=(r:MovementProof)=>active&&
+   Math.abs(p.timeX(r.issuedAt)-p.split)<96&&
+   Math.abs(p.py(r.priceAt)-p.py(s.trigger!))<62;
+ if(active){
+   const y=fit(p.py(s.trigger!));
+   occupied.push({l:p.split-97,r:p.split-3,
+     t:Math.max(p.top,y-32),b:Math.min(p.bottom,y+18)});
+ }
  const earlyLabels=new Map<string,{x:number;y:number}>();
  // Reserve qualified entries before observational captions.
  const breakLabels=new Map<string,{x:number;y:number}>();
- for(const r of shown.filter(r=>r.quality==='SETUP')){
+ for(const r of shown.filter(r=>r.quality==='SETUP'&&!nearCurrent(r))){
    const chosen=placeLabel(p.timeX(r.issuedAt),p.py(r.priceAt),48,16,
      r.side==='BUY'?29:-29);
    if(chosen)breakLabels.set(r.id,chosen);
  }
  for(const r of earlyShown.filter(r=>r.setupLifecycle!=='INVALIDATED'&&
-   r.setupLifecycle!=='CANCELLED'&&r.setupLifecycle!=='EXPIRED').slice(0,2)){
+   r.setupLifecycle!=='CANCELLED'&&r.setupLifecycle!=='EXPIRED'&&
+   !nearCurrent(r)).slice(0,2)){
    const px=p.timeX(r.issuedAt),py=p.py(r.priceAt);
    const chosen=placeLabel(px,py,48,16,r.side==='BUY'?22:-22);
    if(chosen)earlyLabels.set(r.id,chosen);
@@ -112,16 +127,13 @@ export default function SniperOpportunityMarkers(p:Props){
  const nearM5=(r:MovementProof)=>m5Captioned.some(e=>
    Math.abs(p.timeX(e.issuedAt)-p.timeX(r.issuedAt))<60&&
    Math.abs(p.py(e.priceAt)-p.py(r.priceAt))<40);
- const s=p.signal;
- const active=['PREPARE','TESTING','BREAK_CONFIRMED'].includes(s.phase)&&
-   (s.side==='BUY'||s.side==='SELL')&&s.trigger!=null&&visible(s.trigger);
  return <g className="sniper-opportunity-markers" aria-label="أماكن الرصد المبكر والشراء والبيع">
    {m5Issued.map((r,i)=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt);
      const buy=r.side==='BUY',ink=buy?'#5ef2b7':'#ff839c';
      const observedAt=new Date(r.issuedAt).toLocaleTimeString('en-GB',
        {timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'});
-     const caption=m5Captioned.includes(r);
+     const caption=m5Captioned.includes(r)&&!nearCurrent(r);
      // Closed-M1 observations may be follow-through or a short countertrend
      // rebound; only a prearmed break may say BUY/SELL.
      const labelText=movementObservationLabel(r);
@@ -196,7 +208,7 @@ export default function SniperOpportunityMarkers(p:Props){
        (buy?'↗ كسر':'↘ كسر');
      const width=46;
      const placement=r.quality==='SETUP'?breakLabels.get(r.id):
-       nearM5(r)?null:placeLabel(x,y,width,16,buy?22:-22);
+       nearM5(r)||nearCurrent(r)?null:placeLabel(x,y,width,16,buy?22:-22);
      const labelX=placement?.x??x,labelY=placement?.y??y;
      return <g key={r.id} data-side={r.side} data-issued-at={r.issuedAt}>
        <title>{(buy?'شراء':'بيع')+' · رصد سابق عند '+r.priceAt.toFixed(2)+
