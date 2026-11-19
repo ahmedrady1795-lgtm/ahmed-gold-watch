@@ -53,8 +53,14 @@ assert.equal(safe(invalidated)[0].setupLifecycle,'INVALIDATED');
 const svg=fs.readFileSync('components/SniperOpportunityMarkers.tsx','utf8');
 assert.match(svg,/data-lifecycle=/,
  'the chart should show historical early alert lifecycle status without moving price');
-assert.match(svg,/ended\?' ×':''/,
- 'invalidated chart watches are visually distinct from pending BUY watches');
+assert.match(svg,/ended&&<text/,
+ 'invalidated historical watches keep an inline X next to the original price');
+assert.doesNotMatch(svg,/<rect\b/,
+ 'no drawn BUY/SELL, test, early, or M5 text badges may use large filled rectangles');
+assert.match(svg,/s\.quality==='SETUP'\?\(buy\?'شراء':'بيع'\)/,
+ 'only a qualified confirmed setup can have an unqualified BUY/SELL label');
+assert.match(svg,/shortLabel=buy\?'↗ صعود':'↘ هبوط'/,
+ 'follow-through observations appear as small direction arrows, not entries');
 const dup=step({prior:issued,now:start+70000,asset:'GOLD',source:'same-provider',
  price:100,signal:pre,bars:[]});
 assert.equal(dup,issued,'no duplicate on every client quote');
