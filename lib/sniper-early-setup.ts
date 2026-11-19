@@ -63,6 +63,7 @@ function firstReclaim(bars:Bar[],price:number,atr:number){
 }
 /** Session-only arming: reloading cannot invent an earlier observation. */
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
+ previousQuote?:{at:number;price:number}|null;
  price:number|null;quoteAt?:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
  flow?:FlowProfileDecision|null;liquidity?:LiquidityMagnetView|null;
  watch?:WatchPriceMap|null;marketContext?:SniperMarketContext|null;
@@ -221,7 +222,8 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    .sort((a,b)=>a.time-b.time).slice(-18);
  if(bars.length<18||bars.some((b,i)=>i>0&&b.time-bars[i-1].time!==60000))return prior;
  const last=bars.at(-1)!,sourceAt=last.time+60000;
- if(now-sourceAt>90000||prior&&sourceAt<=prior.sourceAt)return prior;
+ const observingSameBar=prior?.phase==='OBSERVING'&&sourceAt===prior.sourceAt;
+ if(now-sourceAt>90000||prior&&sourceAt<=prior.sourceAt&&!observingSameBar)return prior;
  const ranges=bars.slice(1).map((b,i)=>Math.max(b.high-b.low,
    Math.abs(b.high-bars[i].close),Math.abs(b.low-bars[i].close)));
  const atr=ranges.slice(-14).reduce((a,b)=>a+b,0)/14;
@@ -315,6 +317,26 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    }
  }
  collect();
+ // Only consecutive live quotes from the chart feed can establish the order
+ // of a sweep and recovery inside the still-open minute.
+ let liveReclaim:Candidate|undefined;
+ const previous=input.previousQuote, at=input.quoteAt;
+ if(previous&&at!=null&&sourceAt<=previous.at&&previous.at<at&&at<=now&&
+    at-previous.at<=10000&&now-at<=10000&&now<sourceAt+60000&&
+    Number.isFinite(previous.price)&&previous.price>0){
+   const range=bars.slice(-12);
+   const floor=Math.min(...range.map(b=>b.low));
+   const ceiling=Math.max(...range.map(b=>b.high));
+   const up=previous.price<floor-atr*.05&&price>=floor+atr*.02&&price<=floor+atr*.25;
+   const down=previous.price>ceiling+atr*.05&&price<=ceiling-atr*.02&&price>=ceiling-atr*.25;
+   if(up||down){
+     liveReclaim={side:up?'BUY':'SELL',setupKind:'RECLAIM',
+       trigger:price+(up?1:-1)*atr*.08,
+       invalidation:previous.price+(up?-1:1)*atr*.08,
+       reason:'استرداد حي داخل الدقيقة بعد عبور مستوى سابق على تحديثين سعريين'};
+     candidates.push(liveReclaim);
+   }
+ }
  const onset=firstReclaim(bars,price,atr);
  if(onset){
    candidates.push({...onset,setupKind:'RECLAIM',
@@ -552,6 +574,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  // suppress a nearby valid one. Zone observations are available but do not
  // outrank genuine pre-break preparations.
  const viable=candidates.filter(c=>{
+   if(observingSameBar&&c!==liveReclaim)return false;
    const remaining=c.side==='BUY'?c.trigger-price:price-c.trigger;
    const risk=c.side==='BUY'?price-c.invalidation:c.invalidation-price;
    const touched=(Array.isArray(input.bars)?input.bars:[]).some((b:Bar)=>
