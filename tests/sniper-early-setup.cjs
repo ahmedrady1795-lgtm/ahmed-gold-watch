@@ -16,6 +16,8 @@ const op={...idle,phase:'PREPARE',side:'BUY',trigger:100.3,invalidation:99.4,sou
 const armed=step({...base,opportunity:op});
 assert.equal(armed.phase,'ARMED');
 assert.equal(signal(armed).phase,'PREPARE');
+assert.equal(signal(armed).setupKind,'PRESSURE',
+ 'the early detector is tagged at preparation, before future candles exist');
 assert.equal(armed.armedAt,now);
 // Order-flow and volume-at-price are part of the live PRE-arm decision,
 // but only if genuine same-venue observations predate the decision.
@@ -103,6 +105,7 @@ compressionBars[17]={...compressionBars[17],open:99.99,close:99.95,high:100.15,l
 const compressed=step({...base,bars:compressionBars,price:99.96});
 assert.equal(compressed?.phase,'ARMED','compressed swing should arm before break');
 assert.equal(compressed?.side,'SELL');
+assert.equal(signal(compressed).setupKind,'COMPRESSION');
 assert.match(compressed.reason,/انضغاط M1/);
 assert.ok(compressed.trigger<99.96,'trigger must be ahead of price');
 const contestedCompression=step({...base,bars:compressionBars,price:99.96,
