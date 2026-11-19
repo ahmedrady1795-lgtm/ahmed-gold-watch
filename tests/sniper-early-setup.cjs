@@ -273,6 +273,22 @@ const sellContinuation=step({...base,bars:sharp,price:98.7,
  opportunity:{...op,side:'SELL',trigger:98.4,invalidation:99.7,targets:[97]}});
 assert.equal(sellContinuation?.side,'SELL',
  'strong downside move may still arm a new ahead-of-price sell setup');
+// Quality score uses COMPLETED M1 bodies as soft directional evidence.
+const buyBodies=bars.map(b=>({...b}));
+const sellBodies=bars.map(b=>({...b}));
+for(let i=15;i<18;i++){
+ buyBodies[i]={...buyBodies[i],open:99.70,close:100.24};
+ sellBodies[i]={...sellBodies[i],open:100.25,close:99.72};
+}
+const alignedPressure=step({...base,bars:buyBodies,opportunity:op});
+const contraryPressure=step({...base,bars:sellBodies,opportunity:op});
+assert.equal(alignedPressure?.side,'BUY');
+assert.equal(contraryPressure?.side,'BUY',
+ 'contrary recent bars reduce quality but do not impose a blanket trade ban');
+assert.ok((alignedPressure?.score??0)>(contraryPressure?.score??0),
+ 'two closed matching M1 bodies must outrank two contradictory bodies');
+assert.match(alignedPressure.reason,/ضغط إغلاقات M1 يؤيد/);
+assert.match(contraryPressure.reason,/ضغط إغلاقات M1 يعاكس/);
 const oneWick=sharp.map((b,i)=>i===17?
  {...b,open:100,close:100,high:105,low:95}:{
  ...b,open:100,close:100,high:100.2,low:99.8});
@@ -302,6 +318,25 @@ const preferredSell=step({...base,bars:floorBars,price:99.32,
 assert.equal(preferredSell?.setupKind,'STRUCTURE',
  'two closed frame bearish votes may outrank an early contradictory BUY pattern');
 assert.equal(preferredSell?.side,'SELL');
+// A real closed M1 lower-high structure may beat a weak conflicting first
+// candidate when M15 is simply unavailable. This is NOT permission to
+// override known opposing M15 evidence or unavailable data alone.
+const localOnlySell=step({...base,bars:floorBars,price:99.32,
+ opportunity:competingBuy,m1Side:'SELL',m15Side:'WAIT'});
+assert.equal(localOnlySell?.setupKind,'STRUCTURE',
+ 'M1 causal structure competes even when M15 has no current bias');
+assert.equal(localOnlySell?.side,'SELL');
+assert.match(localOnlySell.reason,/غياب اتجاه M15/);
+// An infeasible structure edge MUST NOT erase a valid already armed setup.
+const remoteEdge=floorBars.map(b=>({...b}));
+remoteEdge[17]={...remoteEdge[17],low:95};
+const retained=step({...base,bars:remoteEdge,price:99.32,
+ opportunity:competingBuy,m1Side:'SELL',m15Side:'SELL'});
+assert.equal(retained?.setupKind,'PRESSURE',
+ 'a too-far M1 structural edge cannot overwrite a feasible first preparation');
+assert.equal(retained?.side,'BUY');
+assert.ok(retained.trigger>99.32);
+
 assert.equal(step({...base,bars:floorBars,price:98.8,
  m1Side:'SELL',m15Side:'SELL'}),null,
  'never invent SELL after the older support has already broken');
