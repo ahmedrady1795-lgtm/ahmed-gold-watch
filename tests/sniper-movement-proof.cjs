@@ -167,11 +167,15 @@ assert.equal(flipped[0].issuedAt,fall[0].issuedAt,
 // frozen fourteen-bar ATR, three later completed M1, never historical fill.
 const auditBars=Array.from({length:15},(_,i)=>c(i,100.4,99.6));
 const issuedAt=start+15*60000+1000;
-const onsetPre={...pre,sourceAt:start+15*60000};
+const onsetPre={...pre,sourceAt:start+15*60000,setupKind:'STRUCTURE'};
 const observed=step({prior:[],now:issuedAt,asset:'GOLD',source:'same-provider',
  price:100,signal:onsetPre,bars:auditBars});
 assert.equal(observed.length,1);
 assert.equal(observed[0].onsetOutcome,'PENDING');
+assert.equal(observed[0].setupKind,'STRUCTURE',
+ 'new prospectively issued alerts freeze their detector identity');
+assert.equal(issued[0].setupKind,undefined,
+ 'old untagged alerts must not be assigned a model retrospectively');
 assert.ok(observed[0].onsetDistance>.4&&observed[0].onsetDistance<.5,
  'directional displacement threshold frozen from fourteen closed true ranges');
 const cleanSignal={phase:'WATCH',side:'WAIT',sourceAt:null,
@@ -189,6 +193,16 @@ assert.equal(wave[0].onsetOutcome,'MOVE_FIRST',
  'real favorable wave reached frozen ATR threshold after the alert');
 assert.ok(wave[0].onsetDelaySeconds>60);
 assert.equal(score(wave,'GOLD').onsetFirst,1);
+const structureStats=score(wave,'GOLD').byPattern;
+assert.equal(structureStats.length,1);
+assert.equal(structureStats[0].pattern,'STRUCTURE');
+assert.equal(structureStats[0].alerts,1);
+assert.equal(structureStats[0].resolved,1);
+assert.equal(structureStats[0].favorable,1);
+assert.equal(structureStats[0].onsetRate,100);
+assert.equal(safe(wave)[0].setupKind,'STRUCTURE');
+assert.equal(score(issued,'GOLD').byPattern.length,0,
+ 'legacy unclassified rows never acquire a made-up historical model');
 const oppositeFirst=step({prior:observed,now:start+17*60000,
  asset:'GOLD',source:'same-provider',price:99.7,signal:cleanSignal,
  bars:[...auditBars,c(16,100.2,99.6)]});
@@ -244,4 +258,7 @@ const unmatched=step({prior:[],now:start+68000,asset:'GOLD',source:'same-provide
  price:100,signal:pre,bars:[],setupState:{...terminalState,phase:'ARMED',
  sourceAt:pre.sourceAt+1,expiresAt}});
 assert.equal(unmatched[0].setupExpiresAt,undefined,'another plan cannot donate its expiry');
+const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
+assert.match(panel,/movementStats\.byPattern\.map\(p=>/,
+ 'per-pattern forward results appear only in the optional performance drawer');
 console.log('PASS: immutable watch expiry persists without fabricated trade outcomes');
