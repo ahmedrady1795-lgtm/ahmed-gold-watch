@@ -167,11 +167,10 @@ export default function SniperOpportunityMarkers(p:Props){
      return <g key={r.id} data-kind="EARLY" data-issued-at={r.issuedAt}
        data-onset={r.onsetOutcome??'NOT_AUDITED'}
        data-lifecycle={r.setupLifecycle??'NOT_AUDITED'}>
-       <path d={buy?`M${x} ${y-8} L${x-6} ${y+2} L${x+6} ${y+2} Z`:
+       {ended?<circle cx={x} cy={y} r="2.1" fill={ink}/>:
+         <path d={buy?`M${x} ${y-8} L${x-6} ${y+2} L${x+6} ${y+2} Z`:
          `M${x} ${y+8} L${x-6} ${y-2} L${x+6} ${y-2} Z`}
-         stroke={ink} strokeWidth="1.3" fill="#2c2414"/>
-       {ended&&<text x={x+8} y={y-7} fontSize="11"
-         fill="#fa92a4" fontWeight="900">×</text>}
+         stroke={ink} strokeWidth="1.3" fill="#2c2414"/>}
        <title>{'ترقب '+(buy?'شراء':'بيع')+' قبل الكسر · '+
          r.priceAt.toFixed(2)+' · '+outcomeLabel[r.status]+
          (r.setupLifecycle?' · '+lifecycleLabel[r.setupLifecycle]:
@@ -251,7 +250,7 @@ export default function SniperOpportunityMarkers(p:Props){
        <circle cx={p.split} cy={y} r="3.1" fill={ink}/>
        <line x1={x} x2={x} y1={y} y2={labelY}
          stroke={ink} strokeOpacity=".55" strokeWidth=".7"/>
-       <text x={x} y={labelY-8} textAnchor="end" direction="rtl"
+       <text x={x} y={labelY-8} textAnchor="start" direction="rtl"
          fontSize="9.5" fontWeight="900" fill={ink}
          stroke="#07111b" strokeWidth="2.8" paintOrder="stroke">
          {label}</text>

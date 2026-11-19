@@ -553,7 +553,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Record the next candle while its opening price is still unknown.
  const forecastScope=JSON.stringify([asset,x?.candleSource,liveQuote?.source]);
  const paxg=usePaxgFlow(asset==='GOLD'&&marketOpen);
- type PreOpen={proxy?:PaxgSide;scope:string;target:number;issued:number;side:'BUY'|'SELL';reason:string};
+ type PreOpen={priceAt?:number;proxy?:PaxgSide;scope:string;target:number;issued:number;side:'BUY'|'SELL';reason:string};
  const [preOpen,setPreOpen]=useState<PreOpen|null>(null);
  useEffect(()=>{
    const key='qannas-preopen-m5-v1:'+forecastScope;
@@ -575,7 +575,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      (preOpen?.scope===forecastScope&&preOpen.target===target))return;
    const armed=trackedSetup?.phase==='ARMED'&&trackedSetup.crossedAt==null&&
      trackedSetup.expiresAt>issued?trackedSetup:null;
-   const side=armed?.side??(candleLean.phase==='CLOSE'?candleLean.side:'WAIT');
+   const eligible=armed&&!armed.selectionConflict?armed:null;
+   const side=eligible?.side??(candleLean.phase==='CLOSE'?candleLean.side:'WAIT');
    if(side==='WAIT')return;
    const sweep=liquidityMagnets.ready&&liquidityMagnets.sourceAt!=null&&
      issued>=liquidityMagnets.sourceAt&&issued-liquidityMagnets.sourceAt<=600000?
@@ -585,14 +586,30 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    const freshProxy=asset==='GOLD'&&paxg&&paxg.observedAt<=issued&&
      issued-paxg.observedAt<=12000&&paxg.tradeAt<=issued&&issued-paxg.tradeAt<=15000;
    const proxy=asset==='GOLD'?(freshProxy?paxg.side:'UNAVAILABLE'):undefined;
-   const record={scope:forecastScope,target,issued,side,proxy,
-     reason:(armed?.reason??candleLean.reason)+(sweep==='NONE'?'':' · سحب سيولة M15')};
+   const record={scope:forecastScope,target,issued,side,proxy,priceAt:price??undefined,
+     reason:(eligible?.reason??candleLean.reason)+(sweep==='NONE'?'':' · سحب سيولة M15')};
    setPreOpen(record);
    try{window.localStorage.setItem(key,JSON.stringify(record));}catch{}
  },[forecastScope,now,preOpen,marketOpen,providerTransition,m.sniper.view.priceFresh,
-   x?.candleSource,liveQuote?.source,trackedSetup,candleLean,liquidityMagnets,paxg,asset]);
+   x?.candleSource,liveQuote?.source,trackedSetup,candleLean,liquidityMagnets,paxg,asset,price]);
  const visiblePreOpen=preOpen?.scope===forecastScope&&now>=preOpen.issued-3000&&
    now<preOpen.target+300000?preOpen:null;
+ const [previousCalls,setPreviousCalls]=useState<PreOpen[]>([]);
+ useEffect(()=>{
+   const key='qannas-preopen-chart:'+forecastScope;
+   let rows:PreOpen[]=[];
+   try{
+     const raw=JSON.parse(localStorage.getItem(key)||'[]');
+     if(Array.isArray(raw))rows=raw.filter(r=>r?.scope===forecastScope&&
+       (r.side==='BUY'||r.side==='SELL')&&Number.isFinite(r.target)&&
+       r.issued<r.target&&r.issued>=r.target-15000);
+   }catch{}
+   if(preOpen?.scope===forecastScope&&!rows.some(r=>r.target===preOpen.target)){
+     rows=[...rows,preOpen].slice(-144);
+     try{localStorage.setItem(key,JSON.stringify(rows));}catch{}
+   }
+   setPreviousCalls(rows);
+ },[forecastScope,preOpen]);
  const trial=useMemo(()=>preOpen?.scope===forecastScope&&preOpen.proxy?
    {...preOpen,proxy:preOpen.proxy}:null,[preOpen,forecastScope]);
  const paxgComparison=usePaxgComparison(asset==='GOLD'?forecastScope:'',trial,realM5);
@@ -1234,19 +1251,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            py={py} timeX={timeX} visibleFrom={trueHistory[0]?.time}/>}
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
            left+(i+.5)*actualStride,realCandleWidth,'real'+b.time))}
-         {visiblePreOpen&&<text x={split-7} y={plotTop+47} textAnchor="end"
-           fill={visiblePreOpen.side==='BUY'?'#7effbf':'#ff8aa4'} fontSize="10"
-           fontWeight="800" stroke="#02090e" strokeWidth="3" paintOrder="stroke">
-           <title>{visiblePreOpen.reason}</title>
-           {now<visiblePreOpen.target?'توقع الشمعة الجاية':'توقع قبل الافتتاح'}
-           {' · '+(visiblePreOpen.side==='BUY'?'شراء':'بيع')+
-             ' · '+Math.ceil((visiblePreOpen.target-visiblePreOpen.issued)/1000)+'ث'}
-           {visiblePreOpen.proxy===visiblePreOpen.side?' · PAXG مؤيد':
-             visiblePreOpen.proxy==='BUY'||visiblePreOpen.proxy==='SELL'?' · PAXG معاكس':''}
-         </text>}
          {/* The next-M1 watch is fixed by prior CLOSED minute candles,
               not guessed from the color of this unfinished candle. */}
-         {formingVisible&&forming&&marketOpen&&nextM1.ready&&
+         {!visiblePreOpen&&formingVisible&&forming&&marketOpen&&nextM1.ready&&
            nextM1.side!=='WAIT'&&<g className="sniper-hunt-live-direction">
              <text x={split-7}
                y={clamp(py(forming.close)+23,plotTop+28,plotBottom-12)}
@@ -1504,6 +1511,27 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          asset={asset} source={String(x?.candleSource||'')}
          from={trueHistory[0]?.time??now} now={now} left={left} split={split}
          end={end} top={plotTop} bottom={plotBottom} py={py} timeX={timeX}/>
+       {previousCalls.filter(r=>r.scope===forecastScope).map(r=>{
+         const index=trueHistory.findIndex(b=>b.time===r.target);
+         const current=r.target===visiblePreOpen?.target;
+         const open=index>=0?trueHistory[index].open:
+           current&&forming?.time===r.target?forming.open:r.priceAt;
+         if((index<0&&!current)||open==null||!Number.isFinite(open)||open<lo||open>hi)return null;
+         const px=index>=0?left+(index+.5)*actualStride:split-4;
+         const y=py(open),color=r.side==='BUY'?'#7effbf':'#ff8aa4';
+         const lead=Math.ceil((r.target-r.issued)/1000);
+         const label=(r.side==='BUY'?'شراء':'بيع')+' · قبلها '+lead+'ث';
+         const ly=clamp(y+(r.side==='BUY'?27:-26),plotTop+15,plotBottom-12);
+         return <g key={r.target} data-preopen-m5={r.target}>
+           <title>{label+' · '+h(r.target)+' · '+r.reason}</title>
+           <circle cx={px} cy={y} r={current?3.5:2.8} stroke={color} strokeWidth="1.4" fill="#07111b"/>
+           {current&&<>
+             <line x1={px} y1={y} x2={px-34} y2={ly-3} stroke={color} strokeWidth=".8"/>
+             <text x={px-68} y={ly} textAnchor="middle" direction="rtl" fill={color}
+               stroke="#07111b" strokeWidth="3" paintOrder="stroke" fontSize="10" fontWeight="800">{label}</text>
+           </>}
+         </g>;
+       })}
        {/* Compact box-free text. Details remain in hover/assistive title. */}
        <g className="sniper-m5-chart-status" role="status"
          aria-label={drawingBadge+' · '+drawingReason+' · '+marketContext.reason}>
@@ -1519,7 +1547,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              earlyOpportunity.trigger!=null&&
              py(earlyOpportunity.trigger)>=plotTop&&
              py(earlyOpportunity.trigger)<=plotBottom)&&
-           <text x={left+13} y={plotTop+21} textAnchor="start"
+           <text x={left+13} y={plotTop+21} textAnchor="end"
              direction="rtl" fill={drawingColor} fontSize="10"
              fontWeight="900" stroke="#07111b" strokeWidth="3.1"
              paintOrder="stroke">

@@ -94,7 +94,7 @@ export function assessM5CandleLean(input:{
   .filter((b:Bar)=>good(b)&&b.time%300000===0&&b.time+300000<=cut)
   .sort((a:Bar,b:Bar)=>a.time-b.time);
  const lastM5=m5Rows.at(-1),prevM5=m5Rows.at(-2);
- const m5Valid=lastM5&&prevM5&&lastM5.time+300000===cut&&
+ const m5Valid=lastM5&&prevM5&&lastM5.time+300000===start&&
    lastM5.time-prevM5.time===300000;
  const m5Slope=m5Valid?clamp((lastM5!.close-prevM5!.close)/
    Math.max(atr*3,.01)):0;
@@ -151,9 +151,14 @@ export function assessM5CandleLean(input:{
  const crossFrameOpposite=contraryTrend&&candidate!==alignedTrend;
  // A conflicting verified flow observation is a veto, not a reversed
  // order. Missing flow remains explicitly unconfirmed price action.
- const side:Side=continuationFailed||staleOpposite||crossFrameOpposite||
+ // A live quote already extended outside the closed range cannot establish
+ // a fresh pre-open entry from the same closed momentum.
+ const extended=phase==='CLOSE'&&!reversalLive&&
+   (candidate==='BUY'?price>Math.max(last.high,priorHigh)+atr*.5:
+    candidate==='SELL'?price<Math.min(last.low,priorLow)-atr*.5:false);
+ const side:Side=extended||continuationFailed||staleOpposite||crossFrameOpposite||
    (flowSide!=='WAIT'&&candidate!==flowSide)?'WAIT':candidate;
- if(side==='WAIT')return none(continuationFailed?
+ if(side==='WAIT')return none(extended?'الحركة تجاوزت النطاق قبل الافتتاح؛ ننتظر إعدادًا جديدًا':continuationFailed?
    'السعر كسر نطاق آخر شمعة عكس القراءة؛ متابعة الاتجاه السابق ملغاة':staleOpposite?
    'السعر تجاوز ذيل سحب السيولة؛ الانعكاس القديم لم يعد صالحًا':
    crossFrameOpposite?

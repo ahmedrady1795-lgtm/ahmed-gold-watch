@@ -200,3 +200,7 @@ const legacyReversal={...continuing[0],setupType:'REVERSAL',side:'SELL'};
 assert.equal(step({...base,now:start+186000,prior:[legacyReversal],
  candleLean:{...follow,issuedFor:start+180000,side:'SELL',reason:'انعكاس محتمل'}}).length,1,'legacy reversal stays deduplicated');
 console.log('PASS: immediate closed-minute evidence, independent reversal recording, frozen history');
+
+assert.match(nearEnd.reason,/سياق M5/,'use the last closed M5 throughout the final minute');
+const chased=run({...data,now:start+251000,m1:[...history,...reversing],price:99.5});
+assert.equal(chased.side,'WAIT','an extended live drop cannot become a fresh momentum sell');
