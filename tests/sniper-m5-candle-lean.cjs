@@ -115,8 +115,8 @@ assert.equal(m5Context({now:start+5000,price:100.2,
  sourceReady:false,m5:downM5}).side,'WAIT',
  'disconnected price source cannot feed M5 direction');
 const statusPanel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
-assert.match(statusPanel,/hasM5Fallback\?'متابعة '/,
- 'historical closed-M5 fallback appears directly in chart headline');
+assert.match(statusPanel,/hasM5Fallback\?\(drawingSide==='BUY'\?'↗ M5':'↘ M5'\)/,
+ 'historical closed-M5 fallback stays visible as a small directional arrow');
 assert.match(statusPanel,/closedM5Context\.reason/,
  'stale M1 is reported honestly instead of an endless generic market-update badge');
 assert.doesNotMatch(statusPanel,/candleLean:hasM5Fallback/,
