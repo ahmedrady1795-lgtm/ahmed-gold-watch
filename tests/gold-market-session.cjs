@@ -53,22 +53,22 @@ assert.equal(recent26.length,26);
 assert.equal(sessionGap(recent26),true);
 assert.equal(goldBias(recent26).side,'WAIT',
  'strict historical/scenario functions still reject noncontinuous M15 candles');
-assert.equal(goldBias(recent26,true).side,'SELL',
+assert.equal(goldBias(recent26,sessionGap(recent26)).side,'SELL',
  'M15 observational SELL direction resumes through verified closed maintenance');
-assert.match(goldBias(recent26,true).label,/فجوة جلسة رسمية/,
+assert.match(goldBias(recent26,sessionGap(recent26)).label,/فجوة جلسة رسمية/,
  'post-session label must disclose its scheduled break');
 const openGap=recent26.filter(b=>
  b.time!==Date.parse('2026-11-19T01:15:00Z'));
-assert.equal(goldBias(openGap,true).side,'WAIT',
+assert.equal(goldBias(openGap,sessionGap(openGap)).side,'WAIT',
  'any missing M15 candle during OPEN gold market invalidates the context');
 const preSession=recent26.slice(-16);
 const activePanel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(activePanel,/goldM15SessionBreakOnly\(last16M15\)/,
  'M15 observational readiness uses same real exchange maintenance schedule');
-assert.match(activePanel,/observedM15Bias\(actual,asset==='GOLD'\)/,
+assert.match(activePanel,/observedM15Bias\(actual,verifiedBiasSessionGap\)/,
  'GOLD alone opts into scheduled-gap contextual read');
 assert.match(activePanel,/const historyFresh=actual\.length>=24&&/,
  'trade history evidence stays strict even though read-only M15 resumes');
-assert.equal(goldBias(recent26.slice(-25),true).side,'WAIT',
+assert.equal(goldBias(recent26.slice(-25),sessionGap(recent26.slice(-25))).side,'WAIT',
  'never invent earlier M15 bars to fill a 26-bar window');
 console.log('PASS: winter/summer boundaries, DST Sundays, scheduled vs missing trading slots');
