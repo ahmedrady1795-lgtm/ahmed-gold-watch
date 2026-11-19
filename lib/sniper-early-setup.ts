@@ -463,24 +463,43 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    const trendVotes=Number(input.m1Side===structureSide)+
      Number(input.m15Side===structureSide)+Number(flowSide===structureSide);
    const againstSweep=sweptSide!=='WAIT'&&sweptSide!==structureSide;
-   const canChallenge=side==null||(
-     side!==structureSide&&trendVotes>=2);
+   // A strongly closed M1 structure may outrank a weaker first-picked pattern
+   // when M15 has no direction yet. A known OPPOSITE M15/flow still needs
+   // two independent positive votes, never infer consent from missing data.
+   const m15Unknown=!input.m15Side||input.m15Side==='WAIT';
+   const locallyDominant=input.m1Side===structureSide&&
+     m15Unknown&&flowSide==='WAIT'&&
+     (structureSide==='SELL'?bearishBodies:bullishBodies)>=2;
+   const canChallenge=side==null||side!==structureSide&&
+     (trendVotes>=2||locallyDominant);
    if(canChallenge&&trendVotes>=1&&!againstSweep){
      const lower=Math.min(...edgeTail.map(b=>b.low));
      const upper=Math.max(...edgeTail.map(b=>b.high));
-     // The original range edge must not have been crossed by price/close.
-     // Existing final touched/extension checks still apply.
      const edgeTrigger=structureSide==='SELL'?
        Math.min(olderLow,lower)-atr*.035:
        Math.max(olderHigh,upper)+atr*.035;
      const edgeInvalid=structureSide==='SELL'?upper+atr*.12:
        lower-atr*.12;
-     if(structureSide==='SELL'?edgeTrigger<price:edgeTrigger>price){
+     const edgeRemaining=structureSide==='SELL'?
+       price-edgeTrigger:edgeTrigger-price;
+     const edgeRisk=structureSide==='SELL'?
+       edgeInvalid-price:price-edgeInvalid;
+     // Compare feasible candidates before replacement. Previously a remote
+     // structure edge could overwrite a valid preparation and then fail the
+     // global ATR-distance check, discarding BOTH setups.
+     const edgeAlreadyTouched=(Array.isArray(input.bars)?input.bars:[])
+       .some((b:Bar)=>b&&Number.isFinite(b.time)&&b.time>=sourceAt&&
+         b.time<=now&&Number.isFinite(b.low)&&Number.isFinite(b.high)&&
+         (structureSide==='SELL'?b.low<=edgeTrigger:b.high>=edgeTrigger));
+     if(edgeRemaining>0&&edgeRemaining<=atr*.8&&edgeRisk>0&&
+       !edgeAlreadyTouched){
        side=structureSide;setupKind='STRUCTURE';
        trigger=edgeTrigger;invalidation=edgeInvalid;
        reason='اقتراب M1 من '+(structureSide==='SELL'?'كسر قاع':'كسر قمة')+
          ' تاريخي مع '+(structureSide==='SELL'?'قمم أدنى':'قيعان أعلى')+
          '؛ تهيئة سابقة للكسر وليست متابعة بعده';
+       if(locallyDominant&&trendVotes<2)
+         reason+=' · ضغط شموع M1 رجّح الكسر رغم غياب اتجاه M15';
      }
    }
  }
@@ -511,7 +530,18 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  const directionalClose=side==='BUY'?
    last.close>bars.at(-3)!.close+atr*.09:
    last.close<bars.at(-3)!.close-atr*.09;
- const priceEvidenceScore=Math.min(10,2+
+ // Closed-body pressure is information from the already available M1 bars.
+ // Count it as ONE quality vote (or a soft deduction), not a new entry gate.
+ // Do not treat a wick, missing flow, or daily VIX as executed order flow.
+ const sameBodies=last3.filter(b=>side==='BUY'?
+   b.close-b.open>atr*.12:b.open-b.close>atr*.12).length;
+ const opposedBodies=last3.filter(b=>side==='BUY'?
+   b.open-b.close>atr*.12:b.close-b.open>atr*.12).length;
+ const candlePressureVote=sameBodies>=2&&opposedBodies<=1?1:
+   opposedBodies>=2&&sameBodies<=1?-1:0;
+ if(candlePressureVote>0)reason+=' · ضغط إغلاقات M1 يؤيد الاتجاه';
+ if(candlePressureVote<0)reason+=' · ضغط إغلاقات M1 يعاكس الترصد';
+ const priceEvidenceScore=Math.max(0,Math.min(10,2+
    (shortHeight>0&&shortHeight<=atr*1.65?1:0)+
    (Math.abs(trigger-price)<=atr*.65?1:0)+
    (directionalClose?1:0)+
@@ -519,7 +549,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    (input.m1Side===side?1:0)+
    (input.m15Side===side?1:0)+
    (flowSide===side?1:0)+
-   (sweptSide===side?1:0));
+   (sweptSide===side?1:0)+candlePressureVote));
  // New MICRO setup is admitted from at least four independent checklist
  // points; existing confirmed compression/sweep plans retain their rules.
  if(setupKind==='MICRO'&&priceEvidenceScore<4)return prior;
