@@ -58,6 +58,29 @@ const futureBox=build({...common,fourHour:{...fourHour,contextBox:{
  ...ctx,to:now+3600000
 }}});
 assert.equal(futureBox.context,null,'future consolidation box is rejected');
+// A missing WHOLE M15 slot (maintenance or provider gap) must preserve
+// exact CLOSED historical high/low references, without claiming executed
+// orders, BOS/sweep confirmation or a live trading setup.
+const fullSlotGap=data.map((b,i)=>({...b,time:b.time+(i>=44?900000:0)}));
+const gapRef=build({...common,now:now+900000,
+ history:fullSlotGap,price:100});
+assert.equal(gapRef.ready,true,'observed M15 price bands survive a full-slot gap');
+assert.match(gapRef.reason,/مراجع/);
+assert.equal(gapRef.context,null,'no fictitious accumulation across missing bars');
+assert.equal(gapRef.events.length,0,'never synthesize a BOS or liquidity sweep from missing bars');
+assert.ok(gapRef.zones.some(z=>z.kind==='SUPPLY'&&z.high>100),
+ 'real recorded historical supply stays visible on chart');
+assert.ok(gapRef.zones.some(z=>z.kind==='DEMAND'&&z.low<100),
+ 'real recorded historical demand stays visible on chart');
+assert.ok(gapRef.zones.every(z=>/تاريخي|مغلقة/.test(z.source)),
+ 'gap-surviving levels must be visibly marked as historical');
+assert.equal(build({...common,now:now+900000,history:fullSlotGap,
+ sourceReady:false}).ready,false,'no untrusted provider price means no fake live levels');
+const gapPanel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
+assert.match(gapPanel,/sourceReady:m15LiquidityFresh/,
+ 'M15 zones remain independent from the stricter M1 historyFresh trade gate');
+assert.match(gapPanel,/const liquidityReferencePrice=/,
+ 'when M1 quote freshness fails, only a closed M15 same-chart reference is allowed');
 const noH4=build({...common,fourHour:{ready:false},pools:null});
 assert.equal(noH4.context,null,'do not invent accumulation when H4 was not qualified');
 assert.equal(noH4.events.length,0);
