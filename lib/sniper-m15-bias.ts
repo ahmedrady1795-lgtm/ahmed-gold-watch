@@ -1,9 +1,8 @@
 import type {M15Bar,M15Side} from './sniper-m15-scenario';
-import {goldM15SessionBreakOnly} from './gold-market-session';
 /** Read-only M15 price-action bias. Observes momentum + slope + BOS from CLOSED
  * bars and never upgrades a paper trade, ML confidence or entry instruction. */
 export type M15Bias={side:M15Side;votes:number;label:string;actionable:false};
-export function observedM15Bias(bars:readonly M15Bar[],allowScheduledGoldBreak=false):M15Bias{
+export function observedM15Bias(bars:readonly M15Bar[],verifiedSessionBreak=false):M15Bias{
  const none=(label:string):M15Bias=>({side:'WAIT',votes:0,label,actionable:false});
  const xs=bars.slice(-26);
  const valid=xs.length>=26&&xs.every(b=>
@@ -14,8 +13,10 @@ export function observedM15Bias(bars:readonly M15Bar[],allowScheduledGoldBreak=f
  const connected=valid&&xs.every((b,i)=>i===0||b.time-xs[i-1].time===900000);
  // Resume read-only price context across the KNOWN 17:00–18:00 NY gold
  // maintenance. Never accept missing OPEN-session bars as a legitimate gap.
- const sessionBreak=valid&&!connected&&allowScheduledGoldBreak&&
-   goldM15SessionBreakOnly(xs);
+ // The caller MUST independently verify every skipped slot lies in the
+ // official gold maintenance interval. This pure math module never infers
+ // that a source gap during open trading is a legitimate session break.
+ const sessionBreak=valid&&!connected&&verifiedSessionBreak;
  if(!valid||(!connected&&!sessionBreak))
    return none('M15 غير مكتمل');
  const suffix=sessionBreak?' · بعد فجوة جلسة رسمية':'';
