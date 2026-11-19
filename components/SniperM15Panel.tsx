@@ -205,15 +205,24 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const recent=actual.slice(-72);
  // LIVE market reading can resume after 16 genuine continuous closes.
  // Trading qualification and frozen forward-outcome evidence still use 24.
- const m15AnalysisReady=actual.length>=16&&
-   actual.slice(-16).every((b,i,a)=>i===0||b.time-a[i-1].time===900000)&&
+ const last16M15=actual.slice(-16);
+ const continuousM15=last16M15.every((b,i,a)=>
+   i===0||b.time-a[i-1].time===900000);
+ const scheduledGoldGap=asset==='GOLD'&&last16M15.length===16&&
+   goldM15SessionBreakOnly(last16M15);
+ // Valid NY maintenance is not a missing live candle. Read-only M15
+ // context can resume across this exact scheduled gap. Scenario and
+ // trade qualification below still require strict continuous evidence.
+ const m15AnalysisReady=last16M15.length===16&&
+   (continuousM15||scheduledGoldGap)&&
    now-(actual.at(-1)!.time+900000)<=36*60000;
  const historyFresh=actual.length>=24&&
    actual.slice(-24).every((b,i,a)=>i===0||b.time-a[i-1].time===900000)&&
    now-(actual.at(-1)!.time+900000)<=36*60000;
  const radar=assessChartObservation({now,priceFresh:m.sniper.view.priceFresh,
    historyFresh:m.historyFresh,marketOpen,m1:m.candles,m5:x?.chartHigherFrames?.m5});
- const m15Bias=useMemo(()=>observedM15Bias(actual),[actual]);
+ const m15Bias=useMemo(()=>observedM15Bias(actual,asset==='GOLD'),
+   [actual,asset]);
  // Display M15 analysis independently of M1 trade-entry qualification.
  const preMove=useMemo(()=>detectPreMovePressure({
    asset,c1:m.candles,c5:Array.isArray(x?.chartHigherFrames?.m5)?
