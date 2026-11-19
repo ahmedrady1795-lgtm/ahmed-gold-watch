@@ -1522,12 +1522,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                  ZONE:'مراقبة منطقة',PULLBACK:'استئناف',PROFILE:'بروفايل',
                  STRUCTURE:'كسر هيكل'
                })[p.pattern]}: <b>{p.favorable}/{p.resolved}</b>
-               {p.onsetRate!=null?' · '+p.onsetRate+'%':''}
+               {p.resolved>=30&&p.onsetRate!=null?
+                 ' · '+p.onsetRate+'%':' · عينة أولية'}
+               {p.observedInterval?' · نطاق تكرار أول حركة '+
+                 p.observedInterval.low+'–'+p.observedInterval.high+'%':''}
+               {' · '}عكس {p.adverse} · بلا حركة {p.noMove}
                {' · '}M5 {p.m5Correct}/{p.m5Scored}
              </span>)}
            <small style={{display:'block',opacity:.72}}>
-             النسب تعني حركة لصالح الإنذار خلال 3 دقائق، مش أرباحًا
-             أو احتمال فوز. العينات الصغيرة غير كافية لضبط الأوزان تلقائيًا.
+             الأعداد تخص أول حركة بعد الإنذار خلال 3 دقائق، وليست أرباحًا.
+             النطاق الإحصائي يظهر بعد 30 نتيجة واضحة على الأقل، ولا يُستخدم
+             لضبط الأوزان تلقائيًا أو لتوقع ربح صفقة.
            </small>
          </div>}
        <small style={{flexBasis:'100%',opacity:.75}}>النتائج من شموع مغلقة بعد الرصد،
