@@ -326,6 +326,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  },[x?.chartHigherFrames?.m5,now]);
  const trueHistory=realM5.slice(focusView?-48:-144);
  const price=m.price;
+ // Historical M15 supply/demand is independent of incomplete M1 entry data.
+ // If the live quote is unavailable, use only the same-chart CLOSED M15
+ // anchor as an explicitly historical reference, not an entry.
+ const latestM15=actual.at(-1);
+ const m15LiquidityFresh=actual.length>=26&&marketOpen&&!providerTransition&&
+   latestM15!=null&&now-(latestM15.time+900000)>=0&&
+   now-(latestM15.time+900000)<=36*60000;
+ const liquidityReferencePrice=m.sniper.view.priceFresh&&price!=null?
+   price:latestM15?.close??null;
  const pools=useMemo(()=>buildChartOverlay({
    now,price:m.price,historyFresh:m.historyFresh,
    priceFresh:m.sniper.view.priceFresh&&!providerTransition&&marketOpen,
@@ -334,11 +343,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  }),[now,m.price,m.historyFresh,m.sniper.view.priceFresh,providerTransition,
     marketOpen,m.fourHour,x?.chartHigherFrames?.m5,x?.accumulation]);
  const liquidity=useMemo(()=>buildSniperM15Liquidity({
-   now,price,history:actual,sourceReady:historyFresh&&
-      m.sniper.view.priceFresh&&!providerTransition&&marketOpen,
-   fourHour:m.fourHour,pools
- }),[now,price,actual,historyFresh,m.sniper.view.priceFresh,
-    providerTransition,marketOpen,m.fourHour,pools]);
+   now,price:liquidityReferencePrice,history:actual,
+   sourceReady:m15LiquidityFresh,fourHour:m.fourHour,pools
+ }),[now,liquidityReferencePrice,actual,m15LiquidityFresh,m.fourHour,pools]);
  // Freeze a read-only scenario to its last fully closed M15 candle. Incoming
  // quote ticks still move LIVE but cannot repaint the projected candle route.
  const [frozen,setFrozen]=useState<FrozenChart|null>(null);
@@ -413,14 +420,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // the last closed M15 candle, so browser tick updates do not chase targets.
  const watchMap=useMemo(()=>buildM15WatchPriceMap({
    now,price:price??null,
-   sourceReady:historyFresh&&m.sniper.view.priceFresh&&marketOpen&&
-     !providerTransition,
+   sourceReady:m15LiquidityFresh&&m.sniper.view.priceFresh,
    m15:actual,h1:x?.chartHigherFrames?.h1
  }),[now,price,actual,x?.chartHigherFrames?.h1,historyFresh,
    m.sniper.view.priceFresh,marketOpen,providerTransition]);
  const zoneBoard=useMemo(()=>buildM15LiquidityBoard({
-   liquidity,watch:watchMap,history:actual,price,now
- }),[liquidity,watchMap,actual,price,now]);
+   liquidity,watch:watchMap,history:actual,price:liquidityReferencePrice,now
+ }),[liquidity,watchMap,actual,liquidityReferencePrice,now]);
  const validObjective=(v:number)=>anchor!=null&&Number.isFinite(v)&&v>0&&
    (safeSide==='BUY'?v>anchor:safeSide==='SELL'?v<anchor:false);
  const explicitGoals=targets.map(t=>t.price).filter(validObjective);
