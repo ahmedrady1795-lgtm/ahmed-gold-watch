@@ -548,6 +548,45 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    liveOpportunity,candleLean,flowProfile,liquidityMagnets,watchMap,marketContext,
    nextM1.ready,nextM1.side,entryTrend]);
  useEffect(()=>{if(trackedSetup!==earlyState)setEarlyState(trackedSetup);},[trackedSetup,earlyState]);
+ // Record the next candle while its opening price is still unknown.
+ const forecastScope=JSON.stringify([asset,x?.candleSource,liveQuote?.source]);
+ type PreOpen={scope:string;target:number;issued:number;side:'BUY'|'SELL';reason:string};
+ const [preOpen,setPreOpen]=useState<PreOpen|null>(null);
+ useEffect(()=>{
+   const key='qannas-preopen-m5-v1:'+forecastScope;
+   const issued=Date.now();
+   const target=(Math.floor(issued/300000)+1)*300000;
+   try{
+     const saved=JSON.parse(window.localStorage.getItem(key)||'null') as PreOpen|null;
+     if(saved&&saved.scope===forecastScope&&saved.target>issued-300000&&
+       saved.target<=target&&saved.issued<saved.target&&saved.issued>=saved.target-15000&&
+       (saved.side==='BUY'||saved.side==='SELL')){
+       if(!preOpen||preOpen.scope!==forecastScope||preOpen.target<saved.target){
+         setPreOpen(saved);return;
+       }
+     }
+   }catch{}
+   if(target-issued>15000||Math.abs(issued-now)>3000||document.hidden||
+     !marketOpen||providerTransition||!m.sniper.view.priceFresh||
+     !x?.candleSource||!liveQuote?.source||
+     (preOpen?.scope===forecastScope&&preOpen.target===target))return;
+   const armed=trackedSetup?.phase==='ARMED'&&trackedSetup.crossedAt==null&&
+     trackedSetup.expiresAt>issued?trackedSetup:null;
+   const side=armed?.side??(candleLean.phase==='CLOSE'?candleLean.side:'WAIT');
+   if(side==='WAIT')return;
+   const sweep=liquidityMagnets.ready&&liquidityMagnets.sourceAt!=null&&
+     issued>=liquidityMagnets.sourceAt&&issued-liquidityMagnets.sourceAt<=600000?
+     liquidityMagnets.sweep:'NONE';
+   if((side==='BUY'&&sweep==='HIGH_RECLAIMED_DOWN')||
+     (side==='SELL'&&sweep==='LOW_RECLAIMED_UP'))return;
+   const record={scope:forecastScope,target,issued,side,
+     reason:(armed?.reason??candleLean.reason)+(sweep==='NONE'?'':' · سحب سيولة M15')};
+   setPreOpen(record);
+   try{window.localStorage.setItem(key,JSON.stringify(record));}catch{}
+ },[forecastScope,now,preOpen,marketOpen,providerTransition,m.sniper.view.priceFresh,
+   x?.candleSource,liveQuote?.source,trackedSetup,candleLean,liquidityMagnets]);
+ const visiblePreOpen=preOpen?.scope===forecastScope&&now>=preOpen.issued-3000&&
+   now<preOpen.target+300000?preOpen:null;
  const earlyOpportunity=useMemo(()=>earlySetupOpportunity(trackedSetup),[trackedSetup]);
  // Show the closed-M1 directional hypothesis as WATCH when no pre-break
  // setup was armed; never promote it into an execution-worthy BUY/SELL.
@@ -1183,6 +1222,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            py={py} timeX={timeX} visibleFrom={trueHistory[0]?.time}/>}
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
            left+(i+.5)*actualStride,realCandleWidth,'real'+b.time))}
+         {visiblePreOpen&&<text x={split-7} y={plotTop+47} textAnchor="end"
+           fill={visiblePreOpen.side==='BUY'?'#7effbf':'#ff8aa4'} fontSize="10"
+           fontWeight="800" stroke="#02090e" strokeWidth="3" paintOrder="stroke">
+           <title>{visiblePreOpen.reason}</title>
+           {now<visiblePreOpen.target?'توقع الشمعة الجاية':'توقع قبل الافتتاح'}
+           {' · '+(visiblePreOpen.side==='BUY'?'شراء':'بيع')+
+             ' · '+Math.ceil((visiblePreOpen.target-visiblePreOpen.issued)/1000)+'ث'}
+         </text>}
          {/* The next-M1 watch is fixed by prior CLOSED minute candles,
               not guessed from the color of this unfinished candle. */}
          {formingVisible&&forming&&marketOpen&&nextM1.ready&&
