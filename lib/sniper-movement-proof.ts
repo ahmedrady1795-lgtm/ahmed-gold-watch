@@ -356,7 +356,7 @@ export function movementProofScore(rows:MovementProof[],asset:'GOLD'|'BTC'){
    // Wilson 95% interval is reported only after 30 RESOLVED forward samples;
    // it describes an observed first-wave frequency, never trade profitability.
    const n=resolved.length,p=n?favorable/n:0,z=1.96;
-   const denom=1+z*z/n,center=n?(p+z*z/(2*n))/denom:0;
+   const denom=n?1+z*z/n:1,center=n?(p+z*z/(2*n))/denom:0;
    const radius=n?z*Math.sqrt(p*(1-p)/n+z*z/(4*n*n))/denom:0;
    const observedInterval=n>=30?
      {low:Math.max(0,Math.round((center-radius)*100)),
