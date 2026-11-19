@@ -19,7 +19,7 @@ export type M15HuntObservation={
 export type M15HuntPreview={
   ready:boolean;reason:string;anchor:number|null;anchorTime:number|null;
   preferred:HuntSide|'WAIT';strength:number;sweep:HuntSweep;
-  referenceOnly:boolean;atr:number|null;
+  referenceOnly:boolean;atr:number|null;sessionBreakOnly?:boolean;
   buy:HuntPreviewCandle[];sell:HuntPreviewCandle[];pools:HuntPool[];
   observation?:M15HuntObservation;
 };

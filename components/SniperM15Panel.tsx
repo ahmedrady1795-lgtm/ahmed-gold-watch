@@ -39,7 +39,7 @@ import {sniperPhaseBadge} from '../lib/sniper-market-phase';
 import {observedM15Bias,m15ObservationSide} from '../lib/sniper-m15-bias';
 import {verifiedM15Archive} from '../lib/sniper-m15-archive-store';
 import {m15WalkForward,firstM15Evidence} from '../lib/sniper-m15-walkforward';
-import {goldMarketSession} from '../lib/gold-market-session';
+import {goldMarketSession,goldM15SessionBreakOnly} from '../lib/gold-market-session';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {detectPreMovePressure} from '../lib/pre-move-pressure';
 import {assessSniperLiveOpportunity} from '../lib/sniper-live-opportunity';
@@ -181,8 +181,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const sourceGuide=useMemo(()=>buildM15WatchGuide(actual,now),[actual,now]);
  const watchGuide=(providerTransition||!marketOpen)&&sourceGuide.ready?
    {...sourceGuide,referenceOnly:true}:sourceGuide;
- const huntPreview=useMemo(()=>buildM15HuntPreview(actual,watchGuide,now),
-   [actual,watchGuide,Math.floor(now/900000)]);
+ const huntPreview=useMemo(()=>({...buildM15HuntPreview(actual,watchGuide,now),
+   sessionBreakOnly:asset==='GOLD'&&goldM15SessionBreakOnly(actual.slice(-16))}),
+   [asset,actual,watchGuide,Math.floor(now/900000)]);
  // Audit the EXACT observer driving the WATCH overlay, not the separate
  // M15Bias experiment. This is historical replay, never broker profit.
  const huntProof=useMemo(()=>auditM15HuntDirection(actual,now,120),

@@ -1,3 +1,4 @@
+import {goldMarketSession} from './gold-market-session';
 import {getRuntimeEnv} from './runtime';
 import type { Candle, Event } from './engine';
 import {appendVerifiedBlsReleases} from './news-verified-bls';
@@ -111,14 +112,7 @@ const MT5_TICK_MAX_AGE_MS = 8_000;
 const utc = (s: string) => Date.parse(/[zZ]$|[+-]\d\d:\d\d$/.test(s) ? s : s.replace(' ', 'T') + 'Z');
 function num(value: unknown): number | null {if(value==null||value==='')return null;const n = Number(value);return Number.isFinite(n) ? n : null;}
 function statusFor(sourceTime:number|null,now:number):QuoteData['status']{if(!sourceTime||sourceTime>now+10000)return'unknown';const age=Math.max(0,now-sourceTime);if(age<=120000)return'live';if(age<=1200000)return'delayed';return'closed_or_stale';}
-function goldSessionOpen(now:number){
-  const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;
-  if(day===6)return false;
-  if(day===0&&h<22)return false;
-  if(day===5&&h>=21)return false;
-  if(day>=1&&day<=4&&h>=21&&h<22)return false;
-  return true;
-}
+function goldSessionOpen(now:number){return goldMarketSession(now).open;}
 function goldStatusFor(sourceTime:number|null,now:number):QuoteData['status']{
   if(!goldSessionOpen(now))return 'closed_or_stale';
   return statusFor(sourceTime,now);

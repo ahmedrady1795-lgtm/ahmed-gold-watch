@@ -1,3 +1,4 @@
+import {goldMarketSession} from '../../../lib/gold-market-session';
 import {getAiReadiness} from '../../../lib/ai-readiness';
 import {getRuntimeEnv} from '../../../lib/runtime';
 import {getMarketData,getQuoteData,getMt5BridgeStatus} from '../../../lib/market-hub';
@@ -10,14 +11,7 @@ async function probe<T>(fn:()=>Promise<T>){
   try{const value=await fn();return {ok:true,status:200,latencyMs:Date.now()-started,detail:null,value};}
   catch(e){return {ok:false,status:0,latencyMs:Date.now()-started,detail:e instanceof Error?e.message:'probe failed',value:null};}
 }
-function goldSessionOpen(now:number){
-  const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;
-  if(day===6)return false;
-  if(day===0&&h<22)return false;
-  if(day===5&&h>=21)return false;
-  if(day>=1&&day<=4&&h>=21&&h<22)return false;
-  return true;
-}
+function goldSessionOpen(now:number){return goldMarketSession(now).open;}
 
 export async function GET(){
   const env=getRuntimeEnv(),started=Date.now(),now=Date.now(),goldOpen=goldSessionOpen(now);

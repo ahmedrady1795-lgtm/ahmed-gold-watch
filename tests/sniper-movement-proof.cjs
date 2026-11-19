@@ -217,3 +217,25 @@ const anotherVenue=step({prior:observed,now:start+19*60000+1000,
 assert.equal(anotherVenue[0].onsetOutcome,'PENDING','cross-venue M1 cannot settle a gold alert');
 assert.equal(safe(wave)[0].onsetOutcome,'MOVE_FIRST');
 console.log('PASS: forward-only movement scorecard, no goal fabrication, time-to-detection and unambiguous future M1 scoring');
+const expiresAt=start+180000;
+const expiring=step({prior:[],now:start+68000,asset:'GOLD',source:'same-provider',
+ price:100,signal:pre,bars:[],setupState:{...terminalState,phase:'ARMED',
+ lastAt:start+68000,lastPrice:100,expiresAt}});
+assert.equal(expiring[0].setupExpiresAt,expiresAt);
+const reloaded=safe(JSON.parse(JSON.stringify(expiring)));
+const afterExpiry=step({prior:reloaded,now:expiresAt,asset:'GOLD',source:'same-provider',
+ price:100,signal:{phase:'WATCH',side:'WAIT'},bars:[],setupState:null});
+assert.equal(afterExpiry[0].setupLifecycle,'EXPIRED','expiry survives browser reload or replacement');
+assert.equal(afterExpiry[0].setupResolvedAt,expiresAt);
+assert.equal(afterExpiry[0].issuedAt,expiring[0].issuedAt);
+assert.equal(afterExpiry[0].priceAt,expiring[0].priceAt);
+assert.equal(afterExpiry[0].status,'PENDING','watch expiry must not invent a trade loss');
+const stillActivated=step({prior:[{...reloaded[0],setupLifecycle:'ACTIVATED'}],
+ now:expiresAt,asset:'GOLD',source:'same-provider',price:100,
+ signal:{phase:'WATCH',side:'WAIT'},bars:[]});
+assert.equal(stillActivated[0].setupLifecycle,'ACTIVATED','activation remains historical fact');
+const unmatched=step({prior:[],now:start+68000,asset:'GOLD',source:'same-provider',
+ price:100,signal:pre,bars:[],setupState:{...terminalState,phase:'ARMED',
+ sourceAt:pre.sourceAt+1,expiresAt}});
+assert.equal(unmatched[0].setupExpiresAt,undefined,'another plan cannot donate its expiry');
+console.log('PASS: immutable watch expiry persists without fabricated trade outcomes');

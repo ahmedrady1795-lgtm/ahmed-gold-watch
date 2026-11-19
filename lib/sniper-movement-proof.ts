@@ -30,6 +30,7 @@ export type MovementProof={
  // Older rows remain unclassified; no historical retroactive invention.
  setupLifecycle?:'PENDING'|'ACTIVATED'|'INVALIDATED'|'CANCELLED'|'EXPIRED';
  setupResolvedAt?:number|null;
+ setupExpiresAt?:number;
 };
 type Opportunity={phase:string;side:string;sourceAt:number|null;
  trigger:number|null;invalidation:number|null;targets:number[];
@@ -54,6 +55,7 @@ export function safeMovementProof(raw:unknown):MovementProof[]{
   (x.onsetDelaySeconds==null||valid(x.onsetDelaySeconds)&&x.onsetDelaySeconds>=0)&&
   (x.setupLifecycle==null||['PENDING','ACTIVATED','INVALIDATED','CANCELLED','EXPIRED'].includes(x.setupLifecycle))&&
   (x.setupResolvedAt==null||valid(x.setupResolvedAt)&&x.setupResolvedAt>=x.issuedAt)&&
+  (x.setupExpiresAt==null||valid(x.setupExpiresAt)&&x.setupExpiresAt>x.issuedAt)&&
   ['PENDING','TARGET','STOP','TIMEOUT','AMBIGUOUS','UNKNOWN','NO_TARGET'].includes(x.status)&&
   (x.target==null||valid(x.target))&&(x.invalidation==null||valid(x.invalidation))
  ).slice(-2000).map((x:any)=>({...x,leadSeconds:valid(x.leadSeconds)?x.leadSeconds:null}));
@@ -64,7 +66,7 @@ export function advanceMovementProof(input:{
  candleLean?:{phase:'OPEN'|'FOLLOW'|'CLOSE'|'WAIT';side:'BUY'|'SELL'|'WAIT';issuedFor:number|null;reason?:string};
  frameTrend?:'BUY'|'SELL'|'WAIT';
  setupState?:{side:'BUY'|'SELL';phase:string;sourceAt:number;trigger:number;
-   invalidation:number;lastAt:number;lastPrice:number;reason?:string}|null;
+   invalidation:number;lastAt:number;lastPrice:number;reason?:string;expiresAt?:number}|null;
 }):MovementProof[]{
  const {now,asset,source,signal}=input;
  if(!valid(now)||now<=0||!source)return input.prior;
@@ -98,6 +100,13 @@ export function advanceMovementProof(input:{
       item={...item,setupLifecycle:status,setupResolvedAt:state.lastAt};
       modified=true;
     }
+  }
+  // A frozen watch expiry survives reloads and replacement by a newer setup.
+  // This expires a WATCH, never invents an activation, cancellation or trade loss.
+  if(item.kind==='EARLY'&&item.setupLifecycle==='PENDING'&&
+     valid(item.setupExpiresAt)&&now>=item.setupExpiresAt){
+    item={...item,setupLifecycle:'EXPIRED',setupResolvedAt:item.setupExpiresAt};
+    modified=true;
   }
   // Exactly the NEXT fully observable M5 candle; no unfinished or preceding OHLC.
   // This audit is distinct from target/stop outcomes and never implies P&L.
@@ -222,6 +231,11 @@ export function advanceMovementProof(input:{
        leadSeconds:early?Math.round((signal.sourceAt-early.issuedAt)/1000):null,
        m5Outcome:'PENDING',m5ResolvedAt:null,
        ...(kind==='EARLY'?{setupLifecycle:'PENDING' as const,setupResolvedAt:null}:{}),
+       ...(kind==='EARLY'&&input.setupState?.sourceAt===signal.sourceAt&&
+         input.setupState.side===signal.side&&input.setupState.trigger===signal.trigger&&
+         input.setupState.invalidation===signal.invalidation&&
+         valid(input.setupState.expiresAt)&&input.setupState.expiresAt>now?
+           {setupExpiresAt:input.setupState.expiresAt}:{}),
        ...(onsetDistance==null?{}:{
          onsetDistance,onsetOutcome:'PENDING' as const,onsetResolvedAt:null,
          onsetDelaySeconds:null})

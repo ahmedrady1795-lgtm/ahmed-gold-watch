@@ -129,14 +129,14 @@ export default function SniperM15HuntOverlay(p:Props){
     <text x={p.split+8} y={p.top+15} fontSize="10"
       fontWeight="800" fill="#eac883" textAnchor="start"
       stroke="#000" strokeWidth="2" paintOrder="stroke" direction="ltr">
-      {f.referenceOnly?(f.observation?'M15 · HISTORY':'M15 · GAP WATCH'):
+      {f.referenceOnly?(f.observation?'M15 · HISTORY':f.sessionBreakOnly?'M15 · SESSION':'M15 · GAP WATCH'):
         evidence.state==='CONFLICT'?'M15 · FRAME CONFLICT':
         !anchored?'M15 · DUAL WATCH':'M15 · EARLY PATH'}
     </text>
     <text x={p.split+8} y={p.top+32} fontSize="9" fontWeight="800"
       fill={anchored?color[visualSide as HuntSide]:'#b1c1cb'}
       textAnchor="start" stroke="#000" strokeWidth="2" paintOrder="stroke">
-      {f.referenceOnly?(f.observation?'سياق تاريخي فقط':'فجوات في المصدر · مساران للمراقبة فقط'):
+      {f.referenceOnly?(f.observation?'سياق تاريخي فقط':f.sessionBreakOnly?'استراحة جلسة ضمن التاريخ · مراقبة فقط':'فجوات في المصدر · مساران للمراقبة فقط'):
        blocked?'مقاومة / طلب غير مكسور · لا استمرار مؤكد':
        anchored?(visualSide==='BUY'?'↑ المسار المرجح':'↓ المسار المرجح')+
          (validated?' · اختبار تاريخي أولي':' · يحتاج إثباتًا'):
