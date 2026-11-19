@@ -30,13 +30,46 @@ export function buildSniperM15Liquidity(input:{
  const {now,price,history,fourHour}=input;
  if(!input.sourceReady||price==null||!ok(price))return empty('السعر أو مصدر الشموع متأخر');
  const latest=history.at(-1),first=history.at(0);
- if(!latest||!first||history.length<26||
-    now-(latest.time+900000)>36*60000||
-    history.slice(-12).some((b,i,a)=>b.time%900000!==0||
-     b.time+900000>now||!ok(b.low)||b.high<Math.max(b.open,b.close)||
-     b.low>Math.min(b.open,b.close)||
-     (i>0&&b.time-a[i-1].time!==900000)))
-   return empty('شموع M15 غير مكتملة أو متقطعة');
+ const last26=history.slice(-26);
+ const historyValid=history.length>=26&&last26.every((b,i,a)=>
+   Number.isSafeInteger(b.time)&&b.time>0&&b.time%900000===0&&
+   b.time+900000<=now&&[b.open,b.high,b.low,b.close].every(Number.isFinite)&&
+   b.low>0&&b.high>=Math.max(b.open,b.close)&&
+   b.low<=Math.min(b.open,b.close)&&
+   (i===0||b.time-a[i-1].time>=900000&&
+     (b.time-a[i-1].time)%900000===0));
+ if(!latest||!first||!historyValid||
+    now-(latest.time+900000)<0||now-(latest.time+900000)>36*60000)
+   return empty('شموع M15 قديمة أو غير صالحة');
+ const recentGap=last26.slice(-12).some((b,i,a)=>
+   i>0&&b.time-a[i-1].time!==900000);
+ if(recentGap){
+   // Missing M15 slots may mean a scheduled maintenance OR an unreliable
+   // provider. Preserve only the exact observed historical range edges,
+   // never an active pool, BOS, sweep, forecast or executable opportunity.
+   const closed=history.slice(-52);
+   const highBar=closed.reduce((a,b)=>b.high>a.high?b:a);
+   const lowBar=closed.reduce((a,b)=>b.low<a.low?b:a);
+   const medianRange=closed.map(b=>b.high-b.low).filter(x=>x>0)
+     .sort((a,b)=>a-b)[Math.floor(closed.length/2)]||0;
+   const width=Math.max(price*.00003,medianRange*.22);
+   const zones:LiquidityZone[]=[];
+   if(highBar.high>price)zones.push({
+     kind:'SUPPLY',low:Math.max(.000001,highBar.high-width),
+     high:highBar.high,label:'عرض تاريخي M15',
+     source:'أعلى سعر مرصود من شموع M15 مغلقة · سلسلة بها فجوة',
+     confirmedAt:latest.time+900000
+   });
+   if(lowBar.low<price)zones.push({
+     kind:'DEMAND',low:lowBar.low,high:lowBar.low+width,
+     label:'طلب تاريخي M15',
+     source:'أدنى سعر مرصود من شموع M15 مغلقة · سلسلة بها فجوة',
+     confirmedAt:latest.time+900000
+   });
+   return {ready:true,zones,context:null,events:[],
+     phase:'مستويات تاريخية فقط؛ فجوة في M15',
+     reason:'مراجع عرض وطلب من الأسعار المغلقة؛ لا تأكيد أوامر أو إشارات دخول'};
+ }
  const lookback=history.slice(-52);
  const minPrice=Math.min(...lookback.map(b=>b.low));
  const maxPrice=Math.max(...lookback.map(b=>b.high));
