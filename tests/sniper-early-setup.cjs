@@ -495,3 +495,17 @@ assert.equal(triggered[1].issuedAt,hit.triggeredAt);assert.equal(triggered[1].pr
 const unrelated=record({...evidence,prior:[{...early[0],trigger:101}],now:hit.triggeredAt,price:hit.priceAt,signal:signal(hit)});
 assert.equal(unrelated[1].leadSeconds,null,'unrelated same-side preparation cannot count as prior warning');
 console.log('PASS forward record: exact setup linkage, timestamp and first trigger price');
+
+const reclaimMinute=now-1000;
+const reclaimInput={...base,now:reclaimMinute+8000,quoteAt:reclaimMinute+8000,
+ previousQuote:{at:reclaimMinute+4000,price:99.4},price:99.55};
+const liveReclaimBuy=step(reclaimInput);
+assert.equal(liveReclaimBuy?.phase,'ARMED');assert.equal(liveReclaimBuy.side,'BUY');
+assert.equal(liveReclaimBuy.armedAt,reclaimInput.now);assert.match(liveReclaimBuy.reason,/داخل الدقيقة/);
+const liveReclaimSell=step({...reclaimInput,previousQuote:{at:reclaimMinute+4000,price:100.6},price:100.45});
+assert.equal(liveReclaimSell?.side,'SELL');assert.match(liveReclaimSell.reason,/داخل الدقيقة/);
+for(const patch of [{previousQuote:null},{quoteAt:reclaimMinute+4000},{price:99.9},
+ {previousQuote:{at:reclaimMinute-100,price:99.4}},{now:reclaimMinute+25000}]){
+ assert.doesNotMatch(step({...reclaimInput,...patch})?.reason??'',/داخل الدقيقة/);
+}
+console.log('PASS live reclaim both directions, stale, duplicate, late and cross-minute samples');
