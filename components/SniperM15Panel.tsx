@@ -1499,6 +1499,27 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {movementStats.onsetMeanDelaySeconds!=null?
            ' · زمن الرصد حتى أول حركة محسومة '+movementStats.onsetMeanDelaySeconds+'ث':''}
        </span>
+       {movementStats.byPattern.length>0&&
+         <div style={{flexBasis:'100%',fontSize:11,
+           borderTop:'1px solid #27465a',paddingTop:7}}>
+           <strong>تقييم كل نموذج قنص من وقت صدور إشاراته:</strong>
+           {movementStats.byPattern.map(p=>
+             <span key={p.pattern} style={{display:'inline-block',
+               margin:'4px 9px 2px 0'}}>
+               {({
+                 PRESSURE:'ضغط',SWEEP:'سحب سيولة',COMPRESSION:'انضغاط',
+                 RECLAIM:'استرداد',MICRO:'نطاق ضيق',COIL:'انكماش',
+                 ZONE:'مراقبة منطقة',PULLBACK:'استئناف',PROFILE:'بروفايل',
+                 STRUCTURE:'كسر هيكل'
+               })[p.pattern]}: <b>{p.favorable}/{p.resolved}</b>
+               {p.onsetRate!=null?' · '+p.onsetRate+'%':''}
+               {' · '}M5 {p.m5Correct}/{p.m5Scored}
+             </span>)}
+           <small style={{display:'block',opacity:.72}}>
+             النسب تعني حركة لصالح الإنذار خلال 3 دقائق، مش أرباحًا
+             أو احتمال فوز. العينات الصغيرة غير كافية لضبط الأوزان تلقائيًا.
+           </small>
+         </div>}
        <small style={{flexBasis:'100%',opacity:.75}}>النتائج من شموع مغلقة بعد الرصد،
          ولا أرباح صفقات. M5 يُقاس بعد أول شمعة كاملة تبدأ عقب الرصد؛
          ولا يُعاد تصنيف السجل القديم.</small>
