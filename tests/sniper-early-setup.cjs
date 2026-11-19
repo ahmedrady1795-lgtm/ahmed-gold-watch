@@ -105,6 +105,14 @@ assert.equal(compressed?.phase,'ARMED','compressed swing should arm before break
 assert.equal(compressed?.side,'SELL');
 assert.match(compressed.reason,/انضغاط M1/);
 assert.ok(compressed.trigger<99.96,'trigger must be ahead of price');
+const contestedCompression=step({...base,bars:compressionBars,price:99.96,
+ opportunity:{...op,trigger:100.3,invalidation:99.4}});
+assert.equal(contestedCompression?.side,'SELL',
+ 'M1 confirmed compression competes against an earlier generic BUY pressure');
+assert.equal(contestedCompression?.setupKind,'COMPRESSION',
+ 'the best prospective detector wins rather than the first matching detector');
+assert.match(contestedCompression.reason,/نماذج متعارضة/,
+ 'opposing evidence must be disclosed, not silently described as certainty');
 assert.equal(step({...base,bars:compressionBars,price:compressed.trigger-.01}),null,
  'late quote below the trigger cannot invent an earlier setup');
 assert.equal(step({...base,bars:compressionBars,price:99.96,
@@ -206,6 +214,11 @@ const support=step({...base,bars:towardSupport,price:100,
 assert.equal(support?.setupKind,'ZONE','support is monitored before price rises, even against M15 downtrend');
 assert.equal(support?.side,'BUY');
 assert.equal(support?.phase,'OBSERVING','support is only observed, not an unqualified BUY setup');
+const supportVersusPressure=step({...base,bars:towardSupport,price:100,
+ watch:supportWatch,opportunity:op,m1Side:'BUY',m15Side:'BUY'});
+assert.equal(supportVersusPressure?.phase,'ARMED',
+ 'a passive historical support observation must not eclipse a real price preparation');
+assert.notEqual(supportVersusPressure?.setupKind,'ZONE');
 assert.equal(signal(support).phase,'WATCH','support at low evidence never advertises PREPARE BUY');
 assert.equal(signal(support).side,'WAIT','zone observation cannot emit a trade direction');
 const earlyQuote=step({...base,prior:support,now:now+5000,
