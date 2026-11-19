@@ -221,8 +221,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    now-(actual.at(-1)!.time+900000)<=36*60000;
  const radar=assessChartObservation({now,priceFresh:m.sniper.view.priceFresh,
    historyFresh:m.historyFresh,marketOpen,m1:m.candles,m5:x?.chartHigherFrames?.m5});
- const m15Bias=useMemo(()=>observedM15Bias(actual,asset==='GOLD'),
-   [actual,asset]);
+ const verifiedBiasSessionGap=asset==='GOLD'&&actual.length>=26&&
+   goldM15SessionBreakOnly(actual.slice(-26));
+ const m15Bias=useMemo(()=>observedM15Bias(actual,verifiedBiasSessionGap),
+   [actual,verifiedBiasSessionGap]);
  // Display M15 analysis independently of M1 trade-entry qualification.
  const preMove=useMemo(()=>detectPreMovePressure({
    asset,c1:m.candles,c5:Array.isArray(x?.chartHigherFrames?.m5)?
