@@ -59,7 +59,7 @@ assert.match(chart,/lastAttempt\.current===candleKey/);
 assert.match(chart,/latestBos/);
 assert.match(chart,/sniper-m15-phase/);
 assert.match(chart,/buildSniperM15Liquidity/);
-assert.match(chart,/observedM15Bias\(actual\)/);
+assert.match(chart,/observedM15Bias\(actual,verifiedBiasSessionGap\)/);
 assert.match(chart,/x2=\{split-4\} y1=\{bottom\} y2=\{bottom\}/,
  'historical demand and supply have price-accurate slim edges without obscuring real candles');
 assert.doesNotMatch(chart,/height=\{plotBottom-plotTop\} fill="#18242d"/,
