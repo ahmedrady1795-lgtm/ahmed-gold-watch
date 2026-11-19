@@ -15,6 +15,9 @@ export type LiveOpportunity={
   higherFrame:'ALIGNED'|'OPPOSED'|'NEUTRAL';
   m15Context:'ALIGNED'|'OPPOSED'|'NEUTRAL';
   quality:'SETUP'|'COUNTERTREND'|'OBSERVATION';
+  // Captured at first issue so future result audits can attribute the detector.
+  setupKind?:'PRESSURE'|'SWEEP'|'COMPRESSION'|'RECLAIM'|'MICRO'|
+    'COIL'|'ZONE'|'PULLBACK'|'PROFILE'|'STRUCTURE';
   reason:string;targetNote:string;tradeEligible:false;
 };
 const finite=(x:unknown):x is number=>typeof x==='number'&&Number.isFinite(x);
