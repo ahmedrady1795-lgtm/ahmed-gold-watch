@@ -386,10 +386,10 @@ assert.match(markerSvg,/\{early\.map\(\(r,i\)=>\{/,
  'genuine pre-break markers must never be hidden behind late M5 observations');
 assert.doesNotMatch(markerSvg,/earlyShown\.filter\(r=>!nearM5\(r\)\)/,
  'close-by late M5 dots may not erase a real prior alert');
-assert.match(markerSvg,/ترقب شراء/,
- 'early BUY warning is clearly labeled directly on the chart before any break');
-assert.match(markerSvg,/ترقب بيع/,
- 'early SELL warning is clearly labeled directly on the chart before any break');
+assert.match(markerSvg,/buy\?'شراء؟':'بيع؟'/,
+ 'early BUY remains a small question-mark watch, not an entry');
+assert.match(markerSvg,/s.phase==='TESTING'\?\(buy\?'شراء؟ كسر':'بيع؟ كسر'\)/,
+ 'SELL/BUY breakout tests are visibly provisional and box-free');
 assert.match(markerSvg,/const labelText=movementObservationLabel\(r\)/,
  'M1 bounce and reversal captions are observations, not entry recommendations');
 assert.match(markerSvg,/return null; \/\/ keep the real price dot/,
