@@ -1439,11 +1439,21 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          <title>{drawingBadge+' · '+drawingReason+' · '+marketContext.reason+
            (trackedSetup?.score!=null?' · أدلة '+trackedSetup.score+'/10 (ليست نسبة نجاح)':'')+
            ' · متابعة الحركة ليست توصية تداول'}</title>
-         <text x={left+13} y={plotTop+21} textAnchor="start" direction="rtl"
-           fill={drawingColor} fontSize="10" fontWeight="900"
-           stroke="#07111b" strokeWidth="3.1" paintOrder="stroke">
-           {drawingBadge}
-         </text>
+         {/* A live on-price BUY?/SELL? label already exists beside its
+             real trigger. Do not print the same cue a second time in the
+             chart corner. Fallback headline remains for off-screen setups. */}
+         {!((earlyOpportunity.phase==='PREPARE'||
+             earlyOpportunity.phase==='TESTING'||
+             earlyOpportunity.phase==='BREAK_CONFIRMED')&&
+             earlyOpportunity.trigger!=null&&
+             py(earlyOpportunity.trigger)>=plotTop&&
+             py(earlyOpportunity.trigger)<=plotBottom)&&
+           <text x={left+13} y={plotTop+21} textAnchor="start"
+             direction="rtl" fill={drawingColor} fontSize="10"
+             fontWeight="900" stroke="#07111b" strokeWidth="3.1"
+             paintOrder="stroke">
+             {drawingBadge}
+           </text>}
        </g>
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M5 · REAL</text>
        <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'}
