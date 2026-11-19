@@ -344,9 +344,26 @@ export function movementProofScore(rows:MovementProof[],asset:'GOLD'|'BTC'){
    const resolved=alerts.filter(x=>x.onsetOutcome==='MOVE_FIRST'||
      x.onsetOutcome==='ADVERSE_FIRST'||x.onsetOutcome==='NO_MOVE');
    const favorable=resolved.filter(x=>x.onsetOutcome==='MOVE_FIRST').length;
+   const adverse=resolved.filter(x=>x.onsetOutcome==='ADVERSE_FIRST').length;
+   const noMove=resolved.filter(x=>x.onsetOutcome==='NO_MOVE').length;
+   const unknown=alerts.filter(x=>x.onsetOutcome==='UNKNOWN'||
+     x.onsetOutcome==='AMBIGUOUS').length;
+   const activated=alerts.filter(x=>x.setupLifecycle==='ACTIVATED').length;
+   const cancelled=alerts.filter(x=>x.setupLifecycle==='CANCELLED'||
+     x.setupLifecycle==='INVALIDATED'||x.setupLifecycle==='EXPIRED').length;
    const earlyM5=alerts.filter(x=>x.m5Outcome==='CORRECT'||x.m5Outcome==='WRONG');
-   return {pattern,alerts:alerts.length,resolved:resolved.length,favorable,
-     onsetRate:resolved.length?Math.round(favorable*100/resolved.length):null,
+   // Never learn new confidence from a handful of overlapping scalp events.
+   // Wilson 95% interval is reported only after 30 RESOLVED forward samples;
+   // it describes an observed first-wave frequency, never trade profitability.
+   const n=resolved.length,p=n?favorable/n:0,z=1.96;
+   const denom=1+z*z/n,center=n?(p+z*z/(2*n))/denom:0;
+   const radius=n?z*Math.sqrt(p*(1-p)/n+z*z/(4*n*n))/denom:0;
+   const observedInterval=n>=30?
+     {low:Math.max(0,Math.round((center-radius)*100)),
+       high:Math.min(100,Math.round((center+radius)*100))}:null;
+   return {pattern,alerts:alerts.length,resolved:n,favorable,adverse,noMove,
+     unknown,activated,cancelled,observedInterval,
+     onsetRate:n?Math.round(favorable*100/n):null,
      m5Scored:earlyM5.length,
      m5Correct:earlyM5.filter(x=>x.m5Outcome==='CORRECT').length};
  }).filter(x=>x.alerts>0);
