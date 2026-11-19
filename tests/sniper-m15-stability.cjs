@@ -60,6 +60,15 @@ assert.match(chart,/latestBos/);
 assert.match(chart,/sniper-m15-phase/);
 assert.match(chart,/buildSniperM15Liquidity/);
 assert.match(chart,/observedM15Bias\(actual,verifiedBiasSessionGap\)/);
+assert.match(chart,/const consecutiveM15=\(\(\)=>\{/,
+ 'clean chart must count real consecutive M15 closes rather than hide post-session reason');
+assert.match(chart,/sessionDataShort\?\s*'M15 · '\+consecutiveM15\+'\/24'/,
+ 'show 24-bar evidence readiness, not a false expected win probability');
+assert.match(chart,/const historyFresh=actual\.length>=24&&/,
+ 'read-only status cannot dilute the true 24-bar evidence gate');
+assert.match(chart,/const safeSide=providerTransition\|\|!marketOpen\|\|!historyFresh\|\|/,
+ 'the diagnostic never promotes a watch to a buy/sell trade');
+
 assert.match(chart,/x2=\{split-4\} y1=\{bottom\} y2=\{bottom\}/,
  'historical demand and supply have price-accurate slim edges without obscuring real candles');
 assert.doesNotMatch(chart,/height=\{plotBottom-plotTop\} fill="#18242d"/,
