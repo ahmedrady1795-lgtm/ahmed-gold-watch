@@ -431,8 +431,8 @@ assert.match(markerSvg,/if\(chosen\)earlyLabels\.set/,
  'pre-break watch labels get priority over late momentum observations');
 assert.match(markerSvg,/waveIds\.add\(record\.id\)/,
  'late observations are grouped by actual directional wave, not treated as multiple entries');
-assert.match(markerSvg,/m5Issued\.filter\(r=>waveIds\.has\(r\.id\)\)\.slice\(0,4\)/,
- 'show only four genuine M5 wave-start captions while keeping every historical dot');
+assert.match(markerSvg,/m5Issued\.filter\(r=>waveIds\.has\(r\.id\)\)\.slice\(0,3\)/,
+ 'show only three distinct M5 wave-start captions while preserving all historical dots');
 assert.match(markerSvg,/\{early\.map\(\(r,i\)=>\{/,
  'genuine pre-break markers must never be hidden behind late M5 observations');
 assert.doesNotMatch(markerSvg,/earlyShown\.filter\(r=>!nearM5\(r\)\)/,
