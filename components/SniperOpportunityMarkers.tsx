@@ -99,13 +99,14 @@ export default function SniperOpportunityMarkers(p:Props){
  // Reserve qualified entries before observational captions.
  const breakLabels=new Map<string,{x:number;y:number}>();
  for(const r of shown.filter(r=>r.quality==='SETUP')){
-   const chosen=placeLabel(p.timeX(r.issuedAt),p.py(r.priceAt),67,20,
+   const chosen=placeLabel(p.timeX(r.issuedAt),p.py(r.priceAt),48,16,
      r.side==='BUY'?29:-29);
    if(chosen)breakLabels.set(r.id,chosen);
  }
- for(const r of earlyShown.slice(0,3)){
+ for(const r of earlyShown.filter(r=>r.setupLifecycle!=='INVALIDATED'&&
+   r.setupLifecycle!=='CANCELLED'&&r.setupLifecycle!=='EXPIRED').slice(0,2)){
    const px=p.timeX(r.issuedAt),py=p.py(r.priceAt);
-   const chosen=placeLabel(px,py,78,20,r.side==='BUY'?27:-27);
+   const chosen=placeLabel(px,py,48,16,r.side==='BUY'?22:-22);
    if(chosen)earlyLabels.set(r.id,chosen);
  }
  const nearM5=(r:MovementProof)=>m5Captioned.some(e=>
@@ -124,23 +125,21 @@ export default function SniperOpportunityMarkers(p:Props){
      // Closed-M1 observations may be follow-through or a short countertrend
      // rebound; only a prearmed break may say BUY/SELL.
      const labelText=movementObservationLabel(r);
-     const labelWidth=92;
-     const placement=caption?placeLabel(x,y,labelWidth,20,buy?30:-30):null;
+     const shortLabel=buy?'↗ صعود':'↘ هبوط';
+     const labelWidth=50;
+     const placement=caption?placeLabel(x,y,labelWidth,16,buy?24:-24):null;
      const labelX=placement?.x??x,labelY=placement?.y??y;
      return <g key={r.id} data-kind={r.kind}
        data-issued-at={r.issuedAt} data-side={r.side}>
        <circle cx={x} cy={y} r={caption?4:2.6} fill={ink}
          stroke="#06151b" strokeWidth="1.2"/>
        {placement&&<>
-         <line x1={x} x2={labelX} y1={y} y2={labelY} stroke={ink}
-           strokeOpacity=".85" strokeWidth=".9"/>
-         <rect x={labelX-labelWidth/2}
-           y={labelY-10} width={labelWidth} height="20" rx="5"
-           fill="#071c26" stroke={ink} strokeWidth=".9"/>
-         <text x={labelX}
-           y={labelY+3.5} textAnchor="middle" direction="rtl"
-           fontSize="9.1" fontWeight="800" fill={ink}>
-           {labelText}</text>
+         <line x1={x} x2={labelX} y1={y} y2={labelY}
+           stroke={ink} strokeOpacity=".6" strokeWidth=".7"/>
+         <text x={labelX} y={labelY+3} textAnchor="middle"
+           direction="rtl" fontSize="9" fontWeight="800" fill={ink}
+           stroke="#07111b" strokeWidth="2.6" paintOrder="stroke">
+           {shortLabel}</text>
        </>}
        <title>{labelText+' · '+(r.kind==='OPEN'?'بداية M5':r.kind==='FOLLOW'?'أثناء M5':'نهاية M5')+
          ' · '+r.priceAt.toFixed(2)+' · '+(r.m5Outcome==='CORRECT'?'إغلاق M5 وافق الاتجاه فقط':
@@ -171,15 +170,12 @@ export default function SniperOpportunityMarkers(p:Props){
        {earlyLabels.has(r.id)&&<>
          <line x1={x} y1={y}
            x2={earlyLabels.get(r.id)!.x} y2={earlyLabels.get(r.id)!.y}
-           stroke={ink} strokeWidth=".9" strokeOpacity=".85"/>
-         <rect x={earlyLabels.get(r.id)!.x-39}
-           y={earlyLabels.get(r.id)!.y-10} width="78" height="20" rx="5"
-           fill="#1b1c1b" stroke={ink} strokeWidth="1.1"/>
+           stroke={ink} strokeWidth=".7" strokeOpacity=".55"/>
          <text x={earlyLabels.get(r.id)!.x}
-           y={earlyLabels.get(r.id)!.y+4} textAnchor="middle" direction="rtl"
-           fontSize="9.5" fontWeight="800" fill={ink}>
-           {(buy?'ترقب شراء':'ترقب بيع')+
-             (ended?' ×':'')}
+           y={earlyLabels.get(r.id)!.y+3} textAnchor="middle"
+           direction="rtl" fontSize="9" fontWeight="800" fill={ink}
+           stroke="#07111b" strokeWidth="2.6" paintOrder="stroke">
+           {buy?'شراء؟':'بيع؟'}
          </text>
        </>}
      </g>;
@@ -196,12 +192,11 @@ export default function SniperOpportunityMarkers(p:Props){
        r.quality==='OBSERVATION'?'#9bafc6':buy?'#57efb8':'#ff8095';
      const action=(buy?'شراء':'بيع');
      const label=r.quality==='SETUP'?action:
-       r.quality==='COUNTERTREND'?'انعكاس غير مؤكد':
-       (buy?'اختراق صاعد':'اختراق هابط');
-     const width=r.quality==='COUNTERTREND'?108:
-       r.quality==='SETUP'?67:88;
+       r.quality==='COUNTERTREND'?'عكس؟':
+       (buy?'↗ كسر':'↘ كسر');
+     const width=46;
      const placement=r.quality==='SETUP'?breakLabels.get(r.id):
-       nearM5(r)?null:placeLabel(x,y,width,20,buy?29:-29);
+       nearM5(r)?null:placeLabel(x,y,width,16,buy?22:-22);
      const labelX=placement?.x??x,labelY=placement?.y??y;
      return <g key={r.id} data-side={r.side} data-issued-at={r.issuedAt}>
        <title>{(buy?'شراء':'بيع')+' · رصد سابق عند '+r.priceAt.toFixed(2)+
@@ -213,12 +208,12 @@ export default function SniperOpportunityMarkers(p:Props){
        {placement&&<line x1={x} x2={labelX} y1={y} y2={labelY}
          stroke={ink} strokeWidth="1"/>}
        <circle cx={x} cy={y} r="3" fill={ink}/>
-       {placement&&<>
-         <rect x={labelX-width/2} y={labelY-10} width={width} height="20" rx="5"
-           fill="#081d29" stroke={ink} strokeOpacity=".7"/>
-         <text x={labelX} y={labelY+4} textAnchor="middle" direction="rtl"
-           fontSize="9.6" fontWeight="800" fill={ink}>{label+(r.status==='TARGET'?' ✓':r.status==='STOP'?' ✕':'')}</text>
-       </>}
+       {placement&&<text x={labelX} y={labelY+3}
+         textAnchor="middle" direction="rtl" fontSize="9"
+         fontWeight="800" fill={ink} stroke="#07111b"
+         strokeWidth="2.6" paintOrder="stroke">
+         {label+(r.status==='TARGET'?' ✓':r.status==='STOP'?' ×':'')}
+       </text>}
      </g>;
    })}
    {/* A historical observation must never hide the current setup. */}
@@ -227,25 +222,27 @@ export default function SniperOpportunityMarkers(p:Props){
      const ink=s.quality==='COUNTERTREND'?'#dfbb80':
        s.quality==='OBSERVATION'?'#9bafc6':buy?'#57efb8':'#ff8095';
      const y=p.py(s.trigger!);
-     const width=126,x=Math.min(p.split+12,p.end-width-4),labelY=fit(y);
+     const x=p.split-12,labelY=fit(y);
+     // A question mark is NOT an entry. Only qualified SETUP confirmation
+     // may show the plain directive; keep all detailed reasons in <title>.
      const label=confirmed?(s.quality==='SETUP'?(buy?'شراء':'بيع'):
-       s.quality==='COUNTERTREND'?'انعكاس غير مؤكد':
-       (buy?'اختراق صاعد':'اختراق هابط')):
-       s.phase==='TESTING'?'اختبار '+(buy?'شراء':'بيع'):
-       'ترقب '+(buy?'شراء':'بيع');
+       (buy?'↗ رصد':'↘ رصد')):
+       s.phase==='TESTING'?(buy?'شراء؟ كسر':'بيع؟ كسر'):
+       (buy?'شراء؟':'بيع؟');
      return <g data-phase={s.phase} aria-label={label+' عند '+s.trigger!.toFixed(2)}>
        <title>{s.reason+' · المستوى '+s.trigger!.toFixed(2)+
          (p.evidenceScore!=null?' · أدلة '+p.evidenceScore+'/10 (ليست احتمال نجاح)':'')+
          ' · إشارة تحليلية وليست ضمان ربح أو أمر تنفيذ'}</title>
-       <line x1={p.split-5} x2={x+width} y1={y} y2={y}
-         stroke={ink} strokeWidth="1.3" strokeDasharray={confirmed?undefined:'4 3'}/>
-       <circle cx={p.split} cy={y} r="4" fill={ink}/>
-       <line x1={x} x2={x} y1={y} y2={labelY} stroke={ink}/>
-       <rect x={x} y={labelY-13} width={width} height="26" rx="5"
-         fill={buy?'#073a2d':'#421b2a'} stroke={ink}/>
-       <text x={x+width/2} y={labelY+4} textAnchor="middle" direction="rtl"
-         fontSize="11" fontWeight="800" fill={ink}>
-         {label+' · '+s.trigger!.toFixed(2)}</text>
+       <line x1={p.split-48} x2={p.split} y1={y} y2={y}
+         stroke={ink} strokeOpacity=".75" strokeWidth=".9"
+         strokeDasharray={confirmed?undefined:'3 4'}/>
+       <circle cx={p.split} cy={y} r="3.1" fill={ink}/>
+       <line x1={x} x2={x} y1={y} y2={labelY}
+         stroke={ink} strokeOpacity=".55" strokeWidth=".7"/>
+       <text x={x} y={labelY-8} textAnchor="end" direction="rtl"
+         fontSize="9.5" fontWeight="900" fill={ink}
+         stroke="#07111b" strokeWidth="2.8" paintOrder="stroke">
+         {label}</text>
      </g>;
    })()}
  </g>;
