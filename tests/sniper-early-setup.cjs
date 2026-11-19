@@ -406,14 +406,14 @@ assert.match(panel,/مراقبة /,
  'the active chart is never muted or mislabeled as an entry');
 assert.match(panel,/evidenceScore=\{trackedSetup\?\.score\?\?null\}/,
  'frozen evidence checklist reaches the chart, not a separate banner');
-assert.match(markerSvg,/اختبار /,
- 'the chart distinguishes a testing tick from BUY or SELL activation');
-assert.match(markerSvg,/ترقب /,
- 'the chart shows the pre-break price marker before live trigger');
-assert.match(panel,/showCrossTest\?'اختبار اختراق /,
- 'first quote crossing remains explicitly testing');
-assert.match(panel,/showRejected\?'فشل اختراق /,
- 'rejected breakout is clearly shown inside chart');
+assert.match(markerSvg,/s.phase==='TESTING'/,
+ 'the chart distinguishes a testing quote from confirmed BUY or SELL');
+assert.match(markerSvg,/const active=\['PREPARE','TESTING','BREAK_CONFIRMED'\]/,
+ 'the pre-break price marker remains live before actual trigger');
+assert.match(panel,/showCrossTest\?\(drawingSide==='BUY'\?'شراء؟ كسر':'بيع؟ كسر'\)/,
+ 'first quote crossing appears only as a small provisional question mark');
+assert.match(panel,/showRejected\?'× كسر فاشل'/,
+ 'a rejected breakout remains clearly visible without a filled box');
 console.log('PASS early setup: frozen prearm, 2.5s distinct quote confirmation, false-break cancellation, audit integrity and no chase');
 // New marker timestamps are first observations, never level-touch backfills.
 const proofMod={exports:{}};
