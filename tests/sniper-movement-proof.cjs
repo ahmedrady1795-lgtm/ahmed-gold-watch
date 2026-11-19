@@ -215,6 +215,30 @@ assert.equal(structureStats[0].alerts,1);
 assert.equal(structureStats[0].resolved,1);
 assert.equal(structureStats[0].favorable,1);
 assert.equal(structureStats[0].onsetRate,100);
+assert.equal(structureStats[0].adverse,0);
+assert.equal(structureStats[0].noMove,0);
+assert.equal(structureStats[0].observedInterval,null,
+ 'one observation is never an evidence-backed success-rate estimate');
+const sample30=Array.from({length:30},(_,i)=>({
+ ...wave[0],id:'forward-pattern-'+i,
+ onsetOutcome:i<22?'MOVE_FIRST':'ADVERSE_FIRST'
+}));
+const sufficientlyScored=score(sample30,'GOLD').byPattern[0];
+assert.equal(sufficientlyScored.resolved,30);
+assert.equal(sufficientlyScored.favorable,22);
+assert.equal(sufficientlyScored.adverse,8);
+assert.equal(sufficientlyScored.noMove,0);
+assert.ok(sufficientlyScored.observedInterval!=null&&
+ sufficientlyScored.observedInterval.low<73&&
+ sufficientlyScored.observedInterval.high>73&&
+ sufficientlyScored.observedInterval.high<=100,
+ 'Wilson interval must honestly reflect finite-sample first-wave uncertainty');
+const uncertain=score([{...wave[0],id:'ambiguous',onsetOutcome:'AMBIGUOUS'}],
+ 'GOLD').byPattern[0];
+assert.equal(uncertain.unknown,1);
+assert.equal(uncertain.resolved,0);
+assert.equal(uncertain.onsetRate,null,
+ 'unknown intra-minute path can never be graded as a win or loss');
 assert.equal(safe(wave)[0].setupKind,'STRUCTURE');
 assert.equal(score(issued,'GOLD').byPattern.length,0,
  'legacy unclassified rows never acquire a made-up historical model');
