@@ -219,6 +219,19 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const historyFresh=actual.length>=24&&
    actual.slice(-24).every((b,i,a)=>i===0||b.time-a[i-1].time===900000)&&
    now-(actual.at(-1)!.time+900000)<=36*60000;
+ // Read-only status: show exactly how many contiguous CLOSED M15 candles
+ // are available after a session break. 24/24 is data readiness, NOT
+ // a prediction win rate or permission to BUY/SELL.
+ const consecutiveM15=(()=>{
+   let count=0;
+   for(let i=actual.length-1;i>=0&&count<24;i--){
+     if(count>0&&actual[i+1].time-actual[i].time!==900000)break;
+     count++;
+   }
+   return count;
+ })();
+ const sessionDataShort=marketOpen&&!historyFresh&&
+   actual.length>0&&now-(actual.at(-1)!.time+900000)<=36*60000;
  const radar=assessChartObservation({now,priceFresh:m.sniper.view.priceFresh,
    historyFresh:m.historyFresh,marketOpen,m1:m.candles,m5:x?.chartHigherFrames?.m5});
  const verifiedBiasSessionGap=asset==='GOLD'&&actual.length>=26&&
@@ -1430,7 +1443,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          </text>
        </g>
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M5 · REAL</text>
-       <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'} fontSize="10" textAnchor="start" direction="ltr">{projected.ready?'M15 · PATH':showWatchGuide?'M15 · WATCH':'M15 · LIVE'}</text>
+       <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'}
+         fontSize="10" textAnchor="start" direction="ltr">
+         {projected.ready?'M15 · PATH':sessionDataShort?
+           'M15 · '+consecutiveM15+'/24':
+           showWatchGuide?'M15 · WATCH':'M15 · LIVE'}
+         <title>{sessionDataShort?
+           'آخر '+consecutiveM15+' من 24 إغلاق M15 متصل متاح؛ بيانات السيناريو المعتمد غير مكتملة بعد الجلسة، ولا يعني اكتمالها وجود صفقة':
+           projected.ready?'مسار تحليلي مشروط محفوظ':
+           'M15 للمراقبة؛ ليس أمر تداول أو ضمان نجاح'}</title>
+       </text>
        {showExtra&&<text className="sniper-m15-extra-caption" x={split+5} y={plotTop+18} fill="#a5a9ad" fontSize="8.4"
          textAnchor="start" direction="rtl">{projected.ready?'مسار مشروط دون شموع مستقبلية؛ التوقع الأصلي محفوظ للتقييم فقط':showWatchGuide?'مساران مشروطان من M15 مغلق · ليست شموع مستقبلية':'شموع فعلية متصلة · لا توجد شموع توقع معتمدة الآن'}</text>}
        {latestClosed&&<text x={left+2} y={H-17} fill="#93a4b3" fontSize="11"
