@@ -76,6 +76,30 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    return {...prior,phase:'CANCELLED',lastAt:now,lastPrice:price,
      reason:'إلغاء الترصد: موجة '+(closedImpulse==='SELL'?'هبوط':'صعود')+
        ' مؤكدة من M1 المغلق ضد الإعداد؛ ليس تنبؤ دخول'};
+ // Two NEW completed M1 candles against an untriggered setup invalidate
+ // its original pre-break thesis. This is local, causal cancellation, not a
+ // stricter general filter: subsequent fresh setup candidates still get scored.
+ // A countertrend bounce is NOT converted into an opposing trade signal.
+ if(prior?.phase==='ARMED'&&prior.crossedAt==null){
+   const recent=(Array.isArray(input.bars)?input.bars:[]).filter((b:Bar)=>
+     b&&[b.time,b.open,b.high,b.low,b.close].every(Number.isFinite)&&
+     b.time%60000===0&&b.time>=prior!.sourceAt&&
+     b.time+60000<=now&&b.low>0&&
+     b.high>=Math.max(b.open,b.close)&&b.low<=Math.min(b.open,b.close))
+     .sort((a:Bar,b:Bar)=>a.time-b.time).slice(-2) as Bar[];
+   if(recent.length===2&&recent[1].time-recent[0].time===60000&&
+      now-(recent[1].time+60000)<=90000){
+     const against=prior.side==='SELL'?
+       recent.every(b=>b.close-b.open>=prior!.atr*.16)&&
+         recent[1].close>=recent[0].high-prior.atr*.04&&
+         recent[1].close-prior.priceAt>=prior.atr*.38:
+       recent.every(b=>b.open-b.close>=prior!.atr*.16)&&
+         recent[1].close<=recent[0].low+prior.atr*.04&&
+         prior.priceAt-recent[1].close>=prior.atr*.38;
+     if(against)return {...prior,phase:'CANCELLED',lastAt:now,
+       lastPrice:price,reason:'إلغاء الترصد: إغلاقا M1 ضد مستوى الإعداد قبل التفعيل'};
+   }
+ }
  // A historical support/resistance approach is a ZONE OBSERVATION,
  // not a BUY/SELL setup. It cannot be triggered by a quote crossing its
  // exploratory line. Later, separate closed-M1 reclaim/pressure evidence can
