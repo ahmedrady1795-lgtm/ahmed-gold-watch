@@ -602,22 +602,25 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    trackedSetup?.side??'WAIT':hasDirectionalWatch?candleLean.side:
    hasM5Fallback?closedM5Context.side:'WAIT';
  const drawingLabel=showZoneObservation?
-   'مراقبة '+(trackedSetup?.side==='BUY'?'دعم':'مقاومة'):
-   showPreparation?'ترقب '+(drawingSide==='BUY'?'شراء':'بيع'):
-   showCrossTest?'اختبار اختراق '+(drawingSide==='BUY'?'شراء':'بيع'):
-   showRejected?'فشل اختراق '+(drawingSide==='BUY'?'شراء':'بيع'):
-   hasEarlySignal?'رصد '+(drawingSide==='BUY'?'شراء':'بيع'):
+   (trackedSetup?.side==='BUY'?'دعم · مراقبة':'مقاومة · مراقبة'):
+   showPreparation?(drawingSide==='BUY'?'شراء؟':'بيع؟'):
+   showCrossTest?(drawingSide==='BUY'?'شراء؟ كسر':'بيع؟ كسر'):
+   showRejected?'× كسر فاشل':
+   hasEarlySignal?(earlyOpportunity.quality==='SETUP'?
+     (drawingSide==='BUY'?'شراء':'بيع'):
+     (drawingSide==='BUY'?'↗ رصد':'↘ رصد')):
    hasDirectionalWatch?(watchIsReversal?
-     'احتمال انعكاس '+(drawingSide==='BUY'?'صاعد':'هابط'):
-     watchAgainstM15?'ارتداد '+(drawingSide==='BUY'?'صاعد':'هابط'):
-     'متابعة '+(drawingSide==='BUY'?'صعود':'هبوط')):
-   hasM5Fallback?'متابعة '+(drawingSide==='BUY'?'صعود':'هبوط')+' M5':
+     (drawingSide==='BUY'?'↗ انعكاس؟':'↘ انعكاس؟'):
+     watchAgainstM15?(drawingSide==='BUY'?'↗ ارتداد':'↘ ارتداد'):
+     (drawingSide==='BUY'?'↗ صعود':'↘ هبوط')):
+   hasM5Fallback?(drawingSide==='BUY'?'↗ M5':'↘ M5'):
    marketOpen&&m.sniper.view.priceFresh&&!providerTransition?
-     closedM5Context.ready?'مراقبة نطاق M5':'M1 / M5 غير مكتمل':
-   'تحديث مصدر السوق';
+     closedM5Context.ready?'↔ نطاق':'M1/M5 ناقص':
+   'المصدر متأخر';
  // Qualitative evidence checklist, not a predicted success rate.
- const drawingBadge=(showZoneObservation||showPreparation||showCrossTest)&&trackedSetup?.score!=null?
-   drawingLabel+' · '+trackedSetup.score+'/10':drawingLabel;
+ // The checklist score is kept in the tooltip; it is NOT win probability.
+ // Plain BUY/SELL appears only after a genuinely qualified confirmation.
+ const drawingBadge=drawingLabel;
  const drawingReason=showZoneObservation?
    (trackedSetup?.reason||'')+' · مستوى مراقبة فقط؛ لا توجد إشارة شراء/بيع مؤهلة':
    showPreparation||showCrossTest||showRejected||hasEarlySignal?
@@ -1430,15 +1433,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          asset={asset} source={String(x?.candleSource||'')}
          from={trueHistory[0]?.time??now} now={now} left={left} split={split}
          end={end} top={plotTop} bottom={plotBottom} py={py} timeX={timeX}/>
-       {/* Compact chart-only directional readout. Source details via tooltip. */}
+       {/* Compact box-free text. Details remain in hover/assistive title. */}
        <g className="sniper-m5-chart-status" role="status"
          aria-label={drawingBadge+' · '+drawingReason+' · '+marketContext.reason}>
          <title>{drawingBadge+' · '+drawingReason+' · '+marketContext.reason+
-           ' · قراءة غير مؤكدة وليست صفقة أو أمر تداول'}</title>
-         <rect x={left+7} y={plotTop+7} rx="5" width="136" height="23"
-           fill="#071923" fillOpacity=".94" stroke={drawingColor} strokeWidth=".9"/>
-         <text x={left+75} y={plotTop+22} textAnchor="middle" direction="rtl"
-           fill={drawingColor} fontSize="10.8" fontWeight="800">
+           (trackedSetup?.score!=null?' · أدلة '+trackedSetup.score+'/10 (ليست نسبة نجاح)':'')+
+           ' · متابعة الحركة ليست توصية تداول'}</title>
+         <text x={left+13} y={plotTop+21} textAnchor="start" direction="rtl"
+           fill={drawingColor} fontSize="10" fontWeight="900"
+           stroke="#07111b" strokeWidth="3.1" paintOrder="stroke">
            {drawingBadge}
          </text>
        </g>
