@@ -61,6 +61,21 @@ assert.match(svg,/s\.quality==='SETUP'\?\(buy\?'شراء':'بيع'\)/,
  'only a qualified confirmed setup can have an unqualified BUY/SELL label');
 assert.match(svg,/shortLabel=buy\?'↗ صعود':'↘ هبوط'/,
  'follow-through observations appear as small direction arrows, not entries');
+assert.match(svg,/const nearCurrent=\(r:MovementProof\)=>active&&/,
+ 'active directional setup takes priority in a dedicated mobile chart lane');
+assert.match(svg,/const caption=m5Captioned.includes\(r\)&&!nearCurrent\(r\)/,
+ 'historical M5 wave text cannot cover the current BUY/SELL question mark');
+assert.match(svg,/m5Issued\.map\(\(r,i\)=>/,
+ 'do not erase historical M5 observations or their true price dots');
+assert.match(svg,/\{early\.map\(\(r,i\)=>\{/,
+ 'do not erase older BUY/SELL watches from the audit history');
+assert.match(svg,/\{shown\.map\(r=>\{/,
+ 'confirmed break markers must retain historical time and price');
+assert.match(svg,/\.slice\(0,3\)/,
+ 'recent mobile captions stay bounded and leave room for actual price candles');
+const panelCaption=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
+assert.match(panelCaption,/py\(earlyOpportunity\.trigger\)>=plotTop/,
+ 'a duplicate corner headline is removed only while real trigger is on-screen');
 const dup=step({prior:issued,now:start+70000,asset:'GOLD',source:'same-provider',
  price:100,signal:pre,bars:[]});
 assert.equal(dup,issued,'no duplicate on every client quote');
