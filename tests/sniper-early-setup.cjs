@@ -66,6 +66,15 @@ const hit=step({...base,now:now+9000,prior:tooSoon,
 assert.equal(hit.phase,'TRIGGERED','later fresh quote confirms level after the hold');
 assert.equal(hit.triggeredAt,now+9000);
 assert.equal(hit.priceAt,100.36);
+// A close cross does not automatically become a confidently qualified entry
+// when independently observed opposite price patterns were near-tied.
+const representative={...hit,side:'BUY',phase:'TRIGGERED',
+ priceAt:100.36,invalidation:99.6,targets:[102],score:7,atr:1,
+ trendSide:'BUY',flowAligned:true,localStructureAligned:true};
+assert.equal(signal({...representative,selectionConflict:false}).quality,'SETUP');
+assert.equal(signal({...representative,selectionConflict:true}).quality,'OBSERVATION',
+ 'disputed live setup remains visible but is not labeled as qualified BUY');
+assert.equal(signal({...representative,selectionConflict:true}).tradeEligible,false);
 const later=step({...base,now:now+11000,prior:hit,price:100.5});
 const falseBreak=step({...base,now:now+12000,prior:hit,price:100.05,
  quoteAt:now+12000});
@@ -114,8 +123,14 @@ assert.equal(contestedCompression?.side,'SELL',
  'M1 confirmed compression competes against an earlier generic BUY pressure');
 assert.equal(contestedCompression?.setupKind,'COMPRESSION',
  'the best prospective detector wins rather than the first matching detector');
-assert.match(contestedCompression.reason,/نماذج متعارضة/,
- 'opposing evidence must be disclosed, not silently described as certainty');
+assert.match(contestedCompression.reason,/نموذج عكسي مرصود/,
+ 'opposing candidate must be disclosed without a false probability');
+assert.ok(contestedCompression.selectionMargin!=null&&
+ Number.isFinite(contestedCompression.selectionMargin),
+ 'opposing detector ranking gap is frozen at initial observation');
+assert.equal(contestedCompression.selectionConflict,
+ contestedCompression.selectionMargin<.8,
+ 'a near tie is called out as ambiguity, not silently presented as certainty');
 assert.equal(step({...base,bars:compressionBars,price:compressed.trigger-.01}),null,
  'late quote below the trigger cannot invent an earlier setup');
 assert.equal(step({...base,bars:compressionBars,price:99.96,
