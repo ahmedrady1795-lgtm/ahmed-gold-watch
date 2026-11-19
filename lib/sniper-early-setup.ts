@@ -213,6 +213,17 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  let side:'BUY'|'SELL'|null=null,trigger=0,invalidation=0;
  let setupKind:EarlySetup['setupKind']='PRESSURE';
  let reason='';
+ // Collect alternative, independently observable preparations from the SAME
+ // closed-M1 snapshot. The first matching detector is no longer the winner.
+ // No price beyond now, hindsight outcomes, or synthetic Order Flow is used.
+ type Candidate={side:'BUY'|'SELL';setupKind:NonNullable<EarlySetup['setupKind']>;
+   trigger:number;invalidation:number;reason:string};
+ const candidates:Candidate[]=[];
+ const collect=()=>{
+   if(side&&Number.isFinite(trigger)&&Number.isFinite(invalidation))
+     candidates.push({side,trigger,invalidation,setupKind:setupKind!,reason});
+   side=null;trigger=0;invalidation=0;reason='';setupKind='PRESSURE';
+ };
  // Trend pullback: a completed impulse, followed by two contracting candles
  // against it, holding the impulse origin. Arm the LOCAL resumption edge,
  // before it breaks, rather than waiting for the entire old swing to break.
@@ -238,6 +249,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      reason='تصحيح قصير حافظ على أصل الموجة؛ رصد استئناف الاتجاه قبل كسر النطاق المحلي';
    }
  }
+ collect();
  if(!side&&op.phase==='PREPARE'&&(op.side==='BUY'||op.side==='SELL')&&
    op.trigger!=null&&op.invalidation!=null&&op.sourceAt!=null&&
    op.sourceAt<=now&&now-op.sourceAt<=90000){
@@ -250,6 +262,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    invalidation=side==='BUY'?last.low-atr*.05:last.high+atr*.05;
    reason='استرداد مستوى بعد سحب قمة أو قاع';
  }
+ collect();
  // Third independent PRE-MOVE setup: closed M1 compression beside a previously
  // observed swing. This is a price/liquidity proxy, NOT live resting orders.
  // It arms a level ahead of the quote; it never backfills a crossed level.
@@ -282,6 +295,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      reason='انضغاط M1 قرب مستوى سيولة سعري سابق؛ مراقبة كسر مبكر';
    }
  }
+ collect();
  // Rejection/reclaim of a PRE-EXISTING closed-M1 swing. We only arm an
  // unbroken local trigger; the rejection alone is not a BUY/SELL order.
  if(!side){
@@ -308,6 +322,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      reason='استرداد مستوى سعري سابق بعد اختبار السيولة · مراقبة تفعيل مبكر';
    }
  }
+ collect();
  // Additional early, closed-bar MICRO preparation. A 3-minute range must
  // contract INSIDE an older observed 11-minute range, before either boundary
  // breaks. Direction needs rising lows/falling highs and a directional close.
@@ -341,6 +356,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      }
    }
  }
+ collect();
  // Start-of-wave COIL: three COMPLETED M1 candles squeeze, with
  // progressively lower highs AND higher lows. M15 must supply the bias.
  // Do not treat a squeeze as a trade: arm the unbroken edge first.
@@ -370,6 +386,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      reason='انضغاط M1 قبل بداية موجة محتملة · مستوى كسر مراقب';
    }
  }
+ collect();
  // Value-area rejection is a separate opportunity source, not a mandatory
  // gate. Quote-only profiles remain indicative and earn NO executed-flow vote.
  const profileFresh=Boolean(flow?.profileReady&&
@@ -389,6 +406,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
        (flow!.profileBasis==='EXECUTED_TRADES'?' · عينة حجم منفذ':' · نشاط أسعار استرشادي، ليس حجم تنفيذ');
    }
  }
+ collect();
  // PRE-ZONE WATCH: a pre-existing M15/H1 price low/high is known BEFORE
  // price touches it. This arms a nearby break level while the M1 move is
  // approaching the zone, never after the turn or by repurposing a LIVE wick.
@@ -430,6 +448,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      break;
    }
  }
+ collect();
  // STRUCTURE-EDGE COMPETITOR. Detect a potential BOS on three COMPLETED
  // M1 candles APPROACHING a historical low/high, never after the break.
  // A lower-high sequence near an older floor can beat a contradictory
@@ -502,6 +521,56 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
          reason+=' · ضغط شموع M1 رجّح الكسر رغم غياب اتجاه M15';
      }
    }
+ }
+ collect();
+ // Treat each trigger as a prospective choice. Reject an already-crossed
+ // level BEFORE comparing scores; a high-scoring remote candidate must never
+ // suppress a nearby valid one. Zone observations are available but do not
+ // outrank genuine pre-break preparations.
+ const viable=candidates.filter(c=>{
+   const remaining=c.side==='BUY'?c.trigger-price:price-c.trigger;
+   const risk=c.side==='BUY'?price-c.invalidation:c.invalidation-price;
+   const touched=(Array.isArray(input.bars)?input.bars:[]).some((b:Bar)=>
+     b&&Number.isFinite(b.time)&&b.time>=sourceAt&&b.time<=now&&
+     Number.isFinite(b.low)&&Number.isFinite(b.high)&&
+     (c.side==='BUY'?b.high>=c.trigger:b.low<=c.trigger));
+   return remaining>0&&remaining<=atr*.8&&risk>0&&!touched&&
+     (c.setupKind==='ZONE'||closedImpulse==='WAIT'||closedImpulse===c.side)&&
+     (flowSide==='WAIT'||flowSide===c.side)&&
+     (sweptSide==='WAIT'||sweptSide===c.side);
+ });
+ const evidenceRank=(c:Candidate)=>{
+   const tail=bars.slice(-3);
+   const same=tail.filter(b=>c.side==='BUY'?
+     b.close-b.open>atr*.12:b.open-b.close>atr*.12).length;
+   const against=tail.filter(b=>c.side==='BUY'?
+     b.open-b.close>atr*.12:b.close-b.open>atr*.12).length;
+   // Ranking score is not probability of a winning trade.
+   const structural={
+     PRESSURE:1.0,SWEEP:1.3,COMPRESSION:1.4,RECLAIM:1.5,
+     MICRO:1.25,COIL:1.3,ZONE:-3,PULLBACK:1.6,
+     PROFILE:1.45,STRUCTURE:1.65
+   }[c.setupKind];
+   const remaining=Math.abs(c.trigger-price);
+   const m1=input.m1Side==='WAIT'||!input.m1Side?0:
+     input.m1Side===c.side?1.1:-.95;
+   const m15=input.m15Side==='WAIT'||!input.m15Side?0:
+     input.m15Side===c.side?1.0:-1.2;
+   const flowVote=flowSide==='WAIT'?0:flowSide===c.side?1.2:-1.5;
+   const sweepVote=sweptSide==='WAIT'?0:sweptSide===c.side?1.1:-1.6;
+   const bodyVote=same>=2?1:against>=2?-1:0;
+   const nearVote=remaining<=atr*.52?.6:0;
+   return structural+m1+m15+flowVote+sweepVote+bodyVote+nearVote;
+ };
+ const ranked=viable.map((c,index)=>({c,index,rank:evidenceRank(c)}))
+   .sort((a,b)=>b.rank-a.rank||a.index-b.index);
+ const chosen=ranked[0]?.c;
+ if(!chosen)return prior;
+ ({side,setupKind,trigger,invalidation,reason}=chosen);
+ if(ranked.length>1&&ranked[1].c.side!==side){
+   const margin=ranked[0].rank-ranked[1].rank;
+   reason+=' · نماذج متعارضة؛ الأفضل حاليًا بفارق أدلة '+
+     margin.toFixed(1)+' (ليس احتمال نجاح)';
  }
  if(!side||![trigger,invalidation].every(Number.isFinite))return prior;
  // A recent directional displacement is a veto on fresh countertrend arming.
