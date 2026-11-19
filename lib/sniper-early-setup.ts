@@ -43,6 +43,24 @@ export function closedM1Impulse(raw:unknown,now:number):'BUY'|'SELL'|'WAIT'{
    last.close>priorCeiling+atr*.05;
  return down&&!up?'SELL':up&&!down?'BUY':'WAIT';
 }
+// On the first M1 close back inside an established range, arm the rejection
+// candle's edge while the live quote is still near the reclaimed boundary.
+function firstReclaim(bars:Bar[],price:number,atr:number){
+ const last=bars[bars.length-1];
+ const prior=bars.slice(-13,-1);
+ const floor=Math.min(...prior.map(b=>b.low));
+ const ceiling=Math.max(...prior.map(b=>b.high));
+ const buy=last.low<floor-atr*.05&&last.close>floor&&last.close>last.open;
+ const sell=last.high>ceiling+atr*.05&&last.close<ceiling&&last.close<last.open;
+ if(buy===sell||last.high>ceiling&&last.low<floor)return null;
+ const sign=buy?1:-1;
+ const edge=buy?floor:ceiling;
+ const progress=sign*(price-edge);
+ if(progress<0||progress>atr*.25||sign*(last.close-edge)>atr*.25)return null;
+ return {side:buy?'BUY' as const:'SELL' as const,
+   trigger:buy?last.high+atr*.04:last.low-atr*.04,
+   invalidation:buy?last.low-atr*.08:last.high+atr*.08};
+}
 /** Session-only arming: reloading cannot invent an earlier observation. */
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
  price:number|null;quoteAt?:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
@@ -297,6 +315,11 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    }
  }
  collect();
+ const onset=firstReclaim(bars,price,atr);
+ if(onset){
+   candidates.push({...onset,setupKind:'RECLAIM',
+     reason:'أول إغلاق دقيقة استرد مستوى سابق؛ رصد بداية الارتداد قرب المستوى'});
+ }
  // Rejection/reclaim of a PRE-EXISTING closed-M1 swing. We only arm an
  // unbroken local trigger; the rejection alone is not a BUY/SELL order.
  if(!side){
