@@ -5,11 +5,16 @@
  * Neither this scorecard nor any alert permits broker execution.
  */
 type Side='BUY'|'SELL';
+type SetupKind='PRESSURE'|'SWEEP'|'COMPRESSION'|'RECLAIM'|'MICRO'|
+ 'COIL'|'ZONE'|'PULLBACK'|'PROFILE'|'STRUCTURE';
+const setupKinds:SetupKind[]=['PRESSURE','SWEEP','COMPRESSION','RECLAIM','MICRO',
+ 'COIL','ZONE','PULLBACK','PROFILE','STRUCTURE'];
 type Bar={time:number;open:number;high:number;low:number;close:number};
 export type MovementProof={
  id:string;asset:'GOLD'|'BTC';source:string;kind:'EARLY'|'BREAK'|'OPEN'|'FOLLOW'|'CLOSE';
  side:Side;sourceAt:number;issuedAt:number;priceAt:number;
  quality?:'SETUP'|'COUNTERTREND'|'OBSERVATION';
+ setupKind?:SetupKind;
  setupType?:'REVERSAL'|'CONTINUATION';
  // M15 direction frozen when FIRST observed: later moves never rewrite labels.
  frameTrend?:'BUY'|'SELL'|'WAIT';
@@ -34,7 +39,7 @@ export type MovementProof={
 };
 type Opportunity={phase:string;side:string;sourceAt:number|null;
  trigger:number|null;invalidation:number|null;targets:number[];
- quality?:'SETUP'|'COUNTERTREND'|'OBSERVATION'};
+ quality?:'SETUP'|'COUNTERTREND'|'OBSERVATION';setupKind?:SetupKind};
 const horizon=60*60000;
 const valid=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
 const good=(x:any):x is Bar=>x&&[x.time,x.open,x.high,x.low,x.close].every(valid)&&
@@ -47,6 +52,7 @@ export function safeMovementProof(raw:unknown):MovementProof[]{
   (x.kind==='EARLY'||x.kind==='BREAK'||x.kind==='OPEN'||x.kind==='FOLLOW'||x.kind==='CLOSE')&&(x.side==='BUY'||x.side==='SELL')&&
   valid(x.issuedAt)&&valid(x.sourceAt)&&valid(x.priceAt)&&x.priceAt>0&&
   (x.quality==null||['SETUP','COUNTERTREND','OBSERVATION'].includes(x.quality))&&
+  (x.setupKind==null||setupKinds.includes(x.setupKind))&&
   (x.setupType==null||x.setupType==='REVERSAL'||x.setupType==='CONTINUATION')&&
   (x.frameTrend==null||['BUY','SELL','WAIT'].includes(x.frameTrend))&&
   (x.m5Outcome==null||['PENDING','CORRECT','WRONG','FLAT','UNKNOWN'].includes(x.m5Outcome))&&
@@ -223,6 +229,8 @@ export function advanceMovementProof(input:{
      next=[...next,{
        id,asset,source,kind,side:signal.side,sourceAt:signal.sourceAt,
        quality:signal.quality??'OBSERVATION',
+       ...(signal.setupKind&&setupKinds.includes(signal.setupKind)?
+          {setupKind:signal.setupKind}:{}),
        issuedAt:now,priceAt:input.price,
        trigger:valid(signal.trigger)?signal.trigger:null,
        invalidation,target,
@@ -329,7 +337,21 @@ export function movementProofScore(rows:MovementProof[],asset:'GOLD'|'BTC'){
  const onsetUncertain=onsetSettled.filter(x=>
    x.onsetOutcome==='AMBIGUOUS'||x.onsetOutcome==='UNKNOWN');
  const onsetDelays=onsetFirst.map(x=>x.onsetDelaySeconds).filter(valid);
+ // Only NEW prospectively tagged early alerts enter pattern-level evidence.
+ // Do not assign a detector to legacy rows from outcomes already known.
+ const byPattern=setupKinds.map(pattern=>{
+   const alerts=all.filter(x=>x.kind==='EARLY'&&x.setupKind===pattern);
+   const resolved=alerts.filter(x=>x.onsetOutcome==='MOVE_FIRST'||
+     x.onsetOutcome==='ADVERSE_FIRST'||x.onsetOutcome==='NO_MOVE');
+   const favorable=resolved.filter(x=>x.onsetOutcome==='MOVE_FIRST').length;
+   const earlyM5=alerts.filter(x=>x.m5Outcome==='CORRECT'||x.m5Outcome==='WRONG');
+   return {pattern,alerts:alerts.length,resolved:resolved.length,favorable,
+     onsetRate:resolved.length?Math.round(favorable*100/resolved.length):null,
+     m5Scored:earlyM5.length,
+     m5Correct:earlyM5.filter(x=>x.m5Outcome==='CORRECT').length};
+ }).filter(x=>x.alerts>0);
  return {
+  byPattern,
   alerts:all.length,early:all.filter(x=>x.kind==='EARLY').length,breaks:breaks.length,
   followings:follows.length,followingScored:followingScored.length,
   followingHits:followingScored.filter(x=>x.m5Outcome==='CORRECT').length,
