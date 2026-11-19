@@ -92,3 +92,7 @@
   height:clamp(630px,84dvh,960px)!important;min-height:630px!important
  }
 }
+
+[data-clean="true"] .sniper-ended-cross {
+  display: none;
+}

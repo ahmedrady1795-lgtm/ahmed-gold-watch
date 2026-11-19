@@ -171,6 +171,8 @@ export default function SniperOpportunityMarkers(p:Props){
          <path d={buy?`M${x} ${y-8} L${x-6} ${y+2} L${x+6} ${y+2} Z`:
          `M${x} ${y+8} L${x-6} ${y-2} L${x+6} ${y-2} Z`}
          stroke={ink} strokeWidth="1.3" fill="#2c2414"/>}
+       {ended&&<text className="sniper-ended-cross" x={x+8} y={y-7} fontSize="11"
+         fill="#fa92a4" fontWeight="900">×</text>}
        <title>{'ترقب '+(buy?'شراء':'بيع')+' قبل الكسر · '+
          r.priceAt.toFixed(2)+' · '+outcomeLabel[r.status]+
          (r.setupLifecycle?' · '+lifecycleLabel[r.setupLifecycle]:
