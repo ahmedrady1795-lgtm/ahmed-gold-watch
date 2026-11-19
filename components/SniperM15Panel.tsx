@@ -154,18 +154,25 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  },[asset,Math.floor(now/900000)]);
  const x=asset==='GOLD'?data?.gold:data?.bitcoin;
  const liveQuote=asset==='GOLD'?goldLive:btcLive;
- const [observedM15,setObservedM15]=useState<ObservedM15|null>(null);
+ const [observedM15,setObservedM15]=useState<(ObservedM15 & {previousQuote?:{at:number;price:number};feedKey?:string})|null>(null);
  const observedFeedKey=useRef('');
  // Preserve observed M5 extrema across a temporary quote outage, never across feeds.
  useEffect(()=>{
    const key=[asset,x?.candleSource,liveQuote?.source].join(':');
    const sameFeed=observedFeedKey.current===key;
    observedFeedKey.current=key;
-   setObservedM15(prev=>observeM15Tick(sameFeed?prev:null,{
+   setObservedM15(prev=>{
+     const tick=observeM15Tick(sameFeed?prev:null,{
      now,at:Number(liveQuote?.sourceTime),price:Number(liveQuote?.price),
      source:String(liveQuote?.source||''),
      historySource:String(x?.candleSource||''),period:300000
-   })??(sameFeed&&prev?.time===Math.floor(now/300000)*300000?prev:null));
+   });
+     if(!tick)return sameFeed&&prev?.time===Math.floor(now/300000)*300000?prev:null;
+     if(tick===prev)return prev;
+     const previousQuote=sameFeed&&prev&&prev.lastAt<tick.lastAt?
+       {at:prev.lastAt,price:prev.close}:undefined;
+     return {...tick,feedKey:key,previousQuote};
+   });
  },[asset,now,liveQuote?.sourceTime,liveQuote?.price,liveQuote?.source,x?.candleSource]);
  const marketOpen=asset==='BTC'||goldMarketSession(now).open;
  const providerTransition=asset==='BTC'&&Boolean(x?.providerTransition);
@@ -525,6 +532,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [earlyState,setEarlyState]=useState<EarlySetup|null>(null);
  const trackedSetup=useMemo(()=>advanceEarlySetup({
    prior:earlyState,scope:asset+':'+String(x?.candleSource||''),now,price,
+   previousQuote:observedM15?.feedKey===[asset,x?.candleSource,liveQuote?.source].join(':')&&
+     observedM15?.lastAt===Number(liveQuote?.sourceTime)&&observedM15?.close===price?
+     observedM15?.previousQuote:null,
    quoteAt:Number.isFinite(Number(liveQuote?.sourceTime))?
      Number(liveQuote?.sourceTime):null,
    ready:marketOpen&&m.sniper.view.priceFresh&&!providerTransition&&
@@ -533,7 +543,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    flow:flowProfile,liquidity:liquidityMagnets,watch:watchMap,marketContext,
    m1Side:nextM1.ready?nextM1.side:'WAIT',
    m15Side:entryTrend
- }),[earlyState,asset,x?.candleSource,now,price,liveQuote?.sourceTime,
+ }),[earlyState,asset,x?.candleSource,now,price,liveQuote?.sourceTime,liveQuote?.source,observedM15,
    marketOpen,m.sniper.view.priceFresh,providerTransition,m.candles,
    liveOpportunity,candleLean,flowProfile,liquidityMagnets,watchMap,marketContext,
    nextM1.ready,nextM1.side,entryTrend]);
