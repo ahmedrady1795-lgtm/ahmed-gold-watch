@@ -2,6 +2,8 @@
 
 import {buildNewsIntelligence} from '../lib/news-intelligence';
 import {assessSniperMarketContext,type SentimentReading} from '../lib/sniper-market-context';
+import {usePaxgComparison,usePaxgFlow} from './usePaxgComparison';
+import type {PaxgSide} from '../lib/paxg-flow';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import SniperM15Summary from './SniperM15Summary';
 import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
@@ -550,7 +552,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  useEffect(()=>{if(trackedSetup!==earlyState)setEarlyState(trackedSetup);},[trackedSetup,earlyState]);
  // Record the next candle while its opening price is still unknown.
  const forecastScope=JSON.stringify([asset,x?.candleSource,liveQuote?.source]);
- type PreOpen={scope:string;target:number;issued:number;side:'BUY'|'SELL';reason:string};
+ const paxg=usePaxgFlow(asset==='GOLD'&&marketOpen);
+ type PreOpen={proxy?:PaxgSide;scope:string;target:number;issued:number;side:'BUY'|'SELL';reason:string};
  const [preOpen,setPreOpen]=useState<PreOpen|null>(null);
  useEffect(()=>{
    const key='qannas-preopen-m5-v1:'+forecastScope;
@@ -579,14 +582,20 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      liquidityMagnets.sweep:'NONE';
    if((side==='BUY'&&sweep==='HIGH_RECLAIMED_DOWN')||
      (side==='SELL'&&sweep==='LOW_RECLAIMED_UP'))return;
-   const record={scope:forecastScope,target,issued,side,
+   const freshProxy=asset==='GOLD'&&paxg&&paxg.observedAt<=issued&&
+     issued-paxg.observedAt<=12000&&paxg.tradeAt<=issued&&issued-paxg.tradeAt<=15000;
+   const proxy=asset==='GOLD'?(freshProxy?paxg.side:'UNAVAILABLE'):undefined;
+   const record={scope:forecastScope,target,issued,side,proxy,
      reason:(armed?.reason??candleLean.reason)+(sweep==='NONE'?'':' · سحب سيولة M15')};
    setPreOpen(record);
    try{window.localStorage.setItem(key,JSON.stringify(record));}catch{}
  },[forecastScope,now,preOpen,marketOpen,providerTransition,m.sniper.view.priceFresh,
-   x?.candleSource,liveQuote?.source,trackedSetup,candleLean,liquidityMagnets]);
+   x?.candleSource,liveQuote?.source,trackedSetup,candleLean,liquidityMagnets,paxg,asset]);
  const visiblePreOpen=preOpen?.scope===forecastScope&&now>=preOpen.issued-3000&&
    now<preOpen.target+300000?preOpen:null;
+ const trial=useMemo(()=>preOpen?.scope===forecastScope&&preOpen.proxy?
+   {...preOpen,proxy:preOpen.proxy}:null,[preOpen,forecastScope]);
+ const paxgComparison=usePaxgComparison(asset==='GOLD'?forecastScope:'',trial,realM5);
  const earlyOpportunity=useMemo(()=>earlySetupOpportunity(trackedSetup),[trackedSetup]);
  // Show the closed-M1 directional hypothesis as WATCH when no pre-break
  // setup was armed; never promote it into an execution-worthy BUY/SELL.
@@ -1038,6 +1047,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    <details className="sniper-hunt-advanced">
      <summary>المستويات والتشخيص <span aria-hidden="true">＋</span></summary>
      <SniperOrderFlowStrip data={flowObservation}/>
+     {asset==='GOLD'&&visiblePreOpen?.proxy&&<small>قراءة Binance PAXG وقت التوقع · {
+       {BUY:'ضغط شراء',SELL:'ضغط بيع',NEUTRAL:'الدفتر والتنفيذ بلا اتجاه مشترك',
+        UNAVAILABLE:'لا توجد عينة حديثة كافية'}[visiblePreOpen.proxy]}</small>}
    <SniperM15Summary asset={asset} ready={projected.ready}
      saved={Boolean(stable&&!projected.ready)} paused={paused} detached={detached}
      marketOpen={marketOpen} providerTransition={providerTransition}
@@ -1229,6 +1241,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            {now<visiblePreOpen.target?'توقع الشمعة الجاية':'توقع قبل الافتتاح'}
            {' · '+(visiblePreOpen.side==='BUY'?'شراء':'بيع')+
              ' · '+Math.ceil((visiblePreOpen.target-visiblePreOpen.issued)/1000)+'ث'}
+           {visiblePreOpen.proxy===visiblePreOpen.side?' · PAXG مؤيد':
+             visiblePreOpen.proxy==='BUY'||visiblePreOpen.proxy==='SELL'?' · PAXG معاكس':''}
          </text>}
          {/* The next-M1 watch is fixed by prior CLOSED minute candles,
               not guessed from the color of this unfinished candle. */}
@@ -1546,6 +1560,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <div className="sniper-movement-summary" role="status" style={{
        display:'flex',flexWrap:'wrap',gap:'8px 15px',padding:'9px 12px',
        fontSize:12,color:'#bad8e6',borderBottom:'1px solid #27465a'}}>
+       {asset==='GOLD'&&<span>{paxgComparison}</span>}
        <span>إشارات بداية M5: <b>{movementStats.openingHits}/{movementStats.openingScored}</b></span>
        <span>إشارات نهاية M5: <b>{movementStats.closingHits}/{movementStats.closingScored}</b></span>
        <span>كسور مؤهلة مشروطًا: <b>{movementStats.qualified}</b></span>
