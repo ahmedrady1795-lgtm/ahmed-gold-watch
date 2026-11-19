@@ -681,6 +681,7 @@ export function earlySetupOpportunity(state:EarlySetup|null):LiveOpportunity{
    trigger:state?.trigger??null,invalidation:state?.invalidation??null,
    targets:active?state!.targets:[],sourceAt:state?.triggeredAt??state?.sourceAt??null,
    strength:state?.score==null?0:state.score*10,higherFrame:'NEUTRAL',m15Context:context,
+   setupKind:state?.setupKind,
    quality:qualified?'SETUP':opposed?'COUNTERTREND':'OBSERVATION',
    reason:state?.reason??'انتظار إعداد قبل الحركة؛ الزخم وحده لا يصدر شراء أو بيع',
    targetNote:'مستويات مراقبة ثابتة، وليست ضمان وصول',tradeEligible:false};
