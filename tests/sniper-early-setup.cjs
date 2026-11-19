@@ -322,6 +322,40 @@ const futureCompeting=step({...base,bars:floorBars,price:99.32,
  m1Side:'SELL',m15Side:'SELL',opportunity:{...competingBuy,sourceAt:now+1000}});
 assert.equal(futureCompeting?.side,'SELL',
  'future pre-move BUY may never override older legitimate SELL evidence');
+// If TWO NEW M1 closes oppose a pending SELL before it activates,
+ // cancel the OLD watch and allow a fresh independent signal to be assessed
+ // on subsequent candles. This prevents stale "sell?" during a clear rebound.
+ const sellBase={...armed,side:'SELL',sourceAt:now-1000,
+   trigger:99.65,invalidation:101.4,priceAt:100,lastPrice:100,
+   lastAt:now,atr:1,phase:'ARMED',crossedAt:null};
+ const t=sellBase.sourceAt;
+ const rebound=[
+   {time:t,open:100,high:100.46,low:99.96,close:100.40},
+   {time:t+60000,open:100.4,high:100.86,low:100.3,close:100.82}
+ ];
+ const reboundAt=t+2*60000+1000;
+ const cancelledSell=step({...base,now:reboundAt,prior:sellBase,
+   price:100.81,bars:[...bars,...rebound]});
+ assert.equal(cancelledSell.phase,'CANCELLED');
+ assert.match(cancelledSell.reason,/إغلاقا M1 ضد مستوى الإعداد/,
+   'two genuinely NEW completed M1 up bodies cancel stale untriggered SELL');
+ assert.equal(signal(cancelledSell).side,'WAIT',
+   'opposing recovery is not invented as a BUY trade');
+ const buyBase={...sellBase,side:'BUY',trigger:100.36,
+   invalidation:98.6};
+ const decline=[
+   {time:t,open:100,high:100.06,low:99.54,close:99.6},
+   {time:t+60000,open:99.6,high:99.7,low:99.13,close:99.18}
+ ];
+ const cancelledBuy=step({...base,now:reboundAt,prior:buyBase,
+   price:99.19,bars:[...bars,...decline]});
+ assert.equal(cancelledBuy.phase,'CANCELLED');
+ assert.match(cancelledBuy.reason,/إغلاقا M1 ضد مستوى الإعداد/,
+   'two NEW completed M1 down bodies cancel stale untriggered BUY');
+ const noNewCloses=step({...base,now:now+1000,prior:sellBase,price:100,
+   bars:[...bars,...rebound.map(b=>({...b,time:b.time+60000}))]});
+ assert.equal(noNewCloses.phase,'ARMED',
+   'future/unclosed bars must not cancel a currently valid SELL watch');
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(panel,/hasDirectionalWatch\?\(watchIsReversal\?/,
  'on-chart status distinguishes reversal and continuation waves');
@@ -362,6 +396,10 @@ assert.match(markerSvg,/return null; \/\/ keep the real price dot/,
  'overfull chart must retain original marker anchors instead of inventing prices');
 assert.match(panel,/liquidity:liquidityMagnets,watch:watchMap/,
  'frozen M15/H1 support-resistance is actually wired into the live watch');
+assert.match(panel,/const drawingBadge=drawingLabel;/,
+ 'chart status shows concise text, never a misleading 5/10 likelihood');
+assert.doesNotMatch(panel,/<rect x=\{left\+7\} y=\{plotTop\+7\}/,
+ 'main chart status is no longer a large colored box');
 assert.match(panel,/const showZoneObservation=trackedSetup\?\.phase==='OBSERVING'/,
  'M5 chart exposes support observations separately from BUY setups');
 assert.match(panel,/مراقبة /,
