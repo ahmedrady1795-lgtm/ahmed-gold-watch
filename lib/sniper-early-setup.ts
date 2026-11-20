@@ -1,3 +1,4 @@
+import type {PaxgFlow} from './paxg-flow';
 import type {SniperMarketContext} from './sniper-market-context';
 import type {LiveOpportunity} from './sniper-live-opportunity';
 import type {M5CandleLean} from './sniper-m5-candle-lean';
@@ -63,7 +64,7 @@ function firstReclaim(bars:Bar[],price:number,atr:number){
 }
 /** Session-only arming: reloading cannot invent an earlier observation. */
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
- previousQuote?:{at:number;price:number}|null;
+ proxy?:PaxgFlow|null;previousQuote?:{at:number;price:number}|null;
  price:number|null;quoteAt?:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
  flow?:FlowProfileDecision|null;liquidity?:LiquidityMagnetView|null;
  watch?:WatchPriceMap|null;marketContext?:SniperMarketContext|null;
@@ -337,6 +338,27 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      candidates.push(liveReclaim);
    }
  }
+ // A proxy can warn ahead of a local range break. Both observed quotes must
+ // remain inside the same compact gold range and move towards its near edge.
+ let proxyPressure:Candidate|undefined;
+ const proxy=input.proxy;
+ if(proxy&&(proxy.side==='BUY'||proxy.side==='SELL')&&
+   proxy.observedAt<=now&&now-proxy.observedAt<=12000&&proxy.tradeAt<=now&&
+   now-proxy.tradeAt<=15000&&proxy.count>=3&&previous&&at!=null&&
+   previous.at>=sourceAt&&previous.at<at&&at<=now&&now-at<=10000&&
+   at-previous.at<=10000&&now-sourceAt<60000){
+   const tail=bars.slice(-3);
+   const high=Math.max(...tail.map(b=>b.high)),low=Math.min(...tail.map(b=>b.low));
+   const buy=proxy.side==='BUY',gap=buy?high-price:price-low;
+   const approach=(buy?1:-1)*(price-previous.price);
+   if(high-low<=1.5*atr&&previous.price>=low&&previous.price<=high&&
+     gap>=atr*.05&&gap<=atr*.4&&approach>0&&approach<=atr*.25&&
+     Math.abs(price-last.close)<=atr*.65){
+     proxyPressure={side:proxy.side,setupKind:'PRESSURE',trigger:buy?high:low,
+       invalidation:buy?low:high,reason:'ضغط دفتر وتنفيذ PAXG مع اقتراب الذهب من حافة نطاق M1 قبل الكسر'};
+     candidates.push(proxyPressure);
+   }
+ }
  const onset=firstReclaim(bars,price,atr);
  if(onset){
    candidates.push({...onset,setupKind:'RECLAIM',
@@ -574,7 +596,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  // suppress a nearby valid one. Zone observations are available but do not
  // outrank genuine pre-break preparations.
  const viable=candidates.filter(c=>{
-   if(observingSameBar&&c!==liveReclaim)return false;
+   if(observingSameBar&&c!==liveReclaim&&c!==proxyPressure)return false;
    const remaining=c.side==='BUY'?c.trigger-price:price-c.trigger;
    const risk=c.side==='BUY'?price-c.invalidation:c.invalidation-price;
    const touched=(Array.isArray(input.bars)?input.bars:[]).some((b:Bar)=>

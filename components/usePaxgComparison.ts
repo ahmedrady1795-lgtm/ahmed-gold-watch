@@ -9,8 +9,7 @@ export function usePaxgFlow(enabled:boolean){
    const controller=new AbortController();
    let busy=false;
    async function poll(){
-     // Collect only ahead of an M5 opening, including time to warm the cache.
-     if(busy||document.hidden||Date.now()%300000<265000)return;
+     if(busy||document.hidden)return;
      busy=true;
      try{
        const r=await fetch('/api/paxg-flow',{cache:'no-store',signal:controller.signal});

@@ -138,7 +138,7 @@ export default function SniperOpportunityMarkers(p:Props){
      // rebound; only a prearmed break may say BUY/SELL.
      const labelText=movementObservationLabel(r);
      const shortLabel=buy?'↗ صعود':'↘ هبوط';
-     const labelWidth=50;
+     const labelWidth=78;
      const placement=caption?placeLabel(x,y,labelWidth,16,buy?24:-24):null;
      const labelX=placement?.x??x,labelY=placement?.y??y;
      return <g key={r.id} data-kind={r.kind}
@@ -151,7 +151,7 @@ export default function SniperOpportunityMarkers(p:Props){
          <text x={labelX} y={labelY+3} textAnchor="middle"
            direction="rtl" fontSize="9" fontWeight="800" fill={ink}
            stroke="#07111b" strokeWidth="2.6" paintOrder="stroke">
-           {shortLabel}</text>
+           {'متابعة '+shortLabel}</text>
        </>}
        <title>{labelText+' · '+(r.kind==='OPEN'?'بداية M5':r.kind==='FOLLOW'?'أثناء M5':'نهاية M5')+
          ' · '+r.priceAt.toFixed(2)+' · '+(r.m5Outcome==='CORRECT'?'إغلاق M5 وافق الاتجاه فقط':
@@ -255,7 +255,7 @@ export default function SniperOpportunityMarkers(p:Props){
        <text x={x} y={labelY-8} textAnchor="start" direction="rtl"
          fontSize="9.5" fontWeight="900" fill={ink}
          stroke="#07111b" strokeWidth="2.8" paintOrder="stroke">
-         {label}</text>
+         {s.phase==='PREPARE'?'قبل الكسر · '+label:label}</text>
      </g>;
    })()}
  </g>;

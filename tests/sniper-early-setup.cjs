@@ -509,3 +509,20 @@ for(const patch of [{previousQuote:null},{quoteAt:reclaimMinute+4000},{price:99.
  assert.doesNotMatch(step({...reclaimInput,...patch})?.reason??'',/داخل الدقيقة/);
 }
 console.log('PASS live reclaim both directions, stale, duplicate, late and cross-minute samples');
+
+for(const side of ['BUY','SELL']){
+ const sign=side==='BUY'?1:-1;
+ const t=now+15000;
+ const input={...base,now:t,price:100+sign*.3,quoteAt:t,
+   previousQuote:{at:t-3000,price:100+sign*.24},
+   proxy:{side,observedAt:t-1000,tradeAt:t-2000,count:5}};
+ const alert=step(input);
+ assert.equal(alert?.phase,'ARMED');assert.equal(alert.side,side);
+ assert.equal(alert.armedAt,t);assert.equal(alert.priceAt,input.price);
+ assert.ok(sign*(alert.trigger-input.price)>0);
+ for(const patch of [{price:100+sign*.55},{proxy:{...input.proxy,observedAt:t+1}},
+   {proxy:{...input.proxy,tradeAt:t-16000}},{previousQuote:null}]){
+   assert.equal(step({...input,...patch}),null);
+ }
+}
+console.log('PASS proxy preparations before either edge, no stale, future or post-break alerts');

@@ -532,6 +532,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Arm in this session before crossing. Historical momentum markers are
  // retained for audit but never reused as the current early opportunity.
  const [earlyState,setEarlyState]=useState<EarlySetup|null>(null);
+ const paxg=usePaxgFlow(asset==='GOLD'&&marketOpen);
  const trackedSetup=useMemo(()=>advanceEarlySetup({
    prior:earlyState,scope:asset+':'+String(x?.candleSource||''),now,price,
    previousQuote:observedM15?.feedKey===[asset,x?.candleSource,liveQuote?.source].join(':')&&
@@ -542,17 +543,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ready:marketOpen&&m.sniper.view.priceFresh&&!providerTransition&&
      liveOpportunity.phase!=='OFFLINE',
    bars:m.candles,opportunity:liveOpportunity,lean:candleLean,
-   flow:flowProfile,liquidity:liquidityMagnets,watch:watchMap,marketContext,
+   proxy:asset==='GOLD'?paxg:null,flow:flowProfile,liquidity:liquidityMagnets,watch:watchMap,marketContext,
    m1Side:nextM1.ready?nextM1.side:'WAIT',
    m15Side:entryTrend
- }),[earlyState,asset,x?.candleSource,now,price,liveQuote?.sourceTime,liveQuote?.source,observedM15,
+ }),[earlyState,asset,paxg,x?.candleSource,now,price,liveQuote?.sourceTime,liveQuote?.source,observedM15,
    marketOpen,m.sniper.view.priceFresh,providerTransition,m.candles,
    liveOpportunity,candleLean,flowProfile,liquidityMagnets,watchMap,marketContext,
    nextM1.ready,nextM1.side,entryTrend]);
  useEffect(()=>{if(trackedSetup!==earlyState)setEarlyState(trackedSetup);},[trackedSetup,earlyState]);
  // Record the next candle while its opening price is still unknown.
  const forecastScope=JSON.stringify([asset,x?.candleSource,liveQuote?.source]);
- const paxg=usePaxgFlow(asset==='GOLD'&&marketOpen);
+
  type PreOpen={priceAt?:number;proxy?:PaxgSide;scope:string;target:number;issued:number;side:'BUY'|'SELL';reason:string};
  const [preOpen,setPreOpen]=useState<PreOpen|null>(null);
  useEffect(()=>{
@@ -1520,7 +1521,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          const px=index>=0?left+(index+.5)*actualStride:split-4;
          const y=py(open),color=r.side==='BUY'?'#7effbf':'#ff8aa4';
          const lead=Math.ceil((r.target-r.issued)/1000);
-         const label=(r.side==='BUY'?'شراء':'بيع')+' · قبلها '+lead+'ث';
+         const adverse=current&&formingVisible&&forming?.time===r.target&&
+           m.sniper.view.priceFresh&&price!=null&&(r.side==='BUY'?price<open:price>open);
+         const label=(r.side==='BUY'?'شراء':'بيع')+' · قبلها '+lead+'ث'+(adverse?' · عكسه الآن':'');
          const ly=clamp(y+(r.side==='BUY'?27:-26),plotTop+15,plotBottom-12);
          return <g key={r.target} data-preopen-m5={r.target}>
            <title>{label+' · '+h(r.target)+' · '+r.reason}</title>
@@ -1551,7 +1554,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              direction="rtl" fill={drawingColor} fontSize="10"
              fontWeight="900" stroke="#07111b" strokeWidth="3.1"
              paintOrder="stroke">
-             {drawingBadge}
+             {(hasDirectionalWatch||hasM5Fallback?'متابعة · ':'')+drawingBadge}
            </text>}
        </g>
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M5 · REAL</text>
