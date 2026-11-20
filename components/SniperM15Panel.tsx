@@ -809,14 +809,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    frozen?.asset===asset&&frozen.source===String(x?.candleSource||'')?frozen:null;
  const paused=Boolean(stable&&freezeDecision==='PAUSE');
  const awaitingReplacement=Boolean(stable&&freezeDecision==='REBUILD');
- // Keep the frozen route visually stable between CLOSED M15 candles.
- // Live ticks may update the real candle, but must not make the forecast pane
- // blink in/out as price briefly crosses the alignment threshold.
+ // Compare the saved route to the observed M5 price on screen.
  const comparisonStep=stable&&forming?
-   Math.max(0,Math.round((forming.time-stable.anchorTime)/900000)):0;
+   Math.max(0,Math.floor((forming.time-stable.anchorTime)/900000)):0;
  const visualAlignment=stable&&validLive&&forming?
    assessM15FrozenChartAlignment({
-     original:stable.scenario.bars,historical:actual,live:actual.at(-1)?.close??forming.close,
+     original:stable.scenario.bars,historical:actual,live:forming.close,
      atr:stable.scenario.atr,elapsedSteps:comparisonStep
    }):null;
  const detached=visualAlignment?.reason==='MOVED_AWAY';
@@ -851,8 +849,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const aligned=stable&&validLive&&forming&&
    stable.anchorTime<=forming.time&&
    forming.time<stable.anchorTime+12*900000&&!detached?stable:null;
- const elapsedSteps=aligned&&forming?
-   Math.max(0,Math.round((forming.time-aligned.anchorTime)/900000)):0;
+ const elapsedSteps=aligned?comparisonStep:0;
  // Retain ORIGINAL forecast timestamps. On later real candles only the
  // not-yet-observed route goes right of NOW; the past is scored separately.
  const shownBars=aligned?.scenario.bars.slice(elapsedSteps,12)??[];
@@ -1300,14 +1297,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {projected.ready&&renderedBars.length>0&&<g
            className="sniper-m15-conditional-route">
            <polyline
-             points={[[split-3,py(projected.bars[0].open)],
+             points={[[split-3,py(renderedBars[0].open)],
                ...renderedBars.map((b,i)=>[
                  split+5+(i+.5)*projectedStride,py(b.close)]
                )].map(point=>point.join(',')).join(' ')}
              stroke={chartSide==='BUY'?'#53e8b8':'#ff7798'}
              strokeWidth="2" strokeDasharray="6 5" fill="none"
              opacity={routeObstacle.blocked?.25:.85}/>
-           <circle cx={split-3} cy={py(projected.bars[0].open)}
+           <circle cx={split-3} cy={py(renderedBars[0].open)}
              r="3.2" fill="#061a20" stroke="#e8c477" strokeWidth="1.6"/>
            <title>مسار سعري مشروط من الشموع المغلقة؛ لا توجد شموع مستقبلية</title>
          </g>}
@@ -1570,7 +1567,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M5 · REAL</text>
        <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'}
          fontSize="10" textAnchor="start" direction="ltr">
-         {projected.ready?'M15 · PATH':sessionDataShort?
+         {projected.ready?'M15 · PATH':detached&&visualAlignment?
+           'انفصل المسار · '+n(visualAlignment.difference):sessionDataShort?
            'M15 · '+consecutiveM15+'/24':
            showWatchGuide?'M15 · WATCH':'M15 · LIVE'}
          <title>{sessionDataShort?
