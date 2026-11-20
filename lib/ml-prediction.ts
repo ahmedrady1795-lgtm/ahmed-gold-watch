@@ -55,7 +55,7 @@ async function runMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPrediction>
   const rows=candleCheck.rows,last=rows.at(-1)!;
   // A provider correction to an older candle must invalidate cached AI output.
   // Last-close-only keys silently replay predictions from superseded features.
-  const cacheKey=url+'|'+rows.map(c=>[c.time,c.open,c.high,c.low,c.close,volume(c)].join(':')).join('|');
+  const cacheKey=rows.map(c=>[c.time,c.open,c.high,c.low,c.close,volume(c)].join(':')).join('|')+'|'+url;
   // One *identical* immutable CLOSED-M1 input needs only one upstream
   // inference. The previous 30s TTL repeated the same Binance/ML request
   // before a new minute closed, increasing free-tier rate limiting.
