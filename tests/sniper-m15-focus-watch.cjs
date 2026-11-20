@@ -82,7 +82,7 @@ assert.match(panel,/onClick=\{\(\)=>setFocusView\(v=>!v\)\}/,
  'user can recover the original full context at any time');
 assert.match(overlay,/const stride=\(width-80\)\/6/,
  'price paths reserve a right-side target label rail');
-assert.match(overlay,/placeHuntWaypoints\(f,p\.py,p\.top,p\.bottom\)/,
+assert.match(overlay,/placeHuntWaypoints\(f,p\.py,p\.top,p\.bottom,p\.observed\)/,
  'conditional projected target station badges are rendered on true prices');
 assert.match(panel,/visibleFrom=\{trueHistory\[0\]\?\.time\}/,
  'BOS/CHoCH events older than the focused historical window are not pinned to its left boundary');
