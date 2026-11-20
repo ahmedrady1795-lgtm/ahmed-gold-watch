@@ -59,23 +59,31 @@ assert.doesNotMatch(svg,/<rect\b/,
  'no drawn BUY/SELL, test, early, or M5 text badges may use large filled rectangles');
 assert.match(svg,/s\.quality==='SETUP'\?\(buy\?'شراء':'بيع'\)/,
  'only a qualified confirmed setup can have an unqualified BUY/SELL label');
-assert.match(svg,/shortLabel=buy\?'↗ صعود':'↘ هبوط'/,
- 'follow-through observations appear as small direction arrows, not entries');
-assert.match(svg,/const nearCurrent=\(r:MovementProof\)=>active&&/,
- 'active directional setup takes priority in a dedicated mobile chart lane');
-assert.match(svg,/const caption=m5Captioned.includes\(r\)&&!nearCurrent\(r\)/,
- 'historical M5 wave text cannot cover the current BUY/SELL question mark');
-assert.match(svg,/m5Issued\.map\(\(r,i\)=>/,
- 'do not erase historical M5 observations or their true price dots');
-assert.match(svg,/\{early\.map\(\(r,i\)=>\{/,
- 'do not erase older BUY/SELL watches from the audit history');
-assert.match(svg,/\{shown\.map\(r=>\{/,
- 'confirmed break markers must retain historical time and price');
-assert.match(svg,/\.slice\(0,3\)/,
- 'recent mobile captions stay bounded and leave room for actual price candles');
+// Verify actual SVG output across a price update and chart rollover.
+const markerModule={exports:{}};
+vm.runInNewContext(ts.transpileModule(svg,{fileName:'Markers.tsx',compilerOptions:{
+ target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX
+}}).outputText,{exports:markerModule.exports,module:markerModule,require(name){
+ if(name==='../lib/sniper-movement-proof')return mod.exports;
+ if(name==='./SniperOpportunityHistory')return {outcomeLabel:{}};
+ return require(name);
+}});
+const renderMarker=require('react-dom/server').renderToStaticMarkup;
+const markerProps={asset:'GOLD',source:'same-provider',from:start,now:start+90000,
+ left:0,split:180,end:260,top:0,bottom:250,py:p=>p,timeX:t=>(t-start)/1000,
+ records:[{...issued[0],kind:'FOLLOW'}],signal:{...pre,phase:'BREAK_CONFIRMED',
+ quality:'SETUP',sourceAt:start+75000},confirmedPrice:101.25};
+for(const split of [180,200]){
+ const markup=renderMarker(markerModule.exports.default({...markerProps,split}));
+ assert.match(markup,/<circle cx="75" cy="101.25"/,'confirmation stays at issued coordinates');
+ const dot=markup.match(/<g[^>]*data-kind="FOLLOW"[^>]*>(.*?)<\/g>/s)?.[1];
+ assert.ok(dot,'keep the original M5 history');
+ assert.match(dot,/fill="#96a3b5"/);
+ assert.doesNotMatch(dot,/<text\b/,'passive movement has no entry caption');
+}
 const panelCaption=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
-assert.match(panelCaption,/py\(earlyOpportunity\.trigger\)>=plotTop/,
- 'a duplicate corner headline is removed only while real trigger is on-screen');
+assert.match(panelCaption,/py\(markerPrice\)>=plotTop/,
+ 'suppress the duplicate corner label only for a visible price marker');
 const dup=step({prior:issued,now:start+70000,asset:'GOLD',source:'same-provider',
  price:100,signal:pre,bars:[]});
 assert.equal(dup,issued,'no duplicate on every client quote');
