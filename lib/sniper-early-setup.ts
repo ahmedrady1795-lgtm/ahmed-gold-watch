@@ -794,11 +794,20 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    input.watch.asOf<=now&&now-input.watch.asOf<=3600000;
  const levelPrices=watchFresh?(side==='BUY'?input.watch!.upper:input.watch!.lower)
    .map(l=>l.price):[];
+ const ahead=(level:number)=>side==='BUY'?level>trigger!:level<trigger!;
+ const opposingEdges=zones.filter(z=>demand(z)!==(side==='BUY'))
+   .map(z=>side==='BUY'?z.low:z.high).filter(ahead);
+ const magnet=side==='BUY'?liq?.above:liq?.below;
+ if(liq?.ready&&liq.sourceAt!=null&&liq.sourceAt<=now&&now-liq.sourceAt<=3600000&&
+   magnet&&magnet.lastConfirmedAt<=liq.sourceAt&&Number.isFinite(magnet.price)&&ahead(magnet.price))
+   opposingEdges.push(magnet.price);
  const targetPrices=[...(op.side===side?op.targets:[]),...levelPrices,
    ...(setupKind==='PROFILE'&&flow?.poc!=null?[flow.poc]:[]),
    ...bars.slice(0,-2).map(b=>side==='BUY'?b.high:b.low)]
-   .filter(t=>Number.isFinite(t)&&(side==='BUY'?t>trigger+atr*.1:t<trigger-atr*.1))
-   .sort((a,b)=>side==='BUY'?a-b:b-a);
+   .filter(t=>Number.isFinite(t)&&(side==='BUY'?t>trigger+atr*.1:t<trigger-atr*.1));
+ // Keep even a nearby opposing edge: qualification measures room to the FIRST objective.
+ targetPrices.push(...opposingEdges);
+ targetPrices.sort((a,b)=>side==='BUY'?a-b:b-a);
  const targets:number[]=[];
  for(const target of targetPrices)
    if(!targets.some(t=>Math.abs(t-target)<atr*.1))targets.push(target);
