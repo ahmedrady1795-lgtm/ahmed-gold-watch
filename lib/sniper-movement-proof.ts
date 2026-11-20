@@ -10,7 +10,22 @@ type SetupKind='PRESSURE'|'SWEEP'|'COMPRESSION'|'RECLAIM'|'MICRO'|
 const setupKinds:SetupKind[]=['PRESSURE','SWEEP','COMPRESSION','RECLAIM','MICRO',
  'COIL','ZONE','PULLBACK','PROFILE','STRUCTURE'];
 type Bar={time:number;open:number;high:number;low:number;close:number};
+export type SignalEvidence={
+ reason:string;flowStatus:string;flowSource:string;flowSide:'BUY'|'SELL'|'WAIT';
+ liquidityReady:boolean;m1Side:'BUY'|'SELL'|'WAIT';m15Side:'BUY'|'SELL'|'WAIT';
+ proxySide:string;
+};
+function safeEvidence(value:unknown):SignalEvidence|undefined{
+ const x=value as SignalEvidence|undefined;
+ if(!x||typeof x!=='object'||typeof x.liquidityReady!=='boolean'||
+   ![x.reason,x.flowStatus,x.flowSource,x.proxySide].every(v=>typeof v==='string'&&v.length<=2000)||
+   ![x.flowSide,x.m1Side,x.m15Side].every(v=>['BUY','SELL','WAIT'].includes(v)))return undefined;
+ return {reason:x.reason,flowStatus:x.flowStatus,flowSource:x.flowSource,
+   flowSide:x.flowSide,liquidityReady:x.liquidityReady,m1Side:x.m1Side,
+   m15Side:x.m15Side,proxySide:x.proxySide};
+}
 export type MovementProof={
+ evidence?:SignalEvidence;
  id:string;asset:'GOLD'|'BTC';source:string;kind:'EARLY'|'BREAK'|'OPEN'|'FOLLOW'|'CLOSE';
  side:Side;sourceAt:number;issuedAt:number;priceAt:number;
  quality?:'SETUP'|'COUNTERTREND'|'OBSERVATION';
@@ -64,10 +79,11 @@ export function safeMovementProof(raw:unknown):MovementProof[]{
   (x.setupExpiresAt==null||valid(x.setupExpiresAt)&&x.setupExpiresAt>x.issuedAt)&&
   ['PENDING','TARGET','STOP','TIMEOUT','AMBIGUOUS','UNKNOWN','NO_TARGET'].includes(x.status)&&
   (x.target==null||valid(x.target))&&(x.invalidation==null||valid(x.invalidation))
- ).slice(-2000).map((x:any)=>({...x,leadSeconds:valid(x.leadSeconds)?x.leadSeconds:null}));
+ ).slice(-2000).map((x:any)=>({...x,evidence:safeEvidence(x.evidence),leadSeconds:valid(x.leadSeconds)?x.leadSeconds:null}));
 }
 export function advanceMovementProof(input:{
  prior:MovementProof[];now:number;asset:'GOLD'|'BTC';source:string;
+ evidence?:SignalEvidence;
  price:number|null;signal:Opportunity;bars:unknown;m5Bars?:unknown;
  candleLean?:{phase:'OPEN'|'FOLLOW'|'CLOSE'|'WAIT';side:'BUY'|'SELL'|'WAIT';issuedFor:number|null;reason?:string};
  frameTrend?:'BUY'|'SELL'|'WAIT';
@@ -231,6 +247,7 @@ export function advanceMovementProof(input:{
        quality:signal.quality??'OBSERVATION',
        ...(signal.setupKind&&setupKinds.includes(signal.setupKind)?
           {setupKind:signal.setupKind}:{}),
+       evidence:safeEvidence(input.evidence),
        issuedAt:now,priceAt:input.price,
        trigger:valid(signal.trigger)?signal.trigger:null,
        invalidation,target,
@@ -281,6 +298,7 @@ export function advanceMovementProof(input:{
      if(!already&&!repeatedWave){
        next.push({id,asset,source,kind:lean.phase,side:lean.side,
          setupType,frameTrend:input.frameTrend??'WAIT',
+         evidence:safeEvidence(input.evidence?{...input.evidence,reason:lean.reason??''}:undefined),
          quality:'OBSERVATION',sourceAt:lean.issuedFor,issuedAt:now,
          priceAt:input.price,trigger:null,invalidation:null,target:null,
          status:'NO_TARGET',resolvedAt:null,detectedAfterMs:now-lean.issuedFor,
