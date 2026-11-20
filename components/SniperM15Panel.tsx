@@ -1256,7 +1256,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            left+(i+.5)*actualStride,realCandleWidth,'real'+b.time))}
          {/* The next-M1 watch is fixed by prior CLOSED minute candles,
               not guessed from the color of this unfinished candle. */}
-         {!visiblePreOpen&&formingVisible&&forming&&marketOpen&&nextM1.ready&&
+         {showExtra&&!visiblePreOpen&&formingVisible&&forming&&marketOpen&&nextM1.ready&&
            nextM1.side!=='WAIT'&&<g className="sniper-hunt-live-direction">
              <text x={split-7}
                y={clamp(py(forming.close)+23,plotTop+28,plotBottom-12)}
@@ -1272,6 +1272,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            <g className="sniper-m15-watch-guide">
              <SniperM15HuntOverlay forecast={huntPreview} proof={huntProof} asset={asset}
                m1={nextM1} marketOpen={marketOpen}
+               observed={formingVisible&&forming?[...realM5,forming]:realM5}
                flowSide={flowProfile.ready?flowProfile.side:'WAIT'}
                obstruction={routeObstacle}
                left={left} split={split} end={end}
