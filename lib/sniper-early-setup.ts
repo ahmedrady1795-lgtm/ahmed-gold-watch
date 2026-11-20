@@ -77,6 +77,12 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  if(!input.ready)return prior?(prior.phase==='CANCELLED'?prior:{...prior,phase:'CANCELLED',lastAt:now,reason:'البيانات غير حديثة؛ الإعداد ملغي'}):null;
  // Count flow/profile ONLY if it was observed on the matching venue before this
  // decision, with a fresh real timestamp. Unavailable DOM is never agreement.
+ const knownZones=(input.zones??[]).filter(z=>z.confirmedAt!=null&&z.confirmedAt<=now&&
+   z.low>0&&z.high>=z.low&&!z.source.includes('فجوة')&&
+   ['SUPPLY','DEMAND','REBOUND_UP','REBOUND_DOWN'].includes(z.kind));
+ const demand=(z:LiquidityZone)=>z.kind==='DEMAND'||z.kind==='REBOUND_UP';
+ const insideOpposition=(z:LiquidityZone,buy:boolean,level:number)=>
+   demand(z)!==buy&&level>=z.low&&level<=z.high;
  const flow=input.flow;
  const hasFlow=Boolean(flow?.ready&&flow.side!=='WAIT'&&
    Number.isFinite(flow.asOf)&&Number.isFinite(flow.observedAt)&&
@@ -179,6 +185,9 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      {...prior,lastPrice:price,lastAt:now};
    const crossed=prior.side==='BUY'?price>=prior.trigger:price<=prior.trigger;
    if(crossed){
+     if(knownZones.some(z=>insideOpposition(z,prior!.side==='BUY',prior!.trigger)||
+       insideOpposition(z,prior!.side==='BUY',price)))return {...prior,phase:'CANCELLED',
+       lastPrice:price,lastAt:now,reason:'سعر التفعيل داخل منطقة عرض أو طلب معاكسة مؤكدة'};
      const extension=Math.abs(price-prior.trigger);
      if(extension>prior.atr*.35)return {...prior,phase:'CANCELLED',lastAt:now,
        lastPrice:price,reason:'السعر تجاوز منطقة التفعيل؛ لا نطارد الموجة'};
@@ -598,10 +607,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  // Score only supply/demand that had already been confirmed before the M1
  // candle tested it. Pool targets and zones recovered after a data gap do
  // not establish a live obstacle or reversal.
- const zones=(input.zones??[]).filter(z=>z.confirmedAt!=null&&
-   z.confirmedAt<=last.time&&z.low>0&&z.high>=z.low&&
-   !z.source.includes('فجوة')&&['SUPPLY','DEMAND','REBOUND_UP','REBOUND_DOWN'].includes(z.kind));
- const demand=(z:LiquidityZone)=>z.kind==='DEMAND'||z.kind==='REBOUND_UP';
+ const zones=knownZones.filter(z=>z.confirmedAt!<=last.time);
  const recent=bars.slice(-6);
  const recentLow=Math.min(...recent.map(b=>b.low));
  const recentHigh=Math.max(...recent.map(b=>b.high));
@@ -646,6 +652,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    const remaining=c.side==='BUY'?c.trigger-price:price-c.trigger;
    const risk=c.side==='BUY'?price-c.invalidation:c.invalidation-price;
    const buy=c.side==='BUY';
+   if(c.setupKind!=='ZONE'&&knownZones.some(z=>insideOpposition(z,buy,c.trigger)))return false;
    const extended=(buy?price-recentLow:recentHigh-price)>atr*1.8;
    if(c.setupKind!=='ZONE'&&extended&&zones.some(z=>{
      if(demand(z)===buy)return false;
