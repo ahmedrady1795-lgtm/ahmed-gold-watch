@@ -554,3 +554,21 @@ for(const buy of [true,false]){
  assert.equal(reclaimed?.side,side);
  assert.match(reclaimed.reason,/رفض مبكر/);
 }
+
+for(const side of ['BUY','SELL']){
+ const buy=side==='BUY',flip=p=>buy?p:200-p;
+ const opportunity={...op,side,trigger:flip(100.3),invalidation:flip(99.4),targets:[flip(102)]};
+ const wall={kind:buy?'SUPPLY':'DEMAND',low:flip(buy?100.33:100.4),
+   high:flip(buy?100.4:100.33),source:'M15 swing',confirmedAt:bars[10].time};
+ const input={...base,opportunity};
+ const prepared=step({...input,zones:[wall]});
+ assert.equal(prepared.phase,'ARMED');
+ assert.equal(prepared.targets[0],flip(100.33),'near opposing zone precedes a farther target');
+ const magnet={price:flip(100.32),lastConfirmedAt:now-60000};
+ const liquidity={ready:true,sourceAt:now-1000,[buy?'above':'below']:magnet};
+ assert.equal(step({...input,liquidity}).targets[0],magnet.price);
+ assert.notEqual(step({...input,liquidity:{...liquidity,sourceAt:now+1}}).targets[0],magnet.price);
+ assert.notEqual(signal({...prepared,phase:'TRIGGERED',priceAt:flip(100.31),
+   trendSide:side,score:8}).quality,'SETUP','no qualified entry with a wall before sufficient reward');
+}
+console.log('PASS: frozen opposite liquidity objectives, both directions and future data rejection');
