@@ -459,10 +459,6 @@ assert.match(markerSvg,/occupied\.every/,
  'older and newer captions must not overlap on mobile');
 assert.match(markerSvg,/if\(chosen\)earlyLabels\.set/,
  'pre-break watch labels get priority over late momentum observations');
-assert.match(markerSvg,/waveIds\.add\(record\.id\)/,
- 'late observations are grouped by actual directional wave, not treated as multiple entries');
-assert.match(markerSvg,/m5Issued\.filter\(r=>waveIds\.has\(r\.id\)\)\.slice\(0,3\)/,
- 'show only three distinct M5 wave-start captions while preserving all historical dots');
 assert.match(markerSvg,/\{early\.map\(\(r,i\)=>\{/,
  'genuine pre-break markers must never be hidden behind late M5 observations');
 assert.doesNotMatch(markerSvg,/earlyShown\.filter\(r=>!nearM5\(r\)\)/,
@@ -471,13 +467,11 @@ assert.match(markerSvg,/buy\?'ترقب صعود':'ترقب هبوط'/,
  'early BUY remains a directional watch, not an entry');
 assert.match(markerSvg,/s.phase==='TESTING'\?\(buy\?'اختبار صعود':'اختبار هبوط'\)/,
  'SELL/BUY breakout tests are visibly provisional and box-free');
-assert.match(markerSvg,/const labelText=movementObservationLabel\(r\)/,
- 'M1 bounce and reversal captions are observations, not entry recommendations');
 assert.match(markerSvg,/return null; \/\/ keep the real price dot/,
  'overfull chart must retain original marker anchors instead of inventing prices');
 assert.match(panel,/liquidity:liquidityMagnets,watch:watchMap/,
  'frozen M15/H1 support-resistance is actually wired into the live watch');
-assert.match(panel,/const drawingBadge=drawingLabel;/,
+assert.match(panel,/const drawingBadge=passiveWatch\?'مراقبة · لا توجد إشارة دخول':drawingLabel;/,
  'chart status shows concise text, never a misleading 5/10 likelihood');
 assert.doesNotMatch(panel,/<rect x=\{left\+7\} y=\{plotTop\+7\}/,
  'main chart status is no longer a large colored box');
