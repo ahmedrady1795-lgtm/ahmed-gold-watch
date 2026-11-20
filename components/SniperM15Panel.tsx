@@ -696,7 +696,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Qualitative evidence checklist, not a predicted success rate.
  // The checklist score is kept in the tooltip; it is NOT win probability.
  // Plain BUY/SELL appears only after a genuinely qualified confirmation.
- const drawingBadge=drawingLabel;
+ const passiveWatch=!showZoneObservation&&!showRejected&&(hasDirectionalWatch||hasM5Fallback);
+ const markerPrice=hasEarlySignal?currentSignalPrice:earlyOpportunity.trigger;
+ const drawingBadge=passiveWatch?'مراقبة · لا توجد إشارة دخول':drawingLabel;
  const drawingReason=showZoneObservation?
    (trackedSetup?.reason||'')+' · مستوى مراقبة فقط؛ لا توجد إشارة شراء/بيع مؤهلة':
    showPreparation||showCrossTest||showRejected||hasEarlySignal?
@@ -708,7 +710,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    marketOpen&&m.sniper.view.priceFresh&&!providerTransition?
      candleLean.reason+' · '+closedM5Context.reason:
    earlyOpportunity.reason;
- const drawingColor=showZoneObservation?'#ebd08d':
+ const drawingColor=passiveWatch?'#aebbc8':showZoneObservation?'#ebd08d':
    drawingSide==='BUY'?'#64e8b2':
    drawingSide==='SELL'?'#fa92a4':'#ebd08d';
  const rawIssuance=assessM15ScenarioIssuance({
@@ -1507,7 +1509,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              textAnchor="end" direction="ltr" fontSize="10" fontWeight="800" fill="white">{chartReference.toFixed(2)}</text>
          </>}
        </g>
-       <SniperOpportunityMarkers signal={earlyOpportunity} records={movementRecords}
+       <SniperOpportunityMarkers signal={earlyOpportunity} confirmedPrice={trackedSetup?.phase==='TRIGGERED'?trackedSetup.priceAt:null} records={movementRecords}
          evidenceScore={trackedSetup?.score??null}
          asset={asset} source={String(x?.candleSource||'')}
          from={trueHistory[0]?.time??now} now={now} left={left} split={split}
@@ -1547,14 +1549,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {!((earlyOpportunity.phase==='PREPARE'||
              earlyOpportunity.phase==='TESTING'||
              earlyOpportunity.phase==='BREAK_CONFIRMED')&&
-             earlyOpportunity.trigger!=null&&
-             py(earlyOpportunity.trigger)>=plotTop&&
-             py(earlyOpportunity.trigger)<=plotBottom)&&
+             markerPrice!=null&&py(markerPrice)>=plotTop&&py(markerPrice)<=plotBottom)&&
            <text x={left+13} y={plotTop+21} textAnchor="end"
              direction="rtl" fill={drawingColor} fontSize="10"
              fontWeight="900" stroke="#07111b" strokeWidth="3.1"
              paintOrder="stroke">
-             {(hasDirectionalWatch||hasM5Fallback?'متابعة · ':'')+drawingBadge}
+             {drawingBadge}
            </text>}
        </g>
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M5 · REAL</text>
