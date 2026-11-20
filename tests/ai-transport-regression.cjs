@@ -50,6 +50,10 @@ const response=(status,header=null,data={ok:true})=>({status,ok:status===200,hea
  // The same closed M1 bars remain fresh in the next 30-second worker
  // cycle. A repeated identical request must NOT make another ML HTTP call.
  now+=60000;
+ const priorCalls=calls.length;
+ const againA=ml.getMlPrediction(a);
+ assert.equal(calls.length,priorCalls,'another instrument or revision must not evict a fresh result');
+ assert.equal((await againA).marker,'a');
  const repeated=await ml.getMlPrediction(b);
  assert.equal(repeated.marker,'b','unchanged input reuses identical inference across cycles');
  assert.equal(calls.length,2,'no second ML call for unchanged closed candles');
