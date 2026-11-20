@@ -653,13 +653,22 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      price,signal:earlyOpportunity,bars:m.candles,
      m5Bars:x?.chartHigherFrames?.m5,
      frameTrend:entryTrend,setupState:trackedSetup,
+     evidence:{
+       reason:earlyOpportunity.reason,flowStatus:flowObservation.status,
+       flowSource:flowObservation.source,flowSide:flowProfile.side,
+       liquidityReady:liquidity.ready,m1Side:nextM1.ready?nextM1.side:'WAIT',
+       m15Side:entryTrend,proxySide:paxg&&paxg.observedAt<=now&&
+         now-paxg.observedAt<=12000&&paxg.tradeAt<=now&&now-paxg.tradeAt<=15000?
+         paxg.side:'UNAVAILABLE'
+     },
      // Freeze FIRST observed closed-M1 directional wave, including continuation.
      // Movement journal deduplicates same-side waves; these are NOT trade entries.
      candleLean:hasDirectionalWatch?candleLean:undefined
    }));
  },[movementProofLoaded,now,asset,x?.candleSource,price,
    earlyOpportunity,candleLean,hasDirectionalWatch,m.candles,
-   x?.chartHigherFrames?.m5,entryTrend,trackedSetup]);
+   x?.chartHigherFrames?.m5,entryTrend,trackedSetup,flowObservation,flowProfile.side,
+   liquidity.ready,nextM1.ready,nextM1.side,paxg]);
  const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
    [movementRecords,asset]);
  const showZoneObservation=trackedSetup?.phase==='OBSERVING';
