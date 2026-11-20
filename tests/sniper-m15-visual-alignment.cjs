@@ -38,3 +38,7 @@ assert.match(badge,/<strong>◈ رادار الذهب<\/strong>/);
 assert.ok(badge.indexOf('{expanded&&<section')<badge.indexOf('sniper-gold-radar-prices'),
  'large radar data must remain behind tap-to-expand rather than obscuring candles');
 console.log('PASS: detached M15 routes hidden, frozen proof preserved, radar collapsed and targets honest');
+
+assert.match(chart,/historical:actual,live:forming\.close/,'use the current displayed candle for divergence');
+assert.match(chart,/Math\.floor\(\(forming\.time-stable\.anchorTime\)\/900000\)/,'ten elapsed minutes must not advance a fifteen-minute step');
+assert.match(chart,/points=\{\[\[split-3,py\(renderedBars\[0\]\.open\)/,'a remaining route starts at its first remaining step');
