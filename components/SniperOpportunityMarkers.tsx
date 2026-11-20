@@ -92,6 +92,10 @@ export default function SniperOpportunityMarkers(p:Props){
    occupied.push({l:markerX-97,r:markerX+3,
      t:Math.max(p.top,y-32),b:Math.min(p.bottom,y+18)});
  }
+ const currentEarly=(r:MovementProof)=>(s.phase==='PREPARE'||s.phase==='TESTING')&&
+   r.setupLifecycle==='PENDING'&&r.setupExpiresAt!=null&&r.setupExpiresAt>p.now&&
+   r.sourceAt===s.sourceAt&&r.side===s.side&&r.trigger===s.trigger&&
+   r.invalidation===s.invalidation;
  const earlyLabels=new Map<string,{x:number;y:number}>();
  // Reserve qualified entries before observational captions.
  const breakLabels=new Map<string,{x:number;y:number}>();
@@ -102,7 +106,7 @@ export default function SniperOpportunityMarkers(p:Props){
  }
  for(const r of earlyShown.filter(r=>r.setupLifecycle!=='INVALIDATED'&&
    r.setupLifecycle!=='CANCELLED'&&r.setupLifecycle!=='EXPIRED'&&
-   !nearCurrent(r)).slice(0,2)){
+   currentEarly(r)&&!nearCurrent(r)).slice(0,2)){
    const px=p.timeX(r.issuedAt),py=p.py(r.priceAt);
    const chosen=placeLabel(px,py,48,16,r.side==='BUY'?22:-22);
    if(chosen)earlyLabels.set(r.id,chosen);
@@ -125,11 +129,12 @@ export default function SniperOpportunityMarkers(p:Props){
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt),buy=r.side==='BUY';
      const ended=r.setupLifecycle==='INVALIDATED'||
        r.setupLifecycle==='CANCELLED'||r.setupLifecycle==='EXPIRED';
-     const ink=ended?'#b4a5ad':'#e0be78';
+     const current=currentEarly(r);
+     const ink=current?'#e0be78':'#b4a5ad';
      return <g key={r.id} data-kind="EARLY" data-issued-at={r.issuedAt}
        data-onset={r.onsetOutcome??'NOT_AUDITED'}
        data-lifecycle={r.setupLifecycle??'NOT_AUDITED'}>
-       {ended?<circle cx={x} cy={y} r="2.1" fill={ink}/>:
+       {!current?<circle cx={x} cy={y} r="2.1" fill={ink}/>:
          <path d={buy?`M${x} ${y-8} L${x-6} ${y+2} L${x+6} ${y+2} Z`:
          `M${x} ${y+8} L${x-6} ${y-2} L${x+6} ${y-2} Z`}
          stroke={ink} strokeWidth="1.3" fill="#2c2414"/>}
@@ -141,6 +146,7 @@ export default function SniperOpportunityMarkers(p:Props){
            ' · حالة الإعداد غير مسجلة وقت إصدار هذه العلامة')+
          (r.onsetOutcome?' · '+onsetLabel[r.onsetOutcome]: ' · لم تكن خاضعة لتقييم بداية الموجة')+
          (r.onsetDelaySeconds!=null?' · بعد '+r.onsetDelaySeconds+'ث':'')+
+         (r.evidence?' · '+r.evidence.reason+' · تدفق وقت الرصد '+r.evidence.flowStatus:' · سبب الإصدار غير محفوظ')+
          ' · محفوظ عند الرصد وليس إشارة تنفيذ'}</title>
        {earlyLabels.has(r.id)&&<>
          <line x1={x} y1={y}
