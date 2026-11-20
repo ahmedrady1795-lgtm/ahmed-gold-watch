@@ -223,13 +223,18 @@ export type HuntWaypoint={
  side:HuntSide;stage:1|2;price:number;lineY:number;labelY:number
 };
 export function placeHuntWaypoints(f:M15HuntPreview,
- priceToY:(value:number)=>number,top:number,bottom:number):HuntWaypoint[]{
+ priceToY:(value:number)=>number,top:number,bottom:number,
+ observed:readonly {time:number;high:number;low:number}[]=[]):HuntWaypoint[]{
  if(!f.ready||bottom-top<100)return [];
  const candidates:([HuntSide,1|2,number|undefined])[]=[
   ['BUY',1,f.buy[2]?.close],['BUY',2,f.buy[5]?.close],
   ['SELL',1,f.sell[2]?.close],['SELL',2,f.sell[5]?.close]
  ];
+ const since=(f.anchorTime??Infinity)+900000;
+ const afterClose=observed.filter(b=>b.time>=since&&Number.isFinite(b.high)&&
+   Number.isFinite(b.low)&&b.low>0&&b.low<=b.high);
  const raw=candidates.filter(r=>r[2]!=null&&Number.isFinite(r[2])&&r[2]!>0)
+  .filter(([side,,value])=>!afterClose.some(b=>side==='BUY'?b.high>=value!:b.low<=value!))
   .map(([side,stage,value])=>{
    const price=value as number;
    return {side,stage,price,lineY:priceToY(price),labelY:0};
