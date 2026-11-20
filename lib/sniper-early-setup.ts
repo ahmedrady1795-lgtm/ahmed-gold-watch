@@ -10,7 +10,7 @@ type Bar={time:number;open:number;high:number;low:number;close:number};
 export type EarlySetup={
  scope:string;side:'BUY'|'SELL';phase:'OBSERVING'|'ARMED'|'TRIGGERED'|'CANCELLED'|'EXPIRED';
  sourceAt:number;armedAt:number;expiresAt:number;trigger:number;invalidation:number;
- crossedAt?:number|null;crossedQuoteAt?:number|null;
+ crossedAt?:number|null;crossedQuoteAt?:number|null;crossedPrice?:number|null;
  atr:number;priceAt:number;lastPrice:number;lastAt:number;triggeredAt:number|null;
  targets:number[];reason:string;score?:number;setupKind?:'PRESSURE'|'SWEEP'|'COMPRESSION'|'RECLAIM'|'MICRO'|'COIL'|'ZONE'|'PULLBACK'|'PROFILE'|'STRUCTURE';retestAt?:number|null;
  trendSide?:'BUY'|'SELL'|'WAIT';flowAligned?:boolean;localStructureAligned?:boolean;contextNote?:string;
@@ -183,17 +183,20 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      if(extension>prior.atr*.35)return {...prior,phase:'CANCELLED',lastAt:now,
        lastPrice:price,reason:'السعر تجاوز منطقة التفعيل؛ لا نطارد الموجة'};
      const quoteAt=input.quoteAt;
-     if(quoteAt==null||!Number.isFinite(quoteAt)||quoteAt>now||now-quoteAt>15000)
+     if(quoteAt==null||!Number.isFinite(quoteAt)||quoteAt>now||quoteAt<prior.armedAt||now-quoteAt>15000)
        return {...prior,lastPrice:price,lastAt:now,
          reason:'عبور سعري دون توقيت عرض حديث؛ لا تأكيد من ساعة الشاشة'};
      if(prior.crossedAt==null)return {...prior,crossedAt:now,
-       crossedQuoteAt:quoteAt,lastPrice:price,lastAt:now,
+       crossedQuoteAt:quoteAt,crossedPrice:price,lastPrice:price,lastAt:now,
        reason:'اختبار عبور مستوى '+(prior.side==='BUY'?'الشراء':'البيع')+
          '؛ لم تثبت متابعة السعر بعد'};
      // Two distinct fresh observations separated by >= 2.5s, not a one-tick wick.
      // Confirmation records the LATER observed price/time, never backdates it.
-     const laterQuote=quoteAt>(prior.crossedQuoteAt??prior.crossedAt);
-     if(now-prior.crossedAt<2500||!laterQuote||
+     const firstQuoteAt=prior.crossedQuoteAt??prior.crossedAt;
+     const laterQuote=quoteAt-firstQuoteAt>=2500;
+     const heldFirstPrice=prior.crossedPrice!=null&&
+       (prior.side==='BUY'?price>=prior.crossedPrice:price<=prior.crossedPrice);
+     if(now-prior.crossedAt<2500||!laterQuote||!heldFirstPrice||
        extension<prior.atr*.04)return {...prior,lastPrice:price,lastAt:now};
      return {...prior,phase:'TRIGGERED',triggeredAt:now,priceAt:price,lastPrice:price,lastAt:now,
        trendSide:input.m15Side??'WAIT',flowAligned:flowSide===prior.side,
@@ -208,7 +211,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
        reason:'فشل اختبار الاختراق؛ عودة السعر تحت/فوق مستوى التفعيل قبل التأكيد'};
      // A near-level pullback is only a RETEST OBSERVATION: it must cross again
      // on two fresh quotes to become an actual confirmed signal.
-     return {...prior,crossedAt:null,crossedQuoteAt:null,
+     return {...prior,crossedAt:null,crossedQuoteAt:null,crossedPrice:null,
        retestAt:now,lastPrice:price,lastAt:now,
        reason:'إعادة اختبار قريبة من مستوى الكسر؛ انتظار عبور جديد'};
    }
@@ -802,7 +805,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  return {scope:input.scope,side,phase:setupKind==='ZONE'?'OBSERVING':'ARMED',
    sourceAt,armedAt:now,expiresAt:now+180000,
    trigger,invalidation,atr,priceAt:price,lastPrice:price,lastAt:now,triggeredAt:null,
-   crossedAt:null,crossedQuoteAt:null,retestAt:null,score:evidenceScore,setupKind,
+   crossedAt:null,crossedQuoteAt:null,crossedPrice:null,retestAt:null,score:evidenceScore,setupKind,
    trendSide:input.m15Side??'WAIT',flowAligned:flowSide===side,localStructureAligned,
    contextNote:contextFresh?ctx!.reason:undefined,
    selectionMargin,selectionAgreement,selectionConflict,

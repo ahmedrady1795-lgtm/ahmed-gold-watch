@@ -679,8 +679,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    hasM5Fallback?closedM5Context.side:'WAIT';
  const drawingLabel=showZoneObservation?
    (trackedSetup?.side==='BUY'?'دعم · مراقبة':'مقاومة · مراقبة'):
-   showPreparation?(drawingSide==='BUY'?'شراء؟':'بيع؟'):
-   showCrossTest?(drawingSide==='BUY'?'شراء؟ كسر':'بيع؟ كسر'):
+   showPreparation?(drawingSide==='BUY'?'ترقب صعود':'ترقب هبوط'):
+   showCrossTest?(drawingSide==='BUY'?'اختبار صعود':'اختبار هبوط'):
    showRejected?'× كسر فاشل':
    hasEarlySignal?(earlyOpportunity.quality==='SETUP'?
      (drawingSide==='BUY'?'شراء':'بيع'):

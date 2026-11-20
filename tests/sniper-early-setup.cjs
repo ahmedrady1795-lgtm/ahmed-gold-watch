@@ -54,6 +54,21 @@ assert.equal(signal(firstCross).phase,'TESTING','first breakout tick never adver
 const repeatedQuote=step({...base,now:now+7000,prior:firstCross,
  price:100.33,quoteAt:now+6000});
 assert.equal(repeatedQuote.phase,'ARMED','same quote timestamp must not confirm');
+const delayedPair=step({...base,prior:firstCross,now:now+12000,
+ price:100.38,quoteAt:now+6500});
+assert.equal(delayedPair.phase,'ARMED','network delay cannot simulate a hold in source time');
+const staleCross=step({...base,prior:armed,now:now+3000,price:100.32,quoteAt:now-500});
+assert.equal(staleCross.crossedAt??null,null,'a quote from before preparation cannot begin the test');
+for(const [side,trigger,peak,retreat] of [
+ ['BUY',100.3,100.45,100.36],['SELL',99.7,99.55,99.64]
+]){
+ const setup={...armed,side,trigger,invalidation:side==='BUY'?99:101};
+ const test=step({...base,prior:setup,now:now+3000,quoteAt:now+3000,price:peak});
+ const faded=step({...base,prior:test,now:now+6000,quoteAt:now+6000,price:retreat});
+ assert.equal(faded.phase,'ARMED','a weakening breakout cannot confirm');
+ const recovered=step({...base,prior:faded,now:now+9000,quoteAt:now+9000,price:peak});
+ assert.equal(recovered.phase,'TRIGGERED','a fresh recovery may confirm the same setup');
+}
 const recross=step({...base,now:now+8000,prior:firstCross,
  price:100.1,quoteAt:now+8000});
 assert.equal(recross.phase,'CANCELLED','failed first-tick break is canceled early');
@@ -452,9 +467,9 @@ assert.match(markerSvg,/\{early\.map\(\(r,i\)=>\{/,
  'genuine pre-break markers must never be hidden behind late M5 observations');
 assert.doesNotMatch(markerSvg,/earlyShown\.filter\(r=>!nearM5\(r\)\)/,
  'close-by late M5 dots may not erase a real prior alert');
-assert.match(markerSvg,/buy\?'شراء؟':'بيع؟'/,
- 'early BUY remains a small question-mark watch, not an entry');
-assert.match(markerSvg,/s.phase==='TESTING'\?\(buy\?'شراء؟ كسر':'بيع؟ كسر'\)/,
+assert.match(markerSvg,/buy\?'ترقب صعود':'ترقب هبوط'/,
+ 'early BUY remains a directional watch, not an entry');
+assert.match(markerSvg,/s.phase==='TESTING'\?\(buy\?'اختبار صعود':'اختبار هبوط'\)/,
  'SELL/BUY breakout tests are visibly provisional and box-free');
 assert.match(markerSvg,/const labelText=movementObservationLabel\(r\)/,
  'M1 bounce and reversal captions are observations, not entry recommendations');
@@ -476,8 +491,8 @@ assert.match(markerSvg,/s.phase==='TESTING'/,
  'the chart distinguishes a testing quote from confirmed BUY or SELL');
 assert.match(markerSvg,/const active=\['PREPARE','TESTING','BREAK_CONFIRMED'\]/,
  'the pre-break price marker remains live before actual trigger');
-assert.match(panel,/showCrossTest\?\(drawingSide==='BUY'\?'شراء؟ كسر':'بيع؟ كسر'\)/,
- 'first quote crossing appears only as a small provisional question mark');
+assert.match(panel,/showCrossTest\?\(drawingSide==='BUY'\?'اختبار صعود':'اختبار هبوط'\)/,
+ 'first quote crossing appears only as a provisional directional test');
 assert.match(panel,/showRejected\?'× كسر فاشل'/,
  'a rejected breakout remains clearly visible without a filled box');
 console.log('PASS early setup: frozen prearm, 2.5s distinct quote confirmation, false-break cancellation, audit integrity and no chase');

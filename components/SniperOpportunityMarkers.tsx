@@ -188,7 +188,7 @@ export default function SniperOpportunityMarkers(p:Props){
            y={earlyLabels.get(r.id)!.y+3} textAnchor="middle"
            direction="rtl" fontSize="9" fontWeight="800" fill={ink}
            stroke="#07111b" strokeWidth="2.6" paintOrder="stroke">
-           {buy?'شراء؟':'بيع؟'}
+           {buy?'ترقب صعود':'ترقب هبوط'}
          </text>
        </>}
      </g>;
@@ -236,12 +236,12 @@ export default function SniperOpportunityMarkers(p:Props){
        s.quality==='OBSERVATION'?'#9bafc6':buy?'#57efb8':'#ff8095';
      const y=p.py(s.trigger!);
      const x=p.split-12,labelY=fit(y);
-     // A question mark is NOT an entry. Only qualified SETUP confirmation
+     // Preparation and crossing tests have explicit watch labels. Only qualified SETUP confirmation
      // may show the plain directive; keep all detailed reasons in <title>.
      const label=confirmed?(s.quality==='SETUP'?(buy?'شراء':'بيع'):
        (buy?'↗ رصد':'↘ رصد')):
-       s.phase==='TESTING'?(buy?'شراء؟ كسر':'بيع؟ كسر'):
-       (buy?'شراء؟':'بيع؟');
+       s.phase==='TESTING'?(buy?'اختبار صعود':'اختبار هبوط'):
+       (buy?'ترقب صعود':'ترقب هبوط');
      return <g data-phase={s.phase} aria-label={label+' عند '+s.trigger!.toFixed(2)}>
        <title>{s.reason+' · المستوى '+s.trigger!.toFixed(2)+
          (p.evidenceScore!=null?' · أدلة '+p.evidenceScore+'/10 (ليست احتمال نجاح)':'')+
@@ -255,7 +255,7 @@ export default function SniperOpportunityMarkers(p:Props){
        <text x={x} y={labelY-8} textAnchor="start" direction="rtl"
          fontSize="9.5" fontWeight="900" fill={ink}
          stroke="#07111b" strokeWidth="2.8" paintOrder="stroke">
-         {s.phase==='PREPARE'?'قبل الكسر · '+label:label}</text>
+         {label}</text>
      </g>;
    })()}
  </g>;
