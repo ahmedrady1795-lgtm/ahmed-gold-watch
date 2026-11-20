@@ -4,6 +4,7 @@ import type {LiveOpportunity} from './sniper-live-opportunity';
 import type {M5CandleLean} from './sniper-m5-candle-lean';
 import type {FlowProfileDecision} from './flow-profile-decision';
 import type {LiquidityMagnetView} from './sniper-liquidity-magnets';
+import type {LiquidityZone} from './sniper-m15-liquidity';
 import type {WatchPriceMap} from './sniper-m15-watch-prices';
 type Bar={time:number;open:number;high:number;low:number;close:number};
 export type EarlySetup={
@@ -67,7 +68,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  proxy?:PaxgFlow|null;previousQuote?:{at:number;price:number}|null;
  price:number|null;quoteAt?:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
  flow?:FlowProfileDecision|null;liquidity?:LiquidityMagnetView|null;
- watch?:WatchPriceMap|null;marketContext?:SniperMarketContext|null;
+ zones?:readonly LiquidityZone[];watch?:WatchPriceMap|null;marketContext?:SniperMarketContext|null;
  m1Side?:'BUY'|'SELL'|'WAIT';m15Side?:'BUY'|'SELL'|'WAIT'}):EarlySetup|null{
  const {now,price}=input;
  let prior=input.prior?.scope===input.scope?input.prior:null;
@@ -591,6 +592,48 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    }
  }
  collect();
+ // Score only supply/demand that had already been confirmed before the M1
+ // candle tested it. Pool targets and zones recovered after a data gap do
+ // not establish a live obstacle or reversal.
+ const zones=(input.zones??[]).filter(z=>z.confirmedAt!=null&&
+   z.confirmedAt<=last.time&&z.low>0&&z.high>=z.low&&
+   !z.source.includes('فجوة')&&['SUPPLY','DEMAND','REBOUND_UP','REBOUND_DOWN'].includes(z.kind));
+ const demand=(z:LiquidityZone)=>z.kind==='DEMAND'||z.kind==='REBOUND_UP';
+ const recent=bars.slice(-6);
+ const recentLow=Math.min(...recent.map(b=>b.low));
+ const recentHigh=Math.max(...recent.map(b=>b.high));
+ // Two separated wick rejections can mark a nearer M1 barrier than the
+ // M15 map, provided no later closed minute accepted price beyond it.
+ const olderTests=bars.slice(0,-3);
+ for(const buy of [true,false]){
+   const rejected=olderTests.filter((b,i)=>i>0&&i+1<olderTests.length&&(buy?
+     b.high>olderTests[i-1].high&&b.high>olderTests[i+1].high&&
+       b.high-Math.max(b.open,b.close)>=atr*.3:
+     b.low<olderTests[i-1].low&&b.low<olderTests[i+1].low&&
+       Math.min(b.open,b.close)-b.low>=atr*.3));
+   for(const b of rejected){
+     const level=buy?b.high:b.low;
+     const repeated=rejected.some(a=>a.time<=b.time-120000&&
+       Math.abs((buy?a.high:a.low)-level)<=atr*.18);
+     if(!repeated||bars.some(a=>a.time>b.time&&
+       (buy?a.close>level+atr*.1:a.close<level-atr*.1)))continue;
+     zones.push({kind:buy?'SUPPLY':'DEMAND',low:level-atr*.1,high:level+atr*.1,
+       confirmedAt:b.time+60000,label:'رفض متكرر',source:'ذيول M1 مغلقة'});
+   }
+ }
+ for(const z of zones){
+   const buy=demand(z),edge=buy?z.high:z.low,sign=buy?1:-1;
+   const tail=buy?Math.min(last.open,last.close)-last.low:last.high-Math.max(last.open,last.close);
+   const touched=buy?last.low<=edge&&last.low>=z.low-atr*.2:
+     last.high>=edge&&last.high<=z.high+atr*.2;
+   const recovery=sign*(price-edge);
+   if(!touched||tail<atr*.25||sign*(last.close-last.open)<=0||
+     sign*(last.close-edge)<=0||recovery<0||recovery>atr*.45)continue;
+   candidates.push({side:buy?'BUY':'SELL',setupKind:'RECLAIM',
+     trigger:buy?last.high+atr*.035:last.low-atr*.035,
+     invalidation:buy?last.low-atr*.08:last.high+atr*.08,
+     reason:'رفض مبكر عند '+(buy?'طلب':'عرض')+' محدد قبل اللمس؛ السعر قريب من المنطقة'});
+ }
  // Treat each trigger as a prospective choice. Reject an already-crossed
  // level BEFORE comparing scores; a high-scoring remote candidate must never
  // suppress a nearby valid one. Zone observations are available but do not
@@ -599,6 +642,14 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    if(observingSameBar&&c!==liveReclaim&&c!==proxyPressure)return false;
    const remaining=c.side==='BUY'?c.trigger-price:price-c.trigger;
    const risk=c.side==='BUY'?price-c.invalidation:c.invalidation-price;
+   const buy=c.side==='BUY';
+   const extended=(buy?price-recentLow:recentHigh-price)>atr*1.8;
+   if(c.setupKind!=='ZONE'&&extended&&zones.some(z=>{
+     if(demand(z)===buy)return false;
+     const room=buy?z.low-c.trigger:c.trigger-z.high;
+     const stillAhead=buy?price<=z.high:price>=z.low;
+     return stillAhead&&room<Math.min(risk,atr);
+   }))return false;
    const touched=(Array.isArray(input.bars)?input.bars:[]).some((b:Bar)=>
      b&&Number.isFinite(b.time)&&b.time>=sourceAt&&b.time<=now&&
      Number.isFinite(b.low)&&Number.isFinite(b.high)&&
@@ -628,8 +679,17 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    const flowVote=flowSide==='WAIT'?0:flowSide===c.side?1.2:-1.5;
    const sweepVote=sweptSide==='WAIT'?0:sweptSide===c.side?1.1:-1.6;
    const bodyVote=same>=2?1:against>=2?-1:0;
+   const buy=c.side==='BUY';
+   const obstacleDistances=zones.filter(z=>demand(z)!==buy)
+     .map(z=>buy?z.low-c.trigger:c.trigger-z.high).filter(d=>d>0);
+   const riskFromBreak=Math.abs(c.trigger-c.invalidation);
+   const nearest=Math.min(...obstacleDistances);
+   // In a contest prefer the setup with space after its trigger. Unknown
+   // zones give no advantage and a distant target cannot erase a nearer wall.
+   const roomVote=Number.isFinite(nearest)&&riskFromBreak>0?
+     Math.min(0,nearest/riskFromBreak-1):0;
    const nearVote=remaining<=atr*.52?.6:0;
-   return structural+m1+m15+flowVote+sweepVote+bodyVote+nearVote;
+   return structural+m1+m15+flowVote+sweepVote+bodyVote+nearVote+roomVote;
  };
  const ranked=viable.map((c,index)=>({c,index,rank:evidenceRank(c)}))
    .sort((a,b)=>b.rank-a.rank||a.index-b.index);

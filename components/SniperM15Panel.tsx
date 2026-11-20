@@ -543,10 +543,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ready:marketOpen&&m.sniper.view.priceFresh&&!providerTransition&&
      liveOpportunity.phase!=='OFFLINE',
    bars:m.candles,opportunity:liveOpportunity,lean:candleLean,
-   proxy:asset==='GOLD'?paxg:null,flow:flowProfile,liquidity:liquidityMagnets,watch:watchMap,marketContext,
+   zones:liquidity.zones,proxy:asset==='GOLD'?paxg:null,flow:flowProfile,liquidity:liquidityMagnets,watch:watchMap,marketContext,
    m1Side:nextM1.ready?nextM1.side:'WAIT',
    m15Side:entryTrend
- }),[earlyState,asset,paxg,x?.candleSource,now,price,liveQuote?.sourceTime,liveQuote?.source,observedM15,
+ }),[earlyState,asset,paxg,liquidity.zones,x?.candleSource,now,price,liveQuote?.sourceTime,liveQuote?.source,observedM15,
    marketOpen,m.sniper.view.priceFresh,providerTransition,m.candles,
    liveOpportunity,candleLean,flowProfile,liquidityMagnets,watchMap,marketContext,
    nextM1.ready,nextM1.side,entryTrend]);

@@ -526,3 +526,22 @@ for(const side of ['BUY','SELL']){
  }
 }
 console.log('PASS proxy preparations before either edge, no stale, future or post-break alerts');
+
+for(const buy of [true,false]){
+ const flip=p=>buy?p:200-p;
+ const shape=(b)=>({...b,open:flip(b.open),close:flip(b.close),
+   low:flip(buy?b.low:b.high),high:flip(buy?b.high:b.low)});
+ const moved=bars.map((b,i)=>shape(i===13?{...b,low:97.5}:b));
+ const side=buy?'BUY':'SELL';
+ const input={...base,bars:moved,opportunity:{...op,side,trigger:flip(100.3),invalidation:flip(99.4)}};
+ const zone={kind:buy?'SUPPLY':'DEMAND',low:flip(buy?100.4:100.9),
+   high:flip(buy?100.9:100.4),source:'confirmed swing',confirmedAt:bars[10].time};
+ assert.equal(step(input)?.side,side);
+ assert.notEqual(step({...input,zones:[zone]})?.side,side,'extended move into opposing zone');
+ assert.equal(step({...input,zones:[{...zone,confirmedAt:now+1}]})?.side,side);
+ const reject=bars.map((b,i)=>shape(i===17?{...b,open:100,close:100.2,high:100.34,low:99.6}:b));
+ const home={...zone,kind:buy?'DEMAND':'SUPPLY',low:flip(buy?99.5:100.05),high:flip(buy?100.05:99.5)};
+ const reclaimed=step({...base,bars:reject,price:flip(100.17),zones:[home]});
+ assert.equal(reclaimed?.side,side);
+ assert.match(reclaimed.reason,/رفض مبكر/);
+}
