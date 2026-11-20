@@ -572,3 +572,17 @@ for(const side of ['BUY','SELL']){
    trendSide:side,score:8}).quality,'SETUP','no qualified entry with a wall before sufficient reward');
 }
 console.log('PASS: frozen opposite liquidity objectives, both directions and future data rejection');
+
+for(const buy of [true,false]){
+ const flip=p=>buy?p:200-p,side=buy?'BUY':'SELL';
+ const opportunity={...op,side,trigger:flip(100.3),invalidation:flip(99.4)};
+ const wall={kind:buy?'SUPPLY':'DEMAND',low:flip(buy?100.25:100.4),
+   high:flip(buy?100.4:100.25),source:'M15 swing',confirmedAt:bars[10].time};
+ const input={...base,opportunity};
+ assert.notEqual(step({...input,zones:[wall]})?.phase,'ARMED');
+ const prior=step({...input,zones:[{...wall,confirmedAt:now+1000}]});
+ assert.equal(prior?.phase,'ARMED');
+ const crossing={...input,prior,price:flip(100.34),now:now+2000,quoteAt:now+2000};
+ assert.equal(step({...crossing,zones:[{...wall,confirmedAt:now+1000}]}).phase,'CANCELLED');
+ assert.equal(step({...crossing,zones:[{...wall,confirmedAt:now+3000}]}).phase,'ARMED');
+}
