@@ -3,7 +3,7 @@ import {outcomeLabel} from './SniperOpportunityHistory';
 import {movementObservationLabel} from '../lib/sniper-movement-proof';
 import type {MovementProof} from '../lib/sniper-movement-proof';
 
-type Props={signal:LiveOpportunity;records:MovementProof[];evidenceScore?:number|null;
+type Props={signal:LiveOpportunity;confirmedPrice:number|null;records:MovementProof[];evidenceScore?:number|null;
  asset:'GOLD'|'BTC';
  source:string;from:number;now:number;left:number;split:number;end:number;
  top:number;bottom:number;py:(price:number)=>number;timeX:(time:number)=>number};
@@ -35,7 +35,7 @@ export default function SniperOpportunityMarkers(p:Props){
    .sort((a,b)=>b.issuedAt-a.issuedAt);
  // Keep nearby captions legible, without changing recorded time or price.
  const shown:MovementProof[]=[];
- for(const r of rows){
+ for(const r of [...rows.filter(r=>r.quality==='SETUP'),...rows.filter(r=>r.quality!=='SETUP')]){
    if(shown.some(s=>Math.abs(p.timeX(s.issuedAt)-p.timeX(r.issuedAt))<54&&
      Math.abs(p.py(s.priceAt)-p.py(r.priceAt))<34))continue;
    shown.push(r);
@@ -58,26 +58,6 @@ export default function SniperOpportunityMarkers(p:Props){
    (r.kind==='OPEN'||r.kind==='FOLLOW'||r.kind==='CLOSE')&&r.issuedAt>=p.from&&
    r.issuedAt<=p.now&&visible(r.priceAt))
    .sort((a,b)=>b.issuedAt-a.issuedAt);
- // Only caption the FIRST observation of a distinct directional wave.
- // Historical dots (including repeated observations) remain at their original
- // price and issuance time for review. A new opposite wave or a 45m gap can
- // start a fresh caption; an ongoing decline is not six new sell entries.
- const waveIds=new Set<string>();
- let priorWaveRecord:MovementProof|null=null;
- for(const record of [...m5Issued].reverse()){
-   if(!priorWaveRecord||record.side!==priorWaveRecord.side||
-     record.issuedAt-priorWaveRecord.issuedAt>45*60000)
-     waveIds.add(record.id);
-   priorWaveRecord=record;
- }
- const recentM5=m5Issued.filter(r=>waveIds.has(r.id)).slice(0,3);
- // Keep each historical point, but only one caption per nearby cluster.
- const m5Captioned:MovementProof[]=[];
- for(const r of recentM5){
-   if(m5Captioned.some(e=>Math.abs(p.timeX(e.issuedAt)-p.timeX(r.issuedAt))<55&&
-     Math.abs(p.py(e.priceAt)-p.py(r.priceAt))<42))continue;
-   m5Captioned.push(r);
- }
  // Reserve labels for ACTUAL pre-break alerts ahead of later wave labels.
  // This makes genuinely early observations legible without losing old dots.
  const lifecycleLabel:Record<string,string>={
@@ -96,17 +76,20 @@ export default function SniperOpportunityMarkers(p:Props){
    UNKNOWN:'بيانات غير كافية للحكم'
  };
  const s=p.signal;
+ const confirmed=s.phase==='BREAK_CONFIRMED';
+ const markerPrice=confirmed?p.confirmedPrice:s.trigger;
+ const markerX=confirmed&&s.sourceAt!=null?p.timeX(s.sourceAt):p.split;
  const active=['PREPARE','TESTING','BREAK_CONFIRMED'].includes(s.phase)&&
-   (s.side==='BUY'||s.side==='SELL')&&s.trigger!=null&&visible(s.trigger);
+   (s.side==='BUY'||s.side==='SELL')&&markerPrice!=null&&visible(markerPrice);
  // The current setup owns a small lane beside the live candle. Keep every
  // older price dot and timestamp, but do not print contradictory-looking
  // historic M5 captions right on top of today's actionable watch.
  const nearCurrent=(r:MovementProof)=>active&&
-   Math.abs(p.timeX(r.issuedAt)-p.split)<96&&
-   Math.abs(p.py(r.priceAt)-p.py(s.trigger!))<62;
+   Math.abs(p.timeX(r.issuedAt)-markerX)<96&&
+   Math.abs(p.py(r.priceAt)-p.py(markerPrice!))<62;
  if(active){
-   const y=fit(p.py(s.trigger!));
-   occupied.push({l:p.split-97,r:p.split-3,
+   const y=fit(p.py(markerPrice!));
+   occupied.push({l:markerX-97,r:markerX+3,
      t:Math.max(p.top,y-32),b:Math.min(p.bottom,y+18)});
  }
  const earlyLabels=new Map<string,{x:number;y:number}>();
@@ -124,36 +107,15 @@ export default function SniperOpportunityMarkers(p:Props){
    const chosen=placeLabel(px,py,48,16,r.side==='BUY'?22:-22);
    if(chosen)earlyLabels.set(r.id,chosen);
  }
- const nearM5=(r:MovementProof)=>m5Captioned.some(e=>
-   Math.abs(p.timeX(e.issuedAt)-p.timeX(r.issuedAt))<60&&
-   Math.abs(p.py(e.priceAt)-p.py(r.priceAt))<40);
  return <g className="sniper-opportunity-markers" aria-label="أماكن الرصد المبكر والشراء والبيع">
-   {m5Issued.map((r,i)=>{
+   {m5Issued.map(r=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt);
-     const buy=r.side==='BUY',ink=buy?'#5ef2b7':'#ff839c';
      const observedAt=new Date(r.issuedAt).toLocaleTimeString('en-GB',
        {timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'});
-     const caption=m5Captioned.includes(r)&&!nearCurrent(r);
-     // Closed-M1 observations may be follow-through or a short countertrend
-     // rebound; only a prearmed break may say BUY/SELL.
-     const labelText=movementObservationLabel(r);
-     const shortLabel=buy?'↗ صعود':'↘ هبوط';
-     const labelWidth=78;
-     const placement=caption?placeLabel(x,y,labelWidth,16,buy?24:-24):null;
-     const labelX=placement?.x??x,labelY=placement?.y??y;
      return <g key={r.id} data-kind={r.kind}
        data-issued-at={r.issuedAt} data-side={r.side}>
-       <circle cx={x} cy={y} r={caption?4:2.6} fill={ink}
-         stroke="#06151b" strokeWidth="1.2"/>
-       {placement&&<>
-         <line x1={x} x2={labelX} y1={y} y2={labelY}
-           stroke={ink} strokeOpacity=".6" strokeWidth=".7"/>
-         <text x={labelX} y={labelY+3} textAnchor="middle"
-           direction="rtl" fontSize="9" fontWeight="800" fill={ink}
-           stroke="#07111b" strokeWidth="2.6" paintOrder="stroke">
-           {'متابعة '+shortLabel}</text>
-       </>}
-       <title>{labelText+' · '+(r.kind==='OPEN'?'بداية M5':r.kind==='FOLLOW'?'أثناء M5':'نهاية M5')+
+       <circle cx={x} cy={y} r="2.4" fill="#96a3b5" stroke="#06151b" strokeWidth="1"/>
+       <title>{movementObservationLabel(r)+' · '+(r.kind==='OPEN'?'بداية M5':r.kind==='FOLLOW'?'أثناء M5':'نهاية M5')+
          ' · '+r.priceAt.toFixed(2)+' · '+(r.m5Outcome==='CORRECT'?'إغلاق M5 وافق الاتجاه فقط':
          r.m5Outcome==='WRONG'?'إغلاق M5 خالف الاتجاه فقط':'تقييم إغلاق M5 قيد القياس')+
          ' · وقت الرصد '+observedAt+' بتوقيت دبي · توقع مرصود وقتها، ليس صفقة منفذة'}</title>
@@ -209,7 +171,7 @@ export default function SniperOpportunityMarkers(p:Props){
        (buy?'↗ كسر':'↘ كسر');
      const width=46;
      const placement=r.quality==='SETUP'?breakLabels.get(r.id):
-       nearM5(r)||nearCurrent(r)?null:placeLabel(x,y,width,16,buy?22:-22);
+       nearCurrent(r)?null:placeLabel(x,y,width,16,buy?22:-22);
      const labelX=placement?.x??x,labelY=placement?.y??y;
      return <g key={r.id} data-side={r.side} data-issued-at={r.issuedAt}>
        <title>{(buy?'شراء':'بيع')+' · رصد سابق عند '+r.priceAt.toFixed(2)+
@@ -231,25 +193,25 @@ export default function SniperOpportunityMarkers(p:Props){
    })}
    {/* A historical observation must never hide the current setup. */}
    {active&&(()=>{
-     const buy=s.side==='BUY',confirmed=s.phase==='BREAK_CONFIRMED';
+     const buy=s.side==='BUY';
      const ink=s.quality==='COUNTERTREND'?'#dfbb80':
        s.quality==='OBSERVATION'?'#9bafc6':buy?'#57efb8':'#ff8095';
-     const y=p.py(s.trigger!);
-     const x=p.split-12,labelY=fit(y);
+     const y=p.py(markerPrice!);
+     const x=Math.max(p.left+64,markerX-12),labelY=fit(y);
      // Preparation and crossing tests have explicit watch labels. Only qualified SETUP confirmation
      // may show the plain directive; keep all detailed reasons in <title>.
      const label=confirmed?(s.quality==='SETUP'?(buy?'شراء':'بيع'):
        (buy?'↗ رصد':'↘ رصد')):
        s.phase==='TESTING'?(buy?'اختبار صعود':'اختبار هبوط'):
        (buy?'ترقب صعود':'ترقب هبوط');
-     return <g data-phase={s.phase} aria-label={label+' عند '+s.trigger!.toFixed(2)}>
-       <title>{s.reason+' · المستوى '+s.trigger!.toFixed(2)+
+     return <g data-phase={s.phase} aria-label={label+' عند '+markerPrice!.toFixed(2)}>
+       <title>{s.reason+' · المستوى '+markerPrice!.toFixed(2)+
          (p.evidenceScore!=null?' · أدلة '+p.evidenceScore+'/10 (ليست احتمال نجاح)':'')+
          ' · إشارة تحليلية وليست ضمان ربح أو أمر تنفيذ'}</title>
-       <line x1={p.split-48} x2={p.split} y1={y} y2={y}
+       <line x1={Math.max(p.left,markerX-48)} x2={markerX} y1={y} y2={y}
          stroke={ink} strokeOpacity=".75" strokeWidth=".9"
          strokeDasharray={confirmed?undefined:'3 4'}/>
-       <circle cx={p.split} cy={y} r="3.1" fill={ink}/>
+       <circle cx={markerX} cy={y} r="3.1" fill={ink}/>
        <line x1={x} x2={x} y1={y} y2={labelY}
          stroke={ink} strokeOpacity=".55" strokeWidth=".7"/>
        <text x={x} y={labelY-8} textAnchor="start" direction="rtl"
