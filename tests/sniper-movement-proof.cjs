@@ -309,3 +309,32 @@ const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(panel,/movementStats\.byPattern\.map\(p=>/,
  'per-pattern forward results appear only in the optional performance drawer');
 console.log('PASS: immutable watch expiry persists without fabricated trade outcomes');
+
+const evidenceInput={reason:'closed minute rejection',flowStatus:'PRICE_PROXY',
+ flowSource:'M1 closed OHLC',flowSide:'WAIT',liquidityReady:true,
+ m1Side:'SELL',m15Side:'BUY',proxySide:'UNAVAILABLE'};
+const captured=step({prior:[],now:start+68000,asset:'GOLD',source:'same-provider',
+ price:100,signal:pre,bars:[],evidence:evidenceInput});
+evidenceInput.reason='changed after issuance';
+assert.equal(captured[0].evidence.reason,'closed minute rejection');
+const reread=step({prior:captured,now:start+69000,asset:'GOLD',source:'same-provider',
+ price:101,signal:pre,bars:[],evidence:evidenceInput});
+assert.equal(reread[0].evidence.reason,'closed minute rejection');
+assert.equal(safe(JSON.parse(JSON.stringify(reread)))[0].evidence.flowStatus,'PRICE_PROXY');
+assert.equal(safe([{...reread[0],evidence:{reason:42}}])[0].evidence,undefined);
+assert.equal(safe([{...issued[0],evidence:undefined}])[0].evidence,undefined);
+const watchRow={...issued[0],setupLifecycle:'PENDING',setupExpiresAt:start+240000};
+const renderEarly=(row,signal=pre)=>renderMarker(markerModule.exports.default({
+ ...markerProps,signal,records:[row]}));
+const getEarly=markup=>markup.match(/<g[^>]*data-kind="EARLY"[^>]*>(.*?)<\/g>/s)[1];
+assert.match(getEarly(renderEarly(watchRow)),/<path /,'current pending watch keeps its triangle');
+for(const row of [{...watchRow,setupLifecycle:'ACTIVATED'},
+ {...watchRow,setupExpiresAt:start+80000},{...watchRow,setupLifecycle:undefined}]){
+ const output=getEarly(renderEarly(row));
+ assert.doesNotMatch(output,/<path /,'historical early markers must be neutral');
+ assert.doesNotMatch(output,/<text[^>]*>ترقب/,'historical alert must not read as a new watch');
+ assert.match(output,/<circle /,'retain the original observation');
+}
+assert.doesNotMatch(getEarly(renderEarly(watchRow,{...pre,side:'SELL'})),/<path /,
+ 'an opposite active setup retires the old directional triangle');
+console.log('PASS immutable signal evidence, legacy recovery and active-only early captions');
