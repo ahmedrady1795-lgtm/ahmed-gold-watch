@@ -89,3 +89,12 @@ assert.match(chart,/proof=\{huntProof\} flowSide=\{flowProfile.ready/);
 assert.match(overlay,/assessM15HuntDisplay/);
 assert.match(chart,/m1=\{nextM1\} marketOpen=\{marketOpen\}/);
 console.log('PASS: exact M15 WATCH historical replay, paired prior-body baseline, no cross-sample claim, source gaps and early-candle exclusions');
+
+const {placeHuntWaypoints}=load('lib/sniper-m15-hunt-preview.ts');
+const preview={ready:true,anchorTime:t,buy:[{},{},{close:3585.65}],sell:[{},{},{close:3574.53},{},{},{close:3560.44}]};
+const remaining=bars=>Array.from(placeHuntWaypoints(preview,v=>3610-v,0,150,bars),v=>v.price);
+const earlier={time:t,high:3590,low:3550};
+const fall={time:t+900000,high:3580,low:3571.17};
+assert.ok(remaining([earlier]).includes(3574.53));
+assert.deepEqual(remaining([earlier,fall]),[3585.65,3560.44]);
+assert.deepEqual(remaining([fall,{time:t+1200000,high:3586,low:3577}]),[3560.44]);
