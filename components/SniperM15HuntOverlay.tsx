@@ -8,6 +8,7 @@ type Props={
   forecast:M15HuntPreview;left:number;split:number;end:number;
   top:number;bottom:number;py:(price:number)=>number;liquidity:boolean;
   proof?:M15HuntProof;asset?:'GOLD'|'BTC';obstruction?:M15Obstacle;
+  observed?:readonly {time:number;high:number;low:number}[];
   m1:M1Priority;marketOpen:boolean;flowSide?:HuntSide|'WAIT';
 };
 const color={BUY:'#53e8b8',SELL:'#ff7798'};
@@ -27,7 +28,7 @@ export default function SniperM15HuntOverlay(p:Props){
   const anchored=visualSide!=='WAIT'&&!blocked;
   const clear=anchored&&evidence.state==='PRELIMINARY_EDGE';
   const validated=clear;
-  const stations=placeHuntWaypoints(f,p.py,p.top,p.bottom);
+  const stations=placeHuntWaypoints(f,p.py,p.top,p.bottom,p.observed);
   const toPoints=(list:HuntPreviewCandle[],side:HuntSide)=>{
     const points=[[p.split+4,clip(p.py(f.anchor!))]];
     for(let i=0;i<list.length;i++){
