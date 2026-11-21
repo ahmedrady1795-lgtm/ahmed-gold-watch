@@ -38,7 +38,8 @@ assert.equal(stale.feasibility,'NO_DATA');
 const desk=fs.readFileSync('lib/scalp-desk.ts','utf8');
 const ui=fs.readFileSync('app/scalp/page.tsx','utf8');
 assert.match(desk,/describeScalpCostContext\(\{/);
-assert.match(desk,/executionEconomics,qualityGates/);
+assert.match(desk,/executionEconomics,earlyExecution,qualityGates/,
+ 'new early research view is additive and keeps execution economics/quality gates');
 assert.match(ui,/ScalpCostContext data=\{desk\?\.bitcoin\?\.executionEconomics\}/);
 assert.match(ui,/السعر من بورصة Spot وليس حساب Exness/);
 console.log('PASS: public BTC spot cost cannot masquerade as Exness fills; invalid/stale M1 range never certifies attainable scalps');

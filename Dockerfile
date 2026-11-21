@@ -6,6 +6,8 @@ RUN npm ci
 COPY . .
 RUN node tests/news-verified-bls.cjs && node tests/pre-news-gold-lean.cjs
 RUN node tests/scalp-research-archive.mjs
+RUN node tests/scalp-early-execution.cjs
+RUN node tests/ai-health-recovery.cjs
 RUN node tests/flow-profile-decision.cjs && node tests/sniper-order-flow-observation.cjs
 RUN node tests/gold-preparation-lead.mjs && node tests/chart-feed-isolation.cjs
 RUN node tests/sniper-risk-plan.cjs && node tests/next-move-cooldown.cjs && node tests/btc-provider-continuity.cjs && node tests/ai-service-warmup.cjs

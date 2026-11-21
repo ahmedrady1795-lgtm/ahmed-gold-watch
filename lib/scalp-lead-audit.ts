@@ -5,15 +5,16 @@
 import fs from 'node:fs';
 
 type Side='BUY'|'SELL';
-type Lane='GOLD_M1'|'GOLD_M5'|'GOLD_AMBUSH';
+type Lane='GOLD_M1'|'GOLD_M5'|'GOLD_AMBUSH'|'BTC_EARLY_M1';
 type Outcome='OPEN'|'FAVORABLE_FIRST'|'ADVERSE_FIRST'|'NO_THRESHOLD'|'UNKNOWN';
 export type LeadQuote={price:number|null;at:number|null;source:string};
 export type LeadCandidate={
   id:string;side:Side;score:number;status:'WATCH'|'ARMED'|'AMBUSH';
-  setup:string;cost:number;
+  setup:string;cost:number;baselineSide?:Side|null;
 };
 export type LeadObservation={
   id:string;lane:Lane;side:Side;score:number;setup:string;status:LeadCandidate['status'];
+  baselineSide?:Side|null;
   source:string;startedAt:number;lastQuoteAt:number;expiresAt:number;
   startPrice:number;threshold:number;maxFavorable:number;maxAdverse:number;
   result:Outcome;resolvedAt:number|null;reason:string;
@@ -30,7 +31,8 @@ export const MIN_SCALP_SHADOW_SCORE=55;
 let lastPersistAt=0; // limit writes while a quote is merely moving inside an open sample
 declare global {var __qannasScalpLeadAudit:Audit|undefined;}
 function blank():Audit{return {version:1,lanes:{GOLD_M1:{active:null,history:[],seen:[]},
-  GOLD_M5:{active:null,history:[],seen:[]},GOLD_AMBUSH:{active:null,history:[],seen:[]}}};}
+  GOLD_M5:{active:null,history:[],seen:[]},GOLD_AMBUSH:{active:null,history:[],seen:[]},
+  BTC_EARLY_M1:{active:null,history:[],seen:[]}}};}
 function load():Audit{
   if(globalThis.__qannasScalpLeadAudit)return globalThis.__qannasScalpLeadAudit;
   let state=blank();
@@ -82,9 +84,11 @@ export function startLeadObservation(
   // Fixed at first observation. Never adjust thresholds after seeing outcomes.
   const threshold=Math.max(candidate.cost*2,price*.0001);
   return {id:candidate.id,lane,side:candidate.side,score:candidate.score,
-    setup:candidate.setup,status:candidate.status,source:quote.source,
+    setup:candidate.setup,status:candidate.status,
+    baselineSide:candidate.baselineSide==='BUY'||candidate.baselineSide==='SELL'?
+      candidate.baselineSide:null,source:quote.source,
     startedAt:now,lastQuoteAt:at,
-    expiresAt:now+(lane==='GOLD_M1'?60_000:lane==='GOLD_M5'?300_000:30_000),
+    expiresAt:now+(lane==='GOLD_M1'||lane==='BTC_EARLY_M1'?60_000:lane==='GOLD_M5'?300_000:30_000),
     startPrice:price,threshold:fixed(threshold),maxFavorable:0,maxAdverse:0,
     result:'OPEN',resolvedAt:null,reason:'OBSERVING_FUTURE_QUOTES'};
 }
@@ -138,7 +142,29 @@ export function summarizeLeadObservations(history:LeadObservation[],active:LeadO
   const earlyResolved=earlyFavorable+earlyAdverse;
   const sources:Record<string,number>={};
   for(const x of done)sources[x.source]=(sources[x.source]||0)+1;
+  // Only already observed first-move outcomes from the same exact BTC
+  // source count. Freeze the last CLOSED M1 direction at issuance, so
+  // baseline comparisons cannot inspect a later bar or move the forecast.
+  const paired=done.filter(x=>x.lane==='BTC_EARLY_M1'&&
+    (x.baselineSide==='BUY'||x.baselineSide==='SELL')&&
+    (x.result==='FAVORABLE_FIRST'||x.result==='ADVERSE_FIRST'));
+  const modelHits=paired.filter(x=>x.result==='FAVORABLE_FIRST').length;
+  const baselineHits=paired.filter(x=>{
+    const observed=x.result==='FAVORABLE_FIRST'?x.side:
+      x.side==='BUY'?'SELL':'BUY';
+    return x.baselineSide===observed;
+  }).length;
+  const compared=paired.length;
+  const earlyBtc={
+    pairedN:compared,modelHits,baselineHits,minimumObserved:150,
+    modelObservedPct:compared?Math.round(modelHits/compared*1000)/10:null,
+    baselineObservedPct:compared?Math.round(baselineHits/compared*1000)/10:null,
+    liftPoints:compared?Math.round((modelHits-baselineHits)/compared*1000)/10:null,
+    status:compared>=150?'OBSERVED_SAMPLE_ONLY':'COLLECTING',
+    note:'Frozen last-closed-M1 baseline; first OBSERVED quote threshold only, not traded P/L or statistically independent edge.'
+  };
   return {
+    earlyBtc,
     version:'scalp-forward-observer-v2',mode:'DIRECTIONAL_SHADOW_NOT_TRADES',
     total:done.length,pending:active?1:0,favorableFirst:favorable.length,
     adverseFirst:adverse.length,noThreshold:neutral.length,unknown:unknown.length,
@@ -197,4 +223,15 @@ export function peekScalpLead(lane:Lane){
   const persisted=fs.existsSync(PATH);
   return {...summarizeLeadObservations(row.history,row.active),persisted,
     storage:persisted?'VOLUME':fs.existsSync(EPHEMERAL_PATH)?'EPHEMERAL':'MEMORY'};
+}
+
+/** Public, read-only snapshot for the separate BTC early execution cohort.
+ * Never an order, never a broker fill, never a claim of profit.
+ */
+export function exportBtcEarlyForwardObservations(){
+ const lane=load().lanes.BTC_EARLY_M1;
+ return [...lane.history,...(lane.active?[lane.active]:[])]
+   .filter(v=>v&&v.lane==='BTC_EARLY_M1')
+   .sort((a,b)=>a.startedAt-b.startedAt)
+   .slice(-360);
 }

@@ -15,6 +15,10 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
   const lane=desk?.ledger?.lanes?.find((l:any)=>l.horizon===horizon);
   const decision=desk?.sniperDecisions?.find((d:any)=>d.horizon===horizon);
   const current=lane?.current;
+  const early=desk?.asset==='BTC'?desk?.earlyExecution:null;
+  const earlySide=early?.side==='BUY'||early?.side==='SELL'?early.side:'WAIT';
+  const earlyVisible=early&&earlySide!=='WAIT'&&
+    ['ENTRY_CANDIDATE','COST_BLOCKED','LATE'].includes(String(early.status));
   const checkedAt=Number(desk?.checkedAt);
   const stale=!Number.isFinite(checkedAt)||checkedAt<=0||checkedAt>now+2000||now-checkedAt>15000;
   const running=Boolean(current?.state==='ACTIVE');
@@ -112,6 +116,31 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
           {' · '}الصلاحية {Math.max(0,Math.ceil((Number(current.limitExpiresAt)-now)/1000))} ثانية
         </p>
         <small>لا يوجد تنفيذ حتى لمس Ask للشراء أو Bid للبيع؛ ممنوع التنفيذ بسعر السوق. ورقي فقط.</small>
+      </div>}
+      {earlyVisible&&!stale&&<div className="scalp-early-watch"
+        aria-label="رصد سيولة تنفيذية مبكر للبيتكوين · ليس إشارة دخول"
+        style={{marginTop:10,padding:11,border:'1px solid var(--border, rgba(160,165,180,.25))',borderRadius:10}}>
+        <strong>رادار السيولة المبكر · {sideAr(earlySide)} · {
+          early.status==='ENTRY_CANDIDATE'?'LIMIT ورقي مشروط':
+          early.status==='COST_BLOCKED'?'فرصة مرصودة ولكن التكلفة تمنع الدخول':'حركة بدأت قبل إمكانية القنص'}</strong>
+        <p style={{margin:'7px 0',fontSize:13}}>
+          {early.status==='ENTRY_CANDIDATE'?<>دخول Limit <b dir="ltr">{fmt(early.entry)}</b>
+          {' · '}وقف <b dir="ltr">{fmt(early.stop)}</b>
+          {' · '}هدف <b dir="ltr">{fmt(early.target)}</b>
+          {' · '}صافي نظري {fmt(early.netR)}R</>:
+          <>مستوى مراقبة <b dir="ltr">{fmt(early.entry)}</b>
+          {' · '}تكلفة تقديرية <b dir="ltr">{fmt(early.estimatedRoundTripCost)}</b>
+          {' · '}{early.reason}</>}
+        </p>
+        <small>قراءة تنفيذ هجومي وامتصاص من Spot · درجات الجودة ليست نسبة نجاح ·
+          لا تمثل سعر أو تعبئة Exness، ولا تُنشئ صفقة.</small>
+        {desk?.earlyExecutionAudit?.earlyBtc&&<small style={{display:'block',marginTop:5}}>
+          اختبار أمامي: {Number(desk.earlyExecutionAudit.earlyBtc.pairedN||0)}/150 إشارة مقارنة بشمعة M1 المغلقة السابقة
+          {Number(desk.earlyExecutionAudit.earlyBtc.pairedN)>0?
+            ' · الرصد '+fmt(desk.earlyExecutionAudit.earlyBtc.modelObservedPct,1)+'%'+
+            ' · المرجع '+fmt(desk.earlyExecutionAudit.earlyBtc.baselineObservedPct,1)+'%':''}
+          {' · '}ليس نسبة ربح صفقات
+        </small>}
       </div>}
       {technicalWatch&&!limitPending&&!confirmed&&<div className="scalp-early-watch"
         aria-label="مستويات مراقبة الحركة قبل الدخول"

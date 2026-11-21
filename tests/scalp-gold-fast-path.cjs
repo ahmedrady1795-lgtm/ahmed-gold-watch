@@ -45,6 +45,7 @@ const stubs={
  './scalp-lead-audit':{observeScalpLead:()=>({pending:0,total:0}),
   MIN_SCALP_SHADOW_SCORE:55},
  './mt5-btc-readonly':{getMt5BtcStatus:()=>({connected:false,fresh:false,candlesFresh:false,status:null})},
+ './scalp-early-execution':{detectEarlyExecutionLead:()=>({status:'WAIT',side:'WAIT',researchOnly:true})},
  './scalp-cost-context':{describeScalpCostContext:()=>({
   costMode:'ESTIMATED_NOT_BROKER_VERIFIED',brokerExecutionVerified:false,
   feasibility:'NO_DATA',costPerUnit:null,spreadPerUnit:null
