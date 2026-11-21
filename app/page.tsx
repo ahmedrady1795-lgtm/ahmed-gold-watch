@@ -7,6 +7,7 @@ import {acceptGoldStreamPacket,sourceTimestamp,validSourceTime} from '../lib/cli
 import {reconcileBtcChartProvider,type BtcProviderGate} from '../lib/btc-chart-source-guard';
 import {shouldApplyGoldQuote} from '../lib/gold-feed-order';
 import {chartRefreshDelay} from '../lib/chart-refresh';
+import {acceptBtcQuote,btcQuoteMatchesChart,type ObservedBtcQuote} from '../lib/btc-quote-coherence';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))
   ?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})
@@ -31,6 +32,7 @@ export default function Home(){
   const aiFailureCount=useRef(0);
   const aiEtag=useRef('');
   const btcUiAt=useRef(0);
+  const btcObserved=useRef<ObservedBtcQuote|null>(null);
   const goldUiAt=useRef(0);
   const chartDataRef=useRef<any>(null);
   const btcChartProviderGate=useRef<BtcProviderGate|null>(null);
@@ -142,11 +144,17 @@ export default function Home(){
       // a valid trade timestamp. Keep its price for context, not a LIVE flag.
       const currentProvider=/kraken/i.test(String(chartDataRef.current?.bitcoin?.candleSource||''))?'kraken':'coinbase';
       if(currentProvider!==wanted)return;
-      const timedLive=j?.status==='live'&&validSourceTime(at||null,Date.now(),10000);
-      if(!closed&&r.ok&&j?.ok&&Number.isFinite(p)&&p>0&&
-        (wanted==='kraken'||Date.now()-lastWsTick>4000)){
-        setBtc(p);setBtcAt(timedLive?at:0);
-        setBtcSource(String(j?.source||'BTC provider'));
+      const receivedAt=Date.now();
+      const quoteSource=String(j?.source||'BTC provider');
+      const observed=j?.status==='live'&&r.ok&&j?.ok&&
+        Number.isFinite(p)&&p>0?
+        acceptBtcQuote({chartSource:chartDataRef.current?.bitcoin?.candleSource,
+          quoteSource,at,now:receivedAt,previous:btcObserved.current}):null;
+      // A delayed REST reply is context, not a replacement for the last
+      // actually observed newer exchange tick. Its age will expire naturally.
+      if(!closed&&observed&&(wanted==='kraken'||receivedAt-lastWsTick>4000)){
+        btcObserved.current=observed;
+        setBtc(p);setBtcAt(observed.at);setBtcSource(quoteSource);
       }
     }catch{}finally{inFlight=false;}};
     const connect=()=>{
@@ -162,9 +170,17 @@ export default function Home(){
         if(/kraken/i.test(String(chartDataRef.current?.bitcoin?.candleSource||'')))return;
         lastWsTick=Date.now();
 
-        if(!closed&&document.visibilityState==='visible'&&Date.now()-btcUiAt.current>=250){
-          btcUiAt.current=Date.now();
-          setBtc(p);setBtcAt(at);setBtcSource('Coinbase WebSocket');
+        const receivedAt=Date.now();
+        const observed=acceptBtcQuote({
+          chartSource:chartDataRef.current?.bitcoin?.candleSource,
+          quoteSource:'Coinbase WebSocket',at,now:receivedAt,
+          previous:btcObserved.current
+        });
+        if(!closed&&observed&&document.visibilityState==='visible'&&
+          receivedAt-btcUiAt.current>=250){
+          btcObserved.current=observed;
+          btcUiAt.current=receivedAt;
+          setBtc(p);setBtcAt(observed.at);setBtcSource('Coinbase WebSocket');
         }
       }catch{}};
       ws.onerror=()=>ws?.close();
@@ -286,10 +302,13 @@ export default function Home(){
   // A stale WS/REST value must not hide a *newer* genuine server quote.
   // Always pair a quote's price with the timestamp of THAT SAME source.
   const aiBtcAt=sourceTimestamp(aiBtc?.sourceTime)||0;
+  const btcChartSource=chartData?.bitcoin?.candleSource;
   const btcDirectFresh=btc!=null&&Number.isFinite(btc)&&btc>0&&
+    btcQuoteMatchesChart(btcChartSource,btcSource)&&
     validSourceTime(btcAt||null,now,10000);
   const btcAiPrice=Number(aiBtc?.price);
   const btcAiFresh=Number.isFinite(btcAiPrice)&&btcAiPrice>0&&
+    btcQuoteMatchesChart(btcChartSource,aiData?.bitcoin?.candleSource)&&
     validSourceTime(aiBtcAt||null,now,10000);
   const shownBtc=btcDirectFresh?btc:btcAiFresh?btcAiPrice:
     btc??(Number.isFinite(btcAiPrice)&&btcAiPrice>0?btcAiPrice:null);
