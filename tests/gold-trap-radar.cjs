@@ -57,13 +57,13 @@ r=build({...args,c1:incomplete});
 assert.equal(r.side,'WAIT','an unfinished sweep cannot be confirmed');
 assert.equal(r.trap,'NONE');
 
-r=build({...args,c1:buy,price:3401,mt5Fast:{ok:true,side:'BUY',samples:8,
+r=build({...args,c1:buy,price:3401,mt5Fast:{ok:true,side:'BUY',samples:8,domAvailable:true,
   receivedAt:now-900,bookImbalance:18,pressureChange:8,
   bidDepthChangePct:14,askDepthChangePct:-8,persistence:75}});
 assert.equal(r.source,'MT5_BROKER_DOM');
 assert.ok(r.evidence.some(x=>x.includes('DOM')));
 
-r=build({...args,c1:buy,price:3401,mt5Fast:{ok:true,side:'BUY',samples:8,
+r=build({...args,c1:buy,price:3401,mt5Fast:{ok:true,side:'BUY',samples:8,domAvailable:true,
   receivedAt:now-20000,bookImbalance:18,pressureChange:8}});
 assert.equal(r.source,'CANDLE_PROXY','stale DOM may not inflate credibility');
 console.log('PASS: gold trap radar sweeps, target/invalidation, live-source gates, unfinished candles, broker DOM');
