@@ -45,6 +45,23 @@ for(const side of ['BUY','SELL']){
   price:side==='BUY'?104:96}).stage,'LATE',
   'confirmed but too late must not chase');
 }
+// A past crossing cannot hide a new, still-ahead independent M1/M5 cue.
+for(const side of ['BUY','SELL']){
+ const oldTrigger=side==='BUY'?99.8:100.2;
+ const oldStop=side==='BUY'?98:102;
+ const reclaim={side,asOf:now-5000,trigger:side==='BUY'?101:99,
+  invalidation:side==='BUY'?98:102};
+ for(const phase of ['PREPARE','TESTING','BREAK_CONFIRMED']){
+  const opportunity={phase,side,sourceAt:now-30000,trigger:oldTrigger,invalidation:oldStop};
+  const fresh=cue({...base,opportunity,reclaim});
+  assert.equal(fresh.stage,'PREBREAK',side+' fresh reclaim must outlive old '+phase);
+  assert.equal(fresh.trigger,reclaim.trigger);
+  assert.equal(fresh.futureTradeAuthorized,false);
+  assert.equal(fresh.flowVerified,false);
+  assert.equal(cue({...base,opportunity,preMove:pressure(side)}).stage,'PREBREAK');
+  assert.notEqual(cue({...base,opportunity,reclaim:{...reclaim,asOf:now-120000}}).stage,'PREBREAK');
+ }
+}
 const momentum={phase:'OPEN',side:'BUY',issuedFor:Math.floor(now/60000)*60000,
  observedAfterMs:30000,tradeEligible:false};
 assert.equal(cue({...base,lean:momentum}).stage,'M1_DIRECTION_WATCH');
