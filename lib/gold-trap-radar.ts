@@ -107,7 +107,7 @@ export function buildGoldTrapRadar(input:{
     trap==='UPPER_SWEEP'?last.close<prior.close:false;
   const h4=sideOf(input.h4Side);
   const fast=input.mt5Fast;
-  const dom=Boolean(fast?.ok===true&&Number(fast.samples)>=4&&
+  const dom=Boolean(fast?.ok===true&&fast?.domAvailable===true&&Number(fast.samples)>=4&&
     Number.isFinite(Number(fast.receivedAt))&&now-Number(fast.receivedAt)>=0&&
     now-Number(fast.receivedAt)<=3000&&
     Number.isFinite(Number(fast.bookImbalance))&&
