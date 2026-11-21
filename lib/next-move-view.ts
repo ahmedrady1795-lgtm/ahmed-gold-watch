@@ -1,3 +1,4 @@
+import {btcQuoteMatchesChart} from './btc-quote-coherence';
 // View-only safety gate for the 15-minute movement outlook.
 // Never turns a probabilistic forecast into a broker order.
 type Side='BUY'|'SELL'|'WAIT';
@@ -26,12 +27,21 @@ export function buildNextMoveView(
   const quotes=[
     liveGoldQuote?{
       price:liveGoldQuote.price,time:liveGoldQuote.sourceTime,
+      source:liveGoldQuote.source,
       valid:liveGoldQuote.ok===true&&(asset==='GOLD'||liveGoldQuote.asset==='BTC')
     }:null,
-    {price:scalp?.quote?.price,time:scalp?.quote?.at,valid:true},
-    {price:x?.livePulse?.price,time:x?.livePulse?.sourceTime,valid:true}
-  ].filter(Boolean) as Array<{price:unknown;time:unknown;valid:boolean}>;
-  const ranked=quotes.filter(q=>q.valid&&validPrice(q.price)!=null&&validTs(q.time,now)!=null)
+    {price:scalp?.quote?.price,time:scalp?.quote?.at,
+      source:scalp?.quote?.source,valid:true},
+    {price:x?.livePulse?.price,time:x?.livePulse?.sourceTime,
+      source:x?.livePulse?.source,valid:true}
+  ].filter(Boolean) as Array<{price:unknown;time:unknown;source:unknown;valid:boolean}>;
+  const candleSource=String(x?.candleSource||'').trim();
+  // LIVE Bitcoin prices must belong to the exact exchange used for the
+  // closed candle chart; a later quote from the wrong exchange is NOT fresh
+  // enough to establish a movement signal on a different instrument.
+  const ranked=quotes.filter(q=>q.valid&&validPrice(q.price)!=null&&
+    validTs(q.time,now)!=null&&(asset!=='BTC'||!candleSource||
+    btcQuoteMatchesChart(candleSource,q.source)))
     .sort((a,b)=>Number(b.time)-Number(a.time));
   // Never label a cached stale quote as live simply because the server refreshed.
   const quote=ranked[0];
