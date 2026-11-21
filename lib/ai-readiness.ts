@@ -6,13 +6,18 @@ export function summarizeAiReadiness(ml:any,neural:any,mlConfigured=true,neuralC
     const name=key==='oneMinute'?'ML M1':'ML M5';
     const ready=Boolean(mlConfigured&&ml?.ok&&ml?.[key]?.ready);
     return {configured:mlConfigured,serviceOk:Boolean(ml?.ok),ready,status:ready?'READY':!mlConfigured?'DISABLED':String(ml?.status||'UNAVAILABLE'),
-      reason:ready?'':!mlConfigured?`${name}: service not configured`:ml?.[key]?.reason||ml?.reason||`${name}: independent validation not qualified`,version:ml?.version};
+      reason:ready?'':!mlConfigured?`${name}: service not configured`:
+        ml?.[key]?.reason||ml?.reason||
+        (ml?.ok?`${name}: service HTTP 200 but model ${ml?.training?'TRAINING':'OOS_UNQUALIFIED'}; never a verified signal`:
+          `${name}: independent validation not qualified`),version:ml?.version};
   };
   const neuralReady=Boolean(neuralConfigured&&neural?.ok&&neural?.ready);
   const models={mlM1:horizon('oneMinute'),mlM5:horizon('fiveMinute'),neural:{
     configured:neuralConfigured,serviceOk:Boolean(neural?.ok),ready:neuralReady,
     status:neuralReady?'READY':!neuralConfigured?'DISABLED':String(neural?.status||'UNAVAILABLE'),
-    reason:neuralReady?'':!neuralConfigured?'Neural: service not configured':neural?.reason||'Neural: independent validation not qualified',version:neural?.version
+    reason:neuralReady?'':!neuralConfigured?'Neural: service not configured':
+      neural?.reason||(neural?.ok?`Neural: collecting unqualified depth samples (${Number(neural.storedSnapshots)||0}); no trade validation`:
+        'Neural: independent validation not qualified'),version:neural?.version
   } satisfies ModelReadiness};
   const reasons=Object.values(models).filter(m=>!m.ready).map(m=>m.reason);
   const configuredCount=Object.values(models).filter(m=>m.configured).length;
@@ -29,6 +34,17 @@ export function summarizeAiReadiness(ml:any,neural:any,mlConfigured=true,neuralC
 const HEALTH_CACHE_MS=60_000;
 const healthCache=new Map<string,{at:number;value:any}>();
 const healthInflight=new Map<string,Promise<any>>();
+
+/** A successful supervised long warmup can publish service *health* into
+ * the short readiness cache. It does not turn a collecting model READY.
+ * In particular HTTP 200 != qualified machine-learning prediction.
+ */
+export function noteAiHealthyService(url:string,value:any,now=Date.now()){
+ const key=url.trim().replace(/\/$/,'');
+ if(!key||!value||typeof value!=='object'||value.ok!==true)return false;
+ healthCache.set(key,{at:now,value});
+ return true;
+}
 
 async function healthProbe(url:string|undefined){
   if(!url)return {ok:false,status:'DISABLED',reason:'service not configured'};
