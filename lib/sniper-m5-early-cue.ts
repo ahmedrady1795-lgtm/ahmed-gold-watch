@@ -64,15 +64,8 @@ export function chartM5EarlyCue(a:{
   if(before(o.side,trigger,stop))
    return result('PREBREAK',o.side,o.side==='BUY'?'ترقب شراء قبل الكسر':'ترقب بيع قبل الكسر',
      'إعداد M1/M5 سابق للكسر · ليس تصريح دخول',trigger,stop,o.sourceAt);
-  if(o.phase==='TESTING'&&
-      (o.side==='BUY'?price>=trigger&&price<=trigger+Math.abs(trigger-stop)*.25:
-       price<=trigger&&price>=trigger-Math.abs(trigger-stop)*.25))
-   return result('TESTING',o.side,o.side==='BUY'?'اختبار كسر صاعد':'اختبار كسر هابط',
-    'الكسر بدأ · ننتظر إغلاقًا جديدًا، ليس إنذارًا قبل الحركة',
-    trigger,stop,o.sourceAt);
-  return result('LATE','WAIT','الحركة سبقت نقطة التفعيل',
-   'لا مطاردة لشمعة اخترقت المستوى أو انعكست قبل تأكيد الاختبار');
  }
+
  // The dedicated closed-M1 compression/sweep detector can be displayed
  // BEFORE M15 has a proven historical edge. This is a WATCH only.
  const p=a.preMove;
@@ -83,6 +76,31 @@ export function chartM5EarlyCue(a:{
    return result('PREBREAK',p.side,p.side==='BUY'?'تهيئة شراء مبكرة':'تهيئة بيع مبكرة',
     'شموع M1/M5 مغلقة · ضغط قبل تجاوز المستوى · مراقبة وليست صفقة',
     p.trigger,p.invalidation,p.sourceAt);
+ }
+
+ // Independent pullback/reclaim setups catch continuation after a short
+ // retracement, where a compressed-range-only detector stays in WAIT.
+ // This is a pre-trigger research WATCH, never confirmed broker flow.
+ const r=a.reclaim;
+ if(r&&within(r.asOf,75000)&&valid(r.side,r.trigger,r.invalidation)&&
+   before(r.side,r.trigger,r.invalidation))
+  return result('PREBREAK',r.side,
+    r.side==='BUY'?'ترقب شراء بعد استرداد M1':'ترقب بيع بعد رفض M1',
+    'عودة الاتجاه بعد تصحيح قصير · شموع M1/M5 مغلقة · تدفق تنفيذ حقيقي غير مؤكد',
+    r.trigger,r.invalidation,r.asOf);
+ // A fresh independent pre-break hypothesis takes priority over a past crossing.
+ // Previously crossed levels are still shown when no fresh pre-break candidate qualifies.
+ if(o&&(o.phase==='PREPARE'||o.phase==='TESTING')&&
+   valid(o.side,o.trigger,o.invalidation)&&within(o.sourceAt,90000)){
+  const trigger=o.trigger!,stop=o.invalidation!;
+  if(o.phase==='TESTING'&&
+      (o.side==='BUY'?price>=trigger&&price<=trigger+Math.abs(trigger-stop)*.25:
+       price<=trigger&&price>=trigger-Math.abs(trigger-stop)*.25))
+   return result('TESTING',o.side,o.side==='BUY'?'اختبار كسر صاعد':'اختبار كسر هابط',
+    'الكسر بدأ · ننتظر إغلاقًا جديدًا، ليس إنذارًا قبل الحركة',
+    trigger,stop,o.sourceAt);
+  return result('LATE','WAIT','الحركة سبقت نقطة التفعيل',
+   'لا مطاردة لشمعة اخترقت المستوى أو انعكست قبل تأكيد الاختبار');
  }
  if(o?.phase==='BREAK_CONFIRMED'&&
    valid(o.side,o.trigger,o.invalidation)&&within(o.sourceAt,60000)){
@@ -96,16 +114,6 @@ export function chartM5EarlyCue(a:{
   return result('LATE','WAIT','الحركة خرجت عن نطاق القنص المبكر',
    'لن نصنّف موجة بدأت بالفعل كشراء أو بيع مبكر');
  }
- // Independent pullback/reclaim setups catch continuation after a short
- // retracement, where a compressed-range-only detector stays in WAIT.
- // This is a pre-trigger research WATCH, never confirmed broker flow.
- const r=a.reclaim;
- if(r&&within(r.asOf,75000)&&valid(r.side,r.trigger,r.invalidation)&&
-   before(r.side,r.trigger,r.invalidation))
-  return result('PREBREAK',r.side,
-    r.side==='BUY'?'ترقب شراء بعد استرداد M1':'ترقب بيع بعد رفض M1',
-    'عودة الاتجاه بعد تصحيح قصير · شموع M1/M5 مغلقة · تدفق تنفيذ حقيقي غير مؤكد',
-    r.trigger,r.invalidation,r.asOf);
  const lean=a.lean;
  if(lean&&lean.side!=='WAIT'&&
    ['OPEN','CLOSE'].includes(lean.phase)&&within(lean.issuedFor,60000)){
