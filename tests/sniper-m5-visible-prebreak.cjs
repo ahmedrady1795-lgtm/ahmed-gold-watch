@@ -55,7 +55,9 @@ assert.equal(cue({...base,m5Follow:{ready:true,side:'SELL',
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const overlay=fs.readFileSync('components/SniperM15HuntOverlay.tsx','utf8');
 assert.match(panel,/const m5Cue=useMemo\(\(\)=>chartM5EarlyCue/);
-assert.match(panel,/const drawingSide=cuePrebreak\?m5Cue.side/);
+assert.match(panel,/const drawingSide=mainSetup\?trackedSetup\?\.side/);
+assert.match(panel,/cuePrebreak\?m5Cue.side/);
+assert.match(panel,/const passiveWatch=!mainSetup/);
 assert.match(panel,/sniper-m5-prebreak-cue/);
 assert.match(panel,/m5Cue\.trigger>=lo&&m5Cue\.trigger<=hi/);
 assert.match(panel,/ترقب شراء قبل الكسر/);
