@@ -65,6 +65,7 @@ export type LiquidityIntelligence={
 };
 
 let cache:{at:number;value:LiquidityIntelligence}|null=null;
+let pending:Promise<LiquidityIntelligence>|null=null;
 let previous:BookState|null=null;
 let lastGood:{at:number;value:LiquidityIntelligence}|null=null;
 
@@ -221,8 +222,8 @@ export function assessBtcLiquidityFeedHealth(a:{
     (ask-bid)/bid*10000<=15&&fresh(time,90000);
   const krakenDepth=depth(a.krakenBid,a.krakenAsk,a.krakenNewestAt);
   const okxDepth=depth(a.okxBid,a.okxAsk,a.okxAt);
-  const coinbaseTrades=a.coinbaseTradeCount>=10&&fresh(a.coinbaseTradeAt,90000);
-  const okxTrades=a.okxTradeCount>=10&&fresh(a.okxTradeAt,90000);
+  const coinbaseTrades=a.coinbaseTradeCount>=10&&fresh(a.coinbaseTradeAt,BTC_TRADE_WINDOW_MS);
+  const okxTrades=a.okxTradeCount>=10&&fresh(a.okxTradeAt,BTC_TRADE_WINDOW_MS);
   if(a.coinbaseBid!=null&&a.coinbaseAsk!=null&&!bbo)reasons.push('Coinbase BBO مقلوب أو سبريد غير طبيعي');
   if(a.krakenBid!=null&&!krakenDepth)reasons.push('عمق Kraken متأخر أو غير صالح');
   if(a.okxBid!=null&&!okxDepth)reasons.push('عمق OKX متأخر أو غير صالح');
@@ -232,14 +233,28 @@ export function assessBtcLiquidityFeedHealth(a:{
   const tradesReady=coinbaseTrades||okxTrades;
   if(!bookReady)reasons.push('لا يوجد دفتر أوامر حديث صالح');
   if(!tradesReady)reasons.push('لا توجد صفقات حديثة كافية');
-  return {ok:bookReady&&tradesReady&&(a.coinbaseBid==null||bbo),
+  // One broken Coinbase BBO must not suppress independent valid Kraken/OKX books.
+  // It simply loses its own vote and lowers quality.
+  return {ok:bookReady&&tradesReady,
     bbo,krakenDepth,okxDepth,coinbaseTrades,okxTrades,
     bookReady,tradesReady,reasons};
 }
 
-export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence>{
+// The analysis route, stream, and scalp desk can request this together.
+ // Share the same five exchange requests; bypassing the result cache still
+ // must not fan out duplicate REST calls within a server process.
+export function getBtcLiquidity(force=false):Promise<LiquidityIntelligence>{
+ const now=Date.now();
+ if(!force&&cache&&now-cache.at<1800)return Promise.resolve(cache.value);
+ if(pending)return pending;
+ const task=collectBtcLiquidity();
+ pending=task;
+ const clear=()=>{if(pending===task)pending=null;};
+ void task.then(clear,clear);
+ return task;
+}
+async function collectBtcLiquidity():Promise<LiquidityIntelligence>{
   const now=Date.now();
-  if(!force&&cache&&now-cache.at<1800)return cache.value;
   const warnings:string[]=[];
   const [bboR,depthR,tradesR,okxDepthR,okxTradesR]=await Promise.allSettled([
     getJson('https://api.exchange.coinbase.com/products/BTC-USD/book?level=1'),
@@ -317,12 +332,22 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
     (health.bbo?bboImbalance:0)*.18+verifiedMicroEdge*.10);
   const crossExchangePressure=clamp(weightedImbalance*.55+
     verifiedOkxImbalance*.25+cbDelta*.10+okxDelta*.10);
+  // The most recent 100 trades on two exchanges often cover different
+  // time spans. Opposite deltas from NON-overlapping windows are not
+  // evidence of a simultaneous venue conflict.
+  const comparableTrades=flow.oldestAt!=null&&flow.newestAt!=null&&
+    okxFlow.oldestAt!=null&&okxFlow.newestAt!=null&&
+    Math.min(flow.newestAt,okxFlow.newestAt)-
+    Math.max(flow.oldestAt,okxFlow.oldestAt)>=1000&&
+    Math.abs(flow.newestAt-okxFlow.newestAt)<=5000;
+  if(health.coinbaseTrades&&health.okxTrades&&!comparableTrades)
+    warnings.push('Coinbase/OKX executed-trade windows do not overlap enough to compare directional delta');
   const integrity=assessBtcLiquidityIntegrity({
     krakenReady:health.krakenDepth&&bids.length>=15&&asks.length>=15,
     okxReady:health.okxDepth&&okxBids.length>=15&&okxAsks.length>=15,
     krakenImbalance:verifiedDepthImbalance,okxImbalance:verifiedOkxImbalance,
-    coinbaseTrades:health.coinbaseTrades?flow.tradeCount:0,
-    okxTrades:health.okxTrades?okxFlow.tradeCount:0,
+    coinbaseTrades:health.coinbaseTrades&&comparableTrades?flow.tradeCount:0,
+    okxTrades:health.okxTrades&&comparableTrades?okxFlow.tradeCount:0,
     coinbaseDelta:cbDelta,okxDelta,now,
     bid:bids[0]?.price||0,ask:asks[0]?.price||0,
     bidDepthUsd:rawBidUsd,askDepthUsd:rawAskUsd,previous
