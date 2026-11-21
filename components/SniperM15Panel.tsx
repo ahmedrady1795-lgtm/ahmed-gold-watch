@@ -16,6 +16,7 @@ import SniperOrderFlowStrip from './SniperOrderFlowStrip';
 import {auditM15HuntDirection} from '../lib/sniper-m15-hunt-proof';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
 import {chartM5EarlyCue} from '../lib/sniper-m5-early-cue';
+import {btcOrderflowMatchesChart} from '../lib/btc-orderflow';
 import {detectM1ReclaimWatch} from '../lib/sniper-m1-reclaim-watch';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
 import SniperM15PreMoveConsole from './SniperM15PreMoveConsole';
@@ -118,6 +119,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      newsObservedAt:feed?.checkedAt,newsReady:Boolean(feed?.newsReady),
      sentiment:packet?.sentiment});
  },[asset,now,contextPacket]);
+ const flowCandleSource=asset==='BTC'?data?.bitcoin?.candleSource:
+   data?.gold?.candleSource;
  const [flowPacket,setFlowPacket]=useState<{asset:'GOLD'|'BTC';data:any;observedAt:number}|null>(null);
  useEffect(()=>{
    let closed=false,busy=false;
@@ -126,7 +129,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      if(closed||busy||document.visibilityState!=='visible')return;
      busy=true;
      try{
-       const r=await fetch(asset==='BTC'?'/api/orderflow':'/api/gold-tick',{
+       const venue=asset==='BTC'&&/kraken/i.test(String(flowCandleSource||''))?
+         '/api/orderflow?venue=kraken':'/api/orderflow';
+       const r=await fetch(asset==='BTC'?venue:'/api/gold-tick',{
          cache:'no-store',signal:AbortSignal.any([
            controller.signal,AbortSignal.timeout(6000)])});
        const data=await r.json();
@@ -137,7 +142,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    void read();
    const timer=setInterval(()=>{void read();},6000);
    return()=>{closed=true;controller.abort();clearInterval(timer);};
- },[asset]);
+ },[asset,flowCandleSource]);
  const [archiveState,setArchiveState]=useState<{
    asset:'GOLD'|'BTC';ledger:unknown;status:string}|null>(null);
  const lastArchivePoll=useRef<{asset:string;at:number}|null>(null);
@@ -257,36 +262,33 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  }),[asset,m.candles,x?.chartHigherFrames?.m5,now]);
  const liquidityMagnets=useMemo(()=>detectLiquidityMagnets(actual,now,64),
    [actual,Math.floor(now/900000)]);
+ const actualFlowSameVenue=asset==='BTC'?
+   btcOrderflowMatchesChart(x?.candleSource,liveQuote?.source,
+     flowPacket?.asset==='BTC'?flowPacket?.data?.source:null):
+   (/exness\/mt5/i.test(String(x?.candleSource||''))&&
+    /exness\/mt5/i.test(String(liveQuote?.source||'')));
  const flowProfile=useMemo(()=>assessFlowProfile({
    asset,now,price:m.price,
    observedAt:flowPacket?.observedAt??null,
-   sourceMatches:asset==='BTC'?
-     (/coinbase/i.test(String(x?.candleSource||''))&&
-       /coinbase/i.test(String(liveQuote?.source||''))):
-     (/exness\/mt5/i.test(String(x?.candleSource||''))&&
-       /exness\/mt5/i.test(String(liveQuote?.source||''))),
+   sourceMatches:actualFlowSameVenue,
    btc:asset==='BTC'&&flowPacket?.asset==='BTC'?flowPacket.data:null,
    gold:asset==='GOLD'&&flowPacket?.asset==='GOLD'?flowPacket.data:null,
    bookSide:asset==='BTC'&&liveRadar&&
      (liveRadar.phase==='PREPARE'||liveRadar.phase==='CONFIRMED')?
        liveRadar.side:'WAIT'
- }),[asset,now,m.price,x?.candleSource,liveQuote?.source,flowPacket,liveRadar]);
+ }),[asset,now,m.price,actualFlowSameVenue,flowPacket,liveRadar]);
  // The live Order Flow band reads only the same provider as this chart.
  // Missing broker depth is shown as quote activity or price-action proxy,
  // never as an executed trade or an actionable BUY/SELL.
  const flowObservation=useMemo(()=>observeSniperOrderFlow({
    asset,now,flow:flowProfile,marketFresh:marketOpen&&
      Boolean(m.sniper.view.priceFresh)&&!providerTransition,
-   sourceMatches:asset==='BTC'?
-     (/coinbase/i.test(String(x?.candleSource||''))&&
-      /coinbase/i.test(String(liveQuote?.source||''))):
-     (/exness\/mt5/i.test(String(x?.candleSource||''))&&
-      /exness\/mt5/i.test(String(liveQuote?.source||''))),
+   sourceMatches:actualFlowSameVenue,
    m1:m.candles,
    brokerDepth:asset==='GOLD'&&flowPacket?.asset==='GOLD'?
      flowPacket.data?.brokerDepth:null
  }),[asset,now,flowProfile,marketOpen,m.sniper.view.priceFresh,
-    providerTransition,x?.candleSource,liveQuote?.source,m.candles,flowPacket]);
+    providerTransition,actualFlowSameVenue,m.candles,flowPacket]);
  const localFusion=useMemo(()=>fuseLocalSniper({
    preMove,hunt:huntPreview,m1:nextM1,liquidity:liquidityMagnets,
    marketOpen,fresh:Boolean(m.sniper.view.priceFresh&&
