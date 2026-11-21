@@ -27,7 +27,8 @@ export function cleanScalpResearch(input,now=Date.now()){
    !validTime(r.issuedAt,now)||r.id!==r.issuedAt||
    now-r.issuedAt>21*86400000||
    typeof r.note!=='string'||r.note.length>1000||
-   (r.chartSource!=null&&\n    (typeof r.chartSource!=='string'||r.chartSource.length>240))||
+   (r.chartSource!=null&&
+    (typeof r.chartSource!=='string'||r.chartSource.length>240))||
    !['BUY','SELL','FLAT','UNKNOWN',null,undefined].includes(r.directionObserved)||
    (r.directionEvaluatedAt!=null&&
     (!validTime(r.directionEvaluatedAt,now)||
@@ -54,7 +55,8 @@ export function mergeScalpResearch(previous,current,now=Date.now()){
   const key=r.asset+':'+r.id,p=merged.get(key);
   if(p&&p.chartSource&&r.chartSource&&p.chartSource!==r.chartSource){
    merged.set(key,{...r,state:'UNKNOWN',directionObserved:'UNKNOWN',
-    directionEvaluatedAt:now>=r.issuedAt+60000?now:null,\n    filledAt:null,netR:null,closedAt:now,
+    directionEvaluatedAt:now>=r.issuedAt+60000?now:null,
+    filledAt:null,netR:null,closedAt:now,
     note:'تعارض مصدر السجل بعد الاستعادة؛ لا نتيجة معتمدة'});
    continue;
   }
@@ -72,7 +74,8 @@ export function restoredScalpResearch(input,asset,now=Date.now()){
    if(unresolved.has(r.state)||r.directionObserved==null){
     return {...r,state:'UNKNOWN',filledAt:null,netR:null,
      closedAt:now,directionObserved:r.directionObserved??'UNKNOWN',
-     directionEvaluatedAt:r.directionEvaluatedAt??\n      (now>=r.issuedAt+60000?now:null),
+     directionEvaluatedAt:r.directionEvaluatedAt??
+      (now>=r.issuedAt+60000?now:null),
      note:'بحث قديم استُعيد دون رصد متصل؛ لا تنفيذ ولا نتيجة مفترضة'};
    }
    return r;
