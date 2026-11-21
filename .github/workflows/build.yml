@@ -25,6 +25,7 @@ jobs:
       - run: node tests/neural-optout.cjs
       - run: node tests/indicators.cjs
       - run: node tests/gold-trap-radar.cjs
+      - run: node tests/market-lead-ai.cjs
       - run: node tests/core-quality.cjs
       - run: node tests/scalp.cjs
       - run: node tests/news-alert-window.cjs

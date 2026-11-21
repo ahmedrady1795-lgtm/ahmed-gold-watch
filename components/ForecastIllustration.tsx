@@ -6,6 +6,7 @@ import {buildForecastIllustration} from '../lib/forecast-illustration';
 import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import NewsCommandCenter from './NewsCommandCenter';
 import GoldTrapRadarPanel from './GoldTrapRadarPanel';
+import EarlyMoveAlert from './EarlyMoveAlert';
 import {economicNewsTimeline} from '../lib/news-alert-window';
 import type {ForecastJournal} from '../lib/forecast-journal';
 
@@ -126,6 +127,7 @@ export default function ForecastIllustration({data,now,snapshotAt,goldLive,btcLi
         تنبيه خبر قريب: {earlyNews[0].name} · عرض التفاصيل
       </button>}
       {newsOpen&&<div className="forecast-news-drawer"><NewsCommandCenter events={data?.newsEvents||[]} now={now} featuredEvent={data?.autopilot?.nextEvent||null}/></div>}
+      {asset==='GOLD'&&<EarlyMoveAlert now={now}/>}
       <section className={'forecast-scenario-hero '+(statusReady?'is-active':watchReady?'is-watch':'is-wait')}
         aria-labelledby="forecast-scenario-title">
         <div className="forecast-scenario-heading">

@@ -135,7 +135,7 @@ export function setMt5BridgeStatus(input:unknown):Mt5BridgeStatus{
 export function getMt5BridgeStatus(now=Date.now()){if(!mt5State)return{connected:false,fresh:false,candlesFresh:false,status:null as Mt5BridgeStatus|null};const tickAgeMs=Math.max(0,now-mt5State.tickTimeMs),bridgeAgeMs=Math.max(0,now-mt5State.receivedAt),candlesAgeMs=mt5State.candlesReceivedAt?Math.max(0,now-mt5State.candlesReceivedAt):null,fresh=tickAgeMs<=MT5_TICK_MAX_AGE_MS&&bridgeAgeMs<=15000,candlesFresh=Boolean(fresh&&mt5State.candles&&candlesAgeMs!=null&&candlesAgeMs<=45000);return{connected:true,fresh,candlesFresh,tickAgeMs,bridgeAgeMs,candlesAgeMs,status:mt5State};}
 export function getMt5FastSignal(now=Date.now()){
   const rows=mt5FastTicks.filter(x=>now-x.receivedAt<=12000),latest=rows.at(-1);
-  if(!latest||rows.length<4||now-latest.receivedAt>2500)return {ok:false,side:'WAIT' as const,stage:'OFFLINE',score:0,confidence:0,samples:rows.length};
+  if(!latest||rows.length<4||now-latest.receivedAt>2500||latest.at>now+1500||now-latest.at>8000)return {ok:false,side:'WAIT' as const,stage:'OFFLINE',score:0,confidence:0,samples:rows.length};
   const older=(ms:number)=>{for(let i=rows.length-1;i>=0;i--)if(rows[i].receivedAt<=latest.receivedAt-ms)return rows[i];return rows[0]||null;};
   const vel=(o:Mt5FastTick|null)=>o&&o.price>0?(latest.price-o.price)/o.price*10000:0;
   const o05=older(500),o1=older(1000),o15=older(1500),o3=older(3000),o4=older(4000),o8=older(8000);
@@ -144,6 +144,9 @@ export function getMt5FastSignal(now=Date.now()){
   const persistence=Math.round(Math.max(up,down)/Math.max(1,up+down)*100);
   const imbalance=Number(latest.bookImbalance||0);
   const priorBook=o15||o1||rows[0]||latest;
+  // A fresh quote is not a real broker order book. Both sides must carry depth
+  // in consecutive MT5 snapshots before we describe pressure as DOM evidence.
+  const domAvailable=latest.bidDepth>0&&latest.askDepth>0&&priorBook.bidDepth>0&&priorBook.askDepth>0;
   const pressureChange=imbalance-Number(priorBook.bookImbalance||0);
   const pct=(cur:number,old:number)=>old>0?(cur-old)/old*100:0;
   const bidDepthChangePct=pct(latest.bidDepth,priorBook.bidDepth);
@@ -160,7 +163,8 @@ export function getMt5FastSignal(now=Date.now()){
   const score=Math.round(Math.max(0,Math.min(92,36+Math.abs(imbalance)*.24+Math.abs(pressureChange)*.34+Math.min(18,Math.abs(replenish)*.18)+Math.abs(acc)*58+Math.abs(v15)*8+Math.max(0,persistence-50)*.30+(preTrigger?11:0))));
   const confidence=Math.round(Math.max(0,Math.min(90,score*.70+Math.min(18,rows.length*.55)+(stage==='PRE_TRIGGER'?8:stage==='IGNITION'?9:0))));
   return {
-    ok:true,side,stage,score,confidence,samples:rows.length,source:'Exness/MT5 bridge DOM',
+    ok:true,side,stage,score,confidence,samples:rows.length,
+    source:domAvailable?'Exness/MT5 broker DOM':'Exness/MT5 price ticks (no DOM)',domAvailable,
     velocity05s:Number(v05.toFixed(4)),velocity1s:Number(v1.toFixed(4)),velocity15s:Number(v15.toFixed(4)),velocity3s:Number(v3.toFixed(4)),velocity4s:Number(v4.toFixed(4)),velocity8s:Number(v8.toFixed(4)),
     acceleration:Number(acc.toFixed(4)),persistence,bookImbalance:Number(imbalance.toFixed(1)),pressureChange:Number(pressureChange.toFixed(1)),
     bidDepthChangePct:Number(bidDepthChangePct.toFixed(1)),askDepthChangePct:Number(askDepthChangePct.toFixed(1)),replenishDelta:Number(replenish.toFixed(1)),
