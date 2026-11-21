@@ -134,6 +134,13 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
         </p>
         <small>قراءة تنفيذ هجومي وامتصاص من Spot · درجات الجودة ليست نسبة نجاح ·
           لا تمثل سعر أو تعبئة Exness، ولا تُنشئ صفقة.</small>
+        {desk?.earlyExecutionAudit?.earlyBtc&&<small style={{display:'block',marginTop:5}}>
+          اختبار أمامي: {Number(desk.earlyExecutionAudit.earlyBtc.pairedN||0)}/150 إشارة مقارنة بشمعة M1 المغلقة السابقة
+          {Number(desk.earlyExecutionAudit.earlyBtc.pairedN)>0?
+            ' · الرصد '+fmt(desk.earlyExecutionAudit.earlyBtc.modelObservedPct,1)+'%'+
+            ' · المرجع '+fmt(desk.earlyExecutionAudit.earlyBtc.baselineObservedPct,1)+'%':''}
+          {' · '}ليس نسبة ربح صفقات
+        </small>}
       </div>}
       {technicalWatch&&!limitPending&&!confirmed&&<div className="scalp-early-watch"
         aria-label="مستويات مراقبة الحركة قبل الدخول"
