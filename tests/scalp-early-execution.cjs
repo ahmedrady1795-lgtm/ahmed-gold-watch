@@ -1,6 +1,21 @@
 const assert=require('node:assert/strict');
-const fs=require('node:fs');
-const {detectEarlyExecutionLead}=require('../lib/scalp-early-execution.ts');
+const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
+// Keep production extensionless imports; use the actual TS calculation via
+// transpile for Node's isolated CJS regression without changing Next bundles.
+function transpiled(path,dependencies={}){
+ const e={},code=ts.transpileModule(fs.readFileSync(path,'utf8'),{
+  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
+ }).outputText;
+ vm.runInNewContext(code,{exports:e,require:id=>{
+  if(!(id in dependencies))throw Error('unexpected test import '+id);
+  return dependencies[id];
+ }});
+ return e;
+}
+const select=transpiled('lib/scalp-selection.ts',{
+ './scalp-risk-policy':{requiredScalpNetR:()=>1.25}});
+const {detectEarlyExecutionLead}=transpiled('lib/scalp-early-execution.ts',{
+ './scalp-selection':select});
 const now=Date.parse('2026-11-21T12:32:08Z'),minute=Math.floor(now/60000)*60000;
 const candles=(close,side='BUY')=>Array.from({length:80},(_,i)=>({
  time:minute-(80-i)*60000,open:close,close,
