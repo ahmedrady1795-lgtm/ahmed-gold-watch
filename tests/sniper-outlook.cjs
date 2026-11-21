@@ -9,7 +9,11 @@ function load(path,requireFn){
     {filename:path});
   return mod.exports;
 }
-const next=load('lib/next-move-view.ts');
+const btcCoherence=load('lib/btc-quote-coherence.ts');
+const next=load('lib/next-move-view.ts',id=>{
+  if(id==='./btc-quote-coherence')return btcCoherence;
+  throw Error('Unexpected next-move-view dependency '+id);
+});
 const long=load('lib/long-range-targets.ts');
 const risk=load('lib/sniper-risk-plan.ts');
 const {frames}=require('./long-range-fixture.cjs');

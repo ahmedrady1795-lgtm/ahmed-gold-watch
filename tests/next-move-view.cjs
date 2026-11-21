@@ -1,9 +1,16 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),ts=require('typescript'),vm=require('node:vm');
+const btcModule={};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/btc-quote-coherence.ts','utf8'),{
+  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
+}).outputText,{exports:btcModule});
 const exports_={};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/next-move-view.ts','utf8'),{
   compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
-}).outputText,{exports:exports_});
+}).outputText,{exports:exports_,require:id=>{
+  if(id==='./btc-quote-coherence')return btcModule;
+  throw Error('unexpected next-move-view dependency '+id);
+}});
 const {buildNextMoveView:read}=exports_;
 const now=Date.parse('2026-10-11T10:00:00Z');
 const x={
@@ -50,4 +57,25 @@ assert.equal(v.hasHistoricalBand,false,'Poorly calibrated intervals must not be 
 v=view('GOLD',{...x,livePulse:{price:100,sourceTime:now+60000}});
 assert.equal(v.side,'WAIT','Future quotes cannot establish current price');
 assert.equal(view('BTC',{...x,forecastValidation15m:{global:{hits:50,fails:50,accuracy:50}}}).quality,'UNQUALIFIED');
+const krakenModel={...x,candleSource:'Kraken XBT/USD · fresh-candle fallback',
+ livePulse:{price:110,sourceTime:now-1000,source:'Coinbase Exchange'},
+ scalpDesk:{quote:{price:105,at:now-500,source:'Coinbase Exchange'}}};
+let matched=view('BTC',krakenModel,now,{ok:true,asset:'BTC',
+ price:99.5,sourceTime:now-1800,source:'Kraken XBT/USD Trades'});
+assert.equal(matched.price,99.5,
+ 'newer Coinbase prices cannot override older but fresh Kraken quote on Kraken chart');
+assert.equal(matched.priceFresh,true);
+matched=view('BTC',krakenModel,now,{ok:true,asset:'BTC',
+ price:111,sourceTime:now-1000,source:'Coinbase WebSocket'});
+assert.equal(matched.price,null,'cross-venue quote is not live even when timestamp fresh');
+assert.equal(matched.priceFresh,false);
+assert.equal(matched.side,'WAIT');
+const cbModel={...krakenModel,candleSource:'Coinbase BTC-USD · extended M1',
+ livePulse:{price:110,sourceTime:now-1000,source:'Kraken XBT/USD Trades'}};
+matched=view('BTC',cbModel,now,{ok:true,asset:'BTC',
+ price:99.5,sourceTime:now-1900,source:'Coinbase WebSocket'});
+assert.equal(matched.price,105,'same-venue Coinbase scalp quote may be newer than Coinbase WebSocket');
+matched=view('BTC',{...krakenModel,scalpDesk:{quote:{price:90,at:now-500,source:'Kraken XBT/USD'}}},now,null);
+assert.equal(matched.price,90,'legitimate freshest same-venue Kraken scalp quote may still feed the chart');
+
 console.log('PASS: next move freshness, side/target/stop, near-chance veto, forecast horizon and calibrated range');
