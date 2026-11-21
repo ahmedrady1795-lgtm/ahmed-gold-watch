@@ -7,7 +7,8 @@ function load(path,imports={}){
   return imports[id];
  }});return ex;
 }
-const select=load('lib/scalp-selection.ts');
+const select=load('lib/scalp-selection.ts',{'./scalp-risk-policy':{
+ requiredScalpNetR:()=>1.25}});
 const {detectGoldEarlyLead:detect}=load('lib/gold-early-execution.ts',{
  './scalp-selection':select});
 const at=Date.parse('2026-11-23T12:32:08Z'),min=Math.floor(at/60000)*60000;
