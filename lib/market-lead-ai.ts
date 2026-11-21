@@ -103,7 +103,7 @@ export function updateGoldMarketLead(fast:any,now=Date.now(),wave:any=null):Mark
     },now,actualDom?'DOM':'MICRO_FLOW');
   }
   if(wave?.ok&&Number(wave?.at||0)>0&&now-Number(wave.at)<=4500){
-    const side=sideOf(wave.side),dir=side==='BUY'?1:side==='SELL'?-1:0;
+    const side=sideOf(wave.side);
     return evaluate('GOLD',{
       source:'Gold price-tick proxy (no order book / signed trades)',
       sourceAt:Number(wave.at),
