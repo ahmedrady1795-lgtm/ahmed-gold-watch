@@ -79,7 +79,7 @@ export function detectGoldEarlyLead(a:Args):GoldEarlyLead{
  const downSweep=last.high>high+pad&&last.close<high-pad;
  if(upSweep===downSweep)
    return out('WAIT',upSweep?'سحب قمة وقاع متعارضان':'لا يوجد استرداد مستوى سيولة مؤكد بإغلاق M1');
- const side=upSweep?'BUY':'SELL',dir=upSweep?1:-1;
+ const side:GoldEarlyLead['side']=upSweep?'BUY':'SELL',dir=upSweep?1:-1;
  const opened=quote.price;
  const maxMove=dir*(opened-last.close);
  if(maxMove>atr*.50||Math.abs(opened-last.close)>atr*.92)
