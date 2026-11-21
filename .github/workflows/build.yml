@@ -24,6 +24,7 @@ jobs:
       - run: node tests/btc-liquidity-executed-flow.cjs
       - run: node tests/scalp-research-archive.mjs
       - run: node tests/scalp-early-execution.cjs
+      - run: node tests/btc-quote-coherence.cjs
       - run: node tests/gold-early-execution.cjs
       - run: node tests/sniper-m5-visible-prebreak.cjs
       - run: node tests/sniper-live-opportunity.cjs && node tests/sniper-movement-proof.cjs && node tests/sniper-m5-candle-lean.cjs && node tests/sniper-early-setup.cjs
