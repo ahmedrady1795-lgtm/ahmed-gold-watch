@@ -632,6 +632,21 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    preMove,liveOpportunity,candleLean,m1Reclaim,closedM5Context]);
  const cuePrebreak=m5Cue.stage==='PREBREAK';
  const cueVisible=m5Cue.side!=='WAIT'&&!['OFFLINE','NONE','LATE'].includes(m5Cue.stage);
+ // A genuine first-seen reclaim is written into the same forward-only
+ // audit as older early hypotheses. It is an observational WATCH with no TP
+ // and no automatic order; do not create a retroactive signal on a breakout.
+ const movementSignal=useMemo(()=>{
+   if(earlyOpportunity.phase==='PREPARE'||earlyOpportunity.phase==='BREAK_CONFIRMED'||
+       earlyOpportunity.phase==='TESTING'||!m1Reclaim||
+       !cuePrebreak||m5Cue.asOf!==m1Reclaim.asOf||
+       m5Cue.trigger!==m1Reclaim.trigger)return earlyOpportunity;
+   return {...earlyOpportunity,phase:'PREPARE' as const,
+     side:m1Reclaim.side,sourceAt:m1Reclaim.asOf,
+     trigger:m1Reclaim.trigger,invalidation:m1Reclaim.invalidation,
+     targets:[],quality:'OBSERVATION' as const,setupKind:'PULLBACK' as const,
+     reason:'ترقب استرداد M1 قبل مستوى الكسر التالي؛ OHLC مغلق دون تدفق تنفيذي مؤكد',
+     tradeEligible:false as const};
+ },[earlyOpportunity,m1Reclaim,cuePrebreak,m5Cue.asOf,m5Cue.trigger]);
  // Show the closed-M1 directional hypothesis as WATCH when no pre-break
  // setup was armed; never promote it into an execution-worthy BUY/SELL.
  const hasDirectionalWatch=earlyOpportunity.side==='WAIT'&&
@@ -667,11 +682,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    if(!movementProofLoaded)return;
    setMovementRecords(prior=>advanceMovementProof({
      prior,now,asset,source:String(x?.candleSource||''),
-     price,signal:earlyOpportunity,bars:m.candles,
+     price,signal:movementSignal,bars:m.candles,
      m5Bars:x?.chartHigherFrames?.m5,
      frameTrend:entryTrend,setupState:trackedSetup,
      evidence:{
-       reason:earlyOpportunity.reason,flowStatus:flowObservation.status,
+       reason:movementSignal.reason,flowStatus:flowObservation.status,
        flowSource:flowObservation.source,flowSide:flowProfile.side,
        liquidityReady:liquidity.ready,m1Side:nextM1.ready?nextM1.side:'WAIT',
        m15Side:entryTrend,proxySide:paxg&&paxg.observedAt<=now&&
@@ -683,7 +698,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      candleLean:hasDirectionalWatch?candleLean:undefined
    }));
  },[movementProofLoaded,now,asset,x?.candleSource,price,
-   earlyOpportunity,candleLean,hasDirectionalWatch,m.candles,
+   earlyOpportunity,movementSignal,candleLean,hasDirectionalWatch,m.candles,
    x?.chartHigherFrames?.m5,entryTrend,trackedSetup,flowObservation,flowProfile.side,
    liquidity.ready,nextM1.ready,nextM1.side,paxg]);
  const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
