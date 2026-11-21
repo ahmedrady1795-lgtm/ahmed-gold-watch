@@ -1,0 +1,63 @@
+name: Smoke live Render early sniper API once
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/live-early-sniper-smoke.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify deployed BTC early-flow, paper-only costs and GOLD independence
+        run: |
+          python3 - <<'PY'
+          import json,urllib.request,urllib.error,time,sys
+          base='https://ahmed-gold-watch-free.onrender.com'
+          def get(path):
+            t=time.monotonic()
+            req=urllib.request.Request(base+path,headers={
+              'User-Agent':'Qannas-Release-SelfAudit/1.0',
+              'Accept':'application/json','Cache-Control':'no-store'})
+            with urllib.request.urlopen(req,timeout=85) as r:
+              status=r.status
+              raw=r.read(3000000)
+              if len(raw)>=3000000:raise RuntimeError('oversized JSON')
+              value=json.loads(raw)
+            print('SMOKE_PATH',path,'HTTP',status,'seconds',round(time.monotonic()-t,2),flush=True)
+            return value
+          live=get('/api/live')
+          assert live.get('ok') is True,'Next.js health must respond'
+          research=get('/api/scalp-research')
+          assert research.get('schema')==1,'paper archive schema'
+          assert isinstance(research.get('earlyObservations'),list),'new forward BTC archive field'
+          assert len(research['earlyObservations'])<=360,'bounded prospective proof'
+          # Endpoint read is observational and has no viewer token, no
+          # brokerage credentials and never an order-placing action.
+          scalp=get('/api/scalp?asset=ALL')
+          assert scalp.get('ok') is True,'full desk response not available'
+          btc=scalp.get('bitcoin')
+          gold=scalp.get('gold')
+          assert isinstance(btc,dict),'BTC independent desk missing'
+          assert isinstance(gold,dict),'GOLD independent desk missing'
+          e=btc.get('earlyExecution')
+          assert isinstance(e,dict),'BTC new early-flow lane absent'
+          assert e.get('status') in ('STALE','WAIT','EARLY_WATCH','COST_BLOCKED','VENUE_CONFLICT','LATE','ENTRY_CANDIDATE'),e
+          assert e.get('researchOnly') is True and e.get('brokerExecutionVerified') is False,'BTC model cannot imply Exness fills'
+          assert e.get('entryType') in (None,'BUY_LIMIT','SELL_LIMIT')
+          assert isinstance(btc.get('earlyExecutionAudit'),dict),'BTC prospective early direction audit missing'
+          assert gold.get('asset')=='GOLD' and btc.get('asset')=='BTC'
+          gold_only=get('/api/scalp?asset=GOLD')
+          assert gold_only.get('bitcoin') is None and gold_only.get('gold',{}).get('asset')=='GOLD','GOLD fast path mixed with BTC'
+          print('SMOKE_RELEASE_SUCCESS',json.dumps({
+            'btcEarlyStatus':e.get('status'),'btcEarlySide':e.get('side'),
+            'btcReason':str(e.get('reason',''))[:110],
+            'researchOnly':e.get('researchOnly'),
+            'btcForwardPaired':btc.get('earlyExecutionAudit',{}).get('earlyBtc',{}).get('pairedN'),
+            'btcCostEstimate':btc.get('executionEconomics',{}).get('costPerUnit'),
+            'btcBookIntegrity':btc.get('orderBook',{}).get('integrity',{}).get('status'),
+            'goldDesk':True,'orderExecutionTriggered':False
+          },ensure_ascii=False),flush=True)
+          PY
