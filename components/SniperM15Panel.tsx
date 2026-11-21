@@ -1564,6 +1564,26 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            </>}
          </g>;
        })}
+       {/* Closed-bar prebreak cue is separate from both M15 dual paths.
+            It stays on a true price coordinate and never simulates TP. */}
+       {cuePrebreak&&m5Cue.trigger!=null&&m5Cue.invalidation!=null&&
+         m5Cue.trigger>=lo&&m5Cue.trigger<=hi&&
+         <g className="sniper-m5-prebreak-cue"
+           data-m5-prebreak-side={m5Cue.side} data-issued-at={m5Cue.asOf}>
+           <line x1={Math.max(left+16,split-140)} x2={split-5}
+             y1={py(m5Cue.trigger)} y2={py(m5Cue.trigger)}
+             stroke={m5Cue.side==='BUY'?'#58e6bf':'#ff87a0'}
+             strokeWidth="1.4" strokeDasharray="4 4" opacity=".86"/>
+           <text x={split-8} y={plotTop+42} textAnchor="end"
+             direction="rtl" fontSize="9" fontWeight="800"
+             fill={m5Cue.side==='BUY'?'#73efc7':'#ff9bb1'}
+             stroke="#07111b" strokeWidth="3" paintOrder="stroke">
+             {(m5Cue.side==='BUY'?'ترقب شراء':'ترقب بيع')+
+              ' · تفعيل '+n(m5Cue.trigger)}
+           </text>
+           <title>{m5Cue.detail+' · إبطال '+n(m5Cue.invalidation)+
+             ' · M1/M5 فقط، لا توجد صفقة منفذة'}</title>
+         </g>}
        {/* Compact box-free text. Details remain in hover/assistive title. */}
        <g className="sniper-m5-chart-status" role="status"
          aria-label={drawingBadge+' · '+drawingReason+' · '+marketContext.reason}>
