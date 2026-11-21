@@ -39,6 +39,7 @@ export type LiquidityIntelligence={
   };
   flow:{
     tradeCount:number;
+    venue?:'COINBASE'|'OKX'|'NONE';
     buyVolume:number;
     sellVolume:number;
     deltaVolume:number;
@@ -149,6 +150,18 @@ function verifiedTrades(raw:unknown,now:number,venue:'COINBASE'|'OKX'):SampleTra
   if(!conflicted.has(id))byId.set(id,trade);
  }
  return [...byId.values()];
+}
+/** Explicit executed-taker primary selection. OKX BTC-USDT prints are not
+ * Coinbase BTC-USD fills; their direction is usable only with the matching
+ * source timestamp. No stale or mixed-volume 'combined' delta is invented. */
+export function selectBtcExecutedFlow(input:{
+ coinbaseValid:boolean;okxValid:boolean;
+ coinbase:ReturnType<typeof executedFlow>;
+ okx:ReturnType<typeof executedFlow>;
+}){
+ if(input.coinbaseValid)return {...input.coinbase,venue:'COINBASE' as const};
+ if(input.okxValid)return {...input.okx,venue:'OKX' as const};
+ return {...executedFlow([]),venue:'NONE' as const};
 }
 export function coinbaseExecutedFlow(rows:unknown,now=Date.now()){
  return executedFlow(verifiedTrades(rows,now,'COINBASE'));
@@ -324,7 +337,12 @@ async function collectBtcLiquidity():Promise<LiquidityIntelligence>{
   // remaining single source to an artificial 100% pressure.
   const cbDelta=health.coinbaseTrades?flow.deltaPct:0;
   const okxDelta=health.okxTrades?okxFlow.deltaPct:0;
-  const cbPriceChange=health.coinbaseTrades?flow.priceChangeBps:0;
+  const primary=selectBtcExecutedFlow({
+    coinbaseValid:health.coinbaseTrades,okxValid:health.okxTrades,
+    coinbase:flow,okx:okxFlow
+  });
+  if(primary.venue==='OKX')
+    warnings.push('Coinbase executed trades unavailable; OKX BTC-USDT taker flow is the explicit fallback');
   const verifiedDepthImbalance=health.krakenDepth?depthImbalance:0;
   const verifiedOkxImbalance=health.okxDepth?okxDepthImbalance:0;
   const verifiedMicroEdge=health.bbo?microEdge:0;
@@ -361,30 +379,39 @@ async function collectBtcLiquidity():Promise<LiquidityIntelligence>{
   const acceleration=clamp(pressureChange*.55+(bidDepthChangePct-askDepthChangePct)*.45);
   // A failed venue must not reset the previous valid depth or pressure to zero.
 
-  const absDelta=Math.abs(cbDelta),signedPrice=cbPriceChange;
-  const sellFollowThrough=cbDelta<=-18&&signedPrice<=-2.2;
-  const buyFollowThrough=cbDelta>=18&&signedPrice>=2.2;
+  // Absorption must use price change AND taker direction FROM ONE VENUE.
+  // Never pair stale Coinbase delta with recent OKX price movement.
+  const primaryDelta=primary.deltaPct;
+  const absDelta=Math.abs(primaryDelta),signedPrice=primary.priceChangeBps;
+  const sellFollowThrough=primaryDelta<=-18&&signedPrice<=-2.2;
+  const buyFollowThrough=primaryDelta>=18&&signedPrice>=2.2;
   let absorptionSide:Side='WAIT',absorptionScore=0,absorptionReason='لا يوجد امتصاص واضح.',trapDetected=false,followThrough=sellFollowThrough||buyFollowThrough;
-  if(cbDelta<=-30&&signedPrice>-2.2){
+  if(primary.venue!=='NONE'&&primaryDelta<=-30&&signedPrice>-2.2){
     trapDetected=true;absorptionSide='BUY';
     const mismatch=signedPrice>=0?20:10;
     absorptionScore=Math.min(92,Math.round(45+absDelta*.45+mismatch));
     absorptionReason='بيع هجومي كبير لكن السعر رفض الهبوط: فخ بيع/امتصاص شراء محتمل.';
-  }else if(cbDelta>=30&&signedPrice<2.2){
+  }else if(primary.venue!=='NONE'&&primaryDelta>=30&&signedPrice<2.2){
     trapDetected=true;absorptionSide='SELL';
     const mismatch=signedPrice<=0?20:10;
     absorptionScore=Math.min(92,Math.round(45+absDelta*.45+mismatch));
     absorptionReason='شراء هجومي كبير لكن السعر رفض الصعود: فخ شراء/امتصاص بيع محتمل.';
-  }else if(cbDelta<=-24&&signedPrice>=-1.2){
+  }else if(primary.venue!=='NONE'&&primaryDelta<=-24&&signedPrice>=-1.2){
     absorptionSide='BUY';absorptionScore=Math.min(88,Math.round(36+absDelta*.38));absorptionReason='ضغط بيع بدون متابعة سعرية كافية: امتصاص شراء محتمل.';
-  }else if(cbDelta>=24&&signedPrice<=1.2){
+  }else if(primary.venue!=='NONE'&&primaryDelta>=24&&signedPrice<=1.2){
     absorptionSide='SELL';absorptionScore=Math.min(88,Math.round(36+absDelta*.38));absorptionReason='ضغط شراء بدون متابعة سعرية كافية: امتصاص بيع محتمل.';
   }
 
-  const flowWeight=trapDetected?.04:followThrough?.30:.16;
+  // OKX-only prints must NOT inherit the weight of two independent tapes.
+  const flowWeight=(trapDetected?.04:followThrough?.30:.16)*
+    (primary.venue==='OKX'?.68:1);
   const absorptionAdj=absorptionSide==='BUY'?Math.min(30,absorptionScore*.32):absorptionSide==='SELL'?-Math.min(30,absorptionScore*.32):0;
   const wallAdj=!health.krakenDepth?0:wallSide==='BUY'?Math.min(4,Math.max(0,wallDiff)*1.2):wallSide==='SELL'?-Math.min(4,Math.max(0,-wallDiff)*1.2):0;
-  const signed=clamp(crossExchangePressure*.38+cbDelta*flowWeight*.70+okxDelta*.12+verifiedOkxImbalance*.10+acceleration*.10+absorptionAdj+wallAdj,-84,84);
+  const signed=clamp(crossExchangePressure*.38+
+    primaryDelta*flowWeight*.70+
+    (health.coinbaseTrades?okxDelta*.12:0)+
+    verifiedOkxImbalance*.10+acceleration*.10+
+    absorptionAdj+wallAdj,-84,84);
   const buy=Math.round(clamp(50+signed/2,8,92)),sell=100-buy,side=buy-sell>=10?'BUY':sell-buy>=10?'SELL':'WAIT';
   const successCount=[bboR,depthR,tradesR,okxDepthR,okxTradesR].filter(x=>x.status==='fulfilled').length;
   const quality=Math.max(0,Math.min(100,Math.round(successCount/5*52+
@@ -410,12 +437,13 @@ async function collectBtcLiquidity():Promise<LiquidityIntelligence>{
       microEdge:Math.round(verifiedMicroEdge),
       bidDepthUsd:health.krakenDepth?Math.round(rawBidUsd):0,
       askDepthUsd:health.krakenDepth?Math.round(rawAskUsd):0,bidWall:Number(bidWall.toFixed(2)),askWall:Number(askWall.toFixed(2)),bidWallPrice:bidWallPoint.price,askWallPrice:askWallPoint.price,wallSide:health.krakenDepth?wallSide:'WAIT'},
-    flow:{tradeCount:health.coinbaseTrades?flow.tradeCount:0,
-      buyVolume:health.coinbaseTrades?Number(flow.buyVolume.toFixed(6)):0,
-      sellVolume:health.coinbaseTrades?Number(flow.sellVolume.toFixed(6)):0,
-      deltaVolume:health.coinbaseTrades?Number(flow.deltaVolume.toFixed(6)):0,
-      deltaPct:Number(cbDelta.toFixed(1)),priceChangeBps:Number(cbPriceChange.toFixed(2)),
-      cvdSide:health.coinbaseTrades?flow.cvdSide:'WAIT'},
+    flow:{venue:primary.venue,tradeCount:primary.tradeCount,
+      buyVolume:Number(primary.buyVolume.toFixed(6)),
+      sellVolume:Number(primary.sellVolume.toFixed(6)),
+      deltaVolume:Number(primary.deltaVolume.toFixed(6)),
+      deltaPct:Number(primary.deltaPct.toFixed(1)),
+      priceChangeBps:Number(primary.priceChangeBps.toFixed(2)),
+      cvdSide:primary.cvdSide},
     dynamics:{pressureChange:Number(pressureChange.toFixed(1)),bidDepthChangePct:Number(bidDepthChangePct.toFixed(1)),askDepthChangePct:Number(askDepthChangePct.toFixed(1)),acceleration:Number(acceleration.toFixed(1))},
     absorption:{side:absorptionSide,score:absorptionScore,reason:absorptionReason,trapDetected,followThrough},integrity,warnings
   };
