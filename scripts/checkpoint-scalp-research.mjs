@@ -32,8 +32,18 @@ const r=await fetch(api+'?ref=sniper-audit-data',{headers,
 let previous=null,sha;
 if(r.ok){
  const file=await r.json();sha=file.sha;
- if(file.encoding!=='base64'||!file.content)throw Error('Missing archival bytes');
- previous=cleanScalpResearch(JSON.parse(Buffer.from(file.content,'base64').toString('utf8')));
+ let bytes;
+ if(file.encoding==='base64'&&file.content)
+  bytes=Buffer.from(file.content,'base64').toString('utf8');
+ else{
+  const raw=await fetch('https://raw.githubusercontent.com/'+repo+
+   '/sniper-audit-data/data/scalp-research-v1.json',{
+    signal:AbortSignal.timeout(20000)});
+  if(!raw.ok)throw Error('Raw prior checkpoint HTTP '+raw.status);
+  bytes=await raw.text();
+ }
+ if(bytes.length>2_700_000)throw Error('Previous M1 archive too large');
+ previous=cleanScalpResearch(JSON.parse(bytes));
 }else if(r.status!==404)throw Error('Existing checkpoint HTTP '+r.status);
 const merged=mergeScalpResearch(previous,live);
 const updated=await fetch(api,{method:'PUT',headers:{...headers,
