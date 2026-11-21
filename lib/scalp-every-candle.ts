@@ -473,7 +473,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
 /** Read-only evidence: never generate a prediction or fill on a health ping.
  * This MUST remain separate by market, timestamp and source.
  */
-export function readEveryM1Evidence(asset:'GOLD'|'BTC',now=Date.now()){
+function readEveryM1Rows(asset:'GOLD'|'BTC',now=Date.now()):EveryAttempt[]{
   // Next app and worker bundles can retain DIFFERENT module globals. A health
   // reader must inspect the newest shared session file, not cache the first
   // empty ledger it happened to load before the background worker started.
@@ -510,7 +510,18 @@ export function readEveryM1Evidence(asset:'GOLD'|'BTC',now=Date.now()){
     }catch{}
   }
   ingest(memory);
-  const history=[...index.values()].sort((a,b)=>a.id-b.id).slice(-360);
+  return [...index.values()].sort((a,b)=>a.id-b.id).slice(-360);
+}
+
+/** Public paper-only snapshot. No MT5 fill or private broker account fields.
+ * Read-only across Node worker/process boundaries; it never issues signals.
+ */
+export function exportEveryM1Research(now=Date.now()){
+  return {schema:1,savedAt:now,records:(['GOLD','BTC'] as const)
+    .flatMap(asset=>readEveryM1Rows(asset,now).map(row=>({...row,asset})))};
+}
+export function readEveryM1Evidence(asset:'GOLD'|'BTC',now=Date.now()){
+  const history=readEveryM1Rows(asset,now);
   const recent=history.filter(t=>
     t.strategyVersion===EVERY_M1_EDGE_V4||
     t.strategyVersion===EVERY_M1_EDGE_V5||
