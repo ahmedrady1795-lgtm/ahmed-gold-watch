@@ -16,6 +16,7 @@ import SniperOrderFlowStrip from './SniperOrderFlowStrip';
 import {auditM15HuntDirection} from '../lib/sniper-m15-hunt-proof';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
 import {chartM5EarlyCue} from '../lib/sniper-m5-early-cue';
+import {detectM1ReclaimWatch} from '../lib/sniper-m1-reclaim-watch';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
 import SniperM15PreMoveConsole from './SniperM15PreMoveConsole';
 import SniperScenarioHero from './SniperScenarioHero';
@@ -618,12 +619,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const paxgComparison=usePaxgComparison(asset==='GOLD'?forecastScope:'',trial,realM5);
  const earlyOpportunity=useMemo(()=>earlySetupOpportunity(trackedSetup),[trackedSetup]);
  // Independent, read-only M1/M5 early hypothesis; not vetoed by weak M15.
+ const m1Reclaim=useMemo(()=>detectM1ReclaimWatch({now,price,marketOpen,
+   priceFresh:Boolean(m.sniper.view.priceFresh),providerTransition,
+   m1:m.candles,m5:x?.chartHigherFrames?.m5
+ }),[now,price,marketOpen,m.sniper.view.priceFresh,providerTransition,
+   m.candles,x?.chartHigherFrames?.m5]);
  const m5Cue=useMemo(()=>chartM5EarlyCue({now,price,marketOpen,
    priceFresh:Boolean(m.sniper.view.priceFresh),providerTransition,
    preMove,opportunity:liveOpportunity,lean:candleLean,
-   m5Follow:closedM5Context
+   reclaim:m1Reclaim,m5Follow:closedM5Context
  }),[now,price,marketOpen,m.sniper.view.priceFresh,providerTransition,
-   preMove,liveOpportunity,candleLean,closedM5Context]);
+   preMove,liveOpportunity,candleLean,m1Reclaim,closedM5Context]);
  const cuePrebreak=m5Cue.stage==='PREBREAK';
  const cueVisible=m5Cue.side!=='WAIT'&&!['OFFLINE','NONE','LATE'].includes(m5Cue.stage);
  // Show the closed-M1 directional hypothesis as WATCH when no pre-break
