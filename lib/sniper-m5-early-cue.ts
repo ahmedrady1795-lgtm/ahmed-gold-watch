@@ -1,4 +1,5 @@
 import type {PreMovePressure} from './pre-move-pressure';
+import type {M1ReclaimWatch} from './sniper-m1-reclaim-watch';
 import type {LiveOpportunity} from './sniper-live-opportunity';
 import type {M5CandleLean} from './sniper-m5-candle-lean';
 
@@ -21,6 +22,7 @@ export function chartM5EarlyCue(a:{
  now:number;price:number|null;marketOpen:boolean;priceFresh:boolean;
  providerTransition:boolean;preMove:PreMovePressure|null;
  opportunity:LiveOpportunity|null;lean:M5CandleLean|null;
+ reclaim?:M1ReclaimWatch|null;
  m5Follow?:{ready:boolean;side:Side;reason:string}|null
 }):M5EarlyCue{
  const base:M5EarlyCue={stage:'NONE',side:'WAIT',
@@ -94,6 +96,16 @@ export function chartM5EarlyCue(a:{
   return result('LATE','WAIT','الحركة خرجت عن نطاق القنص المبكر',
    'لن نصنّف موجة بدأت بالفعل كشراء أو بيع مبكر');
  }
+ // Independent pullback/reclaim setups catch continuation after a short
+ // retracement, where a compressed-range-only detector stays in WAIT.
+ // This is a pre-trigger research WATCH, never confirmed broker flow.
+ const r=a.reclaim;
+ if(r&&within(r.asOf,75000)&&valid(r.side,r.trigger,r.invalidation)&&
+   before(r.side,r.trigger,r.invalidation))
+  return result('PREBREAK',r.side,
+    r.side==='BUY'?'ترقب شراء بعد استرداد M1':'ترقب بيع بعد رفض M1',
+    'عودة الاتجاه بعد تصحيح قصير · شموع M1/M5 مغلقة · تدفق تنفيذ حقيقي غير مؤكد',
+    r.trigger,r.invalidation,r.asOf);
  const lean=a.lean;
  if(lean&&lean.side!=='WAIT'&&
    ['OPEN','CLOSE'].includes(lean.phase)&&within(lean.issuedFor,60000)){
