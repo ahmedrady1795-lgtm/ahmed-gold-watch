@@ -73,11 +73,18 @@ export function detectEarlyExecutionLead(input:{
      'السيولة عبر المنصات غير متفقة أو لم تصل بيانات أوامر وتنفيذ حديثة',
      {issuedFromClosedM1At:frozenAt});
  }
- // Real Coinbase maker side is inverted upstream into taker delta; its
- // trade sample must be validated, not inferred from candle direction.
- if(!l.providers.coinbaseTrades||l.flow.tradeCount<12||
-    !(l.providers.krakenDepth||l.providers.okxDepth))
-   return done('WAIT','لا توجد تداولات هجومية موثقة + دفتر أوامر مستقل');
+ // Coinbase maker side is already inverted into true taker direction.
+ // OKX reports true taker side directly: when Coinbase prints go missing,
+ // allow OKX *research* fallback ONLY alongside independently healthy
+ // Kraken BTC-USD depth. OKX alone must not self-confirm its own trades.
+ const flowVenue=l.flow.venue??(l.providers.coinbaseTrades?'COINBASE':'NONE');
+ const coinbasePath=flowVenue==='COINBASE'&&l.providers.coinbaseTrades&&
+    (l.providers.krakenDepth||l.providers.okxDepth);
+ const okxPath=flowVenue==='OKX'&&l.providers.okxTrades&&l.providers.krakenDepth;
+ if(!(coinbasePath||okxPath)||l.flow.tradeCount<12)
+   return done('WAIT',flowVenue==='OKX'?
+      'صفقات OKX تحتاج عمق Kraken حديثًا مستقلًا لتأكيد الامتصاص':
+      'لا توجد صفقات هجومية موثقة مع عمق مستقل');
  // Quotes and book can come from different venues; reject unusual divergence
  // rather than using Coinbase BBO as an Exness or Kraken execution quote.
  const bookMid=l.book.bestBid!=null&&l.book.bestAsk!=null?
@@ -128,7 +135,8 @@ export function detectEarlyExecutionLead(input:{
    35+absorption.score*.38+(setup==='SWEEP_RECLAIM'?14:0)+
    Math.max(0,side==='BUY'?depth:-depth)*.10));
  const evidence=[
-   'تنفيذ هجومي Coinbase ('+(side==='BUY'?'بيع امتصه مشترون':'شراء امتصه بائعون')+')',
+   'تنفيذ هجومي '+(flowVenue==='OKX'?'OKX BTC-USDT':'Coinbase BTC-USD')+
+      ' ('+(side==='BUY'?'بيع امتصه مشترون':'شراء امتصه بائعون')+')',
    setup==='SWEEP_RECLAIM'?'سحب مستوى قديم ثم استرداد بإغلاق M1':'امتصاص قريب من سيولة سابقة',
    'دفتر أوامر مستقل حديث · '+l.integrity.status,
    'سعر LIMIT ورقي قريب من Bid/Ask · ليس تنفيذ Exness'
