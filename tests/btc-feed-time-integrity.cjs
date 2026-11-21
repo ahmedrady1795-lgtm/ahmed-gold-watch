@@ -5,7 +5,14 @@ const chart=fs.readFileSync('components/ForecastIllustration.tsx','utf8');
 assert.match(api,/Coinbase Spot · time unknown/,'a price-only Spot feed must not be called real-time');
 assert.match(api,/sourceTime:null,status:'unknown'/,'zero timestamps must never be fabricated');
 assert.match(api,/Kraken XBT\/USD Trades/,'fallback fetches timestamped genuine exchange trades');
-assert.match(page,/j\?\.status==='live'&&validSourceTime/,'client verifies both provider status and source time');
+assert.match(page,/const observed=j\?\.status==='live'&&r\.ok&&j\?\.ok&&/,
+ 'client requires verified live exchange status, not merely a numeric price');
+assert.match(page,/acceptBtcQuote\(\{chartSource:chartDataRef\.current\?\.bitcoin\?\.candleSource/,
+ 'client validates true exchange time and exact candle provider before updating BTC LIVE');
+assert.match(page,/btcObserved\.current=observed/,
+ 'client records the last accepted exchange event, so older REST cannot roll price backward');
+assert.match(page,/btcQuoteMatchesChart\(btcChartSource,btcSource\)/,
+ 'the live quote must be sourced from the same BTC candle venue');
 assert.match(chart,/priceMarkerVisible=m\.price!=null/,'show old price honestly if current quote temporarily unavailable');
 assert.match(chart,/آخر سعر · غير حي/,'old quote is not mislabeled LIVE');
 assert.match(chart,/historyFresh:breakoutEvidence\.ready/,'independent closed M5 structure survives M1 data gaps');
