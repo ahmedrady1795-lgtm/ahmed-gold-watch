@@ -35,8 +35,8 @@ export function btcOrderflowMatchesChart(
 ):boolean{
  const venue=(x:unknown)=>{
   if(typeof x!=='string')return null;
-  return /kraken.*(xbt|btc)/i.test(x)?'KRAKEN':
-    /coinbase.*btc/i.test(x)?'COINBASE':null;
+  return /kraken/i.test(x)?'KRAKEN':
+    /coinbase/i.test(x)?'COINBASE':null;
  };
  const chart=venue(chartSource);
  return chart!=null&&chart===venue(quoteSource)&&chart===venue(tapeSource);
