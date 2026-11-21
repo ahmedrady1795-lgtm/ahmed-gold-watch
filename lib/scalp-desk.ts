@@ -291,8 +291,7 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
       goldEarly&&['EARLY_WATCH','ENTRY_CANDIDATE','COST_BLOCKED'].includes(goldEarly.status)&&
       (goldEarly.side==='BUY'||goldEarly.side==='SELL')&&
       Number(gold.plans?.[0]?.cost)>0?
-        {id:'GOLD_M1_'+String(goldEarly.issuedFromClosedM1At)+'_'+goldEarly.side+
-          '_'+gold.quote.source,
+        {id:'GOLD_M1_'+String(goldEarly.issuedFromClosedM1At),
          side:goldEarly.side,score:goldEarly.score,
          status:goldEarly.status==='ENTRY_CANDIDATE'?'ARMED':'WATCH',
          setup:goldEarly.setup,baselineSide:goldBaseline,
@@ -317,7 +316,7 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
       btcEarly&&['ENTRY_CANDIDATE','COST_BLOCKED'].includes(btcEarly.status)&&
       (btcEarly.side==='BUY'||btcEarly.side==='SELL')&&
       Number(btcEarly.estimatedRoundTripCost)>0?
-        {id:'BTC_M1_'+String(btcEarly.issuedFromClosedM1At)+'_'+btcEarly.side,
+        {id:'BTC_M1_'+String(btcEarly.issuedFromClosedM1At),
           side:btcEarly.side,score:btcEarly.score,
           status:btcEarly.status==='ENTRY_CANDIDATE'?'ARMED':'WATCH',
           setup:btcEarly.setup,baselineSide,
