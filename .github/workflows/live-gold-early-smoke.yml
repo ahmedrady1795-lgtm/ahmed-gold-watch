@@ -1,0 +1,72 @@
+name: Smoke live GOLD BTC early sniper release
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/live-gold-early-smoke.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Verify current live Render GOLD/BTC pre-entry research and historical-proof API
+        run: |
+          python3 - <<'PY'
+          import json,urllib.request,time
+          base='https://ahmed-gold-watch-free.onrender.com'
+          def get(route):
+            req=urllib.request.Request(base+route,headers={
+              'Accept':'application/json','Cache-Control':'no-store',
+              'User-Agent':'Qannas-Gold-Early-Postdeploy-Smoke/1.0'})
+            t=time.monotonic()
+            with urllib.request.urlopen(req,timeout=95) as r:
+              assert r.status==200,(route,r.status)
+              b=r.read(2800000)
+              assert len(b)<2800000,'Unbounded response'
+            value=json.loads(b)
+            print('SMOKE_HTTP200',route,round(time.monotonic()-t,2),flush=True)
+            return value
+          health=get('/api/live')
+          assert health.get('ok') is True
+          research=get('/api/scalp-research')
+          assert research.get('schema')==1
+          assert isinstance(research.get('earlyObservations'),list),'BTC early archive missing'
+          assert isinstance(research.get('goldEarlyObservations'),list),'GOLD early archive missing'
+          goldOnly=get('/api/scalp?asset=GOLD')
+          assert goldOnly.get('ok') is True and goldOnly.get('bitcoin') is None
+          g=goldOnly.get('gold')
+          assert isinstance(g,dict) and g.get('asset')=='GOLD'
+          e=g.get('earlyExecution')
+          assert isinstance(e,dict),'Gold early module unavailable in live API'
+          assert e.get('status') in ['STALE','WAIT','EARLY_WATCH','COST_BLOCKED','LATE','ENTRY_CANDIDATE']
+          assert e.get('researchOnly') is True and e.get('brokerExecutionVerified') is False
+          assert e.get('flowIsExecutedTrades') is False,'Broker DOM is not exchange executions'
+          assert e.get('evidenceClass') in ('CLOSED_M1_ONLY','MT5_BROKER_DISPLAYED_DEPTH')
+          assert e.get('entryType') in (None,'BUY_LIMIT','SELL_LIMIT')
+          if e['status']=='ENTRY_CANDIDATE':
+            assert e['evidenceClass']=='MT5_BROKER_DISPLAYED_DEPTH'
+            assert e['flowSource']=='MT5_BROKER_DOM'
+            assert e['netR']>=1.25 and e['target'] is not None
+          assert isinstance(g.get('goldDom'),dict),'Exness DOM readiness missing'
+          assert isinstance(g.get('earlyExecutionAudit'),dict),'Gold forward sample scoreboard missing'
+          assert isinstance(g['earlyExecutionAudit'].get('earlyGold'),dict),'Gold baseline audit missing'
+          assert g['earlyExecutionAudit']['earlyGold']['minimumObserved']==150
+          allAssets=get('/api/scalp?asset=ALL')
+          btc=allAssets.get('bitcoin')
+          assert allAssets.get('ok') and isinstance(btc,dict)
+          assert btc.get('asset')=='BTC' and isinstance(btc.get('earlyExecution'),dict)
+          assert btc['earlyExecution']['researchOnly'] is True and btc['earlyExecution']['brokerExecutionVerified'] is False
+          assert isinstance(btc.get('earlyExecutionAudit',{}).get('earlyBtc'),dict)
+          print('SMOKE_GOLD_BTC_RELEASE_SUCCESS',json.dumps({
+            'goldEarly':e.get('status'),'goldEarlySide':e.get('side'),
+            'goldEvidenceClass':e.get('evidenceClass'),'goldDomStatus':g['goldDom'].get('status'),
+            'goldForwardPaired':g['earlyExecutionAudit']['earlyGold'].get('pairedN'),
+            'btcEarly':btc['earlyExecution'].get('status'),
+            'btcForwardPaired':btc['earlyExecutionAudit']['earlyBtc'].get('pairedN'),
+            'goldNoBrokerFill':not e.get('brokerExecutionVerified'),
+            'archiveGoldCount':len(research['goldEarlyObservations']),
+            'archiveBtcCount':len(research['earlyObservations'])
+          },ensure_ascii=False),flush=True)
+          PY
