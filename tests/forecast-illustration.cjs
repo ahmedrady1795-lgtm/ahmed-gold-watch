@@ -7,7 +7,11 @@ function read(path,customRequire){
   }).outputText,{module,exports:module.exports,require:customRequire||require},{filename:path});
   return module.exports;
 }
-const next=read('lib/next-move-view.ts');
+const btcCoherence=read('lib/btc-quote-coherence.ts');
+const next=read('lib/next-move-view.ts',id=>{
+  if(id==='./btc-quote-coherence')return btcCoherence;
+  throw Error('unexpected next-move-view dependency '+id);
+});
 const long=read('lib/long-range-targets.ts');
 const {frames}=require('./long-range-fixture.cjs');
 const risk=read('lib/sniper-risk-plan.ts');
