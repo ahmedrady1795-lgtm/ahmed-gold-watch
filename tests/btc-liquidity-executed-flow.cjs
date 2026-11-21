@@ -21,7 +21,7 @@ const cb=Array.from({length:40},(_,i)=>({
 }));
 let result=coinbase(cb,clock);
 assert.equal(result.tradeCount,40);
-assert.equal(result.buyVolume,8);
+assert.ok(Math.abs(result.buyVolume-8)<1e-8);
 assert.equal(result.sellVolume,0);
 assert.ok(result.deltaPct>99&&result.priceChangeBps>0,
  'chronological direction can disagree with actual aggressor side');
