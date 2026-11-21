@@ -73,7 +73,7 @@ export function observeSniperOrderFlow(input:{
    f.profileBasis==='EXECUTED_TRADES'){
    const delta=sanePct(f.flowPct);
    if(delta!=null)return {...result,status:'EXECUTED_TRADES',
-     source:f.source,label:'دلتا صفقات Coinbase المنفذة',
+     source:f.source,label:f.source==='Kraken XBT/USD'?'دلتا صفقات Kraken المنفذة':'دلتا صفقات Coinbase المنفذة',
      side:f.side,deltaPct:delta,poc:sanePrice(f.poc),
      vah:sanePrice(f.vah),val:sanePrice(f.val),
      freshnessSeconds:fresh,reason:f.reason,
