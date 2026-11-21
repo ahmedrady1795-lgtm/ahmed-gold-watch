@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {renderFreeEcoEnabled} from '../lib/render-free-eco.ts';
 import {ARCHIVE_URL,cleanArchive,restoredState} from './sniper-archive.mjs';
+import {SCALP_RESEARCH_URL,restoredScalpResearch} from './scalp-research-archive.mjs';
 try{
   const response=await fetch(ARCHIVE_URL+'?restore='+Date.now(),{signal:AbortSignal.timeout(10000),cache:'no-store'});
   if(!response.ok)throw Error('Archive HTTP '+response.status);
@@ -17,6 +18,30 @@ try{
   await fs.writeFile('/tmp/sniper-archive-checkpoint.json',JSON.stringify({savedAt:archive.savedAt,records:archive.records.length,restoredAt:Date.now()}));
   console.info('[SNIPER-ARCHIVE] Restored checkpoint',archive.savedAt,'records',archive.records.length);
 }catch(e){console.warn('[SNIPER-ARCHIVE] Restore unavailable:',e.message);}
+// Render Free has no persistent disk by default. Restore the external
+// forward-research checkpoint BEFORE both the dashboard and AI workers start.
+// Never revive stale LIMIT orders; pending observations become UNKNOWN.
+try{
+ const response=await fetch(SCALP_RESEARCH_URL+'?restore='+Date.now(),{
+  cache:'no-store',signal:AbortSignal.timeout(8500)});
+ if(!response.ok)throw Error('M1 checkpoint HTTP '+response.status);
+ const payload=await response.text();
+ if(payload.length>2_700_000)throw Error('M1 checkpoint is unexpectedly large');
+ const archive=JSON.parse(payload);
+ for(const asset of ['GOLD','BTC']){
+  const local=asset==='GOLD'?
+   ['/data/scalp-every-m1-v1.json','/tmp/scalp-every-m1-v1.json']:
+   ['/data/scalp-every-m1-btc-v1.json','/tmp/scalp-every-m1-btc-v1.json'];
+  const exists=await Promise.all(local.map(p=>fs.access(p).then(()=>true,()=>false)));
+  if(exists.some(Boolean))continue;
+  const restored=restoredScalpResearch(archive,asset);
+  if(!restored.history.length)continue;
+  await fs.writeFile(local[1],JSON.stringify(restored),{flag:'wx',mode:0o600});
+  console.info('[M1-RESEARCH] Restored',asset,restored.history.length,
+   'paper-only observations; old pending outcomes are UNKNOWN');
+ }
+}catch(e){console.warn('[M1-RESEARCH] External checkpoint unavailable:',
+ String(e instanceof Error?e.message:e).slice(0,180));}
 const child=spawn('npm',['start'],{stdio:'inherit',env:process.env});
 // Nonblocking post-startup Spot proof. This also warms the market-data
 // cache before a user opens /spot and reports the actual failing stage.
