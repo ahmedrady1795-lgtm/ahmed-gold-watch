@@ -5,7 +5,7 @@ type LeadFeatures={
   source:string;sourceAt:number;quality:number;price:number|null;
   bookImbalance:number;pressureChange:number;replenishDelta:number;acceleration:number;
   flowDelta:number;priceVelocity:number;persistence:number;
-  absorptionSide:Side;absorptionScore:number;trapDetected:boolean;hintSide:Side;
+  absorptionSide:Side;absorptionScore:number;trapDetected:boolean;hintSide:Side;domAvailable?:boolean;
 };
 export type MarketLeadSignal={
   ok:boolean;available:boolean;asset:'GOLD'|'BTC';side:Side;stage:MarketLeadStage;mode:'DOM'|'MICRO_FLOW'|'CROSS_EXCHANGE'|'OFFLINE';
@@ -29,8 +29,13 @@ function offline(asset:'GOLD'|'BTC',source:string,reason:string,now:number):Mark
 }
 function evaluate(asset:'GOLD'|'BTC',f:LeadFeatures,now=Date.now(),mode:'DOM'|'MICRO_FLOW'|'CROSS_EXCHANGE'='DOM'):MarketLeadSignal{
   const state=states[asset],sourceAt=Number(f.sourceAt||0);
-  if(!Number.isFinite(sourceAt)||sourceAt<=0||now-sourceAt>8000||Number(f.quality||0)<30){
-    const out=offline(asset,f.source,'مصدر القراءة المبكرة غير حديث أو جودته غير كافية.',now);state.signal=out;return out;
+  if(!Number.isFinite(sourceAt)||sourceAt<=0||sourceAt>now+1500||now-sourceAt>8000||Number(f.quality||0)<30){
+    const out=offline(asset,f.source,'مصدر القراءة المبكرة غير حديث أو جودته غير كافية.',now);
+    state.history=[];state.lastSourceAt=0;state.signal=out;return out;
+  }
+  // Reconnects must rebuild their evidence; stale votes cannot arm a new alert.
+  if(state.lastSourceAt>0&&(sourceAt<state.lastSourceAt||sourceAt-state.lastSourceAt>15000)){
+    state.history=[];state.lastSourceAt=0;
   }
   const s=asset==='GOLD'?{book:12,pressure:6,replenish:9,acc:.026,flow:18,quiet:.38,release:.55}:{book:14,pressure:11,replenish:18,acc:16,flow:22,quiet:1.7,release:2.8};
   const absorption=signFor(f.absorptionSide)*clamp(f.absorptionScore/75,0,1.2),hint=signFor(f.hintSide);
@@ -56,54 +61,62 @@ function evaluate(asset:'GOLD'|'BTC',f:LeadFeatures,now=Date.now(),mode:'DOM'|'M
   const stability=rawSide==='WAIT'?0:Math.round(same/Math.max(1,recent.length)*100);
   const score=Math.round(clamp(Math.abs(signed)*58+support*5+same*4+Number(f.quality||0)*.09-opposition*7-opposite*4,0,92));
   const confidence=Math.round(clamp(score*.67+stability*.20+Math.min(12,support*2.2)+(quiet?3:0),0,90));
-  const armed=Boolean(rawSide!=='WAIT'&&!released&&!rejected&&quiet&&support>=3&&same>=2&&opposite===0&&score>=58&&confidence>=60);
+  const actualBook=mode==='DOM'&&f.domAvailable===true;
+  const independentBookLead=actualBook&&f.bookImbalance*dir>=s.book*.65&&
+    (f.pressureChange*dir>=s.pressure*.4||f.replenishDelta*dir>=s.replenish*.4);
+  // Gold may alert before movement only on VERIFIED broker depth, not on price
+  // velocity or a direction hint recycled from the same tick calculation.
+  const earlyEvidence=asset==='GOLD'?independentBookLead:mode==='CROSS_EXCHANGE';
+  const armed=Boolean(rawSide!=='WAIT'&&!released&&!rejected&&quiet&&earlyEvidence&&
+    support>=3&&same>=2&&opposite===0&&score>=58&&confidence>=60);
   const building=Boolean(rawSide!=='WAIT'&&!released&&!rejected&&support>=2&&score>=46);
   const stage:MarketLeadStage=rejected?'REJECTED':released?'RELEASED':armed?'ARMED':building?'BUILDING':'OBSERVE';
   const evidence:string[]=[];const add=(cond:boolean,msg:string)=>{if(cond)evidence.push(msg);};
-  add(rawSide!=='WAIT'&&f.bookImbalance*dir>=s.book*.75,rawSide==='BUY'?'عمق الطلب يميل للشراء قبل السعر':'عمق العرض يميل للبيع قبل السعر');
-  add(rawSide!=='WAIT'&&f.pressureChange*dir>=s.pressure*.70,'ضغط دفتر الأوامر يتسارع في نفس الاتجاه');
-  add(rawSide!=='WAIT'&&f.replenishDelta*dir>=s.replenish*.70,rawSide==='BUY'?'إعادة تعبئة Bid أسرع':'إعادة تعبئة Ask أسرع');
+  add(rawSide!=='WAIT'&&actualBook&&f.bookImbalance*dir>=s.book*.75,rawSide==='BUY'?'عمق الطلب يميل للشراء قبل السعر':'عمق العرض يميل للبيع قبل السعر');
+  add(rawSide!=='WAIT'&&actualBook&&f.pressureChange*dir>=s.pressure*.70,'ضغط دفتر الأوامر يتسارع في نفس الاتجاه');
+  add(rawSide!=='WAIT'&&actualBook&&f.replenishDelta*dir>=s.replenish*.70,rawSide==='BUY'?'إعادة تعبئة Bid أسرع':'إعادة تعبئة Ask أسرع');
   add(rawSide!=='WAIT'&&f.acceleration*dir>=s.acc*.65,'تسارع داخلي قبل الحركة');
   add(rawSide!=='WAIT'&&f.flowDelta*dir>=s.flow*.65,'تدفق الصفقات يؤيد الاتجاه');
   add(f.trapDetected&&f.absorptionSide===rawSide,'امتصاص/فخ سعري يؤيد الانعكاس المبكر');
   add(quiet&&rawSide!=='WAIT','السعر ما زال هادئًا نسبيًا');
-  const reason=stage==='ARMED'?'ضغط خفي ثابت قبل الحركة: '+evidence.slice(0,4).join(' · '):stage==='BUILDING'?'إشارة مبكرة تتكوّن لكنها لم تثبت بالكامل: '+evidence.slice(0,3).join(' · '):stage==='RELEASED'?'الحركة بدأت بالفعل؛ تم تحويل الإشارة من توقع مبكر إلى متابعة.':stage==='REJECTED'?'السعر تحرك عكس الضغط المبكر؛ تم رفض الإشارة.':'لا يوجد ضغط سابق للحركة قوي ومستقر بما يكفي الآن.';
-  const out:MarketLeadSignal={ok:true,available:true,asset,side:rawSide,stage,mode,score,confidence,armed,released,quiet,support,opposition,stability,source:f.source,sourceAt,checkedAt:now,ageMs:Math.max(0,now-sourceAt),windowSeconds:armed?{min:2,max:20}:building?{min:3,max:30}:null,reason,evidence:evidence.slice(0,5),metrics:{bookImbalance:Number(f.bookImbalance.toFixed(2)),pressureChange:Number(f.pressureChange.toFixed(2)),replenishDelta:Number(f.replenishDelta.toFixed(2)),acceleration:Number(f.acceleration.toFixed(4)),flowDelta:Number(f.flowDelta.toFixed(2)),priceVelocity:Number(f.priceVelocity.toFixed(4)),persistence:Math.round(f.persistence),quality:Math.round(f.quality)}};
+  const reason=stage==='ARMED'?'ضغط دفتر أوامر حيّ قبل الحركة (ليس ضمانًا): '+evidence.slice(0,4).join(' · '):stage==='BUILDING'?'إشارة مبكرة تتكوّن لكنها لم تثبت بالكامل: '+evidence.slice(0,3).join(' · '):stage==='RELEASED'?'الحركة بدأت بالفعل؛ تم تحويل الإشارة من توقع مبكر إلى متابعة.':stage==='REJECTED'?'السعر تحرك عكس الضغط المبكر؛ تم رفض الإشارة.':'لا يوجد ضغط سابق للحركة قوي ومستقر بما يكفي الآن.';
+  const out:MarketLeadSignal={ok:true,available:true,asset,side:rawSide,stage,mode,score,confidence,armed,released,quiet,support,opposition,stability,source:f.source,sourceAt,checkedAt:now,ageMs:Math.max(0,now-sourceAt),windowSeconds:null, // Do not invent a time-to-move interval without walk-forward calibration.
+  reason,evidence:evidence.slice(0,5),metrics:{bookImbalance:Number(f.bookImbalance.toFixed(2)),pressureChange:Number(f.pressureChange.toFixed(2)),replenishDelta:Number(f.replenishDelta.toFixed(2)),acceleration:Number(f.acceleration.toFixed(4)),flowDelta:Number(f.flowDelta.toFixed(2)),priceVelocity:Number(f.priceVelocity.toFixed(4)),persistence:Math.round(f.persistence),quality:Math.round(f.quality)}};
   state.signal=out;return out;
 }
 export function updateGoldMarketLead(fast:any,now=Date.now(),wave:any=null):MarketLeadSignal{
   if(fast?.ok){
-    const side=sideOf(fast.side);
+    const actualDom=fast.domAvailable===true;
     return evaluate('GOLD',{
-      source:'Exness/MT5 DOM · Market Lead AI',
+      source:actualDom?'Exness/MT5 broker DOM · Market Lead AI':'Exness/MT5 price ticks · no DOM',
       sourceAt:Number(fast.receivedAt||fast.at||now),
       quality:Math.max(Number(fast.confidence||0),Number(fast.score||0)),
       price:Number.isFinite(Number(fast.price))?Number(fast.price):null,
-      bookImbalance:Number(fast.bookImbalance||0),
-      pressureChange:Number(fast.pressureChange||0),
-      replenishDelta:Number(fast.replenishDelta||0),
+      bookImbalance:actualDom?Number(fast.bookImbalance||0):0,
+      pressureChange:actualDom?Number(fast.pressureChange||0):0,
+      replenishDelta:actualDom?Number(fast.replenishDelta||0):0,
       acceleration:Number(fast.acceleration||0),
-      flowDelta:(side==='BUY'?1:side==='SELL'?-1:0)*Math.max(0,Number(fast.persistence||0)-50)*.55,
+      flowDelta:0, // No signed trade prints; persistence is not order flow.
       priceVelocity:Number(fast.velocity15s||fast.velocity1s||0),
       persistence:Number(fast.persistence||0),
-      absorptionSide:'WAIT',absorptionScore:0,trapDetected:false,hintSide:side
-    },now,'DOM');
+      absorptionSide:'WAIT',absorptionScore:0,trapDetected:false,hintSide:'WAIT',domAvailable:actualDom
+    },now,actualDom?'DOM':'MICRO_FLOW');
   }
   if(wave?.ok&&Number(wave?.at||0)>0&&now-Number(wave.at)<=4500){
     const side=sideOf(wave.side),dir=side==='BUY'?1:side==='SELL'?-1:0;
     return evaluate('GOLD',{
-      source:'Biquote live WebSocket micro-flow · Market Lead AI',
+      source:'Gold price-tick proxy (no order book / signed trades)',
       sourceAt:Number(wave.at),
       quality:Math.max(Number(wave.confidence||0),Number(wave.score||0)),
       price:null,
-      bookImbalance:Number(wave.imbalance||wave.bboImbalance||0),
+      bookImbalance:0, // Tick direction is not an order-book imbalance.
       pressureChange:0,
       replenishDelta:0,
       acceleration:Number(wave.acceleration||0),
-      flowDelta:dir*Math.max(0,Number(wave.persistence||0)-50),
+      flowDelta:0, // Do not fabricate aggressive buy/sell trade volume.
       priceVelocity:Number(wave.velocity1s||0),
       persistence:Number(wave.persistence||0),
-      absorptionSide:'WAIT',absorptionScore:0,trapDetected:false,hintSide:side
+      absorptionSide:'WAIT',absorptionScore:0,trapDetected:false,hintSide:side,domAvailable:false
     },now,'MICRO_FLOW');
   }
   return offline('GOLD','Live gold microstructure','لا يوجد DOM أو Biquote micro-flow حديث الآن.',now);
