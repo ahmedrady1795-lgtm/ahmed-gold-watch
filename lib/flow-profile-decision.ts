@@ -42,10 +42,11 @@ export function assessFlowProfile(input:{
  if(!validPrice(price)||!Number.isFinite(now))return blank('لا يوجد سعر موثوق');
  if(asset==='BTC'){
    const f=input.btc;
+   const tradeVenue=f?.source==='Kraken XBT/USD'?'Kraken BTC/USD':'Coinbase BTC/USD';
    if(!f?.ok||f.status!=='LIVE_SAMPLE'||!f.profile||!f.flow||
       !recent(f.asOf,now,12000)||f.coverage.trades<50||
       f.coverage.seconds<8||f.profile.rows.length<2)
-      return blank('يلزم Volume Profile وصفقات منفذة حديثة كافية من Coinbase');
+      return blank('يلزم Volume Profile وصفقات منفذة حديثة كافية من '+tradeVenue);
    const p=f.profile,delta=f.flow.deltaPct;
    if(![p.poc,p.vah,p.val,p.vwap,delta].every(Number.isFinite)||
      p.poc<=0||p.vah<p.val||p.poc<p.val||p.poc>p.vah)
@@ -67,7 +68,7 @@ export function assessFlowProfile(input:{
      source:f.source,reason:bookConflict?
        'تعارض دفتر L2 مع دلتا الصفقات، تم تعليق الترجيح':
        side==='WAIT'?'الدلتا وموقع السعر من POC/VWAP غير متوافقين بعد':
-       'اتفاق حجم منفذ عند السعر مع دلتا التنفيذ الهجومي (عينة جزئية من Coinbase)',
+       'اتفاق حجم منفذ عند السعر مع دلتا التنفيذ الهجومي (عينة جزئية من '+tradeVenue+')',
      actionable:false};
  }
  const g=input.gold,p=g?.quoteProfile,d=g?.brokerDepth;
