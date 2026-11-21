@@ -1,4 +1,5 @@
 import {aiRetryAt,recordAiResponse} from './ai-service-backoff';
+import {noteAiHealthyService} from './ai-readiness';
 /** Cold-start health recovery outside inference. Never hammer a throttled
  * Render service: one attempt per 2 minutes, at least 5 minutes after 429.
  * Health checks do not certify model quality or produce trading signals. */
@@ -24,7 +25,25 @@ export function warmAiServices():Promise<void>{
     // Prediction and health clients share the same service budget.
     nextAllowedAt=Math.max(nextAllowedAt,Date.now()+300000);
   }
-  await r.arrayBuffer();
+  let status:any=null;
+  if(r.ok&&typeof r.json==='function'){
+    // Health is telemetry, not prediction. Never use this body as a signal.
+    try{status=await r.json();}catch{}
+  }else await r.arrayBuffer();
+  if(r.ok&&status?.ok===true){
+    if(typeof noteAiHealthyService==='function')
+      noteAiHealthyService(base.trim(),status);
+    const role=base===process.env.ML_ENGINE_URL?'ML':'NEURAL';
+    const qualified=role==='ML'?
+      Boolean(status.readiness?.m1||status.readiness?.m5):
+      Boolean(status.prediction?.ready);
+    console.info('[AI-HEALTH-RECOVERY]',JSON.stringify({
+      role,transport:'HTTP_200',modelQualified:qualified,
+      status:String(status.status||status.prediction?.status||'UNKNOWN').slice(0,50),
+      snapshots:role==='NEURAL'?Number(status.storedSnapshots||0):null,
+      note:'HTTP health is not statistical certification'
+    }));
+  }
   if(!r.ok)console.warn('[AI-HEALTH] HTTP',r.status,url.hostname);
  })).then(()=>{}).finally(()=>{running=null;});
  return running;
