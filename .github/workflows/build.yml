@@ -26,6 +26,7 @@ jobs:
       - run: node tests/scalp-early-execution.cjs
       - run: node tests/gold-early-execution.cjs
       - run: node tests/sniper-m5-visible-prebreak.cjs
+      - run: node tests/sniper-live-opportunity.cjs && node tests/sniper-movement-proof.cjs && node tests/sniper-m5-candle-lean.cjs && node tests/sniper-early-setup.cjs
       - run: node tests/ai-health-recovery.cjs
       - run: node tests/market-lead-ai.cjs
       - run: node tests/gold-source-continuity.cjs

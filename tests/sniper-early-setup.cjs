@@ -471,8 +471,16 @@ assert.match(markerSvg,/return null; \/\/ keep the real price dot/,
  'overfull chart must retain original marker anchors instead of inventing prices');
 assert.match(panel,/liquidity:liquidityMagnets,watch:watchMap/,
  'frozen M15/H1 support-resistance is actually wired into the live watch');
-assert.match(panel,/const drawingBadge=passiveWatch\?'مراقبة · لا توجد إشارة دخول':drawingLabel;/,
- 'chart status shows concise text, never a misleading 5/10 likelihood');
+assert.match(panel,/const drawingBadge=passiveWatch\?/,
+ 'chart status must retain a clear compact heading');
+assert.match(panel,/cueVisible\?m5Cue.headline\+' · ليس دخولًا'/,
+ 'prebreak direction must be legible without presenting it as an executed order');
+assert.match(panel,/const passiveWatch=!mainSetup/,
+ 'read-only M1/M5 watch must never overwrite a confirmed historical BUY/SELL label');
+assert.match(panel,/مراقبة · لا توجد إشارة دخول/,
+ 'neutral fallback still explicitly refuses to invent a trade');
+assert.doesNotMatch(panel,/فرصة مضمونة|نسبة ربح مؤكدة/,
+ 'chart must not turn observational BUY/SELL into promised profitability');
 assert.doesNotMatch(panel,/<rect x=\{left\+7\} y=\{plotTop\+7\}/,
  'main chart status is no longer a large colored box');
 assert.match(panel,/const showZoneObservation=trackedSetup\?\.phase==='OBSERVING'/,
