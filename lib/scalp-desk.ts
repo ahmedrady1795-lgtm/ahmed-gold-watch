@@ -270,8 +270,23 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
       m1:observeScalpLead('GOLD_M1',gold.quote,Date.now(),goldLeadCandidate(1)),
       m5:observeScalpLead('GOLD_M5',gold.quote,Date.now(),goldLeadCandidate(5))
     };
-    const bitcoin=goldOnly?null:{...make('BTC',market,bq,events,newsReady),
-      exnessBroker:getMt5BtcStatus()};
+    const btcResearch=goldOnly?null:make('BTC',market,bq,events,newsReady);
+    const btcEarly=btcResearch?.earlyExecution;
+    // Frozen, prospective directional observation. A quote threshold is NOT
+    // an execution or a cost-adjusted profit. The first source switch, gap or
+    // unobserved tail becomes UNKNOWN, never a synthetic success.
+    const btcEarlyAudit=btcResearch?observeScalpLead('BTC_EARLY_M1',
+      btcResearch.quote,Date.now(),
+      btcEarly&&['ENTRY_CANDIDATE','COST_BLOCKED'].includes(btcEarly.status)&&
+      (btcEarly.side==='BUY'||btcEarly.side==='SELL')&&
+      Number(btcEarly.estimatedRoundTripCost)>0?
+        {id:'BTC_M1_'+String(btcEarly.issuedFromClosedM1At)+'_'+btcEarly.side,
+          side:btcEarly.side,score:btcEarly.score,
+          status:btcEarly.status==='ENTRY_CANDIDATE'?'ARMED':'WATCH',
+          setup:btcEarly.setup,
+          cost:Number(btcEarly.estimatedRoundTripCost)}:null):null;
+    const bitcoin=btcResearch?{...btcResearch,
+      earlyExecutionAudit:btcEarlyAudit,exnessBroker:getMt5BtcStatus()}:null;
     // Monitor missing trade flow without leaking provider credentials or
     // treating a WATCH setup as an executed order.
     const measuredAt=Date.now();
@@ -337,7 +352,8 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
           forwardDirection:x.everyCandle.forwardDirection,
           learning:x.everyCandle.learning
         }:null,
-        leadAudit:x.leadAudit??null
+        leadAudit:x.leadAudit??null,
+        earlyExecutionAudit:x.earlyExecutionAudit??null
       });
       console.info('[SCALP-DIAG]',JSON.stringify({gold:diag(gold),
         btc:bitcoin?diag(bitcoin):null,mode:goldOnly?'GOLD_ONLY':'ALL'}));
