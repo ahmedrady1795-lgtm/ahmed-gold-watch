@@ -7,6 +7,7 @@ COPY . .
 RUN node tests/news-verified-bls.cjs && node tests/pre-news-gold-lean.cjs
 RUN node tests/scalp-research-archive.mjs
 RUN node tests/scalp-early-execution.cjs
+RUN node tests/gold-early-execution.cjs
 RUN node tests/ai-health-recovery.cjs
 RUN node tests/flow-profile-decision.cjs && node tests/sniper-order-flow-observation.cjs
 RUN node tests/gold-preparation-lead.mjs && node tests/chart-feed-isolation.cjs
