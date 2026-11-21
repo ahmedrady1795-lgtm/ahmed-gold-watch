@@ -11,6 +11,7 @@ function load(path,requireMock=()=>{throw Error('unexpected import')},extra={}){
  return m.exports;
 }
 const quality=load('lib/gold-source-quality.ts');
+const session=load('lib/gold-market-session.ts');
 const {gradeGoldQuote:grade,freshGoldCandleSet:barsFresh}=quality;
 const fresh={price:4200,sourceTime:clock-1000,status:'live',bid:4199.9,ask:4200.1};
 assert.equal(grade(fresh,clock).kind,'LIVE');
@@ -49,6 +50,10 @@ const mockFetch=async(url)=>{
 };
 const hub=load('lib/market-hub.ts',id=>{
  if(id==='./runtime')return {getRuntimeEnv:()=>({})};
+ if(id==='./gold-market-session')return session;
+ // Quote fail-over test never invokes calendar or M15 reconstruction.
+ if(id==='./news-verified-bls')return {appendVerifiedBlsReleases:x=>x};
+ if(id==='./gold-m15-reconstruction')return {repairGoldM15FromM5:()=>[]};
  if(id==='./gold-mt5-dom')return {
    normalizeMt5GoldDom:()=>({sample:null,reason:'UNAVAILABLE'}),
    analyzeMt5GoldDom:()=>({available:false})};
