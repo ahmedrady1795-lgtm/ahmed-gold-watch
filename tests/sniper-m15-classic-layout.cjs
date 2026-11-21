@@ -34,7 +34,7 @@ assert.match(chart,/const projectedStride=\(end-split-8\)\/Math\.max\(12,rendere
 assert.match(chart,/className="sniper-m15-conditional-route"/);
 assert.doesNotMatch(chart,/futureCandleWidth|sniper-m15-projected|M15 · FORECAST/,
  'future OHLC candles must not be rendered');
-assert.match(chart,/const realCandleWidth=clamp\(actualStride\*\.68,2\.2,5\.2\);/);
+assert.match(chart,/const realCandleWidth=clamp\(actualStride\*\.68,\.8,5\.2\);/);
 assert.match(chart,/const longer=buildM15Scenario\(\{\.\.\.modelInput,steps:48\}\)/);
 assert.match(chart,/const scenario=buildM15Scenario\(\{\.\.\.modelInput,steps:12\}\)/);
 assert.match(chart,/const visualBars=prefixMatches\?longer\.bars:scenario\.bars/);
