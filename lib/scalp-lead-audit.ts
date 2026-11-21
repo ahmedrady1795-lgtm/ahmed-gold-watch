@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 
 type Side='BUY'|'SELL';
-type Lane='GOLD_M1'|'GOLD_M5'|'GOLD_AMBUSH';
+type Lane='GOLD_M1'|'GOLD_M5'|'GOLD_AMBUSH'|'BTC_EARLY_M1';
 type Outcome='OPEN'|'FAVORABLE_FIRST'|'ADVERSE_FIRST'|'NO_THRESHOLD'|'UNKNOWN';
 export type LeadQuote={price:number|null;at:number|null;source:string};
 export type LeadCandidate={
@@ -30,7 +30,8 @@ export const MIN_SCALP_SHADOW_SCORE=55;
 let lastPersistAt=0; // limit writes while a quote is merely moving inside an open sample
 declare global {var __qannasScalpLeadAudit:Audit|undefined;}
 function blank():Audit{return {version:1,lanes:{GOLD_M1:{active:null,history:[],seen:[]},
-  GOLD_M5:{active:null,history:[],seen:[]},GOLD_AMBUSH:{active:null,history:[],seen:[]}}};}
+  GOLD_M5:{active:null,history:[],seen:[]},GOLD_AMBUSH:{active:null,history:[],seen:[]},
+  BTC_EARLY_M1:{active:null,history:[],seen:[]}}};}
 function load():Audit{
   if(globalThis.__qannasScalpLeadAudit)return globalThis.__qannasScalpLeadAudit;
   let state=blank();
@@ -84,7 +85,7 @@ export function startLeadObservation(
   return {id:candidate.id,lane,side:candidate.side,score:candidate.score,
     setup:candidate.setup,status:candidate.status,source:quote.source,
     startedAt:now,lastQuoteAt:at,
-    expiresAt:now+(lane==='GOLD_M1'?60_000:lane==='GOLD_M5'?300_000:30_000),
+    expiresAt:now+(lane==='GOLD_M1'||lane==='BTC_EARLY_M1'?60_000:lane==='GOLD_M5'?300_000:30_000),
     startPrice:price,threshold:fixed(threshold),maxFavorable:0,maxAdverse:0,
     result:'OPEN',resolvedAt:null,reason:'OBSERVING_FUTURE_QUOTES'};
 }
