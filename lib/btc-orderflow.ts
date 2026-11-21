@@ -27,6 +27,20 @@ export type BtcOrderflow={
   absorptionWatch:'BUY_ABSORPTION_POSSIBLE'|'SELL_ABSORPTION_POSSIBLE'|null};
  actionable:false;venueComplete:false;
 };
+/** Source integrity for the on-chart flow lane: all three must be BTC/USD
+ * from the SAME exchange, not merely timestamps acquired together.
+ */
+export function btcOrderflowMatchesChart(
+ chartSource:unknown,quoteSource:unknown,tapeSource:unknown
+):boolean{
+ const venue=(x:unknown)=>{
+  if(typeof x!=='string')return null;
+  return /kraken.*(xbt|btc)/i.test(x)?'KRAKEN':
+    /coinbase.*btc/i.test(x)?'COINBASE':null;
+ };
+ const chart=venue(chartSource);
+ return chart!=null&&chart===venue(quoteSource)&&chart===venue(tapeSource);
+}
 const fixed=(x:number,n=6)=>Number(x.toFixed(n));
 const symbol='Coinbase Exchange BTC-USD' as const;
 const isSide=(s:unknown)=>s==='buy'||s==='sell';
