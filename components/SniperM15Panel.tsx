@@ -693,12 +693,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const hasEarlySignal=earlyOpportunity.phase==='BREAK_CONFIRMED';
  // All default analysis appears on the chart. Full explanations are available
  // in an optional closed drawer, not in multi-line blocks above the candles.
- const drawingSide=cuePrebreak?m5Cue.side:showZoneObservation?'WAIT':
-   showPreparation||showCrossTest||showRejected||hasEarlySignal?
-   trackedSetup?.side??'WAIT':cueVisible?m5Cue.side:
+ const mainSetup=showPreparation||showCrossTest||showRejected||hasEarlySignal;
+ const drawingSide=mainSetup?trackedSetup?.side??'WAIT':
+   cuePrebreak?m5Cue.side:showZoneObservation?'WAIT':
+   cueVisible?m5Cue.side:
    hasDirectionalWatch?candleLean.side:
    hasM5Fallback?closedM5Context.side:'WAIT';
- const drawingLabel=cuePrebreak?m5Cue.headline:showZoneObservation?
+ const drawingLabel=cuePrebreak&&!mainSetup?m5Cue.headline:showZoneObservation?
    (trackedSetup?.side==='BUY'?'دعم · مراقبة':'مقاومة · مراقبة'):
    showPreparation?(drawingSide==='BUY'?'ترقب صعود':'ترقب هبوط'):
    showCrossTest?(drawingSide==='BUY'?'اختبار صعود':'اختبار هبوط'):
@@ -706,7 +707,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    hasEarlySignal?(earlyOpportunity.quality==='SETUP'?
      (drawingSide==='BUY'?'شراء':'بيع'):
      (drawingSide==='BUY'?'↗ رصد':'↘ رصد')):
-   cueVisible?m5Cue.headline:
+   cueVisible&&!mainSetup?m5Cue.headline:
    hasDirectionalWatch?(watchIsReversal?
      (drawingSide==='BUY'?'↗ انعكاس؟':'↘ انعكاس؟'):
      watchAgainstM15?(drawingSide==='BUY'?'↗ ارتداد':'↘ ارتداد'):
@@ -718,15 +719,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Qualitative evidence checklist, not a predicted success rate.
  // The checklist score is kept in the tooltip; it is NOT win probability.
  // Plain BUY/SELL appears only after a genuinely qualified confirmation.
- const passiveWatch=cueVisible||(!showZoneObservation&&!showRejected&&(hasDirectionalWatch||hasM5Fallback));
+ const passiveWatch=!mainSetup&&(cueVisible||(!showZoneObservation&&!showRejected&&(hasDirectionalWatch||hasM5Fallback)));
  const markerPrice=hasEarlySignal?currentSignalPrice:earlyOpportunity.trigger;
  const drawingBadge=passiveWatch?
    (drawingSide==='BUY'?'↗ '+(cuePrebreak?'ترقب شراء قبل الكسر':'رصد صعود')+' · ليس دخولًا':
     drawingSide==='SELL'?'↘ '+(cuePrebreak?'ترقب بيع قبل الكسر':'رصد هبوط')+' · ليس دخولًا':
     'مراقبة · لا توجد إشارة دخول'):drawingLabel;
- const drawingReason=cuePrebreak?m5Cue.detail+
+ const drawingReason=cuePrebreak&&!mainSetup?m5Cue.detail+
    ' · تفعيل '+n(m5Cue.trigger)+' · إبطال '+n(m5Cue.invalidation):
-   cueVisible?m5Cue.detail:showZoneObservation?
+   cueVisible&&!mainSetup?m5Cue.detail:showZoneObservation?
    (trackedSetup?.reason||'')+' · مستوى مراقبة فقط؛ لا توجد إشارة شراء/بيع مؤهلة':
    showPreparation||showCrossTest||showRejected||hasEarlySignal?
    (trackedSetup?.reason||'إعداد غير متاح'):
@@ -1566,7 +1567,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        })}
        {/* Closed-bar prebreak cue is separate from both M15 dual paths.
             It stays on a true price coordinate and never simulates TP. */}
-       {cuePrebreak&&m5Cue.trigger!=null&&m5Cue.invalidation!=null&&
+       {cuePrebreak&&!mainSetup&&m5Cue.trigger!=null&&m5Cue.invalidation!=null&&
          m5Cue.trigger>=lo&&m5Cue.trigger<=hi&&
          <g className="sniper-m5-prebreak-cue"
            data-m5-prebreak-side={m5Cue.side} data-issued-at={m5Cue.asOf}>
