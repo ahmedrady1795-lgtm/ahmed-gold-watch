@@ -70,3 +70,39 @@ jobs:
             'archiveBtcCount':len(research['earlyObservations'])
           },ensure_ascii=False),flush=True)
           PY
+
+      - name: Verify actual Kraken BTC/USD taker tape is selected and never mislabelled as Coinbase
+        run: |
+          python3 - <<'PY'
+          import json,urllib.request,time
+          base='https://ahmed-gold-watch-free.onrender.com/api/orderflow'
+          def get(url):
+            request=urllib.request.Request(url,headers={
+              'Accept':'application/json','Cache-Control':'no-store',
+              'User-Agent':'Qannas-Kraken-Live-Venue-Smoke/1.0'})
+            with urllib.request.urlopen(request,timeout=90) as r:
+              assert r.status==200
+              payload=json.loads(r.read(3500000))
+            return payload
+          kr=get(base+'?venue=kraken')
+          assert kr.get('source')=='Kraken XBT/USD',(
+             'Kraken M5 MUST NOT get a Coinbase tape',kr.get('source'))
+          assert kr.get('status') in ('LIVE_SAMPLE','STALE','INSUFFICIENT','UNAVAILABLE')
+          if kr.get('ok'):
+            assert kr['status']=='LIVE_SAMPLE'
+            assert kr['asOf']>0
+            assert kr['coverage']['trades']>=25
+            assert kr['profile'] is not None and kr['flow'] is not None
+            assert kr['actionable'] is False and kr['venueComplete'] is False
+          cb=get(base)
+          assert cb.get('source')=='Coinbase Exchange BTC-USD'
+          assert cb.get('actionable') is False
+          print('KRAKEN_LIVE_API_RESULT',json.dumps({
+            'status':kr['status'],'source':kr['source'],
+            'freshTrades':kr.get('coverage',{}).get('trades',0),
+            'sampleSeconds':kr.get('coverage',{}).get('seconds',0),
+            'confirmedExecutedSample':bool(kr.get('ok')),
+            'reason':kr.get('reason'),
+            'coinbaseSource':cb['source']
+          },ensure_ascii=False),flush=True)
+          PY
