@@ -132,7 +132,7 @@ export default function SniperM15HuntOverlay(p:Props){
       stroke="#000" strokeWidth="2" paintOrder="stroke" direction="ltr">
       {f.referenceOnly?(f.observation?'M15 · HISTORY':f.sessionBreakOnly?'M15 · SESSION':'M15 · GAP WATCH'):
         evidence.state==='CONFLICT'?'M15 · FRAME CONFLICT':
-        !anchored?'M15 · DUAL WATCH':'M15 · EARLY PATH'}
+        !anchored?(p.proof?.status==='NO_DEMONSTRATED_EDGE'?'M15 · CONTEXT':'M15 · DUAL WATCH'):'M15 · EARLY PATH'}
     </text>
     <text x={p.split+8} y={p.top+32} fontSize="9" fontWeight="800"
       fill={anchored?color[visualSide as HuntSide]:'#b1c1cb'}
@@ -141,7 +141,7 @@ export default function SniperM15HuntOverlay(p:Props){
        blocked?'مقاومة / طلب غير مكسور · لا استمرار مؤكد':
        anchored?(visualSide==='BUY'?'↑ المسار المرجح':'↓ المسار المرجح')+
          (validated?' · اختبار تاريخي أولي':' · يحتاج إثباتًا'):
-       evidence.reason}
+       p.proof?.status==='NO_DEMONSTRATED_EDGE'?'M15 بلا أفضلية مثبتة · راقب M1/M5':evidence.reason}
     </text>
     {f.sweep!=='NONE'&&<g>
       <circle cx={p.split+7} cy={clip(p.py(f.anchor))} r="4"
