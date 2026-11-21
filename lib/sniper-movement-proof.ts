@@ -261,6 +261,10 @@ export function advanceMovementProof(input:{
          input.setupState.invalidation===signal.invalidation&&
          valid(input.setupState.expiresAt)&&input.setupState.expiresAt>now?
            {setupExpiresAt:input.setupState.expiresAt}:{}),
+       // A price-only reclaim watch expires quickly unless later closed
+       // candles establish a real opportunity. It is NOT a pending MT5 order.
+       ...(kind==='EARLY'&&signal.setupKind==='PULLBACK'?
+         {setupExpiresAt:now+3*60000}:{}),
        ...(onsetDistance==null?{}:{
          onsetDistance,onsetOutcome:'PENDING' as const,onsetResolvedAt:null,
          onsetDelaySeconds:null})
