@@ -6,6 +6,7 @@ import {usePaxgComparison,usePaxgFlow} from './usePaxgComparison';
 import type {PaxgSide} from '../lib/paxg-flow';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import SniperM15Summary from './SniperM15Summary';
+import EarlyMoveAlert from './EarlyMoveAlert';
 import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {detectLiquidityMagnets} from '../lib/sniper-liquidity-magnets';
 import {fuseLocalSniper} from '../lib/sniper-local-fusion';
@@ -1068,6 +1069,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        title="مناطق سيولة القمم والقيعان، الطلب والعرض والارتداد أو الرفض بعد إغلاق M15">
        {showLiquidity?'المناطق ✓':'المناطق'}</button>
    </header>
+   {asset==='GOLD'&&<EarlyMoveAlert now={now} marketOpen={marketOpen}/>}
    <>
    
    <details className="sniper-hunt-advanced">
