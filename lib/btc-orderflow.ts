@@ -4,6 +4,7 @@
  * Never present this as full-session volume, centralized futures volume or
  * a statistically validated BUY/SELL trade signal.
  */
+export type BtcExecutedVenue='Coinbase Exchange BTC-USD'|'Kraken XBT/USD';
 export type ExecutedTrade={
  id:number;time:number;price:number;size:number;aggressor:'BUY'|'SELL';
 };
@@ -14,7 +15,7 @@ export type FlowBin={
 export type FlowMinute={time:number;totalBtc:number;deltaBtc:number;
   buyBtc:number;sellBtc:number;trades:number;rows:FlowBin[];partial:true};
 export type BtcOrderflow={
- ok:boolean;source:'Coinbase Exchange BTC-USD';asOf:number;fetchedAt:number;
+ ok:boolean;source:BtcExecutedVenue;asOf:number;fetchedAt:number;
  status:'LIVE_SAMPLE'|'STALE'|'INSUFFICIENT';
  reason:string;coverage:{from:number|null;to:number|null;trades:number;
   seconds:number;completeSession:false;completeMinutes:false;maxPerRequest:number};
@@ -52,8 +53,33 @@ export function normalizeCoinbaseTrades(rows:unknown,now:number):ExecutedTrade[]
  }
  return [...seen.values()].sort((a,b)=>a.time-b.time||a.id-b.id);
 }
-const empty=(now:number,reason:string,status:'STALE'|'INSUFFICIENT'):BtcOrderflow=>({
- ok:false,source:symbol,asOf:0,fetchedAt:now,status,reason,
+/** Kraken Spot Trades has the TAKING party direction ('b' buy, 's'
+ * sell), unlike Coinbase REST Trades where 'side' is the MAKER.
+ * Require real IDs to deduplicate across REST polls; never infer a side
+ * from a candle or reuse a Coinbase tape for Kraken.
+ */
+export function normalizeKrakenTrades(rows:unknown,now:number):ExecutedTrade[]{
+ const seen=new Map<number,ExecutedTrade>(),conflicted=new Set<number>();
+ if(!Array.isArray(rows)||!Number.isFinite(now))return [];
+ for(const x of rows.slice(0,4200)){
+  if(!Array.isArray(x)||x.length<7)continue;
+  const price=Number(x[0]),size=Number(x[1]),time=Number(x[2])*1000,
+    aggressor=x[3]==='b'?'BUY':x[3]==='s'?'SELL':null,id=Number(x[6]);
+  if(!Number.isSafeInteger(id)||id<=0||
+    !Number.isFinite(time)||time<=0||time>now+2000||now-time>12*60000||
+    !Number.isFinite(price)||price<=0||!Number.isFinite(size)||
+    size<=0||size>500||!aggressor||conflicted.has(id))continue;
+  const trade:ExecutedTrade={id,time,price,size,aggressor};
+  const prev=seen.get(id);
+  if(prev&&(prev.time!==trade.time||prev.price!==trade.price||
+    prev.size!==trade.size||prev.aggressor!==trade.aggressor)){
+    seen.delete(id);conflicted.add(id);
+  }else seen.set(id,trade);
+ }
+ return [...seen.values()].sort((a,b)=>a.time-b.time||a.id-b.id);
+}
+const empty=(now:number,reason:string,status:'STALE'|'INSUFFICIENT'):BtcOrderflow,source:BtcExecutedVenue=symbol):BtcOrderflow=>({
+ ok:false,source,asOf:0,fetchedAt:now,status,reason,
  coverage:{from:null,to:null,trades:0,seconds:0,completeSession:false,
    completeMinutes:false,maxPerRequest:1000},
  profile:null,footprint:[],flow:null,actionable:false,venueComplete:false
@@ -77,23 +103,23 @@ function aggregate(rows:ExecutedTrade[],step:number):FlowBin[]{
  });
 }
 export function buildBtcOrderflow(
- rows:ExecutedTrade[],now:number,sourceLimit=1000):BtcOrderflow{
+ rows:ExecutedTrade[],now:number,sourceLimit=1000,source:BtcExecutedVenue=symbol):BtcOrderflow{
  const trades=rows.filter(t=>Number.isSafeInteger(t.id)&&Number.isFinite(t.time)&&
   t.time<=now+2000&&now-t.time<=12*60000&&Number.isFinite(t.price)&&t.price>0&&
   Number.isFinite(t.size)&&t.size>0&&(t.aggressor==='BUY'||t.aggressor==='SELL'))
   .sort((a,b)=>a.time-b.time||a.id-b.id).slice(-4200);
  const earliest=trades[0]?.time??0,newest=trades.at(-1)?.time??0;
- if(trades.length<25||newest===0)return empty(now,'عينة الصفقات المنفذة غير كافية','INSUFFICIENT');
+ if(trades.length<25||newest===0)return empty(now,'عينة الصفقات المنفذة غير كافية','INSUFFICIENT',source);
  if(now-newest>20000||newest>now+2000)
-  return empty(now,'آخر صفقة منفذة من المصدر متأخرة','STALE');
+  return empty(now,'آخر صفقة منفذة من المصدر متأخرة','STALE',source);
  const lastPrice=trades.at(-1)!.price;
  const step=Math.max(1,Math.round(lastPrice*.00012/5)*5);
  const buckets=aggregate(trades,step);
- if(buckets.length<2)return empty(now,'لا توجد مستويات سعرية متنوعة في عينة الصفقات','INSUFFICIENT');
+ if(buckets.length<2)return empty(now,'لا توجد مستويات سعرية متنوعة في عينة الصفقات','INSUFFICIENT',source);
  const buy=trades.reduce((s,t)=>s+(t.aggressor==='BUY'?t.size:0),0);
  const sell=trades.reduce((s,t)=>s+(t.aggressor==='SELL'?t.size:0),0);
  const total=buy+sell;
- if(total<=0)return empty(now,'حجم الصفقات المنفذة غير صالح','INSUFFICIENT');
+ if(total<=0)return empty(now,'حجم الصفقات المنفذة غير صالح','INSUFFICIENT',source);
  let pocIndex=0;
  for(let i=1;i<buckets.length;i++)if(buckets[i].totalBtc>buckets[pocIndex].totalBtc)
   pocIndex=i;
@@ -128,8 +154,8 @@ export function buildBtcOrderflow(
     rows:bins,partial:true as const};
  });
  const sample:BtcOrderflow={
-  ok:true,source:symbol,asOf:newest,fetchedAt:now,status:'LIVE_SAMPLE',
-  reason:'حجم صفقات منفذة في عينة Coinbase فقط؛ لا تمثل جلسة كاملة أو السوق كله',
+  ok:true,source,asOf:newest,fetchedAt:now,status:'LIVE_SAMPLE',
+  reason:'حجم صفقات منفذة في عينة '+(source.startsWith('Kraken')?'Kraken':'Coinbase')+' فقط؛ لا تمثل جلسة كاملة أو السوق كله',
   coverage:{from:earliest,to:newest,trades:trades.length,
     seconds:fixed((newest-earliest)/1000,1),completeSession:false,
     completeMinutes:false,maxPerRequest:sourceLimit},
