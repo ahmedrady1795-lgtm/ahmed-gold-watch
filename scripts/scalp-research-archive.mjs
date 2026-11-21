@@ -30,6 +30,7 @@ function cleanEarlyObservations(rows,now){
   if(!r||typeof r!=='object'||r.lane!=='BTC_EARLY_M1'||
    typeof r.id!=='string'||r.id.length<1||r.id.length>160||
    !sides.includes(r.side)||!['WATCH','ARMED'].includes(r.status)||
+   !['BUY','SELL',null,undefined].includes(r.baselineSide)||
    !['OPEN','FAVORABLE_FIRST','ADVERSE_FIRST','NO_THRESHOLD','UNKNOWN'].includes(r.result)||
    typeof r.source!=='string'||!r.source||r.source.length>160||
    typeof r.setup!=='string'||r.setup.length>80||
@@ -53,7 +54,8 @@ function cleanEarlyObservations(rows,now){
   const tooLate=r.result!=='UNKNOWN'&&r.result!=='OPEN'&&
    r.resolvedAt>r.expiresAt;
   return {id:r.id,lane:'BTC_EARLY_M1',side:r.side,
-   score:r.score,setup:r.setup,status:r.status,source:r.source,
+   score:r.score,setup:r.setup,status:r.status,
+   baselineSide:r.baselineSide??null,source:r.source,
    startedAt:r.startedAt,lastQuoteAt:r.lastQuoteAt,
    expiresAt:r.expiresAt,startPrice:r.startPrice,
    threshold:r.threshold,maxFavorable:r.maxFavorable,
