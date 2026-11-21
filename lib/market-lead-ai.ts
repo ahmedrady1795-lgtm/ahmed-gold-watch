@@ -86,14 +86,20 @@ function evaluate(asset:'GOLD'|'BTC',f:LeadFeatures,now=Date.now(),mode:'DOM'|'M
   reason,evidence:evidence.slice(0,5),metrics:{bookImbalance:Number(f.bookImbalance.toFixed(2)),pressureChange:Number(f.pressureChange.toFixed(2)),replenishDelta:Number(f.replenishDelta.toFixed(2)),acceleration:Number(f.acceleration.toFixed(4)),flowDelta:Number(f.flowDelta.toFixed(2)),priceVelocity:Number(f.priceVelocity.toFixed(4)),persistence:Math.round(f.persistence),quality:Math.round(f.quality)}};
   state.signal=out;return out;
 }
+function goldOffline(source:string,reason:string,now:number):MarketLeadSignal{
+  const state=states.GOLD;
+  state.history=[];state.lastSourceAt=0;state.lastMode='';
+  const out=offline('GOLD',source,reason,now);
+  state.signal=out;
+  return out;
+}
 export function updateGoldMarketLead(fast:any,now=Date.now(),wave:any=null):MarketLeadSignal{
   // Do NOT label price-only MT5 ticks as authenticated DOM pressure.
   // Brokers may not provide MarketBookGet for spot XAUUSD at all.
   if(fast?.ok&&fast.domReady!==true)
-    return offline('GOLD','MT5 broker depth',
+    return goldOffline('MT5 broker depth',
       'تغذية MT5 السعرية موجودة لكن لا توجد ثلاث عينات عمق وسيط موثوقة؛ DOM غير مؤهل.',now);
   if(fast?.ok){
-    const side=sideOf(fast.side);
     return evaluate('GOLD',{
       source:'Exness/MT5 DOM · Market Lead AI',
       sourceAt:Number(fast.receivedAt||fast.at||now),
@@ -126,7 +132,7 @@ export function updateGoldMarketLead(fast:any,now=Date.now(),wave:any=null):Mark
       absorptionSide:'WAIT',absorptionScore:0,trapDetected:false,hintSide:side,domAvailable:false
     },now,'MICRO_FLOW');
   }
-  return offline('GOLD','Live gold microstructure','لا يوجد DOM أو Biquote micro-flow حديث الآن.',now);
+  return goldOffline('Live gold microstructure','لا يوجد DOM أو Biquote micro-flow حديث الآن.',now);
 }
 export function updateBtcMarketLead(liq:any,now=Date.now()):MarketLeadSignal{
   if(!liq?.ok||!Number.isFinite(Number(liq?.checkedAt))||now-Number(liq.checkedAt)>8000)return offline('BTC','Coinbase · Kraken · OKX microstructure','مصدر سيولة BTC غير مؤكد أو قديم؛ تم تعطيل إشارة الحركة المبكرة.',now);
