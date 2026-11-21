@@ -199,3 +199,14 @@ export function peekScalpLead(lane:Lane){
   return {...summarizeLeadObservations(row.history,row.active),persisted,
     storage:persisted?'VOLUME':fs.existsSync(EPHEMERAL_PATH)?'EPHEMERAL':'MEMORY'};
 }
+
+/** Public, read-only snapshot for the separate BTC early execution cohort.
+ * Never an order, never a broker fill, never a claim of profit.
+ */
+export function exportBtcEarlyForwardObservations(){
+ const lane=load().lanes.BTC_EARLY_M1;
+ return [...lane.history,...(lane.active?[lane.active]:[])]
+   .filter(v=>v&&v.lane==='BTC_EARLY_M1')
+   .sort((a,b)=>a.startedAt-b.startedAt)
+   .slice(-360);
+}
