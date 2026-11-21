@@ -41,6 +41,18 @@ const okxRows=Array.from({length:30},(_,i)=>({
 }));
 const okxFlow=okx(okxRows,clock);
 assert.equal(okxFlow.tradeCount,30);
+const select=exportsRef.selectBtcExecutedFlow;
+const cbFlow=coinbase(cb,clock);
+assert.equal(select({coinbaseValid:true,okxValid:true,
+ coinbase:cbFlow,okx:okxFlow}).venue,'COINBASE',
+ 'Coinbase stays primary when its observed executions are fresh');
+const okxSelected=select({coinbaseValid:false,okxValid:true,
+ coinbase:cbFlow,okx:okxFlow});
+assert.equal(okxSelected.venue,'OKX','never mix a stale Coinbase tape with OKX');
+assert.equal(okxSelected.deltaPct,okxFlow.deltaPct);
+assert.equal(okxSelected.priceChangeBps,okxFlow.priceChangeBps);
+assert.equal(select({coinbaseValid:false,okxValid:false,
+ coinbase:cbFlow,okx:okxFlow}).venue,'NONE');
 assert.ok(okxFlow.deltaPct<-99,'OKX side is taker/aggressor, NOT Coinbase maker side');
 assert.equal(okx([okxRows[0],okxRows[0]],clock).tradeCount,1);
 assert.equal(okx([{...okxRows[0],ts:String(clock+4000)}],clock).tradeCount,0);
@@ -57,5 +69,42 @@ assert.equal(okx([{...okxRows[0],ts:String(clock+4000)}],clock).tradeCount,0);
  assert.equal(calls.length,10,'a completed request can trigger the next snapshot');
  pending.splice(0).forEach(done=>done(unavailable()));
  await c;
- console.log('PASS: verified Coinbase maker inversion, OKX taker flow, dedup, stale guards and coalesced BTC requests');
+ // Live-like fallback: Coinbase trades HTTP429, but OKX executed taker sales
+ // and an independent Kraken L2 remain genuinely fresh. Neither Coinbase
+ // executed volume nor BTC-USD market prints are forged.
+ const kTime=(clock-850)/1000;
+ const kb=Array.from({length:25},(_,i)=>[
+   String(62000-i*.15),String(1.1+(i%4)*.05),kTime]);
+ const ka=Array.from({length:25},(_,i)=>[
+   String(62000.35+i*.15),String(.95+(i%4)*.05),kTime]);
+ const okxDepth={
+  data:[{ts:String(clock-850),
+   bids:kb.map(([v,q])=>[v,q,'0','1']),
+   asks:ka.map(([v,q])=>[v,q,'0','1'])}]
+ };
+ const okxTape={data:Array.from({length:65},(_,i)=>({
+   tradeId:String(330000+i),ts:String(clock-900-i*29),
+   px:'62000.15',sz:'0.1',side:'sell'
+ }))};
+ const valid=r=>({ok:true,status:200,json:async()=>r});
+ const invalid=()=>({ok:false,status:429,json:async()=>({error:'rate limited'})});
+ const next=liquidity(true);
+ assert.equal(calls.length,15);
+ const latest=pending.splice(0);
+ latest.forEach((resolve,i)=>resolve(i===0?valid({bids:[['62000','1']],asks:[['62000.35','1']]}):
+   i===1?valid({result:{'XXBTZUSD':{bids:kb,asks:ka}}}):
+   i===2?invalid():
+   i===3?valid(okxDepth):valid(okxTape)));
+ const snapshot=await next;
+ assert.equal(snapshot.ok,true,'independent Kraken L2 and OKX taker must keep BTC research fed');
+ assert.equal(snapshot.providers.coinbaseTrades,false);
+ assert.equal(snapshot.providers.okxTrades,true);
+ assert.equal(snapshot.providers.krakenDepth,true);
+ assert.equal(snapshot.flow.venue,'OKX');
+ assert.equal(snapshot.flow.tradeCount,65);
+ assert.ok(snapshot.flow.deltaPct< -95);
+ assert.equal(snapshot.absorption.side,'BUY','true aggressive OKX sales absorbed at flat OKX price');
+ assert.match(snapshot.warnings.join(' '),/OKX BTC-USDT taker flow/);
+ assert.equal(snapshot.flow.buyVolume,0);
+ console.log('PASS: verified Coinbase maker inversion, OKX taker flow, dedup, stale guards, coalesced requests and HTTP429 fallback with independent Kraken depth');
 })().catch(e=>{console.error(e);process.exitCode=1;});

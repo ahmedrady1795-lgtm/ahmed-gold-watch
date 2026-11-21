@@ -80,6 +80,31 @@ assert.equal(detectEarlyExecutionLead({...buy,liquidity:{...base,
  integrity:{...base.integrity,status:'POSSIBLE_DEPTH_WITHDRAWAL'}}}).status,'STALE');
 assert.equal(detectEarlyExecutionLead({...buy,liquidity:{...base,
  providers:{...base.providers,coinbaseTrades:false}}}).status,'WAIT');
+const okxTakerFallback={...base,source:'OKX BTC-USDT taker / Kraken BTC-USD depth',
+ providers:{...base.providers,coinbaseTrades:false,okxTrades:true,krakenDepth:true},
+ flow:{...base.flow,venue:'OKX',tradeCount:35}};
+const okxBuy=detectEarlyExecutionLead({...buy,liquidity:okxTakerFallback});
+assert.equal(okxBuy.status,'ENTRY_CANDIDATE',okxBuy.reason);
+assert.equal(okxBuy.side,'BUY');
+assert.match(okxBuy.evidence.join(' '),/OKX BTC-USDT/);
+assert.equal(okxBuy.researchOnly,true);
+assert.equal(okxBuy.brokerExecutionVerified,false);
+const okxSell=detectEarlyExecutionLead({...sell,liquidity:{
+ ...sellerBook,providers:okxTakerFallback.providers,
+ flow:{...sellerBook.flow,venue:'OKX',tradeCount:45}
+}});
+assert.equal(okxSell.status,'ENTRY_CANDIDATE');
+assert.equal(okxSell.side,'SELL');
+assert.equal(detectEarlyExecutionLead({...buy,liquidity:{
+ ...okxTakerFallback,providers:{...okxTakerFallback.providers,krakenDepth:false}
+}}).status,'WAIT','one OKX tape and its own OKX book cannot self-certify a sniper');
+assert.equal(detectEarlyExecutionLead({...buy,liquidity:{
+ ...okxTakerFallback,flow:{...okxTakerFallback.flow,venue:'OKX',tradeCount:7}
+}}).status,'WAIT','insufficient OKX executions cannot enable entry research');
+assert.equal(detectEarlyExecutionLead({...buy,liquidity:{
+ ...okxTakerFallback,integrity:{...base.integrity,status:'VENUE_CONFLICT'}
+}}).status,'VENUE_CONFLICT');
+
 assert.equal(detectEarlyExecutionLead({...buy,liquidity:{...base,
  book:{...base.book,bestBid:96,bestAsk:96.1}}}).status,'VENUE_CONFLICT');
 assert.equal(detectEarlyExecutionLead({...buy,quote:{...buy.quote,at:now-15000}}).status,'STALE');
