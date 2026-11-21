@@ -10,6 +10,7 @@ RUN node tests/scalp-early-execution.cjs
 RUN node tests/btc-quote-coherence.cjs
 RUN node tests/gold-early-execution.cjs
 RUN node tests/sniper-m5-visible-prebreak.cjs
+RUN node tests/sniper-m1-reclaim-watch.cjs
 RUN node tests/ai-health-recovery.cjs
 RUN node tests/flow-profile-decision.cjs && node tests/sniper-order-flow-observation.cjs
 RUN node tests/gold-preparation-lead.mjs && node tests/chart-feed-isolation.cjs
