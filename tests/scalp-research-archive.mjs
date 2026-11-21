@@ -55,13 +55,14 @@ assert.doesNotMatch(checkpoint,/placeOrder|OrderSend|MT5_EXECUTE/);
 // exit or an Exness trade; no reboot may revive an old watcher as ACTIVE.
 const early={
  id:'BTC_M1_'+issuedAt+'_BUY',lane:'BTC_EARLY_M1',side:'BUY',
- score:76,setup:'SWEEP_RECLAIM',status:'WATCH',source:'Kraken XBT/USD',
+ score:76,setup:'SWEEP_RECLAIM',status:'WATCH',baselineSide:'SELL',source:'Kraken XBT/USD',
  startedAt:issuedAt,lastQuoteAt:issuedAt+3000,expiresAt:issuedAt+60000,
  startPrice:100,threshold:.25,maxFavorable:.31,maxAdverse:.05,
  result:'FAVORABLE_FIRST',resolvedAt:issuedAt+3000,reason:'FORWARD_MOVE_OBSERVED'
 };
 const earlyPacket={...envelope([good]),earlyObservations:[early]};
 assert.equal(cleanScalpResearch(earlyPacket,now).earlyObservations.length,1);
+assert.equal(cleanScalpResearch(earlyPacket,now).earlyObservations[0].baselineSide,'SELL');
 const earlyBoot=restoredBtcEarlyForward(earlyPacket,now);
 assert.equal(earlyBoot.lanes.BTC_EARLY_M1.history[0].result,'FAVORABLE_FIRST');
 assert.equal(earlyBoot.lanes.BTC_EARLY_M1.active,null);
