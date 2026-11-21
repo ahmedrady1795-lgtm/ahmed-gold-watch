@@ -333,6 +333,10 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
         m1AgeMs:x.data?.m1AgeMs,newsReady:x.data?.newsReady,
         liquidityReady:x.liquidity?.available,bookOk:x.orderBook?.ok,
         bookIntegrity:x.orderBook?.integrity?.status||'UNAVAILABLE',
+        executedFlowVenue:x.orderBook?.flow?.venue||'NONE',
+        executedTradeCount:x.orderBook?.flow?.tradeCount||0,
+        krakenDepthReady:Boolean(x.orderBook?.providers?.krakenDepth),
+        okxDepthReady:Boolean(x.orderBook?.providers?.okxDepth),
         earlyExecution:x.earlyExecution?{
           status:x.earlyExecution.status,side:x.earlyExecution.side,
           setup:x.earlyExecution.setup,score:x.earlyExecution.score,
