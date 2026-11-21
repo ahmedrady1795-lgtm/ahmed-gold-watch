@@ -1,8 +1,11 @@
 name: Checkpoint frozen BTC/GOLD M1 research
 on:
   schedule:
-    - cron: '23,53 * * * *'
+    - cron: '23 * * * *'
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/scalp-research-checkpoint.yml']
 permissions:
   contents: write
 concurrency:
@@ -10,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   checkpoint:
-    if: github.repository == 'ahmedrady1795-lgtm/ahmed-gold-watch'
+    if: github.repository == 'ahmedrady1795-lgtm/ahmed-gold-watch' && vars.QANNAS_PAUSE_M1_ARCHIVE != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
