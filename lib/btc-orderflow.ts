@@ -78,7 +78,7 @@ export function normalizeKrakenTrades(rows:unknown,now:number):ExecutedTrade[]{
  }
  return [...seen.values()].sort((a,b)=>a.time-b.time||a.id-b.id);
 }
-const empty=(now:number,reason:string,status:'STALE'|'INSUFFICIENT'):BtcOrderflow,source:BtcExecutedVenue=symbol):BtcOrderflow=>({
+const empty=(now:number,reason:string,status:'STALE'|'INSUFFICIENT',source:BtcExecutedVenue=symbol):BtcOrderflow=>({
  ok:false,source,asOf:0,fetchedAt:now,status,reason,
  coverage:{from:null,to:null,trades:0,seconds:0,completeSession:false,
    completeMinutes:false,maxPerRequest:1000},
