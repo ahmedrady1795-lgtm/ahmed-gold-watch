@@ -104,9 +104,13 @@ export default function SniperOpportunityMarkers(p:Props){
      r.side==='BUY'?29:-29);
    if(chosen)breakLabels.set(r.id,chosen);
  }
- for(const r of earlyShown.filter(r=>r.setupLifecycle!=='INVALIDATED'&&
-   r.setupLifecycle!=='CANCELLED'&&r.setupLifecycle!=='EXPIRED'&&
-   currentEarly(r)&&!nearCurrent(r)).slice(0,2)){
+ // Keep the last few newly issued M1 reclaim labels visible at their
+ // ORIGINAL observed price/time, even after their 3-minute watch expires.
+ // These labels explicitly say WATCH, never qualified trade entry.
+ for(const r of earlyShown.filter(r=>
+   (r.setupKind==='PULLBACK'||(r.setupLifecycle!=='INVALIDATED'&&
+    r.setupLifecycle!=='CANCELLED'&&r.setupLifecycle!=='EXPIRED'&&currentEarly(r)))&&
+   !nearCurrent(r)).slice(0,3)){
    const px=p.timeX(r.issuedAt),py=p.py(r.priceAt);
    const chosen=placeLabel(px,py,48,16,r.side==='BUY'?22:-22);
    if(chosen)earlyLabels.set(r.id,chosen);
@@ -156,7 +160,8 @@ export default function SniperOpportunityMarkers(p:Props){
            y={earlyLabels.get(r.id)!.y+3} textAnchor="middle"
            direction="rtl" fontSize="9" fontWeight="800" fill={ink}
            stroke="#07111b" strokeWidth="2.6" paintOrder="stroke">
-           {buy?'ترقب صعود':'ترقب هبوط'}
+           {r.setupKind==='PULLBACK'?(buy?'ترقب شراء M1':'ترقب بيع M1'):
+             buy?'ترقب صعود':'ترقب هبوط'}
          </text>
        </>}
      </g>;
