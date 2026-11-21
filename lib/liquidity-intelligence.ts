@@ -103,26 +103,57 @@ function weightedDepth(rows:DepthRow[],best:number){
   }
   return total;
 }
-function okxTradeFlow(rows:any[]){
-  const trades=(Array.isArray(rows)?rows:[]).map((x:any)=>({price:Number(x?.px),size:Number(x?.sz),side:String(x?.side||'').toLowerCase()})).filter((x:any)=>finite(x.price)&&finite(x.size)&&x.price>0&&x.size>0&&(x.side==='buy'||x.side==='sell'));
-  let buy=0,sell=0;for(const t of trades){if(t.side==='buy')buy+=t.size;else sell+=t.size;}
-  const total=buy+sell,delta=buy-sell,deltaPct=total>0?delta/total*100:0;
-  return {tradeCount:trades.length,buyVolume:buy,sellVolume:sell,deltaVolume:delta,deltaPct,priceChangeBps:0,cvdSide:sideFromPressure(deltaPct,10)};
+// A single 30-second contemporaneous trade window on each exchange.
+ // Coinbase Exchange REST 'side' is the resting maker, NOT the aggressor.
+ // Unlike a tick-rule proxy, the inverse maker side is observed executed flow.
+const BTC_TRADE_WINDOW_MS=30000;
+type SampleTrade={id:string;time:number;price:number;size:number;aggressor:'BUY'|'SELL'};
+function executedFlow(rows:SampleTrade[]){
+ const trades=[...rows].sort((a,b)=>a.time-b.time||a.id.localeCompare(b.id));
+ let buy=0,sell=0;
+ for(const t of trades){
+  if(t.aggressor==='BUY')buy+=t.size;else sell+=t.size;
+ }
+ const total=buy+sell,delta=buy-sell,deltaPct=total>0?delta/total*100:0;
+ const first=trades[0]?.price,last=trades.at(-1)?.price;
+ const priceChangeBps=first&&last?(last-first)/first*10000:0;
+ return {tradeCount:trades.length,buyVolume:buy,sellVolume:sell,
+  deltaVolume:delta,deltaPct,priceChangeBps,
+  cvdSide:sideFromPressure(deltaPct,10),
+  oldestAt:trades[0]?.time??null,newestAt:trades.at(-1)?.time??null};
 }
-function tradeFlow(rows:any[]){
-  const trades=(Array.isArray(rows)?rows:[])
-    .map((x:any)=>({price:Number(x?.price),size:Number(x?.size),time:Date.parse(x?.time||''),id:Number(x?.trade_id)}))
-    .filter((x:any)=>finite(x.price)&&finite(x.size)&&x.price>0&&x.size>0)
-    .sort((a:any,b:any)=>(a.time-b.time)||(a.id-b.id));
-  let buy=0,sell=0,lastSign=0;
-  for(let i=1;i<trades.length;i++){
-    const d=trades[i].price-trades[i-1].price;
-    if(d>0)lastSign=1;else if(d<0)lastSign=-1;
-    if(lastSign>0)buy+=trades[i].size;else if(lastSign<0)sell+=trades[i].size;
+function verifiedTrades(raw:unknown,now:number,venue:'COINBASE'|'OKX'):SampleTrade[]{
+ if(!Array.isArray(raw))return [];
+ const byId=new Map<string,SampleTrade>(),conflicted=new Set<string>();
+ for(const item of raw.slice(0,1000)){
+  if(!item||typeof item!=='object')continue;
+  const x=item as Record<string,unknown>;
+  const id=String(venue==='COINBASE'?x.trade_id:x.tradeId||'').trim();
+  const time=venue==='COINBASE'?Date.parse(String(x.time||'')):Number(x.ts);
+  const price=Number(venue==='COINBASE'?x.price:x.px);
+  const size=Number(venue==='COINBASE'?x.size:x.sz);
+  const side=String(x.side||'').toLowerCase();
+  if(!/^\d+$/.test(id)||!Number.isSafeInteger(Number(id))||
+    !Number.isFinite(time)||time>now||now-time>BTC_TRADE_WINDOW_MS||
+    !Number.isFinite(price)||price<=0||!Number.isFinite(size)||
+    size<=0||size>500||(side!=='buy'&&side!=='sell'))continue;
+  const aggressor=venue==='COINBASE'?
+    (side==='sell'?'BUY':'SELL'):(side==='buy'?'BUY':'SELL');
+  const trade:SampleTrade={id,time,price,size,aggressor};
+  const old=byId.get(id);
+  if(old&&(old.time!==trade.time||old.price!==trade.price||
+    old.size!==trade.size||old.aggressor!==trade.aggressor)){
+    conflicted.add(id);byId.delete(id);continue;
   }
-  const total=buy+sell,delta=buy-sell,deltaPct=total>0?delta/total*100:0;
-  const first=trades[0]?.price,last=trades.at(-1)?.price,priceChangeBps=first&&last?(last-first)/first*10000:0;
-  return {tradeCount:trades.length,buyVolume:buy,sellVolume:sell,deltaVolume:delta,deltaPct,priceChangeBps,cvdSide:sideFromPressure(deltaPct,10)};
+  if(!conflicted.has(id))byId.set(id,trade);
+ }
+ return [...byId.values()];
+}
+export function coinbaseExecutedFlow(rows:unknown,now=Date.now()){
+ return executedFlow(verifiedTrades(rows,now,'COINBASE'));
+}
+export function okxExecutedFlow(rows:unknown,now=Date.now()){
+ return executedFlow(verifiedTrades(rows,now,'OKX'));
 }
 
 // Contradictions are a conservative paper-entry veto, not evidence that an
@@ -239,18 +270,13 @@ export async function getBtcLiquidity(force=false):Promise<LiquidityIntelligence
     okxAsks=(row?.asks||[]).slice(0,25).map((x:any)=>({price:Number(x[0]),size:Number(x[1])})).filter((x:DepthRow)=>finite(x.price)&&finite(x.size)&&x.price>0&&x.size>0);
     if(!okxBids.length||!okxAsks.length)warnings.push('OKX depth empty');
   }else warnings.push('OKX depth unavailable');
-  const okxFlow=okxTradesR.status==='fulfilled'?okxTradeFlow(okxTradesR.value?.data):okxTradeFlow([]);
+  const okxFlow=okxExecutedFlow(okxTradesR.status==='fulfilled'?okxTradesR.value?.data:[],now);
   if(okxTradesR.status==='rejected')warnings.push('OKX trades unavailable');
 
   const coinbaseTradeRows=tradesR.status==='fulfilled'&&Array.isArray(tradesR.value)?tradesR.value:[];
-  const coinbaseTradeAt=coinbaseTradeRows.reduce((at:number,row:any)=>{
-    const time=Date.parse(String(row?.time||''));return Number.isFinite(time)?Math.max(at,time):at;
-  },0)||null;
-  const okxTradeAt=okxTradesR.status==='fulfilled'&&Array.isArray(okxTradesR.value?.data)?
-    okxTradesR.value.data.reduce((at:number,row:any)=>{
-      const t=Number(row?.ts);return Number.isFinite(t)?Math.max(at,t):at;
-    },0)||null:null;
-  const flow=tradesR.status==='fulfilled'?tradeFlow(tradesR.value):tradeFlow([]);
+  const flow=coinbaseExecutedFlow(coinbaseTradeRows,now);
+  const coinbaseTradeAt=flow.newestAt;
+  const okxTradeAt=okxFlow.newestAt;
   if(tradesR.status==='rejected')warnings.push('Coinbase trades unavailable');
 
   const bboTotal=bidSize+askSize,bboImbalance=bboTotal>0?(bidSize-askSize)/bboTotal*100:0;
