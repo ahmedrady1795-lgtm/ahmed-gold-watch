@@ -272,6 +272,16 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
     };
     const btcResearch=goldOnly?null:make('BTC',market,bq,events,newsReady);
     const btcEarly=btcResearch?.earlyExecution;
+    // Freeze the last genuinely CLOSED BTC minute before observing any
+    // future quote; never infer the baseline from the currently forming bar.
+    const closedAtIssue=Array.isArray(market?.c1)?
+      market.c1.filter((c:any)=>Number.isSafeInteger(c.time)&&
+        c.time+60000<=Date.now()&&Number.isFinite(c.open)&&
+        Number.isFinite(c.close)).at(-1):null;
+    const baselineSide=closedAtIssue&&btcEarly&&
+      closedAtIssue.time+60000===btcEarly.issuedFromClosedM1At&&
+      closedAtIssue.open!==closedAtIssue.close?
+        (closedAtIssue.close>closedAtIssue.open?'BUY' as const:'SELL' as const):null;
     // Frozen, prospective directional observation. A quote threshold is NOT
     // an execution or a cost-adjusted profit. The first source switch, gap or
     // unobserved tail becomes UNKNOWN, never a synthetic success.
@@ -283,7 +293,7 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
         {id:'BTC_M1_'+String(btcEarly.issuedFromClosedM1At)+'_'+btcEarly.side,
           side:btcEarly.side,score:btcEarly.score,
           status:btcEarly.status==='ENTRY_CANDIDATE'?'ARMED':'WATCH',
-          setup:btcEarly.setup,
+          setup:btcEarly.setup,baselineSide,
           cost:Number(btcEarly.estimatedRoundTripCost)}:null):null;
     const bitcoin=btcResearch?{...btcResearch,
       earlyExecutionAudit:btcEarlyAudit,exnessBroker:getMt5BtcStatus()}:null;
