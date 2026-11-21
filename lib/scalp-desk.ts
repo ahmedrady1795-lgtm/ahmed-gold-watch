@@ -13,6 +13,7 @@ import {observeScalpLead,MIN_SCALP_SHADOW_SCORE} from './scalp-lead-audit';
 import {observeEveryM1} from './scalp-every-candle';
 import {getMt5BtcStatus} from './mt5-btc-readonly';
 import {describeScalpCostContext} from './scalp-cost-context';
+import {detectEarlyExecutionLead} from './scalp-early-execution';
 
 function session(now:number){const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours()+d.getUTCMinutes()/60;return day!==6&&!(day===0&&h<22)&&!(day===5&&h>=21)&&!(day>=1&&day<=4&&h>=21&&h<22);}
 function envNumber(key:string){const raw=(getRuntimeEnv() as Record<string,unknown>)[key]??process.env[key];if(raw==null||raw==='')return null;const n=Number(raw);return Number.isFinite(n)&&n>=0&&n<=100?n:null;}
@@ -107,6 +108,9 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
       const directionStudy=independentDirectionStudy(asset,input.c1,at,
         Math.max(0,Number(plans[0]?.cost||0)));
       const orderBook=asset==='BTC'&&liquidityResult.status==='fulfilled'?liquidityResult.value:null;
+      const earlyExecution=detectEarlyExecutionLead({asset,c1:input.c1,quote,
+        liquidity:orderBook,now:at,estimatedRoundTripCost:
+          Number.isFinite(Number(plans[0]?.cost))?Number(plans[0].cost):null});
       const bookFresh=Boolean(orderBook?.ok&&Number(orderBook?.quality||0)>=65&&
         Number(orderBook?.checkedAt||0)>0&&at-Number(orderBook.checkedAt)>=0&&at-Number(orderBook.checkedAt)<12000);
       const qualityGates=plans.map(plan=>{
@@ -232,7 +236,7 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
       return {asset,profile:asset==='GOLD'?'ACTIVE_M5_PAPER':'STANDARD_PAPER',
         directionStudy,sniperDecisions:qualityGates.map(g=>g.decision),
         checkedAt:at,quote,candleSource:input.candleSource,liquidity,orderBook,plans,
-        executionEconomics,qualityGates,entryConfirmations,ledger,everyCandle,data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
+        executionEconomics,earlyExecution,qualityGates,entryConfirmations,ledger,everyCandle,data:{m1AgeMs:input.c1.length?at-(input.c1.filter((c:any)=>c.time+60000<=at).at(-1)?.time+60000):null,quoteAgeMs:quote.at?at-quote.at:null,newsReady}};
     };
     const goldSnap=goldResult.status==='fulfilled'?goldResult.value:null;
     // A stalled BTC REST refresh may fall back only to verified CLOSED M1/M5
@@ -278,6 +282,13 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
         m1AgeMs:x.data?.m1AgeMs,newsReady:x.data?.newsReady,
         liquidityReady:x.liquidity?.available,bookOk:x.orderBook?.ok,
         bookIntegrity:x.orderBook?.integrity?.status||'UNAVAILABLE',
+        earlyExecution:x.earlyExecution?{
+          status:x.earlyExecution.status,side:x.earlyExecution.side,
+          setup:x.earlyExecution.setup,score:x.earlyExecution.score,
+          entry:x.earlyExecution.entry,stop:x.earlyExecution.stop,
+          target:x.earlyExecution.target,netR:x.earlyExecution.netR,
+          cost:x.earlyExecution.estimatedRoundTripCost,
+          reason:x.earlyExecution.reason}:null,
         decisions:x.sniperDecisions?.map((d:any)=>({
           h:d.horizon,status:d.status,technicalScore:d.score,requiredNetR:d.requiredNetR,
           liveNetR:d.liveNetR,reasons:d.blockers.slice(0,3),
