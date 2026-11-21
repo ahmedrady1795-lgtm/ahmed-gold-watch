@@ -1,0 +1,39 @@
+name: AI models external status diagnostic
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ai-model-connectivity-diagnostic.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check actual ML and Neural ingress status (never infer readiness from HTTP 200)
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.error,json,time
+          for name,url in [
+            ('ML','https://qannas-ml-engine.onrender.com/health'),
+            ('NEURAL','https://qannas-neural-engine.onrender.com/health'),
+            ('MAIN','https://ahmed-gold-watch-free.onrender.com/api/live')]:
+            at=time.monotonic()
+            try:
+              req=urllib.request.Request(url,headers={'User-Agent':'Qannas-External-AI-Diagnostic/1.0','Accept':'application/json'})
+              with urllib.request.urlopen(req,timeout=65) as r:
+                payload=r.read(5000)
+                status=r.status;hdr=r.headers
+                print('AI_INGRESS',name,'HTTP',status,'seconds',round(time.monotonic()-at,1),
+                  'retryAfter',hdr.get('Retry-After'),'server',hdr.get('Server'),'contentType',hdr.get('Content-Type'),
+                  'body',payload[:500].decode('utf-8','replace'),flush=True)
+            except urllib.error.HTTPError as e:
+              body=e.read(1000).decode('utf-8','replace')
+              print('AI_INGRESS',name,'HTTP',e.code,'seconds',round(time.monotonic()-at,1),
+                'retryAfter',e.headers.get('Retry-After'),'server',e.headers.get('Server'),
+                'contentType',e.headers.get('Content-Type'),'body',body[:500],flush=True)
+            except Exception as e:
+              print('AI_INGRESS',name,'ERROR',str(e)[:200],
+                'seconds',round(time.monotonic()-at,1),flush=True)
+          PY
