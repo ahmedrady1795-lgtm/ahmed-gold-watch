@@ -722,8 +722,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const passiveWatch=!mainSetup&&(cueVisible||(!showZoneObservation&&!showRejected&&(hasDirectionalWatch||hasM5Fallback)));
  const markerPrice=hasEarlySignal?currentSignalPrice:earlyOpportunity.trigger;
  const drawingBadge=passiveWatch?
-   (drawingSide==='BUY'?'↗ '+(cuePrebreak?'ترقب شراء قبل الكسر':'رصد صعود')+' · ليس دخولًا':
-    drawingSide==='SELL'?'↘ '+(cuePrebreak?'ترقب بيع قبل الكسر':'رصد هبوط')+' · ليس دخولًا':
+   (cueVisible?m5Cue.headline+' · ليس دخولًا':
+    drawingSide==='BUY'?'↗ رصد صعود · ليس دخولًا':
+    drawingSide==='SELL'?'↘ رصد هبوط · ليس دخولًا':
     'مراقبة · لا توجد إشارة دخول'):drawingLabel;
  const drawingReason=cuePrebreak&&!mainSetup?m5Cue.detail+
    ' · تفعيل '+n(m5Cue.trigger)+' · إبطال '+n(m5Cue.invalidation):
