@@ -23,7 +23,8 @@ const fakeSnapshot=()=>({
 });
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const stubs={
- './market-hub':{getMarketSnapshot:async()=>{goldMarketCalls++;return fakeSnapshot()}},
+ './market-hub':{getMarketSnapshot:async()=>{goldMarketCalls++;return fakeSnapshot()},
+  getMt5GoldDomReading:()=>({available:false,status:'NO_BRIDGE',source:'NONE'})},
  './btc-market':{
   getBtcMarket:async()=>{btcMarketCalls++;await delay(240);return null},
   peekFreshBtcMarket:()=>null,mergeBtcCandles:()=>failIfUnknown('BTC candles')},
@@ -46,6 +47,7 @@ const stubs={
   MIN_SCALP_SHADOW_SCORE:55},
  './mt5-btc-readonly':{getMt5BtcStatus:()=>({connected:false,fresh:false,candlesFresh:false,status:null})},
  './scalp-early-execution':{detectEarlyExecutionLead:()=>({status:'WAIT',side:'WAIT',researchOnly:true})},
+ './gold-early-execution':{detectGoldEarlyLead:()=>({status:'STALE',side:'WAIT',researchOnly:true})},
  './scalp-cost-context':{describeScalpCostContext:()=>({
   costMode:'ESTIMATED_NOT_BROKER_VERIFIED',brokerExecutionVerified:false,
   feasibility:'NO_DATA',costPerUnit:null,spreadPerUnit:null

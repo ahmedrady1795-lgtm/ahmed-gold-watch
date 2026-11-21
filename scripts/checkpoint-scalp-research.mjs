@@ -19,7 +19,8 @@ for(let i=0;i<2;i++){
   if(i===1)throw e;
  }
 }
-if(!live.records.length){
+if(!live.records.length&&!live.earlyObservations.length&&
+   !live.goldEarlyObservations.length){
  console.info('No live M1 research observations: previous archive left unchanged');
  process.exit(0);
 }
@@ -54,4 +55,5 @@ const updated=await fetch(api,{method:'PUT',headers:{...headers,
 if(!updated.ok)throw Error('Checkpoint write HTTP '+updated.status);
 console.info('M1 research archived',merged.records.filter(r=>r.asset==='BTC').length,
  'BTC',merged.records.filter(r=>r.asset==='GOLD').length,'GOLD',
- 'paper-only outcomes; not broker fills');
+ 'BTC early flow',merged.earlyObservations.length,'GOLD early flow',
+ merged.goldEarlyObservations.length,'paper-only outcomes; not broker fills');

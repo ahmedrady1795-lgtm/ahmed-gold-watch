@@ -3,7 +3,7 @@ import {spawn} from 'node:child_process';
 import {renderFreeEcoEnabled} from '../lib/render-free-eco.ts';
 import {ARCHIVE_URL,cleanArchive,restoredState} from './sniper-archive.mjs';
 import {SCALP_RESEARCH_URL,restoredScalpResearch,
- restoredBtcEarlyForward} from './scalp-research-archive.mjs';
+ restoredBtcEarlyForward,restoredGoldEarlyForward} from './scalp-research-archive.mjs';
 try{
   const response=await fetch(ARCHIVE_URL+'?restore='+Date.now(),{signal:AbortSignal.timeout(10000),cache:'no-store'});
   if(!response.ok)throw Error('Archive HTTP '+response.status);
@@ -42,14 +42,17 @@ try{
    'paper-only observations; old pending outcomes are UNKNOWN');
  }
  const early=restoredBtcEarlyForward(archive);
+ const goldEarly=restoredGoldEarlyForward(archive);
  const earlyRows=early.lanes.BTC_EARLY_M1.history;
+ const goldEarlyRows=goldEarly.lanes.GOLD_EARLY_M1.history;
  const earlyPaths=['/data/scalp-lead-audit-v1.json','/tmp/scalp-lead-audit-v1.json'];
  const earlyExists=await Promise.all(earlyPaths.map(p=>fs.access(p).then(()=>true,()=>false)));
- if(!earlyExists.some(Boolean)&&earlyRows.length){
+ if(!earlyExists.some(Boolean)&&(earlyRows.length||goldEarlyRows.length)){
   // The lead audit's loader fills missing GOLD lanes with an empty state.
   // No old BTC limit or observer may be reactivated from GitHub history.
-  await fs.writeFile(earlyPaths[1],JSON.stringify(early),{flag:'wx',mode:0o600});
-  console.info('[BTC-EARLY] Restored',earlyRows.length,
+  await fs.writeFile(earlyPaths[1],JSON.stringify({version:1,lanes:{...early.lanes,...goldEarly.lanes}}),
+    {flag:'wx',mode:0o600});
+  console.info('[GOLD/BTC-EARLY] Restored',goldEarlyRows.length,'GOLD,',earlyRows.length,'BTC',
    'frozen forward observations; incomplete windows marked UNKNOWN');
  }
 }catch(e){console.warn('[M1-RESEARCH] External checkpoint unavailable:',

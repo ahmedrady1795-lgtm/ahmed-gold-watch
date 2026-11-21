@@ -96,6 +96,7 @@ const ui=fs.readFileSync('components/ScalpDesk.tsx','utf8');
 const desk=fs.readFileSync('lib/scalp-desk.ts','utf8');
 assert.match(ui,/early\.status==='COST_BLOCKED'/);
 assert.match(ui,/early\.status==='ENTRY_CANDIDATE'/);
-assert.match(desk,/earlyExecution=detectEarlyExecutionLead/);
+assert.match(desk,/detectEarlyExecutionLead\(\{asset,c1:/,
+ 'BTC early-flow remains live in the asset-specific branch next to GOLD');
 assert.doesNotMatch(desk,/executionEnabled\s*:\s*true/);
 console.log('PASS: bid-ask-causal BTC BUY and SELL sweep absorption pre-entry, no venue spoof, no late/future candles, costed passive limit and UI research-only');

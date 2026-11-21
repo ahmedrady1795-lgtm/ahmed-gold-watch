@@ -21,13 +21,13 @@ const rank=r=>Number(['BUY','SELL','FLAT','UNKNOWN'].includes(r.directionObserve
  * endpoint; preserve uncertainty and reject ambiguous or forged resolutions.
  * This audit is separate from paper LIMIT results and has no broker authority.
  */
-function cleanEarlyObservations(rows,now){
+function cleanEarlyObservations(rows,now,lane='BTC_EARLY_M1'){
  if(rows==null)return [];
  if(!Array.isArray(rows)||rows.length>600)
   throw Error('Invalid BTC early-flow cohort');
  const seen=new Set();
  return rows.map(r=>{
-  if(!r||typeof r!=='object'||r.lane!=='BTC_EARLY_M1'||
+  if(!r||typeof r!=='object'||r.lane!==lane||
    typeof r.id!=='string'||r.id.length<1||r.id.length>160||
    !sides.includes(r.side)||!['WATCH','ARMED'].includes(r.status)||
    !['BUY','SELL',null,undefined].includes(r.baselineSide)||
@@ -53,7 +53,7 @@ function cleanEarlyObservations(rows,now){
   // a retrospective success. This also handles legacy data safely.
   const tooLate=r.result!=='UNKNOWN'&&r.result!=='OPEN'&&
    r.resolvedAt>r.expiresAt;
-  return {id:r.id,lane:'BTC_EARLY_M1',side:r.side,
+  return {id:r.id,lane,side:r.side,
    score:r.score,setup:r.setup,status:r.status,
    baselineSide:r.baselineSide??null,source:r.source,
    startedAt:r.startedAt,lastQuoteAt:r.lastQuoteAt,
@@ -95,10 +95,11 @@ export function cleanScalpResearch(input,now=Date.now()){
  return {schema:1,savedAt:input.savedAt,
   records:assets.flatMap(asset=>records.filter(r=>r.asset===asset)
     .sort((a,b)=>a.issuedAt-b.issuedAt).slice(-360)),
-  earlyObservations:cleanEarlyObservations(input.earlyObservations,now)};
+  earlyObservations:cleanEarlyObservations(input.earlyObservations,now),
+  goldEarlyObservations:cleanEarlyObservations(input.goldEarlyObservations,now,'GOLD_EARLY_M1')};
 }
 export function mergeScalpResearch(previous,current,now=Date.now()){
- const old=previous?cleanScalpResearch(previous,now):{records:[],earlyObservations:[]};
+ const old=previous?cleanScalpResearch(previous,now):{records:[],earlyObservations:[],goldEarlyObservations:[]};
  const fresh=cleanScalpResearch(current,now);
  const merged=new Map();
  for(const r of [...old.records,...fresh.records]){
@@ -116,22 +117,28 @@ export function mergeScalpResearch(previous,current,now=Date.now()){
  // Same frozen ID must always come from one source and immutable entry.
  // A later process can improve OPEN to a real observed result but must not
  // erase a finished result with an incomplete restart checkpoint.
- const early=new Map();
- const grade=r=>r.result==='OPEN'?0:r.result==='UNKNOWN'?1:2;
- for(const r of [...old.earlyObservations,...fresh.earlyObservations]){
-  const p=early.get(r.id);
-  if(p&&(p.source!==r.source||p.side!==r.side||
-    p.startPrice!==r.startPrice||p.threshold!==r.threshold)){
-   early.set(r.id,{...r,result:'UNKNOWN',
-    resolvedAt:now,reason:'SOURCE_OR_FROZEN_THRESHOLD_CONFLICT'});
-   continue;
+ const mergeLane=(before,after)=>{
+  const early=new Map();
+  const grade=r=>r.result==='OPEN'?0:r.result==='UNKNOWN'?1:2;
+  for(const r of [...before,...after]){
+   const p=early.get(r.id);
+   if(p&&(p.source!==r.source||p.side!==r.side||
+     p.startPrice!==r.startPrice||p.threshold!==r.threshold||
+     (p.baselineSide??null)!==(r.baselineSide??null))){
+    early.set(r.id,{...r,result:'UNKNOWN',
+     resolvedAt:now,reason:'SOURCE_OR_FROZEN_THRESHOLD_CONFLICT'});
+    continue;
+   }
+   if(!p||grade(r)>grade(p)||grade(r)===grade(p)&&
+     (r.resolvedAt||r.lastQuoteAt)>=(p.resolvedAt||p.lastQuoteAt))
+    early.set(r.id,r);
   }
-  if(!p||grade(r)>grade(p)||grade(r)===grade(p)&&
-    (r.resolvedAt||r.lastQuoteAt)>=(p.resolvedAt||p.lastQuoteAt))
-   early.set(r.id,r);
- }
+  return [...early.values()];
+ };
  return cleanScalpResearch({schema:1,savedAt:now,
-  records:[...merged.values()],earlyObservations:[...early.values()]},now);
+  records:[...merged.values()],
+  earlyObservations:mergeLane(old.earlyObservations,fresh.earlyObservations),
+  goldEarlyObservations:mergeLane(old.goldEarlyObservations,fresh.goldEarlyObservations)},now);
 }
 export function restoredScalpResearch(input,asset,now=Date.now()){
  if(!assets.includes(asset))throw Error('Invalid asset for restore');
@@ -158,5 +165,16 @@ export function restoredBtcEarlyForward(input,now=Date.now()){
      resolvedAt:now,reason:'UNOBSERVED_RENDER_RESTART'}:r)
   .sort((a,b)=>b.startedAt-a.startedAt).slice(0,360);
  return {version:1,lanes:{BTC_EARLY_M1:{active:null,
+  history:records,seen:records.map(x=>x.id)}}};
+}
+
+/** Gold scorecard is independent: no old OPEN observation can be graded
+ * after Render has slept and resumed on a different instance. */
+export function restoredGoldEarlyForward(input,now=Date.now()){
+ const records=cleanScalpResearch(input,now).goldEarlyObservations
+  .map(r=>r.result==='OPEN'?{...r,result:'UNKNOWN',
+     resolvedAt:now,reason:'UNOBSERVED_RENDER_RESTART'}:r)
+  .sort((a,b)=>b.startedAt-a.startedAt).slice(0,360);
+ return {version:1,lanes:{GOLD_EARLY_M1:{active:null,
   history:records,seen:records.map(x=>x.id)}}};
 }
