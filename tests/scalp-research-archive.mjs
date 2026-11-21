@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {cleanScalpResearch,mergeScalpResearch,
- restoredScalpResearch,restoredBtcEarlyForward} from '../scripts/scalp-research-archive.mjs';
+ restoredScalpResearch,restoredBtcEarlyForward,restoredGoldEarlyForward} from '../scripts/scalp-research-archive.mjs';
 const now=Date.parse('2026-11-21T12:00:00Z'),issuedAt=now-120000;
 const good={asset:'BTC',id:issuedAt,issuedAt,side:'BUY',state:'QUICK_TP',
  note:'paper-only',chartSource:'Kraken XBT/USD · fresh-candle fallback',
@@ -92,5 +92,47 @@ assert.throws(()=>cleanScalpResearch({...envelope([]),
 assert.match(boot,/restoredBtcEarlyForward\(archive\)/);
 assert.match(endpoint,/exportBtcEarlyForwardObservations\(\)/);
 console.log('PASS: BTC early lead forward cohort archived, frozen source/timing, late outcome UNKNOWN and no revived orders');
+
+// GOLD and BTC forward early cohorts must NEVER share a lane or market
+// source, even when their observation IDs happen to have the same timestamp.
+const goldEarly={...early,id:'GOLD_M1_'+issuedAt+'_SELL_Exness',
+ lane:'GOLD_EARLY_M1',side:'SELL',source:'Exness/MT5 · XAUUSDm',
+ setup:'SWEEP_RECLAIM',baselineSide:'BUY',startPrice:3000,
+ threshold:.40,maxFavorable:.8,maxAdverse:.08};
+const both={...earlyPacket,goldEarlyObservations:[goldEarly]};
+const cleanedBoth=cleanScalpResearch(both,now);
+assert.equal(cleanedBoth.earlyObservations.length,1);
+assert.equal(cleanedBoth.goldEarlyObservations.length,1);
+assert.equal(cleanedBoth.goldEarlyObservations[0].source,'Exness/MT5 · XAUUSDm');
+const goldBoot=restoredGoldEarlyForward(both,now);
+assert.equal(goldBoot.lanes.GOLD_EARLY_M1.history[0].result,'FAVORABLE_FIRST');
+assert.equal(goldBoot.lanes.GOLD_EARLY_M1.history[0].baselineSide,'BUY');
+assert.equal(goldBoot.lanes.GOLD_EARLY_M1.active,null);
+const goldOldOpen={...goldEarly,result:'OPEN',resolvedAt:null,
+ maxFavorable:0,maxAdverse:0,lastQuoteAt:issuedAt};
+const goldReboot=restoredGoldEarlyForward({...envelope([]),
+ goldEarlyObservations:[goldOldOpen]},now);
+assert.equal(goldReboot.lanes.GOLD_EARLY_M1.history[0].result,'UNKNOWN');
+assert.equal(goldReboot.lanes.GOLD_EARLY_M1.active,null);
+assert.equal(goldReboot.lanes.GOLD_EARLY_M1.history[0].reason,
+ 'UNOBSERVED_RENDER_RESTART');
+const bothMerged=mergeScalpResearch(both,{...envelope([]),
+ earlyObservations:[openEarly],goldEarlyObservations:[goldOldOpen]},now);
+assert.equal(bothMerged.earlyObservations[0].result,'FAVORABLE_FIRST');
+assert.equal(bothMerged.goldEarlyObservations[0].result,'FAVORABLE_FIRST');
+assert.equal(bothMerged.goldEarlyObservations[0].baselineSide,'BUY');
+const mismatchedGold=mergeScalpResearch(both,{...envelope([]),
+ goldEarlyObservations:[{...goldEarly,source:'Biquote · MT5 XAUUSD'}]},now);
+assert.equal(mismatchedGold.goldEarlyObservations[0].result,'UNKNOWN');
+const baselineChange=mergeScalpResearch(both,{...envelope([]),
+ goldEarlyObservations:[{...goldEarly,baselineSide:'SELL'}]},now);
+assert.equal(baselineChange.goldEarlyObservations[0].result,'UNKNOWN',
+ 'Changing a frozen benchmark after a winner must never count as a win');
+assert.throws(()=>cleanScalpResearch({...envelope([]),
+ goldEarlyObservations:[{...goldEarly,lane:'BTC_EARLY_M1'}]},now));
+assert.match(endpoint,/exportGoldEarlyForwardObservations\(\)/);
+assert.match(boot,/restoredGoldEarlyForward\(archive\)/);
+assert.match(checkpoint,/live\.goldEarlyObservations\.length/);
+console.log('PASS: Exness GOLD and BTC M1 frozen forward proof, independent historical cohorts, restart unknown and tamper-safe benchmarks');
 
 console.log('PASS: BTC/GOLD M1 checkpoint validation, no venue contamination, no replayed LIMITs or fabricated success, read-only archive API');
