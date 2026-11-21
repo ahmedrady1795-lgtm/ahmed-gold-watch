@@ -22,6 +22,7 @@ jobs:
       - run: npm ci
       - run: node tests/flow-profile-decision.cjs
       - run: node tests/btc-liquidity-executed-flow.cjs
+      - run: node tests/scalp-research-archive.mjs
       - run: node tests/market-lead-ai.cjs
       - run: node tests/gold-source-continuity.cjs
       - run: npm run build
