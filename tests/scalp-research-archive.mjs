@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {cleanScalpResearch,mergeScalpResearch,
- restoredScalpResearch} from '../scripts/scalp-research-archive.mjs';
+ restoredScalpResearch,restoredBtcEarlyForward} from '../scripts/scalp-research-archive.mjs';
 const now=Date.parse('2026-11-21T12:00:00Z'),issuedAt=now-120000;
 const good={asset:'BTC',id:issuedAt,issuedAt,side:'BUY',state:'QUICK_TP',
  note:'paper-only',chartSource:'Kraken XBT/USD · fresh-candle fallback',
@@ -51,4 +51,45 @@ assert.match(boot,/before|BEFORE/);
 assert.match(endpoint,/exportEveryM1Research\(\)/);
 assert.match(checkpoint,/mergeScalpResearch\(previous,live\)/);
 assert.doesNotMatch(checkpoint,/placeOrder|OrderSend|MT5_EXECUTE/);
+// Independent early-flow audit is forward quote-only, never a paper LIMIT
+// exit or an Exness trade; no reboot may revive an old watcher as ACTIVE.
+const early={
+ id:'BTC_M1_'+issuedAt+'_BUY',lane:'BTC_EARLY_M1',side:'BUY',
+ score:76,setup:'SWEEP_RECLAIM',status:'WATCH',source:'Kraken XBT/USD',
+ startedAt:issuedAt,lastQuoteAt:issuedAt+3000,expiresAt:issuedAt+60000,
+ startPrice:100,threshold:.25,maxFavorable:.31,maxAdverse:.05,
+ result:'FAVORABLE_FIRST',resolvedAt:issuedAt+3000,reason:'FORWARD_MOVE_OBSERVED'
+};
+const earlyPacket={...envelope([good]),earlyObservations:[early]};
+assert.equal(cleanScalpResearch(earlyPacket,now).earlyObservations.length,1);
+const earlyBoot=restoredBtcEarlyForward(earlyPacket,now);
+assert.equal(earlyBoot.lanes.BTC_EARLY_M1.history[0].result,'FAVORABLE_FIRST');
+assert.equal(earlyBoot.lanes.BTC_EARLY_M1.active,null);
+const openEarly={...early,result:'OPEN',resolvedAt:null,maxFavorable:0,
+ maxAdverse:0,lastQuoteAt:issuedAt};
+const rebootOpen=restoredBtcEarlyForward({...envelope([]),earlyObservations:[openEarly]},now)
+ .lanes.BTC_EARLY_M1;
+assert.equal(rebootOpen.history[0].result,'UNKNOWN');
+assert.equal(rebootOpen.history[0].reason,'UNOBSERVED_RENDER_RESTART');
+assert.equal(rebootOpen.active,null);
+const earlyMerged=mergeScalpResearch(earlyPacket,
+ {...envelope([]),earlyObservations:[openEarly]},now);
+assert.equal(earlyMerged.earlyObservations[0].result,'FAVORABLE_FIRST',
+ 'a healthy old forward observation cannot be erased by a new boot');
+const venueConflict=mergeScalpResearch(earlyPacket,
+ {...envelope([]),earlyObservations:[{...early,source:'Coinbase BTC-USD'}]},now);
+assert.equal(venueConflict.earlyObservations[0].result,'UNKNOWN',
+ 'different venues cannot combine into an apparent early BUY win');
+const afterExpiry=cleanScalpResearch({...envelope([]),earlyObservations:[
+ {...early,resolvedAt:early.expiresAt+1000}]},now);
+assert.equal(afterExpiry.earlyObservations[0].result,'UNKNOWN',
+ 'late first-touch cannot prove a win on the closed 60-second window');
+assert.throws(()=>cleanScalpResearch({...envelope([]),
+ earlyObservations:[early,early]},now),/Duplicate BTC/);
+assert.throws(()=>cleanScalpResearch({...envelope([]),
+ earlyObservations:[{...early,lane:'GOLD_EARLY_M1'}]},now),/Invalid BTC/);
+assert.match(boot,/restoredBtcEarlyForward\(archive\)/);
+assert.match(endpoint,/exportBtcEarlyForwardObservations\(\)/);
+console.log('PASS: BTC early lead forward cohort archived, frozen source/timing, late outcome UNKNOWN and no revived orders');
+
 console.log('PASS: BTC/GOLD M1 checkpoint validation, no venue contamination, no replayed LIMITs or fabricated success, read-only archive API');
