@@ -34,6 +34,25 @@ assert.ok(earlyWatch,'55–69 point technical WATCH must be measured as early di
 assert.equal(earlyWatch.status,'WATCH','early WATCH is not a qualified entry');
 const earlyObserved=advance(earlyWatch,quote(98.7,3000),at(3100));
 assert.equal(earlyObserved.result,'FAVORABLE_FIRST');
+// BTC only: prospective baseline is frozen from LAST CLOSED minute, not
+// recomputed after the future price outcome.
+const btcFirst=start('BTC_EARLY_M1',{
+ ...candidate('btc-early-1','BUY'),baselineSide:'SELL',
+ setup:'SWEEP_RECLAIM'},quote(100,0,'Kraken XBT/USD'),at(100));
+const btcObserved=advance(btcFirst,quote(101.5,3000,'Kraken XBT/USD'),at(3100));
+assert.equal(btcObserved.result,'FAVORABLE_FIRST');
+const btcComparison=summary([btcObserved],null).earlyBtc;
+assert.equal(btcComparison.pairedN,1);
+assert.equal(btcComparison.modelHits,1);
+assert.equal(btcComparison.baselineHits,0);
+assert.equal(btcComparison.status,'COLLECTING');
+const btcNoBaseline=start('BTC_EARLY_M1',{
+ ...candidate('btc-early-2','SELL'),baselineSide:null},
+ quote(100,0,'Kraken XBT/USD'),at(100));
+const btcUnknownBaseline=advance(btcNoBaseline,
+ quote(98.5,3000,'Kraken XBT/USD'),at(3100));
+assert.equal(summary([btcObserved,btcUnknownBaseline],null).earlyBtc.pairedN,1,
+ 'Doji/no completed baseline cannot be graded against an invented comparator');
 const earlySummary=summary([earlyObserved],null);
 assert.equal(earlySummary.earlyWatchCohort.total,1);
 assert.equal(earlySummary.earlyWatchCohort.favorable,1);
