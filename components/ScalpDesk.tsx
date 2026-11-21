@@ -118,7 +118,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
         <small>لا يوجد تنفيذ حتى لمس Ask للشراء أو Bid للبيع؛ ممنوع التنفيذ بسعر السوق. ورقي فقط.</small>
       </div>}
       {earlyVisible&&!stale&&<div className="scalp-early-watch"
-        aria-label="رصد سيولة تنفيذية مبكر للبيتكوين · ليس إشارة دخول"
+        aria-label="رصد مبكر لسيولة الذهب أو البيتكوين · ليس إشارة دخول"
         style={{marginTop:10,padding:11,border:'1px solid var(--border, rgba(160,165,180,.25))',borderRadius:10}}>
         <strong>{desk?.asset==='GOLD'?'رادار الذهب المبكر':'رادار سيولة BTC المبكر'} · {sideAr(earlySide)} · {
           early.status==='ENTRY_CANDIDATE'?'LIMIT ورقي مشروط':
@@ -150,7 +150,7 @@ export default function ScalpDesk({desk,now=Date.now()}:any){
             ' · المرجع '+fmt((desk?.asset==='GOLD'?
               desk.earlyExecutionAudit.earlyGold:desk.earlyExecutionAudit.earlyBtc)?.baselineObservedPct,1)+'%':''}
           {' · '}ليس نسبة ربح صفقات
-        </small>
+        </small>}
       </div>}
       {technicalWatch&&!limitPending&&!confirmed&&<div className="scalp-early-watch"
         aria-label="مستويات مراقبة الحركة قبل الدخول"
