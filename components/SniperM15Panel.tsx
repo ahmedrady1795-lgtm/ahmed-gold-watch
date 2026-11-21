@@ -15,6 +15,7 @@ import {observeSniperOrderFlow} from '../lib/sniper-order-flow-observation';
 import SniperOrderFlowStrip from './SniperOrderFlowStrip';
 import {auditM15HuntDirection} from '../lib/sniper-m15-hunt-proof';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
+import {chartM5EarlyCue} from '../lib/sniper-m5-early-cue';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
 import SniperM15PreMoveConsole from './SniperM15PreMoveConsole';
 import SniperScenarioHero from './SniperScenarioHero';
@@ -616,6 +617,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    {...preOpen,proxy:preOpen.proxy}:null,[preOpen,forecastScope]);
  const paxgComparison=usePaxgComparison(asset==='GOLD'?forecastScope:'',trial,realM5);
  const earlyOpportunity=useMemo(()=>earlySetupOpportunity(trackedSetup),[trackedSetup]);
+ // Independent, read-only M1/M5 early hypothesis; not vetoed by weak M15.
+ const m5Cue=useMemo(()=>chartM5EarlyCue({now,price,marketOpen,
+   priceFresh:Boolean(m.sniper.view.priceFresh),providerTransition,
+   preMove,opportunity:liveOpportunity,lean:candleLean,
+   m5Follow:closedM5Context
+ }),[now,price,marketOpen,m.sniper.view.priceFresh,providerTransition,
+   preMove,liveOpportunity,candleLean,closedM5Context]);
+ const cuePrebreak=m5Cue.stage==='PREBREAK';
+ const cueVisible=m5Cue.side!=='WAIT'&&!['OFFLINE','NONE','LATE'].includes(m5Cue.stage);
  // Show the closed-M1 directional hypothesis as WATCH when no pre-break
  // setup was armed; never promote it into an execution-worthy BUY/SELL.
  const hasDirectionalWatch=earlyOpportunity.side==='WAIT'&&
@@ -683,11 +693,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const hasEarlySignal=earlyOpportunity.phase==='BREAK_CONFIRMED';
  // All default analysis appears on the chart. Full explanations are available
  // in an optional closed drawer, not in multi-line blocks above the candles.
- const drawingSide=showZoneObservation?'WAIT':
+ const drawingSide=cuePrebreak?m5Cue.side:showZoneObservation?'WAIT':
    showPreparation||showCrossTest||showRejected||hasEarlySignal?
-   trackedSetup?.side??'WAIT':hasDirectionalWatch?candleLean.side:
+   trackedSetup?.side??'WAIT':cueVisible?m5Cue.side:
+   hasDirectionalWatch?candleLean.side:
    hasM5Fallback?closedM5Context.side:'WAIT';
- const drawingLabel=showZoneObservation?
+ const drawingLabel=cuePrebreak?m5Cue.headline:showZoneObservation?
    (trackedSetup?.side==='BUY'?'دعم · مراقبة':'مقاومة · مراقبة'):
    showPreparation?(drawingSide==='BUY'?'ترقب صعود':'ترقب هبوط'):
    showCrossTest?(drawingSide==='BUY'?'اختبار صعود':'اختبار هبوط'):
@@ -695,6 +706,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    hasEarlySignal?(earlyOpportunity.quality==='SETUP'?
      (drawingSide==='BUY'?'شراء':'بيع'):
      (drawingSide==='BUY'?'↗ رصد':'↘ رصد')):
+   cueVisible?m5Cue.headline:
    hasDirectionalWatch?(watchIsReversal?
      (drawingSide==='BUY'?'↗ انعكاس؟':'↘ انعكاس؟'):
      watchAgainstM15?(drawingSide==='BUY'?'↗ ارتداد':'↘ ارتداد'):
@@ -706,10 +718,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Qualitative evidence checklist, not a predicted success rate.
  // The checklist score is kept in the tooltip; it is NOT win probability.
  // Plain BUY/SELL appears only after a genuinely qualified confirmation.
- const passiveWatch=!showZoneObservation&&!showRejected&&(hasDirectionalWatch||hasM5Fallback);
+ const passiveWatch=cueVisible||(!showZoneObservation&&!showRejected&&(hasDirectionalWatch||hasM5Fallback));
  const markerPrice=hasEarlySignal?currentSignalPrice:earlyOpportunity.trigger;
- const drawingBadge=passiveWatch?'مراقبة · لا توجد إشارة دخول':drawingLabel;
- const drawingReason=showZoneObservation?
+ const drawingBadge=passiveWatch?
+   (drawingSide==='BUY'?'↗ '+(cuePrebreak?'ترقب شراء قبل الكسر':'رصد صعود')+' · ليس دخولًا':
+    drawingSide==='SELL'?'↘ '+(cuePrebreak?'ترقب بيع قبل الكسر':'رصد هبوط')+' · ليس دخولًا':
+    'مراقبة · لا توجد إشارة دخول'):drawingLabel;
+ const drawingReason=cuePrebreak?m5Cue.detail+
+   ' · تفعيل '+n(m5Cue.trigger)+' · إبطال '+n(m5Cue.invalidation):
+   cueVisible?m5Cue.detail:showZoneObservation?
    (trackedSetup?.reason||'')+' · مستوى مراقبة فقط؛ لا توجد إشارة شراء/بيع مؤهلة':
    showPreparation||showCrossTest||showRejected||hasEarlySignal?
    (trackedSetup?.reason||'إعداد غير متاح'):
@@ -720,7 +737,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    marketOpen&&m.sniper.view.priceFresh&&!providerTransition?
      candleLean.reason+' · '+closedM5Context.reason:
    earlyOpportunity.reason;
- const drawingColor=passiveWatch?'#aebbc8':showZoneObservation?'#ebd08d':
+ const drawingColor=passiveWatch&&drawingSide==='WAIT'?'#aebbc8':
+   showZoneObservation&&!cuePrebreak?'#ebd08d':
    drawingSide==='BUY'?'#64e8b2':
    drawingSide==='SELL'?'#fa92a4':'#ebd08d';
  const rawIssuance=assessM15ScenarioIssuance({
