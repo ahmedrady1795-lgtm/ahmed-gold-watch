@@ -9,7 +9,7 @@ RUN node tests/scalp-research-archive.mjs
 RUN node tests/scalp-early-execution.cjs
 RUN node tests/btc-quote-coherence.cjs
 RUN node tests/gold-early-execution.cjs
-RUN node tests/sniper-m5-visible-prebreak.cjs
+RUN node tests/market-lead-ai.cjs && node tests/sniper-m5-visible-prebreak.cjs
 RUN node tests/sniper-m1-reclaim-watch.cjs
 RUN node tests/ai-health-recovery.cjs
 RUN node tests/flow-profile-decision.cjs && node tests/sniper-order-flow-observation.cjs
