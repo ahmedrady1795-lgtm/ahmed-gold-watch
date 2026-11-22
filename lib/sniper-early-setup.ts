@@ -262,8 +262,22 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  // Trend pullback: a completed impulse, followed by two contracting candles
  // against it, holding the impulse origin. Arm the LOCAL resumption edge,
  // before it breaks, rather than waiting for the entire old swing to break.
- // M15 or actual same-venue flow supplies context; price momentum alone does not.
- const context=flowSide!=='WAIT'?flowSide:(input.m15Side??'WAIT');
+ // A neutral M15 or temporarily absent executed tape does not veto a
+ // causal, CLOSED-M1 trend. A separate two-bar counter-move, unbroken nearby
+ // trigger and the existing risk/target gates still have to qualify.
+ // An actually opposing M15 or same-venue flow always takes precedence.
+ const lead=bars.slice(-10,-2);
+ const leadNet=lead.at(-1)!.close-lead[0].open;
+ const leadUp=lead.filter(b=>b.close>b.open+atr*.10).length;
+ const leadDown=lead.filter(b=>b.open>b.close+atr*.10).length;
+ const localTrend:'BUY'|'SELL'|'WAIT'=leadNet>=atr*1.05&&leadUp>=4&&leadDown<=2?'BUY':
+   leadNet<=-atr*1.05&&leadDown>=4&&leadUp<=2?'SELL':'WAIT';
+ const m15Direction=input.m15Side??'WAIT';
+ const localAvailable=flowSide==='WAIT'&&m15Direction==='WAIT'&&
+   (input.m1Side==='WAIT'||input.m1Side==null||input.m1Side===localTrend);
+ const context=flowSide!=='WAIT'?flowSide:
+   m15Direction!=='WAIT'?m15Direction:
+   localAvailable?localTrend:'WAIT';
  if(!side&&context!=='WAIT'){
    const impulse=bars.slice(-6,-2),pause=bars.slice(-2);
    const sign=context==='BUY'?1:-1;
@@ -759,7 +773,13 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    opposedBodies>=2&&sameBodies<=1?-1:0;
  if(candlePressureVote>0)reason+=' · ضغط إغلاقات M1 يؤيد الاتجاه';
  if(candlePressureVote<0)reason+=' · ضغط إغلاقات M1 يعاكس الترصد';
+ const localContinuation=setupKind==='PULLBACK'&&context===localTrend&&
+   localTrend!=='WAIT'&&m15Direction==='WAIT'&&flowSide==='WAIT'&&
+   (input.m1Side==null||input.m1Side==='WAIT'||input.m1Side===side);
  const priceEvidenceScore=Math.max(0,Math.min(10,2+
+   // Prior closed impulse + distinct counter-bars is one technical vote,
+   // never a synthetic exchange-flow vote or claimed win probability.
+   (localContinuation?1:0)+
    (shortHeight>0&&shortHeight<=atr*1.65?1:0)+
    (Math.abs(trigger-price)<=atr*.65?1:0)+
    (directionalClose?1:0)+
@@ -782,8 +802,12 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  const evidenceScore=Math.max(0,Math.min(10,
    priceEvidenceScore+newsAdjustment+regimeAdjustment+
    agreementAdjustment+conflictAdjustment));
- const localStructureAligned=input.m1Side===side&&priceEvidenceScore>=6&&
-   ['PULLBACK','RECLAIM','COMPRESSION','PROFILE','STRUCTURE'].includes(setupKind);
+ const localStructureAligned=
+   input.m1Side===side&&priceEvidenceScore>=6&&
+     ['PULLBACK','RECLAIM','COMPRESSION','PROFILE','STRUCTURE'].includes(setupKind)||
+   // Existing two-quote activation and target/risk checks remain mandatory.
+   localContinuation&&priceEvidenceScore>=4&&!selectionConflict;
+ if(localContinuation)reason+=' · استكمال اتجاه M1 بعد تصحيح مغلق؛ M15 محايد، رصد فني وليس تدفقًا منفذًا';
  if(contextFresh)reason+=' · '+ctx!.reason;
  reason+=' · أدلة '+evidenceScore+'/10 (ليست نسبة نجاح)';
  const remaining=side==='BUY'?trigger-price:price-trigger;
