@@ -78,7 +78,7 @@ for(const split of [180,200]){
  assert.match(markup,/<circle cx="75" cy="101.25"/,'confirmation stays at issued coordinates');
  const dot=markup.match(/<g[^>]*data-kind="FOLLOW"[^>]*>(.*?)<\/g>/s)?.[1];
  assert.ok(dot,'keep the original M5 history');
- assert.match(dot,/fill="#96a3b5"/);
+ assert.match(dot,/fill="#64e8b2"/,'recent BUY observation gets a distinct direction color');
  assert.match(dot,/رصد شراء/,'recent M5 observation needs a visible directional caption');
  assert.match(dot,/data-role="m5-observation-label"/,'M5 watch is not a qualified entry');
 }
