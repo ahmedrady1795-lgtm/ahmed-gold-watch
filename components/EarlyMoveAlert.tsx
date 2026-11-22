@@ -13,7 +13,7 @@ type Lead={
 };
 type LastAlert={side:'BUY'|'SELL';at:number;score:number};
 
-export default function EarlyMoveAlert({now,marketOpen=true}:{now:number;marketOpen?:boolean}){
+export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:number;marketOpen?:boolean;asset?:'GOLD'|'BTC'}){
   const [lead,setLead]=useState<Lead|null>(null);
   const [connected,setConnected]=useState(false);
   const [last,setLast]=useState<LastAlert|null>(null);
@@ -22,18 +22,17 @@ export default function EarlyMoveAlert({now,marketOpen=true}:{now:number;marketO
   const sent=useRef<{side:string;at:number}>({side:'',at:0});
 
   useEffect(()=>{
-    if(!marketOpen){setConnected(false);setLead(null);return;}
+    setConnected(false);setLead(null);setLast(null);
+    sent.current={side:'',at:0};
+    if(!marketOpen)return;
     let closed=false;
-    const source=new EventSource('/api/market-lead/stream');
-    const onLead=(event:MessageEvent)=>{
-      if(closed)return;
+    const onReading=(next:Lead)=>{
+      if(closed||next.asset!==asset)return;
       try{
-        const next:Lead=JSON.parse(String(event.data));
-        if(next.asset!=='GOLD')return;
         setLead(next);setConnected(true);
         const t=Date.now(),sourceAt=Number(next.sourceAt||0);
         const verified=next.armed===true&&next.stage==='ARMED'&&
-          next.mode==='DOM'&&(next.side==='BUY'||next.side==='SELL')&&
+          next.mode===(asset==='GOLD'?'DOM':'CROSS_EXCHANGE')&&(next.side==='BUY'||next.side==='SELL')&&
           sourceAt>0&&sourceAt<=t+1500&&t-sourceAt<=5000;
         if(!verified)return;
         const side=next.side as 'BUY'|'SELL';
@@ -44,13 +43,37 @@ export default function EarlyMoveAlert({now,marketOpen=true}:{now:number;marketO
         if(notifyRef.current&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
           try{
             new Notification(side==='BUY'?'القناص · تنبيه شراء مبكر':'القناص · تنبيه بيع مبكر',{
-              body:'ضغط DOM وسيط موثّق قبل تسارع السعر. راجع مستوى الدخول؛ ليست صفقة مضمونة.',
-              tag:'gold-verified-premove'
+              body:asset==='GOLD'?'ضغط DOM وسيط قبل تسارع السعر؛ ليست صفقة مضمونة.':'ضغط سيولة متعدد المنصات قبل تسارع السعر؛ ليس أمر دخول.',
+              tag:asset.toLowerCase()+'-verified-premove'
             });
           }catch{}
         }
       }catch{}
     };
+    // BTC already has a validated exchange liquidity endpoint. Poll only while
+    // the panel is visible, with no overlapping or hidden-tab requests.
+    if(asset==='BTC'){
+      let timer:ReturnType<typeof setTimeout>|undefined;
+      let request:AbortController|undefined;
+      const poll=async()=>{
+        if(closed)return;
+        if(!document.hidden){
+          request=new AbortController();
+          const timeout=setTimeout(()=>request?.abort(),8000);
+          try{
+            const response=await fetch('/api/market-lead?asset=BTC',{cache:'no-store',signal:request.signal});
+            if(!response.ok)throw Error('BTC lead HTTP '+response.status);
+            onReading(await response.json());
+          }catch{if(!closed)setConnected(false);}
+          finally{clearTimeout(timeout);request=undefined;}
+        }else setConnected(false);
+        if(!closed)timer=setTimeout(()=>{void poll();},4000);
+      };
+      void poll();
+      return()=>{closed=true;clearTimeout(timer);request?.abort();};
+    }
+    const source=new EventSource('/api/market-lead/stream');
+    const onLead=(event:MessageEvent)=>{try{onReading(JSON.parse(String(event.data)));}catch{}};
     source.addEventListener('lead',onLead as EventListener);
     source.onerror=()=>{if(!closed)setConnected(false);};
     return()=>{
@@ -58,7 +81,7 @@ export default function EarlyMoveAlert({now,marketOpen=true}:{now:number;marketO
       source.removeEventListener('lead',onLead as EventListener);
       source.close();
     };
-  },[marketOpen]);
+  },[marketOpen,asset]);
 
   const activate=async()=>{
     if(typeof Notification==='undefined')return;
@@ -69,8 +92,8 @@ export default function EarlyMoveAlert({now,marketOpen=true}:{now:number;marketO
     }catch{notifyRef.current=false;setNotifications(false);}
   };
   const sourceAt=Number(lead?.sourceAt||0);
-  const fresh=Boolean(marketOpen&&connected&&sourceAt>0&&sourceAt<=now+1500&&now-sourceAt<=5000);
-  const armed=Boolean(fresh&&lead?.armed===true&&lead?.stage==='ARMED'&&lead?.mode==='DOM'&&
+  const fresh=Boolean(lead?.asset===asset&&marketOpen&&connected&&sourceAt>0&&sourceAt<=now+1500&&now-sourceAt<=5000);
+  const armed=Boolean(fresh&&lead?.armed===true&&lead?.stage==='ARMED'&&lead?.mode===(asset==='GOLD'?'DOM':'CROSS_EXCHANGE')&&
     (lead?.side==='BUY'||lead?.side==='SELL'));
   const building=Boolean(fresh&&lead?.stage==='BUILDING');
   const direction=lead?.side==='BUY'?'شراء':lead?.side==='SELL'?'بيع':'';
@@ -84,6 +107,15 @@ export default function EarlyMoveAlert({now,marketOpen=true}:{now:number;marketO
     building?'حركة سعر فقط؛ بدون تأكيد من دفتر أوامر حقيقي':
     !fresh?'لا توجد قراءة ميكروهيكل حديثة وموثوقة':
     'لا يوجد اتجاه مبكر مؤهل حاليًا';
+  // Keep BTC compact and explicit: the cross-exchange read is not the
+  // chart venue's execution feed and is not a qualified trade.
+  if(asset==='BTC')return <section dir="rtl" role={armed?'alert':'status'}
+    aria-label="رادار البيتكوين المبكر" title={lead?.reason||'بانتظار قراءة حديثة'}
+    style={{padding:'4px 9px',fontSize:12,color:armed||building?(lead?.side==='BUY'?'#6cdeb1':'#f39ba6'):'#aebbc8'}}>
+    <strong>{armed?'تنبيه مبكر '+direction:building?'ضغط مبكر '+direction:title}</strong>
+    {' · '+(fresh?'سيولة متعددة المنصات · ليس دخولًا':'المصدر غير حديث')}
+    {last&&now-last.at<180000&&<small>{' · آخر تنبيه '+(last.side==='BUY'?'شراء':'بيع')+' '+new Date(last.at).toLocaleTimeString('ar-EG')}</small>}
+  </section>;
   const tint=armed?(lead?.side==='BUY'?'#6cdeb1':'#f39ba6'):'#b7c9d8';
   return <section dir="rtl" aria-label="تنبيه القناص قبل الحركة" role={armed?'alert':'status'}
     style={{margin:'6px 0 10px',padding:'8px 11px',border:'1px solid rgba(132,165,191,.25)',
