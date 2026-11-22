@@ -4,7 +4,7 @@ const moduleRef={exports:{}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/market-lead-ai.ts','utf8'),{
   compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
 }).outputText,{module:moduleRef,exports:moduleRef.exports},{filename:'market-lead-ai.ts'});
-const {updateGoldMarketLead:update,getMarketLead}=moduleRef.exports;
+const {updateGoldMarketLead:update,updateBtcMarketLead:btc,getMarketLead}=moduleRef.exports;
 const at=Date.parse('2026-11-20T12:00:00Z');
 const fast=(stamp,dom=true,velocity=.02)=>({
   ok:true,side:'BUY',stage:'PRE_TRIGGER',score:85,confidence:85,
@@ -51,3 +51,23 @@ assert.equal(v.armed,false,'Price-tick proxy must never arm GOLD alert');
 assert.equal(v.metrics.bookImbalance,0,'Biquote tick proxy is not DOM');
 assert.equal(v.metrics.flowDelta,0,'No fabricated aggressive flow');
 console.log('PASS: Render verified DOM early alert and stale/no-DOM safety');
+
+// A cached BTC lead must not survive an unavailable/future data snapshot.
+for(const [side,sign,stamp] of [['BUY',1,at+70000],['SELL',-1,at+110000]]){
+ const sample=t=>({ok:true,checkedAt:t,quality:96,side,book:{weightedImbalance:40*sign},
+  dynamics:{pressureChange:30*sign,bidDepthChangePct:24*sign,askDepthChangePct:-24*sign,acceleration:20*sign},
+  flow:{deltaPct:70*sign,priceChangeBps:.5*sign,tradeCount:50},absorption:{side,score:85,trapDetected:true}});
+ assert.equal(btc(sample(stamp),stamp+100).armed,false);
+ const armed=btc(sample(stamp+2000),stamp+2100);
+ assert.equal(armed.stage,'ARMED');assert.equal(armed.side,side);
+ assert.equal(btc(null,stamp+2200).stage,'OFFLINE');
+ assert.equal(getMarketLead('BTC',stamp+2200).armed,false);
+ assert.equal(btc(sample(stamp+3000),stamp+3100).armed,false,'reset on BTC feed loss');
+ assert.equal(btc(sample(stamp+20000),stamp+3200).stage,'OFFLINE');
+}
+const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
+const alert=fs.readFileSync('components/EarlyMoveAlert.tsx','utf8');
+assert.match(panel,/<EarlyMoveAlert key=\{asset\} asset=\{asset\}/);
+assert.match(alert,/fetch\('\/api\/market-lead\?asset=BTC'/);
+assert.match(alert,/if\(!document.hidden\)/);
+console.log('PASS: BTC mirrored fresh alerts, disconnect resets and active chart wiring');
