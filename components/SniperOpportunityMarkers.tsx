@@ -81,6 +81,17 @@ export default function SniperOpportunityMarkers(p:Props){
  const markerX=confirmed&&s.sourceAt!=null?p.timeX(s.sourceAt):p.split;
  const active=['PREPARE','TESTING','BREAK_CONFIRMED'].includes(s.phase)&&
    (s.side==='BUY'||s.side==='SELL')&&markerPrice!=null&&visible(markerPrice);
+ // A conditional pre-break trading PLAN needs a frozen stop and a real
+ // previously observed target with at least 1:1 room. It is NOT an executed
+ // trade. Keep weak/no-target M1 predictions as ordinary WATCH.
+ const sign=s.side==='BUY'?1:-1;
+ const planRisk=s.trigger!=null&&s.invalidation!=null?
+   sign*(s.trigger-s.invalidation):0;
+ const planRoom=s.trigger!=null&&s.targets.length?
+   sign*(s.targets[0]-s.trigger):0;
+ const conditionalPlan=s.phase==='PREPARE'&&s.strength>=40&&
+   s.quality!=='COUNTERTREND'&&s.m15Context!=='OPPOSED'&&
+   planRisk>0&&planRoom>=planRisk&&markerPrice!=null;
  // The current setup owns a small lane beside the live candle. Keep every
  // older price dot and timestamp, but do not print contradictory-looking
  // historic M5 captions right on top of today's actionable watch.
@@ -242,6 +253,7 @@ export default function SniperOpportunityMarkers(p:Props){
      const label=confirmed?(s.quality==='SETUP'?(buy?'شراء':'بيع'):
        (buy?'↗ رصد':'↘ رصد')):
        s.phase==='TESTING'?(buy?'اختبار صعود':'اختبار هبوط'):
+       conditionalPlan?(buy?'شراء مشروط':'بيع مشروط'):
        (buy?'ترقب صعود':'ترقب هبوط');
      return <g data-phase={s.phase} aria-label={label+' عند '+markerPrice!.toFixed(2)}>
        <title>{s.reason+' · المستوى '+markerPrice!.toFixed(2)+
