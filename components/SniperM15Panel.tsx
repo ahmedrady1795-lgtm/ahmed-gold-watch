@@ -717,6 +717,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // All default analysis appears on the chart. Full explanations are available
  // in an optional closed drawer, not in multi-line blocks above the candles.
  const mainSetup=showPreparation||showCrossTest||showRejected||hasEarlySignal;
+ // An older setup must not hide a distinct, still-before-trigger M1/M5 cue.
+ const distinctPrebreak=cuePrebreak&&(!mainSetup||
+   m5Cue.side!==earlyOpportunity.side||m5Cue.trigger!==earlyOpportunity.trigger||
+   showRejected);
  const drawingSide=mainSetup?trackedSetup?.side??'WAIT':
    cuePrebreak?m5Cue.side:showZoneObservation?'WAIT':
    cueVisible?m5Cue.side:
@@ -1112,7 +1116,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        title="مناطق سيولة القمم والقيعان، الطلب والعرض والارتداد أو الرفض بعد إغلاق M15">
        {showLiquidity?'المناطق ✓':'المناطق'}</button>
    </header>
-   {asset==='GOLD'&&<EarlyMoveAlert now={now} marketOpen={marketOpen}/>}
+   <EarlyMoveAlert key={asset} asset={asset} now={now} marketOpen={marketOpen}/>
    <>
    
    <details className="sniper-hunt-advanced">
@@ -1591,7 +1595,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        })}
        {/* Closed-bar prebreak cue is separate from both M15 dual paths.
             It stays on a true price coordinate and never simulates TP. */}
-       {cuePrebreak&&!mainSetup&&m5Cue.trigger!=null&&m5Cue.invalidation!=null&&
+       {distinctPrebreak&&m5Cue.trigger!=null&&m5Cue.invalidation!=null&&
          m5Cue.trigger>=lo&&m5Cue.trigger<=hi&&
          <g className="sniper-m5-prebreak-cue"
            data-m5-prebreak-side={m5Cue.side} data-issued-at={m5Cue.asOf}>
