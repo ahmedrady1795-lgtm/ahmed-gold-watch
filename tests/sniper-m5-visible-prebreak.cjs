@@ -94,3 +94,12 @@ assert.equal(cue({...base,shortTape}).side,'SELL');
 assert.equal(cue({...base,shortTape,price:98}).stage,'NONE');
 assert.equal(cue({...base,shortTape:{...shortTape,asOf:now-20000}}).stage,'NONE');
 assert.match(panel,/shortTape:tapeWatch/);
+
+assert.match(panel,/shortTape:tapeWatch,liquidity:liquidityMagnets/,
+ 'same-venue short tape must enter the live entry decision, not just appear as a dot');
+assert.match(panel,/<SniperOpportunityMarkers signal=\{movementSignal\}/,
+ 'the same forward-only early candidate the audit sees must be drawn on the chart');
+assert.match(panel,/if\(earlyOpportunity.phase==='PREPARE'\|\|earlyOpportunity.phase==='BREAK_CONFIRMED'\|\|/,
+ 'an established tracked setup must beat a fresh weak independent reading');
+assert.match(panel,/data-sniper-decision-provenance/,
+ 'existing collapsed scorecard must explain selected source/why no entry');
