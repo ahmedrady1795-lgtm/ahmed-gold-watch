@@ -765,6 +765,8 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  // preparation needs new closed-bar evidence AFTER the impulse has ended.
  if(setupKind!=='ZONE'&&closedImpulse!=='WAIT'&&side!==closedImpulse)
    return prior;
+ const executedTapeAligned=Boolean(freshTape&&tape?.side===side&&
+   tape.trigger===trigger&&tape.invalidation===invalidation);
  // A same-venue flow/profile contradiction or fresh M15 sweep can veto setup
  // BEFORE it is armed. Missing depth/profile does not fabricate a positive vote.
  if((flowSide!=='WAIT'&&flowSide!==side)||
@@ -773,7 +775,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    reason+=flow!.quality==='EXECUTED_SAMPLE'?
      ' · دلتا الصفقات وPOC من نفس المصدر':
      ' · POC ونشاط عمق وسيط MT5 استرشادي';
- }else reason+=' · Order Flow المنفذ غير مؤكد';
+ }else if(!executedTapeAligned)reason+=' · Order Flow المنفذ غير مؤكد';
  if(sweptSide===side)reason+=' · سحب سيولة M15 مغلق يدعم الاتجاه';
  // Evidence count is a qualitative checklist, NEVER a win probability.
  // Absent real DOM cannot earn a flow point or block price-only analysis.
@@ -797,8 +799,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    opposedBodies>=2&&sameBodies<=1?-1:0;
  if(candlePressureVote>0)reason+=' · ضغط إغلاقات M1 يؤيد الاتجاه';
  if(candlePressureVote<0)reason+=' · ضغط إغلاقات M1 يعاكس الترصد';
- const executedTapeAligned=Boolean(freshTape&&tape?.side===side&&
-   tape.trigger===trigger&&tape.invalidation===invalidation);
+
  const localContinuation=setupKind==='PULLBACK'&&context===localTrend&&
    localTrend!=='WAIT'&&m15Direction==='WAIT'&&flowSide==='WAIT'&&
    (input.m1Side==null||input.m1Side==='WAIT'||input.m1Side===side);
@@ -834,7 +835,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    // Existing two-quote activation and target/risk checks remain mandatory.
    localContinuation&&priceEvidenceScore>=4&&!selectionConflict||
    executedTapeAligned&&priceEvidenceScore>=4&&!selectionConflict;
- if(executedTapeAligned)reason+=' · تنفيذ قصير من نفس المنصة، لا يمثل حجم السوق بالكامل';
+ if(executedTapeAligned)reason+=' · تنفيذات حقيقية حديثة من نفس المنصة، بعينة غير مكتملة';
  if(localContinuation)reason+=' · استكمال اتجاه M1 بعد تصحيح مغلق؛ M15 محايد، رصد فني وليس تدفقًا منفذًا';
  if(contextFresh)reason+=' · '+ctx!.reason;
  reason+=' · أدلة '+evidenceScore+'/10 (ليست نسبة نجاح)';
