@@ -14,6 +14,10 @@ export type FlowBin={
 };
 export type FlowMinute={time:number;totalBtc:number;deltaBtc:number;
   buyBtc:number;sellBtc:number;trades:number;rows:FlowBin[];partial:true};
+export type ShortTapePressure={
+ asOf:number;from:number;trades:number;deltaPct:number;priorDeltaPct:number;
+ low:number;high:number;firstPrice:number;lastPrice:number;
+};
 export type BtcOrderflow={
  ok:boolean;source:BtcExecutedVenue;asOf:number;fetchedAt:number;
  status:'LIVE_SAMPLE'|'STALE'|'INSUFFICIENT';
@@ -25,6 +29,7 @@ export type BtcOrderflow={
  flow:null|{buyBtc:number;sellBtc:number;deltaBtc:number;deltaPct:number;
   imbalance:'BUY'|'SELL'|'BALANCED';priceChangePct:number;
   absorptionWatch:'BUY_ABSORPTION_POSSIBLE'|'SELL_ABSORPTION_POSSIBLE'|null};
+ shortPressure?:ShortTapePressure|null;
  actionable:false;venueComplete:false;
 };
 /** Source integrity for the on-chart flow lane: all three must be BTC/USD
@@ -167,6 +172,17 @@ export function buildBtcOrderflow(
     buyBtc:fixed(buyV),sellBtc:fixed(sellV),trades:t.length,
     rows:bins,partial:true as const};
  });
+ // Independent, timestamped short tape; do not treat a 12-minute
+ // profile's aggregate delta as a signal from the last few seconds.
+ const short=trades.filter(t=>t.time<=now&&t.time>now-20000);
+ const prev=short.filter(t=>t.time<=now-10000),latest=short.filter(t=>t.time>now-10000);
+ const d=(a:ExecutedTrade[])=>{const vol=a.reduce((s,t)=>s+t.size,0);
+  return vol>0?100*a.reduce((s,t)=>s+(t.aggressor==='BUY'?t.size:-t.size),0)/vol:0;};
+ const shortPressure:ShortTapePressure|null=prev.length>=5&&latest.length>=8&&
+   now-latest.at(-1)!.time<=5000&&latest.at(-1)!.time-latest[0].time>=2000?
+   {asOf:latest.at(-1)!.time,from:latest[0].time,trades:latest.length,
+    deltaPct:d(latest),priorDeltaPct:d(prev),low:Math.min(...latest.map(x=>x.price)),
+    high:Math.max(...latest.map(x=>x.price)),firstPrice:latest[0].price,lastPrice:latest.at(-1)!.price}:null;
  const sample:BtcOrderflow={
   ok:true,source,asOf:newest,fetchedAt:now,status:'LIVE_SAMPLE',
   reason:'حجم صفقات منفذة في عينة '+(source.startsWith('Kraken')?'Kraken':'Coinbase')+' فقط؛ لا تمثل جلسة كاملة أو السوق كله',
@@ -177,10 +193,53 @@ export function buildBtcOrderflow(
     vah:buckets[right].price,vwap:fixed(vwap,2),binSize:step,
     valueAreaPct:70,volumeBtc:fixed(total),rows:buckets
       .sort((a,b)=>b.totalBtc-a.totalBtc).slice(0,48).sort((a,b)=>a.price-b.price)},
-  footprint,flow:{buyBtc:fixed(buy),sellBtc:fixed(sell),deltaBtc:fixed(delta),
+  shortPressure,footprint,flow:{buyBtc:fixed(buy),sellBtc:fixed(sell),deltaBtc:fixed(delta),
     deltaPct:fixed(deltaPct,1),imbalance:Math.abs(deltaPct)>=20&&trades.length>=50?
       deltaPct>0?'BUY':'SELL':'BALANCED',priceChangePct:fixed(change,3),
     absorptionWatch},actionable:false,venueComplete:false
  };
  return sample;
+}
+
+/** Same-venue executed pressure, before a nearby unbroken closed-M1 level.
+ * Experimental alert only. No cross-exchange veto, no trade authorization.
+ */
+export function detectShortTapeWatch(a:{now:number;price:number|null;sourceMatches:boolean;
+ tape:BtcOrderflow|null;observedAt:number|null;m1:unknown}){
+ const {now,price,tape}=a,p=tape?.shortPressure;
+ if(!a.sourceMatches||!tape?.ok||tape.status!=='LIVE_SAMPLE'||!p||
+   typeof price!=='number'||!Number.isFinite(price)||price<=0||
+   typeof a.observedAt!=='number'||a.observedAt>now||now-a.observedAt>10000||
+   p.asOf>a.observedAt||now-p.asOf<0||now-p.asOf>10000||
+   p.trades<8)return null;
+ type Bar={time:number;open:number;high:number;low:number;close:number};
+ const map=new Map<number,Bar>();
+ for(const b of Array.isArray(a.m1)?a.m1:[]){
+   if([b?.time,b?.open,b?.high,b?.low,b?.close].every(Number.isFinite)&&
+     b.time>0&&b.time%60000===0&&b.time+60000<=now&&b.low>0&&
+     b.low<=Math.min(b.open,b.close)&&b.high>=Math.max(b.open,b.close))map.set(b.time,b);
+ }
+ const bars=[...map.values()].sort((a,b)=>a.time-b.time).slice(-21);
+ if(bars.length!==21||bars.some((b,i)=>i>0&&b.time-bars[i-1].time!==60000)||
+   now-bars[20].time-60000>75000)return null;
+ const atr=bars.slice(1).reduce((s,b,i)=>s+Math.max(b.high-b.low,
+   Math.abs(b.high-bars[i].close),Math.abs(b.low-bars[i].close)),0)/20;
+ if(!(atr>0)||atr>price*.03||p.high-p.low>atr*.65||
+    Math.abs(price-p.lastPrice)>atr*.20)return null;
+ const dir=p.deltaPct>=28&&(p.priorDeltaPct>=12||p.deltaPct-p.priorDeltaPct>=20)?1:
+   p.deltaPct<=-28&&(p.priorDeltaPct<=-12||p.priorDeltaPct-p.deltaPct>=20)?-1:0;
+ if(!dir||dir*(p.lastPrice-p.firstPrice)<-atr*.15||
+   dir*(p.lastPrice-p.firstPrice)>atr*.40)return null;
+ const recent=bars.slice(-3);
+ const hi=Math.max(...recent.map(b=>b.high)),lo=Math.min(...recent.map(b=>b.low));
+ const buffer=Math.max(.01,atr*.035);
+ const trigger=dir===1?hi+buffer:lo-buffer;
+ const invalidation=dir===1?lo-buffer:hi+buffer;
+ const risk=Math.abs(trigger-invalidation),ahead=dir*(trigger-price);
+ // No alert if the recent tape has already crossed the prospective trigger.
+ if(dir*(trigger-(dir===1?p.high:p.low))<=0||ahead<=atr*.035||
+   ahead>atr*.75||risk>atr*4||ahead>=risk||
+   dir*(price-invalidation)<=0)return null;
+ return {side:(dir===1?'BUY':'SELL') as 'BUY'|'SELL',trigger,invalidation,
+   asOf:p.asOf,source:tape.source,deltaPct:p.deltaPct};
 }
