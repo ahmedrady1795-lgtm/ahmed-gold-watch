@@ -534,6 +534,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      !providerTransition,m5:x?.chartHigherFrames?.m5
  }),[now,price,marketOpen,m.sniper.view.priceFresh,
    providerTransition,x?.chartHigherFrames?.m5]);
+ const tapeWatch=useMemo(()=>asset==='BTC'&&marketOpen&&m.sniper.view.priceFresh&&!providerTransition?
+   detectShortTapeWatch({now,price,sourceMatches:actualFlowSameVenue,
+     tape:flowPacket?.asset==='BTC'?flowPacket.data:null,
+     observedAt:flowPacket?.observedAt??null,m1:m.candles}):null,
+   [asset,marketOpen,m.sniper.view.priceFresh,providerTransition,now,price,actualFlowSameVenue,flowPacket,m.candles]);
  // Arm in this session before crossing. Historical momentum markers are
  // retained for audit but never reused as the current early opportunity.
  const [earlyState,setEarlyState]=useState<EarlySetup|null>(null);
@@ -548,12 +553,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ready:marketOpen&&m.sniper.view.priceFresh&&!providerTransition&&
      liveOpportunity.phase!=='OFFLINE',
    bars:m.candles,opportunity:liveOpportunity,lean:candleLean,
-   zones:liquidity.zones,proxy:asset==='GOLD'?paxg:null,flow:flowProfile,liquidity:liquidityMagnets,watch:watchMap,marketContext,
+   zones:liquidity.zones,proxy:asset==='GOLD'?paxg:null,flow:flowProfile,shortTape:tapeWatch,liquidity:liquidityMagnets,watch:watchMap,marketContext,
    m1Side:nextM1.ready?nextM1.side:'WAIT',
    m15Side:entryTrend
  }),[earlyState,asset,paxg,liquidity.zones,x?.candleSource,now,price,liveQuote?.sourceTime,liveQuote?.source,observedM15,
    marketOpen,m.sniper.view.priceFresh,providerTransition,m.candles,
-   liveOpportunity,candleLean,flowProfile,liquidityMagnets,watchMap,marketContext,
+   liveOpportunity,candleLean,flowProfile,tapeWatch,liquidityMagnets,watchMap,marketContext,
    nextM1.ready,nextM1.side,entryTrend]);
  useEffect(()=>{if(trackedSetup!==earlyState)setEarlyState(trackedSetup);},[trackedSetup,earlyState]);
  // Record the next candle while its opening price is still unknown.
@@ -626,11 +631,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    m1:m.candles,m5:x?.chartHigherFrames?.m5
  }),[now,price,marketOpen,m.sniper.view.priceFresh,providerTransition,
    m.candles,x?.chartHigherFrames?.m5]);
- const tapeWatch=useMemo(()=>asset==='BTC'&&marketOpen&&m.sniper.view.priceFresh&&!providerTransition?
-   detectShortTapeWatch({now,price,sourceMatches:actualFlowSameVenue,
-     tape:flowPacket?.asset==='BTC'?flowPacket.data:null,
-     observedAt:flowPacket?.observedAt??null,m1:m.candles}):null,
-   [asset,marketOpen,m.sniper.view.priceFresh,providerTransition,now,price,actualFlowSameVenue,flowPacket,m.candles]);
  const m5Cue=useMemo(()=>chartM5EarlyCue({now,price,marketOpen,
    priceFresh:Boolean(m.sniper.view.priceFresh),providerTransition,
    preMove,opportunity:liveOpportunity,lean:candleLean,
@@ -643,21 +643,22 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // audit as older early hypotheses. It is an observational WATCH with no TP
  // and no automatic order; do not create a retroactive signal on a breakout.
  const movementSignal=useMemo(()=>{
+   if(earlyOpportunity.phase==='PREPARE'||earlyOpportunity.phase==='BREAK_CONFIRMED'||
+      earlyOpportunity.phase==='TESTING')return earlyOpportunity;
    if(tapeWatch&&cuePrebreak&&m5Cue.asOf===tapeWatch.asOf&&m5Cue.trigger===tapeWatch.trigger){
      return {...earlyOpportunity,phase:'PREPARE' as const,side:tapeWatch.side,
        sourceAt:tapeWatch.asOf,trigger:tapeWatch.trigger,invalidation:tapeWatch.invalidation,
-       targets:[],quality:'OBSERVATION' as const,setupKind:'PULLBACK' as const,
+       targets:[],strength:0,quality:'OBSERVATION' as const,setupKind:'PRESSURE' as const,
        reason:'ضغط تنفيذ قصير قبل مستوى كسر لاحق · '+tapeWatch.source,
        tradeEligible:false as const};
    }
-   if(earlyOpportunity.phase==='PREPARE'||earlyOpportunity.phase==='BREAK_CONFIRMED'||
-       earlyOpportunity.phase==='TESTING'||!m1Reclaim||
+   if(!m1Reclaim||
        !cuePrebreak||m5Cue.asOf!==m1Reclaim.asOf||
        m5Cue.trigger!==m1Reclaim.trigger)return earlyOpportunity;
    return {...earlyOpportunity,phase:'PREPARE' as const,
      side:m1Reclaim.side,sourceAt:m1Reclaim.asOf,
      trigger:m1Reclaim.trigger,invalidation:m1Reclaim.invalidation,
-     targets:[],quality:'OBSERVATION' as const,setupKind:'PULLBACK' as const,
+     targets:[],strength:0,quality:'OBSERVATION' as const,setupKind:'PULLBACK' as const,
      reason:'ترقب استرداد M1 قبل مستوى الكسر التالي؛ OHLC مغلق دون تدفق تنفيذي مؤكد',
      tradeEligible:false as const};
  },[earlyOpportunity,m1Reclaim,tapeWatch,cuePrebreak,m5Cue.asOf,m5Cue.trigger]);
@@ -743,7 +744,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // An older setup must not hide a distinct, still-before-trigger M1/M5 cue.
  const distinctPrebreak=cuePrebreak&&(!mainSetup||
    m5Cue.side!==earlyOpportunity.side||m5Cue.trigger!==earlyOpportunity.trigger||
-   showRejected);
+   showRejected)&&!(
+     movementSignal.phase==='PREPARE'&&movementSignal.side===m5Cue.side&&
+     movementSignal.trigger===m5Cue.trigger&&movementSignal.sourceAt===m5Cue.asOf
+   );
  const drawingSide=mainSetup?trackedSetup?.side??'WAIT':
    cuePrebreak?m5Cue.side:showZoneObservation?'WAIT':
    cueVisible?m5Cue.side:
@@ -1590,7 +1594,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              textAnchor="end" direction="ltr" fontSize="10" fontWeight="800" fill="white">{chartReference.toFixed(2)}</text>
          </>}
        </g>
-       <SniperOpportunityMarkers signal={earlyOpportunity} confirmedPrice={trackedSetup?.phase==='TRIGGERED'?trackedSetup.priceAt:null} records={movementRecords}
+       <SniperOpportunityMarkers signal={movementSignal} confirmedPrice={trackedSetup?.phase==='TRIGGERED'?trackedSetup.priceAt:null} records={movementRecords}
          evidenceScore={trackedSetup?.score??null}
          asset={asset} source={String(x?.candleSource||'')}
          from={trueHistory[0]?.time??now} now={now} left={left} split={split}
@@ -1649,10 +1653,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {/* A live on-price BUY?/SELL? label already exists beside its
              real trigger. Do not print the same cue a second time in the
              chart corner. Fallback headline remains for off-screen setups. */}
-         {!((earlyOpportunity.phase==='PREPARE'||
-             earlyOpportunity.phase==='TESTING'||
-             earlyOpportunity.phase==='BREAK_CONFIRMED')&&
-             markerPrice!=null&&py(markerPrice)>=plotTop&&py(markerPrice)<=plotBottom)&&
+         {!((movementSignal.phase==='PREPARE'||
+             movementSignal.phase==='TESTING'||
+             movementSignal.phase==='BREAK_CONFIRMED')&&
+             movementSignal.trigger!=null&&
+             py(movementSignal.trigger)>=plotTop&&py(movementSignal.trigger)<=plotBottom)&&
            <text x={left+13} y={plotTop+21} textAnchor="end"
              direction="rtl" fill={drawingColor} fontSize="10"
              fontWeight="900" stroke="#07111b" strokeWidth="3.1"
@@ -1687,6 +1692,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        شموع M5 فعلية · {String(x?.candleSource||'المصدر غير متاح')}
      </small>
      <details className="sniper-performance-drawer">
+       <div data-sniper-decision-provenance style={{padding:'4px 12px',fontSize:11,color:'#91b5c6'}}>
+         {movementSignal.phase==='PREPARE'&&movementSignal.side!=='WAIT'?
+           'مرشح قبل الكسر · '+(movementSignal.setupKind??'M1/M5')+
+           ' · '+(actualFlowSameVenue?'تنفيذ من نفس المنصة':'تنفيذ نفس المنصة غير مثبت'):
+           cueVisible&&m5Cue.stage==='M5_FOLLOWING'?
+             'الحركة الحالية متابعة متأخرة؛ لا نعيد تصنيفها دخولًا مبكرًا':
+             trackedSetup?.phase==='CANCELLED'?
+               'الإعداد أُلغي: '+trackedSetup.reason:
+               'لا توجد خطة دخول نشطة؛ تسجيل الرصد مستمر'}
+       </div>
        <div style={{padding:'8px 12px',fontSize:12,color:'#b8d9e5'}}>
          انعكاس مبكر: {movementStats.reversalHits}/{movementStats.reversalScored}
          {' · '}استمرار: {movementStats.continuationHits}/{movementStats.continuationScored}
