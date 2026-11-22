@@ -719,6 +719,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    [movementRecords,asset]);
  const showZoneObservation=trackedSetup?.phase==='OBSERVING';
  const showPreparation=earlyOpportunity.phase==='PREPARE';
+ // A bounded forward setup has a known trigger, invalidation and an actual
+ // historical price target. Label it as a CONDITIONAL plan before the break;
+ // never call it a confirmed trade or manufacture an ATR profit level.
+ const planDirection=earlyOpportunity.side==='BUY'?1:-1;
+ const planRisk=earlyOpportunity.trigger!=null&&earlyOpportunity.invalidation!=null?
+   planDirection*(earlyOpportunity.trigger-earlyOpportunity.invalidation):0;
+ const planRoom=earlyOpportunity.trigger!=null&&earlyOpportunity.targets.length?
+   planDirection*(earlyOpportunity.targets[0]-earlyOpportunity.trigger):0;
+ const conditionalEntry=showPreparation&&earlyOpportunity.side!=='WAIT'&&
+   earlyOpportunity.strength>=40&&earlyOpportunity.m15Context!=='OPPOSED'&&
+   planRisk>0&&planRoom>=planRisk;
  const showCrossTest=earlyOpportunity.phase==='TESTING';
  const showRejected=trackedSetup?.phase==='CANCELLED'&&
    trackedSetup.reason.includes('فشل اختبار الاختراق')||
@@ -740,7 +751,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    hasM5Fallback?closedM5Context.side:'WAIT';
  const drawingLabel=cuePrebreak&&!mainSetup?m5Cue.headline:showZoneObservation?
    (trackedSetup?.side==='BUY'?'دعم · مراقبة':'مقاومة · مراقبة'):
-   showPreparation?(drawingSide==='BUY'?'ترقب صعود':'ترقب هبوط'):
+   showPreparation?(conditionalEntry?
+     (drawingSide==='BUY'?'شراء مشروط':'بيع مشروط'):
+     (drawingSide==='BUY'?'ترقب صعود':'ترقب هبوط')):
    showCrossTest?(drawingSide==='BUY'?'اختبار صعود':'اختبار هبوط'):
    showRejected?'× كسر فاشل':
    hasEarlySignal?(earlyOpportunity.quality==='SETUP'?
