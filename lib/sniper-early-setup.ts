@@ -806,7 +806,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  const priceEvidenceScore=Math.max(0,Math.min(10,2+
    // Prior closed impulse + distinct counter-bars is one technical vote,
    // never a synthetic exchange-flow vote or claimed win probability.
-   (localContinuation?1:0)+(executedTapeAligned?1:0)+
+   (localContinuation?1:0)+(executedTapeAligned&&flowSide==='WAIT'?1:0)+
    (shortHeight>0&&shortHeight<=atr*1.65?1:0)+
    (Math.abs(trigger-price)<=atr*.65?1:0)+
    (directionalClose?1:0)+
