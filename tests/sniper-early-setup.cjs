@@ -594,3 +594,52 @@ for(const buy of [true,false]){
  assert.equal(step({...crossing,zones:[{...wall,confirmedAt:now+1000}]}).phase,'CANCELLED');
  assert.equal(step({...crossing,zones:[{...wall,confirmedAt:now+3000}]}).phase,'ARMED');
 }
+
+// The market's neutral M15 is context, not a permanent ban on a
+// CLOSED-M1 impulse followed by a separate two-candle retracement.
+// This technical candidate must be frozen BEFORE the next live breakout;
+// only two distinct live quotes can confirm a named entry setup.
+const localRise=Array.from({length:18},(_,i)=>{
+ const p=100+i*.16;
+ return {time:bars[i].time,open:p-.05,close:p+.09,high:p+.14,low:p-.12};
+});
+localRise[16]={time:bars[16].time,open:102.49,close:102.39,high:102.55,low:102.31};
+localRise[17]={time:bars[17].time,open:102.39,close:102.31,high:102.44,low:102.25};
+for(const buy of [true,false]){
+ const flip=p=>buy?p:210-p,dir=buy?'BUY':'SELL';
+ const localBars=localRise.map(b=>({...b,
+   open:flip(b.open),close:flip(b.close),high:buy?b.high:flip(b.low),
+   low:buy?b.low:flip(b.high)}));
+ const price=flip(102.39);
+ const target=flip(103.3);
+ const watch={ready:true,asOf:now-30000,
+   upper:buy?[{price:target}]:[],lower:buy?[]:[{price:target}]};
+ const input={...base,scope:'BTC:kraken',bars:localBars,price,
+   m1Side:dir,m15Side:'WAIT',watch};
+ const first=step(input);
+ assert.ok(first,buy?'strong local BUY pullback should arm':'mirror SELL pullback should arm');
+ assert.equal(first.setupKind,'PULLBACK','closed pullback is a distinct entry plan');
+ assert.equal(first.phase,'ARMED');
+ assert.equal(first.side,dir);
+ assert.equal(first.trendSide,'WAIT','M15 remains genuinely neutral');
+ assert.equal(first.flowAligned,false,'absence of true executed flow is never fake alignment');
+ assert.equal(first.localStructureAligned,true,'separate closed continuation supplies a local structure');
+ assert.ok(buy?first.trigger>price:first.trigger<price,'trigger strictly ahead of quote');
+ assert.ok(buy?first.invalidation<price:first.invalidation>price,'stop on adverse side');
+ assert.ok(first.targets.length>0,'only pre-existing target from watch can qualify');
+ const one=step({...input,prior:first,now:now+3500,
+   quoteAt:now+3500,price:first.trigger+(buy?1:-1)*first.atr*.06});
+ assert.equal(one.phase,'ARMED','a first crossing quote does not create an entry');
+ const two=step({...input,prior:one,now:now+7000,
+   quoteAt:now+7000,price:first.trigger+(buy?1:-1)*first.atr*.11});
+ assert.equal(two.phase,'TRIGGERED','the second genuine quote confirms the next level');
+ assert.equal(signal(two).quality,'SETUP','live two-quote confirmation plus local risk/target can qualify a direction');
+ assert.equal(signal(two).tradeEligible,false,'research-only setup never executes an Exness order');
+ const late=step({...input,price:first.trigger+(buy?1:-1)*first.atr*.15});
+ assert.notEqual(late?.phase,'ARMED','a price already through trigger never backfills entry');
+ assert.notEqual(step({...input,m15Side:buy?'SELL':'BUY'})?.setupKind,'PULLBACK',
+   'known counter M15 context still blocks local continuation');
+ assert.notEqual(step({...input,m1Side:buy?'SELL':'BUY'})?.setupKind,'PULLBACK',
+   'an actual opposing M1 reading still blocks local continuation');
+}
+console.log('PASS: neutral M15 allows honest pre-break M1 pullback BUY/SELL, two-quote entries and preserved vetoes');
