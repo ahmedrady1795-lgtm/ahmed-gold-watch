@@ -115,6 +115,20 @@ export default function SniperOpportunityMarkers(p:Props){
    const chosen=placeLabel(px,py,48,16,r.side==='BUY'?22:-22);
    if(chosen)earlyLabels.set(r.id,chosen);
  }
+ // Earlier OPEN/FOLLOW/CLOSE observations were grey dots with hover-only
+ // direction. Show at most four recent BUY/SELL watch captions on touch screens.
+ // Keep immutable issuance coordinates and reserve true opportunity labels first.
+ const m5Labels=new Map<string,{x:number;y:number}>();
+ const m5Named:MovementProof[]=[];
+ for(const r of m5Issued){
+   if(m5Labels.size>=4)break;
+   if(m5Named.some(s=>s.side===r.side&&
+     Math.abs(p.timeX(s.issuedAt)-p.timeX(r.issuedAt))<42&&
+     Math.abs(p.py(s.priceAt)-p.py(r.priceAt))<28))continue;
+   const x=p.timeX(r.issuedAt),y=p.py(r.priceAt);
+   const chosen=placeLabel(x,y,76,19,r.side==='BUY'?29:-29);
+   if(chosen){m5Labels.set(r.id,chosen);m5Named.push(r);}
+ }
  return <g className="sniper-opportunity-markers" aria-label="أماكن الرصد المبكر والشراء والبيع">
    {m5Issued.map(r=>{
      const x=p.timeX(r.issuedAt),y=p.py(r.priceAt);
@@ -122,11 +136,25 @@ export default function SniperOpportunityMarkers(p:Props){
        {timeZone:'Asia/Dubai',hour:'2-digit',minute:'2-digit'});
      return <g key={r.id} data-kind={r.kind}
        data-issued-at={r.issuedAt} data-side={r.side}>
-       <circle cx={x} cy={y} r="2.4" fill="#96a3b5" stroke="#06151b" strokeWidth="1"/>
+       <circle cx={x} cy={y} r={m5Labels.has(r.id)?3.3:2.4}
+         fill={m5Labels.has(r.id)?(r.side==='BUY'?'#64e8b2':'#fa92a4'):'#96a3b5'}
+         stroke="#06151b" strokeWidth="1"/>
        <title>{movementObservationLabel(r)+' · '+(r.kind==='OPEN'?'بداية M5':r.kind==='FOLLOW'?'أثناء M5':'نهاية M5')+
          ' · '+r.priceAt.toFixed(2)+' · '+(r.m5Outcome==='CORRECT'?'إغلاق M5 وافق الاتجاه فقط':
          r.m5Outcome==='WRONG'?'إغلاق M5 خالف الاتجاه فقط':'تقييم إغلاق M5 قيد القياس')+
          ' · وقت الرصد '+observedAt+' بتوقيت دبي · توقع مرصود وقتها، ليس صفقة منفذة'}</title>
+       {m5Labels.has(r.id)&&(()=>{
+         const caption=m5Labels.get(r.id)!;
+         const ink=r.side==='BUY'?'#64e8b2':'#fa92a4';
+         return <>
+           <line x1={x} y1={y} x2={caption.x} y2={caption.y}
+             stroke={ink} strokeOpacity=".68" strokeWidth=".8"/>
+           <text data-role="m5-observation-label" x={caption.x} y={caption.y+4}
+             textAnchor="middle" direction="rtl" fontSize="11" fontWeight="900"
+             fill={ink} stroke="#07111b" strokeWidth="3"
+             paintOrder="stroke">{r.side==='BUY'?'رصد شراء':'رصد بيع'}</text>
+         </>;
+       })()}
      </g>;
    })}
    {early.map((r,i)=>{
