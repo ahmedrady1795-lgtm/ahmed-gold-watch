@@ -87,3 +87,10 @@ console.log('PASS: independent M5 BUY/SELL prebreak on closed pressure despite u
 
 assert.match(panel,/const distinctPrebreak=cuePrebreak&&\(!mainSetup\|\|/);
 assert.match(panel,/\{distinctPrebreak&&m5Cue.trigger!=null/,'old setup cannot mask a distinct prebreak line');
+
+const shortTape={side:'SELL',trigger:99,invalidation:102,asOf:now-2000,source:'Kraken XBT/USD',deltaPct:-60};
+assert.equal(cue({...base,shortTape}).stage,'PREBREAK');
+assert.equal(cue({...base,shortTape}).side,'SELL');
+assert.equal(cue({...base,shortTape,price:98}).stage,'NONE');
+assert.equal(cue({...base,shortTape:{...shortTape,asOf:now-20000}}).stage,'NONE');
+assert.match(panel,/shortTape:tapeWatch/);
