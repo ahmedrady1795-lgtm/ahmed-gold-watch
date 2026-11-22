@@ -99,8 +99,8 @@ assert.match(mirrored,/data-kind="FOLLOW"/,'older M5 dot stays pinned');
 assert.doesNotMatch(mirrored,/>شراء<|>بيع</,
   'passive direction is never a confirmed trade entry');
 const panelCaption=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
-assert.match(panelCaption,/py\(markerPrice\)>=plotTop/,
- 'suppress the duplicate corner label only for a visible price marker');
+assert.match(panelCaption,/py\(movementSignal\.trigger\)>=plotTop/,
+ 'suppress the duplicate corner headline for the unified visible prebreak marker');
 const dup=step({prior:issued,now:start+70000,asset:'GOLD',source:'same-provider',
  price:100,signal:pre,bars:[]});
 assert.equal(dup,issued,'no duplicate on every client quote');
