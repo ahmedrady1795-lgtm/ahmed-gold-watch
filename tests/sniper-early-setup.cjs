@@ -643,3 +643,12 @@ for(const buy of [true,false]){
    'an actual opposing M1 reading still blocks local continuation');
 }
 console.log('PASS: neutral M15 allows honest pre-break M1 pullback BUY/SELL, two-quote entries and preserved vetoes');
+
+const chart=fs.readFileSync('components/SniperOpportunityMarkers.tsx','utf8');
+const panelStatus=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
+assert.match(chart,/conditionalPlan\?\(buy\?'شراء مشروط':'بيع مشروط'\)/,
+ 'a real pre-break risk-to-reward plan is named BUY/SELL conditionally');
+assert.match(chart,/planRoom>=planRisk/,
+ 'no risk/target proof means WATCH rather than a purported trading plan');
+assert.match(panelStatus,/conditionalEntry\?/, 'chart heading must show conditional BUY/SELL');
+console.log('PASS: prospective plan with real frozen trigger and 1R room, no fake fills');
