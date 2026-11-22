@@ -23,6 +23,7 @@ export function chartM5EarlyCue(a:{
  providerTransition:boolean;preMove:PreMovePressure|null;
  opportunity:LiveOpportunity|null;lean:M5CandleLean|null;
  reclaim?:M1ReclaimWatch|null;
+ shortTape?:{side:'BUY'|'SELL';trigger:number;invalidation:number;asOf:number;source:string;deltaPct:number}|null;
  m5Follow?:{ready:boolean;side:Side;reason:string}|null
 }):M5EarlyCue{
  const base:M5EarlyCue={stage:'NONE',side:'WAIT',
@@ -57,6 +58,13 @@ export function chartM5EarlyCue(a:{
     ahead<=available*1.2&&
     (side==='BUY'?price>stop:price<stop);
  };
+ const t=a.shortTape;
+ if(t&&within(t.asOf,10000)&&valid(t.side,t.trigger,t.invalidation)&&
+   before(t.side,t.trigger,t.invalidation)){
+  return {...result('PREBREAK',t.side,t.side==='BUY'?'تنبيه شراء مبكر':'تنبيه بيع مبكر',
+    'ضغط تنفيذ آخر 10 ثوانٍ من '+t.source+' · دلتا '+Math.round(t.deltaPct)+'% · قبل مستوى الكسر التالي؛ اختبار فقط',
+    t.trigger,t.invalidation,t.asOf)};
+ }
  const o=a.opportunity;
  if(o&&(o.phase==='PREPARE'||o.phase==='TESTING')&&
    valid(o.side,o.trigger,o.invalidation)&&within(o.sourceAt,90000)){
