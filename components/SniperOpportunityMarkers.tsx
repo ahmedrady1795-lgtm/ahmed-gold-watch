@@ -254,7 +254,7 @@ export default function SniperOpportunityMarkers(p:Props){
        (buy?'↗ رصد':'↘ رصد')):
        s.phase==='TESTING'?(buy?'اختبار صعود':'اختبار هبوط'):
        conditionalPlan?(buy?'شراء مشروط':'بيع مشروط'):
-       (buy?'ترقب صعود':'ترقب هبوط');
+       (buy?'ترقب شراء':'ترقب بيع');
      return <g data-phase={s.phase} aria-label={label+' عند '+markerPrice!.toFixed(2)}>
        <title>{s.reason+' · المستوى '+markerPrice!.toFixed(2)+
          (p.evidenceScore!=null?' · أدلة '+p.evidenceScore+'/10 (ليست احتمال نجاح)':'')+
