@@ -84,3 +84,6 @@ assert.match(overlay,/p\.proof\?\.status==='NO_DEMONSTRATED_EDGE'\?'M15 · CONTE
 assert.match(overlay,/M15 بلا أفضلية مثبتة · راقب M1\/M5/);
 assert.doesNotMatch(src,/OrderSend|placeOrder|ExnessOrder|liveExecution/);
 console.log('PASS: independent M5 BUY/SELL prebreak on closed pressure despite unproven M15, explicit trigger, no late chase, no phantom order or stale data');
+
+assert.match(panel,/const distinctPrebreak=cuePrebreak&&\(!mainSetup\|\|/);
+assert.match(panel,/\{distinctPrebreak&&m5Cue.trigger!=null/,'old setup cannot mask a distinct prebreak line');
