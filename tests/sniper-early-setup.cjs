@@ -652,3 +652,44 @@ assert.match(chart,/planRoom>=planRisk/,
  'no risk/target proof means WATCH rather than a purported trading plan');
 assert.match(panelStatus,/conditionalEntry\?/, 'chart heading must show conditional BUY/SELL');
 console.log('PASS: prospective plan with real frozen trigger and 1R room, no fake fills');
+
+// A ten-second executed trade tape competes only on its OWN chart venue.
+// Direction is never synthesized from historical OHLC or from a foreign
+// exchange; a real prior closed-M1 price level remains unbroken.
+for(const buy of [true,false]){
+ const flip=p=>buy?p:200-p;
+ const side=buy?'BUY':'SELL';
+ const shortTape={side,source:'Kraken XBT/USD',asOf:now-2000,
+   trigger:flip(100.3),invalidation:flip(99.4),deltaPct:buy?67:-67};
+ const actual={...base,scope:'BTC:Kraken XBT/USD · fresh-candle fallback',
+   shortTape,price:flip(100),m15Side:'WAIT',m1Side:'WAIT'};
+ const issued=step(actual);
+ assert.equal(issued?.phase,'ARMED','verified same-venue execution can become prospective M1 plan');
+ assert.equal(issued?.side,side,'direction must match REAL executed short tape');
+ assert.equal(issued?.setupKind,'PRESSURE');
+ assert.equal(issued?.flowAligned,true,'actual short tape is evidence even without 12min flow agreement');
+ assert.match(issued.reason,/تنفيذات حقيقية حديثة/);
+ assert.ok(buy?issued.trigger>actual.price:issued.trigger<actual.price,
+   'entry level has to be ahead, never retroactive');
+ assert.equal(step({...actual,scope:'BTC:Coinbase Exchange BTC-USD'}),null,
+   'Coinbase charts cannot consume Kraken prints');
+ assert.equal(step({...actual,shortTape:{...shortTape,asOf:now-11000}}),null,
+   'stale execution tape does not issue a new entry');
+ assert.equal(step({...actual,shortTape:{...shortTape,deltaPct:buy?-67:67}}),null,
+   'taker side and delta cannot contradict');
+ assert.equal(step({...actual,price:flip(100.35)}),null,
+   'do not backfill an entry after the trigger is crossed');
+ assert.equal(step({...actual,flow:{ready:true,side:buy?'SELL':'BUY',
+   asOf:now-1000,observedAt:now-1000,quality:'EXECUTED_SAMPLE'}}),null,
+   'a contradictory confirmed flow profile forces neutral, not a fabricated vote');
+ assert.equal(step({...actual,scope:'GOLD:MT5 XAUUSD'}),null,
+   'BTC trade tape is never accepted for gold');
+ const single=step({...actual,prior:issued,price:flip(100.34),
+   now:now+4000,quoteAt:now+4000});
+ assert.equal(single?.phase,'ARMED','one tick through price level remains a test');
+ const confirmed=step({...actual,prior:single,price:flip(100.39),
+   now:now+8000,quoteAt:now+8000});
+ assert.equal(confirmed?.phase,'TRIGGERED','two source-timestamped quotes required');
+ assert.equal(signal(confirmed).tradeEligible,false,'chart is research-only, never an order');
+}
+console.log('PASS: same-venue executed short tape BTC price-level fusion, symmetric live confirmation, stale/foreign/cost-independent safeguards');
