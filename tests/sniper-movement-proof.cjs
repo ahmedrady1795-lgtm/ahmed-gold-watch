@@ -79,8 +79,25 @@ for(const split of [180,200]){
  const dot=markup.match(/<g[^>]*data-kind="FOLLOW"[^>]*>(.*?)<\/g>/s)?.[1];
  assert.ok(dot,'keep the original M5 history');
  assert.match(dot,/fill="#96a3b5"/);
- assert.doesNotMatch(dot,/<text\b/,'passive movement has no entry caption');
+ assert.match(dot,/رصد شراء/,'recent M5 observation needs a visible directional caption');
+ assert.match(dot,/data-role="m5-observation-label"/,'M5 watch is not a qualified entry');
 }
+// The latest M5 observation is legible on the chart without using a plain
+// BUY/SELL trade directive; historical dots remain independently anchored.
+const mirrored=renderMarker(markerModule.exports.default({...markerProps,
+  signal:{phase:'WATCH',side:'WAIT',sourceAt:null,trigger:null,invalidation:null,targets:[]},
+  confirmedPrice:null,
+  records:[
+    {...issued[0],id:'sell-follow',kind:'FOLLOW',side:'SELL',issuedAt:start+70000,priceAt:105},
+    {...issued[0],id:'buy-open',kind:'OPEN',side:'BUY',issuedAt:start+80000,priceAt:95},
+    {...issued[0],id:'old-sell',kind:'FOLLOW',side:'SELL',issuedAt:start+6000,priceAt:111}
+  ]
+}));
+assert.match(mirrored,/رصد شراء/,'recent M5 buy watch readable');
+assert.match(mirrored,/رصد بيع/,'recent M5 sell watch readable');
+assert.match(mirrored,/data-kind="FOLLOW"/,'older M5 dot stays pinned');
+assert.doesNotMatch(mirrored,/>شراء<|>بيع</,
+  'passive direction is never a confirmed trade entry');
 const panelCaption=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(panelCaption,/py\(markerPrice\)>=plotTop/,
  'suppress the duplicate corner label only for a visible price marker');
