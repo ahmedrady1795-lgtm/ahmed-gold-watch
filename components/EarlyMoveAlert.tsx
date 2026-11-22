@@ -22,8 +22,7 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:n
   const sent=useRef<{side:string;at:number}>({side:'',at:0});
 
   useEffect(()=>{
-    setConnected(false);setLead(null);setLast(null);
-    sent.current={side:'',at:0};
+    setConnected(false);setLead(null);
     if(!marketOpen)return;
     let closed=false;
     const onReading=(next:Lead)=>{
@@ -115,6 +114,7 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:n
     <strong>{armed?'تنبيه مبكر '+direction:building?'ضغط مبكر '+direction:title}</strong>
     {' · '+(fresh?'سيولة متعددة المنصات · ليس دخولًا':'المصدر غير حديث')}
     {last&&now-last.at<180000&&<small>{' · آخر تنبيه '+(last.side==='BUY'?'شراء':'بيع')+' '+new Date(last.at).toLocaleTimeString('ar-EG')}</small>}
+    {typeof Notification!=='undefined'&&!notifications&&<button type="button" onClick={()=>{void activate();}} style={{marginInlineStart:6,fontSize:11}}>تفعيل التنبيه</button>}
   </section>;
   const tint=armed?(lead?.side==='BUY'?'#6cdeb1':'#f39ba6'):'#b7c9d8';
   return <section dir="rtl" aria-label="تنبيه القناص قبل الحركة" role={armed?'alert':'status'}
