@@ -73,26 +73,25 @@ console.log('PASS: honest Coinbase maker inversion, executed BTC volume profile,
 const {detectShortTapeWatch:shortWatch}=module_.exports;
 const watchNow=Math.floor(now/60000)*60000+30000;
 for(const dir of [1,-1]){
+ // Use realistic relative volatility: $4 range on a $1000 instrument.
+ // At $100 the earlier fixture violated the production 3% ATR guard.
  const recent=Array.from({length:21},(_,i)=>({time:Math.floor(watchNow/60000)*60000-(21-i)*60000,
-    open:100,close:100,high:102,low:98}));
+    open:1000,close:1000,high:1002,low:998}));
  const tapeRows=Array.from({length:40},(_,i)=>({id:1000+i,time:watchNow-19500+i*480,
-   price:100+(i%2)*.1*dir,size:.1,aggressor:dir===1?'BUY':'SELL'}));
- // Include older prices only to establish a multi-level full profile.
+   price:1000+dir+(i%2)*.1*dir,size:.1,aggressor:dir===1?'BUY':'SELL'}));
  const older=Array.from({length:25},(_,i)=>({id:i,time:watchNow-30000-i*500,
-   price:i%2?99:101,size:.1,aggressor:dir===1?'SELL':'BUY'}));
+   price:i%2?999:1001,size:.1,aggressor:dir===1?'SELL':'BUY'}));
  const tape=build([...older,...tapeRows],watchNow,1000,'Kraken XBT/USD');
  assert.ok(tape.shortPressure);
  assert.equal(Math.sign(tape.shortPressure.deltaPct),dir);
- const args={now:watchNow,price:dir===1?101:99,sourceMatches:true,tape,observedAt:watchNow,m1:recent};
- // Price must also be near the last execution; move the recent range toward it.
- const aligned={...tape,shortPressure:{...tape.shortPressure,firstPrice:args.price,lastPrice:args.price,
-   low:args.price-.1,high:args.price+.1}};
- args.tape=aligned;
+ const args={now:watchNow,price:1000+dir,sourceMatches:true,tape,observedAt:watchNow,m1:recent};
  assert.equal(shortWatch(args)?.side,dir===1?'BUY':'SELL');
  assert.equal(shortWatch({...args,sourceMatches:false}),null);
  assert.equal(shortWatch({...args,now:watchNow+12000}),null);
- assert.equal(shortWatch({...args,price:dir===1?103:97}),null);
- assert.equal(shortWatch({...args,tape:{...aligned,shortPressure:{...aligned.shortPressure,
-   high:104,low:96}}}),null);
+ assert.equal(shortWatch({...args,price:1000+3*dir}),null);
+ assert.equal(shortWatch({...args,tape:{...tape,shortPressure:{...tape.shortPressure,
+   high:1004,low:996}}}),null);
+ // Keep the original guard tested rather than loosening it to pass.
+ assert.equal(shortWatch({...args,m1:recent.map(b=>({...b,low:950,high:1050}))}),null);
 }
 console.log('PASS: short executed-tape pressure, BUY/SELL before next level, freshness and venue guards');
