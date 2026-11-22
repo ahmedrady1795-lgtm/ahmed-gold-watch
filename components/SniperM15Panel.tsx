@@ -16,7 +16,7 @@ import SniperOrderFlowStrip from './SniperOrderFlowStrip';
 import {auditM15HuntDirection} from '../lib/sniper-m15-hunt-proof';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
 import {chartM5EarlyCue} from '../lib/sniper-m5-early-cue';
-import {btcOrderflowMatchesChart} from '../lib/btc-orderflow';
+import {btcOrderflowMatchesChart,detectShortTapeWatch} from '../lib/btc-orderflow';
 import {detectM1ReclaimWatch} from '../lib/sniper-m1-reclaim-watch';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
 import SniperM15PreMoveConsole from './SniperM15PreMoveConsole';
@@ -626,18 +626,30 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    m1:m.candles,m5:x?.chartHigherFrames?.m5
  }),[now,price,marketOpen,m.sniper.view.priceFresh,providerTransition,
    m.candles,x?.chartHigherFrames?.m5]);
+ const tapeWatch=useMemo(()=>asset==='BTC'&&marketOpen&&m.sniper.view.priceFresh&&!providerTransition?
+   detectShortTapeWatch({now,price,sourceMatches:actualFlowSameVenue,
+     tape:flowPacket?.asset==='BTC'?flowPacket.data:null,
+     observedAt:flowPacket?.observedAt??null,m1:m.candles}):null,
+   [asset,marketOpen,m.sniper.view.priceFresh,providerTransition,now,price,actualFlowSameVenue,flowPacket,m.candles]);
  const m5Cue=useMemo(()=>chartM5EarlyCue({now,price,marketOpen,
    priceFresh:Boolean(m.sniper.view.priceFresh),providerTransition,
    preMove,opportunity:liveOpportunity,lean:candleLean,
-   reclaim:m1Reclaim,m5Follow:closedM5Context
+   reclaim:m1Reclaim,shortTape:tapeWatch,m5Follow:closedM5Context
  }),[now,price,marketOpen,m.sniper.view.priceFresh,providerTransition,
-   preMove,liveOpportunity,candleLean,m1Reclaim,closedM5Context]);
+   preMove,liveOpportunity,candleLean,m1Reclaim,tapeWatch,closedM5Context]);
  const cuePrebreak=m5Cue.stage==='PREBREAK';
  const cueVisible=m5Cue.side!=='WAIT'&&!['OFFLINE','NONE','LATE'].includes(m5Cue.stage);
  // A genuine first-seen reclaim is written into the same forward-only
  // audit as older early hypotheses. It is an observational WATCH with no TP
  // and no automatic order; do not create a retroactive signal on a breakout.
  const movementSignal=useMemo(()=>{
+   if(tapeWatch&&cuePrebreak&&m5Cue.asOf===tapeWatch.asOf&&m5Cue.trigger===tapeWatch.trigger){
+     return {...earlyOpportunity,phase:'PREPARE' as const,side:tapeWatch.side,
+       sourceAt:tapeWatch.asOf,trigger:tapeWatch.trigger,invalidation:tapeWatch.invalidation,
+       targets:[],quality:'OBSERVATION' as const,setupKind:'PULLBACK' as const,
+       reason:'ضغط تنفيذ قصير قبل مستوى كسر لاحق · '+tapeWatch.source,
+       tradeEligible:false as const};
+   }
    if(earlyOpportunity.phase==='PREPARE'||earlyOpportunity.phase==='BREAK_CONFIRMED'||
        earlyOpportunity.phase==='TESTING'||!m1Reclaim||
        !cuePrebreak||m5Cue.asOf!==m1Reclaim.asOf||
@@ -648,7 +660,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      targets:[],quality:'OBSERVATION' as const,setupKind:'PULLBACK' as const,
      reason:'ترقب استرداد M1 قبل مستوى الكسر التالي؛ OHLC مغلق دون تدفق تنفيذي مؤكد',
      tradeEligible:false as const};
- },[earlyOpportunity,m1Reclaim,cuePrebreak,m5Cue.asOf,m5Cue.trigger]);
+ },[earlyOpportunity,m1Reclaim,tapeWatch,cuePrebreak,m5Cue.asOf,m5Cue.trigger]);
  // Show the closed-M1 directional hypothesis as WATCH when no pre-break
  // setup was armed; never promote it into an execution-worthy BUY/SELL.
  const hasDirectionalWatch=earlyOpportunity.side==='WAIT'&&
@@ -1607,7 +1619,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              direction="rtl" fontSize="9" fontWeight="800"
              fill={m5Cue.side==='BUY'?'#73efc7':'#ff9bb1'}
              stroke="#07111b" strokeWidth="3" paintOrder="stroke">
-             {(m5Cue.side==='BUY'?'ترقب شراء':'ترقب بيع')+
+             {(tapeWatch&&m5Cue.asOf===tapeWatch.asOf&&m5Cue.trigger===tapeWatch.trigger?
+               (m5Cue.side==='BUY'?'شراء مبكر؟':'بيع مبكر؟'):
+               (m5Cue.side==='BUY'?'ترقب شراء':'ترقب بيع'))+
               ' · تفعيل '+n(m5Cue.trigger)}
            </text>
            <title>{m5Cue.detail+' · إبطال '+n(m5Cue.invalidation)+
