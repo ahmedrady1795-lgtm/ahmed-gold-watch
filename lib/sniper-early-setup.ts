@@ -67,7 +67,9 @@ function firstReclaim(bars:Bar[],price:number,atr:number){
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
  proxy?:PaxgFlow|null;previousQuote?:{at:number;price:number}|null;
  price:number|null;quoteAt?:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
- flow?:FlowProfileDecision|null;liquidity?:LiquidityMagnetView|null;
+ flow?:FlowProfileDecision|null;
+ shortTape?:{side:'BUY'|'SELL';trigger:number;invalidation:number;asOf:number;source:string;deltaPct:number}|null;
+ liquidity?:LiquidityMagnetView|null;
  zones?:readonly LiquidityZone[];watch?:WatchPriceMap|null;marketContext?:SniperMarketContext|null;
  m1Side?:'BUY'|'SELL'|'WAIT';m15Side?:'BUY'|'SELL'|'WAIT'}):EarlySetup|null{
  const {now,price}=input;
@@ -254,6 +256,28 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  type Candidate={side:'BUY'|'SELL';setupKind:NonNullable<EarlySetup['setupKind']>;
    trigger:number;invalidation:number;reason:string};
  const candidates:Candidate[]=[];
+ // A separate, already-validated short trade tape (same market as the chart)
+ // can compete alongside closed-M1 structures. Require its original exchange
+ // timestamp, true venue identity, and frozen, still-unbroken levels.
+ const tape=input.shortTape;
+ const scopeVenue=/kraken/i.test(input.scope)?'KRAKEN':
+   /coinbase/i.test(input.scope)?'COINBASE':null;
+ const tapeVenue=/kraken/i.test(String(tape?.source||''))?'KRAKEN':
+   /coinbase/i.test(String(tape?.source||''))?'COINBASE':null;
+ const freshTape=Boolean(input.scope.startsWith('BTC:')&&scopeVenue!=null&&
+   scopeVenue===tapeVenue&&tape&&Number.isSafeInteger(tape.asOf)&&
+   tape.asOf>0&&tape.asOf<=now&&now-tape.asOf<=10000&&
+   Number.isFinite(tape.deltaPct)&&Math.abs(tape.deltaPct)>=28&&
+   (tape.side==='BUY'?tape.deltaPct>0:tape.side==='SELL'?tape.deltaPct<0:false)&&
+   Number.isFinite(tape.trigger)&&Number.isFinite(tape.invalidation)&&
+   (tape.side==='BUY'?tape.trigger>price&&tape.invalidation<price:
+     tape!.side==='SELL'&&tape.trigger<price&&tape.invalidation>price));
+ if(freshTape&&tape){
+   candidates.push({side:tape.side,setupKind:'PRESSURE',
+     trigger:tape.trigger,invalidation:tape.invalidation,
+     reason:'ضغط تنفيذ منفذ من '+tape.source+
+       ' خلال 10 ثوانٍ قبل المستوى التالي · بيانات جزئية وليست ضمانًا'});
+ }
  const collect=()=>{
    if(side&&Number.isFinite(trigger)&&Number.isFinite(invalidation))
      candidates.push({side,trigger,invalidation,setupKind:setupKind!,reason});
@@ -773,13 +797,15 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    opposedBodies>=2&&sameBodies<=1?-1:0;
  if(candlePressureVote>0)reason+=' · ضغط إغلاقات M1 يؤيد الاتجاه';
  if(candlePressureVote<0)reason+=' · ضغط إغلاقات M1 يعاكس الترصد';
+ const executedTapeAligned=Boolean(freshTape&&tape?.side===side&&
+   tape.trigger===trigger&&tape.invalidation===invalidation);
  const localContinuation=setupKind==='PULLBACK'&&context===localTrend&&
    localTrend!=='WAIT'&&m15Direction==='WAIT'&&flowSide==='WAIT'&&
    (input.m1Side==null||input.m1Side==='WAIT'||input.m1Side===side);
  const priceEvidenceScore=Math.max(0,Math.min(10,2+
    // Prior closed impulse + distinct counter-bars is one technical vote,
    // never a synthetic exchange-flow vote or claimed win probability.
-   (localContinuation?1:0)+
+   (localContinuation?1:0)+(executedTapeAligned?1:0)+
    (shortHeight>0&&shortHeight<=atr*1.65?1:0)+
    (Math.abs(trigger-price)<=atr*.65?1:0)+
    (directionalClose?1:0)+
@@ -806,7 +832,9 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    input.m1Side===side&&priceEvidenceScore>=6&&
      ['PULLBACK','RECLAIM','COMPRESSION','PROFILE','STRUCTURE'].includes(setupKind)||
    // Existing two-quote activation and target/risk checks remain mandatory.
-   localContinuation&&priceEvidenceScore>=4&&!selectionConflict;
+   localContinuation&&priceEvidenceScore>=4&&!selectionConflict||
+   executedTapeAligned&&priceEvidenceScore>=4&&!selectionConflict;
+ if(executedTapeAligned)reason+=' · تنفيذ قصير من نفس المنصة، لا يمثل حجم السوق بالكامل';
  if(localContinuation)reason+=' · استكمال اتجاه M1 بعد تصحيح مغلق؛ M15 محايد، رصد فني وليس تدفقًا منفذًا';
  if(contextFresh)reason+=' · '+ctx!.reason;
  reason+=' · أدلة '+evidenceScore+'/10 (ليست نسبة نجاح)';
@@ -846,7 +874,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    sourceAt,armedAt:now,expiresAt:now+180000,
    trigger,invalidation,atr,priceAt:price,lastPrice:price,lastAt:now,triggeredAt:null,
    crossedAt:null,crossedQuoteAt:null,crossedPrice:null,retestAt:null,score:evidenceScore,setupKind,
-   trendSide:input.m15Side??'WAIT',flowAligned:flowSide===side,localStructureAligned,
+   trendSide:input.m15Side??'WAIT',flowAligned:flowSide===side||executedTapeAligned,localStructureAligned,
    contextNote:contextFresh?ctx!.reason:undefined,
    selectionMargin,selectionAgreement,selectionConflict,
    targets:targets.slice(0,3),reason};
