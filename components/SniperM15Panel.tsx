@@ -19,11 +19,9 @@ import {chartM5EarlyCue} from '../lib/sniper-m5-early-cue';
 import {btcOrderflowMatchesChart,detectShortTapeWatch} from '../lib/btc-orderflow';
 import {detectM1ReclaimWatch} from '../lib/sniper-m1-reclaim-watch';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
-import SniperM15PreMoveConsole from './SniperM15PreMoveConsole';
 import SniperScenarioHero from './SniperScenarioHero';
 import {analyzeM15MarketStructure} from '../lib/sniper-market-structure';
 import SniperMarketStructureOverlay,{SniperStructureRSI} from './SniperMarketStructureOverlay';
-import SniperHuntHUD from './SniperHuntHUD';
 import {SniperLiquidityColumn,SniperScenarioColumn} from './SniperHunterSidebars';
 import {extendIllustrativeM15ToTargets} from '../lib/sniper-m15-target-bridge';
 import {buildM15WatchGuide} from '../lib/sniper-m15-watch-guide';
@@ -1025,7 +1023,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  });
  const phase=sniperPhaseBadge({ready:liquidity.ready,
    contextKind:liquidity.context?.kind,phase:liquidity.phase,side:chartSide});
- const W=492,H=704,left=8,split=projected.ready||showWatchGuide?320:400,end=422,
+ const W=492,H=704,left=8,split=320,end=422,
    plotTop=26,plotBottom=H-33;
  // A single absolute price axis contains EVERY currently valid target and
  // stop. No fake vertical positioning of offscreen targets.
@@ -1161,6 +1159,46 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    s.startsWith('WATCH')?'رصد'+s.slice(5):s;
  const grid=Array.from({length:9},(_,i)=>lo+(hi-lo)*i/8);
  const latestClosed=trueHistory.at(-1);
+ // Chart decision is prospective: WAIT or PREBREAK WATCH, unless a real
+ // setup was issued and subsequently confirmed. Historical/price-only flow
+ // cannot be upgraded to broker executions or hindsight BUY/SELL.
+ const commandLive=marketOpen&&Boolean(m.sniper.view.priceFresh)&&
+   m.historyFresh&&!providerTransition;
+ const commandConfirmed=commandLive&&
+   earlyOpportunity.phase==='BREAK_CONFIRMED'&&
+   earlyOpportunity.quality==='SETUP'&&
+   earlyOpportunity.tradeEligible===true&&earlyOpportunity.side!=='WAIT';
+ const commandM1=commandLive&&movementSignal.phase==='PREPARE'&&
+   movementSignal.side!=='WAIT'&&movementSignal.trigger!=null&&
+   price!=null&&(movementSignal.side==='BUY'?
+     movementSignal.trigger>price:movementSignal.trigger<price);
+ const commandM5=commandLive&&!commandM1&&cuePrebreak&&
+   m5Cue.trigger!=null&&price!=null&&
+   (m5Cue.side==='BUY'?m5Cue.trigger>price:m5Cue.trigger<price);
+ const commandGold=commandLive&&!commandM1&&!commandM5&&
+   showGoldSpotPlan&&goldSpotPlan!=null&&price!=null&&
+   (goldSpotPlan.side==='BUY'?goldSpotPlan.trigger>price:goldSpotPlan.trigger<price);
+ const commandWatch=!commandConfirmed&&(commandM1||commandM5||commandGold);
+ const commandSide=commandConfirmed?earlyOpportunity.side:
+   commandM1?movementSignal.side:commandM5?m5Cue.side:
+   commandGold?goldSpotPlan!.side:'WAIT';
+ const commandState=commandConfirmed?'CONFIRMED':
+   commandWatch?'WATCH':commandLive?'WAIT':'OFFLINE';
+ const commandHeadline=commandConfirmed?
+   commandSide==='BUY'?'BUY · شراء':'SELL · بيع':
+   commandWatch?commandSide==='BUY'?'WATCH BUY':'WATCH SELL':
+   commandLive?'WAIT · مراقبة':'تحديث السوق';
+ const commandTrigger=commandConfirmed||commandM1?movementSignal.trigger:
+   commandM5?m5Cue.trigger:commandGold?goldSpotPlan!.trigger:null;
+ const commandInvalidation=commandConfirmed||commandM1?
+   movementSignal.invalidation:commandM5?m5Cue.invalidation:
+   commandGold?goldSpotPlan!.invalidation:null;
+ const commandTarget=commandConfirmed||commandM1?movementSignal.targets?.[0]??null:
+   commandGold?goldSpotPlan!.target:null;
+ const commandWhy=commandConfirmed||commandM1?movementSignal.reason:
+   commandM5?m5Cue.detail:commandGold?goldSpotPlan!.reason:
+   commandLive?'لا توجد تهيئة مبكرة مكتملة':'تجديد بيانات السعر';
+ const commandText=String(commandWhy||'').split(' · ')[0].slice(0,68);
  // Opportunity labels use the live observer and its immutable issued records.
  return <section className="sniper-m15-panel" dir="rtl"
    aria-label="القناص: شموع خمس دقائق فعلية وسياق تحليل M15 مشروط">
@@ -1175,7 +1213,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        title="مناطق سيولة القمم والقيعان، الطلب والعرض والارتداد أو الرفض بعد إغلاق M15">
        {showLiquidity?'المناطق ✓':'المناطق'}</button>
    </header>
-   <EarlyMoveAlert key={asset} asset={asset} now={now} marketOpen={marketOpen}/>
+   
    <>
    
    <details className="sniper-hunt-advanced">
@@ -1759,6 +1797,30 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
          {renderedBars.length?'PATH'+(showHistoricalExtension?' · أهداف':''):'M5'}</text>
      </svg>
+   <aside className={'sniper-chart-command is-'+commandState.toLowerCase()}
+     data-qannas-chart-signal={commandState}
+     data-qannas-chart-side={commandSide}
+     aria-label={'حالة القناص: '+commandHeadline}>
+     <div className="sniper-chart-command-head">
+       <small>قنص M1/M5</small>
+       <strong>{commandHeadline}</strong>
+     </div>
+     <div className="sniper-chart-command-levels">
+       <span>تفعيل <b dir="ltr">{n(commandTrigger)}</b></span>
+       <span>إبطال <b dir="ltr">{n(commandInvalidation)}</b></span>
+       <span>هدف 1 <b dir="ltr">{n(commandTarget)}</b></span>
+       <span>سيولة ↑ <b dir="ltr">{n(liquidityMagnets.above?.price)}</b></span>
+       <span>سيولة ↓ <b dir="ltr">{n(liquidityMagnets.below?.price)}</b></span>
+     </div>
+     <p title={commandWhy}>{commandText}</p>
+     <EarlyMoveAlert key={asset} asset={asset} now={now}
+       marketOpen={marketOpen} compact/>
+     <small className="sniper-chart-command-caution">
+       {commandConfirmed?'رصد كسر مؤهل · ليس صفقة منفذة':
+       commandWatch?'ترقب قبل التفعيل · ليس أمر دخول':
+       'لا توجد إشارة دخول'}
+     </small>
+   </aside>
    </div>
      <small className="sniper-chart-source-note">
        شموع M5 فعلية · {String(x?.candleSource||'المصدر غير متاح')}
@@ -1872,21 +1934,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      </div>
      
    </div>
-   <details className="sniper-intelligence-drawer">
-     <summary><span className="sniper-intelligence-drawer-title">
-       <b>INTELLIGENCE DECK</b> · السيولة والتوافق الذكي والتهيئة المبكرة
-       </span><span aria-hidden="true">＋</span></summary>
-     <SniperHuntHUD hunt={huntPreview} m1={nextM1}
-       proof={huntProof} flowSide={flowProfile.ready?flowProfile.side:'WAIT'}
-       price={currentSignalPrice??null} marketOpen={marketOpen}
-       qualified={projected.ready} qualifiedSide={chartSide}/>
-     <SniperM15PreMoveConsole preMove={preMove} hunt={huntPreview}
-       m1={nextM1} liquidity={liquidityMagnets} fusion={localFusion}
-       marketOpen={marketOpen}
-       dataFresh={Boolean(m.sniper.view.priceFresh&&m.historyFresh)}
-       providerTransition={providerTransition}/>
-   </details>
-   </>
    <details className="sniper-m15-diagnostics">
      <summary>الشرح والتشخيص (اختياري)</summary>
      <div className="sniper-m15-diagnostics-content">
