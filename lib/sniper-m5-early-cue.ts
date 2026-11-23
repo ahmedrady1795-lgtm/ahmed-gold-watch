@@ -88,7 +88,8 @@ export function chartM5EarlyCue(a:{
   if(before(p.side,p.trigger!,p.invalidation!))
    return result('PREBREAK',p.side,p.side==='BUY'?'تهيئة شراء مبكرة':'تهيئة بيع مبكرة',
     'شموع M1/M5 مغلقة · ضغط قبل تجاوز المستوى · مراقبة وليست صفقة',
-    p.trigger,p.invalidation,p.sourceAt,p.sweep==='NONE'?'COMPRESSION':'SWEEP');
+    p.trigger,p.invalidation,p.sourceAt,
+    p.sweep==='LOWER'||p.sweep==='UPPER'?'SWEEP':'COMPRESSION');
  }
 
  // Independent pullback/reclaim setups catch continuation after a short
