@@ -67,7 +67,7 @@ async function runMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPrediction>
   const controller=new AbortController();
   // Measured free-tier inference exceeded the old 3.5s cutoff even after
   // a healthy warm start. The chart runs independently; inference stays bounded.
-  const timer=setTimeout(()=>controller.abort(),8000);
+  const timer=setTimeout(()=>controller.abort(),22000);
   const started=Date.now();
   try{
     const r=await fetch(url.replace(/\/$/,'')+'/predict',{
