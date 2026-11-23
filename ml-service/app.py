@@ -835,6 +835,21 @@ def predict_m5(model,x):
         }
     }
 
+
+def live_training_source_matches(training_source,live_source):
+    """A Binance-trained order-flow model must not certify a Coinbase/client
+    feature vector (or vice versa) after an upstream history fallback.
+    This is source integrity, not a network-availability veto on local charting.
+    """
+    training=str(training_source or "")
+    live=str(live_source or "")
+    if training.startswith("Binance Vision"):
+        return live.startswith("Binance Vision")
+    if training.startswith("Coinbase Exchange"):
+        return live.startswith("Coinbase Exchange")
+    return False
+
+
 @app.on_event("startup")
 def startup():
     start_train_if_needed()
@@ -874,10 +889,18 @@ def predict(body:PredictBody):
     m1=predict_h(MODELS["models"]["m1"],x1)
     m5_model=MODELS["models"]["m5"]
     m5=predict_m5(m5_model,x5) if m5_model.get("mode")=="m5_multiclass" else predict_h(m5_model,x5)
+    source_coherent=live_training_source_matches(MODELS.get("source"),live_source)
+    if not source_coherent:
+        # Preserve the observed probabilities for non-executable diagnostics,
+        # but never authorize a prediction from a different venue / feature feed.
+        for horizon in (m1,m5):
+            horizon["ready"]=False
+            horizon["side"]="WAIT"
+            horizon["reason"]="training_live_source_mismatch; awaiting coherent BTC feature source"
     micro=MICRO.predict()
     aligned=m1["leanSide"]==m5["leanSide"]; consensus=m1["leanSide"] if aligned else (m1["leanSide"] if m1["edge"]>=m5["edge"] else m5["leanSide"])
     return {"ok":True,"version":APP_VERSION,"status":STATE["status"],"trainedAt":MODELS.get("trainedAt"),"source":MODELS.get("source"),
-            "liveSource":live_source,"liveError":live_error,"historyRows":MODELS.get("historyRows"),"oneMinute":m1,"fiveMinute":m5,"microstructure":micro,
+            "liveSource":live_source,"liveSourceCoherent":source_coherent,"liveError":live_error,"historyRows":MODELS.get("historyRows"),"oneMinute":m1,"fiveMinute":m5,"microstructure":micro,
             "consensus":{"side":consensus,"aligned":aligned,"confidence":max(0,min(90,round(m1["confidence"]*.55+m5["confidence"]*.45+(5 if aligned else -6)))),
                          "ready":bool(m1["ready"] and m5["ready"])},
             "shadow":not (m1["ready"] or m5["ready"])}
