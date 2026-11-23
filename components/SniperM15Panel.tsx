@@ -1214,31 +1214,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {showLiquidity?'المناطق ✓':'المناطق'}</button>
    </header>
    
-   <details className="sniper-hunt-advanced">
-     <summary>المستويات والتشخيص <span aria-hidden="true">＋</span></summary>
-     <SniperOrderFlowStrip data={flowObservation}/>
-     {asset==='GOLD'&&visiblePreOpen?.proxy&&<small>{'قراءة '+(visiblePreOpen.proxySource||'PAXG فوري')+' وقت التوقع · '}{
-       {BUY:'ضغط شراء',SELL:'ضغط بيع',NEUTRAL:'الدفتر والتنفيذ بلا اتجاه مشترك',
-        UNAVAILABLE:'لا توجد عينة حديثة كافية'}[visiblePreOpen.proxy]}</small>}
-   <SniperM15Summary asset={asset} ready={projected.ready}
-     saved={Boolean(stable&&!projected.ready)} paused={paused} detached={detached}
-     marketOpen={marketOpen} providerTransition={providerTransition}
-     fresh={freshObservation} side={projected.ready?chartSide:
-       currentSignalSide!=='WAIT'?currentSignalSide:safeSide}
-     price={currentSignalPrice}
-     trigger={currentSignalSide!=='WAIT'?trackedSetup?.trigger??null:null}
-     upper={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.upper:
-       showWatchGuide?watchGuide.upperTrigger:null}
-     lower={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.lower:
-       showWatchGuide?watchGuide.lowerTrigger:null}
-     stop={projected.ready?stop:stable?.stop??(currentSignalSide!=='WAIT'?trackedSetup?.invalidation??null:null)}
-     targets={projected.ready||stable?stable?.goals??[]:
-       currentSignalSide!=='WAIT'?(trackedSetup?.targets??[]).map((price,i)=>({stage:i+1,price})):[]}
-     nextBar={projected.ready?shownBars[0]??null:null}
-     signal={currentSignalSide!=='WAIT'?currentSignalLabel:null}
-     noForecastReason={!projected.ready?lifecycle:null}
-     watchGuide={showWatchGuide?watchGuide:null}/>
-   </details>
    <div className="sniper-hunter-workbench" style={{display:"block"}}>
      
      <div className="sniper-hunter-center" style={{width:"100%",maxWidth:"none"}}>
@@ -1823,7 +1798,33 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <small className="sniper-chart-source-note">
        شموع M5 فعلية · {String(x?.candleSource||'المصدر غير متاح')}
      </small>
-     <details className="sniper-performance-drawer">
+     <details className="sniper-hunt-advanced">
+     <summary>المستويات والتشخيص <span aria-hidden="true">＋</span></summary>
+     <SniperOrderFlowStrip data={flowObservation}/>
+     {asset==='GOLD'&&visiblePreOpen?.proxy&&<small>{'قراءة '+(visiblePreOpen.proxySource||'PAXG فوري')+' وقت التوقع · '}{
+       {BUY:'ضغط شراء',SELL:'ضغط بيع',NEUTRAL:'الدفتر والتنفيذ بلا اتجاه مشترك',
+        UNAVAILABLE:'لا توجد عينة حديثة كافية'}[visiblePreOpen.proxy]}</small>}
+   <SniperM15Summary asset={asset} ready={projected.ready}
+     saved={Boolean(stable&&!projected.ready)} paused={paused} detached={detached}
+     marketOpen={marketOpen} providerTransition={providerTransition}
+     fresh={freshObservation} side={projected.ready?chartSide:
+       currentSignalSide!=='WAIT'?currentSignalSide:safeSide}
+     price={currentSignalPrice}
+     trigger={currentSignalSide!=='WAIT'?trackedSetup?.trigger??null:null}
+     upper={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.upper:
+       showWatchGuide?watchGuide.upperTrigger:null}
+     lower={safeSide==='WAIT'&&conditionalRange.valid?conditionalRange.lower:
+       showWatchGuide?watchGuide.lowerTrigger:null}
+     stop={projected.ready?stop:stable?.stop??(currentSignalSide!=='WAIT'?trackedSetup?.invalidation??null:null)}
+     targets={projected.ready||stable?stable?.goals??[]:
+       currentSignalSide!=='WAIT'?(trackedSetup?.targets??[]).map((price,i)=>({stage:i+1,price})):[]}
+     nextBar={projected.ready?shownBars[0]??null:null}
+     signal={currentSignalSide!=='WAIT'?currentSignalLabel:null}
+     noForecastReason={!projected.ready?lifecycle:null}
+     watchGuide={showWatchGuide?watchGuide:null}/>
+   </details>
+   
+      <details className="sniper-performance-drawer">
        <div data-sniper-decision-provenance style={{padding:'4px 12px',fontSize:11,color:'#91b5c6'}}>
          {movementSignal.phase==='PREPARE'&&movementSignal.side!=='WAIT'?
            'مرشح قبل الكسر · '+(movementSignal.setupKind??'M1/M5')+
