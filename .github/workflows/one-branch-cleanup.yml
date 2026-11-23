@@ -1,5 +1,9 @@
 name: Consolidate Qannas branches to render-free
 on:
+  push:
+    branches: [render-free]
+    paths:
+      - 'docs/maintenance/execute-one-branch-cleanup.txt'
   workflow_dispatch:
     inputs:
       confirmation:
@@ -13,10 +17,13 @@ concurrency:
   cancel-in-progress: false
 jobs:
   cleanup:
-    if: github.repository == 'ahmedrady1795-lgtm/ahmed-gold-watch' && inputs.confirmation == 'DELETE_ALL_OTHER_BRANCHES'
+    if: github.repository == 'ahmedrady1795-lgtm/ahmed-gold-watch' && ((github.event_name == 'workflow_dispatch' && inputs.confirmation == 'DELETE_ALL_OTHER_BRANCHES') || github.event_name == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Verify explicit cleanup marker on requested push
+        if: github.event_name == 'push'
+        run: test "$(cat docs/maintenance/execute-one-branch-cleanup.txt)" = 'DELETE_ALL_OTHER_BRANCHES'
       - name: Check default is the deployed render-free branch
         shell: bash
         env:
