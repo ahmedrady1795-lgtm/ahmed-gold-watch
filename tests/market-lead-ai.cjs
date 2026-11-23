@@ -50,6 +50,27 @@ assert.equal(v.mode,'MICRO_FLOW');
 assert.equal(v.armed,false,'Price-tick proxy must never arm GOLD alert');
 assert.equal(v.metrics.bookImbalance,0,'Biquote tick proxy is not DOM');
 assert.equal(v.metrics.flowDelta,0,'No fabricated aggressive flow');
+// A fresh GOLD tick PRE_TRIGGER can be observed without broker depth,
+// but must NEVER become an ARMED order-flow or execution signal.
+const quietWave={...wave,at:at+56000,stage:'PRE_TRIGGER',
+  samples:9,persistence:72,confidence:61,score:58,
+  velocity3s:.22,velocity8s:.5,acceleration:.21};
+v=update(fast(at+56000,false),at+56100,quietWave);
+assert.equal(v.stage,'BUILDING','price-only early watch should no longer be hidden by absent DOM');
+assert.equal(v.side,'BUY');
+assert.equal(v.mode,'MICRO_FLOW');
+assert.equal(v.armed,false,'price ticks can never certify broker depth');
+assert.equal(v.metrics.bookImbalance,0);
+assert.equal(v.metrics.flowDelta,0);
+assert.match(v.reason,/ليس إشارة دخول/);
+const afterSpike=update(fast(at+57000,false),at+57100,{
+  ...quietWave,at:at+57000,velocity8s:9.1});
+assert.notEqual(afterSpike.source,'Gold live price-tick watch · no broker DOM',
+  'a price wave that has already run must never masquerade as a pre-move');
+assert.equal(afterSpike.armed,false);
+const lateWatch=update(fast(at+70000,false),at+70100,quietWave);
+assert.notEqual(lateWatch.stage,'BUILDING','stale proxy data must not arm a price watch');
+assert.equal(lateWatch.armed,false);
 console.log('PASS: Render verified DOM early alert and stale/no-DOM safety');
 
 // A cached BTC lead must not survive an unavailable/future data snapshot.
