@@ -4,6 +4,7 @@ import {buildNewsIntelligence} from '../lib/news-intelligence';
 import {assessSniperMarketContext,type SentimentReading} from '../lib/sniper-market-context';
 import {usePaxgComparison,usePaxgFlow} from './usePaxgComparison';
 import type {PaxgSide} from '../lib/paxg-flow';
+import {observeGoldProxyFlow} from '../lib/gold-proxy-readout';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import SniperM15Summary from './SniperM15Summary';
 import EarlyMoveAlert from './EarlyMoveAlert';
@@ -1252,6 +1253,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const commandState=commandConfirmed?'CONFIRMED':
    commandWatch?'WATCH':commandFollowing?'OBSERVE':
    commandFastLive?'WAIT':'OFFLINE';
+ // Display GOLD's truly separate PAXG exchange book/tape as proxy evidence
+ // only; it never upgrades a price-only XAU observation to a broker flow vote.
+ const goldProxyReadout=asset==='GOLD'?observeGoldProxyFlow({
+   now,marketOpen,flow:paxg,chartSide:liquidityReadout.aheadSide
+ }):null;
  const commandHeadline=commandConfirmed?
    commandSide==='BUY'?'BUY · شراء':'SELL · بيع':
    commandLocalGold?commandSide==='BUY'?'WATCH BUY · سعري':'WATCH SELL · سعري':
@@ -1880,6 +1886,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {liquidityReadout.aheadSide!=='WAIT'&&liquidityReadout.trigger!=null&&
          <small>{'قبل الكسر · '+(liquidityReadout.aheadSide==='BUY'?'شراء ':'بيع ')+
            n(liquidityReadout.trigger)}</small>}
+       {goldProxyReadout&&<small className="sniper-chart-gold-proxy"
+         data-gold-proxy-status={goldProxyReadout.status}
+         title={goldProxyReadout.detail}>
+         {goldProxyReadout.label}
+       </small>}
      </div>
      {commandTrigger!=null&&<div className="sniper-chart-command-trigger">
        <span>تفعيل</span><b dir="ltr">{n(commandTrigger)}</b>
