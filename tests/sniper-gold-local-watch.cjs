@@ -46,8 +46,12 @@ const desk=fs.readFileSync('lib/scalp-desk.ts','utf8');
 assert.match(desk,/export function peekScalpGold\(/);
 assert.match(radar,/peekScalpGold\(35000\)/,
  'reuse cached GOLD scout, never issue extra inference requests');
-assert.doesNotMatch(radar,/getScalpDesk\(/,
- 'the background feed is enough and must not start an extra expensive analysis');
+assert.match(radar,/getScalpDesk\('GOLD'\)/,
+ 'a cold Render restart must revive independent GOLD-only research, not leave the radar empty');
+assert.match(radar,/now-lastGoldScoutAttempt>=30000/,
+ 'GOLD-only recovery attempts must be throttled to protect Render free resources');
+assert.doesNotMatch(radar,/getScalpDesk\('ALL'\)/,
+ 'a GOLD-only viewer must not pull BTC markets or neural/ML inference');
 assert.match(badge,/onScalpEarlyView\?\.\(data\?\.ok\?data\.scalpEarly\?\?null:null\)/);
 assert.match(panel,/selectGoldLocalWatch\(/);
 assert.match(panel,/commandLocalGold\?/);
