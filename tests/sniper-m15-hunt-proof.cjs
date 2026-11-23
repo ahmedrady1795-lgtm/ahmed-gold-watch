@@ -85,9 +85,11 @@ assert.match(sidebar,/assessM15HuntDisplay/);
 assert.match(sidebar,/visualSide===side&&active/);
 assert.match(sidebar,/M15 · لا ترجيح موثوق/);
 assert.doesNotMatch(sidebar,/preview.preferred===side/);
-assert.match(chart,/proof=\{huntProof\} flowSide=\{flowProfile.ready/);
+assert.match(chart,/const commandM1=commandLive&&movementSignal\.phase==='PREPARE'/,
+ 'main chart should show a prospective early M1 setup without standalone sidebar');
 assert.match(overlay,/assessM15HuntDisplay/);
-assert.match(chart,/m1=\{nextM1\} marketOpen=\{marketOpen\}/);
+assert.match(chart,/entryTrend==='BUY'\?'↑':entryTrend==='SELL'\?'↓':'—'/,
+ 'main chart rail must retain M15 directional evidence and conflict visibility');
 console.log('PASS: exact M15 WATCH historical replay, paired prior-body baseline, no cross-sample claim, source gaps and early-candle exclusions');
 
 const {placeHuntWaypoints}=load('lib/sniper-m15-hunt-preview.ts');
