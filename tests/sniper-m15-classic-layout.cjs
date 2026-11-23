@@ -40,8 +40,8 @@ assert.match(chart,/const scenario=buildM15Scenario\(\{\.\.\.modelInput,steps:12
 assert.match(chart,/const visualBars=prefixMatches\?longer\.bars:scenario\.bars/);
 assert.match(chart,/targetRoute\?\.bars\.slice\(elapsedSteps\)\?\?displayBars/,
  'full conditional route is displayed without rewriting the first 12 scored bars');
-assert.match(chart,/split=projected\.ready\|\|showWatchGuide\?320:400/,
- '12 timed bars have their own properly sized canvas, without flattening candles');
+assert.match(chart,/split=320,end=422/,
+ 'real M5 candles and twelve M15 path steps have a fixed pane with compact signal rail');
 assert.match(chart,/bars:scenario\.bars\.map\(b=>/,'proof ledger only stores 12 genuine scored bars');
 assert.match(chart,/const displayBars=aligned\?\.visualBars\?\.slice\(elapsedSteps\)\?\?shownBars/);
 assert.doesNotMatch(chart,/sniper-m15-signal-mark|signalMarks/,
