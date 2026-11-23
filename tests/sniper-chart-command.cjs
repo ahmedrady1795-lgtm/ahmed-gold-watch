@@ -4,6 +4,8 @@ const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const early=fs.readFileSync('components/EarlyMoveAlert.tsx','utf8');
 const css=fs.readFileSync('app/qannas-chart-focus.css','utf8');
 const startup=fs.readFileSync('scripts/start-with-audit-archive.mjs','utf8');
+const liveEntry=fs.readFileSync('components/SniperChartEntry.tsx','utf8');
+const homeUi=fs.readFileSync('components/AICommandCenter.tsx','utf8');
 assert.match(panel,/data-qannas-chart-signal=\{commandState\}/,
  'main BUY/SELL and WATCH must appear in the chart itself');
 assert.match(panel,/const commandConfirmed=commandLive&&[\s\S]{0,160}quality==='SETUP'/,
@@ -47,4 +49,10 @@ assert.match(startup,/await Promise\.all\(\[restoreSniperArchive\(\),restoreScal
 assert.ok(startup.indexOf('await Promise.all([restoreSniperArchive(),restoreScalpArchive()]);')<
  startup.indexOf("const child=spawn('npm',['start']"),
  'never start analysis before saved result histories were restored');
+assert.match(homeUi,/import SniperChartEntry from '\\.\\/SniperChartEntry'/,
+ 'live homepage loads only the active lightweight chart module');
+assert.match(liveEntry,/return <SniperM15Panel \\.\\.\\.props\\/>/,
+ 'lightweight entry must pass through real M5 chart and unchanged observations');
+assert.doesNotMatch(homeUi,/import ForecastIllustration from/,
+ 'unmounted 1600-line legacy chart cannot enter first-load JS bundle');
 console.log('PASS chart-only prospective BUY/SELL rail, hidden details, safe fast parallel startup');
