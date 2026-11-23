@@ -85,8 +85,10 @@ assert.match(sidebar,/assessM15HuntDisplay/);
 assert.match(sidebar,/visualSide===side&&active/);
 assert.match(sidebar,/M15 · لا ترجيح موثوق/);
 assert.doesNotMatch(sidebar,/preview.preferred===side/);
-assert.match(chart,/const commandM1=commandLive&&movementSignal\.phase==='PREPARE'/,
- 'main chart should show a prospective early M1 setup without standalone sidebar');
+assert.match(chart,/const commandM1=commandFastLive&&movementSignal\.phase==='PREPARE'/,
+ 'main chart should show independent fresh M1 prebreak watches without requiring M15 archive readiness');
+assert.match(chart,/const commandFastLive=marketOpen&&Boolean\(m\.sniper\.view\.priceFresh\)&&!providerTransition/,
+ 'fresh local source is still mandatory for a chart watch');
 assert.match(overlay,/assessM15HuntDisplay/);
 assert.match(chart,/entryTrend==='BUY'\?'↑':entryTrend==='SELL'\?'↓':'—'/,
  'main chart rail must retain M15 directional evidence and conflict visibility');
