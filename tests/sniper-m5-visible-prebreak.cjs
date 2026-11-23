@@ -103,3 +103,65 @@ assert.match(panel,/if\(earlyOpportunity.phase==='PREPARE'\|\|earlyOpportunity.p
  'an established tracked setup must beat a fresh weak independent reading');
 assert.match(panel,/data-sniper-decision-provenance/,
  'existing collapsed scorecard must explain selected source/why no entry');
+
+
+// The visible prebreak was historically absent from performance records
+// unless an unrelated tracked setup or M1-reclaim branch won. Verify that
+// its ORIGINAL first-seen time/price are frozen, never reconstructed later.
+const {cueForwardObservation:freezeCue}=exp;
+const initialCue=cue({...base,preMove:{...pressure('SELL'),sweep:'NONE'}});
+const forward=freezeCue(initialCue,now,100);
+assert.ok(forward,'visible price-only prebreak must have an auditable observation');
+assert.equal(forward.phase,'PREPARE');
+assert.equal(forward.setupKind,'COMPRESSION');
+assert.equal(forward.quality,'OBSERVATION');
+assert.equal(forward.tradeEligible,false);
+assert.equal(forward.sourceAt,now-15000);
+assert.equal(forward.targets.length,0);
+assert.equal(freezeCue(initialCue,now,99),null,'a crossed SELL cannot be backdated');
+assert.equal(freezeCue(initialCue,now+100000,100),null,'an expired cue cannot be revived');
+assert.equal(freezeCue({...initialCue,stage:'BREAK_OBSERVED'},now,100),null);
+assert.equal(freezeCue({...initialCue,flowVerified:true},now,100),null,
+ 'the price-only observer cannot claim verified order flow');
+
+const proofExp={};
+vm.runInNewContext(ts.transpileModule(
+ fs.readFileSync('lib/sniper-movement-proof.ts','utf8'),{
+  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
+ }).outputText,{exports:proofExp});
+const {advanceMovementProof:advance,movementProofScore:score}=proofExp;
+const closeMinute=Math.floor(now/60000)*60000;
+const frozenBars=Array.from({length:20},(_,i)=>({
+ time:closeMinute-(20-i)*60000,
+ open:100,high:100.3,low:99.7,close:100
+}));
+const common={now,asset:'GOLD',source:'Biquote · MT5 XAUUSD candles',
+ price:100,signal:forward,bars:frozenBars,m5Bars:[],
+ frameTrend:'WAIT',evidence:{reason:forward.reason,
+ flowStatus:'UNAVAILABLE',flowSource:'NONE',flowSide:'WAIT',
+ liquidityReady:false,m1Side:'WAIT',m15Side:'WAIT',proxySide:'UNAVAILABLE'}};
+const once=advance({...common,prior:[]});
+assert.equal(once.length,1);
+assert.equal(once[0].kind,'EARLY');
+assert.equal(once[0].setupKind,'COMPRESSION');
+assert.equal(once[0].issuedAt,now,'audit must freeze real first display time');
+assert.equal(once[0].priceAt,100);
+assert.equal(once[0].m5Outcome,'PENDING');
+assert.equal(once[0].onsetOutcome,'PENDING');
+assert.equal(score(once,'GOLD').byPattern[0].alerts,1);
+const twice=advance({...common,now:now+1000,price:100.05,prior:once});
+assert.equal(twice.length,1,'rerenders must not inflate the early-hit denominator');
+assert.equal(twice[0].issuedAt,now);
+assert.equal(twice[0].priceAt,100,'realtime price movement cannot repaint original alert');
+const future={time:closeMinute+60000,open:100,high:100.1,low:99.40,close:99.6};
+const settled=advance({...common,now:closeMinute+120000,price:99.6,
+ prior:twice,signal:{phase:'WATCH',side:'WAIT',sourceAt:null,trigger:null,
+ invalidation:null,targets:[]},bars:[...frozenBars,future]});
+assert.equal(settled.length,1);
+assert.equal(settled[0].onsetOutcome,'MOVE_FIRST',
+ 'only future completed bars may credit a favorable early move');
+assert.equal(settled[0].priceAt,100);
+assert.match(panel,/const cueAuditCandidate=useMemo\(\(\)=>cueForwardObservation/);
+assert.match(panel,/prior:first,now,asset,source,price,signal:cueAuditCandidate/,
+ 'audit must record a distinct visible prebreak even if an older tracked setup exists');
+console.log('PASS: displayed M5 prebreak first-seen cohort, true bar timing, setup provenance, no late alert or phantom order');
