@@ -13,7 +13,7 @@ type Lead={
 };
 type LastAlert={side:'BUY'|'SELL';at:number;score:number;kind:'VERIFIED'|'PRICE_WATCH'};
 
-export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:number;marketOpen?:boolean;asset?:'GOLD'|'BTC'}){
+export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD',compact=false}:{now:number;marketOpen?:boolean;asset?:'GOLD'|'BTC';compact?:boolean}){
   const [lead,setLead]=useState<Lead|null>(null);
   const [connected,setConnected]=useState(false);
   const [last,setLast]=useState<LastAlert|null>(null);
@@ -171,6 +171,21 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:n
     building?'حركة سعر فقط؛ بدون تأكيد من دفتر أوامر حقيقي':
     !fresh?'لا توجد قراءة ميكروهيكل حديثة وموثوقة':
     'لا يوجد اتجاه مبكر مؤهل حاليًا';
+  // One status line INSIDE the chart command rail. All heavy cards are
+  // removed from the main page. Never upgrade price-only GOLD to DOM entry.
+  if(compact)return <div className="sniper-chart-lead" role={armed?'alert':'status'}
+    data-early-lead={armed?'ARMED':priceWatch?'PRICE_WATCH':fresh?String(lead?.stage||'OBSERVE'):'OFFLINE'}
+    title={lead?.reason||headline}>
+    <span>{armed?'تنبيه أوامر موثّق '+direction:
+      priceWatch?'رصد سعري مبكر '+direction:
+      building&&lead?.side!=='WAIT'?'ضغط يتكون '+direction:
+      fresh&&lead?.stage==='RELEASED'?'الحركة بدأت · ليس دخولًا':
+      fresh&&lead?.stage==='REJECTED'?'إشارة ملغاة':
+      'رادار: مراقبة'}</span>
+    {armed&&<b>{Math.round(Number(lead?.score||0))}/100 أدلة</b>}
+    {last&&now-last.at<90000&&
+      <small>{'سابق '+(last.side==='BUY'?'شراء':'بيع')}</small>}
+  </div>;
   // Keep BTC compact and explicit: the cross-exchange read is not the
   // chart venue's execution feed and is not a qualified trade.
   if(asset==='BTC')return <section dir="rtl" role={armed?'alert':'status'}
