@@ -1700,6 +1700,21 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            <title>{m5Cue.detail+' · إبطال '+n(m5Cue.invalidation)+
              ' · M1/M5 فقط، لا توجد صفقة منفذة'}</title>
          </g>}
+       {/* Distinct original PREBREAK must remain readable when its real trigger
+           falls outside the visible historical price axis. Never move the price. */}
+       {distinctPrebreak&&m5Cue.trigger!=null&&
+         (m5Cue.trigger<lo||m5Cue.trigger>hi)&&
+         <g data-m5-prebreak-offscreen={m5Cue.side}
+           data-issued-at={m5Cue.asOf} className="sniper-m5-offscreen-cue">
+           <text x={split-8} y={plotTop+42} textAnchor="end"
+             direction="rtl" fontSize="9" fontWeight="800"
+             fill={m5Cue.side==='BUY'?'#73efc7':'#ff9bb1'}
+             stroke="#07111b" strokeWidth="3" paintOrder="stroke">
+             {m5Cue.headline+' · تفعيل '+n(m5Cue.trigger)+' خارج الإطار'}
+           </text>
+           <title>{m5Cue.detail+' · إبطال '+n(m5Cue.invalidation)+
+             ' · رصد مبكر قبل الكسر، وليس صفقة منفذة'}</title>
+         </g>}
        {/* Compact box-free text. Details remain in hover/assistive title. */}
        <g className="sniper-m5-chart-status" role="status"
          aria-label={drawingBadge+' · '+drawingReason+' · '+marketContext.reason}>
