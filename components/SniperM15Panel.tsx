@@ -89,6 +89,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [focusView,setFocusView]=useState(true);
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
  const onRadarView=useCallback((v:RadarView|null)=>setLiveRadar(v),[]);
+ // Keep real pre-move observations without a standalone radar panel.
+ const [chartLead,setChartLead]=useState<{
+   asset?:string;side?:'BUY'|'SELL'|'WAIT';stage?:string;mode?:string;
+   armed?:boolean;source?:string;sourceAt?:number;reason?:string;score?:number
+ }|null>(null);
+ const onChartLead=useCallback((reading:{
+   asset?:string;side?:'BUY'|'SELL'|'WAIT';stage?:string;mode?:string;
+   armed?:boolean;source?:string;sourceAt?:number;reason?:string;score?:number
+ }|null)=>setChartLead(reading),[]);
  // Existing server gold-preparation recorder already freezes a real M1
  // pre-break plan. Reuse its ONE poll (in GoldRadarBadge) instead of adding
  // another network stream or pretending Biquote exposes Exness DOM.
@@ -1162,6 +1171,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Chart decision is prospective: WAIT or PREBREAK WATCH, unless a real
  // setup was issued and subsequently confirmed. Historical/price-only flow
  // cannot be upgraded to broker executions or hindsight BUY/SELL.
+ const leadTime=Number(chartLead?.sourceAt||0);
+ const leadFresh=Boolean(marketOpen&&freshObservation&&
+   chartLead?.asset===asset&&leadTime>0&&leadTime<=now+1500&&now-leadTime<=5000);
+ const leadVerified=Boolean(leadFresh&&chartLead?.armed&&
+   chartLead?.stage==='ARMED'&&
+   chartLead?.mode===(asset==='GOLD'?'DOM':'CROSS_EXCHANGE')&&
+   (chartLead?.side==='BUY'||chartLead?.side==='SELL'));
+ const leadPriceWatch=Boolean(asset==='GOLD'&&leadFresh&&
+   chartLead?.mode==='MICRO_FLOW'&&chartLead?.stage==='BUILDING'&&
+   chartLead?.source==='Gold live price-tick watch · no broker DOM'&&
+   !chartLead?.armed&&
+   (chartLead?.side==='BUY'||chartLead?.side==='SELL'));
  const commandLive=marketOpen&&Boolean(m.sniper.view.priceFresh)&&
    m.historyFresh&&!providerTransition;
  const commandConfirmed=commandLive&&
@@ -1726,6 +1747,22 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            <title>{m5Cue.detail+' · إبطال '+n(m5Cue.invalidation)+
              ' · رصد مبكر قبل الكسر، وليس صفقة منفذة'}</title>
          </g>}
+       {/* Genuine fresh lead, drawn within chart (no second box).
+            A started/released move is NEVER promoted to early BUY/SELL. */}
+       {!commandConfirmed&&!commandWatch&&(leadVerified||leadPriceWatch)&&
+         <g className="sniper-chart-early-direction"
+           data-qannas-chart-early={leadVerified?'DEPTH_WATCH':'PRICE_WATCH'}
+           data-qannas-chart-early-side={chartLead?.side||'WAIT'}>
+           <text x={split-7} y={plotTop+64} textAnchor="end"
+             direction="ltr" fontSize="10" fontWeight="850"
+             fill={chartLead?.side==='BUY'?'#6df2c2':'#ff9cb1'}
+             stroke="#06131e" strokeWidth="3" paintOrder="stroke">
+             {(chartLead?.side==='BUY'?'WATCH BUY':'WATCH SELL')+
+               (leadVerified?' · FLOW':' · PRICE')}
+           </text>
+           <title>{(chartLead?.reason||'')+
+             ' · رصد مبكر مستقل، ليس إذن تنفيذ أو هدفًا مضمونًا'}</title>
+         </g>}
        {/* Compact box-free text. Details remain in hover/assistive title. */}
        <g className="sniper-m5-chart-status" role="status"
          aria-label={drawingBadge+' · '+drawingReason+' · '+marketContext.reason}>
@@ -1792,7 +1829,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      </div>
      <p title={commandWhy}>{commandText}</p>
      <EarlyMoveAlert key={asset} asset={asset} now={now}
-       marketOpen={marketOpen} compact/>
+       marketOpen={marketOpen} onSignal={onChartLead} compact/>
      <small className="sniper-chart-command-caution">
        {commandConfirmed?'رصد كسر مؤهل · ليس صفقة منفذة':
        commandWatch?'ترقب قبل التفعيل · ليس أمر دخول':
