@@ -4,12 +4,16 @@ import type {LiveOpportunity} from './sniper-live-opportunity';
 import type {M5CandleLean} from './sniper-m5-candle-lean';
 
 type Side='BUY'|'SELL'|'WAIT';
+type CuePattern='PRESSURE'|'SWEEP'|'COMPRESSION'|'PULLBACK';
 export type M5EarlyCue={
  stage:'OFFLINE'|'NONE'|'PREBREAK'|'TESTING'|'BREAK_OBSERVED'|
    'M1_DIRECTION_WATCH'|'M5_FOLLOWING'|'LATE';
  side:Side;headline:string;detail:string;asOf:number|null;
  trigger:number|null;invalidation:number|null;
  futureTradeAuthorized:false;flowVerified:false;
+ // Frozen detector identity lets the forward-only audit compare patterns,
+ // without claiming an ML probability, real orders or filled trades.
+ setupKind:CuePattern|null;
 };
 
 /** Independent quick M1/M5 research label for the real M5 chart.
@@ -29,11 +33,11 @@ export function chartM5EarlyCue(a:{
  const base:M5EarlyCue={stage:'NONE',side:'WAIT',
   headline:'لا توجد تهيئة جديدة',detail:'السوق قيد القراءة',
   trigger:null,invalidation:null,asOf:null,
-  futureTradeAuthorized:false,flowVerified:false};
+  futureTradeAuthorized:false,flowVerified:false,setupKind:null};
  const result=(stage:M5EarlyCue['stage'],side:Side,headline:string,
    detail:string,trigger:number|null=null,invalidation:number|null=null,
-   asOf:number|null=null):M5EarlyCue=>
-  ({...base,stage,side,headline,detail,trigger,invalidation,asOf});
+   asOf:number|null=null,setupKind:CuePattern|null=null):M5EarlyCue=>
+  ({...base,stage,side,headline,detail,trigger,invalidation,asOf,setupKind});
  if(!Number.isFinite(a.now)||a.price==null||!Number.isFinite(a.price)||
    a.price<=0||!a.marketOpen||!a.priceFresh||a.providerTransition)
   return result('OFFLINE','WAIT','البيانات أو السوق غير جاهز',
@@ -63,7 +67,7 @@ export function chartM5EarlyCue(a:{
    before(t.side,t.trigger,t.invalidation)){
   return {...result('PREBREAK',t.side,t.side==='BUY'?'تنبيه شراء مبكر':'تنبيه بيع مبكر',
     'ضغط تنفيذ آخر 10 ثوانٍ من '+t.source+' · دلتا '+Math.round(t.deltaPct)+'% · قبل مستوى الكسر التالي؛ اختبار فقط',
-    t.trigger,t.invalidation,t.asOf)};
+    t.trigger,t.invalidation,t.asOf,'PRESSURE')};
  }
  const o=a.opportunity;
  if(o&&(o.phase==='PREPARE'||o.phase==='TESTING')&&
@@ -71,7 +75,8 @@ export function chartM5EarlyCue(a:{
   const trigger=o.trigger!,stop=o.invalidation!;
   if(before(o.side,trigger,stop))
    return result('PREBREAK',o.side,o.side==='BUY'?'ترقب شراء قبل الكسر':'ترقب بيع قبل الكسر',
-     'إعداد M1/M5 سابق للكسر · ليس تصريح دخول',trigger,stop,o.sourceAt);
+     'إعداد M1/M5 سابق للكسر · ليس تصريح دخول',trigger,stop,o.sourceAt,
+     o.setupKind==='SWEEP'?'SWEEP':o.setupKind==='COMPRESSION'?'COMPRESSION':'PRESSURE');
  }
 
  // The dedicated closed-M1 compression/sweep detector can be displayed
@@ -83,7 +88,7 @@ export function chartM5EarlyCue(a:{
   if(before(p.side,p.trigger!,p.invalidation!))
    return result('PREBREAK',p.side,p.side==='BUY'?'تهيئة شراء مبكرة':'تهيئة بيع مبكرة',
     'شموع M1/M5 مغلقة · ضغط قبل تجاوز المستوى · مراقبة وليست صفقة',
-    p.trigger,p.invalidation,p.sourceAt);
+    p.trigger,p.invalidation,p.sourceAt,p.sweep==='NONE'?'COMPRESSION':'SWEEP');
  }
 
  // Independent pullback/reclaim setups catch continuation after a short
@@ -95,7 +100,7 @@ export function chartM5EarlyCue(a:{
   return result('PREBREAK',r.side,
     r.side==='BUY'?'ترقب شراء بعد استرداد M1':'ترقب بيع بعد رفض M1',
     'عودة الاتجاه بعد تصحيح قصير · شموع M1/M5 مغلقة · تدفق تنفيذ حقيقي غير مؤكد',
-    r.trigger,r.invalidation,r.asOf);
+    r.trigger,r.invalidation,r.asOf,'PULLBACK');
  // A fresh independent pre-break hypothesis takes priority over a past crossing.
  // Previously crossed levels are still shown when no fresh pre-break candidate qualifies.
  if(o&&(o.phase==='PREPARE'||o.phase==='TESTING')&&
@@ -135,4 +140,34 @@ export function chartM5EarlyCue(a:{
    a.m5Follow.side==='BUY'?'متابعة صعود M5':'متابعة هبوط M5',
    'الحركة بدأت في شموع M5 المغلقة · لا تُعرض كفرصة قنص مبكرة');
  return base;
+}
+
+/**
+ * Freeze the exact visible PREBREAK hypothesis at FIRST observation.
+ * This is the same chart-side event that will enter the forward-only M5
+ * scorecard. Do not replay a missed bar or turn a historical breakout into
+ * an entry. The caller persists actual first-seen time and price.
+ */
+export function cueForwardObservation(cue:M5EarlyCue,now:number,price:number|null):
+  LiveOpportunity|null{
+ if(cue.stage!=='PREBREAK'||(cue.side!=='BUY'&&cue.side!=='SELL')||
+   cue.futureTradeAuthorized!==false||cue.flowVerified!==false||
+   !Number.isSafeInteger(now)||now<=0||
+   typeof price!=='number'||!Number.isFinite(price)||price<=0||
+   typeof cue.asOf!=='number'||!Number.isSafeInteger(cue.asOf)||
+   cue.asOf<=0||cue.asOf>now||now-cue.asOf>90000||
+   typeof cue.trigger!=='number'||!Number.isFinite(cue.trigger)||cue.trigger<=0||
+   typeof cue.invalidation!=='number'||!Number.isFinite(cue.invalidation)||
+   cue.invalidation<=0||!cue.setupKind)return null;
+ const direction=cue.side==='BUY'?1:-1;
+ const risk=direction*(cue.trigger-cue.invalidation);
+ const ahead=direction*(cue.trigger-price);
+ if(!(risk>0&&ahead>Math.max(price*.000001,risk*.012)&&
+   ahead<=risk*1.2&&direction*(price-cue.invalidation)>0))return null;
+ return {phase:'PREPARE',side:cue.side,sourceAt:cue.asOf,
+   trigger:cue.trigger,invalidation:cue.invalidation,
+   targets:[],strength:0,higherFrame:'NEUTRAL',m15Context:'NEUTRAL',
+   quality:'OBSERVATION',setupKind:cue.setupKind,tradeEligible:false,
+   reason:'رصد مسبق من '+cue.setupKind+' · '+cue.detail,
+   targetNote:'مراقبة سعريّة بلا هدف صفقة مفترض'};
 }
