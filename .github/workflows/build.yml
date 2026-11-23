@@ -24,6 +24,7 @@ jobs:
       - run: npm ci
       - run: node --check scripts/one-branch-cleanup.mjs && node tests/one-branch-cleanup-safety.cjs
       - run: node tests/flow-profile-decision.cjs
+      - run: node tests/paxg-flow.cjs
       - run: node tests/btc-orderflow.cjs
       - run: node tests/btc-kraken-taker-flow.cjs
       - run: node tests/btc-liquidity-executed-flow.cjs
