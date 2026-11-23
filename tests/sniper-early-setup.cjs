@@ -463,8 +463,10 @@ assert.match(markerSvg,/\{early\.map\(\(r,i\)=>\{/,
  'genuine pre-break markers must never be hidden behind late M5 observations');
 assert.doesNotMatch(markerSvg,/earlyShown\.filter\(r=>!nearM5\(r\)\)/,
  'close-by late M5 dots may not erase a real prior alert');
-assert.match(markerSvg,/buy\?'ترقب صعود':'ترقب هبوط'/,
- 'early BUY remains a directional watch, not an entry');
+assert.match(markerSvg,/current\?'ترقب ':'رصد سابق '/,
+ 'current prebreak watch and historical direction must be distinguished');
+assert.match(markerSvg,/earlyShown\.filter\(r=>!nearCurrent\(r\)\)\.slice\(0,3\)/,
+ 'historically issued early BUY/SELL observations must not disappear into grey-only dots');
 assert.match(markerSvg,/s.phase==='TESTING'\?\(buy\?'اختبار صعود':'اختبار هبوط'\)/,
  'SELL/BUY breakout tests are visibly provisional and box-free');
 assert.match(markerSvg,/return null; \/\/ keep the real price dot/,
