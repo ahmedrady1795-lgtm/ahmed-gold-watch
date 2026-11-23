@@ -98,8 +98,10 @@ assert.match(alert,/source\.onerror=/,
 assert.match(alert,/fallbackRequest\?\.abort\(\)/,
   'GOLD fallback request must be cancelled on recovery or unmount');
 const markers=fs.readFileSync('components/SniperOpportunityMarkers.tsx','utf8');
-assert.match(markers,/earlyShown\.filter\(r=>!nearCurrent\(r\)\)\.slice\(0,3\)/,
-  'Previously issued early directions must remain visible after expiry');
+assert.match(markers,/earlyShown\.filter\(r=>!nearCurrent\(r\)\)\.slice\(0,1\)/,
+  'Keep one readable expired early label on the compact live chart');
+assert.match(markers,/const ink=current\?'#e0be78':buy\?'#5da98d':'#ad7c8b'/,
+  'Preserve color-coded original early directions on every expired historical dot');
 const m5=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(m5,/data-m5-prebreak-offscreen/,
   'Genuine early M5 cue cannot disappear just because its trigger is offscreen');
