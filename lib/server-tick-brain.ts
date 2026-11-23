@@ -46,10 +46,13 @@ export function startServerTickBrain(){
     try{
       const q=await getQuoteData({forceExternal:true}),observedAt=Date.now();
       const pulse=acceptGoldPulse(q,observedAt,lastGoldPulse);
-      if(!pulse)return;
+      // A provider quote fetched now may describe an older market tick.
+      // Never relabel delayed observations with HTTP receipt time or accept
+      // a later-revised, same-timestamp quote as a second independent pulse.
+      if(!pulse||lastGoldPulse&&pulse.sourceTime<=lastGoldPulse.sourceTime)return;
       lastGoldPulse=pulse;
       push('GOLD',{
-        at:observedAt,price:pulse.price,
+        at:pulse.sourceTime,price:pulse.price,
         bid:pulse.bid,ask:pulse.ask,bidQty:null,askQty:null,
         source:String(q?.source||'Gold external quote')+' timestamp-verified server pulse'
       });
