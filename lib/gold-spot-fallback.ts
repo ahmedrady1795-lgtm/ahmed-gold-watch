@@ -1,5 +1,5 @@
-import type {GoldLeadEvent} from './gold-preparation-lead';
-import {goldQuoteMatchesCandles} from './gold-preparation-lead';
+import type {GoldLeadEvent} from './gold-preparation-lead.ts';
+import {goldQuoteMatchesCandles} from './gold-preparation-lead.ts';
 
 /** The already-running server recorder issues prospectively timestamped
  * GOLD spot PRICE plans. This function only decides whether one can be
