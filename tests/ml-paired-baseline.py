@@ -40,8 +40,8 @@ class MlPairedBaselineTests(unittest.TestCase):
   self.assertFalse(coherent(None,"Binance Vision live taker flow"))
  def test_integration_keeps_oos_untouched_and_vetoes_cross_venue(self):
   methods={n.name:n for n in tree.body if isinstance(n,ast.FunctionDef)}
-  h=ast.unparse(methods["train_horizon"])
-  p=ast.unparse(methods["predict"])
+  h=ast.unparse(methods["train_horizon"]).replace(chr(39),chr(34))
+  p=ast.unparse(methods["predict"]).replace(chr(39),chr(34))
   self.assertIn("train_majority = int(np.mean(ytr)",h)
   self.assertIn("paired_binary_baseline(labels, pred, signal_threshold, train_majority, agreement)",h)
   self.assertIn('report["pairedBaselineAccuracy"]',h)
