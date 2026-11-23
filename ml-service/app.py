@@ -385,6 +385,24 @@ def metrics(y,p,signal_threshold=.56,agreement=None):
             "edgeVsBaseline":float(accuracy_score(y,pred)-baseline),
             "selectiveAccuracy":selective,"selectiveCoverage":coverage,"selectiveN":sn,
             "signalThreshold":float(signal_threshold)}
+ 
+def paired_binary_baseline(y,prob,threshold,train_majority,agreement=None):
+    """Untouched chronological rows, SAME selected indices as the model.
+    The baseline class comes ONLY from training, never the test distribution.
+    Independent certification needs this rather than unpaired class frequency.
+    """
+    labels=np.asarray(y,dtype=int)
+    p=np.asarray(prob,dtype=float)
+    if len(labels)!=len(p) or not len(p) or train_majority not in (0,1):
+        raise ValueError("invalid_paired_baseline")
+    mask=(p>=threshold)|(p<=1-threshold)
+    if agreement is not None:
+        agree=np.asarray(agreement,dtype=bool)
+        if len(agree)!=len(mask):raise ValueError("invalid_paired_agreement")
+        mask=mask & agree
+    if not np.any(mask):return 0.0
+    return float(np.mean(labels[mask]==train_majority))
+
 
 def choose_blend(y,px,pl,horizon):
     if horizon!=5:
@@ -466,6 +484,14 @@ def train_horizon(ds,horizon,feature_names):
     pt=pxt*wx+plt*wl
     agreement_t=((pxt>=.5)==(plt>=.5)) if horizon==5 else None
     me=metrics(yte,pt,signal_threshold,agreement_t)
+    # Before touching holdout, fix the reference policy using ONLY train labels.
+    # Both model and baseline are evaluated on exactly the same selected cases.
+    train_majority=int(np.mean(ytr)>=.5)
+    for labels,pred,agreement,report in (
+        (yv,pv,agreement_v,mv),(yte,pt,agreement_t,me)):
+        paired=paired_binary_baseline(labels,pred,signal_threshold,train_majority,agreement)
+        report["pairedBaselineAccuracy"]=paired
+        report["edgeVsBaseline"]=report["selectiveAccuracy"]-paired
     trainp=x.predict_proba(Xtr)[:,1]*wx+l.predict_proba(Xtr)[:,1]*wl
     train_acc=metrics(ytr,trainp,signal_threshold)["accuracy"]
     gap=train_acc-me["accuracy"]; stability=abs(mv["balancedAccuracy"]-me["balancedAccuracy"])
@@ -476,6 +502,7 @@ def train_horizon(ds,horizon,feature_names):
         me["selectiveN"]>=120 and mv["selectiveN"]>=100 and
         me["selectiveCoverage"]>=.035 and mv["selectiveCoverage"]>=.035 and
         me["selectiveAccuracy"]>=.57 and mv["selectiveAccuracy"]>=.56 and
+        me["edgeVsBaseline"]>=.02 and mv["edgeVsBaseline"]>=.01 and
         gap<=.16 and stability<=.08
     )
 
