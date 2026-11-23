@@ -33,7 +33,10 @@ const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const hud=fs.readFileSync('components/SniperM15PreMoveConsole.tsx','utf8');
 const overlay=fs.readFileSync('components/SniperM15HuntOverlay.tsx','utf8');
 const css=fs.readFileSync('app/workspace.css','utf8');
-assert.match(panel,/<SniperM15PreMoveConsole preMove=\{preMove\} hunt=\{huntPreview\}/);
+assert.match(panel,/data-qannas-chart-signal=\{commandState\}/,
+ 'causal prebreak pressure status is now shown inside the main chart decision rail');
+assert.doesNotMatch(panel,/<SniperM15PreMoveConsole\b/,
+ 'large standalone early-flow card must not obscure the price chart');
 assert.match(panel,/<SniperM15HuntOverlay forecast=\{huntPreview\} proof=\{huntProof\} asset=\{asset\}/);
 assert.match(hud,/data-early-stage=\{stage\}/);
 assert.match(hud,/p\.marketOpen&&p\.dataFresh&&!p\.providerTransition/);
