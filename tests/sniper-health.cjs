@@ -4,6 +4,7 @@ const vm=require('node:vm');
 const ts=require('typescript');
 
 let now=Date.parse('2026-11-07T00:00:00Z');
+let eco=false,viewerLeaseActive=true;
 let snapshot={payload:{ok:true,checkedAt:now-10000,
   autopilot:{aiReadiness:{mode:'PARTIAL',readyCount:1,configuredCount:3,
     activeFailures:['neural not certified']}}},at:now-10000,
@@ -30,6 +31,8 @@ factory(ex,name=>{
     return {aiRateLimitState:(url)=>({
       configured:Boolean(url),limited:Boolean(url&&url.includes('ml.invalid')),
       retryInSeconds:url&&url.includes('ml.invalid')?180:0,consecutive429:url?2:0})};
+  if(name.endsWith('/render-free-eco'))
+    return {renderFreeEcoEnabled:()=>eco,allowBackgroundWork:()=>viewerLeaseActive};
   if(name.endsWith('/scalp-every-candle'))
     return {readEveryM1Evidence:(asset)=>({
       asset,issued:asset==='BTC'?8:0,
@@ -42,6 +45,9 @@ factory(ex,name=>{
 (async()=>{
   const fresh=await (await ex.GET()).json();
   assert.equal(fresh.ok,true);
+  assert.equal(fresh.healthState,'SNAPSHOTS_FRESH');
+  assert.equal(fresh.eco.enabled,false);
+  assert.equal(fresh.eco.viewerLeaseActive,null);
   assert.equal(fresh.operational,true,'fresh snapshot and ledger can operate on temporary storage');
   assert.equal(fresh.ai.mode,'PARTIAL');
   assert.equal(fresh.ai.readyCount,1);
@@ -67,6 +73,17 @@ factory(ex,name=>{
   assert.equal(stale.snapshot.fresh,false);
   assert.equal(stale.ai.mode,'STALE');
   assert.equal(stale.ai.readyCount,0);
+  assert.equal(stale.healthState,'ANALYSIS_WARMING');
+  eco=true;viewerLeaseActive=false;
+  const idle=await (await ex.GET()).json();
+  assert.equal(idle.operational,false,'idle should not certify stale in-memory analysis');
+  assert.equal(idle.healthState,'IDLE_ECO','viewer-absent Render Free must not be reported as engine failure');
+  assert.equal(idle.eco.viewerLeaseActive,false);
+  assert.equal(idle.eco.backgroundAllowed,false);
+  viewerLeaseActive=true;
+  const resumed=await (await ex.GET()).json();
+  assert.equal(resumed.healthState,'ANALYSIS_WARMING',
+    'a current viewer with no recent snapshot is genuinely warming rather than idle');
 
   snapshot={...snapshot,payload:{...snapshot.payload,checkedAt:now-1000}};
   audit={...audit,updatedAt:now-200000};
@@ -74,5 +91,7 @@ factory(ex,name=>{
   assert.equal(deadLedger.operational,false,'stale audit must not be hidden by fresh AI');
   assert.equal(deadLedger.audit.fresh,false);
   assert.equal(deadLedger.audit.durable,false);
+  assert.equal(deadLedger.healthState,'AUDIT_LAGGING');
+  assert.equal(deadLedger.eco.backgroundAllowed,true);
   console.log('PASS: Render sniper health reports model freshness, AI readiness, temporary storage and wait reasons without granting trades');
 })().catch(error=>{console.error(error);process.exitCode=1;});
