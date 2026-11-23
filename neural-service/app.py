@@ -845,11 +845,32 @@ def _predict():
             "probNoise":round(noise*100,2),"confidence":conf,"edge":round(abs(up-down)*100,2),
             "samples":len(rows),"metrics":METRICS,"pricePath":price_path,"snapshotAgeMs":snapshot_age_ms}
 
+def _recover_training_schedule():
+    """One-time retry after a changed runtime memory budget.
+    Preserve successful champion models and do not restart a train on every
+    health request, render restart or routine inference.
+    """
+    if SCHEDULE.get("runtimeRevision")==RUNTIME_REVISION:return False
+    for kind in ("classifier","path"):
+        schedule=SCHEDULE.setdefault(kind,{})
+        if not schedule.get("ready"):
+            schedule["nextAttemptAt"]=int(time.time()*1000)+120000
+            schedule["failures"]=0
+            schedule["dataEndAt"]=0
+    SCHEDULE["runtimeRevision"]=RUNTIME_REVISION
+    try:
+        tmp=SCHEDULE_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(SCHEDULE));os.replace(tmp,SCHEDULE_PATH)
+    except (OSError,ValueError):
+        pass
+    return True
+
 @app.on_event("startup")
 def startup():
     try:
         if SCHEDULE_PATH.exists():SCHEDULE.update(json.loads(SCHEDULE_PATH.read_text()))
     except Exception:pass
+    _recover_training_schedule()
     _load_rows();_load_model();_load_path_model()
     if ROWS:
         global LAST_SNAPSHOT_AT
