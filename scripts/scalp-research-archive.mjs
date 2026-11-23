@@ -4,7 +4,7 @@
  * an off-market quote, a stale LIMIT, or a successful paper outcome.
  */
 export const SCALP_RESEARCH_URL=
- 'https://raw.githubusercontent.com/ahmedrady1795-lgtm/ahmed-gold-watch/sniper-audit-data/data/scalp-research-v1.json';
+ 'https://raw.githubusercontent.com/ahmedrady1795-lgtm/ahmed-gold-watch/render-free/data/scalp-research-v1.json';
 const assets=['GOLD','BTC'];
 const sides=['BUY','SELL'];
 const states=['AWAIT_QUOTE','CONFIRMING','NO_EDGE','NO_BID_ASK','COST_UNVIABLE',
