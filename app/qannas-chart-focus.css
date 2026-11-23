@@ -175,3 +175,28 @@
  .sniper-chart-command-levels b{font-size:10px}
  .sniper-chart-command-caution{font-size:8px}
 }
+
+/* The real M5 candle field stops at viewBox x=320/492; the conditional
+   scenario lane ends at x=422/492. Keep the small BUY/SELL control STRICTLY
+   in that right-side lane. The old 27% mobile width covered the newest
+   historical candles, making the chart appear late and crowded. */
+.sniper-m15-chart-box .sniper-chart-command{
+  left:calc(65.04% + 2px);
+  right:14.23%;
+  width:auto;max-width:none;min-width:0;
+  box-shadow:0 3px 12px #0009;
+}
+@media(max-width:640px){
+ .sniper-m15-chart-box .sniper-chart-command{
+   left:calc(65.04% + 2px);
+   right:14.23%;width:auto;max-width:none;min-width:0;
+   top:38px;padding:5px 4px;gap:3px;
+ }
+ .sniper-chart-command-head strong{font-size:clamp(10px,2.65vw,12px)}
+ .sniper-chart-command-head small{font-size:8px}
+ .sniper-chart-command-frames{font-size:8px}
+ .sniper-chart-command-levels span{font-size:8px;gap:1px 3px}
+ .sniper-chart-command-levels b{font-size:9px}
+ .sniper-chart-command p{font-size:8px;-webkit-line-clamp:2}
+ .sniper-chart-command-caution{font-size:8px}
+}
