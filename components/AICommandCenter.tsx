@@ -2,7 +2,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {ShieldAlert} from 'lucide-react';
 import {scenarioAsJournal} from '../lib/sniper-audit-view';
-import ForecastIllustration from './ForecastIllustration';
+import SniperChartEntry from './SniperChartEntry';
 
 // One calibrated surface: only scenarios actually recorded by the server
 // ledger can show as ACTIVE. Browser refreshes cannot reset their targets.
@@ -79,7 +79,7 @@ export default function AICommandCenter({data,chartData,error,assetView='ALL',no
         </details>
       </div>}
     <div id="market-forecast">
-      <ForecastIllustration data={displayData} now={now} snapshotAt={generatedAt}
+      <SniperChartEntry data={displayData} now={now} snapshotAt={generatedAt}
         goldLive={goldLive} btcLive={btcLive} assetView={assetView}
         journals={journal} audit={effectiveAudit} observationAt={observationAt}
         auditLoaded={Boolean(effectiveAudit?.ok&&(chartWatchFresh||!auditError))}/>
