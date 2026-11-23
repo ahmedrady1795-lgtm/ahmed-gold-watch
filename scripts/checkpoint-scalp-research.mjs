@@ -28,7 +28,7 @@ const api='https://api.github.com/repos/'+repo+
  '/contents/data/scalp-research-v1.json';
 const headers={Authorization:'Bearer '+token,Accept:'application/vnd.github+json',
  'X-GitHub-Api-Version':'2022-11-28'};
-const r=await fetch(api+'?ref=sniper-audit-data',{headers,
+const r=await fetch(api+'?ref=render-free',{headers,
  signal:AbortSignal.timeout(20000)});
 let previous=null,sha;
 if(r.ok){
@@ -38,7 +38,7 @@ if(r.ok){
   bytes=Buffer.from(file.content,'base64').toString('utf8');
  else{
   const raw=await fetch('https://raw.githubusercontent.com/'+repo+
-   '/sniper-audit-data/data/scalp-research-v1.json',{
+   '/render-free/data/scalp-research-v1.json',{
     signal:AbortSignal.timeout(20000)});
   if(!raw.ok)throw Error('Raw prior checkpoint HTTP '+raw.status);
   bytes=await raw.text();
@@ -50,7 +50,7 @@ const merged=mergeScalpResearch(previous,live);
 const updated=await fetch(api,{method:'PUT',headers:{...headers,
  'Content-Type':'application/json'},signal:AbortSignal.timeout(25000),
  body:JSON.stringify({message:'Checkpoint frozen BTC/GOLD M1 paper observations',
-  branch:'sniper-audit-data',...(sha?{sha}:{}),
+  branch:'render-free',...(sha?{sha}:{}),
   content:Buffer.from(JSON.stringify(merged)).toString('base64')})});
 if(!updated.ok)throw Error('Checkpoint write HTTP '+updated.status);
 console.info('M1 research archived',merged.records.filter(r=>r.asset==='BTC').length,
