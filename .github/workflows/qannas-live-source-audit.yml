@@ -1,0 +1,58 @@
+name: Qannas Live Signal Source Audit
+on:
+  push:
+    branches: [render-free]
+    paths: ['.github/workflows/qannas-live-source-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-live-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Inspect actual deployed read-only APIs
+        shell: bash
+        env:
+          LIVE_BASE: https://ahmed-gold-watch-free.onrender.com
+        run: |
+          node --input-type=module <<'JS'
+          const endpoints=['/api/live','/api/paxg-flow','/api/market-lead?asset=GOLD','/api/sniper-health'];
+          for(const path of endpoints){
+            const started=Date.now();
+            try{
+              const response=await fetch(process.env.LIVE_BASE+path,{
+                headers:{Accept:'application/json','User-Agent':'Qannas-Live-Source-Verification/1.0'},
+                signal:AbortSignal.timeout(25000),cache:'no-store'});
+              const raw=await response.text();
+              let data;try{data=JSON.parse(raw)}catch{data=null}
+              const out={path,http:response.status,elapsedMs:Date.now()-started};
+              if(path==='/api/live'){
+                out.ok=data?.ok??null;
+              } else if(path==='/api/paxg-flow'){
+                out.source=data?.source||'NONE';
+                out.side=data?.side||'UNAVAILABLE';
+                out.count=data?.count??null;
+                out.tradeAgeSec=Number.isFinite(data?.tradeAt)&&data.tradeAt>0?
+                  Math.round((Date.now()-data.tradeAt)/1000):null;
+                out.available=['BUY','SELL','NEUTRAL'].includes(out.side)&&
+                  out.tradeAgeSec!=null&&out.tradeAgeSec<=15;
+              } else if(path.startsWith('/api/market-lead')){
+                out.mode=data?.mode??'UNKNOWN';
+                out.stage=data?.stage??'UNKNOWN';
+                out.side=data?.side??'WAIT';
+                out.armed=data?.armed===true;
+                out.reason=String(data?.reason||'').slice(0,220);
+              } else {
+                out.operational=data?.operational??null;
+                out.ai=data?.ai?.mode??null;
+                out.aiReady=data?.ai?.readyCount??null;
+                out.auditFresh=data?.audit?.fresh??null;
+                out.gold=data?.gold?.scenario??null;
+                out.goldWatchFresh=data?.gold?.watchFresh??null;
+              }
+              console.log('SOURCE_AUDIT '+JSON.stringify(out));
+            }catch(e){console.log('SOURCE_AUDIT '+JSON.stringify({
+              path,error:String(e).slice(0,200),elapsedMs:Date.now()-started}));}
+          }
+          JS
