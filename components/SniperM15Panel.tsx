@@ -15,7 +15,7 @@ import {observeSniperOrderFlow} from '../lib/sniper-order-flow-observation';
 import SniperOrderFlowStrip from './SniperOrderFlowStrip';
 import {auditM15HuntDirection} from '../lib/sniper-m15-hunt-proof';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
-import {chartM5EarlyCue} from '../lib/sniper-m5-early-cue';
+import {chartM5EarlyCue,cueForwardObservation} from '../lib/sniper-m5-early-cue';
 import {btcOrderflowMatchesChart,detectShortTapeWatch} from '../lib/btc-orderflow';
 import {detectM1ReclaimWatch} from '../lib/sniper-m1-reclaim-watch';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
@@ -675,6 +675,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    reclaim:m1Reclaim,shortTape:tapeWatch,m5Follow:closedM5Context
  }),[now,price,marketOpen,m.sniper.view.priceFresh,providerTransition,
    preMove,liveOpportunity,candleLean,m1Reclaim,tapeWatch,closedM5Context]);
+ // Match the actual visible PREBREAK to a forward-only audit candidate.
+ // The original time and trigger are never recreated after price crosses.
+ const cueAuditCandidate=useMemo(()=>cueForwardObservation(m5Cue,now,price),
+   [m5Cue,now,price]);
  const cuePrebreak=m5Cue.stage==='PREBREAK';
  const cueVisible=m5Cue.side!=='WAIT'&&!['OFFLINE','NONE','LATE'].includes(m5Cue.stage);
  // A genuine first-seen reclaim is written into the same forward-only
@@ -733,25 +737,36 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  },[movementRecords,movementProofLoaded]);
  useEffect(()=>{
    if(!movementProofLoaded)return;
-   setMovementRecords(prior=>advanceMovementProof({
-     prior,now,asset,source:String(x?.candleSource||''),
-     price,signal:movementSignal,bars:m.candles,
-     m5Bars:x?.chartHigherFrames?.m5,
-     frameTrend:entryTrend,setupState:trackedSetup,
-     evidence:{
-       reason:movementSignal.reason,flowStatus:flowObservation.status,
-       flowSource:flowObservation.source,flowSide:flowProfile.side,
-       liquidityReady:liquidity.ready,m1Side:nextM1.ready?nextM1.side:'WAIT',
+   setMovementRecords(prior=>{
+     const source=String(x?.candleSource||'');
+     const observedEvidence={
+       flowStatus:flowObservation.status,flowSource:flowObservation.source,
+       flowSide:flowProfile.side,liquidityReady:liquidity.ready,
+       m1Side:nextM1.ready?nextM1.side:'WAIT' as const,
        m15Side:entryTrend,proxySide:paxg&&paxg.observedAt<=now&&
-         now-paxg.observedAt<=12000&&paxg.tradeAt<=now&&now-paxg.tradeAt<=15000?
-         paxg.side:'UNAVAILABLE'
-     },
-     // Freeze FIRST observed closed-M1 directional wave, including continuation.
-     // Movement journal deduplicates same-side waves; these are NOT trade entries.
-     candleLean:hasDirectionalWatch?candleLean:undefined
-   }));
+         now-paxg.observedAt<=12000&&paxg.tradeAt<=now&&
+         now-paxg.tradeAt<=15000?paxg.side:'UNAVAILABLE'
+     };
+     const first=advanceMovementProof({
+       prior,now,asset,source,price,signal:movementSignal,bars:m.candles,
+       m5Bars:x?.chartHigherFrames?.m5,frameTrend:entryTrend,
+       setupState:trackedSetup,
+       evidence:{...observedEvidence,reason:movementSignal.reason},
+       // Preserve ordinary M1 wave records, even if no prebreak qualified.
+       candleLean:hasDirectionalWatch?candleLean:undefined
+     });
+     // Independent visible PREBREAKs were previously missing from the scorecard
+     // unless chosen by the tracked setup, tape, or reclaim path. Record them
+     // at this actual observation, including when another older setup remains.
+     // Same-side identical sourceAt ids are deduplicated in advanceMovementProof.
+     return cueAuditCandidate?advanceMovementProof({
+       prior:first,now,asset,source,price,signal:cueAuditCandidate,
+       bars:m.candles,m5Bars:x?.chartHigherFrames?.m5,frameTrend:entryTrend,
+       evidence:{...observedEvidence,reason:cueAuditCandidate.reason}
+     }):first;
+   });
  },[movementProofLoaded,now,asset,x?.candleSource,price,
-   earlyOpportunity,movementSignal,candleLean,hasDirectionalWatch,m.candles,
+   earlyOpportunity,movementSignal,cueAuditCandidate,candleLean,hasDirectionalWatch,m.candles,
    x?.chartHigherFrames?.m5,entryTrend,trackedSetup,flowObservation,flowProfile.side,
    liquidity.ready,nextM1.ready,nextM1.side,paxg]);
  const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
