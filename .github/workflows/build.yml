@@ -96,7 +96,7 @@ jobs:
       - run: node tests/gold-feed-order.cjs
       - run: node tests/btc-history-nonblocking.cjs
       - run: node tests/ai-stall-recovery.cjs
-      - run: node tests/pre-move-pressure.cjs
+      - run: node tests/pre-move-pressure.cjs && node tests/sniper-liquidity-readout.cjs
       - run: node tests/forecast-evidence-gate.cjs
       - run: node tests/trend-confirmation.cjs
       - run: node tests/sniper-strategies.cjs
