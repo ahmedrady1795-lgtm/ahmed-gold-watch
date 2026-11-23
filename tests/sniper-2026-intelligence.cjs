@@ -109,7 +109,12 @@ assert.ok(script.includes('applyEarly?early!.side'));
 assert.ok(ui.includes('LOCAL AI FUSION'));
 assert.ok(ui.includes('LIQUIDITY MAP 2026'));
 assert.ok(ui.includes('p.fusion.phase'));
-assert.ok(panel.includes('liquidity={liquidityMagnets} fusion={localFusion}'));
+assert.match(panel,/fuseLocalSniper\(\{/,
+ 'local multi-frame fusion must remain calculated for the chart');
+assert.match(panel,/liquidityMagnets\.above\?\.price/,
+ 'real closed-bar liquidity zones must be visible in the compact chart rail');
+assert.doesNotMatch(panel,/<SniperM15PreMoveConsole\b/,
+ 'duplicate standalone early fusion deck must no longer block the chart');
 assert.ok(m1Ui.includes('every?.dataQuality===\'FLAT_CLUSTER\''));
 assert.ok(style.includes('sniper-fusion-votes'));
 assert.ok(layout.includes('import "./qannas-2026.css";'));
