@@ -1,0 +1,31 @@
+name: Set Qannas default branch to render-free
+on:
+  push:
+    branches: [render-free]
+    paths: ['.github/workflows/qannas-default-branch-switch.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  set-default:
+    if: github.repository == 'ahmedrady1795-lgtm/ahmed-gold-watch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Try authorized default-branch switch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current=$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')
+          echo "Current default: $current"
+          if [[ "$current" == "render-free" ]]; then
+            echo "Already configured"
+            exit 0
+          fi
+          # GitHub may deny repository-administration changes to Actions tokens.
+          # If denied, fail closed; no branch is deleted.
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY" -f default_branch=render-free --jq '.default_branch'
+          after=$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')
+          test "$after" = "render-free"
+          echo "Confirmed default: $after"
