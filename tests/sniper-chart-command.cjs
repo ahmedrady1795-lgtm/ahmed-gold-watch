@@ -10,9 +10,9 @@ assert.match(panel,/data-qannas-chart-signal=\{commandState\}/,
  'main BUY/SELL and WATCH must appear in the chart itself');
 assert.match(panel,/const commandConfirmed=commandLive&&[\s\S]{0,160}quality==='SETUP'/,
  'only original qualified breakout can be called BUY/SELL');
-assert.match(panel,/const commandM1=commandLive&&movementSignal\.phase==='PREPARE'/,
+assert.match(panel,/const commandM1=commandFastLive&&movementSignal\.phase==='PREPARE'/,
  'prospective early record can be a WATCH only');
-assert.match(panel,/const commandM5=commandLive&&!commandM1&&cuePrebreak/,
+assert.match(panel,/const commandM5=commandFastLive&&!commandM1&&cuePrebreak/,
  'independent genuine M5 prebreak is preserved');
 assert.match(panel,/movementSignal\.trigger>price:movementSignal\.trigger<price/,
  'watch trigger must remain ahead of real current price');
