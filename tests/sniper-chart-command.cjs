@@ -32,6 +32,16 @@ assert.match(early,/onSignal\?\.\(next\)/,
  'compact radar must forward only observed packets into in-chart markers');
 assert.match(css,/sniper-m15-chart-box \.sniper-chart-command\{/,
  'chart sidebar must have a dedicated responsive overlay');
+// SVG has W=492, last real M5 is x=320, price axis starts x=422.
+// Keep the decision rail inside 320..422, never over fresh candles.
+assert.match(panel,/const W=492,H=704,left=8,split=320,end=422/,
+ 'the chart-candle and side rail geometry must stay explicit');
+assert.match(css,/left:calc\(65\.04% \+ 2px\)/,
+ 'signal card must start AFTER the last real M5 candle (320/492)');
+assert.match(css,/right:14\.23%/,
+ 'signal card must stop BEFORE the actual price axis (422/492)');
+assert.match(css,/width:auto;max-width:none;min-width:0/,
+ 'mobile must not force a 112px overlay onto newest real candles');
 assert.match(startup,/await Promise\.all\(\[restoreSniperArchive\(\),restoreScalpArchive\(\)\]\)/,
  'independent remote archive restores should run in parallel before server starts');
 assert.ok(startup.indexOf('await Promise.all([restoreSniperArchive(),restoreScalpArchive()]);')<
