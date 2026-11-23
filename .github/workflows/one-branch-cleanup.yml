@@ -1,0 +1,59 @@
+name: Consolidate Qannas branches to render-free
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type DELETE_ALL_OTHER_BRANCHES after switching the default branch to render-free'
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: qannas-one-branch-cleanup
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    if: github.repository == 'ahmedrady1795-lgtm/ahmed-gold-watch' && inputs.confirmation == 'DELETE_ALL_OTHER_BRANCHES'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check default is the deployed render-free branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          default=$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')
+          if [[ "$default" != "render-free" ]]; then
+            echo "::error::Switch GitHub Settings > Branches > Default branch to render-free before cleanup"
+            exit 1
+          fi
+          echo "Default branch is render-free"
+      - name: Fetch all branch commits before deletion
+        uses: actions/checkout@v4
+        with:
+          ref: render-free
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify complete restorable Git bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          git bundle create "$RUNNER_TEMP/qannas-all-branches-precleanup.bundle" --all
+          git bundle verify "$RUNNER_TEMP/qannas-all-branches-precleanup.bundle"
+          count=$(git for-each-ref --format='%(refname)' refs/remotes/origin/ | wc -l)
+          echo "Archived remote branch refs: $count"
+          test "$count" -ge 180
+          echo "QANNAS_ARCHIVED_REF_COUNT=$count" >> "$GITHUB_ENV"
+      - name: Preserve pre-cleanup history without creating another branch
+        uses: actions/upload-artifact@v4
+        with:
+          name: Qannas-precleanup-git-bundle
+          path: ${{ runner.temp }}/qannas-all-branches-precleanup.bundle
+          retention-days: 30
+          if-no-files-found: error
+      - name: Remove old branches safely, keeping render-free
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          QANNAS_BRANCH_CLEANUP_BUNDLE_VERIFIED: 'yes'
+        run: node scripts/one-branch-cleanup.mjs
