@@ -85,12 +85,58 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:n
       void poll();
       return()=>{closed=true;clearTimeout(timer);request?.abort();};
     }
-    const source=new EventSource('/api/market-lead/stream');
+    // EventSource may be interrupted by a sleeping Render instance or mobile
+    // network proxy. Fall back to the SAME read-only Gold endpoint while SSE
+    // reconnects; never infer a BUY/SELL on the client or poll in a hidden tab.
+    let fallbackTimer:ReturnType<typeof setTimeout>|undefined;
+    let fallbackRequest:AbortController|undefined;
+    let fallbackBusy=false;
+    let source:EventSource;
+    const fallbackPoll=async()=>{
+      fallbackTimer=undefined;
+      if(closed||source.readyState===EventSource.OPEN)return;
+      if(!document.hidden&&!fallbackBusy){
+        fallbackBusy=true;
+        const controller=new AbortController();
+        fallbackRequest=controller;
+        const timeout=setTimeout(()=>controller.abort(),6500);
+        try{
+          const response=await fetch('/api/market-lead?asset=GOLD',{
+            cache:'no-store',signal:controller.signal});
+          if(!response.ok)throw Error('GOLD lead HTTP '+response.status);
+          onReading(await response.json());
+        }catch{
+          if(!closed&&source.readyState!==EventSource.OPEN)setConnected(false);
+        }finally{
+          clearTimeout(timeout);fallbackBusy=false;
+          if(fallbackRequest===controller)fallbackRequest=undefined;
+        }
+      }
+      if(!closed&&source.readyState!==EventSource.OPEN)
+        fallbackTimer=setTimeout(()=>{void fallbackPoll();},6000);
+    };
     const onLead=(event:MessageEvent)=>{try{onReading(JSON.parse(String(event.data)));}catch{}};
+    try{
+      source=new EventSource('/api/market-lead/stream');
+    }catch{
+      // No native SSE: REST poll still reports genuine server observations.
+      source={readyState:EventSource.CLOSED,close:()=>{}} as EventSource;
+      fallbackTimer=setTimeout(()=>{void fallbackPoll();},0);
+      return()=>{closed=true;clearTimeout(fallbackTimer);fallbackRequest?.abort();};
+    }
     source.addEventListener('lead',onLead as EventListener);
-    source.onerror=()=>{if(!closed)setConnected(false);};
+    source.onopen=()=>{
+      clearTimeout(fallbackTimer);fallbackTimer=undefined;
+      fallbackRequest?.abort();
+    };
+    source.onerror=()=>{
+      if(closed)return;
+      setConnected(false);
+      if(!fallbackTimer&&!fallbackBusy)
+        fallbackTimer=setTimeout(()=>{void fallbackPoll();},350);
+    };
     return()=>{
-      closed=true;
+      closed=true;clearTimeout(fallbackTimer);fallbackRequest?.abort();
       source.removeEventListener('lead',onLead as EventListener);
       source.close();
     };
