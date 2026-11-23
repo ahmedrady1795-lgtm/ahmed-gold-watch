@@ -1,5 +1,5 @@
 // Archive contains only public paper-scenario records. No credentials or account data.
-export const ARCHIVE_URL='https://raw.githubusercontent.com/ahmedrady1795-lgtm/ahmed-gold-watch/sniper-audit-data/data/sniper-audit.json';
+export const ARCHIVE_URL='https://raw.githubusercontent.com/ahmedrady1795-lgtm/ahmed-gold-watch/render-free/data/sniper-audit.json';
 const statuses=['ACTIVE','COMPLETED','STOPPED','EXPIRED','AMBIGUOUS','UNOBSERVED','REVERSED'];
 const positive=n=>typeof n==='number'&&Number.isFinite(n)&&n>0;
 const nonnegative=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0;
