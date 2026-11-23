@@ -111,13 +111,14 @@ export default function SniperOpportunityMarkers(p:Props){
  // Reserve qualified entries before observational captions.
  const breakLabels=new Map<string,{x:number;y:number}>();
  for(const r of shown.filter(r=>r.quality==='SETUP'&&!nearCurrent(r))){
+    if(breakLabels.size>=2)break;
    const chosen=placeLabel(p.timeX(r.issuedAt),p.py(r.priceAt),48,16,
      r.side==='BUY'?29:-29);
    if(chosen)breakLabels.set(r.id,chosen);
  }
  // Keep real historical PRE-break observations labelled by direction,
  // even if they have expired or failed. Do not retroactively call them trades.
- for(const r of earlyShown.filter(r=>!nearCurrent(r)).slice(0,3)){
+ for(const r of earlyShown.filter(r=>!nearCurrent(r)).slice(0,1)){
    const px=p.timeX(r.issuedAt),py=p.py(r.priceAt);
    const chosen=placeLabel(px,py,48,16,r.side==='BUY'?22:-22);
    if(chosen)earlyLabels.set(r.id,chosen);
@@ -131,7 +132,7 @@ export default function SniperOpportunityMarkers(p:Props){
  const m5CaptionCandidates=[...m5Issued].sort((a,b)=>
    order(a.kind)-order(b.kind)||b.issuedAt-a.issuedAt);
  for(const r of m5CaptionCandidates){
-   if(m5Labels.size>=3)break;
+   if(m5Labels.size>=1)break;
    if(m5Named.some(s=>s.side===r.side&&s.kind===r.kind))continue;
    const x=p.timeX(r.issuedAt),y=p.py(r.priceAt);
    const chosen=placeLabel(x,y,76,19,r.side==='BUY'?29:-29);
@@ -219,8 +220,7 @@ export default function SniperOpportunityMarkers(p:Props){
        r.quality==='COUNTERTREND'?'عكس؟':
        (buy?'↗ كسر':'↘ كسر');
      const width=46;
-     const placement=r.quality==='SETUP'?breakLabels.get(r.id):
-       nearCurrent(r)?null:placeLabel(x,y,width,16,buy?22:-22);
+     const placement=r.quality==='SETUP'?breakLabels.get(r.id):null;
      const labelX=placement?.x??x,labelY=placement?.y??y;
      return <g key={r.id} data-side={r.side} data-issued-at={r.issuedAt}>
        <title>{(buy?'شراء':'بيع')+' · رصد سابق عند '+r.priceAt.toFixed(2)+
