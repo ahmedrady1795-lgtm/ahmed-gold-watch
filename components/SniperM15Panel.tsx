@@ -571,7 +571,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Record the next candle while its opening price is still unknown.
  const forecastScope=JSON.stringify([asset,x?.candleSource,liveQuote?.source]);
 
- type PreOpen={priceAt?:number;proxy?:PaxgSide;scope:string;target:number;issued:number;side:'BUY'|'SELL';reason:string};
+ type PreOpen={priceAt?:number;proxy?:PaxgSide;proxySource?:string;scope:string;target:number;issued:number;side:'BUY'|'SELL';reason:string};
  const [preOpen,setPreOpen]=useState<PreOpen|null>(null);
  useEffect(()=>{
    const key='qannas-preopen-m5-v1:'+forecastScope;
@@ -604,7 +604,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    const freshProxy=asset==='GOLD'&&paxg&&paxg.observedAt<=issued&&
      issued-paxg.observedAt<=12000&&paxg.tradeAt<=issued&&issued-paxg.tradeAt<=15000;
    const proxy=asset==='GOLD'?(freshProxy?paxg.side:'UNAVAILABLE'):undefined;
-   const record={scope:forecastScope,target,issued,side,proxy,priceAt:price??undefined,
+   const record={scope:forecastScope,target,issued,side,proxy,proxySource:freshProxy?paxg?.source:undefined,priceAt:price??undefined,
      reason:(eligible?.reason??candleLean.reason)+(sweep==='NONE'?'':' · سحب سيولة M15')};
    setPreOpen(record);
    try{window.localStorage.setItem(key,JSON.stringify(record));}catch{}
@@ -1181,7 +1181,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    <details className="sniper-hunt-advanced">
      <summary>المستويات والتشخيص <span aria-hidden="true">＋</span></summary>
      <SniperOrderFlowStrip data={flowObservation}/>
-     {asset==='GOLD'&&visiblePreOpen?.proxy&&<small>قراءة Binance PAXG وقت التوقع · {
+     {asset==='GOLD'&&visiblePreOpen?.proxy&&<small>{'قراءة '+(visiblePreOpen.proxySource||'PAXG فوري')+' وقت التوقع · '}{
        {BUY:'ضغط شراء',SELL:'ضغط بيع',NEUTRAL:'الدفتر والتنفيذ بلا اتجاه مشترك',
         UNAVAILABLE:'لا توجد عينة حديثة كافية'}[visiblePreOpen.proxy]}</small>}
    <SniperM15Summary asset={asset} ready={projected.ready}
