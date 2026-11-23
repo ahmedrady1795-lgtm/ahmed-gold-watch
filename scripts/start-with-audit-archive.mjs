@@ -4,6 +4,10 @@ import {renderFreeEcoEnabled} from '../lib/render-free-eco.ts';
 import {ARCHIVE_URL,cleanArchive,restoredState} from './sniper-archive.mjs';
 import {SCALP_RESEARCH_URL,restoredScalpResearch,
  restoredBtcEarlyForward,restoredGoldEarlyForward} from './scalp-research-archive.mjs';
+// Both GitHub checkpoints are independent. Fetch them concurrently BEFORE
+// Next.js/sidecar workers start, preserving restore-first safety without
+// paying two consecutive network timeouts on every Render Free cold boot.
+const restoreSniperArchive=async()=>{
 try{
   const response=await fetch(ARCHIVE_URL+'?restore='+Date.now(),{signal:AbortSignal.timeout(10000),cache:'no-store'});
   if(!response.ok)throw Error('Archive HTTP '+response.status);
@@ -19,9 +23,11 @@ try{
   await fs.writeFile('/tmp/sniper-archive-checkpoint.json',JSON.stringify({savedAt:archive.savedAt,records:archive.records.length,restoredAt:Date.now()}));
   console.info('[SNIPER-ARCHIVE] Restored checkpoint',archive.savedAt,'records',archive.records.length);
 }catch(e){console.warn('[SNIPER-ARCHIVE] Restore unavailable:',e.message);}
+};
 // Render Free has no persistent disk by default. Restore the external
 // forward-research checkpoint BEFORE both the dashboard and AI workers start.
 // Never revive stale LIMIT orders; pending observations become UNKNOWN.
+const restoreScalpArchive=async()=>{
 try{
  const response=await fetch(SCALP_RESEARCH_URL+'?restore='+Date.now(),{
   cache:'no-store',signal:AbortSignal.timeout(8500)});
@@ -57,6 +63,8 @@ try{
  }
 }catch(e){console.warn('[M1-RESEARCH] External checkpoint unavailable:',
  String(e instanceof Error?e.message:e).slice(0,180));}
+};
+await Promise.all([restoreSniperArchive(),restoreScalpArchive()]);
 const child=spawn('npm',['start'],{stdio:'inherit',env:process.env});
 // Nonblocking post-startup Spot proof. This also warms the market-data
 // cache before a user opens /spot and reports the actual failing stage.
