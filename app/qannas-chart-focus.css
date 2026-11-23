@@ -274,3 +274,16 @@
  .sniper-chart-liquidity b{font-size:8px}
  .sniper-chart-liquidity small{font-size:7.5px}
 }
+
+
+/* PAXG is an independent crypto-token order book, not Exness XAUUSD DOM. */
+.sniper-chart-liquidity .sniper-chart-gold-proxy{
+ display:block;font-size:8px;line-height:1.3;color:#a8c1d5;
+ white-space:normal;overflow-wrap:anywhere;
+}
+.sniper-chart-liquidity [data-gold-proxy-status="ALIGNED"]{color:#82d8b4}
+.sniper-chart-liquidity [data-gold-proxy-status="DIVERGENT"]{color:#ffad9d}
+.sniper-chart-liquidity [data-gold-proxy-status="UNAVAILABLE"]{color:#83949d}
+@media(max-width:640px){
+ .sniper-chart-liquidity .sniper-chart-gold-proxy{font-size:7.4px;line-height:1.22}
+}
