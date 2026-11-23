@@ -38,7 +38,7 @@ jobs:
       - run: node tests/sniper-live-opportunity.cjs && node tests/sniper-movement-proof.cjs && node tests/sniper-m5-candle-lean.cjs && node tests/sniper-early-setup.cjs
       - run: node tests/ai-health-recovery.cjs
       - run: node tests/gold-tick-quality.cjs
-      - run: node tests/sniper-chart-command.cjs
+      - run: node tests/sniper-chart-command.cjs && node tests/sniper-gold-local-watch.cjs
       - run: node tests/institutional-preparation-radar.cjs
       - run: node tests/market-lead-ai.cjs
       - run: node tests/gold-source-continuity.cjs
