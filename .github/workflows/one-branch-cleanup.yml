@@ -21,9 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Verify explicit cleanup marker on requested push
-        if: github.event_name == 'push'
-        run: test "$(cat docs/maintenance/execute-one-branch-cleanup.txt)" = 'DELETE_ALL_OTHER_BRANCHES'
       - name: Check default is the deployed render-free branch
         shell: bash
         env:
@@ -42,6 +39,9 @@ jobs:
           ref: render-free
           fetch-depth: 0
           persist-credentials: false
+      - name: Verify explicit cleanup marker on requested push
+        if: github.event_name == 'push'
+        run: test "$(cat docs/maintenance/execute-one-branch-cleanup.txt)" = 'DELETE_ALL_OTHER_BRANCHES'
       - name: Verify complete restorable Git bundle
         shell: bash
         run: |
