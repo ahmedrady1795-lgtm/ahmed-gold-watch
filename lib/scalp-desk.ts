@@ -71,6 +71,17 @@ async function boundedSource<T>(pendingSource:Promise<T>,limitMs:number):Promise
 export function peekScalpDesk(maxAgeMs=12000){
   return cached&&cachedAt>0&&Date.now()-cachedAt<=maxAgeMs?cached:null;
 }
+
+// Read-only GOLD scout cache, independent of ML/Neural readiness and BTC REST.
+// Never starts a computation, extends a viewer lease, or manufactures an alert.
+export function peekScalpGold(maxAgeMs=35000){
+  const now=Date.now();
+  const choices=[{value:cached,at:cachedAt},{value:goldOnlyCached,at:goldOnlyCachedAt}]
+    .filter(x=>x.value?.gold&&x.at>0&&now>=x.at&&now-x.at<=maxAgeMs)
+    .sort((a,b)=>b.at-a.at);
+  return choices[0]?.value??null;
+}
+
 export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
   const goldOnly=asset==='GOLD';
   const now=Date.now();
