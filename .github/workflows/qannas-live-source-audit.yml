@@ -45,6 +45,8 @@ jobs:
                 out.reason=String(data?.reason||'').slice(0,220);
               } else {
                 out.operational=data?.operational??null;
+                out.healthState=data?.healthState??'UNREPORTED';
+                out.eco=data?.eco??null;
                 out.ai=data?.ai?.mode??null;
                 out.aiReady=data?.ai?.readyCount??null;
                 out.auditFresh=data?.audit?.fresh??null;
