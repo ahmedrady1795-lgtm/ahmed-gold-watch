@@ -6,24 +6,20 @@ const styles=fs.readFileSync('app/qannas-scenario-2026.css','utf8');
 const layout=fs.readFileSync('app/layout.tsx','utf8');
 const page=fs.readFileSync('app/page.tsx','utf8');
 const overlay=fs.readFileSync('components/SniperM15HuntOverlay.tsx','utf8');
-assert.match(panel,/<SniperScenarioHero asset=\{asset\} fusion=\{localFusion\}/);
-assert.match(panel,/className="sniper-m5-chart-status"/);
-assert.doesNotMatch(panel,/className="sniper-scenario-chart-legend"/,
- 'screen-width prose legend is moved off the chart-first surface');
-assert.match(panel,/className="sniper-intelligence-drawer"/);
-assert.match(panel,/<SniperM15PreMoveConsole preMove=\{preMove\} hunt=\{huntPreview\}/);
-const start=panel.indexOf('<SniperScenarioHero asset=');
+assert.match(panel,/data-qannas-chart-signal=\{commandState\}/,
+ 'qualified decision must be shown directly in live M5 chart');
+assert.match(panel,/className="sniper-m5-chart-status"/,
+ 'price-true M5 labels must stay on the original SVG');
+assert.doesNotMatch(panel,/sniper-intelligence-drawer/,
+ 'repeated early-flow and AI fusion deck should be removed');
+assert.doesNotMatch(panel,/<SniperM15PreMoveConsole\b/,
+ 'early-flow big card is no longer the primary navigation');
 const chart=panel.indexOf('className="sniper-m15-chart-box"');
-const deck=panel.indexOf('className="sniper-intelligence-drawer"');
-assert.ok(chart>=0&&deck>chart&&start>deck,
- 'M5 candles are first; optional analysis starts only after the chart');
-const heroStart=panel.indexOf('<SniperScenarioHero asset=');
-const heroEnd=panel.indexOf('/>',heroStart);
-assert.ok(heroEnd>heroStart,'scenario hero props must be fully closed');
-const dataFresh=panel.slice(heroStart,heroEnd+2);
-assert.match(dataFresh,/fresh=\{Boolean\(m\.sniper\.view\.priceFresh&&/);
-assert.match(dataFresh,/quoteSamples=\{/,'quote warm-up diagnostics are visible');
-assert.match(dataFresh,/providerTransition=\{providerTransition\}/);
+const diagnostic=panel.indexOf('className="sniper-m15-diagnostics"');
+assert.ok(chart>=0&&diagnostic>chart,
+ 'main chart must precede optional concise diagnostic panel');
+assert.match(panel,/className="sniper-diagnostic-mini"/,
+ 'M1 M15 and liquidity diagnostics stay accessible without large cards');
 assert.match(hero,/data-source-ready=\{connected\}/);
 assert.match(hero,/const connected=p\.marketOpen&&p\.fresh&&!p\.providerTransition&&p\.fusion\.ready/);
 assert.match(hero,/m1M15Conflict/,'do not hide conflicting closed-candle directions');
