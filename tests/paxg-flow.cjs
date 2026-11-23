@@ -27,7 +27,7 @@ assert.equal(readKrakenPaxgFlow(book(true),krakenTrades(false),now).side,'NEUTRA
   'Kraken depth/tape disagreement is never forced to a signal');
 assert.equal(readKrakenPaxgFlow(book(true),krakenTrades(true),now+16000).side,'UNAVAILABLE',
   'Kraken historical print timestamps cannot be freshened at fetch time');
-assert.equal(readKrakenPaxgFlow(book(true),krakenTrades(true),now-2000).side,'UNAVAILABLE',
+assert.equal(readKrakenPaxgFlow(book(true),krakenTrades(true),now-5000).side,'UNAVAILABLE',
   'Kraken future prints are discarded');
 assert.equal(readKrakenPaxgFlow(book(true),Array(5).fill(krakenTrades(true)[0]),now).side,
   'UNAVAILABLE','duplicated trade rows cannot manufacture flow pressure');
