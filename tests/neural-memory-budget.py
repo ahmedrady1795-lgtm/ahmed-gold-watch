@@ -4,6 +4,10 @@ No torch import, collector startup, provider network or live model execution.
 import ast
 from pathlib import Path
 import unittest
+import tempfile
+import os
+import json
+from types import SimpleNamespace
 
 source=Path("neural-service/app.py").read_text(encoding="utf-8")
 tree=ast.parse(source)
@@ -32,6 +36,27 @@ class NeuralBudgetTests(unittest.TestCase):
   self.assertEqual(source.count("_rss_mb()<=_memory_training_budget_mb()"),2)
   self.assertIn('"trainingStartRssLimitMb"',source)
   self.assertIn('RUNTIME_REVISION="bounded-free-tier-training-r4.2"',source)
+ def test_once_per_revision_retry_for_failed_neural_training_only(self):
+  method=next(n for n in tree.body if isinstance(n,ast.FunctionDef)
+              and n.name=="_recover_training_schedule")
+  with tempfile.TemporaryDirectory() as d:
+   schedule={"classifier":{"ready":False,"failures":4,"nextAttemptAt":999999999,
+     "dataEndAt":90000},"path":{"ready":True,"failures":0,"nextAttemptAt":678901}}
+   ns={"SCHEDULE":schedule,"RUNTIME_REVISION":"bounded-free-tier-training-r4.2",
+       "SCHEDULE_PATH":Path(d)/"training_schedule.json",
+       "time":SimpleNamespace(time=lambda:1000),"os":os,"json":json}
+   exec(compile(ast.Module(body=[method],type_ignores=[]),
+                "neural-service/app.py","exec"),ns)
+   recover=ns["_recover_training_schedule"]
+   self.assertTrue(recover())
+   self.assertEqual(schedule["classifier"]["nextAttemptAt"],1120000)
+   self.assertEqual(schedule["classifier"]["failures"],0)
+   self.assertEqual(schedule["classifier"]["dataEndAt"],0)
+   self.assertEqual(schedule["path"]["nextAttemptAt"],678901,
+                    "preserve already successful champion schedule")
+   self.assertFalse(recover(),"idempotent across health checks and restarts")
+   self.assertEqual(json.loads(ns["SCHEDULE_PATH"].read_text())["runtimeRevision"],
+                    "bounded-free-tier-training-r4.2")
  def test_prediction_still_has_closed_snapshot_age_and_causal_training(self):
   self.assertIn("snapshot_age_ms=int(time.time()*1000)-int(rows[-1][\"t\"])",source)
   self.assertIn('if bad[j+1]!=bad[start] or gap[j]!=gap[start]:continue',source)
