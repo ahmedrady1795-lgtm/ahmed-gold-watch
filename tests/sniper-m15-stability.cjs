@@ -57,7 +57,8 @@ assert.match(chart,/frozenM15Decision/);
 assert.match(chart,/blockedKey===candleKey/);
 assert.match(chart,/lastAttempt\.current===candleKey/);
 assert.match(chart,/latestBos/);
-assert.match(chart,/sniper-m15-phase/);
+assert.match(chart,/data-qannas-chart-signal=\{commandState\}/,
+ 'M15 quality state now lives in compact chart rail instead of long phase badge');
 assert.match(chart,/buildSniperM15Liquidity/);
 assert.match(chart,/observedM15Bias\(actual,verifiedBiasSessionGap\)/);
 assert.match(chart,/const consecutiveM15=\(\(\)=>\{/,
