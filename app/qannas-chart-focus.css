@@ -96,3 +96,52 @@
 [data-clean="true"] .sniper-ended-cross {
   display: none;
 }
+
+/* One chart-side decision rail. Genuine candle prices stay on the SVG:
+   this overlay only reports already-issued prospective setups, never fills. */
+.sniper-m15-chart-box .sniper-chart-command{
+  position:absolute;z-index:7;top:54px;right:14.2%;
+  width:clamp(99px,25%,194px);max-width:194px;box-sizing:border-box;
+  padding:8px 7px;display:grid;gap:6px;
+  direction:rtl;text-align:right;
+  background:rgba(6,20,29,.94);color:#d4e5ed;
+  border:1px solid #365466;border-radius:9px;
+  box-shadow:0 5px 16px #0008;
+  font-family:inherit;line-height:1.32;overflow-wrap:anywhere;
+}
+.sniper-chart-command-head{display:grid;gap:3px;
+  border-bottom:1px solid #284353;padding-bottom:5px}
+.sniper-chart-command-head small{font-size:9px;color:#9fbbc9}
+.sniper-chart-command-head strong{font-size:clamp(11px,1.15vw,17px);line-height:1.22;
+  color:#e7c88b;font-weight:900;direction:ltr;text-align:right}
+.sniper-chart-command.is-watch[data-qannas-chart-side="BUY"] .sniper-chart-command-head strong,
+.sniper-chart-command.is-confirmed[data-qannas-chart-side="BUY"] .sniper-chart-command-head strong{color:#64e9bf}
+.sniper-chart-command.is-watch[data-qannas-chart-side="SELL"] .sniper-chart-command-head strong,
+.sniper-chart-command.is-confirmed[data-qannas-chart-side="SELL"] .sniper-chart-command-head strong{color:#ff97ad}
+.sniper-chart-command.is-offline{border-color:#4d535b}
+.sniper-chart-command-levels{display:grid;gap:3px}
+.sniper-chart-command-levels span{min-width:0;display:flex;flex-wrap:wrap;
+  justify-content:space-between;gap:1px 6px;font-size:9px;color:#98b3c4}
+.sniper-chart-command-levels b{font-size:11px;letter-spacing:-.15px;
+  color:#ebf5f8;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sniper-chart-command p{margin:0;color:#bed1db;font-size:10px;line-height:1.34;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sniper-chart-command-caution{font-size:9px;color:#9cb1bf}
+.sniper-chart-command .sniper-chart-lead{border-top:1px solid #284353;
+  padding-top:5px;font-size:9px;line-height:1.3;color:#b5cddd}
+.sniper-chart-command .sniper-chart-lead b{display:block;color:#d7ece6;font-size:9px}
+.sniper-chart-command .sniper-chart-lead small{color:#9fb4c3;font-size:9px}
+.sniper-m15-levels-below>summary{cursor:pointer;padding:3px 6px;
+  color:#a6c4d2;font-size:11px;font-weight:750}
+.sniper-m15-levels-below:not([open]){padding:3px 7px}
+.sniper-m15-levels-below:not([open]) .sniper-m15-level-key{display:none}
+@media(max-width:640px){
+ .sniper-m15-chart-box .sniper-chart-command{
+   top:47px;right:14.2%;width:clamp(98px,27%,124px);
+   gap:4px;padding:6px 5px;border-radius:7px}
+ .sniper-chart-command-head strong{font-size:12px}
+ .sniper-chart-command-levels span{font-size:9px}
+ .sniper-chart-command-levels b{font-size:10px}
+ .sniper-chart-command p{-webkit-line-clamp:2;font-size:9px}
+ .sniper-chart-command-caution{font-size:8px}
+}
