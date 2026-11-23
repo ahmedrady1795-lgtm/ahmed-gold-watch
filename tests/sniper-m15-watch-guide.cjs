@@ -73,8 +73,8 @@ const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const summary=fs.readFileSync('components/SniperM15Summary.tsx','utf8');
 assert.match(panel,/showWatchGuide=!projected.ready&&watchGuide.ready/,
   'watch-only analysis is independent of frozen/qualified trade signals');
-assert.match(panel,/split=projected.ready\|\|showWatchGuide\?320:400/,
-  'M5 actual chart reserves a genuine M15 context pane when no trade forecast exists');
+assert.match(panel,/split=320,end=422/,
+  'real M5 candles retain a fixed M15 context and compact chart command rail');
 assert.match(panel,/className="sniper-m15-watch-guide"/,
   'actual M15 chart renders two branches rather than hiding the scenario');
 assert.match(panel,/const projected=aligned\?\.scenario\?\?noScenario/,
