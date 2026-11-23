@@ -1,0 +1,757 @@
+{
+  "schema": 1,
+  "repository": "ahmedrady1795-lgtm/ahmed-gold-watch",
+  "recordedAt": "2026-11-23",
+  "primary": "render-free",
+  "purpose": "Immutable pre-cleanup branch heads; all histories are retained as additional parents of render-free. This file is not a request to promote experimental code into production.",
+  "entries": [
+    {
+      "branch": "audit/scalp-forward-observations-20261104",
+      "sha": "9e6a71f86c7fb0cd4aed968bc5f14b3e30cf5db0"
+    },
+    {
+      "branch": "backup-qannas-exact-render-2026-10-24",
+      "sha": "94eeb889485ddc5d41ea23aee696432351093b8c"
+    },
+    {
+      "branch": "backup-qannas-render-free-2026-10-24",
+      "sha": "6a1d3fba2df4592890ea74b86a5a24873baabd6a"
+    },
+    {
+      "branch": "backup/qannas-render-free-2026-10-24",
+      "sha": "6a1d3fba2df4592890ea74b86a5a24873baabd6a"
+    },
+    {
+      "branch": "bot-downloads-v2-20261110",
+      "sha": "35e9236ab012a004962189ce582e156462da38c8"
+    },
+    {
+      "branch": "codex/order-flow-radar",
+      "sha": "a7b9a3d388f9c6bc4275c7ef6cd173d8c1371258"
+    },
+    {
+      "branch": "design/modern-trading-workspace-20261009",
+      "sha": "8d4d405ceab990f2be3e67d7992cb78351c9b257"
+    },
+    {
+      "branch": "docs/mt5-windows-vps-render-setup-20261104",
+      "sha": "2e585e5fa50881dbd8229a141112b8cd5b225ffc"
+    },
+    {
+      "branch": "downloads/quick-dollar-demo-v100",
+      "sha": "875e7b5204586d689fe5786e52c033dd925c4130"
+    },
+    {
+      "branch": "downloads/quick-dollar-demo-v101",
+      "sha": "6c9a141ef2830d99ffeb04f27dd9eb518838acfd"
+    },
+    {
+      "branch": "emergency-image-build-20261005",
+      "sha": "e660d5ac1d1964b3fb4b605474d2fdbc68b0d143"
+    },
+    {
+      "branch": "feat/every-m1-candle-paper-limit-20261105",
+      "sha": "f7912521a6bb077166d27c4da746b4f05e5ce513"
+    },
+    {
+      "branch": "feat/forecast-ai-v3-20261005",
+      "sha": "6809cdb79203c7bd854704348771bcd825da1b73"
+    },
+    {
+      "branch": "feat/gold-liquidity-trap-radar-20261020",
+      "sha": "57d0cb915261ce303bcb634e0ffc93fda19511ab"
+    },
+    {
+      "branch": "feat/gold-scalp-quick-net-exit-20261105",
+      "sha": "a4f8f844d07718b2d7774b5c7898fefcecc3e9b2"
+    },
+    {
+      "branch": "feat/hunter-price-action-structure",
+      "sha": "feef89338179a2612a0831119fa82702ec85b862"
+    },
+    {
+      "branch": "feat/live-gold-stream-20261005",
+      "sha": "68deb2f21ab744fee6d1ac56d0164c7112dcc636"
+    },
+    {
+      "branch": "feat/m1-causal-adaptive-signal-quality-20261105",
+      "sha": "5ba8af39005c2f8ca77137bc7cdcf9a9d17455d1"
+    },
+    {
+      "branch": "feat/m1-directional-priority-and-honest-audit",
+      "sha": "ee49aef11bd99c18d65769a3ea29bfd589135ac1"
+    },
+    {
+      "branch": "feat/m1-forward-learning-risk-review-20261105",
+      "sha": "4475264ad8ed5218189a6b7b956069741fb79c34"
+    },
+    {
+      "branch": "feat/render-visible-gold-radar-20261020",
+      "sha": "4ec17e39be9179de7d345a9414719709dd13edc8"
+    },
+    {
+      "branch": "feat/scalp-early-flow-v10-20261005",
+      "sha": "9b6a760c9b02d2306ce17b754c5dc2cb285e91cc"
+    },
+    {
+      "branch": "feat/scalp-every-candle-edge-v2-20261105",
+      "sha": "c41689178e75239e29634966ff10a106b51453a4"
+    },
+    {
+      "branch": "feat/scalp-limit-only-entry-20261105",
+      "sha": "75335daf898e28a6fa0568dd7a26a1cfb7cd0063"
+    },
+    {
+      "branch": "feat/smart-money-visual-hunter",
+      "sha": "9321da4edbdb0e064764d9cf6896ca37b3ea6682"
+    },
+    {
+      "branch": "feat/sniper-continuous-bias-distant-levels-20261011",
+      "sha": "c43bc7b0d6c36a04e4d5a91d6e0ad865c82a27d9"
+    },
+    {
+      "branch": "feat/sniper-four-hour-liquidity-news-20261011",
+      "sha": "f7c8ee6a805b610f97420f48ec7e803b275b141e"
+    },
+    {
+      "branch": "feat/sniper-live-observation-20261011",
+      "sha": "373128f9ca31343bcf2be2e52349d5ac6b6662f2"
+    },
+    {
+      "branch": "feat/sniper-server-memory-20261011",
+      "sha": "9cf5d23f0a31a56f80006f81f822c0fb2ef468f2"
+    },
+    {
+      "branch": "feat/structural-path-forecast-20261005",
+      "sha": "edfd9ac7f620960b94ab9cbaf687f0e2bccbef7f"
+    },
+    {
+      "branch": "feat/zone-based-next-move-20261005",
+      "sha": "e3c015f0d7d1c5b41069cbca31ef7832b05a335a"
+    },
+    {
+      "branch": "feature/btc-demo-every-m1-candle-best-effort-20261108",
+      "sha": "f4ea1c6712755d3f107ee430c562e65fe7b601c4"
+    },
+    {
+      "branch": "feature/btc-demo-fast-scalp-20261108",
+      "sha": "19f8db46fdc5492f59e63e13dd0f99a45d8b78ec"
+    },
+    {
+      "branch": "feature/btc-demo-higher-frequency-capped-v105-20261108",
+      "sha": "0624dfd7f9688a1bbcfe8a1f5b758031d4d0c4fe"
+    },
+    {
+      "branch": "feature/btc-demo-stacked-100usd-20261108",
+      "sha": "ba99d3d18ec6efafc313811ee23a9d373251ad24"
+    },
+    {
+      "branch": "feature/btc-demo-v108-quick-profit-lot-20261108",
+      "sha": "e049ce5d9067b2b06436a35a911b1914856eae4f"
+    },
+    {
+      "branch": "feature/btc-demo-v109-fixed-half-lot-basket-20261108",
+      "sha": "424be91e975e46dd5f1a240742ab274f2c1c05cc"
+    },
+    {
+      "branch": "feature/btc-exness-demo-market-v103-20261108",
+      "sha": "e20cca5e1d5a6cb6df070da51b0fba566130f588"
+    },
+    {
+      "branch": "feature/btc-kraken-same-venue-orderflow-20261121",
+      "sha": "f5603d190edc54d3db737c0ef46fc238e6b7b8f4"
+    },
+    {
+      "branch": "feature/btc-okx-executed-flow-failover-20261121",
+      "sha": "36a6f5f2aaeefd9530167ac8ca6d7237fbcd4d01"
+    },
+    {
+      "branch": "feature/btc-quote-docker-test-20261121",
+      "sha": "cbf8f722b23d53a143df3ecbb222e130bc501c0b"
+    },
+    {
+      "branch": "feature/btc-quote-venue-and-monotonic-20261121",
+      "sha": "55b3980cad2e70562d41187d07f96c777a00fb75"
+    },
+    {
+      "branch": "feature/btc-real-executions-venue-alignment-20261121",
+      "sha": "b1aef80d1c972de42e94b4809a43687af19d70d8"
+    },
+    {
+      "branch": "feature/causal-direction-holdout-validation-20261009",
+      "sha": "7353eaebb89e2bdf74c741968df447bea46d269d"
+    },
+    {
+      "branch": "feature/causal-move-envelopes-20261009",
+      "sha": "68238e38064597ecd9c53503f43c6f3a7491e0cf"
+    },
+    {
+      "branch": "feature/causal-move-walk-forward-validation-20261009",
+      "sha": "9101996cd2359aee301e9bd6280d39c7d5fff9e2"
+    },
+    {
+      "branch": "feature/core-voice-chat-workspace-20261010",
+      "sha": "7afeecec3197721aba72e71ccbf12b4566d75c9f"
+    },
+    {
+      "branch": "feature/direct-voice-core-20261010",
+      "sha": "ae0399f7288a0b28eaae62b640c4077bc614a361"
+    },
+    {
+      "branch": "feature/early-liquidity-entry-cost-ml-recovery-20261121",
+      "sha": "18e3d5cf1fa7e4e11d71674fde1e06efc06bca59"
+    },
+    {
+      "branch": "feature/exness-btc-demo-limit-executor-20261108",
+      "sha": "bbde6f469a4c87c67f319bc41eb1129d846780f5"
+    },
+    {
+      "branch": "feature/exness-vps-safe-bridge-20261107",
+      "sha": "f373cc7ca0c5fcbc296e3688303a8a40e35c2aa2"
+    },
+    {
+      "branch": "feature/forex-pair-watchlist-20261009",
+      "sha": "bca5a28625cebac58aae5f408d35941fac4c047b"
+    },
+    {
+      "branch": "feature/free-contextual-core-chat-20261010",
+      "sha": "2e5f6fb23b72f751d6ac8c9869c48883632c0686"
+    },
+    {
+      "branch": "feature/gold-chaser-v104-profit-room-next-order-20261109",
+      "sha": "fd069db3c85f7da88d682e6fae210259f5c10a06"
+    },
+    {
+      "branch": "feature/gold-chaser-v107-sniper-ambush-bridge-20261109",
+      "sha": "6453519d4267d30ff0fbf9ccd2d75bee3dd75b6d"
+    },
+    {
+      "branch": "feature/gold-mt5-early-cost-forward-20261121",
+      "sha": "f0a9c04934ef37cd80f9cb8e7ad741af9a01a27e"
+    },
+    {
+      "branch": "feature/liquidity-scenario-map-20261012",
+      "sha": "182b90bd659f7d1d29dbe3b19f3b9090b69d949b"
+    },
+    {
+      "branch": "feature/m1-fast-shadow-expert-20261106",
+      "sha": "8b49c853222446e5a7bda5e771890fcb10406ac8"
+    },
+    {
+      "branch": "feature/m1-first-quote-v6-shadow-20261106",
+      "sha": "9ac242fae5d39481f537fdd254172e33e8b2f432"
+    },
+    {
+      "branch": "feature/m1-hold-confirmed-entry-20261008",
+      "sha": "7f40fdcb7996bebde7f0f27577c6b2edd25fb549"
+    },
+    {
+      "branch": "feature/m1-intrabar-pulse-and-frozen-forecast-20261105",
+      "sha": "19bcf525d8da00eb3ef6c24c87d1e1bdb6f913b2"
+    },
+    {
+      "branch": "feature/m1-near-limit-forward-shadow-20261106",
+      "sha": "b7c633788dcd00b6d0990f3b3c4cba9f21e3828a"
+    },
+    {
+      "branch": "feature/m1-near-passive-limit-v6-20261106",
+      "sha": "bfac95b4d4559acc06d5ef49ada59a6ebb1cfb9f"
+    },
+    {
+      "branch": "feature/m1-pullback-reclaim-watch-20261121",
+      "sha": "d09fecec056a05ca67ef25eda524a65bb2359caa"
+    },
+    {
+      "branch": "feature/m1-smart-exit-shadow-audit-20261106",
+      "sha": "07896d798ed956ef1348e13cf854872f69c3a091"
+    },
+    {
+      "branch": "feature/m5-chart-legacy-test-compat-20261121",
+      "sha": "0084aaf34144ff45ed574892436606d30dae7fcb"
+    },
+    {
+      "branch": "feature/m5-prebreak-visible-without-m15-edge-20261121",
+      "sha": "fa3a31c750576f3fdf486a48dc1ff08d6ab96723"
+    },
+    {
+      "branch": "feature/mt5-local-windows-laptop-demo-20261104",
+      "sha": "806e664d7d298b26b92ce0482f5ee57b742e9433"
+    },
+    {
+      "branch": "feature/qualified-watch-triggers-20261008",
+      "sha": "a09092759fc7b15db43f3ff47c6412b8c3943cb9"
+    },
+    {
+      "branch": "feature/render-early-dom-alert-20261121",
+      "sha": "c995a9f92405b35919557a28051d7c3dffd9a70f"
+    },
+    {
+      "branch": "feature/render-scap-research-checkpoint-20261121",
+      "sha": "f01171cd48c9cb84f46cd8417c604e83b4f87aa2"
+    },
+    {
+      "branch": "feature/scalp-active-paper-observation-20261008",
+      "sha": "f8a071cbb5f8a5beb2594a6320faf119d8edb4e7"
+    },
+    {
+      "branch": "feature/verified-early-move-alert-20261121",
+      "sha": "e29048314ae67b1af7dd268755847b2bd253cbd5"
+    },
+    {
+      "branch": "feature/viable-multicandidate-scalp-direction-audit-20261009",
+      "sha": "91a89a7d77bbad059b2e633d9fb9a20de9bff546"
+    },
+    {
+      "branch": "feature/voice-browser-fallback-20261010",
+      "sha": "21177800164cb222effc363a76e12f603041c746"
+    },
+    {
+      "branch": "feature/voice-ios-activation-20261010",
+      "sha": "c1d8cd338af268de500449950ed2a6599130715e"
+    },
+    {
+      "branch": "feature/voice-only-core-20261010",
+      "sha": "54352f08a988280dc9749698fb49fe9054c7d62e"
+    },
+    {
+      "branch": "feature/voice-speech-reliability-20261010",
+      "sha": "c374113121da6a610bc32dfe4bea980a1115ff32"
+    },
+    {
+      "branch": "fix/ai-cadence-entry-audit-20261009",
+      "sha": "49aedcffbd8753a6551ed969ec20873851f79a76"
+    },
+    {
+      "branch": "fix/ai-stability-20261004-0804",
+      "sha": "2a8df2afa7254dbd21563f82cbc2a765f8ca2926"
+    },
+    {
+      "branch": "fix/btc-demo-40usd-daily-stop-20261108",
+      "sha": "c0859b9037649e928b21d64ac27115a898b7638e"
+    },
+    {
+      "branch": "fix/btc-demo-cost-aware-volatility-20261108",
+      "sha": "34b74d5fce30cd903cd18f04adb275cd23067200"
+    },
+    {
+      "branch": "fix/btc-demo-market-fast-profit-graceful-loss-v104-20261108",
+      "sha": "f4c68b5f5241dc45ba7664ed5eb5f0703e552fbf"
+    },
+    {
+      "branch": "fix/btc-demo-pending-invalid-expiration-20261108",
+      "sha": "b37a2ea68843b2e8f9239c2f0389b1a90bd7ee35"
+    },
+    {
+      "branch": "fix/btc-demo-wait-diagnostics-20261108",
+      "sha": "d14753202e1303f487a28abaf5dcb01fc4c6ee39"
+    },
+    {
+      "branch": "fix/core-learning-guard-20261004",
+      "sha": "8489f3e1ad08d5cb98c9c8aac192e73d4aa24a0d"
+    },
+    {
+      "branch": "fix/every-m1-limit-wait-for-post-signal-quote-20261105",
+      "sha": "991b7539db8d5d44a450b98a64853de1e05eb88a"
+    },
+    {
+      "branch": "fix/every-m1-net-micro-capture-20261105",
+      "sha": "dc59481160f50ae08ec892f1ab6a442e54259394"
+    },
+    {
+      "branch": "fix/fast-ai-refresh-snapshot-visibility-20261009",
+      "sha": "38fe4a5a8c6a0ef14f9c844b0135f75ce43276a3"
+    },
+    {
+      "branch": "fix/forecast-audit-quality-gates-20261009",
+      "sha": "30b5a02d1925ac58705fc3c8488c60e893c618cf"
+    },
+    {
+      "branch": "fix/forecast-candles-20261017",
+      "sha": "80c308a507026d1b0b00750d4f90eeca7b961881"
+    },
+    {
+      "branch": "fix/forecast-conviction-20261005",
+      "sha": "3f5bfb947fb1a5abd15733e7be9cae949ccea626"
+    },
+    {
+      "branch": "fix/gold-anchor-next-move-20261005",
+      "sha": "e6bfb947ac8c9bfb9361c6dcebd5b37a9d1e2361"
+    },
+    {
+      "branch": "fix/gold-candle-chaser-loss-ratio-20261109",
+      "sha": "10c2ee1d0c03fd5a93c8f7128445b06e3addddf3"
+    },
+    {
+      "branch": "fix/gold-candle-chaser-oneway-stop-20261109",
+      "sha": "d9603aa847ef3b453dbacba73b5d8c272540bbb0"
+    },
+    {
+      "branch": "fix/gold-chaser-v105-adaptive-lot-diagnostics-20261109",
+      "sha": "cb10c30e2be3a99b683e69c05deeacf39f8c1b88"
+    },
+    {
+      "branch": "fix/gold-chaser-v106-daily-stop-opt-in-20261109",
+      "sha": "370c5714663fbebb2e680305d159c301c895e7d9"
+    },
+    {
+      "branch": "fix/gold-live-ai-status-20261005",
+      "sha": "44e2e444accbcfd565b07c69dafb8542f0e0062c"
+    },
+    {
+      "branch": "fix/gold-m5-breakout-retest-stop-20261009",
+      "sha": "e8796e7a42c88b22dc1085c1c06e67f005988187"
+    },
+    {
+      "branch": "fix/gold-premove-causal-buffer-eco-20261105",
+      "sha": "0196dd2efbdc5b45b081efb519bd4b8b9d0a4fa7"
+    },
+    {
+      "branch": "fix/gold-radar-confirmation-lifecycle",
+      "sha": "82682b4d00327a35dc39278f082dec7bbfd0e4b6"
+    },
+    {
+      "branch": "fix/gold-source-continuity-20261109",
+      "sha": "9fe798b2d5bc603ec5d4aa2f609fd55421a2f2af"
+    },
+    {
+      "branch": "fix/gold-spot-provider-20261005",
+      "sha": "9ff68916492e9ab624632cca14eb44aea8b3fc93"
+    },
+    {
+      "branch": "fix/h4-closed-contiguous-candles",
+      "sha": "931ec4de126e181166f745bea7558719278c0bf2"
+    },
+    {
+      "branch": "fix/hide-immature-direction-accuracy-20261009",
+      "sha": "0a1efe4d94d225ac4fa1834228b5426eceb2a8b0"
+    },
+    {
+      "branch": "fix/independent-scalp-pulse-worker-20261009",
+      "sha": "e5445feaedf201c1ee2fe2ba0d348259d166d142"
+    },
+    {
+      "branch": "fix/live-gold-fallback-20261005",
+      "sha": "7471a95a6823e64078b1f7143e1f3e8f59307d64"
+    },
+    {
+      "branch": "fix/live-m15-watch-guide-and-clean-sniper",
+      "sha": "ca949a7bb4b43ccde4ea832e86268f1bbea8a708"
+    },
+    {
+      "branch": "fix/m1-confirmed-micro-limit-forward-learner-20261105",
+      "sha": "15831d0ddf3c78b4f0b6bb04781ad2cad8ad8909"
+    },
+    {
+      "branch": "fix/m1-limit-confirmed-micro-scalp-20261105",
+      "sha": "218bd9387ddf851636ed841e6b17e4d976cbf8f4"
+    },
+    {
+      "branch": "fix/m1-paper-loss-brake-20261105",
+      "sha": "80deb2a67445a3db720c3fc206735215772d2ea5"
+    },
+    {
+      "branch": "fix/m1-quote-order-and-expiry-20261105",
+      "sha": "8e5fa48f0aa526759dec9be75c7707cb3dbb4b13"
+    },
+    {
+      "branch": "fix/m1-retain-expired-levels",
+      "sha": "56b95a4c1cfe41618d548bc1bb783752b92f65f1"
+    },
+    {
+      "branch": "fix/m1-screen-forecast-audit-20261105",
+      "sha": "9630811afe4c41152ff0c76d9583a0345dcb40b4"
+    },
+    {
+      "branch": "fix/m1-video-chart-levels-and-tick-trust",
+      "sha": "6416a5045edef4c22a6aba14b4f4fc22f190c291"
+    },
+    {
+      "branch": "fix/m15-analogue-bias-obstacle-20261109",
+      "sha": "a4246c110a9fce7943c7031742e55e58dd54d3e0"
+    },
+    {
+      "branch": "fix/m15-archive-test-build-20261109",
+      "sha": "a54c38a1e7a5f51e63b320a6f7f42c8826438ec0"
+    },
+    {
+      "branch": "fix/m15-focus-viewport-visual-targets",
+      "sha": "85f4e57b9b20b083117b034ef06a01101f439770"
+    },
+    {
+      "branch": "fix/m15-visible-m1-audit",
+      "sha": "4b45a3b7d98c0063757999c030df58884d7bc580"
+    },
+    {
+      "branch": "fix/m15-weekend-liquidity-poc-status-20261109",
+      "sha": "ec84fdeb9cd9412e0c97448adb5708e202d1fbf8"
+    },
+    {
+      "branch": "fix/manual-only-render-archive-budget-20261105",
+      "sha": "5a8885e8407aec49c51db506bd2bd22f6938fdaf"
+    },
+    {
+      "branch": "fix/market-data-integrity-20261008",
+      "sha": "2dc45122071fae08662c4c31a7861975feb7d84f"
+    },
+    {
+      "branch": "fix/ml-history-rate-limit",
+      "sha": "0a2a2aaabed96363e0224b2edcdf2c56ed485e88"
+    },
+    {
+      "branch": "fix/ml-validation-quality",
+      "sha": "ad72200b80d4cd39e9ed324e713bf1b1dc04c6e4"
+    },
+    {
+      "branch": "fix/movement-calibration-label-20261009",
+      "sha": "56bbdd5cabc4e94b70ba5f76ea865d250e281091"
+    },
+    {
+      "branch": "fix/mt5-quote-profile-readonly-20261109",
+      "sha": "e12f13b79de305143ad5319c2fae887ac94cca58"
+    },
+    {
+      "branch": "fix/neural-bounded-history-restore-20261009",
+      "sha": "e46daa74f9a09f6c509d2e95c8a90fd8aa298f40"
+    },
+    {
+      "branch": "fix/neural-m5-training-readiness-20261009",
+      "sha": "bcf0c4cfd36d3d3ffebafd0d7829f12e8ef8de5f"
+    },
+    {
+      "branch": "fix/neural-memorysafe-20261005",
+      "sha": "dedaf2a027def1cc3da1eb946b9caf44445a96e0"
+    },
+    {
+      "branch": "fix/radar-first-candle-20261019",
+      "sha": "bd5d8e74e17c9319164eb45f414d34babeae7d4e"
+    },
+    {
+      "branch": "fix/realistic-m1-m5-target-reach-20261105",
+      "sha": "224397716e037be3e05b1867a3182116f0df950e"
+    },
+    {
+      "branch": "fix/render-equal-m15-candle-geometry-20261020",
+      "sha": "4c1216439f406099a368654010cc3a9f7ddaf6ae"
+    },
+    {
+      "branch": "fix/render-free-viewer-eco-20261105",
+      "sha": "185d0915799318291e4a60ca4900f7fd7553cf61"
+    },
+    {
+      "branch": "fix/render-gold-price-watch-marker-timing-20261123",
+      "sha": "fd130533452af0b455a41d8aca81e65163b4fde1"
+    },
+    {
+      "branch": "fix/render-m15-live-breakout-radar-layout-20261020",
+      "sha": "846731fd3c2d28d2a6bc419f60ddc261506b9a65"
+    },
+    {
+      "branch": "fix/render-m15-target-liquidity-map-20261020",
+      "sha": "ca391c33f94183706f4cadee118ff9a42a016c30"
+    },
+    {
+      "branch": "fix/render-mt5-candles-chart-focus-20261020",
+      "sha": "4f5a5806d0abfb21abe2c61d757789b04648a268"
+    },
+    {
+      "branch": "fix/render-mt5-focus-rebased-20261020",
+      "sha": "899eb1991477488890a832779760c42ee766afab"
+    },
+    {
+      "branch": "fix/render-restore-classic-m15-forecast-20261020",
+      "sha": "59bcebfcce08725e6505d97bf1e9dea34d757a69"
+    },
+    {
+      "branch": "fix/scalp-card-pending-integrity-and-tick-deadline-20261105",
+      "sha": "956f593e1386f656416ff87e1cf249ca22c28665"
+    },
+    {
+      "branch": "fix/scalp-confirmed-limit-retest-20261008",
+      "sha": "566c02bb88821d6d4125608b4a582008954ba32d"
+    },
+    {
+      "branch": "fix/scalp-decision-presentation-20261009",
+      "sha": "53f054a5b80d5e24177c68814d8282bf90a6d397"
+    },
+    {
+      "branch": "fix/scalp-early-watch-active-viewer-20261105",
+      "sha": "ee7b87ae803c1abff9f4b9c2b0140ec2b260ff02"
+    },
+    {
+      "branch": "fix/scalp-entry-confirmation-paper-results-20261008",
+      "sha": "d097b2223e0a8ffed00cd1184a1eb353891761ec"
+    },
+    {
+      "branch": "fix/scalp-forward-reach-trend-stability-20261009",
+      "sha": "8084ddb278f20e53279362b804531bbbde47e7fb"
+    },
+    {
+      "branch": "fix/scalp-limit-docker-compat-tests-20261105",
+      "sha": "8c7b753eb2d34c3f93e254de6a22429e57de5227"
+    },
+    {
+      "branch": "fix/scalp-loss-autopsy-20261008",
+      "sha": "947aaaadf0b1ea47bf8124efa5249b5ae533741b"
+    },
+    {
+      "branch": "fix/scalp-signal-integrity-audit-20261009",
+      "sha": "46bb9414fa65da2d4a2e32ba5ad098872bb64e1e"
+    },
+    {
+      "branch": "fix/scalp-signal-pipeline-20261008",
+      "sha": "3caf567feba1a26899d88eb9ce196ce6bc3e15e7"
+    },
+    {
+      "branch": "fix/sniper-consecutive-confirmation-20261011",
+      "sha": "8eaba5bb1faa4cfd416fff5b61bc5d67adf2f55e"
+    },
+    {
+      "branch": "fix/sniper-hysteresis-20261011",
+      "sha": "96ac09518ebadc050d529661261dae15da095040"
+    },
+    {
+      "branch": "fix/zone-forecast-quality-both-assets-20261005",
+      "sha": "90a8362a091b208c984c9a3b8af095610c61e0d0"
+    },
+    {
+      "branch": "fix/zone-forecast-stability-20261005",
+      "sha": "b59a5612cf06249e18408f45654f4565ea8ca735"
+    },
+    {
+      "branch": "fix/zone-forecast-unfreeze-20261005",
+      "sha": "d5b43b591e4ad9aff3ba182e9e841f1f3db8aa55"
+    },
+    {
+      "branch": "gold-limit-demo-005-20261109",
+      "sha": "8d2be6233203f86903ea066530bcb47d2819114a"
+    },
+    {
+      "branch": "improve/early-move-integrity-20261105",
+      "sha": "f68361cfde75de41c2a576fbf7297876a1600e4b"
+    },
+    {
+      "branch": "improve/forecast-trade-quality-20261008",
+      "sha": "0355a4cedd04956b30005318f8fa19d5276ccbff"
+    },
+    {
+      "branch": "improve/model-champion-retention-20261008",
+      "sha": "7189e04f8038e42e31b6fc38b991aad2f94c6118"
+    },
+    {
+      "branch": "improve/scalp-evidence-model-readiness-20261008",
+      "sha": "1e6a0b249bb1791de030792e7e5e4736ba6b06b0"
+    },
+    {
+      "branch": "improve/scalp-realistic-targets-and-loss-guard-20261008",
+      "sha": "9a22cf909ac4d36ae091a7ad5c9f0a9c0b1e7855"
+    },
+    {
+      "branch": "integration/sniper-unified-20261012",
+      "sha": "473723aada1783df437717547bf822dba60367e7"
+    },
+    {
+      "branch": "main",
+      "sha": "546642ad0904b5de90c06fc736d90d347c05ba61"
+    },
+    {
+      "branch": "mt5-gold-demo-limit-ea-20261109",
+      "sha": "96a88c2e98bc1cda8b2bced173dc129f548d14f7"
+    },
+    {
+      "branch": "perf/gold-scalp-independent-fast-path-20261105",
+      "sha": "27eed9e72ad3c21356ac0cdf38d8df77cc8a1e01"
+    },
+    {
+      "branch": "perf/lite-ui-api-20261005",
+      "sha": "255a2556514f6f17ab26af40d713772c7daa3c12"
+    },
+    {
+      "branch": "perf/neural-optout-20261011",
+      "sha": "13c6d3b70b7c3631661770f620159c7745040c8b"
+    },
+    {
+      "branch": "perf/scalp-risk-and-refresh-20261008",
+      "sha": "4e423bdbe41f89fe1c8519f9d5ae0e779219df58"
+    },
+    {
+      "branch": "refactor/structured-scalp-strategy-review-20261009",
+      "sha": "50c2d0409841ed9f2553496337a38a2464d1ee2e"
+    },
+    {
+      "branch": "research/m5-ahead-20261116",
+      "sha": "f0e0a7a33d446c39683a90df9023d6ccf2ce7390"
+    },
+    {
+      "branch": "research/m5-levels-20261116",
+      "sha": "ba3157091296988a71a864c41982f6fdbb3e394e"
+    },
+    {
+      "branch": "sniper-audit-data",
+      "sha": "4f6a29adbf6313d79ec47066623c7f257e01919e"
+    },
+    {
+      "branch": "test/render-m15-radar-below-chart",
+      "sha": "3b845cae6e85b587099e193ab073cb1f66c3a3aa"
+    },
+    {
+      "branch": "test/scalp-breakout-stop-cost-audit-20261009",
+      "sha": "0cabfd08e3971807eb67dddf57a227c400dbabac"
+    },
+    {
+      "branch": "ui/actual-m15-scenario-first",
+      "sha": "3ca47959bb74107410bfad0a567f3067ace78896"
+    },
+    {
+      "branch": "ui/clean-trading-dashboard-20261008",
+      "sha": "c5195bbe0e8ef2b508da7ef60ba6888fc2b96062"
+    },
+    {
+      "branch": "ui/focus-clean-trading-dashboard-20261009",
+      "sha": "68481888bdae820de001baa7688523cfe092c294"
+    },
+    {
+      "branch": "ui/m15-uncluttered-chart-levels",
+      "sha": "53101fd1c1f79ddb968032ddd234596250ffe476"
+    },
+    {
+      "branch": "ui/mt5-m1-video-candles",
+      "sha": "5de9870a929568cdef27997e5c51b208e794a859"
+    },
+    {
+      "branch": "ui/news-impact-ordered-20261005",
+      "sha": "82f85eb701e4f37990bf654914fca523b88052e2"
+    },
+    {
+      "branch": "ui/real-hunter-three-column-cockpit",
+      "sha": "0a39ad318795ee070b36fcb347a92564a8d679b8"
+    },
+    {
+      "branch": "ui/render-free-scenario-first",
+      "sha": "e7d45342268655c07388a497bfe796046a833414"
+    },
+    {
+      "branch": "ui/scenario-first-clean-dashboard",
+      "sha": "e085227857f92962500cca82c5af10225be6acd7"
+    },
+    {
+      "branch": "upgrade/worker-cadence-20261011",
+      "sha": "e7d70da5ee08801ad18b014c36cb673fba89df21"
+    },
+    {
+      "branch": "verify/m1-first-quote-v6-causal-20261106",
+      "sha": "679e13032cf15058e3635b2fd4fa476074da946a"
+    },
+    {
+      "branch": "verify/m1-near-limit-shadow-fixed-20261106",
+      "sha": "b7c633788dcd00b6d0990f3b3c4cba9f21e3828a"
+    },
+    {
+      "branch": "verify/m1-v6-first-quote-shadow-final-20261106",
+      "sha": "9ac242fae5d39481f537fdd254172e33e8b2f432"
+    },
+    {
+      "branch": "work/scalp-safety-audit-20261017",
+      "sha": "d06caa77f63d6acddc0f3b22027557e7ad58cfc4"
+    }
+  ]
+}
