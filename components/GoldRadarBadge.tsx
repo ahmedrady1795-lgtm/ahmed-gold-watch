@@ -4,6 +4,7 @@ import {goldPreparation} from '../lib/institutional-preparation-radar';
 import type {Mt5GoldDomReading} from '../lib/gold-mt5-dom';
 import type {GcFuturesSnapshot} from '../lib/gc-futures-feed';
 import type {goldLeadScore,GoldLeadEvent} from '../lib/gold-preparation-lead';
+import type {GoldPreparationView} from '../lib/gold-spot-fallback';
 
 type Side='BUY'|'SELL'|'WAIT';
 type Reading={ready:boolean;phase:string;side:Side;
@@ -35,8 +36,9 @@ const leadLabel=(e:GoldLeadEvent)=>({ARMED:'إنذار ثابت · انتظار 
  * privileged institutional orders, a probability, or automated trading.
  * Its side never modifies M15 forecast candles, targets or execution.
  */
-export default function GoldRadarBadge({now,marketFresh,watch}:{
- now:number;marketFresh:boolean;watch:Watch
+export default function GoldRadarBadge({now,marketFresh,watch,onPreparationView}:{
+ now:number;marketFresh:boolean;watch:Watch;
+ onPreparationView?:(view:GoldPreparationView|null)=>void;
 }){
  const [state,setState]=useState<Status|null>(null);
  const [expanded,setExpanded]=useState(false);
@@ -69,8 +71,11 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
       signal:AbortSignal.timeout(8500)});
     if(!response.ok)throw Error('radar_offline');
     const data=await response.json();
-    if(alive)setState(data?.ok?data:null);
-   }catch{if(alive)setState(null);}
+    if(alive){
+      setState(data?.ok?data:null);
+      onPreparationView?.(data?.ok?data.preparationLead??null:null);
+    }
+   }catch{if(alive){setState(null);onPreparationView?.(null);}}
   };
   void poll();
   const id=setInterval(()=>{void poll();},15000);
@@ -106,7 +111,7 @@ export default function GoldRadarBadge({now,marketFresh,watch}:{
    radarFresh:current,radarSide:radar?.side??'WAIT',
    radarPhase:radar?.phase});
  const preparationStatus=prep.available?prep.label:
-   'تحضير مؤسسي: عمق MT5 غير جاهز';
+   'تحليل M1 السعري مستقل عن DOM؛ عمق Exness غير متاح ولا توجد تنفيذات مؤكدة';
  const lead=state?.preparationLead,early=lead?.current,obs=lead?.observation;
  const earlyDeadline=early?.breakoutBarAt!=null?early.breakoutBarAt+16*60000:early?.armUntil??0;
  const earlyCurrent=Boolean(marketFresh&&lead?.status==='OBSERVING'&&early&&
