@@ -792,18 +792,22 @@ def _predict_path(rows):
 
 def _predict():
     with LOCK: rows=list(ROWS)
-    if not rows or int(time.time()*1000)-int(rows[-1]["t"])>MAX_GAP_MS:
+    # Include original exchange-snapshot age on EVERY state, not only READY.
+    # A collector failure should report STALE, while a fresh untrained
+    # model should report COLLECTING/SHADOW, never a fake inferred price path.
+    snapshot_age_ms=int(time.time()*1000)-int(rows[-1]["t"]) if rows else -1
+    if not rows or snapshot_age_ms>MAX_GAP_MS:
         return {"ok":True,"version":APP_VERSION,"ready":False,"status":"STALE","side":"WAIT",
-            "reason":"stale_l2_snapshots","metrics":METRICS,"samples":len(rows)}
+            "reason":"stale_l2_snapshots","metrics":METRICS,"samples":len(rows),"snapshotAgeMs":snapshot_age_ms}
     price_path=_predict_path(rows)
     if MODEL_DEPTH_SOURCE!=ACTIVE_DEPTH_SOURCE:
-        return {"ok":True,"version":APP_VERSION,"status":"SHADOW","ready":False,"side":"WAIT","source":ACTIVE_DEPTH_SOURCE,"samples":len(rows),"pricePath":price_path,"reason":"neural_model_venue_mismatch"}
+        return {"ok":True,"version":APP_VERSION,"status":"SHADOW","ready":False,"side":"WAIT","source":ACTIVE_DEPTH_SOURCE,"samples":len(rows),"pricePath":price_path,"reason":"neural_model_venue_mismatch","snapshotAgeMs":snapshot_age_ms}
     if MODEL is None or len(rows)<SEQ_LEN:
         return {"ok":True,"version":APP_VERSION,"status":"COLLECTING" if len(rows)<MIN_SNAPSHOTS else "TRAINING",
-                "ready":False,"side":"WAIT","samples":len(rows),"metrics":METRICS,"pricePath":price_path}
+                "ready":False,"side":"WAIT","samples":len(rows),"metrics":METRICS,"pricePath":price_path,"snapshotAgeMs":snapshot_age_ms}
     x=np.asarray([[r["f"] for r in rows[-SEQ_LEN:]]],dtype=np.float32)
     if NORM_MEAN is None or NORM_STD is None:
-        return {"ok":True,"version":APP_VERSION,"status":"SHADOW","ready":False,"side":"WAIT","samples":len(rows),"metrics":METRICS,"pricePath":price_path,"reason":"normalizer_unavailable"}
+        return {"ok":True,"version":APP_VERSION,"status":"SHADOW","ready":False,"side":"WAIT","samples":len(rows),"metrics":METRICS,"pricePath":price_path,"reason":"normalizer_unavailable","snapshotAgeMs":snapshot_age_ms}
     x=_normalize(x,NORM_MEAN,NORM_STD)
     p=_probs(MODEL,x,temperature=float((METRICS or {}).get("temperature",1.0)))[0];down,noise,up=map(float,p)
     lean="BUY" if up>=down else "SELL"
@@ -814,7 +818,7 @@ def _predict():
     return {"ok":True,"version":APP_VERSION,"status":"READY" if active else "SHADOW","ready":bool(METRICS and METRICS.get("ready")),
             "side":lean if active else "WAIT","leanSide":lean,"probUp":round(up*100,2),"probDown":round(down*100,2),
             "probNoise":round(noise*100,2),"confidence":conf,"edge":round(abs(up-down)*100,2),
-            "samples":len(rows),"metrics":METRICS,"pricePath":price_path,"snapshotAgeMs":max(0,int(time.time()*1000)-LAST_SNAPSHOT_AT)}
+            "samples":len(rows),"metrics":METRICS,"pricePath":price_path,"snapshotAgeMs":snapshot_age_ms}
 
 @app.on_event("startup")
 def startup():
