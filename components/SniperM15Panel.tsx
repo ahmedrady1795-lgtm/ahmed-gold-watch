@@ -1823,21 +1823,28 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          nextM1.side==='BUY'?'↑':nextM1.side==='SELL'?'↓':'—':'—')}</span>
        <span>{'M15 '+(entryTrend==='BUY'?'↑':entryTrend==='SELL'?'↓':'—')}</span>
      </div>
-     <div className="sniper-chart-command-levels">
-       <span>تفعيل <b dir="ltr">{n(commandTrigger)}</b></span>
-       <span>إبطال <b dir="ltr">{n(commandInvalidation)}</b></span>
-       <span>هدف 1 <b dir="ltr">{n(commandTarget)}</b></span>
-       <span>سيولة ↑ <b dir="ltr">{n(liquidityMagnets.above?.price)}</b></span>
-       <span>سيولة ↓ <b dir="ltr">{n(liquidityMagnets.below?.price)}</b></span>
-     </div>
-     <p title={commandWhy}>{commandText}</p>
+     {commandTrigger!=null&&<div className="sniper-chart-command-trigger">
+       <span>تفعيل</span><b dir="ltr">{n(commandTrigger)}</b>
+     </div>}
+     <details className="sniper-chart-command-details">
+       <summary>المستويات والسبب</summary>
+       <div className="sniper-chart-command-levels">
+         <span>تفعيل <b dir="ltr">{n(commandTrigger)}</b></span>
+         <span>إبطال <b dir="ltr">{n(commandInvalidation)}</b></span>
+         <span>هدف 1 <b dir="ltr">{n(commandTarget)}</b></span>
+         <span>سيولة ↑ <b dir="ltr">{n(liquidityMagnets.above?.price)}</b></span>
+         <span>سيولة ↓ <b dir="ltr">{n(liquidityMagnets.below?.price)}</b></span>
+       </div>
+       <p title={commandWhy}>{commandText}</p>
+       <small className="sniper-chart-command-caution">
+         {commandConfirmed?'رصد كسر مؤهل · ليس صفقة منفذة':
+         commandWatch?'ترقب قبل التفعيل · ليس أمر دخول':
+         'لا توجد إشارة دخول'}
+       </small>
+     </details>
+     {/* Compact early lead keeps its stream and callbacks alive without a second panel. */}
      <EarlyMoveAlert key={asset} asset={asset} now={now}
        marketOpen={marketOpen} onSignal={onChartLead} compact/>
-     <small className="sniper-chart-command-caution">
-       {commandConfirmed?'رصد كسر مؤهل · ليس صفقة منفذة':
-       commandWatch?'ترقب قبل التفعيل · ليس أمر دخول':
-       'لا توجد إشارة دخول'}
-     </small>
    </aside>
    </div>
      <small className="sniper-chart-source-note">
