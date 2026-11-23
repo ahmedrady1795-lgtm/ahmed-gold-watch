@@ -43,8 +43,8 @@ const centerIndex=panel.indexOf('className="sniper-hunter-center"');
 const scenarioIndex=panel.indexOf('<SniperScenarioColumn ');
 const endIndex=panel.indexOf('className="sniper-hunter-bottom"');
 assert.ok(0<startIndex&&startIndex<centerIndex&&centerIndex<chartIndex&&
- chartIndex<liquidityIndex&&liquidityIndex<scenarioIndex&&endIndex===-1,
- 'real M5 chart is the only default surface; sidebars are in closed diagnostics below');
+ liquidityIndex===-1&&scenarioIndex===-1&&endIndex===-1,
+ 'real M5 chart is the sole decision surface; duplicate full-page sidebars are removed');
 assert.match(panel,/style=\{\{display:"block"\}\}/,
  'chart workbench must use the full available width, not old three-column slots');
 assert.doesNotMatch(panel,/<SniperM1CandleHunter|<SniperM1CandleTape|قنص كل شمعة/,
@@ -57,10 +57,10 @@ assert.match(sidebars,/ليس دفتر أوامر/,
  'profile must not be sold as real L2/order book');
 assert.match(sidebars,/محطات محاكاة ATR/,
  'simulated target stations are not implied live executions');
-assert.match(panel,/watch=\{watchMap\} m1=\{nextM1\}/,
- 'M1 direction and real M15\/H1 liquidity are wired into the scenario');
-assert.match(panel,/priceFresh=\{Boolean\(m\.sniper\.view\.priceFresh\)&&historyFresh/,
- 'stale market observations cannot produce active watch levels');
+assert.match(panel,/className="sniper-diagnostic-mini"/,
+ 'M1/M15, liquidity and real order-flow evidence stay accessible in one short row');
+assert.match(panel,/const commandLive=marketOpen&&Boolean\(m\.sniper\.view\.priceFresh\)/,
+ 'stale market observations cannot produce active chart-side BUY or WATCH');
 assert.match(sidebars,/watch\.asOf===guide\.anchorTime\+900000/,
  'scenario reference and finished M15 liquidity map must match');
 assert.match(sidebars,/Math\.max\(entry,quote\)\+atr\*\.08/,
