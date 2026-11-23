@@ -53,6 +53,7 @@ import SniperOpportunityHistory from './SniperOpportunityHistory';
 import {advanceMovementProof,movementProofScore,safeMovementProof,type MovementProof} from '../lib/sniper-movement-proof';
 import {buildSniperM15Liquidity,compactM15ZoneAnnotations} from '../lib/sniper-m15-liquidity';
 import {buildM15LiquidityBoard} from '../lib/sniper-m15-liquidity-board';
+import {describeLiquidityBeforeMove} from '../lib/sniper-liquidity-readout';
 import {assessM15RouteObstacle} from '../lib/sniper-m15-route-obstacle';
 import {assessM15ScenarioIssuance} from '../lib/sniper-m15-evidence-issuance';
 import {buildM15WatchPriceMap} from '../lib/sniper-m15-watch-prices';
@@ -471,6 +472,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const zoneBoard=useMemo(()=>buildM15LiquidityBoard({
    liquidity,watch:watchMap,history:actual,price:liquidityReferencePrice,now
  }),[liquidity,watchMap,actual,liquidityReferencePrice,now]);
+ const liquidityReadout=useMemo(()=>describeLiquidityBeforeMove({
+   now,price,marketFresh:marketOpen&&Boolean(m.sniper.view.priceFresh)&&
+     !providerTransition,context:zoneBoard.context,preMove
+ }),[now,price,marketOpen,m.sniper.view.priceFresh,providerTransition,
+   zoneBoard.context,preMove]);
  const validObjective=(v:number)=>anchor!=null&&Number.isFinite(v)&&v>0&&
    (safeSide==='BUY'?v>anchor:safeSide==='SELL'?v<anchor:false);
  const explicitGoals=targets.map(t=>t.price).filter(validObjective);
@@ -1866,6 +1872,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <span>{'M1 '+(nextM1.ready?
          nextM1.side==='BUY'?'↑':nextM1.side==='SELL'?'↓':'—':'—')}</span>
        <span>{'M15 '+(entryTrend==='BUY'?'↑':entryTrend==='SELL'?'↓':'—')}</span>
+     </div>
+     <div className={'sniper-chart-liquidity is-'+liquidityReadout.state.toLowerCase()}
+       data-qannas-liquidity-state={liquidityReadout.state}
+       title={liquidityReadout.reason}>
+       <b>{liquidityReadout.label}</b>
+       {liquidityReadout.aheadSide!=='WAIT'&&liquidityReadout.trigger!=null&&
+         <small>{'قبل الكسر · '+(liquidityReadout.aheadSide==='BUY'?'شراء ':'بيع ')+
+           n(liquidityReadout.trigger)}</small>}
      </div>
      {commandTrigger!=null&&<div className="sniper-chart-command-trigger">
        <span>تفعيل</span><b dir="ltr">{n(commandTrigger)}</b>
