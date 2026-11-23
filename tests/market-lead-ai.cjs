@@ -91,4 +91,17 @@ const alert=fs.readFileSync('components/EarlyMoveAlert.tsx','utf8');
 assert.match(panel,/<EarlyMoveAlert key=\{asset\} asset=\{asset\}/);
 assert.match(alert,/fetch\('\/api\/market-lead\?asset=BTC'/);
 assert.match(alert,/if\(!document.hidden\)/);
+assert.match(alert,/fetch\('\/api\/market-lead\?asset=GOLD'/,
+  'GOLD alerts must survive SSE connection failure using the same read-only API');
+assert.match(alert,/source\.onerror=/,
+  'GOLD SSE disconnect must start fallback instead of going silently blank');
+assert.match(alert,/fallbackRequest\?\.abort\(\)/,
+  'GOLD fallback request must be cancelled on recovery or unmount');
+const markers=fs.readFileSync('components/SniperOpportunityMarkers.tsx','utf8');
+assert.match(markers,/earlyShown\.filter\(r=>!nearCurrent\(r\)\)\.slice\(0,3\)/,
+  'Previously issued early directions must remain visible after expiry');
+const m5=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
+assert.match(m5,/data-m5-prebreak-offscreen/,
+  'Genuine early M5 cue cannot disappear just because its trigger is offscreen');
+
 console.log('PASS: BTC mirrored fresh alerts, disconnect resets and active chart wiring');
