@@ -1709,7 +1709,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {/* A live on-price BUY?/SELL? label already exists beside its
              real trigger. Do not print the same cue a second time in the
              chart corner. Fallback headline remains for off-screen setups. */}
-         {!(showGoldSpotPlan||((movementSignal.phase==='PREPARE'||
+         {!((showGoldSpotPlan&&goldSpotPlan&&goldSpotPlan.trigger>=lo&&goldSpotPlan.trigger<=hi)||
+           ((movementSignal.phase==='PREPARE'||
              movementSignal.phase==='TESTING'||
              movementSignal.phase==='BREAK_CONFIRMED')&&
              movementSignal.trigger!=null&&
