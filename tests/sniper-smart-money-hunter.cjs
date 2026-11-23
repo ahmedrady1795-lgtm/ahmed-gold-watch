@@ -127,8 +127,8 @@ assert.match(panel,/buildM15HuntPreview\(actual,watchGuide,now\)/,
  'scenario overlay must use the REAL closed-M15 guide');
 assert.match(panel,/<SniperM15HuntOverlay forecast=\{huntPreview\}/,
  'actual M15 chart must render the realistic conditional candles');
-assert.match(panel,/<SniperHuntHUD hunt=\{huntPreview\}/,
- 'liquidity and live bias appear as a compact live readout above candles');
+assert.match(panel,/data-qannas-chart-signal=\{commandState\}/,
+ 'live setup direction and real liquidity now appear inside a compact chart-side readout');
 assert.match(panel,/className="sniper-m15-watch-guide"/,
  'old conditional M15 watch region remains in the real SVG');
 assert.match(panel,/className="sniper-m15-conditional-route"/,
