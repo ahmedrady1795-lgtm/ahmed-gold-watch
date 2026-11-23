@@ -1199,10 +1199,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const commandGold=commandLive&&!commandM1&&!commandM5&&
    showGoldSpotPlan&&goldSpotPlan!=null&&price!=null&&
    (goldSpotPlan.side==='BUY'?goldSpotPlan.trigger>price:goldSpotPlan.trigger<price);
- const commandWatch=!commandConfirmed&&(commandM1||commandM5||commandGold);
+ // A verified flow or honest price-only watch belongs in the SAME compact
+ // rail, not in a second BUY/SELL label above the candles. With no
+ // corresponding prebreak setup, the price level stays unknown (—).
+ const commandLead=commandLive&&!commandConfirmed&&!commandM1&&
+   !commandM5&&!commandGold&&(leadVerified||leadPriceWatch);
+ const commandWatch=!commandConfirmed&&(commandM1||commandM5||commandGold||commandLead);
  const commandSide=commandConfirmed?earlyOpportunity.side:
    commandM1?movementSignal.side:commandM5?m5Cue.side:
-   commandGold?goldSpotPlan!.side:'WAIT';
+   commandGold?goldSpotPlan!.side:
+   commandLead?(chartLead?.side??'WAIT'):'WAIT';
  const commandState=commandConfirmed?'CONFIRMED':
    commandWatch?'WATCH':commandLive?'WAIT':'OFFLINE';
  const commandHeadline=commandConfirmed?
@@ -1218,6 +1224,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    commandGold?goldSpotPlan!.target:null;
  const commandWhy=commandConfirmed||commandM1?movementSignal.reason:
    commandM5?m5Cue.detail:commandGold?goldSpotPlan!.reason:
+   commandLead?(leadVerified?'رصد دفتر أوامر مؤهل للمراقبة فقط · ':'رصد تغيرات سعرية فقط · ')+
+      String(chartLead?.reason||''):
    commandLive?'لا توجد تهيئة مبكرة مكتملة':'تجديد بيانات السعر';
  const commandText=String(commandWhy||'').split(' · ')[0].slice(0,68);
  // Opportunity labels use the live observer and its immutable issued records.
