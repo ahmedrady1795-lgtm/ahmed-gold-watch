@@ -19,8 +19,9 @@ export function observeGoldProxyFlow(a:{
   source:'NONE',side:'WAIT',actionable:false
  });
  const f=a.flow;
+ const source=String(f?.source||'');
  if(!a.marketOpen||!Number.isSafeInteger(a.now)||a.now<=0)return blank('السوق مغلق أو الوقت غير صالح');
- if(!f||!['Binance PAXG/USDT proxy','Kraken PAXG/USD proxy'].includes(String(f.source))||
+ if(!f||!['Binance PAXG/USDT proxy','Kraken PAXG/USD proxy'].includes(source)||
   !Number.isSafeInteger(f.observedAt)||!Number.isFinite(f.tradeAt)||
   !Number.isSafeInteger(f.count)||f.count<3||
   f.observedAt>a.now||f.tradeAt>f.observedAt||f.tradeAt<=0||
@@ -29,13 +30,13 @@ export function observeGoldProxyFlow(a:{
   Math.abs(f.depthImbalancePct!)>100||Math.abs(f.tradeDeltaPct!)>100||
   f.side==='UNAVAILABLE')
   return blank('يلزم دفتر PAXG حديث وصفقات حقيقية من نفس المنصة');
- const venue=f.source.startsWith('Binance')?'Binance':'Kraken';
+ const venue=source.startsWith('Binance')?'Binance':'Kraken';
  const side=f.side==='BUY'||f.side==='SELL'?f.side:'WAIT';
  const match=side!=='WAIT'&&a.chartSide!=='WAIT'&&side===a.chartSide;
  const conflict=side!=='WAIT'&&a.chartSide!=='WAIT'&&side!==a.chartSide;
  return {
   status:match?'ALIGNED':conflict?'DIVERGENT':'OBSERVED',
-  side,source:f.source,actionable:false,
+  side,source,actionable:false,
   label:'PAXG '+venue+' · '+(
    side==='BUY'?'ضغط شراء بديل ↑':side==='SELL'?'ضغط بيع بديل ↓':'توازن/اختلاف الدفتر والتنفيذ'),
   detail:'PAXG فقط · عمق '+f.depthImbalancePct!.toFixed(1)+'% · دلتا تنفيذ '+
