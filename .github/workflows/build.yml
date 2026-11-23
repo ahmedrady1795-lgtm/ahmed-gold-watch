@@ -4,9 +4,6 @@ on:
   push:
     branches: [render-free]
     paths-ignore:
-      - 'data/sniper-audit.json'
-      - 'data/scalp-research-v1.json'
-    paths-ignore:
       - 'data/**'
   pull_request:
     branches: [render-free]
