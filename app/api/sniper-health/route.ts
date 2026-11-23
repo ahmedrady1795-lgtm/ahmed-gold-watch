@@ -2,6 +2,7 @@ import {getAiSnapshot} from '../../../lib/ai-snapshot-cache';
 import {getSniperAudit} from '../../../lib/sniper-audit-store';
 import {aiRateLimitState} from '../../../lib/ai-service-backoff';
 import {readEveryM1Evidence} from '../../../lib/scalp-every-candle';
+import {allowBackgroundWork,renderFreeEcoEnabled} from '../../../lib/render-free-eco';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -23,6 +24,13 @@ export async function GET(){
     const audit=getSniperAudit(now);
     const auditAge=audit.updatedAt>0&&now>=audit.updatedAt?now-audit.updatedAt:null;
     const auditFresh=Boolean(audit.ok&&auditAge!=null&&auditAge<=90000);
+    // Render Free intentionally pauses expensive inference without a current
+    // dashboard viewer. An idle cache is not proof of a broken model.
+    const ecoEnabled=renderFreeEcoEnabled();
+    const viewerLeaseActive=ecoEnabled?allowBackgroundWork(now):null;
+    const healthState=snapshotFresh&&auditFresh?'SNAPSHOTS_FRESH':
+      ecoEnabled&&!viewerLeaseActive?'IDLE_ECO':
+      !snapshotFresh?'ANALYSIS_WARMING':'AUDIT_LAGGING';
     const detail=(asset:'GOLD'|'BTC')=>({
       scenario:audit.current[asset]?.status??'NONE',
       watchFresh:Boolean(audit.watch[asset]?.updatedAt>0&&
@@ -32,6 +40,9 @@ export async function GET(){
     });
     return Response.json({
       ok:true,checkedAt:now,operational:snapshotFresh&&auditFresh,
+      healthState,eco:{enabled:ecoEnabled,viewerLeaseActive,
+        // Current lease is a scheduling hint, not verification of market data.
+        backgroundAllowed:!ecoEnabled||viewerLeaseActive===true},
       snapshot:{fresh:snapshotFresh,ageMs,generation:snapshot.generation},
       ai:{mode:snapshotFresh?(readiness?.mode??'UNKNOWN'):'STALE',
         readyCount:snapshotFresh?Number(readiness?.readyCount||0):0,
