@@ -179,4 +179,6 @@ jobs:
           python-version: "3.12"
       - run: pip install 'numpy>=2,<3' 'scikit-learn>=1.6,<2' 'requests>=2.32,<3' 'joblib>=1.4,<2'
       - run: python tests/ml-history-cooldown.py
+      - run: python tests/ml-paired-baseline.py
+      - run: python tests/neural-memory-budget.py
       - run: python tests/microstructure-training.py
