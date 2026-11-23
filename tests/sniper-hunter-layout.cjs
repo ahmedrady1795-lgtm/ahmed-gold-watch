@@ -59,8 +59,10 @@ assert.match(sidebars,/محطات محاكاة ATR/,
  'simulated target stations are not implied live executions');
 assert.match(panel,/className="sniper-diagnostic-mini"/,
  'M1/M15, liquidity and real order-flow evidence stay accessible in one short row');
-assert.match(panel,/const commandLive=marketOpen&&Boolean\(m\.sniper\.view\.priceFresh\)/,
- 'stale market observations cannot produce active chart-side BUY or WATCH');
+assert.match(panel,/const commandFastLive=marketOpen&&Boolean\(m\.sniper\.view\.priceFresh\)&&!providerTransition/,
+ 'stale price or a changing provider must prevent active M1 watches');
+assert.match(panel,/const commandLive=commandFastLive&&m\.historyFresh/,
+ 'qualified chart BUY/SELL keeps the higher-frame archive freshness gate');
 assert.match(sidebars,/watch\.asOf===guide\.anchorTime\+900000/,
  'scenario reference and finished M15 liquidity map must match');
 assert.match(sidebars,/Math\.max\(entry,quote\)\+atr\*\.08/,
