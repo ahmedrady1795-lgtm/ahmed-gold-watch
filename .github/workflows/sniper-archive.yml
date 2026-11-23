@@ -4,7 +4,7 @@ on:
     - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [render-free]
     paths:
       - '.github/workflows/sniper-archive.yml'
       - 'scripts/checkpoint-sniper.mjs'
