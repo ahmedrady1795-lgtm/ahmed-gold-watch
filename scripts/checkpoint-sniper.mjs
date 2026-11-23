@@ -21,7 +21,7 @@ for(let attempt=0;attempt<2;attempt++){
 }
 const api=`https://api.github.com/repos/${repo}/contents/data/sniper-audit.json`;
 const headers={Authorization:`Bearer ${process.env.GITHUB_TOKEN}`,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
-const existing=await fetch(api+'?ref=sniper-audit-data',{headers});
+const existing=await fetch(api+'?ref=render-free',{headers});
 let previous=null,sha;
 if(existing.ok){const file=await existing.json();sha=file.sha;
   if(file.encoding==='base64'&&file.content)previous=JSON.parse(Buffer.from(file.content,'base64').toString('utf8'));
@@ -30,7 +30,7 @@ if(existing.ok){const file=await existing.json();sha=file.sha;
 else if(existing.status!==404)throw Error('Previous archive HTTP '+existing.status);
 const merged=mergeArchives(previous,live);
 const saved=await fetch(api,{method:'PUT',headers:{...headers,'Content-Type':'application/json'},
-  body:JSON.stringify({message:'Checkpoint public paper-scenario audit',branch:'sniper-audit-data',sha,
+  body:JSON.stringify({message:'Checkpoint public paper-scenario audit',branch:'render-free',sha,
     content:Buffer.from(JSON.stringify(merged)).toString('base64')})});
 if(!saved.ok)throw Error('Checkpoint write HTTP '+saved.status);
 console.info('Archived',merged.records.length,'paper records at',new Date(merged.savedAt).toISOString());
