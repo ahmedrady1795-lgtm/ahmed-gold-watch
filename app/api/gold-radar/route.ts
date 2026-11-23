@@ -1,12 +1,15 @@
 import fs from 'node:fs/promises';
 import {getMt5GoldDomReading} from '../../../lib/market-hub';
-import {peekScalpGold} from '../../../lib/scalp-desk';
+import {peekScalpGold,getScalpDesk} from '../../../lib/scalp-desk';
 import {emptyGoldLedger,safeGoldRadarLedger,goldRadarScore}
  from '../../../lib/gold-radar-shadow';
 import {readGoldPreparationStore} from '../../../lib/gold-preparation-store';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
 const paths=['/data/qannas-gold-radar-v1.json','/tmp/qannas-gold-radar-v1.json'];
+// One lightweight GOLD-only source warmup at most every 30 seconds on a
+// cache miss; this never starts optional ML/Neural or BTC external sources.
+let lastGoldScoutAttempt=0;
 async function readFile(path:string){try{return await fs.readFile(path,'utf8');}catch{return null;}}
 export async function GET(request:Request){
  const now=Date.now();
@@ -22,8 +25,15 @@ export async function GET(request:Request){
  let observation:any=null;
  try{if(statusText&&statusText.length<5000)observation=JSON.parse(statusText);}catch{}
  const fresh=observation?.checkedAt!=null&&now-observation.checkedAt<200000;
- // Reuse existing server-side GOLD scalp research. No new market/ML calls.
- const desk=peekScalpGold(35000),gold=desk?.gold;
+ // Reuse existing GOLD closed-M1 research. Following a Render restart its
+ // in-memory cache can be empty even while the main XAU chart is active.
+ // Recover with the independent GOLD-only engine at a bounded cadence.
+ let desk=peekScalpGold(35000);
+ if(!desk&&now-lastGoldScoutAttempt>=30000){
+   lastGoldScoutAttempt=now;
+   try{desk=await getScalpDesk('GOLD');}catch{desk=null;}
+ }
+ const gold=desk?.gold;
  const early=gold?.earlyExecution;
  const scalpEarly=gold?.asset==='GOLD'&&early?.status==='EARLY_WATCH'&&
    early?.evidenceClass==='CLOSED_M1_ONLY'?
