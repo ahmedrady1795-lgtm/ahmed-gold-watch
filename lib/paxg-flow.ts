@@ -1,5 +1,7 @@
 export type PaxgSide='BUY'|'SELL'|'NEUTRAL'|'UNAVAILABLE';
-export type PaxgFlow={side:PaxgSide;observedAt:number;tradeAt:number;count:number;source?:string};
+export type PaxgFlow={side:PaxgSide;observedAt:number;tradeAt:number;count:number;source?:string;
+  /** Actual token-exchange PAXG depth and executed-tape imbalance, never XAUUSD broker orders. */
+  depthImbalancePct?:number;tradeDeltaPct?:number;};
 
 function size(levels:unknown,descending:boolean){
  if(!Array.isArray(levels)||levels.length<5)return null;
@@ -31,7 +33,8 @@ export function readPaxgFlow(book:any,trades:unknown,now:number):PaxgFlow{
  if(seen.size<3||now-tradeAt>15000)return missing;
  const depth=(bids-asks)/(bids+asks),tape=(buy-sell)/(buy+sell);
  const side=depth>=.15&&tape>=.2?'BUY':depth<=-.15&&tape<=-.2?'SELL':'NEUTRAL';
- return {side,observedAt:now,tradeAt,count:seen.size,source:'Binance PAXG/USDT proxy'};
+ return {side,observedAt:now,tradeAt,count:seen.size,source:'Binance PAXG/USDT proxy',
+   depthImbalancePct:Number((depth*100).toFixed(1)),tradeDeltaPct:Number((tape*100).toFixed(1))};
 }
 
 /**
@@ -67,5 +70,6 @@ export function readKrakenPaxgFlow(book:any,trades:unknown,now:number):PaxgFlow{
  const depth=(bids-asks)/(bids+asks),tape=(buy-sell)/(buy+sell);
  const side=depth>=.15&&tape>=.2?'BUY':depth<=-.15&&tape<=-.2?'SELL':'NEUTRAL';
  return {side,observedAt:now,tradeAt,count:seen.size,
-   source:'Kraken PAXG/USD proxy'};
+   source:'Kraken PAXG/USD proxy',
+   depthImbalancePct:Number((depth*100).toFixed(1)),tradeDeltaPct:Number((tape*100).toFixed(1))};
 }
