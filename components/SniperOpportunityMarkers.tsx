@@ -146,7 +146,7 @@ export default function SniperOpportunityMarkers(p:Props){
      return <g key={r.id} data-kind={r.kind}
        data-issued-at={r.issuedAt} data-side={r.side}>
        <circle cx={x} cy={y} r={m5Labels.has(r.id)?3.3:2.4}
-         fill={m5Labels.has(r.id)?(r.side==='BUY'?'#64e8b2':'#fa92a4'):'#96a3b5'}
+         fill={r.side==='BUY'?'#64e8b2':'#fa92a4'}
          stroke="#06151b" strokeWidth="1"/>
        <title>{movementObservationLabel(r)+' · '+(r.kind==='OPEN'?'بداية M5':r.kind==='FOLLOW'?'أثناء M5':'نهاية M5')+
          ' · '+r.priceAt.toFixed(2)+' · '+(r.m5Outcome==='CORRECT'?'إغلاق M5 وافق الاتجاه فقط':
@@ -173,7 +173,7 @@ export default function SniperOpportunityMarkers(p:Props){
      const ended=r.setupLifecycle==='INVALIDATED'||
        r.setupLifecycle==='CANCELLED'||r.setupLifecycle==='EXPIRED';
      const current=currentEarly(r);
-     const ink=current?'#e0be78':'#b4a5ad';
+     const ink=current?'#e0be78':buy?'#5da98d':'#ad7c8b';
      return <g key={r.id} data-kind="EARLY" data-issued-at={r.issuedAt}
        data-onset={r.onsetOutcome??'NOT_AUDITED'}
        data-lifecycle={r.setupLifecycle??'NOT_AUDITED'}>
