@@ -1898,7 +1898,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      </details>
      {(scaleLevels.some(level=>level.kind!=='PRICE')||
         showLiquidity&&positionedLiquidityLabels.length>0)&&
-       <div className="sniper-m15-levels-below" aria-label="دليل المستويات أسفل الرسم">
+       <details className="sniper-m15-levels-below" aria-label="دليل المستويات أسفل الرسم">
+         <summary>مستويات أخرى · تفاصيل اختيارية</summary>
          <div className="sniper-m15-level-key">
            {scaleLevels.filter(level=>level.kind!=='PRICE').slice(0,4).map(level=>
              <span className={'sniper-m15-level-chip '+(level.kind==='STOP'?'is-stop':
@@ -1914,7 +1915,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
                <b dir="ltr">{n(z.price)}</b>
              </span>)}
          </div>
-       </div>}
+       </details>}
      {showLiquidity&&showExtra&&<div className="sniper-m15-watch-strip"
        aria-label="مستويات السيولة والأهداف الهيكلية للمراقبة" role="status">
        {watchMap.ready?<>
