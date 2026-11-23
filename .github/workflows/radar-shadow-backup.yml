@@ -4,7 +4,7 @@ on:
     - cron: '43 * * * *'
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [render-free]
     paths:
       - '.github/workflows/radar-shadow-backup.yml'
 permissions:
