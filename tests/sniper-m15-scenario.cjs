@@ -199,8 +199,10 @@ assert.ok(summaryPos>chartPos&&summaryPos<diagnosticPos,
  'optional long M15 scenario details follow the real chart instead of pushing it down');
 assert.ok(diagnosticPos>chartPos,
  'radar and metrics follow the chart in collapsed optional details');
-assert.ok(chart.indexOf("className={'sniper-live-opportunity")>diagnosticPos,
- 'live opportunity detail no longer blocks the first-screen chart');
+assert.doesNotMatch(chart,/className=\{'sniper-live-opportunity/,
+ 'long live opportunity card is removed entirely; only the on-chart early decision remains');
+assert.match(chart,/data-qannas-chart-signal=\{commandState\}/,
+ 'authentic early BUY SELL WATCH state appears on the primary chart');
 assert.doesNotMatch(chart,/className=\{'sniper-current-signal/,
  'duplicate current candle decision is removed from the visible layout');
 assert.match(actualSummary,/p\.ready\?'12 شمعة مشروطة'/,
