@@ -31,7 +31,7 @@ async function runNeuralPrediction(now=Date.now()):Promise<NeuralPrediction>{
     return {ok:false,status:'REQUEST_BUDGET',ready:false,side:'WAIT',
       reason:'Neural remote budget: waiting for next inference slot; old prediction withheld'};
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),8000);
+  const timer=setTimeout(()=>controller.abort(),22000);
   const started=Date.now();
   lastRemoteRequestAt=started;
   try{
