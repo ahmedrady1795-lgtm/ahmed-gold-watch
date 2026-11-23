@@ -29,6 +29,7 @@ import {extendIllustrativeM15ToTargets} from '../lib/sniper-m15-target-bridge';
 import {buildM15WatchGuide} from '../lib/sniper-m15-watch-guide';
 import OrderFlowRadar from './OrderFlowRadar';
 import GoldRadarBadge from './GoldRadarBadge';
+import {selectGoldSpotDisplay,type GoldPreparationView} from '../lib/gold-spot-fallback';
 import type {RadarView} from '../lib/order-flow-radar';
 import {assessSniperEntryCandle} from '../lib/sniper-entry-candle';
 import {assessRadarNextCandle} from '../lib/sniper-radar-next-candle';
@@ -90,6 +91,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [focusView,setFocusView]=useState(true);
  const [liveRadar,setLiveRadar]=useState<RadarView|null>(null);
  const onRadarView=useCallback((v:RadarView|null)=>setLiveRadar(v),[]);
+ // Existing server gold-preparation recorder already freezes a real M1
+ // pre-break plan. Reuse its ONE poll (in GoldRadarBadge) instead of adding
+ // another network stream or pretending Biquote exposes Exness DOM.
+ const [goldPreparationView,setGoldPreparationView]=useState<GoldPreparationView|null>(null);
+ const onGoldPreparationView=useCallback((v:GoldPreparationView|null)=>
+   setGoldPreparationView(v),[]);
  const asset=assetView==='ALL'?chosen:assetView;
  // Optional context has its own cadence; never wait for AI services to draw signals.
  const [contextPacket,setContextPacket]=useState<{asset:'GOLD'|'BTC';news:any;observedAt:number;sentiment:SentimentReading|null}|null>(null);
@@ -625,6 +632,19 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    {...preOpen,proxy:preOpen.proxy}:null,[preOpen,forecastScope]);
  const paxgComparison=usePaxgComparison(asset==='GOLD'?forecastScope:'',trial,realM5);
  const earlyOpportunity=useMemo(()=>earlySetupOpportunity(trackedSetup),[trackedSetup]);
+ // Pure price-only GOLD alternative when Exness DOM has no usable depth.
+ // STRICTLY read-only: Biquote XAUUSD M1 does not give executed order flow.
+ // The server issued and archived this plan before any future breakout.
+ const goldSpotPlan=useMemo(()=>asset==='GOLD'?
+   selectGoldSpotDisplay({
+     now,marketFresh:marketOpen&&Boolean(m.sniper.view.priceFresh)&&!providerTransition,
+     chartSource:String(x?.candleSource||''),
+     quoteSource:String(liveQuote?.source||''),
+     quoteAt:Number.isFinite(Number(liveQuote?.sourceTime))?
+       Number(liveQuote.sourceTime):null,
+     price,view:goldPreparationView
+   }):null,[asset,now,marketOpen,m.sniper.view.priceFresh,providerTransition,
+     x?.candleSource,liveQuote?.source,liveQuote?.sourceTime,price,goldPreparationView]);
  // Independent, read-only M1/M5 early hypothesis; not vetoed by weak M15.
  const m1Reclaim=useMemo(()=>detectM1ReclaimWatch({now,price,marketOpen,
    priceFresh:Boolean(m.sniper.view.priceFresh),providerTransition,
@@ -741,6 +761,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // All default analysis appears on the chart. Full explanations are available
  // in an optional closed drawer, not in multi-line blocks above the candles.
  const mainSetup=showPreparation||showCrossTest||showRejected||hasEarlySignal;
+ // Only one predominant label: a validated tracked setup outranks the
+ // independently issued GOLD price preparation, which outranks lagging M5.
+ const showGoldSpotPlan=Boolean(goldSpotPlan&&!mainSetup&&!cuePrebreak);
  // An older setup must not hide a distinct, still-before-trigger M1/M5 cue.
  const distinctPrebreak=cuePrebreak&&(!mainSetup||
    m5Cue.side!==earlyOpportunity.side||m5Cue.trigger!==earlyOpportunity.trigger||
@@ -749,11 +772,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      movementSignal.trigger===m5Cue.trigger&&movementSignal.sourceAt===m5Cue.asOf
    );
  const drawingSide=mainSetup?trackedSetup?.side??'WAIT':
-   cuePrebreak?m5Cue.side:showZoneObservation?'WAIT':
+   cuePrebreak?m5Cue.side:showGoldSpotPlan?goldSpotPlan!.side:
+   showZoneObservation?'WAIT':
    cueVisible?m5Cue.side:
    hasDirectionalWatch?candleLean.side:
    hasM5Fallback?closedM5Context.side:'WAIT';
- const drawingLabel=cuePrebreak&&!mainSetup?m5Cue.headline:showZoneObservation?
+ const drawingLabel=cuePrebreak&&!mainSetup?m5Cue.headline:
+   showGoldSpotPlan?goldSpotPlan!.label:showZoneObservation?
    (trackedSetup?.side==='BUY'?'دعم · مراقبة':'مقاومة · مراقبة'):
    showPreparation?(conditionalEntry?
      (drawingSide==='BUY'?'شراء مشروط':'بيع مشروط'):
@@ -775,14 +800,19 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Qualitative evidence checklist, not a predicted success rate.
  // The checklist score is kept in the tooltip; it is NOT win probability.
  // Plain BUY/SELL appears only after a genuinely qualified confirmation.
- const passiveWatch=!mainSetup&&(cueVisible||(!showZoneObservation&&!showRejected&&(hasDirectionalWatch||hasM5Fallback)));
+ const passiveWatch=!mainSetup&&!showGoldSpotPlan&&
+   (cueVisible||(!showZoneObservation&&!showRejected&&(hasDirectionalWatch||hasM5Fallback)));
  const markerPrice=hasEarlySignal?currentSignalPrice:earlyOpportunity.trigger;
  const drawingBadge=passiveWatch?
    (cueVisible?m5Cue.headline+' · ليس دخولًا':
     drawingSide==='BUY'?'↗ رصد صعود · ليس دخولًا':
     drawingSide==='SELL'?'↘ رصد هبوط · ليس دخولًا':
     'مراقبة · لا توجد إشارة دخول'):drawingLabel;
- const drawingReason=cuePrebreak&&!mainSetup?m5Cue.detail+
+ const drawingReason=showGoldSpotPlan?
+   goldSpotPlan!.reason+' · من M1 الفوري فقط، دون عمق Exness أو صفقات منفذة · تفعيل '+
+   n(goldSpotPlan!.trigger)+' · إبطال '+n(goldSpotPlan!.invalidation)+
+   ' · هدف تاريخي '+n(goldSpotPlan!.target)+' · اختبار غير قابل للتنفيذ':
+   cuePrebreak&&!mainSetup?m5Cue.detail+
    ' · تفعيل '+n(m5Cue.trigger)+' · إبطال '+n(m5Cue.invalidation):
    cueVisible&&!mainSetup?m5Cue.detail:showZoneObservation?
    (trackedSetup?.reason||'')+' · مستوى مراقبة فقط؛ لا توجد إشارة شراء/بيع مؤهلة':
@@ -1594,6 +1624,32 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              textAnchor="end" direction="ltr" fontSize="10" fontWeight="800" fill="white">{chartReference.toFixed(2)}</text>
          </>}
        </g>
+       {/* Already-server-archived GOLD M1 pressure plan, NOT a qualified
+           Exness order or evidence of bank liquidity. Show only while its
+           original trigger is still ahead of the fresh matched quote. */}
+       {showGoldSpotPlan&&goldSpotPlan&&
+        goldSpotPlan.trigger>=lo&&goldSpotPlan.trigger<=hi&&
+        <g data-gold-spot-fallback="read-only" data-issued-at={goldSpotPlan.issuedAt}
+          data-side={goldSpotPlan.side} className="sniper-gold-spot-early-plan">
+          <line x1={Math.max(left+16,split-125)} x2={split-5}
+            y1={py(goldSpotPlan.trigger)} y2={py(goldSpotPlan.trigger)}
+            stroke={goldSpotPlan.side==='BUY'?'#58e6bf':'#ff87a0'}
+            strokeDasharray="3 5" strokeWidth="1.1" opacity=".9"/>
+          <circle cx={split-5} cy={py(goldSpotPlan.trigger)} r="3.2"
+            fill={goldSpotPlan.side==='BUY'?'#58e6bf':'#ff87a0'}
+            stroke="#07111b" strokeWidth="1"/>
+          <text x={split-13} y={clamp(py(goldSpotPlan.trigger)-11,plotTop+14,plotBottom-13)}
+            textAnchor="end" direction="rtl" fontSize="9.4" fontWeight="900"
+            fill={goldSpotPlan.side==='BUY'?'#83f3cb':'#ff9eb3'}
+            stroke="#07111b" strokeWidth="3" paintOrder="stroke">
+            {(goldSpotPlan.side==='BUY'?'شراء مبكر مشروط':'بيع مبكر مشروط')+
+             ' · '+n(goldSpotPlan.trigger)}
+          </text>
+          <title>{goldSpotPlan.reason+' · تفعيل '+n(goldSpotPlan.trigger)+
+            ' · هدف تاريخي '+n(goldSpotPlan.target)+
+            ' · إبطال '+n(goldSpotPlan.invalidation)+
+            ' · M1 spot فقط · لا يوجد DOM Exness، ليست صفقة منفذة'}</title>
+        </g>}
        <SniperOpportunityMarkers signal={movementSignal} confirmedPrice={trackedSetup?.phase==='TRIGGERED'?trackedSetup.priceAt:null} records={movementRecords}
          evidenceScore={trackedSetup?.score??null}
          asset={asset} source={String(x?.candleSource||'')}
@@ -1653,11 +1709,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {/* A live on-price BUY?/SELL? label already exists beside its
              real trigger. Do not print the same cue a second time in the
              chart corner. Fallback headline remains for off-screen setups. */}
-         {!((movementSignal.phase==='PREPARE'||
+         {!(showGoldSpotPlan||((movementSignal.phase==='PREPARE'||
              movementSignal.phase==='TESTING'||
              movementSignal.phase==='BREAK_CONFIRMED')&&
              movementSignal.trigger!=null&&
-             py(movementSignal.trigger)>=plotTop&&py(movementSignal.trigger)<=plotBottom)&&
+             py(movementSignal.trigger)>=plotTop&&py(movementSignal.trigger)<=plotBottom))&&
            <text x={left+13} y={plotTop+21} textAnchor="end"
              direction="rtl" fill={drawingColor} fontSize="10"
              fontWeight="900" stroke="#07111b" strokeWidth="3.1"
@@ -1894,7 +1950,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    {/* Radar details expand outside the M15 OHLC canvas instead of hiding candles. */}
    {asset==='GOLD'&&<GoldRadarBadge now={now}
         marketFresh={Boolean(m.sniper.view.priceFresh&&marketOpen&&
-          !providerTransition)} watch={watchMap}/>}
+          !providerTransition)} watch={watchMap}
+          onPreparationView={onGoldPreparationView}/>}
    {asset==='BTC'&&<div className="sniper-m15-preparation-slot">
      <OrderFlowRadar key={asset} asset={asset} onView={onRadarView} compact/>
    </div>}
