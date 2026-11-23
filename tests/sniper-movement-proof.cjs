@@ -79,7 +79,7 @@ for(const split of [180,200]){
  const dot=markup.match(/<g[^>]*data-kind="FOLLOW"[^>]*>(.*?)<\/g>/s)?.[1];
  assert.ok(dot,'keep the original M5 history');
  assert.match(dot,/fill="#64e8b2"/,'recent BUY observation gets a distinct direction color');
- assert.match(dot,/رصد شراء/,'recent M5 observation needs a visible directional caption');
+ assert.match(dot,/متابعة صعود/,'mid-candle observations must explicitly say FOLLOW, not BUY entry');
  assert.match(dot,/data-role="m5-observation-label"/,'M5 watch is not a qualified entry');
 }
 // The latest M5 observation is legible on the chart without using a plain
@@ -93,8 +93,8 @@ const mirrored=renderMarker(markerModule.exports.default({...markerProps,
     {...issued[0],id:'old-sell',kind:'FOLLOW',side:'SELL',issuedAt:start+6000,priceAt:111}
   ]
 }));
-assert.match(mirrored,/رصد شراء/,'recent M5 buy watch readable');
-assert.match(mirrored,/رصد بيع/,'recent M5 sell watch readable');
+assert.match(mirrored,/بداية صعود/,'first-minute M5 watch is labeled as an opening observation');
+assert.match(mirrored,/متابعة هبوط/,'late M5 watch is labeled as following, not a SELL entry');
 assert.match(mirrored,/data-kind="FOLLOW"/,'older M5 dot stays pinned');
 assert.doesNotMatch(mirrored,/>شراء<|>بيع</,
   'passive direction is never a confirmed trade entry');
