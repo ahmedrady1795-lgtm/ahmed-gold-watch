@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import {getMt5GoldDomReading} from '../../../lib/market-hub';
+import {peekScalpGold} from '../../../lib/scalp-desk';
 import {emptyGoldLedger,safeGoldRadarLedger,goldRadarScore}
  from '../../../lib/gold-radar-shadow';
 import {readGoldPreparationStore} from '../../../lib/gold-preparation-store';
@@ -21,10 +22,25 @@ export async function GET(request:Request){
  let observation:any=null;
  try{if(statusText&&statusText.length<5000)observation=JSON.parse(statusText);}catch{}
  const fresh=observation?.checkedAt!=null&&now-observation.checkedAt<200000;
+ // Reuse existing server-side GOLD scalp research. No new market/ML calls.
+ const desk=peekScalpGold(35000),gold=desk?.gold;
+ const early=gold?.earlyExecution;
+ const scalpEarly=gold?.asset==='GOLD'&&early?.status==='EARLY_WATCH'&&
+   early?.evidenceClass==='CLOSED_M1_ONLY'?
+   {status:early.status,side:early.side,score:early.score,
+     evidenceClass:early.evidenceClass,
+     issuedFromClosedM1At:early.issuedFromClosedM1At,
+     checkedAt:early.checkedAt,quoteAt:gold.quote?.at??null,
+     quotePrice:gold.quote?.price??null,
+     quoteSource:String(early.quoteSource||''),
+     candleSource:String(gold.candleSource||''),
+     reason:String(early.reason||'رصد سعر M1 فقط')}:null;
+
  return Response.json({ok:true,asset:'GOLD',
   status:fresh?'OBSERVING':'STALE_OR_STARTING',
   brokerDom:getMt5GoldDomReading(now),
   preparationLead:preparation.view,
+  scalpEarly,
   updatedAt:now,storage:text?text===null?'NONE':(await readFile(paths[0]))?'VOLUME':'EPHEMERAL':'NONE',
   radar:fresh?observation:{ready:false,phase:'UNAVAILABLE',
     label:'الذهب: تجهيز',reason:'بيانات الرادار غير حديثة'},
