@@ -23,11 +23,11 @@ LABEL_BPS=float(os.getenv("NEURAL_LABEL_BPS","0.9"))
 MIN_SNAPSHOTS=int(os.getenv("NEURAL_MIN_SNAPSHOTS","1800"))
 MAX_SNAPSHOTS=int(os.getenv("NEURAL_MAX_SNAPSHOTS","24000"))
 RETRAIN_SECONDS=int(os.getenv("NEURAL_RETRAIN_SECONDS","1800"))
-TRAIN_MAX_SAMPLES=int(os.getenv("NEURAL_TRAIN_MAX_SAMPLES","12000"))
+TRAIN_MAX_SAMPLES=int(os.getenv("NEURAL_TRAIN_MAX_SAMPLES","5000"))
 TRAIN_BATCH=int(os.getenv("NEURAL_TRAIN_BATCH","32"))
 EVAL_BATCH=int(os.getenv("NEURAL_EVAL_BATCH","128"))
 MEMORY_TRAIN_START_MB=float(os.getenv("NEURAL_TRAIN_START_MAX_RSS_MB","620"))
-RUNTIME_REVISION="venue-separated-fallback-r4.1"
+RUNTIME_REVISION="bounded-free-tier-training-r4.2"
 HORIZON_SECONDS=float(os.getenv("NEURAL_HORIZON_SECONDS",str(HORIZON*INTERVAL)))
 MAX_GAP_MS=max(10000.0,INTERVAL*5000)
 TRAIN_LOCK=threading.Lock()
@@ -40,7 +40,7 @@ EXTRA_DIM=FEAT_DIM-40
 PATH_END_SCALE_BPS=8.0
 PATH_RANGE_SCALE_BPS=12.0
 DEVICE=torch.device("cpu")
-torch.set_num_threads(max(1,min(2,int(os.getenv("NEURAL_TORCH_THREADS","2")))))
+torch.set_num_threads(max(1,min(2,int(os.getenv("NEURAL_TORCH_THREADS","1")))))
 
 app=FastAPI(title="Predator Neural Microstructure",version=APP_VERSION)
 LOCK=threading.Lock()
@@ -79,6 +79,31 @@ def _rss_mb():
     except Exception:
         pass
     return 0.0
+
+
+
+def _training_budget_from_limit(limit_bytes):
+    """Leave space for the live L2 collector, Python/PyTorch and HTTP worker.
+    Render free offers 512 MB, so a 620 MB RSS training threshold is unsafe.
+    Never raise a configured memory ceiling, even on larger instances.
+    """
+    if limit_bytes is None or not isinstance(limit_bytes,int) or limit_bytes<=0:
+        return MEMORY_TRAIN_START_MB
+    limit_mb=limit_bytes/(1024*1024)
+    if limit_mb<256 or limit_mb>131072:
+        return MEMORY_TRAIN_START_MB
+    return min(MEMORY_TRAIN_START_MB,max(128.0,limit_mb-180.0))
+
+def _memory_training_budget_mb():
+    for path in ("/sys/fs/cgroup/memory.max",
+                 "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            raw=Path(path).read_text().strip()
+            if raw!="max":
+                return _training_budget_from_limit(int(raw))
+        except (OSError,ValueError):
+            pass
+    return MEMORY_TRAIN_START_MB
 
 
 def _load_rows():
@@ -576,7 +601,7 @@ def _train_path():
     ready=False
     venue=ACTIVE_DEPTH_SOURCE
     try:
-        if _rss_mb()>MEMORY_TRAIN_START_MB:
+        if _rss_mb()>_memory_training_budget_mb():
             raise RuntimeError(f"memory_guard rss={_rss_mb()}MB")
         X,y,starts,ends=_path_dataset()
         if X is None or len(y)<MIN_SNAPSHOTS:return
@@ -660,7 +685,7 @@ def _train():
     ready=False
     venue=ACTIVE_DEPTH_SOURCE
     try:
-        if _rss_mb()>MEMORY_TRAIN_START_MB:
+        if _rss_mb()>_memory_training_budget_mb():
             raise RuntimeError(f"memory_guard rss={_rss_mb()}MB")
         X,y,starts,ends=_dataset()
         if X is None or len(y)<MIN_SNAPSHOTS:return
@@ -743,9 +768,9 @@ def _collector():
                 if len(PENDING)>=10:_flush()
                 n=len(ROWS)
             LAST_SNAPSHOT_AT=row["t"];LAST_ERROR=None
-            if n>=MIN_SNAPSHOTS and not TRAIN_LOCK.locked() and _training_due("classifier",row["t"],row["t"]) and _rss_mb()<=MEMORY_TRAIN_START_MB:
+            if n>=MIN_SNAPSHOTS and not TRAIN_LOCK.locked() and _training_due("classifier",row["t"],row["t"]) and _rss_mb()<=_memory_training_budget_mb():
                 threading.Thread(target=_train,daemon=True,name="neural-trainer").start()
-            elif n>=MIN_SNAPSHOTS and not TRAIN_LOCK.locked() and _training_due("path",row["t"],row["t"]) and _rss_mb()<=MEMORY_TRAIN_START_MB:
+            elif n>=MIN_SNAPSHOTS and not TRAIN_LOCK.locked() and _training_due("path",row["t"],row["t"]) and _rss_mb()<=_memory_training_budget_mb():
                 threading.Thread(target=_train_path,daemon=True,name="price-path-trainer").start()
         except Exception as e:
             global LAST_COLLECTOR_ERROR_LOG_AT
@@ -834,7 +859,8 @@ def startup():
 @app.get("/health")
 def health():
     return {"ok":True,"version":APP_VERSION,"runtimeRevision":RUNTIME_REVISION,"training":TRAINING,"pathTraining":PATH_TRAINING,
-            "storedSnapshots":len(ROWS),"trainingMaxSamples":TRAIN_MAX_SAMPLES,"rssMb":_rss_mb(),"lastSnapshotAt":LAST_SNAPSHOT_AT,"depthHost":LAST_DEPTH_HOST,
+            "storedSnapshots":len(ROWS),"trainingMaxSamples":TRAIN_MAX_SAMPLES,"rssMb":_rss_mb(),
+            "trainingStartRssLimitMb":round(_memory_training_budget_mb(),1),"lastSnapshotAt":LAST_SNAPSHOT_AT,"depthHost":LAST_DEPTH_HOST,
             "depthVenue":ACTIVE_DEPTH_SOURCE,"modelVenue":MODEL_DEPTH_SOURCE,"pathModelVenue":PATH_MODEL_DEPTH_SOURCE,"depthCooldownSeconds":max(0,round(DEPTH_COOLDOWN_UNTIL-time.time())),
             "trainingSchedule":SCHEDULE,"dataAudit":DATASET_AUDIT,
             "modelReady":bool(METRICS and METRICS.get("ready")),
