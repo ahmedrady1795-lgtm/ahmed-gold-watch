@@ -1167,7 +1167,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const commandConfirmed=commandLive&&
    earlyOpportunity.phase==='BREAK_CONFIRMED'&&
    earlyOpportunity.quality==='SETUP'&&
-   earlyOpportunity.tradeEligible===true&&earlyOpportunity.side!=='WAIT';
+   earlyOpportunity.side!=='WAIT';
  const commandM1=commandLive&&movementSignal.phase==='PREPARE'&&
    movementSignal.side!=='WAIT'&&movementSignal.trigger!=null&&
    price!=null&&(movementSignal.side==='BUY'?
