@@ -19,10 +19,8 @@ import {chartM5EarlyCue} from '../lib/sniper-m5-early-cue';
 import {btcOrderflowMatchesChart,detectShortTapeWatch} from '../lib/btc-orderflow';
 import {detectM1ReclaimWatch} from '../lib/sniper-m1-reclaim-watch';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
-import SniperScenarioHero from './SniperScenarioHero';
 import {analyzeM15MarketStructure} from '../lib/sniper-market-structure';
 import SniperMarketStructureOverlay,{SniperStructureRSI} from './SniperMarketStructureOverlay';
-import {SniperLiquidityColumn,SniperScenarioColumn} from './SniperHunterSidebars';
 import {extendIllustrativeM15ToTargets} from '../lib/sniper-m15-target-bridge';
 import {buildM15WatchGuide} from '../lib/sniper-m15-watch-guide';
 import OrderFlowRadar from './OrderFlowRadar';
@@ -40,7 +38,6 @@ import {assessM15FrozenChartAlignment} from '../lib/sniper-m15-visual-alignment'
 import type {ObservedM15} from '../lib/sniper-m15-scenario';
 import type {M15Scenario,M15Side} from '../lib/sniper-m15-scenario';
 import {frozenM15Decision,retainM15Snapshot} from '../lib/sniper-m15-freeze';
-import {sniperPhaseBadge} from '../lib/sniper-market-phase';
 import {observedM15Bias,m15ObservationSide} from '../lib/sniper-m15-bias';
 import {verifiedM15Archive} from '../lib/sniper-m15-archive-store';
 import {m15WalkForward,firstM15Evidence} from '../lib/sniper-m15-walkforward';
@@ -1030,8 +1027,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    price,priceFresh:freshObservation&&m.historyFresh,
    now,radar:liveRadar,m1:entryCandle
  });
- const phase=sniperPhaseBadge({ready:liquidity.ready,
-   contextKind:liquidity.context?.kind,phase:liquidity.phase,side:chartSide});
  const W=492,H=704,left=8,split=320,end=422,
    plotTop=26,plotBottom=H-33;
  // A single absolute price axis contains EVERY currently valid target and
