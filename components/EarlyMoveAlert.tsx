@@ -120,7 +120,7 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:n
       source=new EventSource('/api/market-lead/stream');
     }catch{
       // No native SSE: REST poll still reports genuine server observations.
-      source={readyState:EventSource.CLOSED,close:()=>{}} as EventSource;
+      source={readyState:2,close:()=>{}} as EventSource;
       fallbackTimer=setTimeout(()=>{void fallbackPoll();},0);
       return()=>{closed=true;clearTimeout(fallbackTimer);fallbackRequest?.abort();};
     }
