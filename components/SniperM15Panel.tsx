@@ -26,6 +26,7 @@ import {buildM15WatchGuide} from '../lib/sniper-m15-watch-guide';
 import OrderFlowRadar from './OrderFlowRadar';
 import GoldRadarBadge from './GoldRadarBadge';
 import {selectGoldSpotDisplay,type GoldPreparationView} from '../lib/gold-spot-fallback';
+import {selectGoldLocalWatch,type GoldLocalWatchView} from '../lib/sniper-gold-local-watch';
 import type {RadarView} from '../lib/order-flow-radar';
 import {assessSniperEntryCandle} from '../lib/sniper-entry-candle';
 import {assessRadarNextCandle} from '../lib/sniper-radar-next-candle';
@@ -101,6 +102,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [goldPreparationView,setGoldPreparationView]=useState<GoldPreparationView|null>(null);
  const onGoldPreparationView=useCallback((v:GoldPreparationView|null)=>
    setGoldPreparationView(v),[]);
+ // Reuse the existing GOLD radar cadence to consume the already-running
+ // local M1 scout when remote ML/Neural services are rate-limited.
+ const [goldScalpEarly,setGoldScalpEarly]=useState<GoldLocalWatchView|null>(null);
+ const onGoldScalpEarly=useCallback((v:GoldLocalWatchView|null)=>
+   setGoldScalpEarly(v),[]);
  const asset=assetView==='ALL'?chosen:assetView;
  // Optional context has its own cadence; never wait for AI services to draw signals.
  const [contextPacket,setContextPacket]=useState<{asset:'GOLD'|'BTC';news:any;observedAt:number;sentiment:SentimentReading|null}|null>(null);
@@ -649,6 +655,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      price,view:goldPreparationView
    }):null,[asset,now,marketOpen,m.sniper.view.priceFresh,providerTransition,
      x?.candleSource,liveQuote?.source,liveQuote?.sourceTime,price,goldPreparationView]);
+ // This non-execution GOLD M1 scout was previously confined to Scalp Lab.
+ // Validate its original source/time before displaying its local watch.
+ const goldLocalWatch=useMemo(()=>asset==='GOLD'?selectGoldLocalWatch({
+   now,marketOpen,priceFresh:Boolean(m.sniper.view.priceFresh),
+   providerTransition,price,quoteSource:String(liveQuote?.source||''),
+   chartSource:String(x?.candleSource||''),view:goldScalpEarly
+ }):null,[asset,now,marketOpen,m.sniper.view.priceFresh,providerTransition,
+   price,liveQuote?.source,x?.candleSource,goldScalpEarly]);
  // Independent, read-only M1/M5 early hypothesis; not vetoed by weak M15.
  const m1Reclaim=useMemo(()=>detectM1ReclaimWatch({now,price,marketOpen,
    priceFresh:Boolean(m.sniper.view.priceFresh),providerTransition,
@@ -2005,7 +2019,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
       {asset==='GOLD'&&<GoldRadarBadge now={now}
         marketFresh={Boolean(m.sniper.view.priceFresh&&marketOpen&&
           !providerTransition)} watch={watchMap}
-        onPreparationView={onGoldPreparationView}/>}
+        onPreparationView={onGoldPreparationView}
+        onScalpEarlyView={onGoldScalpEarly}/>}
       {asset==='BTC'&&<OrderFlowRadar key={asset} asset={asset}
         onView={onRadarView} compact/>}
     </div>
