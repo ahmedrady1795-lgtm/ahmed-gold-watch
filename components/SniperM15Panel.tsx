@@ -1192,38 +1192,51 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    chartLead?.source==='Gold live price-tick watch · no broker DOM'&&
    !chartLead?.armed&&
    (chartLead?.side==='BUY'||chartLead?.side==='SELL'));
- const commandLive=marketOpen&&Boolean(m.sniper.view.priceFresh)&&
-   m.historyFresh&&!providerTransition;
+ // Independent local M1 observations must not be silenced by unrelated
+ // M15 archive gaps. Only the qualified executable-style label keeps the
+ // full chart history readiness requirement.
+ const commandFastLive=marketOpen&&Boolean(m.sniper.view.priceFresh)&&!providerTransition;
+ const commandLive=commandFastLive&&m.historyFresh;
  const commandConfirmed=commandLive&&
    earlyOpportunity.phase==='BREAK_CONFIRMED'&&
    earlyOpportunity.quality==='SETUP'&&
    earlyOpportunity.side!=='WAIT';
- const commandM1=commandLive&&movementSignal.phase==='PREPARE'&&
+ const commandM1=commandFastLive&&movementSignal.phase==='PREPARE'&&
    movementSignal.side!=='WAIT'&&movementSignal.trigger!=null&&
    price!=null&&(movementSignal.side==='BUY'?
      movementSignal.trigger>price:movementSignal.trigger<price);
- const commandM5=commandLive&&!commandM1&&cuePrebreak&&
+ const commandM5=commandFastLive&&!commandM1&&cuePrebreak&&
    m5Cue.trigger!=null&&price!=null&&
    (m5Cue.side==='BUY'?m5Cue.trigger>price:m5Cue.trigger<price);
- const commandGold=commandLive&&!commandM1&&!commandM5&&
+ const commandGold=commandFastLive&&!commandM1&&!commandM5&&
    showGoldSpotPlan&&goldSpotPlan!=null&&price!=null&&
    (goldSpotPlan.side==='BUY'?goldSpotPlan.trigger>price:goldSpotPlan.trigger<price);
- // A verified flow or honest price-only watch belongs in the SAME compact
- // rail, not in a second BUY/SELL label above the candles. With no
- // corresponding prebreak setup, the price level stays unknown (—).
- const commandLead=commandLive&&!commandConfirmed&&!commandM1&&
-   !commandM5&&!commandGold&&(leadVerified||leadPriceWatch);
- const commandWatch=!commandConfirmed&&(commandM1||commandM5||commandGold||commandLead);
+ // The cached GOLD M1 scout carries no broker trigger and is non-executable.
+ const commandLocalGold=commandFastLive&&!commandConfirmed&&!commandM1&&
+   !commandM5&&!commandGold&&goldLocalWatch!=null;
+ const commandLead=commandFastLive&&!commandConfirmed&&!commandM1&&
+   !commandM5&&!commandGold&&!commandLocalGold&&(leadVerified||leadPriceWatch);
+ const commandWatch=!commandConfirmed&&(commandM1||commandM5||
+   commandGold||commandLocalGold||commandLead);
+ // A direction observed after the move starts is not an early opportunity.
+ const commandFollowing=commandFastLive&&!commandWatch&&!commandConfirmed&&
+   (m5Cue.stage==='M5_FOLLOWING'||m5Cue.stage==='M1_DIRECTION_WATCH')&&
+   (m5Cue.side==='BUY'||m5Cue.side==='SELL');
  const commandSide=commandConfirmed?earlyOpportunity.side:
    commandM1?movementSignal.side:commandM5?m5Cue.side:
    commandGold?goldSpotPlan!.side:
-   commandLead?(chartLead?.side??'WAIT'):'WAIT';
+   commandLocalGold?goldLocalWatch!.side:
+   commandLead?(chartLead?.side??'WAIT'):
+   commandFollowing?m5Cue.side:'WAIT';
  const commandState=commandConfirmed?'CONFIRMED':
-   commandWatch?'WATCH':commandLive?'WAIT':'OFFLINE';
+   commandWatch?'WATCH':commandFollowing?'OBSERVE':
+   commandFastLive?'WAIT':'OFFLINE';
  const commandHeadline=commandConfirmed?
    commandSide==='BUY'?'BUY · شراء':'SELL · بيع':
+   commandLocalGold?commandSide==='BUY'?'WATCH BUY · سعري':'WATCH SELL · سعري':
    commandWatch?commandSide==='BUY'?'WATCH BUY':'WATCH SELL':
-   commandLive?'WAIT · مراقبة':'تحديث السوق';
+   commandFollowing?commandSide==='BUY'?'↗ صعود مرصود':'↘ هبوط مرصود':
+   commandFastLive?'WAIT · مراقبة':'تحديث السوق';
  const commandTrigger=commandConfirmed||commandM1?movementSignal.trigger:
    commandM5?m5Cue.trigger:commandGold?goldSpotPlan!.trigger:null;
  const commandInvalidation=commandConfirmed||commandM1?
@@ -1233,9 +1246,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    commandGold?goldSpotPlan!.target:null;
  const commandWhy=commandConfirmed||commandM1?movementSignal.reason:
    commandM5?m5Cue.detail:commandGold?goldSpotPlan!.reason:
+   commandLocalGold?'رصد سعري M1 دون عمق أوامر Exness · '+goldLocalWatch!.reason:
    commandLead?(leadVerified?'رصد دفتر أوامر مؤهل للمراقبة فقط · ':'رصد تغيرات سعرية فقط · ')+
-      String(chartLead?.reason||''):
-   commandLive?'لا توجد تهيئة مبكرة مكتملة':'تجديد بيانات السعر';
+     String(chartLead?.reason||''):
+   commandFollowing?'حركة مرصودة بعد بدايتها · ليست تنبيه دخول مبكر · '+m5Cue.detail:
+   commandFastLive?'لا توجد تهيئة مبكرة مكتملة':'تجديد بيانات السعر';
  const commandText=String(commandWhy||'').split(' · ')[0].slice(0,68);
  // Opportunity labels use the live observer and its immutable issued records.
  return <section className="sniper-m15-panel" dir="rtl"
@@ -1852,7 +1867,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <p title={commandWhy}>{commandText}</p>
        <small className="sniper-chart-command-caution">
          {commandConfirmed?'رصد كسر مؤهل · ليس صفقة منفذة':
+         commandLocalGold?'رصد سعري M1 فقط · دون DOM أو إذن دخول':
          commandWatch?'ترقب قبل التفعيل · ليس أمر دخول':
+         commandFollowing?'الحركة بدأت · متابعة فقط، ليست قنصًا مبكرًا':
          'لا توجد إشارة دخول'}
        </small>
      </details>
