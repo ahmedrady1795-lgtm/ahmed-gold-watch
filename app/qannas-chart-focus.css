@@ -200,3 +200,57 @@
  .sniper-chart-command p{font-size:8px;-webkit-line-clamp:2}
  .sniper-chart-command-caution{font-size:8px}
 }
+
+
+/* Qannas compact chart command 2026-11-23.
+   The newest REAL candles remain unobstructed; the right-side M15 lane
+   now shows direction, timeframe alignment and a trigger by default.
+   Full values are accessible through the native expandable details. */
+.sniper-m15-chart-box .sniper-chart-command{
+  top:38px;gap:4px;max-height:calc(100% - 55px);
+  overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;
+  background:rgba(6,20,29,.91);
+}
+.sniper-chart-command-head{
+  gap:2px;padding-bottom:3px;
+}
+.sniper-chart-command-frames{
+  padding-bottom:3px;gap:3px;
+}
+.sniper-chart-command-trigger{
+  display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:2px 6px;border-top:1px solid #284353;
+  padding-top:4px;font-size:9px;color:#96c9c3;
+}
+.sniper-chart-command-trigger b{
+  font-size:10px;color:#f2f7f6;font-variant-numeric:tabular-nums;
+  font-weight:800;white-space:nowrap;
+}
+.sniper-chart-command-details{
+  border-top:1px solid #284353;padding-top:3px;min-width:0;
+}
+.sniper-chart-command-details>summary{
+  list-style:none;cursor:pointer;color:#a6c4d2;font-size:9px;
+  font-weight:750;line-height:1.35;outline-offset:2px;
+}
+.sniper-chart-command-details>summary::-webkit-details-marker{display:none}
+.sniper-chart-command-details>summary::before{content:'＋ ';color:#e2c78d}
+.sniper-chart-command-details[open]>summary::before{content:'− '}
+.sniper-chart-command-details[open] .sniper-chart-command-levels{
+  margin-top:6px;margin-bottom:5px;
+}
+.sniper-chart-command-details[open] p{margin-top:5px}
+.sniper-chart-command-details .sniper-chart-command-caution{
+  display:block;margin-top:4px;
+}
+@media(max-width:640px){
+  .sniper-m15-chart-box .sniper-chart-command{
+    top:38px;gap:3px;padding:5px 4px;max-height:calc(100% - 50px);
+  }
+  .sniper-chart-command-trigger{font-size:8px;gap:1px 4px}
+  .sniper-chart-command-trigger b{font-size:9px}
+  .sniper-chart-command-details>summary{font-size:8px}
+  .sniper-chart-command-details[open] .sniper-chart-command-levels{
+    margin-top:4px;margin-bottom:4px;
+  }
+}
