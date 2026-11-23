@@ -148,3 +148,30 @@
  .sniper-chart-command p{-webkit-line-clamp:2;font-size:9px}
  .sniper-chart-command-caution{font-size:8px}
 }
+
+/* One chart, one decision. Optional diagnostic data uses a single small strip,
+   not multiple radar/AI/liquidity cards or extra scroll-height. */
+.sniper-diagnostic-mini{display:flex;gap:5px 12px;flex-wrap:wrap;align-items:center;
+ padding:8px 10px;color:#bdd9e4;background:#0a1b27;font-size:11px}
+.sniper-diagnostic-mini span{display:inline-flex;gap:4px;align-items:center}
+.sniper-diagnostic-mini b{color:#e9f4f5;font-weight:800;direction:ltr}
+.sniper-diagnostic-mini small{flex-basis:100%;color:#8faebd;font-size:10px}
+.sniper-background-feeds[hidden]{display:none!important}
+.sniper-chart-early-direction text{pointer-events:none}
+.sniper-m15-panel .sniper-m15-diagnostics{margin:4px 0 0}
+.sniper-m15-panel .sniper-m15-diagnostics>summary{padding:7px 10px;font-size:11px}
+@media(max-width:640px){
+ .sniper-m15-panel .sniper-m15-chart-box{
+   height:clamp(610px,80dvh,880px)!important;min-height:610px!important;
+ }
+ .sniper-m15-chart-box .sniper-chart-command{
+   top:40px;right:14.2%;gap:3px;padding:5px 6px;
+   width:clamp(112px,27%,136px);max-width:136px;
+ }
+ .sniper-chart-command-head strong{font-size:13px}
+ .sniper-chart-command-frames{padding-bottom:3px}
+ .sniper-chart-command-levels{gap:2px}
+ .sniper-chart-command-levels span{font-size:9.5px}
+ .sniper-chart-command-levels b{font-size:10px}
+ .sniper-chart-command-caution{font-size:8px}
+}
