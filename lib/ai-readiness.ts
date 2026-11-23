@@ -56,7 +56,7 @@ async function healthProbe(url:string|undefined){
   if(pending)return pending;
   const task=(async()=>{
   try{
-    const r=await fetch(key+'/health',{cache:'no-store',signal:AbortSignal.timeout(2200)});
+    const r=await fetch(key+'/health',{cache:'no-store',signal:AbortSignal.timeout(10000)});
     recordAiResponse(key,r.status,r.headers.get('retry-after'));
     if(!r.ok)return {ok:false,status:r.status===429?'RATE_LIMITED':'ERROR',reason:`service HTTP ${r.status}`};
     return await r.json();
