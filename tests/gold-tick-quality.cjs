@@ -22,4 +22,11 @@ assert.equal(accept({...quote,status:'delayed',sourceTime:at-8000},at)?.price,42
   'brief near-live provider delay is accepted conservatively');
 assert.equal(accept({...quote,sourceTime:at-10001},at),null,
   'gold microstructure age limit must be enforced');
+const brain=fs.readFileSync('lib/server-tick-brain.ts','utf8');
+assert.match(brain,/at:pulse\.sourceTime,price:pulse\.price/,
+  'gold microflow must keep the provider observation timestamp, not re-date a delayed quote');
+assert.match(brain,/pulse\.sourceTime<=lastGoldPulse\.sourceTime/,
+  'same-timestamp or regressed source quotes must not count as new independent ticks');
+assert.doesNotMatch(brain,/at:observedAt,price:pulse\.price/,
+  'HTTP receipt time cannot make an old market observation look pre-break fresh');
 console.log('PASS: no replayed, closed, future or stale gold provider pulses');
