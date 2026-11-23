@@ -119,6 +119,9 @@
 .sniper-chart-command.is-watch[data-qannas-chart-side="SELL"] .sniper-chart-command-head strong,
 .sniper-chart-command.is-confirmed[data-qannas-chart-side="SELL"] .sniper-chart-command-head strong{color:#ff97ad}
 .sniper-chart-command.is-offline{border-color:#4d535b}
+.sniper-chart-command-frames{display:flex;justify-content:space-between;
+ gap:4px;border-bottom:1px solid #284353;padding-bottom:4px;color:#b1d4df;
+ font-size:10px;font-weight:800;direction:ltr}
 .sniper-chart-command-levels{display:grid;gap:3px}
 .sniper-chart-command-levels span{min-width:0;display:flex;flex-wrap:wrap;
   justify-content:space-between;gap:1px 6px;font-size:9px;color:#98b3c4}
