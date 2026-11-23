@@ -5,6 +5,7 @@ import type {Mt5GoldDomReading} from '../lib/gold-mt5-dom';
 import type {GcFuturesSnapshot} from '../lib/gc-futures-feed';
 import type {goldLeadScore,GoldLeadEvent} from '../lib/gold-preparation-lead';
 import type {GoldPreparationView} from '../lib/gold-spot-fallback';
+import type {GoldLocalWatchView} from '../lib/sniper-gold-local-watch';
 
 type Side='BUY'|'SELL'|'WAIT';
 type Reading={ready:boolean;phase:string;side:Side;
@@ -18,7 +19,8 @@ type LeadScore=ReturnType<typeof goldLeadScore>&{status:string;observation:{
  checkedAt?:number;reason:string;source?:string;quoteSource?:string;
  quoteAt?:number;price?:number}};
 type Status={ok:boolean;status:string;radar:Reading;events:number;
- updatedAt:number;m1:Score;m15:Score;brokerDom?:BrokerDom;preparationLead?:LeadScore};
+ updatedAt:number;m1:Score;m15:Score;brokerDom?:BrokerDom;preparationLead?:LeadScore;
+ scalpEarly?:GoldLocalWatchView|null};
 type Watch={ready:boolean;upper:{price:number}[];lower:{price:number}[]};
 const fmt=(v:unknown)=>{
  const n=Number(v);
@@ -36,9 +38,10 @@ const leadLabel=(e:GoldLeadEvent)=>({ARMED:'إنذار ثابت · انتظار 
  * privileged institutional orders, a probability, or automated trading.
  * Its side never modifies M15 forecast candles, targets or execution.
  */
-export default function GoldRadarBadge({now,marketFresh,watch,onPreparationView}:{
+export default function GoldRadarBadge({now,marketFresh,watch,onPreparationView,onScalpEarlyView}:{
  now:number;marketFresh:boolean;watch:Watch;
  onPreparationView?:(view:GoldPreparationView|null)=>void;
+ onScalpEarlyView?:(view:GoldLocalWatchView|null)=>void;
 }){
  const [state,setState]=useState<Status|null>(null);
  const [expanded,setExpanded]=useState(false);
@@ -74,8 +77,9 @@ export default function GoldRadarBadge({now,marketFresh,watch,onPreparationView}
     if(alive){
       setState(data?.ok?data:null);
       onPreparationView?.(data?.ok?data.preparationLead??null:null);
+      onScalpEarlyView?.(data?.ok?data.scalpEarly??null:null);
     }
-   }catch{if(alive){setState(null);onPreparationView?.(null);}}
+   }catch{if(alive){setState(null);onPreparationView?.(null);onScalpEarlyView?.(null);}}
   };
   void poll();
   const id=setInterval(()=>{void poll();},15000);
