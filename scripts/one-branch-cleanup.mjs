@@ -65,14 +65,16 @@ let done=0;
 const failures=[];
 for(const b of candidate){
  if(b.protected){failures.push(b.name+' (protected)');continue;}
- const path='repos/'+repo+'/git/refs/heads/'+b.name.split('/').map(encodeURIComponent).join('/');
+ const suffix=b.name.split('/').map(encodeURIComponent).join('/');
+ const refPath='repos/'+repo+'/git/ref/heads/'+suffix;
+ const deletePath='repos/'+repo+'/git/refs/heads/'+suffix;
  try{
-   const ref=await api(path);
+   const ref=await api(refPath);
    if(ref?.object?.sha!==b.commit.sha){
      failures.push(b.name+' (head changed since inventory)');
      continue;
    }
-   await api(path,'DELETE');
+   await api(deletePath,'DELETE');
    done++;
    console.log('Deleted',done+'/'+candidate.length,b.name);
  }catch(e){
