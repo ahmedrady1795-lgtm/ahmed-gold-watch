@@ -131,6 +131,9 @@ function goldOffline(source:string,reason:string,now:number):MarketLeadSignal{
   return out;
 }
 export function updateGoldMarketLead(fast:any,now=Date.now(),wave:any=null):MarketLeadSignal{
+  // A missing true MarketBookGet remains an explicit, independently tested
+  // absence of DOM. Only the read-only PRICE WATCH may use another feed.
+  const noVerifiedBrokerDepth=Boolean(fast?.ok&&fast.domReady!==true);
   // Do NOT label price-only MT5 ticks as authenticated DOM pressure.
   // Brokers may not provide MarketBookGet for spot XAUUSD at all.
   if(fast?.ok&&fast.domReady===true){
@@ -169,7 +172,7 @@ export function updateGoldMarketLead(fast:any,now=Date.now(),wave:any=null):Mark
       absorptionSide:'WAIT',absorptionScore:0,trapDetected:false,hintSide:side,domAvailable:false
     },now,'MICRO_FLOW');
   }
-  if(fast?.ok)return goldOffline('MT5 broker depth',
+  if(noVerifiedBrokerDepth)return goldOffline('MT5 broker depth',
     'تغذية MT5 السعرية موجودة لكن لا توجد ثلاث عينات عمق وسيط موثوقة؛ DOM غير مؤهل.',now);
   return goldOffline('Live gold microstructure','لا يوجد DOM أو Biquote micro-flow حديث الآن.',now);
 }
