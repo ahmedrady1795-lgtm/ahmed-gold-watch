@@ -126,16 +126,17 @@ export default function SniperOpportunityMarkers(p:Props){
    const chosen=placeLabel(px,py,48,16,r.side==='BUY'?22:-22);
    if(chosen)earlyLabels.set(r.id,chosen);
  }
- // Earlier OPEN/FOLLOW/CLOSE observations were grey dots with hover-only
- // direction. Show at most four recent BUY/SELL watch captions on touch screens.
- // Keep immutable issuance coordinates and reserve true opportunity labels first.
+ // Do not call a FOLLOW or CLOSE observation a fresh BUY/SELL alert.
+ // Prioritize first-minute labels, reserve only three mobile captions and
+ // keep every historical dot at the original issuance price and timestamp.
  const m5Labels=new Map<string,{x:number;y:number}>();
  const m5Named:MovementProof[]=[];
- for(const r of m5Issued){
-   if(m5Labels.size>=4)break;
-   if(m5Named.some(s=>s.side===r.side&&
-     Math.abs(p.timeX(s.issuedAt)-p.timeX(r.issuedAt))<42&&
-     Math.abs(p.py(s.priceAt)-p.py(r.priceAt))<28))continue;
+ const order=(kind:string)=>kind==='OPEN'?0:kind==='FOLLOW'?1:2;
+ const m5CaptionCandidates=[...m5Issued].sort((a,b)=>
+   order(a.kind)-order(b.kind)||b.issuedAt-a.issuedAt);
+ for(const r of m5CaptionCandidates){
+   if(m5Labels.size>=3)break;
+   if(m5Named.some(s=>s.side===r.side&&s.kind===r.kind))continue;
    const x=p.timeX(r.issuedAt),y=p.py(r.priceAt);
    const chosen=placeLabel(x,y,76,19,r.side==='BUY'?29:-29);
    if(chosen){m5Labels.set(r.id,chosen);m5Named.push(r);}
@@ -160,10 +161,12 @@ export default function SniperOpportunityMarkers(p:Props){
          return <>
            <line x1={x} y1={y} x2={caption.x} y2={caption.y}
              stroke={ink} strokeOpacity=".68" strokeWidth=".8"/>
-           <text data-role="m5-observation-label" x={caption.x} y={caption.y+4}
-             textAnchor="middle" direction="rtl" fontSize="11" fontWeight="900"
+           <text data-role="m5-observation-label" data-phase={r.kind}
+             x={caption.x} y={caption.y+4}
+             textAnchor="middle" direction="rtl" fontSize="10" fontWeight="900"
              fill={ink} stroke="#07111b" strokeWidth="3"
-             paintOrder="stroke">{r.side==='BUY'?'رصد شراء':'رصد بيع'}</text>
+             paintOrder="stroke">{(r.kind==='OPEN'?'بداية ':r.kind==='FOLLOW'?'متابعة ':'نهاية ')+
+               (r.side==='BUY'?'صعود':'هبوط')}</text>
          </>;
        })()}
      </g>;

@@ -86,6 +86,43 @@ function evaluate(asset:'GOLD'|'BTC',f:LeadFeatures,now=Date.now(),mode:'DOM'|'M
   reason,evidence:evidence.slice(0,5),metrics:{bookImbalance:Number(f.bookImbalance.toFixed(2)),pressureChange:Number(f.pressureChange.toFixed(2)),replenishDelta:Number(f.replenishDelta.toFixed(2)),acceleration:Number(f.acceleration.toFixed(4)),flowDelta:Number(f.flowDelta.toFixed(2)),priceVelocity:Number(f.priceVelocity.toFixed(4)),persistence:Math.round(f.persistence),quality:Math.round(f.quality)}};
   state.signal=out;return out;
 }
+/** Separate price-only candidate. This is NOT DOM, executed order flow,
+ * or an order entry. Requires an actually observed quiet PRE_TRIGGER window,
+ * and rejects a move that already ran during the prior eight seconds. */
+function goldPriceWatch(wave:any,now:number):MarketLeadSignal|null{
+ const sourceAt=Number(wave?.at),v3=Number(wave?.velocity3s),
+   v8=Number(wave?.velocity8s),acc=Number(wave?.acceleration);
+ const side=sideOf(wave?.side),quality=Number(wave?.confidence);
+ if(!wave?.ok||!Number.isFinite(sourceAt)||sourceAt<=0||
+   sourceAt>now+1500||now-sourceAt>4500||side==='WAIT'||
+   wave?.stage!=='PRE_TRIGGER'||Number(wave?.samples)<7||
+   Number(wave?.persistence)<62||!Number.isFinite(quality)||quality<48||
+   !Number.isFinite(v3)||Math.abs(v3)>1.05||
+   !Number.isFinite(v8)||Math.abs(v8)>2.2||
+   !Number.isFinite(acc)||Math.abs(acc)<.16)return null;
+ const evidence=['تسارع تغيرات السعر قبل كسر مرصود',
+   'سرعة السعر خلال 8 ثوانٍ لم تصل لاندفاع مطارد',
+   'اتجاه التيكات متكرر؛ لا يوجد عمق أوامر موثق'];
+ const out:MarketLeadSignal={
+   ...offline('GOLD','Gold price-tick observation',evidence.join(' · '),now),
+   available:true,side,stage:'BUILDING',mode:'MICRO_FLOW',quiet:true,
+   score:Math.min(70,Math.max(0,Math.round(Number(wave.score)||0))),
+   confidence:Math.min(75,Math.round(quality)),support:2,
+   stability:Math.min(100,Math.round(Number(wave.persistence)||0)),
+   source:'Gold live price-tick watch · no broker DOM',
+   sourceAt,ageMs:Math.max(0,now-sourceAt),
+   reason:'رصد سعري مبكر محتمل، وليس إشارة دخول أو ضغط أوامر مثبتًا. '+evidence.join(' · '),
+   evidence,
+   metrics:{bookImbalance:0,pressureChange:0,replenishDelta:0,
+     acceleration:Number(acc.toFixed(4)),flowDelta:0,
+     priceVelocity:Number(v3.toFixed(4)),
+     persistence:Math.round(Number(wave.persistence)),quality:Math.round(quality)}
+ };
+ const state=states.GOLD;
+ state.history=[];state.lastSourceAt=0;state.lastMode='MICRO_FLOW';
+ state.signal=out;
+ return out;
+}
 function goldOffline(source:string,reason:string,now:number):MarketLeadSignal{
   const state=states.GOLD;
   state.history=[];state.lastSourceAt=0;state.lastMode='';
@@ -96,10 +133,7 @@ function goldOffline(source:string,reason:string,now:number):MarketLeadSignal{
 export function updateGoldMarketLead(fast:any,now=Date.now(),wave:any=null):MarketLeadSignal{
   // Do NOT label price-only MT5 ticks as authenticated DOM pressure.
   // Brokers may not provide MarketBookGet for spot XAUUSD at all.
-  if(fast?.ok&&fast.domReady!==true)
-    return goldOffline('MT5 broker depth',
-      'تغذية MT5 السعرية موجودة لكن لا توجد ثلاث عينات عمق وسيط موثوقة؛ DOM غير مؤهل.',now);
-  if(fast?.ok){
+  if(fast?.ok&&fast.domReady===true){
     return evaluate('GOLD',{
       source:'Exness/MT5 DOM · Market Lead AI',
       sourceAt:Number(fast.receivedAt||fast.at||now),
@@ -115,7 +149,10 @@ export function updateGoldMarketLead(fast:any,now=Date.now(),wave:any=null):Mark
       absorptionSide:'WAIT',absorptionScore:0,trapDetected:false,hintSide:'WAIT',domAvailable:fast.domReady===true
     },now,'DOM');
   }
-  if(wave?.ok&&Number(wave?.at||0)>0&&now-Number(wave.at)<=4500){
+  // Price-only watch remains visible even when an MT5 tick feed has no DOM.
+  const priceWatch=goldPriceWatch(wave,now);
+  if(priceWatch)return priceWatch;
+  if(wave?.ok&&Number(wave?.at||0)>0&&Number(wave.at)<=now+1500&&now-Number(wave.at)<=4500){
     const side=sideOf(wave.side);
     return evaluate('GOLD',{
       source:'Gold price-tick proxy · no broker depth or signed trades',
@@ -132,6 +169,8 @@ export function updateGoldMarketLead(fast:any,now=Date.now(),wave:any=null):Mark
       absorptionSide:'WAIT',absorptionScore:0,trapDetected:false,hintSide:side,domAvailable:false
     },now,'MICRO_FLOW');
   }
+  if(fast?.ok)return goldOffline('MT5 broker depth',
+    'تغذية MT5 السعرية موجودة لكن لا توجد ثلاث عينات عمق وسيط موثوقة؛ DOM غير مؤهل.',now);
   return goldOffline('Live gold microstructure','لا يوجد DOM أو Biquote micro-flow حديث الآن.',now);
 }
 export function updateBtcMarketLead(liq:any,now=Date.now()):MarketLeadSignal{
