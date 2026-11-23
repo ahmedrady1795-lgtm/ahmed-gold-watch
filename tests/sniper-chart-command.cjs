@@ -51,7 +51,7 @@ assert.ok(startup.indexOf('await Promise.all([restoreSniperArchive(),restoreScal
  'never start analysis before saved result histories were restored');
 assert.match(homeUi,/import SniperChartEntry from '\\.\\/SniperChartEntry'/,
  'live homepage loads only the active lightweight chart module');
-assert.match(liveEntry,/return <SniperM15Panel \\.\\.\\.props\\/>/,
+assert.match(liveEntry,/return <SniperM15Panel \{\.\.\.props\}\/>/,
  'lightweight entry must pass through real M5 chart and unchanged observations');
 assert.doesNotMatch(homeUi,/import ForecastIllustration from/,
  'unmounted 1600-line legacy chart cannot enter first-load JS bundle');
