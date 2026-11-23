@@ -1778,6 +1778,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <small>قنص M1/M5</small>
        <strong>{commandHeadline}</strong>
      </div>
+     <div className="sniper-chart-command-frames">
+       <span>{'M1 '+(nextM1.ready?
+         nextM1.side==='BUY'?'↑':nextM1.side==='SELL'?'↓':'—':'—')}</span>
+       <span>{'M15 '+(entryTrend==='BUY'?'↑':entryTrend==='SELL'?'↓':'—')}</span>
+     </div>
      <div className="sniper-chart-command-levels">
        <span>تفعيل <b dir="ltr">{n(commandTrigger)}</b></span>
        <span>إبطال <b dir="ltr">{n(commandInvalidation)}</b></span>
