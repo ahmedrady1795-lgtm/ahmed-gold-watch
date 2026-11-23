@@ -13,7 +13,7 @@ type Lead={
 };
 type LastAlert={side:'BUY'|'SELL';at:number;score:number;kind:'VERIFIED'|'PRICE_WATCH'};
 
-export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD',compact=false}:{now:number;marketOpen?:boolean;asset?:'GOLD'|'BTC';compact?:boolean}){
+export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD',compact=false,onSignal}:{now:number;marketOpen?:boolean;asset?:'GOLD'|'BTC';compact?:boolean;onSignal?:(reading:Lead|null)=>void}){
   const [lead,setLead]=useState<Lead|null>(null);
   const [connected,setConnected]=useState(false);
   const [last,setLast]=useState<LastAlert|null>(null);
@@ -23,12 +23,12 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD',compact
 
   useEffect(()=>{
     setConnected(false);setLead(null);
-    if(!marketOpen)return;
+    if(!marketOpen){onSignal?.(null);return;}
     let closed=false;
     const onReading=(next:Lead)=>{
       if(closed||next.asset!==asset)return;
       try{
-        setLead(next);setConnected(true);
+        setLead(next);setConnected(true);onSignal?.(next);
         const t=Date.now(),sourceAt=Number(next.sourceAt||0);
         const verified=next.armed===true&&next.stage==='ARMED'&&
           next.mode===(asset==='GOLD'?'DOM':'CROSS_EXCHANGE')&&(next.side==='BUY'||next.side==='SELL')&&
@@ -140,7 +140,7 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD',compact
       source.removeEventListener('lead',onLead as EventListener);
       source.close();
     };
-  },[marketOpen,asset]);
+  },[marketOpen,asset,onSignal]);
 
   const activate=async()=>{
     if(typeof Notification==='undefined')return;
@@ -173,19 +173,9 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD',compact
     'لا يوجد اتجاه مبكر مؤهل حاليًا';
   // One status line INSIDE the chart command rail. All heavy cards are
   // removed from the main page. Never upgrade price-only GOLD to DOM entry.
-  if(compact)return <div className="sniper-chart-lead" role={armed?'alert':'status'}
-    data-early-lead={armed?'ARMED':priceWatch?'PRICE_WATCH':fresh?String(lead?.stage||'OBSERVE'):'OFFLINE'}
-    title={lead?.reason||headline}>
-    <span>{armed?'تنبيه أوامر موثّق '+direction:
-      priceWatch?'رصد سعري مبكر '+direction:
-      building&&lead?.side!=='WAIT'?'ضغط يتكون '+direction:
-      fresh&&lead?.stage==='RELEASED'?'الحركة بدأت · ليس دخولًا':
-      fresh&&lead?.stage==='REJECTED'?'إشارة ملغاة':
-      'رادار: مراقبة'}</span>
-    {armed&&<b>{Math.round(Number(lead?.score||0))}/100 أدلة</b>}
-    {last&&now-last.at<90000&&
-      <small>{'سابق '+(last.side==='BUY'?'شراء':'بيع')}</small>}
-  </div>;
+  // Compact chart feed supplies only observations. The parent renders the
+  // actual early direction inside the OHLC chart; no second radar card.
+  if(compact)return null;
   // Keep BTC compact and explicit: the cross-exchange read is not the
   // chart venue's execution feed and is not a qualified trade.
   if(asset==='BTC')return <section dir="rtl" role={armed?'alert':'status'}
