@@ -45,13 +45,13 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
   const [feed,setFeed]=useState<any>(null);
   const [error,setError]=useState(false);
   useEffect(()=>{
-    let closed=false,inFlight=false;
+    let closed=false,inFlight=false;let initial:ReturnType<typeof setTimeout>|undefined;
     const load=async()=>{
       if(closed||inFlight||document.visibilityState!=='visible')return;
       inFlight=true;
       try{
         const response=await fetch('/api/news?ts='+Date.now(),
-          {cache:'no-store',signal:AbortSignal.timeout(20000)});
+          {cache:'no-store',signal:AbortSignal.timeout(8500)});
         const value=await response.json();
         if(!response.ok||!value?.ok||!value.newsReady||!Array.isArray(value.events))
           throw new Error('news feed unavailable');
@@ -59,11 +59,12 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
       }catch{if(!closed)setError(true);}
       finally{inFlight=false;}
     };
-    void load();
+    // Give the independent real M5 chart and quote feed startup priority.
+    initial=setTimeout(()=>{void load();},1800);
     const interval=setInterval(()=>{void load();},90000);
     const visibility=()=>{if(document.visibilityState==='visible')void load();};
     document.addEventListener('visibilitychange',visibility);
-    return()=>{closed=true;clearInterval(interval);document.removeEventListener('visibilitychange',visibility);};
+    return()=>{closed=true;clearTimeout(initial);clearInterval(interval);document.removeEventListener('visibilitychange',visibility);};
   },[]);
   const {upcoming,alerts,recent}=economicNewsTimeline(feed?.events??events,feed?null:featuredEvent,now);
   const dubaiDay=(at:number)=>new Intl.DateTimeFormat('en-CA',{
@@ -94,8 +95,8 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
   return <details className="news-ticker-shell" aria-label="أهم أخبار اليوم وتأثيرها المحتمل على الذهب">
     <summary className="news-ticker-line" title={highlighted?outlook.disclaimer:'متابعة أهم أخبار اليوم'}>
       <span className="news-ticker-tag">خبر اليوم</span>
-      <span className="news-ticker-countdown">{highlighted?eventState:error?'التحديث متأخر':'لا أخبار قادمة'}</span>
-      <strong className="news-ticker-title">{highlighted?.name||'لا يوجد خبر اقتصادي مؤكد اليوم'}</strong>
+      <span className="news-ticker-countdown">{highlighted?eventState:error?'التحديث متأخر':!feed?'جاري تحديث الأخبار':'لا أخبار قادمة'}</span>
+      <strong className="news-ticker-title">{highlighted?.name||(!feed&&!error?'جاري فحص التقويم':'لا يوجد خبر اقتصادي مؤكد اليوم')}</strong>
       {preLean?.visible&&<span className={'news-ticker-prebias news-ticker-prebias-'+preLean.side.toLowerCase()}
         title="حركة السعر قبل الخبر؛ لا تتنبأ بنتيجة الإعلان أو اتجاهه المؤكد بعد الصدور">
         {preLabel}</span>}
