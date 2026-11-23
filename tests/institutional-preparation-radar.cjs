@@ -54,12 +54,15 @@ const chart=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 const btcUI=fs.readFileSync('components/OrderFlowRadar.tsx','utf8');
 const goldUI=fs.readFileSync('components/GoldRadarBadge.tsx','utf8');
 const css=fs.readFileSync('app/gold-sniper-radar.css','utf8');
-assert.match(chart,/className="sniper-m15-preparation-slot"/);
-assert.ok(chart.indexOf('className="sniper-m15-preparation-slot"')>
+assert.match(chart,/className="sniper-background-feeds" hidden aria-hidden="true"/,
+ 'exchange and gold preparation feeds must remain active without any radar box');
+assert.ok(chart.indexOf('className="sniper-background-feeds"')>
  chart.indexOf('className="sniper-m15-chart-box"')&&
- chart.indexOf('className="sniper-m15-preparation-slot"')>
+ chart.indexOf('className="sniper-background-feeds"')>
  chart.indexOf('className="sniper-m15-diagnostics"'),
- 'BTC reading is available in optional details BELOW the chart and never covers candlesticks');
+ 'source feeds stay below the visible chart, hidden from the user without disabling updates');
+assert.match(chart,/asset==='BTC'&&<OrderFlowRadar key=\{asset\}/,
+ 'BTC market feed must still update without a standalone visible panel');
 assert.match(btcUI,/btcPreparation\(/);
 assert.match(goldUI,/goldPreparation\(/);
 assert.match(btcUI,/Iceberg/);
