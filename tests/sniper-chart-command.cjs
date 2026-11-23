@@ -24,8 +24,12 @@ assert.doesNotMatch(panel,/sniper-intelligence-drawer/,
  'large duplicate intelligence deck was removed');
 assert.match(panel,/<details className="sniper-m15-levels-below"/,
  'secondary levels stay available but collapsed');
-assert.match(early,/if\(compact\)return <div className="sniper-chart-lead"/,
- 'existing live radar should render one concise source-aware status line');
+assert.match(early,/if\(compact\)return null/,
+ 'radar data feed should have no independent visible card in chart-only mode');
+assert.match(panel,/data-qannas-chart-early=\{leadVerified\?'DEPTH_WATCH':'PRICE_WATCH'\}/,
+ 'genuine prebreak lead remains visible within real chart with correct source');
+assert.match(early,/onSignal\?\.\(next\)/,
+ 'compact radar must forward only observed packets into in-chart markers');
 assert.match(css,/sniper-m15-chart-box \.sniper-chart-command\{/,
  'chart sidebar must have a dedicated responsive overlay');
 assert.match(startup,/await Promise\.all\(\[restoreSniperArchive\(\),restoreScalpArchive\(\)\]\)/,
