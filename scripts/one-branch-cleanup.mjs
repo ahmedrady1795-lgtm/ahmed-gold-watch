@@ -80,6 +80,8 @@ for(const b of candidate){
  }catch(e){
    failures.push(b.name+' ('+String(e instanceof Error?e.message:e).slice(0,160)+')');
  }
+ // Keep GitHub secondary rate-limit usage bounded for hundreds of DELETEs.
+ await new Promise(resolve=>setTimeout(resolve,600));
 }
 const remaining=[];
 for(let page=1;page<=10;page++){
