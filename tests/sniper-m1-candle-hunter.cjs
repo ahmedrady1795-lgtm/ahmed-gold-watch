@@ -159,8 +159,10 @@ assert.match(panel,/noForecastReason=\{!projected.ready\?lifecycle:null\}/,
  'unavailable M15 projections must disclose their gating reason');
 assert.match(snippet,/sniper-m1-gross-risk/,
  'sub-1R M1 target/stop geometry is flagged before any trade claims');
-assert.match(panel,/<SniperScenarioHero /,
- 'original M15 scenario stays accessible without M1 mode switch');
+assert.match(panel,/className="sniper-diagnostic-mini"/,
+ 'M15 evidence remains accessible in a single short optional line without a repeated dashboard');
+assert.match(panel,/data-qannas-chart-signal=\{commandState\}/,
+ 'real chart now carries the main qualified BUY SELL or WATCH state');
 assert.match(snippet,/BUY BREAK/);
 assert.match(snippet,/SELL BREAK/);
 assert.match(snippet,/auditCandleHunter/);
