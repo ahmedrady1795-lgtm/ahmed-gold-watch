@@ -1214,8 +1214,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {showLiquidity?'المناطق ✓':'المناطق'}</button>
    </header>
    
-   <>
-   
    <details className="sniper-hunt-advanced">
      <summary>المستويات والتشخيص <span aria-hidden="true">＋</span></summary>
      <SniperOrderFlowStrip data={flowObservation}/>
