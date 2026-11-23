@@ -195,8 +195,8 @@ const layout=fs.readFileSync('app/layout.tsx','utf8');
 const summaryPos=chart.indexOf('<SniperM15Summary');
 const chartPos=chart.indexOf('className="sniper-m15-chart-box"');
 const diagnosticPos=chart.indexOf('className="sniper-m15-diagnostics"');
-assert.ok(summaryPos>0&&summaryPos<chartPos,
- 'the ACTUAL production M15 scenario is visible before the chart');
+assert.ok(summaryPos>chartPos&&summaryPos<diagnosticPos,
+ 'optional long M15 scenario details follow the real chart instead of pushing it down');
 assert.ok(diagnosticPos>chartPos,
  'radar and metrics follow the chart in collapsed optional details');
 assert.ok(chart.indexOf("className={'sniper-live-opportunity")>diagnosticPos,
