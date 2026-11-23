@@ -24,6 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: render-free
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
