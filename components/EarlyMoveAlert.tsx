@@ -94,7 +94,7 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:n
     let source:EventSource;
     const fallbackPoll=async()=>{
       fallbackTimer=undefined;
-      if(closed||source.readyState===EventSource.OPEN)return;
+      if(closed||source.readyState===1)return;
       if(!document.hidden&&!fallbackBusy){
         fallbackBusy=true;
         const controller=new AbortController();
@@ -106,13 +106,13 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:n
           if(!response.ok)throw Error('GOLD lead HTTP '+response.status);
           onReading(await response.json());
         }catch{
-          if(!closed&&source.readyState!==EventSource.OPEN)setConnected(false);
+          if(!closed&&source.readyState!==1)setConnected(false);
         }finally{
           clearTimeout(timeout);fallbackBusy=false;
           if(fallbackRequest===controller)fallbackRequest=undefined;
         }
       }
-      if(!closed&&source.readyState!==EventSource.OPEN)
+      if(!closed&&source.readyState!==1)
         fallbackTimer=setTimeout(()=>{void fallbackPoll();},6000);
     };
     const onLead=(event:MessageEvent)=>{try{onReading(JSON.parse(String(event.data)));}catch{}};
