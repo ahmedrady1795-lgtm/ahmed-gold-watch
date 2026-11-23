@@ -16,7 +16,7 @@ from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 from microstructure import MicrostructureCore
 
-APP_VERSION="predator-ml-v12-purged-calibrated"
+APP_VERSION="predator-ml-v13-paired-oos-coherent"
 EVALUATION_PROTOCOL="purged-chronological-served-estimators-v1"
 MODEL_DIR=Path(os.getenv("MODEL_DIR","/data")); MODEL_DIR.mkdir(parents=True,exist_ok=True)
 MODEL_PATH=MODEL_DIR/"btc_ml_ensemble.joblib"
@@ -448,7 +448,13 @@ def purged_splits(ds,horizon):
 
 def _model_ready(model):
     m=model.get("metrics",{})
-    return bool(m.get("ready") and m.get("evaluationProtocol")==EVALUATION_PROTOCOL)
+    holdout=m.get("ensemble") or {}
+    baseline=holdout.get("pairedBaselineAccuracy")
+    # Old M1 artifacts lacked a same-selected-cases baseline. Do not keep
+    # such a model as a READY champion after upgrading the audit protocol.
+    return bool(m.get("ready") and m.get("evaluationProtocol")==EVALUATION_PROTOCOL and
+        isinstance(baseline,(float,int)) and math.isfinite(float(baseline)) and
+        0<=float(baseline)<=1)
 
 def _temperature_probs(prob,temperature=1.0):
     logits=np.log(np.clip(prob,1e-9,1))/max(.25,float(temperature))
