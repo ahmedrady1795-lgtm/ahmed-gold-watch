@@ -11,7 +11,7 @@ type Lead={
   armed?:boolean;source?:string;sourceAt?:number;score?:number;
   evidence?:string[];reason?:string;ageMs?:number;
 };
-type LastAlert={side:'BUY'|'SELL';at:number;score:number};
+type LastAlert={side:'BUY'|'SELL';at:number;score:number;kind:'VERIFIED'|'PRICE_WATCH'};
 
 export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:number;marketOpen?:boolean;asset?:'GOLD'|'BTC'}){
   const [lead,setLead]=useState<Lead|null>(null);
@@ -19,7 +19,7 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:n
   const [last,setLast]=useState<LastAlert|null>(null);
   const [notifications,setNotifications]=useState(false);
   const notifyRef=useRef(false);
-  const sent=useRef<{side:string;at:number}>({side:'',at:0});
+  const sent=useRef<{side:string;at:number;kind:string}>({side:'',at:0,kind:''});
 
   useEffect(()=>{
     setConnected(false);setLead(null);
@@ -33,17 +33,31 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:n
         const verified=next.armed===true&&next.stage==='ARMED'&&
           next.mode===(asset==='GOLD'?'DOM':'CROSS_EXCHANGE')&&(next.side==='BUY'||next.side==='SELL')&&
           sourceAt>0&&sourceAt<=t+1500&&t-sourceAt<=5000;
-        if(!verified)return;
+        // A separate, explicitly unverified price watch may be shown and
+        // notified. It is never a DOM alert or an order-entry signal.
+        const priceWatch=asset==='GOLD'&&next.mode==='MICRO_FLOW'&&
+          next.source==='Gold live price-tick watch · no broker DOM'&&
+          next.stage==='BUILDING'&&next.armed===false&&
+          (next.side==='BUY'||next.side==='SELL')&&
+          Number(next.score)>=45&&sourceAt>0&&
+          sourceAt<=t+1500&&t-sourceAt<=5000;
+        if(!verified&&!priceWatch)return;
         const side=next.side as 'BUY'|'SELL';
-        // Deduplicate repeated SSE snapshots of the same pressure episode.
-        if(sent.current.side===side&&t-sent.current.at<45000)return;
-        sent.current={side,at:t};
-        setLast({side,at:t,score:Math.round(Number(next.score||0))});
+        const kind:LastAlert['kind']=verified?'VERIFIED':'PRICE_WATCH';
+        // Differentiate true depth alerts from price-only research watches.
+        if(sent.current.side===side&&sent.current.kind===kind&&
+          t-sent.current.at<(priceWatch?90000:45000))return;
+        sent.current={side,at:t,kind};
+        setLast({side,at:t,score:Math.round(Number(next.score||0)),kind});
         if(notifyRef.current&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
           try{
-            new Notification(side==='BUY'?'القناص · تنبيه شراء مبكر':'القناص · تنبيه بيع مبكر',{
-              body:asset==='GOLD'?'ضغط DOM وسيط قبل تسارع السعر؛ ليست صفقة مضمونة.':'ضغط سيولة متعدد المنصات قبل تسارع السعر؛ ليس أمر دخول.',
-              tag:asset.toLowerCase()+'-verified-premove'
+            new Notification(priceWatch?
+              (side==='BUY'?'القناص · ترقب سعري شراء':'القناص · ترقب سعري بيع'):
+              (side==='BUY'?'القناص · تنبيه شراء مبكر':'القناص · تنبيه بيع مبكر'),{
+              body:priceWatch?'رصد سعري من تيكات متتابعة، دون عمق أوامر Exness؛ ليس إشارة دخول.':
+                asset==='GOLD'?'ضغط DOM وسيط قبل تسارع السعر؛ ليست صفقة مضمونة.':
+                'ضغط سيولة متعدد المنصات قبل تسارع السعر؛ ليس أمر دخول.',
+              tag:asset.toLowerCase()+(priceWatch?'-price-watch':'-verified-premove')
             });
           }catch{}
         }
@@ -95,13 +109,18 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:n
   const armed=Boolean(fresh&&lead?.armed===true&&lead?.stage==='ARMED'&&lead?.mode===(asset==='GOLD'?'DOM':'CROSS_EXCHANGE')&&
     (lead?.side==='BUY'||lead?.side==='SELL'));
   const building=Boolean(fresh&&lead?.stage==='BUILDING');
+  const priceWatch=Boolean(asset==='GOLD'&&building&&lead?.mode==='MICRO_FLOW'&&
+    lead?.source==='Gold live price-tick watch · no broker DOM'&&
+    (lead?.side==='BUY'||lead?.side==='SELL'));
   const direction=lead?.side==='BUY'?'شراء':lead?.side==='SELL'?'بيع':'';
   const title=!marketOpen?'سوق الذهب مغلق · الإنذار متوقف':armed?'إنذار مبكر: '+direction:
+    priceWatch?'رصد سعري محتمل: '+direction:
     building?'ضغط يتكوّن · '+(direction||'مراقبة'):
     fresh&&lead?.stage==='RELEASED'?'الحركة بدأت · لا يُحتسب تنبيهًا مبكرًا':
     fresh&&lead?.stage==='REJECTED'?'الضغط انعكس · إلغاء التوقع':
     'رادار الحركة المبكرة · مراقبة';
   const headline=!marketOpen?'آخر إشارة محفوظة للمراجعة، لا يوجد تنبيه تداول حي أثناء الإغلاق':armed?'ضغط دفتر أوامر الوسيط قبل تسارع السعر':
+    priceWatch?'سعر هادئ نسبيًا مع بداية تسارع؛ دون إثبات DOM أو دخول':
     building&&lead?.mode==='DOM'?'عمق الوسيط تحت الفحص؛ لم يثبت التنبيه بعد':
     building?'حركة سعر فقط؛ بدون تأكيد من دفتر أوامر حقيقي':
     !fresh?'لا توجد قراءة ميكروهيكل حديثة وموثوقة':
@@ -116,7 +135,7 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:n
     {last&&now-last.at<180000&&<small>{' · آخر تنبيه '+(last.side==='BUY'?'شراء':'بيع')+' '+new Date(last.at).toLocaleTimeString('ar-EG')}</small>}
     {typeof Notification!=='undefined'&&!notifications&&<button type="button" onClick={()=>{void activate();}} style={{marginInlineStart:6,fontSize:11}}>تفعيل التنبيه</button>}
   </section>;
-  const tint=armed?(lead?.side==='BUY'?'#6cdeb1':'#f39ba6'):'#b7c9d8';
+  const tint=armed||priceWatch?(lead?.side==='BUY'?'#6cdeb1':'#f39ba6'):'#b7c9d8';
   return <section dir="rtl" aria-label="تنبيه القناص قبل الحركة" role={armed?'alert':'status'}
     style={{margin:'6px 0 10px',padding:'8px 11px',border:'1px solid rgba(132,165,191,.25)',
       borderInlineStart:armed?'3px solid '+tint:undefined,borderRadius:8,
@@ -125,6 +144,7 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:n
       <strong style={{fontSize:14,color:tint}}>{title}</strong>
       <span>{headline}</span>
       {armed&&<b style={{color:tint}}>قوة الأدلة {Math.round(Number(lead?.score||0))}/100</b>}
+      {priceWatch&&<b style={{color:tint}}>قوة الرصد {Math.round(Number(lead?.score||0))}/100 · ليست نسبة نجاح</b>}
       <span style={{fontSize:11,opacity:.85}}>{fresh?(lead?.mode==='DOM'?'MT5 DOM الوسيط':'تتبّع السعر فقط'):'OFFLINE'}</span>
       {marketOpen&&typeof Notification!=='undefined'&&
         <button type="button" onClick={()=>{void activate();}} disabled={notifications}
@@ -136,11 +156,11 @@ export default function EarlyMoveAlert({now,marketOpen=true,asset='GOLD'}:{now:n
     {armed&&Array.isArray(lead?.evidence)&&lead!.evidence!.length>0&&
       <div style={{marginTop:4,fontSize:11}}>السبب: {lead!.evidence!.slice(0,2).join(' · ')}</div>}
     {last&&now-last.at<180000&&<div style={{marginTop:4,fontSize:11,opacity:.8}}>
-      آخر تنبيه: {last.side==='BUY'?'شراء':'بيع'} · {new Date(last.at).toLocaleTimeString('ar-EG')} ·
-      قوة أدلة {last.score}/100 · سُجّل وقت ظهوره، وليس بعد الحركة
+      {last.kind==='PRICE_WATCH'?'آخر رصد سعري':'آخر إنذار موثق'}: {last.side==='BUY'?'شراء':'بيع'} · {new Date(last.at).toLocaleTimeString('ar-EG')} ·
+      درجة قراءة {last.score}/100 · سُجّل وقت ظهوره، وليس بعد الحركة
     </div>}
     <div style={{fontSize:10,opacity:.75,marginTop:3}}>
-      يعتمد الإنذار المبكر على DOM حقيقي وحديث؛ إشارات تتبع السعر لا تُعرض كضغط أوامر. ليس ضمان ربح أو تنفيذ تلقائي.
+      إنذار DOM يحتاج عمق وسيط موثقًا؛ الرصد السعري منفصل وأقل موثوقية، وليس ضغط أوامر أو ضمان ربح أو أمرًا تلقائيًا.
     </div>
   </section>;
 }
