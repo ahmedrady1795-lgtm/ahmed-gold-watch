@@ -68,12 +68,12 @@ async function sample():Promise<PaxgFlow>{
  while(points.length&&(points.length>61||now-points[0].at>300000))points.shift();
  const lead=observeLeadLag(points,now);
  const primary=fresh[0]?.flow??{side:'UNAVAILABLE' as const,observedAt:now,tradeAt:0,count:0,source:'Gold perpetual unavailable'};
- return {...primary,crossFlow:{venues:fresh.map(x=>x.evidence),
+ return {...primary,venueSamples:fresh.map(x=>x.flow),crossFlow:{venues:fresh.map(x=>x.evidence),
    consensus:compareGoldVenues(a?.flow??null,b?.flow??null,now),
    ...lead,actionable:false}};
 }
 export async function GET(){
- if(!cache||Date.now()-cache.observedAt>=5000){
+ if(!cache||Date.now()-cache.observedAt>=3000){
    pending??=sample().then(v=>cache=v).finally(()=>{pending=null;});
    await pending;
  }

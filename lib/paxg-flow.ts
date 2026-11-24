@@ -7,7 +7,7 @@ export type PaxgFlow={side:PaxgSide;observedAt:number;tradeAt:number;count:numbe
   coverageSeconds?:number;depthAvailable?:boolean;
   absorptionWatch?:'BUY'|'SELL'|null;priceChangeBps?:number;
   shortDeltaPct?:number;priorDeltaPct?:number;accelerationSide?:'BUY'|'SELL'|null;
-  crossFlow?:GoldCrossFlow;};
+  crossFlow?:GoldCrossFlow;venueSamples?:PaxgFlow[];};
 
 function size(levels:unknown,descending:boolean){
  if(!Array.isArray(levels)||levels.length<5)return null;

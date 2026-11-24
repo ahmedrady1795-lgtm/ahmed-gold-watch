@@ -36,3 +36,53 @@ export function goldLiquidityMeter(perp:PaxgFlow|null|undefined,token:PaxgFlow|n
    detail:'صافي حجم التنفيذ الهجومي ÷ إجمالي الحجم × 100، عينة '+f.count+' تنفيذ حتى 30ث · '+f.source+
      ' · ليس صافي إيداعات أو سحب رؤوس أموال ولا دفتر XAUUSD المباشر'+(conflict?' · النسبة تخص المصدر المعروض فقط':'')};
 }
+
+// Equal-normalized venue ratios (not raw contract quantities). Perpetual
+// samples receive weight 2, token spot 1. A 60-second deduplicated perpetual
+// history can stabilize its own 30-second sample; never smooth across sources.
+export type GoldCombinedLiquidity={buyPct:number|null;sellPct:number|null;delta:number|null;
+ sources:string[];asOf:number|null;state:'BUY'|'SELL'|'BALANCED'|'CONFLICT'|'UNAVAILABLE';
+ strongSide:'BUY'|'SELL'|'WAIT';ageSeconds:number|null;detail:string;actionable:false};
+export function combineGoldLiquidity(perp:PaxgFlow|null|undefined,token:PaxgFlow|null|undefined,now:number,open:boolean):GoldCombinedLiquidity{
+ const blank:GoldCombinedLiquidity={buyPct:null,sellPct:null,delta:null,sources:[],asOf:null,
+   state:'UNAVAILABLE',strongSide:'WAIT',ageSeconds:null,detail:'لا توجد عينات تنفيذ حديثة',actionable:false};
+ if(!open||!Number.isFinite(now))return blank;
+ const eligible=(f:PaxgFlow,allowed:string[])=>allowed.includes(f.source||'')&&f.side!=='UNAVAILABLE'&&
+   Number.isSafeInteger(f.observedAt)&&Number.isSafeInteger(f.tradeAt)&&f.tradeAt>0&&
+   f.tradeAt<=f.observedAt&&f.observedAt<=now&&now-f.observedAt<=12000&&now-f.tradeAt<=10000&&
+   Number.isInteger(f.count)&&f.count>=3&&Number.isFinite(f.tradeDeltaPct)&&Math.abs(f.tradeDeltaPct!)<=100;
+ const rows=new Map<string,{source:string;delta:number;raw:number;weight:number;at:number;count:number}>();
+ for(const [packet,allowed,weight] of [[perp,sources.slice(0,2),2],[token,sources.slice(2),1]] as const){
+   if(!packet)continue;
+   for(const f of [...(packet.venueSamples??[]),packet]){
+     if(!eligible(f,allowed))continue;
+     const source=f.source!,old=rows.get(source);if(old&&old.at>=f.tradeAt)continue;
+     let d=f.tradeDeltaPct!;
+     const history=weight===2?packet.crossFlow?.venues.find(v=>v.source===source):null;
+     if(history&&Number.isFinite(history.asOf)&&history.asOf<=now&&now-history.asOf<=10000&&
+       history.asOf>=f.tradeAt&&history.count>=12&&history.spanSeconds>=20&&
+       [history.buy60s,history.sell60s].every(v=>Number.isFinite(v)&&v>=0)&&history.buy60s+history.sell60s>0){
+       const stable=100*(history.buy60s-history.sell60s)/(history.buy60s+history.sell60s);
+       d=.7*d+.3*stable;
+     }
+     rows.set(source,{source,delta:d,raw:f.tradeDeltaPct!,weight,at:f.tradeAt,count:f.count});
+   }
+ }
+ const v=[...rows.values()];if(!v.length)return blank;
+ const total=v.reduce((s,r)=>s+r.weight,0);
+ const d=v.reduce((s,r)=>s+r.delta*r.weight,0)/total;
+ const buy=Math.round((100+d)/2),sell=100-buy;
+ const conflict=v.some(r=>r.raw>=35)&&v.some(r=>r.raw<=-35);
+ const recent=v.filter(r=>now-r.at<=8000&&r.count>=8);
+ const buyAgree=recent.filter(r=>r.raw>=25),sellAgree=recent.filter(r=>r.raw<=-25);
+ // At least two recent independent markets, including a gold perpetual,
+ // support a strong direction; a single source is still displayed honestly.
+ const strongSide=conflict?'WAIT':d>=35&&buyAgree.length>=2&&buyAgree.some(r=>r.weight===2)?'BUY':
+   d<=-35&&sellAgree.length>=2&&sellAgree.some(r=>r.weight===2)?'SELL':'WAIT';
+ const asOf=Math.min(...v.map(r=>r.at));
+ return {buyPct:buy,sellPct:sell,delta:Math.round(d),sources:v.map(r=>r.source),asOf,
+   state:conflict?'CONFLICT':d>=10?'BUY':d<=-10?'SELL':'BALANCED',strongSide,
+   ageSeconds:Math.floor((now-asOf)/1000),actionable:false,
+   detail:v.map(r=>r.source+' Δ '+r.raw.toFixed(1)+'%').join(' | ')+
+     ' · متوسط نسب التنفيذ (وزن العقود 2 وPAXG 1؛ مزج 30/60 ثانية عند توفر التاريخ) · ليس سيولة XAUUSD العالمية أو تدفق رؤوس الأموال'};
+}

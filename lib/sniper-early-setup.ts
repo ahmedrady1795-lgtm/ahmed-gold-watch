@@ -1,4 +1,5 @@
 import type {PaxgFlow} from './paxg-flow';
+import type {GoldCombinedLiquidity} from './gold-liquidity-meter';
 import type {LocalCandleMl} from './local-candle-ml';
 import type {BtcCrossFlow} from './btc-orderflow';
 import type {SniperMarketContext} from './sniper-market-context';
@@ -67,7 +68,7 @@ function firstReclaim(bars:Bar[],price:number,atr:number){
 }
 /** Session-only arming: reloading cannot invent an earlier observation. */
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
- proxy?:PaxgFlow|null;localMl?:LocalCandleMl|null;btcCross?:BtcCrossFlow|null;previousQuote?:{at:number;price:number}|null;
+ proxy?:PaxgFlow|null;localMl?:LocalCandleMl|null;btcCross?:BtcCrossFlow|null;goldCombined?:GoldCombinedLiquidity|null;previousQuote?:{at:number;price:number}|null;
  price:number|null;quoteAt?:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
  flow?:FlowProfileDecision|null;
  shortTape?:{side:'BUY'|'SELL';trigger:number;invalidation:number;asOf:number;source:string;deltaPct:number}|null;
@@ -848,6 +849,14 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      Math.abs(v.deltaPct)>=30&&Math.abs(v.deltaPct)<=100&&
      (bc.consensus==='BUY'?v.deltaPct>0:v.deltaPct<0))&&
    Math.abs(bc.venues[0].asOf-bc.venues[1].asOf)<=4000?bc.consensus:'WAIT';
+ const combined=input.goldCombined;
+ const combinedSide=input.scope.startsWith('GOLD:')&&combined?.actionable===false&&
+   combined.asOf!=null&&combined.asOf<=now&&now-combined.asOf<=8000&&
+   combined.sources.length>=2&&new Set(combined.sources).size===combined.sources.length&&
+   combined.sources.every(s=>['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual','Binance PAXG/USDT proxy','Kraken PAXG/USD proxy'].includes(s))&&
+   combined.sources.some(s=>s.includes('XAUUSDT perpetual'))&&
+   Number.isFinite(combined.delta)&&((combined.strongSide==='BUY'&&combined.state==='BUY'&&combined.delta!>=35)||
+    (combined.strongSide==='SELL'&&combined.state==='SELL'&&combined.delta!<=-35))?combined.strongSide:'WAIT';
  const evidenceRank=(c:Candidate)=>{
    const tail=bars.slice(-3);
    const same=tail.filter(b=>c.side==='BUY'?
@@ -889,13 +898,14 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      (c===goldRetest?.65:0)+(input.scope.startsWith('GOLD:')&&goldTapeSide!=='WAIT'?
        (goldTapeSide===c.side?.45:-.45):0)+
      (acceleration==='WAIT'||absorption!=='WAIT'?0:acceleration===c.side?.3:-.3)+
-     (c===assistedReversal&&absorption===c.side?.8:0);
+     (c===assistedReversal&&absorption===c.side?.8:0)+(combinedSide==='WAIT'?0:combinedSide===c.side?.45:-.45);
  };
  const ranked=viable.map((c,index)=>({c,index,rank:evidenceRank(c)}))
    .sort((a,b)=>b.rank-a.rank||a.index-b.index);
  const chosen=ranked[0]?.c;
  if(!chosen)return prior;
  ({side,setupKind,trigger,invalidation,reason}=chosen);
+ if(combinedSide!=='WAIT')reason+=' · إجماع سيولة الذهب المجمعة '+(combinedSide===side?'مؤيد':'معارض')+' (ترجيح فقط)';
  if(acceleration!=='WAIT'&&absorption==='WAIT')
    reason+=' · تسارع تنفيذ بديل '+(acceleration===side?'مؤيد':'معارض');
  if(input.scope.startsWith('GOLD:')&&goldTapeSide!=='WAIT')

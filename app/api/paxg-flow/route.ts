@@ -42,8 +42,9 @@ async function readKraken(path:string){
    throw new Error('Invalid Kraken response');
  return data.result as Record<string,unknown>;
 }
-async function sample():Promise<PaxgFlow>{
+async function binanceSample():Promise<PaxgFlow|null>{
  const now=Date.now();
+ if(now<binanceRetryAt)return null;
  if(now>=binanceRetryAt){
    try{
      const [book,trades]=await Promise.allSettled([
@@ -55,8 +56,11 @@ async function sample():Promise<PaxgFlow>{
      if(flow.side!=='UNAVAILABLE')return flow;
    }catch{/* Try independent Kraken spot market instead. */}
  }
- // No Kraken poll on a healthy Binance sample. A single Kraken snapshot
- // supplies book+executed trades only for PAXG/USD, never the Exness XAU book.
+ binanceRetryAt=Math.max(binanceRetryAt,Date.now()+15000);
+ return null;
+}
+async function krakenSample():Promise<PaxgFlow>{
+ // Independent token market; never broker XAUUSD executions.
  if(Date.now()<krakenRetryAt)return unavailable(Date.now());
  try{
    const [depth,history]=await Promise.allSettled([
@@ -67,13 +71,21 @@ async function sample():Promise<PaxgFlow>{
      Array.isArray((v as any).bids)&&Array.isArray((v as any).asks));
    const trades=Object.values(history.status==='fulfilled'?history.value:{}).find(Array.isArray);
    if(!trades)throw new Error('Missing Kraken PAXG/USD trades');
-   return readKrakenPaxgFlow(book,trades,Date.now());
+   const flow=readKrakenPaxgFlow(book,trades,Date.now());
+   if(flow.side==='UNAVAILABLE')krakenRetryAt=Math.max(krakenRetryAt,Date.now()+15000);
+   return flow;
  }catch{
    // In particular, an absent/renamed pair is an unavailable proxy,
    // never a substitute synthetic BUY/SELL signal.
    krakenRetryAt=Math.max(krakenRetryAt,Date.now()+15000);
    return unavailable(Date.now());
  }
+}
+async function sample():Promise<PaxgFlow>{
+ const [a,b]=await Promise.all([binanceSample(),krakenSample()]);
+ const now=Date.now();
+ const fresh=[a,b].filter((v):v is PaxgFlow=>Boolean(v&&v.side!=='UNAVAILABLE'&&v.tradeAt<=now&&now-v.tradeAt<=15000));
+ return {...(fresh[0]??unavailable(now)),venueSamples:fresh};
 }
 export async function GET(){
  if(!cache||Date.now()-cache.observedAt>=5000){

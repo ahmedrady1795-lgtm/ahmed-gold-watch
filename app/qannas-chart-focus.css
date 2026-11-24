@@ -318,3 +318,14 @@
 .gold-meter-battery>span.is-lit{background:var(--meter)}
 .gold-liquidity-meter .gold-meter-label{color:var(--meter);font-size:9px;text-align:center}
 .gold-meter-source{font-size:7.5px;color:#9fb6c3;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Left rail requested for GOLD; keep current candles and right command lane free. */
+.sniper-m15-chart-box .gold-meter-left{position:absolute;left:7px;right:auto;top:48px;z-index:3;
+ width:clamp(92px,15%,135px);padding:5px 6px;background:rgba(6,20,29,.94);
+ border:1px solid #34515f;border-radius:6px;box-sizing:border-box;pointer-events:auto}
+.gold-meter-row{display:grid;gap:2px;--meter:#62e7b6;color:var(--meter)}
+.gold-meter-row[data-side="SELL"]{--meter:#ff788e}
+.gold-meter-row .gold-meter-head b{font-size:9px}
+.gold-meter-left .gold-meter-label{font-size:9px}
+.gold-meter-left .gold-meter-battery{height:10px}
+@media(max-width:640px){.sniper-m15-chart-box .gold-meter-left{left:5px;top:48px;width:90px;padding:4px}}

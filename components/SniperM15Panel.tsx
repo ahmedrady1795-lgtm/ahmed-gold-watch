@@ -12,7 +12,7 @@ import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {detectLiquidityMagnets} from '../lib/sniper-liquidity-magnets';
 import {fuseLocalSniper} from '../lib/sniper-local-fusion';
 import {localCandleMl} from '../lib/local-candle-ml';
-import {goldLiquidityMeter} from '../lib/gold-liquidity-meter';
+import {goldLiquidityMeter,combineGoldLiquidity} from '../lib/gold-liquidity-meter';
 import {useBtcCrossFlow} from './useBtcCrossFlow';
 import {reviewEarlyFailures} from '../lib/sniper-movement-proof';
 import {assessFlowProfile} from '../lib/flow-profile-decision';
@@ -580,6 +580,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const localMl=useMemo(()=>localCandleMl(asset+':'+String(x?.candleSource||''),m.candles,now,
    marketOpen&&m.historyFresh&&m.sniper.view.priceFresh&&!providerTransition&&Boolean(x?.candleSource)),
    [asset,x?.candleSource,m.candles,now,marketOpen,m.historyFresh,m.sniper.view.priceFresh,providerTransition]);
+ const combinedGold=useMemo(()=>combineGoldLiquidity(goldPerp,paxg,now,asset==='GOLD'&&marketOpen),[goldPerp,paxg,now,asset,marketOpen]);
  const trackedSetup=useMemo(()=>advanceEarlySetup({
    prior:earlyState,scope:asset+':'+String(x?.candleSource||''),now,price,
    previousQuote:observedM15?.feedKey===[asset,x?.candleSource,liveQuote?.source].join(':')&&
@@ -589,7 +590,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      Number(liveQuote?.sourceTime):null,
    ready:marketOpen&&m.sniper.view.priceFresh&&!providerTransition&&
      liveOpportunity.phase!=='OFFLINE',
-   bars:m.candles,opportunity:liveOpportunity,lean:candleLean,localMl,btcCross,
+   bars:m.candles,opportunity:liveOpportunity,lean:candleLean,localMl,btcCross,goldCombined:combinedGold,
    zones:liquidity.zones,proxy:asset==='GOLD'?
      (goldPerp&&goldPerp.side!=='UNAVAILABLE'&&goldPerp.tradeAt<=now&&now-goldPerp.tradeAt<=8000&&
        (goldPerp.crossFlow?.consensus==='BUY'||goldPerp.crossFlow?.consensus==='SELL'||
@@ -598,7 +599,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
           goldPerp.absorptionWatch!=null||goldPerp.accelerationSide!=null)))?goldPerp:paxg):null,flow:flowProfile,shortTape:tapeWatch,liquidity:liquidityMagnets,watch:watchMap,marketContext,
    m1Side:nextM1.ready?nextM1.side:'WAIT',
    m15Side:entryTrend
- }),[earlyState,asset,paxg,goldPerp,localMl,btcCross,liquidity.zones,x?.candleSource,now,price,liveQuote?.sourceTime,liveQuote?.source,observedM15,
+ }),[earlyState,asset,paxg,goldPerp,localMl,btcCross,combinedGold,liquidity.zones,x?.candleSource,now,price,liveQuote?.sourceTime,liveQuote?.source,observedM15,
    marketOpen,m.sniper.view.priceFresh,providerTransition,m.candles,
    liveOpportunity,candleLean,flowProfile,tapeWatch,liquidityMagnets,watchMap,marketContext,
    nextM1.ready,nextM1.side,entryTrend]);
@@ -1920,6 +1921,24 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <text x={end-2} y={H-17} fill="#aebdc8" fontSize="11" textAnchor="end" direction="ltr">
          {renderedBars.length?'PATH'+(showHistoricalExtension?' · أهداف':''):'M5'}</text>
      </svg>
+   {goldMeter&&goldProxyReadout&&<aside className="gold-meter-left sniper-chart-gold-proxy"
+     data-gold-proxy-status={goldProxyReadout.status} data-gold-perp-status={goldPerpReadout?.status}
+     data-meter-state={combinedGold.state} title={combinedGold.detail}>
+     <div className="gold-liquidity-meter" data-meter-state={combinedGold.state}>
+       <b className="gold-meter-label">السيولة · {combinedGold.sources.length}/4</b>
+       {(['BUY','SELL'] as const).map(side=>{
+         const value=side==='BUY'?combinedGold.buyPct:combinedGold.sellPct;
+         return <div key={side} className="gold-meter-row" data-side={side}>
+           <div className="gold-meter-head"><b>{side==='BUY'?'شراء ↑':'بيع ↓'}</b><strong dir="ltr">{value==null?'—':value+'%'}</strong></div>
+           <div className="gold-meter-battery" aria-label={side+' '+(value??'غير متاح')}>
+             {Array.from({length:10},(_,i)=><span key={i} className={value!=null&&i*10<value?'is-lit':''}/>)}
+           </div>
+         </div>;
+       })}
+       <span className="gold-meter-source">{combinedGold.state==='CONFLICT'?'تعارض المصادر':combinedGold.state==='UNAVAILABLE'?'غير متاح':combinedGold.state==='BUY'?'ضغط شراء':combinedGold.state==='SELL'?'ضغط بيع':'متوازن'}{combinedGold.ageSeconds!=null?' · '+combinedGold.ageSeconds+'ث':''}</span>
+       {goldMeter.dynamic&&<span className="gold-meter-source" title={goldMeter.detail}>{goldMeter.dynamic}</span>}
+     </div>
+   </aside>}
    <aside className={'sniper-chart-command is-'+commandState.toLowerCase()}
      data-qannas-chart-signal={commandState}
      data-qannas-chart-side={commandSide}
@@ -1940,22 +1959,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {asset!=='GOLD'&&liquidityReadout.aheadSide!=='WAIT'&&liquidityReadout.trigger!=null&&
          <small>{'قبل الكسر · '+(liquidityReadout.aheadSide==='BUY'?'شراء ':'بيع ')+
            n(liquidityReadout.trigger)}</small>}
-       {goldProxyReadout&&<small className="sniper-chart-gold-proxy"
-         data-gold-proxy-status={goldProxyReadout.status}
-         title={goldPerpReadout?.status!=='UNAVAILABLE'&&goldPerpReadout?
-           goldPerpReadout.detail+' · '+goldProxyReadout.detail+(crossDetail?' · '+crossDetail:''):goldProxyReadout.detail}
-         data-gold-perp-status={goldPerpReadout?.status}>
-         {goldMeter&&<span className="gold-liquidity-meter" data-meter-state={goldMeter.state}
-           title={goldMeter.detail}>
-           <span className="gold-meter-head"><b>السيولة</b><strong dir="ltr">{goldMeter.delta==null?'—':(goldMeter.delta>0?'+':'')+goldMeter.delta+'%'}</strong></span>
-           <span className="gold-meter-battery" aria-label={goldMeter.label+' '+(goldMeter.strength??'غير متاح')}>
-             {Array.from({length:10},(_,i)=><span key={i} className={goldMeter.strength!=null&&i*10<goldMeter.strength?'is-lit':''}/>)}
-           </span>
-           <b className="gold-meter-label">{goldMeter.label}</b>
-           {goldMeter.dynamic&&<span className="gold-meter-source" title="تغير التنفيذ أو استجابة السعر في المصدر البديل فقط">{goldMeter.dynamic}</span>}
-           <span className="gold-meter-source" dir="ltr">{goldMeter.source}{goldMeter.ageSeconds!=null?' · '+goldMeter.ageSeconds+'s':''}</span>
-         </span>}
-       </small>}
        {(btcLiquidityLabel||btcCrossLabel)&&<small className="sniper-chart-gold-proxy"
          title={'رصد تنفيذ BTC وليس أمر دخول · '+(btcCrossFresh?.venues.map(v=>v.source+' Δ '+v.deltaPct.toFixed(1)+'% ('+v.trades+')').join(' | ')??'')}
          data-btc-tape-watch={tapeWatch?.kind} data-btc-cross={btcCrossFresh?.consensus}>{btcLiquidityLabel??btcCrossLabel}</small>}
@@ -1965,7 +1968,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      </div>}
      <details className="sniper-chart-command-details">
        <summary>المستويات والسبب</summary>
-       {goldMeter&&<small title={goldMeter.detail}>{liquidityReadout.label} · {crossLabel??goldPerpReadout?.label??goldProxyReadout?.label}</small>}
+       {goldMeter&&<small title={combinedGold.detail}>{liquidityReadout.label} · {crossLabel??goldPerpReadout?.label??goldProxyReadout?.label} · {combinedGold.sources.join(' / ')}{crossDetail?' · '+crossDetail:''}</small>}
        <small title="نموذج محلي من الشموع المغلقة؛ اختبار تاريخي منفصل زمنيًا وليس دقة تداول حي، ولا يصرح بالدخول">
          {'ML محلي تجريبي · '+(['m1','m5'] as const).map(h=>{
            const v=localMl[h];

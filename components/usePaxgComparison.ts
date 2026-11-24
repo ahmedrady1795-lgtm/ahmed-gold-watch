@@ -18,7 +18,7 @@ export function usePaxgFlow(enabled:boolean,endpoint:'/api/paxg-flow'|'/api/gold
      }catch{if(!controller.signal.aborted)setFlow(null);}
      finally{busy=false;}
    }
-   void poll();const id=setInterval(poll,5000);
+   void poll();const id=setInterval(poll,endpoint==='/api/gold-perp-flow'?3000:5000);
    return()=>{clearInterval(id);controller.abort();};
  },[enabled,endpoint]);
  return flow;

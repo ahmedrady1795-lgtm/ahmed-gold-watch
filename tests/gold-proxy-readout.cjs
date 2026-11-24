@@ -147,3 +147,18 @@ assert.equal(meter({...meterFlow,accelerationSide:'BUY',shortDeltaPct:75,priorDe
 assert.equal(meter({...meterFlow,accelerationSide:'BUY',shortDeltaPct:40,priorDeltaPct:30},null,meterNow,true).dynamic,undefined);
 assert.equal(meter({...meterFlow,tradeAt:meterNow-10000,absorptionWatch:'SELL',priceChangeBps:-2},null,meterNow,true).dynamic,undefined);
 console.log('PASS fresh gold tape dynamics separately labelled from signed pressure');
+
+const combined=meterMod.exports.combineGoldLiquidity;
+const m2={...meterFlow,source:'Binance XAUUSDT perpetual',tradeDeltaPct:48};
+const mt={...meterFlow,source:'Binance PAXG/USDT proxy',tradeDeltaPct:0};
+const mk={...meterFlow,source:'Kraken PAXG/USD proxy',tradeDeltaPct:20};
+const both=combined({...meterFlow,venueSamples:[meterFlow,m2,meterFlow]}, {...mt,venueSamples:[mt,mk]},meterNow,true);
+assert.equal(both.sources.length,4);assert.equal(both.buyPct+both.sellPct,100);
+assert.equal(both.buyPct,72);assert.equal(both.strongSide,'BUY');
+assert.equal(combined(meterFlow,null,meterNow,true).strongSide,'WAIT');
+assert.equal(combined({...meterFlow,venueSamples:[meterFlow,{...m2,tradeDeltaPct:-90}]},null,meterNow,true).state,'CONFLICT');
+assert.equal(combined(meterFlow,null,meterNow+11000,true).buyPct,null);
+assert.equal(combined(meterFlow,null,meterNow,false).sellPct,null);
+assert.equal(combined({...meterFlow,venueSamples:[{...m2,tradeAt:meterNow+1000}]},null,meterNow,true).sources.length,1);
+assert.match(panel,/gold-meter-left/);
+console.log('PASS normalized four-market gold execution ratios, deduplication, freshness, conflict and no execution authorization');

@@ -811,3 +811,11 @@ assert.doesNotMatch(step({...dynamicInput,proxy:{...accelProxy,tradeAt:dynamicNo
 assert.doesNotMatch(step({...dynamicInput,proxy:{...accelProxy,shortDeltaPct:35}})?.reason??'',/تسارع تنفيذ/);
 assert.equal(step({...base,now:dynamicNow,proxy:accelProxy}),null,'acceleration alone cannot create a setup');
 console.log('PASS gold execution acceleration ranking without fabricated trade or stale evidence');
+
+const joined={actionable:false,asOf:now-1000,delta:50,state:'BUY',strongSide:'BUY',
+ sources:['Bybit XAUUSDT perpetual','Kraken PAXG/USD proxy']};
+assert.match(step({...base,opportunity:op,goldCombined:joined})?.reason??'',/إجماع سيولة الذهب المجمعة مؤيد/);
+assert.equal(step({...base,goldCombined:joined}),null);
+assert.doesNotMatch(step({...base,opportunity:op,goldCombined:{...joined,asOf:now-9000}})?.reason??'',/إجماع سيولة/);
+assert.doesNotMatch(step({...base,opportunity:op,goldCombined:{...joined,state:'CONFLICT'}})?.reason??'',/إجماع سيولة/);
+console.log('PASS aggregate gold execution is supporting evidence only');
