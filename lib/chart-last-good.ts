@@ -83,8 +83,11 @@ export function retainChartDuringOutage(previous:any,returned:any,now:number){
   const incoming=returned?.[asset];
   if(incoming?.chartCandles?.length>=8&&incoming?.chartHigherFrames?.m5?.length>=8&&
      !incoming.historicalOnly&&incoming.fresh===true)return incoming;
-  const old=previous?.[asset];
-  return historicalChartAsset(asset,old,now);
+  const old=historicalChartAsset(asset,previous?.[asset],now);
+  const serverHistorical=incoming?.historicalOnly?
+    historicalChartAsset(asset,incoming,now):null;
+  return serverHistorical&&(!old||serverHistorical.lastClosedAt>old.lastClosedAt)?
+    serverHistorical:old;
  };
  const gold=choose('gold'),bitcoin=choose('bitcoin');
  if(!gold&&!bitcoin)return null;
