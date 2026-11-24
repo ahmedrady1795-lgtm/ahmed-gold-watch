@@ -30,6 +30,8 @@ assert.ok(plan.evidence.includes('PREBREAK_LEAD_BUFFER_V1'));
 const near={...quote,price:plan.trigger-.05,bid:plan.trigger-.10,ask:plan.trigger-.025};
 assert.equal(read({quote:near}).plan,null,
  'a quote too close to the trigger is not demonstrably pre-break');
+const earlier={...bars[0],time:bars[0].time-3*MIN};
+assert.deepEqual(read({bars:[earlier,...bars]}).plan,plan,'an older gap cannot block a complete recent window');
 const frozen=structuredClone(plan);
 assert.equal(read({marketOpen:false}).plan,null);
 assert.equal(read({source:'Yahoo Finance · COMEX GC=F proxy'}).plan,null);

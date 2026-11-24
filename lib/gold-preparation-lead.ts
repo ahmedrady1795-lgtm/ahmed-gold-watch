@@ -48,9 +48,13 @@ export function readGoldPreparation(input:{now:number;source:string;bars:readonl
   pulse.price<pulse.bid||pulse.price>pulse.ask))return none('سعر أو سبريد غير متسق');
  // Caller supplies completed bars only. Reject a forming/future bar, rather
  // than silently letting it influence levels or historical destinations.
- const bars=[...input.bars].sort((a,b)=>a.time-b.time).slice(-180);
- if(bars.length<48||bars.some((b,i)=>!validBar(b)||b.time+MIN>now-3000||
-  (i>0&&b.time-bars[i-1].time!==MIN)))return none('تاريخ M1 مغلق ومتصل غير كافٍ');
+ const historyWindow=[...input.bars].sort((a,b)=>a.time-b.time).slice(-180);
+ if(historyWindow.some(b=>!validBar(b)||b.time+MIN>now-3000))
+  return none('تاريخ M1 يحتوي على شمعة غير صالحة أو غير مغلقة');
+ let start=historyWindow.length-1;
+ while(start>0&&historyWindow[start].time-historyWindow[start-1].time===MIN)start--;
+ const bars=historyWindow.slice(Math.max(0,start));
+ if(bars.length<48)return none('تاريخ M1 مغلق ومتصل غير كافٍ');
  const last=bars.at(-1)!,contextAt=last.time+MIN;
  if(now-contextAt>45000||pulse.sourceTime<contextAt)return none('سياق الدقيقة أو توقيت السعر قديم');
  const ranges=bars.slice(-25).map((b,i,a)=>i?Math.max(b.high-b.low,

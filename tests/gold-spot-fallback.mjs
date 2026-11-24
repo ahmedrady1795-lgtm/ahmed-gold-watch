@@ -46,6 +46,10 @@ for(const buy of [true,false]){
   'crossed trigger is late');
  assert.equal(selectGoldSpotDisplay({...a,price:buy?4199.1:4200.9}),null,
   'adverse drift is not an early entry');
+ for(const touched of [a.view.current.trigger,a.view.current.invalidate]){
+  assert.equal(selectGoldSpotDisplay({...a,view:{...a.view,observation:{
+   ...a.view.observation,price:touched}}}),null,'reject an observed touch even after price pulls back');
+ }
  const edge=buy?4200.99:4199.01;
  assert.equal(selectGoldSpotDisplay({...a,price:edge,view:{...a.view,
   observation:{...a.view.observation,price:edge}}}),null,'tiny prebreak buffer');
@@ -61,3 +65,5 @@ assert.match(panel,/data-gold-spot-fallback="read-only"/,
 assert.match(panel,/showGoldSpotPlan=Boolean\(goldSpotPlan&&!mainSetup&&!cuePrebreak\)/,
  'a stronger confirmed setup outranks the price-only fallback');
 console.log('PASS: GOLD Biquote/Exness-independent price-only prebreak display, frozen source/times, BUY/SELL, no late or fake DOM entries');
+
+assert.match(panel,/\{goldSpotPlan&&\s*goldSpotPlan\.trigger>=lo/,'independent early marker survives overlapping M5 setups');

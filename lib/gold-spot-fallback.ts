@@ -50,6 +50,8 @@ export function selectGoldSpotDisplay(a:{
  const ahead=sign*(p.trigger-price);
  // Require a REAL historical target and a remaining positive pre-break
  // buffer; never resurrect an already-crossed or expired alert.
+ if(obs.quoteAt<p.issuedAt-10000||a.quoteAt<p.quoteAt||
+      sign*(p.trigger-obs.price)<=0||sign*(obs.price-p.invalidate)<=0)return null;
  if(!(risk>0&&reward>=1.35*risk&&ahead>Math.max(.01,risk*.04)&&
       ahead<=risk*.80&&sign*(price-p.invalidate)>0&&
       Math.abs(obs.price-price)<=risk*.65))return null;

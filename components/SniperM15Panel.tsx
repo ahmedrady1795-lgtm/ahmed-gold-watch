@@ -680,16 +680,36 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Pure price-only GOLD alternative when Exness DOM has no usable depth.
  // STRICTLY read-only: Biquote XAUUSD M1 does not give executed order flow.
  // The server issued and archived this plan before any future breakout.
- const goldSpotPlan=useMemo(()=>asset==='GOLD'?
+ const candidateGoldPlan=useMemo(()=>asset==='GOLD'?
    selectGoldSpotDisplay({
      now,marketFresh:marketOpen&&Boolean(m.sniper.view.priceFresh)&&!providerTransition,
      chartSource:String(x?.candleSource||''),
      quoteSource:String(liveQuote?.source||''),
      quoteAt:Number.isFinite(Number(liveQuote?.sourceTime))?
        Number(liveQuote.sourceTime):null,
-     price,view:goldPreparationView
+     price:liveQuote?.price??null,view:goldPreparationView
    }):null,[asset,now,marketOpen,m.sniper.view.priceFresh,providerTransition,
-     x?.candleSource,liveQuote?.source,liveQuote?.sourceTime,price,goldPreparationView]);
+     x?.candleSource,liveQuote?.source,liveQuote?.sourceTime,liveQuote?.price,goldPreparationView]);
+ // Remember observed touches even if the next quote retreats before M1 settlement.
+ const observedGoldTouches=useRef(new Set<string>());
+ const activeGold=goldPreparationView?.current;
+ useEffect(()=>{
+   if(asset!=='GOLD'||activeGold?.status!=='ARMED'||providerTransition)return;
+   const touched=(source:unknown,at:unknown,value:unknown)=>
+     source===activeGold.quoteSource&&typeof at==='number'&&at>=activeGold.issuedAt&&
+     at<=now+1500&&typeof value==='number'&&Number.isFinite(value)&&value>0&&
+     (activeGold.side==='BUY'?(value>=activeGold.trigger||value<=activeGold.invalidate):
+       (value<=activeGold.trigger||value>=activeGold.invalidate));
+   const obs=goldPreparationView?.observation;
+   if(touched(liveQuote?.source,liveQuote?.sourceTime,liveQuote?.price)||
+      touched(obs?.quoteSource,obs?.quoteAt,obs?.price)){
+     observedGoldTouches.current.add(activeGold.id);
+   }
+ },[asset,activeGold,providerTransition,goldPreparationView,liveQuote,now]);
+ const goldSpotPlan=candidateGoldPlan&&!observedGoldTouches.current.has(candidateGoldPlan.id)?
+   candidateGoldPlan:null;
+ const goldMarkerRef=useRef<SVGGElement>(null);
+ const earlyPlanId=goldSpotPlan?.id;
  // This non-execution GOLD M1 scout was previously confined to Scalp Lab.
  // Validate its original source/time before displaying its local watch.
  const goldLocalWatch=useMemo(()=>asset==='GOLD'?selectGoldLocalWatch({
@@ -1334,6 +1354,29 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    commandFastLive?'لا توجد تهيئة مبكرة مكتملة':'تجديد بيانات السعر';
  const commandText=String(commandWhy||'').split(' · ')[0].slice(0,68);
  // Opportunity labels use the live observer and its immutable issued records.
+ const earlyMarkerVisible=Boolean(goldSpotPlan&&goldSpotPlan.trigger>=lo&&goldSpotPlan.trigger<=hi);
+ useEffect(()=>{
+   const marker=goldMarkerRef.current;
+   if(!earlyPlanId||!earlyMarkerVisible||!marker)return;
+   const key='qannas-gold-prebreak-first-visible-v1';
+   const observer=new IntersectionObserver(entries=>{
+     if(document.visibilityState!=='visible'||!entries.some(e=>e.isIntersecting))return;
+     const seenAt=Date.now();
+     try{
+       const rows=JSON.parse(localStorage.getItem(key)||'[]');
+       if(Array.isArray(rows)&&!rows.some(r=>r?.id===earlyPlanId)){
+         localStorage.setItem(key,JSON.stringify([...rows.slice(-199),{id:earlyPlanId,
+           issuedAt:goldSpotPlan!.issuedAt,seenAt,side:goldSpotPlan!.side,
+           trigger:goldSpotPlan!.trigger}]));
+       }
+     }catch{}
+     observer.disconnect();
+   });
+   const observe=()=>{observer.disconnect();if(document.visibilityState==='visible')observer.observe(marker);};
+   observe();
+   document.addEventListener('visibilitychange',observe);
+   return ()=>{observer.disconnect();document.removeEventListener('visibilitychange',observe);};
+ },[earlyPlanId,earlyMarkerVisible]);
  return <section className="sniper-m15-panel" dir="rtl"
    aria-label="القناص: شموع خمس دقائق فعلية وسياق تحليل M15 مشروط">
    <header className="sniper-m15-head">
@@ -1779,9 +1822,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {/* Already-server-archived GOLD M1 pressure plan, NOT a qualified
            Exness order or evidence of bank liquidity. Show only while its
            original trigger is still ahead of the fresh matched quote. */}
-       {showGoldSpotPlan&&goldSpotPlan&&
+       {goldSpotPlan&&
         goldSpotPlan.trigger>=lo&&goldSpotPlan.trigger<=hi&&
-        <g data-gold-spot-fallback="read-only" data-issued-at={goldSpotPlan.issuedAt}
+        <g ref={goldMarkerRef} data-gold-spot-fallback="read-only" data-issued-at={goldSpotPlan.issuedAt}
           data-side={goldSpotPlan.side} className="sniper-gold-spot-early-plan">
           <line x1={Math.max(left+16,split-125)} x2={split-5}
             y1={py(goldSpotPlan.trigger)} y2={py(goldSpotPlan.trigger)}
@@ -1794,7 +1837,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
             textAnchor="end" direction="rtl" fontSize="9.4" fontWeight="900"
             fill={goldSpotPlan.side==='BUY'?'#83f3cb':'#ff9eb3'}
             stroke="#07111b" strokeWidth="3" paintOrder="stroke">
-            {(goldSpotPlan.side==='BUY'?'شراء مبكر مشروط':'بيع مبكر مشروط')+
+            {(goldSpotPlan.side==='BUY'?'ترقّب شراء قبل الكسر':'ترقّب بيع قبل الكسر')+
              ' · '+n(goldSpotPlan.trigger)}
           </text>
           <title>{goldSpotPlan.reason+' · تفعيل '+n(goldSpotPlan.trigger)+
