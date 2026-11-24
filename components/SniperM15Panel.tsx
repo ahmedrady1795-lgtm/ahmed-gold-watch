@@ -1710,7 +1710,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {trueHistory.length===0&&<g className="sniper-m15-history-empty" role="status"
          data-chart-history-state="NO_VERIFIED_CANDLES">
          <text x={(left+split)/2} y={plotTop+195} textAnchor="middle"
-           fontSize="15" fill="#f0c481" direction="rtl">شموع الذهب غير متاحة من المصدر</text>
+           fontSize="15" fill="#f0c481" direction="rtl">{asset==='GOLD'?'شموع الذهب غير متاحة من المصدر':'شموع البيتكوين غير متاحة من المصدر'}</text>
          <text x={(left+split)/2} y={plotTop+222} textAnchor="middle"
            fontSize="11" fill="#a4b9c5" direction="rtl">جارٍ إعادة الاتصال · لا إشارات على بيانات مفقودة</text>
        </g>}
