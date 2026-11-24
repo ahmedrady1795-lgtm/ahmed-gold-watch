@@ -17,10 +17,16 @@ export default function AICommandCenter({data,chartData,error,assetView='ALL',no
     if(!separate?.chartCandles?.length)return modeled;
     const lastModelCandle=Number(modeled?.chartCandles?.at(-1)?.time||0);
     const lastFeedCandle=Number(separate?.chartCandles?.at(-1)?.time||0);
-    if(lastModelCandle>lastFeedCandle&&lastModelCandle>0&&!separate.providerTransition)return modeled;
+    const modelRecent=lastModelCandle>lastFeedCandle&&
+      lastModelCandle>0&&now-(lastModelCandle+60000)<=120000&&
+      Array.isArray(modeled?.chartHigherFrames?.m5)&&
+      modeled.chartHigherFrames.m5.length>=8;
+    if(modelRecent&&(!separate.historicalOnly||modeled.candleSource===separate.candleSource))
+      return modeled;
     return {...modeled,chartCandles:separate.chartCandles,
       chartHigherFrames:separate.chartHigherFrames,
       candleSource:separate.candleSource,
+      historicalOnly:Boolean(separate.historicalOnly),
       providerTransition:Boolean(separate.providerTransition),
       pendingProvider:separate.pendingProvider};
   };
@@ -28,7 +34,7 @@ export default function AICommandCenter({data,chartData,error,assetView='ALL',no
     ...(data||{}),gold:attachHistory('gold'),bitcoin:attachHistory('bitcoin'),
     checkedAt:Number(data?.checkedAt||chartData?.checkedAt||0)
   }:null;
-  },[data,chartData]);
+  },[data,chartData,now]);
   const generatedAt=Number(data?.checkedAt||chartData?.checkedAt||0);
   const [audit,setAudit]=useState<any>(null);
   const [auditError,setAuditError]=useState(false);
