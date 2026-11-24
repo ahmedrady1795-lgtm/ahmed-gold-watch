@@ -8,7 +8,7 @@ async function run(goldFeed,btcFeed,url='https://test/api/chart-history'){
  const box={exports:{}},calls={gold:0,btc:0},never=()=>new Promise(()=>{});
  vm.runInNewContext(code,{module:box,exports:box.exports,URL,Response,Date,Promise,
   setTimeout:(fn,ms)=>{assert.ok(ms<=14000);return setTimeout(fn,5);},clearTimeout,
-  require:id=>id.includes('market-hub')?{getGoldChartMarket:()=>{calls.gold++;return goldFeed==='hang'?never():goldFeed==='fail'?Promise.reject(Error('gold down')):Promise.resolve(gold);}}:
+  require:id=>id.includes('market-hub')?{getGoldChartMarket:()=>{calls.gold++;return goldFeed==='hang'?never():goldFeed==='fail'?Promise.reject(Error('gold down')):Promise.resolve(gold);},peekGoldDisplayMarket:()=>null}:
    id.includes('btc-market')?{getBtcMarket:()=>{calls.btc++;return btcFeed==='hang'?never():btcFeed==='fail'?Promise.reject(Error('btc down')):Promise.resolve(bitcoin);}}:
    id.includes('chart-history')?{chartAssetFromMarket:x=>x}:
    id.includes('chart-last-good')?{historicalChartAsset:(asset,x)=>x}:
