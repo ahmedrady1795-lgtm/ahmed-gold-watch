@@ -45,7 +45,7 @@ jobs:
       - run: npm run build
       - run: node tests/gold-preparation-lead.mjs
       - run: node tests/chart-feed-isolation.cjs
-      - run: node tests/chart-refresh.cjs && node tests/chart-last-good.cjs
+      - run: node tests/chart-refresh.cjs && node tests/chart-last-good.cjs && node tests/gold-chart-frames.cjs
       - run: node tests/sniper-risk-plan.cjs && node tests/next-move-cooldown.cjs && node tests/btc-provider-continuity.cjs && node tests/ai-service-warmup.cjs
       - run: node --experimental-strip-types tests/gold-liquidity-radar.mjs
       - run: node tests/web-source-resilience.cjs
