@@ -91,7 +91,12 @@ assert.match(hub,/if\(goldPriceInFlight\)return goldPriceInFlight/);
 assert.match(hub,/const price=await getGoldChartMarket\(\)/);
 const chartRoute=fs.readFileSync('app/api/chart-history/route.ts','utf8');
 assert.match(chartRoute,/let lastGoodGold:any=null,lastGoodBitcoin:any=null/);
-assert.match(chartRoute,/goldLive\?g:historicalChartAsset\('gold',lastGoodGold,checkedAt\)/);
+assert.match(chartRoute,/goldLive\?g:goldOnly\?null:display/);
+const m5Only=historicalChartAsset('gold',{...gold,chartCandles:[],chartHigherFrames:{m5:gold.chartHigherFrames.m5,m15:[],h1:[]}},now);
+assert.equal(m5Only?.historicalOnly,true);
+assert.equal(m5Only?.fresh,false);
+assert.equal(m5Only?.chartHigherFrames.m5.length,80);
+assert.equal(retainChartDuringOutage(null,{ok:true,gold:m5Only},now)?.gold?.chartHigherFrames.m5.length,80);
 assert.match(chartRoute,/gold:goldLive\?gold:null,bitcoin:bitcoinLive\?bitcoin:null/,
  'server audit must NEVER score stale fallback OHLC');
 assert.match(hub,/if\(!options.force&&marketInFlight\)return marketInFlight/,
