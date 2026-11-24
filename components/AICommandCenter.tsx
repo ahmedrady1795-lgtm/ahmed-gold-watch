@@ -14,7 +14,7 @@ export default function AICommandCenter({data,chartData,error,assetView='ALL',no
   const attachHistory=(asset:'gold'|'bitcoin')=>{
     const modeled=data?.[asset]||{};
     const separate=chartData?.[asset];
-    if(!separate?.chartCandles?.length)return modeled;
+    if(!separate?.chartCandles?.length&&!separate?.chartHigherFrames?.m5?.length)return modeled;
     const lastModelCandle=Number(modeled?.chartCandles?.at(-1)?.time||0);
     const lastFeedCandle=Number(separate?.chartCandles?.at(-1)?.time||0);
     const modelRecent=lastModelCandle>lastFeedCandle&&
