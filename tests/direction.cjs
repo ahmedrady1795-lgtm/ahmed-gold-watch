@@ -20,8 +20,6 @@ const m1=validate(history,now,1,.01),m5=validate(history,now,5,.01);
 const source=fs.readFileSync('lib/direction-walkforward.ts','utf8');
 assert.match(source,/SWEEP_RECLAIM/,'historical sweep/reclaim candidate is trained only on past closed bars');
 assert.match(source,/RANGE_FADE/,'range regime challenger exists independently of trend-following');
-assert.match(source,/selected!=='MOMENTUM_3'&&holdout\.n>=35/,
- 'no challenger is deployed merely by winning on the training set');
 for(const [h,result] of [[1,m1],[5,m5]]){
   assert.equal(result.horizon,h);
   assert.equal(result.closedBars,650);
@@ -31,12 +29,10 @@ for(const [h,result] of [[1,m1],[5,m5]]){
   assert.ok(result.holdout.accuracyPct==null||
     (result.holdout.accuracyPct>=0&&result.holdout.accuracyPct<=100));
   assert.ok(result.baseline.n<=result.holdout.n,'Paired baseline must never use more prediction dates');
-  assert.equal(result.qualified,result.status==='QUALIFIED');
-  if(result.qualified){
-    assert.notEqual(result.selected,'MOMENTUM_3');
-    assert.ok(result.holdout.n>=35&&result.holdout.lower95Pct>50);
-    assert.ok(result.holdout.accuracyPct>=result.baseline.accuracyPct+3);
-  }
+  assert.equal(result.status,'SHADOW','historical scores alone cannot qualify a model');
+  assert.equal(result.qualified,false);
+  assert.equal(result.pairedCandidate.n,result.pairedBaseline.n,
+    'candidate and baseline must share the same directional sample');
 }
 assert.equal(validate(history.slice(-90),now,1,.01).status,'INSUFFICIENT');
 assert.equal(validate(history,now,1,-1).status,'INSUFFICIENT');
@@ -71,5 +67,7 @@ assert.equal(validate(broken,now,5,.01).status,'INSUFFICIENT',
   'A recent time gap invalidates a supposed independent directional study');
 const costly=validate(history,now,5,1e5);
 assert.equal(costly.qualified,false,'Extremely high costs must not produce a qualified direction');
-assert.equal(costly.holdout.n,0,'Price changes smaller than costs must remain neutral');
+assert.ok(costly.holdout.n>0,'cost deadzone must not remove issued signals from the denominator');
+assert.equal(costly.holdout.neutral,costly.holdout.n,'every move below costs is neutral');
+assert.equal(costly.holdout.hits,0,'neutral moves are never directional hits');
 console.log('PASS: chronological disjoint training/holdout, paired baseline, BUY/SELL symmetry, partial/future exclusion, no selection leakage, gaps and cost deadzone. Synthetic fixture does NOT prove real-world edge.');
