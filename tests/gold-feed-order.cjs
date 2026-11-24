@@ -65,7 +65,9 @@ const future=repairGoldM15FromM5([...short,
 assert.ok(future.bars.every(b=>b.time+M15<=now),
   'an unfinished source group never becomes a real closed bar');
 const hub=fs.readFileSync('lib/market-hub.ts','utf8');
-assert.match(hub,/repairGoldM15FromM5\(m5,m15,now\)/);
+assert.match(hub,/recoverGoldFrames\(\{c1:rows\[0\],c5:rows\[1\],c15:rows\[2\],c60:rows\[3\]\}/);
+const recovery=fs.readFileSync('lib/gold-chart-frames.ts','utf8');
+assert.match(recovery,/overlaps.length>=5&&overlaps.every/,'overlapping source histories must agree before filling missing bars');
 assert.match(hub,/repairGoldM15FromM5\(mt5CandlesNow.c5,mt5CandlesNow.c15,now\)/);
 const page=fs.readFileSync('app/page.tsx','utf8');
 assert.match(page,/shouldApplyGoldQuote\(nextGoldTick,goldTickRef\.current,Date\.now\(\),lastStreamTick\)/,
