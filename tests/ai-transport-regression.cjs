@@ -44,9 +44,11 @@ const response=(status,header=null,data={ok:true})=>({status,ok:status===200,hea
  const pending=[];respond=()=>new Promise(resolve=>pending.push(resolve));
  const a=rows(),b=rows();b[100].close=100.5;
  const p1=ml.getMlPrediction(a),same=ml.getMlPrediction(a),p2=ml.getMlPrediction(b);
- assert.equal(p1,same);assert.notEqual(p1,p2);assert.equal(calls.length,2);
- pending[0](response(200,null,{ok:true,marker:'a'}));pending[1](response(200,null,{ok:true,marker:'b'}));
- assert.equal((await p1).marker,'a');assert.equal((await p2).marker,'b');
+ assert.equal(p1,same);assert.notEqual(p1,p2);assert.equal(calls.length,1);
+ assert.equal((await p2).status,'REQUEST_BUDGET');
+ pending[0](response(200,null,{ok:true,marker:'a'}));assert.equal((await p1).marker,'a');
+ const retryB=ml.getMlPrediction(b);assert.equal(calls.length,2);
+ pending[1](response(200,null,{ok:true,marker:'b'}));assert.equal((await retryB).marker,'b');
  // The same closed M1 bars remain fresh in the next 30-second worker
  // cycle. A repeated identical request must NOT make another ML HTTP call.
  now+=60000;

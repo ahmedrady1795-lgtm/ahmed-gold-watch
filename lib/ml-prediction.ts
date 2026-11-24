@@ -107,6 +107,11 @@ export function getMlPrediction(c1:Candle[],now=Date.now()):Promise<MlPrediction
     [c.time,c.open,c.high,c.low,c.close,volume(c)].join(':')).join('|');
   const pending=inflight.get(key);
   if(pending)return pending;
+  const url=String(process.env.ML_ENGINE_URL||'').trim();
+  const fingerprint=rows.map(c=>[c.time,c.open,c.high,c.low,c.close,volume(c)].join(':')).join('|')+'|'+url;
+  const cached=cache.get(fingerprint);
+  if(cached&&now>=cached.at&&now-cached.at<110000)return Promise.resolve(cached.value);
+  if(inflight.size>0)return Promise.resolve({ok:false,status:'REQUEST_BUDGET',reason:'Different ML input in flight; retry on next scheduler cycle',shadow:true});
   const task=runMlPrediction(rows,now);
   inflight.set(key,task);
   const clear=()=>{if(inflight.get(key)===task)inflight.delete(key);};

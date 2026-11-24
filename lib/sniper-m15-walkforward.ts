@@ -8,6 +8,7 @@ export type M15WalkForward={
  evaluated:number;selected:number;correct:number;coverage:number;
  accuracy:number;baselineAccuracy:number;baselineEvaluated:number;
  pairedBaselineAccuracy:number;pairedBaselineEvaluated:number;pairedBaselineCorrect:number;
+ neutral:number;pairedModelCorrect:number;pairedModelAccuracy:number;
  wilsonLower:number;firstTestAt:number|null;lastTestAt:number|null;
  qualified:false;status:'INSUFFICIENT'|'SHADOW';sourceBars:number;
 };
@@ -15,7 +16,7 @@ export function m15WalkForward(raw:readonly M15Bar[],now:number,maxTests=120):M1
  const empty=():M15WalkForward=>({evaluated:0,selected:0,correct:0,
   coverage:0,accuracy:0,baselineAccuracy:0,baselineEvaluated:0,
   pairedBaselineAccuracy:0,pairedBaselineEvaluated:0,pairedBaselineCorrect:0,
-  wilsonLower:0,firstTestAt:null,lastTestAt:null,qualified:false,
+  neutral:0,pairedModelCorrect:0,pairedModelAccuracy:0,wilsonLower:0,firstTestAt:null,lastTestAt:null,qualified:false,
   status:'INSUFFICIENT',sourceBars:0});
  const rows=raw.filter(b=>b&&Number.isFinite(b.time)&&b.time%900000===0&&
    b.time+900000<=now&&b.low>0&&b.high>=Math.max(b.open,b.close)&&
@@ -36,11 +37,12 @@ export function m15WalkForward(raw:readonly M15Bar[],now:number,maxTests=120):M1
   const atr=tr.slice(-14).reduce((s,v)=>s+v,0)/14;
   if(!(atr>0))continue;
   const delta=future.close-rows[i].close;
-  if(Math.abs(delta)<=atr*.09)continue;
   out.evaluated++;
+  const flat=Math.abs(delta)<=atr*.09;
+  if(flat)out.neutral++;
   if(out.firstTestAt==null)out.firstTestAt=future.time;
   out.lastTestAt=future.time;
-  const actual=delta>0?'BUY':'SELL';
+  const actual=flat?'WAIT':delta>0?'BUY':'SELL';
   const base=rows[i].close-rows[i-6].close;
   if(Math.abs(base)>atr*.22){baselineTests++;if((base>0?'BUY':'SELL')===actual)baselineRight++;}
   const forecast=observedM15Bias(prior);
@@ -51,6 +53,7 @@ export function m15WalkForward(raw:readonly M15Bar[],now:number,maxTests=120):M1
   // on a different selection is not evidence of a directional advantage.
   if(Math.abs(base)>atr*.22){
     out.pairedBaselineEvaluated++;
+    if(forecast.side===actual)out.pairedModelCorrect++;
     if((base>0?'BUY':'SELL')===actual)out.pairedBaselineCorrect++;
   }
  }
@@ -60,6 +63,7 @@ export function m15WalkForward(raw:readonly M15Bar[],now:number,maxTests=120):M1
  out.baselineAccuracy=baselineTests?Number((baselineRight/baselineTests).toFixed(4)):0;
  out.pairedBaselineAccuracy=out.pairedBaselineEvaluated?
    Number((out.pairedBaselineCorrect/out.pairedBaselineEvaluated).toFixed(4)):0;
+ out.pairedModelAccuracy=out.pairedBaselineEvaluated?out.pairedModelCorrect/out.pairedBaselineEvaluated:0;
  const n=out.selected,z=1.96;
  if(n){
   const p=out.correct/n,a=z*z;
@@ -79,12 +83,13 @@ export function firstM15Evidence(w:M15WalkForward){
  const enough=w.status==='SHADOW'&&w.selected>=40&&
    w.pairedBaselineEvaluated>=30&&w.evaluated>=60;
  const rate=enough?Math.round(w.accuracy*100):null;
- const edgeProven=enough&&w.wilsonLower>w.pairedBaselineAccuracy;
+ // Repeated historical rule evaluations are not independent forward proof.
+ const edgeProven=false;
  return {
    ready:enough,
    label:enough?`اتجاه M15 تاريخيًا: ${rate}% · n=${w.selected}`:'دقة أول M15: جارٍ القياس',
    detail:enough?
-     `صحة اتجاهية تاريخية على ${w.selected} توقعًا، نطاق ثقة محافظ ${Math.round(w.wilsonLower*100)}%، مقارنة بخط أساس ${Math.round(w.pairedBaselineAccuracy*100)}% على ${w.pairedBaselineEvaluated} حالات متطابقة؛ ${edgeProven?'أُشير إلى تفوق إحصائي يحتاج تأكيدًا مستقلًا':'لم تثبت أفضلية مستقلة'}. ليست نسبة نجاح شمعة حية أو صفقة.`:
+     `صحة اتجاهية تاريخية على ${w.selected} توقعًا، نطاق ثقة محافظ ${Math.round(w.wilsonLower*100)}%، مقارنة متطابقة: النموذج ${Math.round(w.pairedModelAccuracy*100)}% مقابل خط أساس ${Math.round(w.pairedBaselineAccuracy*100)}% على ${w.pairedBaselineEvaluated} حالات؛ ${edgeProven?'أُشير إلى تفوق إحصائي يحتاج تأكيدًا مستقلًا':'لم تثبت أفضلية مستقلة'}. ليست نسبة نجاح شمعة حية أو صفقة.`:
      'نتائج اتجاه M15 خارج العينة غير كافية للمقارنة؛ لا ننشر نسبة نجاح وهمية.',
    calibrated:false as const,edgeProven
  };

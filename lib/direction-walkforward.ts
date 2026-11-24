@@ -52,7 +52,7 @@ function evaluate(rows:Example[],strategy:Strategy,pairedWith?:Strategy){
     const prediction=r.signals[strategy];
     if(prediction==='WAIT')continue;
     signalsN++;
-    if(r.outcome==='WAIT'){neutral++;continue;}
+    if(r.outcome==='WAIT')neutral++;
     n++;if(prediction===r.outcome)hits++;
   }
   const accuracy=n?hits/n*100:null;
@@ -106,7 +106,7 @@ export function validateDirectionChronologically(
   }
   if(examples.length<50)return {...base,reason:'Fewer than 50 disjoint labelled historical decisions'};
   const cut=Math.floor(examples.length*.64);
-  const train=examples.slice(0,cut),test=examples.slice(cut);
+  const test=examples.slice(cut),train=examples.slice(0,cut).filter(e=>e.at+horizon*60000<test[0].at);
   const baselineTrain=evaluate(train,'MOMENTUM_3');
   const score=(x:ReturnType<typeof evaluate>)=>x.n>=16&&x.coveragePct>=10&&x.lower95Pct!=null?
     x.lower95Pct*(.75+.25*Math.min(1,x.coveragePct/40)):-Infinity;
@@ -117,19 +117,18 @@ export function validateDirectionChronologically(
   }
   const selectedTrain=evaluate(train,selected);
   const holdout=evaluate(test,selected),baseline=evaluate(test,'MOMENTUM_3',selected);
+  const paired=test.filter(e=>e.signals[selected]!=='WAIT'&&e.signals.MOMENTUM_3!=='WAIT');
+  const pairedCandidate=evaluate(paired,selected),pairedBaseline=evaluate(paired,'MOMENTUM_3');
   // Holdout is evaluated AFTER selection and never chooses which strategy
   // wins. A positive label requires adequate independent sample, a credible
   // lower Wilson bound and superiority to the fixed momentum baseline.
-  const qualified=selected!=='MOMENTUM_3'&&holdout.n>=35&&
-    holdout.coveragePct>=18&&holdout.accuracyPct!=null&&
-    holdout.accuracyPct>=58&&holdout.lower95Pct!=null&&holdout.lower95Pct>50&&
-    baseline.n>=Math.ceil(holdout.n*.75)&&
-    baseline.accuracyPct!=null&&holdout.accuracyPct>=baseline.accuracyPct+3;
+  // Rolling historical windows are research, not independent forward proof.
+  const qualified=false;
   const atrRecent=closed.slice(-15).reduce((sum,c)=>sum+c.high-c.low,0)/15;
   const latest=signals(closed,closed.length-1,Math.max(.0000001,atrRecent));
   return {...base,status:qualified?'QUALIFIED' as const:'SHADOW' as const,
     selected,liveSide:latest[selected],trainRows:train.length,
-    testRows:test.length,train:selectedTrain,holdout,baseline,qualified,
+    testRows:test.length,train:selectedTrain,holdout,baseline,pairedCandidate,pairedBaseline,qualified,
     reason:qualified?'Selected technical direction exceeded momentum baseline on untouched holdout':
-      'No independent edge over fixed momentum baseline; candidate kept shadow only'};
+      'Historical comparison only; independent forward edge not established'};
 }

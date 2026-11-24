@@ -24,7 +24,8 @@ export function recordAiResponse(url:string,status:number,retryAfter:string|null
   const specified=Number.isFinite(seconds)?seconds*1000:Date.parse(raw)-now;
   // Never shorten a provider's Retry-After, including HTTP-date headers.
   const fallback=Math.min(900000,60000*2**Math.min(failures-1,4));
-  const wait=Math.max(fallback,Number.isFinite(specified)?specified:0);
+  const wait=Math.max(fallback,Number.isFinite(specified)?specified:0)+
+    (Number.isFinite(specified)&&specified>=fallback?0:Math.floor(Math.random()*5000));
   budgets.set(id,{until:Math.max(old?.until||0,now+wait),failures});
  }else if(status>=200&&status<300&&(!old||now>=old.until))budgets.delete(id);
 }
