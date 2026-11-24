@@ -32,13 +32,19 @@ export function observeGoldProxyFlow(a:{
   return blank('يلزم دفتر PAXG حديث وصفقات حقيقية من نفس المنصة');
  const venue=source.startsWith('Binance')?'Binance':'Kraken';
  const side=f.side==='BUY'||f.side==='SELL'?f.side:'WAIT';
+ const tape=f.tradeDeltaPct!,depth=f.depthImbalancePct!;
+ const tapeSide=tape>=20?'BUY':tape<=-20?'SELL':'WAIT';
+ const bookSide=depth>=15?'BUY':depth<=-15?'SELL':'WAIT';
+ const splitLabel=tapeSide==='WAIT'?'تنفيذ متوازن':
+   (tapeSide==='BUY'?'تنفيذ شراء ↑':'تنفيذ بيع ↓')+
+   (bookSide!=='WAIT'&&bookSide!==tapeSide?' / دفتر معاكس':' / دفتر غير مؤكد');
  const match=side!=='WAIT'&&a.chartSide!=='WAIT'&&side===a.chartSide;
  const conflict=side!=='WAIT'&&a.chartSide!=='WAIT'&&side!==a.chartSide;
  return {
   status:match?'ALIGNED':conflict?'DIVERGENT':'OBSERVED',
   side,source,actionable:false,
   label:'PAXG '+venue+' · '+(
-   side==='BUY'?'ضغط شراء بديل ↑':side==='SELL'?'ضغط بيع بديل ↓':'توازن/اختلاف الدفتر والتنفيذ'),
+   side==='BUY'?'ضغط شراء بديل ↑':side==='SELL'?'ضغط بيع بديل ↓':splitLabel),
   detail:'PAXG فقط · عمق '+f.depthImbalancePct!.toFixed(1)+'% · دلتا تنفيذ '+
    f.tradeDeltaPct!.toFixed(1)+'% · '+(
     match?'يتفق مع رصد XAU السعري (ليس تأكيدًا)':

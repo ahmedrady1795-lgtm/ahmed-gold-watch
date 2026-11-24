@@ -393,20 +393,33 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  // remain inside the same compact gold range and move towards its near edge.
  let proxyPressure:Candidate|undefined;
  const proxy=input.proxy;
- if(proxy&&(proxy.side==='BUY'||proxy.side==='SELL')&&
+ // A split PAXG book/tape is not necessarily balanced executed pressure.
+ // Admit only a strongly directional, sufficiently sampled, recent tape
+ // as a secondary XAU price-watch hypothesis. Never upgrade it to XAU DOM.
+ const proxyTapeOnly=Boolean(proxy?.side==='NEUTRAL'&&
+   ['Binance PAXG/USDT proxy','Kraken PAXG/USD proxy'].includes(proxy.source||'')&&
+   Number.isFinite(proxy.tradeDeltaPct)&&Math.abs(proxy.tradeDeltaPct!)>=65&&
+   Math.abs(proxy.tradeDeltaPct!)<=100&&Number.isFinite(proxy.depthImbalancePct)&&
+   Math.abs(proxy.depthImbalancePct!)<=100&&proxy.count>=8&&
+   proxy.tradeAt<=proxy.observedAt&&now-proxy.tradeAt<=8000);
+ const proxySide=proxy?.side==='BUY'||proxy?.side==='SELL'?proxy.side:
+   proxyTapeOnly?(proxy!.tradeDeltaPct!>0?'BUY':'SELL'):'WAIT';
+ if(proxy&&proxySide!=='WAIT'&&
    proxy.observedAt<=now&&now-proxy.observedAt<=12000&&proxy.tradeAt<=now&&
    now-proxy.tradeAt<=15000&&proxy.count>=3&&previous&&at!=null&&
    previous.at>=sourceAt&&previous.at<at&&at<=now&&now-at<=10000&&
    at-previous.at<=10000&&now-sourceAt<60000){
    const tail=bars.slice(-3);
    const high=Math.max(...tail.map(b=>b.high)),low=Math.min(...tail.map(b=>b.low));
-   const buy=proxy.side==='BUY',gap=buy?high-price:price-low;
+   const buy=proxySide==='BUY',gap=buy?high-price:price-low;
    const approach=(buy?1:-1)*(price-previous.price);
    if(high-low<=1.5*atr&&previous.price>=low&&previous.price<=high&&
      gap>=atr*.05&&gap<=atr*.4&&approach>0&&approach<=atr*.25&&
      Math.abs(price-last.close)<=atr*.65){
-     proxyPressure={side:proxy.side,setupKind:'PRESSURE',trigger:buy?high:low,
-       invalidation:buy?low:high,reason:'ضغط دفتر وتنفيذ PAXG مع اقتراب الذهب من حافة نطاق M1 قبل الكسر'};
+     proxyPressure={side:proxySide,setupKind:'PRESSURE',trigger:buy?high:low,
+       invalidation:buy?low:high,reason:proxyTapeOnly?
+         'ضغط تنفيذ PAXG رغم تعارض الدفتر؛ اقتراب XAU من حافة M1 قبل الكسر (رصد بديل فقط)':
+         'ضغط دفتر وتنفيذ PAXG مع اقتراب الذهب من حافة نطاق M1 قبل الكسر'};
      candidates.push(proxyPressure);
    }
  }

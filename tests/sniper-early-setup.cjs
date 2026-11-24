@@ -549,6 +549,25 @@ for(const side of ['BUY','SELL']){
  }
 }
 console.log('PASS proxy preparations before either edge, no stale, future or post-break alerts');
+for(const side of ['BUY','SELL']){
+ const sign=side==='BUY'?1:-1,t=now+15000;
+ const proxy={side:'NEUTRAL',observedAt:t-1000,tradeAt:t-2000,count:12,
+   source:'Binance PAXG/USDT proxy',tradeDeltaPct:sign*80,depthImbalancePct:-sign*45};
+ const input={...base,now:t,price:100+sign*.3,quoteAt:t,
+   previousQuote:{at:t-3000,price:100+sign*.24},proxy};
+ const alert=step(input);
+ assert.equal(alert?.phase,'ARMED');
+ assert.equal(alert?.side,side);
+ assert.equal(alert?.flowAligned,false,'external token execution is not XAU flow');
+ assert.match(alert.reason,/تعارض الدفتر/);
+ assert.ok(sign*(alert.trigger-input.price)>0);
+ for(const patch of [{tradeDeltaPct:sign*35},{count:3},{tradeAt:t-9000},
+  {source:'Exness XAUUSD DOM'},{tradeDeltaPct:sign*150}]){
+  assert.equal(step({...input,proxy:{...proxy,...patch}}),null);
+ }
+ assert.equal(step({...input,previousQuote:{at:t-3000,price:100+sign*.34}}),null);
+}
+console.log('PASS independent strong PAXG tape despite opposed depth, with XAU approach, freshness and non-confirmation');
 
 for(const buy of [true,false]){
  const flip=p=>buy?p:200-p;
