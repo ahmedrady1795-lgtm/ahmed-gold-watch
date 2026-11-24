@@ -17,6 +17,7 @@ RUN node tests/ai-health-recovery.cjs
 RUN node tests/flow-profile-decision.cjs && node tests/sniper-order-flow-observation.cjs
 RUN node tests/btc-kraken-taker-flow.cjs
 RUN node tests/gold-preparation-lead.mjs && node --experimental-strip-types tests/gold-spot-fallback.mjs && node tests/chart-feed-isolation.cjs
+RUN node tests/chart-last-good.cjs
 RUN node tests/sniper-risk-plan.cjs && node tests/next-move-cooldown.cjs && node tests/btc-provider-continuity.cjs && node tests/ai-service-warmup.cjs
 RUN node tests/web-source-resilience.cjs && node tests/scalp-learning.cjs && node tests/scalp.cjs && node tests/m1-adaptive-causal.cjs && node tests/m1-relative-edge.cjs && node tests/m1-regime-expert.cjs && node tests/m1-conflict-arbiter.cjs && node tests/m1-regime-recovery.cjs && node tests/m1-forward-online-learning.cjs && node tests/scalp-m1-tick-evidence.cjs && node tests/scalp-every-m1.cjs && node tests/scalp-btc-every-m1.cjs && node tests/scalp-m1-paired-proof.cjs && node tests/scalp-m1-forward-quality.cjs
 # Hard-block production deployment on a regression in the target scorecard.
