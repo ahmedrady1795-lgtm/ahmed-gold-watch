@@ -42,6 +42,11 @@ assert.equal(partial?.gold?.chartHigherFrames?.m5?.length,80);
 assert.equal(partial?.bitcoin?.historicalOnly,undefined,
  'healthy BTC chart keeps its genuine live OHLC');
 assert.equal(partial?.bitcoin?.fresh,true);
+const serverOnly=retainChartDuringOutage(null,{ok:true,gold:restored.gold,bitcoin:null},now+3000);
+assert.equal(serverOnly?.gold?.historicalOnly,true,
+ 'a new browser can draw verified server-held M5 after Biquote 503');
+assert.equal(serverOnly?.gold?.chartHigherFrames.m5.length,80);
+assert.equal(serverOnly?.gold?.fresh,false);
 const noProvider=retainChartDuringOutage(restored,null,now+3000);
 assert.equal(noProvider?.gold?.historicalOnly,true);
 assert.equal(noProvider?.bitcoin?.historicalOnly,true);
@@ -82,6 +87,10 @@ assert.match(panel,/trueHistory.length>0&&<g className="sniper-price-axis"/,
  'the false $1 axis must be absent when NO VERIFIED OHLC exists');
 const hub=fs.readFileSync('lib/market-hub.ts','utf8');
 const chartRoute=fs.readFileSync('app/api/chart-history/route.ts','utf8');
+assert.match(chartRoute,/let lastGoodGold:any=null,lastGoodBitcoin:any=null/);
+assert.match(chartRoute,/goldLive\?g:historicalChartAsset\('gold',lastGoodGold,checkedAt\)/);
+assert.match(chartRoute,/gold:goldLive\?gold:null,bitcoin:bitcoinLive\?bitcoin:null/,
+ 'server audit must NEVER score stale fallback OHLC');
 assert.match(hub,/if\(!options.force&&marketInFlight\)return marketInFlight/,
  'the same slow 4-frame market request must be shared between chart and AI viewers');
 assert.match(hub,/finally\{if\(marketInFlight===task\)marketInFlight=null;\}/,
