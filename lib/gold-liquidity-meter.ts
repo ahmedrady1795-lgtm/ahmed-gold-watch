@@ -60,9 +60,9 @@ export function combineGoldLiquidity(perp:PaxgFlow|null|undefined,token:PaxgFlow
      if(!eligible(f,allowed))continue;
      const source=f.source!,old=rows.get(source);if(old&&old.at>=f.tradeAt)continue;
      let d=f.tradeDeltaPct!,stabilized=false;
-     const history=weight===2?packet.crossFlow?.venues.find(v=>v.source===source):f.executionHistory;
+     const history=f.executionHistory??packet.crossFlow?.venues.find(v=>v.source===source);
      if(history&&history.source===source&&Number.isFinite(history.asOf)&&history.asOf<=now&&now-history.asOf<=10000&&
-       history.asOf>=f.tradeAt&&history.count>=20&&history.spanSeconds>=30&&
+       Math.abs(history.asOf-f.tradeAt)<=5000&&history.count>=20&&history.spanSeconds>=30&&
        [history.buy60s,history.sell60s].every(v=>Number.isFinite(v)&&v>=0)&&history.buy60s+history.sell60s>0){
        const stable=100*(history.buy60s-history.sell60s)/(history.buy60s+history.sell60s);
        d=.20*d+.80*stable;stabilized=true;
@@ -118,11 +118,22 @@ export function retainGoldVenueSamples(next:PaxgFlow|null,previous:PaxgFlow|null
        !Number.isSafeInteger(sample.observedAt)||sample.observedAt>now||sample.tradeAt>sample.observedAt||
        now-sample.tradeAt>10000||now-sample.observedAt>12000)continue;
      const key=sample.source!,old=map.get(key);
-     if(!old||sample.tradeAt>old.tradeAt||(sample.tradeAt===old.tradeAt&&sample.observedAt>=old.observedAt))
-       map.set(key,{...sample,venueSamples:undefined,crossFlow:undefined});
+     if(!old||sample.tradeAt>old.tradeAt||(sample.tradeAt===old.tradeAt&&sample.observedAt>=old.observedAt)){
+       const histories=[packet.crossFlow?.venues.find(v=>v.source===key),sample.executionHistory,old?.executionHistory];
+       const executionHistory=histories.filter(h=>h&&h.source===key&&h.asOf<=now&&now-h.asOf<=10000)
+         .sort((a,b)=>b!.asOf-a!.asOf)[0];
+       map.set(key,{...sample,executionHistory,venueSamples:undefined,crossFlow:undefined});
+     }
    }
  }
  const primary=next?.side!=='UNAVAILABLE'&&next?.source&&map.has(next.source)?map.get(next.source):[...map.values()][0];
  if(!primary)return next??null;
  return {...primary,venueSamples:[...map.values()],crossFlow:next?.crossFlow};
+}
+
+
+export function goldSignalConflict(side:'BUY'|'SELL'|'WAIT',flow:GoldCombinedLiquidity,otherSides:readonly unknown[]){
+ if(side==='WAIT')return false;
+ const opposite=side==='BUY'?'SELL':'BUY';
+ return flow.state==='CONFLICT'||flow.strongSide===opposite||otherSides.includes(opposite);
 }

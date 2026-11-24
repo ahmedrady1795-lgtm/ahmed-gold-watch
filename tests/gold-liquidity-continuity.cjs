@@ -23,3 +23,12 @@ const k=readKrakenPaxgFlow(null,[['3600','1',(now-2000)/1000+.0002,'b'],['3601',
 assert.ok(Number.isSafeInteger(k.tradeAt));
 assert.equal(combineGoldLiquidity(null,k,now,true).sources.length,1);
 console.log('PASS: venue retention, timestamp precision, stale display isolated from signals');
+const history={source:a.source,asOf:a.tradeAt,count:40,spanSeconds:45,buy60s:80,sell60s:20};
+const initial=retainGoldVenueSamples({...a,crossFlow:{venues:[history]}},null,now);
+const updated=retainGoldVenueSamples({...a,tradeAt:now,observedAt:now},initial,now);
+assert.equal(combineGoldLiquidity(updated,null,now,true).buyPct,68);
+assert.equal(combineGoldLiquidity(updated,null,now+12000,true).buyPct,null);
+const {goldSignalConflict}=load('lib/gold-liquidity-meter.ts');
+assert.equal(goldSignalConflict('SELL',{...live,strongSide:'BUY'},[]),true);
+assert.equal(goldSignalConflict('BUY',{...live,strongSide:'WAIT'},['SELL']),true);
+assert.equal(goldSignalConflict('BUY',{...live,strongSide:'BUY'},['BUY']),false);

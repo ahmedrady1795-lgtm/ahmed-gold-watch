@@ -12,7 +12,7 @@ import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {detectLiquidityMagnets} from '../lib/sniper-liquidity-magnets';
 import {fuseLocalSniper} from '../lib/sniper-local-fusion';
 import {localCandleMl} from '../lib/local-candle-ml';
-import {goldLiquidityMeter,combineGoldLiquidity,goldLiquidityDisplay,type GoldCombinedLiquidity} from '../lib/gold-liquidity-meter';
+import {goldSignalConflict,goldLiquidityMeter,combineGoldLiquidity,goldLiquidityDisplay,type GoldCombinedLiquidity} from '../lib/gold-liquidity-meter';
 import {GoldDepthHeatmap} from './GoldDepthHeatmap';
 import {useBtcCrossFlow} from './useBtcCrossFlow';
 import {reviewEarlyFailures} from '../lib/sniper-movement-proof';
@@ -1281,7 +1281,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    m5Cue.trigger!=null&&price!=null&&
    (m5Cue.side==='BUY'?m5Cue.trigger>price:m5Cue.trigger<price);
  const commandGold=commandFastLive&&!commandM1&&!commandM5&&
-   showGoldSpotPlan&&goldSpotPlan!=null&&price!=null&&
+   goldSpotPlan!=null&&price!=null&&
    (goldSpotPlan.side==='BUY'?goldSpotPlan.trigger>price:goldSpotPlan.trigger<price);
  // The cached GOLD M1 scout carries no broker trigger and is non-executable.
  const commandLocalGold=commandFastLive&&!commandConfirmed&&!commandM1&&
@@ -1294,13 +1294,21 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const commandFollowing=commandFastLive&&!commandWatch&&!commandConfirmed&&
    (m5Cue.stage==='M5_FOLLOWING'||m5Cue.stage==='M1_DIRECTION_WATCH')&&
    (m5Cue.side==='BUY'||m5Cue.side==='SELL');
- const commandSide=commandConfirmed?earlyOpportunity.side:
+ const candidateSide=commandConfirmed?earlyOpportunity.side:
    commandM1?movementSignal.side:commandM5?m5Cue.side:
    commandGold?goldSpotPlan!.side:
    commandLocalGold?goldLocalWatch!.side:
    commandLead?(chartLead?.side??'WAIT'):
    commandFollowing?m5Cue.side:'WAIT';
- const commandState=commandConfirmed?'CONFIRMED':
+ const conflict=asset==='GOLD'&&(commandConfirmed||commandWatch)&&goldSignalConflict(candidateSide,combinedGold,[
+   goldSpotPlan?.side,
+   cuePrebreak&&price!=null&&m5Cue.trigger!=null&&(m5Cue.side==='BUY'?m5Cue.trigger>price:m5Cue.trigger<price)?m5Cue.side:null,
+   commandM1?movementSignal.side:null,
+   goldLocalWatch?.side,
+   leadVerified?chartLead?.side:null
+ ]);
+ const commandSide=conflict?'WAIT':candidateSide;
+ const commandState=conflict?'WAIT':commandConfirmed?'CONFIRMED':
    commandWatch?'WATCH':commandFollowing?'OBSERVE':
    commandFastLive?'WAIT':'OFFLINE';
  // Display GOLD's truly separate PAXG exchange book/tape as proxy evidence
@@ -1332,20 +1340,20 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    tapeWatch.kind==='ABSORPTION'?
      (tapeWatch.side==='BUY'?'امتصاص بيع محتمل ↑':'امتصاص شراء محتمل ↓'):
      (tapeWatch.side==='BUY'?'ضغط تنفيذ شراء ↑':'ضغط تنفيذ بيع ↓'):null;
- const commandHeadline=commandConfirmed?
+ const commandHeadline=conflict?'تعارض · انتظار':commandConfirmed?
    commandSide==='BUY'?'BUY · شراء':'SELL · بيع':
    commandLocalGold?commandSide==='BUY'?'WATCH BUY · سعري':'WATCH SELL · سعري':
    commandWatch?commandSide==='BUY'?'WATCH BUY':'WATCH SELL':
    commandFollowing?commandSide==='BUY'?'↗ صعود مرصود':'↘ هبوط مرصود':
    commandFastLive?'WAIT':'تحديث السوق';
- const commandTrigger=commandConfirmed||commandM1?movementSignal.trigger:
+ const commandTrigger=conflict?null:commandConfirmed||commandM1?movementSignal.trigger:
    commandM5?m5Cue.trigger:commandGold?goldSpotPlan!.trigger:null;
- const commandInvalidation=commandConfirmed||commandM1?
+ const commandInvalidation=conflict?null:commandConfirmed||commandM1?
    movementSignal.invalidation:commandM5?m5Cue.invalidation:
    commandGold?goldSpotPlan!.invalidation:null;
- const commandTarget=commandConfirmed||commandM1?movementSignal.targets?.[0]??null:
+ const commandTarget=conflict?null:commandConfirmed||commandM1?movementSignal.targets?.[0]??null:
    commandGold?goldSpotPlan!.target:null;
- const commandWhy=commandConfirmed||commandM1?movementSignal.reason:
+ const commandWhy=conflict?'القراءات الحية مختلفة الاتجاه · ننتظر اتفاقها':commandConfirmed||commandM1?movementSignal.reason:
    commandM5?m5Cue.detail:commandGold?goldSpotPlan!.reason:
    commandLocalGold?'رصد سعري M1 دون عمق أوامر Exness · '+goldLocalWatch!.reason:
    commandLead?(leadVerified?'رصد دفتر أوامر مؤهل للمراقبة فقط · ':'رصد تغيرات سعرية فقط · ')+
@@ -1354,7 +1362,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    commandFastLive?'لا توجد تهيئة مبكرة مكتملة':'تجديد بيانات السعر';
  const commandText=String(commandWhy||'').split(' · ')[0].slice(0,68);
  // Opportunity labels use the live observer and its immutable issued records.
- const earlyMarkerVisible=Boolean(goldSpotPlan&&goldSpotPlan.trigger>=lo&&goldSpotPlan.trigger<=hi);
+ const earlyMarkerVisible=Boolean(!conflict&&goldSpotPlan&&goldSpotPlan.trigger>=lo&&goldSpotPlan.trigger<=hi);
  useEffect(()=>{
    const marker=goldMarkerRef.current;
    if(!earlyPlanId||!earlyMarkerVisible||!marker)return;
@@ -1823,7 +1831,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            Exness order or evidence of bank liquidity. Show only while its
            original trigger is still ahead of the fresh matched quote. */}
        {goldSpotPlan&&
-        goldSpotPlan.trigger>=lo&&goldSpotPlan.trigger<=hi&&
+        goldSpotPlan.trigger>=lo&&goldSpotPlan.trigger<=hi&&!conflict&&
         <g ref={goldMarkerRef} data-gold-spot-fallback="read-only" data-issued-at={goldSpotPlan.issuedAt}
           data-side={goldSpotPlan.side} className="sniper-gold-spot-early-plan">
           <line x1={Math.max(left+16,split-125)} x2={split-5}
@@ -1845,7 +1853,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
             ' · إبطال '+n(goldSpotPlan.invalidation)+
             ' · M1 spot فقط · لا يوجد DOM Exness، ليست صفقة منفذة'}</title>
         </g>}
-       <SniperOpportunityMarkers signal={movementSignal} confirmedPrice={trackedSetup?.phase==='TRIGGERED'?trackedSetup.priceAt:null} records={movementRecords}
+       <SniperOpportunityMarkers signal={movementSignal} conflict={conflict} confirmedPrice={trackedSetup?.phase==='TRIGGERED'?trackedSetup.priceAt:null} records={movementRecords}
          evidenceScore={trackedSetup?.score??null}
          asset={asset} source={String(x?.candleSource||'')}
          from={trueHistory[0]?.time??now} now={now} left={left} split={split}
@@ -1876,7 +1884,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        })}
        {/* Closed-bar prebreak cue is separate from both M15 dual paths.
             It stays on a true price coordinate and never simulates TP. */}
-       {distinctPrebreak&&m5Cue.trigger!=null&&m5Cue.invalidation!=null&&
+       {distinctPrebreak&&m5Cue.trigger!=null&&!conflict&&m5Cue.invalidation!=null&&
          m5Cue.trigger>=lo&&m5Cue.trigger<=hi&&
          <g className="sniper-m5-prebreak-cue"
            data-m5-prebreak-side={m5Cue.side} data-issued-at={m5Cue.asOf}>
@@ -1898,7 +1906,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          </g>}
        {/* Distinct original PREBREAK must remain readable when its real trigger
            falls outside the visible historical price axis. Never move the price. */}
-       {distinctPrebreak&&m5Cue.trigger!=null&&
+       {distinctPrebreak&&m5Cue.trigger!=null&&!conflict&&
          (m5Cue.trigger<lo||m5Cue.trigger>hi)&&
          <g data-m5-prebreak-offscreen={m5Cue.side}
            data-issued-at={m5Cue.asOf} className="sniper-m5-offscreen-cue">
@@ -1913,7 +1921,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          </g>}
        {/* Genuine fresh lead, drawn within chart (no second box).
             A started/released move is NEVER promoted to early BUY/SELL. */}
-       {!commandConfirmed&&!commandWatch&&(leadVerified||leadPriceWatch)&&
+       {!conflict&&!commandConfirmed&&!commandWatch&&(leadVerified||leadPriceWatch)&&
          <g className="sniper-chart-early-direction"
            data-qannas-chart-early={leadVerified?'DEPTH_WATCH':'PRICE_WATCH'}
            data-qannas-chart-early-side={chartLead?.side||'WAIT'}>
@@ -1946,7 +1954,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              direction="rtl" fill={drawingColor} fontSize="10"
              fontWeight="900" stroke="#07111b" strokeWidth="3.1"
              paintOrder="stroke">
-             {drawingBadge}
+             {conflict?'تعارض · انتظار':drawingBadge}
            </text>}
        </g>
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">
@@ -1977,24 +1985,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      data-gold-proxy-status={goldProxyReadout.status} data-gold-perp-status={goldPerpReadout?.status}
      data-meter-state={displayedGold.state} title={displayedGold.detail}>
      <div className="gold-liquidity-meter" data-meter-state={displayedGold.state}>
-       <b className="gold-meter-label">تدفق التنفيذ · {displayedGold.liveSources}/4</b>
+       <b className="gold-meter-label">تدفق بديل · {displayedGold.liveSources}/4</b>
        {(['BUY','SELL'] as const).map(side=>{
          const value=side==='BUY'?displayedGold.buyPct:displayedGold.sellPct;
          return <div key={side} className="gold-meter-row" data-side={side}>
            <div className="gold-meter-head"><b>{side==='BUY'?'شراء ↑':'بيع ↓'}</b><strong dir="ltr">{value==null?'—':value+'%'}</strong></div>
            <div className="gold-meter-battery" aria-label={side+' '+(value??'غير متاح')}>
-             {Array.from({length:10},(_,i)=><span key={i} className={value!=null&&i*10<value?'is-lit':''}/>)}
+             {Array.from({length:10},(_,i)=><span key={i} className={value!=null&&i<Math.round(value/10)?'is-lit':''}/>)}
            </div>
          </div>;
        })}
        <span className="gold-meter-source">{displayedGold.displayStatus==='LAST'?'آخر قراءة · غير حية':displayedGold.state==='CONFLICT'?'تعارض المصادر':displayedGold.state==='UNAVAILABLE'?'غير متاح':displayedGold.coverage==='PARTIAL'?'مصدر واحد · عينة محدودة':displayedGold.state==='BUY'?'ضغط شراء':displayedGold.state==='SELL'?'ضغط بيع':'متوازن'}{displayedGold.ageSeconds!=null?' · '+displayedGold.ageSeconds+'ث':''}</span>
-       {combinedGold.fastBuyPct!=null&&<span className="gold-meter-source" title="العينة القصيرة من المصادر الحالية؛ ليست توقعًا">لحظي {combinedGold.fastBuyPct}% ↑ / {100-combinedGold.fastBuyPct}% ↓</span>}
        {displayedGold.displayStatus!=='LAST'&&combinedGold.stableSources!=null&&combinedGold.stableSources>0&&<span className="gold-meter-source">سجل 60ث · {combinedGold.stableSources}/{combinedGold.sources.length}</span>}
-       {goldMeter.dynamic&&<span className="gold-meter-source" title={goldMeter.detail}>{goldMeter.dynamic}</span>}
-       {goldPerp?.crossFlow?.preparation?.filter(p=>p.asOf<=now&&now-p.asOf<=5000).slice(0,1).map(p=>
-         <span key={p.source} className="gold-meter-source" title={'رصد تجدد عمق '+p.source+'؛ ليس إثبات أوامر مخفية'}>
-           {p.side==='BUY'?'تجميع محتمل ↑':'تصريف محتمل ↓'}
-         </span>)}
      </div>
    </aside>}
    </div>
@@ -2048,7 +2050,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        </div>
        <p title={commandWhy}>{commandText}</p>
        <small className="sniper-chart-command-caution">
-         {commandConfirmed?'رصد كسر مؤهل · ليس صفقة منفذة':
+         {conflict?'انتظار زوال التعارض':commandConfirmed?'رصد كسر مؤهل · ليس صفقة منفذة':
          commandLocalGold?'رصد سعري M1 فقط · دون DOM أو إذن دخول':
          commandWatch?'ترقب قبل التفعيل · ليس أمر دخول':
          commandFollowing?'الحركة بدأت · متابعة فقط، ليست قنصًا مبكرًا':

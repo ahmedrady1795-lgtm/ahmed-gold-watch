@@ -3,7 +3,7 @@ import {outcomeLabel} from './SniperOpportunityHistory';
 import {movementObservationLabel} from '../lib/sniper-movement-proof';
 import type {MovementProof} from '../lib/sniper-movement-proof';
 
-type Props={signal:LiveOpportunity;confirmedPrice:number|null;records:MovementProof[];evidenceScore?:number|null;
+type Props={signal:LiveOpportunity;conflict?:boolean;confirmedPrice:number|null;records:MovementProof[];evidenceScore?:number|null;
  asset:'GOLD'|'BTC';
  source:string;from:number;now:number;left:number;split:number;end:number;
  top:number;bottom:number;py:(price:number)=>number;timeX:(time:number)=>number};
@@ -79,7 +79,7 @@ export default function SniperOpportunityMarkers(p:Props){
  const confirmed=s.phase==='BREAK_CONFIRMED';
  const markerPrice=confirmed?p.confirmedPrice:s.trigger;
  const markerX=confirmed&&s.sourceAt!=null?p.timeX(s.sourceAt):p.split;
- const active=['PREPARE','TESTING','BREAK_CONFIRMED'].includes(s.phase)&&
+ const active=!p.conflict&&['PREPARE','TESTING','BREAK_CONFIRMED'].includes(s.phase)&&
    (s.side==='BUY'||s.side==='SELL')&&markerPrice!=null&&visible(markerPrice);
  // A conditional pre-break trading PLAN needs a frozen stop and a real
  // previously observed target with at least 1:1 room. It is NOT an executed
@@ -103,7 +103,7 @@ export default function SniperOpportunityMarkers(p:Props){
    occupied.push({l:markerX-97,r:markerX+3,
      t:Math.max(p.top,y-32),b:Math.min(p.bottom,y+18)});
  }
- const currentEarly=(r:MovementProof)=>(s.phase==='PREPARE'||s.phase==='TESTING')&&
+ const currentEarly=(r:MovementProof)=>!p.conflict&&(s.phase==='PREPARE'||s.phase==='TESTING')&&
    r.setupLifecycle==='PENDING'&&r.setupExpiresAt!=null&&r.setupExpiresAt>p.now&&
    r.sourceAt===s.sourceAt&&r.side===s.side&&r.trigger===s.trigger&&
    r.invalidation===s.invalidation;
