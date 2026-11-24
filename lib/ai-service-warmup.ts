@@ -1,5 +1,5 @@
-import {aiRetryAt,recordAiResponse} from './ai-service-backoff';
-import {noteAiHealthyService} from './ai-readiness';
+import {aiRetryAt} from './ai-service-backoff';
+import {healthProbe} from './ai-readiness';
 /** Cold-start health recovery outside inference. Never hammer a throttled
  * Render service: one attempt per 2 minutes, at least 5 minutes after 429.
  * Health checks do not certify model quality or produce trading signals. */
@@ -18,21 +18,11 @@ export function warmAiServices():Promise<void>{
   const url=new URL(base.trim());
   if(!['http:','https:'].includes(url.protocol))return;
   url.pathname=url.pathname.replace(/\/$/,'')+'/health';
-  const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(45000),
-   headers:{'User-Agent':'Qannas-AI-Health-Recovery/1.0'}});
-  recordAiResponse(base.trim(),r.status,r.headers.get('retry-after'));
-  if(r.status===429){
-    // Prediction and health clients share the same service budget.
+  const status=await healthProbe(base.trim(),45000);
+  if(status?.status==='RATE_LIMITED'){
     nextAllowedAt=Math.max(nextAllowedAt,Date.now()+300000);
   }
-  let status:any=null;
-  if(r.ok&&typeof r.json==='function'){
-    // Health is telemetry, not prediction. Never use this body as a signal.
-    try{status=await r.json();}catch{}
-  }else await r.arrayBuffer();
-  if(r.ok&&status?.ok===true){
-    if(typeof noteAiHealthyService==='function')
-      noteAiHealthyService(base.trim(),status);
+  if(status?.ok===true){
     const role=base===process.env.ML_ENGINE_URL?'ML':'NEURAL';
     const qualified=role==='ML'?
       Boolean(status.readiness?.m1||status.readiness?.m5):
@@ -44,7 +34,7 @@ export function warmAiServices():Promise<void>{
       note:'HTTP health is not statistical certification'
     }));
   }
-  if(!r.ok)console.warn('[AI-HEALTH] HTTP',r.status,url.hostname);
+  if(!status?.ok)console.warn('[AI-HEALTH]',String(status?.status||'UNAVAILABLE'),url.hostname);
  })).then(()=>{}).finally(()=>{running=null;});
  return running;
 }

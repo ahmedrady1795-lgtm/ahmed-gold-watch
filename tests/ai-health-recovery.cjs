@@ -2,9 +2,11 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
 let now=Date.parse('2026-11-21T10:45:00Z');
 class Clock extends Date{static now(){return now;}}
+let calls=0;
 const env={ML_ENGINE_URL:'https://ml.test',NEURAL_ENGINE_URL:'https://neural.test'};
 const ctx=vm.createContext({Date:Clock,process:{env},URL,AbortSignal,console,
  fetch:async url=>{
+   calls++;
    const isMl=String(url).includes('ml.test');
    return {status:200,ok:true,headers:{get:()=>null},
     json:async()=>isMl?{ok:true,status:'SHADOW',modelReady:false,readiness:{},
@@ -30,6 +32,7 @@ function load(name){
  const warm=load('ai-service-warmup');
  await warm.warmAiServices();
  const result=await readiness.getAiReadiness();
+ assert.equal(calls,2,'warmup and health share the same cached HTTP results');
  assert.equal(result.configuredCount,3);
  assert.equal(result.readyCount,0,'ML/Neural HTTP 200 must not produce readiness');
  assert.equal(result.models.mlM1.status,'SHADOW');

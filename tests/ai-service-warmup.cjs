@@ -1,21 +1,28 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
-const pending=[],calls=[],e={};
+const pending=[],calls=[],e={},readiness={};
 let now=1_000_000;
-vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/ai-service-warmup.ts','utf8'),{
- compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
-}).outputText,{
- require:()=>({aiRetryAt:()=>0,recordAiResponse:()=>{}}),exports:e,Date:{now:()=>now},
+const backoff={aiRetryAt:()=>0,recordAiResponse:()=>{}};
+const ctx=vm.createContext({Date:{now:()=>now},
  process:{env:{ML_ENGINE_URL:'https://ml.example',NEURAL_ENGINE_URL:'https://neural.example'}},
  URL,AbortSignal,console,
  fetch:async u=>{calls.push(String(u));return new Promise(resolve=>pending.push(resolve));}
 });
-const response=status=>({status,ok:status>=200&&status<300,headers:{get:()=>null},arrayBuffer:async()=>new ArrayBuffer(0)});
+for(const [name,ex] of [['ai-readiness',readiness],['ai-service-warmup',e]]){
+ const code=ts.transpileModule(fs.readFileSync('lib/'+name+'.ts','utf8'),{
+  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
+ }).outputText;
+ vm.runInContext('(function(exports,require){'+code+'\n})',ctx)(ex,
+  id=>id==='./ai-readiness'?readiness:backoff);
+}
+const response=status=>({status,ok:status>=200&&status<300,headers:{get:()=>null},json:async()=>({ok:true,status:'COLLECTING'}),arrayBuffer:async()=>new ArrayBuffer(0)});
 (async()=>{
  const a=e.warmAiServices(),b=e.warmAiServices();
  assert.equal(a,b,'simultaneous calls share one health probe');
  assert.equal(calls.length,2);
+ const direct=readiness.getAiReadiness();
+ assert.equal(calls.length,2,'readiness shares already in-flight warmup, no duplicate HTTP');
  pending.splice(0,2).forEach(done=>done(response(200)));
- await a;
+ await a;await direct;
  await e.warmAiServices();
  assert.equal(calls.length,2,'warmup must NOT hammer health again on next cycle');
  now+=120001;

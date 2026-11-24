@@ -31,9 +31,15 @@ export function summarizeAiReadiness(ml:any,neural:any,mlConfigured=true,neuralC
       readyCount<3?'بعض النماذج اختيارية وغير مربوطة.':'النماذج مؤهلة؛ تنفيذ الصفقة يظل مشروطًا بجودة السعر والتكلفة والتأكيد.'};
 }
 
-const HEALTH_CACHE_MS=60_000;
-const healthCache=new Map<string,{at:number;value:any}>();
-const healthInflight=new Map<string,Promise<any>>();
+// Readiness and background warmup share the same network request/cache,
+// including separate Next.js module copies in the same process.
+const HEALTH_CACHE_MS=120_000;
+const healthState=globalThis as typeof globalThis & {
+  __qannasModelHealthCache?:Map<string,{at:number;value:any}>;
+  __qannasModelHealthInflight?:Map<string,Promise<any>>;
+};
+const healthCache=healthState.__qannasModelHealthCache ||= new Map<string,{at:number;value:any}>();
+const healthInflight=healthState.__qannasModelHealthInflight ||= new Map<string,Promise<any>>();
 
 /** A successful supervised long warmup can publish service *health* into
  * the short readiness cache. It does not turn a collecting model READY.
@@ -46,17 +52,20 @@ export function noteAiHealthyService(url:string,value:any,now=Date.now()){
  return true;
 }
 
-async function healthProbe(url:string|undefined){
+export async function healthProbe(url:string|undefined,timeoutMs=10000){
   if(!url)return {ok:false,status:'DISABLED',reason:'service not configured'};
   const key=url.trim().replace(/\/$/,'');
   if(Date.now()<aiRetryAt(key))return {ok:false,status:'RATE_LIMITED',reason:'service cooldown after HTTP 429'};
   const cached=healthCache.get(key);
-  if(cached&&Date.now()-cached.at<HEALTH_CACHE_MS)return cached.value;
+  if(cached&&cached.value?.ok===true&&Date.now()>=cached.at&&Date.now()-cached.at<HEALTH_CACHE_MS)return cached.value;
+  // A failed probe is not a healthy model. Briefly cache transport failures
+  // to prevent readiness and recovery immediately retrying each other.
+  if(cached&&cached.value?.ok!==true&&Date.now()>=cached.at&&Date.now()-cached.at<60000&&cached.value?.status!=='RATE_LIMITED')return cached.value;
   const pending=healthInflight.get(key);
   if(pending)return pending;
   const task=(async()=>{
   try{
-    const r=await fetch(key+'/health',{cache:'no-store',signal:AbortSignal.timeout(10000)});
+    const r=await fetch(key+'/health',{cache:'no-store',signal:AbortSignal.timeout(Math.min(45000,Math.max(1000,timeoutMs)))});
     recordAiResponse(key,r.status,r.headers.get('retry-after'));
     if(!r.ok)return {ok:false,status:r.status===429?'RATE_LIMITED':'ERROR',reason:`service HTTP ${r.status}`};
     return await r.json();
