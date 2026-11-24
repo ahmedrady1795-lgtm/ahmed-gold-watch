@@ -59,6 +59,7 @@ const hub=load('lib/market-hub.ts',id=>{
    analyzeMt5GoldDom:()=>({available:false})};
  if(id==='./mt5-quote-profile')return {buildMt5QuoteProfile:()=>({ready:false})};
  if(id==='./gold-source-quality')return quality;
+ if(id==='./gold-chart-frames')return load('lib/gold-chart-frames.ts');
  throw Error('unexpected market hub dependency '+id);
 },{fetch:mockFetch});
 (async()=>{
