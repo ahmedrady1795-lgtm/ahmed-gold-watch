@@ -819,3 +819,9 @@ assert.equal(step({...base,goldCombined:joined}),null);
 assert.doesNotMatch(step({...base,opportunity:op,goldCombined:{...joined,asOf:now-9000}})?.reason??'',/إجماع سيولة/);
 assert.doesNotMatch(step({...base,opportunity:op,goldCombined:{...joined,state:'CONFLICT'}})?.reason??'',/إجماع سيولة/);
 console.log('PASS aggregate gold execution is supporting evidence only');
+
+const prepOnly={side:'NEUTRAL',source:'Bybit XAUUSDT perpetual',observedAt:now,tradeAt:now-1000,count:30,tradeDeltaPct:-65,
+ crossFlow:{consensus:'INSUFFICIENT',actionable:false,venues:[],preparation:[
+ {source:'Bybit XAUUSDT perpetual',asOf:now,side:'BUY',samples:3,spanMs:6000,level:99.99,deltaPct:-65,priceChangeBps:.1,actionable:false}]}};
+assert.equal(step({...base,proxy:prepOnly}),null,'depth preparation alone cannot generate an XAU setup');
+console.log('PASS proxy depth preparation cannot fabricate an XAU entry');

@@ -474,7 +474,15 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  // closed-body continuation, this can watch a small rejection/doji.
  // Never promote cross-venue flow into a same-symbol flow vote.
  let assistedReversal:Candidate|undefined;
- const reversalEvidence=absorption!=='WAIT'?absorption:crossSide!=='WAIT'?crossSide:flowSide;
+ const prep=proxy?.crossFlow?.preparation?.filter(p=>
+   p.actionable===false&&['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual'].includes(p.source)&&
+   Number.isFinite(p.asOf)&&p.asOf<=now&&now-p.asOf<=5000&&p.samples>=3&&p.spanMs>=6000&&p.spanMs<=18000&&
+   Number.isFinite(p.level)&&p.level>0&&Number.isFinite(p.deltaPct)&&Math.abs(p.deltaPct)<=100&&
+   Number.isFinite(p.priceChangeBps)&&Math.abs(p.priceChangeBps)<=3&&
+   (p.side==='BUY'?p.deltaPct<=-40&&p.priceChangeBps>=-.6:p.side==='SELL'&&p.deltaPct>=40&&p.priceChangeBps<=.6))??[];
+ const depthSide=input.scope.startsWith('GOLD:')&&proxy?.crossFlow?.consensus!=='CONFLICT'&&
+   prep.length>0&&prep.every(p=>p.side===prep[0].side)?prep[0].side:'WAIT';
+ const reversalEvidence=depthSide!=='WAIT'?depthSide:absorption!=='WAIT'?absorption:crossSide!=='WAIT'?crossSide:flowSide;
  // A proxy absorption watch is admitted only by the independent XAU
  // wick/reclaim + two live quote conditions below, not by delta alone.
  if(reversalEvidence!=='WAIT'&&previous&&at!=null&&
@@ -497,7 +505,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
        proxy.tradeAt<=proxy.observedAt&&now-proxy.tradeAt<=8000))){
      assistedReversal={side:reversalEvidence,setupKind:'RECLAIM',trigger:level,
        invalidation:extreme-sign*atr*.08,
-       reason:absorption!=='WAIT'?
+       reason:depthSide!=='WAIT'?'ذهب: تجميع/تصريف محتمل من تجدد عمق العقود البديلة ورفض مستوى XAU قبل التفعيل':absorption!=='WAIT'?
          'ذهب: امتصاص محتمل في العقود البديلة + رفض مستوى XAU وتحديثان سعريان قبل التفعيل':
          'انعكاس مبكر: رفض قمة/قاع سابق + ضغط تنفيذ مؤيد + تحديثان سعريان قبل التفعيل'+
          (crossSide!=='WAIT'?' (عقود بديلة، ليس دفتر XAU)':' (تدفق المصدر)')};
@@ -898,7 +906,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      (c===goldRetest?.65:0)+(combinedSide==='WAIT'&&input.scope.startsWith('GOLD:')&&goldTapeSide!=='WAIT'?
        (goldTapeSide===c.side?.45:-.45):0)+
      (combinedSide!=='WAIT'||acceleration==='WAIT'||absorption!=='WAIT'?0:acceleration===c.side?.3:-.3)+
-     (c===assistedReversal&&absorption===c.side?.8:0)+(combinedSide==='WAIT'?0:combinedSide===c.side?.45:-.45);
+     (c===assistedReversal&&(absorption===c.side||depthSide===c.side)?.8:0)+(combinedSide==='WAIT'?0:combinedSide===c.side?.45:-.45);
  };
  const ranked=viable.map((c,index)=>({c,index,rank:evidenceRank(c)}))
    .sort((a,b)=>b.rank-a.rank||a.index-b.index);

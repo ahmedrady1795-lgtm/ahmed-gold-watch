@@ -597,7 +597,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        (goldPerp.crossFlow?.consensus==='BUY'||goldPerp.crossFlow?.consensus==='SELL'||
         goldPerp.crossFlow?.consensus==='CONFLICT'||(goldPerp.count>=12&&
          Number.isFinite(goldPerp.tradeDeltaPct)&&(Math.abs(goldPerp.tradeDeltaPct!)>=55||
-          goldPerp.absorptionWatch!=null||goldPerp.accelerationSide!=null)))?goldPerp:paxg):null,flow:flowProfile,shortTape:tapeWatch,liquidity:liquidityMagnets,watch:watchMap,marketContext,
+          goldPerp.absorptionWatch!=null||goldPerp.accelerationSide!=null||Boolean(goldPerp.crossFlow?.preparation?.length))))?goldPerp:paxg):null,flow:flowProfile,shortTape:tapeWatch,liquidity:liquidityMagnets,watch:watchMap,marketContext,
    m1Side:nextM1.ready?nextM1.side:'WAIT',
    m15Side:entryTrend
  }),[earlyState,asset,paxg,goldPerp,localMl,btcCross,combinedGold,liquidity.zones,x?.candleSource,now,price,liveQuote?.sourceTime,liveQuote?.source,observedM15,
@@ -1940,6 +1940,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {combinedGold.fastBuyPct!=null&&<span className="gold-meter-source" title="العينة القصيرة من المصادر الحالية؛ ليست توقعًا">لحظي {combinedGold.fastBuyPct}% ↑ / {100-combinedGold.fastBuyPct}% ↓</span>}
        {combinedGold.stableSources!=null&&combinedGold.stableSources>0&&<span className="gold-meter-source">ترجيح 60ث</span>}
        {goldMeter.dynamic&&<span className="gold-meter-source" title={goldMeter.detail}>{goldMeter.dynamic}</span>}
+       {goldPerp?.crossFlow?.preparation?.filter(p=>p.asOf<=now&&now-p.asOf<=5000).slice(0,1).map(p=>
+         <span key={p.source} className="gold-meter-source" title={'رصد تجدد عمق '+p.source+'؛ ليس إثبات أوامر مخفية'}>
+           {p.side==='BUY'?'تجميع محتمل ↑':'تصريف محتمل ↓'}
+         </span>)}
      </div>
    </aside>}
    </div>

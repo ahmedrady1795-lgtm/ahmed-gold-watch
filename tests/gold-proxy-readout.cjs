@@ -191,3 +191,16 @@ assert.equal(combined({...meterFlow,tradeDeltaPct:86,crossFlow:{venues:[
  {source:'Bybit XAUUSDT perpetual',asOf:meterFlow.tradeAt,count:4,spanSeconds:5,buy60s:22,sell60s:78}
 ]}},null,meterNow,true).buyPct,93,'never invent stability from thin sample');
 console.log('PASS live raw pressure separate from 60-second stabilised ratio and partial source warning');
+
+const prepFrames=[0,3000,6000].map((offset,i)=>({at:now-6000+offset,mid:100,
+ levels:[{price:99.99,qty:[20,12,22][i],side:'BID'},{price:99.98,qty:3,side:'BID'},
+ {price:99.97,qty:2,side:'BID'},{price:100.01,qty:3,side:'ASK'}]}));
+const prepFlow={...meterFlow,observedAt:now,tradeAt:now-1000,tradeDeltaPct:-65,count:30};
+const depthPrep=h.observeGoldDepthPreparation(prepFrames,prepFlow,now);
+assert.equal(depthPrep.side,'BUY');assert.equal(depthPrep.level,99.99);assert.equal(depthPrep.actionable,false);
+assert.equal(h.observeGoldDepthPreparation(prepFrames.slice(0,2),prepFlow,now),null);
+assert.equal(h.observeGoldDepthPreparation(prepFrames,{...prepFlow,tradeDeltaPct:65},now),null);
+assert.equal(h.observeGoldDepthPreparation(prepFrames.map((f,i)=>({...f,mid:100-i*.02})),prepFlow,now),null);
+assert.equal(h.observeGoldDepthPreparation(prepFrames,prepFlow,now+9000),null);
+assert.equal(h.observeGoldDepthPreparation(prepFrames.map(f=>({...f,levels:f.levels.map(l=>({...l,qty:3}))})),prepFlow,now),null);
+console.log('PASS persistent observed gold depth replenishment with contrary executions, no iceberg claim');

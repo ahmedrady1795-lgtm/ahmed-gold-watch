@@ -13,7 +13,7 @@ export type VenueEvidence={source:string;asOf:number;count:number;spanSeconds:nu
 export type LeadPoint={at:number;a:number;b:number};
 export type GoldCrossFlow={
  venues:VenueEvidence[];consensus:'BUY'|'SELL'|'CONFLICT'|'INSUFFICIENT';
- leader:'Bybit'|'Binance'|null;leadPairs:number;actionable:false;heatmaps?:GoldDepthHeatmap[];
+ leader:'Bybit'|'Binance'|null;leadPairs:number;actionable:false;heatmaps?:GoldDepthHeatmap[];preparation?:GoldDepthPreparation[];
 };
 export const newVenueHistory=():VenueHistory=>({prints:new Map(),book:null});
 export function updateVenueHistory(state:VenueHistory,source:string,now:number,
@@ -147,4 +147,39 @@ export function readDepthHeatmap(history:readonly DepthFrame[],source:string,now
  }
  return {source,asOf:last.at,frames,bidWall:strongest('BID'),askWall:strongest('ASK'),
   bidReduced,askReduced,bidAdded,askAdded,changeKnown,actionable:false};
+}
+
+// Prospective same-venue absorption hypothesis: repeated visible size at
+// fixed prices while opposite executions occur and the mid barely moves.
+// Aggregate L2 cannot determine order identity, hidden volume or cancellations.
+export type GoldDepthPreparation={source:string;asOf:number;side:'BUY'|'SELL';samples:number;
+ spanMs:number;level:number;deltaPct:number;priceChangeBps:number;actionable:false};
+export function observeGoldDepthPreparation(history:readonly DepthFrame[],flow:PaxgFlow|null,now:number):GoldDepthPreparation|null{
+ if(!flow||!['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual'].includes(flow.source||'')||
+   flow.side==='UNAVAILABLE'||!Number.isFinite(flow.observedAt)||flow.observedAt>now||now-flow.observedAt>10000||
+   !Number.isFinite(flow.tradeAt)||flow.tradeAt>flow.observedAt||now-flow.tradeAt>8000||
+   flow.count<12||!Number.isFinite(flow.tradeDeltaPct)||Math.abs(flow.tradeDeltaPct!)<40||Math.abs(flow.tradeDeltaPct!)>100)return null;
+ const frames=history.filter(f=>f.at<=now&&now-f.at<=20000).slice(-5);
+ if(frames.length<3)return null;
+ const first=frames[0],last=frames.at(-1)!;
+ const span=last.at-first.at;
+ if(now-last.at>5000||span<6000||span>18000||Math.abs(last.at-flow.tradeAt)>8000||
+   frames.some((f,i)=>i>0&&(f.at<=frames[i-1].at||f.at-frames[i-1].at>7000)))return null;
+ const buy=flow.tradeDeltaPct!<0,side=buy?'BID':'ASK',sign=buy?1:-1;
+ const change=10000*(last.mid/first.mid-1);
+ if(!Number.isFinite(change)||sign*change<-.6||Math.abs(change)>3)return null;
+ const initial=first.levels.filter(l=>l.side===side);
+ const sorted=initial.map(l=>l.qty).sort((a,b)=>a-b);
+ const median=sorted[Math.floor(sorted.length/2)];
+ const persistent=initial.filter(l=>{
+   if(l.qty<median*1.5||Math.abs(l.price/first.mid-1)>.0015)return false;
+   const quantities=frames.map(f=>f.levels.find(x=>x.side===side&&x.price===l.price)?.qty);
+   if(quantities.some(q=>q==null||!Number.isFinite(q)||q!<=0))return false;
+   const q=quantities as number[];
+   const replenished=q.some((v,i)=>i>=2&&v>=q[i-1]*1.2&&q[i-1]<=q[0]*.9);
+   return replenished&&q.at(-1)!>=q[0]*.9&&q.every(v=>v>=q[0]*.4);
+ }).sort((a,b)=>b.qty-a.qty);
+ if(!persistent.length)return null;
+ return {source:flow.source!,asOf:last.at,side:buy?'BUY':'SELL',samples:frames.length,
+   spanMs:span,level:persistent[0].price,deltaPct:flow.tradeDeltaPct!,priceChangeBps:change,actionable:false};
 }

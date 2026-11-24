@@ -1,5 +1,5 @@
 import {readBybitGoldPerp,readBinanceGoldPerp,type PaxgFlow} from '../../../lib/paxg-flow';
-import {newVenueHistory,updateVenueHistory,observeBook,compareGoldVenues,observeLeadLag,type LeadPoint,type FlowPrint,type VenueEvidence,recordDepthFrame,readDepthHeatmap,type DepthFrame} from '../../../lib/gold-flow-history';
+import {newVenueHistory,updateVenueHistory,observeBook,compareGoldVenues,observeLeadLag,type LeadPoint,type FlowPrint,type VenueEvidence,recordDepthFrame,readDepthHeatmap,observeGoldDepthPreparation,type DepthFrame} from '../../../lib/gold-flow-history';
 import {spotBackoffMs} from '../../../lib/binance-cooldown';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -74,6 +74,8 @@ async function sample():Promise<PaxgFlow>{
  return {...primary,venueSamples:fresh.map(x=>x.flow),crossFlow:{venues:fresh.map(x=>x.evidence),
    heatmaps:[readDepthHeatmap(depthHistory.bybit,'Bybit XAUUSDT perpetual',now),
      readDepthHeatmap(depthHistory.binance,'Binance XAUUSDT perpetual',now)].filter((v):v is NonNullable<typeof v>=>v!==null),
+   preparation:[observeGoldDepthPreparation(depthHistory.bybit,a?.flow??null,now),
+     observeGoldDepthPreparation(depthHistory.binance,b?.flow??null,now)].filter((v):v is NonNullable<typeof v>=>v!==null),
    consensus:compareGoldVenues(a?.flow??null,b?.flow??null,now),
    ...lead,actionable:false}};
 }
