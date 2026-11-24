@@ -591,7 +591,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      liveOpportunity.phase!=='OFFLINE',
    bars:m.candles,opportunity:liveOpportunity,lean:candleLean,localMl,btcCross,
    zones:liquidity.zones,proxy:asset==='GOLD'?
-     (goldPerp?.crossFlow?.consensus==='BUY'||goldPerp?.crossFlow?.consensus==='SELL'||goldPerp?.crossFlow?.consensus==='CONFLICT'?goldPerp:paxg):null,flow:flowProfile,shortTape:tapeWatch,liquidity:liquidityMagnets,watch:watchMap,marketContext,
+     (goldPerp&&goldPerp.side!=='UNAVAILABLE'&&goldPerp.tradeAt<=now&&now-goldPerp.tradeAt<=8000&&
+       (goldPerp.crossFlow?.consensus==='BUY'||goldPerp.crossFlow?.consensus==='SELL'||
+        goldPerp.crossFlow?.consensus==='CONFLICT'||(goldPerp.count>=12&&
+         Number.isFinite(goldPerp.tradeDeltaPct)&&Math.abs(goldPerp.tradeDeltaPct!)>=55))?goldPerp:paxg):null,flow:flowProfile,shortTape:tapeWatch,liquidity:liquidityMagnets,watch:watchMap,marketContext,
    m1Side:nextM1.ready?nextM1.side:'WAIT',
    m15Side:entryTrend
  }),[earlyState,asset,paxg,goldPerp,localMl,btcCross,liquidity.zones,x?.candleSource,now,price,liveQuote?.sourceTime,liveQuote?.source,observedM15,

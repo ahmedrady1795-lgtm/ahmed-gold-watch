@@ -777,3 +777,27 @@ for(const hint of [{...btcHint,consensus:'CONFLICT'},{...btcHint,observedAt:now-
 }
 assert.doesNotMatch(step({...base,opportunity:op,btcCross:btcHint})?.reason??'',/Coinbase\/Kraken/);
 console.log('PASS BTC cross-venue consensus ranks prospective candidates without inventing flow or entries');
+
+for(const buy of [true,false]){
+ const flip=x=>buy?x:200-x,side=buy?'BUY':'SELL',t=now+10000;
+ const shape=(b)=>({...b,open:flip(b.open),close:flip(b.close),low:flip(buy?b.low:b.high),high:flip(buy?b.high:b.low)});
+ const retestBars=bars.map((b,i)=>shape(i===15?{...b,open:100.1,high:101.1,low:100,close:100.92}:
+    i===16?{...b,open:100.92,high:101.02,low:100.51,close:100.62}:
+    i===17?{...b,open:100.62,high:100.94,low:100.55,close:100.78}:b));
+ const input={...base,bars:retestBars,now:t,price:flip(100.84),quoteAt:t,
+   previousQuote:{at:t-3000,price:flip(100.79)},m1Side:side,m15Side:side};
+ const watch=step(input);
+ assert.equal(watch?.side,side);
+ assert.match(watch?.reason??'',/ذهب: إعادة اختبار/);
+ assert.equal(watch.flowAligned,false);
+ assert.ok((buy?1:-1)*(watch.trigger-input.price)>0);
+ const opposed={side:'NEUTRAL',source:'Bybit XAUUSDT perpetual',observedAt:t-1000,tradeAt:t-2000,
+   count:20,tradeDeltaPct:buy?-80:80};
+ assert.doesNotMatch(step({...input,proxy:opposed})?.reason??'',/ذهب: إعادة اختبار/);
+ assert.match(step({...input,proxy:{...opposed,tradeDeltaPct:0}})?.reason??'',/ذهب: إعادة اختبار/);
+ for(const patch of [{previousQuote:null},{price:flip(101.15)},{m15Side:buy?'SELL':'BUY'},{scope:'BTC:Coinbase'}])
+   assert.doesNotMatch(step({...input,...patch})?.reason??'',/ذهب: إعادة اختبار/);
+ const supporting={...opposed,tradeDeltaPct:buy?80:-80};
+ assert.match(step({...input,proxy:supporting})?.reason??'',/ضغط تنفيذ الذهب البديل مؤيد/);
+}
+console.log('PASS GOLD early retest, neutral/missing flow, fresh single venue soft evidence, no chase');

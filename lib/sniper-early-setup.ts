@@ -415,6 +415,19 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
     Math.abs(proxy.depthImbalancePct!)<=100))&&proxy.count>=8&&
    proxy.tradeAt<=proxy.observedAt&&now-proxy.tradeAt<=8000);
  const isPerp=Boolean(proxy?.source?.includes('XAUUSDT perpetual'));
+ // One fresh perpetual tape is supporting evidence, not broker flow.
+ // Require an approved symbol, sufficiently sampled strong signed delta,
+ // and no current two-venue conflict. Neutral/missing tape is no vote.
+ const goldSingleTape=Boolean(input.scope.startsWith('GOLD:')&&proxy&&
+   ['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual'].includes(proxy.source||'')&&
+   proxy.side!=='UNAVAILABLE'&&cross?.consensus!=='CONFLICT'&&
+   Number.isSafeInteger(proxy.observedAt)&&Number.isSafeInteger(proxy.tradeAt)&&
+   proxy.tradeAt>0&&proxy.tradeAt<=proxy.observedAt&&proxy.observedAt<=now&&
+   now-proxy.observedAt<=10000&&now-proxy.tradeAt<=8000&&
+   Number.isInteger(proxy.count)&&proxy.count>=12&&Number.isFinite(proxy.tradeDeltaPct)&&
+   Math.abs(proxy.tradeDeltaPct!)>=55&&Math.abs(proxy.tradeDeltaPct!)<=100);
+ const goldTapeSide=crossSide!=='WAIT'?crossSide:goldSingleTape?
+   (proxy!.tradeDeltaPct!>0?'BUY':'SELL'):'WAIT';
  const proxySide=crossSide!=='WAIT'?crossSide:isPerp||cross?.consensus==='CONFLICT'?'WAIT':
    proxy?.side==='BUY'||proxy?.side==='SELL'?proxy.side:
    proxyTapeOnly?(proxy!.tradeDeltaPct!>0?'BUY':'SELL'):'WAIT';
@@ -468,6 +481,41 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
        reason:'انعكاس مبكر: رفض قمة/قاع سابق + ضغط تنفيذ مؤيد + تحديثان سعريان قبل التفعيل'+
          (crossSide!=='WAIT'?' (عقود بديلة، ليس دفتر XAU)':' (تدفق المصدر)')};
      candidates.push(assistedReversal);
+   }
+ }
+ // GOLD-specific short retest of a PREVIOUSLY broken local boundary.
+ // The breakout and retest are completed bars; the next trigger remains
+ // unbroken. Two increasing live quote timestamps establish the approach.
+ // This is a conditional early watch, even when the proxy is absent.
+ let goldRetest:Candidate|undefined;
+ if(input.scope.startsWith('GOLD:')&&input.m1Side!=null&&input.m1Side!=='WAIT'&&
+   input.m1Side===input.m15Side&&previous&&at!=null&&
+   Number.isFinite(previous.price)&&previous.price>0&&previous.at>=sourceAt&&
+   previous.at<at&&at<=now&&now-at<=6000&&at-previous.at<=10000&&now-sourceAt<60000){
+   const buy=input.m1Side==='BUY',sign=buy?1:-1;
+   const old=bars.slice(-14,-3),burst=bars.at(-3)!,test=bars.at(-2)!;
+   const edge=buy?Math.max(...old.map(b=>b.high)):Math.min(...old.map(b=>b.low));
+   const extreme=buy?Math.min(test.low,last.low):Math.max(test.high,last.high);
+   const localEdge=buy?Math.max(test.high,last.high):Math.min(test.low,last.low);
+   const level=localEdge+sign*atr*.035;
+   const stop=extreme-sign*atr*.08;
+   const room=sign*(level-price),risk=sign*(price-stop);
+   const advance=sign*(price-previous.price);
+   const opposed=goldTapeSide!=='WAIT'&&goldTapeSide!==input.m1Side;
+   if(!opposed&&cross?.consensus!=='CONFLICT'&&
+     sign*(burst.close-edge)>=atr*.12&&sign*(burst.close-burst.open)>=atr*.3&&
+     sign*(burst.close-edge)<=atr*1.1&&
+     sign*(extreme-edge)>=-atr*.14&&sign*(extreme-edge)<=atr*.28&&
+     sign*(test.close-edge)>=0&&sign*(last.close-edge)>=atr*.05&&
+     sign*(last.close-test.close)>=atr*.025&&
+     Math.abs(last.close-last.open)<=atr*.65&&
+     sign*(price-edge)>=0&&sign*(price-edge)<=atr*.75&&
+     sign*(previous.price-edge)>=0&&advance>=atr*.02&&advance<=atr*.25&&
+     room>=atr*.04&&room<=atr*.55&&risk>=atr*.12&&risk<=atr*1.1&&
+     Math.abs(price-last.close)<=atr*.3){
+     goldRetest={side:input.m1Side,setupKind:'PULLBACK',trigger:level,invalidation:stop,
+       reason:'ذهب: إعادة اختبار مستوى مكسور مع توافق M1/M15 واقتراب سعري حي قبل التفعيل'};
+     candidates.push(goldRetest);
    }
  }
  const onset=firstReclaim(bars,price,atr);
@@ -746,7 +794,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  // suppress a nearby valid one. Zone observations are available but do not
  // outrank genuine pre-break preparations.
  const viable=candidates.filter(c=>{
-   if(observingSameBar&&c!==liveReclaim&&c!==proxyPressure&&c!==assistedReversal)return false;
+   if(observingSameBar&&c!==liveReclaim&&c!==proxyPressure&&c!==assistedReversal&&c!==goldRetest)return false;
    const remaining=c.side==='BUY'?c.trigger-price:price-c.trigger;
    const risk=c.side==='BUY'?price-c.invalidation:c.invalidation-price;
    const buy=c.side==='BUY';
@@ -817,13 +865,17 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      ml.m1.status==='HISTORICAL_EDGE'&&ml.m1.validationCount>=60&&ml.m1.validationHits>=ml.m1.baselineHits+4&&
      ml.m1.side!=='WAIT'?ml.m1.side===c.side?.3:-.3:0;
    return structural+m1+m15+flowVote+sweepVote+bodyVote+nearVote+roomVote+vote+
-     (c===assistedReversal?.45:0)+(btcConsensus==='WAIT'?0:btcConsensus===c.side?.45:-.45);
+     (c===assistedReversal?.45:0)+(btcConsensus==='WAIT'?0:btcConsensus===c.side?.45:-.45)+
+     (c===goldRetest?.65:0)+(input.scope.startsWith('GOLD:')&&goldTapeSide!=='WAIT'?
+       (goldTapeSide===c.side?.45:-.45):0);
  };
  const ranked=viable.map((c,index)=>({c,index,rank:evidenceRank(c)}))
    .sort((a,b)=>b.rank-a.rank||a.index-b.index);
  const chosen=ranked[0]?.c;
  if(!chosen)return prior;
  ({side,setupKind,trigger,invalidation,reason}=chosen);
+ if(input.scope.startsWith('GOLD:')&&goldTapeSide!=='WAIT')
+   reason+=' · ضغط تنفيذ الذهب البديل '+(goldTapeSide===side?'مؤيد':'معارض')+' (ترجيح فقط)';
  if(btcConsensus!=='WAIT')reason+=' · تنفيذ Coinbase/Kraken '+(btcConsensus===side?'مؤيد':'معارض')+' (ترجيح فقط)';
  if(input.localMl?.asOf===sourceAt&&input.localMl.tradeAuthorized===false&&
     input.localMl.m1.status==='HISTORICAL_EDGE'&&input.localMl.m1.validationCount>=60&&
