@@ -80,4 +80,14 @@ assert.match(panel,/const providerTransition=historicalOnly\|\|/);
 assert.match(panel,/historicalOnly\?null:asset==='GOLD'\?goldLive:btcLive/);
 assert.match(panel,/trueHistory.length>0&&<g className="sniper-price-axis"/,
  'the false $1 axis must be absent when NO VERIFIED OHLC exists');
+const hub=fs.readFileSync('lib/market-hub.ts','utf8');
+const chartRoute=fs.readFileSync('app/api/chart-history/route.ts','utf8');
+assert.match(hub,/if\(!options.force&&marketInFlight\)return marketInFlight/,
+ 'the same slow 4-frame market request must be shared between chart and AI viewers');
+assert.match(hub,/finally\{if\(marketInFlight===task\)marketInFlight=null;\}/,
+ 'failed source fetch must free the next retry slot');
+assert.match(chartRoute,/CHART_FEED_TIMEOUT'\)\),14000\)/,
+ 'a valid 9-12s candle request must not be killed by an 8s budget');
+assert.match(page,/source=\{gold:r.ok&&j\?\.ok\?j.gold:null/,
+ 'a BTC-only HTTP 200 must never evict last-known real GOLD OHLC');
 console.log('PASS: closed XAU/BTC M5 cache after 503, no synthetic price axis, no historical trades, recovery and provider source guards');
