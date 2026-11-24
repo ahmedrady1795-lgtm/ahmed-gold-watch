@@ -11,6 +11,7 @@ import EarlyMoveAlert from './EarlyMoveAlert';
 import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {detectLiquidityMagnets} from '../lib/sniper-liquidity-magnets';
 import {fuseLocalSniper} from '../lib/sniper-local-fusion';
+import {localCandleMl} from '../lib/local-candle-ml';
 import {assessFlowProfile} from '../lib/flow-profile-decision';
 import {observeSniperOrderFlow} from '../lib/sniper-order-flow-observation';
 import SniperOrderFlowStrip from './SniperOrderFlowStrip';
@@ -572,6 +573,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [earlyState,setEarlyState]=useState<EarlySetup|null>(null);
  const paxg=usePaxgFlow(asset==='GOLD'&&marketOpen);
  const goldPerp=usePaxgFlow(asset==='GOLD'&&marketOpen,'/api/gold-perp-flow');
+ const localMl=useMemo(()=>localCandleMl(asset+':'+String(x?.candleSource||''),m.candles,now,
+   marketOpen&&m.historyFresh&&m.sniper.view.priceFresh&&!providerTransition&&Boolean(x?.candleSource)),
+   [asset,x?.candleSource,m.candles,now,marketOpen,m.historyFresh,m.sniper.view.priceFresh,providerTransition]);
  const trackedSetup=useMemo(()=>advanceEarlySetup({
    prior:earlyState,scope:asset+':'+String(x?.candleSource||''),now,price,
    previousQuote:observedM15?.feedKey===[asset,x?.candleSource,liveQuote?.source].join(':')&&
@@ -1936,6 +1940,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      </div>}
      <details className="sniper-chart-command-details">
        <summary>المستويات والسبب</summary>
+       <small title="نموذج محلي من الشموع المغلقة؛ اختبار تاريخي منفصل زمنيًا وليس دقة تداول حي، ولا يصرح بالدخول">
+         {'ML محلي تجريبي · '+(['m1','m5'] as const).map(h=>{
+           const v=localMl[h];
+           return h.toUpperCase()+' '+(v.side==='WAIT'?'—':v.side)+' '+(v.validationCount?v.validationHits+'/'+v.validationCount:'عينة غير كافية');
+         }).join(' · ')}
+       </small>
        <div className="sniper-chart-command-levels">
          <span>تفعيل <b dir="ltr">{n(commandTrigger)}</b></span>
          <span>إبطال <b dir="ltr">{n(commandInvalidation)}</b></span>

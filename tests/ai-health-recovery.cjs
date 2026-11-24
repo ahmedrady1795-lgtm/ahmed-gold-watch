@@ -52,3 +52,5 @@ function load(name){
   'an unhealthy health response must not promote readiness');
  console.log('PASS: AI warm recovery shares actual health without making ML/Neural HTTP 200 a trade qualification');
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+require('./local-candle-ml.cjs');
