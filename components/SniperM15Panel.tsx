@@ -13,6 +13,7 @@ import {detectLiquidityMagnets} from '../lib/sniper-liquidity-magnets';
 import {fuseLocalSniper} from '../lib/sniper-local-fusion';
 import {localCandleMl} from '../lib/local-candle-ml';
 import {goldLiquidityMeter,combineGoldLiquidity} from '../lib/gold-liquidity-meter';
+import {GoldDepthHeatmap} from './GoldDepthHeatmap';
 import {useBtcCrossFlow} from './useBtcCrossFlow';
 import {reviewEarlyFailures} from '../lib/sniper-movement-proof';
 import {assessFlowProfile} from '../lib/flow-profile-decision';
@@ -2004,6 +2005,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <small className="sniper-chart-source-note">
        شموع M5 فعلية · {String(x?.candleSource||'المصدر غير متاح')}
      </small>
+     {asset==='GOLD'&&<GoldDepthHeatmap maps={goldPerp?.crossFlow?.heatmaps??[]} now={now} open={marketOpen}/>}
      <details className="sniper-hunt-advanced">
      <summary>المستويات والتشخيص <span aria-hidden="true">＋</span></summary>
      <SniperOrderFlowStrip data={flowObservation}/>

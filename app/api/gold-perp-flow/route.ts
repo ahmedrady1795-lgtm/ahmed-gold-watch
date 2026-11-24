@@ -1,5 +1,5 @@
 import {readBybitGoldPerp,readBinanceGoldPerp,type PaxgFlow} from '../../../lib/paxg-flow';
-import {newVenueHistory,updateVenueHistory,observeBook,compareGoldVenues,observeLeadLag,type LeadPoint,type FlowPrint,type VenueEvidence} from '../../../lib/gold-flow-history';
+import {newVenueHistory,updateVenueHistory,observeBook,compareGoldVenues,observeLeadLag,type LeadPoint,type FlowPrint,type VenueEvidence,recordDepthFrame,readDepthHeatmap,type DepthFrame} from '../../../lib/gold-flow-history';
 import {spotBackoffMs} from '../../../lib/binance-cooldown';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -25,6 +25,7 @@ async function json(venue:Venue,url:string){
 const get=(r:PromiseSettledResult<any>)=>r.status==='fulfilled'?r.value:null;
 const histories={bybit:newVenueHistory(),binance:newVenueHistory()};
 const points:LeadPoint[]=[];
+const depthHistory:{bybit:DepthFrame[];binance:DepthFrame[]}={bybit:[],binance:[]};
 async function venueSample(venue:Venue):Promise<{flow:PaxgFlow;evidence:VenueEvidence}|null>{
  if(Date.now()<retryAt[venue])return null;
  const by=venue==='bybit',base=by?'https://api.bybit.com/v5/market/':'https://fapi.binance.com/fapi/v1/';
@@ -33,9 +34,13 @@ async function venueSample(venue:Venue):Promise<{flow:PaxgFlow;evidence:VenueEvi
    json(venue,base+(by?'recent-trade?category=linear&symbol=XAUUSDT&limit=200':'aggTrades?symbol=XAUUSDT&limit=200'))
  ]);
  const book=get(b),trades=get(t),now=Date.now();
+ const d=by&&book?.retCode===0&&book.result?.s==='XAUUSDT'?book.result:null;
+ const rawDepth=by?{bids:d?.b,asks:d?.a}:book;
+ const bookAt=Number(by?d?.cts??d?.ts:book?.T??book?.E);
+ recordDepthFrame(depthHistory[venue],rawDepth,bookAt,now);
  const flow=by?readBybitGoldPerp(book,trades,now):readBinanceGoldPerp(book,trades,now);
  if(flow.side==='UNAVAILABLE'){
-   retryAt[venue]=Math.max(retryAt[venue],now+15000);return null;
+   if(!observeBook(rawDepth,bookAt,now))retryAt[venue]=Math.max(retryAt[venue],now+15000);return null;
  }
  const rows=by?(trades?.retCode===0&&trades?.result?.category==='linear'?trades.result.list:[]):trades;
  const prints:FlowPrint[]=[];
@@ -48,9 +53,7 @@ async function venueSample(venue:Venue):Promise<{flow:PaxgFlow;evidence:VenueEvi
    prints.push({id:by?q.execId:String(q.a),at:Number(by?q.time:q.T),
      qty:Number(by?q.size:q.q),buy:by?q.side==='Buy':!q.m});
  }
- const d=by&&book?.retCode===0&&book.result?.s==='XAUUSDT'?book.result:null;
- const depth=by?observeBook({bids:d?.b,asks:d?.a},Number(d?.cts??d?.ts),now):
-   observeBook(book,Number(book?.T??book?.E),now);
+ const depth=observeBook(rawDepth,bookAt,now);
  const evidence=updateVenueHistory(histories[venue],flow.source!,now,prints,depth);
  return {flow,evidence};
 }
@@ -69,6 +72,8 @@ async function sample():Promise<PaxgFlow>{
  const lead=observeLeadLag(points,now);
  const primary=fresh[0]?.flow??{side:'UNAVAILABLE' as const,observedAt:now,tradeAt:0,count:0,source:'Gold perpetual unavailable'};
  return {...primary,venueSamples:fresh.map(x=>x.flow),crossFlow:{venues:fresh.map(x=>x.evidence),
+   heatmaps:[readDepthHeatmap(depthHistory.bybit,'Bybit XAUUSDT perpetual',now),
+     readDepthHeatmap(depthHistory.binance,'Binance XAUUSDT perpetual',now)].filter((v):v is NonNullable<typeof v>=>v!==null),
    consensus:compareGoldVenues(a?.flow??null,b?.flow??null,now),
    ...lead,actionable:false}};
 }

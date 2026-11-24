@@ -13,7 +13,7 @@ export type VenueEvidence={source:string;asOf:number;count:number;spanSeconds:nu
 export type LeadPoint={at:number;a:number;b:number};
 export type GoldCrossFlow={
  venues:VenueEvidence[];consensus:'BUY'|'SELL'|'CONFLICT'|'INSUFFICIENT';
- leader:'Bybit'|'Binance'|null;leadPairs:number;actionable:false;
+ leader:'Bybit'|'Binance'|null;leadPairs:number;actionable:false;heatmaps?:GoldDepthHeatmap[];
 };
 export const newVenueHistory=():VenueHistory=>({prints:new Map(),book:null});
 export function updateVenueHistory(state:VenueHistory,source:string,now:number,
@@ -100,4 +100,51 @@ export function observeLeadLag(points:readonly LeadPoint[],now:number){
    else if(reverse>=.65&&reverse>sync+.15&&reverse>forward+.2)leader='Binance';
  }
  return {leader,leadPairs:a.length};
+}
+
+/** Actual sampled depth at native perpetual prices, not XAUUSD broker levels.
+ * Missing intervals are blank. Quantity changes cannot identify cancellation
+ * versus fills; public aggregate L2 cannot prove iceberg orders. */
+export type DepthLevel={price:number;qty:number;side:'BID'|'ASK'};
+export type DepthFrame={at:number;mid:number;levels:DepthLevel[]};
+export type GoldDepthHeatmap={source:string;asOf:number;frames:DepthFrame[];
+ bidWall:number;askWall:number;bidReduced:number;askReduced:number;
+ bidAdded:number;askAdded:number;changeKnown:boolean;actionable:false};
+export function recordDepthFrame(history:DepthFrame[],raw:any,at:number,now:number):boolean{
+ const book=observeBook(raw,at,now);
+ if(!book||history.length&&at<=history.at(-1)!.at)return false;
+ const levels:DepthLevel[]=[];
+ for(const [rows,side] of [[raw.bids,'BID'],[raw.asks,'ASK']] as const){
+   for(const r of rows.slice(0,20))levels.push({price:Number(r[0]),qty:Number(r[1]),side});
+ }
+ history.push({at,mid:(book.bid+book.ask)/2,levels});
+ while(history.length>42||history.length&&now-history[0].at>120000)history.shift();
+ return true;
+}
+export function readDepthHeatmap(history:readonly DepthFrame[],source:string,now:number):GoldDepthHeatmap|null{
+ if(!['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual'].includes(source))return null;
+ const frames=history.filter(f=>f.at<=now&&now-f.at<=120000).slice(-42);
+ const last=frames.at(-1);
+ if(!last||now-last.at>8000)return null;
+ const strongest=(side:DepthLevel['side'])=>last.levels.filter(r=>r.side===side)
+   .reduce((a,b)=>a.qty>=b.qty?a:b).price;
+ const prev=frames.at(-2);
+ let bidReduced=0,askReduced=0,bidAdded=0,askAdded=0;
+ const changeKnown=Boolean(prev&&last.at>prev.at&&last.at-prev.at<=10000);
+ if(changeKnown&&prev){
+   for(const side of ['BID','ASK'] as const){
+     const old=prev.levels.filter(l=>l.side===side),cur=last.levels.filter(l=>l.side===side);
+     const lo=Math.max(Math.min(...old.map(l=>l.price)),Math.min(...cur.map(l=>l.price)));
+     const hi=Math.min(Math.max(...old.map(l=>l.price)),Math.max(...cur.map(l=>l.price)));
+     const levels=new Set([...old,...cur].map(l=>l.price).filter(p=>p>=lo&&p<=hi));
+     let reduced=0,added=0;
+     for(const p of levels){
+       const diff=(cur.find(l=>l.price===p)?.qty??0)-(old.find(l=>l.price===p)?.qty??0);
+       if(diff<0)reduced-=diff;else added+=diff;
+     }
+     if(side==='BID'){bidReduced=reduced;bidAdded=added;}else{askReduced=reduced;askAdded=added;}
+   }
+ }
+ return {source,asOf:last.at,frames,bidWall:strongest('BID'),askWall:strongest('ASK'),
+  bidReduced,askReduced,bidAdded,askAdded,changeKnown,actionable:false};
 }
