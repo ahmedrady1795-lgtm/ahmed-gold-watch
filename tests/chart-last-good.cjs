@@ -7,7 +7,7 @@ vm.runInNewContext(ts.transpileModule(
  }).outputText,{exports:ex});
 const {CHART_LAST_GOOD_KEY,prepareChartHistorySave,
  restoreChartHistory,historicalChartAsset,retainChartDuringOutage}=ex;
-const now=Date.parse('2026-11-24T06:30:00.000Z');
+const now=Date.parse('2026-11-24T06:00:00.000Z');
 const mk=(minutes,count,price)=>Array.from({length:count},(_,i)=>{
  const time=now-minutes*60000*(count-i);
  return {time,open:price,high:price+2,low:price-2,
