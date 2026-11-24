@@ -1936,11 +1936,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            </div>
          </div>;
        })}
-       <span className="gold-meter-source">{combinedGold.state==='CONFLICT'?'تعارض المصادر':combinedGold.state==='UNAVAILABLE'?'غير متاح':combinedGold.state==='BUY'?'ضغط شراء':combinedGold.state==='SELL'?'ضغط بيع':'متوازن'}{combinedGold.ageSeconds!=null?' · '+combinedGold.ageSeconds+'ث':''}</span>
+       <span className="gold-meter-source">{combinedGold.state==='CONFLICT'?'تعارض المصادر':combinedGold.state==='UNAVAILABLE'?'غير متاح':combinedGold.coverage==='PARTIAL'?'مصدر واحد · عينة محدودة':combinedGold.state==='BUY'?'ضغط شراء':combinedGold.state==='SELL'?'ضغط بيع':'متوازن'}{combinedGold.ageSeconds!=null?' · '+combinedGold.ageSeconds+'ث':''}</span>
+       {combinedGold.fastBuyPct!=null&&<span className="gold-meter-source" title="العينة القصيرة من المصادر الحالية؛ ليست توقعًا">لحظي {combinedGold.fastBuyPct}% ↑ / {100-combinedGold.fastBuyPct}% ↓</span>}
+       {combinedGold.stableSources!=null&&combinedGold.stableSources>0&&<span className="gold-meter-source">ترجيح 60ث</span>}
        {goldMeter.dynamic&&<span className="gold-meter-source" title={goldMeter.detail}>{goldMeter.dynamic}</span>}
      </div>
    </aside>}
-   <aside className={'sniper-chart-command is-'+commandState.toLowerCase()}
+   </div>
+   <aside className={'sniper-chart-command sniper-command-below is-'+commandState.toLowerCase()}
      data-qannas-chart-signal={commandState}
      data-qannas-chart-side={commandSide}
      aria-label={'حالة القناص: '+commandHeadline}>
@@ -2001,7 +2004,6 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <EarlyMoveAlert key={asset} asset={asset} now={now}
        marketOpen={marketOpen} onSignal={onChartLead} compact/>
    </aside>
-   </div>
      <small className="sniper-chart-source-note">
        شموع M5 فعلية · {String(x?.candleSource||'المصدر غير متاح')}
      </small>

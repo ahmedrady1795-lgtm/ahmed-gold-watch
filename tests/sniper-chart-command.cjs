@@ -56,3 +56,5 @@ assert.ok(liveEntry.includes('return <SniperM15Panel {...props}/>;'),
 assert.doesNotMatch(homeUi,/import ForecastIllustration from/,
  'unmounted 1600-line legacy chart cannot enter first-load JS bundle');
 console.log('PASS chart-only prospective BUY/SELL rail, hidden details, safe fast parallel startup');
+
+assert.match(panel,/<\/div>\s*<aside className=\{'sniper-chart-command sniper-command-below/,'decision rail is outside the candle plot');

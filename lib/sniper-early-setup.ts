@@ -895,9 +895,9 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      ml.m1.side!=='WAIT'?ml.m1.side===c.side?.3:-.3:0;
    return structural+m1+m15+flowVote+sweepVote+bodyVote+nearVote+roomVote+vote+
      (c===assistedReversal?.45:0)+(btcConsensus==='WAIT'?0:btcConsensus===c.side?.45:-.45)+
-     (c===goldRetest?.65:0)+(input.scope.startsWith('GOLD:')&&goldTapeSide!=='WAIT'?
+     (c===goldRetest?.65:0)+(combinedSide==='WAIT'&&input.scope.startsWith('GOLD:')&&goldTapeSide!=='WAIT'?
        (goldTapeSide===c.side?.45:-.45):0)+
-     (acceleration==='WAIT'||absorption!=='WAIT'?0:acceleration===c.side?.3:-.3)+
+     (combinedSide!=='WAIT'||acceleration==='WAIT'||absorption!=='WAIT'?0:acceleration===c.side?.3:-.3)+
      (c===assistedReversal&&absorption===c.side?.8:0)+(combinedSide==='WAIT'?0:combinedSide===c.side?.45:-.45);
  };
  const ranked=viable.map((c,index)=>({c,index,rank:evidenceRank(c)}))

@@ -178,3 +178,16 @@ assert.equal(h.readDepthHeatmap(frames,'Bybit XAUUSDT perpetual',now+9000),null)
 assert.equal(h.readDepthHeatmap(frames,'unknown',now),null);
 assert.match(panel,/GoldDepthHeatmap maps=/);
 console.log('PASS actual sampled gold depth heatmap, walls and observed quantity change, no fabricated cancellation');
+
+const steadied=combined({...meterFlow,tradeDeltaPct:86,crossFlow:{venues:[
+ {source:'Bybit XAUUSDT perpetual',asOf:meterFlow.tradeAt,count:80,spanSeconds:50,buy60s:22,sell60s:78}
+]}},null,meterNow,true);
+assert.equal(steadied.fastBuyPct,93);
+assert.equal(steadied.buyPct,36);
+assert.equal(steadied.coverage,'PARTIAL');
+assert.equal(steadied.stableSources,1);
+assert.equal(steadied.strongSide,'WAIT');
+assert.equal(combined({...meterFlow,tradeDeltaPct:86,crossFlow:{venues:[
+ {source:'Bybit XAUUSDT perpetual',asOf:meterFlow.tradeAt,count:4,spanSeconds:5,buy60s:22,sell60s:78}
+]}},null,meterNow,true).buyPct,93,'never invent stability from thin sample');
+console.log('PASS live raw pressure separate from 60-second stabilised ratio and partial source warning');
