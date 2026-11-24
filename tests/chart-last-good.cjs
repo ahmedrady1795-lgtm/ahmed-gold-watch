@@ -86,6 +86,9 @@ assert.match(panel,/historicalOnly\?null:asset==='GOLD'\?goldLive:btcLive/);
 assert.match(panel,/trueHistory.length>0&&<g className="sniper-price-axis"/,
  'the false $1 axis must be absent when NO VERIFIED OHLC exists');
 const hub=fs.readFileSync('lib/market-hub.ts','utf8');
+assert.match(hub,/export async function getGoldChartMarket\(/);
+assert.match(hub,/if\(goldPriceInFlight\)return goldPriceInFlight/);
+assert.match(hub,/const price=await getGoldChartMarket\(\)/);
 const chartRoute=fs.readFileSync('app/api/chart-history/route.ts','utf8');
 assert.match(chartRoute,/let lastGoodGold:any=null,lastGoodBitcoin:any=null/);
 assert.match(chartRoute,/goldLive\?g:historicalChartAsset\('gold',lastGoodGold,checkedAt\)/);
