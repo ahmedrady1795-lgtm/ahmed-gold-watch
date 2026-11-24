@@ -79,7 +79,7 @@ export default function SniperOpportunityMarkers(p:Props){
  const confirmed=s.phase==='BREAK_CONFIRMED';
  const markerPrice=confirmed?p.confirmedPrice:s.trigger;
  const markerX=confirmed&&s.sourceAt!=null?p.timeX(s.sourceAt):p.split;
- const active=!p.conflict&&['PREPARE','TESTING','BREAK_CONFIRMED'].includes(s.phase)&&
+ const active=['PREPARE','TESTING','BREAK_CONFIRMED'].includes(s.phase)&&!p.conflict&&
    (s.side==='BUY'||s.side==='SELL')&&markerPrice!=null&&visible(markerPrice);
  // A conditional pre-break trading PLAN needs a frozen stop and a real
  // previously observed target with at least 1:1 room. It is NOT an executed
