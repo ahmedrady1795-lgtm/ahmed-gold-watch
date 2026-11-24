@@ -88,6 +88,7 @@ jobs:
       - run: node tests/sniper-decision-engine.cjs
       - run: node tests/scalp-quick-exit.cjs
       - run: node tests/scalp.cjs
+      - run: node tests/news-adp-pulse.cjs
       - run: node tests/news-alert-window.cjs
       - run: node tests/news-intelligence.cjs
       - run: node tests/scalp-presentation.cjs

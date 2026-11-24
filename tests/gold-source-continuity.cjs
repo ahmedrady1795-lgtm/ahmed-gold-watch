@@ -53,6 +53,7 @@ const hub=load('lib/market-hub.ts',id=>{
  if(id==='./gold-market-session')return session;
  // Quote fail-over test never invokes calendar or M15 reconstruction.
  if(id==='./news-verified-bls')return {appendVerifiedBlsReleases:x=>x};
+ if(id==='./news-adp-pulse')return load('lib/news-adp-pulse.ts',undefined,{URL,Intl});
  if(id==='./gold-m15-reconstruction')return {repairGoldM15FromM5:()=>[]};
  if(id==='./gold-mt5-dom')return {
    normalizeMt5GoldDom:()=>({sample:null,reason:'UNAVAILABLE'}),
