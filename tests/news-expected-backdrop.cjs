@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),ts=require('typescript'),vm=require('node:vm');
+const exports_={};vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/news-impact-outlook.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:exports_});
+const f=exports_.expectedMacroBackdrop;
+assert.equal(f({name:'ADP Weekly Employment Change',forecast:'',previous:'23.8K'}).side,'WAIT');
+assert.equal(f({name:'CPI',forecast:'0.2%',previous:'0.3%'}).side,'UP');
+assert.equal(f({name:'Unemployment Rate',forecast:'4.4%',previous:'4.3%'}).side,'UP');
+assert.equal(f({name:'Payrolls',forecast:'100K',previous:'50K'}).side,'DOWN');
+assert.equal(f({name:'CPI',forecast:'0.2%',previous:'0.2%'}).side,'WAIT');
+assert.equal(f({name:'CPI',forecast:'0.2%',previous:'200K'}).side,'WAIT');
+console.log('PASS: forecast backdrop never invents absent consensus');

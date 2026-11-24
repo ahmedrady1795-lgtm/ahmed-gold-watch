@@ -373,6 +373,7 @@ export default function Home(){
       <section id="market-news" className="sniper-home-news" aria-label="أخبار السوق">
         <NewsCommandCenter now={now}
            goldCandles={chartData?.gold?.chartCandles??aiData?.gold?.chartCandles??[]}
+           goldM5={chartData?.gold?.chartHigherFrames?.m5??aiData?.gold?.chartHigherFrames?.m5??[]}
            goldSource={String(chartData?.gold?.candleSource??aiData?.gold?.candleSource??'')}
            goldProviderTransition={Boolean(chartData?.gold?.providerTransition)}/>
       </section>

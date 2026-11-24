@@ -1,6 +1,6 @@
 // Pure timeline selection for economic events. All timestamps are epoch milliseconds.
 // No synthetic events are manufactured when the feed is empty or stale.
-export const NEWS_EARLY_MS=8*60*60*1000;
+export const NEWS_EARLY_MS=24*60*60*1000;
 type EconomicEvent={name:string;time:number|string;id?:unknown;actual?:unknown;[key:string]:unknown};
 export function economicNewsTimeline(
   events:EconomicEvent[]|unknown,featured:EconomicEvent|null,now:number
@@ -15,7 +15,7 @@ export function economicNewsTimeline(
     seen.add(key);return true;
   }).sort((a,b)=>Number(a.time)-Number(b.time));
   const upcoming=unique.filter(e=>Number(e.time)>=now&&Number(e.time)<=now+30*86400000);
-  // Show every confirmed release in the eight-hour window; never drop a
+  // Show every confirmed release in the 24-hour window; never drop a
   // high-impact event merely because earlier lower-impact ones filled a cap.
   const alerts=upcoming.filter(e=>Number(e.time)-now<=NEWS_EARLY_MS);
   // Retain today's real scheduled releases even if Actual is not published yet.
