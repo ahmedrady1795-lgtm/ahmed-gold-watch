@@ -70,3 +70,10 @@ assert.match(panel,/chartSide:liquidityReadout.aheadSide/);
 assert.match(panel,/data-gold-proxy-status=\{goldProxyReadout.status\}/);
 assert.match(css,/\.sniper-chart-gold-proxy/);
 console.log('PASS: XAU alternative PAXG book and actual executed tape labeled by Binance/Kraken, stale/conflict safeguards and non-actionable chart display');
+
+const absorbed=readPaxgFlow(null,Array.from({length:12},(_,i)=>({a:i,q:'1',T:now-11000+i*1000,m:true,p:100+i*.01})),now);
+const absorption=read({...base,flow:absorbed});
+assert.match(absorption.label,/امتصاص بيع محتمل/);
+assert.equal(absorption.side,'WAIT');
+assert.equal(absorption.actionable,false);
+assert.match(panel,/data-btc-tape-watch/);

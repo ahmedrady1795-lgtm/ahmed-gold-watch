@@ -58,3 +58,16 @@ const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(panel,/visiblePreOpen\.proxySource/,
   'the real exchange name must be shown instead of hardcoded Binance');
 console.log('PASS Kraken independent PAXG depth and executed trade fallback; no synthetic XAU DOM');
+
+// Executed volume and price response must be measured on the same prints.
+for(const buy of [true,false]){
+ const rows=Array.from({length:12},(_,i)=>({a:i,q:'1',T:now-11000+i*1000,m:!buy,p:100+(buy?-1:1)*i*.01}));
+ const result=readPaxgFlow(null,rows,now);
+ assert.equal(result.absorptionWatch,buy?'SELL':'BUY');
+ assert.equal(result.side,'NEUTRAL');
+ assert.equal(readPaxgFlow(null,rows.map(t=>({...t,p:undefined})),now).absorptionWatch,undefined);
+ assert.equal(readPaxgFlow(null,rows,now+9000).absorptionWatch,undefined);
+}
+const accelerating=Array.from({length:18},(_,i)=>({a:i,q:'1',T:now-17000+i*1000,m:i<8,p:100+i*.001}));
+assert.equal(readPaxgFlow(null,accelerating,now).accelerationSide,'BUY');
+console.log('PASS PAXG price response, absorption and separate short-window acceleration without a depth vote');

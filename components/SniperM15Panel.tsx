@@ -1262,6 +1262,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const goldProxyReadout=asset==='GOLD'?observeGoldProxyFlow({
    now,marketOpen,flow:paxg,chartSide:liquidityReadout.aheadSide
  }):null;
+ // The existing BTC pre-break detector already tests a recent same-venue
+ // execution sample against local price structure. Show its evidence without
+ // adding a trade signal or interpreting unavailable flow as balanced.
+ const btcLiquidityLabel=asset==='BTC'&&tapeWatch?
+   tapeWatch.kind==='ABSORPTION'?
+     (tapeWatch.side==='BUY'?'امتصاص بيع محتمل ↑':'امتصاص شراء محتمل ↓'):
+     (tapeWatch.side==='BUY'?'ضغط تنفيذ شراء ↑':'ضغط تنفيذ بيع ↓'):null;
  const commandHeadline=commandConfirmed?
    commandSide==='BUY'?'BUY · شراء':'SELL · بيع':
    commandLocalGold?commandSide==='BUY'?'WATCH BUY · سعري':'WATCH SELL · سعري':
@@ -1904,6 +1911,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          title={goldProxyReadout.detail}>
          {goldProxyReadout.label}
        </small>}
+       {btcLiquidityLabel&&<small className="sniper-chart-gold-proxy"
+         title="عينة تنفيذ BTC من نفس منصة السعر؛ رصد محتمل وليس أمر دخول"
+         data-btc-tape-watch={tapeWatch?.kind}>{btcLiquidityLabel}</small>}
      </div>
      {commandTrigger!=null&&<div className="sniper-chart-command-trigger">
        <span>تفعيل</span><b dir="ltr">{n(commandTrigger)}</b>

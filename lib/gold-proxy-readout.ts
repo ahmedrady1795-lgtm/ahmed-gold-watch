@@ -44,15 +44,26 @@ export function observeGoldProxyFlow(a:{
    typeof f.sellVolume==='number'&&Number.isFinite(f.sellVolume)&&f.sellVolume>=0?
    ' · شراء هجومي '+f.buyVolume.toFixed(3)+' / بيع هجومي '+f.sellVolume.toFixed(3)+' PAXG (عينة حتى 30ث)':'';
  const depthText=f.depthAvailable===false?'غير متاح':f.depthImbalancePct!.toFixed(1)+'%';
+ const freshDynamics=a.now-f.tradeAt<=8000&&f.count>=8&&
+   typeof f.priceChangeBps==='number'&&Number.isFinite(f.priceChangeBps);
+ const absorption=freshDynamics&&f.absorptionWatch==='BUY'&&tape<=-45&&f.priceChangeBps!>=1?
+   'امتصاص بيع محتمل ↑':freshDynamics&&f.absorptionWatch==='SELL'&&tape>=45&&f.priceChangeBps!<=-1?
+   'امتصاص شراء محتمل ↓':null;
+ const acceleration=freshDynamics&&f.accelerationSide==='BUY'&&
+   Number.isFinite(f.shortDeltaPct)&&Number.isFinite(f.priorDeltaPct)&&f.shortDeltaPct!>=45&&
+   f.shortDeltaPct!-f.priorDeltaPct!>=25?'تسارع شراء ↑':
+   freshDynamics&&f.accelerationSide==='SELL'&&Number.isFinite(f.shortDeltaPct)&&
+   Number.isFinite(f.priorDeltaPct)&&f.shortDeltaPct!<=-45&&
+   f.priorDeltaPct!-f.shortDeltaPct!>=25?'تسارع بيع ↓':null;
  const match=side!=='WAIT'&&a.chartSide!=='WAIT'&&side===a.chartSide;
  const conflict=side!=='WAIT'&&a.chartSide!=='WAIT'&&side!==a.chartSide;
  return {
   status:match?'ALIGNED':conflict?'DIVERGENT':'OBSERVED',
   side,source,actionable:false,
   label:'PAXG '+venue+' · '+(
-   side==='BUY'?'ضغط شراء بديل ↑':side==='SELL'?'ضغط بيع بديل ↓':splitLabel),
+   absorption||acceleration||(side==='BUY'?'ضغط شراء بديل ↑':side==='SELL'?'ضغط بيع بديل ↓':splitLabel)),
   detail:'PAXG فقط · عمق '+depthText+' · دلتا تنفيذ '+
-   f.tradeDeltaPct!.toFixed(1)+'%'+volume+' · '+(
+   f.tradeDeltaPct!.toFixed(1)+'%'+volume+(absorption?' · '+absorption+' في PAXG فقط':acceleration?' · '+acceleration+' في PAXG فقط':'')+' · '+(
     match?'يتفق مع رصد XAU السعري (ليس تأكيدًا)':
     conflict?'يتعارض مع رصد XAU السعري':
     'لا توجد مقارنة اتجاه مؤهلة'
