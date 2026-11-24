@@ -2,7 +2,7 @@
 import {useEffect,useState} from 'react';
 import type {PaxgFlow,PaxgSide} from '../lib/paxg-flow';
 
-export function usePaxgFlow(enabled:boolean){
+export function usePaxgFlow(enabled:boolean,endpoint:'/api/paxg-flow'|'/api/gold-perp-flow'='/api/paxg-flow'){
  const [flow,setFlow]=useState<PaxgFlow|null>(null);
  useEffect(()=>{
    if(!enabled){setFlow(null);return;}
@@ -12,7 +12,7 @@ export function usePaxgFlow(enabled:boolean){
      if(busy||document.hidden)return;
      busy=true;
      try{
-       const r=await fetch('/api/paxg-flow',{cache:'no-store',signal:controller.signal});
+       const r=await fetch(endpoint,{cache:'no-store',signal:controller.signal});
        const packet=r.ok?await r.json():null;
        if(!controller.signal.aborted)setFlow(packet);
      }catch{if(!controller.signal.aborted)setFlow(null);}
@@ -20,7 +20,7 @@ export function usePaxgFlow(enabled:boolean){
    }
    void poll();const id=setInterval(poll,5000);
    return()=>{clearInterval(id);controller.abort();};
- },[enabled]);
+ },[enabled,endpoint]);
  return flow;
 }
 

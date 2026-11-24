@@ -12,16 +12,19 @@ export type GoldProxyReadout={
 };
 export function observeGoldProxyFlow(a:{
  now:number;marketOpen:boolean;flow:PaxgFlow|null|undefined;
- chartSide:'BUY'|'SELL'|'WAIT';
+ chartSide:'BUY'|'SELL'|'WAIT';instrument?:'PAXG'|'XAUUSDT';
 }):GoldProxyReadout{
+ const instrument=a.instrument??'PAXG';
+ const allowed=instrument==='XAUUSDT'?['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual']:
+   ['Binance PAXG/USDT proxy','Kraken PAXG/USD proxy'];
  const blank=(reason:string):GoldProxyReadout=>({
-  status:'UNAVAILABLE',label:'PAXG: دفتر بديل غير متاح',detail:reason,
+  status:'UNAVAILABLE',label:instrument+': دفتر بديل غير متاح',detail:reason,
   source:'NONE',side:'WAIT',actionable:false
  });
  const f=a.flow;
  const source=String(f?.source||'');
  if(!a.marketOpen||!Number.isSafeInteger(a.now)||a.now<=0)return blank('السوق مغلق أو الوقت غير صالح');
- if(!f||!['Binance PAXG/USDT proxy','Kraken PAXG/USD proxy'].includes(source)||
+ if(!f||!allowed.includes(source)||
   !Number.isSafeInteger(f.observedAt)||!Number.isFinite(f.tradeAt)||
   !Number.isSafeInteger(f.count)||f.count<3||
   f.observedAt>a.now||f.tradeAt>f.observedAt||f.tradeAt<=0||
@@ -30,8 +33,8 @@ export function observeGoldProxyFlow(a:{
   (f.depthAvailable!==false&&(!Number.isFinite(f.depthImbalancePct)||Math.abs(f.depthImbalancePct!)>100))||
   (f.depthAvailable===false&&f.side!=='NEUTRAL')||
   f.side==='UNAVAILABLE')
-  return blank('يلزم دفتر PAXG حديث وصفقات حقيقية من نفس المنصة');
- const venue=source.startsWith('Binance')?'Binance':'Kraken';
+  return blank('يلزم تنفيذ حديث من '+instrument+' على نفس المنصة');
+ const venue=source.startsWith('Binance')?'Binance':source.startsWith('Bybit')?'Bybit':'Kraken';
  const side=f.side==='BUY'||f.side==='SELL'?f.side:'WAIT';
  const tape=f.tradeDeltaPct!,depth=f.depthAvailable===false?0:f.depthImbalancePct!;
  const tapeSide=tape>=20?'BUY':tape<=-20?'SELL':'WAIT';
@@ -42,7 +45,7 @@ export function observeGoldProxyFlow(a:{
     bookSide!=='WAIT'&&bookSide!==tapeSide?' / دفتر معاكس':' / دفتر غير مؤكد');
  const volume=typeof f.buyVolume==='number'&&Number.isFinite(f.buyVolume)&&f.buyVolume>=0&&
    typeof f.sellVolume==='number'&&Number.isFinite(f.sellVolume)&&f.sellVolume>=0?
-   ' · شراء هجومي '+f.buyVolume.toFixed(3)+' / بيع هجومي '+f.sellVolume.toFixed(3)+' PAXG (عينة حتى 30ث)':'';
+   ' · شراء هجومي '+f.buyVolume.toFixed(3)+' / بيع هجومي '+f.sellVolume.toFixed(3)+' '+(instrument==='PAXG'?'PAXG':'وحدة العقد')+' (عينة حتى 30ث)':'';
  const depthText=f.depthAvailable===false?'غير متاح':f.depthImbalancePct!.toFixed(1)+'%';
  const freshDynamics=a.now-f.tradeAt<=8000&&f.count>=8&&
    typeof f.priceChangeBps==='number'&&Number.isFinite(f.priceChangeBps);
@@ -60,10 +63,10 @@ export function observeGoldProxyFlow(a:{
  return {
   status:match?'ALIGNED':conflict?'DIVERGENT':'OBSERVED',
   side,source,actionable:false,
-  label:'PAXG '+venue+' · '+(
+  label:instrument+' '+venue+' · '+(
    absorption||acceleration||(side==='BUY'?'ضغط شراء بديل ↑':side==='SELL'?'ضغط بيع بديل ↓':splitLabel)),
-  detail:'PAXG فقط · عمق '+depthText+' · دلتا تنفيذ '+
-   f.tradeDeltaPct!.toFixed(1)+'%'+volume+(absorption?' · '+absorption+' في PAXG فقط':acceleration?' · '+acceleration+' في PAXG فقط':'')+' · '+(
+  detail:instrument+' فقط · عمق '+depthText+' · دلتا تنفيذ '+
+   f.tradeDeltaPct!.toFixed(1)+'%'+volume+(absorption?' · '+absorption+' في '+instrument+' فقط':acceleration?' · '+acceleration+' في '+instrument+' فقط':'')+' · '+(
     match?'يتفق مع رصد XAU السعري (ليس تأكيدًا)':
     conflict?'يتعارض مع رصد XAU السعري':
     'لا توجد مقارنة اتجاه مؤهلة'

@@ -571,6 +571,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // retained for audit but never reused as the current early opportunity.
  const [earlyState,setEarlyState]=useState<EarlySetup|null>(null);
  const paxg=usePaxgFlow(asset==='GOLD'&&marketOpen);
+ const goldPerp=usePaxgFlow(asset==='GOLD'&&marketOpen,'/api/gold-perp-flow');
  const trackedSetup=useMemo(()=>advanceEarlySetup({
    prior:earlyState,scope:asset+':'+String(x?.candleSource||''),now,price,
    previousQuote:observedM15?.feedKey===[asset,x?.candleSource,liveQuote?.source].join(':')&&
@@ -1265,6 +1266,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // The existing BTC pre-break detector already tests a recent same-venue
  // execution sample against local price structure. Show its evidence without
  // adding a trade signal or interpreting unavailable flow as balanced.
+ const goldPerpReadout=asset==='GOLD'?observeGoldProxyFlow({
+   now,marketOpen,flow:goldPerp,chartSide:liquidityReadout.aheadSide,instrument:'XAUUSDT'
+ }):null;
  const btcLiquidityLabel=asset==='BTC'&&tapeWatch?
    tapeWatch.kind==='ABSORPTION'?
      (tapeWatch.side==='BUY'?'امتصاص بيع محتمل ↑':'امتصاص شراء محتمل ↓'):
@@ -1908,8 +1912,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            n(liquidityReadout.trigger)}</small>}
        {goldProxyReadout&&<small className="sniper-chart-gold-proxy"
          data-gold-proxy-status={goldProxyReadout.status}
-         title={goldProxyReadout.detail}>
-         {goldProxyReadout.label}
+         title={goldPerpReadout?.status!=='UNAVAILABLE'&&goldPerpReadout?
+           goldPerpReadout.detail+' · '+goldProxyReadout.detail:goldProxyReadout.detail}
+         data-gold-perp-status={goldPerpReadout?.status}>
+         {goldPerpReadout&&goldPerpReadout.status!=='UNAVAILABLE'?
+           goldPerpReadout.label:goldProxyReadout.label}
        </small>}
        {btcLiquidityLabel&&<small className="sniper-chart-gold-proxy"
          title="عينة تنفيذ BTC من نفس منصة السعر؛ رصد محتمل وليس أمر دخول"

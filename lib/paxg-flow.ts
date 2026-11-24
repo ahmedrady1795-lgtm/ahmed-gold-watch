@@ -111,3 +111,34 @@ export function readKrakenPaxgFlow(book:any,trades:unknown,now:number):PaxgFlow{
  return {...summarize(missing,book,buy,sell,first,tradeAt,seen.size),
    ...(prints.length===seen.size?tapeDynamics(prints,now):{})};
 }
+
+/** Public gold perpetual samples, kept distinct from token spot and COMEX.
+ * Bybit side is taker side. No block prints or wrong-symbol data.
+ */
+export function readBybitGoldPerp(book:any,history:any,now:number):PaxgFlow{
+ const source='Bybit XAUUSDT perpetual';
+ const b=book?.retCode===0?book.result:null;
+ const bookAt=Number(b?.cts??b?.ts);
+ const depth=b?.s==='XAUUSDT'&&Number.isSafeInteger(bookAt)&&
+   bookAt<=now&&now-bookAt<=8000?{bids:b.b,asks:b.a}:null;
+ const rows=history?.retCode===0&&history.result?.category==='linear'&&
+   Array.isArray(history.result?.list)?history.result.list:[];
+ const ids=new Set<string>(),normalized:any[]=[];
+ for(const t of rows){
+   if(t?.symbol!=='XAUUSDT'||typeof t.execId!=='string'||!t.execId||
+      ids.has(t.execId)||(t.side!=='Buy'&&t.side!=='Sell')||t.isBlockTrade===true||
+      !Number.isFinite(Number(t.price))||Number(t.price)<=0||
+      !Number.isFinite(Number(t.size))||Number(t.size)<=0||
+      !Number.isSafeInteger(Number(t.time))||Number(t.time)>now||now-Number(t.time)>30000)continue;
+   ids.add(t.execId);
+   normalized.push({a:normalized.length,q:t.size,p:t.price,T:Number(t.time),m:t.side==='Sell'});
+ }
+ return {...readPaxgFlow(depth,normalized,now),source};
+}
+export function readBinanceGoldPerp(book:any,trades:unknown,now:number):PaxgFlow{
+ const at=Number(book?.T??book?.E);
+ const depth=Number.isSafeInteger(at)&&at<=now&&now-at<=8000?book:null;
+ // The caller requests the exact XAUUSDT symbol on the public futures API.
+ const rows=Array.isArray(trades)?trades.filter(t=>Number.isFinite(Number(t?.p))&&Number(t.p)>0):[];
+ return {...readPaxgFlow(depth,rows,now),source:'Binance XAUUSDT perpetual'};
+}
