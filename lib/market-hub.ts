@@ -423,6 +423,33 @@ async function calendarFromOfficialUS(now=Date.now()):Promise<Event[]>{
 }
 async function backgroundFromTwelve(apiKey:string):Promise<BackgroundPoint[]>{const now=Date.now(),rt=getRuntimeEnv();if(backgroundCache&&now-backgroundCache.at<BACKGROUND_TTL_MS)return backgroundCache.value;const defs=[{key:'dxy' as const,label:'DXY',symbol:String(rt.BACKGROUND_DXY_SYMBOL||'DXY')},{key:'us2y' as const,label:'US 2Y',symbol:String(rt.BACKGROUND_US2Y_SYMBOL||'US02Y')},{key:'us10y' as const,label:'US 10Y',symbol:String(rt.BACKGROUND_US10Y_SYMBOL||'US10Y')}];const values=await Promise.all(defs.map(async d=>{try{const data=await getJson('https://api.twelvedata.com/quote?symbol='+encodeURIComponent(d.symbol),{Authorization:`apikey ${apiKey}`}),value=num(data?.close??data?.price),sourceTime=sourceTimeMs(data);if(value==null)throw new Error('no value');return{...d,value,change:num(data?.change),percentChange:num(data?.percent_change),sourceTime,status:statusFor(sourceTime,now),source:'Twelve Data'} as BackgroundPoint;}catch{return{...d,value:null,change:null,percentChange:null,sourceTime:null,status:'unavailable',source:'Twelve Data'} as BackgroundPoint;}}));backgroundCache={at:now,value:values};return values;}
 
+
+// Chart consumers need the OHLC task, not the combined calendar/background
+// response. Reuse the exact same provider order and full-frame eligibility.
+let goldPriceInFlight:Promise<MarketData>|null=null;
+let goldPriceCache:Cache<MarketData>|null=null;
+export async function getGoldChartMarket():Promise<MarketData>{
+  const now=Date.now(),mt5CandlesNow=usableMt5Candles(now);
+  if(goldPriceCache&&now-goldPriceCache.at<MARKET_TTL_MS&&
+    Math.floor(now/60000)===Math.floor(goldPriceCache.at/60000)&&
+    Boolean(mt5CandlesNow)===String(goldPriceCache.value.priceSource||'').startsWith('Exness/MT5'))
+    return goldPriceCache.value;
+  if(goldPriceInFlight)return goldPriceInFlight;
+  const rt=getRuntimeEnv(),priceKey=rt.TWELVE_DATA_API_KEY,
+    massiveKey=rt.MASSIVE_API_KEY||rt.POLYGON_API_KEY;
+  const result:MarketData={checkedAt:now,pricesReady:false,newsReady:false,backgroundReady:false,
+    c1:[],c5:[],c15:[],c60:[],events:[],background:[],errors:[],priceSource:'unavailable'};
+  const task=(async():Promise<MarketData>=>{
+    await (async()=>{if(mt5CandlesNow){result.c1=mt5CandlesNow.c1;result.c5=mt5CandlesNow.c5;result.c15=repairGoldM15FromM5(mt5CandlesNow.c5,mt5CandlesNow.c15,now).bars;result.c60=mt5CandlesNow.c60;result.pricesReady=true;result.priceSource=`Exness/MT5 · ${getMt5BridgeStatus(now).status?.symbol||'broker'}`;return;}if(massiveKey){try{const[m1,m5,m15,h1]=await Promise.all([candlesFromMassive(massiveKey,'1m'),candlesFromMassive(massiveKey,'5m'),candlesFromMassive(massiveKey,'15m'),candlesFromMassive(massiveKey,'1h')]);if(!freshGoldCandleSet(m1,m5,m15,h1,now,goldSessionOpen(now)))throw new Error('Massive candles stale');result.c1=m1;result.c5=m5;result.c15=m15;result.c60=h1;result.pricesReady=true;result.priceSource='Massive · C:XAUUSD';return;}catch{result.errors.push('Massive XAUUSD غير متاح/غير مصرح للخطة؛ تجربة مصدر الذهب التالي.');}}if(priceKey){try{const base='https://api.twelvedata.com/time_series?symbol=XAU%2FUSD&outputsize=340&timezone=UTC&apikey='+encodeURIComponent(priceKey),[m1,m5,m15,h1]=await Promise.all([getJson(base+'&interval=1min'),getJson(base+'&interval=5min'),getJson(base+'&interval=15min'),getJson(base+'&interval=1h')]);const c1=candles(m1),c5=candles(m5),c15=candles(m15),c60=candles(h1);if(!freshGoldCandleSet(c1,c5,c15,c60,now,goldSessionOpen(now)))throw new Error('Twelve Data candles stale');result.c1=c1;result.c5=c5;result.c15=c15;result.c60=c60;result.pricesReady=true;result.priceSource='Twelve Data · XAU/USD';return;}catch{result.errors.push('Twelve Data XAU/USD غير متاح مؤقتاً.');}}try{const[m1,m5,m15,h1]=await Promise.all([candlesFromBiquote('1m'),candlesFromBiquote('5m'),candlesFromBiquote('15m'),candlesFromBiquote('1h')]);if(!freshGoldCandleSet(m1,m5,m15,h1,now,goldSessionOpen(now)))throw new Error('Biquote candles stale');result.c1=m1;result.c5=m5;result.c15=repairGoldM15FromM5(m5,m15,now).bars;result.c60=h1;result.pricesReady=true;result.priceSource='Biquote · MT5 XAUUSD candles';return;}catch{result.errors.push('Biquote XAUUSD OHLC غير متاح مؤقتاً؛ تجربة COMEX proxy.');}try{const[m1,m5,m15,h1]=await Promise.all([candlesFromYahoo('1m'),candlesFromYahoo('5m'),candlesFromYahoo('15m'),candlesFromYahoo('1h')]);if(!freshGoldCandleSet(m1,m5,m15,h1,now,goldSessionOpen(now)))throw new Error('Yahoo GC proxy candles stale');result.c1=m1;result.c5=m5;result.c15=m15;result.c60=h1;result.pricesReady=true;result.priceSource='Yahoo Finance · COMEX GC=F proxy';result.errors.push('الشموع من عقود COMEX GC=F احتياطي تحليلي فقط وليست سعر تنفيذ XAUUSD.');return;}catch{result.errors.push('Yahoo GC=F غير متاح مؤقتاً.');}result.errors.push('تعذر الحصول على شموع MT5/Massive/Twelve Data/Biquote/Yahoo للذهب.');})();
+    result.checkedAt=Date.now();
+    goldPriceCache={at:result.checkedAt,value:result};
+    return result;
+  })();
+  goldPriceInFlight=task;
+  try{return await task;}
+  finally{if(goldPriceInFlight===task)goldPriceInFlight=null;}
+}
+
 export async function getMarketData(options:{force?:boolean}={}):Promise<MarketData>{
   if(!options.force&&marketInFlight)return marketInFlight;
   const task=(async():Promise<MarketData>=>{
@@ -431,7 +458,12 @@ export async function getMarketData(options:{force?:boolean}={}):Promise<MarketD
   const rt=getRuntimeEnv(),priceKey=rt.TWELVE_DATA_API_KEY,massiveKey=rt.MASSIVE_API_KEY||rt.POLYGON_API_KEY,calendarKey=rt.TRADING_ECONOMICS_API_KEY,result:MarketData={checkedAt:now,pricesReady:false,newsReady:false,backgroundReady:false,c1:[],c5:[],c15:[],c60:[],events:[],background:[],errors:[],priceSource:'unavailable'};
   if(!calendarKey)result.errors.push('Trading Economics غير مربوط؛ سيستخدم النظام تقويم USD المجاني كبديل.');
   const jobs:Promise<void>[]=[];
-  jobs.push((async()=>{if(mt5CandlesNow){result.c1=mt5CandlesNow.c1;result.c5=mt5CandlesNow.c5;result.c15=repairGoldM15FromM5(mt5CandlesNow.c5,mt5CandlesNow.c15,now).bars;result.c60=mt5CandlesNow.c60;result.pricesReady=true;result.priceSource=`Exness/MT5 · ${getMt5BridgeStatus(now).status?.symbol||'broker'}`;return;}if(massiveKey){try{const[m1,m5,m15,h1]=await Promise.all([candlesFromMassive(massiveKey,'1m'),candlesFromMassive(massiveKey,'5m'),candlesFromMassive(massiveKey,'15m'),candlesFromMassive(massiveKey,'1h')]);if(!freshGoldCandleSet(m1,m5,m15,h1,now,goldSessionOpen(now)))throw new Error('Massive candles stale');result.c1=m1;result.c5=m5;result.c15=m15;result.c60=h1;result.pricesReady=true;result.priceSource='Massive · C:XAUUSD';return;}catch{result.errors.push('Massive XAUUSD غير متاح/غير مصرح للخطة؛ تجربة مصدر الذهب التالي.');}}if(priceKey){try{const base='https://api.twelvedata.com/time_series?symbol=XAU%2FUSD&outputsize=340&timezone=UTC&apikey='+encodeURIComponent(priceKey),[m1,m5,m15,h1]=await Promise.all([getJson(base+'&interval=1min'),getJson(base+'&interval=5min'),getJson(base+'&interval=15min'),getJson(base+'&interval=1h')]);const c1=candles(m1),c5=candles(m5),c15=candles(m15),c60=candles(h1);if(!freshGoldCandleSet(c1,c5,c15,c60,now,goldSessionOpen(now)))throw new Error('Twelve Data candles stale');result.c1=c1;result.c5=c5;result.c15=c15;result.c60=c60;result.pricesReady=true;result.priceSource='Twelve Data · XAU/USD';return;}catch{result.errors.push('Twelve Data XAU/USD غير متاح مؤقتاً.');}}try{const[m1,m5,m15,h1]=await Promise.all([candlesFromBiquote('1m'),candlesFromBiquote('5m'),candlesFromBiquote('15m'),candlesFromBiquote('1h')]);if(!freshGoldCandleSet(m1,m5,m15,h1,now,goldSessionOpen(now)))throw new Error('Biquote candles stale');result.c1=m1;result.c5=m5;result.c15=repairGoldM15FromM5(m5,m15,now).bars;result.c60=h1;result.pricesReady=true;result.priceSource='Biquote · MT5 XAUUSD candles';return;}catch{result.errors.push('Biquote XAUUSD OHLC غير متاح مؤقتاً؛ تجربة COMEX proxy.');}try{const[m1,m5,m15,h1]=await Promise.all([candlesFromYahoo('1m'),candlesFromYahoo('5m'),candlesFromYahoo('15m'),candlesFromYahoo('1h')]);if(!freshGoldCandleSet(m1,m5,m15,h1,now,goldSessionOpen(now)))throw new Error('Yahoo GC proxy candles stale');result.c1=m1;result.c5=m5;result.c15=m15;result.c60=h1;result.pricesReady=true;result.priceSource='Yahoo Finance · COMEX GC=F proxy';result.errors.push('الشموع من عقود COMEX GC=F احتياطي تحليلي فقط وليست سعر تنفيذ XAUUSD.');return;}catch{result.errors.push('Yahoo GC=F غير متاح مؤقتاً.');}result.errors.push('تعذر الحصول على شموع MT5/Massive/Twelve Data/Biquote/Yahoo للذهب.');})());
+  jobs.push((async()=>{
+    const price=await getGoldChartMarket();
+    result.c1=price.c1;result.c5=price.c5;result.c15=price.c15;result.c60=price.c60;
+    result.priceSource=price.priceSource;result.pricesReady=price.pricesReady;
+    result.errors.push(...price.errors);
+  })());
   if(priceKey)jobs.push((async()=>{try{result.background=await backgroundFromTwelve(priceKey);result.backgroundReady=result.background.filter(x=>x.value!=null&&x.status!=='unavailable').length>=2;if(!result.backgroundReady)result.errors.push('DXY والعوائد غير مكتملة؛ تستخدم كـConfirmation فقط ولن توقف الإشارة.');}catch{result.background=[];result.errors.push('تعذر تحديث DXY والعوائد؛ لن تستخدم في القرار.');}})());
   jobs.push((async()=>{
     const collected:Event[]=[];
