@@ -16,22 +16,33 @@ export async function GET(request:Request){
  const preparation=await readGoldPreparationStore(now);
  if(new URL(request.url).searchParams.get('leadArchive')==='1')
   return Response.json(preparation.ledger,{headers:{'Cache-Control':'no-store'}});
- const text=(await readFile(paths[0]))??(await readFile(paths[1]));
- const ledger=text&&text.length<6e6?
-   safeGoldRadarLedger(JSON.parse(text),now):emptyGoldLedger();
+ let ledger=emptyGoldLedger();
+ let storage='NONE';
+ for(const path of paths){
+  const text=await readFile(path);
+  if(!text||text.length>=6e6)continue;
+  try{
+   const raw=JSON.parse(text);
+   if(raw?.schema!==ledger.schema||!Array.isArray(raw.events))continue;
+   ledger=safeGoldRadarLedger(raw,now);
+   storage=path===paths[0]?'VOLUME':'EPHEMERAL';
+   break;
+  }catch{continue;}
+ }
  if(new URL(request.url).searchParams.get('archive')==='1')
    return Response.json(ledger,{headers:{'Cache-Control':'no-store'}});
  const statusText=await readFile('/tmp/gold-radar-observation.json');
  let observation:any=null;
  try{if(statusText&&statusText.length<5000)observation=JSON.parse(statusText);}catch{}
- const fresh=observation?.checkedAt!=null&&now-observation.checkedAt<200000;
+ const fresh=Number.isSafeInteger(observation?.checkedAt)&&observation.checkedAt<=now&&now-observation.checkedAt<200000;
  // Reuse existing GOLD closed-M1 research. Following a Render restart its
  // in-memory cache can be empty even while the main XAU chart is active.
  // Recover with the independent GOLD-only engine at a bounded cadence.
- let desk=peekScalpGold(35000);
+ const desk=peekScalpGold(35000);
  if(!desk&&now-lastGoldScoutAttempt>=30000){
    lastGoldScoutAttempt=now;
-   try{desk=await getScalpDesk('GOLD');}catch{desk=null;}
+   // Publish the existing observation while the next poll's scout warms up.
+   void getScalpDesk('GOLD').catch(()=>{});
  }
  const gold=desk?.gold;
  const early=gold?.earlyExecution;
@@ -51,7 +62,7 @@ export async function GET(request:Request){
   brokerDom:getMt5GoldDomReading(now),
   preparationLead:preparation.view,
   scalpEarly,
-  updatedAt:now,storage:text?text===null?'NONE':(await readFile(paths[0]))?'VOLUME':'EPHEMERAL':'NONE',
+  updatedAt:now,storage,
   radar:fresh?observation:{ready:false,phase:'UNAVAILABLE',
     label:'الذهب: تجهيز',reason:'بيانات الرادار غير حديثة'},
   ...goldRadarScore(ledger),recent:ledger.events.slice(-6).reverse().map(e=>({

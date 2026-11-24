@@ -22,8 +22,8 @@ assert.ok(history.includes('لا توجد خطة هدف'),'no target is invented
 console.log('PASS: honest directional labels and retained pre-break audit');
 const render=(extra)=>renderToStaticMarkup(React.createElement('svg',null,
  React.createElement(Markers,{...props,...extra})));
-const current={phase:'BREAK_CONFIRMED',side:'SELL',trigger:119,quality:'SETUP',reason:'test'};
-const live=render({records:[records[19]],signal:current});
+const current={phase:'BREAK_CONFIRMED',side:'SELL',trigger:119,targets:[],quality:'SETUP',reason:'test'};
+const live=render({records:[records[19]],signal:current,confirmedPrice:119});
 assert.ok(live.includes('data-phase="BREAK_CONFIRMED"'),
  'nearby historical M5 observation cannot hide the current confirmed setup');
 const earlyRows=records.map(r=>({...r,kind:'EARLY',setupLifecycle:'PENDING'}));

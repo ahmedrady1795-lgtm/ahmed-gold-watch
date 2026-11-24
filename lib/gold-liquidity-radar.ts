@@ -112,6 +112,7 @@ export function readGoldLiquidityRadar(input:{
  const latest=detectGoldLiquiditySetup(input);
  if(!latest.ready)return latest;
  const bars=[...input.bars].sort((a,b)=>a.time-b.time).slice(-44);
+ let lastReading:GoldRadarReading={...latest,side:'WAIT'};
  // Only replay origins for which the detector had its full 36-bar context.
  for(let i=Math.max(35,bars.length-9);i<bars.length;i++){
   const origin=bars[i];
@@ -122,11 +123,12 @@ export function readGoldLiquidityRadar(input:{
   const side=setup.side;
   let phase:GoldRadarReading['phase']='WATCH';
   let confirmedAt:number|null=null;
+  let endedAtIndex:number|null=null;
   for(let j=i+1;j<bars.length;j++){
    const b=bars[j];
-   if(j-i>5&&phase==='WATCH'){phase='EXPIRED';break;}
+   if(j-i>5&&phase==='WATCH'){phase='EXPIRED';endedAtIndex=j;break;}
    if(side==='BUY'?b.low<=setup.invalidate:b.high>=setup.invalidate){
-    phase='INVALIDATED';break;
+    phase='INVALIDATED';endedAtIndex=j;break;
    }
    if(phase==='WATCH'&&(side==='BUY'?b.close>setup.confirm:b.close<setup.confirm)){
     phase='CONFIRMED';confirmedAt=b.time+60000;
@@ -137,11 +139,14 @@ export function readGoldLiquidityRadar(input:{
     phase==='EXPIRED'?'انتهت مهلة التأكيد بعد خمس شموع M1 دون إغلاق يتجاوز مستوى التفعيل.':
     phase==='CONFIRMED'?'تفعّل السيناريو بإغلاق M1 لاحق يتجاوز مستوى التأكيد المثبّت؛ يظل مشروطًا بعدم لمس الإبطال.':
     'نمط مرصود فقط؛ ننتظر إغلاق M1 لاحق يتجاوز مستوى التأكيد قبل انقضاء خمس شموع.';
-  return {...setup,phase,setupSide:side,setupAt:setup.eventAt,confirmedAt,
+  lastReading={...setup,phase,setupSide:side,setupAt:setup.eventAt,confirmedAt,
     side:phase==='CONFIRMED'?side:'WAIT',eventAt:latest.eventAt,price:latest.price,
     label:phase==='CONFIRMED'?'السيناريو اتفعّل':phase==='INVALIDATED'?
       'السيناريو اتلغى':phase==='EXPIRED'?'انتهت مهلة السيناريو':'منتظر تأكيد',
     reason,evidence:[...setup.evidence,setup.label]};
+  if(endedAtIndex===null)return lastReading;
+  // Skip candles already consumed by this setup, including the ambiguous terminal candle.
+  i=endedAtIndex;
  }
- return {...latest,side:'WAIT'};
+ return lastReading;
 }

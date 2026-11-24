@@ -123,3 +123,9 @@ assert.equal(readGoldLiquidityRadar({now:now+600000,source:src,
  bars:buying,marketOpen:true}).ready,false);
 assert.deepEqual(replay(activatedRows),replay(activatedRows),'replay is deterministic');
 console.log('PASS: frozen triggers, later-close confirmation, cancellation, expiry and stale-data guard');
+
+const newSweep=next(ambiguousRows,{open:4200.4,high:4203.1,low:4199.65,close:4199.85});
+const reversal=replay(newSweep);
+assert.equal(reversal.phase,'WATCH','a terminated setup cannot mask a later opposite sweep');
+assert.equal(reversal.setupSide,'SELL');
+assert.equal(reversal.setupAt,newSweep.at(-1).time+60000);
