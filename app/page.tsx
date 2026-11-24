@@ -7,6 +7,7 @@ import {acceptGoldStreamPacket,sourceTimestamp,validSourceTime} from '../lib/cli
 import {reconcileBtcChartProvider,type BtcProviderGate} from '../lib/btc-chart-source-guard';
 import {shouldApplyGoldQuote} from '../lib/gold-feed-order';
 import {chartRefreshDelay} from '../lib/chart-refresh';
+import {CHART_LAST_GOOD_KEY,prepareChartHistorySave,restoreChartHistory,retainChartDuringOutage} from '../lib/chart-last-good';
 import {acceptBtcQuote,btcQuoteMatchesChart,type ObservedBtcQuote} from '../lib/btc-quote-coherence';
 
 const fmt=(v:any,d=2)=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))
@@ -88,6 +89,18 @@ export default function Home(){
     }
   };
 
+  // Restore only real, previously closed candles in historical REVIEW mode.
+  // The restored cache does not grant a quote, BUY/SELL, or a new audit result.
+  useEffect(()=>{
+    try{
+      const recovered=restoreChartHistory(window.localStorage.getItem(CHART_LAST_GOOD_KEY),Date.now());
+      if(recovered&&!chartDataRef.current){
+        chartDataRef.current=recovered;
+        setChartData(recovered);
+      }
+    }catch{/* Private browsing/storage limits: fresh HTTP remains primary. */}
+  },[]);
+
   useEffect(()=>{
     let closed=false,loading=false,timer:ReturnType<typeof setTimeout>|undefined;
     const refreshChart=async()=>{
@@ -96,13 +109,30 @@ export default function Home(){
       try{
         const r=await fetch('/api/chart-history',{cache:'no-store',signal:AbortSignal.timeout(18000)});
         const j=await r.json().catch(()=>null);
-        if(r.ok&&j?.ok&&!closed){
-          const guarded=reconcileBtcChartProvider(chartDataRef.current?.bitcoin??null,
-            j.bitcoin??null,btcChartProviderGate.current,Date.now());
-          btcChartProviderGate.current=guarded.gate;
-          const next={...j,gold:j.gold??chartDataRef.current?.gold??null,bitcoin:guarded.chart};
-          chartDataRef.current=next;
-          setNow(Date.now());setChartData(next);
+        if(!closed){
+          const checked=Date.now(),prior=chartDataRef.current;
+          const guarded=r.ok&&j?.ok?reconcileBtcChartProvider(prior?.bitcoin??null,
+            j.bitcoin??null,btcChartProviderGate.current,checked):null;
+          if(guarded)btcChartProviderGate.current=guarded.gate;
+          const source={gold:r.ok&&j?.ok?j.gold:null,
+            bitcoin:guarded?.chart??null,ok:Boolean(r.ok&&j?.ok)};
+          // An HTTP 200 for BTC can still carry GOLD with zero candles.
+          // NEVER overwrite the last valid XAU bars with that empty payload.
+          const recovered=retainChartDuringOutage(prior,source,checked);
+          if(recovered){
+            const anyFresh=Boolean((recovered.gold&&!recovered.gold.historicalOnly)||
+              (recovered.bitcoin&&!recovered.bitcoin.historicalOnly));
+            const next={...recovered,checkedAt:anyFresh?Number(j?.checkedAt||checked):
+                Number(prior?.checkedAt||recovered.checkedAt),
+              structuralAudit:recovered.gold&&!recovered.gold.historicalOnly&&
+                recovered.bitcoin&&!recovered.bitcoin.historicalOnly?j?.structuralAudit:null};
+            chartDataRef.current=next;
+            setNow(checked);setChartData(next);
+            if(anyFresh)try{
+              const serialized=prepareChartHistorySave(next,checked);
+              if(serialized)window.localStorage.setItem(CHART_LAST_GOOD_KEY,serialized);
+            }catch{/* No persistence available; keep visible in-memory bars. */}
+          }
         }
       }catch{/* Keep the last observed candles; never manufacture new ones. */}
       finally{
