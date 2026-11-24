@@ -96,3 +96,27 @@ assert.match(perp.label,/XAUUSDT Bybit/);assert.equal(perp.actionable,false);
 assert.equal(read({...base,flow:by,instrument:'XAUUSDT',now:now+16000}).status,'UNAVAILABLE');
 assert.match(panel,/data-gold-perp-status/);
 console.log('PASS: public gold perpetual feed, taker sides, symbol, freshness, deduplication and separate display');
+
+const history={exports:{}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/gold-flow-history.ts','utf8'),{
+ compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
+}).outputText,{module:history,exports:history.exports});
+const h=history.exports,s=h.newVenueHistory();
+const p=[{id:'1',at:now-1000,qty:2,buy:true},{id:'2',at:now-2000,qty:1,buy:false}];
+const b1={at:now-1000,bid:100,ask:101,bidWall:98,askWall:103};
+const x=h.updateVenueHistory(s,'Bybit',now,p,b1);
+assert.equal(x.sampledCvd60s,1);
+const x2=h.updateVenueHistory(s,'Bybit',now+1000,[...p,{id:'3',at:now,qty:4,buy:true}],{...b1,at:now,bidWall:99});
+assert.equal(x2.sampledCvd60s,5,'overlapping REST trades must be counted only once');
+assert.equal(x2.bidWallShift,1);
+assert.equal(h.updateVenueHistory(s,'Bybit',now+62000,[],null).count,0);
+assert.equal(h.compareGoldVenues({...by,count:10},{...bn,count:10},now),'BUY');
+assert.equal(h.compareGoldVenues({...by,count:10},{...bn,count:10,tradeDeltaPct:-90},now),'CONFLICT');
+assert.equal(h.compareGoldVenues({...by,count:10},{...bn,count:10,tradeAt:now-9000},now),'INSUFFICIENT');
+assert.equal(h.observeLeadLag([],now).leader,null);
+const returns=Array.from({length:35},(_,i)=>Math.sin(i*2.13)*.001);
+let ap=100,bp=100;
+const series=returns.map((v,i)=>{ap*=Math.exp(v);bp*=Math.exp(returns[i-1]??0);return {at:now-(34-i)*5000,a:ap,b:bp};});
+assert.equal(h.observeLeadLag(series,now).leader,'Bybit');
+assert.equal(h.observeLeadLag(series.slice(-6),now).leader,null);
+console.log('PASS: independent sampled CVD, deduplication, wall shifts, consensus and exploratory lead/lag');

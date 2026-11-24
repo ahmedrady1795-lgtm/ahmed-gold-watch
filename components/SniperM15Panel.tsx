@@ -1269,6 +1269,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const goldPerpReadout=asset==='GOLD'?observeGoldProxyFlow({
    now,marketOpen,flow:goldPerp,chartSide:liquidityReadout.aheadSide,instrument:'XAUUSDT'
  }):null;
+ const crossFlow=goldPerpReadout?.status!=='UNAVAILABLE'&&goldPerpReadout?goldPerp?.crossFlow:null;
+ const crossLabel=crossFlow?.consensus==='BUY'?'اتفاق منصتين ↑':
+   crossFlow?.consensus==='SELL'?'اتفاق منصتين ↓':
+   crossFlow?.consensus==='CONFLICT'?'تعارض المنصات':null;
+ const crossDetail=crossFlow?crossFlow.venues.map(v=>v.source+' · CVD مرصود 60ث '+v.sampledCvd60s.toFixed(3)+
+   ' · '+v.count+' تنفيذ · انتقال أكبر عرض/طلب '+(v.askWallShift?.toFixed(2)??'—')+'/'+(v.bidWallShift?.toFixed(2)??'—')).join(' | ')+
+   (crossFlow.leader?' · تقدم مرصود بين العقود: '+crossFlow.leader+' ('+crossFlow.leadPairs+' مقارنة؛ ليس قيادة XAUUSD)':''):null;
  const btcLiquidityLabel=asset==='BTC'&&tapeWatch?
    tapeWatch.kind==='ABSORPTION'?
      (tapeWatch.side==='BUY'?'امتصاص بيع محتمل ↑':'امتصاص شراء محتمل ↓'):
@@ -1913,10 +1920,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        {goldProxyReadout&&<small className="sniper-chart-gold-proxy"
          data-gold-proxy-status={goldProxyReadout.status}
          title={goldPerpReadout?.status!=='UNAVAILABLE'&&goldPerpReadout?
-           goldPerpReadout.detail+' · '+goldProxyReadout.detail:goldProxyReadout.detail}
+           goldPerpReadout.detail+' · '+goldProxyReadout.detail+(crossDetail?' · '+crossDetail:''):goldProxyReadout.detail}
          data-gold-perp-status={goldPerpReadout?.status}>
          {goldPerpReadout&&goldPerpReadout.status!=='UNAVAILABLE'?
-           goldPerpReadout.label:goldProxyReadout.label}
+           goldPerpReadout.label+(crossLabel?' · '+crossLabel:''):goldProxyReadout.label}
        </small>}
        {btcLiquidityLabel&&<small className="sniper-chart-gold-proxy"
          title="عينة تنفيذ BTC من نفس منصة السعر؛ رصد محتمل وليس أمر دخول"

@@ -1,3 +1,4 @@
+import type {GoldCrossFlow} from './gold-flow-history';
 export type PaxgSide='BUY'|'SELL'|'NEUTRAL'|'UNAVAILABLE';
 export type PaxgFlow={side:PaxgSide;observedAt:number;tradeAt:number;count:number;source?:string;
   /** Actual token-exchange PAXG depth and executed-tape imbalance, never XAUUSD broker orders. */
@@ -5,7 +6,8 @@ export type PaxgFlow={side:PaxgSide;observedAt:number;tradeAt:number;count:numbe
   buyVolume?:number;sellVolume?:number;deltaVolume?:number;
   coverageSeconds?:number;depthAvailable?:boolean;
   absorptionWatch?:'BUY'|'SELL'|null;priceChangeBps?:number;
-  shortDeltaPct?:number;priorDeltaPct?:number;accelerationSide?:'BUY'|'SELL'|null;};
+  shortDeltaPct?:number;priorDeltaPct?:number;accelerationSide?:'BUY'|'SELL'|null;
+  crossFlow?:GoldCrossFlow;};
 
 function size(levels:unknown,descending:boolean){
  if(!Array.isArray(levels)||levels.length<5)return null;
