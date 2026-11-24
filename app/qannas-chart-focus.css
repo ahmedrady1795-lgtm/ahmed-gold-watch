@@ -302,3 +302,19 @@
  .sniper-chart-liquidity .sniper-chart-gold-proxy{font-size:8px;line-height:1.18}
  .sniper-chart-command-details>summary{font-size:8px;line-height:1.2}
 }
+
+/* Signed observed execution imbalance: compact battery, never fabricated 0%. */
+.gold-liquidity-meter{display:grid;gap:3px;min-width:0;--meter:#a4b1ba;color:var(--meter)}
+.gold-liquidity-meter[data-meter-state="BUY"]{--meter:#62e7b6}
+.gold-liquidity-meter[data-meter-state="SELL"]{--meter:#ff788e}
+.gold-liquidity-meter[data-meter-state="CONFLICT"]{--meter:#e7b96c}
+.gold-liquidity-meter[data-meter-state="BALANCED"]{--meter:#d8c485}
+.gold-meter-head{display:flex;justify-content:space-between;align-items:center;gap:2px}
+.gold-meter-head strong{font-size:12px;line-height:1;color:var(--meter);font-variant-numeric:tabular-nums}
+.gold-meter-battery{position:relative;display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:2px;
+ direction:ltr;height:12px;margin-right:3px;border:1px solid #68808b;border-radius:3px;padding:2px;box-sizing:border-box}
+.gold-meter-battery::after{content:'';position:absolute;right:-4px;top:3px;height:5px;width:2px;background:#68808b;border-radius:1px}
+.gold-meter-battery>span{background:#263c47;border-radius:1px;transition:background-color .18s ease}
+.gold-meter-battery>span.is-lit{background:var(--meter)}
+.gold-liquidity-meter .gold-meter-label{color:var(--meter);font-size:9px;text-align:center}
+.gold-meter-source{font-size:7.5px;color:#9fb6c3;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

@@ -12,6 +12,7 @@ import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {detectLiquidityMagnets} from '../lib/sniper-liquidity-magnets';
 import {fuseLocalSniper} from '../lib/sniper-local-fusion';
 import {localCandleMl} from '../lib/local-candle-ml';
+import {goldLiquidityMeter} from '../lib/gold-liquidity-meter';
 import {useBtcCrossFlow} from './useBtcCrossFlow';
 import {reviewEarlyFailures} from '../lib/sniper-movement-proof';
 import {assessFlowProfile} from '../lib/flow-profile-decision';
@@ -1270,6 +1271,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    commandFastLive?'WAIT':'OFFLINE';
  // Display GOLD's truly separate PAXG exchange book/tape as proxy evidence
  // only; it never upgrades a price-only XAU observation to a broker flow vote.
+ const goldMeter=asset==='GOLD'?goldLiquidityMeter(goldPerp,paxg,now,marketOpen):null;
  const goldProxyReadout=asset==='GOLD'?observeGoldProxyFlow({
    now,marketOpen,flow:paxg,chartSide:liquidityReadout.aheadSide
  }):null;
@@ -1930,8 +1932,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <div className={'sniper-chart-liquidity is-'+liquidityReadout.state.toLowerCase()}
        data-qannas-liquidity-state={liquidityReadout.state}
        title={liquidityReadout.reason}>
-       <b>{liquidityReadout.label}</b>
-       {liquidityReadout.aheadSide!=='WAIT'&&liquidityReadout.trigger!=null&&
+       {asset!=='GOLD'&&<b>{liquidityReadout.label}</b>}
+       {asset!=='GOLD'&&liquidityReadout.aheadSide!=='WAIT'&&liquidityReadout.trigger!=null&&
          <small>{'قبل الكسر · '+(liquidityReadout.aheadSide==='BUY'?'شراء ':'بيع ')+
            n(liquidityReadout.trigger)}</small>}
        {goldProxyReadout&&<small className="sniper-chart-gold-proxy"
@@ -1939,8 +1941,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          title={goldPerpReadout?.status!=='UNAVAILABLE'&&goldPerpReadout?
            goldPerpReadout.detail+' · '+goldProxyReadout.detail+(crossDetail?' · '+crossDetail:''):goldProxyReadout.detail}
          data-gold-perp-status={goldPerpReadout?.status}>
-         {goldPerpReadout&&goldPerpReadout.status!=='UNAVAILABLE'?
-           crossLabel??goldPerpReadout.label:goldProxyReadout.label}
+         {goldMeter&&<span className="gold-liquidity-meter" data-meter-state={goldMeter.state}
+           title={goldMeter.detail}>
+           <span className="gold-meter-head"><b>السيولة</b><strong dir="ltr">{goldMeter.delta==null?'—':(goldMeter.delta>0?'+':'')+goldMeter.delta+'%'}</strong></span>
+           <span className="gold-meter-battery" aria-label={goldMeter.label+' '+(goldMeter.strength??'غير متاح')}>
+             {Array.from({length:10},(_,i)=><span key={i} className={goldMeter.strength!=null&&i*10<goldMeter.strength?'is-lit':''}/>)}
+           </span>
+           <b className="gold-meter-label">{goldMeter.label}</b>
+           <span className="gold-meter-source" dir="ltr">{goldMeter.source}{goldMeter.ageSeconds!=null?' · '+goldMeter.ageSeconds+'s':''}</span>
+         </span>}
        </small>}
        {(btcLiquidityLabel||btcCrossLabel)&&<small className="sniper-chart-gold-proxy"
          title={'رصد تنفيذ BTC وليس أمر دخول · '+(btcCrossFresh?.venues.map(v=>v.source+' Δ '+v.deltaPct.toFixed(1)+'% ('+v.trades+')').join(' | ')??'')}
@@ -1951,6 +1960,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      </div>}
      <details className="sniper-chart-command-details">
        <summary>المستويات والسبب</summary>
+       {goldMeter&&<small title={goldMeter.detail}>{liquidityReadout.label} · {crossLabel??goldPerpReadout?.label??goldProxyReadout?.label}</small>}
        <small title="نموذج محلي من الشموع المغلقة؛ اختبار تاريخي منفصل زمنيًا وليس دقة تداول حي، ولا يصرح بالدخول">
          {'ML محلي تجريبي · '+(['m1','m5'] as const).map(h=>{
            const v=localMl[h];

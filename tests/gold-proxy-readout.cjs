@@ -120,3 +120,24 @@ const series=returns.map((v,i)=>{ap*=Math.exp(v);bp*=Math.exp(returns[i-1]??0);r
 assert.equal(h.observeLeadLag(series,now).leader,'Bybit');
 assert.equal(h.observeLeadLag(series.slice(-6),now).leader,null);
 console.log('PASS: independent sampled CVD, deduplication, wall shifts, consensus and exploratory lead/lag');
+
+const meterMod={exports:{}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/gold-liquidity-meter.ts','utf8'),{
+ compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}
+}).outputText,{module:meterMod,exports:meterMod.exports});
+const meter=meterMod.exports.goldLiquidityMeter;
+const meterNow=1800000000000;
+const meterFlow={side:'NEUTRAL',observedAt:meterNow-1000,tradeAt:meterNow-2000,count:12,
+ source:'Bybit XAUUSDT perpetual',tradeDeltaPct:72};
+assert.equal(meter(meterFlow,null,meterNow,true).strength,72);
+assert.equal(meter(meterFlow,null,meterNow,true).state,'BUY');
+assert.equal(meter({...meterFlow,tradeDeltaPct:-65},null,meterNow,true).state,'SELL');
+assert.equal(meter({...meterFlow,tradeDeltaPct:0},null,meterNow,true).state,'BALANCED');
+assert.equal(meter(meterFlow,null,meterNow+20000,true).delta,null);
+assert.equal(meter(meterFlow,null,meterNow,false).delta,null);
+assert.equal(meter({...meterFlow,tradeDeltaPct:101},null,meterNow,true).delta,null);
+assert.equal(meter(null,{...meterFlow,source:'Kraken PAXG/USD proxy'},meterNow,true).source,'Kraken PAXG');
+assert.equal(meter({...meterFlow,crossFlow:{consensus:'CONFLICT',actionable:false,venues:[
+ {source:'Bybit XAUUSDT perpetual',asOf:meterNow-2000},{source:'Binance XAUUSDT perpetual',asOf:meterNow-2000}]}},null,meterNow,true).state,'CONFLICT');
+assert.match(panel,/gold-meter-battery/);
+console.log('PASS live signed gold execution battery, stale/missing distinction, source attribution and conflict');
