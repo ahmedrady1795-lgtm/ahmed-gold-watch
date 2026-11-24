@@ -24,6 +24,7 @@ jobs:
       - run: npm ci
       - run: node tests/backtest-causal-ledger.cjs
       - run: node tests/directional-audit-integrity.cjs
+      - run: node tests/gold-live-reversal.cjs
       - run: node --check scripts/one-branch-cleanup.mjs && node tests/one-branch-cleanup-safety.cjs
       - run: node tests/flow-profile-decision.cjs
       - run: node tests/paxg-flow.cjs && node tests/gold-proxy-readout.cjs

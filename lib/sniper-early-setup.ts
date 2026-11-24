@@ -18,6 +18,7 @@ export type EarlySetup={
  targets:number[];reason:string;score?:number;setupKind?:'PRESSURE'|'SWEEP'|'COMPRESSION'|'RECLAIM'|'MICRO'|'COIL'|'ZONE'|'PULLBACK'|'PROFILE'|'STRUCTURE';retestAt?:number|null;
  trendSide?:'BUY'|'SELL'|'WAIT';flowAligned?:boolean;localStructureAligned?:boolean;contextNote?:string;
  selectionMargin?:number|null;selectionAgreement?:boolean;selectionConflict?:boolean;
+ liveReversalAt?:number;liveReversalSource?:string;
 };
 /** A confirmed impulse is a description of CLOSED M1 momentum, not a
  * predictive SELL/BUY signal. We use it only to veto stale countertrend
@@ -66,9 +67,78 @@ function firstReclaim(bars:Bar[],price:number,atr:number){
    trigger:buy?last.high+atr*.04:last.low-atr*.04,
    invalidation:buy?last.low-atr*.08:last.high+atr*.08};
 }
+/** Same-venue tape reversal is a hypothesis; only chart-feed quotes define
+ * XAU price levels. Never copy perpetual prices into broker coordinates. */
+export function liveGoldReversal(input:{now:number;price:number;quoteAt?:number|null;
+ previousQuote?:{at:number;price:number}|null;bars:unknown;perp?:PaxgFlow|null}){
+ const {now,price,quoteAt,previousQuote:prev,perp}=input;
+ if(!Number.isFinite(now)||!Number.isFinite(price)||price<=0||!prev||
+   !Number.isFinite(prev.at)||!Number.isFinite(prev.price)||prev.price<=0||
+   quoteAt==null||!Number.isSafeInteger(quoteAt)||quoteAt>now||now-quoteAt>6000||
+   prev.at>=quoteAt||quoteAt-prev.at>10000||!perp||perp.crossFlow?.consensus==='CONFLICT')return null;
+ const valid=(b:Bar)=>b&&[b.time,b.open,b.high,b.low,b.close].every(Number.isFinite)&&
+   b.time>0&&b.time%60000===0&&b.low>0&&b.high>=Math.max(b.open,b.close)&&b.low<=Math.min(b.open,b.close);
+ const raw=(Array.isArray(input.bars)?input.bars:[]).filter(valid) as Bar[];
+ const bars=raw.filter(b=>b.time+60000<=now).sort((a,b)=>a.time-b.time).slice(-18);
+ if(bars.length!==18||bars.some((b,i)=>i>0&&b.time-bars[i-1].time!==60000))return null;
+ const sourceAt=bars.at(-1)!.time+60000;
+ if(now-sourceAt>=60000||prev.at<sourceAt)return null;
+ const tr=bars.slice(1).map((b,i)=>Math.max(b.high-b.low,Math.abs(b.high-bars[i].close),Math.abs(b.low-bars[i].close)));
+ const atr=tr.slice(-14).reduce((a,b)=>a+b,0)/14;
+ if(!(atr>0)||atr>price*.04)return null;
+ const names=['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual'];
+ const samples=new Map<string,PaxgFlow>();
+ for(const f of [perp,...(perp.venueSamples??[])]){
+   if(!names.includes(f.source||'')||f.side==='UNAVAILABLE'||!Number.isSafeInteger(f.tradeAt)||
+     !Number.isSafeInteger(f.observedAt)||f.tradeAt<=0||f.tradeAt>f.observedAt||f.observedAt>now||
+     now-f.tradeAt>8000||now-f.observedAt>10000||!Number.isInteger(f.count)||f.count<12||
+     !Number.isFinite(f.tradeDeltaPct)||Math.abs(f.tradeDeltaPct!)>100)continue;
+   const old=samples.get(f.source!);
+   if(!old||f.tradeAt>old.tradeAt)samples.set(f.source!,f);
+ }
+ const evidence:{side:'BUY'|'SELL';source:string;at:number;kind:string}[]=[];
+ for(const f of samples.values()){
+   const short=f.shortDeltaPct,prior=f.priorDeltaPct,change=f.priceChangeBps;
+   const flip=Number.isFinite(short)&&Number.isFinite(prior)&&Math.abs(short!)<=100&&Math.abs(prior!)<=100?
+     short!>=35&&prior!<=-20&&short!-prior!>=65?'BUY':
+     short!<=-35&&prior!>=20&&prior!-short!>=65?'SELL':null:null;
+   const absorb=Number.isFinite(change)?
+     f.absorptionWatch==='BUY'&&f.tradeDeltaPct!<=-45&&change!>=1?'BUY':
+     f.absorptionWatch==='SELL'&&f.tradeDeltaPct!>=45&&change!<=-1?'SELL':null:null;
+   const depth=perp.crossFlow?.preparation?.find(v=>v.source===f.source&&v.actionable===false&&
+     Number.isSafeInteger(v.asOf)&&v.asOf<=now&&now-v.asOf<=5000&&Math.abs(v.asOf-f.tradeAt)<=8000&&
+     v.samples>=3&&v.spanMs>=6000&&v.spanMs<=18000&&Number.isFinite(v.deltaPct)&&Math.abs(v.deltaPct)<=100&&
+     Number.isFinite(v.priceChangeBps)&&Math.abs(v.priceChangeBps)<=3&&
+     (v.side==='BUY'?v.deltaPct<=-40&&v.priceChangeBps>=-.6:v.side==='SELL'&&v.deltaPct>=40&&v.priceChangeBps<=.6));
+   const side=absorb??flip??depth?.side;
+   if(!side||[absorb,flip,depth?.side].some(v=>v&&v!==side))continue;
+   evidence.push({side,source:f.source!,at:f.tradeAt,kind:absorb?'امتصاص':flip?'انعكاس دلتا التنفيذ':'تجدد عمق'});
+ }
+ if(!evidence.length||evidence.some(e=>e.side!==evidence[0].side))return null;
+ const e=evidence[0],buy=e.side==='BUY',sign=buy?1:-1;
+ // A second venue with clearly opposing fresh short tape invalidates the hypothesis.
+ if([...samples.values()].some(f=>!evidence.some(x=>x.source===f.source)&&
+   Number.isFinite(f.shortDeltaPct)&&sign*f.shortDeltaPct!<=-45))return null;
+ const tail=bars.slice(-4),edge=buy?Math.min(...tail.map(b=>b.low)):Math.max(...tail.map(b=>b.high));
+ const approach=sign*(tail.at(-1)!.close-tail[0].open);
+ const advance=sign*(price-prev.price);
+ // Opposing move into a local extreme, followed by a real price response.
+ if(approach> -atr*.18||sign*(prev.price-edge)<-atr*.35||sign*(prev.price-edge)>atr*.30||
+    sign*(price-edge)<atr*.035||sign*(price-edge)>atr*.55||advance<atr*.035||advance>atr*.30)return null;
+ const active=raw.filter(b=>b.time===sourceAt);
+ const trigger=buy?Math.max(price,prev.price,...active.map(b=>b.high))+atr*.06:
+   Math.min(price,prev.price,...active.map(b=>b.low))-atr*.06;
+ const invalidation=buy?Math.min(edge,prev.price,...active.map(b=>b.low))-atr*.08:
+   Math.max(edge,prev.price,...active.map(b=>b.high))+atr*.08;
+ const room=sign*(trigger-price),risk=sign*(price-invalidation);
+ if(room<=0||room>atr*.4||risk<=0||risk>atr*1.1)return null;
+ return {side:e.side,trigger,invalidation,atr,sourceAt,evidenceAt:Math.max(...evidence.map(v=>v.at)),
+   source:evidence.map(v=>v.source).join(' / '),kind:e.kind};
+}
+
 /** Session-only arming: reloading cannot invent an earlier observation. */
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
- proxy?:PaxgFlow|null;localMl?:LocalCandleMl|null;btcCross?:BtcCrossFlow|null;goldCombined?:GoldCombinedLiquidity|null;previousQuote?:{at:number;price:number}|null;
+ proxy?:PaxgFlow|null;goldPerp?:PaxgFlow|null;localMl?:LocalCandleMl|null;btcCross?:BtcCrossFlow|null;goldCombined?:GoldCombinedLiquidity|null;previousQuote?:{at:number;price:number}|null;
  price:number|null;quoteAt?:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
  flow?:FlowProfileDecision|null;
  shortTape?:{side:'BUY'|'SELL';trigger:number;invalidation:number;asOf:number;source:string;deltaPct:number}|null;
@@ -104,8 +174,38 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  // a counter-direction WATCH immediately. This avoids stale BUY banners through
  // a fast support breakdown while retaining continuous M5 direction monitoring.
  const closedImpulse=closedM1Impulse(input.bars,now);
+ // A live, independently timestamped reversal can supersede a stale opposing
+ // untriggered preparation during the SAME minute. Keep confirmed trades and
+ // prior historical markers untouched. No single proxy earns broker-flow credit.
+ const reversal=input.scope.startsWith('GOLD:')?liveGoldReversal({now,price,quoteAt:input.quoteAt,
+   previousQuote:input.previousQuote,bars:input.bars,perp:input.goldPerp??input.proxy}):null;
+ if(reversal&&prior?.phase!=='TRIGGERED'&&
+   !(prior?.phase==='ARMED'&&prior.side===reversal.side)&&
+   !(prior?.liveReversalAt!=null&&prior.sourceAt>=reversal.sourceAt)&&
+   (flowSide==='WAIT'||flowSide===reversal.side)&&
+   (sweptSide==='WAIT'||sweptSide===reversal.side)&&
+   !knownZones.some(z=>insideOpposition(z,reversal.side==='BUY',reversal.trigger))){
+   const buy=reversal.side==='BUY',sign=buy?1:-1;
+   const levels=(Array.isArray(input.bars)?input.bars:[]).filter((b:Bar)=>b&&
+     Number.isFinite(b.time)&&b.time+60000<=now&&Number.isFinite(b.high)&&Number.isFinite(b.low))
+     .slice(-18).map((b:Bar)=>buy?b.high:b.low);
+   const watch=input.watch;
+   if(watch?.ready&&watch.asOf!=null&&watch.asOf<=now&&now-watch.asOf<=3600000)
+     levels.push(...(buy?watch.upper:watch.lower).map(l=>l.price));
+   levels.push(...knownZones.filter(z=>demand(z)!==buy).map(z=>buy?z.low:z.high));
+   const targets=levels.filter(t=>Number.isFinite(t)&&sign*(t-reversal.trigger)>0)
+     .sort((a,b)=>sign*(a-b)).filter((v,i,a)=>i===0||Math.abs(v-a[i-1])>=reversal.atr*.1).slice(0,3);
+   return {scope:input.scope,side:reversal.side,phase:'ARMED',sourceAt:reversal.sourceAt,
+     armedAt:now,expiresAt:now+45000,trigger:reversal.trigger,invalidation:reversal.invalidation,
+     atr:reversal.atr,priceAt:price,lastPrice:price,lastAt:now,triggeredAt:null,targets,
+     score:4,setupKind:'RECLAIM',trendSide:input.m15Side??'WAIT',flowAligned:flowSide===reversal.side,
+     localStructureAligned:false,liveReversalAt:reversal.evidenceAt,liveReversalSource:reversal.source,
+     reason:'ترقب انعكاس حي: '+reversal.kind+' في '+reversal.source+
+       ' + استجابة سعر الذهب قرب طرف M1؛ عينة عقود بديلة، ليست تدفق وسيط أو إشارة مؤكدة'};
+ }
  if(prior&&(prior.phase==='ARMED'||prior.phase==='OBSERVING')&&
-   closedImpulse!=='WAIT'&&closedImpulse!==prior.side)
+   closedImpulse!=='WAIT'&&closedImpulse!==prior.side&&
+   (prior.liveReversalAt==null||now>=prior.sourceAt+60000))
    return {...prior,phase:'CANCELLED',lastAt:now,lastPrice:price,
      reason:'إلغاء الترصد: موجة '+(closedImpulse==='SELL'?'هبوط':'صعود')+
        ' مؤكدة من M1 المغلق ضد الإعداد؛ ليس تنبؤ دخول'};
@@ -1067,7 +1167,7 @@ export function earlySetupOpportunity(state:EarlySetup|null):LiveOpportunity{
  const direction=state?.side==='BUY'?1:-1;
  const risk=state?direction*(state.priceAt-state.invalidation):0;
  const reward=state?.targets.length?direction*(state.targets[0]-state.priceAt):0;
- const qualified=state?.phase==='TRIGGERED'&&!opposed&&
+ const qualified=state?.phase==='TRIGGERED'&&state.liveReversalAt==null&&!opposed&&
    (context==='ALIGNED'||state.flowAligned===true||state.localStructureAligned===true)&&
    (state.score??0)>=4&&state.selectionConflict!==true&&
    risk>0&&risk<=state.atr*3&&

@@ -599,7 +599,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      Number(liveQuote?.sourceTime):null,
    ready:marketOpen&&m.sniper.view.priceFresh&&!providerTransition&&
      liveOpportunity.phase!=='OFFLINE',
-   bars:m.candles,opportunity:liveOpportunity,lean:candleLean,localMl,btcCross,goldCombined:combinedGold,
+   bars:m.candles,opportunity:liveOpportunity,lean:candleLean,localMl,btcCross,goldCombined:combinedGold,goldPerp:asset==='GOLD'?goldPerp:null,
    zones:liquidity.zones,proxy:asset==='GOLD'?
      (goldPerp&&goldPerp.side!=='UNAVAILABLE'&&goldPerp.tradeAt<=now&&now-goldPerp.tradeAt<=8000&&
        (goldPerp.crossFlow?.consensus==='BUY'||goldPerp.crossFlow?.consensus==='SELL'||
