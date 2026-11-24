@@ -582,10 +582,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    ready:marketOpen&&m.sniper.view.priceFresh&&!providerTransition&&
      liveOpportunity.phase!=='OFFLINE',
    bars:m.candles,opportunity:liveOpportunity,lean:candleLean,
-   zones:liquidity.zones,proxy:asset==='GOLD'?paxg:null,flow:flowProfile,shortTape:tapeWatch,liquidity:liquidityMagnets,watch:watchMap,marketContext,
+   zones:liquidity.zones,proxy:asset==='GOLD'?
+     (goldPerp?.crossFlow?.consensus==='BUY'||goldPerp?.crossFlow?.consensus==='SELL'||goldPerp?.crossFlow?.consensus==='CONFLICT'?goldPerp:paxg):null,flow:flowProfile,shortTape:tapeWatch,liquidity:liquidityMagnets,watch:watchMap,marketContext,
    m1Side:nextM1.ready?nextM1.side:'WAIT',
    m15Side:entryTrend
- }),[earlyState,asset,paxg,liquidity.zones,x?.candleSource,now,price,liveQuote?.sourceTime,liveQuote?.source,observedM15,
+ }),[earlyState,asset,paxg,goldPerp,liquidity.zones,x?.candleSource,now,price,liveQuote?.sourceTime,liveQuote?.source,observedM15,
    marketOpen,m.sniper.view.priceFresh,providerTransition,m.candles,
    liveOpportunity,candleLean,flowProfile,tapeWatch,liquidityMagnets,watchMap,marketContext,
    nextM1.ready,nextM1.side,entryTrend]);
@@ -1285,7 +1286,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    commandLocalGold?commandSide==='BUY'?'WATCH BUY · سعري':'WATCH SELL · سعري':
    commandWatch?commandSide==='BUY'?'WATCH BUY':'WATCH SELL':
    commandFollowing?commandSide==='BUY'?'↗ صعود مرصود':'↘ هبوط مرصود':
-   commandFastLive?'WAIT · مراقبة':'تحديث السوق';
+   commandFastLive?'WAIT':'تحديث السوق';
  const commandTrigger=commandConfirmed||commandM1?movementSignal.trigger:
    commandM5?m5Cue.trigger:commandGold?goldSpotPlan!.trigger:null;
  const commandInvalidation=commandConfirmed||commandM1?
@@ -1365,7 +1366,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              height={Math.max(1,py(z.low!)-py(z.high!))}
              fill={z.color} fillOpacity=".045"/>
            <line x1={left} x2={end} y1={py(z.price)} y2={py(z.price)}
-             stroke={z.color} strokeWidth="1.5" strokeOpacity=".9"/>
+             stroke={z.color} strokeWidth="1.15" strokeOpacity=".72"/>
            <title>{z.label+' · المنطقة المرصودة '+n(z.low)+' – '+n(z.high)+
              ' · '+z.source+' · للمراقبة فقط'}</title>
          </g>)}
@@ -1389,7 +1390,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              z.kind==='DISTRIBUTION'?'#ff9d7f':'#e7bc78';
            return <g className="sniper-m15-context" key="liquidity-context">
              <rect x={xa} y={top} width={Math.max(2,xb-xa)}
-               height={Math.max(2,bottom-top)} fill={color} fillOpacity=".13"
+               height={Math.max(2,bottom-top)} fill={color} fillOpacity=".055"
                stroke={color} strokeWidth="1" strokeDasharray="5 4"/>
              <title>{z.label+' · '+n(z.low)+' – '+n(z.high)+
                ' · منطقة M5 مثبتة بشموع مغلقة، ليست أوامر مؤسسات'}</title>
@@ -1791,7 +1792,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          return <g key={r.target} data-preopen-m5={r.target}>
            <title>{label+' · '+h(r.target)+' · '+r.reason}</title>
            <circle cx={px} cy={y} r={current?3.5:2.8} stroke={color} strokeWidth="1.4" fill="#07111b"/>
-           {current&&<>
+           {current&&!movementRecords.some(v=>v.asset===asset&&v.source===String(x?.candleSource||'')&&
+             v.issuedAt>=r.issued&&v.issuedAt<=now&&v.kind==='EARLY')&&<>
              <line x1={px} y1={y} x2={px-34} y2={ly-3} stroke={color} strokeWidth=".8"/>
              <text x={px-68} y={ly} textAnchor="middle" direction="rtl" fill={color}
                stroke="#07111b" strokeWidth="3" paintOrder="stroke" fontSize="10" fontWeight="800">{label}</text>
@@ -1902,7 +1904,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      data-qannas-chart-side={commandSide}
      aria-label={'حالة القناص: '+commandHeadline}>
      <div className="sniper-chart-command-head">
-       <small>قنص M1/M5</small>
+       <small>M1/M5</small>
        <strong>{commandHeadline}</strong>
      </div>
      <div className="sniper-chart-command-frames">
@@ -1923,7 +1925,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            goldPerpReadout.detail+' · '+goldProxyReadout.detail+(crossDetail?' · '+crossDetail:''):goldProxyReadout.detail}
          data-gold-perp-status={goldPerpReadout?.status}>
          {goldPerpReadout&&goldPerpReadout.status!=='UNAVAILABLE'?
-           goldPerpReadout.label+(crossLabel?' · '+crossLabel:''):goldProxyReadout.label}
+           crossLabel??goldPerpReadout.label:goldProxyReadout.label}
        </small>}
        {btcLiquidityLabel&&<small className="sniper-chart-gold-proxy"
          title="عينة تنفيذ BTC من نفس منصة السعر؛ رصد محتمل وليس أمر دخول"

@@ -287,3 +287,18 @@
 @media(max-width:640px){
  .sniper-chart-liquidity .sniper-chart-gold-proxy{font-size:7.4px;line-height:1.22}
 }
+
+/* Compact mobile decision rail, with details still expandable. The real
+   candles and price coordinates remain unchanged. */
+@media(max-width:640px){
+ .sniper-m15-chart-box .sniper-chart-command{
+   top:30px;padding:4px 4px;gap:2px;border-radius:5px;
+   background:rgba(6,20,29,.96);box-shadow:none;
+ }
+ .sniper-chart-command-head{gap:0;padding-bottom:2px}
+ .sniper-chart-command-head strong{font-size:11px;line-height:1.15}
+ .sniper-chart-command-frames{padding-bottom:2px}
+ .sniper-chart-liquidity{gap:1px;padding:2px 0;border-top:0}
+ .sniper-chart-liquidity .sniper-chart-gold-proxy{font-size:8px;line-height:1.18}
+ .sniper-chart-command-details>summary{font-size:8px;line-height:1.2}
+}

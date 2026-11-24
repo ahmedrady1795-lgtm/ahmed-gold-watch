@@ -393,6 +393,15 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  // remain inside the same compact gold range and move towards its near edge.
  let proxyPressure:Candidate|undefined;
  const proxy=input.proxy;
+ // Both separately observed perpetual tapes may form a prospective XAU
+ // watch, never a verified broker flow vote. Conflicting venues do not vote.
+ const cross=proxy?.crossFlow;
+ const crossSide=(cross?.consensus==='BUY'||cross?.consensus==='SELL')&&
+   cross.actionable===false&&proxy&&['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual'].includes(proxy.source||'')&&
+   cross.venues.length===2&&new Set(cross.venues.map(v=>v.source)).size===2&&
+   cross.venues.every(v=>['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual'].includes(v.source)&&
+     Number.isSafeInteger(v.asOf)&&v.asOf<=now&&now-v.asOf<=8000&&v.count>=8)?
+   cross.consensus:'WAIT';
  // A split PAXG book/tape is not necessarily balanced executed pressure.
  // Admit only a strongly directional, sufficiently sampled, recent tape
  // as a secondary XAU price-watch hypothesis. Never upgrade it to XAU DOM.
@@ -403,7 +412,9 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    (proxy.depthAvailable===false||(Number.isFinite(proxy.depthImbalancePct)&&
     Math.abs(proxy.depthImbalancePct!)<=100))&&proxy.count>=8&&
    proxy.tradeAt<=proxy.observedAt&&now-proxy.tradeAt<=8000);
- const proxySide=proxy?.side==='BUY'||proxy?.side==='SELL'?proxy.side:
+ const isPerp=Boolean(proxy?.source?.includes('XAUUSDT perpetual'));
+ const proxySide=crossSide!=='WAIT'?crossSide:isPerp||cross?.consensus==='CONFLICT'?'WAIT':
+   proxy?.side==='BUY'||proxy?.side==='SELL'?proxy.side:
    proxyTapeOnly?(proxy!.tradeDeltaPct!>0?'BUY':'SELL'):'WAIT';
  if(proxy&&proxySide!=='WAIT'&&
    proxy.observedAt<=now&&now-proxy.observedAt<=12000&&proxy.tradeAt<=now&&
@@ -418,7 +429,8 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      gap>=atr*.05&&gap<=atr*.4&&approach>0&&approach<=atr*.25&&
      Math.abs(price-last.close)<=atr*.65){
      proxyPressure={side:proxySide,setupKind:'PRESSURE',trigger:buy?high:low,
-       invalidation:buy?low:high,reason:proxyTapeOnly?
+       invalidation:buy?low:high,reason:crossSide!=='WAIT'?
+         'اتفاق تنفيذ Bybit وBinance XAUUSDT مع اقتراب XAU من حافة M1 قبل الكسر (رصد بديل فقط)':proxyTapeOnly?
          (proxy.depthAvailable===false?'ضغط تنفيذ PAXG دون دفتر؛ ':'ضغط تنفيذ PAXG رغم تعارض الدفتر؛ ')+
          'اقتراب XAU من حافة M1 قبل الكسر (رصد بديل فقط)':
          'ضغط دفتر وتنفيذ PAXG مع اقتراب الذهب من حافة نطاق M1 قبل الكسر'};

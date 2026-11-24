@@ -722,3 +722,21 @@ for(const buy of [true,false]){
  assert.equal(signal(confirmed).tradeEligible,false,'chart is research-only, never an order');
 }
 console.log('PASS: same-venue executed short tape BTC price-level fusion, symmetric live confirmation, stale/foreign/cost-independent safeguards');
+
+for(const side of ['BUY','SELL']){
+ const sign=side==='BUY'?1:-1,t=now+15000;
+ const evidence=['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual'].map(source=>({source,asOf:t-2000,count:12}));
+ const proxy={side:'NEUTRAL',source:'Bybit XAUUSDT perpetual',observedAt:t-1000,tradeAt:t-2000,count:12,
+   crossFlow:{consensus:side,venues:evidence,actionable:false}};
+ const input={...base,now:t,price:100+sign*.3,quoteAt:t,previousQuote:{at:t-3000,price:100+sign*.24},proxy};
+ const watch=step(input);
+ assert.equal(watch?.side,side);assert.equal(watch?.phase,'ARMED');
+ assert.equal(watch?.flowAligned,false);
+ assert.match(watch.reason,/اتفاق تنفيذ Bybit وBinance/);
+ for(const change of [{consensus:'CONFLICT'},{venues:evidence.slice(0,1)},{venues:[evidence[0],evidence[0]]},
+   {venues:evidence.map(e=>({...e,asOf:t-9000}))}]){
+   assert.equal(step({...input,proxy:{...proxy,crossFlow:{...proxy.crossFlow,...change}}}),null);
+ }
+ assert.equal(step({...input,price:100+sign*.55}),null);
+}
+console.log('PASS two-venue gold perpetual consensus produces prospective XAU watch only with current local approach');

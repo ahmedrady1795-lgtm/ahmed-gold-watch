@@ -133,6 +133,10 @@ export default function SniperOpportunityMarkers(p:Props){
    order(a.kind)-order(b.kind)||b.issuedAt-a.issuedAt);
  for(const r of m5CaptionCandidates){
    if(m5Labels.size>=1)break;
+   // A historical OPEN/FOLLOW caption must not collide with a current
+   // forecast or the newest actual early observation; all dots remain.
+   if(nearCurrent(r)||earlyShown.some(e=>Math.abs(p.timeX(e.issuedAt)-p.timeX(r.issuedAt))<72&&
+     Math.abs(p.py(e.priceAt)-p.py(r.priceAt))<48))continue;
    if(m5Named.some(s=>s.side===r.side&&s.kind===r.kind))continue;
    const x=p.timeX(r.issuedAt),y=p.py(r.priceAt);
    const chosen=placeLabel(x,y,76,19,r.side==='BUY'?29:-29);
@@ -199,8 +203,7 @@ export default function SniperOpportunityMarkers(p:Props){
            y={earlyLabels.get(r.id)!.y+3} textAnchor="middle"
            direction="rtl" fontSize="9" fontWeight="800" fill={ink}
            stroke="#07111b" strokeWidth="2.6" paintOrder="stroke">
-           {(current?'ترقب ':'رصد سابق ')+(buy?'شراء':'بيع')+
-             (r.setupKind==='PULLBACK'?' M1':'')+(ended?' ×':'')}
+           {(current?'ترقب ':'رصد ')+(buy?'شراء':'بيع')+(ended?' ×':'')}
          </text>
        </>}
      </g>;
