@@ -141,3 +141,9 @@ assert.equal(meter({...meterFlow,crossFlow:{consensus:'CONFLICT',actionable:fals
  {source:'Bybit XAUUSDT perpetual',asOf:meterNow-2000},{source:'Binance XAUUSDT perpetual',asOf:meterNow-2000}]}},null,meterNow,true).state,'CONFLICT');
 assert.match(panel,/gold-meter-battery/);
 console.log('PASS live signed gold execution battery, stale/missing distinction, source attribution and conflict');
+
+assert.equal(meter({...meterFlow,tradeDeltaPct:-58,absorptionWatch:'BUY',priceChangeBps:1.5},null,meterNow,true).dynamic,'امتصاص بيع محتمل ↑');
+assert.equal(meter({...meterFlow,accelerationSide:'BUY',shortDeltaPct:75,priorDeltaPct:30},null,meterNow,true).dynamic,'تسارع شراء ↑');
+assert.equal(meter({...meterFlow,accelerationSide:'BUY',shortDeltaPct:40,priorDeltaPct:30},null,meterNow,true).dynamic,undefined);
+assert.equal(meter({...meterFlow,tradeAt:meterNow-10000,absorptionWatch:'SELL',priceChangeBps:-2},null,meterNow,true).dynamic,undefined);
+console.log('PASS fresh gold tape dynamics separately labelled from signed pressure');

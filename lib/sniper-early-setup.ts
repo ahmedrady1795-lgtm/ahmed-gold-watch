@@ -428,6 +428,22 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    Math.abs(proxy.tradeDeltaPct!)>=55&&Math.abs(proxy.tradeDeltaPct!)<=100);
  const goldTapeSide=crossSide!=='WAIT'?crossSide:goldSingleTape?
    (proxy!.tradeDeltaPct!>0?'BUY':'SELL'):'WAIT';
+ // Distinguish accelerating aggressive volume from a tape whose price
+ // response contradicts that volume. Neither is broker XAU execution.
+ const dynamicFresh=Boolean(input.scope.startsWith('GOLD:')&&proxy&&
+   ['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual'].includes(proxy.source||'')&&
+   proxy.side!=='UNAVAILABLE'&&cross?.consensus!=='CONFLICT'&&
+   Number.isSafeInteger(proxy.tradeAt)&&Number.isSafeInteger(proxy.observedAt)&&
+   proxy.tradeAt>0&&proxy.tradeAt<=proxy.observedAt&&proxy.observedAt<=now&&
+   now-proxy.tradeAt<=8000&&now-proxy.observedAt<=10000&&proxy.count>=12&&
+   Number.isFinite(proxy.tradeDeltaPct)&&Math.abs(proxy.tradeDeltaPct!)<=100);
+ const acceleration=dynamicFresh&&Number.isFinite(proxy?.shortDeltaPct)&&Number.isFinite(proxy?.priorDeltaPct)&&
+   Math.abs(proxy!.shortDeltaPct!)<=100&&Math.abs(proxy!.priorDeltaPct!)<=100?
+   proxy!.accelerationSide==='BUY'&&proxy!.shortDeltaPct!>=45&&proxy!.shortDeltaPct!-proxy!.priorDeltaPct!>=25?'BUY':
+   proxy!.accelerationSide==='SELL'&&proxy!.shortDeltaPct!<=-45&&proxy!.priorDeltaPct!-proxy!.shortDeltaPct!>=25?'SELL':'WAIT':'WAIT';
+ const absorption=dynamicFresh&&Number.isFinite(proxy?.priceChangeBps)?
+   proxy!.absorptionWatch==='BUY'&&proxy!.tradeDeltaPct!<=-45&&proxy!.priceChangeBps!>=1?'BUY':
+   proxy!.absorptionWatch==='SELL'&&proxy!.tradeDeltaPct!>=45&&proxy!.priceChangeBps!<=-1?'SELL':'WAIT':'WAIT';
  const proxySide=crossSide!=='WAIT'?crossSide:isPerp||cross?.consensus==='CONFLICT'?'WAIT':
    proxy?.side==='BUY'||proxy?.side==='SELL'?proxy.side:
    proxyTapeOnly?(proxy!.tradeDeltaPct!>0?'BUY':'SELL'):'WAIT';
@@ -457,7 +473,9 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  // closed-body continuation, this can watch a small rejection/doji.
  // Never promote cross-venue flow into a same-symbol flow vote.
  let assistedReversal:Candidate|undefined;
- const reversalEvidence=crossSide!=='WAIT'?crossSide:flowSide;
+ const reversalEvidence=absorption!=='WAIT'?absorption:crossSide!=='WAIT'?crossSide:flowSide;
+ // A proxy absorption watch is admitted only by the independent XAU
+ // wick/reclaim + two live quote conditions below, not by delta alone.
  if(reversalEvidence!=='WAIT'&&previous&&at!=null&&
    previous.at>=sourceAt&&previous.at<at&&at<=now&&now-at<=8000&&
    at-previous.at<=10000&&now-sourceAt<60000){
@@ -478,7 +496,9 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
        proxy.tradeAt<=proxy.observedAt&&now-proxy.tradeAt<=8000))){
      assistedReversal={side:reversalEvidence,setupKind:'RECLAIM',trigger:level,
        invalidation:extreme-sign*atr*.08,
-       reason:'انعكاس مبكر: رفض قمة/قاع سابق + ضغط تنفيذ مؤيد + تحديثان سعريان قبل التفعيل'+
+       reason:absorption!=='WAIT'?
+         'ذهب: امتصاص محتمل في العقود البديلة + رفض مستوى XAU وتحديثان سعريان قبل التفعيل':
+         'انعكاس مبكر: رفض قمة/قاع سابق + ضغط تنفيذ مؤيد + تحديثان سعريان قبل التفعيل'+
          (crossSide!=='WAIT'?' (عقود بديلة، ليس دفتر XAU)':' (تدفق المصدر)')};
      candidates.push(assistedReversal);
    }
@@ -867,13 +887,17 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    return structural+m1+m15+flowVote+sweepVote+bodyVote+nearVote+roomVote+vote+
      (c===assistedReversal?.45:0)+(btcConsensus==='WAIT'?0:btcConsensus===c.side?.45:-.45)+
      (c===goldRetest?.65:0)+(input.scope.startsWith('GOLD:')&&goldTapeSide!=='WAIT'?
-       (goldTapeSide===c.side?.45:-.45):0);
+       (goldTapeSide===c.side?.45:-.45):0)+
+     (acceleration==='WAIT'||absorption!=='WAIT'?0:acceleration===c.side?.3:-.3)+
+     (c===assistedReversal&&absorption===c.side?.8:0);
  };
  const ranked=viable.map((c,index)=>({c,index,rank:evidenceRank(c)}))
    .sort((a,b)=>b.rank-a.rank||a.index-b.index);
  const chosen=ranked[0]?.c;
  if(!chosen)return prior;
  ({side,setupKind,trigger,invalidation,reason}=chosen);
+ if(acceleration!=='WAIT'&&absorption==='WAIT')
+   reason+=' · تسارع تنفيذ بديل '+(acceleration===side?'مؤيد':'معارض');
  if(input.scope.startsWith('GOLD:')&&goldTapeSide!=='WAIT')
    reason+=' · ضغط تنفيذ الذهب البديل '+(goldTapeSide===side?'مؤيد':'معارض')+' (ترجيح فقط)';
  if(btcConsensus!=='WAIT')reason+=' · تنفيذ Coinbase/Kraken '+(btcConsensus===side?'مؤيد':'معارض')+' (ترجيح فقط)';

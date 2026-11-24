@@ -801,3 +801,13 @@ for(const buy of [true,false]){
  assert.match(step({...input,proxy:supporting})?.reason??'',/ضغط تنفيذ الذهب البديل مؤيد/);
 }
 console.log('PASS GOLD early retest, neutral/missing flow, fresh single venue soft evidence, no chase');
+
+const dynamicNow=now+10000;
+const accelProxy={side:'NEUTRAL',source:'Bybit XAUUSDT perpetual',observedAt:dynamicNow-1000,
+ tradeAt:dynamicNow-2000,count:20,tradeDeltaPct:70,accelerationSide:'BUY',shortDeltaPct:80,priorDeltaPct:35};
+const dynamicInput={...base,now:dynamicNow,opportunity:op,proxy:accelProxy};
+assert.match(step(dynamicInput)?.reason??'',/تسارع تنفيذ بديل مؤيد/);
+assert.doesNotMatch(step({...dynamicInput,proxy:{...accelProxy,tradeAt:dynamicNow-11000}})?.reason??'',/تسارع تنفيذ/);
+assert.doesNotMatch(step({...dynamicInput,proxy:{...accelProxy,shortDeltaPct:35}})?.reason??'',/تسارع تنفيذ/);
+assert.equal(step({...base,now:dynamicNow,proxy:accelProxy}),null,'acceleration alone cannot create a setup');
+console.log('PASS gold execution acceleration ranking without fabricated trade or stale evidence');

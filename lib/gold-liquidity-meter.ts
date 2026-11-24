@@ -1,6 +1,6 @@
 import type {PaxgFlow} from './paxg-flow';
 export type GoldLiquidityMeter={state:'BUY'|'SELL'|'BALANCED'|'CONFLICT'|'UNAVAILABLE';
- delta:number|null;strength:number|null;label:string;source:string;ageSeconds:number|null;detail:string};
+ delta:number|null;strength:number|null;label:string;source:string;ageSeconds:number|null;detail:string;dynamic?:string};
 const sources=['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual','Binance PAXG/USDT proxy','Kraken PAXG/USD proxy'];
 /** Finite aggressive execution sample, not net capital inflow, resting
  * orders or global XAUUSD liquidity. A missing or old sample is never 0%. */
@@ -22,9 +22,17 @@ export function goldLiquidityMeter(perp:PaxgFlow|null|undefined,token:PaxgFlow|n
    new Set(f.crossFlow.venues.map(v=>v.source)).size===2&&
    f.crossFlow.venues.every(v=>sources.slice(0,2).includes(v.source)&&Number.isFinite(v.asOf)&&v.asOf<=now&&now-v.asOf<=8000);
  const state=conflict?'CONFLICT':delta>=10?'BUY':delta<=-10?'SELL':'BALANCED';
+ const freshDynamics=!conflict&&now-f.tradeAt<=8000&&f.count>=12;
+ const absorption=freshDynamics&&Number.isFinite(f.priceChangeBps)?
+   f.absorptionWatch==='BUY'&&f.tradeDeltaPct!<=-45&&f.priceChangeBps!>=1?'امتصاص بيع محتمل ↑':
+   f.absorptionWatch==='SELL'&&f.tradeDeltaPct!>=45&&f.priceChangeBps!<=-1?'امتصاص شراء محتمل ↓':undefined:undefined;
+ const accelerating=freshDynamics&&Number.isFinite(f.shortDeltaPct)&&Number.isFinite(f.priorDeltaPct)&&
+   Math.abs(f.shortDeltaPct!)<=100&&Math.abs(f.priorDeltaPct!)<=100?
+   f.accelerationSide==='BUY'&&f.shortDeltaPct!>=45&&f.shortDeltaPct!-f.priorDeltaPct!>=25?'تسارع شراء ↑':
+   f.accelerationSide==='SELL'&&f.shortDeltaPct!<=-45&&f.priorDeltaPct!-f.shortDeltaPct!>=25?'تسارع بيع ↓':undefined:undefined;
  return {state,delta,strength:Math.abs(delta),
    label:conflict?'تعارض المصادر':state==='BUY'?'ضخ شراء ↑':state==='SELL'?'ضغط بيع ↓':'متوازن',
-   source,ageSeconds:Math.floor((now-f.tradeAt)/1000),
+   source,ageSeconds:Math.floor((now-f.tradeAt)/1000),dynamic:absorption??accelerating,
    detail:'صافي حجم التنفيذ الهجومي ÷ إجمالي الحجم × 100، عينة '+f.count+' تنفيذ حتى 30ث · '+f.source+
      ' · ليس صافي إيداعات أو سحب رؤوس أموال ولا دفتر XAUUSD المباشر'+(conflict?' · النسبة تخص المصدر المعروض فقط':'')};
 }

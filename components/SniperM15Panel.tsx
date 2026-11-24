@@ -594,7 +594,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      (goldPerp&&goldPerp.side!=='UNAVAILABLE'&&goldPerp.tradeAt<=now&&now-goldPerp.tradeAt<=8000&&
        (goldPerp.crossFlow?.consensus==='BUY'||goldPerp.crossFlow?.consensus==='SELL'||
         goldPerp.crossFlow?.consensus==='CONFLICT'||(goldPerp.count>=12&&
-         Number.isFinite(goldPerp.tradeDeltaPct)&&Math.abs(goldPerp.tradeDeltaPct!)>=55))?goldPerp:paxg):null,flow:flowProfile,shortTape:tapeWatch,liquidity:liquidityMagnets,watch:watchMap,marketContext,
+         Number.isFinite(goldPerp.tradeDeltaPct)&&(Math.abs(goldPerp.tradeDeltaPct!)>=55||
+          goldPerp.absorptionWatch!=null||goldPerp.accelerationSide!=null)))?goldPerp:paxg):null,flow:flowProfile,shortTape:tapeWatch,liquidity:liquidityMagnets,watch:watchMap,marketContext,
    m1Side:nextM1.ready?nextM1.side:'WAIT',
    m15Side:entryTrend
  }),[earlyState,asset,paxg,goldPerp,localMl,btcCross,liquidity.zones,x?.candleSource,now,price,liveQuote?.sourceTime,liveQuote?.source,observedM15,
@@ -1951,6 +1952,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              {Array.from({length:10},(_,i)=><span key={i} className={goldMeter.strength!=null&&i*10<goldMeter.strength?'is-lit':''}/>)}
            </span>
            <b className="gold-meter-label">{goldMeter.label}</b>
+           {goldMeter.dynamic&&<span className="gold-meter-source" title="تغير التنفيذ أو استجابة السعر في المصدر البديل فقط">{goldMeter.dynamic}</span>}
            <span className="gold-meter-source" dir="ltr">{goldMeter.source}{goldMeter.ageSeconds!=null?' · '+goldMeter.ageSeconds+'s':''}</span>
          </span>}
        </small>}
