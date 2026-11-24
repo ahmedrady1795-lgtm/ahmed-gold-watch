@@ -72,13 +72,13 @@ async function krakenSnapshot(){
  lastKrakenFetchAt=now;
  return buildBtcOrderflow(krakenTape,now,1000,'Kraken XBT/USD');
 }
-export async function GET(request:Request){
+export async function GET(request:Request):Promise<Response>{
  const now=Date.now();
  const venue=new URL(request.url).searchParams.get('venue');
  if(venue==='compare'){
    // Reuse the same per-venue caches and in-flight requests as the existing
    // chart. No extra copy of the tape and no upstream request fan-out per user.
-   const read=async(v:string)=>{
+   const read=async(v:string):Promise<unknown>=>{
      const url=new URL(request.url);url.searchParams.set('venue',v);
      return (await GET(new Request(url))).json();
    };
