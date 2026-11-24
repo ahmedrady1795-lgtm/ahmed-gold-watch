@@ -24,8 +24,21 @@ export function aggregateGoldBars(rows:readonly Candle[],from:number,to:number,n
  }));
 }
 export function recoverGoldFrames(input:{c1:Candle[];c5:Candle[];c15:Candle[];c60:Candle[]},now:number){
- const merge=(raw:Candle[],derived:Candle[],period:number)=>
-  completeGoldBars([...derived,...raw],period,now).slice(-340);
+ // When native and aggregated histories overlap, require at least five
+ // matching OHLC bars before adding gaps. A provider may change its upstream
+ // feed; sharing a hostname is not proof that two histories can be spliced.
+ const merge=(raw:Candle[],derived:Candle[],period:number)=>{
+  const native=completeGoldBars(raw,period,now);
+  if(!native.length)return derived.slice(-340);
+  const byTime=new Map(native.map(b=>[b.time,b]));
+  const overlaps=derived.filter(b=>byTime.has(b.time)).slice(-24);
+  const coherent=overlaps.length>=5&&overlaps.every(b=>{
+   const other=byTime.get(b.time)!;
+   const tol=Math.max(.07,Math.max(b.close,other.close)*.000025);
+   return (['open','high','low','close'] as const).every(k=>Math.abs(b[k]-other[k])<=tol);
+  });
+  return coherent?completeGoldBars([...derived,...native],period,now).slice(-340):native.slice(-340);
+ };
  const c1=completeGoldBars(input.c1,60000,now).slice(-340);
  const c5=merge(input.c5,aggregateGoldBars(c1,60000,300000,now),300000);
  const c15=merge(input.c15,aggregateGoldBars(c5,300000,900000,now),900000);
