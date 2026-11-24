@@ -48,7 +48,9 @@ function btcDirection(_name:string,_surprise:number):Side{
 function eventScore(e:Event,now:number){
   const mins=(e.time-now)/60000,imp=Math.max(1,Math.min(3,Number(e.importance)||1));
   const proximity=mins>=0?cap(100-Math.max(0,mins)*2.2):cap(100-Math.abs(mins)*1.8);
-  return imp*35+proximity*.65;
+  // A verified just-published number takes priority over a later calendar item.
+  const freshActual=mins<=0&&mins>=-15&&num(e.actual)!=null;
+  return imp*35+proximity*.65+(freshActual?110:0);
 }
 export function buildNewsIntelligence(asset:Asset,events:Event[],now=Date.now()):NewsIntelligence{
   const relevant=(events||[]).filter(e=>Number.isFinite(e.time)&&e.time>=now-2*3600000&&e.time<=now+10*3600000).sort((a,b)=>eventScore(b,now)-eventScore(a,now));

@@ -1,4 +1,6 @@
 import {getNewsCalendarFeed} from '../../../lib/market-hub';
+import {mergeAdpEvents,verifiedAdpToday} from '../../../lib/news-adp-pulse';
+import type {Event} from '../../../lib/engine';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -41,8 +43,19 @@ export async function GET(){
   }
   try{
     if(!pending)pending=load().finally(()=>{pending=null;});
-    const body=await pending;
-    cached={at:Date.now(),body};
+    // A provider can take longer than the browser's deadline. Return verified
+    // releases and recent cached calendar entries rather than an empty screen.
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    const fallback=new Promise<any>(resolve=>{
+      timer=setTimeout(()=>{
+        const events:Event[]=(cached?.body.events||[]).filter((e:Event)=>e.time>=Date.now()-AGE_MS&&e.time<=Date.now()+WINDOW_MS).map((e:Event)=>({...e}));
+        mergeAdpEvents(events,verifiedAdpToday(Date.now()),Date.now());
+        resolve({ok:true,checkedAt:Date.now(),events:events.sort((a,b)=>a.time-b.time),newsReady:events.length>0,sourceStatus:'stale',warning:'مصدر التقويم متأخر؛ عرض البيانات المؤكدة وآخر تقويم محفوظ'});
+      },5500);
+    });
+    let body:any;
+    try{body=await Promise.race([pending,fallback]);}finally{if(timer)clearTimeout(timer);}
+    if(body.sourceStatus==='ready')cached={at:Date.now(),body};
     return Response.json(body,{headers:{'Cache-Control':'no-store'}});
   }catch{
     if(cached&&Date.now()-cached.at<30*60*1000){

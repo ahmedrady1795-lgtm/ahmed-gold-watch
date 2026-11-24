@@ -41,3 +41,5 @@ assert.equal(adpGold.weight,0);
 assert.equal(exports_.adpWeeklyTrend(adp.name,adp.actual,adp.previous,adp.forecast),'UP');
 assert.ok(adpGold.reasons.some(x=>x.includes('ADP')));
 assert.equal(exports_.adpWeeklyTrend(adp.name,'21K','23.8K','20K'),null);
+
+assert.equal(assess('GOLD',[adp,event('CPI',now+30*60000,'','2%','2%')],now).event.name,adp.name);

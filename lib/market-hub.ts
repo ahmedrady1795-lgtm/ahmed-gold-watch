@@ -410,9 +410,16 @@ async function calendarFromAdp(now:number):Promise<Event[]>{
     const fallback=verifiedAdpToday(now);
     try{
       const headers={'User-Agent':'Mozilla/5.0 AhmedGoldCommand/1.0','Accept':'text/html'};
-      const links=adpReleaseLinks(await getText(ADP_LIST,headers));
+      // Entire ADP fetch uses a shared deadline, independent of slow calendars.
+      const signal=AbortSignal.timeout(4000);
+      const read=async(url:string)=>{
+        const res=await fetch(url,{headers,signal,cache:'no-store'});
+        if(!res.ok)throw Error('ADP HTTP '+res.status);
+        return res.text();
+      };
+      const links=adpReleaseLinks(await read(ADP_LIST));
       const rows=await Promise.all(links.map(async url=>{
-        try{return parseAdpRelease(url,await getText(url,headers),now);}catch{return null;}
+        try{return parseAdpRelease(url,await read(url),now);}catch{return null;}
       }));
       const valid=rows.filter((x):x is NonNullable<typeof x>=>x!==null).sort((a,b)=>b.event.time-a.event.time);
       const out:Event[]=[];
@@ -543,6 +550,7 @@ export async function getMarketData(options:{force?:boolean}={}):Promise<MarketD
   if(priceKey)jobs.push((async()=>{try{result.background=await backgroundFromTwelve(priceKey);result.backgroundReady=result.background.filter(x=>x.value!=null&&x.status!=='unavailable').length>=2;if(!result.backgroundReady)result.errors.push('DXY والعوائد غير مكتملة؛ تستخدم كـConfirmation فقط ولن توقف الإشارة.');}catch{result.background=[];result.errors.push('تعذر تحديث DXY والعوائد؛ لن تستخدم في القرار.');}})());
   jobs.push((async()=>{
     const collected:Event[]=[];
+    const adpTask=calendarFromAdp(now);
     if(calendarKey){try{
       const start=new Date(now-86400000).toISOString().slice(0,10),end=new Date(now+30*86400000).toISOString().slice(0,10);
       const data=await getJson('https://api.tradingeconomics.com/calendar/country/united%20states/'+start+'/'+end+'?c='+encodeURIComponent(calendarKey)+'&f=json');
@@ -554,7 +562,7 @@ export async function getMarketData(options:{force?:boolean}={}):Promise<MarketD
     // Preserve an independently verified BLS schedule if live calendars
     // temporarily omit an imminent release (not an Actual data result).
     appendVerifiedBlsReleases(collected,now);
-    mergeAdpEvents(collected,await calendarFromAdp(now),now);
+    mergeAdpEvents(collected,await adpTask,now);
     const merged=new Map<string,Event>();
     for(const e of collected){
       const key=e.name.toLowerCase().replace(/\s+/g,' ').trim()+'|'+Math.round(e.time/3600000);
@@ -605,6 +613,7 @@ export async function getNewsCalendarFeed(now=Date.now()):Promise<NewsCalendarFe
   if(newsCalendarPending)return newsCalendarPending;
   newsCalendarPending=(async()=>{
     const collected:Event[]=[],errors:string[]=[];
+    const adpTask=calendarFromAdp(now);
     const key=getRuntimeEnv().TRADING_ECONOMICS_API_KEY;
     const tasks:Promise<void>[]=[];
     if(key)tasks.push((async()=>{
@@ -632,7 +641,7 @@ export async function getNewsCalendarFeed(now=Date.now()):Promise<NewsCalendarFe
     await Promise.all(tasks);
     // The ticker calendar remains independent from the heavy market feed.
     appendVerifiedBlsReleases(collected,now);
-    mergeAdpEvents(collected,await calendarFromAdp(now),now);
+    mergeAdpEvents(collected,await adpTask,now);
     const merged=new Map<string,Event>();
     for(const e of collected){
       if(!Number.isFinite(e.time)||!String(e.name||'').trim())continue;
