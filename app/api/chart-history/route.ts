@@ -1,4 +1,4 @@
-import {getMarketData} from '../../../lib/market-hub';
+import {getGoldChartMarket} from '../../../lib/market-hub';
 import {getBtcMarket} from '../../../lib/btc-market';
 import {chartAssetFromMarket} from '../../../lib/chart-history';
 import {historicalChartAsset} from '../../../lib/chart-last-good';
@@ -24,7 +24,7 @@ async function boundedFeed(work:Promise<unknown>){
 export async function GET(request:Request){
   const now=Date.now();
   const goldOnly=new URL(request.url).searchParams.get('asset')==='GOLD';
-  const requests=goldOnly?[getMarketData(),Promise.resolve(null)]:[getMarketData(),getBtcMarket()];
+  const requests=goldOnly?[getGoldChartMarket(),Promise.resolve(null)]:[getGoldChartMarket(),getBtcMarket()];
   const [goldResult,btcResult]=await Promise.allSettled(requests.map(boundedFeed));
   const checkedAt=Date.now();
   const g=goldResult.status==='fulfilled'?chartAssetFromMarket(goldResult.value,checkedAt):null;
