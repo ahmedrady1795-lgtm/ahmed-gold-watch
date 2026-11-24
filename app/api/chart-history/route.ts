@@ -8,11 +8,11 @@ export const runtime='nodejs';
 
 // One slow venue must not hold the other asset's completed candles hostage.
 // Provider fetches keep their own bounded retries/cache; this response has a
-// separate budget so GOLD can render while BTC warms in the background.
+// separate 14s budget, below the browser's 18s limit, so a slow but valid\n// provider reply (9-12s) is not spuriously declared HTTP 503.
 async function boundedFeed(work:Promise<unknown>){
   let timer:ReturnType<typeof setTimeout>|undefined;
   try{return await Promise.race([work,new Promise((_,reject)=>{
-    timer=setTimeout(()=>reject(Error('CHART_FEED_TIMEOUT')),8000);
+    timer=setTimeout(()=>reject(Error('CHART_FEED_TIMEOUT')),14000);
   })]);}finally{if(timer)clearTimeout(timer);}
 }
 
