@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),ts=require('typescript'),vm=require('node:vm');
+const exp={};vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/backtest.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:exp,require:()=>({})});
+const at=Date.parse('2026-01-01T10:00:00Z');
+assert.equal(at%3600000,0);
+const bars=Array.from({length:12},(_,i)=>({time:at+i*300000,open:100+i,high:102+i,low:99+i,close:101+i}));
+assert.equal(exp.aggregateComplete(bars.slice(0,11),60).length,0);
+assert.equal(exp.aggregateComplete(bars,60).length,1);
+assert.equal(exp.aggregateComplete(bars.filter((_,i)=>i!==2),15).length,3);
+assert.equal(exp.cleanBacktestCandles(bars,at+300000).length,1);
+assert.equal(exp.cleanBacktestCandles([...bars,{...bars[0],close:100.5}]).length,11);
+const stats=exp.statsFromTrades([2,-3,-2,1,0].map(resultR=>({resultR})));
+assert.equal(stats.netR,-2);assert.equal(stats.maxDrawdownR,5);assert.equal(stats.profitFactor,.6);assert.equal(stats.losses,2);
+const src=fs.readFileSync('lib/backtest.ts','utf8');assert.match(src,/upperIndex\(h1,t-3600000\)/);assert.doesNotMatch(src,/winsApprox|wr\*1\.2|Math\.max\(-1/);
+console.log('PASS causal aggregation, exact ledger stats, incomplete candles and conflicting duplicates');
