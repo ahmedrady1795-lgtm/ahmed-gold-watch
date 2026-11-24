@@ -1,5 +1,6 @@
 import type {PaxgFlow} from './paxg-flow';
 import type {LocalCandleMl} from './local-candle-ml';
+import type {BtcCrossFlow} from './btc-orderflow';
 import type {SniperMarketContext} from './sniper-market-context';
 import type {LiveOpportunity} from './sniper-live-opportunity';
 import type {M5CandleLean} from './sniper-m5-candle-lean';
@@ -66,7 +67,7 @@ function firstReclaim(bars:Bar[],price:number,atr:number){
 }
 /** Session-only arming: reloading cannot invent an earlier observation. */
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
- proxy?:PaxgFlow|null;localMl?:LocalCandleMl|null;previousQuote?:{at:number;price:number}|null;
+ proxy?:PaxgFlow|null;localMl?:LocalCandleMl|null;btcCross?:BtcCrossFlow|null;previousQuote?:{at:number;price:number}|null;
  price:number|null;quoteAt?:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
  flow?:FlowProfileDecision|null;
  shortTape?:{side:'BUY'|'SELL';trigger:number;invalidation:number;asOf:number;source:string;deltaPct:number}|null;
@@ -766,6 +767,19 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      (flowSide==='WAIT'||flowSide===c.side)&&
      (sweptSide==='WAIT'||sweptSide===c.side);
  });
+ // Independent spot tapes can corroborate an existing BTC candidate but
+ // cannot invent a setup, substitute for same-source flow or bypass risk.
+ const bc=input.btcCross;
+ const btcConsensus=input.scope.startsWith('BTC:')&&scopeVenue!=null&&bc?.actionable===false&&
+   (bc.consensus==='BUY'||bc.consensus==='SELL')&&Number.isFinite(bc.observedAt)&&
+   bc.observedAt<=now&&now-bc.observedAt<=10000&&bc.venues.length===2&&
+   new Set(bc.venues.map(v=>v.source)).size===2&&bc.venues.every(v=>
+     ['Coinbase Exchange BTC-USD','Kraken XBT/USD'].includes(v.source)&&
+     Number.isFinite(v.asOf)&&v.asOf<=bc.observedAt&&now-v.asOf<=10000&&
+     Number.isInteger(v.trades)&&v.trades>=8&&Number.isFinite(v.deltaPct)&&
+     Math.abs(v.deltaPct)>=30&&Math.abs(v.deltaPct)<=100&&
+     (bc.consensus==='BUY'?v.deltaPct>0:v.deltaPct<0))&&
+   Math.abs(bc.venues[0].asOf-bc.venues[1].asOf)<=4000?bc.consensus:'WAIT';
  const evidenceRank=(c:Candidate)=>{
    const tail=bars.slice(-3);
    const same=tail.filter(b=>c.side==='BUY'?
@@ -803,13 +817,14 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      ml.m1.status==='HISTORICAL_EDGE'&&ml.m1.validationCount>=60&&ml.m1.validationHits>=ml.m1.baselineHits+4&&
      ml.m1.side!=='WAIT'?ml.m1.side===c.side?.3:-.3:0;
    return structural+m1+m15+flowVote+sweepVote+bodyVote+nearVote+roomVote+vote+
-     (c===assistedReversal?.45:0);
+     (c===assistedReversal?.45:0)+(btcConsensus==='WAIT'?0:btcConsensus===c.side?.45:-.45);
  };
  const ranked=viable.map((c,index)=>({c,index,rank:evidenceRank(c)}))
    .sort((a,b)=>b.rank-a.rank||a.index-b.index);
  const chosen=ranked[0]?.c;
  if(!chosen)return prior;
  ({side,setupKind,trigger,invalidation,reason}=chosen);
+ if(btcConsensus!=='WAIT')reason+=' · تنفيذ Coinbase/Kraken '+(btcConsensus===side?'مؤيد':'معارض')+' (ترجيح فقط)';
  if(input.localMl?.asOf===sourceAt&&input.localMl.tradeAuthorized===false&&
     input.localMl.m1.status==='HISTORICAL_EDGE'&&input.localMl.m1.validationCount>=60&&
     input.localMl.m1.validationHits>=input.localMl.m1.baselineHits+4&&input.localMl.m1.side!=='WAIT')

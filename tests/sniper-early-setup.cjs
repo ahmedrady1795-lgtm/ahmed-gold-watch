@@ -762,3 +762,18 @@ assert.equal(step({...base,localMl:modelHint}),null,'local ML alone cannot gener
 assert.match(step({...base,opportunity:op,localMl:modelHint})?.reason??'',/ML محلي تاريخي مؤيد/);
 assert.doesNotMatch(step({...base,opportunity:op,localMl:{...modelHint,asOf:now+1}})?.reason??'',/ML محلي تاريخي/);
 console.log('PASS causal flow-assisted reversal watches and local ML soft ranking without trade authorization');
+
+const btcHint={observedAt:now,consensus:'BUY',actionable:false,venues:[
+ {source:'Coinbase Exchange BTC-USD',asOf:now-1000,trades:12,deltaPct:40},
+ {source:'Kraken XBT/USD',asOf:now-2000,trades:15,deltaPct:55}]};
+const btcInput={...base,scope:'BTC:Coinbase BTC-USD'};
+assert.equal(step({...btcInput,btcCross:btcHint}),null,'consensus alone must not create an entry');
+const btcCandidate=step({...btcInput,opportunity:op,btcCross:btcHint});
+assert.match(btcCandidate?.reason??'',/Coinbase\/Kraken مؤيد/);
+assert.equal(btcCandidate.flowAligned,false);
+for(const hint of [{...btcHint,consensus:'CONFLICT'},{...btcHint,observedAt:now-12000},
+ {...btcHint,venues:[btcHint.venues[0],btcHint.venues[0]]}]){
+ assert.doesNotMatch(step({...btcInput,opportunity:op,btcCross:hint})?.reason??'',/Coinbase\/Kraken/);
+}
+assert.doesNotMatch(step({...base,opportunity:op,btcCross:btcHint})?.reason??'',/Coinbase\/Kraken/);
+console.log('PASS BTC cross-venue consensus ranks prospective candidates without inventing flow or entries');
