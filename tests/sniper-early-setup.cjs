@@ -740,3 +740,25 @@ for(const side of ['BUY','SELL']){
  assert.equal(step({...input,price:100+sign*.55}),null);
 }
 console.log('PASS two-venue gold perpetual consensus produces prospective XAU watch only with current local approach');
+
+for(const buy of [true,false]){
+ const flip=x=>buy?x:200-x,side=buy?'BUY':'SELL',t=now+10000;
+ const wickBars=bars.map((b,i)=>i!==17?b:{...b,open:flip(99.64),close:flip(99.66),
+   low:flip(buy?99.4:99.9),high:flip(buy?99.9:99.4)});
+ const proxy={side:'NEUTRAL',source:'Bybit XAUUSDT perpetual',observedAt:t-1000,tradeAt:t-2000,count:12,
+   crossFlow:{consensus:side,actionable:false,venues:['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual'].map(source=>({source,asOf:t-2000,count:12}))}};
+ const input={...base,bars:wickBars,now:t,quoteAt:t,price:flip(99.71),
+   previousQuote:{at:t-3000,price:flip(99.65)},proxy};
+ const watch=step(input);
+ assert.match(watch?.reason??'',/انعكاس مبكر/);
+ assert.equal(watch.side,side);assert.equal(watch.flowAligned,false);
+ assert.ok((buy?1:-1)*(watch.trigger-input.price)>0);
+ for(const patch of [{previousQuote:null},{price:flip(100.1)},{proxy:{...proxy,crossFlow:{...proxy.crossFlow,consensus:'CONFLICT'}}}]){
+   assert.doesNotMatch(step({...input,...patch})?.reason??'',/انعكاس مبكر/);
+ }
+}
+const modelHint={asOf:now-1000,tradeAuthorized:false,m1:{status:'HISTORICAL_EDGE',side:'BUY',validationCount:60,validationHits:40,baselineHits:30}};
+assert.equal(step({...base,localMl:modelHint}),null,'local ML alone cannot generate a watch');
+assert.match(step({...base,opportunity:op,localMl:modelHint})?.reason??'',/ML محلي تاريخي مؤيد/);
+assert.doesNotMatch(step({...base,opportunity:op,localMl:{...modelHint,asOf:now+1}})?.reason??'',/ML محلي تاريخي/);
+console.log('PASS causal flow-assisted reversal watches and local ML soft ranking without trade authorization');

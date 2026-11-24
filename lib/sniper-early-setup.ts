@@ -1,4 +1,5 @@
 import type {PaxgFlow} from './paxg-flow';
+import type {LocalCandleMl} from './local-candle-ml';
 import type {SniperMarketContext} from './sniper-market-context';
 import type {LiveOpportunity} from './sniper-live-opportunity';
 import type {M5CandleLean} from './sniper-m5-candle-lean';
@@ -65,7 +66,7 @@ function firstReclaim(bars:Bar[],price:number,atr:number){
 }
 /** Session-only arming: reloading cannot invent an earlier observation. */
 export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:number;
- proxy?:PaxgFlow|null;previousQuote?:{at:number;price:number}|null;
+ proxy?:PaxgFlow|null;localMl?:LocalCandleMl|null;previousQuote?:{at:number;price:number}|null;
  price:number|null;quoteAt?:number|null;ready:boolean;bars:unknown;opportunity:LiveOpportunity;lean:M5CandleLean;
  flow?:FlowProfileDecision|null;
  shortTape?:{side:'BUY'|'SELL';trigger:number;invalidation:number;asOf:number;source:string;deltaPct:number}|null;
@@ -437,6 +438,37 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      candidates.push(proxyPressure);
    }
  }
+ // A wick at a previously known extreme plus fresh execution pressure
+ // and two fresh spot quotes moving away from the extreme. Unlike a
+ // closed-body continuation, this can watch a small rejection/doji.
+ // Never promote cross-venue flow into a same-symbol flow vote.
+ let assistedReversal:Candidate|undefined;
+ const reversalEvidence=crossSide!=='WAIT'?crossSide:flowSide;
+ if(reversalEvidence!=='WAIT'&&previous&&at!=null&&
+   previous.at>=sourceAt&&previous.at<at&&at<=now&&now-at<=8000&&
+   at-previous.at<=10000&&now-sourceAt<60000){
+   const buy=reversalEvidence==='BUY',sign=buy?1:-1;
+   const old=bars.slice(-13,-1);
+   const edge=buy?Math.min(...old.map(b=>b.low)):Math.max(...old.map(b=>b.high));
+   const extreme=buy?last.low:last.high;
+   const wick=buy?Math.min(last.open,last.close)-last.low:last.high-Math.max(last.open,last.close);
+   const level=buy?last.high+atr*.04:last.low-atr*.04;
+   const progress=sign*(price-edge),advance=sign*(price-previous.price);
+   if(sign*(edge-extreme)>=atr*.04&&wick>=atr*.22&&
+     sign*(last.close-edge)>=atr*.06&&sign*(last.close-edge)<=atr*.45&&
+     progress>=atr*.06&&progress<=atr*.45&&advance>=atr*.025&&advance<=atr*.22&&
+     sign*(previous.price-edge)>=0&&sign*(level-price)>=atr*.04&&
+     sign*(level-price)<=atr*.5&&Math.abs(last.close-last.open)<=atr*.55&&
+     last.high-last.low<=atr*1.8&&
+     (crossSide==='WAIT'||(proxy&&proxy.observedAt<=now&&now-proxy.observedAt<=12000&&
+       proxy.tradeAt<=proxy.observedAt&&now-proxy.tradeAt<=8000))){
+     assistedReversal={side:reversalEvidence,setupKind:'RECLAIM',trigger:level,
+       invalidation:extreme-sign*atr*.08,
+       reason:'انعكاس مبكر: رفض قمة/قاع سابق + ضغط تنفيذ مؤيد + تحديثان سعريان قبل التفعيل'+
+         (crossSide!=='WAIT'?' (عقود بديلة، ليس دفتر XAU)':' (تدفق المصدر)')};
+     candidates.push(assistedReversal);
+   }
+ }
  const onset=firstReclaim(bars,price,atr);
  if(onset){
    candidates.push({...onset,setupKind:'RECLAIM',
@@ -713,7 +745,7 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  // suppress a nearby valid one. Zone observations are available but do not
  // outrank genuine pre-break preparations.
  const viable=candidates.filter(c=>{
-   if(observingSameBar&&c!==liveReclaim&&c!==proxyPressure)return false;
+   if(observingSameBar&&c!==liveReclaim&&c!==proxyPressure&&c!==assistedReversal)return false;
    const remaining=c.side==='BUY'?c.trigger-price:price-c.trigger;
    const risk=c.side==='BUY'?price-c.invalidation:c.invalidation-price;
    const buy=c.side==='BUY';
@@ -764,13 +796,24 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
    const roomVote=Number.isFinite(nearest)&&riskFromBreak>0?
      Math.min(0,nearest/riskFromBreak-1):0;
    const nearVote=remaining<=atr*.52?.6:0;
-   return structural+m1+m15+flowVote+sweepVote+bodyVote+nearVote+roomVote;
+   // ML is a small ranking hint only on the same completed M1 snapshot.
+   // It cannot create a candidate, remove a veto or certify flow.
+   const ml=input.localMl;
+   const vote=ml?.asOf===sourceAt&&ml.tradeAuthorized===false&&
+     ml.m1.status==='HISTORICAL_EDGE'&&ml.m1.validationCount>=60&&ml.m1.validationHits>=ml.m1.baselineHits+4&&
+     ml.m1.side!=='WAIT'?ml.m1.side===c.side?.3:-.3:0;
+   return structural+m1+m15+flowVote+sweepVote+bodyVote+nearVote+roomVote+vote+
+     (c===assistedReversal?.45:0);
  };
  const ranked=viable.map((c,index)=>({c,index,rank:evidenceRank(c)}))
    .sort((a,b)=>b.rank-a.rank||a.index-b.index);
  const chosen=ranked[0]?.c;
  if(!chosen)return prior;
  ({side,setupKind,trigger,invalidation,reason}=chosen);
+ if(input.localMl?.asOf===sourceAt&&input.localMl.tradeAuthorized===false&&
+    input.localMl.m1.status==='HISTORICAL_EDGE'&&input.localMl.m1.validationCount>=60&&
+    input.localMl.m1.validationHits>=input.localMl.m1.baselineHits+4&&input.localMl.m1.side!=='WAIT')
+   reason+=' · ML محلي تاريخي '+(input.localMl.m1.side===side?'مؤيد':'معارض')+' (ترجيح بحثي فقط)';
  // Prospective consensus is counted by DISTINCT detector types, not the
  // number of correlated labels produced by the same few M1 candles.
  // The closest opposite direction, not the arbitrary second row, measures
