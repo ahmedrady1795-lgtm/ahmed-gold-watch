@@ -129,3 +129,14 @@ const reversal=replay(newSweep);
 assert.equal(reversal.phase,'WATCH','a terminated setup cannot mask a later opposite sweep');
 assert.equal(reversal.setupSide,'SELL');
 assert.equal(reversal.setupAt,newSweep.at(-1).time+60000);
+
+for(const confirmedRows of [activatedRows,sellRows]){
+ const first=replay(confirmedRows);
+ const close=first.price;
+ const follow=replay(next(confirmedRows,{open:close,low:close-.05,high:close+.05,close}));
+ assert.equal(follow.phase,'FOLLOWING');
+ assert.equal(follow.side,'WAIT','later closes cannot issue or score the same entry again');
+ assert.equal(follow.setupSide,first.side);
+ assert.equal(follow.confirmedAt,first.confirmedAt);
+ assert.equal(follow.eventAt,first.confirmedAt+60000);
+}

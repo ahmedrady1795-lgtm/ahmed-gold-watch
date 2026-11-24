@@ -6,7 +6,7 @@ export type GoldSide='BUY'|'SELL'|'WAIT';
 export type GoldBar={time:number;open:number;high:number;low:number;close:number;
  volume?:number;volumeBasis?:string};
 export type GoldRadarReading={ready:boolean;
- phase:'UNAVAILABLE'|'BALANCE'|'COMPRESSION'|'WATCH'|'CONFIRMED'|'INVALIDATED'|'EXPIRED';
+ phase:'UNAVAILABLE'|'BALANCE'|'COMPRESSION'|'WATCH'|'CONFIRMED'|'FOLLOWING'|'INVALIDATED'|'EXPIRED';
  setupSide?:GoldSide;setupAt?:number|null;confirmedAt?:number|null;
  side:GoldSide;label:string;reason:string;eventAt:number|null;
  price:number|null;confirm:number|null;invalidate:number|null;
@@ -133,6 +133,12 @@ export function readGoldLiquidityRadar(input:{
    if(phase==='WATCH'&&(side==='BUY'?b.close>setup.confirm:b.close<setup.confirm)){
     phase='CONFIRMED';confirmedAt=b.time+60000;
    }
+  }
+  if(phase==='CONFIRMED'&&confirmedAt!==latest.eventAt){
+   lastReading={...setup,phase:'FOLLOWING',side:'WAIT',setupSide:side,
+    setupAt:setup.eventAt,confirmedAt,eventAt:latest.eventAt,price:latest.price,
+    label:'متابعة بعد التأكيد',reason:'تفعّل السيناريو على شمعة سابقة ولم تلمس الشموع التالية مستوى الإبطال.'};
+   return lastReading;
   }
   const reason=phase==='INVALIDATED'?
     'أُلغي السيناريو: شمعة مغلقة لامست مستوى الإبطال؛ لا نفترض ترتيب الحركة داخل الشمعة.':

@@ -102,6 +102,8 @@ export default function GoldRadarBadge({now,marketFresh,watch,onPreparationView,
  const label=!marketFresh?'السعر غير حي':
    !current?'انتظار شموع M1':
    signal?(radar?.side==='BUY'?'اتفعّل · صعود مشروط':'اتفعّل · هبوط مشروط'):
+   radar?.phase==='FOLLOWING'&&radar.confirmedAt?
+     'متابعة '+(radar.setupSide==='BUY'?'صعود':'هبوط')+' · تأكيد '+clock(radar.confirmedAt):
    radar?.phase==='INVALIDATED'?'السيناريو اتلغى':
    radar?.phase==='EXPIRED'?'انتهت مهلة التأكيد':
    radar?.phase==='COMPRESSION'?'انضغاط · انتظار الكسر':
