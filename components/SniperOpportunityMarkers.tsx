@@ -201,7 +201,7 @@ export default function SniperOpportunityMarkers(p:Props){
            y={earlyLabels.get(r.id)!.y+3} textAnchor="middle"
            direction="rtl" fontSize="9" fontWeight="800" fill={ink}
            stroke="#07111b" strokeWidth="2.6" paintOrder="stroke">
-           {(current?'ترقب ':'رصد ')+(buy?'شراء':'بيع')+(ended?' ×':'')}
+           {(current?'ترقب ':'رصد سابق ')+(buy?'شراء':'بيع')+(ended?' ×':'')}
          </text>
        </>}
      </g>;
