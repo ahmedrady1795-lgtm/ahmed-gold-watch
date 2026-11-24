@@ -25,6 +25,6 @@ assert.match(page,/fetch\('\/api\/chart-history'/,'chart history has its own pol
 assert.match(page,/chartData=\{chartData\}/,'UI receives independent chart data');
 assert.match(ui,/chartCandles:separate\.chartCandles/,'market candles replace missing outdated model chart');
 assert.match(ui,/\.\.\.\(data\|\|\{\}\)/,'existing AI recommendations are retained');
-assert.match(endpoint,/getMarketData\(\),getBtcMarket\(\)/,'chart feed is independent of AI');
+assert.match(endpoint,/getGoldChartMarket\(\),getBtcMarket\(\)/,'chart feed is independent of AI');
 assert.doesNotMatch(endpoint,/getAiSnapshot\(|fetch\([^\n]*\/api\/ai-analysis/,'no calls to the heavy AI in the candle endpoint');
 console.log('PASS: independently available real closed candles, chart and AI remain safely separate');
