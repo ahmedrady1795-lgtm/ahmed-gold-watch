@@ -132,11 +132,9 @@ export default function SniperOpportunityMarkers(p:Props){
  const m5CaptionCandidates=[...m5Issued].sort((a,b)=>
    order(a.kind)-order(b.kind)||b.issuedAt-a.issuedAt);
  for(const r of m5CaptionCandidates){
-   if(m5Labels.size>=1)break;
-   // A historical OPEN/FOLLOW caption must not collide with a current
-   // forecast or the newest actual early observation; all dots remain.
-   if(nearCurrent(r)||earlyShown.some(e=>Math.abs(p.timeX(e.issuedAt)-p.timeX(r.issuedAt))<72&&
-     Math.abs(p.py(e.priceAt)-p.py(r.priceAt))<48))continue;
+   if(m5Labels.size>=2)break;
+   // The shared label placer already reserves the active marker and earlier
+   // captions. Allow a nearby observation to move its caption, not its dot.
    if(m5Named.some(s=>s.side===r.side&&s.kind===r.kind))continue;
    const x=p.timeX(r.issuedAt),y=p.py(r.priceAt);
    const chosen=placeLabel(x,y,76,19,r.side==='BUY'?29:-29);
