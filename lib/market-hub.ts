@@ -72,6 +72,9 @@ export type Mt5BridgeStatus = {
 
 type Cache<T> = { at: number; value: T };
 let marketCache: Cache<MarketData> | null = null;
+// One in-flight OHLC aggregation per Render instance. Four external frame
+// requests must not be repeated by simultaneous chart/AI/scalp viewers.
+let marketInFlight:Promise<MarketData>|null=null;
 let externalQuoteCache: Cache<QuoteData> | null = null;
 let mt5State: Mt5BridgeStatus | null = null;
 const mt5UpdateListeners=new Set<(status:Mt5BridgeStatus)=>void>();
@@ -421,6 +424,8 @@ async function calendarFromOfficialUS(now=Date.now()):Promise<Event[]>{
 async function backgroundFromTwelve(apiKey:string):Promise<BackgroundPoint[]>{const now=Date.now(),rt=getRuntimeEnv();if(backgroundCache&&now-backgroundCache.at<BACKGROUND_TTL_MS)return backgroundCache.value;const defs=[{key:'dxy' as const,label:'DXY',symbol:String(rt.BACKGROUND_DXY_SYMBOL||'DXY')},{key:'us2y' as const,label:'US 2Y',symbol:String(rt.BACKGROUND_US2Y_SYMBOL||'US02Y')},{key:'us10y' as const,label:'US 10Y',symbol:String(rt.BACKGROUND_US10Y_SYMBOL||'US10Y')}];const values=await Promise.all(defs.map(async d=>{try{const data=await getJson('https://api.twelvedata.com/quote?symbol='+encodeURIComponent(d.symbol),{Authorization:`apikey ${apiKey}`}),value=num(data?.close??data?.price),sourceTime=sourceTimeMs(data);if(value==null)throw new Error('no value');return{...d,value,change:num(data?.change),percentChange:num(data?.percent_change),sourceTime,status:statusFor(sourceTime,now),source:'Twelve Data'} as BackgroundPoint;}catch{return{...d,value:null,change:null,percentChange:null,sourceTime:null,status:'unavailable',source:'Twelve Data'} as BackgroundPoint;}}));backgroundCache={at:now,value:values};return values;}
 
 export async function getMarketData(options:{force?:boolean}={}):Promise<MarketData>{
+  if(!options.force&&marketInFlight)return marketInFlight;
+  const task=(async():Promise<MarketData>=>{
   const now=Date.now(),mt5CandlesNow=usableMt5Candles(now);
   if(!options.force&&marketCache&&now-marketCache.at<MARKET_TTL_MS&&Math.floor(now/60000)===Math.floor(marketCache.at/60000)){const cachedMt5=String(marketCache.value.priceSource||'').startsWith('Exness/MT5');if(Boolean(mt5CandlesNow)===cachedMt5)return marketCache.value;}
   const rt=getRuntimeEnv(),priceKey=rt.TWELVE_DATA_API_KEY,massiveKey=rt.MASSIVE_API_KEY||rt.POLYGON_API_KEY,calendarKey=rt.TRADING_ECONOMICS_API_KEY,result:MarketData={checkedAt:now,pricesReady:false,newsReady:false,backgroundReady:false,c1:[],c5:[],c15:[],c60:[],events:[],background:[],errors:[],priceSource:'unavailable'};
@@ -470,6 +475,11 @@ export async function getMarketData(options:{force?:boolean}={}):Promise<MarketD
     if(!result.newsReady)result.errors.push('لم يتم العثور على مواعيد اقتصادية حديثة بعد دمج المصادر.');
   })());
   await Promise.all(jobs);result.checkedAt=Date.now();marketCache={at:result.checkedAt,value:result};return result;
+  })();
+  if(options.force)return task;
+  marketInFlight=task;
+  try{return await task;}
+  finally{if(marketInFlight===task)marketInFlight=null;}
 }
 export async function getMarketSnapshot(){const[market,quote]=await Promise.all([getMarketData(),getQuoteData().catch(()=>null)]);return{ok:true,checkedAt:Date.now(),market,quote,mt5:getMt5BridgeStatus()};}
 
