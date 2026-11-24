@@ -182,7 +182,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    return ()=>{canceled=true};
  },[asset,Math.floor(now/900000)]);
  const x=asset==='GOLD'?data?.gold:data?.bitcoin;
- const liveQuote=asset==='GOLD'?goldLive:btcLive;
+ const historicalOnly=Boolean(x?.historicalOnly);
+ // Cached bars are only a picture of REAL past prices: never marry them to
+ // an independent current tick or yesterday's scenario to emit BUY/SELL.
+ const liveQuote=historicalOnly?null:asset==='GOLD'?goldLive:btcLive;
+ const analysisInput=historicalOnly?{...x,livePulse:null,scalpDesk:null,forwardMove:null}:x;
  const [observedM15,setObservedM15]=useState<(ObservedM15 & {previousQuote?:{at:number;price:number};feedKey?:string})|null>(null);
  const observedFeedKey=useRef('');
  // Preserve observed M5 extrema across a temporary quote outage, never across feeds.
@@ -204,12 +208,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    });
  },[asset,now,liveQuote?.sourceTime,liveQuote?.price,liveQuote?.source,x?.candleSource]);
  const marketOpen=asset==='BTC'||goldMarketSession(now).open;
- const providerTransition=asset==='BTC'&&Boolean(x?.providerTransition);
+ const providerTransition=historicalOnly||(asset==='BTC'&&Boolean(x?.providerTransition));
  // The independent closed M1 chart continues to certify source/time and
  // qualified plan history; this new display never turns a watch into an order.
- const m=useMemo(()=>buildForecastIllustration(asset,x,liveQuote,now,snapshotAt,
+ const m=useMemo(()=>buildForecastIllustration(asset,analysisInput,liveQuote,now,snapshotAt,
    null,true,null,null,observationAt),
-   [asset,x,liveQuote,now,snapshotAt,observationAt]);
+   [asset,analysisInput,liveQuote,now,snapshotAt,observationAt]);
  const actual=useMemo(()=>closedM15Bars(x?.chartHigherFrames?.m15,now,320),
    [x?.chartHigherFrames?.m15,now]);
  // A source-backed analysis lane remains drawable even when ML/Neural trade
@@ -1703,7 +1707,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            {firstM15Stats.label}</text>
          <title>{firstM15Stats.detail}</title>
        </g>}
-       <g className="sniper-price-axis" aria-label="تدريج السعر">
+       {trueHistory.length===0&&<g className="sniper-m15-history-empty" role="status"
+         data-chart-history-state="NO_VERIFIED_CANDLES">
+         <text x={(left+split)/2} y={plotTop+195} textAnchor="middle"
+           fontSize="15" fill="#f0c481" direction="rtl">شموع الذهب غير متاحة من المصدر</text>
+         <text x={(left+split)/2} y={plotTop+222} textAnchor="middle"
+           fontSize="11" fill="#a4b9c5" direction="rtl">جارٍ إعادة الاتصال · لا إشارات على بيانات مفقودة</text>
+       </g>}
+       {trueHistory.length>0&&<g className="sniper-price-axis" aria-label="تدريج السعر">
          <rect x={end+1} y={plotTop} width={W-end-1} height={plotBottom-plotTop} fill="#0b1722"/>
          {grid.map((v,i)=><text key={i} x={W-4} y={py(v)+4} textAnchor="end"
            direction="ltr" fill="#c6d6e4" fontSize="10">{v.toFixed(2)}</text>)}
@@ -1714,7 +1725,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            <text x={W-4} y={clamp(py(chartReference)-11,plotTop,plotBottom-22)+15}
              textAnchor="end" direction="ltr" fontSize="10" fontWeight="800" fill="white">{chartReference.toFixed(2)}</text>
          </>}
-       </g>
+       </g>}
        {/* Already-server-archived GOLD M1 pressure plan, NOT a qualified
            Exness order or evidence of bank liquidity. Show only while its
            original trigger is still ahead of the fresh matched quote. */}
@@ -1844,7 +1855,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
              {drawingBadge}
            </text>}
        </g>
-       <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">M5 · REAL</text>
+       <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">
+          {trueHistory.length===0?'M5 · NO DATA':historicalOnly?'M5 · HISTORY':'M5 · REAL'}
+        </text>
        <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'}
          fontSize="10" textAnchor="start" direction="ltr">
          {projected.ready?'M15 · PATH':detached&&visualAlignment?
