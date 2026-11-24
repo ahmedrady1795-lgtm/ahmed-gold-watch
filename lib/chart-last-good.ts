@@ -42,17 +42,22 @@ export function historicalChartAsset(asset:'gold'|'bitcoin',value:any,now:number
  const m5=bars(h.m5,300000,now,110);
  const m15=bars(h.m15,900000,now,160);
  const h1=bars(h.h1,3600000,now,120);
- if(chartCandles.length<8||m5.length<8||m15.length<8||h1.length<4)return null;
- const last=chartCandles.at(-1)!;
- if(last.time+60000>now+1500||now-(last.time+60000)>CHART_LAST_GOOD_MAX_AGE_MS)return null;
- // No cross-asset or cross-market unit drift can be smuggled into saved frames.
- const anchor=last.close;
+ // M5 alone is enough to DRAW a real gold chart, not to certify a trade.
+ // Reject malformed nonempty frames instead of silently discarding them.
+ if([ [value.chartCandles,chartCandles],[h.m5,m5],[h.m15,m15],[h.h1,h1] ]
+   .some(([raw,clean])=>Array.isArray(raw)&&raw.length>0&&!clean.length))return null;
+ if(m5.length<8||asset==='bitcoin'&&(chartCandles.length<8||m15.length<8||h1.length<4))return null;
+ const lastM5=m5.at(-1)!;
+ const lastM1=chartCandles.at(-1);
+ const lastClosedAt=Math.max(lastM5.time+300000,lastM1?lastM1.time+60000:0);
+ if(lastClosedAt>now+1500||now-lastClosedAt>CHART_LAST_GOOD_MAX_AGE_MS)return null;
+ const anchor=lastM1?.close??lastM5.close;
  if(asset==='gold'&&(anchor<100||anchor>25000))return null;
  if(asset==='bitcoin'&&(anchor<500||anchor>1000000))return null;
- if(Math.abs(m5.at(-1)!.close-anchor)>anchor*.12||
-    Math.abs(m15.at(-1)!.close-anchor)>anchor*.18)return null;
+ if(Math.abs(lastM5.close-anchor)>anchor*.12||
+    (m15.length>0&&Math.abs(m15.at(-1)!.close-anchor)>anchor*.18))return null;
  return {chartCandles,chartHigherFrames:{m5,m15,h1},candleSource,
-   lastClosedAt:last.time+60000,fresh:false,historicalOnly:true,
+   lastClosedAt,fresh:false,historicalOnly:true,
    providerTransition:true,historyRecoveredAt:now};
 }
 export function prepareChartHistorySave(chart:any,now:number):string|null{
