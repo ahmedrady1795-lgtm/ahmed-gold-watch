@@ -560,6 +560,10 @@ for(const side of ['BUY','SELL']){
  assert.equal(alert?.side,side);
  assert.equal(alert?.flowAligned,false,'external token execution is not XAU flow');
  assert.match(alert.reason,/تعارض الدفتر/);
+ const tapeOnly=step({...input,proxy:{...proxy,depthAvailable:false,depthImbalancePct:undefined}});
+ assert.equal(tapeOnly?.side,side);
+ assert.equal(tapeOnly?.flowAligned,false);
+ assert.match(tapeOnly.reason,/دون دفتر/);
  assert.ok(sign*(alert.trigger-input.price)>0);
  for(const patch of [{tradeDeltaPct:sign*35},{count:3},{tradeAt:t-9000},
   {source:'Exness XAUUSD DOM'},{tradeDeltaPct:sign*150}]){

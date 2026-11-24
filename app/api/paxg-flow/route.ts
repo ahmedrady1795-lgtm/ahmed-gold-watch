@@ -46,11 +46,12 @@ async function sample():Promise<PaxgFlow>{
  const now=Date.now();
  if(now>=binanceRetryAt){
    try{
-     const [book,trades]=await Promise.all([
+     const [book,trades]=await Promise.allSettled([
        readBinance('depth?symbol=PAXGUSDT&limit=5'),
        readBinance('aggTrades?symbol=PAXGUSDT&limit=100')
      ]);
-     const flow=readPaxgFlow(book,trades,Date.now());
+     const flow=readPaxgFlow(book.status==='fulfilled'?book.value:null,
+       trades.status==='fulfilled'?trades.value:null,Date.now());
      if(flow.side!=='UNAVAILABLE')return flow;
    }catch{/* Try independent Kraken spot market instead. */}
  }
@@ -58,14 +59,14 @@ async function sample():Promise<PaxgFlow>{
  // supplies book+executed trades only for PAXG/USD, never the Exness XAU book.
  if(Date.now()<krakenRetryAt)return unavailable(Date.now());
  try{
-   const [depth,history]=await Promise.all([
+   const [depth,history]=await Promise.allSettled([
      readKraken('Depth?pair=PAXGUSD&count=5'),
      readKraken('Trades?pair=PAXGUSD&count=100')
    ]);
-   const book=Object.values(depth).find(v=>v&&typeof v==='object'&&
+   const book=Object.values(depth.status==='fulfilled'?depth.value:{}).find(v=>v&&typeof v==='object'&&
      Array.isArray((v as any).bids)&&Array.isArray((v as any).asks));
-   const trades=Object.values(history).find(Array.isArray);
-   if(!book||!trades)throw new Error('Missing Kraken PAXG/USD book or trades');
+   const trades=Object.values(history.status==='fulfilled'?history.value:{}).find(Array.isArray);
+   if(!trades)throw new Error('Missing Kraken PAXG/USD trades');
    return readKrakenPaxgFlow(book,trades,Date.now());
  }catch{
    // In particular, an absent/renamed pair is an unavailable proxy,

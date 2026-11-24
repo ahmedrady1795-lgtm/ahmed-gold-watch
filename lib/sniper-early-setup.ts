@@ -399,8 +399,9 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
  const proxyTapeOnly=Boolean(proxy?.side==='NEUTRAL'&&
    ['Binance PAXG/USDT proxy','Kraken PAXG/USD proxy'].includes(proxy.source||'')&&
    Number.isFinite(proxy.tradeDeltaPct)&&Math.abs(proxy.tradeDeltaPct!)>=65&&
-   Math.abs(proxy.tradeDeltaPct!)<=100&&Number.isFinite(proxy.depthImbalancePct)&&
-   Math.abs(proxy.depthImbalancePct!)<=100&&proxy.count>=8&&
+   Math.abs(proxy.tradeDeltaPct!)<=100&&
+   (proxy.depthAvailable===false||(Number.isFinite(proxy.depthImbalancePct)&&
+    Math.abs(proxy.depthImbalancePct!)<=100))&&proxy.count>=8&&
    proxy.tradeAt<=proxy.observedAt&&now-proxy.tradeAt<=8000);
  const proxySide=proxy?.side==='BUY'||proxy?.side==='SELL'?proxy.side:
    proxyTapeOnly?(proxy!.tradeDeltaPct!>0?'BUY':'SELL'):'WAIT';
@@ -418,7 +419,8 @@ export function advanceEarlySetup(input:{prior:EarlySetup|null;scope:string;now:
      Math.abs(price-last.close)<=atr*.65){
      proxyPressure={side:proxySide,setupKind:'PRESSURE',trigger:buy?high:low,
        invalidation:buy?low:high,reason:proxyTapeOnly?
-         'ضغط تنفيذ PAXG رغم تعارض الدفتر؛ اقتراب XAU من حافة M1 قبل الكسر (رصد بديل فقط)':
+         (proxy.depthAvailable===false?'ضغط تنفيذ PAXG دون دفتر؛ ':'ضغط تنفيذ PAXG رغم تعارض الدفتر؛ ')+
+         'اقتراب XAU من حافة M1 قبل الكسر (رصد بديل فقط)':
          'ضغط دفتر وتنفيذ PAXG مع اقتراب الذهب من حافة نطاق M1 قبل الكسر'};
      candidates.push(proxyPressure);
    }

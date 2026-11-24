@@ -14,7 +14,16 @@ assert.equal(readPaxgFlow(book(false),trades(true),now).side,'NEUTRAL');
 assert.equal(readPaxgFlow(book(true),trades(true),now+16000).side,'UNAVAILABLE');
 assert.equal(readPaxgFlow(book(true),Array(5).fill(trades(true)[0]),now).side,'UNAVAILABLE');
 assert.equal(readPaxgFlow(book(true),trades(true),now-6000).side,'UNAVAILABLE');
-assert.equal(readPaxgFlow({},trades(true),now).side,'UNAVAILABLE');
+const tapeOnly=readPaxgFlow({},trades(true),now);
+assert.equal(tapeOnly.side,'NEUTRAL');
+assert.equal(tapeOnly.depthAvailable,false);
+assert.equal(tapeOnly.depthImbalancePct,undefined);
+assert.equal(tapeOnly.buyVolume,5);
+assert.equal(tapeOnly.sellVolume,0);
+assert.equal(tapeOnly.deltaVolume,5);
+assert.equal(tapeOnly.tradeDeltaPct,100);
+assert.equal(tapeOnly.coverageSeconds,4);
+assert.equal(readPaxgFlow({},[],now).side,'UNAVAILABLE');
 console.log('PASS PAXG book and trade alignment, conflict, freshness and deduplication');
 
 const krakenTrades=buy=>levels.map((i)=>[
@@ -31,7 +40,12 @@ assert.equal(readKrakenPaxgFlow(book(true),krakenTrades(true),now-5000).side,'UN
   'Kraken future prints are discarded');
 assert.equal(readKrakenPaxgFlow(book(true),Array(5).fill(krakenTrades(true)[0]),now).side,
   'UNAVAILABLE','duplicated trade rows cannot manufacture flow pressure');
-assert.equal(readKrakenPaxgFlow({},krakenTrades(true),now).side,'UNAVAILABLE');
+const kt=readKrakenPaxgFlow({},krakenTrades(false),now);
+assert.equal(kt.side,'NEUTRAL');
+assert.equal(kt.depthAvailable,false);
+assert.equal(kt.sellVolume,5);
+assert.equal(kt.deltaVolume,-5);
+assert.equal(kt.tradeDeltaPct,-100);
 assert.match(readKrakenPaxgFlow(book(true),krakenTrades(true),now).source,/Kraken PAXG\/USD/,
   'proxy must name its true venue instead of claiming Exness XAU DOM');
 const route=fs.readFileSync('app/api/paxg-flow/route.ts','utf8');
