@@ -1856,14 +1856,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            </text>}
        </g>
        <text x={left+3} y={17} fill="#ccd8e6" fontSize="10" direction="ltr" textAnchor="start">
-          {trueHistory.length===0?'M5 · NO DATA':historicalOnly?'M5 · HISTORY':'M5 · REAL'}
+          {trueHistory.length===0?'M5 · NO DATA':historicalOnly?(/COMEX/i.test(String(x?.candleSource||''))?'M5 · GC REF':'M5 · HISTORY'):'M5 · REAL'}
         </text>
        <text x={split+5} y={17} fill={projected.ready?'#e0c08d':'#9fc4d3'}
          fontSize="10" textAnchor="start" direction="ltr">
          {projected.ready?'M15 · PATH':detached&&visualAlignment?
            'انفصل المسار · '+n(visualAlignment.difference):sessionDataShort?
            'M15 · '+consecutiveM15+'/24':
-           showWatchGuide?'M15 · WATCH':'M15 · LIVE'}
+           historicalOnly?'M15 · HISTORY':showWatchGuide?'M15 · WATCH':trueHistory.length===0?'M15 · NO DATA':'M15 · LIVE'}
          <title>{sessionDataShort?
            'آخر '+consecutiveM15+' من 24 إغلاق M15 متصل متاح؛ بيانات السيناريو المعتمد غير مكتملة بعد الجلسة، ولا يعني اكتمالها وجود صفقة':
            projected.ready?'مسار تحليلي مشروط محفوظ':
