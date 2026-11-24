@@ -95,3 +95,22 @@ for(const dir of [1,-1]){
  assert.equal(shortWatch({...args,m1:recent.map(b=>({...b,low:950,high:1050}))}),null);
 }
 console.log('PASS: short executed-tape pressure, BUY/SELL before next level, freshness and venue guards');
+
+// Opposite aggressive tape that fails at a structural edge may be an early
+// absorption watch, but a crossed trigger or sustained adverse move is not.
+for(const dir of [1,-1]){
+ const m1=Array.from({length:21},(_,i)=>({time:Math.floor(watchNow/60000)*60000-(21-i)*60000,
+  open:1000,close:1000,high:1002,low:998}));
+ const pressure={asOf:watchNow-500,from:watchNow-9000,trades:20,
+  deltaPct:-dir*65,priorDeltaPct:-dir*40,
+  low:dir===1?998:1000.9,high:dir===1?999.1:1002,
+  firstPrice:1000-dir*1.4,lastPrice:1000-dir*1.35};
+ const tape={ok:true,status:'LIVE_SAMPLE',source:'Kraken XBT/USD',shortPressure:pressure};
+ const args={now:watchNow,price:pressure.lastPrice,sourceMatches:true,tape,observedAt:watchNow,m1};
+ const watch=shortWatch(args);
+ assert.equal(watch?.side,dir===1?'BUY':'SELL');
+ assert.equal(watch?.kind,'ABSORPTION');
+ assert.ok(dir*(watch.trigger-args.price)>0);
+ assert.equal(shortWatch({...args,price:watch.trigger+dir*.01})?.kind==='ABSORPTION',false);
+ assert.equal(shortWatch({...args,sourceMatches:false}),null);
+}

@@ -324,7 +324,7 @@ export async function getScalpDesk(asset:'ALL'|'GOLD'='ALL'){
     // unobserved tail becomes UNKNOWN, never a synthetic success.
     const btcEarlyAudit=btcResearch?observeScalpLead('BTC_EARLY_M1',
       btcResearch.quote,Date.now(),
-      btcEarly&&['ENTRY_CANDIDATE','COST_BLOCKED'].includes(btcEarly.status)&&
+      btcEarly&&['EARLY_WATCH','ENTRY_CANDIDATE','COST_BLOCKED'].includes(btcEarly.status)&&
       (btcEarly.side==='BUY'||btcEarly.side==='SELL')&&
       Number(btcEarly.estimatedRoundTripCost)>0?
         {id:'BTC_M1_'+String(btcEarly.issuedFromClosedM1At),

@@ -38,10 +38,15 @@ export function detectEarlyExecutionLead(input:{
  if(asset!=='BTC')return done('WAIT','بيانات ذهب MT5 الحقيقية للأوردر فلو غير متاحة لهذا المسار؛ لا نستخدم سيولة BTC بديلًا');
  const price=quote.price,bid=quote.bid,ask=quote.ask;
  if(!Number.isFinite(now)||!Number.isFinite(quote.at)||quote.at==null||
-   now-quote.at<0||now-quote.at>3000||price==null||!Number.isFinite(price)||price<=0||
-   bid==null||ask==null||![bid,ask].every(Number.isFinite)||bid<=0||ask<=bid||
-   !(price>=bid-(ask-bid)*2&&price<=ask+(ask-bid)*2))
-   return done('STALE','لا يوجد Bid/Ask موثوق وحديث لنفس سوق BTC');
+   now-quote.at<0||now-quote.at>3000||price==null||!Number.isFinite(price)||price<=0)
+   return done('STALE','سعر BTC غير صالح أو متأخر');
+ // A crossed or malformed provided book is an integrity failure. A missing
+ // BBO or a last trade outside the current spread only blocks execution,
+ // not the independent closed-bar/verified absorption observation.
+ if(bid!=null&&ask!=null&&(![bid,ask].every(Number.isFinite)||bid<=0||ask<=bid))
+   return done('STALE','دفتر Bid/Ask غير صالح');
+ const executionBbo=bid!=null&&ask!=null&&Number.isFinite(bid)&&Number.isFinite(ask)&&
+   bid>0&&ask>bid&&price>=bid-(ask-bid)*2&&price<=ask+(ask-bid)*2;
  const closed=input.c1.filter(x=>Number.isSafeInteger(x.time)&&x.time%60000===0&&
    x.time+60000<=now&&[x.open,x.high,x.low,x.close].every(Number.isFinite)&&
    x.low>0&&x.high>=Math.max(x.open,x.close)&&x.low<=Math.min(x.open,x.close))
@@ -120,6 +125,20 @@ export function detectEarlyExecutionLead(input:{
    return done('LATE','السعر تحرك بالفعل بعيدًا عن لحظة الامتصاص؛ ممنوع مطاردة الشمعة',
      {side,setup,issuedFromClosedM1At:frozenAt,
       evidence:['امتصاص حقيقي مرصود لكن السعر ابتعد أكثر من حد الدخول المبكر']});
+ if(!executionBbo||bid==null||ask==null){
+   // Retain a direction only when the independent flow/closed candle agrees
+   // and integrity has not vetoed the side. Never derive a LIMIT or TP.
+   if(blockers.length)return done('WAIT',blockers[0],{issuedFromClosedM1At:frozenAt});
+   const estimate=input.estimatedRoundTripCost;
+   return done('EARLY_WATCH','امتصاص سيولة مبكر؛ سعر التنفيذ غير متاح أو خارج السبريد، مراقبة فقط',{
+     side,setup,issuedFromClosedM1At:frozenAt,
+     score:Math.round(Math.min(89,35+absorption.score*.38+(setup==='SWEEP_RECLAIM'?14:0)+
+       Math.max(0,side==='BUY'?depth:-depth)*.10)),
+     estimatedRoundTripCost:typeof estimate==='number'&&Number.isFinite(estimate)&&estimate>0?estimate:null,
+     evidence:['امتصاص تنفيذ مرصود مع إغلاق M1 ودفتر مستقل؛ لا يوجد سعر LIMIT مؤهل'],
+     blockers:['Bid/Ask غير مؤهل؛ لا دخول أو هدف صفقة']
+   });
+ }
  const hold=side==='BUY'?Math.min(bid,price):Math.max(ask,price);
  const entry=Number((hold-dir*Math.max(.01,atr*.025)).toFixed(2));
  const minStop=side==='BUY'?Math.min(recentExtreme,levels.low):Math.max(recentExtreme,levels.high);

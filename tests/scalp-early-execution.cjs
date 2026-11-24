@@ -52,6 +52,15 @@ assert.ok(r.stop<r.entry&&r.target>r.entry);
 assert.ok(r.netR>=1.25);
 assert.equal(r.researchOnly,true);
 assert.equal(r.brokerExecutionVerified,false);
+for(const quote of [{...buy.quote,bid:null,ask:null},{...buy.quote,bid:99.1,ask:99.12}]){
+ const watch=detectEarlyExecutionLead({...buy,quote});
+ assert.equal(watch.status,'EARLY_WATCH',watch.reason);
+ assert.equal(watch.side,'BUY');
+ for(const key of ['entryType','entry','stop','target','netR'])assert.equal(watch[key],null);
+ assert.equal(watch.brokerExecutionVerified,false);
+ assert.equal(detectEarlyExecutionLead({...buy,quote,liquidity:{...base,
+  integrity:{...base.integrity,blockedSides:['BUY']}}}).side,'WAIT');
+}
 const heavy=detectEarlyExecutionLead({...buy,estimatedRoundTripCost:1.1});
 assert.equal(heavy.status,'COST_BLOCKED');
 assert.equal(heavy.side,'BUY');

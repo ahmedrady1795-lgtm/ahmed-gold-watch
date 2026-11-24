@@ -226,13 +226,31 @@ export function detectShortTapeWatch(a:{now:number;price:number|null;sourceMatch
    Math.abs(b.high-bars[i].close),Math.abs(b.low-bars[i].close)),0)/20;
  if(!(atr>0)||atr>price*.03||p.high-p.low>atr*.65||
     Math.abs(price-p.lastPrice)>atr*.20)return null;
+ const recent=bars.slice(-3);
+ const hi=Math.max(...recent.map(b=>b.high)),lo=Math.min(...recent.map(b=>b.low));
+ const buffer=Math.max(.01,atr*.035);
+ // Absorption: aggressive trades fail to advance through a closed-bar
+ // boundary, then price recoils. This is a hypothesis, not book execution.
+ // Freeze a trigger beyond the already observed tape (no late chasing).
+ const absorb=p.deltaPct<=-45&&p.priorDeltaPct<=-20&&
+   p.low<=lo+atr*.20&&p.low>=lo-atr*.18&&
+   p.lastPrice-p.low>=atr*.12&&p.lastPrice-p.firstPrice>=-atr*.10?1:
+   p.deltaPct>=45&&p.priorDeltaPct>=20&&
+   p.high>=hi-atr*.20&&p.high<=hi+atr*.18&&
+   p.high-p.lastPrice>=atr*.12&&p.firstPrice-p.lastPrice>=-atr*.10?-1:0;
+ if(absorb){
+   const trigger=absorb===1?p.high+buffer:p.low-buffer;
+   const invalidation=absorb===1?Math.min(lo,p.low)-buffer:Math.max(hi,p.high)+buffer;
+   const risk=absorb*(trigger-invalidation),ahead=absorb*(trigger-price);
+   if(ahead>atr*.035&&ahead<=atr*.65&&risk>ahead&&risk<=atr*1.4&&
+     absorb*(price-invalidation)>0)
+     return {side:(absorb===1?'BUY':'SELL') as 'BUY'|'SELL',trigger,invalidation,
+       asOf:p.asOf,source:tape.source,deltaPct:p.deltaPct,kind:'ABSORPTION' as const};
+ }
  const dir=p.deltaPct>=28&&(p.priorDeltaPct>=12||p.deltaPct-p.priorDeltaPct>=20)?1:
    p.deltaPct<=-28&&(p.priorDeltaPct<=-12||p.priorDeltaPct-p.deltaPct>=20)?-1:0;
  if(!dir||dir*(p.lastPrice-p.firstPrice)<-atr*.15||
    dir*(p.lastPrice-p.firstPrice)>atr*.40)return null;
- const recent=bars.slice(-3);
- const hi=Math.max(...recent.map(b=>b.high)),lo=Math.min(...recent.map(b=>b.low));
- const buffer=Math.max(.01,atr*.035);
  const trigger=dir===1?hi+buffer:lo-buffer;
  const invalidation=dir===1?lo-buffer:hi+buffer;
  const risk=Math.abs(trigger-invalidation),ahead=dir*(trigger-price);
@@ -241,5 +259,5 @@ export function detectShortTapeWatch(a:{now:number;price:number|null;sourceMatch
    ahead>atr*.75||risk>atr*4||ahead>=risk||
    dir*(price-invalidation)<=0)return null;
  return {side:(dir===1?'BUY':'SELL') as 'BUY'|'SELL',trigger,invalidation,
-   asOf:p.asOf,source:tape.source,deltaPct:p.deltaPct};
+   asOf:p.asOf,source:tape.source,deltaPct:p.deltaPct,kind:'PRESSURE' as const};
 }

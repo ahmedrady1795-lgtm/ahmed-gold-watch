@@ -27,7 +27,7 @@ export function chartM5EarlyCue(a:{
  providerTransition:boolean;preMove:PreMovePressure|null;
  opportunity:LiveOpportunity|null;lean:M5CandleLean|null;
  reclaim?:M1ReclaimWatch|null;
- shortTape?:{side:'BUY'|'SELL';trigger:number;invalidation:number;asOf:number;source:string;deltaPct:number}|null;
+ shortTape?:{side:'BUY'|'SELL';trigger:number;invalidation:number;asOf:number;source:string;deltaPct:number;kind?:'ABSORPTION'|'PRESSURE'}|null;
  m5Follow?:{ready:boolean;side:Side;reason:string}|null
 }):M5EarlyCue{
  const base:M5EarlyCue={stage:'NONE',side:'WAIT',
@@ -66,7 +66,7 @@ export function chartM5EarlyCue(a:{
  if(t&&within(t.asOf,10000)&&valid(t.side,t.trigger,t.invalidation)&&
    before(t.side,t.trigger,t.invalidation)){
   return {...result('PREBREAK',t.side,t.side==='BUY'?'تنبيه شراء مبكر':'تنبيه بيع مبكر',
-    'ضغط تنفيذ آخر 10 ثوانٍ من '+t.source+' · دلتا '+Math.round(t.deltaPct)+'% · قبل مستوى الكسر التالي؛ اختبار فقط',
+    (t.kind==='ABSORPTION'?'امتصاص ضغط تنفيذي قرب السيولة من ':'ضغط تنفيذ آخر 10 ثوانٍ من ')+t.source+' · دلتا '+Math.round(t.deltaPct)+'% · قبل مستوى التفعيل؛ اختبار فقط',
     t.trigger,t.invalidation,t.asOf,'PRESSURE')};
  }
  const o=a.opportunity;
