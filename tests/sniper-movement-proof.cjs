@@ -355,3 +355,21 @@ for(const row of [{...watchRow,setupLifecycle:'ACTIVATED'},
 assert.doesNotMatch(getEarly(renderEarly(watchRow,{...pre,side:'SELL'})),/<path /,
  'an opposite active setup retires the old directional triangle');
 console.log('PASS immutable signal evidence, legacy recovery and active-only early captions');
+
+const auditStart=1800000000000;
+const auditRows=Array.from({length:32},(_,i)=>({
+ id:'audit-'+i,asset:'GOLD',source:'test-feed',kind:'EARLY',side:'BUY',setupKind:'RECLAIM',
+ issuedAt:auditStart+i*240000,onsetResolvedAt:auditStart+i*240000+60000,
+ onsetOutcome:i%4===0?'MOVE_FIRST':'ADVERSE_FIRST',evidence:{flowSide:'WAIT',m15Side:'SELL'}
+}));
+const auditNow=auditStart+33*240000;
+const audit=mod.exports.reviewEarlyFailures([...auditRows,{...auditRows[0],id:'overlap',issuedAt:auditStart+1000},
+ {...auditRows[0],id:'other',source:'other-feed'}],'GOLD','test-feed',auditNow);
+assert.equal(audit.total,32);
+assert.equal(audit.groups[0].first,8);
+assert.equal(audit.groups[0].adverse,24);
+assert.equal(audit.groups[0].flowMissing,24);
+assert.equal(audit.groups[0].review,true);
+assert.equal(audit.tradeAuthorized,false);
+assert.equal(mod.exports.reviewEarlyFailures(auditRows.slice(0,10),'GOLD','test-feed',auditNow).groups[0].review,false);
+console.log('PASS disjoint causal same-feed failure review');

@@ -7,7 +7,7 @@ type Side='BUY'|'SELL'|'WAIT';
 export type LocalHorizon={side:Side;validationHits:number;validationCount:number;
  baselineHits:number;selectedCount:number;status:'INSUFFICIENT'|'SHADOW'|'HISTORICAL_EDGE';
  rawScore:number|null};
-export type LocalCandleMl={asOf:number|null;m1:LocalHorizon;m5:LocalHorizon;tradeAuthorized:false};
+export type LocalCandleMl={asOf:number|null;m1:LocalHorizon;m5:LocalHorizon;neuralM1:LocalHorizon;neuralM5:LocalHorizon;tradeAuthorized:false};
 const empty=():LocalHorizon=>({side:'WAIT',validationHits:0,validationCount:0,
  baselineHits:0,selectedCount:0,status:'INSUFFICIENT',rawScore:null});
 const cap=(v:number)=>Math.max(-5,Math.min(5,v));
@@ -29,7 +29,31 @@ function features(b:Bar[],i:number){
 }
 const sigmoid=(v:number)=>1/(1+Math.exp(-Math.max(-20,Math.min(20,v))));
 const predict=(w:number[],x:number[])=>sigmoid(w.reduce((s,v,i)=>s+v*x[i],0));
-function evaluate(b:Bar[],h:number):LocalHorizon{
+// Deterministic, bounded nonlinear research model; no remote dependencies.
+function fitNeural(train:Example[],width:number){
+ const n=6;
+ const w=Array.from({length:n},(_,j)=>Array.from({length:width},(_,k)=>.15*Math.sin((j+1)*11+(k+1)*3.7)));
+ const v=Array.from({length:n},(_,j)=>.15*Math.cos((j+1)*2.1));
+ let bias=0;
+ const hidden=(x:number[])=>w.map(row=>Math.tanh(row.reduce((s,a,k)=>s+a*x[k],0)));
+ for(let epoch=0;epoch<40;epoch++){
+   const dw=w.map(row=>row.map(a=>.01*a)),dv=v.map(a=>.01*a);let db=0;
+   for(const e of train){
+     const z=hidden(e.x);
+     const err=(sigmoid(bias+v.reduce((s,a,j)=>s+a*z[j],0))-e.y)/train.length;
+     db+=err;
+     for(let j=0;j<n;j++){
+       dv[j]+=err*z[j];
+       const d=err*v[j]*(1-z[j]*z[j]);
+       for(let k=0;k<width;k++)dw[j][k]+=d*e.x[k];
+     }
+   }
+   bias-=.25*db;
+   for(let j=0;j<n;j++){v[j]-=.25*dv[j];for(let k=0;k<width;k++)w[j][k]-=.25*dw[j][k];}
+ }
+ return (x:number[])=>{const z=hidden(x);return sigmoid(bias+v.reduce((s,a,j)=>s+a*z[j],0));};
+}
+function evaluate(b:Bar[],h:number,neural=false):LocalHorizon{
  const current=features(b,b.length-1);
  if(!current)return empty();
  const ex:Example[]=[];
@@ -45,14 +69,15 @@ function evaluate(b:Bar[],h:number):LocalHorizon{
  const train=ex.filter(e=>e.i+h<validation[0].i);
  if(train.length<120)return empty();
  const w=Array(current.length).fill(0) as number[];
- for(let epoch=0;epoch<24;epoch++){
+ for(let epoch=0;!neural&&epoch<24;epoch++){
    const grad=w.map(v=>.015*v);
    for(const e of train){const err=predict(w,e.x)-e.y;
      for(let k=0;k<w.length;k++)grad[k]+=err*e.x[k]/train.length;}
    for(let k=0;k<w.length;k++)w[k]-=.18*grad[k];
  }
  const majority=train.reduce((s,v)=>s+v.y,0)>=train.length/2?1:0;
- const all=validation.map(e=>({y:e.y,p:predict(w,e.x)}));
+ const infer=neural?fitNeural(train,current.length):(x:number[])=>predict(w,x);
+ const all=validation.map(e=>({y:e.y,p:infer(e.x)}));
  const selected=all.filter(e=>e.p>=.58||e.p<=.42);
  const hits=all.filter(e=>Number(e.p>=.5)===e.y).length;
  const base=all.filter(e=>e.y===majority).length;
@@ -60,14 +85,14 @@ function evaluate(b:Bar[],h:number):LocalHorizon{
  const edge=hits>=Math.ceil(all.length*.60)&&hits>=base+4&&selected.length>=20&&
    selectedHits>=Math.ceil(selected.length*.65)&&
    selected.some(e=>e.p>=.58)&&selected.some(e=>e.p<=.42);
- const rawScore=predict(w,current);
+ const rawScore=infer(current);
  return {side:edge&&rawScore>=.58?'BUY':edge&&rawScore<=.42?'SELL':'WAIT',
    validationHits:hits,validationCount:all.length,baselineHits:base,selectedCount:selected.length,
    status:edge?'HISTORICAL_EDGE':'SHADOW',rawScore};
 }
 const cache=new Map<string,LocalCandleMl>();
 export function localCandleMl(scope:string,raw:unknown,now:number,ready:boolean):LocalCandleMl{
- const none=():LocalCandleMl=>({asOf:null,m1:empty(),m5:empty(),tradeAuthorized:false});
+ const none=():LocalCandleMl=>({asOf:null,m1:empty(),m5:empty(),neuralM1:empty(),neuralM5:empty(),tradeAuthorized:false});
  if(!ready||!scope||!Number.isFinite(now)||!Array.isArray(raw))return none();
  const map=new Map<number,Bar>();
  for(const v of raw){
@@ -83,7 +108,7 @@ export function localCandleMl(scope:string,raw:unknown,now:number,ready:boolean)
  if(bars.length<220||!last||now-last.time-60000>90000)return none();
  const key=scope+'|'+bars.map(b=>[b.time,b.open,b.high,b.low,b.close].join(':')).join('|');
  const cached=cache.get(key);if(cached)return cached;
- const result:LocalCandleMl={asOf:last.time+60000,m1:evaluate(bars,1),m5:evaluate(bars,5),tradeAuthorized:false};
+ const result:LocalCandleMl={asOf:last.time+60000,m1:evaluate(bars,1),m5:evaluate(bars,5),neuralM1:evaluate(bars,1,true),neuralM5:evaluate(bars,5,true),tradeAuthorized:false};
  cache.set(key,result);while(cache.size>6)cache.delete(cache.keys().next().value!);
  return result;
 }

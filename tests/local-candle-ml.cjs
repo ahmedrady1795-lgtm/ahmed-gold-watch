@@ -23,3 +23,12 @@ const gapped=rows.filter((_,i)=>i!==295);
 assert.equal(run('GOLD:source',gapped,now,true).m1.side,'WAIT');
 assert.equal(run('BTC:source',rows,now,true).tradeAuthorized,false);
 console.log('PASS local chronological candle model, validation, closed-bar integrity, source isolation and no trade authorization');
+
+for(const h of ['neuralM1','neuralM5']){
+ assert.equal(result[h].validationCount,60);
+ assert.ok(Number.isFinite(result[h].rawScore)&&result[h].rawScore>=0&&result[h].rawScore<=1);
+ assert.equal(run('GOLD:source',rows,now,false)[h].side,'WAIT');
+ assert.equal(run('GOLD:source',gapped,now,true)[h].side,'WAIT');
+ assert.equal(run('GOLD:source',rows,now+180000,true)[h].status,'INSUFFICIENT');
+}
+console.log('PASS local nonlinear neural model, historical validation and no stale inference');

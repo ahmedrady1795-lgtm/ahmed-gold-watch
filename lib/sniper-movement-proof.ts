@@ -432,3 +432,31 @@ export function movementProofScore(rows:MovementProof[],asset:'GOLD'|'BTC'){
   statisticallyThin:settled.length<30
  };
 }
+
+/** Disjoint forward observation windows per exact market feed. Review weak
+ * patterns, never automatically invert or authorize trades. */
+export function reviewEarlyFailures(records:readonly MovementProof[],asset:'GOLD'|'BTC',source:string,now:number){
+ const seen=new Set<string>();
+ const candidates=records.filter(r=>r.asset===asset&&r.source===source&&r.kind==='EARLY'&&
+   r.setupKind&&r.evidence&&Number.isFinite(r.issuedAt)&&r.issuedAt>0&&
+   Number.isFinite(r.onsetResolvedAt)&&r.onsetResolvedAt!>r.issuedAt&&r.onsetResolvedAt!<=now&&
+   r.issuedAt+180000<=now&&['MOVE_FIRST','ADVERSE_FIRST','NO_MOVE'].includes(r.onsetOutcome||''))
+   .sort((a,b)=>a.issuedAt-b.issuedAt);
+ const rows:MovementProof[]=[];let next=0;
+ for(const r of candidates){
+   if(seen.has(r.id)||r.issuedAt<next)continue;
+   seen.add(r.id);rows.push(r);next=Math.max(r.issuedAt+180000,r.onsetResolvedAt!);
+ }
+ const groups=setupKinds.map(pattern=>{
+   const a=rows.filter(r=>r.setupKind===pattern);
+   const adverse=a.filter(r=>r.onsetOutcome==='ADVERSE_FIRST').length;
+   const noMove=a.filter(r=>r.onsetOutcome==='NO_MOVE').length;
+   const first=a.filter(r=>r.onsetOutcome==='MOVE_FIRST').length;
+   const half=Math.floor(a.length/2);
+   const weak=(v:MovementProof[])=>v.length>=15&&v.filter(r=>r.onsetOutcome==='MOVE_FIRST').length/v.length<.4;
+   const flowMissing=a.filter(r=>r.evidence!.flowSide==='WAIT'&&r.onsetOutcome!=='MOVE_FIRST').length;
+   const frameOpposed=a.filter(r=>r.evidence!.m15Side!=='WAIT'&&r.evidence!.m15Side!==r.side&&r.onsetOutcome!=='MOVE_FIRST').length;
+   return {pattern,total:a.length,first,adverse,noMove,flowMissing,frameOpposed,review:weak(a.slice(0,half))&&weak(a.slice(half))};
+ }).filter(g=>g.total>0);
+ return {total:rows.length,groups,tradeAuthorized:false as const};
+}

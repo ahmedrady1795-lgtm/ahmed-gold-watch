@@ -12,6 +12,7 @@ import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {detectLiquidityMagnets} from '../lib/sniper-liquidity-magnets';
 import {fuseLocalSniper} from '../lib/sniper-local-fusion';
 import {localCandleMl} from '../lib/local-candle-ml';
+import {reviewEarlyFailures} from '../lib/sniper-movement-proof';
 import {assessFlowProfile} from '../lib/flow-profile-decision';
 import {observeSniperOrderFlow} from '../lib/sniper-order-flow-observation';
 import SniperOrderFlowStrip from './SniperOrderFlowStrip';
@@ -788,6 +789,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    liquidity.ready,nextM1.ready,nextM1.side,paxg]);
  const movementStats=useMemo(()=>movementProofScore(movementRecords,asset),
    [movementRecords,asset]);
+ const failureAudit=useMemo(()=>reviewEarlyFailures(movementRecords,asset,String(x?.candleSource||''),now),
+   [movementRecords,asset,x?.candleSource,Math.floor(now/60000)]);
  const showZoneObservation=trackedSetup?.phase==='OBSERVING';
  const showPreparation=earlyOpportunity.phase==='PREPARE';
  // A bounded forward setup has a known trigger, invalidation and an actual
@@ -1946,6 +1949,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            return h.toUpperCase()+' '+(v.side==='WAIT'?'—':v.side)+' '+(v.validationCount?v.validationHits+'/'+v.validationCount:'عينة غير كافية');
          }).join(' · ')}
        </small>
+       <small title="شبكة عصبية محلية من الشموع؛ نتائج تاريخية تجريبية فقط">
+         {'Neural محلي · '+(['neuralM1','neuralM5'] as const).map((h,i)=>{
+           const v=localMl[h];return (i?'M5 ':'M1 ')+(v.side==='WAIT'?'—':v.side)+' '+(v.validationCount?v.validationHits+'/'+v.validationCount:'—');
+         }).join(' · ')}
+       </small>
        <div className="sniper-chart-command-levels">
          <span>تفعيل <b dir="ltr">{n(commandTrigger)}</b></span>
          <span>إبطال <b dir="ltr">{n(commandInvalidation)}</b></span>
@@ -2036,7 +2044,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {movementStats.onsetMeanDelaySeconds!=null?
            ' · زمن الرصد حتى أول حركة محسومة '+movementStats.onsetMeanDelaySeconds+'ث':''}
        </span>
-       {movementStats.byPattern.length>0&&
+       <small>مراجعة أخطاء مبكرة من نفس المصدر: {failureAudit.total} رصد غير متداخل
+          {failureAudit.groups.filter(g=>g.review).map(g=>' · '+g.pattern+' يحتاج مراجعة').join('')}</small>
+        {movementStats.byPattern.length>0&&
          <div style={{flexBasis:'100%',fontSize:11,
            borderTop:'1px solid #27465a',paddingTop:7}}>
            <strong>تقييم كل نموذج قنص من وقت صدور إشاراته:</strong>
