@@ -12,6 +12,7 @@ import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {detectLiquidityMagnets} from '../lib/sniper-liquidity-magnets';
 import {fuseLocalSniper} from '../lib/sniper-local-fusion';
 import {localCandleMl} from '../lib/local-candle-ml';
+import {useBtcCrossFlow} from './useBtcCrossFlow';
 import {reviewEarlyFailures} from '../lib/sniper-movement-proof';
 import {assessFlowProfile} from '../lib/flow-profile-decision';
 import {observeSniperOrderFlow} from '../lib/sniper-order-flow-observation';
@@ -574,6 +575,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [earlyState,setEarlyState]=useState<EarlySetup|null>(null);
  const paxg=usePaxgFlow(asset==='GOLD'&&marketOpen);
  const goldPerp=usePaxgFlow(asset==='GOLD'&&marketOpen,'/api/gold-perp-flow');
+ const btcCross=useBtcCrossFlow(asset==='BTC'&&marketOpen);
  const localMl=useMemo(()=>localCandleMl(asset+':'+String(x?.candleSource||''),m.candles,now,
    marketOpen&&m.historyFresh&&m.sniper.view.priceFresh&&!providerTransition&&Boolean(x?.candleSource)),
    [asset,x?.candleSource,m.candles,now,marketOpen,m.historyFresh,m.sniper.view.priceFresh,providerTransition]);
@@ -1284,6 +1286,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const crossDetail=crossFlow?crossFlow.venues.map(v=>v.source+' · CVD مرصود 60ث '+v.sampledCvd60s.toFixed(3)+
    ' · '+v.count+' تنفيذ · انتقال أكبر عرض/طلب '+(v.askWallShift?.toFixed(2)??'—')+'/'+(v.bidWallShift?.toFixed(2)??'—')).join(' | ')+
    (crossFlow.leader?' · تقدم مرصود بين العقود: '+crossFlow.leader+' ('+crossFlow.leadPairs+' مقارنة؛ ليس قيادة XAUUSD)':''):null;
+ const btcCrossFresh=asset==='BTC'&&marketOpen&&btcCross&&
+   btcCross.observedAt<=now&&now-btcCross.observedAt<=10000&&
+   btcCross.venues.every(v=>v.asOf<=now&&now-v.asOf<=10000)?btcCross:null;
+ const btcCrossLabel=btcCrossFresh?.consensus==='BUY'?'اتفاق BTC ↑':
+   btcCrossFresh?.consensus==='SELL'?'اتفاق BTC ↓':
+   btcCrossFresh?.consensus==='CONFLICT'?'تعارض منصات BTC':null;
  const btcLiquidityLabel=asset==='BTC'&&tapeWatch?
    tapeWatch.kind==='ABSORPTION'?
      (tapeWatch.side==='BUY'?'امتصاص بيع محتمل ↑':'امتصاص شراء محتمل ↓'):
@@ -1934,9 +1942,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          {goldPerpReadout&&goldPerpReadout.status!=='UNAVAILABLE'?
            crossLabel??goldPerpReadout.label:goldProxyReadout.label}
        </small>}
-       {btcLiquidityLabel&&<small className="sniper-chart-gold-proxy"
-         title="عينة تنفيذ BTC من نفس منصة السعر؛ رصد محتمل وليس أمر دخول"
-         data-btc-tape-watch={tapeWatch?.kind}>{btcLiquidityLabel}</small>}
+       {(btcLiquidityLabel||btcCrossLabel)&&<small className="sniper-chart-gold-proxy"
+         title={'رصد تنفيذ BTC وليس أمر دخول · '+(btcCrossFresh?.venues.map(v=>v.source+' Δ '+v.deltaPct.toFixed(1)+'% ('+v.trades+')').join(' | ')??'')}
+         data-btc-tape-watch={tapeWatch?.kind} data-btc-cross={btcCrossFresh?.consensus}>{btcLiquidityLabel??btcCrossLabel}</small>}
      </div>
      {commandTrigger!=null&&<div className="sniper-chart-command-trigger">
        <span>تفعيل</span><b dir="ltr">{n(commandTrigger)}</b>

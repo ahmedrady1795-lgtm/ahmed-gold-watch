@@ -261,3 +261,31 @@ export function detectShortTapeWatch(a:{now:number;price:number|null;sourceMatch
  return {side:(dir===1?'BUY':'SELL') as 'BUY'|'SELL',trigger,invalidation,
    asOf:p.asOf,source:tape.source,deltaPct:p.deltaPct,kind:'PRESSURE' as const};
 }
+
+/** Compare independent spot tapes over the same recent clock window.
+ * This is corroboration, not a merged order book or a substitute for
+ * the exact venue used by the chart. Missing feeds never vote. */
+export type BtcCrossFlow={
+ observedAt:number;consensus:'BUY'|'SELL'|'CONFLICT'|'INSUFFICIENT';
+ venues:{source:BtcExecutedVenue;asOf:number;deltaPct:number;trades:number}[];
+ actionable:false;
+};
+export function compareBtcTapes(a:unknown,b:unknown,now:number):BtcCrossFlow{
+ const read=(value:unknown,source:BtcExecutedVenue)=>{
+   const f=value as BtcOrderflow|null;
+   const s=f?.shortPressure;
+   if(!f?.ok||f.source!==source||f.status!=='LIVE_SAMPLE'||!s||
+      !Number.isFinite(f.fetchedAt)||f.fetchedAt>now||now-f.fetchedAt>10000||
+      !Number.isFinite(s.asOf)||s.asOf>now||now-s.asOf>5000||
+      !Number.isFinite(s.from)||s.from>s.asOf||s.from<now-15000||
+      s.asOf-s.from<2000||!Number.isInteger(s.trades)||s.trades<8||
+      !Number.isFinite(s.deltaPct)||Math.abs(s.deltaPct)>100)return null;
+   return {source,asOf:s.asOf,deltaPct:s.deltaPct,trades:s.trades};
+ };
+ const x=read(a,'Coinbase Exchange BTC-USD'),y=read(b,'Kraken XBT/USD');
+ const venues=[x,y].filter((v):v is NonNullable<typeof v>=>v!==null);
+ let consensus:BtcCrossFlow['consensus']='INSUFFICIENT';
+ if(x&&y&&Math.abs(x.asOf-y.asOf)<=4000&&Math.abs(x.deltaPct)>=30&&Math.abs(y.deltaPct)>=30)
+   consensus=Math.sign(x.deltaPct)!==Math.sign(y.deltaPct)?'CONFLICT':x.deltaPct>0?'BUY':'SELL';
+ return {observedAt:now,venues,consensus,actionable:false};
+}

@@ -114,3 +114,16 @@ for(const dir of [1,-1]){
  assert.equal(shortWatch({...args,price:watch.trigger+dir*.01})?.kind==='ABSORPTION',false);
  assert.equal(shortWatch({...args,sourceMatches:false}),null);
 }
+
+const compare=module_.exports.compareBtcTapes;
+const sample=(source,deltaPct,asOf=now-1000)=>({ok:true,source,status:'LIVE_SAMPLE',fetchedAt:now,
+ shortPressure:{asOf,from:now-9000,trades:12,deltaPct}});
+const ca=sample('Coinbase Exchange BTC-USD',45),ka=sample('Kraken XBT/USD',60);
+assert.equal(compare(ca,ka,now).consensus,'BUY');
+assert.equal(compare({...ca,shortPressure:{...ca.shortPressure,deltaPct:-45}},ka,now).consensus,'CONFLICT');
+assert.equal(compare(ca,null,now).consensus,'INSUFFICIENT');
+assert.equal(compare(ca,ca,now).consensus,'INSUFFICIENT');
+assert.equal(compare(ca,sample('Kraken XBT/USD',60,now-6000),now).consensus,'INSUFFICIENT');
+assert.equal(compare(ca,ka,now).actionable,false);
+assert.equal(compare(ca,ka,now).venues.length,2);
+console.log('PASS BTC cross-venue recent execution consensus, separate venue identity and no trade authorization');

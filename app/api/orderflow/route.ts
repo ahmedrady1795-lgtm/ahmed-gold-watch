@@ -1,4 +1,4 @@
-import {buildBtcOrderflow,normalizeCoinbaseTrades,normalizeKrakenTrades,
+import {buildBtcOrderflow,normalizeCoinbaseTrades,normalizeKrakenTrades,compareBtcTapes,
   type ExecutedTrade} from '../../../lib/btc-orderflow';
 
 export const dynamic='force-dynamic';
@@ -15,6 +15,7 @@ let krakenCache:{at:number;payload:ReturnType<typeof buildBtcOrderflow>}|null=nu
 let krakenInFlight:Promise<ReturnType<typeof buildBtcOrderflow>>|null=null;
 let krakenTape:ExecutedTrade[]=[];
 let lastKrakenFetchAt=0;
+let coinbaseRetryAt=0,krakenRetryAt=0;
 
 async function snapshot(){
  const now=Date.now();
@@ -22,7 +23,11 @@ async function snapshot(){
   cache:'no-store',signal:AbortSignal.timeout(3200),
   headers:{'User-Agent':'AlQannas/1.0','Accept':'application/json'}
  });
- if(!r.ok)throw new Error('HTTP '+r.status);
+ if(!r.ok){
+   const raw=r.headers.get('retry-after'),secs=raw?Number(raw):NaN;
+   coinbaseRetryAt=Date.now()+Math.max(r.status===429?60000:10000,Number.isFinite(secs)?Math.max(0,secs)*1000:0);
+   throw new Error('HTTP '+r.status);
+ }
  const raw=await r.json();
  if(!Array.isArray(raw))throw new Error('Invalid exchange trade schema');
  const incoming=normalizeCoinbaseTrades(raw,Date.now());
@@ -41,7 +46,11 @@ async function krakenSnapshot(){
    cache:'no-store',signal:AbortSignal.timeout(4500),
    headers:{'User-Agent':'AlQannas/1.0','Accept':'application/json'}
  });
- if(!r.ok)throw new Error('Kraken public trades HTTP '+r.status);
+ if(!r.ok){
+   const raw=r.headers.get('retry-after'),secs=raw?Number(raw):NaN;
+   krakenRetryAt=Date.now()+Math.max(r.status===429?60000:10000,Number.isFinite(secs)?Math.max(0,secs)*1000:0);
+   throw new Error('Kraken public trades HTTP '+r.status);
+ }
  const raw=await r.json();
  if(!raw||!Array.isArray(raw.error)||raw.error.length)
    throw new Error('Kraken trades returned errors or invalid schema');
@@ -66,16 +75,29 @@ async function krakenSnapshot(){
 export async function GET(request:Request){
  const now=Date.now();
  const venue=new URL(request.url).searchParams.get('venue');
+ if(venue==='compare'){
+   // Reuse the same per-venue caches and in-flight requests as the existing
+   // chart. No extra copy of the tape and no upstream request fan-out per user.
+   const read=async(v:string)=>{
+     const url=new URL(request.url);url.searchParams.set('venue',v);
+     return (await GET(new Request(url))).json();
+   };
+   const [a,b]=await Promise.allSettled([read('coinbase'),read('kraken')]);
+   return Response.json(compareBtcTapes(a.status==='fulfilled'?a.value:null,b.status==='fulfilled'?b.value:null,Date.now()),
+     {headers:{'Cache-Control':'private, no-store'}});
+ }
  if(venue==='kraken'){
    try{
      if(krakenCache&&now-krakenCache.at<=4500)
        return Response.json(buildBtcOrderflow(krakenTape,now,1000,'Kraken XBT/USD'),
          {headers:{'Cache-Control':'private, no-store'}});
+     if(now<krakenRetryAt)throw new Error('Kraken cooldown');
      if(!krakenInFlight)krakenInFlight=krakenSnapshot().finally(()=>{krakenInFlight=null;});
      const payload=await krakenInFlight;
      krakenCache={at:Date.now(),payload};
      return Response.json(payload,{headers:{'Cache-Control':'private, no-store'}});
-   }catch{
+    }catch{
+     krakenRetryAt=krakenRetryAt>now?krakenRetryAt:Date.now()+10000;
      return Response.json({ok:false,source:'Kraken XBT/USD',
        fetchedAt:Date.now(),asOf:lastKrakenFetchAt||0,status:'UNAVAILABLE',
        reason:'تعذر جلب صفقات Kraken المنفذة؛ لا يتم استبدالها ببيانات Coinbase',
@@ -92,11 +114,13 @@ export async function GET(request:Request){
    const payload=buildBtcOrderflow(tape,now,1000);
    return Response.json(payload,{headers:{'Cache-Control':'private, no-store'}});
   }
+  if(now<coinbaseRetryAt)throw new Error('Coinbase cooldown');
   if(!inFlight)inFlight=snapshot().finally(()=>{inFlight=null;});
   const payload=await inFlight;
   cache={at:Date.now(),payload};
   return Response.json(payload,{headers:{'Cache-Control':'private, no-store'}});
  }catch{
+  coinbaseRetryAt=coinbaseRetryAt>now?coinbaseRetryAt:Date.now()+10000;
   // An unavailable exchange is not a "live" green volume profile.
   // Note we intentionally do not supply prior tape as if freshly fetched.
   return Response.json({ok:false,source:'Coinbase Exchange BTC-USD',
