@@ -64,7 +64,7 @@ export function prepareChartHistorySave(chart:any,now:number):string|null{
  const liveBtc=bitcoin&&!chart.bitcoin?.historicalOnly&&bitcoin.lastClosedAt>=now-180000?bitcoin:null;
  if(!liveGold&&!liveBtc)return null;
  return JSON.stringify({version:1,storedAt:now,
-   ...(liveGold?{gold:liveGold}:{}),...(liveBtc?{bitcoin:liveBtc}:{})});
+   ...(gold?{gold}:{}),...(bitcoin?{bitcoin}:{})});
 }
 export function restoreChartHistory(raw:string|null,now:number){
  if(!raw||raw.length>800000||!Number.isSafeInteger(now))return null;
