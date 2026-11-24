@@ -40,7 +40,7 @@ async function venueSample(venue:Venue):Promise<{flow:PaxgFlow;evidence:VenueEvi
  recordDepthFrame(depthHistory[venue],rawDepth,bookAt,now);
  const flow=by?readBybitGoldPerp(book,trades,now):readBinanceGoldPerp(book,trades,now);
  if(flow.side==='UNAVAILABLE'){
-   if(!observeBook(rawDepth,bookAt,now))retryAt[venue]=Math.max(retryAt[venue],now+15000);return null;
+   return null;
  }
  const rows=by?(trades?.retCode===0&&trades?.result?.category==='linear'?trades.result.list:[]):trades;
  const prints:FlowPrint[]=[];

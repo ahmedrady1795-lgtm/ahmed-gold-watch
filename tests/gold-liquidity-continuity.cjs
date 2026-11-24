@@ -1,0 +1,25 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),ts=require('typescript'),vm=require('node:vm');
+function load(path){const exports_={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports:exports_});return exports_;}
+const {combineGoldLiquidity,goldLiquidityDisplay,retainGoldVenueSamples}=load('lib/gold-liquidity-meter.ts');
+const {readKrakenPaxgFlow}=load('lib/paxg-flow.ts');
+const now=1700000000000;
+const a={source:'Bybit XAUUSDT perpetual',side:'NEUTRAL',observedAt:now-1000,tradeAt:now-2000,count:15,tradeDeltaPct:-60};
+const b={...a,source:'Binance XAUUSDT perpetual',tradeDeltaPct:-40};
+const prior={...a,venueSamples:[a,b]};
+const retained=retainGoldVenueSamples(a,prior,now);
+assert.equal(retained.venueSamples.length,2);
+assert.equal(retained.venueSamples.find(v=>v.source===b.source).tradeAt,b.tradeAt);
+const live=combineGoldLiquidity(retained,null,now,true);
+assert.equal(live.sources.length,2);
+const gone=combineGoldLiquidity(retained,null,now+12000,true);
+assert.equal(gone.sources.length,0);
+const display=goldLiquidityDisplay(gone,live,now+12000,true);
+assert.equal(display.buyPct,live.buyPct);
+assert.equal(display.displayStatus,'LAST');
+assert.equal(display.strongSide,'WAIT');
+assert.equal(display.liveSources,0);
+assert.equal(goldLiquidityDisplay(gone,live,now+61000,true).buyPct,null);
+const k=readKrakenPaxgFlow(null,[['3600','1',(now-2000)/1000+.0002,'b'],['3601','1',(now-1500)/1000+.0003,'b'],['3602','1',(now-1000)/1000+.0004,'s']],now);
+assert.ok(Number.isSafeInteger(k.tradeAt));
+assert.equal(combineGoldLiquidity(null,k,now,true).sources.length,1);
+console.log('PASS: venue retention, timestamp precision, stale display isolated from signals');

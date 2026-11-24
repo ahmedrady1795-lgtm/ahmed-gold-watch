@@ -90,3 +90,37 @@ export function combineGoldLiquidity(perp:PaxgFlow|null|undefined,token:PaxgFlow
    detail:v.map(r=>r.source+' Δ '+r.raw.toFixed(1)+'%').join(' | ')+
      ' · متوسط نسب التنفيذ (وزن العقود 2 وPAXG 1؛ 80% سجل 60ث و20% العينة القصيرة عند اكتمال عينة مرصودة كافية) · ليس سيولة XAUUSD العالمية أو تدفق رؤوس الأموال'};
 }
+
+
+// Display continuity is separate from live trading evidence.
+export type GoldLiquidityDisplay=GoldCombinedLiquidity&{displayStatus:'LIVE'|'PARTIAL'|'LAST'|'UNAVAILABLE';liveSources:number};
+export function goldLiquidityDisplay(live:GoldCombinedLiquidity,last:GoldCombinedLiquidity|null,now:number,open:boolean):GoldLiquidityDisplay{
+ const liveSources=live.sources.length;
+ if(!open)return {...live,displayStatus:'UNAVAILABLE',liveSources:0};
+ if(liveSources>=2)return {...live,displayStatus:'LIVE',liveSources};
+ if(liveSources===1)return {...live,displayStatus:'PARTIAL',liveSources};
+ if(last?.asOf!=null&&last.asOf<=now&&now-last.asOf<=60000&&last.buyPct!=null)
+   return {...last,state:'UNAVAILABLE',strongSide:'WAIT',actionable:false,fastBuyPct:undefined,
+     ageSeconds:Math.floor((now-last.asOf)/1000),displayStatus:'LAST',liveSources:0,
+     detail:'آخر عينة محفوظة، ليست بيانات حية ولا تستخدم في القنص · '+last.detail};
+ return {...live,displayStatus:'UNAVAILABLE',liveSources};
+}
+// Retain independently recent samples across failed polls, with original timestamps.
+export function retainGoldVenueSamples(next:PaxgFlow|null,previous:PaxgFlow|null,now:number):PaxgFlow|null{
+ const map=new Map<string,PaxgFlow>();
+ for(const packet of [previous,next]){
+   if(!packet)continue;
+   for(const sample of [packet,...(packet.venueSamples??[])]){
+     if(!sources.includes(sample.source||'')||sample.side==='UNAVAILABLE'||
+       !Number.isSafeInteger(sample.tradeAt)||sample.tradeAt<=0||sample.tradeAt>now||
+       !Number.isSafeInteger(sample.observedAt)||sample.observedAt>now||sample.tradeAt>sample.observedAt||
+       now-sample.tradeAt>10000||now-sample.observedAt>12000)continue;
+     const key=sample.source!,old=map.get(key);
+     if(!old||sample.tradeAt>old.tradeAt||(sample.tradeAt===old.tradeAt&&sample.observedAt>=old.observedAt))
+       map.set(key,{...sample,venueSamples:undefined,crossFlow:undefined});
+   }
+ }
+ const primary=next?.side!=='UNAVAILABLE'&&next?.source&&map.has(next.source)?map.get(next.source):[...map.values()][0];
+ if(!primary)return next??null;
+ return {...primary,venueSamples:[...map.values()],crossFlow:next?.crossFlow};
+}

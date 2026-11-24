@@ -12,7 +12,7 @@ import {buildM15HuntPreview} from '../lib/sniper-m15-hunt-preview';
 import {detectLiquidityMagnets} from '../lib/sniper-liquidity-magnets';
 import {fuseLocalSniper} from '../lib/sniper-local-fusion';
 import {localCandleMl} from '../lib/local-candle-ml';
-import {goldLiquidityMeter,combineGoldLiquidity} from '../lib/gold-liquidity-meter';
+import {goldLiquidityMeter,combineGoldLiquidity,goldLiquidityDisplay,type GoldCombinedLiquidity} from '../lib/gold-liquidity-meter';
 import {GoldDepthHeatmap} from './GoldDepthHeatmap';
 import {useBtcCrossFlow} from './useBtcCrossFlow';
 import {reviewEarlyFailures} from '../lib/sniper-movement-proof';
@@ -582,6 +582,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    marketOpen&&m.historyFresh&&m.sniper.view.priceFresh&&!providerTransition&&Boolean(x?.candleSource)),
    [asset,x?.candleSource,m.candles,now,marketOpen,m.historyFresh,m.sniper.view.priceFresh,providerTransition]);
  const combinedGold=useMemo(()=>combineGoldLiquidity(goldPerp,paxg,now,asset==='GOLD'&&marketOpen),[goldPerp,paxg,now,asset,marketOpen]);
+ const lastGoldLiquidity=useRef<GoldCombinedLiquidity|null>(null);
+ useEffect(()=>{
+   if(asset!=='GOLD'||!marketOpen){lastGoldLiquidity.current=null;return;}
+   if(combinedGold.buyPct!=null&&combinedGold.asOf!=null&&
+      (!lastGoldLiquidity.current||combinedGold.asOf>=Number(lastGoldLiquidity.current.asOf)))
+     lastGoldLiquidity.current=combinedGold;
+ },[combinedGold,asset,marketOpen]);
+ const displayedGold=goldLiquidityDisplay(combinedGold,lastGoldLiquidity.current,now,asset==='GOLD'&&marketOpen);
  const trackedSetup=useMemo(()=>advanceEarlySetup({
    prior:earlyState,scope:asset+':'+String(x?.candleSource||''),now,price,
    previousQuote:observedM15?.feedKey===[asset,x?.candleSource,liveQuote?.source].join(':')&&
@@ -1924,11 +1932,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      </svg>
    {goldMeter&&goldProxyReadout&&<aside className="gold-meter-left sniper-chart-gold-proxy"
      data-gold-proxy-status={goldProxyReadout.status} data-gold-perp-status={goldPerpReadout?.status}
-     data-meter-state={combinedGold.state} title={combinedGold.detail}>
-     <div className="gold-liquidity-meter" data-meter-state={combinedGold.state}>
-       <b className="gold-meter-label">السيولة · {combinedGold.sources.length}/4</b>
+     data-meter-state={displayedGold.state} title={displayedGold.detail}>
+     <div className="gold-liquidity-meter" data-meter-state={displayedGold.state}>
+       <b className="gold-meter-label">تدفق التنفيذ · {displayedGold.liveSources}/4</b>
        {(['BUY','SELL'] as const).map(side=>{
-         const value=side==='BUY'?combinedGold.buyPct:combinedGold.sellPct;
+         const value=side==='BUY'?displayedGold.buyPct:displayedGold.sellPct;
          return <div key={side} className="gold-meter-row" data-side={side}>
            <div className="gold-meter-head"><b>{side==='BUY'?'شراء ↑':'بيع ↓'}</b><strong dir="ltr">{value==null?'—':value+'%'}</strong></div>
            <div className="gold-meter-battery" aria-label={side+' '+(value??'غير متاح')}>
@@ -1936,7 +1944,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            </div>
          </div>;
        })}
-       <span className="gold-meter-source">{combinedGold.state==='CONFLICT'?'تعارض المصادر':combinedGold.state==='UNAVAILABLE'?'غير متاح':combinedGold.coverage==='PARTIAL'?'مصدر واحد · عينة محدودة':combinedGold.state==='BUY'?'ضغط شراء':combinedGold.state==='SELL'?'ضغط بيع':'متوازن'}{combinedGold.ageSeconds!=null?' · '+combinedGold.ageSeconds+'ث':''}</span>
+       <span className="gold-meter-source">{displayedGold.displayStatus==='LAST'?'آخر قراءة · غير حية':displayedGold.state==='CONFLICT'?'تعارض المصادر':displayedGold.state==='UNAVAILABLE'?'غير متاح':displayedGold.coverage==='PARTIAL'?'مصدر واحد · عينة محدودة':displayedGold.state==='BUY'?'ضغط شراء':displayedGold.state==='SELL'?'ضغط بيع':'متوازن'}{displayedGold.ageSeconds!=null?' · '+displayedGold.ageSeconds+'ث':''}</span>
        {combinedGold.fastBuyPct!=null&&<span className="gold-meter-source" title="العينة القصيرة من المصادر الحالية؛ ليست توقعًا">لحظي {combinedGold.fastBuyPct}% ↑ / {100-combinedGold.fastBuyPct}% ↓</span>}
        {combinedGold.stableSources!=null&&combinedGold.stableSources>0&&<span className="gold-meter-source">ترجيح 60ث</span>}
        {goldMeter.dynamic&&<span className="gold-meter-source" title={goldMeter.detail}>{goldMeter.dynamic}</span>}

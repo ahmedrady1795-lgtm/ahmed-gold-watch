@@ -95,7 +95,7 @@ export function readKrakenPaxgFlow(book:any,trades:unknown,now:number):PaxgFlow{
  const seen=new Set<string>();
  for(const t of trades){
    if(!Array.isArray(t)||t.length<4)continue;
-   const price=Number(t[0]),qty=Number(t[1]),timestamp=Number(t[2])*1000;
+   const price=Number(t[0]),qty=Number(t[1]),timestamp=Math.floor(Number(t[2])*1000);
    const side=t[3];
    if(!Number.isFinite(price)||price<=0||!Number.isFinite(qty)||qty<=0||
       !Number.isFinite(timestamp)||timestamp>now||now-timestamp>30000||

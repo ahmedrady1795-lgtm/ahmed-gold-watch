@@ -56,7 +56,7 @@ async function binanceSample():Promise<PaxgFlow|null>{
      if(flow.side!=='UNAVAILABLE')return flow;
    }catch{/* Try independent Kraken spot market instead. */}
  }
- binanceRetryAt=Math.max(binanceRetryAt,Date.now()+15000);
+ // Sparse trades are not a transport failure; retain the normal poll cadence.
  return null;
 }
 async function krakenSample():Promise<PaxgFlow>{
@@ -72,7 +72,6 @@ async function krakenSample():Promise<PaxgFlow>{
    const trades=Object.values(history.status==='fulfilled'?history.value:{}).find(Array.isArray);
    if(!trades)throw new Error('Missing Kraken PAXG/USD trades');
    const flow=readKrakenPaxgFlow(book,trades,Date.now());
-   if(flow.side==='UNAVAILABLE')krakenRetryAt=Math.max(krakenRetryAt,Date.now()+15000);
    return flow;
  }catch{
    // In particular, an absent/renamed pair is an unavailable proxy,

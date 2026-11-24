@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 import type {PaxgFlow,PaxgSide} from '../lib/paxg-flow';
+import {retainGoldVenueSamples} from '../lib/gold-liquidity-meter';
 
 export function usePaxgFlow(enabled:boolean,endpoint:'/api/paxg-flow'|'/api/gold-perp-flow'='/api/paxg-flow'){
  const [flow,setFlow]=useState<PaxgFlow|null>(null);
@@ -12,10 +13,10 @@ export function usePaxgFlow(enabled:boolean,endpoint:'/api/paxg-flow'|'/api/gold
      if(busy||document.hidden)return;
      busy=true;
      try{
-       const r=await fetch(endpoint,{cache:'no-store',signal:controller.signal});
+       const r=await fetch(endpoint,{cache:'no-store',signal:AbortSignal.any([controller.signal,AbortSignal.timeout(8000)])});
        const packet=r.ok?await r.json():null;
-       if(!controller.signal.aborted)setFlow(packet);
-     }catch{if(!controller.signal.aborted)setFlow(null);}
+       if(!controller.signal.aborted)setFlow(prev=>retainGoldVenueSamples(packet,prev,Date.now()));
+     }catch{if(!controller.signal.aborted)setFlow(prev=>retainGoldVenueSamples(null,prev,Date.now()));}
      finally{busy=false;}
    }
    void poll();const id=setInterval(poll,endpoint==='/api/gold-perp-flow'?3000:5000);
