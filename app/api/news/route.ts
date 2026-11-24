@@ -10,7 +10,7 @@ const WINDOW_MS=24*60*60*1000;
 // The BLS calendar event remains available all day after publication time,
 // even while upstream providers have not yet sent the actual result.
 const AGE_MS=24*60*60*1000;
-const CACHE_MS=90*1000;
+const CACHE_MS=15*1000;
 let cached:{at:number;body:any}|null=null;
 let pending:Promise<any>|null=null;
 

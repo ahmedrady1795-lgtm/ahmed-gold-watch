@@ -3,6 +3,7 @@ import {useEffect,useState} from 'react';
 import {Clock3,Newspaper} from 'lucide-react';
 import {economicNewsTimeline} from '../lib/news-alert-window';
 import {classifyMacroNews} from '../lib/news-impact-outlook';
+import {adpWeeklyTrend} from '../lib/news-intelligence';
 import {buildPreNewsGoldLean} from '../lib/pre-news-gold-lean';
 
 function timeLeft(ts:number,now:number){
@@ -61,7 +62,7 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
     };
     // Give the independent real M5 chart and quote feed startup priority.
     initial=setTimeout(()=>{void load();},1800);
-    const interval=setInterval(()=>{void load();},90000);
+    const interval=setInterval(()=>{void load();},15000);
     const visibility=()=>{if(document.visibilityState==='visible')void load();};
     document.addEventListener('visibilitychange',visibility);
     return()=>{closed=true;clearTimeout(initial);clearInterval(interval);document.removeEventListener('visibilitychange',visibility);};
@@ -76,7 +77,8 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
   const todayUpcoming=upcoming.filter(e=>dubaiDay(Number(e.time))===today);
   const ranked=(xs:typeof alerts)=>[...xs].sort((a,b)=>
     Number(b.importance||1)-Number(a.importance||1)||Number(a.time)-Number(b.time));
-  const highlighted=ranked(alerts)[0]??ranked(todayUpcoming)[0]??
+  const newlyReleased=recent.filter(e=>now-Number(e.time)<=15*60000&&String(e.actual||'').trim());
+  const highlighted=[...newlyReleased].sort((a,b)=>Number(b.time)-Number(a.time))[0]??ranked(alerts)[0]??ranked(todayUpcoming)[0]??
     [...recent].sort((a,b)=>Number(b.importance||1)-Number(a.importance||1)||
       Number(b.time)-Number(a.time))[0];
   const released=Boolean(highlighted&&Number(highlighted.time)<now);
@@ -87,6 +89,7 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
   // The featured release is already prominent above; do not repeat it below.
   const remainingAlerts=alerts.filter(e=>e!==highlighted);
   const outlook=classifyMacroNews(highlighted?.name);
+  const adpTrend=actualReady?adpWeeklyTrend(String(highlighted?.name),highlighted?.actual,highlighted?.previous,highlighted?.forecast):null;
   const preLean=highlighted&&Number(highlighted.time)>now
     ?buildPreNewsGoldLean({eventTime:Number(highlighted.time),now,
       candles:goldCandles,source:String(goldSource),
@@ -103,7 +106,7 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
       {highlighted&&<span className="news-ticker-forecast">{actualReady?'فعلي: '+String(highlighted.actual):
          'توقع: '+String(highlighted.forecast||'غير متوفر')}</span>}
       {highlighted&&<span className={'news-ticker-impact '+(outlook.kind==='UNCERTAIN'?'news-ticker-uncertain':'')}>
-        {outlook.higher} <span className="news-ticker-divider">/</span> {outlook.lower}
+        {adpTrend?(adpTrend==='UP'?'USD ↓ · ذهب ↑ محتمل':'USD ↑ · ذهب ↓ محتمل')+' · مقابل السابق، بلا توقع':<>{outlook.higher} <span className="news-ticker-divider">/</span> {outlook.lower}</>}
       </span>}
       <span className="news-ticker-expand">التفاصيل ▾</span>
     </summary>

@@ -2,6 +2,7 @@ import {goldMarketSession} from './gold-market-session';
 import {getRuntimeEnv} from './runtime';
 import type { Candle, Event } from './engine';
 import {appendVerifiedBlsReleases} from './news-verified-bls';
+import {ADP_LIST,adpReleaseLinks,parseAdpRelease,mergeAdpEvents,verifiedAdpToday} from './news-adp-pulse';
 
 import {normalizeMt5GoldDom,analyzeMt5GoldDom} from './gold-mt5-dom';
 import type {Mt5DomSnapshot} from './gold-mt5-dom';
@@ -345,7 +346,7 @@ export async function getQuoteData(options:{forceExternal?:boolean}={}):Promise<
 let freeCalendarCache:Cache<Event[]>|null=null;
 let officialCalendarCache:Cache<Event[]>|null=null;
 async function calendarFromFaireconomy():Promise<Event[]>{
-  if(freeCalendarCache&&Date.now()-freeCalendarCache.at<300000)return freeCalendarCache.value;
+  if(freeCalendarCache&&Date.now()-freeCalendarCache.at<60000)return freeCalendarCache.value;
   const data=await getJson('https://nfs.faireconomy.media/ff_calendar_thisweek.json',{'User-Agent':'Mozilla/5.0 AhmedGoldCommand/1.0'});
   if(!Array.isArray(data))throw new Error('calendar schema');
   const events:Event[]=data
@@ -399,6 +400,39 @@ function parseBlsIcs(text:string,now:number):Event[]{
     const time=dateLine?icsDate(dateLine):NaN,name=summaryLine?icsText(summaryLine.slice(8)):'BLS release';
     return {id:'bls:'+String(time)+':'+i,time,name,importance:calendarImportance(name),actual:'',forecast:'',previous:'',source:'https://www.bls.gov/schedule/news_release/',exactTime:true} as Event;
   }).filter(e=>Number.isFinite(e.time)&&e.time>=now-86400000&&e.time<=now+120*86400000);
+}
+let adpCache:Cache<Event[]>|null=null;
+let adpPending:Promise<Event[]>|null=null;
+async function calendarFromAdp(now:number):Promise<Event[]>{
+  if(adpCache&&now-adpCache.at<30000)return adpCache.value;
+  if(adpPending)return adpPending;
+  adpPending=(async()=>{
+    const fallback=verifiedAdpToday(now);
+    try{
+      const headers={'User-Agent':'Mozilla/5.0 AhmedGoldCommand/1.0','Accept':'text/html'};
+      const links=adpReleaseLinks(await getText(ADP_LIST,headers));
+      const rows=await Promise.all(links.map(async url=>{
+        try{return parseAdpRelease(url,await getText(url,headers),now);}catch{return null;}
+      }));
+      const valid=rows.filter((x):x is NonNullable<typeof x>=>x!==null).sort((a,b)=>b.event.time-a.event.time);
+      const out:Event[]=[];
+      if(valid.length){
+        const latest=valid[0];
+        latest.event.previous=valid[1]?.event.actual||'';
+        out.push(latest.event);
+        if(latest.next)out.push(latest.next);
+      }
+      // Prefer live official figures; fill the known dated release if the
+      // newsroom listing is lagging behind the independently verified release.
+      mergeAdpEvents(out,fallback.filter(e=>!out.some(x=>Math.abs(x.time-e.time)<60000&&Boolean(x.actual))),now);
+      const usable=out.filter(e=>e.time>=now-86400000&&e.time<=now+30*86400000);
+      adpCache={at:Date.now(),value:usable};return usable;
+    }catch{
+      const usable=(adpCache?.value||[]).filter(e=>e.time>=now-86400000&&e.time<=now+30*86400000).map(e=>({...e}));
+      mergeAdpEvents(usable,fallback,now);return usable;
+    }
+  })().finally(()=>{adpPending=null;});
+  return adpPending;
 }
 async function calendarFromOfficialUS(now=Date.now()):Promise<Event[]>{
   if(officialCalendarCache&&now-officialCalendarCache.at<6*3600000)return officialCalendarCache.value;
@@ -520,6 +554,7 @@ export async function getMarketData(options:{force?:boolean}={}):Promise<MarketD
     // Preserve an independently verified BLS schedule if live calendars
     // temporarily omit an imminent release (not an Actual data result).
     appendVerifiedBlsReleases(collected,now);
+    mergeAdpEvents(collected,await calendarFromAdp(now),now);
     const merged=new Map<string,Event>();
     for(const e of collected){
       const key=e.name.toLowerCase().replace(/\s+/g,' ').trim()+'|'+Math.round(e.time/3600000);
@@ -566,7 +601,7 @@ export type NewsCalendarFeed={
 let newsCalendarCache:Cache<NewsCalendarFeed>|null=null;
 let newsCalendarPending:Promise<NewsCalendarFeed>|null=null;
 export async function getNewsCalendarFeed(now=Date.now()):Promise<NewsCalendarFeed>{
-  if(newsCalendarCache&&now-newsCalendarCache.at<90000)return newsCalendarCache.value;
+  if(newsCalendarCache&&now-newsCalendarCache.at<15000)return newsCalendarCache.value;
   if(newsCalendarPending)return newsCalendarPending;
   newsCalendarPending=(async()=>{
     const collected:Event[]=[],errors:string[]=[];
@@ -597,6 +632,7 @@ export async function getNewsCalendarFeed(now=Date.now()):Promise<NewsCalendarFe
     await Promise.all(tasks);
     // The ticker calendar remains independent from the heavy market feed.
     appendVerifiedBlsReleases(collected,now);
+    mergeAdpEvents(collected,await calendarFromAdp(now),now);
     const merged=new Map<string,Event>();
     for(const e of collected){
       if(!Number.isFinite(e.time)||!String(e.name||'').trim())continue;

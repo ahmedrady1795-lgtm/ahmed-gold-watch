@@ -16,6 +16,12 @@ function num(v:any){
   const x=Number(m[1]);if(!Number.isFinite(x))return null;
   const u=m[2].toUpperCase();return x*(u==='K'?1e3:u==='M'?1e6:u==='B'?1e9:1);
 }
+export function adpWeeklyTrend(name:string,actual:unknown,previous:unknown,forecast:unknown){
+  if(!/\bADP\b/i.test(name)||!/weekly|pulse/i.test(name)||num(forecast)!=null)return null;
+  const a=num(actual),p=num(previous);
+  if(a==null||p==null||a===p)return null;
+  return a<p?'UP':'DOWN';
+}
 function isNarrativeEvent(name:string){return /\b(speaks?|speech|remarks?|testif(?:y|ies|ied)|testimony|press conference|minutes|beige book|statement|hearing|panel discussion|interview)\b/i.test(name);}
 function family(name:string){
   if(/CPI|PCE|PPI|inflation|price index|average hourly|earnings/i.test(name))return 'inflation';
@@ -77,6 +83,11 @@ export function buildNewsIntelligence(asset:Asset,events:Event[],now=Date.now())
       reasons.push(mins>0
         ?'حدث نصّي بلا Actual رقمي؛ قبل البداية لا يُفترض اتجاه من اسم المتحدث وحده، ويُستخدم السياق والسعر لترجيح محدود فقط.'
         :'حدث نصّي بلا Actual رقمي؛ تُقرأ اللهجة ورد فعل الدولار والسيولة بدل انتظار نتيجة رقمية.');
+    }else if(released&&actual!=null){
+      const trend=adpWeeklyTrend(e.name,e.actual,e.previous,e.forecast);
+      reasons.push(trend
+        ?'ADP الأسبوعي: تغير عن السابق يميل للذهب '+(trend==='UP'?'صعودًا':'هبوطًا')+'؛ لا يوجد Forecast، لذلك هو سياق اقتصادي لا مفاجأة سوق أو إشارة تنفيذ.'
+        :'صدرت النتيجة بلا توقع إجماعي؛ لا يمكن حساب مفاجأة السوق، ويظل الاتجاه معتمدًا على السعر والسيولة.');
     }else{
       reasons.push('قبل صدور Actual لا يوجد ترجيح اتجاهي صالح للتنفيذ؛ تُرفع مخاطر التقلب فقط.');
     }

@@ -33,3 +33,11 @@ assert.equal(btc.directional,false);
 assert.equal(assess('GOLD',[event('Fed Chair Powell Speaks',now+10000,'','','')],now).side,'WAIT');
 assert.equal(assess('GOLD',[],now).side,'WAIT');
 console.log('PASS: news risk before release, no pre-Actual directional edge, independent BTC direction');
+
+const adp=event('ADP Weekly Employment Change',now-60000,'21K','','23.8K');
+const adpGold=assess('GOLD',[adp],now);
+assert.equal(adpGold.directional,false);
+assert.equal(adpGold.weight,0);
+assert.equal(exports_.adpWeeklyTrend(adp.name,adp.actual,adp.previous,adp.forecast),'UP');
+assert.ok(adpGold.reasons.some(x=>x.includes('ADP')));
+assert.equal(exports_.adpWeeklyTrend(adp.name,'21K','23.8K','20K'),null);
