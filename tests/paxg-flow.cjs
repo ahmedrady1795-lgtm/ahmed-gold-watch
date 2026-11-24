@@ -51,8 +51,9 @@ assert.match(readKrakenPaxgFlow(book(true),krakenTrades(true),now).source,/Krake
 const route=fs.readFileSync('app/api/paxg-flow/route.ts','utf8');
 assert.match(route,/Depth\?pair=PAXGUSD/);
 assert.match(route,/Trades\?pair=PAXGUSD/);
-assert.match(route,/if\(flow.side!=='UNAVAILABLE'\)return flow/,
-  'avoid redundant Kraken requests if Binance is already healthy');
+assert.match(route,/Promise\.all\(\[binanceSample\(\),krakenSample\(\)\]\)/,
+  'independent venues must both be sampled for multi-source pressure');
+assert.match(route,/venueSamples:fresh/,'retain actual venue identities; never combine raw contract sizes');
 assert.match(route,/krakenRetryAt/,'rate limited Kraken must have independent backoff');
 const panel=fs.readFileSync('components/SniperM15Panel.tsx','utf8');
 assert.match(panel,/visiblePreOpen\.proxySource/,

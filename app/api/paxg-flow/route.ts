@@ -5,6 +5,7 @@ export const dynamic='force-dynamic';
 export const runtime='nodejs';
 // Independent source cooldowns. Never treat a new HTTP fetch as a new trade.
 let cache:PaxgFlow|null=null;
+let sampledAt=0;
 let binanceRetryAt=0,krakenRetryAt=0;
 let pending:Promise<PaxgFlow>|null=null;
 const tape={binance:newVenueHistory(),kraken:newVenueHistory()};
@@ -17,7 +18,7 @@ async function readBinance(path:string){
    cache:'no-store',signal:AbortSignal.timeout(4500)});
  if(!response.ok){
    binanceRetryAt=Math.max(binanceRetryAt,Date.now()+
-     spotBackoffMs(response.status,response.headers.get('retry-after')));
+     (spotBackoffMs(response.status,response.headers.get('retry-after'))||30000));
    throw new Error('Binance unavailable');
  }
  const serverTime=Date.parse(response.headers.get('date')||'');
@@ -31,7 +32,7 @@ async function readKraken(path:string){
    headers:{Accept:'application/json','User-Agent':'AlQannas-Proxy-Research/1.0'}});
  if(!response.ok){
    const cooldown=response.status===429||response.status>=500?
-     spotBackoffMs(response.status,response.headers.get('retry-after')):60000;
+     (spotBackoffMs(response.status,response.headers.get('retry-after'))||30000):60000;
    krakenRetryAt=Math.max(krakenRetryAt,Date.now()+cooldown);
    throw new Error('Kraken unavailable');
  }
@@ -96,8 +97,8 @@ async function sample():Promise<PaxgFlow>{
  return {...(fresh[0]??unavailable(now)),venueSamples:fresh};
 }
 export async function GET(){
- if(!cache||Date.now()-cache.observedAt>=5000){
-   pending??=sample().then(result=>cache=result).finally(()=>{pending=null;});
+ if(!cache||Date.now()-sampledAt>=5000){
+   pending??=sample().then(result=>{sampledAt=Date.now();return cache=result;}).finally(()=>{pending=null;});
    await pending;
  }
  return Response.json(cache,{headers:{'Cache-Control':'no-store'}});
