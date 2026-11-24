@@ -1946,7 +1946,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        })}
        <span className="gold-meter-source">{displayedGold.displayStatus==='LAST'?'آخر قراءة · غير حية':displayedGold.state==='CONFLICT'?'تعارض المصادر':displayedGold.state==='UNAVAILABLE'?'غير متاح':displayedGold.coverage==='PARTIAL'?'مصدر واحد · عينة محدودة':displayedGold.state==='BUY'?'ضغط شراء':displayedGold.state==='SELL'?'ضغط بيع':'متوازن'}{displayedGold.ageSeconds!=null?' · '+displayedGold.ageSeconds+'ث':''}</span>
        {combinedGold.fastBuyPct!=null&&<span className="gold-meter-source" title="العينة القصيرة من المصادر الحالية؛ ليست توقعًا">لحظي {combinedGold.fastBuyPct}% ↑ / {100-combinedGold.fastBuyPct}% ↓</span>}
-       {combinedGold.stableSources!=null&&combinedGold.stableSources>0&&<span className="gold-meter-source">ترجيح 60ث</span>}
+       {displayedGold.displayStatus!=='LAST'&&combinedGold.stableSources!=null&&combinedGold.stableSources>0&&<span className="gold-meter-source">سجل 60ث · {combinedGold.stableSources}/{combinedGold.sources.length}</span>}
        {goldMeter.dynamic&&<span className="gold-meter-source" title={goldMeter.detail}>{goldMeter.dynamic}</span>}
        {goldPerp?.crossFlow?.preparation?.filter(p=>p.asOf<=now&&now-p.asOf<=5000).slice(0,1).map(p=>
          <span key={p.source} className="gold-meter-source" title={'رصد تجدد عمق '+p.source+'؛ ليس إثبات أوامر مخفية'}>

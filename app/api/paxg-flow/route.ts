@@ -1,4 +1,5 @@
 import {readPaxgFlow,readKrakenPaxgFlow,type PaxgFlow} from '../../../lib/paxg-flow';
+import {newVenueHistory,updateVenueHistory,type FlowPrint} from '../../../lib/gold-flow-history';
 import {spotBackoffMs} from '../../../lib/binance-cooldown';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -6,6 +7,7 @@ export const runtime='nodejs';
 let cache:PaxgFlow|null=null;
 let binanceRetryAt=0,krakenRetryAt=0;
 let pending:Promise<PaxgFlow>|null=null;
+const tape={binance:newVenueHistory(),kraken:newVenueHistory()};
 const unavailable=(now:number):PaxgFlow=>({
   side:'UNAVAILABLE',observedAt:now,tradeAt:0,count:0,
   source:'Binance / Kraken PAXG proxy unavailable'
@@ -51,9 +53,12 @@ async function binanceSample():Promise<PaxgFlow|null>{
        readBinance('depth?symbol=PAXGUSDT&limit=5'),
        readBinance('aggTrades?symbol=PAXGUSDT&limit=100')
      ]);
-     const flow=readPaxgFlow(book.status==='fulfilled'?book.value:null,
-       trades.status==='fulfilled'?trades.value:null,Date.now());
-     if(flow.side!=='UNAVAILABLE')return flow;
+     const now=Date.now(),raw=trades.status==='fulfilled'?trades.value:null;
+     const flow=readPaxgFlow(book.status==='fulfilled'?book.value:null,raw,now);
+     const rows:FlowPrint[]=Array.isArray(raw)?raw.filter(t=>Number.isSafeInteger(t?.a)&&typeof t.m==='boolean'&&Number(t.p)>0)
+       .map(t=>({id:String(t.a),at:Number(t.T),qty:Number(t.q),buy:!t.m})):[];
+     const executionHistory=updateVenueHistory(tape.binance,'Binance PAXG/USDT proxy',now,rows,null);
+     if(flow.side!=='UNAVAILABLE')return {...flow,executionHistory};
    }catch{/* Try independent Kraken spot market instead. */}
  }
  // Sparse trades are not a transport failure; retain the normal poll cadence.
@@ -71,8 +76,12 @@ async function krakenSample():Promise<PaxgFlow>{
      Array.isArray((v as any).bids)&&Array.isArray((v as any).asks));
    const trades=Object.values(history.status==='fulfilled'?history.value:{}).find(Array.isArray);
    if(!trades)throw new Error('Missing Kraken PAXG/USD trades');
-   const flow=readKrakenPaxgFlow(book,trades,Date.now());
-   return flow;
+   const now=Date.now(),flow=readKrakenPaxgFlow(book,trades,now);
+   const rows:FlowPrint[]=trades.filter(t=>Array.isArray(t)&&Number(t[0])>0&&(t[3]==='b'||t[3]==='s'))
+     .map(t=>({id:t[6]!=null?'trade:'+String(t[6]):[t[0],t[1],t[2],t[3]].join(':'),
+       at:Math.floor(Number(t[2])*1000),qty:Number(t[1]),buy:t[3]==='b'}));
+   const executionHistory=updateVenueHistory(tape.kraken,'Kraken PAXG/USD proxy',now,rows,null);
+   return {...flow,executionHistory};
  }catch{
    // In particular, an absent/renamed pair is an unavailable proxy,
    // never a substitute synthetic BUY/SELL signal.
