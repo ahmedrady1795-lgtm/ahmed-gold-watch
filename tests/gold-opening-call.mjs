@@ -27,3 +27,31 @@ for(const buy of [true,false]){
  assert.equal(validOpeningCall(call,open+300000),false);
 }
 console.log('PASS: pre-open BUY/SELL, frozen side and issue time, no late/backfilled or future-data forecast');
+
+ // A pre-existing swing target and compressed range, before the next M5 opens.
+ const at=open-25000,start=open-60000;
+ const coil=Array.from({length:80},(_,i)=>{
+   const level=4200+Math.sin(i*.6)*.4;
+   return {time:start-(80-i)*m,open:level,high:level+.4,low:level-.4,close:level+.05};
+ });
+ coil[15]={...coil[15],open:4202,high:4204,low:4201,close:4202};
+ for(let i=72;i<80;i++){
+   const j=i-72,low=4199.8+j*.06,close=4200.1+j*.085;
+   coil[i]={time:coil[i].time,open:close-.05,low,high:4200.85,close};
+ }
+ const mirror=b=>({...b,open:8400-b.open,close:8400-b.close,high:8400-b.low,low:8400-b.high});
+ for(const buy of [true,false]){
+   const price=buy?4200.7:4199.3;
+   const chart={fresh:true,candleSource:'Biquote · MT5 XAUUSD candles',chartCandles:buy?coil:coil.map(mirror)};
+   const q={ok:true,status:'live',source:'Biquote · MT5 XAUUSD',price,bid:price-.05,ask:price+.05,sourceTime:at-1000,fetchedAt:at};
+   const call=nextGoldOpeningCall(null,at,chart,q);
+   assert.equal(call?.side,buy?'BUY':'SELL');
+   assert.match(call.reason,/تحضير قبل الكسر/);
+   assert.equal(call.issued,at);
+   assert.equal(call.target,open);
+   assert.equal(nextGoldOpeningCall(call,at+1000,chart,{...q,price:price+(buy?-2:2)}),call);
+   const crossed=price+(buy?.6:-.6);
+   const later=nextGoldOpeningCall(null,at,chart,{...q,price:crossed,bid:crossed-.05,ask:crossed+.05});
+   assert.ok(!later||!later.reason.startsWith('تحضير قبل الكسر'),'already crossed must not be called pre-break');
+ }
+ console.log('PASS: pre-break preparation is preferred for both frozen M5 directions');
