@@ -83,9 +83,17 @@ async function json(url){
 async function observe(){
  if(busy||finished)return;busy=true;
  try{
-  // The free site shares a viewer lease with the main Next.js process.
-  // On resume, M1 gap/source safeguards still fail closed for missing proof.
-  if(!(await sidecarWorkAllowed()))return;
+  // Keep the heavy AI viewer budget unchanged. This small read-only worker
+  // also runs a bounded pre-open window with no viewer, while the host is up.
+  // Prewarm one minute ahead; allow settlement shortly after a boundary.
+  const started=Date.now(),elapsed=started%300000;
+  const due=openingAudit.some(e=>e.outcome==='PENDING'&&started>=e.call.target+303000);
+  const openingWork=goldMarketSession(started).open&&elapsed>=240000;
+  const settlementWork=due&&elapsed<45000;
+  if(!(await sidecarWorkAllowed(started))&&!openingWork&&!settlementWork){
+   previousQuotes=[];
+   return;
+  }
   const refresh=Date.now()-chartAttempt>=15000&&(!chart||Date.now()-chartAt>=30000);
   if(refresh)chartAttempt=Date.now();
   if(refresh)try{chart=await json('/api/chart-history?asset=GOLD&preparation='+Date.now());
