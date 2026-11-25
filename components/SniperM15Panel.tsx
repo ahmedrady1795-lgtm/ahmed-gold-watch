@@ -1890,7 +1890,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
             ' · إبطال '+n(goldSpotPlan.invalidation)+
             ' · M1 spot فقط · لا يوجد DOM Exness، ليست صفقة منفذة'}</title>
         </g>}
-       <SniperOpportunityMarkers signal={movementSignal} conflict={conflict} confirmedPrice={trackedSetup?.phase==='TRIGGERED'?trackedSetup.priceAt:null} records={movementRecords}
+       <SniperOpportunityMarkers compactObservations signal={movementSignal} conflict={conflict} confirmedPrice={trackedSetup?.phase==='TRIGGERED'?trackedSetup.priceAt:null} records={movementRecords}
          evidenceScore={trackedSetup?.score??null}
          asset={asset} source={String(x?.candleSource||'')}
          from={trueHistory[0]?.time??now} now={now} left={left} split={split}
