@@ -1615,6 +1615,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            py={py} timeX={timeX} visibleFrom={trueHistory[0]?.time}/>}
          {trueHistory.map((b,i)=>candle(b.open,b.high,b.low,b.close,
            left+(i+.5)*actualStride,realCandleWidth,'real'+b.time))}
+         {/* Keep real candles intact; mark missing time explicitly rather than implying continuous prices. */}
+         {trueHistory.map((b,i)=>{
+           const prior=trueHistory[i-1];
+           if(!prior||b.time-prior.time<=300000)return null;
+           const gx=left+i*actualStride,missing=Math.round((b.time-prior.time)/300000)-1;
+           return <g key={'gap'+b.time} data-m5-gap={missing}>
+             <title>{'فاصل زمني: '+missing+' شمعة M5 غير معروضة؛ قد يكون انقطاع المصدر أو إغلاق السوق'}</title>
+             <line x1={gx} x2={gx} y1={plotTop} y2={plotBottom} stroke="#e0be78" strokeDasharray="3 5" strokeWidth="1" opacity=".8"/>
+             <text x={gx-3} y={plotTop+24} textAnchor="end" direction="rtl" fill="#e0be78" fontSize="9" stroke="#07111b" strokeWidth="2.5" paintOrder="stroke">فاصل زمني</text>
+           </g>;
+         })}
          {/* The next-M1 watch is fixed by prior CLOSED minute candles,
               not guessed from the color of this unfinished candle. */}
          {showExtra&&!visiblePreOpen&&formingVisible&&forming&&marketOpen&&nextM1.ready&&
@@ -2042,7 +2053,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <div className="gold-liquidity-meter" data-meter-state={displayedGold.state}>
        <b className="gold-meter-label">تدفق بديل · {displayedGold.liveSources}/4</b>
        {(['BUY','SELL'] as const).map(side=>{
-         const value=side==='BUY'?displayedGold.buyPct:displayedGold.sellPct;
+         const value=displayedGold.liveSources===0||displayedGold.displayStatus==='LAST'?null:
+           side==='BUY'?displayedGold.buyPct:displayedGold.sellPct;
          return <div key={side} className="gold-meter-row" data-side={side}>
            <div className="gold-meter-head"><b>{side==='BUY'?'شراء ↑':'بيع ↓'}</b><strong dir="ltr">{value==null?'—':value+'%'}</strong></div>
            <div className="gold-meter-battery" aria-label={side+' '+(value??'غير متاح')}>
