@@ -18,10 +18,49 @@ try{
  const saved=JSON.parse(await fs.readFile(openingPath,'utf8'));
  if(validOpeningCall(saved,Date.now()))openingCall=saved;
 }catch{}
+// Forward-only M5 opening evaluation. Keep unproven and flat outcomes
+// separate from directional hits; a hit is NOT a profitable trade.
+const openingAuditPath='/tmp/qannas-gold-m5-opening-audit.json';
+let openingAudit=[];
+try{
+ const saved=JSON.parse(await fs.readFile(openingAuditPath,'utf8'));
+ if(Array.isArray(saved))openingAudit=saved.filter(e=>e?.call?.target&&
+   validOpeningCall(e.call,e.call.issued)&&['PENDING','HIT','MISS','FLAT','UNKNOWN'].includes(e.outcome)).slice(-576);
+}catch{}
+if(openingCall&&!openingAudit.some(e=>e.call.target===openingCall.target))
+ openingAudit.push({call:openingCall,outcome:'PENDING'});
 let chart=null,chartAt=0,chartAttempt=0,previousQuotes=[];
 async function atomic(file,obj){
  const tmp=file+'.writing-'+process.pid;
  await fs.writeFile(tmp,JSON.stringify(obj),{mode:0o600});await fs.rename(tmp,file);
+}
+async function auditOpening(now,source,bars,opening){
+ const next=openingAudit.map(e=>{
+  if(e.outcome!=='PENDING'||now<e.call.target+303000)return e;
+  const c=e.call;
+  const map=new Map(bars.filter(b=>[b.time,b.open,b.high,b.low,b.close].every(Number.isFinite)&&
+    b.low>0&&b.high>=Math.max(b.open,b.close)&&b.low<=Math.min(b.open,b.close)).map(b=>[b.time,b]));
+  const rows=Array.from({length:5},(_,i)=>map.get(c.target+i*60000));
+  if(source!==c.source||rows.some(b=>!b)){
+   return now>=c.target+900000?{...e,outcome:'UNKNOWN',settledAt:now}:e;
+  }
+  const open=rows[0].open,close=rows[4].close,move=close-open;
+  const outcome=move===0?'FLAT':(c.side==='BUY'?move>0:move<0)?'HIT':'MISS';
+  return {...e,outcome,open,close,settledAt:now};
+ });
+ if(opening&&!next.some(e=>e.call.target===opening.target)){
+   next.push({call:opening,outcome:'PENDING'});
+   console.info('[GOLD-M5-OPEN] ISSUED',JSON.stringify(opening));
+ }
+ if(JSON.stringify(next)!==JSON.stringify(openingAudit)){
+   for(const e of next){
+     const old=openingAudit.find(x=>x.call.target===e.call.target);
+     if(old?.outcome==='PENDING'&&e.outcome!=='PENDING')
+       console.info('[GOLD-M5-OPEN] SETTLED',JSON.stringify(e));
+   }
+   await atomic(openingAuditPath,next.slice(-576));
+   openingAudit=next.slice(-576);
+ }
 }
 async function init(){
  for(const file of paths)try{
@@ -69,6 +108,8 @@ async function observe(){
     await atomic(openingPath,opening);
     openingCall=opening;
   }
+  // Do not use an unrelated or stale candle source to score the call.
+  await auditOpening(now,feedFresh?source:'',feedFresh?m1:[],openingCall);
   const reading=session&&!feedFresh?{ready:false,plan:null,
    reason:'سياق شموع الذهب غير متاح أو قديم؛ لا إنذار جديد'}:
    readGoldPreparation({now,source,bars:m1,quote:q,previousQuotes,marketOpen:session});
