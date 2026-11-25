@@ -36,6 +36,10 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
      source:chart.candleSource,quoteSource:quote.source,
      quoteAt:tick.sourceTime,priceAt:tick.price};
  }
+ // Reserve the first half of the preparation window for an actual
+ // unbroken setup; otherwise a weak momentum fallback freezes the side
+ // before fresh rejection/compression evidence has time to arrive.
+ if(target-now>15000)return null;
  const lean=assessM5CandleLean({now,price:tick.price,sourceReady:true,
    m1:chart.chartCandles,m5:chart.chartHigherFrames?.m5});
  if(lean.phase!=='CLOSE'||lean.side==='WAIT')return null;
