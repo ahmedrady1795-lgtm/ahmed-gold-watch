@@ -12,6 +12,8 @@ for(const buy of [true,false]){
  const chart={fresh:true,candleSource:'Biquote · MT5 XAUUSD candles',chartCandles:rows};
  const q={ok:true,fetchedAt:issued,sourceTime:issued-300,source:'Biquote · MT5 XAUUSD',status:'live',price:rows.at(-1).close};
  const call=nextGoldOpeningCall(null,issued,chart,q);
+ const tooEarly=open-25000;
+ assert.equal(nextGoldOpeningCall(null,tooEarly,chart,{...q,sourceTime:tooEarly-300,fetchedAt:tooEarly}),null,'reserve early window for a genuine setup');
  assert.equal(call?.side,buy?'BUY':'SELL');
  assert.equal(call.target,open);
  assert.equal(call.issued,issued);
