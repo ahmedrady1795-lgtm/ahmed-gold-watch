@@ -345,3 +345,6 @@
 .sniper-command-below .sniper-chart-command-details{flex:1;min-width:110px;border:0;padding:0}
 .sniper-command-below .sniper-chart-command-trigger{border:0;padding:0}
 .sniper-command-below .sniper-chart-liquidity{border:0;padding:0}
+
+.sniper-command-below.sniper-chart-command [data-opening-side="BUY"] strong{color:#64e9bf}
+.sniper-command-below.sniper-chart-command [data-opening-side="SELL"] strong{color:#ff97ad}

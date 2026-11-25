@@ -1,5 +1,6 @@
 'use client';
 
+import {validOpeningCall,openingWindowMs,type GoldOpeningCall} from '../lib/gold-opening-call';
 import {buildNewsIntelligence} from '../lib/news-intelligence';
 import {assessSniperMarketContext,type SentimentReading} from '../lib/sniper-market-context';
 import {usePaxgComparison,usePaxgFlow} from './usePaxgComparison';
@@ -616,12 +617,49 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Record the next candle while its opening price is still unknown.
  const forecastScope=JSON.stringify([asset,x?.candleSource,liveQuote?.source]);
 
- type PreOpen={priceAt?:number;proxy?:PaxgSide;proxySource?:string;scope:string;target:number;issued:number;side:'BUY'|'SELL';reason:string};
+ type PreOpen={serverOpening?:boolean;priceAt?:number;proxy?:PaxgSide;proxySource?:string;scope:string;target:number;issued:number;side:'BUY'|'SELL';reason:string};
  const [preOpen,setPreOpen]=useState<PreOpen|null>(null);
+ const [serverOpening,setServerOpening]=useState<GoldOpeningCall|null>(null);
+ useEffect(()=>{
+   if(asset!=='GOLD')return;
+   let busy=false;
+   const controller=new AbortController();
+   async function poll(force=false){
+     if(busy||document.hidden||controller.signal.aborted)return;
+     const elapsed=Date.now()%300000;
+     if(!force&&elapsed>10000&&elapsed<300000-openingWindowMs)return;
+     busy=true;
+     try{
+       const res=await fetch('/api/gold-opening',{cache:'no-store',
+         signal:AbortSignal.any([controller.signal,AbortSignal.timeout(4000)])});
+       if(res.ok){
+         const {call}=await res.json();
+         if(!controller.signal.aborted&&validOpeningCall(call,Date.now()))setServerOpening(call);
+       }
+     }catch{}finally{busy=false;}
+   }
+   const resume=()=>{if(!document.hidden)void poll(true);};
+   resume();
+   const timer=setInterval(()=>void poll(),2000);
+   document.addEventListener('visibilitychange',resume);
+   return ()=>{controller.abort();clearInterval(timer);document.removeEventListener('visibilitychange',resume);};
+ },[asset]);
  useEffect(()=>{
    const key='qannas-preopen-m5-v1:'+forecastScope;
    const issued=Date.now();
    const target=(Math.floor(issued/300000)+1)*300000;
+   if(asset==='GOLD'){
+     const server=serverOpening;
+     if(validOpeningCall(server,issued)&&server.source===x?.candleSource&&!providerTransition&&!historicalOnly){
+       if(preOpen?.scope!==forecastScope||preOpen.target!==server.target||preOpen.issued!==server.issued){
+         const proxy=paxg&&paxg.observedAt<=server.issued&&server.issued-paxg.observedAt<=12000&&
+           paxg.tradeAt<=server.issued&&server.issued-paxg.tradeAt<=15000?paxg:null;
+         setPreOpen({...server,scope:forecastScope,serverOpening:true,
+           proxy:proxy?.side??'UNAVAILABLE',proxySource:proxy?.source});
+       }
+     }
+     return;
+   }
    try{
      const saved=JSON.parse(window.localStorage.getItem(key)||'null') as PreOpen|null;
      if(saved&&saved.scope===forecastScope&&saved.target>issued-300000&&
@@ -646,15 +684,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      liquidityMagnets.sweep:'NONE';
    if((side==='BUY'&&sweep==='HIGH_RECLAIMED_DOWN')||
      (side==='SELL'&&sweep==='LOW_RECLAIMED_UP'))return;
-   const freshProxy=asset==='GOLD'&&paxg&&paxg.observedAt<=issued&&
-     issued-paxg.observedAt<=12000&&paxg.tradeAt<=issued&&issued-paxg.tradeAt<=15000;
-   const proxy=asset==='GOLD'?(freshProxy?paxg.side:'UNAVAILABLE'):undefined;
-   const record={scope:forecastScope,target,issued,side,proxy,proxySource:freshProxy?paxg?.source:undefined,priceAt:price??undefined,
+   const record={scope:forecastScope,target,issued,side,priceAt:price??undefined,
      reason:(eligible?.reason??candleLean.reason)+(sweep==='NONE'?'':' · سحب سيولة M15')};
    setPreOpen(record);
    try{window.localStorage.setItem(key,JSON.stringify(record));}catch{}
  },[forecastScope,now,preOpen,marketOpen,providerTransition,m.sniper.view.priceFresh,
-   x?.candleSource,liveQuote?.source,trackedSetup,candleLean,liquidityMagnets,paxg,asset,price]);
+   x?.candleSource,liveQuote,serverOpening,historicalOnly,trackedSetup,candleLean,liquidityMagnets,paxg,asset,price]);
  const visiblePreOpen=preOpen?.scope===forecastScope&&now>=preOpen.issued-3000&&
    now<preOpen.target+300000?preOpen:null;
  const [previousCalls,setPreviousCalls]=useState<PreOpen[]>([]);
@@ -665,7 +700,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      const raw=JSON.parse(localStorage.getItem(key)||'[]');
      if(Array.isArray(raw))rows=raw.filter(r=>r?.scope===forecastScope&&
        (r.side==='BUY'||r.side==='SELL')&&Number.isFinite(r.target)&&
-       r.issued<r.target&&r.issued>=r.target-15000);
+       r.issued<r.target&&r.issued>=r.target-(r.serverOpening?openingWindowMs:15000));
    }catch{}
    if(preOpen?.scope===forecastScope&&!rows.some(r=>r.target===preOpen.target)){
      rows=[...rows,preOpen].slice(-144);
@@ -1862,7 +1897,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          const index=trueHistory.findIndex(b=>b.time===r.target);
          const current=r.target===visiblePreOpen?.target;
          const open=index>=0?trueHistory[index].open:
-           current&&forming?.time===r.target?forming.open:r.priceAt;
+           current&&forming?.time===r.target?forming.open:r.serverOpening?null:r.priceAt;
          if((index<0&&!current)||open==null||!Number.isFinite(open)||open<lo||open>hi)return null;
          const px=index>=0?left+(index+.5)*actualStride:split-4;
          const y=py(open),color=r.side==='BUY'?'#7effbf':'#ff8aa4';
@@ -1874,8 +1909,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          return <g key={r.target} data-preopen-m5={r.target}>
            <title>{label+' · '+h(r.target)+' · '+r.reason}</title>
            <circle cx={px} cy={y} r={current?3.5:2.8} stroke={color} strokeWidth="1.4" fill="#07111b"/>
-           {current&&!movementRecords.some(v=>v.asset===asset&&v.source===String(x?.candleSource||'')&&
-             v.issuedAt>=r.issued&&v.issuedAt<=now&&v.kind==='EARLY')&&<>
+           {current&&(r.serverOpening||!movementRecords.some(v=>v.asset===asset&&v.source===String(x?.candleSource||'')&&
+             v.issuedAt>=r.issued&&v.issuedAt<=now&&v.kind==='EARLY'))&&<>
              <line x1={px} y1={y} x2={px-34} y2={ly-3} stroke={color} strokeWidth=".8"/>
              <text x={px-68} y={ly} textAnchor="middle" direction="rtl" fill={color}
                stroke="#07111b" strokeWidth="3" paintOrder="stroke" fontSize="10" fontWeight="800">{label}</text>
@@ -2004,8 +2039,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      data-qannas-chart-signal={commandState}
      data-qannas-chart-side={commandSide}
      aria-label={'حالة القناص: '+commandHeadline}>
+     {asset==='GOLD'&&visiblePreOpen?.serverOpening&&marketOpen&&!providerTransition&&
+       <div className="sniper-chart-command-head" data-gold-opening-at={visiblePreOpen.target} data-opening-side={visiblePreOpen.side}>
+         <small>{now<visiblePreOpen.target?'الشمعة القادمة':'توقع الافتتاح'} · {h(visiblePreOpen.target)}</small>
+         <strong>{visiblePreOpen.side==='BUY'?'شراء':'بيع'} · قبلها {Math.ceil((visiblePreOpen.target-visiblePreOpen.issued)/1000)}ث</strong>
+       </div>}
      <div className="sniper-chart-command-head">
-       <small>M1/M5</small>
+       <small>{visiblePreOpen?.serverOpening?'الرصد الحالي':'M1/M5'}</small>
        <strong>{commandHeadline}</strong>
      </div>
      <div className="sniper-chart-command-frames">

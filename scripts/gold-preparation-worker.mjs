@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import {nextGoldOpeningCall,validOpeningCall} from '../lib/gold-opening-call.ts';
 import {sidecarWorkAllowed} from '../lib/render-free-viewer-lease.ts';
 import {goldMarketSession} from '../lib/gold-market-session.ts';
 import {trustedSpotGoldSource} from '../lib/gold-liquidity-radar.ts';
@@ -11,6 +12,12 @@ const statusPath='/tmp/gold-preparation-observation.json';
 const checkpoint='https://raw.githubusercontent.com/ahmedrady1795-lgtm/ahmed-gold-watch/render-free/archive/gold-preparation-lead.json';
 const base='http://127.0.0.1:'+(process.env.PORT||'10000');
 let path=paths[1],ledger=emptyGoldLeadLedger(),busy=false,finished=false;
+const openingPath='/tmp/qannas-gold-m5-opening.json';
+let openingCall=null;
+try{
+ const saved=JSON.parse(await fs.readFile(openingPath,'utf8'));
+ if(validOpeningCall(saved,Date.now()))openingCall=saved;
+}catch{}
 let chart=null,chartAt=0,chartAttempt=0,previousQuotes=[];
 async function atomic(file,obj){
  const tmp=file+'.writing-'+process.pid;
@@ -57,6 +64,11 @@ async function observe(){
   }
   const q=quote,session=goldMarketSession(now).open;
   const feedFresh=g?.fresh===true&&now-chartAt<45000;
+  const opening=feedFresh?nextGoldOpeningCall(openingCall,now,g,q):null;
+  if(opening&&opening!==openingCall){
+    await atomic(openingPath,opening);
+    openingCall=opening;
+  }
   const reading=session&&!feedFresh?{ready:false,plan:null,
    reason:'سياق شموع الذهب غير متاح أو قديم؛ لا إنذار جديد'}:
    readGoldPreparation({now,source,bars:m1,quote:q,previousQuotes,marketOpen:session});
