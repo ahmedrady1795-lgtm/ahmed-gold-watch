@@ -43,6 +43,21 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  const lean=assessM5CandleLean({now,price:tick.price,sourceReady:true,
    m1:chart.chartCandles,m5:chart.chartHigherFrames?.m5});
  if(lean.phase!=='CLOSE'||lean.side==='WAIT')return null;
- return {target,issued:now,side:lean.side,reason:'ترجيح افتتاح سعري؛ ليس إشارة كسر مبكر · '+lean.reason,source:chart.candleSource,
+ // Closed-candle momentum alone is not enough to freeze an opening call.
+ // Demand two distinct recent same-source quotes and reject live reversal.
+ const prior=previousQuotes.slice(-2).filter(q=>q?.ok===true&&q.status==='live'&&
+   q.source===quote.source&&q.fetchedAt<=now&&q.sourceTime<tick.sourceTime)
+   .map(q=>acceptGoldPulse(q,q.fetchedAt))
+   .filter(t=>t!==null&&t.sourceTime<=now&&now-t.sourceTime<=15000);
+ const lastTick=prior.at(-1);
+ if(!lastTick||tick.sourceTime-lastTick.sourceTime>10000)return null;
+ const bars=closed.slice().sort((a,b)=>a.time-b.time);
+ const last=bars.at(-1);
+ if(!last)return null;
+ const direction=lean.side==='BUY'?1:-1;
+ const tolerance=Math.max((last.high-last.low)*.08,tick.price*.000002);
+ if(direction*(tick.price-lastTick.price)<-tolerance||
+    direction*(tick.price-last.close)<-Math.max(tolerance,(last.high-last.low)*.35))return null;
+ return {target,issued:now,side:lean.side,reason:'ترجيح افتتاح سعري مع تحقق اتجاه آخر سعرين؛ ليس إشارة كسر مبكر · '+lean.reason,source:chart.candleSource,
    quoteSource:quote.source,quoteAt:tick.sourceTime,priceAt:tick.price};
 }
