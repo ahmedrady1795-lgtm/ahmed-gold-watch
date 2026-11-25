@@ -64,7 +64,7 @@ async function observe(){
   }
   const q=quote,session=goldMarketSession(now).open;
   const feedFresh=g?.fresh===true&&now-chartAt<45000;
-  const opening=feedFresh?nextGoldOpeningCall(openingCall,now,g,q):null;
+  const opening=feedFresh?nextGoldOpeningCall(openingCall,now,g,q,previousQuotes):null;
   if(opening&&opening!==openingCall){
     await atomic(openingPath,opening);
     openingCall=opening;
