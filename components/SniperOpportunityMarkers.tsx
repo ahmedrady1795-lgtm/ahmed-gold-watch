@@ -3,7 +3,7 @@ import {outcomeLabel} from './SniperOpportunityHistory';
 import {movementObservationLabel} from '../lib/sniper-movement-proof';
 import type {MovementProof} from '../lib/sniper-movement-proof';
 
-type Props={signal:LiveOpportunity;conflict?:boolean;confirmedPrice:number|null;records:MovementProof[];evidenceScore?:number|null;
+type Props={signal:LiveOpportunity;conflict?:boolean;confirmedPrice:number|null;records:MovementProof[];evidenceScore?:number|null;compactObservations?:boolean;
  asset:'GOLD'|'BTC';
  source:string;from:number;now:number;left:number;split:number;end:number;
  top:number;bottom:number;py:(price:number)=>number;timeX:(time:number)=>number};
@@ -129,7 +129,7 @@ export default function SniperOpportunityMarkers(p:Props){
  const m5Labels=new Map<string,{x:number;y:number}>();
  const m5Named:MovementProof[]=[];
  const order=(kind:string)=>kind==='OPEN'?0:kind==='FOLLOW'?1:2;
- const m5CaptionCandidates=[...m5Issued].sort((a,b)=>
+ const m5CaptionCandidates=(p.compactObservations?[]:[...m5Issued]).sort((a,b)=>
    order(a.kind)-order(b.kind)||b.issuedAt-a.issuedAt);
  for(const r of m5CaptionCandidates){
    if(m5Labels.size>=2)break;
