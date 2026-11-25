@@ -11,7 +11,13 @@ for(const buy of [true,false]){
  const rows=buy?bars:bars.map(flip);
  const chart={fresh:true,candleSource:'Biquote · MT5 XAUUSD candles',chartCandles:rows};
  const q={ok:true,fetchedAt:issued,sourceTime:issued-300,source:'Biquote · MT5 XAUUSD',status:'live',price:rows.at(-1).close};
- const call=nextGoldOpeningCall(null,issued,chart,q);
+ const prior={...q,price:q.price+(buy?-.02:.02),sourceTime:issued-5000,fetchedAt:issued-5000};
+ const call=nextGoldOpeningCall(null,issued,chart,q,[prior]);
+ assert.equal(nextGoldOpeningCall(null,issued,chart,q),null,'no momentum forecast on a single quote');
+ const adverse={...prior,price:q.price+(buy?.10:-.10)};
+ assert.equal(nextGoldOpeningCall(null,issued,chart,q,[adverse]),null,'live reversal vetoes closed momentum');
+ assert.equal(nextGoldOpeningCall(null,issued,chart,q,[{...prior,source:'foreign'}]),null);
+ assert.equal(nextGoldOpeningCall(null,issued,chart,q,[{...prior,sourceTime:issued-20000,fetchedAt:issued-20000}]),null);
  const tooEarly=open-25000;
  assert.equal(nextGoldOpeningCall(null,tooEarly,chart,{...q,sourceTime:tooEarly-300,fetchedAt:tooEarly}),null,'reserve early window for a genuine setup');
  assert.equal(call?.side,buy?'BUY':'SELL');
@@ -24,7 +30,7 @@ for(const buy of [true,false]){
  assert.equal(nextGoldOpeningCall(null,issued,chart,{...q,sourceTime:issued-20000}),null);
  assert.equal(nextGoldOpeningCall(null,issued,chart,{...q,sourceTime:issued+1}),null);
  const future={time:open,open:3500,high:4000,low:3000,close:buy?3001:3999};
- assert.deepEqual(nextGoldOpeningCall(null,issued,{...chart,chartCandles:[...rows,future]},q),call);
+ assert.deepEqual(nextGoldOpeningCall(null,issued,{...chart,chartCandles:[...rows,future]},q,[prior]),call);
  assert.equal(validOpeningCall({...call,issued:open},open+1),false);
  assert.equal(validOpeningCall(call,open+300000),false);
 }
