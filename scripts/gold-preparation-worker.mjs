@@ -1,3 +1,4 @@
+import {mergeOpeningAudit} from '../lib/gold-opening-audit.ts';
 import fs from 'node:fs/promises';
 import {nextGoldOpeningCall,validOpeningCall} from '../lib/gold-opening-call.ts';
 import {sidecarWorkAllowed} from '../lib/render-free-viewer-lease.ts';
@@ -24,8 +25,7 @@ const openingAuditPath='/tmp/qannas-gold-m5-opening-audit.json';
 let openingAudit=[];
 try{
  const saved=JSON.parse(await fs.readFile(openingAuditPath,'utf8'));
- if(Array.isArray(saved))openingAudit=saved.filter(e=>e?.call?.target&&
-   validOpeningCall(e.call,e.call.issued)&&['PENDING','HIT','MISS','FLAT','UNKNOWN'].includes(e.outcome)).slice(-576);
+ openingAudit=mergeOpeningAudit(Date.now(),saved);
 }catch{}
 if(openingCall&&!openingAudit.some(e=>e.call.target===openingCall.target))
  openingAudit.push({call:openingCall,outcome:'PENDING'});
@@ -63,15 +63,22 @@ async function auditOpening(now,source,bars,opening){
  }
 }
 async function init(){
+ // Restore the packaged checkpoint even when GitHub is unavailable, then
+ // merge newer evidence without reissuing any restored forecast.
+ let packaged=null,remote=null;
+ try{packaged=JSON.parse(await fs.readFile('archive/gold-preparation-lead.json','utf8'));}catch{}
+ try{
+   const r=await fetch(checkpoint+'?restore='+Date.now(),{cache:'no-store',signal:AbortSignal.timeout(6500)});
+   if(r.ok){const text=await r.text();if(text.length<6e6)remote=JSON.parse(text);}
+ }catch{}
+ openingAudit=mergeOpeningAudit(Date.now(),packaged?.openingAudit,remote?.openingAudit,openingAudit);
+ await atomic(openingAuditPath,openingAudit);
  for(const file of paths)try{
   ledger=safeGoldLeadLedger(JSON.parse(await fs.readFile(file,'utf8')),Date.now());
   path=file;return;
  }catch{}
- try{
-  const r=await fetch(checkpoint+'?restore='+Date.now(),{cache:'no-store',signal:AbortSignal.timeout(6500)});
-  if(r.ok){const text=await r.text();if(text.length<6e6)
-   ledger=mergeGoldLeadLedger(ledger,JSON.parse(text),Date.now());}
- }catch{}
+ if(packaged)ledger=mergeGoldLeadLedger(ledger,packaged,Date.now());
+ if(remote)ledger=mergeGoldLeadLedger(ledger,remote,Date.now());
  try{await fs.writeFile('/data/.gold-lead-probe','1');
   await fs.unlink('/data/.gold-lead-probe');path=paths[0];}catch{}
  await atomic(path,ledger);

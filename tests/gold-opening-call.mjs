@@ -79,3 +79,15 @@ for(const buy of [true,false]){
  const prior={...quote,price:priorPrice,bid:priorPrice-.3,ask:priorPrice+.3,sourceTime:sampleAt-5000,fetchedAt:sampleAt-5000};
  assert.equal(nextGoldOpeningCall(null,sampleAt,chart,quote,[prior]),null,'extended move without a reset');
 }
+
+const {mergeOpeningAudit,openingScore}=await import('../lib/gold-opening-audit.ts');
+const oldCall={target:open,issued,side:'SELL',reason:'تحضير قبل الكسر',priceAt:3500,
+ source:'Deriv · XAUUSD',quoteSource:'Deriv · XAUUSD',quoteAt:issued};
+const pending={call:oldCall,outcome:'PENDING'};
+const end=open+300001,hit={...pending,outcome:'HIT',open:3500,close:3499,settledAt:end};
+const restored=mergeOpeningAudit(end,[pending],[hit],[pending]);
+assert.deepEqual(restored,[hit]);
+assert.equal(openingScore(restored).hits,1);
+assert.deepEqual(mergeOpeningAudit(end,[pending],[{...hit,close:3501}]),[pending]);
+assert.deepEqual(mergeOpeningAudit(end,[pending],[{...hit,call:{...oldCall,issued:issued+1}}]),[pending]);
+assert.equal(mergeOpeningAudit(end-1,[hit]).length,0);
