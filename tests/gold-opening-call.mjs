@@ -52,7 +52,13 @@ console.log('PASS: pre-open BUY/SELL, frozen side and issue time, no late/backfi
    const price=buy?4200.7:4199.3;
    const chart={fresh:true,candleSource:'Biquote · MT5 XAUUSD candles',chartCandles:buy?coil:coil.map(mirror)};
    const q={ok:true,status:'live',source:'Biquote · MT5 XAUUSD',price,bid:price-.05,ask:price+.05,sourceTime:at-1000,fetchedAt:at};
-   const call=nextGoldOpeningCall(null,at,chart,q);
+   const previousPrice=price+(buy?-.14:.14);
+   const prior={...q,price:previousPrice,bid:previousPrice-.05,ask:previousPrice+.05,
+     sourceTime:at-5000,fetchedAt:at-5000};
+   assert.equal(nextGoldOpeningCall(null,at,chart,q),null,'a coil alone stays conditional');
+   assert.equal(nextGoldOpeningCall(null,at,chart,q,[{...q,sourceTime:at-5000}]),null,'flat quotes cannot confirm pressure');
+   assert.equal(nextGoldOpeningCall(null,at,chart,q,[{...prior,source:'other'}]),null);
+   const call=nextGoldOpeningCall(null,at,chart,q,[prior]);
    assert.equal(call?.side,buy?'BUY':'SELL');
    assert.match(call.reason,/تحضير قبل الكسر/);
    assert.equal(call.issued,at);

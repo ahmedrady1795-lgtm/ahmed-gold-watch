@@ -617,8 +617,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // Record the next candle while its opening price is still unknown.
  const forecastScope=JSON.stringify([asset,x?.candleSource,liveQuote?.source]);
 
- type PreOpen={serverOpening?:boolean;priceAt?:number;proxy?:PaxgSide;proxySource?:string;scope:string;target:number;issued:number;side:'BUY'|'SELL';reason:string};
+ type PreOpen={outcome?:string;serverOpening?:boolean;priceAt?:number;proxy?:PaxgSide;proxySource?:string;scope:string;target:number;issued:number;side:'BUY'|'SELL';reason:string};
  const [preOpen,setPreOpen]=useState<PreOpen|null>(null);
+ const [serverHistory,setServerHistory]=useState<{call:GoldOpeningCall;outcome:string}[]>([]);
  const [serverOpening,setServerOpening]=useState<GoldOpeningCall|null>(null);
  useEffect(()=>{
    if(asset!=='GOLD')return;
@@ -633,7 +634,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        const res=await fetch('/api/gold-opening',{cache:'no-store',
          signal:AbortSignal.any([controller.signal,AbortSignal.timeout(4000)])});
        if(res.ok){
-         const {call}=await res.json();
+         const {call,recent}=await res.json();
+         if(!controller.signal.aborted&&Array.isArray(recent))setServerHistory(recent.filter(r=>
+           validOpeningCall(r?.call,r?.call?.issued)&&r.call.issued<=Date.now()));
          if(!controller.signal.aborted&&validOpeningCall(call,Date.now()))setServerOpening(call);
        }
      }catch{}finally{busy=false;}
@@ -715,6 +718,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    }
    setPreviousCalls(rows);
  },[forecastScope,preOpen]);
+ const chartCalls=new Map<number,PreOpen>();
+ for(const row of previousCalls)if(row.scope===forecastScope)chartCalls.set(row.target,row);
+ if(asset==='GOLD')for(const row of serverHistory){
+   if(row.call.source===x?.candleSource)
+     chartCalls.set(row.call.target,{...row.call,scope:forecastScope,serverOpening:true,outcome:row.outcome});
+ }
  const trial=useMemo(()=>preOpen?.scope===forecastScope&&preOpen.proxy?
    {...preOpen,proxy:preOpen.proxy}:null,[preOpen,forecastScope]);
  const paxgComparison=usePaxgComparison(asset==='GOLD'?forecastScope:'',trial,realM5);
@@ -1900,7 +1909,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          asset={asset} source={String(x?.candleSource||'')}
          from={trueHistory[0]?.time??now} now={now} left={left} split={split}
          end={end} top={plotTop} bottom={plotBottom} py={py} timeX={timeX}/>
-       {previousCalls.filter(r=>r.scope===forecastScope).map(r=>{
+       {[...chartCalls.values()].map(r=>{
          const index=trueHistory.findIndex(b=>b.time===r.target);
          const current=r.target===visiblePreOpen?.target;
          const open=index>=0?trueHistory[index].open:
@@ -1912,9 +1921,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          const adverse=current&&formingVisible&&forming?.time===r.target&&
            m.sniper.view.priceFresh&&price!=null&&(r.side==='BUY'?price<open:price>open);
          const label=openingLabel(r)+' · '+(now<r.target?'توقع قبل الافتتاح ':'قبلها ')+lead+'ث'+(adverse?' · عكسه الآن':'');
+         const result=r.outcome==='HIT'?'✓':r.outcome==='MISS'?'×':r.outcome==='FLAT'?'=':'';
          const ly=clamp(y+(r.side==='BUY'?27:-26),plotTop+15,plotBottom-12);
          return <g key={r.target} data-preopen-m5={r.target}>
-           <title>{label+' · '+h(r.target)+' · '+r.reason}</title>
+           <title>{label+' · '+h(r.target)+' · '+r.reason+(result?' · '+result:'')}</title>
+           {!current&&r.serverOpening&&<text x={px} y={clamp(y+(r.side==='BUY'?13:-9),plotTop+12,plotBottom-4)}
+             textAnchor="middle" direction="rtl" fill={color} stroke="#07111b" strokeWidth="2.5"
+             paintOrder="stroke" fontSize="8" fontWeight="700">{(r.side==='BUY'?'شراء':'بيع')+' '+result}</text>}
            <circle cx={px} cy={y} r={current?3.5:2.8} stroke={color} strokeWidth="1.4" fill="#07111b"/>
            {current&&(r.serverOpening||!movementRecords.some(v=>v.asset===asset&&v.source===String(x?.candleSource||'')&&
              v.issuedAt>=r.issued&&v.issuedAt<=now&&v.kind==='EARLY'))&&<>

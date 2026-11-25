@@ -31,6 +31,17 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  const preparation=readGoldPreparation({now,source:chart.candleSource,bars:closed,
    quote,previousQuotes,marketOpen:true}).plan;
  if(preparation){
+   // A coil records a conditional breakout. Only promote it to an opening
+   // forecast when two independent quotes show an approach to its trigger.
+   if(preparation.setup==='PRESSURE_COIL'){
+     const previousQuote=previousQuotes.at(-1);
+     const prior=previousQuote?.ok&&previousQuote.source===quote.source&&
+       previousQuote.status==='live'?acceptGoldPulse(previousQuote,now):null;
+     const sign=preparation.side==='BUY'?1:-1;
+     const spread=tick.bid!=null&&tick.ask!=null?tick.ask-tick.bid:0;
+     if(!prior||prior.sourceTime>=tick.sourceTime||
+       sign*(tick.price-prior.price)<=Math.max(spread/2,tick.price*.000001))return null;
+   }
    return {target,issued:now,side:preparation.side,
      reason:'تحضير قبل الكسر · '+preparation.reason+' · توقع افتتاح غير مؤكد (سعري)',
      source:chart.candleSource,quoteSource:quote.source,
