@@ -650,7 +650,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    const target=(Math.floor(issued/300000)+1)*300000;
    if(asset==='GOLD'){
      const server=serverOpening;
-     if(validOpeningCall(server,issued)&&server.source===x?.candleSource&&!providerTransition&&!historicalOnly){
+     if(validOpeningCall(server,issued)&&server.source===x?.candleSource&&server.quoteSource===liveQuote?.source&&!providerTransition&&!historicalOnly){
        if(preOpen?.scope!==forecastScope||preOpen.target!==server.target||preOpen.issued!==server.issued){
          const proxy=paxg&&paxg.observedAt<=server.issued&&server.issued-paxg.observedAt<=12000&&
            paxg.tradeAt<=server.issued&&server.issued-paxg.tradeAt<=15000?paxg:null;
@@ -663,20 +663,22 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    try{
      const saved=JSON.parse(window.localStorage.getItem(key)||'null') as PreOpen|null;
      if(saved&&saved.scope===forecastScope&&saved.target>issued-300000&&
-       saved.target<=target&&saved.issued<saved.target&&saved.issued>=saved.target-15000&&
+       saved.target<=target&&saved.issued<saved.target&&saved.issued>=saved.target-openingWindowMs&&
        (saved.side==='BUY'||saved.side==='SELL')){
        if(!preOpen||preOpen.scope!==forecastScope||preOpen.target<saved.target){
          setPreOpen(saved);return;
        }
      }
    }catch{}
-   if(target-issued>15000||Math.abs(issued-now)>3000||document.hidden||
+   if(target-issued>openingWindowMs||Math.abs(issued-now)>3000||document.hidden||
      !marketOpen||providerTransition||!m.sniper.view.priceFresh||
      !x?.candleSource||!liveQuote?.source||
      (preOpen?.scope===forecastScope&&preOpen.target===target))return;
    const armed=trackedSetup?.phase==='ARMED'&&trackedSetup.crossedAt==null&&
      trackedSetup.expiresAt>issued?trackedSetup:null;
    const eligible=armed&&!armed.selectionConflict?armed:null;
+   if(!eligible&&target-issued>15000)return;
+   if(eligible&&flowProfile.ready&&flowProfile.side!=='WAIT'&&flowProfile.asOf!=null&&flowProfile.observedAt!=null&&flowProfile.asOf<=issued&&flowProfile.observedAt<=issued&&issued-flowProfile.asOf<=15000&&issued-flowProfile.observedAt<=15000&&flowProfile.side!==eligible.side)return;
    const side=eligible?.side??(candleLean.phase==='CLOSE'?candleLean.side:'WAIT');
    if(side==='WAIT')return;
    const sweep=liquidityMagnets.ready&&liquidityMagnets.sourceAt!=null&&
@@ -700,7 +702,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      const raw=JSON.parse(localStorage.getItem(key)||'[]');
      if(Array.isArray(raw))rows=raw.filter(r=>r?.scope===forecastScope&&
        (r.side==='BUY'||r.side==='SELL')&&Number.isFinite(r.target)&&
-       r.issued<r.target&&r.issued>=r.target-(r.serverOpening?openingWindowMs:15000));
+       r.issued<r.target&&r.issued>=r.target-openingWindowMs);
    }catch{}
    if(preOpen?.scope===forecastScope&&!rows.some(r=>r.target===preOpen.target)){
      rows=[...rows,preOpen].slice(-144);
@@ -1897,14 +1899,14 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          const index=trueHistory.findIndex(b=>b.time===r.target);
          const current=r.target===visiblePreOpen?.target;
          const open=index>=0?trueHistory[index].open:
-           current&&forming?.time===r.target?forming.open:r.serverOpening?null:r.priceAt;
+           current&&forming?.time===r.target?forming.open:current&&now<r.target?r.priceAt:null;
          if((index<0&&!current)||open==null||!Number.isFinite(open)||open<lo||open>hi)return null;
          const px=index>=0?left+(index+.5)*actualStride:split-4;
          const y=py(open),color=r.side==='BUY'?'#7effbf':'#ff8aa4';
          const lead=Math.ceil((r.target-r.issued)/1000);
          const adverse=current&&formingVisible&&forming?.time===r.target&&
            m.sniper.view.priceFresh&&price!=null&&(r.side==='BUY'?price<open:price>open);
-         const label=(r.side==='BUY'?'شراء':'بيع')+' · قبلها '+lead+'ث'+(adverse?' · عكسه الآن':'');
+         const label=(r.side==='BUY'?'شراء':'بيع')+' · '+(now<r.target?'توقع قبل الافتتاح ':'قبلها ')+lead+'ث'+(adverse?' · عكسه الآن':'');
          const ly=clamp(y+(r.side==='BUY'?27:-26),plotTop+15,plotBottom-12);
          return <g key={r.target} data-preopen-m5={r.target}>
            <title>{label+' · '+h(r.target)+' · '+r.reason}</title>
@@ -2039,13 +2041,13 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      data-qannas-chart-signal={commandState}
      data-qannas-chart-side={commandSide}
      aria-label={'حالة القناص: '+commandHeadline}>
-     {asset==='GOLD'&&visiblePreOpen?.serverOpening&&marketOpen&&!providerTransition&&
-       <div className="sniper-chart-command-head" data-gold-opening-at={visiblePreOpen.target} data-opening-side={visiblePreOpen.side}>
+     {visiblePreOpen&&marketOpen&&!providerTransition&&
+       <div className="sniper-chart-command-head" data-gold-opening-at={asset==='GOLD'?visiblePreOpen.target:undefined} data-btc-opening-at={asset==='BTC'?visiblePreOpen.target:undefined} data-opening-side={visiblePreOpen.side}>
          <small>{now<visiblePreOpen.target?'الشمعة القادمة':'توقع الافتتاح'} · {h(visiblePreOpen.target)}</small>
          <strong>{visiblePreOpen.side==='BUY'?'شراء':'بيع'} · قبلها {Math.ceil((visiblePreOpen.target-visiblePreOpen.issued)/1000)}ث</strong>
        </div>}
      <div className="sniper-chart-command-head">
-       <small>{visiblePreOpen?.serverOpening?'الرصد الحالي':'M1/M5'}</small>
+       <small>{visiblePreOpen?'الرصد الحالي':'M1/M5'}</small>
        <strong>{commandHeadline}</strong>
      </div>
      <div className="sniper-chart-command-frames">
