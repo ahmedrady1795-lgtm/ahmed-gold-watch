@@ -56,8 +56,27 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  if(!last)return null;
  const direction=lean.side==='BUY'?1:-1;
  const tolerance=Math.max((last.high-last.low)*.08,tick.price*.000002);
- if(direction*(tick.price-lastTick.price)<-tolerance||
+ // For a continuation call the quotes must actually advance. An unchanged
+ // midpoint or a small adverse move used to count as positive confirmation.
+ const spread=tick.ask!=null&&tick.bid!=null?tick.ask-tick.bid:0;
+ const minAdvance=Math.max(spread/2,(last.high-last.low)*.02,tick.price*.000001);
+ if(direction*(tick.price-lastTick.price)<minAdvance||
     direction*(tick.price-last.close)<-Math.max(tolerance,(last.high-last.low)*.35))return null;
+ // Once a six-minute move exceeds three typical minute ranges, require a
+ // recent counter-move and a subsequent recovery before following it.
+ const recent=bars.slice(-15);
+ const ranges=recent.slice(1).map((b,i)=>Math.max(b.high-b.low,
+   Math.abs(b.high-recent[i].close),Math.abs(b.low-recent[i].close))).sort((a,b)=>a-b);
+ const typical=ranges[Math.floor(ranges.length/2)];
+ const leg=recent.slice(-6);
+ if(leg.length===6&&typical>0&&direction*(tick.price-leg[0].open)>=3*typical){
+   const reset=leg.slice(-3).some((bar,i)=>{
+     const before=leg[i+2];
+     return direction*(before.close-bar.close)>=typical*.4&&
+       direction*(tick.price-before.close)>=minAdvance;
+   });
+   if(!reset)return null;
+ }
  return {target,issued:now,side:lean.side,reason:'ترجيح افتتاح سعري مع تحقق اتجاه آخر سعرين؛ ليس إشارة كسر مبكر · '+lean.reason,source:chart.candleSource,
    quoteSource:quote.source,quoteAt:tick.sourceTime,priceAt:tick.price};
 }

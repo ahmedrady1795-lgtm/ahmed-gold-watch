@@ -692,6 +692,11 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    try{window.localStorage.setItem(key,JSON.stringify(record));}catch{}
  },[forecastScope,now,preOpen,marketOpen,providerTransition,m.sniper.view.priceFresh,
    x?.candleSource,liveQuote,serverOpening,historicalOnly,trackedSetup,candleLean,liquidityMagnets,paxg,asset,price]);
+ const openingLabel=(r:{side:string;reason:string})=>{
+   const side=r.side==='BUY'?'شراء':'بيع';
+   if(asset!=='GOLD')return side;
+   return (r.reason.startsWith('تحضير قبل الكسر')?'تحضير ':'ترجيح ')+side;
+ };
  const visiblePreOpen=preOpen?.scope===forecastScope&&now>=preOpen.issued-3000&&
    now<preOpen.target+300000?preOpen:null;
  const [previousCalls,setPreviousCalls]=useState<PreOpen[]>([]);
@@ -1906,7 +1911,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          const lead=Math.ceil((r.target-r.issued)/1000);
          const adverse=current&&formingVisible&&forming?.time===r.target&&
            m.sniper.view.priceFresh&&price!=null&&(r.side==='BUY'?price<open:price>open);
-         const label=(r.side==='BUY'?'شراء':'بيع')+' · '+(now<r.target?'توقع قبل الافتتاح ':'قبلها ')+lead+'ث'+(adverse?' · عكسه الآن':'');
+         const label=openingLabel(r)+' · '+(now<r.target?'توقع قبل الافتتاح ':'قبلها ')+lead+'ث'+(adverse?' · عكسه الآن':'');
          const ly=clamp(y+(r.side==='BUY'?27:-26),plotTop+15,plotBottom-12);
          return <g key={r.target} data-preopen-m5={r.target}>
            <title>{label+' · '+h(r.target)+' · '+r.reason}</title>
@@ -2044,7 +2049,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      {visiblePreOpen&&marketOpen&&!providerTransition&&
        <div className="sniper-chart-command-head" data-gold-opening-at={asset==='GOLD'?visiblePreOpen.target:undefined} data-btc-opening-at={asset==='BTC'?visiblePreOpen.target:undefined} data-opening-side={visiblePreOpen.side}>
          <small>{now<visiblePreOpen.target?'الشمعة القادمة':'توقع الافتتاح'} · {h(visiblePreOpen.target)}</small>
-         <strong>{visiblePreOpen.side==='BUY'?'شراء':'بيع'} · قبلها {Math.ceil((visiblePreOpen.target-visiblePreOpen.issued)/1000)}ث</strong>
+         <strong>{openingLabel(visiblePreOpen)} · قبلها {Math.ceil((visiblePreOpen.target-visiblePreOpen.issued)/1000)}ث</strong>
        </div>}
      <div className="sniper-chart-command-head">
        <small>{visiblePreOpen?'الرصد الحالي':'M1/M5'}</small>

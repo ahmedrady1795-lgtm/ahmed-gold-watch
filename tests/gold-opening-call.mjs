@@ -63,3 +63,19 @@ console.log('PASS: pre-open BUY/SELL, frozen side and issue time, no late/backfi
    assert.ok(!later||!later.reason.startsWith('تحضير قبل الكسر'),'already crossed must not be called pre-break');
  }
  console.log('PASS: pre-break preparation is preferred for both frozen M5 directions');
+
+// Frozen 18:49:46 UTC observation, replayed with a favorable prior tick
+// to isolate the late-chase guard. No target-candle data enters the test.
+const sampleAt=1795632586533;
+const sample=[[3534.02, 3540.38, 3533.05, 3540.38], [3540.3, 3541.32, 3536.44, 3536.52], [3536.15, 3538.58, 3535.53, 3536.39], [3536.52, 3536.68, 3531.69, 3531.78], [3532.02, 3532.19, 3529.8, 3531.57], [3531.26, 3534.66, 3530.06, 3530.06], [3529.84, 3530.76, 3528.55, 3530.05], [3529.77, 3532.53, 3527.91, 3532.11], [3532.82, 3534.35, 3530.42, 3531.75], [3531.89, 3533.4, 3531.23, 3531.75], [3531.75, 3532.68, 3526.9, 3528.04], [3527.85, 3530.09, 3526.57, 3529.08], [3529.2, 3532.27, 3527.92, 3530.72], [3530.81, 3534.02, 3530.81, 3533.28], [3533.32, 3536.48, 3533.23, 3536.28], [3536.4, 3541, 3536.14, 3539.67], [3539.68, 3545.73, 3539.68, 3545.25], [3545.3, 3546.42, 3543.46, 3545.1], [3545.02, 3547.99, 3543.8, 3547.56], [3547.21, 3549.86, 3546.17, 3549.86]].map(([open,high,low,close],i)=>({
+  time:1795631340000+i*60000,open,high,low,close
+}));
+for(const buy of [true,false]){
+ const chart={fresh:true,candleSource:'Deriv · XAUUSD',chartCandles:buy?sample:sample.map(flip)};
+ const price=buy?3549.63:7000-3549.63;
+ const quote={ok:true,source:'Deriv · XAUUSD',status:'live',price,bid:price-.3,ask:price+.3,
+   sourceTime:sampleAt-533,fetchedAt:sampleAt};
+ const priorPrice=price+(buy?-1:1);
+ const prior={...quote,price:priorPrice,bid:priorPrice-.3,ask:priorPrice+.3,sourceTime:sampleAt-5000,fetchedAt:sampleAt-5000};
+ assert.equal(nextGoldOpeningCall(null,sampleAt,chart,quote,[prior]),null,'extended move without a reset');
+}
