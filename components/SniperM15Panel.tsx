@@ -1344,7 +1344,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    commandSide==='BUY'?'BUY · شراء':'SELL · بيع':
    commandLocalGold?commandSide==='BUY'?'WATCH BUY · سعري':'WATCH SELL · سعري':
    commandWatch?commandSide==='BUY'?'WATCH BUY':'WATCH SELL':
-   commandFollowing?commandSide==='BUY'?'↗ صعود مرصود':'↘ هبوط مرصود':
+   commandFollowing?(asset==='GOLD'?'فاتت البداية · متابعة':commandSide==='BUY'?'↗ صعود مرصود':'↘ هبوط مرصود'):
    commandFastLive?'WAIT':'تحديث السوق';
  const commandTrigger=conflict?null:commandConfirmed||commandM1?movementSignal.trigger:
    commandM5?m5Cue.trigger:commandGold?goldSpotPlan!.trigger:null;

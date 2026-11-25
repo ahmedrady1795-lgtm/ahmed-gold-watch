@@ -135,3 +135,20 @@ assert.match(ui,/leadMinSeconds/);assert.match(ui,/preparationLead/);
 assert.match(ui,/لم تثبت دقته خارج العينة/);
 assert.match(fs.readFileSync('scripts/start-with-audit-archive.mjs','utf8'),/gold-preparation-worker\.mjs/);
 console.log('PASS: causal pre-break plans, historical targets, immutable proof, future-only lead bounds, source/gap/ambiguity guards, honest denominator and restore');
+
+for(const buy of [true,false]){
+ const flip=p=>buy?p:8400-p;
+ const at=start+51000;
+ const tick=(t,p)=>({...quote,price:flip(p),bid:flip(p)-.05,ask:flip(p)+.05,sourceTime:t,fetchedAt:t});
+ const approach=tick(at-10000,4200.62),probe=tick(at-5000,4199.55),inside=tick(at,4200.08);
+ const input={now:at,bars:buy?bars:bars.map(mirror),quote:inside,previousQuotes:[approach,probe]};
+ const v=read(input);
+ assert.equal(v.plan?.setup,'LIVE_REJECTION',v.reason);
+ assert.equal(v.plan.side,buy?'BUY':'SELL');
+ assert.equal(v.plan.issuedAt,at);
+ assert.equal(safeGoldLeadLedger(appendGoldLead(emptyGoldLeadLedger(),v.plan),at).events.length,1);
+ assert.equal(read({...input,previousQuotes:[probe,approach]}).plan,null);
+ assert.equal(read({...input,previousQuotes:[approach,{...probe,source:'different'}]}).plan,null);
+ assert.equal(read({...input,quote:tick(at,4201.4)}).plan,null,'never issue after trigger');
+ assert.equal(read({...input,previousQuotes:[{...approach,sourceTime:at-30000},probe]}).plan,null);
+}

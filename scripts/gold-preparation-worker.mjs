@@ -11,7 +11,7 @@ const statusPath='/tmp/gold-preparation-observation.json';
 const checkpoint='https://raw.githubusercontent.com/ahmedrady1795-lgtm/ahmed-gold-watch/render-free/archive/gold-preparation-lead.json';
 const base='http://127.0.0.1:'+(process.env.PORT||'10000');
 let path=paths[1],ledger=emptyGoldLeadLedger(),busy=false,finished=false;
-let chart=null,chartAt=0;
+let chart=null,chartAt=0,chartAttempt=0,previousQuotes=[];
 async function atomic(file,obj){
  const tmp=file+'.writing-'+process.pid;
  await fs.writeFile(tmp,JSON.stringify(obj),{mode:0o600});await fs.rename(tmp,file);
@@ -40,7 +40,8 @@ async function observe(){
   // The free site shares a viewer lease with the main Next.js process.
   // On resume, M1 gap/source safeguards still fail closed for missing proof.
   if(!(await sidecarWorkAllowed()))return;
-  const refresh=!chart||Date.now()-chartAt>=30000;
+  const refresh=Date.now()-chartAttempt>=15000&&(!chart||Date.now()-chartAt>=30000);
+  if(refresh)chartAttempt=Date.now();
   if(refresh)try{chart=await json('/api/chart-history?asset=GOLD&preparation='+Date.now());
    chartAt=Date.now();}catch{}
   // Request the quote AFTER history, so a slow history warm-up cannot age
@@ -58,7 +59,12 @@ async function observe(){
   const feedFresh=g?.fresh===true&&now-chartAt<45000;
   const reading=session&&!feedFresh?{ready:false,plan:null,
    reason:'سياق شموع الذهب غير متاح أو قديم؛ لا إنذار جديد'}:
-   readGoldPreparation({now,source,bars:m1,quote:q,marketOpen:session});
+   readGoldPreparation({now,source,bars:m1,quote:q,previousQuotes,marketOpen:session});
+  const previous=previousQuotes.at(-1);
+  if(!q?.ok||!session||!feedFresh||q.source!==previous?.source||q.sourceTime<previous?.sourceTime)
+   previousQuotes=[];
+  if(q?.ok&&session&&feedFresh&&q.sourceTime!==previousQuotes.at(-1)?.sourceTime)
+   previousQuotes=[...previousQuotes.slice(-1),q];
   if(reading.plan)next=appendGoldLead(next,reading.plan);
   if(next!==ledger){
    const added=next.events.length>ledger.events.length;
@@ -79,7 +85,7 @@ async function observe(){
 await init();
 console.info('[GOLD-PREPARATION] forward-only observer started',path,'restored',ledger.events.length);
 setTimeout(()=>{void observe();},14000);
-const timer=setInterval(()=>{void observe();},15000);
+const timer=setInterval(()=>{void observe();},5000);
 for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{
  if(finished)return;finished=true;clearInterval(timer);
  const close=setInterval(()=>{if(!busy){clearInterval(close);process.exit(0);}},100);

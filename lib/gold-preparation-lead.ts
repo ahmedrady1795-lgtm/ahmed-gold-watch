@@ -12,7 +12,7 @@ export type LeadStatus='ARMED'|'BREAKOUT'|'TARGET'|'STOP'|'NO_BREAK'|
 export type GoldPreparationPlan={
  version:typeof GOLD_PREPARATION_VERSION;id:string;issuedAt:number;contextAt:number;
  source:string;quoteSource:string;quoteAt:number;price:number;spread:number|null;
- side:LeadSide;setup:'PRESSURE_COIL'|'SWEEP_RECLAIM';
+ side:LeadSide;setup:'PRESSURE_COIL'|'SWEEP_RECLAIM'|'LIVE_REJECTION';
  trigger:number;target:number;invalidate:number;armUntil:number;reason:string;
  evidence:string[];method:'SPOT_PRICE_PREPARATION';
 };
@@ -36,7 +36,7 @@ function validBar(b:GoldBar){return b&&stamp(b.time)&&b.time%MIN===0&&
  b.high>=Math.max(b.open,b.close)&&b.low<=Math.min(b.open,b.close);}
 
 export function readGoldPreparation(input:{now:number;source:string;bars:readonly GoldBar[];
- quote:any;marketOpen:boolean}):{ready:boolean;reason:string;plan:GoldPreparationPlan|null}{
+ quote:any;previousQuotes?:readonly any[];marketOpen:boolean}):{ready:boolean;reason:string;plan:GoldPreparationPlan|null}{
  const none=(reason:string)=>({ready:false,reason,plan:null});
  const {now,source,quote,marketOpen}=input;
  if(!marketOpen)return none('سوق الذهب مغلق');
@@ -56,7 +56,7 @@ export function readGoldPreparation(input:{now:number;source:string;bars:readonl
  const bars=historyWindow.slice(Math.max(0,start));
  if(bars.length<48)return none('تاريخ M1 مغلق ومتصل غير كافٍ');
  const last=bars.at(-1)!,contextAt=last.time+MIN;
- if(now-contextAt>45000||pulse.sourceTime<contextAt)return none('سياق الدقيقة أو توقيت السعر قديم');
+ if(now-contextAt>=MIN||pulse.sourceTime<contextAt)return none('سياق الدقيقة أو توقيت السعر قديم');
  const ranges=bars.slice(-25).map((b,i,a)=>i?Math.max(b.high-b.low,
   Math.abs(b.high-a[i-1].close),Math.abs(b.low-a[i-1].close)):b.high-b.low).slice(1).sort((a,b)=>a-b);
  const atr=ranges[Math.floor(ranges.length/2)];
@@ -81,7 +81,31 @@ export function readGoldPreparation(input:{now:number;source:string;bars:readonl
   tail.at(-1)!.low-tail[0].low>=atr*.2;
  const coilSell=compressed&&position<=.32&&falling>=2&&
   tail[0].high-tail.at(-1)!.high>=atr*.2;
- if(sweepBuy&&!sweepSell){
+ // Three ordered same-minute quotes: approach, sweep, then return inside.
+ // Freeze the opposite edge at the approach quote, before the sweep occurred.
+ const priorQuotes=input.previousQuotes??[];
+ const pulses=priorQuotes.slice(-2).map(q=>{
+  if(q?.ok!==true||q.source!==quote.source||q.fetchedAt>now)return null;
+  const tick=acceptGoldPulse(q,q.fetchedAt);
+  if(tick&&((tick.bid!=null&&tick.bid>tick.price)||(tick.ask!=null&&tick.ask<tick.price)||
+    (tick.ask!=null&&tick.bid!=null&&tick.ask-tick.bid>atr*.35)))return null;
+  return tick;
+ });
+ const [approach,probe]=pulses;
+ const sequence=approach&&probe&&approach.sourceTime>=contextAt&&
+  approach.sourceTime<probe.sourceTime&&probe.sourceTime<pulse.sourceTime&&
+  pulse.sourceTime<contextAt+MIN&&pulse.sourceTime<=now&&
+  probe.sourceTime-approach.sourceTime<=10000&&pulse.sourceTime-probe.sourceTime<=10000;
+ const floor=Math.min(...box.map(b=>b.low)),ceiling=Math.max(...box.map(b=>b.high));
+ const liveBuy=sequence&&approach.price>floor&&probe.price<floor-pad&&pulse.price>floor+pad;
+ const liveSell=sequence&&approach.price<ceiling&&probe.price>ceiling+pad&&pulse.price<ceiling-pad;
+ if(liveBuy||liveSell){
+  side=liveBuy?'BUY':'SELL';setup='LIVE_REJECTION';
+  trigger=liveBuy?(approach.ask??approach.price)+pad:(approach.bid??approach.price)-pad;
+  invalidate=liveBuy?(probe.bid??probe.price)-pad:(probe.ask??probe.price)+pad;
+  evidence=['اختبار مستوى M1 سابق بسعر حي','عودة السعر داخل النطاق قبل تفعيل الانعكاس'];
+ }else if(now-contextAt>45000)return none('سياق الدقيقة أو توقيت السعر قديم');
+ else if(sweepBuy&&!sweepSell){
   side='BUY';setup='SWEEP_RECLAIM';trigger=last.high+pad;invalidate=last.low-pad;
   evidence=['سحب قاع سابق ثم استرداده','إغلاق في أعلى شمعة الرفض'];
  }else if(sweepSell&&!sweepBuy){
@@ -102,7 +126,7 @@ export function readGoldPreparation(input:{now:number;source:string;bars:readonl
   sign*(trigger-pulse.price)>atr*1.2)return none('السعر عبر التفعيل بالفعل أو بعيد عن التحضير');
  // A real pre-break alert needs measurable room BEFORE the live quote
  // reaches the trigger. A quote a few ticks from crossing is not reliably
- // earlier than the move at our 15s sampling cadence. Use independent
+ // earlier than the move at our sampling cadence. Use independent
  // closed-M1 volatility plus same-source spread, not future candles.
  const leadRoom=sign*(trigger-leadingPrice);
  const leadBuffer=Math.max(atr*.15,(spread??0)*1.2,last.close*.00001);
@@ -122,7 +146,7 @@ export function readGoldPreparation(input:{now:number;source:string;bars:readonl
   sign*(p-trigger)<=atr*6&&(spread==null||sign*(p-trigger)>spread*3))
   .sort((a,b)=>sign*(a-b))[0];
  if(!positive(target))return none('لا توجد وجهة تاريخية قريبة بعائد مناسب');
- const reason=setup==='PRESSURE_COIL'?'ضغط سعري قبل عبور النطاق':'استرداد مستوى؛ انتظار عبور شمعة الرفض';
+ const reason=setup==='LIVE_REJECTION'?'رفض سعري داخل الدقيقة قبل عبور مستوى الانعكاس':setup==='PRESSURE_COIL'?'ضغط سعري قبل عبور النطاق':'استرداد مستوى؛ انتظار عبور شمعة الرفض';
  const plan:GoldPreparationPlan={version:GOLD_PREPARATION_VERSION,
   id:[GOLD_PREPARATION_VERSION,source,contextAt,side,setup].join(':'),
   issuedAt:now,contextAt,source,quoteSource:quote.source,quoteAt:pulse.sourceTime,
@@ -224,7 +248,7 @@ export function safeGoldLeadLedger(value:any,now:number):GoldLeadLedger{
    !stamp(x.contextAt)||x.contextAt>x.issuedAt||x.issuedAt-x.contextAt>90000||
    !stamp(x.quoteAt)||x.quoteAt>x.issuedAt+2000||x.issuedAt-x.quoteAt>10000||
    !trustedSpotGoldSource(String(x.source))||!goldQuoteMatchesCandles(x.quoteSource,x.source)||
-   (x.side!=='BUY'&&x.side!=='SELL')||!['PRESSURE_COIL','SWEEP_RECLAIM'].includes(x.setup)||
+   (x.side!=='BUY'&&x.side!=='SELL')||!['PRESSURE_COIL','SWEEP_RECLAIM','LIVE_REJECTION'].includes(x.setup)||
    ![x.price,x.trigger,x.target,x.invalidate].every(positive)||
    x.method!=='SPOT_PRICE_PREPARATION'||!statuses.includes(x.status)||
    x.armUntil!==Math.ceil(x.issuedAt/MIN)*MIN+5*MIN||
@@ -280,6 +304,7 @@ export function goldLeadScore(ledger:GoldLeadLedger){
  const evaluated=events.length-pending-excluded;
  const successes=events.filter(e=>e.status==='TARGET').length;
  const resolvedBreakouts=events.filter(e=>['TARGET','STOP','TIMEOUT'].includes(e.status)).length;
+ const liveRejections=events.filter(e=>e.setup==='LIVE_REJECTION');
  const buffered=events.filter(e=>e.evidence.includes('PREBREAK_LEAD_BUFFER_V1'));
  const bufferedEvaluated=buffered.filter(e=>!active(e.status)&&!unresolved.has(e.status));
  const bufferedTargets=bufferedEvaluated.filter(e=>e.status==='TARGET').length;
@@ -287,6 +312,9 @@ export function goldLeadScore(ledger:GoldLeadLedger){
  const mins=proven.map(e=>e.leadMinSeconds!).sort((a,b)=>a-b);
  return {version:GOLD_PREPARATION_VERSION,method:'CLOSED_M1_FORWARD_INTERVAL',
   events:events.length,pending,evaluated,excluded,targetBeforeStop:successes,
+  liveRejections:{issued:liveRejections.length,provenBreakouts:liveRejections.filter(e=>
+    e.breakoutBarAt!=null&&!unresolved.has(e.status)).length,
+    targetTouches:liveRejections.filter(e=>e.status==='TARGET').length},
   targetRate:evaluated?successes/evaluated:null,provenBreakouts:proven.length,
   // Separately report target-after-confirmed-break to avoid mixing setup
   // activation with target reach; both are descriptive price-touch ratios.
