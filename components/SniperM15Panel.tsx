@@ -156,7 +156,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      try{
        const venue=asset==='BTC'&&/kraken/i.test(String(flowCandleSource||''))?
          '/api/orderflow?venue=kraken':'/api/orderflow';
-       const r=await fetch(asset==='BTC'?venue:'/api/gold-tick',{
+       const r=await fetch(asset==='BTC'?venue:flowCandleSource==='Deriv · XAUUSD'?'/api/gold-tick?venue=deriv':'/api/gold-tick',{
          cache:'no-store',signal:AbortSignal.any([
            controller.signal,AbortSignal.timeout(6000)])});
        const data=await r.json();

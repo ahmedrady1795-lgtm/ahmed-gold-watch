@@ -226,7 +226,9 @@ export default function Home(){
   useEffect(()=>{
     let closed=false,inFlight=false,timer:ReturnType<typeof setTimeout>|undefined,nextDelay=1800;
     let stream:WebSocket|null=null,reconnect:ReturnType<typeof setTimeout>|undefined,lastStreamTick=0,subscribed=false;
+    const wantsDeriv=()=>chartDataRef.current?.gold?.candleSource==='Deriv · XAUUSD';
     const applyGold=(tick:any)=>{
+      if(wantsDeriv())return;
       const fresh=acceptGoldStreamPacket(tick,Date.now());
       if(!fresh)return;
       const {price,at,bid,ask}=fresh;
@@ -267,13 +269,15 @@ export default function Home(){
       }catch{if(!closed)reconnect=setTimeout(()=>{void connectStream();},1800);}
     };
     const loadGold=async()=>{
-      if(closed||inFlight||Date.now()-lastStreamTick<3500)return;
+      const deriv=wantsDeriv();
+      if(deriv)lastStreamTick=0;
+      if(closed||inFlight||(!deriv&&Date.now()-lastStreamTick<3500))return;
       inFlight=true;
       try{
-        const r=await fetch('/api/gold-tick?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(6500)});
+        const r=await fetch('/api/gold-tick?'+(deriv?'venue=deriv&':'')+'ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(6500)});
         const j=await r.json();
         if(!r.ok||!j?.ok){nextDelay=3000;return;}
-        if(Date.now()-lastStreamTick<3500)return;
+        if(deriv!==wantsDeriv()||(!deriv&&Date.now()-lastStreamTick<3500))return;
         const price=Number(j.price),bid=Number(j.bid),ask=Number(j.ask),at=sourceTimestamp(j.sourceTime)||0;
         if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)){nextDelay=3000;return;}
         const mode=String(j.mode||'external');
@@ -377,7 +381,7 @@ export default function Home(){
            goldSource={String(chartData?.gold?.candleSource??aiData?.gold?.candleSource??'')}
            goldProviderTransition={Boolean(chartData?.gold?.providerTransition)}/>
       </section>
-      <AICommandCenter assetView="ALL" data={aiData} chartData={chartData} error={aiError} now={now} goldLive={goldTick}
+      <AICommandCenter assetView="ALL" data={aiData} chartData={chartData} error={aiError} now={now} goldLive={(chartData?.gold?.candleSource==='Deriv · XAUUSD')===(goldTick?.source==='Deriv · XAUUSD')?goldTick:null}
         btcLive={chartBtcQuote}/>
     </section>
   </main>;

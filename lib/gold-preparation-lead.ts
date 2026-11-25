@@ -27,6 +27,7 @@ const positive=(x:unknown):x is number=>typeof x==='number'&&Number.isFinite(x)&
 const stamp=(x:unknown):x is number=>positive(x)&&Number.isSafeInteger(x);
 const active=(s:LeadStatus)=>s==='ARMED'||s==='BREAKOUT';
 export const goldQuoteMatchesCandles=(quoteSource:string,candleSource:string)=>
+ (candleSource==='Deriv · XAUUSD'&&quoteSource===candleSource)||
  (candleSource==='Biquote · MT5 XAUUSD candles'&&quoteSource==='Biquote · MT5 XAUUSD')||
  (candleSource==='Massive · C:XAUUSD'&&quoteSource==='Massive · XAUUSD institutional FX')||
  (candleSource==='Twelve Data · XAU/USD'&&quoteSource==='Twelve Data')||

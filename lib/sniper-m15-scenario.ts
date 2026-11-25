@@ -46,7 +46,7 @@ const venue=(s:string)=>{
  const v=String(s||'').toLowerCase();
  return v.includes('coinbase')?'COINBASE':
    v.includes('kraken')||v.includes('xbt/usd')?'KRAKEN':
-   v.includes('biquote')?'BIQUOTE':
+   v.includes('deriv')?'DERIV':v.includes('biquote')?'BIQUOTE':
    v.includes('exness')?'EXNESS':'UNKNOWN';
 };
 export function observeM15Tick(prev:ObservedM15|null,input:{

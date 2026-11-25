@@ -18,7 +18,7 @@ const NONE=(reason:string,source=''):GoldRadarReading=>({
  evidence:[],source,method:'CLOSED_M1_PRICE_ACTION',actionable:false
 });
 export const trustedSpotGoldSource=(source:string)=>
- /^(Biquote · MT5 XAUUSD candles|Massive · C:XAUUSD|Twelve Data · XAU\/USD|Exness\/MT5 · [A-Za-z0-9_.-]+)$/i.test(source)
+ /^(Deriv · XAUUSD|Biquote · MT5 XAUUSD candles|Massive · C:XAUUSD|Twelve Data · XAU\/USD|Exness\/MT5 · [A-Za-z0-9_.-]+)$/i.test(source)
  &&!/proxy|comex|GC=F/i.test(source);
 function detectGoldLiquiditySetup(input:{
  now:number;source:string;bars:readonly GoldBar[];marketOpen:boolean

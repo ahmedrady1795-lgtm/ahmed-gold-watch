@@ -7,6 +7,7 @@ import {ADP_LIST,adpReleaseLinks,parseAdpRelease,mergeAdpEvents,verifiedAdpToday
 import {normalizeMt5GoldDom,analyzeMt5GoldDom} from './gold-mt5-dom';
 import type {Mt5DomSnapshot} from './gold-mt5-dom';
 import {buildMt5QuoteProfile} from './mt5-quote-profile';
+import {derivGoldFrames} from './deriv-gold';
 import {gradeGoldQuote,freshGoldCandleSet} from './gold-source-quality';
 import {repairGoldM15FromM5} from './gold-m15-reconstruction';
 import {recoverGoldFrames} from './gold-chart-frames';
@@ -518,6 +519,14 @@ export async function getGoldChartMarket():Promise<MarketData>{
       return true;
     };
     if(await readFrames('Biquote',candlesFromBiquote,'Biquote · MT5 XAUUSD candles'))return;
+    try{
+      const frames=await derivGoldFrames(),checked=Date.now();
+      if(frames.c1.length>=80&&frames.c5.length>=24&&frames.c15.length>=24&&frames.c60.length>=4&&
+        freshGoldCandleSet(frames.c1,frames.c5,frames.c15,frames.c60,checked,goldSessionOpen(checked))){
+        Object.assign(result,frames,{priceSource:'Deriv · XAUUSD',pricesReady:true});
+        return;
+      }
+    }catch{result.errors.push('شموع Deriv غير متاحة مؤقتًا.');}
     result.errors.push('Biquote XAUUSD OHLC غير مكتمل؛ تجربة COMEX proxy.');
     if(await readFrames('Yahoo',candlesFromYahoo,'Yahoo Finance · COMEX GC=F proxy')){
       result.errors.push('الشموع من عقود COMEX GC=F احتياطي تحليلي فقط وليست سعر تنفيذ XAUUSD.');return;

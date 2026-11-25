@@ -100,7 +100,7 @@ async function observe(){
    chartAt=Date.now();}catch{}
   // Request the quote AFTER history, so a slow history warm-up cannot age
   // the quote beyond the ten-second source freshness gate before issuance.
-  const quote=await json('/api/quote').catch(()=>null);
+  const quote=await json(chart?.gold?.candleSource==='Deriv · XAUUSD'?'/api/gold-tick?venue=deriv':'/api/quote').catch(()=>null);
   const now=Date.now();
   const g=chart?.gold,source=String(g?.candleSource||'');
   const m1=Array.isArray(g?.chartCandles)?g.chartCandles.filter(b=>b?.time+60000<=now-3000):[];

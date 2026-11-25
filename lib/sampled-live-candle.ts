@@ -12,7 +12,7 @@ export type TickInput={now:number;at:number;price:number;sourceKey:string;
 export function sourceVenue(s:string){
  const v=String(s||'').toLowerCase();
  return /coinbase/.test(v)?'COINBASE':/kraken|xbt\/usd/.test(v)?'KRAKEN':
-   /biquote/.test(v)?'BIQUOTE':/exness/.test(v)?'EXNESS':
+   /deriv/.test(v)?'DERIV':/biquote/.test(v)?'BIQUOTE':/exness/.test(v)?'EXNESS':
    /yahoo|comex|gc=f/.test(v)?'YAHOO':'UNKNOWN';
 }
 export type M1QuoteForWatch={ok?:boolean;price?:number;sourceTime?:number;source?:string}|null|undefined;

@@ -1,8 +1,16 @@
+import {derivGoldQuote} from '../../../lib/deriv-gold';
 import {getMarketData,getMt5BridgeStatus,getMt5FastSignal,getMt5GoldDomReading,getMt5GoldQuoteProfile,getQuoteData} from '../../../lib/market-hub';
 
 export const dynamic='force-dynamic';
 
-export async function GET(){
+export async function GET(request:Request){
+  if(new URL(request.url).searchParams.get('venue')==='deriv'){
+    try{
+      const quote=await derivGoldQuote();
+      return Response.json({...quote,receivedAt:quote.fetchedAt,mode:'external',
+        ageMs:Date.now()-Number(quote.sourceTime)},{headers:{'Cache-Control':'no-store'}});
+    }catch{return Response.json({ok:false,status:'offline'},{status:503,headers:{'Cache-Control':'no-store'}});}
+  }
   const now=Date.now(),bridge=getMt5BridgeStatus(now),fast=getMt5FastSignal(now),s=bridge.status;
 
   if(bridge.fresh&&s){
