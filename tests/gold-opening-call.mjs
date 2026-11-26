@@ -159,3 +159,37 @@ assert.equal((await collectIndependentFlow(pendingSlots))[1]?.name,'slow');
 assert.equal(fastSlot.read(Date.now()+11000),null,'no stale source is presented as live');
 assert.equal(slowSlot.read(Date.now()+11000),null);
 console.log('PASS: independent venue refresh latency, deduplication, recovery and strict expiry');
+
+
+// Exact opening cutoff: a rejected second test of a mature extreme must
+// produce the opposite next-M5 forecast only with independent fresh flow.
+const {GOLD_OPENING_VERSION}=await import('../lib/gold-opening-call.ts');
+const reversalAt=open-25000;
+const reversalBars=Array.from({length:10},(_,i)=>{
+ const price=3500+i*.3;
+ return {time:open-(11-i)*m,open:price,high:price+.4,low:price-.2,close:price+.2};
+});
+reversalBars[9]={...reversalBars[9],open:3502.5,high:3502.73,low:3501.9,close:3502.05};
+for(const up of [true,false]){
+ const rows=up?reversalBars:reversalBars.map(flip);
+ const side=up?'SELL':'BUY';
+ const price=rows[9].close;
+ const priorPrice=price+(up?.10:-.10);
+ const chart={fresh:true,candleSource:'Biquote · MT5 XAUUSD candles',chartCandles:rows};
+ const q={ok:true,status:'live',source:'Biquote · MT5 XAUUSD',price,bid:price-.02,ask:price+.02,sourceTime:reversalAt-300,fetchedAt:reversalAt};
+ const prior={...q,price:priorPrice,bid:priorPrice-.02,ask:priorPrice+.02,sourceTime:reversalAt-5000,fetchedAt:reversalAt-5000};
+ const flow={asOf:reversalAt-500,sources:['Bybit XAUUSDT perpetual','OKX XAUUSDT perpetual'],state:side,strongSide:side};
+ const call=nextGoldOpeningCall(null,reversalAt,chart,q,[prior],flow,true);
+ assert.equal(call?.side,side);
+ assert.equal(call.version,GOLD_OPENING_VERSION);
+ assert.equal(call.target,open);
+ assert.equal(call.issued,reversalAt);
+ assert.match(call.reason,/انعكاس عند نهاية الموجة/);
+ assert.equal(nextGoldOpeningCall(null,reversalAt,chart,q,[prior],null,true),null);
+ assert.equal(nextGoldOpeningCall(null,reversalAt,chart,q,[prior],{...flow,asOf:reversalAt-20000},true),null);
+ assert.equal(nextGoldOpeningCall(null,reversalAt,chart,q,[prior],{...flow,sources:[flow.sources[0]]},true),null);
+ assert.equal(nextGoldOpeningCall(null,reversalAt,chart,q,[prior],{...flow,state:'CONFLICT',strongSide:'WAIT'},true),null);
+ assert.equal(nextGoldOpeningCall(call,reversalAt+500,chart,q,[],null,true),call);
+ assert.deepEqual(nextGoldOpeningCall(null,reversalAt,{...chart,chartCandles:[...rows,{time:open,open:3500,high:4000,low:3000,close:3999}]},q,[prior],flow,true),call);
+}
+console.log('PASS: V2 opening reversal at failed extreme with two fresh agreeing proxy venues, no future bars or late change');
