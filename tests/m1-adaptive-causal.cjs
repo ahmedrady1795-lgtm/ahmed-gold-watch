@@ -82,7 +82,7 @@ assert.equal(everyM1Direction(gap,moment+200),null,
 const ledger=fs.readFileSync('lib/scalp-every-candle.ts','utf8');
 assert.match(ledger,/EVERY_M1_EDGE_V4/,
  'online forward M1 model must have a separate prospective V4 proof cohort');
-assert.match(ledger,/directionModel:online\.inverted\?'ONLINE_INVERSION'/,
+assert.match(ledger,/directionModel:pairedSelector\?\.applied\?'PAIRED_BODY_BASELINE':online\.inverted\?'ONLINE_INVERSION'/,
  'freeze the chosen online model on the candle before its future close');
 assert.match(ledger,/originalSide:signal\.side/,
  'preserve the original causal model direction for future audit');
