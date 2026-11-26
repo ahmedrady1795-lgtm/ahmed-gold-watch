@@ -3,7 +3,7 @@ import {useEffect,useState} from 'react';
 import {Clock3,Newspaper} from 'lucide-react';
 import {economicNewsTimeline} from '../lib/news-alert-window';
 import {classifyMacroNews,expectedMacroBackdrop} from '../lib/news-impact-outlook';
-import {adpWeeklyTrend} from '../lib/news-intelligence';
+import {adpWeeklyTrend,buildNewsIntelligence} from '../lib/news-intelligence';
 import {buildPreNewsMultiFrame} from '../lib/pre-news-gold-lean';
 
 function timeLeft(ts:number,now:number){
@@ -68,30 +68,26 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
     return()=>{closed=true;clearTimeout(initial);clearInterval(interval);document.removeEventListener('visibilitychange',visibility);};
   },[]);
   const {upcoming,alerts,recent}=economicNewsTimeline(feed?.events??events,feed?null:featuredEvent,now);
-  const dubaiDay=(at:number)=>new Intl.DateTimeFormat('en-CA',{
-    timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'
-  }).format(new Date(at));
-  const today=dubaiDay(now);
-  // The 24-hour alert still exists, but a release later TODAY must stay
-  // visible from early morning. No fabricated event if the provider is empty.
-  const todayUpcoming=upcoming.filter(e=>dubaiDay(Number(e.time))===today);
   const ranked=(xs:typeof alerts)=>[...xs].sort((a,b)=>
     Number(b.importance||1)-Number(a.importance||1)||Number(a.time)-Number(b.time));
-  const newlyReleased=recent.filter(e=>now-Number(e.time)<=15*60000&&String(e.actual||'').trim());
-  const imminent=alerts.filter(e=>Number(e.time)-now<=30*60000);
-  const highlighted=[...newlyReleased].sort((a,b)=>Number(b.time)-Number(a.time))[0]??ranked(imminent)[0]??ranked(todayUpcoming)[0]??ranked(alerts)[0]??
-    [...recent].sort((a,b)=>Number(b.importance||1)-Number(a.importance||1)||
-      Number(b.time)-Number(a.time))[0];
+  const next=upcoming[0];
+  // Keep a just-due release visible while waiting for Actual, independently of the next event.
+  const newlyReleased=recent.filter(e=>now-Number(e.time)<=30*60000);
+  const highlighted=ranked(newlyReleased)[0]??next??ranked(recent)[0];
   const released=Boolean(highlighted&&Number(highlighted.time)<now);
   const actualReady=Boolean(released&&String(highlighted?.actual||'').trim());
   const eventState=released?(actualReady?'النتيجة صدرت':'نتيجة الخبر قيد التحديث'):
     highlighted?'بعد '+timeLeft(Number(highlighted.time),now):'';
-  const next=alerts[0];
   // The featured release is already prominent above; do not repeat it below.
   const remainingAlerts=alerts.filter(e=>e!==highlighted);
   const outlook=classifyMacroNews(highlighted?.name);
   const adpTrend=actualReady?adpWeeklyTrend(String(highlighted?.name),highlighted?.actual,highlighted?.previous,highlighted?.forecast):null;
   const macroBackdrop=!released&&highlighted?expectedMacroBackdrop(highlighted):null;
+  const releaseSignal=actualReady&&highlighted?buildNewsIntelligence('GOLD',[highlighted as any],now):null;
+  const actualImpact=actualReady?(releaseSignal?.side==='BUY'?'ذهب ↑ صعود محتمل · USD ↓':releaseSignal?.side==='SELL'?'ذهب ↓ هبوط محتمل · USD ↑':adpTrend?(adpTrend==='UP'?'ذهب ↑ صعود محتمل':'ذهب ↓ هبوط محتمل')+' · مقابل السابق فقط':'ذهب ↔ أثر غير محسوم'):
+    released?'النتيجة قيد التحديث · لا اتجاه مؤكد':null;
+  const feedStale=Boolean(error||feed&&now-Number(feed.checkedAt)>60000);
+  const impactLabel=actualImpact??(macroBackdrop?.side!=='WAIT'?macroBackdrop?.label:null);
   const preLean=highlighted&&Number(highlighted.time)>now
     ?buildPreNewsMultiFrame({eventTime:Number(highlighted.time),now,
       candles:goldCandles,m5:goldM5,source:String(goldSource),
@@ -100,9 +96,9 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
   const disagreement=Boolean(preLean?.visible&&preLean.side!=='WAIT'&&macroBackdrop&&macroBackdrop.side!=='WAIT'&&preLean.side!==macroBackdrop.side);
   return <details className="news-ticker-shell" aria-label="أهم أخبار اليوم وتأثيرها المحتمل على الذهب">
     <summary className="news-ticker-line" title={highlighted?outlook.disclaimer:'متابعة أهم أخبار اليوم'}>
-      <span className="news-ticker-tag">خبر اليوم</span>
+      <span className="news-ticker-tag">{released?'آخر إصدار':'أقرب خبر'}</span>
       <span className="news-ticker-countdown">{highlighted?eventState:error?'التحديث متأخر':!feed?'جاري تحديث الأخبار':'لا أخبار قادمة'}</span>
-      <strong className="news-ticker-title">{highlighted?.name||(!feed&&!error?'جاري فحص التقويم':'لا يوجد خبر اقتصادي مؤكد اليوم')}</strong>
+      <strong className="news-ticker-title">{highlighted?.name||(!feed&&!error?'جاري فحص التقويم':'لا يوجد خبر مؤكد في المصدر')}</strong>
       {preLean?.visible&&<span className={'news-ticker-prebias news-ticker-prebias-'+preLean.side.toLowerCase()}
         title="حركة السعر قبل الخبر؛ لا تتنبأ بنتيجة الإعلان أو اتجاهه المؤكد بعد الصدور">
         {disagreement?'↔ تعارض التوقع والحركة':preLabel}</span>}
@@ -110,8 +106,9 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
       {highlighted&&<span className="news-ticker-forecast">{actualReady?'فعلي: '+String(highlighted.actual):
          'توقع: '+String(highlighted.forecast||'غير متوفر')}</span>}
       {highlighted&&<span className={'news-ticker-impact '+(outlook.kind==='UNCERTAIN'?'news-ticker-uncertain':'')}>
-        {adpTrend?(adpTrend==='UP'?'USD ↓ · ذهب ↑ محتمل':'USD ↑ · ذهب ↓ محتمل')+' · مقابل السابق، بلا توقع':<>{outlook.higher} <span className="news-ticker-divider">/</span> {outlook.lower}</>}
+        {feedStale?'بيانات غير محدثة · ':''}{released?actualImpact:<>{outlook.higher} <span className="news-ticker-divider">/</span> {outlook.lower}</>}
       </span>}
+      {next&&next!==highlighted&&<span className="news-ticker-forecast">القادم: {next.name} · {timeLeft(Number(next.time),now)}</span>}
       <span className="news-ticker-expand">التفاصيل ▾</span>
     </summary>
     <div className="panel newscommand standalone-news home-news-compact news-ticker-details">
@@ -123,13 +120,16 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
     {error&&<p role="status" className="news-eight-empty">تعذر تأكيد تحديث التقويم الآن؛ بيانات الأخبار قد تكون قديمة.</p>}
     {highlighted?<div className="news-headline">
       <span className="news-headline-meta">
-        <strong>{Number(highlighted.importance)>=3?'أهم خبر مرتفع التأثير':'خبر اقتصادي قادم'}</strong>
+        <strong>{Number(highlighted.importance)>=3?'تأثير قوي':Number(highlighted.importance)===2?'تأثير متوسط':'تأثير منخفض'}</strong>
         <small><Clock3 size={13}/> {eventState}</small>
       </span>
       <strong className="news-headline-title">{highlighted.name}</strong>
       <span className="news-headline-numbers">الفعلي {actualReady?String(highlighted.actual):'لم يتم تأكيده بعد'} · المتوقع {String(highlighted.forecast||'—')} · السابق {String(highlighted.previous||'—')}</span>
       <small>{dateLabel(Number(highlighted.time))} · الإمارات · السيناريو مرتبط بالنتيجة الفعلية، لا توجد نسبة اتجاه مؤكدة.</small>
-      {macroBackdrop&&<small>{macroBackdrop.label} · {macroBackdrop.reason}</small>}
+      {impactLabel&&<strong role="status">{feedStale?'آخر قراءة · ':''}{impactLabel}</strong>}
+      {macroBackdrop&&<small>{macroBackdrop.reason}</small>}
+      {released&&releaseSignal?.directional&&<small>الأثر الاقتصادي من الفعلي مقابل المتوقع، وليس اتجاه السعر المؤكد. BTC يحتاج تأكيد السعر والسيولة.</small>}
+      {next&&next!==highlighted&&<small>أقرب خبر قادم: {next.name} · {dateLabel(Number(next.time))} · {timeLeft(Number(next.time),now)}</small>}
       {disagreement&&<small>التوقع الاقتصادي وحركة الذهب متعارضان؛ لا يُفرض اتجاه.</small>}
     </div>:<p className="news-eight-empty">{error?'لم نتمكن من تأكيد الأحداث القادمة.':'لا يوجد خبر اقتصادي مؤكد اليوم في المصدر.'}</p>}
     {preLean?.visible&&<div className={'news-prebias-detail news-prebias-'+preLean.side.toLowerCase()} role="status">
