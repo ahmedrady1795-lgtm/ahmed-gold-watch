@@ -1,5 +1,6 @@
-import {readBybitGoldPerp,readBinanceGoldPerp,readOkxGoldPerp,okxGoldPrints,type PaxgFlow} from '../../../lib/paxg-flow';
+import {readPaxgFlow,readBybitGoldPerp,readBinanceGoldPerp,readOkxGoldPerp,okxGoldPrints,type PaxgFlow} from '../../../lib/paxg-flow';
 import {independentFlowSlot,collectIndependentFlow,newVenueHistory,updateVenueHistory,observeBook,compareGoldVenues,observeLeadLag,type LeadPoint,type FlowPrint,type VenueEvidence,recordDepthFrame,readDepthHeatmap,observeGoldDepthPreparation,type DepthFrame} from '../../../lib/gold-flow-history';
+import {goldStreamSnapshot,type GoldStreamVenue} from '../../../lib/gold-perp-stream';
 import {spotBackoffMs} from '../../../lib/binance-cooldown';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -84,11 +85,31 @@ const freshVenue=(v:{flow:PaxgFlow},now:number)=>v.flow.tradeAt<=now&&v.flow.obs
  now-v.flow.tradeAt<=10000&&now-v.flow.observedAt<=12000;
 const slots=[independentFlowSlot(()=>venueSample('bybit'),freshVenue,3000),
  independentFlowSlot(()=>venueSample('binance'),freshVenue,3000),independentFlowSlot(okxSample,freshVenue,5000)];
+const streamHistories={bybit:newVenueHistory(),okx:newVenueHistory()};
+function streamSample(venue:GoldStreamVenue,now:number){
+ const stream=goldStreamSnapshot(venue,now),source=venue==='bybit'?'Bybit XAUUSDT perpetual':'OKX XAUUSDT perpetual';
+ const report={status:stream.status,ageMs:stream.ageMs,count:stream.rows.length};
+ if(!stream.usable)return {report,sample:null};
+ // The REST book is independent of stream executions; reuse it only while
+ // the original exchange timestamp is valid. No synthetic depth.
+ const frame=depthHistory[venue].at(-1);
+ const depth=frame&&frame.at<=now&&now-frame.at<=8000?{
+   bids:frame.levels.filter(l=>l.side==='BID').map(l=>[l.price,l.qty]),
+   asks:frame.levels.filter(l=>l.side==='ASK').map(l=>[l.price,l.qty])}:null;
+ const flow={...readPaxgFlow(depth,stream.rows.map((t,i)=>({a:i,T:t.at,p:t.price,q:t.qty,m:!t.buy})),now),source};
+ if(flow.side==='UNAVAILABLE')return {report,sample:null};
+ const evidence=updateVenueHistory(streamHistories[venue],source,now,stream.rows,observeBook(depth,frame?.at??0,now));
+ return {report,sample:{flow,evidence}};
+}
 async function sample():Promise<PaxgFlow>{
- const [a,b,c]=await collectIndependentFlow(slots);
+ const started=Date.now(),by=streamSample('bybit',started),ok=streamSample('okx',started);
+ // When a streaming tape is ready, REST still warms depth/fallback but
+ // cannot delay the available execution tape. Exactly one vote per venue.
+ const [ar,b,cr]=by.sample||ok.sample?slots.map(slot=>{void slot.refresh(started);return slot.read(started);}):await collectIndependentFlow(slots);
+ const a=by.sample??ar,c=ok.sample??cr;
  const now=Date.now();
  const fresh=[a,b,c].filter((x):x is NonNullable<typeof x>=>Boolean(x&&now-x.flow.tradeAt<=15000&&now-x.flow.observedAt<=12000));
- if(now-lastReport>=30000){lastReport=now;console.info('[GOLD-PERP-SOURCES]',JSON.stringify({failures,bybit:a?.flow?{count:a.flow.count,tradeAt:a.flow.tradeAt}:null,binance:b?.flow?{count:b.flow.count,tradeAt:b.flow.tradeAt}:null,okx:c?.flow?{count:c.flow.count,tradeAt:c.flow.tradeAt}:null}));}
+ if(now-lastReport>=30000){lastReport=now;console.info('[GOLD-PERP-SOURCES]',JSON.stringify({failures,streams:{bybit:by.report,okx:ok.report},bybit:a?.flow?{count:a.flow.count,tradeAt:a.flow.tradeAt}:null,binance:b?.flow?{count:b.flow.count,tradeAt:b.flow.tradeAt}:null,okx:c?.flow?{count:c.flow.count,tradeAt:c.flow.tradeAt}:null}));}
  const av=a?.evidence,bv=b?.evidence;
  if(av&&bv&&av.mid!=null&&bv.mid!=null&&av.bookAt!=null&&bv.bookAt!=null&&
     Math.abs(av.bookAt-bv.bookAt)<=2000&&now-Math.min(av.bookAt,bv.bookAt)<=8000){
