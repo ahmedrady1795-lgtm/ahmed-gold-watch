@@ -48,7 +48,10 @@ assert.equal(economicNewsTimeline([{name:'CPI yesterday',time:cpiTime}],
  null,Date.parse('2026-11-11T07:00:00Z')).recent.length,0);
 const api=fs.readFileSync('app/api/news/route.ts','utf8');
 assert.ok(api.includes('AGE_MS=24*60*60*1000'));
-assert.ok(api.includes('WINDOW_MS=24*60*60*1000'));
+assert.ok(api.includes('WINDOW_MS=7*24*60*60*1000'),'calendar horizon is independent of 24h alert window');
+const quiet=economicNewsTimeline([evt('Next release in three days',3*86400000)],null,now);
+assert.equal(quiet.alerts.length,0,'do not raise a 24h alert early');
+assert.equal(quiet.upcoming[0].name,'Next release in three days','nearest confirmed event remains visible on quiet days');
 result=economicNewsTimeline([],null,now);
 assert.equal(result.alerts.length,0,'No fake event when feed is empty');
 console.log('PASS: news alert appears exactly twenty-four hours prior, never early or without source event');
