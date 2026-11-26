@@ -2,7 +2,7 @@
 import {useEffect,useState} from 'react';
 import {Clock3,Newspaper} from 'lucide-react';
 import {economicNewsTimeline} from '../lib/news-alert-window';
-import {classifyMacroNews,expectedMacroBackdrop} from '../lib/news-impact-outlook';
+import {classifyMacroNews,expectedMacroBackdrop,observedNewsGoldReaction} from '../lib/news-impact-outlook';
 import {adpWeeklyTrend,buildNewsIntelligence} from '../lib/news-intelligence';
 import {buildPreNewsMultiFrame} from '../lib/pre-news-gold-lean';
 
@@ -16,6 +16,7 @@ const dateLabel=(ts:number)=>new Date(ts).toLocaleString('ar-AE',{
   timeZone:'Asia/Dubai',weekday:'short',day:'2-digit',month:'2-digit',
   hour:'2-digit',minute:'2-digit'
 });
+const impactStrength=(e:any)=>Number(e?.importance)>=3?'تأثير قوي':Number(e?.importance)===2?'تأثير متوسط':'تأثير منخفض';
 function conditionalImpact(e:any){
   const name=String(e?.name||'');
   if(/claims|unemployment rate|jobless|continuing claims/i.test(name))
@@ -94,21 +95,26 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
       providerTransition:Boolean(goldProviderTransition)}):null;
   const preLabel=preLean?.side==='UP'?'↑ ميل صعود':preLean?.side==='DOWN'?'↓ ميل هبوط':'↔ غير محسوم';
   const disagreement=Boolean(preLean?.visible&&preLean.side!=='WAIT'&&macroBackdrop&&macroBackdrop.side!=='WAIT'&&preLean.side!==macroBackdrop.side);
+  const reaction=released&&highlighted?observedNewsGoldReaction({eventTime:Number(highlighted.time),now,candles:goldCandles,source:String(goldSource),providerTransition:Boolean(goldProviderTransition)}):null;
+  const nextBackdrop=next?expectedMacroBackdrop(next):null;
+  const nextOutlook=next?classifyMacroNews(next.name):null;
   return <details className="news-ticker-shell" aria-label="أهم أخبار اليوم وتأثيرها المحتمل على الذهب">
-    <summary className="news-ticker-line" title={highlighted?outlook.disclaimer:'متابعة أهم أخبار اليوم'}>
+    <summary className="news-ticker-line" style={{flexWrap:'wrap',whiteSpace:'normal',overflow:'visible'}} title={highlighted?outlook.disclaimer:'متابعة أهم أخبار اليوم'}>
       <span className="news-ticker-tag">{released?'آخر إصدار':'أقرب خبر'}</span>
       <span className="news-ticker-countdown">{highlighted?eventState:error?'التحديث متأخر':!feed?'جاري تحديث الأخبار':'لا أخبار قادمة'}</span>
-      <strong className="news-ticker-title">{highlighted?.name||(!feed&&!error?'جاري فحص التقويم':'لا يوجد خبر مؤكد في المصدر')}</strong>
+      <strong className="news-ticker-title" style={{whiteSpace:'normal',overflow:'visible',maxWidth:'none',flex:'1 1 160px'}}>{highlighted?.name||(!feed&&!error?'جاري فحص التقويم':'لا يوجد خبر مؤكد في المصدر')}</strong>
+      {highlighted&&<span style={{whiteSpace:'normal',fontSize:11}}>{dateLabel(Number(highlighted.time))} · الإمارات · {impactStrength(highlighted)}</span>}
       {preLean?.visible&&<span className={'news-ticker-prebias news-ticker-prebias-'+preLean.side.toLowerCase()}
         title="حركة السعر قبل الخبر؛ لا تتنبأ بنتيجة الإعلان أو اتجاهه المؤكد بعد الصدور">
         {disagreement?'↔ تعارض التوقع والحركة':preLabel}</span>}
       {macroBackdrop&&!preLean?.visible&&<span className={'news-ticker-prebias news-ticker-prebias-'+macroBackdrop.side.toLowerCase()} title={macroBackdrop.reason}>{macroBackdrop.label}</span>}
       {highlighted&&<span className="news-ticker-forecast">{actualReady?'فعلي: '+String(highlighted.actual):
          'توقع: '+String(highlighted.forecast||'غير متوفر')}</span>}
-      {highlighted&&<span className={'news-ticker-impact '+(outlook.kind==='UNCERTAIN'?'news-ticker-uncertain':'')}>
+      {highlighted&&<span style={{display:'inline',whiteSpace:'normal',flex:'1 1 160px',color:released&&releaseSignal?.side==='SELL'?'#fa92a4':undefined}} className={'news-ticker-impact '+(outlook.kind==='UNCERTAIN'?'news-ticker-uncertain':'')}>
         {feedStale?'بيانات غير محدثة · ':''}{released?actualImpact:<>{outlook.higher} <span className="news-ticker-divider">/</span> {outlook.lower}</>}
       </span>}
-      {next&&next!==highlighted&&<span className="news-ticker-forecast">القادم: {next.name} · {timeLeft(Number(next.time),now)}</span>}
+      {reaction&&<span role="status" style={{fontSize:11,color:reaction.side==='UP'?'#62e6b0':reaction.side==='DOWN'?'#fa92a4':undefined}}>{reaction.label}</span>}
+      {next&&next!==highlighted&&<span data-nearest-news="true" style={{display:'block',flex:'1 0 100%',whiteSpace:'normal',fontSize:12}}><b>أقرب خبر: {next.name}</b> · {dateLabel(Number(next.time))} الإمارات · بعد {timeLeft(Number(next.time),now)} · {impactStrength(next)} · {nextBackdrop?.side!=='WAIT'?nextBackdrop?.label:(nextOutlook?.higher+' / '+nextOutlook?.lower)}</span>}
       <span className="news-ticker-expand">التفاصيل ▾</span>
     </summary>
     <div className="panel newscommand standalone-news home-news-compact news-ticker-details">
@@ -128,6 +134,7 @@ export default function NewsCommandCenter({events=[],now=Date.now(),featuredEven
       <small>{dateLabel(Number(highlighted.time))} · الإمارات · السيناريو مرتبط بالنتيجة الفعلية، لا توجد نسبة اتجاه مؤكدة.</small>
       {impactLabel&&<strong role="status">{feedStale?'آخر قراءة · ':''}{impactLabel}</strong>}
       {macroBackdrop&&<small>{macroBackdrop.reason}</small>}
+      {reaction&&<small>{reaction.label} · قياس أول خمس دقائق من السعر وليس إثباتًا أن الخبر سبب الحركة.</small>}
       {released&&releaseSignal?.directional&&<small>الأثر الاقتصادي من الفعلي مقابل المتوقع، وليس اتجاه السعر المؤكد. BTC يحتاج تأكيد السعر والسيولة.</small>}
       {next&&next!==highlighted&&<small>أقرب خبر قادم: {next.name} · {dateLabel(Number(next.time))} · {timeLeft(Number(next.time),now)}</small>}
       {disagreement&&<small>التوقع الاقتصادي وحركة الذهب متعارضان؛ لا يُفرض اتجاه.</small>}
