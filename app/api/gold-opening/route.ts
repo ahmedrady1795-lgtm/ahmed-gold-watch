@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import {validOpeningCall,GOLD_OPENING_VERSION} from '../../../lib/gold-opening-call';
-import {mergeOpeningAudit,openingScore} from '../../../lib/gold-opening-audit';
+import {mergeOpeningAudit,openingScore,openingRegimeReport} from '../../../lib/gold-opening-audit';
 
 export const dynamic='force-dynamic';
 export async function GET(request:Request){
@@ -19,6 +19,7 @@ export async function GET(request:Request){
  return Response.json({call,recent:rows.slice(-36),quality:openingScore(rows),
    byMethod:{preparation:openingScore(rows.filter(isPreparation)),continuation:openingScore(rows.filter(r=>!isPreparation(r)))},
    currentVersion:GOLD_OPENING_VERSION,currentVersionQuality:openingScore(rows.filter(r=>r.call.version===GOLD_OPENING_VERSION)),
-   withheldResearch:{quality:openingScore(withheld),currentVersionQuality:openingScore(withheld.filter(r=>r.call.version===GOLD_OPENING_VERSION)),scope:'RESEARCH_ONLY_NOT_SIGNALS'},
+   regimeAudit:openingRegimeReport(rows.filter(r=>r.call.version===GOLD_OPENING_VERSION)),
+   withheldResearch:{regimeAudit:openingRegimeReport(withheld.filter(r=>r.call.version===GOLD_OPENING_VERSION)),quality:openingScore(withheld),currentVersionQuality:openingScore(withheld.filter(r=>r.call.version===GOLD_OPENING_VERSION)),scope:'RESEARCH_ONLY_NOT_SIGNALS'},
    retention:576,scope:'M5_DIRECTION_NOT_TRADE_PROFIT'},{headers});
 }
