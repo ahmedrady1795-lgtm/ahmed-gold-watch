@@ -244,3 +244,15 @@ for(const up of [true,false]){
  assert.equal(liveWave({...q,m1:[...rows,{...rows[7],time:start}]} )?.side,up?'SELL':'BUY');
 }
 console.log('PASS: live wave-end warning on three observed quotes before M1 close, symmetric and causal');
+
+for(const up of [true,false]){
+ const failed=waveBars.map(b=>({...b}));
+ failed[9]={...failed[9],open:102.5,high:102.73,low:101.9,close:102.05};
+ const rows=up?failed:failed.map(b=>({...b,open:200-b.open,high:200-b.low,low:200-b.high,close:200-b.close}));
+ const q={now:start+5000,quoteAt:start+4000,price:rows[9].close,sourceReady:true,m1:rows};
+ assert.equal(wave(q)?.side,up?'SELL':'BUY');
+ assert.match(wave(q)?.reason||'',/فشل إعادة اختبار/);
+ assert.equal(wave({...q,price:up?101.5:98.5}),null,'no late chase after rejection');
+ assert.equal(wave({...q,price:up?103:97}),null,'reclaimed level is not exhaustion');
+}
+console.log('PASS: failed extreme retest without fresh sweep, symmetric, no late chase');
