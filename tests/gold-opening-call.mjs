@@ -105,3 +105,26 @@ assert.equal(openingScore(restored).hits,1);
 assert.deepEqual(mergeOpeningAudit(end,[pending],[{...hit,close:3501}]),[pending]);
 assert.deepEqual(mergeOpeningAudit(end,[pending],[{...hit,call:{...oldCall,issued:issued+1}}]),[pending]);
 assert.equal(mergeOpeningAudit(end-1,[hit]).length,0);
+
+
+// Unified liquidity: a tiny token sample must not outweigh a populated
+// perpetual tape; a richer duplicate must retain its 60-second history.
+const {combineGoldLiquidity}=await import('../lib/gold-liquidity-meter.ts');
+const atFlow=issued-1000;
+const perpSource='Bybit XAUUSDT perpetual',tokenSource='Binance PAXG/USDT proxy';
+const packet=(source,count,delta)=>({source,count,tradeDeltaPct:delta,side:delta>0?'BUY':'SELL',
+  observedAt:issued,tradeAt:atFlow});
+const robust=packet(perpSource,30,-60),thin=packet(tokenSource,3,100);
+const weighted=combineGoldLiquidity(robust,thin,issued,true);
+assert.equal(weighted.buyPct,26);
+assert.equal(weighted.sellPct,74);
+assert.equal(weighted.state,'SELL','three prints cannot establish cross-venue conflict');
+assert.equal(weighted.strongSide,'WAIT','a thin source is not independent strong confirmation');
+const stable={...robust,executionHistory:{source:perpSource,asOf:atFlow,count:40,spanSeconds:45,buy60s:50,sell60s:50}};
+const dedup=combineGoldLiquidity({...stable,venueSamples:[robust]},null,issued,true);
+assert.equal(dedup.sources.length,1);
+assert.equal(dedup.stableSources,1);
+assert.equal(dedup.buyPct,44);
+assert.equal(combineGoldLiquidity(robust,thin,issued+20000,true).buyPct,null);
+assert.equal(combineGoldLiquidity(robust,packet(tokenSource,30,100),issued,true).state,'CONFLICT');
+console.log('PASS: normalized live liquidity weights, thin-tape guard, richer duplicate and stale exclusion');
