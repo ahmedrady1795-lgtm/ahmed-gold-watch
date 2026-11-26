@@ -4,7 +4,7 @@ import {acceptGoldPulse} from './gold-tick-quality.ts';
 import {goldMarketSession} from './gold-market-session.ts';
 import type {GoldCombinedLiquidity} from './gold-liquidity-meter.ts';
 
-export const GOLD_OPENING_VERSION='GOLD_M5_OPEN_V2';
+export const GOLD_OPENING_VERSION='GOLD_M5_OPEN_V3';
 export type GoldOpeningCall={version?:string;target:number;issued:number;side:'BUY'|'SELL';reason:string;
   source:string;quoteSource:string;quoteAt:number;priceAt:number};
 export const openingWindowMs=30000;
@@ -47,10 +47,26 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  const liveEnd=detectLiveWaveEnd({now,sourceReady:true,m1:closed,quotes:liveSequence});
  const waveEnd=liveEnd??detectWaveEnd({now,price:tick.price,quoteAt:tick.sourceTime,
    sourceReady:true,m1:closed});
+ // A compressed range can be a pullback inside an established trend.
+ // Treat a countertrend candidate as research unless rejection or fresh
+ // agreeing execution supports it. A recent opposing multi-venue tilt
+ // also blocks promotion even if the stronger consensus threshold is unmet.
+ const leg=closed.slice().sort((a,b)=>a.time-b.time).slice(-8);
+ const ranges=leg.map(b=>b.high-b.low).sort((a,b)=>a-b);
+ const typical=ranges[Math.floor(ranges.length/2)];
+ const travel=leg.length===8&&leg.every((b,i)=>!i||b.time-leg[i-1].time===60000)&&typical>0?
+   leg[7].close-leg[0].open:0;
+ const trend=travel>=typical*2?'BUY':travel<=-typical*2?'SELL':'WAIT';
+ const weakOpposition=(side:'BUY'|'SELL')=>flowFresh&&
+   (flow!.state==='BUY'||flow!.state==='SELL')&&flow!.state!==side;
+ const counterTrend=(side:'BUY'|'SELL')=>trend!=='WAIT'&&trend!==side;
+ const promotionBlocked=(side:'BUY'|'SELL')=>requireFlowForContinuation&&
+   (weakOpposition(side)||(counterTrend(side)&&
+    (!(waveEnd&&waveEnd.side===side)||!flowFresh||flow!.strongSide!==side)));
  const preparation=readGoldPreparation({now,source:chart.candleSource,bars:closed,
    quote,previousQuotes,marketOpen:true}).plan;
  if(preparation){
-   if((waveEnd&&waveEnd.side!==preparation.side)||contradicts(preparation.side))return null;
+   if((waveEnd&&waveEnd.side!==preparation.side)||contradicts(preparation.side)||promotionBlocked(preparation.side))return null;
    // A coil records a conditional breakout. Only promote it to an opening
    // forecast when two independent quotes show an approach to its trigger.
    if(preparation.setup==='PRESSURE_COIL'){
@@ -89,7 +105,7 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  if(target-now>15000)return null;
  const lean=assessM5CandleLean({now,price:tick.price,sourceReady:true,
    m1:chart.chartCandles,m5:chart.chartHigherFrames?.m5});
- if(lean.phase!=='CLOSE'||lean.side==='WAIT'||(waveEnd&&waveEnd.side!==lean.side)||contradicts(lean.side))return null;
+ if(lean.phase!=='CLOSE'||lean.side==='WAIT'||(waveEnd&&waveEnd.side!==lean.side)||contradicts(lean.side)||promotionBlocked(lean.side))return null;
  // A low-performing momentum-only candidate remains research unless fresh
  // multi-venue execution agrees. Reversal hypotheses retain their separate path.
  if(requireFlowForContinuation&&!lean.reason.includes('انعكاس محتمل')&&
