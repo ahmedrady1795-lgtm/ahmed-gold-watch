@@ -5,35 +5,44 @@ export const dynamic='force-dynamic';
 export const runtime='nodejs';
 let cache:PaxgFlow|null=null;
 let pending:Promise<PaxgFlow>|null=null;
-const retryAt={bybit:0,binance:0};
-type Venue=keyof typeof retryAt;
+type Venue='bybit'|'binance';
+const retryAt={bybit:{book:0,tape:0},binance:{book:0,tape:0}};
+const failures:Record<string,string>={};
 async function json(venue:Venue,url:string){
+ const kind=url.includes('orderbook?')||url.includes('depth?')?'book':'tape';
+ const key=venue+':'+kind;
+ if(Date.now()<retryAt[venue][kind])throw Error('cooldown '+key);
  const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(4000),
    headers:{Accept:'application/json'}});
  if(!r.ok){
-   retryAt[venue]=Math.max(retryAt[venue],Date.now()+
+   retryAt[venue][kind]=Math.max(retryAt[venue][kind],Date.now()+
      (r.status===429||r.status===418?Math.max(60000,spotBackoffMs(r.status,r.headers.get('retry-after'))):60000));
+   failures[key]='HTTP_'+r.status;
    throw Error('public data unavailable');
  }
  const data=await r.json();
  if(venue==='bybit'&&data?.retCode!==0){
-   retryAt[venue]=Math.max(retryAt[venue],Date.now()+60000);
+   retryAt[venue][kind]=Math.max(retryAt[venue][kind],Date.now()+60000);
+   failures[key]='API_'+String(data?.retCode);
    throw Error('Bybit market data unavailable');
  }
+ delete failures[key];
  return data;
 }
 const get=(r:PromiseSettledResult<any>)=>r.status==='fulfilled'?r.value:null;
 const histories={bybit:newVenueHistory(),binance:newVenueHistory()};
 const points:LeadPoint[]=[];
+let lastReport=0;
 const depthHistory:{bybit:DepthFrame[];binance:DepthFrame[]}={bybit:[],binance:[]};
 async function venueSample(venue:Venue):Promise<{flow:PaxgFlow;evidence:VenueEvidence}|null>{
- if(Date.now()<retryAt[venue])return null;
  const by=venue==='bybit',base=by?'https://api.bybit.com/v5/market/':'https://fapi.binance.com/fapi/v1/';
  const [b,t]=await Promise.allSettled([
    json(venue,base+(by?'orderbook?category=linear&symbol=XAUUSDT&limit=25':'depth?symbol=XAUUSDT&limit=20')),
    json(venue,base+(by?'recent-trade?category=linear&symbol=XAUUSDT&limit=200':'aggTrades?symbol=XAUUSDT&limit=200'))
  ]);
  const book=get(b),trades=get(t),now=Date.now();
+ if(b.status==='rejected'&&!failures[venue+':book'])failures[venue+':book']=String(b.reason?.name||'FETCH_FAILED');
+ if(t.status==='rejected'&&!failures[venue+':tape'])failures[venue+':tape']=String(t.reason?.name||'FETCH_FAILED');
  const d=by&&book?.retCode===0&&book.result?.s==='XAUUSDT'?book.result:null;
  const rawDepth=by?{bids:d?.b,asks:d?.a}:book;
  const bookAt=Number(by?d?.cts??d?.ts:book?.T??book?.E);
@@ -62,6 +71,7 @@ async function sample():Promise<PaxgFlow>{
  const [a,b]=await Promise.all([venueSample('bybit'),venueSample('binance')]);
  const now=Date.now();
  const fresh=[a,b].filter((x):x is NonNullable<typeof x>=>Boolean(x&&now-x.flow.tradeAt<=15000&&now-x.flow.observedAt<=12000));
+ if(now-lastReport>=30000){lastReport=now;console.info('[GOLD-PERP-SOURCES]',JSON.stringify({failures,bybit:a?.flow?{count:a.flow.count,tradeAt:a.flow.tradeAt}:null,binance:b?.flow?{count:b.flow.count,tradeAt:b.flow.tradeAt}:null}));}
  const av=a?.evidence,bv=b?.evidence;
  if(av&&bv&&av.mid!=null&&bv.mid!=null&&av.bookAt!=null&&bv.bookAt!=null&&
     Math.abs(av.bookAt-bv.bookAt)<=2000&&now-Math.min(av.bookAt,bv.bookAt)<=8000){
