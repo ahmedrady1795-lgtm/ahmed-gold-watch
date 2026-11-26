@@ -56,7 +56,7 @@ import {buildChartOverlay} from '../lib/chart-trading-overlay';
 import {detectPreMovePressure} from '../lib/pre-move-pressure';
 import {assessSniperLiveOpportunity} from '../lib/sniper-live-opportunity';
 import {advanceEarlySetup,earlySetupOpportunity,type EarlySetup} from '../lib/sniper-early-setup';
-import {assessM5CandleLean,observeClosedM5Trend,detectWaveEnd} from '../lib/sniper-m5-candle-lean';
+import {assessM5CandleLean,observeClosedM5Trend,detectWaveEnd,detectLiveWaveEnd} from '../lib/sniper-m5-candle-lean';
 import SniperOpportunityMarkers from './SniperOpportunityMarkers';
 import SniperOpportunityHistory from './SniperOpportunityHistory';
 import {advanceMovementProof,movementProofScore,safeMovementProof,type MovementProof} from '../lib/sniper-movement-proof';
@@ -593,11 +593,26 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      lastGoldLiquidity.current=combinedGold;
  },[combinedGold,asset,marketOpen]);
  const displayedGold=goldLiquidityDisplay(combinedGold,lastGoldLiquidity.current,now,asset==='GOLD'&&marketOpen);
- const waveEnd=useMemo(()=>detectWaveEnd({now,price,quoteAt:
+ const waveScope=[asset,x?.candleSource,liveQuote?.source].join(':');
+ const [waveQuotes,setWaveQuotes]=useState<{scope:string;rows:{at:number;price:number}[]}>({scope:'',rows:[]});
+ useEffect(()=>{
+   const at=Number(liveQuote?.sourceTime),p=Number(liveQuote?.price);
+   if(!marketOpen||providerTransition||historicalOnly||!m.sniper.view.priceFresh||
+     !liveQuote?.source||!Number.isFinite(at)||at>now||now-at>10000||!Number.isFinite(p)||p<=0){
+     return;
+   }
+   setWaveQuotes(old=>{
+     const rows=old.scope===waveScope?old.rows:[];
+     if(rows.length&&at<=rows[rows.length-1].at)return old;
+     return {scope:waveScope,rows:[...rows.slice(-2),{at,price:p}]};
+   });
+ },[waveScope,now,liveQuote?.sourceTime,liveQuote?.price,liveQuote?.source,marketOpen,providerTransition,historicalOnly,m.sniper.view.priceFresh]);
+ const waveEnd=useMemo(()=>detectLiveWaveEnd({now,sourceReady:marketOpen&&Boolean(m.sniper.view.priceFresh)&&!providerTransition&&!historicalOnly,
+   m1:m.candles,quotes:waveQuotes.scope===waveScope?waveQuotes.rows:[]})??detectWaveEnd({now,price,quoteAt:
    typeof liveQuote?.sourceTime==='number'?liveQuote.sourceTime:null,
    sourceReady:marketOpen&&Boolean(m.sniper.view.priceFresh)&&!providerTransition&&!historicalOnly,
    m1:m.candles}),[now,price,liveQuote?.sourceTime,marketOpen,m.sniper.view.priceFresh,
-     providerTransition,historicalOnly,m.candles]);
+     providerTransition,historicalOnly,m.candles,waveQuotes,waveScope]);
  const trackedSetup=useMemo(()=>advanceEarlySetup({
    prior:earlyState,scope:asset+':'+String(x?.candleSource||''),now,price,
    previousQuote:observedM15?.feedKey===[asset,x?.candleSource,liveQuote?.source].join(':')&&
