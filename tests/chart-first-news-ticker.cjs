@@ -22,7 +22,12 @@ assert.ok(page.indexOf('<NewsCommandCenter')<page.indexOf('<AICommandCenter'),
   'today releases must be visible as a compact ticker above the chart');
 assert.doesNotMatch(page,/sniper-news-collapsible/);
 assert.match(news,/نتيجة الخبر قيد التحديث/);
-assert.match(news,/todayUpcoming/,'today schedule must appear even outside 8h');
+assert.match(news,/const next=upcoming\[0\]/,'nearest release must be selected by time, including outside today');
+assert.match(news,/highlighted=ranked\(newlyReleased\)\[0\]\?\?next/,'retain due news while exposing next release');
+assert.match(news,/buildNewsIntelligence\('GOLD',\[highlighted as any\],now\)/,'actual release uses surprise direction');
+assert.match(news,/released\?actualImpact:/,'actual impact replaces conditional text after publication');
+const route=fs.readFileSync('app/api/news/route.ts','utf8');
+assert.match(route,/WINDOW_MS=7\*24\*60\*60\*1000/,'calendar covers nearest release on quiet days');
 assert.match(news,/NEWS · TODAY · UAE/);
 assert.equal((page.match(/<NewsCommandCenter/g)||[]).length,1);
 assert.match(news,/<details className="news-ticker-shell"/);
