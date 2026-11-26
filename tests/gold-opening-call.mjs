@@ -74,6 +74,13 @@ console.log('PASS: pre-open BUY/SELL, frozen side and issue time, no late/backfi
    const call=nextGoldOpeningCall(null,at,chart,q,[prior]);
    assert.equal(call?.side,buy?'BUY':'SELL');
    assert.match(call.reason,/تحضير قبل الكسر/);
+   const weakOpposite={asOf:at-1000,sources:['Bybit XAUUSDT perpetual','OKX XAUUSDT perpetual'],
+     state:buy?'SELL':'BUY',strongSide:'WAIT'};
+   assert.equal(nextGoldOpeningCall(null,at,chart,q,[prior],weakOpposite,true),null,
+     'opposing two-source flow must not publish a compression forecast');
+   assert.equal(nextGoldOpeningCall(null,at,chart,q,[prior],weakOpposite)?.side,call.side,
+     'research forecast remains available for unbiased comparison');
+
    assert.equal(call.issued,at);
    assert.equal(call.target,open);
    assert.equal(nextGoldOpeningCall(call,at+1000,chart,{...q,price:price+(buy?-2:2)}),call);
@@ -193,3 +200,11 @@ for(const up of [true,false]){
  assert.deepEqual(nextGoldOpeningCall(null,reversalAt,{...chart,chartCandles:[...rows,{time:open,open:3500,high:4000,low:3000,close:3999}]},q,[prior],flow,true),call);
 }
 console.log('PASS: V2 opening reversal at failed extreme with two fresh agreeing proxy venues, no future bars or late change');
+
+const {settleOpeningAudit}=await import('../lib/gold-opening-audit.ts');
+const futureBars=Array.from({length:5},(_,i)=>({time:open+i*m,open:3500-i*.1,close:3499.9-i*.1,high:3500.2-i*.1,low:3499.7-i*.1}));
+assert.equal(settleOpeningAudit([pending],open+3000,oldCall.source,futureBars)[0].outcome,'PENDING');
+assert.equal(settleOpeningAudit([pending],open+303000,oldCall.source,futureBars)[0].outcome,'HIT');
+assert.equal(settleOpeningAudit([pending],open+303000,'foreign',futureBars)[0].outcome,'PENDING');
+assert.equal(settleOpeningAudit([pending],open+900000,oldCall.source,futureBars.slice(1))[0].outcome,'UNKNOWN');
+console.log('PASS: withheld research uses identical future-only settlement; stale or missing data is not a win');
