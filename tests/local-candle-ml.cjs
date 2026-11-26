@@ -15,7 +15,7 @@ assert.equal(result.m5.validationCount,24,'non-overlapping actual M5 opening-ali
 assert.equal(result.m5.side,'WAIT','a direction is not emitted outside the opening window');
 assert.equal(result.tradeAuthorized,false);
 const future={time:now,open:100,close:105,high:106,low:99};
-assert.equal(run('GOLD:source',[...rows,future],now,true),result,'forming candle excluded from training and prediction');
+assert.deepEqual(run('GOLD:source',[...rows,future],now,true),result,'forming candle excluded from training and prediction');
 assert.equal(run('GOLD:source',rows,now+180000,true).asOf,null);
 assert.equal(run('GOLD:source',rows,now,false).m1.side,'WAIT');
 assert.equal(run('GOLD:source',rows.slice(-50),now,true).m5.status,'INSUFFICIENT');
