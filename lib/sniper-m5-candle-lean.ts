@@ -212,3 +212,38 @@ export function detectWaveEnd(input:{now:number;price:number|null;quoteAt:number
  return {side:upper?'SELL':'BUY',at:last.time+60000,level:upper?last.high:last.low,
    reason:upper?'رفض قمة بعد موجة صاعدة؛ احتمال نهاية الصعود':'رفض قاع بعد موجة هابطة؛ احتمال نهاية الهبوط'};
 }
+
+
+/** A live rejection warning before the minute closes. The sequence must be
+ * observed, not reconstructed from a forming OHLC. No trade authorization. */
+export function detectLiveWaveEnd(input:{now:number;sourceReady:boolean;m1:unknown;
+ quotes:readonly {at:number;price:number}[]}):
+ {side:'BUY'|'SELL';at:number;level:number;reason:string}|null{
+ const {now}=input;
+ if(!input.sourceReady||!Number.isFinite(now))return null;
+ const bars=new Map<number,Bar>();
+ for(const b of Array.isArray(input.m1)?input.m1:[])
+   if(good(b)&&b.time+60000<=now)bars.set(b.time,b);
+ const leg=[...bars.values()].sort((a,b)=>a.time-b.time).slice(-8);
+ if(leg.length!==8||leg.some((b,i)=>i>0&&b.time-leg[i-1].time!==60000))return null;
+ const end=leg[7].time+60000;
+ if(now-end>=60000)return null;
+ const q=input.quotes.slice(-3);
+ if(q.length!==3||q.some((p,i)=>!Number.isFinite(p.at)||!Number.isFinite(p.price)||
+   p.price<=0||p.at<end||p.at>now||(i>0&&(p.at<=q[i-1].at||p.at-q[i-1].at>10000)))||
+   now-q[2].at>10000)return null;
+ const ranges=leg.map(b=>b.high-b.low).sort((a,b)=>a-b);
+ const atr=(ranges[3]+ranges[4])/2;
+ if(!(atr>0)||atr>q[2].price*.03)return null;
+ const high=Math.max(...leg.map(b=>b.high)),low=Math.min(...leg.map(b=>b.low));
+ const travel=leg[7].close-leg[0].open;
+ const [approach,probe,reclaim]=q;
+ const pad=atr*.08;
+ const upper=travel>=atr*1.6&&approach.price<=high&&probe.price>high+pad&&
+   reclaim.price<high-pad&&reclaim.price>=high-atr*.65;
+ const lower=travel<=-atr*1.6&&approach.price>=low&&probe.price<low-pad&&
+   reclaim.price>low+pad&&reclaim.price<=low+atr*.65;
+ if(upper===lower)return null;
+ return {side:upper?'SELL':'BUY',at:reclaim.at,level:probe.price,
+   reason:upper?'رفض قمة بثلاث قراءات حية؛ احتمال نهاية الصعود':'رفض قاع بثلاث قراءات حية؛ احتمال نهاية الهبوط'};
+}
