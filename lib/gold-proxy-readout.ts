@@ -15,7 +15,7 @@ export function observeGoldProxyFlow(a:{
  chartSide:'BUY'|'SELL'|'WAIT';instrument?:'PAXG'|'XAUUSDT';
 }):GoldProxyReadout{
  const instrument=a.instrument??'PAXG';
- const allowed=instrument==='XAUUSDT'?['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual']:
+ const allowed=instrument==='XAUUSDT'?['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual','OKX XAUUSDT perpetual']:
    ['Binance PAXG/USDT proxy','Kraken PAXG/USD proxy'];
  const blank=(reason:string):GoldProxyReadout=>({
   status:'UNAVAILABLE',label:instrument+': دفتر بديل غير متاح',detail:reason,
