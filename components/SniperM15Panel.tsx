@@ -24,7 +24,7 @@ import {observeSniperOrderFlow} from '../lib/sniper-order-flow-observation';
 import SniperOrderFlowStrip from './SniperOrderFlowStrip';
 import {auditM15HuntDirection} from '../lib/sniper-m15-hunt-proof';
 import {assessM1DirectionalPriority} from '../lib/sniper-m1-priority';
-import {chartM5EarlyCue,cueForwardObservation} from '../lib/sniper-m5-early-cue';
+import {chartM5EarlyCue,cueForwardObservation,lateWaveSide} from '../lib/sniper-m5-early-cue';
 import {btcOrderflowMatchesChart,detectShortTapeWatch} from '../lib/btc-orderflow';
 import {detectM1ReclaimWatch} from '../lib/sniper-m1-reclaim-watch';
 import SniperM15HuntOverlay from './SniperM15HuntOverlay';
@@ -759,7 +759,10 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const trial=useMemo(()=>preOpen?.scope===forecastScope&&preOpen.proxy?
    {...preOpen,proxy:preOpen.proxy}:null,[preOpen,forecastScope]);
  const paxgComparison=usePaxgComparison(asset==='GOLD'?forecastScope:'',trial,realM5);
- const earlyOpportunity=useMemo(()=>earlySetupOpportunity(trackedSetup),[trackedSetup]);
+ const extendedSide=useMemo(()=>lateWaveSide(now,price,m.candles),[now,price,m.candles]);
+ const earlyOpportunity=useMemo(()=>earlySetupOpportunity(
+   trackedSetup?.side===extendedSide||waveEnd&&trackedSetup?.side!==waveEnd.side?null:trackedSetup
+ ),[trackedSetup,extendedSide,waveEnd]);
  // Pure price-only GOLD alternative when Exness DOM has no usable depth.
  // STRICTLY read-only: Biquote XAUUSD M1 does not give executed order flow.
  // The server issued and archived this plan before any future breakout.
@@ -789,7 +792,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      observedGoldTouches.current.add(activeGold.id);
    }
  },[asset,activeGold,providerTransition,goldPreparationView,liveQuote,now]);
- const goldSpotPlan=candidateGoldPlan&&!observedGoldTouches.current.has(candidateGoldPlan.id)?
+ const goldSpotPlan=candidateGoldPlan&&candidateGoldPlan.side!==extendedSide&&
+   (!waveEnd||candidateGoldPlan.side===waveEnd.side)&&!observedGoldTouches.current.has(candidateGoldPlan.id)?
    candidateGoldPlan:null;
  const goldMarkerRef=useRef<SVGGElement>(null);
  const earlyPlanId=goldSpotPlan?.id;
@@ -810,9 +814,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const m5Cue=useMemo(()=>chartM5EarlyCue({now,price,marketOpen,
    priceFresh:Boolean(m.sniper.view.priceFresh),providerTransition,
    preMove,opportunity:liveOpportunity,lean:candleLean,
-   reclaim:m1Reclaim,shortTape:tapeWatch,m5Follow:closedM5Context
+   reclaim:m1Reclaim,shortTape:tapeWatch,m5Follow:closedM5Context,lateSide:extendedSide
  }),[now,price,marketOpen,m.sniper.view.priceFresh,providerTransition,
-   preMove,liveOpportunity,candleLean,m1Reclaim,tapeWatch,closedM5Context]);
+   preMove,liveOpportunity,candleLean,m1Reclaim,tapeWatch,closedM5Context,extendedSide]);
  // Match the actual visible PREBREAK to a forward-only audit candidate.
  // The original time and trigger are never recreated after price crosses.
  const cueAuditCandidate=useMemo(()=>cueForwardObservation(m5Cue,now,price),
