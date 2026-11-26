@@ -133,3 +133,29 @@ assert.equal(dedup.buyPct,44);
 assert.equal(combineGoldLiquidity(robust,thin,issued+20000,true).buyPct,null);
 assert.equal(combineGoldLiquidity(robust,packet(tokenSource,30,100),issued,true).state,'CONFLICT');
 console.log('PASS: normalized live liquidity weights, thin-tape guard, richer duplicate and stale exclusion');
+
+
+// A slow independent exchange cannot block the first available fresh tape.
+const {independentFlowSlot,collectIndependentFlow}=await import('../lib/gold-flow-history.ts');
+let resolveSlow;
+const slowPromise=new Promise(resolve=>{resolveSlow=resolve;});
+let fastCalls=0,slowCalls=0;
+const freshSlot=(v,now)=>v.at<=now&&now-v.at<=10000;
+const fastSlot=independentFlowSlot(async()=>{fastCalls++;return {name:'fast',at:Date.now()};},freshSlot,60000);
+const slowSlot=independentFlowSlot(async()=>{slowCalls++;return slowPromise;},freshSlot,60000);
+const pendingSlots=[fastSlot,slowSlot];
+const result=await Promise.race([collectIndependentFlow(pendingSlots),
+ new Promise((_,reject)=>{const t=setTimeout(()=>reject(Error('slow exchange blocked fast tape')),500);t.unref();})]);
+assert.equal(result[0]?.name,'fast');
+assert.equal(result[1],null);
+assert.equal(fastCalls,1);
+assert.equal(slowCalls,1);
+assert.equal((await collectIndependentFlow(pendingSlots))[0]?.name,'fast');
+assert.equal(fastCalls,1,'polls share bounded requests');
+const waiting=slowSlot.refresh(Date.now());
+resolveSlow({name:'slow',at:Date.now()});
+await waiting;
+assert.equal((await collectIndependentFlow(pendingSlots))[1]?.name,'slow');
+assert.equal(fastSlot.read(Date.now()+11000),null,'no stale source is presented as live');
+assert.equal(slowSlot.read(Date.now()+11000),null);
+console.log('PASS: independent venue refresh latency, deduplication, recovery and strict expiry');
