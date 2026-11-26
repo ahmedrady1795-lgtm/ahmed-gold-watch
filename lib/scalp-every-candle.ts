@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import type {M1Bar} from './sniper-mt5-m1';
 import {everyM1Direction} from './sniper-m1-every-direction';
+import {chooseGoldM1Baseline} from './gold-m1-paired-selector';
 import {auditPairedM1Direction} from './scalp-m1-paired-proof';
 import {priceEveryM1Limit,priceEveryM1NearLimit,
   EVERY_M1_EDGE_V4,EVERY_M1_EDGE_V5,EVERY_M1_EDGE_V6} from './scalp-every-m1-economics';
@@ -35,6 +36,7 @@ export type EveryAttempt={
   seedMid?:number;seedAt?:number;seedSource?:string;confirmedAt?:number|null;
   originalSide?:EverySide;baselineSide?:EverySide|null;onlineModel?:OnlineM1Choice['model'];
   onlineDecision?:OnlineM1Choice;
+  pairedSelector?:ReturnType<typeof chooseGoldM1Baseline>;
   shadowSide?:EverySide;shadowModel?:ShadowM1Selection['model'];
   nearLimitShadow?:NearM1Shadow|null;
   shadowExitVersion?:string;shadowAdverseTicks?:number;
@@ -398,11 +400,14 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
     const forwardQuality=assessM1ForwardQuality(signal,history,chartSource);
     // If a meaningful previous cohort has no demonstrated directional edge,
     // demand independent Bid/Ask tick confirmation even for high pressure.
-    const needsExtraProof=signal.weak||
+    const anchor=raw.find(b=>b.time===signal.anchorTime);
+    const baselineSide=!anchor||anchor.close===anchor.open?null:anchor.close>anchor.open?'BUY' as const:'SELL' as const;
+    const pairedSelector=chartSource&&/XAUUSD/.test(chartSource)?chooseGoldM1Baseline({history,issuedAt:signal.issuedAt,source:chartSource,regime:signal.marketRegime,baseline:baselineSide,proposed:online.side}):undefined;
+    const needsExtraProof=Boolean(pairedSelector?.applied)||signal.weak||
       forwardQuality.status==='NO_EDGE'||forwardQuality.status==='UNPROVEN';
     // Shadow expert may learn faster but NEVER changes the issued paper LIMIT.
     const shadow=chooseM1ShadowExpert(signal,history,chartSource);
-    const proposed=online.side;
+    const proposed=pairedSelector?.side??online.side;
     // Record the forecast immediately, even if the newest book quote is
     // from a few milliseconds BEFORE this minute began. Give the quote
     // provider the full current minute to supply a post-signal executable
@@ -412,11 +417,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       originalSide:signal.side,
       // Freeze the independent LAST-CLOSED-CANDLE momentum baseline at issue.
       // Doji has no directional baseline; it is excluded from paired results.
-      baselineSide:(()=>{
-        const anchor=raw.find(b=>b.time===signal.anchorTime);
-        return !anchor||anchor.close===anchor.open?null:
-          anchor.close>anchor.open?'BUY' as const:'SELL' as const;
-      })(),onlineModel:online.model,onlineDecision:online,
+      baselineSide,onlineModel:online.model,onlineDecision:online,pairedSelector,
       shadowSide:shadow.side,shadowModel:shadow.model,
       nearLimitShadow:newNearM1Shadow(proposed,signal.issuedAt),
       shadowExitVersion:M1_FAST_EXIT_SHADOW_V1,shadowAdverseTicks:0,
@@ -432,7 +433,7 @@ export function advanceEveryM1(ledger:EveryLedger,raw:readonly M1Bar[],
       directionObserved:null,directionEvaluatedAt:null,
       pulseVersion:M1_FORWARD_PULSE_V1,pulse:null,
       strategyVersion:EVERY_M1_EDGE_V6,pattern:signal.pattern,
-      directionModel:online.inverted?'ONLINE_INVERSION':
+      directionModel:pairedSelector?.applied?'PAIRED_BODY_BASELINE':online.inverted?'ONLINE_INVERSION':
         signal.regimeExpert?.applied&&signal.regimeExpert.model?
         'REGIME_'+signal.regimeExpert.model:
         signal.relativeEdge?.applied&&signal.relativeEdge.model?
@@ -659,7 +660,7 @@ export function observeEveryM1(raw:readonly M1Bar[],q:ScalpQuote,now:number,cost
         (t.forwardQuality?.status==='NO_EDGE'||t.forwardQuality?.status==='UNPROVEN')).length,
       switched:v4.filter(t=>t.onlineModel==='ONLINE_INVERSION').length,
       byModel:{baseline:byModel('PRESSURE_SWEEP'),
-        inversion:byModel('ONLINE_INVERSION')},
+        inversion:byModel('ONLINE_INVERSION'),pairedBody:byModel('PAIRED_BODY_BASELINE')},
       byEvidence:{weak:byEvidence(true),candidate:byEvidence(false)}},
     resolved:settled.length,netR:round(net),
     observedWinPct:settled.length?round(results.filter(v=>v>0).length/settled.length*100):null,
