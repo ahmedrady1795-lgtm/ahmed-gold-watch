@@ -2,7 +2,7 @@
 
 import {validOpeningCall,openingWindowMs,type GoldOpeningCall} from '../lib/gold-opening-call';
 import {openingQuoteSource} from '../lib/gold-display-observation';
-import {useGoldDisplayObservations} from './useGoldDisplayObservations';
+import {fetchOpeningSnapshot,useGoldDisplayObservations} from './useGoldDisplayObservations';
 import {buildNewsIntelligence} from '../lib/news-intelligence';
 import {assessSniperMarketContext,type SentimentReading} from '../lib/sniper-market-context';
 import {usePaxgComparison,usePaxgFlow} from './usePaxgComparison';
@@ -637,24 +637,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      const outsideWindow=elapsed>10000&&elapsed<300000-openingWindowMs;
      if(!force&&outsideWindow&&current-lastAttempt<(received?60000:6000))return;
      busy=true;lastAttempt=current;
-     const attempt=new AbortController();
-     const cancel=()=>attempt.abort();
-     controller.signal.addEventListener('abort',cancel);
-     const timer=setTimeout(cancel,12000);
      try{
-       const res=await fetch('/api/gold-opening',{cache:'no-store',signal:attempt.signal});
-       if(!res.ok)throw Error('opening data unavailable');
-       const {call,recent,quality,byMethod}=await res.json();
+       const {call,recent,quality,byMethod}=await fetchOpeningSnapshot(controller.signal);
        if(controller.signal.aborted)return;
        const validScore=(v:any)=>Number.isSafeInteger(v?.hits)&&v.hits>=0&&Number.isSafeInteger(v?.misses)&&v.misses>=0;
        if(!validScore(quality))throw Error('missing opening results');
        received=true;setOpeningUnavailable(false);setOpeningQuality(quality);
        if(validScore(byMethod?.preparation)&&validScore(byMethod?.continuation))setMethodScores(byMethod);
-       if(Array.isArray(recent))setServerHistory(recent.filter(r=>
+       if(Array.isArray(recent))setServerHistory(recent.filter((r:any)=>
          validOpeningCall(r?.call,r?.call?.issued)&&r.call.issued<=Date.now()));
        if(validOpeningCall(call,Date.now()))setServerOpening(old=>old?.issued===call.issued&&old?.target===call.target?old:call);
      }catch{if(!controller.signal.aborted)setOpeningUnavailable(true);}
-     finally{clearTimeout(timer);controller.signal.removeEventListener('abort',cancel);busy=false;}
+     finally{busy=false;}
    }
    const resume=()=>{if(!document.hidden)void poll(true);};
    resume();

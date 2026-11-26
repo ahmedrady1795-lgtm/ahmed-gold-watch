@@ -3,6 +3,19 @@ import {useEffect,useRef,useState} from 'react';
 import type {GoldOpeningCall} from '../lib/gold-opening-call';
 import {advanceDisplayObservation,startDisplayObservation,type DisplayObservation} from '../lib/gold-display-observation';
 
+export async function fetchOpeningSnapshot(signal:AbortSignal){
+  const attempt=new AbortController();
+  const cancel=()=>attempt.abort();
+  signal.addEventListener('abort',cancel);
+  if(signal.aborted)cancel();
+  const timer=setTimeout(cancel,12000);
+  try{
+    const res=await fetch('/api/gold-opening',{cache:'no-store',signal:attempt.signal});
+    if(!res.ok)throw Error('opening data unavailable');
+    return await res.json();
+  }finally{clearTimeout(timer);signal.removeEventListener('abort',cancel);}
+}
+
 const key='qannas-gold-visible-openings-v1';
 export function useGoldDisplayObservations(call:GoldOpeningCall|null,quote:any,now:number){
   const marker=useRef<HTMLDivElement>(null);
