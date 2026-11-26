@@ -183,3 +183,35 @@ export function observeGoldDepthPreparation(history:readonly DepthFrame[],flow:P
  return {source:flow.source!,asOf:last.at,side:buy?'BUY':'SELL',samples:frames.length,
    spanMs:span,level:persistent[0].price,deltaPct:flow.tradeDeltaPct!,priceChangeBps:change,actionable:false};
 }
+
+
+/** Independent venue refresh slots. Never let a slower venue hold a fresh
+ * sample hostage. A failed refresh cannot advance a venue's trade timestamp. */
+export function independentFlowSlot<T>(sample:()=>Promise<T|null>,
+ fresh:(value:T,now:number)=>boolean,interval:number){
+ let last:T|null=null,attempt=-Infinity,pending:Promise<T|null>|null=null;
+ const read=(now:number)=>last!==null&&fresh(last,now)?last:null;
+ const refresh=(now:number)=>{
+   if(pending)return pending;
+   if(now-attempt<interval)return null;
+   attempt=now;
+   pending=Promise.resolve().then(sample).then(value=>{
+     if(value!==null&&fresh(value,Date.now()))last=value;
+     return read(Date.now());
+   }).catch(()=>read(Date.now())).finally(()=>{pending=null;});
+   return pending;
+ };
+ return {read,refresh};
+}
+export async function collectIndependentFlow<T>(slots:readonly ReturnType<typeof independentFlowSlot<T>>[]){
+ const now=Date.now();
+ const jobs=slots.map(slot=>slot.refresh(now)).filter((p):p is Promise<T|null>=>p!==null);
+ if(!slots.some(slot=>slot.read(now)!==null)&&jobs.length){
+   // A first valid result is sufficient. Other venues continue refreshing.
+   await Promise.any(jobs.map(p=>p.then(v=>{
+     if(v===null)throw Error('No fresh sample');return v;
+   }))).catch(()=>null);
+ }
+ const at=Date.now();
+ return slots.map(slot=>slot.read(at));
+}
