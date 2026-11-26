@@ -1,7 +1,8 @@
 import {combineGoldLiquidity,retainGoldVenueSamples} from '../lib/gold-liquidity-meter.ts';
-import {mergeOpeningAudit,settleOpeningAudit} from '../lib/gold-opening-audit.ts';
+import {mergeOpeningAudit,settleOpeningAudit,openingAdaptiveChoice} from '../lib/gold-opening-audit.ts';
 import fs from 'node:fs/promises';
-import {nextGoldOpeningCall,validOpeningCall} from '../lib/gold-opening-call.ts';
+import {nextGoldOpeningCall,validOpeningCall,goldOpeningRegime} from '../lib/gold-opening-call.ts';
+import {localCandleMl} from '../lib/local-candle-ml.ts';
 import {sidecarWorkAllowed} from '../lib/render-free-viewer-lease.ts';
 import {goldMarketSession} from '../lib/gold-market-session.ts';
 import {trustedSpotGoldSource} from '../lib/gold-liquidity-radar.ts';
@@ -152,7 +153,7 @@ async function observe(){
   const q=quote,session=goldMarketSession(now).open;
   const feedFresh=g?.fresh===true&&now-contextFetchedAt<45000;
   const flow=combineGoldLiquidity(perpFlow,tokenFlow,now,session);
-  const opening=feedFresh?nextGoldOpeningCall(openingCall,now,g,q,previousQuotes,flow,true):null;
+  let opening=feedFresh?nextGoldOpeningCall(openingCall,now,g,q,previousQuotes,flow,true):null;
   if(openingWork&&now-lastFlowReport>=15000){
     lastFlowReport=now;
     const sources=[...new Set(flow.sources)];
@@ -161,8 +162,33 @@ async function observe(){
       state:flow.state,strongSide:flow.strongSide}));
   }
   // A withheld forecast is research only, never written to openingPath.
-  const withheld=feedFresh&&!opening&&openingWork?
+  let withheld=feedFresh&&!opening&&openingWork?
     nextGoldOpeningCall(openingCall,now,g,q,previousQuotes,flow):null;
+  // Freeze competing predictions on exactly the same target and source.
+  // No recomputation after the opening; no separate remote inference.
+  const candidate=opening&&opening!==openingCall?opening:
+    withheld&&!withheldAudit.some(e=>e.call.target===withheld.target)?withheld:null;
+  if(candidate){
+    const regime=goldOpeningRegime(m1,now);
+    const model=localCandleMl('GOLD:'+source,m1,now,true);
+    const observed=Date.now();
+    if(observed>=candidate.target||observed-candidate.quoteAt>10000){
+      if(candidate===opening)opening=null;else withheld=null;
+    }else{
+      const rawSide=h=>Number.isFinite(h?.rawScore)&&h.rawScore>=.58?'BUY':
+        Number.isFinite(h?.rawScore)&&h.rawScore<=.42?'SELL':'WAIT';
+      const modelAligned=model.asOf===candidate.target-60000;
+      const evidence={regime:regime.regime,baseline:regime.baseline,
+        ml:modelAligned?rawSide(model.m5):'WAIT',neural:modelAligned?rawSide(model.neuralM5):'WAIT',
+        flow:flow.asOf!=null&&flow.asOf<=now&&now-flow.asOf<=10000?flow.strongSide:'WAIT',
+        flowSources:flow.sources.length,flowState:flow.state,
+        quoteAgeMs:observed-candidate.quoteAt,recordedAt:observed};
+      const cohort=candidate===opening?openingAudit:withheldAudit;
+      const adaptive=openingAdaptiveChoice(cohort,source,regime.regime,now,evidence);
+      const decorated={...candidate,evidence:{...evidence,...adaptive}};
+      if(candidate===opening)opening=decorated;else withheld=decorated;
+    }
+  }
   await auditWithheld(now,feedFresh?source:'',feedFresh?m1:[],withheld);
   if(opening&&opening!==openingCall){
     await atomic(openingPath,opening);
