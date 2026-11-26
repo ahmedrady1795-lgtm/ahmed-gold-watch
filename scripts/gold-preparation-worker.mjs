@@ -31,7 +31,7 @@ try{
 if(openingCall&&!openingAudit.some(e=>e.call.target===openingCall.target))
  openingAudit.push({call:openingCall,outcome:'PENDING'});
 let chart=null,chartAt=0,chartAttempt=0,chartRefresh=null,previousQuotes=[];
-let flowRefresh=null,flowAttempt=0,perpFlow=null,tokenFlow=null,lastFlowReport=0,lastWithheldTarget=0;
+let perpRefresh=null,tokenRefresh=null,perpAttempt=0,tokenAttempt=0,perpFlow=null,tokenFlow=null,lastFlowReport=0,lastWithheldTarget=0;
 async function atomic(file,obj){
  const tmp=file+'.writing-'+process.pid;
  await fs.writeFile(tmp,JSON.stringify(obj),{mode:0o600});await fs.rename(tmp,file);
@@ -97,7 +97,7 @@ async function observe(){
   // Prewarm one minute ahead; allow settlement shortly after a boundary.
   const started=Date.now(),elapsed=started%300000;
   const due=openingAudit.some(e=>e.outcome==='PENDING'&&started>=e.call.target+303000);
-  const openingWork=goldMarketSession(started).open&&elapsed>=240000;
+  const openingWork=goldMarketSession(started).open&&elapsed>=210000;
   const settlementWork=due&&elapsed<45000;
   if(!(await sidecarWorkAllowed(started))&&!openingWork&&!settlementWork){
    previousQuotes=[];
@@ -105,15 +105,21 @@ async function observe(){
   }
   // Sample the shared proxy endpoints only near the opening. Never delay a
   // price decision on a slow exchange; source timestamps enforce freshness.
-  if(openingWork&&started-flowAttempt>=10000&&!flowRefresh){
-    flowAttempt=started;
-    flowRefresh=Promise.allSettled([
-      json('/api/gold-perp-flow'),json('/api/paxg-flow')
-    ]).then(([p,t])=>{
-      const observed=Date.now();
-      perpFlow=retainGoldVenueSamples(p.status==='fulfilled'?p.value:null,perpFlow,observed);
-      tokenFlow=retainGoldVenueSamples(t.status==='fulfilled'?t.value:null,tokenFlow,observed);
-    }).finally(()=>{flowRefresh=null;});
+  // Independent refreshes: a slow token request must never delay the
+  // available perpetual tape. Shared API caches and cooldowns still apply.
+  if(openingWork&&started-perpAttempt>=5000&&!perpRefresh){
+    perpAttempt=started;
+    perpRefresh=json('/api/gold-perp-flow')
+      .then(p=>{perpFlow=retainGoldVenueSamples(p,perpFlow,Date.now());})
+      .catch(()=>{perpFlow=retainGoldVenueSamples(null,perpFlow,Date.now());})
+      .finally(()=>{perpRefresh=null;});
+  }
+  if(openingWork&&started-tokenAttempt>=5000&&!tokenRefresh){
+    tokenAttempt=started;
+    tokenRefresh=json('/api/paxg-flow')
+      .then(t=>{tokenFlow=retainGoldVenueSamples(t,tokenFlow,Date.now());})
+      .catch(()=>{tokenFlow=retainGoldVenueSamples(null,tokenFlow,Date.now());})
+      .finally(()=>{tokenRefresh=null;});
   }
   const refresh=Date.now()-chartAttempt>=15000&&(!chart||Date.now()-chartAt>=30000);
   if(refresh&&!chartRefresh){
