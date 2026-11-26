@@ -643,6 +643,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [preOpen,setPreOpen]=useState<PreOpen|null>(null);
  type DirectionScore={hits:number;misses:number};
  const [openingQuality,setOpeningQuality]=useState<DirectionScore|null>(null);
+ const [versionQuality,setVersionQuality]=useState<DirectionScore|null>(null);
  const [methodScores,setMethodScores]=useState<{preparation:DirectionScore;continuation:DirectionScore}|null>(null);
  const [openingUnavailable,setOpeningUnavailable]=useState(false);
  const [serverHistory,setServerHistory]=useState<{call:GoldOpeningCall;outcome:string}[]>([]);
@@ -658,11 +659,12 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      if(!force&&outsideWindow&&current-lastAttempt<(received?60000:6000))return;
      busy=true;lastAttempt=current;
      try{
-       const {call,recent,quality,byMethod}=await fetchOpeningSnapshot(controller.signal);
+       const {call,recent,quality,byMethod,currentVersionQuality}=await fetchOpeningSnapshot(controller.signal);
        if(controller.signal.aborted)return;
        const validScore=(v:any)=>Number.isSafeInteger(v?.hits)&&v.hits>=0&&Number.isSafeInteger(v?.misses)&&v.misses>=0;
        if(!validScore(quality))throw Error('missing opening results');
        received=true;setOpeningUnavailable(false);setOpeningQuality(quality);
+       if(validScore(currentVersionQuality))setVersionQuality(currentVersionQuality);
        if(validScore(byMethod?.preparation)&&validScore(byMethod?.continuation))setMethodScores(byMethod);
        if(Array.isArray(recent))setServerHistory(recent.filter((r:any)=>
          validOpeningCall(r?.call,r?.call?.issued)&&r.call.issued<=Date.now()));
@@ -2237,6 +2239,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <div className="sniper-movement-summary" role="status" style={{
        display:'flex',flexWrap:'wrap',gap:'8px 15px',padding:'9px 12px',
        fontSize:12,color:'#bad8e6',borderBottom:'1px solid #27465a'}}>
+       {asset==='GOLD'&&versionQuality&&<span>اختبار النسخة الجديدة V2 قبل الافتتاح: {versionQuality.hits}/{versionQuality.hits+versionQuality.misses} {versionQuality.hits+versionQuality.misses<30?'· عينة غير كافية':''}</span>}
        {asset==='GOLD'&&methodScores&&<span>اتجاه إغلاق M5 بعد توقع الافتتاح · تحضير {methodScores.preparation.hits}/{methodScores.preparation.hits+methodScores.preparation.misses} · استمرار {methodScores.continuation.hits}/{methodScores.continuation.hits+methodScores.continuation.misses}</span>}
        {asset==='GOLD'&&<details><summary>أول حركة مرصودة بعد ظهور التنبيه على الجهاز ({displayAudit.rows.length})</summary>
          <small>من وقت ظهور تنبيه الافتتاح على الشاشة حتى نهاية شمعته. نقيس أول تغير مرصود بمقدار سبريد الظهور. عند انقطاع الأسعار أو غياب السبريد تُسجّل غير محسومة.</small>
