@@ -2135,7 +2135,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        <span data-qannas-candle-direction="M5" data-side={m5Direction} title={openingForCurrent?'توقع محفوظ قبل الافتتاح، لا يتغير بعده':candleLean.reason}>
          <b style={{color:directionColor(m5Direction)}}>M5: {directionText(m5Direction)}</b>{' · '+(openingForCurrent&&directionReady?'قبل الافتتاح':m5Direction==='WAIT'?'لا ترجيح موثوق':candleLean.phase==='OPEN'?'أول دقيقة':'بعد البداية')}
        </span>
-       <span data-qannas-candle-direction="M1" data-side={m1Direction} title="ترجيح الدقيقة المقبلة من إغلاقات سابقة، وليس أمر دخول"><b style={{color:directionColor(m1Direction)}}>M1 القادمة: {directionText(m1Direction)}</b></span>
+       <span data-qannas-candle-direction="M1" data-side={m1Direction} title="ميل كسر الدقيقة الحالية من الإغلاقات السابقة، لا يضمن لون الإغلاق أو الدخول"><b style={{color:directionColor(m1Direction)}}>ميل M1 الحالية: {directionText(m1Direction)}</b></span>
        <span>{'M15 '+(entryTrend==='BUY'?'↑':entryTrend==='SELL'?'↓':'—')}</span>
      </div>
      <div className={'sniper-chart-liquidity is-'+liquidityReadout.state.toLowerCase()}
