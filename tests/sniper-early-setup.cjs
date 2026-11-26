@@ -465,8 +465,8 @@ assert.doesNotMatch(markerSvg,/earlyShown\.filter\(r=>!nearM5\(r\)\)/,
  'close-by late M5 dots may not erase a real prior alert');
 assert.match(markerSvg,/current\?'ترقب ':'رصد سابق '/,
  'current prebreak watch and historical direction must be distinguished');
-assert.match(markerSvg,/earlyShown\.filter\(r=>!nearCurrent\(r\)\)\.slice\(0,1\)/,
- 'only one historical early caption should overprint the narrow mobile M5 chart');
+assert.match(markerSvg,/earlyShown\.filter\(r=>!nearCurrent\(r\)&&\(!p\.compactObservations\|\|currentEarly\(r\)\)\)\.slice\(0,1\)/,
+ 'Compact chart shows only a current early caption; historical markers stay at their real prices');
 assert.match(markerSvg,/fill=\{r.side==='BUY'\?'#64e8b2':'#fa92a4'\}/,
  'every M5 issued dot keeps its original BUY or SELL color when the caption is hidden');
 assert.match(markerSvg,/const ink=current\?'#e0be78':buy\?'#5da98d':'#ad7c8b'/,
