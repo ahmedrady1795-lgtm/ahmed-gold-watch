@@ -1,3 +1,4 @@
+import {combineGoldLiquidity} from '../lib/gold-liquidity-meter.ts';
 import {mergeOpeningAudit} from '../lib/gold-opening-audit.ts';
 import fs from 'node:fs/promises';
 import {nextGoldOpeningCall,validOpeningCall} from '../lib/gold-opening-call.ts';
@@ -30,6 +31,7 @@ try{
 if(openingCall&&!openingAudit.some(e=>e.call.target===openingCall.target))
  openingAudit.push({call:openingCall,outcome:'PENDING'});
 let chart=null,chartAt=0,chartAttempt=0,chartRefresh=null,previousQuotes=[];
+let flowRefresh=null,flowAttempt=0,perpFlow=null,tokenFlow=null;
 async function atomic(file,obj){
  const tmp=file+'.writing-'+process.pid;
  await fs.writeFile(tmp,JSON.stringify(obj),{mode:0o600});await fs.rename(tmp,file);
@@ -101,6 +103,17 @@ async function observe(){
    previousQuotes=[];
    return;
   }
+  // Sample the shared proxy endpoints only near the opening. Never delay a
+  // price decision on a slow exchange; source timestamps enforce freshness.
+  if(openingWork&&started-flowAttempt>=10000&&!flowRefresh){
+    flowAttempt=started;
+    flowRefresh=Promise.allSettled([
+      json('/api/gold-perp-flow'),json('/api/paxg-flow')
+    ]).then(([p,t])=>{
+      if(p.status==='fulfilled')perpFlow=p.value;
+      if(t.status==='fulfilled')tokenFlow=t.value;
+    }).finally(()=>{flowRefresh=null;});
+  }
   const refresh=Date.now()-chartAttempt>=15000&&(!chart||Date.now()-chartAt>=30000);
   if(refresh&&!chartRefresh){
     chartAttempt=Date.now();
@@ -122,7 +135,8 @@ async function observe(){
   }
   const q=quote,session=goldMarketSession(now).open;
   const feedFresh=g?.fresh===true&&now-contextFetchedAt<45000;
-  const opening=feedFresh?nextGoldOpeningCall(openingCall,now,g,q,previousQuotes):null;
+  const flow=combineGoldLiquidity(perpFlow,tokenFlow,now,session);
+  const opening=feedFresh?nextGoldOpeningCall(openingCall,now,g,q,previousQuotes,flow):null;
   if(opening&&opening!==openingCall){
     await atomic(openingPath,opening);
     openingCall=opening;
