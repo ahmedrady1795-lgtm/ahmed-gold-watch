@@ -35,3 +35,23 @@ export function openingScore(rows:Row[]){
  if(n)quality.hitPct=100*quality.hits/n;
  return quality;
 }
+
+
+/** Settle frozen research and displayed forecasts identically, without
+ * mixing their ledgers or inventing an outcome when the feed is missing. */
+export function settleOpeningAudit(rows:Row[],now:number,source:string,bars:readonly any[]):Row[]{
+ const map=new Map<number,any>();
+ for(const b of bars){
+   if(b&&[b.time,b.open,b.high,b.low,b.close].every(Number.isFinite)&&
+      b.time%60000===0&&b.time+60000<=now-3000&&b.low>0&&
+      b.high>=Math.max(b.open,b.close)&&b.low<=Math.min(b.open,b.close))map.set(b.time,b);
+ }
+ return rows.map(e=>{
+   if(e.outcome!=='PENDING'||now<e.call.target+303000)return e;
+   const c=e.call;
+   const window=Array.from({length:5},(_,i)=>map.get(c.target+i*60000));
+   if(source!==c.source||window.some(b=>!b))return now>=c.target+900000?{...e,outcome:'UNKNOWN',settledAt:now}:e;
+   const open=window[0].open,close=window[4].close,move=(close-open)*(c.side==='BUY'?1:-1);
+   return {...e,outcome:move===0?'FLAT':move>0?'HIT':'MISS',open,close,settledAt:now};
+ });
+}
