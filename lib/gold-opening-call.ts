@@ -2,6 +2,7 @@ import {assessM5CandleLean,detectWaveEnd} from './sniper-m5-candle-lean.ts';
 import {goldQuoteMatchesCandles,readGoldPreparation} from './gold-preparation-lead.ts';
 import {acceptGoldPulse} from './gold-tick-quality.ts';
 import {goldMarketSession} from './gold-market-session.ts';
+import type {GoldCombinedLiquidity} from './gold-liquidity-meter.ts';
 
 export type GoldOpeningCall={target:number;issued:number;side:'BUY'|'SELL';reason:string;
   source:string;quoteSource:string;quoteAt:number;priceAt:number};
@@ -16,7 +17,7 @@ export function validOpeningCall(value:unknown,now:number):value is GoldOpeningC
 }
 export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  chart:{fresh?:boolean;candleSource?:string;chartCandles?:unknown;chartHigherFrames?:{m5?:unknown}}|null,
- quote:any,previousQuotes:readonly any[]=[]):GoldOpeningCall|null{
+ quote:any,previousQuotes:readonly any[]=[],flow?:GoldCombinedLiquidity|null):GoldOpeningCall|null{
  const target=(Math.floor(now/300000)+1)*300000;
  if(previous?.target===target&&validOpeningCall(previous,now))return previous;
  if(target-now>openingWindowMs||!goldMarketSession(now).open||!goldMarketSession(target).open||
@@ -24,6 +25,15 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
     !goldQuoteMatchesCandles(quote.source,chart.candleSource))return null;
  const tick=acceptGoldPulse(quote,now);
  if(!tick||tick.sourceTime>now)return null;
+ // Proxy execution is optional supporting evidence, not broker DOM. Only
+ // independently fresh, multi-venue strong disagreement can veto a call.
+ const flowFresh=Boolean(flow&&flow.asOf!=null&&flow.asOf<=now&&now-flow.asOf<=10000&&
+   new Set(flow.sources).size>=2);
+ const contradicts=(side:'BUY'|'SELL')=>flowFresh&&
+   (flow!.state==='CONFLICT'||(flow!.strongSide!=='WAIT'&&flow!.strongSide!==side));
+ const flowNote=(side:'BUY'|'SELL')=>flowFresh?
+   ' · تدفق بديل '+(flow!.strongSide===side?'متوافق':'دون اتفاق قوي')+' '+flow!.sources.length+'/4':
+   ' · لا اتفاق متعدد المصادر حديث';
  // Prefer a causal setup that is still BEFORE its trigger. A price-only
  // continuation is a separately labelled watch, not verified order flow.
  const closed=Array.isArray(chart.chartCandles)?
@@ -33,7 +43,7 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  const preparation=readGoldPreparation({now,source:chart.candleSource,bars:closed,
    quote,previousQuotes,marketOpen:true}).plan;
  if(preparation){
-   if(waveEnd&&waveEnd.side!==preparation.side)return null;
+   if((waveEnd&&waveEnd.side!==preparation.side)||contradicts(preparation.side))return null;
    // A coil records a conditional breakout. Only promote it to an opening
    // forecast when two independent quotes show an approach to its trigger.
    if(preparation.setup==='PRESSURE_COIL'){
@@ -46,7 +56,7 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
        sign*(tick.price-prior.price)<=Math.max(spread/2,tick.price*.000001))return null;
    }
    return {target,issued:now,side:preparation.side,
-     reason:'تحضير قبل الكسر · '+preparation.reason+' · توقع افتتاح غير مؤكد (سعري)',
+     reason:'تحضير قبل الكسر · '+preparation.reason+' · توقع افتتاح غير مؤكد (سعري)'+flowNote(preparation.side),
      source:chart.candleSource,quoteSource:quote.source,
      quoteAt:tick.sourceTime,priceAt:tick.price};
  }
@@ -56,7 +66,7 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  if(target-now>15000)return null;
  const lean=assessM5CandleLean({now,price:tick.price,sourceReady:true,
    m1:chart.chartCandles,m5:chart.chartHigherFrames?.m5});
- if(lean.phase!=='CLOSE'||lean.side==='WAIT'||(waveEnd&&waveEnd.side!==lean.side))return null;
+ if(lean.phase!=='CLOSE'||lean.side==='WAIT'||(waveEnd&&waveEnd.side!==lean.side)||contradicts(lean.side))return null;
  // Closed-candle momentum alone is not enough to freeze an opening call.
  // Demand two distinct recent same-source quotes and reject live reversal.
  const prior=previousQuotes.slice(-2).filter(q=>q?.ok===true&&q.status==='live'&&
@@ -91,6 +101,6 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
    });
    if(!reset)return null;
  }
- return {target,issued:now,side:lean.side,reason:'ترجيح افتتاح سعري مع تحقق اتجاه آخر سعرين؛ ليس إشارة كسر مبكر · '+lean.reason,source:chart.candleSource,
+ return {target,issued:now,side:lean.side,reason:'ترجيح افتتاح سعري مع تحقق اتجاه آخر سعرين؛ ليس إشارة كسر مبكر · '+lean.reason+flowNote(lean.side),source:chart.candleSource,
    quoteSource:quote.source,quoteAt:tick.sourceTime,priceAt:tick.price};
 }
