@@ -1356,6 +1356,16 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  // full chart history readiness requirement.
  const commandFastLive=marketOpen&&Boolean(m.sniper.view.priceFresh)&&!providerTransition;
  const commandLive=commandFastLive&&m.historyFresh;
+ // Candle direction is a separate informational hypothesis, never a trade permission.
+ // Preserve a pre-open call for its target candle; otherwise label the live estimate
+ // with its actual timing, so a late reading cannot look like an opening forecast.
+ const currentM5Start=Math.floor(now/300000)*300000;
+ const openingForCurrent=visiblePreOpen?.target===currentM5Start?visiblePreOpen:null;
+ const directionReady=commandFastLive&&!historicalOnly;
+ const m5Direction=directionReady?(openingForCurrent?.side??(candleLean.issuedFor===currentM5Start&&candleLean.phase!=='CLOSE'?candleLean.side:'WAIT')):'WAIT';
+ const m1Direction=directionReady&&nextM1.ready?nextM1.side:'WAIT';
+ const directionText=(side:string)=>side==='BUY'?'صاعدة ↑':side==='SELL'?'هابطة ↓':'غير محسومة';
+ const directionColor=(side:string)=>side==='BUY'?'#62e6b0':side==='SELL'?'#fa92a4':undefined;
  const commandConfirmed=commandLive&&
    earlyOpportunity.phase==='BREAK_CONFIRMED'&&
    earlyOpportunity.quality==='SETUP'&&
@@ -2115,15 +2125,17 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      {visiblePreOpen&&marketOpen&&!providerTransition&&
        <div ref={displayAudit.marker} className="sniper-chart-command-head" data-gold-opening-at={asset==='GOLD'?visiblePreOpen.target:undefined} data-btc-opening-at={asset==='BTC'?visiblePreOpen.target:undefined} data-opening-side={visiblePreOpen.side}>
          <small>{now<visiblePreOpen.target?'الشمعة القادمة':'توقع الافتتاح'} · {h(visiblePreOpen.target)}</small>
-         <strong>{openingLabel(visiblePreOpen)} · قبلها {Math.ceil((visiblePreOpen.target-visiblePreOpen.issued)/1000)}ث</strong>
+         <strong>{directionText(visiblePreOpen.side)} · قبلها {Math.ceil((visiblePreOpen.target-visiblePreOpen.issued)/1000)}ث</strong>
        </div>}
      <div className="sniper-chart-command-head">
        <small>{visiblePreOpen?'الرصد الحالي':'M1/M5'}</small>
        <strong>{waveEnd?(waveEnd.side==='SELL'?'نهاية صعود؟':'نهاية هبوط؟'):commandConfirmed?(commandSide==='BUY'?'شراء':'بيع'):showExtra?commandHeadline:'—'}</strong>
      </div>
-     <div className="sniper-chart-command-frames">
-       <span>{'M1 '+(nextM1.ready?
-         nextM1.side==='BUY'?'↑':nextM1.side==='SELL'?'↓':'—':'—')}</span>
+     <div className="sniper-chart-command-frames" aria-label="ترجيح اتجاه الشموع وليس أمر دخول">
+       <span data-qannas-candle-direction="M5" data-side={m5Direction} title={openingForCurrent?'توقع محفوظ قبل الافتتاح، لا يتغير بعده':candleLean.reason}>
+         <b style={{color:directionColor(m5Direction)}}>M5: {directionText(m5Direction)}</b>{' · '+(openingForCurrent&&directionReady?'قبل الافتتاح':m5Direction==='WAIT'?'لا ترجيح موثوق':candleLean.phase==='OPEN'?'أول دقيقة':'بعد البداية')}
+       </span>
+       <span data-qannas-candle-direction="M1" data-side={m1Direction} title="ترجيح الدقيقة المقبلة من إغلاقات سابقة، وليس أمر دخول"><b style={{color:directionColor(m1Direction)}}>M1 القادمة: {directionText(m1Direction)}</b></span>
        <span>{'M15 '+(entryTrend==='BUY'?'↑':entryTrend==='SELL'?'↓':'—')}</span>
      </div>
      <div className={'sniper-chart-liquidity is-'+liquidityReadout.state.toLowerCase()}
