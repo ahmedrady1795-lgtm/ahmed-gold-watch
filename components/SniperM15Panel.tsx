@@ -1364,7 +1364,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const currentM5Start=Math.floor(now/300000)*300000;
  const openingForCurrent=visiblePreOpen?.target===currentM5Start?visiblePreOpen:null;
  const directionReady=commandFastLive&&!historicalOnly;
- const m5Direction=directionReady?(openingForCurrent?.side??(candleLean.issuedFor!=null&&Math.floor(candleLean.issuedFor/300000)*300000===currentM5Start&&candleLean.phase!=='CLOSE'?candleLean.side:'WAIT')):'WAIT';
+ const openingConflict=Boolean(asset==='GOLD'&&visiblePreOpen&&directionReady&&combinedGold.asOf!=null&&combinedGold.asOf<=now&&now-combinedGold.asOf<=10000&&combinedGold.sources.length>=2&&(combinedGold.state==='CONFLICT'||(combinedGold.state==='BUY'||combinedGold.state==='SELL')&&combinedGold.state!==visiblePreOpen.side));
+ const m5Direction=directionReady&&!openingConflict?(openingForCurrent?.side??(candleLean.issuedFor!=null&&Math.floor(candleLean.issuedFor/300000)*300000===currentM5Start&&candleLean.phase!=='CLOSE'?candleLean.side:'WAIT')):'WAIT';
  const m1Direction=directionReady&&nextM1.ready?nextM1.side:'WAIT';
  const directionText=(side:string)=>side==='BUY'?'صاعدة ↑':side==='SELL'?'هابطة ↓':'غير محسومة';
  const directionColor=(side:string)=>side==='BUY'?'#62e6b0':side==='SELL'?'#fa92a4':undefined;
@@ -1979,7 +1980,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          const lead=Math.ceil((r.target-r.issued)/1000);
          const adverse=current&&formingVisible&&forming?.time===r.target&&
            m.sniper.view.priceFresh&&price!=null&&(r.side==='BUY'?price<open:price>open);
-         const label=openingLabel(r)+' · '+lead+'ث'+(adverse?' ×':'');
+         const label=openingLabel(r)+' · '+lead+'ث'+(current&&openingConflict?' · تعارض حي':adverse?' ×':'');
          const result=r.outcome==='HIT'?'✓':r.outcome==='MISS'?'×':r.outcome==='FLAT'?'=':'';
          const ly=clamp(y+(r.side==='BUY'?27:-26),plotTop+15,plotBottom-12);
          return <g key={r.target} data-preopen-m5={r.target}>
@@ -2127,7 +2128,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      {visiblePreOpen&&marketOpen&&!providerTransition&&
        <div ref={displayAudit.marker} className="sniper-chart-command-head" data-gold-opening-at={asset==='GOLD'?visiblePreOpen.target:undefined} data-btc-opening-at={asset==='BTC'?visiblePreOpen.target:undefined} data-opening-side={visiblePreOpen.side}>
          <small>{now<visiblePreOpen.target?'الشمعة القادمة':'توقع الافتتاح'} · {h(visiblePreOpen.target)}</small>
-         <strong>{directionText(visiblePreOpen.side)} · قبلها {Math.ceil((visiblePreOpen.target-visiblePreOpen.issued)/1000)}ث</strong>
+         <strong>{directionText(visiblePreOpen.side)} · قبلها {Math.ceil((visiblePreOpen.target-visiblePreOpen.issued)/1000)}ث{openingConflict?' · تعارض حي، ليس دخولًا':''}</strong>
        </div>}
      <div className="sniper-chart-command-head">
        <small>{visiblePreOpen?'الرصد الحالي':'M1/M5'}</small>
@@ -2135,7 +2136,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      </div>
      <div className="sniper-chart-command-frames" aria-label="ترجيح اتجاه الشموع وليس أمر دخول">
        <span data-qannas-candle-direction="M5" data-side={m5Direction} title={openingForCurrent?'توقع محفوظ قبل الافتتاح، لا يتغير بعده':candleLean.reason}>
-         <b style={{color:directionColor(m5Direction)}}>M5: {directionText(m5Direction)}</b>{' · '+(openingForCurrent&&directionReady?'قبل الافتتاح':m5Direction==='WAIT'?'لا ترجيح موثوق':candleLean.phase==='OPEN'?'أول دقيقة':'بعد البداية')}
+         <b style={{color:directionColor(m5Direction)}}>M5: {directionText(m5Direction)}</b>{' · '+(openingConflict?'تعارض السيولة مع التوقع':openingForCurrent&&directionReady?'قبل الافتتاح':m5Direction==='WAIT'?'لا ترجيح موثوق':candleLean.phase==='OPEN'?'أول دقيقة':'بعد البداية')}
        </span>
        <span data-qannas-candle-direction="M1" data-side={m1Direction} title="ميل كسر الدقيقة الحالية من الإغلاقات السابقة، لا يضمن لون الإغلاق أو الدخول"><b style={{color:directionColor(m1Direction)}}>ميل M1 الحالية: {directionText(m1Direction)}</b></span>
        <span>{'M15 '+(entryTrend==='BUY'?'↑':entryTrend==='SELL'?'↓':'—')}</span>
@@ -2239,7 +2240,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      <div className="sniper-movement-summary" role="status" style={{
        display:'flex',flexWrap:'wrap',gap:'8px 15px',padding:'9px 12px',
        fontSize:12,color:'#bad8e6',borderBottom:'1px solid #27465a'}}>
-       {asset==='GOLD'&&versionQuality&&<span>اختبار النسخة الجديدة V2 قبل الافتتاح: {versionQuality.hits}/{versionQuality.hits+versionQuality.misses} {versionQuality.hits+versionQuality.misses<30?'· عينة غير كافية':''}</span>}
+       {asset==='GOLD'&&versionQuality&&<span>اختبار النسخة الحالية قبل الافتتاح: {versionQuality.hits}/{versionQuality.hits+versionQuality.misses} {versionQuality.hits+versionQuality.misses<30?'· عينة غير كافية':''}</span>}
        {asset==='GOLD'&&methodScores&&<span>اتجاه إغلاق M5 بعد توقع الافتتاح · تحضير {methodScores.preparation.hits}/{methodScores.preparation.hits+methodScores.preparation.misses} · استمرار {methodScores.continuation.hits}/{methodScores.continuation.hits+methodScores.continuation.misses}</span>}
        {asset==='GOLD'&&<details><summary>أول حركة مرصودة بعد ظهور التنبيه على الجهاز ({displayAudit.rows.length})</summary>
          <small>من وقت ظهور تنبيه الافتتاح على الشاشة حتى نهاية شمعته. نقيس أول تغير مرصود بمقدار سبريد الظهور. عند انقطاع الأسعار أو غياب السبريد تُسجّل غير محسومة.</small>
