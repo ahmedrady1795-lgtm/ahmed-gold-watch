@@ -1,13 +1,10 @@
 import {readPaxgFlow,readKrakenPaxgFlow,type PaxgFlow} from '../../../lib/paxg-flow';
-import {newVenueHistory,updateVenueHistory,type FlowPrint} from '../../../lib/gold-flow-history';
+import {independentFlowSlot,collectIndependentFlow,newVenueHistory,updateVenueHistory,type FlowPrint} from '../../../lib/gold-flow-history';
 import {spotBackoffMs} from '../../../lib/binance-cooldown';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
 // Independent source cooldowns. Never treat a new HTTP fetch as a new trade.
-let cache:PaxgFlow|null=null;
-let sampledAt=0;
 let binanceRetryAt=0,krakenRetryAt=0;
-let pending:Promise<PaxgFlow>|null=null;
 const tape={binance:newVenueHistory(),kraken:newVenueHistory()};
 const unavailable=(now:number):PaxgFlow=>({
   side:'UNAVAILABLE',observedAt:now,tradeAt:0,count:0,
@@ -90,16 +87,16 @@ async function krakenSample():Promise<PaxgFlow>{
    return unavailable(Date.now());
  }
 }
+const freshVenue=(v:PaxgFlow,now:number)=>v.side!=='UNAVAILABLE'&&v.tradeAt<=now&&
+ v.observedAt<=now&&now-v.tradeAt<=10000&&now-v.observedAt<=12000;
+const slots=[independentFlowSlot(binanceSample,freshVenue,5000),
+ independentFlowSlot(krakenSample,freshVenue,5000)];
 async function sample():Promise<PaxgFlow>{
- const [a,b]=await Promise.all([binanceSample(),krakenSample()]);
+ const [a,b]=await collectIndependentFlow(slots);
  const now=Date.now();
  const fresh=[a,b].filter((v):v is PaxgFlow=>Boolean(v&&v.side!=='UNAVAILABLE'&&v.tradeAt<=now&&now-v.tradeAt<=15000));
  return {...(fresh[0]??unavailable(now)),venueSamples:fresh};
 }
 export async function GET(){
- if(!cache||Date.now()-sampledAt>=5000){
-   pending??=sample().then(result=>{sampledAt=Date.now();return cache=result;}).finally(()=>{pending=null;});
-   await pending;
- }
- return Response.json(cache,{headers:{'Cache-Control':'no-store'}});
+ return Response.json(await sample(),{headers:{'Cache-Control':'no-store'}});
 }
