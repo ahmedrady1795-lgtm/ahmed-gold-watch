@@ -165,3 +165,22 @@ assert.match(panel,/const cueAuditCandidate=useMemo\(\(\)=>cueForwardObservation
 assert.match(panel,/prior:first,now,asset,source,price,signal:cueAuditCandidate/,
  'audit must record a distinct visible prebreak even if an older tracked setup exists');
 console.log('PASS: displayed M5 prebreak first-seen cohort, true bar timing, setup provenance, no late alert or phantom order');
+
+const late=exp.lateWaveSide;
+const minute=60000,cut=Math.floor(now/minute)*minute;
+const falling=Array.from({length:20},(_,i)=>{
+ const open=110-i*.5;
+ return {time:cut-(20-i)*minute,open,high:open+.1,low:open-.6,close:open-.5};
+});
+for(const sell of [true,false]){
+ const bars=sell?falling:falling.map(b=>({...b,open:220-b.open,close:220-b.close,high:220-b.low,low:220-b.high}));
+ const price=bars.at(-1).close,side=sell?'SELL':'BUY';
+ assert.equal(late(now,price,bars),side);
+ assert.equal(late(now+180000,price,bars),'WAIT');
+ assert.equal(late(now,price,bars.filter((_,i)=>i!==12)),'WAIT');
+ assert.equal(late(now,price,[...bars,{...bars[0],time:cut}]),side);
+ const setup={phase:'PREPARE',side,sourceAt:now-1000,trigger:price+(sell?-.2:.2),invalidation:price+(sell?1:-1)};
+ assert.equal(cue({...base,price,opportunity:setup,lateSide:side}).stage,'LATE');
+ assert.equal(cue({...base,price,opportunity:setup,lateSide:'WAIT'}).stage,'PREBREAK');
+}
+console.log('PASS: prevent fresh same-direction setup labels at the end of extended M1 legs, both directions');
