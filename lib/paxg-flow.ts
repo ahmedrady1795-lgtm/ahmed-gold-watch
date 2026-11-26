@@ -144,3 +144,27 @@ export function readBinanceGoldPerp(book:any,trades:unknown,now:number):PaxgFlow
  const rows=Array.isArray(trades)?trades.filter(t=>Number.isFinite(Number(t?.p))&&Number(t.p)>0):[];
  return {...readPaxgFlow(depth,rows,now),source:'Binance XAUUSDT perpetual'};
 }
+
+
+// OKX XAU-USDT-SWAP: public taker trades, exchange timestamps, contract sizes.
+// Ratios are venue-local; never sum contract sizes across different venues.
+export function okxGoldPrints(history:any,now:number){
+ const rows=history?.code==='0'&&Array.isArray(history.data)?history.data:[];
+ const seen=new Set<string>();
+ const prints:{id:string;at:number;price:number;qty:number;buy:boolean}[]=[];
+ for(const t of rows){
+   const at=Number(t?.ts),price=Number(t?.px),qty=Number(t?.sz);
+   if(t?.instId!=='XAU-USDT-SWAP'||typeof t.tradeId!=='string'||!t.tradeId||seen.has(t.tradeId)||
+     (t.side!=='buy'&&t.side!=='sell')||!Number.isSafeInteger(at)||at>now||now-at>30000||
+     !Number.isFinite(price)||price<=0||!Number.isFinite(qty)||qty<=0)continue;
+   seen.add(t.tradeId);prints.push({id:t.tradeId,at,price,qty,buy:t.side==='buy'});
+ }
+ return prints;
+}
+export function readOkxGoldPerp(book:any,history:any,now:number):PaxgFlow{
+ const b=book?.code==='0'&&Array.isArray(book.data)?book.data[0]:null;
+ const at=Number(b?.ts);
+ const depth=Number.isSafeInteger(at)&&at<=now&&now-at<=8000?{bids:b.bids,asks:b.asks}:null;
+ const rows=okxGoldPrints(history,now).map((t,i)=>({a:i,T:t.at,p:t.price,q:t.qty,m:!t.buy}));
+ return {...readPaxgFlow(depth,rows,now),source:'OKX XAUUSDT perpetual'};
+}
