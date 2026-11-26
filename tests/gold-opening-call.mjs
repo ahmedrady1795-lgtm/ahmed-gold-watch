@@ -29,6 +29,11 @@ for(const buy of [true,false]){
  assert.equal(nextGoldOpeningCall(null,issued,chart,q,[prior],{...flow,asOf:issued-20000})?.side,call.side,'stale flow does not veto');
  assert.equal(nextGoldOpeningCall(null,issued,chart,q,[prior],{...flow,sources:[flow.sources[0]]})?.side,call.side,'one proxy cannot veto');
  assert.equal(nextGoldOpeningCall(call,issued+1,chart,q,[prior],flow),call,'already issued forecast remains immutable');
+ assert.equal(nextGoldOpeningCall(null,issued,chart,q,[prior],null,true),null,'live momentum requires independently supported flow');
+ assert.equal(nextGoldOpeningCall(null,issued,chart,q,[prior],{...flow,state:call.side,strongSide:call.side},true)?.side,call.side);
+ assert.equal(nextGoldOpeningCall(null,issued,chart,q,[prior],{...flow,state:call.side,strongSide:call.side,sources:[flow.sources[0]]},true),null);
+ assert.equal(nextGoldOpeningCall(null,issued,chart,q,[prior],{...flow,state:call.side,strongSide:call.side,asOf:issued-20000},true),null);
+ assert.equal(nextGoldOpeningCall(call,issued+1,chart,q,[prior],flow,true),call,'live guard never rewrites earlier forecasts');
  assert.equal(call.target,open);
  assert.equal(call.issued,issued);
  assert.ok(validOpeningCall(call,open));
