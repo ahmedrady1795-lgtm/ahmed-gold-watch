@@ -178,3 +178,37 @@ export function assessM5CandleLean(input:{
     ' · توقع غير مؤكد، لا يمثل أمر تداول أو تدفق أوامر حقيقي',
    tradeEligible:false};
 }
+
+
+/** Causal end-of-leg warning, not an executable reversal or guaranteed top.
+ * Require a prior directional leg, a closed sweep/rejection and a recent
+ * same-source price that has not reclaimed the rejected extreme. */
+export function detectWaveEnd(input:{now:number;price:number|null;quoteAt:number|null;sourceReady:boolean;m1:unknown}):
+ {side:'BUY'|'SELL';at:number;level:number;reason:string}|null{
+ const {now,price,quoteAt}=input;
+ if(!input.sourceReady||price==null||!Number.isFinite(price)||price<=0||
+   quoteAt==null||!Number.isFinite(quoteAt)||quoteAt>now||now-quoteAt>10000)return null;
+ const unique=new Map<number,Bar>();
+ for(const b of Array.isArray(input.m1)?input.m1:[])
+   if(good(b)&&b.time+60000<=now)unique.set(b.time,b);
+ const rows=[...unique.values()].sort((a,b)=>a.time-b.time).slice(-10);
+ if(rows.length!==10||rows.some((b,i)=>i>0&&b.time-rows[i-1].time!==60000))return null;
+ const last=rows[9],leg=rows.slice(1,9);
+ if(now-last.time-60000>75000)return null;
+ const ranges=leg.map(b=>b.high-b.low).sort((a,b)=>a-b);
+ const atr=(ranges[3]+ranges[4])/2;
+ if(!(atr>0)||atr>price*.03)return null;
+ const high=Math.max(...leg.map(b=>b.high)),low=Math.min(...leg.map(b=>b.low));
+ const travel=leg[7].close-leg[0].open;
+ const span=last.high-last.low;
+ if(!(span>=atr*.5))return null;
+ const upper=travel>=atr*1.6&&last.high>high+atr*.05&&last.close<high&&
+   last.high-Math.max(last.open,last.close)>=atr*.35&&last.close<=last.low+span*.45&&
+   price<=last.close+atr*.12&&price>=last.low-atr*.35;
+ const lower=travel<=-atr*1.6&&last.low<low-atr*.05&&last.close>low&&
+   Math.min(last.open,last.close)-last.low>=atr*.35&&last.close>=last.high-span*.45&&
+   price>=last.close-atr*.12&&price<=last.high+atr*.35;
+ if(upper===lower)return null;
+ return {side:upper?'SELL':'BUY',at:last.time+60000,level:upper?last.high:last.low,
+   reason:upper?'رفض قمة بعد موجة صاعدة؛ احتمال نهاية الصعود':'رفض قاع بعد موجة هابطة؛ احتمال نهاية الهبوط'};
+}
