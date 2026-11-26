@@ -4,8 +4,11 @@ import {acceptGoldPulse} from './gold-tick-quality.ts';
 import {goldMarketSession} from './gold-market-session.ts';
 import type {GoldCombinedLiquidity} from './gold-liquidity-meter.ts';
 
-export const GOLD_OPENING_VERSION='GOLD_M5_OPEN_V3';
-export type GoldOpeningCall={version?:string;target:number;issued:number;side:'BUY'|'SELL';reason:string;
+export const GOLD_OPENING_VERSION='GOLD_M5_OPEN_V4';
+export type GoldRegime='TREND_UP'|'TREND_DOWN'|'PULLBACK_UP'|'PULLBACK_DOWN'|'COMPRESSION'|'RANGE'|'UNKNOWN';
+export type OpeningSide='BUY'|'SELL'|'WAIT';
+export type OpeningEvidence={regime:GoldRegime;baseline:OpeningSide;ml:OpeningSide;neural:OpeningSide;flow:OpeningSide;flowSources:number;flowState:string;quoteAgeMs:number;recordedAt:number;adaptive:OpeningSide;adaptiveModel:string};
+export type GoldOpeningCall={evidence?:OpeningEvidence;version?:string;target:number;issued:number;side:'BUY'|'SELL';reason:string;
   source:string;quoteSource:string;quoteAt:number;priceAt:number};
 export const openingWindowMs=30000;
 export function validOpeningCall(value:unknown,now:number):value is GoldOpeningCall{
@@ -15,6 +18,38 @@ export function validOpeningCall(value:unknown,now:number):value is GoldOpeningC
    now<p.target+300000&&(p.side==='BUY'||p.side==='SELL')&&typeof p.reason==='string'&&
    goldQuoteMatchesCandles(p.quoteSource,p.source)&&Number.isFinite(p.priceAt)&&p.priceAt>0&&
    Number.isSafeInteger(p.quoteAt)&&p.quoteAt<=p.issued&&p.issued-p.quoteAt<=10000);
+}
+/** Classify completed contiguous M1 structure without using the target bar.
+ * A short counter-leg inside a longer efficient leg is a pullback, not
+ * an automatic reversal. No future bars, gaps or fabricated volume. */
+export function goldOpeningRegime(raw:unknown,now:number):{regime:GoldRegime;trend:OpeningSide;baseline:OpeningSide}{
+ const none={regime:'UNKNOWN' as const,trend:'WAIT' as const,baseline:'WAIT' as const};
+ if(!Array.isArray(raw)||!Number.isFinite(now))return none;
+ const map=new Map<number,{time:number;open:number;high:number;low:number;close:number}>();
+ for(const b of raw){
+   if(!b||![b.time,b.open,b.high,b.low,b.close].every(Number.isFinite)||b.time%60000!==0||
+      b.time+60000>now-3000||b.low<=0||b.high<Math.max(b.open,b.close)||b.low>Math.min(b.open,b.close))continue;
+   const p=map.get(b.time);
+   if(p&&[p.open,p.high,p.low,p.close].some((v,i)=>v!==[b.open,b.high,b.low,b.close][i]))return none;
+   map.set(b.time,b);
+ }
+ const rows=[...map.values()].sort((a,b)=>a.time-b.time).slice(-16),last=rows.at(-1);
+ if(!last||now-last.time-60000>90000)return none;
+ const side=(n:number):OpeningSide=>n>0?'BUY':n<0?'SELL':'WAIT';
+ const baseline=side(last.close-last.open);
+ if(rows.length<16||rows.some((b,i)=>i>0&&b.time-rows[i-1].time!==60000))return {...none,baseline};
+ const ranges=rows.map(b=>b.high-b.low).sort((a,b)=>a-b);
+ const atr=(ranges[7]+ranges[8])/2;if(!(atr>0))return {...none,baseline};
+ const travel=last.close-rows[0].open;
+ const path=Math.abs(rows[0].close-rows[0].open)+rows.slice(1).reduce((a,b,i)=>a+Math.abs(b.close-rows[i].close),0);
+ const trend=path>0&&Math.abs(travel)>=2.8*atr&&Math.abs(travel)/path>=.55?side(travel):'WAIT';
+ const tail=rows.slice(-4),recent=last.close-tail[0].open;
+ const width=Math.max(...tail.map(b=>b.high))-Math.min(...tail.map(b=>b.low));
+ if(trend!=='WAIT'){
+   const pullback=side(recent)!=='WAIT'&&side(recent)!==trend&&Math.abs(recent)>=atr*.35;
+   return {regime:trend==='BUY'?(pullback?'PULLBACK_UP':'TREND_UP'):(pullback?'PULLBACK_DOWN':'TREND_DOWN'),trend,baseline};
+ }
+ return {regime:width<=atr*2.1?'COMPRESSION':'RANGE',trend,baseline};
 }
 export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  chart:{fresh?:boolean;candleSource?:string;chartCandles?:unknown;chartHigherFrames?:{m5?:unknown}}|null,
@@ -59,7 +94,8 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  const trend=travel>=trendRange*2?'BUY':travel<=-trendRange*2?'SELL':'WAIT';
  const weakOpposition=(side:'BUY'|'SELL')=>flowFresh&&
    (flow!.state==='BUY'||flow!.state==='SELL')&&flow!.state!==side;
- const counterTrend=(side:'BUY'|'SELL')=>trend!=='WAIT'&&trend!==side;
+ const regime=goldOpeningRegime(closed,now);
+ const counterTrend=(side:'BUY'|'SELL')=>(trend!=='WAIT'&&trend!==side)||(regime.trend!=='WAIT'&&regime.trend!==side);
  const promotionBlocked=(side:'BUY'|'SELL')=>requireFlowForContinuation&&
    (weakOpposition(side)||(counterTrend(side)&&
     (!(waveEnd&&waveEnd.side===side)||!flowFresh||flow!.strongSide!==side)));
