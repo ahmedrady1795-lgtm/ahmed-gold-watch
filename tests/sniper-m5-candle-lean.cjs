@@ -221,3 +221,26 @@ for(const up of [true,false]){
  assert.equal(wave({...q,m1:[...rows,{...rows[9],time:start}]} )?.side,up?'SELL':'BUY','forming candle is ignored');
 }
 console.log('PASS: causal wave exhaustion both directions with stale, gap, reclaimed and forming-bar guards');
+
+const liveWave=load('lib/sniper-m5-candle-lean.ts').detectLiveWaveEnd;
+const liveLeg=Array.from({length:8},(_,i)=>{
+ const open=100+i*.3;
+ return {time:start-(8-i)*minute,open,high:open+.4,low:open-.2,close:open+.2};
+});
+const liveHigh=Math.max(...liveLeg.map(b=>b.high));
+for(const up of [true,false]){
+ const rows=up?liveLeg:liveLeg.map(b=>({...b,open:200-b.open,close:200-b.close,high:200-b.low,low:200-b.high}));
+ const prices=[liveHigh-.1,liveHigh+.12,liveHigh-.15].map(p=>up?p:200-p);
+ const quotes=prices.map((price,i)=>({at:start+1000+4000*i,price}));
+ const q={now:start+10000,sourceReady:true,m1:rows,quotes};
+ assert.equal(liveWave(q)?.side,up?'SELL':'BUY');
+ assert.equal(liveWave(q)?.at,quotes[2].at);
+ assert.equal(liveWave({...q,quotes:quotes.slice(0,2)}),null);
+ assert.equal(liveWave({...q,quotes:[quotes[0],quotes[1],{...quotes[2],at:start+11000}]}),null);
+ assert.equal(liveWave({...q,quotes:[quotes[0],quotes[1],{...quotes[2],price:prices[1]}]}),null);
+ assert.equal(liveWave({...q,m1:rows.filter((_,i)=>i!==3)}),null);
+ assert.equal(liveWave({...q,now:start+25000}),null);
+ assert.equal(liveWave({...q,sourceReady:false}),null);
+ assert.equal(liveWave({...q,m1:[...rows,{...rows[7],time:start}]} )?.side,up?'SELL':'BUY');
+}
+console.log('PASS: live wave-end warning on three observed quotes before M1 close, symmetric and causal');
