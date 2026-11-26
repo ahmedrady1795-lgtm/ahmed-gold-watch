@@ -208,9 +208,21 @@ export function detectWaveEnd(input:{now:number;price:number|null;quoteAt:number
  const lower=travel<=-atr*1.6&&last.low<low-atr*.05&&last.close>low&&
    Math.min(last.open,last.close)-last.low>=atr*.35&&last.close>=last.high-span*.45&&
    price>=last.close-atr*.12&&price<=last.high+atr*.35;
- if(upper===lower)return null;
- return {side:upper?'SELL':'BUY',at:last.time+60000,level:upper?last.high:last.low,
-   reason:upper?'رفض قمة بعد موجة صاعدة؛ احتمال نهاية الصعود':'رفض قاع بعد موجة هابطة؛ احتمال نهاية الهبوط'};
+ // Failed retest: a prior extreme followed by a lower high/higher low
+ // and a decisive rejection near the level, even without a fresh sweep.
+ const prior=leg.at(-1)!;
+ const peakUp=travel>=atr*1.8&&prior.high>=high-atr*.08&&
+   last.high<=prior.high-atr*.06&&last.high>=prior.high-atr*.75&&
+   last.close<last.open-atr*.25&&last.close<=last.low+span*.35&&
+   last.close<prior.close-atr*.25&&price<=last.close+atr*.1&&price>=last.low-atr*.2;
+ const peakDown=travel<=-atr*1.8&&prior.low<=low+atr*.08&&
+   last.low>=prior.low+atr*.06&&last.low<=prior.low+atr*.75&&
+   last.close>last.open+atr*.25&&last.close>=last.high-span*.35&&
+   last.close>prior.close+atr*.25&&price>=last.close-atr*.1&&price<=last.high+atr*.2;
+ const bearish=upper||peakUp,bullish=lower||peakDown;
+ if(bearish===bullish)return null;
+ return {side:bearish?'SELL':'BUY',at:last.time+60000,level:bearish?(upper?last.high:prior.high):(lower?last.low:prior.low),
+   reason:bearish?(upper?'رفض قمة بعد موجة صاعدة؛ احتمال نهاية الصعود':'فشل إعادة اختبار القمة؛ احتمال نهاية الصعود'):(lower?'رفض قاع بعد موجة هابطة؛ احتمال نهاية الهبوط':'فشل إعادة اختبار القاع؛ احتمال نهاية الهبوط')};
 }
 
 
