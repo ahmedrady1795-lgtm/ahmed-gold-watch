@@ -1362,7 +1362,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const currentM5Start=Math.floor(now/300000)*300000;
  const openingForCurrent=visiblePreOpen?.target===currentM5Start?visiblePreOpen:null;
  const directionReady=commandFastLive&&!historicalOnly;
- const m5Direction=directionReady?(openingForCurrent?.side??(candleLean.issuedFor===currentM5Start&&candleLean.phase!=='CLOSE'?candleLean.side:'WAIT')):'WAIT';
+ const m5Direction=directionReady?(openingForCurrent?.side??(candleLean.issuedFor!=null&&Math.floor(candleLean.issuedFor/300000)*300000===currentM5Start&&candleLean.phase!=='CLOSE'?candleLean.side:'WAIT')):'WAIT';
  const m1Direction=directionReady&&nextM1.ready?nextM1.side:'WAIT';
  const directionText=(side:string)=>side==='BUY'?'صاعدة ↑':side==='SELL'?'هابطة ↓':'غير محسومة';
  const directionColor=(side:string)=>side==='BUY'?'#62e6b0':side==='SELL'?'#fa92a4':undefined;
