@@ -32,3 +32,29 @@ export function expectedMacroBackdrop(event:{name?:unknown;forecast?:unknown;pre
     label:goldUp?'توقع السوق: داعم للذهب ↑':'توقع السوق: ضاغط على الذهب ↓',
     reason:'مقارنة توقع السوق بالسابق فقط؛ قد يكون الأثر مسعّراً والنتيجة الفعلية قد تخالف التوقع'};
 }
+
+
+/** Observed XAU price response, distinct from the macro surprise. Only complete,
+ * contiguous M1 candles at the exact minute-aligned release are used. */
+export function observedNewsGoldReaction(input:{eventTime:number;now:number;candles:unknown;source:string;providerTransition:boolean}){
+  const {eventTime,now,source,providerTransition}=input;
+  const waiting={side:'WAIT' as const,label:'رد فعل الذهب: بانتظار قراءة سعر مؤكدة'};
+  if(providerTransition||!source||/proxy|GC=F|COMEX/i.test(source)||!Number.isFinite(eventTime)||
+    !Number.isFinite(now)||eventTime%60000!==0||now<eventTime+60000||now-eventTime>30*60000||
+    !Array.isArray(input.candles))return waiting;
+  const end=Math.min(Math.floor(now/60000)*60000,eventTime+5*60000);
+  const count=(end-eventTime)/60000;
+  const bars=new Map<number,{time:number;open:number;high:number;low:number;close:number}>();
+  for(const b of input.candles){
+    if(b&&[b.time,b.open,b.high,b.low,b.close].every(Number.isFinite)&&
+      b.time>=eventTime&&b.time+60000<=end&&b.time%60000===0&&
+      b.low>0&&b.high>=Math.max(b.open,b.close)&&b.low<=Math.min(b.open,b.close))
+      bars.set(b.time,b);
+  }
+  const first=bars.get(eventTime),last=bars.get(end-60000);
+  if(!first||!last||bars.size!==count)return waiting;
+  const change=last.close-first.open;
+  const side=change>0?'UP' as const:change<0?'DOWN' as const:'WAIT' as const;
+  return {side,label:'رد فعل الذهب '+count+'د: '+(side==='UP'?'صعود ↑':side==='DOWN'?'هبوط ↓':'ثبات')+
+    ' ('+(change>0?'+':'')+change.toFixed(2)+'$)'};
+}
