@@ -118,7 +118,7 @@ export default function SniperOpportunityMarkers(p:Props){
  }
  // Keep real historical PRE-break observations labelled by direction,
  // even if they have expired or failed. Do not retroactively call them trades.
- for(const r of earlyShown.filter(r=>!nearCurrent(r)).slice(0,1)){
+ for(const r of earlyShown.filter(r=>!nearCurrent(r)&&(!p.compactObservations||currentEarly(r))).slice(0,1)){
    const px=p.timeX(r.issuedAt),py=p.py(r.priceAt);
    const chosen=placeLabel(px,py,48,16,r.side==='BUY'?22:-22);
    if(chosen)earlyLabels.set(r.id,chosen);
