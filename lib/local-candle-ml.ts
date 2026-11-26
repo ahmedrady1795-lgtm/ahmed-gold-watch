@@ -2,7 +2,7 @@
  * trading authorization. Historical chronological validation is NOT live proof.
  * Candle-only features do not claim to measure executed order flow. */
 type Bar={time:number;open:number;high:number;low:number;close:number};
-type Example={i:number;x:number[];y:number};
+type Example={i:number;x:number[];y:number;end:number};
 type Side='BUY'|'SELL'|'WAIT';
 export type LocalHorizon={side:Side;validationHits:number;validationCount:number;
  baselineHits:number;selectedCount:number;status:'INSUFFICIENT'|'SHADOW'|'HISTORICAL_EDGE';
@@ -25,7 +25,10 @@ function features(b:Bar[],i:number){
    cap((z.close-r[6].close)/atr),cap((z.close-z.open)/atr),
    cap((z.close-z.low-(z.high-z.close))/atr),
    cap((z.close-low)/atr),cap((high-z.close)/atr),
-   cap((z.high-z.low)/atr)];
+   cap((z.high-z.low)/atr),
+   cap((Math.min(z.open,z.close)-z.low-(z.high-Math.max(z.open,z.close)))/atr),
+   cap((r.slice(-4).reduce((s,v)=>s+v.high-v.low,0)/4)/atr-1),
+   z.low<low&&z.close>low?1:0,z.high>high&&z.close<high?1:0];
 }
 const sigmoid=(v:number)=>1/(1+Math.exp(-Math.max(-20,Math.min(20,v))));
 const predict=(w:number[],x:number[])=>sigmoid(w.reduce((s,v,i)=>s+v*x[i],0));
@@ -53,7 +56,7 @@ function fitNeural(train:Example[],width:number){
  }
  return (x:number[])=>{const z=hidden(x);return sigmoid(bias+v.reduce((s,a,j)=>s+a*z[j],0));};
 }
-function evaluate(b:Bar[],h:number,neural=false):LocalHorizon{
+function evaluate(b:Bar[],h:number,neural=false,gold=false):LocalHorizon{
  const current=features(b,b.length-1);
  if(!current)return empty();
  const ex:Example[]=[];
@@ -61,12 +64,19 @@ function evaluate(b:Bar[],h:number,neural=false):LocalHorizon{
    const x=features(b,i);
    if(!x||b[i+h].time-b[i].time!==h*60000||
       b.slice(i+1,i+h+1).some((v,j)=>v.time-b[i+j].time!==60000))continue;
-   if(b[i+h].close===b[i].close)continue;
-   ex.push({i,x,y:b[i+h].close>b[i].close?1:0});
+   // Gold is graded on the forecast candle BODY, not close-to-close drift.
+   // An M5 body starts at the first future minute and ends at the fifth.
+   const anchor=gold?b[i+1].open:b[i].close;
+   if(b[i+h].close===anchor)continue;
+   ex.push({i,x,y:b[i+h].close>anchor?1:0,end:i+h});
  }
  if(ex.length<180)return empty();
- const validation=ex.slice(-60);
- const train=ex.filter(e=>e.i+h<validation[0].i);
+ const recent=ex.slice(-60);
+ // Overlapping five-minute labels are not independent test observations.
+ // Keep the untouched final window and sample disjoint outcome intervals.
+ const validation:Example[]=[];
+ for(const e of recent)if(!gold||!validation.length||e.i>=validation.at(-1)!.end)validation.push(e);
+ const train=ex.filter(e=>e.end<recent[0].i);
  if(train.length<120)return empty();
  const w=Array(current.length).fill(0) as number[];
  for(let epoch=0;!neural&&epoch<24;epoch++){
@@ -82,8 +92,11 @@ function evaluate(b:Bar[],h:number,neural=false):LocalHorizon{
  const hits=all.filter(e=>Number(e.p>=.5)===e.y).length;
  const base=all.filter(e=>e.y===majority).length;
  const selectedHits=selected.filter(e=>Number(e.p>=.5)===e.y).length;
+ const pairedBaseline=selected.filter(e=>e.y===majority).length;
+ const n=selected.length,p=n?selectedHits/n:0,z=1.96;
+ const lower=n?(p+z*z/(2*n)-z*Math.sqrt((p*(1-p)+z*z/(4*n))/n))/(1+z*z/n):0;
  const edge=hits>=Math.ceil(all.length*.60)&&hits>=base+4&&selected.length>=20&&
-   selectedHits>=Math.ceil(selected.length*.65)&&
+   selectedHits>=Math.ceil(selected.length*.65)&&(!gold||(lower>.5&&selectedHits>pairedBaseline))&&
    selected.some(e=>e.p>=.58)&&selected.some(e=>e.p<=.42);
  const rawScore=infer(current);
  return {side:edge&&rawScore>=.58?'BUY':edge&&rawScore<=.42?'SELL':'WAIT',
@@ -108,7 +121,8 @@ export function localCandleMl(scope:string,raw:unknown,now:number,ready:boolean)
  if(bars.length<220||!last||now-last.time-60000>90000)return none();
  const key=scope+'|'+bars.map(b=>[b.time,b.open,b.high,b.low,b.close].join(':')).join('|');
  const cached=cache.get(key);if(cached)return cached;
- const result:LocalCandleMl={asOf:last.time+60000,m1:evaluate(bars,1),m5:evaluate(bars,5),neuralM1:evaluate(bars,1,true),neuralM5:evaluate(bars,5,true),tradeAuthorized:false};
+ const gold=scope.startsWith('GOLD:');
+ const result:LocalCandleMl={asOf:last.time+60000,m1:evaluate(bars,1,false,gold),m5:evaluate(bars,5,false,gold),neuralM1:evaluate(bars,1,true,gold),neuralM5:evaluate(bars,5,true,gold),tradeAuthorized:false};
  cache.set(key,result);while(cache.size>6)cache.delete(cache.keys().next().value!);
  return result;
 }
