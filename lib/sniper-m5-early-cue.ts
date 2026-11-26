@@ -16,6 +16,29 @@ export type M5EarlyCue={
  setupKind:CuePattern|null;
 };
 
+/** A trigger can still be late in an extended leg. Use only completed
+ * contiguous M1 bars and current price, never future bars. */
+export function lateWaveSide(now:number,price:number|null,m1:unknown):Side{
+ if(price==null||!Number.isFinite(price)||price<=0||!Number.isFinite(now)||!Array.isArray(m1))return 'WAIT';
+ const rows=[...new Map<number,{time:number;open:number;high:number;low:number;close:number}>(m1.filter(b=>b&&[b.time,b.open,b.high,b.low,b.close].every(Number.isFinite)&&
+   b.time%60000===0&&b.time+60000<=now&&b.low>0&&b.low<=Math.min(b.open,b.close)&&
+   b.high>=Math.max(b.open,b.close)).map(b=>[b.time,b])).values()].sort((a,b)=>a.time-b.time).slice(-24);
+ if(rows.length<16||rows.some((b,i)=>i>0&&b.time-rows[i-1].time!==60000)||
+   now-(rows.at(-1)!.time+60000)>75000)return 'WAIT';
+ const ranges=rows.map(b=>b.high-b.low).sort((a,b)=>a-b);
+ const unit=ranges[Math.floor(ranges.length/2)];
+ if(!(unit>0)||unit>price*.03)return 'WAIT';
+ const tail=rows.slice(-10);
+ const high=Math.max(...tail.map(b=>b.high)),low=Math.min(...tail.map(b=>b.low));
+ const rise=price-Math.min(...tail.slice(0,5).map(b=>b.low));
+ const drop=Math.max(...tail.slice(0,5).map(b=>b.high))-price;
+ const lateBuy=rise>=3*unit&&high-price<=.6*unit&&
+   !tail.slice(-3).some(b=>b.high-b.close>=unit&&b.close<b.open);
+ const lateSell=drop>=3*unit&&price-low<=.6*unit&&
+   !tail.slice(-3).some(b=>b.close-b.low>=unit&&b.close>b.open);
+ return lateBuy===lateSell?'WAIT':lateBuy?'BUY':'SELL';
+}
+
 /** Independent quick M1/M5 research label for the real M5 chart.
  * No evidence from a historical M15 model is required merely to DISPLAY a
  * pending watch. A NO_DEMONSTRATED_EDGE M15 result cannot erase an M1 watch,
@@ -28,7 +51,8 @@ export function chartM5EarlyCue(a:{
  opportunity:LiveOpportunity|null;lean:M5CandleLean|null;
  reclaim?:M1ReclaimWatch|null;
  shortTape?:{side:'BUY'|'SELL';trigger:number;invalidation:number;asOf:number;source:string;deltaPct:number;kind?:'ABSORPTION'|'PRESSURE'}|null;
- m5Follow?:{ready:boolean;side:Side;reason:string}|null
+ m5Follow?:{ready:boolean;side:Side;reason:string}|null;
+ lateSide?:Side
 }):M5EarlyCue{
  const base:M5EarlyCue={stage:'NONE',side:'WAIT',
   headline:'لا توجد تهيئة جديدة',detail:'السوق قيد القراءة',
@@ -58,7 +82,7 @@ export function chartM5EarlyCue(a:{
   const ahead=side==='BUY'?trigger-price:price-trigger;
   const available=Math.abs(trigger-stop);
   // A quote already touching or crossing a trigger is NOT 'before the move'.
-  return ahead>Math.max(price*.000001,available*.012)&&
+  return side!==a.lateSide&&ahead>Math.max(price*.000001,available*.012)&&
     ahead<=available*1.2&&
     (side==='BUY'?price>stop:price<stop);
  };
@@ -120,7 +144,7 @@ export function chartM5EarlyCue(a:{
    valid(o.side,o.trigger,o.invalidation)&&within(o.sourceAt,60000)){
   const advance=o.side==='BUY'?price-o.trigger!:o.trigger!-price;
   const risk=Math.abs(o.trigger!-o.invalidation!);
-  if(advance>=0&&advance<=risk*.55)
+  if(o.side!==a.lateSide&&advance>=0&&advance<=risk*.55)
    return result('BREAK_OBSERVED',o.side,
      o.side==='BUY'?'كسر صاعد مرصود':'كسر هابط مرصود',
      'الكسر مؤكد بعد بدايته · ليست إشارة قبل الحركة أو تنفيذ',
