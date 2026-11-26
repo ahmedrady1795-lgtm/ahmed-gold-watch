@@ -1,4 +1,4 @@
-import {combineGoldLiquidity} from '../lib/gold-liquidity-meter.ts';
+import {combineGoldLiquidity,retainGoldVenueSamples} from '../lib/gold-liquidity-meter.ts';
 import {mergeOpeningAudit} from '../lib/gold-opening-audit.ts';
 import fs from 'node:fs/promises';
 import {nextGoldOpeningCall,validOpeningCall} from '../lib/gold-opening-call.ts';
@@ -110,8 +110,9 @@ async function observe(){
     flowRefresh=Promise.allSettled([
       json('/api/gold-perp-flow'),json('/api/paxg-flow')
     ]).then(([p,t])=>{
-      if(p.status==='fulfilled')perpFlow=p.value;
-      if(t.status==='fulfilled')tokenFlow=t.value;
+      const observed=Date.now();
+      perpFlow=retainGoldVenueSamples(p.status==='fulfilled'?p.value:null,perpFlow,observed);
+      tokenFlow=retainGoldVenueSamples(t.status==='fulfilled'?t.value:null,tokenFlow,observed);
     }).finally(()=>{flowRefresh=null;});
   }
   const refresh=Date.now()-chartAttempt>=15000&&(!chart||Date.now()-chartAt>=30000);
