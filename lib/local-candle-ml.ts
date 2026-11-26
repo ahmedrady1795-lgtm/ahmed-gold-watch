@@ -60,22 +60,29 @@ function evaluate(b:Bar[],h:number,neural=false,gold=false):LocalHorizon{
  const current=features(b,b.length-1);
  if(!current)return empty();
  const ex:Example[]=[];
- for(let i=12;i+h<b.length;i++){
+ // GOLD M5 simulates issuance in the final minute before the actual
+ // next 5-minute opening; the forming minute is never a feature or label.
+ const gap=gold&&h===5?1:0,span=h+gap;
+ for(let i=12;i+span<b.length;i++){
    const x=features(b,i);
-   if(!x||b[i+h].time-b[i].time!==h*60000||
-      b.slice(i+1,i+h+1).some((v,j)=>v.time-b[i+j].time!==60000))continue;
+   if(!x||b[i+span].time-b[i].time!==span*60000||
+      b.slice(i+1,i+span+1).some((v,j)=>v.time-b[i+j].time!==60000))continue;
    // Gold is graded on the forecast candle BODY, not close-to-close drift.
    // An M5 body starts at the first future minute and ends at the fifth.
-   const anchor=gold?b[i+1].open:b[i].close;
-   if(b[i+h].close===anchor)continue;
-   ex.push({i,x,y:b[i+h].close>anchor?1:0,end:i+h});
+   const anchor=gold?b[i+1+gap].open:b[i].close;
+   if(b[i+span].close===anchor)continue;
+   ex.push({i,x,y:b[i+span].close>anchor?1:0,end:i+span});
  }
  if(ex.length<180)return empty();
- const recent=ex.slice(-60);
+ const recent=ex.slice(gold&&h===5?-120:-60);
  // Overlapping five-minute labels are not independent test observations.
  // Keep the untouched final window and sample disjoint outcome intervals.
  const validation:Example[]=[];
- for(const e of recent)if(!gold||!validation.length||e.i>=validation.at(-1)!.end)validation.push(e);
+ for(const e of recent){
+   if(gold&&h===5&&b[e.i+1+gap].time%300000!==0)continue;
+   if(!gold||h===5||!validation.length||e.i>=validation.at(-1)!.end)validation.push(e);
+ }
+ if(validation.length<(gold&&h===5?20:40))return empty();
  const train=ex.filter(e=>e.end<recent[0].i);
  if(train.length<120)return empty();
  const w=Array(current.length).fill(0) as number[];
@@ -120,9 +127,14 @@ export function localCandleMl(scope:string,raw:unknown,now:number,ready:boolean)
  const last=bars.at(-1);
  if(bars.length<220||!last||now-last.time-60000>90000)return none();
  const key=scope+'|'+bars.map(b=>[b.time,b.open,b.high,b.low,b.close].join(':')).join('|');
- const cached=cache.get(key);if(cached)return cached;
+ // Keep the historical metrics available, but suppress a GOLD M5 opening
+ // direction outside the true pre-open window. No cached late/early call.
+ const goldWindow=scope.startsWith('GOLD:')?last.time+120000:null;
+ const forTime=(v:LocalCandleMl)=>goldWindow!=null&&(goldWindow%300000!==0||goldWindow-now>30000||goldWindow<=now)&&
+   (v.m5.side!=='WAIT'||v.neuralM5.side!=='WAIT')?{...v,m5:{...v.m5,side:'WAIT' as const},neuralM5:{...v.neuralM5,side:'WAIT' as const}}:v;
+ const cached=cache.get(key);if(cached)return forTime(cached);
  const gold=scope.startsWith('GOLD:');
  const result:LocalCandleMl={asOf:last.time+60000,m1:evaluate(bars,1,false,gold),m5:evaluate(bars,5,false,gold),neuralM1:evaluate(bars,1,true,gold),neuralM5:evaluate(bars,5,true,gold),tradeAuthorized:false};
  cache.set(key,result);while(cache.size>6)cache.delete(cache.keys().next().value!);
- return result;
+ return forTime(result);
 }
