@@ -9,7 +9,7 @@ RUN node tests/scalp-research-archive.mjs
 RUN node tests/scalp-early-execution.cjs
 RUN node tests/btc-quote-coherence.cjs
 RUN node tests/gold-early-execution.cjs
-RUN node tests/paxg-flow.cjs
+RUN node tests/paxg-flow.cjs && node tests/gold-liquidity-continuity.cjs && node tests/local-candle-ml.cjs
 RUN node tests/sniper-chart-command.cjs && node tests/sniper-gold-local-watch.cjs
 RUN node tests/market-lead-ai.cjs && node tests/sniper-m5-visible-prebreak.cjs
 RUN node tests/sniper-m1-reclaim-watch.cjs
