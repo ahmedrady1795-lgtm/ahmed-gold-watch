@@ -208,3 +208,34 @@ assert.equal(settleOpeningAudit([pending],open+303000,oldCall.source,futureBars)
 assert.equal(settleOpeningAudit([pending],open+303000,'foreign',futureBars)[0].outcome,'PENDING');
 assert.equal(settleOpeningAudit([pending],open+900000,oldCall.source,futureBars.slice(1))[0].outcome,'UNKNOWN');
 console.log('PASS: withheld research uses identical future-only settlement; stale or missing data is not a win');
+
+
+// V4: trend versus pullback, no future candle leakage or gap inference.
+const {goldOpeningRegime}=await import('../lib/gold-opening-call.ts');
+const regimeAt=open-25000;
+const trending=Array.from({length:16},(_,i)=>{
+ const p=i<12?3500+i*.4:3504.4-(i-11)*.2;
+ return {time:open-(17-i)*m,open:p,high:p+.24,low:p-.24,close:p+(i<12?.12:-.12)};
+});
+assert.equal(goldOpeningRegime(trending,regimeAt).regime,'PULLBACK_UP');
+assert.equal(goldOpeningRegime(trending.map(flip),regimeAt).regime,'PULLBACK_DOWN');
+assert.deepEqual(goldOpeningRegime([...trending,{time:open,open:3500,high:4000,low:3000,close:3900}],regimeAt),goldOpeningRegime(trending,regimeAt));
+assert.equal(goldOpeningRegime(trending.filter((_,i)=>i!==8),regimeAt).regime,'UNKNOWN');
+const {openingAdaptiveChoice,openingRegimeReport}=await import('../lib/gold-opening-audit.ts');
+const priorRows=Array.from({length:45},(_,i)=>{
+ const target=open-(46-i)*300000;
+ return {call:{...oldCall,target,issued:target-10000,quoteAt:target-11000,evidence:{
+   regime:'PULLBACK_UP',baseline:'BUY',ml:'BUY',neural:'WAIT',flow:'WAIT',
+   flowSources:0,flowState:'UNAVAILABLE',quoteAgeMs:1000,recordedAt:target-9000,adaptive:'WAIT',adaptiveModel:'COLLECTING'
+ }},outcome:'MISS',open:3500,close:3501,settledAt:target+303000};
+});
+const currentEvidence={baseline:'BUY',ml:'BUY',neural:'WAIT',flow:'WAIT'};
+assert.equal(openingAdaptiveChoice(priorRows.slice(0,10),oldCall.source,'PULLBACK_UP',issued,currentEvidence).adaptive,'WAIT');
+assert.equal(openingAdaptiveChoice(priorRows,oldCall.source,'PULLBACK_UP',issued,currentEvidence).adaptive,'BUY');
+assert.equal(openingAdaptiveChoice(priorRows,oldCall.source,'TREND_UP',issued,currentEvidence).adaptive,'WAIT');
+assert.equal(openingAdaptiveChoice(priorRows.map(r=>({...r,settledAt:open+300000})),oldCall.source,'PULLBACK_UP',issued,currentEvidence).adaptive,'WAIT');
+const report=openingRegimeReport(priorRows)[0];
+assert.equal(report.paired.find(p=>p.model==='baseline').modelHits,45);
+assert.equal(report.paired.find(p=>p.model==='baseline').originalHits,0);
+assert.equal(report.lossContext.noStrongFlow,45);
+console.log('PASS: V4 causal market regime, paired adaptive research, source/regime segregation and past-only selection');
