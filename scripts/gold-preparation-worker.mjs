@@ -31,7 +31,7 @@ try{
 if(openingCall&&!openingAudit.some(e=>e.call.target===openingCall.target))
  openingAudit.push({call:openingCall,outcome:'PENDING'});
 let chart=null,chartAt=0,chartAttempt=0,chartRefresh=null,previousQuotes=[];
-let flowRefresh=null,flowAttempt=0,perpFlow=null,tokenFlow=null;
+let flowRefresh=null,flowAttempt=0,perpFlow=null,tokenFlow=null,lastFlowReport=0,lastWithheldTarget=0;
 async function atomic(file,obj){
  const tmp=file+'.writing-'+process.pid;
  await fs.writeFile(tmp,JSON.stringify(obj),{mode:0o600});await fs.rename(tmp,file);
@@ -137,7 +137,22 @@ async function observe(){
   const q=quote,session=goldMarketSession(now).open;
   const feedFresh=g?.fresh===true&&now-contextFetchedAt<45000;
   const flow=combineGoldLiquidity(perpFlow,tokenFlow,now,session);
-  const opening=feedFresh?nextGoldOpeningCall(openingCall,now,g,q,previousQuotes,flow):null;
+  const opening=feedFresh?nextGoldOpeningCall(openingCall,now,g,q,previousQuotes,flow,true):null;
+  if(openingWork&&now-lastFlowReport>=15000){
+    lastFlowReport=now;
+    const sources=[...new Set(flow.sources)];
+    console.info('[GOLD-FLOW-COVERAGE]',JSON.stringify({sources,asOf:flow.asOf,
+      ageSeconds:flow.ageSeconds,stableSources:flow.stableSources??0,sampleCount:flow.sampleCount??0,
+      state:flow.state,strongSide:flow.strongSide}));
+  }
+  if(feedFresh&&!opening&&openingWork){
+    const candidate=nextGoldOpeningCall(openingCall,now,g,q,previousQuotes,flow);
+    if(candidate&&candidate.target!==lastWithheldTarget){
+      lastWithheldTarget=candidate.target;
+      console.info('[GOLD-M5-RESEARCH-WITHHELD]',JSON.stringify({target:candidate.target,
+        issued:candidate.issued,side:candidate.side,reason:'momentum without independent flow agreement'}));
+    }
+  }
   if(opening&&opening!==openingCall){
     await atomic(openingPath,opening);
     openingCall=opening;
