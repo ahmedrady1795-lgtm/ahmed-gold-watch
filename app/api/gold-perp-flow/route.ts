@@ -1,10 +1,8 @@
 import {readBybitGoldPerp,readBinanceGoldPerp,type PaxgFlow} from '../../../lib/paxg-flow';
-import {newVenueHistory,updateVenueHistory,observeBook,compareGoldVenues,observeLeadLag,type LeadPoint,type FlowPrint,type VenueEvidence,recordDepthFrame,readDepthHeatmap,observeGoldDepthPreparation,type DepthFrame} from '../../../lib/gold-flow-history';
+import {independentFlowSlot,collectIndependentFlow,newVenueHistory,updateVenueHistory,observeBook,compareGoldVenues,observeLeadLag,type LeadPoint,type FlowPrint,type VenueEvidence,recordDepthFrame,readDepthHeatmap,observeGoldDepthPreparation,type DepthFrame} from '../../../lib/gold-flow-history';
 import {spotBackoffMs} from '../../../lib/binance-cooldown';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
-let cache:PaxgFlow|null=null;
-let pending:Promise<PaxgFlow>|null=null;
 type Venue='bybit'|'binance';
 const retryAt={bybit:{book:0,tape:0},binance:{book:0,tape:0}};
 const failures:Record<string,string>={};
@@ -66,9 +64,12 @@ async function venueSample(venue:Venue):Promise<{flow:PaxgFlow;evidence:VenueEvi
  const evidence=updateVenueHistory(histories[venue],flow.source!,now,prints,depth);
  return {flow,evidence};
 }
+const freshVenue=(v:{flow:PaxgFlow},now:number)=>v.flow.tradeAt<=now&&v.flow.observedAt<=now&&
+ now-v.flow.tradeAt<=10000&&now-v.flow.observedAt<=12000;
+const slots=[independentFlowSlot(()=>venueSample('bybit'),freshVenue,3000),
+ independentFlowSlot(()=>venueSample('binance'),freshVenue,3000)];
 async function sample():Promise<PaxgFlow>{
- // Parallel independent snapshots, bounded cadence, independent cooldowns.
- const [a,b]=await Promise.all([venueSample('bybit'),venueSample('binance')]);
+ const [a,b]=await collectIndependentFlow(slots);
  const now=Date.now();
  const fresh=[a,b].filter((x):x is NonNullable<typeof x>=>Boolean(x&&now-x.flow.tradeAt<=15000&&now-x.flow.observedAt<=12000));
  if(now-lastReport>=30000){lastReport=now;console.info('[GOLD-PERP-SOURCES]',JSON.stringify({failures,bybit:a?.flow?{count:a.flow.count,tradeAt:a.flow.tradeAt}:null,binance:b?.flow?{count:b.flow.count,tradeAt:b.flow.tradeAt}:null}));}
@@ -90,9 +91,5 @@ async function sample():Promise<PaxgFlow>{
    ...lead,actionable:false}};
 }
 export async function GET(){
- if(!cache||Date.now()-cache.observedAt>=3000){
-   pending??=sample().then(v=>cache=v).finally(()=>{pending=null;});
-   await pending;
- }
- return Response.json(cache,{headers:{'Cache-Control':'no-store'}});
+ return Response.json(await sample(),{headers:{'Cache-Control':'no-store'}});
 }
