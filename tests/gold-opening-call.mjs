@@ -21,6 +21,14 @@ for(const buy of [true,false]){
  const tooEarly=open-25000;
  assert.equal(nextGoldOpeningCall(null,tooEarly,chart,{...q,sourceTime:tooEarly-300,fetchedAt:tooEarly}),null,'reserve early window for a genuine setup');
  assert.equal(call?.side,buy?'BUY':'SELL');
+ const opposite=buy?'SELL':'BUY';
+ const flow={asOf:issued-2000,sources:['Bybit XAUUSDT perpetual','Binance PAXG/USDT proxy'],
+   state:opposite,strongSide:opposite};
+ assert.equal(nextGoldOpeningCall(null,issued,chart,q,[prior],flow),null,'fresh two-source disagreement vetoes');
+ assert.equal(nextGoldOpeningCall(null,issued,chart,q,[prior],{...flow,state:'CONFLICT',strongSide:'WAIT'}),null);
+ assert.equal(nextGoldOpeningCall(null,issued,chart,q,[prior],{...flow,asOf:issued-20000})?.side,call.side,'stale flow does not veto');
+ assert.equal(nextGoldOpeningCall(null,issued,chart,q,[prior],{...flow,sources:[flow.sources[0]]})?.side,call.side,'one proxy cannot veto');
+ assert.equal(nextGoldOpeningCall(call,issued+1,chart,q,[prior],flow),call,'already issued forecast remains immutable');
  assert.equal(call.target,open);
  assert.equal(call.issued,issued);
  assert.ok(validOpeningCall(call,open));
