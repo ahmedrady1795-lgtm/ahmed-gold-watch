@@ -1,6 +1,8 @@
 'use client';
 
 import {validOpeningCall,openingWindowMs,type GoldOpeningCall} from '../lib/gold-opening-call';
+import {openingQuoteSource} from '../lib/gold-display-observation';
+import {useGoldDisplayObservations} from './useGoldDisplayObservations';
 import {buildNewsIntelligence} from '../lib/news-intelligence';
 import {assessSniperMarketContext,type SentimentReading} from '../lib/sniper-market-context';
 import {usePaxgComparison,usePaxgFlow} from './usePaxgComparison';
@@ -619,30 +621,40 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
 
  type PreOpen={outcome?:string;serverOpening?:boolean;priceAt?:number;proxy?:PaxgSide;proxySource?:string;scope:string;target:number;issued:number;side:'BUY'|'SELL';reason:string};
  const [preOpen,setPreOpen]=useState<PreOpen|null>(null);
- const [openingQuality,setOpeningQuality]=useState<{hits:number;misses:number}|null>(null);
+ type DirectionScore={hits:number;misses:number};
+ const [openingQuality,setOpeningQuality]=useState<DirectionScore|null>(null);
+ const [methodScores,setMethodScores]=useState<{preparation:DirectionScore;continuation:DirectionScore}|null>(null);
+ const [openingUnavailable,setOpeningUnavailable]=useState(false);
  const [serverHistory,setServerHistory]=useState<{call:GoldOpeningCall;outcome:string}[]>([]);
  const [serverOpening,setServerOpening]=useState<GoldOpeningCall|null>(null);
  useEffect(()=>{
    if(asset!=='GOLD')return;
-   let busy=false;
+   let busy=false,received=false,lastAttempt=0;
    const controller=new AbortController();
    async function poll(force=false){
      if(busy||document.hidden||controller.signal.aborted)return;
-     const elapsed=Date.now()%300000;
-     if(!force&&elapsed>10000&&elapsed<300000-openingWindowMs)return;
-     busy=true;
+     const current=Date.now(),elapsed=current%300000;
+     const outsideWindow=elapsed>10000&&elapsed<300000-openingWindowMs;
+     if(!force&&outsideWindow&&current-lastAttempt<(received?60000:6000))return;
+     busy=true;lastAttempt=current;
+     const attempt=new AbortController();
+     const cancel=()=>attempt.abort();
+     controller.signal.addEventListener('abort',cancel);
+     const timer=setTimeout(cancel,12000);
      try{
-       const res=await fetch('/api/gold-opening',{cache:'no-store',
-         signal:AbortSignal.any([controller.signal,AbortSignal.timeout(4000)])});
-       if(res.ok){
-         const {call,recent,quality}=await res.json();
-         if(!controller.signal.aborted&&Number.isSafeInteger(quality?.hits)&&quality.hits>=0&&
-           Number.isSafeInteger(quality?.misses)&&quality.misses>=0)setOpeningQuality(quality);
-         if(!controller.signal.aborted&&Array.isArray(recent))setServerHistory(recent.filter(r=>
-           validOpeningCall(r?.call,r?.call?.issued)&&r.call.issued<=Date.now()));
-         if(!controller.signal.aborted&&validOpeningCall(call,Date.now()))setServerOpening(call);
-       }
-     }catch{}finally{busy=false;}
+       const res=await fetch('/api/gold-opening',{cache:'no-store',signal:attempt.signal});
+       if(!res.ok)throw Error('opening data unavailable');
+       const {call,recent,quality,byMethod}=await res.json();
+       if(controller.signal.aborted)return;
+       const validScore=(v:any)=>Number.isSafeInteger(v?.hits)&&v.hits>=0&&Number.isSafeInteger(v?.misses)&&v.misses>=0;
+       if(!validScore(quality))throw Error('missing opening results');
+       received=true;setOpeningUnavailable(false);setOpeningQuality(quality);
+       if(validScore(byMethod?.preparation)&&validScore(byMethod?.continuation))setMethodScores(byMethod);
+       if(Array.isArray(recent))setServerHistory(recent.filter(r=>
+         validOpeningCall(r?.call,r?.call?.issued)&&r.call.issued<=Date.now()));
+       if(validOpeningCall(call,Date.now()))setServerOpening(old=>old?.issued===call.issued&&old?.target===call.target?old:call);
+     }catch{if(!controller.signal.aborted)setOpeningUnavailable(true);}
+     finally{clearTimeout(timer);controller.signal.removeEventListener('abort',cancel);busy=false;}
    }
    const resume=()=>{if(!document.hidden)void poll(true);};
    resume();
@@ -656,7 +668,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    const target=(Math.floor(issued/300000)+1)*300000;
    if(asset==='GOLD'){
      const server=serverOpening;
-     if(validOpeningCall(server,issued)&&server.source===x?.candleSource&&server.quoteSource===liveQuote?.source&&!providerTransition&&!historicalOnly){
+     if(validOpeningCall(server,issued)&&server.source===x?.candleSource&&server.quoteSource===openingQuoteSource(liveQuote?.source)&&!providerTransition&&!historicalOnly){
        if(preOpen?.scope!==forecastScope||preOpen.target!==server.target||preOpen.issued!==server.issued){
          const proxy=paxg&&paxg.observedAt<=server.issued&&server.issued-paxg.observedAt<=12000&&
            paxg.tradeAt<=server.issued&&server.issued-paxg.tradeAt<=15000?paxg:null;
@@ -705,6 +717,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  };
  const visiblePreOpen=preOpen?.scope===forecastScope&&now>=preOpen.issued-3000&&
    now<preOpen.target+300000?preOpen:null;
+ const displayedOpening=asset==='GOLD'&&marketOpen&&!providerTransition&&visiblePreOpen?.serverOpening&&
+   visiblePreOpen.issued===serverOpening?.issued&&visiblePreOpen.target===serverOpening?.target?serverOpening:null;
+ const displayAudit=useGoldDisplayObservations(displayedOpening,asset==='GOLD'?liveQuote:null,now);
  const [previousCalls,setPreviousCalls]=useState<PreOpen[]>([]);
  useEffect(()=>{
    const key='qannas-preopen-chart:'+forecastScope;
@@ -1946,7 +1961,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
            {current&&(r.serverOpening||!movementRecords.some(v=>v.asset===asset&&v.source===String(x?.candleSource||'')&&
              v.issuedAt>=r.issued&&v.issuedAt<=now&&v.kind==='EARLY'))&&<>
              <line x1={px} y1={y} x2={px-34} y2={ly-3} stroke={color} strokeWidth=".8"/>
-             <text x={px-68} y={ly} textAnchor="middle" direction="rtl" fill={color}
+             <text ref={current&&displayedOpening?displayAudit.setChartLabel:undefined} x={px-68} y={ly} textAnchor="middle" direction="rtl" fill={color}
                stroke="#07111b" strokeWidth="3" paintOrder="stroke" fontSize="10" fontWeight="800">{label}</text>
            </>}
          </g>;
@@ -2075,7 +2090,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      data-qannas-chart-side={commandSide}
      aria-label={'حالة القناص: '+commandHeadline}>
      {visiblePreOpen&&marketOpen&&!providerTransition&&
-       <div className="sniper-chart-command-head" data-gold-opening-at={asset==='GOLD'?visiblePreOpen.target:undefined} data-btc-opening-at={asset==='BTC'?visiblePreOpen.target:undefined} data-opening-side={visiblePreOpen.side}>
+       <div ref={displayAudit.marker} className="sniper-chart-command-head" data-gold-opening-at={asset==='GOLD'?visiblePreOpen.target:undefined} data-btc-opening-at={asset==='BTC'?visiblePreOpen.target:undefined} data-opening-side={visiblePreOpen.side}>
          <small>{now<visiblePreOpen.target?'الشمعة القادمة':'توقع الافتتاح'} · {h(visiblePreOpen.target)}</small>
          <strong>{openingLabel(visiblePreOpen)} · قبلها {Math.ceil((visiblePreOpen.target-visiblePreOpen.issued)/1000)}ث</strong>
        </div>}
@@ -2167,6 +2182,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    </details>
    
       <details className="sniper-performance-drawer">
+       <summary>نتيجة قنص M5{asset==='GOLD'&&
+         <>{' · قبل الافتتاح '}{openingQuality?openingQuality.hits+'/'+(openingQuality.hits+openingQuality.misses)+(openingUnavailable?' (آخر قراءة)':''):openingUnavailable?'غير متاح':'جارٍ التحميل'}</>} · بداية {movementStats.openingHits}/{movementStats.openingScored} · متابعة {movementStats.followingHits}/{movementStats.followingScored} · نهاية {movementStats.closingHits}/{movementStats.closingScored} <span>＋</span></summary>
        <div data-sniper-decision-provenance style={{padding:'4px 12px',fontSize:11,color:'#91b5c6'}}>
          {movementSignal.phase==='PREPARE'&&movementSignal.side!=='WAIT'?
            'مرشح قبل الكسر · '+(movementSignal.setupKind??'M1/M5')+
@@ -2181,11 +2198,18 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          انعكاس مبكر: {movementStats.reversalHits}/{movementStats.reversalScored}
          {' · '}استمرار: {movementStats.continuationHits}/{movementStats.continuationScored}
        </div>
-       <summary>نتيجة قنص M5{asset==='GOLD'&&openingQuality&&
-         <>{' · قبل الافتتاح '}{openingQuality.hits}/{openingQuality.hits+openingQuality.misses}</>} · بداية {movementStats.openingHits}/{movementStats.openingScored} · متابعة {movementStats.followingHits}/{movementStats.followingScored} · نهاية {movementStats.closingHits}/{movementStats.closingScored} <span>＋</span></summary>
+
      <div className="sniper-movement-summary" role="status" style={{
        display:'flex',flexWrap:'wrap',gap:'8px 15px',padding:'9px 12px',
        fontSize:12,color:'#bad8e6',borderBottom:'1px solid #27465a'}}>
+       {asset==='GOLD'&&methodScores&&<span>اتجاه إغلاق M5 بعد توقع الافتتاح · تحضير {methodScores.preparation.hits}/{methodScores.preparation.hits+methodScores.preparation.misses} · استمرار {methodScores.continuation.hits}/{methodScores.continuation.hits+methodScores.continuation.misses}</span>}
+       {asset==='GOLD'&&<details><summary>أول حركة مرصودة بعد ظهور التنبيه على الجهاز ({displayAudit.rows.length})</summary>
+         <small>من وقت ظهور تنبيه الافتتاح على الشاشة حتى نهاية شمعته. نقيس أول تغير مرصود بمقدار سبريد الظهور. عند انقطاع الأسعار أو غياب السبريد تُسجّل غير محسومة.</small>
+         {displayAudit.rows.slice().reverse().map(r=><div key={r.target+'-'+r.issued}>
+           {r.method} {r.side==='BUY'?'شراء':'بيع'} · إصدار {new Date(r.issued).toLocaleTimeString('ar-EG')} · ظهور {new Date(r.shown).toLocaleTimeString('ar-EG')}
+           {' · تأخير '+((r.shown-r.issued)/1000).toFixed(1)+'ث · سعر '+(r.price?.toFixed(2)??'—')+' · '+r.outcome}
+           {r.moveAt!=null?' بعد '+((r.moveAt-r.shown)/1000).toFixed(1)+'ث':''}</div>)}
+       </details>}
        {asset==='GOLD'&&<span>{paxgComparison}</span>}
        <span>إشارات بداية M5: <b>{movementStats.openingHits}/{movementStats.openingScored}</b></span>
        <span>إشارات نهاية M5: <b>{movementStats.closingHits}/{movementStats.closingScored}</b></span>
