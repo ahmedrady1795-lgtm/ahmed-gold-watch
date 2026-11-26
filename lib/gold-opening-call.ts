@@ -17,7 +17,7 @@ export function validOpeningCall(value:unknown,now:number):value is GoldOpeningC
 }
 export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  chart:{fresh?:boolean;candleSource?:string;chartCandles?:unknown;chartHigherFrames?:{m5?:unknown}}|null,
- quote:any,previousQuotes:readonly any[]=[],flow?:GoldCombinedLiquidity|null):GoldOpeningCall|null{
+ quote:any,previousQuotes:readonly any[]=[],flow?:GoldCombinedLiquidity|null,requireFlowForContinuation=false):GoldOpeningCall|null{
  const target=(Math.floor(now/300000)+1)*300000;
  if(previous?.target===target&&validOpeningCall(previous,now))return previous;
  if(target-now>openingWindowMs||!goldMarketSession(now).open||!goldMarketSession(target).open||
@@ -67,6 +67,10 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  const lean=assessM5CandleLean({now,price:tick.price,sourceReady:true,
    m1:chart.chartCandles,m5:chart.chartHigherFrames?.m5});
  if(lean.phase!=='CLOSE'||lean.side==='WAIT'||(waveEnd&&waveEnd.side!==lean.side)||contradicts(lean.side))return null;
+ // A low-performing momentum-only candidate remains research unless fresh
+ // multi-venue execution agrees. Reversal hypotheses retain their separate path.
+ if(requireFlowForContinuation&&!lean.reason.includes('انعكاس محتمل')&&
+   (!flowFresh||flow!.strongSide!==lean.side))return null;
  // Closed-candle momentum alone is not enough to freeze an opening call.
  // Demand two distinct recent same-source quotes and reject live reversal.
  const prior=previousQuotes.slice(-2).filter(q=>q?.ok===true&&q.status==='live'&&
