@@ -1,4 +1,4 @@
-import {assessM5CandleLean,detectWaveEnd} from './sniper-m5-candle-lean.ts';
+import {assessM5CandleLean,detectWaveEnd,detectLiveWaveEnd} from './sniper-m5-candle-lean.ts';
 import {goldQuoteMatchesCandles,readGoldPreparation} from './gold-preparation-lead.ts';
 import {acceptGoldPulse} from './gold-tick-quality.ts';
 import {goldMarketSession} from './gold-market-session.ts';
@@ -38,7 +38,13 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  // continuation is a separately labelled watch, not verified order flow.
  const closed=Array.isArray(chart.chartCandles)?
    chart.chartCandles.filter(b=>b?.time+60000<=now-3000):[];
- const waveEnd=detectWaveEnd({now,price:tick.price,quoteAt:tick.sourceTime,
+ const liveSequence=[...previousQuotes.slice(-2),quote].map(q=>{
+   const p=q?.ok===true&&q.source===quote.source&&q.status==='live'&&q.fetchedAt<=now?
+     acceptGoldPulse(q,q.fetchedAt):null;
+   return p?{at:p.sourceTime,price:p.price}:{at:NaN,price:NaN};
+ });
+ const liveEnd=detectLiveWaveEnd({now,sourceReady:true,m1:closed,quotes:liveSequence});
+ const waveEnd=liveEnd??detectWaveEnd({now,price:tick.price,quoteAt:tick.sourceTime,
    sourceReady:true,m1:closed});
  const preparation=readGoldPreparation({now,source:chart.candleSource,bars:closed,
    quote,previousQuotes,marketOpen:true}).plan;
