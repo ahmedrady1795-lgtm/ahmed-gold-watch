@@ -74,3 +74,18 @@ for(const buy of [true,false]){
 const accelerating=Array.from({length:18},(_,i)=>({a:i,q:'1',T:now-17000+i*1000,m:i<8,p:100+i*.001}));
 assert.equal(readPaxgFlow(null,accelerating,now).accelerationSide,'BUY');
 console.log('PASS PAXG price response, absorption and separate short-window acceleration without a depth vote');
+
+const {readOkxGoldPerp,okxGoldPrints}=context.exports;
+const okxBook={code:'0',data:[{...book(true),ts:String(now)}]};
+const okxTape={code:'0',data:levels.map(i=>({instId:'XAU-USDT-SWAP',tradeId:String(i),px:'100',sz:'1',side:'buy',ts:String(now-i*1000)}))};
+assert.equal(readOkxGoldPerp(okxBook,okxTape,now).side,'BUY');
+assert.equal(readOkxGoldPerp(null,okxTape,now).tradeDeltaPct,100);
+assert.equal(readOkxGoldPerp(okxBook,{...okxTape,data:okxTape.data.map(t=>({...t,side:'sell'}))},now).tradeDeltaPct,-100);
+assert.equal(readOkxGoldPerp(okxBook,okxTape,now+16000).side,'UNAVAILABLE');
+assert.equal(readOkxGoldPerp(okxBook,{...okxTape,data:Array(5).fill(okxTape.data[0])},now).side,'UNAVAILABLE');
+assert.equal(readOkxGoldPerp(okxBook,{...okxTape,data:okxTape.data.map(t=>({...t,instId:'BTC-USDT-SWAP'}))},now).side,'UNAVAILABLE');
+assert.equal(okxGoldPrints(okxTape,now-6000).length,0);
+const okxRoute=fs.readFileSync('app/api/gold-perp-flow/route.ts','utf8');
+assert.match(okxRoute,/independentFlowSlot\(okxSample,freshVenue,5000\)/);
+assert.match(okxRoute,/instId=XAU-USDT-SWAP/);
+console.log('PASS: independent OKX gold venue, actual taker side, staleness, wrong symbols and duplicate rejection');
