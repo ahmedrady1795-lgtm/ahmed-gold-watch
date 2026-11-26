@@ -58,7 +58,7 @@ export function combineGoldLiquidity(perp:PaxgFlow|null|undefined,token:PaxgFlow
    if(!packet)continue;
    for(const f of [...(packet.venueSamples??[]),packet]){
      if(!eligible(f,allowed))continue;
-     const source=f.source!,old=rows.get(source);if(old&&old.at>=f.tradeAt)continue;
+     const source=f.source!,old=rows.get(source);if(old&&old.at>f.tradeAt)continue;
      let d=f.tradeDeltaPct!,stabilized=false;
      const history=f.executionHistory??packet.crossFlow?.venues.find(v=>v.source===source);
      if(history&&history.source===source&&Number.isFinite(history.asOf)&&history.asOf<=now&&now-history.asOf<=10000&&
@@ -67,16 +67,20 @@ export function combineGoldLiquidity(perp:PaxgFlow|null|undefined,token:PaxgFlow
        const stable=100*(history.buy60s-history.sell60s)/(history.buy60s+history.sell60s);
        d=.20*d+.80*stable;stabilized=true;
      }
+     if(old&&old.at===f.tradeAt&&(old.stable&&!stabilized||old.stable===stabilized&&old.count>=f.count))continue;
      rows.set(source,{source,delta:d,raw:f.tradeDeltaPct!,weight,at:f.tradeAt,count:f.count,stable:stabilized});
    }
  }
  const v=[...rows.values()];if(!v.length)return blank;
- const total=v.reduce((s,r)=>s+r.weight,0);
- const d=v.reduce((s,r)=>s+r.delta*r.weight,0)/total;
+ // A thin sample of three executions must not swing the meter as much as
+ // a populated tape. Cap reliability so one busy exchange cannot dominate.
+ const weightOf=(r:typeof v[number])=>r.weight*Math.min(1,r.count/20);
+ const total=v.reduce((s,r)=>s+weightOf(r),0);
+ const d=v.reduce((s,r)=>s+r.delta*weightOf(r),0)/total;
  const buy=Math.round((100+d)/2),sell=100-buy;
- const rawDelta=v.reduce((s,r)=>s+r.raw*r.weight,0)/total;
+ const rawDelta=v.reduce((s,r)=>s+r.raw*weightOf(r),0)/total;
  const stableSources=v.filter(r=>r.stable).length;
- const conflict=v.some(r=>r.raw>=35)&&v.some(r=>r.raw<=-35);
+ const conflict=v.some(r=>r.count>=8&&r.raw>=35)&&v.some(r=>r.count>=8&&r.raw<=-35);
  const recent=v.filter(r=>now-r.at<=8000&&r.count>=8);
  const buyAgree=recent.filter(r=>r.raw>=25),sellAgree=recent.filter(r=>r.raw<=-25);
  // At least two recent independent markets, including a gold perpetual,
@@ -90,7 +94,7 @@ export function combineGoldLiquidity(perp:PaxgFlow|null|undefined,token:PaxgFlow
    fastBuyPct:Math.round((100+rawDelta)/2),coverage:v.length>=2?'MULTI':'PARTIAL',stableSources,
    sampleCount:v.reduce((sum,r)=>sum+r.count,0),historyReady:stableSources===v.length,
    detail:v.map(r=>r.source+' Δ '+r.raw.toFixed(1)+'%').join(' | ')+
-     ' · متوسط نسب التنفيذ (وزن العقود 2 وPAXG 1؛ 80% سجل 60ث و20% العينة القصيرة لكل مصدر عند اكتمال عينة مرصودة كافية) · ليس سيولة XAUUSD العالمية أو تدفق رؤوس الأموال'};
+     ' · متوسط نسب التنفيذ (وزن العقود 2 وPAXG 1، مخفّض للعينة الأقل من 20 تنفيذًا؛ 80% سجل 60ث و20% العينة القصيرة عند اكتمال عينة مرصودة كافية) · ليس سيولة XAUUSD العالمية أو تدفق رؤوس الأموال'};
 }
 
 
