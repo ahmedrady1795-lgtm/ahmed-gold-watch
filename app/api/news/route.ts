@@ -7,8 +7,8 @@ export const runtime='nodejs';
 
 // The economic calendar must stay usable when the AI analysis snapshot is
 // warming up or temporarily degraded. Only real provider timestamps qualify.
-// Show all confirmed releases remaining today, not only the next 8 hours.
-const WINDOW_MS=24*60*60*1000;
+// Include the nearest confirmed release even if today has no events.
+const WINDOW_MS=7*24*60*60*1000;
 // The BLS calendar event remains available all day after publication time,
 // even while upstream providers have not yet sent the actual result.
 const AGE_MS=24*60*60*1000;
