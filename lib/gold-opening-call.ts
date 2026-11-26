@@ -1,4 +1,4 @@
-import {assessM5CandleLean} from './sniper-m5-candle-lean.ts';
+import {assessM5CandleLean,detectWaveEnd} from './sniper-m5-candle-lean.ts';
 import {goldQuoteMatchesCandles,readGoldPreparation} from './gold-preparation-lead.ts';
 import {acceptGoldPulse} from './gold-tick-quality.ts';
 import {goldMarketSession} from './gold-market-session.ts';
@@ -28,9 +28,12 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  // continuation is a separately labelled watch, not verified order flow.
  const closed=Array.isArray(chart.chartCandles)?
    chart.chartCandles.filter(b=>b?.time+60000<=now-3000):[];
+ const waveEnd=detectWaveEnd({now,price:tick.price,quoteAt:tick.sourceTime,
+   sourceReady:true,m1:closed});
  const preparation=readGoldPreparation({now,source:chart.candleSource,bars:closed,
    quote,previousQuotes,marketOpen:true}).plan;
  if(preparation){
+   if(waveEnd&&waveEnd.side!==preparation.side)return null;
    // A coil records a conditional breakout. Only promote it to an opening
    // forecast when two independent quotes show an approach to its trigger.
    if(preparation.setup==='PRESSURE_COIL'){
@@ -53,7 +56,7 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  if(target-now>15000)return null;
  const lean=assessM5CandleLean({now,price:tick.price,sourceReady:true,
    m1:chart.chartCandles,m5:chart.chartHigherFrames?.m5});
- if(lean.phase!=='CLOSE'||lean.side==='WAIT')return null;
+ if(lean.phase!=='CLOSE'||lean.side==='WAIT'||(waveEnd&&waveEnd.side!==lean.side))return null;
  // Closed-candle momentum alone is not enough to freeze an opening call.
  // Demand two distinct recent same-source quotes and reject live reversal.
  const prior=previousQuotes.slice(-2).filter(q=>q?.ok===true&&q.status==='live'&&
