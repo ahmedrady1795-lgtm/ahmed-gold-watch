@@ -51,12 +51,12 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  // Treat a countertrend candidate as research unless rejection or fresh
  // agreeing execution supports it. A recent opposing multi-venue tilt
  // also blocks promotion even if the stronger consensus threshold is unmet.
- const leg=closed.slice().sort((a,b)=>a.time-b.time).slice(-8);
- const ranges=leg.map(b=>b.high-b.low).sort((a,b)=>a-b);
- const typical=ranges[Math.floor(ranges.length/2)];
- const travel=leg.length===8&&leg.every((b,i)=>!i||b.time-leg[i-1].time===60000)&&typical>0?
-   leg[7].close-leg[0].open:0;
- const trend=travel>=typical*2?'BUY':travel<=-typical*2?'SELL':'WAIT';
+ const trendLeg=closed.slice().sort((a,b)=>a.time-b.time).slice(-8);
+ const trendRanges=trendLeg.map(b=>b.high-b.low).sort((a,b)=>a-b);
+ const trendRange=trendRanges[Math.floor(trendRanges.length/2)];
+ const travel=trendLeg.length===8&&trendLeg.every((b,i)=>!i||b.time-trendLeg[i-1].time===60000)&&trendRange>0?
+   trendLeg[7].close-trendLeg[0].open:0;
+ const trend=travel>=trendRange*2?'BUY':travel<=-trendRange*2?'SELL':'WAIT';
  const weakOpposition=(side:'BUY'|'SELL')=>flowFresh&&
    (flow!.state==='BUY'||flow!.state==='SELL')&&flow!.state!==side;
  const counterTrend=(side:'BUY'|'SELL')=>trend!=='WAIT'&&trend!==side;
