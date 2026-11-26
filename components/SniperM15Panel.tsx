@@ -619,6 +619,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
 
  type PreOpen={outcome?:string;serverOpening?:boolean;priceAt?:number;proxy?:PaxgSide;proxySource?:string;scope:string;target:number;issued:number;side:'BUY'|'SELL';reason:string};
  const [preOpen,setPreOpen]=useState<PreOpen|null>(null);
+ const [openingQuality,setOpeningQuality]=useState<{hits:number;misses:number}|null>(null);
  const [serverHistory,setServerHistory]=useState<{call:GoldOpeningCall;outcome:string}[]>([]);
  const [serverOpening,setServerOpening]=useState<GoldOpeningCall|null>(null);
  useEffect(()=>{
@@ -634,7 +635,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
        const res=await fetch('/api/gold-opening',{cache:'no-store',
          signal:AbortSignal.any([controller.signal,AbortSignal.timeout(4000)])});
        if(res.ok){
-         const {call,recent}=await res.json();
+         const {call,recent,quality}=await res.json();
+         if(!controller.signal.aborted&&Number.isSafeInteger(quality?.hits)&&quality.hits>=0&&
+           Number.isSafeInteger(quality?.misses)&&quality.misses>=0)setOpeningQuality(quality);
          if(!controller.signal.aborted&&Array.isArray(recent))setServerHistory(recent.filter(r=>
            validOpeningCall(r?.call,r?.call?.issued)&&r.call.issued<=Date.now()));
          if(!controller.signal.aborted&&validOpeningCall(call,Date.now()))setServerOpening(call);
@@ -2178,7 +2181,8 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          انعكاس مبكر: {movementStats.reversalHits}/{movementStats.reversalScored}
          {' · '}استمرار: {movementStats.continuationHits}/{movementStats.continuationScored}
        </div>
-       <summary>نتيجة قنص M5 · بداية {movementStats.openingHits}/{movementStats.openingScored} · متابعة {movementStats.followingHits}/{movementStats.followingScored} · نهاية {movementStats.closingHits}/{movementStats.closingScored} <span>＋</span></summary>
+       <summary>نتيجة قنص M5{asset==='GOLD'&&openingQuality&&
+         <>{' · قبل الافتتاح '}{openingQuality.hits}/{openingQuality.hits+openingQuality.misses}</>} · بداية {movementStats.openingHits}/{movementStats.openingScored} · متابعة {movementStats.followingHits}/{movementStats.followingScored} · نهاية {movementStats.closingHits}/{movementStats.closingScored} <span>＋</span></summary>
      <div className="sniper-movement-summary" role="status" style={{
        display:'flex',flexWrap:'wrap',gap:'8px 15px',padding:'9px 12px',
        fontSize:12,color:'#bad8e6',borderBottom:'1px solid #27465a'}}>

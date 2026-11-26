@@ -29,7 +29,7 @@ try{
 }catch{}
 if(openingCall&&!openingAudit.some(e=>e.call.target===openingCall.target))
  openingAudit.push({call:openingCall,outcome:'PENDING'});
-let chart=null,chartAt=0,chartAttempt=0,previousQuotes=[];
+let chart=null,chartAt=0,chartAttempt=0,chartRefresh=null,previousQuotes=[];
 async function atomic(file,obj){
  const tmp=file+'.writing-'+process.pid;
  await fs.writeFile(tmp,JSON.stringify(obj),{mode:0o600});await fs.rename(tmp,file);
@@ -102,14 +102,18 @@ async function observe(){
    return;
   }
   const refresh=Date.now()-chartAttempt>=15000&&(!chart||Date.now()-chartAt>=30000);
-  if(refresh)chartAttempt=Date.now();
-  if(refresh)try{chart=await json('/api/chart-history?asset=GOLD&preparation='+Date.now());
-   chartAt=Date.now();}catch{}
-  // Request the quote AFTER history, so a slow history warm-up cannot age
-  // the quote beyond the ten-second source freshness gate before issuance.
-  const quote=await json(chart?.gold?.candleSource==='Deriv · XAUUSD'?'/api/gold-tick?venue=deriv':'/api/quote').catch(()=>null);
+  if(refresh&&!chartRefresh){
+    chartAttempt=Date.now();
+    chartRefresh=json('/api/chart-history?asset=GOLD&preparation='+chartAttempt)
+      .then(value=>{chart=value;chartAt=Date.now();})
+      .catch(()=>{}).finally(()=>{chartRefresh=null;});
+  }
+  // While refreshing history, sample against the same usable context that
+  // selected the quote venue. Recheck its age after the quote arrives.
+  if(!chart?.gold?.fresh||Date.now()-chartAt>=45000)await chartRefresh;
+  const g=chart?.gold,source=String(g?.candleSource||''),contextFetchedAt=chartAt;
+  const quote=await json(source==='Deriv · XAUUSD'?'/api/gold-tick?venue=deriv':'/api/quote').catch(()=>null);
   const now=Date.now();
-  const g=chart?.gold,source=String(g?.candleSource||'');
   const m1=Array.isArray(g?.chartCandles)?g.chartCandles.filter(b=>b?.time+60000<=now-3000):[];
   let next=ledger;
   if(trustedSpotGoldSource(source))next=settleGoldLead(next,now,source,m1);
@@ -117,7 +121,7 @@ async function observe(){
    const prior=next.events.at(-1);next=settleGoldLead(next,now,prior.source,[]);
   }
   const q=quote,session=goldMarketSession(now).open;
-  const feedFresh=g?.fresh===true&&now-chartAt<45000;
+  const feedFresh=g?.fresh===true&&now-contextFetchedAt<45000;
   const opening=feedFresh?nextGoldOpeningCall(openingCall,now,g,q,previousQuotes):null;
   if(opening&&opening!==openingCall){
     await atomic(openingPath,opening);
