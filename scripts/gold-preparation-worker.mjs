@@ -1,5 +1,5 @@
 import {combineGoldLiquidity,retainGoldVenueSamples} from '../lib/gold-liquidity-meter.ts';
-import {mergeOpeningAudit} from '../lib/gold-opening-audit.ts';
+import {mergeOpeningAudit,settleOpeningAudit} from '../lib/gold-opening-audit.ts';
 import fs from 'node:fs/promises';
 import {nextGoldOpeningCall,validOpeningCall} from '../lib/gold-opening-call.ts';
 import {sidecarWorkAllowed} from '../lib/render-free-viewer-lease.ts';
@@ -24,6 +24,9 @@ try{
 // separate from directional hits; a hit is NOT a profitable trade.
 const openingAuditPath='/tmp/qannas-gold-m5-opening-audit.json';
 let openingAudit=[];
+const withheldPath='/tmp/qannas-gold-m5-withheld-audit.json';
+let withheldAudit=[];
+try{withheldAudit=mergeOpeningAudit(Date.now(),JSON.parse(await fs.readFile(withheldPath,'utf8')));}catch{}
 try{
  const saved=JSON.parse(await fs.readFile(openingAuditPath,'utf8'));
  openingAudit=mergeOpeningAudit(Date.now(),saved);
@@ -31,25 +34,13 @@ try{
 if(openingCall&&!openingAudit.some(e=>e.call.target===openingCall.target))
  openingAudit.push({call:openingCall,outcome:'PENDING'});
 let chart=null,chartAt=0,chartAttempt=0,chartRefresh=null,previousQuotes=[];
-let perpRefresh=null,tokenRefresh=null,perpAttempt=0,tokenAttempt=0,perpFlow=null,tokenFlow=null,lastFlowReport=0,lastWithheldTarget=0;
+let perpRefresh=null,tokenRefresh=null,perpAttempt=0,tokenAttempt=0,perpFlow=null,tokenFlow=null,lastFlowReport=0;
 async function atomic(file,obj){
  const tmp=file+'.writing-'+process.pid;
  await fs.writeFile(tmp,JSON.stringify(obj),{mode:0o600});await fs.rename(tmp,file);
 }
 async function auditOpening(now,source,bars,opening){
- const next=openingAudit.map(e=>{
-  if(e.outcome!=='PENDING'||now<e.call.target+303000)return e;
-  const c=e.call;
-  const map=new Map(bars.filter(b=>[b.time,b.open,b.high,b.low,b.close].every(Number.isFinite)&&
-    b.low>0&&b.high>=Math.max(b.open,b.close)&&b.low<=Math.min(b.open,b.close)).map(b=>[b.time,b]));
-  const rows=Array.from({length:5},(_,i)=>map.get(c.target+i*60000));
-  if(source!==c.source||rows.some(b=>!b)){
-   return now>=c.target+900000?{...e,outcome:'UNKNOWN',settledAt:now}:e;
-  }
-  const open=rows[0].open,close=rows[4].close,move=close-open;
-  const outcome=move===0?'FLAT':(c.side==='BUY'?move>0:move<0)?'HIT':'MISS';
-  return {...e,outcome,open,close,settledAt:now};
- });
+ const next=settleOpeningAudit(openingAudit,now,source,bars);
  if(opening&&!next.some(e=>e.call.target===opening.target)){
    next.push({call:opening,outcome:'PENDING'});
    console.info('[GOLD-M5-OPEN] ISSUED',JSON.stringify(opening));
@@ -64,6 +55,22 @@ async function auditOpening(now,source,bars,opening){
    openingAudit=next.slice(-576);
  }
 }
+async function auditWithheld(now,source,bars,candidate){
+ const next=settleOpeningAudit(withheldAudit,now,source,bars);
+ if(candidate&&!next.some(e=>e.call.target===candidate.target)){
+   next.push({call:candidate,outcome:'PENDING'});
+   console.info('[GOLD-M5-WITHHELD-AUDIT] ISSUED',JSON.stringify(candidate));
+ }
+ if(JSON.stringify(next)!==JSON.stringify(withheldAudit)){
+   for(const e of next){
+     const old=withheldAudit.find(x=>x.call.target===e.call.target);
+     if(old?.outcome==='PENDING'&&e.outcome!=='PENDING')
+       console.info('[GOLD-M5-WITHHELD-AUDIT] SETTLED',JSON.stringify(e));
+   }
+   await atomic(withheldPath,next.slice(-576));
+   withheldAudit=next.slice(-576);
+ }
+}
 async function init(){
  // Restore the packaged checkpoint even when GitHub is unavailable, then
  // merge newer evidence without reissuing any restored forecast.
@@ -75,6 +82,8 @@ async function init(){
  }catch{}
  openingAudit=mergeOpeningAudit(Date.now(),packaged?.openingAudit,remote?.openingAudit,openingAudit);
  await atomic(openingAuditPath,openingAudit);
+ withheldAudit=mergeOpeningAudit(Date.now(),packaged?.withheldAudit,remote?.withheldAudit,withheldAudit);
+ await atomic(withheldPath,withheldAudit);
  for(const file of paths)try{
   ledger=safeGoldLeadLedger(JSON.parse(await fs.readFile(file,'utf8')),Date.now());
   path=file;return;
@@ -96,7 +105,7 @@ async function observe(){
   // also runs a bounded pre-open window with no viewer, while the host is up.
   // Prewarm one minute ahead; allow settlement shortly after a boundary.
   const started=Date.now(),elapsed=started%300000;
-  const due=openingAudit.some(e=>e.outcome==='PENDING'&&started>=e.call.target+303000);
+  const due=[...openingAudit,...withheldAudit].some(e=>e.outcome==='PENDING'&&started>=e.call.target+303000);
   const openingWork=goldMarketSession(started).open&&elapsed>=210000;
   const settlementWork=due&&elapsed<45000;
   if(!(await sidecarWorkAllowed(started))&&!openingWork&&!settlementWork){
@@ -151,14 +160,10 @@ async function observe(){
       ageSeconds:flow.ageSeconds,stableSources:flow.stableSources??0,sampleCount:flow.sampleCount??0,
       state:flow.state,strongSide:flow.strongSide}));
   }
-  if(feedFresh&&!opening&&openingWork){
-    const candidate=nextGoldOpeningCall(openingCall,now,g,q,previousQuotes,flow);
-    if(candidate&&candidate.target!==lastWithheldTarget){
-      lastWithheldTarget=candidate.target;
-      console.info('[GOLD-M5-RESEARCH-WITHHELD]',JSON.stringify({target:candidate.target,
-        issued:candidate.issued,side:candidate.side,reason:'momentum without independent flow agreement'}));
-    }
-  }
+  // A withheld forecast is research only, never written to openingPath.
+  const withheld=feedFresh&&!opening&&openingWork?
+    nextGoldOpeningCall(openingCall,now,g,q,previousQuotes,flow):null;
+  await auditWithheld(now,feedFresh?source:'',feedFresh?m1:[],withheld);
   if(opening&&opening!==openingCall){
     await atomic(openingPath,opening);
     openingCall=opening;
