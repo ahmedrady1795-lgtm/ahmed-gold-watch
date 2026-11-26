@@ -122,7 +122,7 @@ export function recordDepthFrame(history:DepthFrame[],raw:any,at:number,now:numb
  return true;
 }
 export function readDepthHeatmap(history:readonly DepthFrame[],source:string,now:number):GoldDepthHeatmap|null{
- if(!['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual'].includes(source))return null;
+ if(!['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual','OKX XAUUSDT perpetual'].includes(source))return null;
  const frames=history.filter(f=>f.at<=now&&now-f.at<=120000).slice(-42);
  const last=frames.at(-1);
  if(!last||now-last.at>8000)return null;
@@ -155,7 +155,7 @@ export function readDepthHeatmap(history:readonly DepthFrame[],source:string,now
 export type GoldDepthPreparation={source:string;asOf:number;side:'BUY'|'SELL';samples:number;
  spanMs:number;level:number;deltaPct:number;priceChangeBps:number;actionable:false};
 export function observeGoldDepthPreparation(history:readonly DepthFrame[],flow:PaxgFlow|null,now:number):GoldDepthPreparation|null{
- if(!flow||!['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual'].includes(flow.source||'')||
+ if(!flow||!['Bybit XAUUSDT perpetual','Binance XAUUSDT perpetual','OKX XAUUSDT perpetual'].includes(flow.source||'')||
    flow.side==='UNAVAILABLE'||!Number.isFinite(flow.observedAt)||flow.observedAt>now||now-flow.observedAt>10000||
    !Number.isFinite(flow.tradeAt)||flow.tradeAt>flow.observedAt||now-flow.tradeAt>8000||
    flow.count<12||!Number.isFinite(flow.tradeDeltaPct)||Math.abs(flow.tradeDeltaPct!)<40||Math.abs(flow.tradeDeltaPct!)>100)return null;
