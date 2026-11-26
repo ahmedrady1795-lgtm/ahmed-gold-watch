@@ -204,3 +204,20 @@ console.log('PASS: immediate closed-minute evidence, independent reversal record
 assert.match(nearEnd.reason,/سياق M5/,'use the last closed M5 throughout the final minute');
 const chased=run({...data,now:start+251000,m1:[...history,...reversing],price:99.5});
 assert.equal(chased.side,'WAIT','an extended live drop cannot become a fresh momentum sell');
+
+const wave=load('lib/sniper-m5-candle-lean.ts').detectWaveEnd;
+const waveBars=Array.from({length:10},(_,i)=>{
+ const open=100+i*.3;
+ return {time:start-(10-i)*minute,open,high:open+.4,low:open-.2,close:open+.2};
+});
+waveBars[9]={...waveBars[9],open:102.5,high:103.2,low:101.9,close:102.1};
+for(const up of [true,false]){
+ const rows=up?waveBars:waveBars.map(b=>({...b,open:200-b.open,high:200-b.low,low:200-b.high,close:200-b.close}));
+ const q={now:start+5000,quoteAt:start+4000,price:rows[9].close,sourceReady:true,m1:rows};
+ assert.equal(wave(q)?.side,up?'SELL':'BUY');
+ assert.equal(wave({...q,quoteAt:start-20000}),null,'stale price cannot warn');
+ assert.equal(wave({...q,m1:rows.filter((_,i)=>i!==6)}),null,'missing minute cannot warn');
+ assert.equal(wave({...q,price:up?103.3:96.7}),null,'reclaimed rejection invalidates warning');
+ assert.equal(wave({...q,m1:[...rows,{...rows[9],time:start}]} )?.side,up?'SELL':'BUY','forming candle is ignored');
+}
+console.log('PASS: causal wave exhaustion both directions with stale, gap, reclaimed and forming-bar guards');
