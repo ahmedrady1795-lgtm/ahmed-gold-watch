@@ -4,7 +4,8 @@ import {acceptGoldPulse} from './gold-tick-quality.ts';
 import {goldMarketSession} from './gold-market-session.ts';
 import type {GoldCombinedLiquidity} from './gold-liquidity-meter.ts';
 
-export type GoldOpeningCall={target:number;issued:number;side:'BUY'|'SELL';reason:string;
+export const GOLD_OPENING_VERSION='GOLD_M5_OPEN_V2';
+export type GoldOpeningCall={version?:string;target:number;issued:number;side:'BUY'|'SELL';reason:string;
   source:string;quoteSource:string;quoteAt:number;priceAt:number};
 export const openingWindowMs=30000;
 export function validOpeningCall(value:unknown,now:number):value is GoldOpeningCall{
@@ -61,7 +62,7 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
      if(!prior||prior.sourceTime>=tick.sourceTime||
        sign*(tick.price-prior.price)<=Math.max(spread/2,tick.price*.000001))return null;
    }
-   return {target,issued:now,side:preparation.side,
+   return {version:GOLD_OPENING_VERSION,target,issued:now,side:preparation.side,
      reason:'تحضير قبل الكسر · '+preparation.reason+' · توقع افتتاح غير مؤكد (سعري)'+flowNote(preparation.side),
      source:chart.candleSource,quoteSource:quote.source,
      quoteAt:tick.sourceTime,priceAt:tick.price};
@@ -77,7 +78,7 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
    const spread=tick.bid!=null&&tick.ask!=null?tick.ask-tick.bid:0;
    if(prior&&prior.sourceTime<tick.sourceTime&&
       sign*(tick.price-prior.price)>Math.max(spread/2,tick.price*.000001)){
-     return {target,issued:now,side:waveEnd.side,
+     return {version:GOLD_OPENING_VERSION,target,issued:now,side:waveEnd.side,
        reason:'انعكاس عند نهاية الموجة · '+waveEnd.reason+flowNote(waveEnd.side),
        source:chart.candleSource,quoteSource:quote.source,quoteAt:tick.sourceTime,priceAt:tick.price};
    }
@@ -127,6 +128,6 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
    });
    if(!reset)return null;
  }
- return {target,issued:now,side:lean.side,reason:'ترجيح افتتاح سعري مع تحقق اتجاه آخر سعرين؛ ليس إشارة كسر مبكر · '+lean.reason+flowNote(lean.side),source:chart.candleSource,
+ return {version:GOLD_OPENING_VERSION,target,issued:now,side:lean.side,reason:'ترجيح افتتاح سعري مع تحقق اتجاه آخر سعرين؛ ليس إشارة كسر مبكر · '+lean.reason+flowNote(lean.side),source:chart.candleSource,
    quoteSource:quote.source,quoteAt:tick.sourceTime,priceAt:tick.price};
 }
