@@ -11,8 +11,8 @@ const rows=Array.from({length:300},(_,i)=>{
 const result=run('GOLD:source',rows,now,true);
 assert.equal(result.asOf,now);
 assert.equal(result.m1.validationCount,60);
-assert.equal(result.m5.validationCount,12,'non-overlapping 5-minute holdout bodies');
-assert.equal(result.m5.side,'WAIT','small independent sample never qualifies as a trade direction');
+assert.equal(result.m5.validationCount,24,'non-overlapping actual M5 opening-aligned holdout bodies');
+assert.equal(result.m5.side,'WAIT','a direction is not emitted outside the opening window');
 assert.equal(result.tradeAuthorized,false);
 const future={time:now,open:100,close:105,high:106,low:99};
 assert.equal(run('GOLD:source',[...rows,future],now,true),result,'forming candle excluded from training and prediction');
@@ -26,7 +26,7 @@ assert.equal(run('BTC:source',rows,now,true).tradeAuthorized,false);
 console.log('PASS local chronological candle model, validation, closed-bar integrity, source isolation and no trade authorization');
 
 for(const h of ['neuralM1','neuralM5']){
- assert.equal(result[h].validationCount,h==='neuralM5'?12:60);
+ assert.equal(result[h].validationCount,h==='neuralM5'?24:60);
  assert.ok(Number.isFinite(result[h].rawScore)&&result[h].rawScore>=0&&result[h].rawScore<=1);
  assert.equal(run('GOLD:source',rows,now,false)[h].side,'WAIT');
  assert.equal(run('GOLD:source',gapped,now,true)[h].side,'WAIT');
