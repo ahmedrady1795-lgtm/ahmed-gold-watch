@@ -32,7 +32,7 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
  const contradicts=(side:'BUY'|'SELL')=>flowFresh&&
    (flow!.state==='CONFLICT'||(flow!.strongSide!=='WAIT'&&flow!.strongSide!==side));
  const flowNote=(side:'BUY'|'SELL')=>flowFresh?
-   ' · تدفق بديل '+(flow!.strongSide===side?'متوافق':'دون اتفاق قوي')+' '+flow!.sources.length+'/4':
+   ' · تدفق بديل '+(flow!.strongSide===side?'متوافق':'دون اتفاق قوي')+' '+flow!.sources.length+'/5':
    ' · لا اتفاق متعدد المصادر حديث';
  // Prefer a causal setup that is still BEFORE its trigger. A price-only
  // continuation is a separately labelled watch, not verified order flow.
@@ -65,6 +65,22 @@ export function nextGoldOpeningCall(previous:GoldOpeningCall|null,now:number,
      reason:'تحضير قبل الكسر · '+preparation.reason+' · توقع افتتاح غير مؤكد (سعري)'+flowNote(preparation.side),
      source:chart.candleSource,quoteSource:quote.source,
      quoteAt:tick.sourceTime,priceAt:tick.price};
+ }
+ // A genuine end-of-leg rejection can lead the next candle, not merely
+ // veto an old trend. Require independently fresh agreeing execution and
+ // two distinct quotes moving away from the rejected extreme.
+ if(waveEnd&&flowFresh&&flow!.strongSide===waveEnd.side&&!contradicts(waveEnd.side)){
+   const priorQuote=previousQuotes.at(-1);
+   const prior=priorQuote?.ok===true&&priorQuote.status==='live'&&priorQuote.source===quote.source?
+     acceptGoldPulse(priorQuote,now):null;
+   const sign=waveEnd.side==='BUY'?1:-1;
+   const spread=tick.bid!=null&&tick.ask!=null?tick.ask-tick.bid:0;
+   if(prior&&prior.sourceTime<tick.sourceTime&&
+      sign*(tick.price-prior.price)>Math.max(spread/2,tick.price*.000001)){
+     return {target,issued:now,side:waveEnd.side,
+       reason:'انعكاس عند نهاية الموجة · '+waveEnd.reason+flowNote(waveEnd.side),
+       source:chart.candleSource,quoteSource:quote.source,quoteAt:tick.sourceTime,priceAt:tick.price};
+   }
  }
  // Reserve the first half of the preparation window for an actual
  // unbroken setup; otherwise a weak momentum fallback freezes the side
