@@ -2,6 +2,7 @@ import {combineGoldLiquidity,retainGoldVenueSamples} from '../lib/gold-liquidity
 import {mergeOpeningAudit,settleOpeningAudit,openingAdaptiveChoice} from '../lib/gold-opening-audit.ts';
 import fs from 'node:fs/promises';
 import {nextGoldOpeningCall,validOpeningCall,goldOpeningRegime} from '../lib/gold-opening-call.ts';
+import {captureMarketMemory,settleMarketMemory,mergeMarketMemory} from '../lib/gold-market-memory.ts';
 import {localCandleMl} from '../lib/local-candle-ml.ts';
 import {sidecarWorkAllowed} from '../lib/render-free-viewer-lease.ts';
 import {goldMarketSession} from '../lib/gold-market-session.ts';
@@ -27,6 +28,9 @@ const openingAuditPath='/tmp/qannas-gold-m5-opening-audit.json';
 let openingAudit=[];
 const withheldPath='/tmp/qannas-gold-m5-withheld-audit.json';
 let withheldAudit=[];
+const memoryPath='/tmp/qannas-gold-market-memory.json';
+let memory=[];
+try{memory=mergeMarketMemory(Date.now(),JSON.parse(await fs.readFile(memoryPath,'utf8')));}catch{}
 try{withheldAudit=mergeOpeningAudit(Date.now(),JSON.parse(await fs.readFile(withheldPath,'utf8')));}catch{}
 try{
  const saved=JSON.parse(await fs.readFile(openingAuditPath,'utf8'));
@@ -85,6 +89,8 @@ async function init(){
  await atomic(openingAuditPath,openingAudit);
  withheldAudit=mergeOpeningAudit(Date.now(),packaged?.withheldAudit,remote?.withheldAudit,withheldAudit);
  await atomic(withheldPath,withheldAudit);
+ memory=mergeMarketMemory(Date.now(),packaged?.marketMemory,remote?.marketMemory,memory);
+ await atomic(memoryPath,memory);
  for(const file of paths)try{
   ledger=safeGoldLeadLedger(JSON.parse(await fs.readFile(file,'utf8')),Date.now());
   path=file;return;
@@ -106,7 +112,7 @@ async function observe(){
   // also runs a bounded pre-open window with no viewer, while the host is up.
   // Prewarm one minute ahead; allow settlement shortly after a boundary.
   const started=Date.now(),elapsed=started%300000;
-  const due=[...openingAudit,...withheldAudit].some(e=>e.outcome==='PENDING'&&started>=e.call.target+303000);
+  const due=[...openingAudit,...withheldAudit].some(e=>e.outcome==='PENDING'&&started>=e.call.target+303000)||memory.some(e=>e.outcome==='PENDING'&&started>=e.target+303000);
   const openingWork=goldMarketSession(started).open&&elapsed>=210000;
   const settlementWork=due&&elapsed<45000;
   if(!(await sidecarWorkAllowed(started))&&!openingWork&&!settlementWork){
@@ -153,6 +159,23 @@ async function observe(){
   const q=quote,session=goldMarketSession(now).open;
   const feedFresh=g?.fresh===true&&now-contextFetchedAt<45000;
   const flow=combineGoldLiquidity(perpFlow,tokenFlow,now,session);
+  // Independent observations include candles with no directional alert.
+  // Record one sample per M5 before its open, then settle only closed M1.
+  const memoryNext=settleMarketMemory(memory,now,feedFresh?source:'',feedFresh?m1:[]);
+  const snapshot=feedFresh&&session?captureMarketMemory(now,source,m1,q,flow):null;
+  if(snapshot&&!memoryNext.some(e=>e.target===snapshot.target&&e.source===snapshot.source)){
+    memoryNext.push(snapshot);
+    console.info('[GOLD-MARKET-MEMORY] OBSERVED',JSON.stringify(snapshot));
+  }
+  if(JSON.stringify(memoryNext)!==JSON.stringify(memory)){
+    for(const e of memoryNext){
+      const old=memory.find(x=>x.target===e.target&&x.source===e.source);
+      if(old?.outcome==='PENDING'&&e.outcome!=='PENDING')
+        console.info('[GOLD-MARKET-MEMORY] SETTLED',JSON.stringify(e));
+    }
+    await atomic(memoryPath,memoryNext.slice(-2016));
+    memory=memoryNext.slice(-2016);
+  }
   let opening=feedFresh?nextGoldOpeningCall(openingCall,now,g,q,previousQuotes,flow,true):null;
   if(openingWork&&now-lastFlowReport>=15000){
     lastFlowReport=now;
