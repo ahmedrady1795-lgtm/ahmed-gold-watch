@@ -75,7 +75,7 @@ export function settleMarketMemory(rows:readonly MarketMemoryRow[],now:number,so
 function validRow(r:any,now:number,sources:readonly string[]):r is MarketMemoryRow{
  if(!r||!Number.isSafeInteger(r.target)||r.target%300000!==0||
   !Number.isSafeInteger(r.observedAt)||r.observedAt>now||r.target-r.observedAt<1000||r.target-r.observedAt>30000||
-  !Number.isSafeInteger(r.quoteAt)||r.quoteAt>r.observedAt||r.observedAt-r.quoteAt>10000||
+  !(sources[0].startsWith('Kraken')?Number.isFinite(r.quoteAt)&&r.quoteAt>0&&r.quoteAt<=Number.MAX_SAFE_INTEGER:Number.isSafeInteger(r.quoteAt))||r.quoteAt>r.observedAt||r.observedAt-r.quoteAt>10000||
   !sources.includes(r.source)||
   ![r.mid,r.atr].every(n=>Number.isFinite(n)&&n>0)||
   !['PENDING','SETTLED','UNKNOWN'].includes(r.outcome))return false;
