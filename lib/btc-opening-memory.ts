@@ -2,7 +2,7 @@ import {goldOpeningRegime,type OpeningSide} from './gold-opening-call.ts';
 import {marketSessionBucket,type MarketMemoryRow} from './gold-market-memory.ts';
 import {btcOrderflowMatchesChart,compareBtcTapes,detectShortTapeWatch,type BtcOrderflow} from './btc-orderflow.ts';
 import {detectWaveEnd,assessM5CandleLean} from './sniper-m5-candle-lean.ts';
-import {classifyBtcPressure,type PressureReading} from './btc-pressure-persistence.ts';
+import {classifyBtcPressure,type PressureReading} from './btc-orderflow.ts';
 export const BTC_OPENING_VERSION='BTC_M5_OPEN_V2';
 type Side='BUY'|'SELL';
 type Tick={at:number;price:number;source:string};
