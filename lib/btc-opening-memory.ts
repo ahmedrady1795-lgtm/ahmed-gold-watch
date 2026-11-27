@@ -2,11 +2,12 @@ import {goldOpeningRegime,type OpeningSide} from './gold-opening-call.ts';
 import {marketSessionBucket,type MarketMemoryRow} from './gold-market-memory.ts';
 import {btcOrderflowMatchesChart,compareBtcTapes,detectShortTapeWatch,type BtcOrderflow} from './btc-orderflow.ts';
 import {detectWaveEnd,assessM5CandleLean} from './sniper-m5-candle-lean.ts';
-export const BTC_OPENING_VERSION='BTC_M5_OPEN_V1';
+import {classifyBtcPressure,type PressureReading} from './btc-pressure-persistence.ts';
+export const BTC_OPENING_VERSION='BTC_M5_OPEN_V2';
 type Side='BUY'|'SELL';
 type Tick={at:number;price:number;source:string};
 type Call={version:string;target:number;issued:number;side:Side;reason:string;source:string;quoteSource:string;quoteAt:number;priceAt:number};
-export type BtcOpeningRow=MarketMemoryRow&{candidate?:Call;published?:boolean;block?:string};
+export type BtcOpeningRow=MarketMemoryRow&{candidate?:Call;published?:boolean;block?:string;pressure?:PressureReading;legacySide?:OpeningSide;legacyPublished?:boolean};
 const sources=['Kraken XBT/USD · fresh-candle fallback','Coinbase BTC-USD · extended M1'];
 const isSide=(s:unknown):s is Side=>s==='BUY'||s==='SELL';
 export function btcMemoryTick(source:string,tape:BtcOrderflow|null,now:number):Tick|null{
@@ -18,7 +19,7 @@ export function btcMemoryTick(source:string,tape:BtcOrderflow|null,now:number):T
 }
 export function validBtcOpeningCall(value:unknown,now:number):value is Call{
  const c=value as Call;
- return Boolean(c&&c.version===BTC_OPENING_VERSION&&sources.includes(c.source)&&btcOrderflowMatchesChart(c.source,c.quoteSource,c.quoteSource)&&
+ return Boolean(c&&['BTC_M5_OPEN_V1',BTC_OPENING_VERSION].includes(c.version)&&sources.includes(c.source)&&btcOrderflowMatchesChart(c.source,c.quoteSource,c.quoteSource)&&
  Number.isSafeInteger(c.target)&&c.target%300000===0&&Number.isSafeInteger(c.issued)&&c.issued<=now&&
  c.target-c.issued>=1000&&c.target-c.issued<=30000&&now<c.target+300000&&isSide(c.side)&&typeof c.reason==='string'&&
  Number.isFinite(c.priceAt)&&c.priceAt>0&&Number.isFinite(c.quoteAt)&&c.quoteAt<=c.issued&&c.issued-c.quoteAt<=10000);
@@ -49,21 +50,43 @@ export function observeBtcOpening(now:number,chart:any,coinbase:BtcOrderflow|nul
  const setup=detectShortTapeWatch({now,price:tick.price,sourceMatches:true,tape,observedAt:tape!.fetchedAt,m1:bars});
  const end=detectWaveEnd({now,price:tick.price,quoteAt:tick.at,sourceReady:true,m1:bars});
  const lean=assessM5CandleLean({now,price:tick.price,sourceReady:true,m1:bars,m5:chart.chartHigherFrames?.m5});
- const side=setup?.side??end?.side??(target-now<=15000&&lean.phase==='CLOSE'?lean.side:'WAIT');
- if(!isSide(side))return row;
- const reason=setup?'تحضير BTC قبل الكسر · '+setup.kind:end?'انعكاس محتمل عند نهاية الموجة':'ترجيح BTC من إغلاقات M1';
+ const legacySide=setup?.side??end?.side??(target-now<=15000&&lean.phase==='CLOSE'?lean.side:'WAIT');
+ const pressure=classifyBtcPressure(tape?.pressureEvidence,now,atr,tick.price);
+ // A reversal from absorption is a NEW setup, not a reversal of every
+ // failed pressure call. Require proximity to a closed support/resistance.
+ const recent=bars.slice(-6),low=Math.min(...recent.map(b=>b.low)),high=Math.max(...recent.map(b=>b.high));
+ const level=pressure.level;
+ const nearLevel=level!=null&&isSide(pressure.side)&&
+   (pressure.side==='BUY'?Math.abs(level-low):Math.abs(level-high))<=atr*.35;
+ const reclaim=pressure.kind==='ABSORPTION'&&nearLevel;
+ const side=reclaim?pressure.side:legacySide;
+ const oldSign=legacySide==='BUY'?1:-1;
+ const oldAdvance=previous&&previous.source===tick.source&&previous.at<tick.at&&tick.at-previous.at<=10000&&oldSign*(tick.price-previous.price)>=atr*.02;
+ const oldReversal=setup?.kind==='ABSORPTION'||end?.side===legacySide;
+ const legacyPublished=Boolean(isSide(legacySide)&&cross.consensus!=='CONFLICT'&&
+   (!isSide(cross.consensus)||cross.consensus===legacySide)&&oldAdvance&&
+   (oldReversal||oldSign*(tick.price-bars.at(-6).open)<=3*atr)&&
+   (regime.trend==='WAIT'||regime.trend===legacySide||oldReversal&&cross.consensus===legacySide)&&
+   (flowSide===legacySide||setup?.kind==='ABSORPTION'&&cross.consensus===legacySide));
+ const evidence={...row,pressure,legacySide,legacyPublished};
+ if(!isSide(side))return evidence;
+ const reason=reclaim?'انعكاس BTC محتمل · امتصاص ثم تحول التنفيذ واستعادة المستوى':
+   setup?'تحضير BTC قبل الكسر · '+setup.kind:end?'انعكاس محتمل عند نهاية الموجة':'ترجيح BTC من إغلاقات M1';
  const candidate:Call={version:BTC_OPENING_VERSION,target,issued:now,side,reason,source,quoteSource:tick.source,quoteAt:tick.at,priceAt:tick.price};
  const sign=side==='BUY'?1:-1;
  const advance=previous&&previous.source===tick.source&&previous.at<tick.at&&tick.at-previous.at<=10000&&sign*(tick.price-previous.price)>=atr*.02;
  const opposing=regime.trend!=='WAIT'&&regime.trend!==side;
- const reversal=setup?.kind==='ABSORPTION'||end?.side===side;
+ const reversal=reclaim||end?.side===side||setup?.kind==='ABSORPTION'&&pressure.kind==='ABSORPTION'&&pressure.side===side;
  const extended=sign*(tick.price-bars.at(-6).open)>3*atr&&!reversal;
  const block=cross.consensus==='CONFLICT'?'CROSS_CONFLICT':
   isSide(cross.consensus)&&cross.consensus!==side?'CROSS_OPPOSITION':
-  extended?'LATE_MOVE':!advance?'NO_NEW_TICK_CONFIRMATION':
-  opposing&&(!reversal||cross.consensus!==side)?'COUNTERTREND':
-  flowSide!==side&&!(setup?.kind==='ABSORPTION'&&cross.consensus===side)?'NO_LOCAL_FLOW_AGREEMENT':null;
- return {...row,candidate,published:!block,block:block??undefined};
+  extended?'LATE_MOVE':!advance&&!reclaim?'NO_NEW_TICK_CONFIRMATION':
+  opposing&&(!reversal||(!reclaim&&cross.consensus!==side))?'COUNTERTREND':
+  pressure.kind==='TRANSIENT'?'TRANSIENT_PRESSURE':
+  pressure.kind==='ABSORPTION'&&pressure.side!==side?'ABSORPTION_OPPOSITION':
+  pressure.kind==='PERSISTENT'&&pressure.side===side||reclaim?null:
+  'NO_PERSISTENT_PRESSURE';
+ return {...evidence,candidate,published:!block,block:block??undefined};
 }
 /** Measure a distinct forward opportunity, not closing accuracy or P&L.
  * A hit requires an issued, visible-eligible forecast BEFORE M5 open,
@@ -96,5 +119,21 @@ export function btcOpeningSummary(rows:readonly BtcOpeningRow[],now:number){
  };
  const published=rows.filter(r=>r.published&&r.candidate);
  const call=published.map(r=>r.candidate).filter(c=>validBtcOpeningCall(c,now)).at(-1)??null;
- return {call,recent:published.slice(-36).map(r=>({call:r.candidate,outcome:r.outcome==='SETTLED'?r.direction==='FLAT'?'FLAT':r.candidate!.side===r.direction?'HIT':'MISS':r.outcome})),quality:count(true),withheldResearch:count(false),waveCapture:btcWaveCapture(rows),version:BTC_OPENING_VERSION};
+ return {versionQuality:countVersion(rows,BTC_OPENING_VERSION),pressureAudit:pressureAudit(rows),call,recent:published.slice(-36).map(r=>({call:r.candidate,outcome:r.outcome==='SETTLED'?r.direction==='FLAT'?'FLAT':r.candidate!.side===r.direction?'HIT':'MISS':r.outcome})),quality:count(true),withheldResearch:count(false),waveCapture:btcWaveCapture(rows),version:BTC_OPENING_VERSION};
+}
+
+function countVersion(rows:readonly BtcOpeningRow[],version:string){
+ const a=rows.filter(r=>r.candidate?.version===version&&r.published===true&&r.outcome==='SETTLED'&&isSide(r.direction));
+ const hits=a.filter(r=>r.direction===r.candidate!.side).length;return {hits,misses:a.length-hits};
+}
+function pressureAudit(rows:readonly BtcOpeningRow[]){
+ const a=rows.filter(r=>r.pressure&&r.outcome==='SETTLED');
+ const strong=a.filter(r=>isSide(r.firstThreshold));
+ const legacy=strong.filter(r=>r.legacyPublished&&r.legacySide===r.firstThreshold).length;
+ const next=strong.filter(r=>r.published&&r.candidate?.side===r.firstThreshold).length;
+ return {sample:a.length,strong:strong.length,legacyCaptured:legacy,newCaptured:next,
+   byKind:['UNAVAILABLE','BALANCED','TRANSIENT','PERSISTENT','ABSORPTION'].map(kind=>{
+     const group=a.filter(r=>r.pressure?.kind===kind),eligible=group.filter(r=>isSide(r.firstThreshold));
+     return {kind,n:group.length,strong:eligible.length,captured:eligible.filter(r=>r.published&&r.candidate?.side===r.firstThreshold).length};
+   }),scope:'SAME_SNAPSHOT_RESEARCH_NOT_LIVE_V1_REPLAY'};
 }
