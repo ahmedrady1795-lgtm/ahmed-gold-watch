@@ -117,10 +117,13 @@ preparation.on('error',e=>console.warn('[GOLD-PREPARATION] worker unavailable',e
 preparation.on('exit',(code,signal)=>{
  if(code!==0&&!signal)console.warn('[GOLD-PREPARATION] worker stopped',code);
 });
+const btcOpening=spawn('node',['scripts/btc-opening-worker.mjs'],{stdio:'inherit',env:process.env});
+btcOpening.on('error',e=>console.warn('[BTC-M5-OPEN] worker unavailable',e.message));
+btcOpening.on('exit',(code,signal)=>{if(code!==0&&!signal)console.warn('[BTC-M5-OPEN] worker stopped',code);});
 for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{
- child.kill(signal);radar.kill(signal);goldRadar.kill(signal);preparation.kill(signal);
+ child.kill(signal);radar.kill(signal);goldRadar.kill(signal);preparation.kill(signal);btcOpening.kill(signal);
 });
 child.on('exit',(code,signal)=>{
- radar.kill('SIGTERM');goldRadar.kill('SIGTERM');preparation.kill('SIGTERM');
+ radar.kill('SIGTERM');goldRadar.kill('SIGTERM');preparation.kill('SIGTERM');btcOpening.kill('SIGTERM');
  process.exitCode=code??(signal?1:0);
 });
