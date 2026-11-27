@@ -41,3 +41,8 @@ const nearby=render({records:[records[19],nearbyBreak]});
 assert.equal((nearby.match(/<circle /g)||[]).length,2,
  'an omitted nearby caption must retain the original breakout dot');
 console.log('PASS: current setup visibility, qualified caption priority, all early/break points retained');
+const clustered=records.slice(0,5).map((r,i)=>({...r,kind:'BREAK',quality:'SETUP',
+ side:i%2?'SELL':'BUY',priceAt:118,status:i%2?'STOP':'TARGET'}));
+const retained=render({records:clustered,compactObservations:true});
+assert.equal((retained.match(/>شراء ✓<\/text>/g)||[]).length,3);
+assert.equal((retained.match(/>بيع ×<\/text>/g)||[]).length,2);

@@ -1985,9 +1985,9 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
          const ly=clamp(y+(r.side==='BUY'?27:-26),plotTop+15,plotBottom-12);
          return <g key={r.target} data-preopen-m5={r.target}>
            <title>{label+' · '+h(r.target)+' · '+r.reason+(result?' · '+result:'')}</title>
-           {!current&&r.serverOpening&&(showExtra||r.target>=now-900000)&&<text x={px} y={clamp(y+(r.side==='BUY'?13:-9),plotTop+12,plotBottom-4)}
+           {!current&&<text x={px} y={clamp(y+(r.side==='BUY'?13:-9),plotTop+12,plotBottom-4)}
              textAnchor="middle" direction="rtl" fill={color} stroke="#07111b" strokeWidth="2.5"
-             paintOrder="stroke" fontSize="8" fontWeight="700">{(r.side==='BUY'?'شراء':'بيع')+' '+result}</text>}
+             paintOrder="stroke" fontSize="9" fontWeight="800">{openingLabel(r)+(result?' '+result:'')}</text>}
            <circle cx={px} cy={y} r={current?3.5:2.8} stroke={color} strokeWidth="1.4" fill="#07111b"/>
            {current&&(r.serverOpening||!movementRecords.some(v=>v.asset===asset&&v.source===String(x?.candleSource||'')&&
              v.issuedAt>=r.issued&&v.issuedAt<=now&&v.kind==='EARLY'))&&<>

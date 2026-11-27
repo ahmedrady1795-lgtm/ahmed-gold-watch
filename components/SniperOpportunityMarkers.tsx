@@ -36,7 +36,7 @@ export default function SniperOpportunityMarkers(p:Props){
  // Keep nearby captions legible, without changing recorded time or price.
  const shown:MovementProof[]=[];
  for(const r of [...rows.filter(r=>r.quality==='SETUP'),...rows.filter(r=>r.quality!=='SETUP')]){
-   if(shown.some(s=>Math.abs(p.timeX(s.issuedAt)-p.timeX(r.issuedAt))<54&&
+   if(r.quality!=='SETUP'&&shown.some(s=>Math.abs(p.timeX(s.issuedAt)-p.timeX(r.issuedAt))<54&&
      Math.abs(p.py(s.priceAt)-p.py(r.priceAt))<34))continue;
    shown.push(r);
  }
@@ -110,11 +110,10 @@ export default function SniperOpportunityMarkers(p:Props){
  const earlyLabels=new Map<string,{x:number;y:number}>();
  // Reserve qualified entries before observational captions.
  const breakLabels=new Map<string,{x:number;y:number}>();
- for(const r of shown.filter(r=>r.quality==='SETUP'&&!nearCurrent(r))){
-    if(breakLabels.size>=2)break;
+ for(const r of shown.filter(r=>r.quality==='SETUP')){
    const chosen=placeLabel(p.timeX(r.issuedAt),p.py(r.priceAt),48,16,
      r.side==='BUY'?29:-29);
-   if(chosen)breakLabels.set(r.id,chosen);
+   breakLabels.set(r.id,chosen??{x:p.timeX(r.issuedAt),y:fit(p.py(r.priceAt)+(r.side==='BUY'?12:-12))});
  }
  // Keep real historical PRE-break observations labelled by direction,
  // even if they have expired or failed. Do not retroactively call them trades.

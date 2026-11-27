@@ -19,7 +19,7 @@ export async function GET(request:Request){
  if(new URL(request.url).searchParams.get('archive')==='1')
    return Response.json({schema:'gold-opening-audit-v1',rows,withheldAudit:withheld,marketMemory},{headers});
  const isPreparation=(r:typeof rows[number])=>r.call.reason.startsWith('تحضير قبل الكسر');
- return Response.json({call,recent:rows.slice(-36),quality:openingScore(rows),
+ return Response.json({call,recent:rows.slice(-144),quality:openingScore(rows),
    byMethod:{preparation:openingScore(rows.filter(isPreparation)),continuation:openingScore(rows.filter(r=>!isPreparation(r)))},
    currentVersion:GOLD_OPENING_VERSION,currentVersionQuality:openingScore(rows.filter(r=>r.call.version===GOLD_OPENING_VERSION)),
    marketMemory:marketMemoryReport(marketMemory),
