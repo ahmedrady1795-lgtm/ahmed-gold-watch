@@ -36,3 +36,30 @@ const capture=btcOpeningSummary([wave,{...wave,published:false},{...wave,candida
 assert.equal(capture.strong,4);assert.equal(capture.captured,1);assert.equal(capture.wrongPublished,1);
 assert.equal(capture.withheldCorrect,1);assert.equal(capture.noCandidate,1);assert.equal(capture.ambiguous,1);
 console.log('PASS: fractional Kraken timestamps preserved; independent first-wave recall and missed-opportunity breakdown');
+
+const {btcPressureEvidence,classifyBtcPressure}=await import('../lib/btc-orderflow.ts');
+const makePressure=(directions,starts,ends)=>{
+ const at=now-500;
+ return directions.flatMap((side,i)=>Array.from({length:8},(_,j)=>({
+   id:1000+i*8+j,time:at-(2-i)*5000-(7-j)*500,
+   price:starts[i]+(ends[i]-starts[i])*j/7,size:.1,aggressor:side
+ })));
+};
+const persistent=makePressure(['BUY','BUY','BUY'],[60000,60002,60004],[60002,60004,60006]);
+const read=(t,p=60006)=>classifyBtcPressure(btcPressureEvidence(t,now),now,10,p);
+assert.equal(read(persistent).kind,'PERSISTENT');
+assert.equal(read(persistent).side,'BUY');
+assert.equal(read(makePressure(['SELL','SELL','BUY'],[60000,59999,59999],[59999,59999,60002]),60002).kind,'ABSORPTION');
+const reversal=makePressure(['BUY','BUY','SELL'],[60000,60001,60001],[60001,60001,59998]);
+assert.equal(read(reversal,59998).side,'SELL');
+assert.equal(read(reversal,59998).kind,'ABSORPTION');
+assert.equal(read(makePressure(['SELL','BUY','BUY'],[60000,60002,60004],[60002,60004,60006])).kind,'TRANSIENT');
+assert.equal(read(makePressure(['BUY','BUY','BUY'],[60000,60000,60000],[60000,60000,60000]),60000).kind,'TRANSIENT');
+assert.equal(read(persistent.map((p,i)=>i===23?{...p,size:100}:p)).kind,'TRANSIENT');
+assert.equal(read(persistent.filter((p,i)=>i>=8)).kind,'UNAVAILABLE');
+assert.deepEqual(btcPressureEvidence([...persistent,persistent[0]],now),btcPressureEvidence(persistent,now));
+assert.deepEqual(btcPressureEvidence([...persistent,{...persistent[0],id:99999,time:now+100}],now),btcPressureEvidence(persistent,now));
+assert.equal(classifyBtcPressure(btcPressureEvidence(persistent,now),now+6000,10,60006).kind,'UNAVAILABLE');
+assert.equal(validBtcOpeningCall({...call,version:'BTC_M5_OPEN_V1'},now),true,'legacy records remain visible');
+assert.equal(row.published,false,'incomplete pressure stays in research rather than becoming a verified alert');
+console.log('PASS: disjoint tape windows, persistent pressure, symmetric absorption/reclaim, single-print concentration, stale/future/duplicate guards and legacy history');
