@@ -24,7 +24,8 @@ async function boundedFeed(work:Promise<unknown>){
 export async function GET(request:Request){
   const now=Date.now();
   const goldOnly=new URL(request.url).searchParams.get('asset')==='GOLD';
-  const requests=goldOnly?[getGoldChartMarket(),Promise.resolve(null)]:[getGoldChartMarket(),getBtcMarket()];
+  const btcOnly=new URL(request.url).searchParams.get('asset')==='BTC';
+  const requests=goldOnly?[getGoldChartMarket(),Promise.resolve(null)]:btcOnly?[Promise.resolve(null),getBtcMarket()]:[getGoldChartMarket(),getBtcMarket()];
   const [goldResult,btcResult]=await Promise.allSettled(requests.map(boundedFeed));
   const checkedAt=Date.now();
   const g=goldResult.status==='fulfilled'?chartAssetFromMarket(goldResult.value,checkedAt):null;
@@ -44,8 +45,8 @@ export async function GET(request:Request){
     if(bSpot&&bRecent&&!aSpot)return 1;
     return b.lastClosedAt-a.lastClosedAt;
   })[0]??null;
-  const gold=goldLive?g:goldOnly?null:display;
-  const bitcoin=bitcoinLive?b:historicalChartAsset('bitcoin',lastGoodBitcoin,checkedAt);
+  const gold=btcOnly?null:goldLive?g:goldOnly?null:display;
+  const bitcoin=goldOnly?null:bitcoinLive?b:btcOnly?null:historicalChartAsset('bitcoin',lastGoodBitcoin,checkedAt);
   const structuralAudit=goldLive||bitcoinLive?updateStructuralWatchFromChart({
     gold:goldLive?gold:null,bitcoin:bitcoinLive?bitcoin:null
   },checkedAt):null;
