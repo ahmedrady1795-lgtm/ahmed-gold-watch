@@ -11,6 +11,24 @@ type Props={
   observed?:readonly {time:number;high:number;low:number}[];
   m1:M1Priority;marketOpen:boolean;flowSide?:HuntSide|'WAIT';
 };
+type ObservedBar={time:number;high:number;low:number};
+function latestReach(f:M15HuntPreview, observed:readonly ObservedBar[], obstacle?:M15Obstacle){
+  const since=(f.anchorTime??Infinity)+900000;
+  let up=0,down=0,crossed=false;
+  for(const b of observed){
+    if(!Number.isFinite(b.time)||b.time<since||!Number.isFinite(b.high)||
+      !Number.isFinite(b.low)||b.low<=0||b.high<b.low)continue;
+    for(const [index,stage] of [[2,1],[5,2]] as const){
+      if(b.high>=f.buy[index]?.close)up=Math.max(up,stage);
+      if(b.low<=f.sell[index]?.close)down=Math.max(down,stage);
+    }
+    if(obstacle?.blocked&&obstacle.level!=null){
+      if(obstacle.kind==='SUPPLY'&&b.high>obstacle.level||
+        obstacle.kind==='DEMAND'&&b.low<obstacle.level)crossed=true;
+    }
+  }
+  return {up,down,crossed};
+}
 const color={BUY:'#53e8b8',SELL:'#ff7798'};
 export default function SniperM15HuntOverlay(p:Props){
   const f=p.forecast;
@@ -28,6 +46,8 @@ export default function SniperM15HuntOverlay(p:Props){
   const anchored=visualSide!=='WAIT'&&!blocked;
   const clear=anchored&&evidence.state==='PRELIMINARY_EDGE';
   const validated=clear;
+  const reached=latestReach(f,p.observed??[],p.obstruction);
+  const touched=[reached.up?'صعود '+reached.up:'',reached.down?'هبوط '+reached.down:''].filter(Boolean).join(' و');
   const stations=placeHuntWaypoints(f,p.py,p.top,p.bottom,p.observed);
   const toPoints=(list:HuntPreviewCandle[],side:HuntSide)=>{
     const points=[[p.split+4,clip(p.py(f.anchor!))]];
@@ -134,15 +154,20 @@ export default function SniperM15HuntOverlay(p:Props){
         evidence.state==='CONFLICT'?'M15 · FRAME CONFLICT':
         !anchored?(p.proof?.status==='NO_DEMONSTRATED_EDGE'?'M15 · CONTEXT':'M15 · DUAL WATCH'):'M15 · EARLY PATH'}
     </text>
-    <text x={p.split+8} y={p.top+32} fontSize="9" fontWeight="800"
+    <text x={p.end-4} direction="rtl" y={p.top+32} fontSize="9" fontWeight="800"
       fill={anchored?color[visualSide as HuntSide]:'#b1c1cb'}
       textAnchor="start" stroke="#000" strokeWidth="2" paintOrder="stroke">
       {f.referenceOnly?(f.observation?'سياق تاريخي فقط':f.sessionBreakOnly?'استراحة جلسة ضمن التاريخ · مراقبة فقط':'فجوات في المصدر · مساران للمراقبة فقط'):
-       blocked?'مقاومة / طلب غير مكسور · لا استمرار مؤكد':
+       blocked?(reached.crossed?'عبور مرصود · بانتظار إغلاقَي M15':
+         p.obstruction?.kind==='SUPPLY'?'عرض أمام الصعود · بانتظار تأكيد':'طلب أمام الهبوط · بانتظار تأكيد'):
        anchored?(visualSide==='BUY'?'↑ المسار المرجح':'↓ المسار المرجح')+
          (validated?' · اختبار تاريخي أولي':' · يحتاج إثباتًا'):
        p.proof?.status==='NO_DEMONSTRATED_EDGE'?'M15 بلا أفضلية مثبتة · راقب M1/M5':evidence.reason}
     </text>
+    {touched&&<text x={p.end-4} direction="rtl" y={p.top+47} fontSize="9" fontWeight="700"
+      fill="#bdd2da" textAnchor="start" stroke="#000" strokeWidth="2" paintOrder="stroke">
+      {'لمس محطة '+touched+' · الباقي للمراقبة'}
+    </text>}
     {f.sweep!=='NONE'&&<g>
       <circle cx={p.split+7} cy={clip(p.py(f.anchor))} r="4"
         fill="none" stroke="#e9ba55" strokeWidth="1.6"/>
