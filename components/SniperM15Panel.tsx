@@ -1,5 +1,6 @@
 'use client';
 
+import {validBtcOpeningCall} from '../lib/btc-opening-memory';
 import {validOpeningCall,openingWindowMs,type GoldOpeningCall} from '../lib/gold-opening-call';
 import {openingQuoteSource} from '../lib/gold-display-observation';
 import {fetchOpeningSnapshot,useGoldDisplayObservations} from './useGoldDisplayObservations';
@@ -648,6 +649,29 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  const [openingUnavailable,setOpeningUnavailable]=useState(false);
  const [serverHistory,setServerHistory]=useState<{call:GoldOpeningCall;outcome:string}[]>([]);
  const [serverOpening,setServerOpening]=useState<GoldOpeningCall|null>(null);
+ const [btcServerOpening,setBtcServerOpening]=useState<GoldOpeningCall|null>(null);
+ const [btcServerHistory,setBtcServerHistory]=useState<{call:GoldOpeningCall;outcome:string}[]>([]);
+ useEffect(()=>{
+   if(asset!=='BTC')return;
+   const controller=new AbortController();let busy=false,lastAttempt=0;
+   async function poll(){
+     const now=Date.now(),elapsed=now%300000;
+     if(busy||document.hidden||controller.signal.aborted||
+       (elapsed>12000&&elapsed<270000&&now-lastAttempt<45000))return;
+     busy=true;lastAttempt=now;
+     try{
+       const r=await fetch('/api/btc-opening',{cache:'no-store',signal:controller.signal});
+       if(!r.ok)throw Error('BTC opening unavailable');
+       const data=await r.json();
+       if(controller.signal.aborted)return;
+       if(validBtcOpeningCall(data.call,Date.now()))setBtcServerOpening(data.call);
+       if(Array.isArray(data.recent))setBtcServerHistory(data.recent.filter((r:any)=>validBtcOpeningCall(r?.call,r?.call?.issued)));
+     }catch{}finally{busy=false;}
+   }
+   void poll();const timer=setInterval(()=>void poll(),2000);
+   return()=>{controller.abort();clearInterval(timer);};
+ },[asset]);
+
  useEffect(()=>{
    if(asset!=='GOLD')return;
    let busy=false,received=false,lastAttempt=0;
@@ -679,9 +703,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
    return ()=>{controller.abort();clearInterval(timer);document.removeEventListener('visibilitychange',resume);};
  },[asset]);
  useEffect(()=>{
-   const key='qannas-preopen-m5-v1:'+forecastScope;
    const issued=Date.now();
-   const target=(Math.floor(issued/300000)+1)*300000;
    if(asset==='GOLD'){
      const server=serverOpening;
      if(validOpeningCall(server,issued)&&server.source===x?.candleSource&&server.quoteSource===openingQuoteSource(liveQuote?.source)&&!providerTransition&&!historicalOnly){
@@ -694,39 +716,15 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
      }
      return;
    }
-   try{
-     const saved=JSON.parse(window.localStorage.getItem(key)||'null') as PreOpen|null;
-     if(saved&&saved.scope===forecastScope&&saved.target>issued-300000&&
-       saved.target<=target&&saved.issued<saved.target&&saved.issued>=saved.target-openingWindowMs&&
-       (saved.side==='BUY'||saved.side==='SELL')){
-       if(!preOpen||preOpen.scope!==forecastScope||preOpen.target<saved.target){
-         setPreOpen(saved);return;
-       }
-     }
-   }catch{}
-   if(target-issued>openingWindowMs||Math.abs(issued-now)>3000||document.hidden||
-     !marketOpen||providerTransition||!m.sniper.view.priceFresh||
-     !x?.candleSource||!liveQuote?.source||
-     (preOpen?.scope===forecastScope&&preOpen.target===target))return;
-   const armed=trackedSetup?.phase==='ARMED'&&trackedSetup.crossedAt==null&&
-     trackedSetup.expiresAt>issued?trackedSetup:null;
-   const eligible=armed&&!armed.selectionConflict?armed:null;
-   if(!eligible&&target-issued>15000)return;
-   if(eligible&&flowProfile.ready&&flowProfile.side!=='WAIT'&&flowProfile.asOf!=null&&flowProfile.observedAt!=null&&flowProfile.asOf<=issued&&flowProfile.observedAt<=issued&&issued-flowProfile.asOf<=15000&&issued-flowProfile.observedAt<=15000&&flowProfile.side!==eligible.side)return;
-   const side=eligible?.side??(candleLean.phase==='CLOSE'?candleLean.side:'WAIT');
-   if(side==='WAIT'||(waveEnd&&waveEnd.side!==side))return;
-   if(flowProfile.ready&&flowProfile.side!=='WAIT'&&flowProfile.asOf!=null&&flowProfile.observedAt!=null&&flowProfile.asOf<=issued&&flowProfile.observedAt<=issued&&issued-flowProfile.asOf<=15000&&issued-flowProfile.observedAt<=15000&&flowProfile.side!==side)return;
-   const sweep=liquidityMagnets.ready&&liquidityMagnets.sourceAt!=null&&
-     issued>=liquidityMagnets.sourceAt&&issued-liquidityMagnets.sourceAt<=600000?
-     liquidityMagnets.sweep:'NONE';
-   if((side==='BUY'&&sweep==='HIGH_RECLAIMED_DOWN')||
-     (side==='SELL'&&sweep==='LOW_RECLAIMED_UP'))return;
-   const record={scope:forecastScope,target,issued,side,priceAt:price??undefined,
-     reason:(eligible?.reason??candleLean.reason)+(sweep==='NONE'?'':' · سحب سيولة M15')};
-   setPreOpen(record);
-   try{window.localStorage.setItem(key,JSON.stringify(record));}catch{}
+   // BTC predictions are issued and archived only by the server. Historical
+   // local markers remain visible, but never create a fresh browser forecast.
+   const btc=btcServerOpening;
+   if(validBtcOpeningCall(btc,issued)&&btc.source===x?.candleSource&&
+     btcOrderflowMatchesChart(btc.source,liveQuote?.source,btc.quoteSource)&&!providerTransition&&!historicalOnly&&
+     (preOpen?.scope!==forecastScope||preOpen.target!==btc.target||preOpen.issued!==btc.issued))
+     setPreOpen({...btc,scope:forecastScope,serverOpening:true});
  },[forecastScope,now,preOpen,marketOpen,providerTransition,m.sniper.view.priceFresh,
-   x?.candleSource,liveQuote,serverOpening,historicalOnly,trackedSetup,candleLean,liquidityMagnets,paxg,asset,price,waveEnd,flowProfile]);
+   x?.candleSource,liveQuote,serverOpening,btcServerOpening,historicalOnly,trackedSetup,candleLean,liquidityMagnets,paxg,asset,price,waveEnd,flowProfile]);
  const openingLabel=(r:{side:string;reason:string})=>{
    const side=r.side==='BUY'?'شراء':'بيع';
    return side;
@@ -754,7 +752,7 @@ export default function SniperM15Panel({data,now,snapshotAt,goldLive,btcLive,ass
  },[forecastScope,preOpen]);
  const chartCalls=new Map<number,PreOpen>();
  for(const row of previousCalls)if(row.scope===forecastScope)chartCalls.set(row.target,row);
- if(asset==='GOLD')for(const row of serverHistory){
+ for(const row of asset==='GOLD'?serverHistory:btcServerHistory){
    if(row.call.source===x?.candleSource)
      chartCalls.set(row.call.target,{...row.call,scope:forecastScope,serverOpening:true,outcome:row.outcome});
  }
