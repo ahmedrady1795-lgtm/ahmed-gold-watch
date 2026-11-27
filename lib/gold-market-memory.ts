@@ -72,11 +72,11 @@ export function settleMarketMemory(rows:readonly MarketMemoryRow[],now:number,so
      buyReachAtr:(high-open)/r.atr,sellReachAtr:(open-low)/r.atr,firstThreshold,firstMinute};
  });
 }
-function validRow(r:any,now:number):r is MarketMemoryRow{
+function validRow(r:any,now:number,sources:readonly string[]):r is MarketMemoryRow{
  if(!r||!Number.isSafeInteger(r.target)||r.target%300000!==0||
   !Number.isSafeInteger(r.observedAt)||r.observedAt>now||r.target-r.observedAt<1000||r.target-r.observedAt>30000||
   !Number.isSafeInteger(r.quoteAt)||r.quoteAt>r.observedAt||r.observedAt-r.quoteAt>10000||
-  !['Biquote · MT5 XAUUSD candles','Deriv · XAUUSD'].includes(r.source)||
+  !sources.includes(r.source)||
   ![r.mid,r.atr].every(n=>Number.isFinite(n)&&n>0)||
   !['PENDING','SETTLED','UNKNOWN'].includes(r.outcome))return false;
  if(r.outcome==='PENDING')return true;
@@ -86,12 +86,12 @@ function validRow(r:any,now:number):r is MarketMemoryRow{
  r.high>=Math.max(r.open,r.close)&&r.low<=Math.min(r.open,r.close)&&
  r.direction===(r.close>r.open?'BUY':r.close<r.open?'SELL':'FLAT');
 }
-export function mergeMarketMemory(now:number,...inputs:unknown[]):MarketMemoryRow[]{
+function mergeMemoryForSources(now:number,sources:readonly string[],...inputs:unknown[]):MarketMemoryRow[]{
  const map=new Map<string,MarketMemoryRow>();
  for(const input of inputs){
    if(!Array.isArray(input))continue;
    for(const r of input.slice(-2016)){
-     if(!validRow(r,now))continue;
+     if(!validRow(r,now,sources))continue;
      const key=r.source+'|'+r.target,prior=map.get(key);
      if(prior){
        if(prior.outcome!=='PENDING'||r.outcome==='PENDING'||prior.observedAt!==r.observedAt||prior.mid!==r.mid||prior.atr!==r.atr)continue;
@@ -116,3 +116,6 @@ export function marketMemoryReport(rows:readonly MarketMemoryRow[]){
    strongDown:strong.filter(r=>r.direction==='SELL').length,flowCovered:rs.filter(r=>r.flowSources>=2).length};
  }),scope:'FORWARD_RESEARCH_NO_TRADE_PROFIT'};
 }
+
+export function mergeMarketMemory(now:number,...inputs:unknown[]){return mergeMemoryForSources(now,['Biquote · MT5 XAUUSD candles','Deriv · XAUUSD'],...inputs);}
+export function mergeBtcMarketMemory(now:number,...inputs:unknown[]){return mergeMemoryForSources(now,['Kraken XBT/USD · fresh-candle fallback','Coinbase BTC-USD · extended M1'],...inputs);}
