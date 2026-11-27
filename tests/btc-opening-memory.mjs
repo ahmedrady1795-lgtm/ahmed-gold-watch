@@ -27,3 +27,12 @@ assert.equal(btcOpeningSummary([{...settled,published:false}],target+303000).wit
 assert.equal(mergeMarketMemory(target+303000,[settled]).length,0);
 assert.deepEqual(mergeBtcMarketMemory(target+303000,[pending],[settled]),[settled]);
 console.log('PASS: server BTC pre-opening memory, same-venue prints, future-only grade, no cross-asset archives, published/withheld isolation');
+
+const fractional={...pending,quoteAt:pending.quoteAt+.375,candidate:{...call,quoteAt:call.quoteAt+.375}};
+assert.equal(mergeBtcMarketMemory(now,[fractional]).length,1);
+assert.equal(mergeBtcMarketMemory(now,[{...fractional,quoteAt:now+.375}]).length,0);
+const wave={...settled,firstThreshold:'BUY'};
+const capture=btcOpeningSummary([wave,{...wave,published:false},{...wave,candidate:{...call,side:'SELL'}},{...wave,candidate:undefined,published:false},{...wave,firstThreshold:'AMBIGUOUS'}],target+303000).waveCapture;
+assert.equal(capture.strong,4);assert.equal(capture.captured,1);assert.equal(capture.wrongPublished,1);
+assert.equal(capture.withheldCorrect,1);assert.equal(capture.noCandidate,1);assert.equal(capture.ambiguous,1);
+console.log('PASS: fractional Kraken timestamps preserved; independent first-wave recall and missed-opportunity breakdown');
