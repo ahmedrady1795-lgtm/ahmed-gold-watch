@@ -1,3 +1,4 @@
+import {btcPressureEvidence,type BtcPressureEvidence} from './btc-pressure-persistence.ts';
 /**
  * Coinbase BTC-USD executed trade tape (single venue, finite recent sample).
  * Exchange REST trade.side is MAKER side, so aggressor is its OPPOSITE.
@@ -31,6 +32,7 @@ export type BtcOrderflow={
   absorptionWatch:'BUY_ABSORPTION_POSSIBLE'|'SELL_ABSORPTION_POSSIBLE'|null};
  shortPressure?:ShortTapePressure|null;
  latestTrade?:{at:number;price:number};
+ pressureEvidence?:BtcPressureEvidence|null;
  actionable:false;venueComplete:false;
 };
 /** Source integrity for the on-chart flow lane: all three must be BTC/USD
@@ -194,7 +196,7 @@ export function buildBtcOrderflow(
     vah:buckets[right].price,vwap:fixed(vwap,2),binSize:step,
     valueAreaPct:70,volumeBtc:fixed(total),rows:buckets
       .sort((a,b)=>b.totalBtc-a.totalBtc).slice(0,48).sort((a,b)=>a.price-b.price)},
-  latestTrade:{at:newest,price:lastPrice},shortPressure,footprint,flow:{buyBtc:fixed(buy),sellBtc:fixed(sell),deltaBtc:fixed(delta),
+  latestTrade:{at:newest,price:lastPrice},pressureEvidence:btcPressureEvidence(trades,now),shortPressure,footprint,flow:{buyBtc:fixed(buy),sellBtc:fixed(sell),deltaBtc:fixed(delta),
     deltaPct:fixed(deltaPct,1),imbalance:Math.abs(deltaPct)>=20&&trades.length>=50?
       deltaPct>0?'BUY':'SELL':'BALANCED',priceChangePct:fixed(change,3),
     absorptionWatch},actionable:false,venueComplete:false
