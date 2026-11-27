@@ -65,6 +65,28 @@ export function observeBtcOpening(now:number,chart:any,coinbase:BtcOrderflow|nul
   flowSide!==side&&!(setup?.kind==='ABSORPTION'&&cross.consensus===side)?'NO_LOCAL_FLOW_AGREEMENT':null;
  return {...row,candidate,published:!block,block:block??undefined};
 }
+/** Measure a distinct forward opportunity, not closing accuracy or P&L.
+ * A hit requires an issued, visible-eligible forecast BEFORE M5 open,
+ * pointing in the direction of its first unambiguous 1-ATR excursion.
+ * Missing and ambiguous windows never count as wins. */
+export function btcWaveCapture(rows:readonly BtcOpeningRow[]){
+ const settled=rows.filter(r=>r.outcome==='SETTLED');
+ const strong=settled.filter(r=>isSide(r.firstThreshold));
+ const captured=strong.filter(r=>r.published===true&&r.candidate?.side===r.firstThreshold);
+ const wrong=strong.filter(r=>r.published===true&&r.candidate&&r.candidate.side!==r.firstThreshold);
+ const withheldCorrect=strong.filter(r=>r.published!==true&&r.candidate?.side===r.firstThreshold);
+ const withheldWrong=strong.filter(r=>r.published!==true&&r.candidate&&r.candidate.side!==r.firstThreshold);
+ const noCandidate=strong.filter(r=>!r.candidate);
+ const leads=captured.map(r=>(r.target-r.candidate!.issued)/1000);
+ return {definition:'FIRST_UNAMBIGUOUS_1_ATR_FROM_M5_OPEN',settled:settled.length,strong:strong.length,
+  captured:captured.length,wrongPublished:wrong.length,withheldCorrect:withheldCorrect.length,
+  withheldWrong:withheldWrong.length,noCandidate:noCandidate.length,
+  missed:strong.length-captured.length,recallPct:strong.length?100*captured.length/strong.length:null,
+  ambiguous:settled.filter(r=>r.firstThreshold==='AMBIGUOUS').length,
+  noThreshold:settled.filter(r=>r.firstThreshold==='NONE').length,
+  pending:rows.filter(r=>r.outcome==='PENDING').length,unknown:rows.filter(r=>r.outcome==='UNKNOWN').length,
+  meanPreOpenLeadSeconds:leads.length?leads.reduce((a,b)=>a+b,0)/leads.length:null};
+}
 export function btcOpeningSummary(rows:readonly BtcOpeningRow[],now:number){
  const count=(published:boolean)=>{
   const a=rows.filter(r=>r.candidate&&Boolean(r.published)===published);
@@ -74,5 +96,5 @@ export function btcOpeningSummary(rows:readonly BtcOpeningRow[],now:number){
  };
  const published=rows.filter(r=>r.published&&r.candidate);
  const call=published.map(r=>r.candidate).filter(c=>validBtcOpeningCall(c,now)).at(-1)??null;
- return {call,recent:published.slice(-36).map(r=>({call:r.candidate,outcome:r.outcome==='SETTLED'?r.direction==='FLAT'?'FLAT':r.candidate!.side===r.direction?'HIT':'MISS':r.outcome})),quality:count(true),withheldResearch:count(false),version:BTC_OPENING_VERSION};
+ return {call,recent:published.slice(-36).map(r=>({call:r.candidate,outcome:r.outcome==='SETTLED'?r.direction==='FLAT'?'FLAT':r.candidate!.side===r.direction?'HIT':'MISS':r.outcome})),quality:count(true),withheldResearch:count(false),waveCapture:btcWaveCapture(rows),version:BTC_OPENING_VERSION};
 }
