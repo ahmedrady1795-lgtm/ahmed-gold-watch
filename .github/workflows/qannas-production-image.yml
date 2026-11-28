@@ -1,0 +1,41 @@
+name: Qannas independent production verification
+on:
+  workflow_dispatch:
+  push:
+    branches: [render-free]
+    paths:
+      - '.github/workflows/qannas-production-image.yml'
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: qannas-production-image
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build existing production Dockerfile including all regressions
+        run: |
+          docker build --progress=plain -t qannas-verified:$GITHUB_SHA .
+      - name: Verify image starts and health endpoint responds
+        run: |
+          docker run -d --name qannas-smoke -e PORT=3000 -p 127.0.0.1:3000:3000 qannas-verified:$GITHUB_SHA
+          for i in $(seq 1 40); do
+            if curl -fsS --max-time 3 http://127.0.0.1:3000/api/live >/dev/null; then exit 0; fi
+            sleep 3
+          done
+          docker logs --tail 80 qannas-smoke
+          exit 1
+      - name: Clean up smoke container
+        if: always()
+        run: docker rm -f qannas-smoke || true
+      - name: Publish verified image to repository owner's GitHub registry
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "${{ github.token }}" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag qannas-verified:$GITHUB_SHA "$IMAGE:$GITHUB_SHA"
+          docker push "$IMAGE:$GITHUB_SHA"
+          echo "Verified image: $IMAGE:$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
